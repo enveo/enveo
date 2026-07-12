@@ -127,10 +127,14 @@ export const api = {
   e2eeRekey: (b: { wrappedDek: string; kdfParams: string }) => http<{ epoch: number }>("POST", "/sync2/rekey", b),
    
   e2eeSnapshot: () =>
-    http<{ epoch: number; wrappedDek: string | null; kdfParams: string | null; uptoSeq: number; blob: string | null }>(
-      "GET",
-      "/sync2/snapshot",
-    ),
+    http<{
+      budgetId: string;
+      epoch: number;
+      wrappedDek: string | null;
+      kdfParams: string | null;
+      uptoSeq: number;
+      blob: string | null;
+    }>("GET", "/sync2/snapshot"),
 };
 
  
