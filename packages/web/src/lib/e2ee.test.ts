@@ -1,12 +1,33 @@
-
-
-
-
-
-import { describe, expect, it } from "bun:test";
+/**
+ * E2EE stage 2 (T1) — encrypting ops/snapshots (e2ee.ts) and applying
+ * the decrypted journal onto the mirror (store.applyRemoteOps): roundtrip,
+ * skipping own opIds from the outbox (the pending-guard equivalent), the cursor.
+ *
+ * Plus the DEK PROVENANCE (2.0) — the multi-tenant guard in sync.ts accepts a
+ * "the session's checkpoint opens with this device's key" proof ONLY for a key that came out
+ * of IDB together with the replica. setDek() persists the key, so the distinction must be
+ * persisted with it: otherwise one reload turns a key unwrapped from the SESSION's envelope
+ * (Unlock / enable / password change — which decrypts that session's budget by construction)
+ * into a proof of ownership for whatever replica happens to sit on the device.
+ */
+import { beforeEach, describe, expect, it } from "bun:test";
 import type { ClientLedger, SyncOp } from "@enveo/shared";
 import { generateDek } from "./crypto";
-import { decryptOps, decryptSnapshot, encryptOp, encryptSnapshot } from "./e2ee";
+import {
+  __forgetHydrationForTests,
+  __resetDekForTests,
+  clearDek,
+  decryptOps,
+  decryptSnapshot,
+  encryptOp,
+  encryptSnapshot,
+  getDek,
+  hydrate,
+  isDekFromStore,
+  setDek,
+} from "./e2ee";
+import { clearLocalData, idbPut } from "./idb";
+import * as persist from "./persist";
 import { store } from "./store";
 
 const emptyLedger = (): ClientLedger => ({
@@ -48,6 +69,62 @@ describe("e2ee: encrypting ops and snapshots", () => {
     expect(blob).not.toContain("Paliwo");
     expect(await decryptSnapshot(blob, dek)).toEqual(ledger);
     await expect(decryptSnapshot(blob, generateDek())).rejects.toThrow();
+  });
+});
+
+ 
+
+ 
+async function reload(): Promise<void> {
+  await persist.flushed();  
+  __resetDekForTests();
+  await hydrate();
+}
+
+describe("e2ee: DEK provenance survives a reload", () => {
+  beforeEach(async () => {
+    __resetDekForTests();
+    await clearLocalData();
+  });
+
+  it("a key persisted by an older build (no origin recorded) came WITH the replica → store", async () => {
+    await idbPut("meta", generateDek(), "e2eeDek");  
+    await hydrate();
+    expect(getDek()).not.toBeNull();
+    expect(isDekFromStore()).toBe(true);  
+  });
+
+  it("setDek (Unlock / enable / password change) is NOT a proof — not now, not after a reload", async () => {
+    await hydrate();  
+    setDek(generateDek());  
+    expect(isDekFromStore()).toBe(false);
+
+    await reload();  
+    expect(getDek()).not.toBeNull(); // the key IS persisted (Unlock must survive a refresh)…
+    expect(isDekFromStore()).toBe(false);  
+  });
+
+  it("a hydrate() that re-runs after setDek (transient IDB → retryBoot) does not launder the key", async () => {
+    // hydrate() drops its memoization on rejection, and the Unlock flow calls retryBoot right
+    // after setDek — so its body CAN run again in the SAME page load, with the key already in
+    // IDB. It must not overwrite what setDek told us first-hand.
+    await hydrate();
+    setDek(generateDek());
+    await persist.flushed();
+    __forgetHydrationForTests();
+    await hydrate();
+    expect(isDekFromStore()).toBe(false);
+  });
+
+  it("clearDek forgets the key and its provenance", async () => {
+    await idbPut("meta", generateDek(), "e2eeDek");
+    await hydrate();
+    clearDek();
+    expect(getDek()).toBeNull();
+    expect(isDekFromStore()).toBe(false);
+    await reload();
+    expect(getDek()).toBeNull();  
+    expect(isDekFromStore()).toBe(false);
   });
 });
 

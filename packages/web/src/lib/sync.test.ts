@@ -23,6 +23,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import type { ClientLedger, SyncOp } from "@enveo/shared";
+import { generateDek } from "./crypto";
 import * as e2ee from "./e2ee";
 import { clearLocalData, idbGet, idbPut } from "./idb";
 import * as outbox from "./outbox";
@@ -72,14 +73,24 @@ let reloads = 0;
 let serverBudget = BUDGET_A;
  
 let serverIsPlain = false;
+ 
+let serverBlob: string | null = null;
+ 
+let writes: Record<string, string[]> = {};
+ 
+let onPush: (() => void) | null = null;
 const realFetch = globalThis.fetch;
 const json = (body: unknown): Response =>
   new Response(JSON.stringify(body), { status: 200, headers: { "content-type": "application/json" } });
-const tierMismatch = (): Response =>
-  new Response(JSON.stringify({ error: "tier_mismatch", tier: "plain", epoch: 0 }), {
-    status: 409,
-    headers: { "content-type": "application/json" },
-  });
+const conflict = (body: unknown): Response =>
+  new Response(JSON.stringify(body), { status: 409, headers: { "content-type": "application/json" } });
+const tierMismatch = (): Response => conflict({ error: "tier_mismatch", tier: "plain", epoch: 0 });
+/** The server's PER-REQUEST tenant assertion: the pushed budget must be the session's. */
+const budgetMismatch = (claimed: string | undefined): Response | null =>
+  claimed !== undefined && claimed !== serverBudget
+    ? conflict({ error: "budget_mismatch", budgetId: serverBudget })
+    : null;
+const wrote = (budgetId: string): string[] => writes[budgetId] ?? [];
 
 beforeEach(async () => {
   calls = [];
@@ -87,6 +98,9 @@ beforeEach(async () => {
   session = null;
   serverBudget = BUDGET_A;
   serverIsPlain = false;
+  serverBlob = null;
+  writes = {};
+  onPush = null;
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
     calls.push(url);
@@ -94,23 +108,47 @@ beforeEach(async () => {
     if (url.startsWith("/api/sync2/")) {
       if (serverIsPlain) return tierMismatch();
       if (url.startsWith("/api/sync2/snapshot")) {
-        return json({ budgetId: serverBudget, epoch: 1, wrappedDek: null, kdfParams: null, uptoSeq: 0, blob: null });
+        return json({ budgetId: serverBudget, epoch: 1, wrappedDek: null, kdfParams: null, uptoSeq: 0, blob: serverBlob });
       }
-      if (url.startsWith("/api/sync2/push")) return json({ cursor: 1, epoch: 1 });
+      if (url.startsWith("/api/sync2/push")) {
+        const body = JSON.parse(String(init?.body ?? "{}")) as {
+          budgetId?: string;
+          ops: Array<{ opId: string }>;
+        };
+        const refused = budgetMismatch(body.budgetId);
+        if (refused) return refused;
+        writes[serverBudget] = [...wrote(serverBudget), ...body.ops.map((o) => o.opId)];
+        onPush?.();  
+        return json({ cursor: 1, epoch: 1 });
+      }
       if (url.startsWith("/api/sync2/pull")) return json({ cursor: 0, epoch: 1, ops: [] });
-      if (url.startsWith("/api/sync2/reset")) return json({ epoch: 1, uptoSeq: 0 });
+      if (url.startsWith("/api/sync2/reset")) {
+        writes[serverBudget] = [...wrote(serverBudget), "reset"];
+        return json({ epoch: 1, uptoSeq: 0 });
+      }
     }
     if (url.startsWith("/api/sync/push")) {
-      const body = JSON.parse(String(init?.body ?? "{}")) as { ops: SyncOp[] };
-      return json({
+      const body = JSON.parse(String(init?.body ?? "{}")) as { budgetId?: string; ops: SyncOp[] };
+      const refused = budgetMismatch(body.budgetId);
+      if (refused) return refused;
+      writes[serverBudget] = [...wrote(serverBudget), ...body.ops.map((o) => o.opId)];
+      const res = json({
         budgetId: serverBudget,
         results: body.ops.map((o) => ({ opId: o.opId, status: "applied" })),
       });
+      onPush?.();  
+      return res;
+    }
+    if (url.startsWith("/api/sync/snapshot")) {
+      return json({ budgetId: serverBudget, cursor: 0, ...emptyLedger() });
     }
     if (url.startsWith("/api/sync/pull")) {
       return json({ budgetId: serverBudget, cursor: 0, resetRequired: false, changes: [] });
     }
-    if (url.startsWith("/api/sync/replace")) return json({ budgetId: serverBudget, cursor: 1 });
+    if (url.startsWith("/api/sync/replace")) {
+      writes[serverBudget] = [...wrote(serverBudget), "replace"];
+      return json({ budgetId: serverBudget, cursor: 1 });
+    }
     throw new Error(`unexpected fetch: ${url}`);
   }) as typeof fetch;
   (globalThis as { location?: { reload: () => void } }).location = {
@@ -122,6 +160,7 @@ beforeEach(async () => {
   __resetIdentity();
   __resetObligations();
   outbox.clearAll();
+  e2ee.__resetDekForTests();
   e2ee.clearDek();
   e2ee.setTierMeta({ tier: "plain", epoch: 0 });
   await clearLocalData();  
@@ -344,6 +383,78 @@ describe("sync: an unproven replica is refused, never wiped", () => {
   });
 });
 
+
+
+
+
+
+
+
+
+
+describe("sync push: the per-request tenant assertion", () => {
+  it("the cookie is swapped BETWEEN batches → the rest of the outbox never lands in B's budget", async () => {
+    await idbPut("meta", "user-A", "userId");
+    session = { user: { id: "user-A" } };
+    for (let i = 0; i < 150; i++) outbox.add(catOp()); 
+
+
+    onPush = () => {
+      session = { user: { id: "user-B" } };
+      serverBudget = BUDGET_B;
+      onPush = null;
+    };
+
+    await syncNow("test");
+
+    expect(pushed().length).toBe(2);  
+    expect(wrote(BUDGET_A)).toHaveLength(100);  
+    expect(wrote(BUDGET_B)).toEqual([]);  
+    expect(reloads).toBe(1);  
+  });
+
+  it("same user, budget rotated (reseed / restore / reattach) → resync, then the ops go out", async () => {
+    // The very same 409, from the legitimate cause: it must NOT become a permanent refusal.
+    await idbPut("meta", "user-A", "userId");
+    session = { user: { id: "user-A" } };
+    serverBudget = BUDGET_B;  
+    store.replace(emptyLedger(), 0, BUDGET_A);  
+    outbox.add(catOp());
+
+    await syncNow("test");
+
+    expect(wrote(BUDGET_B)).toHaveLength(1);  
+    expect(store.getBudgetId()).toBe(BUDGET_B);
+    expect(outbox.size()).toBe(0);
+    expect(reloads).toBe(0);  
+  });
+});
+
+/* ── A 401 outside a cycle must reach the Login screen too ─────────────── */
+
+describe("sync: 401 on an out-of-cycle write routes to Login", () => {
+  it("pushLocalToServer with no session → BootStatus unauthed (not a raw error string)", async () => {
+    // The 2.0 upgrade path of a device in local mode "wiped": the server data was deliberately
+    // deleted, so the IDB replica is the ONLY copy — and boot in local mode makes NO network
+    // call, so nothing else can put the Login screen on screen. Without this, "Disable local
+    // mode" ends in "unauthorized: 401" and the only offered remedy destroys the sole copy.
+    session = null;
+    await idbPut("meta", "user-A", "userId");
+
+    await expect(pushLocalToServer()).rejects.toThrow();
+
+    expect(called("/api/sync/replace")).toBe(false);
+    expect(store.getBootStatus()).toBe("unauthed");  
+    expect(await idbGet("meta", "ledger")).toBeDefined();  
+  });
+
+  it("assertOwnReplica (Settings → E2EE) with no session → BootStatus unauthed", async () => {
+    session = null;
+    await expect(assertOwnReplica()).rejects.toThrow();
+    expect(store.getBootStatus()).toBe("unauthed");
+  });
+});
+
 /* ── E2EE tier — the outbox is PLAINTEXT and survives tier flips ───────── */
 
 describe("sync cycle: e2ee replica with no owner stamp", () => {
@@ -383,5 +494,71 @@ describe("sync cycle: e2ee replica with no owner stamp", () => {
     expect(reloads).toBe(0); // unverifiable ≠ proven foreign: we do NOT wipe on a guess
     await persist.flushed();
     expect(await idbGet("meta", "userId")).toBeUndefined(); // and it is NOT adopted
+  });
+});
+
+/* ── The DEK proof, and what it may NOT be built from ─────────────────────
+ *
+ * For a LEGACY e2ee replica (bootstrapped over sync2 against a pre-2.0 server, so it carries no
+ * budgetId at all) the only available proof is its DEK: the session's checkpoint is encrypted
+ * with the budget's key, and AES-GCM authenticates it. That works ONLY for a key that arrived
+ * WITH the replica. A key unwrapped from the SESSION's own key envelope (Unlock, E2EE password
+ * change) opens the session's checkpoint BY CONSTRUCTION — and since setDek() persists it, the
+ * proof would resurrect itself after one reload if the provenance were not persisted too. */
+
+describe("sync: the e2ee ownership proof and the DEK's provenance", () => {
+  /** A legacy e2ee replica: tier e2ee, no budgetId anywhere — not even in the ledger. */
+  const legacyE2eeReplica = () => {
+    e2ee.setTierMeta({ tier: "e2ee", epoch: 1 });
+    store.replace(emptyLedger(), 0, "");
+  };
+   
+  const reload = async () => {
+    await persist.flushed();
+    e2ee.__resetDekForTests();
+    await e2ee.hydrate();
+  };
+
+  it("a DEK that came WITH the replica and opens the session's checkpoint → ours (adopted)", async () => {
+    const dek = generateDek();
+    serverBlob = await e2ee.encryptSnapshot(emptyLedger(), dek);
+    await idbPut("meta", dek, "e2eeDek");  
+    legacyE2eeReplica();
+    await reload();
+    outbox.add(catOp());
+    session = { user: { id: "user-A" } };
+    serverBudget = BUDGET_B; // (the replica cannot name a budget — the DEK is the whole proof)
+
+    await syncNow("test");
+
+    expect(wrote(BUDGET_B)).toHaveLength(1);  
+    await persist.flushed();
+    expect(await idbGet<string>("meta", "userId")).toBe("user-A");
+  });
+
+  it("a DEK unwrapped from the SESSION's envelope proves nothing — not even after a reload", async () => {
+    // The chain: this device holds user A's legacy e2ee replica; A's session lapses; B signs in
+    // and unlocks (or changes the E2EE password) → setDek(B's DEK). In THAT page load the proof
+    // correctly fails. After a reload the key is still in IDB — and it must STILL fail, or B's
+    // own checkpoint would decrypt with it ("ours"), A's replica would be stamped as B's, A's
+    // queued ops would be pushed into B's journal and a pending replace would overwrite it.
+    const dekOfB = generateDek();
+    serverBlob = await e2ee.encryptSnapshot(emptyLedger(), dekOfB);  
+    legacyE2eeReplica();  
+    e2ee.setDek(dekOfB);  
+    outbox.add(catOp());  
+    markReplacePending();  
+    session = { user: { id: "user-B" } };
+    serverBudget = BUDGET_B;
+
+    await reload(); // ← the whole point: the key survives, its provenance must survive too
+    await syncNow("test");
+
+    expect(e2ee.isDekFromStore()).toBe(false);
+    expect(wrote(BUDGET_B)).toEqual([]);  
+    expect(outbox.size()).toBe(1);  
+    expect(reloads).toBe(0);
+    await persist.flushed();
+    expect(await idbGet("meta", "userId")).toBeUndefined(); // A's replica is NOT adopted by B
   });
 });
