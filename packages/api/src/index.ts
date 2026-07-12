@@ -136,7 +136,8 @@ app.onError((err, c) => {
   if (err instanceof TierMismatch) {
     return c.json({ error: "tier_mismatch", tier: err.meta.tier, epoch: err.meta.epoch }, 409);
   }
-   
+  
+
   if (err instanceof ScopeViolation) {
     return c.json({ error: "foreign_ref" }, 400);
   }

@@ -41,6 +41,7 @@ import {
   applyTxnCreate,
   applyTxnDelete,
   applyTxnUpdate,
+  findForeignLedgerRef,
   NOT_FOUND,
   ScopeViolation,
   wipeBudgetData,
@@ -421,6 +422,11 @@ const chunk = <T,>(arr: T[], n: number): T[][] =>
   Array.from({ length: Math.ceil(arr.length / n) }, (_, i) => arr.slice(i * n, (i + 1) * n));
 
 async function insertLedger(x: Executor, budgetId: string, ledger: ClientLedgerInput): Promise<void> {
+  // §4.2 scope guard for the restore path: every FK must point INSIDE the
+  // payload (ids are preserved on insert and the budget was just wiped) — a
+  // foreign UUID would otherwise attach restored rows to ANOTHER budget's
+  // entities, bypassing assertBudgetFks through this door.
+  if (findForeignLedgerRef(ledger) !== null) throw new ScopeViolation();
   
 
   for (const part of chunk(ledger.accounts, 300)) {
@@ -568,7 +574,11 @@ syncRoutes.post("/sync/replace", async (c) => {
   } catch (e) {
     
 
-    if (e instanceof postgres.PostgresError && (e.code.startsWith("23") || e.code.startsWith("22"))) {
+
+    if (
+      e instanceof ScopeViolation ||
+      (e instanceof postgres.PostgresError && (e.code.startsWith("23") || e.code.startsWith("22")))
+    ) {
       return c.json(
         { error: "Nie udało się zapisać kopii — dane odwołują się do nieistniejących powiązań (uszkodzony lub obcy plik). Nic nie zostało zmienione." },
         400,
