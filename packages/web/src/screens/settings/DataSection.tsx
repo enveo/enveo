@@ -38,10 +38,9 @@ export function DataSection() {
 }
 
 /**
- * Logout (AUTH_MODE=multi) — visible ONLY when the backend has a session
- * (in none mode the /api/auth endpoint doesn't exist → hasSession()=false → null,
- * zero UI changes). The confirm explains the consequence: logout + deletion of the
- * local copy from this device (shared device — the replica cannot stay).
+ * Logout — visible ONLY when the backend confirms a session (hasSession()).
+ * The confirm explains the consequence: logout + deletion of the local copy
+ * from this device (shared device — the replica cannot stay).
  */
 function LogoutRow() {
   const { t } = useT();

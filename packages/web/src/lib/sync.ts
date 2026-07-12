@@ -56,10 +56,9 @@ const POKE_DEBOUNCE_MS = 300;
 const INTERVAL_MS = 60_000;
 
 /**
- * HTTP 401 (AUTH_MODE=multi: missing/expired session) — a "please log in" signal,
+ * HTTP 401 (missing/expired session) — a "please log in" signal,
  * NOT a network failure: no retry/backoff loop. During boot → BootStatus "unauthed"
- * (login screen), while running → SyncState "unauthed" (badge). In mode
- * none the server never returns 401 — dead path, behavior unchanged.
+ * (login screen), while running → SyncState "unauthed" (badge).
  */
 class UnauthorizedError extends Error {
   constructor() {
@@ -1043,8 +1042,8 @@ async function boot(): Promise<void> {
     void syncNow("boot");
   } catch (e) {
     if (e instanceof UnauthorizedError) {
-      // the backend requires login (AUTH_MODE=multi) — login screen instead of
-      // a first-start error; after OAuth the page returns to the origin → new boot
+      // the backend requires login — login screen instead of a first-start
+      // error; after OAuth the page returns to the origin → new boot
       store.setBootStatus("unauthed");
       setState("unauthed");
       return;

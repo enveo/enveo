@@ -65,7 +65,7 @@ export function SyncBadge({ onOpenSync }: { onOpenSync: () => void }) {
     );
   }
 
-  // Session expired (401, AUTH_MODE=multi) — a user decision is needed
+  // Session expired (401) — a user decision is needed
   // (re-login), but work is safely queued locally:
   // muted, tappable pill → Settings (same as today for dead letters).
   if (state === "unauthed") {

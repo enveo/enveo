@@ -7,7 +7,7 @@ import { useT } from "../lib/i18n";
 import { CORAL, TEAL, font } from "../lib/theme";
 
 /**
- * Login screen (AUTH_MODE=multi) — shown when the backend responded 401
+ * Login screen — shown when the backend responded 401
  * (BootStatus "unauthed"). Simple, centered: the Enveo mini-mark + a single
  * Google button. The OAuth redirect returns to the origin → the page reloads
  * and boot starts over with the session cookie.

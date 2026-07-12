@@ -1,6 +1,9 @@
 /**
  * Seed with SAMPLE data (anonymized — a dev tool, not prod).
- * Idempotent: wipes the budget and recreates it from scratch.
+ * Idempotent: wipes all budgets and recreates the demo budget from scratch.
+ * Users and auth rows survive: the demo attaches to the FIRST existing user
+ * (dev/E2E flow: register → seed → the account sees the demo data); a stub
+ * owner is created only on an empty database.
  * Run: bun run db:seed
  */
 import { db, sql } from "./client";
@@ -40,13 +43,16 @@ const CATEGORIES = ["Zakupy", "Dom", "Auto"];
 const PLACES = ["Supermarket", "Stacja paliw", "Sklep osiedlowy"];
 
 export async function seed() {
-  console.log("Wiping and seeding the database…");
-  await db.delete(s.users); // cascade removes the whole budget
+  console.log("Wiping budgets and seeding the database…");
+  await db.delete(s.budgets); // cascade removes all budget data; users/auth stay
 
-  const [user] = await db.insert(s.users).values({ email: "demo@example.com" }).returning();
+  const existing = await db.select({ id: s.users.id }).from(s.users).orderBy(s.users.id).limit(1);
+  const owner =
+    existing[0] ??
+    (await db.insert(s.users).values({ email: "owner@example.com" }).returning())[0]!;
   const [budget] = await db
     .insert(s.budgets)
-    .values({ userId: user!.id, name: "Budżet domowy" })
+    .values({ userId: owner.id, name: "Budżet domowy" })
     .returning();
   const bid = budget!.id;
 

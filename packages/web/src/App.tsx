@@ -92,7 +92,7 @@ export default function App() {
   const next = () => setMonth((m) => shiftMonth(m, 1));
   const wide = typeof window !== "undefined" && window.innerWidth > 500;
 
-  // AUTH_MODE=multi: server responded 401 → login screen INSTEAD of the app
+  // Accounts are mandatory: server responded 401 → login screen INSTEAD of the app
   // (no BottomNav/badge). Refreshed via the existing mirror-version mechanism
   // (setBootStatus bumps the version → useStateQuery above re-renders App).
   // After returning from OAuth the page reloads anyway → normal boot.

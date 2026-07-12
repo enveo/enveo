@@ -1,8 +1,6 @@
 /**
- * better-auth client (same origin — the backend mounts /api/auth/* only in
- * AUTH_MODE=multi). In the none mode these functions are never called on the
- * critical path: LoginScreen appears only after a 401, and LogoutRow only when
- * hasSession() returns true (in none the endpoint doesn't exist → false).
+ * better-auth client (same origin — the backend always mounts /api/auth/*).
+ * LoginScreen appears after a 401, LogoutRow when hasSession() returns true.
  */
 import { createAuthClient } from "better-auth/client";
 
@@ -21,7 +19,7 @@ export async function signOutAndForget(wipe: () => Promise<void>): Promise<void>
   await wipe(); // shared device: the local replica must not remain
 }
 
-/** Does the backend have a session at all (AUTH_MODE=multi)? In the none mode → false. */
+/** Does the backend have a session at all? */
 export async function hasSession(): Promise<boolean> {
   try {
     const s = await authClient.getSession();

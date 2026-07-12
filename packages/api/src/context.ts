@@ -1,32 +1,31 @@
 import { eq } from "drizzle-orm";
 import { db } from "./db/client";
 import { budgets } from "./db/schema";
-import { env } from "./env";
 import type { Executor } from "./sync/apply";
 
 /** Minimal Hono context needed to resolve the user (null = call outside HTTP). */
 type UserCtx = { get: (k: "userId") => string | undefined } | null;
 
 /**
- * AUTH_MODE=none (default; perimeter = private network, e.g. VPN): we operate
- * on the single seeded budget — behavior identical to before auth was introduced.
- * AUTH_MODE=multi: budget per user from the session (middleware in index.ts);
- * no budget ⇒ lazy-create an empty one (synergy with the onboarding wizard).
+ * Accounts are mandatory: the budget belongs to the session user (userId set by
+ * the session middleware in index.ts); no budget ⇒ lazy-create an empty one
+ * (synergy with the onboarding wizard).
  *
  * DELIBERATELY no in-process cache: `budgets.id` is the replica epoch marker —
  * wipe+reseed (`bun run db:seed`) assigns a NEW id without restarting the API.
  * A cached stale id would hide the reset from clients (no fullResync) and filter
  * data by a nonexistent budget (empty responses until the process restarts).
- * Cost: one select from a single-row table per request.
+ * Cost: one select from a small table per request.
  *
  * Accepts an optional executor — snapshot/pull read the id in the SAME
  * transaction as the data (consistent budgetId+ledger pair even during a
  * background reseed).
  */
 export async function getBudgetId(c: UserCtx, x: Executor = db): Promise<string> {
-  if (env.AUTH_MODE !== "multi" || c === null) {
+  if (c === null) {
+    // non-HTTP callers (scripts/tests): single-budget convenience — first budget row
     const rows = await x.select({ id: budgets.id }).from(budgets).limit(1);
-    if (!rows[0]) throw new Error("No budget found — run `bun run db:seed`.");
+    if (!rows[0]) throw new Error("No budget found.");
     return rows[0].id;
   }
   const userId = c.get("userId");
