@@ -534,6 +534,17 @@ export const en: Record<TKey, string> = {
   "auth.logoutConfirm": "Sign out? The local copy of your budget will be removed from this device (server data is kept).",
   "auth.logoutHelp": "Signs you out and removes the local copy of your data from this device. Server data stays — it comes back after you sign in again.",
   "auth.sessionExpired": "Session expired",
+
+  // BootStatus "foreign" — the replica on this device belongs to another account
+  "foreign.title": "Another account's data",
+  "foreign.body": "The local copy of the budget on this device belongs to a different account than the one you are signed in with. Nothing has been sent to the server and nothing has been deleted.",
+  "foreign.export": "Download a backup (JSON)",
+  "foreign.signOut": "Sign out and use another account",
+  "foreign.discard": "Remove this data and continue",
+  "foreign.discardConfirm": "The local copy — including any unsent changes — will be permanently removed from this device. If this is the only copy of that budget, download a backup first.",
+  "foreign.discardYes": "Yes, remove the data from this device",
+  "foreign.discarding": "Removing…",
+  "foreign.hint": "If this is your data, sign in with the previous account — the copy is intact. After restoring a server from a backup the account id can be new even though the e-mail is the same.",
   "ai.title": "Artificial intelligence",
   "ai.mode": "Mode",
   "ai.off": "Off",

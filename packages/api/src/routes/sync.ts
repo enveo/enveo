@@ -18,7 +18,7 @@ import { and, eq, gt, inArray, sql as dsql } from "drizzle-orm";
 import { Hono } from "hono";
 import postgres from "postgres";
 import { z } from "zod";
-import { requireTier } from "../context";
+import { requireTier, sessionUserId } from "../context";
 import { db } from "../db/client";
 import * as s from "../db/schema";
 import {
@@ -309,6 +309,30 @@ export function budgetAssertionFails(claimed: string | undefined, resolved: stri
   return claimed !== undefined && claimed !== resolved;
 }
 
+/**
+ * PER-REQUEST tenant assertion for the full-budget OVERWRITE routes (/sync/replace,
+ * /sync2/reset, /budget/e2ee/enable, /budget/e2ee/disable). Same threat as on push — the server
+ * resolves the target from the session cookie alone, the cookie is shared by every tab, and the
+ * client's identity check happens BEFORE the upload (serializing and shipping a whole ledger
+ * takes seconds on mobile) — but the blast radius is the entire budget: restoreLedger wipes it
+ * and rebuilds it from the body. So the client NAMES the tenant it just verified and the server
+ * refuses a mismatch BEFORE any write.
+ *
+ * The tenant is the USER, not the budget: `budgets.id` is the replica EPOCH marker (lazy budget
+ * creation, wipe+reseed and a DB restore all mint a new one — see context.ts), and on the very
+ * path these routes serve, a restore, the client's replica DELIBERATELY carries the BACKUP
+ * FILE's budgetId (web/lib/data.ts) — the id of the budget the file came from, which is exactly
+ * NOT the session's. Asserting the budget here would therefore refuse every restore of a backup
+ * taken from another install. The session user id is what the client's guard actually verified
+ * (fetchSessionUserId) and what a mid-flight cookie swap changes.
+ */
+export function ownerAssertionFails(
+  claimed: string | undefined,
+  sessionUser: string | undefined,
+): boolean {
+  return claimed !== undefined && claimed !== sessionUser;
+}
+
 /** Domain rejection (entity does not exist) — rolls back the op's transaction. */
 class OpNotFound extends Error {
   constructor() {
@@ -470,7 +494,12 @@ syncRoutes.post("/sync/push", async (c) => {
    local, no pull needed). Validation / FK violation → 400 (the whole
    transaction rolls back — atomically). */
 
-const replaceInput = z.object({ ledger: clientLedgerSchema });
+export const replaceInput = z.object({
+  ledger: clientLedgerSchema,
+  /** The tenant the CLIENT verified right before this upload — see ownerAssertionFails.
+   *  Optional: a pre-2.0 client omits it (and then nothing can be asserted). */
+  userId: z.string().min(1).optional(),
+});
 
 /** Splits an array into chunks of `n` (bulk insert without oversized queries). */
 const chunk = <T,>(arr: T[], n: number): T[][] =>
@@ -613,7 +642,7 @@ syncRoutes.post("/sync/replace", async (c) => {
     const detail = parsed.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join("; ");
     return c.json({ error: `Kopia jest niepoprawna i nie została wczytana: ${detail}` }, 400);
   }
-  const { ledger } = parsed.data;
+  const { ledger, userId } = parsed.data;
 
   try {
     const result = await db.transaction(async (tx) => {
@@ -622,10 +651,15 @@ syncRoutes.post("/sync/replace", async (c) => {
       // cursor read, and maxSeq after the inserts sees every seq we assigned.
       await lockChangesCursor(tx);
       const budgetId = (await requireTier(c, "plain", tx)).id;
+      // PER-REQUEST tenant assertion — BEFORE the wipe: the session may have been swapped in
+      // another tab while this (possibly large) ledger was being serialized and uploaded, and
+      // this route REPLACES the resolved budget wholesale. Mismatch ⇒ write nothing.
+      if (ownerAssertionFails(userId, sessionUserId(c))) return { mismatch: true, budgetId } as const;
       await restoreLedger(tx, budgetId, ledger);
-      return { budgetId, cursor: await maxSeq(tx) };
+      return { mismatch: false, budgetId, cursor: await maxSeq(tx) } as const;
     });
-    return c.json(result);
+    if (result.mismatch) return c.json({ error: "budget_mismatch", budgetId: result.budgetId }, 409);
+    return c.json({ budgetId: result.budgetId, cursor: result.cursor });
   } catch (e) {
     // ScopeViolation: a FK inside the payload points OUTSIDE it (foreign/corrupt file);
     // PostgresError class 23/22: constraint violation (FK/PK/CHECK) or bad data.

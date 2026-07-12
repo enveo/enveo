@@ -534,6 +534,17 @@ export const pl = {
   "auth.logoutConfirm": "Wylogować się? Lokalna kopia budżetu zostanie usunięta z tego urządzenia (dane na serwerze zostają).",
   "auth.logoutHelp": "Wylogowuje i usuwa lokalną kopię danych z tego urządzenia. Dane na serwerze pozostają — wrócą po ponownym zalogowaniu.",
   "auth.sessionExpired": "Sesja wygasła",
+
+  // BootStatus "foreign" — replika na tym urządzeniu należy do innego konta
+  "foreign.title": "Dane innego konta",
+  "foreign.body": "Lokalna kopia budżetu na tym urządzeniu należy do innego konta niż to, na które jesteś zalogowany. Nic nie zostało wysłane na serwer i nic nie zostało usunięte.",
+  "foreign.export": "Pobierz kopię zapasową (JSON)",
+  "foreign.signOut": "Wyloguj i zaloguj się na inne konto",
+  "foreign.discard": "Usuń te dane i kontynuuj",
+  "foreign.discardConfirm": "Lokalna kopia (razem z niewysłanymi zmianami) zostanie trwale usunięta z tego urządzenia. Jeśli to jedyna kopia tego budżetu, najpierw pobierz kopię zapasową.",
+  "foreign.discardYes": "Tak, usuń dane z tego urządzenia",
+  "foreign.discarding": "Usuwanie…",
+  "foreign.hint": "Jeśli to Twoje dane, zaloguj się na poprzednie konto — kopia jest nienaruszona. Po odtworzeniu serwera z kopii identyfikator konta bywa nowy, choć e-mail ten sam.",
   "ai.title": "Sztuczna inteligencja",
   "ai.mode": "Tryb",
   "ai.off": "Wył.",

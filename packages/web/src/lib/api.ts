@@ -119,12 +119,16 @@ export const api = {
   budgetReset: () => http<{ reset: boolean }>("POST", "/budget/reset", { confirm: "RESET" }),
 
   /* E2EE (sync v2) — tier switching and the key envelope; crypto EXCLUSIVELY on
-     the client side (lib/crypto.ts) — only ciphertexts travel here. */
-  e2eeEnable: (b: { wrappedDek: string; kdfParams: string; snapshotBlob: string }) =>
+     the client side (lib/crypto.ts) — only ciphertexts travel here.
+     `userId` = the PER-REQUEST owner assertion: both routes OVERWRITE the session user's whole
+     budget, and the caller's ownership check (assertOwnReplica) is a different request than this
+     one — the shared cookie can be swapped in between. The server refuses a body whose userId is
+     not the session it resolves (409 budget_mismatch, nothing written). */
+  e2eeEnable: (b: { wrappedDek: string; kdfParams: string; snapshotBlob: string; userId: string }) =>
     http<{ epoch: number }>("POST", "/budget/e2ee/enable", b),
-  e2eeDisable: (b: { confirm: string; ledger: ClientLedger }) =>
+  e2eeDisable: (b: { confirm: string; ledger: ClientLedger; userId: string }) =>
     http<{ epoch: number }>("POST", "/budget/e2ee/disable", b),
-  e2eeRekey: (b: { wrappedDek: string; kdfParams: string }) => http<{ epoch: number }>("POST", "/sync2/rekey", b),
+  e2eeRekey: (b: { wrappedDek: string; kdfParams: string; userId: string }) => http<{ epoch: number }>("POST", "/sync2/rekey", b),
   /** GET /sync2/snapshot — the session's budgetId + key envelope (password verification on change) + checkpoint. */
   e2eeSnapshot: () =>
     http<{

@@ -23,10 +23,28 @@ import { drizzle } from "drizzle-orm/postgres-js";
 import { migrate } from "drizzle-orm/postgres-js/migrator";
 import postgres from "postgres";
 import * as s from "../db/schema";
-import { budgetAssertionFails, legacyChangesWatermark, pullChanges, pushInput } from "./sync";
+import {
+  budgetAssertionFails,
+  legacyChangesWatermark,
+  ownerAssertionFails,
+  pullChanges,
+  pushInput,
+  replaceInput,
+} from "./sync";
 
 const UUID_A = "11111111-1111-1111-1111-111111111111";
 const UUID_B = "22222222-2222-2222-2222-222222222222";
+
+const EMPTY_LEDGER = {
+  accounts: [],
+  groups: [],
+  envelopes: [],
+  categories: [],
+  places: [],
+  recurrences: [],
+  allocations: [],
+  transactions: [],
+};
 
 /* ── The per-request tenant assertion (pure) ──────────────────────────── */
 
@@ -48,6 +66,42 @@ describe("push: the per-request budget assertion", () => {
     expect(pushInput.safeParse({ clientId: "dev", ops }).success).toBe(true);
     expect(pushInput.safeParse({ clientId: "dev", budgetId: UUID_B, ops }).success).toBe(true);
     expect(pushInput.safeParse({ clientId: "dev", budgetId: "nope", ops }).success).toBe(false);
+  });
+});
+
+/* ── The per-request OWNER assertion (full-budget overwrite routes) ────────
+ *
+ * /sync/replace (and /sync2/reset, /budget/e2ee/enable|disable) resolve the target budget from
+ * the session cookie ALONE, and the client's ownership check is a different request than the
+ * write — a sign-in in another tab can complete while a whole ledger is being uploaded, after
+ * which restoreLedger would wipe the NEW user's budget and rebuild it from THIS body. The write
+ * therefore names the tenant the client verified.
+ *
+ * The tenant is the USER, not the budget: on a restore the client's replica deliberately carries
+ * the BACKUP FILE's budgetId (web/lib/data.ts), which is exactly not the session's — a budget
+ * assertion here would refuse every restore of a backup taken on another install. */
+
+describe("overwrite routes: the per-request owner assertion", () => {
+  it("a body naming ANOTHER user than the session's is refused", () => {
+    expect(ownerAssertionFails("user-A", "user-B")).toBe(true);
+  });
+
+  it("naming the session's own user passes", () => {
+    expect(ownerAssertionFails("user-A", "user-A")).toBe(false);
+  });
+
+  it("a client that names no user is not refused (pre-2.0 client)", () => {
+    expect(ownerAssertionFails(undefined, "user-A")).toBe(false);
+  });
+
+  it("a session with no user id refuses any claim (defensive — the middleware always sets one)", () => {
+    expect(ownerAssertionFails("user-A", undefined)).toBe(true);
+  });
+
+  it("the replace body accepts an optional userId next to the ledger", () => {
+    expect(replaceInput.safeParse({ ledger: EMPTY_LEDGER }).success).toBe(true);
+    expect(replaceInput.safeParse({ ledger: EMPTY_LEDGER, userId: "user-A" }).success).toBe(true);
+    expect(replaceInput.safeParse({ ledger: EMPTY_LEDGER, userId: "" }).success).toBe(false);
   });
 });
 

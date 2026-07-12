@@ -7,6 +7,16 @@ import type { Executor } from "./sync/apply";
 type UserCtx = { get: (k: "userId") => string | undefined } | null;
 
 /**
+ * The user THIS request authenticated as (the session middleware in index.ts sets it on the
+ * context; undefined only outside HTTP). The per-request OWNER assertion on the full-budget
+ * overwrite routes compares it with the user the client says it verified — see
+ * ownerAssertionFails in routes/sync.ts.
+ */
+export function sessionUserId(c: UserCtx): string | undefined {
+  return c?.get("userId");
+}
+
+/**
  * Accounts are mandatory: the budget belongs to the session user (userId set by
  * the session middleware in index.ts); no budget ⇒ lazy-create an empty one
  * (synergy with the onboarding wizard).

@@ -230,15 +230,17 @@ function E2eeEnableWizard() {
       // MULTI-TENANT GUARD — /e2ee/enable uploads a snapshot of THIS replica and flips the
       // SESSION budget's tier under this device's wrappedDek: a full-budget overwrite, exactly
       // like /sync/replace. It is reachable from a tab whose cookie was swapped by a sign-in
-      // elsewhere, and from a replica whose owner sync refuses to establish.
-      await assertOwnReplica();
+      // elsewhere, and from a replica whose owner sync refuses to establish. The verified user id
+      // travels WITH the write (userId) — Argon2id + encrypting the whole ledger takes seconds,
+      // and the cookie can be swapped in that window; the server refuses a mismatch.
+      const userId = await assertOwnReplica();
       // crypto ON THE DEVICE: fresh DEK + KEK from the password (Argon2id) + ciphertext of the whole replica
       const salt = generateSalt();
       const dek = generateDek();
       const kek = await deriveKek(pass, salt, DEFAULT_KDF_PARAMS);
       const wrappedDek = await wrapDek(dek, kek);
       const snapshotBlob = await e2ee.encryptSnapshot(ledger, dek);
-      const { epoch } = await api.e2eeEnable({ wrappedDek, kdfParams: freshKdfParams(salt), snapshotBlob });
+      const { epoch } = await api.e2eeEnable({ wrappedDek, kdfParams: freshKdfParams(salt), snapshotBlob, userId });
       // local flip ONLY after server success (error above ⇒ nothing changed, replica untouched)
       e2ee.setDek(dek);
       e2ee.setTierMeta({ tier: "e2ee", epoch });
@@ -410,7 +412,7 @@ function E2eeChangePass() {
       // ANOTHER account's replica that key is not just useless, it is dangerous: the sync guard
       // would otherwise be left with a DEK that opens the session's checkpoint by construction.
       // Same class as enable/disable — the replica must be proven ours BEFORE we touch either.
-      await assertOwnReplica();
+      const userId = await assertOwnReplica();
       const snap = await api.e2eeSnapshot();
       if (!snap.wrappedDek || !snap.kdfParams) throw new Error(t("e2ee.wrongPass"));
       let dek: Uint8Array;
@@ -425,7 +427,7 @@ function E2eeChangePass() {
       const salt = generateSalt();
       const newKek = await deriveKek(pass, salt, DEFAULT_KDF_PARAMS);
       const wrappedDek = await wrapDek(dek, newKek);
-      await api.e2eeRekey({ wrappedDek, kdfParams: freshKdfParams(salt) });
+      await api.e2eeRekey({ wrappedDek, kdfParams: freshKdfParams(salt), userId });
       e2ee.setDek(dek); // refresh the local DEK from the canonical unwrap (same key)
       setDone(true);
       setOldPass("");
@@ -571,8 +573,9 @@ function E2eeDisable() {
       if (!ledger) throw new Error(t("settings.exportNotReady"));
       // MULTI-TENANT GUARD — /e2ee/disable ships the ENTIRE plaintext ledger and the server
       // rebuilds the session budget's rows from it: a full-budget overwrite (see assertOwnReplica).
-      await assertOwnReplica();
-      const { epoch } = await api.e2eeDisable({ confirm: E2EE_DISABLE_WORD, ledger });
+      // The verified user id travels WITH the write — the check and the upload are two requests.
+      const userId = await assertOwnReplica();
+      const { epoch } = await api.e2eeDisable({ confirm: E2EE_DISABLE_WORD, ledger, userId });
       // return to the v1 path ONLY after server success; the local replica stays
       e2ee.clearDek();
       e2ee.setTierMeta({ tier: "plain", epoch });

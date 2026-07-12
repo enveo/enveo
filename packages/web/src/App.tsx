@@ -13,6 +13,7 @@ import { useT } from "./lib/i18n";
 import { store } from "./lib/store";
 import { bootOnce, retryBoot } from "./lib/sync";
 import { P, TEAL, font } from "./lib/theme";
+import { ForeignReplicaScreen } from "./screens/ForeignReplica";
 import { LoginScreen } from "./screens/Login";
 import { UnlockScreen } from "./screens/Unlock";
 import { StartScreen } from "./screens/Start";
@@ -102,6 +103,11 @@ export default function App() {
   // → Unlock screen INSTEAD of the app (same pattern as Login); setDek + retryBoot clear it.
   const locked = store.getBootStatus() === "locked";
 
+  // The local replica belongs to ANOTHER account (owner stamp ≠ session — BootStatus "foreign").
+  // Every server write is already refused; the app must NOT show (or silently destroy) that
+  // account's budget, so the decision screen takes over: export a backup / remove and continue.
+  const foreign = store.getBootStatus() === "foreign";
+
   // Swipe right = go back (screens with a back arrow — pinned PWA has no Safari gesture).
   const canBack = envView !== null || screen === "addExpense" || screen === "settings";
   const back = () => { if (envView) setEnvView(null); else if (screen === "addExpense") { setEditTxn(null); setScreen(editReturn); } else setScreen("start"); };
@@ -121,12 +127,12 @@ export default function App() {
     if (!drawer && !onboarding && st.x < 28 && dx > 60 && Math.abs(dy) < 45) setDrawer(true);
   };
 
-  if (unauthed || locked) {
+  if (unauthed || locked || foreign) {
     return (
       <div style={{ maxWidth: 420, margin: "0 auto", height: "100dvh", background: C.bg, display: "flex", flexDirection: "column", fontFamily: font, overflow: "hidden", borderRadius: wide ? 24 : 0, boxShadow: wide ? "0 0 80px rgba(0,0,0,0.4)" : "none", WebkitFontSmoothing: "antialiased", position: "relative" }}>
         <StyleInjector />
         <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", paddingTop: "env(safe-area-inset-top)" }}>
-          {unauthed ? <LoginScreen /> : <UnlockScreen />}
+          {unauthed ? <LoginScreen /> : foreign ? <ForeignReplicaScreen /> : <UnlockScreen />}
         </div>
       </div>
     );

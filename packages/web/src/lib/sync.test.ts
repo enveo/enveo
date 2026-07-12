@@ -12,11 +12,15 @@
  *    empty" means nothing. The session is re-read every cycle, because the cookie is shared by
  *    all tabs and can be swapped under a long-lived tab without it ever seeing a 401.
  *
- * The guard is asymmetric on purpose: only the userId STAMP can prove a replica FOREIGN (that
- * verdict wipes it). A failed proof for an UNSTAMPED replica — a budgetId that differs, a
- * checkpoint its DEK cannot open — is inconclusive (budgetId is the epoch marker and the
- * session's budget may have just been lazily created), so it refuses every write and destroys
- * nothing.
+ * NOTHING is destroyed unattended. Only the userId STAMP can prove a replica FOREIGN, and even
+ * that verdict merely BLOCKS every server write and hands the decision to the human (BootStatus
+ * "foreign" → ForeignReplicaScreen: export a backup / remove and continue): the replica can be
+ * the last copy of that budget (local mode "wiped" deleted the server's), and a user id does not
+ * survive a server rebuild (same e-mail, new uuid). A failed proof for an UNSTAMPED replica — a
+ * budgetId that differs, a checkpoint its DEK cannot open — is merely inconclusive (budgetId is
+ * the epoch marker and the session's budget may have just been lazily created), so it refuses
+ * every write too. And an UNBOUND replica (no budgetId at all) is adopted only where adoption
+ * cannot destroy anything: against a session budget that is provably empty.
  *
  * Under bun there is no window/indexedDB, so idb.ts runs in its in-memory mode and sync.ts
  * installs no triggers — the cycle can be driven directly with syncNow().
@@ -32,10 +36,16 @@ import { store } from "./store";
 import {
   __resetIdentity,
   __resetObligations,
+  __setLocalMode,
   assertOwnReplica,
   decideIdentity,
+  disableLocal,
+  discardForeignReplica,
+  getLocalMode,
   markReplacePending,
+  enterLoginKeepingReplica,
   pushLocalToServer,
+  resetServerE2ee,
   syncNow,
 } from "./sync";
 
@@ -75,10 +85,16 @@ let serverBudget = BUDGET_A;
 let serverIsPlain = false;
 /** The e2ee checkpoint the session's budget holds (null = none yet). */
 let serverBlob: string | null = null;
+/** Does the session's budget hold data? (an EMPTY one has nothing a bad write could destroy) */
+let serverHasData = false;
 /** What actually got WRITTEN, per budget: the whole point of the guard. */
 let writes: Record<string, string[]> = {};
 /** Runs when a push request arrives — lets a test swap the session mid-cycle. */
 let onPush: (() => void) | null = null;
+/** Runs when a full-budget OVERWRITE request arrives — lets a test swap the session mid-upload. */
+let onOverwrite: (() => void) | null = null;
+/** The `userId` each full-budget OVERWRITE named in its body (the per-request owner assertion). */
+let overwriteOwners: (string | undefined)[] = [];
 const realFetch = globalThis.fetch;
 const json = (body: unknown): Response =>
   new Response(JSON.stringify(body), { status: 200, headers: { "content-type": "application/json" } });
@@ -90,7 +106,34 @@ const budgetMismatch = (claimed: string | undefined): Response | null =>
   claimed !== undefined && claimed !== serverBudget
     ? conflict({ error: "budget_mismatch", budgetId: serverBudget })
     : null;
+/**
+ * The server's PER-REQUEST OWNER assertion on the full-budget OVERWRITE routes (api
+ * ownerAssertionFails): the body names the tenant the client verified, and the server compares it
+ * with the session IT resolves for THIS request — a cookie swapped mid-upload is refused.
+ */
+const ownerMismatch = (claimed: string | undefined): Response | null =>
+  claimed !== undefined && claimed !== session?.user.id
+    ? conflict({ error: "budget_mismatch", budgetId: serverBudget })
+    : null;
 const wrote = (budgetId: string): string[] => writes[budgetId] ?? [];
+
+/** A ledger with one account — the session's budget "holds data" (something to destroy). */
+const nonEmptyLedger = (): ClientLedger => ({
+  ...emptyLedger(),
+  accounts: [
+    {
+      id: "acc-1",
+      name: "Konto",
+      color: "#fff",
+      icon: "wallet",
+      type: "checking",
+      onBudget: true,
+      initialBalance: 0,
+      archived: false,
+      sort: 0,
+    },
+  ] as ClientLedger["accounts"],
+});
 
 beforeEach(async () => {
   calls = [];
@@ -99,8 +142,11 @@ beforeEach(async () => {
   serverBudget = BUDGET_A;
   serverIsPlain = false;
   serverBlob = null;
+  serverHasData = false;
   writes = {};
   onPush = null;
+  onOverwrite = null;
+  overwriteOwners = [];
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
     calls.push(url);
@@ -123,6 +169,11 @@ beforeEach(async () => {
       }
       if (url.startsWith("/api/sync2/pull")) return json({ cursor: 0, epoch: 1, ops: [] });
       if (url.startsWith("/api/sync2/reset")) {
+        const body = JSON.parse(String(init?.body ?? "{}")) as { userId?: string };
+        overwriteOwners.push(body.userId);
+        onOverwrite?.(); // a sign-in elsewhere completes while the ciphertext is uploading
+        const refused = ownerMismatch(body.userId);
+        if (refused) return refused;
         writes[serverBudget] = [...wrote(serverBudget), "reset"];
         return json({ epoch: 1, uptoSeq: 0 });
       }
@@ -140,12 +191,17 @@ beforeEach(async () => {
       return res;
     }
     if (url.startsWith("/api/sync/snapshot")) {
-      return json({ budgetId: serverBudget, cursor: 0, ...emptyLedger() });
+      return json({ budgetId: serverBudget, cursor: 0, ...(serverHasData ? nonEmptyLedger() : emptyLedger()) });
     }
     if (url.startsWith("/api/sync/pull")) {
       return json({ budgetId: serverBudget, cursor: 0, resetRequired: false, changes: [] });
     }
     if (url.startsWith("/api/sync/replace")) {
+      const body = JSON.parse(String(init?.body ?? "{}")) as { userId?: string };
+      overwriteOwners.push(body.userId);
+      onOverwrite?.(); // a sign-in elsewhere completes while the ledger is uploading
+      const refused = ownerMismatch(body.userId);
+      if (refused) return refused;
       writes[serverBudget] = [...wrote(serverBudget), "replace"];
       return json({ budgetId: serverBudget, cursor: 1 });
     }
@@ -159,6 +215,7 @@ beforeEach(async () => {
 
   __resetIdentity();
   __resetObligations();
+  __setLocalMode("off");
   outbox.clearAll();
   e2ee.__resetDekForTests();
   e2ee.clearDek();
@@ -207,7 +264,7 @@ describe("sync cycle: session guard before the push", () => {
     expect(outbox.size()).toBe(1); // the queued op survives the re-auth
   });
 
-  it("a DIFFERENT account signed in → no push at all; the foreign replica is wiped", async () => {
+  it("a DIFFERENT account signed in → no push at all; the replica is BLOCKED, not destroyed", async () => {
     await idbPut("meta", "user-A", "userId"); // the replica belongs to user A
     outbox.add(catOp()); // …and carries A's unsent op
     session = { user: { id: "user-B" } }; // …but user B is signed in now
@@ -215,10 +272,54 @@ describe("sync cycle: session guard before the push", () => {
     await syncNow("test");
 
     expect(called("/api/sync/push")).toBe(false); // A's op NEVER reaches B's budget
-    expect(reloads).toBe(1); // wiped + reloading → clean bootstrap for B
-    expect(await idbGet("meta", "ledger")).toBeUndefined(); // A's replica gone from IDB
+    expect(store.getBootStatus()).toBe("foreign"); // App renders ForeignReplicaScreen
+    expect(reloads).toBe(0); // nothing is destroyed unattended — the human decides
+    await persist.flushed();
+    expect(await idbGet("meta", "ledger")).toBeDefined(); // A's replica (maybe its last copy) stays
+    expect(await idbGet<string>("meta", "userId")).toBe("user-A"); // …still stamped as A's
+    expect(outbox.size()).toBe(1); // …and A's unsent op with it
+  });
+
+  it("the previous owner can sign back in — the sign-out KEEPS the replica", async () => {
+    // The non-destructive way off ForeignReplicaScreen (and the reason "destroy nothing" is not a
+    // dead end): the app is not rendered there, so Settings → sign out is unreachable.
+    await idbPut("meta", "user-A", "userId");
+    outbox.add(catOp());
+    session = { user: { id: "user-B" } };
+    await expect(assertOwnReplica()).rejects.toThrow();
+    expect(store.getBootStatus()).toBe("foreign");
+
+    session = null; // auth.signOutKeepingReplica ends the session, then calls this:
+    enterLoginKeepingReplica();
+
+    expect(store.getBootStatus()).toBe("unauthed"); // Login — A can sign back in
+    expect(await idbGet("meta", "ledger")).toBeDefined(); // …with the replica untouched
+    expect(outbox.size()).toBe(1);
+
+    session = { user: { id: "user-A" } }; // A signs back in
+    await syncNow("test");
+
+    expect(pushed().length).toBe(1); // …and the queued op finally goes out, into A's own budget
+    expect(store.getBootStatus()).toBe("ready");
+  });
+
+  it("only the human's explicit choice destroys a foreign replica (and it clears local mode)", async () => {
+    __setLocalMode("wiped"); // the previous owner's choice — the server holds nothing of theirs
+    await idbPut("meta", "user-A", "userId");
+    outbox.add(catOp());
+    session = { user: { id: "user-B" } };
+    await assertOwnReplica().catch(() => {}); // …B tries to write → "foreign"
+    expect(store.getBootStatus()).toBe("foreign");
+
+    await discardForeignReplica(); // ForeignReplicaScreen → [Remove and continue]
+
+    expect(reloads).toBe(1);
+    expect(await idbGet("meta", "ledger")).toBeUndefined(); // now, and only now, it is gone
     expect(await idbGet("meta", "userId")).toBeUndefined();
     expect(outbox.size()).toBe(0);
+    // The local-mode flag was the PREVIOUS owner's: left at "wiped", B would boot network-free on
+    // an empty unbound replica and "Disable local mode" would upload it over B's server budget.
+    expect(getLocalMode()).toBe("off");
   });
 
   it("same account → the cycle runs and the owner stamp is (re)written", async () => {
@@ -241,7 +342,36 @@ describe("sync cycle: session guard before the push", () => {
 
     await expect(pushLocalToServer()).rejects.toThrow(); // aborted, not applied to B's budget
     expect(called("/api/sync/replace")).toBe(false);
-    expect(reloads).toBe(1);
+    expect(store.getBootStatus()).toBe("foreign");
+    expect(await idbGet("meta", "ledger")).toBeDefined(); // …and A's data is still here
+  });
+});
+
+/* ── The foreign verdict must not destroy the LAST copy of a budget ──────
+ *
+ * In local mode "wiped" the server data was deliberately deleted, so the IDB replica is the ONLY
+ * copy — and the mode makes boot skip the network entirely, so the foreign replica surfaces only
+ * when someone taps "Disable local mode". Wiping there (the first cut of this guard did) destroys
+ * the budget outright: local gone, server empty by design. The same holds for a self-hoster who
+ * rebuilt their server and got a NEW user id for the same e-mail — the "foreign" stamp is then a
+ * false positive over the very data the rebuild is meant to recover. */
+
+describe("sync: a foreign replica in local mode 'wiped' (the only copy left)", () => {
+  it("'Disable local mode' as another user destroys nothing — it blocks and asks", async () => {
+    __setLocalMode("wiped"); // A deleted the server copy; IDB holds the only one
+    await idbPut("meta", "user-A", "userId");
+    outbox.add(catOp());
+    session = { user: { id: "user-B" } }; // A's cookie lapsed; B signed in on the shared device
+
+    await expect(disableLocal()).rejects.toThrow(); // "foreign" → refused
+
+    expect(called("/api/sync/replace")).toBe(false); // A's ledger does NOT overwrite B's budget
+    expect(store.getBootStatus()).toBe("foreign"); // …the human is asked what to do with it
+    expect(reloads).toBe(0);
+    expect(getLocalMode()).toBe("wiped"); // still A's mode — nothing was silently switched
+    await persist.flushed();
+    expect(await idbGet("meta", "ledger")).toBeDefined(); // the LAST copy of A's budget survives
+    expect(outbox.size()).toBe(1);
   });
 });
 
@@ -262,7 +392,8 @@ describe("sync cycle: the session is re-verified every cycle", () => {
     await syncNow("interval");
 
     expect(called("/api/sync/push")).toBe(false); // A's op does NOT land in B's budget
-    expect(reloads).toBe(1); // foreign replica → wiped + reloading
+    expect(store.getBootStatus()).toBe("foreign"); // …and A's data is blocked, not destroyed
+    expect(reloads).toBe(0);
   });
 
   it("a 401 forgets the verdict — the next (different) session cannot inherit it", async () => {
@@ -281,7 +412,8 @@ describe("sync cycle: the session is re-verified every cycle", () => {
     await syncNow("interval");
 
     expect(pushed().length).toBe(1); // still only A's push under A's session
-    expect(reloads).toBe(1); // A's replica wiped before B's budget could be touched
+    expect(store.getBootStatus()).toBe("foreign"); // A's replica blocked before B's budget is touched
+    expect(outbox.size()).toBe(1); // A's queued op is preserved, not thrown away
   });
 });
 
@@ -330,7 +462,65 @@ describe("sync cycle: replica with no owner stamp", () => {
     session = { user: { id: "user-B" } };
 
     await expect(assertOwnReplica()).rejects.toThrow(); // the UI never reaches api.e2eeEnable/Disable
-    expect(reloads).toBe(1); // provably foreign (stamp) → wiped + reloading
+    expect(store.getBootStatus()).toBe("foreign"); // provably foreign (stamp) → blocked, not wiped
+    expect(reloads).toBe(0);
+  });
+});
+
+/* ── An UNBOUND replica (no budgetId) may only be adopted where it can destroy nothing ──
+ *
+ * "No budgetId" points at no account — neither this one nor another. Adopting it authorizes
+ * /sync/replace, which WIPES the session user's budget and re-inserts this replica; such a
+ * replica is reachable ("Clear local data" in local mode leaves exactly an empty unbound one, and
+ * an offline start then fills it with data), so the proof must be about what a wrong answer would
+ * COST: an empty session budget has nothing to lose, one that holds data has everything. */
+
+describe("sync: an UNBOUND replica (no budgetId)", () => {
+  it("is refused against a session budget that HOLDS DATA (no cross-tenant overwrite)", async () => {
+    // The chain: A's device, "Clear local data" while in local mode (mirror + owner stamp gone,
+    // budgetId with them), data created offline again → an unbound, unstamped, NON-empty replica.
+    // A's session lapses, B signs in, B taps "Disable local mode" → pushLocalToServer.
+    store.replace(nonEmptyLedger(), 0, ""); // data bound to no budget, stamped by nobody
+    await persist.persistLedger(store.snapshotForPersist());
+    session = { user: { id: "user-B" } };
+    serverHasData = true; // …and B's budget is NOT empty
+
+    await expect(pushLocalToServer()).rejects.toThrow(); // unprovable → refused
+
+    expect(called("/api/sync/replace")).toBe(false); // B's budget is NOT wiped and overwritten
+    expect(reloads).toBe(0); // …and nothing local is destroyed either
+    await persist.flushed();
+    expect(await idbGet("meta", "userId")).toBeUndefined(); // NOT adopted on a guess
+    expect(await idbGet("meta", "ledger")).toBeDefined(); // …and the data is still here
+  });
+
+  it("is adopted when the session's budget is provably EMPTY (nothing to destroy)", async () => {
+    store.replace(nonEmptyLedger(), 0, ""); // the same replica…
+    session = { user: { id: "user-B" } };
+    serverHasData = false; // …but now B's budget is empty (fresh account / onboarding)
+
+    await pushLocalToServer();
+
+    expect(wrote(BUDGET_A)).toEqual(["replace"]); // the offline data lands in the empty budget
+    await persist.flushed();
+    expect(await idbGet<string>("meta", "userId")).toBe("user-B");
+  });
+
+  it("'Disable local mode' on an EMPTY unbound replica never replaces the server with nothing", async () => {
+    // The chain the foreign-wipe used to open: IDB cleared (mirror + stamp gone) while the mode
+    // was on → bootLocalReady puts an EMPTY_LEDGER with no budgetId in place → the user signs in
+    // → "Disable local mode" would upload THAT over the session user's whole budget.
+    __setLocalMode("wiped");
+    await clearLocalData();
+    store.replace(emptyLedger(), 0, ""); // exactly what bootLocalReady leaves behind
+    session = { user: { id: "user-B" } };
+    serverHasData = true; // B's budget is full of B's data
+
+    await disableLocal();
+
+    expect(called("/api/sync/replace")).toBe(false); // B's budget survives untouched
+    expect(getLocalMode()).toBe("off"); // …and the device leaves local mode anyway
+    expect(reloads).toBe(1); // boot bootstraps B's data from the server
   });
 });
 
@@ -410,7 +600,8 @@ describe("sync push: the per-request tenant assertion", () => {
     expect(pushed().length).toBe(2); // batch 1 (still A's budget) + batch 2, which is REFUSED
     expect(wrote(BUDGET_A)).toHaveLength(100); // A's own ops, into A's own budget
     expect(wrote(BUDGET_B)).toEqual([]); // …and NOTHING of A's into B's budget
-    expect(reloads).toBe(1); // the re-proof finds the stamp of another account → wipe + reload
+    expect(store.getBootStatus()).toBe("foreign"); // the re-proof finds another account's stamp
+    expect(reloads).toBe(0); // …which blocks every further write and destroys nothing
   });
 
   it("same user, budget rotated (reseed / restore / reattach) → resync, then the ops go out", async () => {
@@ -560,5 +751,80 @@ describe("sync: the e2ee ownership proof and the DEK's provenance", () => {
     expect(reloads).toBe(0);
     await persist.flushed();
     expect(await idbGet("meta", "userId")).toBeUndefined(); // A's replica is NOT adopted by B
+  });
+});
+
+/* ── The PER-REQUEST owner assertion on the full-budget OVERWRITE routes ──────
+ *
+ * /sync/replace, /sync2/reset and the E2EE enable/disable buttons resolve the target budget from
+ * the SESSION COOKIE alone, and the client's ownership check is a DIFFERENT request than the
+ * write: serializing (or encrypting) and uploading a whole ledger takes seconds on mobile, the
+ * cookie is shared by every tab, and a sign-in as another user can complete in that window. The
+ * blast radius is the entire budget — restoreLedger wipes it and rebuilds it from the body. So
+ * the write NAMES the tenant the client verified, and the server refuses a session it did not
+ * verify (409 budget_mismatch) BEFORE writing anything.
+ *
+ * The assertion is on the USER, not the budget: on the very path these routes serve — a restore —
+ * the replica deliberately carries the BACKUP FILE's budgetId (data.ts), so asserting the budget
+ * would refuse every restore of a backup taken from another install. */
+
+describe("sync: full-budget overwrites carry the verified owner", () => {
+  it("/sync/replace names the verified user, and a mid-upload sign-in as B is refused", async () => {
+    await idbPut("meta", "user-A", "userId");
+    session = { user: { id: "user-A" } };
+    // …while the ledger is uploading, the shared cookie becomes B's (a sign-in in another tab)
+    onOverwrite = () => {
+      session = { user: { id: "user-B" } };
+      serverBudget = BUDGET_B;
+      onOverwrite = null;
+    };
+
+    await expect(pushLocalToServer()).rejects.toThrow(); // 409 budget_mismatch
+
+    expect(overwriteOwners).toEqual(["user-A"]); // the tenant the client verified travels along
+    expect(wrote(BUDGET_B)).toEqual([]); // B's budget is NOT wiped and replaced by A's ledger
+    expect(wrote(BUDGET_A)).toEqual([]); // …and the server wrote nothing at all
+  });
+
+  it("/sync2/reset names the verified user, and a mid-upload sign-in as B is refused", async () => {
+    e2ee.setTierMeta({ tier: "e2ee", epoch: 1 });
+    e2ee.setDek(generateDek());
+    await idbPut("meta", "user-A", "userId");
+    session = { user: { id: "user-A" } };
+    onOverwrite = () => {
+      session = { user: { id: "user-B" } };
+      serverBudget = BUDGET_B;
+      onOverwrite = null;
+    };
+
+    await expect(resetServerE2ee()).rejects.toThrow();
+
+    expect(overwriteOwners).toEqual(["user-A"]);
+    expect(wrote(BUDGET_B)).toEqual([]); // B's journal + checkpoint are NOT destroyed
+  });
+
+  it("with a stable session the replace goes through (the assertion is not a new refusal)", async () => {
+    await idbPut("meta", "user-A", "userId");
+    session = { user: { id: "user-A" } };
+
+    await pushLocalToServer();
+
+    expect(overwriteOwners).toEqual(["user-A"]);
+    expect(wrote(BUDGET_A)).toEqual(["replace"]);
+  });
+
+  it("a restore whose backup names ANOTHER budget still works (the tenant is the user)", async () => {
+    // importBackup() adopts the budgetId from the FILE, so after restoring a backup taken on a
+    // different install the replica names a budget the session does not own. That is the normal
+    // "migrate hosts / rebuild the server" flow — it must NOT be mistaken for a cross-tenant write.
+    await idbPut("meta", "user-A", "userId");
+    session = { user: { id: "user-A" } };
+    store.replace(nonEmptyLedger(), 0, BUDGET_B); // the ledger came from budget B's backup file
+    markReplacePending(); // …and owes the server a full replace
+
+    await syncNow("test");
+
+    expect(wrote(BUDGET_A)).toEqual(["replace"]); // restored into the session user's own budget
+    expect(store.getBudgetId()).toBe(BUDGET_A); // …and the replica adopts the canonical id
   });
 });

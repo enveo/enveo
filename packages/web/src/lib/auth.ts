@@ -60,6 +60,17 @@ export async function signOutAndForget(wipe: () => Promise<void>): Promise<void>
   await wipe(); // shared device: the local replica must not remain
 }
 
+/**
+ * Sign-out that KEEPS the local replica — the counterpart of the above, and the only correct one
+ * on ForeignReplicaScreen: there the replica belongs to a DIFFERENT account than the session, it
+ * may be the last copy of that budget, and it is not this session's to delete. `enterLogin` =
+ * sync.enterLoginKeepingReplica (Login screen; the previous owner signs back in and resumes).
+ */
+export async function signOutKeepingReplica(enterLogin: () => void): Promise<void> {
+  await authClient.signOut();
+  enterLogin();
+}
+
 /** Does the backend have a session at all? */
 export async function hasSession(): Promise<boolean> {
   try {

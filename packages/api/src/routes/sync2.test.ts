@@ -86,10 +86,13 @@ describe("sync2 — input validation", () => {
     expect(e2eeDisableInput.safeParse({ ledger: emptyLedger }).success).toBe(false);
   });
 
-  it("rekey: requires non-empty wrappedDek and kdfParams", () => {
+  it("rekey: requires non-empty wrappedDek and kdfParams, and takes the owner assertion", () => {
     expect(sync2RekeyInput.safeParse({ wrappedDek: "v1.a", kdfParams: "{}" }).success).toBe(true);
     expect(sync2RekeyInput.safeParse({ wrappedDek: "", kdfParams: "{}" }).success).toBe(false);
     expect(sync2RekeyInput.safeParse({ wrappedDek: "v1.a" }).success).toBe(false);
+    // the client derives the KEK (Argon2id) BEFORE calling — seconds in which the cookie can be
+    // swapped, after which this device's password would re-key ANOTHER account's budget
+    expect(sync2RekeyInput.safeParse({ wrappedDek: "v1.a", kdfParams: "{}", userId: "user-A" }).success).toBe(true);
   });
 
   it("reset: integer epoch, optional uptoCursor (≥0), non-empty blob", () => {
@@ -98,5 +101,34 @@ describe("sync2 — input validation", () => {
     expect(sync2ResetInput.safeParse({ epoch: 3, uptoCursor: -1, snapshotBlob: "v1.zzz" }).success).toBe(false);
     expect(sync2ResetInput.safeParse({ epoch: 3.5, snapshotBlob: "v1.zzz" }).success).toBe(false);
     expect(sync2ResetInput.safeParse({ epoch: 3, snapshotBlob: "" }).success).toBe(false);
+  });
+
+  /* The per-request OWNER assertion (ownerAssertionFails): each of these routes OVERWRITES the
+     session user's whole budget (reset drops the journal and swaps the checkpoint; enable/disable
+     rebuild it wholesale), the target is resolved from the session cookie alone, and the client's
+     ownership check happened in an EARLIER request — the cookie can be swapped in between (the
+     epoch cannot tell tenants apart: two independently-encrypted budgets both sit at epoch 1). */
+  it("reset / enable / disable carry an optional userId (the per-request owner assertion)", () => {
+    const emptyLedger = {
+      accounts: [],
+      groups: [],
+      envelopes: [],
+      categories: [],
+      places: [],
+      recurrences: [],
+      allocations: [],
+      transactions: [],
+    };
+    expect(sync2ResetInput.safeParse({ epoch: 3, snapshotBlob: "v1.z", userId: "user-A" }).success).toBe(true);
+    expect(sync2ResetInput.safeParse({ epoch: 3, snapshotBlob: "v1.z", userId: "" }).success).toBe(false);
+    expect(
+      e2eeEnableInput.safeParse({ wrappedDek: "v1.a", kdfParams: "{}", snapshotBlob: "v1.b", userId: "user-A" })
+        .success,
+    ).toBe(true);
+    expect(
+      e2eeDisableInput.safeParse({ confirm: "WYŁĄCZ-E2EE", ledger: emptyLedger, userId: "user-A" }).success,
+    ).toBe(true);
+    // a pre-2.0 client omits it — then there is simply nothing to assert
+    expect(e2eeDisableInput.safeParse({ confirm: "WYŁĄCZ-E2EE", ledger: emptyLedger }).success).toBe(true);
   });
 });

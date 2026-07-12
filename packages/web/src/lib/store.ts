@@ -36,7 +36,14 @@ const TABLE_KEY: Record<ReplicatedTable, keyof ClientLedger> = {
   budgets: "budgets",
 };
 
-export type BootStatus = "booting" | "ready" | "error" | "unauthed" | "locked";
+/**
+ * "foreign" — the replica on this device provably belongs to ANOTHER account (its owner stamp
+ * names a different user than the session): every server write is refused and the app hands the
+ * decision to the human (ForeignReplicaScreen: export a backup, or remove the data and
+ * continue). It is deliberately NOT a self-healing state — the replica may be the last copy of
+ * that budget, and a user id is not stable across a server rebuild.
+ */
+export type BootStatus = "booting" | "ready" | "error" | "unauthed" | "locked" | "foreign";
 
 /**
  * Pending-guard key for allocations (natural key) — MUST match

@@ -13,11 +13,11 @@ import { clientLedgerSchema } from "@enveo/shared";
 import { and, eq, gt, sql as dsql } from "drizzle-orm";
 import { Hono } from "hono";
 import { z } from "zod";
-import { requireTier, type BudgetMeta } from "../context";
+import { requireTier, sessionUserId, type BudgetMeta } from "../context";
 import { db } from "../db/client";
 import * as s from "../db/schema";
 import { wipeBudgetData, type Executor } from "../sync/apply";
-import { budgetAssertionFails, restoreLedger } from "./sync";
+import { budgetAssertionFails, ownerAssertionFails, restoreLedger } from "./sync";
 
 export const sync2Routes = new Hono();
 
@@ -41,27 +41,41 @@ export const sync2SnapshotInput = z.object({
   blob: z.string().min(1),
 });
 
+/**
+ * The tenant the CLIENT verified right before the upload (ownerAssertionFails — the per-REQUEST
+ * assertion for the full-budget OVERWRITE routes; `epoch` does NOT distinguish tenants, and this
+ * file's own routes say so). Optional: a pre-2.0 client omits it.
+ */
+const ownerAssertion = { userId: z.string().min(1).optional() };
+
 export const e2eeEnableInput = z.object({
+  ...ownerAssertion,
   wrappedDek: z.string().min(1),
   kdfParams: z.string().min(1),
   snapshotBlob: z.string().min(1),
 });
 
 export const e2eeDisableInput = z.object({
+  ...ownerAssertion,
   confirm: z.literal("WYŁĄCZ-E2EE"),
   ledger: clientLedgerSchema,
 });
 
 export const sync2RekeyInput = z.object({
+  ...ownerAssertion,
   wrappedDek: z.string().min(1),
   kdfParams: z.string().min(1),
 });
 
 export const sync2ResetInput = z.object({
+  ...ownerAssertion,
   epoch: z.number().int(),
   uptoCursor: z.number().int().min(0).optional(),
   snapshotBlob: z.string().min(1),
 });
+
+/** 409 in the budget_mismatch shape — the client re-proves its identity and writes nothing. */
+const ownerMismatch = (budgetId: string) => ({ error: "budget_mismatch", budgetId }) as const;
 
 /* ── Helpers ────────────────────────────────────────────────────────── */
 
@@ -168,6 +182,10 @@ sync2Routes.post("/sync2/snapshot", async (c) => {
 sync2Routes.post("/sync2/rekey", async (c) => {
   const meta = await requireTier(c, "e2ee");
   const body = sync2RekeyInput.parse(await c.req.json());
+  // PER-REQUEST tenant assertion — this route re-keys the resolved budget's envelope, and the
+  // client derives the KEK with Argon2id before calling it: a multi-second window in which the
+  // shared cookie can be swapped, after which this device's password would lock ANOTHER account.
+  if (ownerAssertionFails(body.userId, sessionUserId(c))) return c.json(ownerMismatch(meta.id), 409);
   await db
     .update(s.budgets)
     .set({ wrappedDek: body.wrappedDek, kdfParams: body.kdfParams })
@@ -186,6 +204,9 @@ sync2Routes.post("/sync2/reset", async (c) => {
   const meta = await requireTier(c, "e2ee");
   const body = sync2ResetInput.parse(await c.req.json());
   if (body.epoch !== meta.epoch) return c.json(epochMismatch(meta), 409);
+  // PER-REQUEST tenant assertion — this route DELETES the resolved budget's whole journal and
+  // swaps its checkpoint; the cookie may have been swapped while the ciphertext was uploading.
+  if (ownerAssertionFails(body.userId, sessionUserId(c))) return c.json(ownerMismatch(meta.id), 409);
 
   const uptoSeq = body.uptoCursor ?? 0;
   await db.transaction(async (tx) => {
@@ -208,8 +229,11 @@ sync2Routes.post("/sync2/reset", async (c) => {
 
 sync2Routes.post("/budget/e2ee/enable", async (c) => {
   const body = e2eeEnableInput.parse(await c.req.json());
-  const epoch = await db.transaction(async (tx) => {
+  const result = await db.transaction(async (tx) => {
     const meta = await requireTier(c, "plain", tx);
+    // PER-REQUEST tenant assertion — BEFORE anything: this route replaces the resolved budget's
+    // plaintext with THIS device's ciphertext and re-keys it under THIS device's wrappedDek.
+    if (ownerAssertionFails(body.userId, sessionUserId(c))) return { mismatch: true, id: meta.id } as const;
     const nextEpoch = meta.epoch + 1;
     await tx
       .update(s.budgets)
@@ -223,9 +247,10 @@ sync2Routes.post("/budget/e2ee/enable", async (c) => {
         set: { uptoSeq: 0, blob: body.snapshotBlob, updatedAt: dsql`now()` },
       });
     await wipeBudgetData(tx, meta.id); // plaintext disappears ONLY after the ciphertext is written
-    return nextEpoch;
+    return { mismatch: false, id: meta.id, epoch: nextEpoch } as const;
   });
-  return c.json({ epoch });
+  if (result.mismatch) return c.json(ownerMismatch(result.id), 409);
+  return c.json({ epoch: result.epoch });
 });
 
 /* ── POST /budget/e2ee/disable — e2ee → plain, ONE transaction ────────
@@ -235,8 +260,11 @@ sync2Routes.post("/budget/e2ee/enable", async (c) => {
 
 sync2Routes.post("/budget/e2ee/disable", async (c) => {
   const body = e2eeDisableInput.parse(await c.req.json());
-  const epoch = await db.transaction(async (tx) => {
+  const result = await db.transaction(async (tx) => {
     const meta = await requireTier(c, "e2ee", tx);
+    // PER-REQUEST tenant assertion — BEFORE restoreLedger, which wipes the resolved budget and
+    // rebuilds it from the ledger in this body (the widest write in the whole API).
+    if (ownerAssertionFails(body.userId, sessionUserId(c))) return { mismatch: true, id: meta.id } as const;
     const nextEpoch = meta.epoch + 1;
     await restoreLedger(tx, meta.id, body.ledger);
     await tx
@@ -245,7 +273,8 @@ sync2Routes.post("/budget/e2ee/disable", async (c) => {
       .where(eq(s.budgets.id, meta.id));
     await tx.delete(s.e2eeOps).where(eq(s.e2eeOps.budgetId, meta.id));
     await tx.delete(s.e2eeSnapshots).where(eq(s.e2eeSnapshots.budgetId, meta.id));
-    return nextEpoch;
+    return { mismatch: false, id: meta.id, epoch: nextEpoch } as const;
   });
-  return c.json({ epoch });
+  if (result.mismatch) return c.json(ownerMismatch(result.id), 409);
+  return c.json({ epoch: result.epoch });
 });
