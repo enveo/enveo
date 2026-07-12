@@ -9,6 +9,7 @@ import { auth, hasCredentialedUser } from "./auth";
 import { authMetaBody } from "./authPolicy";
 import { TierMismatch } from "./context";
 import { assertAuthEnv, env } from "./env";
+import { isSameHostOrigin, staticAllowedOrigins } from "./origins";
 import { crudRoutes } from "./routes/crud";
 import { extraRoutes } from "./routes/extras";
 import { importRoutes } from "./routes/import";
@@ -34,12 +35,9 @@ const app = new Hono<{ Variables: { userId?: string } }>();
 app.use("*", compress());
 
 // App origin allowlist: ALLOWED_ORIGINS (CSV) + origin from BETTER_AUTH_URL;
-// in dev (no WEB_DIST) we append vite localhost:5173. Drives CORS + origin-guard.
-const allowedOrigins = new Set<string>([
-  ...env.ALLOWED_ORIGINS.split(",").map((s) => s.trim()).filter(Boolean),
-  ...(env.BETTER_AUTH_URL ? [new URL(env.BETTER_AUTH_URL).origin] : []),
-  ...(env.WEB_DIST ? [] : ["http://localhost:5173"]), // dev
-]);
+// in dev (no WEB_DIST) we append vite localhost:5173. Drives CORS + origin-guard,
+// and (via origins.ts) better-auth's trustedOrigins — keep them in ONE place.
+const allowedOrigins = staticAllowedOrigins();
 
 // secure-headers + CSP. connect-src MUST include api.openai.com (BYOK mode calls
 // OpenAI directly from the browser); style-src 'unsafe-inline' because inline
@@ -84,9 +82,9 @@ app.use("/api/*", async (c, next) => {
   if (c.req.path.startsWith("/api/auth/") || c.req.path === "/api/health") return next();
   const origin = c.req.header("origin");
   if (!origin) return next();
-  let sameOrigin = false;
-  try { sameOrigin = new URL(origin).host === c.req.header("host"); } catch { /* malformed Origin → treat as foreign */ }
-  if (!sameOrigin && !allowedOrigins.has(origin)) return c.json({ error: "bad_origin" }, 403);
+  if (!isSameHostOrigin(origin, c.req.header("host")) && !allowedOrigins.has(origin)) {
+    return c.json({ error: "bad_origin" }, 403);
+  }
   return next();
 });
 
