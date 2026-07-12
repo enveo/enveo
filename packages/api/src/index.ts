@@ -19,6 +19,7 @@ import { sync2Routes } from "./routes/sync2";
 import { txnRoutes } from "./routes/transactions";
 import { budgetSuggestRoutes } from "./routes/budgetSuggest";
 import { demoRoutes } from "./routes/demo";
+import { ScopeViolation } from "./sync/apply";
 
 
 
@@ -134,6 +135,10 @@ app.onError((err, c) => {
    
   if (err instanceof TierMismatch) {
     return c.json({ error: "tier_mismatch", tier: err.meta.tier, epoch: err.meta.epoch }, 409);
+  }
+   
+  if (err instanceof ScopeViolation) {
+    return c.json({ error: "foreign_ref" }, 400);
   }
   console.error(err);
   return c.json({ error: "internal" }, 500);
