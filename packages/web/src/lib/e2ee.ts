@@ -1,8 +1,10 @@
 /**
  * e2ee.ts — client-side key store and E2EE tier state.
  *
- * - The DEK lives in module memory + IDB meta ("e2eeDek"); tier/epoch in meta
- *   ("e2eeTier"/"e2eeEpoch") — hydrate once at boot (StrictMode-safe).
+ * - The DEK lives in module memory + IDB meta ("e2eeDek"), together with its PROVENANCE
+ *   ("e2eeDekOrigin" — see DekOrigin: the multi-tenant guard in sync.ts may only trust a key
+ *   that came with the replica); tier/epoch in meta ("e2eeTier"/"e2eeEpoch") — hydrate once at
+ *   boot (StrictMode-safe).
  * - Encryption/decryption of ops and snapshots: thin wrappers over
  *   crypto.ts (AES-GCM, "v1." format). The server NEVER sees plaintext —
  *   the outbox stays plaintext locally, we encrypt EXCLUSIVELY at push
@@ -37,31 +39,62 @@ export const SNAPSHOT_EVERY_OPS = 200;
 
 /* ── Module state (hydrated from IDB meta at boot) ────────────────────── */
 
+/**
+ * Where the DEK on this device came from — DURABLE (IDB meta "e2eeDekOrigin"), because the
+ * multi-tenant guard in sync.ts leans on it and a page reload must not launder it:
+ *
+ *  - "store"   — the key was already in IDB when this page load started, i.e. it arrived
+ *                TOGETHER with the replica (persisted by an earlier install of the app, or by
+ *                a pre-2.0 build that had no notion of provenance). Only such a key says
+ *                anything about WHO the local replica belongs to.
+ *  - "session" — the key was unwrapped from the SESSION budget's key envelope (Unlock,
+ *                E2EE enable, password change). It decrypts the session's budget BY
+ *                CONSTRUCTION, no matter whose replica sits on this device — it proves
+ *                nothing about ownership, and it must not start proving something after the
+ *                next reload just because setDek() also persisted it.
+ */
+export type DekOrigin = "store" | "session";
+
 let dek: Uint8Array | null = null;
-let dekFromStore = false; // the DEK came from IDB WITH the replica (not from the server in this page load)
+let dekOrigin: DekOrigin | null = null;
+/**
+ * Has setDek()/clearDek() run in THIS page load? hydrate() drops its memoization when the IDB
+ * read rejects, so its body CAN run again later (retryBoot after a transient failure — and the
+ * Unlock flow calls retryBoot right after setDek). Re-reading the key state then would
+ * overwrite the provenance we know first-hand with what happens to sit in IDB.
+ */
+let dekTouched = false;
 let tierMeta: TierMeta = { tier: "plain", epoch: 0 };
 let opsSinceSnap = 0;
 
 let hydratePromise: Promise<void> | null = null;
 
 /**
- * One-time load of the DEK + tier/epoch + checkpoint counter from IDB meta.
+ * One-time load of the DEK + its provenance + tier/epoch + checkpoint counter from IDB meta.
  * On rejection (transient IDB) it clears the cache so retryBoot can try
  * again (same pattern as store.hydrate / outbox.hydrate).
  */
 export function hydrate(): Promise<void> {
   if (!hydratePromise) {
     const p = (async () => {
-      const [d, t, e, n] = await Promise.all([
+      const [d, o, t, e, n] = await Promise.all([
         idbGet<Uint8Array | ArrayBuffer>("meta", "e2eeDek"),
+        idbGet<DekOrigin>("meta", "e2eeDekOrigin"),
         idbGet<Tier>("meta", "e2eeTier"),
         idbGet<number>("meta", "e2eeEpoch"),
         idbGet<number>("meta", "e2eeOpsSinceSnap"),
       ]);
-      // structured clone preserves Uint8Array; defensively accept ArrayBuffer too
-      if (d instanceof Uint8Array) dek = d;
-      else if (d instanceof ArrayBuffer) dek = new Uint8Array(d);
-      if (dek) dekFromStore = true; // hydrated together with the replica → bound to it
+      // The key state of THIS page load wins over IDB: setDek/clearDek already told us the
+      // provenance first-hand (and a re-run of hydrate must not launder it into "store").
+      if (!dekTouched) {
+        // structured clone preserves Uint8Array; defensively accept ArrayBuffer too
+        if (d instanceof Uint8Array) dek = d;
+        else if (d instanceof ArrayBuffer) dek = new Uint8Array(d);
+        else dek = null;
+        // A key persisted by setDek() carries its origin; one persisted by a pre-2.0 build
+        // does not — and that one DID come with the replica (there were no accounts yet).
+        dekOrigin = dek ? (o === "session" ? "session" : "store") : null;
+      }
       if (t === "plain" || t === "e2ee") tierMeta = { tier: t, epoch: e ?? 0 };
       opsSinceSnap = n ?? 0;
     })();
@@ -78,26 +111,52 @@ export function hydrate(): Promise<void> {
 export const getDek = (): Uint8Array | null => dek;
 
 /**
- * Was the in-memory DEK loaded from IDB at boot — i.e. did it arrive TOGETHER with the local
- * replica — rather than being derived from the server's key envelope in THIS page load
- * (Unlock / enable)? Only the former says anything about WHO the replica belongs to: a DEK
- * unwrapped from the session budget's envelope decrypts that budget by construction, no
- * matter whose replica sits on the device. The multi-tenant guard in sync.ts relies on this.
+ * Did the DEK arrive TOGETHER with the local replica (origin "store") rather than being
+ * unwrapped from the session budget's key envelope (origin "session" — Unlock / enable /
+ * password change)? Only the former says anything about WHO the replica belongs to: a DEK
+ * taken from the session's envelope decrypts that session's budget by construction, no matter
+ * whose replica sits on the device. The multi-tenant guard in sync.ts relies on this, so the
+ * answer must survive a reload — hence the durable "e2eeDekOrigin" meta.
  */
-export const isDekFromStore = (): boolean => dekFromStore;
+export const isDekFromStore = (): boolean => dek !== null && dekOrigin === "store";
 
-/** Remember the DEK (memory + IDB meta, best-effort on the persist chain). */
+/**
+ * Remember a DEK obtained in THIS page load from the SESSION's key envelope (Unlock, enable,
+ * password change) — memory + IDB meta, best-effort on the persist chain. Its provenance is
+ * persisted alongside it: such a key is NOT evidence of the replica's ownership, now or after
+ * any number of reloads.
+ */
 export function setDek(next: Uint8Array): void {
   dek = next;
-  dekFromStore = false; // obtained in THIS page load (Unlock/enable) — not a proof of ownership
+  dekOrigin = "session";
+  dekTouched = true;
   void persist.putMeta("e2eeDek", next);
+  void persist.putMeta("e2eeDekOrigin", "session");
 }
 
 /** Remove the DEK (disabling E2EE / "forget the key"). */
 export function clearDek(): void {
   dek = null;
-  dekFromStore = false;
+  dekOrigin = null;
+  dekTouched = true;
   void persist.putMeta("e2eeDek", null);
+  void persist.putMeta("e2eeDekOrigin", null);
+}
+
+/** Test hook (unit tests only): forget the key state, so hydrate() re-runs as on a fresh load. */
+export function __resetDekForTests(): void {
+  dek = null;
+  dekOrigin = null;
+  dekTouched = false;
+  hydratePromise = null;
+}
+
+/**
+ * Test hook (unit tests only): drop ONLY the memoized hydrate — exactly what a rejected IDB
+ * read does in production, which lets hydrate's body run again in the SAME page load.
+ */
+export function __forgetHydrationForTests(): void {
+  hydratePromise = null;
 }
 
 /* ── Tier + epoch ────────────────────────────────────────────────────── */

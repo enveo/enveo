@@ -194,6 +194,68 @@ async function loadCurrentRows(
 const isReplicated = (t: string): t is ReplicatedTable =>
   (REPLICATED_TABLES as readonly string[]).includes(t);
 
+/**
+ * The highest seq of a change row that carries NO budget (pre-0015 — the journal used to be
+ * global). Such a row cannot be attributed to a tenant, so it can neither be served nor safely
+ * skipped: a client whose cursor sits BELOW it would silently lose its own changes. It gets a
+ * `resetRequired` (snapshot) instead. 0 on every database migrated from a single-budget install
+ * (0015 backfills those) and on every fresh one — the partial index makes this ~free.
+ */
+export async function legacyChangesWatermark(x: Executor): Promise<number> {
+  const [row] = await x
+    .select({ seq: dsql<number>`COALESCE(MAX(${s.changes.seq}), 0)`.mapWith(Number) })
+    .from(s.changes)
+    .where(dsql`${s.changes.budgetId} is null`);
+  return row?.seq ?? 0;
+}
+
+/**
+ * The delta for ONE budget: change rows of THAT budget only (§4 — the journal is per-tenant
+ * since 0015), coalesced per (table, row), materialized as upsert rows / delete tombstones.
+ * Exported for the DB-backed tests: this is where tenant isolation of the pull lives.
+ */
+export async function pullChanges(
+  x: Executor,
+  budgetId: string,
+  since: number,
+): Promise<PullChange[]> {
+  const rows = await x
+    .select()
+    .from(s.changes)
+    .where(and(gt(s.changes.seq, since), eq(s.changes.budgetId, budgetId)))
+    .orderBy(s.changes.seq);
+
+  // coalescing per (table, row) — the newest entry wins
+  const latest = new Map<string, (typeof rows)[number]>();
+  for (const r of rows) latest.set(`${r.tableName}|${r.rowId}`, r);
+
+  // batches of ids to fetch current rows for, per table
+  const upsertIds = new Map<ReplicatedTable, string[]>();
+  for (const r of latest.values()) {
+    if (r.op !== "upsert" || !isReplicated(r.tableName)) continue;
+    const arr = upsertIds.get(r.tableName) ?? [];
+    arr.push(r.rowId);
+    upsertIds.set(r.tableName, arr);
+  }
+  const currentByTable = new Map<ReplicatedTable, Map<string, unknown>>();
+  for (const [table, ids] of upsertIds) {
+    currentByTable.set(table, await loadCurrentRows(x, budgetId, table, ids));
+  }
+
+  const changes: PullChange[] = [];
+  for (const r of [...latest.values()].sort((a, b) => a.seq - b.seq)) {
+    if (!isReplicated(r.tableName)) continue; // defense: unknown table in the log
+    if (r.op === "delete") {
+      changes.push({ seq: r.seq, table: r.tableName, op: "delete", rowId: r.rowId });
+      continue;
+    }
+    const row = currentByTable.get(r.tableName)?.get(r.rowId);
+    if (row === undefined) continue; // upsert with no existing row — skip (defense)
+    changes.push({ seq: r.seq, table: r.tableName, op: "upsert", row });
+  }
+  return changes;
+}
+
 syncRoutes.get("/sync/pull", async (c) => {
   const since = Number(c.req.query("since"));
   if (!Number.isInteger(since) || since < 0) {
@@ -205,46 +267,17 @@ syncRoutes.get("/sync/pull", async (c) => {
       await lockChangesCursor(tx);
       const budgetId = (await requireTier(c, "plain", tx)).id;
       const cursor = await maxSeq(tx);
-      // client is ahead of a log that no longer exists (server reset / future pruning)
-      if (since > cursor) {
+      // client is ahead of a log that no longer exists (server reset / future pruning), or its
+      // cursor predates the un-attributable pre-0015 rows → full snapshot instead of a delta
+      if (since > cursor || since < (await legacyChangesWatermark(tx))) {
         return { budgetId, cursor, resetRequired: true, changes: [] as PullChange[] };
       }
-
-      const rows = await tx
-        .select()
-        .from(s.changes)
-        .where(gt(s.changes.seq, since))
-        .orderBy(s.changes.seq);
-
-      // coalescing per (table, row) — the newest entry wins
-      const latest = new Map<string, (typeof rows)[number]>();
-      for (const r of rows) latest.set(`${r.tableName}|${r.rowId}`, r);
-
-      // batches of ids to fetch current rows for, per table
-      const upsertIds = new Map<ReplicatedTable, string[]>();
-      for (const r of latest.values()) {
-        if (r.op !== "upsert" || !isReplicated(r.tableName)) continue;
-        const arr = upsertIds.get(r.tableName) ?? [];
-        arr.push(r.rowId);
-        upsertIds.set(r.tableName, arr);
-      }
-      const currentByTable = new Map<ReplicatedTable, Map<string, unknown>>();
-      for (const [table, ids] of upsertIds) {
-        currentByTable.set(table, await loadCurrentRows(tx, budgetId, table, ids));
-      }
-
-      const changes: PullChange[] = [];
-      for (const r of [...latest.values()].sort((a, b) => a.seq - b.seq)) {
-        if (!isReplicated(r.tableName)) continue; // defense: unknown table in the log
-        if (r.op === "delete") {
-          changes.push({ seq: r.seq, table: r.tableName, op: "delete", rowId: r.rowId });
-          continue;
-        }
-        const row = currentByTable.get(r.tableName)?.get(r.rowId);
-        if (row === undefined) continue; // upsert with no existing row — skip (defense)
-        changes.push({ seq: r.seq, table: r.tableName, op: "upsert", row });
-      }
-      return { budgetId, cursor, resetRequired: false, changes };
+      return {
+        budgetId,
+        cursor,
+        resetRequired: false,
+        changes: await pullChanges(tx, budgetId, since),
+      };
     },
   );
 
@@ -253,12 +286,28 @@ syncRoutes.get("/sync/pull", async (c) => {
 
 /* ── POST /sync/push — idempotent ops, sequential, atomic per op ────── */
 
-const pushInput = z.object({
+export const pushInput = z.object({
   clientId: z.string().min(1),
+  /** The budget the CLIENT believes it is writing to — see budgetAssertionFails. Optional:
+   *  a pre-2.0 client omits it, and so does a legacy e2ee replica that cannot name its budget. */
+  budgetId: z.string().uuid().optional(),
   ops: z
     .array(z.object({ opId: z.string().uuid(), kind: z.string(), payload: z.unknown() }))
     .max(100),
 });
+
+/**
+ * PER-REQUEST tenant assertion (spec §4). The server resolves the target budget from the
+ * session cookie alone, and the client's own identity guard runs once per SYNC CYCLE — but one
+ * cycle pushes many batches, and the cookie is shared by every tab on the device: a sign-out +
+ * sign-in in another tab swaps the session BETWEEN two batches, and the rest of user A's outbox
+ * would be applied to user B's budget (fresh creates pass every FK guard — those only reject
+ * references to another budget's EXISTING rows). So each push NAMES the budget it is for, and a
+ * mismatch is refused with 409 { error: "budget_mismatch" } BEFORE anything is written.
+ */
+export function budgetAssertionFails(claimed: string | undefined, resolved: string): boolean {
+  return claimed !== undefined && claimed !== resolved;
+}
 
 /** Domain rejection (entity does not exist) — rolls back the op's transaction. */
 class OpNotFound extends Error {
@@ -360,6 +409,10 @@ type PushResult = { opId: string; status: "applied" | "duplicate" | "rejected"; 
 syncRoutes.post("/sync/push", async (c) => {
   const budgetId = (await requireTier(c, "plain")).id;
   const body = pushInput.parse(await c.req.json());
+  // the session's budget is not the one this replica is pushing to → write NOTHING
+  if (budgetAssertionFails(body.budgetId, budgetId)) {
+    return c.json({ error: "budget_mismatch", budgetId }, 409);
+  }
 
   const results: PushResult[] = [];
   // STRICTLY sequential — client op order = application order (LWW)

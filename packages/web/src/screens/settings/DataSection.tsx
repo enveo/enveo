@@ -8,11 +8,11 @@ import * as e2ee from "../../lib/e2ee";
 import * as persist from "../../lib/persist";
 import { assertOwnReplica, fullResync, syncNow, wipeLocalData } from "../../lib/sync";
 import { useTheme } from "../../lib/contexts";
-import { useT, type TKey } from "../../lib/i18n";
+import { useT } from "../../lib/i18n";
 import { store } from "../../lib/store";
 import { CORAL, INCOME, font } from "../../lib/theme";
 import { Sheet } from "../../components/chrome";
-import { ActionGroup, ActionIcon, ActionRow, Eyebrow } from "./ui";
+import { ActionGroup, ActionIcon, ActionRow, Eyebrow, writeErrorMessage } from "./ui";
 
 /* ── Data: backup (export/import) + E2E encryption + account ────────── */
 
@@ -26,16 +26,6 @@ const IC = {
   shieldOff: ["M19.7 14c.2-.65.3-1.32.3-2V5l-8-3-3.2 1.2", "M4.7 4.7L4 5v7c0 5 3.5 9.4 8 11a13.2 13.2 0 005.6-4.4", "M2 2l20 20"],
   logout: ["M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4", "M16 17l5-5-5-5", "M21 12H9"],
 };
-
-/**
- * Error text for a server write that the multi-tenant guard refused: assertOwnReplica throws
- * the "foreign_replica" sentinel (no owner could be established, or the replica is another
- * account's and a wipe+reload is already in flight) — render it as a sentence, not as a code.
- */
-function writeErrorMessage(e: unknown, t: (key: TKey) => string): string {
-  const msg = apiErrorMessage(e);
-  return msg === "foreign_replica" ? t("sync.notOwner") : msg;
-}
 
 export function DataSection() {
   return (
@@ -415,6 +405,12 @@ function E2eeChangePass() {
     setError(null);
     setDone(false);
     try {
+      // MULTI-TENANT GUARD — /sync2/rekey rewrites the SESSION budget's key envelope, and the
+      // unwrap below puts that budget's DEK on this device (e2ee.setDek). On a device holding
+      // ANOTHER account's replica that key is not just useless, it is dangerous: the sync guard
+      // would otherwise be left with a DEK that opens the session's checkpoint by construction.
+      // Same class as enable/disable — the replica must be proven ours BEFORE we touch either.
+      await assertOwnReplica();
       const snap = await api.e2eeSnapshot();
       if (!snap.wrappedDek || !snap.kdfParams) throw new Error(t("e2ee.wrongPass"));
       let dek: Uint8Array;
@@ -436,7 +432,7 @@ function E2eeChangePass() {
       setPass("");
       setPass2("");
     } catch (e) {
-      setError(apiErrorMessage(e));
+      setError(writeErrorMessage(e, t));
     } finally {
       setBusy(false);
     }

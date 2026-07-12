@@ -27,6 +27,15 @@ describe("sync2 — input validation", () => {
     expect(sync2PushInput.safeParse({ epoch: 1, ops: [] }).success).toBe(false);
   });
 
+  it("push: budgetId (the per-request tenant assertion) is optional and must be a uuid", () => {
+    const ops = [{ opId: UUID, ciphertext: "v1.AAAAAAAA" }];
+    expect(sync2PushInput.safeParse({ epoch: 1, budgetId: UUID, ops }).success).toBe(true);
+    expect(sync2PushInput.safeParse({ epoch: 1, budgetId: "nope", ops }).success).toBe(false);
+    // a legacy replica cannot name its budget — the epoch alone does NOT identify a tenant
+    // (two independently-encrypted budgets both sit at epoch 1), so this is the one gap left
+    expect(sync2PushInput.safeParse({ epoch: 1, ops }).success).toBe(true);
+  });
+
   it("push: rejects a bad opId uuid and a too-short ciphertext", () => {
     expect(
       sync2PushInput.safeParse({ epoch: 1, ops: [{ opId: "not-a-uuid", ciphertext: "v1.AAAAAAAA" }] })

@@ -2,11 +2,32 @@
  * E2EE stage 2 (T1) — encrypting ops/snapshots (e2ee.ts) and applying
  * the decrypted journal onto the mirror (store.applyRemoteOps): roundtrip,
  * skipping own opIds from the outbox (the pending-guard equivalent), the cursor.
+ *
+ * Plus the DEK PROVENANCE (2.0) — the multi-tenant guard in sync.ts accepts a
+ * "the session's checkpoint opens with this device's key" proof ONLY for a key that came out
+ * of IDB together with the replica. setDek() persists the key, so the distinction must be
+ * persisted with it: otherwise one reload turns a key unwrapped from the SESSION's envelope
+ * (Unlock / enable / password change — which decrypts that session's budget by construction)
+ * into a proof of ownership for whatever replica happens to sit on the device.
  */
-import { describe, expect, it } from "bun:test";
+import { beforeEach, describe, expect, it } from "bun:test";
 import type { ClientLedger, SyncOp } from "@enveo/shared";
 import { generateDek } from "./crypto";
-import { decryptOps, decryptSnapshot, encryptOp, encryptSnapshot } from "./e2ee";
+import {
+  __forgetHydrationForTests,
+  __resetDekForTests,
+  clearDek,
+  decryptOps,
+  decryptSnapshot,
+  encryptOp,
+  encryptSnapshot,
+  getDek,
+  hydrate,
+  isDekFromStore,
+  setDek,
+} from "./e2ee";
+import { clearLocalData, idbPut } from "./idb";
+import * as persist from "./persist";
 import { store } from "./store";
 
 const emptyLedger = (): ClientLedger => ({
@@ -48,6 +69,62 @@ describe("e2ee: encrypting ops and snapshots", () => {
     expect(blob).not.toContain("Paliwo");
     expect(await decryptSnapshot(blob, dek)).toEqual(ledger);
     await expect(decryptSnapshot(blob, generateDek())).rejects.toThrow();
+  });
+});
+
+/* ── DEK provenance (the ownership proof the sync guard leans on) ─────── */
+
+/** A fresh page load: module key state forgotten, IDB meta untouched. */
+async function reload(): Promise<void> {
+  await persist.flushed(); // the DEK/origin writes go through the serial persist chain
+  __resetDekForTests();
+  await hydrate();
+}
+
+describe("e2ee: DEK provenance survives a reload", () => {
+  beforeEach(async () => {
+    __resetDekForTests();
+    await clearLocalData();
+  });
+
+  it("a key persisted by an older build (no origin recorded) came WITH the replica → store", async () => {
+    await idbPut("meta", generateDek(), "e2eeDek"); // pre-2.0 IDB: key, no provenance
+    await hydrate();
+    expect(getDek()).not.toBeNull();
+    expect(isDekFromStore()).toBe(true); // the only case in which the DEK may prove ownership
+  });
+
+  it("setDek (Unlock / enable / password change) is NOT a proof — not now, not after a reload", async () => {
+    await hydrate(); // boot: no key on this device
+    setDek(generateDek()); // …unwrapped from the SESSION budget's key envelope
+    expect(isDekFromStore()).toBe(false);
+
+    await reload(); // the bug: hydrate() used to re-mark every persisted key as "store"
+    expect(getDek()).not.toBeNull(); // the key IS persisted (Unlock must survive a refresh)…
+    expect(isDekFromStore()).toBe(false); // …but it still proves nothing about the replica
+  });
+
+  it("a hydrate() that re-runs after setDek (transient IDB → retryBoot) does not launder the key", async () => {
+    // hydrate() drops its memoization on rejection, and the Unlock flow calls retryBoot right
+    // after setDek — so its body CAN run again in the SAME page load, with the key already in
+    // IDB. It must not overwrite what setDek told us first-hand.
+    await hydrate();
+    setDek(generateDek());
+    await persist.flushed();
+    __forgetHydrationForTests();
+    await hydrate();
+    expect(isDekFromStore()).toBe(false);
+  });
+
+  it("clearDek forgets the key and its provenance", async () => {
+    await idbPut("meta", generateDek(), "e2eeDek");
+    await hydrate();
+    clearDek();
+    expect(getDek()).toBeNull();
+    expect(isDekFromStore()).toBe(false);
+    await reload();
+    expect(getDek()).toBeNull(); // the removal is durable too
+    expect(isDekFromStore()).toBe(false);
   });
 });
 

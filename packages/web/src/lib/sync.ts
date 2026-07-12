@@ -79,6 +79,19 @@ class UnauthorizedError extends Error {
 }
 
 /**
+ * A 401 from ANY channel (cycle, boot, or an out-of-cycle write such as /sync/replace,
+ * /sync2/reset, Settings → E2EE): route the app to the Login screen (enterUnauthed) and hand
+ * the caller the error to throw. Callers that do NOT go through doCycle used to let the raw
+ * "unauthorized: 401" bubble into an error label, which is a dead end on a device in local
+ * mode "wiped": boot never touches the network there, so BootStatus stays "ready" and the
+ * Login screen was unreachable — while the local replica is the ONLY copy of the budget.
+ */
+function unauthorized(): UnauthorizedError {
+  enterUnauthed();
+  return new UnauthorizedError();
+}
+
+/**
  * HTTP 409 { error: "tier_mismatch", tier, epoch } — the budget is in a DIFFERENT tier
  * (or a different e2ee epoch) than the called channel assumes. It's a "switch path" signal,
  * NOT a failure: throwIfTierMismatch updates tierMeta from the body BEFORE throwing,
@@ -94,6 +107,23 @@ export class TierMismatchError extends Error {
   }
 }
 
+/**
+ * HTTP 409 { error: "budget_mismatch", budgetId } — the PER-REQUEST tenant assertion failed:
+ * the budget this replica names in the push body is not the budget the session owns. The
+ * server wrote NOTHING. Two ways to get here, and the handler (handleBudgetMismatch) tells
+ * them apart by re-verifying the session:
+ *  - the session was swapped between two batches of the SAME push loop (the cookie is shared
+ *    by all tabs, and one cycle can push many batches) — a cross-tenant write, refused,
+ *  - the same user's budget was rotated (wipe+reseed, DB restore, reattach) — a new data
+ *    epoch, which is exactly what fullResync is for.
+ */
+class BudgetMismatchError extends Error {
+  constructor(public readonly serverBudgetId: string | null) {
+    super(`budget_mismatch: ${serverBudgetId ?? "?"}`);
+    this.name = "BudgetMismatchError";
+  }
+}
+
 /** 409 tier_mismatch → update tierMeta and throw; other statuses = no-op. */
 async function throwIfTierMismatch(res: Response): Promise<void> {
   if (res.status !== 409) return;
@@ -106,6 +136,16 @@ async function throwIfTierMismatch(res: Response): Promise<void> {
     e2ee.setTierMeta({ tier: body.tier, epoch: body.epoch ?? 0 });
     throw new TierMismatchError(body.tier, body.epoch ?? 0);
   }
+}
+
+/** 409 budget_mismatch (push v1/v2) → throw; other statuses = no-op. */
+async function throwIfBudgetMismatch(res: Response): Promise<void> {
+  if (res.status !== 409) return;
+  const body = (await res
+    .clone()
+    .json()
+    .catch(() => null)) as { error?: string; budgetId?: string } | null;
+  if (body?.error === "budget_mismatch") throw new BudgetMismatchError(body.budgetId ?? null);
 }
 
 /* ── clientId (stable installation identifier — sent with push) ────────── */
@@ -335,7 +375,7 @@ function clearReplacePending(): void {
 
 export async function fetchSnapshot(): Promise<void> {
   const res = await fetch("/api/sync/snapshot");
-  if (res.status === 401) throw new UnauthorizedError();
+  if (res.status === 401) throw unauthorized();
   await throwIfTierMismatch(res); // budget in e2ee tier → v2 path (bootstrapReplica)
   if (!res.ok) throw new Error(`snapshot: ${res.status}`);
   const snap = (await res.json()) as SnapshotResponse;
@@ -366,7 +406,7 @@ async function fetchSnapshotE2ee(): Promise<"ready" | "locked"> {
   const dek = e2ee.getDek();
   if (!dek) return "locked";
   const res = await fetch("/api/sync2/snapshot");
-  if (res.status === 401) throw new UnauthorizedError();
+  if (res.status === 401) throw unauthorized();
   await throwIfTierMismatch(res); // budget flipped back to plain → v1 path (bootstrapReplica)
   if (!res.ok) throw new Error(`sync2 snapshot: ${res.status}`);
   const body = (await res.json()) as E2eeSnapshotResponse;
@@ -454,7 +494,7 @@ async function doPull(): Promise<void> {
   const budgetId = store.getBudgetId();
   if (!store.getLedger() || !budgetId) return; // before bootstrap
   const res = await fetch(`/api/sync/pull?since=${store.getCursor()}`);
-  if (res.status === 401) throw new UnauthorizedError();
+  if (res.status === 401) throw unauthorized();
   await throwIfTierMismatch(res); // budget switched to e2ee → re-bootstrap on the v2 path
   if (!res.ok) throw new Error(`pull: ${res.status}`);
   const body = (await res.json()) as PullResponse;
@@ -464,10 +504,17 @@ async function doPull(): Promise<void> {
     markResyncPending();
     return;
   }
-  if (body.changes.length > 0 || body.cursor !== store.getCursor()) {
+  if (body.changes.length > 0) {
     store.applyPulled(body.changes, body.cursor, outbox.pendingKeys()); // memory
     void persist.persistLedger(store.snapshotForPersist()); // durability on the chain
     notePeersMayNeedUpdate(); // other tabs rehydrate from IDB (BroadcastChannel)
+  } else if (body.cursor !== store.getCursor()) {
+    // The cursor is the GLOBAL `changes` sequence, so it also advances on OTHER tenants' writes
+    // (their rows are filtered out of our delta — see the pull route). Take the new cursor in
+    // memory, but do NOT re-render and do NOT rewrite the whole ledger blob in IDB for it: on a
+    // busy multi-user instance that would be constant, pointless churn. A cursor that lags in
+    // IDB costs at most one redundant (idempotent) delta after a reload.
+    store.setCursor(body.cursor);
   }
 }
 
@@ -485,7 +532,7 @@ async function doPullE2ee(dek: Uint8Array): Promise<void> {
   for (;;) {
     const epoch = e2ee.getTierMeta().epoch;
     const res = await fetch(`/api/sync2/pull?since=${store.getCursor()}&epoch=${epoch}`);
-    if (res.status === 401) throw new UnauthorizedError();
+    if (res.status === 401) throw unauthorized();
     await throwIfTierMismatch(res); // flip/epoch → re-bootstrap (catch in doCycle)
     if (!res.ok) throw new Error(`sync2 pull: ${res.status}`);
     const body = (await res.json()) as {
@@ -519,6 +566,15 @@ async function doPullE2ee(dek: Uint8Array): Promise<void> {
  * budget — the server's FK guards only reject references to ANOTHER budget's EXISTING
  * rows, never fresh creates. /sync/replace and /sync2/reset are worse still: they
  * OVERWRITE the session user's entire budget with this replica.
+ *
+ * TWO LAYERS, because this check is about a MOVING target (the cookie is shared by every tab
+ * and can be swapped mid-cycle, while one cycle makes many server writes):
+ *  1. per CYCLE — ensureIdentity() below: no write of any kind until the session's user id has
+ *     been compared with the one stamped next to the replica,
+ *  2. per REQUEST — every push body NAMES the budget it is for, and the server 409s
+ *     (budget_mismatch) when that is not the budget the session owns. The window between the
+ *     identity check and the Nth batch is thus closed at the only place that can close it
+ *     completely: the same request that carries the write.
  *
  * Therefore no server write may happen before the session's user id is compared with the
  * one stamped next to the replica (IDB meta "userId"):
@@ -637,17 +693,30 @@ type Ownership = "ours" | "unknown";
  */
 async function fetchServerBudgetId(): Promise<string | null> {
   const res = await fetch(`/api/sync/pull?since=${store.getCursor()}`);
-  if (res.status === 401) throw new UnauthorizedError();
+  if (res.status === 401) throw unauthorized();
   await throwIfTierMismatch(res);
   if (!res.ok) throw new Error(`pull: ${res.status}`);
   const body = (await res.json()) as PullResponse;
   return body.budgetId ?? null;
 }
 
+/**
+ * The budget an E2EE replica belongs to. store.getBudgetId() is set by every bootstrap, but a
+ * replica bootstrapped over sync2 against a PRE-2.0 server carries none (that snapshot did not
+ * name its budget) — the `budgets` entity inside the ledger still does, and it is exactly the id
+ * the pairing code is built from (Settings → Pairing code). "" = genuinely unknown, which is
+ * when the ownership proof has to fall back to the DEK. Deliberately NOT used on the plain path:
+ * there store.getBudgetId() is always set, and a backup import deliberately adopts the id from
+ * the file (data.ts), which the ledger fallback would then second-guess.
+ */
+function e2eeReplicaBudgetId(): string {
+  return store.getBudgetId() || store.getLedger()?.budgets?.[0]?.id || "";
+}
+
 /** The budget the SESSION owns on the v2 path + its checkpoint (a READ; no DEK needed). */
 async function fetchServerE2eeIdentity(): Promise<{ budgetId: string | null; blob: string | null }> {
   const res = await fetch("/api/sync2/snapshot");
-  if (res.status === 401) throw new UnauthorizedError();
+  if (res.status === 401) throw unauthorized();
   await throwIfTierMismatch(res);
   if (!res.ok) throw new Error(`sync2 snapshot: ${res.status}`);
   const body = (await res.json()) as E2eeSnapshotResponse;
@@ -660,12 +729,17 @@ async function fetchServerE2eeIdentity(): Promise<{ budgetId: string | null; blo
  * CONFIRM ownership ("ours" → adopt + write) or fail to ("unknown" → no write, no wipe):
  *
  *  - plain: the budgetId reported by the session's pull must equal the replica's,
- *  - e2ee : the same comparison (since 2.0 the v2 snapshot names its budget as well). For a
- *    LEGACY replica bootstrapped over sync2, which may carry no budgetId at all, the proof
- *    is the DEK that came out of IDB together with the replica: the server's checkpoint is
- *    encrypted with the budget's DEK and AES-GCM authenticates it. A DEK obtained from the
- *    server's key envelope in THIS page load (Unlock) proves nothing — it decrypts the
- *    session's budget by construction — hence e2ee.isDekFromStore().
+ *  - e2ee : the same comparison (since 2.0 the v2 snapshot names its budget as well, and a
+ *    legacy replica that has no cursor-level budgetId usually still carries one INSIDE the
+ *    ledger — see e2eeReplicaBudgetId). Only when NEITHER is available does the proof fall back
+ *    to the DEK: the server's checkpoint is encrypted with the budget's DEK and AES-GCM
+ *    authenticates it, so a key that came out of IDB TOGETHER with the replica (origin "store")
+ *    and opens the session's checkpoint says the two are the same budget. A DEK unwrapped from
+ *    the SESSION's key envelope (Unlock / enable / password change — origin "session") proves
+ *    nothing: it decrypts that session's budget by construction, whoever the replica belongs to.
+ *    Hence e2ee.isDekFromStore(), whose answer is DURABLE (e2ee.ts) — setDek() persists the key,
+ *    so without a persisted provenance one reload would turn a session key into a "store" key
+ *    and hand any signed-in user a proof for somebody else's replica.
  *
  * A mismatch does NOT mean "another account". budgetId is the replica epoch marker, not a
  * tenant id: the session's budget is lazily created when the user has none (the 2.0 upgrade
@@ -691,7 +765,8 @@ async function proveOwnership(): Promise<Ownership> {
     try {
       if (e2ee.getTierMeta().tier === "e2ee") {
         const server = await fetchServerE2eeIdentity();
-        if (local && server.budgetId) return local === server.budgetId ? "ours" : "unknown";
+        const mine = e2eeReplicaBudgetId();
+        if (mine && server.budgetId) return mine === server.budgetId ? "ours" : "unknown";
         const dek = e2ee.getDek();
         if (!dek || !e2ee.isDekFromStore() || !server.blob) return "unknown";
         try {
@@ -723,11 +798,13 @@ async function proveOwnership(): Promise<Ownership> {
  */
 async function ensureIdentity(): Promise<boolean> {
   const sessionUserId = await fetchSessionUserId(); // 5xx/network THROWS (≠ "signed out")
-  if (!sessionUserId) throw new UnauthorizedError();
+  // unauthorized() routes the app to Login — crucial for the writers OUTSIDE doCycle
+  // (assertOwnReplica / replaceServer / resetServerE2ee), which have no 401 handler of their own
+  if (!sessionUserId) throw unauthorized();
   if (identityVerifiedFor !== sessionUserId) {
     const stamped = await idbGet<string>("meta", "userId").catch(() => undefined);
     const verdict = decideIdentity(sessionUserId, stamped);
-    if (verdict === "unauthed") throw new UnauthorizedError(); // defensive (sessionUserId is set)
+    if (verdict === "unauthed") throw unauthorized(); // defensive (sessionUserId is set)
     // The ONLY destructive verdict: the stamp names another account, so the replica provably
     // is not this user's (proveOwnership never concludes that — see Ownership).
     if (verdict === "foreign") {
@@ -855,10 +932,17 @@ async function doCycle(): Promise<boolean> {
           const res = await fetch("/api/sync2/push", {
             method: "POST",
             headers: { "content-type": "application/json" },
-            body: JSON.stringify({ epoch: e2ee.getTierMeta().epoch, ops }),
+            // budgetId = the PER-REQUEST tenant assertion (see the v1 push below); a legacy
+            // replica that cannot name its budget sends none — the server then cannot check
+            body: JSON.stringify({
+              epoch: e2ee.getTierMeta().epoch,
+              budgetId: e2eeReplicaBudgetId() || undefined,
+              ops,
+            }),
           });
-          if (res.status === 401) throw new UnauthorizedError();
+          if (res.status === 401) throw unauthorized();
           await throwIfTierMismatch(res); // flip/epoch → re-bootstrap; ops STAY in the outbox
+          await throwIfBudgetMismatch(res); // not the session's budget → nothing was written
           if (!res.ok) throw new Error(`sync2 push: ${res.status}`);
           outbox.removeAcked(batch.map((en) => en.op.opId));
           notePeersMayNeedUpdate(); // canon after push → rehydrate other tabs
@@ -879,7 +963,13 @@ async function doCycle(): Promise<boolean> {
       return true;
     }
 
-    // PUSH — batches in localSeq order, while the outbox is non-empty
+    // PUSH — batches in localSeq order, while the outbox is non-empty.
+    // Every request NAMES the budget it is for (PER-REQUEST tenant assertion): the identity
+    // guard above runs ONCE per cycle, but a cycle makes N writes, and the session cookie is
+    // shared by all tabs — a sign-out+sign-in elsewhere can swap it BETWEEN two batches, and the
+    // server resolves the target budget from the cookie alone. Without the assertion the
+    // remaining batches would be applied to the NEW user's budget (fresh creates pass every FK
+    // guard). The server refuses a mismatch with 409 budget_mismatch and writes nothing.
     while (outbox.size() > 0) {
       const batch = outbox.takeBatch(PUSH_BATCH);
       try {
@@ -888,12 +978,14 @@ async function doCycle(): Promise<boolean> {
           headers: { "content-type": "application/json" },
           body: JSON.stringify({
             clientId: await getClientId(),
+            budgetId: store.getBudgetId() || undefined,
             ops: batch.map((e) => e.op),
           }),
         });
         if (!res.ok) {
-          if (res.status === 401) throw new UnauthorizedError();
+          if (res.status === 401) throw unauthorized();
           await throwIfTierMismatch(res); // budget switched to e2ee → re-bootstrap on the v2 path
+          await throwIfBudgetMismatch(res); // not the session's budget → nothing was written
           if (res.status < 500 && res.status !== 429) {
             // 4xx on the WHOLE request (broken batch) = a bug — we don't dead-letter
             console.error("sync push: unexpected 4xx", res.status, await res.text().catch(() => ""));
@@ -963,6 +1055,40 @@ async function doCycle(): Promise<boolean> {
       return false;
     }
     if (e instanceof TierMismatchError) return handleTierFlip();
+    if (e instanceof BudgetMismatchError) return handleBudgetMismatch();
+    setState(typeof navigator !== "undefined" && navigator.onLine === false ? "offline" : "error");
+    scheduleRetry();
+    return false;
+  }
+}
+
+/**
+ * 409 budget_mismatch mid-push: the server refused the batch because the budget the replica
+ * named is not the one the session owns — nothing was written. Which of the two causes it was
+ * can only be settled by RE-VERIFYING the identity from scratch (the per-cycle verdict is what
+ * the mismatch just called into question):
+ *  - the cookie was swapped mid-cycle → the stamp now names another account → foreign replica
+ *    (wipe + reload), or an unstamped replica fails its ownership proof → no write at all.
+ *    Critically, we do NOT fullResync here: that would bootstrap the OTHER user's budget and
+ *    replay this replica's outbox onto it — the very cross-tenant write we just refused.
+ *  - the same user's budget was rotated (wipe+reseed, DB restore, budget reattached after the
+ *    2.0 upgrade) → the identity still checks out → a new data epoch → fresh snapshot + replay.
+ */
+async function handleBudgetMismatch(): Promise<boolean> {
+  identityVerifiedFor = null; // the cached verdict predates the mismatch — prove it again
+  try {
+    if (!(await ensureIdentity())) return true; // foreign (wipe in flight) / unproven → no write
+    markResyncPending(); // durable: a blip must not lose the obligation (see doPull)
+    await doFullResync();
+    clearResyncPending();
+    dirty = true; // the held-up ops go out on the fresh replica immediately
+    finishSuccess();
+    return true;
+  } catch (e) {
+    if (e instanceof UnauthorizedError) {
+      enterUnauthed();
+      return false;
+    }
     setState(typeof navigator !== "undefined" && navigator.onLine === false ? "offline" : "error");
     scheduleRetry();
     return false;
@@ -1082,7 +1208,7 @@ async function replaceServer(ledger: ClientLedger): Promise<{ budgetId: string; 
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ ledger }),
   });
-  if (res.status === 401) throw new UnauthorizedError();
+  if (res.status === 401) throw unauthorized();
   await throwIfTierMismatch(res); // e2ee tier: replace v1 unavailable (import → /sync2/reset, T4)
   if (!res.ok) {
     const txt = await res.text().catch(() => "");
@@ -1139,7 +1265,7 @@ export async function resetServerE2ee(dek?: Uint8Array): Promise<void> {
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ epoch: e2ee.getTierMeta().epoch, uptoCursor: store.getCursor(), snapshotBlob }),
   });
-  if (res.status === 401) throw new UnauthorizedError();
+  if (res.status === 401) throw unauthorized();
   await throwIfTierMismatch(res); // flip meanwhile → tierMeta fresh; the cycle retries on the right path
   if (!res.ok) {
     const txt = await res.text().catch(() => "");

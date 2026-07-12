@@ -256,6 +256,16 @@ export const store = {
     bump();
   },
 
+  /**
+   * Cursor-only advance — a pull that brought no changes FOR US. The `changes` sequence is
+   * global to the instance, so it also moves on other tenants' writes (their rows are filtered
+   * out of our delta): take the number, but touch neither the ledger nor the version (no
+   * re-render) and do not persist (the caller decides — see doPull).
+   */
+  setCursor(next: number): void {
+    cursor = next;
+  },
+
   getLedger: (): ClientLedger | null => ledger,
   getCursor: (): number => cursor,
   getBudgetId: (): string | null => budgetId,

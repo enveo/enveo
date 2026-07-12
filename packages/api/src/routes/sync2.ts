@@ -17,7 +17,7 @@ import { requireTier, type BudgetMeta } from "../context";
 import { db } from "../db/client";
 import * as s from "../db/schema";
 import { wipeBudgetData, type Executor } from "../sync/apply";
-import { restoreLedger } from "./sync";
+import { budgetAssertionFails, restoreLedger } from "./sync";
 
 export const sync2Routes = new Hono();
 
@@ -25,6 +25,10 @@ export const sync2Routes = new Hono();
 
 export const sync2PushInput = z.object({
   epoch: z.number().int(),
+  /** The budget the CLIENT believes it is writing to (budgetAssertionFails — the per-REQUEST
+   *  tenant assertion; `epoch` does NOT distinguish tenants: two independently-encrypted
+   *  budgets both sit at epoch 1). Optional: a legacy replica may not know its budget. */
+  budgetId: z.string().uuid().optional(),
   ops: z
     .array(z.object({ opId: z.string().uuid(), ciphertext: z.string().min(8) }))
     .min(1)
@@ -80,6 +84,10 @@ sync2Routes.post("/sync2/push", async (c) => {
   const meta = await requireTier(c, "e2ee");
   const body = sync2PushInput.parse(await c.req.json());
   if (body.epoch !== meta.epoch) return c.json(epochMismatch(meta), 409);
+  // the session's budget is not the one this replica is pushing to → write NOTHING
+  if (budgetAssertionFails(body.budgetId, meta.id)) {
+    return c.json({ error: "budget_mismatch", budgetId: meta.id }, 409);
+  }
 
   const cursor = await db.transaction(async (tx) => {
     await tx

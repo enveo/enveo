@@ -234,14 +234,34 @@ export const txnItems = pgTable("txn_items", {
  * Change log for delta-sync. Populated EXCLUSIVELY by Postgres triggers
  * (migration 0004) — also catches FK cascades that never go through handlers.
  * op ∈ ('upsert','delete') — CHECK in the migration.
+ *
+ * budgetId (migration 0015) is the TENANT of the changed row — the trigger takes it from
+ * NEW/OLD (for `budgets` itself: the row's own id). Without it the journal was global and
+ * /sync/pull handed every tenant every other tenant's DELETE rows (table + row id + seq):
+ * upserts were content-filtered by budget, deletes were not. NULL only on pre-0015 rows that
+ * the migration could not attribute (multi-budget databases); the pull refuses to serve a
+ * delta that would silently skip them (resetRequired → snapshot).
+ *
+ * No FK to budgets on purpose: this is an append-only log, and an ON DELETE CASCADE would
+ * race the AFTER DELETE trigger that logs the budget's own removal.
  */
-export const changes = pgTable("changes", {
-  seq: bigserial("seq", { mode: "number" }).primaryKey(),
-  tableName: text("table_name").notNull(),
-  rowId: uuid("row_id").notNull(),
-  op: text("op").notNull(),
-  at: timestamp("at", { withTimezone: true, mode: "string" }).notNull().defaultNow(),
-});
+export const changes = pgTable(
+  "changes",
+  {
+    seq: bigserial("seq", { mode: "number" }).primaryKey(),
+    tableName: text("table_name").notNull(),
+    rowId: uuid("row_id").notNull(),
+    op: text("op").notNull(),
+    budgetId: uuid("budget_id"),
+    at: timestamp("at", { withTimezone: true, mode: "string" }).notNull().defaultNow(),
+  },
+  (t) => ({
+    byBudget: index("changes_budget_seq_idx").on(t.budgetId, t.seq),
+    legacy: uniqueIndex("changes_legacy_seq_idx")
+      .on(t.seq)
+      .where(sql`"budget_id" is null`),
+  }),
+);
 
 /**
  * Push idempotency — per-budget (budgetId, opId) guard (mirrors e2eeOps);
