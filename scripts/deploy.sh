@@ -25,9 +25,20 @@ if [ ! -f .env ]; then
   pass="$(openssl rand -hex 16 2>/dev/null || head -c16 /dev/urandom | base64 | tr -dc 'a-zA-Z0-9' | head -c24)"
   cp .env.example .env
   sed -i "s/^POSTGRES_PASSWORD=.*/POSTGRES_PASSWORD=${pass}/" .env
-  echo "  wrote .env (POSTGRES_PASSWORD generated)"
+  secret="$(openssl rand -hex 32)"
+  sed -i "s/^BETTER_AUTH_SECRET=.*/BETTER_AUTH_SECRET=${secret}/" .env
+  echo "  wrote .env (POSTGRES_PASSWORD and BETTER_AUTH_SECRET generated)"
 else
   echo "  .env already exists — leaving it alone."
+  if ! grep -q '^BETTER_AUTH_SECRET=..' .env; then
+    secret="$(openssl rand -hex 32)"
+    if grep -q '^BETTER_AUTH_SECRET=' .env; then
+      sed -i "s/^BETTER_AUTH_SECRET=.*/BETTER_AUTH_SECRET=${secret}/" .env
+    else
+      echo "BETTER_AUTH_SECRET=${secret}" >> .env
+    fi
+    echo "  added missing BETTER_AUTH_SECRET to .env"
+  fi
 fi
 
 # 3) Build + start
