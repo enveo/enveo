@@ -10,10 +10,28 @@ on:
 jobs:
   tests:
     runs-on: ubuntu-latest
+    services:
+      # THROWAWAY Postgres for the DB-backed api tests (sync_ops idempotency):
+      # they migrate and write, so they must never see a real database — they
+      # read TEST_DATABASE_URL only and skip when it is unset.
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: enveo
+          POSTGRES_PASSWORD: enveo
+          POSTGRES_DB: enveotest
+        ports:
+          - 5499:5432
+        options: >-
+          --health-cmd "pg_isready -U enveo"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
     env:
       # bun auto-loads .env from the repo locally — absent in CI; drizzle connections
-      # are lazy, so a dummy URL is enough (api tests are validations/pure helpers).
+      # are lazy, so a dummy URL is enough (the other api tests are validations/pure helpers).
       DATABASE_URL: postgres://ci:ci@127.0.0.1:5432/ci
+      TEST_DATABASE_URL: postgres://enveo:enveo@127.0.0.1:5499/enveotest
     steps:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2

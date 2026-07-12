@@ -47,6 +47,7 @@ import {
   wipeBudgetData,
   type Executor,
 } from "../sync/apply";
+import { claimOp } from "../sync/idempotency";
 import {
   loadClientLedger,
   mapAccount,
@@ -380,12 +381,13 @@ syncRoutes.post("/sync/push", async (c) => {
       const status = await db.transaction(async (tx) => {
         // idempotency guard in the SAME transaction as the op application;
         // a rollback (rejected) also takes the sync_ops row with it
-        const guard = await tx
-          .insert(s.syncOps)
-          .values({ opId: op.opId, budgetId, clientId: body.clientId, kind: op.kind })
-          .onConflictDoNothing({ target: [s.syncOps.budgetId, s.syncOps.opId] })
-          .returning({ opId: s.syncOps.opId });
-        if (guard.length === 0) return "duplicate" as const;
+        const fresh = await claimOp(tx, {
+          opId: op.opId,
+          budgetId,
+          clientId: body.clientId,
+          kind: op.kind,
+        });
+        if (!fresh) return "duplicate" as const;
         await applyOp(tx, budgetId, op.kind as OpKind, parsed.data);
         return "applied" as const;
       });
