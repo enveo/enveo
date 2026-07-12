@@ -382,8 +382,8 @@ syncRoutes.post("/sync/push", async (c) => {
         // a rollback (rejected) also takes the sync_ops row with it
         const guard = await tx
           .insert(s.syncOps)
-          .values({ opId: op.opId, clientId: body.clientId, kind: op.kind })
-          .onConflictDoNothing()
+          .values({ opId: op.opId, budgetId, clientId: body.clientId, kind: op.kind })
+          .onConflictDoNothing({ target: [s.syncOps.budgetId, s.syncOps.opId] })
           .returning({ opId: s.syncOps.opId });
         if (guard.length === 0) return "duplicate" as const;
         await applyOp(tx, budgetId, op.kind as OpKind, parsed.data);

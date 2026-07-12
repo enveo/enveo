@@ -10,6 +10,7 @@ import {
   text,
   timestamp,
   unique,
+  uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
 
@@ -241,13 +242,24 @@ export const changes = pgTable("changes", {
   at: timestamp("at", { withTimezone: true, mode: "string" }).notNull().defaultNow(),
 });
 
-/** Push idempotency — opId guard; rejected does NOT leave a row (rollback). */
-export const syncOps = pgTable("sync_ops", {
-  opId: uuid("op_id").primaryKey(),
-  clientId: text("client_id").notNull(),
-  kind: text("kind").notNull(),
-  appliedAt: timestamp("applied_at", { withTimezone: true, mode: "string" }).notNull().defaultNow(),
-});
+/**
+ * Push idempotency — per-budget (budgetId, opId) guard (mirrors e2eeOps);
+ * rejected does NOT leave a row (rollback). budgetId is nullable only for
+ * pre-0014 rows that could not be backfilled (multi-budget databases).
+ */
+export const syncOps = pgTable(
+  "sync_ops",
+  {
+    opId: uuid("op_id").notNull(),
+    budgetId: uuid("budget_id"),
+    clientId: text("client_id").notNull(),
+    kind: text("kind").notNull(),
+    appliedAt: timestamp("applied_at", { withTimezone: true, mode: "string" }).notNull().defaultNow(),
+  },
+  (t) => ({
+    uniqOp: uniqueIndex("sync_ops_budget_op_uniq").on(t.budgetId, t.opId),
+  }),
+);
 
 /** Encrypted operation log (sync2/E2EE) — the server stores ciphertexts only. */
 export const e2eeOps = pgTable(
