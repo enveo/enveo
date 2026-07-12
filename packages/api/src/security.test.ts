@@ -65,3 +65,41 @@ describe("origin-guard (CSRF)", () => {
   // The generic onError 500 case is deliberately omitted: without a live DB there is
   // no environment-independent way to deterministically force an exception in a handler.
 });
+
+describe("better-auth trusted origins (login CSRF)", () => {
+  // better-auth validates browser auth POSTs against ITS OWN trustedOrigins,
+  // not the app origin-guard above (which skips /api/auth/*). These run the
+  // REAL better-auth check: auth.ts sets advanced.disableOriginCheck: false,
+  // because better-auth silently disables the check under NODE_ENV=test —
+  // the exact gap that let a baseURL-only trust list pass unit tests while
+  // 403-ing every real browser whose origin differed from BETTER_AUTH_URL.
+  // Origin validation rejects BEFORE the handler → no DB needed for the 403;
+  // the non-403 cases may hit the DB and fail later (401/500), which is fine.
+  function signIn(headers: Record<string, string>, host = "localhost") {
+    return app.fetch(
+      new Request(`http://${host}/api/auth/sign-in/email`, {
+        method: "POST",
+        headers: { "content-type": "application/json", host, ...headers },
+        body: JSON.stringify({ email: "a@example.com", password: "password123" }),
+      }),
+    );
+  }
+
+  it("foreign Origin → 403 (better-auth INVALID_ORIGIN)", async () => {
+    const res = await signIn({ origin: EVIL, "sec-fetch-site": "cross-site", "sec-fetch-mode": "cors" });
+    expect(res.status).toBe(403);
+  });
+
+  it("same-host Origin (host ≠ BETTER_AUTH_URL, e.g. LAN IP) → non-403", async () => {
+    const res = await signIn(
+      { origin: "http://192.168.1.7:8081", "sec-fetch-site": "same-origin", "sec-fetch-mode": "cors" },
+      "192.168.1.7:8081",
+    );
+    expect(res.status).not.toBe(403);
+  });
+
+  it("allowlisted origin (dev vite) on a different host → non-403", async () => {
+    const res = await signIn({ origin: ALLOWED, "sec-fetch-site": "same-site", "sec-fetch-mode": "cors" });
+    expect(res.status).not.toBe(403);
+  });
+});
