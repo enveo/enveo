@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm";
 import {
   bigint,
   bigserial,
@@ -244,8 +245,11 @@ export const changes = pgTable("changes", {
 
 /**
  * Push idempotency — per-budget (budgetId, opId) guard (mirrors e2eeOps);
- * rejected does NOT leave a row (rollback). budgetId is nullable only for
- * pre-0014 rows that could not be backfilled (multi-budget databases).
+ * rejected does NOT leave a row (rollback). budgetId is nullable ONLY for
+ * pre-0014 rows that migration 0014 could not backfill (multi-budget
+ * databases); every row written since carries it. Because NULLs are DISTINCT
+ * in a unique index, those legacy rows are deduped by the partial unique index
+ * below and treated as already-applied by the push guard (sync/idempotency.ts).
  */
 export const syncOps = pgTable(
   "sync_ops",
@@ -258,6 +262,9 @@ export const syncOps = pgTable(
   },
   (t) => ({
     uniqOp: uniqueIndex("sync_ops_budget_op_uniq").on(t.budgetId, t.opId),
+    uniqLegacyOp: uniqueIndex("sync_ops_legacy_op_uniq")
+      .on(t.opId)
+      .where(sql`"budget_id" is null`),
   }),
 );
 
