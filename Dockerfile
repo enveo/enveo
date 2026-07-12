@@ -23,4 +23,4 @@ ENV WEB_DIST=/app/packages/web/dist
 COPY --from=build /app /app
 
 EXPOSE 8080
-CMD ["sh", "-c", "bun packages/api/src/db/migrate.ts && bun packages/api/src/db/ensure-seed.ts && bun packages/api/src/index.ts"]
+CMD ["sh", "-c", "bun packages/api/src/db/migrate.ts && bun packages/api/src/index.ts"]

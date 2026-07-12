@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { signupsOpen } from "./authPolicy";
+import { authMetaBody, signupsOpen } from "./authPolicy";
 
 const base = { deployment: "selfhost" as const, allowSignups: "", hasCredentialedUser: true };
 
@@ -15,5 +15,13 @@ describe("signupsOpen", () => {
   });
   it("cloud: always open", () => {
     expect(signupsOpen({ ...base, deployment: "cloud" })).toBe(true);
+  });
+});
+
+describe("authMetaBody", () => {
+  it("exposes exactly signupsOpen/firstRun/providers and nothing else", () => {
+    const b = authMetaBody({ deployment: "selfhost", allowSignups: "", hasCredentialedUser: false }, true);
+    expect(b).toEqual({ signupsOpen: true, firstRun: true, providers: { google: true } });
+    expect(Object.keys(b).sort()).toEqual(["firstRun", "providers", "signupsOpen"]);
   });
 });
