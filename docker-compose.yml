@@ -32,6 +32,14 @@ services:
       PORT: 8080
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       OPENAI_MODEL: ${OPENAI_MODEL:-gpt-5.5}
+      # auth (mandatory accounts): the API refuses to boot without a session secret
+      BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:-}
+      BETTER_AUTH_URL: ${BETTER_AUTH_URL:-http://localhost:8080}
+      DEPLOYMENT: ${DEPLOYMENT:-selfhost}
+      ALLOW_SIGNUPS: ${ALLOW_SIGNUPS:-}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-}
     healthcheck:
       test: ["CMD", "bun", "-e", "const r=await fetch('http://127.0.0.1:8080/api/health');process.exit(r.ok?0:1)"]
       interval: 10s
