@@ -7,7 +7,12 @@
  * Guards: every route requires tier 'e2ee' (409 tier_mismatch via
  * app.onError), and the push/pull/snapshot channels additionally require a
  * matching `epoch` (bumped on enable/disable) — a client from a previous
- * epoch gets a 409 and knows it must do a full bootstrap.
+ * epoch gets a 409 and knows it must do a full bootstrap. Every WRITE channel
+ * additionally carries a per-request tenant assertion (budgetId on push,
+ * userId on the routes that overwrite a whole budget: snapshot, reset, rekey,
+ * enable, disable) — the target budget is resolved from the session cookie
+ * alone, the cookie is shared by every tab on the device, and `epoch` does NOT
+ * distinguish tenants (two independently-encrypted budgets both sit at epoch 1).
  */
 import { clientLedgerSchema } from "@enveo/shared";
 import { and, eq, gt, sql as dsql } from "drizzle-orm";
@@ -35,18 +40,19 @@ export const sync2PushInput = z.object({
     .max(500),
 });
 
-export const sync2SnapshotInput = z.object({
-  epoch: z.number().int(),
-  uptoSeq: z.number().int().min(0),
-  blob: z.string().min(1),
-});
-
 /**
  * The tenant the CLIENT verified right before the upload (ownerAssertionFails — the per-REQUEST
  * assertion for the full-budget OVERWRITE routes; `epoch` does NOT distinguish tenants, and this
  * file's own routes say so). Optional: a pre-2.0 client omits it.
  */
 const ownerAssertion = { userId: z.string().min(1).optional() };
+
+export const sync2SnapshotInput = z.object({
+  ...ownerAssertion,
+  epoch: z.number().int(),
+  uptoSeq: z.number().int().min(0),
+  blob: z.string().min(1),
+});
 
 export const e2eeEnableInput = z.object({
   ...ownerAssertion,
@@ -163,6 +169,14 @@ sync2Routes.post("/sync2/snapshot", async (c) => {
   const meta = await requireTier(c, "e2ee");
   const body = sync2SnapshotInput.parse(await c.req.json());
   if (body.epoch !== meta.epoch) return c.json(epochMismatch(meta), 409);
+  // PER-REQUEST tenant assertion — this route UPSERTS the resolved budget's only checkpoint,
+  // overwriting both `blob` and `uptoSeq`, and it is the one e2ee write channel a client fires
+  // in the BACKGROUND (maybeUploadSnapshot, fire-and-forget, seconds after the client's identity
+  // check): a cookie swapped mid-cycle would drop THIS device's ciphertext (encrypted with the
+  // other budget's DEK) onto the session budget's checkpoint — its owner's next new-device
+  // bootstrap would then fail to decrypt, and the stale uptoSeq would skip journal rows. `epoch`
+  // cannot catch it: two independently-encrypted budgets both sit at epoch 1.
+  if (ownerAssertionFails(body.userId, sessionUserId(c))) return c.json(ownerMismatch(meta.id), 409);
 
   await db
     .insert(s.e2eeSnapshots)

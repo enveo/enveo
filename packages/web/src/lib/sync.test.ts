@@ -34,6 +34,7 @@ import * as outbox from "./outbox";
 import * as persist from "./persist";
 import { store } from "./store";
 import {
+  __resetBackoff,
   __resetIdentity,
   __resetObligations,
   __setLocalMode,
@@ -46,6 +47,7 @@ import {
   enterLoginKeepingReplica,
   pushLocalToServer,
   resetServerE2ee,
+  retryBoot,
   syncNow,
 } from "./sync";
 
@@ -88,13 +90,22 @@ let serverBlob: string | null = null;
  
 let serverHasData = false;
  
+let serverE2eeCursor = 0;
+ 
+let offline = false;
+ 
 let writes: Record<string, string[]> = {};
  
 let onPush: (() => void) | null = null;
+/** Runs when a PULL arrives — lets a test swap the session mid-cycle with an EMPTY outbox (the
+ *  steady state: the push loop is skipped entirely, so its per-request assertion never fires). */
+let onPull: (() => void) | null = null;
  
 let onOverwrite: (() => void) | null = null;
  
 let overwriteOwners: (string | undefined)[] = [];
+ 
+let snapshotUploads: { userId?: string; uptoSeq: number }[] = [];
 const realFetch = globalThis.fetch;
 const json = (body: unknown): Response =>
   new Response(JSON.stringify(body), { status: 200, headers: { "content-type": "application/json" } });
@@ -143,17 +154,32 @@ beforeEach(async () => {
   serverIsPlain = false;
   serverBlob = null;
   serverHasData = false;
+  serverE2eeCursor = 0;
+  offline = false;
   writes = {};
   onPush = null;
+  onPull = null;
   onOverwrite = null;
   overwriteOwners = [];
+  snapshotUploads = [];
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
     calls.push(url);
+    if (offline) throw new TypeError("offline"); // network failure — NOT a "signed out" answer
     if (url.startsWith("/api/auth/get-session")) return json(session);  
     if (url.startsWith("/api/sync2/")) {
       if (serverIsPlain) return tierMismatch();
       if (url.startsWith("/api/sync2/snapshot")) {
+        
+
+        if (init?.method === "POST") {
+          const body = JSON.parse(String(init.body ?? "{}")) as { userId?: string; uptoSeq: number };
+          snapshotUploads.push(body);
+          const refused = ownerMismatch(body.userId);
+          if (refused) return refused;
+          writes[serverBudget] = [...wrote(serverBudget), "snapshot"];
+          return json({ epoch: 1, uptoSeq: body.uptoSeq });
+        }
         return json({ budgetId: serverBudget, epoch: 1, wrappedDek: null, kdfParams: null, uptoSeq: 0, blob: serverBlob });
       }
       if (url.startsWith("/api/sync2/push")) {
@@ -167,7 +193,10 @@ beforeEach(async () => {
         onPush?.();  
         return json({ cursor: 1, epoch: 1 });
       }
-      if (url.startsWith("/api/sync2/pull")) return json({ cursor: 0, epoch: 1, ops: [] });
+      if (url.startsWith("/api/sync2/pull")) {
+        onPull?.();  
+        return json({ cursor: serverE2eeCursor, epoch: 1, ops: [] });
+      }
       if (url.startsWith("/api/sync2/reset")) {
         const body = JSON.parse(String(init?.body ?? "{}")) as { userId?: string };
         overwriteOwners.push(body.userId);
@@ -194,6 +223,7 @@ beforeEach(async () => {
       return json({ budgetId: serverBudget, cursor: 0, ...(serverHasData ? nonEmptyLedger() : emptyLedger()) });
     }
     if (url.startsWith("/api/sync/pull")) {
+      onPull?.();  
       return json({ budgetId: serverBudget, cursor: 0, resetRequired: false, changes: [] });
     }
     if (url.startsWith("/api/sync/replace")) {
@@ -215,10 +245,12 @@ beforeEach(async () => {
 
   __resetIdentity();
   __resetObligations();
+  __resetBackoff();
   __setLocalMode("off");
   outbox.clearAll();
   e2ee.__resetDekForTests();
   e2ee.clearDek();
+  e2ee.resetOpsCounter();  
   e2ee.setTierMeta({ tier: "plain", epoch: 0 });
   await clearLocalData();  
   store.replace(emptyLedger(), 0, BUDGET_A);  
@@ -228,6 +260,7 @@ beforeEach(async () => {
 });
 
 afterEach(() => {
+  __resetBackoff();  
   globalThis.fetch = realFetch;
   delete (globalThis as { location?: unknown }).location;
 });
@@ -618,6 +651,202 @@ describe("sync push: the per-request tenant assertion", () => {
     expect(store.getBudgetId()).toBe(BUDGET_B);
     expect(outbox.size()).toBe(0);
     expect(reloads).toBe(0);  
+  });
+});
+
+
+
+
+
+
+
+
+
+
+
+describe("sync pull: a resync never replaces the mirror on an unverified session", () => {
+  it("the cookie is swapped mid-cycle (EMPTY outbox) → A's replica is NOT overwritten by B's", async () => {
+    await idbPut("meta", "user-A", "userId");
+    session = { user: { id: "user-A" } };
+    expect(outbox.size()).toBe(0); 
+
+
+    onPull = () => {
+      session = { user: { id: "user-B" } };
+      serverBudget = BUDGET_B;
+      onPull = null;
+    };
+
+    await syncNow("interval");
+
+    expect(called("/api/sync/snapshot")).toBe(false); // B's ledger is never even fetched…
+    expect(store.getBudgetId()).toBe(BUDGET_A);  
+    expect(store.getBootStatus()).toBe("foreign");  
+    expect(reloads).toBe(0);  
+    await persist.flushed();
+    expect(await idbGet("meta", "budgetId")).toBe(BUDGET_A);  
+    expect(await idbGet<string>("meta", "userId")).toBe("user-A");
+  });
+
+  it("same user, budget rotated (reseed / restore) → the pull-side resync still runs", async () => {
+    // The very same signal from the legitimate cause: it must NOT become a permanent refusal.
+    await idbPut("meta", "user-A", "userId");
+    session = { user: { id: "user-A" } };
+    serverBudget = BUDGET_B; // the user's own budget id changed under the replica (new data epoch)
+
+    await syncNow("interval");
+
+    expect(called("/api/sync/snapshot")).toBe(true);  
+    expect(store.getBudgetId()).toBe(BUDGET_B);
+    expect(store.getBootStatus()).toBe("ready");
+    expect(reloads).toBe(0);
+  });
+});
+
+/* ── BOOT is the READ side: the app must not render a foreign replica ─────
+ *
+ * boot() hydrates from IDB and sets BootStatus "ready" BEFORE the first cycle runs, so the guard
+ * that protects writes cannot protect the screen. The ways a device changes hands are routine (a
+ * 90-day cookie expires → Login; sign-out keeps the replica → Login; the next account signs in),
+ * and in local mode doCycle bails before ensureIdentity ever runs — there the window would never
+ * close at all. */
+
+describe("sync boot: the replica's owner is checked BEFORE it is rendered", () => {
+  it("another account signed in → ForeignReplicaScreen, not the previous owner's budget", async () => {
+    await idbPut("meta", "user-A", "userId");
+    session = { user: { id: "user-B" } };
+
+    await retryBoot();
+
+    expect(store.getBootStatus()).toBe("foreign"); // App never renders A's ledger to B
+    expect(called("/api/sync/snapshot")).toBe(false); // …and B's data is not bootstrapped over it
+    expect(reloads).toBe(0);
+    expect(await idbGet("meta", "ledger")).toBeDefined();  
+  });
+
+  it("the session expired → Login BEFORE the data is on screen (replica + outbox preserved)", async () => {
+    await idbPut("meta", "user-A", "userId");
+    outbox.add(catOp());
+    session = null;  
+
+    await retryBoot();
+
+    expect(store.getBootStatus()).toBe("unauthed");  
+    expect(outbox.size()).toBe(1);  
+    expect(await idbGet("meta", "ledger")).toBeDefined();
+  });
+
+  it("the same account → the replica boots normally (the check is not a new refusal)", async () => {
+    await idbPut("meta", "user-A", "userId");
+    session = { user: { id: "user-A" } };
+
+    await retryBoot();
+
+    expect(store.getBootStatus()).toBe("ready");
+  });
+
+  it("no owner stamp (a fresh install / pre-guard replica) → boot is untouched", async () => {
+    session = { user: { id: "user-A" } };
+
+    await retryBoot();
+
+    expect(store.getBootStatus()).toBe("ready");
+    expect(called("/api/auth/get-session")).toBe(true);  
+  });
+
+  it("OFFLINE: the owner cannot be verified → local-first wins, the replica is shown", async () => {
+    // Being offline is not being somebody else. A boot that refuses to show the replica would be
+    // its own kind of data loss (it can be the last copy) — the first cycle that REACHES the
+    // server enforces the verdict instead.
+    await idbPut("meta", "user-A", "userId");
+    session = { user: { id: "user-A" } };
+    offline = true; // get-session THROWS (network), it does not answer "no session"
+
+    await retryBoot();
+    await syncNow("drain");  
+
+    expect(store.getBootStatus()).toBe("ready");
+  });
+
+  it("LOCAL MODE + another account → foreign (no cycle ever runs there to catch it)", async () => {
+    
+
+    __setLocalMode("paused");
+    await idbPut("meta", "user-A", "userId");
+    session = { user: { id: "user-B" } };
+
+    await retryBoot();
+
+    expect(store.getBootStatus()).toBe("foreign");
+    expect(await idbGet("meta", "ledger")).toBeDefined(); // …blocked, not destroyed
+  });
+
+  it("LOCAL MODE + no session → the replica still boots (the server may be gone for good)", async () => {
+    
+
+
+    __setLocalMode("wiped");
+    await idbPut("meta", "user-A", "userId");
+    session = null;
+
+    await retryBoot();
+
+    expect(store.getBootStatus()).toBe("ready");
+    expect(called("/api/sync/snapshot")).toBe(false);  
+  });
+});
+
+/* ── The e2ee CHECKPOINT upload is a full-budget write too ────────────────
+ *
+ * POST /sync2/snapshot UPSERTs the resolved budget's only checkpoint (blob AND uptoSeq) and the
+ * client fires it FIRE-AND-FORGET from the pull, i.e. at the very end of a cycle — the widest
+ * window there is for a cookie swapped in another tab. `epoch` cannot catch it: two
+ * independently-encrypted budgets both sit at epoch 1. Dropping A's ciphertext into B's
+ * checkpoint destroys B's new-device bootstrap (their DEK cannot decrypt it) and skips journal
+ * rows (stale uptoSeq). So the upload names the tenant the cycle verified. */
+
+describe("sync e2ee: the checkpoint upload carries the verified owner", () => {
+  const e2eeReplicaDue = () => {
+    e2ee.setTierMeta({ tier: "e2ee", epoch: 1 });
+    e2ee.setDek(generateDek());
+    e2ee.noteOpsSeen(e2ee.SNAPSHOT_EVERY_OPS);  
+    serverE2eeCursor = 5;  
+  };
+  /** The upload is fire-and-forget BY DESIGN (it must not block the cycle) — let it land. */
+  const uploaded = async () => {
+    for (let i = 0; i < 100 && snapshotUploads.length === 0; i++) {
+      await new Promise((r) => setTimeout(r, 5));
+    }
+  };
+
+  it("a stable session: the checkpoint lands in the session's own budget", async () => {
+    await idbPut("meta", "user-A", "userId");
+    session = { user: { id: "user-A" } };
+    e2eeReplicaDue();
+
+    await syncNow("interval");
+    await uploaded();
+
+    expect(snapshotUploads).toHaveLength(1);
+    expect(snapshotUploads[0]?.userId).toBe("user-A"); // the tenant the cycle verified travels along
+    expect(wrote(BUDGET_A)).toEqual(["snapshot"]);
+  });
+
+  it("the cookie is swapped mid-cycle → B's checkpoint is NOT overwritten with A's ciphertext", async () => {
+    await idbPut("meta", "user-A", "userId");
+    session = { user: { id: "user-A" } };
+    e2eeReplicaDue();
+    onPull = () => {
+      session = { user: { id: "user-B" } };  
+      serverBudget = BUDGET_B;
+      onPull = null;
+    };
+
+    await syncNow("interval");
+    await uploaded();
+
+    expect(snapshotUploads[0]?.userId).toBe("user-A");  
+    expect(wrote(BUDGET_B)).toEqual([]);  
   });
 });
 
