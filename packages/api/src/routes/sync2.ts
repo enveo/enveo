@@ -125,6 +125,10 @@ sync2Routes.get("/sync2/snapshot", async (c) => {
     .from(s.e2eeSnapshots)
     .where(eq(s.e2eeSnapshots.budgetId, meta.id));
   return c.json({
+    // The session's budget, named: the v2 channel is otherwise budget-blind, and the client's
+    // multi-tenant guard must be able to tell whether the local replica IS this budget before
+    // it pushes anything (an unstamped replica of another account must never write here).
+    budgetId: meta.id,
     epoch: meta.epoch,
     wrappedDek: budget?.wrappedDek ?? null,
     kdfParams: budget?.kdfParams ?? null,

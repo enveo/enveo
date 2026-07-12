@@ -125,12 +125,16 @@ export const api = {
   e2eeDisable: (b: { confirm: string; ledger: ClientLedger }) =>
     http<{ epoch: number }>("POST", "/budget/e2ee/disable", b),
   e2eeRekey: (b: { wrappedDek: string; kdfParams: string }) => http<{ epoch: number }>("POST", "/sync2/rekey", b),
-  /** GET /sync2/snapshot — the key envelope (password verification on change) + checkpoint. */
+  /** GET /sync2/snapshot — the session's budgetId + key envelope (password verification on change) + checkpoint. */
   e2eeSnapshot: () =>
-    http<{ epoch: number; wrappedDek: string | null; kdfParams: string | null; uptoSeq: number; blob: string | null }>(
-      "GET",
-      "/sync2/snapshot",
-    ),
+    http<{
+      budgetId: string;
+      epoch: number;
+      wrappedDek: string | null;
+      kdfParams: string | null;
+      uptoSeq: number;
+      blob: string | null;
+    }>("GET", "/sync2/snapshot"),
 };
 
 /* ── Hooks ──────────────────────────────────────────────────────────── */

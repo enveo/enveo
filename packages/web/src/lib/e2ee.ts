@@ -38,6 +38,7 @@ export const SNAPSHOT_EVERY_OPS = 200;
 /* ── Module state (hydrated from IDB meta at boot) ────────────────────── */
 
 let dek: Uint8Array | null = null;
+let dekFromStore = false; // the DEK came from IDB WITH the replica (not from the server in this page load)
 let tierMeta: TierMeta = { tier: "plain", epoch: 0 };
 let opsSinceSnap = 0;
 
@@ -60,6 +61,7 @@ export function hydrate(): Promise<void> {
       // structured clone preserves Uint8Array; defensively accept ArrayBuffer too
       if (d instanceof Uint8Array) dek = d;
       else if (d instanceof ArrayBuffer) dek = new Uint8Array(d);
+      if (dek) dekFromStore = true; // hydrated together with the replica → bound to it
       if (t === "plain" || t === "e2ee") tierMeta = { tier: t, epoch: e ?? 0 };
       opsSinceSnap = n ?? 0;
     })();
@@ -75,15 +77,26 @@ export function hydrate(): Promise<void> {
 
 export const getDek = (): Uint8Array | null => dek;
 
+/**
+ * Was the in-memory DEK loaded from IDB at boot — i.e. did it arrive TOGETHER with the local
+ * replica — rather than being derived from the server's key envelope in THIS page load
+ * (Unlock / enable)? Only the former says anything about WHO the replica belongs to: a DEK
+ * unwrapped from the session budget's envelope decrypts that budget by construction, no
+ * matter whose replica sits on the device. The multi-tenant guard in sync.ts relies on this.
+ */
+export const isDekFromStore = (): boolean => dekFromStore;
+
 /** Remember the DEK (memory + IDB meta, best-effort on the persist chain). */
 export function setDek(next: Uint8Array): void {
   dek = next;
+  dekFromStore = false; // obtained in THIS page load (Unlock/enable) — not a proof of ownership
   void persist.putMeta("e2eeDek", next);
 }
 
 /** Remove the DEK (disabling E2EE / "forget the key"). */
 export function clearDek(): void {
   dek = null;
+  dekFromStore = false;
   void persist.putMeta("e2eeDek", null);
 }
 
