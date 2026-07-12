@@ -6,6 +6,16 @@ import type { Executor } from "./sync/apply";
  
 type UserCtx = { get: (k: "userId") => string | undefined } | null;
 
+
+
+
+
+
+
+export function sessionUserId(c: UserCtx): string | undefined {
+  return c?.get("userId");
+}
+
 /**
  * Accounts are mandatory: the budget belongs to the session user (userId set by
  * the session middleware in index.ts); no budget ⇒ lazy-create an empty one
