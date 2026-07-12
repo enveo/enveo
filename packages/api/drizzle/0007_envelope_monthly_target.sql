@@ -1,0 +1,1 @@
+ALTER TABLE "envelopes" ADD COLUMN "monthly_target" bigint;

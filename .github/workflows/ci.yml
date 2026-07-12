@@ -1,0 +1,39 @@
+# CI: unit/property tests + web build + Docker image build.
+# E2E (agent-browser) deliberately outside CI — they run locally on a throwaway stack.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    env:
+      # bun auto-loads .env from the repo locally — absent in CI; drizzle connections
+      # are lazy, so a dummy URL is enough (api tests are validations/pure helpers).
+      DATABASE_URL: postgres://ci:ci@127.0.0.1:5432/ci
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.3.14"
+      - run: bun install --frozen-lockfile
+      - name: Shared tests
+        run: bun test packages/shared
+      - name: Api tests
+        run: bun test packages/api
+      - name: Web/lib tests
+        run: bun test packages/web/src/lib
+      - name: Build web (PWA)
+        run: bun run build:web
+
+  docker:
+    # Catches a class of problems invisible in tests (e.g. a dependency outside
+    # dependencies → frozen-lockfile in the image fails; historical failure mode).
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build prod image
+        run: docker build -t enveo-ci .

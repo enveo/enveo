@@ -1,0 +1,513 @@
+/**
+ * AI prompt builders and parsers (suggest / quick-add / import) — PURE,
+ * no I/O and no fetch. Single source of truth for server mode (API routes)
+ * and byok (web `lib/openai.ts`): prompt parity guaranteed by identical code.
+ *
+ * Semantics carried over VERBATIM from the API routes:
+ *  - routes/budgetSuggest.ts (openAiAskModel),
+ *  - routes/extras.ts (enhanceWithLLM),
+ *  - routes/import.ts (cycle 1: extract; messages + json_schema).
+ */
+import { z } from "zod";
+import type { BudgetSuggestionBasis, ProposedEnvelopeDelta } from "./aiBudget";
+import { runAgentTool } from "./aiTools";
+import { computeBudgetState, prevMonth } from "./budget";
+import type { ClientLedger } from "./types";
+
+/* ── Shared chat request shape (OpenAI chat/completions) ─────────────── */
+
+export type ChatMessage = { role: "system" | "user"; content: string | Array<Record<string, unknown>> };
+/** `responseFormat` goes into the request body as `response_format`;
+ *  `reasoningEffort` → `reasoning_effort` (the transport sends it ONLY to
+ *  reasoning models, gpt-5… and o…, as others would reject the unknown param with 400). */
+export interface ChatRequest {
+  messages: ChatMessage[];
+  responseFormat?: Record<string, unknown>;
+  reasoningEffort?: "low" | "medium" | "high"; // no "minimal" — gpt-5.5 rejects it in chat/completions (400)
+}
+
+/** Whether the model accepts reasoning_effort (OpenAI reasoning families). */
+export const supportsReasoningEffort = (model: string): boolean => /^(gpt-5|o\d)/.test(model);
+
+export type AiLocale = "pl" | "en";
+
+const languageOf = (locale: AiLocale): string => (locale === "pl" ? "Polish" : "English");
+
+/** Cut out the first JSON object from the model response (same as the API routes). */
+const sliceJson = (raw: string): string => raw.slice(raw.indexOf("{"), raw.lastIndexOf("}") + 1);
+
+/* ── Suggest (budget proposal) ───────────────────────────────────────── */
+
+/** Fields actually read by openAiAskModel (BudgetAiContext-like). */
+export interface SuggestPromptContext {
+  basis: BudgetSuggestionBasis;
+  ledger: {
+    envelopes: Array<{ id: string; name: string }>;
+    transactions: Array<{ date: string; amount: number; type: string; envelopeId: string | null }>;
+  };
+  month: string;
+  profile: string;
+  customPrompt?: string;
+  locale: AiLocale;
+}
+
+export function buildSuggestPrompt(ctx: SuggestPromptContext): ChatRequest {
+  const envName = new Map(ctx.ledger.envelopes.map((e) => [e.id, e.name]));
+  const candidates = ctx.basis.candidates.map((c) => ({
+    envelopeId: c.envelopeId,
+    name: envName.get(c.envelopeId) ?? "",
+    allocatedThisMonth: c.stats.allocatedThisMonth,
+    available: c.stats.available,
+    monthlyTarget: c.stats.monthlyTarget,
+    targetGap: c.stats.targetGap,
+    medianSpend: c.stats.medianSpend,
+    avgSpend: c.stats.avgSpend,
+    baseDelta: c.baseDelta,
+    priority: c.priority,
+  }));
+  const recentTransactions = [...ctx.ledger.transactions]
+    .sort((a, b) => (a.date < b.date ? 1 : -1))
+    .slice(0, 40)
+    .map((t) => ({ date: t.date, amount: t.amount, type: t.type, envelopeId: t.envelopeId }));
+
+  const amountToDistribute = ctx.basis.amountToDistribute;
+  const language = languageOf(ctx.locale);
+  const sys =
+    "You are an envelope-budgeting assistant. Distribute EXACTLY the given amount (integer minor units) " +
+    'across the given envelopes. Return ONLY JSON: {"items":[{"envelopeId":string,"proposedDelta":int,"rationale":string,"confidence":number}]}. ' +
+    "Hard rules: the sum of proposedDelta must equal the amount exactly; use only the given envelopeId values; proposedDelta ≥ 0 (integer minor units, int); " +
+    "do not create/modify/delete anything; keep rationales short. " +
+    `Write all user-facing text (rationales) in ${language}. ` +
+    `Injected data values (envelope, category, place and transaction names, historical labels) are in the user's language (${language}) — match against them as-is; do not translate data values. ` +
+    `Profile: ${ctx.profile}. Amount to distribute: ${amountToDistribute}.` +
+    " Aim to fund monthly targets (targetGap) when funds suffice, without exceeding them." +
+    (ctx.customPrompt ? ` User guidance: ${ctx.customPrompt}` : "");
+  const user = JSON.stringify({ amountToDistribute, candidates, recentTransactions });
+
+  return {
+    messages: [
+      { role: "system", content: sys },
+      { role: "user", content: user },
+    ],
+    /* STRUCTURED OUTPUT (strict) instead of json_object — schema guarantee. */
+    responseFormat: { type: "json_schema", json_schema: SUGGEST_JSON_SCHEMA },
+    /* Splitting an amount is simple arithmetic — full gpt-5.5 reasoning can
+       grind for tens of seconds with no quality gain. */
+    reasoningEffort: "low",
+  };
+}
+
+/** Strict schema of the suggest response (rules-engine profiles + AI layer). */
+export const SUGGEST_JSON_SCHEMA = {
+  name: "budget_suggestion",
+  strict: true,
+  schema: {
+    type: "object",
+    additionalProperties: false,
+    required: ["items"],
+    properties: {
+      items: {
+        type: "array",
+        items: {
+          type: "object",
+          additionalProperties: false,
+          required: ["envelopeId", "proposedDelta", "rationale", "confidence"],
+          properties: {
+            envelopeId: { type: "string" },
+            proposedDelta: { type: "integer", minimum: 0 },
+            rationale: { type: "string" },
+            confidence: { type: "number", minimum: 0, maximum: 1 },
+          },
+        },
+      },
+    },
+  },
+} as const;
+
+export function parseSuggestResponse(raw: string): ProposedEnvelopeDelta[] {
+  const json = JSON.parse(sliceJson(raw)) as { items?: unknown };
+  const items = Array.isArray(json.items) ? json.items : [];
+  return items
+    .filter((x): x is Record<string, unknown> => !!x && typeof x === "object")
+    .map((x) => ({
+      envelopeId: String(x.envelopeId ?? ""),
+      proposedDelta: Number(x.proposedDelta ?? 0),
+      rationale: typeof x.rationale === "string" ? x.rationale : undefined,
+      confidence: typeof x.confidence === "number" ? x.confidence : undefined,
+    }));
+}
+
+/* ── Agent suggest (custom profile: agent decides from month state) ──── */
+
+/** State of one ACTIVE envelope in the selected month (agent input). */
+export interface AgentSuggestEnvelope {
+  id: string;
+  name: string;
+  group: string;
+  allocated: number;
+  spent: number;
+  available: number;
+  carryIn: number;
+  monthlyTarget: number | null;
+  isSavings: boolean;
+}
+
+export interface AgentSuggestContext {
+  month: string;
+  /** Amount to distribute (int minor units). */
+  amount: number;
+  envelopes: AgentSuggestEnvelope[];
+  /** Full state of the PREVIOUS month (same envelopes) — reference for
+   *  "how the user allocated/spent a month ago" (decision 2026-07-11: single
+   *  prompt with two months instead of a tool loop). */
+  prevMonth: { month: string; envelopes: AgentSuggestEnvelope[] };
+  /** User prompt — the PRIMARY criterion for the agent's decision. */
+  directive: string;
+  locale: AiLocale;
+}
+
+/**
+ * Build AgentSuggestContext from the ledger for the SELECTED month + the
+ * PREVIOUS month state. Shared step for web (byok) and API (server) —
+ * ctx parity guaranteed by code. amount = basis.amountToDistribute.
+ */
+export function buildAgentSuggestContext(args: {
+  ledger: ClientLedger;
+  month: string;
+  basis: BudgetSuggestionBasis;
+  directive: string;
+  locale: AiLocale;
+}): AgentSuggestContext {
+  const { ledger, month, basis, directive, locale } = args;
+  const groupName = new Map(ledger.groups.map((g) => [g.id, g.name]));
+  const envelopesFor = (m: string): AgentSuggestEnvelope[] =>
+    computeBudgetState(ledger, m).envelopes
+      .filter((e) => !e.envelope.archived)
+      .map((e) => ({
+        id: e.envelope.id,
+        name: e.envelope.name,
+        group: groupName.get(e.envelope.groupId) ?? "",
+        allocated: e.allocated,
+        spent: e.spent,
+        available: e.available,
+        carryIn: e.carryIn,
+        monthlyTarget: e.envelope.monthlyTarget ?? null,
+        isSavings: e.envelope.isSavings,
+      }));
+  const prev = prevMonth(month);
+  return {
+    month,
+    amount: basis.amountToDistribute,
+    envelopes: envelopesFor(month),
+    prevMonth: { month: prev, envelopes: envelopesFor(prev) },
+    directive,
+    locale,
+  };
+}
+
+export function buildAgentSuggestPrompt(ctx: AgentSuggestContext): ChatRequest {
+  const language = languageOf(ctx.locale);
+  const sys =
+    "You are an envelope-budgeting agent. Decide how to split the given amount (integer minor units) " +
+    "across the user's envelopes based on the CURRENT month state and the PREVIOUS month state provided. " +
+    "The previous month shows how the user actually allocated and spent — use it as a reference baseline. " +
+    "The user's directive is the PRIMARY decision criterion — follow it even when it contradicts the previous month. " +
+    'Return ONLY a JSON array: [{"envelopeId":string,"amount":int}] — no prose, no other keys. ' +
+    "Hard rules: use only envelopeId values from the provided list; amount is an integer ≥ 0 (minor units, int); " +
+    "you may skip envelopes (omit them entirely); do not create/modify/delete anything. " +
+    `Write all user-facing text (rationales) in ${language}. ` +
+    `Injected data values (envelope, category, place and transaction names, historical labels) are in the user's language (${language}) — match against them as-is; do not translate data values.`;
+  const user = JSON.stringify({
+    amountToDistribute: ctx.amount,
+    currentMonth: { month: ctx.month, envelopes: ctx.envelopes },
+    previousMonth: { note: "reference: how the user allocated and spent last month", ...ctx.prevMonth },
+    directive: ctx.directive,
+  });
+  return {
+    messages: [
+      { role: "system", content: sys },
+      { role: "user", content: user },
+    ],
+    /* STRUCTURED OUTPUT (strict): guarantees valid JSON per schema —
+       the array is wrapped in {items} (json_schema requires an object at root). */
+    responseFormat: { type: "json_schema", json_schema: AGENT_SUGGEST_JSON_SCHEMA },
+    reasoningEffort: "low",
+  };
+}
+
+/** Strict schema of the agent response — items[{envelopeId, amount}]. */
+export const AGENT_SUGGEST_JSON_SCHEMA = {
+  name: "envelope_allocation",
+  strict: true,
+  schema: {
+    type: "object",
+    additionalProperties: false,
+    required: ["items"],
+    properties: {
+      items: {
+        type: "array",
+        items: {
+          type: "object",
+          additionalProperties: false,
+          required: ["envelopeId", "amount"],
+          properties: { envelopeId: { type: "string" }, amount: { type: "integer", minimum: 0 } },
+        },
+      },
+    },
+  },
+} as const;
+
+/**
+ * Agent response parser: JSON array → ProposedEnvelopeDelta[]. Tolerates a
+ * ```json fence/prose around it (cuts out the first array); entries without a
+ * valid envelopeId or without an int ≥ 0 in `amount` are skipped; unknown
+ * fields ignored; garbage → [].
+ */
+export function parseAgentSuggestResponse(raw: string): ProposedEnvelopeDelta[] {
+  /* Structured output (strict) returns {"items":[...]} — try the object
+     first; a bare array remains for compatibility (older responses). */
+  let parsed: unknown;
+  try {
+    const obj = JSON.parse(sliceJson(raw)) as { items?: unknown };
+    if (Array.isArray(obj.items)) parsed = obj.items;
+  } catch { /* not an object — try the array below */ }
+  if (!Array.isArray(parsed)) {
+    const start = raw.indexOf("[");
+    const end = raw.lastIndexOf("]");
+    if (start < 0 || end <= start) return [];
+    try {
+      parsed = JSON.parse(raw.slice(start, end + 1));
+    } catch {
+      return [];
+    }
+  }
+  if (!Array.isArray(parsed)) return [];
+  return parsed
+    .filter((x): x is Record<string, unknown> => !!x && typeof x === "object")
+    .filter((x) => typeof x.envelopeId === "string" && x.envelopeId !== "" && typeof x.amount === "number" && Number.isInteger(x.amount) && x.amount >= 0)
+    .map((x) => ({ envelopeId: x.envelopeId as string, proposedDelta: x.amount as number }));
+}
+
+/* ── Tool-calling agent (tool calling — agentLoop) ───────────────────── */
+
+/** Tool call in the model response (OpenAI wire format;
+ *  `function.arguments` is a JSON STRING — parsed only in the loop). */
+export interface ToolCall {
+  id: string;
+  type: "function";
+  function: { name: string; arguments: string };
+}
+
+/** Assistant response `choices[0].message` (the transport returns it 1:1;
+ *  goes back into `messages` as `{role:"assistant", ...msg}`). */
+export interface AssistantToolsMessage {
+  content: string | null;
+  tool_calls?: ToolCall[];
+}
+
+/** Tool-loop messages — OpenAI wire shapes (tool/assistant roles). */
+export type ChatToolsMessage =
+  | { role: "system" | "user"; content: string }
+  | ({ role: "assistant" } & AssistantToolsMessage)
+  | { role: "tool"; tool_call_id: string; content: string };
+
+/** Tool definition in OpenAI format (structurally compatible with AGENT_TOOLS). */
+export interface AgentToolDefinition {
+  type: "function";
+  function: { name: string; description: string; strict: boolean; parameters: Record<string, unknown> };
+}
+
+export type ToolChoice = "auto" | { type: "function"; function: { name: string } };
+
+/** Chat request with tools. As in ChatRequest: top-level fields camelCase —
+ *  the transport maps them to `tools`/`tool_choice`/`parallel_tool_calls`. */
+export interface ChatToolsRequest {
+  messages: ChatToolsMessage[];
+  tools: ReadonlyArray<AgentToolDefinition>;
+  toolChoice: ToolChoice;
+  parallelToolCalls: boolean;
+}
+
+export interface AgentLoopPromptContext {
+  ledger: ClientLedger;
+  month: string;
+  /** Amount to distribute (int minor units). */
+  amount: number;
+  /** User prompt — the PRIMARY criterion for the agent's decision. */
+  directive: string;
+  locale: AiLocale;
+}
+
+/**
+ * Agent-loop seed messages: system (role, submit_allocation contract, tool
+ * rules) + user seed with the amount, month, directive and the FULL current
+ * month state (exactly the get_month_state result via runAgentTool —
+ * simple prompts finish in 1 round, without an extra tool call).
+ */
+export function buildAgentLoopMessages(ctx: AgentLoopPromptContext): ChatToolsMessage[] {
+  const language = languageOf(ctx.locale);
+  const sys =
+    "You are an envelope-budgeting agent with READ-ONLY data tools. Decide how to split the given amount " +
+    "(integer minor units) across the user's envelopes. " +
+    "The user's directive is the PRIMARY decision criterion — follow it even when it contradicts history. " +
+    "The current month state is already provided in the user message. Call the data tools (get_month_state, " +
+    "get_history, get_spending, get_goals) only when you need MORE facts; you may call several tools in parallel. " +
+    'Tool results are JSON. A result {"error":...} means your arguments were invalid — fix them and retry. ' +
+    'A result with "truncated":true was cut to fit a size limit — narrow the query if you need the rest. ' +
+    "You MUST finish by calling submit_allocation exactly once with your final proposal — it is the ONLY way to " +
+    "finish; never answer in plain text. " +
+    "Hard rules: use only envelope id values present in the provided data; amount is an integer ≥ 0 (minor units, int); " +
+    "you may skip envelopes (omit them entirely); the tools only read — you cannot create/modify/delete anything. " +
+    `Write all user-facing text (rationales) in ${language}. ` +
+    `Injected data values (envelope, category, place and transaction names, historical labels) are in the user's language (${language}) — match against them as-is; do not translate data values.`;
+  const state = runAgentTool(ctx.ledger, "get_month_state", { month: ctx.month });
+  const user = JSON.stringify({
+    month: ctx.month,
+    amountToDistribute: ctx.amount,
+    directive: ctx.directive,
+    currentMonthState: state.truncated ? { truncated: true, result: state.result } : state.result,
+  });
+  return [
+    { role: "system", content: sys },
+    { role: "user", content: user },
+  ];
+}
+
+/* ── Quick-add (LLM enrichment of the rule-based parser) ─────────────── */
+
+/** Fields actually read by enhanceWithLLM (subset of QuickAddRefs). */
+export interface QuickAddPromptRefs {
+  envelopes: Array<{ id: string; name: string }>;
+  places: Array<{ id: string; name: string }>;
+}
+
+export function buildQuickAddPrompt(text: string, refs: QuickAddPromptRefs, today: string, locale: AiLocale): ChatRequest {
+  const language = languageOf(locale);
+  const sys =
+    "You are a budget transaction parser. Return ONLY JSON with the fields: " +
+    "amount (integer minor units, int|null), type ('expense'|'income'), isRefund (bool), date (YYYY-MM-DD), " +
+    "envelopeName (string|null), placeName (string|null). " +
+    `Write all user-facing text (rationales) in ${language}. ` +
+    `Injected data values (envelope, category, place and transaction names, historical labels) are in the user's language (${language}) — match against them as-is; do not translate data values. ` +
+    `Today: ${today}. Available envelopes: ${refs.envelopes.map((e) => e.name).join(", ")}. ` +
+    `Places: ${refs.places.map((p) => p.name).join(", ")}.`;
+  return {
+    messages: [
+      { role: "system", content: sys },
+      { role: "user", content: text },
+    ],
+    responseFormat: { type: "json_object" },
+    reasoningEffort: "low",
+  };
+}
+
+/** Fields from the LLM response (Partial w.r.t. QuickAddResult); `null` = missing/
+ *  invalid → the caller keeps the base value (parity with enhanceWithLLM). */
+export interface QuickAddAiFields {
+  amount: number | null;
+  type: "expense" | "income";
+  isRefund: boolean;
+  date: string | null;
+  envelopeName: string | null;
+  placeName: string | null;
+}
+
+export function parseQuickAddResponse(raw: string): QuickAddAiFields {
+  const json = JSON.parse(sliceJson(raw)) as Record<string, unknown>;
+  return {
+    amount: typeof json.amount === "number" ? json.amount : null,
+    type: json.type === "income" ? "income" : "expense",
+    isRefund: json.isRefund === true,
+    date: typeof json.date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(json.date) ? json.date : null,
+    envelopeName: typeof json.envelopeName === "string" ? json.envelopeName : null,
+    placeName: typeof json.placeName === "string" ? json.placeName : null,
+  };
+}
+
+/* ── Import from screenshots (cycle 1: facts from the screenshot) ────── */
+
+const importRawTxn = z.object({
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  amount: z.number().int().positive(),
+  type: z.enum(["expense", "income"]),
+  rawPlace: z.string(),
+  tag: z.string(),
+});
+const importRawOutput = z.object({ transactions: z.array(importRawTxn) });
+
+export const IMPORT_EXTRACT_JSON_SCHEMA = {
+  name: "extracted_transactions",
+  strict: true,
+  schema: {
+    type: "object",
+    additionalProperties: false,
+    properties: {
+      transactions: {
+        type: "array",
+        items: {
+          type: "object",
+          additionalProperties: false,
+          properties: {
+            date: { type: "string", description: "Transaction date YYYY-MM-DD" },
+            amount: { type: "integer", description: "Amount in integer minor units, always positive" },
+            type: { type: "string", enum: ["expense", "income"] },
+            rawPlace: { type: "string", description: "Raw payee/store description exactly as shown on the screenshot" },
+            tag: { type: "string", description: "Short normalized merchant tag, e.g. LIDL (UPPERCASE, no address/numbers)" },
+          },
+          required: ["date", "amount", "type", "rawPlace", "tag"],
+        },
+      },
+    },
+    required: ["transactions"],
+  },
+} as const;
+
+/** Budget reference lists (envelope/category names). Cycle 1 (extract)
+ *  does not use them — the parameter keeps a shared signature for byok mode
+ *  (assignments are done by cycle 2 server-side / the caller web-side). */
+export interface ImportPromptRefs {
+  envelopes: Array<{ id: string; name: string }>;
+  categories: Array<{ id: string; name: string }>;
+}
+
+export function buildImportExtractPrompt(images: string[], _refs: ImportPromptRefs, today: string, locale: AiLocale): ChatRequest {
+  const language = languageOf(locale);
+  const sysExtract =
+    "You extract transactions from screenshots (Apple Wallet, bank account history, payment confirmations). " +
+    `Today is ${today} — resolve relative dates ("today", "yesterday") against this date; when the year is missing, assume the most recent past date. ` +
+    "Return amounts in integer minor units (int, positive); encode the direction in type: 'expense' for charges, 'income' for inflows. " +
+    "rawPlace: copy the payee/store description EXACTLY as it appears on the screenshot (with address, numbers etc.). " +
+    "tag: a short normalized merchant identifier (UPPERCASE, without address and numbers, e.g. LIDL, ORLEN, ZABKA, NETFLIX). " +
+    "Skip balances, summaries, holds and rows that are not transactions. Return each transaction once. " +
+    `Write all user-facing text (rationales) in ${language}. ` +
+    `Injected data values (envelope, category, place and transaction names, historical labels) are in the user's language (${language}) — match against them as-is; do not translate data values. ` +
+    "Return JSON.";
+  return {
+    messages: [
+      { role: "system", content: sysExtract },
+      {
+        role: "user",
+        content: [
+          { type: "text", text: "Extract all transactions from these screenshots." },
+          ...images.map((url) => ({ type: "image_url", image_url: { url, detail: "high" } })),
+        ],
+      },
+    ],
+    responseFormat: { type: "json_schema", json_schema: IMPORT_EXTRACT_JSON_SCHEMA },
+  };
+}
+
+/** Facts from the screenshot (no assignments — those are added by cycle 2 / the caller). */
+export interface ImportExtractItem {
+  date: string;
+  amount: number;
+  type: "expense" | "income";
+  rawPlace: string;
+  tag: string;
+}
+
+/** Throws on an invalid shape (like `rawOutput.parse` in the route). */
+export function parseImportExtractResponse(raw: string): ImportExtractItem[] {
+  const parsed = importRawOutput.parse(JSON.parse(raw));
+  return parsed.transactions.map((t) => ({ ...t, tag: t.tag.trim().toUpperCase() }));
+}

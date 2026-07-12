@@ -1,0 +1,171 @@
+import { describe, expect, test } from "bun:test";
+import { CORAL, CTA, TEAL, dark, light, themeTokens, type AccentTheme } from "./theme";
+
+/** Alpha suffixes from the concatenation audit — forms `X+"xx"` (14/18/1a/22) and `${X}xx` (40/44/55/66). */
+const ALPHA_SUFFIXES = ["14", "18", "1a", "22", "40", "44", "55", "66"] as const;
+const ALL_THEMES: AccentTheme[] = ["teal", "koral", "atrament", "duet"];
+
+describe("constant exports → CSS vars (names unchanged)", () => {
+  test("TEAL/CORAL/CTA point to CSS variables", () => {
+    expect(TEAL).toBe("var(--accent)");
+    expect(CORAL).toBe("var(--danger)");
+    expect(CTA).toBe("var(--cta)");
+  });
+});
+
+describe("teal theme = Sage #4fa583 (stability guard since 1.15.0)", () => {
+  test("light: Sage accent, danger unchanged", () => {
+    const { vars } = themeTokens("teal", false);
+    expect(vars["--accent"]).toBe("#4fa583");
+    expect(vars["--danger"]).toBe("#ec6d62");
+    expect(vars["--cta"]).toBe("#4fa583");
+  });
+  test("dark: accent lightened Sage #6cbf9b, danger unchanged", () => {
+    const { vars } = themeTokens("teal", true);
+    expect(vars["--accent"]).toBe("#6cbf9b");
+    expect(vars["--danger"]).toBe("#ec6d62");
+    expect(vars["--cta"]).toBe("#6cbf9b");
+  });
+  test("light palette = exactly today's light object (all hexes)", () => {
+    expect(themeTokens("teal", false).palette).toEqual(light);
+  });
+  test("dark palette = exactly today's dark object (all hexes)", () => {
+    expect(themeTokens("teal", true).palette).toEqual(dark);
+  });
+  test("nav = the existing BottomNav: bg background, active text, accent indicator, inactive mute", () => {
+    const { vars } = themeTokens("teal", false);
+    expect(vars["--nav-bg"]).toBe(light.bg);
+    expect(vars["--nav-on"]).toBe(light.text);
+    expect(vars["--nav-ind"]).toBe("#4fa583");
+    expect(vars["--nav-mute"]).toBe(light.mute);
+    const d = themeTokens("teal", true).vars;
+    expect(d["--nav-bg"]).toBe(dark.bg);
+    expect(d["--nav-on"]).toBe(dark.text);
+    expect(d["--nav-ind"]).toBe("#6cbf9b");
+    expect(d["--nav-mute"]).toBe(dark.mute);
+  });
+  test("alpha --accent-1a = Sage rgba with the 1a suffix", () => {
+    expect(themeTokens("teal", false).vars["--accent-1a"]).toBe("rgba(79,165,131,0.102)");
+  });
+  test("remaining alphas from the audit: 14/18/22/40/44/55/66", () => {
+    const { vars } = themeTokens("teal", false);
+    expect(vars["--accent-14"]).toBe("rgba(79,165,131,0.078)");
+    expect(vars["--accent-18"]).toBe("rgba(79,165,131,0.094)");
+    expect(vars["--accent-22"]).toBe("rgba(79,165,131,0.133)");
+    expect(vars["--accent-44"]).toBe("rgba(79,165,131,0.267)");
+    expect(vars["--accent-55"]).toBe("rgba(79,165,131,0.333)");
+    expect(vars["--danger-22"]).toBe("rgba(236,109,98,0.133)");
+    expect(vars["--danger-66"]).toBe("rgba(236,109,98,0.4)");
+    // FAB: a shadow with the 40 suffix on the accent → --cta-40 (in teal cta = accent).
+    expect(vars["--cta-40"]).toBe("rgba(79,165,131,0.251)");
+  });
+});
+
+describe("koral (the app default)", () => {
+  test("light: accent #f0685c, deepened danger #c22e3d", () => {
+    const { vars } = themeTokens("koral", false);
+    expect(vars["--accent"]).toBe("#f0685c");
+    expect(vars["--danger"]).toBe("#c22e3d");
+    expect(vars["--cta"]).toBe("#f0685c");
+  });
+  test("dark: accent #ff8d7d, danger #ef4b58", () => {
+    const { vars } = themeTokens("koral", true);
+    expect(vars["--accent"]).toBe("#ff8d7d");
+    expect(vars["--danger"]).toBe("#ef4b58");
+  });
+  test("palette without overrides = standard light/dark", () => {
+    expect(themeTokens("koral", false).palette).toEqual(light);
+    expect(themeTokens("koral", true).palette).toEqual(dark);
+  });
+});
+
+describe("atrament", () => {
+  test("light: navy #1d2a47, danger same as teal", () => {
+    const { vars } = themeTokens("atrament", false);
+    expect(vars["--accent"]).toBe("#1d2a47");
+    expect(vars["--danger"]).toBe("#ec6d62");
+  });
+  test("dark: lightened navy #8fa2cc", () => {
+    const { vars } = themeTokens("atrament", true);
+    expect(vars["--accent"]).toBe("#8fa2cc");
+    expect(vars["--danger"]).toBe("#ec6d62");
+  });
+});
+
+describe("duet", () => {
+  test("light: navy accent, coral CTA, navy nav", () => {
+    const { vars, palette } = themeTokens("duet", false);
+    expect(vars["--accent"]).toBe("#1d2a47");
+    expect(vars["--cta"]).toBe("#f0685c");
+    expect(vars["--nav-bg"]).toBe("#1d2a47");
+    expect(vars["--nav-on"]).toBe("#ff8d7d");
+    expect(palette).toEqual(light);
+  });
+  test("dark: a navy world — bg/card/surface/line overrides + CTA #ff8d7d", () => {
+    const { vars, palette } = themeTokens("duet", true);
+    expect(vars["--cta"]).toBe("#ff8d7d");
+    expect(palette.bg).toBe("#131b2e");
+    expect(palette.card).toBe("#1d2a47");
+    expect(palette.surface).toBe("#1d2a47");
+    expect(palette.line).toBe("#2b3a5e");
+    // the remaining fields inherit from the standard dark
+    expect(palette.text).toBe(dark.text);
+  });
+});
+
+describe("full var set for 4 themes × 2 modes", () => {
+  const REQUIRED = [
+    "--accent",
+    "--danger",
+    "--cta",
+    "--nav-bg",
+    "--nav-on",
+    "--nav-mute",
+    "--nav-ind",
+    ...ALPHA_SUFFIXES.map((s) => `--accent-${s}`),
+    ...ALPHA_SUFFIXES.map((s) => `--danger-${s}`),
+    ...ALPHA_SUFFIXES.map((s) => `--cta-${s}`),
+  ];
+  for (const t of ALL_THEMES) {
+    for (const isDark of [false, true]) {
+      test(`${t} ${isDark ? "dark" : "light"}: all keys present, alphas in rgba format`, () => {
+        const { vars } = themeTokens(t, isDark);
+        for (const k of REQUIRED) {
+          expect(vars[k]).toBeString();
+          expect(vars[k]!.length).toBeGreaterThan(0);
+        }
+        for (const s of ALPHA_SUFFIXES) {
+          expect(vars[`--accent-${s}`]).toMatch(/^rgba\(\d+,\d+,\d+,0\.\d+\)$/);
+          expect(vars[`--danger-${s}`]).toMatch(/^rgba\(\d+,\d+,\d+,0\.\d+\)$/);
+        }
+      });
+    }
+  }
+});
+
+describe("4×2 snapshot of the key fields (accent/danger/cta/nav-bg)", () => {
+  test("table matches the spec", () => {
+    const table = Object.fromEntries(
+      ALL_THEMES.flatMap((t) =>
+        [false, true].map((isDark) => {
+          const { vars } = themeTokens(t, isDark);
+          return [
+            `${t}.${isDark ? "dark" : "light"}`,
+            { accent: vars["--accent"], danger: vars["--danger"], cta: vars["--cta"], navBg: vars["--nav-bg"] },
+          ];
+        }),
+      ),
+    );
+    expect(table).toEqual({
+      // navBg = today's BottomNav background (C.bg), NOT surface — a regression guard.
+      "teal.light": { accent: "#4fa583", danger: "#ec6d62", cta: "#4fa583", navBg: "#f4f3ef" },
+      "teal.dark": { accent: "#6cbf9b", danger: "#ec6d62", cta: "#6cbf9b", navBg: "#3b414b" },
+      "koral.light": { accent: "#f0685c", danger: "#c22e3d", cta: "#f0685c", navBg: "#f4f3ef" },
+      "koral.dark": { accent: "#ff8d7d", danger: "#ef4b58", cta: "#ff8d7d", navBg: "#3b414b" },
+      "atrament.light": { accent: "#1d2a47", danger: "#ec6d62", cta: "#1d2a47", navBg: "#f4f3ef" },
+      "atrament.dark": { accent: "#8fa2cc", danger: "#ec6d62", cta: "#8fa2cc", navBg: "#3b414b" },
+      "duet.light": { accent: "#1d2a47", danger: "#c22e3d", cta: "#f0685c", navBg: "#1d2a47" },
+      "duet.dark": { accent: "#8fa2cc", danger: "#ef4b58", cta: "#ff8d7d", navBg: "#1d2a47" },
+    });
+  });
+});
