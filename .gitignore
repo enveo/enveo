@@ -12,3 +12,6 @@ bun.lockb
 
 # Machine-local operator knowledge (never committed)
 CLAUDE.local.md
+
+# Local agent working files (specs/plans, scratch) — never committed
+.agent/
