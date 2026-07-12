@@ -32,6 +32,25 @@ export async function signUpEmail(email: string, password: string): Promise<void
 export const signInGoogle = () => authClient.signIn.social({ provider: "google" });
 
 /**
+ * Identity of the CURRENT session, straight from the server: the signed-in user's id,
+ * or null when there is no session. The sync engine calls this before it writes anything
+ * (see the multi-tenant guard in sync.ts), so the two failure modes must stay strictly
+ * apart:
+ *  - "no session" (401 / empty body) → null → the caller shows Login,
+ *  - network failure → THROWS → the caller retries with backoff.
+ * Mixing them up would either sign a phone in a tunnel out of the app, or (worse) let a
+ * replica of unknown ownership push while offline-ish. `/api/auth/*` is exempt from the
+ * session middleware, so this endpoint answers without a cookie too.
+ */
+export async function fetchSessionUserId(): Promise<string | null> {
+  const r = await fetch("/api/auth/get-session", { headers: { accept: "application/json" } });
+  if (r.status === 401) return null;
+  if (!r.ok) throw new Error(`get-session: ${r.status}`); // 5xx/network → retry, NOT "signed out"
+  const body = (await r.json().catch(() => null)) as { user?: { id?: string } } | null;
+  return body?.user?.id ?? null; // better-auth answers 200 + `null` when there is no session
+}
+
+/**
  * Sign-out + removal of the local replica (a shared device: the local copy of
  * the budget must not remain after sign-out). `wipe` = sync.wipeLocalData
  * (clears the IDB stores, broadcasts to tabs, reloads the page).
