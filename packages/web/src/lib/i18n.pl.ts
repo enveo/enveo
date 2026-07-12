@@ -155,6 +155,7 @@ export const pl = {
   "sync.badgeLocalWiped": "Tryb lokalny — dane usunięte z serwera. Dotknij, aby otworzyć ustawienia",
   "sync.badgeLocalPaused": "Tryb lokalny — synchronizacja wstrzymana. Dotknij, aby otworzyć ustawienia",
   "sync.badgeSyncing": "Synchronizowanie w toku",
+  "sync.notOwner": "Nie udało się potwierdzić, że lokalna kopia na tym urządzeniu należy do zalogowanego konta — nic nie zostało wysłane na serwer. Odśwież aplikację i zaloguj się ponownie.",
   "op.txn.create": "Nowa transakcja",
   "op.txn.update": "Zmiana transakcji",
   "op.txn.delete": "Usunięcie transakcji",
