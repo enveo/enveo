@@ -531,8 +531,8 @@ export const en: Record<TKey, string> = {
   "auth.ownerHint": "This is the first account on this server — once it exists, registration closes.",
   "auth.logout": "Sign out",
   "auth.loggingOut": "Signing out…",
-  "auth.logoutConfirm": "Sign out? The local copy of your budget will be removed from this device (server data is kept).",
-  "auth.logoutHelp": "Signs you out and removes the local copy of your data from this device. Server data stays — it comes back after you sign in again.",
+  "auth.logoutConfirm": "Sign out? Your data stays on this device and on the server.",
+  "auth.logoutHelp": "Signs you out of this device. The local copy and the server data both stay — everything resumes when you sign back in. To remove the copy from this device, use “Clear local data”.",
   "auth.sessionExpired": "Session expired",
 
   // BootStatus "foreign" — the replica on this device belongs to another account

@@ -222,15 +222,27 @@ export function resetOpsCounter(): void {
  * (POST /api/sync2/snapshot with uptoSeq = the current cursor). Best-effort: failure
  * (network / 409 of a new epoch) breaks nothing — the journal is the source of truth,
  * and push/pull handle an epoch change anyway.
+ *
+ * `userId` = the tenant the CALLER verified in this cycle (sync.ts ensureIdentity), carried in
+ * the body as the PER-REQUEST owner assertion. This is a WRITE that overwrites the whole
+ * checkpoint of the budget the server resolves from the session cookie — and it is fired in the
+ * BACKGROUND, seconds after that verification, while the cookie is shared by every tab: a
+ * mid-cycle sign-in as somebody else would otherwise store THIS budget's ciphertext (and this
+ * device's uptoSeq) as THEIR checkpoint, which their next new-device bootstrap could not decrypt.
+ * The server refuses a session it did not verify (409) — hence, per the contract above, a no-op.
  */
-export async function maybeUploadSnapshot(ledger: ClientLedger | null, cursor: number): Promise<void> {
+export async function maybeUploadSnapshot(
+  ledger: ClientLedger | null,
+  cursor: number,
+  userId: string,
+): Promise<void> {
   if (opsSinceSnap < SNAPSHOT_EVERY_OPS) return;
   if (!dek || !ledger || tierMeta.tier !== "e2ee") return;
   const blob = await encryptSnapshot(ledger, dek);
   const res = await fetch("/api/sync2/snapshot", {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ epoch: tierMeta.epoch, uptoSeq: cursor, blob }),
+    body: JSON.stringify({ epoch: tierMeta.epoch, uptoSeq: cursor, blob, userId }),
   });
   if (!res.ok) return; // best-effort — we'll try at the next threshold
   resetOpsCounter();

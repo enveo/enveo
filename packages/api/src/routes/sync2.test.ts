@@ -61,6 +61,19 @@ describe("sync2 — input validation", () => {
     expect(sync2SnapshotInput.safeParse({ epoch: 2, uptoSeq: 0, blob: "" }).success).toBe(false);
   });
 
+  it("snapshot: takes the owner assertion (the checkpoint upload OVERWRITES a whole budget)", () => {
+    // POST /sync2/snapshot UPSERTs the resolved budget's only checkpoint (blob AND uptoSeq), and
+    // the client fires it in the BACKGROUND at the end of a cycle — the widest window there is
+    // for a cookie swapped in another tab. The epoch cannot catch it (two independently-encrypted
+    // budgets both sit at epoch 1), so the body names the tenant the client verified.
+    expect(
+      sync2SnapshotInput.safeParse({ epoch: 2, uptoSeq: 10, blob: "v1.z", userId: "user-A" }).success,
+    ).toBe(true);
+    expect(sync2SnapshotInput.safeParse({ epoch: 2, uptoSeq: 10, blob: "v1.z", userId: "" }).success).toBe(false);
+    // a pre-2.0 client omits it — then there is simply nothing to assert
+    expect(sync2SnapshotInput.safeParse({ epoch: 2, uptoSeq: 10, blob: "v1.z" }).success).toBe(true);
+  });
+
   it("enable: requires wrappedDek + kdfParams + snapshotBlob", () => {
     expect(
       e2eeEnableInput.safeParse({ wrappedDek: "v1.a", kdfParams: "{}", snapshotBlob: "v1.b" }).success,

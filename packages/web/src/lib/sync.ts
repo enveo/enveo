@@ -12,7 +12,8 @@
  *   backoff reset on success / "online" / new op (poke).
  * - fullResync(): snapshot → replay ALL remaining outbox ops
  *   onto the fresh mirror (memory; they still await push) → persist.
- * - boot: hydrate mirror + outbox → (empty ⇒ snapshot) → REPLAY outbox
+ * - boot: hydrate mirror + outbox → WHOSE replica is this? (bootOwnerOk — a stamped replica is
+ *   never rendered to another account) → (empty ⇒ snapshot) → REPLAY outbox
  *   (heals a crash between idbAdd of an op and persisting the mirror) → ready → syncNow.
  * - triggers: boot / poke after enqueue (300 ms debounce — catches a reorder
  *   burst) / focus / online / visibilitychange→visible / 60 s interval
@@ -466,6 +467,39 @@ async function doFullResync(): Promise<void> {
 }
 
 /**
+ * THE ONLY WAY doFullResync may be reached from a cycle — the guard that makes a resync
+ * non-destructive.
+ *
+ * doFullResync REPLACES the whole local mirror (and its durable copy) with a snapshot of the
+ * budget the SESSION owns, then replays this replica's outbox onto it. That is destructive in
+ * exactly the way the multi-tenant guard exists to prevent, and every trigger for it is a
+ * SERVER answer that says "this is not the budget you think you are talking to":
+ *  - a pull whose budgetId differs (doPull),
+ *  - a push response naming another budget (an unbound replica names none, so the server cannot
+ *    refuse it per-request),
+ *  - a 409 budget_mismatch (handleBudgetMismatch),
+ *  - a rejected op / a peer's dead-letter / a JSON import (the obligation set elsewhere, executed
+ *    on a mirror that the pull above may have just found foreign).
+ * Each of those is EITHER the same user's rotated budget (reseed, DB restore, reattach — a new
+ * data epoch, which is what a resync is for) OR the shared cookie having been swapped to another
+ * ACCOUNT mid-cycle (the push loop is skipped entirely when the outbox is empty, so its
+ * per-request assertion never fires and the pull is the first thing that notices). The two look
+ * identical from here; only RE-VERIFYING the session tells them apart, and the cycle's cached
+ * verdict is precisely what the server just called into question.
+ *
+ * Foreign / unproven ⇒ false: no snapshot is fetched, the mirror and the outbox are left exactly
+ * as they are, and the human decides (ForeignReplicaScreen). Nothing is destroyed unattended.
+ */
+async function resyncVerified(): Promise<boolean> {
+  identityVerifiedFor = null; // the cached verdict predates the server's answer — prove it again
+  if (!(await ensureIdentity())) return false; // foreign (the human decides) / unproven → no write
+  markResyncPending(); // durable BEFORE the snapshot: a blip must not lose the obligation
+  await doFullResync();
+  clearResyncPending();
+  return true;
+}
+
+/**
  * PUBLIC trigger after a full import (Settings) — through the same mutex as
  * push: set the durable resync obligation and run a cycle (the consumer in doCycle
  * does doFullResync after push+pull). Does NOT touch the snapshot/mirror directly, so
@@ -499,8 +533,13 @@ async function doPull(): Promise<void> {
   if (!res.ok) throw new Error(`pull: ${res.status}`);
   const body = (await res.json()) as PullResponse;
   if (body.budgetId !== budgetId || body.resetRequired) {
-    // new data epoch (wipe+reseed / trimmed log) — DURABLE resync obligation;
-    // the consumer in doCycle (after pull) will run doFullResync. A transient blip won't lose it.
+    // The server answered for a DIFFERENT budget than this replica mirrors (or asked for a
+    // reset): a new data epoch (wipe+reseed / DB restore / trimmed log) — OR the shared cookie
+    // was swapped mid-cycle and this is another ACCOUNT's budget. The two are indistinguishable
+    // HERE (budgetId is the epoch marker, not a tenant id), and the difference decides between a
+    // recovery and a cross-tenant disaster — so we only record the DURABLE resync obligation and
+    // let its consumer (resyncVerified, after push+pull) settle it by RE-VERIFYING the session.
+    // A transient blip won't lose the obligation.
     markResyncPending();
     return;
   }
@@ -527,7 +566,7 @@ async function doPull(): Promise<void> {
  * and after applying we REPLAY the outbox — this tab's optimistic state doesn't roll
  * back even when the journal carried an older version of the same entity.
  */
-async function doPullE2ee(dek: Uint8Array): Promise<void> {
+async function doPullE2ee(dek: Uint8Array, userId: string): Promise<void> {
   if (!store.getLedger()) return; // before bootstrap
   for (;;) {
     const epoch = e2ee.getTierMeta().epoch;
@@ -549,8 +588,11 @@ async function doPullE2ee(dek: Uint8Array): Promise<void> {
     void persist.persistLedger(store.snapshotForPersist());
     notePeersMayNeedUpdate();
     e2ee.noteOpsSeen(body.ops.length);
-    // checkpoint every SNAPSHOT_EVERY_OPS ops — best-effort, doesn't block the cycle
-    void e2ee.maybeUploadSnapshot(store.getLedger(), store.getCursor()).catch(() => {});
+    // Checkpoint every SNAPSHOT_EVERY_OPS ops — best-effort, doesn't block the cycle. It is a
+    // WRITE (it overwrites the session budget's whole checkpoint), so it carries the tenant this
+    // cycle verified: fired in the background, it is the LAST thing to reach the server in a
+    // cycle and the widest open window for a cookie swapped in another tab.
+    void e2ee.maybeUploadSnapshot(store.getLedger(), store.getCursor(), userId).catch(() => {});
     if (body.ops.length === 0 || nextCursor >= body.cursor) return; // journal caught up
   }
 }
@@ -567,14 +609,20 @@ async function doPullE2ee(dek: Uint8Array): Promise<void> {
  * rows, never fresh creates. /sync/replace and /sync2/reset are worse still: they
  * OVERWRITE the session user's entire budget with this replica.
  *
- * TWO LAYERS, because this check is about a MOVING target (the cookie is shared by every tab
+ * THREE LAYERS, because this check is about a MOVING target (the cookie is shared by every tab
  * and can be swapped mid-cycle, while one cycle makes many server writes):
- *  1. per CYCLE — ensureIdentity() below: no write of any kind until the session's user id has
- *     been compared with the one stamped next to the replica,
- *  2. per REQUEST — every push body NAMES the budget it is for, and the server 409s
- *     (budget_mismatch) when that is not the budget the session owns. The window between the
- *     identity check and the Nth batch is thus closed at the only place that can close it
- *     completely: the same request that carries the write.
+ *  1. at BOOT — bootOwnerOk(): the replica is not handed to the UI until its stamp has been
+ *     compared with the session. This is the READ side (the two below only guard writes): boot
+ *     renders from IDB and syncs afterwards, and in local mode no cycle ever runs at all,
+ *  2. per CYCLE — ensureIdentity() below: no write of any kind until the session's user id has
+ *     been compared with the one stamped next to the replica. A resync — which REPLACES the
+ *     mirror with the session's budget — re-runs it (resyncVerified), because the very server
+ *     answer that asks for a resync is what calls the cycle's verdict into question,
+ *  3. per REQUEST — every push body NAMES the budget it is for, every full-budget overwrite (and
+ *     the e2ee checkpoint upload) NAMES the verified user, and the server 409s (budget_mismatch)
+ *     when that is not the budget/session it resolves. The window between the identity check and
+ *     the Nth write is thus closed at the only place that can close it completely: the same
+ *     request that carries the write.
  *
  * Therefore no server write may happen before the session's user id is compared with the
  * one stamped next to the replica (IDB meta "userId"):
@@ -643,6 +691,11 @@ export function __resetObligations(): void {
   replacePending = false;
 }
 
+/** Test hook (unit tests only): cancel a pending retry so it cannot fire into the next test. */
+export function __resetBackoff(): void {
+  resetBackoff();
+}
+
 /** Test hook (unit tests only): set the local-mode flag without touching the server. */
 export function __setLocalMode(mode: LocalMode): void {
   applyLocalMode(mode);
@@ -708,12 +761,16 @@ export async function discardForeignReplica(): Promise<void> {
 }
 
 /**
- * The other way off ForeignReplicaScreen (auth.signOutKeepingReplica calls this once the session
- * is gone): back to Login WITHOUT touching the replica — the previous owner (or the same human
- * after a server rebuild handed them a new user id) signs back in, their stamp matches again, and
- * the ledger plus every queued op resume where they stopped. This is what makes "destroy nothing"
- * usable rather than a dead end; the normal sign-out (auth.signOutAndForget) DOES wipe, but here
- * the replica may be the last copy in existence and it is not this session's to delete.
+ * Where EVERY sign-out lands (auth.signOutKeepingReplica calls this once the session is gone —
+ * from Settings and from ForeignReplicaScreen alike): back to Login WITHOUT touching the replica.
+ * The owner (or the same human after a server rebuild handed them a new user id) signs back in,
+ * their stamp matches again, and the ledger plus every queued op resume where they stopped.
+ *
+ * A sign-out does NOT wipe (spec §3, owner's decision): the replica may be the last copy of the
+ * budget (local mode "wiped" deleted the server's on purpose) and the outbox may hold ops the
+ * server has never seen — a window.confirm is not consent to destroy them. What protects the NEXT
+ * account to sign in on this device is the guard, not a wipe: bootOwnerOk refuses to render a
+ * replica stamped by somebody else, and ensureIdentity refuses to write it anywhere.
  */
 export function enterLoginKeepingReplica(): void {
   identityVerifiedFor = null;
@@ -956,8 +1013,10 @@ async function doCycle(): Promise<boolean> {
   try {
     // MULTI-TENANT GUARD — BEFORE any server write (replace/push): whose replica is this?
     // No session → UnauthorizedError (→ Login); another account (or an owner we cannot
-    // establish) → no write at all (null).
-    if (!(await ensureIdentity())) return true;
+    // establish) → no write at all (null). The verified id travels with every full-budget
+    // overwrite this cycle makes (per-REQUEST assertion — the cookie can still be swapped later).
+    const userId = await ensureIdentity();
+    if (!userId) return true;
     // The ownership proof may have learned that the session's budget sits in the OTHER tier
     // (409 → tierMeta refreshed): take the path the server actually serves.
     isE2ee = e2ee.getTierMeta().tier === "e2ee";
@@ -1048,13 +1107,11 @@ async function doCycle(): Promise<boolean> {
       }
 
       // PULL v2 — ciphertext delta (own pending ops skipped + outbox replay)
-      await doPullE2ee(dek);
+      await doPullE2ee(dek, userId);
 
-      // CONSUMER of the durable resync obligation — as in v1 (doFullResync goes by tier)
-      if (resyncPending) {
-        await doFullResync();
-        clearResyncPending();
-      }
+      // CONSUMER of the durable resync obligation — as in v1 (resyncVerified goes by tier, and
+      // re-proves the session first: a resync REPLACES the mirror with the session's budget)
+      if (resyncPending && !(await resyncVerified())) return true;
       finishSuccess();
       return true;
     }
@@ -1090,13 +1147,13 @@ async function doCycle(): Promise<boolean> {
         }
         const body = (await res.json()) as PushResponse;
         if (body.budgetId !== store.getBudgetId()) {
-          // new data epoch — DURABLE resync obligation; we're inside a cycle, so
-          // execute right away and STOP (ops stay in the outbox — server idempotency
-          // makes re-sending them safe). A transient snapshot blip won't lose the
-          // obligation here: markResyncPending is persisted BEFORE doFullResync.
-          markResyncPending();
-          await doFullResync();
-          clearResyncPending();
+          // The server applied the batch to a budget this replica does not name. It can only
+          // happen when the replica named NONE (an unbound replica sends no budgetId, so the
+          // server's per-request assertion has nothing to compare) — either a new data epoch, or
+          // a cookie swapped mid-cycle. resyncVerified re-proves the session before it replaces
+          // the mirror; foreign/unproven ⇒ no snapshot, and we STOP the cycle (ops stay in the
+          // outbox — server idempotency makes re-sending them safe).
+          if (!(await resyncVerified())) return true;
           dirty = true; // D5: push the held-up ops immediately, don't wait up to 60 s
           finishSuccess();
           return true;
@@ -1134,11 +1191,10 @@ async function doCycle(): Promise<boolean> {
     await doPull();
 
     // CONSUMER of the durable resync obligation (rejected / new epoch from pull / full-import).
-    // Always AFTER push+pull; on success clears the flag, on failure leaves it (retry).
-    if (resyncPending) {
-      await doFullResync();
-      clearResyncPending();
-    }
+    // Always AFTER push+pull; on success clears the flag, on failure leaves it (retry). It goes
+    // through resyncVerified: a resync REPLACES this replica with the SESSION's budget, and the
+    // pull that asked for it may have been answered under a cookie swapped in another tab.
+    if (resyncPending && !(await resyncVerified())) return true;
 
     finishSuccess();
     return true;
@@ -1162,21 +1218,19 @@ async function doCycle(): Promise<boolean> {
  * 409 budget_mismatch mid-push: the server refused the batch because the budget the replica
  * named is not the one the session owns — nothing was written. Which of the two causes it was
  * can only be settled by RE-VERIFYING the identity from scratch (the per-cycle verdict is what
- * the mismatch just called into question):
+ * the mismatch just called into question) — which is exactly what resyncVerified does:
  *  - the cookie was swapped mid-cycle → the stamp now names another account → foreign replica
  *    (every write refused, the human decides), or an unstamped replica fails its ownership proof
- *    → no write at all. Critically, we do NOT fullResync here: that would bootstrap the OTHER
+ *    → no write at all. Critically, NO fullResync happens then: it would bootstrap the OTHER
  *    user's budget and replay this replica's outbox onto it — the cross-tenant write we refused.
  *  - the same user's budget was rotated (wipe+reseed, DB restore, budget reattached after the
  *    2.0 upgrade) → the identity still checks out → a new data epoch → fresh snapshot + replay.
  */
 async function handleBudgetMismatch(): Promise<boolean> {
-  identityVerifiedFor = null; // the cached verdict predates the mismatch — prove it again
   try {
-    if (!(await ensureIdentity())) return true; // foreign (human decides) / unproven → no write
-    markResyncPending(); // durable: a blip must not lose the obligation (see doPull)
-    await doFullResync();
-    clearResyncPending();
+    // resyncVerified re-proves the session BEFORE any snapshot: foreign (the human decides) /
+    // unproven → no write, no bootstrap of the other user's budget, nothing replayed onto it.
+    if (!(await resyncVerified())) return true;
     dirty = true; // the held-up ops go out on the fresh replica immediately
     finishSuccess();
     return true;
@@ -1569,6 +1623,54 @@ function bootLocalReady(hydrated: "ready" | "empty"): void {
   setState("local");
 }
 
+/**
+ * MULTI-TENANT GUARD AT BOOT — runs BEFORE the hydrated replica is handed to the UI, and this is
+ * the only place that can protect the READ side.
+ *
+ * The cycle's guard (ensureIdentity) protects WRITES, but boot renders first and syncs second:
+ * store.setBootStatus("ready") on a replica hydrated straight out of IDB, then `void
+ * syncNow("boot")`. Between the two, the previous owner's ENTIRE budget is on screen and
+ * editable — and the ways a device changes hands are routine, not exotic: a 90-day cookie
+ * expires → Login; a sign-out (which KEEPS the replica — see DataSection/ForeignReplicaScreen) →
+ * Login; then the next account signs in. Worse, the window is not always short: in local mode
+ * doCycle bails before ensureIdentity ever runs (the mode gate comes first), so without this
+ * check the verdict would NEVER be reached and the other account's ledger would simply be the
+ * app — permanently.
+ *
+ * Returns false when the replica may NOT be rendered (BootStatus set to "foreign"/"unauthed").
+ * Deliberately NOT a hard gate in two cases, because the replica can be the LAST copy of a budget
+ * and a boot that refuses to show it is its own kind of data loss:
+ *  - the server is unreachable (fetchSessionUserId THROWS): being offline is not being somebody
+ *    else — local-first wins, and the first cycle that does reach the server enforces the verdict,
+ *  - no session in LOCAL MODE: nobody else is claiming this device (a sign-in needs the server),
+ *    the mode means "do not talk to the server", and the server may be gone for good (mode
+ *    "wiped" deleted its copy on purpose). Forcing Login there would lock the owner out of the
+ *    only copy of their budget. In normal mode a missing session DOES go to Login — the cycle
+ *    would land there within the second anyway, only after rendering the data first.
+ */
+async function bootOwnerOk(): Promise<boolean> {
+  const stamped = await idbGet<string>("meta", "userId").catch(() => undefined);
+  if (!stamped) return true; // no stamp: nothing to compare (the cycle's proveOwnership decides,
+  // and until it can, it refuses every server WRITE — see proveOwnership)
+  let sessionUser: string | null;
+  try {
+    sessionUser = await fetchSessionUserId();
+  } catch {
+    return true; // offline / server down — cannot verify; see the contract above
+  }
+  if (decideIdentity(sessionUser, stamped) === "foreign") {
+    enterForeignReplica(); // ForeignReplicaScreen — the other account's budget is never rendered
+    return false;
+  }
+  if (!sessionUser) {
+    if (localMode !== "off") return true; // see the contract above
+    enterUnauthed(); // Login BEFORE the data is on screen; the replica and the outbox stay
+    return false;
+  }
+  identityVerifiedFor = sessionUser; // same account — the first cycle needn't re-read the stamp
+  return true;
+}
+
 async function boot(): Promise<void> {
   store.setBootStatus("booting");
   void getClientId(); // persist the installation identifier as early as possible
@@ -1576,6 +1678,8 @@ async function boot(): Promise<void> {
   try {
     const [hydrated] = await Promise.all([store.hydrate(), outbox.hydrate()]);
     await loadSyncMeta();
+    // Whose replica is this? BEFORE it reaches the UI (and before any bootstrap) — see bootOwnerOk
+    if (!(await bootOwnerOk())) return;
     if (localMode !== "off") {
       lastBootSource = "local";
       bootLocalReady(hydrated); // local mode — no network

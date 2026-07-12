@@ -51,20 +51,18 @@ export async function fetchSessionUserId(): Promise<string | null> {
 }
 
 /**
- * Sign-out + removal of the local replica (a shared device: the local copy of
- * the budget must not remain after sign-out). `wipe` = sync.wipeLocalData
- * (clears the IDB stores, broadcasts to tabs, reloads the page).
- */
-export async function signOutAndForget(wipe: () => Promise<void>): Promise<void> {
-  await authClient.signOut();
-  await wipe(); // shared device: the local replica must not remain
-}
-
-/**
- * Sign-out that KEEPS the local replica — the counterpart of the above, and the only correct one
- * on ForeignReplicaScreen: there the replica belongs to a DIFFERENT account than the session, it
- * may be the last copy of that budget, and it is not this session's to delete. `enterLogin` =
- * sync.enterLoginKeepingReplica (Login screen; the previous owner signs back in and resumes).
+ * Sign-out — it KEEPS the local replica (spec §3, binding owner decision: the IndexedDB replica
+ * stays on the device). Used by BOTH exits: Settings → Sign out, and ForeignReplicaScreen (where
+ * the replica belongs to a DIFFERENT account than the session and is certainly not this session's
+ * to delete). `enterLogin` = sync.enterLoginKeepingReplica (Login screen; signing back in resumes
+ * the ledger and every queued op exactly where they stopped).
+ *
+ * Wiping here would be a data-loss path with no undo: the replica can be the LAST copy of the
+ * budget (local mode "wiped" deleted the server's copy on purpose) and the outbox can hold ops the
+ * server has never seen (offline, or a failing push) — a window.confirm is not consent to destroy
+ * them. The NEXT account to sign in on this device is protected by the multi-tenant guard in
+ * sync.ts (a foreign replica is neither rendered nor written anywhere), not by a wipe. Deleting
+ * the local copy on purpose is still one tap away: Settings → Clear local data.
  */
 export async function signOutKeepingReplica(enterLogin: () => void): Promise<void> {
   await authClient.signOut();

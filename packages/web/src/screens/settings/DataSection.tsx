@@ -1,12 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import qrcode from "qrcode-generator";
 import { api, apiErrorMessage, useLedgerVersion } from "../../lib/api";
-import { hasSession, signOutAndForget } from "../../lib/auth";
+import { hasSession, signOutKeepingReplica } from "../../lib/auth";
 import { DEFAULT_KDF_PARAMS, deriveKek, encodePairing, generateDek, generateSalt, unwrapDek, wrapDek, type KdfParams } from "../../lib/crypto";
 import { exportBackup, importBackup } from "../../lib/data";
 import * as e2ee from "../../lib/e2ee";
 import * as persist from "../../lib/persist";
-import { assertOwnReplica, fullResync, syncNow, wipeLocalData } from "../../lib/sync";
+import { assertOwnReplica, enterLoginKeepingReplica, fullResync, syncNow } from "../../lib/sync";
 import { useTheme } from "../../lib/contexts";
 import { useT } from "../../lib/i18n";
 import { store } from "../../lib/store";
@@ -39,8 +39,15 @@ export function DataSection() {
 
 /**
  * Logout — visible ONLY when the backend confirms a session (hasSession()).
- * The confirm explains the consequence: logout + deletion of the local copy
- * from this device (shared device — the replica cannot stay).
+ *
+ * It does NOT wipe the local replica (spec §3, binding owner decision): the ledger mirror, the
+ * DEK and — crucially — every op still queued in the durable outbox stay on the device, so a
+ * sign-out while offline (or with a failing push) cannot silently throw unsynced data away, and a
+ * replica that is the last copy of its budget (local mode "wiped") survives. Signing back in
+ * resumes exactly where it stopped; a DIFFERENT account signing in is handled by the multi-tenant
+ * guard in sync.ts (the foreign replica is neither rendered nor written anywhere, and the human
+ * decides its fate). Deleting the local copy on purpose remains available: Settings → Clear local
+ * data (Advanced).
  */
 function LogoutRow() {
   const { t } = useT();
@@ -57,7 +64,7 @@ function LogoutRow() {
     setBusy(true);
     setError(null);
     try {
-      await signOutAndForget(wipeLocalData); // sign out → clear the replica → reload
+      await signOutKeepingReplica(enterLoginKeepingReplica); // sign out → Login; the replica stays
     } catch (e) {
       setError(apiErrorMessage(e));
       setBusy(false);

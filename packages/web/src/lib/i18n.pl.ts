@@ -531,8 +531,8 @@ export const pl = {
   "auth.ownerHint": "To pierwsze konto na tym serwerze — po jego utworzeniu rejestracja zostanie zamknięta.",
   "auth.logout": "Wyloguj się",
   "auth.loggingOut": "Wylogowywanie…",
-  "auth.logoutConfirm": "Wylogować się? Lokalna kopia budżetu zostanie usunięta z tego urządzenia (dane na serwerze zostają).",
-  "auth.logoutHelp": "Wylogowuje i usuwa lokalną kopię danych z tego urządzenia. Dane na serwerze pozostają — wrócą po ponownym zalogowaniu.",
+  "auth.logoutConfirm": "Wylogować się? Dane pozostaną na tym urządzeniu i na serwerze.",
+  "auth.logoutHelp": "Wylogowuje z konta na tym urządzeniu. Lokalna kopia i dane na serwerze pozostają — wszystko wraca po ponownym zalogowaniu. Aby usunąć kopię z urządzenia, użyj „Wyczyść dane lokalne”.",
   "auth.sessionExpired": "Sesja wygasła",
 
   // BootStatus "foreign" — replika na tym urządzeniu należy do innego konta
