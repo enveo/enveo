@@ -1,9 +1,7 @@
-/**
- * better-auth client (same origin — the backend mounts /api/auth/* only in
- * AUTH_MODE=multi). In the none mode these functions are never called on the
- * critical path: LoginScreen appears only after a 401, and LogoutRow only when
- * hasSession() returns true (in none the endpoint doesn't exist → false).
- */
+
+
+
+
 import { createAuthClient } from "better-auth/client";
 
 export const authClient = createAuthClient();
