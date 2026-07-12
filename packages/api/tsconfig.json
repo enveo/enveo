@@ -1,0 +1,9 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "types": ["bun"],
+    "jsx": "react-jsx"
+  },
+  "include": ["src", "drizzle.config.ts"]
+}

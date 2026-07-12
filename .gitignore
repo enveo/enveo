@@ -1,0 +1,14 @@
+node_modules/
+dist/
+build/
+*.log
+.env
+.env.local
+.DS_Store
+packages/*/dist/
+packages/web/dev-dist/
+bun.lockb
+*.tsbuildinfo
+
+# Machine-local operator knowledge (never committed)
+CLAUDE.local.md
