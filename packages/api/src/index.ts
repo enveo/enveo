@@ -19,6 +19,7 @@ import { sync2Routes } from "./routes/sync2";
 import { txnRoutes } from "./routes/transactions";
 import { budgetSuggestRoutes } from "./routes/budgetSuggest";
 import { demoRoutes } from "./routes/demo";
+import { ScopeViolation } from "./sync/apply";
 
 // Fail fast on real boot (entrypoint run — dev, Docker CMD): accounts are
 // mandatory, so BETTER_AUTH_SECRET is too. Guarded by import.meta.main so the
@@ -134,6 +135,10 @@ app.onError((err, c) => {
   // wrong tier for the route (v1 requires plain, sync2 e2ee) — client switches channel
   if (err instanceof TierMismatch) {
     return c.json({ error: "tier_mismatch", tier: err.meta.tier, epoch: err.meta.epoch }, 409);
+  }
+  // cross-budget FK in a request body (REST/import paths; push maps it per-op)
+  if (err instanceof ScopeViolation) {
+    return c.json({ error: "foreign_ref" }, 400);
   }
   console.error(err);
   return c.json({ error: "internal" }, 500);

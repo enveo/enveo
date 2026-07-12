@@ -31,6 +31,57 @@ export type Executor = typeof db | DbTx;
 export const NOT_FOUND = "not_found" as const;
 export type NotFound = typeof NOT_FOUND;
 
+/* ── Budget-scope guards (multi-tenant write protection) ────────────── */
+
+/** Multi-tenant write guard: every FK taken from a request body must belong to
+ *  the caller's budget. Missing check = cross-budget write (IDOR). A push op
+ *  hitting this gets `status: "rejected"` (deterministic domain refusal). */
+export class ScopeViolation extends Error {
+  constructor() {
+    super("foreign_ref");
+  }
+}
+
+type FkBody = {
+  accountId?: string | null;
+  toAccountId?: string | null;
+  envelopeId?: string | null;
+  categoryId?: string | null;
+  recurrenceId?: string | null;
+};
+
+type FkTable = "accounts" | "envelopes" | "categories" | "recurrences";
+
+/** Pure part: which (table, id) pairs of a body need an ownership check. */
+export function collectFkChecks(b: FkBody): { table: FkTable; id: string }[] {
+  const out: { table: FkTable; id: string }[] = [];
+  if (b.accountId) out.push({ table: "accounts", id: b.accountId });
+  if (b.toAccountId) out.push({ table: "accounts", id: b.toAccountId });
+  if (b.envelopeId) out.push({ table: "envelopes", id: b.envelopeId });
+  if (b.categoryId) out.push({ table: "categories", id: b.categoryId });
+  if (b.recurrenceId) out.push({ table: "recurrences", id: b.recurrenceId });
+  return out;
+}
+
+/** Throws `ScopeViolation` when any non-null id does not belong to `budgetId`. */
+export async function assertBudgetFks(x: Executor, budgetId: string, b: FkBody): Promise<void> {
+  const tables = {
+    accounts: s.accounts,
+    envelopes: s.envelopes,
+    categories: s.categories,
+    recurrences: s.recurrences,
+  } as const;
+  for (const chk of collectFkChecks(b)) {
+    const t = tables[chk.table];
+    const rows = await x
+      .select({ id: t.id })
+      .from(t)
+      .where(and(eq(t.id, chk.id), eq(t.budgetId, budgetId)))
+      .limit(1);
+    if (rows.length === 0) throw new ScopeViolation();
+  }
+}
+
 /* ── Budget (single-row entity — display currency only) ─────────────── */
 
 export async function applyBudgetUpdate(x: Executor, budgetId: string, currency: string) {
@@ -49,7 +100,11 @@ export async function applyTxnCreate(
   budgetId: string,
   body: TxnPayload & { id?: string },
 ) {
+  await assertBudgetFks(x, budgetId, body);
   const items = body.items ?? [];
+  for (const i of items) {
+    await assertBudgetFks(x, budgetId, { envelopeId: i.envelopeId, categoryId: i.categoryId });
+  }
   const envelopeId = items.length > 0 ? null : (body.envelopeId ?? null);
   const [row] = await x
     .insert(s.transactions)
@@ -93,7 +148,11 @@ export async function applyTxnUpdate(
   budgetId: string,
   body: TxnPayload & { id: string },
 ) {
+  await assertBudgetFks(x, budgetId, body);
   const items = body.items ?? [];
+  for (const i of items) {
+    await assertBudgetFks(x, budgetId, { envelopeId: i.envelopeId, categoryId: i.categoryId });
+  }
   const [row] = await x
     .update(s.transactions)
     .set({
@@ -141,6 +200,9 @@ export async function applyTxnDelete(x: Executor, budgetId: string, id: string):
 /* ── Allocations (natural key envelopeId+month, upsert) ─────────────── */
 
 export async function applyAllocSet(x: Executor, budgetId: string, body: AllocPayload) {
+  // IDOR guard: the (envelopeId, month) upsert would otherwise hijack another
+  // budget's allocation row via the global unique conflict.
+  await assertBudgetFks(x, budgetId, { envelopeId: body.envelopeId });
   const [row] = await x
     .insert(s.allocations)
     .values({ budgetId, ...body })

@@ -6,6 +6,7 @@ import { requireTier } from "../context";
 import { db } from "../db/client";
 import { env } from "../env";
 import * as s from "../db/schema";
+import { assertBudgetFks } from "../sync/apply";
 import { confidentSourceRef, decideAssignment, type HistGroup, type HistPattern, rankPatterns } from "./import-match";
 import { buildDupIndex, classifyDup } from "./import-dedupe";
 
@@ -325,6 +326,17 @@ importRoutes.post("/import/apply", async (c) => {
   // transfer validation BEFORE any write — whole-batch error with the item index
   const transferErr = findTransferError(body.items, body.accountId);
   if (transferErr) return c.json(transferErr, 400);
+
+  // budget-scope guard BEFORE any write: every FK in the batch must belong to
+  // the caller's budget (cross-tenant ids → ScopeViolation → 400 foreign_ref)
+  for (const it of body.items) {
+    await assertBudgetFks(db, budgetId, {
+      accountId: it.accountId ?? body.accountId,
+      toAccountId: it.toAccountId,
+      envelopeId: it.envelopeId,
+      categoryId: it.categoryId,
+    });
+  }
 
   const dates = [...new Set(body.items.map((i) => i.date))];
   const existing = await db

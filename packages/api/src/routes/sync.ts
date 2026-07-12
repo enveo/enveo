@@ -42,6 +42,7 @@ import {
   applyTxnDelete,
   applyTxnUpdate,
   NOT_FOUND,
+  ScopeViolation,
   wipeBudgetData,
   type Executor,
 } from "../sync/apply";
@@ -273,6 +274,8 @@ class OpNotFound extends Error {
  */
 function isDomainRejection(e: unknown): boolean {
   if (e instanceof OpNotFound) return true;
+  // cross-budget FK in the op body — permanent refusal, never retriable
+  if (e instanceof ScopeViolation) return true;
   // SQLSTATE class 23 = constraint violation (PK/FK/CHECK/NOT NULL),
   // class 22 = bad data (e.g. invalid UUID/date format)
   return (
@@ -474,7 +477,16 @@ async function insertLedger(x: Executor, budgetId: string, ledger: ClientLedgerI
       })),
     );
   }
-  for (const part of chunk(ledger.allocations, 500)) {
+  // Scope guard: an allocation may only reference an envelope of THIS budget
+  // (just inserted above) — a foreign envelopeId is silently dropped instead of
+  // hijacking another budget's allocation row via the (envelopeId, month) unique.
+  const ownEnvIds = new Set(
+    (await x.select({ id: s.envelopes.id }).from(s.envelopes).where(eq(s.envelopes.budgetId, budgetId))).map(
+      (r) => r.id,
+    ),
+  );
+  const ownAllocs = ledger.allocations.filter((a) => ownEnvIds.has(a.envelopeId));
+  for (const part of chunk(ownAllocs, 500)) {
     // allocation ids are NOT preserved (natural key env+month; may be synthetic)
     await x.insert(s.allocations).values(
       part.map((a) => ({ budgetId, envelopeId: a.envelopeId, month: a.month, amount: a.amount })),
