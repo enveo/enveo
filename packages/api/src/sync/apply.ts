@@ -16,6 +16,7 @@
 import type {
   AccountPayload,
   AllocPayload,
+  ClientLedgerInput,
   EnvelopePayload,
   GroupPayload,
   RecurrencePayload,
@@ -48,9 +49,12 @@ type FkBody = {
   envelopeId?: string | null;
   categoryId?: string | null;
   recurrenceId?: string | null;
+  placeId?: string | null;
+  /** envelopes' parent group (NOT NULL, ON DELETE CASCADE) */
+  groupId?: string | null;
 };
 
-type FkTable = "accounts" | "envelopes" | "categories" | "recurrences";
+type FkTable = "accounts" | "envelopes" | "categories" | "recurrences" | "places" | "envelope_groups";
 
 /** Pure part: which (table, id) pairs of a body need an ownership check. */
 export function collectFkChecks(b: FkBody): { table: FkTable; id: string }[] {
@@ -60,6 +64,8 @@ export function collectFkChecks(b: FkBody): { table: FkTable; id: string }[] {
   if (b.envelopeId) out.push({ table: "envelopes", id: b.envelopeId });
   if (b.categoryId) out.push({ table: "categories", id: b.categoryId });
   if (b.recurrenceId) out.push({ table: "recurrences", id: b.recurrenceId });
+  if (b.placeId) out.push({ table: "places", id: b.placeId });
+  if (b.groupId) out.push({ table: "envelope_groups", id: b.groupId });
   return out;
 }
 
@@ -70,6 +76,8 @@ export async function assertBudgetFks(x: Executor, budgetId: string, b: FkBody):
     envelopes: s.envelopes,
     categories: s.categories,
     recurrences: s.recurrences,
+    places: s.places,
+    envelope_groups: s.envelopeGroups,
   } as const;
   for (const chk of collectFkChecks(b)) {
     const t = tables[chk.table];
@@ -80,6 +88,43 @@ export async function assertBudgetFks(x: Executor, budgetId: string, b: FkBody):
       .limit(1);
     if (rows.length === 0) throw new ScopeViolation();
   }
+}
+
+/**
+ * Scope guard for full-ledger restore (`/sync/replace`, e2ee disable): entity
+ * ids of a ClientLedger are preserved on insert and the budget's previous rows
+ * are wiped first, so every FK inside the payload must reference an id carried
+ * by the payload ITSELF. A UUID pointing at another tenant's row would
+ * otherwise persist a cross-budget reference (and double as an id-existence
+ * oracle). Pure — returns a description of the first foreign ref, or null.
+ *
+ * Allocations are deliberately NOT checked here: insertLedger filters them to
+ * own envelopes (silent drop — old backups may carry stale allocation rows).
+ */
+export function findForeignLedgerRef(ledger: ClientLedgerInput): string | null {
+  const ids = (rows: { id: string }[]) => new Set(rows.map((r) => r.id));
+  const accounts = ids(ledger.accounts);
+  const groups = ids(ledger.groups);
+  const envelopes = ids(ledger.envelopes);
+  const categories = ids(ledger.categories);
+  const places = ids(ledger.places);
+  const recurrences = ids(ledger.recurrences);
+  for (const e of ledger.envelopes) {
+    if (!groups.has(e.groupId)) return `envelopes[${e.id}].groupId`;
+  }
+  for (const t of ledger.transactions) {
+    if (!accounts.has(t.accountId)) return `transactions[${t.id}].accountId`;
+    if (t.toAccountId && !accounts.has(t.toAccountId)) return `transactions[${t.id}].toAccountId`;
+    if (t.envelopeId && !envelopes.has(t.envelopeId)) return `transactions[${t.id}].envelopeId`;
+    if (t.placeId && !places.has(t.placeId)) return `transactions[${t.id}].placeId`;
+    if (t.categoryId && !categories.has(t.categoryId)) return `transactions[${t.id}].categoryId`;
+    if (t.recurrenceId && !recurrences.has(t.recurrenceId)) return `transactions[${t.id}].recurrenceId`;
+    for (const it of t.items) {
+      if (!envelopes.has(it.envelopeId)) return `transactions[${t.id}].items.envelopeId`;
+      if (it.categoryId && !categories.has(it.categoryId)) return `transactions[${t.id}].items.categoryId`;
+    }
+  }
+  return null;
 }
 
 /* ── Budget (single-row entity — display currency only) ─────────────── */
@@ -289,6 +334,10 @@ export async function applyEnvelopeCreate(
   budgetId: string,
   body: EnvelopePayload & { id?: string },
 ) {
+  // groupId is a body FK (NOT NULL, ON DELETE CASCADE): a foreign group would
+  // attach the envelope to ANOTHER budget's group — the victim's group delete
+  // would then cascade into this budget. Same guard as every other body FK.
+  await assertBudgetFks(x, budgetId, { groupId: body.groupId });
   const { id, ...fields } = body;
   const [row] = await x
     .insert(s.envelopes)
@@ -302,6 +351,7 @@ export async function applyEnvelopeUpdate(
   budgetId: string,
   body: Partial<EnvelopePayload> & { id: string },
 ) {
+  await assertBudgetFks(x, budgetId, { groupId: body.groupId }); // no-op when the patch omits groupId
   const { id, ...fields } = body;
   const [row] = await x
     .update(s.envelopes)

@@ -41,6 +41,7 @@ import {
   applyTxnCreate,
   applyTxnDelete,
   applyTxnUpdate,
+  findForeignLedgerRef,
   NOT_FOUND,
   ScopeViolation,
   wipeBudgetData,
@@ -421,6 +422,11 @@ const chunk = <T,>(arr: T[], n: number): T[][] =>
   Array.from({ length: Math.ceil(arr.length / n) }, (_, i) => arr.slice(i * n, (i + 1) * n));
 
 async function insertLedger(x: Executor, budgetId: string, ledger: ClientLedgerInput): Promise<void> {
+  // §4.2 scope guard for the restore path: every FK must point INSIDE the
+  // payload (ids are preserved on insert and the budget was just wiped) — a
+  // foreign UUID would otherwise attach restored rows to ANOTHER budget's
+  // entities, bypassing assertBudgetFks through this door.
+  if (findForeignLedgerRef(ledger) !== null) throw new ScopeViolation();
   // FK-safe order: accounts → groups → envelopes → categories → places →
   // recurrences → allocations → transactions → split items
   for (const part of chunk(ledger.accounts, 300)) {
@@ -566,9 +572,13 @@ syncRoutes.post("/sync/replace", async (c) => {
     });
     return c.json(result);
   } catch (e) {
-    // constraint violation (FK/PK/CHECK — e.g. an envelope points to a nonexistent
-    // group, a transaction to a foreign envelope) → the whole transaction rolled back (atomically)
-    if (e instanceof postgres.PostgresError && (e.code.startsWith("23") || e.code.startsWith("22"))) {
+    // ScopeViolation: a FK inside the payload points OUTSIDE it (foreign/corrupt file);
+    // PostgresError class 23/22: constraint violation (FK/PK/CHECK) or bad data.
+    // Either way the whole transaction rolled back (atomically).
+    if (
+      e instanceof ScopeViolation ||
+      (e instanceof postgres.PostgresError && (e.code.startsWith("23") || e.code.startsWith("22")))
+    ) {
       return c.json(
         { error: "Nie udało się zapisać kopii — dane odwołują się do nieistniejących powiązań (uszkodzony lub obcy plik). Nic nie zostało zmienione." },
         400,

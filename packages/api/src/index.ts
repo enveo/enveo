@@ -136,7 +136,8 @@ app.onError((err, c) => {
   if (err instanceof TierMismatch) {
     return c.json({ error: "tier_mismatch", tier: err.meta.tier, epoch: err.meta.epoch }, 409);
   }
-  // cross-budget FK in a request body (REST/import paths; push maps it per-op)
+  // cross-budget FK in a request body (REST/import/e2ee-disable restore paths;
+  // push maps it per-op, /sync/replace maps it to its own 400 message)
   if (err instanceof ScopeViolation) {
     return c.json({ error: "foreign_ref" }, 400);
   }
