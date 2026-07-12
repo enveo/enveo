@@ -5,9 +5,10 @@ import { compress } from "hono/compress";
 import { cors } from "hono/cors";
 import { secureHeaders } from "hono/secure-headers";
 import { ZodError } from "zod";
-import { auth } from "./auth";
+import { auth, hasCredentialedUser } from "./auth";
+import { authMetaBody } from "./authPolicy";
 import { TierMismatch } from "./context";
-import { env } from "./env";
+import { assertAuthEnv, env } from "./env";
 import { crudRoutes } from "./routes/crud";
 import { extraRoutes } from "./routes/extras";
 import { importRoutes } from "./routes/import";
@@ -17,6 +18,12 @@ import { sync2Routes } from "./routes/sync2";
 import { txnRoutes } from "./routes/transactions";
 import { budgetSuggestRoutes } from "./routes/budgetSuggest";
 import { demoRoutes } from "./routes/demo";
+
+// Fail fast on real boot (entrypoint run — dev, Docker CMD): accounts are
+// mandatory, so BETTER_AUTH_SECRET is too. Guarded by import.meta.main so the
+// test suite can import the app without a configured secret (better-auth
+// itself skips secret validation under NODE_ENV=test).
+if (import.meta.main) assertAuthEnv();
 
 const app = new Hono<{ Variables: { userId?: string } }>();
 
@@ -85,20 +92,29 @@ app.use("/api/*", async (c, next) => {
 
 app.use("/api/*", cors({ origin: (o) => (allowedOrigins.has(o) ? o : "") }));
 
-// AUTH_MODE=multi: better-auth handler + session middleware — MUST be
-// mounted BEFORE the API routes. With AUTH_MODE=none `auth` is null and
-// nothing changes (behavior identical to before auth was introduced).
-if (auth) {
-  const authApp = auth; // local const: TS does not narrow imports inside closures
-  app.on(["POST", "GET"], "/api/auth/*", (c) => authApp.handler(c.req.raw));
-  app.use("/api/*", async (c, next) => {
-    if (c.req.path.startsWith("/api/auth/") || c.req.path === "/api/health") return next();
-    const session = await authApp.api.getSession({ headers: c.req.raw.headers });
-    if (!session) return c.json({ error: "unauthorized" }, 401);
-    c.set("userId", session.user.id);
-    return next();
-  });
-}
+// Accounts are always on: better-auth handler + session middleware — MUST be
+// mounted BEFORE the API routes.
+// Public: the login screen asks what to render. Must be registered BEFORE the
+// better-auth wildcard — Hono matches in registration order.
+app.get("/api/auth/meta", async (c) => {
+  const hasUser = await hasCredentialedUser();
+  return c.json(
+    authMetaBody(
+      { deployment: env.DEPLOYMENT, allowSignups: env.ALLOW_SIGNUPS, hasCredentialedUser: hasUser },
+      Boolean(env.GOOGLE_CLIENT_ID && env.GOOGLE_CLIENT_SECRET),
+    ),
+  );
+});
+app.on(["POST", "GET"], "/api/auth/*", (c) => auth.handler(c.req.raw));
+// Session middleware: protects ALL /api/* (including the AI proxy) except
+// the auth endpoints themselves and the health check.
+app.use("/api/*", async (c, next) => {
+  if (c.req.path.startsWith("/api/auth/") || c.req.path === "/api/health") return next();
+  const session = await auth.api.getSession({ headers: c.req.raw.headers });
+  if (!session) return c.json({ error: "unauthorized" }, 401);
+  c.set("userId", session.user.id);
+  return next();
+});
 
 const api = new Hono();
 api.get("/health", (c) => c.json({ ok: true }));

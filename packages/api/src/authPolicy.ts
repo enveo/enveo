@@ -8,3 +8,13 @@ export type SignupPolicyInput = {
 export function signupsOpen(i: SignupPolicyInput): boolean {
   return i.deployment === "cloud" || i.allowSignups === "1" || !i.hasCredentialedUser;
 }
+
+/** Body of the public GET /api/auth/meta — the login screen asks what to
+ *  render. Must leak NOTHING beyond these three fields. */
+export function authMetaBody(i: SignupPolicyInput, hasGoogle: boolean) {
+  return {
+    signupsOpen: signupsOpen(i),
+    firstRun: !i.hasCredentialedUser,
+    providers: { google: hasGoogle },
+  };
+}
