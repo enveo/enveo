@@ -26,6 +26,7 @@
  *   updates tierMeta from the body and forces a hard re-bootstrap on the right path.
  */
 import type { ClientLedger, SyncOp } from "@enveo/shared";
+import { fetchSessionUserId } from "./auth";
 import * as e2ee from "./e2ee";
 import { clearLocalData, idbGet, idbPut } from "./idb";
 import * as outbox from "./outbox";
@@ -501,6 +502,132 @@ async function doPullE2ee(dek: Uint8Array): Promise<void> {
   }
 }
 
+/* ── Account identity of the replica (multi-tenant guard) ────────────────
+ *
+ * The replica knows its budgetId but NOT whose it is. With mandatory accounts one
+ * device can hold user A's ledger AND A's queued ops while user B signs in (sign-out
+ * keeps the replica, and the Login screen is reachable again — see enterUnauthed).
+ * doCycle pushes the WHOLE outbox before the push RESPONSE reveals a foreign budgetId,
+ * so A's entity-creating ops (account/envelope/category/place/budget.update, and any
+ * txn.create whose FKs are created in the same batch) would already be written into B's
+ * budget — the server's FK guards only reject references to ANOTHER budget's EXISTING
+ * rows, never fresh creates.
+ *
+ * Therefore no server write may happen before the session's user id is compared with the
+ * one stamped next to the replica (IDB meta "userId"):
+ *  - no session   → UnauthorizedError → Login (this is ALSO the re-auth path: an expired
+ *                   cookie now reaches the login screen instead of a muted badge),
+ *  - other user   → FOREIGN replica: wipe local data + reload, so the boot after the
+ *                   reload bootstraps a clean replica for the signed-in account,
+ *  - same user    → stamp it (idempotent) and let the cycle run.
+ * Verified ONCE per page load — every account switch goes through Login →
+ * location.reload() → boot, i.e. through a fresh page load.
+ */
+
+export type IdentityVerdict = "unauthed" | "foreign" | "ok";
+
+ 
+export function decideIdentity(
+  sessionUserId: string | null,
+  stamped: string | undefined,
+): IdentityVerdict {
+  if (!sessionUserId) return "unauthed";
+  if (stamped && stamped !== sessionUserId) return "foreign";
+  return "ok";  
+}
+
+let identityOk = false;  
+let identityBlocked = false;  
+
+ 
+export function __resetIdentity(): void {
+  identityOk = false;
+  identityBlocked = false;
+}
+
+/**
+ * 401 — during boot OR mid-cycle: without a session the app cannot sync at all, so the
+ * Login screen takes over (BootStatus "unauthed"). Previously a running cycle only set
+ * SyncState "unauthed" (a muted badge opening Settings, which offers no way to sign in):
+ * after the cookie expired the outbox grew forever and the only escape was "Clear local
+ * data" — which throws the unsynced ops away. The replica and the outbox STAY in IDB, so
+ * signing back in as the SAME user resumes the push exactly where it stopped.
+ */
+function enterUnauthed(): void {
+  store.setBootStatus("unauthed");
+  setState("unauthed"); // no retry loop — a 401 does not clear on its own
+}
+
+
+
+
+
+
+async function fetchServerBudgetId(): Promise<string | null> {
+  const res = await fetch(`/api/sync/pull?since=${store.getCursor()}`);
+  if (res.status === 401) throw new UnauthorizedError();
+  await throwIfTierMismatch(res);
+  if (!res.ok) throw new Error(`pull: ${res.status}`);
+  const body = (await res.json()) as PullResponse;
+  return body.budgetId ?? null;
+}
+
+/**
+ * The replica belongs to a DIFFERENT account: drop it (mirror + outbox + DEK) BEFORE
+ * anything can be pushed, then reload — the fresh boot bootstraps this account's data.
+ * The previous owner's unsynced ops are lost, and that is the safe direction: the only
+ * alternative is writing them into the new account's budget (a cross-tenant write).
+ */
+async function enterForeignReplica(): Promise<void> {
+  identityBlocked = true;  
+  console.warn("sync: the local replica belongs to a different account — clearing it before any push");
+  outbox.clearAll();  
+  await persist.flushed();  
+  await wipeLocalData();  
+}
+
+/**
+ * MULTI-TENANT GUARD — runs before ANY server write in a cycle (replace and push).
+ * Returns false when the cycle must abort (foreign replica → wipe + reload in flight);
+ * throws UnauthorizedError when there is no session. Network failures propagate to the
+ * normal backoff — being offline is NOT being signed out.
+ */
+async function ensureIdentity(): Promise<boolean> {
+  if (identityOk) return true;
+  const sessionUserId = await fetchSessionUserId();
+  const stamped = await idbGet<string>("meta", "userId").catch(() => undefined);
+  const verdict = decideIdentity(sessionUserId, stamped);
+  if (verdict === "unauthed" || !sessionUserId) throw new UnauthorizedError();
+  if (verdict === "foreign") {
+    await enterForeignReplica();
+    return false;
+  }
+  // Replica with no stamp (older version) that carries QUEUED ops we cannot attribute:
+  // prove the budget is this session's before those ops leave the device. Only the plain
+  // tier — /sync2 has no budgetId, and an e2ee replica of another account is unusable
+  // anyway (its DEK is not ours). A replica bootstrapped in THIS page load
+  // (lastBootSource "snapshot") came from this session's budget by construction.
+  if (
+    !stamped &&
+    outbox.size() > 0 &&
+    lastBootSource === "replica" &&
+    e2ee.getTierMeta().tier !== "e2ee"
+  ) {
+    const local = store.getBudgetId();
+    const server = await fetchServerBudgetId();
+    if (local && server && local !== server) {
+      await enterForeignReplica();
+      return false;
+    }
+  }
+  await persist.putMeta("userId", sessionUserId); 
+
+
+  if (store.getBootStatus() === "unauthed" && store.getLedger()) store.setBootStatus("ready");
+  identityOk = true;
+  return true;
+}
+
  
 
  
@@ -514,11 +641,17 @@ async function doCycle(): Promise<boolean> {
   
 
   if (store.getBootStatus() === "locked") return true;
+   
+  if (identityBlocked) return true;
   const isE2ee = e2ee.getTierMeta().tier === "e2ee";
   // before bootstrap — nothing to do (the v2 path doesn't know budgetId: epoch guards the epoch)
   if (!store.getLedger() || (!isE2ee && !store.getBudgetId())) return true;
   setState("syncing");
   try {
+    // MULTI-TENANT GUARD — BEFORE any server write (replace/push): whose replica is this?
+    // No session → UnauthorizedError (→ Login); another account → wipe + reload (false).
+    if (!(await ensureIdentity())) return true;
+
     // CONSUMER of the durable REPLACE obligation (JSON backup import) — BEFORE everything:
     // the local mirror is CANONICAL and must REPLACE the server, never a delta pull
     // (which would revert the import to the server state). Path per tier: plain →
@@ -688,7 +821,8 @@ async function doCycle(): Promise<boolean> {
     if (e instanceof UnauthorizedError) {
       
 
-      setState("unauthed");
+
+      enterUnauthed();
       return false;
     }
     if (e instanceof TierMismatchError) return handleTierFlip();
@@ -720,7 +854,7 @@ async function handleTierFlip(): Promise<boolean> {
     return true;
   } catch (e) {
     if (e instanceof UnauthorizedError) {
-      setState("unauthed");
+      enterUnauthed();
       return false;
     }
     setState(typeof navigator !== "undefined" && navigator.onLine === false ? "offline" : "error");
@@ -757,6 +891,9 @@ export function syncNow(reason: string): Promise<void> {
     setState("local");
     return Promise.resolve();
   }
+  
+
+  if (identityBlocked) return Promise.resolve();
   if (running) {
     dirty = true;
     return running;
@@ -797,6 +934,11 @@ export function pullNow(): Promise<void> {
  * on !ok — the whole server operation is atomic (either the entire replace or nothing).
  */
 async function replaceServer(ledger: ClientLedger): Promise<{ budgetId: string; cursor: number }> {
+  // MULTI-TENANT GUARD — /sync/replace is reachable OUTSIDE a cycle ("disable local mode"
+  // uploads the mirror, "delete server data" wipes it), so the check cannot live in doCycle
+  // alone: replacing ANOTHER account's budget with this replica is the worst write of all.
+  // Memoized (identityOk) — inside a cycle this costs nothing.
+  if (!(await ensureIdentity())) throw new Error("foreign_replica");  
   const res = await fetch("/api/sync/replace", {
     method: "POST",
     headers: { "content-type": "application/json" },
@@ -844,6 +986,9 @@ export async function pushLocalToServer(): Promise<void> {
  * untouched — the replacePending flag stays up, doCycle retries).
  */
 export async function resetServerE2ee(dek?: Uint8Array): Promise<void> {
+  // MULTI-TENANT GUARD — as in replaceServer: /sync2/reset overwrites the whole server-side
+  // journal + checkpoint, and it is reachable outside a cycle (disable local mode).
+  if (!(await ensureIdentity())) throw new Error("foreign_replica");  
   const ledger = store.getLedger();
   if (!ledger) throw new Error("Brak lokalnej repliki do wysłania.");
   const key = dek ?? e2ee.getDek();
@@ -1044,8 +1189,7 @@ async function boot(): Promise<void> {
     if (e instanceof UnauthorizedError) {
       
 
-      store.setBootStatus("unauthed");
-      setState("unauthed");
+      enterUnauthed();
       return;
     }
     if (store.getLedger()) {
