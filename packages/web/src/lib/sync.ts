@@ -541,6 +541,16 @@ async function doPullE2ee(dek: Uint8Array): Promise<void> {
  * outbox: the durable REPLACE obligation is a server-write channel too, and importBackup
  * CLEARS the outbox while setting it (as does the "wiped" local mode) — "outbox empty"
  * proves nothing.
+ *
+ * ONLY the stamp can prove FOREIGN (and only that verdict wipes). An unstamped replica whose
+ * proof fails is merely UNPROVEN: budgetId is not a tenant id but the replica EPOCH marker
+ * (api/context.ts — a wipe+reseed, a DB restore, and the lazy creation of an empty budget for
+ * a user who has none all mint a new one), so "the session's budget id differs from mine" is
+ * exactly what the 2.0 upgrade path looks like: a pre-2.0 device holds an unstamped replica of
+ * budget B_old, the owner registers, the pull lazily creates the empty B_new — and the ledger
+ * plus every queued op would be destroyed on a false positive. Unproven therefore refuses every
+ * server write and waits (a later cycle re-proves; a stamped replica in the same situation is
+ * already handled non-destructively by the resync path).
  */
 
 export type IdentityVerdict = "unauthed" | "foreign" | "ok";
@@ -613,8 +623,13 @@ function enterUnverified(): void {
   setState("error"); // honest: sync really is not happening (no retry loop of its own)
 }
 
-/** What the ownership proof for a replica with no owner stamp can conclude. */
-type Ownership = "ours" | "foreign" | "unknown";
+/**
+ * What the ownership proof for a replica with no owner stamp can conclude. Deliberately NOT
+ * "foreign": nothing an unstamped replica can be compared against distinguishes another
+ * ACCOUNT from the same account's rotated budget (see the section header), and only the
+ * userId stamp — decideIdentity → "foreign" — may trigger the destructive path.
+ */
+type Ownership = "ours" | "unknown";
 
 /**
  * The budget the SESSION owns on the v1 path. A delta pull at the current cursor: normally
@@ -641,7 +656,8 @@ async function fetchServerE2eeIdentity(): Promise<{ budgetId: string | null; blo
 
 /**
  * Does a replica with NO owner stamp belong to the budget the SESSION owns? Runs before its
- * FIRST server write of any kind (push, /sync/replace, /sync2/reset).
+ * FIRST server write of any kind (push, /sync/replace, /sync2/reset). This can only ever
+ * CONFIRM ownership ("ours" → adopt + write) or fail to ("unknown" → no write, no wipe):
  *
  *  - plain: the budgetId reported by the session's pull must equal the replica's,
  *  - e2ee : the same comparison (since 2.0 the v2 snapshot names its budget as well). For a
@@ -650,6 +666,14 @@ async function fetchServerE2eeIdentity(): Promise<{ budgetId: string | null; blo
  *    encrypted with the budget's DEK and AES-GCM authenticates it. A DEK obtained from the
  *    server's key envelope in THIS page load (Unlock) proves nothing — it decrypts the
  *    session's budget by construction — hence e2ee.isDekFromStore().
+ *
+ * A mismatch does NOT mean "another account". budgetId is the replica epoch marker, not a
+ * tenant id: the session's budget is lazily created when the user has none (the 2.0 upgrade
+ * path, before the budget is reattached), and a reseed/DB restore rotates it. A checkpoint the
+ * replica's stored DEK cannot open likewise only proves the KEY is stale (the same user's
+ * disable→enable re-encrypts with a fresh DEK — a case whose pre-guard behaviour was a 409
+ * epoch mismatch → Unlock, with the outbox intact). Both therefore end as "unknown": refuse
+ * every write, destroy nothing, re-prove on the next cycle.
  *
  * A 409 tier_mismatch means the session's budget lives in the OTHER tier: retry the proof
  * there ONCE. It must never escape this function — doCycle would hand it to handleTierFlip,
@@ -667,19 +691,19 @@ async function proveOwnership(): Promise<Ownership> {
     try {
       if (e2ee.getTierMeta().tier === "e2ee") {
         const server = await fetchServerE2eeIdentity();
-        if (local && server.budgetId) return local === server.budgetId ? "ours" : "foreign";
+        if (local && server.budgetId) return local === server.budgetId ? "ours" : "unknown";
         const dek = e2ee.getDek();
         if (!dek || !e2ee.isDekFromStore() || !server.blob) return "unknown";
         try {
           await e2ee.decryptSnapshot(server.blob, dek);
           return "ours"; // the session's checkpoint opens with the replica's own key
         } catch {
-          return "foreign"; // …it does not: a different budget's ciphertext
+          return "unknown"; // …it does not: a stale key OR another budget — indistinguishable
         }
       }
       const server = await fetchServerBudgetId();
       if (!server || !local) return "unknown";
-      return local === server ? "ours" : "foreign";
+      return local === server ? "ours" : "unknown";
     } catch (err) {
       if (err instanceof TierMismatchError) {
         if (attempt === 0) continue; // tierMeta is fresh → prove on the other path
@@ -691,10 +715,11 @@ async function proveOwnership(): Promise<Ownership> {
 }
 
 /**
- * MULTI-TENANT GUARD — runs before ANY server write (cycle push, replace, e2ee reset).
- * Returns false when the caller must NOT write (foreign replica → wipe + reload in flight,
- * or an owner we could not establish); throws UnauthorizedError when there is no session.
- * Network failures propagate to the normal backoff — being offline is NOT being signed out.
+ * MULTI-TENANT GUARD — runs before ANY server write (cycle push, replace, e2ee reset/enable/
+ * disable). Returns false when the caller must NOT write (foreign replica → wipe + reload in
+ * flight, or an owner we could not establish); throws UnauthorizedError when there is no
+ * session. Network failures propagate to the normal backoff — being offline is NOT being
+ * signed out.
  */
 async function ensureIdentity(): Promise<boolean> {
   const sessionUserId = await fetchSessionUserId(); // 5xx/network THROWS (≠ "signed out")
@@ -703,20 +728,15 @@ async function ensureIdentity(): Promise<boolean> {
     const stamped = await idbGet<string>("meta", "userId").catch(() => undefined);
     const verdict = decideIdentity(sessionUserId, stamped);
     if (verdict === "unauthed") throw new UnauthorizedError(); // defensive (sessionUserId is set)
+    // The ONLY destructive verdict: the stamp names another account, so the replica provably
+    // is not this user's (proveOwnership never concludes that — see Ownership).
     if (verdict === "foreign") {
       await enterForeignReplica();
       return false;
     }
-    if (!stamped) {
-      const owner = await proveOwnership();
-      if (owner === "foreign") {
-        await enterForeignReplica();
-        return false;
-      }
-      if (owner === "unknown") {
-        enterUnverified();
-        return false;
-      }
+    if (!stamped && (await proveOwnership()) === "unknown") {
+      enterUnverified(); // inconclusive → no write, no wipe, no adoption; retried next cycle
+      return false;
     }
     await persist.putMeta("userId", sessionUserId); // stamp the owner next to the replica
     identityVerifiedFor = sessionUserId;
@@ -725,6 +745,20 @@ async function ensureIdentity(): Promise<boolean> {
   // Login: the replica is intact and belongs to this account → back into the app.
   if (store.getBootStatus() === "unauthed" && store.getLedger()) store.setBootStatus("ready");
   return true;
+}
+
+/**
+ * The guard for server writes made OUTSIDE this module: Settings → "Enable E2EE" (POST
+ * /e2ee/enable uploads an encrypted snapshot of the whole replica AND flips the session
+ * budget's tier under this device's wrappedDek) and "Disable E2EE" (POST /e2ee/disable
+ * uploads the whole plaintext ledger, from which the server rebuilds the budget's rows).
+ * Both are the same "OVERWRITE the session user's entire budget with this replica" class as
+ * /sync/replace, and both are reachable while a cookie swapped in another tab (or a replica
+ * whose owner cannot be established) makes the local mirror foreign to the session.
+ * Throws when no write may be made; the caller renders the error.
+ */
+export async function assertOwnReplica(): Promise<void> {
+  if (!(await ensureIdentity())) throw new Error("foreign_replica");
 }
 
 /* ── Push→pull cycle ──────────────────────────────────────────────────── */
@@ -1042,7 +1076,7 @@ async function replaceServer(ledger: ClientLedger): Promise<{ budgetId: string; 
   // check cannot live in doCycle alone: replacing ANOTHER account's budget with this replica
   // is the worst write of all. The verdict for an already-verified session is reused, so
   // inside a cycle this costs one cheap /api/auth/get-session.
-  if (!(await ensureIdentity())) throw new Error("foreign_replica"); // wiped/unverified — no write
+  await assertOwnReplica(); // wiped/unverified — no write
   const res = await fetch("/api/sync/replace", {
     method: "POST",
     headers: { "content-type": "application/json" },
@@ -1094,7 +1128,7 @@ export async function resetServerE2ee(dek?: Uint8Array): Promise<void> {
   // journal and swaps their checkpoint, and it is reachable outside a cycle (disable local
   // mode, JSON import). Two independently-e2ee budgets both sit at epoch 1, so the server's
   // epoch check would happily accept another account's ciphertext here.
-  if (!(await ensureIdentity())) throw new Error("foreign_replica"); // wiped/unverified — no write
+  await assertOwnReplica(); // wiped/unverified — no write
   const ledger = store.getLedger();
   if (!ledger) throw new Error("Brak lokalnej repliki do wysłania.");
   const key = dek ?? e2ee.getDek();

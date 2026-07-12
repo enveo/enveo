@@ -6,9 +6,9 @@ import { DEFAULT_KDF_PARAMS, deriveKek, encodePairing, generateDek, generateSalt
 import { exportBackup, importBackup } from "../../lib/data";
 import * as e2ee from "../../lib/e2ee";
 import * as persist from "../../lib/persist";
-import { fullResync, syncNow, wipeLocalData } from "../../lib/sync";
+import { assertOwnReplica, fullResync, syncNow, wipeLocalData } from "../../lib/sync";
 import { useTheme } from "../../lib/contexts";
-import { useT } from "../../lib/i18n";
+import { useT, type TKey } from "../../lib/i18n";
 import { store } from "../../lib/store";
 import { CORAL, INCOME, font } from "../../lib/theme";
 import { Sheet } from "../../components/chrome";
@@ -26,6 +26,16 @@ const IC = {
   shieldOff: ["M19.7 14c.2-.65.3-1.32.3-2V5l-8-3-3.2 1.2", "M4.7 4.7L4 5v7c0 5 3.5 9.4 8 11a13.2 13.2 0 005.6-4.4", "M2 2l20 20"],
   logout: ["M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4", "M16 17l5-5-5-5", "M21 12H9"],
 };
+
+/**
+ * Error text for a server write that the multi-tenant guard refused: assertOwnReplica throws
+ * the "foreign_replica" sentinel (no owner could be established, or the replica is another
+ * account's and a wipe+reload is already in flight) — render it as a sentence, not as a code.
+ */
+function writeErrorMessage(e: unknown, t: (key: TKey) => string): string {
+  const msg = apiErrorMessage(e);
+  return msg === "foreign_replica" ? t("sync.notOwner") : msg;
+}
 
 export function DataSection() {
   return (
@@ -227,6 +237,11 @@ function E2eeEnableWizard() {
     try {
       const ledger = store.getLedger();
       if (!ledger) throw new Error(t("settings.exportNotReady"));
+      // MULTI-TENANT GUARD — /e2ee/enable uploads a snapshot of THIS replica and flips the
+      // SESSION budget's tier under this device's wrappedDek: a full-budget overwrite, exactly
+      // like /sync/replace. It is reachable from a tab whose cookie was swapped by a sign-in
+      // elsewhere, and from a replica whose owner sync refuses to establish.
+      await assertOwnReplica();
       // crypto ON THE DEVICE: fresh DEK + KEK from the password (Argon2id) + ciphertext of the whole replica
       const salt = generateSalt();
       const dek = generateDek();
@@ -245,7 +260,7 @@ function E2eeEnableWizard() {
       void syncNow("e2ee-enable"); // backlogged outbox ops go out via a normal v2 push
       setSheet(false); // the section switches to the e2ee panel (statusOn = confirmation)
     } catch (e) {
-      setError(`${t("e2ee.enableFailed")} ${apiErrorMessage(e)}`);
+      setError(`${t("e2ee.enableFailed")} ${writeErrorMessage(e, t)}`);
     } finally {
       setBusy(false);
     }
@@ -558,6 +573,9 @@ function E2eeDisable() {
     try {
       const ledger = store.getLedger();
       if (!ledger) throw new Error(t("settings.exportNotReady"));
+      // MULTI-TENANT GUARD — /e2ee/disable ships the ENTIRE plaintext ledger and the server
+      // rebuilds the session budget's rows from it: a full-budget overwrite (see assertOwnReplica).
+      await assertOwnReplica();
       const { epoch } = await api.e2eeDisable({ confirm: E2EE_DISABLE_WORD, ledger });
       // return to the v1 path ONLY after server success; the local replica stays
       e2ee.clearDek();
@@ -566,7 +584,7 @@ function E2eeDisable() {
       setSheet(false);
       void fullResync(); // v1 sync starts: fresh snapshot (canonical cursor/budgetId) + outbox replay
     } catch (e) {
-      setError(apiErrorMessage(e));
+      setError(writeErrorMessage(e, t));
     } finally {
       setBusy(false);
     }

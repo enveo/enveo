@@ -6,10 +6,17 @@
  *    not just a muted badge — otherwise the outbox grows forever with no way to sign in,
  *  - a replica belonging to ANOTHER account must never write into the signed-in user's
  *    budget. Every server-write channel is guarded, not just the push loop: the durable
- *    REPLACE obligation (/sync/replace, /sync2/reset) overwrites the session user's budget
- *    wholesale, and it is set by an import that CLEARS the outbox — so "the outbox is empty"
- *    means nothing. The session is re-read every cycle, because the cookie is shared by all
- *    tabs and can be swapped under a long-lived tab without it ever seeing a 401.
+ *    REPLACE obligation (/sync/replace, /sync2/reset) and the E2EE enable/disable buttons
+ *    (assertOwnReplica, called from Settings) overwrite the session user's budget wholesale,
+ *    and the REPLACE obligation is set by an import that CLEARS the outbox — so "the outbox is
+ *    empty" means nothing. The session is re-read every cycle, because the cookie is shared by
+ *    all tabs and can be swapped under a long-lived tab without it ever seeing a 401.
+ *
+ * The guard is asymmetric on purpose: only the userId STAMP can prove a replica FOREIGN (that
+ * verdict wipes it). A failed proof for an UNSTAMPED replica — a budgetId that differs, a
+ * checkpoint its DEK cannot open — is inconclusive (budgetId is the epoch marker and the
+ * session's budget may have just been lazily created), so it refuses every write and destroys
+ * nothing.
  *
  * Under bun there is no window/indexedDB, so idb.ts runs in its in-memory mode and sync.ts
  * installs no triggers — the cycle can be driven directly with syncNow().
@@ -24,6 +31,7 @@ import { store } from "./store";
 import {
   __resetIdentity,
   __resetObligations,
+  assertOwnReplica,
   decideIdentity,
   markReplacePending,
   pushLocalToServer,
@@ -255,17 +263,16 @@ describe("sync cycle: replica with no owner stamp", () => {
 
   it("a pending REPLACE with an EMPTY outbox never overwrites the session's budget", async () => {
     // importBackup() sets the durable replace obligation and CLEARS the outbox, so an
-    // outbox-triggered probe misses this path entirely: the imported (foreign) ledger would
-    // be pushed with /sync/replace, destroying the signed-in user's budget.
+    // outbox-triggered probe misses this path entirely: the imported ledger would be pushed
+    // with /sync/replace, destroying the signed-in user's budget.
     markReplacePending(); // the replica is canonical and owes the server a full replace
     session = { user: { id: "user-B" } };
-    serverBudget = BUDGET_B; // …but the session owns a DIFFERENT budget
+    serverBudget = BUDGET_B; // …but the session's budget is a DIFFERENT one
 
     await syncNow("test");
 
     expect(outbox.size()).toBe(0); // the state this test is about
     expect(called("/api/sync/replace")).toBe(false); // B's budget is NOT overwritten
-    expect(reloads).toBe(1); // foreign replica → wiped + reloading
   });
 
   it("pushLocalToServer (import / disable local mode) proves ownership as well", async () => {
@@ -274,26 +281,86 @@ describe("sync cycle: replica with no owner stamp", () => {
 
     await expect(pushLocalToServer()).rejects.toThrow();
     expect(called("/api/sync/replace")).toBe(false);
-    expect(reloads).toBe(1);
+  });
+
+  it("assertOwnReplica guards the writes made outside sync.ts (E2EE enable/disable)", async () => {
+    // Settings → enable/disable E2EE upload the WHOLE replica to /api/e2ee/* and rebuild the
+    // session budget from it: the same overwrite class as /sync/replace, but issued straight
+    // from the UI. The stamp says user A, the cookie now says user B (a sign-in in another tab).
+    await idbPut("meta", "user-A", "userId");
+    session = { user: { id: "user-B" } };
+
+    await expect(assertOwnReplica()).rejects.toThrow(); // the UI never reaches api.e2eeEnable/Disable
+    expect(reloads).toBe(1); // provably foreign (stamp) → wiped + reloading
+  });
+});
+
+/* ── An UNPROVEN replica is not a foreign one: refuse writes, destroy NOTHING ──
+ *
+ * budgetId is the replica EPOCH marker, not a tenant id: /api/sync/pull LAZILY CREATES an
+ * empty budget for a user who has none, and a reseed/DB restore rotates the id. So "the
+ * session's budget id ≠ mine" is precisely what the 2.0 upgrade looks like on a pre-guard
+ * device — wiping there would silently destroy the ledger AND every queued op. */
+
+describe("sync: an unproven replica is refused, never wiped", () => {
+  it("2.0 upgrade path: the owner's budget is lazily created (new id) → no write, no data loss", async () => {
+    outbox.add(catOp()); // ops queued before the upgrade
+    session = { user: { id: "user-owner" } }; // freshly registered owner…
+    serverBudget = BUDGET_B; // …whose budget was lazily created empty (the old one is not attached yet)
+
+    await syncNow("test");
+
+    expect(called("/api/sync/push")).toBe(false); // nothing written into the new empty budget
+    expect(reloads).toBe(0); // NOT wiped — the mismatch proves nothing about the account
+    expect(outbox.size()).toBe(1); // the queued op survives (a later cycle re-proves)
+    await persist.flushed();
+    expect(await idbGet("meta", "ledger")).toBeDefined(); // the replica is still there
+    expect(await idbGet("meta", "userId")).toBeUndefined(); // …and NOT adopted on a guess
+  });
+
+  it("the same replica is pushed once the owner's budget is reattached", async () => {
+    outbox.add(catOp());
+    session = { user: { id: "user-owner" } };
+    serverBudget = BUDGET_B;
+    await syncNow("test"); // unproven → refused (above)
+
+    serverBudget = BUDGET_A; // operator reattaches the pre-2.0 budget to the owner account
+    await syncNow("test");
+
+    expect(called("/api/sync/push")).toBe(true); // the preserved op finally goes out
+    await persist.flushed();
+    expect(await idbGet<string>("meta", "userId")).toBe("user-owner");
+  });
+
+  it("an unproven replica is refused by the out-of-cycle writers too, with no wipe", async () => {
+    session = { user: { id: "user-owner" } };
+    serverBudget = BUDGET_B;
+
+    await expect(pushLocalToServer()).rejects.toThrow();
+    await expect(assertOwnReplica()).rejects.toThrow();
+    expect(called("/api/sync/replace")).toBe(false);
+    expect(reloads).toBe(0);
+    expect(await idbGet("meta", "ledger")).toBeDefined();
   });
 });
 
 /* ── E2EE tier — the outbox is PLAINTEXT and survives tier flips ───────── */
 
 describe("sync cycle: e2ee replica with no owner stamp", () => {
-  it("a foreign e2ee budget is neither pushed to nor reset", async () => {
+  it("an unproven e2ee budget is neither pushed to nor reset (and not wiped either)", async () => {
     e2ee.setTierMeta({ tier: "e2ee", epoch: 1 });
     e2ee.setDek(new Uint8Array(32));
-    outbox.add(catOp()); // A's queued ops (plaintext, waiting to be encrypted at push)
+    outbox.add(catOp()); // queued ops (plaintext, waiting to be encrypted at push)
     markReplacePending(); // …and a pending full replace of the server
     session = { user: { id: "user-B" } };
-    serverBudget = BUDGET_B; // B's e2ee budget — same epoch 1, so the server would accept
+    serverBudget = BUDGET_B; // a different e2ee budget — same epoch 1, so the server would accept
 
     await syncNow("test");
 
-    expect(called("/api/sync2/push")).toBe(false); // no ciphertext of A's into B's journal
-    expect(called("/api/sync2/reset")).toBe(false); // B's journal + checkpoint NOT destroyed
-    expect(reloads).toBe(1);
+    expect(called("/api/sync2/push")).toBe(false); // no ciphertext of this replica into that journal
+    expect(called("/api/sync2/reset")).toBe(false); // that journal + checkpoint NOT destroyed
+    expect(reloads).toBe(0); // …and this device's ledger + ops are NOT destroyed on a guess
+    expect(outbox.size()).toBe(1);
   });
 
   it("a tier mismatch during the proof does not become a flip + replay into the session's budget", async () => {

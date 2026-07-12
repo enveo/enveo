@@ -155,6 +155,7 @@ export const en: Record<TKey, string> = {
   "sync.badgeLocalWiped": "Local mode — data deleted from server. Tap to open settings",
   "sync.badgeLocalPaused": "Local mode — sync paused. Tap to open settings",
   "sync.badgeSyncing": "Sync in progress",
+  "sync.notOwner": "This device's local copy could not be confirmed to belong to the signed-in account — nothing was sent to the server. Refresh the app and sign in again.",
   "op.txn.create": "New transaction",
   "op.txn.update": "Transaction change",
   "op.txn.delete": "Transaction deletion",
