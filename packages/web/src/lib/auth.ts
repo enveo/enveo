@@ -16,16 +16,41 @@ export async function fetchAuthMeta(): Promise<AuthMeta> {
   return (await r.json()) as AuthMeta;
 }
 
-/** Email+password sign-in; throws with better-auth's message on failure. */
+/**
+ * better-auth answers with an English `message` and a machine `code` (e.g.
+ * INVALID_EMAIL_OR_PASSWORD). The message must never reach the UI — it would print English
+ * at a Polish user on the very first screen. Same contract as everywhere else in lib/*:
+ * throw a snake_case CODE, let lib/api.ts (ERROR_KEYS) own the wording per locale.
+ * An unmapped code falls back to a generic per-action key rather than the library's prose.
+ */
+function authErrorCode(
+  error: { code?: string; message?: string } | null | undefined,
+  fallback: "sign_in_failed" | "sign_up_failed",
+): string {
+  const code = error?.code?.toLowerCase();
+  return code && AUTH_CODES.has(code) ? code : fallback;
+}
+
+/** better-auth codes we translate; anything else degrades to the generic per-action message. */
+const AUTH_CODES = new Set([
+  "invalid_email_or_password",
+  "user_already_exists",
+  "password_too_short",
+  "password_too_long",
+  "invalid_email",
+  "signups_closed", // our own gate (auth.ts before-create hook)
+]);
+
+/** Email+password sign-in; throws a translatable CODE on failure. */
 export async function signInEmail(email: string, password: string): Promise<void> {
   const { error } = await authClient.signIn.email({ email, password });
-  if (error) throw new Error(error.message ?? "sign_in_failed");
+  if (error) throw new Error(authErrorCode(error, "sign_in_failed"));
 }
 
 /** Registration — the server gate (signupsOpen) decides; a closed gate answers 403 signups_closed. */
 export async function signUpEmail(email: string, password: string): Promise<void> {
   const { error } = await authClient.signUp.email({ email, password, name: email.split("@")[0] ?? email });
-  if (error) throw new Error(error.message ?? "sign_up_failed");
+  if (error) throw new Error(authErrorCode(error, "sign_up_failed"));
 }
 
 /** Google sign-in — an OAuth redirect; returning to the origin → a normal boot. */

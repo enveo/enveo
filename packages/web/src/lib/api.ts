@@ -93,6 +93,18 @@ const ERROR_KEYS: Record<string, TKey> = {
   empty_unbound_replica: "err.emptyUnboundReplica", // refused: an empty unbound replica can only wipe
   bad_ciphertext: "err.badCiphertext", // crypto.ts — envelope this build cannot read (corrupt/foreign)
   bad_pairing_code: "err.badPairingCode", // crypto.ts — decodePairing on a code that is not ours
+
+  /* better-auth codes (lib/auth.ts lowercases them): the library's own `message` is English
+     prose, and the login screen is the FIRST thing a non-English user sees. */
+  invalid_email_or_password: "err.badCredentials",
+  invalid_email: "err.badEmail",
+  user_already_exists: "err.userExists",
+  password_too_short: "err.passwordTooShort",
+  password_too_long: "err.passwordTooLong",
+  signups_closed: "auth.signupsClosed", // the server gate: this instance takes no new accounts
+  sign_in_failed: "err.signInFailed", // generic fallback — an unmapped better-auth code
+  sign_up_failed: "err.signUpFailed",
+  auth_meta_failed: "err.signInFailed", // /api/auth/meta unreachable → same user-facing advice
 };
 
 /** Turns a server error code into a sentence in the UI language; unknown codes stay as-is. */

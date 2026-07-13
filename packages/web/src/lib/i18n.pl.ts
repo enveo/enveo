@@ -173,6 +173,13 @@ export const pl = {
   "err.emptyUnboundReplica": "Na tym urządzeniu nie ma danych do wysłania — nic nie zostało wysłane na serwer. Odśwież aplikację, aby najpierw pobrać budżet.",
   "err.badCiphertext": "Nie udało się odczytać zaszyfrowanych danych — nic nie zostało zmienione. Sprawdź, czy aplikacja jest aktualna, albo odtwórz dane z kopii zapasowej.",
   "err.badPairingCode": "To nie jest poprawny kod parowania — skopiuj go ponownie z urządzenia, na którym budżet jest już odblokowany.",
+  "err.badCredentials": "Nieprawidłowy e-mail lub hasło.",
+  "err.badEmail": "To nie wygląda na poprawny adres e-mail.",
+  "err.userExists": "Konto z tym adresem już istnieje — zaloguj się.",
+  "err.passwordTooShort": "Hasło musi mieć co najmniej 8 znaków.",
+  "err.passwordTooLong": "Hasło jest za długie.",
+  "err.signInFailed": "Nie udało się zalogować — spróbuj ponownie.",
+  "err.signUpFailed": "Nie udało się utworzyć konta — spróbuj ponownie.",
 
   // SyncState "unverified" — repliki na tym urządzeniu nie udało się przypisać do zalogowanego
   // konta: nic NIE jest wysyłane na serwer (i nic nie zostało usunięte). Tu użytkownik czyta,

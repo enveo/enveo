@@ -173,6 +173,13 @@ export const en: Record<TKey, string> = {
   "err.emptyUnboundReplica": "There is no data on this device to send — nothing was sent to the server. Reload the app to fetch your budget first.",
   "err.badCiphertext": "The encrypted data could not be read on this device — nothing was changed. Make sure the app is up to date, or restore from a backup.",
   "err.badPairingCode": "This is not a valid pairing code — copy it again from the device where the budget is already unlocked.",
+  "err.badCredentials": "Wrong email or password.",
+  "err.badEmail": "That does not look like a valid email address.",
+  "err.userExists": "An account with this email already exists — sign in instead.",
+  "err.passwordTooShort": "The password must be at least 8 characters.",
+  "err.passwordTooLong": "That password is too long.",
+  "err.signInFailed": "Could not sign in — please try again.",
+  "err.signUpFailed": "Could not create the account — please try again.",
 
   // SyncState "unverified" — the replica on this device could not be matched to the signed-in
   // account: NOTHING is being sent to the server (and nothing has been deleted). This is where
