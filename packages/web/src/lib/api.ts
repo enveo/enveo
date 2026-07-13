@@ -1,5 +1,6 @@
 import { computeStateResponse, type StateResponse } from "@enveo/shared";
 import { useMemo, useSyncExternalStore } from "react";
+import { translate, uiLang, type TKey } from "./i18n";
 import { store } from "./store";
 import { getSyncStatus, subscribeSyncStatus, type SyncStatus } from "./sync";
 
@@ -67,6 +68,31 @@ export interface ImportApplyResponse {
   results: Array<ImportItem & { status: "added" | "exists" | "probable" }>;
 }
 
+/**
+ * Server error CODES (snake_case) → dictionary key. The API never sends prose: it answers with a
+ * stable machine code (structured detail rides in its own field), and the CLIENT owns the wording
+ * in every locale. Keep this the single mapping point — an unknown code (older/newer server) falls
+ * through to the raw text, so the user always sees something rather than an empty error.
+ */
+const ERROR_KEYS: Record<string, TKey> = {
+  ai_unavailable: "err.aiUnavailable",  
+  ai_upstream_error: "err.aiUpstream",  
+  upstream: "err.aiUpstream",  
+  backup_invalid: "err.backupInvalid", // /sync/replace — the payload is not a ledger
+  foreign_ref: "err.foreignRef",  
+  budget_mismatch: "err.budgetMismatch",  
+  budget_not_empty: "err.budgetNotEmpty",  
+  too_large: "err.tooLarge",  
+  internal: "err.internal",
+  foreign_replica: "sync.notOwner",  
+};
+
+ 
+function localizeError(code: string): string {
+  const key = ERROR_KEYS[code];
+  return key ? translate(uiLang(), key) : code;
+}
+
  
 export function apiErrorMessage(e: unknown): string {
   const m = String((e as Error).message ?? e);
@@ -74,12 +100,12 @@ export function apiErrorMessage(e: unknown): string {
   if (i >= 0) {
     try {
       const parsed = JSON.parse(m.slice(i)) as { error?: string };
-      if (parsed.error) return parsed.error;
+      if (parsed.error) return localizeError(parsed.error);
     } catch {
        
     }
   }
-  return m;
+  return localizeError(m); // sentinels thrown client-side (foreign_replica); otherwise the raw text
 }
 
  

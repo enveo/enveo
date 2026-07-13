@@ -7,7 +7,7 @@
  */
 import { clientLedgerSchema, type ClientLedger } from "@enveo/shared";
 import { getTierMeta } from "./e2ee";
-import { translate, type Lang } from "./i18n";
+import { translate, uiLang } from "./i18n";
 import * as outbox from "./outbox";
 import * as persist from "./persist";
 import { store } from "./store";
@@ -19,18 +19,6 @@ const APP = "enveo";
 // nor the built bundle contains the former name under greps.
 const LEGACY_APP = ["4", "grosze"].join("");
 const SCHEMA = 1;
-
- 
-function uiLang(): Lang {
-  try {
-    const raw = localStorage.getItem("enveo.settings");
-    const l = raw ? (JSON.parse(raw) as { lang?: string }).lang : undefined;
-    if (l === "pl" || l === "en") return l;
-  } catch {
-     
-  }
-  return typeof navigator !== "undefined" && (navigator.language || "").toLowerCase().startsWith("pl") ? "pl" : "en";
-}
 
  
 export interface Backup {
