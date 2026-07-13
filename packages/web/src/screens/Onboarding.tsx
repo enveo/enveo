@@ -18,7 +18,7 @@ import { useSettings, useTheme } from "../lib/contexts";
 import { SUPPORTED_CURRENCIES, browserLocales, wizardCurrency } from "../lib/currency";
 import { fmtSignedTrim } from "../lib/amount";
 import { parseAmount } from "../lib/format";
-import { useT, type Message, msg } from "../lib/i18n";
+import { loadLocale, useT, type Lang, type Message, msg } from "../lib/i18n";
 import { local } from "../lib/mutate";
 import { store } from "../lib/store";
 import { fullResync } from "../lib/sync";
@@ -185,7 +185,8 @@ export function OnboardingScreen({ onDone }: { onDone: () => void }) {
           <Row label={t("Language")}>
             <Seg
               value={settings.lang}
-              onChange={(id) => setSettings({ ...settings, lang: id })}
+              /* the locale chunk is fetched BEFORE the switch — otherwise the wizard stays English until a reload */
+              onChange={(id: Lang) => void loadLocale(id).then(() => setSettings({ ...settings, lang: id }))}
               options={[
                 { id: "pl", label: "PL" },
                 { id: "en", label: "EN" },
