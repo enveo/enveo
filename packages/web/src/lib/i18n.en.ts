@@ -641,7 +641,9 @@ export const en: Record<TKey, string> = {
   "e2ee.disableDesc": "the server will store your data in plain form again",
   "e2ee.disableTitle": "Disable end-to-end encryption?",
   "e2ee.disableBody": "Your data will be decrypted and stored on the server in plain form (as before enabling). Make sure you have a current backup.",
-  "e2ee.disableWord": "WYŁĄCZ-E2EE",
+  // Typed by the user to confirm; must be typeable on this locale's keyboard (the wire literal
+  // is the separate, fixed E2EE_DISABLE_CONFIRM constant). Keep UPPERCASE — the match uppercases.
+  "e2ee.disableWord": "DISABLE-E2EE",
   "e2ee.disableRun": "Disable end-to-end encryption",
   "e2ee.disabling": "Disabling…",
   "e2ee.importUnavailable": "Server-side import is unavailable while end-to-end encryption is on — the server cannot see your data. Use a JSON backup (export/import) or disable encryption.",

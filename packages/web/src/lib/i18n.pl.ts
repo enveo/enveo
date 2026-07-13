@@ -641,6 +641,8 @@ export const pl = {
   "e2ee.disableDesc": "serwer znów będzie przechowywał dane w postaci jawnej",
   "e2ee.disableTitle": "Wyłączyć szyfrowanie end-to-end?",
   "e2ee.disableBody": "Dane zostaną odszyfrowane i zapisane na serwerze w postaci jawnej (jak przed włączeniem). Upewnij się, że masz aktualną kopię zapasową.",
+  // Typed by the user to confirm — localized on purpose; NOT the wire literal (that one is the
+  // fixed ASCII E2EE_DISABLE_CONFIRM). Keep UPPERCASE — the match uppercases.
   "e2ee.disableWord": "WYŁĄCZ-E2EE",
   "e2ee.disableRun": "Wyłącz szyfrowanie end-to-end",
   "e2ee.disabling": "Wyłączanie…",
