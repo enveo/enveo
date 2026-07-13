@@ -1,5 +1,6 @@
 import { computeStateResponse, type StateResponse } from "@enveo/shared";
 import { useMemo, useSyncExternalStore } from "react";
+import { translate, uiLang, type TKey } from "./i18n";
 import { store } from "./store";
 import { getSyncStatus, subscribeSyncStatus, type SyncStatus } from "./sync";
 
@@ -67,19 +68,44 @@ export interface ImportApplyResponse {
   results: Array<ImportItem & { status: "added" | "exists" | "probable" }>;
 }
 
-/** Extracts the error message from an API response ("503 {\"error\":\"…\"}" → "…"). */
+/**
+ * Server error CODES (snake_case) → dictionary key. The API never sends prose: it answers with a
+ * stable machine code (structured detail rides in its own field), and the CLIENT owns the wording
+ * in every locale. Keep this the single mapping point — an unknown code (older/newer server) falls
+ * through to the raw text, so the user always sees something rather than an empty error.
+ */
+const ERROR_KEYS: Record<string, TKey> = {
+  ai_unavailable: "err.aiUnavailable", // /import/extract, /budget/suggest — no operator key
+  ai_upstream_error: "err.aiUpstream", // OpenAI rejected the call or answered unparsably
+  upstream: "err.aiUpstream", // /budget/suggest names the same failure this way
+  backup_invalid: "err.backupInvalid", // /sync/replace — the payload is not a ledger
+  foreign_ref: "err.foreignRef", // a reference points outside the budget (corrupt/foreign file)
+  budget_mismatch: "err.budgetMismatch", // the session was swapped mid-write — nothing was written
+  budget_not_empty: "err.budgetNotEmpty", // /demo/seed only ever fills an empty budget
+  too_large: "err.tooLarge", // bodyLimit (e.g. too many/too heavy screenshots)
+  internal: "err.internal",
+  foreign_replica: "sync.notOwner", // client-side sentinel (assertOwnReplica) — same shape
+};
+
+/** Turns a server error code into a sentence in the UI language; unknown codes stay as-is. */
+function localizeError(code: string): string {
+  const key = ERROR_KEYS[code];
+  return key ? translate(uiLang(), key) : code;
+}
+
+/** Extracts the error from an API response ("503 {\"error\":\"ai_unavailable\"}" → a localized sentence). */
 export function apiErrorMessage(e: unknown): string {
   const m = String((e as Error).message ?? e);
   const i = m.indexOf("{");
   if (i >= 0) {
     try {
       const parsed = JSON.parse(m.slice(i)) as { error?: string };
-      if (parsed.error) return parsed.error;
+      if (parsed.error) return localizeError(parsed.error);
     } catch {
       /* ignore */
     }
   }
-  return m;
+  return localizeError(m); // sentinels thrown client-side (foreign_replica); otherwise the raw text
 }
 
 /* ── Client ─────────────────────────────────────────────────────────── */

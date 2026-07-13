@@ -157,6 +157,16 @@ export const pl = {
   "sync.badgeSyncing": "Synchronizowanie w toku",
   "sync.notOwner": "Nie udało się potwierdzić, że lokalna kopia na tym urządzeniu należy do zalogowanego konta — nic nie zostało wysłane na serwer. Szczegóły i możliwe kroki znajdziesz w Ustawieniach → Synchronizacja.",
 
+  // Kody błędów serwera (API zwraca kod, nie zdanie) — mapowane w lib/api.ts → apiErrorMessage.
+  "err.aiUnavailable": "Serwer nie ma skonfigurowanego klucza OpenAI. Ustaw OPENAI_API_KEY i zrestartuj aplikację albo użyj własnego klucza w Ustawieniach → Sztuczna inteligencja.",
+  "err.aiUpstream": "OpenAI odrzuciło zapytanie — sprawdź klucz i model, potem spróbuj ponownie.",
+  "err.backupInvalid": "To nie jest poprawny plik kopii — nic nie zostało wczytane.",
+  "err.foreignRef": "Dane odwołują się do nieistniejących powiązań (uszkodzony lub obcy plik). Nic nie zostało zmienione.",
+  "err.budgetMismatch": "W trakcie wysyłania zmieniło się zalogowane konto — nic nie zostało zapisane. Odśwież aplikację i spróbuj ponownie.",
+  "err.budgetNotEmpty": "Budżet nie jest pusty — dane demo można wczytać tylko do pustego budżetu.",
+  "err.tooLarge": "Wysyłka jest za duża — spróbuj z mniejszą liczbą zrzutów (albo lżejszymi).",
+  "err.internal": "Serwer napotkał nieoczekiwany błąd. Nic nie zostało zmienione — spróbuj ponownie.",
+
   // SyncState "unverified" — repliki na tym urządzeniu nie udało się przypisać do zalogowanego
   // konta: nic NIE jest wysyłane na serwer (i nic nie zostało usunięte). Tu użytkownik czyta,
   // co się stało i co może zrobić.

@@ -12,7 +12,7 @@ import { useT } from "../../lib/i18n";
 import { store } from "../../lib/store";
 import { CORAL, INCOME, font } from "../../lib/theme";
 import { Sheet } from "../../components/chrome";
-import { ActionGroup, ActionIcon, ActionRow, Eyebrow, writeErrorMessage } from "./ui";
+import { ActionGroup, ActionIcon, ActionRow, Eyebrow } from "./ui";
 
 /* ── Data: backup (export/import) + E2E encryption + account ────────── */
 
@@ -259,7 +259,7 @@ function E2eeEnableWizard() {
       void syncNow("e2ee-enable"); // backlogged outbox ops go out via a normal v2 push
       setSheet(false); // the section switches to the e2ee panel (statusOn = confirmation)
     } catch (e) {
-      setError(`${t("e2ee.enableFailed")} ${writeErrorMessage(e, t)}`);
+      setError(`${t("e2ee.enableFailed")} ${apiErrorMessage(e)}`);
     } finally {
       setBusy(false);
     }
@@ -441,7 +441,7 @@ function E2eeChangePass() {
       setPass("");
       setPass2("");
     } catch (e) {
-      setError(writeErrorMessage(e, t));
+      setError(apiErrorMessage(e));
     } finally {
       setBusy(false);
     }
@@ -590,7 +590,7 @@ function E2eeDisable() {
       setSheet(false);
       void fullResync(); // v1 sync starts: fresh snapshot (canonical cursor/budgetId) + outbox replay
     } catch (e) {
-      setError(writeErrorMessage(e, t));
+      setError(apiErrorMessage(e));
     } finally {
       setBusy(false);
     }

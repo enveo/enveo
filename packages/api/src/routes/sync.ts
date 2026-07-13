@@ -639,8 +639,9 @@ export async function restoreLedger(
 syncRoutes.post("/sync/replace", async (c) => {
   const parsed = replaceInput.safeParse(await c.req.json().catch(() => null));
   if (!parsed.success) {
+    // stable machine CODE + structured detail — the wording (and its locale) belongs to the client
     const detail = parsed.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join("; ");
-    return c.json({ error: `Kopia jest niepoprawna i nie została wczytana: ${detail}` }, 400);
+    return c.json({ error: "backup_invalid", detail }, 400);
   }
   const { ledger, userId } = parsed.data;
 
@@ -668,10 +669,8 @@ syncRoutes.post("/sync/replace", async (c) => {
       e instanceof ScopeViolation ||
       (e instanceof postgres.PostgresError && (e.code.startsWith("23") || e.code.startsWith("22")))
     ) {
-      return c.json(
-        { error: "Nie udało się zapisać kopii — dane odwołują się do nieistniejących powiązań (uszkodzony lub obcy plik). Nic nie zostało zmienione." },
-        400,
-      );
+      // same code the global onError uses for a ScopeViolation (index.ts) — one meaning, one code
+      return c.json({ error: "foreign_ref" }, 400);
     }
     throw e;
   }

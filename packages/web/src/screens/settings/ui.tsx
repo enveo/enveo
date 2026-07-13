@@ -1,22 +1,12 @@
 import { Children, useState, type ReactNode } from "react";
-import { apiErrorMessage } from "../../lib/api";
 import { useTheme } from "../../lib/contexts";
 import { Ico } from "../../lib/icons";
-import type { TKey } from "../../lib/i18n";
 import { CORAL, TEAL, font } from "../../lib/theme";
 
-/* ── Shared Settings section patterns (moved 1:1 from Settings.tsx) ── */
-
-/**
- * Error text for a server write the multi-tenant guard refused: assertOwnReplica (sync.ts)
- * throws the "foreign_replica" sentinel — no owner could be established for the local replica,
- * or it belongs to another account and a wipe + reload is already in flight. Render it as a
- * sentence, not as a code. (A 401 never gets here: it routes the app to the Login screen.)
- */
-export function writeErrorMessage(e: unknown, t: (key: TKey) => string): string {
-  const msg = apiErrorMessage(e);
-  return msg === "foreign_replica" ? t("sync.notOwner") : msg;
-}
+/* ── Shared Settings section patterns (moved 1:1 from Settings.tsx) ──
+ * Failed writes are rendered with apiErrorMessage (lib/api.ts): it turns every server error CODE
+ * — and the client-side "foreign_replica" sentinel the multi-tenant guard throws — into a sentence
+ * in the UI language. (A 401 never reaches it: the app routes to the Login screen.) */
 
 export function Eyebrow({ children }: { children: ReactNode }) {
   const C = useTheme();

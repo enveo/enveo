@@ -128,6 +128,13 @@ export async function matchHistory(budgetId: string, rawPlaces: string[]): Promi
   return out;
 }
 
+/** OpenAI answered non-2xx — surfaced to the client as the `ai_upstream_error` code (+ status). */
+class OpenAiError extends Error {
+  constructor(readonly status: number) {
+    super(`openai ${status}`);
+  }
+}
+
 async function openaiJson(req: ChatRequest): Promise<string> {
   const res = await fetch("https://api.openai.com/v1/chat/completions", {
     method: "POST",
@@ -137,15 +144,17 @@ async function openaiJson(req: ChatRequest): Promise<string> {
   if (!res.ok) {
     const detail = await res.text().catch(() => "");
     console.error("openai:", res.status, detail.slice(0, 500));
-    throw new Error(`OpenAI odpowiedziało błędem ${res.status}. Sprawdź klucz/model (OPENAI_MODEL=${env.OPENAI_MODEL}).`); // user-facing (PL), surfaced by the import UI
+    throw new OpenAiError(res.status);
   }
   const data = (await res.json()) as { choices?: Array<{ message?: { content?: string } }> };
   return data.choices?.[0]?.message?.content ?? "{}";
 }
 
+/* The API answers with stable machine CODES (never prose): the client owns the wording
+   in every locale (web/lib/api.ts → i18n). Structured detail travels in its own field. */
 importRoutes.post("/import/extract", async (c) => {
   if (!env.OPENAI_API_KEY) {
-    return c.json({ error: "Brak klucza OpenAI — ustaw OPENAI_API_KEY w .env i zrestartuj aplikację." }, 503); // user-facing (PL), surfaced by the import UI
+    return c.json({ error: "ai_unavailable" }, 503);
   }
   const budgetId = (await requireTier(c, "plain")).id;
   const { images, locale } = extractInput.parse(await c.req.json());
@@ -158,7 +167,9 @@ importRoutes.post("/import/extract", async (c) => {
     const raw = await openaiJson(buildImportExtractPrompt(images, { envelopes: [], categories: [] }, today, locale ?? "pl"));
     found = parseImportExtractResponse(raw);
   } catch (e) {
-    return c.json({ error: (e as Error).message }, 502);
+    // upstream rejection or an unparsable answer — the details stay in the server log
+    console.error("import/extract cycle 1 failed:", (e as Error).message);
+    return c.json({ error: "ai_upstream_error", ...(e instanceof OpenAiError ? { status: e.status } : {}) }, 502);
   }
   if (found.length === 0) return c.json({ items: [] });
 
@@ -205,7 +216,8 @@ importRoutes.post("/import/extract", async (c) => {
            on the default: OCR precision matters there). */
         reasoningEffort: "low",
       });
-      console.log("import/extract cycle 2:", raw.slice(0, 800));
+      // size only — the answer carries the user's transactions; it NEVER goes to the server log
+      console.log(`import/extract cycle 2: ${raw.length} B answer`);
       enriched = new Map(enrichedOutput.parse(JSON.parse(raw)).transactions.map((t) => [t.index, t]));
     } catch (e) {
       console.warn("import/extract cycle 2 (enrichment) failed — returning raw data:", (e as Error).message);

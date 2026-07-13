@@ -7,6 +7,18 @@ export type Lang = "pl" | "en";
 export type { TKey };
 const DICTS: Record<Lang, Record<string, string>> = { pl, en };
 
+/** UI language outside React (hook-free modules: backups, API error codes) — settings as contexts.tsx reads them. */
+export function uiLang(): Lang {
+  try {
+    const raw = localStorage.getItem("enveo.settings");
+    const l = raw ? (JSON.parse(raw) as { lang?: string }).lang : undefined;
+    if (l === "pl" || l === "en") return l;
+  } catch {
+    // corrupted settings → fall back to the browser language
+  }
+  return typeof navigator !== "undefined" && (navigator.language || "").toLowerCase().startsWith("pl") ? "pl" : "en";
+}
+
 export function translate(lang: Lang, key: TKey, params?: Record<string, string | number>): string {
   let s = DICTS[lang][key] ?? DICTS.pl[key] ?? key;
   if (params) for (const [k, v] of Object.entries(params)) s = s.replaceAll(`{${k}}`, String(v));

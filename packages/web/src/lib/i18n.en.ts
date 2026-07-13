@@ -157,6 +157,16 @@ export const en: Record<TKey, string> = {
   "sync.badgeSyncing": "Sync in progress",
   "sync.notOwner": "This device's local copy could not be confirmed to belong to the signed-in account — nothing was sent to the server. Settings → Sync explains what happened and what you can do.",
 
+  // Server error codes (the API returns a code, never a sentence) — mapped in lib/api.ts → apiErrorMessage.
+  "err.aiUnavailable": "The server has no OpenAI key configured. Set OPENAI_API_KEY and restart the app, or use your own key in Settings → Artificial intelligence.",
+  "err.aiUpstream": "OpenAI rejected the request — check the key and the model, then try again.",
+  "err.backupInvalid": "This is not a valid backup file — nothing was loaded.",
+  "err.foreignRef": "The data references records that do not exist here (a corrupted or foreign file). Nothing was changed.",
+  "err.budgetMismatch": "The signed-in account changed while the data was being sent — nothing was written. Reload the app and try again.",
+  "err.budgetNotEmpty": "The budget is not empty — demo data can only be loaded into an empty budget.",
+  "err.tooLarge": "The upload is too large — try fewer (or smaller) screenshots.",
+  "err.internal": "The server hit an unexpected error. Nothing was changed — try again.",
+
   // SyncState "unverified" — the replica on this device could not be matched to the signed-in
   // account: NOTHING is being sent to the server (and nothing has been deleted). This is where
   // the user reads what happened and what they can do about it.

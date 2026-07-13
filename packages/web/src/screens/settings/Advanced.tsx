@@ -7,7 +7,7 @@ import { getStorageDiag, type StorageDiag } from "../../lib/storage";
 import { disableLocal, enablePaused, enableWiped, getLastBootSource, wipeLocalData } from "../../lib/sync";
 import { CORAL, INCOME, font } from "../../lib/theme";
 import { Sheet } from "../../components/chrome";
-import { ActionGroup, ActionIcon, ActionRow, Eyebrow, Helper, Row, writeErrorMessage } from "./ui";
+import { ActionGroup, ActionIcon, ActionRow, Eyebrow, Helper, Row } from "./ui";
 
 /* ── Advanced: device storage + local mode + clear local data + reset ── */
 
@@ -104,7 +104,7 @@ function LocalModeControl() {
       setConfirmWipe(false);
     } catch (e) {
       // wipe failed → we stay synchronized; a refusal by the multi-tenant guard is a sentence
-      setError(writeErrorMessage(e, t));
+      setError(apiErrorMessage(e));
     } finally {
       setBusy(false);
     }
@@ -118,7 +118,7 @@ function LocalModeControl() {
     } catch (e) {
       // the upload to the server may be refused by the multi-tenant guard (foreign_replica);
       // a 401 does not land here — it routes the app to the Login screen (sync.ts)
-      setError(writeErrorMessage(e, t));
+      setError(apiErrorMessage(e));
     } finally {
       setBusy(false);
     }
