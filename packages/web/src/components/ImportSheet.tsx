@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { api, apiErrorMessage, type EditedImportItem, type ImportApplyItem, type ImportItem, type StateResponse } from "../lib/api";
-import { aiLocale, runImportExtract } from "../lib/ai";
+import { runImportExtract } from "../lib/ai";
 import * as e2ee from "../lib/e2ee";
 import { store } from "../lib/store";
 import { pullNow } from "../lib/sync";
@@ -112,7 +112,7 @@ export function ImportSheet({ show, onClose, state, onApplied }: { show: boolean
       if (!ledger) { setError(t("The local replica is not ready.")); return; }
       
 
-      const extracted = await runImportExtract({ images, locale: aiLocale(lang), ledger, settings });
+      const extracted = await runImportExtract({ images, locale: lang, ledger, settings });
       if (extracted.length === 0) {
         setError(t("No transactions were recognized in the screenshots."));
         return;
