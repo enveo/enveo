@@ -2,8 +2,10 @@
 
 
 
+
 import { describe, expect, it } from "bun:test";
-import { dueOccurrences, occurrences } from "./extras";
+import { Hono } from "hono";
+import { dueOccurrences, extraRoutes, occurrences } from "./extras";
 
 const rec = (over: Partial<Parameters<typeof dueOccurrences>[0]> = {}) => ({
   rule: "monthly",
@@ -55,5 +57,23 @@ describe("dueOccurrences — pause in materialization", () => {
     expect(
       dueOccurrences(rec({ endDate: "2026-04-30", pausedUntil: "2026-02-01" }), "2026-08-01"),
     ).toEqual(["2026-02-10", "2026-03-10", "2026-04-10"]);
+  });
+});
+
+describe("POST /quick-add — AI-only", () => {
+  it("without OPENAI_API_KEY → 503 ai_unavailable, no DB touched (no rules pre-pass left)", async () => {
+    const app = new Hono().route("/", extraRoutes);
+    const res = await app.fetch(
+      new Request("http://x/quick-add", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ text: "coffee 12" }),
+      }),
+    );
+     
+    if (!process.env.OPENAI_API_KEY) {
+      expect(res.status).toBe(503);
+      expect(await res.json()).toEqual({ error: "ai_unavailable" });
+    }
   });
 });
