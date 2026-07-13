@@ -138,9 +138,14 @@ On a **custom domain**, point `BETTER_AUTH_URL` at that origin instead (or list 
 
 ### Publishing the one-click template (maintainer, Railway dashboard)
 
-The "Deploy on Railway" button in the README needs a **template code**, and a template can
-only be generated from a project whose services are linked to a **public** repository.
-That part is UI-only — it cannot be committed:
+The README deliberately ships **no** "Deploy on Railway" button: the only deploy-button URL
+Railway documents is `https://railway.com/new/template/<TEMPLATE_CODE>`, a code exists only
+for a **published template**, and a template can only be generated from a project whose
+services are linked to a **public** repository. (Do not substitute
+`/new/template?template=<repo-url>` — that legacy repo-composer form is undocumented, and
+even where it opens it wires up neither Postgres nor a session secret, so the deploy
+migrates and then crash-loops on `BETTER_AUTH_SECRET is required`.) Publishing is UI-only —
+it cannot be committed:
 
 1. Make `github.com/enveo/enveo` **public** (Railway cannot read a private repo).
 2. In Railway: **New Project → Deploy from GitHub repo** → pick `enveo/enveo`; add a
@@ -153,16 +158,20 @@ That part is UI-only — it cannot be committed:
    its own secret and correct base URL.
 5. **Publish** the template (workspace → Templates → Publish). Only then does it get a
    template code and a marketplace listing (and OSS kickback eligibility).
-6. Put the code into the README button:
+6. Deploy the published template **once, from its own page**, into a throwaway project —
+   that is the first time the one-click path is executed end to end. It must come up
+   healthy with a Postgres attached and a generated secret, and let you create the owner
+   account. Then delete the throwaway project.
+7. Only now add the button to the README (retitling the section, which currently states
+   there is none) and drop the `TODO(maintainer)` comment beside it:
 
    ```md
    [![Deploy on Railway](https://railway.com/button.svg)](https://railway.com/new/template/CODE?utm_medium=integration&utm_source=button&utm_campaign=generic)
    ```
 
-Until step 5 is done, the README button points at Railway's repo-composer form
-(`/new/template?template=<repo-url>`), which starts a project from the repo but does
-**not** pre-wire Postgres or generate the secret — the user has to add those by hand.
-A published template is what makes it genuinely one-click.
+Until then the README documents the manual path (steps 1–3 above), because that is the
+only Railway path anyone has actually run. A published template is what makes it genuinely
+one-click.
 
 ### Backups
 
