@@ -4,15 +4,26 @@
  * mapping is testable on its own (browserLocales() is the only navigator touch).
  *
  * MINOR-UNIT INVARIANT: amounts are integers of 1/100 of the major unit everywhere in the
- * domain. Only 2-decimal currencies may be added below — a 0-decimal one (JPY, HUF as used
- * in practice, KRW) would render every stored amount 100× off. currency.test.ts asserts this
- * against Intl for the whole list.
+ * domain (the ledger, the amount pad, formatMoney, the AI prompts). Only 2-decimal currencies
+ * may be added below: a 0-decimal one (JPY, KRW, ISK, CLP, VND) or a 3-decimal one (KWD, BHD)
+ * would render and parse every stored amount 100× / 10× off. currency.test.ts asserts the
+ * whole list against Intl, so adding one fails loudly. Supporting them means threading a
+ * per-currency exponent through the pad, formatting, prompts and the property tests — a
+ * separate project, deliberately out of scope.
  *
  * No conversion ever happens: the currency is a DISPLAY unit (formatMoney/currencySymbol).
  */
 
-/** Currencies offered in onboarding and Settings → Appearance (ISO 4217, all 2-decimal). */
-export const SUPPORTED_CURRENCIES = ["EUR", "USD", "GBP", "CHF", "PLN", "CZK", "SEK", "NOK", "DKK", "CAD", "AUD", "UAH"] as const;
+/**
+ * Currencies offered in onboarding and Settings → Appearance (ISO 4217, all 2-decimal per Intl).
+ * ALPHABETICAL — the pickers render this order in a flat <select>, and a code list of this size
+ * is only scannable sorted. Membership, not order, is what the tests and the region map depend on.
+ */
+export const SUPPORTED_CURRENCIES = [
+  "AED", "ARS", "AUD", "BGN", "BRL", "CAD", "CHF", "COP", "CZK", "DKK", "EUR", "GBP", "HKD", "HUF",
+  "IDR", "ILS", "INR", "MXN", "MYR", "NOK", "NZD", "PEN", "PHP", "PLN", "RON", "RSD", "SAR", "SEK",
+  "SGD", "THB", "TRY", "UAH", "USD", "ZAR",
+] as const;
 
 export type SupportedCurrency = (typeof SUPPORTED_CURRENCIES)[number];
 
@@ -40,13 +51,19 @@ const REGION_CURRENCY: Record<string, SupportedCurrency> = {
   MC: "EUR", ME: "EUR", MT: "EUR", NL: "EUR", PT: "EUR", SI: "EUR", SK: "EUR", SM: "EUR",
   VA: "EUR", XK: "EUR",
   // European regions with a currency the app does not carry — the euro is the closest offer
-  // (a PRESELECT, not a conversion: one tap changes it)
-  AL: "EUR", BA: "EUR", BG: "EUR", HU: "EUR", IS: "EUR", MD: "EUR", MK: "EUR", RO: "EUR", RS: "EUR",
-  // regions whose own currency the app carries
+  // (a PRESELECT, not a conversion: one tap changes it). IS is here because ISK is 0-decimal.
+  AL: "EUR", BA: "EUR", IS: "EUR", MD: "EUR", MK: "EUR",
+  // rest of Europe: regions whose own currency the app carries
   PL: "PLN", CZ: "CZK", SE: "SEK", NO: "NOK", DK: "DKK", UA: "UAH",
+  HU: "HUF", RO: "RON", BG: "BGN", RS: "RSD", TR: "TRY",
   CH: "CHF", LI: "CHF",
   GB: "GBP", GG: "GBP", IM: "GBP", JE: "GBP",
-  US: "USD", CA: "CAD", AU: "AUD",
+  // the Americas (everything unmapped falls back to USD anyway)
+  US: "USD", CA: "CAD", BR: "BRL", MX: "MXN", AR: "ARS", CO: "COP", PE: "PEN",
+  // Asia-Pacific
+  AU: "AUD", NZ: "NZD", IN: "INR", SG: "SGD", HK: "HKD", MY: "MYR", TH: "THB", PH: "PHP", ID: "IDR",
+  // Middle East + Africa
+  IL: "ILS", PS: "ILS", AE: "AED", SA: "SAR", ZA: "ZAR",
 };
 
 /**
