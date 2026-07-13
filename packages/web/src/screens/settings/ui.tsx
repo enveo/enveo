@@ -1,5 +1,6 @@
 import { Children, useState, type ReactNode } from "react";
 import { useTheme } from "../../lib/contexts";
+import { useT } from "../../lib/i18n";
 import { Ico } from "../../lib/icons";
 import { CORAL, TEAL, font } from "../../lib/theme";
 
@@ -31,6 +32,39 @@ export function Row({ label, children }: { label: string; children: ReactNode })
 export function Helper({ children }: { children: ReactNode }) {
   const C = useTheme();
   return <div style={{ fontSize: 11, color: C.mute, lineHeight: 1.5, marginTop: 8 }}>{children}</div>;
+}
+
+/** Stands in for {word} while we split the translated sentence — no translation contains a NUL. */
+const WORD_MARK = "\u0000";
+
+/**
+ * "Type DELETE to confirm:" — the prompt above every destructive confirmation input (wipe server
+ * data, factory reset, disable E2EE), with the word the user must reproduce in bold.
+ *
+ * ONE message with a {word} placeholder, NOT the three fragments this used to be: the bare verb,
+ * the bold word, and a trailing " to confirm:" clause, concatenated in JSX. Fragments force ENGLISH
+ * word order on every language and hand the translator a bare "Type" with no context — the verb/noun
+ * trap. 7 of 8 locales read that word as the NOUN and shipped "Typ/Tipo/Type LOESCHEN zur
+ * Bestätigung:" ("kind DELETE for confirmation:") on exactly the dialogs a user must not
+ * misunderstand. A whole sentence also lets a language put the verb where it belongs: German needs
+ * its separable prefix last ("Gib zur Bestätigung LOESCHEN ein:"), which no concatenation produces.
+ *
+ * NOTE: i18n-extract-lib scans raw source, comments INCLUDED — never paste a translation call with
+ * a quoted string into a comment, or the extractor mints a phantom message every locale must carry.
+ */
+export function ConfirmWordHint({ word }: { word: string }) {
+  const { t } = useT();
+  const parts = t("Type {word} to confirm:", { word: WORD_MARK }).split(WORD_MARK);
+  // A translation that dropped {word} would hide the very word the user must type — a lock-out, not
+  // a cosmetic bug. i18n.test.ts enforces placeholder parity; this degrades safely regardless.
+  const [before, after] = parts.length === 2 ? parts : [`${parts[0] ?? ""} `, ""];
+  return (
+    <>
+      {before}
+      <b>{word}</b>
+      {after}
+    </>
+  );
 }
 
 /** Collapsible section — collapsed by default, the chevron rotates on open. */

@@ -13,7 +13,7 @@ import { useT } from "../../lib/i18n";
 import { store } from "../../lib/store";
 import { CORAL, INCOME, font } from "../../lib/theme";
 import { Sheet } from "../../components/chrome";
-import { ActionGroup, ActionIcon, ActionRow, Eyebrow } from "./ui";
+import { ActionGroup, ActionIcon, ActionRow, ConfirmWordHint, Eyebrow } from "./ui";
 
 /* ── Data: backup (export/import) + E2E encryption + account ────────── */
 
@@ -615,8 +615,7 @@ function E2eeDisable() {
             <div style={{ fontSize: 15, fontWeight: 700, color: CORAL, marginBottom: 8 }}>{t("Disable end-to-end encryption?")}</div>
             <div style={{ fontSize: 12.5, color: SC.soft, lineHeight: 1.6, marginBottom: 14 }}>{t("Your data will be decrypted and stored on the server in plain form (as before enabling). Make sure you have a current backup.")}</div>
             <div style={{ fontSize: 11, color: SC.mute, marginBottom: 6 }}>
-              {t("Type")} <b>{t("DISABLE-E2EE")}</b>
-              {t(" to confirm:")}
+              <ConfirmWordHint word={t("DISABLE-E2EE")} />
             </div>
             <input
               value={text}

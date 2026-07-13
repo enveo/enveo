@@ -7,11 +7,13 @@
  *    invalidates that string's translations. The orphan list names exactly what to re-translate;
  *  - plural entries must carry the CLDR categories their language requires (computed, never
  *    hand-written);
+ *  - a message must be a WHOLE phrase (fragments glued in JSX force English word order and hide the
+ *    context a translator needs), and a translation must keep its {placeholders};
  *  - and the words a user must TYPE to confirm a destructive action must stay typeable.
  */
 import { E2EE_DISABLE_CONFIRM } from "@enveo/shared";
 import { describe, expect, it } from "bun:test";
-import { extract } from "../../../scripts/i18n-extract-lib";
+import { ambiguous, extract, extractSites } from "../../../scripts/i18n-extract-lib";
 import { loadLocale, translate, translatePlural, type Dict, type Lang } from "./index";
 import { pl } from "./locales/pl";
 import { MESSAGES, type Message } from "./messages.generated";
@@ -132,6 +134,62 @@ describe("i18n messages", () => {
       for (const [message, value] of Object.entries(dict)) {
         expect({ message, plural: message.includes(" | ") }).toEqual({ message, plural: typeof value === "object" });
       }
+    }
+  });
+
+  /**
+   * A message must be a WHOLE phrase, never a fragment glued to another one in JSX. Fragments carry
+   * English word order into every language and strip the translator of context — that is how the
+   * three-part "Type" + <b>DELETE</b> + " to confirm:" prompt above the destructive confirmations
+   * shipped with "Type" read as a NOUN ("Typ", "Tipo") in 7 of 8 locales. The fix is always the
+   * same: ONE message with a {placeholder} (see ConfirmWordHint in screens/settings/ui.tsx), which
+   * lets German put its separable prefix last and Czech lead with the adverbial.
+   *
+   * Leading/trailing whitespace is the mechanical tell of concatenation, so it is banned outright.
+   */
+  it("no message is a FRAGMENT (leading/trailing whitespace = glued to another message)", () => {
+    const fragments = MESSAGES.filter((m) => m !== m.trim());
+    expect(fragments).toEqual([]);
+  });
+
+  /** Placeholders must survive translation: a dropped {word} hides the very word the user must type
+   *  to confirm a destructive action (a lock-out, not a cosmetic bug); a dropped {n} loses the count. */
+  it("every translation keeps exactly the placeholders of its message", async () => {
+    const placeholders = (s: string) => [...new Set([...s.matchAll(/\{(\w+)\}/g)].map((m) => m[1]!))].sort();
+    for (const l of TRANSLATED) {
+      const dict = await l.load();
+      for (const [message, value] of Object.entries(dict)) {
+        const want = placeholders(message); // a plural key repeats {n} in both halves — compare SETS
+        const forms = typeof value === "string" ? { other: value } : value;
+        for (const [cat, form] of Object.entries(forms)) {
+          expect({ locale: l.code, message, cat, placeholders: placeholders(form as string) }).toEqual({ locale: l.code, message, cat, placeholders: want });
+        }
+      }
+    }
+  });
+});
+
+/**
+ * The design's §2 ambiguity report: SHORT messages reused at several call sites, where one
+ * translation has to serve every context (the "Save" verb/noun trap). It is a WARNING — most hits
+ * are honest nouns — so it is a script (`bun run i18n:ambiguity`), not a gate. These tests keep the
+ * detector itself honest.
+ */
+describe("i18n — ambiguity report", () => {
+  it("flags a short message reused across call sites, and ignores a whole sentence", () => {
+    const report = ambiguous(
+      new Map([
+        ["Type", ["a.tsx:1", "b.tsx:2"]], // bare word, two contexts → the trap
+        ["Transactions", ["a.tsx:3"]], // one call site → one context
+        ["Delete everything and start over", ["a.tsx:4", "b.tsx:5"]], // a sentence carries its context
+      ]),
+    );
+    expect(report.map((r) => r.message)).toEqual(["Type"]);
+  });
+
+  it("reports every candidate with the call sites that need a human decision", async () => {
+    for (const { message, sites } of ambiguous(await extractSites())) {
+      expect({ message, sites: sites.length > 1 }).toEqual({ message, sites: true });
     }
   });
 });

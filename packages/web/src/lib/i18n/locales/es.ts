@@ -2,8 +2,6 @@
 import type { Dict } from "../index";
 
 export const es: Dict = {
-  " to confirm:": " para confirmar:",
-  " — we will send them once the server is reachable": " — los enviaremos cuando el servidor esté disponible",
   "(must match)": "(deben coincidir)",
   "(paused until {date})": "(en pausa hasta {date})",
   "+ Add envelope": "+ Añadir sobre",
@@ -497,8 +495,8 @@ export const es: Dict = {
   "Try again": "Reintentar",
   "Try it with sample data": "Probarlo con datos de ejemplo",
   "Turn off local mode": "Desactivar el modo local",
-  "Type": "Tipo",
   "Type or pick a category...": "Escribe o elige una categoría...",
+  "Type {word} to confirm:": "Escribe {word} para confirmar:",
   "Uncleared": "Sin conciliar",
   "Unlock": "Desbloquear",
   "Unlock with password": "Desbloquear con la contraseña",
@@ -514,6 +512,7 @@ export const es: Dict = {
   "WARNING: in local mode this data exists ONLY on this device (the server is empty). Clearing it will delete it permanently. Make a backup first (Export). Continue?": "AVISO: en modo local estos datos existen SOLO en este dispositivo (el servidor está vacío). Borrarlos los eliminará para siempre. Haz antes una copia de seguridad (Exportar). ¿Continuar?",
   "We will irreversibly erase all data from the server — this cannot be undone from the app. Other devices will lose access. Your data will remain only on this device. Make a backup first (Export).": "Borraremos de forma irreversible todos los datos del servidor: esto no se puede deshacer desde la aplicación. Los demás dispositivos perderán el acceso. Tus datos quedarán solo en este dispositivo. Haz antes una copia de seguridad (Exportar).",
   "We will send pending changes and resume sync. Server data is untouched.": "Enviaremos los cambios pendientes y reanudaremos la sincronización. Los datos del servidor no se tocan.",
+  "We will send them once the server is reachable.": "Los enviaremos cuando el servidor esté disponible.",
   "We will send your local data back to the server and resume sync.": "Enviaremos tus datos locales de vuelta al servidor y reanudaremos la sincronización.",
   "Weak": "Débil",
   "Wealth": "Patrimonio",

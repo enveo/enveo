@@ -2,8 +2,6 @@
 import type { Dict } from "../index";
 
 export const sv: Dict = {
-  " to confirm:": " för att bekräfta:",
-  " — we will send them once the server is reachable": " — vi skickar dem så snart servern går att nå",
   "(must match)": "(måste stämma överens)",
   "(paused until {date})": "(pausad till {date})",
   "+ Add envelope": "+ Lägg till kuvert",
@@ -497,8 +495,8 @@ export const sv: Dict = {
   "Try again": "Försök igen",
   "Try it with sample data": "Testa med exempeldata",
   "Turn off local mode": "Stäng av lokalt läge",
-  "Type": "Typ",
   "Type or pick a category...": "Skriv eller välj en kategori...",
+  "Type {word} to confirm:": "Skriv {word} för att bekräfta:",
   "Uncleared": "Ej avstämd",
   "Unlock": "Lås upp",
   "Unlock with password": "Lås upp med lösenord",
@@ -514,6 +512,7 @@ export const sv: Dict = {
   "WARNING: in local mode this data exists ONLY on this device (the server is empty). Clearing it will delete it permanently. Make a backup first (Export). Continue?": "VARNING: i lokalt läge finns dessa data ENDAST på den här enheten (servern är tom). Att rensa dem raderar dem för alltid. Gör en säkerhetskopia först (Exportera). Fortsätta?",
   "We will irreversibly erase all data from the server — this cannot be undone from the app. Other devices will lose access. Your data will remain only on this device. Make a backup first (Export).": "Vi raderar alla data från servern permanent — det går inte att ångra från appen. Andra enheter förlorar åtkomsten. Dina data blir kvar endast på den här enheten. Gör en säkerhetskopia först (Exportera).",
   "We will send pending changes and resume sync. Server data is untouched.": "Vi skickar de väntande ändringarna och återupptar synkroniseringen. Data på servern rörs inte.",
+  "We will send them once the server is reachable.": "Vi skickar dem så snart servern går att nå.",
   "We will send your local data back to the server and resume sync.": "Vi skickar tillbaka dina lokala data till servern och återupptar synkroniseringen.",
   "Weak": "Svagt",
   "Wealth": "Förmögenhet",

@@ -7,7 +7,7 @@ import { getStorageDiag, type StorageDiag } from "../../lib/storage";
 import { disableLocal, enablePaused, enableWiped, getLastBootSource, wipeLocalData } from "../../lib/sync";
 import { CORAL, INCOME, font } from "../../lib/theme";
 import { Sheet } from "../../components/chrome";
-import { ActionGroup, ActionIcon, ActionRow, Eyebrow, Helper, Row } from "./ui";
+import { ActionGroup, ActionIcon, ActionRow, ConfirmWordHint, Eyebrow, Helper, Row } from "./ui";
 
 /* ── Advanced: device storage + local mode + clear local data + reset ── */
 
@@ -186,8 +186,7 @@ function LocalModeControl() {
                   {t("We will irreversibly erase all data from the server — this cannot be undone from the app. Other devices will lose access. Your data will remain only on this device. Make a backup first (Export).")}
                 </div>
                 <div style={{ fontSize: 11, color: SC.mute, marginBottom: 6 }}>
-                  {t("Type")} <b>{t("DELETE")}</b>
-                  {t(" to confirm:")}
+                  <ConfirmWordHint word={t("DELETE")} />
                 </div>
                 <input
                   value={confirmText}
@@ -315,8 +314,7 @@ function ResetSection() {
           <div style={{ fontSize: 12.5, fontWeight: 700, color: CORAL, marginBottom: 6 }}>{t("Start from scratch")}</div>
           <div style={{ fontSize: 11.5, color: C.soft, lineHeight: 1.6, marginBottom: 10 }}>{t("Deletes ALL budget data from the server and this device — irreversible. Export a backup first. The app will reopen with the first-run wizard.")}</div>
           <div style={{ fontSize: 11, color: C.mute, marginBottom: 6 }}>
-            {t("Type")} <b>{t("RESET")}</b>
-            {t(" to confirm:")}
+            <ConfirmWordHint word={t("RESET")} />
           </div>
           <input
             value={confirmText}

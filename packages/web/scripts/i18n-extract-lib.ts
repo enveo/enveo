@@ -28,14 +28,50 @@ const unescapeLiteral = (raw: string): string => {
   }
 };
 
-export async function extract(): Promise<string[]> {
-  const found = new Set<string>();
+/** Every message with the call sites ("file:line") that produce it — the raw material below. */
+export async function extractSites(): Promise<Map<string, string[]>> {
+  const sites = new Map<string, string[]>();
   for (const f of new Bun.Glob("**/*.{ts,tsx}").scanSync(SRC)) {
     if (f.includes("messages.generated") || f.includes("i18n/locales/")) continue; // generated / translated
     const src = await Bun.file(SRC + f).text();
-    for (const m of src.matchAll(CALL)) found.add(unescapeLiteral((m[1] ?? m[2])!));
+    src.split("\n").forEach((line, i) => {
+      for (const m of line.matchAll(CALL)) {
+        const message = unescapeLiteral((m[1] ?? m[2])!);
+        const at = `${f}:${i + 1}`;
+        const seen = sites.get(message);
+        if (seen) seen.push(at);
+        else sites.set(message, [at]);
+      }
+    });
   }
-  return [...found].sort();
+  return sites;
+}
+
+export async function extract(): Promise<string[]> {
+  return [...(await extractSites()).keys()].sort();
+}
+
+/**
+ * AMBIGUITY REPORT (design §2 — a WARNING, deliberately not a build gate).
+ *
+ * A SHORT message reused at several call sites hands the translator one word with no context, and
+ * one translation then has to serve every context it appears in: the classic "Save" verb/noun trap.
+ * It is how a bare "Type" — the imperative above the DELETE/RESET/DISABLE-E2EE confirmations —
+ * shipped as the NOUN ("Typ", "Tipo") in 7 of 8 locales.
+ *
+ * Not a gate, because most hits are honest ("Transactions", "Cancel"): a human decides. The
+ * resolution is the one the design prescribes — rephrase into a whole sentence with a placeholder,
+ * which is also what i18n.test.ts's fragment ban forces for anything glued together in JSX.
+ */
+export function ambiguous(sites: Map<string, string[]>): { message: string; sites: string[] }[] {
+  const candidates: { message: string; sites: string[] }[] = [];
+  for (const [message, at] of sites) {
+    if (at.length < 2) continue; // one call site → one context → no collision
+    const words = message.trim().split(/\s+/).length;
+    if (words > 2 || /[.?!:…]$/.test(message.trim()) || /\{\w+\}/.test(message)) continue; // a sentence carries its own context
+    candidates.push({ message, sites: at });
+  }
+  return candidates.sort((a, b) => b.sites.length - a.sites.length || a.message.localeCompare(b.message));
 }
 
 /** Rewrites src/lib/i18n/messages.generated.ts. Returns the message count. */

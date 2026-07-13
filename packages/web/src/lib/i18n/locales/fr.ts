@@ -2,8 +2,6 @@
 import type { Dict } from "../index";
 
 export const fr: Dict = {
-  " to confirm:": " pour confirmer :",
-  " — we will send them once the server is reachable": " — nous les enverrons dès que le serveur sera joignable",
   "(must match)": "(doit correspondre)",
   "(paused until {date})": "(en pause jusqu'au {date})",
   "+ Add envelope": "+ Ajouter une enveloppe",
@@ -497,8 +495,8 @@ export const fr: Dict = {
   "Try again": "Réessayer",
   "Try it with sample data": "Essayer avec des données d'exemple",
   "Turn off local mode": "Désactiver le mode local",
-  "Type": "Type",
   "Type or pick a category...": "Saisissez ou choisissez une catégorie...",
+  "Type {word} to confirm:": "Tapez {word} pour confirmer :",
   "Uncleared": "Non rapproché",
   "Unlock": "Déverrouiller",
   "Unlock with password": "Déverrouiller avec le mot de passe",
@@ -514,6 +512,7 @@ export const fr: Dict = {
   "WARNING: in local mode this data exists ONLY on this device (the server is empty). Clearing it will delete it permanently. Make a backup first (Export). Continue?": "ATTENTION : en mode local, ces données n'existent QUE sur cet appareil (le serveur est vide). Les effacer les supprimera définitivement. Faites d'abord une sauvegarde (Exporter). Continuer ?",
   "We will irreversibly erase all data from the server — this cannot be undone from the app. Other devices will lose access. Your data will remain only on this device. Make a backup first (Export).": "Nous effacerons irréversiblement toutes les données du serveur — impossible de revenir en arrière depuis l'application. Les autres appareils perdront l'accès. Vos données ne resteront que sur cet appareil. Faites d'abord une sauvegarde (Exporter).",
   "We will send pending changes and resume sync. Server data is untouched.": "Nous enverrons les modifications en attente et reprendrons la synchronisation. Les données du serveur ne sont pas touchées.",
+  "We will send them once the server is reachable.": "Nous les enverrons dès que le serveur sera joignable.",
   "We will send your local data back to the server and resume sync.": "Nous renverrons vos données locales au serveur et reprendrons la synchronisation.",
   "Weak": "Faible",
   "Wealth": "Patrimoine",

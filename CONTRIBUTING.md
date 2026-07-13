@@ -46,18 +46,30 @@ the app: any message you leave out simply renders its English text.
    Plural entries are objects keyed by CLDR category; the categories your language
    needs are computed, not guessed:
    `new Intl.PluralRules("cs").resolvedOptions().pluralCategories`.
+   **Watch the short keys.** A one-word English message can be a verb OR a noun, and
+   the dictionary shows it to you without its screen: `"Type {word} to confirm:"` is
+   the imperative *type this word*, not the noun *kind*. When a key is too short to
+   be sure, open the call site (`bun run i18n:ambiguity` lists every short message
+   with its call sites) — and translate the whole sentence into YOUR word order, not
+   English's.
 4. Add **one line** to `locales/../registry.ts` (`community: true`) — the Settings
    picker and the lazy-loading are driven by that registry, so there is nothing
    else to wire up.
 5. `bun run i18n:extract` (in `packages/web`), then
-   `bun test packages/web/src/lib/i18n`. The tests report orphaned messages and
-   incomplete plural categories by name.
+   `bun test packages/web/src/lib/i18n`. The tests report orphaned messages,
+   incomplete plural categories and dropped `{placeholders}` by name.
 
 Fixing an existing translation is welcome and needs no ceremony — open a PR.
 
 > **For maintainers editing English copy:** changing an English string CHANGES ITS
 > KEY, which silently orphans every translation of it. Run `bun run i18n:extract`
 > and read the orphan report before shipping a copy change.
+>
+> Keep every message a WHOLE phrase. Gluing fragments together in JSX
+> (`t("Type")` + `<b>{word}</b>` + `t(" to confirm:")`) forces English word order on
+> every other language — German needs its separable prefix last ("Gib zur Bestätigung
+> LOESCHEN **ein**:") — and hands the translator a bare word with no context. Use one
+> message with a `{placeholder}`; the test suite rejects fragments outright.
 
 ## Reporting bugs
 
