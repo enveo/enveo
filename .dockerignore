@@ -6,3 +6,12 @@ packages/web/dev-dist
 .env
 *.log
 .DS_Store
+
+# Private, machine-local material. .gitignore does NOT apply to the Docker build
+# context, so without these lines `COPY . .` bakes them into the image — and this
+# same Dockerfile builds the image published to public GHCR. A CI build is clean
+# (a tag checkout has no untracked files), but a maintainer's LOCAL `docker build
+# --push` would ship them. Keep both lists in sync with .gitignore.
+.agent
+CLAUDE.local.md
+*.local.md
