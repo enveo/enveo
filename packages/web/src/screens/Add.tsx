@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { type RecurrenceRule, type Transaction, type TxnPayload } from "@enveo/shared";
 import { apiErrorMessage, useLedgerVersion, type EditedImportItem, type ImportItem, type QuickAddResponse, type StateResponse } from "../lib/api";
-import { aiLocale, hasAiTarget, runQuickAdd as aiQuickAdd } from "../lib/ai";
+import { hasAiTarget, runQuickAdd as aiQuickAdd } from "../lib/ai";
 import { hasOpenOp, padKey, type PadState } from "../lib/amount";
 import { categoryCountsFor, rankCategories } from "../lib/categoryIndex";
 import { preferredAccountId, setLastAccountId } from "../lib/lastAccount";
@@ -275,7 +275,7 @@ export function AddScreen({ state, onDone, editTxn, draft }: { state: StateRespo
     setQuickBusy(true);
     setQuickErr(null);
     try {
-      applyQuick(await aiQuickAdd({ text, locale: aiLocale(lang), ledger, settings }));
+      applyQuick(await aiQuickAdd({ text, locale: lang, ledger, settings }));
       setQuick("");
     } catch (e) {
       setQuickErr(apiErrorMessage(e));

@@ -2,11 +2,15 @@ import { describe, expect, it } from "bun:test";
 import type { ClientLedger } from "./types";
 import { buildBudgetSuggestionBasis } from "./aiBudget";
 import {
+  aiLocaleSchema,
+  buildAgentLoopMessages,
   buildAgentSuggestContext,
   buildAgentSuggestPrompt,
   buildImportExtractPrompt,
   buildQuickAddPrompt,
   buildSuggestPrompt,
+  languageDirectives,
+  languageName,
   parseAgentSuggestResponse,
   supportsReasoningEffort,
   parseImportExtractResponse,
@@ -41,7 +45,7 @@ describe("buildSuggestPrompt", () => {
 
   it("keeps the language directives verbatim and carries the amount", () => {
     const sys = sysOf(req.messages);
-    expect(sys).toContain("Write all user-facing text (rationales) in Polish.");
+    expect(sys).toContain("Write all text you GENERATE (names, notes, rationales) in Polish.");
     expect(sys).toContain("do not translate data values");
     expect(sys).toContain(`Amount to distribute: ${basis.amountToDistribute}.`);
     expect(basis.amountToDistribute).toBe(1000_00);
@@ -58,8 +62,61 @@ describe("buildSuggestPrompt", () => {
   it("appends custom guidance and switches language for en", () => {
     const en = buildSuggestPrompt({ basis, ledger, month: "2026-07", profile: "custom", customPrompt: "prefer savings", locale: "en" });
     const sys = sysOf(en.messages);
-    expect(sys).toContain("Write all user-facing text (rationales) in English.");
+    expect(sys).toContain("Write all text you GENERATE (names, notes, rationales) in English.");
     expect(sys).toContain("User guidance: prefer savings");
+  });
+});
+
+/* Since 2.2.0 the UI ships ten languages, so a prompt may no longer say "Polish or English".
+   The locale is ANY BCP-47 tag and the prompt names that language to the model. */
+describe("languageName / languageDirectives — any BCP-47 locale", () => {
+  it("names every shipped language in English (the language the prompts are written in)", () => {
+    expect(languageName("en")).toBe("English");
+    expect(languageName("pl")).toBe("Polish");
+    expect(languageName("de")).toBe("German");
+    expect(languageName("es")).toBe("Spanish");
+    expect(languageName("fr")).toBe("French");
+    expect(languageName("it")).toBe("Italian");
+    expect(languageName("nl")).toBe("Dutch");
+    expect(languageName("pt-BR")).toBe("Brazilian Portuguese");
+    expect(languageName("cs")).toBe("Czech");
+    expect(languageName("sv")).toBe("Swedish");
+  });
+
+  it("names a tag we do not ship a UI for (the model can still answer in it)", () => {
+    expect(languageName("ja")).toBe("Japanese");
+    expect(languageName("de-AT")).toBe("Austrian German");
+  });
+
+  it("falls back to English for a missing or unnameable tag — never instructs a language it cannot name", () => {
+    expect(languageName("")).toBe("English");
+    expect(languageName("zz")).toBe("English"); // well-formed, unknown → Intl echoes the tag back
+    expect(languageName("nonsense tag!")).toBe("English"); // Intl throws RangeError
+  });
+
+  it("gives EVERY prompt the same language contract (one source — server and byok cannot drift)", () => {
+    const ledger = fixture();
+    const basis = buildBudgetSuggestionBasis({ ledger, month: "2026-07", profile: "historical" });
+    const contract = languageDirectives("de").trim();
+    expect(contract).toContain("Write all text you GENERATE (names, notes, rationales) in German.");
+    expect(contract).toContain("do not translate data values");
+
+    const systems = [
+      sysOf(buildSuggestPrompt({ basis, ledger, month: "2026-07", profile: "historical", locale: "de" }).messages),
+      sysOf(buildAgentSuggestPrompt(buildAgentSuggestContext({ ledger, month: "2026-07", basis, directive: "x", locale: "de" })).messages),
+      sysOf(buildQuickAddPrompt("Kaffee 12", { envelopes: [], places: [] }, "2026-07-13", "de").messages),
+      sysOf(buildImportExtractPrompt([], { envelopes: [], categories: [] }, "2026-07-13", "de").messages),
+      buildAgentLoopMessages({ ledger, month: "2026-07", amount: 100_00, directive: "x", locale: "de" })[0]!.content as string,
+    ];
+    for (const sys of systems) expect(sys).toContain(contract);
+  });
+
+  it("aiLocaleSchema (the wire shape the routes parse) takes BCP-47 tags and rejects garbage", () => {
+    expect(aiLocaleSchema.parse("pt-BR")).toBe("pt-BR");
+    expect(aiLocaleSchema.safeParse("en").success).toBe(true);
+    expect(aiLocaleSchema.safeParse("zh-Hant-TW").success).toBe(true);
+    expect(aiLocaleSchema.safeParse("").success).toBe(false);
+    expect(aiLocaleSchema.safeParse("Polish, please").success).toBe(false);
   });
 });
 
@@ -104,7 +161,7 @@ describe("buildAgentSuggestContext / buildAgentSuggestPrompt", () => {
     expect(sys).toContain('[{"envelopeId":string,"amount":int}]');
     expect(sys).toContain("use only envelopeId values from the provided list");
     expect(sys).toContain("you may skip envelopes");
-    expect(sys).toContain("Write all user-facing text (rationales) in Polish.");
+    expect(sys).toContain("Write all text you GENERATE (names, notes, rationales) in Polish.");
     expect(sys).toContain("do not translate data values");
     expect((req.responseFormat as any).json_schema.strict).toBe(true);
     expect((req.responseFormat as any).json_schema.schema.properties.items).toBeDefined();
@@ -124,7 +181,7 @@ describe("buildAgentSuggestContext / buildAgentSuggestPrompt", () => {
 
   it("locale en: the language directive switches like in the other prompts", () => {
     const en = buildAgentSuggestPrompt({ ...ctx, locale: "en" });
-    expect(sysOf(en.messages)).toContain("Write all user-facing text (rationales) in English.");
+    expect(sysOf(en.messages)).toContain("Write all text you GENERATE (names, notes, rationales) in English.");
   });
 });
 
@@ -166,7 +223,7 @@ describe("buildQuickAddPrompt / parseQuickAddResponse", () => {
     const req = buildQuickAddPrompt("Lidl 12,50 wczoraj", refs, "2026-07-07", "pl");
     const sys = sysOf(req.messages);
     expect(sys).toContain("You are a budget transaction parser.");
-    expect(sys).toContain("Write all user-facing text (rationales) in Polish.");
+    expect(sys).toContain("Write all text you GENERATE (names, notes, rationales) in Polish.");
     expect(sys).toContain("do not translate data values");
     expect(sys).toContain("Today: 2026-07-07.");
     expect(sys).toContain("Available envelopes: Jedzenie.");
@@ -194,7 +251,7 @@ describe("buildImportExtractPrompt / parseImportExtractResponse", () => {
     const sys = sysOf(req.messages);
     expect(sys).toContain("You extract transactions from screenshots");
     expect(sys).toContain("Today is 2026-07-07");
-    expect(sys).toContain("Write all user-facing text (rationales) in Polish.");
+    expect(sys).toContain("Write all text you GENERATE (names, notes, rationales) in Polish.");
     expect(sys).toContain("do not translate data values");
     const content = req.messages[1]!.content as Array<Record<string, unknown>>;
     expect(content[0]).toEqual({ type: "text", text: "Extract all transactions from these screenshots." });

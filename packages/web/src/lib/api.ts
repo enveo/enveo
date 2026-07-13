@@ -6,7 +6,7 @@ import { getSyncStatus, subscribeSyncStatus, type SyncStatus } from "./sync";
 
 /* ── API response shapes — @enveo/shared is the source of truth ──── */
 export type { AccountView, EnvelopeView, StateResponse } from "@enveo/shared";
-import type { BudgetSuggestProfile, BudgetSuggestResponse, ClientLedger } from "@enveo/shared";
+import type { AiLocale, BudgetSuggestProfile, BudgetSuggestResponse, ClientLedger } from "@enveo/shared";
 export type { BudgetSuggestProfile, BudgetSuggestResponse } from "@enveo/shared";
 
 export interface QuickAddResponse {
@@ -158,13 +158,15 @@ export const api = {
   /** Whether the server has an OpenAI key configured (the "server" mode available). */
   aiInfo: () => http<{ serverAi: boolean }>("GET", "/ai/info"),
 
-  quickAdd: (text: string, locale: "pl" | "en") => http<QuickAddResponse>("POST", "/quick-add", { text, locale }),
+  /* `locale` = the UI language (any BCP-47 tag): the model writes its names, notes and
+     rationales in it. Not to be confused with demoSeed's pl|en, which picks a SEED DATASET. */
+  quickAdd: (text: string, locale: AiLocale) => http<QuickAddResponse>("POST", "/quick-add", { text, locale }),
 
-  importExtract: (images: string[], locale: "pl" | "en") => http<{ items: ImportItem[] }>("POST", "/import/extract", { images, locale }),
+  importExtract: (images: string[], locale: AiLocale) => http<{ items: ImportItem[] }>("POST", "/import/extract", { images, locale }),
   importApply: (b: { accountId: string; items: ImportApplyItem[]; dryRun?: boolean }) =>
     http<ImportApplyResponse>("POST", "/import/apply", b),
 
-  budgetSuggest: (b: { month: string; profile: BudgetSuggestProfile; customPrompt?: string; ledger?: ClientLedger; locale: "pl" | "en"; useAi?: boolean }) =>
+  budgetSuggest: (b: { month: string; profile: BudgetSuggestProfile; customPrompt?: string; ledger?: ClientLedger; locale: AiLocale; useAi?: boolean }) =>
     http<BudgetSuggestResponse>("POST", "/budget/suggest", b),
 
   demoSeed: (locale: "pl" | "en") => http<{ seeded: boolean }>("POST", "/demo/seed", { locale }),

@@ -9,7 +9,7 @@ import { useT, type Message, msg } from "../lib/i18n";
 import { Glyph, Ico } from "../lib/icons";
 import { CORAL, CTA, SAGE_BG, SAGE_TX, TEAL, font, type Theme } from "../lib/theme";
 import { apiErrorMessage, type BudgetSuggestProfile, type BudgetSuggestResponse, type StateResponse } from "../lib/api";
-import { aiLocale, runSuggest } from "../lib/ai";
+import { runSuggest } from "../lib/ai";
 import { local } from "../lib/mutate";
 import { store } from "../lib/store";
 
@@ -107,7 +107,7 @@ export function BudgetSuggestSheet({ show, state, month, onClose }: { show: bool
     setPhase("loading");
     setError(null);
     try {
-      const r = await runSuggest({ ledger, month, profile, customPrompt: effectivePrompt, locale: aiLocale(lang), settings });
+      const r = await runSuggest({ ledger, month, profile, customPrompt: effectivePrompt, locale: lang, settings });
       startReview(r);
     } catch (e) {
       setError(apiErrorMessage(e));

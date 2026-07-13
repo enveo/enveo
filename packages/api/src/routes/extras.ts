@@ -1,4 +1,4 @@
-import { buildQuickAddPrompt, parseQuickAddResponse, recurrencePayload, supportsReasoningEffort, type ChatRequest, type QuickAddAiFields } from "@enveo/shared";
+import { aiLocaleSchema, buildQuickAddPrompt, parseQuickAddResponse, recurrencePayload, supportsReasoningEffort, type ChatRequest, type QuickAddAiFields } from "@enveo/shared";
 import { and, eq } from "drizzle-orm";
 import { Hono } from "hono";
 import { z } from "zod";
@@ -23,8 +23,9 @@ extraRoutes.get("/ai/info", (c) => c.json({ serverAi: Boolean(env.OPENAI_API_KEY
 extraRoutes.post("/quick-add", async (c) => {
   if (!env.OPENAI_API_KEY) return c.json({ error: "ai_unavailable" }, 503);
   const budgetId = (await requireTier(c, "plain")).id;
+  /* locale: any BCP-47 tag (the UI ships ten languages since 2.2.0); omitted → English. */
   const { text, locale } = z
-    .object({ text: z.string().min(1), locale: z.enum(["pl", "en"]).optional() })
+    .object({ text: z.string().min(1), locale: aiLocaleSchema.optional() })
     .parse(await c.req.json());
   const today = new Date().toISOString().slice(0, 10);
 
@@ -35,7 +36,7 @@ extraRoutes.post("/quick-add", async (c) => {
 
   let fields: QuickAddAiFields;
   try {
-    const raw = await openaiChat(buildQuickAddPrompt(text, { envelopes, places }, today, locale ?? "pl"));
+    const raw = await openaiChat(buildQuickAddPrompt(text, { envelopes, places }, today, locale ?? "en"));
     fields = parseQuickAddResponse(raw);
   } catch (e) {
     // upstream rejection or an unparsable answer — the details stay in the server log

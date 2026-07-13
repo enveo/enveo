@@ -29,9 +29,68 @@ export interface ChatRequest {
 /** Whether the model accepts reasoning_effort (OpenAI reasoning families). */
 export const supportsReasoningEffort = (model: string): boolean => /^(gpt-5|o\d)/.test(model);
 
-export type AiLocale = "pl" | "en";
+/* ── The language the model answers in ───────────────────────────────── */
 
-const languageOf = (locale: AiLocale): string => (locale === "pl" ? "Polish" : "English");
+/**
+ * BCP-47 tag of the UI language ("en", "pl", "pt-BR", …). ANY tag is allowed since 2.2.0: the
+ * prompt NAMES the language to the model, so a user whose UI language we do not even translate
+ * still gets AI-written names, notes and rationales in their own language.
+ */
+export type AiLocale = string;
+
+/** The wire shape of a locale (the AI routes parse it): a well-formed BCP-47 tag, nothing else. */
+export const aiLocaleSchema = z.string().regex(/^[A-Za-z]{2,3}(-[A-Za-z0-9]{2,8})*$/);
+
+/** English names of the languages the UI ships — pinned, because a runtime built with a trimmed
+ *  ICU would leave `Intl.DisplayNames` echoing the bare tag ("de") back at us. */
+const SHIPPED_LANGUAGE_NAMES: Record<string, string> = {
+  en: "English",
+  pl: "Polish",
+  de: "German",
+  es: "Spanish",
+  fr: "French",
+  it: "Italian",
+  nl: "Dutch",
+  "pt-BR": "Brazilian Portuguese",
+  cs: "Czech",
+  sv: "Swedish",
+};
+
+/**
+ * Locale → the language's English name, as the prompts (written in English) address the model:
+ * the ten shipped languages are pinned, everything else is named by `Intl.DisplayNames`, and a
+ * tag nobody can name degrades to English — we never order the model into a language we cannot
+ * name (an untranslated echo like "answer in zz" is worse than English).
+ */
+export function languageName(locale: AiLocale): string {
+  const tag = (locale ?? "").trim();
+  const pinned = SHIPPED_LANGUAGE_NAMES[tag];
+  if (pinned) return pinned;
+  try {
+    const named = new Intl.DisplayNames(["en"], { type: "language" }).of(tag);
+    // Intl echoes an unknown-but-well-formed tag ("zz" → "zz") instead of throwing.
+    if (named && named.toLowerCase() !== tag.toLowerCase()) return named;
+  } catch {
+    /* malformed tag → Intl throws RangeError; fall through to the base tag / English */
+  }
+  const base = SHIPPED_LANGUAGE_NAMES[tag.split("-")[0]!];
+  return base ?? "English";
+}
+
+/**
+ * The language contract EVERY prompt carries — ONE source, so the server prompt and the BYOK
+ * prompt cannot drift (the prompt-identity tests assert this): text the model WRITES is in the
+ * user's language, data values we INJECT are matched as-is (translating an envelope name would
+ * break the name→id lookup on the way back).
+ * Ends with a trailing space — the builders concatenate sentences.
+ */
+export function languageDirectives(locale: AiLocale): string {
+  const language = languageName(locale);
+  return (
+    `Write all text you GENERATE (names, notes, rationales) in ${language}. ` +
+    `Injected data values (envelope, category, place and transaction names, historical labels) are in the user's language (${language}) — match against them as-is; do not translate data values. `
+  );
+}
 
 /** Cut out the first JSON object from the model response (same as the API routes). */
 const sliceJson = (raw: string): string => raw.slice(raw.indexOf("{"), raw.lastIndexOf("}") + 1);
@@ -71,14 +130,12 @@ export function buildSuggestPrompt(ctx: SuggestPromptContext): ChatRequest {
     .map((t) => ({ date: t.date, amount: t.amount, type: t.type, envelopeId: t.envelopeId }));
 
   const amountToDistribute = ctx.basis.amountToDistribute;
-  const language = languageOf(ctx.locale);
   const sys =
     "You are an envelope-budgeting assistant. Distribute EXACTLY the given amount (integer minor units) " +
     'across the given envelopes. Return ONLY JSON: {"items":[{"envelopeId":string,"proposedDelta":int,"rationale":string,"confidence":number}]}. ' +
     "Hard rules: the sum of proposedDelta must equal the amount exactly; use only the given envelopeId values; proposedDelta ≥ 0 (integer minor units, int); " +
     "do not create/modify/delete anything; keep rationales short. " +
-    `Write all user-facing text (rationales) in ${language}. ` +
-    `Injected data values (envelope, category, place and transaction names, historical labels) are in the user's language (${language}) — match against them as-is; do not translate data values. ` +
+    languageDirectives(ctx.locale) +
     `Profile: ${ctx.profile}. Amount to distribute: ${amountToDistribute}.` +
     " Aim to fund monthly targets (targetGap) when funds suffice, without exceeding them." +
     (ctx.customPrompt ? ` User guidance: ${ctx.customPrompt}` : "");
@@ -206,7 +263,6 @@ export function buildAgentSuggestContext(args: {
 }
 
 export function buildAgentSuggestPrompt(ctx: AgentSuggestContext): ChatRequest {
-  const language = languageOf(ctx.locale);
   const sys =
     "You are an envelope-budgeting agent. Decide how to split the given amount (integer minor units) " +
     "across the user's envelopes based on the CURRENT month state and the PREVIOUS month state provided. " +
@@ -215,8 +271,7 @@ export function buildAgentSuggestPrompt(ctx: AgentSuggestContext): ChatRequest {
     'Return ONLY a JSON array: [{"envelopeId":string,"amount":int}] — no prose, no other keys. ' +
     "Hard rules: use only envelopeId values from the provided list; amount is an integer ≥ 0 (minor units, int); " +
     "you may skip envelopes (omit them entirely); do not create/modify/delete anything. " +
-    `Write all user-facing text (rationales) in ${language}. ` +
-    `Injected data values (envelope, category, place and transaction names, historical labels) are in the user's language (${language}) — match against them as-is; do not translate data values.`;
+    languageDirectives(ctx.locale).trimEnd();
   const user = JSON.stringify({
     amountToDistribute: ctx.amount,
     currentMonth: { month: ctx.month, envelopes: ctx.envelopes },
@@ -345,7 +400,6 @@ export interface AgentLoopPromptContext {
  * simple prompts finish in 1 round, without an extra tool call).
  */
 export function buildAgentLoopMessages(ctx: AgentLoopPromptContext): ChatToolsMessage[] {
-  const language = languageOf(ctx.locale);
   const sys =
     "You are an envelope-budgeting agent with READ-ONLY data tools. Decide how to split the given amount " +
     "(integer minor units) across the user's envelopes. " +
@@ -358,8 +412,7 @@ export function buildAgentLoopMessages(ctx: AgentLoopPromptContext): ChatToolsMe
     "finish; never answer in plain text. " +
     "Hard rules: use only envelope id values present in the provided data; amount is an integer ≥ 0 (minor units, int); " +
     "you may skip envelopes (omit them entirely); the tools only read — you cannot create/modify/delete anything. " +
-    `Write all user-facing text (rationales) in ${language}. ` +
-    `Injected data values (envelope, category, place and transaction names, historical labels) are in the user's language (${language}) — match against them as-is; do not translate data values.`;
+    languageDirectives(ctx.locale).trimEnd();
   const state = runAgentTool(ctx.ledger, "get_month_state", { month: ctx.month });
   const user = JSON.stringify({
     month: ctx.month,
@@ -382,13 +435,11 @@ export interface QuickAddPromptRefs {
 }
 
 export function buildQuickAddPrompt(text: string, refs: QuickAddPromptRefs, today: string, locale: AiLocale): ChatRequest {
-  const language = languageOf(locale);
   const sys =
     "You are a budget transaction parser. Return ONLY JSON with the fields: " +
     "amount (integer minor units, int|null), type ('expense'|'income'), isRefund (bool), date (YYYY-MM-DD), " +
     "envelopeName (string|null), placeName (string|null). " +
-    `Write all user-facing text (rationales) in ${language}. ` +
-    `Injected data values (envelope, category, place and transaction names, historical labels) are in the user's language (${language}) — match against them as-is; do not translate data values. ` +
+    languageDirectives(locale) +
     `Today: ${today}. Available envelopes: ${refs.envelopes.map((e) => e.name).join(", ")}. ` +
     `Places: ${refs.places.map((p) => p.name).join(", ")}.`;
   return {
@@ -471,7 +522,6 @@ export interface ImportPromptRefs {
 }
 
 export function buildImportExtractPrompt(images: string[], _refs: ImportPromptRefs, today: string, locale: AiLocale): ChatRequest {
-  const language = languageOf(locale);
   const sysExtract =
     "You extract transactions from screenshots (Apple Wallet, bank account history, payment confirmations). " +
     `Today is ${today} — resolve relative dates ("today", "yesterday") against this date; when the year is missing, assume the most recent past date. ` +
@@ -479,8 +529,7 @@ export function buildImportExtractPrompt(images: string[], _refs: ImportPromptRe
     "rawPlace: copy the payee/store description EXACTLY as it appears on the screenshot (with address, numbers etc.). " +
     "tag: a short normalized merchant identifier (UPPERCASE, without address and numbers, e.g. LIDL, ORLEN, ZABKA, NETFLIX). " +
     "Skip balances, summaries, holds and rows that are not transactions. Return each transaction once. " +
-    `Write all user-facing text (rationales) in ${language}. ` +
-    `Injected data values (envelope, category, place and transaction names, historical labels) are in the user's language (${language}) — match against them as-is; do not translate data values. ` +
+    languageDirectives(locale) +
     "Return JSON.";
   return {
     messages: [

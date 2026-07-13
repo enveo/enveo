@@ -66,7 +66,7 @@ describe("previewSuggestPrompt", () => {
     const preview = previewSuggestPrompt(fixtureLedger(), MONTH, "cautious", undefined, "pl");
     expect(typeof preview.system).toBe("string");
     expect(typeof preview.user).toBe("string");
-    expect(preview.system).toContain("Write all user-facing text");
+    expect(preview.system).toContain("Write all text you GENERATE (names, notes, rationales) in Polish.");
     // "Profile: <id>" lives in the builder's system message (parity with the real call)
     expect(`${preview.system}\n${preview.user}`).toContain("Profile: cautious");
     expect(preview.user).toContain("Jedzenie");

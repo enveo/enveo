@@ -1,4 +1,4 @@
-import { buildImportExtractPrompt, parseImportExtractResponse, supportsReasoningEffort, type ChatRequest, type ImportExtractItem } from "@enveo/shared";
+import { aiLocaleSchema, buildImportExtractPrompt, languageDirectives, languageName, parseImportExtractResponse, supportsReasoningEffort, type ChatRequest, type ImportExtractItem } from "@enveo/shared";
 import { and, eq, inArray } from "drizzle-orm";
 import { Hono } from "hono";
 import { z } from "zod";
@@ -22,7 +22,9 @@ export const importRoutes = new Hono();
 
 const extractInput = z.object({
   images: z.array(z.string().regex(/^data:image\//, "expected an image data-URL")).min(1).max(6),
-  locale: z.enum(["pl", "en"]).optional(), // defaults to "pl"
+  /* Any BCP-47 tag (the UI ships ten languages since 2.2.0). Omitted → English, the language
+     the app itself is written in; every current client sends its UI language explicitly. */
+  locale: aiLocaleSchema.optional(),
 });
 
 /* ── Cycle 1: vision — only facts from the screenshot; prompt+schema+parsing in shared/aiPrompts ── */
@@ -157,14 +159,15 @@ importRoutes.post("/import/extract", async (c) => {
     return c.json({ error: "ai_unavailable" }, 503);
   }
   const budgetId = (await requireTier(c, "plain")).id;
-  const { images, locale } = extractInput.parse(await c.req.json());
-  const language = (locale ?? "pl") === "pl" ? "Polish" : "English";
+  const { images, locale: rawLocale } = extractInput.parse(await c.req.json());
+  const locale = rawLocale ?? "en";
+  const language = languageName(locale);
   const today = new Date().toISOString().slice(0, 10);
 
   /* ── cycle 1: facts from the screenshot (prompt+parsing from shared — parity with byok) ── */
   let found: ImportExtractItem[];
   try {
-    const raw = await openaiJson(buildImportExtractPrompt(images, { envelopes: [], categories: [] }, today, locale ?? "pl"));
+    const raw = await openaiJson(buildImportExtractPrompt(images, { envelopes: [], categories: [] }, today, locale));
     found = parseImportExtractResponse(raw);
   } catch (e) {
     // upstream rejection or an unparsable answer — the details stay in the server log
@@ -191,8 +194,9 @@ importRoutes.post("/import/extract", async (c) => {
     `envelope — one of the envelopes: ${envelopes.map((e) => e.name).join(", ")} — or null; ` +
     `category — one of the categories: ${categories.map((x) => x.name).join(", ")} — or null; ` +
     "place — a readable, short place name (e.g. Lidl, Netflix). Do not change amounts or dates. " +
-    `Write all user-facing text (rationales) in ${language}. ` +
-    `Injected data values (envelope, category, place and transaction names, historical labels) are in the user's language (${language}) — match against them as-is; do not translate data values. ` +
+    /* Cycle 2 is server-only (no byok twin), but it carries the SAME language contract as every
+       shared prompt — the names it invents land in the user's ledger. */
+    languageDirectives(locale) +
     "Return JSON.";
   // Items with a SURE source_ref hit are assigned DETERMINISTICALLY — we do NOT ask the AI
   // (a learned correction matched exactly to the raw bank description). The rest → cycle 2 (model).

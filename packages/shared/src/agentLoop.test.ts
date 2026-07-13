@@ -73,7 +73,7 @@ describe("buildAgentLoopMessages", () => {
     const sys = msgs[0]!.content as string;
     expect(sys).toContain("submit_allocation");
     expect(sys).toContain("PRIMARY decision criterion");
-    expect(sys).toContain("Write all user-facing text (rationales) in Polish.");
+    expect(sys).toContain("Write all text you GENERATE (names, notes, rationales) in Polish.");
     expect(sys).toContain("do not translate data values");
     expect(msgs[1]!.role).toBe("user");
     const seed = JSON.parse(msgs[1]!.content as string) as Record<string, unknown>;

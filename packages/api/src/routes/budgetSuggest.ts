@@ -1,4 +1,5 @@
 import {
+  aiLocaleSchema,
   supportsReasoningEffort,
   buildAgentSuggestContext,
   buildAgentSuggestPrompt,
@@ -10,6 +11,7 @@ import {
   normalizeBudgetSuggestion,
   parseAgentSuggestResponse,
   parseSuggestResponse,
+  type AiLocale,
   type BudgetSuggestProfile,
   type BudgetSuggestResponse,
   type BudgetSuggestionBasis,
@@ -29,7 +31,8 @@ const requestSchema = z.object({
   month: z.string().regex(/^\d{4}-\d{2}$/),
   profile: z.enum(["cautious", "historical", "investor", "custom"]),
   customPrompt: z.string().max(2000).optional(),
-  locale: z.enum(["pl", "en"]).optional(), // defaults to "pl"
+  /* Any BCP-47 tag (the UI ships ten languages since 2.2.0); omitted → English. */
+  locale: aiLocaleSchema.optional(),
   /* OPTIONAL since v1.24.3: without a ledger the server loads the ledger from
      its OWN database (loadClientLedger — same source as snapshot). Sending the
      replica (~MB for a large ledger) stays for backwards compatibility. */
@@ -42,7 +45,7 @@ export interface BudgetAiContext {
   month: string;
   profile: BudgetSuggestProfile;
   customPrompt?: string;
-  locale: "pl" | "en";
+  locale: AiLocale;
   amountToDistribute: number;
   basis: BudgetSuggestionBasis;
   ledger: ClientLedger;
@@ -85,7 +88,7 @@ export async function generateSuggestion(input: BudgetSuggestInput & { ledger: N
     });
     if (!askModel) return wrap(empty(["agent_requires_ai"]), "rules");
     try {
-      const proposed = await askModel({ month: input.month, profile: input.profile, customPrompt: input.customPrompt, locale: input.locale ?? "pl", amountToDistribute: basis.amountToDistribute, basis, ledger });
+      const proposed = await askModel({ month: input.month, profile: input.profile, customPrompt: input.customPrompt, locale: input.locale ?? "en", amountToDistribute: basis.amountToDistribute, basis, ledger });
       const norm = normalizeAgentSuggestion(proposed, basis, basis.amountToDistribute);
       return wrap(norm, norm.repaired ? "ai_repaired" : "ai");
     } catch {
@@ -96,7 +99,7 @@ export async function generateSuggestion(input: BudgetSuggestInput & { ledger: N
   if (!askModel) return wrap(buildRulesBudgetSuggestion(basis), "rules");
 
   try {
-    const proposed = await askModel({ month: input.month, profile: input.profile, customPrompt: input.customPrompt, locale: input.locale ?? "pl", amountToDistribute: basis.amountToDistribute, basis, ledger });
+    const proposed = await askModel({ month: input.month, profile: input.profile, customPrompt: input.customPrompt, locale: input.locale ?? "en", amountToDistribute: basis.amountToDistribute, basis, ledger });
     const norm = normalizeBudgetSuggestion(basis, proposed);
     return wrap(norm, norm.repaired ? "ai_repaired" : "ai");
   } catch {

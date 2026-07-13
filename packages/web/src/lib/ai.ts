@@ -30,6 +30,7 @@ import {
   parseImportExtractResponse,
   parseQuickAddResponse,
   parseSuggestResponse,
+  type AiLocale,
   type BudgetSuggestProfile,
   type BudgetSuggestResponse,
   type BudgetSuggestionBasis,
@@ -40,18 +41,14 @@ import {
 } from "@enveo/shared";
 import { api, type ImportItem, type QuickAddResponse } from "./api";
 import type { Settings } from "./contexts";
-import type { Lang } from "./i18n";
 import { chatJson, type ChatTarget } from "./openai";
 
 /** Settings subset read by the dispatch (device-only, from localStorage). */
 export type AiSettings = Pick<Settings, "aiMode" | "openaiKey" | "openaiModel">;
 
-/**
- * UI language → the language the prompts speak. The prompt builders in @enveo/shared still know
- * only Polish and English, so every other UI language gets English answers for now; widening them
- * to any BCP-47 tag is its own step (spec §5, "AI in many languages").
- */
-export const aiLocale = (lang: Lang): "pl" | "en" => (lang === "pl" ? "pl" : "en");
+/* The UI language goes to the prompt builders AS IS (a `Lang` is a BCP-47 tag and AiLocale takes
+   any of them since 2.2.0): the model names, notes and rationales come back in the user's
+   language, whether or not we ship a dictionary for it. */
 
 /**
  * No usable model on this device (AI off, or byok with no key yet). Carries a CODE, not prose:
@@ -111,7 +108,7 @@ function buildSuggestChat(args: {
   month: string;
   profile: BudgetSuggestProfile;
   customPrompt?: string;
-  locale: "pl" | "en";
+  locale: AiLocale;
 }): { basis: BudgetSuggestionBasis; request: ChatRequest } {
   const { ledger, month, profile, customPrompt, locale } = args;
   const basis = buildBudgetSuggestionBasis({ ledger, month, profile, customPrompt });
@@ -128,7 +125,7 @@ function buildAgentChat(args: {
   ledger: ClientLedger;
   month: string;
   customPrompt?: string;
-  locale: "pl" | "en";
+  locale: AiLocale;
 }): { basis: BudgetSuggestionBasis; request: ChatRequest } {
   const { ledger, month, customPrompt, locale } = args;
   const basis = buildBudgetSuggestionBasis({ ledger, month, profile: "custom", customPrompt });
@@ -151,7 +148,7 @@ export function previewSuggestPrompt(
   month: string,
   profile: BudgetSuggestProfile,
   customPrompt: string | undefined,
-  locale: "pl" | "en",
+  locale: AiLocale,
 ): { system: string; user: string } {
   const { request } =
     profile === "custom"
@@ -168,7 +165,7 @@ export async function runSuggest(args: {
   month: string;
   profile: BudgetSuggestProfile;
   customPrompt?: string;
-  locale: "pl" | "en";
+  locale: AiLocale;
   settings: AiSettings;
 }): Promise<BudgetSuggestResponse> {
   const { ledger, month, profile, customPrompt, locale, settings } = args;
@@ -262,7 +259,7 @@ const quickAddRefs = (ledger: ClientLedger) => ({
  */
 export async function runQuickAdd(args: {
   text: string;
-  locale: "pl" | "en";
+  locale: AiLocale;
   ledger: ClientLedger;
   settings: AiSettings;
 }): Promise<QuickAddResponse> {
@@ -296,7 +293,7 @@ export async function runQuickAdd(args: {
 
 export async function runImportExtract(args: {
   images: string[];
-  locale: "pl" | "en";
+  locale: AiLocale;
   ledger: ClientLedger;
   settings: AiSettings;
 }): Promise<ImportItem[]> {
