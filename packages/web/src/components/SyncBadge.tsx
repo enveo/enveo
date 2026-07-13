@@ -48,7 +48,7 @@ export function SyncBadge({ onOpenSync }: { onOpenSync: () => void }) {
   // decision is needed. An unreachable server (error/offline) with safely
   // queued work is NOT an error — handled below with the reassuring pill.
   if (deadLetters > 0) {
-    const label = tp("sync.badgeRejected", deadLetters);
+    const label = tp("The server rejected {n} change — tap to open settings | The server rejected {n} changes — tap to open settings", deadLetters);
     return (
       <button
         onClick={onOpenSync}
@@ -72,7 +72,7 @@ export function SyncBadge({ onOpenSync }: { onOpenSync: () => void }) {
   // (re-login), but work is safely queued locally:
   // muted, tappable pill → Settings (same as today for dead letters).
   if (state === "unauthed") {
-    const label = t("auth.sessionExpired");
+    const label = t("Session expired");
     return (
       <button
         onClick={onOpenSync}
@@ -104,7 +104,7 @@ export function SyncBadge({ onOpenSync }: { onOpenSync: () => void }) {
   // Local mode (sync DISABLED by choice) — a quiet, NON-red accessory:
   // a small padlock. Tappable → Settings. No counter (calm; details in the section).
   if (localMode !== "off" || state === "local") {
-    const label = localMode === "wiped" ? t("sync.badgeLocalWiped") : t("sync.badgeLocalPaused");
+    const label = localMode === "wiped" ? t("Local mode — data deleted from server. Tap to open settings") : t("Local mode — sync paused. Tap to open settings");
     return (
       <button
         onClick={onOpenSync}
@@ -133,7 +133,7 @@ export function SyncBadge({ onOpenSync }: { onOpenSync: () => void }) {
     return (
       <button
         onClick={onOpenSync}
-        aria-label={t("sync.badgeUnverifiedAria")}
+        aria-label={t("This device's data has not been matched to your account — nothing is being sent to the server. Tap to open settings")}
         style={{
           ...anchor,
           gap: 5,
@@ -154,7 +154,7 @@ export function SyncBadge({ onOpenSync }: { onOpenSync: () => void }) {
           <path d="M12 17h.01" />
           <path d="M10.3 3.9L1.8 18a2 2 0 001.7 3h17a2 2 0 001.7-3L13.7 3.9a2 2 0 00-3.4 0z" />
         </svg>
-        <span>{t("sync.badgeUnverified")}</span>
+        <span>{t("Not sending")}</span>
       </button>
     );
   }
@@ -162,7 +162,7 @@ export function SyncBadge({ onOpenSync }: { onOpenSync: () => void }) {
   // sync in progress — spinning ring (static dot under reduce-motion)
   if (state === "syncing") {
     return (
-      <div role="status" aria-label={t("sync.badgeSyncing")} style={{ ...anchor, pointerEvents: "none" }}>
+      <div role="status" aria-label={t("Sync in progress")} style={{ ...anchor, pointerEvents: "none" }}>
         {reduceMotion() ? (
           <span style={{ width: 8, height: 8, borderRadius: "50%", background: TEAL, opacity: 0.85 }} />
         ) : (
@@ -185,7 +185,7 @@ export function SyncBadge({ onOpenSync }: { onOpenSync: () => void }) {
   // muted, REASSURING pill "⇄ N": changes are safe and will send themselves.
   // Same look regardless of state (error/offline), as long as 0 dead letters.
   if (pending > 0) {
-    const label = tp("sync.pendingSend", pending);
+    const label = tp("{n} change is waiting to be sent | {n} changes are waiting to be sent", pending);
     return (
       <div
         role="status"

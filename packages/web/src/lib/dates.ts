@@ -1,5 +1,5 @@
 import { LOCALE_OF } from "./format";
-import { translate, translatePlural, type Lang, type TKey } from "./i18n";
+import { translate, translatePlural, type Lang, type Message } from "./i18n";
 
 export const todayISO = (): string => new Date().toISOString().slice(0, 10);
 export const currentMonth = (): string => new Date().toISOString().slice(0, 7);
@@ -50,24 +50,24 @@ export function formatDateLong(iso: string, lang: Lang): string {
 
 /** Relative time of the last synchronization ("just now", "5 min ago", a date). */
 export function relSync(iso: string | null, lang: Lang): string {
-  if (!iso) return translate(lang, "sync.never");
+  if (!iso) return translate(lang, "not yet");
   const t = new Date(iso).getTime();
-  if (!Number.isFinite(t)) return translate(lang, "sync.unknown");
+  if (!Number.isFinite(t)) return translate(lang, "unknown");
   const diff = Date.now() - t;
-  if (diff < 45_000) return translate(lang, "sync.justNow");
+  if (diff < 45_000) return translate(lang, "just now");
   const min = Math.floor(diff / 60_000);
-  if (min < 60) return translatePlural(lang, "sync.minutesAgo", min);
+  if (min < 60) return translatePlural(lang, "{n} minute ago | {n} minutes ago", min);
   const hr = Math.floor(min / 60);
-  if (hr < 24) return translatePlural(lang, "sync.hoursAgo", hr);
+  if (hr < 24) return translatePlural(lang, "{n} hour ago | {n} hours ago", hr);
   const days = Math.floor(hr / 24);
-  if (days < 7) return translatePlural(lang, "sync.daysAgo", days);
+  if (days < 7) return translatePlural(lang, "{n} day ago | {n} days ago", days);
   return new Date(iso).toLocaleDateString(LOCALE_OF[lang], { dateStyle: "short" });
 }
 
 /** Date group heading on the transaction list: "today" / "yesterday" / a date. */
-export function dayHeading(iso: string, lang: Lang, t: (key: TKey) => string): string {
+export function dayHeading(iso: string, lang: Lang, t: (key: Message) => string): string {
   const today = todayISO();
-  if (iso === today) return t("dates.today");
-  if (iso === shiftDay(today, -1)) return t("dates.yesterday");
+  if (iso === today) return t("today");
+  if (iso === shiftDay(today, -1)) return t("yesterday");
   return formatDateLong(iso, lang);
 }

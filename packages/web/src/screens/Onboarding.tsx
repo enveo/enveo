@@ -18,21 +18,21 @@ import { useSettings, useTheme } from "../lib/contexts";
 import { SUPPORTED_CURRENCIES, browserLocales, wizardCurrency } from "../lib/currency";
 import { fmtSignedTrim } from "../lib/amount";
 import { parseAmount } from "../lib/format";
-import { useT, type TKey } from "../lib/i18n";
+import { useT, type Message, msg } from "../lib/i18n";
 import { local } from "../lib/mutate";
 import { store } from "../lib/store";
 import { fullResync } from "../lib/sync";
 import { ACCOUNT_COLORS, CORAL, P, TEAL, font } from "../lib/theme";
 
 /* ── Envelope template — dictionary keys ONLY (names live in i18n, not here) ── */
-const TEMPLATE: Array<{ group: TKey; envelopes: Array<{ name: TKey; isSavings?: boolean }> }> = [
-  { group: "onb.tpl.bills", envelopes: [{ name: "onb.tpl.housing" }, { name: "onb.tpl.utilities" }, { name: "onb.tpl.subscriptions" }] },
-  { group: "onb.tpl.living", envelopes: [{ name: "onb.tpl.groceries" }, { name: "onb.tpl.transport" }, { name: "onb.tpl.health" }, { name: "onb.tpl.fun" }] },
-  { group: "onb.tpl.savings", envelopes: [{ name: "onb.tpl.savingsEnv", isSavings: true }, { name: "onb.tpl.rainyDay" }] },
+const TEMPLATE: Array<{ group: Message; envelopes: Array<{ name: Message; isSavings?: boolean }> }> = [
+  { group: msg("Bills"), envelopes: [{ name: msg("Housing") }, { name: msg("Utilities") }, { name: msg("Subscriptions") }] },
+  { group: msg("Living"), envelopes: [{ name: msg("Groceries") }, { name: msg("Transport") }, { name: msg("Health") }, { name: msg("Fun") }] },
+  { group: msg("Savings"), envelopes: [{ name: msg("Savings"), isSavings: true }, { name: msg("Rainy day") }] },
 ];
 
-/** Checklist row: a template item (name=TKey) or a custom envelope (custom). */
-type TplRow = { name?: TKey; custom?: string; isSavings?: boolean; checked: boolean };
+/** Checklist row: a template item (name=Message) or a custom envelope (custom). */
+type TplRow = { name?: Message; custom?: string; isSavings?: boolean; checked: boolean };
 
 /** Segmented control (copy of the Settings idiom — not exported there). */
 function Seg<T extends string>({ value, options, onChange }: { value: T; options: Array<{ id: T; label: string }>; onChange: (id: T) => void }) {
@@ -112,7 +112,7 @@ export function OnboardingScreen({ onDone }: { onDone: () => void }) {
 
   const openBalancePad = () =>
     setPad({
-      label: t("onb.initialBalance"),
+      label: t("Starting balance"),
       initial: parseAmount(accBal) ?? 0,
       allowNegative: true, // initial balance may be negative (e.g. a credit card)
       onCommit: (minor) => setAccBal(fmtSignedTrim(minor)),
@@ -131,7 +131,8 @@ export function OnboardingScreen({ onDone }: { onDone: () => void }) {
       // enqueue BEFORE the resync: the snapshot brings the server's default currency back, but
       // fullResync replays the outbox onto the fresh mirror, so the pick survives (and is pushed)
       commitCurrency();
-      await api.demoSeed(lang);
+      // the demo dataset itself exists in Polish and English only — any other UI language gets the English one
+      await api.demoSeed(lang === "pl" ? "pl" : "en");
       await fullResync(); // fresh server data → full replica replacement
       onDone();
     } catch (e) {
@@ -177,11 +178,11 @@ export function OnboardingScreen({ onDone }: { onDone: () => void }) {
         <div style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "center" }}>
           <div style={{ display: "flex", flexDirection: "column", alignItems: "center", textAlign: "center", marginBottom: 26 }}>
             <div style={{ marginBottom: 16 }}><LogoMark size={74} /></div>
-            <div style={{ fontSize: 21, fontWeight: 700, color: C.text, marginBottom: 8 }}>{t("onb.welcomeTitle")}</div>
-            <div style={{ fontSize: 13, color: C.soft, lineHeight: 1.6, maxWidth: 300 }}>{t("onb.welcomeBody")}</div>
+            <div style={{ fontSize: 21, fontWeight: 700, color: C.text, marginBottom: 8 }}>{t("Welcome to Enveo")}</div>
+            <div style={{ fontSize: 13, color: C.soft, lineHeight: 1.6, maxWidth: 300 }}>{t("Envelope budgeting: assign your income to envelopes and always know how much you can still spend.")}</div>
           </div>
 
-          <Row label={t("settings.language")}>
+          <Row label={t("Language")}>
             <Seg
               value={settings.lang}
               onChange={(id) => setSettings({ ...settings, lang: id })}
@@ -191,7 +192,7 @@ export function OnboardingScreen({ onDone }: { onDone: () => void }) {
               ]}
             />
           </Row>
-          <Row label={t("settings.currency")}>
+          <Row label={t("Currency")}>
             <select
               value={currency}
               onChange={(e) => setCurrency(e.target.value)}
@@ -207,7 +208,7 @@ export function OnboardingScreen({ onDone }: { onDone: () => void }) {
 
           <div style={{ height: 26 }} />
           <BigButton
-            label={t("onb.startFresh")}
+            label={t("Start with an empty budget")}
             onClick={() => {
               commitCurrency();
               setStep(1);
@@ -216,7 +217,7 @@ export function OnboardingScreen({ onDone }: { onDone: () => void }) {
             variant="teal"
           />
           <div style={{ height: 10 }} />
-          <BigButton label={busy ? t("onb.demoBusy") : t("onb.tryDemo")} onClick={() => void tryDemo()} disabled={busy} variant="outline" />
+          <BigButton label={busy ? t("Loading sample data…") : t("Try it with sample data")} onClick={() => void tryDemo()} disabled={busy} variant="outline" />
           {error && <div style={{ fontSize: 12, color: CORAL, marginTop: 10, lineHeight: 1.5 }}>{error}</div>}
         </div>
       )}
@@ -224,18 +225,18 @@ export function OnboardingScreen({ onDone }: { onDone: () => void }) {
       {/* ── Step 1: first account ── */}
       {step === 1 && (
         <div style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "center" }}>
-          <div style={{ fontSize: 19, fontWeight: 700, color: C.text, marginBottom: 8 }}>{t("onb.step1Title")}</div>
-          <div style={{ fontSize: 12.5, color: C.soft, lineHeight: 1.6, marginBottom: 22 }}>{t("onb.step1Body")}</div>
+          <div style={{ fontSize: 19, fontWeight: 700, color: C.text, marginBottom: 8 }}>{t("Your first account")}</div>
+          <div style={{ fontSize: 12.5, color: C.soft, lineHeight: 1.6, marginBottom: 22 }}>{t("Add the account you spend from. The balance can be approximate — it is easy to adjust later.")}</div>
 
-          <div style={{ fontSize: 11, color: C.mute, fontWeight: 600, marginBottom: 6 }}>{t("onb.accountName")}</div>
-          <input value={accName} onChange={(e) => setAccName(e.target.value)} placeholder={t("onb.accountNamePh")} style={{ ...inputStyle(C.line, C.bg, C.text), marginBottom: 14 }} />
+          <div style={{ fontSize: 11, color: C.mute, fontWeight: 600, marginBottom: 6 }}>{t("Account name")}</div>
+          <input value={accName} onChange={(e) => setAccName(e.target.value)} placeholder={t("e.g. Checking")} style={{ ...inputStyle(C.line, C.bg, C.text), marginBottom: 14 }} />
 
-          <div style={{ fontSize: 11, color: C.mute, fontWeight: 600, marginBottom: 6 }}>{`${t("onb.initialBalance")} (${currency})`}</div>
+          <div style={{ fontSize: 11, color: C.mute, fontWeight: 600, marginBottom: 6 }}>{`${t("Starting balance")} (${currency})`}</div>
           <input value={accBal} readOnly onClick={openBalancePad} onFocus={openBalancePad} placeholder="0,00" style={{ ...inputStyle(C.line, C.bg, C.text), marginBottom: 22, cursor: "pointer" }} />
 
-          <BigButton label={t("onb.createAccount")} onClick={createAccount} disabled={!accName.trim()} variant="teal" />
+          <BigButton label={t("Add account")} onClick={createAccount} disabled={!accName.trim()} variant="teal" />
           <button onClick={() => setStep(0)} style={{ width: "100%", marginTop: 12, padding: "11px 0", borderRadius: 11, border: "none", background: "transparent", color: C.soft, fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: font }}>
-            {t("common.back")}
+            {t("Back")}
           </button>
         </div>
       )}
@@ -243,8 +244,8 @@ export function OnboardingScreen({ onDone }: { onDone: () => void }) {
       {/* ── Step 2: envelope template (checklist + custom per group) ── */}
       {step === 2 && (
         <div>
-          <div style={{ fontSize: 19, fontWeight: 700, color: C.text, marginBottom: 8, marginTop: 6 }}>{t("onb.step2Title")}</div>
-          <div style={{ fontSize: 12.5, color: C.soft, lineHeight: 1.6, marginBottom: 18 }}>{t("onb.step2Body")}</div>
+          <div style={{ fontSize: 19, fontWeight: 700, color: C.text, marginBottom: 8, marginTop: 6 }}>{t("Your envelopes")}</div>
+          <div style={{ fontSize: 12.5, color: C.soft, lineHeight: 1.6, marginBottom: 18 }}>{t("Pick the envelopes you want to start with — you can change them or add new ones anytime.")}</div>
 
           {TEMPLATE.map((tpl, gi) => (
             <div key={tpl.group} style={{ marginBottom: 18 }}>
@@ -269,10 +270,10 @@ export function OnboardingScreen({ onDone }: { onDone: () => void }) {
                     onKeyDown={(e) => {
                       if (e.key === "Enter") addCustom(gi);
                     }}
-                    placeholder={t("onb.customEnvelopePh")}
+                    placeholder={t("Custom envelope…")}
                     style={{ ...inputStyle(C.line, C.bg, C.text), padding: "8px 10px", fontSize: 13 }}
                   />
-                  <button onClick={() => addCustom(gi)} disabled={!drafts[gi]?.trim()} aria-label={t("onb.addCustomAria")} style={{ flexShrink: 0, width: 38, borderRadius: 10, border: `1px solid ${C.line}`, background: C.bg, color: C.text, fontSize: 18, fontWeight: 600, cursor: "pointer", opacity: drafts[gi]?.trim() ? 1 : 0.5, fontFamily: font }}>
+                  <button onClick={() => addCustom(gi)} disabled={!drafts[gi]?.trim()} aria-label={t("Add a custom envelope")} style={{ flexShrink: 0, width: 38, borderRadius: 10, border: `1px solid ${C.line}`, background: C.bg, color: C.text, fontSize: 18, fontWeight: 600, cursor: "pointer", opacity: drafts[gi]?.trim() ? 1 : 0.5, fontFamily: font }}>
                     +
                   </button>
                 </div>
@@ -280,7 +281,7 @@ export function OnboardingScreen({ onDone }: { onDone: () => void }) {
             </div>
           ))}
 
-          <BigButton label={t("onb.createEnvelopes")} onClick={createEnvelopes} disabled={!anyChecked} variant="teal" />
+          <BigButton label={t("Create envelopes")} onClick={createEnvelopes} disabled={!anyChecked} variant="teal" />
         </div>
       )}
 

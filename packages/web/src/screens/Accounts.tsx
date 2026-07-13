@@ -35,7 +35,7 @@ export function AccountsScreen({ state, onMenu }: { state: StateResponse; onMenu
 
   const openBalancePad = () =>
     setPad({
-      label: t("onb.initialBalance"),
+      label: t("Starting balance"),
       initial: parseAmount(bl) ?? 0,
       allowNegative: true, // account balance may be negative (e.g. a credit card)
       onCommit: (minor) => setBl(fmtSignedTrim(minor)),
@@ -58,12 +58,12 @@ export function AccountsScreen({ state, onMenu }: { state: StateResponse; onMenu
   return (
     <div className="gs" style={{ flex: 1, overflowY: "auto", paddingBottom: 6 }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: `12px ${P}px 4px` }}>
-        <button onClick={onMenu} aria-label={t("nav.menu")} style={{ background: "none", border: "none", cursor: "pointer", padding: 4, display: "flex" }}>
+        <button onClick={onMenu} aria-label={t("Menu")} style={{ background: "none", border: "none", cursor: "pointer", padding: 4, display: "flex" }}>
           <Ico d="M4 6h16M4 12h16M4 18h16" size={20} />
         </button>
         <div style={{ textAlign: "center" }}>
-          <div style={{ fontSize: 18.5, fontWeight: 600, color: C.text }}>{t("accounts.title")}</div>
-          <div style={{ fontSize: 12, color: C.soft, marginTop: 1 }}>{t("accounts.balance")}: <span style={{ fontWeight: 700, fontVariantNumeric: "tabular-nums" }}>{M(total)}</span></div>
+          <div style={{ fontSize: 18.5, fontWeight: 600, color: C.text }}>{t("Accounts")}</div>
+          <div style={{ fontSize: 12, color: C.soft, marginTop: 1 }}>{t("Balance")}: <span style={{ fontWeight: 700, fontVariantNumeric: "tabular-nums" }}>{M(total)}</span></div>
         </div>
         <div style={{ width: 28 }} />
       </div>
@@ -83,7 +83,7 @@ export function AccountsScreen({ state, onMenu }: { state: StateResponse; onMenu
         ))}
         {closed.length > 0 && (
           <>
-            <div style={{ fontSize: 10.5, fontWeight: 600, color: C.mute, textTransform: "uppercase", letterSpacing: 0.6, margin: "16px 0 4px" }}>{t("accounts.closed")}</div>
+            <div style={{ fontSize: 10.5, fontWeight: 600, color: C.mute, textTransform: "uppercase", letterSpacing: 0.6, margin: "16px 0 4px" }}>{t("Closed")}</div>
             {closed.map((a) => (
               <div key={a.id} role="button" onClick={() => setEdit(a)} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "9px 0", opacity: 0.55, cursor: "pointer" }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
@@ -103,18 +103,18 @@ export function AccountsScreen({ state, onMenu }: { state: StateResponse; onMenu
           <div style={{ width: 44, height: 44, borderRadius: 12, background: "var(--accent-18)", display: "flex", alignItems: "center", justifyContent: "center", border: `1px dashed var(--accent-55)` }}>
             <Ico d="M12 5v14m-7-7h14" size={17} color={TEAL} sw={2} />
           </div>
-          {t("accounts.addAccount")}
+          {t("Add account")}
         </button>
       </div>
 
       <Sheet show={add} onClose={() => setAdd(false)}>
         {(C) => (
           <>
-            <div style={{ fontSize: 17, fontWeight: 700, color: C.text, marginBottom: 14 }}>{t("accounts.newAccount")}</div>
-            <input value={nm} onChange={(e) => setNm(e.target.value)} placeholder={t("accounts.accountName")} style={{ width: "100%", padding: "10px 12px", borderRadius: 9, border: `1px solid ${C.line}`, background: C.bg, color: C.text, fontSize: 14, fontFamily: font, outline: "none", boxSizing: "border-box", marginBottom: 8 }} />
-            <input value={bl} readOnly onClick={openBalancePad} onFocus={openBalancePad} placeholder={t("accounts.initialBalancePlaceholder")} style={{ width: "100%", padding: "10px 12px", borderRadius: 9, border: `1px solid ${C.line}`, background: C.bg, color: C.text, fontSize: 14, fontFamily: font, outline: "none", boxSizing: "border-box", marginBottom: 14, cursor: "pointer" }} />
+            <div style={{ fontSize: 17, fontWeight: 700, color: C.text, marginBottom: 14 }}>{t("New account")}</div>
+            <input value={nm} onChange={(e) => setNm(e.target.value)} placeholder={t("Account name")} style={{ width: "100%", padding: "10px 12px", borderRadius: 9, border: `1px solid ${C.line}`, background: C.bg, color: C.text, fontSize: 14, fontFamily: font, outline: "none", boxSizing: "border-box", marginBottom: 8 }} />
+            <input value={bl} readOnly onClick={openBalancePad} onFocus={openBalancePad} placeholder={t("Starting balance (0)")} style={{ width: "100%", padding: "10px 12px", borderRadius: 9, border: `1px solid ${C.line}`, background: C.bg, color: C.text, fontSize: 14, fontFamily: font, outline: "none", boxSizing: "border-box", marginBottom: 14, cursor: "pointer" }} />
             <IconColorPicker palette={ACCOUNT_COLORS} color={nmColor} icon={nmIcon} onColor={setNmColor} onIcon={setNmIcon} />
-            <button onClick={submit} style={{ width: "100%", padding: 12, borderRadius: 11, border: "none", background: TEAL, color: "#fff", fontSize: 13.5, fontWeight: 600, cursor: "pointer", opacity: nm.trim() ? 1 : 0.4 }}>{t("accounts.addAccount")}</button>
+            <button onClick={submit} style={{ width: "100%", padding: 12, borderRadius: 11, border: "none", background: TEAL, color: "#fff", fontSize: 13.5, fontWeight: 600, cursor: "pointer", opacity: nm.trim() ? 1 : 0.4 }}>{t("Add account")}</button>
           </>
         )}
       </Sheet>
@@ -141,7 +141,7 @@ function AccountEdit({ account, onClose }: { account: StateResponse["accounts"][
     const nm = name.trim();
     if (!nm) return;
     if (archived && !account.archived) {
-      const ok = window.confirm(t("accounts.archiveConfirm", { name: nm }));
+      const ok = window.confirm(t("The account “{name}” will disappear from the Start screen and lists (you will find it under “Closed” on the Accounts screen). Its transactions and balance still count in the budget and reports.\n\nArchive it?", { name: nm }));
       if (!ok) return;
     }
     local.updateAccount(account.id, { name: nm, color, icon, archived });
@@ -151,17 +151,17 @@ function AccountEdit({ account, onClose }: { account: StateResponse["accounts"][
     <Sheet show={!!account} onClose={onClose}>
       {(C) => (
         <>
-          <div style={{ fontSize: 17, fontWeight: 700, color: C.text, marginBottom: 14 }}>{t("accounts.editTitle")}</div>
-          <div style={{ fontSize: 10.5, color: C.mute, fontWeight: 600, marginBottom: 4, textTransform: "uppercase", letterSpacing: 0.6 }}>{t("accounts.accountName")}</div>
+          <div style={{ fontSize: 17, fontWeight: 700, color: C.text, marginBottom: 14 }}>{t("Edit account")}</div>
+          <div style={{ fontSize: 10.5, color: C.mute, fontWeight: 600, marginBottom: 4, textTransform: "uppercase", letterSpacing: 0.6 }}>{t("Account name")}</div>
           <input value={name} onChange={(e) => setName(e.target.value)} style={{ width: "100%", padding: "8px 0", border: "none", borderBottom: `1px solid ${C.line}`, background: "none", color: C.text, fontSize: 15, fontFamily: font, outline: "none", marginBottom: 18, boxSizing: "border-box" }} />
           <IconColorPicker palette={ACCOUNT_COLORS} color={color} icon={icon} onColor={setColor} onIcon={setIcon} />
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 18 }}>
-            <span style={{ fontSize: 14, color: C.text }}>{t("accounts.archivedToggle")}</span>
+            <span style={{ fontSize: 14, color: C.text }}>{t("Archived account")}</span>
             <button onClick={() => setArchived(!archived)} style={{ width: 42, height: 24, borderRadius: 12, background: archived ? TEAL : C.line, position: "relative", border: "none", cursor: "pointer", transition: "background .2s" }}>
               <div style={{ width: 20, height: 20, borderRadius: "50%", background: "#fff", position: "absolute", top: 2, left: archived ? 20 : 2, transition: "left .2s", boxShadow: "0 1px 2px rgba(0,0,0,0.2)" }} />
             </button>
           </div>
-          <button onClick={save} disabled={!name.trim()} style={{ width: "100%", padding: 12, borderRadius: 11, border: "none", background: TEAL, color: "#fff", fontSize: 13.5, fontWeight: 600, cursor: "pointer", opacity: name.trim() ? 1 : 0.4 }}>{t("common.save")}</button>
+          <button onClick={save} disabled={!name.trim()} style={{ width: "100%", padding: 12, borderRadius: 11, border: "none", background: TEAL, color: "#fff", fontSize: 13.5, fontWeight: 600, cursor: "pointer", opacity: name.trim() ? 1 : 0.4 }}>{t("Save")}</button>
         </>
       )}
     </Sheet>

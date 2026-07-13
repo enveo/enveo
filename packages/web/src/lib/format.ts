@@ -1,6 +1,22 @@
 import type { Lang } from "./i18n";
 
-export const LOCALE_OF: Record<Lang, string> = { pl: "pl-PL", en: "en-US" };
+/**
+ * UI language → the BCP-47 tag Intl formats with. A region is pinned where the bare language would
+ * pick a default we do not want; money, dates and numbers come from Intl ALONE, never from a
+ * dictionary. Every Lang must appear here (adding a language is a compile error until it does).
+ */
+export const LOCALE_OF: Record<Lang, string> = {
+  en: "en-US",
+  pl: "pl-PL",
+  de: "de-DE",
+  es: "es-ES",
+  fr: "fr-FR",
+  it: "it-IT",
+  nl: "nl-NL",
+  "pt-BR": "pt-BR",
+  cs: "cs-CZ",
+  sv: "sv-SE",
+};
 
 /** Amount with a currency symbol per locale (minor units → e.g. "1 234,56 zł" / "$1,234.56"). */
 export function formatMoney(minor: number, currency: string, lang: Lang, opts?: { trim?: boolean }): string {

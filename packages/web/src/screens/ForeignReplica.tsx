@@ -80,11 +80,11 @@ export function ForeignReplicaScreen() {
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 14, padding: 32, textAlign: "center" }}>
       <div style={{ marginBottom: 4 }}><LogoMark size={64} /></div>
-      <div style={{ fontSize: 18, fontWeight: 700, color: C.text }}>{t("foreign.title")}</div>
+      <div style={{ fontSize: 18, fontWeight: 700, color: C.text }}>{t("Another account's data")}</div>
       <div style={{ display: "flex", flexDirection: "column", gap: 12, width: "100%", maxWidth: 300 }}>
-        <div style={{ fontSize: 13, color: C.soft, lineHeight: 1.6 }}>{t("foreign.body")}</div>
+        <div style={{ fontSize: 13, color: C.soft, lineHeight: 1.6 }}>{t("The local copy of the budget on this device belongs to a different account than the one you are signed in with. Nothing has been sent to the server and nothing has been deleted.")}</div>
         <button type="button" onClick={doExport} disabled={busy} style={btn(TEAL)}>
-          {t("foreign.export")}
+          {t("Download a backup (JSON)")}
         </button>
         <button
           type="button"
@@ -92,13 +92,13 @@ export function ForeignReplicaScreen() {
           disabled={busy}
           style={{ ...btn("transparent"), color: C.text, border: `1px solid ${C.line}` }}
         >
-          {t("foreign.signOut")}
+          {t("Sign out and use another account")}
         </button>
         {confirm ? (
           <>
-            <div style={{ fontSize: 12.5, color: CORAL, lineHeight: 1.6 }}>{t("foreign.discardConfirm")}</div>
+            <div style={{ fontSize: 12.5, color: CORAL, lineHeight: 1.6 }}>{t("The local copy — including any unsent changes — will be permanently removed from this device. If this is the only copy of that budget, download a backup first.")}</div>
             <button type="button" onClick={() => void doDiscard()} disabled={busy} style={btn(CORAL)}>
-              {busy ? t("foreign.discarding") : t("foreign.discardYes")}
+              {busy ? t("Removing…") : t("Yes, remove the data from this device")}
             </button>
             <button
               type="button"
@@ -106,7 +106,7 @@ export function ForeignReplicaScreen() {
               disabled={busy}
               style={{ ...btn("transparent"), color: C.soft, textDecoration: "underline" }}
             >
-              {t("common.cancel")}
+              {t("Cancel")}
             </button>
           </>
         ) : (
@@ -116,10 +116,10 @@ export function ForeignReplicaScreen() {
             disabled={busy}
             style={{ ...btn("transparent"), color: CORAL, border: `1px solid ${C.line}` }}
           >
-            {t("foreign.discard")}
+            {t("Remove this data and continue")}
           </button>
         )}
-        <div style={{ fontSize: 11.5, color: C.mute, lineHeight: 1.6 }}>{t("foreign.hint")}</div>
+        <div style={{ fontSize: 11.5, color: C.mute, lineHeight: 1.6 }}>{t("If this is your data, sign in with the previous account — the copy is intact. After restoring a server from a backup the account id can be new even though the e-mail is the same.")}</div>
       </div>
       {error && <div style={{ fontSize: 12, color: CORAL, lineHeight: 1.5, maxWidth: 280 }}>{error}</div>}
     </div>

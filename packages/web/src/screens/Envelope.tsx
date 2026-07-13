@@ -5,14 +5,14 @@ import { store } from "../lib/store";
 import { useMask, useTheme } from "../lib/contexts";
 import { isLight } from "../lib/format";
 import { monthLabel, shiftMonth } from "../lib/dates";
-import { useT } from "../lib/i18n";
+import { useT, msg } from "../lib/i18n";
 import { Glyph, Ico } from "../lib/icons";
 import { CORAL, INCOME, P, TEAL, font } from "../lib/theme";
 import { EnvEdit } from "./Budget";
 
 const PERIODS = [1, 3, 6, 12] as const;
 type Period = (typeof PERIODS)[number];
-const PERIOD_KEY = { 1: "env.p1", 3: "env.p3", 6: "env.p6", 12: "env.p12" } as const;
+const PERIOD_KEY = { 1: msg("1 mo"), 3: msg("3 mo"), 6: msg("6 mo"), 12: msg("1 yr") } as const;
 
 /**
  * Full-screen envelope summary (replaces the old summary sheet).
@@ -53,7 +53,7 @@ export function EnvelopeScreen({
   const env = stateM?.envelopes.find((e) => e.id === envelopeId);
 
   const backBtn = (
-    <button onClick={onBack} aria-label={t("common.back")} style={{ background: "none", border: "none", cursor: "pointer", padding: 4, display: "flex" }}>
+    <button onClick={onBack} aria-label={t("Back")} style={{ background: "none", border: "none", cursor: "pointer", padding: 4, display: "flex" }}>
       <Ico d="M15 19l-7-7 7-7" size={20} color={C.text} sw={2} />
     </button>
   );
@@ -97,11 +97,11 @@ export function EnvelopeScreen({
 
         {/* month navigation (local to the screen) */}
         <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 10, padding: "4px 0 12px" }}>
-          <button onClick={() => setM(shiftMonth(m, -1))} aria-label={t("nav.prevMonth")} style={{ background: "none", border: "none", cursor: "pointer", padding: 2, display: "flex" }}>
+          <button onClick={() => setM(shiftMonth(m, -1))} aria-label={t("Previous month")} style={{ background: "none", border: "none", cursor: "pointer", padding: 2, display: "flex" }}>
             <Ico d="M15 19l-7-7 7-7" size={17} />
           </button>
           <span style={{ color: C.text, fontSize: 16.5, fontWeight: 600, minWidth: 128, textAlign: "center", letterSpacing: 0.2 }}>{monthLabel(m, lang)}</span>
-          <button onClick={() => setM(shiftMonth(m, 1))} aria-label={t("nav.nextMonth")} style={{ background: "none", border: "none", cursor: "pointer", padding: 2, display: "flex" }}>
+          <button onClick={() => setM(shiftMonth(m, 1))} aria-label={t("Next month")} style={{ background: "none", border: "none", cursor: "pointer", padding: 2, display: "flex" }}>
             <Ico d="M9 5l7 7-7 7" size={17} />
           </button>
         </div>
@@ -109,9 +109,9 @@ export function EnvelopeScreen({
         {/* hero card (2A): stats + progress + carry in ONE card */}
         <div style={{ margin: `0 ${P}px 18px`, background: C.card, border: `1px solid ${C.line}`, borderRadius: 14, padding: "14px 16px 12px" }}>
           <div style={{ display: "flex", textAlign: "center", gap: 8 }}>
-            {stat(t("env.budgetLabel"), M(env.allocated), C.text)}
-            {stat(t("env.spentLabel"), M(Math.max(0, env.spent)), C.text)}
-            {stat(t("env.availableLabel"), `${neg ? "-" : ""}${M(Math.abs(env.available))}`, neg ? CORAL : INCOME)}
+            {stat(t("BUDGET"), M(env.allocated), C.text)}
+            {stat(t("SPENT"), M(Math.max(0, env.spent)), C.text)}
+            {stat(t("AVAILABLE"), `${neg ? "-" : ""}${M(Math.abs(env.available))}`, neg ? CORAL : INCOME)}
           </div>
           {/* progress bar INSIDE the card: spent / (allocated + carryIn) */}
           <div style={{ marginTop: 12, height: 7, background: C.inset, borderRadius: 4, overflow: "hidden" }}>
@@ -119,12 +119,12 @@ export function EnvelopeScreen({
           </div>
           {/* carry-over from the previous month (Variant A — may be negative) */}
           <div style={{ marginTop: 8, textAlign: "center", fontSize: 10, color: carryIn < 0 ? CORAL : C.mute, fontVariantNumeric: "tabular-nums" }}>
-            {t("env.carryIn", { amount: `${carryIn < 0 ? "-" : "+"}${M(Math.abs(carryIn))}` })}
+            {t("{amount} from the previous month", { amount: `${carryIn < 0 ? "-" : "+"}${M(Math.abs(carryIn))}` })}
           </div>
         </div>
 
         {/* monthly breakdown (6 bars) — before categories (2A) */}
-        <div style={{ fontSize: 13, fontWeight: 600, color: C.text, margin: `0 ${P}px 10px` }}>{t("budget.monthlyBreakdown")}</div>
+        <div style={{ fontSize: 13, fontWeight: 600, color: C.text, margin: `0 ${P}px 10px` }}>{t("Monthly breakdown")}</div>
         {series.map((s) => (
           <div key={s.month} style={{ display: "flex", alignItems: "center", gap: 10, margin: `0 ${P}px 8px` }}>
             <span style={{ fontSize: 12, color: C.soft, width: 70, textAlign: "right" }}>{monthLabel(s.month, lang).split(" ")[0]}</span>
@@ -136,7 +136,7 @@ export function EnvelopeScreen({
         ))}
 
         {/* breakdown by category + period switcher */}
-        <div style={{ fontSize: 13, fontWeight: 600, color: C.text, margin: `10px ${P}px 8px` }}>{t("env.byCategory")}</div>
+        <div style={{ fontSize: 13, fontWeight: 600, color: C.text, margin: `10px ${P}px 8px` }}>{t("Breakdown by category")}</div>
         <div style={{ display: "flex", gap: 6, margin: `0 ${P}px 12px` }}>
           {PERIODS.map((p) => (
             <button key={p} onClick={() => setPeriod(p)} style={{ flex: 1, padding: "6px 0", borderRadius: 9, border: `1px solid ${period === p ? TEAL : C.line}`, background: period === p ? "var(--accent-1a)" : "transparent", color: period === p ? TEAL : C.soft, fontSize: 11.5, fontWeight: 600, cursor: "pointer", fontFamily: font }}>
@@ -160,7 +160,7 @@ export function EnvelopeScreen({
           );
         })}
         <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "baseline", gap: 8, margin: `2px ${P}px 18px`, paddingTop: 8, borderTop: `1px solid ${C.line}` }}>
-          <span style={{ fontSize: 12.5, color: C.soft }}>{t("env.total")}</span>
+          <span style={{ fontSize: 12.5, color: C.soft }}>{t("Total")}</span>
           <span style={{ fontSize: 13.5, fontWeight: 700, color: C.text, fontVariantNumeric: "tabular-nums" }}>{M(total)}</span>
         </div>
       </div>
@@ -168,10 +168,10 @@ export function EnvelopeScreen({
       {/* bottom actions */}
       <div style={{ display: "flex", gap: 10, padding: `10px ${P}px calc(10px + env(safe-area-inset-bottom))`, borderTop: `1px solid ${C.line}`, background: C.bg, flexShrink: 0 }}>
         <button onClick={() => onOpenTxns({ envId: envelopeId })} style={{ flex: 1, padding: "12px 0", borderRadius: 12, border: `1px solid var(--accent-55)`, background: "var(--accent-1a)", color: TEAL, fontSize: 13.5, fontWeight: 600, cursor: "pointer", fontFamily: font }}>
-          {t("env.txns")}
+          {t("Transactions")}
         </button>
         <button onClick={() => setEdit(env)} style={{ flex: 1, padding: "12px 0", borderRadius: 12, border: "none", background: TEAL, color: "#fff", fontSize: 13.5, fontWeight: 600, cursor: "pointer", fontFamily: font }}>
-          {t("common.edit")}
+          {t("Edit")}
         </button>
       </div>
 

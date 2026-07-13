@@ -72,10 +72,10 @@ export function DockedNumpad({
           <span style={{ minWidth: 0, fontSize: 13, fontWeight: 600, color: C.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{target.label}</span>
         </div>
         <span style={{ fontSize: 13, color: C.mute, fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap" }}>
-          {open && preview !== null ? t("pad.result", { amount: M(preview) }) : ""}
+          {open && preview !== null ? t("= {amount}", { amount: M(preview) }) : ""}
         </span>
         <div style={{ flex: 1, display: "flex", justifyContent: "flex-end" }}>
-          <button onClick={target.onCancel} aria-label={t("pad.cancel")} style={{ background: "none", border: "none", cursor: "pointer", padding: 8, marginRight: -8, display: "flex" }}>
+          <button onClick={target.onCancel} aria-label={t("Cancel editing")} style={{ background: "none", border: "none", cursor: "pointer", padding: 8, marginRight: -8, display: "flex" }}>
             <Ico d="M6 6l12 12M18 6L6 18" size={15} color={C.mute} sw={2} />
           </button>
         </div>

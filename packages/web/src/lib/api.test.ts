@@ -10,24 +10,29 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { apiErrorMessage } from "./api";
-import { en } from "./i18n.en";
-import { pl } from "./i18n.pl";
+import type { Message } from "./i18n";
+import { pl } from "./i18n/locales/pl";
 
 /** How lib/sync.ts and lib/api.ts surface a failed request: "<status> <body>". */
 const httpError = (status: number, body: unknown) => new Error(`${status} ${JSON.stringify(body)}`);
 
 describe("apiErrorMessage", () => {
-  // no localStorage in the test env → uiLang() falls back to the browser language (en)
+  // no localStorage in the test env → uiLang() falls back to the browser language (en), and English
+  // IS the message: the expected sentence below is literally the key lib/api.ts maps the code to.
   it("turns a server error code into a localized sentence", () => {
-    expect(apiErrorMessage(httpError(503, { error: "ai_unavailable" }))).toBe(en["err.aiUnavailable"]);
-    expect(apiErrorMessage(httpError(502, { error: "ai_upstream_error", status: 401 }))).toBe(en["err.aiUpstream"]);
-    expect(apiErrorMessage(httpError(400, { error: "backup_invalid", detail: "ledger: Required" }))).toBe(en["err.backupInvalid"]);
-    expect(apiErrorMessage(httpError(400, { error: "foreign_ref" }))).toBe(en["err.foreignRef"]);
-    expect(apiErrorMessage(httpError(409, { error: "budget_mismatch", budgetId: "b1" }))).toBe(en["err.budgetMismatch"]);
+    expect(apiErrorMessage(httpError(503, { error: "ai_unavailable" }))).toBe(
+      "The server has no OpenAI key configured. Set OPENAI_API_KEY and restart the app, or use your own key in Settings → Artificial intelligence.",
+    );
+    expect(apiErrorMessage(httpError(502, { error: "ai_upstream_error", status: 401 }))).toBe("OpenAI rejected the request — check the key and the model, then try again.");
+    expect(apiErrorMessage(httpError(400, { error: "backup_invalid", detail: "ledger: Required" }))).toBe("This is not a valid backup file — nothing was loaded.");
+    expect(apiErrorMessage(httpError(400, { error: "foreign_ref" }))).toBe("The data references records that do not exist here (a corrupted or foreign file). Nothing was changed.");
+    expect(apiErrorMessage(httpError(409, { error: "budget_mismatch", budgetId: "b1" }))).toBe("The signed-in account changed while the data was being sent — nothing was written. Reload the app and try again.");
   });
 
   it("localizes the client-side foreign_replica sentinel (thrown bare by the multi-tenant guard)", () => {
-    expect(apiErrorMessage(new Error("foreign_replica"))).toBe(en["sync.notOwner"]);
+    expect(apiErrorMessage(new Error("foreign_replica"))).toBe(
+      "This device's local copy could not be confirmed to belong to the signed-in account — nothing was sent to the server. Settings → Sync explains what happened and what you can do.",
+    );
   });
 
   it("degrades gracefully: an unknown code (older/newer server) stays readable", () => {
@@ -42,30 +47,27 @@ describe("apiErrorMessage", () => {
  * and lib/api.ts owns the wording, in every locale.
  */
 describe("client-side error codes", () => {
-  const CLIENT_CODES: Record<string, keyof typeof en> = {
-    no_local_replica: "err.noLocalReplica", // sync.ts — pushLocalToServer/resetServerE2ee, mirror not booted
-    no_encryption_key: "err.noEncryptionKey", // sync.ts — resetServerE2ee with no DEK on this device
-    empty_unbound_replica: "err.emptyUnboundReplica", // sync.ts — refused: it could only wipe the budget
-    bad_ciphertext: "err.badCiphertext", // crypto.ts — an envelope this build cannot read
-    bad_pairing_code: "err.badPairingCode", // crypto.ts — decodePairing on a code that is not ours
-    ai_consent_required: "err.aiNotConfigured", // ai.ts — AiConsentRequired: no usable model on this device
-    ai_offline: "err.aiOffline", // openai.ts — fetch never left the device (offline PWA)
-    ai_key_invalid: "err.aiKeyInvalid", // openai.ts — byok: OpenAI rejected the user's key (401/403)
+  const CLIENT_CODES: Record<string, Message> = {
+    no_local_replica: "The local copy of the budget has not loaded yet — nothing was sent. Reload the app and try again.", // sync.ts — pushLocalToServer/resetServerE2ee, mirror not booted
+    no_encryption_key: "This device has no encryption key — unlock the budget with your password (or a pairing code) and try again.", // sync.ts — resetServerE2ee with no DEK on this device
+    empty_unbound_replica: "There is no data on this device to send — nothing was sent to the server. Reload the app to fetch your budget first.", // sync.ts — refused: it could only wipe the budget
+    bad_ciphertext: "The encrypted data could not be read on this device — nothing was changed. Make sure the app is up to date, or restore from a backup.", // crypto.ts — an envelope this build cannot read
+    bad_pairing_code: "This is not a valid pairing code — copy it again from the device where the budget is already unlocked.", // crypto.ts — decodePairing on a code that is not ours
+    ai_consent_required: "AI is not set up on this device. Pick a mode in Settings → Artificial intelligence (with your own key, paste it there).", // ai.ts — AiConsentRequired: no usable model on this device
+    ai_offline: "You are offline — quick add and screenshot import need a connection. Manual entry works without one.", // openai.ts — fetch never left the device (offline PWA)
+    ai_key_invalid: "OpenAI rejected your key — check it in Settings → Artificial intelligence.", // openai.ts — byok: OpenAI rejected the user's key (401/403)
   };
 
   it("localizes every code lib/* throws (Settings → backup import, disable local mode, Unlock)", () => {
-    for (const [code, key] of Object.entries(CLIENT_CODES)) {
-      expect(apiErrorMessage(new Error(code))).toBe(en[key]);
-      expect(en[key]).not.toBe(code); // mapped, not the raw code falling through
+    for (const [code, message] of Object.entries(CLIENT_CODES)) {
+      expect(apiErrorMessage(new Error(code))).toBe(message); // in English the message IS the answer
+      expect(message).not.toBe(code); // mapped, not the raw code falling through
     }
   });
 
-  it("carries a sentence in BOTH locales — a missing PL/EN key would surface the key itself", () => {
-    for (const key of Object.values(CLIENT_CODES)) {
-      for (const dict of [en, pl] as const) {
-        expect(dict[key]).toBeTruthy();
-        expect(dict[key]).not.toBe(key);
-      }
+  it("carries a sentence in Polish too — an untranslated code would show a stranger English prose", () => {
+    for (const message of Object.values(CLIENT_CODES)) {
+      expect(pl[message]).toBeTruthy();
     }
   });
 });

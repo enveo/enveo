@@ -96,7 +96,7 @@ export function UnlockScreen() {
       }
       await acceptDek(dek, snap);
     } catch (e) {
-      setError(e instanceof BadKeyError ? t("e2ee.wrongPass") : apiErrorMessage(e));
+      setError(e instanceof BadKeyError ? t("Wrong encryption password.") : apiErrorMessage(e));
     } finally {
       setBusy(false);
     }
@@ -113,19 +113,19 @@ export function UnlockScreen() {
         dek = decoded.dek;
         codeBudgetId = decoded.budgetId;
       } catch {
-        setError(t("e2ee.pairInvalid"));
+        setError(t("Invalid pairing code."));
         return;
       }
       const known = store.getBudgetId();
       if (known && known !== codeBudgetId) {
-        setError(t("e2ee.pairWrongBudget"));
+        setError(t("This pairing code belongs to a different budget."));
         return;
       }
       const snap = await fetchSnap2();
       if (!snap) return; // tier went back to plain — retryBoot already on its way
       await acceptDek(dek, snap);
     } catch (e) {
-      setError(e instanceof BadKeyError ? t("e2ee.pairInvalid") : apiErrorMessage(e));
+      setError(e instanceof BadKeyError ? t("Invalid pairing code.") : apiErrorMessage(e));
     } finally {
       setBusy(false);
     }
@@ -173,7 +173,7 @@ export function UnlockScreen() {
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 14, padding: 32, textAlign: "center" }}>
       <div style={{ marginBottom: 4 }}><LogoMark size={64} /></div>
-      <div style={{ fontSize: 18, fontWeight: 700, color: C.text }}>{t("e2ee.unlockTitle")}</div>
+      <div style={{ fontSize: 18, fontWeight: 700, color: C.text }}>{t("This budget is encrypted")}</div>
 
       {mode === "pass" ? (
         <form
@@ -183,22 +183,22 @@ export function UnlockScreen() {
           }}
           style={{ display: "flex", flexDirection: "column", gap: 12, width: "100%", maxWidth: 300 }}
         >
-          <div style={{ fontSize: 13, color: C.soft, lineHeight: 1.6 }}>{t("e2ee.unlockBody")}</div>
+          <div style={{ fontSize: 13, color: C.soft, lineHeight: 1.6 }}>{t("This budget's data is end-to-end encrypted. Enter the encryption password to unlock it on this device.")}</div>
           <input
             type="password"
             value={pass}
             onChange={(e) => setPass(e.target.value)}
-            placeholder={t("e2ee.password")}
+            placeholder={t("Encryption password")}
             autoComplete="current-password"
             autoFocus
-            aria-label={t("e2ee.password")}
+            aria-label={t("Encryption password")}
             style={inputStyle}
           />
           <button type="submit" disabled={busy || pass.length === 0} style={primaryBtn}>
-            {busy ? t("e2ee.unlocking") : t("e2ee.unlock")}
+            {busy ? t("Unlocking…") : t("Unlock")}
           </button>
           <button type="button" onClick={() => { setMode("pair"); setError(null); }} style={linkBtn}>
-            {t("e2ee.pairPaste")}
+            {t("I have a pairing code")}
           </button>
         </form>
       ) : (
@@ -209,7 +209,7 @@ export function UnlockScreen() {
           }}
           style={{ display: "flex", flexDirection: "column", gap: 12, width: "100%", maxWidth: 300 }}
         >
-          <div style={{ fontSize: 13, color: C.soft, lineHeight: 1.6 }}>{t("e2ee.pairBody")}</div>
+          <div style={{ fontSize: 13, color: C.soft, lineHeight: 1.6 }}>{t("Paste the pairing code shown on a trusted device (Settings → Pairing code).")}</div>
           <textarea
             value={code}
             onChange={(e) => setCode(e.target.value)}
@@ -220,14 +220,14 @@ export function UnlockScreen() {
             spellCheck={false}
             rows={4}
             autoFocus
-            aria-label={t("e2ee.pairCode")}
+            aria-label={t("Pairing code")}
             style={{ ...inputStyle, resize: "none", fontSize: 12, wordBreak: "break-all" }}
           />
           <button type="submit" disabled={busy || code.trim().length === 0} style={primaryBtn}>
-            {busy ? t("e2ee.unlocking") : t("e2ee.unlock")}
+            {busy ? t("Unlocking…") : t("Unlock")}
           </button>
           <button type="button" onClick={() => { setMode("pass"); setError(null); }} style={linkBtn}>
-            {t("e2ee.usePassword")}
+            {t("Unlock with password")}
           </button>
         </form>
       )}

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { type RecurrenceRule, type Transaction, type TxnPayload } from "@enveo/shared";
 import { apiErrorMessage, useLedgerVersion, type EditedImportItem, type ImportItem, type QuickAddResponse, type StateResponse } from "../lib/api";
-import { hasAiTarget, runQuickAdd as aiQuickAdd } from "../lib/ai";
+import { aiLocale, hasAiTarget, runQuickAdd as aiQuickAdd } from "../lib/ai";
 import { hasOpenOp, padKey, type PadState } from "../lib/amount";
 import { categoryCountsFor, rankCategories } from "../lib/categoryIndex";
 import { preferredAccountId, setLastAccountId } from "../lib/lastAccount";
@@ -17,18 +17,18 @@ import { useCurrency, useSettings, useTheme } from "../lib/contexts";
 import { haptic } from "../lib/haptics";
 import { currencySymbol, evalExpression, formatMoney, isLight } from "../lib/format";
 import { formatDateLong, monthNames } from "../lib/dates";
-import { useT, type TKey } from "../lib/i18n";
+import { useT, type Message, msg } from "../lib/i18n";
 import { Glyph, Ico } from "../lib/icons";
 import { CORAL, CTA, INCOME, P, SAGE_BG, TEAL, TRANSFER, font } from "../lib/theme";
 
 type Tab = "expense" | "income" | "transfer";
-const RECUR: Array<{ label: TKey; rule: string }> = [
-  { label: "add.recurNone", rule: "none" },
-  { label: "add.recurWeekly", rule: "weekly" },
-  { label: "add.recurMonthly", rule: "monthly" },
-  { label: "add.recurMonthEnd", rule: "monthEnd" },
-  { label: "add.recurQuarterly", rule: "quarterly" },
-  { label: "add.recurYearly", rule: "yearly" },
+const RECUR: Array<{ label: Message; rule: string }> = [
+  { label: msg("Do not repeat"), rule: "none" },
+  { label: msg("Repeat weekly"), rule: "weekly" },
+  { label: msg("Repeat monthly"), rule: "monthly" },
+  { label: msg("On the last day of every month"), rule: "monthEnd" },
+  { label: msg("Repeat every 3 months"), rule: "quarterly" },
+  { label: msg("Repeat yearly"), rule: "yearly" },
 ];
 
 /** Draft mode: import item editor — full AddScreen look, but submit does
@@ -188,10 +188,10 @@ export function AddScreen({ state, onDone, editTxn, draft }: { state: StateRespo
     if (items.length === 0 && env) setItems([{ envelopeId: env.id, amount: minor }]);
     setSplitMode(true);
   };
-  const submitLabel: TKey =
-    tab === "expense" ? (recur !== "none" ? "add.scheduleExpense" : isRefund ? "add.addRefund" : "add.addExpense")
-      : tab === "income" ? (recur !== "none" ? "add.scheduleIncome" : "add.addIncome")
-        : recur !== "none" ? "add.scheduleTransfer" : "add.addTransfer";
+  const submitLabel: Message =
+    tab === "expense" ? (recur !== "none" ? msg("Schedule expense") : isRefund ? msg("Add refund") : msg("Add expense"))
+      : tab === "income" ? (recur !== "none" ? msg("Schedule income") : msg("Add income"))
+        : recur !== "none" ? msg("Schedule transfer") : msg("Add transfer");
 
   // empty-state backstop: without an account there is nothing to save a transaction on
   const noAccount = accounts.length === 0;
@@ -275,7 +275,7 @@ export function AddScreen({ state, onDone, editTxn, draft }: { state: StateRespo
     setQuickBusy(true);
     setQuickErr(null);
     try {
-      applyQuick(await aiQuickAdd({ text, locale: lang, ledger, settings }));
+      applyQuick(await aiQuickAdd({ text, locale: aiLocale(lang), ledger, settings }));
       setQuick("");
     } catch (e) {
       setQuickErr(apiErrorMessage(e));
@@ -289,21 +289,21 @@ export function AddScreen({ state, onDone, editTxn, draft }: { state: StateRespo
       {/* one header for create and edit: type tabs always (type editable);
           in edit, trash + kebab on the right instead of the alignment spacer */}
       <div style={{ display: "flex", alignItems: "center", padding: "8px 10px", gap: 6 }}>
-        <button onClick={draft ? draft.onCancel : onDone} aria-label={t("add.back")} style={{ background: "none", border: "none", cursor: "pointer", padding: 4, display: "flex" }}>
+        <button onClick={draft ? draft.onCancel : onDone} aria-label={t("Back")} style={{ background: "none", border: "none", cursor: "pointer", padding: 4, display: "flex" }}>
           <Ico d="M19 12H5m0 0l7 7m-7-7l7-7" size={18} />
         </button>
         <div style={{ display: "flex", background: C.bg, borderRadius: 14, padding: 2, flex: 1, border: `1px solid ${C.line}` }}>
           {(["expense", "income", "transfer"] as Tab[]).map((tb) => (
             <button key={tb} onClick={() => { setTab(tb); reset(); setIsRefund(false); }} style={{ flex: 1, padding: "8px 0", borderRadius: 11, border: "none", fontSize: 12, fontWeight: 600, cursor: "pointer", background: tab === tb ? { expense: CORAL, income: INCOME, transfer: TRANSFER }[tb] : "transparent", color: tab === tb ? "#fff" : C.soft }}>
-              {t(({ expense: "add.tabExpense", income: "add.tabIncome", transfer: "add.tabTransfer" } as const)[tb])}
+              {t(({ expense: msg("Expense"), income: msg("Income"), transfer: msg("Transfer") } as const)[tb])}
             </button>
           ))}
         </div>
         {editTxn ? (
           <>
             <button
-              onClick={() => { if (window.confirm(t("txn.deleteConfirm"))) { local.deleteTxn(editTxn.id); onDone(); } }}
-              aria-label={t("common.delete")}
+              onClick={() => { if (window.confirm(t("Delete this transaction? This cannot be undone."))) { local.deleteTxn(editTxn.id); onDone(); } }}
+              aria-label={t("Delete")}
               style={{ width: 34, height: 34, borderRadius: 10, border: "none", background: C.surface, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}
             >
               {/* trash: lid + bucket */}
@@ -312,7 +312,7 @@ export function AddScreen({ state, onDone, editTxn, draft }: { state: StateRespo
             <div style={{ position: "relative", flexShrink: 0 }}>
               <button
                 onClick={() => setShowTxnMenu((v) => !v)}
-                aria-label={t("txns.duplicate")}
+                aria-label={t("Duplicate")}
                 style={{ width: 34, height: 34, borderRadius: 10, border: "none", background: C.surface, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}
               >
                 {/* kebab: 3 dots */}
@@ -326,7 +326,7 @@ export function AddScreen({ state, onDone, editTxn, draft }: { state: StateRespo
                     onClick={() => { setShowTxnMenu(false); local.duplicateTxn(editTxn); onDone(); }}
                     style={{ display: "block", width: "100%", padding: "11px 14px", background: "none", border: "none", color: C.text, fontSize: 13, fontWeight: 500, cursor: "pointer", textAlign: "left", fontFamily: font }}
                   >
-                    {t("txns.duplicate")}
+                    {t("Duplicate")}
                   </button>
                 </div>
               )}
@@ -338,7 +338,7 @@ export function AddScreen({ state, onDone, editTxn, draft }: { state: StateRespo
       </div>
 
       {draft && (
-        <div style={{ textAlign: "center", fontSize: 12, fontWeight: 600, color: C.soft, padding: "0 10px 4px" }}>{t("import.editTitle")}</div>
+        <div style={{ textAlign: "center", fontSize: 12, fontWeight: 600, color: C.soft, padding: "0 10px 4px" }}>{t("Imported item")}</div>
       )}
 
       {/* Smart Quick-Add (AI-only) — hidden in edit and in draft mode (import item editor).
@@ -350,15 +350,15 @@ export function AddScreen({ state, onDone, editTxn, draft }: { state: StateRespo
             onChange={(e) => setQuick(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && execQuickAdd()}
             onFocus={() => setNumpad(false)}
-            placeholder={t("add.quickPlaceholder")}
+            placeholder={t("✨ e.g. “Walmart 47.30 groceries yesterday”")}
             style={{ flex: 1, padding: "9px 12px", borderRadius: 10, border: `1px solid ${C.line}`, background: C.bg, color: C.text, fontSize: 12, fontFamily: font, outline: "none" }}
           />
-          <button onClick={execQuickAdd} disabled={quickBusy} aria-label={t("add.quickRunAria")} style={{ padding: "9px 12px", borderRadius: 10, border: "none", background: CTA, color: "#fff", fontSize: 12, fontWeight: 600, cursor: quickBusy ? "default" : "pointer", opacity: quickBusy ? 0.5 : 1 }}>✨</button>
+          <button onClick={execQuickAdd} disabled={quickBusy} aria-label={t("Parse")} style={{ padding: "9px 12px", borderRadius: 10, border: "none", background: CTA, color: "#fff", fontSize: 12, fontWeight: 600, cursor: quickBusy ? "default" : "pointer", opacity: quickBusy ? 0.5 : 1 }}>✨</button>
         </div>
       ) : (
         <div style={{ margin: `2px ${P}px 6px`, fontSize: 11.5, color: C.mute, lineHeight: 1.45 }}>
           {/* AI off → turn it on; AI on but byok without a key → the key is what's missing */}
-          {t(settings.aiMode === "off" ? "add.quickNeedsAi" : "add.quickNeedsKey")}
+          {t(settings.aiMode === "off" ? msg("Quick add and screenshot import need AI — turn it on in Settings.") : msg("Quick add needs your OpenAI key — paste it in Settings → Artificial intelligence."))}
         </div>
       ))}
       {!editTxn && !draft && quickErr && (
@@ -369,12 +369,12 @@ export function AddScreen({ state, onDone, editTxn, draft }: { state: StateRespo
         <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
           <button onClick={(e) => { e.stopPropagation(); setShowAcc(true); }} style={{ background: "none", border: "none", cursor: "pointer", padding: 0, display: "flex", flexDirection: "column", alignItems: "center", gap: 2 }}>
             <Glyph name={accObj?.icon ?? "wallet"} size={20} color={C.soft} />
-            <span style={{ fontSize: 10, color: C.soft, fontWeight: 500, maxWidth: 76, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{accObj?.name ?? t("add.account")}</span>
+            <span style={{ fontSize: 10, color: C.soft, fontWeight: 500, maxWidth: 76, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{accObj?.name ?? t("Account")}</span>
           </button>
           {tab === "expense" && (
             <>
               <div style={{ width: 1, height: 30, background: C.line }} />
-              <button onClick={(e) => { e.stopPropagation(); setIsRefund(!isRefund); }} aria-label={t("add.refundToggle")} style={{ position: "relative", width: 52, height: 28, borderRadius: 15, border: "none", cursor: "pointer", background: C.line, padding: 0, flexShrink: 0 }}>
+              <button onClick={(e) => { e.stopPropagation(); setIsRefund(!isRefund); }} aria-label={t("Toggle refund")} style={{ position: "relative", width: 52, height: 28, borderRadius: 15, border: "none", cursor: "pointer", background: C.line, padding: 0, flexShrink: 0 }}>
                 <span style={{ position: "absolute", top: 2, left: 2, width: 24, height: 24, borderRadius: 8, background: isRefund ? INCOME : CORAL, color: "#fff", fontSize: 14, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center", transform: isRefund ? "translateX(24px)" : "translateX(0)", transition: "transform .15s" }}>{isRefund ? "+" : "−"}</span>
               </button>
             </>
@@ -399,9 +399,9 @@ export function AddScreen({ state, onDone, editTxn, draft }: { state: StateRespo
             <div style={{ width: 54, height: 40, borderRadius: 9, background: C.bg, border: `1.3px dashed ${C.line}`, display: "flex", alignItems: "center", justifyContent: "center", boxSizing: "border-box" }}>
               <span style={{ fontSize: 16, color: C.mute }}>?</span>
             </div>
-            <span style={{ fontSize: 14, color: C.mute }}>{t("add.pickEnvelope")}</span>
+            <span style={{ fontSize: 14, color: C.mute }}>{t("Choose an envelope")}</span>
             <span style={{ flex: 1 }} />
-            {!draft && <span onClick={(e) => { e.stopPropagation(); enterSplit(); }} style={{ fontSize: 11, color: TEAL, fontWeight: 600 }}>{t("add.split")}</span>}
+            {!draft && <span onClick={(e) => { e.stopPropagation(); enterSplit(); }} style={{ fontSize: 11, color: TEAL, fontWeight: 600 }}>{t("Split")}</span>}
           </button>
         )}
         {tab === "expense" && !splitMode && env && (
@@ -412,7 +412,7 @@ export function AddScreen({ state, onDone, editTxn, draft }: { state: StateRespo
                 <span style={{ fontSize: 15.5, fontWeight: 600, color: C.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{env.name}</span>
               </button>
               <span style={{ flex: 1 }} />
-              {!draft && <button onClick={enterSplit} style={{ background: "none", border: "none", color: TEAL, fontSize: 11, fontWeight: 600, cursor: "pointer", flexShrink: 0 }}>{t("add.split")}</button>}
+              {!draft && <button onClick={enterSplit} style={{ background: "none", border: "none", color: TEAL, fontSize: 11, fontWeight: 600, cursor: "pointer", flexShrink: 0 }}>{t("Split")}</button>}
             </div>
 
             <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 10 }}>
@@ -420,27 +420,27 @@ export function AddScreen({ state, onDone, editTxn, draft }: { state: StateRespo
                 <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "6px 11px", borderRadius: 17, background: C.bg, border: `1px solid ${C.line}`, flexShrink: 0, maxWidth: "60%" }}>
                   <Glyph name="tag" size={13} color={C.soft} />
                   <span style={{ fontSize: 12.5, fontWeight: 600, color: C.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{state.categories.find((c) => c.id === categoryId)?.name}</span>
-                  <button onClick={() => setCategoryId(null)} aria-label={t("add.removeCategoryAria")} style={{ background: "none", border: "none", cursor: "pointer", padding: 1, display: "flex", flexShrink: 0 }}>
+                  <button onClick={() => setCategoryId(null)} aria-label={t("Remove category")} style={{ background: "none", border: "none", cursor: "pointer", padding: 1, display: "flex", flexShrink: 0 }}>
                     <Ico d="M6 6l12 12M18 6L6 18" size={12} color={C.mute} sw={2} />
                   </button>
                 </div>
               ) : (
                 <button onClick={() => { setCatOpen(!catOpen); setNumpad(false); }} style={{ padding: "6px 11px", borderRadius: 17, background: "none", border: `1.3px dashed ${C.line}`, color: C.mute, fontSize: 12.5, fontWeight: 600, cursor: "pointer", flexShrink: 0, whiteSpace: "nowrap" }}>
-                  {t("add.addCategory")}
+                  {t("+ Category")}
                 </button>
               )}
               <input
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 onFocus={() => setNumpad(false)}
-                placeholder={t("add.namePlaceholder")}
+                placeholder={t("Name")}
                 style={{ flex: 1, minWidth: 0, background: "none", border: "none", borderBottom: `1px solid ${C.line}`, color: C.text, fontSize: 14, fontFamily: font, outline: "none", padding: "5px 0" }}
               />
             </div>
 
             {catOpen && !categoryId && (
               <div style={{ marginTop: 10 }}>
-                <input value={catInput} onChange={(e) => setCatInput(e.target.value)} onFocus={() => setNumpad(false)} placeholder={t("add.categoryPlaceholder")} style={{ width: "100%", padding: "8px 10px", borderRadius: 8, border: `1px solid ${C.line}`, background: C.bg, color: C.text, fontSize: 12, fontFamily: font, outline: "none", boxSizing: "border-box", marginBottom: 6 }} />
+                <input value={catInput} onChange={(e) => setCatInput(e.target.value)} onFocus={() => setNumpad(false)} placeholder={t("Type or pick a category...")} style={{ width: "100%", padding: "8px 10px", borderRadius: 8, border: `1px solid ${C.line}`, background: C.bg, color: C.text, fontSize: 12, fontFamily: font, outline: "none", boxSizing: "border-box", marginBottom: 6 }} />
                 <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginBottom: 6 }}>
                   {filteredCats.slice(0, 8).map((c) => (
                     <button key={c.id} onClick={() => { setCategoryId(c.id); setCatInput(""); setCatOpen(false); }} style={{ padding: "5px 10px", borderRadius: 8, fontSize: 11, background: C.bg, color: C.text, border: `1px solid ${C.line}`, cursor: "pointer" }}>{c.name}</button>
@@ -448,7 +448,7 @@ export function AddScreen({ state, onDone, editTxn, draft }: { state: StateRespo
                 </div>
                 {/* category creation = local.createCategory — unavailable in draft (zero local.*) */}
                 {!draft && catInput && !state.categories.some((c) => c.name.toLowerCase() === catInput.toLowerCase()) && (
-                  <button onClick={() => { const c = local.createCategory(catInput); setCategoryId(c.id); setCatInput(""); setCatOpen(false); }} style={{ padding: "7px 10px", borderRadius: 8, fontSize: 11, background: INCOME + "1a", color: INCOME, border: `1px solid ${INCOME}44`, cursor: "pointer", width: "100%", textAlign: "left" }}>{t("add.addNewCategory", { name: catInput })}</button>
+                  <button onClick={() => { const c = local.createCategory(catInput); setCategoryId(c.id); setCatInput(""); setCatOpen(false); }} style={{ padding: "7px 10px", borderRadius: 8, fontSize: 11, background: INCOME + "1a", color: INCOME, border: `1px solid ${INCOME}44`, cursor: "pointer", width: "100%", textAlign: "left" }}>{t("+ Add “{name}”", { name: catInput })}</button>
                 )}
               </div>
             )}
@@ -461,12 +461,12 @@ export function AddScreen({ state, onDone, editTxn, draft }: { state: StateRespo
           <div style={{ padding: "2px 0 10px" }}>
             <button onClick={() => setShowEnv(true)} style={{ display: "flex", alignItems: "center", gap: 11, background: "none", border: "none", cursor: "pointer", padding: 0 }}>
               <MiniEnv color={env ? env.color : SAGE_BG} icon={env?.icon ?? "moneybag"} />
-              <span style={{ fontSize: 15.5, fontWeight: 600, color: C.text }}>{env ? env.name : t("start.toBeBudgeted")}</span>
+              <span style={{ fontSize: 15.5, fontWeight: 600, color: C.text }}>{env ? env.name : t("To be budgeted")}</span>
               {env && <span onClick={(e) => { e.stopPropagation(); setEnvelopeId(null); }} style={{ color: C.mute, fontSize: 11, padding: 4 }}>✕</span>}
             </button>
             <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 10 }}>
               <Ico d="M18.5 2.5a2.1 2.1 0 013 3L12 15l-4 1 1-4 9.5-9.5z" size={14} color={C.mute} />
-              <input value={name} onChange={(e) => setName(e.target.value)} onFocus={() => setNumpad(false)} placeholder={t("add.namePlaceholder")} style={{ flex: 1, minWidth: 0, background: "none", border: "none", borderBottom: `1px solid ${C.line}`, color: C.text, fontSize: 14, fontFamily: font, outline: "none", padding: "5px 0" }} />
+              <input value={name} onChange={(e) => setName(e.target.value)} onFocus={() => setNumpad(false)} placeholder={t("Name")} style={{ flex: 1, minWidth: 0, background: "none", border: "none", borderBottom: `1px solid ${C.line}`, color: C.text, fontSize: 14, fontFamily: font, outline: "none", padding: "5px 0" }} />
             </div>
           </div>
         )}
@@ -480,7 +480,7 @@ export function AddScreen({ state, onDone, editTxn, draft }: { state: StateRespo
             <button onClick={() => setShowTo(true)} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%", border: `1px solid ${C.line}`, borderRadius: 10, padding: "11px 14px", background: C.bg, cursor: "pointer" }}>
               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                 <Glyph name={accounts.find((a) => a.id === toAccountId)?.icon ?? "wallet"} size={18} color={C.soft} />
-                <span style={{ fontSize: 13, color: C.text }}>{accounts.find((a) => a.id === toAccountId)?.name ?? t("add.toAccount")}</span>
+                <span style={{ fontSize: 13, color: C.text }}>{accounts.find((a) => a.id === toAccountId)?.name ?? t("Destination account")}</span>
               </div>
               <Ico d="M6 9l6 6 6-6" size={16} color={C.soft} />
             </button>
@@ -491,24 +491,24 @@ export function AddScreen({ state, onDone, editTxn, draft }: { state: StateRespo
         <button onClick={(e) => { e.stopPropagation(); setShowDate(true); setNumpad(false); }} style={{ display: "flex", justifyContent: "space-between", width: "100%", padding: "6px 0", background: "none", border: "none", cursor: "pointer" }}>
           <span style={{ color: C.text, fontSize: 12 }}>{formatDateLong(date, lang)}</span>
           {recur !== "none" ? (
-            <span style={{ color: "#e0a020", fontSize: 11, fontWeight: 600, background: "#f0c84f33", padding: "2px 8px", borderRadius: 8 }}>{t("add.planned")}</span>
+            <span style={{ color: "#e0a020", fontSize: 11, fontWeight: 600, background: "#f0c84f33", padding: "2px 8px", borderRadius: 8 }}>{t("planned")}</span>
           ) : (
             <button onClick={(e) => { e.stopPropagation(); setConfirmed(!confirmed); }} style={{ background: "none", border: "none", cursor: "pointer", color: confirmed ? INCOME : "#e0a020", fontSize: 11, fontWeight: 500, display: "flex", alignItems: "center", gap: 3 }}>
-              <Ico d="M5 13l4 4L19 7" size={13} color={confirmed ? INCOME : "#e0a020"} sw={2.4} />{confirmed ? t("add.confirmed") : t("add.unconfirmed")}
+              <Ico d="M5 13l4 4L19 7" size={13} color={confirmed ? INCOME : "#e0a020"} sw={2.4} />{confirmed ? t("confirmed") : t("to confirm")}
             </button>
           )}
         </button>
         {showNote && (
           <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 0" }}>
             <Ico d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z" size={15} color={C.mute} />
-            <input autoFocus placeholder={t("add.notePlaceholder")} value={note} onChange={(e) => setNote(e.target.value)} onFocus={() => setNumpad(false)} style={{ flex: 1, background: "none", border: "none", borderBottom: `1px solid ${C.line}`, color: C.text, fontSize: 12, fontFamily: font, outline: "none", padding: "4px 0" }} />
+            <input autoFocus placeholder={t("Note")} value={note} onChange={(e) => setNote(e.target.value)} onFocus={() => setNumpad(false)} style={{ flex: 1, background: "none", border: "none", borderBottom: `1px solid ${C.line}`, color: C.text, fontSize: 12, fontFamily: font, outline: "none", padding: "4px 0" }} />
           </div>
         )}
         {showPlace && (
           <div style={{ position: "relative", padding: "6px 0" }}>
             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
               <Ico d="M3 9l9-7 9 7v11a1 1 0 01-1 1h-4v-7H8v7H4a1 1 0 01-1-1V9z" size={15} color={placeId ? TEAL : C.mute} />
-              <input autoFocus placeholder={t("add.placePlaceholder")} value={placeId ? (state.places.find((p) => p.id === placeId)?.name ?? "") : placeInput} onChange={(e) => { setPlaceInput(e.target.value); setPlaceId(null); }} onFocus={() => setNumpad(false)} style={{ flex: 1, background: "none", border: "none", borderBottom: `1px solid ${C.line}`, color: C.text, fontSize: 12, fontFamily: font, outline: "none", padding: "4px 0" }} />
+              <input autoFocus placeholder={t("Place")} value={placeId ? (state.places.find((p) => p.id === placeId)?.name ?? "") : placeInput} onChange={(e) => { setPlaceInput(e.target.value); setPlaceId(null); }} onFocus={() => setNumpad(false)} style={{ flex: 1, background: "none", border: "none", borderBottom: `1px solid ${C.line}`, color: C.text, fontSize: 12, fontFamily: font, outline: "none", padding: "4px 0" }} />
               {placeId && <button onClick={() => { setPlaceId(null); setPlaceInput(""); }} style={{ background: "none", border: "none", color: C.mute, fontSize: 11, cursor: "pointer" }}>✕</button>}
             </div>
             {/* in draft the place travels by NAME to /import/apply (server creates/matches) —
@@ -519,7 +519,7 @@ export function AddScreen({ state, onDone, editTxn, draft }: { state: StateRespo
                   <button key={p.id} onClick={() => { setPlaceId(p.id); setPlaceInput(""); }} style={{ display: "block", width: "100%", padding: "8px 11px", background: "none", border: "none", borderBottom: `1px solid ${C.line}`, color: C.text, fontSize: 11, cursor: "pointer", textAlign: "left", fontFamily: font }}>{p.name}</button>
                 ))}
                 {!draft && (
-                  <button onClick={() => { const p = local.createPlace(placeInput); setPlaceId(p.id); setPlaceInput(""); }} style={{ display: "block", width: "100%", padding: "8px 11px", background: "none", border: "none", color: TEAL, fontSize: 11, cursor: "pointer", textAlign: "left", fontFamily: font }}>{t("add.addNewPlace", { name: placeInput })}</button>
+                  <button onClick={() => { const p = local.createPlace(placeInput); setPlaceId(p.id); setPlaceInput(""); }} style={{ display: "block", width: "100%", padding: "8px 11px", background: "none", border: "none", color: TEAL, fontSize: 11, cursor: "pointer", textAlign: "left", fontFamily: font }}>{t("+ “{name}”", { name: placeInput })}</button>
                 )}
               </div>
             )}
@@ -528,12 +528,12 @@ export function AddScreen({ state, onDone, editTxn, draft }: { state: StateRespo
 
         <div style={{ display: "flex", justifyContent: "center", gap: 22, padding: "16px 0 8px" }}>
           {([
-            ["add.iconNote", "M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z", showNote, () => setShowNote(!showNote)] as const,
-            ["add.iconPlace", "M3 9l9-7 9 7v11a1 1 0 01-1 1h-4v-7H8v7H4a1 1 0 01-1-1V9z", showPlace, () => setShowPlace(!showPlace)] as const,
+            [msg("Note"), "M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z", showNote, () => setShowNote(!showNote)] as const,
+            [msg("Place"), "M3 9l9-7 9 7v11a1 1 0 01-1 1h-4v-7H8v7H4a1 1 0 01-1-1V9z", showPlace, () => setShowPlace(!showPlace)] as const,
             // in draft no "Planned" (import is the past) and no "From screenshot" (zero nesting)
             ...(draft ? [] : [
-              ["add.iconPlanned", "M12 8v4l3 2M12 22a10 10 0 100-20 10 10 0 000 20z", recur !== "none", () => setShowRecur(true)] as const,
-              ["add.iconImport", "M4 8.5A1.5 1.5 0 015.5 7H8l1.6-2.4a1 1 0 01.9-.6h3a1 1 0 01.9.6L16 7h2.5A1.5 1.5 0 0120 8.5v9a1.5 1.5 0 01-1.5 1.5h-13A1.5 1.5 0 014 17.5v-9zM12 16a3.5 3.5 0 100-7 3.5 3.5 0 000 7z", false, () => setShowImport(true)] as const,
+              [msg("Planned"), "M12 8v4l3 2M12 22a10 10 0 100-20 10 10 0 000 20z", recur !== "none", () => setShowRecur(true)] as const,
+              [msg("From screenshot"), "M4 8.5A1.5 1.5 0 015.5 7H8l1.6-2.4a1 1 0 01.9-.6h3a1 1 0 01.9.6L16 7h2.5A1.5 1.5 0 0120 8.5v9a1.5 1.5 0 01-1.5 1.5h-13A1.5 1.5 0 014 17.5v-9zM12 16a3.5 3.5 0 100-7 3.5 3.5 0 000 7z", false, () => setShowImport(true)] as const,
             ]),
           ]).map((b) => (
             <button key={b[0]} onClick={b[3]} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 5, background: "none", border: "none", cursor: "pointer" }}>
@@ -547,10 +547,10 @@ export function AddScreen({ state, onDone, editTxn, draft }: { state: StateRespo
       </div>
 
       <div style={{ padding: `6px ${P}px 8px`, display: "flex", flexDirection: "column", alignItems: "center", gap: 6 }}>
-        {noAccount && <div style={{ fontSize: 11.5, color: CORAL, textAlign: "center" }}>{t("onb.addNeedsAccount")}</div>}
+        {noAccount && <div style={{ fontSize: 11.5, color: CORAL, textAlign: "center" }}>{t("Add an account first — you need one to save a transaction.")}</div>}
         <button onClick={submit} disabled={minor <= 0 || noAccount} style={{ padding: "13px 36px", borderRadius: 26, border: "none", fontSize: 13, fontWeight: 600, cursor: "pointer", background: at, color: "#fff", opacity: minor > 0 && !noAccount ? 1 : 0.4, display: "flex", alignItems: "center", gap: 8 }}>
           <svg width="17" height="17" viewBox="0 0 18 18" fill="none" stroke="#fff" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round"><polyline points="3.5,9.5 7.5,13.5 14.5,4.5" /></svg>
-          {draft ? t("import.saveItem") : editTxn ? t("add.saveChanges") : t(submitLabel)}
+          {draft ? t("Save item") : editTxn ? t("Save changes") : t(submitLabel)}
         </button>
       </div>
 
@@ -560,7 +560,7 @@ export function AddScreen({ state, onDone, editTxn, draft }: { state: StateRespo
       <Sheet show={showAcc} onClose={() => setShowAcc(false)}>
         {(C) => (
           <>
-            <div style={{ fontSize: 16, fontWeight: 600, color: C.text, marginBottom: 10 }}>{t("add.pickAccount")}</div>
+            <div style={{ fontSize: 16, fontWeight: 600, color: C.text, marginBottom: 10 }}>{t("Choose an account")}</div>
             {accounts.map((a) => (
               <button key={a.id} onClick={() => { setAccountId(a.id); if (toAccountId === a.id) setToAccountId(accounts.find((x) => x.id !== a.id)?.id ?? ""); setShowAcc(false); }} style={{ display: "flex", alignItems: "center", gap: 11, width: "100%", padding: "9px 0", background: "none", border: "none", cursor: "pointer" }}>
                 <div style={{ width: 22, height: 22, borderRadius: "50%", border: `2px solid ${accountId === a.id ? TEAL : C.line}`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>{accountId === a.id && <div style={{ width: 11, height: 11, borderRadius: "50%", background: TEAL }} />}</div>
@@ -576,7 +576,7 @@ export function AddScreen({ state, onDone, editTxn, draft }: { state: StateRespo
       <Sheet show={showTo} onClose={() => setShowTo(false)}>
         {(C) => (
           <>
-            <div style={{ fontSize: 16, fontWeight: 600, color: C.text, marginBottom: 10 }}>{t("add.toAccount")}</div>
+            <div style={{ fontSize: 16, fontWeight: 600, color: C.text, marginBottom: 10 }}>{t("Destination account")}</div>
             {accounts.filter((a) => a.id !== accountId).map((a) => (
               <button key={a.id} onClick={() => { setToAccountId(a.id); setShowTo(false); }} style={{ display: "flex", alignItems: "center", gap: 11, width: "100%", padding: "9px 0", background: "none", border: "none", cursor: "pointer" }}>
                 <div style={{ width: 38, height: 38, borderRadius: 11, background: a.color, display: "flex", alignItems: "center", justifyContent: "center" }}>
@@ -593,7 +593,7 @@ export function AddScreen({ state, onDone, editTxn, draft }: { state: StateRespo
       <Sheet show={showRecur} onClose={() => setShowRecur(false)}>
         {(C) => (
           <>
-            <div style={{ fontSize: 16, fontWeight: 600, color: C.text, marginBottom: 6 }}>{t("add.recurrenceTitle")}</div>
+            <div style={{ fontSize: 16, fontWeight: 600, color: C.text, marginBottom: 6 }}>{t("Repeat")}</div>
             {RECUR.map((o) => (
               <button key={o.rule} onClick={() => { setRecur(o.rule); setShowRecur(false); }} style={{ display: "block", width: "100%", padding: "13px 4px", background: recur === o.rule ? C.bg : "none", border: "none", borderBottom: `1px solid ${C.line}`, color: C.text, fontSize: 14, fontWeight: recur === o.rule ? 600 : 400, cursor: "pointer", textAlign: "left", fontFamily: font }}>{t(o.label)}</button>
             ))}
@@ -603,7 +603,7 @@ export function AddScreen({ state, onDone, editTxn, draft }: { state: StateRespo
       <Sheet show={showEnv} onClose={() => setShowEnv(false)}>
         {(C) => (
           <>
-            <div style={{ fontSize: 17, fontWeight: 700, color: C.text, marginBottom: 14, textAlign: "center" }}>{t("add.pickEnvelope")}</div>
+            <div style={{ fontSize: 17, fontWeight: 700, color: C.text, marginBottom: 14, textAlign: "center" }}>{t("Choose an envelope")}</div>
             {[...state.groups].sort((a, b) => a.sort - b.sort).map((g) => {
               const list = state.envelopes.filter((e) => e.groupId === g.id && !e.archived);
               if (!list.length) return null;
@@ -650,7 +650,7 @@ function SplitEditor({ items, setItems, envelopes, total, onCancel }: { items: A
   const openPad = (idx: number) => {
     const it = items[idx]!;
     setPad({
-      label: envelopes.find((e) => e.id === it.envelopeId)?.name ?? t("add.splitTitle"),
+      label: envelopes.find((e) => e.id === it.envelopeId)?.name ?? t("Split across envelopes"),
       initial: it.amount,
       onCommit: (minor) => setItems(items.map((x, i) => (i === idx ? { ...x, amount: minor } : x))),
     });
@@ -663,21 +663,21 @@ function SplitEditor({ items, setItems, envelopes, total, onCancel }: { items: A
   return (
     <div style={{ padding: "4px 0 10px" }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
-        <span style={{ fontSize: 12, fontWeight: 600, color: C.text }}>{t("add.splitTitle")}</span>
-        <button onClick={onCancel} style={{ background: "none", border: "none", color: C.mute, fontSize: 11, cursor: "pointer" }}>{t("add.splitCancel")}</button>
+        <span style={{ fontSize: 12, fontWeight: 600, color: C.text }}>{t("Split across envelopes")}</span>
+        <button onClick={onCancel} style={{ background: "none", border: "none", color: C.mute, fontSize: 11, cursor: "pointer" }}>{t("cancel split")}</button>
       </div>
       {items.map((it, idx) => (
         <div key={idx} style={{ display: "flex", gap: 6, marginBottom: 6, alignItems: "center" }}>
           <select value={it.envelopeId} onChange={(e) => setItems(items.map((x, i) => (i === idx ? { ...x, envelopeId: e.target.value } : x)))} style={{ flex: 1, padding: "9px", borderRadius: 8, border: `1px solid ${C.line}`, background: C.bg, color: C.text, fontSize: 13, fontFamily: font }}>
-            {it.envelopeId === "" && <option value="" disabled>{t("add.splitPick")}</option>}
+            {it.envelopeId === "" && <option value="" disabled>{t("Pick an envelope…")}</option>}
             {active.map((e) => <option key={e.id} value={e.id}>{e.name}</option>)}
           </select>
           <input value={(it.amount / 100).toFixed(2).replace(".", ",")} readOnly onClick={() => openPad(idx)} onFocus={() => openPad(idx)} style={{ width: 80, padding: "9px", borderRadius: 8, border: `1px solid ${C.line}`, background: C.bg, color: C.text, fontSize: 13, fontFamily: font, textAlign: "right", fontVariantNumeric: "tabular-nums", cursor: "pointer" }} />
           <button onClick={() => setItems(items.filter((_, i) => i !== idx))} style={{ background: "none", border: "none", color: CORAL, fontSize: 14, cursor: "pointer" }}>✕</button>
         </div>
       ))}
-      <button onClick={add} style={{ marginTop: 4, padding: "8px 12px", borderRadius: 8, background: "var(--accent-1a)", border: `1px solid var(--accent-55)`, color: TEAL, fontSize: 11, fontWeight: 600, cursor: "pointer" }}>{t("add.splitAddItem")}</button>
-      <div style={{ marginTop: 8, fontSize: 11, color: sum === total ? INCOME : CORAL }}>{t("add.splitSum", { sum: formatMoney(sum, currency, lang), total: formatMoney(total, currency, lang) })} {sum === total ? "✓" : t("add.splitMustMatch")}</div>
+      <button onClick={add} style={{ marginTop: 4, padding: "8px 12px", borderRadius: 8, background: "var(--accent-1a)", border: `1px solid var(--accent-55)`, color: TEAL, fontSize: 11, fontWeight: 600, cursor: "pointer" }}>{t("+ Add item")}</button>
+      <div style={{ marginTop: 8, fontSize: 11, color: sum === total ? INCOME : CORAL }}>{t("Item total: {sum} / {total}", { sum: formatMoney(sum, currency, lang), total: formatMoney(total, currency, lang) })} {sum === total ? "✓" : t("(must match)")}</div>
       <AmountPadHost target={pad} onClose={() => setPad(null)} />
     </div>
   );
@@ -700,8 +700,8 @@ function DateSheet({ show, date, onClose, onChange }: { show: boolean; date: str
       {(C) => (
         <>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", paddingBottom: 10, borderBottom: `1px solid ${C.line}` }}>
-            <button onClick={() => { const dt = new Date(`${todayIso}T00:00Z`); dt.setUTCDate(dt.getUTCDate() - 1); onChange(dt.toISOString().slice(0, 10)); onClose(); }} style={{ background: "none", border: "none", color: TEAL, fontSize: 13.5, fontWeight: 600, cursor: "pointer" }}>{t("add.dateYesterday")}</button>
-            <button onClick={() => { onChange(todayIso); onClose(); }} style={{ background: "none", border: "none", color: TEAL, fontSize: 13.5, fontWeight: 600, cursor: "pointer" }}>{t("add.dateToday")}</button>
+            <button onClick={() => { const dt = new Date(`${todayIso}T00:00Z`); dt.setUTCDate(dt.getUTCDate() - 1); onChange(dt.toISOString().slice(0, 10)); onClose(); }} style={{ background: "none", border: "none", color: TEAL, fontSize: 13.5, fontWeight: 600, cursor: "pointer" }}>{t("Yesterday")}</button>
+            <button onClick={() => { onChange(todayIso); onClose(); }} style={{ background: "none", border: "none", color: TEAL, fontSize: 13.5, fontWeight: 600, cursor: "pointer" }}>{t("Today")}</button>
             <button onClick={onClose} style={{ background: "none", border: "none", color: TEAL, fontSize: 13.5, fontWeight: 600, cursor: "pointer" }}>OK</button>
           </div>
           <div style={{ display: "flex", justifyContent: "center", marginTop: 4 }}>

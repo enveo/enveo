@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { useTheme } from "../lib/contexts";
 import { isLight } from "../lib/format";
-import { useT, type TKey } from "../lib/i18n";
+import { useT, type Message } from "../lib/i18n";
 import { Glyph, ICON_CATEGORIES, Ico } from "../lib/icons";
 import { EXT_PALETTE, font } from "../lib/theme";
 import { Sheet } from "./chrome";
@@ -43,26 +43,26 @@ export function IconColorPicker({
 
   return (
     <>
-      <div style={label}>{t("budget.colorLabel")}</div>
+      <div style={label}>{t("Color")}</div>
       <div style={{ display: "flex", flexWrap: "wrap", gap: 9, marginBottom: 18 }}>
         {palette.map((col) => (
-          <button key={col} onClick={() => onColor(col)} aria-label={t("budget.colorAria", { color: col })} style={{ width: 32, height: 32, borderRadius: "50%", background: col, border: color === col ? `3px solid ${C.text}` : `1px solid rgba(0,0,0,0.1)`, cursor: "pointer", padding: 0 }} />
+          <button key={col} onClick={() => onColor(col)} aria-label={t("Color {color}", { color: col })} style={{ width: 32, height: 32, borderRadius: "50%", background: col, border: color === col ? `3px solid ${C.text}` : `1px solid rgba(0,0,0,0.1)`, cursor: "pointer", padding: 0 }} />
         ))}
         {/* color outside the base palette (from the sheet) — show as the selected swatch */}
         {!palette.includes(color) && (
           <button onClick={() => setColorSheet(true)} style={{ width: 32, height: 32, borderRadius: "50%", background: color, border: `3px solid ${C.text}`, cursor: "pointer", padding: 0 }} />
         )}
-        <button onClick={() => setColorSheet(true)} aria-label={t("picker.moreColors")} style={{ width: 32, height: 32, borderRadius: "50%", background: C.inset, border: `1px dashed ${C.mute}`, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", padding: 0 }}>
+        <button onClick={() => setColorSheet(true)} aria-label={t("More colors")} style={{ width: 32, height: 32, borderRadius: "50%", background: C.inset, border: `1px dashed ${C.mute}`, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", padding: 0 }}>
           <Ico d="M12 5v14m-7-7h14" size={14} color={C.soft} sw={2} />
         </button>
       </div>
 
-      <div style={label}>{t("common.iconLabel")}</div>
+      <div style={label}>{t("Icon")}</div>
       <button onClick={() => setIconSheet(true)} style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 18, background: "none", border: "none", cursor: "pointer", padding: 0 }}>
         <div style={{ width: 44, height: 44, borderRadius: 12, background: color, display: "flex", alignItems: "center", justifyContent: "center" }}>
           <Glyph name={icon} size={20} color={onGlyph} />
         </div>
-        <span style={{ fontSize: 13, fontWeight: 600, color: "var(--accent)" }}>{t("picker.changeIcon")} ›</span>
+        <span style={{ fontSize: 13, fontWeight: 600, color: "var(--accent)" }}>{t("Change")} ›</span>
       </button>
 
       {createPortal(
@@ -70,14 +70,14 @@ export function IconColorPicker({
           {(S) => (
             <>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
-                <span style={{ fontSize: 17, fontWeight: 700, color: S.text }}>{t("picker.colorTitle")}</span>
+                <span style={{ fontSize: 17, fontWeight: 700, color: S.text }}>{t("Choose a color")}</span>
                 <div style={{ width: 40, height: 40, borderRadius: 11, background: color, display: "flex", alignItems: "center", justifyContent: "center" }}>
                   <Glyph name={icon} size={18} color={onGlyph} />
                 </div>
               </div>
-              <PickSection title={t("picker.palette")} colors={palette} color={color} onPick={(c) => { onColor(c); setColorSheet(false); }} S={S} />
+              <PickSection title={t("Palette")} colors={palette} color={color} onPick={(c) => { onColor(c); setColorSheet(false); }} S={S} />
               <CustomColor open={colorSheet} color={color} onPick={(c) => { onColor(c); setColorSheet(false); }} S={S} />
-              <PickSection title={t("picker.others")} colors={EXT_PALETTE.filter((c) => !palette.includes(c))} color={color} onPick={(c) => { onColor(c); setColorSheet(false); }} S={S} />
+              <PickSection title={t("Other colors")} colors={EXT_PALETTE.filter((c) => !palette.includes(c))} color={color} onPick={(c) => { onColor(c); setColorSheet(false); }} S={S} />
             </>
           )}
         </Sheet>,
@@ -88,10 +88,10 @@ export function IconColorPicker({
         <Sheet show={iconSheet} onClose={() => setIconSheet(false)}>
           {(S) => (
             <>
-              <div style={{ fontSize: 17, fontWeight: 700, color: S.text, marginBottom: 4 }}>{t("picker.iconTitle")}</div>
+              <div style={{ fontSize: 17, fontWeight: 700, color: S.text, marginBottom: 4 }}>{t("Choose an icon")}</div>
               {ICON_CATEGORIES.map((cat) => (
                 <div key={cat.label}>
-                  <div style={{ fontSize: 12.5, fontWeight: 600, color: S.soft, margin: "14px 0 8px" }}>{t(cat.label as TKey)}</div>
+                  <div style={{ fontSize: 12.5, fontWeight: 600, color: S.soft, margin: "14px 0 8px" }}>{t(cat.label)}</div>
                   <div style={{ display: "flex", flexWrap: "wrap", gap: 9 }}>
                     {cat.icons.map((ic) => {
                       const sel = icon === ic;
@@ -124,11 +124,11 @@ function CustomColor({ open, color, onPick, S }: { open: boolean; color: string;
   const valid = normHex(hex);
   return (
     <>
-      <div style={{ fontSize: 12.5, fontWeight: 600, color: S.soft, margin: "12px 0 8px" }}>{t("picker.custom")}</div>
+      <div style={{ fontSize: 12.5, fontWeight: 600, color: S.soft, margin: "12px 0 8px" }}>{t("Custom color")}</div>
       <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 6 }}>
         <div style={{ position: "relative", width: 46, height: 46, borderRadius: 12, overflow: "hidden", border: `1px solid ${S.line}`, background: valid ?? color, flexShrink: 0 }}>
           {/* the native picker covers the tile (opacity 0) — tap opens the system color wheel */}
-          <input type="color" value={valid ?? "#4fa583"} onChange={(e) => setHex(e.target.value)} aria-label={t("picker.custom")} style={{ position: "absolute", inset: -6, width: "calc(100% + 12px)", height: "calc(100% + 12px)", opacity: 0, cursor: "pointer" }} />
+          <input type="color" value={valid ?? "#4fa583"} onChange={(e) => setHex(e.target.value)} aria-label={t("Custom color")} style={{ position: "absolute", inset: -6, width: "calc(100% + 12px)", height: "calc(100% + 12px)", opacity: 0, cursor: "pointer" }} />
         </div>
         <input
           value={hex}
@@ -141,7 +141,7 @@ function CustomColor({ open, color, onPick, S }: { open: boolean; color: string;
           style={{ flex: 1, minWidth: 0, padding: "11px 12px", borderRadius: 10, border: `1px solid ${valid || !hex.trim() ? S.line : "var(--danger)"}`, background: S.bg, color: S.text, fontSize: 14, fontFamily: font, outline: "none", fontVariantNumeric: "tabular-nums" }}
         />
         <button onClick={() => valid && onPick(valid)} disabled={!valid} style={{ padding: "11px 18px", borderRadius: 10, border: "none", background: "var(--accent)", color: "#fff", fontSize: 13, fontWeight: 600, cursor: "pointer", opacity: valid ? 1 : 0.4, flexShrink: 0 }}>
-          {t("picker.use")}
+          {t("Use")}
         </button>
       </div>
     </>

@@ -3,7 +3,7 @@ import { useLedgerVersion, useSyncStatus } from "../lib/api";
 import { useSettings, useTheme } from "../lib/contexts";
 import { relSync } from "../lib/dates";
 import * as e2ee from "../lib/e2ee";
-import { useT, type TKey } from "../lib/i18n";
+import { useT, type Message, msg } from "../lib/i18n";
 import { Ico } from "../lib/icons";
 import { CORAL, P } from "../lib/theme";
 import type { ScreenId } from "../components/chrome";
@@ -20,12 +20,12 @@ import { SyncSection } from "./settings/SyncSection";
 
 type SubId = "appearance" | "ai" | "data" | "sync" | "advanced";
 
-const SUB_TITLE: Record<SubId, TKey> = {
-  appearance: "settings.appearance",
-  ai: "ai.title",
-  data: "settings.data",
-  sync: "sync.title",
-  advanced: "settings.advanced",
+const SUB_TITLE: Record<SubId, Message> = {
+  appearance: msg("Appearance"),
+  ai: msg("Artificial intelligence"),
+  data: msg("Data"),
+  sync: msg("Sync"),
+  advanced: msg("Advanced"),
 };
 
 /** Category glyph — 1.7px stroked SVG (patterns from the mock), stroke via style (CSS vars OK). */
@@ -70,10 +70,10 @@ export function SettingsScreen({ onNav }: { onNav: (s: ScreenId) => void }) {
   return (
     <div ref={scRef} className="gs" onTouchStart={onTouchStart} onTouchEnd={onTouchEnd} style={{ flex: 1, overflowY: "auto", paddingBottom: 6 }}>
       <div style={{ display: "flex", alignItems: "center", padding: `12px ${P}px`, gap: 10 }}>
-        <button onClick={() => (sub !== null ? go(null) : onNav("start"))} aria-label={t("settings.back")} style={{ background: "none", border: "none", cursor: "pointer", padding: 4, display: "flex" }}>
+        <button onClick={() => (sub !== null ? go(null) : onNav("start"))} aria-label={t("Back")} style={{ background: "none", border: "none", cursor: "pointer", padding: 4, display: "flex" }}>
           <Ico d="M19 12H5m0 0l7 7m-7-7l7-7" size={18} />
         </button>
-        <span style={{ fontSize: 17, fontWeight: 700, color: C.text }}>{sub !== null ? t(SUB_TITLE[sub]) : t("settings.title")}</span>
+        <span style={{ fontSize: 17, fontWeight: 700, color: C.text }}>{sub !== null ? t(SUB_TITLE[sub]) : t("Settings")}</span>
       </div>
 
       {sub === null ? (
@@ -120,8 +120,8 @@ function Hub({ onOpen }: { onOpen: (s: SubId) => void }) {
             <path d="M12 2a10 10 0 000 20 2 2 0 002-2v-1a2 2 0 012-2h1a5 5 0 005-5c0-5.5-4.5-10-10-10z" />
           </Glyph>
         }
-        title={t("settings.appearance")}
-        desc={t("settings.hubAppearanceDesc")}
+        title={t("Appearance")}
+        desc={t("theme, language, currency, discreet")}
         status={<span aria-hidden style={{ width: 16, height: 16, borderRadius: "50%", background: "var(--cta)", outline: `2px solid ${C.line}`, outlineOffset: 2, flexShrink: 0 }} />}
         onClick={() => onOpen("appearance")}
       />
@@ -133,8 +133,8 @@ function Hub({ onOpen }: { onOpen: (s: SubId) => void }) {
             <path d="M19 15l.9 2.6 2.6.9-2.6.9L19 22l-.9-2.6-2.6-.9 2.6-.9z" />
           </Glyph>
         }
-        title={t("ai.title")}
-        desc={t("settings.hubAiDesc")}
+        title={t("Artificial intelligence")}
+        desc={t("AI mode, your own key")}
         status={<AiBadge />}
         onClick={() => onOpen("ai")}
       />
@@ -146,8 +146,8 @@ function Hub({ onOpen }: { onOpen: (s: SubId) => void }) {
             <path d="M9 12l2 2 4-4" />
           </Glyph>
         }
-        title={t("settings.data")}
-        desc={t("settings.hubDataDesc")}
+        title={t("Data")}
+        desc={t("backup, end-to-end encryption, account")}
         status={<E2eeBadge color={catData} />}
         onClick={() => onOpen("data")}
       />
@@ -159,8 +159,8 @@ function Hub({ onOpen }: { onOpen: (s: SubId) => void }) {
             <path d="M21 3v6h-6" />
           </Glyph>
         }
-        title={t("sync.title")}
-        desc={t("settings.hubSyncDesc")}
+        title={t("Sync")}
+        desc={t("status, re-download")}
         status={<SyncStatusBadge okColor={catSync} />}
         onClick={() => onOpen("sync")}
       />
@@ -174,8 +174,8 @@ function Hub({ onOpen }: { onOpen: (s: SubId) => void }) {
             <circle cx="15" cy="17" r="2.4" fill={C.inset} />
           </Glyph>
         }
-        title={t("settings.advanced")}
-        desc={t("settings.hubAdvancedDesc")}
+        title={t("Advanced")}
+        desc={t("device storage, local mode, reset")}
         status={null}
         onClick={() => onOpen("advanced")}
       />
@@ -208,7 +208,7 @@ function AiBadge() {
   const C = useTheme();
   const { t } = useT();
   const { settings } = useSettings();
-  const key: TKey = settings.aiMode === "server" ? "settings.aiBadgeServer" : settings.aiMode === "byok" ? "settings.aiBadgeByok" : "settings.aiBadgeOff";
+  const key: Message = settings.aiMode === "server" ? msg("server") : settings.aiMode === "byok" ? msg("own key") : msg("off");
   return (
     <span style={{ fontSize: 10.5, fontWeight: 700, color: C.mute, background: C.inset, borderRadius: 8, padding: "3px 8px", flexShrink: 0 }}>{t(key)}</span>
   );
@@ -221,7 +221,7 @@ function E2eeBadge({ color }: { color: string }) {
   useLedgerVersion();
   if (e2ee.getTierMeta().tier !== "e2ee") return null;
   return (
-    <span style={{ fontSize: 10.5, fontWeight: 700, color, background: `${color}14`, borderRadius: 8, padding: "3px 8px", flexShrink: 0 }}>{t("settings.e2eeBadge")}</span>
+    <span style={{ fontSize: 10.5, fontWeight: 700, color, background: `${color}14`, borderRadius: 8, padding: "3px 8px", flexShrink: 0 }}>{t("E2EE")}</span>
   );
 }
 

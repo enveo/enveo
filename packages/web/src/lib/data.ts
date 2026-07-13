@@ -36,7 +36,7 @@ export interface Backup {
 export function exportBackup(): void {
   const ledger = store.getLedger();
   if (!ledger) {
-    throw new Error(translate(uiLang(), "settings.exportNotReady"));
+    throw new Error(translate(uiLang(), "There is nothing to export yet — wait for the app to finish loading."));
   }
   const backup: Backup = {
     app: APP,
@@ -80,11 +80,11 @@ export async function importBackup(file: File): Promise<void> {
   try {
     parsed = JSON.parse(text);
   } catch {
-    throw new Error(translate(uiLang(), "settings.importNotJson"));
+    throw new Error(translate(uiLang(), "This is not a valid JSON file."));
   }
   const env = parsed as Partial<Backup> | null;
   if (!env || typeof env !== "object" || (env.app !== APP && env.app !== LEGACY_APP)) {
-    throw new Error(translate(uiLang(), "settings.importNotBackup"));
+    throw new Error(translate(uiLang(), "This is not a backup of this app — choose a file exported from this application."));
   }
   const res = clientLedgerSchema.safeParse(env.ledger);
   if (!res.success) {
@@ -92,7 +92,7 @@ export async function importBackup(file: File): Promise<void> {
       .slice(0, 3)
       .map((i) => `${i.path.join(".")}: ${i.message}`)
       .join("; ");
-    throw new Error(translate(uiLang(), "settings.importCorrupted", { detail }));
+    throw new Error(translate(uiLang(), "The backup is corrupted and was not loaded: {detail}", { detail }));
   }
 
   // ── VALIDATION OK — only now we swap state (nothing was touched before) ──

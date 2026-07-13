@@ -20,7 +20,7 @@ import { useMask, useSubsDismissed, useTheme } from "../lib/contexts";
 import { shortDate, todayISO } from "../lib/dates";
 import { isLight } from "../lib/format";
 import { haptic } from "../lib/haptics";
-import { useT, type TKey } from "../lib/i18n";
+import { useT, type Message, msg } from "../lib/i18n";
 import { Glyph } from "../lib/icons";
 import { local } from "../lib/mutate";
 import { upcomingWindow } from "../lib/reportSummary";
@@ -31,13 +31,16 @@ import { Sheet } from "./chrome";
 
 type Mask = (n: number) => string;
 
-const CYCLE_KEY: Record<Recurrence["rule"], TKey> = {
-  none: "subs.cycleMonthly", // a "none" rule is never created in the UI — key only for type completeness
-  weekly: "subs.cycleWeekly",
-  monthly: "subs.cycleMonthly",
-  monthEnd: "subs.cycleMonthEnd",
-  quarterly: "subs.cycleQuarterly",
-  yearly: "subs.cycleYearly",
+/** "Pause" durations offered on a recurring payment. */
+const PAUSE_LABEL: Record<1 | 2 | 3, Message> = { 1: msg("1 mo"), 2: msg("2 mo"), 3: msg("3 mo") };
+
+const CYCLE_KEY: Record<Recurrence["rule"], Message> = {
+  none: msg("monthly"), // a "none" rule is never created in the UI — key only for type completeness
+  weekly: msg("weekly"),
+  monthly: msg("monthly"),
+  monthEnd: msg("month end"),
+  quarterly: msg("quarterly"),
+  yearly: msg("yearly"),
 };
 
 export function SubscriptionsTab() {
@@ -81,7 +84,7 @@ export function SubscriptionsTab() {
     <>
       {proposals.length > 0 && (
         <>
-          <div style={{ fontSize: 15, fontWeight: 700, color: C.text, margin: "2px 0 8px" }}>{t("subs.review", { n: proposals.length })}</div>
+          <div style={{ fontSize: 15, fontWeight: 700, color: C.text, margin: "2px 0 8px" }}>{t("To review ({n})", { n: proposals.length })}</div>
           {proposals.map((p) => {
             const open = openKey === p.key;
             return (
@@ -90,7 +93,7 @@ export function SubscriptionsTab() {
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontSize: 14, fontWeight: 600, color: C.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.label}</div>
                     <div style={{ fontSize: 11.5, color: C.soft, marginTop: 2 }}>
-                      {t(p.cycle === "monthly" ? "subs.monthly" : "subs.yearly")} · {t("subs.seen", { n: p.occurrences.length, date: shortDate(p.occurrences[0]!.date, lang, true) })}
+                      {t(p.cycle === "monthly" ? msg("monthly") : msg("yearly"))} · {t("seen {n}× since {date}", { n: p.occurrences.length, date: shortDate(p.occurrences[0]!.date, lang, true) })}
                     </div>
                   </div>
                   <span style={{ fontSize: 14, fontWeight: 700, color: C.text, fontVariantNumeric: "tabular-nums", flexShrink: 0 }}>{M(p.amount)}</span>
@@ -111,13 +114,13 @@ export function SubscriptionsTab() {
                     onClick={() => { acceptProposal(p); haptic([10, 30, 14]); }}
                     style={{ flex: 1, padding: "8px 0", borderRadius: 9, border: "none", background: TEAL, color: "#fff", fontSize: 12.5, fontWeight: 600, cursor: "pointer" }}
                   >
-                    ✓ {t("subs.accept")}
+                    ✓ {t("It's a subscription")}
                   </button>
                   <button
                     onClick={() => dismiss(p.key)}
                     style={{ flex: 1, padding: "8px 0", borderRadius: 9, border: `1px solid ${C.line}`, background: "transparent", color: C.soft, fontSize: 12.5, fontWeight: 600, cursor: "pointer" }}
                   >
-                    ✗ {t("subs.dismiss")}
+                    ✗ {t("Not a subscription")}
                   </button>
                 </div>
               </div>
@@ -126,8 +129,8 @@ export function SubscriptionsTab() {
         </>
       )}
 
-      {sectionTitle(t("subs.upcoming"))}
-      {upcoming.length === 0 && <div style={{ fontSize: 12.5, color: C.mute, padding: "4px 0" }}>{t("subs.noUpcoming")}</div>}
+      {sectionTitle(t("Upcoming"))}
+      {upcoming.length === 0 && <div style={{ fontSize: 12.5, color: C.mute, padding: "4px 0" }}>{t("No planned payments in the next 30 days.")}</div>}
       {upcoming.map((u) => {
         const env = u.txn.envelopeId ? ledger.envelopes.find((e) => e.id === u.txn.envelopeId) : undefined;
         return (
@@ -142,24 +145,24 @@ export function SubscriptionsTab() {
         );
       })}
 
-      {sectionTitle(t("subs.recurring"), recurring.length > 0 ? t("subs.perMonth", { amount: M(totalMonthly) }) : undefined)}
-      {recurring.length === 0 && <div style={{ fontSize: 12.5, color: C.mute, padding: "4px 0" }}>{t("subs.noRecurring")}</div>}
+      {sectionTitle(t("Your recurring payments"), recurring.length > 0 ? t("~{amount}/mo", { amount: M(totalMonthly) }) : undefined)}
+      {recurring.length === 0 && <div style={{ fontSize: 12.5, color: C.mute, padding: "4px 0" }}>{t("No recurring payments. Confirm a proposal above or add a transaction with repeat (Add → Repeat).")}</div>}
       {recurring.map((r) => (
         <div key={r.rec.id} style={{ display: "flex", alignItems: "center", gap: 10, borderBottom: `1px solid ${C.line}`, padding: "9px 0" }}>
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontSize: 13.5, color: C.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
               {r.label}
-              {r.paused && <span style={{ fontSize: 11, color: "#d97706", marginLeft: 6 }}>{t("subs.pausedUntil", { date: shortDate(r.rec.pausedUntil!, lang, true) })}</span>}
+              {r.paused && <span style={{ fontSize: 11, color: "#d97706", marginLeft: 6 }}>{t("(paused until {date})", { date: shortDate(r.rec.pausedUntil!, lang, true) })}</span>}
             </div>
             <div style={{ fontSize: 11, color: C.soft, marginTop: 2 }}>
               {t(CYCLE_KEY[r.rec.rule])}
-              {r.nextDate ? ` · ${t("subs.next", { date: shortDate(r.nextDate, lang) })}` : r.lastDate ? ` · ${t("subs.last", { date: shortDate(r.lastDate, lang) })}` : ""}
+              {r.nextDate ? ` · ${t("next {date}", { date: shortDate(r.nextDate, lang) })}` : r.lastDate ? ` · ${t("last {date}", { date: shortDate(r.lastDate, lang) })}` : ""}
             </div>
           </div>
           <div style={{ textAlign: "right", flexShrink: 0 }}>
             <div style={{ fontSize: 13, fontWeight: 600, color: C.text, fontVariantNumeric: "tabular-nums" }}>{M(r.amount)}</div>
             {r.rec.rule !== "monthly" && r.rec.rule !== "monthEnd" && (
-              <div style={{ fontSize: 10.5, color: C.mute, fontVariantNumeric: "tabular-nums" }}>{t("subs.perMonth", { amount: M(r.monthlyCost) })}</div>
+              <div style={{ fontSize: 10.5, color: C.mute, fontVariantNumeric: "tabular-nums" }}>{t("~{amount}/mo", { amount: M(r.monthlyCost) })}</div>
             )}
           </div>
         </div>
@@ -190,10 +193,10 @@ function UpcomingActionsSheet({ payment, ledger, onClose, M }: { payment: Upcomi
   const remove = () => {
     if (!payment) return;
     if (rec) {
-      if (!window.confirm(t("subs.removeConfirm"))) return;
+      if (!window.confirm(t("Delete this recurring payment? Future planned transactions will be removed; history stays."))) return;
       removeRecurrence(rec);
     } else {
-      if (!window.confirm(t("txn.deleteConfirm"))) return;
+      if (!window.confirm(t("Delete this transaction? This cannot be undone."))) return;
       local.deleteTxn(payment.txn.id);
     }
     onClose();
@@ -211,22 +214,22 @@ function UpcomingActionsSheet({ payment, ledger, onClose, M }: { payment: Upcomi
               <span style={{ fontSize: 15, fontWeight: 700, color: C.text, fontVariantNumeric: "tabular-nums", flexShrink: 0 }}>{M(payment.txn.amount)}</span>
             </div>
             <div style={row}>
-              <span style={{ fontSize: 13.5, color: C.text }}>{t("subs.shiftDate")}</span>
+              <span style={{ fontSize: 13.5, color: C.text }}>{t("Move date")}</span>
               <input
                 type="date"
                 value={payment.txn.date}
                 onChange={(e) => shiftDate(e.target.value)}
-                aria-label={t("subs.shiftDate")}
+                aria-label={t("Move date")}
                 style={{ border: `1px solid ${C.line}`, borderRadius: 9, padding: "6px 8px", background: C.bg, color: C.text, fontSize: 13, colorScheme: "inherit" }}
               />
             </div>
             {rec && (
               <div style={row}>
-                <span style={{ fontSize: 13.5, color: C.text }}>{t("subs.pause")}</span>
+                <span style={{ fontSize: 13.5, color: C.text }}>{t("Pause")}</span>
                 <span style={{ display: "flex", gap: 6 }}>
                   {([1, 2, 3] as const).map((n) => (
                     <button key={n} onClick={() => pause(n)} style={{ padding: "6px 12px", borderRadius: 9, border: `1px solid ${C.line}`, background: "transparent", color: C.text, fontSize: 12.5, fontWeight: 600, cursor: "pointer" }}>
-                      {t(`subs.pause${n}` as TKey)}
+                      {t(PAUSE_LABEL[n])}
                     </button>
                   ))}
                 </span>
@@ -234,11 +237,11 @@ function UpcomingActionsSheet({ payment, ledger, onClose, M }: { payment: Upcomi
             )}
             <div style={row}>
               <button onClick={remove} style={{ width: "100%", padding: "9px 0", borderRadius: 9, border: "none", background: "transparent", color: CORAL, fontSize: 13.5, fontWeight: 600, cursor: "pointer", textAlign: "left" }}>
-                {rec ? t("subs.removeRecurring") : t("common.delete")}
+                {rec ? t("Delete recurring payment") : t("Delete")}
               </button>
             </div>
             {rec?.pausedUntil && rec.pausedUntil > new Date().toISOString().slice(0, 10) && (
-              <div style={{ fontSize: 11.5, color: "#d97706", marginTop: 4 }}>{t("subs.pausedUntil", { date: shortDate(rec.pausedUntil, lang, true) })}</div>
+              <div style={{ fontSize: 11.5, color: "#d97706", marginTop: 4 }}>{t("(paused until {date})", { date: shortDate(rec.pausedUntil, lang, true) })}</div>
             )}
           </>
         );

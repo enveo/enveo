@@ -7,17 +7,23 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import App from "./App";
 import { AppProviders } from "./lib/contexts";
+import { loadLocale, uiLang } from "./lib/i18n";
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { staleTime: 5_000, refetchOnWindowFocus: false } },
 });
 
-createRoot(document.getElementById("root")!).render(
-  <StrictMode>
-    <QueryClientProvider client={queryClient}>
-      <AppProviders>
-        <App />
-      </AppProviders>
-    </QueryClientProvider>
-  </StrictMode>,
-);
+// The locale chunk is fetched BEFORE the first render — otherwise the app paints English and
+// repaints in the user's language. English resolves immediately (it is the source, no chunk).
+// Deliberately a .then() rather than top-level await: TLA is not in the build target.
+void loadLocale(uiLang()).then(() => {
+  createRoot(document.getElementById("root")!).render(
+    <StrictMode>
+      <QueryClientProvider client={queryClient}>
+        <AppProviders>
+          <App />
+        </AppProviders>
+      </QueryClientProvider>
+    </StrictMode>,
+  );
+});

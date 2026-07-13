@@ -61,7 +61,7 @@ function LogoutRow() {
   if (!session) return null;
 
   const doLogout = async () => {
-    if (!window.confirm(t("auth.logoutConfirm"))) return;
+    if (!window.confirm(t("Sign out? Your data stays on this device and on the server."))) return;
     setBusy(true);
     setError(null);
     try {
@@ -74,16 +74,16 @@ function LogoutRow() {
 
   return (
     <div style={{ marginTop: 18 }}>
-      <Eyebrow>{t("settings.groupAccount")}</Eyebrow>
+      <Eyebrow>{t("Account")}</Eyebrow>
       <ActionGroup>
         <ActionRow
           icon={<ActionIcon paths={IC.logout} />}
-          label={t("auth.logout")}
-          desc={t("auth.logoutHelp")}
+          label={t("Sign out")}
+          desc={t("Signs you out of this device. The local copy and the server data both stay — everything resumes when you sign back in. To remove the copy from this device, use “Clear local data”.")}
           tone="danger"
           onClick={() => void doLogout()}
           disabled={busy}
-          busyLabel={busy ? t("auth.loggingOut") : undefined}
+          busyLabel={busy ? t("Signing out…") : undefined}
         />
       </ActionGroup>
       {error && <div style={{ fontSize: 12, color: CORAL, margin: "8px 4px 0", lineHeight: 1.5 }}>{error}</div>}
@@ -104,7 +104,7 @@ function DataBackup() {
     setDone(null);
     try {
       exportBackup();
-      setDone(t("settings.exportDone"));
+      setDone(t("Backup downloaded."));
     } catch (e) {
       setError(apiErrorMessage(e));
     }
@@ -114,13 +114,13 @@ function DataBackup() {
     const file = e.target.files?.[0];
     e.target.value = ""; // allow selecting the same file again
     if (!file) return;
-    if (!window.confirm(t("settings.importConfirm"))) return;
+    if (!window.confirm(t("This will replace all current data. Continue?"))) return;
     setBusy(true);
     setError(null);
     setDone(null);
     try {
       await importBackup(file);
-      setDone(t("settings.importDone"));
+      setDone(t("Backup loaded — data has been replaced."));
     } catch (e) {
       setError(apiErrorMessage(e));
     } finally {
@@ -130,16 +130,16 @@ function DataBackup() {
 
   return (
     <div style={{ marginTop: 14 }}>
-      <Eyebrow>{t("settings.groupBackup")}</Eyebrow>
+      <Eyebrow>{t("Backup")}</Eyebrow>
       <ActionGroup>
-        <ActionRow icon={<ActionIcon paths={IC.download} />} label={t("settings.exportBtn")} desc={t("settings.exportHelp")} onClick={doExport} />
+        <ActionRow icon={<ActionIcon paths={IC.download} />} label={t("Export backup (JSON)")} desc={t("Downloads all your data as a file. Keep a backup, especially in local mode.")} onClick={doExport} />
         <ActionRow
           icon={<ActionIcon paths={IC.upload} />}
-          label={t("settings.importBtn")}
-          desc={t("settings.importHelp")}
+          label={t("Load backup (JSON)")}
+          desc={t("Replaces all current data with the data from the selected file.")}
           onClick={() => fileRef.current?.click()}
           disabled={busy}
-          busyLabel={busy ? t("settings.importing") : undefined}
+          busyLabel={busy ? t("Loading…") : undefined}
         />
       </ActionGroup>
       <input ref={fileRef} type="file" accept="application/json,.json" onChange={(e) => void onFile(e)} style={{ display: "none" }} />
@@ -181,7 +181,7 @@ function StrengthMeter({ pass }: { pass: string }) {
   if (pass.length === 0) return null;
   const s = passStrength(pass);
   const colors = [CORAL, CORAL, "#d99a06", INCOME] as const;
-  const labels = [t("e2ee.strengthTooShort"), t("e2ee.strengthWeak"), t("e2ee.strengthGood"), t("e2ee.strengthStrong")];
+  const labels = [t("Too short (min. 10 characters)"), t("Weak"), t("Good"), t("Strong")];
   return (
     <div style={{ marginTop: 6 }}>
       <div style={{ display: "flex", gap: 4 }}>
@@ -201,7 +201,7 @@ function E2eeSection() {
   const { t } = useT();
   return (
     <div style={{ marginTop: 18 }}>
-      <Eyebrow>{t("settings.groupPrivacy")}</Eyebrow>
+      <Eyebrow>{t("Privacy")}</Eyebrow>
       {e2ee.getTierMeta().tier === "e2ee" ? <E2eeManage /> : <E2eeEnableWizard />}
     </div>
   );
@@ -232,7 +232,7 @@ function E2eeEnableWizard() {
     setError(null);
     try {
       const ledger = store.getLedger();
-      if (!ledger) throw new Error(t("settings.exportNotReady"));
+      if (!ledger) throw new Error(t("There is nothing to export yet — wait for the app to finish loading."));
       // MULTI-TENANT GUARD — /e2ee/enable uploads a snapshot of THIS replica and flips the
       // SESSION budget's tier under this device's wrappedDek: a full-budget overwrite, exactly
       // like /sync/replace. It is reachable from a tab whose cookie was swapped by a sign-in
@@ -258,7 +258,7 @@ function E2eeEnableWizard() {
       void syncNow("e2ee-enable"); // backlogged outbox ops go out via a normal v2 push
       setSheet(false); // the section switches to the e2ee panel (statusOn = confirmation)
     } catch (e) {
-      setError(`${t("e2ee.enableFailed")} ${apiErrorMessage(e)}`);
+      setError(`${t("Enabling failed — nothing was changed, your data stays as it was.")} ${apiErrorMessage(e)}`);
     } finally {
       setBusy(false);
     }
@@ -280,24 +280,24 @@ function E2eeEnableWizard() {
   return (
     <>
       <ActionGroup>
-        <ActionRow icon={<ActionIcon paths={IC.shield} />} label={t("e2ee.enableBtn")} desc={t("e2ee.enableHelp")} onClick={open} chevron />
+        <ActionRow icon={<ActionIcon paths={IC.shield} />} label={t("Enable end-to-end encryption")} desc={t("Budget data will be encrypted on your device before it reaches the server. Server-side features will be unavailable.")} onClick={open} chevron />
       </ActionGroup>
 
       <Sheet show={sheet} onClose={() => !busy && setSheet(false)}>
         {(SC) => (
           <div>
-            <div style={{ fontSize: 16.5, fontWeight: 700, color: SC.text, marginBottom: 6 }}>{t("e2ee.wizTitle")}</div>
+            <div style={{ fontSize: 16.5, fontWeight: 700, color: SC.text, marginBottom: 6 }}>{t("Enable end-to-end encryption")}</div>
             {step === 1 ? (
               <>
                 {/* STEP 1 — explanation + FORCED JSON export (Next disabled without the checkbox) */}
-                <div style={{ fontSize: 12.5, color: SC.soft, lineHeight: 1.6, marginBottom: 12 }}>{t("e2ee.wizIntro")}</div>
+                <div style={{ fontSize: 12.5, color: SC.soft, lineHeight: 1.6, marginBottom: 12 }}>{t("Once enabled, the server stores ciphertexts only. The key is your password, which the server does NOT know — without it (or a pairing code from a trusted device) the data cannot be recovered.")}</div>
                 <div style={{ fontSize: 12.5, color: SC.text, fontWeight: 600, lineHeight: 1.6, marginBottom: 12 }}>
-                  {t("e2ee.wizBackupFirst")}
+                  {t("Before you continue, download a JSON backup and keep it somewhere safe.")}
                 </div>
                 <ActionGroup>
                   <ActionRow
                     icon={<ActionIcon paths={IC.download} />}
-                    label={t("settings.exportBtn")}
+                    label={t("Export backup (JSON)")}
                     onClick={() => {
                       setError(null);
                       try {
@@ -310,29 +310,29 @@ function E2eeEnableWizard() {
                 </ActionGroup>
                 <label style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 14, cursor: "pointer" }}>
                   <input type="checkbox" checked={haveBackup} onChange={(e) => setHaveBackup(e.target.checked)} style={{ width: 18, height: 18, flexShrink: 0 }} />
-                  <span style={{ fontSize: 13, color: SC.text }}>{t("e2ee.haveBackup")}</span>
+                  <span style={{ fontSize: 13, color: SC.text }}>{t("I have a backup in a safe place")}</span>
                 </label>
                 <div style={{ marginTop: 14 }}>
                   <ActionGroup>
-                    <ActionRow label={t("e2ee.next")} tone="neutral" onClick={() => setStep(2)} disabled={!haveBackup} chevron />
+                    <ActionRow label={t("Next")} tone="neutral" onClick={() => setStep(2)} disabled={!haveBackup} chevron />
                   </ActionGroup>
                 </div>
                 {error && <div style={{ fontSize: 12, color: CORAL, marginTop: 10, lineHeight: 1.5 }}>{error}</div>}
                 <button onClick={() => setSheet(false)} style={{ width: "100%", marginTop: 12, padding: "11px 0", borderRadius: 11, border: "none", background: "transparent", color: SC.soft, fontSize: 13, fontWeight: 600, cursor: "pointer" }}>
-                  {t("common.cancel")}
+                  {t("Cancel")}
                 </button>
               </>
             ) : (
               <>
                 {/* STEP 2 — password ×2 + strength meter; STEP 3 (execution) = the same button with a spinner */}
-                <div style={{ fontSize: 12.5, color: CORAL, lineHeight: 1.6, marginBottom: 12 }}>{t("e2ee.lossWarning")}</div>
+                <div style={{ fontSize: 12.5, color: CORAL, lineHeight: 1.6, marginBottom: 12 }}>{t("Losing the password means losing your data — the server cannot reset it or decrypt your budget.")}</div>
                 <input
                   type="password"
                   value={pass}
                   onChange={(e) => setPass(e.target.value)}
-                  placeholder={t("e2ee.passNew")}
+                  placeholder={t("Encryption password (min. 10 characters)")}
                   autoComplete="new-password"
-                  aria-label={t("e2ee.passNew")}
+                  aria-label={t("Encryption password (min. 10 characters)")}
                   style={inputStyle(SC)}
                 />
                 <StrengthMeter pass={pass} />
@@ -340,28 +340,28 @@ function E2eeEnableWizard() {
                   type="password"
                   value={pass2}
                   onChange={(e) => setPass2(e.target.value)}
-                  placeholder={t("e2ee.passRepeat")}
+                  placeholder={t("Repeat password")}
                   autoComplete="new-password"
-                  aria-label={t("e2ee.passRepeat")}
+                  aria-label={t("Repeat password")}
                   style={{ ...inputStyle(SC), marginTop: 10 }}
                 />
                 {pass2.length > 0 && pass2 !== pass && (
-                  <div style={{ fontSize: 11.5, color: CORAL, marginTop: 6 }}>{t("e2ee.passMismatch")}</div>
+                  <div style={{ fontSize: 11.5, color: CORAL, marginTop: 6 }}>{t("Passwords do not match.")}</div>
                 )}
                 <div style={{ marginTop: 14 }}>
                   <ActionGroup>
                     <ActionRow
                       icon={<ActionIcon paths={IC.shield} />}
-                      label={t("e2ee.enableRun")}
+                      label={t("Encrypt and enable")}
                       onClick={() => void run()}
                       disabled={busy || passStrength(pass) === 0 || pass !== pass2}
-                      busyLabel={busy ? t("e2ee.enabling") : undefined}
+                      busyLabel={busy ? t("Encrypting…") : undefined}
                     />
                   </ActionGroup>
                 </div>
                 {error && <div style={{ fontSize: 12, color: CORAL, marginTop: 10, lineHeight: 1.5 }}>{error}</div>}
                 <button onClick={() => setStep(1)} disabled={busy} style={{ width: "100%", marginTop: 12, padding: "11px 0", borderRadius: 11, border: "none", background: "transparent", color: SC.soft, fontSize: 13, fontWeight: 600, cursor: busy ? "default" : "pointer" }}>
-                  {t("common.back")}
+                  {t("Back")}
                 </button>
               </>
             )}
@@ -383,7 +383,7 @@ function E2eeManage() {
         <E2eePairCode />
         <E2eeDisable />
       </ActionGroup>
-      <div style={{ fontSize: 11.5, color: C.soft, lineHeight: 1.5, margin: "8px 4px 0" }}>{t("e2ee.statusOn")}</div>
+      <div style={{ fontSize: 11.5, color: C.soft, lineHeight: 1.5, margin: "8px 4px 0" }}>{t("Enabled — the server stores only encrypted data and never knows your password or key.")}</div>
     </>
   );
 }
@@ -420,14 +420,14 @@ function E2eeChangePass() {
       // Same class as enable/disable — the replica must be proven ours BEFORE we touch either.
       const userId = await assertOwnReplica();
       const snap = await api.e2eeSnapshot();
-      if (!snap.wrappedDek || !snap.kdfParams) throw new Error(t("e2ee.wrongPass"));
+      if (!snap.wrappedDek || !snap.kdfParams) throw new Error(t("Wrong encryption password."));
       let dek: Uint8Array;
       try {
         const kp = JSON.parse(snap.kdfParams) as KdfParams;
         const kek = await deriveKek(oldPass, fromB64(kp.saltB64), kp);
         dek = await unwrapDek(snap.wrappedDek, kek); // wrong password = GCM rejects
       } catch {
-        setError(t("e2ee.wrongPass"));
+        setError(t("Wrong encryption password."));
         return;
       }
       const salt = generateSalt();
@@ -448,7 +448,7 @@ function E2eeChangePass() {
 
   return (
     <>
-      <ActionRow icon={<ActionIcon paths={IC.key} />} label={t("e2ee.changePassBtn")} desc={t("e2ee.changePassDesc")} onClick={open} />
+      <ActionRow icon={<ActionIcon paths={IC.key} />} label={t("Change encryption password")} desc={t("new password for all devices")} onClick={open} />
       <Sheet show={sheet} onClose={() => !busy && setSheet(false)}>
         {(SC) => {
           const inputStyle: React.CSSProperties = {
@@ -465,29 +465,29 @@ function E2eeChangePass() {
           };
           return (
             <div>
-              <div style={{ fontSize: 16.5, fontWeight: 700, color: SC.text, marginBottom: 12 }}>{t("e2ee.changePassBtn")}</div>
-              <input type="password" value={oldPass} onChange={(e) => setOldPass(e.target.value)} placeholder={t("e2ee.passOld")} autoComplete="current-password" aria-label={t("e2ee.passOld")} style={inputStyle} />
-              <input type="password" value={pass} onChange={(e) => setPass(e.target.value)} placeholder={t("e2ee.passNew")} autoComplete="new-password" aria-label={t("e2ee.passNew")} style={{ ...inputStyle, marginTop: 10 }} />
+              <div style={{ fontSize: 16.5, fontWeight: 700, color: SC.text, marginBottom: 12 }}>{t("Change encryption password")}</div>
+              <input type="password" value={oldPass} onChange={(e) => setOldPass(e.target.value)} placeholder={t("Current password")} autoComplete="current-password" aria-label={t("Current password")} style={inputStyle} />
+              <input type="password" value={pass} onChange={(e) => setPass(e.target.value)} placeholder={t("Encryption password (min. 10 characters)")} autoComplete="new-password" aria-label={t("Encryption password (min. 10 characters)")} style={{ ...inputStyle, marginTop: 10 }} />
               <StrengthMeter pass={pass} />
-              <input type="password" value={pass2} onChange={(e) => setPass2(e.target.value)} placeholder={t("e2ee.passRepeat")} autoComplete="new-password" aria-label={t("e2ee.passRepeat")} style={{ ...inputStyle, marginTop: 10 }} />
+              <input type="password" value={pass2} onChange={(e) => setPass2(e.target.value)} placeholder={t("Repeat password")} autoComplete="new-password" aria-label={t("Repeat password")} style={{ ...inputStyle, marginTop: 10 }} />
               {pass2.length > 0 && pass2 !== pass && (
-                <div style={{ fontSize: 11.5, color: CORAL, marginTop: 6 }}>{t("e2ee.passMismatch")}</div>
+                <div style={{ fontSize: 11.5, color: CORAL, marginTop: 6 }}>{t("Passwords do not match.")}</div>
               )}
               <div style={{ marginTop: 14 }}>
                 <ActionGroup>
                   <ActionRow
                     icon={<ActionIcon paths={IC.key} />}
-                    label={t("e2ee.changePassRun")}
+                    label={t("Change password")}
                     onClick={() => void run()}
                     disabled={busy || oldPass.length === 0 || passStrength(pass) === 0 || pass !== pass2}
-                    busyLabel={busy ? t("e2ee.changing") : undefined}
+                    busyLabel={busy ? t("Changing…") : undefined}
                   />
                 </ActionGroup>
               </div>
               {error && <div style={{ fontSize: 12, color: CORAL, marginTop: 10, lineHeight: 1.5 }}>{error}</div>}
-              {done && <div style={{ fontSize: 12, color: INCOME, marginTop: 10, lineHeight: 1.5 }}>{t("e2ee.passChanged")}</div>}
+              {done && <div style={{ fontSize: 12, color: INCOME, marginTop: 10, lineHeight: 1.5 }}>{t("Password changed.")}</div>}
               <button onClick={() => !busy && setSheet(false)} style={{ width: "100%", marginTop: 12, padding: "11px 0", borderRadius: 11, border: "none", background: "transparent", color: SC.soft, fontSize: 13, fontWeight: 600, cursor: "pointer" }}>
-                {t("common.close")}
+                {t("Close")}
               </button>
             </div>
           );
@@ -533,12 +533,12 @@ function E2eePairCode() {
 
   return (
     <>
-      <ActionRow icon={<ActionIcon paths={IC.qr} />} label={t("e2ee.pairShowBtn")} desc={t("e2ee.pairDesc")} onClick={open} />
+      <ActionRow icon={<ActionIcon paths={IC.qr} />} label={t("Pairing code")} desc={t("unlock the budget on a new device without the password")} onClick={open} />
       <Sheet show={sheet} onClose={() => setSheet(false)}>
         {(SC) => (
           <div>
-            <div style={{ fontSize: 16.5, fontWeight: 700, color: SC.text, marginBottom: 8 }}>{t("e2ee.pairShowBtn")}</div>
-            <div style={{ fontSize: 12.5, color: CORAL, lineHeight: 1.6, marginBottom: 14 }}>{t("e2ee.pairWarning")}</div>
+            <div style={{ fontSize: 16.5, fontWeight: 700, color: SC.text, marginBottom: 8 }}>{t("Pairing code")}</div>
+            <div style={{ fontSize: 12.5, color: CORAL, lineHeight: 1.6, marginBottom: 14 }}>{t("This code contains your encryption key in plain form. Show it only on your own trusted device — anyone with the code can read the budget.")}</div>
             {code && svg ? (
               <>
                 {/* white background under the QR — readable in dark mode too */}
@@ -547,14 +547,14 @@ function E2eePairCode() {
                   {code}
                 </div>
                 <ActionGroup>
-                  <ActionRow label={copied ? t("e2ee.pairCopied") : t("e2ee.pairCopy")} onClick={() => void copy()} />
+                  <ActionRow label={copied ? t("Copied.") : t("Copy code")} onClick={() => void copy()} />
                 </ActionGroup>
               </>
             ) : (
-              <div style={{ fontSize: 12.5, color: SC.soft, lineHeight: 1.6 }}>{t("e2ee.pairUnavailable")}</div>
+              <div style={{ fontSize: 12.5, color: SC.soft, lineHeight: 1.6 }}>{t("Pairing code unavailable — no key on this device.")}</div>
             )}
             <button onClick={() => setSheet(false)} style={{ width: "100%", marginTop: 12, padding: "11px 0", borderRadius: 11, border: "none", background: "transparent", color: SC.soft, fontSize: 13, fontWeight: 600, cursor: "pointer" }}>
-              {t("common.close")}
+              {t("Close")}
             </button>
           </div>
         )}
@@ -581,7 +581,7 @@ function E2eeDisable() {
     setError(null);
     try {
       const ledger = store.getLedger();
-      if (!ledger) throw new Error(t("settings.exportNotReady"));
+      if (!ledger) throw new Error(t("There is nothing to export yet — wait for the app to finish loading."));
       // MULTI-TENANT GUARD — /e2ee/disable ships the ENTIRE plaintext ledger and the server
       // rebuilds the session budget's rows from it: a full-budget overwrite (see assertOwnReplica).
       // The verified user id travels WITH the write — the check and the upload are two requests.
@@ -604,40 +604,40 @@ function E2eeDisable() {
     <>
       <ActionRow
         icon={<ActionIcon paths={IC.shieldOff} />}
-        label={t("e2ee.disableBtn")}
-        desc={t("e2ee.disableDesc")}
+        label={t("Disable encryption")}
+        desc={t("the server will store your data in plain form again")}
         tone="danger"
         onClick={() => { setText(""); setError(null); setSheet(true); }}
       />
       <Sheet show={sheet} onClose={() => !busy && setSheet(false)}>
         {(SC) => (
           <div>
-            <div style={{ fontSize: 15, fontWeight: 700, color: CORAL, marginBottom: 8 }}>{t("e2ee.disableTitle")}</div>
-            <div style={{ fontSize: 12.5, color: SC.soft, lineHeight: 1.6, marginBottom: 14 }}>{t("e2ee.disableBody")}</div>
+            <div style={{ fontSize: 15, fontWeight: 700, color: CORAL, marginBottom: 8 }}>{t("Disable end-to-end encryption?")}</div>
+            <div style={{ fontSize: 12.5, color: SC.soft, lineHeight: 1.6, marginBottom: 14 }}>{t("Your data will be decrypted and stored on the server in plain form (as before enabling). Make sure you have a current backup.")}</div>
             <div style={{ fontSize: 11, color: SC.mute, marginBottom: 6 }}>
-              {t("settings.wipeTypePrompt1")} <b>{t("e2ee.disableWord")}</b>
-              {t("settings.wipeTypePrompt2")}
+              {t("Type")} <b>{t("DISABLE-E2EE")}</b>
+              {t(" to confirm:")}
             </div>
             <input
               value={text}
               onChange={(e) => setText(e.target.value)}
               autoCapitalize="characters"
               autoComplete="off"
-              placeholder={t("e2ee.disableWord")}
+              placeholder={t("DISABLE-E2EE")}
               style={{ width: "100%", boxSizing: "border-box", padding: "10px 12px", borderRadius: 10, border: `1px solid var(--danger-66)`, background: SC.bg, color: SC.text, fontSize: 14, fontFamily: font, outline: "none", marginBottom: 12 }}
             />
             <ActionGroup>
               <ActionRow
-                label={t("e2ee.disableRun")}
+                label={t("Disable end-to-end encryption")}
                 tone="danger"
                 onClick={() => void run()}
-                disabled={busy || text.trim().toUpperCase() !== t("e2ee.disableWord")}
-                busyLabel={busy ? t("e2ee.disabling") : undefined}
+                disabled={busy || text.trim().toUpperCase() !== t("DISABLE-E2EE")}
+                busyLabel={busy ? t("Disabling…") : undefined}
               />
             </ActionGroup>
             {error && <div style={{ fontSize: 12, color: CORAL, marginTop: 10, lineHeight: 1.5 }}>{error}</div>}
             <button onClick={() => !busy && setSheet(false)} style={{ width: "100%", marginTop: 12, padding: "11px 0", borderRadius: 11, border: "none", background: "transparent", color: SC.soft, fontSize: 13, fontWeight: 600, cursor: "pointer" }}>
-              {t("common.cancel")}
+              {t("Cancel")}
             </button>
           </div>
         )}

@@ -20,30 +20,30 @@ export function AiSection() {
   // Check server-mode availability only when it is selected (zero unnecessary requests).
   const { data: aiInfo } = useQuery({ queryKey: ["aiInfo"], queryFn: api.aiInfo, enabled: settings.aiMode === "server" });
   const helper =
-    settings.aiMode === "off" ? t("ai.helpOff") : settings.aiMode === "server" ? t("ai.helpServer") : t("ai.helpByok");
+    settings.aiMode === "off" ? t("AI is off — suggestions run locally on rules; nothing leaves this device.") : settings.aiMode === "server" ? t("AI requests go to OpenAI through the app server (operator's key).") : t("The app talks to OpenAI directly from this browser using your own key — bypassing the server.");
 
   return (
     <div style={{ marginTop: 4 }}>
-      <Row label={t("ai.mode")}>
+      <Row label={t("Mode")}>
         <Seg
           value={settings.aiMode}
           onChange={(id) => setSettings({ ...settings, aiMode: id })}
           options={[
-            { id: "off", label: t("ai.off") },
-            { id: "server", label: t("ai.server") },
-            { id: "byok", label: t("ai.byok") },
+            { id: "off", label: t("Off") },
+            { id: "server", label: t("Server") },
+            { id: "byok", label: t("Own key") },
           ]}
         />
       </Row>
       <Helper>{helper}</Helper>
 
       {settings.aiMode === "server" && aiInfo && !aiInfo.serverAi && (
-        <div style={{ fontSize: 12, color: CORAL, marginTop: 8, lineHeight: 1.5 }}>{t("ai.serverUnavailable")}</div>
+        <div style={{ fontSize: 12, color: CORAL, marginTop: 8, lineHeight: 1.5 }}>{t("The server has no OpenAI key configured — server mode is unavailable. Use your own key or keep AI off.")}</div>
       )}
 
       {settings.aiMode === "byok" && (
         <div style={{ marginTop: 14 }}>
-          <div style={{ fontSize: 11.5, fontWeight: 600, color: C.text, marginBottom: 6 }}>{t("ai.key")}</div>
+          <div style={{ fontSize: 11.5, fontWeight: 600, color: C.text, marginBottom: 6 }}>{t("OpenAI key")}</div>
           <input
             type="password"
             value={settings.openaiKey}
@@ -53,10 +53,10 @@ export function AiSection() {
             autoCapitalize="none"
             autoCorrect="off"
             spellCheck={false}
-            aria-label={t("ai.key")}
+            aria-label={t("OpenAI key")}
             style={{ width: "100%", boxSizing: "border-box", padding: "10px 12px", borderRadius: 10, border: `1px solid ${C.line}`, background: C.bg, color: C.text, fontSize: 13, fontFamily: font, outline: "none" }}
           />
-          <Row label={t("ai.model")}>
+          <Row label={t("Model")}>
             <Seg
               value={settings.openaiModel}
               onChange={(id) => setSettings({ ...settings, openaiModel: id })}
@@ -66,7 +66,7 @@ export function AiSection() {
               ]}
             />
           </Row>
-          <Helper>{t("ai.keyLocal")}</Helper>
+          <Helper>{t("The key is stored only in this browser (localStorage) — it is never synced or sent to the app server.")}</Helper>
         </div>
       )}
     </div>

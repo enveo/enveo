@@ -115,7 +115,7 @@ export function AmountPadSheet({
             {state.expr || "0"}
           </div>
           <div style={{ minHeight: 20, textAlign: "right", fontSize: 14, color: C.mute, fontVariantNumeric: "tabular-nums", margin: "6px 2px 10px" }}>
-            {hasOp && preview !== null ? t("pad.result", { amount: M(preview) }) : ""}
+            {hasOp && preview !== null ? t("= {amount}", { amount: M(preview) }) : ""}
           </div>
           {/* Keyboard bleeds to the sheet edge (like on the Add screen); the Numpad's own
               safe-area padding replaces the Sheet's bottom padding. */}

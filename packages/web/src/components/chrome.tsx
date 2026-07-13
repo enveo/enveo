@@ -42,19 +42,19 @@ export function Header({
   const { t, lang } = useT();
   return (
     <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: `12px ${P}px 6px` }}>
-      <button onClick={onMenu} aria-label={t("nav.menu")} style={{ background: "none", border: "none", cursor: "pointer", padding: 4, display: "flex" }}>
+      <button onClick={onMenu} aria-label={t("Menu")} style={{ background: "none", border: "none", cursor: "pointer", padding: 4, display: "flex" }}>
         <Ico d="M4 6h16M4 12h16M4 18h16" size={21} color={C.text} sw={2} />
       </button>
       <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-        <button onClick={onPrev} aria-label={t("nav.prevMonth")} style={{ background: "none", border: "none", cursor: "pointer", padding: 2, display: "flex" }}>
+        <button onClick={onPrev} aria-label={t("Previous month")} style={{ background: "none", border: "none", cursor: "pointer", padding: 2, display: "flex" }}>
           <Ico d="M15 19l-7-7 7-7" size={17} />
         </button>
         <span style={{ color: C.text, fontSize: 18.5, fontWeight: 600, minWidth: 128, textAlign: "center", letterSpacing: 0.2 }}>{monthLabel(month, lang)}</span>
-        <button onClick={onNext} aria-label={t("nav.nextMonth")} style={{ background: "none", border: "none", cursor: "pointer", padding: 2, display: "flex" }}>
+        <button onClick={onNext} aria-label={t("Next month")} style={{ background: "none", border: "none", cursor: "pointer", padding: 2, display: "flex" }}>
           <Ico d="M9 5l7 7-7 7" size={17} />
         </button>
       </div>
-      <button onClick={onRight} aria-label={t("nav.more")} style={{ background: "none", border: "none", cursor: "pointer", padding: 4, display: "flex" }}>
+      <button onClick={onRight} aria-label={t("More")} style={{ background: "none", border: "none", cursor: "pointer", padding: 4, display: "flex" }}>
         {rightIcon === "pencil" ? (
           <Ico d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7M18.5 2.5a2.1 2.1 0 013 3L12 15l-4 1 1-4 9.5-9.5z" size={18} />
         ) : (
@@ -148,11 +148,11 @@ export function BottomNav({ active, onNav }: { active: ScreenId; onNav: (s: Scre
   const C = useTheme();
   const { t } = useT();
   const tabs: Array<{ id: ScreenId | "add"; label?: string; d?: string }> = [
-    { id: "start", label: t("nav.start"), d: "M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-4 0h4" },
-    { id: "budget", label: t("nav.budget"), d: "M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z" },
+    { id: "start", label: t("Home"), d: "M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-4 0h4" },
+    { id: "budget", label: t("Budget"), d: "M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z" },
     { id: "add" },
-    { id: "transactions", label: t("nav.transactions"), d: "M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" },
-    { id: "reports", label: t("nav.reports"), d: "M4 19h16M7 16v-5M12 16V8M17 16v-9" },
+    { id: "transactions", label: t("Transactions"), d: "M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" },
+    { id: "reports", label: t("Reports"), d: "M4 19h16M7 16v-5M12 16V8M17 16v-9" },
   ];
   return (
     <nav style={{ display: "flex", alignItems: "center", justifyContent: "space-around", background: "var(--nav-bg)", padding: "6px 0 calc(12px + env(safe-area-inset-bottom))", flexShrink: 0 }}>
@@ -160,7 +160,7 @@ export function BottomNav({ active, onNav }: { active: ScreenId; onNav: (s: Scre
       {tabs.map((tab) =>
         tab.id === "add" ? (
           <div key="add" style={{ flex: 1, display: "flex", justifyContent: "center" }}>
-            <button onClick={() => onNav("addExpense")} aria-label={t("common.add")} style={{ width: 54, height: 54, borderRadius: "50%", border: "none", background: CTA, cursor: "pointer", marginTop: -8, display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 3px 10px var(--cta-40)" }}>
+            <button onClick={() => onNav("addExpense")} aria-label={t("Add")} style={{ width: 54, height: 54, borderRadius: "50%", border: "none", background: CTA, cursor: "pointer", marginTop: -8, display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 3px 10px var(--cta-40)" }}>
               <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.2" strokeLinecap="round">
                 <line x1="12" y1="4" x2="12" y2="20" />
                 <line x1="4" y1="12" x2="20" y2="12" />
@@ -235,9 +235,9 @@ export function Drawer({ open, onClose, onNav, onOpenReports }: { open: boolean;
   );
   // quick toggles: discreet / dark (light↔dark; auto → explicitly dark) / settings
   const quicks: Array<{ key: string; active: boolean; toggle: boolean; label: string; d: string; onClick: () => void }> = [
-    { key: "discreet", active: settings.discreet, toggle: true, label: t("drawer.discreet"), d: D_EYE, onClick: () => setSettings({ ...settings, discreet: !settings.discreet }) },
-    { key: "dark", active: darkOn, toggle: true, label: t("drawer.dark"), d: D_MOON, onClick: () => setSettings({ ...settings, themeMode: darkOn ? "light" : "dark" }) },
-    { key: "settings", active: false, toggle: false, label: t("drawer.settings"), d: D_GEAR, onClick: () => { onClose(); onNav("settings"); } },
+    { key: "discreet", active: settings.discreet, toggle: true, label: t("discreet"), d: D_EYE, onClick: () => setSettings({ ...settings, discreet: !settings.discreet }) },
+    { key: "dark", active: darkOn, toggle: true, label: t("dark"), d: D_MOON, onClick: () => setSettings({ ...settings, themeMode: darkOn ? "light" : "dark" }) },
+    { key: "settings", active: false, toggle: false, label: t("settings"), d: D_GEAR, onClick: () => { onClose(); onNav("settings"); } },
   ];
 
   return (
@@ -260,22 +260,22 @@ export function Drawer({ open, onClose, onNav, onOpenReports }: { open: boolean;
           <div style={{ minWidth: 0 }}>
             <div style={{ fontSize: 16, fontWeight: 800, color: C.text, letterSpacing: 0.2 }}>Enveo</div>
             <div style={{ fontSize: 10.5, color: C.mute, fontVariantNumeric: "tabular-nums", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-              {live?.budgetName ?? t("drawer.budgetFallback")} · {tp("drawer.txns", txCount, { n: new Intl.NumberFormat(LOCALE_OF[lang]).format(txCount) })}
+              {live?.budgetName ?? t("Budget")} · {tp("{n} transaction | {n} transactions", txCount, { n: new Intl.NumberFormat(LOCALE_OF[lang]).format(txCount) })}
             </div>
           </div>
         </div>
 
         <div style={{ marginTop: 18, display: "flex", flexDirection: "column" }}>
-          {shortcut(D_BANK, t("drawer.accounts"), () => { onClose(); onNav("accounts"); }, chevron)}
+          {shortcut(D_BANK, t("Accounts"), () => { onClose(); onNav("accounts"); }, chevron)}
           {shortcut(
             D_SUBS,
-            t("drawer.subscriptions"),
+            t("Subscriptions"),
             () => { onClose(); onOpenReports("subs"); },
-            <span style={{ fontSize: 11, color: C.mute, fontVariantNumeric: "tabular-nums", flexShrink: 0 }}>{t("subs.perMonth", { amount: M(live?.subsMonthly ?? 0) })}</span>,
+            <span style={{ fontSize: 11, color: C.mute, fontVariantNumeric: "tabular-nums", flexShrink: 0 }}>{t("~{amount}/mo", { amount: M(live?.subsMonthly ?? 0) })}</span>,
           )}
           {shortcut(
             D_BARS,
-            t("drawer.envBudgets"),
+            t("Envelope budgets"),
             () => { onClose(); onOpenReports("budgets"); },
             live?.overspent ? <span aria-hidden style={{ width: 7, height: 7, borderRadius: "50%", background: CORAL, flexShrink: 0 }} /> : chevron,
             true,

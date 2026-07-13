@@ -1,11 +1,11 @@
 import { useEffect, useState } from "react";
-import type { SyncOp } from "@enveo/shared";
+import type { OpKind, SyncOp } from "@enveo/shared";
 import { useSyncStatus } from "../../lib/api";
 import { useCurrency, useTheme } from "../../lib/contexts";
 import { exportBackup } from "../../lib/data";
 import { relSync } from "../../lib/dates";
 import { formatMoney } from "../../lib/format";
-import { useT, type Lang, type TKey } from "../../lib/i18n";
+import { msg, useT, type Lang, type Message } from "../../lib/i18n";
 import { discardDeadLetter, getDeadLetters } from "../../lib/outbox";
 import { discardLocalReplica, fullResync, recheckReplicaOwner, syncNow } from "../../lib/sync";
 import { CORAL } from "../../lib/theme";
@@ -113,11 +113,11 @@ function UnverifiedReplicaNotice() {
   return (
     <div style={{ marginTop: 14 }}>
       <div style={{ padding: 14, background: C.bg, borderRadius: 11, border: `1px solid ${C.line}` }}>
-        <div style={{ fontSize: 13, fontWeight: 700, color: C.text, marginBottom: 6 }}>{t("unverified.title")}</div>
-        <div style={{ fontSize: 11.5, color: C.soft, lineHeight: 1.6, marginBottom: 8 }}>{t("unverified.body")}</div>
+        <div style={{ fontSize: 13, fontWeight: 700, color: C.text, marginBottom: 6 }}>{t("Not syncing with your account")}</div>
+        <div style={{ fontSize: 11.5, color: C.soft, lineHeight: 1.6, marginBottom: 8 }}>{t("The copy of the budget on this device has not been matched to the account you are signed in with. Nothing is being sent to the server and nothing has been deleted — your changes are waiting safely here. There are two reasons this happens:")}</div>
         <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-          <Cause>{t("unverified.causeUpgrade")}</Cause>
-          <Cause>{t("unverified.causeOther")}</Cause>
+          <Cause>{t("An upgrade or a restore is in progress: the account's budget on the server is not this device's budget yet. Once it is, sync will resume by itself.")}</Cause>
+          <Cause>{t("This data may belong to a different account. Then it will never be sent — download a backup and remove the copy from this device.")}</Cause>
         </div>
       </div>
 
@@ -125,23 +125,23 @@ function UnverifiedReplicaNotice() {
         <ActionGroup>
           <ActionRow
             icon={<ActionIcon paths={IC.refresh} />}
-            label={t("unverified.recheck")}
-            desc={t("unverified.recheckDesc")}
+            label={t("Check again")}
+            desc={t("re-runs the check against the server; nothing is sent")}
             onClick={() => void recheck()}
             disabled={busy}
-            busyLabel={busy ? t("unverified.rechecking") : undefined}
+            busyLabel={busy ? t("Checking…") : undefined}
           />
           <ActionRow
             icon={<ActionIcon paths={IC.download} />}
-            label={t("foreign.export")}
-            desc={t("unverified.exportDesc")}
+            label={t("Download a backup (JSON)")}
+            desc={t("the whole local copy as a file — no network needed")}
             onClick={doExport}
             disabled={busy}
           />
           <ActionRow
             icon={<ActionIcon paths={IC.trash} />}
-            label={t("foreign.discard")}
-            desc={t("unverified.discardDesc")}
+            label={t("Remove this data and continue")}
+            desc={t("removes the local copy and downloads your account's data")}
             tone="danger"
             onClick={() => {
               setError(null);
@@ -154,22 +154,45 @@ function UnverifiedReplicaNotice() {
 
       {confirm && (
         <div style={{ marginTop: 10, padding: 14, background: C.bg, borderRadius: 11, border: `1px solid var(--danger-66)` }}>
-          <div style={{ fontSize: 11.5, color: C.soft, lineHeight: 1.6, marginBottom: 10 }}>{t("foreign.discardConfirm")}</div>
+          <div style={{ fontSize: 11.5, color: C.soft, lineHeight: 1.6, marginBottom: 10 }}>{t("The local copy — including any unsent changes — will be permanently removed from this device. If this is the only copy of that budget, download a backup first.")}</div>
           <ActionButton
             variant="coral"
-            label={busy ? t("foreign.discarding") : t("foreign.discardYes")}
+            label={busy ? t("Removing…") : t("Yes, remove the data from this device")}
             onClick={() => void doDiscard()}
             disabled={busy}
           />
-          <ActionButton label={t("common.cancel")} onClick={() => setConfirm(false)} disabled={busy} style={{ marginTop: 8 }} />
+          <ActionButton label={t("Cancel")} onClick={() => setConfirm(false)} disabled={busy} style={{ marginTop: 8 }} />
         </div>
       )}
 
       {error && <div style={{ fontSize: 12, color: CORAL, marginTop: 10, lineHeight: 1.5 }}>{error}</div>}
-      <div style={{ fontSize: 11, color: C.mute, lineHeight: 1.6, margin: "10px 4px 0" }}>{t("unverified.hint")}</div>
+      <div style={{ fontSize: 11, color: C.mute, lineHeight: 1.6, margin: "10px 4px 0" }}>{t("The check repeats by itself when you open the app, and roughly once a minute.")}</div>
     </div>
   );
 }
+
+/** Op kind → what the user sees in the rejected-changes list. Exhaustive: a new op must be named here. */
+const OP_LABEL: Record<OpKind, Message> = {
+  "txn.create": msg("New transaction"),
+  "txn.update": msg("Transaction change"),
+  "txn.delete": msg("Transaction deletion"),
+  "alloc.set": msg("Envelope allocation"),
+  "account.create": msg("New account"),
+  "account.update": msg("Account change"),
+  "account.delete": msg("Account deletion"),
+  "group.create": msg("New envelope group"),
+  "group.update": msg("Envelope group change"),
+  "group.delete": msg("Envelope group deletion"),
+  "envelope.create": msg("New envelope"),
+  "envelope.update": msg("Envelope change"),
+  "envelope.delete": msg("Envelope deletion"),
+  "category.create": msg("New category"),
+  "place.create": msg("New place"),
+  "recurrence.create": msg("New recurrence"),
+  "recurrence.update": msg("Recurrence change"),
+  "recurrence.delete": msg("Recurrence deletion"),
+  "budget.update": msg("Budget currency change"),
+};
 
 /** Short, human description of a rejected op (no jargon — name / amount / month). */
 function opDetail(op: SyncOp, currency: string, lang: Lang): string {
@@ -203,39 +226,39 @@ function SyncActions() {
     // "download again" and the rejection list (nothing to push or pull).
     return (
       <div style={{ marginTop: 14, fontSize: 11.5, color: C.soft, lineHeight: 1.6 }}>
-        {t("sync.pausedLocal")}{" "}
-        {localMode === "wiped" ? t("sync.pausedWiped") : t("sync.pausedInfo")}
-        {pending > 0 && ` ${tp("sync.pendingLocal", pending)}`}
+        {t("Paused — local mode.")}{" "}
+        {localMode === "wiped" ? t("Server data has been deleted.") : t("Changes are saved locally and will be sent after you resume.")}
+        {pending > 0 && ` ${tp("{n} change is waiting locally. | {n} changes are waiting locally.", pending)}`}
         {" "}
-        {t("sync.resumeHint")}
+        {t("Resume it in the “Advanced” section.")}
       </div>
     );
   }
 
   const resync = () => {
-    if (!window.confirm(t("sync.resyncConfirm"))) return;
+    if (!window.confirm(t("Download everything anew from the server? We will replace the local copy with the current server state. Unsent changes in the queue will be kept and pushed."))) return;
     void fullResync();
   };
 
   return (
     <div style={{ marginTop: 14 }}>
-      <Eyebrow>{t("settings.groupSync")}</Eyebrow>
+      <Eyebrow>{t("Server sync")}</Eyebrow>
       <ActionGroup>
         <ActionRow
           icon={<ActionIcon paths={IC.refresh} />}
-          label={t("sync.syncNow")}
-          desc={t("sync.syncNowDesc")}
+          label={t("Sync now")}
+          desc={t("sends pending changes and fetches new ones from the server")}
           onClick={() => void syncNow("manual")}
           disabled={state === "syncing"}
-          busyLabel={state === "syncing" ? t("sync.syncing") : undefined}
+          busyLabel={state === "syncing" ? t("Syncing…") : undefined}
         />
-        <ActionRow icon={<ActionIcon paths={IC.redownload} />} label={t("sync.resyncBtn")} desc={t("sync.resyncHelp")} onClick={resync} />
+        <ActionRow icon={<ActionIcon paths={IC.redownload} />} label={t("Download everything anew")} desc={t("Full resync from the server. Use when data looks out of sync.")} onClick={resync} />
       </ActionGroup>
       <div style={{ fontSize: 11.5, color: C.soft, lineHeight: 1.6, margin: "8px 4px 0" }}>
-        {t("sync.last", { rel: relSync(lastSyncAt, lang) })}
+        {t("Last sync: {rel}.", { rel: relSync(lastSyncAt, lang) })}
         {pending > 0
-          ? ` ${tp("sync.pendingSend", pending)}${state === "offline" || state === "error" ? t("sync.offlineSuffix") : ""}.`
-          : (state === "offline" || state === "error") && ` ${t("sync.offlineInfo")}`}
+          ? ` ${tp("{n} change is waiting to be sent | {n} changes are waiting to be sent", pending)}${state === "offline" || state === "error" ? t(" — we will send them once the server is reachable") : ""}.`
+          : (state === "offline" || state === "error") && ` ${t("Server temporarily unreachable — your data is safe, we will retry.")}`}
       </div>
     </div>
   );
@@ -252,12 +275,12 @@ function DeadLetters() {
   return (
     <div style={{ marginTop: 14, padding: 12, background: C.bg, borderRadius: 11, border: `1px solid ${C.line}` }}>
       <div style={{ fontSize: 11.5, color: C.soft, lineHeight: 1.6, marginBottom: 4 }}>
-        {t("sync.deadLettersInfo")}
+        {t("The server rejected these changes — usually because you edited something that was meanwhile deleted on another device. Your data has already been restored to the server state. “Discard” removes the failed attempt from the list.")}
       </div>
       {deadLetters.map((dl, i) => (
         <div key={dl.opId} style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, padding: "10px 0", borderTop: i === 0 ? "none" : `1px solid ${C.line}` }}>
           <div style={{ minWidth: 0 }}>
-            <div style={{ fontSize: 12.5, fontWeight: 600, color: C.text }}>{t(`op.${dl.op.kind}` as TKey)}</div>
+            <div style={{ fontSize: 12.5, fontWeight: 600, color: C.text }}>{t(OP_LABEL[dl.op.kind])}</div>
             {opDetail(dl.op, currency, lang) && <div style={{ fontSize: 11, color: C.soft, marginTop: 1 }}>{opDetail(dl.op, currency, lang)}</div>}
             <div style={{ fontSize: 11, color: CORAL, marginTop: 2, lineHeight: 1.4, wordBreak: "break-word" }}>{dl.error}</div>
             <div style={{ fontSize: 10.5, color: C.mute, marginTop: 2 }}>{relSync(dl.at, lang)}</div>
@@ -266,7 +289,7 @@ function DeadLetters() {
             onClick={() => discardDeadLetter(dl.opId)}
             style={{ flexShrink: 0, padding: "6px 12px", borderRadius: 8, border: `1px solid ${C.line}`, background: "transparent", color: C.soft, fontSize: 11.5, fontWeight: 600, cursor: "pointer" }}
           >
-            {t("sync.discard")}
+            {t("Discard")}
           </button>
         </div>
       ))}

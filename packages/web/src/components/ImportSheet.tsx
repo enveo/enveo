@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { api, apiErrorMessage, type EditedImportItem, type ImportApplyItem, type ImportItem, type StateResponse } from "../lib/api";
-import { runImportExtract } from "../lib/ai";
+import { aiLocale, runImportExtract } from "../lib/ai";
 import * as e2ee from "../lib/e2ee";
 import { store } from "../lib/store";
 import { pullNow } from "../lib/sync";
@@ -99,7 +99,7 @@ export function ImportSheet({ show, onClose, state, onApplied }: { show: boolean
       const urls = await Promise.all(list.map((f) => downscale(f)));
       setImages((prev) => [...prev, ...urls]);
     } catch {
-      setError(t("import.loadImageError"));
+      setError(t("Failed to load the image."));
     }
     if (fileRef.current) fileRef.current.value = "";
   };
@@ -109,12 +109,12 @@ export function ImportSheet({ show, onClose, state, onApplied }: { show: boolean
     setError(null);
     try {
       const ledger = store.getLedger();
-      if (!ledger) { setError(t("suggest.replicaNotReady")); return; }
+      if (!ledger) { setError(t("The local replica is not ready.")); return; }
       // extraction via AI dispatch (server → /api, byok → OpenAI directly);
       // apply/dry-run ALWAYS through the API (writing to the ledger is the server's domain)
-      const extracted = await runImportExtract({ images, locale: lang, ledger, settings });
+      const extracted = await runImportExtract({ images, locale: aiLocale(lang), ledger, settings });
       if (extracted.length === 0) {
-        setError(t("import.noneRecognized"));
+        setError(t("No transactions were recognized in the screenshots."));
         return;
       }
       // dry run marks duplicates (certain: date+amount+source_ref; probable: date+amount) without writing
@@ -197,8 +197,8 @@ export function ImportSheet({ show, onClose, state, onApplied }: { show: boolean
   if (e2ee.getTierMeta().tier === "e2ee") {
     return (
       <Sheet show={show} onClose={close}>
-        <div style={{ fontSize: 17, fontWeight: 700, color: C.text, textAlign: "center", marginBottom: 10 }}>{t("import.title")}</div>
-        <div style={{ fontSize: 12.5, color: C.soft, lineHeight: 1.6, textAlign: "center", marginBottom: 8 }}>{t("e2ee.importUnavailable")}</div>
+        <div style={{ fontSize: 17, fontWeight: 700, color: C.text, textAlign: "center", marginBottom: 10 }}>{t("Import from screenshots")}</div>
+        <div style={{ fontSize: 12.5, color: C.soft, lineHeight: 1.6, textAlign: "center", marginBottom: 8 }}>{t("Server-side import is unavailable while end-to-end encryption is on — the server cannot see your data. Use a JSON backup (export/import) or disable encryption.")}</div>
       </Sheet>
     );
   }
@@ -208,12 +208,12 @@ export function ImportSheet({ show, onClose, state, onApplied }: { show: boolean
     <Sheet show={show} onClose={close}>
       {phase === "pick" && (
         <>
-          <div style={{ fontSize: 17, fontWeight: 700, color: C.text, textAlign: "center", marginBottom: 4 }}>{t("import.title")}</div>
+          <div style={{ fontSize: 17, fontWeight: 700, color: C.text, textAlign: "center", marginBottom: 4 }}>{t("Import from screenshots")}</div>
           <div style={{ fontSize: 12, color: C.mute, textAlign: "center", marginBottom: 16 }}>
-            {t("import.subtitle")}
+            {t("Apple Wallet or bank history — AI will recognize the transactions, duplicates will be skipped")}
           </div>
 
-          <div style={label}>{t("import.account")}</div>
+          <div style={label}>{t("Account")}</div>
           <select
             value={accountId}
             onChange={(e) => setAccountId(e.target.value)}
@@ -224,14 +224,14 @@ export function ImportSheet({ show, onClose, state, onApplied }: { show: boolean
             ))}
           </select>
 
-          <div style={label}>{t("import.screenshots", { n: images.length })}</div>
+          <div style={label}>{t("Screenshots ({n}/6)", { n: images.length })}</div>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, marginBottom: 14 }}>
             {images.map((url, i) => (
               <div key={i} style={{ position: "relative" }}>
-                <img src={url} alt={t("import.screenshotAlt", { n: i + 1 })} style={{ width: "100%", height: 96, objectFit: "cover", borderRadius: 10, display: "block" }} />
+                <img src={url} alt={t("Screenshot {n}", { n: i + 1 })} style={{ width: "100%", height: 96, objectFit: "cover", borderRadius: 10, display: "block" }} />
                 <button
                   onClick={() => setImages(images.filter((_, x) => x !== i))}
-                  aria-label={t("import.removeScreenshotAria", { n: i + 1 })}
+                  aria-label={t("Remove screenshot {n}", { n: i + 1 })}
                   style={{ position: "absolute", top: -6, right: -6, width: 22, height: 22, borderRadius: "50%", border: "none", background: CORAL, color: "#fff", fontSize: 12, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}
                 >
                   ✕
@@ -244,7 +244,7 @@ export function ImportSheet({ show, onClose, state, onApplied }: { show: boolean
                 style={{ height: 96, borderRadius: 10, border: `1.5px dashed ${C.line}`, background: C.bg, cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 6, color: C.soft }}
               >
                 <Ico d="M4 8.5A1.5 1.5 0 015.5 7H8l1.6-2.4a1 1 0 01.9-.6h3a1 1 0 01.9.6L16 7h2.5A1.5 1.5 0 0120 8.5v9a1.5 1.5 0 01-1.5 1.5h-13A1.5 1.5 0 014 17.5v-9zM12 16a3.5 3.5 0 100-7 3.5 3.5 0 000 7z" size={22} color={C.soft} sw={1.5} />
-                <span style={{ fontSize: 11, fontWeight: 600 }}>{t("import.addScreenshots")}</span>
+                <span style={{ fontSize: 11, fontWeight: 600 }}>{t("Add screenshots")}</span>
               </button>
             )}
           </div>
@@ -257,16 +257,16 @@ export function ImportSheet({ show, onClose, state, onApplied }: { show: boolean
             disabled={images.length === 0 || busy}
             style={{ width: "100%", padding: "13px 0", borderRadius: 12, border: "none", background: TEAL, color: "#fff", fontSize: 14, fontWeight: 600, cursor: "pointer", opacity: images.length === 0 || busy ? 0.5 : 1 }}
           >
-            {busy ? t("import.recognizing") : t("import.processBtn")}
+            {busy ? t("Recognizing…") : t("Process screenshots")}
           </button>
         </>
       )}
 
       {phase === "review" && (
         <>
-          <div style={{ fontSize: 17, fontWeight: 700, color: C.text, textAlign: "center", marginBottom: 4 }}>{t("import.reviewTitle")}</div>
+          <div style={{ fontSize: 17, fontWeight: 700, color: C.text, textAlign: "center", marginBottom: 4 }}>{t("Recognized transactions")}</div>
           <div style={{ fontSize: 12, color: C.mute, textAlign: "center", marginBottom: 12 }}>
-            {t("import.reviewSubtitle")}
+            {t("Untick what you don't want. Duplicates are skipped — tap one to edit and add it anyway.")}
           </div>
 
           {items.map((it, idx) => {
@@ -294,7 +294,7 @@ export function ImportSheet({ show, onClose, state, onApplied }: { show: boolean
                 <div
                   onClick={() => setEditorIdx(idx)} /* duplicates are editable too — once saved they count as new (force) */
                   role="button"
-                  aria-label={t("import.editItemAria", { n: idx + 1 })}
+                  aria-label={t("Edit item {n}", { n: idx + 1 })}
                   style={{ flex: 1, minWidth: 0, display: "flex", alignItems: "center", gap: 10, cursor: "pointer" }}
                 >
                   <span style={{ width: 30, height: 30, borderRadius: 8, flexShrink: 0, background: env?.color ?? C.inset, display: "flex", alignItems: "center", justifyContent: "center" }}>
@@ -302,12 +302,12 @@ export function ImportSheet({ show, onClose, state, onApplied }: { show: boolean
                   </span>
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontSize: 13.5, color: C.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                      {e && <span aria-label={t("import.edited")} title={t("import.edited")} style={{ color: TEAL, fontWeight: 700 }}>✎ </span>}
+                      {e && <span aria-label={t("edited")} title={t("edited")} style={{ color: TEAL, fontWeight: 700 }}>✎ </span>}
                       {name}
                     </div>
                     <div style={{ fontSize: 10.5, color: C.mute, marginTop: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                      {e?.date ?? it.date} · {(e ? e.placeName : it.placeName) ?? it.tag}{env ? ` · ${env.name}` : ""}{catName ? ` · ${catName}` : ""}{refund ? ` · ${t("import.refund")}` : ""}{exists ? ` · ${t("import.alreadyExists")}` : ""}
-                      {it.status === "probable" && <span style={{ color: "#d97706", fontWeight: 600 }}> · {t("import.probableDup")}</span>}
+                      {e?.date ?? it.date} · {(e ? e.placeName : it.placeName) ?? it.tag}{env ? ` · ${env.name}` : ""}{catName ? ` · ${catName}` : ""}{refund ? ` · ${t("refund")}` : ""}{exists ? ` · ${t("already exists")}` : ""}
+                      {it.status === "probable" && <span style={{ color: "#d97706", fontWeight: 600 }}> · {t("probable duplicate")}</span>}
                     </div>
                   </div>
                   <span style={{ fontSize: 13.5, fontWeight: 600, fontVariantNumeric: "tabular-nums", color: type === "transfer" ? TRANSFER : type === "income" || refund ? INCOME : C.text, flexShrink: 0 }}>
@@ -322,14 +322,14 @@ export function ImportSheet({ show, onClose, state, onApplied }: { show: boolean
 
           <div style={{ display: "flex", gap: 8, marginTop: 14 }}>
             <button onClick={() => { setPhase("pick"); setItems([]); setEdited({}); }} style={{ flex: 1, padding: "12px 0", borderRadius: 12, border: `1px solid ${C.line}`, background: C.bg, color: C.soft, fontSize: 13.5, fontWeight: 600, cursor: "pointer" }}>
-              {t("import.back")}
+              {t("Back")}
             </button>
             <button
               onClick={apply}
               disabled={busy || selectedCount === 0}
               style={{ flex: 2, padding: "12px 0", borderRadius: 12, border: "none", background: TEAL, color: "#fff", fontSize: 13.5, fontWeight: 600, cursor: "pointer", opacity: busy || selectedCount === 0 ? 0.5 : 1 }}
             >
-              {busy ? t("import.adding") : tp("import.addBtn", selectedCount)}
+              {busy ? t("Adding…") : tp("Add {n} transaction | Add {n} transactions", selectedCount)}
             </button>
           </div>
         </>
@@ -341,13 +341,13 @@ export function ImportSheet({ show, onClose, state, onApplied }: { show: boolean
             <Ico d="M5 13l4 4L19 7" size={26} color="#fff" sw={2.6} />
           </div>
           <div style={{ fontSize: 16, fontWeight: 700, color: C.text, marginBottom: 4 }}>
-            {tp("import.doneAdded", doneStats.added)}
+            {tp("Added {n} transaction | Added {n} transactions", doneStats.added)}
           </div>
           {doneStats.dup > 0 && (
-            <div style={{ fontSize: 12.5, color: C.soft, marginBottom: 4 }}>{t("import.dupsSkipped", { n: doneStats.dup })}</div>
+            <div style={{ fontSize: 12.5, color: C.soft, marginBottom: 4 }}>{t("Duplicates skipped: {n}", { n: doneStats.dup })}</div>
           )}
           <button onClick={close} style={{ marginTop: 14, width: "100%", padding: "13px 0", borderRadius: 12, border: "none", background: TEAL, color: "#fff", fontSize: 14, fontWeight: 600, cursor: "pointer" }}>
-            {t("common.close")}
+            {t("Close")}
           </button>
         </div>
       )}

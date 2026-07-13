@@ -68,15 +68,15 @@ export function TransactionsScreen({
       return `${from} → ${to}`;
     }
     const env = tx.envelopeId ? envById.get(tx.envelopeId) : null;
-    return tx.name || tx.note || env?.name || (tx.items.length ? t("txns.split") : t("txns.transaction"));
+    return tx.name || tx.note || env?.name || (tx.items.length ? t("Split transaction") : t("Transaction"));
   };
   const subOf = (tx: Transaction): string => {
-    if (tx.type === "transfer") return t("txns.transfer");
+    if (tx.type === "transfer") return t("Transfer");
     const parts: string[] = [];
     if (tx.categoryId && catById.get(tx.categoryId)) parts.push(catById.get(tx.categoryId)!.name);
     const env = tx.envelopeId ? envById.get(tx.envelopeId) : null;
     if (env) parts.push(env.name);
-    if (tx.items.length) parts.push(tp("txns.items", tx.items.length));
+    if (tx.items.length) parts.push(tp("{n} item | {n} items", tx.items.length));
     return parts.join(" · ");
   };
 
@@ -126,22 +126,22 @@ export function TransactionsScreen({
           <input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder={t("txns.searchPlaceholder")}
+            placeholder={t("Search...")}
             style={{ flex: 1, minWidth: 0, background: "none", border: "none", outline: "none", fontSize: 14.5, color: C.text, fontFamily: font }}
           />
           {query && (
-            <button onClick={() => setQuery("")} aria-label={t("txns.clearSearchAria")} style={{ background: "none", border: "none", cursor: "pointer", padding: 2, display: "flex" }}>
+            <button onClick={() => setQuery("")} aria-label={t("Clear search")} style={{ background: "none", border: "none", cursor: "pointer", padding: 2, display: "flex" }}>
               <Ico d="M6 6l12 12M18 6L6 18" size={14} color={C.mute} sw={2} />
             </button>
           )}
-          <button onClick={() => setPickFilter(true)} aria-label={t("txns.filter")} style={{ background: "none", border: "none", cursor: "pointer", padding: 2, display: "flex" }}>
+          <button onClick={() => setPickFilter(true)} aria-label={t("Filter")} style={{ background: "none", border: "none", cursor: "pointer", padding: 2, display: "flex" }}>
             <Ico d="M4 4h16l-6.3 7.4V19l-3.4-2v-5.6L4 4zM17.5 14.5v6M14.5 17.5h6" size={18} color={envFilter.size || accFilter.size ? TEAL : C.mute} sw={1.8} />
           </button>
         </div>
 
         {(activeEnvs.length > 0 || activeAccs.length > 0) && (
           <div className="gs" style={{ display: "flex", alignItems: "center", gap: 7, padding: `0 ${P}px 8px`, overflowX: "auto" }}>
-            <span style={{ fontSize: 13.5, color: C.text, flexShrink: 0 }}>{t("txns.filterLabel")}</span>
+            <span style={{ fontSize: 13.5, color: C.text, flexShrink: 0 }}>{t("Filter:")}</span>
             {activeEnvs.map((e) => (
               <button key={e.id} onClick={() => toggleEnv(e.id)} style={{ display: "flex", alignItems: "center", gap: 7, padding: "5px 11px 5px 6px", borderRadius: 18, border: "none", background: C.surface, cursor: "pointer", whiteSpace: "nowrap", boxShadow: "0 1px 2px rgba(0,0,0,0.1)", flexShrink: 0 }}>
                 <span style={{ width: 24, height: 24, borderRadius: 7, background: e.color, display: "flex", alignItems: "center", justifyContent: "center" }}>
@@ -163,7 +163,7 @@ export function TransactionsScreen({
           </div>
         )}
 
-        {groups.length === 0 && <div style={{ textAlign: "center", color: C.mute, fontSize: 13.5, padding: "56px 0" }}>{t("txns.empty")}</div>}
+        {groups.length === 0 && <div style={{ textAlign: "center", color: C.mute, fontSize: 13.5, padding: "56px 0" }}>{t("No transactions.")}</div>}
 
         {groups.map((group) => (
           <div key={group.date}>
@@ -200,7 +200,7 @@ export function TransactionsScreen({
       </div>
 
       <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 7, borderTop: `1px solid ${C.line}`, padding: `10px ${P}px`, background: C.bg, flexShrink: 0 }}>
-        <span style={{ fontSize: 13.5, color: C.soft }}>{t("txns.balance")}</span>
+        <span style={{ fontSize: 13.5, color: C.soft }}>{t("Balance:")}</span>
         <span style={{ fontSize: 15, fontWeight: 700, color: balance < 0 ? CORAL : balance > 0 ? INCOME : C.text, fontVariantNumeric: "tabular-nums" }}>
           {balance < 0 ? "-" : balance > 0 ? "+" : ""}{M(Math.abs(balance))}
         </span>
@@ -209,10 +209,10 @@ export function TransactionsScreen({
       <Sheet show={pickFilter} onClose={() => setPickFilter(false)}>
         {(C) => (
           <>
-            <div style={{ fontSize: 17, fontWeight: 700, color: C.text, textAlign: "center", marginBottom: 4 }}>{t("txns.filter")}</div>
-            <div style={{ fontSize: 12, color: C.mute, textAlign: "center", marginBottom: 14 }}>{t("txns.filterSubtitle")}</div>
+            <div style={{ fontSize: 17, fontWeight: 700, color: C.text, textAlign: "center", marginBottom: 4 }}>{t("Filter")}</div>
+            <div style={{ fontSize: 12, color: C.mute, textAlign: "center", marginBottom: 14 }}>{t("Show only selected envelopes and accounts")}</div>
 
-            <div style={{ fontSize: 10.5, fontWeight: 600, color: C.soft, textTransform: "uppercase", letterSpacing: 0.6, marginBottom: 8 }}>{t("txns.envelopes")}</div>
+            <div style={{ fontSize: 10.5, fontWeight: 600, color: C.soft, textTransform: "uppercase", letterSpacing: 0.6, marginBottom: 8 }}>{t("Envelopes")}</div>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
               {envelopes.map((e) => {
                 const on = envFilter.has(e.id);
@@ -228,7 +228,7 @@ export function TransactionsScreen({
               })}
             </div>
 
-            <div style={{ fontSize: 10.5, fontWeight: 600, color: C.soft, textTransform: "uppercase", letterSpacing: 0.6, margin: "16px 0 8px" }}>{t("txns.accounts")}</div>
+            <div style={{ fontSize: 10.5, fontWeight: 600, color: C.soft, textTransform: "uppercase", letterSpacing: 0.6, margin: "16px 0 8px" }}>{t("Accounts")}</div>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
               {accounts.map((a) => {
                 const on = accFilter.has(a.id);
@@ -246,7 +246,7 @@ export function TransactionsScreen({
 
             {(envFilter.size > 0 || accFilter.size > 0) && (
               <button onClick={clearFilters} style={{ marginTop: 16, width: "100%", padding: "11px 0", borderRadius: 11, border: `1px solid ${C.line}`, background: C.bg, color: CORAL, fontSize: 13, fontWeight: 600, cursor: "pointer" }}>
-                {t("txns.clearFilters")}
+                {t("Clear filters")}
               </button>
             )}
           </>

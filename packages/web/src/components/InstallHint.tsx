@@ -32,9 +32,9 @@ export function InstallHint() {
         <Ico d="M12 5v10m0 0l-4-4m4 4l4-4M5 19h14" size={18} color="#fff" sw={2} />
       </div>
       <div style={{ flex: 1, fontSize: 11.5, color: C.text, lineHeight: 1.4 }}>
-        {t("install.prefix")} <b>{t("install.share")}</b> → <b>{t("install.addToHome")}</b>.
+        {t("Install as an app:")} <b>{t("Share")}</b> → <b>{t("Add to Home Screen")}</b>.
       </div>
-      <button onClick={dismiss} aria-label={t("common.close")} style={{ background: "none", border: "none", color: C.mute, fontSize: 16, cursor: "pointer" }}>✕</button>
+      <button onClick={dismiss} aria-label={t("Close")} style={{ background: "none", border: "none", color: C.mute, fontSize: 16, cursor: "pointer" }}>✕</button>
     </div>
   );
 }

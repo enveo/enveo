@@ -16,7 +16,7 @@ import {
 } from "@enveo/shared";
 import { aiTarget, hasAiTarget, previewSuggestPrompt, runImportExtract, runQuickAdd, type AiSettings } from "./ai";
 import { apiErrorMessage } from "./api";
-import { en } from "./i18n.en";
+
 
 const MONTH = "2026-07";
 
@@ -138,7 +138,7 @@ describe("aiTarget / hasAiTarget", () => {
       const imp = runImportExtract({ images: ["data:image/png;base64,x"], locale: "pl", ledger: fixtureLedger(), settings: s });
       await expect(imp).rejects.toThrow("ai_consent_required");
       // the message IS the code: apiErrorMessage maps it to a sentence in the UI language (api.test.ts)
-      expect(apiErrorMessage(await quick.catch((e: unknown) => e))).toBe(en["err.aiNotConfigured"]);
+      expect(apiErrorMessage(await quick.catch((e: unknown) => e))).toBe("AI is not set up on this device. Pick a mode in Settings → Artificial intelligence (with your own key, paste it there).");
     }
   });
 });
@@ -194,37 +194,37 @@ describe("runQuickAdd failures reach the user as localized sentences", () => {
   it("server mode, operator key missing → the mirror's 503 ai_unavailable, not \"OpenAI 503\"", async () => {
     const { code, text } = await failure(SERVER, answering(503, { error: "ai_unavailable" }));
     expect(code).toBe("ai_unavailable");
-    expect(text).toBe(en["err.aiUnavailable"]);
+    expect(text).toBe("The server has no OpenAI key configured. Set OPENAI_API_KEY and restart the app, or use your own key in Settings → Artificial intelligence.");
   });
 
   it("server mode, OpenAI refused upstream → the mirror's 502 upstream code", async () => {
     const { code, text } = await failure(SERVER, answering(502, { error: "upstream", status: 429 }));
     expect(code).toBe("upstream");
-    expect(text).toBe(en["err.aiUpstream"]);
+    expect(text).toBe("OpenAI rejected the request — check the key and the model, then try again.");
   });
 
   it("byok with an expired key → ai_key_invalid (OpenAI's {error:{message}} OBJECT never reaches the UI)", async () => {
     const { code, text } = await failure(BYOK, answering(401, { error: { message: "Incorrect API key provided: sk-x", type: "invalid_request_error" } }));
     expect(code).toBe("ai_key_invalid");
-    expect(text).toBe(en["err.aiKeyInvalid"]);
+    expect(text).toBe("OpenAI rejected your key — check it in Settings → Artificial intelligence.");
   });
 
   it("offline (fetch rejects, navigator.onLine === false) → ai_offline, not \"Failed to fetch\"", async () => {
     const { code, text } = await failure(BYOK, rejecting(), false);
     expect(code).toBe("ai_offline");
-    expect(text).toBe(en["err.aiOffline"]);
+    expect(text).toBe("You are offline — quick add and screenshot import need a connection. Manual entry works without one.");
   });
 
   it("the network drops while online (DNS, a dead proxy) → ai_upstream_error", async () => {
     const { code, text } = await failure(SERVER, rejecting(), true);
     expect(code).toBe("ai_upstream_error");
-    expect(text).toBe(en["err.aiUpstream"]);
+    expect(text).toBe("OpenAI rejected the request — check the key and the model, then try again.");
   });
 
   it("the model answers prose instead of JSON → ai_upstream_error, not a raw SyntaxError", async () => {
     const { code, text } = await failure(BYOK, replying("Sure! I can add that for you."));
     expect(code).toBe("ai_upstream_error");
-    expect(text).toBe(en["err.aiUpstream"]);
+    expect(text).toBe("OpenAI rejected the request — check the key and the model, then try again.");
   });
 
   it("no failure leaks prose: every code is snake_case and localizes to a sentence", async () => {

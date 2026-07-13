@@ -8,32 +8,41 @@ import { SubscriptionsTab } from "../components/SubscriptionsTab";
 import { useMask, useTheme } from "../lib/contexts";
 import { monthLabel, shortDate, todayISO } from "../lib/dates";
 import { goalProgress } from "../lib/goals";
-import { useT, type TKey } from "../lib/i18n";
+import { useT, type Message, msg } from "../lib/i18n";
 import { budgetsSummary, upcomingWindow, type UpcomingWindow } from "../lib/reportSummary";
 import { CORAL, INCOME, P, TEAL, type Theme } from "../lib/theme";
 
 export type ReportTab = "assets" | "cashflow" | "spending" | "budgets" | "goals" | "subs";
 /** Reports view: shortcut-card overview or a full-screen report subscreen. */
 export type ReportView = "overview" | ReportTab;
-const TITLES: Record<ReportTab, TKey> = {
-  assets: "reports.tabAssets",
-  cashflow: "reports.tabCashflow",
-  spending: "reports.tabSpending",
-  budgets: "budgets.tab",
-  goals: "reports.tabGoals",
-  subs: "reports.cardSubs",
+const TITLES: Record<ReportTab, Message> = {
+  assets: msg("Wealth"),
+  cashflow: msg("Cash flow"),
+  spending: msg("Spending"),
+  budgets: msg("Budgets"),
+  goals: msg("Goals"),
+  subs: msg("Upcoming payments"),
 };
-const DIMENSIONS: Array<{ id: SpendingDimension; label: TKey }> = [
-  { id: "category", label: "reports.dimCategory" },
-  { id: "envelope", label: "reports.dimEnvelope" },
-  { id: "group", label: "reports.dimGroup" },
-  { id: "place", label: "reports.dimPlace" },
+/** "How to read this" note per report (ReportInfoNote renders `**bold**`). */
+const NOTES: Record<ReportTab, Message> = {
+  assets: msg("All account balances minus liabilities, month by month. When the line **goes up**, you are building wealth; dips are explained in Cashflow."),
+  cashflow: msg("Income minus spending, month by month. Bar **to the right** = you are saving, **to the left** = the month ran a deficit."),
+  spending: msg("Where your money actually went in the selected period — grouped by category, envelope, group, or place."),
+  budgets: msg("Spending versus the amounts available in envelopes. **Amber** = approaching the limit (≥ 80%), **red** = overspent."),
+  goals: msg("How much of each envelope's monthly target you have **funded**. A full bar = the contribution is set aside, regardless of how much of it you have spent."),
+  subs: msg("Planned and recurring payments for the coming weeks. Tap an item to **move its date, pause, or delete** the rule."),
+};
+const DIMENSIONS: Array<{ id: SpendingDimension; label: Message }> = [
+  { id: "category", label: msg("Category") },
+  { id: "envelope", label: msg("Envelope") },
+  { id: "group", label: msg("Group") },
+  { id: "place", label: msg("Place") },
 ];
-const RANGES: Array<{ n: number; label: TKey }> = [
-  { n: 1, label: "reports.range1" },
-  { n: 3, label: "reports.range3" },
-  { n: 6, label: "reports.range6" },
-  { n: 12, label: "reports.range12" },
+const RANGES: Array<{ n: number; label: Message }> = [
+  { n: 1, label: msg("1 mo") },
+  { n: 3, label: msg("3 mo") },
+  { n: 6, label: msg("6 mo") },
+  { n: 12, label: msg("12 mo") },
 ];
 type Mask = (n: number) => string;
 
@@ -91,7 +100,7 @@ export function ReportsScreen({ state, month, view, onView, onOpenEnvelope, onMe
   return (
     <div className="gs" style={{ flex: 1, overflowY: "auto", paddingBottom: 6 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 6, padding: `12px ${P}px 10px` }}>
-        <button aria-label={t("reports.back")} onClick={() => onView("overview")} style={{ flexShrink: 0, width: 30, height: 30, borderRadius: 15, border: "none", background: "transparent", color: C.text, fontSize: 22, lineHeight: 1, cursor: "pointer", padding: 0, marginLeft: -6, display: "flex", alignItems: "center", justifyContent: "center" }}>‹</button>
+        <button aria-label={t("Back")} onClick={() => onView("overview")} style={{ flexShrink: 0, width: 30, height: 30, borderRadius: 15, border: "none", background: "transparent", color: C.text, fontSize: 22, lineHeight: 1, cursor: "pointer", padding: 0, marginLeft: -6, display: "flex", alignItems: "center", justifyContent: "center" }}>‹</button>
         <span style={{ flex: 1, fontSize: 16, fontWeight: 700, color: C.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t(TITLES[view])}</span>
         {monthly ? (
           <span style={{ display: "flex", alignItems: "center", gap: 2, flexShrink: 0 }}>
@@ -100,11 +109,11 @@ export function ReportsScreen({ state, month, view, onView, onOpenEnvelope, onMe
             <button onClick={onNext} style={{ border: "none", background: "transparent", color: C.soft, fontSize: 17, lineHeight: 1, cursor: "pointer", padding: "2px 7px" }}>›</button>
           </span>
         ) : (
-          <span style={{ fontSize: 12.5, fontWeight: 600, color: C.soft, flexShrink: 0 }}>{t("reports.days30")}</span>
+          <span style={{ fontSize: 12.5, fontWeight: 600, color: C.soft, flexShrink: 0 }}>{t("30 days")}</span>
         )}
       </div>
       <div className="fi" style={{ padding: `0 ${P}px` }}>
-        <ReportInfoNote id={view} textKey={("note." + view) as TKey} />
+        <ReportInfoNote id={view} textKey={NOTES[view]} />
         {view === "assets" && <AssetsReport netWorth={netWorth} state={state} M={M} />}
         {view === "cashflow" && <CashflowReport cashflow={cashflow} M={M} />}
         {view === "spending" && <SpendingReport spending={spending} dim={dim} setDim={setDim} range={range} setRange={setRange} M={M} />}
@@ -171,7 +180,7 @@ function OverviewCards({ state, month, netWorth, cashflow, onView }: { state: St
     <button key={id} onClick={() => onView(id)} style={{ display: "block", width: "100%", background: C.card, border: `1px solid ${C.line}`, borderRadius: 14, padding: "12px 14px", marginBottom: 12, cursor: "pointer", textAlign: "left", fontFamily: "inherit" }}>
       <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 8, marginBottom: 7 }}>
         <span style={{ fontSize: 13.5, fontWeight: 700, color: C.text }}>{title}</span>
-        <span style={{ fontSize: 12, color: "var(--accent)", flexShrink: 0 }}>{t("reports.details")} ›</span>
+        <span style={{ fontSize: 12, color: "var(--accent)", flexShrink: 0 }}>{t("details")} ›</span>
       </div>
       {body}
     </button>
@@ -181,7 +190,7 @@ function OverviewCards({ state, month, netWorth, cashflow, onView }: { state: St
     <>
       {card(
         "assets",
-        t("reports.netWorth"),
+        t("Net worth"),
         <>
           <div style={{ display: "flex", alignItems: "baseline", gap: 10 }}>
             <span style={{ fontSize: 18, fontWeight: 700, color: C.text, fontVariantNumeric: "tabular-nums" }}>{M(nwLast)}</span>
@@ -192,9 +201,9 @@ function OverviewCards({ state, month, netWorth, cashflow, onView }: { state: St
       )}
       {card(
         "cashflow",
-        t("reports.cardCashflow", { month: monthLabel(month, lang).split(" ")[0]! }),
+        t("Cash flow — {month}", { month: monthLabel(month, lang).split(" ")[0]! }),
         <div style={{ display: "flex", gap: 8 }}>
-          {([[t("start.income"), cf?.income ?? 0, INCOME], [t("start.expense"), cf?.expense ?? 0, CORAL], [t("reports.net"), cfNet, cfNet >= 0 ? INCOME : CORAL]] as const).map(([label, val, col]) => (
+          {([[t("Income"), cf?.income ?? 0, INCOME], [t("Expense"), cf?.expense ?? 0, CORAL], [t("Net"), cfNet, cfNet >= 0 ? INCOME : CORAL]] as const).map(([label, val, col]) => (
             <div key={label} style={{ flex: 1 }}>
               <div style={{ fontSize: 10.5, color: C.soft }}>{label}</div>
               <div style={{ fontSize: 13.5, fontWeight: 700, color: col, fontVariantNumeric: "tabular-nums" }}>{M(val)}</div>
@@ -202,14 +211,14 @@ function OverviewCards({ state, month, netWorth, cashflow, onView }: { state: St
           ))}
         </div>,
       )}
-      {card("spending", t("reports.cardSpending"), <SpendingPreview rows={spendingRows} envColor={envColor} C={C} />)}
+      {card("spending", t("Spending breakdown"), <SpendingPreview rows={spendingRows} envColor={envColor} C={C} />)}
       {goalRows.length > 0 &&
         card(
           "goals",
-          t("reports.tabGoals"),
+          t("Goals"),
           <>
             <div style={{ fontSize: 12.5, fontWeight: 600, color: missSum === 0 ? SAGE : C.soft, fontVariantNumeric: "tabular-nums" }}>
-              {missSum === 0 ? t("goals.totalDone") : t("goals.total", { pct: pctTotal, amount: M(missSum) })}
+              {missSum === 0 ? t("All goals funded ✓") : t("Funded {pct}% · {amount} to go", { pct: pctTotal, amount: M(missSum) })}
             </div>
             <div style={{ height: 8, background: C.bg, borderRadius: 4, overflow: "hidden", marginTop: 7 }}>
               <div style={{ height: "100%", width: `${pctTotal}%`, background: missSum === 0 ? SAGE : "var(--accent)", borderRadius: 4 }} />
@@ -218,14 +227,14 @@ function OverviewCards({ state, month, netWorth, cashflow, onView }: { state: St
         )}
       {card(
         "budgets",
-        t("reports.cardBudgets"),
+        t("Envelope budgets"),
         <>
           <div style={{ fontSize: 12.5, fontWeight: 600, color: C.soft, fontVariantNumeric: "tabular-nums" }}>
-            <span style={bs.over > 0 ? { color: "var(--danger)" } : undefined}>{t("reports.cardOver", { n: bs.over })}</span>
+            <span style={bs.over > 0 ? { color: "var(--danger)" } : undefined}>{t("{n} over", { n: bs.over })}</span>
             {" · "}
-            {t("reports.cardNear", { n: bs.near })}
+            {t("{n} near limit", { n: bs.near })}
             {" · "}
-            {t("reports.cardOk", { n: bs.ok })}
+            {t("{n} OK", { n: bs.ok })}
           </div>
           {bsTotal > 0 && (
             <div style={{ display: "flex", gap: 3, height: 8, marginTop: 7 }}>
@@ -238,11 +247,11 @@ function OverviewCards({ state, month, netWorth, cashflow, onView }: { state: St
       )}
       {card(
         "subs",
-        t("reports.cardSubs"),
+        t("Upcoming payments"),
         <div style={{ fontSize: 12.5, color: C.soft, fontVariantNumeric: "tabular-nums", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
           {upcoming.nearest
-            ? t("reports.cardUpcoming", { total: M(upcoming.total), name: upcoming.nearest.name, date: shortDate(upcoming.nearest.date, lang) })
-            : t("reports.cardUpcomingNone")}
+            ? t("30 days · {total} · next: {name}, {date}", { total: M(upcoming.total), name: upcoming.nearest.name, date: shortDate(upcoming.nearest.date, lang) })
+            : t("30 days · no planned payments")}
         </div>,
       )}
     </>
@@ -252,7 +261,7 @@ function OverviewCards({ state, month, netWorth, cashflow, onView }: { state: St
 /** Spending structure preview: a segmented bar in envelope colors + top-3 legend. */
 function SpendingPreview({ rows, envColor, C }: { rows: Array<{ key: string | null; name: string; amount: number; pct: number }>; envColor: Map<string, string>; C: Theme }) {
   const { t } = useT();
-  if (rows.length === 0) return <div style={{ fontSize: 12.5, color: C.soft }}>{t("reports.noSpending")}</div>;
+  if (rows.length === 0) return <div style={{ fontSize: 12.5, color: C.soft }}>{t("No spending in this period.")}</div>;
   const top = rows.slice(0, 4);
   const restPct = Math.max(0, 1 - top.reduce((s, r) => s + r.pct, 0));
   const colorOf = (r: { key: string | null }, i: number) => (r.key && envColor.get(r.key)) || ["#8f84a8", "#aed6ea", "#ccd9b6", "#f0c84f"][i % 4]!;
@@ -308,23 +317,23 @@ function AssetsReport({ netWorth, state, M }: { netWorth: { month: string; total
   const max = Math.max(...savings.map((e) => Math.abs(e.available)), 1);
   return (
     <>
-      <div style={{ fontSize: 15, fontWeight: 700, color: C.text, margin: "2px 0 4px" }}>{t("reports.netWorth")}</div>
+      <div style={{ fontSize: 15, fontWeight: 700, color: C.text, margin: "2px 0 4px" }}>{t("Net worth")}</div>
       <div style={{ display: "flex", alignItems: "baseline", gap: 10, marginBottom: 12 }}>
         <span style={{ fontSize: 22, fontWeight: 700, color: C.text, fontVariantNumeric: "tabular-nums" }}>{M(nwLast)}</span>
-        {nwDelta !== 0 && <span style={{ fontSize: 12.5, fontWeight: 600, color: nwDelta > 0 ? INCOME : CORAL, fontVariantNumeric: "tabular-nums" }}>{nwDelta > 0 ? "▲ +" : "▼ "}{M(Math.abs(nwDelta))} {t("reports.mom")}</span>}
+        {nwDelta !== 0 && <span style={{ fontSize: 12.5, fontWeight: 600, color: nwDelta > 0 ? INCOME : CORAL, fontVariantNumeric: "tabular-nums" }}>{nwDelta > 0 ? "▲ +" : "▼ "}{M(Math.abs(nwDelta))} {t("m/m")}</span>}
       </div>
       <NetWorthChart points={netWorth} mask={M} />
 
-      <div style={{ fontSize: 15, fontWeight: 700, color: C.text, margin: "20px 0 4px" }}>{t("reports.tabAssets")}</div>
+      <div style={{ fontSize: 15, fontWeight: 700, color: C.text, margin: "20px 0 4px" }}>{t("Wealth")}</div>
       {savings.length === 0 ? (
         <div style={{ fontSize: 12.5, color: C.mute, padding: "4px 0", lineHeight: 1.6 }}>
-          {t("reports.noSavings")}
+          {t("No envelopes are marked as wealth envelopes. Open an envelope → Edit and turn on “Wealth envelope” (e.g. Bonds, Retirement, Savings), and we will count them here.")}
         </div>
       ) : (
         <>
           <div style={{ display: "flex", alignItems: "baseline", gap: 10, marginBottom: 12 }}>
             <span style={{ fontSize: 20, fontWeight: 700, color: C.text, fontVariantNumeric: "tabular-nums" }}>{M(total)}</span>
-            <span style={{ fontSize: 12.5, color: C.soft }}>{t("reports.pctOfNetWorth", { pct })}</span>
+            <span style={{ fontSize: 12.5, color: C.soft }}>{t("{pct}% of net worth", { pct })}</span>
           </div>
           {savings.map((e) => (
             <div key={e.id} style={{ marginBottom: 9 }}>
@@ -352,9 +361,9 @@ function CashflowReport({ cashflow, M }: { cashflow: { month: string; income: nu
   const maxAbs = Math.max(...cashflow.map((p) => Math.abs(p.net)), 1);
   return (
     <>
-      <div style={{ fontSize: 15, fontWeight: 700, color: C.text, margin: "2px 0 8px" }}>{t("reports.cashflowTitle")}</div>
+      <div style={{ fontSize: 15, fontWeight: 700, color: C.text, margin: "2px 0 8px" }}>{t("Cash flow (12 mo)")}</div>
       <div style={{ display: "flex", gap: 8, marginBottom: 14 }}>
-        {([[t("start.income"), totIncome, INCOME], [t("start.expense"), totExpense, CORAL], [t("reports.net"), totNet, totNet >= 0 ? INCOME : CORAL]] as const).map(([label, val, col]) => (
+        {([[t("Income"), totIncome, INCOME], [t("Expense"), totExpense, CORAL], [t("Net"), totNet, totNet >= 0 ? INCOME : CORAL]] as const).map(([label, val, col]) => (
           <div key={label} style={{ flex: 1 }}>
             <div style={{ fontSize: 10.5, color: C.soft }}>{label}</div>
             <div style={{ fontSize: 14, fontWeight: 700, color: col, fontVariantNumeric: "tabular-nums" }}>{M(val)}</div>
@@ -385,7 +394,7 @@ function SpendingReport({ spending, dim, setDim, range, setRange, M }: { spendin
   const spTotal = spending.reduce((s, r) => s + r.amount, 0);
   return (
     <>
-      <div style={{ fontSize: 15, fontWeight: 700, color: C.text, margin: "2px 0 8px" }}>{t("reports.spendingTitle")}</div>
+      <div style={{ fontSize: 15, fontWeight: 700, color: C.text, margin: "2px 0 8px" }}>{t("Spending by dimension")}</div>
       <div style={{ display: "flex", gap: 6, marginBottom: 8, flexWrap: "wrap" }}>
         {DIMENSIONS.map((d) => (
           <button key={d.id} onClick={() => setDim(d.id)} style={{ padding: "5px 11px", borderRadius: 9, border: `1px solid ${dim === d.id ? TEAL : C.line}`, background: dim === d.id ? "var(--accent-1a)" : "transparent", color: dim === d.id ? TEAL : C.soft, fontSize: 12, fontWeight: 600, cursor: "pointer" }}>{t(d.label)}</button>
@@ -397,10 +406,10 @@ function SpendingReport({ spending, dim, setDim, range, setRange, M }: { spendin
         ))}
       </div>
       <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8, fontSize: 12.5 }}>
-        <span style={{ color: C.soft }}>{t("reports.totalSpending")}</span>
+        <span style={{ color: C.soft }}>{t("Total spending")}</span>
         <span style={{ fontWeight: 700, color: C.text, fontVariantNumeric: "tabular-nums" }}>{M(spTotal)}</span>
       </div>
-      {spending.length === 0 && <div style={{ fontSize: 12.5, color: C.mute, padding: "8px 0" }}>{t("reports.noSpending")}</div>}
+      {spending.length === 0 && <div style={{ fontSize: 12.5, color: C.mute, padding: "8px 0" }}>{t("No spending in this period.")}</div>}
       {spending.map((r) => (
         <div key={r.key ?? "none"} style={{ marginBottom: 9 }}>
           <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 3 }}>
@@ -435,9 +444,9 @@ function BudgetsReport({ state, M, onOpenEnvelope }: { state: StateResponse; M: 
     .sort((a, b) => b.pct - a.pct || a.e.name.localeCompare(b.e.name));
   return (
     <>
-      <div style={{ fontSize: 15, fontWeight: 700, color: C.text, margin: "2px 0 2px" }}>{t("budgets.title", { month: monthLabel(state.month, lang) })}</div>
-      <div style={{ fontSize: 11.5, color: C.mute, marginBottom: 10 }}>{t("budgets.subtitle")}</div>
-      {rows.length === 0 && <div style={{ fontSize: 12.5, color: C.mute, padding: "8px 0" }}>{t("budgets.none")}</div>}
+      <div style={{ fontSize: 15, fontWeight: 700, color: C.text, margin: "2px 0 2px" }}>{t("Envelope budgets — {month}", { month: monthLabel(state.month, lang) })}</div>
+      <div style={{ fontSize: 11.5, color: C.mute, marginBottom: 10 }}>{t("This month's spending vs. the envelope budget (allocation + carry-over).")}</div>
+      {rows.length === 0 && <div style={{ fontSize: 12.5, color: C.mute, padding: "8px 0" }}>{t("No envelopes with a budget or spending this month.")}</div>}
       {rows.map(({ e, pct, left }) => {
         const barColor = pct > 100 ? "var(--danger)" : pct >= 80 ? AMBER : e.color;
         return (
@@ -447,7 +456,7 @@ function BudgetsReport({ state, M, onOpenEnvelope }: { state: StateResponse; M: 
               <span style={{ textAlign: "right", flexShrink: 0 }}>
                 <span style={{ display: "block", fontSize: 12.5, fontWeight: 700, color: pct > 100 ? "var(--danger)" : pct >= 80 ? AMBER : C.text, fontVariantNumeric: "tabular-nums" }}>{Math.round(pct)}%</span>
                 <span style={{ display: "block", fontSize: 10.5, color: left < 0 ? CORAL : C.soft, fontVariantNumeric: "tabular-nums" }}>
-                  {left < 0 ? t("budgets.over", { amount: M(-left) }) : t("budgets.left", { amount: M(left) })}
+                  {left < 0 ? t("over by {amount}", { amount: M(-left) }) : t("{amount} left", { amount: M(left) })}
                 </span>
               </span>
             </div>
@@ -483,12 +492,12 @@ function GoalsReport({ state, M, onOpenEnvelope }: { state: StateResponse; M: Ma
   const missSum = rows.reduce((s, { gp }) => s + gp.missing, 0);
   return (
     <>
-      <div style={{ fontSize: 15, fontWeight: 700, color: C.text, margin: "2px 0 2px" }}>{t("goals.title", { month: monthLabel(state.month, lang) })}</div>
-      <div style={{ fontSize: 11.5, color: C.mute, marginBottom: 10 }}>{t("goals.subtitle")}</div>
-      {rows.length === 0 && <div style={{ fontSize: 12.5, color: C.mute, padding: "8px 0" }}>{t("goals.none")}</div>}
+      <div style={{ fontSize: 15, fontWeight: 700, color: C.text, margin: "2px 0 2px" }}>{t("Envelope goals — {month}", { month: monthLabel(state.month, lang) })}</div>
+      <div style={{ fontSize: 11.5, color: C.mute, marginBottom: 10 }}>{t("Funding vs monthly targets")}</div>
+      {rows.length === 0 && <div style={{ fontSize: 12.5, color: C.mute, padding: "8px 0" }}>{t("No envelopes with a goal. Set a monthly target when editing an envelope.")}</div>}
       {rows.length > 0 && (
         <div style={{ fontSize: 12.5, fontWeight: 600, color: missSum === 0 ? SAGE : C.soft, marginBottom: 10, fontVariantNumeric: "tabular-nums" }}>
-          {missSum === 0 ? t("goals.totalDone") : t("goals.total", { pct: pctTotal, amount: M(missSum) })}
+          {missSum === 0 ? t("All goals funded ✓") : t("Funded {pct}% · {amount} to go", { pct: pctTotal, amount: M(missSum) })}
         </div>
       )}
       {rows.map(({ e, gp }) => {
@@ -500,7 +509,7 @@ function GoalsReport({ state, M, onOpenEnvelope }: { state: StateResponse; M: Ma
               <span style={{ textAlign: "right", flexShrink: 0 }}>
                 <span style={{ display: "block", fontSize: 12.5, fontWeight: 700, color: gp.funded ? SAGE : C.text, fontVariantNumeric: "tabular-nums" }}>{Math.round(gp.pct)}%</span>
                 <span style={{ display: "block", fontSize: 10.5, color: gp.funded ? SAGE : C.soft, fontVariantNumeric: "tabular-nums" }}>
-                  {gp.funded ? t("goals.done") : t("goals.missing", { amount: M(gp.missing) })}
+                  {gp.funded ? t("funded ✓") : t("{amount} to go", { amount: M(gp.missing) })}
                 </span>
               </span>
             </div>
@@ -534,7 +543,7 @@ function NetWorthChart({ points, mask }: { points: { month: string; total: numbe
   const area = `${line} L${x(n - 1).toFixed(1)} ${(H - padY).toFixed(1)} L${x(0).toFixed(1)} ${(H - padY).toFixed(1)} Z`;
   return (
     <div style={{ marginBottom: 6 }}>
-      <svg viewBox={`0 0 ${W} ${H}`} width="100%" style={{ display: "block", height: "auto" }} role="img" aria-label={t("reports.netWorthChartAria")}>
+      <svg viewBox={`0 0 ${W} ${H}`} width="100%" style={{ display: "block", height: "auto" }} role="img" aria-label={t("Net worth over time")}>
         {/* fill/stroke via style — var(--accent) does not work in SVG presentation attributes */}
         <path d={area} style={{ fill: TEAL }} opacity={0.12} />
         <path d={line} fill="none" style={{ stroke: TEAL }} strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" vectorEffect="non-scaling-stroke" />
@@ -544,7 +553,7 @@ function NetWorthChart({ points, mask }: { points: { month: string; total: numbe
       </svg>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginTop: 4, fontSize: 10.5, color: C.mute }}>
         <span>{monthLabel(points[0]!.month, lang).split(" ")[0]}</span>
-        <span style={{ fontVariantNumeric: "tabular-nums" }}>{t("reports.chartRange", { min: mask(min), max: mask(max) })}</span>
+        <span style={{ fontVariantNumeric: "tabular-nums" }}>{t("range {min}–{max}", { min: mask(min), max: mask(max) })}</span>
         <span>{monthLabel(points[n - 1]!.month, lang).split(" ")[0]}</span>
       </div>
     </div>

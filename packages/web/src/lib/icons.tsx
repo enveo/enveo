@@ -1,4 +1,5 @@
 import { useTheme } from "./contexts";
+import { msg, type Message } from "./i18n";
 
 /** A set of hand-drawn stroke SVG icons (24×24). From the prototype. */
 export const ICONS: Record<string, string[]> = {
@@ -85,15 +86,15 @@ export const ICONS: Record<string, string[]> = {
 };
 
 /** Icon picker categories (order = section order). "dots" = UI, outside the picker. */
-export const ICON_CATEGORIES: Array<{ label: string; icons: string[] }> = [
-  { label: "picker.catFinance", icons: ["wallet", "card", "banknote", "coins", "piggy", "safe", "moneybag", "receipt", "cart", "shopbag", "store", "percent", "scales", "briefcase", "tag"] },
-  { label: "picker.catHome", icons: ["house", "building", "sofa", "bed", "lamp", "bolt", "drop", "flame", "wifi", "phone", "trash"] },
-  { label: "picker.catFood", icons: ["food", "coffee", "pizza", "burger", "apple", "carrot", "wine", "beer", "cake"] },
-  { label: "picker.catTransport", icons: ["car", "bus", "bike", "fuel", "train", "plane"] },
-  { label: "picker.catHealth", icons: ["heart", "pill", "medkit", "dumbbell", "flower", "scissors"] },
-  { label: "picker.catFun", icons: ["play", "music", "gamepad", "book", "camera", "ticket", "laptop", "rocket", "graduation", "gift"] },
-  { label: "picker.catPeople", icons: ["person", "people", "baby", "paw"] },
-  { label: "picker.catOther", icons: ["star", "umbrella", "globe", "calendar", "shield", "leaf", "envelope"] },
+export const ICON_CATEGORIES: Array<{ label: Message; icons: string[] }> = [
+  { label: msg("Finance & shopping"), icons: ["wallet", "card", "banknote", "coins", "piggy", "safe", "moneybag", "receipt", "cart", "shopbag", "store", "percent", "scales", "briefcase", "tag"] },
+  { label: msg("Home & bills"), icons: ["house", "building", "sofa", "bed", "lamp", "bolt", "drop", "flame", "wifi", "phone", "trash"] },
+  { label: msg("Food & drink"), icons: ["food", "coffee", "pizza", "burger", "apple", "carrot", "wine", "beer", "cake"] },
+  { label: msg("Transport"), icons: ["car", "bus", "bike", "fuel", "train", "plane"] },
+  { label: msg("Health & fitness"), icons: ["heart", "pill", "medkit", "dumbbell", "flower", "scissors"] },
+  { label: msg("Leisure & learning"), icons: ["play", "music", "gamepad", "book", "camera", "ticket", "laptop", "rocket", "graduation", "gift"] },
+  { label: msg("People & pets"), icons: ["person", "people", "baby", "paw"] },
+  { label: msg("Other"), icons: ["star", "umbrella", "globe", "calendar", "shield", "leaf", "envelope"] },
 ];
 
 export function Glyph({ name, size = 20, color, sw = 1.7 }: { name: string; size?: number; color: string; sw?: number }) {

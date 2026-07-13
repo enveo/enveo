@@ -1,13 +1,19 @@
 import { useCurrency, useSettings, useTheme } from "../../lib/contexts";
 import { SUPPORTED_CURRENCIES } from "../../lib/currency";
-import { useT } from "../../lib/i18n";
+import { loadLocale, msg, useT, type Lang, type Message } from "../../lib/i18n";
 import { local } from "../../lib/mutate";
 import { store } from "../../lib/store";
 import { font, TEAL, THEMES, type AccentTheme } from "../../lib/theme";
 import { Row, Seg } from "./ui";
 
-/** Order of theme tiles in Settings. */
+/** Order of theme tiles in Settings, and the name of each (the ids are historical). */
 const THEME_IDS: AccentTheme[] = ["teal", "koral", "atrament", "duet"];
+const THEME_LABEL: Record<AccentTheme, Message> = {
+  teal: msg("Sage"),
+  koral: msg("Coral"),
+  atrament: msg("Ink"),
+  duet: msg("Duo"),
+};
 
 /** Color theme picker tiles: an 18px circle in the theme accent (duet = two half-circles), name, accent border on the selected one. */
 function ThemeTiles() {
@@ -39,7 +45,7 @@ function ThemeTiles() {
             ) : (
               <div style={{ width: 18, height: 18, borderRadius: "50%", background: accent }} />
             )}
-            <span style={{ fontSize: 11, fontWeight: 600, color: active ? C.text : C.soft }}>{t(`theme.${id}`)}</span>
+            <span style={{ fontSize: 11, fontWeight: 600, color: active ? C.text : C.soft }}>{t(THEME_LABEL[id])}</span>
           </button>
         );
       })}
@@ -62,28 +68,29 @@ export function AppearanceSection() {
   return (
     <div style={{ marginTop: 4 }}>
       <ThemeTiles />
-      <Row label={t("settings.theme")}>
+      <Row label={t("Theme")}>
         <Seg
           value={settings.themeMode}
           onChange={(id) => setSettings({ ...settings, themeMode: id })}
           options={[
-            { id: "light", label: t("settings.themeLight") },
-            { id: "dark", label: t("settings.themeDark") },
-            { id: "auto", label: t("settings.themeAuto") },
+            { id: "light", label: t("Light") },
+            { id: "dark", label: t("Dark") },
+            { id: "auto", label: t("Auto") },
           ]}
         />
       </Row>
-      <Row label={t("settings.language")}>
+      <Row label={t("Language")}>
         <Seg
           value={settings.lang}
-          onChange={(id) => setSettings({ ...settings, lang: id })}
+          /* the locale chunk is fetched BEFORE the switch — otherwise the UI flashes English */
+          onChange={(id: Lang) => void loadLocale(id).then(() => setSettings({ ...settings, lang: id }))}
           options={[
             { id: "pl", label: "PL" },
             { id: "en", label: "EN" },
           ]}
         />
       </Row>
-      <Row label={t("settings.currency")}>
+      <Row label={t("Currency")}>
         <select
           value={currency}
           disabled={!budgetId}
@@ -99,7 +106,7 @@ export function AppearanceSection() {
           ))}
         </select>
       </Row>
-      <Row label={t("settings.discreet")}>
+      <Row label={t("Discreet mode")}>
         <button onClick={() => setSettings({ ...settings, discreet: !settings.discreet })} style={{ width: 44, height: 25, borderRadius: 13, background: settings.discreet ? TEAL : C.line, position: "relative", border: "none", cursor: "pointer", transition: "background .2s" }}>
           <div style={{ width: 21, height: 21, borderRadius: "50%", background: "#fff", position: "absolute", top: 2, left: settings.discreet ? 21 : 2, transition: "left .2s", boxShadow: "0 1px 2px rgba(0,0,0,0.2)" }} />
         </button>

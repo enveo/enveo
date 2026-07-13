@@ -1,6 +1,8 @@
 import { createContext, useContext, useEffect, useMemo, useState, useSyncExternalStore, type ReactNode } from "react";
 import { browserLocales, currencyForLocales } from "./currency";
 import { formatMoney } from "./format";
+// the REGISTRY, not lib/i18n: that one reads useSettings() from here — importing it would close the cycle
+import { detectLang, type Lang } from "./i18n/registry";
 import { store } from "./store";
 import { light, themeTokens, type AccentTheme, type Theme } from "./theme";
 
@@ -12,7 +14,7 @@ export interface Settings {
   /** Color theme (per device, like themeMode). */
   accentTheme: AccentTheme;
   discreet: boolean;
-  lang: "pl" | "en";
+  lang: Lang;
   /** AI mode (a DEVICE setting — never synchronized). */
   aiMode: AiMode;
   /** OpenAI key (byok) — lives EXCLUSIVELY in this browser's localStorage. */
@@ -23,10 +25,6 @@ export interface Settings {
   /** Custom "Suggest" profiles (per DEVICE — no synchronization, MVP). */
   customProfiles: Array<{ id: string; name: string; prompt: string }>;
 }
-
-/** Default language from the browser (no i18n import — avoids a cycle). */
-const detectLang = (): "pl" | "en" =>
-  typeof navigator !== "undefined" && (navigator.language || "").toLowerCase().startsWith("pl") ? "pl" : "en";
 
 const DEFAULT_SETTINGS: Settings = {
   themeMode: "light",

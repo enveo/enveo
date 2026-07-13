@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useTheme } from "../lib/contexts";
-import { useT, type TKey } from "../lib/i18n";
+import { useT, type Message } from "../lib/i18n";
 import { isNoteDismissed, setNoteDismissed } from "../lib/reportNotes";
 
 /**
@@ -15,7 +15,7 @@ import { isNoteDismissed, setNoteDismissed } from "../lib/reportNotes";
  * - Colors EXCLUSIVELY neutral (C.inset/C.line/C.mute/C.soft/C.text) — zero
  *   var(--accent)/var(--danger); in reports red means overspending.
  */
-export function ReportInfoNote({ id, textKey }: { id: string; textKey: TKey }) {
+export function ReportInfoNote({ id, textKey }: { id: string; textKey: Message }) {
   const C = useTheme();
   const { t } = useT();
   const [dismissed, setDismissed] = useState(() => isNoteDismissed(id));
@@ -30,7 +30,7 @@ export function ReportInfoNote({ id, textKey }: { id: string; textKey: TKey }) {
       <div style={{ display: "flex", justifyContent: "flex-end", margin: "0 0 10px" }}>
         <button
           type="button"
-          aria-label={t("note.showAria")}
+          aria-label={t("Show hint")}
           onClick={() => toggle(false)}
           style={{
             width: 24,
@@ -92,7 +92,7 @@ export function ReportInfoNote({ id, textKey }: { id: string; textKey: TKey }) {
       <span style={{ flex: 1 }}>{renderBold(t(textKey), C.text)}</span>
       <button
         type="button"
-        aria-label={t("note.hideAria")}
+        aria-label={t("Collapse hint")}
         onClick={() => toggle(true)}
         style={{
           flexShrink: 0,

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { upcomingPayments } from "@enveo/shared";
 import { Glyph, Ico } from "../lib/icons";
 import { useCurrency, useMask, useTheme } from "../lib/contexts";
-import { useT, type Lang } from "../lib/i18n";
+import { useT, type Lang, msg } from "../lib/i18n";
 import { CORAL, INCOME, P, SAGE_BG, SAGE_TX, TEAL, font } from "../lib/theme";
 import { AccCard, accountIconColor, EnvTile } from "../components/tiles";
 import { AmountPadHost, type AmountPadTarget } from "../components/AmountPadSheet";
@@ -78,8 +78,8 @@ export function StartScreen({
       <Header month={month} onMenu={onMenu} onPrev={onPrev} onNext={onNext} onRight={() => setEditLayout((v) => !v)} rightIcon="pencil" />
       {editLayout && (
         <div style={{ display: "flex", alignItems: "center", gap: 8, margin: `0 ${P}px 8px`, padding: "7px 12px", background: "var(--accent-14)", border: `1px solid var(--accent-44)`, borderRadius: 10 }}>
-          <span style={{ flex: 1, fontSize: 11, color: C.soft }}>{t("start.editLayoutHint")}</span>
-          <button onClick={() => setEditLayout(false)} style={{ padding: "6px 14px", borderRadius: 8, border: "none", background: TEAL, color: "#fff", fontSize: 11, fontWeight: 600, cursor: "pointer" }}>{t("common.done")}</button>
+          <span style={{ flex: 1, fontSize: 11, color: C.soft }}>{t("Drag a tile to change the order")}</span>
+          <button onClick={() => setEditLayout(false)} style={{ padding: "6px 14px", borderRadius: 8, border: "none", background: TEAL, color: "#fff", fontSize: 11, fontWeight: 600, cursor: "pointer" }}>{t("Done")}</button>
         </div>
       )}
       {/* Empty states (backstop outside the wizard): missing accounts OR envelopes → CTA below the header */}
@@ -87,12 +87,12 @@ export function StartScreen({
         <div style={{ display: "flex", flexDirection: "column", gap: 8, margin: `0 ${P}px 10px`, padding: "12px 14px", background: "var(--accent-14)", border: `1px solid var(--accent-44)`, borderRadius: 12 }}>
           {accounts.length === 0 && (
             <button onClick={() => onNav("accounts")} style={{ padding: "10px 0", borderRadius: 10, border: "none", background: TEAL, color: "#fff", fontSize: 12.5, fontWeight: 600, cursor: "pointer", fontFamily: font }}>
-              {t("onb.ctaAccounts")}
+              {t("Add your first account")}
             </button>
           )}
           {envelopes.length === 0 && (
             <button onClick={() => onNav("budget")} style={{ padding: "10px 0", borderRadius: 10, border: `1px solid ${TEAL}`, background: "transparent", color: TEAL, fontSize: 12.5, fontWeight: 600, cursor: "pointer", fontFamily: font }}>
-              {t("onb.ctaEnvelopes")}
+              {t("Create envelopes")}
             </button>
           )}
         </div>
@@ -101,13 +101,13 @@ export function StartScreen({
         <div style={{ flex: 1, display: "flex", gap: 16, alignItems: "center" }}>
           <div>
             <div style={{ fontSize: 10.5, color: C.soft }}>
-              <span style={{ color: INCOME }}>↑</span> {t("start.income")}
+              <span style={{ color: INCOME }}>↑</span> {t("Income")}
             </div>
             <div style={{ fontSize: 14.5, fontWeight: 700, color: C.text, fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap" }}>{MW(state.monthIncome)}</div>
           </div>
           <div>
             <div style={{ fontSize: 10.5, color: C.soft }}>
-              <span style={{ color: CORAL }}>↓</span> {t("start.expense")}
+              <span style={{ color: CORAL }}>↓</span> {t("Expense")}
             </div>
             <div style={{ fontSize: 14.5, fontWeight: 700, color: C.text, fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap" }}>{MW(state.monthExpense)}</div>
           </div>
@@ -117,7 +117,7 @@ export function StartScreen({
             <Glyph name="moneybag" size={14} color={state.toBeBudgeted < 0 ? "#fff" : SAGE_TX} sw={1.6} />
             <span style={{ fontSize: 14, fontWeight: 700, color: state.toBeBudgeted < 0 ? "#fff" : SAGE_TX, fontVariantNumeric: "tabular-nums" }}>{M(state.toBeBudgeted)}</span>
           </div>
-          <div style={{ fontSize: 10, color: state.toBeBudgeted < 0 ? "#fff" : SAGE_TX, opacity: 0.85 }}>{t("start.toBeBudgeted")}</div>
+          <div style={{ fontSize: 10, color: state.toBeBudgeted < 0 ? "#fff" : SAGE_TX, opacity: 0.85 }}>{t("To be budgeted")}</div>
         </div>
       </div>
 
@@ -148,8 +148,8 @@ export function StartScreen({
       {upcoming.length > 0 && (
         <div style={{ padding: `0 ${P}px 10px` }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 4 }}>
-            <span style={{ fontSize: 14, fontWeight: 700, color: C.text }}>{t("subs.upcoming")}</span>
-            <button onClick={onSeeUpcoming} style={{ background: "none", border: "none", padding: 0, color: TEAL, fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: font }}>{t("subs.seeAll")}</button>
+            <span style={{ fontSize: 14, fontWeight: 700, color: C.text }}>{t("Upcoming")}</span>
+            <button onClick={onSeeUpcoming} style={{ background: "none", border: "none", padding: 0, color: TEAL, fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: font }}>{t("see all →")}</button>
           </div>
           {upcoming.map((u) => {
             const env = u.txn.envelopeId ? state.envelopes.find((e) => e.id === u.txn.envelopeId) : undefined;
@@ -182,9 +182,9 @@ export function StartScreen({
             <div style={{ height: 1, background: C.line, margin: "0 0 12px" }} />
             {(
               [
-                [t("start.balance"), M(selAcc.balance), C.text],
-                [t("start.cleared"), M(selAcc.cleared), C.text],
-                [t("start.uncleared"), M(selAcc.uncleared), selAcc.uncleared !== 0 ? CORAL : C.text],
+                [t("Balance"), M(selAcc.balance), C.text],
+                [t("Cleared"), M(selAcc.cleared), C.text],
+                [t("Uncleared"), M(selAcc.uncleared), selAcc.uncleared !== 0 ? CORAL : C.text],
               ] as const
             ).map((r) => (
               <div key={r[0]} style={{ display: "flex", justifyContent: "space-between", marginBottom: 7 }}>
@@ -195,8 +195,8 @@ export function StartScreen({
             <div style={{ display: "flex", justifyContent: "space-evenly", marginTop: 16 }}>
               {(
                 [
-                  ["M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2", t("nav.transactions"), () => { const a = selAcc; setSelAcc(null); onOpenTxns({ accId: a.id }); }],
-                  ["M8 7h12m0 0l-4-4m4 4l-4 4M16 17H4m0 0l4 4m-4-4l4-4", t("start.reconcile"), () => { const a = selAcc; setSelAcc(null); setReconcile(a); }],
+                  ["M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2", t("Transactions"), () => { const a = selAcc; setSelAcc(null); onOpenTxns({ accId: a.id }); }],
+                  ["M8 7h12m0 0l-4-4m4 4l-4 4M16 17H4m0 0l4 4m-4-4l4-4", t("Reconcile"), () => { const a = selAcc; setSelAcc(null); setReconcile(a); }],
                 ] as const
               ).map(([d, label, onClick]) => (
                 <button key={label} onClick={onClick} style={{ background: "none", border: "none", cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 7, padding: 0 }}>
@@ -249,7 +249,7 @@ function ReconcileSheet({ account, onClose }: { account: AccountView | null; onC
   if (!account) return null;
   const openPad = () =>
     setPad({
-      label: t("start.realBalance"),
+      label: t("Actual balance (from your bank)"),
       initial: parseAmount(val) ?? 0,
       allowNegative: true, // the real account balance may be negative (e.g. a credit card)
       onCommit: (minor) => setVal(fmtSignedTrim(minor)),
@@ -266,7 +266,7 @@ function ReconcileSheet({ account, onClose }: { account: AccountView | null; onC
       confirmed: true,
       envelopeId: null,
       // the note is transaction DATA — saved in the language active at creation time
-      note: t("start.reconcileNote"),
+      note: t("Balance adjustment"),
     });
     onClose();
   };
@@ -275,28 +275,28 @@ function ReconcileSheet({ account, onClose }: { account: AccountView | null; onC
     <Sheet show={!!account} onClose={onClose}>
       {(C) => (
         <>
-          <div style={{ fontSize: 17, fontWeight: 700, color: C.text }}>{t("start.reconcileTitle")}</div>
+          <div style={{ fontSize: 17, fontWeight: 700, color: C.text }}>{t("Reconcile account")}</div>
           <div style={{ fontSize: 12.5, color: C.soft, marginBottom: 16 }}>{account.name}</div>
           <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 12 }}>
-            <span style={{ fontSize: 13, color: C.soft }}>{t("start.balanceInApp")}</span>
+            <span style={{ fontSize: 13, color: C.soft }}>{t("Balance in the app")}</span>
             <span style={{ fontSize: 13, fontWeight: 600, color: C.text, fontVariantNumeric: "tabular-nums" }}>{M(account.balance)}</span>
           </div>
-          <div style={{ fontSize: 10.5, color: C.mute, fontWeight: 600, textTransform: "uppercase", letterSpacing: 0.6, marginBottom: 6 }}>{t("start.realBalance")}</div>
+          <div style={{ fontSize: 10.5, color: C.mute, fontWeight: 600, textTransform: "uppercase", letterSpacing: 0.6, marginBottom: 6 }}>{t("Actual balance (from your bank)")}</div>
           <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 12 }}>
             <input value={val} readOnly onClick={openPad} onFocus={openPad} style={{ flex: 1, padding: "9px 11px", borderRadius: 9, border: `1px solid ${C.line}`, background: C.surface, color: C.text, fontSize: 16, fontWeight: 600, fontFamily: font, outline: "none", fontVariantNumeric: "tabular-nums", cursor: "pointer" }} />
             <span style={{ color: C.mute, fontSize: 13 }}>{currencySymbol(currency, lang)}</span>
           </div>
           {real !== null && diff !== 0 && (
             <div style={{ fontSize: 12.5, marginBottom: 12, color: diff > 0 ? INCOME : CORAL }}>
-              {t("start.reconcileDiff", {
+              {t("Difference: {sign}{amount} → this will create a correcting {kind}", {
                 sign: diff > 0 ? "+" : "−",
                 amount: M(Math.abs(diff)),
-                kind: t(diff > 0 ? "start.reconcileKindIncome" : "start.reconcileKindExpense"),
+                kind: t(diff > 0 ? msg("income") : msg("expense")),
               })}
             </div>
           )}
           <button onClick={submit} disabled={real === null || diff === 0} style={{ width: "100%", padding: "12px 0", borderRadius: 12, border: "none", background: TEAL, color: "#fff", fontSize: 13.5, fontWeight: 600, cursor: "pointer", opacity: real === null || diff === 0 ? 0.5 : 1 }}>
-            {real !== null && diff === 0 ? t("start.balanceMatches") : t("start.reconcile")}
+            {real !== null && diff === 0 ? t("Balance matches") : t("Reconcile")}
           </button>
         </>
       )}

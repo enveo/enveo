@@ -5,18 +5,18 @@ import { AiConsentSheet } from "./AiConsentSheet";
 import { AmountPadHost, type AmountPadTarget } from "./AmountPadSheet";
 import { useCurrency, useSettings, type Settings } from "../lib/contexts";
 import { currencySymbol, fmtTrim, formatMoney, isLight, parseAmount } from "../lib/format";
-import { useT, type TKey } from "../lib/i18n";
+import { useT, type Message, msg } from "../lib/i18n";
 import { Glyph, Ico } from "../lib/icons";
 import { CORAL, CTA, SAGE_BG, SAGE_TX, TEAL, font, type Theme } from "../lib/theme";
 import { apiErrorMessage, type BudgetSuggestProfile, type BudgetSuggestResponse, type StateResponse } from "../lib/api";
-import { runSuggest } from "../lib/ai";
+import { aiLocale, runSuggest } from "../lib/ai";
 import { local } from "../lib/mutate";
 import { store } from "../lib/store";
 
 /** Predefined rules-engine strategies (no "custom" — user-defined ones are always named). */
-const PROFILES: Array<{ id: BudgetSuggestProfile; labelKey: TKey; descKey: TKey }> = [
-  { id: "cautious", labelKey: "suggest.profileCautious", descKey: "suggest.engineCautious" },
-  { id: "investor", labelKey: "suggest.profileInvestor", descKey: "suggest.engineInvestor" },
+const PROFILES: Array<{ id: BudgetSuggestProfile; labelKey: Message; descKey: Message }> = [
+  { id: "cautious", labelKey: msg("By history"), descKey: msg("Median of historical monthly spending — resistant to one-off spikes; the free remainder is spread proportionally.") },
+  { id: "investor", labelKey: msg("Investor"), descKey: msg("Savings envelopes first — the free remainder goes to them.") },
 ];
 
 const LOCK_D = "M8 11V7a4 4 0 018 0v4M6 11h12v9H6z";
@@ -36,23 +36,27 @@ const prevMonthOf = (month: string): string => {
 };
 
 /**
- * Engine warning code → dictionary key. "remainder" is skipped (covered by a
- * separate `suggest.warnRemainder` line with the amount); the remaining codes
- * (warn.*) are already dictionary keys.
+ * Engine warning CODE → the sentence a user reads. The suggestion engines (shared/aiBudget.ts and
+ * the /budget/suggest route) emit codes, never prose — the wording lives here, in every locale.
+ * "remainder" is skipped: its own line below carries the amount. An unknown code renders nothing
+ * (a raw `warn.*` on screen is worse than silence).
  */
-const warnKey = (w: string): TKey | null =>
-  w === "over_tbb" ? "suggest.warnOverTbb"
-  : w === "agent_empty" ? "suggest.warnAgentEmpty"
-  : w === "agent_requires_ai" ? "suggest.customNeedsAi"
-  : w === "remainder" ? null
-  : (w as TKey);
+const WARNINGS: Record<string, Message> = {
+  over_tbb: msg("The proposal exceeds “To be budgeted” — uncheck or reduce items."),
+  agent_empty: msg("The agent proposed no distribution — refine your prompt."),
+  agent_requires_ai: msg("Requires AI (server mode or your own key)."),
+  "warn.capped": msg("Some funds stayed in To be budgeted — envelopes are at their target caps."),
+  "warn.nothingToDistribute": msg("To be budgeted is ≤ 0 — there is nothing to distribute."),
+  "warn.aiUnavailable": msg("AI unavailable — rules were used instead."),
+};
+const warnMessage = (w: string): Message | undefined => WARNINGS[w];
 
 /** Agent tool → label in the "Agent checked: …" line (submit and unknown tools skipped). */
-const TRACE_LABELS: Record<string, TKey> = {
-  get_month_state: "suggest.traceState",
-  get_history: "suggest.traceHistory",
-  get_spending: "suggest.traceSpending",
-  get_goals: "suggest.traceGoals",
+const TRACE_LABELS: Record<string, Message> = {
+  get_month_state: msg("month state"),
+  get_history: msg("history"),
+  get_spending: msg("spending breakdown"),
+  get_goals: msg("goals"),
 };
 
 export function BudgetSuggestSheet({ show, state, month, onClose }: { show: boolean; state: StateResponse; month: string; onClose: () => void }) {
@@ -99,11 +103,11 @@ export function BudgetSuggestSheet({ show, state, month, onClose }: { show: bool
 
   const doGenerate = async () => {
     const ledger = store.getLedger();
-    if (!ledger) { setError(t("suggest.replicaNotReady")); return; }
+    if (!ledger) { setError(t("The local replica is not ready.")); return; }
     setPhase("loading");
     setError(null);
     try {
-      const r = await runSuggest({ ledger, month, profile, customPrompt: effectivePrompt, locale: lang, settings });
+      const r = await runSuggest({ ledger, month, profile, customPrompt: effectivePrompt, locale: aiLocale(lang), settings });
       startReview(r);
     } catch (e) {
       setError(apiErrorMessage(e));
@@ -114,7 +118,7 @@ export function BudgetSuggestSheet({ show, state, month, onClose }: { show: bool
   /** Deterministic strategies: computed LOCALLY on the replica — zero AI, zero fetch, zero consent. */
   const doDetGenerate = (kind: DetStrategy) => {
     const ledger = store.getLedger();
-    if (!ledger) { setError(t("suggest.replicaNotReady")); return; }
+    if (!ledger) { setError(t("The local replica is not ready.")); return; }
     setError(null);
     const basis = buildBudgetSuggestionBasis({ ledger, month, profile: "historical" });
     const norm: NormalizedBudgetSuggestion =
@@ -167,7 +171,7 @@ export function BudgetSuggestSheet({ show, state, month, onClose }: { show: bool
     const ledger = store.getLedger();
     const live = ledger ? computeStateResponse(ledger, month) : null;
     if (!live || live.toBeBudgeted !== resp.amountToDistribute) {
-      setError(t("suggest.staleBudget"));
+      setError(t("The budget has changed since this was generated — generate a new suggestion."));
       return;
     }
     // Apply covers ONLY checked items with a positive (edited) delta — partial application is OK.
@@ -175,7 +179,7 @@ export function BudgetSuggestSheet({ show, state, month, onClose }: { show: bool
     for (const it of chosen) {
       const liveEnv = live.envelopes.find((e) => e.id === it.envelopeId);
       if (!liveEnv || liveEnv.archived || liveEnv.allocated !== it.currentAllocated) {
-        setError(t("suggest.staleEnvelopes"));
+        setError(t("Envelopes have changed since this was generated — generate a new suggestion."));
         return;
       }
     }
@@ -209,7 +213,7 @@ export function BudgetSuggestSheet({ show, state, month, onClose }: { show: bool
 
   /** Agent trace labels: duplicates merged (Set over keys), ordered by first invocation. */
   const traceLabels = resp?.trace
-    ? [...new Set(resp.trace.map((s) => TRACE_LABELS[s.tool]).filter((k): k is TKey => k !== undefined))].map((k) => t(k))
+    ? [...new Set(resp.trace.map((s) => TRACE_LABELS[s.tool]).filter((k): k is Message => k !== undefined))].map((k) => t(k))
     : [];
 
   const sumChecked = resp ? resp.items.reduce((s, it) => s + (checked[it.envelopeId] ? deltaOf(it) : 0), 0) : 0;
@@ -232,22 +236,22 @@ export function BudgetSuggestSheet({ show, state, month, onClose }: { show: bool
     <Sheet show={show} onClose={close}>
       {(C) => (
         <>
-          <div style={{ fontSize: 17, fontWeight: 700, color: C.text, marginBottom: 4 }}>{t("suggest.title")}</div>
+          <div style={{ fontSize: 17, fontWeight: 700, color: C.text, marginBottom: 4 }}>{t("Suggest a distribution")}</div>
           <div style={{ fontSize: 12.5, color: C.soft, marginBottom: 14 }}>
-            {t("budget.toBeBudgeted")} <b style={{ color: state.toBeBudgeted < 0 ? CORAL : C.text, fontVariantNumeric: "tabular-nums" }}>{formatMoney(Math.max(0, state.toBeBudgeted), currency, lang, { trim: true })}</b>
+            {t("To be budgeted:")} <b style={{ color: state.toBeBudgeted < 0 ? CORAL : C.text, fontVariantNumeric: "tabular-nums" }}>{formatMoney(Math.max(0, state.toBeBudgeted), currency, lang, { trim: true })}</b>
           </div>
 
           {phase !== "review" && (
             <>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", margin: "2px 0 8px" }}>
-                <span style={{ fontSize: 11, fontWeight: 700, color: C.mute, letterSpacing: 0.5, textTransform: "uppercase" }}>{t("suggest.strategy")}</span>
-                <button onClick={() => setShowManage(true)} aria-label={t("suggest.manage")} style={{ width: 28, height: 28, borderRadius: 9, border: "none", background: C.inset, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                <span style={{ fontSize: 11, fontWeight: 700, color: C.mute, letterSpacing: 0.5, textTransform: "uppercase" }}>{t("Strategy")}</span>
+                <button onClick={() => setShowManage(true)} aria-label={t("Manage…")} style={{ width: 28, height: 28, borderRadius: 9, border: "none", background: C.inset, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>
                   <Ico d={GEAR_D} size={15} color={C.soft} sw={1.4} />
                 </button>
               </div>
               <div style={{ display: "flex", flexDirection: "column", gap: 7, marginBottom: 14 }}>
-                <StrategyOption C={C} name={t("suggest.topUp")} desc={t("suggest.topUpDesc")} badge="noai" active={det === "topUp"} onSelect={() => { setDet("topUp"); setSelCustom(null); }} />
-                <StrategyOption C={C} name={t("suggest.prevMonth")} desc={t("suggest.prevMonthDesc")} badge="noai" active={det === "prevMonth"} onSelect={() => { setDet("prevMonth"); setSelCustom(null); }} />
+                <StrategyOption C={C} name={t("Top up negatives")} desc={t("Distributes the amount only to envelopes in the red — proportionally to shortfalls, never past zero.")} badge="noai" active={det === "topUp"} onSelect={() => { setDet("topUp"); setSelCustom(null); }} />
+                <StrategyOption C={C} name={t("Like last month")} desc={t("Tops envelopes up to last month's allocations. Uncheck what you don't want.")} badge="noai" active={det === "prevMonth"} onSelect={() => { setDet("prevMonth"); setSelCustom(null); }} />
                 {PROFILES.map((p) => (
                   <StrategyOption key={p.id} C={C} name={t(p.labelKey)} desc={t(p.descKey)} badge={settings.aiMode === "off" ? "noai" : "ai"} active={!det && profile === p.id && !selProfile} onSelect={() => { setDet(null); setProfile(p.id); setSelCustom(null); }} />
                 ))}
@@ -256,9 +260,9 @@ export function BudgetSuggestSheet({ show, state, month, onClose }: { show: bool
                     key={cp.id}
                     C={C}
                     name={`✎ ${cp.name}`}
-                    desc={`„${cp.prompt}"`}
+                    desc={`“${cp.prompt}”`}
                     badge="ai"
-                    note={customDisabled ? t("suggest.customNeedsAi") : undefined}
+                    note={customDisabled ? t("Requires AI (server mode or your own key).") : undefined}
                     disabled={customDisabled}
                     active={!det && selProfile?.id === cp.id}
                     onSelect={() => { setDet(null); setProfile("custom"); setSelCustom(cp.id); }}
@@ -267,7 +271,7 @@ export function BudgetSuggestSheet({ show, state, month, onClose }: { show: bool
               </div>
               {error && <div style={{ fontSize: 12.5, color: CORAL, marginBottom: 10 }}>{error}</div>}
               <button onClick={generate} disabled={phase === "loading" || state.toBeBudgeted <= 0} style={{ width: "100%", padding: "12px 0", borderRadius: 12, border: "none", background: CTA, color: "#fff", fontSize: 13.5, fontWeight: 600, cursor: "pointer", opacity: phase === "loading" || state.toBeBudgeted <= 0 ? 0.5 : 1 }}>
-                {phase === "loading" ? t("suggest.generating") : state.toBeBudgeted <= 0 ? t("suggest.nothingToDistribute") : t("suggest.generateBtn")}
+                {phase === "loading" ? t("Generating…") : state.toBeBudgeted <= 0 ? t("No funds to distribute") : t("Generate suggestion")}
               </button>
             </>
           )}
@@ -275,18 +279,18 @@ export function BudgetSuggestSheet({ show, state, month, onClose }: { show: bool
           {phase === "review" && resp && (
             <>
               <div style={{ fontSize: 11, color: C.mute, marginBottom: 6 }}>
-                {t("suggest.source", { src: resp.source === "rules" ? t("suggest.sourceRules") : resp.source === "ai" ? t("suggest.sourceAi") : t("suggest.sourceAiFixed") })}
+                {t("Source: {src}", { src: resp.source === "rules" ? t("rules") : resp.source === "ai" ? t("AI") : t("AI (corrected)") })}
                 {resp.warnings.map((w, i) => {
-                  const k = warnKey(w);
-                  return k ? <div key={i} style={{ color: CORAL, marginTop: 3 }}>{t(k)}</div> : null;
+                  const m = warnMessage(w);
+                  return m ? <div key={i} style={{ color: CORAL, marginTop: 3 }}>{t(m)}</div> : null;
                 })}
-                {resp.undistributedRemainder > 0 && <div style={{ color: CORAL, marginTop: 3 }}>{t("suggest.warnRemainder", { amount: formatMoney(resp.undistributedRemainder, currency, lang, { trim: true }) })}</div>}
+                {resp.undistributedRemainder > 0 && <div style={{ color: CORAL, marginTop: 3 }}>{t("{amount} stays in “To be budgeted”.", { amount: formatMoney(resp.undistributedRemainder, currency, lang, { trim: true }) })}</div>}
               </div>
 
               {/* Agent trace: what it checked with tools before proposing (custom mode only). */}
               {traceLabels.length > 0 && (
                 <div style={{ fontSize: 12.5, color: C.soft, marginBottom: 6 }}>
-                  {t("suggest.traceChecked")} {traceLabels.join(", ")}
+                  {t("Agent checked:")} {traceLabels.join(", ")}
                 </div>
               )}
 
@@ -301,7 +305,7 @@ export function BudgetSuggestSheet({ show, state, month, onClose }: { show: bool
                       <button onClick={() => toggleGroup(s.rows)} role="checkbox" aria-checked={allOn} style={{ display: "flex", alignItems: "center", gap: 10, width: "100%", border: "none", background: "none", padding: "10px 0 6px", cursor: "pointer", textAlign: "left" }}>
                         <CheckBox on={allOn} C={C} />
                         <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: 11, fontWeight: 700, letterSpacing: 0.7, textTransform: "uppercase", color: C.soft, opacity: anyOn ? 1 : 0.5 }}>
-                          {s.name}{anyOn ? "" : ` — ${t("suggest.skipped")}`}
+                          {s.name}{anyOn ? "" : ` — ${t("skipped")}`}
                         </span>
                         <span style={{ fontSize: 11, color: C.mute, fontWeight: 600, fontVariantNumeric: "tabular-nums", textDecoration: anyOn ? "none" : "line-through" }}>
                           {formatMoney(groupSum, currency, lang, { trim: true })}
@@ -325,7 +329,7 @@ export function BudgetSuggestSheet({ show, state, month, onClose }: { show: bool
                             <div style={{ flex: 1, minWidth: 0 }}>
                               <div style={{ fontSize: 13, fontWeight: 600, color: C.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{env?.name ?? it.envelopeId}</div>
                               <div style={{ fontSize: 10.5, color: C.mute }}>
-                                {on ? t("suggest.availableAfter", { amount: formatMoney(it.currentAvailable + delta, currency, lang, { trim: true }) }) : t("suggest.skipped")}
+                                {on ? t("available after: {amount}", { amount: formatMoney(it.currentAvailable + delta, currency, lang, { trim: true }) }) : t("skipped")}
                               </div>
                             </div>
                             <div onClick={on ? () => openPadFor(it) : undefined} style={{ display: "flex", alignItems: "center", gap: 3, border: `1px solid ${on && isEdited ? TEAL : C.line}`, background: C.inset, borderRadius: 9, padding: "6px 9px", cursor: on ? "pointer" : "default" }}>
@@ -356,14 +360,14 @@ export function BudgetSuggestSheet({ show, state, month, onClose }: { show: bool
                   bar; on iOS a whole row disappeared). Side -20px (full-bleed) stays. */}
               <div style={{ position: "sticky", bottom: 0, zIndex: 3, background: C.sheet, borderTop: `1px solid ${C.line}`, margin: "10px -20px 0", padding: "10px 20px 4px" }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
-                  <span style={{ fontSize: 11.5, fontWeight: 600, color: remaining >= 0 ? SAGE_TX : CORAL }}>{t(remaining >= 0 ? "suggest.leftAfter" : "suggest.missingAfter")}</span>
+                  <span style={{ fontSize: 11.5, fontWeight: 600, color: remaining >= 0 ? SAGE_TX : CORAL }}>{t(remaining >= 0 ? msg("Left after changes") : msg("Short after changes"))}</span>
                   <span style={{ fontSize: 16, fontWeight: 700, color: remaining >= 0 ? SAGE_TX : CORAL, fontVariantNumeric: "tabular-nums" }}>
                     {(remaining >= 0 ? "+" : "−") + formatMoney(Math.abs(remaining), currency, lang, { trim: true })}
                   </span>
                 </div>
                 <div style={{ display: "flex", gap: 10 }}>
-                  <button onClick={reset} style={{ flex: 1, padding: "11px 0", borderRadius: 12, border: `1px solid ${C.line}`, background: "transparent", color: C.text, fontSize: 13, fontWeight: 600, cursor: "pointer" }}>{t("suggest.back")}</button>
-                  <button onClick={apply} disabled={nSel === 0} style={{ flex: 2, padding: "11px 0", borderRadius: 12, border: "none", background: CTA, color: "#fff", fontSize: 13.5, fontWeight: 600, cursor: "pointer", opacity: nSel === 0 ? 0.5 : 1 }}>{t("suggest.applyN", { n: nSel })}</button>
+                  <button onClick={reset} style={{ flex: 1, padding: "11px 0", borderRadius: 12, border: `1px solid ${C.line}`, background: "transparent", color: C.text, fontSize: 13, fontWeight: 600, cursor: "pointer" }}>{t("Back")}</button>
+                  <button onClick={apply} disabled={nSel === 0} style={{ flex: 2, padding: "11px 0", borderRadius: 12, border: "none", background: CTA, color: "#fff", fontSize: 13.5, fontWeight: 600, cursor: "pointer", opacity: nSel === 0 ? 0.5 : 1 }}>{t("Apply ({n})", { n: nSel })}</button>
                 </div>
               </div>
             </>
@@ -426,7 +430,7 @@ function StrategyOption({ C, name, desc, note, badge, active, disabled, onSelect
           <span style={{ fontSize: 13.5, fontWeight: 700, color: active ? TEAL : C.text, minWidth: 0 }}>{name}</span>
           {badge && (
             <span style={{ marginLeft: "auto", flexShrink: 0, marginTop: 1, fontSize: 9.5, fontWeight: 700, letterSpacing: 0.4, padding: "2px 7px", borderRadius: 8, background: badge === "noai" ? SAGE_BG : "var(--danger-18)", color: badge === "noai" ? SAGE_TX : CORAL }}>
-              {badge === "noai" ? t("suggest.badgeNoAi") : t("suggest.badgeAi")}
+              {badge === "noai" ? t("NO AI") : t("AI")}
             </span>
           )}
         </span>
@@ -456,7 +460,7 @@ function ProfileManageSheet({ show, onClose }: { show: boolean; onClose: () => v
     const prompt = form.prompt.trim();
     if (!name || !prompt) return;
     const taken = settings.customProfiles.some((p) => p.id !== form.id && p.name.trim().toLowerCase() === name.toLowerCase());
-    if (taken) { setFormError(t("suggest.nameTaken")); return; }
+    if (taken) { setFormError(t("A profile with this name already exists.")); return; }
     const next: CustomProfile[] = form.id
       ? settings.customProfiles.map((p) => (p.id === form.id ? { ...p, name, prompt } : p))
       : [...settings.customProfiles, { id: crypto.randomUUID(), name, prompt }];
@@ -465,7 +469,7 @@ function ProfileManageSheet({ show, onClose }: { show: boolean; onClose: () => v
   };
 
   const remove = (p: CustomProfile) => {
-    if (!window.confirm(t("suggest.deleteProfileConfirm", { name: p.name }))) return;
+    if (!window.confirm(t("Delete profile “{name}”?", { name: p.name }))) return;
     setSettings({ ...settings, customProfiles: settings.customProfiles.filter((x) => x.id !== p.id) });
   };
 
@@ -477,9 +481,9 @@ function ProfileManageSheet({ show, onClose }: { show: boolean; onClose: () => v
     <Sheet show={show} onClose={close}>
       {(C) => (
         <>
-          <div style={{ fontSize: 16.5, fontWeight: 700, color: C.text, marginBottom: 12 }}>{t("suggest.manage")}</div>
+          <div style={{ fontSize: 16.5, fontWeight: 700, color: C.text, marginBottom: 12 }}>{t("Manage…")}</div>
 
-          <div style={{ fontSize: 11, fontWeight: 700, color: C.mute, letterSpacing: 0.4, textTransform: "uppercase", marginBottom: 2 }}>{t("suggest.predefinedSection")}</div>
+          <div style={{ fontSize: 11, fontWeight: 700, color: C.mute, letterSpacing: 0.4, textTransform: "uppercase", marginBottom: 2 }}>{t("Predefined")}</div>
           {PROFILES.map((p) => (
             <div key={p.id} style={rowStyle(C)}>
               <span style={{ flex: 1, minWidth: 0 }}>
@@ -490,32 +494,32 @@ function ProfileManageSheet({ show, onClose }: { show: boolean; onClose: () => v
             </div>
           ))}
 
-          <div style={{ fontSize: 11, fontWeight: 700, color: C.mute, letterSpacing: 0.4, textTransform: "uppercase", margin: "14px 0 2px" }}>{t("suggest.ownSection")}</div>
+          <div style={{ fontSize: 11, fontWeight: 700, color: C.mute, letterSpacing: 0.4, textTransform: "uppercase", margin: "14px 0 2px" }}>{t("Custom")}</div>
           {settings.customProfiles.map((p) => (
             <div key={p.id} style={rowStyle(C)}>
               <span style={{ flex: 1, minWidth: 0, fontSize: 13.5, color: C.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>✎ {p.name}</span>
-              <button onClick={() => { setForm({ id: p.id, name: p.name, prompt: p.prompt }); setFormError(null); }} style={smallBtn(C)}>{t("common.edit")}</button>
-              <button onClick={() => remove(p)} style={smallBtn(C, true)}>{t("common.delete")}</button>
+              <button onClick={() => { setForm({ id: p.id, name: p.name, prompt: p.prompt }); setFormError(null); }} style={smallBtn(C)}>{t("Edit")}</button>
+              <button onClick={() => remove(p)} style={smallBtn(C, true)}>{t("Delete")}</button>
             </div>
           ))}
 
           {form ? (
             <div style={{ marginTop: 12 }}>
-              <div style={{ fontSize: 12, color: C.soft, marginBottom: 4 }}>{t("suggest.nameLabel")}</div>
+              <div style={{ fontSize: 12, color: C.soft, marginBottom: 4 }}>{t("Name")}</div>
               <input value={form.name} onChange={(e) => { setForm({ ...form, name: e.target.value }); setFormError(null); }} style={inputStyle(C)} />
-              <div style={{ fontSize: 12, color: C.soft, marginBottom: 4 }}>{t("suggest.promptLabel")}</div>
-              <textarea value={form.prompt} onChange={(e) => setForm({ ...form, prompt: e.target.value })} maxLength={2000} rows={4} placeholder={t("suggest.customPlaceholder")} style={{ ...inputStyle(C), resize: "vertical" }} />
+              <div style={{ fontSize: 12, color: C.soft, marginBottom: 4 }}>{t("Prompt")}</div>
+              <textarea value={form.prompt} onChange={(e) => setForm({ ...form, prompt: e.target.value })} maxLength={2000} rows={4} placeholder={t("Describe how to distribute (e.g. prioritize savings, less on entertainment)")} style={{ ...inputStyle(C), resize: "vertical" }} />
               {formError && <div style={{ fontSize: 12.5, color: CORAL, marginBottom: 8 }}>{formError}</div>}
               <div style={{ display: "flex", gap: 8 }}>
-                <button onClick={closeForm} style={{ flex: 1, padding: "10px 0", borderRadius: 10, border: `1px solid ${C.line}`, background: "transparent", color: C.text, fontSize: 13, fontWeight: 600, cursor: "pointer" }}>{t("common.cancel")}</button>
-                <button onClick={save} disabled={!form.name.trim() || !form.prompt.trim()} style={{ flex: 2, padding: "10px 0", borderRadius: 10, border: "none", background: CTA, color: "#fff", fontSize: 13, fontWeight: 600, cursor: "pointer", opacity: form.name.trim() && form.prompt.trim() ? 1 : 0.5 }}>{t("common.save")}</button>
+                <button onClick={closeForm} style={{ flex: 1, padding: "10px 0", borderRadius: 10, border: `1px solid ${C.line}`, background: "transparent", color: C.text, fontSize: 13, fontWeight: 600, cursor: "pointer" }}>{t("Cancel")}</button>
+                <button onClick={save} disabled={!form.name.trim() || !form.prompt.trim()} style={{ flex: 2, padding: "10px 0", borderRadius: 10, border: "none", background: CTA, color: "#fff", fontSize: 13, fontWeight: 600, cursor: "pointer", opacity: form.name.trim() && form.prompt.trim() ? 1 : 0.5 }}>{t("Save")}</button>
               </div>
             </div>
           ) : (
-            <button onClick={() => { setForm({ id: null, name: "", prompt: "" }); setFormError(null); }} style={{ width: "100%", marginTop: 12, padding: "11px 0", borderRadius: 12, border: `1px dashed ${C.line}`, background: "transparent", color: C.text, fontSize: 13, fontWeight: 600, cursor: "pointer" }}>{t("suggest.addProfile")}</button>
+            <button onClick={() => { setForm({ id: null, name: "", prompt: "" }); setFormError(null); }} style={{ width: "100%", marginTop: 12, padding: "11px 0", borderRadius: 12, border: `1px dashed ${C.line}`, background: "transparent", color: C.text, fontSize: 13, fontWeight: 600, cursor: "pointer" }}>{t("+ Add profile")}</button>
           )}
 
-          <div style={{ fontSize: 11, color: C.mute, lineHeight: 1.5, marginTop: 12 }}>{t("suggest.deviceOnly")}</div>
+          <div style={{ fontSize: 11, color: C.mute, lineHeight: 1.5, marginTop: 12 }}>{t("Custom profiles are stored only on this device.")}</div>
         </>
       )}
     </Sheet>
