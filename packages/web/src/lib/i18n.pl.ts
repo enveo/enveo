@@ -167,6 +167,13 @@ export const pl = {
   "err.tooLarge": "Wysyłka jest za duża — spróbuj z mniejszą liczbą zrzutów (albo lżejszymi).",
   "err.internal": "Serwer napotkał nieoczekiwany błąd. Nic nie zostało zmienione — spróbuj ponownie.",
 
+   
+  "err.noLocalReplica": "Lokalna kopia budżetu jeszcze się nie wczytała — nic nie zostało wysłane. Odśwież aplikację i spróbuj ponownie.",
+  "err.noEncryptionKey": "To urządzenie nie ma klucza szyfrowania — odblokuj budżet hasłem (albo kodem parowania) i spróbuj ponownie.",
+  "err.emptyUnboundReplica": "Na tym urządzeniu nie ma danych do wysłania — nic nie zostało wysłane na serwer. Odśwież aplikację, aby najpierw pobrać budżet.",
+  "err.badCiphertext": "Nie udało się odczytać zaszyfrowanych danych — nic nie zostało zmienione. Sprawdź, czy aplikacja jest aktualna, albo odtwórz dane z kopii zapasowej.",
+  "err.badPairingCode": "To nie jest poprawny kod parowania — skopiuj go ponownie z urządzenia, na którym budżet jest już odblokowany.",
+
   
 
 

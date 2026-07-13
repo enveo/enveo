@@ -84,7 +84,15 @@ const ERROR_KEYS: Record<string, TKey> = {
   budget_not_empty: "err.budgetNotEmpty",  
   too_large: "err.tooLarge",  
   internal: "err.internal",
-  foreign_replica: "sync.notOwner",  
+
+  /* Client-side codes — the same contract: lib/* throws a CODE (never a sentence, never a locale),
+     the wording lives here. They reach a user through the very same setError(apiErrorMessage(e)). */
+  foreign_replica: "sync.notOwner", // assertOwnReplica — the replica is not the session's
+  no_local_replica: "err.noLocalReplica",  
+  no_encryption_key: "err.noEncryptionKey",  
+  empty_unbound_replica: "err.emptyUnboundReplica",  
+  bad_ciphertext: "err.badCiphertext", // crypto.ts — envelope this build cannot read (corrupt/foreign)
+  bad_pairing_code: "err.badPairingCode", // crypto.ts — decodePairing on a code that is not ours
 };
 
  
