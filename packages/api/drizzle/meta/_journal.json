@@ -120,6 +120,13 @@
       "when": 1783939956786,
       "tag": "0016_neutral_budget_currency",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1783942665349,
+      "tag": "0017_drop_import_sources",
+      "breakpoints": true
     }
   ]
 }
