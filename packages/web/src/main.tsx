@@ -13,10 +13,7 @@ const queryClient = new QueryClient({
   defaultOptions: { queries: { staleTime: 5_000, refetchOnWindowFocus: false } },
 });
 
-// The locale chunk is fetched BEFORE the first render — otherwise the app paints English and
-// repaints in the user's language. English resolves immediately (it is the source, no chunk).
-// Deliberately a .then() rather than top-level await: TLA is not in the build target.
-void loadLocale(uiLang()).then(() => {
+const render = () =>
   createRoot(document.getElementById("root")!).render(
     <StrictMode>
       <QueryClientProvider client={queryClient}>
@@ -26,4 +23,14 @@ void loadLocale(uiLang()).then(() => {
       </QueryClientProvider>
     </StrictMode>,
   );
-});
+
+// The locale chunk is fetched BEFORE the first render — otherwise the app paints English and
+// repaints in the user's language. English resolves immediately (it is the source, no chunk).
+// Deliberately a .then() rather than top-level await: TLA is not in the build target.
+//
+// THE FIRST PAINT MUST NEVER DEPEND ON A NETWORK FETCH: if the locale chunk cannot be loaded we
+// render anyway, in English (loadLocale already swallows that failure — the .catch keeps the
+// guarantee even if it ever regresses). Anything else is a white screen for translated users only.
+void loadLocale(uiLang())
+  .catch(() => {})
+  .then(render);

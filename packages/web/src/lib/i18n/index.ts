@@ -27,12 +27,26 @@ export const msg = <M extends Message>(m: M): M => m;
 
 const loaded = new Map<Lang, Dict>();
 
-/** Loads a locale chunk once. English needs none (it is the source). */
+/**
+ * Loads a locale chunk once. English needs none (it is the source).
+ *
+ * NEVER REJECTS. A chunk fetch can fail (network blip on a first load, before the service worker
+ * has precached anything; an SW-less context; a 404 on the hashed asset), and callers AWAIT this
+ * before doing the thing that matters: main.tsx renders the app only once it settles, Appearance.tsx
+ * switches the language only once it settles. A rejection there is a permanent blank page / a
+ * language switch that never happens. Instead the dictionary stays absent, and the runtime renders
+ * the English source — the same degradation as a missing translation. The failure is NOT cached, so
+ * a later attempt (retry, language re-pick) can still succeed.
+ */
 export async function loadLocale(lang: Lang): Promise<void> {
   if (lang === "en" || loaded.has(lang)) return;
   const entry = LOCALES.find((l) => l.code === lang);
   if (!entry) return;
-  loaded.set(lang, await entry.load());
+  try {
+    loaded.set(lang, await entry.load());
+  } catch {
+    // chunk unavailable → English source (no entry cached: the next attempt retries)
+  }
 }
 
 function fill(s: string, params?: Record<string, string | number>): string {

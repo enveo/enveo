@@ -12,7 +12,7 @@
 import { E2EE_DISABLE_CONFIRM } from "@enveo/shared";
 import { describe, expect, it } from "bun:test";
 import { extract } from "../../../scripts/i18n-extract-lib";
-import { loadLocale, translate, translatePlural } from "./index";
+import { loadLocale, translate, translatePlural, type Dict, type Lang } from "./index";
 import { pl } from "./locales/pl";
 import { MESSAGES, type Message } from "./messages.generated";
 import { LOCALES } from "./registry";
@@ -39,6 +39,32 @@ describe("i18n runtime", () => {
     await loadLocale("de"); // registered in Lang, not yet in LOCALES → no dictionary at all
     expect(translate("de", "Transactions")).toBe("Transactions");
     expect(translatePlural("de", "{n} transaction | {n} transactions", 2)).toBe("2 transactions");
+  });
+
+  it("a locale chunk that FAILS to load degrades to English instead of rejecting (no blank boot)", async () => {
+    // main.tsx renders only once loadLocale settles, and Appearance.tsx switches the language only
+    // once it settles. So a rejected chunk fetch (network blip on a first load before the service
+    // worker precaches, an SW-less context, a 404 on the hashed asset) would be a permanent WHITE
+    // SCREEN for translated users — not a missing translation. The failure must not be cached either.
+    const code = "zz" as Lang; // never in the registry: no future locale can shadow this test
+    let attempts = 0;
+    const entry = {
+      code,
+      endonym: "Test",
+      community: true,
+      load: () =>
+        ++attempts === 1 ? Promise.reject(new Error("chunk 404")) : Promise.resolve({ Transactions: "Zz" } as Dict),
+    };
+    LOCALES.unshift(entry);
+    try {
+      await loadLocale(code); // must RESOLVE, not throw
+      expect(translate(code, "Transactions")).toBe("Transactions"); // English source
+
+      await loadLocale(code); // the failure was not cached → a later attempt still loads
+      expect(translate(code, "Transactions")).toBe("Zz");
+    } finally {
+      LOCALES.splice(LOCALES.indexOf(entry), 1);
+    }
   });
 });
 
@@ -90,7 +116,10 @@ describe("i18n messages", () => {
  * The literal that goes on the WIRE is separate and fixed (E2EE_DISABLE_CONFIRM).
  */
 describe("i18n — typed confirmation words", () => {
-  const CONFIRM_WORDS: Message[] = ["DISABLE-E2EE", "DELETE"];
+  // EVERY word compared with `input.trim().toUpperCase() !== t(word)`. Keep this list exhaustive —
+  // grep `toUpperCase` in packages/web/src: Advanced.tsx ("DELETE", "RESET") and
+  // DataSection.tsx ("DISABLE-E2EE"). A word missing from here is a lock-out waiting for a locale.
+  const CONFIRM_WORDS: Message[] = ["DISABLE-E2EE", "DELETE", "RESET"];
 
   it("the English words are printable ASCII (typeable on a US keyboard)", () => {
     for (const w of CONFIRM_WORDS) expect(w).toMatch(/^[\x20-\x7e]+$/);
