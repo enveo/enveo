@@ -84,6 +84,33 @@ Demo data (dev only): create your account in the app first, then
 `cd packages/api && bun run db:seed` — the demo dataset is attached to the first
 existing user, so your account sees it after a reload.
 
+## One-click deploy (Railway)
+
+No server of your own? Deploy Enveo plus a managed Postgres on
+[Railway](https://railway.com):
+
+[![Deploy on Railway](https://railway.com/button.svg)](https://railway.com/new/template?template=https://github.com/enveo/enveo)
+
+<!-- TODO(maintainer): this button points at Railway's repo-composer form, which starts a
+     project from this repo but does NOT pre-wire Postgres or generate a session secret.
+     After publishing the template (Railway → Project Settings → Generate Template from
+     Project → Publish), replace the link above with the published template code:
+       https://railway.com/new/template/<CODE>?utm_medium=integration&utm_source=button&utm_campaign=generic
+     Steps: docs/hosting.md → "Publishing the one-click template". -->
+
+The repo carries the Railway config ([`railway.json`](railway.json): Dockerfile build,
+health check on `/api/health`, restart on failure). Add a **Postgres** service and set:
+
+- `DATABASE_URL` = `${{Postgres.DATABASE_URL}}`
+- `BETTER_AUTH_SECRET` = 32+ chars (`openssl rand -hex 32`) — the API refuses to boot without it
+- `BETTER_AUTH_URL` = `https://${{RAILWAY_PUBLIC_DOMAIN}}` — recommended: it makes the
+  session cookie `Secure` and fixes Google OAuth redirects
+
+Leave `PORT` unset — Railway injects it and the app listens on it.
+
+Full walkthrough (and what it would take to get Enveo listed on PikaPods):
+**[docs/hosting.md](docs/hosting.md)**.
+
 ## Self-hosting notes
 
 - The app listens on `127.0.0.1:8081` by default — put it behind your own HTTPS
