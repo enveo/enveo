@@ -45,13 +45,35 @@ import { chatJson, type ChatTarget } from "./openai";
 /** Settings subset read by the dispatch (device-only, from localStorage). */
 export type AiSettings = Pick<Settings, "aiMode" | "openaiKey" | "openaiModel">;
 
-/** The off mode doesn't allow screenshot imports — the UI catches this and shows the consent. */
+/**
+ * No usable model on this device (AI off, or byok with no key yet). Carries a CODE, not prose:
+ * it reaches the user through apiErrorMessage() like every other client-side sentinel, and
+ * lib/api.ts owns the wording in each locale (a sentence thrown here would render English in a
+ * Polish UI — the regression api.test.ts guards).
+ */
 export class AiConsentRequired extends Error {
   constructor() {
-    super("ai consent required");
+    super("ai_consent_required");
     this.name = "AiConsentRequired";
   }
 }
+
+/**
+ * The SINGLE decision "can this device talk to a model, and how" — used by every AI entry point
+ * AND by the UI that offers them (Add screen's quick-add bar). Keeping one function is the point:
+ * `aiMode !== "off"` is NOT the same question. Settings switches the mode to `byok` before a key
+ * is typed (and clearing the field persists an empty one), so byok-without-key is an everyday
+ * state in which there is no target — the UI must hide AI-only entry points instead of letting
+ * the user run into an error.
+ */
+export function aiTarget(settings: AiSettings): ChatTarget | null {
+  if (settings.aiMode === "server") return { kind: "server" };
+  if (settings.aiMode === "byok" && settings.openaiKey) return { kind: "byok", key: settings.openaiKey, model: settings.openaiModel };
+  return null;
+}
+
+/** Is any AI-only feature (quick-add, screenshot import) usable right now? */
+export const hasAiTarget = (settings: AiSettings): boolean => aiTarget(settings) !== null;
 
 const todayISO = (): string => new Date().toISOString().slice(0, 10);
 
@@ -135,12 +157,8 @@ export async function runSuggest(args: {
        server → via /api/ai/chat (a narrow operator-key proxy),
        off    → no model (pure rules).
      The /budget/suggest route stays on the server only for old clients. */
-  const llm: ((req: ChatRequest) => Promise<string>) | null =
-    settings.aiMode === "server"
-      ? (req) => chatJson(req, { kind: "server" })
-      : settings.aiMode === "byok" && settings.openaiKey
-        ? (req) => chatJson(req, { kind: "byok", key: settings.openaiKey, model: settings.openaiModel })
-        : null;
+  const target = aiTarget(settings);
+  const llm: ((req: ChatRequest) => Promise<string>) | null = target ? (req) => chatJson(req, target) : null;
 
   /* off | byok — LOCALLY (no /api/*). Response assembly like in
      generateSuggestion on the server side (the wrap is 10 lines; the server
@@ -212,8 +230,9 @@ const quickAddRefs = (ledger: ClientLedger) => ({
  * Natural-language entry → a transaction draft, ALWAYS through the model (the rule
  * parser is gone). The prompt is built LOCALLY from the replica (= what is on
  * screen) and only the transport differs: byok with the user's key, server via the
- * /api/ai mirror. In the off mode there is no path — the caller (Add screen) hides
- * the bar; a stray call raises AiConsentRequired. Errors PROPAGATE (no fallback):
+ * /api/ai mirror. Without a usable target (AI off, or byok with no key yet) there is no
+ * path — the caller (Add screen) hides the bar on the SAME predicate (hasAiTarget), so a
+ * raised AiConsentRequired means a stray call. Errors PROPAGATE (no fallback):
  * the operator's missing key surfaces as the 503 `ai_unavailable` of the mirror.
  * The /quick-add route stays on the server for old PWAs only.
  */
@@ -225,12 +244,7 @@ export async function runQuickAdd(args: {
 }): Promise<QuickAddResponse> {
   const { text, locale, ledger, settings } = args;
 
-  const target: ChatTarget | null =
-    settings.aiMode === "server"
-      ? { kind: "server" }
-      : settings.aiMode === "byok" && settings.openaiKey
-        ? { kind: "byok", key: settings.openaiKey, model: settings.openaiModel }
-        : null;
+  const target = aiTarget(settings);
   if (!target) throw new AiConsentRequired();
 
   const refs = quickAddRefs(ledger);
@@ -269,7 +283,8 @@ export async function runImportExtract(args: {
      (assignments from history) is inherently server-side. In local-only+server
      it works like byok: facts yes, assignments empty (DB wiped). */
   if (settings.aiMode === "server") return (await api.importExtract(images, locale)).items;
-  if (settings.aiMode !== "byok" || !settings.openaiKey) throw new AiConsentRequired();
+  const target = aiTarget(settings);
+  if (target?.kind !== "byok") throw new AiConsentRequired(); // off, or byok with an empty key
 
   /* byok: cycle 1 (facts from the screenshot) via the user's key; historical
      assignments (cycle 2) are server-only — items come back unassigned,
@@ -278,7 +293,7 @@ export async function runImportExtract(args: {
     envelopes: ledger.envelopes.filter((e) => !e.archived).map((e) => ({ id: e.id, name: e.name })),
     categories: ledger.categories.map((c) => ({ id: c.id, name: c.name })),
   };
-  const raw = await chatJson(buildImportExtractPrompt(images, refs, todayISO(), locale), { kind: "byok", key: settings.openaiKey, model: settings.openaiModel });
+  const raw = await chatJson(buildImportExtractPrompt(images, refs, todayISO(), locale), target);
   return parseImportExtractResponse(raw).map((t) => ({
     date: t.date,
     amount: t.amount,

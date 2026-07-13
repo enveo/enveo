@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { type RecurrenceRule, type Transaction, type TxnPayload } from "@enveo/shared";
 import { apiErrorMessage, useLedgerVersion, type EditedImportItem, type ImportItem, type QuickAddResponse, type StateResponse } from "../lib/api";
-import { runQuickAdd as aiQuickAdd } from "../lib/ai";
+import { hasAiTarget, runQuickAdd as aiQuickAdd } from "../lib/ai";
 import { hasOpenOp, padKey, type PadState } from "../lib/amount";
 import { categoryCountsFor, rankCategories } from "../lib/categoryIndex";
 import { preferredAccountId, setLastAccountId } from "../lib/lastAccount";
@@ -261,10 +261,13 @@ export function AddScreen({ state, onDone, editTxn, draft }: { state: StateRespo
     setNumpad(false);
   };
 
-  /* Quick-add is AI-only (the rule parser is gone): the bar exists only in the
-     server/byok modes, so there is nothing to fall back to — a failure (no operator
-     key, upstream error, offline) is SHOWN instead of silently degrading. */
-  const aiOn = settings.aiMode !== "off";
+  /* Quick-add is AI-only (the rule parser is gone): the bar exists only when there IS a
+     usable model — hasAiTarget is the SAME predicate runQuickAdd dispatches on, so the bar
+     can never be offered on a path that would only throw. Note `aiMode !== "off"` is not
+     that predicate: byok with an empty key (Settings sets the mode before the key is typed)
+     is on but unusable. With no target we show one line pointing at Settings; with a target
+     a failure (no operator key, upstream error, offline) is SHOWN instead of degrading. */
+  const aiOn = hasAiTarget(settings);
   async function execQuickAdd() {
     const text = quick.trim();
     const ledger = store.getLedger();
@@ -353,7 +356,10 @@ export function AddScreen({ state, onDone, editTxn, draft }: { state: StateRespo
           <button onClick={execQuickAdd} disabled={quickBusy} aria-label={t("add.quickRunAria")} style={{ padding: "9px 12px", borderRadius: 10, border: "none", background: CTA, color: "#fff", fontSize: 12, fontWeight: 600, cursor: quickBusy ? "default" : "pointer", opacity: quickBusy ? 0.5 : 1 }}>✨</button>
         </div>
       ) : (
-        <div style={{ margin: `2px ${P}px 6px`, fontSize: 11.5, color: C.mute, lineHeight: 1.45 }}>{t("add.quickNeedsAi")}</div>
+        <div style={{ margin: `2px ${P}px 6px`, fontSize: 11.5, color: C.mute, lineHeight: 1.45 }}>
+          {/* AI off → turn it on; AI on but byok without a key → the key is what's missing */}
+          {t(settings.aiMode === "off" ? "add.quickNeedsAi" : "add.quickNeedsKey")}
+        </div>
       ))}
       {!editTxn && !draft && quickErr && (
         <div style={{ margin: `0 ${P}px 4px`, fontSize: 11.5, color: CORAL }}>{quickErr}</div>

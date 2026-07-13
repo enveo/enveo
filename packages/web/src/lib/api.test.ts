@@ -48,6 +48,7 @@ describe("client-side error codes", () => {
     empty_unbound_replica: "err.emptyUnboundReplica", // sync.ts — refused: it could only wipe the budget
     bad_ciphertext: "err.badCiphertext", // crypto.ts — an envelope this build cannot read
     bad_pairing_code: "err.badPairingCode", // crypto.ts — decodePairing on a code that is not ours
+    ai_consent_required: "err.aiNotConfigured", // ai.ts — AiConsentRequired: no usable model on this device
   };
 
   it("localizes every code lib/* throws (Settings → backup import, disable local mode, Unlock)", () => {
@@ -78,16 +79,20 @@ describe("no prose thrown from the UI-reachable libs", () => {
   const INTERNAL_ABORTS = new Set([
     "e2ee: no DEK — waiting for unlock", // doFullResync → the Unlock screen takes over
     "push: response without batch results", // loop defense against a buggy server
+    "unauthorized: 401", // UnauthorizedError → enterUnauthed() puts the Login screen on screen (sync.ts)
   ]);
 
   const LIB_DIR = fileURLToPath(new URL(".", import.meta.url)); // this file's dir (portable, TS-clean)
 
-  for (const file of ["sync.ts", "crypto.ts"]) {
+  // ai.ts joined the scan after AiConsentRequired shipped with the message "ai consent required":
+  // a custom Error subclass hides its message in super(...), which the `new Error("…")` pattern
+  // never saw — so the prose reached the Add screen's error line verbatim. Both shapes are scanned.
+  for (const file of ["sync.ts", "crypto.ts", "ai.ts"]) {
     it(`${file} throws codes, not sentences`, () => {
       const src = readFileSync(join(LIB_DIR, file), "utf8");
       // Double-quoted literals only: `throw new Error(\`pull: ${res.status}\`)` is a technical
       // status line the UI never shows as prose, and apiErrorMessage parses the {error} out of it.
-      const thrown = [...src.matchAll(/new Error\("([^"]+)"\)/g)].map((m) => m[1]!);
+      const thrown = [...src.matchAll(/(?:new Error|super)\("([^"]+)"\)/g)].map((m) => m[1]!);
       expect(thrown.length).toBeGreaterThan(0); // the scan must actually see the throws
       for (const msg of thrown) {
         if (INTERNAL_ABORTS.has(msg)) continue;

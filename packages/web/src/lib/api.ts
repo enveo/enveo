@@ -93,6 +93,7 @@ const ERROR_KEYS: Record<string, TKey> = {
   empty_unbound_replica: "err.emptyUnboundReplica", // refused: an empty unbound replica can only wipe
   bad_ciphertext: "err.badCiphertext", // crypto.ts — envelope this build cannot read (corrupt/foreign)
   bad_pairing_code: "err.badPairingCode", // crypto.ts — decodePairing on a code that is not ours
+  ai_consent_required: "err.aiNotConfigured", // ai.ts — no usable target (AI off, or byok with no key)
 
   /* better-auth codes (lib/auth.ts lowercases them): the library's own `message` is English
      prose, and the login screen is the FIRST thing a non-English user sees. */
