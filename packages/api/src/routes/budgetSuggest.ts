@@ -147,8 +147,13 @@ export const openAiAskModel: AskModel = async (ctx) => {
    the client builds the prompt LOCALLY (same builders as byok — for suggest
    these are 2-month envelope snapshots, not the replica) and sends only the
    messages; the server attaches the key and forwards. Size limit + rigid zod
-   shape (no extra OpenAI fields outside the contract). With multi-user add a
-   rate limit (blocker in docs/plans/pre-auth-blockers.md). */
+   shape (no extra OpenAI fields outside the contract). Auth: the session
+   middleware in index.ts gates every /api/* route, so this proxy is reachable
+   only by a signed-in user — but it is deliberately NOT throttled. That is fine
+   for a self-hosted deployment (a handful of trusted accounts spending the
+   operator's own key); a per-account throttle is intended before any hosted,
+   multi-tenant deployment, where the operator key would be exposed to untrusted
+   signups. */
 const aiChatSchema = z.object({
   messages: z.array(z.object({ role: z.enum(["system", "user"]), content: z.string().max(200_000) })).min(1).max(4),
   responseFormat: z.record(z.string(), z.unknown()).optional(),
