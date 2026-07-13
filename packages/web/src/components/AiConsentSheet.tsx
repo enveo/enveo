@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Sheet } from "./chrome";
 import { useSettings, type OpenAiModel } from "../lib/contexts";
-import { useT, type TKey } from "../lib/i18n";
+import { useT, type Message, msg } from "../lib/i18n";
 import { api } from "../lib/api";
 import { TEAL, font } from "../lib/theme";
 
@@ -20,9 +20,9 @@ import { TEAL, font } from "../lib/theme";
 
 export type AiFeature = "suggest" | "import";
 
-const PAYLOAD_KEY: Record<AiFeature, TKey> = {
-  suggest: "ai.payload.suggest",
-  import: "ai.payload.import",
+const PAYLOAD_KEY: Record<AiFeature, Message> = {
+  suggest: msg("The AI model (OpenAI) will receive: the amount to distribute, envelope names and aggregated spending stats from recent months."),
+  import: msg("The AI model (OpenAI) will receive: the screenshots and the names of your envelopes and categories."),
 };
 
 export function AiConsentSheet({ show, feature, onClose, onDecided }: {
@@ -56,17 +56,17 @@ export function AiConsentSheet({ show, feature, onClose, onDecided }: {
         const secondary = { width: "100%", padding: "12px 0", borderRadius: 12, border: `1px solid ${C.line}`, background: "transparent", color: C.text, fontSize: 13.5, fontWeight: 600, cursor: "pointer", marginBottom: 8 } as const;
         return (
           <>
-            <div style={{ fontSize: 17, fontWeight: 700, color: C.text, marginBottom: 6 }}>{t("ai.consentTitle")}</div>
+            <div style={{ fontSize: 17, fontWeight: 700, color: C.text, marginBottom: 6 }}>{t("Enable AI assistance?")}</div>
             <div style={{ fontSize: 12.5, color: C.soft, lineHeight: 1.5, marginBottom: 14 }}>{t(PAYLOAD_KEY[feature])}</div>
 
             {aiInfo?.serverAi && (
               <button onClick={chooseServer} style={{ width: "100%", padding: "12px 0", borderRadius: 12, border: "none", background: TEAL, color: "#fff", fontSize: 13.5, fontWeight: 600, cursor: "pointer", marginBottom: 8 }}>
-                {t("ai.consentServer")}
+                {t("Enable via server")}
               </button>
             )}
 
             <button onClick={() => setByokOpen(!byokOpen)} style={{ ...secondary, borderColor: byokOpen ? TEAL : C.line, color: byokOpen ? TEAL : C.text }}>
-              {t("ai.consentByok")}
+              {t("Use your own key")}
             </button>
             {byokOpen && (
               <div style={{ padding: "2px 0 10px" }}>
@@ -79,7 +79,7 @@ export function AiConsentSheet({ show, feature, onClose, onDecided }: {
                   autoCapitalize="none"
                   autoCorrect="off"
                   spellCheck={false}
-                  aria-label={t("ai.key")}
+                  aria-label={t("OpenAI key")}
                   style={{ width: "100%", boxSizing: "border-box", padding: "10px 12px", borderRadius: 10, border: `1px solid ${C.line}`, background: C.bg, color: C.text, fontSize: 13, fontFamily: font, outline: "none", marginBottom: 8 }}
                 />
                 <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
@@ -89,15 +89,15 @@ export function AiConsentSheet({ show, feature, onClose, onDecided }: {
                     </button>
                   ))}
                 </div>
-                <div style={{ fontSize: 11.5, color: C.mute, lineHeight: 1.5, marginBottom: 10 }}>{t("ai.keyLocal")}</div>
+                <div style={{ fontSize: 11.5, color: C.mute, lineHeight: 1.5, marginBottom: 10 }}>{t("The key is stored only in this browser (localStorage) — it is never synced or sent to the app server.")}</div>
                 <button onClick={chooseByok} disabled={!key.trim()} style={{ width: "100%", padding: "12px 0", borderRadius: 12, border: "none", background: TEAL, color: "#fff", fontSize: 13.5, fontWeight: 600, cursor: "pointer", opacity: key.trim() ? 1 : 0.5 }}>
-                  {t("ai.consentByokSave")}
+                  {t("Save key & enable")}
                 </button>
               </div>
             )}
 
             <button onClick={() => onDecided("rules")} style={{ ...secondary, marginBottom: 0 }}>
-              {feature === "import" ? t("common.cancel") : t("ai.consentRules")}
+              {feature === "import" ? t("Cancel") : t("Stick with rules")}
             </button>
           </>
         );

@@ -6,7 +6,8 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "gen:icons": "node scripts/gen-icons.mjs"
+    "gen:icons": "node scripts/gen-icons.mjs",
+    "i18n:extract": "bun scripts/i18n-extract.ts"
   },
   "dependencies": {
     "@enveo/shared": "workspace:*",

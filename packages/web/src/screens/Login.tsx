@@ -100,13 +100,13 @@ export function LoginScreen() {
     textDecoration: "underline",
   };
 
-  const title = mode === "signup" ? (firstRun ? t("auth.createOwner") : t("auth.createAccount")) : t("auth.title");
+  const title = mode === "signup" ? (firstRun ? t("Create the owner account") : t("Create an account")) : t("Sign in to Enveo");
 
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 14, padding: 32, textAlign: "center" }}>
       <div style={{ marginBottom: 4 }}><LogoMark size={64} /></div>
       <div style={{ fontSize: 18, fontWeight: 700, color: C.text }}>{title}</div>
-      <div style={{ fontSize: 13, color: C.soft, lineHeight: 1.6, maxWidth: 280 }}>{firstRun ? t("auth.ownerHint") : t("auth.body")}</div>
+      <div style={{ fontSize: 13, color: C.soft, lineHeight: 1.6, maxWidth: 280 }}>{firstRun ? t("This is the first account on this server — once it exists, registration closes.") : t("Your budget is tied to your account. Sign in to continue.")}</div>
 
       <form
         onSubmit={(e) => {
@@ -119,8 +119,8 @@ export function LoginScreen() {
           type="email"
           value={email}
           onChange={(e) => setEmail(e.target.value)}
-          placeholder={t("auth.email")}
-          aria-label={t("auth.email")}
+          placeholder={t("Email")}
+          aria-label={t("Email")}
           autoComplete="email"
           autoCapitalize="none"
           spellCheck={false}
@@ -130,8 +130,8 @@ export function LoginScreen() {
           type="password"
           value={password}
           onChange={(e) => setPassword(e.target.value)}
-          placeholder={t("auth.password")}
-          aria-label={t("auth.password")}
+          placeholder={t("Password")}
+          aria-label={t("Password")}
           autoComplete={mode === "signup" ? "new-password" : "current-password"}
           style={inputStyle}
         />
@@ -140,15 +140,15 @@ export function LoginScreen() {
           disabled={!canSubmit}
           style={{ marginTop: 2, padding: "12px 26px", borderRadius: 11, border: "none", background: TEAL, color: "#fff", fontSize: 13.5, fontWeight: 600, cursor: canSubmit ? "pointer" : "default", opacity: canSubmit ? 1 : 0.5, fontFamily: font }}
         >
-          {mode === "signup" ? t("auth.signUp") : t("auth.signIn")}
+          {mode === "signup" ? t("Create account") : t("Sign in")}
         </button>
       </form>
 
       {mode === "signin" && meta?.signupsOpen === true && !firstRun && (
-        <button onClick={() => switchMode("signup")} disabled={busy} style={linkStyle}>{t("auth.signupLink")}</button>
+        <button onClick={() => switchMode("signup")} disabled={busy} style={linkStyle}>{t("No account yet? Create one")}</button>
       )}
       {mode === "signup" && !firstRun && (
-        <button onClick={() => switchMode("signin")} disabled={busy} style={linkStyle}>{t("auth.signinLink")}</button>
+        <button onClick={() => switchMode("signin")} disabled={busy} style={linkStyle}>{t("Already have an account? Sign in")}</button>
       )}
 
       {meta?.providers.google === true && (
@@ -157,7 +157,7 @@ export function LoginScreen() {
           disabled={busy}
           style={{ padding: "12px 26px", borderRadius: 11, border: `1px solid ${C.line}`, background: C.surface, color: C.text, fontSize: 13.5, fontWeight: 600, cursor: busy ? "default" : "pointer", opacity: busy ? 0.5 : 1, fontFamily: font }}
         >
-          {t("auth.google")}
+          {t("Sign in with Google")}
         </button>
       )}
 

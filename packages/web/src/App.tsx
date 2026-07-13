@@ -220,12 +220,12 @@ function FirstBootError() {
   const { t } = useT();
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 16, padding: 32, textAlign: "center" }}>
-      <span style={{ color: C.mute, fontSize: 13, lineHeight: 1.6 }}>{t("sync.firstBoot")}</span>
+      <span style={{ color: C.mute, fontSize: 13, lineHeight: 1.6 }}>{t("The first launch requires a connection to the server")}</span>
       <button
         onClick={() => void retryBoot()}
         style={{ padding: "11px 22px", borderRadius: 11, border: "none", background: TEAL, color: "#fff", fontSize: 13.5, fontWeight: 600, cursor: "pointer", fontFamily: font }}
       >
-        {t("common.retry")}
+        {t("Try again")}
       </button>
     </div>
   );

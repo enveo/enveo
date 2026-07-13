@@ -52,24 +52,24 @@ export function EnvActionsSheet({
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontSize: 19, fontWeight: 700, color: C.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{env.name}</div>
                 <div style={{ fontSize: 12.5, color: C.soft, fontVariantNumeric: "tabular-nums", marginTop: 2 }}>
-                  {t("env.statsLine", { allocated: M(env.allocated), spent: M(Math.max(0, env.spent)) })}
+                  {t("Allocated {allocated} · Spent {spent}", { allocated: M(env.allocated), spent: M(Math.max(0, env.spent)) })}
                 </div>
               </div>
             </div>
             <div style={{ display: "flex", gap: 8, marginBottom: 14 }}>
               {badge(
-                t("env.availableLabel"),
+                t("AVAILABLE"),
                 `${env.available < 0 ? "-" : ""}${M(Math.abs(env.available))}`,
                 env.available < 0 ? CORAL : INCOME,
               )}
-              {badge(t("env.carryLabel"), `${sign}${M(Math.abs(env.carryIn))}`, C.soft)}
+              {badge(t("CARRIED OVER"), `${sign}${M(Math.abs(env.carryIn))}`, C.soft)}
             </div>
             <button onClick={onSummary} style={{ width: "100%", padding: 12, borderRadius: 12, border: "none", background: CTA, color: "#fff", fontSize: 14, fontWeight: 700, cursor: "pointer" }}>
-              {t("budget.summaryBtn")}
+              {t("Summary")}
             </button>
             <div style={{ display: "flex", gap: 8, marginTop: 8, paddingBottom: 4 }}>
-              {secondary(t("nav.transactions"), onTxns)}
-              {secondary(t("common.edit"), onEdit)}
+              {secondary(t("Transactions"), onTxns)}
+              {secondary(t("Edit"), onEdit)}
             </div>
           </>
         );

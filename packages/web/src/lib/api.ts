@@ -1,6 +1,6 @@
 import { computeStateResponse, type StateResponse } from "@enveo/shared";
 import { useMemo, useSyncExternalStore } from "react";
-import { translate, uiLang, type TKey } from "./i18n";
+import { translate, uiLang, type Message, msg } from "./i18n";
 import { store } from "./store";
 import { getSyncStatus, subscribeSyncStatus, type SyncStatus } from "./sync";
 
@@ -74,43 +74,43 @@ export interface ImportApplyResponse {
  * in every locale. Keep this the single mapping point — an unknown code (older/newer server) falls
  * through to the raw text, so the user always sees something rather than an empty error.
  */
-const ERROR_KEYS: Record<string, TKey> = {
-  ai_unavailable: "err.aiUnavailable",  
-  ai_upstream_error: "err.aiUpstream",  
-  upstream: "err.aiUpstream",  
-  backup_invalid: "err.backupInvalid", // /sync/replace — the payload is not a ledger
-  foreign_ref: "err.foreignRef",  
-  budget_mismatch: "err.budgetMismatch",  
-  budget_not_empty: "err.budgetNotEmpty",  
-  too_large: "err.tooLarge",  
-  internal: "err.internal",
+const ERROR_KEYS: Record<string, Message> = {
+  ai_unavailable: msg("The server has no OpenAI key configured. Set OPENAI_API_KEY and restart the app, or use your own key in Settings → Artificial intelligence."),  
+  ai_upstream_error: msg("OpenAI rejected the request — check the key and the model, then try again."),  
+  upstream: msg("OpenAI rejected the request — check the key and the model, then try again."),  
+  backup_invalid: msg("This is not a valid backup file — nothing was loaded."), // /sync/replace — the payload is not a ledger
+  foreign_ref: msg("The data references records that do not exist here (a corrupted or foreign file). Nothing was changed."),  
+  budget_mismatch: msg("The signed-in account changed while the data was being sent — nothing was written. Reload the app and try again."),  
+  budget_not_empty: msg("The budget is not empty — demo data can only be loaded into an empty budget."),  
+  too_large: msg("The upload is too large — try fewer (or smaller) screenshots."),  
+  internal: msg("The server hit an unexpected error. Nothing was changed — try again."),
 
   /* Client-side codes — the same contract: lib/* throws a CODE (never a sentence, never a locale),
      the wording lives here. They reach a user through the very same setError(apiErrorMessage(e)). */
-  foreign_replica: "sync.notOwner", // assertOwnReplica — the replica is not the session's
-  no_local_replica: "err.noLocalReplica",  
-  no_encryption_key: "err.noEncryptionKey",  
-  empty_unbound_replica: "err.emptyUnboundReplica",  
-  bad_ciphertext: "err.badCiphertext", // crypto.ts — envelope this build cannot read (corrupt/foreign)
-  bad_pairing_code: "err.badPairingCode", // crypto.ts — decodePairing on a code that is not ours
-  ai_consent_required: "err.aiNotConfigured",  
+  foreign_replica: msg("This device's local copy could not be confirmed to belong to the signed-in account — nothing was sent to the server. Settings → Sync explains what happened and what you can do."), // assertOwnReplica — the replica is not the session's
+  no_local_replica: msg("The local copy of the budget has not loaded yet — nothing was sent. Reload the app and try again."),  
+  no_encryption_key: msg("This device has no encryption key — unlock the budget with your password (or a pairing code) and try again."),  
+  empty_unbound_replica: msg("There is no data on this device to send — nothing was sent to the server. Reload the app to fetch your budget first."),  
+  bad_ciphertext: msg("The encrypted data could not be read on this device — nothing was changed. Make sure the app is up to date, or restore from a backup."), // crypto.ts — envelope this build cannot read (corrupt/foreign)
+  bad_pairing_code: msg("This is not a valid pairing code — copy it again from the device where the budget is already unlocked."), // crypto.ts — decodePairing on a code that is not ours
+  ai_consent_required: msg("AI is not set up on this device. Pick a mode in Settings → Artificial intelligence (with your own key, paste it there)."),  
   
 
 
-  ai_offline: "err.aiOffline", // fetch never left the device — the normal state of an offline PWA
-  ai_key_invalid: "err.aiKeyInvalid",  
+  ai_offline: msg("You are offline — quick add and screenshot import need a connection. Manual entry works without one."), // fetch never left the device — the normal state of an offline PWA
+  ai_key_invalid: msg("OpenAI rejected your key — check it in Settings → Artificial intelligence."),  
 
   
 
-  invalid_email_or_password: "err.badCredentials",
-  invalid_email: "err.badEmail",
-  user_already_exists: "err.userExists",
-  password_too_short: "err.passwordTooShort",
-  password_too_long: "err.passwordTooLong",
-  signups_closed: "auth.signupsClosed",  
-  sign_in_failed: "err.signInFailed",  
-  sign_up_failed: "err.signUpFailed",
-  auth_meta_failed: "err.signInFailed",  
+  invalid_email_or_password: msg("Wrong email or password."),
+  invalid_email: msg("That does not look like a valid email address."),
+  user_already_exists: msg("An account with this email already exists — sign in instead."),
+  password_too_short: msg("The password must be at least 8 characters."),
+  password_too_long: msg("That password is too long."),
+  signups_closed: msg("Registration is closed on this server."),  
+  sign_in_failed: msg("Could not sign in — please try again."),  
+  sign_up_failed: msg("Could not create the account — please try again."),
+  auth_meta_failed: msg("Could not sign in — please try again."),  
 };
 
  

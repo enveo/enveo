@@ -40,10 +40,18 @@ import {
 } from "@enveo/shared";
 import { api, type ImportItem, type QuickAddResponse } from "./api";
 import type { Settings } from "./contexts";
+import type { Lang } from "./i18n";
 import { chatJson, type ChatTarget } from "./openai";
 
  
 export type AiSettings = Pick<Settings, "aiMode" | "openaiKey" | "openaiModel">;
+
+
+
+
+
+
+export const aiLocale = (lang: Lang): "pl" | "en" => (lang === "pl" ? "pl" : "en");
 
 /**
  * No usable model on this device (AI off, or byok with no key yet). Carries a CODE, not prose:
