@@ -1,0 +1,86 @@
+# Enveo — self-hosting stack. Runs the PUBLISHED image; nothing is built here.
+#
+#   mkdir enveo && cd enveo
+#   curl -fsSL https://raw.githubusercontent.com/enveo/enveo/main/compose.selfhost.yml -o compose.yml
+#   curl -fsSL https://raw.githubusercontent.com/enveo/enveo/main/.env.selfhost.example -o .env
+#   # fill in the two secrets in .env, then:
+#   docker compose up -d
+#
+# Why the file is not called compose.yml IN THIS REPO: `docker compose` auto-loads
+# compose.yml/compose.yaml before docker-compose.yml, so that name would shadow the
+# development stack (docker-compose.yml — same thing, but BUILT from source) for
+# everyone working on the code. Outside the repo the name does not matter: save it
+# as compose.yml (as above) and every `docker compose …` command finds it with no -f.
+#
+# Update:  docker compose pull && docker compose up -d
+# Backup:  docker compose exec -T db pg_dump -U enveo enveo | gzip > enveo-$(date +%F).sql.gz
+#
+# Run it from its OWN directory (as above), not from a checkout of the repo. Compose
+# derives the project name — which is what ties containers and the data volume together
+# — from the directory name, so running this file inside a repo that already has a
+# stack up would take over that stack's containers and volume.
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: enveo
+      POSTGRES_DB: enveo
+      # No default on purpose — an unset password must stop the stack, not start a
+      # database with a guessable one. Generate: openssl rand -hex 24
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env next to this file — generate one with `openssl rand -hex 24`}"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    # Deliberately NO `ports:` — the database is reachable only from the app over the
+    # compose network. Add a mapping only for debugging, and only on 127.0.0.1.
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U enveo -d enveo"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  app:
+    # `latest` follows the newest release. To pin a version, replace the tag with a
+    # released one, e.g. ghcr.io/enveo/enveo:2.0.0 — recommended once you have real
+    # data in it: an explicit tag means `docker compose pull` cannot move you to a new
+    # major without you editing this line. Releases: github.com/enveo/enveo/releases
+    image: ghcr.io/enveo/enveo:latest
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: "postgres://enveo:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env next to this file — generate one with `openssl rand -hex 24`}@db:5432/enveo"
+      PORT: 8080
+      # Session secret, min 32 chars — the API refuses to boot without it.
+      # Generate: openssl rand -hex 32
+      BETTER_AUTH_SECRET: "${BETTER_AUTH_SECRET:?set BETTER_AUTH_SECRET in .env next to this file — generate one with `openssl rand -hex 32`}"
+      # selfhost = registration closes after the first (owner) account is created.
+      DEPLOYMENT: selfhost
+      # Set ALLOW_SIGNUPS=1 in .env to reopen registration (e.g. to add a household
+      # member), then remove it and `docker compose up -d` again.
+      ALLOW_SIGNUPS: ${ALLOW_SIGNUPS:-}
+      # Public origin of the app. Needed for Google sign-in and when a reverse proxy
+      # rewrites the Host header; email+password login works without it (the origin the
+      # app is served on is always trusted).
+      BETTER_AUTH_URL: ${BETTER_AUTH_URL:-http://localhost:8080}
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-}
+      # Optional AI (screenshot import, smart quick-add, budget assistant).
+      # Empty = the local rule engines only, zero egress.
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_MODEL: ${OPENAI_MODEL:-gpt-5.5}
+    ports:
+      # host:container. Change the host port with ENVEO_PORT in .env (e.g. ENVEO_PORT=9000
+      # → http://<host>:9000). Behind a reverse proxy, bind it to the loopback instead:
+      #   - "127.0.0.1:${ENVEO_PORT:-8081}:8080"
+      - "${ENVEO_PORT:-8081}:8080"
+    healthcheck:
+      test: ["CMD", "bun", "-e", "const r=await fetch('http://127.0.0.1:8080/api/health');process.exit(r.ok?0:1)"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+volumes:
+  pgdata:

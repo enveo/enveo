@@ -51,38 +51,38 @@ server-side. Nobody who finds your URL can create themselves an account.
 | `DEPLOYMENT` | `selfhost` | `selfhost` closes registration after the first account; `cloud` keeps it open |
 | `ALLOW_SIGNUPS` | unset | `1` reopens registration on `selfhost` (e.g. to add a family member) — remove it again afterwards |
 
-Forgot the password? There is no e-mail infrastructure on a self-hosted install —
-reset it on the server: `bun run auth:reset-password <email> <new-password>`
-(inside the app container: `docker compose exec app sh -c 'cd packages/api && bun run auth:reset-password you@example.com NewPassword1'`).
+Forgot the password? There is no e-mail infrastructure on a self-hosted install — the
+operator resets it on the server (see [Operating it](#operating-it)).
 
-## Quick start
+## Run it
 
-```bash
-cp .env.example .env          # set POSTGRES_PASSWORD and BETTER_AUTH_SECRET (openssl rand -hex 32)
-make up                       # builds the image, starts db + app (migrations run automatically)
-# app: http://127.0.0.1:8081  → create the owner account, then registration closes
-make logs                     # follow logs
-```
-
-(`scripts/deploy.sh` does the same and generates both secrets for you.)
-
-A fresh install starts with an **empty budget** — the in-app onboarding wizard
-walks you through the initial setup. `make help` lists all commands.
-
-### Development without Docker
+Docker, an empty directory, two generated secrets. Nothing is compiled — this pulls the
+published image.
 
 ```bash
-bun install
-docker compose up -d db                       # Postgres only
-cd packages/api && bun run db:migrate
-# in two terminals:
-make dev-api                                  # API on :8080
-make dev-web                                  # Vite on :5173 (proxies /api -> :8080)
+mkdir enveo && cd enveo
+curl -fsSL https://raw.githubusercontent.com/enveo/enveo/main/compose.selfhost.yml -o compose.yml
+{ echo "POSTGRES_PASSWORD=$(openssl rand -hex 24)"
+  echo "BETTER_AUTH_SECRET=$(openssl rand -hex 32)"; } > .env
+docker compose up -d
 ```
 
-Demo data (dev only): create your account in the app first, then
-`cd packages/api && bun run db:seed` — the demo dataset is attached to the first
-existing user, so your account sees it after a reload.
+Open **http://localhost:8081** and create the **owner account**. Registration **closes**
+right after, so nobody who finds your URL can sign themselves up; to add a household
+member, put `ALLOW_SIGNUPS=1` in `.env`, `docker compose up -d`, let them register, then
+remove it and repeat. The budget starts **empty** — the in-app wizard sets it up.
+
+Both secrets are **required**: with either unset the stack refuses to start rather than
+come up with a guessable one. Everything else is optional —
+[`.env.selfhost.example`](.env.selfhost.example) documents the knobs (host port, OpenAI
+key, Google sign-in, public URL). Migrations run automatically on start, on every update.
+
+> **HTTPS**: installing the PWA (and its offline service worker) needs a secure origin.
+> `localhost` counts; a bare LAN IP or a plain-HTTP domain does not — and a session
+> cookie over plain HTTP travels in the clear. To use Enveo from your phone, put it
+> behind TLS: a reverse proxy with a certificate, a tunnel, or a private mesh VPN that
+> terminates HTTPS (e.g. Tailscale `serve`). Then on iPhone: open the URL in Safari →
+> Share → **Add to Home Screen**.
 
 ## One-click deploy (Railway)
 
@@ -111,16 +111,61 @@ Leave `PORT` unset — Railway injects it and the app listens on it.
 Full walkthrough (and what it would take to get Enveo listed on PikaPods):
 **[docs/hosting.md](docs/hosting.md)**.
 
-## Self-hosting notes
+## Operating it
 
-- The app listens on `127.0.0.1:8081` by default — put it behind your own HTTPS
-  perimeter. A service worker (PWA install) requires HTTPS; a private mesh VPN
-  with HTTPS certificates (e.g. Tailscale `serve`), a reverse proxy with TLS, or
-  any tunnel works.
-- **iPhone**: open the URL in Safari → Share → **Add to Home Screen**.
-- Update: `git pull && make rebuild`. Migrations are additive and run on start.
-- Back up Postgres (`pg_dump`) before upgrades. Never run `make reset`/`db:seed`
-  against real data.
+Run these where your `compose.yml` lives.
+
+```bash
+# Update to the newest release (migrations run on start — back up first)
+docker compose pull && docker compose up -d
+
+# Back up: before every update, and on a schedule
+docker compose exec -T db pg_dump -U enveo enveo | gzip > enveo-$(date +%F).sql.gz
+gzip -t enveo-*.sql.gz                       # no output = the archive is intact
+
+# Restore into an empty database
+zcat enveo-2026-07-13.sql.gz | docker compose exec -T db psql -U enveo -d enveo
+
+# Reset a forgotten password (there is no e-mail on a self-hosted install)
+docker compose exec app bun run auth:reset-password you@example.com NewPassword1
+
+# Logs
+docker compose logs -f app
+```
+
+**Pin the version** once real data is in it: swap `:latest` in `compose.yml` for a
+[release tag](https://github.com/enveo/enveo/releases) (e.g. `ghcr.io/enveo/enveo:2.0.0`),
+so `docker compose pull` cannot carry you across a major version by surprise.
+
+**Change the host port** with `ENVEO_PORT=9000` in `.env`, then `docker compose up -d`.
+Postgres is deliberately **not** published — it is reachable only from the app container.
+
+## Develop it
+
+The development stack ([`docker-compose.yml`](docker-compose.yml)) **builds from
+source** — that is the only difference from the self-host file above.
+
+```bash
+cp .env.example .env    # set POSTGRES_PASSWORD and BETTER_AUTH_SECRET (openssl rand -hex 32)
+make up                 # build + start db + app → http://127.0.0.1:8081
+make logs               # follow logs; `make help` lists every target
+```
+
+Without Docker:
+
+```bash
+bun install
+docker compose up -d db                       # Postgres only
+cd packages/api && bun run db:migrate
+# in two terminals:
+make dev-api                                  # API on :8080
+make dev-web                                  # Vite on :5173 (proxies /api -> :8080)
+```
+
+Demo data (dev only): create your account in the app first, then
+`cd packages/api && bun run db:seed` — the demo dataset attaches to the first existing
+user, so your account sees it after a reload. Never point `make reset` / `db:seed` at
+data you care about.
 
 ### Upgrading from 1.x
 
