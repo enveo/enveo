@@ -46,8 +46,8 @@ CREATE OR REPLACE FUNCTION log_txn_item_change() RETURNS trigger AS $$
 DECLARE tid uuid;
 BEGIN
   tid := COALESCE(NEW.transaction_id, OLD.transaction_id);
-  -- strażnik: przy kaskadzie DELETE rodzica rodzic już nie istnieje —
-  -- nie loguj (wystarczy jego własny wpis 'delete')
+  -- guard: on a parent DELETE cascade the parent is already gone — do not log
+  -- (its own 'delete' entry is enough)
   IF EXISTS (SELECT 1 FROM transactions WHERE id = tid) THEN
     INSERT INTO changes (table_name, row_id, op) VALUES ('transactions', tid, 'upsert');
   END IF;
