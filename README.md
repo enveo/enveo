@@ -102,29 +102,55 @@ presents as first-run: add `BETTER_AUTH_SECRET` to `.env` (`openssl rand -hex 32
 rebuild, open the app and **create the owner account** — registration is open
 because no credentialed account exists yet, and closes as soon as you finish.
 
-Your existing budget is **not** attached to the new account yet. Reattach it with
-SQL (take a `pg_dump` first), then reload the app:
+Your existing budget is **not** attached to the new account yet. Reattach it with SQL.
+
+> **Stop the app while you do it.** An account with no budget gets an empty one
+> created *lazily, by any request* — including the background pull every signed-in
+> device fires once a minute. With the app running, such a request can land between
+> the `DELETE` and the `UPDATE` below and re-create a stray empty budget; the account
+> then owns **two**, and the server picks one of them by id — possibly the empty one,
+> which hides your real budget and leaves old devices stuck on "could not be matched".
+
+```bash
+docker compose exec -T db pg_dump -U enveo enveo | gzip > pre-2.0-backup.sql.gz   # 1. back up
+docker compose stop app                                                            # 2. no requests
+docker compose exec db psql -U enveo -d enveo                                      # 3. SQL below
+```
 
 ```sql
+-- who is who: '<your-signup-email>' is the account you just created, the pre-2.0 stub
+-- is owner@example.com on a standard install
+SELECT id, email FROM users;
+
+BEGIN;
 -- the first API call after registration lazily created an EMPTY budget: drop it,
 -- reattach the real budget to the new account, remove the pre-2.0 stub user
 DELETE FROM budgets WHERE user_id = '<new-user-id>';
 UPDATE budgets SET user_id = '<new-user-id>'
   WHERE user_id = (SELECT id FROM users WHERE email = 'owner@example.com');
 DELETE FROM users WHERE email = 'owner@example.com';
+COMMIT;
+
+-- MANDATORY post-check: the new account must own EXACTLY ONE budget — the one with your data
+SELECT b.id, b.user_id, b.name,
+       (SELECT count(*) FROM transactions t WHERE t.budget_id = b.id) AS transactions
+FROM budgets b;
 ```
 
-Find `<new-user-id>` with `SELECT id FROM users WHERE email = '<your-signup-email>';`
-and check the pre-2.0 stub's address with `SELECT id, email FROM users;` before
-running the `UPDATE` (it is `owner@example.com` on a standard install).
+The post-check must return a **single row** for `<new-user-id>`, with your transaction
+count on it. If it returns two, a request slipped in anyway: delete the stray (the row
+with `0` transactions, named `Budżet`) by id — `DELETE FROM budgets WHERE id = '<stray-id>';` —
+and re-run the check. Only then `docker compose start app` and reload the app.
 
 **Expected in the meantime:** until the budget is reattached, devices that already
 hold your data report that their local copy **could not be matched to this account**
-and stop syncing. That is the multi-tenant guard doing its job — it refuses to push
-one account's ledger into another account's budget. **Nothing is deleted**: the
-local data stays on the device, and sync resumes by itself (within a minute, or on
-the next app focus) once the SQL above has run. Do not "remove the local data" on
-those devices while you are mid-upgrade.
+and stop syncing (while the app is stopped they simply see it as offline). That is
+the multi-tenant guard doing its job — it refuses to push one account's ledger into
+another account's budget. **Nothing is deleted**: the local data stays on the device,
+and sync resumes by itself (within a minute, or on the next app focus) once the app
+is back up with the budget reattached. Do not "remove the local data" on those
+devices while you are mid-upgrade — on a device that has not synced in a while, that
+copy may be the freshest one.
 
 Password reset (no e-mail infrastructure on selfhost):
 `bun run auth:reset-password <email> <new-password>` on the server.
