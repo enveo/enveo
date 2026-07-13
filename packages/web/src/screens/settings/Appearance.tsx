@@ -1,10 +1,14 @@
 import { useCurrency, useSettings, useTheme } from "../../lib/contexts";
 import { SUPPORTED_CURRENCIES } from "../../lib/currency";
-import { loadLocale, msg, useT, type Lang, type Message } from "../../lib/i18n";
+import { loadLocale, LOCALES, msg, useT, type Lang, type Message } from "../../lib/i18n";
 import { local } from "../../lib/mutate";
 import { store } from "../../lib/store";
 import { font, TEAL, THEMES, type AccentTheme } from "../../lib/theme";
-import { Row, Seg } from "./ui";
+import { Helper, Row, Seg } from "./ui";
+
+/** Where a translator reports a bad string. Community locales are labelled, not hidden — honest, and
+ *  it is the only route a reader of a wrong sentence has back to us. */
+const TRANSLATION_ISSUES_URL = "https://github.com/enveo/enveo/issues";
 
 /** Order of theme tiles in Settings, and the name of each (the ids are historical). */
 const THEME_IDS: AccentTheme[] = ["teal", "koral", "atrament", "duet"];
@@ -64,6 +68,8 @@ export function AppearanceSection() {
   const currency = useCurrency();
   // guard: without a booted replica / a budgets entity there is nothing to update
   const budgetId = store.getLedger()?.budgets?.[0]?.id;
+  const selectStyle = { padding: "7px 10px", borderRadius: 9, border: `1px solid ${C.line}`, background: C.bg, color: C.text, fontSize: 12.5, fontWeight: 600, fontFamily: font, outline: "none" } as const;
+  const community = LOCALES.find((l) => l.code === settings.lang)?.community;
 
   return (
     <div style={{ marginTop: 4 }}>
@@ -80,16 +86,31 @@ export function AppearanceSection() {
         />
       </Row>
       <Row label={t("Language")}>
-        <Seg
+        {/* Rendered FROM the registry: adding a locale must never mean remembering to edit a picker. */}
+        <select
           value={settings.lang}
           /* the locale chunk is fetched BEFORE the switch — otherwise the UI flashes English */
-          onChange={(id: Lang) => void loadLocale(id).then(() => setSettings({ ...settings, lang: id }))}
-          options={[
-            { id: "pl", label: "PL" },
-            { id: "en", label: "EN" },
-          ]}
-        />
+          onChange={(e) => {
+            const id = e.target.value as Lang;
+            void loadLocale(id).then(() => setSettings({ ...settings, lang: id }));
+          }}
+          style={selectStyle}
+        >
+          {LOCALES.map((l) => (
+            <option key={l.code} value={l.code}>
+              {l.endonym}
+            </option>
+          ))}
+        </select>
       </Row>
+      {community && (
+        <Helper>
+          {t("Community translation — it may be incomplete.")}{" "}
+          <a href={TRANSLATION_ISSUES_URL} target="_blank" rel="noreferrer" style={{ color: TEAL, fontWeight: 600 }}>
+            {t("Report a fix")}
+          </a>
+        </Helper>
+      )}
       <Row label={t("Currency")}>
         <select
           value={currency}
@@ -97,7 +118,7 @@ export function AppearanceSection() {
           onChange={(e) => {
             if (budgetId) local.updateBudget(budgetId, e.target.value);
           }}
-          style={{ padding: "7px 10px", borderRadius: 9, border: `1px solid ${C.line}`, background: C.bg, color: C.text, fontSize: 12.5, fontWeight: 600, fontFamily: font, outline: "none" }}
+          style={selectStyle}
         >
           {CURRENCIES.map((c) => (
             <option key={c} value={c}>

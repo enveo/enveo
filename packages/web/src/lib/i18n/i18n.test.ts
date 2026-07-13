@@ -35,10 +35,37 @@ describe("i18n runtime", () => {
     expect(translatePlural("pl", "{n} transaction | {n} transactions", 5)).toBe("5 transakcji");
   });
 
-  it("an untranslated language degrades to correct English (what makes partial locales usable)", async () => {
-    await loadLocale("de"); // registered in Lang, not yet in LOCALES → no dictionary at all
-    expect(translate("de", "Transactions")).toBe("Transactions");
-    expect(translatePlural("de", "{n} transaction | {n} transactions", 2)).toBe("2 transactions");
+  it("a message MISSING from a locale degrades to correct English (what makes partial locales usable)", async () => {
+    // Dict is Partial by design: a community locale may cover 3 messages or 600, and every gap
+    // renders the English source rather than a key or a blank. Deliberately NOT asserted against a
+    // shipped locale — those are complete today, so they could only prove this by regressing.
+    const code = "zy" as Lang; // never in the registry: no future locale can shadow this test
+    const entry = {
+      code,
+      endonym: "Test",
+      community: true,
+      load: async (): Promise<Dict> => ({ Transactions: "Zy" }), // one message; everything else absent
+    };
+    LOCALES.unshift(entry);
+    try {
+      await loadLocale(code);
+      expect(translate(code, "Transactions")).toBe("Zy"); // present → translated
+      expect(translate(code, "Settings")).toBe("Settings"); // absent → English source
+      expect(translatePlural(code, "{n} transaction | {n} transactions", 2)).toBe("2 transactions");
+    } finally {
+      LOCALES.splice(LOCALES.indexOf(entry), 1);
+    }
+  });
+
+  it("every shipped locale is wired up: translate() returns that locale's dictionary entry", async () => {
+    // NOT "differs from English" — French for "Transactions" is "Transactions", and a locale is not
+    // broken for agreeing with the source. What must hold is that the registry's chunk is the thing
+    // translate() reads from.
+    for (const l of TRANSLATED) {
+      const dict = await l.load();
+      await loadLocale(l.code);
+      expect({ locale: l.code, out: translate(l.code, "Settings") }).toEqual({ locale: l.code, out: dict["Settings"] as string });
+    }
   });
 
   it("a locale chunk that FAILS to load degrades to English instead of rejecting (no blank boot)", async () => {

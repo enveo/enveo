@@ -1,7 +1,7 @@
 /**
  * First-run wizard — rendered by App when the replica is an EMPTY budget
  * (0 accounts, 0 envelopes, 0 transactions). Three steps:
- *  0. welcome: language (Seg PL/EN), currency (same list as in Settings),
+ *  0. welcome: language (every locale in the registry), currency (same list as in Settings),
  *     "Start with an empty budget" OR "Try with sample data"
  *     (POST /demo/seed on the server → fullResync of the replica),
  *  1. first account (name + initial balance) — local.createAccount,
@@ -18,7 +18,7 @@ import { useSettings, useTheme } from "../lib/contexts";
 import { SUPPORTED_CURRENCIES, browserLocales, wizardCurrency } from "../lib/currency";
 import { fmtSignedTrim } from "../lib/amount";
 import { parseAmount } from "../lib/format";
-import { loadLocale, useT, type Lang, type Message, msg } from "../lib/i18n";
+import { loadLocale, LOCALES, useT, type Lang, type Message, msg } from "../lib/i18n";
 import { local } from "../lib/mutate";
 import { store } from "../lib/store";
 import { fullResync } from "../lib/sync";
@@ -33,20 +33,6 @@ const TEMPLATE: Array<{ group: Message; envelopes: Array<{ name: Message; isSavi
 
 /** Checklist row: a template item (name=Message) or a custom envelope (custom). */
 type TplRow = { name?: Message; custom?: string; isSavings?: boolean; checked: boolean };
-
-/** Segmented control (copy of the Settings idiom — not exported there). */
-function Seg<T extends string>({ value, options, onChange }: { value: T; options: Array<{ id: T; label: string }>; onChange: (id: T) => void }) {
-  const C = useTheme();
-  return (
-    <div style={{ display: "flex", background: C.bg, borderRadius: 9, padding: 2, border: `1px solid ${C.line}` }}>
-      {options.map((o) => (
-        <button key={o.id} onClick={() => onChange(o.id)} style={{ padding: "6px 12px", borderRadius: 7, border: "none", fontSize: 11.5, fontWeight: 600, cursor: "pointer", background: value === o.id ? TEAL : "transparent", color: value === o.id ? "#fff" : C.soft, whiteSpace: "nowrap", fontFamily: font }}>
-          {o.label}
-        </button>
-      ))}
-    </div>
-  );
-}
 
 /** Full-width action button (Settings idiom). */
 function BigButton({ label, onClick, disabled, variant = "teal" }: { label: ReactNode; onClick: () => void; disabled?: boolean; variant?: "teal" | "outline" }) {
@@ -183,15 +169,23 @@ export function OnboardingScreen({ onDone }: { onDone: () => void }) {
           </div>
 
           <Row label={t("Language")}>
-            <Seg
+            {/* From the registry, like Settings: detectLang() can preselect ANY locale, so a two-option
+                control would open the wizard with nothing selected for a German or Czech browser. */}
+            <select
               value={settings.lang}
               /* the locale chunk is fetched BEFORE the switch — otherwise the wizard stays English until a reload */
-              onChange={(id: Lang) => void loadLocale(id).then(() => setSettings({ ...settings, lang: id }))}
-              options={[
-                { id: "pl", label: "PL" },
-                { id: "en", label: "EN" },
-              ]}
-            />
+              onChange={(e) => {
+                const id = e.target.value as Lang;
+                void loadLocale(id).then(() => setSettings({ ...settings, lang: id }));
+              }}
+              style={{ padding: "7px 10px", borderRadius: 9, border: `1px solid ${C.line}`, background: C.bg, color: C.text, fontSize: 12.5, fontWeight: 600, fontFamily: font, outline: "none" }}
+            >
+              {LOCALES.map((l) => (
+                <option key={l.code} value={l.code}>
+                  {l.endonym}
+                </option>
+              ))}
+            </select>
           </Row>
           <Row label={t("Currency")}>
             <select

@@ -11,10 +11,21 @@ import type { Dict } from "./index";
 export type Lang = "en" | "pl" | "de" | "es" | "fr" | "it" | "nl" | "pt-BR" | "cs" | "sv";
 
 /** `endonym` is the language's name in itself (shown in Settings); `community` marks translations
- *  we did not author natively (labelled in the UI). Locale chunks are lazy (`import()`). */
+ *  we did not author natively (labelled in the UI). Locale chunks are lazy (`import()`).
+ *
+ *  A locale may be INCOMPLETE — every missing message renders its English source (see ./index).
+ *  That is the point: it lets a partial community translation ship instead of blocking on 100%. */
 export const LOCALES: { code: Lang; endonym: string; community: boolean; load: () => Promise<Dict> }[] = [
   { code: "en", endonym: "English", community: false, load: async () => ({}) },
   { code: "pl", endonym: "Polski", community: false, load: () => import("./locales/pl").then((m) => m.pl) },
+  { code: "de", endonym: "Deutsch", community: true, load: () => import("./locales/de").then((m) => m.de) },
+  { code: "es", endonym: "Español", community: true, load: () => import("./locales/es").then((m) => m.es) },
+  { code: "fr", endonym: "Français", community: true, load: () => import("./locales/fr").then((m) => m.fr) },
+  { code: "it", endonym: "Italiano", community: true, load: () => import("./locales/it").then((m) => m.it) },
+  { code: "nl", endonym: "Nederlands", community: true, load: () => import("./locales/nl").then((m) => m.nl) },
+  { code: "pt-BR", endonym: "Português (Brasil)", community: true, load: () => import("./locales/pt-BR").then((m) => m.ptBR) },
+  { code: "cs", endonym: "Čeština", community: true, load: () => import("./locales/cs").then((m) => m.cs) },
+  { code: "sv", endonym: "Svenska", community: true, load: () => import("./locales/sv").then((m) => m.sv) },
 ];
 
 /** UI language outside React (hook-free modules: backups, API error codes) — same store as contexts.tsx. */
