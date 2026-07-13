@@ -41,11 +41,13 @@ import {
   assertOwnReplica,
   decideIdentity,
   disableLocal,
-  discardForeignReplica,
+  discardLocalReplica,
   getLocalMode,
+  getSyncStatus,
   markReplacePending,
   enterLoginKeepingReplica,
   pushLocalToServer,
+  recheckReplicaOwner,
   resetServerE2ee,
   retryBoot,
   syncNow,
@@ -344,7 +346,7 @@ describe("sync cycle: session guard before the push", () => {
     await assertOwnReplica().catch(() => {}); // …B tries to write → "foreign"
     expect(store.getBootStatus()).toBe("foreign");
 
-    await discardForeignReplica(); // ForeignReplicaScreen → [Remove and continue]
+    await discardLocalReplica(); // ForeignReplicaScreen → [Remove and continue]
 
     expect(reloads).toBe(1);
     expect(await idbGet("meta", "ledger")).toBeUndefined(); // now, and only now, it is gone
@@ -562,7 +564,13 @@ describe("sync: an UNBOUND replica (no budgetId)", () => {
  * budgetId is the replica EPOCH marker, not a tenant id: /api/sync/pull LAZILY CREATES an
  * empty budget for a user who has none, and a reseed/DB restore rotates the id. So "the
  * session's budget id ≠ mine" is precisely what the 2.0 upgrade looks like on a pre-guard
- * device — wiping there would silently destroy the ledger AND every queued op. */
+ * device — wiping there would silently destroy the ledger AND every queued op.
+ *
+ * The state it lands in is its OWN (SyncState "unverified"), not "error": nothing is broken, the
+ * server is reachable, and the situation can last as long as the upgrade does. It is what the badge
+ * and Settings → Sync read to tell the user the truth (nothing is being sent) and to offer the ways
+ * out — check again / export a backup / discard the copy. Reusing "error" made the badge fall
+ * through to the reassuring "⇄ N" pill ("changes are waiting to be sent"), which was a lie. */
 
 describe("sync: an unproven replica is refused, never wiped", () => {
   it("2.0 upgrade path: the owner's budget is lazily created (new id) → no write, no data loss", async () => {
@@ -573,25 +581,76 @@ describe("sync: an unproven replica is refused, never wiped", () => {
     await syncNow("test");
 
     expect(called("/api/sync/push")).toBe(false); // nothing written into the new empty budget
+    expect(getSyncStatus().state).toBe("unverified"); // …and the UI can SAY so (not a red "error")
     expect(reloads).toBe(0); // NOT wiped — the mismatch proves nothing about the account
     expect(outbox.size()).toBe(1); // the queued op survives (a later cycle re-proves)
+    expect(store.getBootStatus()).toBe("ready"); // the app keeps working — it just cannot send
     await persist.flushed();
     expect(await idbGet("meta", "ledger")).toBeDefined(); // the replica is still there
     expect(await idbGet("meta", "userId")).toBeUndefined(); // …and NOT adopted on a guess
   });
 
-  it("the same replica is pushed once the owner's budget is reattached", async () => {
+  it("the same replica is pushed once the owner's budget is reattached — and the state clears", async () => {
     outbox.add(catOp());
     session = { user: { id: "user-owner" } };
     serverBudget = BUDGET_B;
     await syncNow("test"); // unproven → refused (above)
+    expect(getSyncStatus().state).toBe("unverified");
 
     serverBudget = BUDGET_A; // operator reattaches the pre-2.0 budget to the owner account
     await syncNow("test");
 
     expect(called("/api/sync/push")).toBe(true); // the preserved op finally goes out
+    expect(getSyncStatus().state).toBe("synced"); // …and the badge goes quiet again
     await persist.flushed();
     expect(await idbGet<string>("meta", "userId")).toBe("user-owner");
+  });
+
+  it("“Check again” re-runs the proof: still unproven ⇒ still no write, nothing destroyed", async () => {
+    outbox.add(catOp());
+    session = { user: { id: "user-owner" } };
+    serverBudget = BUDGET_B;
+    await syncNow("test");
+
+    await recheckReplicaOwner(); // Settings → Sync → [Check again], while the budget is not reattached
+
+    expect(called("/api/sync/push")).toBe(false); // the button cannot write either
+    expect(getSyncStatus().state).toBe("unverified"); // …and it says the same thing again
+    expect(outbox.size()).toBe(1);
+    expect(reloads).toBe(0);
+    await persist.flushed();
+    expect(await idbGet("meta", "userId")).toBeUndefined();
+  });
+
+  it("“Check again” adopts the replica the moment the proof succeeds", async () => {
+    outbox.add(catOp());
+    session = { user: { id: "user-owner" } };
+    serverBudget = BUDGET_B;
+    await syncNow("test");
+    expect(getSyncStatus().state).toBe("unverified");
+
+    serverBudget = BUDGET_A; // the operator has just reattached the budget…
+    await recheckReplicaOwner(); // …and the human taps "Check again" instead of waiting
+
+    expect(wrote(BUDGET_A)).toHaveLength(1); // the held-up op goes out
+    expect(getSyncStatus().state).toBe("synced");
+    await persist.flushed();
+    expect(await idbGet<string>("meta", "userId")).toBe("user-owner");
+  });
+
+  it("the human may discard the unproven copy — and only the human", async () => {
+    outbox.add(catOp());
+    session = { user: { id: "user-owner" } };
+    serverBudget = BUDGET_B;
+    await syncNow("test");
+    await persist.flushed();
+    expect(await idbGet("meta", "ledger")).toBeDefined(); // the engine kept it (it may be the last copy)
+
+    await discardLocalReplica(); // Settings → Sync → [Remove this data and continue]
+
+    expect(reloads).toBe(1); // …now, and only now, boot bootstraps the account's own budget
+    expect(await idbGet("meta", "ledger")).toBeUndefined();
+    expect(outbox.size()).toBe(0);
   });
 
   it("an unproven replica is refused by the out-of-cycle writers too, with no wipe", async () => {
@@ -601,6 +660,7 @@ describe("sync: an unproven replica is refused, never wiped", () => {
     await expect(pushLocalToServer()).rejects.toThrow();
     await expect(assertOwnReplica()).rejects.toThrow();
     expect(called("/api/sync/replace")).toBe(false);
+    expect(getSyncStatus().state).toBe("unverified");
     expect(reloads).toBe(0);
     expect(await idbGet("meta", "ledger")).toBeDefined();
   });

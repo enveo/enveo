@@ -4,7 +4,7 @@ import { signOutKeepingReplica } from "../lib/auth";
 import { useTheme } from "../lib/contexts";
 import { exportBackup } from "../lib/data";
 import { useT } from "../lib/i18n";
-import { discardForeignReplica, enterLoginKeepingReplica } from "../lib/sync";
+import { discardLocalReplica, enterLoginKeepingReplica } from "../lib/sync";
 import { CORAL, TEAL, font } from "../lib/theme";
 
 /**
@@ -41,7 +41,7 @@ export function ForeignReplicaScreen() {
     setBusy(true);
     setError(null);
     try {
-      await discardForeignReplica(); // clears IDB + outbox + local mode, then reloads
+      await discardLocalReplica(); // clears IDB + outbox + local mode, then reloads
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
       setBusy(false);

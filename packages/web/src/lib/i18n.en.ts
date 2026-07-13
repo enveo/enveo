@@ -155,7 +155,23 @@ export const en: Record<TKey, string> = {
   "sync.badgeLocalWiped": "Local mode — data deleted from server. Tap to open settings",
   "sync.badgeLocalPaused": "Local mode — sync paused. Tap to open settings",
   "sync.badgeSyncing": "Sync in progress",
-  "sync.notOwner": "This device's local copy could not be confirmed to belong to the signed-in account — nothing was sent to the server. Refresh the app and sign in again.",
+  "sync.notOwner": "This device's local copy could not be confirmed to belong to the signed-in account — nothing was sent to the server. Settings → Sync explains what happened and what you can do.",
+
+  // SyncState "unverified" — the replica on this device could not be matched to the signed-in
+  // account: NOTHING is being sent to the server (and nothing has been deleted). This is where
+  // the user reads what happened and what they can do about it.
+  "sync.badgeUnverified": "Not sending",
+  "sync.badgeUnverifiedAria": "This device's data has not been matched to your account — nothing is being sent to the server. Tap to open settings",
+  "unverified.title": "Not syncing with your account",
+  "unverified.body": "The copy of the budget on this device has not been matched to the account you are signed in with. Nothing is being sent to the server and nothing has been deleted — your changes are waiting safely here. There are two reasons this happens:",
+  "unverified.causeUpgrade": "An upgrade or a restore is in progress: the account's budget on the server is not this device's budget yet. Once it is, sync will resume by itself.",
+  "unverified.causeOther": "This data may belong to a different account. Then it will never be sent — download a backup and remove the copy from this device.",
+  "unverified.recheck": "Check again",
+  "unverified.recheckDesc": "re-runs the check against the server; nothing is sent",
+  "unverified.rechecking": "Checking…",
+  "unverified.exportDesc": "the whole local copy as a file — no network needed",
+  "unverified.discardDesc": "removes the local copy and downloads your account's data",
+  "unverified.hint": "The check repeats by itself when you open the app, and roughly once a minute.",
   "op.txn.create": "New transaction",
   "op.txn.update": "Transaction change",
   "op.txn.delete": "Transaction deletion",

@@ -255,7 +255,22 @@ export function getLastBootSource(): BootSource {
 
 /* ── Sync status (consumed by the UI in Phase 5) ────────────────────── */
 
-export type SyncState = "synced" | "syncing" | "offline" | "error" | "local" | "unauthed";
+/**
+ * "unverified" is deliberately its OWN state and not a flavour of "error": the app is working
+ * perfectly (local-first), the server is reachable, and nothing is broken — we simply cannot yet
+ * prove that this device's replica belongs to the signed-in account, so we send NOTHING. Folding
+ * that into "error" made the UI lie twice: a generic red badge suggesting a fault to retry, and —
+ * once anything was queued — the reassuring "⇄ N" pill promising the changes "will send
+ * themselves", which they never would. See enterUnverified and the Sync section in Settings.
+ */
+export type SyncState =
+  | "synced"
+  | "syncing"
+  | "offline"
+  | "error"
+  | "local"
+  | "unauthed"
+  | "unverified";
 
 export interface SyncStatus {
   state: SyncState;
@@ -745,15 +760,17 @@ function enterForeignReplica(): void {
 }
 
 /**
- * The human chose "remove the data and continue" on ForeignReplicaScreen — the ONLY path that
- * destroys a foreign replica, and it destroys it whole (mirror + outbox + DEK + owner stamp),
- * then reloads so the boot bootstraps the signed-in account's data.
+ * The human chose "remove this data and continue" — on ForeignReplicaScreen (the replica is
+ * stamped by another account) or in the unverified-replica notice (its owner cannot be proved).
+ * This is the ONLY path that destroys such a replica, and it destroys it whole (mirror + outbox +
+ * DEK + owner stamp), then reloads so the boot bootstraps the signed-in account's data.
  *
- * The local-mode flag goes with it: it belonged to the PREVIOUS owner. Leaving it at "wiped"
- * would boot the signed-in user into a network-free app on an EMPTY, unbound replica — and their
- * first "Disable local mode" would upload exactly that empty replica over their server budget.
+ * The local-mode flag goes with it: it belonged to the PREVIOUS owner (and after the discard there
+ * is nothing left to keep offline). Leaving it at "wiped" would boot the signed-in user into a
+ * network-free app on an EMPTY, unbound replica — and their first "Disable local mode" would
+ * upload exactly that empty replica over their server budget.
  */
-export async function discardForeignReplica(): Promise<void> {
+export async function discardLocalReplica(): Promise<void> {
   outbox.clearAll(); // in-memory queue too: nothing of the previous owner's may go out
   if (localMode !== "off") applyLocalMode("off"); // the mode was the previous owner's choice
   await persist.flushed(); // let queued writes land BEFORE the stores are cleared
@@ -783,10 +800,30 @@ export function enterLoginKeepingReplica(): void {
  * write, but we do NOT wipe: the data may well be this user's, and destroying it (with its
  * unsynced ops) on an inconclusive probe would be the worse error. A later cycle
  * (focus/interval) retries the proof — e.g. after an Unlock the tier lines up again.
+ *
+ * This is NOT a corner case: it is exactly where a 1.x device lands during the 2.0 upgrade (the
+ * owner registers, the server lazily creates an empty budget, and the old budget is reattached by
+ * the operator only afterwards), and it can last for as long as that takes. So it gets a state of
+ * its own — the badge says what is true (nothing is being sent) and links to Settings → Sync,
+ * which names the two real causes and offers the safe ways out: export a backup, discard the local
+ * copy, or check again. No retry loop and no backoff: the proof is re-run by the ordinary triggers
+ * (focus / visibility / the 60 s interval) and by the human's "check again".
  */
 function enterUnverified(): void {
   console.warn("sync: cannot establish the local replica's owner — no server write will be made");
-  setState("error"); // honest: sync really is not happening (no retry loop of its own)
+  setState("unverified");
+}
+
+/**
+ * "Check again" (Settings → Sync, the unverified-replica notice): forget the cached verdict and
+ * run a full cycle, which re-proves ownership from scratch. It is exactly what the next
+ * focus/interval trigger would do — the button is there so the human is not left waiting on a
+ * timer they cannot see, and so the moment the operator reattaches the budget the device can be
+ * told to notice. Nothing here writes: a still-unproven replica lands back in "unverified".
+ */
+export function recheckReplicaOwner(): Promise<void> {
+  identityVerifiedFor = null;
+  return syncNow("recheck-owner");
 }
 
 /**
