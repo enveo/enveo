@@ -229,7 +229,7 @@ function E2eeBadge({ color }: { color: string }) {
 function SyncStatusBadge({ okColor }: { okColor: string }) {
   const C = useTheme();
   const { lang } = useT();
-  const { state, lastSyncAt, localMode } = useSyncStatus();
+  const { state, lastSyncAt, localMode, ownerUnproven } = useSyncStatus();
 
   // refresh the relative time every ~30 s while the hub is open
   const [, setTick] = useState(0);
@@ -238,9 +238,11 @@ function SyncStatusBadge({ okColor }: { okColor: string }) {
     return () => clearInterval(id);
   }, []);
 
-  // "unverified" reads as a healthy green dot unless it is called out here — and it is the one
-  // state the user has to FIND (the section behind this card is the only place it is explained).
-  const attention = state === "offline" || state === "error" || state === "unverified";
+  // An unproven replica reads as a healthy green dot unless it is called out here — and it is the
+  // one state the user has to FIND (the section behind this card is the only place it is
+  // explained). The STICKY flag, not SyncState "unverified": a re-proof cycle passes through
+  // "syncing", and the dot would flip back to the healthy colour every time it ran.
+  const attention = state === "offline" || state === "error" || ownerUnproven;
   const color = localMode !== "off" ? C.mute : attention ? CORAL : okColor;
   return (
     <span style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 10.5, color, fontWeight: 700, flexShrink: 0 }}>

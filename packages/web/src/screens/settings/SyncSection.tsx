@@ -22,12 +22,17 @@ const IC = {
 };
 
 export function SyncSection() {
-  const { state, localMode } = useSyncStatus();
+  const { ownerUnproven, localMode } = useSyncStatus();
   // The replica's owner could not be established: no cycle writes anything and none will until
   // the proof succeeds, so "Sync now" / "Download everything anew" would be theatre. The notice
   // takes the section over — it is the ONE place where this state is explained. (Local mode wins:
   // there sync is off by the user's own choice, and the SyncActions text already says so.)
-  if (localMode === "off" && state === "unverified") {
+  //
+  // The gate is the STICKY ownerUnproven, never SyncState "unverified": a re-proof runs as a normal
+  // cycle, which flips the state to "syncing" first — keying on the state would tear this panel
+  // down (with its open discard confirmation and its "Checking…" label) on every 60 s interval,
+  // every focus, every local edit and, absurdly, on the "Check again" tap that starts the proof.
+  if (localMode === "off" && ownerUnproven) {
     return (
       <div style={{ marginTop: 4 }}>
         <UnverifiedReplicaNotice />
@@ -68,7 +73,9 @@ function UnverifiedReplicaNotice() {
     setBusy(true);
     setError(null);
     try {
-      await recheckReplicaOwner(); // proof succeeded ⇒ this component unmounts (state ≠ unverified)
+      // The panel STAYS mounted for the whole proof (the section's gate is sticky), so "Checking…"
+      // is visible; the component unmounts only if the proof SUCCEEDS (ownerUnproven cleared).
+      await recheckReplicaOwner();
     } finally {
       setBusy(false);
     }

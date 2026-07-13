@@ -50,6 +50,7 @@ import {
   recheckReplicaOwner,
   resetServerE2ee,
   retryBoot,
+  subscribeSyncStatus,
   syncNow,
 } from "./sync";
 
@@ -663,6 +664,83 @@ describe("sync: an unproven replica is refused, never wiped", () => {
     expect(getSyncStatus().state).toBe("unverified");
     expect(reloads).toBe(0);
     expect(await idbGet("meta", "ledger")).toBeDefined();
+  });
+});
+
+/* ── "The owner is unproven" is a STICKY FACT, not a momentary state ─────
+ *
+ * SyncState is transient: EVERY re-proof is an ordinary cycle, and doCycle flips the state to
+ * "syncing" BEFORE ensureIdentity runs — so it dips out of "unverified" and back on every trigger
+ * (the 60 s interval, focus/visibility, a local edit's poke and, absurdly, the human's own "Check
+ * again"). A UI keyed on the state would therefore, for the whole duration of each network proof:
+ * tear down the notice that is the ONE place this state is explained (with its "Checking…" label
+ * and any open discard confirmation), swap in "Sync now" / "Download everything anew" and — with
+ * anything queued — the "N changes waiting to be sent" pill, i.e. exactly the reassuring lie this
+ * state exists to remove. Hence SyncStatus.ownerUnproven: true until the proof succeeds. */
+
+describe("sync status: ownerUnproven is sticky across the re-proof", () => {
+  const record = (): { seen: { state: string; unproven: boolean }[]; stop: () => void } => {
+    const seen: { state: string; unproven: boolean }[] = [];
+    const stop = subscribeSyncStatus(() => {
+      const s = getSyncStatus();
+      seen.push({ state: s.state, unproven: s.ownerUnproven });
+    });
+    return { seen, stop };
+  };
+
+  it("stays true through the 'syncing' of a cycle that re-proves and fails again", async () => {
+    outbox.add(catOp()); // …and a queued op, which is when the flicker turned into a LIE
+    session = { user: { id: "user-owner" } };
+    serverBudget = BUDGET_B;
+    await syncNow("test");
+    expect(getSyncStatus().ownerUnproven).toBe(true);
+
+    const { seen, stop } = record();
+    await syncNow("test"); // the 60 s interval / focus / poke — or "Check again" (recheckReplicaOwner)
+    await recheckReplicaOwner();
+    stop();
+
+    expect(seen.some((s) => s.state === "syncing")).toBe(true); // the state DOES dip (as designed)
+    expect(seen.every((s) => s.unproven)).toBe(true); // …the fact the UI reads does NOT
+    expect(getSyncStatus().state).toBe("unverified");
+    expect(getSyncStatus().ownerUnproven).toBe(true);
+  });
+
+  it("clears the moment the proof succeeds", async () => {
+    session = { user: { id: "user-owner" } };
+    serverBudget = BUDGET_B;
+    await syncNow("test");
+    expect(getSyncStatus().ownerUnproven).toBe(true);
+
+    serverBudget = BUDGET_A; // the operator reattached the budget
+    await recheckReplicaOwner();
+
+    expect(getSyncStatus().ownerUnproven).toBe(false); // badge quiet, notice gone, actions back
+    expect(getSyncStatus().state).toBe("synced");
+  });
+
+  it("clears on sign-out — the Login screen owns the story from there", async () => {
+    session = { user: { id: "user-owner" } };
+    serverBudget = BUDGET_B;
+    await syncNow("test");
+    expect(getSyncStatus().ownerUnproven).toBe(true);
+
+    enterLoginKeepingReplica(); // the replica stays; the next session proves it from scratch
+
+    expect(getSyncStatus().ownerUnproven).toBe(false);
+    expect(getSyncStatus().state).toBe("unauthed");
+  });
+
+  it("clears in local mode — there sync is off by the user's own choice", async () => {
+    session = { user: { id: "user-owner" } };
+    serverBudget = BUDGET_B;
+    await syncNow("test");
+    expect(getSyncStatus().ownerUnproven).toBe(true);
+
+    __setLocalMode("paused"); // "Work offline": the local-mode text explains the silence instead
+
+    expect(getSyncStatus().ownerUnproven).toBe(false);
+    expect(getSyncStatus().state).toBe("local");
   });
 });
 

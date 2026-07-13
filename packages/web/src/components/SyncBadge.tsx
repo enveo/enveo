@@ -17,9 +17,9 @@ function reduceMotion(): boolean {
  * (the server REJECTED something → a user decision is needed).
  *
  * - dead letters (>0) → red dot, tappable → opens "Sync",
- * - unverified (the replica's owner could not be matched to the signed-in account) → muted,
+ * - ownerUnproven (the replica's owner could not be matched to the signed-in account) → muted,
  *   tappable pill: nothing is being sent, and saying so is the whole point (the "pending" pill
- *   below would claim the opposite),
+ *   below would claim the opposite). Sticky across the re-proof cycles, so it does not blink,
  * - syncing → spinning ring ("sp" keyframes; no motion under reduce-motion),
  * - pending (>0), 0 dead letters → muted, REASSURING pill "⇄ N"
  *   REGARDLESS of state (offline / error / not-yet-pushed): changes are waiting
@@ -30,7 +30,7 @@ function reduceMotion(): boolean {
 export function SyncBadge({ onOpenSync }: { onOpenSync: () => void }) {
   const C = useTheme();
   const { t, tp } = useT();
-  const { state, pending, deadLetters, localMode } = useSyncStatus();
+  const { state, pending, deadLetters, localMode, ownerUnproven } = useSyncStatus();
 
   // shared anchoring in the shell corner (above content, below sheet/drawer)
   const anchor: React.CSSProperties = {
@@ -119,13 +119,17 @@ export function SyncBadge({ onOpenSync }: { onOpenSync: () => void }) {
     );
   }
 
-  // The replica could not be matched to the signed-in account (SyncState "unverified"): NOTHING is
-  // being sent to the server, and it will not start on its own until the ownership proof succeeds.
-  // This MUST precede the "pending" pill below — that pill promises the queued changes will send
-  // themselves, which here is exactly what does not happen. Muted, not red: nothing is broken and
-  // nothing is at risk; tappable → Settings → Sync, which explains the state and offers the ways
-  // out (check again / export a backup / remove the local copy).
-  if (state === "unverified") {
+  // The replica could not be matched to the signed-in account: NOTHING is being sent to the server,
+  // and it will not start on its own until the ownership proof succeeds. This MUST precede the
+  // "pending" pill below — that pill promises the queued changes will send themselves, which here is
+  // exactly what does not happen. Muted, not red: nothing is broken and nothing is at risk; tappable
+  // → Settings → Sync, which explains the state and offers the ways out (check again / export a
+  // backup / remove the local copy).
+  //
+  // Keyed on the STICKY ownerUnproven, not SyncState "unverified": each re-proof runs as an ordinary
+  // cycle ("syncing" first), and a state-keyed pill would blink into the spinner — and, once the
+  // proof failed and something was queued, into the "⇄ N" pill — on every trigger.
+  if (ownerUnproven) {
     return (
       <button
         onClick={onOpenSync}

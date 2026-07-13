@@ -262,6 +262,9 @@ export function getLastBootSource(): BootSource {
  * that into "error" made the UI lie twice: a generic red badge suggesting a fault to retry, and —
  * once anything was queued — the reassuring "⇄ N" pill promising the changes "will send
  * themselves", which they never would. See enterUnverified and the Sync section in Settings.
+ *
+ * The UI does NOT key off this state, though: it is transient (every re-proof passes through
+ * "syncing" on its way back here). What it reads is the sticky SyncStatus.ownerUnproven below.
  */
 export type SyncState =
   | "synced"
@@ -278,10 +281,29 @@ export interface SyncStatus {
   deadLetters: number;
   lastSyncAt: string | null;
   localMode: LocalMode;
+  /** @see ownerUnproven — the STICKY fact behind SyncState "unverified". */
+  ownerUnproven: boolean;
 }
 
 let syncState: SyncState = localMode !== "off" ? "local" : "synced";
 let lastSyncAt: string | null = null;
+
+/**
+ * "This replica's owner has not been proved" — a FACT that holds until the proof succeeds, unlike
+ * SyncState, which is a momentary thing. Every cycle passes through "syncing" on its way BACK to
+ * "unverified" (doCycle sets "syncing" before ensureIdentity), so a UI keyed on the state alone
+ * flickers on every trigger — the 60 s interval, focus, a local edit's poke and, worst, the
+ * human's own "Check again": the very panel that explains the state (and hosts an open discard
+ * confirmation) would unmount mid-interaction and be replaced, for the duration of the network
+ * proof, by "Sync now" / "N changes waiting to be sent" — the reassuring lie this state exists to
+ * remove. So the badge, the Settings dot and the Sync section read THIS instead.
+ *
+ * Set by enterUnverified, cleared the moment ensureIdentity proves (or adopts) the replica — and
+ * on the verdicts that supersede it: no session (Login), a foreign stamp (ForeignReplicaScreen),
+ * or local mode (sync is off by choice; the next "off" cycle re-proves from scratch).
+ */
+let ownerUnproven = false;
+
 const statusListeners = new Set<() => void>();
 let statusSnapshot: SyncStatus = {
   state: syncState,
@@ -289,6 +311,7 @@ let statusSnapshot: SyncStatus = {
   deadLetters: 0,
   lastSyncAt: null,
   localMode,
+  ownerUnproven: false,
 };
 
 function bumpStatus(): void {
@@ -298,6 +321,7 @@ function bumpStatus(): void {
     deadLetters: outbox.getDeadLetters().length,
     lastSyncAt,
     localMode,
+    ownerUnproven,
   };
   for (const fn of statusListeners) fn();
 }
@@ -308,6 +332,13 @@ function setState(s: SyncState): void {
     return;
   }
   syncState = s;
+  bumpStatus();
+}
+
+/** The sticky "owner unproven" fact (see above) — notifies the UI when it actually changes. */
+function setOwnerUnproven(v: boolean): void {
+  if (ownerUnproven === v) return;
+  ownerUnproven = v;
   bumpStatus();
 }
 
@@ -698,6 +729,7 @@ let identityBlocked = false; // foreign replica → no network write until the h
 export function __resetIdentity(): void {
   identityVerifiedFor = null;
   identityBlocked = false;
+  setOwnerUnproven(false);
 }
 
 /** Test hook (unit tests only): drop the durable obligations held in module memory. */
@@ -729,6 +761,7 @@ export function __setLocalMode(mode: LocalMode): void {
  */
 function enterUnauthed(): void {
   identityVerifiedFor = null;
+  setOwnerUnproven(false); // no session ⇒ nothing to prove YET; the next one proves from scratch
   store.setBootStatus("unauthed");
   setState("unauthed"); // no retry loop — a 401 does not clear on its own
 }
@@ -754,6 +787,7 @@ function enterUnauthed(): void {
  */
 function enterForeignReplica(): void {
   identityBlocked = true; // no cycle may touch the network until the human decides
+  setOwnerUnproven(false); // a PROVEN foreign stamp supersedes "unproven" (ForeignReplicaScreen)
   console.warn("sync: the local replica belongs to a different account — every server write is refused");
   store.setBootStatus("foreign"); // ForeignReplicaScreen: [Export backup] / [Remove and continue]
   setState("error"); // honest: sync is not happening (no retry loop of its own)
@@ -811,6 +845,7 @@ export function enterLoginKeepingReplica(): void {
  */
 function enterUnverified(): void {
   console.warn("sync: cannot establish the local replica's owner — no server write will be made");
+  setOwnerUnproven(true); // STICKY: it survives the "syncing" of every re-proof (see ownerUnproven)
   setState("unverified");
 }
 
@@ -1001,6 +1036,9 @@ async function ensureIdentity(): Promise<string | null> {
     await persist.putMeta("userId", sessionUserId); // stamp the owner next to the replica
     identityVerifiedFor = sessionUserId;
   }
+  // Proved (or adopted): the replica's owner is no longer in question — clear the sticky fact, so
+  // the badge, the Settings dot and the Sync section stop saying "not sending".
+  setOwnerUnproven(false);
   // The session is back (e.g. the user signed in in ANOTHER tab) while this tab sits on
   // Login: the replica is intact and belongs to this account → back into the app.
   if (store.getBootStatus() === "unauthed" && store.getLedger()) store.setBootStatus("ready");
@@ -1529,6 +1567,9 @@ function applyLocalMode(mode: LocalMode): void {
     /* ignore — the flag lives in session memory anyway */
   }
   broadcastLocalMode(mode);
+  // Local mode supersedes the unproven state (sync is off by the user's own choice, and the local
+  // UI says so); leaving it "off" re-proves from scratch on the next cycle.
+  setOwnerUnproven(false);
   setState(mode === "off" ? "synced" : "local");
 }
 
@@ -1908,8 +1949,11 @@ function installMultiTab(): void {
         const m = msg.mode;
         if (m === "off" || m === "paused" || m === "wiped") {
           localMode = m;
-          if (m === "off") void syncNow("peer-localmode-off");
-          else setState("local");
+          if (m === "off") void syncNow("peer-localmode-off"); // still unproven? the cycle re-proves
+          else {
+            setOwnerUnproven(false); // sync is off by choice now — same as applyLocalMode
+            setState("local");
+          }
         }
       }
     };
