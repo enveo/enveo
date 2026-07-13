@@ -150,7 +150,7 @@ docker compose exec db psql -U enveo -d enveo    # SQL below
 
 ```sql
 -- 1. Inventory. Write down the ids: the REAL budget is the one with your transaction
---    count, the STRAY is the empty one (0 transactions, named 'Budżet') on the new user.
+--    count, the STRAY is the empty one (0 transactions, named 'Budget') on the new user.
 SELECT b.id, b.user_id, u.email, b.name,
        (SELECT count(*) FROM transactions t WHERE t.budget_id = b.id) AS transactions
 FROM budgets b JOIN users u ON u.id = b.user_id;

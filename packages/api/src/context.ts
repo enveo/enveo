@@ -19,7 +19,9 @@ export function sessionUserId(c: UserCtx): string | undefined {
 /**
  * Accounts are mandatory: the budget belongs to the session user (userId set by
  * the session middleware in index.ts); no budget ⇒ lazy-create an empty one
- * (synergy with the onboarding wizard).
+ * (synergy with the onboarding wizard). Its name is a neutral English placeholder
+ * — the server has no locale for a lazily-created budget, and the user renames it
+ * in Settings (existing names are DATA: no migration ever rewrites them).
  *
  * DELIBERATELY no in-process cache: `budgets.id` is the replica epoch marker —
  * wipe+reseed (`bun run db:seed`) assigns a NEW id without restarting the API.
@@ -49,7 +51,7 @@ export async function getBudgetId(c: UserCtx, x: Executor = db): Promise<string>
   if (rows[0]) return rows[0].id;
   const [created] = await x
     .insert(budgets)
-    .values({ userId, name: "Budżet" })
+    .values({ userId, name: "Budget" })
     .returning({ id: budgets.id });
   if (!created) throw new Error("Failed to create the user's budget.");
   return created.id;
