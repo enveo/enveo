@@ -1,0 +1,115 @@
+# Release: publish the runtime image to GHCR on every version tag, so self-hosters
+# can `docker pull` instead of building from source.
+#
+# Multi-arch on purpose: linux/amd64 (typical VPS) AND linux/arm64 (Raspberry Pi,
+# Ampere/Graviton VPS, Apple Silicon). The arm64 leg is built under QEMU emulation —
+# slow on a first run (bun install + vite build are emulated), fast afterwards thanks
+# to the GitHub Actions layer cache. The Dockerfile is cross-build safe: both stages
+# use oven/bun:1 (published for amd64 + arm64) and nothing downloads an arch-pinned
+# binary; the native deps (rollup/esbuild/sharp) resolve per-arch from bun.lock, which
+# carries every linux-arm64 variant.
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  # Manual re-run of an ALREADY EXISTING tag (e.g. the first publish failed).
+  # There is no branch path into this workflow: the version is always a v* tag.
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing version tag to (re)publish, e.g. v2.1.0"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  packages: write
+
+# Never publish the same tag twice concurrently (tag push + a manual re-run).
+concurrency:
+  group: release-${{ inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  image:
+    runs-on: ubuntu-latest
+    steps:
+      # Resolves the version from either trigger and refuses anything that is not a
+      # version tag. This is the guard that keeps a branch build from ever being pushed.
+      - name: Resolve version tag
+        id: ver
+        env:
+          TAG: ${{ inputs.tag || github.ref_name }}
+        run: |
+          set -euo pipefail
+          case "$TAG" in
+            # prerelease (v2.1.0-rc.1): publish the exact version only
+            v[0-9]*.[0-9]*.[0-9]*-*) stable=false ;;
+            # stable (v2.1.0)
+            v[0-9]*.[0-9]*.[0-9]*)   stable=true  ;;
+            *) echo "::error::not a version tag: '$TAG' (expected vMAJOR.MINOR.PATCH)"; exit 1 ;;
+          esac
+          echo "tag=$TAG"       >> "$GITHUB_OUTPUT"
+          echo "stable=$stable" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/checkout@v4
+        with:
+          # on workflow_dispatch github.ref is a branch — check out the tag instead
+          ref: ${{ steps.ver.outputs.tag }}
+
+      # Image name follows the repository (ghcr.io/<owner>/<repo>) — no hardcoded owner.
+      # metadata-action also emits org.opencontainers.image.source, which is what links
+      # the GHCR package back to this repo (README + "inherit access from repository").
+      - name: Docker metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository }}
+          # v2.1.0     -> 2.1.0, 2.1, latest
+          # v2.1.0-rc.1 -> 2.1.0-rc.1 only (a prerelease must never move `2.1` or `latest`)
+          tags: |
+            type=semver,pattern={{version}},value=${{ steps.ver.outputs.tag }}
+            type=semver,pattern={{major}}.{{minor}},value=${{ steps.ver.outputs.tag }},enable=${{ steps.ver.outputs.stable }}
+          flavor: |
+            latest=${{ steps.ver.outputs.stable }}
+
+      # QEMU only matters for the arm64 leg; buildx gives us the multi-platform driver.
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push (linux/amd64, linux/arm64)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          annotations: ${{ steps.meta.outputs.annotations }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          # Attestations would add "unknown/unknown" entries to the package listing and
+          # need id-token: write; skipped to keep permissions minimal and the tag clean.
+          provenance: false
+          sbom: false
+
+      - name: Summary
+        env:
+          TAGS: ${{ steps.meta.outputs.tags }}
+        run: |
+          {
+            echo "### Published to GHCR"
+            echo
+            echo '```'
+            echo "$TAGS"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
