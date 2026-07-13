@@ -93,6 +93,18 @@ const ERROR_KEYS: Record<string, TKey> = {
   empty_unbound_replica: "err.emptyUnboundReplica",  
   bad_ciphertext: "err.badCiphertext", // crypto.ts — envelope this build cannot read (corrupt/foreign)
   bad_pairing_code: "err.badPairingCode", // crypto.ts — decodePairing on a code that is not ours
+
+  
+
+  invalid_email_or_password: "err.badCredentials",
+  invalid_email: "err.badEmail",
+  user_already_exists: "err.userExists",
+  password_too_short: "err.passwordTooShort",
+  password_too_long: "err.passwordTooLong",
+  signups_closed: "auth.signupsClosed",  
+  sign_in_failed: "err.signInFailed",  
+  sign_up_failed: "err.signUpFailed",
+  auth_meta_failed: "err.signInFailed",  
 };
 
  

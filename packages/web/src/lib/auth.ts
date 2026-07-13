@@ -16,16 +16,41 @@ export async function fetchAuthMeta(): Promise<AuthMeta> {
   return (await r.json()) as AuthMeta;
 }
 
+/**
+ * better-auth answers with an English `message` and a machine `code` (e.g.
+ * INVALID_EMAIL_OR_PASSWORD). The message must never reach the UI — it would print English
+ * at a Polish user on the very first screen. Same contract as everywhere else in lib/*:
+ * throw a snake_case CODE, let lib/api.ts (ERROR_KEYS) own the wording per locale.
+ * An unmapped code falls back to a generic per-action key rather than the library's prose.
+ */
+function authErrorCode(
+  error: { code?: string; message?: string } | null | undefined,
+  fallback: "sign_in_failed" | "sign_up_failed",
+): string {
+  const code = error?.code?.toLowerCase();
+  return code && AUTH_CODES.has(code) ? code : fallback;
+}
+
+ 
+const AUTH_CODES = new Set([
+  "invalid_email_or_password",
+  "user_already_exists",
+  "password_too_short",
+  "password_too_long",
+  "invalid_email",
+  "signups_closed",  
+]);
+
  
 export async function signInEmail(email: string, password: string): Promise<void> {
   const { error } = await authClient.signIn.email({ email, password });
-  if (error) throw new Error(error.message ?? "sign_in_failed");
+  if (error) throw new Error(authErrorCode(error, "sign_in_failed"));
 }
 
  
 export async function signUpEmail(email: string, password: string): Promise<void> {
   const { error } = await authClient.signUp.email({ email, password, name: email.split("@")[0] ?? email });
-  if (error) throw new Error(error.message ?? "sign_up_failed");
+  if (error) throw new Error(authErrorCode(error, "sign_up_failed"));
 }
 
  

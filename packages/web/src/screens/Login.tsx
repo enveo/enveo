@@ -44,10 +44,8 @@ export function LoginScreen() {
   const firstRun = meta?.firstRun === true;
   const canSubmit = email.trim().length > 0 && password.length > 0 && !busy;
 
-  const fail = (e: unknown) => {
-    const msg = apiErrorMessage(e);
-    setError(msg.includes("signups_closed") ? t("auth.signupsClosed") : msg);
-  };
+  // lib/auth.ts throws a CODE (never the library's English prose); apiErrorMessage does the wording.
+  const fail = (e: unknown) => setError(apiErrorMessage(e));
 
   const submit = async () => {
     setBusy(true);
