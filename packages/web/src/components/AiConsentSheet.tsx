@@ -12,16 +12,16 @@ import { TEAL, font } from "../lib/theme";
  * and offers three ways out:
  *  - "Enable via server"  → aiMode="server" (only when /api/ai/info → serverAi=true),
  *  - "Use your own key" → inline key + model → aiMode="byok" (key ONLY in localStorage),
- *  - "Stay with rules" → does NOT change aiMode (for import: "Cancel" — rules can't
- *    read screenshots, so this choice means aborting the import).
+ *  - "Stay with rules" → does NOT change aiMode. Only the budget SUGGESTION has a rules
+ *    engine to stay with; for the import (and quick-add, which since 2.2.0 has no rules
+ *    parser at all and is simply hidden in off mode) the way out is "Cancel".
  * After the choice it calls `onDecided(mode)` — closing the sheet is the parent's job.
  */
 
-export type AiFeature = "suggest" | "quickadd" | "import";
+export type AiFeature = "suggest" | "import";
 
 const PAYLOAD_KEY: Record<AiFeature, TKey> = {
   suggest: "ai.payload.suggest",
-  quickadd: "ai.payload.quickadd",
   import: "ai.payload.import",
 };
 

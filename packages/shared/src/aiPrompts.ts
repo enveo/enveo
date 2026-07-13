@@ -373,9 +373,9 @@ export function buildAgentLoopMessages(ctx: AgentLoopPromptContext): ChatToolsMe
   ];
 }
 
-/* ── Quick-add (LLM enrichment of the rule-based parser) ─────────────── */
+/* ── Quick-add (natural language → a transaction draft; AI-only since 2.2.0) ── */
 
-/** Fields actually read by enhanceWithLLM (subset of QuickAddRefs). */
+/** Reference names injected into the prompt so the model can name an envelope/place. */
 export interface QuickAddPromptRefs {
   envelopes: Array<{ id: string; name: string }>;
   places: Array<{ id: string; name: string }>;
@@ -401,8 +401,8 @@ export function buildQuickAddPrompt(text: string, refs: QuickAddPromptRefs, toda
   };
 }
 
-/** Fields from the LLM response (Partial w.r.t. QuickAddResult); `null` = missing/
- *  invalid → the caller keeps the base value (parity with enhanceWithLLM). */
+/** Fields from the LLM response; `null` = missing/invalid → the caller supplies the
+ *  default (identically in web/lib/ai.ts and the /quick-add route — same parse, same merge). */
 export interface QuickAddAiFields {
   amount: number | null;
   type: "expense" | "income";

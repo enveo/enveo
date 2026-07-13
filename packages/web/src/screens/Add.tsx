@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { parseQuickAdd, type RecurrenceRule, type Transaction, type TxnPayload } from "@enveo/shared";
-import { useLedgerVersion, type EditedImportItem, type ImportItem, type QuickAddResponse, type StateResponse } from "../lib/api";
+import { type RecurrenceRule, type Transaction, type TxnPayload } from "@enveo/shared";
+import { apiErrorMessage, useLedgerVersion, type EditedImportItem, type ImportItem, type QuickAddResponse, type StateResponse } from "../lib/api";
 import { runQuickAdd as aiQuickAdd } from "../lib/ai";
 import { hasOpenOp, padKey, type PadState } from "../lib/amount";
 import { categoryCountsFor, rankCategories } from "../lib/categoryIndex";
@@ -8,7 +8,6 @@ import { preferredAccountId, setLastAccountId } from "../lib/lastAccount";
 import { local } from "../lib/mutate";
 import { store } from "../lib/store";
 import { Sheet } from "../components/chrome";
-import { AiConsentSheet } from "../components/AiConsentSheet";
 import { AmountPadHost, type AmountPadTarget } from "../components/AmountPadSheet";
 import { ImportSheet } from "../components/ImportSheet";
 import { accountIconColor } from "../components/tiles";
@@ -76,9 +75,8 @@ export function AddScreen({ state, onDone, editTxn, draft }: { state: StateRespo
   const [confirmed, setConfirmed] = useState(true);
   const [numpad, setNumpad] = useState(true);
   const [quick, setQuick] = useState("");
-  const [lastQuick, setLastQuick] = useState(""); // last quick-add text (for "Enhance with AI")
-  const [showConsent, setShowConsent] = useState(false);
-  const [pendingEnhance, setPendingEnhance] = useState(false);
+  const [quickBusy, setQuickBusy] = useState(false); // quick-add always calls the model now — it takes a moment
+  const [quickErr, setQuickErr] = useState<string | null>(null);
 
   const [showAcc, setShowAcc] = useState(false);
   const [showTo, setShowTo] = useState(false);
@@ -251,20 +249,6 @@ export function AddScreen({ state, onDone, editTxn, draft }: { state: StateRespo
     onDone();
   }
 
-  // rule-based parser from shared on mirror data (offline / no replica / failure)
-  const localParse = (text: string): QuickAddResponse => {
-    const ledger = store.getLedger();
-    return parseQuickAdd(
-      text,
-      {
-        envelopes: ledger?.envelopes ?? [],
-        places: ledger?.places ?? [],
-        categories: ledger?.categories ?? [],
-      },
-      new Date().toISOString().slice(0, 10),
-    );
-  };
-
   const applyQuick = (r: QuickAddResponse) => {
     if (r.amount) setAmount((r.amount / 100).toFixed(2).replace(".", ","));
     setTab(r.type);
@@ -277,51 +261,25 @@ export function AddScreen({ state, onDone, editTxn, draft }: { state: StateRespo
     setNumpad(false);
   };
 
-  // Quick-add via dispatch per AI mode: in off it works IMMEDIATELY locally
-  // (rules send nothing — zero consent sheet); server/byok per settings.
+  /* Quick-add is AI-only (the rule parser is gone): the bar exists only in the
+     server/byok modes, so there is nothing to fall back to — a failure (no operator
+     key, upstream error, offline) is SHOWN instead of silently degrading. */
+  const aiOn = settings.aiMode !== "off";
   async function execQuickAdd() {
-    if (!quick.trim()) return;
     const text = quick.trim();
-    let r: QuickAddResponse;
     const ledger = store.getLedger();
-    if (!ledger || (typeof navigator !== "undefined" && navigator.onLine === false)) {
-      r = localParse(text);
-    } else {
-      try {
-        r = await aiQuickAdd({ text, locale: lang, ledger, settings });
-      } catch {
-        r = localParse(text);
-      }
-    }
-    applyQuick(r);
-    setLastQuick(text);
-    setQuick("");
-  }
-
-  // Deliberate "Enhance with AI" — an explicit tap; in off, consent first (AiConsentSheet).
-  async function enhanceQuick() {
-    const ledger = store.getLedger();
-    if (!lastQuick || !ledger) return;
+    if (!text || !ledger || quickBusy) return;
+    setQuickBusy(true);
+    setQuickErr(null);
     try {
-      const r = await aiQuickAdd({ text: lastQuick, locale: lang, ledger, settings });
-      applyQuick(r);
-    } catch {
-      /* the rule-based result stays */
+      applyQuick(await aiQuickAdd({ text, locale: lang, ledger, settings }));
+      setQuick("");
+    } catch (e) {
+      setQuickErr(apiErrorMessage(e));
+    } finally {
+      setQuickBusy(false);
     }
   }
-
-  // Deferred by one render: the AiConsentSheet decision saves settings in the same
-  // React batch — the effect already sees the fresh mode/key from context.
-  useEffect(() => {
-    if (!pendingEnhance) return;
-    setPendingEnhance(false);
-    void enhanceQuick();
-  }, [pendingEnhance]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  const onEnhance = () => {
-    if (settings.aiMode === "off") { setShowConsent(true); return; }
-    setPendingEnhance(true);
-  };
 
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column" }}>
@@ -380,8 +338,9 @@ export function AddScreen({ state, onDone, editTxn, draft }: { state: StateRespo
         <div style={{ textAlign: "center", fontSize: 12, fontWeight: 600, color: C.soft, padding: "0 10px 4px" }}>{t("import.editTitle")}</div>
       )}
 
-      {/* Smart Quick-Add — hidden in edit and in draft mode (import item editor) */}
-      {!editTxn && !draft && (
+      {/* Smart Quick-Add (AI-only) — hidden in edit and in draft mode (import item editor).
+          With AI off there is no rules path left: one line points at Settings instead. */}
+      {!editTxn && !draft && (aiOn ? (
         <div style={{ margin: `2px ${P}px 4px`, display: "flex", gap: 6, alignItems: "center" }}>
           <input
             value={quick}
@@ -391,15 +350,13 @@ export function AddScreen({ state, onDone, editTxn, draft }: { state: StateRespo
             placeholder={t("add.quickPlaceholder")}
             style={{ flex: 1, padding: "9px 12px", borderRadius: 10, border: `1px solid ${C.line}`, background: C.bg, color: C.text, fontSize: 12, fontFamily: font, outline: "none" }}
           />
-          <button onClick={execQuickAdd} aria-label={t("add.quickRunAria")} style={{ padding: "9px 12px", borderRadius: 10, border: "none", background: CTA, color: "#fff", fontSize: 12, fontWeight: 600, cursor: "pointer" }}>✨</button>
+          <button onClick={execQuickAdd} disabled={quickBusy} aria-label={t("add.quickRunAria")} style={{ padding: "9px 12px", borderRadius: 10, border: "none", background: CTA, color: "#fff", fontSize: 12, fontWeight: 600, cursor: quickBusy ? "default" : "pointer", opacity: quickBusy ? 0.5 : 1 }}>✨</button>
         </div>
-      )}
-      {!editTxn && !draft && lastQuick && (
-        <div style={{ margin: `0 ${P}px 4px`, display: "flex", justifyContent: "flex-end" }}>
-          <button onClick={onEnhance} style={{ background: "none", border: "none", color: TEAL, fontSize: 11, fontWeight: 600, cursor: "pointer", padding: "2px 4px" }}>
-            {t("ai.enhance")}
-          </button>
-        </div>
+      ) : (
+        <div style={{ margin: `2px ${P}px 6px`, fontSize: 11.5, color: C.mute, lineHeight: 1.45 }}>{t("add.quickNeedsAi")}</div>
+      ))}
+      {!editTxn && !draft && quickErr && (
+        <div style={{ margin: `0 ${P}px 4px`, fontSize: 11.5, color: CORAL }}>{quickErr}</div>
       )}
 
       <button onClick={() => setNumpad(true)} style={{ margin: `4px ${P}px 10px`, padding: "12px 14px", background: C.bg, borderRadius: 12, border: `1px solid ${C.line}`, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
@@ -627,17 +584,6 @@ export function AddScreen({ state, onDone, editTxn, draft }: { state: StateRespo
       </Sheet>
       <DateSheet show={showDate} date={date} onClose={() => setShowDate(false)} onChange={setDate} />
       {!draft && <ImportSheet show={showImport} onClose={() => setShowImport(false)} state={state} onApplied={onDone} />}
-      <AiConsentSheet
-        show={showConsent}
-        feature="quickadd"
-        onClose={() => setShowConsent(false)}
-        onDecided={(mode) => {
-          // "rules" = we stay with the rule-based result (nothing is sent);
-          // server/byok saved settings — enhance will start with the fresh mode.
-          setShowConsent(false);
-          if (mode !== "rules") setPendingEnhance(true);
-        }}
-      />
       <Sheet show={showRecur} onClose={() => setShowRecur(false)}>
         {(C) => (
           <>

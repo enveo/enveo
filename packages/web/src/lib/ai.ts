@@ -2,12 +2,16 @@
  * AI function dispatch per mode (`settings.aiMode`) — PURE functions without
  * hooks (settings passed explicitly):
  *
- *  - off:    local engine (rules from @enveo/shared) — ZERO network,
+ *  - off:    local rule engine — ZERO network — for the budget SUGGESTION only.
+ *            Quick-add and screenshot import are AI-only (the rule-based quick-add
+ *            parser was deleted in 2.2.0: its PL/EN word tables were unlocalizable),
+ *            so in this mode the UI hides the quick-add bar and gates the import.
  *  - byok:   prompt from shared → OpenAI directly from the browser (lib/openai.ts),
- *            the user's key; error → fallback to rules (suggest/quick-add),
+ *            the user's key; a failed SUGGESTION falls back to rules — quick-add
+ *            and import have nothing to fall back to and surface the error.
  *  - server: SUGGEST since v1.25.0 uses the same local path as byok, only the chat
  *            goes through /api/ai/chat (operator-key proxy — no replica
- *            and no computation on the server); quick-add/import still via /api routes.
+ *            and no computation on the server); the import still via /api routes.
  *
  * PRIVACY CONTRACT: in the off and byok modes suggest and quick-add generation
  * does NOT touch /api/* — the only egress in byok is api.openai.com.
@@ -24,7 +28,6 @@ import {
   normalizeBudgetSuggestion,
   parseAgentSuggestResponse,
   parseImportExtractResponse,
-  parseQuickAdd,
   parseQuickAddResponse,
   parseSuggestResponse,
   type BudgetSuggestProfile,
@@ -34,7 +37,6 @@ import {
   type ChatRequest,
   type ClientLedger,
   type NormalizedBudgetSuggestion,
-  type QuickAddResult,
 } from "@enveo/shared";
 import { api, type ImportItem, type QuickAddResponse } from "./api";
 import type { Settings } from "./contexts";
@@ -199,14 +201,22 @@ export async function runSuggest(args: {
   }
 }
 
-/* ── Smart Quick-Add ────────────────────────────────────────────────── */
+/* ── Smart Quick-Add (AI-only) ──────────────────────────────────────── */
 
 const quickAddRefs = (ledger: ClientLedger) => ({
   envelopes: ledger.envelopes.map((e) => ({ id: e.id, name: e.name })),
   places: ledger.places.map((p) => ({ id: p.id, name: p.name })),
-  categories: ledger.categories.map((c) => ({ id: c.id, name: c.name })),
 });
 
+/**
+ * Natural-language entry → a transaction draft, ALWAYS through the model (the rule
+ * parser is gone). The prompt is built LOCALLY from the replica (= what is on
+ * screen) and only the transport differs: byok with the user's key, server via the
+ * /api/ai mirror. In the off mode there is no path — the caller (Add screen) hides
+ * the bar; a stray call raises AiConsentRequired. Errors PROPAGATE (no fallback):
+ * the operator's missing key surfaces as the 503 `ai_unavailable` of the mirror.
+ * The /quick-add route stays on the server for old PWAs only.
+ */
 export async function runQuickAdd(args: {
   text: string;
   locale: "pl" | "en";
@@ -215,44 +225,33 @@ export async function runQuickAdd(args: {
 }): Promise<QuickAddResponse> {
   const { text, locale, ledger, settings } = args;
 
-  /* Since v1.27.0 CONSISTENT with suggest: rules ALWAYS run locally on the replica
-     (= what's on screen; in "local only" the server has no refs anyway), and the
-     LLM enrichment goes via the shared transport — byok with the user's key, server
-     via the /api/ai mirror. The /quick-add route stays for old PWAs. */
   const target: ChatTarget | null =
     settings.aiMode === "server"
       ? { kind: "server" }
       : settings.aiMode === "byok" && settings.openaiKey
         ? { kind: "byok", key: settings.openaiKey, model: settings.openaiModel }
         : null;
+  if (!target) throw new AiConsentRequired();
+
   const refs = quickAddRefs(ledger);
   const today = todayISO();
-  const base = parseQuickAdd(text, refs, today);
-  if (!target || base.confidence >= 1) return base;
-
-  /* OpenAI enrichment — merge like enhanceWithLLM on the server
-     side; error → the rules result. */
-  try {
-    const raw = await chatJson(buildQuickAddPrompt(text, refs, today, locale), target);
-    const fields = parseQuickAddResponse(raw);
-    const matchEnv = fields.envelopeName ? refs.envelopes.find((e) => e.name.toLowerCase() === fields.envelopeName!.toLowerCase()) : null;
-    const matchPlace = fields.placeName ? refs.places.find((p) => p.name.toLowerCase() === fields.placeName!.toLowerCase()) : null;
-    const merged: QuickAddResult = {
-      ...base,
-      amount: fields.amount ?? base.amount,
-      type: fields.type,
-      isRefund: fields.isRefund,
-      date: fields.date ?? base.date,
-      envelopeId: matchEnv?.id ?? base.envelopeId,
-      envelopeName: matchEnv?.name ?? base.envelopeName,
-      placeId: matchPlace?.id ?? base.placeId,
-      placeName: matchPlace?.name ?? base.placeName,
-      confidence: 1,
-    };
-    return merged;
-  } catch {
-    return base;
-  }
+  const raw = await chatJson(buildQuickAddPrompt(text, refs, today, locale), target);
+  const fields = parseQuickAddResponse(raw);
+  const matchEnv = fields.envelopeName ? refs.envelopes.find((e) => e.name.toLowerCase() === fields.envelopeName!.toLowerCase()) : null;
+  const matchPlace = fields.placeName ? refs.places.find((p) => p.name.toLowerCase() === fields.placeName!.toLowerCase()) : null;
+  return {
+    amount: fields.amount,
+    type: fields.type,
+    isRefund: fields.isRefund,
+    date: fields.date ?? today,
+    envelopeId: matchEnv?.id ?? null,
+    envelopeName: matchEnv?.name ?? null,
+    placeId: matchPlace?.id ?? null,
+    placeName: matchPlace?.name ?? null,
+    categoryId: null, // the model returns no category (only the deleted rules matched one)
+    note: null,
+    confidence: 1,
+  };
 }
 
 /* ── Screenshot import ───────────────────────────────────────────────── */

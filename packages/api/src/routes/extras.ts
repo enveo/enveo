@@ -1,4 +1,4 @@
-import { buildQuickAddPrompt, parseQuickAdd, parseQuickAddResponse, recurrencePayload, supportsReasoningEffort, type ChatRequest, type QuickAddResult } from "@enveo/shared";
+import { buildQuickAddPrompt, parseQuickAddResponse, recurrencePayload, supportsReasoningEffort, type ChatRequest, type QuickAddAiFields } from "@enveo/shared";
 import { and, eq } from "drizzle-orm";
 import { Hono } from "hono";
 import { z } from "zod";
@@ -13,32 +13,51 @@ export const extraRoutes = new Hono();
 /* ── Server-side AI info (whether the operator set a key) ───────────── */
 extraRoutes.get("/ai/info", (c) => c.json({ serverAi: Boolean(env.OPENAI_API_KEY) }));
 
-/* ── Smart Quick-Add ────────────────────────────────────────────────── */
+/* ── Smart Quick-Add — AI-only ───────────────────────────────────────
+   The rule-based parser is gone (its PL/EN word tables could not be localized),
+   so there is nothing to fall back to: no operator key ⇒ 503 ai_unavailable, the
+   same contract as /import/extract. Current clients build the very same prompt in
+   the browser (web/lib/ai.ts, byok or the /api/ai mirror) — this route only serves
+   PWAs that have not updated yet, so it keeps answering the legacy shape (names
+   resolved to ids here). `categoryId`/`note` were rules-only fields and stay null. */
 extraRoutes.post("/quick-add", async (c) => {
+  if (!env.OPENAI_API_KEY) return c.json({ error: "ai_unavailable" }, 503);
   const budgetId = (await requireTier(c, "plain")).id;
   const { text, locale } = z
     .object({ text: z.string().min(1), locale: z.enum(["pl", "en"]).optional() })
     .parse(await c.req.json());
   const today = new Date().toISOString().slice(0, 10);
 
-  const [envelopes, places, categories] = await Promise.all([
+  const [envelopes, places] = await Promise.all([
     db.select({ id: s.envelopes.id, name: s.envelopes.name }).from(s.envelopes).where(eq(s.envelopes.budgetId, budgetId)),
     db.select({ id: s.places.id, name: s.places.name }).from(s.places).where(eq(s.places.budgetId, budgetId)),
-    db.select({ id: s.categories.id, name: s.categories.name }).from(s.categories).where(eq(s.categories.budgetId, budgetId)),
   ]);
 
-  const refs = { envelopes, places, categories };
-  let result = parseQuickAdd(text, refs, today);
-
-  // Optional enrichment via OpenAI (when a key is set). Fallback: rules.
-  if (env.OPENAI_API_KEY && result.confidence < 1) {
-    try {
-      result = await enhanceWithLLM(text, refs, today, result, locale ?? "pl");
-    } catch (e) {
-      console.warn("quick-add LLM fallback:", (e as Error).message);
-    }
+  let fields: QuickAddAiFields;
+  try {
+    const raw = await openaiChat(buildQuickAddPrompt(text, { envelopes, places }, today, locale ?? "pl"));
+    fields = parseQuickAddResponse(raw);
+  } catch (e) {
+    // upstream rejection or an unparsable answer — the details stay in the server log
+    console.error("quick-add failed:", (e as Error).message);
+    return c.json({ error: "ai_upstream_error" }, 502);
   }
-  return c.json(result);
+
+  const envMatch = fields.envelopeName ? envelopes.find((e) => e.name.toLowerCase() === fields.envelopeName!.toLowerCase()) : null;
+  const placeMatch = fields.placeName ? places.find((p) => p.name.toLowerCase() === fields.placeName!.toLowerCase()) : null;
+  return c.json({
+    amount: fields.amount,
+    type: fields.type,
+    isRefund: fields.isRefund,
+    date: fields.date ?? today,
+    envelopeId: envMatch?.id ?? null,
+    envelopeName: envMatch?.name ?? null,
+    placeId: placeMatch?.id ?? null,
+    placeName: placeMatch?.name ?? null,
+    categoryId: null,
+    note: null,
+    confidence: 1,
+  });
 });
 
 /** Local fetch layer (operator key) — prompt/parsing in shared/aiPrompts. */
@@ -59,33 +78,6 @@ async function openaiChat(req: ChatRequest): Promise<string> {
   if (!res.ok) throw new Error(`openai ${res.status}`);
   const data = (await res.json()) as { choices?: Array<{ message?: { content?: string } }> };
   return data.choices?.[0]?.message?.content ?? "{}";
-}
-
-async function enhanceWithLLM(
-  text: string,
-  refs: { envelopes: { id: string; name: string }[]; places: { id: string; name: string }[]; categories: { id: string; name: string }[] },
-  today: string,
-  base: QuickAddResult,
-  locale: "pl" | "en",
-): Promise<QuickAddResult> {
-  const raw = await openaiChat(buildQuickAddPrompt(text, refs, today, locale));
-  const fields = parseQuickAddResponse(raw);
-
-  const matchEnv = fields.envelopeName ? refs.envelopes.find((e) => e.name.toLowerCase() === fields.envelopeName!.toLowerCase()) : null;
-  const matchPlace = fields.placeName ? refs.places.find((p) => p.name.toLowerCase() === fields.placeName!.toLowerCase()) : null;
-
-  return {
-    ...base,
-    amount: fields.amount ?? base.amount,
-    type: fields.type,
-    isRefund: fields.isRefund,
-    date: fields.date ?? base.date,
-    envelopeId: matchEnv?.id ?? base.envelopeId,
-    envelopeName: matchEnv?.name ?? base.envelopeName,
-    placeId: matchPlace?.id ?? base.placeId,
-    placeName: matchPlace?.name ?? base.placeName,
-    confidence: 1,
-  };
 }
 
 /* ── Recurrence ─────────────────────────────────────────────────────── */
