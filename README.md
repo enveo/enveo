@@ -59,6 +59,13 @@ operator resets it on the server (see [Operating it](#operating-it)).
 Docker, an empty directory, two generated secrets. Nothing is compiled — this pulls the
 published image.
 
+<!-- TODO(maintainer): remove this note once v2.1.0 is tagged, the Release workflow has
+     pushed the image, and the GHCR package is public (see docs/hosting.md). -->
+> **Not published yet.** The `ghcr.io/enveo/enveo` image lands with the **v2.1.0**
+> release — the first tag built by the [Release workflow](.github/workflows/release.yml).
+> Until then `docker compose up -d` on the file below cannot pull it; build from source
+> instead ([Develop it](#develop-it)).
+
 ```bash
 mkdir enveo && cd enveo
 curl -fsSL https://raw.githubusercontent.com/enveo/enveo/main/compose.selfhost.yml -o compose.yml
@@ -67,22 +74,40 @@ curl -fsSL https://raw.githubusercontent.com/enveo/enveo/main/compose.selfhost.y
 docker compose up -d
 ```
 
-Open **http://localhost:8081** and create the **owner account**. Registration **closes**
-right after, so nobody who finds your URL can sign themselves up; to add a household
-member, put `ALLOW_SIGNUPS=1` in `.env`, `docker compose up -d`, let them register, then
-remove it and repeat. The budget starts **empty** — the in-app wizard sets it up.
+Open **http://localhost:8081** and create the **owner account** — do it now, not later:
+registration is open until that account exists, so whoever reaches the app first becomes
+the owner. It **closes** right after, and nobody who finds your URL can then sign
+themselves up; to add a household member, put `ALLOW_SIGNUPS=1` in `.env`, `docker compose
+up -d`, let them register, then remove it and repeat. The budget starts **empty** — the
+in-app wizard sets it up.
+
+The app is published on the **loopback interface only** (`127.0.0.1:8081`) — the machine
+that runs it, nothing else on the network. Reaching it from another device is the HTTPS
+step below, not `ENVEO_BIND=0.0.0.0`: a port open to a LAN (or, on a VPS, to the internet)
+hands the owner account to the first stranger who finds it and sends session cookies in
+the clear. Docker publishes ports through its own iptables rules, which **bypass
+ufw/firewalld** — a host firewall does not undo this.
 
 Both secrets are **required**: with either unset the stack refuses to start rather than
 come up with a guessable one. Everything else is optional —
-[`.env.selfhost.example`](.env.selfhost.example) documents the knobs (host port, OpenAI
-key, Google sign-in, public URL). Migrations run automatically on start, on every update.
+[`.env.selfhost.example`](.env.selfhost.example) documents the knobs (host port, bind
+address, OpenAI key, Google sign-in, public URL). Migrations run automatically on start,
+on every update.
 
-> **HTTPS**: installing the PWA (and its offline service worker) needs a secure origin.
-> `localhost` counts; a bare LAN IP or a plain-HTTP domain does not — and a session
-> cookie over plain HTTP travels in the clear. To use Enveo from your phone, put it
-> behind TLS: a reverse proxy with a certificate, a tunnel, or a private mesh VPN that
-> terminates HTTPS (e.g. Tailscale `serve`). Then on iPhone: open the URL in Safari →
-> Share → **Add to Home Screen**.
+> **HTTPS** — the way to use Enveo from your phone. Installing the PWA (and its offline
+> service worker) needs a secure origin: `localhost` counts, a bare LAN IP or a
+> plain-HTTP domain does not — and over plain HTTP the session cookie travels in the
+> clear. Put Enveo behind TLS: a reverse proxy with a certificate, a tunnel, or a private
+> mesh VPN that terminates HTTPS (e.g. Tailscale `serve`), pointed at the loopback port.
+>
+> Then **set `BETTER_AUTH_URL` to that `https://…` origin** in `.env` and `docker compose
+> up -d`. This is not cosmetic: the session cookie is marked `Secure` only when
+> `BETTER_AUTH_URL` is an `https://` URL. Leave the `http://localhost` default in place
+> behind a proxy and you get a 90-day session cookie **without** `Secure` — a single
+> plain-`http://` link to the same host leaks it. Sign-in keeps working either way, so
+> nothing warns you.
+>
+> On iPhone: open the HTTPS URL in Safari → Share → **Add to Home Screen**.
 
 ## One-click deploy (Railway)
 
@@ -134,11 +159,14 @@ docker compose logs -f app
 ```
 
 **Pin the version** once real data is in it: swap `:latest` in `compose.yml` for a
-[release tag](https://github.com/enveo/enveo/releases) (e.g. `ghcr.io/enveo/enveo:2.0.0`),
+[release tag](https://github.com/enveo/enveo/releases) (e.g. `ghcr.io/enveo/enveo:2.1.0`),
 so `docker compose pull` cannot carry you across a major version by surprise.
 
 **Change the host port** with `ENVEO_PORT=9000` in `.env`, then `docker compose up -d`.
-Postgres is deliberately **not** published — it is reachable only from the app container.
+The app binds `127.0.0.1` unless you set `ENVEO_BIND=0.0.0.0` — read the warning in
+[`.env.selfhost.example`](.env.selfhost.example) before you do; TLS in front of the
+loopback port (above) is the better answer for phones. Postgres is deliberately **not**
+published — it is reachable only from the app container.
 
 ## Develop it
 
