@@ -1,11 +1,12 @@
 /**
  * Seed with SAMPLE data (anonymized — a dev tool, not prod).
  * Idempotent: wipes all budgets and recreates the demo budget from scratch.
- * Users and auth rows survive: the demo attaches to the FIRST existing user
+ * Users and auth rows survive: the demo attaches to the FIRST-REGISTERED user
  * (dev/E2E flow: register → seed → the account sees the demo data); a stub
  * owner is created only on an empty database.
  * Run: bun run db:seed
  */
+import { asc } from "drizzle-orm";
 import { db, sql } from "./client";
 import * as s from "./schema";
 
@@ -46,7 +47,14 @@ export async function seed() {
   console.log("Wiping budgets and seeding the database…");
   await db.delete(s.budgets); // cascade removes all budget data; users/auth stay
 
-  const existing = await db.select({ id: s.users.id }).from(s.users).orderBy(s.users.id).limit(1);
+  // Ordered by REGISTRATION TIME, not by id: users.id is defaultRandom(), so ordering by it
+  // hands the demo data to an arbitrary account as soon as a second one exists (the owner who
+  // just registered would see an empty budget, and a stranger's account would get the demo).
+  const existing = await db
+    .select({ id: s.users.id })
+    .from(s.users)
+    .orderBy(asc(s.users.createdAt), asc(s.users.id)) // id = deterministic tie-break
+    .limit(1);
   const owner =
     existing[0] ??
     (await db.insert(s.users).values({ email: "owner@example.com" }).returning())[0]!;
