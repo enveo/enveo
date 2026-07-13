@@ -160,6 +160,8 @@ export const en: Record<TKey, string> = {
   // Server error codes (the API returns a code, never a sentence) — mapped in lib/api.ts → apiErrorMessage.
   "err.aiUnavailable": "The server has no OpenAI key configured. Set OPENAI_API_KEY and restart the app, or use your own key in Settings → Artificial intelligence.",
   "err.aiUpstream": "OpenAI rejected the request — check the key and the model, then try again.",
+  "err.aiOffline": "You are offline — quick add and screenshot import need a connection. Manual entry works without one.",
+  "err.aiKeyInvalid": "OpenAI rejected your key — check it in Settings → Artificial intelligence.",
   "err.backupInvalid": "This is not a valid backup file — nothing was loaded.",
   "err.foreignRef": "The data references records that do not exist here (a corrupted or foreign file). Nothing was changed.",
   "err.budgetMismatch": "The signed-in account changed while the data was being sent — nothing was written. Reload the app and try again.",

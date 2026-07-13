@@ -75,6 +75,20 @@ export function aiTarget(settings: AiSettings): ChatTarget | null {
  
 export const hasAiTarget = (settings: AiSettings): boolean => aiTarget(settings) !== null;
 
+/**
+ * The model answered something that is not our schema (empty, truncated, prose instead of JSON):
+ * a CODE, not the raw SyntaxError from JSON.parse. Quick-add renders what it catches, so an
+ * unwrapped parse error would print "Unexpected token < in JSON at position 0" at the user —
+ * lib/api.ts maps ai_upstream_error to a sentence in their language instead.
+ */
+function parseOrFail<T>(parse: () => T): T {
+  try {
+    return parse();
+  } catch {
+    throw new Error("ai_upstream_error");
+  }
+}
+
 const todayISO = (): string => new Date().toISOString().slice(0, 10);
 
  
@@ -226,16 +240,18 @@ const quickAddRefs = (ledger: ClientLedger) => ({
   places: ledger.places.map((p) => ({ id: p.id, name: p.name })),
 });
 
-
-
-
-
-
-
-
-
-
-
+/**
+ * Natural-language entry → a transaction draft, ALWAYS through the model (the rule
+ * parser is gone). The prompt is built LOCALLY from the replica (= what is on
+ * screen) and only the transport differs: byok with the user's key, server via the
+ * /api/ai mirror. Without a usable target (AI off, or byok with no key yet) there is no
+ * path — the caller (Add screen) hides the bar on the SAME predicate (hasAiTarget), so a
+ * raised AiConsentRequired means a stray call. Errors PROPAGATE as CODES (no fallback, and
+ * never prose — the Add screen renders them): openai.ts maps the mirror's missing operator key
+ * to `ai_unavailable`, an offline device to `ai_offline`, a rejected byok key to
+ * `ai_key_invalid`, and everything else — including an answer we cannot parse — to
+ * `ai_upstream_error`. The /quick-add route stays on the server for old PWAs only.
+ */
 export async function runQuickAdd(args: {
   text: string;
   locale: "pl" | "en";
@@ -250,7 +266,7 @@ export async function runQuickAdd(args: {
   const refs = quickAddRefs(ledger);
   const today = todayISO();
   const raw = await chatJson(buildQuickAddPrompt(text, refs, today, locale), target);
-  const fields = parseQuickAddResponse(raw);
+  const fields = parseOrFail(() => parseQuickAddResponse(raw));
   const matchEnv = fields.envelopeName ? refs.envelopes.find((e) => e.name.toLowerCase() === fields.envelopeName!.toLowerCase()) : null;
   const matchPlace = fields.placeName ? refs.places.find((p) => p.name.toLowerCase() === fields.placeName!.toLowerCase()) : null;
   return {
@@ -294,7 +310,7 @@ export async function runImportExtract(args: {
     categories: ledger.categories.map((c) => ({ id: c.id, name: c.name })),
   };
   const raw = await chatJson(buildImportExtractPrompt(images, refs, todayISO(), locale), target);
-  return parseImportExtractResponse(raw).map((t) => ({
+  return parseOrFail(() => parseImportExtractResponse(raw)).map((t) => ({
     date: t.date,
     amount: t.amount,
     type: t.type,
