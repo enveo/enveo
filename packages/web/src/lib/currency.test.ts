@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import {
+  CURRENCY_DIGITS,
   FALLBACK_CURRENCY,
   SUPPORTED_CURRENCIES,
   UNSET_BUDGET_CURRENCIES,
@@ -19,7 +20,6 @@ describe("currencyForLocale — region → currency", () => {
     expect(currencyForLocale("nb-NO")).toBe("NOK");
     expect(currencyForLocale("da-DK")).toBe("DKK");
     expect(currencyForLocale("uk-UA")).toBe("UAH");
-    expect(currencyForLocale("hu-HU")).toBe("HUF");
     expect(currencyForLocale("ro-RO")).toBe("RON");
     expect(currencyForLocale("bg-BG")).toBe("BGN");
     expect(currencyForLocale("sr-RS")).toBe("RSD");
@@ -40,12 +40,10 @@ describe("currencyForLocale — region → currency", () => {
     expect(currencyForLocale("ms-MY")).toBe("MYR");
     expect(currencyForLocale("th-TH")).toBe("THB");
     expect(currencyForLocale("fil-PH")).toBe("PHP");
-    expect(currencyForLocale("id-ID")).toBe("IDR");
     expect(currencyForLocale("en-ZA")).toBe("ZAR");
     expect(currencyForLocale("pt-BR")).toBe("BRL");
     expect(currencyForLocale("es-MX")).toBe("MXN");
     expect(currencyForLocale("es-AR")).toBe("ARS");
-    expect(currencyForLocale("es-CO")).toBe("COP");
     expect(currencyForLocale("es-PE")).toBe("PEN");
   });
 
@@ -57,10 +55,16 @@ describe("currencyForLocale — region → currency", () => {
 
   test("a European region with an unsupported currency → EUR (the closest offer, never an invented code)", () => {
     expect(currencyForLocale("is-IS")).toBe("EUR"); // ISK: 0-decimal, deliberately unsupported
+    expect(currencyForLocale("hu-HU")).toBe("EUR"); // HUF: 0-decimal, so it is not on the list either
     expect(currencyForLocale("sq-AL")).toBe("EUR"); // ALL is not on the list
     expect(currencyForLocale("bs-BA")).toBe("EUR");
     expect(currencyForLocale("mk-MK")).toBe("EUR");
     expect(currencyForLocale("ro-MD")).toBe("EUR");
+  });
+
+  test("a region whose currency is 0-decimal and has no regional stand-in → the fallback", () => {
+    expect(currencyForLocale("id-ID")).toBe(FALLBACK_CURRENCY); // IDR: 0-decimal
+    expect(currencyForLocale("es-CO")).toBe(FALLBACK_CURRENCY); // COP: 0-decimal
   });
 
   test("language-only tags resolve through Intl likely-subtags", () => {
@@ -68,7 +72,7 @@ describe("currencyForLocale — region → currency", () => {
     expect(currencyForLocale("de")).toBe("EUR");
     expect(currencyForLocale("cs")).toBe("CZK");
     expect(currencyForLocale("en")).toBe("USD");
-    expect(currencyForLocale("hu")).toBe("HUF");
+    expect(currencyForLocale("hu")).toBe("EUR"); // HUF is not on the list (0-decimal)
     expect(currencyForLocale("tr")).toBe("TRY");
     expect(currencyForLocale("th")).toBe("THB");
   });
@@ -144,16 +148,35 @@ describe("the supported list stays compatible with the money path", () => {
   });
 
   test("every supported currency has 2 decimals — the domain stores minor units of 1/100", () => {
+    // Checked against the PINNED CLDR table, never against the test runner's Intl: bun's ICU 75
+    // still reports 2 fraction digits for HUF/COP/IDR, which are 0-decimal in ICU 78+ (Node 24 and
+    // every current browser). An Intl-based oracle would therefore pass here and render 100× off in
+    // the browser — and would flip on the next toolchain bump. See CURRENCY_DIGITS.
     for (const c of SUPPORTED_CURRENCIES) {
-      const opts = new Intl.NumberFormat("en-US", { style: "currency", currency: c }).resolvedOptions();
-      expect(opts.maximumFractionDigits).toBe(2);
-      expect(opts.minimumFractionDigits).toBe(2);
+      expect({ currency: c, digits: CURRENCY_DIGITS[c] }).toEqual({ currency: c, digits: 2 });
     }
   });
 
   test("the non-2-decimal world stays OUT (0-decimal and 3-decimal codes would render 100× off)", () => {
-    for (const c of ["JPY", "KRW", "ISK", "CLP", "VND", "KWD", "BHD"]) {
+    for (const c of ["JPY", "KRW", "ISK", "CLP", "VND", "HUF", "COP", "IDR", "KWD", "BHD"]) {
       expect(SUPPORTED_CURRENCIES).not.toContain(c as never);
+    }
+    // …and generally: nothing the table marks as non-2-decimal may be offered.
+    const offered = SUPPORTED_CURRENCIES as readonly string[];
+    const wrong = Object.entries(CURRENCY_DIGITS).filter(([c, d]) => d !== 2 && offered.includes(c));
+    expect(wrong).toEqual([]);
+  });
+
+  test("the pinned digit table agrees with a CURRENT ICU (canary — bun's own ICU may lag)", () => {
+    // Not the gate (that is CURRENCY_DIGITS above), but a live cross-check: on a runtime whose ICU
+    // matches the table, drift shows up here. Skipped where the runtime is known to lag, so this can
+    // never turn the invariant green for the wrong reason — it can only report a real CLDR change.
+    const icuIsCurrent =
+      new Intl.NumberFormat("en-US", { style: "currency", currency: "HUF" }).resolvedOptions().maximumFractionDigits === 0;
+    if (!icuIsCurrent) return; // bun ICU 75 — the pinned table stands on its own
+    for (const [c, digits] of Object.entries(CURRENCY_DIGITS)) {
+      const live = new Intl.NumberFormat("en-US", { style: "currency", currency: c }).resolvedOptions().maximumFractionDigits;
+      expect({ currency: c, digits: live }).toEqual({ currency: c, digits });
     }
   });
 
