@@ -1,4 +1,5 @@
 import { useCurrency, useSettings, useTheme } from "../../lib/contexts";
+import { SUPPORTED_CURRENCIES } from "../../lib/currency";
 import { useT } from "../../lib/i18n";
 import { local } from "../../lib/mutate";
 import { store } from "../../lib/store";
@@ -47,7 +48,7 @@ function ThemeTiles() {
 }
 
  
-const CURRENCIES = ["PLN", "EUR", "USD", "GBP", "CHF", "CZK", "SEK", "NOK", "UAH"];
+const CURRENCIES = SUPPORTED_CURRENCIES;
 
  
 export function AppearanceSection() {

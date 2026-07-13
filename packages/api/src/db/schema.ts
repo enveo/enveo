@@ -83,7 +83,9 @@ export const budgets = pgTable("budgets", {
     .notNull()
     .references(() => users.id, { onDelete: "cascade" }),
   name: text("name").notNull(),
-  currency: text("currency").notNull().default("PLN"),
+  
+
+  currency: text("currency").notNull().default("EUR"),
    
   tier: text("tier").notNull().default("plain"),
   /** DEK wrapped with the KEK (client-side) — the server never sees the key in plaintext. */

@@ -1,0 +1,14 @@
+-- budgets.currency: the DEFAULT stops being 'PLN' (0009) and becomes 'EUR'.
+--
+-- The default is a placeholder, not a preference: context.ts inserts a budget row without a
+-- currency (lazily, on the user's first request), and the onboarding wizard immediately overwrites
+-- it with the user's pick — now preselected from the browser locale. But between those two moments
+-- the row is what the app shows, and it is what a user who abandons the wizard mid-flow keeps, so
+-- for an international audience 'PLN' is the wrong thing to leave lying around.
+--
+-- 'EUR' is the neutral choice among the currencies the app actually offers, and it matches the
+-- client's fallback for European regions whose own currency is not on the list (lib/currency.ts).
+--
+-- ONLY the default changes: ALTER COLUMN ... SET DEFAULT does not rewrite rows, so every EXISTING
+-- budget keeps the currency it has (a PLN budget stays PLN — no amount is ever re-labelled).
+ALTER TABLE "budgets" ALTER COLUMN "currency" SET DEFAULT 'EUR';
