@@ -17,6 +17,9 @@ function reduceMotion(): boolean {
  * (the server REJECTED something → a user decision is needed).
  *
  * - dead letters (>0) → red dot, tappable → opens "Sync",
+ * - unverified (the replica's owner could not be matched to the signed-in account) → muted,
+ *   tappable pill: nothing is being sent, and saying so is the whole point (the "pending" pill
+ *   below would claim the opposite),
  * - syncing → spinning ring ("sp" keyframes; no motion under reduce-motion),
  * - pending (>0), 0 dead letters → muted, REASSURING pill "⇄ N"
  *   REGARDLESS of state (offline / error / not-yet-pushed): changes are waiting
@@ -112,6 +115,42 @@ export function SyncBadge({ onOpenSync }: { onOpenSync: () => void }) {
           <path d="M8 11V8a4 4 0 118 0v3" />
           <path d="M6 11h12a1 1 0 011 1v7a1 1 0 01-1 1H6a1 1 0 01-1-1v-7a1 1 0 011-1z" />
         </svg>
+      </button>
+    );
+  }
+
+  // The replica could not be matched to the signed-in account (SyncState "unverified"): NOTHING is
+  // being sent to the server, and it will not start on its own until the ownership proof succeeds.
+  // This MUST precede the "pending" pill below — that pill promises the queued changes will send
+  // themselves, which here is exactly what does not happen. Muted, not red: nothing is broken and
+  // nothing is at risk; tappable → Settings → Sync, which explains the state and offers the ways
+  // out (check again / export a backup / remove the local copy).
+  if (state === "unverified") {
+    return (
+      <button
+        onClick={onOpenSync}
+        aria-label={t("sync.badgeUnverifiedAria")}
+        style={{
+          ...anchor,
+          gap: 5,
+          padding: "3px 8px",
+          borderRadius: 999,
+          background: C.card,
+          border: `1px solid ${C.line}`,
+          color: C.mute,
+          fontSize: 11,
+          fontWeight: 600,
+          lineHeight: 1,
+          height: "auto",
+          cursor: "pointer",
+        }}
+      >
+        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke={C.mute} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+          <path d="M12 9v4" />
+          <path d="M12 17h.01" />
+          <path d="M10.3 3.9L1.8 18a2 2 0 001.7 3h17a2 2 0 001.7-3L13.7 3.9a2 2 0 00-3.4 0z" />
+        </svg>
+        <span>{t("sync.badgeUnverified")}</span>
       </button>
     );
   }

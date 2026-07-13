@@ -238,7 +238,10 @@ function SyncStatusBadge({ okColor }: { okColor: string }) {
     return () => clearInterval(id);
   }, []);
 
-  const color = localMode !== "off" ? C.mute : state === "offline" || state === "error" ? CORAL : okColor;
+  
+
+  const attention = state === "offline" || state === "error" || state === "unverified";
+  const color = localMode !== "off" ? C.mute : attention ? CORAL : okColor;
   return (
     <span style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 10.5, color, fontWeight: 700, flexShrink: 0 }}>
       <span aria-hidden style={{ width: 7, height: 7, borderRadius: "50%", background: color }} />
