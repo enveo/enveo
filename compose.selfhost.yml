@@ -19,6 +19,16 @@
 # derives the project name — which is what ties containers and the data volume together
 # — from the directory name, so running this file inside a repo that already has a
 # stack up would take over that stack's containers and volume.
+#
+# EXPOSURE: the app is published on the host LOOPBACK only (127.0.0.1:8081) — reachable
+# from the machine that runs it, not from the network. That default is deliberate: the
+# FIRST person to reach the app claims the owner account (registration closes only once
+# it exists), and a plain-HTTP origin issues session cookies without `Secure`. To reach
+# it from other devices, do NOT just open the port: put it behind TLS (reverse proxy,
+# tunnel, or mesh VPN) and set BETTER_AUTH_URL to that https:// origin. If you knowingly
+# want it on the LAN anyway (NAS, home network), set ENVEO_BIND=0.0.0.0 in .env and
+# create the owner account IMMEDIATELY. Docker's iptables rules bypass ufw/firewalld —
+# a host firewall will not save you from a published port.
 
 services:
   db:
@@ -42,7 +52,7 @@ services:
 
   app:
     # `latest` follows the newest release. To pin a version, replace the tag with a
-    # released one, e.g. ghcr.io/enveo/enveo:2.0.0 — recommended once you have real
+    # released one, e.g. ghcr.io/enveo/enveo:2.1.0 — recommended once you have real
     # data in it: an explicit tag means `docker compose pull` cannot move you to a new
     # major without you editing this line. Releases: github.com/enveo/enveo/releases
     image: ghcr.io/enveo/enveo:latest
@@ -61,20 +71,28 @@ services:
       # Set ALLOW_SIGNUPS=1 in .env to reopen registration (e.g. to add a household
       # member), then remove it and `docker compose up -d` again.
       ALLOW_SIGNUPS: ${ALLOW_SIGNUPS:-}
-      # Public origin of the app. Needed for Google sign-in and when a reverse proxy
-      # rewrites the Host header; email+password login works without it (the origin the
-      # app is served on is always trusted).
+      # Public origin of the app. Behind TLS, SET THIS to the https:// origin you browse:
+      # the session cookie's `Secure` attribute follows this URL's scheme, so leaving the
+      # http://localhost default in place while serving over HTTPS issues a 90-day session
+      # cookie WITHOUT `Secure` — one plain-http:// link to the same host leaks it in the
+      # clear. Login itself works either way (the origin the app is served on is always
+      # trusted), so nothing surfaces the mistake. Also required for Google sign-in and
+      # when a reverse proxy rewrites the Host header.
       BETTER_AUTH_URL: ${BETTER_AUTH_URL:-http://localhost:8080}
       ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-}
+      # Google sign-in (optional). Both unset = e-mail + password only.
+      # Requires BETTER_AUTH_URL — the OAuth redirect URI is derived from it.
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
       # Optional AI (screenshot import, smart quick-add, budget assistant).
       # Empty = the local rule engines only, zero egress.
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       OPENAI_MODEL: ${OPENAI_MODEL:-gpt-5.5}
     ports:
-      # host:container. Change the host port with ENVEO_PORT in .env (e.g. ENVEO_PORT=9000
-      # → http://<host>:9000). Behind a reverse proxy, bind it to the loopback instead:
-      #   - "127.0.0.1:${ENVEO_PORT:-8081}:8080"
-      - "${ENVEO_PORT:-8081}:8080"
+      # bind:host:container. Loopback by default — see EXPOSURE at the top of this file.
+      # ENVEO_PORT changes the host port (ENVEO_PORT=9000 → http://localhost:9000);
+      # ENVEO_BIND=0.0.0.0 publishes it on every interface (LAN/NAS — deliberate choice).
+      - "${ENVEO_BIND:-127.0.0.1}:${ENVEO_PORT:-8081}:8080"
     healthcheck:
       test: ["CMD", "bun", "-e", "const r=await fetch('http://127.0.0.1:8080/api/health');process.exit(r.ok?0:1)"]
       interval: 30s

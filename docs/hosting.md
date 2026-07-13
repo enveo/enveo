@@ -15,6 +15,37 @@ Whatever the platform, three things are always true:
 
 ---
 
+## Publishing the image (maintainer, one-time)
+
+Everything below — and the README quickstart, and `compose.selfhost.yml` — pulls
+`ghcr.io/enveo/enveo`. That image exists only once a **version tag** has been built by
+[`.github/workflows/release.yml`](../.github/workflows/release.yml), and only becomes
+pullable by strangers once the GHCR package is **public**. GHCR packages default to
+**private**, and a private package fails `docker compose pull` with `denied` *even when
+the repository is public* — so the visibility flip is a real step, not a formality.
+
+The first image is **v2.1.0** (`v2.0.0` predates the workflow — nothing was ever built
+for it; do not offer it as a tag to pin). Steps, none of which can be committed:
+
+1. Push `main` and make **`github.com/enveo/enveo` public**.
+2. Tag and push the release: `git tag v2.1.0 && git push origin v2.1.0` (`APP_VERSION` in
+   `packages/web/src/lib/version.ts` is already `2.1.0`). To re-publish an existing tag
+   after a failed run, use the workflow's `workflow_dispatch` input instead.
+3. Watch it: `gh run watch` — the arm64 leg is emulated and slow on a first run.
+4. GHCR → the `enveo` package → **Package settings**: change visibility to **Public**, and
+   enable **Inherit access from source repository**.
+5. Verify from a logged-out machine (this is the check that catches step 4):
+
+   ```bash
+   docker logout ghcr.io
+   docker pull ghcr.io/enveo/enveo:latest      # must succeed anonymously
+   docker manifest inspect ghcr.io/enveo/enveo:2.1.0 | grep architecture   # amd64 + arm64
+   ```
+
+6. Drop the "Not published yet" note from the README (it is marked `TODO(maintainer)`).
+
+---
+
 ## Railway
 
 ### What this repo ships
@@ -174,7 +205,7 @@ Where Enveo stands against that list:
 `hello@pikapods.com` is the direct route for maintainers. Their update policy is worth
 knowing up front: they do not ship releases automatically — a release is tested in staging
 first and must have been out for **at least 3 days** as a stable release. That means the
-published image needs stable, immutable version tags (`2.0.0`), not just `latest`.
+published image needs stable, immutable version tags (`2.1.0`), not just `latest`.
 
 ---
 
