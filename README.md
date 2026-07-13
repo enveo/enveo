@@ -22,10 +22,15 @@ optionally end-to-end-encrypted sync layer.
   edit, dedupe — with a self-learning matcher that remembers your corrections.
 - **Budget assistant**: distribute "To Be Budgeted" by rules or AI, fully editable
   before applying.
-- **AI is optional and off by default** (zero egress). Rule-based fallbacks for
-  everything; bring your own OpenAI key (BYOK, stays on your device) or configure
-  a server key.
-- **PL/EN**, dark mode, currency per budget.
+- **AI is optional and off by default** (zero egress). The budget assistant works
+  rule-based with no key at all; quick add and screenshot import need AI. Bring your
+  own OpenAI key (BYOK, stays on your device) or configure a server key.
+- **10 languages**: English, Polski, Deutsch, Español, Français, Italiano,
+  Nederlands, Português (Brasil), Čeština, Svenska — the eight beyond EN/PL are
+  community translations, and each is one file ([add yours](CONTRIBUTING.md#add-a-language)).
+- **31 currencies**, one per budget (two-decimal only — the ledger stores integer
+  minor units, so JPY/HUF/KWD and friends are deliberately not offered).
+- Dark mode, four accent themes, installable on iOS/Android.
 
 ## Stack
 
@@ -296,11 +301,17 @@ freshest one.
 
 ## AI (optional)
 
-Smart quick-add, the budget assistant, and screenshot import all work
-**rule-based with zero dependencies**. With AI enabled (OpenAI; server mode via
-`OPENAI_API_KEY` in `.env`, or BYOK — the user's key stored on their device),
-parsing and suggestions are LLM-enhanced with rule fallbacks. AI is **off by
-default** (zero egress), gated behind an explicit in-app consent.
+AI is **off by default** (zero egress), gated behind an explicit in-app consent. With
+it off, the **budget assistant** still distributes "To Be Budgeted" **rule-based, with
+zero dependencies** — no key, no network. **Quick add** (type "coffee 12.50 yesterday")
+and **screenshot import** are LLM-only since 2.2.0: the rule parser behind quick add was
+a table of Polish and English words, which could not be translated into the other eight
+languages, so it is gone. With AI off the quick-add bar is therefore hidden and import
+asks you to enable AI first — manual entry (pad + calculator) is untouched.
+
+Enable it with an OpenAI key: server mode (`OPENAI_API_KEY` in `.env` — the key stays
+on your server) or BYOK (the user's key, stored on their device, talking to OpenAI
+directly). The model answers in the UI language.
 
 ## Tests
 

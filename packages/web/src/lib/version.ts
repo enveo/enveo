@@ -1,5 +1,5 @@
 /** The visible app version — bumped MANUALLY by 1 with every change. */
-export const APP_VERSION = "2.1.0";
+export const APP_VERSION = "2.2.0";
 
 /** Build stamp injected by Vite (define). Changes with every build. */
 export const BUILD_INFO: { time: string; sha: string } =
