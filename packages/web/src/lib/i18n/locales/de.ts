@@ -2,8 +2,6 @@
 import type { Dict } from "../index";
 
 export const de: Dict = {
-  " to confirm:": " zur Bestätigung:",
-  " — we will send them once the server is reachable": " — wir senden sie, sobald der Server erreichbar ist",
   "(must match)": "(muss übereinstimmen)",
   "(paused until {date})": "(pausiert bis {date})",
   "+ Add envelope": "+ Umschlag hinzufügen",
@@ -497,8 +495,8 @@ export const de: Dict = {
   "Try again": "Erneut versuchen",
   "Try it with sample data": "Mit Beispieldaten ausprobieren",
   "Turn off local mode": "Lokalen Modus ausschalten",
-  "Type": "Typ",
   "Type or pick a category...": "Kategorie eingeben oder wählen...",
+  "Type {word} to confirm:": "Gib zur Bestätigung {word} ein:",
   "Uncleared": "Nicht abgeglichen",
   "Unlock": "Entsperren",
   "Unlock with password": "Mit Passwort entsperren",
@@ -514,6 +512,7 @@ export const de: Dict = {
   "WARNING: in local mode this data exists ONLY on this device (the server is empty). Clearing it will delete it permanently. Make a backup first (Export). Continue?": "WARNUNG: Im lokalen Modus existieren diese Daten NUR auf diesem Gerät (der Server ist leer). Sie zu löschen bedeutet, sie dauerhaft zu verlieren. Erstelle zuerst eine Sicherung (Export). Fortfahren?",
   "We will irreversibly erase all data from the server — this cannot be undone from the app. Other devices will lose access. Your data will remain only on this device. Make a backup first (Export).": "Wir löschen alle Daten unwiderruflich vom Server — das lässt sich aus der App nicht rückgängig machen. Andere Geräte verlieren den Zugriff. Deine Daten bleiben nur auf diesem Gerät. Erstelle zuerst eine Sicherung (Export).",
   "We will send pending changes and resume sync. Server data is untouched.": "Wir senden ausstehende Änderungen und setzen die Synchronisierung fort. Die Serverdaten bleiben unberührt.",
+  "We will send them once the server is reachable.": "Wir senden sie, sobald der Server erreichbar ist.",
   "We will send your local data back to the server and resume sync.": "Wir senden deine lokalen Daten zurück an den Server und setzen die Synchronisierung fort.",
   "Weak": "Schwach",
   "Wealth": "Vermögen",

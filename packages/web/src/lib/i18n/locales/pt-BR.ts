@@ -2,8 +2,6 @@
 import type { Dict } from "../index";
 
 export const ptBR: Dict = {
-  " to confirm:": " para confirmar:",
-  " — we will send them once the server is reachable": " — vamos enviá-las assim que o servidor estiver acessível",
   "(must match)": "(precisa coincidir)",
   "(paused until {date})": "(pausado até {date})",
   "+ Add envelope": "+ Adicionar envelope",
@@ -497,8 +495,8 @@ export const ptBR: Dict = {
   "Try again": "Tentar de novo",
   "Try it with sample data": "Testar com dados de exemplo",
   "Turn off local mode": "Desligar o modo local",
-  "Type": "Tipo",
   "Type or pick a category...": "Digite ou escolha uma categoria...",
+  "Type {word} to confirm:": "Digite {word} para confirmar:",
   "Uncleared": "Não conciliada",
   "Unlock": "Desbloquear",
   "Unlock with password": "Desbloquear com a senha",
@@ -514,6 +512,7 @@ export const ptBR: Dict = {
   "WARNING: in local mode this data exists ONLY on this device (the server is empty). Clearing it will delete it permanently. Make a backup first (Export). Continue?": "AVISO: no modo local estes dados existem SÓ neste dispositivo (o servidor está vazio). Apagá-los os elimina para sempre. Faça um backup antes (Exportar). Continuar?",
   "We will irreversibly erase all data from the server — this cannot be undone from the app. Other devices will lose access. Your data will remain only on this device. Make a backup first (Export).": "Vamos apagar todos os dados do servidor de forma irreversível — não dá para desfazer isso pelo app. Os outros dispositivos perdem o acesso. Seus dados vão ficar só neste dispositivo. Faça um backup antes (Exportar).",
   "We will send pending changes and resume sync. Server data is untouched.": "Vamos enviar as mudanças pendentes e retomar a sincronização. Os dados do servidor não são tocados.",
+  "We will send them once the server is reachable.": "Vamos enviá-las assim que o servidor estiver acessível.",
   "We will send your local data back to the server and resume sync.": "Vamos enviar seus dados locais de volta ao servidor e retomar a sincronização.",
   "Weak": "Fraca",
   "Wealth": "Patrimônio",

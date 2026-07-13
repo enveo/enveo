@@ -257,7 +257,9 @@ function SyncActions() {
       <div style={{ fontSize: 11.5, color: C.soft, lineHeight: 1.6, margin: "8px 4px 0" }}>
         {t("Last sync: {rel}.", { rel: relSync(lastSyncAt, lang) })}
         {pending > 0
-          ? ` ${tp("{n} change is waiting to be sent | {n} changes are waiting to be sent", pending)}${state === "offline" || state === "error" ? t(" — we will send them once the server is reachable") : ""}.`
+          ? /* Whole sentences, never fragments glued mid-clause: a translator gets the complete
+               clause and each language keeps its own word order (see i18n.test.ts). */
+            ` ${tp("{n} change is waiting to be sent | {n} changes are waiting to be sent", pending)}.${state === "offline" || state === "error" ? ` ${t("We will send them once the server is reachable.")}` : ""}`
           : (state === "offline" || state === "error") && ` ${t("Server temporarily unreachable — your data is safe, we will retry.")}`}
       </div>
     </div>

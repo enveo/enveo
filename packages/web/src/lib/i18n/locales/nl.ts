@@ -2,8 +2,6 @@
 import type { Dict } from "../index";
 
 export const nl: Dict = {
-  " to confirm:": " ter bevestiging:",
-  " — we will send them once the server is reachable": " — we sturen ze zodra de server bereikbaar is",
   "(must match)": "(moet overeenkomen)",
   "(paused until {date})": "(gepauzeerd tot {date})",
   "+ Add envelope": "+ Envelop toevoegen",
@@ -497,8 +495,8 @@ export const nl: Dict = {
   "Try again": "Opnieuw proberen",
   "Try it with sample data": "Proberen met voorbeeldgegevens",
   "Turn off local mode": "Lokale modus uitschakelen",
-  "Type": "Type",
   "Type or pick a category...": "Typ of kies een categorie...",
+  "Type {word} to confirm:": "Typ {word} ter bevestiging:",
   "Uncleared": "Niet afgestemd",
   "Unlock": "Ontgrendelen",
   "Unlock with password": "Ontgrendelen met wachtwoord",
@@ -514,6 +512,7 @@ export const nl: Dict = {
   "WARNING: in local mode this data exists ONLY on this device (the server is empty). Clearing it will delete it permanently. Make a backup first (Export). Continue?": "WAARSCHUWING: in de lokale modus bestaan deze gegevens ALLEEN op dit apparaat (de server is leeg). Ze wissen verwijdert ze definitief. Maak eerst een back-up (Exporteren). Doorgaan?",
   "We will irreversibly erase all data from the server — this cannot be undone from the app. Other devices will lose access. Your data will remain only on this device. Make a backup first (Export).": "We wissen alle gegevens onherroepelijk van de server — dit kun je vanuit de app niet ongedaan maken. Andere apparaten verliezen de toegang. Je gegevens blijven alleen op dit apparaat staan. Maak eerst een back-up (Exporteren).",
   "We will send pending changes and resume sync. Server data is untouched.": "We versturen de openstaande wijzigingen en hervatten de synchronisatie. De gegevens op de server blijven onaangeroerd.",
+  "We will send them once the server is reachable.": "We sturen ze zodra de server bereikbaar is.",
   "We will send your local data back to the server and resume sync.": "We sturen je lokale gegevens terug naar de server en hervatten de synchronisatie.",
   "Weak": "Zwak",
   "Wealth": "Vermogen",

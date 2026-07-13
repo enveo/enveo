@@ -2,8 +2,6 @@
 import type { Dict } from "../index";
 
 export const cs: Dict = {
-  " to confirm:": " pro potvrzení:",
-  " — we will send them once the server is reachable": " — odešleme je, jakmile bude server dostupný",
   "(must match)": "(musí souhlasit)",
   "(paused until {date})": "(pozastaveno do {date})",
   "+ Add envelope": "+ Přidat obálku",
@@ -497,8 +495,8 @@ export const cs: Dict = {
   "Try again": "Zkusit znovu",
   "Try it with sample data": "Vyzkoušet na ukázkových datech",
   "Turn off local mode": "Vypnout lokální režim",
-  "Type": "Typ",
   "Type or pick a category...": "Napiš nebo vyber kategorii...",
+  "Type {word} to confirm:": "Pro potvrzení napiš {word}:",
   "Uncleared": "Nespárováno",
   "Unlock": "Odemknout",
   "Unlock with password": "Odemknout heslem",
@@ -514,6 +512,7 @@ export const cs: Dict = {
   "WARNING: in local mode this data exists ONLY on this device (the server is empty). Clearing it will delete it permanently. Make a backup first (Export). Continue?": "VAROVÁNÍ: v lokálním režimu tato data existují JEN na tomto zařízení (server je prázdný). Smazáním je nenávratně ztratíš. Nejdřív si udělej zálohu (Export). Pokračovat?",
   "We will irreversibly erase all data from the server — this cannot be undone from the app. Other devices will lose access. Your data will remain only on this device. Make a backup first (Export).": "Nevratně smažeme všechna data ze serveru — z aplikace už to nevrátíš. Ostatní zařízení ztratí přístup. Tvá data zůstanou jen na tomto zařízení. Nejdřív si udělej zálohu (Export).",
   "We will send pending changes and resume sync. Server data is untouched.": "Odešleme čekající změny a obnovíme synchronizaci. Data na serveru zůstanou nedotčená.",
+  "We will send them once the server is reachable.": "Odešleme je, jakmile bude server dostupný.",
   "We will send your local data back to the server and resume sync.": "Odešleme tvá lokální data zpět na server a obnovíme synchronizaci.",
   "Weak": "Slabé",
   "Wealth": "Majetek",

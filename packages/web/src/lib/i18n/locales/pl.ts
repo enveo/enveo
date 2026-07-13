@@ -2,8 +2,6 @@
 import type { Dict } from "../index";
 
 export const pl: Dict = {
-  " to confirm:": ", aby potwierdzić:",
-  " — we will send them once the server is reachable": " — wyślemy, gdy serwer będzie dostępny",
   "(must match)": "(musi się zgadzać)",
   "(paused until {date})": "(pauza do {date})",
   "+ Add envelope": "+ Dodaj kopertę",
@@ -497,8 +495,8 @@ export const pl: Dict = {
   "Try again": "Spróbuj ponownie",
   "Try it with sample data": "Wypróbuj z danymi przykładowymi",
   "Turn off local mode": "Wyłącz tryb lokalny",
-  "Type": "Wpisz",
   "Type or pick a category...": "Wpisz lub wybierz kategorię...",
+  "Type {word} to confirm:": "Wpisz {word}, aby potwierdzić:",
   "Uncleared": "Do potwierdzenia",
   "Unlock": "Odblokuj",
   "Unlock with password": "Odblokuj hasłem",
@@ -514,6 +512,7 @@ export const pl: Dict = {
   "WARNING: in local mode this data exists ONLY on this device (the server is empty). Clearing it will delete it permanently. Make a backup first (Export). Continue?": "UWAGA: w trybie lokalnym te dane są TYLKO na tym urządzeniu (serwer jest pusty). Wyczyszczenie ich usunie je bezpowrotnie. Zrób najpierw kopię (Eksportuj). Kontynuować?",
   "We will irreversibly erase all data from the server — this cannot be undone from the app. Other devices will lose access. Your data will remain only on this device. Make a backup first (Export).": "Nieodwracalnie skasujemy wszystkie dane z serwera — nie da się tego cofnąć z aplikacji. Inne urządzenia stracą dostęp. Dane zostaną wyłącznie na tym urządzeniu. Zrób najpierw kopię (Eksportuj).",
   "We will send pending changes and resume sync. Server data is untouched.": "Wyślemy zaległe zmiany i wznowimy synchronizację. Dane na serwerze są nienaruszone.",
+  "We will send them once the server is reachable.": "Wyślemy je, gdy serwer będzie dostępny.",
   "We will send your local data back to the server and resume sync.": "Wyślemy lokalne dane z powrotem na serwer i wznowimy synchronizację.",
   "Weak": "Słabe",
   "Wealth": "Majątek",
