@@ -160,6 +160,8 @@ export const pl = {
   // Kody błędów serwera (API zwraca kod, nie zdanie) — mapowane w lib/api.ts → apiErrorMessage.
   "err.aiUnavailable": "Serwer nie ma skonfigurowanego klucza OpenAI. Ustaw OPENAI_API_KEY i zrestartuj aplikację albo użyj własnego klucza w Ustawieniach → Sztuczna inteligencja.",
   "err.aiUpstream": "OpenAI odrzuciło zapytanie — sprawdź klucz i model, potem spróbuj ponownie.",
+  "err.aiOffline": "Jesteś offline — szybkie dodawanie i import zrzutów wymagają połączenia. Ręczne dodawanie działa bez sieci.",
+  "err.aiKeyInvalid": "OpenAI odrzuciło Twój klucz — sprawdź go w Ustawieniach → Sztuczna inteligencja.",
   "err.backupInvalid": "To nie jest poprawny plik kopii — nic nie zostało wczytane.",
   "err.foreignRef": "Dane odwołują się do nieistniejących powiązań (uszkodzony lub obcy plik). Nic nie zostało zmienione.",
   "err.budgetMismatch": "W trakcie wysyłania zmieniło się zalogowane konto — nic nie zostało zapisane. Odśwież aplikację i spróbuj ponownie.",

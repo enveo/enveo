@@ -49,6 +49,8 @@ describe("client-side error codes", () => {
     bad_ciphertext: "err.badCiphertext", // crypto.ts — an envelope this build cannot read
     bad_pairing_code: "err.badPairingCode", // crypto.ts — decodePairing on a code that is not ours
     ai_consent_required: "err.aiNotConfigured", // ai.ts — AiConsentRequired: no usable model on this device
+    ai_offline: "err.aiOffline", // openai.ts — fetch never left the device (offline PWA)
+    ai_key_invalid: "err.aiKeyInvalid", // openai.ts — byok: OpenAI rejected the user's key (401/403)
   };
 
   it("localizes every code lib/* throws (Settings → backup import, disable local mode, Unlock)", () => {
@@ -87,7 +89,10 @@ describe("no prose thrown from the UI-reachable libs", () => {
   // ai.ts joined the scan after AiConsentRequired shipped with the message "ai consent required":
   // a custom Error subclass hides its message in super(...), which the `new Error("…")` pattern
   // never saw — so the prose reached the Add screen's error line verbatim. Both shapes are scanned.
-  for (const file of ["sync.ts", "crypto.ts", "ai.ts"]) {
+  // openai.ts joined it after `throw new Error(\`OpenAI ${res.status}\`)` printed "OpenAI 503" in a
+  // Polish UI: quick-add went AI-only, so the model transport's errors stopped being swallowed by a
+  // rules fallback and became text a user reads.
+  for (const file of ["sync.ts", "crypto.ts", "ai.ts", "openai.ts"]) {
     it(`${file} throws codes, not sentences`, () => {
       const src = readFileSync(join(LIB_DIR, file), "utf8");
       // Double-quoted literals only: `throw new Error(\`pull: ${res.status}\`)` is a technical
@@ -98,6 +103,19 @@ describe("no prose thrown from the UI-reachable libs", () => {
         if (INTERNAL_ABORTS.has(msg)) continue;
         expect(msg).toMatch(/^[a-z0-9_]+$/); // a code — no spaces, no locale, no punctuation
       }
+    });
+  }
+
+  /**
+   * The scan above is blind to `new Error(\`…\`)` — and that is exactly the shape the "OpenAI 503"
+   * regression wore. sync.ts is allowed its technical status lines (they end up in the sync state,
+   * and apiErrorMessage digs the {error} out of them); the AI path is NOT: everything it throws is
+   * rendered verbatim in the Add screen's error line, so no interpolation may leave these two files.
+   */
+  for (const file of ["ai.ts", "openai.ts"]) {
+    it(`${file} throws no template literals (an interpolated status is prose on screen)`, () => {
+      const src = readFileSync(join(LIB_DIR, file), "utf8");
+      expect(src).not.toMatch(/(?:new Error|super)\(\s*`/);
     });
   }
 });

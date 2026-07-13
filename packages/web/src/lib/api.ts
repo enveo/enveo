@@ -75,7 +75,7 @@ export interface ImportApplyResponse {
  * through to the raw text, so the user always sees something rather than an empty error.
  */
 const ERROR_KEYS: Record<string, TKey> = {
-  ai_unavailable: "err.aiUnavailable", // /import/extract, /budget/suggest — no operator key
+  ai_unavailable: "err.aiUnavailable", // /import/extract, /budget/suggest, the /api/ai mirror — no operator key
   ai_upstream_error: "err.aiUpstream", // OpenAI rejected the call or answered unparsably
   upstream: "err.aiUpstream", // /budget/suggest names the same failure this way
   backup_invalid: "err.backupInvalid", // /sync/replace — the payload is not a ledger
@@ -94,6 +94,11 @@ const ERROR_KEYS: Record<string, TKey> = {
   bad_ciphertext: "err.badCiphertext", // crypto.ts — envelope this build cannot read (corrupt/foreign)
   bad_pairing_code: "err.badPairingCode", // crypto.ts — decodePairing on a code that is not ours
   ai_consent_required: "err.aiNotConfigured", // ai.ts — no usable target (AI off, or byok with no key)
+  /* openai.ts — quick-add is AI-only, so a failed model call is now SHOWN (no rules fallback to hide
+     it). The transport maps every failure onto a code here; ai_unavailable/ai_upstream_error above
+     are reused (the mirror's own codes), these two are client-only. */
+  ai_offline: "err.aiOffline", // fetch never left the device — the normal state of an offline PWA
+  ai_key_invalid: "err.aiKeyInvalid", // byok: OpenAI rejected the user's key (401/403)
 
   /* better-auth codes (lib/auth.ts lowercases them): the library's own `message` is English
      prose, and the login screen is the FIRST thing a non-English user sees. */
