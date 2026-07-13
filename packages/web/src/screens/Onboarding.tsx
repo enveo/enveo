@@ -14,7 +14,8 @@ import { useState, type ReactNode } from "react";
 import { AmountPadHost, type AmountPadTarget } from "../components/AmountPadSheet";
 import { LogoMark } from "../components/chrome";
 import { api, apiErrorMessage } from "../lib/api";
-import { useCurrency, useSettings, useTheme } from "../lib/contexts";
+import { useSettings, useTheme } from "../lib/contexts";
+import { SUPPORTED_CURRENCIES, browserLocales, wizardCurrency } from "../lib/currency";
 import { fmtSignedTrim } from "../lib/amount";
 import { parseAmount } from "../lib/format";
 import { useT, type TKey } from "../lib/i18n";
@@ -32,9 +33,6 @@ const TEMPLATE: Array<{ group: TKey; envelopes: Array<{ name: TKey; isSavings?: 
 
 /** Checklist row: a template item (name=TKey) or a custom envelope (custom). */
 type TplRow = { name?: TKey; custom?: string; isSavings?: boolean; checked: boolean };
-
-/** Selectable currencies — same list as in Settings (ISO 4217, no conversion). */
-const CURRENCIES = ["PLN", "EUR", "USD", "GBP", "CHF", "CZK", "SEK", "NOK", "UAH"];
 
 /** Segmented control (copy of the Settings idiom — not exported there). */
 function Seg<T extends string>({ value, options, onChange }: { value: T; options: Array<{ id: T; label: string }>; onChange: (id: T) => void }) {
@@ -92,10 +90,20 @@ export function OnboardingScreen({ onDone }: { onDone: () => void }) {
   const C = useTheme();
   const { settings, setSettings } = useSettings();
   const { t, lang } = useT();
-  const currency = useCurrency();
   const [step, setStep] = useState<0 | 1 | 2>(0);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // step 0 — currency. PRESELECTED from the browser locale (the budget row still carries the bare
+  // server default at this point); the pick lives in local state and is written to the ledger when
+  // the user leaves step 0, so the amounts in steps 1-2 already format in the chosen currency.
+  const [currency, setCurrency] = useState<string>(() => wizardCurrency(store.getLedger()?.budgets?.[0]?.currency, browserLocales()));
+
+  /** The wizard ALWAYS sets the currency — commit the pick (a no-op when it already matches). */
+  const commitCurrency = () => {
+    const budget = store.getLedger()?.budgets?.[0];
+    if (budget && budget.currency !== currency) local.updateBudget(budget.id, currency);
+  };
 
   // step 1 — first account
   const [accName, setAccName] = useState("");
@@ -120,6 +128,9 @@ export function OnboardingScreen({ onDone }: { onDone: () => void }) {
     setBusy(true);
     setError(null);
     try {
+      // enqueue BEFORE the resync: the snapshot brings the server's default currency back, but
+      // fullResync replays the outbox onto the fresh mirror, so the pick survives (and is pushed)
+      commitCurrency();
       await api.demoSeed(lang);
       await fullResync(); // fresh server data → full replica replacement
       onDone();
@@ -183,14 +194,10 @@ export function OnboardingScreen({ onDone }: { onDone: () => void }) {
           <Row label={t("settings.currency")}>
             <select
               value={currency}
-              onChange={(e) => {
-                // guard: without a booted replica / a budgets entity there is nothing to update
-                const budgetId = store.getLedger()?.budgets?.[0]?.id;
-                if (budgetId) local.updateBudget(budgetId, e.target.value);
-              }}
+              onChange={(e) => setCurrency(e.target.value)}
               style={{ padding: "7px 10px", borderRadius: 9, border: `1px solid ${C.line}`, background: C.bg, color: C.text, fontSize: 12.5, fontWeight: 600, fontFamily: font, outline: "none" }}
             >
-              {CURRENCIES.map((c) => (
+              {SUPPORTED_CURRENCIES.map((c) => (
                 <option key={c} value={c}>
                   {c}
                 </option>
@@ -199,7 +206,15 @@ export function OnboardingScreen({ onDone }: { onDone: () => void }) {
           </Row>
 
           <div style={{ height: 26 }} />
-          <BigButton label={t("onb.startFresh")} onClick={() => setStep(1)} disabled={busy} variant="teal" />
+          <BigButton
+            label={t("onb.startFresh")}
+            onClick={() => {
+              commitCurrency();
+              setStep(1);
+            }}
+            disabled={busy}
+            variant="teal"
+          />
           <div style={{ height: 10 }} />
           <BigButton label={busy ? t("onb.demoBusy") : t("onb.tryDemo")} onClick={() => void tryDemo()} disabled={busy} variant="outline" />
           {error && <div style={{ fontSize: 12, color: CORAL, marginTop: 10, lineHeight: 1.5 }}>{error}</div>}

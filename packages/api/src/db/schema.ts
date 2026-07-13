@@ -83,7 +83,9 @@ export const budgets = pgTable("budgets", {
     .notNull()
     .references(() => users.id, { onDelete: "cascade" }),
   name: text("name").notNull(),
-  currency: text("currency").notNull().default("PLN"),
+  /** Display currency (ISO 4217). The default only ever shows on a lazily created budget until
+   *  onboarding writes the user's pick (preselected from the browser locale) — see 0016. */
+  currency: text("currency").notNull().default("EUR"),
   /** Sync tier: 'plain' (v1, server sees the data) or 'e2ee' (sync2, ciphertexts only). */
   tier: text("tier").notNull().default("plain"),
   /** DEK wrapped with the KEK (client-side) — the server never sees the key in plaintext. */

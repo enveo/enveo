@@ -113,6 +113,13 @@
       "when": 1783895259423,
       "tag": "0015_changes_budget_scope",
       "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1783939956786,
+      "tag": "0016_neutral_budget_currency",
+      "breakpoints": true
     }
   ]
 }

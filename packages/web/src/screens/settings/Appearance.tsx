@@ -1,4 +1,5 @@
 import { useCurrency, useSettings, useTheme } from "../../lib/contexts";
+import { SUPPORTED_CURRENCIES } from "../../lib/currency";
 import { useT } from "../../lib/i18n";
 import { local } from "../../lib/mutate";
 import { store } from "../../lib/store";
@@ -46,8 +47,8 @@ function ThemeTiles() {
   );
 }
 
-/** Selectable currencies (ISO 4217) — display only, no amount conversion. */
-const CURRENCIES = ["PLN", "EUR", "USD", "GBP", "CHF", "CZK", "SEK", "NOK", "UAH"];
+/** Selectable currencies (ISO 4217) — display only, no amount conversion. Shared with onboarding. */
+const CURRENCIES = SUPPORTED_CURRENCIES;
 
 /** Appearance: color themes, light/dark mode, language, currency, discreet mode. */
 export function AppearanceSection() {

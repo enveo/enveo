@@ -1,4 +1,5 @@
 import { createContext, useContext, useEffect, useMemo, useState, useSyncExternalStore, type ReactNode } from "react";
+import { browserLocales, currencyForLocales } from "./currency";
 import { formatMoney } from "./format";
 import { store } from "./store";
 import { light, themeTokens, type AccentTheme, type Theme } from "./theme";
@@ -69,10 +70,17 @@ export function useSubsDismissed() {
   return { dismissed: settings.subsDismissed, dismiss, isDismissed };
 }
 
-/** The budget currency from the replica (PLN fallback before boot/on old replicas). */
+/**
+ * The budget currency from the replica. The fallback (before the replica boots, or on an old
+ * replica with no `budgets` entity) follows the BROWSER LOCALE rather than a fixed code — it is a
+ * display unit for the boot flash only, so guessing per locale beats showing everyone złoty.
+ * Computed once: navigator.language cannot change without a reload (same idiom as detectLang).
+ */
+const LOCALE_CURRENCY = currencyForLocales(browserLocales());
+
 export function useCurrency(): string {
   useSyncExternalStore(store.subscribe, store.getVersion);
-  return store.getLedger()?.budgets?.[0]?.currency ?? "PLN";
+  return store.getLedger()?.budgets?.[0]?.currency ?? LOCALE_CURRENCY;
 }
 
 /** Masks amounts; returns the FULL string with a currency symbol per language. */
