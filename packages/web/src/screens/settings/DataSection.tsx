@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import qrcode from "qrcode-generator";
+import { E2EE_DISABLE_CONFIRM } from "@enveo/shared";
 import { api, apiErrorMessage, useLedgerVersion } from "../../lib/api";
 import { hasSession, signOutKeepingReplica } from "../../lib/auth";
 import { DEFAULT_KDF_PARAMS, deriveKek, encodePairing, generateDek, generateSalt, unwrapDek, wrapDek, type KdfParams } from "../../lib/crypto";
@@ -153,10 +154,8 @@ function DataBackup() {
  * Plain tier → enable wizard (sheet: forced JSON export + "I have a backup"
  * checkbox, then password ×2 with a strength meter; execution with a spinner).
  * E2ee tier → panel: password change, pairing code (QR + text for pasting),
- * disable (literal WYŁĄCZ-E2EE). Crypto ENTIRELY on the device
+ * disable (type the localized confirmation word). Crypto ENTIRELY on the device
  * (lib/crypto.ts) — the server receives only wrappedDek+kdfParams+ciphertexts. */
-
-const E2EE_DISABLE_WORD = "WYŁĄCZ-E2EE"; // literal required by the server (z.literal)
 
 const toB64 = (u: Uint8Array): string => btoa(String.fromCharCode(...u));
 const fromB64 = (s: string): Uint8Array => Uint8Array.from(atob(s), (c) => c.charCodeAt(0));
@@ -564,7 +563,12 @@ function E2eePairCode() {
   );
 }
 
-/** E2EE disable: the WYŁĄCZ-E2EE literal (USUŃ pattern) → the server reconstructs plaintext. */
+/**
+ * E2EE disable: type the confirmation word (the wipe/"DELETE" pattern) → the server reconstructs
+ * plaintext. The typed word is LOCALIZED (`e2ee.disableWord`) and matched here on the device; the
+ * POST always carries the fixed ASCII constant E2EE_DISABLE_CONFIRM — gating on the wire literal
+ * would demand Polish characters (Ł/Ą) from every locale.
+ */
 function E2eeDisable() {
   const { t } = useT();
   const [sheet, setSheet] = useState(false);
@@ -582,7 +586,7 @@ function E2eeDisable() {
       // rebuilds the session budget's rows from it: a full-budget overwrite (see assertOwnReplica).
       // The verified user id travels WITH the write — the check and the upload are two requests.
       const userId = await assertOwnReplica();
-      const { epoch } = await api.e2eeDisable({ confirm: E2EE_DISABLE_WORD, ledger, userId });
+      const { epoch } = await api.e2eeDisable({ confirm: E2EE_DISABLE_CONFIRM, ledger, userId });
       // return to the v1 path ONLY after server success; the local replica stays
       e2ee.clearDek();
       e2ee.setTierMeta({ tier: "plain", epoch });
@@ -627,7 +631,7 @@ function E2eeDisable() {
                 label={t("e2ee.disableRun")}
                 tone="danger"
                 onClick={() => void run()}
-                disabled={busy || text.trim().toUpperCase() !== E2EE_DISABLE_WORD}
+                disabled={busy || text.trim().toUpperCase() !== t("e2ee.disableWord")}
                 busyLabel={busy ? t("e2ee.disabling") : undefined}
               />
             </ActionGroup>

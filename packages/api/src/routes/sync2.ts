@@ -14,7 +14,7 @@
  * alone, the cookie is shared by every tab on the device, and `epoch` does NOT
  * distinguish tenants (two independently-encrypted budgets both sit at epoch 1).
  */
-import { clientLedgerSchema } from "@enveo/shared";
+import { clientLedgerSchema, E2EE_DISABLE_CONFIRM } from "@enveo/shared";
 import { and, eq, gt, sql as dsql } from "drizzle-orm";
 import { Hono } from "hono";
 import { z } from "zod";
@@ -63,7 +63,10 @@ export const e2eeEnableInput = z.object({
 
 export const e2eeDisableInput = z.object({
   ...ownerAssertion,
-  confirm: z.literal("WYŁĄCZ-E2EE"),
+  /** Locale-independent ASCII wire constant (@enveo/shared) — the word the USER types is
+   *  localized and compared on the device; a localized literal here would make the flow
+   *  untypeable on a keyboard without Ł/Ą. */
+  confirm: z.literal(E2EE_DISABLE_CONFIRM),
   ledger: clientLedgerSchema,
 });
 

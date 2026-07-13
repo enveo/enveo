@@ -272,6 +272,16 @@ export const clientLedgerSchema = z.object({
 });
 export type ClientLedgerInput = z.infer<typeof clientLedgerSchema>;
 
+/**
+ * The confirmation literal POSTed to /api/e2ee/disable (server: `z.literal`).
+ *
+ * WIRE constant — stable, locale-independent ASCII, NEVER shown to the user. The word the user
+ * actually TYPES is localized (i18n `e2ee.disableWord`) and compared on the device; only this
+ * constant travels. Keep it ASCII: pinning a localized literal on the wire once made the disable
+ * flow untypeable for anyone without a Polish keyboard (Ł/Ą).
+ */
+export const E2EE_DISABLE_CONFIRM = "DISABLE-E2EE";
+
 /** Tables replicated to the client (DB names; the client maps envelope_groups → groups). */
 export const REPLICATED_TABLES = [
   "accounts",

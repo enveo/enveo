@@ -2,6 +2,7 @@
  * Pure sync2 input-validation tests (zod) — no DB. DB logic (push/pull/
  * snapshot, enable/disable, epoch guards) is covered e2e in stage 2.
  */
+import { E2EE_DISABLE_CONFIRM } from "@enveo/shared";
 import { describe, expect, it } from "bun:test";
 import {
   e2eeDisableInput,
@@ -82,6 +83,13 @@ describe("sync2 — input validation", () => {
     expect(e2eeEnableInput.safeParse({ wrappedDek: "v1.a", kdfParams: "{}" }).success).toBe(false);
   });
 
+  /* The WIRE literal must stay locale-independent ASCII: the word the user TYPES is localized
+     (i18n `e2ee.disableWord`) and checked client-side, so a Polish literal on the wire would
+     make the whole flow untypeable on a keyboard without Ł/Ą. */
+  it("disable: the confirmation literal on the wire is ASCII (typeable in every locale)", () => {
+    expect(E2EE_DISABLE_CONFIRM).toMatch(/^[\x20-\x7e]+$/);
+  });
+
   it("disable: requires EXACTLY the confirmation literal", () => {
     const emptyLedger = {
       accounts: [],
@@ -93,9 +101,11 @@ describe("sync2 — input validation", () => {
       allocations: [],
       transactions: [],
     };
-    expect(e2eeDisableInput.safeParse({ confirm: "WYŁĄCZ-E2EE", ledger: emptyLedger }).success).toBe(true);
-    expect(e2eeDisableInput.safeParse({ confirm: "wyłącz-e2ee", ledger: emptyLedger }).success).toBe(false);
-    expect(e2eeDisableInput.safeParse({ confirm: "TAK", ledger: emptyLedger }).success).toBe(false);
+    expect(e2eeDisableInput.safeParse({ confirm: E2EE_DISABLE_CONFIRM, ledger: emptyLedger }).success).toBe(true);
+    expect(e2eeDisableInput.safeParse({ confirm: "disable-e2ee", ledger: emptyLedger }).success).toBe(false);
+    // the LOCALIZED word the user types never reaches the wire — only the fixed constant does
+    expect(e2eeDisableInput.safeParse({ confirm: "WYŁĄCZ-E2EE", ledger: emptyLedger }).success).toBe(false);
+    expect(e2eeDisableInput.safeParse({ confirm: "YES", ledger: emptyLedger }).success).toBe(false);
     expect(e2eeDisableInput.safeParse({ ledger: emptyLedger }).success).toBe(false);
   });
 
@@ -139,9 +149,9 @@ describe("sync2 — input validation", () => {
         .success,
     ).toBe(true);
     expect(
-      e2eeDisableInput.safeParse({ confirm: "WYŁĄCZ-E2EE", ledger: emptyLedger, userId: "user-A" }).success,
+      e2eeDisableInput.safeParse({ confirm: E2EE_DISABLE_CONFIRM, ledger: emptyLedger, userId: "user-A" }).success,
     ).toBe(true);
     // a pre-2.0 client omits it — then there is simply nothing to assert
-    expect(e2eeDisableInput.safeParse({ confirm: "WYŁĄCZ-E2EE", ledger: emptyLedger }).success).toBe(true);
+    expect(e2eeDisableInput.safeParse({ confirm: E2EE_DISABLE_CONFIRM, ledger: emptyLedger }).success).toBe(true);
   });
 });
