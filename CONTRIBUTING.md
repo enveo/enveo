@@ -25,10 +25,39 @@ make dev-web    # Vite on :5173
   ledger — never add a stored balance column.
 - New mutation ops need full parity: zod schema (`shared/ops.ts`) + `applyOp`
   reducer + server push handler + replay/idempotency tests.
-- UI strings go through `t()` (add keys to all locales); money through
+- UI strings go through `t()` — **the English sentence IS the key**; money through
   `M()`/`formatMoney`.
 - Read `AGENTS.md` for architecture, invariants, and known pitfalls before
   diving in — it will save you time.
+
+## Add a language
+
+A locale is **one file**. English is the source, so a translation can never break
+the app: any message you leave out simply renders its English text.
+
+1. Copy `packages/web/src/lib/i18n/locales/de.ts` to `<code>.ts` (a BCP-47 code —
+   `pt-BR`, `sv`, …) and rename the exported const (no dashes: `pt-BR` → `ptBR`).
+2. **Read `locales/GLOSSARY.md` first.** It fixes the budgeting vocabulary
+   (envelope, available, to be budgeted, carry-over, …). Terminology drifting
+   between screens is a worse bug than a clumsy sentence.
+3. Translate the values. The keys are English sentences — **never edit a key**.
+   Keep `{n}`/`{name}` placeholders verbatim, keep `**bold**` markers, and let
+   money/dates/numbers come from `Intl` (never hardcode a currency symbol).
+   Plural entries are objects keyed by CLDR category; the categories your language
+   needs are computed, not guessed:
+   `new Intl.PluralRules("cs").resolvedOptions().pluralCategories`.
+4. Add **one line** to `locales/../registry.ts` (`community: true`) — the Settings
+   picker and the lazy-loading are driven by that registry, so there is nothing
+   else to wire up.
+5. `bun run i18n:extract` (in `packages/web`), then
+   `bun test packages/web/src/lib/i18n`. The tests report orphaned messages and
+   incomplete plural categories by name.
+
+Fixing an existing translation is welcome and needs no ceremony — open a PR.
+
+> **For maintainers editing English copy:** changing an English string CHANGES ITS
+> KEY, which silently orphans every translation of it. Run `bun run i18n:extract`
+> and read the orphan report before shipping a copy change.
 
 ## Reporting bugs
 
