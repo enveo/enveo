@@ -1486,7 +1486,9 @@ async function wipeServer(): Promise<void> {
  */
 export async function pushLocalToServer(): Promise<void> {
   const ledger = store.getLedger();
-  if (!ledger) throw new Error("Brak lokalnej repliki do wysłania.");
+  // Error CODES, never prose: this is reachable from the UI (backup import, disable local mode)
+  // and lib/api.ts owns the wording in every locale (ERROR_KEYS → apiErrorMessage).
+  if (!ledger) throw new Error("no_local_replica");
   // Nothing to upload, everything to lose: an empty replica bound to no budget can only wipe the
   // session user's budget (see isEmptyUnboundReplica). Refuse — the callers that can legitimately
   // reach this state (disableLocal) resume a normal sync instead, and "delete server data"
@@ -1516,9 +1518,10 @@ export async function resetServerE2ee(dek?: Uint8Array): Promise<void> {
   // epoch check would happily accept another account's ciphertext here.
   const userId = await assertOwnReplica(); // foreign/unverified — no write
   const ledger = store.getLedger();
-  if (!ledger) throw new Error("Brak lokalnej repliki do wysłania.");
+  // Error CODES, never prose — see pushLocalToServer (both are reachable from Settings).
+  if (!ledger) throw new Error("no_local_replica");
   const key = dek ?? e2ee.getDek();
-  if (!key) throw new Error("Brak klucza szyfrowania na tym urządzeniu (odblokuj budżet).");
+  if (!key) throw new Error("no_encryption_key");
   const snapshotBlob = await e2ee.encryptSnapshot(ledger, key);
   const res = await fetch("/api/sync2/reset", {
     method: "POST",

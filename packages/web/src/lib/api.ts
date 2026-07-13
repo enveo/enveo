@@ -84,7 +84,15 @@ const ERROR_KEYS: Record<string, TKey> = {
   budget_not_empty: "err.budgetNotEmpty", // /demo/seed only ever fills an empty budget
   too_large: "err.tooLarge", // bodyLimit (e.g. too many/too heavy screenshots)
   internal: "err.internal",
-  foreign_replica: "sync.notOwner", // client-side sentinel (assertOwnReplica) — same shape
+
+  /* Client-side codes — the same contract: lib/* throws a CODE (never a sentence, never a locale),
+     the wording lives here. They reach a user through the very same setError(apiErrorMessage(e)). */
+  foreign_replica: "sync.notOwner", // assertOwnReplica — the replica is not the session's
+  no_local_replica: "err.noLocalReplica", // pushLocalToServer/resetServerE2ee before the mirror booted
+  no_encryption_key: "err.noEncryptionKey", // resetServerE2ee with no DEK on this device (locked)
+  empty_unbound_replica: "err.emptyUnboundReplica", // refused: an empty unbound replica can only wipe
+  bad_ciphertext: "err.badCiphertext", // crypto.ts — envelope this build cannot read (corrupt/foreign)
+  bad_pairing_code: "err.badPairingCode", // crypto.ts — decodePairing on a code that is not ours
 };
 
 /** Turns a server error code into a sentence in the UI language; unknown codes stay as-is. */

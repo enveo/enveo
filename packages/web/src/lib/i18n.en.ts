@@ -167,6 +167,13 @@ export const en: Record<TKey, string> = {
   "err.tooLarge": "The upload is too large — try fewer (or smaller) screenshots.",
   "err.internal": "The server hit an unexpected error. Nothing was changed — try again.",
 
+  // Client-side error codes (lib/sync.ts, lib/crypto.ts throw a CODE, never a sentence) — same map in lib/api.ts.
+  "err.noLocalReplica": "The local copy of the budget has not loaded yet — nothing was sent. Reload the app and try again.",
+  "err.noEncryptionKey": "This device has no encryption key — unlock the budget with your password (or a pairing code) and try again.",
+  "err.emptyUnboundReplica": "There is no data on this device to send — nothing was sent to the server. Reload the app to fetch your budget first.",
+  "err.badCiphertext": "The encrypted data could not be read on this device — nothing was changed. Make sure the app is up to date, or restore from a backup.",
+  "err.badPairingCode": "This is not a valid pairing code — copy it again from the device where the budget is already unlocked.",
+
   // SyncState "unverified" — the replica on this device could not be matched to the signed-in
   // account: NOTHING is being sent to the server (and nothing has been deleted). This is where
   // the user reads what happened and what they can do about it.

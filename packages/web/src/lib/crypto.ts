@@ -34,7 +34,9 @@ async function aesEncrypt(plain: Uint8Array, keyRaw: Uint8Array): Promise<string
 }
 
 async function aesDecrypt(payload: string, keyRaw: Uint8Array): Promise<Uint8Array> {
-  if (!payload.startsWith("v1.")) throw new Error("unknown ciphertext format");
+  // Error CODE, never prose: a corrupt/foreign envelope surfaces on the Unlock screen through
+  // apiErrorMessage, which localizes it (ERROR_KEYS in lib/api.ts).
+  if (!payload.startsWith("v1.")) throw new Error("bad_ciphertext");
   const raw = unb64(payload.slice(3));
   const nonce = raw.slice(0, 12);
   const ct = raw.slice(12);
@@ -55,8 +57,10 @@ export function encodePairing(dek: Uint8Array, budgetId: string): string {
   return "enveo1." + b64(enc.encode(JSON.stringify({ b: budgetId, d: b64(dek) })));
 }
 export function decodePairing(code: string): { dek: Uint8Array; budgetId: string } {
-  if (!code.startsWith("enveo1.")) throw new Error("invalid pairing code");
+  // Error CODE, never prose (Unlock already localizes this one at the call site, but the code
+  // keeps a future caller that only has apiErrorMessage on the safe side).
+  if (!code.startsWith("enveo1.")) throw new Error("bad_pairing_code");
   const j = JSON.parse(dec.decode(unb64(code.slice(7)))) as { b: string; d: string };
-  if (!j.b || !j.d) throw new Error("invalid pairing code");
+  if (!j.b || !j.d) throw new Error("bad_pairing_code");
   return { budgetId: j.b, dek: unb64(j.d) };
 }
