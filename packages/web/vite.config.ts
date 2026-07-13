@@ -27,10 +27,10 @@ export default defineConfig({
       injectRegister: null,
       includeAssets: ["favicon.svg", "apple-touch-icon.png"],
       manifest: {
-        name: "Enveo — budżet domowy",
+        name: "Enveo — Envelope Budgeting",
         short_name: "Enveo",
-        description: "Budżetowanie kopertowe, mobile-first.",
-        lang: "pl",
+        description: "Envelope budgeting, mobile-first.",
+        lang: "en",
         theme_color: "#f4f3ef",
         background_color: "#f4f3ef",
         display: "standalone",
