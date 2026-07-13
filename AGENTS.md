@@ -5,9 +5,9 @@
 
 ## Stack & layout
 Monorepo with bun workspaces (`packages/*`):
-- **packages/shared** (`@enveo/shared`) — pure domain, zero I/O: `budget.ts` (ledger math), `applyOp.ts` (mutation reducers for the client replica), `stateResponse.ts`/`summary.ts`, `ops.ts` (zod op schemas), `quickadd.ts` (natural-language entry parsing), `aiBudget.ts` (budget suggestion engine), `aiPrompts.ts` (ALL AI prompt builders/parsers). This is the shared math for client and server — parity is guaranteed by running identical code on both sides.
+- **packages/shared** (`@enveo/shared`) — pure domain, zero I/O: `budget.ts` (ledger math), `applyOp.ts` (mutation reducers for the client replica), `stateResponse.ts`/`summary.ts`, `ops.ts` (zod op schemas), `aiBudget.ts` (budget suggestion engine), `aiPrompts.ts` (ALL AI prompt builders/parsers). This is the shared math for client and server — parity is guaranteed by running identical code on both sides.
 - **packages/api** — bun + Hono + Drizzle + Postgres 16. `src/index.ts` mounts routes under `/api`; in production it also serves the built web app (SPA fallback). Migrations in `drizzle/` run on container start; the migrator orders by timestamp from `meta/_journal.json` — semantic changes always require a NEW migration file.
-- **packages/web** — React 18 + Vite + TanStack Query, PWA (`vite-plugin-pwa`, registerType `prompt`). Local-first lives in `src/lib`: `store.ts`/`idb.ts` (ledger replica in IndexedDB), `outbox.ts`/`persist.ts`, `sync.ts` (push/pull/snapshot/replace), `mutate.ts` (`local.*` → applyOp + outbox), `version.ts`.
+- **packages/web** — React 18 + Vite + TanStack Query, PWA (`vite-plugin-pwa`, registerType `prompt`). Local-first lives in `src/lib`: `store.ts`/`idb.ts` (ledger replica in IndexedDB), `outbox.ts`/`persist.ts`, `sync.ts` (push/pull/snapshot/replace), `mutate.ts` (`local.*` → applyOp + outbox), `version.ts`. i18n lives in `src/lib/i18n/` (runtime + `registry.ts` + one file per locale; see § Conventions).
 
 ## Running locally
 `bun` must be on PATH. Full stack via Docker:
@@ -23,7 +23,7 @@ Monorepo with bun workspaces (`packages/*`):
 - Tests exercising "no AI key" paths must run with `OPENAI_API_KEY=` explicitly emptied — bun auto-loads `.env`, so a locally configured key can make such tests pass for the wrong reason.
 
 ## Domain invariants
-- Amounts are ALWAYS integer minor units (never floats). `Transaction.amount` is a positive magnitude; direction comes from `type` (expense/income/transfer) + `isRefund`. `month` = 'YYYY-MM', `date` = 'YYYY-MM-DD'.
+- Amounts are ALWAYS integer minor units (never floats), 1/100 of the major unit — hence only **2-decimal currencies** may be offered (see § Conventions). `Transaction.amount` is a positive magnitude; direction comes from `type` (expense/income/transfer) + `isRefund`. `month` = 'YYYY-MM', `date` = 'YYYY-MM-DD'.
 - Account balances and envelope "available" are DERIVED from the ledger (`computeBudgetState`/`stateResponse`) — never materialize a balance column (property tests will break).
 - Core invariant: Σ(available) + toBeBudgeted = Σ(on-budget account balances). Carry-over: negative available carries into the next month as a negative carry-in (no floor at 0).
 - Local-first: the UI boots from the IndexedDB replica; a write = applyOp on the mirror + outbox → sync push/pull. The server-side `changes` journal is driven by Postgres TRIGGERS (so imports and FK cascades are captured too), not by route handlers. Conflicts are LWW per entity, delete wins; recovery = snapshot resync. `applyOp` must mirror FK cascades faithfully or replay loses idempotency.
@@ -38,9 +38,9 @@ Accounts are mandatory and sign-out KEEPS the replica, so one device can hold us
 - **PITFALL — `budgetId` is an EPOCH marker, not a tenant id**: lazy budget creation, wipe+reseed and a DB restore all mint a new one. It may NEVER be used alone to conclude "different account" (that false positive IS the 2.0 upgrade path: an unstamped 1.x replica of B_old vs. the freshly lazy-created empty B_new). A differing budgetId means "resync / cannot prove", not "foreign".
 
 ## AI features
-- Provider: OpenAI (`OPENAI_API_KEY`/`OPENAI_MODEL`). No key → clean fallback to local rule engines.
-- Prompts live ONLY in `shared/aiPrompts.ts` — server and BYOK build identical requests from the same code (parity guarded by prompt-identity tests).
-- AI modes (`settings.aiMode`, per device): **off** (default; local rules, zero egress), **server** (operator key via the narrow OpenAI-mirror proxy `/api/ai/v1/chat/completions`), **byok** (user's key in device localStorage; requests go straight to OpenAI). In off/byok, suggestion/quick-add generation never touches `/api/*`; first use in off goes through the AI consent sheet.
+- Provider: OpenAI (`OPENAI_API_KEY`/`OPENAI_MODEL`). No key → the **budget assistant** falls back to local rules; **quick-add and screenshot import are AI-ONLY** (no key ⇒ 503 `ai_unavailable`). The rule-based quick-add parser was DELETED in 2.2.0 — its PL/EN word tables were the one thing here that could not be localized. So: with AI off the Add screen hides the quick-add bar and shows a line pointing at Settings; do not re-introduce a rules path for entry.
+- Prompts live ONLY in `shared/aiPrompts.ts` — server and BYOK build identical requests from the same code (parity guarded by prompt-identity tests). Every prompt takes the UI locale (`AiLocale` = any BCP-47 tag) and the model answers in that language (envelope names, notes, rationales) — omitted ⇒ English.
+- AI modes (`settings.aiMode`, per device): **off** (default; local rules for suggestions, zero egress), **server** (operator key via the narrow OpenAI-mirror proxy `/api/ai/v1/chat/completions`), **byok** (user's key in device localStorage; requests go straight to OpenAI). In off/byok, suggestion/quick-add generation never touches `/api/*`; first use in off goes through the AI consent sheet.
 - Structured output uses strict `json_schema` (object root — wrap arrays in `{items}`). `reasoning_effort` is gated by `supportsReasoningEffort` and the enum stops at `low` (some models reject `minimal`).
 
 ## Auth (accounts are MANDATORY — since 2.0)
@@ -54,7 +54,10 @@ Accounts are mandatory and sign-out KEEPS the replica, so one device can hold us
 
 ## Conventions
 - Code, comments, tests, and commit messages in **English**. Conventional Commits with scope: `feat(api):`, `fix(web):`, `chore:`.
-- UI strings go through `t()` with dictionaries in `lib/i18n.*` (add keys to ALL locales); money is formatted via `M()`/`formatMoney` — never hardcode a currency symbol in JSX.
+- **i18n is message-as-key: the ENGLISH SENTENCE IS THE KEY** — `t("Transactions")`, `tp("{n} change | {n} changes", n)`. There is NO English dictionary: with `en`, `t()` returns its argument, so a missing translation degrades to correct English (that is what makes partial community translations shippable). A locale is ONE file in `web/src/lib/i18n/locales/` (`Partial<Record<Message, string | PluralForms>>`) plus ONE line in `i18n/registry.ts` (lazy `import()`, endonym, `community` flag). Plurals come from `Intl.PluralRules` — the required CLDR categories per language are COMPUTED, never hand-written, and the English source carries both forms joined by `" | "`. Strings outside a `t()` call (code→text maps, ternaries) are wrapped in `msg("…")` so the extractor sees them. Keep every message a WHOLE phrase — gluing fragments in JSX forces English word order on every other language (the tests reject fragments).
+  - `bun run i18n:extract` (in `packages/web`) regenerates `i18n/messages.generated.ts` — the `Message` union, so a typo at a call site is still a compile error. `i18n.test.ts` fails on orphans, missing plural categories and dropped `{placeholders}`; `bun run i18n:ambiguity` lists short messages with their call sites (the "Type" verb/noun trap).
+  - **PITFALL — editing an English string CHANGES ITS KEY and silently orphans every translation of it.** Run `bun run i18n:extract` and READ the orphan report before shipping a copy change; the orphans name exactly what must be re-translated.
+- Money is formatted via `M()`/`formatMoney` — never hardcode a currency symbol in JSX. **Only 2-decimal currencies may be offered** (`SUPPORTED_CURRENCIES`, ~31 codes): the ledger is integer 1/100 minor units end to end, so a 0-decimal (JPY, HUF, ISK…) or 3-decimal (KWD, BHD) currency would render and parse every amount 100×/10× off. `CURRENCY_DIGITS` is PINNED from CLDR and `currency.test.ts` checks the list against it — deliberately NOT against the runtime's `Intl`, whose ICU lags CLDR by years (bun 1.3/ICU 75 still calls HUF/COP/IDR 2-decimal; current browsers say 0).
 - Colors: accent/danger/CTA are CSS variables; in SVG set them via `style` (presentation attributes don't resolve `var()`); use precomputed alpha variables — never string-concatenate alpha onto a color.
 
 ## Known pitfalls (hard-won — do not rediscover)

@@ -28,9 +28,10 @@ The first image is **v2.1.0** (`v2.0.0` predates the workflow — nothing was ev
 for it; do not offer it as a tag to pin). Steps, none of which can be committed:
 
 1. Push `main` and make **`github.com/enveo/enveo` public**.
-2. Tag and push the release: `git tag v2.1.0 && git push origin v2.1.0` (`APP_VERSION` in
-   `packages/web/src/lib/version.ts` is already `2.1.0`). To re-publish an existing tag
-   after a failed run, use the workflow's `workflow_dispatch` input instead.
+2. Tag and push the release — the tag must MATCH `APP_VERSION` in
+   `packages/web/src/lib/version.ts` (currently `2.2.0`), which is bumped by hand:
+   `git tag v2.2.0 && git push origin v2.2.0`. To re-publish an existing tag after a
+   failed run, use the workflow's `workflow_dispatch` input instead.
 3. Watch it: `gh run watch` — the arm64 leg is emulated and slow on a first run.
 4. GHCR → the `enveo` package → **Package settings**: change visibility to **Public**, and
    enable **Inherit access from source repository**.
