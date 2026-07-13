@@ -93,6 +93,7 @@ const ERROR_KEYS: Record<string, TKey> = {
   empty_unbound_replica: "err.emptyUnboundReplica",  
   bad_ciphertext: "err.badCiphertext", // crypto.ts — envelope this build cannot read (corrupt/foreign)
   bad_pairing_code: "err.badPairingCode", // crypto.ts — decodePairing on a code that is not ours
+  ai_consent_required: "err.aiNotConfigured",  
 
   
 

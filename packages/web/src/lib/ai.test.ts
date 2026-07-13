@@ -14,7 +14,9 @@ import {
   type ClientLedger,
   type Transaction,
 } from "@enveo/shared";
-import { previewSuggestPrompt } from "./ai";
+import { aiTarget, hasAiTarget, previewSuggestPrompt, runImportExtract, runQuickAdd, type AiSettings } from "./ai";
+import { apiErrorMessage } from "./api";
+import { en } from "./i18n.en";
 
 const MONTH = "2026-07";
 
@@ -103,5 +105,40 @@ describe("previewSuggestPrompt", () => {
     const user = JSON.parse(preview.user) as Record<string, any>;
     expect(user.currentMonth.month).toBe(MONTH);
     expect(user.previousMonth.note).toContain("reference");
+  });
+});
+
+
+
+
+
+
+
+
+
+describe("aiTarget / hasAiTarget", () => {
+  const settings = (over: Partial<AiSettings>): AiSettings => ({ aiMode: "off", openaiKey: "", openaiModel: "gpt-5.5-mini", ...over });
+
+  it("server → the /api mirror; byok WITH a key → straight to OpenAI", () => {
+    expect(aiTarget(settings({ aiMode: "server" }))).toEqual({ kind: "server" });
+    expect(aiTarget(settings({ aiMode: "byok", openaiKey: "sk-x" }))).toEqual({ kind: "byok", key: "sk-x", model: "gpt-5.5-mini" });
+    expect(hasAiTarget(settings({ aiMode: "server" }))).toBe(true);
+  });
+
+  it("off → no target; byok WITHOUT a key → no target either (the state the Add screen must hide the bar in)", () => {
+    expect(aiTarget(settings({ aiMode: "off" }))).toBeNull();
+    expect(aiTarget(settings({ aiMode: "byok", openaiKey: "" }))).toBeNull();
+    expect(hasAiTarget(settings({ aiMode: "byok", openaiKey: "" }))).toBe(false);
+  });
+
+  it("with no target the AI-only entry points throw a CODE (localized by apiErrorMessage), never prose", async () => {
+    for (const s of [settings({ aiMode: "off" }), settings({ aiMode: "byok", openaiKey: "" })]) {
+      const quick = runQuickAdd({ text: "Lidl 12,30", locale: "pl", ledger: fixtureLedger(), settings: s });
+      await expect(quick).rejects.toThrow("ai_consent_required");
+      const imp = runImportExtract({ images: ["data:image/png;base64,x"], locale: "pl", ledger: fixtureLedger(), settings: s });
+      await expect(imp).rejects.toThrow("ai_consent_required");
+       
+      expect(apiErrorMessage(await quick.catch((e: unknown) => e))).toBe(en["err.aiNotConfigured"]);
+    }
   });
 });

@@ -45,13 +45,35 @@ import { chatJson, type ChatTarget } from "./openai";
  
 export type AiSettings = Pick<Settings, "aiMode" | "openaiKey" | "openaiModel">;
 
- 
+/**
+ * No usable model on this device (AI off, or byok with no key yet). Carries a CODE, not prose:
+ * it reaches the user through apiErrorMessage() like every other client-side sentinel, and
+ * lib/api.ts owns the wording in each locale (a sentence thrown here would render English in a
+ * Polish UI — the regression api.test.ts guards).
+ */
 export class AiConsentRequired extends Error {
   constructor() {
-    super("ai consent required");
+    super("ai_consent_required");
     this.name = "AiConsentRequired";
   }
 }
+
+/**
+ * The SINGLE decision "can this device talk to a model, and how" — used by every AI entry point
+ * AND by the UI that offers them (Add screen's quick-add bar). Keeping one function is the point:
+ * `aiMode !== "off"` is NOT the same question. Settings switches the mode to `byok` before a key
+ * is typed (and clearing the field persists an empty one), so byok-without-key is an everyday
+ * state in which there is no target — the UI must hide AI-only entry points instead of letting
+ * the user run into an error.
+ */
+export function aiTarget(settings: AiSettings): ChatTarget | null {
+  if (settings.aiMode === "server") return { kind: "server" };
+  if (settings.aiMode === "byok" && settings.openaiKey) return { kind: "byok", key: settings.openaiKey, model: settings.openaiModel };
+  return null;
+}
+
+ 
+export const hasAiTarget = (settings: AiSettings): boolean => aiTarget(settings) !== null;
 
 const todayISO = (): string => new Date().toISOString().slice(0, 10);
 
@@ -135,12 +157,8 @@ export async function runSuggest(args: {
 
 
 
-  const llm: ((req: ChatRequest) => Promise<string>) | null =
-    settings.aiMode === "server"
-      ? (req) => chatJson(req, { kind: "server" })
-      : settings.aiMode === "byok" && settings.openaiKey
-        ? (req) => chatJson(req, { kind: "byok", key: settings.openaiKey, model: settings.openaiModel })
-        : null;
+  const target = aiTarget(settings);
+  const llm: ((req: ChatRequest) => Promise<string>) | null = target ? (req) => chatJson(req, target) : null;
 
   
 
@@ -217,6 +235,7 @@ const quickAddRefs = (ledger: ClientLedger) => ({
 
 
 
+
 export async function runQuickAdd(args: {
   text: string;
   locale: "pl" | "en";
@@ -225,12 +244,7 @@ export async function runQuickAdd(args: {
 }): Promise<QuickAddResponse> {
   const { text, locale, ledger, settings } = args;
 
-  const target: ChatTarget | null =
-    settings.aiMode === "server"
-      ? { kind: "server" }
-      : settings.aiMode === "byok" && settings.openaiKey
-        ? { kind: "byok", key: settings.openaiKey, model: settings.openaiModel }
-        : null;
+  const target = aiTarget(settings);
   if (!target) throw new AiConsentRequired();
 
   const refs = quickAddRefs(ledger);
@@ -269,7 +283,8 @@ export async function runImportExtract(args: {
      (assignments from history) is inherently server-side. In local-only+server
      it works like byok: facts yes, assignments empty (DB wiped). */
   if (settings.aiMode === "server") return (await api.importExtract(images, locale)).items;
-  if (settings.aiMode !== "byok" || !settings.openaiKey) throw new AiConsentRequired();
+  const target = aiTarget(settings);
+  if (target?.kind !== "byok") throw new AiConsentRequired();  
 
   
 
@@ -278,7 +293,7 @@ export async function runImportExtract(args: {
     envelopes: ledger.envelopes.filter((e) => !e.archived).map((e) => ({ id: e.id, name: e.name })),
     categories: ledger.categories.map((c) => ({ id: c.id, name: c.name })),
   };
-  const raw = await chatJson(buildImportExtractPrompt(images, refs, todayISO(), locale), { kind: "byok", key: settings.openaiKey, model: settings.openaiModel });
+  const raw = await chatJson(buildImportExtractPrompt(images, refs, todayISO(), locale), target);
   return parseImportExtractResponse(raw).map((t) => ({
     date: t.date,
     amount: t.amount,
