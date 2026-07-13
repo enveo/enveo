@@ -60,7 +60,7 @@ export async function seed() {
     (await db.insert(s.users).values({ email: "owner@example.com" }).returning())[0]!;
   const [budget] = await db
     .insert(s.budgets)
-    .values({ userId: owner.id, name: "Budżet domowy" })
+    .values({ userId: owner.id, name: "Household budget" })
     .returning();
   const bid = budget!.id;
 
