@@ -109,29 +109,37 @@ on every update.
 >
 > On iPhone: open the HTTPS URL in Safari → Share → **Add to Home Screen**.
 
-## One-click deploy (Railway)
+## Deploy on Railway
 
-No server of your own? Deploy Enveo plus a managed Postgres on
-[Railway](https://railway.com):
+No server of your own? [Railway](https://railway.com) runs the container and a managed
+Postgres for you. There is **no one-click button yet** (it needs a published template —
+see [docs/hosting.md](docs/hosting.md)), so the project is wired by hand, once:
 
-[![Deploy on Railway](https://railway.com/button.svg)](https://railway.com/new/template?template=https://github.com/enveo/enveo)
+<!-- TODO(maintainer): a "Deploy on Railway" button requires a PUBLISHED template code.
+     The repo-composer form (/new/template?template=<repo-url>) is NOT a documented
+     deploy-button URL and pre-wires neither Postgres nor a session secret — do not put it
+     back. Once the template is published (docs/hosting.md → "Publishing the one-click
+     template"), retitle this section and add:
+       [![Deploy on Railway](https://railway.com/button.svg)](https://railway.com/new/template/<CODE>?utm_medium=integration&utm_source=button&utm_campaign=generic) -->
 
-<!-- TODO(maintainer): this button points at Railway's repo-composer form, which starts a
-     project from this repo but does NOT pre-wire Postgres or generate a session secret.
-     After publishing the template (Railway → Project Settings → Generate Template from
-     Project → Publish), replace the link above with the published template code:
-       https://railway.com/new/template/<CODE>?utm_medium=integration&utm_source=button&utm_campaign=generic
-     Steps: docs/hosting.md → "Publishing the one-click template". -->
+1. **New Project → Deploy from GitHub repo** → `enveo/enveo`. The repo carries the Railway
+   config ([`railway.json`](railway.json): Dockerfile build, health check on `/api/health`,
+   restart on failure), so nothing else needs configuring on the build side.
+2. **Add a Postgres service** to the same project.
+3. On the Enveo service, set the variables:
+   - `DATABASE_URL` = `${{Postgres.DATABASE_URL}}`
+   - `BETTER_AUTH_SECRET` = 32+ chars (`openssl rand -hex 32`) — the API refuses to boot without it
+   - `BETTER_AUTH_URL` = `https://${{RAILWAY_PUBLIC_DOMAIN}}` — makes the session cookie
+     `Secure` and fixes Google OAuth redirects
+   - `DEPLOYMENT` = `selfhost` — registration closes after the owner account
 
-The repo carries the Railway config ([`railway.json`](railway.json): Dockerfile build,
-health check on `/api/health`, restart on failure). Add a **Postgres** service and set:
+   Leave `PORT` unset — Railway injects it and the app listens on it.
+4. Generate a domain, check `/api/health` is green, open the app and create the **owner
+   account** immediately (registration is open until it exists).
 
-- `DATABASE_URL` = `${{Postgres.DATABASE_URL}}`
-- `BETTER_AUTH_SECRET` = 32+ chars (`openssl rand -hex 32`) — the API refuses to boot without it
-- `BETTER_AUTH_URL` = `https://${{RAILWAY_PUBLIC_DOMAIN}}` — recommended: it makes the
-  session cookie `Secure` and fixes Google OAuth redirects
-
-Leave `PORT` unset — Railway injects it and the app listens on it.
+Steps 2 and 3 are not optional and they fail *quietly*: the image builds and the
+migrations run, and only then does the server exit with `BETTER_AUTH_SECRET is required`
+— a restart loop, not an error page.
 
 Full walkthrough (and what it would take to get Enveo listed on PikaPods):
 **[docs/hosting.md](docs/hosting.md)**.
