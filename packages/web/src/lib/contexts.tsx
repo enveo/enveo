@@ -3,6 +3,7 @@ import { browserLocales, currencyForLocales } from "./currency";
 import { formatMoney } from "./format";
 // the REGISTRY, not lib/i18n: that one reads useSettings() from here — importing it would close the cycle
 import { detectLang, type Lang } from "./i18n/registry";
+import { loadPersistedSettings, persistSettings } from "./settingsPersist";
 import { store } from "./store";
 import { light, themeTokens, type AccentTheme, type Theme } from "./theme";
 
@@ -17,7 +18,7 @@ export interface Settings {
   lang: Lang;
   /** AI mode (a DEVICE setting — never synchronized). */
   aiMode: AiMode;
-  /** OpenAI key (byok) — lives EXCLUSIVELY in this browser's localStorage. */
+  /** OpenAI key (byok) — this browser's localStorage ONLY, and never persisted in guest mode. */
   openaiKey: string;
   openaiModel: OpenAiModel;
   /** Dismissed subscription proposals (group keys) — deliberately per DEVICE. */
@@ -39,13 +40,8 @@ const DEFAULT_SETTINGS: Settings = {
 };
 
 function loadSettings(): Settings {
-  try {
-    const raw = localStorage.getItem("enveo.settings");
-    if (raw) return { ...DEFAULT_SETTINGS, ...JSON.parse(raw) };
-  } catch {
-    /* ignore */
-  }
-  return DEFAULT_SETTINGS;
+  const raw = loadPersistedSettings(); // null in guest mode — a guest inherits nothing
+  return raw ? { ...DEFAULT_SETTINGS, ...raw } : DEFAULT_SETTINGS;
 }
 
 const ThemeCtx = createContext<Theme>(light);
@@ -103,11 +99,7 @@ export function AppProviders({ children }: { children: ReactNode }) {
 
   const setSettings = (s: Settings) => {
     setSettingsState(s);
-    try {
-      localStorage.setItem("enveo.settings", JSON.stringify(s));
-    } catch {
-      /* ignore */
-    }
+    persistSettings(s); // no-op in guest mode — settings live in React state only
   };
 
   const isDark = settings.themeMode === "auto" ? prefersDark : settings.themeMode === "dark";

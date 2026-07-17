@@ -1,3 +1,5 @@
+import { storageMode } from "./idb";
+
 /** Last used account (per device, localStorage — outside sync):
  *  preselection on the Add screen and in the screenshot import. */
 const KEY = "enveo.lastAccount";
@@ -11,10 +13,20 @@ export function getLastAccountId(): string | null {
 }
 
 export function setLastAccountId(id: string): void {
+  if (storageMode() === "memory-forced") return; // guest sessions leave no trace
   try {
     localStorage.setItem(KEY, id);
   } catch {
     /* private mode / no storage — the preference simply won't be saved */
+  }
+}
+
+/** Cloud sign-out: the preference leaves the device with the account. */
+export function clearLastAccountId(): void {
+  try {
+    localStorage.removeItem(KEY);
+  } catch {
+    /* ignore */
   }
 }
 
