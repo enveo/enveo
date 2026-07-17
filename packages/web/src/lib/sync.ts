@@ -2008,7 +2008,10 @@ function installTriggers(): void {
 
 
   window.addEventListener("beforeunload", (e) => {
-    if (storageMode() === "memory-forced" && outbox.size() > 0) e.preventDefault();
+    if (storageMode() === "memory-forced" && outbox.size() > 0) {
+      e.preventDefault();
+      e.returnValue = ""; // legacy engines only show the dialog when returnValue is set
+    }
   });
   setInterval(() => {
     

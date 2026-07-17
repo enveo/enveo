@@ -108,7 +108,11 @@ export function ForeignReplicaScreen() {
         </button>
         {confirm ? (
           <>
-            <div style={{ fontSize: 12.5, color: CORAL, lineHeight: 1.6 }}>{t("The local copy — including any unsent changes — will be permanently removed from this device. If this is the only copy of that budget, download a backup first.")}</div>
+            <div style={{ fontSize: 12.5, color: CORAL, lineHeight: 1.6 }}>
+              {cloud
+                ? t("The local copy — including any unsent changes — will be permanently removed from this device. Your account's data on the server is not affected.")
+                : t("The local copy — including any unsent changes — will be permanently removed from this device. If this is the only copy of that budget, download a backup first.")}
+            </div>
             <button type="button" onClick={() => void doDiscard()} disabled={busy} style={btn(CORAL)}>
               {busy ? t("Removing…") : t("Yes, remove the data from this device")}
             </button>
