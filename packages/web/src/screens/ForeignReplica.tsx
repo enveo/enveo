@@ -3,6 +3,7 @@ import { LogoMark } from "../components/chrome";
 import { signOutKeepingReplica } from "../lib/auth";
 import { useTheme } from "../lib/contexts";
 import { exportBackup } from "../lib/data";
+import { getCachedDeployment } from "../lib/deviceTrust";
 import { useT } from "../lib/i18n";
 import { discardLocalReplica, enterLoginKeepingReplica } from "../lib/sync";
 import { CORAL, TEAL, font } from "../lib/theme";
@@ -20,6 +21,9 @@ import { CORAL, TEAL, font } from "../lib/theme";
  *
  * So: export first (the button downloads the whole ledger as JSON, offline, no network), and only
  * an explicit "remove and continue" destroys anything.
+ *
+ * On CLOUD deployments the export button is hidden — the server holds the data durably, and the
+ * offline export would hand the previous user's ledger to whoever sits at a shared computer.
  */
 export function ForeignReplicaScreen() {
   const C = useTheme();
@@ -27,6 +31,12 @@ export function ForeignReplicaScreen() {
   const [busy, setBusy] = useState(false);
   const [confirm, setConfirm] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // CLOUD: no export button. The server is the durable copy of that account's budget (operator
+  // backups), and "download the previous user's whole ledger without being them" is exactly the
+  // shared-computer hole the device-trust model closes. SELFHOST keeps the export: the replica
+  // there may be the LAST copy (see the header comment) and the rescue path must stay.
+  const cloud = getCachedDeployment() === "cloud";
 
   const doExport = () => {
     setError(null);
@@ -83,9 +93,11 @@ export function ForeignReplicaScreen() {
       <div style={{ fontSize: 18, fontWeight: 700, color: C.text }}>{t("Another account's data")}</div>
       <div style={{ display: "flex", flexDirection: "column", gap: 12, width: "100%", maxWidth: 300 }}>
         <div style={{ fontSize: 13, color: C.soft, lineHeight: 1.6 }}>{t("The local copy of the budget on this device belongs to a different account than the one you are signed in with. Nothing has been sent to the server and nothing has been deleted.")}</div>
-        <button type="button" onClick={doExport} disabled={busy} style={btn(TEAL)}>
-          {t("Download a backup (JSON)")}
-        </button>
+        {!cloud && (
+          <button type="button" onClick={doExport} disabled={busy} style={btn(TEAL)}>
+            {t("Download a backup (JSON)")}
+          </button>
+        )}
         <button
           type="button"
           onClick={() => void doSignOut()}
