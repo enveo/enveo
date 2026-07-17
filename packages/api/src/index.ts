@@ -8,7 +8,7 @@ import { ZodError } from "zod";
 import { auth, hasCredentialedUser } from "./auth";
 import { authMetaBody } from "./authPolicy";
 import { TierMismatch } from "./context";
-import { assertAuthEnv, env } from "./env";
+import { assertAuthEnv, assertDbEnv, env } from "./env";
 import { isSameHostOrigin, staticAllowedOrigins } from "./origins";
 import { crudRoutes } from "./routes/crud";
 import { extraRoutes } from "./routes/extras";
@@ -25,7 +25,10 @@ import { ScopeViolation } from "./sync/apply";
 
 
 
-if (import.meta.main) assertAuthEnv();
+if (import.meta.main) {
+  assertAuthEnv();
+  assertDbEnv();
+}
 
 const app = new Hono<{ Variables: { userId?: string } }>();
 
