@@ -5,12 +5,18 @@ anything larger than a small fix, please open an issue to discuss it first.
 
 ## Development setup
 
-See [README](README.md) for the quick start. In short:
+See [README](README.md) for the quick start (including creating `.env`). In short:
+
+`bun` auto-loads `.env` from its own working directory, not the repo root, so export the
+values into each shell before running anything below — otherwise `BETTER_AUTH_SECRET`
+stays unset and the boot aborts by design:
 
 ```bash
 bun install
 docker compose up -d db
-cd packages/api && bun run db:migrate && bun run db:seed   # demo data, dev only
+set -a; source .env; set +a
+bun run db:migrate && bun run db:seed   # demo data, dev only
+# in two terminals, both from the repo root (repeat the `source .env` line above in each):
 make dev-api    # API on :8080
 make dev-web    # Vite on :5173
 ```
@@ -80,4 +86,5 @@ whether the budget is plain or E2EE.
 ## Security
 
 Please report security issues privately via GitHub Security Advisories
-(Security tab → Report a vulnerability) rather than public issues.
+(Security tab → Report a vulnerability) rather than public issues. See
+[SECURITY.md](SECURITY.md) for the full policy.

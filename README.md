@@ -64,12 +64,12 @@ operator resets it on the server (see [Operating it](#operating-it)).
 Docker, an empty directory, two generated secrets. Nothing is compiled — this pulls the
 published image.
 
-<!-- TODO(maintainer): remove this note once v2.1.0 is tagged, the Release workflow has
-     pushed the image, and the GHCR package is public (see docs/hosting.md). -->
-> **Not published yet.** The `ghcr.io/enveo/enveo` image lands with the **v2.1.0**
-> release — the first tag built by the [Release workflow](.github/workflows/release.yml).
-> Until then `docker compose up -d` on the file below cannot pull it; build from source
-> instead ([Develop it](#develop-it)).
+<!-- TODO(maintainer): remove this note once a release tag has been pushed, the Release
+     workflow has built the image, and the GHCR package is public (see docs/hosting.md). -->
+> **Not published yet.** The `ghcr.io/enveo/enveo` image lands with the first version tag
+> built and published by the [Release workflow](.github/workflows/release.yml) (see
+> [docs/hosting.md](docs/hosting.md)). Until then `docker compose up -d` on the file below
+> cannot pull it; build from source instead ([Develop it](#develop-it)).
 
 ```bash
 mkdir enveo && cd enveo
@@ -194,11 +194,17 @@ make logs               # follow logs; `make help` lists every target
 
 Without Docker:
 
+`bun` auto-loads `.env` from its own working directory, not the repo root, and the API's
+`dev` script always runs with `packages/api` as that directory — so it never sees the
+root `.env`, and `BETTER_AUTH_SECRET` stays unset (the boot aborts by design). Export the
+values into each shell before running anything below:
+
 ```bash
 bun install
 docker compose up -d db                       # Postgres only
-cd packages/api && bun run db:migrate
-# in two terminals:
+set -a; source .env; set +a
+bun run db:migrate                            # stays at the repo root, unlike `cd packages/api`
+# in two terminals, both from the repo root (repeat the `source .env` line above in each):
 make dev-api                                  # API on :8080
 make dev-web                                  # Vite on :5173 (proxies /api -> :8080)
 ```

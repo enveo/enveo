@@ -13,6 +13,21 @@ Whatever the platform, three things are always true:
 - **`BETTER_AUTH_SECRET` is required** (min 32 chars) — the API refuses to start without
   it, because accounts are mandatory.
 
+Channels below split into two tiers, the way other self-hosted budgeting apps structure
+their install docs:
+
+- **Official** — channels this repo builds for and the maintainer keeps working: your
+  own [`docker compose`](../README.md) install, [Railway](#railway), and
+  [PikaPods](#pikapods) (pending listing — see below). [Other platforms](#other-platforms)
+  covers anything else that just runs a Dockerfile plus a Postgres add-on, Render
+  included.
+- **Community** — third-party app stores nobody on this project maintains, tests, or
+  vouches for. Nothing is wired up yet. Umbrel and CasaOS are the most plausible future
+  candidates: both define apps as a plain `docker-compose.yml` plus a manifest, which is
+  the closest structural match to Enveo's own compose file of any platform surveyed — but
+  CasaOS additionally requires pinned image tags (Enveo currently floats `:latest`), and
+  neither has an open PR.
+
 ---
 
 ## Publishing the image (maintainer, one-time)
@@ -24,13 +39,15 @@ pullable by strangers once the GHCR package is **public**. GHCR packages default
 **private**, and a private package fails `docker compose pull` with `denied` *even when
 the repository is public* — so the visibility flip is a real step, not a formality.
 
-The first image is **v2.1.0** (`v2.0.0` predates the workflow — nothing was ever built
-for it; do not offer it as a tag to pin). Steps, none of which can be committed:
+The first *public* image is whichever version tag is newest at publication time —
+**v2.3.2 or later** (check `git tag -l`); `v2.0.0` predates the workflow, so nothing was
+ever built for it — do not offer it as a tag to pin. Steps, none of which can be
+committed:
 
 1. Push `main` and make **`github.com/enveo/enveo` public**.
 2. Tag and push the release — the tag must MATCH `APP_VERSION` in
-   `packages/web/src/lib/version.ts` (currently `2.2.0`), which is bumped by hand:
-   `git tag v2.2.0 && git push origin v2.2.0`. To re-publish an existing tag after a
+   `packages/web/src/lib/version.ts`, which is bumped by hand:
+   `git tag vX.Y.Z && git push origin vX.Y.Z`. To re-publish an existing tag after a
    failed run, use the workflow's `workflow_dispatch` input instead.
 3. Watch it: `gh run watch` — the arm64 leg is emulated and slow on a first run.
 4. GHCR → the `enveo` package → **Package settings**: change visibility to **Public**, and
@@ -174,6 +191,11 @@ Until then the README documents the manual path (steps 1–3 above), because tha
 only Railway path anyone has actually run. A published template is what makes it genuinely
 one-click.
 
+What publishing is worth: Railway pays a kickback on a published template — 15% of the
+usage costs its deployments generate, rising to 25% for maintainers who actively answer
+questions in the Template Queue. Payouts default to Railway credits; cashing out through
+Stripe Connect needs a $100 minimum per withdrawal.
+
 ### Backups
 
 Railway's Postgres has its own backup settings — turn them on. Note that Enveo is
@@ -205,10 +227,13 @@ Where Enveo stands against that list:
 - **License** — AGPL-3.0, self-hosting explicitly allowed.
 - **Official image** — `ghcr.io/enveo/enveo`, published from this repo (multi-arch).
 - **Active development, security fixes** — yes.
-- **Open question: the database.** Enveo needs Postgres, and a pod is a single app
-  container. Ask PikaPods how they provide a database for an app that requires one (some
-  listed apps do run against Postgres) — this is the one thing to settle *before*
-  applying, not after.
+- **Database** — resolved: a pod is a single app container, and PikaPods runs a shared,
+  managed Postgres/MySQL backend behind the scenes, injecting connection details into
+  that container as `DB_HOST`/`DB_PORT`/`DB_USER`/`DB_PASS`/`DB_NAME` (confirmed against
+  their own `docker-moodle` image — no database process runs in the container itself).
+  Enveo supports this natively since **2.3.2**: `env.ts` composes `DATABASE_URL` from
+  those variables whenever `DATABASE_URL` itself is not set, so no re-architecture is
+  needed to run there.
 
 **How to apply:** PikaPods takes app requests on their
 [feedback board](https://feedback.pikapods.com/) ("suggest or vote for it"), and
@@ -216,6 +241,13 @@ Where Enveo stands against that list:
 knowing up front: they do not ship releases automatically — a release is tested in staging
 first and must have been out for **at least 3 days** as a stable release. That means the
 published image needs stable, immutable version tags (`2.1.0`), not just `latest`.
+
+Two things are still unresolved and worth asking about in that same e-mail: PikaPods'
+exact revenue-share percentage for a newly listed app (their public statements describe
+existing partners like Actual Budget in general terms, not a rate card), and whether they
+generate a per-pod app secret the way Railway's `secret()` template function does — Enveo
+needs its own `BETTER_AUTH_SECRET` at first boot, so if PikaPods does not generate one,
+the image needs an entrypoint that does.
 
 ---
 
