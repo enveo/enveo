@@ -6,7 +6,7 @@ services:
     runtime: docker
     plan: starter
     healthCheckPath: /api/health
-    autoDeployTrigger: off   # releases are deliberate (tags), not every push
+    autoDeployTrigger: "off"   # releases are deliberate (tags), not every push
     envVars:
       - key: DATABASE_URL
         fromDatabase:
