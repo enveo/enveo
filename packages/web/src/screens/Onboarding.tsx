@@ -276,7 +276,14 @@ export function OnboardingScreen({ onDone }: { onDone: () => void }) {
             </div>
           ))}
 
-          <BigButton label={t("Create envelopes")} onClick={createEnvelopes} disabled={!anyChecked} variant="teal" />
+          {/* sticky (not fixed): stays pinned to the .gs scrollport's bottom edge while the
+              checklist scrolls, so the CTA is reachable without scrolling all the way down —
+              desktop viewports (1280x800) can otherwise clip it below the fold (B3). bottom:-32
+              compensates the .gs container's 32px bottom padding; the background hides list rows
+              scrolling underneath. */}
+          <div style={{ position: "sticky", bottom: -32, padding: "10px 0 4px", background: C.bg }}>
+            <BigButton label={t("Create envelopes")} onClick={createEnvelopes} disabled={!anyChecked} variant="teal" />
+          </div>
         </div>
       )}
 
