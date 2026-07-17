@@ -172,7 +172,7 @@ docker compose logs -f app
 ```
 
 **Pin the version** once real data is in it: swap `:latest` in `compose.yml` for a
-[release tag](https://github.com/enveo/enveo/releases) (e.g. `ghcr.io/enveo/enveo:2.1.0`),
+[release tag](https://github.com/enveo/enveo/releases) (e.g. `ghcr.io/enveo/enveo:2.3.2`),
 so `docker compose pull` cannot carry you across a major version by surprise.
 
 **Change the host port** with `ENVEO_PORT=9000` in `.env`, then `docker compose up -d`.
@@ -209,10 +209,10 @@ make dev-api                                  # API on :8080
 make dev-web                                  # Vite on :5173 (proxies /api -> :8080)
 ```
 
-Demo data (dev only): create your account in the app first, then
-`cd packages/api && bun run db:seed` — the demo dataset attaches to the first existing
-user, so your account sees it after a reload. Never point `make reset` / `db:seed` at
-data you care about.
+Demo data (dev only): create your account in the app first, then run
+`bun run db:seed` (in the repo root, using the env already sourced above) — the demo dataset
+attaches to the first registered user, so your account sees it after a reload. Never point
+`make reset` / `db:seed` at data you care about.
 
 ### Upgrading from 1.x
 
