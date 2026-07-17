@@ -240,7 +240,7 @@ Where Enveo stands against that list:
 `hello@pikapods.com` is the direct route for maintainers. Their update policy is worth
 knowing up front: they do not ship releases automatically — a release is tested in staging
 first and must have been out for **at least 3 days** as a stable release. That means the
-published image needs stable, immutable version tags (`2.1.0`), not just `latest`.
+published image needs stable, immutable version tags (`2.3.2`), not just `latest`.
 
 Two things are still unresolved and worth asking about in that same e-mail: PikaPods'
 exact revenue-share percentage for a newly listed app (their public statements describe
