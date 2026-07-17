@@ -3,6 +3,7 @@ import { apiErrorMessage } from "../lib/api";
 import { LogoMark } from "../components/chrome";
 import { fetchAuthMeta, signInEmail, signInGoogle, signUpEmail, type AuthMeta } from "../lib/auth";
 import { useTheme } from "../lib/contexts";
+import { cacheDeployment, setDeviceTrust } from "../lib/deviceTrust";
 import { useT } from "../lib/i18n";
 import { CORAL, TEAL, font } from "../lib/theme";
 
@@ -23,6 +24,7 @@ export function LoginScreen() {
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [trust, setTrust] = useState(true); // selfhost default until meta says otherwise
 
   useEffect(() => {
     let alive = true;
@@ -31,6 +33,8 @@ export function LoginScreen() {
         const m = await fetchAuthMeta();
         if (!alive) return;
         setMeta(m);
+        cacheDeployment(m.deployment ?? "selfhost");
+        setTrust(m.deployment !== "cloud"); // cloud → untrusted by default (shared devices)
         if (m.firstRun) setMode("signup"); // no account on this server yet → owner registration
       } catch {
         /* meta unavailable (offline/old server): fall back to the plain sign-in form */
@@ -51,9 +55,10 @@ export function LoginScreen() {
     setBusy(true);
     setError(null);
     try {
-      if (mode === "signup") await signUpEmail(email.trim(), password);
-      else await signInEmail(email.trim(), password);
-      location.reload(); // boot again — now with the session cookie
+      if (mode === "signup") await signUpEmail(email.trim(), password, trust);
+      else await signInEmail(email.trim(), password, trust);
+      setDeviceTrust(trust ? "trusted" : "untrusted"); // only a SUCCESSFUL login flips the flag
+      location.reload(); // boot again — now with the session cookie AND the right storage backend
     } catch (e) {
       fail(e);
       setBusy(false);
@@ -64,6 +69,10 @@ export function LoginScreen() {
     setBusy(true);
     setError(null);
     try {
+      // The flag must be set BEFORE the redirect — the OAuth return is a fresh boot on this
+      // origin. A failed/abandoned OAuth leaves the flag flipped with no session, which is
+      // harmless: no session ⇒ Login, and the next successful login rewrites it.
+      setDeviceTrust(trust ? "trusted" : "untrusted");
       await signInGoogle(); // redirect to Google — the browser takes over from here
     } catch (e) {
       fail(e);
@@ -135,6 +144,20 @@ export function LoginScreen() {
           autoComplete={mode === "signup" ? "new-password" : "current-password"}
           style={inputStyle}
         />
+        <label style={{ display: "flex", alignItems: "flex-start", gap: 8, fontSize: 12.5, color: C.soft, lineHeight: 1.5, cursor: "pointer" }}>
+          <input
+            type="checkbox"
+            checked={trust}
+            onChange={(e) => setTrust(e.target.checked)}
+            style={{ marginTop: 2, accentColor: TEAL }}
+          />
+          <span>{t("Trust this device — remember my data and sign-in")}</span>
+        </label>
+        {!trust && (
+          <div style={{ fontSize: 11.5, color: C.soft, lineHeight: 1.5 }}>
+            {t("Guest session: your budget is kept in memory only and disappears when you close the browser.")}
+          </div>
+        )}
         <button
           type="submit"
           disabled={!canSubmit}
@@ -159,6 +182,11 @@ export function LoginScreen() {
         >
           {t("Sign in with Google")}
         </button>
+      )}
+      {meta?.providers.google === true && !trust && (
+        <div style={{ fontSize: 11.5, color: C.soft, lineHeight: 1.5, maxWidth: 280 }}>
+          {t("Google sign-in keeps you signed in until you sign out — remember to sign out when you finish.")}
+        </div>
       )}
 
       {error && <div style={{ fontSize: 12, color: CORAL, lineHeight: 1.5, maxWidth: 280 }}>{error}</div>}
