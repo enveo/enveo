@@ -1,3 +1,5 @@
+import { storageMode } from "./idb";
+
 /**
  * Storage durability — anti-eviction hardening and diagnostics.
  *
@@ -63,6 +65,9 @@ let persistRequested = false;
  */
 export async function requestPersistentStorage(): Promise<void> {
   if (persistRequested) return;
+  // A guest session keeps the replica in memory — persisting the (empty) origin
+  // storage would be pointless and, on some browsers, shows a permission prompt.
+  if (storageMode() === "memory-forced") return;
   persistRequested = true;
   try {
     const s = navigator.storage;

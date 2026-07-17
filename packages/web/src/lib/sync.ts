@@ -2008,7 +2008,10 @@ function installTriggers(): void {
   // (the browser shows its own generic prompt). Trusted devices need none: the outbox is
   // durable and any live tab (or the next boot) drains it.
   window.addEventListener("beforeunload", (e) => {
-    if (storageMode() === "memory-forced" && outbox.size() > 0) e.preventDefault();
+    if (storageMode() === "memory-forced" && outbox.size() > 0) {
+      e.preventDefault();
+      e.returnValue = ""; // legacy engines only show the dialog when returnValue is set
+    }
   });
   setInterval(() => {
     // only the leader polls in the background (Web Locks) — the other tabs sync on

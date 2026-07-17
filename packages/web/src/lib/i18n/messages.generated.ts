@@ -451,6 +451,7 @@ export const MESSAGES = [
   "The local copy of the budget has not loaded yet — nothing was sent. Reload the app and try again.",
   "The local copy of the budget on this device belongs to a different account than the one you are signed in with. Nothing has been sent to the server and nothing has been deleted.",
   "The local copy — including any unsent changes — will be permanently removed from this device. If this is the only copy of that budget, download a backup first.",
+  "The local copy — including any unsent changes — will be permanently removed from this device. Your account's data on the server is not affected.",
   "The local replica is not ready.",
   "The password must be at least 8 characters.",
   "The proposal exceeds “To be budgeted” — uncheck or reduce items.",
