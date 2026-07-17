@@ -17,10 +17,9 @@ Channels below split into two tiers, the way other self-hosted budgeting apps st
 their install docs:
 
 - **Official** — channels this repo builds for and the maintainer keeps working: your
-  own [`docker compose`](../README.md) install, [Railway](#railway), and
-  [PikaPods](#pikapods) (pending listing — see below). [Other platforms](#other-platforms)
-  covers anything else that just runs a Dockerfile plus a Postgres add-on, Render
-  included.
+  own [`docker compose`](../README.md) install, [Railway](#railway), [Render](#render),
+  and [PikaPods](#pikapods) (pending listing — see below). [Other platforms](#other-platforms)
+  covers anything else that just runs a Dockerfile plus a Postgres add-on.
 - **Community** — third-party app stores nobody on this project maintains, tests, or
   vouches for. Nothing is wired up yet. Umbrel and CasaOS are the most plausible future
   candidates: both define apps as a plain `docker-compose.yml` plus a manifest, which is
@@ -204,6 +203,35 @@ Settings → Data exports JSON. Still: take a dump before a major upgrade.
 
 ---
 
+## Render
+
+[`render.yaml`](../render.yaml) at the repo root is Render's Blueprint spec — Render
+detects it automatically on a repo connected via their GitHub app and provisions two
+resources from one deploy: a `runtime: docker` web service built from this repo's
+Dockerfile (health-checked at `/api/health`, `autoDeployTrigger: off` so a release stays
+a deliberate tag rather than firing on every push to `main`) and a managed Postgres
+instance. `DATABASE_URL` is wired from the database's `connectionString` automatically
+(`fromDatabase`), `BETTER_AUTH_SECRET` is generated per deploy (`generateValue: true` —
+the same idea as Railway's `secret()` template function, so no two installs share a
+session secret), and `DEPLOYMENT=selfhost` is preset so registration closes after the
+owner's first account.
+
+The one manual step is the same rule Railway's section above explains: once the first
+deploy is healthy, set `BETTER_AUTH_URL=https://<the onrender.com domain>` (or your custom
+domain) on the service. It is not strictly required for e-mail+password login — better-auth
+trusts whatever origin the request actually arrives on — but it does control the session
+cookie's `Secure` attribute (which follows the `baseURL` scheme) and where Google OAuth
+sends users back; leaving it unset yields a working but non-`Secure` cookie on Render's own
+HTTPS domain.
+
+Create the owner account the moment the deploy comes up healthy — `DEPLOYMENT=selfhost`
+closes registration after that first account, so on a public deploy waiting risks a
+stranger claiming it first. Render runs no revenue-share or marketplace program for
+blueprints, unlike Railway's template kickback; it is listed here as a free official
+channel purely because the one-click deploy costs nothing to offer.
+
+---
+
 ## PikaPods
 
 [PikaPods](https://www.pikapods.com/) hosts open-source apps for a small monthly fee and
@@ -256,4 +284,4 @@ the image needs an entrypoint that does.
 Anything that can run a Dockerfile plus a Postgres add-on works the same way: build the
 image, give it `DATABASE_URL` and `BETTER_AUTH_SECRET`, let it listen on the injected
 `$PORT`, health-check `/api/health`, and point `BETTER_AUTH_URL` at the public origin.
-That is the whole contract (Fly.io, Render, Coolify, Dokku, …).
+That is the whole contract (Fly.io, Coolify, Dokku, …).
