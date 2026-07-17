@@ -7,7 +7,7 @@
  */
 import { afterEach, describe, expect, test } from "bun:test";
 import { IDBFactory } from "fake-indexeddb";
-import { __newIdbBackendForTests, __resetStorageForTests } from "./idb";
+import { __newIdbBackendForTests, __resetStorageForTests, idbGet, idbPut, storageMode } from "./idb";
 import { MemoryBackend, type StorageBackend } from "./storageBackend";
 
 afterEach(() => {
@@ -48,5 +48,40 @@ describe("backend parity", () => {
     const idb = await exercise(__newIdbBackendForTests());
     const mem = await exercise(new MemoryBackend());
     expect(idb).toEqual(mem);
+  });
+});
+
+function stubLocalStorage(initial: Record<string, string> = {}) {
+  const m = new Map<string, string>(Object.entries(initial));
+  (globalThis as Record<string, unknown>).localStorage = {
+    getItem: (k: string) => (m.has(k) ? m.get(k)! : null),
+    setItem: (k: string, v: string) => void m.set(k, String(v)),
+    removeItem: (k: string) => void m.delete(k),
+  };
+  return m;
+}
+
+describe("backend selection (device trust)", () => {
+  afterEach(() => {
+    delete (globalThis as Record<string, unknown>).localStorage;
+  });
+
+  test("untrusted device → memory-forced; IndexedDB is NEVER opened", async () => {
+    const factory = new IDBFactory();
+    (globalThis as Record<string, unknown>).indexedDB = factory;
+    stubLocalStorage({ "enveo.deviceTrust": "untrusted" });
+    __resetStorageForTests();
+    await idbPut("meta", "value", "k");
+    expect(await idbGet("meta", "k")).toBe("value");
+    expect(storageMode()).toBe("memory-forced");
+    expect(await factory.databases()).toEqual([]); // the factory saw no open()
+  });
+
+  test("absent flag → IdbBackend (trusted legacy default)", async () => {
+    (globalThis as Record<string, unknown>).indexedDB = new IDBFactory();
+    stubLocalStorage({});
+    __resetStorageForTests();
+    await idbPut("meta", "value", "k");
+    expect(storageMode()).toBe("idb");
   });
 });

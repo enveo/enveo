@@ -8,8 +8,7 @@
  * - "deadletter" — keyPath "opId"
  *
  * Backend selection happens ONCE per page load, lazily, before the first
- * operation (activeBackend). Task 4 wires the device-trust flag here; in this
- * task the selection is always IdbBackend (behavior-preserving refactor).
+ * operation (activeBackend).
  *
  * IdbBackend open-failure policy (corruption etc.): deleteDatabase + retry once
  * → if it still fails, an internal MemoryBackend takes over (the app works,
@@ -19,6 +18,7 @@
  * All writes resolve AFTER the IDB transaction completes (tx.oncomplete), not
  * merely after request.onsuccess.
  */
+import { getDeviceTrust } from "./deviceTrust";
 import { MemoryBackend, type StorageBackend, type StoreName } from "./storageBackend";
 
 export type { StoreName } from "./storageBackend";
@@ -224,7 +224,13 @@ let forcedMemory = false;
 
 function activeBackend(): StorageBackend {
   if (!backend) {
-    backend = new IdbBackend();
+    // The device-trust flag decides ONCE per page load, before anything touches
+    // storage: untrusted → memory only. IndexedDB is then NEVER opened, so a
+    // previous (trusted) user's on-disk replica is neither read nor destroyed —
+    // a guest session cannot even see that it exists (and never lands on
+    // ForeignReplicaScreen). Trusted / absent flag → the durable default.
+    forcedMemory = getDeviceTrust() === "untrusted";
+    backend = forcedMemory ? new MemoryBackend() : new IdbBackend();
   }
   return backend;
 }
