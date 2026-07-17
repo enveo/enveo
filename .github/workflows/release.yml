@@ -23,7 +23,7 @@ on:
         type: string
 
 permissions:
-  contents: read
+  contents: write  # write: gh release create below; the image push still only needs packages
   packages: write
 
 # Never publish the same tag twice concurrently (tag push + a manual re-run).
@@ -113,3 +113,18 @@ jobs:
             echo "$TAGS"
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
+
+      # A tag alone shows raw commit text on GitHub's UI; a Release carries
+      # readable notes. Idempotent: a manual re-run of an existing tag skips it.
+      - name: GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.ver.outputs.tag }}
+        run: |
+          if gh release view "$TAG" -R "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "release for $TAG exists — skipping"
+          else
+            EXTRA=""
+            [ "${{ steps.ver.outputs.stable }}" = "false" ] && EXTRA="--prerelease"
+            gh release create "$TAG" -R "$GITHUB_REPOSITORY" --verify-tag --generate-notes $EXTRA
+          fi
