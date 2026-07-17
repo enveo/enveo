@@ -92,6 +92,12 @@ export default function App() {
   const prev = () => setMonth((m) => shiftMonth(m, -1));
   const next = () => setMonth((m) => shiftMonth(m, 1));
   const wide = typeof window !== "undefined" && window.innerWidth > 500;
+  // Desktop backdrop: on narrow (phone) viewports the ~420px column already fills the
+  // screen, so this stays transparent — nothing changes there. On wide viewports it's a
+  // full-viewport translucent tint layered over the theme background (set on <html> by
+  // ThemeProvider), so the phone-width card reads as a deliberate frame, not a stray
+  // narrow window; the existing shadow on the card then separates it from the tint.
+  const backdrop = { minHeight: "100dvh", background: wide ? "rgba(0,0,0,0.06)" : "transparent" } as const;
 
   // Accounts are mandatory: server responded 401 → login screen INSTEAD of the app
   // (no BottomNav/badge). Refreshed via the existing mirror-version mechanism
@@ -129,51 +135,55 @@ export default function App() {
 
   if (unauthed || locked || foreign) {
     return (
-      <div style={{ maxWidth: 420, margin: "0 auto", height: "100dvh", background: C.bg, display: "flex", flexDirection: "column", fontFamily: font, overflow: "hidden", borderRadius: wide ? 24 : 0, boxShadow: wide ? "0 0 80px rgba(0,0,0,0.4)" : "none", WebkitFontSmoothing: "antialiased", position: "relative" }}>
-        <StyleInjector />
-        <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", paddingTop: "env(safe-area-inset-top)" }}>
-          {unauthed ? <LoginScreen /> : foreign ? <ForeignReplicaScreen /> : <UnlockScreen />}
+      <div style={backdrop}>
+        <div style={{ maxWidth: 420, margin: "0 auto", height: "100dvh", background: C.bg, display: "flex", flexDirection: "column", fontFamily: font, overflow: "hidden", borderRadius: wide ? 24 : 0, boxShadow: wide ? "0 0 80px rgba(0,0,0,0.4)" : "none", WebkitFontSmoothing: "antialiased", position: "relative" }}>
+          <StyleInjector />
+          <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", paddingTop: "env(safe-area-inset-top)" }}>
+            {unauthed ? <LoginScreen /> : foreign ? <ForeignReplicaScreen /> : <UnlockScreen />}
+          </div>
         </div>
       </div>
     );
   }
 
   return (
-    <div onTouchStart={onTouchStart} onTouchEnd={onTouchEnd} style={{ maxWidth: 420, margin: "0 auto", height: "100dvh", background: C.bg, display: "flex", flexDirection: "column", fontFamily: font, overflow: "hidden", borderRadius: wide ? 24 : 0, boxShadow: wide ? "0 0 80px rgba(0,0,0,0.4)" : "none", WebkitFontSmoothing: "antialiased", position: "relative" }}>
-      <StyleInjector />
-      <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", paddingTop: "env(safe-area-inset-top)" }}>
-        {isLoading && <BootSkeleton />}
-        {isError && <FirstBootError />}
-        {state && onboarding && <OnboardingScreen onDone={() => setWizard(false)} />}
-        {state && !onboarding && envView && (
-          <EnvelopeScreen envelopeId={envView.envelopeId} initialMonth={envView.month} onBack={() => setEnvView(null)} onOpenTxns={openTxns} />
-        )}
-        {state && !onboarding && !envView && (
-          <>
-            {screen === "start" && <StartScreen state={state} month={month} onOpenTxns={openTxns} onOpenEnvelope={openEnvelope} onMenu={() => setDrawer(true)} onPrev={prev} onNext={next} onNav={nav} onSeeUpcoming={() => openReports("subs")} />}
-            {screen === "budget" && <BudgetScreen state={state} month={month} onMenu={() => setDrawer(true)} onPrev={prev} onNext={next} onOpenEnvelope={openEnvelope} />}
-            {screen === "transactions" && <TransactionsScreen state={state} month={month} onMenu={() => setDrawer(true)} onPrev={prev} onNext={next} onEditTxn={(t) => editTxnFrom(t, "transactions")} query={txQuery} setQuery={setTxQuery} envFilter={txEnvFilter} setEnvFilter={setTxEnvFilter} accFilter={txAccFilter} setAccFilter={setTxAccFilter} />}
-            {screen === "accounts" && <AccountsScreen state={state} onMenu={() => setDrawer(true)} />}
-            {screen === "reports" && <ReportsScreen state={state} month={month} view={reportsView} onView={setReportsView} onOpenEnvelope={openEnvelope} onMenu={() => setDrawer(true)} onPrev={prev} onNext={next} />}
-            {screen === "addExpense" && <AddScreen state={state} editTxn={editTxn} onDone={doneEdit} />}
-            {screen === "settings" && <SettingsScreen onNav={nav} />}
-          </>
-        )}
+    <div style={backdrop}>
+      <div onTouchStart={onTouchStart} onTouchEnd={onTouchEnd} style={{ maxWidth: 420, margin: "0 auto", height: "100dvh", background: C.bg, display: "flex", flexDirection: "column", fontFamily: font, overflow: "hidden", borderRadius: wide ? 24 : 0, boxShadow: wide ? "0 0 80px rgba(0,0,0,0.4)" : "none", WebkitFontSmoothing: "antialiased", position: "relative" }}>
+        <StyleInjector />
+        <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", paddingTop: "env(safe-area-inset-top)" }}>
+          {isLoading && <BootSkeleton />}
+          {isError && <FirstBootError />}
+          {state && onboarding && <OnboardingScreen onDone={() => setWizard(false)} />}
+          {state && !onboarding && envView && (
+            <EnvelopeScreen envelopeId={envView.envelopeId} initialMonth={envView.month} onBack={() => setEnvView(null)} onOpenTxns={openTxns} />
+          )}
+          {state && !onboarding && !envView && (
+            <>
+              {screen === "start" && <StartScreen state={state} month={month} onOpenTxns={openTxns} onOpenEnvelope={openEnvelope} onMenu={() => setDrawer(true)} onPrev={prev} onNext={next} onNav={nav} onSeeUpcoming={() => openReports("subs")} />}
+              {screen === "budget" && <BudgetScreen state={state} month={month} onMenu={() => setDrawer(true)} onPrev={prev} onNext={next} onOpenEnvelope={openEnvelope} />}
+              {screen === "transactions" && <TransactionsScreen state={state} month={month} onMenu={() => setDrawer(true)} onPrev={prev} onNext={next} onEditTxn={(t) => editTxnFrom(t, "transactions")} query={txQuery} setQuery={setTxQuery} envFilter={txEnvFilter} setEnvFilter={setTxEnvFilter} accFilter={txAccFilter} setAccFilter={setTxAccFilter} />}
+              {screen === "accounts" && <AccountsScreen state={state} onMenu={() => setDrawer(true)} />}
+              {screen === "reports" && <ReportsScreen state={state} month={month} view={reportsView} onView={setReportsView} onOpenEnvelope={openEnvelope} onMenu={() => setDrawer(true)} onPrev={prev} onNext={next} />}
+              {screen === "addExpense" && <AddScreen state={state} editTxn={editTxn} onDone={doneEdit} />}
+              {screen === "settings" && <SettingsScreen onNav={nav} />}
+            </>
+          )}
+        </div>
+        {!["addExpense", "settings"].includes(screen) && !onboarding && !envView && <BottomNav active={screen} onNav={nav} />}
+        {/* badge anchors top-right; on Add the header is the type tabs → collision, hide it */}
+        {screen !== "addExpense" && <SyncBadge onOpenSync={() => nav("settings")} />}
+        <EnvActionsSheet
+          env={actionsEnv}
+          onClose={() => setEnvActions(null)}
+          onTxns={() => { if (envActions) { openTxns({ envId: envActions.envelopeId }); setEnvActions(null); } }}
+          onSummary={() => { if (envActions) { setEnvView(envActions); setEnvActions(null); } }}
+          onEdit={() => { if (envActions) { setEnvEdit(envActions.envelopeId); setEnvActions(null); } }}
+        />
+        <EnvEdit env={editEnv} groups={state?.groups ?? []} onClose={() => setEnvEdit(null)} />
+        <Drawer open={drawer} onClose={() => setDrawer(false)} onNav={nav} onOpenReports={openReports} />
+        <InstallHint />
+        <UpdatePrompt />
       </div>
-      {!["addExpense", "settings"].includes(screen) && !onboarding && !envView && <BottomNav active={screen} onNav={nav} />}
-      {/* badge anchors top-right; on Add the header is the type tabs → collision, hide it */}
-      {screen !== "addExpense" && <SyncBadge onOpenSync={() => nav("settings")} />}
-      <EnvActionsSheet
-        env={actionsEnv}
-        onClose={() => setEnvActions(null)}
-        onTxns={() => { if (envActions) { openTxns({ envId: envActions.envelopeId }); setEnvActions(null); } }}
-        onSummary={() => { if (envActions) { setEnvView(envActions); setEnvActions(null); } }}
-        onEdit={() => { if (envActions) { setEnvEdit(envActions.envelopeId); setEnvActions(null); } }}
-      />
-      <EnvEdit env={editEnv} groups={state?.groups ?? []} onClose={() => setEnvEdit(null)} />
-      <Drawer open={drawer} onClose={() => setDrawer(false)} onNav={nav} onOpenReports={openReports} />
-      <InstallHint />
-      <UpdatePrompt />
     </div>
   );
 }
