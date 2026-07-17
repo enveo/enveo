@@ -6,6 +6,8 @@ import { hasSession, signOutKeepingReplica, signOutSessionOnly } from "../../lib
 import { DEFAULT_KDF_PARAMS, deriveKek, encodePairing, generateDek, generateSalt, unwrapDek, wrapDek, type KdfParams } from "../../lib/crypto";
 import { exportBackup, importBackup } from "../../lib/data";
 import { clearDeviceTrust, getCachedDeployment } from "../../lib/deviceTrust";
+import { clearLastAccountId } from "../../lib/lastAccount";
+import { clearPersistedSettings } from "../../lib/settingsPersist";
 import * as e2ee from "../../lib/e2ee";
 import * as persist from "../../lib/persist";
 import { assertOwnReplica, discardLocalReplica, enterLoginKeepingReplica, flushOutboxForSignOut, fullResync, syncNow } from "../../lib/sync";
@@ -56,6 +58,8 @@ export function DataSection() {
  * this device), so sign-out flushes the outbox, ends the session and only then wipes the local
  * copy — a non-empty remainder after the flush still requires the human's explicit consent before
  * anything is discarded.
+ * The wipe also clears the persisted settings (the BYOK OpenAI key lives there) and the
+ * last-account preference — nothing of the account's stays on a device it signed off from.
  */
 function LogoutRow() {
   const { t } = useT();
@@ -92,6 +96,11 @@ function LogoutRow() {
       }
       await signOutSessionOnly();
       clearDeviceTrust(); // the next login asks again (default per deployment)
+      // Leaving the device takes the per-device state with it: the settings hold the BYOK
+      // OpenAI key (a billing credential must not outlive the account on a shared machine),
+      // and the last-account preference names an account of a budget this device no longer has.
+      clearPersistedSettings();
+      clearLastAccountId();
       await discardLocalReplica(); // clears the local copy (memory or IDB) and reloads → Login
     } catch (e) {
       setError(apiErrorMessage(e));
