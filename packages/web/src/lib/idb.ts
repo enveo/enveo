@@ -245,8 +245,8 @@ export type StorageMode = "idb" | "memory-forced" | "memory-fallback";
  * Replaces isInMemoryMode(); the old predicate is `storageMode() !== "idb"`.
  */
 export function storageMode(): StorageMode {
-  if (forcedMemory) return "memory-forced";
   const b = activeBackend();
+  if (forcedMemory) return "memory-forced";
   return b instanceof IdbBackend && b.usingFallback() ? "memory-fallback" : "idb";
 }
 

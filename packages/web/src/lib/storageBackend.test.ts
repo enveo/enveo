@@ -84,4 +84,11 @@ describe("backend selection (device trust)", () => {
     await idbPut("meta", "value", "k");
     expect(storageMode()).toBe("idb");
   });
+
+  test("cold call: storageMode() alone reports memory-forced (no prior storage op)", () => {
+    (globalThis as Record<string, unknown>).indexedDB = new IDBFactory();
+    stubLocalStorage({ "enveo.deviceTrust": "untrusted" });
+    __resetStorageForTests();
+    expect(storageMode()).toBe("memory-forced");
+  });
 });
