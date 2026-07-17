@@ -1,20 +1,27 @@
 /**
- * Minimal promise wrapper over IndexedDB — zero dependencies.
+ * Public storage facade — a minimal promise API over the ACTIVE StorageBackend.
  *
- * DB "enveo" v1:
+ * DB "enveo" v1 (IdbBackend):
  * - "meta"       — out-of-line keys: "ledger" (the whole ClientLedger as one
- *                  blob), "cursor", "clientId", "budgetId", "lastSyncAt"
- * - "outbox"     — keyPath "localSeq" autoIncrement (created ALREADY so that
- *                  Phase 4 wouldn't require a DB version bump)
+ *                  blob), "cursor", "clientId", "budgetId", "lastSyncAt", "userId"
+ * - "outbox"     — keyPath "localSeq" autoIncrement
  * - "deadletter" — keyPath "opId"
  *
- * Open-failure policy (corruption etc.): deleteDatabase + retry once →
- * if it still fails, in-memory mode (the app works, nothing persists;
- * console.warn) — the store can detect this via isInMemoryMode().
+ * Backend selection happens ONCE per page load, lazily, before the first
+ * operation (activeBackend). Task 4 wires the device-trust flag here; in this
+ * task the selection is always IdbBackend (behavior-preserving refactor).
  *
- * All writes return a promise resolved AFTER the IDB transaction completes
- * (tx.oncomplete), not merely after request.onsuccess.
+ * IdbBackend open-failure policy (corruption etc.): deleteDatabase + retry once
+ * → if it still fails, an internal MemoryBackend takes over (the app works,
+ * nothing persists; console.warn) — observable via storageMode() ===
+ * "memory-fallback".
+ *
+ * All writes resolve AFTER the IDB transaction completes (tx.oncomplete), not
+ * merely after request.onsuccess.
  */
+import { MemoryBackend, type StorageBackend, type StoreName } from "./storageBackend";
+
+export type { StoreName } from "./storageBackend";
 
 const DB_NAME = "enveo";
 const DB_VERSION = 1;
@@ -22,44 +29,7 @@ const DB_VERSION = 1;
  *  de-branding grep and the minified bundle don't contain the former brand. */
 const LEGACY_DB_NAME = ["4gros", "ze"].join("");
 
-export type StoreName = "meta" | "outbox" | "deadletter";
-
-/** keyPath per store (null = out-of-line keys) — used by the in-memory mode. */
-const KEY_PATH: Record<StoreName, string | null> = {
-  meta: null,
-  outbox: "localSeq",
-  deadletter: "opId",
-};
-
-/* ── In-memory mode (fallback after an unrecoverable open failure) ────── */
-
-let memoryMode = false;
-const memStores = new Map<StoreName, Map<IDBValidKey, unknown>>();
-let memAutoKey = 0;
-
-export function isInMemoryMode(): boolean {
-  return memoryMode;
-}
-
-function mem(name: StoreName): Map<IDBValidKey, unknown> {
-  let m = memStores.get(name);
-  if (!m) {
-    m = new Map();
-    memStores.set(name, m);
-  }
-  return m;
-}
-
-function memKeyOf(name: StoreName, value: unknown, key?: IDBValidKey): IDBValidKey {
-  if (key !== undefined) return key;
-  const kp = KEY_PATH[name];
-  const k = kp ? (value as Record<string, unknown>)[kp] : undefined;
-  return (k as IDBValidKey | undefined) ?? ++memAutoKey;
-}
-
-/* ── Open (lazy singleton) ───────────────────────────────────────────── */
-
-let dbPromise: Promise<IDBDatabase | null> | null = null;
+/* ── IdbBackend ─────────────────────────────────────────────────────────── */
 
 function requestToPromise<T>(req: IDBRequest<T>): Promise<T> {
   return new Promise((resolve, reject) => {
@@ -106,8 +76,7 @@ function deleteDb(): Promise<void> {
 
 /** Best-effort deletion of the pre-rebranding database (the replica already lives
  *  in DB_NAME, rebuilt via snapshot-resync; the e2ee DEK from the old database is
- *  lost → Unlock). Fire-and-forget: deleting a nonexistent database is a no-op,
- *  `blocked` (an old tab holds a connection) is ignored — we'll retry on the next boot. */
+ *  lost → Unlock). Fire-and-forget. */
 function deleteLegacyDb(): void {
   try {
     indexedDB.deleteDatabase(LEGACY_DB_NAME);
@@ -116,168 +85,218 @@ function deleteLegacyDb(): void {
   }
 }
 
-/** Opens the DB once; null = in-memory mode. */
-function openDb(): Promise<IDBDatabase | null> {
-  if (!dbPromise) {
-    dbPromise = (async () => {
-      if (typeof indexedDB === "undefined") {
-        memoryMode = true;
-        console.warn("IndexedDB unavailable — local data memory-only (won't survive a refresh)");
-        return null;
-      }
-      deleteLegacyDb();
-      try {
-        return await openRaw();
-      } catch (first) {
-        // corruption / incompatible version — delete the database and try once more
-        console.warn("IndexedDB: open failed, deleting the database and retrying", first);
-        try {
-          await deleteDb();
-          return await openRaw();
-        } catch (second) {
-          memoryMode = true;
-          console.warn(
-            "IndexedDB unrecoverable — in-memory mode (the app works, nothing persists)",
-            second,
-          );
+class IdbBackend implements StorageBackend {
+  private dbPromise: Promise<IDBDatabase | null> | null = null;
+  private fallback = new MemoryBackend();
+  private fellBack = false;
+
+  usingFallback(): boolean {
+    return this.fellBack;
+  }
+
+  /** Opens the DB once; null = unrecoverable → the ops below use the memory fallback. */
+  private open(): Promise<IDBDatabase | null> {
+    if (!this.dbPromise) {
+      this.dbPromise = (async () => {
+        if (typeof indexedDB === "undefined") {
+          this.fellBack = true;
+          console.warn("IndexedDB unavailable — local data memory-only (won't survive a refresh)");
           return null;
         }
-      }
-    })();
+        deleteLegacyDb();
+        try {
+          return await openRaw();
+        } catch (first) {
+          // corruption / incompatible version — delete the database and try once more
+          console.warn("IndexedDB: open failed, deleting the database and retrying", first);
+          try {
+            await deleteDb();
+            return await openRaw();
+          } catch (second) {
+            this.fellBack = true;
+            console.warn(
+              "IndexedDB unrecoverable — in-memory mode (the app works, nothing persists)",
+              second,
+            );
+            return null;
+          }
+        }
+      })();
+    }
+    return this.dbPromise;
   }
-  return dbPromise;
+
+  async get(store: StoreName, key: IDBValidKey): Promise<unknown> {
+    const db = await this.open();
+    if (!db) return this.fallback.get(store, key);
+    const tx = db.transaction(store, "readonly");
+    return requestToPromise(tx.objectStore(store).get(key));
+  }
+
+  async getAll(store: StoreName): Promise<unknown[]> {
+    const db = await this.open();
+    if (!db) return this.fallback.getAll(store);
+    const tx = db.transaction(store, "readonly");
+    return requestToPromise(tx.objectStore(store).getAll());
+  }
+
+  async put(store: StoreName, value: unknown, key?: IDBValidKey): Promise<void> {
+    const db = await this.open();
+    if (!db) return this.fallback.put(store, value, key);
+    const tx = db.transaction(store, "readwrite");
+    tx.objectStore(store).put(value, key);
+    await txDone(tx);
+  }
+
+  async putMany(store: StoreName, entries: Array<{ value: unknown; key?: IDBValidKey }>): Promise<void> {
+    const db = await this.open();
+    if (!db) return this.fallback.putMany(store, entries);
+    const tx = db.transaction(store, "readwrite");
+    const os = tx.objectStore(store);
+    for (const e of entries) os.put(e.value, e.key);
+    await txDone(tx);
+  }
+
+  async add(store: StoreName, value: unknown): Promise<IDBValidKey> {
+    const db = await this.open();
+    if (!db) return this.fallback.add(store, value);
+    const tx = db.transaction(store, "readwrite");
+    const req = tx.objectStore(store).add(value);
+    await txDone(tx);
+    return req.result;
+  }
+
+  /**
+   * ATOMIC outbox→deadletter move — one transaction spanning both stores.
+   * Crucial for multi-tab: another tab reading outbox→deadletter (in that
+   * order) NEVER sees "the op vanished from the outbox but isn't in deadletter
+   * yet" — reconcileFromIdb relies on that to tell an acked op from one
+   * REJECTED by another tab. Atomicity also closes the crash window.
+   */
+  async moveToDeadLetter(seq: number | null, deadLetter: unknown): Promise<void> {
+    const db = await this.open();
+    if (!db) return this.fallback.moveToDeadLetter(seq, deadLetter);
+    const tx = db.transaction(["outbox", "deadletter"], "readwrite");
+    if (seq !== null) tx.objectStore("outbox").delete(seq);
+    tx.objectStore("deadletter").put(deadLetter);
+    await txDone(tx);
+  }
+
+  async delete(store: StoreName, key: IDBValidKey): Promise<void> {
+    const db = await this.open();
+    if (!db) return this.fallback.delete(store, key);
+    const tx = db.transaction(store, "readwrite");
+    tx.objectStore(store).delete(key);
+    await txDone(tx);
+  }
+
+  async clear(store: StoreName): Promise<void> {
+    const db = await this.open();
+    if (!db) return this.fallback.clear(store);
+    const tx = db.transaction(store, "readwrite");
+    tx.objectStore(store).clear();
+    await txDone(tx);
+  }
+
+  /**
+   * "Clear local data" — MULTI-TAB SAFE: CLEARS all object stores in one
+   * transaction instead of deleting the whole database. `deleteDatabase` is
+   * BLOCKED by an open connection of ANOTHER tab; a blocked deletion once left
+   * boot hanging on "Loading…" behind it. Clearing stores is a plain readwrite
+   * transaction — never blocked. Empty stores ⇒ a normal bootstrap from the
+   * server snapshot. Other tabs are reloaded by the "wipe" broadcast in sync.ts.
+   */
+  async clearAll(): Promise<void> {
+    const db = await this.open();
+    if (!db) return this.fallback.clearAll();
+    const tx = db.transaction(["meta", "outbox", "deadletter"], "readwrite");
+    tx.objectStore("meta").clear();
+    tx.objectStore("outbox").clear();
+    tx.objectStore("deadletter").clear();
+    await txDone(tx);
+  }
 }
 
-/* ── Operations ────────────────────────────────────────────────────────── */
+/* ── Active backend (selected once per page load) ───────────────────────── */
+
+let backend: StorageBackend | null = null;
+let forcedMemory = false;
+
+function activeBackend(): StorageBackend {
+  if (!backend) {
+    backend = new IdbBackend();
+  }
+  return backend;
+}
+
+export type StorageMode = "idb" | "memory-forced" | "memory-fallback";
+
+/**
+ * Which backend the replica actually lives in:
+ *  - "idb"             — IndexedDB (the durable default),
+ *  - "memory-forced"   — untrusted device: memory by CHOICE, IndexedDB never opened,
+ *  - "memory-fallback" — IndexedDB broke irrecoverably; the app runs, nothing persists.
+ * Replaces isInMemoryMode(); the old predicate is `storageMode() !== "idb"`.
+ */
+export function storageMode(): StorageMode {
+  if (forcedMemory) return "memory-forced";
+  const b = activeBackend();
+  return b instanceof IdbBackend && b.usingFallback() ? "memory-fallback" : "idb";
+}
+
+/** Test hook (unit tests only): drop the backend singleton. */
+export function __resetStorageForTests(): void {
+  backend = null;
+  forcedMemory = false;
+}
+
+/** Test hook (unit tests only): a fresh, unshared IdbBackend for parity tests. */
+export function __newIdbBackendForTests(): StorageBackend {
+  return new IdbBackend();
+}
+
+/* ── Public operations (signatures unchanged — consumers untouched) ─────── */
 
 export async function idbGet<T>(store: StoreName, key: IDBValidKey): Promise<T | undefined> {
-  const db = await openDb();
-  if (!db) return mem(store).get(key) as T | undefined;
-  const tx = db.transaction(store, "readonly");
-  return requestToPromise(tx.objectStore(store).get(key)) as Promise<T | undefined>;
+  return (await activeBackend().get(store, key)) as T | undefined;
 }
 
 export async function idbGetAll<T>(store: StoreName): Promise<T[]> {
-  const db = await openDb();
-  if (!db) return [...mem(store).values()] as T[];
-  const tx = db.transaction(store, "readonly");
-  return requestToPromise(tx.objectStore(store).getAll()) as Promise<T[]>;
+  return (await activeBackend().getAll(store)) as T[];
 }
 
 /** put — `key` required for "meta" (out-of-line keys), omitted for keyPath stores. */
-export async function idbPut(store: StoreName, value: unknown, key?: IDBValidKey): Promise<void> {
-  const db = await openDb();
-  if (!db) {
-    mem(store).set(memKeyOf(store, value, key), value);
-    return;
-  }
-  const tx = db.transaction(store, "readwrite");
-  tx.objectStore(store).put(value, key);
-  await txDone(tx);
+export function idbPut(store: StoreName, value: unknown, key?: IDBValidKey): Promise<void> {
+  return activeBackend().put(store, value, key);
 }
 
-/** Multiple puts in ONE IDB transaction (atomic: all or nothing). */
-export async function idbPutMany(
+/** Multiple puts in ONE transaction (atomic: all or nothing). */
+export function idbPutMany(
   store: StoreName,
   entries: Array<{ value: unknown; key?: IDBValidKey }>,
 ): Promise<void> {
-  const db = await openDb();
-  if (!db) {
-    for (const e of entries) mem(store).set(memKeyOf(store, e.value, e.key), e.value);
-    return;
-  }
-  const tx = db.transaction(store, "readwrite");
-  const os = tx.objectStore(store);
-  for (const e of entries) os.put(e.value, e.key);
-  await txDone(tx);
+  return activeBackend().putMany(store, entries);
 }
 
 /** add — for the outbox (autoIncrement); returns the assigned key (localSeq). */
-export async function idbAdd(store: StoreName, value: unknown): Promise<IDBValidKey> {
-  const db = await openDb();
-  if (!db) {
-    const key = ++memAutoKey;
-    const kp = KEY_PATH[store];
-    const v = kp ? { ...(value as Record<string, unknown>), [kp]: key } : value;
-    mem(store).set(key, v);
-    return key;
-  }
-  const tx = db.transaction(store, "readwrite");
-  const req = tx.objectStore(store).add(value);
-  await txDone(tx);
-  return req.result;
+export function idbAdd(store: StoreName, value: unknown): Promise<IDBValidKey> {
+  return activeBackend().add(store, value);
 }
 
-/**
- * ATOMICALLY move an op to dead-letter: delete its row from "outbox" (if seq !==
- * null) AND insert the entry into "deadletter" in ONE IDB transaction spanning both
- * stores. Crucial for multi-tab: another tab reading outbox→deadletter (in that
- * order) NEVER sees the intermediate state "the op vanished from the outbox but
- * isn't in deadletter yet" — thanks to this reconcileFromIdb reliably distinguishes
- * an acked op (applied/duplicate) from one REJECTED by another tab (dead-letter),
- * and the latter forces a fullResync (undoing the phantom). Atomicity also closes the
- * crash window (never "the op both in the outbox and in deadletter").
- */
-export async function idbMoveToDeadLetter(seq: number | null, deadLetter: unknown): Promise<void> {
-  const db = await openDb();
-  if (!db) {
-    if (seq !== null) mem("outbox").delete(seq);
-    mem("deadletter").set(memKeyOf("deadletter", deadLetter), deadLetter);
-    return;
-  }
-  const tx = db.transaction(["outbox", "deadletter"], "readwrite");
-  if (seq !== null) tx.objectStore("outbox").delete(seq);
-  tx.objectStore("deadletter").put(deadLetter);
-  await txDone(tx);
+/** Atomic outbox→deadletter move — see StorageBackend.moveToDeadLetter. */
+export function idbMoveToDeadLetter(seq: number | null, deadLetter: unknown): Promise<void> {
+  return activeBackend().moveToDeadLetter(seq, deadLetter);
 }
 
-export async function idbDelete(store: StoreName, key: IDBValidKey): Promise<void> {
-  const db = await openDb();
-  if (!db) {
-    mem(store).delete(key);
-    return;
-  }
-  const tx = db.transaction(store, "readwrite");
-  tx.objectStore(store).delete(key);
-  await txDone(tx);
+export function idbDelete(store: StoreName, key: IDBValidKey): Promise<void> {
+  return activeBackend().delete(store, key);
 }
 
-export async function idbClear(store: StoreName): Promise<void> {
-  const db = await openDb();
-  if (!db) {
-    mem(store).clear();
-    return;
-  }
-  const tx = db.transaction(store, "readwrite");
-  tx.objectStore(store).clear();
-  await txDone(tx);
+export function idbClear(store: StoreName): Promise<void> {
+  return activeBackend().clear(store);
 }
 
-/**
- * "Clear local data" (Settings) — the rescue hatch when the replica diverges.
- *
- * MULTI-TAB SAFE: CLEARS all object stores (meta/outbox/deadletter) in one
- * transaction instead of deleting the whole database. `indexedDB.deleteDatabase` is BLOCKED
- * by an open connection of ANOTHER tab (our `db.close()` closes only our own);
- * onblocked resolved silently, the caller reloaded, and afterwards `open()`
- * queued up BEHIND the hanging (blocked) deletion and never
- * fired — boot hung on "Loading…" until the other tab closed.
- * Clearing stores is a plain readwrite transaction — never blocked by
- * other connections. After the reload, empty stores ⇒ a normal bootstrap from the server
- * snapshot (functionally identical to the old database deletion). Other tabs
- * are reloaded by the "wipe" broadcast in sync.ts (see wipeLocalData). In-memory mode:
- * we clear memory.
- */
-export async function clearLocalData(): Promise<void> {
-  const db = typeof indexedDB === "undefined" ? null : await openDb();
-  if (!db) {
-    memStores.clear();
-    memAutoKey = 0;
-    return;
-  }
-  const tx = db.transaction(["meta", "outbox", "deadletter"], "readwrite");
-  tx.objectStore("meta").clear();
-  tx.objectStore("outbox").clear();
-  tx.objectStore("deadletter").clear();
-  await txDone(tx);
+/** "Clear local data" (Settings) — the rescue hatch when the replica diverges. */
+export function clearLocalData(): Promise<void> {
+  return activeBackend().clearAll();
 }

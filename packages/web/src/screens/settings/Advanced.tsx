@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { api, apiErrorMessage, useSyncStatus } from "../../lib/api";
 import { useTheme } from "../../lib/contexts";
 import { useT } from "../../lib/i18n";
-import { isInMemoryMode } from "../../lib/idb";
+import { storageMode } from "../../lib/idb";
 import { getStorageDiag, type StorageDiag } from "../../lib/storage";
 import { disableLocal, enablePaused, enableWiped, getLastBootSource, wipeLocalData } from "../../lib/sync";
 import { CORAL, INCOME, font } from "../../lib/theme";
@@ -44,7 +44,7 @@ function StorageDiagSection() {
     void getStorageDiag().then(setDiag);
   }, []);
   const src = getLastBootSource();
-  const inMem = isInMemoryMode();
+  const mode = storageMode();
   const srcLabel =
     src === "replica" ? t("from local copy") : src === "snapshot" ? t("fetched from server") : src === "local" ? t("local mode") : "—";
   const srcColor = src === "snapshot" ? CORAL : src === "replica" ? INCOME : C.text;
@@ -67,7 +67,7 @@ function StorageDiagSection() {
           {diag ? `${mb(diag.usageBytes)} / ${mb(diag.quotaBytes)}` : "—"}
         </span>
       </Row>
-      {inMem && <Helper>{t("WARNING: IndexedDB unavailable — data is kept only in session memory (it will not survive closing the app).")}</Helper>}
+      {mode === "memory-fallback" && <Helper>{t("WARNING: IndexedDB unavailable — data is kept only in session memory (it will not survive closing the app).")}</Helper>}
       <Helper>{t("If “Last launch: fetched from server” appears every time you open the app, iOS is deleting the local copy between sessions — that is why the first load is slow. “Persistent storage: Yes” lowers the risk of such eviction.")}</Helper>
     </div>
   );
