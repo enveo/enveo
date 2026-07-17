@@ -29,7 +29,7 @@
 import type { ClientLedger, SyncOp } from "@enveo/shared";
 import { fetchSessionUserId } from "./auth";
 import * as e2ee from "./e2ee";
-import { clearLocalData, idbGet, idbPut } from "./idb";
+import { clearLocalData, idbGet, idbPut, storageMode } from "./idb";
 import * as outbox from "./outbox";
 import * as persist from "./persist";
 import { requestPersistentStorage } from "./storage";
@@ -817,9 +817,12 @@ export async function discardLocalReplica(): Promise<void> {
  * The owner (or the same human after a server rebuild handed them a new user id) signs back in,
  * their stamp matches again, and the ledger plus every queued op resume where they stopped.
  *
- * A sign-out does NOT wipe (spec §3, owner's decision): the replica may be the last copy of the
- * budget (local mode "wiped" deleted the server's on purpose) and the outbox may hold ops the
- * server has never seen — a window.confirm is not consent to destroy them. What protects the NEXT
+ * A SELFHOST sign-out does NOT wipe (spec §3, owner's decision): the replica may be the last
+ * copy of the budget (local mode "wiped" deleted the server's on purpose) and the outbox may
+ * hold ops the server has never seen — a window.confirm is not consent to destroy them. CLOUD
+ * sign-out is the deliberate exception (device-trust spec, 2026-07-17): there the server is the
+ * durable copy, so LogoutRow flushes the outbox, ends the session and only then wipes — and a
+ * non-empty remainder still requires the human's explicit consent. What protects the NEXT
  * account to sign in on this device is the guard, not a wipe: bootOwnerOk refuses to render a
  * replica stamped by somebody else, and ensureIdentity refuses to write it anywhere.
  */
@@ -827,6 +830,19 @@ export function enterLoginKeepingReplica(): void {
   identityVerifiedFor = null;
   identityBlocked = false; // a NEW session must be verified from scratch — see ensureIdentity
   enterUnauthed(); // Login screen, replica intact
+}
+
+/**
+ * Pre-sign-out outbox flush for CLOUD deployments. Their sign-out wipes the replica (the server
+ * is the durable copy there — operator backups, not this device), and queued ops would go with
+ * it; selfhost sign-out keeps the replica instead (see enterLoginKeepingReplica — it may be the
+ * LAST copy). One ordinary cycle through the usual mutex; returns how many ops are STILL queued
+ * afterwards. 0 ⇒ a wipe loses nothing; anything else (offline, 5xx, an unproven replica) ⇒ the
+ * caller must obtain explicit consent before discarding, or abort the sign-out.
+ */
+export async function flushOutboxForSignOut(): Promise<number> {
+  await syncNow("sign-out");
+  return outbox.size();
 }
 
 /**
@@ -1986,6 +2002,13 @@ function installTriggers(): void {
   // a cycle (plus leadership takeover when the Web Lock is released) — this cuts latency.
   window.addEventListener("pagehide", () => {
     if (outbox.size() > 0) postMsg("poke");
+  });
+  // Untrusted device (memory-forced): the replica AND the outbox live only in this tab's
+  // memory — closing the tab with unsent ops loses them for good. Best-effort warning
+  // (the browser shows its own generic prompt). Trusted devices need none: the outbox is
+  // durable and any live tab (or the next boot) drains it.
+  window.addEventListener("beforeunload", (e) => {
+    if (storageMode() === "memory-forced" && outbox.size() > 0) e.preventDefault();
   });
   setInterval(() => {
     // only the leader polls in the background (Web Locks) — the other tabs sync on

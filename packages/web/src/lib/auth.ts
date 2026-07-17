@@ -90,8 +90,9 @@ export async function fetchSessionUserId(): Promise<string | null> {
 }
 
 /**
- * Sign-out — it KEEPS the local replica (spec §3, binding owner decision: the IndexedDB replica
- * stays on the device). Used by BOTH exits: Settings → Sign out, and ForeignReplicaScreen (where
+ * Sign-out for SELFHOST deployments — it KEEPS the local replica (spec §3, binding owner
+ * decision; the CLOUD path is signOutSessionOnly + discardLocalReplica, see LogoutRow).
+ * Used by BOTH exits: Settings → Sign out, and ForeignReplicaScreen (where
  * the replica belongs to a DIFFERENT account than the session and is certainly not this session's
  * to delete). `enterLogin` = sync.enterLoginKeepingReplica (Login screen; signing back in resumes
  * the ledger and every queued op exactly where they stopped).
@@ -106,6 +107,16 @@ export async function fetchSessionUserId(): Promise<string | null> {
 export async function signOutKeepingReplica(enterLogin: () => void): Promise<void> {
   await authClient.signOut();
   enterLogin();
+}
+
+/**
+ * Bare session sign-out — the CLOUD path. The caller (LogoutRow) wipes the replica AFTER this
+ * succeeds: flush outbox → signOut → discardLocalReplica. Kept separate from
+ * signOutKeepingReplica so auth.ts never imports sync.ts (import cycle — sync.ts imports this
+ * module), and so the wipe cannot run when the sign-out itself failed.
+ */
+export async function signOutSessionOnly(): Promise<void> {
+  await authClient.signOut();
 }
 
 /** Does the backend have a session at all? */

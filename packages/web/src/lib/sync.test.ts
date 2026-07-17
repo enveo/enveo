@@ -42,6 +42,7 @@ import {
   decideIdentity,
   disableLocal,
   discardLocalReplica,
+  flushOutboxForSignOut,
   getLocalMode,
   getSyncStatus,
   markReplacePending,
@@ -1193,5 +1194,28 @@ describe("sync: full-budget overwrites carry the verified owner", () => {
 
     expect(wrote(BUDGET_A)).toEqual(["replace"]); // restored into the session user's own budget
     expect(store.getBudgetId()).toBe(BUDGET_A); // …and the replica adopts the canonical id
+  });
+});
+
+/* ── Cloud sign-out: pre-wipe outbox flush ──────────────────────────────── */
+
+describe("flushOutboxForSignOut (cloud sign-out wipes the replica afterwards)", () => {
+  it("pushes the queue and reports 0 left — the wipe loses nothing", async () => {
+    await idbPut("meta", "user-A", "userId");
+    session = { user: { id: "user-A" } };
+    outbox.add(catOp());
+
+    expect(await flushOutboxForSignOut()).toBe(0);
+    expect(wrote(BUDGET_A).length).toBe(1); // the op reached the server first
+  });
+
+  it("offline: nothing pushed, the remainder reported — NOTHING destroyed here", async () => {
+    await idbPut("meta", "user-A", "userId");
+    session = { user: { id: "user-A" } };
+    outbox.add(catOp());
+    offline = true;
+
+    expect(await flushOutboxForSignOut()).toBe(1);
+    expect(outbox.size()).toBe(1); // still queued — the CALLER asks the human before any discard
   });
 });
