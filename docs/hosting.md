@@ -57,7 +57,7 @@ committed:
    ```bash
    docker logout ghcr.io
    docker pull ghcr.io/enveo/enveo:latest      # must succeed anonymously
-   docker manifest inspect ghcr.io/enveo/enveo:2.1.0 | grep architecture   # amd64 + arm64
+   docker manifest inspect ghcr.io/enveo/enveo:2.3.2 | grep architecture   # amd64 + arm64
    ```
 
 6. Drop the "Not published yet" note from the README (it is marked `TODO(maintainer)`).

@@ -15,11 +15,17 @@ stays unset and the boot aborts by design:
 bun install
 docker compose up -d db
 set -a; source .env; set +a
-bun run db:migrate && bun run db:seed   # demo data, dev only
+bun run db:migrate
 # in two terminals, both from the repo root (repeat the `source .env` line above in each):
 make dev-api    # API on :8080
 make dev-web    # Vite on :5173
 ```
+
+After opening the app in your browser, create your account in the login screen.
+
+**Optional demo data:** once your account is registered, run `bun run db:seed` (repo
+root, using the env already sourced above) — the demo dataset attaches to the first
+registered user, so your account sees it after a reload.
 
 ## Ground rules
 
