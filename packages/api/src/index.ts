@@ -8,7 +8,7 @@ import { ZodError } from "zod";
 import { auth, hasCredentialedUser } from "./auth";
 import { authMetaBody } from "./authPolicy";
 import { TierMismatch } from "./context";
-import { assertAuthEnv, env } from "./env";
+import { assertAuthEnv, assertDbEnv, env } from "./env";
 import { isSameHostOrigin, staticAllowedOrigins } from "./origins";
 import { crudRoutes } from "./routes/crud";
 import { extraRoutes } from "./routes/extras";
@@ -22,10 +22,13 @@ import { demoRoutes } from "./routes/demo";
 import { ScopeViolation } from "./sync/apply";
 
 // Fail fast on real boot (entrypoint run — dev, Docker CMD): accounts are
-// mandatory, so BETTER_AUTH_SECRET is too. Guarded by import.meta.main so the
-// test suite can import the app without a configured secret (better-auth
-// itself skips secret validation under NODE_ENV=test).
-if (import.meta.main) assertAuthEnv();
+// mandatory (BETTER_AUTH_SECRET), and production needs explicit database config.
+// Guarded by import.meta.main so the test suite can import the app without a
+// configured secret (better-auth itself skips secret validation under NODE_ENV=test).
+if (import.meta.main) {
+  assertAuthEnv();
+  assertDbEnv();
+}
 
 const app = new Hono<{ Variables: { userId?: string } }>();
 
