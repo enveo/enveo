@@ -8,7 +8,13 @@ import { createAuthClient } from "better-auth/client";
 export const authClient = createAuthClient();
 
 /** What the login screen must render — from the public GET /api/auth/meta. */
-export type AuthMeta = { signupsOpen: boolean; firstRun: boolean; providers: { google: boolean } };
+export type AuthMeta = {
+  signupsOpen: boolean;
+  firstRun: boolean;
+  providers: { google: boolean };
+   
+  deployment?: "selfhost" | "cloud";
+};
 
 export async function fetchAuthMeta(): Promise<AuthMeta> {
   const r = await fetch("/api/auth/meta");
@@ -41,15 +47,23 @@ const AUTH_CODES = new Set([
   "signups_closed",  
 ]);
 
- 
-export async function signInEmail(email: string, password: string): Promise<void> {
-  const { error } = await authClient.signIn.email({ email, password });
+
+
+
+export async function signInEmail(email: string, password: string, rememberMe: boolean): Promise<void> {
+  const { error } = await authClient.signIn.email({ email, password, rememberMe });
   if (error) throw new Error(authErrorCode(error, "sign_in_failed"));
 }
 
  
-export async function signUpEmail(email: string, password: string): Promise<void> {
-  const { error } = await authClient.signUp.email({ email, password, name: email.split("@")[0] ?? email });
+export async function signUpEmail(email: string, password: string, rememberMe: boolean): Promise<void> {
+  // better-auth's client TYPE for this one route (InferSignUpEmailCtx) hand-overrides the
+  // otherwise-generic inference and forgets rememberMe, even though the server route schema
+  // has it (dist/api/routes/sign-up.d.mts) and the client runtime spreads whatever body
+  // properties it's given. Binding to a variable first avoids the excess-property check on
+  // the object literal without widening anything else — a TS quirk, not a behavior change.
+  const body = { email, password, name: email.split("@")[0] ?? email, rememberMe };
+  const { error } = await authClient.signUp.email(body);
   if (error) throw new Error(authErrorCode(error, "sign_up_failed"));
 }
 
