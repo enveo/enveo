@@ -1,3 +1,5 @@
+import { storageMode } from "./idb";
+
 
 
 const KEY = "enveo.lastAccount";
@@ -11,8 +13,18 @@ export function getLastAccountId(): string | null {
 }
 
 export function setLastAccountId(id: string): void {
+  if (storageMode() === "memory-forced") return;  
   try {
     localStorage.setItem(KEY, id);
+  } catch {
+     
+  }
+}
+
+ 
+export function clearLastAccountId(): void {
+  try {
+    localStorage.removeItem(KEY);
   } catch {
      
   }
