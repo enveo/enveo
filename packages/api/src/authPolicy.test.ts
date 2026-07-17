@@ -19,9 +19,13 @@ describe("signupsOpen", () => {
 });
 
 describe("authMetaBody", () => {
-  it("exposes exactly signupsOpen/firstRun/providers and nothing else", () => {
+  it("exposes exactly signupsOpen/firstRun/providers/deployment and nothing else", () => {
     const b = authMetaBody({ deployment: "selfhost", allowSignups: "", hasCredentialedUser: false }, true);
-    expect(b).toEqual({ signupsOpen: true, firstRun: true, providers: { google: true } });
-    expect(Object.keys(b).sort()).toEqual(["firstRun", "providers", "signupsOpen"]);
+    expect(b).toEqual({ signupsOpen: true, firstRun: true, providers: { google: true }, deployment: "selfhost" });
+    expect(Object.keys(b).sort()).toEqual(["deployment", "firstRun", "providers", "signupsOpen"]);
+  });
+  it("cloud deployment is named as such (drives the client's device-trust default)", () => {
+    const b = authMetaBody({ deployment: "cloud", allowSignups: "", hasCredentialedUser: true }, false);
+    expect(b.deployment).toBe("cloud");
   });
 });
