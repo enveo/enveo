@@ -68,6 +68,7 @@ function StorageDiagSection() {
         </span>
       </Row>
       {mode === "memory-fallback" && <Helper>{t("WARNING: IndexedDB unavailable — data is kept only in session memory (it will not survive closing the app).")}</Helper>}
+      {mode === "memory-forced" && <Helper>{t("Guest session — the budget lives only in this tab's memory and leaves no copy on this device.")}</Helper>}
       <Helper>{t("If “Last launch: fetched from server” appears every time you open the app, iOS is deleting the local copy between sessions — that is why the first load is slow. “Persistent storage: Yes” lowers the risk of such eviction.")}</Helper>
     </div>
   );

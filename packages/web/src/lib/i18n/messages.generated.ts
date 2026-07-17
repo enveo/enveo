@@ -224,6 +224,7 @@ export const MESSAGES = [
   "Good",
   "Groceries",
   "Group",
+  "Guest session — the budget lives only in this tab's memory and leaves no copy on this device.",
   "Health",
   "Health & fitness",
   "Home",
