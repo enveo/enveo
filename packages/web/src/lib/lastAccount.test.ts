@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { __resetStorageForTests } from "./idb";
 import { clearLastAccountId, getLastAccountId, preferredAccountId, setLastAccountId } from "./lastAccount";
 
@@ -36,6 +36,7 @@ describe("lastAccount vs device trust", () => {
     mem.clear();
     __resetStorageForTests();
   });
+  afterEach(() => __resetStorageForTests());
   test("guest mode: setLastAccountId is a no-op", () => {
     mem.set("enveo.deviceTrust", "untrusted");
     __resetStorageForTests();

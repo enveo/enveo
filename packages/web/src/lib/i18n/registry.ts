@@ -3,8 +3,11 @@
  *
  * Deliberately free of runtime imports (only a TYPE import from ./index): lib/contexts.tsx reads
  * detectLang() from here and ./index reads useSettings() from contexts — putting the detection in
- * ./index would close that cycle.
+ * ./index would close that cycle. `../settingsPersist` is safe to import at runtime: it only pulls
+ * in `./idb` (and idb's own leaves, deviceTrust.ts/storageBackend.ts), none of which touch i18n —
+ * so this does NOT reopen the cycle above.
  */
+import { loadPersistedSettings } from "../settingsPersist";
 import type { Dict } from "./index";
 
 /** Every language the UI can render. `en` is the SOURCE — it has no dictionary. */
@@ -28,15 +31,14 @@ export const LOCALES: { code: Lang; endonym: string; community: boolean; load: (
   { code: "sv", endonym: "Svenska", community: true, load: () => import("./locales/sv").then((m) => m.sv) },
 ];
 
-/** UI language outside React (hook-free modules: backups, API error codes) — same store as contexts.tsx. */
+/** UI language outside React (hook-free modules: backups, API error codes) — same store as contexts.tsx.
+ *  Routed through the same guest-mode gate as the Settings context: on an untrusted device
+ *  (storageMode() "memory-forced") loadPersistedSettings() returns null, so a guest never inherits
+ *  a previous trusted user's on-disk language. */
 export function uiLang(): Lang {
-  try {
-    const raw = localStorage.getItem("enveo.settings");
-    const l = raw ? (JSON.parse(raw) as { lang?: string }).lang : undefined;
-    if (l && LOCALES.some((x) => x.code === l)) return l as Lang;
-  } catch {
-    // corrupted settings → detect from the browser
-  }
+  const s = loadPersistedSettings();
+  const l = s ? (s as { lang?: string }).lang : undefined;
+  if (l && LOCALES.some((x) => x.code === l)) return l as Lang;
   return detectLang();
 }
 
