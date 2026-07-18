@@ -1,5 +1,10 @@
 import { migrate } from "drizzle-orm/postgres-js/migrator";
+import { assertDbEnv } from "../env";
 import { db, sql } from "./client";
+
+
+
+assertDbEnv();
 
 
 
