@@ -5,6 +5,7 @@ mobile-first PWA (installable on iOS and Android), self-hosted with a single
 `docker compose up`. Your ledger lives on your devices; the server is a thin,
 optionally end-to-end-encrypted sync layer.
 
+
 > Domain model: money physically sits in **accounts**; budgeting means distributing
 > it into virtual **envelopes**. Invariant: `Σ(envelope available) + To Be Budgeted =
 > Σ(on-budget account balances)`. Balances and "available" are **derived** from the
