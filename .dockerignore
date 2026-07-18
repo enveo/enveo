@@ -2,16 +2,13 @@ node_modules
 **/node_modules
 **/dist
 packages/web/dev-dist
-.git
-.env
 *.log
-.DS_Store
 
-# Private, machine-local material. .gitignore does NOT apply to the Docker build
-# context, so without these lines `COPY . .` bakes them into the image — and this
-# same Dockerfile builds the image published to public GHCR. A CI build is clean
-# (a tag checkout has no untracked files), but a maintainer's LOCAL `docker build
-# --push` would ship them. Keep both lists in sync with .gitignore.
-.agent
+# No dot-prefixed files or directories belong in the image (.git, env files,
+# editor and agent scratch dirs). .gitignore does NOT apply to the Docker build
+# context, so without this `COPY . .` would bake a maintainer's local working
+# files into the image published to public GHCR. A CI build is clean (a tag
+# checkout has no untracked files); this line guards the LOCAL `docker build`.
+.*
 CLAUDE.local.md
 *.local.md
