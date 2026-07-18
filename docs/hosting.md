@@ -119,7 +119,7 @@ Set these on the **Enveo** service:
 | `BETTER_AUTH_SECRET` | `${{secret(64, "abcdef0123456789")}}` | **Required**, min 32 chars. In a Railway *template*, `secret()` generates it per deploy, so no two installs share a session secret. Setting it by hand: `openssl rand -hex 32`. |
 | `BETTER_AUTH_URL` | `https://${{RAILWAY_PUBLIC_DOMAIN}}` | Strongly recommended — see below. |
 | `DEPLOYMENT` | `selfhost` | Registration closes after the first (owner) account. |
-| `OPENAI_API_KEY` / `OPENAI_MODEL` | optional | Only for server-mode AI; the app works rule-based without it. |
+| `OPENAI_API_KEY` / `OPENAI_MODEL` | optional | Only for server-mode AI; without it, budget suggestions fall back to local rules, and quick-add/screenshot import are AI-only and stay hidden. |
 
 **Do not set `PORT`.** Railway provides and exposes a `PORT` for you *as long as you have
 not defined one yourself*, and the app must listen on `0.0.0.0:$PORT`. Enveo does:
@@ -227,8 +227,10 @@ HTTPS domain.
 Create the owner account the moment the deploy comes up healthy — `DEPLOYMENT=selfhost`
 closes registration after that first account, so on a public deploy waiting risks a
 stranger claiming it first. Render runs no revenue-share or marketplace program for
-blueprints, unlike Railway's template kickback; it is listed here as a free official
-channel purely because the one-click deploy costs nothing to offer.
+blueprints, unlike Railway's template kickback; it is listed here as an official channel
+not because hosting is free (Render's plans are paid — the web service and the managed
+Postgres both bill), but because the one-click deploy *button* costs this project nothing
+to offer and maintain.
 
 ---
 

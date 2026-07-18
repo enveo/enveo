@@ -52,7 +52,7 @@ services:
 
   app:
     # `latest` follows the newest release. To pin a version, replace the tag with a
-    # released one, e.g. ghcr.io/enveo/enveo:2.1.0 — recommended once you have real
+    # released one, e.g. ghcr.io/enveo/enveo:2.3.2 — recommended once you have real
     # data in it: an explicit tag means `docker compose pull` cannot move you to a new
     # major without you editing this line. Releases: github.com/enveo/enveo/releases
     image: ghcr.io/enveo/enveo:latest
@@ -85,7 +85,8 @@ services:
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
       GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
       # Optional AI (screenshot import, smart quick-add, budget assistant).
-      # Empty = the local rule engines only, zero egress.
+      # Empty = budget suggestions fall back to local rules; quick-add and
+      # screenshot import are AI-only and stay hidden. Zero egress either way.
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       OPENAI_MODEL: ${OPENAI_MODEL:-gpt-5.5}
     ports:
