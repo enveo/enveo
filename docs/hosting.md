@@ -98,6 +98,16 @@ Why each key:
   against the Postgres service. `migrate.ts` then exits non-zero, and Railway restarts it
   until the database accepts connections. Without this, a fresh project can land in a
   failed state that looks like a broken image.
+
+  One race the restart policy canNOT fix: variables (including `${{Postgres.DATABASE_URL}}`
+  references) are resolved into a **per-deployment snapshot** at deploy start, and a
+  restart reuses that snapshot. If the first deploy's snapshot was taken before the
+  reference had anything to resolve to (typical when the app and the database are created
+  together, by hand), every restart keeps booting with an empty `DATABASE_URL` and the
+  deploy hangs on health checks until it times out — even though the variable looks
+  correct in the service settings. The fix is a **redeploy** (any variable edit, or
+  Deploy → Redeploy), which takes a fresh snapshot. A published template declares the
+  references before the first snapshot exists, so one-click deploys don't hit this.
 - **`numReplicas: 1`** — migrations run at container start, so one instance means one
   migrator. Enveo is local-first (each device holds the full ledger); one instance is
   plenty.
