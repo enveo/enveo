@@ -5,6 +5,7 @@ mobile-first PWA (installable on iOS and Android), self-hosted with a single
 `docker compose up`. Your ledger lives on your devices; the server is a thin,
 optionally end-to-end-encrypted sync layer.
 
+<!-- One thumbnail strip (click any for full size), then the desktop shot full-width. -->
 <p align="center">
 </p>
 
