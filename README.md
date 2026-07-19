@@ -5,13 +5,15 @@ mobile-first PWA (installable on iOS and Android), self-hosted with a single
 `docker compose up`. Your ledger lives on your devices; the server is a thin,
 optionally end-to-end-encrypted sync layer.
 
+<!-- One thumbnail strip (click any for full size), then the desktop shot full-width. -->
 <p align="center">
-  <img src="docs/assets/start-mobile.png" width="200" alt="Start screen: accounts and envelopes for the month">
-  <img src="docs/assets/budget-mobile.png" width="200" alt="Budget screen: envelope groups with allocated and available columns">
-  <img src="docs/assets/transactions-mobile.png" width="200" alt="Transactions screen: grouped by day with accounts and transfers">
-  <img src="docs/assets/reports-mobile.png" width="200" alt="Reports screen: net worth, cash flow, spending, goals and envelope budgets">
+  <a href="docs/assets/start-mobile.png"><img src="docs/assets/start-mobile.png" width="165" alt="Start screen: accounts and envelopes for the month"></a>
+  <a href="docs/assets/budget-mobile.png"><img src="docs/assets/budget-mobile.png" width="165" alt="Budget screen: envelope groups with allocated and available columns"></a>
+  <a href="docs/assets/transactions-mobile.png"><img src="docs/assets/transactions-mobile.png" width="165" alt="Transactions screen: grouped by day with accounts and transfers"></a>
+  <a href="docs/assets/reports-mobile.png"><img src="docs/assets/reports-mobile.png" width="165" alt="Reports screen: net worth, cash flow, spending, goals and envelope budgets"></a>
+  <a href="docs/assets/import-sheet-mobile.png"><img src="docs/assets/import-sheet-mobile.png" width="165" alt="AI screenshot import: recognized transactions with duplicates skipped"></a>
 </p>
-<p align="center"><img src="docs/assets/start-desktop.png" width="640" alt="Enveo on the desktop"></p>
+<p align="center"><a href="docs/assets/start-desktop.png"><img src="docs/assets/start-desktop.png" width="680" alt="Enveo on the desktop"></a></p>
 
 > Domain model: money physically sits in **accounts**; budgeting means distributing
 > it into virtual **envelopes**. Invariant: `Σ(envelope available) + To Be Budgeted =
