@@ -18,21 +18,15 @@ import { useSettings, useTheme } from "../lib/contexts";
 import { SUPPORTED_CURRENCIES, browserLocales, wizardCurrency } from "../lib/currency";
 import { fmtSignedTrim } from "../lib/amount";
 import { parseAmount } from "../lib/format";
-import { loadLocale, LOCALES, useT, type Lang, type Message, msg } from "../lib/i18n";
+import { loadLocale, LOCALES, useT, type Lang, type Message } from "../lib/i18n";
 import { local } from "../lib/mutate";
+import { customEnvelopeStyle, TEMPLATE } from "../lib/onboardingTemplate";
 import { store } from "../lib/store";
 import { fullResync } from "../lib/sync";
 import { ACCOUNT_COLORS, CORAL, P, TEAL, font } from "../lib/theme";
 
-/* ── Envelope template — dictionary keys ONLY (names live in i18n, not here) ── */
-const TEMPLATE: Array<{ group: Message; envelopes: Array<{ name: Message; isSavings?: boolean }> }> = [
-  { group: msg("Bills"), envelopes: [{ name: msg("Housing") }, { name: msg("Utilities") }, { name: msg("Subscriptions") }] },
-  { group: msg("Living"), envelopes: [{ name: msg("Groceries") }, { name: msg("Transport") }, { name: msg("Health") }, { name: msg("Fun") }] },
-  { group: msg("Savings"), envelopes: [{ name: msg("Savings"), isSavings: true }, { name: msg("Rainy day") }] },
-];
-
-/** Checklist row: a template item (name=Message) or a custom envelope (custom). */
-type TplRow = { name?: Message; custom?: string; isSavings?: boolean; checked: boolean };
+/** Checklist row: a template item (name=Message, color/icon from TEMPLATE) or a custom envelope (custom, styled via customEnvelopeStyle). */
+type TplRow = { name?: Message; custom?: string; isSavings?: boolean; checked: boolean; color: string; icon: string };
 
 /** Full-width action button (Settings idiom). */
 function BigButton({ label, onClick, disabled, variant = "teal" }: { label: ReactNode; onClick: () => void; disabled?: boolean; variant?: "teal" | "outline" }) {
@@ -106,7 +100,7 @@ export function OnboardingScreen({ onDone }: { onDone: () => void }) {
 
   // step 2 — template checklist (everything checked by default) + custom entries per group
   const [rows, setRows] = useState<TplRow[][]>(() =>
-    TEMPLATE.map((g) => g.envelopes.map((e) => ({ name: e.name, ...(e.isSavings ? { isSavings: true } : {}), checked: true }))),
+    TEMPLATE.map((g) => g.envelopes.map((e) => ({ name: e.name, color: e.color, icon: e.icon, ...(e.isSavings ? { isSavings: true } : {}), checked: true }))),
   );
   const [drafts, setDrafts] = useState<string[]>(() => TEMPLATE.map(() => ""));
 
@@ -141,7 +135,10 @@ export function OnboardingScreen({ onDone }: { onDone: () => void }) {
   const addCustom = (gi: number) => {
     const name = drafts[gi]?.trim();
     if (!name) return;
-    setRows((prev) => prev.map((g, i) => (i === gi ? [...g, { custom: name, checked: true }] : g)));
+    // running count of customs added so far (across ALL groups) picks the next color in the cycle
+    const customCount = rows.reduce((n, g) => n + g.filter((r) => r.custom !== undefined).length, 0);
+    const style = customEnvelopeStyle(customCount);
+    setRows((prev) => prev.map((g, i) => (i === gi ? [...g, { custom: name, checked: true, ...style }] : g)));
     setDrafts((prev) => prev.map((d, i) => (i === gi ? "" : d)));
   };
 
@@ -152,7 +149,7 @@ export function OnboardingScreen({ onDone }: { onDone: () => void }) {
       const sel = rows[gi]!.filter((r) => r.checked);
       if (sel.length === 0) return;
       const g = local.createGroup(t(tpl.group));
-      sel.forEach((r, i) => local.createEnvelope({ groupId: g.id, name: r.custom ?? t(r.name!), sort: i, ...(r.isSavings ? { isSavings: true } : {}) }));
+      sel.forEach((r, i) => local.createEnvelope({ groupId: g.id, name: r.custom ?? t(r.name!), sort: i, color: r.color, icon: r.icon, ...(r.isSavings ? { isSavings: true } : {}) }));
     });
     onDone(); // empty-budget condition cleared → App renders Start
   };
