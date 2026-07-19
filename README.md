@@ -5,7 +5,13 @@ mobile-first PWA (installable on iOS and Android), self-hosted with a single
 `docker compose up`. Your ledger lives on your devices; the server is a thin,
 optionally end-to-end-encrypted sync layer.
 
-<p align="center"><img src="docs/assets/start-mobile.png" width="260" alt="Enveo on a phone"> <img src="docs/assets/start-desktop.png" width="520" alt="Enveo on the desktop"></p>
+<p align="center">
+  <img src="docs/assets/start-mobile.png" width="200" alt="Start screen: accounts and envelopes for the month">
+  <img src="docs/assets/budget-mobile.png" width="200" alt="Budget screen: envelope groups with allocated and available columns">
+  <img src="docs/assets/transactions-mobile.png" width="200" alt="Transactions screen: grouped by day with accounts and transfers">
+  <img src="docs/assets/reports-mobile.png" width="200" alt="Reports screen: net worth, cash flow, spending, goals and envelope budgets">
+</p>
+<p align="center"><img src="docs/assets/start-desktop.png" width="640" alt="Enveo on the desktop"></p>
 
 > Domain model: money physically sits in **accounts**; budgeting means distributing
 > it into virtual **envelopes**. Invariant: `Σ(envelope available) + To Be Budgeted =
