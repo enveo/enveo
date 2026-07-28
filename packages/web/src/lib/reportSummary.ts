@@ -7,10 +7,6 @@
 
 
 
-
-
-import { upcomingPayments, type ClientLedger, type UpcomingPayment } from "@enveo/shared";
-
 export interface BudgetsSummary {
   over: number;  
   near: number;  
@@ -37,24 +33,4 @@ export function budgetsSummary(envelopes: BudgetEnvelope[]): BudgetsSummary {
     else out.ok++;
   }
   return out;
-}
-
-export interface UpcomingWindow {
-   
-  payments: UpcomingPayment[];
-   
-  total: number;
-   
-  nearest: { name: string; date: string } | null;
-}
-
- 
-export function upcomingWindow(ledger: ClientLedger, todayISO: string, days = 30): UpcomingWindow {
-  const payments = upcomingPayments(ledger, todayISO, days);
-  const first = payments[0];
-  return {
-    payments,
-    total: payments.reduce((s, p) => s + p.txn.amount, 0),
-    nearest: first ? { name: first.label, date: first.txn.date } : null,
-  };
 }
