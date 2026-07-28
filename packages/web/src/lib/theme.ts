@@ -10,41 +10,57 @@ export const CTA = "var(--cta)";
 export const INCOME = "#67b86c";
 export const TRANSFER = "#4a86c4";
 export const SAGE_BG = "#b1c98d";
-export const SAGE_TX = "#3c5526";
 /** System stack — yields SF Pro on iOS (native look on the primary platform). */
 export const font = `-apple-system,BlinkMacSystemFont,'SF Pro Text','Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif`;
 export const P = 14;
 
-export const light = {
-  bg: "#f4f3ef",
-  surface: "#ffffff",
-  card: "#ffffff",
-  line: "#ece9e2",
-  inset: "#eceae3",
-  band: "#eae8e0",
-  text: "#2b2a27",
-  soft: "#6f6e67",
-  mute: "#a6a59c",
-  sheet: "#ffffff",
-  key: "#ffffff",
-  keybg: "#e9e7e1",
-};
-export const dark = {
-  bg: "#3b414b",
-  surface: "#404650",
-  card: "#404650",
-  line: "#4b515b",
-  inset: "#333944",
-  band: "#343a44",
-  text: "#eef0f2",
-  soft: "#a8aeb6",
-  mute: "#7f868f",
-  sheet: "#434a54",
-  key: "#454b55",
-  keybg: "#2f343d",
-};
+export interface Theme {
+  bg: string;
+  surface: string;
+  card: string;
+  line: string;
+  inset: string;
+  band: string;
+  text: string;
+  soft: string;
+  mute: string;
+  sheet: string;
+  key: string;
+  keybg: string;
+  /** Positive/confirmation state (income arrows, reconciled check, goal-met). */
+  pos: string;
+  /** Attention state (>80% of budget, uncleared dot in Cisza). */
+  warn: string;
+  /** Negative/overspent state for TEXT (contrast-checked per mode; spec §2). */
+  neg: string;
+  /** Quiet chip/input surface (allocation pills, icon chips in Settings). */
+  chip: string;
+  /** Screen header: Cisza paints on the background ("plain"), Duet paints a navy band. */
+  headerStyle: "plain" | "band";
+  headerBg: string;
+  headerInk: string;
+  /** Muted/positive/negative TEXT on the header surface (≡ mute/pos/neg on plain themes; duet needs on-navy variants). */
+  headerMute: string;
+  headerPos: string;
+  headerNeg: string;
+}
 
-export type Theme = typeof light;
+export const light: Theme = {
+  bg: "#f4f3ef", surface: "#ffffff", card: "#ffffff", line: "#ece9e2", inset: "#eceae3",
+  band: "#eae8e0", text: "#2b2a27", soft: "#6f6e67", mute: "#a6a59c", sheet: "#ffffff",
+  key: "#ffffff", keybg: "#e9e7e1",
+  pos: "#3e7d5c", warn: "#c98f2e", neg: "#d14b3e", chip: "#f1efe9",
+  headerStyle: "plain", headerBg: "#f4f3ef", headerInk: "#2b2a27",
+  headerMute: "#a6a59c", headerPos: "#3e7d5c", headerNeg: "#d14b3e",
+};
+export const dark: Theme = {
+  bg: "#3b414b", surface: "#404650", card: "#404650", line: "#4b515b", inset: "#333944",
+  band: "#343a44", text: "#eef0f2", soft: "#a8aeb6", mute: "#7f868f", sheet: "#434a54",
+  key: "#454b55", keybg: "#2f343d",
+  pos: "#7fc9a2", warn: "#d9a84a", neg: "#f28b7d", chip: "#353b45",
+  headerStyle: "plain", headerBg: "#3b414b", headerInk: "#eef0f2",
+  headerMute: "#7f868f", headerPos: "#7fc9a2", headerNeg: "#f28b7d",
+};
 
 export const ENV_PALETTE = [
   "#f3c45f", "#7ca968", "#cc4a4a", "#3a3a52", "#4a5a5e", "#8f84a8",
@@ -109,8 +125,10 @@ export const THEMES: Record<AccentTheme, ThemeDef> = {
   teal: {
     accent: "#4fa583",
     accentDark: "#6cbf9b",
-    danger: "#ec6d62",
-    dangerDark: "#ec6d62",
+    danger: "#c22e3d",
+    dangerDark: "#ef4b58",
+    cta: "#f0685c",
+    ctaDark: "#ff8d7d",
   },
   /** A deliberate split of "available" (coral) vs "overspent" (a deepened red). */
   koral: {
@@ -122,8 +140,10 @@ export const THEMES: Record<AccentTheme, ThemeDef> = {
   atrament: {
     accent: "#1d2a47",
     accentDark: "#8fa2cc", // navy must lighten in dark mode
-    danger: "#ec6d62",
-    dangerDark: "#ec6d62",
+    danger: "#c22e3d",
+    dangerDark: "#ef4b58",
+    cta: "#f0685c",
+    ctaDark: "#ff8d7d",
   },
   duet: {
     accent: "#1d2a47",
@@ -134,7 +154,18 @@ export const THEMES: Record<AccentTheme, ThemeDef> = {
     ctaDark: "#ff8d7d",
     nav: { bg: "#1d2a47", on: "#ff8d7d", mute: "#8fa2cc", ind: "#ff8d7d" },
     navDark: { bg: "#1d2a47", on: "#ff8d7d", mute: "#8fa2cc", ind: "#ff8d7d" },
-    overridesDark: { bg: "#131b2e", surface: "#1d2a47", card: "#1d2a47", line: "#2b3a5e" },
+    overrides: {
+      headerStyle: "band", headerBg: "#1d2a47", headerInk: "#edeff5",
+      card: "#fcf8ef", bg: "#f4efe4", line: "#e8e0cc", chip: "#efe8d8", neg: "#c2372e",
+      headerMute: "#8fa2cc", headerPos: "#8fe0b0", headerNeg: "#f28b7d",
+      surface: "#fcf8ef", sheet: "#fcf8ef", key: "#fcf8ef", keybg: "#e9e0cb", inset: "#efe8d8", band: "#ece5d3",
+    },
+    overridesDark: {
+      bg: "#131b2e", surface: "#1d2a47", card: "#1d2a47", line: "#2b3a5e",
+      headerStyle: "band", headerBg: "#1d2a47", headerInk: "#edeff5", chip: "#243356", neg: "#f28b7d",
+      headerMute: "#8fa2cc", headerPos: "#8fe0b0", headerNeg: "#f28b7d",
+      sheet: "#1d2a47", key: "#243356", keybg: "#131b2e", inset: "#243356", band: "#1a2440",
+    },
   },
 };
 
@@ -151,6 +182,14 @@ function hexAlpha(hex: string, suffix: string): string {
   const b = parseInt(hex.slice(5, 7), 16);
   const a = Math.round((parseInt(suffix, 16) / 255) * 1000) / 1000;
   return `rgba(${r},${g},${b},${a})`;
+}
+
+/** rgba() from hex + numeric alpha — the ONLY sanctioned way to tint an entity color. */
+export function tint(hex: string, alpha: number): string {
+  const r = parseInt(hex.slice(1, 3), 16);
+  const g = parseInt(hex.slice(3, 5), 16);
+  const b = parseInt(hex.slice(5, 7), 16);
+  return `rgba(${r},${g},${b},${alpha})`;
 }
 
 /**

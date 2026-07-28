@@ -3,7 +3,7 @@ import { useMask } from "../lib/contexts";
 import { isLight } from "../lib/format";
 import { Glyph } from "../lib/icons";
 import { useT } from "../lib/i18n";
-import { CORAL, CTA, INCOME } from "../lib/theme";
+import { CTA } from "../lib/theme";
 import { Sheet } from "./chrome";
 
 /**
@@ -60,7 +60,7 @@ export function EnvActionsSheet({
               {badge(
                 t("AVAILABLE"),
                 `${env.available < 0 ? "-" : ""}${M(Math.abs(env.available))}`,
-                env.available < 0 ? CORAL : INCOME,
+                env.available < 0 ? C.neg : C.pos,
               )}
               {badge(t("CARRIED OVER"), `${sign}${M(Math.abs(env.carryIn))}`, C.soft)}
             </div>

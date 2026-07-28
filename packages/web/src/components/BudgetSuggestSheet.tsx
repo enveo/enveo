@@ -7,7 +7,7 @@ import { useCurrency, useSettings, type Settings } from "../lib/contexts";
 import { currencySymbol, fmtTrim, formatMoney, isLight, parseAmount } from "../lib/format";
 import { useT, type Message, msg } from "../lib/i18n";
 import { Glyph, Ico } from "../lib/icons";
-import { CORAL, CTA, SAGE_BG, SAGE_TX, TEAL, font, type Theme } from "../lib/theme";
+import { CORAL, CTA, TEAL, font, tint, type Theme } from "../lib/theme";
 import { apiErrorMessage, type BudgetSuggestProfile, type BudgetSuggestResponse, type StateResponse } from "../lib/api";
 import { runSuggest } from "../lib/ai";
 import { local } from "../lib/mutate";
@@ -238,7 +238,7 @@ export function BudgetSuggestSheet({ show, state, month, onClose }: { show: bool
         <>
           <div style={{ fontSize: 17, fontWeight: 700, color: C.text, marginBottom: 4 }}>{t("Suggest a distribution")}</div>
           <div style={{ fontSize: 12.5, color: C.soft, marginBottom: 14 }}>
-            {t("To be budgeted:")} <b style={{ color: state.toBeBudgeted < 0 ? CORAL : C.text, fontVariantNumeric: "tabular-nums" }}>{formatMoney(Math.max(0, state.toBeBudgeted), currency, lang, { trim: true })}</b>
+            {t("To be budgeted this month:")} <b style={{ color: state.toBeBudgeted < 0 ? CORAL : C.text, fontVariantNumeric: "tabular-nums" }}>{formatMoney(Math.max(0, state.toBeBudgeted), currency, lang, { trim: true })}</b>
           </div>
 
           {phase !== "review" && (
@@ -360,8 +360,8 @@ export function BudgetSuggestSheet({ show, state, month, onClose }: { show: bool
                   bar; on iOS a whole row disappeared). Side -20px (full-bleed) stays. */}
               <div style={{ position: "sticky", bottom: 0, zIndex: 3, background: C.sheet, borderTop: `1px solid ${C.line}`, margin: "10px -20px 0", padding: "10px 20px 4px" }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
-                  <span style={{ fontSize: 11.5, fontWeight: 600, color: remaining >= 0 ? SAGE_TX : CORAL }}>{t(remaining >= 0 ? msg("Left after changes") : msg("Short after changes"))}</span>
-                  <span style={{ fontSize: 16, fontWeight: 700, color: remaining >= 0 ? SAGE_TX : CORAL, fontVariantNumeric: "tabular-nums" }}>
+                  <span style={{ fontSize: 11.5, fontWeight: 600, color: remaining >= 0 ? C.pos : C.neg }}>{t(remaining >= 0 ? msg("Left after changes") : msg("Short after changes"))}</span>
+                  <span style={{ fontSize: 16, fontWeight: 700, color: remaining >= 0 ? C.pos : C.neg, fontVariantNumeric: "tabular-nums" }}>
                     {(remaining >= 0 ? "+" : "−") + formatMoney(Math.abs(remaining), currency, lang, { trim: true })}
                   </span>
                 </div>
@@ -404,12 +404,12 @@ function prevAllocations(ledger: ClientLedger, month: string): Map<string, numbe
   return map;
 }
 
-/** Result-list checkbox: 20px, radius 7, ✓ on SAGE (import/quick-add list pattern). */
+/** Result-list checkbox: 20px, radius 7, ✓ on C.pos (import/quick-add list pattern). */
 function CheckBox({ on, C }: { on: boolean; C: Theme }) {
   return (
-    <span aria-hidden style={{ width: 20, height: 20, borderRadius: 7, flexShrink: 0, boxSizing: "border-box", border: `1.6px solid ${on ? SAGE_BG : C.mute}`, background: on ? SAGE_BG : "transparent", display: "flex", alignItems: "center", justifyContent: "center" }}>
+    <span aria-hidden style={{ width: 20, height: 20, borderRadius: 7, flexShrink: 0, boxSizing: "border-box", border: `1.6px solid ${on ? C.pos : C.mute}`, background: on ? C.pos : "transparent", display: "flex", alignItems: "center", justifyContent: "center" }}>
       {on && (
-        <svg width={12} height={12} viewBox="0 0 24 24" fill="none" style={{ stroke: SAGE_TX }} strokeWidth={3.2} strokeLinecap="round" strokeLinejoin="round">
+        <svg width={12} height={12} viewBox="0 0 24 24" fill="none" style={{ stroke: "#fff" }} strokeWidth={3.2} strokeLinecap="round" strokeLinejoin="round">
           <path d="M4 12l6 6L20 6" />
         </svg>
       )}
@@ -429,7 +429,7 @@ function StrategyOption({ C, name, desc, note, badge, active, disabled, onSelect
         <span style={{ display: "flex", alignItems: "flex-start", gap: 8 }}>
           <span style={{ fontSize: 13.5, fontWeight: 700, color: active ? TEAL : C.text, minWidth: 0 }}>{name}</span>
           {badge && (
-            <span style={{ marginLeft: "auto", flexShrink: 0, marginTop: 1, fontSize: 9.5, fontWeight: 700, letterSpacing: 0.4, padding: "2px 7px", borderRadius: 8, background: badge === "noai" ? SAGE_BG : "var(--danger-18)", color: badge === "noai" ? SAGE_TX : CORAL }}>
+            <span style={{ marginLeft: "auto", flexShrink: 0, marginTop: 1, fontSize: 9.5, fontWeight: 700, letterSpacing: 0.4, padding: "2px 7px", borderRadius: 8, background: badge === "noai" ? tint(C.pos, 0.15) : tint(C.warn, 0.15), color: badge === "noai" ? C.pos : C.warn }}>
               {badge === "noai" ? t("NO AI") : t("AI")}
             </span>
           )}

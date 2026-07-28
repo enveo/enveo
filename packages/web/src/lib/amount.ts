@@ -1,12 +1,12 @@
 /**
  * Pure amount-keyboard logic (the numpad on the Add card).
- * Keys: "0".."9" | "," | "⌫". Expression operators (+ − ×) are appended by Add.tsx
+ * Keys: "0".."9" | "," | "⌫". Expression operators (+ − × ÷) are appended by Add.tsx
  * outside this function — zero/comma normalization operates only on the current
  * segment after the last operator, so expressions survive unchanged.
  */
 import { evalExpression, fmtTrim } from "./format";
 
-const OPERATORS = ["+", "−", "×"];
+const OPERATORS = ["+", "−", "×", "÷"];
 
 function lastOperatorIndex(s: string): number {
   let idx = -1;
@@ -42,18 +42,18 @@ export function applyAmountKey(amount: string, key: string): string {
 /**
  * The AmountPadSheet engine (spec 2026-07-09-amount-pad-design).
  * State = an expression string with AT MOST one open operation:
- * `A`, `A⊕` or `A⊕B` (⊕ ∈ {+,−,×}; A may be negative after a reduction).
+ * `A`, `A⊕` or `A⊕B` (⊕ ∈ {+,−,×,÷}; A may be negative after a reduction).
  * `fresh` = the line shows the field's current value and hasn't been edited yet.
  */
 export type PadState = { expr: string; fresh: boolean };
 
-/** Operator keys emitted by the Numpad in pickers.tsx. */
-const PAD_OP_KEYS = ["+", "−", "×"];
+/** Operator keys emitted by the Numpad in pickers.tsx: +, −, ×, ÷. */
+const PAD_OP_KEYS = ["+", "−", "×", "÷"];
 /**
  * Characters recognized as an operator INSIDE an expression — additionally ASCII "-",
  * because reducing a negative result writes the evalExpression-style sign ("-300+").
  */
-const EXPR_OPS = ["+", "−", "×", "-"];
+const EXPR_OPS = ["+", "−", "×", "÷", "-"];
 
 /** Position of the operator splitting A⊕B; index 0 is a number sign ("-300"), not an operator. */
 function padOperatorIndex(expr: string): number {
@@ -77,8 +77,16 @@ export function hasOpenOp(expr: string): boolean {
   return opIdx >= 0 && opIdx < expr.length - 1;
 }
 
+/**
+ * Options for `padKey`. `allowNegative` is opt-in and used ONLY by the allocation pad
+ * (DockedNumpad on Budget — negative allocations move money back OUT of an envelope).
+ * Every other caller (the Add screen's amount, AmountPadSheet defaults) omits it, so
+ * "−" keeps its original binary-operator-only meaning there.
+ */
+export type PadKeyOpts = { allowNegative?: boolean };
+
 /** One pad key (digit | "," | "⌫" | "+" | "−" | "×" | "=") → new state. Pure function. */
-export function padKey(state: PadState, k: string): PadState {
+export function padKey(state: PadState, k: string, opts?: PadKeyOpts): PadState {
   const isOp = PAD_OP_KEYS.includes(k);
 
   if (k === "=") {
@@ -87,6 +95,17 @@ export function padKey(state: PadState, k: string): PadState {
     const minor = evalExpression(state.expr);
     if (minor === null) return state; // unparsable — as with an operator, we ignore
     return { expr: fmtSignedTrim(minor), fresh: false };
+  }
+
+  // allowNegative ONLY: "−" on a genuinely EMPTY/ZERO expression starts a negative literal
+  // ("-" then digits → "-5000") instead of the binary "current−" operator — lets the
+  // allocation pad move money OUT of an envelope. Gated on the EXPRESSION being empty/zero,
+  // NOT on `fresh` alone: startEdit opens the pad with `{ expr: fmtSignedTrim(env.allocated),
+  // fresh: true }`, so `fresh` is true even when the envelope already holds an allocation —
+  // in that case "−" must fall through to relative mode below ("50" → "50−"), not wipe the
+  // existing value into an absolute literal.
+  if (opts?.allowNegative && k === "−" && (state.expr === "" || state.expr === "0")) {
+    return { expr: "-", fresh: false };
   }
 
   if (state.fresh) {

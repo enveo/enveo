@@ -7,7 +7,7 @@ import { isLight } from "../lib/format";
 import { monthLabel, shiftMonth } from "../lib/dates";
 import { useT, msg } from "../lib/i18n";
 import { Glyph, Ico } from "../lib/icons";
-import { CORAL, INCOME, P, TEAL, font } from "../lib/theme";
+import { P, TEAL, font } from "../lib/theme";
 import { EnvEdit } from "./Budget";
 
 const PERIODS = [1, 3, 6, 12] as const;
@@ -111,14 +111,14 @@ export function EnvelopeScreen({
           <div style={{ display: "flex", textAlign: "center", gap: 8 }}>
             {stat(t("BUDGET"), M(env.allocated), C.text)}
             {stat(t("SPENT"), M(Math.max(0, env.spent)), C.text)}
-            {stat(t("AVAILABLE"), `${neg ? "-" : ""}${M(Math.abs(env.available))}`, neg ? CORAL : INCOME)}
+            {stat(t("AVAILABLE"), `${neg ? "-" : ""}${M(Math.abs(env.available))}`, neg ? C.neg : C.pos)}
           </div>
           {/* progress bar INSIDE the card: spent / (allocated + carryIn) */}
           <div style={{ marginTop: 12, height: 7, background: C.inset, borderRadius: 4, overflow: "hidden" }}>
-            <div style={{ height: "100%", width: `${progress * 100}%`, background: neg ? CORAL : env.color, borderRadius: 4, transition: "width .4s" }} />
+            <div style={{ height: "100%", width: `${progress * 100}%`, background: neg ? C.neg : env.color, borderRadius: 4, transition: "width .4s" }} />
           </div>
           {/* carry-over from the previous month (Variant A — may be negative) */}
-          <div style={{ marginTop: 8, textAlign: "center", fontSize: 10, color: carryIn < 0 ? CORAL : C.mute, fontVariantNumeric: "tabular-nums" }}>
+          <div style={{ marginTop: 8, textAlign: "center", fontSize: 10, color: carryIn < 0 ? C.neg : C.mute, fontVariantNumeric: "tabular-nums" }}>
             {t("{amount} from the previous month", { amount: `${carryIn < 0 ? "-" : "+"}${M(Math.abs(carryIn))}` })}
           </div>
         </div>

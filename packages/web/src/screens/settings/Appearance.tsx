@@ -3,23 +3,24 @@ import { SUPPORTED_CURRENCIES } from "../../lib/currency";
 import { loadLocale, LOCALES, msg, useT, type Lang, type Message } from "../../lib/i18n";
 import { local } from "../../lib/mutate";
 import { store } from "../../lib/store";
-import { font, TEAL, THEMES, type AccentTheme } from "../../lib/theme";
+import { font, TEAL, themeTokens } from "../../lib/theme";
 import { Helper, Row, Seg } from "./ui";
 
 /** Where a translator reports a bad string. Community locales are labelled, not hidden — honest, and
  *  it is the only route a reader of a wrong sentence has back to us. */
 const TRANSLATION_ISSUES_URL = "https://github.com/enveo/enveo/issues";
 
-/** Order of theme tiles in Settings, and the name of each (the ids are historical). */
-const THEME_IDS: AccentTheme[] = ["teal", "koral", "atrament", "duet"];
-const THEME_LABEL: Record<AccentTheme, Message> = {
-  teal: msg("Sage"),
-  koral: msg("Coral"),
-  atrament: msg("Ink"),
-  duet: msg("Duo"),
+/** Order of theme tiles in Settings, and the name of each (the ids are historical).
+ *  Reduced to two tiles (redesign 06) — "koral"/"atrament" are unreachable from the
+ *  picker now (contexts.tsx normalizes any stored value to "teal") but the AccentTheme
+ *  type and THEMES entries stay so settings persisted by older devices remain parseable. */
+const THEME_IDS: Array<"teal" | "duet"> = ["teal", "duet"];
+const THEME_LABEL: Record<"teal" | "duet", Message> = {
+  teal: msg("Cisza"),
+  duet: msg("Duet"),
 };
 
-/** Color theme picker tiles: an 18px circle in the theme accent (duet = two half-circles), name, accent border on the selected one. */
+/** Color theme picker tiles: a mini surface preview (bg + accent dot, duet's dot is its CTA coral), name, accent border on the selected one. */
 function ThemeTiles() {
   const C = useTheme();
   const { settings, setSettings } = useSettings();
@@ -30,9 +31,12 @@ function ThemeTiles() {
   return (
     <div style={{ display: "flex", gap: 8, padding: "14px 0", borderBottom: `1px solid ${C.line}` }}>
       {THEME_IDS.map((id) => {
-        const def = THEMES[id];
-        const accent = isDark ? def.accentDark : def.accent;
-        const cta = (isDark ? def.ctaDark : def.cta) ?? accent;
+        const tk = themeTokens(id, isDark);
+        const accent = tk.vars["--accent"];
+        const dot = id === "duet" ? tk.vars["--cta"] : accent;
+        // Themes with a band header (duet) preview their band color, not the plain surface —
+        // otherwise duet's light-mode bg (cream) reads near-identical to koral's.
+        const previewBg = tk.palette.headerStyle === "band" ? tk.palette.headerBg : tk.palette.bg;
         const active = settings.accentTheme === id;
         return (
           <button
@@ -41,14 +45,9 @@ function ThemeTiles() {
             aria-pressed={active}
             style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 6, padding: "10px 4px", borderRadius: 10, cursor: "pointer", background: C.bg, border: `2px solid ${active ? accent : C.line}` }}
           >
-            {id === "duet" ? (
-              <svg width={18} height={18} viewBox="0 0 18 18" aria-hidden>
-                <path d="M9 0a9 9 0 0 0 0 18Z" fill={accent} />
-                <path d="M9 0a9 9 0 0 1 0 18Z" fill={cta} />
-              </svg>
-            ) : (
-              <div style={{ width: 18, height: 18, borderRadius: "50%", background: accent }} />
-            )}
+            <div style={{ position: "relative", width: "100%", height: 26, borderRadius: 7, background: previewBg, border: `1px solid ${C.line}` }}>
+              <div style={{ position: "absolute", right: 4, bottom: 4, width: 8, height: 8, borderRadius: "50%", background: dot }} />
+            </div>
             <span style={{ fontSize: 11, fontWeight: 600, color: active ? C.text : C.soft }}>{t(THEME_LABEL[id])}</span>
           </button>
         );

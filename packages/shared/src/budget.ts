@@ -160,6 +160,29 @@ export function computeBudgetState(ledger: Ledger, month: string): BudgetState {
     }
   }
 
+  // ── ready to assign (month-INDEPENDENT headline, YNAB-style) ────────
+  // Same formula as toBeBudgeted, but with no month bound anywhere: every
+  // allocation ever made (any month) and every non-planned transaction (any
+  // date) counts. This is why it can differ from toBeBudgeted — e.g.
+  // assigning money in a FUTURE month lowers this figure today, while
+  // toBeBudgeted for the currently selected (earlier) month stays unchanged
+  // (it only looks at allocations/txns ≤ that month).
+  let readyToAssign: Money = 0;
+  for (const a of accounts) if (a.onBudget) readyToAssign += a.initialBalance;
+  for (const a of allocations) readyToAssign -= a.amount;
+  const allTxns = ledger.transactions.filter((t) => !t.planned);
+  for (const t of allTxns) {
+    if (t.type === "income" && isOnBudget(t.accountId) && !t.envelopeId) {
+      readyToAssign += t.amount;
+    }
+    if (t.type === "transfer" && t.toAccountId) {
+      const fromOn = isOnBudget(t.accountId);
+      const toOn = isOnBudget(t.toAccountId);
+      if (toOn && !fromOn) readyToAssign += t.amount; // flows into the budget
+      if (fromOn && !toOn) readyToAssign -= t.amount; // flows out of the budget
+    }
+  }
+
   // ── income/expense bars for the selected month ─────────────────────
   let monthIncome: Money = 0;
   let monthExpense: Money = 0;
@@ -175,6 +198,7 @@ export function computeBudgetState(ledger: Ledger, month: string): BudgetState {
     envelopes: envelopeStates,
     groups,
     toBeBudgeted,
+    readyToAssign,
     monthIncome,
     monthExpense,
   };

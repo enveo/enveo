@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { CORAL, CTA, TEAL, dark, light, themeTokens, type AccentTheme } from "./theme";
+import { CORAL, CTA, TEAL, dark, light, themeTokens, tint, type AccentTheme } from "./theme";
 
 /** Alpha suffixes from the concatenation audit — forms `X+"xx"` (14/18/1a/22) and `${X}xx` (40/44/55/66). */
 const ALPHA_SUFFIXES = ["14", "18", "1a", "22", "40", "44", "55", "66"] as const;
@@ -14,17 +14,17 @@ describe("constant exports → CSS vars (names unchanged)", () => {
 });
 
 describe("teal theme = Sage #4fa583 (stability guard since 1.15.0)", () => {
-  test("light: Sage accent, danger unchanged", () => {
+  test("light: Sage accent, deepened Cisza danger, CTA is always coral", () => {
     const { vars } = themeTokens("teal", false);
     expect(vars["--accent"]).toBe("#4fa583");
-    expect(vars["--danger"]).toBe("#ec6d62");
-    expect(vars["--cta"]).toBe("#4fa583");
+    expect(vars["--danger"]).toBe("#c22e3d");
+    expect(vars["--cta"]).toBe("#f0685c");
   });
-  test("dark: accent lightened Sage #6cbf9b, danger unchanged", () => {
+  test("dark: accent lightened Sage #6cbf9b, deepened Cisza danger, CTA is always coral", () => {
     const { vars } = themeTokens("teal", true);
     expect(vars["--accent"]).toBe("#6cbf9b");
-    expect(vars["--danger"]).toBe("#ec6d62");
-    expect(vars["--cta"]).toBe("#6cbf9b");
+    expect(vars["--danger"]).toBe("#ef4b58");
+    expect(vars["--cta"]).toBe("#ff8d7d");
   });
   test("light palette = exactly today's light object (all hexes)", () => {
     expect(themeTokens("teal", false).palette).toEqual(light);
@@ -54,10 +54,10 @@ describe("teal theme = Sage #4fa583 (stability guard since 1.15.0)", () => {
     expect(vars["--accent-22"]).toBe("rgba(79,165,131,0.133)");
     expect(vars["--accent-44"]).toBe("rgba(79,165,131,0.267)");
     expect(vars["--accent-55"]).toBe("rgba(79,165,131,0.333)");
-    expect(vars["--danger-22"]).toBe("rgba(236,109,98,0.133)");
-    expect(vars["--danger-66"]).toBe("rgba(236,109,98,0.4)");
-    // FAB: a shadow with the 40 suffix on the accent → --cta-40 (in teal cta = accent).
-    expect(vars["--cta-40"]).toBe("rgba(79,165,131,0.251)");
+    expect(vars["--danger-22"]).toBe("rgba(194,46,61,0.133)");
+    expect(vars["--danger-66"]).toBe("rgba(194,46,61,0.4)");
+    // FAB: a shadow with the 40 suffix on the CTA → --cta-40 (CTA is always coral, not the accent).
+    expect(vars["--cta-40"]).toBe("rgba(240,104,92,0.251)");
   });
 });
 
@@ -80,26 +80,32 @@ describe("koral (the app default)", () => {
 });
 
 describe("atrament", () => {
-  test("light: navy #1d2a47, danger same as teal", () => {
+  test("light: navy #1d2a47, danger same deepened Cisza red as teal", () => {
     const { vars } = themeTokens("atrament", false);
     expect(vars["--accent"]).toBe("#1d2a47");
-    expect(vars["--danger"]).toBe("#ec6d62");
+    expect(vars["--danger"]).toBe("#c22e3d");
   });
   test("dark: lightened navy #8fa2cc", () => {
     const { vars } = themeTokens("atrament", true);
     expect(vars["--accent"]).toBe("#8fa2cc");
-    expect(vars["--danger"]).toBe("#ec6d62");
+    expect(vars["--danger"]).toBe("#ef4b58");
   });
 });
 
 describe("duet", () => {
-  test("light: navy accent, coral CTA, navy nav", () => {
+  test("light: navy accent, coral CTA, navy nav, cream surfaces", () => {
     const { vars, palette } = themeTokens("duet", false);
     expect(vars["--accent"]).toBe("#1d2a47");
     expect(vars["--cta"]).toBe("#f0685c");
     expect(vars["--nav-bg"]).toBe("#1d2a47");
     expect(vars["--nav-on"]).toBe("#ff8d7d");
-    expect(palette).toEqual(light);
+    expect(palette.bg).toBe("#f4efe4");
+    expect(palette.card).toBe("#fcf8ef");
+    expect(palette.line).toBe("#e8e0cc");
+    expect(palette.chip).toBe("#efe8d8");
+    expect(palette.headerStyle).toBe("band");
+    expect(palette.headerBg).toBe("#1d2a47");
+    expect(palette.headerInk).toBe("#edeff5");
   });
   test("dark: a navy world — bg/card/surface/line overrides + CTA #ff8d7d", () => {
     const { vars, palette } = themeTokens("duet", true);
@@ -158,14 +164,95 @@ describe("4×2 snapshot of the key fields (accent/danger/cta/nav-bg)", () => {
     );
     expect(table).toEqual({
       // navBg = today's BottomNav background (C.bg), NOT surface — a regression guard.
-      "teal.light": { accent: "#4fa583", danger: "#ec6d62", cta: "#4fa583", navBg: "#f4f3ef" },
-      "teal.dark": { accent: "#6cbf9b", danger: "#ec6d62", cta: "#6cbf9b", navBg: "#3b414b" },
+      // CTA is always coral (spec) — teal/atrament no longer fall back to their accent.
+      "teal.light": { accent: "#4fa583", danger: "#c22e3d", cta: "#f0685c", navBg: "#f4f3ef" },
+      "teal.dark": { accent: "#6cbf9b", danger: "#ef4b58", cta: "#ff8d7d", navBg: "#3b414b" },
       "koral.light": { accent: "#f0685c", danger: "#c22e3d", cta: "#f0685c", navBg: "#f4f3ef" },
       "koral.dark": { accent: "#ff8d7d", danger: "#ef4b58", cta: "#ff8d7d", navBg: "#3b414b" },
-      "atrament.light": { accent: "#1d2a47", danger: "#ec6d62", cta: "#1d2a47", navBg: "#f4f3ef" },
-      "atrament.dark": { accent: "#8fa2cc", danger: "#ec6d62", cta: "#8fa2cc", navBg: "#3b414b" },
+      "atrament.light": { accent: "#1d2a47", danger: "#c22e3d", cta: "#f0685c", navBg: "#f4f3ef" },
+      "atrament.dark": { accent: "#8fa2cc", danger: "#ef4b58", cta: "#ff8d7d", navBg: "#3b414b" },
       "duet.light": { accent: "#1d2a47", danger: "#c22e3d", cta: "#f0685c", navBg: "#1d2a47" },
       "duet.dark": { accent: "#8fa2cc", danger: "#ef4b58", cta: "#ff8d7d", navBg: "#1d2a47" },
     });
+  });
+});
+
+describe("theme screen tokens", () => {
+  test("every theme × mode carries state + header tokens", () => {
+    for (const t of ALL_THEMES) {
+      for (const isDark of [false, true]) {
+        const { palette } = themeTokens(t, isDark);
+        expect(palette.pos).toMatch(/^#/);
+        expect(palette.warn).toMatch(/^#/);
+        expect(palette.neg).toMatch(/^#/);
+        expect(palette.chip).toMatch(/^#/);
+        expect(["plain", "band"]).toContain(palette.headerStyle);
+        expect(palette.headerBg).toMatch(/^#/);
+        expect(palette.headerInk).toMatch(/^#/);
+        expect(palette.headerMute).toMatch(/^#/);
+        expect(palette.headerPos).toMatch(/^#/);
+        expect(palette.headerNeg).toMatch(/^#/);
+      }
+    }
+  });
+
+  test("Cisza themes render a plain header; duet renders a band", () => {
+    expect(themeTokens("teal", false).palette.headerStyle).toBe("plain");
+    expect(themeTokens("koral", true).palette.headerStyle).toBe("plain");
+    expect(themeTokens("duet", false).palette.headerStyle).toBe("band");
+    expect(themeTokens("duet", true).palette.headerStyle).toBe("band");
+    expect(themeTokens("duet", false).palette.headerBg).toBe("#1d2a47");
+  });
+
+  test("duet dark keeps its navy world (regression guard)", () => {
+    const { palette } = themeTokens("duet", true);
+    expect(palette.bg).toBe("#131b2e");
+    expect(palette.card).toBe("#1d2a47");
+  });
+
+  test("duet-dark neg is lightened to #f28b7d for contrast on navy cards", () => {
+    expect(themeTokens("duet", true).palette.neg).toBe("#f28b7d");
+  });
+
+  test("duet headerNeg (light and dark band) is lightened to #f28b7d — #ef4b58 is sub-AA on the navy band", () => {
+    expect(themeTokens("duet", false).palette.headerNeg).toBe("#f28b7d");
+    expect(themeTokens("duet", true).palette.headerNeg).toBe("#f28b7d");
+  });
+
+  test("teal/atrament danger is a deepened Cisza red, distinct from the coral CTA", () => {
+    for (const th of ["teal", "atrament"] as const) {
+      const { vars } = themeTokens(th, false);
+      expect(vars["--danger"]).toBe("#c22e3d");
+      const darkVars = themeTokens(th, true).vars;
+      expect(darkVars["--danger"]).toBe("#ef4b58");
+    }
+  });
+
+  test("duet surfaces: cream world in light, navy world in dark (sheets/keys inherit)", () => {
+    const l = themeTokens("duet", false).palette;
+    expect(l.sheet).toBe("#fcf8ef");
+    expect(l.surface).toBe("#fcf8ef");
+    expect(l.key).toBe("#fcf8ef");
+    expect(l.keybg).toBe("#e9e0cb");
+    expect(l.inset).toBe("#efe8d8");
+    expect(l.band).toBe("#ece5d3");
+    const d = themeTokens("duet", true).palette;
+    expect(d.sheet).toBe("#1d2a47");
+    expect(d.key).toBe("#243356");
+    expect(d.keybg).toBe("#131b2e");
+    expect(d.inset).toBe("#243356");
+    expect(d.band).toBe("#1a2440");
+  });
+
+  test("tint computes rgba from hex without string concatenation", () => {
+    expect(tint("#4f86bd", 0.14)).toBe("rgba(79,134,189,0.14)");
+    expect(tint("#ffffff", 1)).toBe("rgba(255,255,255,1)");
+  });
+
+  test("CTA resolves to coral in every theme (spec: CTA is always coral)", () => {
+    for (const th of ["teal", "koral", "atrament", "duet"] as const) {
+      expect(themeTokens(th, false).vars["--cta"]).toMatch(/^#(f0685c|ff8d7d)$/i);
+      expect(themeTokens(th, true).vars["--cta"]).toMatch(/^#(f0685c|ff8d7d)$/i);
+    }
   });
 });

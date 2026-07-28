@@ -15,8 +15,9 @@ import { Numpad } from "./pickers";
  * The component does NOT know the domain — the line state (`PadState`) is held
  * by the caller (Budget: `editing`), writes only via `target.onCommit(minor)`.
  * The OK key is contextual: A⊕B state → `=` (explicit reduction, pad stays),
- * otherwise ✓ → validation (result ≥ 0) and commit; errors reported via `onInvalid`
- * (red cell highlight in the row — a flag in the caller's state).
+ * otherwise ✓ → validation (computable result, negative allowed — moving money
+ * back OUT of an envelope is a valid allocation) and commit; errors reported
+ * via `onInvalid` (red cell highlight in the row — a flag in the caller's state).
  */
 export type DockedNumpadTarget = {
   /** Name of the edited envelope (bar above the keys). */
@@ -48,14 +49,16 @@ export function DockedNumpad({
   const open = hasOpenOp(state.expr);
   const preview = open ? padPreview(state.expr) : null;
 
-  const onKey = (k: string) => onState(padKey(state, k === "DEL" ? "⌫" : k));
+  // allowNegative: the ONLY caller of this pad is allocation editing on Budget — negative
+  // allocations move money back OUT of an envelope (see amount.ts padKey docs).
+  const onKey = (k: string) => onState(padKey(state, k === "DEL" ? "⌫" : k, { allowNegative: true }));
   const onOk = () => {
     if (open) {
-      onState(padKey(state, "="));
+      onState(padKey(state, "=", { allowNegative: true }));
       return;
     }
     const minor = padPreview(state.expr);
-    if (minor === null || minor < 0) target.onInvalid();
+    if (minor === null) target.onInvalid();
     else target.onCommit(minor);
   };
 

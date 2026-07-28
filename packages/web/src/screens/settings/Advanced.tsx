@@ -5,7 +5,7 @@ import { useT } from "../../lib/i18n";
 import { storageMode } from "../../lib/idb";
 import { getStorageDiag, type StorageDiag } from "../../lib/storage";
 import { disableLocal, enablePaused, enableWiped, getLastBootSource, wipeLocalData } from "../../lib/sync";
-import { CORAL, INCOME, font } from "../../lib/theme";
+import { CORAL, font } from "../../lib/theme";
 import { Sheet } from "../../components/chrome";
 import { ActionGroup, ActionIcon, ActionRow, ConfirmWordHint, Eyebrow, Helper, Row } from "./ui";
 
@@ -47,7 +47,7 @@ function StorageDiagSection() {
   const mode = storageMode();
   const srcLabel =
     src === "replica" ? t("from local copy") : src === "snapshot" ? t("fetched from server") : src === "local" ? t("local mode") : "—";
-  const srcColor = src === "snapshot" ? CORAL : src === "replica" ? INCOME : C.text;
+  const srcColor = src === "snapshot" ? C.neg : src === "replica" ? C.pos : C.text;
   const persisted = diag?.persisted;
   const mb = (b: number | null) => (b == null ? "—" : `${(b / 1_048_576).toFixed(1)} MB`);
 
@@ -58,7 +58,7 @@ function StorageDiagSection() {
         <span style={{ fontSize: 13, fontWeight: 600, color: srcColor }}>{srcLabel}</span>
       </Row>
       <Row label={t("Persistent storage")}>
-        <span style={{ fontSize: 13, fontWeight: 600, color: persisted === true ? INCOME : persisted === false ? CORAL : C.soft }}>
+        <span style={{ fontSize: 13, fontWeight: 600, color: persisted === true ? C.pos : persisted === false ? C.neg : C.soft }}>
           {persisted === true ? t("Yes") : persisted === false ? t("No") : "—"}
         </span>
       </Row>

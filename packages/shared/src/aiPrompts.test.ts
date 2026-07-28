@@ -9,6 +9,7 @@ import {
   buildImportExtractPrompt,
   buildQuickAddPrompt,
   buildSuggestPrompt,
+  IMPORT_EXTRACT_JSON_SCHEMA,
   languageDirectives,
   languageName,
   parseAgentSuggestResponse,
@@ -105,7 +106,7 @@ describe("languageName / languageDirectives — any BCP-47 locale", () => {
       sysOf(buildSuggestPrompt({ basis, ledger, month: "2026-07", profile: "historical", locale: "de" }).messages),
       sysOf(buildAgentSuggestPrompt(buildAgentSuggestContext({ ledger, month: "2026-07", basis, directive: "x", locale: "de" })).messages),
       sysOf(buildQuickAddPrompt("Kaffee 12", { envelopes: [], places: [] }, "2026-07-13", "de").messages),
-      sysOf(buildImportExtractPrompt([], { envelopes: [], categories: [] }, "2026-07-13", "de").messages),
+      sysOf(buildImportExtractPrompt([], { envelopes: [], categories: [] }, "2026-07-13", "de", "EUR").messages),
       buildAgentLoopMessages({ ledger, month: "2026-07", amount: 100_00, directive: "x", locale: "de" })[0]!.content as string,
     ];
     for (const sys of systems) expect(sys).toContain(contract);
@@ -247,7 +248,7 @@ describe("buildImportExtractPrompt / parseImportExtractResponse", () => {
   const refs = { envelopes: [{ id: "E1", name: "Jedzenie" }], categories: [] };
 
   it("builds vision messages with data-URL image parts and a json_schema format", () => {
-    const req = buildImportExtractPrompt(["data:image/png;base64,AAA"], refs, "2026-07-07", "pl");
+    const req = buildImportExtractPrompt(["data:image/png;base64,AAA"], refs, "2026-07-07", "pl", "PLN");
     const sys = sysOf(req.messages);
     expect(sys).toContain("You extract transactions from screenshots");
     expect(sys).toContain("Today is 2026-07-07");
@@ -260,13 +261,79 @@ describe("buildImportExtractPrompt / parseImportExtractResponse", () => {
     expect((req.responseFormat as { type: string; json_schema: { name: string } }).json_schema.name).toBe("extracted_transactions");
   });
 
-  it("parses transactions and normalizes the tag to UPPERCASE", () => {
-    const out = parseImportExtractResponse('{"transactions":[{"date":"2026-07-01","amount":1299,"type":"expense","rawPlace":"LIDL SP Z OO WARSZAWA","tag":" lidl "}]}');
-    expect(out).toEqual([{ date: "2026-07-01", amount: 1299, type: "expense", rawPlace: "LIDL SP Z OO WARSZAWA", tag: "LIDL" }]);
+  /* Refunds: a Zen-style screenshot shows a refund as a POSITIVE amount — without a
+     dedicated type the extractor could only say "income", which lands the money in
+     "ready to assign" instead of back into the envelope (domain truth: expense + isRefund). */
+  it("system prompt tells the model to use 'refund' for a positive reversal, not 'income'", () => {
+    const sys = sysOf(buildImportExtractPrompt([], refs, "2026-07-07", "pl", "PLN").messages);
+    expect(sys).toContain("has type 'refund'");
+    expect(sys).toContain("NOT salary, NOT an incoming transfer");
+    expect(sys).toContain("a genuine inflow stays 'income'");
+  });
+
+  /* FX / re-conversion: a foreign-currency charge often appears twice on a screenshot (the
+     original charge + the settlement row) — without guidance the extractor would return BOTH,
+     double-counting. The budget's currency is threaded through so the prompt can name it. */
+  it("system prompt names the budget currency and gives the fx merge + never-convert rules", () => {
+    const sys = sysOf(buildImportExtractPrompt([], refs, "2026-07-07", "pl", "PLN").messages);
+    expect(sys).toContain("account currency (PLN)");
+    expect(sys).toContain("return ONE transaction");
+    expect(sys).toContain("rawPlace of the MERCHANT (not the exchange row)");
+    expect(sys).toContain("do not return the conversion row separately");
+    expect(sys).toContain("NEVER convert or guess an exchange rate");
+
+    const eur = sysOf(buildImportExtractPrompt([], refs, "2026-07-07", "pl", "EUR").messages);
+    expect(eur).toContain("account currency (EUR)");
+  });
+
+  it("strict json_schema: type enum gains 'refund'; currency + fxOriginal are required fields", () => {
+    const schema = IMPORT_EXTRACT_JSON_SCHEMA.schema.properties.transactions.items as {
+      properties: Record<string, { enum?: string[] }>;
+      required: string[];
+    };
+    expect(schema.properties.type!.enum).toEqual(["expense", "income", "refund"]);
+    expect(schema.properties.currency).toBeDefined();
+    expect(schema.properties.fxOriginal).toBeDefined();
+    expect(schema.required).toContain("currency");
+    expect(schema.required).toContain("fxOriginal");
+  });
+
+  it("parses transactions, normalizes the tag to UPPERCASE, and carries currency/fxOriginal", () => {
+    const out = parseImportExtractResponse(
+      '{"transactions":[{"date":"2026-07-01","amount":1299,"type":"expense","rawPlace":"LIDL SP Z OO WARSZAWA","tag":" lidl ","currency":"pln","fxOriginal":""}]}',
+    );
+    expect(out).toEqual([
+      { date: "2026-07-01", amount: 1299, type: "expense", isRefund: false, rawPlace: "LIDL SP Z OO WARSZAWA", tag: "LIDL", currency: "PLN", fxOriginal: "" },
+    ]);
+  });
+
+  it("maps type 'refund' to {type: expense, isRefund: true} — domain truth for a returned purchase", () => {
+    const out = parseImportExtractResponse(
+      '{"transactions":[{"date":"2026-07-02","amount":4999,"type":"refund","rawPlace":"ZALANDO REFUND","tag":"ZALANDO","currency":"PLN","fxOriginal":""}]}',
+    );
+    expect(out).toEqual([
+      { date: "2026-07-02", amount: 4999, type: "expense", isRefund: true, rawPlace: "ZALANDO REFUND", tag: "ZALANDO", currency: "PLN", fxOriginal: "" },
+    ]);
+  });
+
+  it("normalizes currency to UPPERCASE and trims fxOriginal", () => {
+    const out = parseImportExtractResponse(
+      '{"transactions":[{"date":"2026-07-03","amount":2000,"type":"expense","rawPlace":"NETFLIX","tag":"NETFLIX","currency":" usd ","fxOriginal":" 5.00 USD "}]}',
+    );
+    expect(out[0]!.currency).toBe("USD");
+    expect(out[0]!.fxOriginal).toBe("5.00 USD");
   });
 
   it("throws on a malformed payload (route maps this to 502)", () => {
-    expect(() => parseImportExtractResponse('{"transactions":[{"date":"1 lipca","amount":-5,"type":"expense","rawPlace":"x","tag":"X"}]}')).toThrow();
+    expect(() =>
+      parseImportExtractResponse('{"transactions":[{"date":"1 lipca","amount":-5,"type":"expense","rawPlace":"x","tag":"X","currency":"PLN","fxOriginal":""}]}'),
+    ).toThrow();
+  });
+
+  it("throws when currency/fxOriginal are missing (strict output guarantees them)", () => {
+    expect(() =>
+      parseImportExtractResponse('{"transactions":[{"date":"2026-07-01","amount":1299,"type":"expense","rawPlace":"x","tag":"X"}]}'),
+    ).toThrow();
   });
 });
 
@@ -280,7 +347,7 @@ describe("reasoningEffort — fast responses for suggest/quick-add", () => {
     expect(sugReq.reasoningEffort).toBe("low");
     const qaReq = buildQuickAddPrompt("kawa 12", { envelopes: [], places: [], categories: [] }, "2026-07-11", "pl");
     expect(qaReq.reasoningEffort).toBe("low");
-    const impReq = buildImportExtractPrompt([], { envelopes: [], categories: [] }, "2026-07-11", "pl");
+    const impReq = buildImportExtractPrompt([], { envelopes: [], categories: [] }, "2026-07-11", "pl", "PLN");
     expect(impReq.reasoningEffort).toBeUndefined();
   });
   it("supportsReasoningEffort: gpt-5*/o* yes, others no", () => {

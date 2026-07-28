@@ -30,6 +30,7 @@ export function Header({
   onNext,
   onRight,
   rightIcon = "kebab",
+  onBand = false,
 }: {
   month: string;
   onMenu: () => void;
@@ -37,28 +38,31 @@ export function Header({
   onNext: () => void;
   onRight?: () => void;
   rightIcon?: "kebab" | "pencil";
+  onBand?: boolean;
 }) {
   const C = useTheme();
   const { t, lang } = useT();
+  const ink = onBand ? C.headerInk : C.text;
+  const inkSoft = onBand ? C.headerInk : C.soft;
   return (
     <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: `12px ${P}px 6px` }}>
       <button onClick={onMenu} aria-label={t("Menu")} style={{ background: "none", border: "none", cursor: "pointer", padding: 4, display: "flex" }}>
-        <Ico d="M4 6h16M4 12h16M4 18h16" size={21} color={C.text} sw={2} />
+        <Ico d="M4 6h16M4 12h16M4 18h16" size={21} color={ink} sw={2} />
       </button>
       <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
         <button onClick={onPrev} aria-label={t("Previous month")} style={{ background: "none", border: "none", cursor: "pointer", padding: 2, display: "flex" }}>
-          <Ico d="M15 19l-7-7 7-7" size={17} />
+          <Ico d="M15 19l-7-7 7-7" size={17} color={onBand ? C.headerInk : undefined} />
         </button>
-        <span style={{ color: C.text, fontSize: 18.5, fontWeight: 600, minWidth: 128, textAlign: "center", letterSpacing: 0.2 }}>{monthLabel(month, lang)}</span>
+        <span style={{ color: ink, fontSize: 18.5, fontWeight: 600, minWidth: 128, textAlign: "center", letterSpacing: 0.2 }}>{monthLabel(month, lang)}</span>
         <button onClick={onNext} aria-label={t("Next month")} style={{ background: "none", border: "none", cursor: "pointer", padding: 2, display: "flex" }}>
-          <Ico d="M9 5l7 7-7 7" size={17} />
+          <Ico d="M9 5l7 7-7 7" size={17} color={onBand ? C.headerInk : undefined} />
         </button>
       </div>
       <button onClick={onRight} aria-label={t("More")} style={{ background: "none", border: "none", cursor: "pointer", padding: 4, display: "flex" }}>
         {rightIcon === "pencil" ? (
-          <Ico d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7M18.5 2.5a2.1 2.1 0 013 3L12 15l-4 1 1-4 9.5-9.5z" size={18} />
+          <Ico d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7M18.5 2.5a2.1 2.1 0 013 3L12 15l-4 1 1-4 9.5-9.5z" size={18} color={onBand ? C.headerInk : undefined} />
         ) : (
-          <svg width="20" height="20" fill={C.soft} viewBox="0 0 24 24">
+          <svg width="20" height="20" fill={inkSoft} viewBox="0 0 24 24" style={{ opacity: onBand ? 0.75 : 1 }}>
             <circle cx="12" cy="5" r="1.6" />
             <circle cx="12" cy="12" r="1.6" />
             <circle cx="12" cy="19" r="1.6" />
@@ -69,8 +73,11 @@ export function Header({
   );
 }
 
-/** Bottom sheet — follows the theme (dark in dark mode). Content may be a render prop `(C) => …`. */
-export function Sheet({ show, onClose, children }: { show: boolean; onClose: () => void; children: ReactNode | ((C: Theme) => ReactNode) }) {
+/** Bottom sheet — follows the theme (dark in dark mode). Content may be a render prop `(C) => …`.
+ *  `tall`: opt-in FIXED height (instead of content-driven) for sheets whose content can shrink
+ *  drastically (a filtered search list) — without it, a filtered-down list collapses the sheet's
+ *  height and, anchored at `bottom:0`, the whole thing can sink behind an open mobile keyboard. */
+export function Sheet({ show, onClose, lockSwipe = false, tall = false, children }: { show: boolean; onClose: () => void; lockSwipe?: boolean; tall?: boolean; children: ReactNode | ((C: Theme) => ReactNode) }) {
   const C = useTheme();
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const drag = useRef<{ y0: number; scroll0: number; dy: number; active: boolean } | null>(null);
@@ -82,8 +89,19 @@ export function Sheet({ show, onClose, children }: { show: boolean; onClose: () 
 
   if (!show) return null;
 
+  // tall sheets don't scroll themselves (overflowY hidden) — their inner `.gs` list does instead.
+  // Drag-to-dismiss must still key off the LIST's scroll offset, not the outer container's (always 0).
+  const currentScrollTop = () => {
+    const el = scrollRef.current;
+    if (!el) return 0;
+    return tall ? (el.querySelector<HTMLElement>(".gs")?.scrollTop ?? 0) : el.scrollTop;
+  };
+
+  // lockSwipe: sheets whose body owns vertical drag (ScrollPicker wheels in DateSheet) opt out of
+  // swipe-to-dismiss, otherwise spinning a wheel closes the sheet. They still close via backdrop/buttons.
   const onTouchStart = (e: React.TouchEvent) => {
-    drag.current = { y0: e.touches[0]!.clientY, scroll0: scrollRef.current?.scrollTop ?? 0, dy: 0, active: false };
+    if (lockSwipe) return;
+    drag.current = { y0: e.touches[0]!.clientY, scroll0: currentScrollTop(), dy: 0, active: false };
   };
   const onTouchMove = (e: React.TouchEvent) => {
     const d = drag.current;
@@ -114,7 +132,10 @@ export function Sheet({ show, onClose, children }: { show: boolean; onClose: () 
         style={{
           position: "fixed", bottom: 0, left: 0, right: 0, maxWidth: 420, margin: "0 auto", zIndex: 100,
           background: C.sheet, borderRadius: "22px 22px 0 0", padding: "18px 20px calc(28px + env(safe-area-inset-bottom))",
-          animation: "su .3s cubic-bezier(.4,0,.2,1)", boxShadow: "0 -8px 30px rgba(0,0,0,0.35)", maxHeight: "82vh", overflowY: "auto",
+          animation: "su .3s cubic-bezier(.4,0,.2,1)", boxShadow: "0 -8px 30px rgba(0,0,0,0.35)",
+          ...(tall
+            ? { height: "82vh", display: "flex", flexDirection: "column" as const, overflowY: "hidden" as const }
+            : { maxHeight: "82vh", overflowY: "auto" as const }),
           overscrollBehavior: "contain", touchAction: "pan-y",
           transform: `translateY(${dragY}px)`,
           transition: dragging ? "none" : "transform .25s cubic-bezier(.4,0,.2,1)",

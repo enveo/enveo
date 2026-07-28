@@ -10,6 +10,33 @@ import { light, themeTokens, type AccentTheme, type Theme } from "./theme";
 export type ThemeMode = "light" | "dark" | "auto";
 export type AiMode = "off" | "server" | "byok";
 export type OpenAiModel = "gpt-5.5" | "gpt-5.5-mini";
+
+/** Start-screen widget stack (per DEVICE — like themeMode, no synchronization). */
+export type WidgetId =
+  | "quickActions"
+  | "accounts"
+  | "envelopes"
+  | "envelopesSavings"
+  | "reportCashflow"
+  | "reportNetWorth"
+  | "upcoming";
+export interface WidgetOpts {
+  /** accounts: start folded to `count` (default 4) with a "show all" toggle. */
+  collapsed?: boolean;
+  count?: number;
+  /** accounts: when defined (even empty), only these account ids show — mirrors envelopes' `picked:` mode. */
+  picked?: string[];
+  /** envelopes: "all" | "savings" | `group:${groupId}` | `picked:${id,id,...}`. */
+  mode?: string;
+  /** quickActions: chosen action keys in display order, from the fixed pool (see widgets.tsx QUICK_ACTION_DEFS). */
+  actions?: string[];
+}
+export interface WidgetConfig {
+  id: WidgetId;
+  enabled: boolean;
+  opts?: WidgetOpts;
+}
+
 export interface Settings {
   themeMode: ThemeMode;
   /** Color theme (per device, like themeMode). */
@@ -25,11 +52,28 @@ export interface Settings {
   subsDismissed: string[];
   /** Custom "Suggest" profiles (per DEVICE — no synchronization, MVP). */
   customProfiles: Array<{ id: string; name: string; prompt: string }>;
+  /** Start screen widget stack — order, enablement, per-widget options (per DEVICE). */
+  startWidgets: WidgetConfig[];
 }
+
+/** Order mirrors the "Edit widgets" sheet and the board mockup; reportNetWorth ships OFF
+ *  (Cashflow is the more broadly useful default report — most budgets have few/no savings
+ *  envelopes yet). A fresh copy every time: callers replace the array wholesale on edit,
+ *  but nothing here should ever risk mutating the shared default in place. */
+const defaultStartWidgets = (): WidgetConfig[] => [
+  { id: "quickActions", enabled: true, opts: { actions: ["expense", "transfer", "import", "suggest"] } },
+  { id: "accounts", enabled: true, opts: { collapsed: true, count: 4 } },
+  { id: "envelopes", enabled: true, opts: { mode: "all" } },
+  // opt-in: lets a user run "envelopes" as everyday-only elsewhere while still surfacing savings here.
+  { id: "envelopesSavings", enabled: false },
+  { id: "reportCashflow", enabled: true },
+  { id: "reportNetWorth", enabled: false },
+  { id: "upcoming", enabled: true },
+];
 
 const DEFAULT_SETTINGS: Settings = {
   themeMode: "light",
-  accentTheme: "koral",
+  accentTheme: "teal",
   discreet: false,
   lang: detectLang(),
   aiMode: "off",
@@ -37,11 +81,32 @@ const DEFAULT_SETTINGS: Settings = {
   openaiModel: "gpt-5.5-mini",
   subsDismissed: [],
   customProfiles: [],
+  startWidgets: defaultStartWidgets(),
 };
 
 function loadSettings(): Settings {
   const raw = loadPersistedSettings(); // null in guest mode — a guest inherits nothing
-  return raw ? { ...DEFAULT_SETTINGS, ...raw } : DEFAULT_SETTINGS;
+  const s = raw ? { ...DEFAULT_SETTINGS, ...raw } : { ...DEFAULT_SETTINGS };
+  // The theme picker was reduced to two tiles (Cisza/Duet) — a device that still has the
+  // retired "koral"/"atrament" tile selected (pre-redesign-06) normalizes to the new default.
+  // The AccentTheme type and THEMES entries stay so this remains parseable either way.
+  if (s.accentTheme === "koral" || s.accentTheme === "atrament") s.accentTheme = "teal";
+  // Migration for devices from before the widget stack existed (or a corrupted/empty array).
+  if (!Array.isArray(s.startWidgets) || s.startWidgets.length === 0) {
+    s.startWidgets = defaultStartWidgets();
+  } else {
+    // Reconcile an already-persisted stack against the current defaults: a widget added in a
+    // later release (e.g. envelopesSavings) must still reach upgrading devices — appended in
+    // default order, disabled/opts as shipped — while preserving the user's existing order and
+    // per-widget enabled/opts. Also drops any entry whose id is no longer known (forward-safety
+    // against a downgrade or a corrupted persist).
+    const defaults = defaultStartWidgets();
+    const known = new Set(defaults.map((w) => w.id));
+    const present = new Set(s.startWidgets.map((w) => w.id));
+    const missing = defaults.filter((w) => !present.has(w.id));
+    s.startWidgets = s.startWidgets.filter((w) => known.has(w.id)).concat(missing);
+  }
+  return s;
 }
 
 const ThemeCtx = createContext<Theme>(light);

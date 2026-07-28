@@ -114,7 +114,10 @@ export function ledgerArb(): fc.Arbitrary<Ledger> {
             fc.record({
               envIdx: fc.integer({ min: 0, max: nEnv - 1 }),
               month: fc.constantFrom(...months),
-              amount: fc.integer({ min: 0, max: 300_00 }),
+              // negative allocations move money back OUT of an envelope (allowNegative on the
+              // allocation pad) — widened from min:0 so the invariant property test actually
+              // fuzzes the now-reachable negative-allocation case.
+              amount: fc.integer({ min: -300_00, max: 300_00 }),
             }),
             { maxLength: 12 },
           ),

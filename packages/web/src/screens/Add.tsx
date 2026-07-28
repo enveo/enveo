@@ -1,27 +1,28 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { type RecurrenceRule, type Transaction, type TxnPayload } from "@enveo/shared";
-import { apiErrorMessage, useLedgerVersion, type EditedImportItem, type ImportItem, type QuickAddResponse, type StateResponse } from "../lib/api";
-import { hasAiTarget, runQuickAdd as aiQuickAdd } from "../lib/ai";
+import { useLedgerVersion, type EditedImportItem, type ImportItem, type StateResponse } from "../lib/api";
 import { hasOpenOp, padKey, type PadState } from "../lib/amount";
 import { categoryCountsFor, rankCategories } from "../lib/categoryIndex";
+import { rankEnvelopes, rankPlaces } from "../lib/suggest";
 import { preferredAccountId, setLastAccountId } from "../lib/lastAccount";
 import { local } from "../lib/mutate";
 import { store } from "../lib/store";
 import { Sheet } from "../components/chrome";
 import { AmountPadHost, type AmountPadTarget } from "../components/AmountPadSheet";
 import { ImportSheet } from "../components/ImportSheet";
-import { accountIconColor } from "../components/tiles";
+import { CardBox, HighlightedText, PickerSearch, SectionEyebrow, useBand } from "../components/kit";
 import { Numpad, ScrollPicker } from "../components/pickers";
-import { EnvTile } from "../components/tiles";
-import { useCurrency, useSettings, useTheme } from "../lib/contexts";
+import { useCurrency, useMask, useTheme } from "../lib/contexts";
 import { haptic } from "../lib/haptics";
-import { currencySymbol, evalExpression, formatMoney, isLight } from "../lib/format";
-import { formatDateLong, monthNames } from "../lib/dates";
+import { currencySymbol, evalExpression, formatMoney } from "../lib/format";
+import { formatDateLong, monthNames, todayISO } from "../lib/dates";
 import { useT, type Message, msg } from "../lib/i18n";
 import { Glyph, Ico } from "../lib/icons";
-import { CORAL, CTA, INCOME, P, SAGE_BG, TEAL, TRANSFER, font } from "../lib/theme";
+import { matchesSearch, SEARCH_THRESHOLD } from "../lib/search";
+import { CORAL, P, TEAL, font, tint } from "../lib/theme";
 
-type Tab = "expense" | "income" | "transfer";
+
+export type Tab = "expense" | "income" | "transfer";
 const RECUR: Array<{ label: Message; rule: string }> = [
   { label: msg("Do not repeat"), rule: "none" },
   { label: msg("Repeat weekly"), rule: "weekly" },
@@ -42,14 +43,51 @@ export interface AddDraft {
   onCancel: () => void;
 }
 
-export function AddScreen({ state, onDone, editTxn, draft }: { state: StateResponse; onDone: () => void; editTxn: Transaction | null; draft?: AddDraft }) {
+/** Top `take` of `ranked`, but guaranteed to include `pinnedId` (prepended, bumping the tail)
+ *  when it exists in `ranked` and would otherwise fall outside the slice — a selection made via
+ *  the full sheet (or inherited from edit/draft prefill) must stay visible if the grid reopens. */
+function withPinned<T extends { id: string }>(ranked: T[], pinnedId: string | null, take: number): T[] {
+  const base = ranked.slice(0, take);
+  if (pinnedId != null && !base.some((x) => x.id === pinnedId)) {
+    const pinned = ranked.find((x) => x.id === pinnedId);
+    if (pinned) return [pinned, ...base.slice(0, take - 1)];
+  }
+  return base;
+}
+
+/** ISO date `n` days before `iso` (UTC — matches DateSheet's own Yesterday button). */
+function isoDaysBefore(iso: string, n: number): string {
+  const d = new Date(`${iso}T00:00Z`);
+  d.setUTCDate(d.getUTCDate() - n);
+  return d.toISOString().slice(0, 10);
+}
+
+export function AddScreen({
+  state,
+  onDone,
+  editTxn,
+  draft,
+  initialTab,
+  initialImport,
+}: {
+  state: StateResponse;
+  onDone: () => void;
+  editTxn: Transaction | null;
+  draft?: AddDraft;
+  /** Quick-action preset from Start (lib/contexts.tsx WidgetId "quickActions" → App.tsx onQuickAdd):
+   *  pre-selects a tab on a FRESH Add (read once at mount — AddScreen unmounts/remounts per screen switch). */
+  initialTab?: Tab;
+  /** Quick-action preset: opens the screenshot-import sheet immediately on mount. */
+  initialImport?: boolean;
+}) {
   const C = useTheme();
+  const M = useMask();
+  const { band, hc } = useBand();
   const { t, lang } = useT();
   const currency = useCurrency();
-  const { settings } = useSettings();
   const accounts = [...state.accounts].filter((a) => !a.archived).sort((a, b) => a.sort - b.sort);
 
-  const [tab, setTab] = useState<Tab>("expense");
+  const [tab, setTab] = useState<Tab>(initialTab ?? "expense");
   // Amount = the same state machine as the Budget pad (padKey): reduction on
   // an operator ("15+25" + "+" → "40+"), contextual "="/✓, fresh=prefill
   // replaced by the first digit. setAmount sets the prefill (edit/AI).
@@ -60,6 +98,11 @@ export function AddScreen({ state, onDone, editTxn, draft }: { state: StateRespo
   const [toAccountId, setToAccountId] = useState(accounts.find((a) => a.id !== accountId)?.id ?? "");
   const [isRefund, setIsRefund] = useState(false);
   const [envelopeId, setEnvelopeId] = useState<string | null>(null);
+  // KOPERTA/NA KONTO: suggestion grid (true) vs the collapsed single-row summary (false).
+  // Expense starts open (nothing to summarize yet); income/transfer start collapsed — a pool
+  // default or a pre-picked destination already exists, so the grid is an opt-in "change" step.
+  const [envOpen, setEnvOpen] = useState(true);
+  const [destOpen, setDestOpen] = useState(false);
   const [items, setItems] = useState<Array<{ envelopeId: string; amount: number }>>([]);
   const [categoryId, setCategoryId] = useState<string | null>(null);
   const [catInput, setCatInput] = useState("");
@@ -67,25 +110,29 @@ export function AddScreen({ state, onDone, editTxn, draft }: { state: StateRespo
   const [name, setName] = useState("");
   const [placeId, setPlaceId] = useState<string | null>(null);
   const [placeInput, setPlaceInput] = useState("");
-  const [note, setNote] = useState("");
-  const [showNote, setShowNote] = useState(false);
   const [showPlace, setShowPlace] = useState(false);
+  const [note, setNote] = useState("");
   const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [recur, setRecur] = useState("none");
   const [confirmed, setConfirmed] = useState(true);
   const [numpad, setNumpad] = useState(true);
-  const [quick, setQuick] = useState("");
-  const [quickBusy, setQuickBusy] = useState(false); // quick-add always calls the model now — it takes a moment
-  const [quickErr, setQuickErr] = useState<string | null>(null);
 
   const [showAcc, setShowAcc] = useState(false);
   const [showTo, setShowTo] = useState(false);
   const [showDate, setShowDate] = useState(false);
   const [showRecur, setShowRecur] = useState(false);
   const [showEnv, setShowEnv] = useState(false);
-  const [showImport, setShowImport] = useState(false);
+  const [showImport, setShowImport] = useState(!!initialImport);
   const [splitMode, setSplitMode] = useState(false);
   const [showTxnMenu, setShowTxnMenu] = useState(false); // kebab in the edit header
+
+  // Picker-sheet search — one query per sheet, reset whenever that sheet opens.
+  const [accQ, setAccQ] = useState("");
+  const [toQ, setToQ] = useState("");
+  const [envQ, setEnvQ] = useState("");
+  useEffect(() => { if (showAcc) setAccQ(""); }, [showAcc]);
+  useEffect(() => { if (showTo) setToQ(""); }, [showTo]);
+  useEffect(() => { if (showEnv) setEnvQ(""); }, [showEnv]);
 
   // editing an existing transaction
   useEffect(() => {
@@ -102,10 +149,11 @@ export function AddScreen({ state, onDone, editTxn, draft }: { state: StateRespo
     setPlaceId(editTxn.placeId);
     setName(editTxn.name ?? "");
     setNote(editTxn.note ?? "");
-    setShowNote(!!editTxn.note);
     setShowPlace(!!editTxn.placeId); // expand filled fields right away (no icon clicking)
     setDate(editTxn.date);
     setConfirmed(editTxn.confirmed);
+    setEnvOpen(false);
+    setDestOpen(false);
   }, [editTxn]);
 
   // Draft-mode prefill: from corrections (initial — returning to the edit) or from a
@@ -124,7 +172,6 @@ export function AddScreen({ state, onDone, editTxn, draft }: { state: StateRespo
       setCategoryId(e.categoryId);
       setName(e.name);
       setNote(e.note);
-      setShowNote(!!e.note);
       prefillPlace(e.placeName);
       setDate(e.date);
       setConfirmed(e.confirmed);
@@ -142,6 +189,8 @@ export function AddScreen({ state, onDone, editTxn, draft }: { state: StateRespo
       setDate(it.date);
       setConfirmed(true);
     }
+    setEnvOpen(false);
+    setDestOpen(false);
     setNumpad(false);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -155,11 +204,11 @@ export function AddScreen({ state, onDone, editTxn, draft }: { state: StateRespo
     setShowPlace(true);
   }
 
-  const at = { expense: CORAL, income: INCOME, transfer: TRANSFER }[tab];
   const plus = tab === "income" || (tab === "expense" && isRefund);
   const accObj = accounts.find((a) => a.id === accountId);
   const envById = new Map(state.envelopes.map((e) => [e.id, e]));
   const env = envelopeId ? envById.get(envelopeId) : null;
+  const toAcc = accounts.find((a) => a.id === toAccountId);
 
   /* Categories sorted by co-occurrence with the SELECTED envelope (index
      memoized per replica version — zero scanning on each open);
@@ -212,9 +261,12 @@ export function AddScreen({ state, onDone, editTxn, draft }: { state: StateRespo
         amount: minor,
         date,
         name: name.trim(),
-        envelopeId: tab === "transfer" ? null : envelopeId,
-        categoryId: tab === "transfer" ? null : categoryId,
-        placeName: placeId ? (state.places.find((p) => p.id === placeId)?.name ?? null) : placeInput.trim() || null,
+        // income has no envelope selection (always → To be budgeted); transfer likewise has none.
+        // Place/category are expense-only — switching tab after picking either on an expense must
+        // not silently attach them to an income/transfer.
+        envelopeId: tab === "expense" ? envelopeId : null,
+        categoryId: tab === "expense" ? categoryId : null,
+        placeName: tab === "expense" ? (placeId ? (state.places.find((p) => p.id === placeId)?.name ?? null) : placeInput.trim() || null) : null,
         note,
         confirmed,
       });
@@ -232,11 +284,16 @@ export function AddScreen({ state, onDone, editTxn, draft }: { state: StateRespo
       toAccountId: tab === "transfer" ? toAccountId : null,
       amount: usingSplit ? splitSum : minor,
       date,
-      confirmed,
+      // new manual transactions are always confirmed (the toggle is gone); editing an existing
+      // one leaves ITS confirmed value untouched — never silently flip an unconfirmed import/planned txn.
+      confirmed: editTxn ? confirmed : true,
       isRefund: tab === "expense" && isRefund,
-      envelopeId: tab === "transfer" ? null : usingSplit ? null : envelopeId,
-      placeId,
-      categoryId: usingSplit ? null : categoryId,
+      // income has no envelope selection (always → To be budgeted); transfer likewise has none.
+      // Place/category are expense-only — gated the same way, so switching tab after picking
+      // either on an expense never silently attaches them to an income/transfer.
+      envelopeId: tab !== "expense" ? null : usingSplit ? null : envelopeId,
+      placeId: tab === "expense" ? placeId : null,
+      categoryId: usingSplit ? null : tab === "expense" ? categoryId : null,
       name: name.trim() || null,
       note: note || null,
       planned: recur !== "none",
@@ -249,346 +306,405 @@ export function AddScreen({ state, onDone, editTxn, draft }: { state: StateRespo
     onDone();
   }
 
-  const applyQuick = (r: QuickAddResponse) => {
-    if (r.amount) setAmount((r.amount / 100).toFixed(2).replace(".", ","));
-    setTab(r.type);
-    setIsRefund(r.isRefund);
-    if (r.envelopeId) setEnvelopeId(r.envelopeId);
-    if (r.placeId) { setPlaceId(r.placeId); setShowPlace(true); }
-    if (r.categoryId) setCategoryId(r.categoryId);
-    if (r.note) setName(r.note); // leftover quick-add text = transaction name
-    setDate(r.date);
-    setNumpad(false);
-  };
+  // Date shown under the amount: Today/Yesterday when applicable, else the long form; a date
+  // other than today renders C.warn so a back-dated entry is visible at a glance (board spec).
+  const todayIso = todayISO();
+  const isToday = date === todayIso;
+  const isYesterday = !isToday && date === isoDaysBefore(todayIso, 1);
+  const dateLabel = isToday ? t("Today") : isYesterday ? t("Yesterday") : formatDateLong(date, lang);
+  const dateColor = isToday ? C.soft : C.warn;
 
-  /* Quick-add is AI-only (the rule parser is gone): the bar exists only when there IS a
-     usable model — hasAiTarget is the SAME predicate runQuickAdd dispatches on, so the bar
-     can never be offered on a path that would only throw. Note `aiMode !== "off"` is not
-     that predicate: byok with an empty key (Settings sets the mode before the key is typed)
-     is on but unusable. With no target we show one line pointing at Settings; with a target
-     a failure (no operator key, upstream error, offline) is SHOWN instead of degrading. */
-  const aiOn = hasAiTarget(settings);
-  async function execQuickAdd() {
-    const text = quick.trim();
-    const ledger = store.getLedger();
-    if (!text || !ledger || quickBusy) return;
-    setQuickBusy(true);
-    setQuickErr(null);
-    try {
-      applyQuick(await aiQuickAdd({ text, locale: lang, ledger, settings }));
-      setQuick("");
-    } catch (e) {
-      setQuickErr(apiErrorMessage(e));
-    } finally {
-      setQuickBusy(false);
-    }
-  }
+  // Local suggestion rankings (lib/suggest.ts) — pure, no I/O; recomputed on every render (cheap
+  // for a personal ledger). Envelope ranking also reacts live to the typed amount (amount affinity).
+  const ledgerNow = store.getLedger();
+  const rankedEnvObjs = ledgerNow
+    ? rankEnvelopes(ledgerNow, todayIso, minor > 0 ? minor : null)
+        .map((id) => envById.get(id))
+        .filter((e): e is NonNullable<typeof e> => !!e)
+    : [];
+  const placeScopeEnv = envelopeId ?? items[0]?.envelopeId ?? null;
+  const rankedPlaceObjs = ledgerNow
+    ? rankPlaces(ledgerNow, placeScopeEnv, categoryId)
+        .map((id) => state.places.find((p) => p.id === id))
+        .filter((p): p is NonNullable<typeof p> => !!p)
+    : [];
+
+  const envGridList = withPinned(rankedEnvObjs, envelopeId, 4);
+  const catList = withPinned(rankedCats, categoryId, 4);
+  const placeList = withPinned(rankedPlaceObjs, placeId, 3);
+  const destList = withPinned(accounts.filter((a) => a.id !== accountId), toAccountId, 4);
+
+  // Live preview for the collapsed KOPERTA row: what the envelope's "available" becomes after
+  // this transaction (income/refund add, expense subtracts) — reuses the existing Reports idiom.
+  const envAfter = (env?.available ?? 0) + (plus ? minor : -minor);
+  const envPreviewText = envAfter < 0 ? t("over by {amount}", { amount: M(-envAfter) }) : t("{amount} left", { amount: M(envAfter) });
+
+  // Chip surface (board spec: pill, centered flex-wrap) — the ghost variant marks "type your own".
+  const chipStyle = (selected: boolean): CSSProperties => ({
+    background: selected ? "var(--accent-1a)" : C.card, border: `1px solid ${selected ? "var(--accent)" : C.line}`,
+    color: selected ? "var(--accent)" : C.text, borderRadius: 999, padding: "5px 11px", fontSize: 11,
+    fontWeight: selected ? 650 : 600, cursor: "pointer",
+  });
+  const ghostChipStyle: CSSProperties = { background: C.card, border: `1px solid ${C.line}`, color: C.mute, borderRadius: 999, padding: "5px 11px", fontSize: 11, cursor: "pointer" };
+  // KOPERTA/NA KONTO suggestion card (2×2 grid) and its collapsed single-row summary.
+  const gridCardStyle = (selected: boolean): CSSProperties => ({
+    display: "flex", alignItems: "center", gap: 7, background: C.card, textAlign: "left", width: "100%",
+    border: `${selected ? 2 : 1}px solid ${selected ? "var(--accent)" : C.line}`, borderRadius: 11,
+    padding: selected ? "7px 9px" : "8px 10px", cursor: "pointer",
+  });
+  const collapsedRowStyle = (accent: boolean): CSSProperties => ({
+    display: "flex", alignItems: "center", gap: 9, textAlign: "left", width: `calc(100% - ${2 * P}px)`,
+    background: accent ? C.card : "none", border: accent ? `2px solid var(--accent)` : `1.3px dashed ${C.line}`,
+    borderRadius: 12, padding: "9px 12px", margin: `0 ${P}px`, cursor: "pointer",
+  });
+  const linkBtnStyle: CSSProperties = { background: "none", border: "none", padding: 0, color: "var(--accent)", fontSize: 11, fontWeight: 600, cursor: "pointer", fontFamily: font };
 
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column" }}>
       {/* one header for create and edit: type tabs always (type editable);
           in edit, trash + kebab on the right instead of the alignment spacer */}
-      <div style={{ display: "flex", alignItems: "center", padding: "8px 10px", gap: 6 }}>
-        <button onClick={draft ? draft.onCancel : onDone} aria-label={t("Back")} style={{ background: "none", border: "none", cursor: "pointer", padding: 4, display: "flex" }}>
-          <Ico d="M19 12H5m0 0l7 7m-7-7l7-7" size={18} />
-        </button>
-        <div style={{ display: "flex", background: C.bg, borderRadius: 14, padding: 2, flex: 1, border: `1px solid ${C.line}` }}>
-          {(["expense", "income", "transfer"] as Tab[]).map((tb) => (
-            <button key={tb} onClick={() => { setTab(tb); reset(); setIsRefund(false); }} style={{ flex: 1, padding: "8px 0", borderRadius: 11, border: "none", fontSize: 12, fontWeight: 600, cursor: "pointer", background: tab === tb ? { expense: CORAL, income: INCOME, transfer: TRANSFER }[tb] : "transparent", color: tab === tb ? "#fff" : C.soft }}>
-              {t(({ expense: msg("Expense"), income: msg("Income"), transfer: msg("Transfer") } as const)[tb])}
-            </button>
-          ))}
-        </div>
-        {editTxn ? (
-          <>
-            <button
-              onClick={() => { if (window.confirm(t("Delete this transaction? This cannot be undone."))) { local.deleteTxn(editTxn.id); onDone(); } }}
-              aria-label={t("Delete")}
-              style={{ width: 34, height: 34, borderRadius: 10, border: "none", background: C.surface, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}
-            >
-              {/* trash: lid + bucket */}
-              <Ico d="M4 7h16M9 7V5a1 1 0 011-1h6a1 1 0 011 1v2m3 0l-.9 12.1A2 2 0 0115.1 21H8.9a2 2 0 01-2-1.9L6 7m4 4v6m4-6v6" size={17} color={CORAL} sw={2} />
-            </button>
-            <div style={{ position: "relative", flexShrink: 0 }}>
-              <button
-                onClick={() => setShowTxnMenu((v) => !v)}
-                aria-label={t("Duplicate")}
-                style={{ width: 34, height: 34, borderRadius: 10, border: "none", background: C.surface, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}
-              >
-                {/* kebab: 3 dots */}
-                <svg width="17" height="17" viewBox="0 0 24 24" fill={C.text}>
-                  <circle cx="12" cy="5" r="2" /><circle cx="12" cy="12" r="2" /><circle cx="12" cy="19" r="2" />
-                </svg>
+      <div style={band ? { background: C.headerBg, paddingBottom: draft ? 6 : undefined } : undefined}>
+        <div style={{ display: "flex", alignItems: "center", padding: "8px 10px", gap: 6 }}>
+          <button onClick={draft ? draft.onCancel : onDone} aria-label={t("Back")} style={{ background: "none", border: "none", cursor: "pointer", padding: 4, display: "flex" }}>
+            <Ico d="M19 12H5m0 0l7 7m-7-7l7-7" size={18} color={hc(C.headerInk, C.text)} />
+          </button>
+          <div style={{ display: "flex", background: hc(tint(C.headerInk, 0.14), C.chip), borderRadius: 14, padding: 2, flex: 1, border: "none" }}>
+            {(["expense", "income", "transfer"] as Tab[]).map((tb) => (
+              <button key={tb} onClick={() => { setTab(tb); reset(); setIsRefund(false); setEnvOpen(tb === "expense"); setDestOpen(false); }} style={{ flex: 1, padding: "8px 0", borderRadius: 11, border: "none", fontSize: 12, fontWeight: 650, cursor: "pointer", background: tab === tb ? (band ? "var(--cta)" : C.text) : "transparent", color: tab === tb ? (band ? C.headerBg : C.card) : band ? C.headerMute : C.soft }}>
+                {t(({ expense: msg("Expense"), income: msg("Income"), transfer: msg("Transfer") } as const)[tb])}
               </button>
-              {showTxnMenu && (
-                <div style={{ position: "absolute", top: 38, right: 0, background: C.card, border: `1px solid ${C.line}`, borderRadius: 10, boxShadow: "0 6px 18px rgba(0,0,0,0.16)", zIndex: 30, minWidth: 150, overflow: "hidden" }}>
-                  <button
-                    onClick={() => { setShowTxnMenu(false); local.duplicateTxn(editTxn); onDone(); }}
-                    style={{ display: "block", width: "100%", padding: "11px 14px", background: "none", border: "none", color: C.text, fontSize: 13, fontWeight: 500, cursor: "pointer", textAlign: "left", fontFamily: font }}
-                  >
-                    {t("Duplicate")}
-                  </button>
-                </div>
-              )}
-            </div>
-          </>
-        ) : (
-          <div style={{ width: 26 }} />
+            ))}
+          </div>
+          {editTxn ? (
+            <>
+              <button
+                onClick={() => { if (window.confirm(t("Delete this transaction? This cannot be undone."))) { local.deleteTxn(editTxn.id); onDone(); } }}
+                aria-label={t("Delete")}
+                style={{ width: 34, height: 34, borderRadius: 10, border: "none", background: hc(tint(C.headerInk, 0.13), C.surface), cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}
+              >
+                {/* trash: lid + bucket */}
+                <Ico d="M4 7h16M9 7V5a1 1 0 011-1h6a1 1 0 011 1v2m3 0l-.9 12.1A2 2 0 0115.1 21H8.9a2 2 0 01-2-1.9L6 7m4 4v6m4-6v6" size={17} color={hc(C.headerNeg, CORAL)} sw={2} />
+              </button>
+              <div style={{ position: "relative", flexShrink: 0 }}>
+                <button
+                  onClick={() => setShowTxnMenu((v) => !v)}
+                  aria-label={t("Duplicate")}
+                  style={{ width: 34, height: 34, borderRadius: 10, border: "none", background: hc(tint(C.headerInk, 0.13), C.surface), cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}
+                >
+                  {/* kebab: 3 dots */}
+                  <svg width="17" height="17" viewBox="0 0 24 24" fill={hc(C.headerInk, C.text)}>
+                    <circle cx="12" cy="5" r="2" /><circle cx="12" cy="12" r="2" /><circle cx="12" cy="19" r="2" />
+                  </svg>
+                </button>
+                {showTxnMenu && (
+                  <div style={{ position: "absolute", top: 38, right: 0, background: C.card, border: `1px solid ${C.line}`, borderRadius: 10, boxShadow: "0 6px 18px rgba(0,0,0,0.16)", zIndex: 30, minWidth: 150, overflow: "hidden" }}>
+                    <button
+                      onClick={() => { setShowTxnMenu(false); local.duplicateTxn(editTxn); onDone(); }}
+                      style={{ display: "block", width: "100%", padding: "11px 14px", background: "none", border: "none", color: C.text, fontSize: 13, fontWeight: 500, cursor: "pointer", textAlign: "left", fontFamily: font }}
+                    >
+                      {t("Duplicate")}
+                    </button>
+                  </div>
+                )}
+              </div>
+            </>
+          ) : draft ? (
+            <div style={{ width: 26 }} />
+          ) : (
+            <button onClick={() => setShowImport(true)} aria-label={t("From screenshot")} style={{ background: "none", border: "none", cursor: "pointer", padding: 4, display: "flex", flexShrink: 0 }}>
+              <Ico d="M4 8.5A1.5 1.5 0 015.5 7H8l1.6-2.4a1 1 0 01.9-.6h3a1 1 0 01.9.6L16 7h2.5A1.5 1.5 0 0120 8.5v9a1.5 1.5 0 01-1.5 1.5h-13A1.5 1.5 0 014 17.5v-9zM12 16a3.5 3.5 0 100-7 3.5 3.5 0 000 7z" size={19} color={hc(C.headerInk, C.soft)} sw={1.7} />
+            </button>
+          )}
+        </div>
+
+        {draft && (
+          <div style={{ textAlign: "center", fontSize: 12, fontWeight: 600, color: hc(C.headerMute, C.soft), padding: "0 10px 4px" }}>{t("Imported item")}</div>
         )}
       </div>
 
-      {draft && (
-        <div style={{ textAlign: "center", fontSize: 12, fontWeight: 600, color: C.soft, padding: "0 10px 4px" }}>{t("Imported item")}</div>
-      )}
-
-      {/* Smart Quick-Add (AI-only) — hidden in edit and in draft mode (import item editor).
-          With AI off there is no rules path left: one line points at Settings instead. */}
-      {!editTxn && !draft && (aiOn ? (
-        <div style={{ margin: `2px ${P}px 4px`, display: "flex", gap: 6, alignItems: "center" }}>
-          <input
-            value={quick}
-            onChange={(e) => setQuick(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && execQuickAdd()}
-            onFocus={() => setNumpad(false)}
-            placeholder={t("✨ e.g. “Walmart 47.30 groceries yesterday”")}
-            style={{ flex: 1, padding: "9px 12px", borderRadius: 10, border: `1px solid ${C.line}`, background: C.bg, color: C.text, fontSize: 12, fontFamily: font, outline: "none" }}
-          />
-          <button onClick={execQuickAdd} disabled={quickBusy} aria-label={t("Parse")} style={{ padding: "9px 12px", borderRadius: 10, border: "none", background: CTA, color: "#fff", fontSize: 12, fontWeight: 600, cursor: quickBusy ? "default" : "pointer", opacity: quickBusy ? 0.5 : 1 }}>✨</button>
-        </div>
-      ) : (
-        <div style={{ margin: `2px ${P}px 6px`, fontSize: 11.5, color: C.mute, lineHeight: 1.45 }}>
-          {/* AI off → turn it on; AI on but byok without a key → the key is what's missing */}
-          {t(settings.aiMode === "off" ? msg("Quick add and screenshot import need AI — turn it on in Settings.") : msg("Quick add needs your OpenAI key — paste it in Settings → Artificial intelligence."))}
-        </div>
-      ))}
-      {!editTxn && !draft && quickErr && (
-        <div style={{ margin: `0 ${P}px 4px`, fontSize: 11.5, color: CORAL }}>{quickErr}</div>
-      )}
-
-      <button onClick={() => setNumpad(true)} style={{ margin: `4px ${P}px 10px`, padding: "12px 14px", background: C.bg, borderRadius: 12, border: `1px solid ${C.line}`, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
-          <button onClick={(e) => { e.stopPropagation(); setShowAcc(true); }} style={{ background: "none", border: "none", cursor: "pointer", padding: 0, display: "flex", flexDirection: "column", alignItems: "center", gap: 2 }}>
-            <Glyph name={accObj?.icon ?? "wallet"} size={20} color={C.soft} />
-            <span style={{ fontSize: 10, color: C.soft, fontWeight: 500, maxWidth: 76, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{accObj?.name ?? t("Account")}</span>
-          </button>
+      {/* Amount hero (board .amt-big): centered, 38px/800 tabular; tap anywhere → open the pad.
+          The horizontally-scrolling inner div keeps a long expression's cursor end visible. */}
+      <div role="button" tabIndex={0} onClick={() => setNumpad(true)} onKeyDown={(e) => { if (e.target !== e.currentTarget) return; if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setNumpad(true); } }} style={{ padding: "8px 0 2px", cursor: "pointer", display: "flex", justifyContent: "center" }}>
+        <div style={{ display: "inline-flex", alignItems: "baseline", maxWidth: "100%" }}>
+          {/* Expense-only sign toggle: −/+ flips isRefund right next to the number (board spec) —
+              income/transfer never show it (income is always +, transfer has no sign). */}
           {tab === "expense" && (
-            <>
-              <div style={{ width: 1, height: 30, background: C.line }} />
-              <button onClick={(e) => { e.stopPropagation(); setIsRefund(!isRefund); }} aria-label={t("Toggle refund")} style={{ position: "relative", width: 52, height: 28, borderRadius: 15, border: "none", cursor: "pointer", background: C.line, padding: 0, flexShrink: 0 }}>
-                <span style={{ position: "absolute", top: 2, left: 2, width: 24, height: 24, borderRadius: 8, background: isRefund ? INCOME : CORAL, color: "#fff", fontSize: 14, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center", transform: isRefund ? "translateX(24px)" : "translateX(0)", transition: "transform .15s" }}>{isRefund ? "+" : "−"}</span>
-              </button>
-            </>
+            <button
+              onClick={(e) => { e.stopPropagation(); setIsRefund((v) => !v); }}
+              aria-label={t("Toggle refund")}
+              style={{
+                width: 28, height: 28, borderRadius: "50%", alignSelf: "center", flexShrink: 0, marginRight: 7,
+                border: `1.5px solid ${isRefund ? C.pos : C.line}`, background: isRefund ? tint(C.pos, 0.12) : "none",
+                color: isRefund ? C.pos : C.text, fontSize: 17, fontWeight: 800, lineHeight: 1, padding: 0,
+                display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer",
+              }}
+            >
+              {isRefund ? "+" : "−"}
+            </button>
           )}
-        </div>
-        {/* right side as a column: [scrollable amount + currency] above [live result].
-            minWidth:0 lets a long expression scroll instead of pushing out the currency/result. */}
-        <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", alignItems: "flex-end" }}>
-          <div style={{ display: "flex", alignItems: "center", maxWidth: "100%" }}>
-            <div ref={amtRef} className="gs" style={{ overflowX: "auto", whiteSpace: "nowrap", minWidth: 0, display: "flex", alignItems: "center" }}>
-              <span style={{ fontSize: 30, fontWeight: 700, color: plus ? INCOME : C.text, fontVariantNumeric: "tabular-nums" }}>{amount || "0"}</span>
-              {numpad && <div style={{ width: 2, height: 24, background: TEAL, borderRadius: 1, marginLeft: 2, flexShrink: 0, animation: "fi .6s ease-in-out infinite alternate" }} />}
-            </div>
-            <span style={{ fontSize: 15, color: C.soft, alignSelf: "flex-end", paddingBottom: 3, marginLeft: 4, flexShrink: 0 }}>{currencySymbol(currency, lang)}</span>
+          <div ref={amtRef} className="gs" style={{ overflowX: "auto", whiteSpace: "nowrap", maxWidth: "100%" }}>
+            <span style={{ fontSize: 38, fontWeight: 800, color: plus ? C.pos : C.text, fontVariantNumeric: "tabular-nums" }}>{amount || "0"}</span>
+            {numpad && <span style={{ display: "inline-block", width: 2, height: 28, background: "var(--accent)", borderRadius: 1, marginLeft: 3, verticalAlign: "text-bottom", animation: "fi .6s ease-in-out infinite alternate" }} />}
           </div>
+          <span style={{ fontSize: 17, color: C.soft, fontWeight: 700, marginLeft: 5, flexShrink: 0 }}>{currencySymbol(currency, lang)}</span>
         </div>
-      </button>
+      </div>
 
-      <div className="gs" style={{ flex: 1, overflowY: "auto", padding: `0 ${P}px` }} onClick={() => setNumpad(false)}>
-        {tab === "expense" && !splitMode && !env && (
-          <button onClick={() => setShowEnv(true)} style={{ display: "flex", alignItems: "center", gap: 11, width: "100%", padding: "4px 0 12px", background: "none", border: "none", cursor: "pointer" }}>
-            <div style={{ width: 54, height: 40, borderRadius: 9, background: C.bg, border: `1.3px dashed ${C.line}`, display: "flex", alignItems: "center", justifyContent: "center", boxSizing: "border-box" }}>
-              <span style={{ fontSize: 16, color: C.mute }}>?</span>
-            </div>
-            <span style={{ fontSize: 14, color: C.mute }}>{t("Choose an envelope")}</span>
-            <span style={{ flex: 1 }} />
-            {!draft && <span onClick={(e) => { e.stopPropagation(); enterSplit(); }} style={{ fontSize: 11, color: TEAL, fontWeight: 600 }}>{t("Split")}</span>}
-          </button>
-        )}
-        {tab === "expense" && !splitMode && env && (
-          <div style={{ padding: "2px 0 10px" }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-              <button onClick={() => setShowEnv(true)} style={{ display: "flex", alignItems: "center", gap: 11, background: "none", border: "none", cursor: "pointer", padding: 0, minWidth: 0 }}>
-                <MiniEnv color={env.color} icon={env.icon} />
-                <span style={{ fontSize: 15.5, fontWeight: 600, color: C.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{env.name}</span>
-              </button>
-              <span style={{ flex: 1 }} />
-              {!draft && <button onClick={enterSplit} style={{ background: "none", border: "none", color: TEAL, fontSize: 11, fontWeight: 600, cursor: "pointer", flexShrink: 0 }}>{t("Split")}</button>}
-            </div>
+      {/* Account + date — one quiet line under the amount (board B6v2 spec): two independent tap
+          targets (account → showAcc; date → the existing DateSheet), composed WITHOUT gluing a
+          sentence — tiny icons carry the meaning instead ("from account X … date Y" reads in the
+          wrong order in several languages). A non-today date warns amber. */}
+      <div style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: 6, padding: "0 0 8px" }}>
+        <button onClick={() => setShowAcc(true)} style={{ display: "flex", alignItems: "center", gap: 4, background: "none", border: "none", padding: 2, cursor: "pointer" }}>
+          <Glyph name="wallet" size={11} color={C.mute} />
+          <span style={{ fontSize: 11, fontWeight: 700, color: C.soft }}>{accObj?.name ?? t("Account")}</span>
+        </button>
+        <span style={{ fontSize: 11, color: C.mute }}>·</span>
+        <button onClick={() => { setShowDate(true); setNumpad(false); }} style={{ display: "flex", alignItems: "center", gap: 4, background: "none", border: "none", padding: 2, cursor: "pointer" }}>
+          <Glyph name="calendar" size={11} color={dateColor} />
+          <span style={{ fontSize: 11, fontWeight: 700, color: dateColor }}>{dateLabel}</span>
+        </button>
+      </div>
 
-            <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 10 }}>
-              {categoryId ? (
-                <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "6px 11px", borderRadius: 17, background: C.bg, border: `1px solid ${C.line}`, flexShrink: 0, maxWidth: "60%" }}>
-                  <Glyph name="tag" size={13} color={C.soft} />
-                  <span style={{ fontSize: 12.5, fontWeight: 600, color: C.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{state.categories.find((c) => c.id === categoryId)?.name}</span>
-                  <button onClick={() => setCategoryId(null)} aria-label={t("Remove category")} style={{ background: "none", border: "none", cursor: "pointer", padding: 1, display: "flex", flexShrink: 0 }}>
-                    <Ico d="M6 6l12 12M18 6L6 18" size={12} color={C.mute} sw={2} />
+      {/* Name — the transaction title, kept from the shipped Add as one slim underline field
+          (shared across all three tabs now that it no longer sits beside the category chip). */}
+      <div style={{ padding: `0 ${P}px 4px` }}>
+        <input
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          onFocus={() => setNumpad(false)}
+          placeholder={t("Name")}
+          style={{ width: "100%", boxSizing: "border-box", background: "none", border: "none", borderBottom: `1px solid ${C.line}`, color: C.text, fontSize: 14, fontFamily: font, outline: "none", padding: "5px 2px" }}
+        />
+      </div>
+
+      {/* An existing note is shown read-only (new notes can no longer be added) — ✕ clears it,
+          taking effect when the transaction is saved. */}
+      {note && (
+        <div style={{ display: "flex", alignItems: "center", gap: 8, padding: `0 ${P}px 4px` }}>
+          <Ico d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z" size={14} color={C.mute} />
+          <span style={{ flex: 1, minWidth: 0, fontSize: 12.5, color: C.soft, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{note}</span>
+          <button onClick={() => setNote("")} style={{ background: "none", border: "none", color: C.mute, fontSize: 11, cursor: "pointer", flexShrink: 0 }}>✕</button>
+        </div>
+      )}
+
+      <div className="gs" style={{ flex: 1, overflowY: "auto" }} onClick={() => setNumpad(false)}>
+        {tab === "transfer" ? (
+          <>
+            <SectionEyebrow
+              label={t("Destination account")}
+              right={<button onClick={() => setShowTo(true)} style={linkBtnStyle}>{destOpen ? t("All") : t("Change")} ›</button>}
+            />
+            {destOpen ? (
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 7, padding: `0 ${P}px` }}>
+                {destList.map((a) => (
+                  <button key={a.id} onClick={() => { setToAccountId(a.id); setDestOpen(false); }} style={gridCardStyle(a.id === toAccountId)}>
+                    <Glyph name={a.icon} size={15} color={a.color} sw={1.8} />
+                    <span style={{ minWidth: 0 }}>
+                      <span style={{ display: "block", fontSize: 11, fontWeight: 650, color: C.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{a.name}</span>
+                      <span style={{ display: "block", fontSize: 9, color: C.soft, fontVariantNumeric: "tabular-nums" }}>{M(a.balance)}</span>
+                    </span>
                   </button>
-                </div>
-              ) : (
-                <button onClick={() => { setCatOpen(!catOpen); setNumpad(false); }} style={{ padding: "6px 11px", borderRadius: 17, background: "none", border: `1.3px dashed ${C.line}`, color: C.mute, fontSize: 12.5, fontWeight: 600, cursor: "pointer", flexShrink: 0, whiteSpace: "nowrap" }}>
-                  {t("+ Category")}
-                </button>
-              )}
-              <input
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                onFocus={() => setNumpad(false)}
-                placeholder={t("Name")}
-                style={{ flex: 1, minWidth: 0, background: "none", border: "none", borderBottom: `1px solid ${C.line}`, color: C.text, fontSize: 14, fontFamily: font, outline: "none", padding: "5px 0" }}
-              />
-            </div>
+                ))}
+              </div>
+            ) : (
+              <button onClick={() => setShowTo(true)} style={collapsedRowStyle(true)}>
+                {toAcc && <Glyph name={toAcc.icon} size={17} color={toAcc.color} sw={1.8} />}
+                <span style={{ flex: 1, minWidth: 0, fontSize: 12.5, fontWeight: 650, color: C.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{toAcc?.name ?? t("Destination account")}</span>
+              </button>
+            )}
+          </>
+        ) : tab === "expense" && splitMode ? (
+          <SplitEditor items={items} setItems={setItems} envelopes={state.envelopes} total={minor} onCancel={() => setSplitMode(false)} />
+        ) : tab === "expense" ? (
+          <>
+            <SectionEyebrow
+              label={t("Envelope")}
+              right={<button onClick={() => setShowEnv(true)} style={linkBtnStyle}>{envOpen ? t("All") : t("Change")} ›</button>}
+            />
+            {envOpen ? (
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 7, padding: `0 ${P}px` }}>
+                {envGridList.map((e) => (
+                  <button key={e.id} onClick={() => { setEnvelopeId(e.id); setEnvOpen(false); }} style={gridCardStyle(e.id === envelopeId)}>
+                    <Glyph name={e.icon} size={15} color={e.color} sw={1.8} />
+                    <span style={{ minWidth: 0 }}>
+                      <span style={{ display: "block", fontSize: 11, fontWeight: 650, color: C.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{e.name}</span>
+                      <span style={{ display: "block", fontSize: 9, color: C.soft, fontVariantNumeric: "tabular-nums" }}>{e.available < 0 ? "−" : ""}{M(Math.abs(e.available))}</span>
+                    </span>
+                  </button>
+                ))}
+              </div>
+            ) : env ? (
+              <button onClick={() => setShowEnv(true)} style={collapsedRowStyle(true)}>
+                <Glyph name={env.icon} size={17} color={env.color} sw={1.8} />
+                <span style={{ flex: 1, minWidth: 0, fontSize: 12.5, fontWeight: 650, color: C.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{env.name}</span>
+                <span style={{ fontSize: 11, color: C.soft, fontVariantNumeric: "tabular-nums", flexShrink: 0 }}>{envPreviewText}</span>
+              </button>
+            ) : (
+              <button onClick={() => setEnvOpen(true)} style={collapsedRowStyle(false)}>
+                <span style={{ flex: 1, fontSize: 12.5, color: C.mute }}>{t("Choose an envelope")}</span>
+              </button>
+            )}
+          </>
+        ) : null}
 
-            {catOpen && !categoryId && (
-              <div style={{ marginTop: 10 }}>
+        {tab === "expense" && !splitMode && (
+          <>
+            <SectionEyebrow label={t("Category")} right={<button onClick={() => setCatOpen(true)} style={linkBtnStyle}>{t("Other")} ›</button>} />
+            {!catOpen && (
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 6, padding: `0 ${P}px 4px` }}>
+                {catList.map((c) => (
+                  <button key={c.id} onClick={() => { setCategoryId(categoryId === c.id ? null : c.id); setCatOpen(false); }} style={chipStyle(categoryId === c.id)}>{c.name}</button>
+                ))}
+              </div>
+            )}
+            {catOpen && (
+              <div style={{ padding: `0 ${P}px 6px` }}>
                 <input value={catInput} onChange={(e) => setCatInput(e.target.value)} onFocus={() => setNumpad(false)} placeholder={t("Type or pick a category...")} style={{ width: "100%", padding: "8px 10px", borderRadius: 8, border: `1px solid ${C.line}`, background: C.bg, color: C.text, fontSize: 12, fontFamily: font, outline: "none", boxSizing: "border-box", marginBottom: 6 }} />
                 <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginBottom: 6 }}>
                   {filteredCats.slice(0, 8).map((c) => (
-                    <button key={c.id} onClick={() => { setCategoryId(c.id); setCatInput(""); setCatOpen(false); }} style={{ padding: "5px 10px", borderRadius: 8, fontSize: 11, background: C.bg, color: C.text, border: `1px solid ${C.line}`, cursor: "pointer" }}>{c.name}</button>
+                    <button key={c.id} onClick={() => { setCategoryId(c.id); setCatInput(""); setCatOpen(false); }} style={{ padding: "5px 10px", borderRadius: 8, fontSize: 11, background: C.chip, color: C.text, border: `1px solid ${C.line}`, cursor: "pointer" }}>{c.name}</button>
                   ))}
                 </div>
                 {/* category creation = local.createCategory — unavailable in draft (zero local.*) */}
                 {!draft && catInput && !state.categories.some((c) => c.name.toLowerCase() === catInput.toLowerCase()) && (
-                  <button onClick={() => { const c = local.createCategory(catInput); setCategoryId(c.id); setCatInput(""); setCatOpen(false); }} style={{ padding: "7px 10px", borderRadius: 8, fontSize: 11, background: INCOME + "1a", color: INCOME, border: `1px solid ${INCOME}44`, cursor: "pointer", width: "100%", textAlign: "left" }}>{t("+ Add “{name}”", { name: catInput })}</button>
+                  <button onClick={() => { const c = local.createCategory(catInput); setCategoryId(c.id); setCatInput(""); setCatOpen(false); }} style={{ padding: "7px 10px", borderRadius: 8, fontSize: 11, background: tint(C.pos, 0.10), color: C.pos, border: `1px solid ${tint(C.pos, 0.27)}`, cursor: "pointer", width: "100%", textAlign: "left" }}>{t("+ Add “{name}”", { name: catInput })}</button>
                 )}
               </div>
             )}
-          </div>
-        )}
-        {tab === "expense" && splitMode && (
-          <SplitEditor items={items} setItems={setItems} envelopes={state.envelopes} total={minor} onCancel={() => setSplitMode(false)} />
-        )}
-        {tab === "income" && (
-          <div style={{ padding: "2px 0 10px" }}>
-            <button onClick={() => setShowEnv(true)} style={{ display: "flex", alignItems: "center", gap: 11, background: "none", border: "none", cursor: "pointer", padding: 0 }}>
-              <MiniEnv color={env ? env.color : SAGE_BG} icon={env?.icon ?? "moneybag"} />
-              <span style={{ fontSize: 15.5, fontWeight: 600, color: C.text }}>{env ? env.name : t("To be budgeted")}</span>
-              {env && <span onClick={(e) => { e.stopPropagation(); setEnvelopeId(null); }} style={{ color: C.mute, fontSize: 11, padding: 4 }}>✕</span>}
-            </button>
-            <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 10 }}>
-              <Ico d="M18.5 2.5a2.1 2.1 0 013 3L12 15l-4 1 1-4 9.5-9.5z" size={14} color={C.mute} />
-              <input value={name} onChange={(e) => setName(e.target.value)} onFocus={() => setNumpad(false)} placeholder={t("Name")} style={{ flex: 1, minWidth: 0, background: "none", border: "none", borderBottom: `1px solid ${C.line}`, color: C.text, fontSize: 14, fontFamily: font, outline: "none", padding: "5px 0" }} />
-            </div>
-          </div>
-        )}
-        {tab === "transfer" && (
-          <div style={{ padding: "4px 0 8px" }}>
-            <div style={{ display: "flex", justifyContent: "center", padding: "8px 0 10px" }}>
-              <div style={{ width: 34, height: 34, borderRadius: "50%", background: C.bg, border: `1px solid ${C.line}`, display: "flex", alignItems: "center", justifyContent: "center" }}>
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={C.soft} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="4" x2="12" y2="19" /><polyline points="6 13 12 19 18 13" /></svg>
-              </div>
-            </div>
-            <button onClick={() => setShowTo(true)} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%", border: `1px solid ${C.line}`, borderRadius: 10, padding: "11px 14px", background: C.bg, cursor: "pointer" }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                <Glyph name={accounts.find((a) => a.id === toAccountId)?.icon ?? "wallet"} size={18} color={C.soft} />
-                <span style={{ fontSize: 13, color: C.text }}>{accounts.find((a) => a.id === toAccountId)?.name ?? t("Destination account")}</span>
-              </div>
-              <Ico d="M6 9l6 6 6-6" size={16} color={C.soft} />
-            </button>
-          </div>
+          </>
         )}
 
-        <div style={{ height: 1, background: C.line, margin: "8px 0" }} />
-        <button onClick={(e) => { e.stopPropagation(); setShowDate(true); setNumpad(false); }} style={{ display: "flex", justifyContent: "space-between", width: "100%", padding: "6px 0", background: "none", border: "none", cursor: "pointer" }}>
-          <span style={{ color: C.text, fontSize: 12 }}>{formatDateLong(date, lang)}</span>
-          {recur !== "none" ? (
-            <span style={{ color: "#e0a020", fontSize: 11, fontWeight: 600, background: "#f0c84f33", padding: "2px 8px", borderRadius: 8 }}>{t("planned")}</span>
-          ) : (
-            <button onClick={(e) => { e.stopPropagation(); setConfirmed(!confirmed); }} style={{ background: "none", border: "none", cursor: "pointer", color: confirmed ? INCOME : "#e0a020", fontSize: 11, fontWeight: 500, display: "flex", alignItems: "center", gap: 3 }}>
-              <Ico d="M5 13l4 4L19 7" size={13} color={confirmed ? INCOME : "#e0a020"} sw={2.4} />{confirmed ? t("confirmed") : t("to confirm")}
-            </button>
-          )}
-        </button>
-        {showNote && (
-          <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 0" }}>
-            <Ico d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z" size={15} color={C.mute} />
-            <input autoFocus placeholder={t("Note")} value={note} onChange={(e) => setNote(e.target.value)} onFocus={() => setNumpad(false)} style={{ flex: 1, background: "none", border: "none", borderBottom: `1px solid ${C.line}`, color: C.text, fontSize: 12, fontFamily: font, outline: "none", padding: "4px 0" }} />
-          </div>
-        )}
-        {showPlace && (
-          <div style={{ position: "relative", padding: "6px 0" }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <Ico d="M3 9l9-7 9 7v11a1 1 0 01-1 1h-4v-7H8v7H4a1 1 0 01-1-1V9z" size={15} color={placeId ? TEAL : C.mute} />
-              <input autoFocus placeholder={t("Place")} value={placeId ? (state.places.find((p) => p.id === placeId)?.name ?? "") : placeInput} onChange={(e) => { setPlaceInput(e.target.value); setPlaceId(null); }} onFocus={() => setNumpad(false)} style={{ flex: 1, background: "none", border: "none", borderBottom: `1px solid ${C.line}`, color: C.text, fontSize: 12, fontFamily: font, outline: "none", padding: "4px 0" }} />
-              {placeId && <button onClick={() => { setPlaceId(null); setPlaceInput(""); }} style={{ background: "none", border: "none", color: C.mute, fontSize: 11, cursor: "pointer" }}>✕</button>}
+        {tab === "expense" && (
+          <>
+            <SectionEyebrow label={t("Place")} />
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 6, padding: `0 ${P}px 4px` }}>
+              {placeList.map((p) => (
+                <button
+                  key={p.id}
+                  onClick={() => { if (placeId === p.id) setPlaceId(null); else { setPlaceId(p.id); setPlaceInput(""); setShowPlace(false); } }}
+                  style={chipStyle(placeId === p.id)}
+                >
+                  {p.name}
+                </button>
+              ))}
+              <button onClick={() => setShowPlace(!showPlace)} style={ghostChipStyle}>{t("Type a place…")}</button>
             </div>
-            {/* in draft the place travels by NAME to /import/apply (server creates/matches) —
-                no local.createPlace button; dropdown only when there are suggestions */}
-            {placeInput && !placeId && (!draft || filteredPlaces.length > 0) && (
-              <div style={{ position: "absolute", top: "100%", left: 23, right: 0, background: C.card, border: `1px solid ${C.line}`, borderRadius: 8, zIndex: 10, maxHeight: 140, overflowY: "auto", marginTop: 2, boxShadow: "0 4px 14px rgba(0,0,0,0.1)" }}>
-                {filteredPlaces.map((p) => (
-                  <button key={p.id} onClick={() => { setPlaceId(p.id); setPlaceInput(""); }} style={{ display: "block", width: "100%", padding: "8px 11px", background: "none", border: "none", borderBottom: `1px solid ${C.line}`, color: C.text, fontSize: 11, cursor: "pointer", textAlign: "left", fontFamily: font }}>{p.name}</button>
-                ))}
-                {!draft && (
-                  <button onClick={() => { const p = local.createPlace(placeInput); setPlaceId(p.id); setPlaceInput(""); }} style={{ display: "block", width: "100%", padding: "8px 11px", background: "none", border: "none", color: TEAL, fontSize: 11, cursor: "pointer", textAlign: "left", fontFamily: font }}>{t("+ “{name}”", { name: placeInput })}</button>
+            {showPlace && (
+              <div style={{ position: "relative", padding: `0 ${P}px 6px` }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <Ico d="M3 9l9-7 9 7v11a1 1 0 01-1 1h-4v-7H8v7H4a1 1 0 01-1-1V9z" size={15} color={placeId ? TEAL : C.mute} />
+                  <input autoFocus placeholder={t("Place")} value={placeId ? (state.places.find((p) => p.id === placeId)?.name ?? "") : placeInput} onChange={(e) => { setPlaceInput(e.target.value); setPlaceId(null); }} onFocus={() => setNumpad(false)} style={{ flex: 1, background: "none", border: "none", borderBottom: `1px solid ${C.line}`, color: C.text, fontSize: 12, fontFamily: font, outline: "none", padding: "4px 0" }} />
+                  {placeId && <button onClick={() => { setPlaceId(null); setPlaceInput(""); }} style={{ background: "none", border: "none", color: C.mute, fontSize: 11, cursor: "pointer" }}>✕</button>}
+                </div>
+                {/* in draft the place travels by NAME to /import/apply (server creates/matches) —
+                    no local.createPlace button; dropdown only when there are suggestions */}
+                {placeInput && !placeId && (!draft || filteredPlaces.length > 0) && (
+                  <div style={{ position: "absolute", top: "100%", left: 23, right: 0, background: C.card, border: `1px solid ${C.line}`, borderRadius: 8, zIndex: 10, maxHeight: 140, overflowY: "auto", marginTop: 2, boxShadow: "0 4px 14px rgba(0,0,0,0.1)" }}>
+                    {filteredPlaces.map((p) => (
+                      <button key={p.id} onClick={() => { setPlaceId(p.id); setPlaceInput(""); }} style={{ display: "block", width: "100%", padding: "8px 11px", background: "none", border: "none", borderBottom: `1px solid ${C.line}`, color: C.text, fontSize: 11, cursor: "pointer", textAlign: "left", fontFamily: font }}>{p.name}</button>
+                    ))}
+                    {!draft && (
+                      <button onClick={() => { const p = local.createPlace(placeInput); setPlaceId(p.id); setPlaceInput(""); }} style={{ display: "block", width: "100%", padding: "8px 11px", background: "none", border: "none", color: TEAL, fontSize: 11, cursor: "pointer", textAlign: "left", fontFamily: font }}>{t("+ “{name}”", { name: placeInput })}</button>
+                    )}
+                  </div>
                 )}
               </div>
             )}
-          </div>
+          </>
         )}
 
-        <div style={{ display: "flex", justifyContent: "center", gap: 22, padding: "16px 0 8px" }}>
-          {([
-            [msg("Note"), "M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z", showNote, () => setShowNote(!showNote)] as const,
-            [msg("Place"), "M3 9l9-7 9 7v11a1 1 0 01-1 1h-4v-7H8v7H4a1 1 0 01-1-1V9z", showPlace, () => setShowPlace(!showPlace)] as const,
-            // in draft no "Planned" (import is the past) and no "From screenshot" (zero nesting)
-            ...(draft ? [] : [
-              [msg("Planned"), "M12 8v4l3 2M12 22a10 10 0 100-20 10 10 0 000 20z", recur !== "none", () => setShowRecur(true)] as const,
-              [msg("From screenshot"), "M4 8.5A1.5 1.5 0 015.5 7H8l1.6-2.4a1 1 0 01.9-.6h3a1 1 0 01.9.6L16 7h2.5A1.5 1.5 0 0120 8.5v9a1.5 1.5 0 01-1.5 1.5h-13A1.5 1.5 0 014 17.5v-9zM12 16a3.5 3.5 0 100-7 3.5 3.5 0 000 7z", false, () => setShowImport(true)] as const,
-            ]),
-          ]).map((b) => (
-            <button key={b[0]} onClick={b[3]} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 5, background: "none", border: "none", cursor: "pointer" }}>
-              <div style={{ width: 44, height: 44, borderRadius: "50%", background: b[2] ? TEAL : C.bg, display: "flex", alignItems: "center", justifyContent: "center" }}>
-                <Ico d={b[1]} size={19} color={b[2] ? "#fff" : C.soft} />
-              </div>
-              <span style={{ fontSize: 10, color: C.soft }}>{t(b[0])}</span>
+        {/* Footer: recurrence (existing sheet) + split (expense only) — the two links the old
+            bottom icon row used to cover, folded into one quiet line. Hidden in draft (import
+            editing is the past; it never schedules or splits). */}
+        {!draft && (
+          <div style={{ textAlign: "center", padding: "10px 0 6px" }}>
+            <button onClick={() => setShowRecur(true)} style={{ background: "none", border: "none", color: recur !== "none" ? "var(--accent)" : C.soft, fontSize: 11, fontWeight: 600, cursor: "pointer", padding: 0 }}>
+              {recur !== "none" ? t(RECUR.find((o) => o.rule === recur)?.label ?? msg("planned")) : t("planned")}
             </button>
-          ))}
-        </div>
+            {tab === "expense" && !splitMode && (
+              <>
+                <span style={{ color: C.mute, fontSize: 11 }}> · </span>
+                <button onClick={enterSplit} style={{ background: "none", border: "none", color: C.soft, fontSize: 11, fontWeight: 600, cursor: "pointer", padding: 0 }}>{t("Split across envelopes")} ›</button>
+              </>
+            )}
+          </div>
+        )}
       </div>
 
-      <div style={{ padding: `6px ${P}px 8px`, display: "flex", flexDirection: "column", alignItems: "center", gap: 6 }}>
-        {noAccount && <div style={{ fontSize: 11.5, color: CORAL, textAlign: "center" }}>{t("Add an account first — you need one to save a transaction.")}</div>}
-        <button onClick={submit} disabled={minor <= 0 || noAccount} style={{ padding: "13px 36px", borderRadius: 26, border: "none", fontSize: 13, fontWeight: 600, cursor: "pointer", background: at, color: "#fff", opacity: minor > 0 && !noAccount ? 1 : 0.4, display: "flex", alignItems: "center", gap: 8 }}>
-          <svg width="17" height="17" viewBox="0 0 18 18" fill="none" stroke="#fff" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round"><polyline points="3.5,9.5 7.5,13.5 14.5,4.5" /></svg>
+      {/* Numpad above the CTA (board order: tgrow → numpad → cta2). Contextual OK like the
+          docked pad: A⊕B → "=" (reduction, pad stays), otherwise ✓ closes the pad. */}
+      {numpad && (
+        <Numpad
+          onKey={press}
+          onOk={() => { if (hasOpenOp(amount)) press("="); else setNumpad(false); }}
+          okGlyph={hasOpenOp(amount) ? "equals" : "check"}
+          variant="sheet"
+        />
+      )}
+
+      <div style={{ padding: `0 ${P}px calc(8px + env(safe-area-inset-bottom))` }}>
+        {noAccount && <div style={{ fontSize: 11.5, color: C.neg, textAlign: "center", marginBottom: 6 }}>{t("Add an account first — you need one to save a transaction.")}</div>}
+        <button onClick={submit} disabled={minor <= 0 || noAccount} style={{ display: "block", width: "100%", margin: "10px 0 0", background: "var(--cta)", color: band ? C.headerBg : "#fff", textAlign: "center", border: "none", borderRadius: 13, padding: "13px 0", fontSize: 13.5, fontWeight: 700, cursor: "pointer", opacity: minor > 0 && !noAccount ? 1 : 0.4 }}>
           {draft ? t("Save item") : editTxn ? t("Save changes") : t(submitLabel)}
         </button>
       </div>
 
-      {/* Contextual OK like on the docked pad: A⊕B → "=" (reduction, pad stays), otherwise ✓ closes */}
-      {numpad && <Numpad onKey={press} onOk={() => { if (hasOpenOp(amount)) press("="); else setNumpad(false); }} okGlyph={hasOpenOp(amount) ? "equals" : "check"} />}
-
-      <Sheet show={showAcc} onClose={() => setShowAcc(false)}>
-        {(C) => (
-          <>
-            <div style={{ fontSize: 16, fontWeight: 600, color: C.text, marginBottom: 10 }}>{t("Choose an account")}</div>
-            {accounts.map((a) => (
-              <button key={a.id} onClick={() => { setAccountId(a.id); if (toAccountId === a.id) setToAccountId(accounts.find((x) => x.id !== a.id)?.id ?? ""); setShowAcc(false); }} style={{ display: "flex", alignItems: "center", gap: 11, width: "100%", padding: "9px 0", background: "none", border: "none", cursor: "pointer" }}>
-                <div style={{ width: 22, height: 22, borderRadius: "50%", border: `2px solid ${accountId === a.id ? TEAL : C.line}`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>{accountId === a.id && <div style={{ width: 11, height: 11, borderRadius: "50%", background: TEAL }} />}</div>
-                <div style={{ width: 38, height: 38, borderRadius: 11, background: a.color, display: "flex", alignItems: "center", justifyContent: "center" }}>
-                  <div style={{ width: 26, height: 26, borderRadius: "50%", background: "rgba(255,255,255,0.92)", display: "flex", alignItems: "center", justifyContent: "center" }}><Glyph name={a.icon} size={14} color={accountIconColor(a.color)} /></div>
-                </div>
-                <span style={{ flex: 1, textAlign: "left", fontSize: 14, color: C.text, fontWeight: 500 }}>{a.name}</span>
-              </button>
-            ))}
-          </>
-        )}
+      <Sheet show={showAcc} onClose={() => setShowAcc(false)} tall={accounts.length > SEARCH_THRESHOLD}>
+        {(C) => {
+          const filtered = accounts.filter((a) => matchesSearch(a.name, accQ));
+          return (
+            <>
+              <div style={{ flexShrink: 0 }}>
+                <div style={{ fontSize: 16, fontWeight: 600, color: C.text, marginBottom: 10 }}>{t("Choose an account")}</div>
+                {accounts.length > SEARCH_THRESHOLD && <PickerSearch value={accQ} onChange={setAccQ} />}
+              </div>
+              <div className="gs" style={{ flex: 1, overflowY: "auto", overscrollBehavior: "contain" }}>
+                {filtered.length === 0 ? (
+                  <div style={{ textAlign: "center", color: C.mute, fontSize: 13, padding: "24px 0" }}>{t("No matches")}</div>
+                ) : (
+                  filtered.map((a) => (
+                    <button key={a.id} onClick={() => { setAccountId(a.id); if (toAccountId === a.id) setToAccountId(accounts.find((x) => x.id !== a.id)?.id ?? ""); setShowAcc(false); }} style={{ display: "flex", alignItems: "center", gap: 11, width: "100%", padding: "9px 0", background: "none", border: "none", cursor: "pointer" }}>
+                      <div style={{ width: 22, height: 22, borderRadius: "50%", border: `2px solid ${accountId === a.id ? TEAL : C.line}`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>{accountId === a.id && <div style={{ width: 11, height: 11, borderRadius: "50%", background: TEAL }} />}</div>
+                      <div style={{ width: 34, height: 34, borderRadius: 10, background: tint(a.color, 0.15), display: "flex", alignItems: "center", justifyContent: "center" }}><Glyph name={a.icon} size={16} color={a.color} /></div>
+                      <span style={{ flex: 1, textAlign: "left", fontSize: 14, color: C.text, fontWeight: 500 }}><HighlightedText text={a.name} query={accQ} /></span>
+                    </button>
+                  ))
+                )}
+              </div>
+            </>
+          );
+        }}
       </Sheet>
-      <Sheet show={showTo} onClose={() => setShowTo(false)}>
-        {(C) => (
-          <>
-            <div style={{ fontSize: 16, fontWeight: 600, color: C.text, marginBottom: 10 }}>{t("Destination account")}</div>
-            {accounts.filter((a) => a.id !== accountId).map((a) => (
-              <button key={a.id} onClick={() => { setToAccountId(a.id); setShowTo(false); }} style={{ display: "flex", alignItems: "center", gap: 11, width: "100%", padding: "9px 0", background: "none", border: "none", cursor: "pointer" }}>
-                <div style={{ width: 38, height: 38, borderRadius: 11, background: a.color, display: "flex", alignItems: "center", justifyContent: "center" }}>
-                  <div style={{ width: 26, height: 26, borderRadius: "50%", background: "rgba(255,255,255,0.92)", display: "flex", alignItems: "center", justifyContent: "center" }}><Glyph name={a.icon} size={14} color={accountIconColor(a.color)} /></div>
-                </div>
-                <span style={{ flex: 1, textAlign: "left", fontSize: 14, color: toAccountId === a.id ? TEAL : C.text, fontWeight: toAccountId === a.id ? 600 : 500 }}>{a.name}</span>
-              </button>
-            ))}
-          </>
-        )}
+      <Sheet show={showTo} onClose={() => setShowTo(false)} tall={accounts.filter((a) => a.id !== accountId).length > SEARCH_THRESHOLD}>
+        {(C) => {
+          const destAccounts = accounts.filter((a) => a.id !== accountId);
+          const filtered = destAccounts.filter((a) => matchesSearch(a.name, toQ));
+          return (
+            <>
+              <div style={{ flexShrink: 0 }}>
+                <div style={{ fontSize: 16, fontWeight: 600, color: C.text, marginBottom: 10 }}>{t("Destination account")}</div>
+                {destAccounts.length > SEARCH_THRESHOLD && <PickerSearch value={toQ} onChange={setToQ} />}
+              </div>
+              <div className="gs" style={{ flex: 1, overflowY: "auto", overscrollBehavior: "contain" }}>
+                {filtered.length === 0 ? (
+                  <div style={{ textAlign: "center", color: C.mute, fontSize: 13, padding: "24px 0" }}>{t("No matches")}</div>
+                ) : (
+                  filtered.map((a) => (
+                    <button key={a.id} onClick={() => { setToAccountId(a.id); setDestOpen(false); setShowTo(false); }} style={{ display: "flex", alignItems: "center", gap: 11, width: "100%", padding: "9px 0", background: "none", border: "none", cursor: "pointer" }}>
+                      <div style={{ width: 34, height: 34, borderRadius: 10, background: tint(a.color, 0.15), display: "flex", alignItems: "center", justifyContent: "center" }}><Glyph name={a.icon} size={16} color={a.color} /></div>
+                      <span style={{ flex: 1, textAlign: "left", fontSize: 14, color: toAccountId === a.id ? TEAL : C.text, fontWeight: toAccountId === a.id ? 600 : 500 }}><HighlightedText text={a.name} query={toQ} /></span>
+                    </button>
+                  ))
+                )}
+              </div>
+            </>
+          );
+        }}
       </Sheet>
       <DateSheet show={showDate} date={date} onClose={() => setShowDate(false)} onChange={setDate} />
+      {/* !editTxn is NOT required here: the "From screenshot" toggle restores edit-mode access
+          (pre-redesign behavior — the edit header has no camera button, trash+kebab instead). */}
       {!draft && <ImportSheet show={showImport} onClose={() => setShowImport(false)} state={state} onApplied={onDone} />}
       <Sheet show={showRecur} onClose={() => setShowRecur(false)}>
         {(C) => (
@@ -600,57 +716,63 @@ export function AddScreen({ state, onDone, editTxn, draft }: { state: StateRespo
           </>
         )}
       </Sheet>
-      <Sheet show={showEnv} onClose={() => setShowEnv(false)}>
-        {(C) => (
-          <>
-            <div style={{ fontSize: 17, fontWeight: 700, color: C.text, marginBottom: 14, textAlign: "center" }}>{t("Choose an envelope")}</div>
-            {[...state.groups].sort((a, b) => a.sort - b.sort).map((g) => {
-              const list = state.envelopes.filter((e) => e.groupId === g.id && !e.archived);
-              if (!list.length) return null;
-              return (
-                <div key={g.id} style={{ marginBottom: 14 }}>
-                  <div style={{ fontSize: 13.5, fontWeight: 600, color: C.text, marginBottom: 8 }}>{g.name}</div>
-                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 7 }}>
-                    {list.map((e) => <EnvTile key={e.id} e={e} onClick={() => { setEnvelopeId(e.id); setShowEnv(false); }} />)}
-                  </div>
-                </div>
-              );
-            })}
-          </>
-        )}
+      <Sheet show={showEnv} onClose={() => setShowEnv(false)} tall={state.envelopes.filter((e) => !e.archived).length > SEARCH_THRESHOLD}>
+        {(C) => {
+          const allEnvelopes = state.envelopes.filter((e) => !e.archived);
+          const groups = [...state.groups]
+            .sort((a, b) => a.sort - b.sort)
+            .map((g) => ({ group: g, list: allEnvelopes.filter((e) => e.groupId === g.id && matchesSearch(e.name, envQ)) }))
+            .filter((g) => g.list.length > 0);
+          return (
+            <>
+              <div style={{ flexShrink: 0 }}>
+                <div style={{ fontSize: 17, fontWeight: 700, color: C.text, marginBottom: 14, textAlign: "center" }}>{t("Choose an envelope")}</div>
+                {allEnvelopes.length > SEARCH_THRESHOLD && <PickerSearch value={envQ} onChange={setEnvQ} />}
+              </div>
+              <div className="gs" style={{ flex: 1, overflowY: "auto", overscrollBehavior: "contain" }}>
+                {groups.length === 0 ? (
+                  <div style={{ textAlign: "center", color: C.mute, fontSize: 13, padding: "24px 0" }}>{t("No matches")}</div>
+                ) : (
+                  groups.map(({ group: g, list }) => (
+                    <div key={g.id} style={{ marginBottom: 14 }}>
+                      <div style={{ fontSize: 13.5, fontWeight: 600, color: C.text, marginBottom: 8 }}>{g.name}</div>
+                      <div>
+                        {list.map((e) => (
+                          <button key={e.id} onClick={() => { setEnvelopeId(e.id); setEnvOpen(false); setShowEnv(false); }} style={{ display: "flex", alignItems: "center", gap: 10, width: "100%", padding: "8px 0", background: "none", border: "none", borderBottom: `1px solid ${C.line}`, cursor: "pointer", textAlign: "left" }}>
+                            <span style={{ width: 28, height: 28, borderRadius: 8, background: tint(e.color, 0.16), display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                              <Glyph name={e.icon} size={14} color={e.color} sw={1.7} />
+                            </span>
+                            <span style={{ flex: 1, minWidth: 0, fontSize: 13.5, fontWeight: 550, color: C.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}><HighlightedText text={e.name} query={envQ} /></span>
+                            <span style={{ fontSize: 12.5, fontWeight: 700, fontVariantNumeric: "tabular-nums", color: e.available < 0 ? C.neg : C.text }}>{e.available < 0 ? "−" : ""}{M(Math.abs(e.available))}</span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </>
+          );
+        }}
       </Sheet>
-    </div>
-  );
-}
-
-/** Mini envelope tile (with flap) — like on the original's envelope list. */
-function MiniEnv({ color, icon }: { color: string; icon: string }) {
-  return (
-    <div style={{ position: "relative", width: 54, height: 40, borderRadius: 9, background: color, overflow: "hidden", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 1px 3px rgba(0,0,0,0.12)" }}>
-      <svg viewBox="0 0 100 100" preserveAspectRatio="none" style={{ position: "absolute", inset: 0, width: "100%", height: "100%", pointerEvents: "none" }}>
-        <polygon points="0,0 100,0 50,44" fill="rgba(0,0,0,0.05)" />
-        <line x1="0" y1="0" x2="50" y2="44" stroke="rgba(0,0,0,0.13)" strokeWidth="1" vectorEffect="non-scaling-stroke" />
-        <line x1="100" y1="0" x2="50" y2="44" stroke="rgba(0,0,0,0.13)" strokeWidth="1" vectorEffect="non-scaling-stroke" />
-      </svg>
-      <span style={{ position: "relative", display: "flex" }}>
-        <Glyph name={icon} size={17} color={isLight(color) ? "#33312c" : "#fff"} sw={1.7} />
-      </span>
     </div>
   );
 }
 
 function SplitEditor({ items, setItems, envelopes, total, onCancel }: { items: Array<{ envelopeId: string; amount: number }>; setItems: (i: Array<{ envelopeId: string; amount: number }>) => void; envelopes: StateResponse["envelopes"]; total: number; onCancel: () => void }) {
   const C = useTheme();
+  const M = useMask();
   const { t, lang } = useT();
   const currency = useCurrency();
   const sum = items.reduce((s, i) => s + i.amount, 0);
   const active = envelopes.filter((e) => !e.archived);
+  const envById = new Map(envelopes.map((e) => [e.id, e]));
   // One numpad sheet per split editor — the item supplies the target on tap.
   const [pad, setPad] = useState<AmountPadTarget | null>(null);
   const openPad = (idx: number) => {
     const it = items[idx]!;
     setPad({
-      label: envelopes.find((e) => e.id === it.envelopeId)?.name ?? t("Split across envelopes"),
+      label: envById.get(it.envelopeId)?.name ?? t("Split across envelopes"),
       initial: it.amount,
       onCommit: (minor) => setItems(items.map((x, i) => (i === idx ? { ...x, amount: minor } : x))),
     });
@@ -660,25 +782,87 @@ function SplitEditor({ items, setItems, envelopes, total, onCancel }: { items: A
     const used = new Set(items.map((i) => i.envelopeId));
     setItems([...items, { envelopeId: active.find((e) => !used.has(e.id))?.id ?? "", amount: Math.max(0, total - sum) }]);
   };
+  // Per-item envelope picker: a compact flat-list bottom sheet (tinted icon + name, no groups/
+  // balances) — reopening the full grouped showEnv sheet for every row would be noisy for a split.
+  const [pickFor, setPickFor] = useState<number | null>(null);
+  const [splitQ, setSplitQ] = useState("");
+  useEffect(() => { if (pickFor !== null) setSplitQ(""); }, [pickFor]);
+  const matched = sum === total;
+  const fillPct = total > 0 ? Math.min(100, Math.max(0, Math.round((sum / total) * 100))) : 0;
+
   return (
     <div style={{ padding: "4px 0 10px" }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
-        <span style={{ fontSize: 12, fontWeight: 600, color: C.text }}>{t("Split across envelopes")}</span>
-        <button onClick={onCancel} style={{ background: "none", border: "none", color: C.mute, fontSize: 11, cursor: "pointer" }}>{t("cancel split")}</button>
-      </div>
-      {items.map((it, idx) => (
-        <div key={idx} style={{ display: "flex", gap: 6, marginBottom: 6, alignItems: "center" }}>
-          <select value={it.envelopeId} onChange={(e) => setItems(items.map((x, i) => (i === idx ? { ...x, envelopeId: e.target.value } : x)))} style={{ flex: 1, padding: "9px", borderRadius: 8, border: `1px solid ${C.line}`, background: C.bg, color: C.text, fontSize: 13, fontFamily: font }}>
-            {it.envelopeId === "" && <option value="" disabled>{t("Pick an envelope…")}</option>}
-            {active.map((e) => <option key={e.id} value={e.id}>{e.name}</option>)}
-          </select>
-          <input value={(it.amount / 100).toFixed(2).replace(".", ",")} readOnly onClick={() => openPad(idx)} onFocus={() => openPad(idx)} style={{ width: 80, padding: "9px", borderRadius: 8, border: `1px solid ${C.line}`, background: C.bg, color: C.text, fontSize: 13, fontFamily: font, textAlign: "right", fontVariantNumeric: "tabular-nums", cursor: "pointer" }} />
-          <button onClick={() => setItems(items.filter((_, i) => i !== idx))} style={{ background: "none", border: "none", color: CORAL, fontSize: 14, cursor: "pointer" }}>✕</button>
+      <SectionEyebrow
+        label={t("Split across envelopes")}
+        right={<button onClick={onCancel} style={{ background: "none", border: "none", color: C.soft, fontSize: 11, fontWeight: 600, cursor: "pointer", padding: 0 }}>{t("cancel split")}</button>}
+      />
+      <CardBox style={{ padding: 0 }}>
+        {items.map((it, idx) => {
+          const e = envById.get(it.envelopeId);
+          return (
+            <div key={idx} style={{ display: "flex", alignItems: "center", gap: 9, padding: "10px 14px", borderBottom: idx < items.length - 1 ? `1px solid ${C.line}` : "none" }}>
+              <button onClick={() => setPickFor(idx)} style={{ display: "flex", alignItems: "center", gap: 8, flex: 1, minWidth: 0, background: "none", border: "none", padding: 0, cursor: "pointer", textAlign: "left" }}>
+                <span style={{ width: 26, height: 26, borderRadius: 8, background: e ? tint(e.color, 0.16) : C.chip, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                  {e && <Glyph name={e.icon} size={13} color={e.color} sw={1.7} />}
+                </span>
+                <span style={{ flex: 1, minWidth: 0, fontSize: 12.5, fontWeight: 600, color: e ? C.text : C.mute, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  {e?.name ?? t("Pick an envelope…")}
+                </span>
+              </button>
+              <button onClick={() => openPad(idx)} style={{ background: C.chip, border: "none", borderRadius: 8, padding: "6px 10px", color: C.text, fontSize: 12.5, fontWeight: 650, fontFamily: font, fontVariantNumeric: "tabular-nums", cursor: "pointer", flexShrink: 0 }}>
+                {formatMoney(it.amount, currency, lang)}
+              </button>
+              <button onClick={() => setItems(items.filter((_, i) => i !== idx))} style={{ background: "none", border: "none", color: C.neg, fontSize: 15, cursor: "pointer", padding: "0 0 0 2px", flexShrink: 0 }}>✕</button>
+            </div>
+          );
+        })}
+        <button onClick={add} style={{ display: "block", width: "100%", boxSizing: "border-box", padding: "10px 14px", background: "none", border: "none", borderTop: items.length ? `1.3px dashed ${C.line}` : "none", color: C.mute, fontSize: 12, fontWeight: 600, fontFamily: font, cursor: "pointer", textAlign: "center" }}>
+          {t("+ Add item")}
+        </button>
+      </CardBox>
+
+      <div style={{ padding: `10px ${P}px 0` }}>
+        <div style={{ height: 4, borderRadius: 2, background: C.line, overflow: "hidden" }}>
+          <div style={{ height: "100%", width: `${fillPct}%`, borderRadius: 2, background: matched ? C.pos : C.warn }} />
         </div>
-      ))}
-      <button onClick={add} style={{ marginTop: 4, padding: "8px 12px", borderRadius: 8, background: "var(--accent-1a)", border: `1px solid var(--accent-55)`, color: TEAL, fontSize: 11, fontWeight: 600, cursor: "pointer" }}>{t("+ Add item")}</button>
-      <div style={{ marginTop: 8, fontSize: 11, color: sum === total ? INCOME : CORAL }}>{t("Item total: {sum} / {total}", { sum: formatMoney(sum, currency, lang), total: formatMoney(total, currency, lang) })} {sum === total ? "✓" : t("(must match)")}</div>
+        <div style={{ marginTop: 6, fontSize: 11, fontWeight: 600, color: matched ? C.pos : C.neg, textAlign: "center" }}>
+          {t("Item total: {sum} / {total}", { sum: M(sum), total: M(total) })} {matched ? "✓" : t("(must match)")}
+        </div>
+      </div>
+
       <AmountPadHost target={pad} onClose={() => setPad(null)} />
+
+      <Sheet show={pickFor !== null} onClose={() => setPickFor(null)} tall={active.length > SEARCH_THRESHOLD}>
+        {(C) => {
+          const filtered = active.filter((e) => matchesSearch(e.name, splitQ));
+          return (
+            <>
+              <div style={{ flexShrink: 0 }}>
+                <div style={{ fontSize: 16, fontWeight: 700, color: C.text, marginBottom: 10, textAlign: "center" }}>{t("Choose an envelope")}</div>
+                {active.length > SEARCH_THRESHOLD && <PickerSearch value={splitQ} onChange={setSplitQ} />}
+              </div>
+              <div className="gs" style={{ flex: 1, overflowY: "auto", overscrollBehavior: "contain" }}>
+                {filtered.length === 0 ? (
+                  <div style={{ textAlign: "center", color: C.mute, fontSize: 13, padding: "24px 0" }}>{t("No matches")}</div>
+                ) : (
+                  filtered.map((e) => (
+                    <button
+                      key={e.id}
+                      onClick={() => { if (pickFor !== null) setItems(items.map((x, i) => (i === pickFor ? { ...x, envelopeId: e.id } : x))); setPickFor(null); }}
+                      style={{ display: "flex", alignItems: "center", gap: 10, width: "100%", padding: "8px 0", background: "none", border: "none", borderBottom: `1px solid ${C.line}`, cursor: "pointer", textAlign: "left" }}
+                    >
+                      <span style={{ width: 28, height: 28, borderRadius: 8, background: tint(e.color, 0.16), display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                        <Glyph name={e.icon} size={14} color={e.color} sw={1.7} />
+                      </span>
+                      <span style={{ flex: 1, minWidth: 0, fontSize: 13.5, fontWeight: 550, color: C.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}><HighlightedText text={e.name} query={splitQ} /></span>
+                    </button>
+                  ))
+                )}
+              </div>
+            </>
+          );
+        }}
+      </Sheet>
     </div>
   );
 }
@@ -696,7 +880,7 @@ function DateSheet({ show, date, onClose, onChange }: { show: boolean; date: str
   const years = [y - 2, y - 1, y, y + 1, y + 2].filter((v, i, a) => a.indexOf(v) === i);
   const todayIso = new Date().toISOString().slice(0, 10);
   return (
-    <Sheet show={show} onClose={onClose}>
+    <Sheet show={show} onClose={onClose} lockSwipe>
       {(C) => (
         <>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", paddingBottom: 10, borderBottom: `1px solid ${C.line}` }}>

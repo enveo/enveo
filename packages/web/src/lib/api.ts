@@ -40,6 +40,12 @@ export interface ImportItem {
   categoryId?: string | null;
   categoryName?: string | null;
   placeName?: string | null;
+  /** ISO-4217 of `amount`, as extracted from the screenshot — presentation-only, warns the
+   *  user in the review sheet when it differs from the budget's own currency. */
+  currency?: string;
+  /** Original foreign amount + code (e.g. "5.00 USD") when this row is a converted/settled
+   *  charge — shown as a muted caption; "" or absent otherwise. */
+  fxOriginal?: string;
 }
 /** Import item corrections from the editor (AddScreen in draft mode) — spec §3.
  *  Fields go to /import/apply merged with the original; rawPlace/source_ref

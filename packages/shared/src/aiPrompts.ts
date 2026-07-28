@@ -480,9 +480,14 @@ export function parseQuickAddResponse(raw: string): QuickAddAiFields {
 const importRawTxn = z.object({
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   amount: z.number().int().positive(),
-  type: z.enum(["expense", "income"]),
+  type: z.enum(["expense", "income", "refund"]),
   rawPlace: z.string(),
   tag: z.string(),
+  /* ISO-4217 of the returned amount (the account currency, unless the row shows another one). */
+  currency: z.string(),
+  /* Original foreign amount + code (e.g. "5.00 USD") when this row is a converted/settled
+     charge; "" when not applicable. Required by the strict schema — never guessed/omitted. */
+  fxOriginal: z.string(),
 });
 const importRawOutput = z.object({ transactions: z.array(importRawTxn) });
 
@@ -501,11 +506,13 @@ export const IMPORT_EXTRACT_JSON_SCHEMA = {
           properties: {
             date: { type: "string", description: "Transaction date YYYY-MM-DD" },
             amount: { type: "integer", description: "Amount in integer minor units, always positive" },
-            type: { type: "string", enum: ["expense", "income"] },
+            type: { type: "string", enum: ["expense", "income", "refund"] },
             rawPlace: { type: "string", description: "Raw payee/store description exactly as shown on the screenshot" },
             tag: { type: "string", description: "Short normalized merchant tag, e.g. LIDL (UPPERCASE, no address/numbers)" },
+            currency: { type: "string", description: "ISO-4217 code of the returned amount — the account currency unless this row shows a different one" },
+            fxOriginal: { type: "string", description: "Original foreign-currency amount when this row is a converted/settled charge, e.g. \"5.00 USD\"; empty string otherwise" },
           },
-          required: ["date", "amount", "type", "rawPlace", "tag"],
+          required: ["date", "amount", "type", "rawPlace", "tag", "currency", "fxOriginal"],
         },
       },
     },
@@ -521,7 +528,7 @@ export interface ImportPromptRefs {
   categories: Array<{ id: string; name: string }>;
 }
 
-export function buildImportExtractPrompt(images: string[], _refs: ImportPromptRefs, today: string, locale: AiLocale): ChatRequest {
+export function buildImportExtractPrompt(images: string[], _refs: ImportPromptRefs, today: string, locale: AiLocale, currency: string): ChatRequest {
   const sysExtract =
     "You extract transactions from screenshots (Apple Wallet, bank account history, payment confirmations). " +
     `Today is ${today} — resolve relative dates ("today", "yesterday") against this date; when the year is missing, assume the most recent past date. ` +
@@ -529,6 +536,10 @@ export function buildImportExtractPrompt(images: string[], _refs: ImportPromptRe
     "rawPlace: copy the payee/store description EXACTLY as it appears on the screenshot (with address, numbers etc.). " +
     "tag: a short normalized merchant identifier (UPPERCASE, without address and numbers, e.g. LIDL, ORLEN, ZABKA, NETFLIX). " +
     "Skip balances, summaries, holds and rows that are not transactions. Return each transaction once. " +
+    "A positive amount that is a refund, return or chargeback of a purchase — NOT salary, NOT an incoming transfer — has type 'refund'; a genuine inflow stays 'income'. " +
+    `currency: the ISO-4217 code of the returned amount — the account currency (${currency}) unless this row itself shows a different currency. ` +
+    `When a foreign-currency charge is accompanied by its conversion/settlement row in the account currency (${currency}), return ONE transaction: the amount in ${currency}, rawPlace of the MERCHANT (not the exchange row), and fxOriginal set to the original foreign amount with its code (e.g. "5.00 USD"); do not return the conversion row separately. ` +
+    'When only a foreign amount is visible with no conversion row, return that amount with its own currency — NEVER convert or guess an exchange rate; fxOriginal stays "" unless noted above. ' +
     languageDirectives(locale) +
     "Return JSON.";
   return {
@@ -546,17 +557,35 @@ export function buildImportExtractPrompt(images: string[], _refs: ImportPromptRe
   };
 }
 
-/** Facts from the screenshot (no assignments — those are added by cycle 2 / the caller). */
+/** Facts from the screenshot (no assignments — those are added by cycle 2 / the caller).
+ *  `type: "refund"` from the model is mapped to the domain truth `{type: "expense", isRefund: true}`
+ *  — a refund is an expense reversal, never an "income" (it must return to its envelope, not
+ *  land in "ready to assign"). */
 export interface ImportExtractItem {
   date: string;
   amount: number;
   type: "expense" | "income";
+  isRefund: boolean;
   rawPlace: string;
   tag: string;
+  /** ISO-4217 of `amount` (UPPERCASE). */
+  currency: string;
+  /** Original foreign amount + code (e.g. "5.00 USD") when this row is a converted/settled
+   *  charge; "" when not applicable. */
+  fxOriginal: string;
 }
 
 /** Throws on an invalid shape (like `rawOutput.parse` in the route). */
 export function parseImportExtractResponse(raw: string): ImportExtractItem[] {
   const parsed = importRawOutput.parse(JSON.parse(raw));
-  return parsed.transactions.map((t) => ({ ...t, tag: t.tag.trim().toUpperCase() }));
+  return parsed.transactions.map((t) => ({
+    date: t.date,
+    amount: t.amount,
+    type: t.type === "refund" ? "expense" : t.type,
+    isRefund: t.type === "refund",
+    rawPlace: t.rawPlace,
+    tag: t.tag.trim().toUpperCase(),
+    currency: t.currency.trim().toUpperCase(),
+    fxOriginal: t.fxOriginal.trim(),
+  }));
 }

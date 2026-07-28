@@ -14,7 +14,7 @@ import { assertOwnReplica, discardLocalReplica, enterLoginKeepingReplica, flushO
 import { useTheme } from "../../lib/contexts";
 import { useT } from "../../lib/i18n";
 import { store } from "../../lib/store";
-import { CORAL, INCOME, font } from "../../lib/theme";
+import { CORAL, font } from "../../lib/theme";
 import { Sheet } from "../../components/chrome";
 import { ActionGroup, ActionIcon, ActionRow, ConfirmWordHint, Eyebrow } from "./ui";
 
@@ -131,6 +131,7 @@ function LogoutRow() {
 
 /** JSON backup export / import. */
 function DataBackup() {
+  const C = useTheme();
   const { t } = useT();
   const fileRef = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
@@ -182,8 +183,8 @@ function DataBackup() {
       </ActionGroup>
       <input ref={fileRef} type="file" accept="application/json,.json" onChange={(e) => void onFile(e)} style={{ display: "none" }} />
 
-      {error && <div style={{ fontSize: 12, color: CORAL, margin: "8px 4px 0", lineHeight: 1.5 }}>{error}</div>}
-      {done && <div style={{ fontSize: 12, color: INCOME, margin: "8px 4px 0", lineHeight: 1.5 }}>{done}</div>}
+      {error && <div style={{ fontSize: 12, color: C.neg, margin: "8px 4px 0", lineHeight: 1.5 }}>{error}</div>}
+      {done && <div style={{ fontSize: 12, color: C.pos, margin: "8px 4px 0", lineHeight: 1.5 }}>{done}</div>}
     </div>
   );
 }
@@ -218,7 +219,7 @@ function StrengthMeter({ pass }: { pass: string }) {
   const { t } = useT();
   if (pass.length === 0) return null;
   const s = passStrength(pass);
-  const colors = [CORAL, CORAL, "#d99a06", INCOME] as const;
+  const colors = [C.neg, C.neg, C.warn, C.pos] as const;
   const labels = [t("Too short (min. 10 characters)"), t("Weak"), t("Good"), t("Strong")];
   return (
     <div style={{ marginTop: 6 }}>
@@ -227,7 +228,7 @@ function StrengthMeter({ pass }: { pass: string }) {
           <div key={i} style={{ flex: 1, height: 4, borderRadius: 2, background: s >= i ? colors[s] : C.line }} />
         ))}
       </div>
-      <div style={{ fontSize: 11, color: s === 0 ? CORAL : C.soft, marginTop: 4 }}>{labels[s]}</div>
+      <div style={{ fontSize: 11, color: s === 0 ? C.neg : C.soft, marginTop: 4 }}>{labels[s]}</div>
     </div>
   );
 }
@@ -522,8 +523,8 @@ function E2eeChangePass() {
                   />
                 </ActionGroup>
               </div>
-              {error && <div style={{ fontSize: 12, color: CORAL, marginTop: 10, lineHeight: 1.5 }}>{error}</div>}
-              {done && <div style={{ fontSize: 12, color: INCOME, marginTop: 10, lineHeight: 1.5 }}>{t("Password changed.")}</div>}
+              {error && <div style={{ fontSize: 12, color: SC.neg, marginTop: 10, lineHeight: 1.5 }}>{error}</div>}
+              {done && <div style={{ fontSize: 12, color: SC.pos, marginTop: 10, lineHeight: 1.5 }}>{t("Password changed.")}</div>}
               <button onClick={() => !busy && setSheet(false)} style={{ width: "100%", marginTop: 12, padding: "11px 0", borderRadius: 11, border: "none", background: "transparent", color: SC.soft, fontSize: 13, fontWeight: 600, cursor: "pointer" }}>
                 {t("Close")}
               </button>

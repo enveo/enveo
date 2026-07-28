@@ -67,6 +67,8 @@ describe("computeStateResponse", () => {
 
     // aggregate headers — exactly from computeBudgetState
     expect(resp.toBeBudgeted).toBe(state.toBeBudgeted);
+    expect(resp.readyToAssign).toBe(50_00); // on-budget initialBalance (100_00) - the one allocation (50_00)
+    expect(resp.readyToAssign).toBe(state.readyToAssign);
     expect(resp.monthIncome).toBe(state.monthIncome);
     expect(resp.monthExpense).toBe(13_00);
     expect(resp.groups).toEqual(l.groups);

@@ -1,76 +1,84 @@
-import { useMask, useTheme } from "../lib/contexts";
-import { isLight } from "../lib/format";
+import { useMask, useSettings, useTheme } from "../lib/contexts";
 import { goalProgress } from "../lib/goals";
 import { Glyph } from "../lib/icons";
+import { fmtTrim } from "../lib/format";
+import { tint } from "../lib/theme";
 import type { AccountView, EnvelopeView } from "../lib/api";
+import { spendMeter } from "../lib/uiState";
+import { GoalRing, SpendLine, useBand } from "./kit";
+import { useT } from "../lib/i18n";
 
-export function EnvTile({ e, onClick }: { e: EnvelopeView; onClick: () => void }) {
+/** Envelope list row: name (+goal ring), available amount, spend line (spec §3.2-3.3). */
+export function EnvRow({ e, onClick, last }: { e: EnvelopeView; onClick: () => void; last?: boolean }) {
   const M = useMask();
-  const bg = e.color;
-  const txt = isLight(bg) ? "#33312c" : "#fff";
-  const neg = e.available < 0;
-  // Goal bar in the tile's text color (NOT accent/sage — unreadable on colored backgrounds).
+  const C = useTheme();
+  const { t } = useT();
+  const { settings } = useSettings();
+  // Savings envelopes without spending show no meter — the line always means
+  // "spent of assigned", and a funded savings pot has nothing to measure (spec §3.3).
+  const meter = e.isSavings && e.spent <= 0 ? null : spendMeter(e);
   const gp = goalProgress(e);
+  const neg = e.available < 0;
   return (
-    <button
-      onClick={onClick}
-      className="fu"
-      style={{ position: "relative", background: bg, borderRadius: 11, padding: "7px 7px 6px", border: "none", cursor: "pointer", boxShadow: "0 1px 4px rgba(0,0,0,0.18)", overflow: "hidden", textAlign: "center", minHeight: 62, display: "flex", flexDirection: "column", justifyContent: "center", gap: 0 }}
-    >
-      <svg viewBox="0 0 100 100" preserveAspectRatio="none" style={{ position: "absolute", inset: 0, width: "100%", height: "100%", pointerEvents: "none" }}>
-        <polygon points="0,0 100,0 50,34" fill="rgba(0,0,0,0.05)" />
-        <line x1="0" y1="0" x2="50" y2="34" stroke="rgba(0,0,0,0.13)" strokeWidth="1" vectorEffect="non-scaling-stroke" />
-        <line x1="100" y1="0" x2="50" y2="34" stroke="rgba(0,0,0,0.13)" strokeWidth="1" vectorEffect="non-scaling-stroke" />
-      </svg>
-      <div style={{ position: "relative", display: "flex", alignItems: "center", justifyContent: "center", gap: 4, marginTop: 2 }}>
-        <Glyph name={e.icon} size={12} color={txt} sw={1.6} />
-        <span style={{ fontSize: 10, fontWeight: 600, color: txt, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{e.name}</span>
-      </div>
-      <div style={{ position: "relative", fontSize: 13, fontWeight: 700, color: txt, fontVariantNumeric: "tabular-nums", lineHeight: 1.3 }}>
-        {neg ? "-" : ""}
-        {M(Math.abs(e.available))}
-      </div>
-      {e.spent !== 0 && (
-        <div style={{ position: "relative", fontSize: 9, color: txt, opacity: 0.7, fontVariantNumeric: "tabular-nums", lineHeight: 1.25 }}>
-          {e.spent < 0 ? "+" : "-"}
-          {M(Math.abs(e.spent))}
-        </div>
-      )}
-      {gp && (
-        <div style={{ position: "relative", height: 3, borderRadius: 2, background: txt === "#fff" ? "rgba(255,255,255,0.25)" : "rgba(51,49,44,0.2)", marginTop: 3, overflow: "hidden" }}>
-          <div style={{ height: "100%", width: `${gp.pct}%`, background: txt, borderRadius: 2 }} />
-        </div>
-      )}
-      {neg && (
-        <svg viewBox="0 0 100 100" preserveAspectRatio="none" style={{ position: "absolute", inset: 0, width: "100%", height: "100%", pointerEvents: "none" }}>
-          <line x1="8" y1="12" x2="92" y2="88" stroke="#d94f42" strokeWidth="2.4" strokeLinecap="round" vectorEffect="non-scaling-stroke" opacity="0.75" />
-          <line x1="92" y1="12" x2="8" y2="88" stroke="#d94f42" strokeWidth="2.4" strokeLinecap="round" vectorEffect="non-scaling-stroke" opacity="0.75" />
-        </svg>
-      )}
+    <button onClick={onClick} style={{ display: "block", width: "100%", padding: "7px 0 8px", background: "none", border: "none", borderBottom: last ? "none" : `1px solid ${C.line}`, cursor: "pointer", textAlign: "left" }}>
+      <span style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 10 }}>
+        <span style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0, fontSize: 13, fontWeight: 550, color: C.text }}>
+          {gp && <GoalRing pct={gp.pct} />}
+          <span style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{e.name}</span>
+        </span>
+        <span style={{ fontSize: 13.5, fontWeight: 700, fontVariantNumeric: "tabular-nums", color: neg ? C.neg : C.text, flexShrink: 0 }}>
+          {neg ? "−" : ""}{M(Math.abs(e.available))}
+        </span>
+      </span>
+      {meter ? (
+        <span style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 5 }}>
+          <SpendLine meter={meter} />
+          <span style={{ fontSize: 10, color: meter.state === "over" ? C.neg : C.mute, fontVariantNumeric: "tabular-nums", flexShrink: 0 }}>
+            {meter.state === "over"
+              ? t("overspent")
+              : settings.discreet
+                ? `${M(Math.max(0, e.spent))} / ${M(meter.total)}`
+                : `${fmtTrim(Math.max(0, e.spent))} / ${M(meter.total)}`}
+          </span>
+        </span>
+      ) : gp ? (
+        <span style={{ display: "flex", justifyContent: "flex-end", marginTop: 4 }}>
+          <span style={{ fontSize: 10, color: C.mute, fontVariantNumeric: "tabular-nums" }}>
+            {t("monthly goal: {allocated} / {target} · {pct}%", {
+              allocated: settings.discreet ? M(Math.max(0, e.allocated)) : fmtTrim(Math.max(0, e.allocated)),
+              target: M(e.monthlyTarget ?? 0),
+              pct: String(Math.round(gp.pct)),
+            })}
+          </span>
+        </span>
+      ) : null}
     </button>
   );
 }
 
 const lightChip = (c: string) => c === "#e9e3d7" || c === "#cdeede";
 
-export function AccCard({ a, onClick }: { a: AccountView; onClick: () => void }) {
+export const accountIconColor = (color: string) => (lightChip(color) ? "#8a8576" : color);
+
+/** Compact account cell for the Start 2-column grid: tinted icon, name, balance, uncleared dot. */
+export function AccCell({ a, onClick, last }: { a: AccountView; onClick: () => void; last?: boolean }) {
   const M = useMask();
-  const txt = isLight(a.color) ? "#3a3a36" : "#fff";
+  const C = useTheme();
+  const { band } = useBand();
+  // Duet marks uncleared with coral (CTA), Cisza with amber — spec §3.4.
+  const dot = band ? "var(--cta)" : C.warn;
   return (
-    <button
-      onClick={onClick}
-      className="fu"
-      style={{ background: a.color, border: "none", borderRadius: 13, padding: "7px 10px", cursor: "pointer", display: "flex", alignItems: "center", gap: 9, boxShadow: "0 1px 4px rgba(0,0,0,0.16)", textAlign: "left" }}
-    >
-      <div style={{ width: 32, height: 32, borderRadius: "50%", background: "rgba(255,255,255,0.94)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-        <Glyph name={a.icon} size={16} color={lightChip(a.color) ? "#8a8576" : a.color} sw={1.7} />
-      </div>
-      <div style={{ minWidth: 0, flex: 1 }}>
-        <div style={{ fontSize: 11.5, fontWeight: 500, color: txt, opacity: 0.92, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", lineHeight: 1.3 }}>{a.name}</div>
-        <div style={{ fontSize: 14, fontWeight: 700, color: txt, fontVariantNumeric: "tabular-nums", lineHeight: 1.25 }}>{M(a.balance)}</div>
-      </div>
+    <button onClick={onClick} style={{ display: "flex", alignItems: "center", gap: 8, padding: "7px 0", background: "none", border: "none", borderBottom: last ? "none" : `1px solid ${C.line}`, cursor: "pointer", textAlign: "left", minWidth: 0 }}>
+      <span style={{ width: 24, height: 24, borderRadius: 8, background: tint(a.color, 0.15), display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+        <Glyph name={a.icon} size={13} color={a.color} sw={1.8} />
+      </span>
+      <span style={{ minWidth: 0 }}>
+        <span style={{ display: "block", fontSize: 10.5, color: C.soft, lineHeight: 1.25, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{a.name}</span>
+        <span style={{ display: "block", fontSize: 12.5, fontWeight: 700, color: C.text, lineHeight: 1.3, fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap" }}>
+          {M(a.balance)}
+          {a.uncleared !== 0 && <span aria-hidden style={{ display: "inline-block", width: 5, height: 5, borderRadius: "50%", background: dot, marginLeft: 4, verticalAlign: 2 }} />}
+        </span>
+      </span>
     </button>
   );
 }
-
-export const accountIconColor = (color: string) => (lightChip(color) ? "#8a8576" : color);

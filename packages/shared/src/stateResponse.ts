@@ -34,6 +34,8 @@ export interface EnvelopeView extends Envelope {
 export interface StateResponse {
   month: string;
   toBeBudgeted: number;
+  /** Month-independent "ready to assign" headline — see BudgetState.readyToAssign. */
+  readyToAssign: number;
   monthIncome: number;
   monthExpense: number;
   accounts: AccountView[];
@@ -56,6 +58,7 @@ export function computeStateResponse(ledger: ClientLedger, month: string): State
   return {
     month,
     toBeBudgeted: state.toBeBudgeted,
+    readyToAssign: state.readyToAssign,
     monthIncome: state.monthIncome,
     monthExpense: state.monthExpense,
     accounts: state.accounts.map((a) => ({

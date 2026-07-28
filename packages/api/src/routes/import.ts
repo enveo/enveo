@@ -163,11 +163,13 @@ importRoutes.post("/import/extract", async (c) => {
   const locale = rawLocale ?? "en";
   const language = languageName(locale);
   const today = new Date().toISOString().slice(0, 10);
+  const [budgetRow] = await db.select({ currency: s.budgets.currency }).from(s.budgets).where(eq(s.budgets.id, budgetId));
+  const currency = budgetRow?.currency ?? "EUR";
 
   /* ── cycle 1: facts from the screenshot (prompt+parsing from shared — parity with byok) ── */
   let found: ImportExtractItem[];
   try {
-    const raw = await openaiJson(buildImportExtractPrompt(images, { envelopes: [], categories: [] }, today, locale));
+    const raw = await openaiJson(buildImportExtractPrompt(images, { envelopes: [], categories: [] }, today, locale, currency));
     found = parseImportExtractResponse(raw);
   } catch (e) {
     // upstream rejection or an unparsable answer — the details stay in the server log
@@ -249,7 +251,12 @@ importRoutes.post("/import/extract", async (c) => {
       date: t.date,
       amount: t.amount,
       type: proposedType,
-      isRefund: proposedType === "expense" ? (conf?.isRefund ?? false) : false,
+      // isRefund: a live positive-amount refund read (t.isRefund) is never suppressed by
+      // history — a genuine refund from an ordinarily-non-refund merchant must not be
+      // reclassified as a normal expense. Only when the live read is false does confident
+      // learned history (source_ref) get to override it (the previous ?? let a
+      // isRefund:false history entry beat a true live read — the bug fixed here).
+      isRefund: proposedType === "expense" ? (t.isRefund || (conf?.isRefund ?? false)) : false,
       toAccountId: proposedType === "transfer" ? (conf?.toAccountId ?? null) : null,
       name: pick.name,
       tag: t.tag,
@@ -261,6 +268,9 @@ importRoutes.post("/import/extract", async (c) => {
       categoryId: catMatch?.id ?? null,
       categoryName: catMatch?.name ?? null,
       placeName: pick.place,
+      // presentation-only (not stored): lets the UI warn on a foreign-currency row
+      currency: t.currency,
+      fxOriginal: t.fxOriginal,
     };
   });
   return c.json({ items });
@@ -291,6 +301,12 @@ export const applyInput = z.object({
         /* Deliberate add despite a sure duplicate (the user edited an
            "already exists" item in review) — skips classifyDup for this item. */
         force: z.boolean().optional(),
+        /* PRESENTATION-ONLY (fx/refund review, ImportSheet): accepted so the round-trip of an
+           item echoed back from /import/extract validates, but never stored — there is no
+           `currency`/`fx_original` column on `transactions` (money is always the budget's
+           currency; source_ref already carries what we persist about the raw row). */
+        currency: z.string().optional(),
+        fxOriginal: z.string().optional(),
       }),
     )
     .min(1)

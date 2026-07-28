@@ -5,15 +5,16 @@ import { local } from "../lib/mutate";
 import { Header, Sheet } from "../components/chrome";
 import { AmountPadHost, type AmountPadTarget } from "../components/AmountPadSheet";
 import { BudgetSuggestSheet } from "../components/BudgetSuggestSheet";
+import { CardBox, GoalRing, useBand } from "../components/kit";
 import { DockedNumpad } from "../components/DockedNumpad";
 import { IconColorPicker } from "../components/IconColorPicker";
 import { useCurrency, useMask, useSettings, useTheme } from "../lib/contexts";
 import { useDragReorder } from "../lib/dnd";
-import { currencySymbol, fmtTrim, formatMoney, isLight, parseAmount } from "../lib/format";
+import { currencySymbol, fmtTrim, isLight, parseAmount } from "../lib/format";
 import { goalProgress } from "../lib/goals";
 import { useT } from "../lib/i18n";
 import { Glyph, Ico } from "../lib/icons";
-import { CORAL, ENV_PALETTE, P, SAGE_BG, SAGE_TX, TEAL, font } from "../lib/theme";
+import { CORAL, ENV_PALETTE, P, TEAL, font, tint } from "../lib/theme";
 
 export function BudgetScreen({
   state,
@@ -22,6 +23,7 @@ export function BudgetScreen({
   onPrev,
   onNext,
   onOpenEnvelope,
+  initialSuggest,
 }: {
   state: StateResponse;
   month: string;
@@ -29,30 +31,28 @@ export function BudgetScreen({
   onPrev: () => void;
   onNext: () => void;
   onOpenEnvelope: (envId: string, month: string) => void;
+  /** Start "Suggest" quick action — opens the suggest sheet immediately (like Add's `initialImport`). */
+  initialSuggest?: boolean;
 }) {
   const C = useTheme();
   const M = useMask();
-  const { settings } = useSettings();
-  const { t, lang } = useT();
-  const currency = useCurrency();
+  const { t } = useT();
   const [manage, setManage] = useState(false);
-  const [suggest, setSuggest] = useState(false);
+  const [suggest, setSuggest] = useState(!!initialSuggest);
   // IN-PLACE allocation editing (docked-numpad spec): one active cell per screen;
   // `err` = ✓ on an uncomputable/negative result, cleared on the next keypress.
   const [editing, setEditing] = useState<{ envelopeId: string; pad: PadState; err?: boolean } | null>(null);
 
   const groups = [...state.groups].sort((a, b) => a.sort - b.sort);
   const envs = state.envelopes.filter((e) => !e.archived);
-  const totAdd = envs.reduce((s, e) => s + e.allocated, 0);
-  const totAvail = envs.reduce((s, e) => s + e.available, 0);
-  const pill = (e: EnvelopeView) => ({ bg: e.color, txt: isLight(e.color) ? "#33312c" : "#fff" });
   const COLS = "1fr 94px 108px";
 
-  // Commit-or-cancel of the current edit (tap on another envelope): computable and ≥0 → save, otherwise discard.
+  // Commit-or-cancel of the current edit (tap on another envelope): computable → save
+  // (negative allowed — moving money back OUT of an envelope is a valid allocation), otherwise discard.
   const commitEditing = (ed: { envelopeId: string; pad: PadState }) => {
     const minor = padPreview(ed.pad.expr);
     const env = envs.find((x) => x.id === ed.envelopeId);
-    if (minor !== null && minor >= 0 && env && minor !== env.allocated) {
+    if (minor !== null && env && minor !== env.allocated) {
       local.setAllocation({ envelopeId: ed.envelopeId, month, amount: minor });
     }
   };
@@ -84,36 +84,50 @@ export function BudgetScreen({
   // don't blank out (or strike through) mid-entry; null only for an empty expression.
   const activePreview = editing ? padPreviewLive(editing.pad.expr) : null;
   // Live "To be budgeted" header: with a computable preview, subtract the allocation delta.
-  const tbbLive = state.toBeBudgeted - (activeEnv && activePreview !== null ? activePreview - activeEnv.allocated : 0);
+  // Based on readyToAssign (month-independent headline), not the month-bounded toBeBudgeted,
+  // so editing an allocation moves the same number the user sees on Start.
+  const tbbLive = state.readyToAssign - (activeEnv && activePreview !== null ? activePreview - activeEnv.allocated : 0);
+  const { band, hc } = useBand();
 
   return (
     <div className="gs" style={{ flex: 1, overflowY: "auto", paddingBottom: editing ? 300 : 6 }}>
-      <Header month={month} onMenu={onMenu} onPrev={onPrev} onNext={onNext} onRight={() => setManage(true)} rightIcon="pencil" />
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 10, padding: "0 0 10px" }}>
-        <span style={{ fontSize: 13.5, color: C.soft }}>{t("To be budgeted:")}</span>
-        <span style={{ display: "inline-block", padding: "4px 14px", borderRadius: 15, background: tbbLive < 0 ? CORAL : SAGE_BG, color: tbbLive < 0 ? "#fff" : SAGE_TX, fontSize: 14, fontWeight: 700, fontVariantNumeric: "tabular-nums" }}>{M(tbbLive)}</span>
-        <button onClick={() => setSuggest(true)} aria-label={t("Suggest a distribution")} style={{ padding: "5px 12px", borderRadius: 13, border: `1px solid var(--accent-55)`, background: "var(--accent-1a)", color: TEAL, fontSize: 12, fontWeight: 600, cursor: "pointer" }}>{t("Suggest")}</button>
+      <div style={band ? { background: C.headerBg, paddingBottom: 2 } : undefined}>
+        <Header month={month} onMenu={onMenu} onPrev={onPrev} onNext={onNext} onRight={() => setManage(true)} rightIcon="pencil" onBand={band} />
       </div>
+      <CardBox style={{ margin: `8px ${P}px 10px`, padding: "10px 14px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+        <div style={{ minWidth: 0 }}>
+          <div style={{ fontSize: 10.5, color: C.soft }}>{t("To be budgeted:")}</div>
+          {tbbLive === 0 ? (
+            <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 15, fontWeight: 750, color: C.pos, whiteSpace: "nowrap" }}>
+              <Ico d="M5 13l4 4L19 7" size={15} color={C.pos} sw={2.4} />
+              {t("All money assigned")}
+            </div>
+          ) : (
+            <div style={{ fontSize: 20, fontWeight: 800, letterSpacing: "-0.015em", fontVariantNumeric: "tabular-nums", color: tbbLive < 0 ? C.neg : hc("var(--cta)", C.pos) }}>{M(tbbLive)}</div>
+          )}
+        </div>
+        <button onClick={() => setSuggest(true)} aria-label={t("Suggest a distribution")} style={{ flexShrink: 0, padding: "6px 13px", borderRadius: 999, border: `1.5px solid ${hc("var(--cta)", "var(--accent)")}`, background: "transparent", color: hc("var(--cta)", TEAL), fontSize: 11.5, fontWeight: 700, cursor: "pointer", fontFamily: font }}>
+          {"✨ "}{t("Suggest")}
+        </button>
+      </CardBox>
 
       <div style={{ display: "grid", gridTemplateColumns: COLS, padding: `0 ${P}px 6px`, gap: 8, alignItems: "start" }}>
-        <span style={{ fontSize: 10.5, color: C.mute, fontWeight: 600, letterSpacing: 1, textTransform: "uppercase" }}>{t("Name")}</span>
+        <span style={{ fontSize: 10.5, color: C.mute, fontWeight: 600, letterSpacing: 1, textTransform: "uppercase" }}>{t("Envelope")}</span>
         <div style={{ textAlign: "right" }}>
           <div style={{ fontSize: 10.5, color: C.mute, fontWeight: 600, letterSpacing: 1, textTransform: "uppercase" }}>{t("Allocated")}</div>
-          <div style={{ fontSize: 12, color: C.soft, marginTop: 2, fontVariantNumeric: "tabular-nums" }}>{M(totAdd)}</div>
         </div>
         <div style={{ textAlign: "right" }}>
           <div style={{ fontSize: 10.5, color: C.mute, fontWeight: 600, letterSpacing: 1, textTransform: "uppercase" }}>{t("Available")}</div>
-          <div style={{ fontSize: 12, color: C.text, fontWeight: 600, marginTop: 2, fontVariantNumeric: "tabular-nums" }}>{M(totAvail)}</div>
         </div>
       </div>
 
       {/* Empty state (backstop outside the wizard): no active envelopes → CTA to the manage sheet */}
       {envs.length === 0 && (
-        <div style={{ margin: `6px ${P}px 10px`, padding: "12px 14px", background: "var(--accent-14)", border: `1px solid var(--accent-44)`, borderRadius: 12 }}>
+        <CardBox style={{ margin: `6px ${P}px 10px`, padding: "12px 14px" }}>
           <button onClick={() => setManage(true)} style={{ width: "100%", padding: "10px 0", borderRadius: 10, border: "none", background: TEAL, color: "#fff", fontSize: 12.5, fontWeight: 600, cursor: "pointer", fontFamily: font }}>
             {t("Create your first envelopes")}
           </button>
-        </div>
+        </CardBox>
       )}
 
       {groups.map((g, gi) => {
@@ -123,57 +137,62 @@ export function BudgetScreen({
         const gV = items.reduce((s, e) => s + e.available, 0);
         return (
           <div key={g.id} className="fu" style={{ animationDelay: `${gi * 40}ms`, marginBottom: 2 }}>
-            <div style={{ display: "grid", gridTemplateColumns: COLS, padding: `6px ${P}px`, gap: 8, background: C.band, alignItems: "center" }}>
-              <span style={{ fontSize: 14.5, fontWeight: 600, color: C.text }}>{g.name}</span>
-              <span style={{ fontSize: 11.5, color: C.soft, textAlign: "right", fontVariantNumeric: "tabular-nums" }}>{M(gA)}</span>
-              <span style={{ fontSize: 12.5, fontWeight: 600, color: C.text, textAlign: "right", fontVariantNumeric: "tabular-nums" }}>{M(gV)}</span>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", padding: "7px 18px 4px" }}>
+              <span style={{ fontSize: 12, fontWeight: 750, color: C.text }}>{g.name}</span>
+              <span style={{ fontSize: 10, color: C.soft, fontVariantNumeric: "tabular-nums" }}>{M(gA)} · {M(gV)}</span>
             </div>
-            {items.map((e) => {
-              const pc = pill(e);
-              // Live edit context: the active envelope's Available pill shows the value AFTER the change;
-              // strikethrough only when there is no value (empty expression after ⌫).
-              const active = editing?.envelopeId === e.id ? editing : null;
-              const struck = !!active && activePreview === null;
-              const avail = active && activePreview !== null ? e.available + activePreview - e.allocated : e.available;
-              const neg = avail < 0;
-              const zero = avail === 0;
-              const carryStr = e.carryIn !== 0 ? `${e.carryIn < 0 ? "-" : "+"}${settings.discreet ? "••••" : formatMoney(Math.abs(e.carryIn), currency, lang, { trim: true })}` : "";
-              const gp = goalProgress(e);
-              return (
-                <div key={e.id} role="button" onClick={() => onOpenEnvelope(e.id, month)} style={{ display: "grid", gridTemplateColumns: COLS, padding: `4px ${P}px`, gap: 8, width: "100%", boxSizing: "border-box", cursor: "pointer", alignItems: "center" }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 9, minWidth: 0 }}>
-                    <div style={{ width: 28, height: 28, borderRadius: 7, background: e.color, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                      <Glyph name={e.icon} size={14} color={isLight(e.color) ? "#33312c" : "#fff"} sw={1.6} />
+            <CardBox style={{ padding: "0 12px", marginBottom: 6 }}>
+              {items.map((e, ei) => {
+                // Live edit context: the active envelope's Available text shows the value AFTER the change;
+                // strikethrough only when there is no value (empty expression after ⌫).
+                const active = editing?.envelopeId === e.id ? editing : null;
+                const struck = !!active && activePreview === null;
+                const avail = active && activePreview !== null ? e.available + activePreview - e.allocated : e.available;
+                const neg = avail < 0;
+                const zero = avail === 0;
+                const gp = goalProgress(e);
+                return (
+                  <div key={e.id} role="button" onClick={() => onOpenEnvelope(e.id, month)} style={{ display: "grid", gridTemplateColumns: COLS, padding: "6px 0", gap: 8, width: "100%", boxSizing: "border-box", cursor: "pointer", alignItems: "center", borderBottom: ei === items.length - 1 ? "none" : `1px solid ${C.line}` }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 9, minWidth: 0 }}>
+                      <span style={{ position: "relative", width: 28, height: 28, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", borderRadius: 8, background: tint(e.color, 0.16) }}>
+                        <Glyph name={e.icon} size={14} color={e.color} sw={1.6} />
+                        {gp && (
+                          <span style={{ position: "absolute", left: -4, top: -4, width: 36, height: 36, pointerEvents: "none" }}>
+                            <GoalRing pct={gp.pct} size={36} />
+                          </span>
+                        )}
+                      </span>
+                      <div style={{ minWidth: 0, flex: 1 }}>
+                        <span style={{ display: "block", fontSize: 14.5, color: C.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", textAlign: "left" }}>{e.name}</span>
+                        {/* Carry-over from the previous month (Variant A — may be negative); caption under
+                            the name so the 3-column grid (name/allocated/available) stays intact.
+                            VISUAL: the name column is the narrow 1fr of "1fr 94px 108px" minus the 28px
+                            icon — a worded label ("z poprzedniego 92 397,28 zł") ellipsised away the ONLY
+                            part that matters, the amount. So the caption is the signed amount alone; the
+                            ↳ glyph + pos/neg colour carry the "came from last month" meaning visually, and
+                            the full sentence lives in aria-label for screen readers. */}
+                        {e.carryIn !== 0 && (
+                          <span
+                            aria-label={t("from last month {amount}", { amount: `${e.carryIn < 0 ? "-" : "+"}${M(Math.abs(e.carryIn))}` })}
+                            style={{ display: "block", fontSize: 10.5, fontWeight: 600, color: e.carryIn < 0 ? C.neg : C.pos, fontVariantNumeric: "tabular-nums", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", textAlign: "left" }}
+                          >
+                            {"↳ "}{e.carryIn < 0 ? "-" : "+"}{M(Math.abs(e.carryIn))}
+                          </span>
+                        )}
+                      </div>
                     </div>
-                    <div style={{ minWidth: 0, flex: 1 }}>
-                      <span style={{ display: "block", fontSize: 14.5, color: C.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", textAlign: "left" }}>{e.name}</span>
-                      {gp && (
-                        <div style={{ height: 3, borderRadius: 2, background: C.inset, marginTop: 3, maxWidth: "90%", overflow: "hidden" }}>
-                          <div style={{ height: "100%", width: `${gp.pct}%`, background: gp.funded ? "#4fa583" : "var(--accent)", borderRadius: 2 }} />
-                        </div>
-                      )}
+                    <div style={{ position: "relative" }}>
+                      <AllocCell e={e} editing={active ? { expr: active.pad.expr, err: active.err } : null} onStart={(el) => startEdit(e, el)} />
+                    </div>
+                    <div style={{ textAlign: "right" }}>
+                      <span style={{ fontSize: 13.5, fontWeight: 750, fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap", color: struck ? C.neg : neg ? C.neg : zero ? C.mute : C.text, textDecoration: struck ? "line-through" : "none" }}>
+                        {neg ? "-" : ""}{M(Math.abs(avail))}
+                      </span>
                     </div>
                   </div>
-                  <div style={{ position: "relative" }}>
-                    {carryStr && (
-                      <span style={{ position: "absolute", left: -8, top: -9, zIndex: 1, fontSize: 10, fontWeight: 600, color: e.carryIn < 0 ? CORAL : C.soft, background: C.bg, padding: "1px 7px", borderRadius: 9, border: `1px solid ${e.carryIn < 0 ? CORAL : C.mute}`, transform: "rotate(-6deg)", whiteSpace: "nowrap", fontVariantNumeric: "tabular-nums", pointerEvents: "none" }}>{carryStr}</span>
-                    )}
-                    <AllocCell e={e} editing={active ? { expr: active.pad.expr, err: active.err } : null} onStart={(el) => startEdit(e, el)} />
-                  </div>
-                  <div style={{ textAlign: "right" }}>
-                    <span style={{ position: "relative", display: "inline-block", padding: "4px 10px", borderRadius: 13, background: neg ? "transparent" : zero ? C.inset : pc.bg, color: struck ? "var(--danger)" : neg ? C.text : zero ? C.mute : pc.txt, fontSize: 13.5, fontWeight: 700, fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap", textDecoration: struck ? "line-through" : "none" }}>
-                      {neg ? "-" : ""}{M(Math.abs(avail))}
-                      {neg && (
-                        <svg viewBox="0 0 100 100" preserveAspectRatio="none" style={{ position: "absolute", inset: "-1px -3px", width: "calc(100% + 6px)", height: "calc(100% + 2px)", pointerEvents: "none" }}>
-                          <line x1="4" y1="10" x2="96" y2="90" stroke="#e04f42" strokeWidth="2.2" strokeLinecap="round" vectorEffect="non-scaling-stroke" opacity="0.85" />
-                          <line x1="96" y1="10" x2="4" y2="90" stroke="#e04f42" strokeWidth="2.2" strokeLinecap="round" vectorEffect="non-scaling-stroke" opacity="0.85" />
-                        </svg>
-                      )}
-                    </span>
-                  </div>
-                </div>
-              );
-            })}
+                );
+              })}
+            </CardBox>
           </div>
         );
       })}
@@ -211,7 +230,7 @@ function AllocCell({ e, editing, onStart }: { e: EnvelopeView; editing: { expr: 
   const { settings } = useSettings();
   const { t, lang } = useT();
   const currency = useCurrency();
-  const box = { background: C.inset, borderRadius: 7, padding: "4px 9px" } as const;
+  const box = { background: C.chip, borderRadius: 7, padding: "4px 9px" } as const;
   if (settings.discreet) {
     return <div style={{ ...box, textAlign: "right" as const, fontSize: 13, color: C.text }}>•••• {currencySymbol(currency, lang)}</div>;
   }
@@ -234,13 +253,12 @@ function AllocCell({ e, editing, onStart }: { e: EnvelopeView; editing: { expr: 
   return (
     <div onClick={(ev) => { ev.stopPropagation(); onStart(ev.currentTarget); }} style={{ ...box, display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 3, cursor: "pointer" }}>
       <input
-        value={fmtTrim(e.allocated)}
+        value={fmtSignedTrim(e.allocated)}
         readOnly
         aria-label={t("Allocated: {name}", { name: e.name })}
         onFocus={(ev) => onStart(ev.currentTarget)}
-        style={{ width: "100%", minWidth: 0, background: "none", border: "none", outline: "none", textAlign: "right", fontSize: 13, color: C.text, fontFamily: font, fontVariantNumeric: "tabular-nums", padding: 0, cursor: "pointer" }}
+        style={{ width: "100%", minWidth: 0, background: "none", border: "none", outline: "none", textAlign: "right", fontSize: 13, color: e.allocated < 0 ? C.neg : C.text, fontFamily: font, fontVariantNumeric: "tabular-nums", padding: 0, cursor: "pointer" }}
       />
-      <span style={{ fontSize: 13, color: C.text, flexShrink: 0 }}>{currencySymbol(currency, lang)}</span>
     </div>
   );
 }

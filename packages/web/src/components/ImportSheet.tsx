@@ -12,7 +12,7 @@ import { useCurrency, useSettings, useTheme } from "../lib/contexts";
 import { formatMoney, isLight } from "../lib/format";
 import { useT } from "../lib/i18n";
 import { Glyph, Ico } from "../lib/icons";
-import { CORAL, INCOME, TEAL, TRANSFER, font } from "../lib/theme";
+import { CORAL, TEAL, TRANSFER, font, tint } from "../lib/theme";
 import { preferredAccountId, setLastAccountId } from "../lib/lastAccount";
 
 /**
@@ -119,7 +119,9 @@ export function ImportSheet({ show, onClose, state, onApplied }: { show: boolean
       }
       // dry run marks duplicates (certain: date+amount+source_ref; probable: date+amount) without writing
       const dry = await api.importApply({ accountId, items: extracted, dryRun: true });
-      setItems(dry.results.map((r) => ({ ...r, include: r.status === "added" })));
+      // fx rows (currency differs from the budget's) default to UNCHECKED — the user must
+      // consciously confirm the amount before it's included (the amber chip explains why).
+      setItems(dry.results.map((r) => ({ ...r, include: r.status === "added" && !(!!r.currency && r.currency !== currency) })));
       setEdited({}); // fresh review = no corrections (edited is keyed by index)
       setPhase("review");
     } catch (e) {
@@ -280,6 +282,10 @@ export function ImportSheet({ show, onClose, state, onApplied }: { show: boolean
             const catName = e ? (e.categoryId ? state.categories.find((c) => c.id === e.categoryId)?.name ?? null : null) : (it.categoryName ?? null);
             const refund = e?.isRefund ?? it.isRefund ?? false;
             const exists = it.status === "exists" && !e; // an edited duplicate is treated as a new item
+            // FX row: the extracted amount is in a currency other than the budget's — nothing was
+            // converted (we never guess a rate), so the user must eyeball it. fxOriginal (when
+            // present) is the original foreign charge that WAS converted/settled server-side.
+            const fxMismatch = !!it.currency && it.currency !== currency;
             return (
               <div key={idx} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 2px", opacity: exists ? 0.45 : 1 }}>
                 <span
@@ -301,16 +307,27 @@ export function ImportSheet({ show, onClose, state, onApplied }: { show: boolean
                     <Glyph name={env?.icon ?? "tag"} size={15} color={env ? (isLight(env.color) ? "#33312c" : "#fff") : C.mute} sw={1.6} />
                   </span>
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 13.5, color: C.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                      {e && <span aria-label={t("edited")} title={t("edited")} style={{ color: TEAL, fontWeight: 700 }}>✎ </span>}
-                      {name}
+                    <div style={{ fontSize: 13.5, color: C.text, display: "flex", alignItems: "center", gap: 5, minWidth: 0 }}>
+                      {e && <span aria-label={t("edited")} title={t("edited")} style={{ color: TEAL, fontWeight: 700, flexShrink: 0 }}>✎ </span>}
+                      <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0 }}>{name}</span>
+                      {fxMismatch && (
+                        <span style={{ flexShrink: 0, fontSize: 9.5, fontWeight: 700, letterSpacing: 0.4, padding: "2px 7px", borderRadius: 8, background: tint(C.warn, 0.15), color: C.warn }}>
+                          {it.currency}
+                        </span>
+                      )}
                     </div>
                     <div style={{ fontSize: 10.5, color: C.mute, marginTop: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                       {e?.date ?? it.date} · {(e ? e.placeName : it.placeName) ?? it.tag}{env ? ` · ${env.name}` : ""}{catName ? ` · ${catName}` : ""}{refund ? ` · ${t("refund")}` : ""}{exists ? ` · ${t("already exists")}` : ""}
-                      {it.status === "probable" && <span style={{ color: "#d97706", fontWeight: 600 }}> · {t("probable duplicate")}</span>}
+                      {it.status === "probable" && <span style={{ color: C.warn, fontWeight: 600 }}> · {t("probable duplicate")}</span>}
                     </div>
+                    {it.fxOriginal && (
+                      <div style={{ fontSize: 10, color: C.mute, marginTop: 1 }}>{it.fxOriginal}</div>
+                    )}
+                    {fxMismatch && (
+                      <div style={{ fontSize: 10, color: C.warn, marginTop: 1 }}>{t("Recorded in {currency} — check the amount.", { currency: it.currency! })}</div>
+                    )}
                   </div>
-                  <span style={{ fontSize: 13.5, fontWeight: 600, fontVariantNumeric: "tabular-nums", color: type === "transfer" ? TRANSFER : type === "income" || refund ? INCOME : C.text, flexShrink: 0 }}>
+                  <span style={{ fontSize: 13.5, fontWeight: 600, fontVariantNumeric: "tabular-nums", color: type === "transfer" ? TRANSFER : type === "income" || refund ? C.pos : C.text, flexShrink: 0 }}>
                     {type === "transfer" ? "↔ " : type === "income" || refund ? "+" : "-"}{formatMoney(amount, currency, lang)}
                   </span>
                 </div>

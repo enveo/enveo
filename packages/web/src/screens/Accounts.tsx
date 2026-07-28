@@ -7,6 +7,7 @@ import { Sheet } from "../components/chrome";
 import { IconColorPicker } from "../components/IconColorPicker";
 import { accountIconColor } from "../components/tiles";
 import { useMask, useTheme } from "../lib/contexts";
+import { useDragReorder } from "../lib/dnd";
 import { useT } from "../lib/i18n";
 import { parseAmount } from "../lib/format";
 import { Glyph, Ico } from "../lib/icons";
@@ -32,6 +33,18 @@ export function AccountsScreen({ state, onMenu }: { state: StateResponse; onMenu
     setNmIcon("wallet");
     setAdd(true);
   };
+
+  // A move is applied to the flat ordering of active accounts — only changed sorts are written
+  // (accounts are a single flat list, unlike ManageGroup's per-group envelopes).
+  const commitMove = (from: number, to: number) => {
+    const order = [...accounts];
+    const [moved] = order.splice(from, 1);
+    order.splice(to, 0, moved!);
+    const sortOf = new Map(accounts.map((a) => [a.id, a.sort]));
+    const ch = order.map((a, i) => ({ id: a.id, sort: i })).filter((c) => sortOf.get(c.id) !== c.sort);
+    for (const c of ch) local.updateAccount(c.id, { sort: c.sort });
+  };
+  const dnd = useDragReorder(commitMove);
 
   const openBalancePad = () =>
     setPad({
@@ -65,22 +78,48 @@ export function AccountsScreen({ state, onMenu }: { state: StateResponse; onMenu
           <div style={{ fontSize: 18.5, fontWeight: 600, color: C.text }}>{t("Accounts")}</div>
           <div style={{ fontSize: 12, color: C.soft, marginTop: 1 }}>{t("Balance")}: <span style={{ fontWeight: 700, fontVariantNumeric: "tabular-nums" }}>{M(total)}</span></div>
         </div>
-        <div style={{ width: 28 }} />
+        <button onClick={openAdd} aria-label={t("Add account")} style={{ width: 34, height: 34, borderRadius: 10, border: "none", background: "var(--accent-1a)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+          <Ico d="M12 5v14M5 12h14" size={18} color={TEAL} sw={2.2} />
+        </button>
       </div>
       <div style={{ padding: `8px ${P}px` }}>
-        {accounts.map((a, i) => (
-          <div key={a.id} className="fu" role="button" onClick={() => setEdit(a)} style={{ animationDelay: `${i * 22}ms`, display: "flex", alignItems: "center", justifyContent: "space-between", padding: "11px 0", borderBottom: i < accounts.length - 1 ? `1px solid ${C.line}` : "none", cursor: "pointer" }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-              <div style={{ width: 44, height: 44, borderRadius: 12, background: a.color, display: "flex", alignItems: "center", justifyContent: "center" }}>
-                <div style={{ width: 30, height: 30, borderRadius: "50%", background: "rgba(255,255,255,0.92)", display: "flex", alignItems: "center", justifyContent: "center" }}>
-                  <Glyph name={a.icon} size={16} color={accountIconColor(a.color)} />
+        {accounts.map((a, i) => {
+          const b = dnd.bind(i);
+          return (
+            <div
+              key={a.id}
+              ref={dnd.itemRef(i)}
+              className="fu"
+              style={{
+                animationDelay: `${i * 22}ms`,
+                display: "flex",
+                alignItems: "center",
+                gap: 2,
+                padding: "11px 0",
+                borderBottom: i < accounts.length - 1 ? `1px solid ${C.line}` : "none",
+                background: dnd.dragging === i ? C.bg : "transparent",
+                outline: dnd.over === i && dnd.dragging !== i ? `2px dashed ${TEAL}` : "none",
+                outlineOffset: -2,
+                borderRadius: 8,
+              }}
+            >
+              <span {...b} aria-label={t("Drag {name}", { name: a.name })} style={{ ...b.style, display: "flex", padding: "8px 6px", marginLeft: -6, flexShrink: 0 }}>
+                <Ico d="M4 7h16M4 12h16M4 17h16" size={14} color={C.mute} />
+              </span>
+              <div role="button" onClick={() => setEdit(a)} style={{ flex: 1, minWidth: 0, display: "flex", alignItems: "center", justifyContent: "space-between", cursor: "pointer" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0 }}>
+                  <div style={{ width: 44, height: 44, borderRadius: 12, background: a.color, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                    <div style={{ width: 30, height: 30, borderRadius: "50%", background: "rgba(255,255,255,0.92)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                      <Glyph name={a.icon} size={16} color={accountIconColor(a.color)} />
+                    </div>
+                  </div>
+                  <span style={{ color: C.text, fontSize: 14.5, fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{a.name}</span>
                 </div>
+                <span style={{ fontSize: 15, fontWeight: 600, color: a.balance === 0 ? C.mute : C.text, fontVariantNumeric: "tabular-nums", flexShrink: 0, marginLeft: 8 }}>{M(a.balance)}</span>
               </div>
-              <span style={{ color: C.text, fontSize: 14.5, fontWeight: 500 }}>{a.name}</span>
             </div>
-            <span style={{ fontSize: 15, fontWeight: 600, color: a.balance === 0 ? C.mute : C.text, fontVariantNumeric: "tabular-nums" }}>{M(a.balance)}</span>
-          </div>
-        ))}
+          );
+        })}
         {closed.length > 0 && (
           <>
             <div style={{ fontSize: 10.5, fontWeight: 600, color: C.mute, textTransform: "uppercase", letterSpacing: 0.6, margin: "16px 0 4px" }}>{t("Closed")}</div>
@@ -99,12 +138,6 @@ export function AccountsScreen({ state, onMenu }: { state: StateResponse; onMenu
             ))}
           </>
         )}
-        <button onClick={openAdd} style={{ display: "flex", alignItems: "center", gap: 12, padding: "14px 0", background: "none", border: "none", color: TEAL, fontSize: 12, fontWeight: 600, cursor: "pointer" }}>
-          <div style={{ width: 44, height: 44, borderRadius: 12, background: "var(--accent-18)", display: "flex", alignItems: "center", justifyContent: "center", border: `1px dashed var(--accent-55)` }}>
-            <Ico d="M12 5v14m-7-7h14" size={17} color={TEAL} sw={2} />
-          </div>
-          {t("Add account")}
-        </button>
       </div>
 
       <Sheet show={add} onClose={() => setAdd(false)}>

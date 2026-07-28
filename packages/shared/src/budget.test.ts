@@ -132,6 +132,39 @@ describe("computeBudgetState — scenarios", () => {
   });
 });
 
+describe("computeBudgetState — readyToAssign (month-independent)", () => {
+  it("equals toBeBudgeted when there are no allocations/txns beyond the selected month", () => {
+    const g = grp();
+    const a = acc({ initialBalance: 100_00 });
+    const e = env(g.id);
+    const ledger: Ledger = {
+      accounts: [a],
+      groups: [g],
+      envelopes: [e],
+      allocations: [alloc(e.id, "2026-06", 50_00)],
+      transactions: [tx({ accountId: a.id, envelopeId: e.id, amount: 30_00 })],
+    };
+    const s = computeBudgetState(ledger, "2026-06");
+    expect(s.readyToAssign).toBe(s.toBeBudgeted);
+  });
+
+  it("assigning in a FUTURE month lowers readyToAssign for an earlier month, leaving that month's toBeBudgeted unchanged", () => {
+    const g = grp();
+    const a = acc({ initialBalance: 100_00 });
+    const e = env(g.id);
+    const ledger: Ledger = {
+      accounts: [a],
+      groups: [g],
+      envelopes: [e],
+      allocations: [alloc(e.id, "2026-08", 30_00)], // future relative to 2026-06
+      transactions: [],
+    };
+    const june = computeBudgetState(ledger, "2026-06");
+    expect(june.toBeBudgeted).toBe(100_00); // month-bounded figure ignores the future allocation
+    expect(june.readyToAssign).toBe(70_00); // month-independent figure already accounts for it
+  });
+});
+
 describe("month helpers", () => {
   it("nextMonth/prevMonth cross year boundaries", () => {
     expect(nextMonth("2026-12")).toBe("2027-01");

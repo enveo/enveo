@@ -3,6 +3,7 @@ import { computeCashflowSeries, computeNetWorthSeries, computeSpendingByDimensio
 import { useLedgerVersion, type StateResponse } from "../lib/api";
 import { store } from "../lib/store";
 import { Header } from "../components/chrome";
+import { useBand } from "../components/kit";
 import { ReportInfoNote } from "../components/ReportInfoNote";
 import { SubscriptionsTab } from "../components/SubscriptionsTab";
 import { useMask, useTheme } from "../lib/contexts";
@@ -10,7 +11,7 @@ import { monthLabel, shortDate, todayISO } from "../lib/dates";
 import { goalProgress } from "../lib/goals";
 import { useT, type Message, msg } from "../lib/i18n";
 import { budgetsSummary, upcomingWindow, type UpcomingWindow } from "../lib/reportSummary";
-import { CORAL, INCOME, P, TEAL, type Theme } from "../lib/theme";
+import { P, TEAL, type Theme } from "../lib/theme";
 
 export type ReportTab = "assets" | "cashflow" | "spending" | "budgets" | "goals" | "subs";
 /** Reports view: shortcut-card overview or a full-screen report subscreen. */
@@ -50,6 +51,7 @@ export function ReportsScreen({ state, month, view, onView, onOpenEnvelope, onMe
   const C = useTheme();
   const M = useMask();
   const { t, lang } = useT();
+  const { band, hc } = useBand();
   const version = useLedgerVersion();
   // "Envelope" by default — in an envelope app it's the natural breakdown (categories are often empty)
   const [dim, setDim] = useState<SpendingDimension>("envelope");
@@ -85,7 +87,9 @@ export function ReportsScreen({ state, month, view, onView, onOpenEnvelope, onMe
   if (view === "overview") {
     return (
       <div className="gs" style={{ flex: 1, overflowY: "auto", paddingBottom: 6 }}>
-        <Header month={month} onMenu={onMenu} onPrev={onPrev} onNext={onNext} />
+        <div style={band ? { background: C.headerBg, paddingBottom: 2 } : undefined}>
+          <Header month={month} onMenu={onMenu} onPrev={onPrev} onNext={onNext} onBand={band} />
+        </div>
         <div style={{ padding: `2px ${P}px 0` }}>
           <OverviewCards state={state} month={month} netWorth={netWorth} cashflow={cashflow} onView={onView} />
         </div>
@@ -99,18 +103,20 @@ export function ReportsScreen({ state, month, view, onView, onOpenEnvelope, onMe
   const monthly = view !== "subs";
   return (
     <div className="gs" style={{ flex: 1, overflowY: "auto", paddingBottom: 6 }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 6, padding: `12px ${P}px 10px` }}>
-        <button aria-label={t("Back")} onClick={() => onView("overview")} style={{ flexShrink: 0, width: 30, height: 30, borderRadius: 15, border: "none", background: "transparent", color: C.text, fontSize: 22, lineHeight: 1, cursor: "pointer", padding: 0, marginLeft: -6, display: "flex", alignItems: "center", justifyContent: "center" }}>‹</button>
-        <span style={{ flex: 1, fontSize: 16, fontWeight: 700, color: C.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t(TITLES[view])}</span>
-        {monthly ? (
-          <span style={{ display: "flex", alignItems: "center", gap: 2, flexShrink: 0 }}>
-            <button onClick={onPrev} style={{ border: "none", background: "transparent", color: C.soft, fontSize: 17, lineHeight: 1, cursor: "pointer", padding: "2px 7px" }}>‹</button>
-            <span style={{ fontSize: 12.5, fontWeight: 600, color: C.text, minWidth: 58, textAlign: "center" }}>{monthLabel(month, lang).split(" ")[0]}</span>
-            <button onClick={onNext} style={{ border: "none", background: "transparent", color: C.soft, fontSize: 17, lineHeight: 1, cursor: "pointer", padding: "2px 7px" }}>›</button>
-          </span>
-        ) : (
-          <span style={{ fontSize: 12.5, fontWeight: 600, color: C.soft, flexShrink: 0 }}>{t("30 days")}</span>
-        )}
+      <div style={band ? { background: C.headerBg, paddingBottom: 2 } : undefined}>
+        <div style={{ display: "flex", alignItems: "center", gap: 6, padding: `12px ${P}px 10px` }}>
+          <button aria-label={t("Back")} onClick={() => onView("overview")} style={{ flexShrink: 0, width: 30, height: 30, borderRadius: 15, border: "none", background: "transparent", color: hc(C.headerInk, C.text), fontSize: 22, lineHeight: 1, cursor: "pointer", padding: 0, marginLeft: -6, display: "flex", alignItems: "center", justifyContent: "center" }}>‹</button>
+          <span style={{ flex: 1, fontSize: 16, fontWeight: 700, color: hc(C.headerInk, C.text), overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t(TITLES[view])}</span>
+          {monthly ? (
+            <span style={{ display: "flex", alignItems: "center", gap: 2, flexShrink: 0 }}>
+              <button onClick={onPrev} style={{ border: "none", background: "transparent", color: hc(C.headerMute, C.soft), fontSize: 17, lineHeight: 1, cursor: "pointer", padding: "2px 7px" }}>‹</button>
+              <span style={{ fontSize: 12.5, fontWeight: 600, color: hc(C.headerInk, C.text), minWidth: 58, textAlign: "center" }}>{monthLabel(month, lang).split(" ")[0]}</span>
+              <button onClick={onNext} style={{ border: "none", background: "transparent", color: hc(C.headerMute, C.soft), fontSize: 17, lineHeight: 1, cursor: "pointer", padding: "2px 7px" }}>›</button>
+            </span>
+          ) : (
+            <span style={{ fontSize: 12.5, fontWeight: 600, color: hc(C.headerMute, C.soft), flexShrink: 0 }}>{t("30 days")}</span>
+          )}
+        </div>
       </div>
       <div className="fi" style={{ padding: `0 ${P}px` }}>
         <ReportInfoNote id={view} textKey={NOTES[view]} />
@@ -177,7 +183,7 @@ function OverviewCards({ state, month, netWorth, cashflow, onView }: { state: St
   const bsTotal = bs.over + bs.near + bs.ok;
 
   const card = (id: ReportTab, title: string, body: ReactNode) => (
-    <button key={id} onClick={() => onView(id)} style={{ display: "block", width: "100%", background: C.card, border: `1px solid ${C.line}`, borderRadius: 14, padding: "12px 14px", marginBottom: 12, cursor: "pointer", textAlign: "left", fontFamily: "inherit" }}>
+    <button key={id} onClick={() => onView(id)} style={{ display: "block", width: "100%", background: C.card, border: "none", boxShadow: "0 1px 3px rgba(20,20,28,0.06)", borderRadius: 14, padding: "12px 14px", marginBottom: 12, cursor: "pointer", textAlign: "left", fontFamily: "inherit" }}>
       <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 8, marginBottom: 7 }}>
         <span style={{ fontSize: 13.5, fontWeight: 700, color: C.text }}>{title}</span>
         <span style={{ fontSize: 12, color: "var(--accent)", flexShrink: 0 }}>{t("details")} ›</span>
@@ -194,7 +200,7 @@ function OverviewCards({ state, month, netWorth, cashflow, onView }: { state: St
         <>
           <div style={{ display: "flex", alignItems: "baseline", gap: 10 }}>
             <span style={{ fontSize: 18, fontWeight: 700, color: C.text, fontVariantNumeric: "tabular-nums" }}>{M(nwLast)}</span>
-            {nwDelta !== 0 && <span style={{ fontSize: 11.5, fontWeight: 600, color: nwDelta > 0 ? INCOME : CORAL, fontVariantNumeric: "tabular-nums" }}>{nwDelta > 0 ? "▲ +" : "▼ "}{M(Math.abs(nwDelta))}</span>}
+            {nwDelta !== 0 && <span style={{ fontSize: 11.5, fontWeight: 600, color: nwDelta > 0 ? C.pos : C.neg, fontVariantNumeric: "tabular-nums" }}>{nwDelta > 0 ? "▲ +" : "▼ "}{M(Math.abs(nwDelta))}</span>}
           </div>
           <Sparkline points={netWorth} />
         </>,
@@ -203,7 +209,7 @@ function OverviewCards({ state, month, netWorth, cashflow, onView }: { state: St
         "cashflow",
         t("Cash flow — {month}", { month: monthLabel(month, lang).split(" ")[0]! }),
         <div style={{ display: "flex", gap: 8 }}>
-          {([[t("Income"), cf?.income ?? 0, INCOME], [t("Expense"), cf?.expense ?? 0, CORAL], [t("Net"), cfNet, cfNet >= 0 ? INCOME : CORAL]] as const).map(([label, val, col]) => (
+          {([[t("Income"), cf?.income ?? 0, C.pos], [t("Expense"), cf?.expense ?? 0, C.neg], [t("Net"), cfNet, cfNet >= 0 ? C.pos : C.neg]] as const).map(([label, val, col]) => (
             <div key={label} style={{ flex: 1 }}>
               <div style={{ fontSize: 10.5, color: C.soft }}>{label}</div>
               <div style={{ fontSize: 13.5, fontWeight: 700, color: col, fontVariantNumeric: "tabular-nums" }}>{M(val)}</div>
@@ -217,11 +223,11 @@ function OverviewCards({ state, month, netWorth, cashflow, onView }: { state: St
           "goals",
           t("Goals"),
           <>
-            <div style={{ fontSize: 12.5, fontWeight: 600, color: missSum === 0 ? SAGE : C.soft, fontVariantNumeric: "tabular-nums" }}>
+            <div style={{ fontSize: 12.5, fontWeight: 600, color: missSum === 0 ? C.pos : C.soft, fontVariantNumeric: "tabular-nums" }}>
               {missSum === 0 ? t("All goals funded ✓") : t("Funded {pct}% · {amount} to go", { pct: pctTotal, amount: M(missSum) })}
             </div>
-            <div style={{ height: 8, background: C.bg, borderRadius: 4, overflow: "hidden", marginTop: 7 }}>
-              <div style={{ height: "100%", width: `${pctTotal}%`, background: missSum === 0 ? SAGE : "var(--accent)", borderRadius: 4 }} />
+            <div style={{ height: 8, background: C.line, borderRadius: 4, overflow: "hidden", marginTop: 7 }}>
+              <div style={{ height: "100%", width: `${pctTotal}%`, background: missSum === 0 ? C.pos : "var(--accent)", borderRadius: 4 }} />
             </div>
           </>,
         )}
@@ -230,7 +236,7 @@ function OverviewCards({ state, month, netWorth, cashflow, onView }: { state: St
         t("Envelope budgets"),
         <>
           <div style={{ fontSize: 12.5, fontWeight: 600, color: C.soft, fontVariantNumeric: "tabular-nums" }}>
-            <span style={bs.over > 0 ? { color: "var(--danger)" } : undefined}>{t("{n} over", { n: bs.over })}</span>
+            <span style={bs.over > 0 ? { color: C.neg } : undefined}>{t("{n} over", { n: bs.over })}</span>
             {" · "}
             {t("{n} near limit", { n: bs.near })}
             {" · "}
@@ -238,7 +244,7 @@ function OverviewCards({ state, month, netWorth, cashflow, onView }: { state: St
           </div>
           {bsTotal > 0 && (
             <div style={{ display: "flex", gap: 3, height: 8, marginTop: 7 }}>
-              {([[bs.over, "var(--danger)"], [bs.near, AMBER], [bs.ok, SAGE]] as const).map(([n, color], i) =>
+              {([[bs.over, C.neg], [bs.near, C.warn], [bs.ok, C.pos]] as const).map(([n, color], i) =>
                 n > 0 ? <span key={i} style={{ flex: n, minWidth: 8, background: color, borderRadius: 4 }} /> : null,
               )}
             </div>
@@ -285,8 +291,9 @@ function SpendingPreview({ rows, envColor, C }: { rows: Array<{ key: string | nu
   );
 }
 
-/** Net-worth mini-sparkline on the card (polyline without fill; stroke via style — var(--accent) does not work in SVG attributes). */
-function Sparkline({ points }: { points: { month: string; total: number }[] }) {
+/** Net-worth mini-sparkline on the card (polyline without fill; stroke via style — var(--accent) does not work in SVG attributes).
+ *  Exported for the Start-screen Net worth widget (components/widgets.tsx) — same visual, no duplication. */
+export function Sparkline({ points }: { points: { month: string; total: number }[] }) {
   const n = points.length;
   if (n < 2) return null;
   const W = 320, H = 44, pad = 3;
@@ -320,7 +327,7 @@ function AssetsReport({ netWorth, state, M }: { netWorth: { month: string; total
       <div style={{ fontSize: 15, fontWeight: 700, color: C.text, margin: "2px 0 4px" }}>{t("Net worth")}</div>
       <div style={{ display: "flex", alignItems: "baseline", gap: 10, marginBottom: 12 }}>
         <span style={{ fontSize: 22, fontWeight: 700, color: C.text, fontVariantNumeric: "tabular-nums" }}>{M(nwLast)}</span>
-        {nwDelta !== 0 && <span style={{ fontSize: 12.5, fontWeight: 600, color: nwDelta > 0 ? INCOME : CORAL, fontVariantNumeric: "tabular-nums" }}>{nwDelta > 0 ? "▲ +" : "▼ "}{M(Math.abs(nwDelta))} {t("m/m")}</span>}
+        {nwDelta !== 0 && <span style={{ fontSize: 12.5, fontWeight: 600, color: nwDelta > 0 ? C.pos : C.neg, fontVariantNumeric: "tabular-nums" }}>{nwDelta > 0 ? "▲ +" : "▼ "}{M(Math.abs(nwDelta))} {t("m/m")}</span>}
       </div>
       <NetWorthChart points={netWorth} mask={M} />
 
@@ -341,7 +348,7 @@ function AssetsReport({ netWorth, state, M }: { netWorth: { month: string; total
                 <span style={{ fontSize: 13, color: C.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{e.name}</span>
                 <span style={{ fontSize: 12.5, fontWeight: 600, color: C.text, fontVariantNumeric: "tabular-nums", flexShrink: 0, marginLeft: 8 }}>{M(e.available)}</span>
               </div>
-              <div style={{ height: 8, background: C.bg, borderRadius: 4, overflow: "hidden" }}>
+              <div style={{ height: 8, background: C.line, borderRadius: 4, overflow: "hidden" }}>
                 <div style={{ height: "100%", width: `${(Math.max(0, e.available) / max) * 100}%`, background: TEAL, borderRadius: 4 }} />
               </div>
             </div>
@@ -363,7 +370,7 @@ function CashflowReport({ cashflow, M }: { cashflow: { month: string; income: nu
     <>
       <div style={{ fontSize: 15, fontWeight: 700, color: C.text, margin: "2px 0 8px" }}>{t("Cash flow (12 mo)")}</div>
       <div style={{ display: "flex", gap: 8, marginBottom: 14 }}>
-        {([[t("Income"), totIncome, INCOME], [t("Expense"), totExpense, CORAL], [t("Net"), totNet, totNet >= 0 ? INCOME : CORAL]] as const).map(([label, val, col]) => (
+        {([[t("Income"), totIncome, C.pos], [t("Expense"), totExpense, C.neg], [t("Net"), totNet, totNet >= 0 ? C.pos : C.neg]] as const).map(([label, val, col]) => (
           <div key={label} style={{ flex: 1 }}>
             <div style={{ fontSize: 10.5, color: C.soft }}>{label}</div>
             <div style={{ fontSize: 14, fontWeight: 700, color: col, fontVariantNumeric: "tabular-nums" }}>{M(val)}</div>
@@ -377,9 +384,9 @@ function CashflowReport({ cashflow, M }: { cashflow: { month: string; income: nu
             <span style={{ fontSize: 11, color: C.soft, width: 48, textAlign: "right", flexShrink: 0 }}>{monthLabel(p.month, lang).split(" ")[0]}</span>
             <div style={{ flex: 1, position: "relative", height: 12 }}>
               <div style={{ position: "absolute", left: "50%", top: 0, bottom: 0, width: 1, background: C.line }} />
-              <div style={{ position: "absolute", top: 2, height: 8, borderRadius: 3, background: p.net >= 0 ? INCOME : CORAL, left: p.net >= 0 ? "50%" : `${50 - w}%`, width: `${w}%` }} />
+              <div style={{ position: "absolute", top: 2, height: 8, borderRadius: 3, background: p.net >= 0 ? C.pos : C.neg, left: p.net >= 0 ? "50%" : `${50 - w}%`, width: `${w}%` }} />
             </div>
-            <span style={{ fontSize: 11.5, fontWeight: 600, color: p.net >= 0 ? INCOME : CORAL, width: 80, textAlign: "right", flexShrink: 0, fontVariantNumeric: "tabular-nums" }}>{p.net >= 0 ? "+" : "−"}{M(Math.abs(p.net))}</span>
+            <span style={{ fontSize: 11.5, fontWeight: 600, color: p.net >= 0 ? C.pos : C.neg, width: 80, textAlign: "right", flexShrink: 0, fontVariantNumeric: "tabular-nums" }}>{p.net >= 0 ? "+" : "−"}{M(Math.abs(p.net))}</span>
           </div>
         );
       })}
@@ -402,7 +409,7 @@ function SpendingReport({ spending, dim, setDim, range, setRange, M }: { spendin
       </div>
       <div style={{ display: "flex", background: C.bg, borderRadius: 9, padding: 2, border: `1px solid ${C.line}`, marginBottom: 12 }}>
         {RANGES.map((r) => (
-          <button key={r.n} onClick={() => setRange(r.n)} style={{ flex: 1, padding: "6px 0", borderRadius: 7, border: "none", fontSize: 11.5, fontWeight: 600, cursor: "pointer", background: range === r.n ? TEAL : "transparent", color: range === r.n ? "#fff" : C.soft }}>{t(r.label)}</button>
+          <button key={r.n} onClick={() => setRange(r.n)} style={{ flex: 1, padding: "6px 0", borderRadius: 7, border: `1px solid ${range === r.n ? TEAL : "transparent"}`, fontSize: 11.5, fontWeight: 600, cursor: "pointer", background: range === r.n ? "var(--accent-1a)" : "transparent", color: range === r.n ? TEAL : C.soft }}>{t(r.label)}</button>
         ))}
       </div>
       <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8, fontSize: 12.5 }}>
@@ -416,7 +423,7 @@ function SpendingReport({ spending, dim, setDim, range, setRange, M }: { spendin
             <span style={{ fontSize: 13, color: C.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.name}</span>
             <span style={{ fontSize: 12.5, fontWeight: 600, color: C.text, fontVariantNumeric: "tabular-nums", flexShrink: 0, marginLeft: 8 }}>{M(r.amount)} · {Math.round(r.pct * 100)}%</span>
           </div>
-          <div style={{ height: 8, background: C.bg, borderRadius: 4, overflow: "hidden" }}>
+          <div style={{ height: 8, background: C.line, borderRadius: 4, overflow: "hidden" }}>
             <div style={{ height: "100%", width: `${(r.amount / spMax) * 100}%`, background: TEAL, borderRadius: 4 }} />
           </div>
         </div>
@@ -430,7 +437,6 @@ function SpendingReport({ spending, dim, setDim, range, setRange, M }: { spendin
  * (allocated+carryIn > 0) or spending in the month; spent/budget bar with thresholds
  * >100% red / 80–100% amber / the rest in the envelope color; sorted descending by %.
  */
-const AMBER = "#d97706";
 function BudgetsReport({ state, M, onOpenEnvelope }: { state: StateResponse; M: Mask; onOpenEnvelope: (envId: string, month: string) => void }) {
   const C = useTheme();
   const { t, lang } = useT();
@@ -448,19 +454,19 @@ function BudgetsReport({ state, M, onOpenEnvelope }: { state: StateResponse; M: 
       <div style={{ fontSize: 11.5, color: C.mute, marginBottom: 10 }}>{t("This month's spending vs. the envelope budget (allocation + carry-over).")}</div>
       {rows.length === 0 && <div style={{ fontSize: 12.5, color: C.mute, padding: "8px 0" }}>{t("No envelopes with a budget or spending this month.")}</div>}
       {rows.map(({ e, pct, left }) => {
-        const barColor = pct > 100 ? "var(--danger)" : pct >= 80 ? AMBER : e.color;
+        const barColor = pct > 100 ? C.neg : pct >= 80 ? C.warn : e.color;
         return (
           <button key={e.id} onClick={() => onOpenEnvelope(e.id, state.month)} style={{ display: "block", width: "100%", background: "none", border: "none", padding: "0 0 12px", cursor: "pointer", textAlign: "left", fontFamily: "inherit" }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 8, marginBottom: 3 }}>
               <span style={{ fontSize: 13, color: C.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{e.name}</span>
               <span style={{ textAlign: "right", flexShrink: 0 }}>
-                <span style={{ display: "block", fontSize: 12.5, fontWeight: 700, color: pct > 100 ? "var(--danger)" : pct >= 80 ? AMBER : C.text, fontVariantNumeric: "tabular-nums" }}>{Math.round(pct)}%</span>
-                <span style={{ display: "block", fontSize: 10.5, color: left < 0 ? CORAL : C.soft, fontVariantNumeric: "tabular-nums" }}>
+                <span style={{ display: "block", fontSize: 12.5, fontWeight: 700, color: pct > 100 ? C.neg : pct >= 80 ? C.warn : C.text, fontVariantNumeric: "tabular-nums" }}>{Math.round(pct)}%</span>
+                <span style={{ display: "block", fontSize: 10.5, color: left < 0 ? C.neg : C.soft, fontVariantNumeric: "tabular-nums" }}>
                   {left < 0 ? t("over by {amount}", { amount: M(-left) }) : t("{amount} left", { amount: M(left) })}
                 </span>
               </span>
             </div>
-            <div style={{ height: 8, background: C.bg, borderRadius: 4, overflow: "hidden" }}>
+            <div style={{ height: 8, background: C.line, borderRadius: 4, overflow: "hidden" }}>
               <div style={{ height: "100%", width: `${Math.min(100, pct)}%`, background: barColor, borderRadius: 4 }} />
             </div>
           </button>
@@ -475,7 +481,6 @@ function BudgetsReport({ state, M, onOpenEnvelope }: { state: StateResponse; M: 
  * bar = funding (allocated) relative to the goal; sorted ascending by %, then name.
  * Math EXCLUSIVELY via goalProgress — zero duplication in the component.
  */
-const SAGE = "#4fa583";
 function GoalsReport({ state, M, onOpenEnvelope }: { state: StateResponse; M: Mask; onOpenEnvelope: (envId: string, month: string) => void }) {
   const C = useTheme();
   const { t, lang } = useT();
@@ -496,24 +501,24 @@ function GoalsReport({ state, M, onOpenEnvelope }: { state: StateResponse; M: Ma
       <div style={{ fontSize: 11.5, color: C.mute, marginBottom: 10 }}>{t("Funding vs monthly targets")}</div>
       {rows.length === 0 && <div style={{ fontSize: 12.5, color: C.mute, padding: "8px 0" }}>{t("No envelopes with a goal. Set a monthly target when editing an envelope.")}</div>}
       {rows.length > 0 && (
-        <div style={{ fontSize: 12.5, fontWeight: 600, color: missSum === 0 ? SAGE : C.soft, marginBottom: 10, fontVariantNumeric: "tabular-nums" }}>
+        <div style={{ fontSize: 12.5, fontWeight: 600, color: missSum === 0 ? C.pos : C.soft, marginBottom: 10, fontVariantNumeric: "tabular-nums" }}>
           {missSum === 0 ? t("All goals funded ✓") : t("Funded {pct}% · {amount} to go", { pct: pctTotal, amount: M(missSum) })}
         </div>
       )}
       {rows.map(({ e, gp }) => {
-        const barColor = gp.funded ? SAGE : "var(--accent)";
+        const barColor = gp.funded ? C.pos : "var(--accent)";
         return (
           <button key={e.id} onClick={() => onOpenEnvelope(e.id, state.month)} style={{ display: "block", width: "100%", background: "none", border: "none", padding: "0 0 12px", cursor: "pointer", textAlign: "left", fontFamily: "inherit" }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 8, marginBottom: 3 }}>
               <span style={{ fontSize: 13, color: C.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{e.name}</span>
               <span style={{ textAlign: "right", flexShrink: 0 }}>
-                <span style={{ display: "block", fontSize: 12.5, fontWeight: 700, color: gp.funded ? SAGE : C.text, fontVariantNumeric: "tabular-nums" }}>{Math.round(gp.pct)}%</span>
-                <span style={{ display: "block", fontSize: 10.5, color: gp.funded ? SAGE : C.soft, fontVariantNumeric: "tabular-nums" }}>
+                <span style={{ display: "block", fontSize: 12.5, fontWeight: 700, color: gp.funded ? C.pos : C.text, fontVariantNumeric: "tabular-nums" }}>{Math.round(gp.pct)}%</span>
+                <span style={{ display: "block", fontSize: 10.5, color: gp.funded ? C.pos : C.soft, fontVariantNumeric: "tabular-nums" }}>
                   {gp.funded ? t("funded ✓") : t("{amount} to go", { amount: M(gp.missing) })}
                 </span>
               </span>
             </div>
-            <div style={{ height: 8, background: C.bg, borderRadius: 4, overflow: "hidden" }}>
+            <div style={{ height: 8, background: C.line, borderRadius: 4, overflow: "hidden" }}>
               <div style={{ height: "100%", width: `${gp.pct}%`, background: barColor, borderRadius: 4 }} />
             </div>
           </button>
