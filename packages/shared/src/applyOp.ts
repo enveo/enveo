@@ -314,10 +314,13 @@ export function applyOp(ledger: ClientLedger, op: SyncOp): ClientLedger {
       if (idx < 0) return ledger;
       return { ...ledger, budgets: replaceAt(ledger.budgets, idx, { ...ledger.budgets[idx]!, currency: p.currency }) };
     }
-    default:
+    default: {
+      const _exhaustive: never = op.kind; // a NEW kind without a reducer must not compile
+      void _exhaustive;
       
 
 
       return ledger;
+    }
   }
 }
