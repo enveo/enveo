@@ -41,6 +41,7 @@ import {
 } from "@enveo/shared";
 import { api, type ImportItem, type QuickAddResponse } from "./api";
 import type { Settings } from "./contexts";
+import { browserLocales, currencyForLocales } from "./currency";
 import { chatJson, type ChatTarget } from "./openai";
 
  
@@ -314,11 +315,16 @@ export async function runImportExtract(args: {
     envelopes: ledger.envelopes.filter((e) => !e.archived).map((e) => ({ id: e.id, name: e.name })),
     categories: ledger.categories.map((c) => ({ id: c.id, name: c.name })),
   };
-  const raw = await chatJson(buildImportExtractPrompt(images, refs, todayISO(), locale), target);
+  
+
+
+  const currency = ledger.budgets[0]?.currency ?? currencyForLocales(browserLocales());
+  const raw = await chatJson(buildImportExtractPrompt(images, refs, todayISO(), locale, currency), target);
   return parseOrFail(() => parseImportExtractResponse(raw)).map((t) => ({
     date: t.date,
     amount: t.amount,
     type: t.type,
+    isRefund: t.isRefund,
     name: "",
     tag: t.tag,
     rawPlace: t.rawPlace,
@@ -327,5 +333,7 @@ export async function runImportExtract(args: {
     categoryId: null,
     categoryName: null,
     placeName: null,
+    currency: t.currency,
+    fxOriginal: t.fxOriginal,
   }));
 }

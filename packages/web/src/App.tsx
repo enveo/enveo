@@ -22,7 +22,7 @@ import { EnvelopeScreen } from "./screens/Envelope";
 import { TransactionsScreen } from "./screens/Transactions";
 import { AccountsScreen } from "./screens/Accounts";
 import { ReportsScreen, type ReportTab, type ReportView } from "./screens/Reports";
-import { AddScreen } from "./screens/Add";
+import { AddScreen, type Tab as AddTab } from "./screens/Add";
 import { SettingsScreen } from "./screens/Settings";
 import { OnboardingScreen } from "./screens/Onboarding";
 
@@ -32,6 +32,13 @@ export default function App() {
   const [month, setMonth] = useState(currentMonth());
   const [drawer, setDrawer] = useState(false);
   const [editTxn, setEditTxn] = useState<Transaction | null>(null);
+  // Start "quick actions" widget preset for a FRESH Add — read once at mount (AddScreen fully
+  // unmounts/remounts with `screen`, so this never leaks into an unrelated later Add). Reset
+  // by `nav` on every normal entry (FAB, menu) so it only ever applies to the quick action itself.
+  const [addPreset, setAddPreset] = useState<{ tab?: AddTab; importSheet?: boolean }>({});
+  
+
+  const [budgetSuggest, setBudgetSuggest] = useState(false);
   
 
   const [reportsView, setReportsView] = useState<ReportView>("overview");
@@ -63,7 +70,22 @@ export default function App() {
 
   
 
-  const nav = (s: ScreenId) => { if (s !== "addExpense") setEditTxn(null); setEnvView(null); setEditReturn("start"); if (s === "reports") setReportsView("overview"); setScreen(s); };
+  const nav = (s: ScreenId) => { if (s !== "addExpense") setEditTxn(null); if (s === "addExpense") setAddPreset({}); if (s === "budget") setBudgetSuggest(false); setEnvView(null); setEditReturn("start"); if (s === "reports") setReportsView("overview"); setScreen(s); };
+  
+
+
+  const onQuickAdd = (kind: "transfer" | "import" | "suggest") => {
+    if (kind === "suggest") {
+      setBudgetSuggest(true);
+      setScreen("budget");
+      return;
+    }
+    setEditTxn(null);
+    setEnvView(null);
+    setEditReturn("start");
+    setAddPreset(kind === "transfer" ? { tab: "transfer" } : { importSheet: true });
+    setScreen("addExpense");
+  };
   
 
 
@@ -86,8 +108,10 @@ export default function App() {
   const openEnvelope = (envelopeId: string, m: string) => setEnvActions({ envelopeId, month: m });
   const actionsEnv = envActions ? (state?.envelopes.find((e) => e.id === envActions.envelopeId) ?? null) : null;
   const editEnv = envEdit ? (state?.envelopes.find((e) => e.id === envEdit) ?? null) : null;
-   
-  const editTxnFrom = (t: Transaction, from: ScreenId) => { setEditTxn(t); setEditReturn(from); setScreen("addExpense"); };
+  // editing from the list: remember where from, to return there (filters preserved)
+  // A stale quick-action preset must never leak into an unrelated edit (bypasses `nav`, which
+  // otherwise clears it) — e.g. import-sheet-on-mount popping up over a transaction being edited.
+  const editTxnFrom = (t: Transaction, from: ScreenId) => { setEditTxn(t); setEditReturn(from); setAddPreset({}); setScreen("addExpense"); };
   const doneEdit = () => { setEditTxn(null); setScreen(editReturn); };
   const prev = () => setMonth((m) => shiftMonth(m, -1));
   const next = () => setMonth((m) => shiftMonth(m, 1));
@@ -159,12 +183,12 @@ export default function App() {
           )}
           {state && !onboarding && !envView && (
             <>
-              {screen === "start" && <StartScreen state={state} month={month} onOpenTxns={openTxns} onOpenEnvelope={openEnvelope} onMenu={() => setDrawer(true)} onPrev={prev} onNext={next} onNav={nav} onSeeUpcoming={() => openReports("subs")} />}
-              {screen === "budget" && <BudgetScreen state={state} month={month} onMenu={() => setDrawer(true)} onPrev={prev} onNext={next} onOpenEnvelope={openEnvelope} />}
+              {screen === "start" && <StartScreen state={state} month={month} onOpenTxns={openTxns} onOpenEnvelope={openEnvelope} onMenu={() => setDrawer(true)} onPrev={prev} onNext={next} onNav={nav} onSeeUpcoming={() => openReports("subs")} onQuickAdd={onQuickAdd} />}
+              {screen === "budget" && <BudgetScreen state={state} month={month} onMenu={() => setDrawer(true)} onPrev={prev} onNext={next} onOpenEnvelope={openEnvelope} initialSuggest={budgetSuggest} />}
               {screen === "transactions" && <TransactionsScreen state={state} month={month} onMenu={() => setDrawer(true)} onPrev={prev} onNext={next} onEditTxn={(t) => editTxnFrom(t, "transactions")} query={txQuery} setQuery={setTxQuery} envFilter={txEnvFilter} setEnvFilter={setTxEnvFilter} accFilter={txAccFilter} setAccFilter={setTxAccFilter} />}
               {screen === "accounts" && <AccountsScreen state={state} onMenu={() => setDrawer(true)} />}
               {screen === "reports" && <ReportsScreen state={state} month={month} view={reportsView} onView={setReportsView} onOpenEnvelope={openEnvelope} onMenu={() => setDrawer(true)} onPrev={prev} onNext={next} />}
-              {screen === "addExpense" && <AddScreen state={state} editTxn={editTxn} onDone={doneEdit} />}
+              {screen === "addExpense" && <AddScreen state={state} editTxn={editTxn} onDone={doneEdit} initialTab={addPreset.tab} initialImport={addPreset.importSheet} />}
               {screen === "settings" && <SettingsScreen onNav={nav} />}
             </>
           )}

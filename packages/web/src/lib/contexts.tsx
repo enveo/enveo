@@ -10,6 +10,33 @@ import { light, themeTokens, type AccentTheme, type Theme } from "./theme";
 export type ThemeMode = "light" | "dark" | "auto";
 export type AiMode = "off" | "server" | "byok";
 export type OpenAiModel = "gpt-5.5" | "gpt-5.5-mini";
+
+ 
+export type WidgetId =
+  | "quickActions"
+  | "accounts"
+  | "envelopes"
+  | "envelopesSavings"
+  | "reportCashflow"
+  | "reportNetWorth"
+  | "upcoming";
+export interface WidgetOpts {
+   
+  collapsed?: boolean;
+  count?: number;
+   
+  picked?: string[];
+   
+  mode?: string;
+   
+  actions?: string[];
+}
+export interface WidgetConfig {
+  id: WidgetId;
+  enabled: boolean;
+  opts?: WidgetOpts;
+}
+
 export interface Settings {
   themeMode: ThemeMode;
    
@@ -25,11 +52,28 @@ export interface Settings {
   subsDismissed: string[];
    
   customProfiles: Array<{ id: string; name: string; prompt: string }>;
+   
+  startWidgets: WidgetConfig[];
 }
+
+
+
+
+
+const defaultStartWidgets = (): WidgetConfig[] => [
+  { id: "quickActions", enabled: true, opts: { actions: ["expense", "transfer", "import", "suggest"] } },
+  { id: "accounts", enabled: true, opts: { collapsed: true, count: 4 } },
+  { id: "envelopes", enabled: true, opts: { mode: "all" } },
+   
+  { id: "envelopesSavings", enabled: false },
+  { id: "reportCashflow", enabled: true },
+  { id: "reportNetWorth", enabled: false },
+  { id: "upcoming", enabled: true },
+];
 
 const DEFAULT_SETTINGS: Settings = {
   themeMode: "light",
-  accentTheme: "koral",
+  accentTheme: "teal",
   discreet: false,
   lang: detectLang(),
   aiMode: "off",
@@ -37,11 +81,32 @@ const DEFAULT_SETTINGS: Settings = {
   openaiModel: "gpt-5.5-mini",
   subsDismissed: [],
   customProfiles: [],
+  startWidgets: defaultStartWidgets(),
 };
 
 function loadSettings(): Settings {
   const raw = loadPersistedSettings();  
-  return raw ? { ...DEFAULT_SETTINGS, ...raw } : DEFAULT_SETTINGS;
+  const s = raw ? { ...DEFAULT_SETTINGS, ...raw } : { ...DEFAULT_SETTINGS };
+  
+
+
+  if (s.accentTheme === "koral" || s.accentTheme === "atrament") s.accentTheme = "teal";
+   
+  if (!Array.isArray(s.startWidgets) || s.startWidgets.length === 0) {
+    s.startWidgets = defaultStartWidgets();
+  } else {
+    // Reconcile an already-persisted stack against the current defaults: a widget added in a
+    // later release (e.g. envelopesSavings) must still reach upgrading devices — appended in
+    // default order, disabled/opts as shipped — while preserving the user's existing order and
+    // per-widget enabled/opts. Also drops any entry whose id is no longer known (forward-safety
+    // against a downgrade or a corrupted persist).
+    const defaults = defaultStartWidgets();
+    const known = new Set(defaults.map((w) => w.id));
+    const present = new Set(s.startWidgets.map((w) => w.id));
+    const missing = defaults.filter((w) => !present.has(w.id));
+    s.startWidgets = s.startWidgets.filter((w) => known.has(w.id)).concat(missing);
+  }
+  return s;
 }
 
 const ThemeCtx = createContext<Theme>(light);

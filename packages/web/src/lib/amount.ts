@@ -6,7 +6,7 @@
 
 import { evalExpression, fmtTrim } from "./format";
 
-const OPERATORS = ["+", "−", "×"];
+const OPERATORS = ["+", "−", "×", "÷"];
 
 function lastOperatorIndex(s: string): number {
   let idx = -1;
@@ -48,12 +48,12 @@ export function applyAmountKey(amount: string, key: string): string {
 export type PadState = { expr: string; fresh: boolean };
 
  
-const PAD_OP_KEYS = ["+", "−", "×"];
+const PAD_OP_KEYS = ["+", "−", "×", "÷"];
 /**
  * Characters recognized as an operator INSIDE an expression — additionally ASCII "-",
  * because reducing a negative result writes the evalExpression-style sign ("-300+").
  */
-const EXPR_OPS = ["+", "−", "×", "-"];
+const EXPR_OPS = ["+", "−", "×", "÷", "-"];
 
 /** Position of the operator splitting A⊕B; index 0 is a number sign ("-300"), not an operator. */
 function padOperatorIndex(expr: string): number {
@@ -77,8 +77,16 @@ export function hasOpenOp(expr: string): boolean {
   return opIdx >= 0 && opIdx < expr.length - 1;
 }
 
+
+
+
+
+
+
+export type PadKeyOpts = { allowNegative?: boolean };
+
  
-export function padKey(state: PadState, k: string): PadState {
+export function padKey(state: PadState, k: string, opts?: PadKeyOpts): PadState {
   const isOp = PAD_OP_KEYS.includes(k);
 
   if (k === "=") {
@@ -87,6 +95,17 @@ export function padKey(state: PadState, k: string): PadState {
     const minor = evalExpression(state.expr);
     if (minor === null) return state;  
     return { expr: fmtSignedTrim(minor), fresh: false };
+  }
+
+  // allowNegative ONLY: "−" on a genuinely EMPTY/ZERO expression starts a negative literal
+  // ("-" then digits → "-5000") instead of the binary "current−" operator — lets the
+  // allocation pad move money OUT of an envelope. Gated on the EXPRESSION being empty/zero,
+  // NOT on `fresh` alone: startEdit opens the pad with `{ expr: fmtSignedTrim(env.allocated),
+  // fresh: true }`, so `fresh` is true even when the envelope already holds an allocation —
+  // in that case "−" must fall through to relative mode below ("50" → "50−"), not wipe the
+  // existing value into an absolute literal.
+  if (opts?.allowNegative && k === "−" && (state.expr === "" || state.expr === "0")) {
+    return { expr: "-", fresh: false };
   }
 
   if (state.fresh) {

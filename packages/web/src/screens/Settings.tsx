@@ -5,8 +5,9 @@ import { relSync } from "../lib/dates";
 import * as e2ee from "../lib/e2ee";
 import { useT, type Message, msg } from "../lib/i18n";
 import { Ico } from "../lib/icons";
-import { CORAL, P } from "../lib/theme";
+import { P, tint } from "../lib/theme";
 import type { ScreenId } from "../components/chrome";
+import { useBand } from "../components/kit";
 import { APP_VERSION, buildLabel } from "../lib/version";
 import { AiSection } from "./settings/Ai";
 import { AdvancedSection } from "./settings/Advanced";
@@ -40,6 +41,7 @@ function Glyph({ color, children }: { color: string; children: ReactNode }) {
 export function SettingsScreen({ onNav }: { onNav: (s: ScreenId) => void }) {
   const C = useTheme();
   const { t } = useT();
+  const { band, hc } = useBand();
   const [sub, setSub] = useState<SubId | null>(null);
   const scRef = useRef<HTMLDivElement>(null);
   const go = (s: SubId | null) => {
@@ -69,11 +71,13 @@ export function SettingsScreen({ onNav }: { onNav: (s: ScreenId) => void }) {
 
   return (
     <div ref={scRef} className="gs" onTouchStart={onTouchStart} onTouchEnd={onTouchEnd} style={{ flex: 1, overflowY: "auto", paddingBottom: 6 }}>
-      <div style={{ display: "flex", alignItems: "center", padding: `12px ${P}px`, gap: 10 }}>
-        <button onClick={() => (sub !== null ? go(null) : onNav("start"))} aria-label={t("Back")} style={{ background: "none", border: "none", cursor: "pointer", padding: 4, display: "flex" }}>
-          <Ico d="M19 12H5m0 0l7 7m-7-7l7-7" size={18} />
-        </button>
-        <span style={{ fontSize: 17, fontWeight: 700, color: C.text }}>{sub !== null ? t(SUB_TITLE[sub]) : t("Settings")}</span>
+      <div style={band ? { background: C.headerBg, paddingBottom: 2 } : undefined}>
+        <div style={{ display: "flex", alignItems: "center", padding: `12px ${P}px`, gap: 10 }}>
+          <button onClick={() => (sub !== null ? go(null) : onNav("start"))} aria-label={t("Back")} style={{ background: "none", border: "none", cursor: "pointer", padding: 4, display: "flex" }}>
+            <Ico d="M19 12H5m0 0l7 7m-7-7l7-7" size={18} color={hc(C.headerInk, C.text)} />
+          </button>
+          <span style={{ fontSize: 17, fontWeight: 700, color: hc(C.headerInk, C.text) }}>{sub !== null ? t(SUB_TITLE[sub]) : t("Settings")}</span>
+        </div>
       </div>
 
       {sub === null ? (
@@ -110,7 +114,7 @@ function Hub({ onOpen }: { onOpen: (s: SubId) => void }) {
   return (
     <div className="fi" style={{ padding: "2px 14px", display: "flex", flexDirection: "column", gap: 9 }}>
       <HubCard
-        tint={`${catAppearance}1a`}
+        tint={tint(catAppearance, 0.1)}
         icon={
           <Glyph color={catAppearance}>
             <circle cx="13.5" cy="6.5" r="1" />
@@ -126,7 +130,7 @@ function Hub({ onOpen }: { onOpen: (s: SubId) => void }) {
         onClick={() => onOpen("appearance")}
       />
       <HubCard
-        tint={`${catAi}1f`}
+        tint={tint(catAi, 0.12)}
         icon={
           <Glyph color={catAi}>
             <path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z" />
@@ -139,7 +143,7 @@ function Hub({ onOpen }: { onOpen: (s: SubId) => void }) {
         onClick={() => onOpen("ai")}
       />
       <HubCard
-        tint={`${catData}14`}
+        tint={tint(catData, 0.08)}
         icon={
           <Glyph color={catData}>
             <path d="M12 2l8 3v6c0 5-3.5 9.4-8 11-4.5-1.6-8-6-8-11V5z" />
@@ -152,7 +156,7 @@ function Hub({ onOpen }: { onOpen: (s: SubId) => void }) {
         onClick={() => onOpen("data")}
       />
       <HubCard
-        tint={`${catSync}1f`}
+        tint={tint(catSync, 0.12)}
         icon={
           <Glyph color={catSync}>
             <path d="M21 12a9 9 0 11-2.6-6.4" />
@@ -221,7 +225,7 @@ function E2eeBadge({ color }: { color: string }) {
   useLedgerVersion();
   if (e2ee.getTierMeta().tier !== "e2ee") return null;
   return (
-    <span style={{ fontSize: 10.5, fontWeight: 700, color, background: `${color}14`, borderRadius: 8, padding: "3px 8px", flexShrink: 0 }}>{t("E2EE")}</span>
+    <span style={{ fontSize: 10.5, fontWeight: 700, color, background: tint(color, 0.08), borderRadius: 8, padding: "3px 8px", flexShrink: 0 }}>{t("E2EE")}</span>
   );
 }
 
@@ -243,7 +247,7 @@ function SyncStatusBadge({ okColor }: { okColor: string }) {
   // explained). The STICKY flag, not SyncState "unverified": a re-proof cycle passes through
   // "syncing", and the dot would flip back to the healthy colour every time it ran.
   const attention = state === "offline" || state === "error" || ownerUnproven;
-  const color = localMode !== "off" ? C.mute : attention ? CORAL : okColor;
+  const color = localMode !== "off" ? C.mute : attention ? C.neg : okColor;
   return (
     <span style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 10.5, color, fontWeight: 700, flexShrink: 0 }}>
       <span aria-hidden style={{ width: 7, height: 7, borderRadius: "50%", background: color }} />

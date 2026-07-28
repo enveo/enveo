@@ -40,6 +40,12 @@ export interface ImportItem {
   categoryId?: string | null;
   categoryName?: string | null;
   placeName?: string | null;
+  
+
+  currency?: string;
+  /** Original foreign amount + code (e.g. "5.00 USD") when this row is a converted/settled
+   *  charge — shown as a muted caption; "" or absent otherwise. */
+  fxOriginal?: string;
 }
 
 

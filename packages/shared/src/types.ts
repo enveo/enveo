@@ -156,6 +156,14 @@ export interface BudgetState {
   envelopes: EnvelopeState[];
   groups: EnvelopeGroup[];
   toBeBudgeted: Money;
+  /**
+   * Month-INDEPENDENT "ready to assign" (YNAB-style headline): Σ on-budget
+   * initialBalance, minus EVERY allocation ever made (any month), plus
+   * unenveloped income / on-off-budget transfer flows from ALL non-planned
+   * transactions (any date) — see budget.ts for the full derivation and why
+   * it differs from `toBeBudgeted`.
+   */
+  readyToAssign: Money;
   monthIncome: Money;
   monthExpense: Money;
 }

@@ -112,7 +112,7 @@ export function SubscriptionsTab() {
                 <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
                   <button
                     onClick={() => { acceptProposal(p); haptic([10, 30, 14]); }}
-                    style={{ flex: 1, padding: "8px 0", borderRadius: 9, border: "none", background: TEAL, color: "#fff", fontSize: 12.5, fontWeight: 600, cursor: "pointer" }}
+                    style={{ flex: 1, padding: "8px 0", borderRadius: 9, border: `1px solid ${TEAL}`, background: "var(--accent-1a)", color: TEAL, fontSize: 12.5, fontWeight: 600, cursor: "pointer" }}
                   >
                     ✓ {t("It's a subscription")}
                   </button>
@@ -152,7 +152,7 @@ export function SubscriptionsTab() {
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontSize: 13.5, color: C.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
               {r.label}
-              {r.paused && <span style={{ fontSize: 11, color: "#d97706", marginLeft: 6 }}>{t("(paused until {date})", { date: shortDate(r.rec.pausedUntil!, lang, true) })}</span>}
+              {r.paused && <span style={{ fontSize: 11, color: C.warn, marginLeft: 6 }}>{t("(paused until {date})", { date: shortDate(r.rec.pausedUntil!, lang, true) })}</span>}
             </div>
             <div style={{ fontSize: 11, color: C.soft, marginTop: 2 }}>
               {t(CYCLE_KEY[r.rec.rule])}
@@ -241,7 +241,7 @@ function UpcomingActionsSheet({ payment, ledger, onClose, M }: { payment: Upcomi
               </button>
             </div>
             {rec?.pausedUntil && rec.pausedUntil > new Date().toISOString().slice(0, 10) && (
-              <div style={{ fontSize: 11.5, color: "#d97706", marginTop: 4 }}>{t("(paused until {date})", { date: shortDate(rec.pausedUntil, lang, true) })}</div>
+              <div style={{ fontSize: 11.5, color: C.warn, marginTop: 4 }}>{t("(paused until {date})", { date: shortDate(rec.pausedUntil, lang, true) })}</div>
             )}
           </>
         );

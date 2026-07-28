@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { applyAmountKey, hasOpenOp, padKey, padPreview, padPreviewLive } from "./amount";
+import { applyAmountKey, hasOpenOp, padKey, padPreview, padPreviewLive, type PadState } from "./amount";
 import { evalExpression } from "./format";
 
 describe("applyAmountKey", () => {
@@ -98,6 +98,87 @@ describe("padKey — the amount numpad engine (matrix from the spec)", () => {
     expect(padKey({ expr: "74+", fresh: false }, "1").expr).toBe("74+1");
     expect(padKey({ expr: "74+1", fresh: false }, "2").expr).toBe("74+12");
   });
+
+  test("÷ behaves exactly like + − × (first-class operator)", () => {
+     
+    expect(padKey({ expr: "705", fresh: true }, "÷")).toEqual({ expr: "705÷", fresh: false });
+
+     
+    expect(padKey({ expr: "15+25", fresh: false }, "÷").expr).toBe("40÷");
+
+     
+    expect(padKey({ expr: "50÷2", fresh: false }, "÷").expr).toBe("25÷");
+
+     
+    expect(padKey({ expr: "50+", fresh: false }, "÷").expr).toBe("50÷");
+    expect(padKey({ expr: "50÷", fresh: false }, "×").expr).toBe("50×");
+
+     
+    expect(padKey({ expr: "74÷", fresh: false }, "⌫").expr).toBe("74");
+
+     
+    expect(padKey({ expr: "74÷", fresh: false }, "1").expr).toBe("74÷1");
+  });
+});
+
+describe("padKey — allocation pad negative-literal entry (allowNegative option)", () => {
+  test("'−' on a fresh expression starts a negative literal, not the binary operator", () => {
+    expect(padKey({ expr: "0", fresh: true }, "−", { allowNegative: true })).toEqual({ expr: "-", fresh: false });
+  });
+
+  test("digits after the negative sign build up the literal", () => {
+    let s = padKey({ expr: "0", fresh: true }, "−", { allowNegative: true });
+    for (const d of ["5", "0", "0", "0"]) s = padKey(s, d, { allowNegative: true });
+    expect(s.expr).toBe("-5000");
+  });
+
+  test("'−' on an empty (non-fresh) expression also starts a negative literal", () => {
+    expect(padKey({ expr: "", fresh: false }, "−", { allowNegative: true })).toEqual({ expr: "-", fresh: false });
+  });
+
+  test("mid-expression, '−' STILL means the binary operator (append, not restart)", () => {
+    expect(padKey({ expr: "500", fresh: false }, "−", { allowNegative: true }).expr).toBe("500−");
+    expect(padKey({ expr: "-5000", fresh: false }, "−", { allowNegative: true }).expr).toBe("-5000−");
+  });
+
+  test("without the option (e.g. the Add screen), '−' stays the RELATIVE binary operator — unweakened", () => {
+    expect(padKey({ expr: "200", fresh: true }, "−").expr).toBe("200−");
+    expect(padKey({ expr: "", fresh: false }, "−").expr).toBe("0−");
+  });
+
+  test("padPreview/padPreviewLive compute the negative minor value", () => {
+    expect(padPreview("-5000")).toBe(-500000);
+    expect(padPreviewLive("-5000")).toBe(-500000);
+    expect(padPreviewLive("-5000−")).toBe(-500000);  
+  });
+});
+
+describe("padKey — regression: '−' must not wipe an already-allocated fresh value (allowNegative)", () => {
+  // Budget.tsx startEdit opens the pad with { expr: fmtSignedTrim(env.allocated), fresh: true } — fresh is
+  // true even when the envelope ALREADY has money in it. Pressing "−" there must go into RELATIVE mode
+  // (take money OUT of the existing allocation), not restart the line as an absolute negative literal.
+  test("(a) '−' on a fresh NON-ZERO/NON-EMPTY expression stays in relative mode (the regression)", () => {
+    let s: PadState = { expr: "50", fresh: true };
+    s = padKey(s, "−", { allowNegative: true });
+    expect(s).toEqual({ expr: "50−", fresh: false }); // NOT { expr: "-", fresh: false }
+    s = padKey(s, "1", { allowNegative: true });
+    s = padKey(s, "0", { allowNegative: true });
+    expect(s.expr).toBe("50−10");
+    expect(padPreview(s.expr)).toBe(4000);  
+  });
+
+  test("(b) '−' on a fresh ZERO expression still starts a negative literal (intended, unchanged)", () => {
+    let s: PadState = { expr: "0", fresh: true };
+    s = padKey(s, "−", { allowNegative: true });
+    expect(s).toEqual({ expr: "-", fresh: false });
+    for (const d of ["1", "0", "0", "0"]) s = padKey(s, d, { allowNegative: true });
+    expect(s.expr).toBe("-1000");
+    expect(padPreview(s.expr)).toBe(-100000);  
+  });
+
+  test("(c) '−' on a fresh EMPTY expression starts a negative literal", () => {
+    expect(padKey({ expr: "", fresh: true }, "−", { allowNegative: true })).toEqual({ expr: "-", fresh: false });
+  });
 });
 
 describe('padKey "=" — explicit expression reduction', () => {
@@ -146,6 +227,11 @@ describe("hasOpenOp — the A⊕B state (a full operation ready to compute)", ()
   test("empty string → false", () => {
     expect(hasOpenOp("")).toBe(false);
   });
+
+  test("÷ is recognized as an operator, same as + − ×", () => {
+    expect(hasOpenOp("40÷4")).toBe(true);
+    expect(hasOpenOp("40÷")).toBe(false);
+  });
 });
 
 describe("padPreview", () => {
@@ -157,6 +243,11 @@ describe("padPreview", () => {
 
   test("empty string → null", () => {
     expect(padPreview("")).toBe(null);
+  });
+
+  test("÷: (c) a full division → minor units; (d) a trailing ÷ → null (unfinished value)", () => {
+    expect(padPreview("40÷4")).toBe(1000);  
+    expect(padPreview("40÷")).toBe(null);
   });
 });
 
@@ -204,5 +295,10 @@ describe("padPreviewLive — preview despite a hanging operator (the Available c
   test("null only for an empty expression", () => {
     expect(padPreviewLive("")).toBe(null);
     expect(padPreviewLive("+")).toBe(null);
+  });
+
+  test("÷: (d) a trailing ÷ computes the computable part, same as + − ×", () => {
+    expect(padPreviewLive("40÷")).toBe(4000);
+    expect(padPreviewLive("40÷4")).toBe(1000);
   });
 });
