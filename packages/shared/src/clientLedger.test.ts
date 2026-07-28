@@ -91,6 +91,12 @@ describe("clientLedgerSchema", () => {
     expect(clientLedgerSchema.safeParse(l).success).toBe(false);
   });
 
+  test("missing collection key → rejected (the contract requires all 7)", () => {
+    const l = fullLedger() as Partial<ClientLedger>;
+    delete l.places;
+    expect(clientLedgerSchema.safeParse(l).success).toBe(false);
+  });
+
   test("a transaction without items (items: []) is valid", () => {
     const l = fullLedger();
     l.transactions[0]!.items = [];

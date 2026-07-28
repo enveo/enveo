@@ -501,13 +501,12 @@ describe("applyOp: create on an existing id is a no-op", () => {
 describe("applyOp: unknown kind", () => {
   it("unknown op kind is a no-op (ops queued by an older/retired app version)", () => {
     const l = base();
-    const before = JSON.stringify(l);
     const out = applyOp(l, {
       opId: "x",
       kind: "legacy.retiredFeature",
       payload: { id: "R1" },
     } as never);
-    expect(JSON.stringify(out)).toBe(before);
+    expect(out).toBe(l); // same reference — pass-through, not a rebuild
   });
 });
 
