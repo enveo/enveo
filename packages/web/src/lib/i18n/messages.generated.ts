@@ -138,6 +138,7 @@ export const MESSAGES = [
   "Cut the app off from the server. Choose how: work offline (server data stays) or keep your data only on this device.",
   "DELETE",
   "DISABLE-E2EE",
+  "Daily spending in {month}",
   "Dark",
   "Data",
   "Delete",
