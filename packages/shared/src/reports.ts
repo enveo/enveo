@@ -185,21 +185,51 @@ export interface PlaceStat {
 }
 
 /**
- * Top places by transaction COUNT over [fromMonth, toMonth] (tie-break: total
- * desc). Only expense transactions carrying a placeId; refunds are excluded
- * ENTIRELY (not netted into the total) — a refunded purchase shouldn't count
- * toward "where you shop". A place with only refunded transactions in range
- * therefore never appears in the result at all.
+ * Whether an expense transaction's contribution is ENTIRELY attributable to
+ * savings envelope(s) — non-split: `t.envelopeId` is a savings envelope;
+ * split: EVERY item's envelope is a savings envelope. A fully-savings
+ * transaction is "not real spending" for place/largest-expense purposes (no
+ * visit, no expense line). Also returns the summed NON-SAVINGS portion, for
+ * callers that need a partial amount on a MIXED split (some items savings,
+ * some not) — e.g. `topPlaces`, which counts the visit but sums only the
+ * non-savings items rather than the full receipt.
+ */
+function savingsSplit(t: Transaction, savings: Set<string>): { fullySavings: boolean; nonSavingsAmount: Money } {
+  if (t.items.length > 0) {
+    const nonSavingsItems = t.items.filter((it) => !savings.has(it.envelopeId));
+    return {
+      fullySavings: nonSavingsItems.length === 0,
+      nonSavingsAmount: nonSavingsItems.reduce((s, it) => s + it.amount, 0),
+    };
+  }
+  const isSavingsEnv = !!(t.envelopeId && savings.has(t.envelopeId));
+  return { fullySavings: isSavingsEnv, nonSavingsAmount: isSavingsEnv ? 0 : t.amount };
+}
+
+/**
+ * Top places by transaction COUNT ("visits") over [fromMonth, toMonth]
+ * (tie-break: total desc, then name asc — fully deterministic regardless of
+ * replica ordering). Only expense transactions carrying a placeId; refunds
+ * are excluded ENTIRELY (not netted into the total) — a refunded purchase
+ * shouldn't count toward "where you shop". A transaction whose ENTIRE
+ * contribution is savings-attributed doesn't count as a visit either (see
+ * `savingsSplit`); for a MIXED split the visit IS counted but `total` sums
+ * only the non-savings items. This list is FREQUENCY-led, and deliberately
+ * differs from `computeSpendingByDimension(place)` (which nets refunds
+ * rather than excluding them, and has no visit/count concept at all).
  */
 export function topPlaces(ledger: ClientLedger, fromMonth: string, toMonth: string, limit = 5): PlaceStat[] {
+  const savings = new Set(ledger.envelopes.filter((e) => e.isSavings).map((e) => e.id));
   const byPlace = new Map<string, { count: number; total: Money }>();
   for (const t of ledger.transactions) {
     if (t.type !== "expense" || t.isRefund || !t.placeId) continue;
     const m = monthOf(t.date);
     if (m < fromMonth || m > toMonth) continue;
+    const { fullySavings, nonSavingsAmount } = savingsSplit(t, savings);
+    if (fullySavings) continue; // not a visit — nothing real was spent
     const b = byPlace.get(t.placeId) ?? { count: 0, total: 0 };
     b.count += 1;
-    b.total += t.amount;
+    b.total += nonSavingsAmount;
     byPlace.set(t.placeId, b);
   }
   return [...byPlace.entries()]
@@ -209,7 +239,7 @@ export function topPlaces(ledger: ClientLedger, fromMonth: string, toMonth: stri
       count: b.count,
       total: b.total,
     }))
-    .sort((a, b) => b.count - a.count || b.total - a.total)
+    .sort((a, b) => b.count - a.count || b.total - a.total || a.name.localeCompare(b.name))
     .slice(0, limit);
 }
 
@@ -220,17 +250,19 @@ export interface LargestExpense {
   amount: Money;
 }
 
-/**
- * Label preference, checked against the ACTUAL fields on `Transaction`
- * (types.ts): place name → transaction note → category name → envelope name
- * → "—". `t.name` (the short list-title field) is deliberately NOT part of
- * this chain — the task brief for this function locks in the order above.
- */
+
+
+
+
+
+
+
 function labelFor(t: Transaction, ledger: ClientLedger): string {
   if (t.placeId) {
     const place = ledger.places.find((p) => p.id === t.placeId);
     if (place) return place.name;
   }
+  if (t.name) return t.name;
   if (t.note) return t.note;
   if (t.categoryId) {
     const cat = ledger.categories.find((c) => c.id === t.categoryId);
@@ -249,11 +281,19 @@ function labelFor(t: Transaction, ledger: ClientLedger): string {
 
 
 
+
+
+
+
+
 export function largestExpenses(ledger: ClientLedger, month: string, limit = 5): LargestExpense[] {
+  const savings = new Set(ledger.envelopes.filter((e) => e.isSavings).map((e) => e.id));
   return ledger.transactions
-    .filter((t) => t.type === "expense" && !t.isRefund && monthOf(t.date) === month)
+    .filter(
+      (t) => t.type === "expense" && !t.isRefund && monthOf(t.date) === month && !savingsSplit(t, savings).fullySavings,
+    )
     .map((t) => ({ id: t.id, label: labelFor(t, ledger), date: t.date, amount: t.amount }))
-    .sort((a, b) => b.amount - a.amount)
+    .sort((a, b) => b.amount - a.amount || b.date.localeCompare(a.date) || a.id.localeCompare(b.id))
     .slice(0, limit);
 }
 
@@ -263,6 +303,10 @@ export function largestExpenses(ledger: ClientLedger, month: string, limit = 5):
  * compare the current month against. A key missing from a given month's
  * breakdown counts as 0 FOR THAT MONTH (not skipped), so a category spent on
  * in only 2 of 3 months still yields a median over all 3 data points.
+ * CONSUMERS must treat a key ABSENT from the returned Map as 0 too — a
+ * brand-new category/envelope with NO spend anywhere in the window gets no
+ * entry at all (it never appeared in any month's breakdown), which is not
+ * the same as "present with amount 0" but should read as the same thing.
  */
 export function spendingBaseline(
   ledger: ClientLedger,
