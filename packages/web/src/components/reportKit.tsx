@@ -183,8 +183,11 @@ export function TrendSpark({ series, color, w = 64, h = 24 }: { series: number[]
 }
 
 /** Net-worth mini-sparkline on the card (polyline without fill; stroke via style — var(--accent) does not work in SVG attributes).
- *  Exported for the Start-screen Net worth widget (components/widgets.tsx) — same visual, no duplication. */
-export function Sparkline({ points }: { points: { month: string; total: number }[] }) {
+ *  Exported for the Start-screen Net worth widget (components/widgets.tsx) — same visual, no duplication.
+ *  `stroke` defaults to TEAL (today's behavior, unchanged for existing callers); pass an on-band color
+ *  (e.g. `hc(C.headerInk, "var(--accent)")`) when painted on a Duet navy band, where TEAL would be
+ *  invisible (navy on navy). `dotColor` is opt-in — omitted (the default) draws no last-point dot at all. */
+export function Sparkline({ points, stroke = TEAL, dotColor }: { points: { month: string; total: number }[]; stroke?: string; dotColor?: string }) {
   const n = points.length;
   if (n < 2) return null;
   const W = 320, H = 44, pad = 3;
@@ -193,12 +196,15 @@ export function Sparkline({ points }: { points: { month: string; total: number }
   const max = Math.max(...totals);
   const range = max - min || 1;
   const flat = max === min;
-  const pts = points
-    .map((p, i) => `${(pad + (i / (n - 1)) * (W - 2 * pad)).toFixed(1)},${(flat ? H / 2 : pad + (1 - (p.total - min) / range) * (H - 2 * pad)).toFixed(1)}`)
-    .join(" ");
+  const coords = points.map(
+    (p, i) => [pad + (i / (n - 1)) * (W - 2 * pad), flat ? H / 2 : pad + (1 - (p.total - min) / range) * (H - 2 * pad)] as const,
+  );
+  const pts = coords.map(([x, y]) => `${x.toFixed(1)},${y.toFixed(1)}`).join(" ");
+  const last = coords[coords.length - 1]!;
   return (
     <svg viewBox={`0 0 ${W} ${H}`} width="100%" height={44} aria-hidden style={{ display: "block", marginTop: 8 }}>
-      <polyline points={pts} fill="none" style={{ stroke: TEAL }} strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" vectorEffect="non-scaling-stroke" />
+      <polyline points={pts} fill="none" style={{ stroke }} strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" vectorEffect="non-scaling-stroke" />
+      {dotColor && <circle cx={last[0]} cy={last[1]} r={3.5} style={{ fill: dotColor }} />}
     </svg>
   );
 }
