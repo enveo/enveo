@@ -1,5 +1,16 @@
 import { describe, expect, it } from "bun:test";
-import { computeNetWorthSeries, computeSpendingByDimension } from "./reports";
+import {
+  computeCashflowSeries,
+  computeDailySpending,
+  computeEnvelopeTrends,
+  computeNetWorthSeries,
+  computeSpendingByDimension,
+  largestExpenses,
+  savingsRate,
+  spendingBaseline,
+  topPlaces,
+  type CashflowPoint,
+} from "./reports";
 import { computeBudgetState } from "./budget";
 import { acc, alloc, asClientLedger, env, grp, ledgerArb, tx } from "./test-helpers";
 import fc from "fast-check";
@@ -82,8 +93,6 @@ describe("isSavings field", () => {
   });
 });
 
-import { computeCashflowSeries } from "./reports";
-
 describe("computeCashflowSeries", () => {
   it("income − expense per month, all accounts, transfers excluded", () => {
     const g = grp();
@@ -144,16 +153,6 @@ describe("computeSpendingByDimension savings exclusion", () => {
   });
 });
 
-import {
-  computeDailySpending,
-  computeEnvelopeTrends,
-  largestExpenses,
-  savingsRate,
-  spendingBaseline,
-  topPlaces,
-  type CashflowPoint,
-} from "./reports";
-
 describe("computeDailySpending", () => {
   it("buckets expenses by date, nets refunds, excludes savings envelopes, ignores income/transfers, zero-fills every day", () => {
     const g = grp();
@@ -189,6 +188,31 @@ describe("computeDailySpending", () => {
     expect(computeDailySpending(l, "2028-02").length).toBe(29); // 2028 — IS a leap year
     expect(computeDailySpending(l, "2026-04").length).toBe(30);
     expect(computeDailySpending(l, "2026-07").length).toBe(31);
+  });
+});
+
+describe("computeDailySpending / computeCashflowSeries parity", () => {
+  it("daily totals sum to the same month expense figure as computeCashflowSeries (refund + mixed split + savings envelope)", () => {
+    const g = grp();
+    const eNorm = env(g.id, { id: "N" });
+    const eSav = env(g.id, { id: "S", isSavings: true });
+    const a = acc({ id: "A" });
+    const l = asClientLedger({
+      accounts: [a], groups: [g], envelopes: [eNorm, eSav], allocations: [],
+      transactions: [
+        tx({ type: "expense", accountId: "A", envelopeId: "N", amount: 100_00, date: "2026-07-03" }),
+        tx({ type: "expense", accountId: "A", envelopeId: "N", amount: 20_00, isRefund: true, date: "2026-07-05" }),
+        tx({
+          type: "expense", accountId: "A", amount: 100_00, date: "2026-07-10",
+          items: [{ id: "i1", envelopeId: "N", categoryId: null, amount: 60_00 }, { id: "i2", envelopeId: "S", categoryId: null, amount: 40_00 }],
+        }),
+        tx({ type: "expense", accountId: "A", envelopeId: "S", amount: 30_00, date: "2026-07-15" }), // fully savings — excluded from both
+      ],
+    });
+    const daily = computeDailySpending(l, "2026-07");
+    const cashflow = computeCashflowSeries(l, "2026-07", 1)[0]!;
+    expect(daily.reduce((s, d) => s + d.total, 0)).toBe(cashflow.expense);
+    expect(cashflow.expense).toBe(140_00); // 100 − 20 refund + 60 non-savings split portion (40 + 30 excluded)
   });
 });
 
@@ -232,6 +256,54 @@ describe("topPlaces", () => {
     expect(topPlaces(l, "2026-07", "2026-07").length).toBe(5);
     expect(topPlaces(l, "2026-07", "2026-07", 2).length).toBe(2);
   });
+
+  it("tie-break falls through to name asc when count and total both tie", () => {
+    const g = grp();
+    const e = env(g.id, { id: "E" });
+    const a = acc({ id: "A" });
+    const l = asClientLedger({
+      accounts: [a], groups: [g], envelopes: [e], allocations: [],
+      transactions: [
+        tx({ type: "expense", accountId: "A", envelopeId: "E", placeId: "PZ", amount: 100_00, date: "2026-07-01" }),
+        tx({ type: "expense", accountId: "A", envelopeId: "E", placeId: "PA", amount: 100_00, date: "2026-07-02" }),
+      ],
+    });
+    l.places = [{ id: "PZ", name: "Zeta" }, { id: "PA", name: "Alfa" }];
+    expect(topPlaces(l, "2026-07", "2026-07").map((p) => p.name)).toEqual(["Alfa", "Zeta"]);
+  });
+
+  it("a mixed split (some savings, some not) counts the visit but sums only the non-savings portion", () => {
+    const g = grp();
+    const eNorm = env(g.id, { id: "N" });
+    const eSav = env(g.id, { id: "S", isSavings: true });
+    const a = acc({ id: "A" });
+    const l = asClientLedger({
+      accounts: [a], groups: [g], envelopes: [eNorm, eSav], allocations: [],
+      transactions: [
+        tx({
+          type: "expense", accountId: "A", placeId: "P1", amount: 200_00, date: "2026-07-05",
+          items: [{ id: "i1", envelopeId: "N", categoryId: null, amount: 50_00 }, { id: "i2", envelopeId: "S", categoryId: null, amount: 150_00 }],
+        }),
+      ],
+    });
+    l.places = [{ id: "P1", name: "Sklep" }];
+    const top = topPlaces(l, "2026-07", "2026-07");
+    expect(top.length).toBe(1);
+    expect(top[0]!.count).toBe(1); // the visit IS counted
+    expect(top[0]!.total).toBe(50_00); // only the non-savings item, NOT the full 200
+  });
+
+  it("a fully-savings transaction doesn't count as a visit at all", () => {
+    const g = grp();
+    const eSav = env(g.id, { id: "S", isSavings: true });
+    const a = acc({ id: "A" });
+    const l = asClientLedger({
+      accounts: [a], groups: [g], envelopes: [eSav], allocations: [],
+      transactions: [tx({ type: "expense", accountId: "A", envelopeId: "S", placeId: "P1", amount: 500_00, date: "2026-07-05" })],
+    });
+    l.places = [{ id: "P1", name: "Sklep" }];
+    expect(topPlaces(l, "2026-07", "2026-07")).toEqual([]);
+  });
 });
 
 describe("largestExpenses", () => {
@@ -252,28 +324,46 @@ describe("largestExpenses", () => {
     expect(rows.map((r) => r.amount)).toEqual([300_00, 100_00]);
   });
 
-  it('label preference: place name > txn note > category name > envelope name > "—"', () => {
+  it("tie-break: amount desc → date desc → id asc", () => {
+    const g = grp();
+    const e = env(g.id, { id: "E" });
+    const a = acc({ id: "A" });
+    const l = asClientLedger({
+      accounts: [a], groups: [g], envelopes: [e], allocations: [],
+      transactions: [
+        tx({ id: "z", type: "expense", accountId: "A", envelopeId: "E", amount: 100_00, date: "2026-07-10" }),
+        tx({ id: "a", type: "expense", accountId: "A", envelopeId: "E", amount: 100_00, date: "2026-07-10" }), // same amount+date as "z" → id asc
+        tx({ id: "b", type: "expense", accountId: "A", envelopeId: "E", amount: 100_00, date: "2026-07-05" }), // same amount, earlier date → last
+      ],
+    });
+    const rows = largestExpenses(l, "2026-07", 10);
+    expect(rows.map((r) => r.id)).toEqual(["a", "z", "b"]);
+  });
+
+  it('label preference: place name > txn name > txn note > category name > envelope name > "—"', () => {
     const g = grp();
     const e = env(g.id, { id: "E", name: "Jedzenie" });
     const a = acc({ id: "A" });
     const l = asClientLedger({
       accounts: [a], groups: [g], envelopes: [e], allocations: [],
       transactions: [
-        tx({ id: "t1", type: "expense", accountId: "A", envelopeId: "E", categoryId: "C1", placeId: "P1", note: "Nota", amount: 10_00, date: "2026-07-01" }),
-        tx({ id: "t2", type: "expense", accountId: "A", envelopeId: "E", categoryId: "C1", note: "Nota", amount: 20_00, date: "2026-07-02" }),
-        tx({ id: "t3", type: "expense", accountId: "A", envelopeId: "E", categoryId: "C1", amount: 30_00, date: "2026-07-03" }),
-        tx({ id: "t4", type: "expense", accountId: "A", envelopeId: "E", amount: 40_00, date: "2026-07-04" }),
-        tx({ id: "t5", type: "expense", accountId: "A", amount: 50_00, date: "2026-07-05" }),
+        tx({ id: "t1", type: "expense", accountId: "A", envelopeId: "E", categoryId: "C1", placeId: "P1", name: "Kawa", note: "Nota", amount: 10_00, date: "2026-07-01" }),
+        tx({ id: "t2", type: "expense", accountId: "A", envelopeId: "E", categoryId: "C1", name: "Kawa u Zosi", note: "Nota", amount: 20_00, date: "2026-07-02" }),
+        tx({ id: "t3", type: "expense", accountId: "A", envelopeId: "E", categoryId: "C1", note: "Nota", amount: 30_00, date: "2026-07-03" }),
+        tx({ id: "t4", type: "expense", accountId: "A", envelopeId: "E", categoryId: "C1", amount: 40_00, date: "2026-07-04" }),
+        tx({ id: "t5", type: "expense", accountId: "A", envelopeId: "E", amount: 50_00, date: "2026-07-05" }),
+        tx({ id: "t6", type: "expense", accountId: "A", amount: 60_00, date: "2026-07-06" }),
       ],
     });
     l.places = [{ id: "P1", name: "Sklep" }];
     l.categories = [{ id: "C1", name: "Jedzenie kat" }];
     const byId = Object.fromEntries(largestExpenses(l, "2026-07", 10).map((r) => [r.id, r.label]));
-    expect(byId.t1).toBe("Sklep");
-    expect(byId.t2).toBe("Nota");
-    expect(byId.t3).toBe("Jedzenie kat");
-    expect(byId.t4).toBe("Jedzenie");
-    expect(byId.t5).toBe("—");
+    expect(byId.t1).toBe("Sklep"); // place wins over everything, including name
+    expect(byId.t2).toBe("Kawa u Zosi"); // name wins over note
+    expect(byId.t3).toBe("Nota"); // no place/name → note
+    expect(byId.t4).toBe("Jedzenie kat"); // no place/name/note → category
+    expect(byId.t5).toBe("Jedzenie"); // no place/name/note/category → envelope
+    expect(byId.t6).toBe("—"); // nothing at all
   });
 
   it("includes split transactions at their full amount", () => {
@@ -293,6 +383,42 @@ describe("largestExpenses", () => {
     const rows = largestExpenses(l, "2026-07");
     expect(rows.length).toBe(1);
     expect(rows[0]!.amount).toBe(150_00);
+  });
+
+  it("includes a MIXED split (some savings, some not) at its FULL amount, not just the non-savings part", () => {
+    const g = grp();
+    const eNorm = env(g.id, { id: "N" });
+    const eSav = env(g.id, { id: "S", isSavings: true });
+    const a = acc({ id: "A" });
+    const l = asClientLedger({
+      accounts: [a], groups: [g], envelopes: [eNorm, eSav], allocations: [],
+      transactions: [
+        tx({
+          type: "expense", accountId: "A", amount: 200_00, date: "2026-07-05",
+          items: [{ id: "i1", envelopeId: "N", categoryId: null, amount: 50_00 }, { id: "i2", envelopeId: "S", categoryId: null, amount: 150_00 }],
+        }),
+      ],
+    });
+    const rows = largestExpenses(l, "2026-07");
+    expect(rows.length).toBe(1);
+    expect(rows[0]!.amount).toBe(200_00); // the full receipt, not the 50 non-savings portion
+  });
+
+  it("excludes a transaction whose entire contribution is savings-attributed", () => {
+    const g = grp();
+    const eSav = env(g.id, { id: "S", isSavings: true });
+    const a = acc({ id: "A" });
+    const l = asClientLedger({
+      accounts: [a], groups: [g], envelopes: [eSav], allocations: [],
+      transactions: [
+        tx({ type: "expense", accountId: "A", envelopeId: "S", amount: 500_00, date: "2026-07-05" }), // fully savings, non-split
+        tx({
+          type: "expense", accountId: "A", amount: 300_00, date: "2026-07-06",
+          items: [{ id: "i1", envelopeId: "S", categoryId: null, amount: 300_00 }], // fully savings, split
+        }),
+      ],
+    });
+    expect(largestExpenses(l, "2026-07")).toEqual([]);
   });
 });
 
@@ -355,7 +481,7 @@ describe("computeEnvelopeTrends", () => {
     expect(t1.series).toEqual([100_00, 300_00, 60_00]); // May, June, July — oldest → newest
     expect(t1.last).toBe(60_00);
     expect(t1.baseline).toBe(100_00); // median([100(May), 300(Jun)]) sorted [100,300] → lower-middle = 100
-    expect(t1.deltaPct).toBeCloseTo((60_00 - 100_00) / 100_00, 5);
+    expect(t1.deltaPct).toBe(-0.4); // (60_00 − 100_00) / 100_00
   });
 
   it("drops envelopes with an all-zero series and archived envelopes", () => {
