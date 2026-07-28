@@ -31,8 +31,6 @@ const txnBase = z.object({
   name: z.string().nullable().optional(),
   note: z.string().nullable().optional(),
   tag: z.string().nullable().optional(),
-  planned: z.boolean().optional(),
-  recurrenceId: z.string().uuid().nullable().optional(),
   items: z.array(txnItemPayload).optional(),
    
   createdAt: z.string().datetime().optional(),
@@ -94,16 +92,6 @@ export type EnvelopePayload = z.infer<typeof envelopePayload>;
 
  
 
-export const recurrencePayload = z.object({
-  rule: z.enum(["none", "weekly", "monthly", "monthEnd", "quarterly", "yearly"]),
-  startDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-  endDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
-  pausedUntil: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
-});
-export type RecurrencePayload = z.infer<typeof recurrencePayload>;
-
- 
-
 const withId = { id: z.string().uuid() };
 const idOnly = z.object(withId);
 
@@ -126,11 +114,6 @@ export const opSchemas = {
    
   "category.create": z.object({ ...withId, name: z.string().min(1) }),
   "place.create": z.object({ ...withId, name: z.string().min(1) }),
-  "recurrence.create": recurrencePayload.extend(withId),
-   
-  "recurrence.update": recurrencePayload.partial().extend(withId),
-   
-  "recurrence.delete": idOnly,
    
   "budget.update": z.object({ id: z.string().uuid(), currency: z.string().regex(/^[A-Z]{3}$/) }),
 } as const;
@@ -206,13 +189,6 @@ const envelopeEntity = z.object({
 });
 const categoryEntity = z.object({ id: zUuid, name: z.string() });
 const placeEntity = z.object({ id: zUuid, name: z.string() });
-const recurrenceEntity = z.object({
-  id: zUuid,
-  rule: z.enum(["none", "weekly", "monthly", "monthEnd", "quarterly", "yearly"]),
-  startDate: zYmd,
-  endDate: zYmd.nullable(),
-  pausedUntil: zYmd.nullable().optional(), // old JSON backups (pre-pause) must still load
-});
 const allocationEntity = z.object({
   id: z.string(),  
   envelopeId: zUuid,
@@ -241,8 +217,6 @@ const transactionEntity = z
     name: z.string().nullable(),
     note: z.string().nullable(),
     tag: z.string().nullable(),
-    planned: z.boolean(),
-    recurrenceId: zUuid.nullable(),
     items: z.array(txnItemEntity),
     createdAt: z.string(),
   })
@@ -266,7 +240,6 @@ export const clientLedgerSchema = z.object({
   envelopes: z.array(envelopeEntity),
   categories: z.array(categoryEntity),
   places: z.array(placeEntity),
-  recurrences: z.array(recurrenceEntity),
   allocations: z.array(allocationEntity),
   transactions: z.array(transactionEntity),
 });
@@ -289,7 +262,6 @@ export const REPLICATED_TABLES = [
   "envelopes",
   "categories",
   "places",
-  "recurrences",
   "transactions",
   "allocations",
   "budgets",

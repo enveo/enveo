@@ -3,7 +3,7 @@ import type { ClientLedger } from "@enveo/shared";
 import { categoryCountsFor, rankCategories } from "./categoryIndex";
 
 const L = (txns: Array<Partial<ClientLedger["transactions"][number]>>): ClientLedger =>
-  ({ accounts: [], groups: [], envelopes: [], categories: [], places: [], recurrences: [], allocations: [],
+  ({ accounts: [], groups: [], envelopes: [], categories: [], places: [], allocations: [],
      transactions: txns as ClientLedger["transactions"] }) as unknown as ClientLedger;
 
 describe("envelope→categories index", () => {

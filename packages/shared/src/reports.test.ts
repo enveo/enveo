@@ -85,7 +85,7 @@ describe("isSavings field", () => {
 import { computeCashflowSeries } from "./reports";
 
 describe("computeCashflowSeries", () => {
-  it("income − expense per month, all accounts, transfers/planned excluded", () => {
+  it("income − expense per month, all accounts, transfers excluded", () => {
     const g = grp();
     const e = env(g.id, { id: "E" });
     const a = acc({ id: "A" });

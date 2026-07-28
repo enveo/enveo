@@ -23,12 +23,8 @@ export type PullChange =
   | { seq: number; table: ReplicatedTable; op: "upsert"; row: unknown }
   | { seq: number; table: ReplicatedTable; op: "delete"; rowId: string };
 
-
-
-
-
-
-const TABLE_KEY: Partial<Record<ReplicatedTable, keyof ClientLedger>> = {
+ 
+const TABLE_KEY: Record<ReplicatedTable, keyof ClientLedger> = {
   accounts: "accounts",
   envelope_groups: "groups",
   envelopes: "envelopes",
@@ -165,7 +161,10 @@ export const store = {
 
     for (const ch of changes) {
       const key = TABLE_KEY[ch.table];
-      if (!key) continue;  
+      
+
+
+      if (!key) continue;
       const arr = arrFor(key);
       if (ch.op === "delete") {
         const i = arr.findIndex((r) => r.id === ch.rowId);

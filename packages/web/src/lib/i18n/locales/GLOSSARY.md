@@ -25,7 +25,6 @@ translation of the English.
 | **transfer** | Movement between two of the user's own accounts. Never touches an envelope. | Not a bank "wire/payment to someone else". |
 | **account** | Where money physically sits (a bank account, cash, a card). | The domain account — NOT the user's login account. In sync/auth strings, "account" means the login; keep the two distinguishable if your language allows. |
 | **on-budget / off-budget** | Whether an account's balance participates in the budget maths. | — |
-| **recurrence** / **recurring payment** | A rule that materialises a transaction on a schedule (rent, a subscription). | "Subscription" is the *user-facing* subset — the app uses both words deliberately. |
 | **wealth envelope** | An envelope flagged as savings/investment; it feeds Net worth and is excluded from spending reports. | — |
 | **reconcile** | Compare the app's account balance with the bank's and book the difference. | The accounting term, if your language has one. |
 | **sync / local mode** | Sync = push/pull with the server. Local mode = the device keeps the data and the server holds nothing. | — |

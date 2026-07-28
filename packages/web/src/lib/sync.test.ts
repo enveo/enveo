@@ -66,7 +66,6 @@ const emptyLedger = (): ClientLedger => ({
   allocations: [],
   categories: [],
   places: [],
-  recurrences: [],
   budgets: [],
 });
 
