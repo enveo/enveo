@@ -1,20 +1,29 @@
 import { useMemo, useState, type ReactNode } from "react";
-import { computeCashflowSeries, computeNetWorthSeries, computeSpendingByDimension, prevMonth, type SpendingDimension } from "@enveo/shared";
+import {
+  computeCashflowSeries,
+  computeDailySpending,
+  computeEnvelopeTrends,
+  computeNetWorthSeries,
+  computeSpendingByDimension,
+  prevMonth,
+  savingsRate,
+  type SpendingDimension,
+} from "@enveo/shared";
 import { useLedgerVersion, type StateResponse } from "../lib/api";
 import { store } from "../lib/store";
 import { Header } from "../components/chrome";
-import { useBand } from "../components/kit";
+import { GoalRing, useBand } from "../components/kit";
 import { ReportInfoNote } from "../components/ReportInfoNote";
-import { Sparkline } from "../components/reportKit";
+import { DeltaTag, SegBar, Sparkline, TrendSpark } from "../components/reportKit";
 import { useMask, useTheme } from "../lib/contexts";
 import { monthLabel } from "../lib/dates";
 import { goalProgress } from "../lib/goals";
 import { useT, type Message, msg } from "../lib/i18n";
 import { budgetsSummary } from "../lib/reportSummary";
-import { P, TEAL, type Theme } from "../lib/theme";
+import { P, TEAL } from "../lib/theme";
 
-export type ReportTab = "assets" | "cashflow" | "spending" | "budgets" | "goals";
-/** Reports view: shortcut-card overview or a full-screen report subscreen. */
+export type ReportTab = "assets" | "cashflow" | "spending" | "budgets" | "goals" | "month" | "trends";
+/** Reports view: hub (band hero + mini-card grid) or a full-screen report subscreen. */
 export type ReportView = "overview" | ReportTab;
 const TITLES: Record<ReportTab, Message> = {
   assets: msg("Wealth"),
@@ -22,9 +31,15 @@ const TITLES: Record<ReportTab, Message> = {
   spending: msg("Spending"),
   budgets: msg("Budgets"),
   goals: msg("Goals"),
+  month: msg("Month in a nutshell"),
+  trends: msg("Envelope trends"),
 };
-/** "How to read this" note per report (ReportInfoNote renders `**bold**`). */
-const NOTES: Record<ReportTab, Message> = {
+/**
+ * "How to read this" note per report (ReportInfoNote renders `**bold**`). Deliberately has NO
+ * entry for "month"/"trends" — the whole ⓘ-note mechanism is retired in Task 13, so the two new
+ * tabs never get one; the subscreen render guards on presence rather than assuming every tab has one.
+ */
+const NOTES: Partial<Record<ReportTab, Message>> = {
   assets: msg("All account balances minus liabilities, month by month. When the line **goes up**, you are building wealth; dips are explained in Cashflow."),
   cashflow: msg("Income minus spending, month by month. Bar **to the right** = you are saving, **to the left** = the month ran a deficit."),
   spending: msg("Where your money actually went in the selected period — grouped by category, envelope, group, or place."),
@@ -80,18 +95,42 @@ export function ReportsScreen({ state, month, view, onView, onOpenEnvelope, onMe
     return l ? computeSpendingByDimension(l, fromMonth, month, dim) : [];
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [version, fromMonth, month, dim, view]);
+  // hub-only series: current month's envelope breakdown, this month's daily totals, 6-mo envelope trends
+  const hubSpending = useMemo(() => {
+    if (view !== "overview") return [];
+    const l = store.getLedger();
+    return l ? computeSpendingByDimension(l, month, month, "envelope") : [];
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [version, month, view]);
+  const dailySpending = useMemo(() => {
+    if (view !== "overview") return [];
+    const l = store.getLedger();
+    return l ? computeDailySpending(l, month) : [];
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [version, month, view]);
+  const envelopeTrends = useMemo(() => {
+    if (view !== "overview") return [];
+    const l = store.getLedger();
+    return l ? computeEnvelopeTrends(l, month, 6) : [];
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [version, month, view]);
 
-  // ── Overview: global Header + 6 shortcut cards with the essentials ──
+  // ── Hub: global Header + net-worth band hero + a 2-col grid of six mini-cards ──
   if (view === "overview") {
     return (
-      <div className="gs" style={{ flex: 1, overflowY: "auto", paddingBottom: 6 }}>
-        <div style={band ? { background: C.headerBg, paddingBottom: 2 } : undefined}>
-          <Header month={month} onMenu={onMenu} onPrev={onPrev} onNext={onNext} onBand={band} />
-        </div>
-        <div style={{ padding: `2px ${P}px 0` }}>
-          <OverviewCards state={state} month={month} netWorth={netWorth} cashflow={cashflow} onView={onView} />
-        </div>
-      </div>
+      <ReportsHub
+        state={state}
+        month={month}
+        netWorth={netWorth}
+        cashflow={cashflow}
+        hubSpending={hubSpending}
+        dailySpending={dailySpending}
+        envelopeTrends={envelopeTrends}
+        onView={onView}
+        onMenu={onMenu}
+        onPrev={onPrev}
+        onNext={onNext}
+      />
     );
   }
 
@@ -111,46 +150,63 @@ export function ReportsScreen({ state, month, view, onView, onOpenEnvelope, onMe
         </div>
       </div>
       <div className="fi" style={{ padding: `0 ${P}px` }}>
-        <ReportInfoNote id={view} textKey={NOTES[view]} />
+        {NOTES[view] && <ReportInfoNote id={view} textKey={NOTES[view]!} />}
         {view === "assets" && <AssetsReport netWorth={netWorth} state={state} M={M} />}
         {view === "cashflow" && <CashflowReport cashflow={cashflow} M={M} />}
         {view === "spending" && <SpendingReport spending={spending} dim={dim} setDim={setDim} range={range} setRange={setRange} M={M} />}
         {view === "budgets" && <BudgetsReport state={state} M={M} onOpenEnvelope={onOpenEnvelope} />}
         {view === "goals" && <GoalsReport state={state} M={M} onOpenEnvelope={onOpenEnvelope} />}
+        {/* Month-in-a-nutshell subscreen — Task 11 fills this in. */}
+        {view === "month" && <div />}
+        {/* Envelope-trends subscreen — Task 12 fills this in. */}
+        {view === "trends" && <div />}
       </div>
     </div>
   );
 }
 
 /**
- * Overview: shortcut cards with the essence of each report (spec 2026-07-11-raporty-b;
- * order per user feedback: net worth, cashflow, SPENDING (colored preview),
- * goals, budgets). Tap → subscreen.
- * Math: netWorth/cashflow series from ReportsScreen, budgetsSummary from lib/reportSummary
- * (parity with BudgetsReport), goals like GoalsReport.
+ * Reports hub (frame A1, "Gabinet" direction): the global Header, then a tappable net-worth
+ * band hero (eyebrow, 30px masked amount, ▲/▼ m/m delta, 12-mo sparkline — on `C.headerBg`
+ * when the theme paints a Duet band, plain otherwise, exactly like every other screen's header),
+ * then a 2-column grid of six mini-cards, one per subscreen, each showing just its essence.
+ * Every card is a `<button>` → `onView(id)`.
  */
-function OverviewCards({ state, month, netWorth, cashflow, onView }: { state: StateResponse; month: string; netWorth: { month: string; total: number }[]; cashflow: { month: string; income: number; expense: number; net: number }[]; onView: (v: ReportView) => void }) {
+function ReportsHub({
+  state,
+  month,
+  netWorth,
+  cashflow,
+  hubSpending,
+  dailySpending,
+  envelopeTrends,
+  onView,
+  onMenu,
+  onPrev,
+  onNext,
+}: {
+  state: StateResponse;
+  month: string;
+  netWorth: { month: string; total: number }[];
+  cashflow: { month: string; income: number; expense: number; net: number }[];
+  hubSpending: { key: string | null; name: string; amount: number; pct: number }[];
+  dailySpending: { date: string; total: number }[];
+  envelopeTrends: { id: string; name: string; color: string; series: number[]; last: number; baseline: number; deltaPct: number | null }[];
+  onView: (v: ReportView) => void;
+  onMenu: () => void;
+  onPrev: () => void;
+  onNext: () => void;
+}) {
   const C = useTheme();
   const M = useMask();
-  const { t, lang } = useT();
-  const version = useLedgerVersion();
+  const { t } = useT();
+  const { band, hc } = useBand();
 
-  // spending preview by ENVELOPES (consistent with the subscreen's default dimension);
-  // full list for the bar, top-3 for the legend
-  const spendingRows = useMemo(() => {
-    const l = store.getLedger();
-    return l ? computeSpendingByDimension(l, month, month, "envelope") : [];
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [version, month]);
-  const envColor = new Map(state.envelopes.map((e) => [e.id, e.color]));
-
-  // net worth: last point + m/m delta (like AssetsReport)
   const nwLast = netWorth.at(-1)?.total ?? 0;
   const nwDelta = nwLast - (netWorth.at(-2)?.total ?? nwLast);
-  // current month's cashflow = last point of the series
-  const cf = cashflow.at(-1);
-  const cfNet = cf?.net ?? 0;
-  // goals: sum as in GoalsReport (card hidden when zero envelopes have a goal)
+  const envColor = new Map(state.envelopes.map((e) => [e.id, e.color]));
+
+  // goals: same math as GoalsReport (card hidden entirely when zero envelopes have a goal)
   const goalRows = state.envelopes
     .filter((e) => !e.archived)
     .flatMap((e) => {
@@ -161,107 +217,247 @@ function OverviewCards({ state, month, netWorth, cashflow, onView }: { state: St
   const targetSum = goalRows.reduce((s, { e }) => s + (e.monthlyTarget ?? 0), 0);
   const pctTotal = targetSum > 0 ? Math.round((fundedSum / targetSum) * 100) : 0;
   const missSum = goalRows.reduce((s, { gp }) => s + gp.missing, 0);
-  // budgets: threshold counters (parity with BudgetsReport via budgetsSummary)
-  const bs = budgetsSummary(state.envelopes);
-  const bsTotal = bs.over + bs.near + bs.ok;
-
-  const card = (id: ReportTab, title: string, body: ReactNode) => (
-    <button key={id} onClick={() => onView(id)} style={{ display: "block", width: "100%", background: C.card, border: "none", boxShadow: "0 1px 3px rgba(20,20,28,0.06)", borderRadius: 14, padding: "12px 14px", marginBottom: 12, cursor: "pointer", textAlign: "left", fontFamily: "inherit" }}>
-      <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 8, marginBottom: 7 }}>
-        <span style={{ fontSize: 13.5, fontWeight: 700, color: C.text }}>{title}</span>
-        <span style={{ fontSize: 12, color: "var(--accent)", flexShrink: 0 }}>{t("details")} ›</span>
-      </div>
-      {body}
-    </button>
-  );
 
   return (
-    <>
-      {card(
-        "assets",
-        t("Net worth"),
-        <>
-          <div style={{ display: "flex", alignItems: "baseline", gap: 10 }}>
-            <span style={{ fontSize: 18, fontWeight: 700, color: C.text, fontVariantNumeric: "tabular-nums" }}>{M(nwLast)}</span>
-            {nwDelta !== 0 && <span style={{ fontSize: 11.5, fontWeight: 600, color: nwDelta > 0 ? C.pos : C.neg, fontVariantNumeric: "tabular-nums" }}>{nwDelta > 0 ? "▲ +" : "▼ "}{M(Math.abs(nwDelta))}</span>}
+    <div className="gs" style={{ flex: 1, overflowY: "auto", paddingBottom: 6 }}>
+      <div style={band ? { background: C.headerBg, paddingBottom: 14 } : { paddingBottom: 14 }}>
+        <Header month={month} onMenu={onMenu} onPrev={onPrev} onNext={onNext} onBand={band} />
+        <button
+          onClick={() => onView("assets")}
+          style={{ display: "block", width: "100%", background: "none", border: "none", padding: `10px ${P}px 0`, textAlign: "left", cursor: "pointer", fontFamily: "inherit" }}
+        >
+          <div style={{ fontSize: 10.5, fontWeight: 750, letterSpacing: "0.17em", textTransform: "uppercase", color: hc(C.headerMute, C.mute) }}>{t("Net worth")}</div>
+          <div style={{ fontSize: 30, fontWeight: 750, color: hc(C.headerInk, C.text), fontVariantNumeric: "tabular-nums" }}>{M(nwLast)}</div>
+          <div style={{ fontSize: 12, color: hc(C.headerMute, C.soft) }}>
+            {nwDelta !== 0 && (
+              <span style={{ color: nwDelta > 0 ? hc(C.headerPos, C.pos) : hc(C.headerNeg, C.neg), fontWeight: 650 }}>
+                {nwDelta > 0 ? "▲ +" : "▼ "}
+                {M(Math.abs(nwDelta))}
+              </span>
+            )}{" "}
+            {t("m/m")} · {t("details")} ›
           </div>
-          <Sparkline points={netWorth} />
-        </>,
-      )}
-      {card(
-        "cashflow",
-        t("Cash flow — {month}", { month: monthLabel(month, lang).split(" ")[0]! }),
-        <div style={{ display: "flex", gap: 8 }}>
-          {([[t("Income"), cf?.income ?? 0, C.pos], [t("Expense"), cf?.expense ?? 0, C.neg], [t("Net"), cfNet, cfNet >= 0 ? C.pos : C.neg]] as const).map(([label, val, col]) => (
-            <div key={label} style={{ flex: 1 }}>
-              <div style={{ fontSize: 10.5, color: C.soft }}>{label}</div>
-              <div style={{ fontSize: 13.5, fontWeight: 700, color: col, fontVariantNumeric: "tabular-nums" }}>{M(val)}</div>
-            </div>
-          ))}
-        </div>,
-      )}
-      {card("spending", t("Spending breakdown"), <SpendingPreview rows={spendingRows} envColor={envColor} C={C} />)}
-      {goalRows.length > 0 &&
-        card(
-          "goals",
-          t("Goals"),
-          <>
-            <div style={{ fontSize: 12.5, fontWeight: 600, color: missSum === 0 ? C.pos : C.soft, fontVariantNumeric: "tabular-nums" }}>
-              {missSum === 0 ? t("All goals funded ✓") : t("Funded {pct}% · {amount} to go", { pct: pctTotal, amount: M(missSum) })}
-            </div>
-            <div style={{ height: 8, background: C.line, borderRadius: 4, overflow: "hidden", marginTop: 7 }}>
-              <div style={{ height: "100%", width: `${pctTotal}%`, background: missSum === 0 ? C.pos : "var(--accent)", borderRadius: 4 }} />
-            </div>
-          </>,
-        )}
-      {card(
-        "budgets",
-        t("Envelope budgets"),
-        <>
-          <div style={{ fontSize: 12.5, fontWeight: 600, color: C.soft, fontVariantNumeric: "tabular-nums" }}>
-            <span style={bs.over > 0 ? { color: C.neg } : undefined}>{t("{n} over", { n: bs.over })}</span>
-            {" · "}
-            {t("{n} near limit", { n: bs.near })}
-            {" · "}
-            {t("{n} OK", { n: bs.ok })}
-          </div>
-          {bsTotal > 0 && (
-            <div style={{ display: "flex", gap: 3, height: 8, marginTop: 7 }}>
-              {([[bs.over, C.neg], [bs.near, C.warn], [bs.ok, C.pos]] as const).map(([n, color], i) =>
-                n > 0 ? <span key={i} style={{ flex: n, minWidth: 8, background: color, borderRadius: 4 }} /> : null,
-              )}
-            </div>
-          )}
-        </>,
-      )}
-    </>
+          <Sparkline points={netWorth} stroke={hc(C.headerInk, "var(--accent)")} dotColor={hc(C.headerPos, C.pos)} />
+        </button>
+      </div>
+      <div style={{ padding: `10px ${P}px 0`, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+        <CashflowMini cashflow={cashflow} onView={onView} M={M} />
+        <SpendingMini rows={hubSpending} envColor={envColor} cashflow={cashflow} onView={onView} M={M} />
+        <BudgetsMini envelopes={state.envelopes} onView={onView} M={M} />
+        {goalRows.length > 0 && <GoalsMini pctTotal={pctTotal} missSum={missSum} onView={onView} M={M} />}
+        <MonthMini days={dailySpending} onView={onView} M={M} />
+        <TrendsMini trends={envelopeTrends} onView={onView} />
+      </div>
+    </div>
   );
 }
 
-/** Spending structure preview: a segmented bar in envelope colors + top-3 legend. */
-function SpendingPreview({ rows, envColor, C }: { rows: Array<{ key: string | null; name: string; amount: number; pct: number }>; envColor: Map<string, string>; C: Theme }) {
-  const { t } = useT();
-  if (rows.length === 0) return <div style={{ fontSize: 12.5, color: C.soft }}>{t("No spending in this period.")}</div>;
-  const top = rows.slice(0, 4);
-  const restPct = Math.max(0, 1 - top.reduce((s, r) => s + r.pct, 0));
-  const colorOf = (r: { key: string | null }, i: number) => (r.key && envColor.get(r.key)) || ["#8f84a8", "#aed6ea", "#ccd9b6", "#f0c84f"][i % 4]!;
+/** Mini-card button shell shared by all six hub cards: quiet label row (title + chevron) + body. */
+function MiniCard({ title, onClick, children }: { title: string; onClick: () => void; children: ReactNode }) {
+  const C = useTheme();
   return (
-    <>
-      <div style={{ display: "flex", gap: 3, height: 10, marginBottom: 7 }}>
-        {top.map((r, i) => (
-          <span key={r.key ?? i} style={{ flex: Math.max(r.pct, 0.02), minWidth: 8, background: colorOf(r, i), borderRadius: 5 }} />
-        ))}
-        {restPct > 0.01 && <span style={{ flex: restPct, minWidth: 6, background: C.inset, borderRadius: 5 }} />}
+    <button
+      onClick={onClick}
+      style={{ display: "block", width: "100%", background: C.card, border: "none", boxShadow: "0 1px 3px rgba(20,20,28,0.06)", borderRadius: 14, padding: "12px 13px", cursor: "pointer", textAlign: "left", fontFamily: "inherit" }}
+    >
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", fontSize: 11, fontWeight: 700, color: C.soft, marginBottom: 6 }}>
+        <span>{title}</span>
+        <span style={{ color: C.mute, fontWeight: 400 }}>›</span>
       </div>
-      <div style={{ display: "flex", flexWrap: "wrap", gap: "3px 12px" }}>
-        {top.slice(0, 3).map((r, i) => (
-          <span key={r.key ?? i} style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 11.5, color: C.soft, fontVariantNumeric: "tabular-nums" }}>
-            <span style={{ width: 8, height: 8, borderRadius: 3, background: colorOf(r, i), flexShrink: 0 }} />
-            {r.name} <b style={{ color: C.text }}>{Math.round(r.pct * 100)}%</b>
-          </span>
+      {children}
+    </button>
+  );
+}
+
+/** Deterministic median (lower-of-two-middle on ties) — a tiny local copy of the private helper
+ *  in shared/reports.ts; kept here rather than exported since the hub is its only web-side caller. */
+function medianOf(xs: number[]): number {
+  if (xs.length === 0) return 0;
+  const sorted = [...xs].sort((a, b) => a - b);
+  return sorted[Math.floor((sorted.length - 1) / 2)]!;
+}
+
+/** Cashflow mini-card: 12-mo diverging columns (up in C.pos / down in C.neg from a C.line
+ *  baseline), current month's net (sign-colored), and the current savings rate. */
+function CashflowMini({ cashflow, onView, M }: { cashflow: { month: string; income: number; expense: number; net: number }[]; onView: (v: ReportView) => void; M: Mask }) {
+  const C = useTheme();
+  const { t } = useT();
+  const barW = 7, gap = 2, H = 34, base = H / 2, maxH = 15;
+  const W = cashflow.length * barW + Math.max(0, cashflow.length - 1) * gap;
+  const maxAbs = Math.max(...cashflow.map((p) => Math.abs(p.net)), 1);
+  const net = cashflow.at(-1)?.net ?? 0;
+  const sr = savingsRate(cashflow);
+  const pct = sr.current !== null ? Math.round(sr.current * 100) : "–";
+  return (
+    <MiniCard title={t("Cash flow")} onClick={() => onView("cashflow")}>
+      <svg viewBox={`0 0 ${W} ${H}`} width="100%" height={H} aria-hidden="true" style={{ display: "block" }}>
+        <line x1={0} y1={base} x2={W} y2={base} style={{ stroke: C.line }} strokeWidth={1} />
+        {cashflow.map((p, i) => {
+          const h = Math.max(1, Math.round((Math.abs(p.net) / maxAbs) * maxH));
+          const x = i * (barW + gap);
+          const y = p.net >= 0 ? base - h : base;
+          return <rect key={p.month} x={x} y={y} width={barW} height={h} rx={2} style={{ fill: p.net >= 0 ? C.pos : C.neg }} />;
+        })}
+      </svg>
+      <div style={{ fontSize: 17, fontWeight: 750, color: net >= 0 ? C.pos : C.neg, marginTop: 6, fontVariantNumeric: "tabular-nums" }}>
+        {net >= 0 ? "+" : "−"}
+        {M(Math.abs(net))}
+      </div>
+      <div style={{ fontSize: 11, color: C.mute }}>{t("savings rate {pct}%", { pct })}</div>
+    </MiniCard>
+  );
+}
+
+const SPENDING_FALLBACK_COLORS = ["#8f84a8", "#aed6ea", "#ccd9b6", "#f0c84f"];
+
+/** Spending mini-card: SegBar of the top-4 envelopes (own color) + rest in C.line, month total,
+ *  and a DeltaTag against the median of the 3 preceding months' cashflow expense. */
+function SpendingMini({
+  rows,
+  envColor,
+  cashflow,
+  onView,
+  M,
+}: {
+  rows: { key: string | null; name: string; amount: number; pct: number }[];
+  envColor: Map<string, string>;
+  cashflow: { month: string; income: number; expense: number; net: number }[];
+  onView: (v: ReportView) => void;
+  M: Mask;
+}) {
+  const C = useTheme();
+  const { t } = useT();
+  const top = rows.slice(0, 4);
+  const total = rows.reduce((s, r) => s + r.amount, 0);
+  const restAmt = Math.max(0, total - top.reduce((s, r) => s + r.amount, 0));
+  const colorOf = (r: { key: string | null }, i: number) => (r.key && envColor.get(r.key)) || SPENDING_FALLBACK_COLORS[i % SPENDING_FALLBACK_COLORS.length]!;
+  const segments = [...top.map((r, i) => ({ weight: Math.max(0, r.amount), color: colorOf(r, i) })), ...(restAmt > 0 ? [{ weight: restAmt, color: C.line }] : [])];
+  // baseline = median of the 3 months BEFORE the current one (cashflow always ends at `month`)
+  const baseline = medianOf(cashflow.slice(-4, -1).map((p) => p.expense));
+  const deltaPct = baseline > 0 ? (total - baseline) / baseline : null;
+  return (
+    <MiniCard title={t("Spending")} onClick={() => onView("spending")}>
+      <SegBar segments={segments} />
+      <div style={{ fontSize: 17, fontWeight: 750, color: C.text, marginTop: 8, fontVariantNumeric: "tabular-nums" }}>{M(total)}</div>
+      <div style={{ fontSize: 11, color: C.mute }}>
+        <DeltaTag pct={deltaPct} /> {t("vs 3 mo")}
+      </div>
+    </MiniCard>
+  );
+}
+
+/** Budgets mini-card: over/near/OK count pills (triage colors on quiet chip backgrounds), plus
+ *  the total overspend amount when any envelope is over. Threshold parity with BudgetsReport via
+ *  budgetsSummary (Task 9 refines the rule; this card just consumes it). */
+function BudgetsMini({ envelopes, onView, M }: { envelopes: StateResponse["envelopes"]; onView: (v: ReportView) => void; M: Mask }) {
+  const C = useTheme();
+  const { t } = useT();
+  const bs = budgetsSummary(envelopes);
+  const overAmt = envelopes
+    .filter((e) => !e.archived && (e.allocated + e.carryIn > 0 || e.spent > 0))
+    .reduce((s, e) => {
+      const budget = Math.max(1, e.allocated + e.carryIn);
+      const pct = (Math.max(0, e.spent) / budget) * 100;
+      return pct > 100 ? s + Math.max(0, -e.available) : s;
+    }, 0);
+  const pill = (label: string, bg: string, color: string, key: string) => (
+    <span key={key} style={{ display: "inline-flex", alignItems: "center", fontSize: 11.5, fontWeight: 650, borderRadius: 9, padding: "4px 9px", background: bg, color }}>
+      {label}
+    </span>
+  );
+  return (
+    <MiniCard title={t("Budgets")} onClick={() => onView("budgets")}>
+      <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
+        {pill(t("{n} over", { n: bs.over }), "var(--danger-14)", C.neg, "over")}
+        {pill(t("{n} near limit", { n: bs.near }), C.chip, C.warn, "near")}
+        {pill(t("{n} OK", { n: bs.ok }), C.chip, C.pos, "ok")}
+      </div>
+      {overAmt > 0 && (
+        <div style={{ fontSize: 11, color: C.neg, marginTop: 8, fontVariantNumeric: "tabular-nums" }}>{t("{amount} over budget", { amount: M(overAmt) })}</div>
+      )}
+    </MiniCard>
+  );
+}
+
+/** Goals mini-card: GoalRing + aggregate funded % + funded/missing line — hidden by the caller
+ *  when no envelope has a goal (today's overview behavior, unchanged). */
+function GoalsMini({ pctTotal, missSum, onView, M }: { pctTotal: number; missSum: number; onView: (v: ReportView) => void; M: Mask }) {
+  const C = useTheme();
+  const { t } = useT();
+  const funded = missSum === 0;
+  return (
+    <MiniCard title={t("Goals")} onClick={() => onView("goals")}>
+      <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
+        <GoalRing pct={pctTotal} size={30} />
+        <div>
+          <div style={{ fontSize: 17, fontWeight: 750, color: funded ? C.pos : C.text, fontVariantNumeric: "tabular-nums" }}>{pctTotal}%</div>
+          <div style={{ fontSize: 11, color: funded ? C.pos : C.mute }}>{funded ? t("funded ✓") : t("{amount} to go", { amount: M(missSum) })}</div>
+        </div>
+      </div>
+    </MiniCard>
+  );
+}
+
+/** Month mini-card: a 10-cell intensity strip for the first 10 days of the month (same quartile
+ *  colors as CalendarHeatmap, scaled against the WHOLE month's max so it reads consistently with
+ *  the Task 11 subscreen), plus the month's average daily spend. */
+function MonthMini({ days, onView, M }: { days: { date: string; total: number }[]; onView: (v: ReportView) => void; M: Mask }) {
+  const C = useTheme();
+  const { t } = useT();
+  const first10 = days.slice(0, 10);
+  const max = Math.max(...days.map((d) => d.total), 1);
+  const colorFor = (total: number): string => {
+    if (total <= 0) return C.inset;
+    const q = total / max;
+    if (q <= 0.25) return "var(--accent-22)";
+    if (q <= 0.5) return "var(--accent-40)";
+    if (q <= 0.75) return "var(--accent-66)";
+    return "var(--accent)";
+  };
+  const avg = days.length > 0 ? Math.round(days.reduce((s, d) => s + d.total, 0) / days.length) : 0;
+  return (
+    <MiniCard title={t("Month in a nutshell")} onClick={() => onView("month")}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(10, 1fr)", gap: 2.5 }}>
+        {first10.map((d) => (
+          <span key={d.date} style={{ aspectRatio: "1", borderRadius: 3, background: colorFor(d.total) }} />
         ))}
       </div>
-    </>
+      <div style={{ fontSize: 11, color: C.mute, marginTop: 8, fontVariantNumeric: "tabular-nums" }}>{t("avg {amount}/day", { amount: M(avg) })}</div>
+    </MiniCard>
+  );
+}
+
+/** Trends mini-card: the top-2 biggest-moving envelopes (already sorted by computeEnvelopeTrends),
+ *  a mini TrendSpark (red rising / green falling / muted flat) and an arrow per row. */
+function TrendsMini({
+  trends,
+  onView,
+}: {
+  trends: { id: string; name: string; color: string; series: number[]; last: number; baseline: number; deltaPct: number | null }[];
+  onView: (v: ReportView) => void;
+}) {
+  const C = useTheme();
+  const { t } = useT();
+  const top = trends.slice(0, 2);
+  return (
+    <MiniCard title={t("Envelope trends")} onClick={() => onView("trends")}>
+      {top.length === 0 && <div style={{ fontSize: 11.5, color: C.mute }}>{t("Not enough data yet.")}</div>}
+      {top.map((tr) => {
+        const rising = tr.last > tr.baseline;
+        const falling = tr.last < tr.baseline;
+        const color = rising ? C.neg : falling ? C.pos : C.mute;
+        return (
+          <div key={tr.id} style={{ marginBottom: 4 }}>
+            <TrendSpark series={tr.series} color={color} w={150} h={16} />
+            <div style={{ fontSize: 11, color: C.soft, marginTop: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              {tr.name}{" "}
+              {rising && <span style={{ color: C.neg, fontWeight: 650 }}>↑</span>}
+              {falling && <span style={{ color: C.pos, fontWeight: 650 }}>↓</span>}
+            </div>
+          </div>
+        );
+      })}
+    </MiniCard>
   );
 }
 
