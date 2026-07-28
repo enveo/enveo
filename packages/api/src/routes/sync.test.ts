@@ -45,7 +45,6 @@ const EMPTY_LEDGER = {
   envelopes: [],
   categories: [],
   places: [],
-  recurrences: [],
   allocations: [],
   transactions: [],
 };

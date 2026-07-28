@@ -23,7 +23,7 @@ export interface EnvelopeBudgetStats {
 
 /** Transaction contribution to envelope "spent" — parity with summary.ts spentOf. */
 function spentOfEnvelope(t: Transaction, envId: string): number {
-  if (t.planned || t.type === "transfer") return 0;
+  if (t.type === "transfer") return 0;
   const sign = t.isRefund ? -1 : 1;
   if (t.type === "income") return t.envelopeId === envId ? -t.amount : 0;
   if (t.items.length > 0) {

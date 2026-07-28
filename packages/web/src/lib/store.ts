@@ -23,12 +23,8 @@ export type PullChange =
   | { seq: number; table: ReplicatedTable; op: "upsert"; row: unknown }
   | { seq: number; table: ReplicatedTable; op: "delete"; rowId: string };
 
-/** DB table name → ClientLedger key (envelope_groups → groups). Partial: `recurrences` is no
- *  longer replicated to a client-side collection the web app reads (recurrence creation/mutation
- *  was removed from the UI) — `applyPulled`'s `if (!key) continue` guard below already treats an
- *  unmapped table as a no-op, so any residual `recurrences` change from an older/wider server is
- *  silently dropped rather than crashing. */
-const TABLE_KEY: Partial<Record<ReplicatedTable, keyof ClientLedger>> = {
+/** DB table name → ClientLedger key (envelope_groups → groups). */
+const TABLE_KEY: Record<ReplicatedTable, keyof ClientLedger> = {
   accounts: "accounts",
   envelope_groups: "groups",
   envelopes: "envelopes",
@@ -165,7 +161,10 @@ export const store = {
 
     for (const ch of changes) {
       const key = TABLE_KEY[ch.table];
-      if (!key) continue; // defense: unknown table
+      // defensive: `ch.table` is only TYPED as ReplicatedTable — it is actually untrusted wire
+      // data (server JSON cast via `as PullResponse`), so an old/wider server can still send a
+      // table name this build's TABLE_KEY has no entry for (e.g. a table for a retired feature).
+      if (!key) continue;
       const arr = arrFor(key);
       if (ch.op === "delete") {
         const i = arr.findIndex((r) => r.id === ch.rowId);

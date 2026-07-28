@@ -171,12 +171,8 @@ function UnverifiedReplicaNotice() {
   );
 }
 
-/** Op kind → what the user sees in the rejected-changes list. Partial (not Record<OpKind, …>):
- *  `@enveo/shared` still declares the recurrence.* ops (a later task removes them), but the web
- *  UI can no longer create/mutate a recurrence — those three kinds are omitted here on purpose.
- *  A dead-letter for one can still be READ back on a device that queued it before this change; the
- *  render site below falls back to a generic label instead of crashing. */
-const OP_LABEL: Partial<Record<OpKind, Message>> = {
+/** Op kind → what the user sees in the rejected-changes list. */
+const OP_LABEL: Record<OpKind, Message> = {
   "txn.create": msg("New transaction"),
   "txn.update": msg("Transaction change"),
   "txn.delete": msg("Transaction deletion"),
@@ -283,6 +279,10 @@ function DeadLetters() {
       {deadLetters.map((dl, i) => (
         <div key={dl.opId} style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, padding: "10px 0", borderTop: i === 0 ? "none" : `1px solid ${C.line}` }}>
           <div style={{ minWidth: 0 }}>
+            {/* defensive fallback: a dead-letter persisted in IDB by an OLDER app build can still
+                carry an op kind from a feature retired since then, at RUNTIME, even though
+                `dl.op.kind` is statically typed against the CURRENT OpKind — OP_LABEL has no
+                entry for it, so the lookup below is `undefined` despite the full Record type. */}
             <div style={{ fontSize: 12.5, fontWeight: 600, color: C.text }}>{t(OP_LABEL[dl.op.kind] ?? msg("Change"))}</div>
             {opDetail(dl.op, currency, lang) && <div style={{ fontSize: 11, color: C.soft, marginTop: 1 }}>{opDetail(dl.op, currency, lang)}</div>}
             <div style={{ fontSize: 11, color: CORAL, marginTop: 2, lineHeight: 1.4, wordBreak: "break-word" }}>{dl.error}</div>

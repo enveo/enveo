@@ -95,8 +95,6 @@ export const mapTransaction = (
   name: t.name,
   note: t.note,
   tag: t.tag,
-  planned: t.planned,
-  recurrenceId: t.recurrenceId,
   items,
   createdAt: t.createdAt,
 });
@@ -138,13 +136,7 @@ export async function loadLedger(budgetId: string, x: Executor = db): Promise<Le
   };
 }
 
-/**
- * Ledger + dictionaries (categories, places) — the full client replica.
- *
- * `recurrences` is still a required field of `ClientLedger` (shared/types.ts) — it stays
- * hard-coded empty here rather than querying `recurrences` (the API no longer writes that
- * table). A later task drops the field from the shared type/schema entirely.
- */
+/** Ledger + dictionaries (categories, places) — the full client replica. */
 export async function loadClientLedger(x: Executor, budgetId: string): Promise<ClientLedger> {
   const [ledger, catRows, plcRows, budgetRows] = await Promise.all([
     loadLedger(budgetId, x),
@@ -156,7 +148,6 @@ export async function loadClientLedger(x: Executor, budgetId: string): Promise<C
     ...ledger,
     categories: catRows.map(mapCategory),
     places: plcRows.map(mapPlace),
-    recurrences: [],
     budgets: budgetRows.map(mapBudget),
   };
 }

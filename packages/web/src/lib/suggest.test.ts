@@ -39,8 +39,6 @@ const txn = (partial: Partial<Transaction> & { date: string }): Transaction => (
   name: null,
   note: null,
   tag: null,
-  planned: false,
-  recurrenceId: null,
   items: [],
   createdAt: partial.date,
   ...partial,
@@ -53,7 +51,6 @@ const L = (envelopes: Envelope[], transactions: Transaction[]): ClientLedger =>
     envelopes,
     categories: [],
     places: [],
-    recurrences: [],
     allocations: [],
     transactions,
   }) as unknown as ClientLedger;

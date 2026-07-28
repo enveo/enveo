@@ -28,7 +28,7 @@ export interface CashflowPoint {
 }
 
 /**
- * Income vs expense per month (all accounts; transfer/planned skipped; refunds negative).
+ * Income vs expense per month (all accounts; transfer skipped; refunds negative).
  * Spending assigned to net-worth envelopes (isSavings) is EXCLUDED — cashflow = earnings
  * vs real consumption, consistent with "Spending by dimension" (saving ≠ consumption).
  */
@@ -39,7 +39,7 @@ export function computeCashflowSeries(ledger: ClientLedger, month: string, month
   const byMonth = new Map<string, { income: number; expense: number }>();
   for (const m of window) byMonth.set(m, { income: 0, expense: 0 });
   for (const t of ledger.transactions) {
-    if (t.planned || t.type === "transfer") continue;
+    if (t.type === "transfer") continue;
     const b = byMonth.get(monthOf(t.date));
     if (!b) continue;
     if (t.type === "income") {
@@ -84,7 +84,7 @@ function expenseByDimension(
   envGroup: Map<string, string>,
   savings: Set<string>,
 ): Array<[string | null, Money]> {
-  if (t.planned || t.type !== "expense") return [];
+  if (t.type !== "expense") return [];
   const sign = t.isRefund ? -1 : 1;
   if (t.items.length > 0) {
     const items = t.items.filter((it) => !savings.has(it.envelopeId));

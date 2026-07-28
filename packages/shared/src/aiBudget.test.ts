@@ -190,7 +190,7 @@ describe("monthlyTarget field", () => {
   });
 
   it("clientLedgerSchema accepts envelopes with and without monthlyTarget", () => {
-    const withT = { accounts: [], groups: [{ id: "11111111-1111-1111-1111-111111111111", name: "G", sort: 0 }], envelopes: [{ id: "22222222-2222-2222-2222-222222222222", groupId: "11111111-1111-1111-1111-111111111111", name: "E", color: "#fff", icon: "tag", note: null, sort: 0, archived: false, monthlyTarget: 100_00 }], categories: [], places: [], recurrences: [], allocations: [], transactions: [] };
+    const withT = { accounts: [], groups: [{ id: "11111111-1111-1111-1111-111111111111", name: "G", sort: 0 }], envelopes: [{ id: "22222222-2222-2222-2222-222222222222", groupId: "11111111-1111-1111-1111-111111111111", name: "E", color: "#fff", icon: "tag", note: null, sort: 0, archived: false, monthlyTarget: 100_00 }], categories: [], places: [], allocations: [], transactions: [] };
     expect(clientLedgerSchema.safeParse(withT).success).toBe(true);
     const withoutT = { ...withT, envelopes: [{ ...withT.envelopes[0], monthlyTarget: undefined }] };
     delete (withoutT.envelopes[0] as Record<string, unknown>).monthlyTarget;

@@ -72,8 +72,6 @@ export function tx(over: Partial<Transaction>): Transaction {
     name: null,
     note: null,
     tag: null,
-    planned: false,
-    recurrenceId: null,
     items: [],
     createdAt: "2026-06-10T00:00:00Z",
     ...over,
@@ -90,7 +88,6 @@ export const asClientLedger = (l: Ledger): ClientLedger => ({
   budgets: [],
   categories: [],
   places: [],
-  recurrences: [],
 });
 
 export const MONTHS = ["2026-04", "2026-05", "2026-06", "2026-07"] as const;
@@ -231,8 +228,7 @@ export type Spec =
   | { k: "grpCreate" }
   | { k: "grpDelete"; gi: number }
   | { k: "catCreate" }
-  | { k: "placeCreate" }
-  | { k: "recCreate" };
+  | { k: "placeCreate" };
 
 const idxArb = fc.nat(999);
 const monthArb = fc.constantFrom(...MONTHS);
@@ -263,7 +259,6 @@ export const specArb: fc.Arbitrary<Spec> = fc.oneof(
   fc.record({ k: fc.constant("grpDelete" as const), gi: idxArb }),
   fc.record({ k: fc.constant("catCreate" as const) }),
   fc.record({ k: fc.constant("placeCreate" as const) }),
-  fc.record({ k: fc.constant("recCreate" as const) }),
 );
 
 const pick = <T>(arr: readonly T[], i: number): T | undefined =>
@@ -391,7 +386,5 @@ export function interpret(l: ClientLedger, s: Spec, nextId: () => string): SyncO
       return mkOp("category.create", { id: nextId(), name: "Kategoria" });
     case "placeCreate":
       return mkOp("place.create", { id: nextId(), name: "Miejsce" });
-    case "recCreate":
-      return mkOp("recurrence.create", { id: nextId(), rule: "monthly", startDate: "2026-06-01" });
   }
 }

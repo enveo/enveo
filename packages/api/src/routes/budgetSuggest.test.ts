@@ -14,7 +14,6 @@ function fixture(): ClientLedger {
     ],
     categories: [],
     places: [],
-    recurrences: [],
     allocations: [],
     transactions: [],
   };

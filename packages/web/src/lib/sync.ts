@@ -237,7 +237,6 @@ export const EMPTY_LEDGER: ClientLedger = {
   allocations: [],
   categories: [],
   places: [],
-  recurrences: [],
   budgets: [],
 };
 
@@ -434,7 +433,6 @@ export async function fetchSnapshot(): Promise<void> {
     allocations: snap.allocations,
     categories: snap.categories,
     places: snap.places,
-    recurrences: [], // web no longer reads/writes recurrences — never carry the server's copy into the mirror
     budgets: snap.budgets ?? [], // defensive: older server without `budgets` in the snapshot
   };
   store.replace(ledger, snap.cursor, snap.budgetId); // memory

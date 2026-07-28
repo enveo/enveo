@@ -271,7 +271,7 @@ export function AddScreen({
       amount: usingSplit ? splitSum : minor,
       date,
       // new manual transactions are always confirmed (the toggle is gone); editing an existing
-      // one leaves ITS confirmed value untouched — never silently flip an unconfirmed import/planned txn.
+      // one leaves ITS confirmed value untouched — never silently flip an unconfirmed import txn.
       confirmed: editTxn ? confirmed : true,
       isRefund: tab === "expense" && isRefund,
       // income has no envelope selection (always → To be budgeted); transfer likewise has none.

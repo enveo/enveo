@@ -12,7 +12,6 @@ const emptyLedger: ClientLedger = {
   allocations: [],
   categories: [],
   places: [],
-  recurrences: [],
 };
 
 /** Full, valid ledger with one entity of each kind (to be mutated in tests). */
@@ -23,7 +22,6 @@ function fullLedger(): ClientLedger {
     envelopes: [{ id: U(3), groupId: U(2), name: "Jedzenie", color: "#f1dca0", icon: "food", note: null, sort: 0, archived: false }],
     categories: [{ id: U(4), name: "Sklep" }],
     places: [{ id: U(5), name: "Lidl" }],
-    recurrences: [{ id: U(6), rule: "monthly", startDate: "2026-01-01", endDate: null }],
     allocations: [{ id: "alloc-local:x", envelopeId: U(3), month: "2026-07", amount: -1200 }],
     transactions: [
       {
@@ -41,8 +39,6 @@ function fullLedger(): ClientLedger {
         name: "Zakupy",
         note: null,
         tag: null,
-        planned: false,
-        recurrenceId: null,
         items: [
           { id: "item-local:7:0", envelopeId: U(3), categoryId: U(4), amount: 100 },
           { id: "item-local:7:1", envelopeId: U(3), categoryId: null, amount: 200 },
@@ -92,12 +88,6 @@ describe("clientLedgerSchema", () => {
   test("bad allocation month (not YYYY-MM) → rejected", () => {
     const l = fullLedger();
     l.allocations[0]!.month = "2026-7";
-    expect(clientLedgerSchema.safeParse(l).success).toBe(false);
-  });
-
-  test("missing collection key → rejected (the contract requires all 8)", () => {
-    const l = fullLedger() as Partial<ClientLedger>;
-    delete l.recurrences;
     expect(clientLedgerSchema.safeParse(l).success).toBe(false);
   });
 

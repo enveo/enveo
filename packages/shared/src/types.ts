@@ -12,14 +12,6 @@ export type Money = number; // minor units, integer
 
 export type TxnType = "expense" | "income" | "transfer";
 
-export type RecurrenceRule =
-  | "none"
-  | "weekly"
-  | "monthly"
-  | "monthEnd"
-  | "quarterly"
-  | "yearly";
-
 export type AccountType = "checking" | "cash" | "savings" | "investment" | "other";
 
 export interface Account {
@@ -86,19 +78,8 @@ export interface Transaction {
   name: string | null; // short transaction name (list title)
   note: string | null; // longer note (separate from the name)
   tag: string | null; // normalized merchant tag (import idempotency key)
-  planned: boolean;
-  recurrenceId: string | null;
   items: TxnItem[]; // [] when not a split
   createdAt: string;
-}
-
-/** Recurrence rule (planned-transaction template). */
-export interface Recurrence {
-  id: string;
-  rule: RecurrenceRule;
-  startDate: string; // YYYY-MM-DD
-  endDate: string | null; // YYYY-MM-DD
-  pausedUntil: string | null; // YYYY-MM-DD — materialization skips occurrences < this date
 }
 
 /** Budgeting act: how much was "added" to an envelope in a given month. */
@@ -130,7 +111,6 @@ export interface ClientLedger extends Ledger {
   budgets: Budget[];
   categories: Category[];
   places: Place[];
-  recurrences: Recurrence[];
 }
 
 /* ── Computed views (domain layer output) ────────────────────────────── */
@@ -159,7 +139,7 @@ export interface BudgetState {
   /**
    * Month-INDEPENDENT "ready to assign" (YNAB-style headline): Σ on-budget
    * initialBalance, minus EVERY allocation ever made (any month), plus
-   * unenveloped income / on-off-budget transfer flows from ALL non-planned
+   * unenveloped income / on-off-budget transfer flows from ALL
    * transactions (any date) — see budget.ts for the full derivation and why
    * it differs from `toBeBudgeted`.
    */

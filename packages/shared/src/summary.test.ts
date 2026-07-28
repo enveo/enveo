@@ -22,7 +22,6 @@ function fixture(): ClientLedger {
     transactions: [],
     categories: [{ id: "C1", name: "Jedzenie" }, { id: "C2", name: "Chemia" }],
     places: [],
-    recurrences: [],
   };
 }
 
@@ -49,11 +48,10 @@ describe("computeEnvelopeSummary — 6-month series", () => {
     expect(computeBudgetState(l, "2026-06").envelopes[0]!.spent).toBe(0); // the budget does not
   });
 
-  it("skips planned and transfer; refund subtracts; income with an envelope subtracts; split per item", () => {
+  it("skips transfer; refund subtracts; income with an envelope subtracts; split per item", () => {
     const l = fixture();
     l.transactions = [
       tx({ accountId: "A-on", envelopeId: "E1", amount: 30_00, date: "2026-06-05" }),
-      tx({ accountId: "A-on", envelopeId: "E1", amount: 99_00, date: "2026-06-06", planned: true }),
       tx({ type: "transfer", accountId: "A-on", toAccountId: "A-off", envelopeId: "E1", amount: 50_00, date: "2026-06-07" }),
       tx({ accountId: "A-on", envelopeId: "E1", amount: 10_00, date: "2026-06-08", isRefund: true }),
       tx({ type: "income", accountId: "A-on", envelopeId: "E1", amount: 5_00, date: "2026-06-09" }),
@@ -69,24 +67,22 @@ describe("computeEnvelopeSummary — 6-month series", () => {
       tx({ accountId: "A-on", envelopeId: "E1", amount: 3_00, date: "2026-05-15" }), // different month
     ];
     const s = computeEnvelopeSummary(l, "E1", "2026-06");
-    // 30 (expense) − 10 (refund) − 5 (income) + 12 (split item); planned/transfer skipped
+    // 30 (expense) − 10 (refund) − 5 (income) + 12 (split item); transfer skipped
     expect(s.series.at(-1)!.spent).toBe(30_00 - 10_00 - 5_00 + 12_00);
     expect(s.series.at(-2)!.spent).toBe(3_00); // May
   });
 });
 
 describe("computeEnvelopeSummary — category breakdown (byCat)", () => {
-  it("QUIRK: planned is NOT filtered; non-split counted only for type=expense", () => {
+  it("non-split counted only for type=expense", () => {
     const l = fixture();
     l.transactions = [
       tx({ accountId: "A-on", envelopeId: "E1", categoryId: "C1", amount: 30_00, date: "2026-06-05" }),
-      // planned expense — the series skips it, byCat COUNTS it (quirk)
-      tx({ accountId: "A-on", envelopeId: "E1", categoryId: "C1", amount: 9_00, date: "2026-06-06", planned: true }),
       // non-split income with an envelope — byCat SKIPS it (only type === "expense")
       tx({ type: "income", accountId: "A-on", envelopeId: "E1", categoryId: "C1", amount: 100_00, date: "2026-06-07" }),
     ];
     const s = computeEnvelopeSummary(l, "E1", "2026-06");
-    expect(s.categories).toEqual([{ categoryId: "C1", name: "Jedzenie", amount: 39_00 }]);
+    expect(s.categories).toEqual([{ categoryId: "C1", name: "Jedzenie", amount: 30_00 }]);
   });
 
   it("QUIRK: splits counted for EVERY transaction type (even income)", () => {
@@ -167,7 +163,6 @@ function windowFixture(): ClientLedger {
     budgets: [],
     categories: [{ id: "C1", name: "Jedzenie" }, { id: "C2", name: "Chemia" }],
     places: [],
-    recurrences: [],
   };
 }
 

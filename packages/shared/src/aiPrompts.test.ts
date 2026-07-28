@@ -31,7 +31,6 @@ function fixture(): ClientLedger {
     budgets: [],
     categories: [],
     places: [{ id: "P1", name: "Lidl" }],
-    recurrences: [],
     allocations: [],
     transactions: [],
   };

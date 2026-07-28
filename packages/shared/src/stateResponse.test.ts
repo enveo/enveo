@@ -24,7 +24,6 @@ function fixture(): ClientLedger {
     ],
     categories: [{ id: "C1", name: "Jedzenie" }],
     places: [{ id: "P1", name: "Lidl" }],
-    recurrences: [],
   };
 }
 

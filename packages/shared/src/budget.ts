@@ -86,14 +86,14 @@ function onBudgetSet(accounts: Account[]): (id: string) => boolean {
 
 /**
  * Full budget state for the selected month.
- * Includes real transactions (not `planned`) dated ≤ end of month.
+ * Includes all transactions dated ≤ end of month.
  */
 export function computeBudgetState(ledger: Ledger, month: string): BudgetState {
   const { accounts, envelopes, groups, allocations } = ledger;
   const isOnBudget = onBudgetSet(accounts);
 
-  // only materialized transactions, up to and including the end of the selected month
-  const txns = ledger.transactions.filter((t) => !t.planned && monthOf(t.date) <= month);
+  // transactions up to and including the end of the selected month
+  const txns = ledger.transactions.filter((t) => monthOf(t.date) <= month);
 
   // ── account balances ────────────────────────────────────────────────
   const balance = new Map<string, Money>();
@@ -162,16 +162,15 @@ export function computeBudgetState(ledger: Ledger, month: string): BudgetState {
 
   // ── ready to assign (month-INDEPENDENT headline, YNAB-style) ────────
   // Same formula as toBeBudgeted, but with no month bound anywhere: every
-  // allocation ever made (any month) and every non-planned transaction (any
-  // date) counts. This is why it can differ from toBeBudgeted — e.g.
-  // assigning money in a FUTURE month lowers this figure today, while
-  // toBeBudgeted for the currently selected (earlier) month stays unchanged
-  // (it only looks at allocations/txns ≤ that month).
+  // allocation ever made (any month) and every transaction (any date)
+  // counts. This is why it can differ from toBeBudgeted — e.g. assigning
+  // money in a FUTURE month lowers this figure today, while toBeBudgeted
+  // for the currently selected (earlier) month stays unchanged (it only
+  // looks at allocations/txns ≤ that month).
   let readyToAssign: Money = 0;
   for (const a of accounts) if (a.onBudget) readyToAssign += a.initialBalance;
   for (const a of allocations) readyToAssign -= a.amount;
-  const allTxns = ledger.transactions.filter((t) => !t.planned);
-  for (const t of allTxns) {
+  for (const t of ledger.transactions) {
     if (t.type === "income" && isOnBudget(t.accountId) && !t.envelopeId) {
       readyToAssign += t.amount;
     }
