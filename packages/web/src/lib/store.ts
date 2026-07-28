@@ -23,14 +23,17 @@ export type PullChange =
   | { seq: number; table: ReplicatedTable; op: "upsert"; row: unknown }
   | { seq: number; table: ReplicatedTable; op: "delete"; rowId: string };
 
- 
-const TABLE_KEY: Record<ReplicatedTable, keyof ClientLedger> = {
+
+
+
+
+
+const TABLE_KEY: Partial<Record<ReplicatedTable, keyof ClientLedger>> = {
   accounts: "accounts",
   envelope_groups: "groups",
   envelopes: "envelopes",
   categories: "categories",
   places: "places",
-  recurrences: "recurrences",
   transactions: "transactions",
   allocations: "allocations",
   budgets: "budgets",

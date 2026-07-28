@@ -353,7 +353,6 @@ const COLLECTION: Record<string, string> = {
   envelope: "envelopes",
   category: "categories",
   place: "places",
-  recurrence: "recurrences",
   budget: "budgets",
 };
 
