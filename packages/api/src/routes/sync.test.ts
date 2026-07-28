@@ -24,6 +24,7 @@ import { migrate } from "drizzle-orm/postgres-js/migrator";
 import postgres from "postgres";
 import * as s from "../db/schema";
 import {
+  applyPushOp,
   budgetAssertionFails,
   legacyChangesWatermark,
   ownerAssertionFails,
@@ -31,6 +32,9 @@ import {
   pushInput,
   replaceInput,
 } from "./sync";
+// Constant + type only — this module's app/db imports are lazy (see the file header), so
+// importing it here does NOT pull env/db/client into THIS process.
+import { SENTINEL as REPLACE_SENTINEL, type ReplaceRecurrenceOutput } from "./sync.replace-recurrence-child";
 
 const UUID_A = "11111111-1111-1111-1111-111111111111";
 const UUID_B = "22222222-2222-2222-2222-222222222222";
@@ -66,6 +70,45 @@ describe("push: the per-request budget assertion", () => {
     expect(pushInput.safeParse({ clientId: "dev", ops }).success).toBe(true);
     expect(pushInput.safeParse({ clientId: "dev", budgetId: UUID_B, ops }).success).toBe(true);
     expect(pushInput.safeParse({ clientId: "dev", budgetId: "nope", ops }).success).toBe(false);
+  });
+});
+
+/* ── Retired op kinds dead-letter, never a silent false "applied" (pure — no DB touched) ──
+ *
+ * `recurrence.create/update/delete` still exist in shared's OpKind/opSchemas until a later task
+ * removes them, so a well-formed payload passes schema validation — without an explicit guard,
+ * applyOp's switch would have no matching case, silently do nothing, and the op would be
+ * reported "applied". The assertion below only pins the OBSERVABLE outcome (rejected — the
+ * client dead-letters it), not which code path produced it, so it stays valid once shared drops
+ * the schemas too (at that point `opSchemas[kind]` is undefined and the `!schema` branch reaches
+ * the same outcome on its own). */
+
+describe("push: a retired op kind (recurrence.*) is rejected, never silently applied", () => {
+  it("a well-formed recurrence.create op dead-letters as rejected — nothing is applied", async () => {
+    const result = await applyPushOp("some-budget-id", "test-client", {
+      opId: UUID_A,
+      kind: "recurrence.create",
+      // matches recurrencePayload.extend({id}) exactly — proves the rejection is NOT a
+      // validation failure of a malformed payload, but the kind itself being retired
+      payload: { id: UUID_B, rule: "monthly", startDate: "2026-01-01", endDate: null, pausedUntil: null },
+    });
+    expect(result.status).toBe("rejected");
+  });
+
+  it("recurrence.update and recurrence.delete dead-letter the same way", async () => {
+    const update = await applyPushOp("some-budget-id", "test-client", {
+      opId: UUID_A,
+      kind: "recurrence.update",
+      payload: { id: UUID_B, rule: "weekly" },
+    });
+    expect(update.status).toBe("rejected");
+
+    const del = await applyPushOp("some-budget-id", "test-client", {
+      opId: UUID_A,
+      kind: "recurrence.delete",
+      payload: { id: UUID_B },
+    });
+    expect(del.status).toBe("rejected");
   });
 });
 
@@ -157,6 +200,8 @@ const TEST_URL = process.env.TEST_DATABASE_URL ?? "";
 if (TEST_URL && TEST_URL === process.env.DATABASE_URL) {
   throw new Error("TEST_DATABASE_URL must differ from DATABASE_URL — this suite writes to the DB.");
 }
+
+const REPLACE_CHILD = new URL("./sync.replace-recurrence-child.ts", import.meta.url).pathname;
 
 /** Same construction as db/client.ts — so the instance IS an `Executor`. */
 const connect = (url: string) => {
@@ -271,5 +316,42 @@ describe.skipIf(!TEST_URL)("sync/pull: the change journal is scoped to one budge
 
     await db.delete(s.changes).where(eq(s.changes.seq, row!.seq));
     expect(await legacyChangesWatermark(db)).toBe(0); // a clean journal costs nothing
+  });
+
+  /* ── Backup compat, exercised end-to-end through the real route (forever guard) ──
+   *
+   * The schema-level assertion above (describe("backup-compat: …")) only proves
+   * `replaceInput.safeParse` accepts pre-3.2 recurrence fields — it never proves the ACTUAL
+   * /api/sync/replace HANDLER does the right thing with them (real `db.transaction`, real
+   * `restoreLedger`/`insertLedger`). That means a REAL Postgres write, and `routes/sync.ts`
+   * (imported by this very file, above) already pins `db/client.ts`'s pool to whatever
+   * `DATABASE_URL` resolves to for the WHOLE test process the moment it's first imported —
+   * locally (and on a real deployment host) that is the real database, not `TEST_DATABASE_URL`
+   * (see auth.signup-race-child.ts, which hit the identical hazard first). So this runs in a
+   * CHILD process that gets `DATABASE_URL` handed to it explicitly, with a fuse that refuses to
+   * write unless it matches the throwaway Postgres this suite migrated. */
+  it("POST /api/sync/replace (child process): a ledger with pre-3.2 recurrence fields imports cleanly — nothing lands in recurrences", async () => {
+    const child = Bun.spawn([process.execPath, REPLACE_CHILD], {
+      cwd: new URL("../..", import.meta.url).pathname,
+      env: { ...process.env, DATABASE_URL: TEST_URL, EXPECT_DATABASE_URL: TEST_URL },
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    const [stdout, stderr] = await Promise.all([
+      new Response(child.stdout).text(),
+      new Response(child.stderr).text(),
+    ]);
+    const code = await child.exited;
+    const line = stdout.split("\n").find((l) => l.startsWith(REPLACE_SENTINEL));
+    if (code !== 0 || !line) {
+      throw new Error(`sync-replace-recurrence child failed (exit ${code})\nstdout:\n${stdout}\nstderr:\n${stderr}`);
+    }
+    const out = JSON.parse(line.slice(REPLACE_SENTINEL.length)) as ReplaceRecurrenceOutput;
+
+    expect(out.status).toBe(200);
+    expect(out.responseBudgetId).toBe(out.budgetId);
+    expect(out.recurrencesCount).toBe(0); // unchanged — the API never wrote the table
+    expect(out.transactionRows).toHaveLength(1);
+    expect(out.transactionRows[0]!.amount).toBe(500);
   });
 });

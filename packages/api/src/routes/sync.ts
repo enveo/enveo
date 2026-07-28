@@ -413,6 +413,68 @@ async function applyOp(x: Executor, budgetId: string, kind: OpKind, payload: unk
 
 type PushResult = { opId: string; status: "applied" | "duplicate" | "rejected"; error?: string };
 
+/**
+ * Op kinds a client may still have QUEUED from before a feature was removed from the API.
+ * `OpKind`/`opSchemas` (shared) still declare these until a later task drops the schemas
+ * entirely — until then, the `!schema` check below finds a schema, a well-formed payload
+ * parses, and `applyOp`'s switch has no matching case: it silently falls through and returns,
+ * so the op would be reported "applied" while nothing was persisted (a false success the
+ * client never dead-letters, and a permanent, invisible divergence from the server).
+ *
+ * Retired kinds must therefore take the SAME observable path as an unrecognized kind: the
+ * client dead-letters "rejected" the same way either way. This set is deliberately checked
+ * BEFORE the schema lookup so the outcome doesn't depend on `opSchemas` still knowing the kind
+ * — once shared drops the schemas too, `opSchemas[kind]` becomes undefined and the `!schema`
+ * branch reaches the identical outcome on its own; this check just makes it true NOW.
+ *
+ * Currently: the recurring-payments feature (routes/sync handlers/mappers already removed).
+ */
+const RETIRED_OP_KINDS = new Set<string>(["recurrence.create", "recurrence.update", "recurrence.delete"]);
+
+/**
+ * Applies one push op and returns its result — never throws for a domain rejection (those map
+ * to `status: "rejected"`); an infrastructure error still propagates (5xx, client retries).
+ * Exported for tests: a retired or unrecognized kind rejects WITHOUT touching the database, so
+ * it is testable without a live Postgres.
+ */
+export async function applyPushOp(
+  budgetId: string,
+  clientId: string,
+  op: { opId: string; kind: string; payload?: unknown },
+): Promise<PushResult> {
+  if (RETIRED_OP_KINDS.has(op.kind)) {
+    // pre-removal client, queued before the feature went away — dead-letter it exactly like an
+    // unknown kind (below): never a silent "applied" no-op.
+    return { opId: op.opId, status: "rejected", error: `unknown kind: ${op.kind}` };
+  }
+  const schema = (opSchemas as Record<string, z.ZodTypeAny>)[op.kind];
+  if (!schema) {
+    return { opId: op.opId, status: "rejected", error: `unknown kind: ${op.kind}` };
+  }
+  const parsed = schema.safeParse(op.payload);
+  if (!parsed.success) {
+    const detail = parsed.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join("; ");
+    return { opId: op.opId, status: "rejected", error: `validation: ${detail}` };
+  }
+  try {
+    const status = await db.transaction(async (tx) => {
+      // idempotency guard in the SAME transaction as the op application;
+      // a rollback (rejected) also takes the sync_ops row with it
+      const fresh = await claimOp(tx, { opId: op.opId, budgetId, clientId, kind: op.kind });
+      if (!fresh) return "duplicate" as const;
+      await applyOp(tx, budgetId, op.kind as OpKind, parsed.data);
+      return "applied" as const;
+    });
+    return { opId: op.opId, status };
+  } catch (e) {
+    // a domain rejection does NOT abort the rest of the batch; an infrastructure
+    // error DOES (5xx from app.onError) — "rejected" means a permanent refusal to the client
+    if (!isDomainRejection(e)) throw e;
+    const error = e instanceof OpNotFound ? NOT_FOUND : ((e as Error).message ?? "internal");
+    return { opId: op.opId, status: "rejected", error };
+  }
+}
+
 syncRoutes.post("/sync/push", async (c) => {
   const budgetId = (await requireTier(c, "plain")).id;
   const body = pushInput.parse(await c.req.json());
@@ -424,41 +486,7 @@ syncRoutes.post("/sync/push", async (c) => {
   const results: PushResult[] = [];
   // STRICTLY sequential — client op order = application order (LWW)
   for (const op of body.ops) {
-    const schema = (opSchemas as Record<string, z.ZodTypeAny>)[op.kind];
-    if (!schema) {
-      results.push({ opId: op.opId, status: "rejected", error: `unknown kind: ${op.kind}` });
-      continue;
-    }
-    const parsed = schema.safeParse(op.payload);
-    if (!parsed.success) {
-      const detail = parsed.error.issues
-        .map((i) => `${i.path.join(".")}: ${i.message}`)
-        .join("; ");
-      results.push({ opId: op.opId, status: "rejected", error: `validation: ${detail}` });
-      continue;
-    }
-    try {
-      const status = await db.transaction(async (tx) => {
-        // idempotency guard in the SAME transaction as the op application;
-        // a rollback (rejected) also takes the sync_ops row with it
-        const fresh = await claimOp(tx, {
-          opId: op.opId,
-          budgetId,
-          clientId: body.clientId,
-          kind: op.kind,
-        });
-        if (!fresh) return "duplicate" as const;
-        await applyOp(tx, budgetId, op.kind as OpKind, parsed.data);
-        return "applied" as const;
-      });
-      results.push({ opId: op.opId, status });
-    } catch (e) {
-      // a domain rejection does NOT abort the rest of the batch; an infrastructure
-      // error DOES (5xx from app.onError) — "rejected" means a permanent refusal to the client
-      if (!isDomainRejection(e)) throw e;
-      const error = e instanceof OpNotFound ? NOT_FOUND : ((e as Error).message ?? "internal");
-      results.push({ opId: op.opId, status: "rejected", error });
-    }
+    results.push(await applyPushOp(budgetId, body.clientId, op));
   }
   return c.json({ budgetId, results });
 });
