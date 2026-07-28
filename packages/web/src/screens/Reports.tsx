@@ -5,15 +5,14 @@ import { store } from "../lib/store";
 import { Header } from "../components/chrome";
 import { useBand } from "../components/kit";
 import { ReportInfoNote } from "../components/ReportInfoNote";
-import { SubscriptionsTab } from "../components/SubscriptionsTab";
 import { useMask, useTheme } from "../lib/contexts";
-import { monthLabel, shortDate, todayISO } from "../lib/dates";
+import { monthLabel } from "../lib/dates";
 import { goalProgress } from "../lib/goals";
 import { useT, type Message, msg } from "../lib/i18n";
-import { budgetsSummary, upcomingWindow, type UpcomingWindow } from "../lib/reportSummary";
+import { budgetsSummary } from "../lib/reportSummary";
 import { P, TEAL, type Theme } from "../lib/theme";
 
-export type ReportTab = "assets" | "cashflow" | "spending" | "budgets" | "goals" | "subs";
+export type ReportTab = "assets" | "cashflow" | "spending" | "budgets" | "goals";
 /** Reports view: shortcut-card overview or a full-screen report subscreen. */
 export type ReportView = "overview" | ReportTab;
 const TITLES: Record<ReportTab, Message> = {
@@ -22,7 +21,6 @@ const TITLES: Record<ReportTab, Message> = {
   spending: msg("Spending"),
   budgets: msg("Budgets"),
   goals: msg("Goals"),
-  subs: msg("Upcoming payments"),
 };
 /** "How to read this" note per report (ReportInfoNote renders `**bold**`). */
 const NOTES: Record<ReportTab, Message> = {
@@ -31,7 +29,6 @@ const NOTES: Record<ReportTab, Message> = {
   spending: msg("Where your money actually went in the selected period — grouped by category, envelope, group, or place."),
   budgets: msg("Spending versus the amounts available in envelopes. **Amber** = approaching the limit (≥ 80%), **red** = overspent."),
   goals: msg("How much of each envelope's monthly target you have **funded**. A full bar = the contribution is set aside, regardless of how much of it you have spent."),
-  subs: msg("Planned and recurring payments for the coming weeks. Tap an item to **move its date, pause, or delete** the rule."),
 };
 const DIMENSIONS: Array<{ id: SpendingDimension; label: Message }> = [
   { id: "category", label: msg("Category") },
@@ -98,24 +95,18 @@ export function ReportsScreen({ state, month, view, onView, onOpenEnvelope, onMe
   }
 
   // ── Subscreen: its own header (back + title + month) and the report content ──
-  // Animation is `fi` ONLY (opacity) — `fu`/transform breaks position:fixed
-  // of sheets inside (SubscriptionsTab opens sheets).
-  const monthly = view !== "subs";
+  // Animation is `fi` ONLY (opacity) — `fu`/transform breaks position:fixed of sheets inside.
   return (
     <div className="gs" style={{ flex: 1, overflowY: "auto", paddingBottom: 6 }}>
       <div style={band ? { background: C.headerBg, paddingBottom: 2 } : undefined}>
         <div style={{ display: "flex", alignItems: "center", gap: 6, padding: `12px ${P}px 10px` }}>
           <button aria-label={t("Back")} onClick={() => onView("overview")} style={{ flexShrink: 0, width: 30, height: 30, borderRadius: 15, border: "none", background: "transparent", color: hc(C.headerInk, C.text), fontSize: 22, lineHeight: 1, cursor: "pointer", padding: 0, marginLeft: -6, display: "flex", alignItems: "center", justifyContent: "center" }}>‹</button>
           <span style={{ flex: 1, fontSize: 16, fontWeight: 700, color: hc(C.headerInk, C.text), overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t(TITLES[view])}</span>
-          {monthly ? (
-            <span style={{ display: "flex", alignItems: "center", gap: 2, flexShrink: 0 }}>
-              <button onClick={onPrev} style={{ border: "none", background: "transparent", color: hc(C.headerMute, C.soft), fontSize: 17, lineHeight: 1, cursor: "pointer", padding: "2px 7px" }}>‹</button>
-              <span style={{ fontSize: 12.5, fontWeight: 600, color: hc(C.headerInk, C.text), minWidth: 58, textAlign: "center" }}>{monthLabel(month, lang).split(" ")[0]}</span>
-              <button onClick={onNext} style={{ border: "none", background: "transparent", color: hc(C.headerMute, C.soft), fontSize: 17, lineHeight: 1, cursor: "pointer", padding: "2px 7px" }}>›</button>
-            </span>
-          ) : (
-            <span style={{ fontSize: 12.5, fontWeight: 600, color: hc(C.headerMute, C.soft), flexShrink: 0 }}>{t("30 days")}</span>
-          )}
+          <span style={{ display: "flex", alignItems: "center", gap: 2, flexShrink: 0 }}>
+            <button onClick={onPrev} style={{ border: "none", background: "transparent", color: hc(C.headerMute, C.soft), fontSize: 17, lineHeight: 1, cursor: "pointer", padding: "2px 7px" }}>‹</button>
+            <span style={{ fontSize: 12.5, fontWeight: 600, color: hc(C.headerInk, C.text), minWidth: 58, textAlign: "center" }}>{monthLabel(month, lang).split(" ")[0]}</span>
+            <button onClick={onNext} style={{ border: "none", background: "transparent", color: hc(C.headerMute, C.soft), fontSize: 17, lineHeight: 1, cursor: "pointer", padding: "2px 7px" }}>›</button>
+          </span>
         </div>
       </div>
       <div className="fi" style={{ padding: `0 ${P}px` }}>
@@ -125,33 +116,24 @@ export function ReportsScreen({ state, month, view, onView, onOpenEnvelope, onMe
         {view === "spending" && <SpendingReport spending={spending} dim={dim} setDim={setDim} range={range} setRange={setRange} M={M} />}
         {view === "budgets" && <BudgetsReport state={state} M={M} onOpenEnvelope={onOpenEnvelope} />}
         {view === "goals" && <GoalsReport state={state} M={M} onOpenEnvelope={onOpenEnvelope} />}
-        {view === "subs" && <SubscriptionsTab />}
       </div>
     </div>
   );
 }
 
-const EMPTY_UPCOMING: UpcomingWindow = { payments: [], total: 0, nearest: null };
-
 /**
  * Overview: shortcut cards with the essence of each report (spec 2026-07-11-raporty-b;
  * order per user feedback: net worth, cashflow, SPENDING (colored preview),
- * goals, budgets, upcoming LAST). Tap → subscreen.
- * Math: netWorth/cashflow series from ReportsScreen, budgetsSummary/upcomingWindow
- * from lib/reportSummary (parity with BudgetsReport/SubscriptionsTab), goals like GoalsReport.
+ * goals, budgets). Tap → subscreen.
+ * Math: netWorth/cashflow series from ReportsScreen, budgetsSummary from lib/reportSummary
+ * (parity with BudgetsReport), goals like GoalsReport.
  */
 function OverviewCards({ state, month, netWorth, cashflow, onView }: { state: StateResponse; month: string; netWorth: { month: string; total: number }[]; cashflow: { month: string; income: number; expense: number; net: number }[]; onView: (v: ReportView) => void }) {
   const C = useTheme();
   const M = useMask();
   const { t, lang } = useT();
   const version = useLedgerVersion();
-  const today = todayISO();
 
-  const upcoming = useMemo(() => {
-    const l = store.getLedger();
-    return l ? upcomingWindow(l, today, 30) : EMPTY_UPCOMING;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [version, today]);
   // spending preview by ENVELOPES (consistent with the subscreen's default dimension);
   // full list for the bar, top-3 for the legend
   const spendingRows = useMemo(() => {
@@ -250,15 +232,6 @@ function OverviewCards({ state, month, netWorth, cashflow, onView }: { state: St
             </div>
           )}
         </>,
-      )}
-      {card(
-        "subs",
-        t("Upcoming payments"),
-        <div style={{ fontSize: 12.5, color: C.soft, fontVariantNumeric: "tabular-nums", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-          {upcoming.nearest
-            ? t("30 days · {total} · next: {name}, {date}", { total: M(upcoming.total), name: upcoming.nearest.name, date: shortDate(upcoming.nearest.date, lang) })
-            : t("30 days · no planned payments")}
-        </div>,
       )}
     </>
   );

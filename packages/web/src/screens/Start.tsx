@@ -20,7 +20,6 @@ export function StartScreen({
   onPrev,
   onNext,
   onNav,
-  onSeeUpcoming,
   onQuickAdd,
 }: {
   state: StateResponse;
@@ -31,7 +30,6 @@ export function StartScreen({
   onPrev: () => void;
   onNext: () => void;
   onNav: (s: ScreenId) => void;
-  onSeeUpcoming: () => void;
   /** "transfer" opens Add pre-set to the Transfer tab; "import" opens Add with the screenshot-import sheet already showing; "suggest" opens Budget with the suggest sheet already showing. */
   onQuickAdd: (kind: "transfer" | "import" | "suggest") => void;
 }) {
@@ -130,7 +128,9 @@ export function StartScreen({
       {settings.startWidgets
         .filter((w) => w.enabled && w.id in START_WIDGETS)
         .map((w) => {
-          const Widget = START_WIDGETS[w.id];
+          // guaranteed by the `w.id in START_WIDGETS` filter above (START_WIDGETS is Partial —
+          // stale/removed ids like a pre-upgrade "upcoming" fail the filter and never reach here).
+          const Widget = START_WIDGETS[w.id]!;
           return (
             <Widget
               key={w.id}
@@ -139,7 +139,6 @@ export function StartScreen({
               onNav={onNav}
               onOpenEnvelope={onOpenEnvelope}
               onOpenTxns={onOpenTxns}
-              onSeeUpcoming={onSeeUpcoming}
               onQuickAdd={onQuickAdd}
               opts={w.opts}
             />

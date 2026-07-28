@@ -1,13 +1,12 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { computeStateResponse } from "@enveo/shared";
 import { useLedgerVersion } from "../lib/api";
-import { useMask, useSettings, useTheme } from "../lib/contexts";
+import { useSettings, useTheme } from "../lib/contexts";
 import { currentMonth, monthLabel } from "../lib/dates";
 import { LOCALE_OF } from "../lib/format";
 import { useT } from "../lib/i18n";
 import { Ico } from "../lib/icons";
 import { store } from "../lib/store";
-import { monthlyRecurringCost } from "../lib/subs";
 import { CORAL, CTA, font, P, type Theme } from "../lib/theme";
 import { APP_VERSION, buildLabel } from "../lib/version";
 
@@ -202,7 +201,6 @@ export function BottomNav({ active, onNav }: { active: ScreenId; onNav: (s: Scre
 
 /* Drawer glyphs (patterns from the menu-settings-hifi mock) — 1.7 stroke, zero emoji. */
 const D_BANK = "M3 21h18M4 18h16M6 18V9m4 9V9m4 9V9m4 9V9M2 9l10-5 10 5z";
-const D_SUBS = "M17 2l4 4-4 4M3 11v-1a4 4 0 014-4h14M7 22l-4-4 4-4M21 13v1a4 4 0 01-4 4H3";
 const D_BARS = "M4 20V10m6 10V4m6 16v-7M2 20h20";
 const D_EYE = "M2.5 12S6 5.6 12 5.6 21.5 12 21.5 12 18 18.4 12 18.4 2.5 12 2.5 12zM12 9.4a2.6 2.6 0 100 5.2 2.6 2.6 0 000-5.2z";
 const D_MOON = "M21 12.8A9 9 0 1111.2 3a7 7 0 009.8 9.8z";
@@ -219,11 +217,10 @@ function DrawIco({ d, size = 18, color, w = 1.7 }: { d: string; size?: number; c
   );
 }
 
-export function Drawer({ open, onClose, onNav, onOpenReports }: { open: boolean; onClose: () => void; onNav: (s: ScreenId) => void; onOpenReports: (tab: "subs" | "budgets") => void }) {
+export function Drawer({ open, onClose, onNav, onOpenReports }: { open: boolean; onClose: () => void; onNav: (s: ScreenId) => void; onOpenReports: (tab: "budgets") => void }) {
   const C = useTheme();
   const { settings, setSettings } = useSettings();
   const { t, tp, lang } = useT();
-  const M = useMask();
   const version = useLedgerVersion();
   const swipe = useRef<{ x: number; y: number } | null>(null);
   // live shortcut data from the replica — CURRENT month (not the viewed one), only while open
@@ -235,7 +232,6 @@ export function Drawer({ open, onClose, onNav, onOpenReports }: { open: boolean;
     return {
       budgetName: ledger.budgets[0]?.name,
       txCount: ledger.transactions.length,
-      subsMonthly: monthlyRecurringCost(ledger),
       overspent: state.envelopes.some((e) => e.available < 0),
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -288,12 +284,6 @@ export function Drawer({ open, onClose, onNav, onOpenReports }: { open: boolean;
 
         <div style={{ marginTop: 18, display: "flex", flexDirection: "column" }}>
           {shortcut(D_BANK, t("Accounts"), () => { onClose(); onNav("accounts"); }, chevron)}
-          {shortcut(
-            D_SUBS,
-            t("Subscriptions"),
-            () => { onClose(); onOpenReports("subs"); },
-            <span style={{ fontSize: 11, color: C.mute, fontVariantNumeric: "tabular-nums", flexShrink: 0 }}>{t("~{amount}/mo", { amount: M(live?.subsMonthly ?? 0) })}</span>,
-          )}
           {shortcut(
             D_BARS,
             t("Envelope budgets"),

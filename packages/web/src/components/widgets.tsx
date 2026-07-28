@@ -1,13 +1,12 @@
 import { useEffect, useMemo, useState, type CSSProperties, type ReactNode } from "react";
-import { computeNetWorthSeries, upcomingPayments } from "@enveo/shared";
+import { computeNetWorthSeries } from "@enveo/shared";
 import { useLedgerVersion, type AccountView, type EnvelopeView, type StateResponse } from "../lib/api";
 import { useCurrency, useMask, useSettings, useTheme } from "../lib/contexts";
 import type { WidgetConfig, WidgetId, WidgetOpts } from "../lib/contexts";
-import { useT, type Lang, type Message, msg } from "../lib/i18n";
+import { useT, type Message, msg } from "../lib/i18n";
 import { CORAL, TEAL, font, tint, type Theme } from "../lib/theme";
 import { Glyph, Ico } from "../lib/icons";
-import { todayISO } from "../lib/dates";
-import { currencySymbol, isLight, LOCALE_OF, parseAmount } from "../lib/format";
+import { currencySymbol, parseAmount } from "../lib/format";
 import { fmtSignedTrim } from "../lib/amount";
 import { local } from "../lib/mutate";
 import { store } from "../lib/store";
@@ -28,13 +27,9 @@ export interface WidgetProps {
   onNav: (s: ScreenId) => void;
   onOpenEnvelope: (envId: string, month: string) => void;
   onOpenTxns: (f?: { envId?: string; accId?: string }) => void;
-  onSeeUpcoming: () => void;
   onQuickAdd: (kind: "transfer" | "import" | "suggest") => void;
   opts?: WidgetOpts;
 }
-
-const shortDate = (iso: string, lang: Lang): string =>
-  new Intl.DateTimeFormat(LOCALE_OF[lang], { day: "numeric", month: "short", timeZone: "UTC" }).format(new Date(`${iso}T00:00:00Z`));
 
 /** Month-summary amount without the fractional part (strips e.g. ",00"/".00"), masked via the caller's M. */
 const maskWhole = (M: (minor: number) => string, minor: number) => M(minor).replace(/[.,]\d\d(?!\d)/, "");
@@ -376,63 +371,27 @@ export function NetWorthWidget({ month, onNav }: WidgetProps) {
   );
 }
 
-/* ── Upcoming payments (planned transactions only) — 3 nearest + link to Reports→Subscriptions ── */
-export function UpcomingWidget({ state, onSeeUpcoming }: WidgetProps) {
-  const C = useTheme();
-  const M = useMask();
-  const { t, lang } = useT();
-  const version = useLedgerVersion();
-  const upcoming = useMemo(() => {
-    const l = store.getLedger();
-    return l ? upcomingPayments(l, todayISO(), 30).slice(0, 3) : [];
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [version]);
-  if (upcoming.length === 0) return null;
-  return (
-    <div style={{ paddingBottom: 10 }}>
-      <SectionEyebrow
-        label={t("Upcoming")}
-        right={<button onClick={onSeeUpcoming} style={{ background: "none", border: "none", padding: 0, color: "var(--accent)", fontSize: 11, fontWeight: 600, cursor: "pointer", fontFamily: font }}>{t("see all →")}</button>}
-      />
-      <CardBox>
-        {upcoming.map((u) => {
-          const env = u.txn.envelopeId ? state.envelopes.find((e) => e.id === u.txn.envelopeId) : undefined;
-          return (
-            <div key={u.txn.id} style={{ display: "flex", alignItems: "center", gap: 10, borderBottom: `1px solid ${C.line}`, padding: "8px 0" }}>
-              <span style={{ fontSize: 11.5, color: C.soft, width: 52, flexShrink: 0 }}>{shortDate(u.txn.date, lang)}</span>
-              <span style={{ width: 28, height: 28, borderRadius: 8, background: env?.color ?? C.bg, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                {env && <Glyph name={env.icon} size={14} color={isLight(env.color) ? "#33312c" : "#fff"} />}
-              </span>
-              <span style={{ flex: 1, fontSize: 13, color: C.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{u.label}</span>
-              <span style={{ fontSize: 12.5, fontWeight: 600, color: C.text, fontVariantNumeric: "tabular-nums", flexShrink: 0 }}>{M(u.txn.amount)}</span>
-            </div>
-          );
-        })}
-      </CardBox>
-    </div>
-  );
-}
-
-/** Registry: widget id → component, in Start.tsx's render loop (`settings.startWidgets.filter(enabled)`). */
-export const START_WIDGETS: Record<WidgetId, (p: WidgetProps) => ReactNode> = {
+/** Registry: widget id → component, in Start.tsx's render loop (`settings.startWidgets.filter(enabled)`).
+ *  Partial: a persisted `WidgetId` with no entry here (stale/removed widget, e.g. a pre-upgrade
+ *  device that still has "upcoming") is silently dropped — see the `w.id in START_WIDGETS` guards
+ *  below and in Start.tsx, never a crash. */
+export const START_WIDGETS: Partial<Record<WidgetId, (p: WidgetProps) => ReactNode>> = {
   quickActions: QuickActions,
   accounts: AccountsWidget,
   envelopes: EnvelopesWidget,
   envelopesSavings: EnvelopesSavingsWidget,
   reportCashflow: CashflowWidget,
   reportNetWorth: NetWorthWidget,
-  upcoming: UpcomingWidget,
 };
 
 /* ── "Edit widgets" sheet: reorder (drag handle), enable toggles, per-widget options ── */
-const WIDGET_TITLE: Record<WidgetId, Message> = {
+const WIDGET_TITLE: Partial<Record<WidgetId, Message>> = {
   quickActions: msg("Quick actions"),
   accounts: msg("Accounts"),
   envelopes: msg("Envelopes"),
   envelopesSavings: msg("Envelopes · Savings"),
   reportCashflow: msg("Report · Cash flow"),
   reportNetWorth: msg("Report · Net worth"),
-  upcoming: msg("Upcoming"),
 };
 
 function envModeLabel(mode: string, groups: StateResponse["groups"], t: (m: Message, p?: Record<string, string | number>) => string): string {
@@ -461,7 +420,10 @@ function widgetSubtitle(w: WidgetConfig, state: StateResponse, t: (m: Message, p
     case "envelopesSavings": return t("Savings only");
     case "reportCashflow": return t("current month");
     case "reportNetWorth": return t("12-month sparkline");
-    case "upcoming": return t("3 nearest payments");
+    // stale/future WidgetId not registered in START_WIDGETS (e.g. a pre-upgrade device's
+    // "upcoming") — never reached in practice, `configurable`/the `w.id in START_WIDGETS`
+    // guard in EditWidgetsSheet keep it off-screen; kept only so this switch stays exhaustive.
+    default: return "";
   }
 }
 
@@ -718,7 +680,9 @@ export function EditWidgetsSheet({ show, state, onClose }: { show: boolean; stat
           {list.map((w, idx) => {
             if (!(w.id in START_WIDGETS)) return null; // stale/future persisted id — never crash the sheet
             const b = dnd.bind(idx);
-            const title = t(WIDGET_TITLE[w.id]);
+            // WIDGET_TITLE is guaranteed to have an entry for every id that passed the guard above
+            // (both maps are kept in sync) — the `!` documents that runtime invariant to TS.
+            const title = t(WIDGET_TITLE[w.id]!);
             return (
               <div
                 key={w.id}
