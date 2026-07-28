@@ -104,8 +104,6 @@ describe("import/apply — extended items", () => {
       envelopeId: ENV,
       note: null,
       sourceRef: "XYZ*1",
-      planned: false,
-      recurrenceId: null,
     });
   });
 });
