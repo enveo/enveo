@@ -5,6 +5,7 @@ import { store } from "../lib/store";
 import { Header } from "../components/chrome";
 import { useBand } from "../components/kit";
 import { ReportInfoNote } from "../components/ReportInfoNote";
+import { Sparkline } from "../components/reportKit";
 import { useMask, useTheme } from "../lib/contexts";
 import { monthLabel } from "../lib/dates";
 import { goalProgress } from "../lib/goals";
@@ -261,27 +262,6 @@ function SpendingPreview({ rows, envColor, C }: { rows: Array<{ key: string | nu
         ))}
       </div>
     </>
-  );
-}
-
-/** Net-worth mini-sparkline on the card (polyline without fill; stroke via style — var(--accent) does not work in SVG attributes).
- *  Exported for the Start-screen Net worth widget (components/widgets.tsx) — same visual, no duplication. */
-export function Sparkline({ points }: { points: { month: string; total: number }[] }) {
-  const n = points.length;
-  if (n < 2) return null;
-  const W = 320, H = 44, pad = 3;
-  const totals = points.map((p) => p.total);
-  const min = Math.min(...totals);
-  const max = Math.max(...totals);
-  const range = max - min || 1;
-  const flat = max === min;
-  const pts = points
-    .map((p, i) => `${(pad + (i / (n - 1)) * (W - 2 * pad)).toFixed(1)},${(flat ? H / 2 : pad + (1 - (p.total - min) / range) * (H - 2 * pad)).toFixed(1)}`)
-    .join(" ");
-  return (
-    <svg viewBox={`0 0 ${W} ${H}`} width="100%" height={44} aria-hidden style={{ display: "block", marginTop: 8 }}>
-      <polyline points={pts} fill="none" style={{ stroke: TEAL }} strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" vectorEffect="non-scaling-stroke" />
-    </svg>
   );
 }
 

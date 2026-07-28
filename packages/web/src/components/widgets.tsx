@@ -16,7 +16,7 @@ import { AccCell, accountIconColor, EnvRow } from "./tiles";
 import { SectionEyebrow, CardBox, HighlightedText, PickerSearch, useBand } from "./kit";
 import { AmountPadHost, type AmountPadTarget } from "./AmountPadSheet";
 import { Sheet, type ScreenId } from "./chrome";
-import { Sparkline } from "../screens/Reports";
+import { Sparkline } from "./reportKit";
 import { matchesSearch, SEARCH_THRESHOLD } from "../lib/search";
 
 
