@@ -124,13 +124,11 @@ export function StartScreen({
       )}
 
       {/* Configurable widget stack (settings.startWidgets — device setting, "Edit widgets" sheet below).
-          A stale/future persisted id (e.g. from a downgrade or a removed widget) must never crash Start. */}
+          A corrupted/future persisted id (settings are untyped JSON at rest) must never crash Start. */}
       {settings.startWidgets
         .filter((w) => w.enabled && w.id in START_WIDGETS)
         .map((w) => {
-          // guaranteed by the `w.id in START_WIDGETS` filter above (START_WIDGETS is Partial —
-          // stale/removed ids like a pre-upgrade "upcoming" fail the filter and never reach here).
-          const Widget = START_WIDGETS[w.id]!;
+          const Widget = START_WIDGETS[w.id];
           return (
             <Widget
               key={w.id}

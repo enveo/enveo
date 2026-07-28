@@ -372,10 +372,11 @@ export function NetWorthWidget({ month, onNav }: WidgetProps) {
 }
 
 /** Registry: widget id → component, in Start.tsx's render loop (`settings.startWidgets.filter(enabled)`).
- *  Partial: a persisted `WidgetId` with no entry here (stale/removed widget, e.g. a pre-upgrade
- *  device that still has "upcoming") is silently dropped — see the `w.id in START_WIDGETS` guards
- *  below and in Start.tsx, never a crash. */
-export const START_WIDGETS: Partial<Record<WidgetId, (p: WidgetProps) => ReactNode>> = {
+ *  The `w.id in START_WIDGETS` guards below and in Start.tsx stay as defense against a corrupted/
+ *  future persisted id (settings are untyped JSON at rest) even though this is now a full
+ *  `Record<WidgetId, …>` — loadSettings() already drops any id unknown to the CURRENT WidgetId
+ *  union on load (see contexts.tsx). */
+export const START_WIDGETS: Record<WidgetId, (p: WidgetProps) => ReactNode> = {
   quickActions: QuickActions,
   accounts: AccountsWidget,
   envelopes: EnvelopesWidget,
@@ -385,7 +386,7 @@ export const START_WIDGETS: Partial<Record<WidgetId, (p: WidgetProps) => ReactNo
 };
 
 /* ── "Edit widgets" sheet: reorder (drag handle), enable toggles, per-widget options ── */
-const WIDGET_TITLE: Partial<Record<WidgetId, Message>> = {
+const WIDGET_TITLE: Record<WidgetId, Message> = {
   quickActions: msg("Quick actions"),
   accounts: msg("Accounts"),
   envelopes: msg("Envelopes"),
@@ -420,10 +421,6 @@ function widgetSubtitle(w: WidgetConfig, state: StateResponse, t: (m: Message, p
     case "envelopesSavings": return t("Savings only");
     case "reportCashflow": return t("current month");
     case "reportNetWorth": return t("12-month sparkline");
-    // stale/future WidgetId not registered in START_WIDGETS (e.g. a pre-upgrade device's
-    // "upcoming") — never reached in practice, `configurable`/the `w.id in START_WIDGETS`
-    // guard in EditWidgetsSheet keep it off-screen; kept only so this switch stays exhaustive.
-    default: return "";
   }
 }
 
@@ -678,11 +675,9 @@ export function EditWidgetsSheet({ show, state, onClose }: { show: boolean; stat
           <div style={{ fontSize: 16, fontWeight: 750, color: C.text, textAlign: "center", marginBottom: 2 }}>{t("Edit widgets")}</div>
           <div style={{ fontSize: 11, color: C.mute, textAlign: "center", marginBottom: 12 }}>{t("Drag to reorder")}</div>
           {list.map((w, idx) => {
-            if (!(w.id in START_WIDGETS)) return null; // stale/future persisted id — never crash the sheet
+            if (!(w.id in START_WIDGETS)) return null; // corrupted/future persisted id — never crash the sheet
             const b = dnd.bind(idx);
-            // WIDGET_TITLE is guaranteed to have an entry for every id that passed the guard above
-            // (both maps are kept in sync) — the `!` documents that runtime invariant to TS.
-            const title = t(WIDGET_TITLE[w.id]!);
+            const title = t(WIDGET_TITLE[w.id]);
             return (
               <div
                 key={w.id}

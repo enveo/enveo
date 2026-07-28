@@ -434,7 +434,7 @@ export async function fetchSnapshot(): Promise<void> {
     allocations: snap.allocations,
     categories: snap.categories,
     places: snap.places,
-    recurrences: snap.recurrences,
+    recurrences: [], // web no longer reads/writes recurrences — never carry the server's copy into the mirror
     budgets: snap.budgets ?? [], // defensive: older server without `budgets` in the snapshot
   };
   store.replace(ledger, snap.cursor, snap.budgetId); // memory
@@ -916,8 +916,7 @@ async function sessionBudgetIsEmpty(): Promise<boolean> {
     snap.transactions.length === 0 &&
     snap.allocations.length === 0 &&
     snap.categories.length === 0 &&
-    snap.places.length === 0 &&
-    snap.recurrences.length === 0
+    snap.places.length === 0
   );
 }
 
@@ -1483,8 +1482,7 @@ function isEmptyUnboundReplica(): boolean {
     l.transactions.length === 0 &&
     l.allocations.length === 0 &&
     l.categories.length === 0 &&
-    l.places.length === 0 &&
-    l.recurrences.length === 0
+    l.places.length === 0
   );
 }
 

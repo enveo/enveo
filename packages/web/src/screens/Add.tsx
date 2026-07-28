@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
-import { type RecurrenceRule, type Transaction, type TxnPayload } from "@enveo/shared";
+import { type Transaction, type TxnPayload } from "@enveo/shared";
 import { useLedgerVersion, type EditedImportItem, type ImportItem, type StateResponse } from "../lib/api";
 import { hasOpenOp, padKey, type PadState } from "../lib/amount";
 import { categoryCountsFor, rankCategories } from "../lib/categoryIndex";
@@ -23,14 +23,6 @@ import { CORAL, P, TEAL, font, tint } from "../lib/theme";
 
 
 export type Tab = "expense" | "income" | "transfer";
-const RECUR: Array<{ label: Message; rule: string }> = [
-  { label: msg("Do not repeat"), rule: "none" },
-  { label: msg("Repeat weekly"), rule: "weekly" },
-  { label: msg("Repeat monthly"), rule: "monthly" },
-  { label: msg("On the last day of every month"), rule: "monthEnd" },
-  { label: msg("Repeat every 3 months"), rule: "quarterly" },
-  { label: msg("Repeat yearly"), rule: "yearly" },
-];
 
 /** Draft mode: import item editor — full AddScreen look, but submit does
  *  NOT save a transaction (zero local.*), it only hands an EditedImportItem
@@ -113,14 +105,12 @@ export function AddScreen({
   const [showPlace, setShowPlace] = useState(false);
   const [note, setNote] = useState("");
   const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
-  const [recur, setRecur] = useState("none");
   const [confirmed, setConfirmed] = useState(true);
   const [numpad, setNumpad] = useState(true);
 
   const [showAcc, setShowAcc] = useState(false);
   const [showTo, setShowTo] = useState(false);
   const [showDate, setShowDate] = useState(false);
-  const [showRecur, setShowRecur] = useState(false);
   const [showEnv, setShowEnv] = useState(false);
   const [showImport, setShowImport] = useState(!!initialImport);
   const [splitMode, setSplitMode] = useState(false);
@@ -238,9 +228,9 @@ export function AddScreen({
     setSplitMode(true);
   };
   const submitLabel: Message =
-    tab === "expense" ? (recur !== "none" ? msg("Schedule expense") : isRefund ? msg("Add refund") : msg("Add expense"))
-      : tab === "income" ? (recur !== "none" ? msg("Schedule income") : msg("Add income"))
-        : recur !== "none" ? msg("Schedule transfer") : msg("Add transfer");
+    tab === "expense" ? (isRefund ? msg("Add refund") : msg("Add expense"))
+      : tab === "income" ? msg("Add income")
+        : msg("Add transfer");
 
   // empty-state backstop: without an account there is nothing to save a transaction on
   const noAccount = accounts.length === 0;
@@ -273,10 +263,6 @@ export function AddScreen({
       haptic([10, 30, 14]);
       return;
     }
-    let recurrenceId: string | null = null;
-    if (recur !== "none") {
-      recurrenceId = local.createRecurrence({ rule: recur as RecurrenceRule, startDate: date });
-    }
     const usingSplit = tab === "expense" && splitMode && items.length > 0;
     const payload: TxnPayload = {
       type: tab,
@@ -296,8 +282,6 @@ export function AddScreen({
       categoryId: usingSplit ? null : tab === "expense" ? categoryId : null,
       name: name.trim() || null,
       note: note || null,
-      planned: recur !== "none",
-      recurrenceId,
       items: usingSplit ? items.map((i) => ({ envelopeId: i.envelopeId, amount: i.amount })) : undefined,
     };
     if (editTxn) local.updateTxn(editTxn.id, payload);
@@ -614,20 +598,11 @@ export function AddScreen({
           </>
         )}
 
-        {/* Footer: recurrence (existing sheet) + split (expense only) — the two links the old
-            bottom icon row used to cover, folded into one quiet line. Hidden in draft (import
-            editing is the past; it never schedules or splits). */}
-        {!draft && (
+        {/* Footer: split link (expense only) — the old bottom icon row's remaining link. Hidden
+            in draft (import editing is the past; it never splits). */}
+        {!draft && tab === "expense" && !splitMode && (
           <div style={{ textAlign: "center", padding: "10px 0 6px" }}>
-            <button onClick={() => setShowRecur(true)} style={{ background: "none", border: "none", color: recur !== "none" ? "var(--accent)" : C.soft, fontSize: 11, fontWeight: 600, cursor: "pointer", padding: 0 }}>
-              {recur !== "none" ? t(RECUR.find((o) => o.rule === recur)?.label ?? msg("planned")) : t("planned")}
-            </button>
-            {tab === "expense" && !splitMode && (
-              <>
-                <span style={{ color: C.mute, fontSize: 11 }}> · </span>
-                <button onClick={enterSplit} style={{ background: "none", border: "none", color: C.soft, fontSize: 11, fontWeight: 600, cursor: "pointer", padding: 0 }}>{t("Split across envelopes")} ›</button>
-              </>
-            )}
+            <button onClick={enterSplit} style={{ background: "none", border: "none", color: C.soft, fontSize: 11, fontWeight: 600, cursor: "pointer", padding: 0 }}>{t("Split across envelopes")} ›</button>
           </div>
         )}
       </div>
@@ -706,16 +681,6 @@ export function AddScreen({
       {/* !editTxn is NOT required here: the "From screenshot" toggle restores edit-mode access
           (pre-redesign behavior — the edit header has no camera button, trash+kebab instead). */}
       {!draft && <ImportSheet show={showImport} onClose={() => setShowImport(false)} state={state} onApplied={onDone} />}
-      <Sheet show={showRecur} onClose={() => setShowRecur(false)}>
-        {(C) => (
-          <>
-            <div style={{ fontSize: 16, fontWeight: 600, color: C.text, marginBottom: 6 }}>{t("Repeat")}</div>
-            {RECUR.map((o) => (
-              <button key={o.rule} onClick={() => { setRecur(o.rule); setShowRecur(false); }} style={{ display: "block", width: "100%", padding: "13px 4px", background: recur === o.rule ? C.bg : "none", border: "none", borderBottom: `1px solid ${C.line}`, color: C.text, fontSize: 14, fontWeight: recur === o.rule ? 600 : 400, cursor: "pointer", textAlign: "left", fontFamily: font }}>{t(o.label)}</button>
-            ))}
-          </>
-        )}
-      </Sheet>
       <Sheet show={showEnv} onClose={() => setShowEnv(false)} tall={state.envelopes.filter((e) => !e.archived).length > SEARCH_THRESHOLD}>
         {(C) => {
           const allEnvelopes = state.envelopes.filter((e) => !e.archived);

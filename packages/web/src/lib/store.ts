@@ -23,14 +23,17 @@ export type PullChange =
   | { seq: number; table: ReplicatedTable; op: "upsert"; row: unknown }
   | { seq: number; table: ReplicatedTable; op: "delete"; rowId: string };
 
-/** DB table name → ClientLedger key (envelope_groups → groups). */
-const TABLE_KEY: Record<ReplicatedTable, keyof ClientLedger> = {
+/** DB table name → ClientLedger key (envelope_groups → groups). Partial: `recurrences` is no
+ *  longer replicated to a client-side collection the web app reads (recurrence creation/mutation
+ *  was removed from the UI) — `applyPulled`'s `if (!key) continue` guard below already treats an
+ *  unmapped table as a no-op, so any residual `recurrences` change from an older/wider server is
+ *  silently dropped rather than crashing. */
+const TABLE_KEY: Partial<Record<ReplicatedTable, keyof ClientLedger>> = {
   accounts: "accounts",
   envelope_groups: "groups",
   envelopes: "envelopes",
   categories: "categories",
   places: "places",
-  recurrences: "recurrences",
   transactions: "transactions",
   allocations: "allocations",
   budgets: "budgets",
