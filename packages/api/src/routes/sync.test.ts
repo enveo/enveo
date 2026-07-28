@@ -354,5 +354,11 @@ describe.skipIf(!TEST_URL)("sync/pull: the change journal is scoped to one budge
     // and the transaction itself still imports correctly.
     expect(out.transactionRows).toHaveLength(1);
     expect(out.transactionRows[0]!.amount).toBe(500);
+    // GROUND TRUTH, not just "the code doesn't reference it": query information_schema
+    // directly, so a future re-introduction of `recurrences` fails this test loudly instead of
+    // the guard quietly losing its teeth (it did once — see migration 0018's fix-up commit).
+    expect(out.recurrencesTableExists).toBe(false);
+    expect(out.transactionsPlannedColumnExists).toBe(false);
+    expect(out.transactionsRecurrenceIdColumnExists).toBe(false);
   });
 });
