@@ -105,6 +105,52 @@ describe("overwrite routes: the per-request owner assertion", () => {
   });
 });
 
+/* ── Backup compat: pre-3.2 recurrence fields keep importing (forever guard) ──────
+ *
+ * The recurring-payments feature is being removed from the API in stages (this task drops the
+ * routes/sync handlers/mappers; a later one drops the fields from shared/db). A JSON backup
+ * taken BEFORE that removal still carries `recurrences` and per-transaction `planned`/
+ * `recurrenceId` — `/api/sync/replace` must keep accepting it at every stage, because zod
+ * object schemas here are never `.strict()`: once a stage removes a field from
+ * clientLedgerSchema, the same key simply becomes an unrecognized key that safeParse silently
+ * strips instead of a validation failure. Right now (before that removal) the fields are still
+ * recognized and valid, so this passes for a different reason than it will later — either way,
+ * the invariant this test pins ("old backup keeps importing") holds continuously. */
+
+describe("backup-compat: pre-3.2 recurrence fields do not break /sync/replace", () => {
+  it("a ledger carrying recurrences + a planned/recurrenceId transaction still validates", () => {
+    const ledgerWithRecurrence = {
+      ...EMPTY_LEDGER,
+      recurrences: [
+        { id: UUID_A, rule: "monthly", startDate: "2026-01-01", endDate: null, pausedUntil: null },
+      ],
+      transactions: [
+        {
+          id: UUID_B,
+          type: "expense",
+          accountId: UUID_A,
+          toAccountId: null,
+          amount: 500,
+          date: "2026-01-01",
+          confirmed: true,
+          isRefund: false,
+          envelopeId: null,
+          placeId: null,
+          categoryId: null,
+          name: null,
+          note: null,
+          tag: null,
+          planned: false,
+          recurrenceId: null,
+          items: [],
+          createdAt: "2026-01-01T00:00:00.000Z",
+        },
+      ],
+    };
+    expect(replaceInput.safeParse({ ledger: ledgerWithRecurrence }).success).toBe(true);
+  });
+});
+
 /* ── The change journal is per-tenant (DB-backed: trigger + pull) ─────── */
 
 const TEST_URL = process.env.TEST_DATABASE_URL ?? "";

@@ -35,9 +35,6 @@ import {
   applyGroupDelete,
   applyGroupUpdate,
   applyPlaceCreate,
-  applyRecurrenceCreate,
-  applyRecurrenceDelete,
-  applyRecurrenceUpdate,
   applyTxnCreate,
   applyTxnDelete,
   applyTxnUpdate,
@@ -57,7 +54,6 @@ import {
   mapEnvelope,
   mapGroup,
   mapPlace,
-  mapRecurrence,
   mapTransaction,
   mapTxnItem,
 } from "../repo";
@@ -151,13 +147,6 @@ async function loadCurrentRows(
         .where(and(eq(s.places.budgetId, budgetId), inArray(s.places.id, ids)));
       return new Map(rows.map((r) => [r.id, mapPlace(r)]));
     }
-    case "recurrences": {
-      const rows = await x
-        .select()
-        .from(s.recurrences)
-        .where(and(eq(s.recurrences.budgetId, budgetId), inArray(s.recurrences.id, ids)));
-      return new Map(rows.map((r) => [r.id, mapRecurrence(r)]));
-    }
     case "transactions": {
       const [rows, itemRows] = await Promise.all([
         x
@@ -188,6 +177,11 @@ async function loadCurrentRows(
         .where(and(eq(s.budgets.id, budgetId), inArray(s.budgets.id, ids)));
       return new Map(rows.map((r) => [r.id, mapBudget(r)]));
     }
+    default:
+      // a table this switch does not (or no longer) handle — no application code writes it
+      // any more, so there is no current row to serve; the caller treats a missing map entry
+      // the same as "upsert with no existing row" (defense).
+      return new Map();
   }
 }
 
@@ -408,17 +402,6 @@ async function applyOp(x: Executor, budgetId: string, kind: OpKind, payload: unk
     case "place.create":
       await applyPlaceCreate(x, budgetId, payload as OpPayload<"place.create">);
       return;
-    case "recurrence.create":
-      await applyRecurrenceCreate(x, budgetId, payload as OpPayload<"recurrence.create">);
-      return;
-    case "recurrence.update":
-      // unknown id → no-op (parity with shared/applyOp), not a refusal
-      await applyRecurrenceUpdate(x, budgetId, payload as OpPayload<"recurrence.update">);
-      return;
-    case "recurrence.delete":
-       
-      await applyRecurrenceDelete(x, budgetId, (payload as OpPayload<"recurrence.delete">).id);
-      return;
     case "budget.update": {
        
       const p = payload as OpPayload<"budget.update">;
@@ -555,18 +538,6 @@ async function insertLedger(x: Executor, budgetId: string, ledger: ClientLedgerI
   for (const part of chunk(ledger.places, 500)) {
     await x.insert(s.places).values(part.map((p) => ({ id: p.id, budgetId, name: p.name })));
   }
-  for (const part of chunk(ledger.recurrences, 500)) {
-    await x.insert(s.recurrences).values(
-      part.map((r) => ({
-        id: r.id,
-        budgetId,
-        rule: r.rule,
-        startDate: r.startDate,
-        endDate: r.endDate,
-        pausedUntil: r.pausedUntil ?? null,  
-      })),
-    );
-  }
   
 
 
@@ -600,8 +571,6 @@ async function insertLedger(x: Executor, budgetId: string, ledger: ClientLedgerI
         name: t.name,
         note: t.note,
         tag: t.tag, // preserved (it is in ClientLedger); source_ref/external_id are not
-        planned: t.planned,
-        recurrenceId: t.recurrenceId,
         createdAt: t.createdAt,
       })),
     );
