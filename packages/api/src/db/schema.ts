@@ -19,14 +19,6 @@ import {
 const money = (name: string) => bigint(name, { mode: "number" });
 
 export const txnTypeEnum = pgEnum("txn_type", ["expense", "income", "transfer"]);
-export const recurrenceRuleEnum = pgEnum("recurrence_rule", [
-  "none",
-  "weekly",
-  "monthly",
-  "monthEnd",
-  "quarterly",
-  "yearly",
-]);
 
 export const users = pgTable("users", {
   id: uuid("id").primaryKey().defaultRandom(),
@@ -166,18 +158,6 @@ export const places = pgTable("places", {
   name: text("name").notNull(),
 });
 
-export const recurrences = pgTable("recurrences", {
-  id: uuid("id").primaryKey().defaultRandom(),
-  budgetId: uuid("budget_id")
-    .notNull()
-    .references(() => budgets.id, { onDelete: "cascade" }),
-  rule: recurrenceRuleEnum("rule").notNull().default("none"),
-  startDate: date("start_date", { mode: "string" }).notNull(),
-  endDate: date("end_date", { mode: "string" }),
-  /** Subscription pause — materialization skips occurrences dated < paused_until. */
-  pausedUntil: date("paused_until", { mode: "string" }),
-});
-
 export const transactions = pgTable(
   "transactions",
   {
@@ -209,8 +189,6 @@ export const transactions = pgTable(
     // stable id from historical external imports — legacy column,
     // the app no longer uses it (data in existing databases stays)
     externalId: text("external_id"),
-    planned: boolean("planned").notNull().default(false),
-    recurrenceId: uuid("recurrence_id").references(() => recurrences.id, { onDelete: "set null" }),
     createdAt: timestamp("created_at", { withTimezone: true, mode: "string" }).notNull().defaultNow(),
   },
   (t) => ({

@@ -149,15 +149,14 @@ describe("overwrite routes: the per-request owner assertion", () => {
 
 /* ── Backup compat: pre-3.2 recurrence fields keep importing (forever guard) ──────
  *
- * The recurring-payments feature is being removed from the API in stages (this task drops the
- * routes/sync handlers/mappers; a later one drops the fields from shared/db). A JSON backup
- * taken BEFORE that removal still carries `recurrences` and per-transaction `planned`/
- * `recurrenceId` — `/api/sync/replace` must keep accepting it at every stage, because zod
- * object schemas here are never `.strict()`: once a stage removes a field from
+ * The recurring-payments feature was removed from the API in stages (routes/sync
+ * handlers/mappers, then the shared/db fields, then the `recurrences` table itself —
+ * migration 0018). A JSON backup taken BEFORE that removal still carries `recurrences` and
+ * per-transaction `planned`/`recurrenceId` — `/api/sync/replace` must keep accepting it,
+ * because zod object schemas here are never `.strict()`: once a field is removed from
  * clientLedgerSchema, the same key simply becomes an unrecognized key that safeParse silently
- * strips instead of a validation failure. Right now (before that removal) the fields are still
- * recognized and valid, so this passes for a different reason than it will later — either way,
- * the invariant this test pins ("old backup keeps importing") holds continuously. */
+ * strips instead of a validation failure. The invariant this test pins ("old backup keeps
+ * importing") holds regardless of which stage of the removal is live. */
 
 describe("backup-compat: pre-3.2 recurrence fields do not break /sync/replace", () => {
   it("a ledger carrying recurrences + a planned/recurrenceId transaction still validates", () => {
@@ -329,7 +328,7 @@ describe.skipIf(!TEST_URL)("sync/pull: the change journal is scoped to one budge
    * (see auth.signup-race-child.ts, which hit the identical hazard first). So this runs in a
    * CHILD process that gets `DATABASE_URL` handed to it explicitly, with a fuse that refuses to
    * write unless it matches the throwaway Postgres this suite migrated. */
-  it("POST /api/sync/replace (child process): a ledger with pre-3.2 recurrence fields imports cleanly — nothing lands in recurrences", async () => {
+  it("POST /api/sync/replace (child process): a ledger with pre-3.2 recurrence fields imports cleanly — the unknown keys are silently dropped", async () => {
     const child = Bun.spawn([process.execPath, REPLACE_CHILD], {
       cwd: new URL("../..", import.meta.url).pathname,
       env: { ...process.env, DATABASE_URL: TEST_URL, EXPECT_DATABASE_URL: TEST_URL },
@@ -349,7 +348,10 @@ describe.skipIf(!TEST_URL)("sync/pull: the change journal is scoped to one budge
 
     expect(out.status).toBe(200);
     expect(out.responseBudgetId).toBe(out.budgetId);
-    expect(out.recurrencesCount).toBe(0); // unchanged — the API never wrote the table
+    // The `recurrences` table and the transaction's `planned`/`recurrenceId` columns are gone
+    // (migration 0018) — there is nowhere left for the pre-3.2 `recurrences` key or the
+    // transaction's `planned`/`recurrenceId` fields to land; zod strips them as unrecognized,
+    // and the transaction itself still imports correctly.
     expect(out.transactionRows).toHaveLength(1);
     expect(out.transactionRows[0]!.amount).toBe(500);
   });
