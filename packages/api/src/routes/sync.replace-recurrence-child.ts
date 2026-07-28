@@ -26,7 +26,6 @@ export type ReplaceRecurrenceOutput = {
   status: number;
   budgetId: string;
   responseBudgetId: string | undefined;
-  recurrencesCount: number;
   transactionRows: Array<{ amount: number; accountId: string }>;
 };
 
@@ -112,7 +111,6 @@ async function main(): Promise<void> {
   const status = res.status;
   const body = (await res.json().catch(() => ({}))) as { budgetId?: string };
 
-  const recRows = await db.select().from(s.recurrences).where(eq(s.recurrences.budgetId, budgetId));
   const txnRows = await db
     .select({ amount: s.transactions.amount, accountId: s.transactions.accountId })
     .from(s.transactions)
@@ -122,7 +120,6 @@ async function main(): Promise<void> {
     status,
     budgetId,
     responseBudgetId: body.budgetId,
-    recurrencesCount: recRows.length,
     transactionRows: txnRows,
   };
 
