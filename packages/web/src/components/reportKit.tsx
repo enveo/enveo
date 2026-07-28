@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import type { CSSProperties, ReactNode } from "react";
 import type { DailySpendingPoint } from "@enveo/shared";
 import { useBand } from "./kit";
 import { useTheme } from "../lib/contexts";
@@ -102,10 +102,22 @@ function mondayIndex(iso: string): number {
   return (dow + 6) % 7; // 0=Mon..6=Sun
 }
 
+/** Visually hides an element from sighted view while keeping it in the accessibility tree —
+ *  the standard 1px-clip technique (no utility class for this exists yet in the codebase). */
+const visuallyHidden: CSSProperties = {
+  position: "absolute", width: 1, height: 1, padding: 0, margin: -1, overflow: "hidden",
+  clip: "rect(0,0,0,0)", clipPath: "inset(50%)", whiteSpace: "nowrap", border: 0,
+};
+
 /** Calendar heatmap of daily totals — Monday-start grid, one hue ramped by quartile of
- *  `total/max` through the sanctioned alpha-var sequence (`C.inset` at zero →
- *  `--accent-22`/`--accent-40`/`--accent-66`/`--accent` for the rest). `mask` formats the amount
- *  for the per-cell `aria-label`; the grid itself is `role="img"` naming the month via `days[0]`. */
+ *  `total/max` through the sanctioned alpha-var sequence (`C.inset` at zero-or-negative →
+ *  `--accent-22`/`--accent-40`/`--accent-66`/`--accent` for the rest; a refund-heavy negative day
+ *  gets the zero look, not the darkest one — its real amount still reaches the per-cell label).
+ *  `mask` formats the amount for the per-cell `aria-label`. No `role="img"` on the wrapper — that
+ *  would collapse the subtree and make the per-cell labels unreachable to assistive tech; instead
+ *  a visually-hidden caption names the month, the decorative weekday header is `aria-hidden`, and
+ *  each day cell carries its own `aria-label` (no `tabIndex` — labels are for AT traversal, not
+ *  tab stops). */
 export function CalendarHeatmap({ days, lang, mask }: { days: DailySpendingPoint[]; lang: string; mask: (n: number) => string }) {
   const C = useTheme();
   const { t } = useT();
@@ -119,7 +131,7 @@ export function CalendarHeatmap({ days, lang, mask }: { days: DailySpendingPoint
     return new Intl.DateTimeFormat(lang, { weekday: "narrow", timeZone: "UTC" }).format(d);
   });
   const colorFor = (total: number): string => {
-    if (total === 0) return C.inset;
+    if (total <= 0) return C.inset;
     const q = total / max;
     if (q <= 0.25) return "var(--accent-22)";
     if (q <= 0.5) return "var(--accent-40)";
@@ -128,8 +140,9 @@ export function CalendarHeatmap({ days, lang, mask }: { days: DailySpendingPoint
   };
   const monthName = monthLabel(days[0]!.date.slice(0, 7), lang as Parameters<typeof monthLabel>[1]);
   return (
-    <div role="img" aria-label={t("Daily spending in {month}", { month: monthName })}>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 3, marginBottom: 4 }}>
+    <div>
+      <span style={visuallyHidden}>{t("Daily spending in {month}", { month: monthName })}</span>
+      <div aria-hidden="true" style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 3, marginBottom: 4 }}>
         {weekdays.map((w, i) => (
           <div key={i} style={{ fontSize: 9.5, color: C.mute, textAlign: "center" }}>{w}</div>
         ))}
