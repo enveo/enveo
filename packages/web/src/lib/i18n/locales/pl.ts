@@ -10,7 +10,11 @@ export const pl: Dict = {
   "+ Group": "+ Grupa",
   "+ new account": "+ nowe konto",
   "+ {n} envelope within budget (avg {pct}%) | + {n} envelopes within budget (avg {pct}%)": { one: "+ {n} koperta w normie (śr. {pct}%)", few: "+ {n} koperty w normie (śr. {pct}%)", many: "+ {n} kopert w normie (śr. {pct}%)", other: "+ {n} kopert w normie (śr. {pct}%)" },
-  "+ {n} more · {amount} | + {n} more · {amount}": { one: "+ {n} kolejna · {amount}", few: "+ {n} kolejne · {amount}", many: "+ {n} kolejnych · {amount}", other: "+ {n} kolejnych · {amount}" },
+  // Gender-neutral by construction ("jeszcze {n}" needs no agreement with the referent) — this
+  // fold button serves all 4 Spending dimensions (Category/Envelope/Group/Place), whose Polish
+  // nouns span all 3 grammatical genders ("koperta" f., "miejsce" n., ...), so every CLDR
+  // category below is intentionally the SAME string rather than a declined "kolejna/kolejne/…".
+  "+ {n} more · {amount} | + {n} more · {amount}": { one: "+ jeszcze {n} · {amount}", few: "+ jeszcze {n} · {amount}", many: "+ jeszcze {n} · {amount}", other: "+ jeszcze {n} · {amount}" },
   "+ “{name}”": "+ „{name}”",
   "1 mo": "1 mies.",
   "1 yr": "1 rok",
