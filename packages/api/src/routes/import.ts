@@ -346,8 +346,6 @@ export function applyTxnValues(it: ApplyItem, globalAccountId: string) {
     note: it.note?.trim() ? it.note : null,
     tag: it.tag.trim(),
     sourceRef: it.rawPlace?.trim() || null,
-    planned: false,
-    recurrenceId: null,
   };
 }
 

@@ -55,8 +55,6 @@ txnRoutes.post("/transactions/:id/duplicate", async (c) => {
       name: orig.name,
       note: orig.note,
       tag: null, // a duplicate is a new, manual transaction — it does not inherit the import key
-      planned: orig.planned,
-      recurrenceId: null,
       items: items.map((i) => ({ envelopeId: i.envelopeId, categoryId: i.categoryId, amount: i.amount })),
     });
   });

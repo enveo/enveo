@@ -16,7 +16,6 @@ describe("collectFkChecks", () => {
         toAccountId: null,
         envelopeId: "E",
         categoryId: undefined,
-        recurrenceId: null,
       }),
     ).toEqual([
       { table: "accounts", id: "A" },
@@ -53,7 +52,6 @@ function ledger(over: Partial<ClientLedgerInput> = {}): ClientLedgerInput {
     ],
     categories: [{ id: U(4), name: "c" }],
     places: [{ id: U(5), name: "p" }],
-    recurrences: [{ id: U(6), rule: "monthly", startDate: "2026-01-01", endDate: null, pausedUntil: null }],
     allocations: [],
     transactions: [],
     ...over,
@@ -76,8 +74,6 @@ const txn = (over: Partial<Txn> = {}): Txn => ({
   name: null,
   note: null,
   tag: null,
-  planned: false,
-  recurrenceId: null,
   items: [],
   createdAt: "2026-01-02T00:00:00.000Z",
   ...over,
@@ -87,7 +83,7 @@ describe("findForeignLedgerRef", () => {
   it("accepts a self-consistent ledger referencing every entity type", () => {
     const l = ledger({
       transactions: [
-        txn({ placeId: U(5), categoryId: U(4), recurrenceId: U(6) }),
+        txn({ placeId: U(5), categoryId: U(4) }),
         txn({ id: U(8), type: "transfer", envelopeId: null, toAccountId: U(11) }),
         txn({
           id: U(9),
@@ -115,7 +111,6 @@ describe("findForeignLedgerRef", () => {
     ["envelopeId", { envelopeId: FOREIGN }],
     ["placeId", { placeId: FOREIGN }],
     ["categoryId", { categoryId: FOREIGN }],
-    ["recurrenceId", { recurrenceId: FOREIGN }],
   ];
   for (const [field, over] of foreignTxnCases) {
     it(`flags a transaction with a foreign ${field}`, () => {

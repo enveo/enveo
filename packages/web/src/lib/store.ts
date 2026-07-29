@@ -30,7 +30,6 @@ const TABLE_KEY: Record<ReplicatedTable, keyof ClientLedger> = {
   envelopes: "envelopes",
   categories: "categories",
   places: "places",
-  recurrences: "recurrences",
   transactions: "transactions",
   allocations: "allocations",
   budgets: "budgets",
@@ -162,7 +161,10 @@ export const store = {
 
     for (const ch of changes) {
       const key = TABLE_KEY[ch.table];
-      if (!key) continue;  
+      
+
+
+      if (!key) continue;
       const arr = arrFor(key);
       if (ch.op === "delete") {
         const i = arr.findIndex((r) => r.id === ch.rowId);

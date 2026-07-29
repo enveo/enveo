@@ -183,7 +183,7 @@ export default function App() {
           )}
           {state && !onboarding && !envView && (
             <>
-              {screen === "start" && <StartScreen state={state} month={month} onOpenTxns={openTxns} onOpenEnvelope={openEnvelope} onMenu={() => setDrawer(true)} onPrev={prev} onNext={next} onNav={nav} onSeeUpcoming={() => openReports("subs")} onQuickAdd={onQuickAdd} />}
+              {screen === "start" && <StartScreen state={state} month={month} onOpenTxns={openTxns} onOpenEnvelope={openEnvelope} onMenu={() => setDrawer(true)} onPrev={prev} onNext={next} onNav={nav} onQuickAdd={onQuickAdd} />}
               {screen === "budget" && <BudgetScreen state={state} month={month} onMenu={() => setDrawer(true)} onPrev={prev} onNext={next} onOpenEnvelope={openEnvelope} initialSuggest={budgetSuggest} />}
               {screen === "transactions" && <TransactionsScreen state={state} month={month} onMenu={() => setDrawer(true)} onPrev={prev} onNext={next} onEditTxn={(t) => editTxnFrom(t, "transactions")} query={txQuery} setQuery={setTxQuery} envFilter={txEnvFilter} setEnvFilter={setTxEnvFilter} accFilter={txAccFilter} setAccFilter={setTxAccFilter} />}
               {screen === "accounts" && <AccountsScreen state={state} onMenu={() => setDrawer(true)} />}

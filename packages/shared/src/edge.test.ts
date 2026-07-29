@@ -91,7 +91,6 @@ describe("FK cascade parity: envelope.delete", () => {
       ],
       categories: [],
       places: [],
-      recurrences: [],
     };
   }
 
@@ -152,7 +151,6 @@ describe("FK cascade parity: account.delete", () => {
       ],
       categories: [],
       places: [],
-      recurrences: [],
     });
     const next = applyOp(l, mkOp("account.delete", { id: "A1" }));
     expect(next.accounts.map((a) => a.id)).toEqual(["A2"]);
@@ -192,7 +190,6 @@ describe("FK cascade parity: group.delete", () => {
       ],
       categories: [],
       places: [],
-      recurrences: [],
     });
     const next = applyOp(l, mkOp("group.delete", { id: "G1" }));
     expect(next.groups.map((g) => g.id)).toEqual(["G2"]);
@@ -226,7 +223,6 @@ describe("fullResync: outbox replay idempotency", () => {
     uniq(l.envelopes.map((e) => e.id), "envelopes");
     uniq(l.categories.map((c) => c.id), "categories");
     uniq(l.places.map((p) => p.id), "places");
-    uniq(l.recurrences.map((r) => r.id), "recurrences");
     uniq(l.transactions.map((t) => t.id), "transactions");
     uniq(l.allocations.map((a) => a.id), "allocations");
     for (const t of l.transactions) uniq(t.items.map((i) => i.id), `items(${t.id})`);
