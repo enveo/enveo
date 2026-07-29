@@ -508,6 +508,7 @@ export const sv: Dict = {
   "not yet": "inte än",
   "off": "av",
   "offline": "offline",
+  "over by {amount}": "över med {amount}",
   "own key": "egen nyckel",
   "probable duplicate": "trolig dubblett",
   "range {min}–{max}": "intervall {min}–{max}",

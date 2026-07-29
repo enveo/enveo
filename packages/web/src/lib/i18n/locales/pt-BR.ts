@@ -508,6 +508,7 @@ export const ptBR: Dict = {
   "not yet": "ainda não",
   "off": "desligada",
   "offline": "offline",
+  "over by {amount}": "estourou {amount}",
   "own key": "chave própria",
   "probable duplicate": "provável duplicada",
   "range {min}–{max}": "faixa {min}–{max}",

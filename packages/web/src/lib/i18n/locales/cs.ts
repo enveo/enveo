@@ -508,6 +508,7 @@ export const cs: Dict = {
   "not yet": "zatím ne",
   "off": "vypnuto",
   "offline": "offline",
+  "over by {amount}": "překročeno o {amount}",
   "own key": "vlastní klíč",
   "probable duplicate": "pravděpodobná duplicita",
   "range {min}–{max}": "rozsah {min}–{max}",
