@@ -668,7 +668,7 @@ function SpendingReport({
   onBack: () => void;
 }) {
   const C = useTheme();
-  const { t, lang } = useT();
+  const { t, tp, lang } = useT();
   const { hc } = useBand();
   const [expanded, setExpanded] = useState(false);
 
@@ -789,7 +789,7 @@ function SpendingReport({
           onClick={() => setExpanded(true)}
           style={{ display: "block", width: "100%", background: "none", border: "none", textAlign: "center", padding: "2px 0 8px", fontSize: 12, color: C.mute, cursor: "pointer", fontFamily: "inherit" }}
         >
-          {t("+ {n} more · {amount}", { n: rest.length, amount: M(rest.reduce((s, r) => s + r.amount, 0)) })}
+          {tp("+ {n} more · {amount} | + {n} more · {amount}", rest.length, { amount: M(rest.reduce((s, r) => s + r.amount, 0)) })}
         </button>
       )}
     </ReportShell>
@@ -820,7 +820,7 @@ function BudgetsReport({
   onBack: () => void;
 }) {
   const C = useTheme();
-  const { t } = useT();
+  const { t, tp } = useT();
   const { hc } = useBand();
   const [expanded, setExpanded] = useState(false);
 
@@ -952,7 +952,7 @@ function BudgetsReport({
                 onClick={() => setExpanded(true)}
                 style={{ display: "block", width: "100%", background: "none", border: "none", textAlign: "center", padding: "2px 0 8px", fontSize: 12, color: C.mute, cursor: "pointer", fontFamily: "inherit" }}
               >
-                {t("+ {n} envelopes within budget (avg {pct}%)", { n: restOkRows.length, pct: restAvgPct })}
+                {tp("+ {n} envelope within budget (avg {pct}%) | + {n} envelopes within budget (avg {pct}%)", restOkRows.length, { pct: restAvgPct })}
               </button>
             ))}
         </>
