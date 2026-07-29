@@ -29,7 +29,7 @@ export function EnvelopeScreen({
   envelopeId: string;
   initialMonth: string;
   onBack: () => void;
-  onOpenTxns: (f?: { envId?: string; accId?: string }) => void;
+  onOpenTxns: (f?: { envId?: string; accId?: string; unconfirmed?: boolean }) => void;
 }) {
   const C = useTheme();
   const M = useMask();
