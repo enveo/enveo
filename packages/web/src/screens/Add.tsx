@@ -105,7 +105,6 @@ export function AddScreen({
   const [showPlace, setShowPlace] = useState(false);
   const [note, setNote] = useState("");
   const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
-  const [confirmed, setConfirmed] = useState(true);
   const [numpad, setNumpad] = useState(true);
 
   const [showAcc, setShowAcc] = useState(false);
@@ -141,7 +140,6 @@ export function AddScreen({
     setNote(editTxn.note ?? "");
     setShowPlace(!!editTxn.placeId); // expand filled fields right away (no icon clicking)
     setDate(editTxn.date);
-    setConfirmed(editTxn.confirmed);
     setEnvOpen(false);
     setDestOpen(false);
   }, [editTxn]);
@@ -164,7 +162,6 @@ export function AddScreen({
       setNote(e.note);
       prefillPlace(e.placeName);
       setDate(e.date);
-      setConfirmed(e.confirmed);
     } else {
       const it = draft.item;
       setTab(it.type);
@@ -177,7 +174,6 @@ export function AddScreen({
       setName(it.name);
       prefillPlace(it.placeName ?? null);
       setDate(it.date);
-      setConfirmed(true);
     }
     setEnvOpen(false);
     setDestOpen(false);
@@ -258,7 +254,6 @@ export function AddScreen({
         categoryId: tab === "expense" ? categoryId : null,
         placeName: tab === "expense" ? (placeId ? (state.places.find((p) => p.id === placeId)?.name ?? null) : placeInput.trim() || null) : null,
         note,
-        confirmed,
       });
       haptic([10, 30, 14]);
       return;
@@ -270,9 +265,6 @@ export function AddScreen({
       toAccountId: tab === "transfer" ? toAccountId : null,
       amount: usingSplit ? splitSum : minor,
       date,
-      // new manual transactions are always confirmed (the toggle is gone); editing an existing
-      // one leaves ITS confirmed value untouched — never silently flip an unconfirmed import txn.
-      confirmed: editTxn ? confirmed : true,
       isRefund: tab === "expense" && isRefund,
       // income has no envelope selection (always → To be budgeted); transfer likewise has none.
       // Place/category are expense-only — gated the same way, so switching tab after picking

@@ -29,7 +29,7 @@ export interface Theme {
   keybg: string;
   /** Positive/confirmation state (income arrows, reconciled check, goal-met). */
   pos: string;
-  /** Attention state (>80% of budget, uncleared dot in Cisza). */
+  /** Attention state (>80% of budget, back-dated entry). */
   warn: string;
   /** Negative/overspent state for TEXT (contrast-checked per mode; spec §2). */
   neg: string;

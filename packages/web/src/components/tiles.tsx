@@ -5,7 +5,7 @@ import { fmtTrim } from "../lib/format";
 import { tint } from "../lib/theme";
 import type { AccountView, EnvelopeView } from "../lib/api";
 import { spendMeter } from "../lib/uiState";
-import { GoalRing, SpendLine, useBand } from "./kit";
+import { GoalRing, SpendLine } from "./kit";
 import { useT } from "../lib/i18n";
 
 /** Envelope list row: name (+goal ring), available amount, spend line (spec §3.2-3.3). */
@@ -60,13 +60,10 @@ const lightChip = (c: string) => c === "#e9e3d7" || c === "#cdeede";
 
 export const accountIconColor = (color: string) => (lightChip(color) ? "#8a8576" : color);
 
-/** Compact account cell for the Start 2-column grid: tinted icon, name, balance, uncleared dot. */
+/** Compact account cell for the Start 2-column grid: tinted icon, name, balance. */
 export function AccCell({ a, onClick, last }: { a: AccountView; onClick: () => void; last?: boolean }) {
   const M = useMask();
   const C = useTheme();
-  const { band } = useBand();
-  // Duet marks uncleared with coral (CTA), Cisza with amber — spec §3.4.
-  const dot = band ? "var(--cta)" : C.warn;
   return (
     <button onClick={onClick} style={{ display: "flex", alignItems: "center", gap: 8, padding: "7px 0", background: "none", border: "none", borderBottom: last ? "none" : `1px solid ${C.line}`, cursor: "pointer", textAlign: "left", minWidth: 0 }}>
       <span style={{ width: 24, height: 24, borderRadius: 8, background: tint(a.color, 0.15), display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
@@ -76,7 +73,6 @@ export function AccCell({ a, onClick, last }: { a: AccountView; onClick: () => v
         <span style={{ display: "block", fontSize: 10.5, color: C.soft, lineHeight: 1.25, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{a.name}</span>
         <span style={{ display: "block", fontSize: 12.5, fontWeight: 700, color: C.text, lineHeight: 1.3, fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap" }}>
           {M(a.balance)}
-          {a.uncleared !== 0 && <span aria-hidden style={{ display: "inline-block", width: 5, height: 5, borderRadius: "50%", background: dot, marginLeft: 4, verticalAlign: 2 }} />}
         </span>
       </span>
     </button>

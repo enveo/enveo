@@ -170,7 +170,6 @@ export function ImportSheet({ show, onClose, state, onApplied }: { show: boolean
                 categoryId: e.categoryId,
                 placeName: e.placeName,
                 note: e.note,
-                confirmed: e.confirmed,
                 force: it.status === "exists", // skip dedupe — the user edited the duplicate deliberately
                 rawPlace: it.rawPlace, // UNTOUCHED on edit
               },

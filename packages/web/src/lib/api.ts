@@ -62,7 +62,6 @@ export interface EditedImportItem {
   categoryId: string | null;
   placeName: string | null;
   note: string;
-  confirmed: boolean;
 }
 /** An item sent to /import/apply: the extraction original + OPTIONAL corrections
  *  from the editor (merged in ImportSheet). rawPlace always from the original. */
