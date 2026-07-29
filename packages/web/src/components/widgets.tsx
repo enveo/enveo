@@ -26,7 +26,7 @@ export interface WidgetProps {
   month: string;
   onNav: (s: ScreenId) => void;
   onOpenEnvelope: (envId: string, month: string) => void;
-  onOpenTxns: (f?: { envId?: string; accId?: string }) => void;
+  onOpenTxns: (f?: { envId?: string; accId?: string; unconfirmed?: boolean }) => void;
   onQuickAdd: (kind: "transfer" | "import" | "suggest") => void;
   opts?: WidgetOpts;
 }
@@ -165,7 +165,6 @@ export function AccountsWidget({ state, onNav, onOpenTxns, opts }: WidgetProps) 
               [
                 [t("Balance"), M(selAcc.balance), C.text],
                 [t("Cleared"), M(selAcc.cleared), C.text],
-                [t("Uncleared"), M(selAcc.uncleared), selAcc.uncleared !== 0 ? CORAL : C.text],
               ] as const
             ).map((r) => (
               <div key={r[0]} style={{ display: "flex", justifyContent: "space-between", marginBottom: 7 }}>
@@ -173,6 +172,25 @@ export function AccountsWidget({ state, onNav, onOpenTxns, opts }: WidgetProps) 
                 <span style={{ fontSize: 13.5, fontWeight: 600, color: r[2], fontVariantNumeric: "tabular-nums" }}>{r[1]}</span>
               </div>
             ))}
+            {/* Deep link to the "to confirm" transactions of THIS account, only when there's
+                something uncleared to find — a zero-uncleared account has nothing to jump to. */}
+            {selAcc.uncleared !== 0 ? (
+              <button
+                onClick={() => { const a = selAcc; setSelAcc(null); onOpenTxns({ accId: a.id, unconfirmed: true }); }}
+                style={{ display: "flex", justifyContent: "space-between", alignItems: "center", width: "100%", marginBottom: 7, padding: 0, background: "none", border: "none", cursor: "pointer", fontFamily: font }}
+              >
+                <span style={{ fontSize: 13.5, color: C.soft }}>{t("Uncleared")}:</span>
+                <span style={{ display: "flex", alignItems: "center", gap: 3 }}>
+                  <span style={{ fontSize: 13.5, fontWeight: 600, color: CORAL, fontVariantNumeric: "tabular-nums" }}>{M(selAcc.uncleared)}</span>
+                  <Ico d="M9 6l6 6-6 6" size={14} color={CORAL} sw={2} />
+                </span>
+              </button>
+            ) : (
+              <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 7 }}>
+                <span style={{ fontSize: 13.5, color: C.soft }}>{t("Uncleared")}:</span>
+                <span style={{ fontSize: 13.5, fontWeight: 600, color: C.text, fontVariantNumeric: "tabular-nums" }}>{M(selAcc.uncleared)}</span>
+              </div>
+            )}
             <div style={{ display: "flex", justifyContent: "space-evenly", marginTop: 16 }}>
               {(
                 [

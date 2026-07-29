@@ -79,6 +79,31 @@ function deleteTxn(id: string): void {
   enqueue("txn.delete", { id });
 }
 
+
+
+
+
+
+
+export function txnToPayload(t: Transaction): TxnPayload {
+  return {
+    type: t.type,
+    accountId: t.accountId,
+    toAccountId: t.toAccountId,
+    amount: t.amount,
+    date: t.date,
+    confirmed: t.confirmed,
+    isRefund: t.isRefund,
+    envelopeId: t.envelopeId,
+    placeId: t.placeId,
+    categoryId: t.categoryId,
+    name: t.name,
+    note: t.note,
+    tag: t.tag,
+    items: t.items.map((i) => ({ envelopeId: i.envelopeId, categoryId: i.categoryId, amount: i.amount })),
+  };
+}
+
 /**
  * A transaction copy built ON THE CLIENT — semantics 1:1 with the old
  * POST /transactions/:id/duplicate: today's date, `tag: null` (the copy doesn't
@@ -91,35 +116,33 @@ function deleteTxn(id: string): void {
  * and the "Duplicate" sheet doesn't jam. A balanced split is copied verbatim.
  */
 function duplicateTxn(t: Transaction): string {
-  const base = {
-    type: t.type,
-    accountId: t.accountId,
-    toAccountId: t.toAccountId,
-    amount: t.amount,
-    date: new Date().toISOString().slice(0, 10),
-    confirmed: t.confirmed,
-    isRefund: t.isRefund,
-    placeId: t.placeId,
-    name: t.name,
-    note: t.note,
-    tag: null,
-  } as const;
+  const base = { ...txnToPayload(t), date: new Date().toISOString().slice(0, 10), tag: null };
   const itemsSum = t.items.reduce((s, i) => s + i.amount, 0);
   if (t.items.length > 0 && itemsSum === t.amount) {
-     
-    return createTxn({
-      ...base,
-      envelopeId: null,
-      categoryId: null,
-      items: t.items.map((i) => ({ envelopeId: i.envelopeId, categoryId: i.categoryId, amount: i.amount })),
-    });
+    
+
+    return createTxn({ ...base, envelopeId: null, categoryId: null });
   }
   if (t.items.length > 0) {
      
-    return createTxn({ ...base, envelopeId: null, categoryId: null });
+    return createTxn({ ...base, envelopeId: null, categoryId: null, items: undefined });
   }
    
   return createTxn({ ...base, envelopeId: t.envelopeId, categoryId: t.categoryId });
+}
+
+
+
+
+
+
+
+
+
+function confirmTxn(id: string): void {
+  const t = ledger().transactions.find((x) => x.id === id);
+  if (!t) return;
+  updateTxn(id, { ...txnToPayload(t), confirmed: true });
 }
 
  
@@ -201,6 +224,7 @@ export const local = {
   updateTxn,
   deleteTxn,
   duplicateTxn,
+  confirmTxn,
   setAllocation,
   createAccount,
   updateAccount,
