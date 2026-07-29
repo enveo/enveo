@@ -32,10 +32,14 @@ export function ReportShell({ title, month, onPrev, onNext, onBack, eyebrow, her
         <div style={{ display: "flex", alignItems: "center", gap: 6, padding: `12px ${P}px 10px` }}>
           <button aria-label={t("Back")} onClick={onBack} style={{ flexShrink: 0, width: 30, height: 30, borderRadius: 15, border: "none", background: "transparent", color: hc(C.headerInk, C.text), fontSize: 22, lineHeight: 1, cursor: "pointer", padding: 0, marginLeft: -6, display: "flex", alignItems: "center", justifyContent: "center" }}>‹</button>
           <span style={{ flex: 1, fontSize: 16, fontWeight: 700, color: hc(C.headerInk, C.text), overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{title}</span>
-          <span style={{ display: "flex", alignItems: "center", gap: 2, flexShrink: 0 }}>
-            <button onClick={onPrev} style={{ border: "none", background: "transparent", color: hc(C.headerMute, C.soft), fontSize: 17, lineHeight: 1, cursor: "pointer", padding: "2px 7px" }}>‹</button>
+          <span style={{ display: "flex", alignItems: "center", gap: 0, flexShrink: 0 }}>
+            {/* 30x30 hit target (matches the back button above) around the same 17px glyph — a bare
+               `padding: "2px 7px"` box measured 21x21, under the touch-target floor (see task-14
+               report); aria-label reuses chrome.tsx's existing "Previous/Next month" keys so this
+               control reads the same as the global header's equivalent. */}
+            <button aria-label={t("Previous month")} onClick={onPrev} style={{ border: "none", background: "transparent", color: hc(C.headerMute, C.soft), fontSize: 17, lineHeight: 1, cursor: "pointer", padding: 0, width: 30, height: 30, display: "flex", alignItems: "center", justifyContent: "center" }}>‹</button>
             <span style={{ fontSize: 12.5, fontWeight: 600, color: hc(C.headerInk, C.text), minWidth: 58, textAlign: "center" }}>{monthLabel(month, lang).split(" ")[0]}</span>
-            <button onClick={onNext} style={{ border: "none", background: "transparent", color: hc(C.headerMute, C.soft), fontSize: 17, lineHeight: 1, cursor: "pointer", padding: "2px 7px" }}>›</button>
+            <button aria-label={t("Next month")} onClick={onNext} style={{ border: "none", background: "transparent", color: hc(C.headerMute, C.soft), fontSize: 17, lineHeight: 1, cursor: "pointer", padding: 0, width: 30, height: 30, display: "flex", alignItems: "center", justifyContent: "center" }}>›</button>
           </span>
         </div>
         <div style={{ padding: `0 ${P}px` }}>
