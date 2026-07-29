@@ -3,7 +3,10 @@
  * sync.test.ts — NOT a test file itself (bun's runner only picks up *.test.ts). Also doubles as
  * the forever guard for the removed `confirmed` transaction flag (API task 2): a
  * `confirmed: false` fixture row must still import as an ordinary transaction (see the ledger
- * fixture below and its `transactionRows` assertions in sync.test.ts).
+ * fixture below and its `transactionRows` assertions in sync.test.ts). The other two fixture rows
+ * (below, ~97/121) deliberately keep their older, stale `confirmed: true` value rather than being
+ * cleaned up — the point is that BOTH values of the removed field must strip silently, not just
+ * the falsy one.
  *
  * WHY A SEPARATE PROCESS. `routes/sync.ts` imports `db/client.ts`, which builds its Postgres
  * pool from `env.DATABASE_URL` at IMPORT time, and bun's test runner shares ONE module registry

@@ -172,7 +172,6 @@ export const transactions = pgTable(
     toAccountId: uuid("to_account_id").references(() => accounts.id, { onDelete: "cascade" }),
     amount: money("amount").notNull(),
     date: date("date", { mode: "string" }).notNull(),
-    confirmed: boolean("confirmed").notNull().default(true),
     isRefund: boolean("is_refund").notNull().default(false),
     envelopeId: uuid("envelope_id").references(() => envelopes.id, { onDelete: "set null" }),
     placeId: uuid("place_id").references(() => places.id, { onDelete: "set null" }),
