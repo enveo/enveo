@@ -80,6 +80,31 @@ function deleteTxn(id: string): void {
 }
 
 /**
+ * A stored transaction mapped to a full, faithful TxnPayload — every persisted
+ * field verbatim (split items included, item ids stripped — txnItemPayload has
+ * no id). The ONE field list `duplicateTxn` and `confirmTxn` both build on, so
+ * a new Transaction field can't silently fall out of sync between the two call sites.
+ */
+export function txnToPayload(t: Transaction): TxnPayload {
+  return {
+    type: t.type,
+    accountId: t.accountId,
+    toAccountId: t.toAccountId,
+    amount: t.amount,
+    date: t.date,
+    confirmed: t.confirmed,
+    isRefund: t.isRefund,
+    envelopeId: t.envelopeId,
+    placeId: t.placeId,
+    categoryId: t.categoryId,
+    name: t.name,
+    note: t.note,
+    tag: t.tag,
+    items: t.items.map((i) => ({ envelopeId: i.envelopeId, categoryId: i.categoryId, amount: i.amount })),
+  };
+}
+
+/**
  * A transaction copy built ON THE CLIENT — semantics 1:1 with the old
  * POST /transactions/:id/duplicate: today's date, `tag: null` (the copy doesn't
  * inherit the import key), items without ids.
@@ -91,35 +116,33 @@ function deleteTxn(id: string): void {
  * and the "Duplicate" sheet doesn't jam. A balanced split is copied verbatim.
  */
 function duplicateTxn(t: Transaction): string {
-  const base = {
-    type: t.type,
-    accountId: t.accountId,
-    toAccountId: t.toAccountId,
-    amount: t.amount,
-    date: new Date().toISOString().slice(0, 10),
-    confirmed: t.confirmed,
-    isRefund: t.isRefund,
-    placeId: t.placeId,
-    name: t.name,
-    note: t.note,
-    tag: null,
-  } as const;
+  const base = { ...txnToPayload(t), date: new Date().toISOString().slice(0, 10), tag: null };
   const itemsSum = t.items.reduce((s, i) => s + i.amount, 0);
   if (t.items.length > 0 && itemsSum === t.amount) {
-    // balanced split — verbatim copy (the parent has envelopeId/categoryId null anyway)
-    return createTxn({
-      ...base,
-      envelopeId: null,
-      categoryId: null,
-      items: t.items.map((i) => ({ envelopeId: i.envelopeId, categoryId: i.categoryId, amount: i.amount })),
-    });
+    // balanced split — verbatim copy (the parent has envelopeId/categoryId null anyway;
+    // base.items is already the id-stripped mapping from txnToPayload)
+    return createTxn({ ...base, envelopeId: null, categoryId: null });
   }
   if (t.items.length > 0) {
     // orphaned split (Σ items ≠ amount) — a regular transaction without items
-    return createTxn({ ...base, envelopeId: null, categoryId: null });
+    return createTxn({ ...base, envelopeId: null, categoryId: null, items: undefined });
   }
-  // regular transaction — keep the envelope/category
+  // regular transaction — keep the envelope/category (base.items is already [] here)
   return createTxn({ ...base, envelopeId: t.envelopeId, categoryId: t.categoryId });
+}
+
+/**
+ * Confirms an unconfirmed transaction (screenshot-import "to confirm" rows, the
+ * account-sheet "Uncleared" deep link). Issues the SAME txn.update op a manual
+ * edit would — full-field replacement per txnFromUpdate — with only `confirmed`
+ * flipped; every other field (including split items) is preserved verbatim via
+ * txnToPayload. No new op kind. A txn that vanished before the tap landed
+ * (delete raced it) is a silent no-op, same as updateTxn/deleteTxn on a missing id.
+ */
+function confirmTxn(id: string): void {
+  const t = ledger().transactions.find((x) => x.id === id);
+  if (!t) return;
+  updateTxn(id, { ...txnToPayload(t), confirmed: true });
 }
 
 /* ── Allocations ────────────────────────────────────────────────────────── */
@@ -201,6 +224,7 @@ export const local = {
   updateTxn,
   deleteTxn,
   duplicateTxn,
+  confirmTxn,
   setAllocation,
   createAccount,
   updateAccount,
