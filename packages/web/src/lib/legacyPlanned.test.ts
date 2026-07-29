@@ -20,7 +20,6 @@ const baseTxn = (id: string): Transaction => ({
   toAccountId: null,
   amount: 500,
   date: "2026-01-01",
-  confirmed: true,
   isRefund: false,
   envelopeId: null,
   placeId: null,

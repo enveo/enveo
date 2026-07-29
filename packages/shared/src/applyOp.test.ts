@@ -65,7 +65,6 @@ describe("applyOp: txn.create", () => {
       toAccountId: null,
       amount: 30_00,
       date: "2026-06-05",
-      confirmed: true, // DB default
       isRefund: false, // DB default
       envelopeId: "E1",
       placeId: null,
@@ -165,7 +164,6 @@ describe("applyOp: txn.update", () => {
       toAccountId: null,
       amount: 40_00,
       date: "2026-06-07",
-      confirmed: true,
       isRefund: false,
       envelopeId: "E2",
       placeId: null,

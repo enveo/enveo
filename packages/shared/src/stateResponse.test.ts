@@ -20,7 +20,7 @@ function fixture(): ClientLedger {
       tx({ id: "T-july", accountId: "A1", envelopeId: "E1", amount: 2_00, date: "2026-07-01", createdAt: "2026-07-01T08:00:00Z" }),
       tx({ id: "T-morning", accountId: "A1", envelopeId: "E1", amount: 3_00, date: "2026-06-10", createdAt: "2026-06-10T07:00:00Z" }),
       tx({ id: "T-evening", accountId: "A1", envelopeId: "E1", amount: 4_00, date: "2026-06-10", createdAt: "2026-06-10T21:00:00Z" }),
-      tx({ id: "T-uncleared", accountId: "A1", envelopeId: "E1", amount: 5_00, date: "2026-06-20", confirmed: false, createdAt: "2026-06-20T08:00:00Z" }),
+      tx({ id: "T-recent", accountId: "A1", envelopeId: "E1", amount: 5_00, date: "2026-06-20", createdAt: "2026-06-20T08:00:00Z" }),
     ],
     categories: [{ id: "C1", name: "Jedzenie" }],
     places: [{ id: "P1", name: "Lidl" }],
@@ -32,7 +32,7 @@ describe("computeStateResponse", () => {
     const resp = computeStateResponse(deepFreeze(fixture()), "2026-06");
     expect(resp.month).toBe("2026-06");
     expect(resp.transactions.map((t) => t.id)).toEqual([
-      "T-uncleared", // 2026-06-20
+      "T-recent", // 2026-06-20
       "T-evening", // 2026-06-10, later createdAt before the earlier one
       "T-morning",
       "T-old", // 2026-06-03
@@ -52,9 +52,6 @@ describe("computeStateResponse", () => {
     expect(a1.onBudget).toBe(true);
     // …and computeBudgetState computations next to them
     expect(a1.balance).toBe(state.accounts[0]!.balance);
-    expect(a1.cleared).toBe(state.accounts[0]!.cleared);
-    expect(a1.uncleared).toBe(a1.balance - a1.cleared);
-    expect(a1.uncleared).toBe(-5_00); // unconfirmed T-uncleared
 
     const e1 = resp.envelopes[0]!;
     expect(e1.id).toBe("E1");

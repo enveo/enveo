@@ -20,8 +20,6 @@ import type {
 
 export interface AccountView extends Account {
   balance: number;
-  cleared: number;
-  uncleared: number;
 }
 
 export interface EnvelopeView extends Envelope {
@@ -64,8 +62,6 @@ export function computeStateResponse(ledger: ClientLedger, month: string): State
     accounts: state.accounts.map((a) => ({
       ...a.account,
       balance: a.balance,
-      cleared: a.cleared,
-      uncleared: a.uncleared,
     })),
     groups: state.groups,
     envelopes: state.envelopes.map((e) => ({

@@ -31,7 +31,6 @@ function fullLedger(): ClientLedger {
         toAccountId: null,
         amount: 300,
         date: "2026-07-04",
-        confirmed: true,
         isRefund: false,
         envelopeId: null,
         placeId: U(5),

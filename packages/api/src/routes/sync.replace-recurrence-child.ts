@@ -1,6 +1,12 @@
 /**
  * Child process for the "POST /api/sync/replace accepts pre-3.2 recurrence fields" test in
- * sync.test.ts — NOT a test file itself (bun's runner only picks up *.test.ts).
+ * sync.test.ts — NOT a test file itself (bun's runner only picks up *.test.ts). Also doubles as
+ * the forever guard for the removed `confirmed` transaction flag (API task 2): a
+ * `confirmed: false` fixture row must still import as an ordinary transaction (see the ledger
+ * fixture below and its `transactionRows` assertions in sync.test.ts). The other two fixture rows
+ * (below, ~97/121) deliberately keep their older, stale `confirmed: true` value rather than being
+ * cleaned up — the point is that BOTH values of the removed field must strip silently, not just
+ * the falsy one.
  *
  * WHY A SEPARATE PROCESS. `routes/sync.ts` imports `db/client.ts`, which builds its Postgres
  * pool from `env.DATABASE_URL` at IMPORT time, and bun's test runner shares ONE module registry
@@ -124,6 +130,33 @@ async function main(): Promise<void> {
         note: null,
         tag: null,
         planned: true,
+        recurrenceId: null,
+        items: [],
+        createdAt: "2026-01-01T00:00:00.000Z",
+      },
+      // A `confirmed: false` row (the transaction-confirmation flag, removed from the domain in
+      // API task 2). This is the OPPOSITE case from `planned: true` above: `confirmed` never
+      // excluded a row from any ledger computation — every transaction always counted in account
+      // balances regardless of its confirmed state — so once the field is gone from
+      // `transactionEntity`, zod silently strips the now-unrecognized key and the row must still
+      // import as an ORDINARY transaction (present in `transactionRows` below), not be dropped
+      // like the `planned` template.
+      {
+        id: crypto.randomUUID(),
+        type: "expense",
+        accountId: accId,
+        toAccountId: null,
+        amount: 777,
+        date: "2026-01-01",
+        confirmed: false,
+        isRefund: false,
+        envelopeId: null,
+        placeId: null,
+        categoryId: null,
+        name: null,
+        note: null,
+        tag: null,
+        planned: false,
         recurrenceId: null,
         items: [],
         createdAt: "2026-01-01T00:00:00.000Z",

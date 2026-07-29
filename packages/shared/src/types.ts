@@ -70,7 +70,6 @@ export interface Transaction {
   toAccountId: string | null; // transfer only
   amount: Money; // always a positive magnitude
   date: string; // YYYY-MM-DD
-  confirmed: boolean;
   isRefund: boolean; // expense with "+" (refund)
   envelopeId: string | null;
   placeId: string | null;
@@ -118,8 +117,6 @@ export interface ClientLedger extends Ledger {
 export interface AccountState {
   account: Account;
   balance: Money; // all transactions ≤ end of month
-  cleared: Money; // confirmed only
-  uncleared: Money; // balance - cleared
 }
 
 export interface EnvelopeState {

@@ -66,7 +66,6 @@ const txn = (over: Partial<Txn> = {}): Txn => ({
   toAccountId: null,
   amount: 100,
   date: "2026-01-02",
-  confirmed: true,
   isRefund: false,
   envelopeId: U(3),
   placeId: null,

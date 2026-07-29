@@ -134,6 +134,13 @@
       "when": 1785275193234,
       "tag": "0018_drop_recurrences",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1785330002369,
+      "tag": "0019_drop_confirmed",
+      "breakpoints": true
     }
   ]
 }

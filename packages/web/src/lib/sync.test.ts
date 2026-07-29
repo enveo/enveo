@@ -955,7 +955,6 @@ describe("sync boot: a leftover `planned` transaction is swept before the replic
       toAccountId: null,
       amount: 500,
       date: "2026-01-01",
-      confirmed: true,
       isRefund: false,
       envelopeId: null,
       placeId: null,

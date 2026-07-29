@@ -6,10 +6,8 @@ import type { ScreenId } from "../components/chrome";
 import { SectionEyebrow, CardBox, HighlightedText, PickerSearch, useBand } from "../components/kit";
 import { useMask, useTheme } from "../lib/contexts";
 import { dayHeading } from "../lib/dates";
-import { haptic } from "../lib/haptics";
 import { useT } from "../lib/i18n";
 import { Glyph, Ico } from "../lib/icons";
-import { local } from "../lib/mutate";
 import { matchesSearch, SEARCH_THRESHOLD } from "../lib/search";
 import { P, TRANSFER, TEAL, tint, font } from "../lib/theme";
 
@@ -27,8 +25,6 @@ export function TransactionsScreen({
   setEnvFilter,
   accFilter,
   setAccFilter,
-  unconfirmedFilter,
-  setUnconfirmedFilter,
 }: {
   state: StateResponse;
   month: string;
@@ -43,9 +39,6 @@ export function TransactionsScreen({
   setEnvFilter: (s: ReadonlySet<string>) => void;
   accFilter: ReadonlySet<string>;
   setAccFilter: (s: ReadonlySet<string>) => void;
-  /** "Only unconfirmed" toggle — the account sheet's "Uncleared" row deep-links into it. */
-  unconfirmedFilter: boolean;
-  setUnconfirmedFilter: (v: boolean) => void;
 }) {
   const C = useTheme();
   const { band, hc } = useBand();
@@ -102,8 +95,7 @@ export function TransactionsScreen({
     accFilter.size === 0 || accFilter.has(t.accountId) || (t.type === "transfer" && !!t.toAccountId && accFilter.has(t.toAccountId));
   const matchesQuery = (t: Transaction) =>
     !q || `${descOf(t)} ${subOf(t)} ${accById.get(t.accountId)?.name ?? ""}`.toLowerCase().includes(q);
-  const matchesUnconfirmed = (t: Transaction) => !unconfirmedFilter || !t.confirmed;
-  const txns = state.transactions.filter((t) => matchesEnv(t) && matchesAcc(t) && matchesQuery(t) && matchesUnconfirmed(t));
+  const txns = state.transactions.filter((t) => matchesEnv(t) && matchesAcc(t) && matchesQuery(t));
 
   // grouping by date (descending order preserved)
   const groups: Array<{ date: string; items: Transaction[] }> = [];
@@ -129,7 +121,7 @@ export function TransactionsScreen({
     else next.add(id);
     setAccFilter(next);
   };
-  const clearFilters = () => { setEnvFilter(new Set()); setAccFilter(new Set()); setUnconfirmedFilter(false); };
+  const clearFilters = () => { setEnvFilter(new Set()); setAccFilter(new Set()); };
 
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
@@ -150,7 +142,7 @@ export function TransactionsScreen({
               </button>
             )}
             <button onClick={() => setPickFilter(true)} aria-label={t("Filter")} style={{ background: "none", border: "none", cursor: "pointer", padding: 2, display: "flex" }}>
-              <Ico d="M4 4h16l-6.3 7.4V19l-3.4-2v-5.6L4 4zM17.5 14.5v6M14.5 17.5h6" size={18} color={envFilter.size || accFilter.size || unconfirmedFilter ? hc("var(--cta)", TEAL) : hc(C.headerMute, C.mute)} sw={1.8} />
+              <Ico d="M4 4h16l-6.3 7.4V19l-3.4-2v-5.6L4 4zM17.5 14.5v6M14.5 17.5h6" size={18} color={envFilter.size || accFilter.size ? hc("var(--cta)", TEAL) : hc(C.headerMute, C.mute)} sw={1.8} />
             </button>
           </div>
           <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "baseline", gap: 6, padding: `0 ${P + 4}px 8px`, fontSize: 11, color: hc(C.headerMute, C.soft) }}>
@@ -161,18 +153,9 @@ export function TransactionsScreen({
           </div>
         </div>
 
-        {(activeEnvs.length > 0 || activeAccs.length > 0 || unconfirmedFilter) && (
+        {(activeEnvs.length > 0 || activeAccs.length > 0) && (
           <div className="gs" style={{ display: "flex", alignItems: "center", gap: 7, padding: `0 ${P}px 8px`, overflowX: "auto" }}>
             <span style={{ fontSize: 13.5, color: C.text, flexShrink: 0 }}>{t("Filter:")}</span>
-            {unconfirmedFilter && (
-              <button onClick={() => setUnconfirmedFilter(false)} style={{ display: "flex", alignItems: "center", gap: 7, padding: "5px 11px 5px 6px", borderRadius: 18, border: "none", background: C.surface, cursor: "pointer", whiteSpace: "nowrap", boxShadow: "0 1px 2px rgba(0,0,0,0.1)", flexShrink: 0 }}>
-                <span style={{ width: 24, height: 24, borderRadius: 7, background: tint(C.warn, 0.16), display: "flex", alignItems: "center", justifyContent: "center" }}>
-                  <Ico d="M12 8v4l3 2M12 22a10 10 0 100-20 10 10 0 000 20z" size={13} color={C.warn} sw={2} />
-                </span>
-                <span style={{ fontSize: 13.5, color: C.text }}>{t("Only unconfirmed")}</span>
-                <Ico d="M6 6l12 12M18 6L6 18" size={13} color={C.soft} sw={2} />
-              </button>
-            )}
             {activeEnvs.map((e) => (
               <button key={e.id} onClick={() => toggleEnv(e.id)} style={{ display: "flex", alignItems: "center", gap: 7, padding: "5px 11px 5px 6px", borderRadius: 18, border: "none", background: C.surface, cursor: "pointer", whiteSpace: "nowrap", boxShadow: "0 1px 2px rgba(0,0,0,0.1)", flexShrink: 0 }}>
                 <span style={{ width: 24, height: 24, borderRadius: 7, background: tint(e.color, 0.16), display: "flex", alignItems: "center", justifyContent: "center" }}>
@@ -228,27 +211,6 @@ export function TransactionsScreen({
                     <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", flexShrink: 0 }}>
                       <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
                         <span style={{ fontSize: 13.5, fontWeight: 700, lineHeight: 1.25, fontVariantNumeric: "tabular-nums", color: s.color }}>{s.text}</span>
-                        {tx.confirmed ? (
-                          <Ico d="M5 13l4 4L19 7" size={12} color={C.pos} sw={2.5} />
-                        ) : (
-                          // 30x30 hit target via NEGATIVE margin bleeding into the row's own padding/gap
-                          // gutter, not a bigger box: this row is vertically tight (a text line next to a
-                          // 12px glyph), so widening the button outright (ReportShell's chevron idiom) would
-                          // grow row height and make unconfirmed rows taller than confirmed ones.
-                          // ASYMMETRIC on purpose: the amount span sits only 5px to the left (row `gap`).
-                          // A uniform -9px would bleed the invisible tap box 4px past that gap and into the
-                          // amount text, so a mistap on the last digit could silently confirm the txn (no
-                          // un-confirm from the list). Cap the left bleed at -3px (stays inside the 5px gap)
-                          // and recover the missing width on the right/top/bottom, where there's no neighbor
-                          // to overlap.
-                          <button
-                            onClick={(e) => { e.stopPropagation(); local.confirmTxn(tx.id); haptic([10, 30, 14]); }}
-                            aria-label={t("Confirm transaction")}
-                            style={{ width: 30, height: 30, margin: "-9px -12px -9px -3px", padding: 0, display: "flex", alignItems: "center", justifyContent: "center", background: "none", border: "none", cursor: "pointer", flexShrink: 0 }}
-                          >
-                            <Ico d="M12 8v4l3 2M12 22a10 10 0 100-20 10 10 0 000 20z" size={12} color={C.warn} sw={2} />
-                          </button>
-                        )}
                       </div>
                       {tx.type !== "transfer" && acc && <div style={{ color: C.mute, fontSize: 9.5, lineHeight: 1.25, marginTop: 1 }}>{acc.name}</div>}
                     </div>
@@ -269,14 +231,6 @@ export function TransactionsScreen({
               <div style={{ flexShrink: 0 }}>
                 <div style={{ fontSize: 17, fontWeight: 700, color: C.text, textAlign: "center", marginBottom: 4 }}>{t("Filter")}</div>
                 <div style={{ fontSize: 12, color: C.mute, textAlign: "center", marginBottom: 14 }}>{t("Show only selected envelopes and accounts")}</div>
-
-                <button
-                  onClick={() => setUnconfirmedFilter(!unconfirmedFilter)}
-                  style={{ display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%", padding: "10px 12px", borderRadius: 11, border: `1.5px solid ${unconfirmedFilter ? TEAL : C.line}`, background: unconfirmedFilter ? "var(--accent-14)" : C.surface, cursor: "pointer", marginBottom: 14, fontFamily: font }}
-                >
-                  <span style={{ fontSize: 13, color: C.text }}>{t("Only unconfirmed")}</span>
-                  {unconfirmedFilter && <Ico d="M5 13l4 4L19 7" size={14} color={TEAL} sw={2.4} />}
-                </button>
 
                 {envelopes.length + accounts.length > SEARCH_THRESHOLD && <PickerSearch value={pickQ} onChange={setPickQ} />}
               </div>
@@ -329,7 +283,7 @@ export function TransactionsScreen({
                 )}
               </div>
 
-              {(envFilter.size > 0 || accFilter.size > 0 || unconfirmedFilter) && (
+              {(envFilter.size > 0 || accFilter.size > 0) && (
                 <button onClick={clearFilters} style={{ flexShrink: 0, marginTop: 16, width: "100%", padding: "11px 0", borderRadius: 11, border: `1px solid ${C.line}`, background: C.bg, color: C.neg, fontSize: 13, fontWeight: 600, cursor: "pointer" }}>
                   {t("Clear filters")}
                 </button>

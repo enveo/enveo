@@ -97,22 +97,18 @@ export function computeBudgetState(ledger: Ledger, month: string): BudgetState {
 
   // ── account balances ────────────────────────────────────────────────
   const balance = new Map<string, Money>();
-  const cleared = new Map<string, Money>();
   for (const a of accounts) {
     balance.set(a.id, a.initialBalance);
-    cleared.set(a.id, a.initialBalance);
   }
   for (const t of txns) {
     for (const [accId, d] of accountDeltas(t)) {
       balance.set(accId, (balance.get(accId) ?? 0) + d);
-      if (t.confirmed) cleared.set(accId, (cleared.get(accId) ?? 0) + d);
     }
   }
 
   const accountStates = accounts.map((account) => {
     const bal = balance.get(account.id) ?? 0;
-    const clr = cleared.get(account.id) ?? 0;
-    return { account, balance: bal, cleared: clr, uncleared: bal - clr };
+    return { account, balance: bal };
   });
 
   // ── envelopes: cumulative and monthly ──────────────────────────────
