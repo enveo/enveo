@@ -657,16 +657,26 @@ function CashflowReport({ cashflow, M, month, onPrev, onNext, onBack }: { cashfl
 }
 
 /** Cashflow band chart (Task P1): 12-mo diverging columns painted on the band, same idiom as the
- *  hub's `CashflowMini` chart but taller (height ~56 vs 34) and painted with band-aware tokens so
+ *  hub's `CashflowMini` chart but taller (height ~60 vs 34) and painted with band-aware tokens so
  *  it stays legible on a Duet navy band as well as a plain theme. A net-ZERO month is not "up" or
  *  "down" — it renders a 1px tick sitting ON the baseline in the muted color rather than a fake
- *  colored bar (a zero-height bar would just look like a rendering bug otherwise). */
+ *  colored bar (a zero-height bar would just look like a rendering bug otherwise).
+ *
+ * v2 fix (design-pass follow-up on the v1 commit): the viewBox used to be sized to the bars' own
+ * pixel geometry (barW=6·12 + gap=2·11 ≈ 94 units) rather than the band's actual width. An SVG
+ * with `width="100%"` + a FIXED `height` fits its viewBox via the default `preserveAspectRatio=
+ * "xMidYMid meet"`, which scales by the SMALLER of the two axis ratios — a ~94-unit-wide viewBox
+ * against a ~360px-wide, 56px-tall box binds on the height axis (scale 1) and leaves the bars a
+ * tiny centered cluster with ~130px of navy margin on each side. The fix is a FULL-width viewBox
+ * (~358, matching the band's available width — the same idiom `NetWorthChart`/`Sparkline` already
+ * use) with bar geometry recomputed to fill it (`barW = (W − (n−1)·gap) / n`), NOT
+ * `preserveAspectRatio="none"` — that would non-uniformly stretch the rounded caps into ellipses. */
 function CashflowBandChart({ cashflow }: { cashflow: { month: string; income: number; expense: number; net: number }[] }) {
   const C = useTheme();
   const { hc } = useBand();
-  const barW = 6, gap = 2, H = 56, base = H / 2, maxH = 22;
+  const W = 358, gap = 6, H = 60, base = H / 2, maxH = 24;
   const n = cashflow.length;
-  const W = n * barW + Math.max(0, n - 1) * gap;
+  const barW = (W - Math.max(0, n - 1) * gap) / n;
   const maxAbs = Math.max(...cashflow.map((p) => Math.abs(p.net)), 1);
   const posColor = hc(C.headerPos, C.pos);
   const negColor = hc(C.headerNeg, C.neg);
