@@ -10,6 +10,7 @@ export const pl: Dict = {
   "+ Group": "+ Grupa",
   "+ new account": "+ nowe konto",
   "+ {n} envelope within budget (avg {pct}%) | + {n} envelopes within budget (avg {pct}%)": { one: "+ {n} koperta w normie (śr. {pct}%)", few: "+ {n} koperty w normie (śr. {pct}%)", many: "+ {n} kopert w normie (śr. {pct}%)", other: "+ {n} kopert w normie (śr. {pct}%)" },
+  "+ {n} envelope without a goal — set one when editing an envelope. | + {n} envelopes without a goal — set one when editing an envelope.": { one: "+ {n} koperta bez celu — ustawisz go w edycji koperty.", few: "+ {n} koperty bez celu — ustawisz go w edycji koperty.", many: "+ {n} kopert bez celu — ustawisz go w edycji koperty.", other: "+ {n} kopert bez celu — ustawisz go w edycji koperty." },
   // Gender-neutral by construction ("jeszcze {n}" needs no agreement with the referent) — this
   // fold button serves all 4 Spending dimensions (Category/Envelope/Group/Place), whose Polish
   // nouns span all 3 grammatical genders ("koperta" f., "miejsce" n., ...), so every CLDR
@@ -223,7 +224,6 @@ export const pl: Dict = {
   "From screenshot": "Ze zrzutu",
   "Full resync from the server. Use when data looks out of sync.": "Pełny resync z serwera. Użyj, gdy dane wyglądają na rozjechane.",
   "Fun": "Rozrywka",
-  "Funded {pct}%": "Sfinansowano {pct}%",
   "Generate suggestion": "Generuj propozycję",
   "Generating…": "Generuję…",
   "Goals": "Cele",
@@ -252,6 +252,7 @@ export const pl: Dict = {
   "Item total: {sum} / {total}": "Suma pozycji: {sum} / {total}",
   "Language": "Język",
   "Largest expenses": "Największe wydatki",
+  "Last 12 months": "Ostatnie 12 miesięcy",
   "Last 6 months": "Ostatnie 6 miesięcy",
   "Last launch": "Ostatni start",
   "Last sync: {rel}.": "Ostatnia synchronizacja: {rel}.",
@@ -276,6 +277,7 @@ export const pl: Dict = {
   "Model": "Model",
   "Month in a nutshell": "Miesiąc w pigułce",
   "Monthly breakdown": "Zestawienie miesięczne",
+  "Monthly goals": "Cele miesięczne",
   "Monthly target (optional)": "Cel miesięczny (opcjonalnie)",
   "More": "Więcej",
   "More colors": "Więcej kolorów",
@@ -571,7 +573,7 @@ export const pl: Dict = {
   "removes the local copy and downloads your account's data": "usuwa lokalną kopię i pobiera dane Twojego konta",
   "rules": "reguły",
   "savings rate {pct}%": "stopa oszczędności {pct}%",
-  "savings rate {pct}% · your norm {norm}%": "stopa oszczędności {pct}% · twoja norma {norm}%",
+  "savings rate {pct}% · monthly median {norm}%": "stopa oszczędności {pct}% · mediana mies. {norm}%",
   "sends pending changes and fetches new ones from the server": "wysyła zaległe zmiany i pobiera nowe z serwera",
   "server": "serwer",
   "settings": "ustawienia",

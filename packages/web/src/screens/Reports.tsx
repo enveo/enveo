@@ -574,10 +574,23 @@ function AssetsReport({ netWorth, state, M, month, onPrev, onNext, onBack }: { n
 
 /**
  * "Cashflow" tab (Gabinet grammar, no dedicated mockup frame — follows A2/A3): band hero = the
- * 12-mo net total, sign-colored on the band; sub = the savings rate (`shared/savingsRate`, current
- * month vs the 12-mo median — the "your norm" clause), built from ONE message per case rather than
- * concatenated fragments so every locale can reorder the clause. Body: the Income/Expense/Net stat
- * trio, then the existing diverging monthly bars — structure/colors unchanged (already tokenized).
+ * 12-mo net total, sign-colored on the band. Eyebrow reads "Last 12 months" (shared with Trends'
+ * window-label idiom) rather than "Cash flow", which just repeated the screen title above it.
+ *
+ * Task P1 fix: the sub used to show the CURRENT month's savings rate next to a 12-MONTH hero — on
+ * real data a single bad month could read −58% under a positive +45,945 zł hero, i.e. two
+ * different periods presented as if they agreed. The sub now reports the same 12-mo AGGREGATE
+ * rate as the hero (`net/income` over the whole window, so the sign always matches), plus the
+ * trailing-11-month median for context (`shared/savingsRate().median`, unchanged) — built from ONE
+ * message per case rather than concatenated fragments so every locale can reorder the clause.
+ *
+ * `bandChart` (`CashflowBandChart`, below) repeats the monthly shape as diverging columns on the
+ * band itself. Body: the Income/Expense/Net stat trio, then the existing diverging monthly bars —
+ * each row now labeled with a 2-digit year suffix ("sie ’25") since a 12-mo window almost always
+ * crosses a year boundary; applied to EVERY row for consistency, and the label column widened
+ * 48→82px to fit it — measured live (agent-browser, PL locale): `monthLabel` uses the FULL
+ * Intl "long" month name (Polish has no short form here), and "Październik’25" alone needs 79px
+ * (`scrollWidth`), so 64px — the initially-planned width — still clipped into the bar column.
  */
 function CashflowReport({ cashflow, M, month, onPrev, onNext, onBack }: { cashflow: { month: string; income: number; expense: number; net: number }[]; M: Mask; month: string; onPrev: () => void; onNext: () => void; onBack: () => void }) {
   const C = useTheme();
@@ -587,9 +600,14 @@ function CashflowReport({ cashflow, M, month, onPrev, onNext, onBack }: { cashfl
   const totExpense = cashflow.reduce((s, p) => s + p.expense, 0);
   const totNet = totIncome - totExpense;
   const maxAbs = Math.max(...cashflow.map((p) => Math.abs(p.net)), 1);
-  const sr = savingsRate(cashflow);
-  const srPct = sr.current !== null ? Math.round(sr.current * 100) : null;
-  const srNorm = sr.median !== null ? Math.round(sr.median * 100) : null;
+  // 12-mo AGGREGATE rate — same window as the hero, so hero/sub never disagree in sign.
+  const aggRate = totIncome > 0 ? totNet / totIncome : null;
+  const aggPct = aggRate !== null ? Math.round(aggRate * 100) : null;
+  const srMedian = savingsRate(cashflow).median;
+  const srNormPct = srMedian !== null ? Math.round(srMedian * 100) : null;
+  // Month label with a 2-digit year suffix ("sie ’25") — the year is numeric so it needs no i18n
+  // key; captures `lang` from the closure above.
+  const rowLabel = (m: string) => `${monthLabel(m, lang).split(" ")[0]}’${m.slice(2, 4)}`;
   return (
     <ReportShell
       title={t(TITLES.cashflow)}
@@ -597,7 +615,7 @@ function CashflowReport({ cashflow, M, month, onPrev, onNext, onBack }: { cashfl
       onPrev={onPrev}
       onNext={onNext}
       onBack={onBack}
-      eyebrow={t("Cash flow")}
+      eyebrow={t("Last 12 months")}
       hero={
         <span style={{ color: totNet >= 0 ? hc(C.headerPos, C.pos) : hc(C.headerNeg, C.neg) }}>
           {totNet >= 0 ? "+" : "−"}
@@ -605,12 +623,13 @@ function CashflowReport({ cashflow, M, month, onPrev, onNext, onBack }: { cashfl
         </span>
       }
       sub={
-        srPct !== null
-          ? srNorm !== null
-            ? t("savings rate {pct}% · your norm {norm}%", { pct: srPct, norm: srNorm })
-            : t("savings rate {pct}%", { pct: srPct })
+        aggPct !== null
+          ? srNormPct !== null
+            ? t("savings rate {pct}% · monthly median {norm}%", { pct: aggPct, norm: srNormPct })
+            : t("savings rate {pct}%", { pct: aggPct })
           : undefined
       }
+      bandChart={cashflow.length > 0 ? <CashflowBandChart cashflow={cashflow} /> : undefined}
     >
       <div style={{ display: "flex", gap: 8, marginBottom: 14, marginTop: 4 }}>
         {([[t("Income"), totIncome, C.pos], [t("Expense"), totExpense, C.neg], [t("Net"), totNet, totNet >= 0 ? C.pos : C.neg]] as const).map(([label, val, col]) => (
@@ -624,7 +643,7 @@ function CashflowReport({ cashflow, M, month, onPrev, onNext, onBack }: { cashfl
         const w = (Math.abs(p.net) / maxAbs) * 50;
         return (
           <div key={p.month} style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 7 }}>
-            <span style={{ fontSize: 11, color: C.soft, width: 48, textAlign: "right", flexShrink: 0 }}>{monthLabel(p.month, lang).split(" ")[0]}</span>
+            <span style={{ fontSize: 11, color: C.soft, width: 82, textAlign: "right", flexShrink: 0 }}>{rowLabel(p.month)}</span>
             <div style={{ flex: 1, position: "relative", height: 12 }}>
               <div style={{ position: "absolute", left: "50%", top: 0, bottom: 0, width: 1, background: C.line }} />
               <div style={{ position: "absolute", top: 2, height: 8, borderRadius: 3, background: p.net >= 0 ? C.pos : C.neg, left: p.net >= 0 ? "50%" : `${50 - w}%`, width: `${w}%` }} />
@@ -634,6 +653,35 @@ function CashflowReport({ cashflow, M, month, onPrev, onNext, onBack }: { cashfl
         );
       })}
     </ReportShell>
+  );
+}
+
+/** Cashflow band chart (Task P1): 12-mo diverging columns painted on the band, same idiom as the
+ *  hub's `CashflowMini` chart but taller (height ~56 vs 34) and painted with band-aware tokens so
+ *  it stays legible on a Duet navy band as well as a plain theme. A net-ZERO month is not "up" or
+ *  "down" — it renders a 1px tick sitting ON the baseline in the muted color rather than a fake
+ *  colored bar (a zero-height bar would just look like a rendering bug otherwise). */
+function CashflowBandChart({ cashflow }: { cashflow: { month: string; income: number; expense: number; net: number }[] }) {
+  const C = useTheme();
+  const { hc } = useBand();
+  const barW = 6, gap = 2, H = 56, base = H / 2, maxH = 22;
+  const n = cashflow.length;
+  const W = n * barW + Math.max(0, n - 1) * gap;
+  const maxAbs = Math.max(...cashflow.map((p) => Math.abs(p.net)), 1);
+  const posColor = hc(C.headerPos, C.pos);
+  const negColor = hc(C.headerNeg, C.neg);
+  const baseColor = hc(tint(C.headerInk, 0.25), C.line);
+  return (
+    <svg viewBox={`0 0 ${W} ${H}`} width="100%" height={H} aria-hidden="true" style={{ display: "block", marginTop: 10 }}>
+      <line x1={0} y1={base} x2={W} y2={base} style={{ stroke: baseColor }} strokeWidth={1} />
+      {cashflow.map((p, i) => {
+        const x = i * (barW + gap);
+        if (p.net === 0) return <rect key={p.month} x={x} y={base - 0.5} width={barW} height={1} style={{ fill: baseColor }} />;
+        const h = Math.max(3, Math.round((Math.abs(p.net) / maxAbs) * maxH));
+        const y = p.net > 0 ? base - h : base;
+        return <rect key={p.month} x={x} y={y} width={barW} height={h} rx={2} style={{ fill: p.net > 0 ? posColor : negColor }} />;
+      })}
+    </svg>
   );
 }
 
@@ -971,13 +1019,26 @@ function BudgetsReport({
 /**
  * "Goals" tab (Gabinet grammar, no dedicated mockup frame — follows A2/A3): envelopes with a
  * monthly goal (monthlyTarget > 0), sorted ascending by %, then name — math EXCLUSIVELY via
- * `goalProgress`, zero duplication in the component. Band hero is the aggregate verdict ("All
- * goals funded ✓" in pos colors, or "Funded {pct}%" with an "{amount} to go" sub) — the per-row
- * funded/missing line below is NOT a repeat of that sentence, it is per-envelope. The `rows.length
- * > 0` guard keeps a budget with zero goals from reading as a false "All funded ✓" (nothing to
- * fund is not the same claim as everything funded); it instead shows a neutral 0% and the existing
- * empty-state copy in the body. Each row now leads with a `GoalRing` (kit.tsx) mirroring the hub
- * card, bar via `Bar`.
+ * `goalProgress`, zero duplication in the component. Eyebrow reads "Monthly goals" rather than
+ * "Goals", which just repeated the screen title above it.
+ *
+ * Task P1 fix: the hero used to be the whole SENTENCE ("All goals funded ✓") at 30px, which wraps
+ * to two clunky lines on the band for anything but the shortest locale. The hero is now the bare
+ * aggregate NUMBER (`{pctTotal}%`); the verdict sentence moved to the sub — "All goals funded ✓"
+ * in pos colors when every goal is funded, else the existing "{amount} to go". The `rows.length >
+ * 0` guard keeps a budget with zero goals from reading as a false "All funded ✓" (nothing to fund
+ * is not the same claim as everything funded); it instead shows a neutral 0% hero, no sub, and the
+ * existing empty-state copy in the body.
+ *
+ * Each row leads with a `GoalRing` (kit.tsx) mirroring the hub card — now colored `C.pos` once
+ * funded, via the ring's new `color` prop — and gets a new muted sub-line under the envelope name
+ * with the bare masked amounts (`funded / target`, no wording: a money pair reads fine without
+ * connecting words and stays locale-neutral, unlike the "monthly goal: …" key tiles.tsx uses
+ * elsewhere, which carries a label prefix this row doesn't need). Below all rows, a muted footer
+ * counts envelopes that have NO goal at all — those are invisible in the list above (goalProgress
+ * returns null for them), so without this line a user with mostly goal-less envelopes would have
+ * no idea more exist; hidden entirely when there is nothing to fold (rows.length === 0, since the
+ * empty-state message already covers that case; noGoalCount === 0).
  */
 function GoalsReport({
   state,
@@ -995,15 +1056,16 @@ function GoalsReport({
   onBack: () => void;
 }) {
   const C = useTheme();
-  const { t } = useT();
+  const { t, tp } = useT();
   const { hc } = useBand();
-  const rows = state.envelopes
-    .filter((e) => !e.archived)
+  const active = state.envelopes.filter((e) => !e.archived);
+  const rows = active
     .flatMap((e) => {
       const gp = goalProgress(e);
       return gp ? [{ e, gp }] : [];
     })
     .sort((a, b) => a.gp.pct - b.gp.pct || a.e.name.localeCompare(b.e.name));
+  const noGoalCount = active.length - rows.length;
   const fundedSum = rows.reduce((s, { e }) => s + Math.min(Math.max(0, e.allocated), e.monthlyTarget ?? 0), 0);
   const targetSum = rows.reduce((s, { e }) => s + (e.monthlyTarget ?? 0), 0);
   const pctTotal = targetSum > 0 ? Math.round((fundedSum / targetSum) * 100) : 0;
@@ -1016,20 +1078,34 @@ function GoalsReport({
       onPrev={onPrev}
       onNext={onNext}
       onBack={onBack}
-      eyebrow={t("Goals")}
-      hero={allFunded ? <span style={{ color: hc(C.headerPos, C.pos) }}>{t("All goals funded ✓")}</span> : t("Funded {pct}%", { pct: pctTotal })}
-      sub={rows.length > 0 && missSum > 0 ? t("{amount} to go", { amount: M(missSum) }) : undefined}
+      eyebrow={t("Monthly goals")}
+      hero={`${pctTotal}%`}
+      sub={
+        rows.length === 0
+          ? undefined
+          : allFunded
+            ? <span style={{ color: hc(C.headerPos, C.pos) }}>{t("All goals funded ✓")}</span>
+            : t("{amount} to go", { amount: M(missSum) })
+      }
     >
       {rows.length === 0 && <div style={{ fontSize: 12.5, color: C.mute, padding: "8px 0" }}>{t("No envelopes with a goal. Set a monthly target when editing an envelope.")}</div>}
       {rows.map(({ e, gp }) => {
         const barColor = gp.funded ? C.pos : "var(--accent)";
+        const fundedAmt = Math.min(Math.max(0, e.allocated), e.monthlyTarget ?? 0);
         return (
           <button key={e.id} onClick={() => onOpenEnvelope(e.id, state.month)} style={{ display: "block", width: "100%", background: "none", border: "none", padding: "0 0 12px", cursor: "pointer", textAlign: "left", fontFamily: "inherit" }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 8, marginBottom: 3 }}>
-              <span style={{ display: "flex", alignItems: "center", gap: 7, fontSize: 13, color: C.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                <GoalRing pct={gp.pct} size={16} />
-                {e.name}
-              </span>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8, marginBottom: 3 }}>
+              <div style={{ minWidth: 0, flex: 1 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 7, fontSize: 13, color: C.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  <GoalRing pct={gp.pct} size={16} color={gp.funded ? C.pos : undefined} />
+                  {e.name}
+                </div>
+                {/* Bare masked amounts, slash-joined — no i18n key: a money pair reads fine with no
+                   connecting words, and gluing one on would just force English word order. */}
+                <div style={{ fontSize: 10.5, color: C.mute, marginTop: 2 }}>
+                  {M(fundedAmt)} / {M(e.monthlyTarget ?? 0)}
+                </div>
+              </div>
               <span style={{ textAlign: "right", flexShrink: 0 }}>
                 <span style={{ display: "block", fontSize: 12.5, fontWeight: 700, color: gp.funded ? C.pos : C.text, fontVariantNumeric: "tabular-nums" }}>{Math.round(gp.pct)}%</span>
                 <span style={{ display: "block", fontSize: 10.5, color: gp.funded ? C.pos : C.soft, fontVariantNumeric: "tabular-nums" }}>
@@ -1041,6 +1117,11 @@ function GoalsReport({
           </button>
         );
       })}
+      {rows.length > 0 && noGoalCount > 0 && (
+        <div style={{ fontSize: 11, color: C.mute, padding: "6px 0 4px" }}>
+          {tp("+ {n} envelope without a goal — set one when editing an envelope. | + {n} envelopes without a goal — set one when editing an envelope.", noGoalCount)}
+        </div>
+      )}
     </ReportShell>
   );
 }
