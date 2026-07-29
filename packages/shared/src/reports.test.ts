@@ -420,6 +420,57 @@ describe("largestExpenses", () => {
     });
     expect(largestExpenses(l, "2026-07")).toEqual([]);
   });
+
+  it("context: envelope name, shown alongside a label that came from elsewhere (place)", () => {
+    const g = grp();
+    const e = env(g.id, { id: "E", name: "Jedzenie" });
+    const a = acc({ id: "A" });
+    const l = asClientLedger({
+      accounts: [a], groups: [g], envelopes: [e], allocations: [],
+      transactions: [tx({ id: "t1", type: "expense", accountId: "A", envelopeId: "E", placeId: "P1", amount: 10_00, date: "2026-07-01" })],
+    });
+    l.places = [{ id: "P1", name: "Sklep" }];
+    const rows = largestExpenses(l, "2026-07");
+    expect(rows[0]!.label).toBe("Sklep");
+    expect(rows[0]!.context).toBe("Jedzenie");
+  });
+
+  it("context: null when the label ITSELF is the envelope name (no place/name/note/category) — avoids a duplicate row", () => {
+    const g = grp();
+    const e = env(g.id, { id: "E", name: "Jedzenie" });
+    const a = acc({ id: "A" });
+    const l = asClientLedger({
+      accounts: [a], groups: [g], envelopes: [e], allocations: [],
+      transactions: [tx({ id: "t1", type: "expense", accountId: "A", envelopeId: "E", amount: 10_00, date: "2026-07-01" })],
+    });
+    const rows = largestExpenses(l, "2026-07");
+    expect(rows[0]!.label).toBe("Jedzenie");
+    expect(rows[0]!.context).toBeNull();
+  });
+
+  it("context: for a split, resolves from the DOMINANT (largest-amount) NON-SAVINGS item's envelope, ignoring a larger savings item", () => {
+    const g = grp();
+    const eSmall = env(g.id, { id: "SM", name: "Male" });
+    const eBig = env(g.id, { id: "BIG", name: "Duze" });
+    const eSav = env(g.id, { id: "SAV", name: "Oszczednosci", isSavings: true });
+    const a = acc({ id: "A" });
+    const l = asClientLedger({
+      accounts: [a], groups: [g], envelopes: [eSmall, eBig, eSav], allocations: [],
+      transactions: [
+        tx({
+          id: "t1", type: "expense", accountId: "A", placeId: "P1", amount: 700_00, date: "2026-07-01",
+          items: [
+            { id: "i1", envelopeId: "SM", categoryId: null, amount: 50_00 },
+            { id: "i2", envelopeId: "BIG", categoryId: null, amount: 150_00 }, // dominant among non-savings items
+            { id: "i3", envelopeId: "SAV", categoryId: null, amount: 500_00 }, // largest item overall, but savings — excluded
+          ],
+        }),
+      ],
+    });
+    l.places = [{ id: "P1", name: "Sklep" }];
+    const rows = largestExpenses(l, "2026-07");
+    expect(rows[0]!.context).toBe("Duze");
+  });
 });
 
 describe("spendingBaseline", () => {
