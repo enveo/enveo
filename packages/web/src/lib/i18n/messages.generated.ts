@@ -536,7 +536,7 @@ export const MESSAGES = [
   "already exists",
   "available after: {amount}",
   "avg {amount}/day",
-  "avg {amount}/day · peak: {date} ({amount2})",
+  "avg {avg}/day · peak: {date} ({peak})",
   "backup, end-to-end encryption, account",
   "cancel split",
   "collapse ▴",

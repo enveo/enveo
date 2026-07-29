@@ -1052,7 +1052,10 @@ function GoalsReport({
  * own horizontal padding doesn't match this body's, see kit.tsx). An empty month (no day with
  * positive spend) swaps the avg/peak caption for a single "No spending this month." line — the
  * heatmap needs no special-casing since every `<= 0` cell already renders `C.inset` — and both
- * list sections are hidden entirely (not rendered empty) when there is nothing to show.
+ * list sections are hidden entirely (not rendered empty) when there is nothing to show. Each
+ * "Largest expenses" row's muted secondary text prefers `context` (envelope/category, computed —
+ * and de-duplicated against `label` — in shared/reports.ts) and falls back to the transaction's
+ * own date only when `context` is null, so the slot is never empty.
  */
 function MonthReport({
   cashflow,
@@ -1069,7 +1072,7 @@ function MonthReport({
   cashflow: { month: string; income: number; expense: number; net: number }[];
   days: { date: string; total: number }[];
   places: { key: string; name: string; count: number; total: number }[];
-  largest: { id: string; label: string; date: string; amount: number }[];
+  largest: { id: string; label: string; context: string | null; date: string; amount: number }[];
   M: Mask;
   month: string;
   onPrev: () => void;
@@ -1083,13 +1086,14 @@ function MonthReport({
 
   const totIncome = cashflow.at(-1)?.income ?? 0;
   const totExpense = cashflow.at(-1)?.expense ?? 0;
-  const totNet = totIncome - totExpense;
+  const totNet = cashflow.at(-1)?.net ?? 0;
   const sr = savingsRate(cashflow);
   const srPct = sr.current !== null ? Math.round(sr.current * 100) : null;
 
-  // peak day: first occurrence wins a tie (strict `>` below never overwrites on equal totals)
-  let peak = days[0];
-  for (const d of days) if (peak === undefined || d.total > peak.total) peak = d;
+  // peak day: `reduce` with no seed requires a non-empty array (guaranteed by the length check),
+  // so no `undefined`-guard is needed inside the callback; first occurrence wins a tie (strict `>`
+  // never overwrites on an equal total).
+  const peak = days.length > 0 ? days.reduce((best, d) => (d.total > best.total ? d : best)) : undefined;
   const hasSpending = peak !== undefined && peak.total > 0;
   const avg = days.length > 0 ? Math.round(totExpense / days.length) : 0;
 
@@ -1121,7 +1125,7 @@ function MonthReport({
       <CalendarHeatmap days={days} lang={lang} mask={M} />
       <div style={{ fontSize: 11, color: C.mute, marginTop: 7 }}>
         {hasSpending && peak
-          ? t("avg {amount}/day · peak: {date} ({amount2})", { amount: M(avg), date: shortDate(peak.date, lang), amount2: M(peak.total) })
+          ? t("avg {avg}/day · peak: {date} ({peak})", { avg: M(avg), date: shortDate(peak.date, lang), peak: M(peak.total) })
           : t("No spending this month.")}
       </div>
 
@@ -1142,10 +1146,14 @@ function MonthReport({
       {largest.length > 0 && (
         <>
           <div style={eyebrowStyle}>{t("Largest expenses")}</div>
+          {/* Secondary text prefers `context` (shared/reports.ts: envelope name, else category
+             name, already suppressed there when it would just repeat `label`) — falling back to
+             the transaction's date only when there is no context at all, so the muted slot next
+             to the label is never empty. */}
           {largest.map((e, i) => (
             <div key={e.id} style={rowStyle(i === largest.length - 1)}>
               <span style={{ color: C.soft, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                {e.label} <span style={{ color: C.mute }}>· {shortDate(e.date, lang)}</span>
+                {e.label} <span style={{ color: C.mute }}>· {e.context ?? shortDate(e.date, lang)}</span>
               </span>
               <span style={{ fontWeight: 650, color: C.text, fontVariantNumeric: "tabular-nums", flexShrink: 0, marginLeft: 8 }}>{M(e.amount)}</span>
             </div>

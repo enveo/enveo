@@ -246,6 +246,12 @@ export function topPlaces(ledger: ClientLedger, fromMonth: string, toMonth: stri
 export interface LargestExpense {
   id: string;
   label: string;
+  /**
+   * Secondary text for the row (e.g. "US VAT · Podatki") — the transaction's envelope name, else
+   * its category name; `null` when neither resolves OR when the resolved string would just repeat
+   * `label` (see `contextFor`). Consumers should treat `null` as "nothing to show", not an error.
+   */
+  context: string | null;
   date: string;
   amount: Money;
 }
@@ -286,13 +292,45 @@ function labelFor(t: Transaction, ledger: ClientLedger): string {
 
 
 
+
+
+
+
+function contextFor(t: Transaction, ledger: ClientLedger, label: string, savings: Set<string>): string | null {
+  let context: string | null;
+  if (t.items.length > 0) {
+    const nonSavings = t.items.filter((it) => !savings.has(it.envelopeId));
+    const dominant = nonSavings.length > 0 ? nonSavings.reduce((a, b) => (b.amount > a.amount ? b : a)) : null;
+    context = dominant ? (ledger.envelopes.find((e) => e.id === dominant.envelopeId)?.name ?? null) : null;
+  } else {
+    const envelopeName = t.envelopeId ? (ledger.envelopes.find((e) => e.id === t.envelopeId)?.name ?? null) : null;
+    const categoryName = t.categoryId ? (ledger.categories.find((c) => c.id === t.categoryId)?.name ?? null) : null;
+    context = envelopeName ?? categoryName;
+  }
+  return context !== null && context !== label ? context : null;
+}
+
+
+
+
+
+
+
+
+
+
+
+
 export function largestExpenses(ledger: ClientLedger, month: string, limit = 5): LargestExpense[] {
   const savings = new Set(ledger.envelopes.filter((e) => e.isSavings).map((e) => e.id));
   return ledger.transactions
     .filter(
       (t) => t.type === "expense" && !t.isRefund && monthOf(t.date) === month && !savingsSplit(t, savings).fullySavings,
     )
-    .map((t) => ({ id: t.id, label: labelFor(t, ledger), date: t.date, amount: t.amount }))
+    .map((t) => {
+      const label = labelFor(t, ledger);
+      return { id: t.id, label, context: contextFor(t, ledger, label, savings), date: t.date, amount: t.amount };
+    })
     .sort((a, b) => b.amount - a.amount || b.date.localeCompare(a.date) || a.id.localeCompare(b.id))
     .slice(0, limit);
 }
