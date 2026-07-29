@@ -1,17 +1,24 @@
-
-
-
-
-
-
-
-
+/**
+ * Pure summaries for the Reports overview cards (spec 2026-07-11-raporty-b; A3 triage rule
+ * 2026-07-28).
+ *
+ * - `classifyBudget` — the THRESHOLD rule shared by `budgetsSummary` (hub card) and
+ *   `BudgetsReport` (subscreen, screens/Reports.tsx): over = spent > budget; near = not over
+ *   AND pct >= 80 AND there is still room to overrun (left > 0); everything else — including
+ *   pct === 100 with left === 0, i.e. spent EXACTLY down to the budget — reads as calm, not a
+ *   warning (the "amber-wall" fix: a used-up envelope isn't approaching a limit, it already
+ *   stopped at it).
+ * - `budgetsSummary` — envelope counters via `classifyBudget`; an envelope counts when it has
+ *   an allocation (allocated+carryIn>0) or spending in the month.
+ */
 
 export interface BudgetsSummary {
   over: number;  
   near: number;  
   ok: number;  
 }
+
+export type BudgetStatus = "over" | "near" | "ok";
 
 type BudgetEnvelope = {
   archived: boolean;
@@ -21,6 +28,13 @@ type BudgetEnvelope = {
 };
 
  
+export function classifyBudget(pct: number, left: number): BudgetStatus {
+  if (pct > 100) return "over";
+  if (pct >= 80 && left > 0) return "near";
+  return "ok";
+}
+
+ 
 export function budgetsSummary(envelopes: BudgetEnvelope[]): BudgetsSummary {
   const out: BudgetsSummary = { over: 0, near: 0, ok: 0 };
   for (const e of envelopes) {
@@ -28,9 +42,8 @@ export function budgetsSummary(envelopes: BudgetEnvelope[]): BudgetsSummary {
     if (!(e.allocated + e.carryIn > 0 || e.spent > 0)) continue;
     const budget = Math.max(1, e.allocated + e.carryIn);
     const pct = (Math.max(0, e.spent) / budget) * 100;
-    if (pct > 100) out.over++;
-    else if (pct >= 80) out.near++;
-    else out.ok++;
+    const left = e.allocated + e.carryIn - e.spent;  
+    out[classifyBudget(pct, left)]++;
   }
   return out;
 }
