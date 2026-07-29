@@ -31,7 +31,6 @@ const txn = (partial: Partial<Transaction> & { date: string }): Transaction => (
   accountId: "A1",
   toAccountId: null,
   amount: 1000,
-  confirmed: true,
   isRefund: false,
   envelopeId: null,
   placeId: null,

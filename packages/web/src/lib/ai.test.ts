@@ -23,7 +23,6 @@ const MONTH = "2026-07";
 const txn = (over: Partial<Transaction> & Pick<Transaction, "id" | "type" | "amount" | "date">): Transaction => ({
   accountId: "acc1",
   toAccountId: null,
-  confirmed: true,
   isRefund: false,
   envelopeId: null,
   placeId: null,

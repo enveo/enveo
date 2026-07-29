@@ -92,7 +92,6 @@ export function txnToPayload(t: Transaction): TxnPayload {
     toAccountId: t.toAccountId,
     amount: t.amount,
     date: t.date,
-    confirmed: t.confirmed,
     isRefund: t.isRefund,
     envelopeId: t.envelopeId,
     placeId: t.placeId,
@@ -129,20 +128,6 @@ function duplicateTxn(t: Transaction): string {
   }
    
   return createTxn({ ...base, envelopeId: t.envelopeId, categoryId: t.categoryId });
-}
-
-
-
-
-
-
-
-
-
-function confirmTxn(id: string): void {
-  const t = ledger().transactions.find((x) => x.id === id);
-  if (!t) return;
-  updateTxn(id, { ...txnToPayload(t), confirmed: true });
 }
 
  
@@ -224,7 +209,6 @@ export const local = {
   updateTxn,
   deleteTxn,
   duplicateTxn,
-  confirmTxn,
   setAllocation,
   createAccount,
   updateAccount,
