@@ -7,6 +7,7 @@ import {
   computeSpendingByDimension,
   prevMonth,
   savingsRate,
+  spendingBaseline,
   type SpendingDimension,
 } from "@enveo/shared";
 import { useLedgerVersion, type StateResponse } from "../lib/api";
@@ -14,13 +15,13 @@ import { store } from "../lib/store";
 import { Header } from "../components/chrome";
 import { GoalRing, useBand } from "../components/kit";
 import { ReportInfoNote } from "../components/ReportInfoNote";
-import { DeltaTag, SegBar, Sparkline, TrendSpark } from "../components/reportKit";
+import { Bar, DeltaTag, ReportShell, SegBar, Sparkline, TrendSpark } from "../components/reportKit";
 import { useMask, useTheme } from "../lib/contexts";
 import { monthLabel } from "../lib/dates";
 import { goalProgress } from "../lib/goals";
 import { useT, type Message, msg } from "../lib/i18n";
-import { budgetsSummary } from "../lib/reportSummary";
-import { P, TEAL } from "../lib/theme";
+import { budgetsSummary, classifyBudget } from "../lib/reportSummary";
+import { ENV_PALETTE, P, TEAL, tint } from "../lib/theme";
 
 export type ReportTab = "assets" | "cashflow" | "spending" | "budgets" | "goals" | "month" | "trends";
 /** Reports view: hub (band hero + mini-card grid) or a full-screen report subscreen. */
@@ -61,10 +62,7 @@ const RANGES: Array<{ n: number; label: Message }> = [
 type Mask = (n: number) => string;
 
 export function ReportsScreen({ state, month, view, onView, onOpenEnvelope, onMenu, onPrev, onNext }: { state: StateResponse; month: string; view: ReportView; onView: (v: ReportView) => void; onOpenEnvelope: (envId: string, month: string) => void; onMenu: () => void; onPrev: () => void; onNext: () => void }) {
-  const C = useTheme();
   const M = useMask();
-  const { t, lang } = useT();
-  const { band, hc } = useBand();
   const version = useLedgerVersion();
   // "Envelope" by default — in an envelope app it's the natural breakdown (categories are often empty)
   const [dim, setDim] = useState<SpendingDimension>("envelope");
@@ -83,8 +81,9 @@ export function ReportsScreen({ state, month, view, onView, onOpenEnvelope, onMe
     return l ? computeNetWorthSeries(l, month, 12) : [];
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [version, month, view]);
+  // also needed by "spending" (period-total delta vs the 3-mo median of expense)
   const cashflow = useMemo(() => {
-    if (view !== "cashflow" && view !== "overview") return [];
+    if (view !== "cashflow" && view !== "overview" && view !== "spending") return [];
     const l = store.getLedger();
     return l ? computeCashflowSeries(l, month, 12) : [];
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -95,6 +94,13 @@ export function ReportsScreen({ state, month, view, onView, onOpenEnvelope, onMe
     return l ? computeSpendingByDimension(l, fromMonth, month, dim) : [];
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [version, fromMonth, month, dim, view]);
+  // per-row baseline (median of the 3 months BEFORE `month`, same dimension) — row delta tags, range===1 only
+  const spBaseline = useMemo(() => {
+    if (view !== "spending") return new Map<string | null, number>();
+    const l = store.getLedger();
+    return l ? spendingBaseline(l, month, dim, 3) : new Map<string | null, number>();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [version, month, dim, view]);
   // hub-only series: current month's envelope breakdown, this month's daily totals, 6-mo envelope trends
   const hubSpending = useMemo(() => {
     if (view !== "overview") return [];
@@ -134,33 +140,40 @@ export function ReportsScreen({ state, month, view, onView, onOpenEnvelope, onMe
     );
   }
 
-  // ── Subscreen: its own header (back + title + month) and the report content ──
-  // Animation is `fi` ONLY (opacity) — `fu`/transform breaks position:fixed of sheets inside.
+  // ── Subscreen: each *Report component renders its own `ReportShell` — band eyebrow/hero/sub/
+  // chart are per-report, computed from what each screen already has. AssetsReport/CashflowReport/
+  // GoalsReport get a MECHANICAL wrap today (their internal redesign is Task 10's); Spending and
+  // Budgets (this task) fully own their band content. `ReportShell`'s body carries the `fi`
+  // (opacity-only) animation — `fu`/transform would break position:fixed sheets rendered inside.
+  const back = () => onView("overview");
   return (
     <div className="gs" style={{ flex: 1, overflowY: "auto", paddingBottom: 6 }}>
-      <div style={band ? { background: C.headerBg, paddingBottom: 2 } : undefined}>
-        <div style={{ display: "flex", alignItems: "center", gap: 6, padding: `12px ${P}px 10px` }}>
-          <button aria-label={t("Back")} onClick={() => onView("overview")} style={{ flexShrink: 0, width: 30, height: 30, borderRadius: 15, border: "none", background: "transparent", color: hc(C.headerInk, C.text), fontSize: 22, lineHeight: 1, cursor: "pointer", padding: 0, marginLeft: -6, display: "flex", alignItems: "center", justifyContent: "center" }}>‹</button>
-          <span style={{ flex: 1, fontSize: 16, fontWeight: 700, color: hc(C.headerInk, C.text), overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t(TITLES[view])}</span>
-          <span style={{ display: "flex", alignItems: "center", gap: 2, flexShrink: 0 }}>
-            <button onClick={onPrev} style={{ border: "none", background: "transparent", color: hc(C.headerMute, C.soft), fontSize: 17, lineHeight: 1, cursor: "pointer", padding: "2px 7px" }}>‹</button>
-            <span style={{ fontSize: 12.5, fontWeight: 600, color: hc(C.headerInk, C.text), minWidth: 58, textAlign: "center" }}>{monthLabel(month, lang).split(" ")[0]}</span>
-            <button onClick={onNext} style={{ border: "none", background: "transparent", color: hc(C.headerMute, C.soft), fontSize: 17, lineHeight: 1, cursor: "pointer", padding: "2px 7px" }}>›</button>
-          </span>
-        </div>
-      </div>
-      <div className="fi" style={{ padding: `0 ${P}px` }}>
-        {NOTES[view] && <ReportInfoNote id={view} textKey={NOTES[view]!} />}
-        {view === "assets" && <AssetsReport netWorth={netWorth} state={state} M={M} />}
-        {view === "cashflow" && <CashflowReport cashflow={cashflow} M={M} />}
-        {view === "spending" && <SpendingReport spending={spending} dim={dim} setDim={setDim} range={range} setRange={setRange} M={M} />}
-        {view === "budgets" && <BudgetsReport state={state} M={M} onOpenEnvelope={onOpenEnvelope} />}
-        {view === "goals" && <GoalsReport state={state} M={M} onOpenEnvelope={onOpenEnvelope} />}
-        {/* Month-in-a-nutshell subscreen — Task 11 fills this in. */}
-        {view === "month" && <div />}
-        {/* Envelope-trends subscreen — Task 12 fills this in. */}
-        {view === "trends" && <div />}
-      </div>
+      {view === "assets" && <AssetsReport netWorth={netWorth} state={state} M={M} month={month} onPrev={onPrev} onNext={onNext} onBack={back} note={NOTES.assets && <ReportInfoNote id="assets" textKey={NOTES.assets} />} />}
+      {view === "cashflow" && <CashflowReport cashflow={cashflow} M={M} month={month} onPrev={onPrev} onNext={onNext} onBack={back} note={NOTES.cashflow && <ReportInfoNote id="cashflow" textKey={NOTES.cashflow} />} />}
+      {view === "spending" && (
+        <SpendingReport
+          spending={spending}
+          cashflow={cashflow}
+          spBaseline={spBaseline}
+          state={state}
+          dim={dim}
+          setDim={setDim}
+          range={range}
+          setRange={setRange}
+          M={M}
+          month={month}
+          onPrev={onPrev}
+          onNext={onNext}
+          onBack={back}
+          note={NOTES.spending && <ReportInfoNote id="spending" textKey={NOTES.spending} />}
+        />
+      )}
+      {view === "budgets" && <BudgetsReport state={state} M={M} onOpenEnvelope={onOpenEnvelope} onPrev={onPrev} onNext={onNext} onBack={back} note={NOTES.budgets && <ReportInfoNote id="budgets" textKey={NOTES.budgets} />} />}
+      {view === "goals" && <GoalsReport state={state} M={M} onOpenEnvelope={onOpenEnvelope} onPrev={onPrev} onNext={onNext} onBack={back} note={NOTES.goals && <ReportInfoNote id="goals" textKey={NOTES.goals} />} />}
+      {/* Month-in-a-nutshell subscreen — Task 11 fills this in. */}
+      {view === "month" && <div />}
+      {/* Envelope-trends subscreen — Task 12 fills this in. */}
+      {view === "trends" && <div />}
     </div>
   );
 }
@@ -461,8 +474,10 @@ function TrendsMini({
   );
 }
 
-/** Net worth + assets (envelopes flagged as savings) in a single view. */
-function AssetsReport({ netWorth, state, M }: { netWorth: { month: string; total: number }[]; state: StateResponse; M: Mask }) {
+/** Net worth + assets (envelopes flagged as savings) in a single view. Mechanical `ReportShell`
+ *  wrap (Task 9): band hero/sub reuse the numbers this screen already computes — its own
+ *  redesign (chart into the band, etc.) is Task 10's. */
+function AssetsReport({ netWorth, state, M, month, onPrev, onNext, onBack, note }: { netWorth: { month: string; total: number }[]; state: StateResponse; M: Mask; month: string; onPrev: () => void; onNext: () => void; onBack: () => void; note: ReactNode }) {
   const C = useTheme();
   const { t } = useT();
   const nwLast = netWorth.at(-1)?.total ?? 0;
@@ -472,12 +487,24 @@ function AssetsReport({ netWorth, state, M }: { netWorth: { month: string; total
   const pct = nwLast !== 0 ? Math.round((total / nwLast) * 100) : 0;
   const max = Math.max(...savings.map((e) => Math.abs(e.available)), 1);
   return (
-    <>
-      <div style={{ fontSize: 15, fontWeight: 700, color: C.text, margin: "2px 0 4px" }}>{t("Net worth")}</div>
-      <div style={{ display: "flex", alignItems: "baseline", gap: 10, marginBottom: 12 }}>
-        <span style={{ fontSize: 22, fontWeight: 700, color: C.text, fontVariantNumeric: "tabular-nums" }}>{M(nwLast)}</span>
-        {nwDelta !== 0 && <span style={{ fontSize: 12.5, fontWeight: 600, color: nwDelta > 0 ? C.pos : C.neg, fontVariantNumeric: "tabular-nums" }}>{nwDelta > 0 ? "▲ +" : "▼ "}{M(Math.abs(nwDelta))} {t("m/m")}</span>}
-      </div>
+    <ReportShell
+      title={t(TITLES.assets)}
+      month={month}
+      onPrev={onPrev}
+      onNext={onNext}
+      onBack={onBack}
+      eyebrow={t("Net worth")}
+      hero={M(nwLast)}
+      sub={
+        nwDelta !== 0 ? (
+          <>
+            {nwDelta > 0 ? "▲ +" : "▼ "}
+            {M(Math.abs(nwDelta))} {t("m/m")}
+          </>
+        ) : undefined
+      }
+    >
+      {note}
       <NetWorthChart points={netWorth} mask={M} />
 
       <div style={{ fontSize: 15, fontWeight: 700, color: C.text, margin: "20px 0 4px" }}>{t("Wealth")}</div>
@@ -504,11 +531,12 @@ function AssetsReport({ netWorth, state, M }: { netWorth: { month: string; total
           ))}
         </>
       )}
-    </>
+    </ReportShell>
   );
 }
 
-function CashflowReport({ cashflow, M }: { cashflow: { month: string; income: number; expense: number; net: number }[]; M: Mask }) {
+/** Mechanical `ReportShell` wrap (Task 9) — internal redesign is Task 10's. */
+function CashflowReport({ cashflow, M, month, onPrev, onNext, onBack, note }: { cashflow: { month: string; income: number; expense: number; net: number }[]; M: Mask; month: string; onPrev: () => void; onNext: () => void; onBack: () => void; note: ReactNode }) {
   const C = useTheme();
   const { t, lang } = useT();
   const totIncome = cashflow.reduce((s, p) => s + p.income, 0);
@@ -516,9 +544,22 @@ function CashflowReport({ cashflow, M }: { cashflow: { month: string; income: nu
   const totNet = totIncome - totExpense;
   const maxAbs = Math.max(...cashflow.map((p) => Math.abs(p.net)), 1);
   return (
-    <>
-      <div style={{ fontSize: 15, fontWeight: 700, color: C.text, margin: "2px 0 8px" }}>{t("Cash flow (12 mo)")}</div>
-      <div style={{ display: "flex", gap: 8, marginBottom: 14 }}>
+    <ReportShell
+      title={t(TITLES.cashflow)}
+      month={month}
+      onPrev={onPrev}
+      onNext={onNext}
+      onBack={onBack}
+      eyebrow={t("Cash flow (12 mo)")}
+      hero={
+        <span style={{ color: totNet >= 0 ? C.pos : C.neg }}>
+          {totNet >= 0 ? "+" : "−"}
+          {M(Math.abs(totNet))}
+        </span>
+      }
+    >
+      {note}
+      <div style={{ display: "flex", gap: 8, marginBottom: 14, marginTop: 4 }}>
         {([[t("Income"), totIncome, C.pos], [t("Expense"), totExpense, C.neg], [t("Net"), totNet, totNet >= 0 ? C.pos : C.neg]] as const).map(([label, val, col]) => (
           <div key={label} style={{ flex: 1 }}>
             <div style={{ fontSize: 10.5, color: C.soft }}>{label}</div>
@@ -539,89 +580,344 @@ function CashflowReport({ cashflow, M }: { cashflow: { month: string; income: nu
           </div>
         );
       })}
-    </>
-  );
-}
-
-function SpendingReport({ spending, dim, setDim, range, setRange, M }: { spending: { key: string | null; name: string; amount: number; pct: number }[]; dim: SpendingDimension; setDim: (d: SpendingDimension) => void; range: number; setRange: (n: number) => void; M: Mask }) {
-  const C = useTheme();
-  const { t } = useT();
-  const spMax = Math.max(...spending.map((r) => r.amount), 1);
-  const spTotal = spending.reduce((s, r) => s + r.amount, 0);
-  return (
-    <>
-      <div style={{ fontSize: 15, fontWeight: 700, color: C.text, margin: "2px 0 8px" }}>{t("Spending by dimension")}</div>
-      <div style={{ display: "flex", gap: 6, marginBottom: 8, flexWrap: "wrap" }}>
-        {DIMENSIONS.map((d) => (
-          <button key={d.id} onClick={() => setDim(d.id)} style={{ padding: "5px 11px", borderRadius: 9, border: `1px solid ${dim === d.id ? TEAL : C.line}`, background: dim === d.id ? "var(--accent-1a)" : "transparent", color: dim === d.id ? TEAL : C.soft, fontSize: 12, fontWeight: 600, cursor: "pointer" }}>{t(d.label)}</button>
-        ))}
-      </div>
-      <div style={{ display: "flex", background: C.bg, borderRadius: 9, padding: 2, border: `1px solid ${C.line}`, marginBottom: 12 }}>
-        {RANGES.map((r) => (
-          <button key={r.n} onClick={() => setRange(r.n)} style={{ flex: 1, padding: "6px 0", borderRadius: 7, border: `1px solid ${range === r.n ? TEAL : "transparent"}`, fontSize: 11.5, fontWeight: 600, cursor: "pointer", background: range === r.n ? "var(--accent-1a)" : "transparent", color: range === r.n ? TEAL : C.soft }}>{t(r.label)}</button>
-        ))}
-      </div>
-      <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8, fontSize: 12.5 }}>
-        <span style={{ color: C.soft }}>{t("Total spending")}</span>
-        <span style={{ fontWeight: 700, color: C.text, fontVariantNumeric: "tabular-nums" }}>{M(spTotal)}</span>
-      </div>
-      {spending.length === 0 && <div style={{ fontSize: 12.5, color: C.mute, padding: "8px 0" }}>{t("No spending in this period.")}</div>}
-      {spending.map((r) => (
-        <div key={r.key ?? "none"} style={{ marginBottom: 9 }}>
-          <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 3 }}>
-            <span style={{ fontSize: 13, color: C.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.name}</span>
-            <span style={{ fontSize: 12.5, fontWeight: 600, color: C.text, fontVariantNumeric: "tabular-nums", flexShrink: 0, marginLeft: 8 }}>{M(r.amount)} · {Math.round(r.pct * 100)}%</span>
-          </div>
-          <div style={{ height: 8, background: C.line, borderRadius: 4, overflow: "hidden" }}>
-            <div style={{ height: "100%", width: `${(r.amount / spMax) * 100}%`, background: TEAL, borderRadius: 4 }} />
-          </div>
-        </div>
-      ))}
-    </>
+    </ReportShell>
   );
 }
 
 /**
- * "Budgets" tab (spec §4, evolution of "Overruns"): every envelope with an allocation
- * (allocated+carryIn > 0) or spending in the month; spent/budget bar with thresholds
- * >100% red / 80–100% amber / the rest in the envelope color; sorted descending by %.
+ * "Spending" tab (frame A2): band = period total + delta vs the 3-mo median of expense (range
+ * 1 only — longer ranges show the period instead) and a `SegBar` preview of the top-5 rows.
+ * Body: dimension chips, a range control, then per-row bars in the row's OWN color — envelope
+ * color when `dim==="envelope"`, a stable `ENV_PALETTE` rotation by row index otherwise (other
+ * dimensions have no color of their own). Rows beyond the top 10 fold behind a "+ N more"
+ * toggle (local `useState` — expands in place, same idiom as the hub's account list).
  */
-function BudgetsReport({ state, M, onOpenEnvelope }: { state: StateResponse; M: Mask; onOpenEnvelope: (envId: string, month: string) => void }) {
+function SpendingReport({
+  spending,
+  cashflow,
+  spBaseline,
+  state,
+  dim,
+  setDim,
+  range,
+  setRange,
+  M,
+  month,
+  onPrev,
+  onNext,
+  onBack,
+  note,
+}: {
+  spending: { key: string | null; name: string; amount: number; pct: number }[];
+  cashflow: { month: string; income: number; expense: number; net: number }[];
+  spBaseline: Map<string | null, number>;
+  state: StateResponse;
+  dim: SpendingDimension;
+  setDim: (d: SpendingDimension) => void;
+  range: number;
+  setRange: (n: number) => void;
+  M: Mask;
+  month: string;
+  onPrev: () => void;
+  onNext: () => void;
+  onBack: () => void;
+  note: ReactNode;
+}) {
   const C = useTheme();
   const { t, lang } = useT();
+  const { hc } = useBand();
+  const [expanded, setExpanded] = useState(false);
+
+  const spTotal = spending.reduce((s, r) => s + r.amount, 0);
+  const spMax = Math.max(...spending.map((r) => r.amount), 1);
+  // baseline = median of the 3 months BEFORE `month` (cashflow always ends at `month`) — same
+  // idiom as the hub's SpendingMini card, duplicated here rather than extracted.
+  const baseline3 = medianOf(cashflow.slice(-4, -1).map((p) => p.expense));
+  const totalDelta = baseline3 > 0 ? (spTotal - baseline3) / baseline3 : null;
+
+  const envColor = new Map(state.envelopes.map((e) => [e.id, e.color]));
+  const rowColor = (r: { key: string | null }, i: number): string => (dim === "envelope" && r.key && envColor.get(r.key)) || ENV_PALETTE[i % ENV_PALETTE.length]!;
+
+  const top5 = spending.slice(0, 5);
+  const restAmt = Math.max(0, spTotal - top5.reduce((s, r) => s + r.amount, 0));
+  // on a Duet band the "rest" segment must still read on navy — a low-alpha tint of the header
+  // ink; a plain theme falls back to the ordinary track color.
+  const restColor = hc(tint(C.headerInk, 0.25), C.line);
+  const segments = [...top5.map((r, i) => ({ weight: Math.max(0, r.amount), color: rowColor(r, i) })), ...(restAmt > 0 ? [{ weight: restAmt, color: restColor }] : [])];
+
+  const shown = expanded ? spending : spending.slice(0, 10);
+  const rest = spending.slice(10);
+
+  return (
+    <ReportShell
+      title={t(TITLES.spending)}
+      month={month}
+      onPrev={onPrev}
+      onNext={onNext}
+      onBack={onBack}
+      eyebrow={t("Total spending")}
+      hero={M(spTotal)}
+      sub={
+        range === 1 ? (
+          <>
+            <DeltaTag pct={totalDelta} /> {t("vs 3-mo median ({amount})", { amount: M(baseline3) })}
+          </>
+        ) : (
+          t("{n} months to {month}", { n: range, month: monthLabel(month, lang) })
+        )
+      }
+      bandChart={spending.length > 0 ? <SegBar segments={segments} height={9} /> : undefined}
+    >
+      {note}
+      <div style={{ display: "flex", gap: 6, marginTop: 2, marginBottom: 8, flexWrap: "wrap" }}>
+        {DIMENSIONS.map((d) => (
+          <button
+            key={d.id}
+            onClick={() => setDim(d.id)}
+            style={{
+              padding: "5px 12px",
+              borderRadius: 9,
+              border: `1px solid ${dim === d.id ? "var(--accent)" : C.line}`,
+              background: dim === d.id ? "var(--accent)" : "transparent",
+              // on-accent text: Duet's accent IS the navy band color (var(--accent) === C.headerBg
+              // there), so C.headerBg itself is unreadable on it — C.headerInk is the token for text
+              // painted ON that band (confirmed against a live Duet render, see task report). Other
+              // themes keep accent dark/saturated enough in light mode for plain white (the same
+              // literal already used by the accent-filled button in IconColorPicker.tsx).
+              color: dim === d.id ? hc(C.headerInk, "#fff") : C.soft,
+              fontSize: 12,
+              fontWeight: 650,
+              cursor: "pointer",
+            }}
+          >
+            {t(d.label)}
+          </button>
+        ))}
+      </div>
+      <div style={{ display: "flex", background: C.chip, borderRadius: 9, padding: 2, marginBottom: 12 }}>
+        {RANGES.map((r) => (
+          <button
+            key={r.n}
+            onClick={() => setRange(r.n)}
+            style={{
+              flex: 1,
+              padding: "6px 0",
+              borderRadius: 7,
+              border: "none",
+              fontSize: 11.5,
+              fontWeight: 650,
+              cursor: "pointer",
+              background: range === r.n ? C.card : "transparent",
+              color: range === r.n ? C.text : C.soft,
+              boxShadow: range === r.n ? "0 1px 2px rgba(20,20,28,0.08)" : "none",
+            }}
+          >
+            {t(r.label)}
+          </button>
+        ))}
+      </div>
+      {spending.length === 0 && <div style={{ fontSize: 12.5, color: C.mute, padding: "8px 0" }}>{t("No spending in this period.")}</div>}
+      {shown.map((r, i) => {
+        const color = rowColor(r, i);
+        const baseline = spBaseline.get(r.key) ?? 0;
+        const delta = baseline > 0 ? (r.amount - baseline) / baseline : null;
+        return (
+          <div key={r.key ?? "none"} style={{ marginBottom: 12 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 8, marginBottom: 3 }}>
+              <span style={{ display: "flex", alignItems: "center", gap: 7, fontSize: 13.5, color: C.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                <span aria-hidden style={{ width: 8, height: 8, borderRadius: 3, background: color, flexShrink: 0 }} />
+                {r.name}
+              </span>
+              <span style={{ fontSize: 13, fontWeight: 650, color: C.text, fontVariantNumeric: "tabular-nums", flexShrink: 0, marginLeft: 8 }}>
+                {M(r.amount)} · {Math.round(r.pct * 100)}%
+              </span>
+            </div>
+            <Bar pct={(r.amount / spMax) * 100} color={color} />
+            {range === 1 && (
+              <div style={{ textAlign: "right", marginTop: 2, fontSize: 11, color: C.soft }}>
+                <DeltaTag pct={delta} /> {t("vs 3 mo")}
+              </div>
+            )}
+          </div>
+        );
+      })}
+      {!expanded && rest.length > 0 && (
+        <button
+          onClick={() => setExpanded(true)}
+          style={{ display: "block", width: "100%", background: "none", border: "none", textAlign: "center", padding: "2px 0 8px", fontSize: 12, color: C.mute, cursor: "pointer", fontFamily: "inherit" }}
+        >
+          {t("+ {n} more · {amount}", { n: rest.length, amount: M(rest.reduce((s, r) => s + r.amount, 0)) })}
+        </button>
+      )}
+    </ReportShell>
+  );
+}
+
+/**
+ * "Budgets" tab (frame A3, triage): three sections — Overspent / Near limit / Within budget —
+ * classified via `classifyBudget` (lib/reportSummary.ts), the SAME rule the hub's Budgets
+ * mini-card uses via `budgetsSummary` — parity between hub and subscreen is the point of that
+ * helper. The "amber-wall" fix: an envelope spent EXACTLY down to 100% (left === 0) has no room
+ * left to overrun and reads as calm ("used up"), not a warning — near requires
+ * `pct >= 80 && left > 0`.
+ */
+function BudgetsReport({
+  state,
+  M,
+  onOpenEnvelope,
+  onPrev,
+  onNext,
+  onBack,
+  note,
+}: {
+  state: StateResponse;
+  M: Mask;
+  onOpenEnvelope: (envId: string, month: string) => void;
+  onPrev: () => void;
+  onNext: () => void;
+  onBack: () => void;
+  note: ReactNode;
+}) {
+  const C = useTheme();
+  const { t } = useT();
+  const { hc } = useBand();
+  const [expanded, setExpanded] = useState(false);
+
   const rows = state.envelopes
     .filter((e) => !e.archived && (e.allocated + e.carryIn > 0 || e.spent > 0))
     .map((e) => {
       const budget = Math.max(1, e.allocated + e.carryIn);
       const pct = (Math.max(0, e.spent) / budget) * 100;
-      return { e, pct, left: e.available };
-    })
-    .sort((a, b) => b.pct - a.pct || a.e.name.localeCompare(b.e.name));
+      const left = e.available;
+      return { e, pct, left, budget, status: classifyBudget(pct, left) };
+    });
+  const byPctDesc = (a: (typeof rows)[number], b: (typeof rows)[number]) => b.pct - a.pct || a.e.name.localeCompare(b.e.name);
+  const overRows = rows.filter((r) => r.status === "over").sort(byPctDesc);
+  const nearRows = rows.filter((r) => r.status === "near").sort(byPctDesc);
+  const okRows = rows.filter((r) => r.status === "ok");
+  // within "ok", pct can only be < 80 or exactly 100 (any pct in [80,100) is always "near" —
+  // spent < budget there means left > 0 by construction) — so this isolates the used-up rows.
+  const usedUpRows = okRows.filter((r) => r.pct >= 100);
+  const restOkRows = okRows.filter((r) => r.pct < 100);
+  const restAvgPct = restOkRows.length > 0 ? Math.round(restOkRows.reduce((s, r) => s + r.pct, 0) / restOkRows.length) : 0;
+  const overspendTotal = overRows.reduce((s, r) => s + -r.left, 0);
+
+  const pill = (label: string, swatch: string, key: string) => (
+    <span
+      key={key}
+      style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 11.5, fontWeight: 650, borderRadius: 9, padding: "4px 9px", background: hc(tint(C.headerInk, 0.13), C.chip), color: hc(C.headerInk, C.text) }}
+    >
+      <span aria-hidden style={{ width: 7, height: 7, borderRadius: "50%", background: swatch, flexShrink: 0 }} />
+      {label}
+    </span>
+  );
+  const rowBtnStyle = { display: "block", width: "100%", background: "none", border: "none", padding: "0 0 12px", cursor: "pointer", textAlign: "left" as const, fontFamily: "inherit" };
+  const rowHeadStyle = { display: "flex", justifyContent: "space-between", alignItems: "baseline" as const, gap: 8, marginBottom: 3 };
+  const rowNameStyle = { fontSize: 13, color: C.text, overflow: "hidden" as const, textOverflow: "ellipsis" as const, whiteSpace: "nowrap" as const };
+
   return (
-    <>
-      <div style={{ fontSize: 15, fontWeight: 700, color: C.text, margin: "2px 0 2px" }}>{t("Envelope budgets — {month}", { month: monthLabel(state.month, lang) })}</div>
-      <div style={{ fontSize: 11.5, color: C.mute, marginBottom: 10 }}>{t("This month's spending vs. the envelope budget (allocation + carry-over).")}</div>
+    <ReportShell
+      title={t(TITLES.budgets)}
+      month={state.month}
+      onPrev={onPrev}
+      onNext={onNext}
+      onBack={onBack}
+      eyebrow={overspendTotal > 0 ? t("Over budget") : t("Envelope budgets")}
+      hero={
+        overspendTotal > 0 ? (
+          <span style={{ color: hc(C.headerNeg, C.neg) }}>−{M(overspendTotal)}</span>
+        ) : (
+          <span style={{ color: hc(C.headerPos, C.pos) }}>{t("All within budget")}</span>
+        )
+      }
+      sub={overRows.length > 0 ? t("in {n} of {total} envelopes", { n: overRows.length, total: rows.length }) : undefined}
+      bandChart={
+        rows.length > 0 ? (
+          <div style={{ display: "flex", gap: 6, marginTop: 12, flexWrap: "wrap" }}>
+            {pill(t("{n} over", { n: overRows.length }), hc(C.headerNeg, C.neg), "over")}
+            {/* no dedicated on-band amber token exists (headerWarn) — C.warn already reads fine on the navy band */}
+            {pill(t("{n} near limit", { n: nearRows.length }), C.warn, "near")}
+            {pill(t("{n} OK", { n: okRows.length }), hc(C.headerPos, C.pos), "ok")}
+          </div>
+        ) : undefined
+      }
+    >
+      {note}
       {rows.length === 0 && <div style={{ fontSize: 12.5, color: C.mute, padding: "8px 0" }}>{t("No envelopes with a budget or spending this month.")}</div>}
-      {rows.map(({ e, pct, left }) => {
-        const barColor = pct > 100 ? C.neg : pct >= 80 ? C.warn : e.color;
-        return (
-          <button key={e.id} onClick={() => onOpenEnvelope(e.id, state.month)} style={{ display: "block", width: "100%", background: "none", border: "none", padding: "0 0 12px", cursor: "pointer", textAlign: "left", fontFamily: "inherit" }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 8, marginBottom: 3 }}>
-              <span style={{ fontSize: 13, color: C.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{e.name}</span>
-              <span style={{ textAlign: "right", flexShrink: 0 }}>
-                <span style={{ display: "block", fontSize: 12.5, fontWeight: 700, color: pct > 100 ? C.neg : pct >= 80 ? C.warn : C.text, fontVariantNumeric: "tabular-nums" }}>{Math.round(pct)}%</span>
-                <span style={{ display: "block", fontSize: 10.5, color: left < 0 ? C.neg : C.soft, fontVariantNumeric: "tabular-nums" }}>
-                  {left < 0 ? t("over by {amount}", { amount: M(-left) }) : t("{amount} left", { amount: M(left) })}
+
+      {overRows.length > 0 && (
+        <>
+          <div style={{ fontSize: 10.5, fontWeight: 750, letterSpacing: "0.16em", textTransform: "uppercase", color: C.neg, margin: "4px 2px 8px" }}>{t("Overspent")}</div>
+          {overRows.map(({ e, pct, left, budget }) => (
+            <button key={e.id} onClick={() => onOpenEnvelope(e.id, state.month)} style={rowBtnStyle}>
+              <div style={rowHeadStyle}>
+                <span style={rowNameStyle}>{e.name}</span>
+                <span style={{ fontSize: 12.5, fontWeight: 700, color: C.neg, fontVariantNumeric: "tabular-nums", flexShrink: 0 }}>
+                  {Math.round(pct)}% · +{M(-left)}
                 </span>
-              </span>
-            </div>
-            <div style={{ height: 8, background: C.line, borderRadius: 4, overflow: "hidden" }}>
-              <div style={{ height: "100%", width: `${Math.min(100, pct)}%`, background: barColor, borderRadius: 4 }} />
-            </div>
-          </button>
-        );
-      })}
-    </>
+              </div>
+              <div style={{ fontSize: 10.5, color: C.soft, marginBottom: 4 }}>{t("spent {spent} of {budget}", { spent: M(Math.max(0, e.spent)), budget: M(budget) })}</div>
+              <Bar pct={pct} color={C.neg} />
+            </button>
+          ))}
+        </>
+      )}
+
+      {nearRows.length > 0 && (
+        <>
+          <div style={{ fontSize: 10.5, fontWeight: 750, letterSpacing: "0.16em", textTransform: "uppercase", color: C.warn, margin: "18px 2px 8px" }}>{t("Near limit · ≥ 80%")}</div>
+          {nearRows.map(({ e, pct, left }) => (
+            <button key={e.id} onClick={() => onOpenEnvelope(e.id, state.month)} style={rowBtnStyle}>
+              <div style={rowHeadStyle}>
+                <span style={rowNameStyle}>{e.name}</span>
+                <span style={{ fontSize: 12.5, fontWeight: 700, color: C.warn, fontVariantNumeric: "tabular-nums", flexShrink: 0 }}>
+                  {Math.round(pct)}% · {t("{amount} left", { amount: M(left) })}
+                </span>
+              </div>
+              <Bar pct={pct} color={C.warn} />
+            </button>
+          ))}
+        </>
+      )}
+
+      {(usedUpRows.length > 0 || restOkRows.length > 0) && (
+        <>
+          <div style={{ fontSize: 10.5, fontWeight: 750, letterSpacing: "0.16em", textTransform: "uppercase", color: C.mute, margin: "18px 2px 8px" }}>{t("Within budget")}</div>
+          {usedUpRows.map(({ e, pct }) => (
+            <button key={e.id} onClick={() => onOpenEnvelope(e.id, state.month)} style={rowBtnStyle}>
+              <div style={rowHeadStyle}>
+                <span style={rowNameStyle}>{e.name}</span>
+                <span style={{ fontSize: 12.5, fontWeight: 700, color: C.soft, fontVariantNumeric: "tabular-nums", flexShrink: 0 }}>
+                  {Math.round(pct)}% · {t("used up")}
+                </span>
+              </div>
+              <Bar pct={100} color={C.mute} />
+            </button>
+          ))}
+          {restOkRows.length > 0 &&
+            (expanded ? (
+              restOkRows.map(({ e, pct, left }) => (
+                <button key={e.id} onClick={() => onOpenEnvelope(e.id, state.month)} style={rowBtnStyle}>
+                  <div style={rowHeadStyle}>
+                    <span style={rowNameStyle}>{e.name}</span>
+                    <span style={{ fontSize: 12.5, fontWeight: 700, color: C.text, fontVariantNumeric: "tabular-nums", flexShrink: 0 }}>
+                      {Math.round(pct)}% · {t("{amount} left", { amount: M(left) })}
+                    </span>
+                  </div>
+                  <Bar pct={pct} color={e.color} />
+                </button>
+              ))
+            ) : (
+              <button
+                onClick={() => setExpanded(true)}
+                style={{ display: "block", width: "100%", background: "none", border: "none", textAlign: "center", padding: "2px 0 8px", fontSize: 12, color: C.mute, cursor: "pointer", fontFamily: "inherit" }}
+              >
+                {t("+ {n} envelopes within budget (avg {pct}%)", { n: restOkRows.length, pct: restAvgPct })}
+              </button>
+            ))}
+        </>
+      )}
+    </ReportShell>
   );
 }
 
@@ -630,9 +926,26 @@ function BudgetsReport({ state, M, onOpenEnvelope }: { state: StateResponse; M: 
  * bar = funding (allocated) relative to the goal; sorted ascending by %, then name.
  * Math EXCLUSIVELY via goalProgress — zero duplication in the component.
  */
-function GoalsReport({ state, M, onOpenEnvelope }: { state: StateResponse; M: Mask; onOpenEnvelope: (envId: string, month: string) => void }) {
+/** Mechanical `ReportShell` wrap (Task 9) — internal redesign is Task 10's. */
+function GoalsReport({
+  state,
+  M,
+  onOpenEnvelope,
+  onPrev,
+  onNext,
+  onBack,
+  note,
+}: {
+  state: StateResponse;
+  M: Mask;
+  onOpenEnvelope: (envId: string, month: string) => void;
+  onPrev: () => void;
+  onNext: () => void;
+  onBack: () => void;
+  note: ReactNode;
+}) {
   const C = useTheme();
-  const { t, lang } = useT();
+  const { t } = useT();
   const rows = state.envelopes
     .filter((e) => !e.archived)
     .flatMap((e) => {
@@ -645,15 +958,18 @@ function GoalsReport({ state, M, onOpenEnvelope }: { state: StateResponse; M: Ma
   const pctTotal = targetSum > 0 ? Math.round((fundedSum / targetSum) * 100) : 0;
   const missSum = rows.reduce((s, { gp }) => s + gp.missing, 0);
   return (
-    <>
-      <div style={{ fontSize: 15, fontWeight: 700, color: C.text, margin: "2px 0 2px" }}>{t("Envelope goals — {month}", { month: monthLabel(state.month, lang) })}</div>
-      <div style={{ fontSize: 11.5, color: C.mute, marginBottom: 10 }}>{t("Funding vs monthly targets")}</div>
+    <ReportShell
+      title={t(TITLES.goals)}
+      month={state.month}
+      onPrev={onPrev}
+      onNext={onNext}
+      onBack={onBack}
+      eyebrow={t("Goals")}
+      hero={`${pctTotal}%`}
+      sub={rows.length > 0 ? (missSum === 0 ? t("All goals funded ✓") : t("Funded {pct}% · {amount} to go", { pct: pctTotal, amount: M(missSum) })) : undefined}
+    >
+      {note}
       {rows.length === 0 && <div style={{ fontSize: 12.5, color: C.mute, padding: "8px 0" }}>{t("No envelopes with a goal. Set a monthly target when editing an envelope.")}</div>}
-      {rows.length > 0 && (
-        <div style={{ fontSize: 12.5, fontWeight: 600, color: missSum === 0 ? C.pos : C.soft, marginBottom: 10, fontVariantNumeric: "tabular-nums" }}>
-          {missSum === 0 ? t("All goals funded ✓") : t("Funded {pct}% · {amount} to go", { pct: pctTotal, amount: M(missSum) })}
-        </div>
-      )}
       {rows.map(({ e, gp }) => {
         const barColor = gp.funded ? C.pos : "var(--accent)";
         return (
@@ -673,7 +989,7 @@ function GoalsReport({ state, M, onOpenEnvelope }: { state: StateResponse; M: Ma
           </button>
         );
       })}
-    </>
+    </ReportShell>
   );
 }
 
