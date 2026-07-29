@@ -62,7 +62,6 @@ export interface EditedImportItem {
   categoryId: string | null;
   placeName: string | null;
   note: string;
-  confirmed: boolean;
 }
 
 

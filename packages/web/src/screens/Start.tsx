@@ -24,7 +24,7 @@ export function StartScreen({
 }: {
   state: StateResponse;
   month: string;
-  onOpenTxns: (f?: { envId?: string; accId?: string; unconfirmed?: boolean }) => void;
+  onOpenTxns: (f?: { envId?: string; accId?: string }) => void;
   onOpenEnvelope: (envId: string, month: string) => void;
   onMenu: () => void;
   onPrev: () => void;
