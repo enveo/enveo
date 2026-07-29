@@ -234,12 +234,17 @@ export function TransactionsScreen({
                           // 30x30 hit target via NEGATIVE margin bleeding into the row's own padding/gap
                           // gutter, not a bigger box: this row is vertically tight (a text line next to a
                           // 12px glyph), so widening the button outright (ReportShell's chevron idiom) would
-                          // grow row height and make unconfirmed rows taller than confirmed ones. The glyph
-                          // stays exactly where the passive Ico used to sit.
+                          // grow row height and make unconfirmed rows taller than confirmed ones.
+                          // ASYMMETRIC on purpose: the amount span sits only 5px to the left (row `gap`).
+                          // A uniform -9px would bleed the invisible tap box 4px past that gap and into the
+                          // amount text, so a mistap on the last digit could silently confirm the txn (no
+                          // un-confirm from the list). Cap the left bleed at -3px (stays inside the 5px gap)
+                          // and recover the missing width on the right/top/bottom, where there's no neighbor
+                          // to overlap.
                           <button
                             onClick={(e) => { e.stopPropagation(); local.confirmTxn(tx.id); haptic([10, 30, 14]); }}
                             aria-label={t("Confirm transaction")}
-                            style={{ width: 30, height: 30, margin: "-9px", padding: 0, display: "flex", alignItems: "center", justifyContent: "center", background: "none", border: "none", cursor: "pointer", flexShrink: 0 }}
+                            style={{ width: 30, height: 30, margin: "-9px -12px -9px -3px", padding: 0, display: "flex", alignItems: "center", justifyContent: "center", background: "none", border: "none", cursor: "pointer", flexShrink: 0 }}
                           >
                             <Ico d="M12 8v4l3 2M12 22a10 10 0 100-20 10 10 0 000 20z" size={12} color={C.warn} sw={2} />
                           </button>
