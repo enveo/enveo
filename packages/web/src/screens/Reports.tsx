@@ -141,10 +141,10 @@ export function ReportsScreen({ state, month, view, onView, onOpenEnvelope, onMe
   }
 
   // ── Subscreen: each *Report component renders its own `ReportShell` — band eyebrow/hero/sub/
-  // chart are per-report, computed from what each screen already has. AssetsReport/CashflowReport/
-  // GoalsReport get a MECHANICAL wrap today (their internal redesign is Task 10's); Spending and
-  // Budgets (this task) fully own their band content. `ReportShell`'s body carries the `fi`
-  // (opacity-only) animation — `fu`/transform would break position:fixed sheets rendered inside.
+  // chart are per-report, computed from what each screen already has; every one of the five now
+  // fully owns its band content (Spending/Budgets: Task 9; Assets/Cashflow/Goals: Task 10).
+  // `ReportShell`'s body carries the `fi` (opacity-only) animation — `fu`/transform would break
+  // position:fixed sheets rendered inside.
   const back = () => onView("overview");
   return (
     <div className="gs" style={{ flex: 1, overflowY: "auto", paddingBottom: 6 }}>
@@ -474,12 +474,16 @@ function TrendsMini({
   );
 }
 
-/** Net worth + assets (envelopes flagged as savings) in a single view. Mechanical `ReportShell`
- *  wrap (Task 9): band hero/sub reuse the numbers this screen already computes — its own
- *  redesign (chart into the band, etc.) is Task 10's. */
+/**
+ * "Assets" tab (Gabinet grammar, no dedicated mockup frame — follows A2/A3): band hero = net
+ * worth + ▲/▼ m/m delta, `NetWorthChart` itself painted IN the band (`onBand`) so on Duet it
+ * reads as a cream line on navy rather than the invisible navy-on-navy TEAL would give. Body:
+ * the "Wealth" section (envelopes flagged `isSavings`) unchanged in content, bars via `Bar`.
+ */
 function AssetsReport({ netWorth, state, M, month, onPrev, onNext, onBack, note }: { netWorth: { month: string; total: number }[]; state: StateResponse; M: Mask; month: string; onPrev: () => void; onNext: () => void; onBack: () => void; note: ReactNode }) {
   const C = useTheme();
   const { t } = useT();
+  const { band } = useBand();
   const nwLast = netWorth.at(-1)?.total ?? 0;
   const nwDelta = nwLast - (netWorth.at(-2)?.total ?? nwLast);
   const savings = state.envelopes.filter((e) => !e.archived && e.isSavings);
@@ -503,10 +507,9 @@ function AssetsReport({ netWorth, state, M, month, onPrev, onNext, onBack, note 
           </>
         ) : undefined
       }
+      bandChart={netWorth.length > 0 ? <NetWorthChart points={netWorth} mask={M} onBand={band} /> : undefined}
     >
       {note}
-      <NetWorthChart points={netWorth} mask={M} />
-
       <div style={{ fontSize: 15, fontWeight: 700, color: C.text, margin: "20px 0 4px" }}>{t("Wealth")}</div>
       {savings.length === 0 ? (
         <div style={{ fontSize: 12.5, color: C.mute, padding: "4px 0", lineHeight: 1.6 }}>
@@ -524,9 +527,7 @@ function AssetsReport({ netWorth, state, M, month, onPrev, onNext, onBack, note 
                 <span style={{ fontSize: 13, color: C.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{e.name}</span>
                 <span style={{ fontSize: 12.5, fontWeight: 600, color: C.text, fontVariantNumeric: "tabular-nums", flexShrink: 0, marginLeft: 8 }}>{M(e.available)}</span>
               </div>
-              <div style={{ height: 8, background: C.line, borderRadius: 4, overflow: "hidden" }}>
-                <div style={{ height: "100%", width: `${(Math.max(0, e.available) / max) * 100}%`, background: TEAL, borderRadius: 4 }} />
-              </div>
+              <Bar pct={(Math.max(0, e.available) / max) * 100} color={TEAL} />
             </div>
           ))}
         </>
@@ -535,14 +536,24 @@ function AssetsReport({ netWorth, state, M, month, onPrev, onNext, onBack, note 
   );
 }
 
-/** Mechanical `ReportShell` wrap (Task 9) — internal redesign is Task 10's. */
+/**
+ * "Cashflow" tab (Gabinet grammar, no dedicated mockup frame — follows A2/A3): band hero = the
+ * 12-mo net total, sign-colored on the band; sub = the savings rate (`shared/savingsRate`, current
+ * month vs the 12-mo median — the "your norm" clause), built from ONE message per case rather than
+ * concatenated fragments so every locale can reorder the clause. Body: the Income/Expense/Net stat
+ * trio, then the existing diverging monthly bars — structure/colors unchanged (already tokenized).
+ */
 function CashflowReport({ cashflow, M, month, onPrev, onNext, onBack, note }: { cashflow: { month: string; income: number; expense: number; net: number }[]; M: Mask; month: string; onPrev: () => void; onNext: () => void; onBack: () => void; note: ReactNode }) {
   const C = useTheme();
   const { t, lang } = useT();
+  const { hc } = useBand();
   const totIncome = cashflow.reduce((s, p) => s + p.income, 0);
   const totExpense = cashflow.reduce((s, p) => s + p.expense, 0);
   const totNet = totIncome - totExpense;
   const maxAbs = Math.max(...cashflow.map((p) => Math.abs(p.net)), 1);
+  const sr = savingsRate(cashflow);
+  const srPct = sr.current !== null ? Math.round(sr.current * 100) : null;
+  const srNorm = sr.median !== null ? Math.round(sr.median * 100) : null;
   return (
     <ReportShell
       title={t(TITLES.cashflow)}
@@ -550,12 +561,19 @@ function CashflowReport({ cashflow, M, month, onPrev, onNext, onBack, note }: { 
       onPrev={onPrev}
       onNext={onNext}
       onBack={onBack}
-      eyebrow={t("Cash flow (12 mo)")}
+      eyebrow={t("Cash flow")}
       hero={
-        <span style={{ color: totNet >= 0 ? C.pos : C.neg }}>
+        <span style={{ color: totNet >= 0 ? hc(C.headerPos, C.pos) : hc(C.headerNeg, C.neg) }}>
           {totNet >= 0 ? "+" : "−"}
           {M(Math.abs(totNet))}
         </span>
+      }
+      sub={
+        srPct !== null
+          ? srNorm !== null
+            ? t("savings rate {pct}% · your norm {norm}%", { pct: srPct, norm: srNorm })
+            : t("savings rate {pct}%", { pct: srPct })
+          : undefined
       }
     >
       {note}
@@ -922,11 +940,16 @@ function BudgetsReport({
 }
 
 /**
- * "Goals" tab (spec §4): envelopes with a monthly goal (monthlyTarget > 0),
- * bar = funding (allocated) relative to the goal; sorted ascending by %, then name.
- * Math EXCLUSIVELY via goalProgress — zero duplication in the component.
+ * "Goals" tab (Gabinet grammar, no dedicated mockup frame — follows A2/A3): envelopes with a
+ * monthly goal (monthlyTarget > 0), sorted ascending by %, then name — math EXCLUSIVELY via
+ * `goalProgress`, zero duplication in the component. Band hero is the aggregate verdict ("All
+ * goals funded ✓" in pos colors, or "Funded {pct}%" with an "{amount} to go" sub) — the per-row
+ * funded/missing line below is NOT a repeat of that sentence, it is per-envelope. The `rows.length
+ * > 0` guard keeps a budget with zero goals from reading as a false "All funded ✓" (nothing to
+ * fund is not the same claim as everything funded); it instead shows a neutral 0% and the existing
+ * empty-state copy in the body. Each row now leads with a `GoalRing` (kit.tsx) mirroring the hub
+ * card, bar via `Bar`.
  */
-/** Mechanical `ReportShell` wrap (Task 9) — internal redesign is Task 10's. */
 function GoalsReport({
   state,
   M,
@@ -946,6 +969,7 @@ function GoalsReport({
 }) {
   const C = useTheme();
   const { t } = useT();
+  const { hc } = useBand();
   const rows = state.envelopes
     .filter((e) => !e.archived)
     .flatMap((e) => {
@@ -957,6 +981,7 @@ function GoalsReport({
   const targetSum = rows.reduce((s, { e }) => s + (e.monthlyTarget ?? 0), 0);
   const pctTotal = targetSum > 0 ? Math.round((fundedSum / targetSum) * 100) : 0;
   const missSum = rows.reduce((s, { gp }) => s + gp.missing, 0);
+  const allFunded = rows.length > 0 && missSum === 0;
   return (
     <ReportShell
       title={t(TITLES.goals)}
@@ -965,8 +990,8 @@ function GoalsReport({
       onNext={onNext}
       onBack={onBack}
       eyebrow={t("Goals")}
-      hero={`${pctTotal}%`}
-      sub={rows.length > 0 ? (missSum === 0 ? t("All goals funded ✓") : t("Funded {pct}% · {amount} to go", { pct: pctTotal, amount: M(missSum) })) : undefined}
+      hero={allFunded ? <span style={{ color: hc(C.headerPos, C.pos) }}>{t("All goals funded ✓")}</span> : t("Funded {pct}%", { pct: pctTotal })}
+      sub={rows.length > 0 && missSum > 0 ? t("{amount} to go", { amount: M(missSum) }) : undefined}
     >
       {note}
       {rows.length === 0 && <div style={{ fontSize: 12.5, color: C.mute, padding: "8px 0" }}>{t("No envelopes with a goal. Set a monthly target when editing an envelope.")}</div>}
@@ -975,7 +1000,10 @@ function GoalsReport({
         return (
           <button key={e.id} onClick={() => onOpenEnvelope(e.id, state.month)} style={{ display: "block", width: "100%", background: "none", border: "none", padding: "0 0 12px", cursor: "pointer", textAlign: "left", fontFamily: "inherit" }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 8, marginBottom: 3 }}>
-              <span style={{ fontSize: 13, color: C.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{e.name}</span>
+              <span style={{ display: "flex", alignItems: "center", gap: 7, fontSize: 13, color: C.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                <GoalRing pct={gp.pct} size={16} />
+                {e.name}
+              </span>
               <span style={{ textAlign: "right", flexShrink: 0 }}>
                 <span style={{ display: "block", fontSize: 12.5, fontWeight: 700, color: gp.funded ? C.pos : C.text, fontVariantNumeric: "tabular-nums" }}>{Math.round(gp.pct)}%</span>
                 <span style={{ display: "block", fontSize: 10.5, color: gp.funded ? C.pos : C.soft, fontVariantNumeric: "tabular-nums" }}>
@@ -983,9 +1011,7 @@ function GoalsReport({
                 </span>
               </span>
             </div>
-            <div style={{ height: 8, background: C.line, borderRadius: 4, overflow: "hidden" }}>
-              <div style={{ height: "100%", width: `${gp.pct}%`, background: barColor, borderRadius: 4 }} />
-            </div>
+            <Bar pct={gp.pct} color={barColor} />
           </button>
         );
       })}
@@ -993,8 +1019,11 @@ function GoalsReport({
   );
 }
 
-/** Net-worth line chart with the axis clipped to the min–max range. */
-function NetWorthChart({ points, mask }: { points: { month: string; total: number }[]; mask: Mask }) {
+/** Net-worth line chart with the axis clipped to the min–max range. `onBand` (Assets' hero chart,
+ *  painted directly on the Duet navy band) swaps the accent stroke/points for `C.headerInk` (TEAL
+ *  — i.e. `var(--accent)` — IS the band color there, so it would be invisible navy-on-navy) and the
+ *  caption color for `C.headerMute`; plain themes (onBand omitted/false) keep today's accent look. */
+function NetWorthChart({ points, mask, onBand }: { points: { month: string; total: number }[]; mask: Mask; onBand?: boolean }) {
   const C = useTheme();
   const { t, lang } = useT();
   const n = points.length;
@@ -1011,17 +1040,20 @@ function NetWorthChart({ points, mask }: { points: { month: string; total: numbe
   const pts = points.map((p, i) => [x(i), y(p.total)] as const);
   const line = pts.map(([px, py], i) => `${i === 0 ? "M" : "L"}${px.toFixed(1)} ${py.toFixed(1)}`).join(" ");
   const area = `${line} L${x(n - 1).toFixed(1)} ${(H - padY).toFixed(1)} L${x(0).toFixed(1)} ${(H - padY).toFixed(1)} Z`;
+  const stroke = onBand ? C.headerInk : TEAL;
+  const hole = onBand ? C.headerBg : C.bg;
+  const caption = onBand ? C.headerMute : C.mute;
   return (
     <div style={{ marginBottom: 6 }}>
       <svg viewBox={`0 0 ${W} ${H}`} width="100%" style={{ display: "block", height: "auto" }} role="img" aria-label={t("Net worth over time")}>
         {/* fill/stroke via style — var(--accent) does not work in SVG presentation attributes */}
-        <path d={area} style={{ fill: TEAL }} opacity={0.12} />
-        <path d={line} fill="none" style={{ stroke: TEAL }} strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" vectorEffect="non-scaling-stroke" />
+        <path d={area} style={{ fill: stroke }} opacity={0.12} />
+        <path d={line} fill="none" style={{ stroke }} strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" vectorEffect="non-scaling-stroke" />
         {pts.map(([px, py], i) => (
-          <circle key={i} cx={px} cy={py} r={i === n - 1 ? 4 : 2.4} style={{ fill: i === n - 1 ? TEAL : C.bg, stroke: TEAL }} strokeWidth={1.6} vectorEffect="non-scaling-stroke" />
+          <circle key={i} cx={px} cy={py} r={i === n - 1 ? 4 : 2.4} style={{ fill: i === n - 1 ? stroke : hole, stroke }} strokeWidth={1.6} vectorEffect="non-scaling-stroke" />
         ))}
       </svg>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginTop: 4, fontSize: 10.5, color: C.mute }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginTop: 4, fontSize: 10.5, color: caption }}>
         <span>{monthLabel(points[0]!.month, lang).split(" ")[0]}</span>
         <span style={{ fontVariantNumeric: "tabular-nums" }}>{t("range {min}–{max}", { min: mask(min), max: mask(max) })}</span>
         <span>{monthLabel(points[n - 1]!.month, lang).split(" ")[0]}</span>
