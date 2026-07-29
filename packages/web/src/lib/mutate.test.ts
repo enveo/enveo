@@ -18,8 +18,6 @@ const TXN = crypto.randomUUID();
  * A SPLIT expense exercising every field txnToPayload must carry through: a refund,
  * a place, a tag (import idempotency key), a note distinct from the name, and a
  * balanced split with a per-item category.
- * `confirmed` is set only because Transaction still requires it (type-forced until
- * shared drops confirmed) — txnToPayload no longer maps it.
  */
 const splitTxn = (): Transaction => ({
   id: TXN,
@@ -28,7 +26,6 @@ const splitTxn = (): Transaction => ({
   toAccountId: null,
   amount: 5000,
   date: "2026-07-01",
-  confirmed: false, // type-forced until shared drops confirmed
   isRefund: true,
   envelopeId: null,
   placeId: PLACE,

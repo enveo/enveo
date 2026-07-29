@@ -297,7 +297,6 @@ export const applyInput = z.object({
         toAccountId: z.string().uuid().nullable().optional(), // required for transfer
         isRefund: z.boolean().optional(), // expense only; otherwise ignored
         note: z.string().max(2000).optional(),
-        confirmed: z.boolean().optional(),
         /* Deliberate add despite a sure duplicate (the user edited an
            "already exists" item in review) — skips classifyDup for this item. */
         force: z.boolean().optional(),
@@ -338,7 +337,6 @@ export function applyTxnValues(it: ApplyItem, globalAccountId: string) {
     toAccountId: transfer ? (it.toAccountId ?? null) : null,
     amount: it.amount,
     date: it.date,
-    confirmed: it.confirmed ?? true,
     isRefund: it.type === "expense" ? (it.isRefund ?? false) : false,
     envelopeId: transfer ? null : it.envelopeId,
     categoryId: transfer ? null : (it.categoryId ?? null),

@@ -173,7 +173,6 @@ describe("backup-compat: pre-3.2 recurrence fields do not break /sync/replace", 
           toAccountId: null,
           amount: 500,
           date: "2026-01-01",
-          confirmed: true,
           isRefund: false,
           envelopeId: null,
           placeId: null,
@@ -352,11 +351,19 @@ describe.skipIf(!TEST_URL)("sync/pull: the change journal is scoped to one budge
     // (migration 0018) — there is nowhere left for the pre-3.2 `recurrences` key or the
     // transaction's `planned`/`recurrenceId` fields to land; zod strips them as unrecognized,
     // and the transaction itself still imports correctly.
-    // The fixture ALSO submits a second, `planned: true` legacy template transaction (amount
-    // 999999) — clientLedgerSchema's preprocess must drop it before `restoreLedger` ever sees
-    // it, so exactly ONE row (the real transaction, amount 500) lands in the DB, not two.
-    expect(out.transactionRows).toHaveLength(1);
-    expect(out.transactionRows[0]!.amount).toBe(500);
+    // The fixture submits THREE transactions, and the two legacy fields it exercises behave
+    // OPPOSITELY:
+    //  - `planned: true` (amount 999999) is a legacy recurring-payments TEMPLATE row that was
+    //    always excluded from every ledger computation — clientLedgerSchema's preprocess must
+    //    drop it before `restoreLedger` ever sees it, so it must NOT land.
+    //  - `confirmed: false` (amount 777) is the removed transaction-confirmation flag (API task
+    //    2) — unlike `planned`, `confirmed` never excluded a row from any computation (every
+    //    transaction always counted in balances), so once the field is gone from
+    //    `transactionEntity`, zod silently strips the now-unrecognized key and the row MUST land
+    //    as an ordinary transaction, same as the real one (amount 500).
+    // → exactly TWO rows (500 and 777) land in the DB, not three, and never 999999.
+    expect(out.transactionRows).toHaveLength(2);
+    expect(out.transactionRows.map((r) => r.amount).sort((a, b) => a - b)).toEqual([500, 777]);
     expect(out.transactionRows.every((r) => r.amount !== 999999)).toBe(true);
     // GROUND TRUTH, not just "the code doesn't reference it": query information_schema
     // directly, so a future re-introduction of `recurrences` fails this test loudly instead of

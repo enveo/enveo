@@ -84,8 +84,6 @@ function deleteTxn(id: string): void {
  * field verbatim (split items included, item ids stripped — txnItemPayload has
  * no id). The ONE field list `duplicateTxn` builds on, so a new Transaction field
  * can't silently fall out of sync with it.
- * `confirmed` is omitted — optional in TxnPayload, and the UI no longer reads/writes
- * it (type-forced until shared drops confirmed).
  */
 export function txnToPayload(t: Transaction): TxnPayload {
   return {

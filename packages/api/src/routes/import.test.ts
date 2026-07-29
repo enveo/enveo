@@ -60,11 +60,10 @@ describe("import/apply — extended items", () => {
     expect(applyTxnValues(baseItem({ type: "income", isRefund: true }), ACC_A).isRefund).toBe(false);
   });
 
-  it("per-item account overrides the global one; note and confirmed from the item", () => {
-    const v = applyTxnValues(baseItem({ accountId: ACC_B, note: "rata 2/12", confirmed: false }), ACC_A);
+  it("per-item account overrides the global one; note from the item", () => {
+    const v = applyTxnValues(baseItem({ accountId: ACC_B, note: "rata 2/12" }), ACC_A);
     expect(v.accountId).toBe(ACC_B);
     expect(v.note).toBe("rata 2/12");
-    expect(v.confirmed).toBe(false);
   });
 
   it("dedupe as before: editing the AMOUNT drops out of the strong key (date+amount+source_ref)", () => {
@@ -99,7 +98,6 @@ describe("import/apply — extended items", () => {
       type: "expense",
       accountId: ACC_A,
       toAccountId: null,
-      confirmed: true,
       isRefund: false,
       envelopeId: ENV,
       note: null,

@@ -8,7 +8,7 @@
  * - txn.create/update: normalization like insertTxn (transfer ⇒ envelopeId null,
  *   toAccountId kept, categoryId stays — the server clears categoryId ONLY
  *   for splits; items>0 ⇒ parent envelopeId/categoryId null), defaults
- *   confirmed=true, isRefund=false, nullable ⇒ null.
+ *   isRefund=false, nullable ⇒ null.
  *   Update = full field replacement (LWW), items delete+reinsert,
  *   `createdAt` is NEVER changed (server PATCH does not touch created_at).
  * - update/delete on a missing id ⇒ no-op (server: rejected / delete
@@ -82,7 +82,6 @@ function txnFromCreate(p: OpPayload<"txn.create">): Transaction {
     toAccountId: p.type === "transfer" ? (p.toAccountId ?? null) : null,
     amount: p.amount,
     date: p.date,
-    confirmed: p.confirmed ?? true,
     isRefund: p.isRefund ?? false,
     envelopeId: p.type === "transfer" ? null : envelopeId,
     placeId: p.placeId ?? null,
@@ -105,7 +104,6 @@ function txnFromUpdate(prev: Transaction, p: OpPayload<"txn.update">): Transacti
     toAccountId: p.type === "transfer" ? (p.toAccountId ?? null) : null,
     amount: p.amount,
     date: p.date,
-    confirmed: p.confirmed ?? true,
     isRefund: p.isRefund ?? false,
     envelopeId: p.type === "transfer" ? null : items.length > 0 ? null : (p.envelopeId ?? null),
     placeId: p.placeId ?? null,
