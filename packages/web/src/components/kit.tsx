@@ -88,8 +88,9 @@ export function HighlightedText({ text, query }: { text: string; query: string }
   );
 }
 
-/** Monthly-goal ring (spec §3.3) — accent-colored; full circle = goal met. */
-export function GoalRing({ pct, size = 14 }: { pct: number; size?: number }) {
+/** Monthly-goal ring (spec §3.3) — accent-colored by default; pass `color` to override (e.g.
+ *  `C.pos` for a fully-funded ring, GoalsReport rows). Full circle = goal met. */
+export function GoalRing({ pct, size = 14, color = "var(--accent)" }: { pct: number; size?: number; color?: string }) {
   const C = useTheme();
   const r = (size - 3) / 2;
   const c = 2 * Math.PI * r;
@@ -100,7 +101,7 @@ export function GoalRing({ pct, size = 14 }: { pct: number; size?: number }) {
       <circle cx={mid} cy={mid} r={r} style={{ fill: "none", stroke: C.line, strokeWidth: 3 }} />
       <circle
         cx={mid} cy={mid} r={r}
-        style={{ fill: "none", stroke: "var(--accent)", strokeWidth: 3, strokeLinecap: "round", strokeDasharray: `${arc} ${c}` }}
+        style={{ fill: "none", stroke: color, strokeWidth: 3, strokeLinecap: "round", strokeDasharray: `${arc} ${c}` }}
         transform={`rotate(-90 ${mid} ${mid})`}
       />
     </svg>

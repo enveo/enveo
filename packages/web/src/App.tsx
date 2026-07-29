@@ -50,6 +50,7 @@ export default function App() {
   const [txQuery, setTxQuery] = useState("");
   const [txEnvFilter, setTxEnvFilter] = useState<ReadonlySet<string>>(new Set());
   const [txAccFilter, setTxAccFilter] = useState<ReadonlySet<string>>(new Set());
+  const [txUnconfirmedFilter, setTxUnconfirmedFilter] = useState(false);
   const { data: state, isLoading, isError } = useStateQuery(month);
 
   // local replica boot: hydrate from IDB → (empty ⇒ snapshot) → pull deltas
@@ -90,13 +91,15 @@ export default function App() {
   // setReportsView AFTER nav — within the same batch the last write wins, so it overrides the
   // reset to "overview".
   const openReports = (tab: ReportTab) => { nav("reports"); setReportsView(tab); };
-  // enter the transaction list with a preselected filter (envelope OR account) — from an
-  // envelope/account tile or sheet. Clean, focused view: set the given filter, clear
-  // the other dimension and the search box.
-  const openTxns = (f?: { envId?: string; accId?: string }) => {
+  // enter the transaction list with a preselected filter (envelope OR account, optionally
+  // "only unconfirmed") — from an envelope/account tile or sheet (the account sheet's
+  // "Uncleared" row deep-links with unconfirmed: true). Clean, focused view: set the given
+  // filter, clear the other dimensions and the search box.
+  const openTxns = (f?: { envId?: string; accId?: string; unconfirmed?: boolean }) => {
     setTxQuery("");
     setTxEnvFilter(f?.envId ? new Set([f.envId]) : new Set());
     setTxAccFilter(f?.accId ? new Set([f.accId]) : new Set());
+    setTxUnconfirmedFilter(!!f?.unconfirmed);
     setEditTxn(null);
     setEnvView(null);
     setEditReturn("start");
@@ -185,7 +188,7 @@ export default function App() {
             <>
               {screen === "start" && <StartScreen state={state} month={month} onOpenTxns={openTxns} onOpenEnvelope={openEnvelope} onMenu={() => setDrawer(true)} onPrev={prev} onNext={next} onNav={nav} onQuickAdd={onQuickAdd} />}
               {screen === "budget" && <BudgetScreen state={state} month={month} onMenu={() => setDrawer(true)} onPrev={prev} onNext={next} onOpenEnvelope={openEnvelope} initialSuggest={budgetSuggest} />}
-              {screen === "transactions" && <TransactionsScreen state={state} month={month} onMenu={() => setDrawer(true)} onPrev={prev} onNext={next} onEditTxn={(t) => editTxnFrom(t, "transactions")} query={txQuery} setQuery={setTxQuery} envFilter={txEnvFilter} setEnvFilter={setTxEnvFilter} accFilter={txAccFilter} setAccFilter={setTxAccFilter} />}
+              {screen === "transactions" && <TransactionsScreen state={state} month={month} onMenu={() => setDrawer(true)} onPrev={prev} onNext={next} onEditTxn={(t) => editTxnFrom(t, "transactions")} query={txQuery} setQuery={setTxQuery} envFilter={txEnvFilter} setEnvFilter={setTxEnvFilter} accFilter={txAccFilter} setAccFilter={setTxAccFilter} unconfirmedFilter={txUnconfirmedFilter} setUnconfirmedFilter={setTxUnconfirmedFilter} />}
               {screen === "accounts" && <AccountsScreen state={state} onMenu={() => setDrawer(true)} />}
               {screen === "reports" && <ReportsScreen state={state} month={month} view={reportsView} onView={setReportsView} onOpenEnvelope={openEnvelope} onMenu={() => setDrawer(true)} onPrev={prev} onNext={next} />}
               {screen === "addExpense" && <AddScreen state={state} editTxn={editTxn} onDone={doneEdit} initialTab={addPreset.tab} initialImport={addPreset.importSheet} />}
