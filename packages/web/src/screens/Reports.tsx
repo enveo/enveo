@@ -17,7 +17,6 @@ import { useLedgerVersion, type StateResponse } from "../lib/api";
 import { store } from "../lib/store";
 import { Header } from "../components/chrome";
 import { GoalRing, useBand } from "../components/kit";
-import { ReportInfoNote } from "../components/ReportInfoNote";
 import { Bar, CalendarHeatmap, DeltaTag, ReportShell, SegBar, Sparkline, TrendSpark } from "../components/reportKit";
 import { useMask, useTheme } from "../lib/contexts";
 import { monthLabel, shortDate } from "../lib/dates";
@@ -37,18 +36,6 @@ const TITLES: Record<ReportTab, Message> = {
   goals: msg("Goals"),
   month: msg("Month in a nutshell"),
   trends: msg("Envelope trends"),
-};
-/**
- * "How to read this" note per report (ReportInfoNote renders `**bold**`). Deliberately has NO
- * entry for "month"/"trends" — the whole ⓘ-note mechanism is retired in Task 13, so the two new
- * tabs never get one; the subscreen render guards on presence rather than assuming every tab has one.
- */
-const NOTES: Partial<Record<ReportTab, Message>> = {
-  assets: msg("All account balances minus liabilities, month by month. When the line **goes up**, you are building wealth; dips are explained in Cashflow."),
-  cashflow: msg("Income minus spending, month by month. Bar **to the right** = you are saving, **to the left** = the month ran a deficit."),
-  spending: msg("Where your money actually went in the selected period — grouped by category, envelope, group, or place."),
-  budgets: msg("Spending versus the amounts available in envelopes. **Amber** = approaching the limit (≥ 80%), **red** = overspent."),
-  goals: msg("How much of each envelope's monthly target you have **funded**. A full bar = the contribution is set aside, regardless of how much of it you have spent."),
 };
 const DIMENSIONS: Array<{ id: SpendingDimension; label: Message }> = [
   { id: "category", label: msg("Category") },
@@ -170,8 +157,8 @@ export function ReportsScreen({ state, month, view, onView, onOpenEnvelope, onMe
   const back = () => onView("overview");
   return (
     <div className="gs" style={{ flex: 1, overflowY: "auto", paddingBottom: 6 }}>
-      {view === "assets" && <AssetsReport netWorth={netWorth} state={state} M={M} month={month} onPrev={onPrev} onNext={onNext} onBack={back} note={NOTES.assets && <ReportInfoNote id="assets" textKey={NOTES.assets} />} />}
-      {view === "cashflow" && <CashflowReport cashflow={cashflow} M={M} month={month} onPrev={onPrev} onNext={onNext} onBack={back} note={NOTES.cashflow && <ReportInfoNote id="cashflow" textKey={NOTES.cashflow} />} />}
+      {view === "assets" && <AssetsReport netWorth={netWorth} state={state} M={M} month={month} onPrev={onPrev} onNext={onNext} onBack={back} />}
+      {view === "cashflow" && <CashflowReport cashflow={cashflow} M={M} month={month} onPrev={onPrev} onNext={onNext} onBack={back} />}
       {view === "spending" && (
         <SpendingReport
           spending={spending}
@@ -187,13 +174,12 @@ export function ReportsScreen({ state, month, view, onView, onOpenEnvelope, onMe
           onPrev={onPrev}
           onNext={onNext}
           onBack={back}
-          note={NOTES.spending && <ReportInfoNote id="spending" textKey={NOTES.spending} />}
         />
       )}
-      {view === "budgets" && <BudgetsReport state={state} M={M} onOpenEnvelope={onOpenEnvelope} onPrev={onPrev} onNext={onNext} onBack={back} note={NOTES.budgets && <ReportInfoNote id="budgets" textKey={NOTES.budgets} />} />}
-      {view === "goals" && <GoalsReport state={state} M={M} onOpenEnvelope={onOpenEnvelope} onPrev={onPrev} onNext={onNext} onBack={back} note={NOTES.goals && <ReportInfoNote id="goals" textKey={NOTES.goals} />} />}
+      {view === "budgets" && <BudgetsReport state={state} M={M} onOpenEnvelope={onOpenEnvelope} onPrev={onPrev} onNext={onNext} onBack={back} />}
+      {view === "goals" && <GoalsReport state={state} M={M} onOpenEnvelope={onOpenEnvelope} onPrev={onPrev} onNext={onNext} onBack={back} />}
       {view === "month" && (
-        <MonthReport cashflow={cashflow} days={dailySpending} places={monthPlaces} largest={monthLargest} M={M} month={month} onPrev={onPrev} onNext={onNext} onBack={back} note={NOTES.month && <ReportInfoNote id="month" textKey={NOTES.month} />} />
+        <MonthReport cashflow={cashflow} days={dailySpending} places={monthPlaces} largest={monthLargest} M={M} month={month} onPrev={onPrev} onNext={onNext} onBack={back} />
       )}
       {view === "trends" && (
         <TrendsReport
@@ -204,7 +190,6 @@ export function ReportsScreen({ state, month, view, onView, onOpenEnvelope, onMe
           onPrev={onPrev}
           onNext={onNext}
           onBack={back}
-          note={NOTES.trends && <ReportInfoNote id="trends" textKey={NOTES.trends} />}
         />
       )}
     </div>
@@ -525,7 +510,7 @@ function TrendsMini({
  * reads as a cream line on navy rather than the invisible navy-on-navy TEAL would give. Body:
  * the "Wealth" section (envelopes flagged `isSavings`) unchanged in content, bars via `Bar`.
  */
-function AssetsReport({ netWorth, state, M, month, onPrev, onNext, onBack, note }: { netWorth: { month: string; total: number }[]; state: StateResponse; M: Mask; month: string; onPrev: () => void; onNext: () => void; onBack: () => void; note: ReactNode }) {
+function AssetsReport({ netWorth, state, M, month, onPrev, onNext, onBack }: { netWorth: { month: string; total: number }[]; state: StateResponse; M: Mask; month: string; onPrev: () => void; onNext: () => void; onBack: () => void }) {
   const C = useTheme();
   const { t } = useT();
   const { band } = useBand();
@@ -554,7 +539,6 @@ function AssetsReport({ netWorth, state, M, month, onPrev, onNext, onBack, note 
       }
       bandChart={netWorth.length > 0 ? <NetWorthChart points={netWorth} mask={M} onBand={band} /> : undefined}
     >
-      {note}
       <div style={{ fontSize: 15, fontWeight: 700, color: C.text, margin: "20px 0 4px" }}>{t("Wealth")}</div>
       {savings.length === 0 ? (
         <div style={{ fontSize: 12.5, color: C.mute, padding: "4px 0", lineHeight: 1.6 }}>
@@ -588,7 +572,7 @@ function AssetsReport({ netWorth, state, M, month, onPrev, onNext, onBack, note 
  * concatenated fragments so every locale can reorder the clause. Body: the Income/Expense/Net stat
  * trio, then the existing diverging monthly bars — structure/colors unchanged (already tokenized).
  */
-function CashflowReport({ cashflow, M, month, onPrev, onNext, onBack, note }: { cashflow: { month: string; income: number; expense: number; net: number }[]; M: Mask; month: string; onPrev: () => void; onNext: () => void; onBack: () => void; note: ReactNode }) {
+function CashflowReport({ cashflow, M, month, onPrev, onNext, onBack }: { cashflow: { month: string; income: number; expense: number; net: number }[]; M: Mask; month: string; onPrev: () => void; onNext: () => void; onBack: () => void }) {
   const C = useTheme();
   const { t, lang } = useT();
   const { hc } = useBand();
@@ -621,7 +605,6 @@ function CashflowReport({ cashflow, M, month, onPrev, onNext, onBack, note }: { 
           : undefined
       }
     >
-      {note}
       <div style={{ display: "flex", gap: 8, marginBottom: 14, marginTop: 4 }}>
         {([[t("Income"), totIncome, C.pos], [t("Expense"), totExpense, C.neg], [t("Net"), totNet, totNet >= 0 ? C.pos : C.neg]] as const).map(([label, val, col]) => (
           <div key={label} style={{ flex: 1 }}>
@@ -669,7 +652,6 @@ function SpendingReport({
   onPrev,
   onNext,
   onBack,
-  note,
 }: {
   spending: { key: string | null; name: string; amount: number; pct: number }[];
   cashflow: { month: string; income: number; expense: number; net: number }[];
@@ -684,7 +666,6 @@ function SpendingReport({
   onPrev: () => void;
   onNext: () => void;
   onBack: () => void;
-  note: ReactNode;
 }) {
   const C = useTheme();
   const { t, lang } = useT();
@@ -731,7 +712,6 @@ function SpendingReport({
       }
       bandChart={spending.length > 0 ? <SegBar segments={segments} height={9} /> : undefined}
     >
-      {note}
       <div style={{ display: "flex", gap: 6, marginTop: 2, marginBottom: 8, flexWrap: "wrap" }}>
         {DIMENSIONS.map((d) => (
           <button
@@ -831,7 +811,6 @@ function BudgetsReport({
   onPrev,
   onNext,
   onBack,
-  note,
 }: {
   state: StateResponse;
   M: Mask;
@@ -839,7 +818,6 @@ function BudgetsReport({
   onPrev: () => void;
   onNext: () => void;
   onBack: () => void;
-  note: ReactNode;
 }) {
   const C = useTheme();
   const { t } = useT();
@@ -905,7 +883,6 @@ function BudgetsReport({
         ) : undefined
       }
     >
-      {note}
       {rows.length === 0 && <div style={{ fontSize: 12.5, color: C.mute, padding: "8px 0" }}>{t("No envelopes with a budget or spending this month.")}</div>}
 
       {overRows.length > 0 && (
@@ -1002,7 +979,6 @@ function GoalsReport({
   onPrev,
   onNext,
   onBack,
-  note,
 }: {
   state: StateResponse;
   M: Mask;
@@ -1010,7 +986,6 @@ function GoalsReport({
   onPrev: () => void;
   onNext: () => void;
   onBack: () => void;
-  note: ReactNode;
 }) {
   const C = useTheme();
   const { t } = useT();
@@ -1038,7 +1013,6 @@ function GoalsReport({
       hero={allFunded ? <span style={{ color: hc(C.headerPos, C.pos) }}>{t("All goals funded ✓")}</span> : t("Funded {pct}%", { pct: pctTotal })}
       sub={rows.length > 0 && missSum > 0 ? t("{amount} to go", { amount: M(missSum) }) : undefined}
     >
-      {note}
       {rows.length === 0 && <div style={{ fontSize: 12.5, color: C.mute, padding: "8px 0" }}>{t("No envelopes with a goal. Set a monthly target when editing an envelope.")}</div>}
       {rows.map(({ e, gp }) => {
         const barColor = gp.funded ? C.pos : "var(--accent)";
@@ -1092,7 +1066,6 @@ function MonthReport({
   onPrev,
   onNext,
   onBack,
-  note,
 }: {
   cashflow: { month: string; income: number; expense: number; net: number }[];
   days: { date: string; total: number }[];
@@ -1103,7 +1076,6 @@ function MonthReport({
   onPrev: () => void;
   onNext: () => void;
   onBack: () => void;
-  note: ReactNode;
 }) {
   const C = useTheme();
   const { t, lang } = useT();
@@ -1145,7 +1117,6 @@ function MonthReport({
           : t("income {income} · spending {expense}", { income: M(totIncome), expense: M(totExpense) })
       }
     >
-      {note}
       <div style={eyebrowStyle}>{t("Day by day")}</div>
       <CalendarHeatmap days={days} lang={lang} mask={M} />
       <div style={{ fontSize: 11, color: C.mute, marginTop: 7 }}>
@@ -1212,7 +1183,6 @@ function TrendsReport({
   onPrev,
   onNext,
   onBack,
-  note,
 }: {
   trends: EnvelopeTrend[];
   M: Mask;
@@ -1221,7 +1191,6 @@ function TrendsReport({
   onPrev: () => void;
   onNext: () => void;
   onBack: () => void;
-  note: ReactNode;
 }) {
   const C = useTheme();
   const { t } = useT();
@@ -1238,7 +1207,6 @@ function TrendsReport({
       eyebrow={t("Last 6 months")}
       hero={t("{n} rising · {m} falling", { n: rising, m: falling })}
     >
-      {note}
       {trends.length === 0 && (
         <div style={{ fontSize: 12.5, color: C.mute, padding: "8px 0" }}>
           {t("Not enough history yet — trends appear after two months of spending.")}
