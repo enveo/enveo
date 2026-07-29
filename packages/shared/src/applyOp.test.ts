@@ -40,7 +40,6 @@ function base(): ClientLedger {
     transactions: [],
     categories: [{ id: "C1", name: "Jedzenie" }],
     places: [{ id: "P1", name: "Lidl" }],
-    recurrences: [],
   };
 }
 
@@ -74,8 +73,6 @@ describe("applyOp: txn.create", () => {
       name: null,
       note: null,
       tag: null,
-      planned: false, // DB default
-      recurrenceId: null,
       items: [],
       createdAt: "2026-06-05T10:00:00.000Z",
     });
@@ -176,8 +173,6 @@ describe("applyOp: txn.update", () => {
       name: null,
       note: null, // full replacement — a field not sent = null
       tag: "LIDL", // tag undefined → kept
-      planned: false,
-      recurrenceId: null,
       items: [], // delete+reinsert: payload without items ⇒ empty
       createdAt: "2026-06-01T08:00:00.000Z", // NEVER changed
     });
@@ -441,93 +436,14 @@ describe("applyOp: group.*", () => {
   });
 });
 
-/* ── dictionaries + recurrence ──────────────────────────────────────── */
+/* ── dictionaries ──────────────────────────────────────────────────── */
 
-describe("applyOp: category/place/recurrence create", () => {
+describe("applyOp: category/place create", () => {
   it("appends dictionary rows", () => {
     let l = apply(base(), "category.create", { id: "C9", name: "Paliwo" });
     l = apply(l, "place.create", { id: "P9", name: "Orlen" });
-    l = apply(l, "recurrence.create", { id: "R9", rule: "monthly", startDate: "2026-06-01" });
     expect(l.categories[1]).toEqual({ id: "C9", name: "Paliwo" });
     expect(l.places[1]).toEqual({ id: "P9", name: "Orlen" });
-    expect(l.recurrences[0]).toEqual({
-      id: "R9",
-      rule: "monthly",
-      startDate: "2026-06-01",
-      endDate: null, // omitted → null
-      pausedUntil: null, // omitted → null (DB default)
-    });
-  });
-
-  it("recurrence.create with pausedUntil keeps the field", () => {
-    const l = apply(base(), "recurrence.create", {
-      id: "R9",
-      rule: "monthly",
-      startDate: "2026-06-01",
-      pausedUntil: "2026-09-01",
-    });
-    expect(l.recurrences[0]!.pausedUntil).toBe("2026-09-01");
-  });
-});
-
-/* ── recurrence.update / recurrence.delete ──────────────────────────── */
-
-describe("applyOp: recurrence.update", () => {
-  const withRec = (): ClientLedger =>
-    apply(base(), "recurrence.create", { id: "R1", rule: "monthly", startDate: "2026-06-01" });
-
-  it("partial merge: sets pausedUntil, other fields untouched", () => {
-    const next = apply(withRec(), "recurrence.update", { id: "R1", pausedUntil: "2026-08-01" });
-    expect(next.recurrences[0]).toEqual({
-      id: "R1",
-      rule: "monthly",
-      startDate: "2026-06-01",
-      endDate: null,
-      pausedUntil: "2026-08-01",
-    });
-    // null clears the pause; undefined (missing field) keeps it
-    const cleared = apply(next, "recurrence.update", { id: "R1", pausedUntil: null });
-    expect(cleared.recurrences[0]!.pausedUntil).toBeNull();
-    const kept = apply(next, "recurrence.update", { id: "R1", endDate: "2026-12-31" });
-    expect(kept.recurrences[0]!.pausedUntil).toBe("2026-08-01");
-    expect(kept.recurrences[0]!.endDate).toBe("2026-12-31");
-    expect(kept.recurrences[0]!.rule).toBe("monthly");
-  });
-
-  it("unknown id → no-op (same reference); 2× replay idempotent", () => {
-    const l = withRec();
-    const frozen = deepFreeze(l);
-    expect(
-      applyOp(frozen, mkOp("recurrence.update", { id: "MISSING", pausedUntil: "2026-08-01" })),
-    ).toBe(frozen);
-    const once = apply(l, "recurrence.update", { id: "R1", pausedUntil: "2026-08-01", rule: "yearly" });
-    const twice = apply(once, "recurrence.update", { id: "R1", pausedUntil: "2026-08-01", rule: "yearly" });
-    expect(twice).toEqual(once); // replay does not change state
-  });
-});
-
-describe("applyOp: recurrence.delete", () => {
-  it("removes the rule and NULLs the transactions' recurrenceId (FK SET NULL) — transactions STAY", () => {
-    const l: ClientLedger = {
-      ...apply(base(), "recurrence.create", { id: "R1", rule: "monthly", startDate: "2026-06-01" }),
-      transactions: [
-        tx({ id: "T1", accountId: "A1", envelopeId: "E1", recurrenceId: "R1", planned: true, confirmed: false }),
-        tx({ id: "T2", accountId: "A1", envelopeId: "E1", recurrenceId: "R1" }), // historical
-        tx({ id: "T3", accountId: "A1", envelopeId: "E1", recurrenceId: null }),
-      ],
-    };
-    const next = apply(l, "recurrence.delete", { id: "R1" });
-    expect(next.recurrences).toEqual([]);
-    expect(next.transactions.map((t) => t.id)).toEqual(["T1", "T2", "T3"]); // nothing removed
-    expect(next.transactions.map((t) => t.recurrenceId)).toEqual([null, null, null]);
-    expect(next.transactions[2]).toBe(l.transactions[2]!); // untouched — shared reference
-  });
-
-  it("missing id → no-op (idempotent 2× replay)", () => {
-    const l = apply(base(), "recurrence.create", { id: "R1", rule: "monthly", startDate: "2026-06-01" });
-    const once = apply(l, "recurrence.delete", { id: "R1" });
-    const frozen = deepFreeze(once);
-    expect(applyOp(frozen, mkOp("recurrence.delete", { id: "R1" }))).toBe(frozen);
   });
 });
 
@@ -569,28 +485,28 @@ describe("applyOp: create on an existing id is a no-op", () => {
     expect(next.transactions[0]!.amount).toBe(99_00);
   });
 
-  it("account/group/envelope/category/place/recurrence.create: existing id ⇒ no-op", () => {
-    let l = base();
-    l = apply(l, "recurrence.create", { id: "R1", rule: "monthly", startDate: "2026-06-01" });
+  it("account/group/envelope/category/place.create: existing id ⇒ no-op", () => {
+    const l = base();
 
     expect(apply(l, "account.create", { id: "A1", name: "Dubel" })).toBe(l);
     expect(apply(l, "group.create", { id: "G1", name: "Dubel" })).toBe(l);
     expect(apply(l, "envelope.create", { id: "E1", groupId: "G2", name: "Dubel" })).toBe(l);
     expect(apply(l, "category.create", { id: "C1", name: "Dubel" })).toBe(l);
     expect(apply(l, "place.create", { id: "P1", name: "Dubel" })).toBe(l);
-    expect(
-      apply(l, "recurrence.create", { id: "R1", rule: "weekly", startDate: "2026-07-01" }),
-    ).toBe(l);
   });
 });
 
 /* ── unknown kind ───────────────────────────────────────────────────── */
 
 describe("applyOp: unknown kind", () => {
-  it("throws (validation happens at enqueue, not in the reducer)", () => {
-    expect(() =>
-      applyOp(base(), { opId: "x", kind: "nope.nope", payload: {} } as unknown as SyncOp),
-    ).toThrow("unknown op kind");
+  it("unknown op kind is a no-op (ops queued by an older/retired app version)", () => {
+    const l = base();
+    const out = applyOp(l, {
+      opId: "x",
+      kind: "legacy.retiredFeature",
+      payload: { id: "R1" },
+    } as never);
+    expect(out).toBe(l); // same reference — pass-through, not a rebuild
   });
 });
 

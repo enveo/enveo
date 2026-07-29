@@ -171,7 +171,7 @@ function UnverifiedReplicaNotice() {
   );
 }
 
-/** Op kind → what the user sees in the rejected-changes list. Exhaustive: a new op must be named here. */
+/** Op kind → what the user sees in the rejected-changes list. */
 const OP_LABEL: Record<OpKind, Message> = {
   "txn.create": msg("New transaction"),
   "txn.update": msg("Transaction change"),
@@ -188,9 +188,6 @@ const OP_LABEL: Record<OpKind, Message> = {
   "envelope.delete": msg("Envelope deletion"),
   "category.create": msg("New category"),
   "place.create": msg("New place"),
-  "recurrence.create": msg("New recurrence"),
-  "recurrence.update": msg("Recurrence change"),
-  "recurrence.delete": msg("Recurrence deletion"),
   "budget.update": msg("Budget currency change"),
 };
 
@@ -282,7 +279,11 @@ function DeadLetters() {
       {deadLetters.map((dl, i) => (
         <div key={dl.opId} style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, padding: "10px 0", borderTop: i === 0 ? "none" : `1px solid ${C.line}` }}>
           <div style={{ minWidth: 0 }}>
-            <div style={{ fontSize: 12.5, fontWeight: 600, color: C.text }}>{t(OP_LABEL[dl.op.kind])}</div>
+            {/* defensive fallback: a dead-letter persisted in IDB by an OLDER app build can still
+                carry an op kind from a feature retired since then, at RUNTIME, even though
+                `dl.op.kind` is statically typed against the CURRENT OpKind — OP_LABEL has no
+                entry for it, so the lookup below is `undefined` despite the full Record type. */}
+            <div style={{ fontSize: 12.5, fontWeight: 600, color: C.text }}>{t(OP_LABEL[dl.op.kind] ?? msg("Change"))}</div>
             {opDetail(dl.op, currency, lang) && <div style={{ fontSize: 11, color: C.soft, marginTop: 1 }}>{opDetail(dl.op, currency, lang)}</div>}
             <div style={{ fontSize: 11, color: CORAL, marginTop: 2, lineHeight: 1.4, wordBreak: "break-word" }}>{dl.error}</div>
             <div style={{ fontSize: 10.5, color: C.mute, marginTop: 2 }}>{relSync(dl.at, lang)}</div>

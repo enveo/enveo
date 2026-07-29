@@ -66,7 +66,6 @@ const emptyLedger = (): ClientLedger => ({
   allocations: [],
   categories: [],
   places: [],
-  recurrences: [],
   budgets: [],
 });
 
@@ -932,6 +931,68 @@ describe("sync boot: the replica's owner is checked BEFORE it is rendered", () =
 
     expect(store.getBootStatus()).toBe("ready");
     expect(called("/api/sync/snapshot")).toBe(false); // still no data egress in local mode
+  });
+});
+
+/* ── Legacy `planned` rows are swept client-side (the e2ee gap in migration 0018) ──
+ *
+ * Migration 0018 deletes `planned = true` transactions server-side before dropping the column.
+ * On a PLAIN-tier budget that DELETE is real and replicates via the `changes` journal. On an
+ * E2EE-tier budget the server only ever held ciphertext, so that DELETE was a no-op there — a
+ * replica that already had `planned` rows would keep them, and since the `planned` filter is
+ * gone from every computation, they'd start counting as real money. sweepLegacyPlanned() (called
+ * from every boot exit path, right after the outbox replay and before "ready") closes that gap
+ * client-side, via the normal local.deleteTxn → applyOp+outbox path. */
+
+const PLANNED_TXN_ID = "cccccccc-cccc-cccc-cccc-cccccccccccc";
+
+describe("sync boot: a leftover `planned` transaction is swept before the replica reaches the UI", () => {
+  it("a pre-3.2 planned=true row (raw JSON, past the current Transaction type) is deleted, and the delete goes out through the normal push", async () => {
+    const legacyPlannedTxn = {
+      id: PLANNED_TXN_ID,
+      type: "expense",
+      accountId: "acc-1",
+      toAccountId: null,
+      amount: 500,
+      date: "2026-01-01",
+      confirmed: true,
+      isRefund: false,
+      envelopeId: null,
+      placeId: null,
+      categoryId: null,
+      name: null,
+      note: null,
+      tag: null,
+      items: [],
+      createdAt: "2026-01-01T00:00:00.000Z",
+      planned: true, // legacy field — no longer declared on Transaction (see legacyPlanned.ts)
+    };
+    const ledgerWithLegacyPlanned = {
+      ...emptyLedger(),
+      transactions: [legacyPlannedTxn],
+    } as unknown as ClientLedger;
+    store.replace(ledgerWithLegacyPlanned, 0, BUDGET_A);
+    void persist.persistLedger(store.snapshotForPersist());
+    await persist.flushed();
+    session = { user: { id: "user-A" } };
+
+    await retryBoot();
+    await syncNow("drain"); // join the boot-triggered cycle so the resulting push is observable
+
+    expect(store.getBootStatus()).toBe("ready");
+    expect(store.getLedger()!.transactions).toHaveLength(0); // swept before boot handed off
+    expect(outbox.size()).toBe(0); // the delete op was pushed and applied — nothing left dangling
+    expect(pushed().length).toBeGreaterThan(0); // it left through the real push path, not just memory
+    expect(wrote(BUDGET_A)).toHaveLength(1); // exactly one op reached the server: our delete
+  });
+
+  it("a clean ledger (no legacy planned rows) boots without pushing anything extra", async () => {
+    session = { user: { id: "user-A" } };
+
+    await retryBoot();
+
+    expect(store.getBootStatus()).toBe("ready");
+    expect(outbox.size()).toBe(0); // nothing to sweep, nothing queued
   });
 });
 

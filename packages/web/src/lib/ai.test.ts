@@ -31,8 +31,6 @@ const txn = (over: Partial<Transaction> & Pick<Transaction, "id" | "type" | "amo
   name: null,
   note: null,
   tag: null,
-  planned: false,
-  recurrenceId: null,
   items: [],
   createdAt: "2026-07-01T00:00:00.000Z",
   ...over,
@@ -57,7 +55,6 @@ const fixtureLedger = (): ClientLedger => ({
   allocations: [{ id: "al1", envelopeId: "env1", month: MONTH, amount: 10000 }],
   categories: [],
   places: [],
-  recurrences: [],
   budgets: [{ id: "b1", name: "Budżet", currency: "PLN" }],
 });
 

@@ -8,7 +8,6 @@ import type {
   EnvelopeGroup,
   Ledger,
   Place,
-  Recurrence,
   Transaction,
   TxnItem,
 } from "@enveo/shared";
@@ -64,14 +63,6 @@ export const mapCategory = (c: typeof s.categories.$inferSelect): Category => ({
 
 export const mapPlace = (p: typeof s.places.$inferSelect): Place => ({ id: p.id, name: p.name });
 
-export const mapRecurrence = (r: typeof s.recurrences.$inferSelect): Recurrence => ({
-  id: r.id,
-  rule: r.rule,
-  startDate: r.startDate,
-  endDate: r.endDate,
-  pausedUntil: r.pausedUntil,
-});
-
 export const mapAllocation = (a: typeof s.allocations.$inferSelect): Allocation => ({
   id: a.id,
   envelopeId: a.envelopeId,
@@ -104,8 +95,6 @@ export const mapTransaction = (
   name: t.name,
   note: t.note,
   tag: t.tag,
-  planned: t.planned,
-  recurrenceId: t.recurrenceId,
   items,
   createdAt: t.createdAt,
 });
@@ -147,20 +136,18 @@ export async function loadLedger(budgetId: string, x: Executor = db): Promise<Le
   };
 }
 
-/** Ledger + dictionaries (categories, places, recurrences) — the full client replica. */
+/** Ledger + dictionaries (categories, places) — the full client replica. */
 export async function loadClientLedger(x: Executor, budgetId: string): Promise<ClientLedger> {
-  const [ledger, catRows, plcRows, recRows, budgetRows] = await Promise.all([
+  const [ledger, catRows, plcRows, budgetRows] = await Promise.all([
     loadLedger(budgetId, x),
     x.select().from(s.categories).where(eq(s.categories.budgetId, budgetId)),
     x.select().from(s.places).where(eq(s.places.budgetId, budgetId)),
-    x.select().from(s.recurrences).where(eq(s.recurrences.budgetId, budgetId)),
     x.select().from(s.budgets).where(eq(s.budgets.id, budgetId)),
   ]);
   return {
     ...ledger,
     categories: catRows.map(mapCategory),
     places: plcRows.map(mapPlace),
-    recurrences: recRows.map(mapRecurrence),
     budgets: budgetRows.map(mapBudget),
   };
 }

@@ -19,7 +19,6 @@ import type {
   ClientLedgerInput,
   EnvelopePayload,
   GroupPayload,
-  RecurrencePayload,
   TxnPayload,
 } from "@enveo/shared";
 import { and, eq } from "drizzle-orm";
@@ -48,13 +47,12 @@ type FkBody = {
   toAccountId?: string | null;
   envelopeId?: string | null;
   categoryId?: string | null;
-  recurrenceId?: string | null;
   placeId?: string | null;
   /** envelopes' parent group (NOT NULL, ON DELETE CASCADE) */
   groupId?: string | null;
 };
 
-type FkTable = "accounts" | "envelopes" | "categories" | "recurrences" | "places" | "envelope_groups";
+type FkTable = "accounts" | "envelopes" | "categories" | "places" | "envelope_groups";
 
 /** Pure part: which (table, id) pairs of a body need an ownership check. */
 export function collectFkChecks(b: FkBody): { table: FkTable; id: string }[] {
@@ -63,7 +61,6 @@ export function collectFkChecks(b: FkBody): { table: FkTable; id: string }[] {
   if (b.toAccountId) out.push({ table: "accounts", id: b.toAccountId });
   if (b.envelopeId) out.push({ table: "envelopes", id: b.envelopeId });
   if (b.categoryId) out.push({ table: "categories", id: b.categoryId });
-  if (b.recurrenceId) out.push({ table: "recurrences", id: b.recurrenceId });
   if (b.placeId) out.push({ table: "places", id: b.placeId });
   if (b.groupId) out.push({ table: "envelope_groups", id: b.groupId });
   return out;
@@ -75,7 +72,6 @@ export async function assertBudgetFks(x: Executor, budgetId: string, b: FkBody):
     accounts: s.accounts,
     envelopes: s.envelopes,
     categories: s.categories,
-    recurrences: s.recurrences,
     places: s.places,
     envelope_groups: s.envelopeGroups,
   } as const;
@@ -108,7 +104,6 @@ export function findForeignLedgerRef(ledger: ClientLedgerInput): string | null {
   const envelopes = ids(ledger.envelopes);
   const categories = ids(ledger.categories);
   const places = ids(ledger.places);
-  const recurrences = ids(ledger.recurrences);
   for (const e of ledger.envelopes) {
     if (!groups.has(e.groupId)) return `envelopes[${e.id}].groupId`;
   }
@@ -118,7 +113,6 @@ export function findForeignLedgerRef(ledger: ClientLedgerInput): string | null {
     if (t.envelopeId && !envelopes.has(t.envelopeId)) return `transactions[${t.id}].envelopeId`;
     if (t.placeId && !places.has(t.placeId)) return `transactions[${t.id}].placeId`;
     if (t.categoryId && !categories.has(t.categoryId)) return `transactions[${t.id}].categoryId`;
-    if (t.recurrenceId && !recurrences.has(t.recurrenceId)) return `transactions[${t.id}].recurrenceId`;
     for (const it of t.items) {
       if (!envelopes.has(it.envelopeId)) return `transactions[${t.id}].items.envelopeId`;
       if (it.categoryId && !categories.has(it.categoryId)) return `transactions[${t.id}].items.categoryId`;
@@ -169,8 +163,6 @@ export async function applyTxnCreate(
       name: body.name ?? null,
       note: body.note ?? null,
       tag: body.tag ?? null,
-      planned: body.planned ?? false,
-      recurrenceId: body.recurrenceId ?? null,
       ...(body.createdAt ? { createdAt: body.createdAt } : {}),
     })
     .returning();
@@ -215,8 +207,6 @@ export async function applyTxnUpdate(
       note: body.note ?? null,
       // tag is preserved when the update does not send it (UI edits don't know import tags)
       ...(body.tag !== undefined ? { tag: body.tag } : {}),
-      planned: body.planned ?? false,
-      recurrenceId: body.recurrenceId ?? null,
     })
     .where(and(eq(s.transactions.id, body.id), eq(s.transactions.budgetId, budgetId)))
     .returning();
@@ -372,7 +362,6 @@ export async function wipeBudgetData(x: Executor, budgetId: string): Promise<voi
   // FK-safe order (children before parents; txn_items via cascade).
   await x.delete(s.transactions).where(eq(s.transactions.budgetId, budgetId));
   await x.delete(s.allocations).where(eq(s.allocations.budgetId, budgetId));
-  await x.delete(s.recurrences).where(eq(s.recurrences.budgetId, budgetId));
   await x.delete(s.envelopes).where(eq(s.envelopes.budgetId, budgetId));
   await x.delete(s.envelopeGroups).where(eq(s.envelopeGroups.budgetId, budgetId));
   await x.delete(s.categories).where(eq(s.categories.budgetId, budgetId));
@@ -380,7 +369,7 @@ export async function wipeBudgetData(x: Executor, budgetId: string): Promise<voi
   await x.delete(s.accounts).where(eq(s.accounts.budgetId, budgetId));
 }
 
-/* ── Categories / places / recurrence ───────────────────────────────── */
+/* ── Categories / places ──────────────────────────────────────────────── */
 
 /**
  * Plain insert. Name-based dedupe is NOT here — REST does the lookup in the
@@ -408,53 +397,4 @@ export async function applyPlaceCreate(
     .values({ ...(body.id ? { id: body.id } : {}), budgetId, name: body.name })
     .returning();
   return row!;
-}
-
-export async function applyRecurrenceCreate(
-  x: Executor,
-  budgetId: string,
-  body: RecurrencePayload & { id?: string },
-) {
-  const [row] = await x
-    .insert(s.recurrences)
-    .values({
-      ...(body.id ? { id: body.id } : {}),
-      budgetId,
-      rule: body.rule,
-      startDate: body.startDate,
-      endDate: body.endDate ?? null,
-      pausedUntil: body.pausedUntil ?? null,
-    })
-    .returning();
-  return row!;
-}
-
-/**
- * Partial update of a rule (pause/resume, end, cadence change). Unknown id
- * → no-op (parity with shared/applyOp — updating a nonexistent rule is not a
- * domain refusal; a delete may have arrived from another device earlier).
- */
-export async function applyRecurrenceUpdate(
-  x: Executor,
-  budgetId: string,
-  body: Partial<RecurrencePayload> & { id: string },
-): Promise<void> {
-  const { id, ...fields } = body;
-  if (Object.keys(fields).length === 0) return; // empty patch — no-op (drizzle .set({}) throws)
-  await x
-    .update(s.recurrences)
-    .set(fields)
-    .where(and(eq(s.recurrences.id, id), eq(s.recurrences.budgetId, budgetId)));
-}
-
-/**
- * Idempotent rule delete. FK transactions.recurrence_id = ON DELETE SET
- * NULL (schema.ts) — transactions (including historical ones) STAY, they only
- * lose the reference; SET NULL is an UPDATE on transactions, so the `changes`
- * trigger (migration 0004) logs it for delta-sync. Parity with shared/applyOp.
- */
-export async function applyRecurrenceDelete(x: Executor, budgetId: string, id: string): Promise<void> {
-  await x
-    .delete(s.recurrences)
-    .where(and(eq(s.recurrences.id, id), eq(s.recurrences.budgetId, budgetId)));
 }

@@ -30,6 +30,8 @@ import type { ClientLedger, SyncOp } from "@enveo/shared";
 import { fetchSessionUserId } from "./auth";
 import * as e2ee from "./e2ee";
 import { clearLocalData, idbGet, idbPut, storageMode } from "./idb";
+import { purgeLegacyPlannedIds } from "./legacyPlanned";
+import { local } from "./mutate";
 import * as outbox from "./outbox";
 import * as persist from "./persist";
 import { requestPersistentStorage } from "./storage";
@@ -237,7 +239,6 @@ export const EMPTY_LEDGER: ClientLedger = {
   allocations: [],
   categories: [],
   places: [],
-  recurrences: [],
   budgets: [],
 };
 
@@ -434,7 +435,6 @@ export async function fetchSnapshot(): Promise<void> {
     allocations: snap.allocations,
     categories: snap.categories,
     places: snap.places,
-    recurrences: snap.recurrences,
     budgets: snap.budgets ?? [], // defensive: older server without `budgets` in the snapshot
   };
   store.replace(ledger, snap.cursor, snap.budgetId); // memory
@@ -916,8 +916,7 @@ async function sessionBudgetIsEmpty(): Promise<boolean> {
     snap.transactions.length === 0 &&
     snap.allocations.length === 0 &&
     snap.categories.length === 0 &&
-    snap.places.length === 0 &&
-    snap.recurrences.length === 0
+    snap.places.length === 0
   );
 }
 
@@ -1483,8 +1482,7 @@ function isEmptyUnboundReplica(): boolean {
     l.transactions.length === 0 &&
     l.allocations.length === 0 &&
     l.categories.length === 0 &&
-    l.places.length === 0 &&
-    l.recurrences.length === 0
+    l.places.length === 0
   );
 }
 
@@ -1705,6 +1703,23 @@ async function loadSyncMeta(): Promise<void> {
 }
 
 /**
+ * One-time client-side sweep for legacy `planned` transactions (see legacyPlanned.ts): on a
+ * PLAIN-tier budget migration 0018's server-side DELETE already removed them and the `changes`
+ * journal replicates that everywhere, but on E2EE-tier budgets the server never saw plaintext —
+ * that DELETE was a no-op there, so a replica that already had `planned` rows keeps them until
+ * this sweep catches them. Runs right after the replica is resolved (hydrated/bootstrapped +
+ * outbox replayed) and BEFORE `store.setBootStatus("ready")` hands it to the UI, so a leftover
+ * row is never rendered even for a frame. `local.deleteTxn` is the normal applyOp+outbox path:
+ * the delete pushes encrypted on e2ee, and is an idempotent no-op push on plain (the server
+ * already dropped the row). Idempotent overall — nothing is left to find on the next boot.
+ */
+function sweepLegacyPlanned(): void {
+  const ledger = store.getLedger();
+  if (!ledger) return;
+  for (const id of purgeLegacyPlannedIds(ledger)) local.deleteTxn(id);
+}
+
+/**
  * Boot in LOCAL MODE (paused/wiped): we operate EXCLUSIVELY off the local replica —
  * NO fetchSnapshot/pull (respect the offline/privacy choice). No local
  * data (rare: "Clear local data" while in local mode) → empty ledger, so the
@@ -1715,6 +1730,7 @@ function bootLocalReady(hydrated: "ready" | "empty"): void {
     store.replace(EMPTY_LEDGER, store.getCursor(), store.getBudgetId() ?? "");
   }
   replayOutbox();
+  sweepLegacyPlanned();
   if (outbox.size() > 0) void persist.persistLedger(store.snapshotForPersist());
   store.setBootStatus("ready");
   setState("local");
@@ -1797,6 +1813,7 @@ async function boot(): Promise<void> {
     // (reducers are idempotent: create guards the id, update = full replacement);
     // the mirror was a PREFIX of the outbox, so the replay catches it up (never rolls back)
     replayOutbox();
+    sweepLegacyPlanned();
     if (outbox.size() > 0) void persist.persistLedger(store.snapshotForPersist());
     store.setBootStatus("ready");
     bumpStatus();
@@ -1814,6 +1831,7 @@ async function boot(): Promise<void> {
       // Read the meta flags HERE too: the resync obligation from IDB must not be lost.
       await loadSyncMeta();
       replayOutbox();
+      sweepLegacyPlanned();
       store.setBootStatus("ready");
       if (localMode !== "off") {
         setState("local");

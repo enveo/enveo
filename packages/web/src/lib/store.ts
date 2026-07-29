@@ -30,7 +30,6 @@ const TABLE_KEY: Record<ReplicatedTable, keyof ClientLedger> = {
   envelopes: "envelopes",
   categories: "categories",
   places: "places",
-  recurrences: "recurrences",
   transactions: "transactions",
   allocations: "allocations",
   budgets: "budgets",
@@ -162,7 +161,10 @@ export const store = {
 
     for (const ch of changes) {
       const key = TABLE_KEY[ch.table];
-      if (!key) continue; // defense: unknown table
+      // defensive: `ch.table` is only TYPED as ReplicatedTable — it is actually untrusted wire
+      // data (server JSON cast via `as PullResponse`), so an old/wider server can still send a
+      // table name this build's TABLE_KEY has no entry for (e.g. a table for a retired feature).
+      if (!key) continue;
       const arr = arrFor(key);
       if (ch.op === "delete") {
         const i = arr.findIndex((r) => r.id === ch.rowId);

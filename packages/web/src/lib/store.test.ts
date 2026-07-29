@@ -16,7 +16,6 @@ const oldLedger = (): ClientLedger =>
     envelopes: [],
     categories: [],
     places: [],
-    recurrences: [],
     transactions: [],
     allocations: [],
   }) as unknown as ClientLedger;

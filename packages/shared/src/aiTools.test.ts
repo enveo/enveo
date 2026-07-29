@@ -57,8 +57,6 @@ function seedLedger(): ClientLedger {
       // income straight into an envelope (lowers spent)
       tx({ type: "income", accountId: "A1", envelopeId: "E1", amount: 50_00, date: "2026-06-25" }),
       tx({ type: "transfer", accountId: "A1", toAccountId: "A2", amount: 200_00, date: "2026-06-28" }),
-      // planned — skipped everywhere
-      tx({ type: "expense", accountId: "A1", envelopeId: "E1", amount: 999_00, date: "2026-06-29", planned: true }),
       tx({ type: "expense", accountId: "A1", envelopeId: "E1", amount: 75_00, date: "2026-07-03", placeId: "P1", categoryId: "C1" }),
       // off-budget account — does not count toward envelope spent
       tx({ type: "expense", accountId: "A2", envelopeId: "E1", amount: 44_00, date: "2026-07-04" }),

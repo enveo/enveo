@@ -97,7 +97,6 @@ describe("sync2 — input validation", () => {
       envelopes: [],
       categories: [],
       places: [],
-      recurrences: [],
       allocations: [],
       transactions: [],
     };
@@ -138,7 +137,6 @@ describe("sync2 — input validation", () => {
       envelopes: [],
       categories: [],
       places: [],
-      recurrences: [],
       allocations: [],
       transactions: [],
     };

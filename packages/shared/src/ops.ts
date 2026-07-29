@@ -31,8 +31,6 @@ const txnBase = z.object({
   name: z.string().nullable().optional(),
   note: z.string().nullable().optional(),
   tag: z.string().nullable().optional(),
-  planned: z.boolean().optional(),
-  recurrenceId: z.string().uuid().nullable().optional(),
   items: z.array(txnItemPayload).optional(),
   // the client sets it at create (stable list order within a day); REST may omit it
   createdAt: z.string().datetime().optional(),
@@ -92,16 +90,6 @@ export const envelopePayload = z.object({
 });
 export type EnvelopePayload = z.infer<typeof envelopePayload>;
 
-/* ── Recurrence (from routes/extras.ts) ─────────────────────────────── */
-
-export const recurrencePayload = z.object({
-  rule: z.enum(["none", "weekly", "monthly", "monthEnd", "quarterly", "yearly"]),
-  startDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-  endDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
-  pausedUntil: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
-});
-export type RecurrencePayload = z.infer<typeof recurrencePayload>;
-
 /* ── Sync op catalog ────────────────────────────────────────────────── */
 
 const withId = { id: z.string().uuid() };
@@ -126,11 +114,6 @@ export const opSchemas = {
   // plain insert — dedupe by name is done by the CLIENT (local lookup in the mirror)
   "category.create": z.object({ ...withId, name: z.string().min(1) }),
   "place.create": z.object({ ...withId, name: z.string().min(1) }),
-  "recurrence.create": recurrencePayload.extend(withId),
-  // partial update (pause/resume, end, cadence change) — undefined fields ignored
-  "recurrence.update": recurrencePayload.partial().extend(withId),
-  // FK transactions.recurrence_id = ON DELETE SET NULL — transactions stay without the rule
-  "recurrence.delete": idOnly,
   // budget metadata (single-row entity) — for now only the display currency
   "budget.update": z.object({ id: z.string().uuid(), currency: z.string().regex(/^[A-Z]{3}$/) }),
 } as const;
@@ -206,13 +189,6 @@ const envelopeEntity = z.object({
 });
 const categoryEntity = z.object({ id: zUuid, name: z.string() });
 const placeEntity = z.object({ id: zUuid, name: z.string() });
-const recurrenceEntity = z.object({
-  id: zUuid,
-  rule: z.enum(["none", "weekly", "monthly", "monthEnd", "quarterly", "yearly"]),
-  startDate: zYmd,
-  endDate: zYmd.nullable(),
-  pausedUntil: zYmd.nullable().optional(), // old JSON backups (pre-pause) must still load
-});
 const allocationEntity = z.object({
   id: z.string(), // may be synthetic (alloc-local:…) — the server will assign a uuid
   envelopeId: zUuid,
@@ -241,8 +217,6 @@ const transactionEntity = z
     name: z.string().nullable(),
     note: z.string().nullable(),
     tag: z.string().nullable(),
-    planned: z.boolean(),
-    recurrenceId: zUuid.nullable(),
     items: z.array(txnItemEntity),
     createdAt: z.string(),
   })
@@ -257,6 +231,20 @@ const transactionEntity = z
 
 const budgetEntity = z.object({ id: zUuid, name: z.string(), currency: z.string() });
 
+/**
+ * Pre-3.2 backups/replicas carry per-transaction `planned: true` template rows (the recurring-
+ * payments feature). `planned` was removed from `transactionEntity` above in 3.2, so without this
+ * preprocess zod would SILENTLY STRIP the flag and let the row through as an ordinary transaction
+ * — a template installed as real money on restore. Those rows were always excluded from every
+ * ledger computation (budget math, reports); they must not materialize here either. Drop them
+ * from the raw array BEFORE the per-item schema runs, so every consumer of clientLedgerSchema
+ * (web `importBackup`, `/api/sync/replace`) is covered from one place.
+ */
+const droppingLegacyPlannedRows = z.preprocess((v) => {
+  if (!Array.isArray(v)) return v;
+  return v.filter((item) => !(item && typeof item === "object" && (item as { planned?: unknown }).planned === true));
+}, z.array(transactionEntity));
+
 /** Full client replica (ClientLedger) — backup / server replace validation.
     `budgets` optional — old JSON backups (pre-currency) must still load. */
 export const clientLedgerSchema = z.object({
@@ -266,9 +254,8 @@ export const clientLedgerSchema = z.object({
   envelopes: z.array(envelopeEntity),
   categories: z.array(categoryEntity),
   places: z.array(placeEntity),
-  recurrences: z.array(recurrenceEntity),
   allocations: z.array(allocationEntity),
-  transactions: z.array(transactionEntity),
+  transactions: droppingLegacyPlannedRows,
 });
 export type ClientLedgerInput = z.infer<typeof clientLedgerSchema>;
 
@@ -289,7 +276,6 @@ export const REPLICATED_TABLES = [
   "envelopes",
   "categories",
   "places",
-  "recurrences",
   "transactions",
   "allocations",
   "budgets",

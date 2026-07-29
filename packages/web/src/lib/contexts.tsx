@@ -18,8 +18,7 @@ export type WidgetId =
   | "envelopes"
   | "envelopesSavings"
   | "reportCashflow"
-  | "reportNetWorth"
-  | "upcoming";
+  | "reportNetWorth";
 export interface WidgetOpts {
   /** accounts: start folded to `count` (default 4) with a "show all" toggle. */
   collapsed?: boolean;
@@ -48,8 +47,6 @@ export interface Settings {
   /** OpenAI key (byok) — this browser's localStorage ONLY, and never persisted in guest mode. */
   openaiKey: string;
   openaiModel: OpenAiModel;
-  /** Dismissed subscription proposals (group keys) — deliberately per DEVICE. */
-  subsDismissed: string[];
   /** Custom "Suggest" profiles (per DEVICE — no synchronization, MVP). */
   customProfiles: Array<{ id: string; name: string; prompt: string }>;
   /** Start screen widget stack — order, enablement, per-widget options (per DEVICE). */
@@ -68,7 +65,6 @@ const defaultStartWidgets = (): WidgetConfig[] => [
   { id: "envelopesSavings", enabled: false },
   { id: "reportCashflow", enabled: true },
   { id: "reportNetWorth", enabled: false },
-  { id: "upcoming", enabled: true },
 ];
 
 const DEFAULT_SETTINGS: Settings = {
@@ -79,7 +75,6 @@ const DEFAULT_SETTINGS: Settings = {
   aiMode: "off",
   openaiKey: "",
   openaiModel: "gpt-5.5-mini",
-  subsDismissed: [],
   customProfiles: [],
   startWidgets: defaultStartWidgets(),
 };
@@ -117,17 +112,6 @@ const SettingsCtx = createContext<{ settings: Settings; setSettings: (s: Setting
 
 export const useTheme = () => useContext(ThemeCtx);
 export const useSettings = () => useContext(SettingsCtx);
-
-/** Subscription proposal dismissals (per device — localStorage settings). */
-export function useSubsDismissed() {
-  const { settings, setSettings } = useContext(SettingsCtx);
-  const dismiss = (key: string) => {
-    if (settings.subsDismissed.includes(key)) return;
-    setSettings({ ...settings, subsDismissed: [...settings.subsDismissed, key] });
-  };
-  const isDismissed = (key: string) => settings.subsDismissed.includes(key);
-  return { dismissed: settings.subsDismissed, dismiss, isDismissed };
-}
 
 /**
  * The budget currency from the replica. The fallback (before the replica boots, or on an old

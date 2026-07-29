@@ -8,7 +8,7 @@
  * - txn.create/update: normalization like insertTxn (transfer ⇒ envelopeId null,
  *   toAccountId kept, categoryId stays — the server clears categoryId ONLY
  *   for splits; items>0 ⇒ parent envelopeId/categoryId null), defaults
- *   confirmed=true, isRefund=false, planned=false, nullable ⇒ null.
+ *   confirmed=true, isRefund=false, nullable ⇒ null.
  *   Update = full field replacement (LWW), items delete+reinsert,
  *   `createdAt` is NEVER changed (server PATCH does not touch created_at).
  * - update/delete on a missing id ⇒ no-op (server: rejected / delete
@@ -24,8 +24,6 @@
  *   that envelope (txn_items CASCADE; parent amount unchanged).
  * - group.delete: envelope.delete effects for all envelopes of the group
  *   (CASCADE), then group removal.
- * - recurrence.delete: FK transactions.recurrence_id is ON DELETE SET NULL —
- *   transactions stay, only recurrenceId → null (parity with the DB schema).
  * - alloc.set: upsert by natural key (envelopeId, month); envelope missing
  *   from the ledger ⇒ NO-OP — parity with the server FK (allocations.envelope_id
  *   NOT NULL REFERENCES envelopes; the server would reject the INSERT → rollback).
@@ -33,6 +31,9 @@
  *   the envelope fell to a group/envelope.delete cascade would leave an orphan
  *   allocation (mirror drift + a needless dead-letter). The guard keeps
  *   replay idempotent.
+ * - an op kind not in the switch (retired, or from a NEWER app version) ⇒
+ *   NO-OP — an IDB outbox can still hold ops queued by an older/newer
+ *   client; the server is authoritative and dead-letters/ignores them too.
  *
  * Local ids are synthetic and deterministic (no crypto/Date):
  * computeBudgetState does not read allocation or item ids — canonical ids
@@ -47,7 +48,6 @@ import type {
   Envelope,
   EnvelopeGroup,
   Place,
-  Recurrence,
   Transaction,
   TxnItem,
 } from "./types";
@@ -90,8 +90,6 @@ function txnFromCreate(p: OpPayload<"txn.create">): Transaction {
     name: p.name ?? null,
     note: p.note ?? null,
     tag: p.tag ?? null,
-    planned: p.planned ?? false,
-    recurrenceId: p.recurrenceId ?? null,
     items: buildItems(p.id, p.items),
     createdAt: p.createdAt ?? MISSING_CREATED_AT,
   };
@@ -116,8 +114,6 @@ function txnFromUpdate(prev: Transaction, p: OpPayload<"txn.update">): Transacti
     note: p.note ?? null,
     // keep tag when the update does not send it (UI edits don't know import tags)
     tag: p.tag !== undefined ? p.tag : prev.tag,
-    planned: p.planned ?? false,
-    recurrenceId: p.recurrenceId ?? null,
     items: buildItems(prev.id, p.items),
     createdAt: prev.createdAt, // server PATCH does not touch created_at
   };
@@ -203,7 +199,7 @@ function replaceAt<T>(arr: readonly T[], idx: number, value: T): T[] {
 /**
  * Pure reducer: apply an op to the client ledger.
  * Does not validate the payload (the client validates with zod at enqueue) —
- * an unknown kind is a programmer error and throws.
+ * an unrecognized kind (retired, or from a newer app version) is a no-op.
  */
 export function applyOp(ledger: ClientLedger, op: SyncOp): ClientLedger {
   switch (op.kind) {
@@ -318,41 +314,13 @@ export function applyOp(ledger: ClientLedger, op: SyncOp): ClientLedger {
       if (idx < 0) return ledger;
       return { ...ledger, budgets: replaceAt(ledger.budgets, idx, { ...ledger.budgets[idx]!, currency: p.currency }) };
     }
-    case "recurrence.create": {
-      const p = op.payload as OpPayload<"recurrence.create">;
-      if (ledger.recurrences.some((r) => r.id === p.id)) return ledger; // existing id — no-op
-      const row: Recurrence = {
-        id: p.id,
-        rule: p.rule,
-        startDate: p.startDate,
-        endDate: p.endDate ?? null,
-        pausedUntil: p.pausedUntil ?? null,
-      };
-      return { ...ledger, recurrences: [...ledger.recurrences, row] };
+    default: {
+      const _exhaustive: never = op.kind; // a NEW kind without a reducer must not compile
+      void _exhaustive;
+      // ops from newer/older app versions (or a retired feature's op kinds)
+      // are ignored at RUNTIME — the server is authoritative, and an IDB
+      // outbox can still hold an op queued before this app version.
+      return ledger;
     }
-    case "recurrence.update": {
-      const p = op.payload as OpPayload<"recurrence.update">;
-      const idx = ledger.recurrences.findIndex((r) => r.id === p.id);
-      if (idx < 0) return ledger; // unknown id → no-op (like other *.update)
-      return {
-        ...ledger,
-        recurrences: replaceAt(ledger.recurrences, idx, merge(ledger.recurrences[idx]!, p)),
-      };
-    }
-    case "recurrence.delete": {
-      const p = op.payload as OpPayload<"recurrence.delete">;
-      if (!ledger.recurrences.some((r) => r.id === p.id)) return ledger; // idempotent
-      return {
-        ...ledger,
-        recurrences: ledger.recurrences.filter((r) => r.id !== p.id),
-        // FK transactions.recurrence_id = ON DELETE SET NULL (schema.ts) —
-        // transactions (including historical ones) STAY, they only lose the reference.
-        transactions: ledger.transactions.map((t) =>
-          t.recurrenceId === p.id ? { ...t, recurrenceId: null } : t,
-        ),
-      };
-    }
-    default:
-      throw new Error(`applyOp: unknown op kind: ${(op as SyncOp).kind}`);
   }
 }

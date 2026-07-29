@@ -24,7 +24,6 @@ import {
   type OpKind,
   type OpPayload,
   type Place,
-  type RecurrencePayload,
   type SyncOp,
   type Transaction,
   type TxnPayload,
@@ -83,7 +82,7 @@ function deleteTxn(id: string): void {
 /**
  * A transaction copy built ON THE CLIENT — semantics 1:1 with the old
  * POST /transactions/:id/duplicate: today's date, `tag: null` (the copy doesn't
- * inherit the import key), `recurrenceId: null`, items without ids.
+ * inherit the import key), items without ids.
  *
  * D7: a split "orphaned" by envelope.delete (items no longer sum to the parent
  * amount after the envelope removal) must NOT pass opSchemas["txn.create"]
@@ -104,8 +103,6 @@ function duplicateTxn(t: Transaction): string {
     name: t.name,
     note: t.note,
     tag: null,
-    planned: t.planned,
-    recurrenceId: null,
   } as const;
   const itemsSum = t.items.reduce((s, i) => s + i.amount, 0);
   if (t.items.length > 0 && itemsSum === t.amount) {
@@ -199,23 +196,6 @@ function updateBudget(id: string, currency: string): void {
   enqueue("budget.update", { id, currency });
 }
 
-/* ── Recurrence ─────────────────────────────────────────────────────── */
-
-function createRecurrence(payload: RecurrencePayload): string {
-  const id = newId();
-  enqueue("recurrence.create", { ...payload, id });
-  return id;
-}
-
-function updateRecurrence(id: string, patch: Partial<RecurrencePayload>): void {
-  enqueue("recurrence.update", { ...patch, id });
-}
-
-/** The server nulls transactions.recurrence_id (FK SET NULL) — applyOp mirrors that. */
-function deleteRecurrence(id: string): void {
-  enqueue("recurrence.delete", { id });
-}
-
 export const local = {
   createTxn,
   updateTxn,
@@ -233,9 +213,6 @@ export const local = {
   deleteEnvelope,
   createCategory,
   createPlace,
-  createRecurrence,
-  updateRecurrence,
-  deleteRecurrence,
   updateBudget,
 };
 

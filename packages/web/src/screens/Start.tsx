@@ -20,7 +20,6 @@ export function StartScreen({
   onPrev,
   onNext,
   onNav,
-  onSeeUpcoming,
   onQuickAdd,
 }: {
   state: StateResponse;
@@ -31,7 +30,6 @@ export function StartScreen({
   onPrev: () => void;
   onNext: () => void;
   onNav: (s: ScreenId) => void;
-  onSeeUpcoming: () => void;
   /** "transfer" opens Add pre-set to the Transfer tab; "import" opens Add with the screenshot-import sheet already showing; "suggest" opens Budget with the suggest sheet already showing. */
   onQuickAdd: (kind: "transfer" | "import" | "suggest") => void;
 }) {
@@ -126,7 +124,7 @@ export function StartScreen({
       )}
 
       {/* Configurable widget stack (settings.startWidgets — device setting, "Edit widgets" sheet below).
-          A stale/future persisted id (e.g. from a downgrade or a removed widget) must never crash Start. */}
+          A corrupted/future persisted id (settings are untyped JSON at rest) must never crash Start. */}
       {settings.startWidgets
         .filter((w) => w.enabled && w.id in START_WIDGETS)
         .map((w) => {
@@ -139,7 +137,6 @@ export function StartScreen({
               onNav={onNav}
               onOpenEnvelope={onOpenEnvelope}
               onOpenTxns={onOpenTxns}
-              onSeeUpcoming={onSeeUpcoming}
               onQuickAdd={onQuickAdd}
               opts={w.opts}
             />

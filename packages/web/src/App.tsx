@@ -40,7 +40,7 @@ export default function App() {
   // Reset by `nav` on every normal entry, same lifecycle as `addPreset`.
   const [budgetSuggest, setBudgetSuggest] = useState(false);
   // Reports view kept in App — entering from the menu opens the card overview,
-  // while deep links (e.g. "Upcoming" on Start) go straight to the given subscreen
+  // while a deep link (the menu's "Envelope budgets" shortcut) goes straight to the given subscreen
   const [reportsView, setReportsView] = useState<ReportView>("overview");
   // full-screen envelope summary (push-nav like transaction editing); back → null
   const [envView, setEnvView] = useState<{ envelopeId: string; month: string } | null>(null);
@@ -86,9 +86,9 @@ export default function App() {
     setAddPreset(kind === "transfer" ? { tab: "transfer" } : { importSheet: true });
     setScreen("addExpense");
   };
-  // Deep link: Reports opened DIRECTLY on a subscreen — "Upcoming" on Start (subs)
-  // and menu shortcuts (Subscriptions / Envelope budgets). setReportsView AFTER nav —
-  // within the same batch the last write wins, so it overrides the reset to "overview".
+  // Deep link: Reports opened DIRECTLY on a subscreen — the menu's "Envelope budgets" shortcut.
+  // setReportsView AFTER nav — within the same batch the last write wins, so it overrides the
+  // reset to "overview".
   const openReports = (tab: ReportTab) => { nav("reports"); setReportsView(tab); };
   // enter the transaction list with a preselected filter (envelope OR account) — from an
   // envelope/account tile or sheet. Clean, focused view: set the given filter, clear
@@ -183,7 +183,7 @@ export default function App() {
           )}
           {state && !onboarding && !envView && (
             <>
-              {screen === "start" && <StartScreen state={state} month={month} onOpenTxns={openTxns} onOpenEnvelope={openEnvelope} onMenu={() => setDrawer(true)} onPrev={prev} onNext={next} onNav={nav} onSeeUpcoming={() => openReports("subs")} onQuickAdd={onQuickAdd} />}
+              {screen === "start" && <StartScreen state={state} month={month} onOpenTxns={openTxns} onOpenEnvelope={openEnvelope} onMenu={() => setDrawer(true)} onPrev={prev} onNext={next} onNav={nav} onQuickAdd={onQuickAdd} />}
               {screen === "budget" && <BudgetScreen state={state} month={month} onMenu={() => setDrawer(true)} onPrev={prev} onNext={next} onOpenEnvelope={openEnvelope} initialSuggest={budgetSuggest} />}
               {screen === "transactions" && <TransactionsScreen state={state} month={month} onMenu={() => setDrawer(true)} onPrev={prev} onNext={next} onEditTxn={(t) => editTxnFrom(t, "transactions")} query={txQuery} setQuery={setTxQuery} envFilter={txEnvFilter} setEnvFilter={setTxEnvFilter} accFilter={txAccFilter} setAccFilter={setTxAccFilter} />}
               {screen === "accounts" && <AccountsScreen state={state} onMenu={() => setDrawer(true)} />}

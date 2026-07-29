@@ -27,7 +27,7 @@ optionally end-to-end-encrypted sync layer.
   snapshot recovery). Conflicts: last-write-wins per entity, delete wins.
 - **Optional E2EE**: encrypted oplog sync — the server never sees plaintext.
 - **Envelope budgeting done right**: negative balances carry over, transfers,
-  refunds, split transactions, scheduled/recurring transactions, monthly goals.
+  refunds, split transactions, monthly goals.
 - **Import from screenshots**: photograph or screenshot a bank statement, review,
   edit, dedupe — with a self-learning matcher that remembers your corrections.
 - **Budget assistant**: distribute "To Be Budgeted" by rules or AI, fully editable

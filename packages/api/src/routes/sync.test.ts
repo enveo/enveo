@@ -24,6 +24,7 @@ import { migrate } from "drizzle-orm/postgres-js/migrator";
 import postgres from "postgres";
 import * as s from "../db/schema";
 import {
+  applyPushOp,
   budgetAssertionFails,
   legacyChangesWatermark,
   ownerAssertionFails,
@@ -31,6 +32,9 @@ import {
   pushInput,
   replaceInput,
 } from "./sync";
+// Constant + type only — this module's app/db imports are lazy (see the file header), so
+// importing it here does NOT pull env/db/client into THIS process.
+import { SENTINEL as REPLACE_SENTINEL, type ReplaceRecurrenceOutput } from "./sync.replace-recurrence-child";
 
 const UUID_A = "11111111-1111-1111-1111-111111111111";
 const UUID_B = "22222222-2222-2222-2222-222222222222";
@@ -41,7 +45,6 @@ const EMPTY_LEDGER = {
   envelopes: [],
   categories: [],
   places: [],
-  recurrences: [],
   allocations: [],
   transactions: [],
 };
@@ -66,6 +69,45 @@ describe("push: the per-request budget assertion", () => {
     expect(pushInput.safeParse({ clientId: "dev", ops }).success).toBe(true);
     expect(pushInput.safeParse({ clientId: "dev", budgetId: UUID_B, ops }).success).toBe(true);
     expect(pushInput.safeParse({ clientId: "dev", budgetId: "nope", ops }).success).toBe(false);
+  });
+});
+
+/* ── Retired op kinds dead-letter, never a silent false "applied" (pure — no DB touched) ──
+ *
+ * `recurrence.create/update/delete` still exist in shared's OpKind/opSchemas until a later task
+ * removes them, so a well-formed payload passes schema validation — without an explicit guard,
+ * applyOp's switch would have no matching case, silently do nothing, and the op would be
+ * reported "applied". The assertion below only pins the OBSERVABLE outcome (rejected — the
+ * client dead-letters it), not which code path produced it, so it stays valid once shared drops
+ * the schemas too (at that point `opSchemas[kind]` is undefined and the `!schema` branch reaches
+ * the same outcome on its own). */
+
+describe("push: a retired op kind (recurrence.*) is rejected, never silently applied", () => {
+  it("a well-formed recurrence.create op dead-letters as rejected — nothing is applied", async () => {
+    const result = await applyPushOp("some-budget-id", "test-client", {
+      opId: UUID_A,
+      kind: "recurrence.create",
+      // matches recurrencePayload.extend({id}) exactly — proves the rejection is NOT a
+      // validation failure of a malformed payload, but the kind itself being retired
+      payload: { id: UUID_B, rule: "monthly", startDate: "2026-01-01", endDate: null, pausedUntil: null },
+    });
+    expect(result.status).toBe("rejected");
+  });
+
+  it("recurrence.update and recurrence.delete dead-letter the same way", async () => {
+    const update = await applyPushOp("some-budget-id", "test-client", {
+      opId: UUID_A,
+      kind: "recurrence.update",
+      payload: { id: UUID_B, rule: "weekly" },
+    });
+    expect(update.status).toBe("rejected");
+
+    const del = await applyPushOp("some-budget-id", "test-client", {
+      opId: UUID_A,
+      kind: "recurrence.delete",
+      payload: { id: UUID_B },
+    });
+    expect(del.status).toBe("rejected");
   });
 });
 
@@ -105,12 +147,59 @@ describe("overwrite routes: the per-request owner assertion", () => {
   });
 });
 
+/* ── Backup compat: pre-3.2 recurrence fields keep importing (forever guard) ──────
+ *
+ * The recurring-payments feature was removed from the API in stages (routes/sync
+ * handlers/mappers, then the shared/db fields, then the `recurrences` table itself —
+ * migration 0018). A JSON backup taken BEFORE that removal still carries `recurrences` and
+ * per-transaction `planned`/`recurrenceId` — `/api/sync/replace` must keep accepting it,
+ * because zod object schemas here are never `.strict()`: once a field is removed from
+ * clientLedgerSchema, the same key simply becomes an unrecognized key that safeParse silently
+ * strips instead of a validation failure. The invariant this test pins ("old backup keeps
+ * importing") holds regardless of which stage of the removal is live. */
+
+describe("backup-compat: pre-3.2 recurrence fields do not break /sync/replace", () => {
+  it("a ledger carrying recurrences + a planned/recurrenceId transaction still validates", () => {
+    const ledgerWithRecurrence = {
+      ...EMPTY_LEDGER,
+      recurrences: [
+        { id: UUID_A, rule: "monthly", startDate: "2026-01-01", endDate: null, pausedUntil: null },
+      ],
+      transactions: [
+        {
+          id: UUID_B,
+          type: "expense",
+          accountId: UUID_A,
+          toAccountId: null,
+          amount: 500,
+          date: "2026-01-01",
+          confirmed: true,
+          isRefund: false,
+          envelopeId: null,
+          placeId: null,
+          categoryId: null,
+          name: null,
+          note: null,
+          tag: null,
+          planned: false,
+          recurrenceId: null,
+          items: [],
+          createdAt: "2026-01-01T00:00:00.000Z",
+        },
+      ],
+    };
+    expect(replaceInput.safeParse({ ledger: ledgerWithRecurrence }).success).toBe(true);
+  });
+});
+
 /* ── The change journal is per-tenant (DB-backed: trigger + pull) ─────── */
 
 const TEST_URL = process.env.TEST_DATABASE_URL ?? "";
 if (TEST_URL && TEST_URL === process.env.DATABASE_URL) {
   throw new Error("TEST_DATABASE_URL must differ from DATABASE_URL — this suite writes to the DB.");
 }
+
+const REPLACE_CHILD = new URL("./sync.replace-recurrence-child.ts", import.meta.url).pathname;
 
 /** Same construction as db/client.ts — so the instance IS an `Executor`. */
 const connect = (url: string) => {
@@ -225,5 +314,55 @@ describe.skipIf(!TEST_URL)("sync/pull: the change journal is scoped to one budge
 
     await db.delete(s.changes).where(eq(s.changes.seq, row!.seq));
     expect(await legacyChangesWatermark(db)).toBe(0); // a clean journal costs nothing
+  });
+
+  /* ── Backup compat, exercised end-to-end through the real route (forever guard) ──
+   *
+   * The schema-level assertion above (describe("backup-compat: …")) only proves
+   * `replaceInput.safeParse` accepts pre-3.2 recurrence fields — it never proves the ACTUAL
+   * /api/sync/replace HANDLER does the right thing with them (real `db.transaction`, real
+   * `restoreLedger`/`insertLedger`). That means a REAL Postgres write, and `routes/sync.ts`
+   * (imported by this very file, above) already pins `db/client.ts`'s pool to whatever
+   * `DATABASE_URL` resolves to for the WHOLE test process the moment it's first imported —
+   * locally (and on a real deployment host) that is the real database, not `TEST_DATABASE_URL`
+   * (see auth.signup-race-child.ts, which hit the identical hazard first). So this runs in a
+   * CHILD process that gets `DATABASE_URL` handed to it explicitly, with a fuse that refuses to
+   * write unless it matches the throwaway Postgres this suite migrated. */
+  it("POST /api/sync/replace (child process): a ledger with pre-3.2 recurrence fields imports cleanly — the unknown keys are silently dropped", async () => {
+    const child = Bun.spawn([process.execPath, REPLACE_CHILD], {
+      cwd: new URL("../..", import.meta.url).pathname,
+      env: { ...process.env, DATABASE_URL: TEST_URL, EXPECT_DATABASE_URL: TEST_URL },
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    const [stdout, stderr] = await Promise.all([
+      new Response(child.stdout).text(),
+      new Response(child.stderr).text(),
+    ]);
+    const code = await child.exited;
+    const line = stdout.split("\n").find((l) => l.startsWith(REPLACE_SENTINEL));
+    if (code !== 0 || !line) {
+      throw new Error(`sync-replace-recurrence child failed (exit ${code})\nstdout:\n${stdout}\nstderr:\n${stderr}`);
+    }
+    const out = JSON.parse(line.slice(REPLACE_SENTINEL.length)) as ReplaceRecurrenceOutput;
+
+    expect(out.status).toBe(200);
+    expect(out.responseBudgetId).toBe(out.budgetId);
+    // The `recurrences` table and the transaction's `planned`/`recurrenceId` columns are gone
+    // (migration 0018) — there is nowhere left for the pre-3.2 `recurrences` key or the
+    // transaction's `planned`/`recurrenceId` fields to land; zod strips them as unrecognized,
+    // and the transaction itself still imports correctly.
+    // The fixture ALSO submits a second, `planned: true` legacy template transaction (amount
+    // 999999) — clientLedgerSchema's preprocess must drop it before `restoreLedger` ever sees
+    // it, so exactly ONE row (the real transaction, amount 500) lands in the DB, not two.
+    expect(out.transactionRows).toHaveLength(1);
+    expect(out.transactionRows[0]!.amount).toBe(500);
+    expect(out.transactionRows.every((r) => r.amount !== 999999)).toBe(true);
+    // GROUND TRUTH, not just "the code doesn't reference it": query information_schema
+    // directly, so a future re-introduction of `recurrences` fails this test loudly instead of
+    // the guard quietly losing its teeth (it did once — see migration 0018's fix-up commit).
+    expect(out.recurrencesTableExists).toBe(false);
+    expect(out.transactionsPlannedColumnExists).toBe(false);
+    expect(out.transactionsRecurrenceIdColumnExists).toBe(false);
   });
 });

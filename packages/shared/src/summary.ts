@@ -6,9 +6,9 @@
  * (the numbers in the UI must not change):
  * - the 6-month series computes `spentOf` without the account onBudget filter
  *   (computeBudgetState filters — here deliberately NOT),
- * - `spentOf` skips planned and transfer,
- * - the byCat loop does NOT filter planned; splits are counted for EVERY
- *   transaction type, non-split rows only when type === "expense",
+ * - `spentOf` skips transfer,
+ * - the byCat loop counts splits for EVERY transaction type, non-split
+ *   rows only when type === "expense",
  * - name fallbacks: "Inne" (unknown id) / "Bez kategorii" (null) — Polish
  *   product strings, kept verbatim,
  * - sorted by amount descending.
@@ -55,7 +55,7 @@ export function computeEnvelopeSummary(
 ): EnvelopeSummary {
   // expenses assigned to the envelope (splits included)
   const spentOf = (t: (typeof ledger.transactions)[number]): number => {
-    if (t.planned || t.type === "transfer") return 0;
+    if (t.type === "transfer") return 0;
     const sign = t.isRefund ? -1 : 1;
     if (t.type === "income") return t.envelopeId === envId ? -t.amount : 0;
     if (t.items.length > 0) {
