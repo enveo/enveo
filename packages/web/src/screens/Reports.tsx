@@ -10,6 +10,7 @@ import {
   savingsRate,
   spendingBaseline,
   topPlaces,
+  type EnvelopeTrend,
   type SpendingDimension,
 } from "@enveo/shared";
 import { useLedgerVersion, type StateResponse } from "../lib/api";
@@ -23,7 +24,7 @@ import { monthLabel, shortDate } from "../lib/dates";
 import { goalProgress } from "../lib/goals";
 import { useT, type Message, msg } from "../lib/i18n";
 import { budgetsSummary, classifyBudget } from "../lib/reportSummary";
-import { ENV_PALETTE, P, TEAL, tint } from "../lib/theme";
+import { ENV_PALETTE, P, TEAL, tint, type Theme } from "../lib/theme";
 
 export type ReportTab = "assets" | "cashflow" | "spending" | "budgets" | "goals" | "month" | "trends";
 /** Reports view: hub (band hero + mini-card grid) or a full-screen report subscreen. */
@@ -119,8 +120,10 @@ export function ReportsScreen({ state, month, view, onView, onOpenEnvelope, onMe
     return l ? computeDailySpending(l, month) : [];
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [version, month, view]);
+  // also the sole source for the "trends" subscreen — same 6-mo window as the hub card, so no
+  // separate memo is needed there (Task 12).
   const envelopeTrends = useMemo(() => {
-    if (view !== "overview") return [];
+    if (view !== "overview" && view !== "trends") return [];
     const l = store.getLedger();
     return l ? computeEnvelopeTrends(l, month, 6) : [];
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -192,8 +195,18 @@ export function ReportsScreen({ state, month, view, onView, onOpenEnvelope, onMe
       {view === "month" && (
         <MonthReport cashflow={cashflow} days={dailySpending} places={monthPlaces} largest={monthLargest} M={M} month={month} onPrev={onPrev} onNext={onNext} onBack={back} note={NOTES.month && <ReportInfoNote id="month" textKey={NOTES.month} />} />
       )}
-      {/* Envelope-trends subscreen — Task 12 fills this in. */}
-      {view === "trends" && <div />}
+      {view === "trends" && (
+        <TrendsReport
+          trends={envelopeTrends}
+          M={M}
+          month={month}
+          onOpenEnvelope={onOpenEnvelope}
+          onPrev={onPrev}
+          onNext={onNext}
+          onBack={back}
+          note={NOTES.trends && <ReportInfoNote id="trends" textKey={NOTES.trends} />}
+        />
+      )}
     </div>
   );
 }
@@ -224,7 +237,7 @@ function ReportsHub({
   cashflow: { month: string; income: number; expense: number; net: number }[];
   hubSpending: { key: string | null; name: string; amount: number; pct: number }[];
   dailySpending: { date: string; total: number }[];
-  envelopeTrends: { id: string; name: string; color: string; series: number[]; last: number; baseline: number; deltaPct: number | null }[];
+  envelopeTrends: EnvelopeTrend[];
   onView: (v: ReportView) => void;
   onMenu: () => void;
   onPrev: () => void;
@@ -460,13 +473,25 @@ function MonthMini({ days, onView, M }: { days: { date: string; total: number }[
   );
 }
 
+/** Stroke/verdict color for an envelope trend: `C.mute` when there is no baseline to compare
+ *  against (`deltaPct` null — nothing spent in the months before the last one) or the series is
+ *  flat (`last === baseline`), else `C.neg` on the way up / `C.pos` on the way down — spending
+ *  semantics, rising is the "bad" direction. Shared by the hub's TrendsMini and the Trends
+ *  subscreen (Task 12) so a row's TrendSpark stroke and its rising/falling arrow always agree —
+ *  the original TrendsMini compared `last`/`baseline` alone and could paint C.neg/C.pos even with
+ *  no baseline to compare against (baseline 0, deltaPct null); that case now reads as neutral. */
+function trendColor(tr: EnvelopeTrend, C: Theme): string {
+  if (tr.deltaPct === null || tr.last === tr.baseline) return C.mute;
+  return tr.last > tr.baseline ? C.neg : C.pos;
+}
+
 /** Trends mini-card: the top-2 biggest-moving envelopes (already sorted by computeEnvelopeTrends),
  *  a mini TrendSpark (red rising / green falling / muted flat) and an arrow per row. */
 function TrendsMini({
   trends,
   onView,
 }: {
-  trends: { id: string; name: string; color: string; series: number[]; last: number; baseline: number; deltaPct: number | null }[];
+  trends: EnvelopeTrend[];
   onView: (v: ReportView) => void;
 }) {
   const C = useTheme();
@@ -476,9 +501,9 @@ function TrendsMini({
     <MiniCard title={t("Envelope trends")} onClick={() => onView("trends")}>
       {top.length === 0 && <div style={{ fontSize: 11.5, color: C.mute }}>{t("Not enough data yet.")}</div>}
       {top.map((tr) => {
-        const rising = tr.last > tr.baseline;
-        const falling = tr.last < tr.baseline;
-        const color = rising ? C.neg : falling ? C.pos : C.mute;
+        const color = trendColor(tr, C);
+        const rising = color === C.neg;
+        const falling = color === C.pos;
         return (
           <div key={tr.id} style={{ marginBottom: 4 }}>
             <TrendSpark series={tr.series} color={color} w={150} h={16} />
@@ -1160,6 +1185,91 @@ function MonthReport({
           ))}
         </>
       )}
+    </ReportShell>
+  );
+}
+
+/**
+ * "Envelope trends" tab (Task 12, no dedicated mockup frame — follows the Gabinet grammar of
+ * Tasks 9–11 and the hub's TrendsMini, Task 8). Band hero counts envelopes whose `deltaPct` moved
+ * more than ±10% over the 6-month window (rising/falling; a null `deltaPct` — no baseline to
+ * compare against — counts as neither); eyebrow is the fixed "Last 6 months" window label (no
+ * range control, unlike Spending — the trend series is always the hub's 6-month window). No
+ * `bandChart`: the per-row TrendSpark already carries the shape, a band-level chart would just
+ * repeat it. Body: ALL trends, no fold — `computeEnvelopeTrends` already sorts by |last−baseline|
+ * desc and drops all-zero envelopes, so there is no long tail to hide behind a "+ N more" toggle
+ * the way Spending/Budgets do. Each row is a single-line statement (color dot + name, a fixed-size
+ * TrendSpark colored via `trendColor`, and a right column mirroring GoalsReport's amount/sub-line
+ * shape) that navigates to the envelope like a BudgetsReport row. When `deltaPct` is null there is
+ * nothing to compare the current amount against, so the whole sub-line (DeltaTag + "vs median") is
+ * omitted rather than left as a dangling "vs median" with no percentage next to it.
+ */
+function TrendsReport({
+  trends,
+  M,
+  month,
+  onOpenEnvelope,
+  onPrev,
+  onNext,
+  onBack,
+  note,
+}: {
+  trends: EnvelopeTrend[];
+  M: Mask;
+  month: string;
+  onOpenEnvelope: (envId: string, month: string) => void;
+  onPrev: () => void;
+  onNext: () => void;
+  onBack: () => void;
+  note: ReactNode;
+}) {
+  const C = useTheme();
+  const { t } = useT();
+  const rising = trends.filter((tr) => tr.deltaPct !== null && tr.deltaPct > 0.1).length;
+  const falling = trends.filter((tr) => tr.deltaPct !== null && tr.deltaPct < -0.1).length;
+
+  return (
+    <ReportShell
+      title={t(TITLES.trends)}
+      month={month}
+      onPrev={onPrev}
+      onNext={onNext}
+      onBack={onBack}
+      eyebrow={t("Last 6 months")}
+      hero={t("{n} rising · {m} falling", { n: rising, m: falling })}
+    >
+      {note}
+      {trends.length === 0 && (
+        <div style={{ fontSize: 12.5, color: C.mute, padding: "8px 0" }}>
+          {t("Not enough history yet — trends appear after two months of spending.")}
+        </div>
+      )}
+      {trends.map((tr, i) => {
+        const color = trendColor(tr, C);
+        return (
+          <button
+            key={tr.id}
+            onClick={() => onOpenEnvelope(tr.id, month)}
+            style={{ display: "flex", alignItems: "center", gap: 10, width: "100%", padding: "10px 0", background: "none", border: "none", borderBottom: i === trends.length - 1 ? "none" : `1px solid ${C.line}`, cursor: "pointer", textAlign: "left", fontFamily: "inherit" }}
+          >
+            <span style={{ display: "flex", alignItems: "center", gap: 7, flex: 1, fontSize: 13.5, color: C.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              <span aria-hidden style={{ width: 8, height: 8, borderRadius: 3, background: tr.color, flexShrink: 0 }} />
+              {tr.name}
+            </span>
+            <span style={{ flexShrink: 0 }}>
+              <TrendSpark series={tr.series} color={color} w={96} h={24} />
+            </span>
+            <span style={{ textAlign: "right", flexShrink: 0 }}>
+              <span style={{ display: "block", fontSize: 13, fontWeight: 650, color: C.text, fontVariantNumeric: "tabular-nums" }}>{M(tr.last)}</span>
+              {tr.deltaPct !== null && (
+                <span style={{ display: "block", fontSize: 10.5, color: C.soft }}>
+                  <DeltaTag pct={tr.deltaPct} /> {t("vs median")}
+                </span>
+              )}
+            </span>
+          </button>
+        );
+      })}
     </ReportShell>
   );
 }
