@@ -102,4 +102,17 @@ describe("clientLedgerSchema", () => {
     l.transactions[0]!.items = [];
     expect(clientLedgerSchema.safeParse(l).success).toBe(true);
   });
+
+  test("pre-3.2 planned=true template rows are dropped on parse (never materialize as real money)", () => {
+    const l = fullLedger();
+    const base = l.transactions[0]!;
+    const plannedTrue = { ...base, id: U(8), planned: true }; // legacy template row — must be dropped
+    const plannedFalse = { ...base, id: U(9), planned: false }; // legacy but not a template — kept
+    l.transactions = [base, plannedTrue, plannedFalse];
+    const res = clientLedgerSchema.safeParse(l);
+    expect(res.success).toBe(true);
+    const ids = res.success ? res.data.transactions.map((t) => t.id) : [];
+    expect(ids.sort()).toEqual([base.id, plannedFalse.id].sort());
+    expect(ids).not.toContain(plannedTrue.id);
+  });
 });

@@ -352,8 +352,12 @@ describe.skipIf(!TEST_URL)("sync/pull: the change journal is scoped to one budge
     // (migration 0018) — there is nowhere left for the pre-3.2 `recurrences` key or the
     // transaction's `planned`/`recurrenceId` fields to land; zod strips them as unrecognized,
     // and the transaction itself still imports correctly.
+    // The fixture ALSO submits a second, `planned: true` legacy template transaction (amount
+    // 999999) — clientLedgerSchema's preprocess must drop it before `restoreLedger` ever sees
+    // it, so exactly ONE row (the real transaction, amount 500) lands in the DB, not two.
     expect(out.transactionRows).toHaveLength(1);
     expect(out.transactionRows[0]!.amount).toBe(500);
+    expect(out.transactionRows.every((r) => r.amount !== 999999)).toBe(true);
     // GROUND TRUTH, not just "the code doesn't reference it": query information_schema
     // directly, so a future re-introduction of `recurrences` fails this test loudly instead of
     // the guard quietly losing its teeth (it did once — see migration 0018's fix-up commit).

@@ -104,6 +104,30 @@ async function main(): Promise<void> {
         items: [],
         createdAt: "2026-01-01T00:00:00.000Z",
       },
+      // A legacy `planned: true` TEMPLATE row (recurring-payments feature, pre-3.2). These were
+      // always excluded from every ledger computation — clientLedgerSchema's preprocess must
+      // drop it before it ever reaches `restoreLedger`/`insertLedger`, so it must NOT show up in
+      // `transactionRows` below (it would otherwise materialize as real money on restore).
+      {
+        id: crypto.randomUUID(),
+        type: "expense",
+        accountId: accId,
+        toAccountId: null,
+        amount: 999999,
+        date: "2026-01-01",
+        confirmed: true,
+        isRefund: false,
+        envelopeId: null,
+        placeId: null,
+        categoryId: null,
+        name: null,
+        note: null,
+        tag: null,
+        planned: true,
+        recurrenceId: null,
+        items: [],
+        createdAt: "2026-01-01T00:00:00.000Z",
+      },
     ],
   };
 

@@ -15,7 +15,7 @@
  * reading as calm, the amber-wall failure inverted.
  */
 import { describe, expect, test } from "bun:test";
-import { budgetsSummary, classifyBudget } from "./reportSummary";
+import { budgetsOverAmount, budgetsSummary, classifyBudget } from "./reportSummary";
 
 const envRow = (over: Partial<{ archived: boolean; allocated: number; carryIn: number; spent: number }> = {}) => ({
   archived: false,
@@ -85,5 +85,43 @@ describe("budgetsSummary", () => {
 
   test("negative spent counts as 0 → ok", () => {
     expect(budgetsSummary([envRow({ allocated: 1000, spent: -200 })])).toEqual({ over: 0, near: 0, ok: 1 });
+  });
+});
+
+/* budgetsOverAmount: the € total behind the hub Budgets mini-card's "over budget" line — MUST
+ * agree with budgetsSummary's `over` count (same classifyBudget call), not an inline `pct > 100`
+ * check, which silently drops the zero-budget boundary case from the € total even though the
+ * pill above still counts it as "over" (the regression this test pins). */
+describe("budgetsOverAmount", () => {
+  test("sums -left over ordinary overspent envelopes", () => {
+    expect(budgetsOverAmount([envRow({ allocated: 1000, spent: 1300 })])).toBe(300); // left=-300
+  });
+
+  test("the zero-budget boundary: no allocation, spent=1 → floored-budget pct is exactly 100 (not > 100), left=-1 → still counted", () => {
+    // an inline `pct > 100` filter would miss this row entirely (pct===100) and return 0,
+    // even though budgetsSummary already counts it as `over`.
+    expect(budgetsOverAmount([envRow({ spent: 1 })])).toBe(1);
+  });
+
+  test("used up exactly (pct=100, left=0) → ok, not over → 0", () => {
+    expect(budgetsOverAmount([envRow({ allocated: 1000, spent: 1000 })])).toBe(0);
+  });
+
+  test("near (pct>=80, left>0) contributes nothing", () => {
+    expect(budgetsOverAmount([envRow({ allocated: 1000, spent: 800 })])).toBe(0);
+  });
+
+  test("archived and inactive (no allocation, no spend) envelopes are excluded", () => {
+    expect(budgetsOverAmount([envRow({ allocated: 1000, spent: 2000, archived: true }), envRow()])).toBe(0);
+  });
+
+  test("sums across multiple overspent envelopes", () => {
+    expect(
+      budgetsOverAmount([
+        envRow({ allocated: 1000, spent: 1300 }), // left=-300
+        envRow({ allocated: 500, spent: 800 }), // left=-300
+        envRow({ allocated: 1000, spent: 500 }), // ok, not counted
+      ]),
+    ).toBe(600);
   });
 });

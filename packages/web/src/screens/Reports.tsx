@@ -22,7 +22,7 @@ import { useMask, useTheme } from "../lib/contexts";
 import { monthLabel, shortDate } from "../lib/dates";
 import { goalProgress } from "../lib/goals";
 import { useT, type Message, msg } from "../lib/i18n";
-import { budgetsSummary, classifyBudget } from "../lib/reportSummary";
+import { budgetsOverAmount, budgetsSummary, classifyBudget } from "../lib/reportSummary";
 import { ENV_PALETTE, P, TEAL, tint, type Theme } from "../lib/theme";
 
 export type ReportTab = "assets" | "cashflow" | "spending" | "budgets" | "goals" | "month" | "trends";
@@ -283,13 +283,22 @@ function ReportsHub({
   );
 }
 
-/** Mini-card button shell shared by all six hub cards: quiet label row (title + chevron) + body. */
+/** Mini-card button shell shared by all six hub cards: quiet label row (title + chevron) + body.
+ *
+ * The grid (ReportsHub) stretches every card in a row to the tallest sibling's height (grid
+ * items default to `align-items: stretch`), so a short-content card (Goals/Month/Trends) ends
+ * up taller than its own content needs. A NATIVE `<button>` vertically CENTERS its children in
+ * that extra space by default — regardless of `display: block` on the button itself, since the
+ * browser's own form-control rendering still applies — so short cards centered their title while
+ * taller cards (whose content already filled the row) looked top-aligned by coincidence. Giving
+ * the button its own top-aligned flex layout (column, default main-axis `flex-start`) overrides
+ * that native centering so every card top-aligns its content, tall or short. */
 function MiniCard({ title, onClick, children }: { title: string; onClick: () => void; children: ReactNode }) {
   const C = useTheme();
   return (
     <button
       onClick={onClick}
-      style={{ display: "block", width: "100%", background: C.card, border: "none", boxShadow: "0 1px 3px rgba(20,20,28,0.06)", borderRadius: 14, padding: "12px 13px", cursor: "pointer", textAlign: "left", fontFamily: "inherit" }}
+      style={{ display: "flex", flexDirection: "column", alignItems: "stretch", justifyContent: "flex-start", width: "100%", background: C.card, border: "none", boxShadow: "0 1px 3px rgba(20,20,28,0.06)", borderRadius: 14, padding: "12px 13px", cursor: "pointer", textAlign: "left", fontFamily: "inherit" }}
     >
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", fontSize: 11, fontWeight: 700, color: C.soft, marginBottom: 6 }}>
         <span>{title}</span>
@@ -384,13 +393,11 @@ function BudgetsMini({ envelopes, onView, M }: { envelopes: StateResponse["envel
   const C = useTheme();
   const { t } = useT();
   const bs = budgetsSummary(envelopes);
-  const overAmt = envelopes
-    .filter((e) => !e.archived && (e.allocated + e.carryIn > 0 || e.spent > 0))
-    .reduce((s, e) => {
-      const budget = Math.max(1, e.allocated + e.carryIn);
-      const pct = (Math.max(0, e.spent) / budget) * 100;
-      return pct > 100 ? s + Math.max(0, -e.available) : s;
-    }, 0);
+  // Same classifier as budgetsSummary (classifyBudget: over = left < 0, on the RAW unfloored
+  // budget) — NOT an inline `pct > 100` check, which misses the zero-budget boundary (raw
+  // budget <= 0 + any spend → pct lands at exactly 100, left already negative; adb4c43 fixed
+  // this for the pill counters, budgetsOverAmount mirrors the same rule for the € amount).
+  const overAmt = budgetsOverAmount(envelopes);
   const pill = (label: string, bg: string, color: string, key: string) => (
     <span key={key} style={{ display: "inline-flex", alignItems: "center", fontSize: 11.5, fontWeight: 650, borderRadius: 9, padding: "4px 9px", background: bg, color }}>
       {label}

@@ -16,6 +16,12 @@
  *   real overspend reading as calm.
  * - `budgetsSummary` — envelope counters via `classifyBudget`; an envelope counts when it has
  *   an allocation (allocated+carryIn>0) or spending in the month.
+ * - `budgetsOverAmount` — the € total the hub's Budgets mini-card shows under the pills;
+ *   Σ(-left) over rows `classifyBudget` puts in "over", NOT an inline `pct > 100` check (that
+ *   inline check re-introduces the zero-budget boundary bug fixed in adb4c43 for the pill
+ *   counters: raw budget <= 0 + any spend → pct lands at exactly 100 on the FLOORED budget while
+ *   `left` is already negative — `pct > 100` reads that as "ok" and silently drops it from the
+ *   € total even though the pill above already counts it as "over").
  */
 
 export interface BudgetsSummary {
@@ -52,4 +58,20 @@ export function budgetsSummary(envelopes: BudgetEnvelope[]): BudgetsSummary {
     out[classifyBudget(pct, left)]++;
   }
   return out;
+}
+
+/** Σ(-left) over "over" envelopes — the € amount shown under the hub's Budgets mini-card pills.
+ *  Same filter + classifier as budgetsSummary, so the amount and the pill count are always
+ *  consistent (see module doc above for why this must NOT be an inline `pct > 100` check). */
+export function budgetsOverAmount(envelopes: BudgetEnvelope[]): number {
+  let total = 0;
+  for (const e of envelopes) {
+    if (e.archived) continue;
+    if (!(e.allocated + e.carryIn > 0 || e.spent > 0)) continue;
+    const budget = Math.max(1, e.allocated + e.carryIn);
+    const pct = (Math.max(0, e.spent) / budget) * 100;
+    const left = e.allocated + e.carryIn - e.spent;
+    if (classifyBudget(pct, left) === "over") total += -left;
+  }
+  return total;
 }

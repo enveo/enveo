@@ -231,6 +231,20 @@ const transactionEntity = z
 
 const budgetEntity = z.object({ id: zUuid, name: z.string(), currency: z.string() });
 
+/**
+ * Pre-3.2 backups/replicas carry per-transaction `planned: true` template rows (the recurring-
+ * payments feature). `planned` was removed from `transactionEntity` above in 3.2, so without this
+ * preprocess zod would SILENTLY STRIP the flag and let the row through as an ordinary transaction
+ * — a template installed as real money on restore. Those rows were always excluded from every
+ * ledger computation (budget math, reports); they must not materialize here either. Drop them
+ * from the raw array BEFORE the per-item schema runs, so every consumer of clientLedgerSchema
+ * (web `importBackup`, `/api/sync/replace`) is covered from one place.
+ */
+const droppingLegacyPlannedRows = z.preprocess((v) => {
+  if (!Array.isArray(v)) return v;
+  return v.filter((item) => !(item && typeof item === "object" && (item as { planned?: unknown }).planned === true));
+}, z.array(transactionEntity));
+
 /** Full client replica (ClientLedger) — backup / server replace validation.
     `budgets` optional — old JSON backups (pre-currency) must still load. */
 export const clientLedgerSchema = z.object({
@@ -241,7 +255,7 @@ export const clientLedgerSchema = z.object({
   categories: z.array(categoryEntity),
   places: z.array(placeEntity),
   allocations: z.array(allocationEntity),
-  transactions: z.array(transactionEntity),
+  transactions: droppingLegacyPlannedRows,
 });
 export type ClientLedgerInput = z.infer<typeof clientLedgerSchema>;
 
