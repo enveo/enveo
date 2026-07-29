@@ -10,6 +10,7 @@ import {
   savingsRate,
   spendingBaseline,
   topPlaces,
+  type EnvelopeTrend,
   type SpendingDimension,
 } from "@enveo/shared";
 import { useLedgerVersion, type StateResponse } from "../lib/api";
@@ -23,7 +24,7 @@ import { monthLabel, shortDate } from "../lib/dates";
 import { goalProgress } from "../lib/goals";
 import { useT, type Message, msg } from "../lib/i18n";
 import { budgetsSummary, classifyBudget } from "../lib/reportSummary";
-import { ENV_PALETTE, P, TEAL, tint } from "../lib/theme";
+import { ENV_PALETTE, P, TEAL, tint, type Theme } from "../lib/theme";
 
 export type ReportTab = "assets" | "cashflow" | "spending" | "budgets" | "goals" | "month" | "trends";
  
@@ -119,8 +120,10 @@ export function ReportsScreen({ state, month, view, onView, onOpenEnvelope, onMe
     return l ? computeDailySpending(l, month) : [];
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [version, month, view]);
+  
+
   const envelopeTrends = useMemo(() => {
-    if (view !== "overview") return [];
+    if (view !== "overview" && view !== "trends") return [];
     const l = store.getLedger();
     return l ? computeEnvelopeTrends(l, month, 6) : [];
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -192,8 +195,18 @@ export function ReportsScreen({ state, month, view, onView, onOpenEnvelope, onMe
       {view === "month" && (
         <MonthReport cashflow={cashflow} days={dailySpending} places={monthPlaces} largest={monthLargest} M={M} month={month} onPrev={onPrev} onNext={onNext} onBack={back} note={NOTES.month && <ReportInfoNote id="month" textKey={NOTES.month} />} />
       )}
-      { }
-      {view === "trends" && <div />}
+      {view === "trends" && (
+        <TrendsReport
+          trends={envelopeTrends}
+          M={M}
+          month={month}
+          onOpenEnvelope={onOpenEnvelope}
+          onPrev={onPrev}
+          onNext={onNext}
+          onBack={back}
+          note={NOTES.trends && <ReportInfoNote id="trends" textKey={NOTES.trends} />}
+        />
+      )}
     </div>
   );
 }
@@ -224,7 +237,7 @@ function ReportsHub({
   cashflow: { month: string; income: number; expense: number; net: number }[];
   hubSpending: { key: string | null; name: string; amount: number; pct: number }[];
   dailySpending: { date: string; total: number }[];
-  envelopeTrends: { id: string; name: string; color: string; series: number[]; last: number; baseline: number; deltaPct: number | null }[];
+  envelopeTrends: EnvelopeTrend[];
   onView: (v: ReportView) => void;
   onMenu: () => void;
   onPrev: () => void;
@@ -462,11 +475,23 @@ function MonthMini({ days, onView, M }: { days: { date: string; total: number }[
 
 
 
+
+
+
+
+
+function trendColor(tr: EnvelopeTrend, C: Theme): string {
+  if (tr.deltaPct === null || tr.last === tr.baseline) return C.mute;
+  return tr.last > tr.baseline ? C.neg : C.pos;
+}
+
+
+
 function TrendsMini({
   trends,
   onView,
 }: {
-  trends: { id: string; name: string; color: string; series: number[]; last: number; baseline: number; deltaPct: number | null }[];
+  trends: EnvelopeTrend[];
   onView: (v: ReportView) => void;
 }) {
   const C = useTheme();
@@ -476,9 +501,9 @@ function TrendsMini({
     <MiniCard title={t("Envelope trends")} onClick={() => onView("trends")}>
       {top.length === 0 && <div style={{ fontSize: 11.5, color: C.mute }}>{t("Not enough data yet.")}</div>}
       {top.map((tr) => {
-        const rising = tr.last > tr.baseline;
-        const falling = tr.last < tr.baseline;
-        const color = rising ? C.neg : falling ? C.pos : C.mute;
+        const color = trendColor(tr, C);
+        const rising = color === C.neg;
+        const falling = color === C.pos;
         return (
           <div key={tr.id} style={{ marginBottom: 4 }}>
             <TrendSpark series={tr.series} color={color} w={150} h={16} />
@@ -1160,6 +1185,91 @@ function MonthReport({
           ))}
         </>
       )}
+    </ReportShell>
+  );
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+function TrendsReport({
+  trends,
+  M,
+  month,
+  onOpenEnvelope,
+  onPrev,
+  onNext,
+  onBack,
+  note,
+}: {
+  trends: EnvelopeTrend[];
+  M: Mask;
+  month: string;
+  onOpenEnvelope: (envId: string, month: string) => void;
+  onPrev: () => void;
+  onNext: () => void;
+  onBack: () => void;
+  note: ReactNode;
+}) {
+  const C = useTheme();
+  const { t } = useT();
+  const rising = trends.filter((tr) => tr.deltaPct !== null && tr.deltaPct > 0.1).length;
+  const falling = trends.filter((tr) => tr.deltaPct !== null && tr.deltaPct < -0.1).length;
+
+  return (
+    <ReportShell
+      title={t(TITLES.trends)}
+      month={month}
+      onPrev={onPrev}
+      onNext={onNext}
+      onBack={onBack}
+      eyebrow={t("Last 6 months")}
+      hero={t("{n} rising · {m} falling", { n: rising, m: falling })}
+    >
+      {note}
+      {trends.length === 0 && (
+        <div style={{ fontSize: 12.5, color: C.mute, padding: "8px 0" }}>
+          {t("Not enough history yet — trends appear after two months of spending.")}
+        </div>
+      )}
+      {trends.map((tr, i) => {
+        const color = trendColor(tr, C);
+        return (
+          <button
+            key={tr.id}
+            onClick={() => onOpenEnvelope(tr.id, month)}
+            style={{ display: "flex", alignItems: "center", gap: 10, width: "100%", padding: "10px 0", background: "none", border: "none", borderBottom: i === trends.length - 1 ? "none" : `1px solid ${C.line}`, cursor: "pointer", textAlign: "left", fontFamily: "inherit" }}
+          >
+            <span style={{ display: "flex", alignItems: "center", gap: 7, flex: 1, fontSize: 13.5, color: C.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              <span aria-hidden style={{ width: 8, height: 8, borderRadius: 3, background: tr.color, flexShrink: 0 }} />
+              {tr.name}
+            </span>
+            <span style={{ flexShrink: 0 }}>
+              <TrendSpark series={tr.series} color={color} w={96} h={24} />
+            </span>
+            <span style={{ textAlign: "right", flexShrink: 0 }}>
+              <span style={{ display: "block", fontSize: 13, fontWeight: 650, color: C.text, fontVariantNumeric: "tabular-nums" }}>{M(tr.last)}</span>
+              {tr.deltaPct !== null && (
+                <span style={{ display: "block", fontSize: 10.5, color: C.soft }}>
+                  <DeltaTag pct={tr.deltaPct} /> {t("vs median")}
+                </span>
+              )}
+            </span>
+          </button>
+        );
+      })}
     </ReportShell>
   );
 }
