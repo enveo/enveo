@@ -5,9 +5,11 @@ import {
   computeEnvelopeTrends,
   computeNetWorthSeries,
   computeSpendingByDimension,
+  largestExpenses,
   prevMonth,
   savingsRate,
   spendingBaseline,
+  topPlaces,
   type SpendingDimension,
 } from "@enveo/shared";
 import { useLedgerVersion, type StateResponse } from "../lib/api";
@@ -15,9 +17,9 @@ import { store } from "../lib/store";
 import { Header } from "../components/chrome";
 import { GoalRing, useBand } from "../components/kit";
 import { ReportInfoNote } from "../components/ReportInfoNote";
-import { Bar, DeltaTag, ReportShell, SegBar, Sparkline, TrendSpark } from "../components/reportKit";
+import { Bar, CalendarHeatmap, DeltaTag, ReportShell, SegBar, Sparkline, TrendSpark } from "../components/reportKit";
 import { useMask, useTheme } from "../lib/contexts";
-import { monthLabel } from "../lib/dates";
+import { monthLabel, shortDate } from "../lib/dates";
 import { goalProgress } from "../lib/goals";
 import { useT, type Message, msg } from "../lib/i18n";
 import { budgetsSummary, classifyBudget } from "../lib/reportSummary";
@@ -81,9 +83,11 @@ export function ReportsScreen({ state, month, view, onView, onOpenEnvelope, onMe
     return l ? computeNetWorthSeries(l, month, 12) : [];
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [version, month, view]);
-  // also needed by "spending" (period-total delta vs the 3-mo median of expense)
+  // also needed by "spending" (period-total delta vs the 3-mo median of expense) and "month"
+  // (hero net + savings rate, current-month point — the 12-mo window costs nothing extra and lets
+  // it share this same memo rather than compute a redundant 1-point series)
   const cashflow = useMemo(() => {
-    if (view !== "cashflow" && view !== "overview" && view !== "spending") return [];
+    if (view !== "cashflow" && view !== "overview" && view !== "spending" && view !== "month") return [];
     const l = store.getLedger();
     return l ? computeCashflowSeries(l, month, 12) : [];
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -108,8 +112,9 @@ export function ReportsScreen({ state, month, view, onView, onOpenEnvelope, onMe
     return l ? computeSpendingByDimension(l, month, month, "envelope") : [];
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [version, month, view]);
+  // also needed by "month" (the day-by-day heatmap — same month, same computation)
   const dailySpending = useMemo(() => {
-    if (view !== "overview") return [];
+    if (view !== "overview" && view !== "month") return [];
     const l = store.getLedger();
     return l ? computeDailySpending(l, month) : [];
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -118,6 +123,20 @@ export function ReportsScreen({ state, month, view, onView, onOpenEnvelope, onMe
     if (view !== "overview") return [];
     const l = store.getLedger();
     return l ? computeEnvelopeTrends(l, month, 6) : [];
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [version, month, view]);
+  // "month" subscreen only: this month's top places (visit-count led) and largest individual
+  // expenses — both single-month windows (fromMonth === toMonth === month for topPlaces).
+  const monthPlaces = useMemo(() => {
+    if (view !== "month") return [];
+    const l = store.getLedger();
+    return l ? topPlaces(l, month, month, 5) : [];
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [version, month, view]);
+  const monthLargest = useMemo(() => {
+    if (view !== "month") return [];
+    const l = store.getLedger();
+    return l ? largestExpenses(l, month, 5) : [];
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [version, month, view]);
 
@@ -170,8 +189,9 @@ export function ReportsScreen({ state, month, view, onView, onOpenEnvelope, onMe
       )}
       {view === "budgets" && <BudgetsReport state={state} M={M} onOpenEnvelope={onOpenEnvelope} onPrev={onPrev} onNext={onNext} onBack={back} note={NOTES.budgets && <ReportInfoNote id="budgets" textKey={NOTES.budgets} />} />}
       {view === "goals" && <GoalsReport state={state} M={M} onOpenEnvelope={onOpenEnvelope} onPrev={onPrev} onNext={onNext} onBack={back} note={NOTES.goals && <ReportInfoNote id="goals" textKey={NOTES.goals} />} />}
-      {/* Month-in-a-nutshell subscreen — Task 11 fills this in. */}
-      {view === "month" && <div />}
+      {view === "month" && (
+        <MonthReport cashflow={cashflow} days={dailySpending} places={monthPlaces} largest={monthLargest} M={M} month={month} onPrev={onPrev} onNext={onNext} onBack={back} note={NOTES.month && <ReportInfoNote id="month" textKey={NOTES.month} />} />
+      )}
       {/* Envelope-trends subscreen — Task 12 fills this in. */}
       {view === "trends" && <div />}
     </div>
@@ -1015,6 +1035,123 @@ function GoalsReport({
           </button>
         );
       })}
+    </ReportShell>
+  );
+}
+
+/**
+ * "Month in a nutshell" tab (frame A4): the whole-month glance-back — band hero is this month's
+ * net (sign-colored via `hc`, the same idiom as Cashflow's hero), sub is ONE line built from two
+ * WHOLE-sentence variants (income/spending/rate vs. income/spending only) rather than a glued
+ * fragment, matching Cashflow's rate-vs-no-rate split — a month with no income has no defined
+ * savings rate (`savingsRate` returns `current: null` there), not a rate of 0%. Body: a
+ * Monday-start `CalendarHeatmap` of daily spending with an avg/peak caption, then "Most frequent
+ * places" (`topPlaces`, visit-count led) and "Largest expenses" (`largestExpenses`, amount led) —
+ * both in the statement-row idiom (13.5px, hairline `C.line` separators, last row bare — mirrors
+ * mockup `.stmt`; a bespoke eyebrow style rather than `SectionEyebrow` because that component's
+ * own horizontal padding doesn't match this body's, see kit.tsx). An empty month (no day with
+ * positive spend) swaps the avg/peak caption for a single "No spending this month." line — the
+ * heatmap needs no special-casing since every `<= 0` cell already renders `C.inset` — and both
+ * list sections are hidden entirely (not rendered empty) when there is nothing to show.
+ */
+function MonthReport({
+  cashflow,
+  days,
+  places,
+  largest,
+  M,
+  month,
+  onPrev,
+  onNext,
+  onBack,
+  note,
+}: {
+  cashflow: { month: string; income: number; expense: number; net: number }[];
+  days: { date: string; total: number }[];
+  places: { key: string; name: string; count: number; total: number }[];
+  largest: { id: string; label: string; date: string; amount: number }[];
+  M: Mask;
+  month: string;
+  onPrev: () => void;
+  onNext: () => void;
+  onBack: () => void;
+  note: ReactNode;
+}) {
+  const C = useTheme();
+  const { t, lang } = useT();
+  const { hc } = useBand();
+
+  const totIncome = cashflow.at(-1)?.income ?? 0;
+  const totExpense = cashflow.at(-1)?.expense ?? 0;
+  const totNet = totIncome - totExpense;
+  const sr = savingsRate(cashflow);
+  const srPct = sr.current !== null ? Math.round(sr.current * 100) : null;
+
+  // peak day: first occurrence wins a tie (strict `>` below never overwrites on equal totals)
+  let peak = days[0];
+  for (const d of days) if (peak === undefined || d.total > peak.total) peak = d;
+  const hasSpending = peak !== undefined && peak.total > 0;
+  const avg = days.length > 0 ? Math.round(totExpense / days.length) : 0;
+
+  const eyebrowStyle = { fontSize: 10.5, fontWeight: 750, letterSpacing: "0.16em", textTransform: "uppercase" as const, color: C.mute, margin: "18px 2px 8px" };
+  const rowStyle = (last: boolean) => ({ display: "flex", justifyContent: "space-between", alignItems: "baseline" as const, padding: "9px 1px", borderBottom: last ? "none" : `1px solid ${C.line}`, fontSize: 13.5 });
+
+  return (
+    <ReportShell
+      title={t(TITLES.month)}
+      month={month}
+      onPrev={onPrev}
+      onNext={onNext}
+      onBack={onBack}
+      eyebrow={t("Net for {month}", { month: monthLabel(month, lang) })}
+      hero={
+        <span style={{ color: totNet >= 0 ? hc(C.headerPos, C.pos) : hc(C.headerNeg, C.neg) }}>
+          {totNet >= 0 ? "+" : "−"}
+          {M(Math.abs(totNet))}
+        </span>
+      }
+      sub={
+        srPct !== null
+          ? t("income {income} · spending {expense} · savings rate {pct}%", { income: M(totIncome), expense: M(totExpense), pct: srPct })
+          : t("income {income} · spending {expense}", { income: M(totIncome), expense: M(totExpense) })
+      }
+    >
+      {note}
+      <div style={eyebrowStyle}>{t("Day by day")}</div>
+      <CalendarHeatmap days={days} lang={lang} mask={M} />
+      <div style={{ fontSize: 11, color: C.mute, marginTop: 7 }}>
+        {hasSpending && peak
+          ? t("avg {amount}/day · peak: {date} ({amount2})", { amount: M(avg), date: shortDate(peak.date, lang), amount2: M(peak.total) })
+          : t("No spending this month.")}
+      </div>
+
+      {places.length > 0 && (
+        <>
+          <div style={eyebrowStyle}>{t("Most frequent places")}</div>
+          {places.map((p, i) => (
+            <div key={p.key} style={rowStyle(i === places.length - 1)}>
+              <span style={{ color: C.soft, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.name}</span>
+              <span style={{ fontWeight: 650, color: C.text, fontVariantNumeric: "tabular-nums", flexShrink: 0, marginLeft: 8 }}>
+                {t("{count}× · {amount}", { count: p.count, amount: M(p.total) })}
+              </span>
+            </div>
+          ))}
+        </>
+      )}
+
+      {largest.length > 0 && (
+        <>
+          <div style={eyebrowStyle}>{t("Largest expenses")}</div>
+          {largest.map((e, i) => (
+            <div key={e.id} style={rowStyle(i === largest.length - 1)}>
+              <span style={{ color: C.soft, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                {e.label} <span style={{ color: C.mute }}>· {shortDate(e.date, lang)}</span>
+              </span>
+              <span style={{ fontWeight: 650, color: C.text, fontVariantNumeric: "tabular-nums", flexShrink: 0, marginLeft: 8 }}>{M(e.amount)}</span>
+            </div>
+          ))}
+        </>
+      )}
     </ReportShell>
   );
 }
