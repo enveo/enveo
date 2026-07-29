@@ -64,7 +64,6 @@ export function tx(over: Partial<Transaction>): Transaction {
     toAccountId: null,
     amount: 0,
     date: "2026-06-10",
-    confirmed: true,
     isRefund: false,
     envelopeId: null,
     placeId: null,

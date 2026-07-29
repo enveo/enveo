@@ -85,8 +85,6 @@ function deleteTxn(id: string): void {
 
 
 
-
-
 export function txnToPayload(t: Transaction): TxnPayload {
   return {
     type: t.type,

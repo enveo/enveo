@@ -47,7 +47,6 @@ txnRoutes.post("/transactions/:id/duplicate", async (c) => {
       toAccountId: orig.toAccountId,
       amount: orig.amount,
       date: new Date().toISOString().slice(0, 10),
-      confirmed: orig.confirmed,
       isRefund: orig.isRefund,
       envelopeId: orig.envelopeId,
       placeId: orig.placeId,

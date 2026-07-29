@@ -591,7 +591,6 @@ async function insertLedger(x: Executor, budgetId: string, ledger: ClientLedgerI
         toAccountId: t.toAccountId,
         amount: t.amount,
         date: t.date,
-        confirmed: t.confirmed,
         isRefund: t.isRefund,
         envelopeId: t.envelopeId,
         placeId: t.placeId,
