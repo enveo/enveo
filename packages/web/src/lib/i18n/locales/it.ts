@@ -508,6 +508,7 @@ export const it: Dict = {
   "not yet": "non ancora",
   "off": "disattivata",
   "offline": "offline",
+  "over by {amount}": "sforato di {amount}",
   "own key": "chiave propria",
   "probable duplicate": "probabile duplicato",
   "range {min}–{max}": "intervallo {min}–{max}",

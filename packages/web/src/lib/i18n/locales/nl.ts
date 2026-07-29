@@ -508,6 +508,7 @@ export const nl: Dict = {
   "not yet": "nog niet",
   "off": "uit",
   "offline": "offline",
+  "over by {amount}": "{amount} over de limiet",
   "own key": "eigen sleutel",
   "probable duplicate": "waarschijnlijk duplicaat",
   "range {min}–{max}": "bereik {min}–{max}",

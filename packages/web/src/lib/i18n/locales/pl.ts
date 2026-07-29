@@ -542,6 +542,7 @@ export const pl: Dict = {
   "not yet": "jeszcze nie było",
   "off": "wyłączona",
   "offline": "offline",
+  "over by {amount}": "przekroczono o {amount}",
   "overspent": "przekroczono",
   "own key": "własny klucz",
   "probable duplicate": "prawdopodobny duplikat",

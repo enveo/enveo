@@ -508,6 +508,7 @@ export const fr: Dict = {
   "not yet": "pas encore",
   "off": "désactivée",
   "offline": "hors ligne",
+  "over by {amount}": "dépassement de {amount}",
   "own key": "clé perso",
   "probable duplicate": "doublon probable",
   "range {min}–{max}": "plage {min}–{max}",
