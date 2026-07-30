@@ -1,7 +1,7 @@
 import { useMask, useSettings, useTheme } from "../lib/contexts";
 import { goalProgress } from "../lib/goals";
 import { Glyph } from "../lib/icons";
-import { fmtTrim } from "../lib/format";
+import { fmtTrimLocale } from "../lib/format";
 import { tint } from "../lib/theme";
 import type { AccountView, EnvelopeView } from "../lib/api";
 import { spendMeter } from "../lib/uiState";
@@ -12,7 +12,7 @@ import { useT } from "../lib/i18n";
 export function EnvRow({ e, onClick, last }: { e: EnvelopeView; onClick: () => void; last?: boolean }) {
   const M = useMask();
   const C = useTheme();
-  const { t } = useT();
+  const { t, lang } = useT();
   const { settings } = useSettings();
   // Savings envelopes without spending show no meter — the line always means
   // "spent of assigned", and a funded savings pot has nothing to measure (spec §3.3).
@@ -38,14 +38,14 @@ export function EnvRow({ e, onClick, last }: { e: EnvelopeView; onClick: () => v
               ? t("overspent")
               : settings.discreet
                 ? `${M(Math.max(0, e.spent))} / ${M(meter.total)}`
-                : `${fmtTrim(Math.max(0, e.spent))} / ${M(meter.total)}`}
+                : `${fmtTrimLocale(Math.max(0, e.spent), lang)} / ${M(meter.total)}`}
           </span>
         </span>
       ) : gp ? (
         <span style={{ display: "flex", justifyContent: "flex-end", marginTop: 4 }}>
           <span style={{ fontSize: 10, color: C.mute, fontVariantNumeric: "tabular-nums" }}>
             {t("monthly goal: {allocated} / {target} · {pct}%", {
-              allocated: settings.discreet ? M(Math.max(0, e.allocated)) : fmtTrim(Math.max(0, e.allocated)),
+              allocated: settings.discreet ? M(Math.max(0, e.allocated)) : fmtTrimLocale(Math.max(0, e.allocated), lang),
               target: M(e.monthlyTarget ?? 0),
               pct: String(Math.round(gp.pct)),
             })}

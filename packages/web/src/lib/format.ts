@@ -48,6 +48,19 @@ export function fmtTrim(minor: number): string {
   return fmt(minor).replace(/,00$/, "");
 }
 
+/**
+ * Locale-aware bare number (no currency symbol), for READ-ONLY captions only — e.g. "184.60 / $400.00"
+ * in en-US, "184,60 / 400,00 zł" in pl-PL. Input in MINOR UNITS (integer).
+ *
+ * Do NOT use this for input-prefill: fmtTrim/fmt stay hardcoded comma-decimal there because their
+ * output must round-trip parseAmount, whose naive `,` → `.` replace would misparse en-US grouping
+ * commas (e.g. "1,234" prefilled in en would parse back as 1.234, not 1234).
+ */
+export function fmtTrimLocale(minor: number, lang: Lang): string {
+  const whole = minor % 100 === 0;
+  return new Intl.NumberFormat(LOCALE_OF[lang], { minimumFractionDigits: whole ? 0 : 2, maximumFractionDigits: whole ? 0 : 2 }).format(minor / 100);
+}
+
 /** Whether a color is light (for picking dark/light text). */
 export function isLight(hex: string): boolean {
   const c = hex.replace("#", "");
