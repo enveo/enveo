@@ -48,6 +48,19 @@ export function fmtTrim(minor: number): string {
   return fmt(minor).replace(/,00$/, "");
 }
 
+
+
+
+
+
+
+
+
+export function fmtTrimLocale(minor: number, lang: Lang): string {
+  const whole = minor % 100 === 0;
+  return new Intl.NumberFormat(LOCALE_OF[lang], { minimumFractionDigits: whole ? 0 : 2, maximumFractionDigits: whole ? 0 : 2 }).format(minor / 100);
+}
+
  
 export function isLight(hex: string): boolean {
   const c = hex.replace("#", "");
