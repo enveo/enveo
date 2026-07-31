@@ -13,8 +13,8 @@ import { TEAL, font } from "../lib/theme";
  *  - "Enable via server"  → aiMode="server" (only when /api/ai/info → serverAi=true),
  *  - "Use your own key" → inline key + model → aiMode="byok" (key ONLY in localStorage),
  *  - "Stay with rules" → does NOT change aiMode. Only the budget SUGGESTION has a rules
- *    engine to stay with; for the import (and quick-add, which since 2.2.0 has no rules
- *    parser at all and is simply hidden in off mode) the way out is "Cancel".
+ *    engine to stay with; for the import (AI-only, no rules parser at all) the way out
+ *    is "Cancel".
  * After the choice it calls `onDecided(mode)` — closing the sheet is the parent's job.
  */
 

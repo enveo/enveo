@@ -9,20 +9,6 @@ export type { AccountView, EnvelopeView, StateResponse } from "@enveo/shared";
 import type { AiLocale, BudgetSuggestProfile, BudgetSuggestResponse, ClientLedger } from "@enveo/shared";
 export type { BudgetSuggestProfile, BudgetSuggestResponse } from "@enveo/shared";
 
-export interface QuickAddResponse {
-  amount: number | null;
-  type: "expense" | "income";
-  isRefund: boolean;
-  date: string;
-  envelopeId: string | null;
-  envelopeName: string | null;
-  placeId: string | null;
-  placeName: string | null;
-  categoryId: string | null;
-  note: string | null;
-  confidence: number;
-}
-
  
 export interface ImportItem {
   date: string;
@@ -102,7 +88,7 @@ const ERROR_KEYS: Record<string, Message> = {
   
 
 
-  ai_offline: msg("You are offline — quick add and screenshot import need a connection. Manual entry works without one."), // fetch never left the device — the normal state of an offline PWA
+  ai_offline: msg("You are offline — screenshot import needs a connection. Manual entry works without one."), // fetch never left the device — the normal state of an offline PWA
   ai_key_invalid: msg("OpenAI rejected your key — check it in Settings → Artificial intelligence."),  
 
   
@@ -165,8 +151,6 @@ export const api = {
 
   /* `locale` = the UI language (any BCP-47 tag): the model writes its names, notes and
      rationales in it. Not to be confused with demoSeed's pl|en, which picks a SEED DATASET. */
-  quickAdd: (text: string, locale: AiLocale) => http<QuickAddResponse>("POST", "/quick-add", { text, locale }),
-
   importExtract: (images: string[], locale: AiLocale) => http<{ items: ImportItem[] }>("POST", "/import/extract", { images, locale }),
   importApply: (b: { accountId: string; items: ImportApplyItem[]; dryRun?: boolean }) =>
     http<ImportApplyResponse>("POST", "/import/apply", b),

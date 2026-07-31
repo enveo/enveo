@@ -7,7 +7,6 @@
 
 
 
-
 import { z } from "zod";
 import type { BudgetSuggestionBasis, ProposedEnvelopeDelta } from "./aiBudget";
 import { runAgentTool } from "./aiTools";
@@ -424,55 +423,6 @@ export function buildAgentLoopMessages(ctx: AgentLoopPromptContext): ChatToolsMe
     { role: "system", content: sys },
     { role: "user", content: user },
   ];
-}
-
- 
-
- 
-export interface QuickAddPromptRefs {
-  envelopes: Array<{ id: string; name: string }>;
-  places: Array<{ id: string; name: string }>;
-}
-
-export function buildQuickAddPrompt(text: string, refs: QuickAddPromptRefs, today: string, locale: AiLocale): ChatRequest {
-  const sys =
-    "You are a budget transaction parser. Return ONLY JSON with the fields: " +
-    "amount (integer minor units, int|null), type ('expense'|'income'), isRefund (bool), date (YYYY-MM-DD), " +
-    "envelopeName (string|null), placeName (string|null). " +
-    languageDirectives(locale) +
-    `Today: ${today}. Available envelopes: ${refs.envelopes.map((e) => e.name).join(", ")}. ` +
-    `Places: ${refs.places.map((p) => p.name).join(", ")}.`;
-  return {
-    messages: [
-      { role: "system", content: sys },
-      { role: "user", content: text },
-    ],
-    responseFormat: { type: "json_object" },
-    reasoningEffort: "low",
-  };
-}
-
-
-
-export interface QuickAddAiFields {
-  amount: number | null;
-  type: "expense" | "income";
-  isRefund: boolean;
-  date: string | null;
-  envelopeName: string | null;
-  placeName: string | null;
-}
-
-export function parseQuickAddResponse(raw: string): QuickAddAiFields {
-  const json = JSON.parse(sliceJson(raw)) as Record<string, unknown>;
-  return {
-    amount: typeof json.amount === "number" ? json.amount : null,
-    type: json.type === "income" ? "income" : "expense",
-    isRefund: json.isRefund === true,
-    date: typeof json.date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(json.date) ? json.date : null,
-    envelopeName: typeof json.envelopeName === "string" ? json.envelopeName : null,
-    placeName: typeof json.placeName === "string" ? json.placeName : null,
-  };
 }
 
  

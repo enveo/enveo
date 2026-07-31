@@ -464,7 +464,7 @@ export const ptBR: Dict = {
   "Yes": "Sim",
   "Yes, remove the data from this device": "Sim, remover os dados deste dispositivo",
   "Yesterday": "Ontem",
-  "You are offline — quick add and screenshot import need a connection. Manual entry works without one.": "Você está offline — a adição rápida e a importação de capturas precisam de conexão. A entrada manual funciona sem ela.",
+  "You are offline — screenshot import needs a connection. Manual entry works without one.": "Você está offline — a importação de capturas precisa de conexão. A entrada manual funciona sem ela.",
   "Your budget is tied to your account. Sign in to continue.": "Seu orçamento está vinculado à sua conta. Entre para continuar.",
   "Your data now lives only on this device. Make a backup (Export) — it is the only way not to lose it.": "Seus dados agora existem só neste dispositivo. Faça um backup (Exportar) — é o único jeito de não perdê-los.",
   "Your data will be decrypted and stored on the server in plain form (as before enabling). Make sure you have a current backup.": "Seus dados serão descriptografados e guardados no servidor em texto claro (como antes de ativar). Confira se você tem um backup atual.",

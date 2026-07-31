@@ -521,7 +521,7 @@ export const MESSAGES = [
   "Yes",
   "Yes, remove the data from this device",
   "Yesterday",
-  "You are offline — quick add and screenshot import need a connection. Manual entry works without one.",
+  "You are offline — screenshot import needs a connection. Manual entry works without one.",
   "Your budget is tied to your account. Sign in to continue.",
   "Your data now lives only on this device. Make a backup (Export) — it is the only way not to lose it.",
   "Your data will be decrypted and stored on the server in plain form (as before enabling). Make sure you have a current backup.",
