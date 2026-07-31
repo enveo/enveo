@@ -1,0 +1,17 @@
+{
+  // Test-scoped config: *.test.ts files use bun:test, which packages/api gets
+  // for free via `types: ["bun"]` (no DOM types there to conflict with). Web's
+  // app tsconfig (tsconfig.json) sets `types: ["vite/client"]` for browser code
+  // and DOM lib globals — adding "bun" there would let Bun.* globals typecheck
+  // in shipped app code, which we don't want. So tests get their own config:
+  // same lib/jsx as the app (test files exercise real lib/ modules that use
+  // `import.meta.env`, hence "vite/client" is kept here too), plus "bun" for
+  // bun:test. Run both configs via `bun run typecheck` (packages/web/package.json).
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "jsx": "react-jsx",
+    "noEmit": true,
+    "types": ["vite/client", "bun"]
+  },
+  "include": ["src/**/*.test.ts", "src/vite-env.d.ts"]
+}

@@ -72,7 +72,7 @@ describe("backend selection (device trust)", () => {
     stubLocalStorage({ "enveo.deviceTrust": "untrusted" });
     __resetStorageForTests();
     await idbPut("meta", "value", "k");
-    expect(await idbGet("meta", "k")).toBe("value");
+    expect(await idbGet<string>("meta", "k")).toBe("value");
     expect(storageMode()).toBe("memory-forced");
     expect(await factory.databases()).toEqual([]); // the factory saw no open()
   });

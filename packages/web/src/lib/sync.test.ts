@@ -822,7 +822,7 @@ describe("sync pull: a resync never replaces the mirror on an unverified session
     expect(store.getBootStatus()).toBe("foreign"); // the re-proof finds another account's stamp
     expect(reloads).toBe(0); // nothing destroyed unattended — the human decides
     await persist.flushed();
-    expect(await idbGet("meta", "budgetId")).toBe(BUDGET_A); // …and the DURABLE replica is A's
+    expect(await idbGet<string>("meta", "budgetId")).toBe(BUDGET_A); // …and the DURABLE replica is A's
     expect(await idbGet<string>("meta", "userId")).toBe("user-A");
   });
 
