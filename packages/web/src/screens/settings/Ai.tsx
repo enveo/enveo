@@ -54,7 +54,7 @@ export function AiSection() {
             autoCorrect="off"
             spellCheck={false}
             aria-label={t("OpenAI key")}
-            style={{ width: "100%", boxSizing: "border-box", padding: "10px 12px", borderRadius: 10, border: `1px solid ${C.line}`, background: C.bg, color: C.text, fontSize: 13, fontFamily: font, outline: "none" }}
+            style={{ width: "100%", boxSizing: "border-box", padding: "10px 12px", borderRadius: 10, border: `1px solid ${C.line}`, background: C.bg, color: C.text, fontSize: 13, fontFamily: font }}
           />
           <Row label={t("Model")}>
             <Seg

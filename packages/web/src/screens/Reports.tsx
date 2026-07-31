@@ -252,7 +252,7 @@ function ReportsHub({
 
   return (
     <div className="gs" style={{ flex: 1, overflowY: "auto", paddingBottom: 6 }}>
-      <div style={band ? { background: C.headerBg, paddingBottom: 14 } : { paddingBottom: 14 }}>
+      <div data-band={band || undefined} style={band ? { background: C.headerBg, paddingBottom: 14 } : { paddingBottom: 14 }}>
         <Header month={month} onMenu={onMenu} onPrev={onPrev} onNext={onNext} onBand={band} />
         <button
           onClick={() => onView("assets")}
@@ -773,11 +773,22 @@ function SpendingReport({
               border: `1px solid ${dim === d.id ? "var(--accent)" : C.line}`,
               background: dim === d.id ? "var(--accent)" : "transparent",
               // on-accent text (C3 contrast audit): white/headerInk measured ~2.1–2.3:1 on the
-              // solid accent fill in dark mode (teal #77c4a2, duet #8fa2cc are both LIGHT — by
-              // design, so they read as AA text on `card` elsewhere in the app; that same design
-              // guarantees `C.card` is always the correct ink on TOP of an accent fill too, in
-              // every theme × mode — accent is light where card is dark and vice versa, since
-              // "readable text on card" is exactly what accentDark/accent were tuned for).
+              // solid accent fill in DARK mode (teal #77c4a2, koral #ff998a, atrament #a5b5d6,
+              // duet #8fa2cc are all LIGHT — by design, so they read as AA text on `card`
+              // elsewhere in the app). Swapping to `C.card` fixes exactly those 4 dark combos to
+              // 4.60–5.57:1 (measured). It does NOT fix light mode: `C.card` on the light accent
+              // fill measures only 2.98:1 (teal) / 3.07:1 (koral) — under AA — because those two
+              // accents (#4fa583/#f0685c) are mid-tone by design, not tuned to be a "readable on
+              // card" light color the way their dark counterparts are; atrament/duet's LIGHT
+              // accent is `#1d2a47` so `C.card` clears it easily (14.24 / 13.44:1), coincidentally
+              // not by the same design argument. So: 6 of 8 theme×mode combos pass, not "all 8" —
+              // the 2 that don't (teal-light, koral-light) are the same pre-existing white/card-
+              // on-solid-fill gap flagged app-wide for buttons like "Save"/"Manage"/the FAB (see
+              // C3 report Concern #2); out of scope here, not introduced by this change.
+              // Duet also got an ink CHANGE (not just a contrast fix): the selected chip used to
+              // read `C.headerInk` (#edeff5) here, now reads `C.card` (#fcf8ef) like every other
+              // theme — both are ≥12:1 on Duet's accent, so this is a deliberate consistency
+              // choice, not a contrast regression.
               color: dim === d.id ? C.card : C.soft,
               fontSize: 12,
               fontWeight: 650,

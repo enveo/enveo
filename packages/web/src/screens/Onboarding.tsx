@@ -63,7 +63,6 @@ const inputStyle = (line: string, bg: string, text: string): React.CSSProperties
   color: text,
   fontSize: 14,
   fontFamily: font,
-  outline: "none",
 });
 
 export function OnboardingScreen({ onDone }: { onDone: () => void }) {
@@ -175,7 +174,7 @@ export function OnboardingScreen({ onDone }: { onDone: () => void }) {
                 const id = e.target.value as Lang;
                 void loadLocale(id).then(() => setSettings({ ...settings, lang: id }));
               }}
-              style={{ padding: "7px 10px", borderRadius: 9, border: `1px solid ${C.line}`, background: C.bg, color: C.text, fontSize: 12.5, fontWeight: 600, fontFamily: font, outline: "none" }}
+              style={{ padding: "7px 10px", borderRadius: 9, border: `1px solid ${C.line}`, background: C.bg, color: C.text, fontSize: 12.5, fontWeight: 600, fontFamily: font }}
             >
               {LOCALES.map((l) => (
                 <option key={l.code} value={l.code}>
@@ -188,7 +187,7 @@ export function OnboardingScreen({ onDone }: { onDone: () => void }) {
             <select
               value={currency}
               onChange={(e) => setCurrency(e.target.value)}
-              style={{ padding: "7px 10px", borderRadius: 9, border: `1px solid ${C.line}`, background: C.bg, color: C.text, fontSize: 12.5, fontWeight: 600, fontFamily: font, outline: "none" }}
+              style={{ padding: "7px 10px", borderRadius: 9, border: `1px solid ${C.line}`, background: C.bg, color: C.text, fontSize: 12.5, fontWeight: 600, fontFamily: font }}
             >
               {SUPPORTED_CURRENCIES.map((c) => (
                 <option key={c} value={c}>

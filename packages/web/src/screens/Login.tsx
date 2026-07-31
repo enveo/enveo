@@ -95,7 +95,6 @@ export function LoginScreen() {
     color: C.text,
     fontSize: 14,
     fontFamily: font,
-    outline: "none",
   };
   const linkStyle: React.CSSProperties = {
     padding: 0,

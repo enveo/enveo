@@ -138,7 +138,7 @@ function CustomColor({ open, color, onPick, S }: { open: boolean; color: string;
           autoCapitalize="off"
           autoCorrect="off"
           spellCheck={false}
-          style={{ flex: 1, minWidth: 0, padding: "11px 12px", borderRadius: 10, border: `1px solid ${valid || !hex.trim() ? S.line : "var(--danger)"}`, background: S.bg, color: S.text, fontSize: 14, fontFamily: font, outline: "none", fontVariantNumeric: "tabular-nums" }}
+          style={{ flex: 1, minWidth: 0, padding: "11px 12px", borderRadius: 10, border: `1px solid ${valid || !hex.trim() ? S.line : "var(--danger)"}`, background: S.bg, color: S.text, fontSize: 14, fontFamily: font, fontVariantNumeric: "tabular-nums" }}
         />
         <button onClick={() => valid && onPick(valid)} disabled={!valid} style={{ padding: "11px 18px", borderRadius: 10, border: "none", background: "var(--accent)", color: "#fff", fontSize: 13, fontWeight: 600, cursor: "pointer", opacity: valid ? 1 : 0.4, flexShrink: 0 }}>
           {t("Use")}

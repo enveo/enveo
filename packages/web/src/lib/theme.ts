@@ -225,6 +225,14 @@ export function themeTokens(t: AccentTheme, isDark: boolean): { vars: Record<str
   // Nav defaults = EXACTLY today's BottomNav (bg C.bg, active C.text,
   // indicator = accent, inactive C.mute) — a teal regression guard.
   const nav = (isDark ? def.navDark : def.nav) ?? { bg: palette.bg, on: palette.text, mute: palette.mute, ind: accent };
+  // C3 follow-up: on a "band" theme (Duet), `--accent` IS the band color (headerBg/nav bg are
+  // both the same navy #1d2a47 in both modes) — a `:focus-visible{outline:2px solid var(--accent)}`
+  // ring is then invisible (1.000:1) on the Header/BottomNav. `headerInk` is the token every band
+  // theme already uses for on-band text/icons, and it measures ≥12:1 against headerBg/nav bg in
+  // both modes (Duet), so it doubles as a high-contrast on-band ring. Plain themes (headerStyle
+  // "plain") paint the band the same color as `bg`, so the ordinary accent ring is already correct
+  // there — `--focus-ring-band` is just `--accent` for them (no behavior change).
+  const focusRingBand = palette.headerStyle === "band" ? palette.headerInk : accent;
   const vars: Record<string, string> = {
     "--accent": accent,
     "--danger": danger,
@@ -233,6 +241,7 @@ export function themeTokens(t: AccentTheme, isDark: boolean): { vars: Record<str
     "--nav-on": nav.on,
     "--nav-mute": nav.mute,
     "--nav-ind": nav.ind,
+    "--focus-ring-band": focusRingBand,
   };
   for (const s of ALPHA_SUFFIXES) {
     vars[`--accent-${s}`] = hexAlpha(accent, s);
