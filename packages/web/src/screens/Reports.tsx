@@ -772,12 +772,13 @@ function SpendingReport({
               borderRadius: 9,
               border: `1px solid ${dim === d.id ? "var(--accent)" : C.line}`,
               background: dim === d.id ? "var(--accent)" : "transparent",
-              // on-accent text: Duet's accent IS the navy band color (var(--accent) === C.headerBg
-              // there), so C.headerBg itself is unreadable on it — C.headerInk is the token for text
-              // painted ON that band (confirmed against a live Duet render, see task report). Other
-              // themes keep accent dark/saturated enough in light mode for plain white (the same
-              // literal already used by the accent-filled button in IconColorPicker.tsx).
-              color: dim === d.id ? hc(C.headerInk, "#fff") : C.soft,
+              // on-accent text (C3 contrast audit): white/headerInk measured ~2.1–2.3:1 on the
+              // solid accent fill in dark mode (teal #77c4a2, duet #8fa2cc are both LIGHT — by
+              // design, so they read as AA text on `card` elsewhere in the app; that same design
+              // guarantees `C.card` is always the correct ink on TOP of an accent fill too, in
+              // every theme × mode — accent is light where card is dark and vice versa, since
+              // "readable text on card" is exactly what accentDark/accent were tuned for).
+              color: dim === d.id ? C.card : C.soft,
               fontSize: 12,
               fontWeight: 650,
               cursor: "pointer",
