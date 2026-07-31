@@ -1,11 +1,10 @@
 /**
- * AI prompt builders and parsers (suggest / quick-add / import) — PURE,
+ * AI prompt builders and parsers (suggest / import) — PURE,
  * no I/O and no fetch. Single source of truth for server mode (API routes)
  * and byok (web `lib/openai.ts`): prompt parity guaranteed by identical code.
  *
  * Semantics carried over VERBATIM from the API routes:
  *  - routes/budgetSuggest.ts (openAiAskModel),
- *  - routes/extras.ts (enhanceWithLLM),
  *  - routes/import.ts (cycle 1: extract; messages + json_schema).
  */
 import { z } from "zod";
@@ -424,55 +423,6 @@ export function buildAgentLoopMessages(ctx: AgentLoopPromptContext): ChatToolsMe
     { role: "system", content: sys },
     { role: "user", content: user },
   ];
-}
-
-/* ── Quick-add (natural language → a transaction draft; AI-only since 2.2.0) ── */
-
-/** Reference names injected into the prompt so the model can name an envelope/place. */
-export interface QuickAddPromptRefs {
-  envelopes: Array<{ id: string; name: string }>;
-  places: Array<{ id: string; name: string }>;
-}
-
-export function buildQuickAddPrompt(text: string, refs: QuickAddPromptRefs, today: string, locale: AiLocale): ChatRequest {
-  const sys =
-    "You are a budget transaction parser. Return ONLY JSON with the fields: " +
-    "amount (integer minor units, int|null), type ('expense'|'income'), isRefund (bool), date (YYYY-MM-DD), " +
-    "envelopeName (string|null), placeName (string|null). " +
-    languageDirectives(locale) +
-    `Today: ${today}. Available envelopes: ${refs.envelopes.map((e) => e.name).join(", ")}. ` +
-    `Places: ${refs.places.map((p) => p.name).join(", ")}.`;
-  return {
-    messages: [
-      { role: "system", content: sys },
-      { role: "user", content: text },
-    ],
-    responseFormat: { type: "json_object" },
-    reasoningEffort: "low",
-  };
-}
-
-/** Fields from the LLM response; `null` = missing/invalid → the caller supplies the
- *  default (identically in web/lib/ai.ts and the /quick-add route — same parse, same merge). */
-export interface QuickAddAiFields {
-  amount: number | null;
-  type: "expense" | "income";
-  isRefund: boolean;
-  date: string | null;
-  envelopeName: string | null;
-  placeName: string | null;
-}
-
-export function parseQuickAddResponse(raw: string): QuickAddAiFields {
-  const json = JSON.parse(sliceJson(raw)) as Record<string, unknown>;
-  return {
-    amount: typeof json.amount === "number" ? json.amount : null,
-    type: json.type === "income" ? "income" : "expense",
-    isRefund: json.isRefund === true,
-    date: typeof json.date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(json.date) ? json.date : null,
-    envelopeName: typeof json.envelopeName === "string" ? json.envelopeName : null,
-    placeName: typeof json.placeName === "string" ? json.placeName : null,
-  };
 }
 
 /* ── Import from screenshots (cycle 1: facts from the screenshot) ────── */

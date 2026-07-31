@@ -33,8 +33,8 @@ optionally end-to-end-encrypted sync layer.
 - **Budget assistant**: distribute "To Be Budgeted" by rules or AI, fully editable
   before applying.
 - **AI is optional and off by default** (zero egress). The budget assistant works
-  rule-based with no key at all; quick add and screenshot import need AI. Bring your
-  own OpenAI key (BYOK, stays on your device) or configure a server key.
+  rule-based with no key at all; screenshot import needs AI. Bring your own OpenAI
+  key (BYOK, stays on your device) or configure a server key.
 - **10 languages**: English, Polski, Deutsch, Español, Français, Italiano,
   Nederlands, Português (Brasil), Čeština, Svenska — the eight beyond EN/PL are
   community translations, and each is one file ([add yours](CONTRIBUTING.md#add-a-language)).
@@ -319,11 +319,12 @@ freshest one.
 
 AI is **off by default** (zero egress), gated behind an explicit in-app consent. With
 it off, the **budget assistant** still distributes "To Be Budgeted" **rule-based, with
-zero dependencies** — no key, no network. **Quick add** (type "coffee 12.50 yesterday")
-and **screenshot import** are LLM-only since 2.2.0: the rule parser behind quick add was
-a table of Polish and English words, which could not be translated into the other eight
-languages, so it is gone. With AI off the quick-add bar is therefore hidden and import
-asks you to enable AI first — manual entry (pad + calculator) is untouched.
+zero dependencies** — no key, no network. **Screenshot import** is LLM-only: it needs
+a real model to read the picture, so there is no rule-based fallback for it. With AI
+off, import asks you to enable AI first — manual entry (pad + calculator) is untouched.
+(Quick add — type "coffee 12.50 yesterday" — existed through 3.4 but has been removed:
+its rule-based parser was a table of Polish and English words that could not be
+translated into the other eight languages, and once AI-only it saw little use.)
 
 Enable it with an OpenAI key: server mode (`OPENAI_API_KEY` in `.env` — the key stays
 on your server) or BYOK (the user's key, stored on their device, talking to OpenAI

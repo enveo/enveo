@@ -404,7 +404,7 @@ function prevAllocations(ledger: ClientLedger, month: string): Map<string, numbe
   return map;
 }
 
-/** Result-list checkbox: 20px, radius 7, ✓ on C.pos (import/quick-add list pattern). */
+/** Result-list checkbox: 20px, radius 7, ✓ on C.pos (import list pattern). */
 function CheckBox({ on, C }: { on: boolean; C: Theme }) {
   return (
     <span aria-hidden style={{ width: 20, height: 20, borderRadius: 7, flexShrink: 0, boxSizing: "border-box", border: `1.6px solid ${on ? C.pos : C.mute}`, background: on ? C.pos : "transparent", display: "flex", alignItems: "center", justifyContent: "center" }}>
