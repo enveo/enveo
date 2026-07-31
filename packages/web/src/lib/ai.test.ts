@@ -16,6 +16,35 @@ import {
 } from "@enveo/shared";
 import { aiTarget, hasAiTarget, previewSuggestPrompt, runImportExtract, type AiSettings } from "./ai";
 import { apiErrorMessage } from "./api";
+import { chatJson, type ChatTarget } from "./openai";
+
+/** Runs `fn` with fetch (and optionally navigator.onLine) stubbed; always restores both. */
+async function withFetch<T>(fetchStub: typeof fetch, fn: () => Promise<T>, onLine = true): Promise<T> {
+  const origFetch = globalThis.fetch;
+  const origNav = Object.getOwnPropertyDescriptor(globalThis, "navigator");
+  globalThis.fetch = fetchStub;
+  Object.defineProperty(globalThis, "navigator", { value: { onLine }, configurable: true });
+  try {
+    return await fn();
+  } finally {
+    globalThis.fetch = origFetch;
+    if (origNav) Object.defineProperty(globalThis, "navigator", origNav);
+    else delete (globalThis as { navigator?: unknown }).navigator;
+  }
+}
+
+const answering = (status: number, body: unknown): typeof fetch =>
+  (async () =>
+    new Response(typeof body === "string" ? body : JSON.stringify(body), {
+      status,
+      headers: { "content-type": "application/json" },
+    })) as unknown as typeof fetch;
+/** The model replied 200 with `content` (as OpenAI wraps it). */
+const replying = (content: string): typeof fetch => answering(200, { choices: [{ message: { content } }] });
+const rejecting = (): typeof fetch =>
+  (async () => {
+    throw new TypeError("Failed to fetch"); // what a browser throws with no network
+  }) as unknown as typeof fetch;
 
 
 const MONTH = "2026-07";
@@ -151,34 +180,6 @@ describe("runImportExtract (byok) failures reach the user as localized sentences
 
   const run = (s: AiSettings) => runImportExtract({ images: ["data:image/png;base64,x"], locale: "pl", ledger: fixtureLedger(), settings: s });
 
-  /** Runs `fn` with fetch (and optionally navigator.onLine) stubbed; always restores both. */
-  async function withFetch<T>(fetchStub: typeof fetch, fn: () => Promise<T>, onLine = true): Promise<T> {
-    const origFetch = globalThis.fetch;
-    const origNav = Object.getOwnPropertyDescriptor(globalThis, "navigator");
-    globalThis.fetch = fetchStub;
-    Object.defineProperty(globalThis, "navigator", { value: { onLine }, configurable: true });
-    try {
-      return await fn();
-    } finally {
-      globalThis.fetch = origFetch;
-      if (origNav) Object.defineProperty(globalThis, "navigator", origNav);
-      else delete (globalThis as { navigator?: unknown }).navigator;
-    }
-  }
-
-  const answering = (status: number, body: unknown): typeof fetch =>
-    (async () =>
-      new Response(typeof body === "string" ? body : JSON.stringify(body), {
-        status,
-        headers: { "content-type": "application/json" },
-      })) as unknown as typeof fetch;
-  /** The model replied 200 with `content` (as OpenAI wraps it). */
-  const replying = (content: string): typeof fetch => answering(200, { choices: [{ message: { content } }] });
-  const rejecting = (): typeof fetch =>
-    (async () => {
-      throw new TypeError("Failed to fetch"); // what a browser throws with no network
-    }) as unknown as typeof fetch;
-
   const failure = async (s: AiSettings, f: typeof fetch, onLine = true): Promise<{ code: string; text: string }> => {
     const e = await withFetch(f, () => run(s).then(() => null).catch((err: unknown) => err), onLine);
     const code = String((e as Error).message);
@@ -231,5 +232,51 @@ describe("runImportExtract (byok) failures reach the user as localized sentences
     expect(items).toHaveLength(1);
     expect(items[0]!.amount).toBe(1230);
     expect(items[0]!.tag).toBe("LIDL");
+  });
+});
+
+/**
+ * chatJson({kind:"server"}) — the /api/ai/v1/chat/completions mirror transport. LIVE even after
+ * quick-add's removal: runSuggest's server mode still goes through it (budgetSuggest.ts POSTs the
+ * very same {error:"ai_unavailable"}/{error:"upstream",status} shapes tested here) — runSuggest
+ * just SWALLOWS the failure into a rules fallback instead of rendering it, so nothing above
+ * exercises responseError's server branch. Regression this guards: server-kind must NOT get the
+ * byok-only 401/403→ai_key_invalid treatment (the mirror uses the OPERATOR's key, not the user's —
+ * a wrong operator key is an ai_upstream_error, not "your key was rejected").
+ */
+describe("chatJson (server target → the /api/ai mirror)", () => {
+  const target: ChatTarget = { kind: "server" };
+  const req = { messages: [{ role: "system" as const, content: "sys" }, { role: "user" as const, content: "usr" }] };
+
+  it("503 {error:ai_unavailable} passes through — the operator has no key configured", async () => {
+    await withFetch(answering(503, { error: "ai_unavailable" }), async () => {
+      await expect(chatJson(req, target)).rejects.toThrow("ai_unavailable");
+    });
+  });
+
+  it("502 {error:upstream,status} passes through — OpenAI rejected the mirror's own call", async () => {
+    await withFetch(answering(502, { error: "upstream", status: 429 }), async () => {
+      await expect(chatJson(req, target)).rejects.toThrow("upstream");
+    });
+  });
+
+  it("fetch rejects (no response at all) → ai_offline when offline, ai_upstream_error when online — same as byok", async () => {
+    await withFetch(rejecting(), async () => {
+      await expect(chatJson(req, target)).rejects.toThrow("ai_offline");
+    }, false);
+    await withFetch(rejecting(), async () => {
+      await expect(chatJson(req, target)).rejects.toThrow("ai_upstream_error");
+    }, true);
+  });
+
+  it("a raw 401 (not the mirror's own code) → ai_upstream_error, NEVER ai_key_invalid (that mapping is byok-only)", async () => {
+    await withFetch(answering(401, "unauthorized"), async () => {
+      await expect(chatJson(req, target)).rejects.toThrow("ai_upstream_error");
+    });
+  });
+
+  it("the happy path still works (server model reply parses like byok's)", async () => {
+    const content = await withFetch(replying("hello"), () => chatJson(req, target));
+    expect(content).toBe("hello");
   });
 });
