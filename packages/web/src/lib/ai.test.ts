@@ -14,8 +14,37 @@ import {
   type ClientLedger,
   type Transaction,
 } from "@enveo/shared";
-import { aiTarget, hasAiTarget, previewSuggestPrompt, runImportExtract, runQuickAdd, type AiSettings } from "./ai";
+import { aiTarget, hasAiTarget, previewSuggestPrompt, runImportExtract, type AiSettings } from "./ai";
 import { apiErrorMessage } from "./api";
+import { chatJson, type ChatTarget } from "./openai";
+
+/** Runs `fn` with fetch (and optionally navigator.onLine) stubbed; always restores both. */
+async function withFetch<T>(fetchStub: typeof fetch, fn: () => Promise<T>, onLine = true): Promise<T> {
+  const origFetch = globalThis.fetch;
+  const origNav = Object.getOwnPropertyDescriptor(globalThis, "navigator");
+  globalThis.fetch = fetchStub;
+  Object.defineProperty(globalThis, "navigator", { value: { onLine }, configurable: true });
+  try {
+    return await fn();
+  } finally {
+    globalThis.fetch = origFetch;
+    if (origNav) Object.defineProperty(globalThis, "navigator", origNav);
+    else delete (globalThis as { navigator?: unknown }).navigator;
+  }
+}
+
+const answering = (status: number, body: unknown): typeof fetch =>
+  (async () =>
+    new Response(typeof body === "string" ? body : JSON.stringify(body), {
+      status,
+      headers: { "content-type": "application/json" },
+    })) as unknown as typeof fetch;
+/** The model replied 200 with `content` (as OpenAI wraps it). */
+const replying = (content: string): typeof fetch => answering(200, { choices: [{ message: { content } }] });
+const rejecting = (): typeof fetch =>
+  (async () => {
+    throw new TypeError("Failed to fetch"); // what a browser throws with no network
+  }) as unknown as typeof fetch;
 
 
 const MONTH = "2026-07";
@@ -105,12 +134,11 @@ describe("previewSuggestPrompt", () => {
 });
 
 /**
- * aiTarget is the SINGLE answer to "can this device talk to a model" — the AI-only entry points
- * (quick-add, screenshot import) dispatch on it AND the Add screen decides on it whether to show
- * the quick-add bar at all. Regression it exists for: the bar was shown on `aiMode !== "off"`,
+ * aiTarget is the SINGLE answer to "can this device talk to a model" — the AI-only entry point
+ * (screenshot import) dispatches on it AND the import sheet decides on it whether to offer the
+ * feature at all. Regression it exists for: an earlier entry point was shown on `aiMode !== "off"`,
  * which is TRUE for byok with an empty key — Settings switches the mode before the key is typed
- * (and clearing the field persists an empty one), so the bar was offered on a path that could
- * only throw.
+ * (and clearing the field persists an empty one), so it was offered on a path that could only throw.
  */
 describe("aiTarget / hasAiTarget", () => {
   const settings = (over: Partial<AiSettings>): AiSettings => ({ aiMode: "off", openaiKey: "", openaiModel: "gpt-5.5-mini", ...over });
@@ -121,83 +149,42 @@ describe("aiTarget / hasAiTarget", () => {
     expect(hasAiTarget(settings({ aiMode: "server" }))).toBe(true);
   });
 
-  it("off → no target; byok WITHOUT a key → no target either (the state the Add screen must hide the bar in)", () => {
+  it("off → no target; byok WITHOUT a key → no target either (the state the import sheet must hide the feature in)", () => {
     expect(aiTarget(settings({ aiMode: "off" }))).toBeNull();
     expect(aiTarget(settings({ aiMode: "byok", openaiKey: "" }))).toBeNull();
     expect(hasAiTarget(settings({ aiMode: "byok", openaiKey: "" }))).toBe(false);
   });
 
-  it("with no target the AI-only entry points throw a CODE (localized by apiErrorMessage), never prose", async () => {
+  it("with no target the AI-only entry point throws a CODE (localized by apiErrorMessage), never prose", async () => {
     for (const s of [settings({ aiMode: "off" }), settings({ aiMode: "byok", openaiKey: "" })]) {
-      const quick = runQuickAdd({ text: "Lidl 12,30", locale: "pl", ledger: fixtureLedger(), settings: s });
-      await expect(quick).rejects.toThrow("ai_consent_required");
       const imp = runImportExtract({ images: ["data:image/png;base64,x"], locale: "pl", ledger: fixtureLedger(), settings: s });
       await expect(imp).rejects.toThrow("ai_consent_required");
       // the message IS the code: apiErrorMessage maps it to a sentence in the UI language (api.test.ts)
-      expect(apiErrorMessage(await quick.catch((e: unknown) => e))).toBe("AI is not set up on this device. Pick a mode in Settings → Artificial intelligence (with your own key, paste it there).");
+      expect(apiErrorMessage(await imp.catch((e: unknown) => e))).toBe("AI is not set up on this device. Pick a mode in Settings → Artificial intelligence (with your own key, paste it there).");
     }
   });
 });
 
 /**
- * REGRESSION (release blocker): quick-add went AI-only, so a failed model call is RENDERED in the
- * Add screen's error line instead of degrading to the rule parser — and the transport was throwing
- * `new Error(\`OpenAI ${res.status}\`)`, so a Polish user with an operator key missing on the server
- * read "OpenAI 503" in coral. Every everyday failure (offline, no operator key, a rejected byok key,
- * an answer that is not JSON) must arrive as a CODE that apiErrorMessage turns into a sentence.
+ * REGRESSION (release blocker, originally caught on the now-removed quick-add path): a failed
+ * model call must be RENDERED in the import sheet's error line, never swallowed and never leaked
+ * as raw transport prose — the transport used to throw `new Error(\`OpenAI ${res.status}\`)`, so a
+ * Polish user with a byok key rejected by OpenAI read "OpenAI 401" in coral. Every everyday
+ * failure (offline, a rejected byok key, an answer that is not JSON) must arrive as a CODE that
+ * apiErrorMessage turns into a sentence. Screenshot import (byok) is the only AI-only entry point
+ * left that surfaces chatJson's errors directly to the user — suggest always falls back to rules.
  */
-describe("runQuickAdd failures reach the user as localized sentences", () => {
+describe("runImportExtract (byok) failures reach the user as localized sentences", () => {
   const settings = (over: Partial<AiSettings>): AiSettings => ({ aiMode: "off", openaiKey: "", openaiModel: "gpt-5.5-mini", ...over });
-  const SERVER = settings({ aiMode: "server" });
   const BYOK = settings({ aiMode: "byok", openaiKey: "sk-x" });
 
-  const run = (s: AiSettings) => runQuickAdd({ text: "Lidl 12,30", locale: "pl", ledger: fixtureLedger(), settings: s });
-
-  /** Runs `fn` with fetch (and optionally navigator.onLine) stubbed; always restores both. */
-  async function withFetch<T>(fetchStub: typeof fetch, fn: () => Promise<T>, onLine = true): Promise<T> {
-    const origFetch = globalThis.fetch;
-    const origNav = Object.getOwnPropertyDescriptor(globalThis, "navigator");
-    globalThis.fetch = fetchStub;
-    Object.defineProperty(globalThis, "navigator", { value: { onLine }, configurable: true });
-    try {
-      return await fn();
-    } finally {
-      globalThis.fetch = origFetch;
-      if (origNav) Object.defineProperty(globalThis, "navigator", origNav);
-      else delete (globalThis as { navigator?: unknown }).navigator;
-    }
-  }
-
-  const answering = (status: number, body: unknown): typeof fetch =>
-    (async () =>
-      new Response(typeof body === "string" ? body : JSON.stringify(body), {
-        status,
-        headers: { "content-type": "application/json" },
-      })) as unknown as typeof fetch;
-  /** The model replied 200 with `content` (as OpenAI wraps it). */
-  const replying = (content: string): typeof fetch => answering(200, { choices: [{ message: { content } }] });
-  const rejecting = (): typeof fetch =>
-    (async () => {
-      throw new TypeError("Failed to fetch"); // what a browser throws with no network
-    }) as unknown as typeof fetch;
+  const run = (s: AiSettings) => runImportExtract({ images: ["data:image/png;base64,x"], locale: "pl", ledger: fixtureLedger(), settings: s });
 
   const failure = async (s: AiSettings, f: typeof fetch, onLine = true): Promise<{ code: string; text: string }> => {
     const e = await withFetch(f, () => run(s).then(() => null).catch((err: unknown) => err), onLine);
     const code = String((e as Error).message);
     return { code, text: apiErrorMessage(e) };
   };
-
-  it("server mode, operator key missing → the mirror's 503 ai_unavailable, not \"OpenAI 503\"", async () => {
-    const { code, text } = await failure(SERVER, answering(503, { error: "ai_unavailable" }));
-    expect(code).toBe("ai_unavailable");
-    expect(text).toBe("The server has no OpenAI key configured. Set OPENAI_API_KEY and restart the app, or use your own key in Settings → Artificial intelligence.");
-  });
-
-  it("server mode, OpenAI refused upstream → the mirror's 502 upstream code", async () => {
-    const { code, text } = await failure(SERVER, answering(502, { error: "upstream", status: 429 }));
-    expect(code).toBe("upstream");
-    expect(text).toBe("OpenAI rejected the request — check the key and the model, then try again.");
-  });
 
   it("byok with an expired key → ai_key_invalid (OpenAI's {error:{message}} OBJECT never reaches the UI)", async () => {
     const { code, text } = await failure(BYOK, answering(401, { error: { message: "Incorrect API key provided: sk-x", type: "invalid_request_error" } }));
@@ -208,24 +195,23 @@ describe("runQuickAdd failures reach the user as localized sentences", () => {
   it("offline (fetch rejects, navigator.onLine === false) → ai_offline, not \"Failed to fetch\"", async () => {
     const { code, text } = await failure(BYOK, rejecting(), false);
     expect(code).toBe("ai_offline");
-    expect(text).toBe("You are offline — quick add and screenshot import need a connection. Manual entry works without one.");
+    expect(text).toBe("You are offline — screenshot import needs a connection. Manual entry works without one.");
   });
 
   it("the network drops while online (DNS, a dead proxy) → ai_upstream_error", async () => {
-    const { code, text } = await failure(SERVER, rejecting(), true);
+    const { code, text } = await failure(BYOK, rejecting(), true);
     expect(code).toBe("ai_upstream_error");
     expect(text).toBe("OpenAI rejected the request — check the key and the model, then try again.");
   });
 
   it("the model answers prose instead of JSON → ai_upstream_error, not a raw SyntaxError", async () => {
-    const { code, text } = await failure(BYOK, replying("Sure! I can add that for you."));
+    const { code, text } = await failure(BYOK, replying("Sure! Here are the transactions."));
     expect(code).toBe("ai_upstream_error");
     expect(text).toBe("OpenAI rejected the request — check the key and the model, then try again.");
   });
 
   it("no failure leaks prose: every code is snake_case and localizes to a sentence", async () => {
     const cases: Array<[AiSettings, typeof fetch, boolean]> = [
-      [SERVER, answering(503, { error: "ai_unavailable" }), true],
       [BYOK, answering(401, { error: { message: "bad key" } }), true],
       [BYOK, answering(500, "<html>gateway error</html>"), true], // a proxy's HTML page, not JSON
       [BYOK, rejecting(), false],
@@ -233,17 +219,64 @@ describe("runQuickAdd failures reach the user as localized sentences", () => {
     ];
     for (const [s, f, onLine] of cases) {
       const { code, text } = await failure(s, f, onLine);
-      expect(code).toMatch(/^[a-z0-9_]+$/); // no "OpenAI 503", no "Failed to fetch", no SyntaxError
+      expect(code).toMatch(/^[a-z0-9_]+$/); // no "OpenAI 401", no "Failed to fetch", no SyntaxError
       expect(text).not.toBe(code); // ERROR_KEYS knows it → the user reads a sentence, in their language
     }
   });
 
   it("the happy path still works (the transport refactor did not break a good answer)", async () => {
-    const draft = await withFetch(
-      replying(JSON.stringify({ amount: 1230, type: "expense", isRefund: false, date: "2026-07-02", envelopeName: "Jedzenie", placeName: null })),
+    const items = await withFetch(
+      replying(JSON.stringify({ transactions: [{ date: "2026-07-02", amount: 1230, type: "expense", rawPlace: "Lidl", tag: "LIDL", currency: "PLN", fxOriginal: "" }] })),
       () => run(BYOK),
     );
-    expect(draft.amount).toBe(1230);
-    expect(draft.envelopeId).toBe("env1"); // matched by name against the replica
+    expect(items).toHaveLength(1);
+    expect(items[0]!.amount).toBe(1230);
+    expect(items[0]!.tag).toBe("LIDL");
+  });
+});
+
+/**
+ * chatJson({kind:"server"}) — the /api/ai/v1/chat/completions mirror transport. LIVE even after
+ * quick-add's removal: runSuggest's server mode still goes through it (budgetSuggest.ts POSTs the
+ * very same {error:"ai_unavailable"}/{error:"upstream",status} shapes tested here) — runSuggest
+ * just SWALLOWS the failure into a rules fallback instead of rendering it, so nothing above
+ * exercises responseError's server branch. Regression this guards: server-kind must NOT get the
+ * byok-only 401/403→ai_key_invalid treatment (the mirror uses the OPERATOR's key, not the user's —
+ * a wrong operator key is an ai_upstream_error, not "your key was rejected").
+ */
+describe("chatJson (server target → the /api/ai mirror)", () => {
+  const target: ChatTarget = { kind: "server" };
+  const req = { messages: [{ role: "system" as const, content: "sys" }, { role: "user" as const, content: "usr" }] };
+
+  it("503 {error:ai_unavailable} passes through — the operator has no key configured", async () => {
+    await withFetch(answering(503, { error: "ai_unavailable" }), async () => {
+      await expect(chatJson(req, target)).rejects.toThrow("ai_unavailable");
+    });
+  });
+
+  it("502 {error:upstream,status} passes through — OpenAI rejected the mirror's own call", async () => {
+    await withFetch(answering(502, { error: "upstream", status: 429 }), async () => {
+      await expect(chatJson(req, target)).rejects.toThrow("upstream");
+    });
+  });
+
+  it("fetch rejects (no response at all) → ai_offline when offline, ai_upstream_error when online — same as byok", async () => {
+    await withFetch(rejecting(), async () => {
+      await expect(chatJson(req, target)).rejects.toThrow("ai_offline");
+    }, false);
+    await withFetch(rejecting(), async () => {
+      await expect(chatJson(req, target)).rejects.toThrow("ai_upstream_error");
+    }, true);
+  });
+
+  it("a raw 401 (not the mirror's own code) → ai_upstream_error, NEVER ai_key_invalid (that mapping is byok-only)", async () => {
+    await withFetch(answering(401, "unauthorized"), async () => {
+      await expect(chatJson(req, target)).rejects.toThrow("ai_upstream_error");
+    });
+  });
+
+  it("the happy path still works (server model reply parses like byok's)", async () => {
+    const content = await withFetch(replying("hello"), () => chatJson(req, target));
+    expect(content).toBe("hello");
   });
 });

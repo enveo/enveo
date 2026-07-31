@@ -6,6 +6,7 @@ import {
   computeNetWorthSeries,
   computeSpendingByDimension,
   largestExpenses,
+  median,
   prevMonth,
   savingsRate,
   spendingBaseline,
@@ -17,7 +18,7 @@ import { useLedgerVersion, type StateResponse } from "../lib/api";
 import { store } from "../lib/store";
 import { Header } from "../components/chrome";
 import { GoalRing, useBand } from "../components/kit";
-import { Bar, CalendarHeatmap, DeltaTag, ReportShell, SegBar, Sparkline, TrendSpark } from "../components/reportKit";
+import { Bar, CalendarHeatmap, DeltaTag, heatColor, ReportShell, SegBar, Sparkline, TrendSpark } from "../components/reportKit";
 import { useMask, useTheme } from "../lib/contexts";
 import { monthLabel, shortDate } from "../lib/dates";
 import { goalProgress } from "../lib/goals";
@@ -251,7 +252,7 @@ function ReportsHub({
 
   return (
     <div className="gs" style={{ flex: 1, overflowY: "auto", paddingBottom: 6 }}>
-      <div style={band ? { background: C.headerBg, paddingBottom: 14 } : { paddingBottom: 14 }}>
+      <div data-band={band || undefined} style={band ? { background: C.headerBg, paddingBottom: 14 } : { paddingBottom: 14 }}>
         <Header month={month} onMenu={onMenu} onPrev={onPrev} onNext={onNext} onBand={band} />
         <button
           onClick={() => onView("assets")}
@@ -307,14 +308,6 @@ function MiniCard({ title, onClick, children }: { title: string; onClick: () => 
       {children}
     </button>
   );
-}
-
-/** Deterministic median (lower-of-two-middle on ties) — a tiny local copy of the private helper
- *  in shared/reports.ts; kept here rather than exported since the hub is its only web-side caller. */
-function medianOf(xs: number[]): number {
-  if (xs.length === 0) return 0;
-  const sorted = [...xs].sort((a, b) => a - b);
-  return sorted[Math.floor((sorted.length - 1) / 2)]!;
 }
 
 /** Cashflow mini-card: 12-mo diverging columns (up in C.pos / down in C.neg from a C.line
@@ -373,7 +366,7 @@ function SpendingMini({
   const colorOf = (r: { key: string | null }, i: number) => (r.key && envColor.get(r.key)) || SPENDING_FALLBACK_COLORS[i % SPENDING_FALLBACK_COLORS.length]!;
   const segments = [...top.map((r, i) => ({ weight: Math.max(0, r.amount), color: colorOf(r, i) })), ...(restAmt > 0 ? [{ weight: restAmt, color: C.line }] : [])];
   // baseline = median of the 3 months BEFORE the current one (cashflow always ends at `month`)
-  const baseline = medianOf(cashflow.slice(-4, -1).map((p) => p.expense));
+  const baseline = median(cashflow.slice(-4, -1).map((p) => p.expense));
   const deltaPct = baseline > 0 ? (total - baseline) / baseline : null;
   return (
     <MiniCard title={t("Spending")} onClick={() => onView("spending")}>
@@ -436,28 +429,20 @@ function GoalsMini({ pctTotal, missSum, onView, M }: { pctTotal: number; missSum
   );
 }
 
-/** Month mini-card: a 10-cell intensity strip for the first 10 days of the month (same quartile
- *  colors as CalendarHeatmap, scaled against the WHOLE month's max so it reads consistently with
- *  the Task 11 subscreen), plus the month's average daily spend. */
+/** Month mini-card: a 10-cell intensity strip for the first 10 days of the month (shared
+ *  `heatColor` ramp with CalendarHeatmap, scaled against the WHOLE month's max so it reads
+ *  consistently with the Task 11 subscreen), plus the month's average daily spend. */
 function MonthMini({ days, onView, M }: { days: { date: string; total: number }[]; onView: (v: ReportView) => void; M: Mask }) {
   const C = useTheme();
   const { t } = useT();
   const first10 = days.slice(0, 10);
   const max = Math.max(...days.map((d) => d.total), 1);
-  const colorFor = (total: number): string => {
-    if (total <= 0) return C.inset;
-    const q = total / max;
-    if (q <= 0.25) return "var(--accent-22)";
-    if (q <= 0.5) return "var(--accent-40)";
-    if (q <= 0.75) return "var(--accent-66)";
-    return "var(--accent)";
-  };
   const avg = days.length > 0 ? Math.round(days.reduce((s, d) => s + d.total, 0) / days.length) : 0;
   return (
     <MiniCard title={t("Month in a nutshell")} onClick={() => onView("month")}>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(10, 1fr)", gap: 2.5 }}>
         {first10.map((d) => (
-          <span key={d.date} style={{ aspectRatio: "1", borderRadius: 3, background: colorFor(d.total) }} />
+          <span key={d.date} style={{ aspectRatio: "1", borderRadius: 3, background: heatColor(d.total, max, C) }} />
         ))}
       </div>
       <div style={{ fontSize: 11, color: C.mute, marginTop: 8, fontVariantNumeric: "tabular-nums" }}>{t("avg {amount}/day", { amount: M(avg) })}</div>
@@ -741,7 +726,7 @@ function SpendingReport({
   const spMax = Math.max(...spending.map((r) => r.amount), 1);
   // baseline = median of the 3 months BEFORE `month` (cashflow always ends at `month`) — same
   // idiom as the hub's SpendingMini card, duplicated here rather than extracted.
-  const baseline3 = medianOf(cashflow.slice(-4, -1).map((p) => p.expense));
+  const baseline3 = median(cashflow.slice(-4, -1).map((p) => p.expense));
   const totalDelta = baseline3 > 0 ? (spTotal - baseline3) / baseline3 : null;
 
   const envColor = new Map(state.envelopes.map((e) => [e.id, e.color]));
@@ -787,12 +772,24 @@ function SpendingReport({
               borderRadius: 9,
               border: `1px solid ${dim === d.id ? "var(--accent)" : C.line}`,
               background: dim === d.id ? "var(--accent)" : "transparent",
-              // on-accent text: Duet's accent IS the navy band color (var(--accent) === C.headerBg
-              // there), so C.headerBg itself is unreadable on it — C.headerInk is the token for text
-              // painted ON that band (confirmed against a live Duet render, see task report). Other
-              // themes keep accent dark/saturated enough in light mode for plain white (the same
-              // literal already used by the accent-filled button in IconColorPicker.tsx).
-              color: dim === d.id ? hc(C.headerInk, "#fff") : C.soft,
+              // on-accent text (C3 contrast audit): white/headerInk measured ~2.1–2.3:1 on the
+              // solid accent fill in DARK mode (teal #77c4a2, koral #ff998a, atrament #a5b5d6,
+              // duet #8fa2cc are all LIGHT — by design, so they read as AA text on `card`
+              // elsewhere in the app). Swapping to `C.card` fixes exactly those 4 dark combos to
+              // 4.60–5.57:1 (measured). It does NOT fix light mode: `C.card` on the light accent
+              // fill measures only 2.98:1 (teal) / 3.07:1 (koral) — under AA — because those two
+              // accents (#4fa583/#f0685c) are mid-tone by design, not tuned to be a "readable on
+              // card" light color the way their dark counterparts are; atrament/duet's LIGHT
+              // accent is `#1d2a47` so `C.card` clears it easily (14.24 / 13.44:1), coincidentally
+              // not by the same design argument. So: 6 of 8 theme×mode combos pass, not "all 8" —
+              // the 2 that don't (teal-light, koral-light) are the same pre-existing white/card-
+              // on-solid-fill gap flagged app-wide for buttons like "Save"/"Manage"/the FAB (see
+              // C3 report Concern #2); out of scope here, not introduced by this change.
+              // Duet also got an ink CHANGE (not just a contrast fix): the selected chip used to
+              // read `C.headerInk` (#edeff5) here, now reads `C.card` (#fcf8ef) like every other
+              // theme — both are ≥12:1 on Duet's accent, so this is a deliberate consistency
+              // choice, not a contrast regression.
+              color: dim === d.id ? C.card : C.soft,
               fontSize: 12,
               fontWeight: 650,
               cursor: "pointer",
@@ -861,6 +858,41 @@ function SpendingReport({
   );
 }
 
+/** One envelope row shared by all four BudgetsReport sections (Overspent/Near/used-up/rest-ok):
+ *  name + right-aligned status (colored per section), an optional caption line under the head
+ *  (only the Overspent section uses it, for "spent X of Y"), then a progress `Bar`. Each section
+ *  differs only in status text/color, caption presence and bar color/pct — pulled out here to
+ *  kill four copies of the same button/head/name/bar markup. */
+function BudgetRow({
+  name,
+  onClick,
+  statusColor,
+  status,
+  caption,
+  barPct,
+  barColor,
+}: {
+  name: string;
+  onClick: () => void;
+  statusColor: string;
+  status: ReactNode;
+  caption?: ReactNode;
+  barPct: number;
+  barColor: string;
+}) {
+  const C = useTheme();
+  return (
+    <button onClick={onClick} style={{ display: "block", width: "100%", background: "none", border: "none", padding: "0 0 12px", cursor: "pointer", textAlign: "left" as const, fontFamily: "inherit" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" as const, gap: 8, marginBottom: 3 }}>
+        <span style={{ fontSize: 13, color: C.text, overflow: "hidden" as const, textOverflow: "ellipsis" as const, whiteSpace: "nowrap" as const }}>{name}</span>
+        <span style={{ fontSize: 12.5, fontWeight: 700, color: statusColor, fontVariantNumeric: "tabular-nums", flexShrink: 0 }}>{status}</span>
+      </div>
+      {caption != null && <div style={{ fontSize: 10.5, color: C.soft, marginBottom: 4 }}>{caption}</div>}
+      <Bar pct={barPct} color={barColor} />
+    </button>
+  );
+}
+
 /**
  * "Budgets" tab (frame A3, triage): three sections — Overspent / Near limit / Within budget —
  * classified via `classifyBudget` (lib/reportSummary.ts), the SAME rule the hub's Budgets
@@ -917,10 +949,6 @@ function BudgetsReport({
       {label}
     </span>
   );
-  const rowBtnStyle = { display: "block", width: "100%", background: "none", border: "none", padding: "0 0 12px", cursor: "pointer", textAlign: "left" as const, fontFamily: "inherit" };
-  const rowHeadStyle = { display: "flex", justifyContent: "space-between", alignItems: "baseline" as const, gap: 8, marginBottom: 3 };
-  const rowNameStyle = { fontSize: 13, color: C.text, overflow: "hidden" as const, textOverflow: "ellipsis" as const, whiteSpace: "nowrap" as const };
-
   return (
     <ReportShell
       title={t(TITLES.budgets)}
@@ -954,16 +982,16 @@ function BudgetsReport({
         <>
           <div style={{ fontSize: 10.5, fontWeight: 750, letterSpacing: "0.16em", textTransform: "uppercase", color: C.neg, margin: "4px 2px 8px" }}>{t("Overspent")}</div>
           {overRows.map(({ e, pct, left, budget }) => (
-            <button key={e.id} onClick={() => onOpenEnvelope(e.id, state.month)} style={rowBtnStyle}>
-              <div style={rowHeadStyle}>
-                <span style={rowNameStyle}>{e.name}</span>
-                <span style={{ fontSize: 12.5, fontWeight: 700, color: C.neg, fontVariantNumeric: "tabular-nums", flexShrink: 0 }}>
-                  {Math.round(pct)}% · +{M(-left)}
-                </span>
-              </div>
-              <div style={{ fontSize: 10.5, color: C.soft, marginBottom: 4 }}>{t("spent {spent} of {budget}", { spent: M(Math.max(0, e.spent)), budget: M(budget) })}</div>
-              <Bar pct={pct} color={C.neg} />
-            </button>
+            <BudgetRow
+              key={e.id}
+              name={e.name}
+              onClick={() => onOpenEnvelope(e.id, state.month)}
+              statusColor={C.neg}
+              status={`${Math.round(pct)}% · +${M(-left)}`}
+              caption={t("spent {spent} of {budget}", { spent: M(Math.max(0, e.spent)), budget: M(budget) })}
+              barPct={pct}
+              barColor={C.neg}
+            />
           ))}
         </>
       )}
@@ -972,15 +1000,15 @@ function BudgetsReport({
         <>
           <div style={{ fontSize: 10.5, fontWeight: 750, letterSpacing: "0.16em", textTransform: "uppercase", color: C.warn, margin: "18px 2px 8px" }}>{t("Near limit · ≥ 80%")}</div>
           {nearRows.map(({ e, pct, left }) => (
-            <button key={e.id} onClick={() => onOpenEnvelope(e.id, state.month)} style={rowBtnStyle}>
-              <div style={rowHeadStyle}>
-                <span style={rowNameStyle}>{e.name}</span>
-                <span style={{ fontSize: 12.5, fontWeight: 700, color: C.warn, fontVariantNumeric: "tabular-nums", flexShrink: 0 }}>
-                  {Math.round(pct)}% · {t("{amount} left", { amount: M(left) })}
-                </span>
-              </div>
-              <Bar pct={pct} color={C.warn} />
-            </button>
+            <BudgetRow
+              key={e.id}
+              name={e.name}
+              onClick={() => onOpenEnvelope(e.id, state.month)}
+              statusColor={C.warn}
+              status={`${Math.round(pct)}% · ${t("{amount} left", { amount: M(left) })}`}
+              barPct={pct}
+              barColor={C.warn}
+            />
           ))}
         </>
       )}
@@ -989,28 +1017,28 @@ function BudgetsReport({
         <>
           <div style={{ fontSize: 10.5, fontWeight: 750, letterSpacing: "0.16em", textTransform: "uppercase", color: C.mute, margin: "18px 2px 8px" }}>{t("Within budget")}</div>
           {usedUpRows.map(({ e, pct }) => (
-            <button key={e.id} onClick={() => onOpenEnvelope(e.id, state.month)} style={rowBtnStyle}>
-              <div style={rowHeadStyle}>
-                <span style={rowNameStyle}>{e.name}</span>
-                <span style={{ fontSize: 12.5, fontWeight: 700, color: C.soft, fontVariantNumeric: "tabular-nums", flexShrink: 0 }}>
-                  {Math.round(pct)}% · {t("used up")}
-                </span>
-              </div>
-              <Bar pct={100} color={C.mute} />
-            </button>
+            <BudgetRow
+              key={e.id}
+              name={e.name}
+              onClick={() => onOpenEnvelope(e.id, state.month)}
+              statusColor={C.soft}
+              status={`${Math.round(pct)}% · ${t("used up")}`}
+              barPct={100}
+              barColor={C.mute}
+            />
           ))}
           {restOkRows.length > 0 &&
             (expanded ? (
               restOkRows.map(({ e, pct, left }) => (
-                <button key={e.id} onClick={() => onOpenEnvelope(e.id, state.month)} style={rowBtnStyle}>
-                  <div style={rowHeadStyle}>
-                    <span style={rowNameStyle}>{e.name}</span>
-                    <span style={{ fontSize: 12.5, fontWeight: 700, color: C.text, fontVariantNumeric: "tabular-nums", flexShrink: 0 }}>
-                      {Math.round(pct)}% · {t("{amount} left", { amount: M(left) })}
-                    </span>
-                  </div>
-                  <Bar pct={pct} color={e.color} />
-                </button>
+                <BudgetRow
+                  key={e.id}
+                  name={e.name}
+                  onClick={() => onOpenEnvelope(e.id, state.month)}
+                  statusColor={C.text}
+                  status={`${Math.round(pct)}% · ${t("{amount} left", { amount: M(left) })}`}
+                  barPct={pct}
+                  barColor={e.color}
+                />
               ))
             ) : (
               <button

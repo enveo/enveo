@@ -67,7 +67,7 @@ export function AppearanceSection() {
   const currency = useCurrency();
   // guard: without a booted replica / a budgets entity there is nothing to update
   const budgetId = store.getLedger()?.budgets?.[0]?.id;
-  const selectStyle = { padding: "7px 10px", borderRadius: 9, border: `1px solid ${C.line}`, background: C.bg, color: C.text, fontSize: 12.5, fontWeight: 600, fontFamily: font, outline: "none" } as const;
+  const selectStyle = { padding: "7px 10px", borderRadius: 9, border: `1px solid ${C.line}`, background: C.bg, color: C.text, fontSize: 12.5, fontWeight: 600, fontFamily: font } as const;
   const community = LOCALES.find((l) => l.code === settings.lang)?.community;
 
   return (

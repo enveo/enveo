@@ -7,7 +7,6 @@ import {
   buildAgentSuggestContext,
   buildAgentSuggestPrompt,
   buildImportExtractPrompt,
-  buildQuickAddPrompt,
   buildSuggestPrompt,
   IMPORT_EXTRACT_JSON_SCHEMA,
   languageDirectives,
@@ -15,7 +14,6 @@ import {
   parseAgentSuggestResponse,
   supportsReasoningEffort,
   parseImportExtractResponse,
-  parseQuickAddResponse,
   parseSuggestResponse,
   type ChatMessage,
 } from "./aiPrompts";
@@ -104,7 +102,6 @@ describe("languageName / languageDirectives — any BCP-47 locale", () => {
     const systems = [
       sysOf(buildSuggestPrompt({ basis, ledger, month: "2026-07", profile: "historical", locale: "de" }).messages),
       sysOf(buildAgentSuggestPrompt(buildAgentSuggestContext({ ledger, month: "2026-07", basis, directive: "x", locale: "de" })).messages),
-      sysOf(buildQuickAddPrompt("Kaffee 12", { envelopes: [], places: [] }, "2026-07-13", "de").messages),
       sysOf(buildImportExtractPrompt([], { envelopes: [], categories: [] }, "2026-07-13", "de", "EUR").messages),
       buildAgentLoopMessages({ ledger, month: "2026-07", amount: 100_00, directive: "x", locale: "de" })[0]!.content as string,
     ];
@@ -216,33 +213,6 @@ describe("parseAgentSuggestResponse", () => {
   });
 });
 
-describe("buildQuickAddPrompt / parseQuickAddResponse", () => {
-  const refs = { envelopes: [{ id: "E1", name: "Jedzenie" }], places: [{ id: "P1", name: "Lidl" }] };
-
-  it("builds the parser prompt with today, refs and verbatim language directives", () => {
-    const req = buildQuickAddPrompt("Lidl 12,50 wczoraj", refs, "2026-07-07", "pl");
-    const sys = sysOf(req.messages);
-    expect(sys).toContain("You are a budget transaction parser.");
-    expect(sys).toContain("Write all text you GENERATE (names, notes, rationales) in Polish.");
-    expect(sys).toContain("do not translate data values");
-    expect(sys).toContain("Today: 2026-07-07.");
-    expect(sys).toContain("Available envelopes: Jedzenie.");
-    expect(sys).toContain("Places: Lidl.");
-    expect(req.messages[1]).toEqual({ role: "user", content: "Lidl 12,50 wczoraj" });
-    expect(req.responseFormat).toEqual({ type: "json_object" }); // quick-add deliberately non-strict (many nullable fields)
-  });
-
-  it("parses valid fields", () => {
-    const out = parseQuickAddResponse('{"amount":1250,"type":"income","isRefund":true,"date":"2026-07-06","envelopeName":"Jedzenie","placeName":"Lidl"}');
-    expect(out).toEqual({ amount: 1250, type: "income", isRefund: true, date: "2026-07-06", envelopeName: "Jedzenie", placeName: "Lidl" });
-  });
-
-  it("nulls invalid fields so the caller keeps its base values", () => {
-    const out = parseQuickAddResponse('{"amount":"12","type":"weird","date":"jutro"}');
-    expect(out).toEqual({ amount: null, type: "expense", isRefund: false, date: null, envelopeName: null, placeName: null });
-  });
-});
-
 describe("buildImportExtractPrompt / parseImportExtractResponse", () => {
   const refs = { envelopes: [{ id: "E1", name: "Jedzenie" }], categories: [] };
 
@@ -336,16 +306,14 @@ describe("buildImportExtractPrompt / parseImportExtractResponse", () => {
   });
 });
 
-describe("reasoningEffort — fast responses for suggest/quick-add", () => {
-  it("suggest (rules+AI), agent and quick-add set low; import extract does NOT (OCR precision)", () => {
+describe("reasoningEffort — fast responses for suggest", () => {
+  it("suggest (rules+AI) and agent set low; import extract does NOT (OCR precision)", () => {
     const ledger = fixture();
     const basis = buildBudgetSuggestionBasis({ ledger, month: "2026-07", profile: "custom", customPrompt: "x" });
     const agentReq = buildAgentSuggestPrompt(buildAgentSuggestContext({ ledger, month: "2026-07", basis, directive: "x", locale: "pl" }));
     expect(agentReq.reasoningEffort).toBe("low");
     const sugReq = buildSuggestPrompt({ basis, ledger, month: "2026-07", profile: "cautious", locale: "pl" });
     expect(sugReq.reasoningEffort).toBe("low");
-    const qaReq = buildQuickAddPrompt("kawa 12", { envelopes: [], places: [], categories: [] }, "2026-07-11", "pl");
-    expect(qaReq.reasoningEffort).toBe("low");
     const impReq = buildImportExtractPrompt([], { envelopes: [], categories: [] }, "2026-07-11", "pl", "PLN");
     expect(impReq.reasoningEffort).toBeUndefined();
   });

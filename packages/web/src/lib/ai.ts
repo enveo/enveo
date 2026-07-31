@@ -3,32 +3,29 @@
  * hooks (settings passed explicitly):
  *
  *  - off:    local rule engine — ZERO network — for the budget SUGGESTION only.
- *            Quick-add and screenshot import are AI-only (the rule-based quick-add
- *            parser was deleted in 2.2.0: its PL/EN word tables were unlocalizable),
- *            so in this mode the UI hides the quick-add bar and gates the import.
+ *            Screenshot import is AI-only, so in this mode the UI gates it behind
+ *            the consent sheet instead of running it.
  *  - byok:   prompt from shared → OpenAI directly from the browser (lib/openai.ts),
- *            the user's key; a failed SUGGESTION falls back to rules — quick-add
- *            and import have nothing to fall back to and surface the error.
+ *            the user's key; a failed SUGGESTION falls back to rules — import has
+ *            nothing to fall back to and surfaces the error.
  *  - server: SUGGEST since v1.25.0 uses the same local path as byok, only the chat
  *            goes through /api/ai/chat (operator-key proxy — no replica
  *            and no computation on the server); the import still via /api routes.
  *
- * PRIVACY CONTRACT: in the off and byok modes suggest and quick-add generation
- * does NOT touch /api/* — the only egress in byok is api.openai.com.
+ * PRIVACY CONTRACT: in the off and byok modes suggest generation does NOT touch
+ * /api/* — the only egress in byok is api.openai.com.
  */
 import {
   buildAgentSuggestContext,
   buildAgentSuggestPrompt,
   buildBudgetSuggestionBasis,
   buildImportExtractPrompt,
-  buildQuickAddPrompt,
   buildRulesBudgetSuggestion,
   buildSuggestPrompt,
   normalizeAgentSuggestion,
   normalizeBudgetSuggestion,
   parseAgentSuggestResponse,
   parseImportExtractResponse,
-  parseQuickAddResponse,
   parseSuggestResponse,
   type AiLocale,
   type BudgetSuggestProfile,
@@ -39,7 +36,7 @@ import {
   type ClientLedger,
   type NormalizedBudgetSuggestion,
 } from "@enveo/shared";
-import { api, type ImportItem, type QuickAddResponse } from "./api";
+import { api, type ImportItem } from "./api";
 import type { Settings } from "./contexts";
 import { browserLocales, currencyForLocales } from "./currency";
 import { chatJson, type ChatTarget } from "./openai";
@@ -66,7 +63,7 @@ export class AiConsentRequired extends Error {
 
 /**
  * The SINGLE decision "can this device talk to a model, and how" — used by every AI entry point
- * AND by the UI that offers them (Add screen's quick-add bar). Keeping one function is the point:
+ * AND by the UI that offers them (the import sheet). Keeping one function is the point:
  * `aiMode !== "off"` is NOT the same question. Settings switches the mode to `byok` before a key
  * is typed (and clearing the field persists an empty one), so byok-without-key is an everyday
  * state in which there is no target — the UI must hide AI-only entry points instead of letting
@@ -78,13 +75,13 @@ export function aiTarget(settings: AiSettings): ChatTarget | null {
   return null;
 }
 
-/** Is any AI-only feature (quick-add, screenshot import) usable right now? */
+/** Is any AI-only feature (screenshot import) usable right now? */
 export const hasAiTarget = (settings: AiSettings): boolean => aiTarget(settings) !== null;
 
 /**
  * The model answered something that is not our schema (empty, truncated, prose instead of JSON):
- * a CODE, not the raw SyntaxError from JSON.parse. Quick-add renders what it catches, so an
- * unwrapped parse error would print "Unexpected token < in JSON at position 0" at the user —
+ * a CODE, not the raw SyntaxError from JSON.parse. The import sheet renders what it catches, so
+ * an unwrapped parse error would print "Unexpected token < in JSON at position 0" at the user —
  * lib/api.ts maps ai_upstream_error to a sentence in their language instead.
  */
 function parseOrFail<T>(parse: () => T): T {
@@ -239,57 +236,6 @@ export async function runSuggest(args: {
   }
 }
 
-/* ── Smart Quick-Add (AI-only) ──────────────────────────────────────── */
-
-const quickAddRefs = (ledger: ClientLedger) => ({
-  envelopes: ledger.envelopes.map((e) => ({ id: e.id, name: e.name })),
-  places: ledger.places.map((p) => ({ id: p.id, name: p.name })),
-});
-
-/**
- * Natural-language entry → a transaction draft, ALWAYS through the model (the rule
- * parser is gone). The prompt is built LOCALLY from the replica (= what is on
- * screen) and only the transport differs: byok with the user's key, server via the
- * /api/ai mirror. Without a usable target (AI off, or byok with no key yet) there is no
- * path — the caller (Add screen) hides the bar on the SAME predicate (hasAiTarget), so a
- * raised AiConsentRequired means a stray call. Errors PROPAGATE as CODES (no fallback, and
- * never prose — the Add screen renders them): openai.ts maps the mirror's missing operator key
- * to `ai_unavailable`, an offline device to `ai_offline`, a rejected byok key to
- * `ai_key_invalid`, and everything else — including an answer we cannot parse — to
- * `ai_upstream_error`. The /quick-add route stays on the server for old PWAs only.
- */
-export async function runQuickAdd(args: {
-  text: string;
-  locale: AiLocale;
-  ledger: ClientLedger;
-  settings: AiSettings;
-}): Promise<QuickAddResponse> {
-  const { text, locale, ledger, settings } = args;
-
-  const target = aiTarget(settings);
-  if (!target) throw new AiConsentRequired();
-
-  const refs = quickAddRefs(ledger);
-  const today = todayISO();
-  const raw = await chatJson(buildQuickAddPrompt(text, refs, today, locale), target);
-  const fields = parseOrFail(() => parseQuickAddResponse(raw));
-  const matchEnv = fields.envelopeName ? refs.envelopes.find((e) => e.name.toLowerCase() === fields.envelopeName!.toLowerCase()) : null;
-  const matchPlace = fields.placeName ? refs.places.find((p) => p.name.toLowerCase() === fields.placeName!.toLowerCase()) : null;
-  return {
-    amount: fields.amount,
-    type: fields.type,
-    isRefund: fields.isRefund,
-    date: fields.date ?? today,
-    envelopeId: matchEnv?.id ?? null,
-    envelopeName: matchEnv?.name ?? null,
-    placeId: matchPlace?.id ?? null,
-    placeName: matchPlace?.name ?? null,
-    categoryId: null, // the model returns no category (only the deleted rules matched one)
-    note: null,
-    confidence: 1,
-  };
-}
-
 /* ── Screenshot import ───────────────────────────────────────────────── */
 
 export async function runImportExtract(args: {
@@ -299,11 +245,11 @@ export async function runImportExtract(args: {
   settings: AiSettings;
 }): Promise<ImportItem[]> {
   const { images, locale, ledger, settings } = args;
-  /* DELIBERATE difference vs suggest/quick-add: in the server mode the import GOES
-     via the /import/extract route — (1) vision (images as content-parts) doesn't
-     go through the /api/ai mirror (content=string, limit), (2) cycle 2
-     (assignments from history) is inherently server-side. In local-only+server
-     it works like byok: facts yes, assignments empty (DB wiped). */
+  /* DELIBERATE difference vs suggest: in the server mode the import GOES via the
+     /import/extract route — (1) vision (images as content-parts) doesn't go
+     through the /api/ai mirror (content=string, limit), (2) cycle 2 (assignments
+     from history) is inherently server-side. In local-only+server it works like
+     byok: facts yes, assignments empty (DB wiped). */
   if (settings.aiMode === "server") return (await api.importExtract(images, locale)).items;
   const target = aiTarget(settings);
   if (target?.kind !== "byok") throw new AiConsentRequired(); // off, or byok with an empty key

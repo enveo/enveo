@@ -57,9 +57,15 @@ export const dark: Theme = {
   bg: "#3b414b", surface: "#404650", card: "#404650", line: "#4b515b", inset: "#333944",
   band: "#343a44", text: "#eef0f2", soft: "#a8aeb6", mute: "#7f868f", sheet: "#434a54",
   key: "#454b55", keybg: "#2f343d",
-  pos: "#7fc9a2", warn: "#d9a84a", neg: "#f28b7d", chip: "#353b45",
+  // warn/neg lightened off the C3 contrast audit (dark-mode accent audit backlog note): the
+  // originals read AA (≥4.5:1) against `bg` but NOT against the lighter `card`/`surface`/`sheet`
+  // that near-limit pills and negative amounts actually sit on in practice (measured 3.96–4.29:1).
+  // neg's target has a bit of extra headroom (4.75:1 on card, not just 4.5) — it's also read as
+  // TEXT on a `var(--danger-14)`-tinted pill fill (Reports "N over" pill), which composites
+  // slightly lighter than flat card and eats into the margin.
+  pos: "#7fc9a2", warn: "#deb462", neg: "#f5a297", chip: "#353b45",
   headerStyle: "plain", headerBg: "#3b414b", headerInk: "#eef0f2",
-  headerMute: "#7f868f", headerPos: "#7fc9a2", headerNeg: "#f28b7d",
+  headerMute: "#7f868f", headerPos: "#7fc9a2", headerNeg: "#f5a297",
 };
 
 export const ENV_PALETTE = [
@@ -124,7 +130,10 @@ export const THEMES: Record<AccentTheme, ThemeDef> = {
   /** Sage — a custom shade (the old teal retired). */
   teal: {
     accent: "#4fa583",
-    accentDark: "#6cbf9b",
+    // C3 contrast audit: #6cbf9b measured 4.33:1 as TEXT on `dark.card`/`surface` (outline
+    // chips, "details ›" links, GoalRing) — under the 4.5:1 AA floor. Lightened in place
+    // (same hue/saturation, +L only) to 4.6:1+ on card/surface/bg/chip; light mode untouched.
+    accentDark: "#77c4a2",
     danger: "#c22e3d",
     dangerDark: "#ef4b58",
     cta: "#f0685c",
@@ -133,13 +142,22 @@ export const THEMES: Record<AccentTheme, ThemeDef> = {
   /** A deliberate split of "available" (coral) vs "overspent" (a deepened red). */
   koral: {
     accent: "#f0685c",
-    accentDark: "#ff8d7d",
+    // C3 contrast audit: #ff8d7d measured 4.23:1 as TEXT on `dark.card` — under 4.5:1 AA.
+    // Lightened to 4.6:1+ (same hue). ctaDark is pinned below so the FAB/primary-button
+    // color (spec: "CTA is always coral") does NOT drift with this accent-only bump.
+    accentDark: "#ff998a",
     danger: "#c22e3d",
     dangerDark: "#ef4b58",
+    ctaDark: "#ff8d7d",
   },
   atrament: {
     accent: "#1d2a47",
-    accentDark: "#8fa2cc", // navy must lighten in dark mode
+    // C3 contrast audit: #8fa2cc (navy, lightened for dark mode) measured only 3.71:1 as TEXT
+    // on `dark.card` — well under 4.5:1 AA (the worst of the three Cisza-palette accents,
+    // since atrament has no navy-world overridesDark the way duet does). Lightened further
+    // (same hue) to 4.6:1+ on card/surface/bg/chip; duet's own #8fa2cc is untouched — it
+    // already clears AA there because duet dark paints a darker navy world (bg #131b2e).
+    accentDark: "#a5b5d6",
     danger: "#c22e3d",
     dangerDark: "#ef4b58",
     cta: "#f0685c",
@@ -207,6 +225,14 @@ export function themeTokens(t: AccentTheme, isDark: boolean): { vars: Record<str
   // Nav defaults = EXACTLY today's BottomNav (bg C.bg, active C.text,
   // indicator = accent, inactive C.mute) — a teal regression guard.
   const nav = (isDark ? def.navDark : def.nav) ?? { bg: palette.bg, on: palette.text, mute: palette.mute, ind: accent };
+  // C3 follow-up: on a "band" theme (Duet), `--accent` IS the band color (headerBg/nav bg are
+  // both the same navy #1d2a47 in both modes) — a `:focus-visible{outline:2px solid var(--accent)}`
+  // ring is then invisible (1.000:1) on the Header/BottomNav. `headerInk` is the token every band
+  // theme already uses for on-band text/icons, and it measures ≥12:1 against headerBg/nav bg in
+  // both modes (Duet), so it doubles as a high-contrast on-band ring. Plain themes (headerStyle
+  // "plain") paint the band the same color as `bg`, so the ordinary accent ring is already correct
+  // there — `--focus-ring-band` is just `--accent` for them (no behavior change).
+  const focusRingBand = palette.headerStyle === "band" ? palette.headerInk : accent;
   const vars: Record<string, string> = {
     "--accent": accent,
     "--danger": danger,
@@ -215,6 +241,7 @@ export function themeTokens(t: AccentTheme, isDark: boolean): { vars: Record<str
     "--nav-on": nav.on,
     "--nav-mute": nav.mute,
     "--nav-ind": nav.ind,
+    "--focus-ring-band": focusRingBand,
   };
   for (const s of ALPHA_SUFFIXES) {
     vars[`--accent-${s}`] = hexAlpha(accent, s);

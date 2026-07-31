@@ -229,7 +229,7 @@ function ReconcileSheet({ account, onClose }: { account: AccountView | null; onC
           </div>
           <div style={{ fontSize: 10.5, color: C.mute, fontWeight: 600, textTransform: "uppercase", letterSpacing: 0.6, marginBottom: 6 }}>{t("Actual balance (from your bank)")}</div>
           <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 12 }}>
-            <input value={val} readOnly onClick={openPad} onFocus={openPad} style={{ flex: 1, padding: "9px 11px", borderRadius: 9, border: `1px solid ${C.line}`, background: C.surface, color: C.text, fontSize: 16, fontWeight: 600, fontFamily: font, outline: "none", fontVariantNumeric: "tabular-nums", cursor: "pointer" }} />
+            <input value={val} readOnly onClick={openPad} onFocus={openPad} style={{ flex: 1, padding: "9px 11px", borderRadius: 9, border: `1px solid ${C.line}`, background: C.surface, color: C.text, fontSize: 16, fontWeight: 600, fontFamily: font, fontVariantNumeric: "tabular-nums", cursor: "pointer" }} />
             <span style={{ color: C.mute, fontSize: 13 }}>{currencySymbol(currency, lang)}</span>
           </div>
           {real !== null && diff !== 0 && (

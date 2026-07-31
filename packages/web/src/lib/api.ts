@@ -9,20 +9,6 @@ export type { AccountView, EnvelopeView, StateResponse } from "@enveo/shared";
 import type { AiLocale, BudgetSuggestProfile, BudgetSuggestResponse, ClientLedger } from "@enveo/shared";
 export type { BudgetSuggestProfile, BudgetSuggestResponse } from "@enveo/shared";
 
-export interface QuickAddResponse {
-  amount: number | null;
-  type: "expense" | "income";
-  isRefund: boolean;
-  date: string;
-  envelopeId: string | null;
-  envelopeName: string | null;
-  placeId: string | null;
-  placeName: string | null;
-  categoryId: string | null;
-  note: string | null;
-  confidence: number;
-}
-
 /* Screenshot import (OpenAI, 2 cycles: facts → assignments from history) */
 export interface ImportItem {
   date: string;
@@ -99,10 +85,10 @@ const ERROR_KEYS: Record<string, Message> = {
   bad_ciphertext: msg("The encrypted data could not be read on this device — nothing was changed. Make sure the app is up to date, or restore from a backup."), // crypto.ts — envelope this build cannot read (corrupt/foreign)
   bad_pairing_code: msg("This is not a valid pairing code — copy it again from the device where the budget is already unlocked."), // crypto.ts — decodePairing on a code that is not ours
   ai_consent_required: msg("AI is not set up on this device. Pick a mode in Settings → Artificial intelligence (with your own key, paste it there)."), // ai.ts — no usable target (AI off, or byok with no key)
-  /* openai.ts — quick-add is AI-only, so a failed model call is now SHOWN (no rules fallback to hide
-     it). The transport maps every failure onto a code here; ai_unavailable/ai_upstream_error above
-     are reused (the mirror's own codes), these two are client-only. */
-  ai_offline: msg("You are offline — quick add and screenshot import need a connection. Manual entry works without one."), // fetch never left the device — the normal state of an offline PWA
+  /* openai.ts — screenshot import is AI-only, so a failed model call is SHOWN (no rules fallback to
+     hide it). The transport maps every failure onto a code here; ai_unavailable/ai_upstream_error
+     above are reused (the mirror's own codes), these two are client-only. */
+  ai_offline: msg("You are offline — screenshot import needs a connection. Manual entry works without one."), // fetch never left the device — the normal state of an offline PWA
   ai_key_invalid: msg("OpenAI rejected your key — check it in Settings → Artificial intelligence."), // byok: OpenAI rejected the user's key (401/403)
 
   /* better-auth codes (lib/auth.ts lowercases them): the library's own `message` is English
@@ -157,7 +143,7 @@ async function http<T>(method: string, path: string, body?: unknown): Promise<T>
 /**
  * Domain writes NO LONGER go through REST — see `lib/mutate.ts` (local.*):
  * local mirror + outbox + background push. Only online-only operations
- * remain here: quick-add (AI) and imports.
+ * remain here: imports (AI) and their apply step.
  */
 export const api = {
   /** Whether the server has an OpenAI key configured (the "server" mode available). */
@@ -165,8 +151,6 @@ export const api = {
 
   /* `locale` = the UI language (any BCP-47 tag): the model writes its names, notes and
      rationales in it. Not to be confused with demoSeed's pl|en, which picks a SEED DATASET. */
-  quickAdd: (text: string, locale: AiLocale) => http<QuickAddResponse>("POST", "/quick-add", { text, locale }),
-
   importExtract: (images: string[], locale: AiLocale) => http<{ items: ImportItem[] }>("POST", "/import/extract", { images, locale }),
   importApply: (b: { accountId: string; items: ImportApplyItem[]; dryRun?: boolean }) =>
     http<ImportApplyResponse>("POST", "/import/apply", b),

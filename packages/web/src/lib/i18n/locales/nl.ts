@@ -464,7 +464,7 @@ export const nl: Dict = {
   "Yes": "Ja",
   "Yes, remove the data from this device": "Ja, verwijder de gegevens van dit apparaat",
   "Yesterday": "Gisteren",
-  "You are offline — quick add and screenshot import need a connection. Manual entry works without one.": "Je bent offline — snel toevoegen en importeren uit schermafbeeldingen hebben een verbinding nodig. Handmatig invoeren werkt ook zonder.",
+  "You are offline — screenshot import needs a connection. Manual entry works without one.": "Je bent offline — importeren uit schermafbeeldingen heeft een verbinding nodig. Handmatig invoeren werkt ook zonder.",
   "Your budget is tied to your account. Sign in to continue.": "Je budget is gekoppeld aan je account. Meld je aan om verder te gaan.",
   "Your data now lives only on this device. Make a backup (Export) — it is the only way not to lose it.": "Je gegevens staan nu alleen nog op dit apparaat. Maak een back-up (Exporteren) — alleen zo raak je ze niet kwijt.",
   "Your data will be decrypted and stored on the server in plain form (as before enabling). Make sure you have a current backup.": "Je gegevens worden ontsleuteld en in leesbare vorm op de server opgeslagen (zoals vóór het inschakelen). Zorg dat je een actuele back-up hebt.",

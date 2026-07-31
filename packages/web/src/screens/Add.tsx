@@ -339,7 +339,7 @@ export function AddScreen({
     <div style={{ flex: 1, display: "flex", flexDirection: "column" }}>
       {/* one header for create and edit: type tabs always (type editable);
           in edit, trash + kebab on the right instead of the alignment spacer */}
-      <div style={band ? { background: C.headerBg, paddingBottom: draft ? 6 : undefined } : undefined}>
+      <div data-band={band || undefined} style={band ? { background: C.headerBg, paddingBottom: draft ? 6 : undefined } : undefined}>
         <div style={{ display: "flex", alignItems: "center", padding: "8px 10px", gap: 6 }}>
           <button onClick={draft ? draft.onCancel : onDone} aria-label={t("Back")} style={{ background: "none", border: "none", cursor: "pointer", padding: 4, display: "flex" }}>
             <Ico d="M19 12H5m0 0l7 7m-7-7l7-7" size={18} color={hc(C.headerInk, C.text)} />
@@ -450,7 +450,7 @@ export function AddScreen({
           onChange={(e) => setName(e.target.value)}
           onFocus={() => setNumpad(false)}
           placeholder={t("Name")}
-          style={{ width: "100%", boxSizing: "border-box", background: "none", border: "none", borderBottom: `1px solid ${C.line}`, color: C.text, fontSize: 14, fontFamily: font, outline: "none", padding: "5px 2px" }}
+          style={{ width: "100%", boxSizing: "border-box", background: "none", border: "none", borderBottom: `1px solid ${C.line}`, color: C.text, fontSize: 14, fontFamily: font, padding: "5px 2px" }}
         />
       </div>
 
@@ -536,7 +536,7 @@ export function AddScreen({
             )}
             {catOpen && (
               <div style={{ padding: `0 ${P}px 6px` }}>
-                <input value={catInput} onChange={(e) => setCatInput(e.target.value)} onFocus={() => setNumpad(false)} placeholder={t("Type or pick a category...")} style={{ width: "100%", padding: "8px 10px", borderRadius: 8, border: `1px solid ${C.line}`, background: C.bg, color: C.text, fontSize: 12, fontFamily: font, outline: "none", boxSizing: "border-box", marginBottom: 6 }} />
+                <input value={catInput} onChange={(e) => setCatInput(e.target.value)} onFocus={() => setNumpad(false)} placeholder={t("Type or pick a category...")} style={{ width: "100%", padding: "8px 10px", borderRadius: 8, border: `1px solid ${C.line}`, background: C.bg, color: C.text, fontSize: 12, fontFamily: font, boxSizing: "border-box", marginBottom: 6 }} />
                 <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginBottom: 6 }}>
                   {filteredCats.slice(0, 8).map((c) => (
                     <button key={c.id} onClick={() => { setCategoryId(c.id); setCatInput(""); setCatOpen(false); }} style={{ padding: "5px 10px", borderRadius: 8, fontSize: 11, background: C.chip, color: C.text, border: `1px solid ${C.line}`, cursor: "pointer" }}>{c.name}</button>
@@ -570,7 +570,7 @@ export function AddScreen({
               <div style={{ position: "relative", padding: `0 ${P}px 6px` }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                   <Ico d="M3 9l9-7 9 7v11a1 1 0 01-1 1h-4v-7H8v7H4a1 1 0 01-1-1V9z" size={15} color={placeId ? TEAL : C.mute} />
-                  <input autoFocus placeholder={t("Place")} value={placeId ? (state.places.find((p) => p.id === placeId)?.name ?? "") : placeInput} onChange={(e) => { setPlaceInput(e.target.value); setPlaceId(null); }} onFocus={() => setNumpad(false)} style={{ flex: 1, background: "none", border: "none", borderBottom: `1px solid ${C.line}`, color: C.text, fontSize: 12, fontFamily: font, outline: "none", padding: "4px 0" }} />
+                  <input autoFocus placeholder={t("Place")} value={placeId ? (state.places.find((p) => p.id === placeId)?.name ?? "") : placeInput} onChange={(e) => { setPlaceInput(e.target.value); setPlaceId(null); }} onFocus={() => setNumpad(false)} style={{ flex: 1, background: "none", border: "none", borderBottom: `1px solid ${C.line}`, color: C.text, fontSize: 12, fontFamily: font, padding: "4px 0" }} />
                   {placeId && <button onClick={() => { setPlaceId(null); setPlaceInput(""); }} style={{ background: "none", border: "none", color: C.mute, fontSize: 11, cursor: "pointer" }}>✕</button>}
                 </div>
                 {/* in draft the place travels by NAME to /import/apply (server creates/matches) —

@@ -4,10 +4,10 @@
  * parsing live in @enveo/shared/aiPrompts (parity with the server mode).
  *
  * ERROR CONTRACT (as everywhere in lib/*): a failure leaves this module as a snake_case CODE —
- * never prose, never a status line. Quick-add is AI-only since 2.2.0, so these errors are now
- * RENDERED to the user (the Add screen's error line) instead of being swallowed by a rules
- * fallback; a thrown `OpenAI 503` put an English developer string in a Polish UI. lib/api.ts
- * (ERROR_KEYS) owns the wording in every locale. The codes:
+ * never prose, never a status line. Screenshot import is AI-only, so these errors are RENDERED
+ * to the user (the import sheet's error line) instead of being swallowed by a rules fallback; a
+ * thrown `OpenAI 503` put an English developer string in a Polish UI. lib/api.ts (ERROR_KEYS)
+ * owns the wording in every locale. The codes:
  *   ai_offline        — fetch never left the device (a local-first PWA is offline all the time)
  *   ai_unavailable    — the mirror has no operator key (503 {"error":"ai_unavailable"})
  *   ai_key_invalid    — byok: OpenAI rejected the user's key (401/403)

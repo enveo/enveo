@@ -47,6 +47,6 @@ export function isSameHostOrigin(
 export function authTrustedOrigins(request?: Request): string[] {
   const trusted = [...staticAllowedOrigins()];
   const origin = request?.headers.get("origin");
-  if (origin && isSameHostOrigin(origin, request.headers.get("host"))) trusted.push(origin);
+  if (origin && isSameHostOrigin(origin, request?.headers.get("host"))) trusted.push(origin);
   return trusted;
 }

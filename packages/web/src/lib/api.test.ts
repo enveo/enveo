@@ -54,7 +54,7 @@ describe("client-side error codes", () => {
     bad_ciphertext: "The encrypted data could not be read on this device — nothing was changed. Make sure the app is up to date, or restore from a backup.", // crypto.ts — an envelope this build cannot read
     bad_pairing_code: "This is not a valid pairing code — copy it again from the device where the budget is already unlocked.", // crypto.ts — decodePairing on a code that is not ours
     ai_consent_required: "AI is not set up on this device. Pick a mode in Settings → Artificial intelligence (with your own key, paste it there).", // ai.ts — AiConsentRequired: no usable model on this device
-    ai_offline: "You are offline — quick add and screenshot import need a connection. Manual entry works without one.", // openai.ts — fetch never left the device (offline PWA)
+    ai_offline: "You are offline — screenshot import needs a connection. Manual entry works without one.", // openai.ts — fetch never left the device (offline PWA)
     ai_key_invalid: "OpenAI rejected your key — check it in Settings → Artificial intelligence.", // openai.ts — byok: OpenAI rejected the user's key (401/403)
   };
 
@@ -92,8 +92,8 @@ describe("no prose thrown from the UI-reachable libs", () => {
   // a custom Error subclass hides its message in super(...), which the `new Error("…")` pattern
   // never saw — so the prose reached the Add screen's error line verbatim. Both shapes are scanned.
   // openai.ts joined it after `throw new Error(\`OpenAI ${res.status}\`)` printed "OpenAI 503" in a
-  // Polish UI: quick-add went AI-only, so the model transport's errors stopped being swallowed by a
-  // rules fallback and became text a user reads.
+  // Polish UI: screenshot import is AI-only, so the model transport's errors stopped being
+  // swallowed by a rules fallback and became text a user reads.
   for (const file of ["sync.ts", "crypto.ts", "ai.ts", "openai.ts"]) {
     it(`${file} throws codes, not sentences`, () => {
       const src = readFileSync(join(LIB_DIR, file), "utf8");

@@ -340,7 +340,7 @@ export function BudgetSuggestSheet({ show, state, month, onClose }: { show: bool
                                 tabIndex={on ? 0 : -1}
                                 onClick={on ? () => openPadFor(it) : undefined}
                                 onFocus={on ? () => openPadFor(it) : undefined}
-                                style={{ width: 60, background: "none", border: "none", outline: "none", textAlign: "right", fontSize: 13, fontWeight: 700, color: on && isEdited ? TEAL : C.text, fontFamily: font, fontVariantNumeric: "tabular-nums", cursor: on ? "pointer" : "default", textDecoration: on ? "none" : "line-through", padding: 0 }}
+                                style={{ width: 60, background: "none", border: "none", textAlign: "right", fontSize: 13, fontWeight: 700, color: on && isEdited ? TEAL : C.text, fontFamily: font, fontVariantNumeric: "tabular-nums", cursor: on ? "pointer" : "default", textDecoration: on ? "none" : "line-through", padding: 0 }}
                               />
                               <span style={{ fontSize: 11, color: C.soft }}>{currencySymbol(currency, lang)}</span>
                             </div>
@@ -404,7 +404,7 @@ function prevAllocations(ledger: ClientLedger, month: string): Map<string, numbe
   return map;
 }
 
-/** Result-list checkbox: 20px, radius 7, ✓ on C.pos (import/quick-add list pattern). */
+/** Result-list checkbox: 20px, radius 7, ✓ on C.pos (import list pattern). */
 function CheckBox({ on, C }: { on: boolean; C: Theme }) {
   return (
     <span aria-hidden style={{ width: 20, height: 20, borderRadius: 7, flexShrink: 0, boxSizing: "border-box", border: `1.6px solid ${on ? C.pos : C.mute}`, background: on ? C.pos : "transparent", display: "flex", alignItems: "center", justifyContent: "center" }}>
@@ -475,7 +475,7 @@ function ProfileManageSheet({ show, onClose }: { show: boolean; onClose: () => v
 
   const rowStyle = (C: Theme): CSSProperties => ({ display: "flex", alignItems: "center", gap: 8, padding: "9px 0", borderBottom: `1px solid ${C.line}` });
   const smallBtn = (C: Theme, danger = false): CSSProperties => ({ padding: "5px 10px", borderRadius: 8, border: `1px solid ${danger ? CORAL : C.line}`, background: "transparent", color: danger ? CORAL : C.text, fontSize: 12, fontWeight: 600, cursor: "pointer" });
-  const inputStyle = (C: Theme): CSSProperties => ({ width: "100%", boxSizing: "border-box", padding: "9px 11px", borderRadius: 9, border: `1px solid ${C.line}`, background: C.bg, color: C.text, fontSize: 13, fontFamily: font, outline: "none", marginBottom: 8 });
+  const inputStyle = (C: Theme): CSSProperties => ({ width: "100%", boxSizing: "border-box", padding: "9px 11px", borderRadius: 9, border: `1px solid ${C.line}`, background: C.bg, color: C.text, fontSize: 13, fontFamily: font, marginBottom: 8 });
 
   return (
     <Sheet show={show} onClose={close}>

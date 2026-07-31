@@ -31,7 +31,9 @@ import { fetchSessionUserId } from "./auth";
 import * as e2ee from "./e2ee";
 import { clearLocalData, idbGet, idbPut, storageMode } from "./idb";
 import { purgeLegacyPlannedIds } from "./legacyPlanned";
-import { local } from "./mutate";
+// NOTE: no static `import { local } from "./mutate"` here — mutate.ts imports `poke` from this
+// module, so a static edge in the other direction would be a cycle. The one caller below
+// (sweepLegacyPlanned) instead does a lazy `await import("./mutate")`.
 import * as outbox from "./outbox";
 import * as persist from "./persist";
 import { requestPersistentStorage } from "./storage";
@@ -1000,16 +1002,16 @@ async function proveOwnership(): Promise<Ownership> {
           return "unknown"; // …it does not: a stale key OR another budget — indistinguishable
         }
       }
-      const local = store.getBudgetId();
+      const localBudgetId = store.getBudgetId();
       // An UNBOUND replica (no budgetId): it points at no account — neither this one nor
       // another. Adopt it only where being wrong costs nothing: an EMPTY session budget has
       // nothing to lose. Against a session budget that holds data, an unbound replica is exactly
       // the "adopt + overwrite" hole this guard exists to close (it can arrive on the device via
       // "Clear local data" in local mode, or an offline start, and it may be another user's).
-      if (!local) return !bornE2ee && (await sessionBudgetIsEmpty()) ? "ours" : "unknown";
+      if (!localBudgetId) return !bornE2ee && (await sessionBudgetIsEmpty()) ? "ours" : "unknown";
       const server = await fetchServerBudgetId();
       if (!server) return "unknown";
-      return local === server ? "ours" : "unknown";
+      return localBudgetId === server ? "ours" : "unknown";
     } catch (err) {
       if (err instanceof TierMismatchError) {
         if (attempt === 0) continue; // tierMeta is fresh → prove on the other path
@@ -1712,11 +1714,20 @@ async function loadSyncMeta(): Promise<void> {
  * row is never rendered even for a frame. `local.deleteTxn` is the normal applyOp+outbox path:
  * the delete pushes encrypted on e2ee, and is an idempotent no-op push on plain (the server
  * already dropped the row). Idempotent overall — nothing is left to find on the next boot.
+ *
+ * `local` is fetched via a lazy `import("./mutate")` rather than a static top-of-file import:
+ * mutate.ts imports `poke` from this module, so a static `sync.ts → mutate.ts` edge would form an
+ * import cycle. This is the ONLY place sync.ts needs `local`, so the lazy import keeps the
+ * dependency graph acyclic at negligible cost (mutate.ts is already statically imported
+ * elsewhere in the app, so this resolves from the already-loaded module).
  */
-function sweepLegacyPlanned(): void {
+async function sweepLegacyPlanned(): Promise<void> {
   const ledger = store.getLedger();
   if (!ledger) return;
-  for (const id of purgeLegacyPlannedIds(ledger)) local.deleteTxn(id);
+  const ids = purgeLegacyPlannedIds(ledger);
+  if (ids.length === 0) return;
+  const { local } = await import("./mutate");
+  for (const id of ids) local.deleteTxn(id);
 }
 
 /**
@@ -1725,12 +1736,12 @@ function sweepLegacyPlanned(): void {
  * data (rare: "Clear local data" while in local mode) → empty ledger, so the
  * UI doesn't hang on "Loading…"; the real data comes back after disabling the mode.
  */
-function bootLocalReady(hydrated: "ready" | "empty"): void {
+async function bootLocalReady(hydrated: "ready" | "empty"): Promise<void> {
   if (hydrated === "empty" || !store.getLedger()) {
     store.replace(EMPTY_LEDGER, store.getCursor(), store.getBudgetId() ?? "");
   }
   replayOutbox();
-  sweepLegacyPlanned();
+  await sweepLegacyPlanned();
   if (outbox.size() > 0) void persist.persistLedger(store.snapshotForPersist());
   store.setBootStatus("ready");
   setState("local");
@@ -1795,7 +1806,7 @@ async function boot(): Promise<void> {
     if (!(await bootOwnerOk())) return;
     if (localMode !== "off") {
       lastBootSource = "local";
-      bootLocalReady(hydrated); // local mode — no network
+      await bootLocalReady(hydrated); // local mode — no network
       return;
     }
     if (hydrated === "empty") {
@@ -1813,7 +1824,7 @@ async function boot(): Promise<void> {
     // (reducers are idempotent: create guards the id, update = full replacement);
     // the mirror was a PREFIX of the outbox, so the replay catches it up (never rolls back)
     replayOutbox();
-    sweepLegacyPlanned();
+    await sweepLegacyPlanned();
     if (outbox.size() > 0) void persist.persistLedger(store.snapshotForPersist());
     store.setBootStatus("ready");
     bumpStatus();
@@ -1831,7 +1842,7 @@ async function boot(): Promise<void> {
       // Read the meta flags HERE too: the resync obligation from IDB must not be lost.
       await loadSyncMeta();
       replayOutbox();
-      sweepLegacyPlanned();
+      await sweepLegacyPlanned();
       store.setBootStatus("ready");
       if (localMode !== "off") {
         setState("local");

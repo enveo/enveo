@@ -16,7 +16,15 @@ export function StyleInjector() {
     if (document.getElementById("g4")) return;
     const s = document.createElement("style");
     s.id = "g4";
-    s.textContent = `*{-webkit-tap-highlight-color:transparent}@keyframes fu{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}@keyframes su{from{transform:translateY(100%)}to{transform:translateY(0)}}@keyframes sl{from{transform:translateX(-100%)}to{transform:translateX(0)}}@keyframes fi{from{opacity:0}to{opacity:1}}@keyframes sp{to{transform:rotate(360deg)}}@keyframes wg{from{transform:rotate(-.5deg)}to{transform:rotate(.5deg)}}@keyframes sk{0%,100%{opacity:.5}50%{opacity:.9}}.fu{animation:fu .4s ease-out both}.fi{animation:fi .25s ease-out both}.sk{animation:sk 1.2s ease-in-out infinite}.gs::-webkit-scrollbar{width:0;height:0}body{margin:0}@media(hover:hover){button:not(:disabled):hover{filter:brightness(.96)}}`;
+    // :focus-visible (C3 a11y sweep): the browser default focus ring is a near-black 1px
+    // outline (measured ~2.2:1 on dark surfaces, under the 3:1 UI floor) — invisible on dark
+    // backgrounds. This is desktop/keyboard-only in effect (mobile taps never trigger
+    // :focus-visible), so it costs nothing on the primary mobile-first surface.
+    // [data-band] follow-up: on Duet, `--accent` IS the header/nav band color (1.000:1 —
+    // literally invisible there), so band-painted containers (Header wrapper, BottomNav,
+    // ReportShell) are marked `data-band` and get `--focus-ring-band` instead (see theme.ts) —
+    // on-band ink for Duet, identical to `--accent` for plain themes (no-op there).
+    s.textContent = `*{-webkit-tap-highlight-color:transparent}@keyframes fu{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}@keyframes su{from{transform:translateY(100%)}to{transform:translateY(0)}}@keyframes sl{from{transform:translateX(-100%)}to{transform:translateX(0)}}@keyframes fi{from{opacity:0}to{opacity:1}}@keyframes sp{to{transform:rotate(360deg)}}@keyframes wg{from{transform:rotate(-.5deg)}to{transform:rotate(.5deg)}}@keyframes sk{0%,100%{opacity:.5}50%{opacity:.9}}.fu{animation:fu .4s ease-out both}.fi{animation:fi .25s ease-out both}.sk{animation:sk 1.2s ease-in-out infinite}.gs::-webkit-scrollbar{width:0;height:0}body{margin:0}@media(hover:hover){button:not(:disabled):hover{filter:brightness(.96)}}:focus-visible{outline:2px solid var(--accent);outline-offset:2px}[data-band] *:focus-visible{outline-color:var(--focus-ring-band)}`;
     document.head.appendChild(s);
   }, []);
   return null;
@@ -174,8 +182,10 @@ export function BottomNav({ active, onNav }: { active: ScreenId; onNav: (s: Scre
     { id: "transactions", label: t("Transactions"), d: "M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" },
     { id: "reports", label: t("Reports"), d: "M4 19h16M7 16v-5M12 16V8M17 16v-9" },
   ];
+  // data-band: the nav always paints "var(--nav-bg)" as its own background (on Duet that's the
+  // navy band, `--accent` itself — see the [data-band] focus-ring rule in StyleInjector).
   return (
-    <nav style={{ display: "flex", alignItems: "center", justifyContent: "space-around", background: "var(--nav-bg)", padding: "6px 0 calc(12px + env(safe-area-inset-bottom))", flexShrink: 0 }}>
+    <nav data-band={C.headerStyle === "band" || undefined} style={{ display: "flex", alignItems: "center", justifyContent: "space-around", background: "var(--nav-bg)", padding: "6px 0 calc(12px + env(safe-area-inset-bottom))", flexShrink: 0 }}>
       {/* every slot flex:1 — slot center = 1/5 of the width regardless of label lengths (otherwise "Transactions" pushes the FAB off the screen axis) */}
       {tabs.map((tab) =>
         tab.id === "add" ? (
@@ -241,8 +251,11 @@ export function Drawer({ open, onClose, onNav, onOpenReports }: { open: boolean;
   const darkOn = settings.themeMode === "dark";
   const txCount = live?.txCount ?? 0;
   const chevron = <DrawIco d={D_CHEV} size={14} color={C.mute} w={2} />;
-  const shortcut = (d: string, label: string, onClick: () => void, right: ReactNode, last = false) => (
-    <button onClick={onClick} style={{ display: "flex", alignItems: "center", gap: 12, width: "100%", padding: "12px 2px", background: "none", border: "none", borderBottom: last ? "none" : `1px solid ${C.line}`, cursor: "pointer", textAlign: "left" }}>
+  // `ariaLabel` overrides the accessible name when `right` carries meaning beyond the visible
+  // `label` (the overspent dot below is `aria-hidden` — a decoration with no text alternative
+  // otherwise, since the button's accessible name would just be `label` on its own).
+  const shortcut = (d: string, label: string, onClick: () => void, right: ReactNode, last = false, ariaLabel?: string) => (
+    <button onClick={onClick} aria-label={ariaLabel} style={{ display: "flex", alignItems: "center", gap: 12, width: "100%", padding: "12px 2px", background: "none", border: "none", borderBottom: last ? "none" : `1px solid ${C.line}`, cursor: "pointer", textAlign: "left" }}>
       <span style={{ width: 34, height: 34, borderRadius: 10, background: C.inset, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
         <DrawIco d={d} color={C.soft} />
       </span>
@@ -290,6 +303,7 @@ export function Drawer({ open, onClose, onNav, onOpenReports }: { open: boolean;
             () => { onClose(); onOpenReports("budgets"); },
             live?.overspent ? <span aria-hidden style={{ width: 7, height: 7, borderRadius: "50%", background: CORAL, flexShrink: 0 }} /> : chevron,
             true,
+            live?.overspent ? t("Envelope budgets — some envelopes are over budget") : undefined,
           )}
         </div>
 

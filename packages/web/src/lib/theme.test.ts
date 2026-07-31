@@ -20,9 +20,9 @@ describe("teal theme = Sage #4fa583 (stability guard since 1.15.0)", () => {
     expect(vars["--danger"]).toBe("#c22e3d");
     expect(vars["--cta"]).toBe("#f0685c");
   });
-  test("dark: accent lightened Sage #6cbf9b, deepened Cisza danger, CTA is always coral", () => {
+  test("dark: accent lightened Sage #77c4a2 (C3 contrast audit — was #6cbf9b, 4.33:1 on card), deepened Cisza danger, CTA is always coral", () => {
     const { vars } = themeTokens("teal", true);
-    expect(vars["--accent"]).toBe("#6cbf9b");
+    expect(vars["--accent"]).toBe("#77c4a2");
     expect(vars["--danger"]).toBe("#ef4b58");
     expect(vars["--cta"]).toBe("#ff8d7d");
   });
@@ -41,7 +41,7 @@ describe("teal theme = Sage #4fa583 (stability guard since 1.15.0)", () => {
     const d = themeTokens("teal", true).vars;
     expect(d["--nav-bg"]).toBe(dark.bg);
     expect(d["--nav-on"]).toBe(dark.text);
-    expect(d["--nav-ind"]).toBe("#6cbf9b");
+    expect(d["--nav-ind"]).toBe("#77c4a2");
     expect(d["--nav-mute"]).toBe(dark.mute);
   });
   test("alpha --accent-1a = Sage rgba with the 1a suffix", () => {
@@ -68,10 +68,11 @@ describe("koral (the app default)", () => {
     expect(vars["--danger"]).toBe("#c22e3d");
     expect(vars["--cta"]).toBe("#f0685c");
   });
-  test("dark: accent #ff8d7d, danger #ef4b58", () => {
+  test("dark: accent #ff998a (C3 contrast audit — was #ff8d7d, 4.23:1 on card), danger #ef4b58, CTA pinned to coral #ff8d7d", () => {
     const { vars } = themeTokens("koral", true);
-    expect(vars["--accent"]).toBe("#ff8d7d");
+    expect(vars["--accent"]).toBe("#ff998a");
     expect(vars["--danger"]).toBe("#ef4b58");
+    expect(vars["--cta"]).toBe("#ff8d7d");
   });
   test("palette without overrides = standard light/dark", () => {
     expect(themeTokens("koral", false).palette).toEqual(light);
@@ -85,9 +86,9 @@ describe("atrament", () => {
     expect(vars["--accent"]).toBe("#1d2a47");
     expect(vars["--danger"]).toBe("#c22e3d");
   });
-  test("dark: lightened navy #8fa2cc", () => {
+  test("dark: lightened navy #a5b5d6 (C3 contrast audit — was #8fa2cc, 3.71:1 on card, the worst of the backlog note's 'outline chips')", () => {
     const { vars } = themeTokens("atrament", true);
-    expect(vars["--accent"]).toBe("#8fa2cc");
+    expect(vars["--accent"]).toBe("#a5b5d6");
     expect(vars["--danger"]).toBe("#ef4b58");
   });
 });
@@ -166,11 +167,11 @@ describe("4×2 snapshot of the key fields (accent/danger/cta/nav-bg)", () => {
       // navBg = today's BottomNav background (C.bg), NOT surface — a regression guard.
       // CTA is always coral (spec) — teal/atrament no longer fall back to their accent.
       "teal.light": { accent: "#4fa583", danger: "#c22e3d", cta: "#f0685c", navBg: "#f4f3ef" },
-      "teal.dark": { accent: "#6cbf9b", danger: "#ef4b58", cta: "#ff8d7d", navBg: "#3b414b" },
+      "teal.dark": { accent: "#77c4a2", danger: "#ef4b58", cta: "#ff8d7d", navBg: "#3b414b" },
       "koral.light": { accent: "#f0685c", danger: "#c22e3d", cta: "#f0685c", navBg: "#f4f3ef" },
-      "koral.dark": { accent: "#ff8d7d", danger: "#ef4b58", cta: "#ff8d7d", navBg: "#3b414b" },
+      "koral.dark": { accent: "#ff998a", danger: "#ef4b58", cta: "#ff8d7d", navBg: "#3b414b" },
       "atrament.light": { accent: "#1d2a47", danger: "#c22e3d", cta: "#f0685c", navBg: "#f4f3ef" },
-      "atrament.dark": { accent: "#8fa2cc", danger: "#ef4b58", cta: "#ff8d7d", navBg: "#3b414b" },
+      "atrament.dark": { accent: "#a5b5d6", danger: "#ef4b58", cta: "#ff8d7d", navBg: "#3b414b" },
       "duet.light": { accent: "#1d2a47", danger: "#c22e3d", cta: "#f0685c", navBg: "#1d2a47" },
       "duet.dark": { accent: "#8fa2cc", danger: "#ef4b58", cta: "#ff8d7d", navBg: "#1d2a47" },
     });
@@ -253,6 +254,71 @@ describe("theme screen tokens", () => {
     for (const th of ["teal", "koral", "atrament", "duet"] as const) {
       expect(themeTokens(th, false).vars["--cta"]).toMatch(/^#(f0685c|ff8d7d)$/i);
       expect(themeTokens(th, true).vars["--cta"]).toMatch(/^#(f0685c|ff8d7d)$/i);
+    }
+  });
+});
+
+/**
+ * C3 dark-mode contrast audit (2026-07-31) — regression guard for the backlog note
+ * "dark-mode accent audit — outline chips measure 3.4–3.9:1". WCAG 2.1 relative-luminance
+ * contrast, ported inline (no DOM/browser needed) so this runs in `bun test`. Full measured
+ * table + before/after screenshots: .superpowers/sdd/cleanup/c3-report.md.
+ */
+describe("C3 contrast audit — dark-mode AA regression guard", () => {
+  const hexToRgb = (hex: string) => ({
+    r: parseInt(hex.slice(1, 3), 16),
+    g: parseInt(hex.slice(3, 5), 16),
+    b: parseInt(hex.slice(5, 7), 16),
+  });
+  const relLum = (hex: string) => {
+    const { r, g, b } = hexToRgb(hex);
+    const f = (v: number) => (v /= 255) <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4);
+    return 0.2126 * f(r) + 0.7152 * f(g) + 0.0722 * f(b);
+  };
+  const ratio = (fg: string, bg: string) => {
+    const l1 = relLum(fg), l2 = relLum(bg);
+    const [hi, lo] = l1 > l2 ? [l1, l2] : [l2, l1];
+    return (hi + 0.05) / (lo + 0.05);
+  };
+  const AA_TEXT = 4.5;
+  const AA_UI = 3.0;
+
+  test("teal/koral/atrament dark accent is AA text-contrast on card/surface/bg/chip (outline chips, 'details ›' links, GoalRing)", () => {
+    for (const th of ["teal", "koral", "atrament"] as const) {
+      const { vars, palette } = themeTokens(th, true);
+      const accent = vars["--accent"]!;
+      for (const bg of [palette.card, palette.surface, palette.bg, palette.chip]) {
+        expect(ratio(accent, bg)).toBeGreaterThanOrEqual(AA_TEXT);
+      }
+    }
+  });
+
+  test("duet dark accent stays AA on its navy world (reference point, untouched by the audit)", () => {
+    const { vars, palette } = themeTokens("duet", true);
+    expect(ratio(vars["--accent"]!, palette.card)).toBeGreaterThanOrEqual(AA_TEXT);
+    expect(vars["--accent"]).toBe("#8fa2cc"); // unchanged — already AA on the navy overridesDark palette
+  });
+
+  test("every theme's dark accent clears the 3:1 UI/border floor too (outline chip borders, active filter-chip checkmarks)", () => {
+    for (const th of ["teal", "koral", "atrament", "duet"] as const) {
+      const { vars, palette } = themeTokens(th, true);
+      expect(ratio(vars["--accent"]!, palette.card)).toBeGreaterThanOrEqual(AA_UI);
+    }
+  });
+
+  test("dark.neg (DeltaTag down-arrows, over-assigned TBB hero, negative amounts) is AA text-contrast on card/bg", () => {
+    for (const th of ["teal", "koral", "atrament"] as const) {
+      const { palette } = themeTokens(th, true);
+      expect(ratio(palette.neg, palette.card)).toBeGreaterThanOrEqual(AA_TEXT);
+      expect(ratio(palette.neg, palette.bg)).toBeGreaterThanOrEqual(AA_TEXT);
+    }
+  });
+
+  test("dark.warn (near-limit pills) is AA text-contrast on card/sheet", () => {
+    for (const th of ["teal", "koral", "atrament"] as const) {
+      const { palette } = themeTokens(th, true);
+      expect(ratio(palette.warn, palette.card)).toBeGreaterThanOrEqual(AA_TEXT);
+      expect(ratio(palette.warn, palette.sheet)).toBeGreaterThanOrEqual(AA_TEXT);
     }
   });
 });
