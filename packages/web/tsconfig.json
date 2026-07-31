@@ -5,5 +5,9 @@
     "noEmit": true,
     "types": ["vite/client"]
   },
-  "include": ["src", "vite.config.ts"]
+  "include": ["src", "vite.config.ts"],
+  // Test files are checked separately by tsconfig.test.json (bun:test types) —
+  // see that file's comment and `bun run typecheck`. Mirrors packages/shared's
+  // idiom of excluding *.test.ts from the app tsconfig.
+  "exclude": ["src/**/*.test.ts"]
 }

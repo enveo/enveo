@@ -142,7 +142,7 @@ export function computeSpendingByDimension(
 
 
 
-function median(xs: number[]): number {
+export function median(xs: number[]): number {
   if (xs.length === 0) return 0;
   const sorted = [...xs].sort((a, b) => a - b);
   return sorted[Math.floor((sorted.length - 1) / 2)]!;

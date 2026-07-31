@@ -7,10 +7,11 @@ const onAcc = (initial: number): Account => ({ id: "A0", name: "K", color: "#fff
 function fixture(): ClientLedger {
   return {
     accounts: [onAcc(1000_00)],
+    budgets: [],
     groups: [{ id: "G0", name: "Grupa", sort: 0 }],
     envelopes: [
-      { id: "E1", groupId: "G0", name: "Jedzenie", color: "#fff", icon: "tag", note: null, sort: 0, archived: false, monthlyTarget: null },
-      { id: "E2", groupId: "G0", name: "Obligacje", color: "#fff", icon: "tag", note: null, sort: 1, archived: false, monthlyTarget: null },
+      { id: "E1", groupId: "G0", name: "Jedzenie", color: "#fff", icon: "tag", note: null, sort: 0, archived: false, monthlyTarget: null, isSavings: false },
+      { id: "E2", groupId: "G0", name: "Obligacje", color: "#fff", icon: "tag", note: null, sort: 1, archived: false, monthlyTarget: null, isSavings: false },
     ],
     categories: [],
     places: [],

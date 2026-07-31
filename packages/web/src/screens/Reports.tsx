@@ -6,6 +6,7 @@ import {
   computeNetWorthSeries,
   computeSpendingByDimension,
   largestExpenses,
+  median,
   prevMonth,
   savingsRate,
   spendingBaseline,
@@ -17,7 +18,7 @@ import { useLedgerVersion, type StateResponse } from "../lib/api";
 import { store } from "../lib/store";
 import { Header } from "../components/chrome";
 import { GoalRing, useBand } from "../components/kit";
-import { Bar, CalendarHeatmap, DeltaTag, ReportShell, SegBar, Sparkline, TrendSpark } from "../components/reportKit";
+import { Bar, CalendarHeatmap, DeltaTag, heatColor, ReportShell, SegBar, Sparkline, TrendSpark } from "../components/reportKit";
 import { useMask, useTheme } from "../lib/contexts";
 import { monthLabel, shortDate } from "../lib/dates";
 import { goalProgress } from "../lib/goals";
@@ -311,14 +312,6 @@ function MiniCard({ title, onClick, children }: { title: string; onClick: () => 
 
 
 
-function medianOf(xs: number[]): number {
-  if (xs.length === 0) return 0;
-  const sorted = [...xs].sort((a, b) => a - b);
-  return sorted[Math.floor((sorted.length - 1) / 2)]!;
-}
-
-
-
 function CashflowMini({ cashflow, onView, M }: { cashflow: { month: string; income: number; expense: number; net: number }[]; onView: (v: ReportView) => void; M: Mask }) {
   const C = useTheme();
   const { t } = useT();
@@ -373,7 +366,7 @@ function SpendingMini({
   const colorOf = (r: { key: string | null }, i: number) => (r.key && envColor.get(r.key)) || SPENDING_FALLBACK_COLORS[i % SPENDING_FALLBACK_COLORS.length]!;
   const segments = [...top.map((r, i) => ({ weight: Math.max(0, r.amount), color: colorOf(r, i) })), ...(restAmt > 0 ? [{ weight: restAmt, color: C.line }] : [])];
    
-  const baseline = medianOf(cashflow.slice(-4, -1).map((p) => p.expense));
+  const baseline = median(cashflow.slice(-4, -1).map((p) => p.expense));
   const deltaPct = baseline > 0 ? (total - baseline) / baseline : null;
   return (
     <MiniCard title={t("Spending")} onClick={() => onView("spending")}>
@@ -444,20 +437,12 @@ function MonthMini({ days, onView, M }: { days: { date: string; total: number }[
   const { t } = useT();
   const first10 = days.slice(0, 10);
   const max = Math.max(...days.map((d) => d.total), 1);
-  const colorFor = (total: number): string => {
-    if (total <= 0) return C.inset;
-    const q = total / max;
-    if (q <= 0.25) return "var(--accent-22)";
-    if (q <= 0.5) return "var(--accent-40)";
-    if (q <= 0.75) return "var(--accent-66)";
-    return "var(--accent)";
-  };
   const avg = days.length > 0 ? Math.round(days.reduce((s, d) => s + d.total, 0) / days.length) : 0;
   return (
     <MiniCard title={t("Month in a nutshell")} onClick={() => onView("month")}>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(10, 1fr)", gap: 2.5 }}>
         {first10.map((d) => (
-          <span key={d.date} style={{ aspectRatio: "1", borderRadius: 3, background: colorFor(d.total) }} />
+          <span key={d.date} style={{ aspectRatio: "1", borderRadius: 3, background: heatColor(d.total, max, C) }} />
         ))}
       </div>
       <div style={{ fontSize: 11, color: C.mute, marginTop: 8, fontVariantNumeric: "tabular-nums" }}>{t("avg {amount}/day", { amount: M(avg) })}</div>
@@ -741,7 +726,7 @@ function SpendingReport({
   const spMax = Math.max(...spending.map((r) => r.amount), 1);
   
 
-  const baseline3 = medianOf(cashflow.slice(-4, -1).map((p) => p.expense));
+  const baseline3 = median(cashflow.slice(-4, -1).map((p) => p.expense));
   const totalDelta = baseline3 > 0 ? (spTotal - baseline3) / baseline3 : null;
 
   const envColor = new Map(state.envelopes.map((e) => [e.id, e.color]));
@@ -861,6 +846,41 @@ function SpendingReport({
   );
 }
 
+
+
+
+
+
+function BudgetRow({
+  name,
+  onClick,
+  statusColor,
+  status,
+  caption,
+  barPct,
+  barColor,
+}: {
+  name: string;
+  onClick: () => void;
+  statusColor: string;
+  status: ReactNode;
+  caption?: ReactNode;
+  barPct: number;
+  barColor: string;
+}) {
+  const C = useTheme();
+  return (
+    <button onClick={onClick} style={{ display: "block", width: "100%", background: "none", border: "none", padding: "0 0 12px", cursor: "pointer", textAlign: "left" as const, fontFamily: "inherit" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" as const, gap: 8, marginBottom: 3 }}>
+        <span style={{ fontSize: 13, color: C.text, overflow: "hidden" as const, textOverflow: "ellipsis" as const, whiteSpace: "nowrap" as const }}>{name}</span>
+        <span style={{ fontSize: 12.5, fontWeight: 700, color: statusColor, fontVariantNumeric: "tabular-nums", flexShrink: 0 }}>{status}</span>
+      </div>
+      {caption != null && <div style={{ fontSize: 10.5, color: C.soft, marginBottom: 4 }}>{caption}</div>}
+      <Bar pct={barPct} color={barColor} />
+    </button>
+  );
+}
+
 /**
  * "Budgets" tab (frame A3, triage): three sections — Overspent / Near limit / Within budget —
  * classified via `classifyBudget` (lib/reportSummary.ts), the SAME rule the hub's Budgets
@@ -917,10 +937,6 @@ function BudgetsReport({
       {label}
     </span>
   );
-  const rowBtnStyle = { display: "block", width: "100%", background: "none", border: "none", padding: "0 0 12px", cursor: "pointer", textAlign: "left" as const, fontFamily: "inherit" };
-  const rowHeadStyle = { display: "flex", justifyContent: "space-between", alignItems: "baseline" as const, gap: 8, marginBottom: 3 };
-  const rowNameStyle = { fontSize: 13, color: C.text, overflow: "hidden" as const, textOverflow: "ellipsis" as const, whiteSpace: "nowrap" as const };
-
   return (
     <ReportShell
       title={t(TITLES.budgets)}
@@ -954,16 +970,16 @@ function BudgetsReport({
         <>
           <div style={{ fontSize: 10.5, fontWeight: 750, letterSpacing: "0.16em", textTransform: "uppercase", color: C.neg, margin: "4px 2px 8px" }}>{t("Overspent")}</div>
           {overRows.map(({ e, pct, left, budget }) => (
-            <button key={e.id} onClick={() => onOpenEnvelope(e.id, state.month)} style={rowBtnStyle}>
-              <div style={rowHeadStyle}>
-                <span style={rowNameStyle}>{e.name}</span>
-                <span style={{ fontSize: 12.5, fontWeight: 700, color: C.neg, fontVariantNumeric: "tabular-nums", flexShrink: 0 }}>
-                  {Math.round(pct)}% · +{M(-left)}
-                </span>
-              </div>
-              <div style={{ fontSize: 10.5, color: C.soft, marginBottom: 4 }}>{t("spent {spent} of {budget}", { spent: M(Math.max(0, e.spent)), budget: M(budget) })}</div>
-              <Bar pct={pct} color={C.neg} />
-            </button>
+            <BudgetRow
+              key={e.id}
+              name={e.name}
+              onClick={() => onOpenEnvelope(e.id, state.month)}
+              statusColor={C.neg}
+              status={`${Math.round(pct)}% · +${M(-left)}`}
+              caption={t("spent {spent} of {budget}", { spent: M(Math.max(0, e.spent)), budget: M(budget) })}
+              barPct={pct}
+              barColor={C.neg}
+            />
           ))}
         </>
       )}
@@ -972,15 +988,15 @@ function BudgetsReport({
         <>
           <div style={{ fontSize: 10.5, fontWeight: 750, letterSpacing: "0.16em", textTransform: "uppercase", color: C.warn, margin: "18px 2px 8px" }}>{t("Near limit · ≥ 80%")}</div>
           {nearRows.map(({ e, pct, left }) => (
-            <button key={e.id} onClick={() => onOpenEnvelope(e.id, state.month)} style={rowBtnStyle}>
-              <div style={rowHeadStyle}>
-                <span style={rowNameStyle}>{e.name}</span>
-                <span style={{ fontSize: 12.5, fontWeight: 700, color: C.warn, fontVariantNumeric: "tabular-nums", flexShrink: 0 }}>
-                  {Math.round(pct)}% · {t("{amount} left", { amount: M(left) })}
-                </span>
-              </div>
-              <Bar pct={pct} color={C.warn} />
-            </button>
+            <BudgetRow
+              key={e.id}
+              name={e.name}
+              onClick={() => onOpenEnvelope(e.id, state.month)}
+              statusColor={C.warn}
+              status={`${Math.round(pct)}% · ${t("{amount} left", { amount: M(left) })}`}
+              barPct={pct}
+              barColor={C.warn}
+            />
           ))}
         </>
       )}
@@ -989,28 +1005,28 @@ function BudgetsReport({
         <>
           <div style={{ fontSize: 10.5, fontWeight: 750, letterSpacing: "0.16em", textTransform: "uppercase", color: C.mute, margin: "18px 2px 8px" }}>{t("Within budget")}</div>
           {usedUpRows.map(({ e, pct }) => (
-            <button key={e.id} onClick={() => onOpenEnvelope(e.id, state.month)} style={rowBtnStyle}>
-              <div style={rowHeadStyle}>
-                <span style={rowNameStyle}>{e.name}</span>
-                <span style={{ fontSize: 12.5, fontWeight: 700, color: C.soft, fontVariantNumeric: "tabular-nums", flexShrink: 0 }}>
-                  {Math.round(pct)}% · {t("used up")}
-                </span>
-              </div>
-              <Bar pct={100} color={C.mute} />
-            </button>
+            <BudgetRow
+              key={e.id}
+              name={e.name}
+              onClick={() => onOpenEnvelope(e.id, state.month)}
+              statusColor={C.soft}
+              status={`${Math.round(pct)}% · ${t("used up")}`}
+              barPct={100}
+              barColor={C.mute}
+            />
           ))}
           {restOkRows.length > 0 &&
             (expanded ? (
               restOkRows.map(({ e, pct, left }) => (
-                <button key={e.id} onClick={() => onOpenEnvelope(e.id, state.month)} style={rowBtnStyle}>
-                  <div style={rowHeadStyle}>
-                    <span style={rowNameStyle}>{e.name}</span>
-                    <span style={{ fontSize: 12.5, fontWeight: 700, color: C.text, fontVariantNumeric: "tabular-nums", flexShrink: 0 }}>
-                      {Math.round(pct)}% · {t("{amount} left", { amount: M(left) })}
-                    </span>
-                  </div>
-                  <Bar pct={pct} color={e.color} />
-                </button>
+                <BudgetRow
+                  key={e.id}
+                  name={e.name}
+                  onClick={() => onOpenEnvelope(e.id, state.month)}
+                  statusColor={C.text}
+                  status={`${Math.round(pct)}% · ${t("{amount} left", { amount: M(left) })}`}
+                  barPct={pct}
+                  barColor={e.color}
+                />
               ))
             ) : (
               <button
