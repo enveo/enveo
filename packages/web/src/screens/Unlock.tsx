@@ -141,7 +141,6 @@ export function UnlockScreen() {
     color: C.text,
     fontSize: 14,
     fontFamily: font,
-    outline: "none",
   };
   const primaryBtn: React.CSSProperties = {
     marginTop: 4,
