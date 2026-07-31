@@ -517,7 +517,7 @@ export const pl: Dict = {
   "Yes": "Tak",
   "Yes, remove the data from this device": "Tak, usuń dane z tego urządzenia",
   "Yesterday": "Wczoraj",
-  "You are offline — quick add and screenshot import need a connection. Manual entry works without one.": "Jesteś offline — szybkie dodawanie i import zrzutów wymagają połączenia. Ręczne dodawanie działa bez sieci.",
+  "You are offline — screenshot import needs a connection. Manual entry works without one.": "Jesteś offline — import zrzutów wymaga połączenia. Ręczne dodawanie działa bez sieci.",
   "Your budget is tied to your account. Sign in to continue.": "Twój budżet jest powiązany z kontem. Zaloguj się, aby kontynuować.",
   "Your data now lives only on this device. Make a backup (Export) — it is the only way not to lose it.": "Dane są teraz tylko na tym urządzeniu. Zrób kopię (Eksportuj) — to jedyny sposób, by ich nie stracić.",
   "Your data will be decrypted and stored on the server in plain form (as before enabling). Make sure you have a current backup.": "Dane zostaną odszyfrowane i zapisane na serwerze w postaci jawnej (jak przed włączeniem). Upewnij się, że masz aktualną kopię zapasową.",

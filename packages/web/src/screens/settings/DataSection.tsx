@@ -313,7 +313,6 @@ function E2eeEnableWizard() {
     color: SC.text,
     fontSize: 14,
     fontFamily: font,
-    outline: "none",
   });
 
   return (
@@ -500,7 +499,6 @@ function E2eeChangePass() {
             color: SC.text,
             fontSize: 14,
             fontFamily: font,
-            outline: "none",
           };
           return (
             <div>
@@ -662,7 +660,7 @@ function E2eeDisable() {
               autoCapitalize="characters"
               autoComplete="off"
               placeholder={t("DISABLE-E2EE")}
-              style={{ width: "100%", boxSizing: "border-box", padding: "10px 12px", borderRadius: 10, border: `1px solid var(--danger-66)`, background: SC.bg, color: SC.text, fontSize: 14, fontFamily: font, outline: "none", marginBottom: 12 }}
+              style={{ width: "100%", boxSizing: "border-box", padding: "10px 12px", borderRadius: 10, border: `1px solid var(--danger-66)`, background: SC.bg, color: SC.text, fontSize: 14, fontFamily: font, marginBottom: 12 }}
             />
             <ActionGroup>
               <ActionRow

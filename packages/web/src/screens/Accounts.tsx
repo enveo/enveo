@@ -144,8 +144,8 @@ export function AccountsScreen({ state, onMenu }: { state: StateResponse; onMenu
         {(C) => (
           <>
             <div style={{ fontSize: 17, fontWeight: 700, color: C.text, marginBottom: 14 }}>{t("New account")}</div>
-            <input value={nm} onChange={(e) => setNm(e.target.value)} placeholder={t("Account name")} style={{ width: "100%", padding: "10px 12px", borderRadius: 9, border: `1px solid ${C.line}`, background: C.bg, color: C.text, fontSize: 14, fontFamily: font, outline: "none", boxSizing: "border-box", marginBottom: 8 }} />
-            <input value={bl} readOnly onClick={openBalancePad} onFocus={openBalancePad} placeholder={t("Starting balance (0)")} style={{ width: "100%", padding: "10px 12px", borderRadius: 9, border: `1px solid ${C.line}`, background: C.bg, color: C.text, fontSize: 14, fontFamily: font, outline: "none", boxSizing: "border-box", marginBottom: 14, cursor: "pointer" }} />
+            <input value={nm} onChange={(e) => setNm(e.target.value)} placeholder={t("Account name")} style={{ width: "100%", padding: "10px 12px", borderRadius: 9, border: `1px solid ${C.line}`, background: C.bg, color: C.text, fontSize: 14, fontFamily: font, boxSizing: "border-box", marginBottom: 8 }} />
+            <input value={bl} readOnly onClick={openBalancePad} onFocus={openBalancePad} placeholder={t("Starting balance (0)")} style={{ width: "100%", padding: "10px 12px", borderRadius: 9, border: `1px solid ${C.line}`, background: C.bg, color: C.text, fontSize: 14, fontFamily: font, boxSizing: "border-box", marginBottom: 14, cursor: "pointer" }} />
             <IconColorPicker palette={ACCOUNT_COLORS} color={nmColor} icon={nmIcon} onColor={setNmColor} onIcon={setNmIcon} />
             <button onClick={submit} style={{ width: "100%", padding: 12, borderRadius: 11, border: "none", background: TEAL, color: "#fff", fontSize: 13.5, fontWeight: 600, cursor: "pointer", opacity: nm.trim() ? 1 : 0.4 }}>{t("Add account")}</button>
           </>
@@ -186,7 +186,7 @@ function AccountEdit({ account, onClose }: { account: StateResponse["accounts"][
         <>
           <div style={{ fontSize: 17, fontWeight: 700, color: C.text, marginBottom: 14 }}>{t("Edit account")}</div>
           <div style={{ fontSize: 10.5, color: C.mute, fontWeight: 600, marginBottom: 4, textTransform: "uppercase", letterSpacing: 0.6 }}>{t("Account name")}</div>
-          <input value={name} onChange={(e) => setName(e.target.value)} style={{ width: "100%", padding: "8px 0", border: "none", borderBottom: `1px solid ${C.line}`, background: "none", color: C.text, fontSize: 15, fontFamily: font, outline: "none", marginBottom: 18, boxSizing: "border-box" }} />
+          <input value={name} onChange={(e) => setName(e.target.value)} style={{ width: "100%", padding: "8px 0", border: "none", borderBottom: `1px solid ${C.line}`, background: "none", color: C.text, fontSize: 15, fontFamily: font, marginBottom: 18, boxSizing: "border-box" }} />
           <IconColorPicker palette={ACCOUNT_COLORS} color={color} icon={icon} onColor={setColor} onIcon={setIcon} />
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 18 }}>
             <span style={{ fontSize: 14, color: C.text }}>{t("Archived account")}</span>

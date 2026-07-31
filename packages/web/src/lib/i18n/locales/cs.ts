@@ -464,7 +464,7 @@ export const cs: Dict = {
   "Yes": "Ano",
   "Yes, remove the data from this device": "Ano, odebrat data z tohoto zařízení",
   "Yesterday": "Včera",
-  "You are offline — quick add and screenshot import need a connection. Manual entry works without one.": "Jsi offline — rychlé přidání a import ze snímků potřebují připojení. Ruční zadání funguje i bez něj.",
+  "You are offline — screenshot import needs a connection. Manual entry works without one.": "Jsi offline — import ze snímků potřebuje připojení. Ruční zadání funguje i bez něj.",
   "Your budget is tied to your account. Sign in to continue.": "Tvůj rozpočet je vázaný na tvůj účet. Pro pokračování se přihlas.",
   "Your data now lives only on this device. Make a backup (Export) — it is the only way not to lose it.": "Tvá data teď žijí jen na tomto zařízení. Udělej si zálohu (Export) — jen tak o ně nepřijdeš.",
   "Your data will be decrypted and stored on the server in plain form (as before enabling). Make sure you have a current backup.": "Tvá data se dešifrují a uloží na server v čitelné podobě (jako před zapnutím). Ověř si, že máš aktuální zálohu.",

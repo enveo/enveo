@@ -464,7 +464,7 @@ export const sv: Dict = {
   "Yes": "Ja",
   "Yes, remove the data from this device": "Ja, ta bort data från den här enheten",
   "Yesterday": "I går",
-  "You are offline — quick add and screenshot import need a connection. Manual entry works without one.": "Du är offline — snabbregistrering och import från skärmbilder kräver en anslutning. Manuell registrering fungerar utan.",
+  "You are offline — screenshot import needs a connection. Manual entry works without one.": "Du är offline — import från skärmbilder kräver en anslutning. Manuell registrering fungerar utan.",
   "Your budget is tied to your account. Sign in to continue.": "Din budget är kopplad till ditt konto. Logga in för att fortsätta.",
   "Your data now lives only on this device. Make a backup (Export) — it is the only way not to lose it.": "Dina data finns nu bara på den här enheten. Gör en säkerhetskopia (Exportera) — det är enda sättet att inte förlora dem.",
   "Your data will be decrypted and stored on the server in plain form (as before enabling). Make sure you have a current backup.": "Dina data dekrypteras och lagras på servern i klartext (som före aktiveringen). Se till att du har en aktuell säkerhetskopia.",

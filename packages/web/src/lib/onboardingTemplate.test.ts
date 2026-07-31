@@ -24,7 +24,7 @@ describe("onboarding envelope template", () => {
 
 describe("customEnvelopeStyle", () => {
   test("cycles through the template colors in order", () => {
-    for (let i = 0; i < CUSTOM_ENVELOPE_COLORS.length; i++) expect(customEnvelopeStyle(i).color).toBe(CUSTOM_ENVELOPE_COLORS[i]);
+    for (let i = 0; i < CUSTOM_ENVELOPE_COLORS.length; i++) expect(customEnvelopeStyle(i).color).toBe(CUSTOM_ENVELOPE_COLORS[i]!);
   });
 
   test("wraps around after the ninth custom envelope", () => {

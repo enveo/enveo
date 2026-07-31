@@ -13,8 +13,8 @@ import { TEAL, font } from "../lib/theme";
  *  - "Enable via server"  → aiMode="server" (only when /api/ai/info → serverAi=true),
  *  - "Use your own key" → inline key + model → aiMode="byok" (key ONLY in localStorage),
  *  - "Stay with rules" → does NOT change aiMode. Only the budget SUGGESTION has a rules
- *    engine to stay with; for the import (and quick-add, which since 2.2.0 has no rules
- *    parser at all and is simply hidden in off mode) the way out is "Cancel".
+ *    engine to stay with; for the import (AI-only, no rules parser at all) the way out
+ *    is "Cancel".
  * After the choice it calls `onDecided(mode)` — closing the sheet is the parent's job.
  */
 
@@ -80,7 +80,7 @@ export function AiConsentSheet({ show, feature, onClose, onDecided }: {
                   autoCorrect="off"
                   spellCheck={false}
                   aria-label={t("OpenAI key")}
-                  style={{ width: "100%", boxSizing: "border-box", padding: "10px 12px", borderRadius: 10, border: `1px solid ${C.line}`, background: C.bg, color: C.text, fontSize: 13, fontFamily: font, outline: "none", marginBottom: 8 }}
+                  style={{ width: "100%", boxSizing: "border-box", padding: "10px 12px", borderRadius: 10, border: `1px solid ${C.line}`, background: C.bg, color: C.text, fontSize: 13, fontFamily: font, marginBottom: 8 }}
                 />
                 <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
                   {(["gpt-5.5-mini", "gpt-5.5"] as const).map((m) => (

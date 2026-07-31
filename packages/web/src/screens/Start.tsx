@@ -60,6 +60,7 @@ export function StartScreen({
   return (
     <div className="gs" style={{ flex: 1, overflowY: "auto", paddingBottom: 6 }}>
       <div
+        data-band={band || undefined}
         style={
           band
             ? { background: C.headerBg, paddingBottom: 30, clipPath: "polygon(0 0, 100% 0, 100% calc(100% - 22px), 50% 100%, 0 calc(100% - 22px))", position: "relative", zIndex: 1 }

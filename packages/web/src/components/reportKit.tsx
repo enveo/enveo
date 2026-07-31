@@ -4,7 +4,7 @@ import { useBand } from "./kit";
 import { useTheme } from "../lib/contexts";
 import { monthLabel } from "../lib/dates";
 import { useT } from "../lib/i18n";
-import { P, TEAL } from "../lib/theme";
+import { P, TEAL, type Theme } from "../lib/theme";
 
 /**
  * Report component kit — the shared visual language for every report subscreen (Tasks 8–12):
@@ -28,7 +28,7 @@ export function ReportShell({ title, month, onPrev, onNext, onBack, eyebrow, her
   const { t, lang } = useT();
   return (
     <>
-      <div style={band ? { background: C.headerBg, paddingBottom: 14 } : { paddingBottom: 14 }}>
+      <div data-band={band || undefined} style={band ? { background: C.headerBg, paddingBottom: 14 } : { paddingBottom: 14 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 6, padding: `12px ${P}px 10px` }}>
           <button aria-label={t("Back")} onClick={onBack} style={{ flexShrink: 0, width: 30, height: 30, borderRadius: 15, border: "none", background: "transparent", color: hc(C.headerInk, C.text), fontSize: 22, lineHeight: 1, cursor: "pointer", padding: 0, marginLeft: -6, display: "flex", alignItems: "center", justifyContent: "center" }}>‹</button>
           <span style={{ flex: 1, fontSize: 16, fontWeight: 700, color: hc(C.headerInk, C.text), overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{title}</span>
@@ -113,13 +113,24 @@ const visuallyHidden: CSSProperties = {
   clip: "rect(0,0,0,0)", clipPath: "inset(50%)", whiteSpace: "nowrap", border: 0,
 };
 
-/** Calendar heatmap of daily totals — Monday-start grid, one hue ramped by quartile of
- *  `total/max` through the sanctioned alpha-var sequence (`C.inset` at zero-or-negative →
- *  `--accent-22`/`--accent-40`/`--accent-66`/`--accent` for the rest; a refund-heavy negative day
- *  gets the zero look, not the darkest one — its real amount still reaches the per-cell label).
- *  `mask` formats the amount for the per-cell `aria-label`. No `role="img"` on the wrapper — that
- *  would collapse the subtree and make the per-cell labels unreachable to assistive tech; instead
- *  a visually-hidden caption names the month, the decorative weekday header is `aria-hidden`, and
+/** Quartile heat ramp shared by `CalendarHeatmap` and the Reports hub's `MonthMini`: one hue
+ *  ramped by quartile of `total/max` through the sanctioned alpha-var sequence (`C.inset` at
+ *  zero-or-negative → `--accent-22`/`--accent-40`/`--accent-66`/`--accent` for the rest; a
+ *  refund-heavy negative day gets the zero look, not the darkest one — its real amount still
+ *  reaches the caller's own per-cell label). */
+export function heatColor(total: number, max: number, C: Theme): string {
+  if (total <= 0) return C.inset;
+  const q = total / max;
+  if (q <= 0.25) return "var(--accent-22)";
+  if (q <= 0.5) return "var(--accent-40)";
+  if (q <= 0.75) return "var(--accent-66)";
+  return "var(--accent)";
+}
+
+/** Calendar heatmap of daily totals — Monday-start grid, colored via `heatColor`. `mask` formats
+ *  the amount for the per-cell `aria-label`. No `role="img"` on the wrapper — that would collapse
+ *  the subtree and make the per-cell labels unreachable to assistive tech; instead a
+ *  visually-hidden caption names the month, the decorative weekday header is `aria-hidden`, and
  *  each day cell carries its own `aria-label` (no `tabIndex` — labels are for AT traversal, not
  *  tab stops). */
 export function CalendarHeatmap({ days, lang, mask }: { days: DailySpendingPoint[]; lang: string; mask: (n: number) => string }) {
@@ -134,14 +145,6 @@ export function CalendarHeatmap({ days, lang, mask }: { days: DailySpendingPoint
     d.setUTCDate(monday.getUTCDate() + i);
     return new Intl.DateTimeFormat(lang, { weekday: "narrow", timeZone: "UTC" }).format(d);
   });
-  const colorFor = (total: number): string => {
-    if (total <= 0) return C.inset;
-    const q = total / max;
-    if (q <= 0.25) return "var(--accent-22)";
-    if (q <= 0.5) return "var(--accent-40)";
-    if (q <= 0.75) return "var(--accent-66)";
-    return "var(--accent)";
-  };
   const monthName = monthLabel(days[0]!.date.slice(0, 7), lang as Parameters<typeof monthLabel>[1]);
   return (
     <div>
@@ -157,12 +160,27 @@ export function CalendarHeatmap({ days, lang, mask }: { days: DailySpendingPoint
           <div
             key={d.date}
             aria-label={`${d.date} · ${mask(d.total)}`}
-            style={{ aspectRatio: 1, borderRadius: 4, background: colorFor(d.total) }}
+            style={{ aspectRatio: 1, borderRadius: 4, background: heatColor(d.total, max, C) }}
           />
         ))}
       </div>
     </div>
   );
+}
+
+/** Shared normalized-polyline math for `TrendSpark`/`Sparkline`: x evenly spaced across `w`
+ *  (`pad` inset each side), y linearly scaled between the series' own min/max onto `h` (a
+ *  perfectly flat series draws a level line at `h/2` rather than dividing by a zero range).
+ *  Returns RAW (unrounded) coords — callers needing a `points` string apply `.toFixed(1)`
+ *  themselves at render time (Sparkline's last-point dot deliberately uses the raw value, not
+ *  the rounded one, matching its pre-extraction behavior). Assumes `series.length >= 2`. */
+function polylineCoords(series: number[], w: number, h: number, pad: number): (readonly [number, number])[] {
+  const n = series.length;
+  const min = Math.min(...series);
+  const max = Math.max(...series);
+  const range = max - min || 1;
+  const flat = max === min;
+  return series.map((v, i) => [pad + (i / (n - 1)) * (w - 2 * pad), flat ? h / 2 : pad + (1 - (v - min) / range) * (h - 2 * pad)] as const);
 }
 
 /** Bare polyline sparkline over a plain `number[]` — same shape as `Sparkline` but color is a
@@ -172,12 +190,8 @@ export function TrendSpark({ series, color, w = 64, h = 24 }: { series: number[]
   const n = series.length;
   if (n < 2) return null;
   const pad = 2;
-  const min = Math.min(...series);
-  const max = Math.max(...series);
-  const range = max - min || 1;
-  const flat = max === min;
-  const pts = series
-    .map((v, i) => `${(pad + (i / (n - 1)) * (w - 2 * pad)).toFixed(1)},${(flat ? h / 2 : pad + (1 - (v - min) / range) * (h - 2 * pad)).toFixed(1)}`)
+  const pts = polylineCoords(series, w, h, pad)
+    .map(([x, y]) => `${x.toFixed(1)},${y.toFixed(1)}`)
     .join(" ");
   return (
     <svg viewBox={`0 0 ${w} ${h}`} width={w} height={h} aria-hidden style={{ display: "block" }}>
@@ -195,14 +209,7 @@ export function Sparkline({ points, stroke = TEAL, dotColor }: { points: { month
   const n = points.length;
   if (n < 2) return null;
   const W = 320, H = 44, pad = 3;
-  const totals = points.map((p) => p.total);
-  const min = Math.min(...totals);
-  const max = Math.max(...totals);
-  const range = max - min || 1;
-  const flat = max === min;
-  const coords = points.map(
-    (p, i) => [pad + (i / (n - 1)) * (W - 2 * pad), flat ? H / 2 : pad + (1 - (p.total - min) / range) * (H - 2 * pad)] as const,
-  );
+  const coords = polylineCoords(points.map((p) => p.total), W, H, pad);
   const pts = coords.map(([x, y]) => `${x.toFixed(1)},${y.toFixed(1)}`).join(" ");
   const last = coords[coords.length - 1]!;
   return (

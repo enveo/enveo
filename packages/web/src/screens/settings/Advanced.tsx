@@ -194,7 +194,7 @@ function LocalModeControl() {
                   onChange={(e) => setConfirmText(e.target.value)}
                   autoCapitalize="characters"
                   placeholder={t("DELETE")}
-                  style={{ width: "100%", boxSizing: "border-box", padding: "10px 12px", borderRadius: 10, border: `1px solid var(--danger-66)`, background: SC.bg, color: SC.text, fontSize: 14, fontFamily: font, outline: "none", marginBottom: 12 }}
+                  style={{ width: "100%", boxSizing: "border-box", padding: "10px 12px", borderRadius: 10, border: `1px solid var(--danger-66)`, background: SC.bg, color: SC.text, fontSize: 14, fontFamily: font, marginBottom: 12 }}
                 />
                 <ActionGroup>
                   <ActionRow
@@ -322,7 +322,7 @@ function ResetSection() {
             onChange={(e) => setConfirmText(e.target.value)}
             autoCapitalize="characters"
             placeholder={t("RESET")}
-            style={{ width: "100%", boxSizing: "border-box", padding: "10px 12px", borderRadius: 10, border: `1px solid var(--danger-66)`, background: C.bg, color: C.text, fontSize: 14, fontFamily: font, outline: "none", marginBottom: 12 }}
+            style={{ width: "100%", boxSizing: "border-box", padding: "10px 12px", borderRadius: 10, border: `1px solid var(--danger-66)`, background: C.bg, color: C.text, fontSize: 14, fontFamily: font, marginBottom: 12 }}
           />
           <ActionGroup>
             <ActionRow
