@@ -225,6 +225,14 @@ export function themeTokens(t: AccentTheme, isDark: boolean): { vars: Record<str
   
 
   const nav = (isDark ? def.navDark : def.nav) ?? { bg: palette.bg, on: palette.text, mute: palette.mute, ind: accent };
+  
+
+
+
+
+
+
+  const focusRingBand = palette.headerStyle === "band" ? palette.headerInk : accent;
   const vars: Record<string, string> = {
     "--accent": accent,
     "--danger": danger,
@@ -233,6 +241,7 @@ export function themeTokens(t: AccentTheme, isDark: boolean): { vars: Record<str
     "--nav-on": nav.on,
     "--nav-mute": nav.mute,
     "--nav-ind": nav.ind,
+    "--focus-ring-band": focusRingBand,
   };
   for (const s of ALPHA_SUFFIXES) {
     vars[`--accent-${s}`] = hexAlpha(accent, s);

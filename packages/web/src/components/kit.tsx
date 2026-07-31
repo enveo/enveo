@@ -60,7 +60,7 @@ export function PickerSearch({ value, onChange, placeholder }: { value: string; 
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder ?? t("Search…")}
-        style={{ flex: 1, minWidth: 0, background: "none", border: "none", outline: "none", fontSize: 13.5, color: C.text, fontFamily: font }}
+        style={{ flex: 1, minWidth: 0, background: "none", border: "none", fontSize: 13.5, color: C.text, fontFamily: font }}
       />
       {value && (
         <button onClick={() => onChange("")} aria-label={t("Clear search")} style={{ background: "none", border: "none", cursor: "pointer", padding: 2, display: "flex" }}>

@@ -71,7 +71,7 @@ export function SettingsScreen({ onNav }: { onNav: (s: ScreenId) => void }) {
 
   return (
     <div ref={scRef} className="gs" onTouchStart={onTouchStart} onTouchEnd={onTouchEnd} style={{ flex: 1, overflowY: "auto", paddingBottom: 6 }}>
-      <div style={band ? { background: C.headerBg, paddingBottom: 2 } : undefined}>
+      <div data-band={band || undefined} style={band ? { background: C.headerBg, paddingBottom: 2 } : undefined}>
         <div style={{ display: "flex", alignItems: "center", padding: `12px ${P}px`, gap: 10 }}>
           <button onClick={() => (sub !== null ? go(null) : onNav("start"))} aria-label={t("Back")} style={{ background: "none", border: "none", cursor: "pointer", padding: 4, display: "flex" }}>
             <Ico d="M19 12H5m0 0l7 7m-7-7l7-7" size={18} color={hc(C.headerInk, C.text)} />

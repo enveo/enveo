@@ -218,7 +218,7 @@ export function ImportSheet({ show, onClose, state, onApplied }: { show: boolean
           <select
             value={accountId}
             onChange={(e) => setAccountId(e.target.value)}
-            style={{ width: "100%", padding: "10px 12px", borderRadius: 10, border: `1px solid ${C.line}`, background: C.bg, color: C.text, fontSize: 14, fontFamily: font, outline: "none", marginBottom: 14 }}
+            style={{ width: "100%", padding: "10px 12px", borderRadius: 10, border: `1px solid ${C.line}`, background: C.bg, color: C.text, fontSize: 14, fontFamily: font, marginBottom: 14 }}
           >
             {accounts.map((a) => (
               <option key={a.id} value={a.id}>{a.name}</option>

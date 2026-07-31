@@ -80,7 +80,7 @@ export function AiConsentSheet({ show, feature, onClose, onDecided }: {
                   autoCorrect="off"
                   spellCheck={false}
                   aria-label={t("OpenAI key")}
-                  style={{ width: "100%", boxSizing: "border-box", padding: "10px 12px", borderRadius: 10, border: `1px solid ${C.line}`, background: C.bg, color: C.text, fontSize: 13, fontFamily: font, outline: "none", marginBottom: 8 }}
+                  style={{ width: "100%", boxSizing: "border-box", padding: "10px 12px", borderRadius: 10, border: `1px solid ${C.line}`, background: C.bg, color: C.text, fontSize: 13, fontFamily: font, marginBottom: 8 }}
                 />
                 <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
                   {(["gpt-5.5-mini", "gpt-5.5"] as const).map((m) => (

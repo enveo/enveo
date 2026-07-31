@@ -126,7 +126,7 @@ export function TransactionsScreen({
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
       <div className="gs" style={{ flex: 1, overflowY: "auto", paddingBottom: 6 }}>
-        <div style={band ? { background: C.headerBg, paddingBottom: 4 } : undefined}>
+        <div data-band={band || undefined} style={band ? { background: C.headerBg, paddingBottom: 4 } : undefined}>
           <Header month={month} onMenu={onMenu} onPrev={onPrev} onNext={onNext} onBand={band} />
           <div style={{ display: "flex", alignItems: "center", gap: 8, margin: `2px ${P}px 6px`, padding: "8px 12px", background: hc(tint(C.headerInk, 0.13), C.card), borderRadius: 12, boxShadow: band ? "none" : "0 1px 2px rgba(20,20,28,0.05)" }}>
             <Ico d="M11 19a8 8 0 100-16 8 8 0 000 16zM21 21l-4.3-4.3" size={17} color={hc(C.headerMute, C.mute)} sw={1.8} />
@@ -134,7 +134,7 @@ export function TransactionsScreen({
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder={t("Search...")}
-              style={{ flex: 1, minWidth: 0, background: "none", border: "none", outline: "none", fontSize: 14.5, color: hc(C.headerInk, C.text), fontFamily: font }}
+              style={{ flex: 1, minWidth: 0, background: "none", border: "none", fontSize: 14.5, color: hc(C.headerInk, C.text), fontFamily: font }}
             />
             {query && (
               <button onClick={() => setQuery("")} aria-label={t("Clear search")} style={{ background: "none", border: "none", cursor: "pointer", padding: 2, display: "flex" }}>

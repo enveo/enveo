@@ -91,7 +91,7 @@ export function BudgetScreen({
 
   return (
     <div className="gs" style={{ flex: 1, overflowY: "auto", paddingBottom: editing ? 300 : 6 }}>
-      <div style={band ? { background: C.headerBg, paddingBottom: 2 } : undefined}>
+      <div data-band={band || undefined} style={band ? { background: C.headerBg, paddingBottom: 2 } : undefined}>
         <Header month={month} onMenu={onMenu} onPrev={onPrev} onNext={onNext} onRight={() => setManage(true)} rightIcon="pencil" onBand={band} />
       </div>
       <CardBox style={{ margin: `8px ${P}px 10px`, padding: "10px 14px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
@@ -257,7 +257,7 @@ function AllocCell({ e, editing, onStart }: { e: EnvelopeView; editing: { expr: 
         readOnly
         aria-label={t("Allocated: {name}", { name: e.name })}
         onFocus={(ev) => onStart(ev.currentTarget)}
-        style={{ width: "100%", minWidth: 0, background: "none", border: "none", outline: "none", textAlign: "right", fontSize: 13, color: e.allocated < 0 ? C.neg : C.text, fontFamily: font, fontVariantNumeric: "tabular-nums", padding: 0, cursor: "pointer" }}
+        style={{ width: "100%", minWidth: 0, background: "none", border: "none", textAlign: "right", fontSize: 13, color: e.allocated < 0 ? C.neg : C.text, fontFamily: font, fontVariantNumeric: "tabular-nums", padding: 0, cursor: "pointer" }}
       />
     </div>
   );
@@ -300,7 +300,7 @@ function EnvManageSheet({ show, state, onClose }: { show: boolean; state: StateR
           )}
 
           <div style={{ display: "flex", gap: 6, marginTop: 8, paddingTop: 12, borderTop: `1px solid ${C.line}` }}>
-            <input value={newGroup} onChange={(ev) => setNewGroup(ev.target.value)} onKeyDown={(ev) => { if (ev.key === "Enter" && newGroup.trim()) { local.createGroup(newGroup.trim()); setNewGroup(""); } }} placeholder={t("New group")} style={{ flex: 1, padding: "8px 11px", borderRadius: 9, border: `1px solid ${C.line}`, background: C.bg, color: C.text, fontSize: 13, fontFamily: font, outline: "none" }} />
+            <input value={newGroup} onChange={(ev) => setNewGroup(ev.target.value)} onKeyDown={(ev) => { if (ev.key === "Enter" && newGroup.trim()) { local.createGroup(newGroup.trim()); setNewGroup(""); } }} placeholder={t("New group")} style={{ flex: 1, padding: "8px 11px", borderRadius: 9, border: `1px solid ${C.line}`, background: C.bg, color: C.text, fontSize: 13, fontFamily: font }} />
             <button onClick={() => { if (newGroup.trim()) { local.createGroup(newGroup.trim()); setNewGroup(""); } }} style={{ padding: "8px 14px", borderRadius: 9, border: `1px solid var(--accent-55)`, background: "var(--accent-1a)", color: TEAL, fontSize: 12.5, fontWeight: 600, cursor: "pointer" }}>{t("+ Group")}</button>
           </div>
         </>
@@ -345,7 +345,7 @@ function ManageGroup({ g, list, flat }: { g: StateResponse["groups"][number]; li
         <input
           defaultValue={g.name}
           onBlur={(ev) => { const v = ev.target.value.trim(); if (v && v !== g.name) local.updateGroup(g.id, { name: v }); }}
-          style={{ flex: 1, fontSize: 13, fontWeight: 700, color: C.text, background: "none", border: "none", borderBottom: `1px solid transparent`, outline: "none", fontFamily: font, padding: "2px 0" }}
+          style={{ flex: 1, fontSize: 13, fontWeight: 700, color: C.text, background: "none", border: "none", borderBottom: `1px solid transparent`, fontFamily: font, padding: "2px 0" }}
         />
         {list.length === 0 && (
           <button onClick={() => { if (window.confirm(t("Delete the empty group “{name}”?", { name: g.name }))) local.deleteGroup(g.id); }} aria-label={t("Delete group")} style={{ background: "none", border: "none", cursor: "pointer", padding: 4, display: "flex" }}>
@@ -371,7 +371,7 @@ function ManageGroup({ g, list, flat }: { g: StateResponse["groups"][number]; li
             <input
               defaultValue={e.name}
               onBlur={(ev) => { const v = ev.target.value.trim(); if (v && v !== e.name) local.updateEnvelope(e.id, { name: v }); }}
-              style={{ flex: 1, minWidth: 0, fontSize: 12.5, color: C.text, background: "none", border: "none", outline: "none", fontFamily: font, padding: "2px 0" }}
+              style={{ flex: 1, minWidth: 0, fontSize: 12.5, color: C.text, background: "none", border: "none", fontFamily: font, padding: "2px 0" }}
             />
             <button onClick={() => { if (window.confirm(t("Delete the envelope “{name}”? Its transactions will be left without an envelope.", { name: e.name }))) local.deleteEnvelope(e.id); }} aria-label={t("Delete {name}", { name: e.name })} style={{ background: "none", border: "none", cursor: "pointer", padding: 6, display: "flex" }}>
               <Ico d="M3 6h18M8 6V4h8v2m-9 0v14a1 1 0 001 1h8a1 1 0 001-1V6" size={15} color={CORAL} />
@@ -382,7 +382,7 @@ function ManageGroup({ g, list, flat }: { g: StateResponse["groups"][number]; li
 
       {adding ? (
         <div style={{ display: "flex", gap: 6, marginTop: 8 }}>
-          <input autoFocus value={addName} onChange={(ev) => setAddName(ev.target.value)} onKeyDown={(ev) => ev.key === "Enter" && addEnvelope()} placeholder={t("Envelope name")} style={{ flex: 1, padding: "7px 10px", borderRadius: 8, border: `1px solid ${C.line}`, background: C.bg, color: C.text, fontSize: 12, fontFamily: font, outline: "none" }} />
+          <input autoFocus value={addName} onChange={(ev) => setAddName(ev.target.value)} onKeyDown={(ev) => ev.key === "Enter" && addEnvelope()} placeholder={t("Envelope name")} style={{ flex: 1, padding: "7px 10px", borderRadius: 8, border: `1px solid ${C.line}`, background: C.bg, color: C.text, fontSize: 12, fontFamily: font }} />
           <button onClick={addEnvelope} style={{ padding: "7px 12px", borderRadius: 8, border: "none", background: TEAL, color: "#fff", fontSize: 12, fontWeight: 600, cursor: "pointer" }}>{t("Add")}</button>
         </div>
       ) : (
@@ -439,9 +439,9 @@ export function EnvEdit({ env, groups, onClose }: { env: EnvelopeView | null; gr
             </button>
           </div>
           <div style={{ fontSize: 10.5, color: C.mute, fontWeight: 600, marginBottom: 4, textTransform: "uppercase", letterSpacing: 0.6 }}>{t("Envelope name")}</div>
-          <input value={name} onChange={(e) => setName(e.target.value)} style={{ width: "100%", padding: "8px 0", border: "none", borderBottom: `1px solid ${C.line}`, background: "none", color: C.text, fontSize: 15, fontFamily: font, outline: "none", marginBottom: 16, boxSizing: "border-box" }} />
+          <input value={name} onChange={(e) => setName(e.target.value)} style={{ width: "100%", padding: "8px 0", border: "none", borderBottom: `1px solid ${C.line}`, background: "none", color: C.text, fontSize: 15, fontFamily: font, marginBottom: 16, boxSizing: "border-box" }} />
           <div style={{ fontSize: 10.5, color: C.mute, fontWeight: 600, marginBottom: 8, textTransform: "uppercase", letterSpacing: 0.6 }}>{t("Group")}</div>
-          <select value={groupId} onChange={(e) => setGroupId(e.target.value)} style={{ width: "100%", padding: "8px 0", border: "none", borderBottom: `1px solid ${C.line}`, background: "none", color: C.text, fontSize: 14, fontFamily: font, outline: "none", marginBottom: 16 }}>
+          <select value={groupId} onChange={(e) => setGroupId(e.target.value)} style={{ width: "100%", padding: "8px 0", border: "none", borderBottom: `1px solid ${C.line}`, background: "none", color: C.text, fontSize: 14, fontFamily: font, marginBottom: 16 }}>
             {groups.map((g) => (
               <option key={g.id} value={g.id}>{g.name}</option>
             ))}
@@ -449,7 +449,7 @@ export function EnvEdit({ env, groups, onClose }: { env: EnvelopeView | null; gr
           <IconColorPicker palette={ENV_PALETTE} color={color} icon={icon} onColor={setColor} onIcon={setIcon} />
           <div style={{ fontSize: 10.5, color: C.mute, fontWeight: 600, marginBottom: 4, textTransform: "uppercase", letterSpacing: 0.6 }}>{t("Monthly target (optional)")}</div>
           <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 18 }}>
-            <input value={target} readOnly onClick={openTargetPad} onFocus={openTargetPad} placeholder={t("e.g. 5000")} style={{ flex: 1, padding: "8px 0", border: "none", borderBottom: `1px solid ${C.line}`, background: "none", color: C.text, fontSize: 15, fontFamily: font, outline: "none", fontVariantNumeric: "tabular-nums", cursor: "pointer" }} />
+            <input value={target} readOnly onClick={openTargetPad} onFocus={openTargetPad} placeholder={t("e.g. 5000")} style={{ flex: 1, padding: "8px 0", border: "none", borderBottom: `1px solid ${C.line}`, background: "none", color: C.text, fontSize: 15, fontFamily: font, fontVariantNumeric: "tabular-nums", cursor: "pointer" }} />
             <span style={{ color: C.mute, fontSize: 13 }}>{t("{sym}/mo", { sym: currencySymbol(currency, lang) })}</span>
           </div>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
