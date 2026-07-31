@@ -1,5 +1,5 @@
  
-export const APP_VERSION = "3.4.1";
+export const APP_VERSION = "3.5.0";
 
  
 export const BUILD_INFO: { time: string; sha: string } =
