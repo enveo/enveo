@@ -777,7 +777,8 @@ function SpendingReport({
 
 
 
-              color: dim === d.id ? hc(C.headerInk, "#fff") : C.soft,
+
+              color: dim === d.id ? C.card : C.soft,
               fontSize: 12,
               fontWeight: 650,
               cursor: "pointer",

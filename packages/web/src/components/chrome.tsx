@@ -16,7 +16,11 @@ export function StyleInjector() {
     if (document.getElementById("g4")) return;
     const s = document.createElement("style");
     s.id = "g4";
-    s.textContent = `*{-webkit-tap-highlight-color:transparent}@keyframes fu{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}@keyframes su{from{transform:translateY(100%)}to{transform:translateY(0)}}@keyframes sl{from{transform:translateX(-100%)}to{transform:translateX(0)}}@keyframes fi{from{opacity:0}to{opacity:1}}@keyframes sp{to{transform:rotate(360deg)}}@keyframes wg{from{transform:rotate(-.5deg)}to{transform:rotate(.5deg)}}@keyframes sk{0%,100%{opacity:.5}50%{opacity:.9}}.fu{animation:fu .4s ease-out both}.fi{animation:fi .25s ease-out both}.sk{animation:sk 1.2s ease-in-out infinite}.gs::-webkit-scrollbar{width:0;height:0}body{margin:0}@media(hover:hover){button:not(:disabled):hover{filter:brightness(.96)}}`;
+    // :focus-visible (C3 a11y sweep): the browser default focus ring is a near-black 1px
+    // outline (measured ~2.2:1 on dark surfaces, under the 3:1 UI floor) — invisible on dark
+    // backgrounds. This is desktop/keyboard-only in effect (mobile taps never trigger
+    // :focus-visible), so it costs nothing on the primary mobile-first surface.
+    s.textContent = `*{-webkit-tap-highlight-color:transparent}@keyframes fu{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}@keyframes su{from{transform:translateY(100%)}to{transform:translateY(0)}}@keyframes sl{from{transform:translateX(-100%)}to{transform:translateX(0)}}@keyframes fi{from{opacity:0}to{opacity:1}}@keyframes sp{to{transform:rotate(360deg)}}@keyframes wg{from{transform:rotate(-.5deg)}to{transform:rotate(.5deg)}}@keyframes sk{0%,100%{opacity:.5}50%{opacity:.9}}.fu{animation:fu .4s ease-out both}.fi{animation:fi .25s ease-out both}.sk{animation:sk 1.2s ease-in-out infinite}.gs::-webkit-scrollbar{width:0;height:0}body{margin:0}@media(hover:hover){button:not(:disabled):hover{filter:brightness(.96)}}:focus-visible{outline:2px solid var(--accent);outline-offset:2px}`;
     document.head.appendChild(s);
   }, []);
   return null;
@@ -241,8 +245,11 @@ export function Drawer({ open, onClose, onNav, onOpenReports }: { open: boolean;
   const darkOn = settings.themeMode === "dark";
   const txCount = live?.txCount ?? 0;
   const chevron = <DrawIco d={D_CHEV} size={14} color={C.mute} w={2} />;
-  const shortcut = (d: string, label: string, onClick: () => void, right: ReactNode, last = false) => (
-    <button onClick={onClick} style={{ display: "flex", alignItems: "center", gap: 12, width: "100%", padding: "12px 2px", background: "none", border: "none", borderBottom: last ? "none" : `1px solid ${C.line}`, cursor: "pointer", textAlign: "left" }}>
+  // `ariaLabel` overrides the accessible name when `right` carries meaning beyond the visible
+  // `label` (the overspent dot below is `aria-hidden` — a decoration with no text alternative
+  // otherwise, since the button's accessible name would just be `label` on its own).
+  const shortcut = (d: string, label: string, onClick: () => void, right: ReactNode, last = false, ariaLabel?: string) => (
+    <button onClick={onClick} aria-label={ariaLabel} style={{ display: "flex", alignItems: "center", gap: 12, width: "100%", padding: "12px 2px", background: "none", border: "none", borderBottom: last ? "none" : `1px solid ${C.line}`, cursor: "pointer", textAlign: "left" }}>
       <span style={{ width: 34, height: 34, borderRadius: 10, background: C.inset, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
         <DrawIco d={d} color={C.soft} />
       </span>
@@ -290,6 +297,7 @@ export function Drawer({ open, onClose, onNav, onOpenReports }: { open: boolean;
             () => { onClose(); onOpenReports("budgets"); },
             live?.overspent ? <span aria-hidden style={{ width: 7, height: 7, borderRadius: "50%", background: CORAL, flexShrink: 0 }} /> : chevron,
             true,
+            live?.overspent ? t("Envelope budgets — some envelopes are over budget") : undefined,
           )}
         </div>
 

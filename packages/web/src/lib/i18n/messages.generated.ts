@@ -197,6 +197,7 @@ export const MESSAGES = [
   "Envelope allocation",
   "Envelope budgeting: assign your income to envelopes and always know how much you can still spend.",
   "Envelope budgets",
+  "Envelope budgets — some envelopes are over budget",
   "Envelope change",
   "Envelope deletion",
   "Envelope group change",
