@@ -33,9 +33,10 @@ describe("goalProgress", () => {
 });
 
 describe("fillByGoals", () => {
-  const env = (id: string, sort: number, allocated: number, target: number | null, archived = false) => ({
+  const env = (id: string, sort: number, allocated: number, target: number | null, archived = false, groupSort = 0) => ({
     id,
     sort,
+    groupSort,
     allocated,
     monthlyTarget: target,
     archived,
@@ -85,6 +86,19 @@ describe("fillByGoals", () => {
   test("sort order respected regardless of array order", () => {
     expect(fillByGoals([env("b", 5, 0, 300), env("a", 1, 0, 500)], 500)).toEqual([
       { envelopeId: "a", add: 500 },
+    ]);
+  });
+
+  test("group-major order: a lower-sort envelope in a LATER group fills AFTER an envelope in an earlier group", () => {
+    // "x" has the lower flat sort (0) but sits in the later group (groupSort 1); "y" has a
+    // higher flat sort (10) but sits in the earlier group (groupSort 0). Group-major order
+    // (mirrors the Budget screen: group.sort, then env.sort within the group) must fill
+    // "y" before "x" — the opposite of what a flat-sort-only comparator would produce.
+    expect(
+      fillByGoals([env("x", 0, 0, 300, false, 1), env("y", 10, 0, 300, false, 0)], 600),
+    ).toEqual([
+      { envelopeId: "y", add: 300 },
+      { envelopeId: "x", add: 300 },
     ]);
   });
 });

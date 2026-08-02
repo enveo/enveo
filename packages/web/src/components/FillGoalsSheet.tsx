@@ -15,11 +15,14 @@ import { type StateResponse } from "../lib/api";
 /**
  * "Fill by goals" preview (spec 2026-07-31): on open, proposes how to spend the current
  * "ready to assign" pool across envelopes with a monthly target (`fillByGoals`, full-or-skip
- * in sort order, single-partial fallback) — one row per proposed envelope, its `+amount`
- * editable via the shared amount-pad idiom (BudgetSuggestSheet). Confirm re-reads `allocated`
- * FRESH from the replica per envelope (the proposal is a point-in-time snapshot; other edits
- * may have landed since the sheet opened) and writes the ABSOLUTE `local.setAllocation`
- * as `allocatedFresh + add` — never the stale `allocated` captured at open.
+ * in group-major order — mirrors the Budget screen's visual order, see `Budget.tsx` — with a
+ * single-partial fallback) — one row per proposed envelope, its `+amount` editable via the
+ * shared amount-pad idiom (BudgetSuggestSheet). Confirm re-reads `allocated` FRESH from the
+ * replica per envelope (the proposal is a point-in-time snapshot; other edits may have landed
+ * since the sheet opened) and writes the ABSOLUTE `local.setAllocation` as `allocatedFresh +
+ * add` — never the stale `allocated` captured at open. Writes always target the VIEWED
+ * `month`, while the pool (`readyToAssign`) is month-independent — same split as Budget's
+ * live-edit header (`tbbLive` precedent).
  */
 export function FillGoalsSheet({ show, state, month, onClose }: { show: boolean; state: StateResponse; month: string; onClose: () => void }) {
   const M = useMask();
@@ -34,7 +37,14 @@ export function FillGoalsSheet({ show, state, month, onClose }: { show: boolean;
   // since) recomputes rather than reusing a stale list.
   useEffect(() => {
     if (!show) return;
-    const props = fillByGoals(state.envelopes, state.readyToAssign);
+    // Group-major order (fillByGoals docblock): mirror the Budget screen's visual order by
+    // resolving each envelope's group.sort. A missing group can't happen (FK) — the fallback
+    // just sorts an orphan envelope last rather than crashing.
+    const groupSortById = new Map(state.groups.map((g) => [g.id, g.sort]));
+    const props = fillByGoals(
+      state.envelopes.map((e) => ({ ...e, groupSort: groupSortById.get(e.groupId) ?? Number.MAX_SAFE_INTEGER })),
+      state.readyToAssign,
+    );
     setProposals(props);
     setEdited(Object.fromEntries(props.map((p) => [p.envelopeId, fmtTrim(p.add)])));
     // eslint-disable-next-line react-hooks/exhaustive-deps

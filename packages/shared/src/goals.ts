@@ -44,17 +44,22 @@ export interface FillProposal {
  * Proposes how to spend `available` (minor units, "to be budgeted") across
  * envelopes with a monthly target, to be applied as `allocated += add` ops.
  *
- * Strategy — full-or-skip in the user's sort order (spec 2026-07-31):
- * walk envelopes by `sort` ascending and, for each with a missing amount
- * (see `missingOf`, same clamp rule as `goalProgress.missing`) that fits
- * within what's left of the pool, propose funding it in full; envelopes
- * that don't fit are skipped (not partially filled) so a later, cheaper
- * goal can still be reached — never spend the pool part-way into a goal
- * that then still shows unfunded.
+ * Strategy — full-or-skip in GROUP-MAJOR order (spec 2026-07-31, order fixed
+ * 2026-08-02): walk envelopes ordered by `(groupSort, sort)` ascending — the
+ * SAME order the Budget screen renders in (group-major: `group.sort`, then
+ * `env.sort` within the group; see `Budget.tsx`) — and, for each with a
+ * missing amount (see `missingOf`, same clamp rule as `goalProgress.missing`)
+ * that fits within what's left of the pool, propose funding it in full;
+ * envelopes that don't fit are skipped (not partially filled) so a later,
+ * cheaper goal can still be reached — never spend the pool part-way into a
+ * goal that then still shows unfunded. Full-or-skip makes order the feature,
+ * so the fill order must match what the user sees on screen, not the flat
+ * envelope `sort` alone (which can disagree with the visual order once
+ * envelopes are grouped).
  *
  * Fallback — single partial: if nothing fits in full (the pool is smaller
  * than every remaining missing amount), propose a single partial allocation
- * of the whole pool to the FIRST unfunded envelope in sort order. This
+ * of the whole pool to the FIRST unfunded envelope in group-major order. This
  * guarantees the action never proposes nothing while there is money
  * available and at least one unfunded goal — a "no-op" result would be a
  * worse user experience than a visible partial progress toward the
@@ -68,6 +73,7 @@ export function fillByGoals(
     id: string;
     archived: boolean;
     sort: number;
+    groupSort: number;
     allocated: number;
     monthlyTarget: number | null;
   }>,
@@ -76,7 +82,7 @@ export function fillByGoals(
   if (available <= 0) return [];
   const candidates = envelopes
     .filter((e) => !e.archived && (e.monthlyTarget ?? 0) > 0)
-    .sort((a, b) => a.sort - b.sort);
+    .sort((a, b) => a.groupSort - b.groupSort || a.sort - b.sort);
 
   const out: FillProposal[] = [];
   let remaining = available;
