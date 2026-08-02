@@ -5,6 +5,7 @@ import { local } from "../lib/mutate";
 import { Header, Sheet } from "../components/chrome";
 import { AmountPadHost, type AmountPadTarget } from "../components/AmountPadSheet";
 import { BudgetSuggestSheet } from "../components/BudgetSuggestSheet";
+import { FillGoalsSheet } from "../components/FillGoalsSheet";
 import { CardBox, GoalRing, useBand } from "../components/kit";
 import { DockedNumpad } from "../components/DockedNumpad";
 import { IconColorPicker } from "../components/IconColorPicker";
@@ -24,6 +25,9 @@ export function BudgetScreen({
   onNext,
   onOpenEnvelope,
   initialSuggest,
+  onSuggestConsumed,
+  initialFillGoals,
+  onFillGoalsConsumed,
 }: {
   state: StateResponse;
   month: string;
@@ -33,12 +37,36 @@ export function BudgetScreen({
   onOpenEnvelope: (envId: string, month: string) => void;
   /** Start "Suggest" quick action — opens the suggest sheet immediately (like Add's `initialImport`). */
   initialSuggest?: boolean;
+  /** Consumption ack for `initialSuggest`, called once on mount (see the effect below) — App
+   *  clears its flag the instant this screen consumes it, so a LATER remount (this screen
+   *  unmounts/remounts on any `envView` toggle — e.g. envelope Summary → back — WITHOUT going
+   *  through `nav()`) never sees a stale `true` and reopens the sheet unprompted. */
+  onSuggestConsumed: () => void;
+  /** Goals-report "Fill ›" deep link — opens the fill-by-goals sheet immediately (same mechanics as `initialSuggest`). */
+  initialFillGoals?: boolean;
+  /** Consumption ack for `initialFillGoals` — same one-shot mechanism as `onSuggestConsumed`. */
+  onFillGoalsConsumed: () => void;
 }) {
   const C = useTheme();
   const M = useMask();
   const { t } = useT();
   const [manage, setManage] = useState(false);
   const [suggest, setSuggest] = useState(!!initialSuggest);
+  const [fillGoals, setFillGoals] = useState(!!initialFillGoals);
+  // Consume the deep-link flags right at mount, not on close — this component can remount
+  // (envelope Summary → back) without ever going through App's `nav()`, which is the only other
+  // place these flags get cleared. Consuming here means only the FIRST mount after App sets a
+  // flag ever opens its sheet; any later remount sees the flag already `false`.
+  useEffect(() => {
+    if (initialSuggest) onSuggestConsumed();
+    if (initialFillGoals) onFillGoalsConsumed();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  // Entry visibility: money to place AND at least one active envelope still short of its goal.
+  // Same predicate as the Goals report's "Fill ›" entry point (Reports.tsx, `canFillGoals`) —
+  // kept in sync by inspection, not by shared code (the report's version folds in `missSum`
+  // it already computed for its own display).
+  const canFillGoals = state.readyToAssign > 0 && state.envelopes.some((e) => !e.archived && (goalProgress(e)?.missing ?? 0) > 0);
   // IN-PLACE allocation editing (docked-numpad spec): one active cell per screen;
   // `err` = ✓ on an uncomputable/negative result, cleared on the next keypress.
   const [editing, setEditing] = useState<{ envelopeId: string; pad: PadState; err?: boolean } | null>(null);
@@ -104,6 +132,11 @@ export function BudgetScreen({
             </div>
           ) : (
             <div style={{ fontSize: 20, fontWeight: 800, letterSpacing: "-0.015em", fontVariantNumeric: "tabular-nums", color: tbbLive < 0 ? C.neg : hc("var(--cta)", C.pos) }}>{M(tbbLive)}</div>
+          )}
+          {canFillGoals && (
+            <button onClick={() => setFillGoals(true)} style={{ marginTop: 2, padding: 0, background: "none", border: "none", color: hc("var(--cta)", TEAL), fontSize: 11, fontWeight: 600, cursor: "pointer", fontFamily: font }}>
+              {t("Fill by goals")}
+            </button>
           )}
         </div>
         <button onClick={() => setSuggest(true)} aria-label={t("Suggest a distribution")} style={{ flexShrink: 0, padding: "6px 13px", borderRadius: 999, border: `1.5px solid ${hc("var(--cta)", "var(--accent)")}`, background: "transparent", color: hc("var(--cta)", TEAL), fontSize: 11.5, fontWeight: 700, cursor: "pointer", fontFamily: font }}>
@@ -199,6 +232,7 @@ export function BudgetScreen({
 
       <EnvManageSheet show={manage} state={state} onClose={() => setManage(false)} />
       <BudgetSuggestSheet show={suggest} state={state} month={month} onClose={() => setSuggest(false)} />
+      <FillGoalsSheet show={fillGoals} state={state} month={month} onClose={() => setFillGoals(false)} />
       {/* Docked numpad instead of a sheet (no backdrop — the list stays visible). */}
       <DockedNumpad
         target={

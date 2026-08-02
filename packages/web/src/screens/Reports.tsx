@@ -52,7 +52,7 @@ const RANGES: Array<{ n: number; label: Message }> = [
 ];
 type Mask = (n: number) => string;
 
-export function ReportsScreen({ state, month, view, onView, onOpenEnvelope, onMenu, onPrev, onNext }: { state: StateResponse; month: string; view: ReportView; onView: (v: ReportView) => void; onOpenEnvelope: (envId: string, month: string) => void; onMenu: () => void; onPrev: () => void; onNext: () => void }) {
+export function ReportsScreen({ state, month, view, onView, onOpenEnvelope, onFillGoals, onMenu, onPrev, onNext }: { state: StateResponse; month: string; view: ReportView; onView: (v: ReportView) => void; onOpenEnvelope: (envId: string, month: string) => void; onFillGoals: () => void; onMenu: () => void; onPrev: () => void; onNext: () => void }) {
   const M = useMask();
   const version = useLedgerVersion();
   // "Envelope" by default — in an envelope app it's the natural breakdown (categories are often empty)
@@ -178,7 +178,7 @@ export function ReportsScreen({ state, month, view, onView, onOpenEnvelope, onMe
         />
       )}
       {view === "budgets" && <BudgetsReport state={state} M={M} onOpenEnvelope={onOpenEnvelope} onPrev={onPrev} onNext={onNext} onBack={back} />}
-      {view === "goals" && <GoalsReport state={state} M={M} onOpenEnvelope={onOpenEnvelope} onPrev={onPrev} onNext={onNext} onBack={back} />}
+      {view === "goals" && <GoalsReport state={state} M={M} onOpenEnvelope={onOpenEnvelope} onFillGoals={onFillGoals} onPrev={onPrev} onNext={onNext} onBack={back} />}
       {view === "month" && (
         <MonthReport cashflow={cashflow} days={dailySpending} places={monthPlaces} largest={monthLargest} M={M} month={month} onPrev={onPrev} onNext={onNext} onBack={back} />
       )}
@@ -1082,6 +1082,7 @@ function GoalsReport({
   state,
   M,
   onOpenEnvelope,
+  onFillGoals,
   onPrev,
   onNext,
   onBack,
@@ -1089,6 +1090,7 @@ function GoalsReport({
   state: StateResponse;
   M: Mask;
   onOpenEnvelope: (envId: string, month: string) => void;
+  onFillGoals: () => void;
   onPrev: () => void;
   onNext: () => void;
   onBack: () => void;
@@ -1109,6 +1111,9 @@ function GoalsReport({
   const pctTotal = targetSum > 0 ? Math.round((fundedSum / targetSum) * 100) : 0;
   const missSum = rows.reduce((s, { gp }) => s + gp.missing, 0);
   const allFunded = rows.length > 0 && missSum === 0;
+  // Same entry-visibility predicate as Budget's "Fill by goals" button — a pool to place
+  // AND at least one goal still short (missSum > 0 already implies the latter).
+  const canFillGoals = state.readyToAssign > 0 && missSum > 0;
   return (
     <ReportShell
       title={t(TITLES.goals)}
@@ -1123,7 +1128,19 @@ function GoalsReport({
           ? undefined
           : allFunded
             ? <span style={{ color: hc(C.headerPos, C.pos) }}>{t("All goals funded ✓")}</span>
-            : t("{amount} to go", { amount: M(missSum) })
+            : (
+              <>
+                {t("{amount} to go", { amount: M(missSum) })}
+                {canFillGoals && (
+                  <>
+                    {" · "}
+                    <button onClick={onFillGoals} style={{ background: "none", border: "none", padding: 0, margin: 0, font: "inherit", color: hc(C.headerInk, TEAL), fontWeight: 700, cursor: "pointer" }}>
+                      {t("Fill ›")}
+                    </button>
+                  </>
+                )}
+              </>
+            )
       }
     >
       {rows.length === 0 && <div style={{ fontSize: 12.5, color: C.mute, padding: "8px 0" }}>{t("No envelopes with a goal. Set a monthly target when editing an envelope.")}</div>}
