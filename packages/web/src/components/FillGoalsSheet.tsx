@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { computeStateResponse, fillByGoals, type FillProposal } from "@enveo/shared";
 import { Sheet } from "./chrome";
 import { AmountPadHost, type AmountPadTarget } from "./AmountPadSheet";
-import { useCurrency, useMask } from "../lib/contexts";
+import { useCurrency, useMask, useSettings } from "../lib/contexts";
 import { currencySymbol, fmtTrim, isLight, parseAmount } from "../lib/format";
 import { useT } from "../lib/i18n";
 import { Glyph } from "../lib/icons";
@@ -24,6 +24,7 @@ import { type StateResponse } from "../lib/api";
 export function FillGoalsSheet({ show, state, month, onClose }: { show: boolean; state: StateResponse; month: string; onClose: () => void }) {
   const M = useMask();
   const currency = useCurrency();
+  const { settings } = useSettings();
   const { t, lang } = useT();
   const [proposals, setProposals] = useState<FillProposal[]>([]);
   const [edited, setEdited] = useState<Record<string, string>>({}); // envelopeId -> "+amount" string
@@ -41,6 +42,16 @@ export function FillGoalsSheet({ show, state, month, onClose }: { show: boolean;
 
   const envById = new Map(state.envelopes.map((e) => [e.id, e]));
 
+  // `state` is a live prop — an envelope proposed at open time may have been archived (or
+  // removed) since, by an edit elsewhere while the sheet stayed open. Filtering here keeps the
+  // rendered rows AND the sum/CTA label in lockstep with what `confirm` actually writes (it
+  // already skips archived/missing envelopes per-row) — otherwise the label could promise more
+  // than the write delivers.
+  const visibleProposals = proposals.filter((p) => {
+    const env = envById.get(p.envelopeId);
+    return !!env && !env.archived;
+  });
+
   const editedMinor = (id: string, fallback: number): number => {
     const raw = edited[id];
     if (raw === undefined) return fallback;
@@ -48,7 +59,7 @@ export function FillGoalsSheet({ show, state, month, onClose }: { show: boolean;
     return v === null ? fallback : v;
   };
 
-  const sum = proposals.reduce((s, p) => s + editedMinor(p.envelopeId, p.add), 0);
+  const sum = visibleProposals.reduce((s, p) => s + editedMinor(p.envelopeId, p.add), 0);
   const over = sum > state.readyToAssign;
 
   const openPadFor = (p: FillProposal) =>
@@ -85,11 +96,10 @@ export function FillGoalsSheet({ show, state, month, onClose }: { show: boolean;
           <>
             <div style={{ fontSize: 17, fontWeight: 700, color: C.text, marginBottom: 14 }}>{t("Fill by goals")}</div>
 
-            {proposals.map((p, i) => {
-              const env = envById.get(p.envelopeId);
-              if (!env) return null;
+            {visibleProposals.map((p, i) => {
+              const env = envById.get(p.envelopeId)!; // visibleProposals already excludes missing/archived
               return (
-                <div key={p.envelopeId} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 0", borderBottom: i < proposals.length - 1 ? `1px solid ${C.line}` : "none" }}>
+                <div key={p.envelopeId} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 0", borderBottom: i < visibleProposals.length - 1 ? `1px solid ${C.line}` : "none" }}>
                   <div style={{ width: 30, height: 30, borderRadius: 8, flexShrink: 0, background: env.color, display: "flex", alignItems: "center", justifyContent: "center" }}>
                     <Glyph name={env.icon} size={14} color={isLight(env.color) ? "#33312c" : "#fff"} sw={1.6} />
                   </div>
@@ -97,18 +107,26 @@ export function FillGoalsSheet({ show, state, month, onClose }: { show: boolean;
                     <div style={{ fontSize: 13, fontWeight: 600, color: C.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{env.name}</div>
                     <div style={{ fontSize: 10.5, color: C.mute, fontVariantNumeric: "tabular-nums" }}>{M(env.allocated)} → {M(env.monthlyTarget ?? 0)}</div>
                   </div>
-                  <div onClick={() => openPadFor(p)} style={{ display: "flex", alignItems: "center", gap: 3, border: `1px solid ${TEAL}`, background: C.inset, borderRadius: 9, padding: "6px 9px", cursor: "pointer" }}>
-                    <span style={{ fontSize: 11, color: C.soft }}>+</span>
-                    <input
-                      value={edited[p.envelopeId] ?? ""}
-                      readOnly
-                      tabIndex={0}
-                      onClick={() => openPadFor(p)}
-                      onFocus={() => openPadFor(p)}
-                      style={{ width: 60, background: "none", border: "none", textAlign: "right", fontSize: 13, fontWeight: 700, color: TEAL, fontFamily: font, fontVariantNumeric: "tabular-nums", cursor: "pointer", padding: 0 }}
-                    />
-                    <span style={{ fontSize: 11, color: C.soft }}>{currencySymbol(currency, lang)}</span>
-                  </div>
+                  {/* Discreet mode (AllocCell precedent, Budget.tsx): masked, non-interactive — no
+                      tap target that would reveal an amount via the pad's prefill. */}
+                  {settings.discreet ? (
+                    <div style={{ display: "flex", alignItems: "center", border: `1px solid ${C.line}`, background: C.inset, borderRadius: 9, padding: "6px 9px" }}>
+                      <span style={{ fontSize: 13, color: C.text }}>•••• {currencySymbol(currency, lang)}</span>
+                    </div>
+                  ) : (
+                    <div onClick={() => openPadFor(p)} style={{ display: "flex", alignItems: "center", gap: 3, border: `1px solid ${TEAL}`, background: C.inset, borderRadius: 9, padding: "6px 9px", cursor: "pointer" }}>
+                      <span style={{ fontSize: 11, color: C.soft }}>+</span>
+                      <input
+                        value={edited[p.envelopeId] ?? ""}
+                        readOnly
+                        tabIndex={0}
+                        onClick={() => openPadFor(p)}
+                        onFocus={() => openPadFor(p)}
+                        style={{ width: 60, background: "none", border: "none", textAlign: "right", fontSize: 13, fontWeight: 700, color: TEAL, fontFamily: font, fontVariantNumeric: "tabular-nums", cursor: "pointer", padding: 0 }}
+                      />
+                      <span style={{ fontSize: 11, color: C.soft }}>{currencySymbol(currency, lang)}</span>
+                    </div>
+                  )}
                 </div>
               );
             })}
