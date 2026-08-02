@@ -25,7 +25,9 @@ export function BudgetScreen({
   onNext,
   onOpenEnvelope,
   initialSuggest,
+  onSuggestConsumed,
   initialFillGoals,
+  onFillGoalsConsumed,
 }: {
   state: StateResponse;
   month: string;
@@ -35,8 +37,15 @@ export function BudgetScreen({
   onOpenEnvelope: (envId: string, month: string) => void;
    
   initialSuggest?: boolean;
+  /** Consumption ack for `initialSuggest`, called once on mount (see the effect below) — App
+   *  clears its flag the instant this screen consumes it, so a LATER remount (this screen
+   *  unmounts/remounts on any `envView` toggle — e.g. envelope Summary → back — WITHOUT going
+   *  through `nav()`) never sees a stale `true` and reopens the sheet unprompted. */
+  onSuggestConsumed: () => void;
    
   initialFillGoals?: boolean;
+   
+  onFillGoalsConsumed: () => void;
 }) {
   const C = useTheme();
   const M = useMask();
@@ -44,6 +53,15 @@ export function BudgetScreen({
   const [manage, setManage] = useState(false);
   const [suggest, setSuggest] = useState(!!initialSuggest);
   const [fillGoals, setFillGoals] = useState(!!initialFillGoals);
+  // Consume the deep-link flags right at mount, not on close — this component can remount
+  // (envelope Summary → back) without ever going through App's `nav()`, which is the only other
+  // place these flags get cleared. Consuming here means only the FIRST mount after App sets a
+  // flag ever opens its sheet; any later remount sees the flag already `false`.
+  useEffect(() => {
+    if (initialSuggest) onSuggestConsumed();
+    if (initialFillGoals) onFillGoalsConsumed();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
    
   const canFillGoals = state.readyToAssign > 0 && state.envelopes.some((e) => !e.archived && (goalProgress(e)?.missing ?? 0) > 0);
   
