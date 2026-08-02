@@ -41,6 +41,10 @@ export default function App() {
   const [budgetSuggest, setBudgetSuggest] = useState(false);
   
 
+
+  const [budgetFillGoals, setBudgetFillGoals] = useState(false);
+  
+
   const [reportsView, setReportsView] = useState<ReportView>("overview");
    
   const [envView, setEnvView] = useState<{ envelopeId: string; month: string } | null>(null);
@@ -70,7 +74,7 @@ export default function App() {
 
   
 
-  const nav = (s: ScreenId) => { if (s !== "addExpense") setEditTxn(null); if (s === "addExpense") setAddPreset({}); if (s === "budget") setBudgetSuggest(false); setEnvView(null); setEditReturn("start"); if (s === "reports") setReportsView("overview"); setScreen(s); };
+  const nav = (s: ScreenId) => { if (s !== "addExpense") setEditTxn(null); if (s === "addExpense") setAddPreset({}); if (s === "budget") { setBudgetSuggest(false); setBudgetFillGoals(false); } setEnvView(null); setEditReturn("start"); if (s === "reports") setReportsView("overview"); setScreen(s); };
   
 
 
@@ -90,6 +94,9 @@ export default function App() {
 
 
   const openReports = (tab: ReportTab) => { nav("reports"); setReportsView(tab); };
+  
+
+  const openBudgetFillGoals = () => { nav("budget"); setBudgetFillGoals(true); };
   
 
 
@@ -184,10 +191,10 @@ export default function App() {
           {state && !onboarding && !envView && (
             <>
               {screen === "start" && <StartScreen state={state} month={month} onOpenTxns={openTxns} onOpenEnvelope={openEnvelope} onMenu={() => setDrawer(true)} onPrev={prev} onNext={next} onNav={nav} onQuickAdd={onQuickAdd} />}
-              {screen === "budget" && <BudgetScreen state={state} month={month} onMenu={() => setDrawer(true)} onPrev={prev} onNext={next} onOpenEnvelope={openEnvelope} initialSuggest={budgetSuggest} />}
+              {screen === "budget" && <BudgetScreen state={state} month={month} onMenu={() => setDrawer(true)} onPrev={prev} onNext={next} onOpenEnvelope={openEnvelope} initialSuggest={budgetSuggest} initialFillGoals={budgetFillGoals} />}
               {screen === "transactions" && <TransactionsScreen state={state} month={month} onMenu={() => setDrawer(true)} onPrev={prev} onNext={next} onEditTxn={(t) => editTxnFrom(t, "transactions")} query={txQuery} setQuery={setTxQuery} envFilter={txEnvFilter} setEnvFilter={setTxEnvFilter} accFilter={txAccFilter} setAccFilter={setTxAccFilter} />}
               {screen === "accounts" && <AccountsScreen state={state} onMenu={() => setDrawer(true)} />}
-              {screen === "reports" && <ReportsScreen state={state} month={month} view={reportsView} onView={setReportsView} onOpenEnvelope={openEnvelope} onMenu={() => setDrawer(true)} onPrev={prev} onNext={next} />}
+              {screen === "reports" && <ReportsScreen state={state} month={month} view={reportsView} onView={setReportsView} onOpenEnvelope={openEnvelope} onFillGoals={openBudgetFillGoals} onMenu={() => setDrawer(true)} onPrev={prev} onNext={next} />}
               {screen === "addExpense" && <AddScreen state={state} editTxn={editTxn} onDone={doneEdit} initialTab={addPreset.tab} initialImport={addPreset.importSheet} />}
               {screen === "settings" && <SettingsScreen onNav={nav} />}
             </>
