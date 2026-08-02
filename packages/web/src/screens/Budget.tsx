@@ -62,7 +62,10 @@ export function BudgetScreen({
     if (initialFillGoals) onFillGoalsConsumed();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-   
+  // Entry visibility: money to place AND at least one active envelope still short of its goal.
+  // Same predicate as the Goals report's "Fill ›" entry point (Reports.tsx, `canFillGoals`) —
+  // kept in sync by inspection, not by shared code (the report's version folds in `missSum`
+  // it already computed for its own display).
   const canFillGoals = state.readyToAssign > 0 && state.envelopes.some((e) => !e.archived && (goalProgress(e)?.missing ?? 0) > 0);
   
 
