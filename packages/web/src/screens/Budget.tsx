@@ -5,6 +5,7 @@ import { local } from "../lib/mutate";
 import { Header, Sheet } from "../components/chrome";
 import { AmountPadHost, type AmountPadTarget } from "../components/AmountPadSheet";
 import { BudgetSuggestSheet } from "../components/BudgetSuggestSheet";
+import { FillGoalsSheet } from "../components/FillGoalsSheet";
 import { CardBox, GoalRing, useBand } from "../components/kit";
 import { DockedNumpad } from "../components/DockedNumpad";
 import { IconColorPicker } from "../components/IconColorPicker";
@@ -24,6 +25,7 @@ export function BudgetScreen({
   onNext,
   onOpenEnvelope,
   initialSuggest,
+  initialFillGoals,
 }: {
   state: StateResponse;
   month: string;
@@ -33,12 +35,17 @@ export function BudgetScreen({
   onOpenEnvelope: (envId: string, month: string) => void;
   /** Start "Suggest" quick action — opens the suggest sheet immediately (like Add's `initialImport`). */
   initialSuggest?: boolean;
+  /** Goals-report "Fill ›" deep link — opens the fill-by-goals sheet immediately (same mechanics as `initialSuggest`). */
+  initialFillGoals?: boolean;
 }) {
   const C = useTheme();
   const M = useMask();
   const { t } = useT();
   const [manage, setManage] = useState(false);
   const [suggest, setSuggest] = useState(!!initialSuggest);
+  const [fillGoals, setFillGoals] = useState(!!initialFillGoals);
+  // Entry visibility: money to place AND at least one active envelope still short of its goal.
+  const canFillGoals = state.readyToAssign > 0 && state.envelopes.some((e) => !e.archived && (goalProgress(e)?.missing ?? 0) > 0);
   // IN-PLACE allocation editing (docked-numpad spec): one active cell per screen;
   // `err` = ✓ on an uncomputable/negative result, cleared on the next keypress.
   const [editing, setEditing] = useState<{ envelopeId: string; pad: PadState; err?: boolean } | null>(null);
@@ -104,6 +111,11 @@ export function BudgetScreen({
             </div>
           ) : (
             <div style={{ fontSize: 20, fontWeight: 800, letterSpacing: "-0.015em", fontVariantNumeric: "tabular-nums", color: tbbLive < 0 ? C.neg : hc("var(--cta)", C.pos) }}>{M(tbbLive)}</div>
+          )}
+          {canFillGoals && (
+            <button onClick={() => setFillGoals(true)} style={{ marginTop: 2, padding: 0, background: "none", border: "none", color: hc("var(--cta)", TEAL), fontSize: 11, fontWeight: 600, cursor: "pointer", fontFamily: font }}>
+              {t("Fill by goals")}
+            </button>
           )}
         </div>
         <button onClick={() => setSuggest(true)} aria-label={t("Suggest a distribution")} style={{ flexShrink: 0, padding: "6px 13px", borderRadius: 999, border: `1.5px solid ${hc("var(--cta)", "var(--accent)")}`, background: "transparent", color: hc("var(--cta)", TEAL), fontSize: 11.5, fontWeight: 700, cursor: "pointer", fontFamily: font }}>
@@ -199,6 +211,7 @@ export function BudgetScreen({
 
       <EnvManageSheet show={manage} state={state} onClose={() => setManage(false)} />
       <BudgetSuggestSheet show={suggest} state={state} month={month} onClose={() => setSuggest(false)} />
+      <FillGoalsSheet show={fillGoals} state={state} month={month} onClose={() => setFillGoals(false)} />
       {/* Docked numpad instead of a sheet (no backdrop — the list stays visible). */}
       <DockedNumpad
         target={

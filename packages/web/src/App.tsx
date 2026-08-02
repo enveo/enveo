@@ -39,6 +39,10 @@ export default function App() {
   // Start "Zasugeruj" quick action — a fresh Budget screen with the suggest sheet already open.
   // Reset by `nav` on every normal entry, same lifecycle as `addPreset`.
   const [budgetSuggest, setBudgetSuggest] = useState(false);
+  // Goals-report "Fill ›" deep link — a fresh Budget with the fill-by-goals sheet already
+  // open. Same one-shot lifecycle as `budgetSuggest`: `nav` resets it on every normal entry,
+  // `openBudgetFillGoals` sets it AFTER `nav` so it wins within the same batch.
+  const [budgetFillGoals, setBudgetFillGoals] = useState(false);
   // Reports view kept in App — entering from the menu opens the card overview,
   // while a deep link (the menu's "Envelope budgets" shortcut) goes straight to the given subscreen
   const [reportsView, setReportsView] = useState<ReportView>("overview");
@@ -70,7 +74,7 @@ export default function App() {
 
   // nav = entry from menu/navigation: a fresh Add returns to start;
   // Reports from the menu always start at the card overview (deep link overrides below)
-  const nav = (s: ScreenId) => { if (s !== "addExpense") setEditTxn(null); if (s === "addExpense") setAddPreset({}); if (s === "budget") setBudgetSuggest(false); setEnvView(null); setEditReturn("start"); if (s === "reports") setReportsView("overview"); setScreen(s); };
+  const nav = (s: ScreenId) => { if (s !== "addExpense") setEditTxn(null); if (s === "addExpense") setAddPreset({}); if (s === "budget") { setBudgetSuggest(false); setBudgetFillGoals(false); } setEnvView(null); setEditReturn("start"); if (s === "reports") setReportsView("overview"); setScreen(s); };
   // Start "quick actions": Przelew/Ze zrzutu open a FRESH Add pre-set to a tab or with the
   // import sheet already showing; Zasugeruj opens a FRESH Budget with the suggest sheet already
   // open (Wydatek goes through plain `nav` — see Start.tsx).
@@ -90,6 +94,9 @@ export default function App() {
   // setReportsView AFTER nav — within the same batch the last write wins, so it overrides the
   // reset to "overview".
   const openReports = (tab: ReportTab) => { nav("reports"); setReportsView(tab); };
+  // Deep link: Goals report's "Fill ›" → a fresh Budget with the fill-by-goals sheet open
+  // (same after-`nav` override as `openReports`, so the reset in `nav` doesn't win the batch).
+  const openBudgetFillGoals = () => { nav("budget"); setBudgetFillGoals(true); };
   // enter the transaction list with a preselected filter (envelope OR account) — from an
   // envelope/account tile or sheet. Clean, focused view: set the given filter, clear the
   // other dimension and the search box.
@@ -184,10 +191,10 @@ export default function App() {
           {state && !onboarding && !envView && (
             <>
               {screen === "start" && <StartScreen state={state} month={month} onOpenTxns={openTxns} onOpenEnvelope={openEnvelope} onMenu={() => setDrawer(true)} onPrev={prev} onNext={next} onNav={nav} onQuickAdd={onQuickAdd} />}
-              {screen === "budget" && <BudgetScreen state={state} month={month} onMenu={() => setDrawer(true)} onPrev={prev} onNext={next} onOpenEnvelope={openEnvelope} initialSuggest={budgetSuggest} />}
+              {screen === "budget" && <BudgetScreen state={state} month={month} onMenu={() => setDrawer(true)} onPrev={prev} onNext={next} onOpenEnvelope={openEnvelope} initialSuggest={budgetSuggest} initialFillGoals={budgetFillGoals} />}
               {screen === "transactions" && <TransactionsScreen state={state} month={month} onMenu={() => setDrawer(true)} onPrev={prev} onNext={next} onEditTxn={(t) => editTxnFrom(t, "transactions")} query={txQuery} setQuery={setTxQuery} envFilter={txEnvFilter} setEnvFilter={setTxEnvFilter} accFilter={txAccFilter} setAccFilter={setTxAccFilter} />}
               {screen === "accounts" && <AccountsScreen state={state} onMenu={() => setDrawer(true)} />}
-              {screen === "reports" && <ReportsScreen state={state} month={month} view={reportsView} onView={setReportsView} onOpenEnvelope={openEnvelope} onMenu={() => setDrawer(true)} onPrev={prev} onNext={next} />}
+              {screen === "reports" && <ReportsScreen state={state} month={month} view={reportsView} onView={setReportsView} onOpenEnvelope={openEnvelope} onFillGoals={openBudgetFillGoals} onMenu={() => setDrawer(true)} onPrev={prev} onNext={next} />}
               {screen === "addExpense" && <AddScreen state={state} editTxn={editTxn} onDone={doneEdit} initialTab={addPreset.tab} initialImport={addPreset.importSheet} />}
               {screen === "settings" && <SettingsScreen onNav={nav} />}
             </>
