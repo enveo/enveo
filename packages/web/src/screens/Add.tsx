@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
-import { type Transaction, type TxnPayload } from "@enveo/shared";
+import { computeStateResponse, type Transaction, type TxnPayload } from "@enveo/shared";
 import { useLedgerVersion, type EditedImportItem, type ImportItem, type StateResponse } from "../lib/api";
 import { hasOpenOp, padKey, type PadState } from "../lib/amount";
 import { categoryCountsFor, rankCategories } from "../lib/categoryIndex";
@@ -15,7 +15,7 @@ import { Numpad, ScrollPicker } from "../components/pickers";
 import { useCurrency, useMask, useTheme } from "../lib/contexts";
 import { haptic } from "../lib/haptics";
 import { currencySymbol, evalExpression, formatMoney } from "../lib/format";
-import { formatDateLong, monthNames, todayISO } from "../lib/dates";
+import { currentMonth, formatDateLong, monthNames, todayISO } from "../lib/dates";
 import { useT, type Message, msg } from "../lib/i18n";
 import { Glyph, Ico } from "../lib/icons";
 import { matchesSearch, SEARCH_THRESHOLD } from "../lib/search";
@@ -77,7 +77,17 @@ export function AddScreen({
   const { band, hc } = useBand();
   const { t, lang } = useT();
   const currency = useCurrency();
-  const accounts = [...state.accounts].filter((a) => !a.archived).sort((a, b) => a.sort - b.sort);
+  const ledgerVersion = useLedgerVersion();
+  // Accounts are CURRENT-balance always — never scoped to the viewed month (unlike envelopes).
+  // Recomputed from the replica at `currentMonth()` regardless of which month `state` was built
+  // for, so every account display in this screen (source/destination pickers, grids) shows the
+  // same balance as the Start screen and Accounts screen — same pattern as chrome.tsx's Drawer.
+  const accountsNow = useMemo(() => {
+    const l = store.getLedger();
+    return l ? computeStateResponse(l, currentMonth()).accounts : [];
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ledgerVersion]);
+  const accounts = [...accountsNow].filter((a) => !a.archived).sort((a, b) => a.sort - b.sort);
 
   const [tab, setTab] = useState<Tab>(initialTab ?? "expense");
   // Amount = the same state machine as the Budget pad (padKey): reduction on
@@ -205,7 +215,6 @@ export function AddScreen({
   /* Categories sorted by co-occurrence with the SELECTED envelope (index
      memoized per replica version — zero scanning on each open);
      the text filter preserves the ranking within the matches. */
-  const ledgerVersion = useLedgerVersion();
   const rankedCats = useMemo(() => {
     const ledger = store.getLedger();
     const forEnv = envelopeId ?? items[0]?.envelopeId ?? null;
