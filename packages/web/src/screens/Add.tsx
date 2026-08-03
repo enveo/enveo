@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
-import { type Transaction, type TxnPayload } from "@enveo/shared";
+import { computeStateResponse, type Transaction, type TxnPayload } from "@enveo/shared";
 import { useLedgerVersion, type EditedImportItem, type ImportItem, type StateResponse } from "../lib/api";
 import { hasOpenOp, padKey, type PadState } from "../lib/amount";
 import { categoryCountsFor, rankCategories } from "../lib/categoryIndex";
@@ -15,7 +15,7 @@ import { Numpad, ScrollPicker } from "../components/pickers";
 import { useCurrency, useMask, useTheme } from "../lib/contexts";
 import { haptic } from "../lib/haptics";
 import { currencySymbol, evalExpression, formatMoney } from "../lib/format";
-import { formatDateLong, monthNames, todayISO } from "../lib/dates";
+import { currentMonth, formatDateLong, monthNames, todayISO } from "../lib/dates";
 import { useT, type Message, msg } from "../lib/i18n";
 import { Glyph, Ico } from "../lib/icons";
 import { matchesSearch, SEARCH_THRESHOLD } from "../lib/search";
@@ -77,7 +77,17 @@ export function AddScreen({
   const { band, hc } = useBand();
   const { t, lang } = useT();
   const currency = useCurrency();
-  const accounts = [...state.accounts].filter((a) => !a.archived).sort((a, b) => a.sort - b.sort);
+  const ledgerVersion = useLedgerVersion();
+  // Accounts are CURRENT-balance always — never scoped to the viewed month (unlike envelopes).
+  // Recomputed from the replica at `currentMonth()` regardless of which month `state` was built
+  // for, so every account display in this screen (source/destination pickers, grids) shows the
+  // same balance as the Start screen and Accounts screen — same pattern as chrome.tsx's Drawer.
+  const accountsNow = useMemo(() => {
+    const l = store.getLedger();
+    return l ? computeStateResponse(l, currentMonth()).accounts : [];
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ledgerVersion]);
+  const accounts = [...accountsNow].filter((a) => !a.archived).sort((a, b) => a.sort - b.sort);
 
   const [tab, setTab] = useState<Tab>(initialTab ?? "expense");
   // Amount = the same state machine as the Budget pad (padKey): reduction on
@@ -103,6 +113,11 @@ export function AddScreen({
   const [placeId, setPlaceId] = useState<string | null>(null);
   const [placeInput, setPlaceInput] = useState("");
   const [showPlace, setShowPlace] = useState(false);
+  // Only true right after the user taps "Type a place…" — the place input's `autoFocus` reads
+  // this instead of firing unconditionally, so entering EDIT for a transaction that already has
+  // a place (which expands the field programmatically below) doesn't steal focus at mount and
+  // leave a permanent :focus-visible ring with no user interaction.
+  const [placeAutoFocus, setPlaceAutoFocus] = useState(false);
   const [note, setNote] = useState("");
   const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [numpad, setNumpad] = useState(true);
@@ -139,6 +154,7 @@ export function AddScreen({
     setName(editTxn.name ?? "");
     setNote(editTxn.note ?? "");
     setShowPlace(!!editTxn.placeId); // expand filled fields right away (no icon clicking)
+    setPlaceAutoFocus(false); // programmatic expansion — never steal focus on entering edit
     setDate(editTxn.date);
     setEnvOpen(false);
     setDestOpen(false);
@@ -199,7 +215,6 @@ export function AddScreen({
   /* Categories sorted by co-occurrence with the SELECTED envelope (index
      memoized per replica version — zero scanning on each open);
      the text filter preserves the ranking within the matches. */
-  const ledgerVersion = useLedgerVersion();
   const rankedCats = useMemo(() => {
     const ledger = store.getLedger();
     const forEnv = envelopeId ?? items[0]?.envelopeId ?? null;
@@ -564,13 +579,13 @@ export function AddScreen({
                   {p.name}
                 </button>
               ))}
-              <button onClick={() => setShowPlace(!showPlace)} style={ghostChipStyle}>{t("Type a place…")}</button>
+              <button onClick={() => { const next = !showPlace; setShowPlace(next); setPlaceAutoFocus(next); }} style={ghostChipStyle}>{t("Type a place…")}</button>
             </div>
             {showPlace && (
               <div style={{ position: "relative", padding: `0 ${P}px 6px` }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                   <Ico d="M3 9l9-7 9 7v11a1 1 0 01-1 1h-4v-7H8v7H4a1 1 0 01-1-1V9z" size={15} color={placeId ? TEAL : C.mute} />
-                  <input autoFocus placeholder={t("Place")} value={placeId ? (state.places.find((p) => p.id === placeId)?.name ?? "") : placeInput} onChange={(e) => { setPlaceInput(e.target.value); setPlaceId(null); }} onFocus={() => setNumpad(false)} style={{ flex: 1, background: "none", border: "none", borderBottom: `1px solid ${C.line}`, color: C.text, fontSize: 12, fontFamily: font, padding: "4px 0" }} />
+                  <input autoFocus={placeAutoFocus} placeholder={t("Place")} value={placeId ? (state.places.find((p) => p.id === placeId)?.name ?? "") : placeInput} onChange={(e) => { setPlaceInput(e.target.value); setPlaceId(null); }} onFocus={() => setNumpad(false)} style={{ flex: 1, background: "none", border: "none", borderBottom: `1px solid ${C.line}`, color: C.text, fontSize: 12, fontFamily: font, padding: "4px 0" }} />
                   {placeId && <button onClick={() => { setPlaceId(null); setPlaceInput(""); }} style={{ background: "none", border: "none", color: C.mute, fontSize: 11, cursor: "pointer" }}>✕</button>}
                 </div>
                 {/* in draft the place travels by NAME to /import/apply (server creates/matches) —

@@ -1,24 +1,36 @@
-import { useEffect, useState } from "react";
-import type { StateResponse } from "../lib/api";
+import { useEffect, useMemo, useState } from "react";
+import { computeStateResponse } from "@enveo/shared";
+import { useLedgerVersion, type StateResponse } from "../lib/api";
 import { local } from "../lib/mutate";
 import { fmtSignedTrim } from "../lib/amount";
 import { AmountPadHost, type AmountPadTarget } from "../components/AmountPadSheet";
 import { Sheet } from "../components/chrome";
 import { IconColorPicker } from "../components/IconColorPicker";
 import { accountIconColor } from "../components/tiles";
+import { currentMonth } from "../lib/dates";
 import { useMask, useTheme } from "../lib/contexts";
 import { useDragReorder } from "../lib/dnd";
 import { useT } from "../lib/i18n";
 import { parseAmount } from "../lib/format";
 import { Glyph, Ico } from "../lib/icons";
+import { store } from "../lib/store";
 import { ACCOUNT_COLORS, P, TEAL, font } from "../lib/theme";
 
-export function AccountsScreen({ state, onMenu }: { state: StateResponse; onMenu: () => void }) {
+export function AccountsScreen({ onMenu }: { state: StateResponse; onMenu: () => void }) {
   const C = useTheme();
   const M = useMask();
   const { t } = useT();
-  const accounts = [...state.accounts].filter((a) => !a.archived).sort((a, b) => a.sort - b.sort);
-  const closed = [...state.accounts].filter((a) => a.archived).sort((a, b) => a.sort - b.sort);
+  // Accounts are CURRENT-balance always (unlike envelopes) — recomputed from the replica at
+  // `currentMonth()` regardless of the app's viewed month, same pattern as chrome.tsx's Drawer
+  // and widgets.tsx's AccountsWidget.
+  const version = useLedgerVersion();
+  const accountsNow = useMemo(() => {
+    const l = store.getLedger();
+    return l ? computeStateResponse(l, currentMonth()).accounts : [];
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [version]);
+  const accounts = [...accountsNow].filter((a) => !a.archived).sort((a, b) => a.sort - b.sort);
+  const closed = [...accountsNow].filter((a) => a.archived).sort((a, b) => a.sort - b.sort);
   const total = accounts.reduce((s, a) => s + a.balance, 0);
   const [add, setAdd] = useState(false);
   const [edit, setEdit] = useState<StateResponse["accounts"][number] | null>(null);

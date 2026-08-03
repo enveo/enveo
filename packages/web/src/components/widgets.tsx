@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState, type CSSProperties, type ReactNode } from "react";
-import { computeNetWorthSeries } from "@enveo/shared";
+import { computeNetWorthSeries, computeStateResponse } from "@enveo/shared";
 import { useLedgerVersion, type AccountView, type EnvelopeView, type StateResponse } from "../lib/api";
 import { useCurrency, useMask, useSettings, useTheme } from "../lib/contexts";
 import type { WidgetConfig, WidgetId, WidgetOpts } from "../lib/contexts";
+import { currentMonth } from "../lib/dates";
 import { useT, type Message, msg } from "../lib/i18n";
 import { TEAL, font, tint, type Theme } from "../lib/theme";
 import { Glyph, Ico } from "../lib/icons";
@@ -99,13 +100,22 @@ export function QuickActions({ onNav, onQuickAdd, opts }: WidgetProps) {
 }
 
 /* ── Accounts: the Start 2-col grid, foldable to `opts.count` (default 4) ── */
-export function AccountsWidget({ state, onNav, onOpenTxns, opts }: WidgetProps) {
+export function AccountsWidget({ onNav, onOpenTxns, opts }: WidgetProps) {
   const C = useTheme();
   const M = useMask();
   const { t, tp } = useT();
   const { band } = useBand();
   const MW = (n: number) => maskWhole(M, n);
-  const allAccounts = [...state.accounts].filter((a) => !a.archived).sort((a, b) => a.sort - b.sort);
+  // Accounts are CURRENT-balance always — never scoped to the viewed month (unlike envelopes).
+  // Recomputed from the replica at `currentMonth()` regardless of which month is on screen, so
+  // flipping to a past month never changes what's shown here (same pattern as chrome.tsx's Drawer).
+  const version = useLedgerVersion();
+  const accountsNow = useMemo(() => {
+    const l = store.getLedger();
+    return l ? computeStateResponse(l, currentMonth()).accounts : [];
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [version]);
+  const allAccounts = [...accountsNow].filter((a) => !a.archived).sort((a, b) => a.sort - b.sort);
   // opts.picked mirrors envelopes' `picked:` mode: defined AND non-empty → only those accounts;
   // undefined (or an empty selection, e.g. right after switching to "Selected") → show all.
   const picked = opts?.picked;
