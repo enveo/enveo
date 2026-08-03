@@ -103,6 +103,11 @@ export function AddScreen({
   const [placeId, setPlaceId] = useState<string | null>(null);
   const [placeInput, setPlaceInput] = useState("");
   const [showPlace, setShowPlace] = useState(false);
+  // Only true right after the user taps "Type a place…" — the place input's `autoFocus` reads
+  // this instead of firing unconditionally, so entering EDIT for a transaction that already has
+  // a place (which expands the field programmatically below) doesn't steal focus at mount and
+  // leave a permanent :focus-visible ring with no user interaction.
+  const [placeAutoFocus, setPlaceAutoFocus] = useState(false);
   const [note, setNote] = useState("");
   const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [numpad, setNumpad] = useState(true);
@@ -139,6 +144,7 @@ export function AddScreen({
     setName(editTxn.name ?? "");
     setNote(editTxn.note ?? "");
     setShowPlace(!!editTxn.placeId); // expand filled fields right away (no icon clicking)
+    setPlaceAutoFocus(false); // programmatic expansion — never steal focus on entering edit
     setDate(editTxn.date);
     setEnvOpen(false);
     setDestOpen(false);
@@ -564,13 +570,13 @@ export function AddScreen({
                   {p.name}
                 </button>
               ))}
-              <button onClick={() => setShowPlace(!showPlace)} style={ghostChipStyle}>{t("Type a place…")}</button>
+              <button onClick={() => { const next = !showPlace; setShowPlace(next); setPlaceAutoFocus(next); }} style={ghostChipStyle}>{t("Type a place…")}</button>
             </div>
             {showPlace && (
               <div style={{ position: "relative", padding: `0 ${P}px 6px` }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                   <Ico d="M3 9l9-7 9 7v11a1 1 0 01-1 1h-4v-7H8v7H4a1 1 0 01-1-1V9z" size={15} color={placeId ? TEAL : C.mute} />
-                  <input autoFocus placeholder={t("Place")} value={placeId ? (state.places.find((p) => p.id === placeId)?.name ?? "") : placeInput} onChange={(e) => { setPlaceInput(e.target.value); setPlaceId(null); }} onFocus={() => setNumpad(false)} style={{ flex: 1, background: "none", border: "none", borderBottom: `1px solid ${C.line}`, color: C.text, fontSize: 12, fontFamily: font, padding: "4px 0" }} />
+                  <input autoFocus={placeAutoFocus} placeholder={t("Place")} value={placeId ? (state.places.find((p) => p.id === placeId)?.name ?? "") : placeInput} onChange={(e) => { setPlaceInput(e.target.value); setPlaceId(null); }} onFocus={() => setNumpad(false)} style={{ flex: 1, background: "none", border: "none", borderBottom: `1px solid ${C.line}`, color: C.text, fontSize: 12, fontFamily: font, padding: "4px 0" }} />
                   {placeId && <button onClick={() => { setPlaceId(null); setPlaceInput(""); }} style={{ background: "none", border: "none", color: C.mute, fontSize: 11, cursor: "pointer" }}>✕</button>}
                 </div>
                 {/* in draft the place travels by NAME to /import/apply (server creates/matches) —
