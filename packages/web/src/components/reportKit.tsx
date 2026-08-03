@@ -17,8 +17,17 @@ import { P, TEAL, type Theme } from "../lib/theme";
 
 /** Subscreen band: back+title+month-nav row, then eyebrow/hero/sub and an optional chart slot,
  *  all on `C.headerBg` when the theme paints a Duet band (idiom moved verbatim from the inline
- *  block in Reports.tsx). Body `children` render below in a `className="fi"` div — opacity-only
- *  animation, never `fu`/transform (a transformed ancestor breaks `position:fixed` sheets). */
+ *  block in Reports.tsx). Body `children` render below in a `className="fi rpt-body"` div —
+ *  opacity-only animation, never `fu`/transform (a transformed ancestor breaks `position:fixed`
+ *  sheets). The body carries its OWN `paddingTop` (14, matching the band's `paddingBottom` above
+ *  it) so the band→content gap is consistent whether a subscreen's body starts with a section
+ *  eyebrow (Budgets/Month), a hero-ish stat row (Assets/Cashflow/Spending) or bare rows (Goals/
+ *  Trends) — previously this div had NO top padding, so only the first two groups' own baked-in
+ *  top margins gave any breathing room, and Goals/Trends sat flush under the band (reported bug).
+ *  The `rpt-body` class pairs with a global `!important` rule (chrome.tsx's injected stylesheet)
+ *  that zeroes whichever element ends up as the body's actual first DOM child — simpler and more
+ *  robust than hand-editing every subscreen's first element (Budgets' first section alone varies
+ *  by data: Overspent/Near/Within budget each carry a different top margin). */
 export function ReportShell({ title, month, onPrev, onNext, onBack, eyebrow, hero, sub, bandChart, children }: {
   title: string; month: string; onPrev: () => void; onNext: () => void; onBack: () => void;
   eyebrow: string; hero: ReactNode; sub?: ReactNode; bandChart?: ReactNode; children: ReactNode;
@@ -49,8 +58,10 @@ export function ReportShell({ title, month, onPrev, onNext, onBack, eyebrow, her
           {bandChart}
         </div>
       </div>
-      {/* Animation is `fi` ONLY (opacity) — `fu`/transform breaks position:fixed of sheets inside. */}
-      <div className="fi" style={{ padding: `0 ${P}px` }}>
+      {/* Animation is `fi` ONLY (opacity) — `fu`/transform breaks position:fixed of sheets inside.
+         `rpt-body` pairs with the global first-child margin-top reset (chrome.tsx) so this
+         paddingTop is the sole band→content gap across every subscreen. */}
+      <div className="fi rpt-body" style={{ padding: `14px ${P}px 0` }}>
         {children}
       </div>
     </>
