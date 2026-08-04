@@ -4,12 +4,14 @@
 
 // Combining-marks range fallback for engines without \p{Diacritic} support (verified bun 1.3/ICU 75
 // DOES support it — see search.test.ts — but this keeps the function inert instead of throwing
-// if it ever runs somewhere that doesn't).
+// if it ever runs somewhere that doesn't). The range is written as \u escapes, NOT literal
+// combining characters: a literal range dies with "Range out of order" the moment the file is
+// served/decoded under a non-UTF-8 charset (bit us when bundling for external tooling).
 const DIACRITIC_RE = (() => {
   try {
     return new RegExp("\\p{Diacritic}", "gu");
   } catch {
-    return /[̀-ͯ]/g;
+    return /[\u0300-\u036f]/g;
   }
 })();
 
