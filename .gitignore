@@ -15,3 +15,9 @@ CLAUDE.local.md
 
 # Local agent working files (specs/plans, scratch) — never committed
 .agent/
+
+# claude.ai/design sync — config, staged scripts, and generated bundle stay local
+.design-sync/
+.ds-sync/
+ds-bundle/
+packages/web/.design-sync-entry.tsx
