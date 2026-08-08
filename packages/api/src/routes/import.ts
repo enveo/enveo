@@ -5,6 +5,7 @@ import { z } from "zod";
 import { requireTier } from "../context";
 import { db } from "../db/client";
 import { env } from "../env";
+import { openAiChatFetch } from "../openaiHttp";
 import * as s from "../db/schema";
 import { assertBudgetFks } from "../sync/apply";
 import { confidentSourceRef, decideAssignment, type HistGroup, type HistPattern, rankPatterns } from "./import-match";
@@ -138,11 +139,10 @@ class OpenAiError extends Error {
 }
 
 async function openaiJson(req: ChatRequest): Promise<string> {
-  const res = await fetch("https://api.openai.com/v1/chat/completions", {
-    method: "POST",
-    headers: { "content-type": "application/json", authorization: `Bearer ${env.OPENAI_API_KEY}` },
-    body: JSON.stringify({ model: env.OPENAI_MODEL, messages: req.messages, ...(req.responseFormat ? { response_format: req.responseFormat } : {}), ...(req.reasoningEffort && supportsReasoningEffort(env.OPENAI_MODEL) ? { reasoning_effort: req.reasoningEffort } : {}) }),
-  });
+  const res = await openAiChatFetch(
+    { model: env.OPENAI_MODEL, messages: req.messages, ...(req.responseFormat ? { response_format: req.responseFormat } : {}), ...(req.reasoningEffort && supportsReasoningEffort(env.OPENAI_MODEL) ? { reasoning_effort: req.reasoningEffort } : {}) },
+    { apiKey: env.OPENAI_API_KEY },
+  );
   if (!res.ok) {
     const detail = await res.text().catch(() => "");
     console.error("openai:", res.status, detail.slice(0, 500));
