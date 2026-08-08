@@ -9,7 +9,6 @@
  */
 import { z } from "zod";
 import type { BudgetSuggestionBasis, ProposedEnvelopeDelta } from "./aiBudget";
-import { runAgentTool } from "./aiTools";
 import { computeBudgetState, prevMonth } from "./budget";
 import type { ClientLedger } from "./types";
 
@@ -340,89 +339,6 @@ export function parseAgentSuggestResponse(raw: string): ProposedEnvelopeDelta[] 
     .filter((x): x is Record<string, unknown> => !!x && typeof x === "object")
     .filter((x) => typeof x.envelopeId === "string" && x.envelopeId !== "" && typeof x.amount === "number" && Number.isInteger(x.amount) && x.amount >= 0)
     .map((x) => ({ envelopeId: x.envelopeId as string, proposedDelta: x.amount as number }));
-}
-
-/* ── Tool-calling agent (tool calling — agentLoop) ───────────────────── */
-
-/** Tool call in the model response (OpenAI wire format;
- *  `function.arguments` is a JSON STRING — parsed only in the loop). */
-export interface ToolCall {
-  id: string;
-  type: "function";
-  function: { name: string; arguments: string };
-}
-
-/** Assistant response `choices[0].message` (the transport returns it 1:1;
- *  goes back into `messages` as `{role:"assistant", ...msg}`). */
-export interface AssistantToolsMessage {
-  content: string | null;
-  tool_calls?: ToolCall[];
-}
-
-/** Tool-loop messages — OpenAI wire shapes (tool/assistant roles). */
-export type ChatToolsMessage =
-  | { role: "system" | "user"; content: string }
-  | ({ role: "assistant" } & AssistantToolsMessage)
-  | { role: "tool"; tool_call_id: string; content: string };
-
-/** Tool definition in OpenAI format (structurally compatible with AGENT_TOOLS). */
-export interface AgentToolDefinition {
-  type: "function";
-  function: { name: string; description: string; strict: boolean; parameters: Record<string, unknown> };
-}
-
-export type ToolChoice = "auto" | { type: "function"; function: { name: string } };
-
-/** Chat request with tools. As in ChatRequest: top-level fields camelCase —
- *  the transport maps them to `tools`/`tool_choice`/`parallel_tool_calls`. */
-export interface ChatToolsRequest {
-  messages: ChatToolsMessage[];
-  tools: ReadonlyArray<AgentToolDefinition>;
-  toolChoice: ToolChoice;
-  parallelToolCalls: boolean;
-}
-
-export interface AgentLoopPromptContext {
-  ledger: ClientLedger;
-  month: string;
-  /** Amount to distribute (int minor units). */
-  amount: number;
-  /** User prompt — the PRIMARY criterion for the agent's decision. */
-  directive: string;
-  locale: AiLocale;
-}
-
-/**
- * Agent-loop seed messages: system (role, submit_allocation contract, tool
- * rules) + user seed with the amount, month, directive and the FULL current
- * month state (exactly the get_month_state result via runAgentTool —
- * simple prompts finish in 1 round, without an extra tool call).
- */
-export function buildAgentLoopMessages(ctx: AgentLoopPromptContext): ChatToolsMessage[] {
-  const sys =
-    "You are an envelope-budgeting agent with READ-ONLY data tools. Decide how to split the given amount " +
-    "(integer minor units) across the user's envelopes. " +
-    "The user's directive is the PRIMARY decision criterion — follow it even when it contradicts history. " +
-    "The current month state is already provided in the user message. Call the data tools (get_month_state, " +
-    "get_history, get_spending, get_goals) only when you need MORE facts; you may call several tools in parallel. " +
-    'Tool results are JSON. A result {"error":...} means your arguments were invalid — fix them and retry. ' +
-    'A result with "truncated":true was cut to fit a size limit — narrow the query if you need the rest. ' +
-    "You MUST finish by calling submit_allocation exactly once with your final proposal — it is the ONLY way to " +
-    "finish; never answer in plain text. " +
-    "Hard rules: use only envelope id values present in the provided data; amount is an integer ≥ 0 (minor units, int); " +
-    "you may skip envelopes (omit them entirely); the tools only read — you cannot create/modify/delete anything. " +
-    languageDirectives(ctx.locale).trimEnd();
-  const state = runAgentTool(ctx.ledger, "get_month_state", { month: ctx.month });
-  const user = JSON.stringify({
-    month: ctx.month,
-    amountToDistribute: ctx.amount,
-    directive: ctx.directive,
-    currentMonthState: state.truncated ? { truncated: true, result: state.result } : state.result,
-  });
-  return [
-    { role: "system", content: sys },
-    { role: "user", content: user },
-  ];
 }
 
 /* ── Import from screenshots (cycle 1: facts from the screenshot) ────── */

@@ -447,7 +447,4 @@ export interface BudgetSuggestResponse {
   generatedAt: string;
   items: BudgetSuggestionItem[];
   warnings: string[];
-  /** Tool-calling agent trace (custom profile): tool NAMES in call order
-   *  (no arguments — those stay in the loop logs, not in the response). */
-  trace?: Array<{ tool: string }>;
 }

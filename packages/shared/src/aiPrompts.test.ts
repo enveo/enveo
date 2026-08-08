@@ -3,7 +3,6 @@ import type { ClientLedger } from "./types";
 import { buildBudgetSuggestionBasis } from "./aiBudget";
 import {
   aiLocaleSchema,
-  buildAgentLoopMessages,
   buildAgentSuggestContext,
   buildAgentSuggestPrompt,
   buildImportExtractPrompt,
@@ -103,7 +102,6 @@ describe("languageName / languageDirectives — any BCP-47 locale", () => {
       sysOf(buildSuggestPrompt({ basis, ledger, month: "2026-07", profile: "historical", locale: "de" }).messages),
       sysOf(buildAgentSuggestPrompt(buildAgentSuggestContext({ ledger, month: "2026-07", basis, directive: "x", locale: "de" })).messages),
       sysOf(buildImportExtractPrompt([], { envelopes: [], categories: [] }, "2026-07-13", "de", "EUR").messages),
-      buildAgentLoopMessages({ ledger, month: "2026-07", amount: 100_00, directive: "x", locale: "de" })[0]!.content as string,
     ];
     for (const sys of systems) expect(sys).toContain(contract);
   });
