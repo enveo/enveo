@@ -6,6 +6,21 @@ import { InstallBody } from "./InstallBody";
 
 const FLAG = "enveo.a2hs";
 
+/**
+ * Remember that the install offer was already made, so the banner never returns. Also called by
+ * the onboarding install card, which is the SAME one-time offer arriving earlier — without it the
+ * banner would slide up seconds after the user skipped that card.
+ * The write is guarded: localStorage throws in Safari private mode, and a caller closing a screen
+ * on the way out must not be taken down with it.
+ */
+export function markInstallOffered(): void {
+  try {
+    localStorage.setItem(FLAG, "dismissed");
+  } catch {
+    /* private mode — the banner shows once more, which is better than a broken flow */
+  }
+}
+
 /** One-time bottom prompt to install, both platforms. Dismissible; never returns once closed. */
 export function InstallBanner() {
   const C = useTheme();
@@ -25,7 +40,7 @@ export function InstallBanner() {
   if (!show || !offerable) return null;
 
   const dismiss = () => {
-    localStorage.setItem(FLAG, "dismissed");
+    markInstallOffered();
     setShow(false);
   };
 

@@ -214,7 +214,9 @@ export default function App() {
         />
         <EnvEdit env={editEnv} groups={state?.groups ?? []} onClose={() => setEnvEdit(null)} />
         <Drawer open={drawer} onClose={() => setDrawer(false)} onNav={nav} onOpenReports={openReports} onInstall={() => setInstallSheet(true)} />
-        <InstallBanner />
+        {/* not during onboarding: the wizard ends with its own install card (a second ask), the
+            BottomNav the banner's offset clears is hidden there, and it must not cover the skeleton */}
+        {state && !onboarding && <InstallBanner />}
         <InstallSheet show={installSheet} onClose={() => setInstallSheet(false)} />
         <UpdatePrompt />
       </div>

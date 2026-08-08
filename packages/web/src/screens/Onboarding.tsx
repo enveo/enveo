@@ -13,6 +13,7 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { AmountPadHost, type AmountPadTarget } from "../components/AmountPadSheet";
 import { LogoMark } from "../components/chrome";
+import { markInstallOffered } from "../components/InstallBanner";
 import { InstallBody } from "../components/InstallBody";
 import { api, apiErrorMessage } from "../lib/api";
 import { useSettings, useTheme } from "../lib/contexts";
@@ -86,6 +87,12 @@ export function OnboardingScreen({ onDone }: { onDone: () => void }) {
     installStateRef.current = installState;
   }, [installState]);
   const [showInstall, setShowInstall] = useState(false);
+  // The card IS the one-time install offer. Marking it as made keeps the banner from sliding up
+  // on Start seconds later, asking the same thing again.
+  const doneWithInstall = () => {
+    markInstallOffered();
+    onDone();
+  };
   const finish = () => {
     const s = installStateRef.current;
     if (s === "promptable" || s === "ios-safari" || s === "ios-other") setShowInstall(true);
@@ -181,8 +188,8 @@ export function OnboardingScreen({ onDone }: { onDone: () => void }) {
             <div style={{ fontSize: 20, fontWeight: 800, color: C.text, marginBottom: 6 }}>{t("Add Enveo to your phone")}</div>
             <div style={{ fontSize: 13.5, color: C.soft, lineHeight: 1.5 }}>{t("One tap and Enveo lives on your home screen — offline, full screen, no browser bar.")}</div>
           </div>
-          <InstallBody onDone={onDone} />
-          <button onClick={onDone} style={{ width: "100%", marginTop: 4, padding: "11px 0", borderRadius: 11, border: "none", background: "transparent", color: C.soft, fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: font }}>
+          <InstallBody onDone={doneWithInstall} />
+          <button onClick={doneWithInstall} style={{ width: "100%", marginTop: 4, padding: "11px 0", borderRadius: 11, border: "none", background: "transparent", color: C.soft, fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: font }}>
             {t("Skip for now")}
           </button>
         </div>
