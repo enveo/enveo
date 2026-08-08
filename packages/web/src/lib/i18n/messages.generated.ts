@@ -325,7 +325,7 @@ export const MESSAGES = [
   "On-device storage",
   "Once enabled, the server stores ciphertexts only. The key is your password, which the server does NOT know — without it (or a pairing code from a trusted device) the data cannot be recovered.",
   "One tap and Enveo lives on your home screen — offline, full screen, no browser bar.",
-  "Open enveo.app in Safari to add it to your home screen — installing only works from Safari on iPhone and iPad.",
+  "Open {host} in Safari to add it to your home screen — installing only works from Safari on iPhone and iPad.",
   "OpenAI key",
   "OpenAI rejected the request — check the key and the model, then try again.",
   "OpenAI rejected your key — check it in Settings → Artificial intelligence.",

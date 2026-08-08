@@ -67,7 +67,9 @@ export function InstallBody({ onDone }: { onDone?: () => void }) {
   // ios-other
   return (
     <div style={{ fontSize: 13.5, color: C.soft, lineHeight: 1.45 }}>
-      {t("Open enveo.app in Safari to add it to your home screen — installing only works from Safari on iPhone and iPad.")}
+      {/* the host, not the brand domain: selfhost is the default profile, so "open enveo.app"
+          would send most readers to a site that does not serve their data */}
+      {t("Open {host} in Safari to add it to your home screen — installing only works from Safari on iPhone and iPad.", { host: location.host })}
     </div>
   );
 }
