@@ -56,8 +56,7 @@ friends](docs/hosting.md)**.
 Everything else lives in **[docs/](docs/readme.md)**: [self-hosting in
 full](docs/install.md), [managed platforms](docs/hosting.md), [day-2
 operations](docs/operations.md), [architecture](docs/architecture.md),
-[AI features](docs/ai.md), [developing](docs/development.md) and the
-[1.x upgrade](docs/upgrade-from-1.x.md).
+[AI features](docs/ai.md) and [developing](docs/development.md).
 
 ## Developing
 

@@ -15,9 +15,6 @@ for a [release tag](https://github.com/enveo/enveo/releases) (e.g.
 `ghcr.io/enveo/enveo:3.6.2`), so `docker compose pull` cannot carry you across
 a major version by surprise.
 
-Upgrading a 1.x install to 2.0+ is a one-time special case:
-[upgrade-from-1.x.md](upgrade-from-1.x.md).
-
 ## Back up and restore
 
 ```bash
