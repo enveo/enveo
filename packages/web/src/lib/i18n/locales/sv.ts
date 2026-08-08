@@ -217,7 +217,6 @@ export const sv: Dict = {
   "Import from screenshots": "Importera från skärmbilder",
   "Imported item": "Importerad rad",
   "Income": "Inkomst",
-  "Install as an app:": "Installera som app:",
   "Invalid pairing code.": "Ogiltig parkopplingskod.",
   "Investor": "Investerare",
   "Irreversibly deletes data from the server; other devices will lose access. Make a backup first (Export).": "Raderar data från servern permanent; andra enheter förlorar åtkomsten. Gör en säkerhetskopia först (Exportera).",

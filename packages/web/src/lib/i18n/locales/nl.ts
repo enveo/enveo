@@ -217,7 +217,6 @@ export const nl: Dict = {
   "Import from screenshots": "Importeren uit schermafbeeldingen",
   "Imported item": "Geïmporteerde regel",
   "Income": "Inkomsten",
-  "Install as an app:": "Installeren als app:",
   "Invalid pairing code.": "Ongeldige koppelcode.",
   "Investor": "Belegger",
   "Irreversibly deletes data from the server; other devices will lose access. Make a backup first (Export).": "Verwijdert de gegevens onherroepelijk van de server; andere apparaten verliezen de toegang. Maak eerst een back-up (Exporteren).",

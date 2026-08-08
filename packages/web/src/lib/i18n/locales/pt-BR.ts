@@ -217,7 +217,6 @@ export const ptBR: Dict = {
   "Import from screenshots": "Importar de capturas de tela",
   "Imported item": "Item importado",
   "Income": "Receita",
-  "Install as an app:": "Instalar como app:",
   "Invalid pairing code.": "Código de pareamento inválido.",
   "Investor": "Investidor",
   "Irreversibly deletes data from the server; other devices will lose access. Make a backup first (Export).": "Exclui os dados do servidor de forma irreversível; os outros dispositivos perdem o acesso. Faça um backup antes (Exportar).",

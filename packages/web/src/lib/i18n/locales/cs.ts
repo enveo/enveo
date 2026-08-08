@@ -217,7 +217,6 @@ export const cs: Dict = {
   "Import from screenshots": "Import ze snímků obrazovky",
   "Imported item": "Importovaná položka",
   "Income": "Příjem",
-  "Install as an app:": "Nainstalovat jako aplikaci:",
   "Invalid pairing code.": "Neplatný párovací kód.",
   "Investor": "Investor",
   "Irreversibly deletes data from the server; other devices will lose access. Make a backup first (Export).": "Nevratně smaže data ze serveru; ostatní zařízení ztratí přístup. Nejdřív si udělej zálohu (Export).",

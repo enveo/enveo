@@ -3,7 +3,7 @@ import type { Transaction } from "@enveo/shared";
 import { BottomNav, Drawer, StyleInjector, type ScreenId } from "./components/chrome";
 import { EnvActionsSheet } from "./components/EnvActionsSheet";
 import { EnvEdit } from "./screens/Budget";
-import { InstallHint } from "./components/InstallHint";
+import { InstallBanner } from "./components/InstallBanner";
 import { UpdatePrompt } from "./components/UpdatePrompt";
 import { SyncBadge } from "./components/SyncBadge";
 import { useStateQuery } from "./lib/api";
@@ -212,7 +212,7 @@ export default function App() {
         />
         <EnvEdit env={editEnv} groups={state?.groups ?? []} onClose={() => setEnvEdit(null)} />
         <Drawer open={drawer} onClose={() => setDrawer(false)} onNav={nav} onOpenReports={openReports} />
-        <InstallHint />
+        <InstallBanner />
         <UpdatePrompt />
       </div>
     </div>
