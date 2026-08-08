@@ -43,13 +43,25 @@ export function InstallBody({ onDone }: { onDone?: () => void }) {
   }
 
   if (state === "ios-safari") {
+    const MARK = " ";
+    const share = t("Share");
+    const addToHome = t("Add to Home Screen");
+
+    const tapShareParts = t("Tap {action} to continue", { action: MARK }).split(MARK);
+    const tapShareBefore = tapShareParts[0] ?? "";
+    const tapShareAfter = tapShareParts[1] ?? "";
+
+    const thenAddParts = t("Then tap {action}", { action: MARK }).split(MARK);
+    const thenAddBefore = thenAddParts[0] ?? "";
+    const thenAddAfter = thenAddParts[1] ?? "";
+
     return (
       <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
         <div style={{ fontSize: 13.5, color: C.soft, lineHeight: 1.45 }}>
           {t("Add Enveo to your home screen so it opens like any other app:")}
         </div>
-        {step(SHARE, <span>{t("Tap")} <b>{t("Share")}</b></span>)}
-        {step(PLUS_BOX, <span>{t("Then")} <b>{t("Add to Home Screen")}</b></span>)}
+        {step(SHARE, <span>{tapShareBefore}<b>{share}</b>{tapShareAfter}</span>)}
+        {step(PLUS_BOX, <span>{thenAddBefore}<b>{addToHome}</b>{thenAddAfter}</span>)}
       </div>
     );
   }
