@@ -5,6 +5,7 @@ import { useInstall } from "../lib/installPrompt";
 
 const SHARE = "M12 4v11 M8.5 7.5L12 4l3.5 3.5 M6 11v7a2 2 0 002 2h8a2 2 0 002-2v-7";
 const PLUS_BOX = "M12 8.5v7 M8.5 12h7 M5 4h14a1 1 0 011 1v14a1 1 0 01-1 1H5a1 1 0 01-1-1V5a1 1 0 011-1z";
+const MARK = "\u0000";
 
 /**
  * The adaptive install content, reused by the banner, the onboarding card and the
@@ -43,17 +44,14 @@ export function InstallBody({ onDone }: { onDone?: () => void }) {
   }
 
   if (state === "ios-safari") {
-    const MARK = " ";
     const share = t("Share");
     const addToHome = t("Add to Home Screen");
 
     const tapShareParts = t("Tap {action} to continue", { action: MARK }).split(MARK);
-    const tapShareBefore = tapShareParts[0] ?? "";
-    const tapShareAfter = tapShareParts[1] ?? "";
+    const [tapShareBefore, tapShareAfter] = tapShareParts.length === 2 ? tapShareParts : [`${tapShareParts[0] ?? ""} `, ""];
 
     const thenAddParts = t("Then tap {action}", { action: MARK }).split(MARK);
-    const thenAddBefore = thenAddParts[0] ?? "";
-    const thenAddAfter = thenAddParts[1] ?? "";
+    const [thenAddBefore, thenAddAfter] = thenAddParts.length === 2 ? thenAddParts : [`${thenAddParts[0] ?? ""} `, ""];
 
     return (
       <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
