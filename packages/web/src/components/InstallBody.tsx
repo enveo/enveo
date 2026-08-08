@@ -34,7 +34,7 @@ export function InstallBody({ onDone }: { onDone?: () => void }) {
           {t("Add Enveo to your device so it opens like any other app — offline, full screen, one tap away.")}
         </div>
         <button
-          onClick={() => void promptInstall().finally(() => onDone?.())}
+          onClick={() => void promptInstall().catch(() => {}).finally(() => onDone?.())}
           style={{ width: "100%", padding: "13px 0", borderRadius: 12, border: "none", background: "var(--cta)", color: "#fff", fontSize: 15, fontWeight: 700, cursor: "pointer" }}
         >
           {t("Install")}

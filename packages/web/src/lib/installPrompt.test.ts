@@ -1,5 +1,5 @@
-import { describe, expect, it } from "bun:test";
-import { installState, runPrompt } from "./installPrompt";
+import { afterAll, beforeAll, describe, expect, it } from "bun:test";
+import { initInstallPrompt, installState, promptInstall, runPrompt } from "./installPrompt";
 
 const ANDROID = "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 Chrome/126 Mobile Safari/537.36";
 const DESKTOP_CHROME = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/126 Safari/537.36";
@@ -43,5 +43,78 @@ describe("runPrompt", () => {
     const outcome = await runPrompt(e as never);
     expect(prompted).toBe(true);
     expect(outcome).toBe("accepted");
+  });
+});
+
+/**
+ * The deferred event is SINGLE-USE, so promptInstall must drop it whatever the native dialog
+ * does. Chromium throws InvalidStateError on an already-consumed event; if that escaped, the
+ * module would keep a dead event, the state would stay "promptable" forever and the Drawer row
+ * and Settings card would stay visible while every click did nothing.
+ *
+ * A window stub on globalThis — bun test has no DOM; it lets us drive the real capture listener
+ * that initInstallPrompt registers, which is the only way to put an event into the module.
+ */
+describe("promptInstall", () => {
+  const handlers = new Map<string, (e: unknown) => void>();
+  const fire = (e: unknown) => handlers.get("beforeinstallprompt")!(e);
+
+  beforeAll(() => {
+    (globalThis as Record<string, unknown>).window = {
+      addEventListener: (type: string, fn: (e: unknown) => void) => void handlers.set(type, fn),
+      navigator: {},
+      matchMedia: () => ({ matches: false }),
+    };
+    initInstallPrompt();
+  });
+
+  afterAll(() => {
+    delete (globalThis as Record<string, unknown>).window;
+  });
+
+  it("with no captured event → unavailable", async () => {
+    expect(await promptInstall()).toBe("unavailable");
+  });
+
+  it("consumes the captured event once and reports the outcome", async () => {
+    let prompts = 0;
+    fire({
+      preventDefault: () => {},
+      prompt: async () => void prompts++,
+      userChoice: Promise.resolve({ outcome: "dismissed" as const }),
+    });
+    expect(await promptInstall()).toBe("dismissed");
+    expect(await promptInstall()).toBe("unavailable"); // dropped: single-use
+    expect(prompts).toBe(1);
+  });
+
+  it("a THROWING prompt() still clears the event instead of pinning a dead one", async () => {
+    let prompts = 0;
+    fire({
+      preventDefault: () => {},
+      prompt: async () => {
+        prompts++;
+        throw Object.assign(new Error("the event was already used"), { name: "InvalidStateError" });
+      },
+      userChoice: Promise.resolve({ outcome: "accepted" as const }),
+    });
+    expect(await promptInstall()).toBe("unavailable"); // reported, not re-thrown
+    expect(await promptInstall()).toBe("unavailable");
+    expect(prompts).toBe(1); // the dead event was dropped, not retried
+  });
+
+  it("a rejecting userChoice is absorbed the same way", async () => {
+    let prompts = 0;
+    const userChoice = Promise.reject(new Error("gone"));
+    userChoice.catch(() => {}); // it sits idle until runPrompt awaits it — keep bun from flagging it
+    fire({
+      preventDefault: () => {},
+      prompt: async () => void prompts++,
+      userChoice,
+    });
+    expect(await promptInstall()).toBe("unavailable");
+    expect(prompts).toBe(1);
+    expect(await promptInstall()).toBe("unavailable");
+    expect(prompts).toBe(1);
   });
 });

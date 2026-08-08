@@ -72,14 +72,26 @@ export function initInstallPrompt(): void {
   recompute(); // initial (e.g. already standalone)
 }
 
-/** Fire the native dialog if we hold an event; "unavailable" otherwise. */
+/**
+ * Fire the native dialog if we hold an event; "unavailable" otherwise.
+ *
+ * The event is single-use, so it is dropped in a `finally`: Chromium throws
+ * InvalidStateError on an already-consumed event, and keeping a dead one would pin the
+ * state at "promptable" forever — a visible Install button that does nothing until a
+ * reload. A rejection is never re-thrown either; callers get "unavailable", not an
+ * unhandled rejection.
+ */
 export async function promptInstall(): Promise<"accepted" | "dismissed" | "unavailable"> {
   const e = deferred;
   if (!e) return "unavailable";
-  const outcome = await runPrompt(e);
-  deferred = null; // single-use
-  recompute();
-  return outcome;
+  try {
+    return await runPrompt(e);
+  } catch {
+    return "unavailable";
+  } finally {
+    deferred = null;
+    recompute();
+  }
 }
 
 const getSnapshot = (): InstallState => snapshot;
