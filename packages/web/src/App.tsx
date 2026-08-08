@@ -4,6 +4,7 @@ import { BottomNav, Drawer, StyleInjector, type ScreenId } from "./components/ch
 import { EnvActionsSheet } from "./components/EnvActionsSheet";
 import { EnvEdit } from "./screens/Budget";
 import { InstallBanner } from "./components/InstallBanner";
+import { InstallSheet } from "./components/InstallSheet";
 import { UpdatePrompt } from "./components/UpdatePrompt";
 import { SyncBadge } from "./components/SyncBadge";
 import { useStateQuery } from "./lib/api";
@@ -31,6 +32,7 @@ export default function App() {
   const [screen, setScreen] = useState<ScreenId>("start");
   const [month, setMonth] = useState(currentMonth());
   const [drawer, setDrawer] = useState(false);
+  const [installSheet, setInstallSheet] = useState(false);
   const [editTxn, setEditTxn] = useState<Transaction | null>(null);
   // Start "quick actions" widget preset for a FRESH Add — read once at mount (AddScreen fully
   // unmounts/remounts with `screen`, so this never leaks into an unrelated later Add). Reset
@@ -211,8 +213,9 @@ export default function App() {
           onEdit={() => { if (envActions) { setEnvEdit(envActions.envelopeId); setEnvActions(null); } }}
         />
         <EnvEdit env={editEnv} groups={state?.groups ?? []} onClose={() => setEnvEdit(null)} />
-        <Drawer open={drawer} onClose={() => setDrawer(false)} onNav={nav} onOpenReports={openReports} />
+        <Drawer open={drawer} onClose={() => setDrawer(false)} onNav={nav} onOpenReports={openReports} onInstall={() => setInstallSheet(true)} />
         <InstallBanner />
+        <InstallSheet show={installSheet} onClose={() => setInstallSheet(false)} />
         <UpdatePrompt />
       </div>
     </div>
