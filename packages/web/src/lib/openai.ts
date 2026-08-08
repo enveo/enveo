@@ -48,11 +48,15 @@ async function responseError(res: Response, kind: ChatTarget["kind"]): Promise<E
   return new Error("ai_upstream_error");
 }
 
+/** Hard cap for one upstream round-trip — a hung upstream must become a normal
+ *  transport error (code + retry), not a spinner that never resolves. */
+const CHAT_TIMEOUT_MS = 120_000;
+
 /** The one transport step (fetch → non-2xx → body): the single place a failure becomes a code. */
 async function postChat(url: string, headers: Record<string, string>, body: unknown, kind: ChatTarget["kind"]): Promise<unknown> {
   let res: Response;
   try {
-    res = await fetch(url, { method: "POST", headers, body: JSON.stringify(body) });
+    res = await fetch(url, { method: "POST", headers, body: JSON.stringify(body), signal: AbortSignal.timeout(CHAT_TIMEOUT_MS) });
   } catch {
     throw transportError();
   }
