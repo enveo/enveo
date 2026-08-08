@@ -165,7 +165,7 @@ On a **custom domain**, point `BETTER_AUTH_URL` at that origin instead (or list 
 
 ### Publishing the one-click template (maintainer, Railway dashboard)
 
-The README deliberately ships **no** "Deploy on Railway" button: the only deploy-button URL
+This page deliberately ships **no** "Deploy on Railway" button: the only deploy-button URL
 Railway documents is `https://railway.com/new/template/<TEMPLATE_CODE>`, a code exists only
 for a **published template**, and a template can only be generated from a project whose
 services are linked to a **public** repository. (Do not substitute
@@ -189,16 +189,16 @@ it cannot be committed:
    that is the first time the one-click path is executed end to end. It must come up
    healthy with a Postgres attached and a generated secret, and let you create the owner
    account. Then delete the throwaway project.
-7. Only now add the button to the README (retitling the section, which currently states
-   there is none) and drop the `TODO(maintainer)` comment beside it:
+7. Only now add the button at the top of this page's [Railway](#railway) section (and
+   optionally to the README):
 
    ```md
    [![Deploy on Railway](https://railway.com/button.svg)](https://railway.com/new/template/CODE?utm_medium=integration&utm_source=button&utm_campaign=generic)
    ```
 
-Until then the README documents the manual path (steps 1–3 above), because that is the
-only Railway path anyone has actually run. A published template is what makes it genuinely
-one-click.
+Until then this page documents the manual path (the [Railway](#railway) section above),
+because that is the only Railway path anyone has actually run. A published template is
+what makes it genuinely one-click.
 
 What publishing is worth: Railway pays a kickback on a published template — 15% of the
 usage costs its deployments generate, rising to 25% for maintainers who actively answer

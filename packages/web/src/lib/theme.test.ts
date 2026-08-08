@@ -261,8 +261,8 @@ describe("theme screen tokens", () => {
 /**
  * C3 dark-mode contrast audit (2026-07-31) — regression guard for the backlog note
  * "dark-mode accent audit — outline chips measure 3.4–3.9:1". WCAG 2.1 relative-luminance
- * contrast, ported inline (no DOM/browser needed) so this runs in `bun test`. Full measured
- * table + before/after screenshots: .superpowers/sdd/cleanup/c3-report.md.
+ * contrast, ported inline (no DOM/browser needed) so this runs in `bun test`. The full measured
+ * table + before/after screenshots live in the maintainer's review notes for that audit.
  */
 describe("C3 contrast audit — dark-mode AA regression guard", () => {
   const hexToRgb = (hex: string) => ({
