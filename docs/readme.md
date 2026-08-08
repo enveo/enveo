@@ -12,8 +12,6 @@
   the cost warning for operator keys.
 - **[Developing](development.md)** — running from source, demo data, tests,
   adding a translation.
-- **[Upgrading from 1.x](upgrade-from-1.x.md)** — the one-time migration to
-  mandatory accounts, including budget reattachment.
 
 ## Screens
 

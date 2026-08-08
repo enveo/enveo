@@ -10,7 +10,6 @@ background (optionally end-to-end encrypted), and your data stays yours.
 <p align="center">
   <a href="https://enveo.app"><img src="docs/assets/hero.gif" width="260" alt="Enveo: home, budget and reports on mobile"></a>
 </p>
-<p align="center"><a href="docs/assets/start-desktop.png"><img src="docs/assets/start-desktop.png" width="680" alt="Enveo on the desktop"></a></p>
 
 ## Features
 
@@ -58,8 +57,7 @@ friends](docs/hosting.md)**.
 Everything else lives in **[docs/](docs/readme.md)**: [self-hosting in
 full](docs/install.md), [managed platforms](docs/hosting.md), [day-2
 operations](docs/operations.md), [architecture](docs/architecture.md),
-[AI features](docs/ai.md), [developing](docs/development.md) and the
-[1.x upgrade](docs/upgrade-from-1.x.md).
+[AI features](docs/ai.md) and [developing](docs/development.md).
 
 ## Developing
 
