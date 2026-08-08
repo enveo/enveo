@@ -14,7 +14,7 @@
  *   ai_upstream_error — anything else: an upstream failure, or an answer we cannot read
  * api.test.ts guards this file: no template-literal throws (that is how the prose got in).
  */
-import { supportsReasoningEffort, type AssistantToolsMessage, type ChatRequest, type ChatToolsRequest } from "@enveo/shared";
+import { supportsReasoningEffort, type ChatRequest } from "@enveo/shared";
 
 
 
@@ -81,23 +81,4 @@ export async function chatJson(req: ChatRequest, cfg: ChatTarget): Promise<strin
     cfg.kind,
   )) as { choices?: Array<{ message?: { content?: string } }> };
   return data.choices?.[0]?.message?.content ?? "";
-}
-
-
-
-export async function chatTools(req: ChatToolsRequest, cfg: { key: string; model: string }): Promise<AssistantToolsMessage> {
-  const data = (await postChat(
-    OPENAI_URL,
-    { "content-type": "application/json", authorization: `Bearer ${cfg.key}` },
-    {
-      model: cfg.model,
-      messages: req.messages,
-      tools: req.tools,
-      tool_choice: req.toolChoice,
-      parallel_tool_calls: req.parallelToolCalls,
-    },
-    "byok",
-  )) as { choices?: Array<{ message?: AssistantToolsMessage }> };
-  const msg = data.choices?.[0]?.message;
-  return { content: msg?.content ?? null, ...(msg?.tool_calls ? { tool_calls: msg.tool_calls } : {}) };
 }
