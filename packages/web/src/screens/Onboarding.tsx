@@ -10,7 +10,7 @@
  * All writes go through the existing local-first path (mirror + outbox).
  * On completion we call onDone — App removes the wizard and shows Start.
  */
-import { useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { AmountPadHost, type AmountPadTarget } from "../components/AmountPadSheet";
 import { LogoMark } from "../components/chrome";
 import { InstallBody } from "../components/InstallBody";
@@ -78,9 +78,17 @@ export function OnboardingScreen({ onDone }: { onDone: () => void }) {
   // Once the budget exists, offer the install step only where it is actually possible;
   // otherwise leave straight away — the card must never block completion.
   const { state: installState } = useInstall();
+  // tryDemo is async (awaits demoSeed + fullResync) — a beforeinstallprompt/appinstalled
+  // event can land mid-flight, so finish() must read the LIVE state, not the value closed
+  // over at click time. The ref is kept in sync with the hook on every render.
+  const installStateRef = useRef(installState);
+  useEffect(() => {
+    installStateRef.current = installState;
+  }, [installState]);
   const [showInstall, setShowInstall] = useState(false);
   const finish = () => {
-    if (installState === "promptable" || installState === "ios-safari" || installState === "ios-other") setShowInstall(true);
+    const s = installStateRef.current;
+    if (s === "promptable" || s === "ios-safari" || s === "ios-other") setShowInstall(true);
     else onDone();
   };
 
