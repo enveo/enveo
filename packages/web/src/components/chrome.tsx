@@ -6,6 +6,7 @@ import { currentMonth, monthLabel } from "../lib/dates";
 import { LOCALE_OF } from "../lib/format";
 import { useT } from "../lib/i18n";
 import { Ico } from "../lib/icons";
+import { useInstall } from "../lib/installPrompt";
 import { store } from "../lib/store";
 import { CORAL, CTA, font, P, type Theme } from "../lib/theme";
 import { APP_VERSION, buildLabel } from "../lib/version";
@@ -227,6 +228,7 @@ const D_MOON = "M21 12.8A9 9 0 1111.2 3a7 7 0 009.8 9.8z";
 const D_GEAR =
   "M12 9a3 3 0 100 6 3 3 0 000-6zM19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 11-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 11-4 0v-.09a1.65 1.65 0 00-1-1.51 1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 11-2.83-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 110-4h.09a1.65 1.65 0 001.51-1 1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 112.83-2.83l.06.06a1.65 1.65 0 001.82.33 1.65 1.65 0 001-1.51V3a2 2 0 114 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 112.83 2.83l-.06.06a1.65 1.65 0 00-.33 1.82 1.65 1.65 0 001.51 1H21a2 2 0 110 4h-.09a1.65 1.65 0 00-1.51 1z";
 const D_CHEV = "M9 5l7 7-7 7";
+const D_INSTALL = "M12 4v10 M8 10l4 4 4-4 M5 20h14";
 
 /** Stroked drawer SVG icon — stroke via style (var(--cta) etc. work). */
 function DrawIco({ d, size = 18, color, w = 1.7 }: { d: string; size?: number; color: string; w?: number }) {
@@ -237,11 +239,12 @@ function DrawIco({ d, size = 18, color, w = 1.7 }: { d: string; size?: number; c
   );
 }
 
-export function Drawer({ open, onClose, onNav, onOpenReports }: { open: boolean; onClose: () => void; onNav: (s: ScreenId) => void; onOpenReports: (tab: "budgets") => void }) {
+export function Drawer({ open, onClose, onNav, onOpenReports, onInstall }: { open: boolean; onClose: () => void; onNav: (s: ScreenId) => void; onOpenReports: (tab: "budgets") => void; onInstall: () => void }) {
   const C = useTheme();
   const { settings, setSettings } = useSettings();
   const { t, tp, lang } = useT();
   const version = useLedgerVersion();
+  const { state: installState } = useInstall();
   const swipe = useRef<{ x: number; y: number } | null>(null);
   // live shortcut data from the replica — CURRENT month (not the viewed one), only while open
   const live = useMemo(() => {
@@ -260,6 +263,7 @@ export function Drawer({ open, onClose, onNav, onOpenReports }: { open: boolean;
 
   const darkOn = settings.themeMode === "dark";
   const txCount = live?.txCount ?? 0;
+  const canInstall = installState !== "installed" && installState !== "unavailable";
   const chevron = <DrawIco d={D_CHEV} size={14} color={C.mute} w={2} />;
   // `ariaLabel` overrides the accessible name when `right` carries meaning beyond the visible
   // `label` (the overspent dot below is `aria-hidden` — a decoration with no text alternative
@@ -312,9 +316,10 @@ export function Drawer({ open, onClose, onNav, onOpenReports }: { open: boolean;
             t("Envelope budgets"),
             () => { onClose(); onOpenReports("budgets"); },
             live?.overspent ? <span aria-hidden style={{ width: 7, height: 7, borderRadius: "50%", background: CORAL, flexShrink: 0 }} /> : chevron,
-            true,
+            !canInstall,
             live?.overspent ? t("Envelope budgets — some envelopes are over budget") : undefined,
           )}
+          {canInstall && shortcut(D_INSTALL, t("Install app"), () => { onClose(); onInstall(); }, chevron, true)}
         </div>
 
         <div style={{ flex: 1 }} />

@@ -5,9 +5,11 @@ import { relSync } from "../lib/dates";
 import * as e2ee from "../lib/e2ee";
 import { useT, type Message, msg } from "../lib/i18n";
 import { Ico } from "../lib/icons";
+import { useInstall } from "../lib/installPrompt";
 import { P, tint } from "../lib/theme";
 import type { ScreenId } from "../components/chrome";
 import { useBand } from "../components/kit";
+import { InstallSheet } from "../components/InstallSheet";
 import { APP_VERSION, buildLabel } from "../lib/version";
 import { AiSection } from "./settings/Ai";
 import { AdvancedSection } from "./settings/Advanced";
@@ -101,6 +103,8 @@ function Hub({ onOpen }: { onOpen: (s: SubId) => void }) {
   const C = useTheme();
   const { t } = useT();
   const { settings } = useSettings();
+  const { state: installState } = useInstall();
+  const [sheet, setSheet] = useState(false);
   const isDark = settings.themeMode === "auto"
     ? typeof window !== "undefined" && window.matchMedia("(prefers-color-scheme: dark)").matches
     : settings.themeMode === "dark";
@@ -113,6 +117,20 @@ function Hub({ onOpen }: { onOpen: (s: SubId) => void }) {
 
   return (
     <div className="fi" style={{ padding: "2px 14px", display: "flex", flexDirection: "column", gap: 9 }}>
+      {installState !== "installed" && installState !== "unavailable" && (
+        <HubCard
+          tint={tint(catData, 0.1)}
+          icon={
+            <Glyph color={catData}>
+              <path d="M12 4v10 M8 10l4 4 4-4 M5 20h14" />
+            </Glyph>
+          }
+          title={t("Install app")}
+          desc={t("Add Enveo to your home screen")}
+          status={null}
+          onClick={() => setSheet(true)}
+        />
+      )}
       <HubCard
         tint={tint(catAppearance, 0.1)}
         icon={
@@ -188,6 +206,7 @@ function Hub({ onOpen }: { onOpen: (s: SubId) => void }) {
         {`Enveo v${APP_VERSION}`}
         {buildLabel() ? ` · ${buildLabel()}` : ""}
       </div>
+      <InstallSheet show={sheet} onClose={() => setSheet(false)} />
     </div>
   );
 }
