@@ -71,7 +71,7 @@ describe("buildBudgetSuggestionBasis", () => {
 
   it("investor gives savings-like envelopes top priority and picks one as remainder sink", () => {
     const g = grp();
-    const eSav = env(g.id, { id: "SAV", name: "Obligacje" });
+    const eSav = env(g.id, { id: "SAV", name: "Bonds", isSavings: true });
     const eSpend = env(g.id, { id: "SPEND", name: "Jedzenie" });
     const l = asClientLedger({ accounts: [onAcc(500_00)], groups: [g], envelopes: [eSav, eSpend], allocations: [], transactions: [] });
     const basis = buildBudgetSuggestionBasis({ ledger: l, month: "2026-07", profile: "investor" });
@@ -79,6 +79,17 @@ describe("buildBudgetSuggestionBasis", () => {
     const spend = basis.candidates.find((c) => c.envelopeId === "SPEND")!;
     expect(sav.savingsLike).toBe(true);
     expect(sav.priority).toBeGreaterThan(spend.priority);
+    expect(basis.remainderEnvelopeId).toBe("SAV");
+  });
+
+  it("savingsLike comes from the explicit isSavings flag, not the envelope name", () => {
+    const g = grp();
+    const eFlag = env(g.id, { id: "SAV", name: "Someday fund", isSavings: true });
+    const eName = env(g.id, { id: "NAME", name: "Oszczędności" }); // savings-sounding name, no flag
+    const l = asClientLedger({ accounts: [onAcc(500_00)], groups: [g], envelopes: [eFlag, eName], allocations: [], transactions: [] });
+    const basis = buildBudgetSuggestionBasis({ ledger: l, month: "2026-07", profile: "investor" });
+    expect(basis.candidates.find((c) => c.envelopeId === "SAV")!.savingsLike).toBe(true);
+    expect(basis.candidates.find((c) => c.envelopeId === "NAME")!.savingsLike).toBe(false);
     expect(basis.remainderEnvelopeId).toBe("SAV");
   });
 
@@ -103,7 +114,7 @@ import { ledgerArb } from "./test-helpers";
 const bigLedger = () => {
   const g = grp();
   const e1 = env(g.id, { id: "E1", name: "Jedzenie" });
-  const e2 = env(g.id, { id: "E2", name: "Obligacje" });
+  const e2 = env(g.id, { id: "E2", name: "Bonds", isSavings: true });
   return asClientLedger({ accounts: [onAcc(1000_00)], groups: [g], envelopes: [e1, e2], allocations: [], transactions: [] });
 };
 

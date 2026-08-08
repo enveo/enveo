@@ -27,8 +27,8 @@ const ACCOUNTS = [
 
 const GROUPS = ["Rachunki", "Życie", "Oszczędności"];
 
-// name, group, color, icon, allocation (add) for the current month
-const ENVELOPES: Array<[string, string, string, string, number]> = [
+// name, group, color, icon, allocation (add) for the current month, isSavings
+const ENVELOPES: Array<[string, string, string, string, number, boolean?]> = [
   ["Mieszkanie", "Rachunki", "#ccd9b6", "house", 1800],
   ["Media", "Rachunki", "#8f84a8", "receipt", 250],
   ["Subskrypcje", "Rachunki", "#f0c84f", "play", 60],
@@ -36,8 +36,8 @@ const ENVELOPES: Array<[string, string, string, string, number]> = [
   ["Transport", "Życie", "#e7e1d4", "car", 300],
   ["Zdrowie", "Życie", "#f0d6cc", "heart", 150],
   ["Rozrywka", "Życie", "#aed6ea", "gift", 200],
-  ["Oszczędności", "Oszczędności", "#f3c45f", "moneybag", 500],
-  ["Nieprzewidziane", "Oszczędności", "#e6e6ea", "tag", 100],
+  ["Oszczędności", "Oszczędności", "#f3c45f", "moneybag", 500, true],
+  ["Nieprzewidziane", "Oszczędności", "#e6e6ea", "tag", 100, true],
 ];
 
 const CATEGORIES = ["Zakupy", "Dom", "Auto"];
@@ -90,13 +90,14 @@ export async function seed() {
   const envRows = await db
     .insert(s.envelopes)
     .values(
-      ENVELOPES.map(([name, group, color, icon], i) => ({
+      ENVELOPES.map(([name, group, color, icon, , isSavings], i) => ({
         budgetId: bid,
         groupId: grp(group).id,
         name,
         color,
         icon,
         sort: i,
+        ...(isSavings ? { isSavings: true } : {}),
       })),
     )
     .returning();
