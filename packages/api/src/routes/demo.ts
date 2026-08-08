@@ -9,12 +9,30 @@
 import { eq } from "drizzle-orm";
 import { Hono } from "hono";
 import { z } from "zod";
-import { requireTier } from "../context";
+import { requireTier, sessionUserId } from "../context";
 import { db } from "../db/client";
 import * as s from "../db/schema";
 import { wipeBudgetData } from "../sync/apply";
+import { ownerAssertionFails } from "./sync";
 
 export const demoRoutes = new Hono();
+
+/* Both writes below resolve the target budget from the session cookie alone, and the cookie
+ * can be swapped between the client's ownership check and the request — so, like
+ * /sync/replace, the body names the USER the client just verified and a mismatch is refused
+ * before anything is written (409 budget_mismatch). Absent userId = pre-3.7 client. */
+
+/** Body of /demo/seed. */
+export const seedInput = z.object({
+  locale: z.enum(["pl", "en"]).optional(),
+  userId: z.string().min(1).optional(),
+});
+
+/** Body of /budget/reset. */
+export const resetInput = z.object({
+  confirm: z.literal("RESET"),
+  userId: z.string().min(1).optional(),
+});
 
 /** Złoty → grosz, major → minor units (int). */
 const zl = (x: number) => Math.round(x * 100);
@@ -119,9 +137,8 @@ const GROCERY_AMOUNTS: number[][] = [
 ];
 
 demoRoutes.post("/demo/seed", async (c) => {
-  const { locale } = z
-    .object({ locale: z.enum(["pl", "en"]).optional() })
-    .parse(await c.req.json().catch(() => ({})));
+  const { locale, userId } = seedInput.parse(await c.req.json().catch(() => ({})));
+  if (ownerAssertionFails(userId, sessionUserId(c))) return c.json({ error: "budget_mismatch" }, 409);
   const n = NAMES[(locale ?? "pl") as Locale];
 
   const seeded = await db.transaction(async (tx) => {
@@ -330,7 +347,8 @@ demoRoutes.post("/demo/seed", async (c) => {
 });
 
 demoRoutes.post("/budget/reset", async (c) => {
-  z.object({ confirm: z.literal("RESET") }).parse(await c.req.json().catch(() => ({})));
+  const { userId } = resetInput.parse(await c.req.json().catch(() => ({})));
+  if (ownerAssertionFails(userId, sessionUserId(c))) return c.json({ error: "budget_mismatch" }, 409);
   await db.transaction(async (tx) => {
     const budgetId = (await requireTier(c, "plain", tx)).id;
     await wipeBudgetData(tx, budgetId);

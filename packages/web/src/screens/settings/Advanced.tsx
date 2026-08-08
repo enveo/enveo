@@ -4,7 +4,7 @@ import { useTheme } from "../../lib/contexts";
 import { useT } from "../../lib/i18n";
 import { storageMode } from "../../lib/idb";
 import { getStorageDiag, type StorageDiag } from "../../lib/storage";
-import { disableLocal, enablePaused, enableWiped, getLastBootSource, wipeLocalData } from "../../lib/sync";
+import { assertOwnReplica, disableLocal, enablePaused, enableWiped, getLastBootSource, wipeLocalData } from "../../lib/sync";
 import { CORAL, font } from "../../lib/theme";
 import { Sheet } from "../../components/chrome";
 import { ActionGroup, ActionIcon, ActionRow, ConfirmWordHint, Eyebrow, Helper, Row } from "./ui";
@@ -283,7 +283,9 @@ function ResetSection() {
     setBusy(true);
     setError(null);
     try {
-      await api.budgetReset(); // server FIRST — the local copy is cleared only after success
+      // the multi-tenant guard first: the verified user id travels in the body (409 on a swap)
+      const userId = await assertOwnReplica();
+      await api.budgetReset(userId); // server FIRST — the local copy is cleared only after success
       await wipeLocalData(); // clears the stores + broadcasts to tabs → reload → wizard
     } catch (e) {
       setError(apiErrorMessage(e));
