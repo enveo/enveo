@@ -217,7 +217,6 @@ export const es: Dict = {
   "Import from screenshots": "Importar desde capturas",
   "Imported item": "Línea importada",
   "Income": "Ingreso",
-  "Install as an app:": "Instalar como aplicación:",
   "Invalid pairing code.": "Código de vinculación no válido.",
   "Investor": "Inversor",
   "Irreversibly deletes data from the server; other devices will lose access. Make a backup first (Export).": "Elimina los datos del servidor de forma irreversible; los demás dispositivos perderán el acceso. Haz antes una copia de seguridad (Exportar).",

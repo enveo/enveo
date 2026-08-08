@@ -217,7 +217,6 @@ export const fr: Dict = {
   "Import from screenshots": "Importer depuis des captures",
   "Imported item": "Ligne importée",
   "Income": "Revenu",
-  "Install as an app:": "Installer comme application :",
   "Invalid pairing code.": "Code d'appairage invalide.",
   "Investor": "Investisseur",
   "Irreversibly deletes data from the server; other devices will lose access. Make a backup first (Export).": "Supprime irréversiblement les données du serveur ; les autres appareils perdront l'accès. Faites d'abord une sauvegarde (Exporter).",
