@@ -89,9 +89,6 @@ export interface BudgetSuggestionBasis {
   remainderEnvelopeId: string | null;
 }
 
-// Polish savings/investment keywords matched against envelope names (product data — do not translate).
-const SAVINGS_RE = /oszcz[ęe]d|inwest|obligac|\bike\b|\bikze\b|lokat|emerytur|fundusz|akcj|\betf\b/i;
-
 export function byPriorityDesc(a: BudgetSuggestionCandidate, b: BudgetSuggestionCandidate): number {
   return b.priority - a.priority || (a.envelopeId < b.envelopeId ? -1 : 1);
 }
@@ -125,7 +122,7 @@ export function buildBudgetSuggestionBasis(input: {
   const active = state.envelopes.filter((e) => !e.envelope.archived);
   const candidates: BudgetSuggestionCandidate[] = active.map((e) => {
     const stats = computeEnvelopeBudgetStats(ledger, e.envelope.id, month, e.allocated, e.available, e.envelope.monthlyTarget ?? null);
-    const savingsLike = SAVINGS_RE.test(`${e.envelope.name} ${groupName.get(e.envelope.groupId) ?? ""}`);
+    const savingsLike = e.envelope.isSavings;
     const negNeed = Math.max(0, -e.available);
     const typical = profile === "cautious" ? stats.medianSpend : stats.avgSpend;
     const fundToTypical = Math.max(0, typical - e.allocated);
