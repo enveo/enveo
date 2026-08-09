@@ -22,7 +22,7 @@ import { loadLocale, LOCALES, useT, type Lang, type Message } from "../lib/i18n"
 import { local } from "../lib/mutate";
 import { customEnvelopeStyle, TEMPLATE } from "../lib/onboardingTemplate";
 import { store } from "../lib/store";
-import { fullResync } from "../lib/sync";
+import { assertOwnReplica, fullResync } from "../lib/sync";
 import { ACCOUNT_COLORS, CORAL, P, TEAL, font } from "../lib/theme";
 
  
@@ -111,7 +111,8 @@ export function OnboardingScreen({ onDone }: { onDone: () => void }) {
 
       commitCurrency();
        
-      await api.demoSeed(lang === "pl" ? "pl" : "en");
+      const userId = await assertOwnReplica();  
+      await api.demoSeed(lang === "pl" ? "pl" : "en", userId);
       await fullResync();  
       onDone();
     } catch (e) {
