@@ -158,8 +158,10 @@ export const api = {
   budgetSuggest: (b: { month: string; profile: BudgetSuggestProfile; customPrompt?: string; ledger?: ClientLedger; locale: AiLocale; useAi?: boolean }) =>
     http<BudgetSuggestResponse>("POST", "/budget/suggest", b),
 
-  demoSeed: (locale: "pl" | "en") => http<{ seeded: boolean }>("POST", "/demo/seed", { locale }),
-  budgetReset: () => http<{ reset: boolean }>("POST", "/budget/reset", { confirm: "RESET" }),
+  /* `userId` = the same PER-REQUEST owner assertion as the E2EE routes below: both write the
+     session user's budget wholesale, so the caller passes the id assertOwnReplica verified. */
+  demoSeed: (locale: "pl" | "en", userId: string) => http<{ seeded: boolean }>("POST", "/demo/seed", { locale, userId }),
+  budgetReset: (userId: string) => http<{ reset: boolean }>("POST", "/budget/reset", { confirm: "RESET", userId }),
 
   /* E2EE (sync v2) — tier switching and the key envelope; crypto EXCLUSIVELY on
      the client side (lib/crypto.ts) — only ciphertexts travel here.

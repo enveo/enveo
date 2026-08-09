@@ -22,7 +22,7 @@ import { loadLocale, LOCALES, useT, type Lang, type Message } from "../lib/i18n"
 import { local } from "../lib/mutate";
 import { customEnvelopeStyle, TEMPLATE } from "../lib/onboardingTemplate";
 import { store } from "../lib/store";
-import { fullResync } from "../lib/sync";
+import { assertOwnReplica, fullResync } from "../lib/sync";
 import { ACCOUNT_COLORS, CORAL, P, TEAL, font } from "../lib/theme";
 
 /** Checklist row: a template item (name=Message, color/icon from TEMPLATE) or a custom envelope (custom, styled via customEnvelopeStyle). */
@@ -111,7 +111,8 @@ export function OnboardingScreen({ onDone }: { onDone: () => void }) {
       // fullResync replays the outbox onto the fresh mirror, so the pick survives (and is pushed)
       commitCurrency();
       // the demo dataset itself exists in Polish and English only — any other UI language gets the English one
-      await api.demoSeed(lang === "pl" ? "pl" : "en");
+      const userId = await assertOwnReplica(); // owner assertion: the verified id travels in the body
+      await api.demoSeed(lang === "pl" ? "pl" : "en", userId);
       await fullResync(); // fresh server data → full replica replacement
       onDone();
     } catch (e) {

@@ -26,6 +26,7 @@ import { loadClientLedger } from "../repo";
 import { db } from "../db/client";
 import { z } from "zod";
 import { env } from "../env";
+import { openAiChatFetch } from "../openaiHttp";
 
 const requestSchema = z.object({
   month: z.string().regex(/^\d{4}-\d{2}$/),
@@ -110,16 +111,15 @@ export async function generateSuggestion(input: BudgetSuggestInput & { ledger: N
 
 /** Local fetch layer (operator key) — prompt/parsing in shared/aiPrompts. */
 async function openaiChat(req: ChatRequest): Promise<string> {
-  const res = await fetch("https://api.openai.com/v1/chat/completions", {
-    method: "POST",
-    headers: { "content-type": "application/json", authorization: `Bearer ${env.OPENAI_API_KEY}` },
-    body: JSON.stringify({
+  const res = await openAiChatFetch(
+    {
       model: env.OPENAI_MODEL,
       messages: req.messages,
       ...(req.responseFormat ? { response_format: req.responseFormat } : {}),
       ...(req.reasoningEffort && supportsReasoningEffort(env.OPENAI_MODEL) ? { reasoning_effort: req.reasoningEffort } : {}),
-    }),
-  });
+    },
+    { apiKey: env.OPENAI_API_KEY },
+  );
   if (!res.ok) throw new Error(`openai ${res.status}`);
   const data = (await res.json()) as { choices?: Array<{ message?: { content?: string } }> };
   return data.choices?.[0]?.message?.content ?? "{}";
@@ -181,16 +181,21 @@ budgetSuggestRoutes.post("/ai/v1/chat/completions", async (c) => {
   if (!env.OPENAI_API_KEY) return c.json({ error: "ai_unavailable" }, 503);
   await requireTier(c, "plain");
   const req = openAiWireSchema.parse(await c.req.json());
-  const res = await fetch("https://api.openai.com/v1/chat/completions", {
-    method: "POST",
-    headers: { "content-type": "application/json", authorization: `Bearer ${env.OPENAI_API_KEY}` },
-    body: JSON.stringify({
-      model: env.OPENAI_MODEL,
-      messages: req.messages,
-      ...(req.response_format ? { response_format: req.response_format } : {}),
-      ...(req.reasoning_effort && supportsReasoningEffort(env.OPENAI_MODEL) ? { reasoning_effort: req.reasoning_effort } : {}),
-    }),
-  });
+  let res: Response;
+  try {
+    res = await openAiChatFetch(
+      {
+        model: env.OPENAI_MODEL,
+        messages: req.messages,
+        ...(req.response_format ? { response_format: req.response_format } : {}),
+        ...(req.reasoning_effort && supportsReasoningEffort(env.OPENAI_MODEL) ? { reasoning_effort: req.reasoning_effort } : {}),
+      },
+      { apiKey: env.OPENAI_API_KEY },
+    );
+  } catch {
+    // timeout or network failure on the way to OpenAI — same code as a non-2xx answer
+    return c.json({ error: "upstream", status: 504 }, 502);
+  }
   if (!res.ok) return c.json({ error: "upstream", status: res.status }, 502);
   return c.json(await res.json());
 });
@@ -200,8 +205,11 @@ budgetSuggestRoutes.post("/ai/chat", async (c) => {
   if (!env.OPENAI_API_KEY) return c.json({ error: "ai_unavailable" }, 503);
   await requireTier(c, "plain");
   const req = aiChatSchema.parse(await c.req.json());
-  const content = await openaiChat(req as ChatRequest);
-  return c.json({ content });
+  try {
+    return c.json({ content: await openaiChat(req as ChatRequest) });
+  } catch {
+    return c.json({ error: "upstream", status: 504 }, 502);
+  }
 });
 
 budgetSuggestRoutes.post("/budget/suggest", async (c) => {

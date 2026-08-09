@@ -51,14 +51,6 @@ const WARNINGS: Record<string, Message> = {
 };
 const warnMessage = (w: string): Message | undefined => WARNINGS[w];
 
-/** Agent tool → label in the "Agent checked: …" line (submit and unknown tools skipped). */
-const TRACE_LABELS: Record<string, Message> = {
-  get_month_state: msg("month state"),
-  get_history: msg("history"),
-  get_spending: msg("spending breakdown"),
-  get_goals: msg("goals"),
-};
-
 export function BudgetSuggestSheet({ show, state, month, onClose }: { show: boolean; state: StateResponse; month: string; onClose: () => void }) {
   const { t, lang } = useT();
   const currency = useCurrency();
@@ -211,11 +203,6 @@ export function BudgetSuggestSheet({ show, state, month, onClose }: { show: bool
       })()
     : [];
 
-  /** Agent trace labels: duplicates merged (Set over keys), ordered by first invocation. */
-  const traceLabels = resp?.trace
-    ? [...new Set(resp.trace.map((s) => TRACE_LABELS[s.tool]).filter((k): k is Message => k !== undefined))].map((k) => t(k))
-    : [];
-
   const sumChecked = resp ? resp.items.reduce((s, it) => s + (checked[it.envelopeId] ? deltaOf(it) : 0), 0) : 0;
   const remaining = resp ? resp.amountToDistribute - sumChecked : 0;
   const nSel = resp ? resp.items.filter((it) => checked[it.envelopeId] && deltaOf(it) > 0).length : 0;
@@ -286,13 +273,6 @@ export function BudgetSuggestSheet({ show, state, month, onClose }: { show: bool
                 })}
                 {resp.undistributedRemainder > 0 && <div style={{ color: CORAL, marginTop: 3 }}>{t("{amount} stays in “To be budgeted”.", { amount: formatMoney(resp.undistributedRemainder, currency, lang, { trim: true }) })}</div>}
               </div>
-
-              {/* Agent trace: what it checked with tools before proposing (custom mode only). */}
-              {traceLabels.length > 0 && (
-                <div style={{ fontSize: 12.5, color: C.soft, marginBottom: 6 }}>
-                  {t("Agent checked:")} {traceLabels.join(", ")}
-                </div>
-              )}
 
               {sections.map((s) => {
                 const anyOn = s.rows.some((it) => checked[it.envelopeId]);
