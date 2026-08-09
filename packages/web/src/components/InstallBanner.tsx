@@ -1,0 +1,56 @@
+import { useEffect, useState } from "react";
+import { useTheme } from "../lib/contexts";
+import { useT } from "../lib/i18n";
+import { useInstall } from "../lib/installPrompt";
+import { InstallBody } from "./InstallBody";
+
+const FLAG = "enveo.a2hs";
+
+/**
+ * Remember that the install offer was already made, so the banner never returns. Also called by
+ * the onboarding install card, which is the SAME one-time offer arriving earlier — without it the
+ * banner would slide up seconds after the user skipped that card.
+ * The write is guarded: localStorage throws in Safari private mode, and a caller closing a screen
+ * on the way out must not be taken down with it.
+ */
+export function markInstallOffered(): void {
+  try {
+    localStorage.setItem(FLAG, "dismissed");
+  } catch {
+    /* private mode — the banner shows once more, which is better than a broken flow */
+  }
+}
+
+/** One-time bottom prompt to install, both platforms. Dismissible; never returns once closed. */
+export function InstallBanner() {
+  const C = useTheme();
+  const { t } = useT();
+  const { state } = useInstall();
+  const [show, setShow] = useState(false);
+
+  const offerable = state === "promptable" || state === "ios-safari" || state === "ios-other";
+
+  useEffect(() => {
+    if (!offerable) return;
+    if (localStorage.getItem(FLAG) === "dismissed") return;
+    const id = setTimeout(() => setShow(true), 2500);
+    return () => clearTimeout(id);
+  }, [offerable]);
+
+  if (!show || !offerable) return null;
+
+  const dismiss = () => {
+    markInstallOffered();
+    setShow(false);
+  };
+
+  return (
+    <div className="fu" style={{ position: "fixed", left: 12, right: 12, bottom: "calc(78px + env(safe-area-inset-bottom))", maxWidth: 396, margin: "0 auto", zIndex: 80, background: C.surface, border: `1px solid ${C.line}`, borderRadius: 14, padding: "14px 16px", boxShadow: "0 8px 30px rgba(0,0,0,0.18)" }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+        <span style={{ fontSize: 14, fontWeight: 700, color: C.text }}>{t("Add Enveo to your phone")}</span>
+        <button onClick={dismiss} aria-label={t("Close")} style={{ background: "none", border: "none", color: C.mute, fontSize: 16, cursor: "pointer" }}>✕</button>
+      </div>
+      <InstallBody onDone={dismiss} />
+    </div>
+  );
+}

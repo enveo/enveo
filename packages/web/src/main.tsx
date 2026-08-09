@@ -8,10 +8,13 @@ import { createRoot } from "react-dom/client";
 import App from "./App";
 import { AppProviders } from "./lib/contexts";
 import { loadLocale, uiLang } from "./lib/i18n";
+import { initInstallPrompt } from "./lib/installPrompt";
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { staleTime: 5_000, refetchOnWindowFocus: false } },
 });
+
+initInstallPrompt(); // capture beforeinstallprompt as early as possible
 
 const render = () =>
   createRoot(document.getElementById("root")!).render(
