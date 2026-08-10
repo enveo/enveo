@@ -8,6 +8,7 @@ import { env } from "../env";
 import { openAiChatFetch } from "../openaiHttp";
 import * as s from "../db/schema";
 import { assertBudgetFks } from "../sync/apply";
+import { budgetAssertionFails } from "./sync";
 import { confidentSourceRef, decideAssignment, type HistGroup, type HistPattern, rankPatterns } from "./import-match";
 import { buildDupIndex, classifyDup } from "./import-dedupe";
 
@@ -278,6 +279,11 @@ importRoutes.post("/import/extract", async (c) => {
 
 export const applyInput = z.object({
   accountId: z.string().uuid(),
+  /** The budget the CLIENT believes it is writing to — the same PER-REQUEST tenant
+   *  assertion as /sync/push (budgetAssertionFails): the server resolves the target
+   *  budget from the session cookie alone, and the cookie can be swapped in another
+   *  tab while the import sheet is open. Optional: a pre-fix client omits it. */
+  budgetId: z.string().uuid().optional(),
   dryRun: z.boolean().optional(),
   items: z
     .array(
@@ -350,6 +356,14 @@ export function applyTxnValues(it: ApplyItem, globalAccountId: string) {
 importRoutes.post("/import/apply", async (c) => {
   const budgetId = (await requireTier(c, "plain")).id;
   const body = applyInput.parse(await c.req.json());
+
+  // PER-REQUEST tenant assertion BEFORE any write (same as /sync/push): the batch
+  // creates FRESH transactions, which pass every FK guard — a cookie swapped in
+  // another tab would land user A's extracted items in user B's budget. The client
+  // names the budget it verified; a mismatch is refused and nothing is written.
+  if (budgetAssertionFails(body.budgetId, budgetId)) {
+    return c.json({ error: "budget_mismatch" }, 409);
+  }
 
   // transfer validation BEFORE any write — whole-batch error with the item index
   const transferErr = findTransferError(body.items, body.accountId);

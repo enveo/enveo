@@ -152,7 +152,12 @@ export const api = {
   /* `locale` = the UI language (any BCP-47 tag): the model writes its names, notes and
      rationales in it. Not to be confused with demoSeed's pl|en, which picks a SEED DATASET. */
   importExtract: (images: string[], locale: AiLocale) => http<{ items: ImportItem[] }>("POST", "/import/extract", { images, locale }),
-  importApply: (b: { accountId: string; items: ImportApplyItem[]; dryRun?: boolean }) =>
+  /* `budgetId` = the same PER-REQUEST tenant assertion as the sync push: the batch creates
+     FRESH transactions in whatever budget the session cookie resolves to, and the cookie can
+     be swapped in another tab while the import sheet is open. The caller passes the replica's
+     budgetId (after assertOwnReplica); the server refuses a mismatch (409 budget_mismatch,
+     nothing written). */
+  importApply: (b: { accountId: string; budgetId?: string; items: ImportApplyItem[]; dryRun?: boolean }) =>
     http<ImportApplyResponse>("POST", "/import/apply", b),
 
   budgetSuggest: (b: { month: string; profile: BudgetSuggestProfile; customPrompt?: string; ledger?: ClientLedger; locale: AiLocale; useAi?: boolean }) =>

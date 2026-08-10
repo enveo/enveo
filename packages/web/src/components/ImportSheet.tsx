@@ -4,7 +4,7 @@ import { api, apiErrorMessage, type EditedImportItem, type ImportApplyItem, type
 import { runImportExtract } from "../lib/ai";
 import * as e2ee from "../lib/e2ee";
 import { store } from "../lib/store";
-import { pullNow } from "../lib/sync";
+import { assertOwnReplica, pullNow } from "../lib/sync";
 import { Sheet } from "./chrome";
 import { AiConsentSheet } from "./AiConsentSheet";
 import { AddScreen } from "../screens/Add";
@@ -117,8 +117,11 @@ export function ImportSheet({ show, onClose, state, onApplied }: { show: boolean
         setError(t("No transactions were recognized in the screenshots."));
         return;
       }
-      // dry run marks duplicates (certain: date+amount+source_ref; probable: date+amount) without writing
-      const dry = await api.importApply({ accountId, items: extracted, dryRun: true });
+      // dry run marks duplicates (certain: date+amount+source_ref; probable: date+amount) without
+      // writing — but its verdicts feed the user's decision, so it must run against the replica's
+      // budget too: verify ownership and name the budget (per-request tenant assertion).
+      await assertOwnReplica(); // foreign/unverified replica — no server call at all
+      const dry = await api.importApply({ accountId, budgetId: store.getBudgetId() || undefined, items: extracted, dryRun: true });
       // fx rows (currency differs from the budget's) default to UNCHECKED — the user must
       // consciously confirm the amount before it's included (the amber chip explains why).
       setItems(dry.results.map((r) => ({ ...r, include: r.status === "added" && !(!!r.currency && r.currency !== currency) })));
@@ -174,7 +177,14 @@ export function ImportSheet({ show, onClose, state, onApplied }: { show: boolean
                 rawPlace: it.rawPlace, // UNTOUCHED on edit
               },
         );
-      const res = chosen.length > 0 ? await api.importApply({ accountId, items: chosen }) : { added: 0, skipped: 0 };
+      // The review can sit open for minutes and the session cookie is shared by every tab —
+      // re-verify ownership and NAME the budget the items' FKs belong to: the server refuses
+      // a mismatch before anything is written (409 budget_mismatch).
+      let res = { added: 0, skipped: 0 };
+      if (chosen.length > 0) {
+        await assertOwnReplica(); // foreign/unverified replica — no server write
+        res = await api.importApply({ accountId, budgetId: store.getBudgetId() || undefined, items: chosen });
+      }
       setLastAccountId(accountId); // per-device preference (same as on the Add screen)
       void pullNow(); // pull the imported entries down into the local replica
       setDoneStats({ added: res.added, dup: items.filter((i) => i.status === "exists").length + res.skipped });
