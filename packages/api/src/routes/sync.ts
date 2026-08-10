@@ -82,8 +82,20 @@ export const syncRoutes = new Hono();
  * committed (fresh snapshot per statement): a repeatable-read snapshot would be
  * taken BEFORE acquiring the lock and would lose writes committed while waiting.
  */
+
+
+
+
+
+
+export const CHANGES_CURSOR_LOCK_TEXT = "enveo:changes";
+
 async function lockChangesCursor(x: Executor): Promise<void> {
-  await x.execute(dsql`SELECT pg_advisory_xact_lock(hashtext('enveo:changes')::bigint)`);
+  // ::text on the parameter — an untyped bind would leave `hashtext(unknown)` to resolve, and
+  // the KEY must stay byte-identical to the triggers' `hashtext('enveo:changes')`.
+  await x.execute(
+    dsql`SELECT pg_advisory_xact_lock(hashtext(${CHANGES_CURSOR_LOCK_TEXT}::text)::bigint)`,
+  );
 }
 
  
@@ -126,7 +138,15 @@ async function withCursorBarrier<T>(
         return work(tx, meta);
       });
     } catch (e) {
-      if (e instanceof BudgetVanished && attempt < ENSURE_BARRIER_ATTEMPTS) continue;
+      if (e instanceof BudgetVanished && attempt < ENSURE_BARRIER_ATTEMPTS) {
+        // In production NOTHING deletes a budgets row, so a firing retry is an anomaly worth
+        // seeing (a botched restore, a future cascade bug, or a dev reseed against a live
+        // stack) — never silent. No ids: the message must stay tenant-free.
+        console.warn(
+          `[sync] budget_vanished between ensure and cursor barrier — retrying (attempt ${attempt}/${ENSURE_BARRIER_ATTEMPTS})`,
+        );
+        continue;
+      }
       throw e;
     }
   }
