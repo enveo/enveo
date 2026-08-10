@@ -21,6 +21,13 @@
  *   out — one SENTINEL-prefixed JSON line on stdout: LockChildOutput
  */
 import { sql as dsql, type SQL } from "drizzle-orm";
+import {
+  assertThrowawayDb,
+  emitChildResult,
+  lockObserver,
+  waitFor,
+  withTimeout,
+} from "../testSupport";
 
 export const SENTINEL = "__OPERATION_LOCK_CHILD__";
 
@@ -65,24 +72,10 @@ export type LockChildOutput = {
   };
 };
 
-const withTimeout = <T>(p: Promise<T>, ms: number, label: string): Promise<T> =>
-  Promise.race([
-    p,
-    Bun.sleep(ms).then(() => {
-      throw new Error(`timeout after ${ms}ms: ${label}`);
-    }),
-  ]);
-
 async function main(): Promise<void> {
-  const expected = process.env.EXPECT_DATABASE_URL ?? "";
   const { env } = await import("../env");
   // The fuse: this process takes advisory locks and writes rows. Throwaway database only.
-  if (!expected || env.DATABASE_URL !== expected) {
-    throw new Error(
-      `refusing to run: env.DATABASE_URL is not the throwaway database given by the test ` +
-        `(EXPECT_DATABASE_URL=${expected || "<unset>"})`,
-    );
-  }
+  assertThrowawayDb(env.DATABASE_URL);
 
   const postgres = (await import("postgres")).default;
   const { db } = await import("./client");
@@ -98,18 +91,8 @@ async function main(): Promise<void> {
 
   // Independent raw connection — observes pg_locks from OUTSIDE the pooled db.
   const observer = postgres(env.DATABASE_URL, { max: 1, onnotice: () => {} });
+  const locks = lockObserver(observer);
 
-  const advisoryWaiters = async (): Promise<number> => {
-    const rows = await observer<{ n: number }[]>`
-      select count(*)::int as n from pg_locks where locktype = 'advisory' and not granted`;
-    return rows[0]?.n ?? 0;
-  };
-  const advisoryHeldByPid = async (pid: number): Promise<number> => {
-    const rows = await observer<{ n: number }[]>`
-      select count(*)::int as n from pg_locks
-       where locktype = 'advisory' and granted and pid = ${pid}`;
-    return rows[0]?.n ?? 0;
-  };
   const backendPid = async (x: { execute: (q: SQL) => Promise<unknown> }): Promise<number> => {
     const rows = (await x.execute(dsql`select pg_backend_pid()::int as pid`)) as Array<{
       pid: number;
@@ -141,11 +124,7 @@ async function main(): Promise<void> {
   });
 
   // B is only "blocked" once pg_locks shows its ungranted advisory waiter — no lucky timing.
-  let waiterObserved = false;
-  for (let i = 0; i < 200 && !waiterObserved; i++) {
-    if ((await advisoryWaiters()) >= 1) waiterObserved = true;
-    else await Bun.sleep(25);
-  }
+  const waiterObserved = await waitFor(async () => (await locks.waiters()) >= 1);
   events.push("B-blocked-observed");
 
   // While A still holds (operation, sameId): a different id and a different operation both
@@ -206,7 +185,7 @@ async function main(): Promise<void> {
     operationLockKey(OPERATION_LOCK.ensureInitialBudget, `samepid-${crypto.randomUUID()}`),
     async (tx) => {
       callbackPid = await backendPid(tx);
-      lockHeldByCallbackPid = (await advisoryHeldByPid(callbackPid)) >= 1;
+      lockHeldByCallbackPid = (await locks.heldByPid(callbackPid)) >= 1;
     },
   );
 
@@ -225,13 +204,12 @@ async function main(): Promise<void> {
       },
     );
     // callback is DONE — the lock must still be held while the outer tx is open
-    heldAfterCallbackReturned = (await advisoryHeldByPid(outerPid)) >= 1;
+    heldAfterCallbackReturned = (await locks.heldByPid(outerPid)) >= 1;
   });
-  let heldAfterOuterCommit = true;
-  for (let i = 0; i < 100 && heldAfterOuterCommit; i++) {
-    if ((await advisoryHeldByPid(outerPid)) === 0) heldAfterOuterCommit = false;
-    else await Bun.sleep(25);
-  }
+  const released = await waitFor(async () => (await locks.heldByPid(outerPid)) === 0, {
+    attempts: 100,
+  });
+  const heldAfterOuterCommit = !released;
 
   /* ── 5: invalid keys fail BEFORE the work callback runs ── */
 
@@ -285,7 +263,7 @@ async function main(): Promise<void> {
   await observer.end({ timeout: 5 });
   const { sql } = await import("./client");
   await sql.end({ timeout: 5 });
-  await Bun.write(Bun.stdout, `${SENTINEL}${JSON.stringify(out)}\n`);
+  await emitChildResult(SENTINEL, out);
   process.exit(0);
 }
 

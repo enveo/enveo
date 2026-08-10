@@ -18,10 +18,11 @@
  *     bun test packages/api/src/db/operationLock.test.ts
  * There is deliberately NO fallback to DATABASE_URL (that one points at real data).
  */
-import { afterAll, beforeAll, describe, expect, it, setDefaultTimeout } from "bun:test";
+import { beforeAll, describe, expect, it } from "bun:test";
 import { drizzle } from "drizzle-orm/postgres-js";
 import { migrate } from "drizzle-orm/postgres-js/migrator";
 import postgres from "postgres";
+import { runChild } from "../testSupport";
 // Constant + type only — the child's app imports are lazy (see its header), so importing it
 // here does NOT pull env/db/client into this process.
 import { SENTINEL, type LockChildOutput } from "./operationLock.serialization-child";
@@ -35,8 +36,10 @@ import {
 } from "./operationLock";
 import type { db } from "./client";
 
-// The child forces real lock waits (bounded pg_locks polling) — beyond bun's 5 s default.
-setDefaultTimeout(60_000);
+/** The child forces real lock waits (bounded pg_locks polling) — beyond bun's 5 s default.
+ *  Applied to the ONE hook that spawns it, NOT via setDefaultTimeout (process-global in bun:
+ *  it would silently relax every other suite sharing the run). */
+const CHILD_TIMEOUT_MS = 120_000;
 
 /* ── operationLockKey: central registry + validation (pure) ─────────────── */
 
@@ -73,18 +76,20 @@ describe("operationLockKey", () => {
 
 /* ── Compile-time guard: the InTx overload must reject the pooled db ──────
  *
- * Never executed. If `DbTransaction` ever widened to accept `typeof db`, the
- * @ts-expect-error below would become an "unused directive" and `tsc --noEmit`
- * would fail — that is the whole point of the overload split. */
+ * Never executed — it is a TYPE assertion. If `DbTransaction` ever widened to accept
+ * `typeof db`, the @ts-expect-error below would become an "unused directive" and the typecheck
+ * would fail; that is the whole point of the overload split.
+ *
+ * ENFORCEMENT IS A TYPECHECK RUN, NOT THIS TEST: `bun test` strips types, and packages/api has
+ * no typecheck script wired into CI today (backlog §3a owns the root typecheck contract). Until
+ * then this fires on a manual `bunx tsc --noEmit -p packages/api/tsconfig.json`. */
 
-const _rejectPooledDbAtCompileTime = (pooled: typeof db, key: OperationLockKey): void => {
-  void (async () => {
-    // @ts-expect-error — the pooled db is not a DbTransaction: a session-scoped acquire through
-    // the pool could land on a different connection than the guarded work (the exact misuse the
-    // type split exists to prevent).
-    await withOperationLockInTx(pooled, key, async () => {});
-  });
-};
+async function _rejectPooledDbAtCompileTime(pooled: typeof db, key: OperationLockKey) {
+  // @ts-expect-error — the pooled db is not a DbTransaction: a session-scoped acquire through
+  // the pool could land on a different connection than the guarded work (the exact misuse the
+  // type split exists to prevent).
+  await withOperationLockInTx(pooled, key, async () => {});
+}
 void _rejectPooledDbAtCompileTime;
 
 /* ── The DB-backed semantics (child process) ─────────────────────────────── */
@@ -106,27 +111,13 @@ describe.skipIf(!TEST_URL)("operation lock semantics (DB-backed, child process)"
     });
     await client.end({ timeout: 5 });
 
-    const child = Bun.spawn([process.execPath, CHILD], {
+    out = await runChild<LockChildOutput>({
+      path: CHILD,
+      testUrl: TEST_URL,
+      sentinel: SENTINEL,
       cwd: new URL("../..", import.meta.url).pathname,
-      env: { ...process.env, DATABASE_URL: TEST_URL, EXPECT_DATABASE_URL: TEST_URL },
-      stdout: "pipe",
-      stderr: "pipe",
     });
-    const [stdout, stderr] = await Promise.all([
-      new Response(child.stdout).text(),
-      new Response(child.stderr).text(),
-    ]);
-    const code = await child.exited;
-    const line = stdout.split("\n").find((l) => l.startsWith(SENTINEL));
-    if (code !== 0 || !line) {
-      throw new Error(
-        `operation-lock child failed (exit ${code})\nstdout:\n${stdout}\nstderr:\n${stderr}`,
-      );
-    }
-    out = JSON.parse(line.slice(SENTINEL.length)) as LockChildOutput;
-  });
-
-  afterAll(() => {});
+  }, CHILD_TIMEOUT_MS);
 
   it("the same (operation, id) serializes across independent connections — forced, not lucky", () => {
     // B really parked on the lock (pg_locks showed the ungranted waiter) …

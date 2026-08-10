@@ -17,7 +17,8 @@
  *   in  — EXPECT_DATABASE_URL (+ DATABASE_URL, both set to the same throwaway Postgres)
  *   out — one SENTINEL-prefixed JSON line on stdout: BudgetInitOutput
  */
-import { and, eq } from "drizzle-orm";
+import { and, eq, sql as dsql } from "drizzle-orm";
+import { assertThrowawayDb, emitChildResult, lockObserver, waitFor, withTimeout } from "./testSupport";
 
 export const SENTINEL = "__BUDGET_INIT_CHILD__";
 
@@ -38,6 +39,13 @@ export type BudgetInitOutput = {
     rowCount1: number;
     rowCount2: number;
   };
+  /** Lazy creation through a CALLER-OWNED transaction (the withOperationLockInTx path). */
+  inTxPath: {
+    createdId: string;
+    rowCount: number;
+    /** The lock was held by the OUTER transaction's backend — i.e. the InTx path really ran. */
+    lockHeldByOuterTxPid: boolean;
+  };
   fastPath: {
     /** A pre-existing single budget is returned as-is … */
     existingReturned: boolean;
@@ -56,15 +64,9 @@ export type BudgetInitOutput = {
 };
 
 async function main(): Promise<void> {
-  const expected = process.env.EXPECT_DATABASE_URL ?? "";
   const { env } = await import("./env");
   // The fuse: this process writes budgets/users rows. Throwaway database only.
-  if (!expected || env.DATABASE_URL !== expected) {
-    throw new Error(
-      `refusing to run: env.DATABASE_URL is not the throwaway database given by the test ` +
-        `(EXPECT_DATABASE_URL=${expected || "<unset>"})`,
-    );
-  }
+  assertThrowawayDb(env.DATABASE_URL);
 
   const postgres = (await import("postgres")).default;
   const { db } = await import("./db/client");
@@ -75,11 +77,7 @@ async function main(): Promise<void> {
   );
 
   const observer = postgres(env.DATABASE_URL, { max: 1, onnotice: () => {} });
-  const advisoryWaiters = async (): Promise<number> => {
-    const rows = await observer<{ n: number }[]>`
-      select count(*)::int as n from pg_locks where locktype = 'advisory' and not granted`;
-    return rows[0]?.n ?? 0;
-  };
+  const locks = lockObserver(observer);
 
   const newUser = async (tag: string): Promise<string> => {
     const [u] = await db
@@ -119,19 +117,19 @@ async function main(): Promise<void> {
     signalHeld();
     await gate;
   });
-  await held;
+  await withTimeout(held, 10_000, "gate acquiring the operation lock");
 
   // Both take the fast path (no budget yet), then must park on the held operation lock.
   const pA = getBudgetId(ctxFor(raceUser));
   const pB = getBudgetId(ctxFor(raceUser));
-  let bothParkedObserved = false;
-  for (let i = 0; i < 200 && !bothParkedObserved; i++) {
-    if ((await advisoryWaiters()) >= 2) bothParkedObserved = true;
-    else await Bun.sleep(25);
-  }
+  const bothParkedObserved = await waitFor(async () => (await locks.waiters()) >= 2);
   releaseGate();
-  await gateTx;
-  const [idA, idB] = await Promise.all([pA, pB]);
+  await withTimeout(gateTx, 15_000, "gate releasing the operation lock");
+  const [idA, idB] = await withTimeout(
+    Promise.all([pA, pB]),
+    30_000,
+    "both initializers finishing",
+  );
 
   const race: BudgetInitOutput["race"] = {
     bothParkedObserved,
@@ -153,6 +151,32 @@ async function main(): Promise<void> {
     id2,
     rowCount1: (await budgetRowsOf(user1!)).length,
     rowCount2: (await budgetRowsOf(user2!)).length,
+  };
+
+  /* ── The InTx path: lazy creation inside a transaction the CALLER owns ──
+   *
+   * Routes that already hold a transaction (demo.ts, the sync2 tier flips) pass it to
+   * requireTier → getBudgetId, which must lock IN PLACE (withOperationLockInTx) instead of
+   * opening a second transaction on another pool connection. Proven by observing that the
+   * advisory lock is held by the OUTER transaction's own backend pid while it is still open:
+   * had the pooled path run, that lock would live on a different connection and be gone by the
+   * time the callback returns. This is the regression guard for the executor discrimination. */
+
+  const inTxUser = await newUser("intx");
+  let inTxCreatedId = "";
+  let lockHeldByOuterTxPid = false;
+  await db.transaction(async (tx) => {
+    const rows = (await tx.execute(dsql`select pg_backend_pid()::int as pid`)) as Array<{
+      pid: number;
+    }>;
+    const outerPid = Number(rows[0]?.pid);
+    inTxCreatedId = await getBudgetId(ctxFor(inTxUser), tx);
+    lockHeldByOuterTxPid = (await locks.heldByPid(outerPid)) >= 1;
+  });
+  const inTxPath: BudgetInitOutput["inTxPath"] = {
+    createdId: inTxCreatedId,
+    rowCount: (await budgetRowsOf(inTxUser)).length,
+    lockHeldByOuterTxPid,
   };
 
   /* ── 8a: an existing single budget takes the fast path — returned, not replaced ── */
@@ -196,12 +220,19 @@ async function main(): Promise<void> {
   const nullResolved = await getBudgetId(null);
   const nullCtxReturnedABudget = typeof nullResolved === "string" && nullResolved.length > 0;
 
-  const out: BudgetInitOutput = { race, twoUsers, fastPath, multiBudget, nullCtxReturnedABudget };
+  const out: BudgetInitOutput = {
+    race,
+    twoUsers,
+    inTxPath,
+    fastPath,
+    multiBudget,
+    nullCtxReturnedABudget,
+  };
 
   await observer.end({ timeout: 5 });
   const { sql } = await import("./db/client");
   await sql.end({ timeout: 5 });
-  await Bun.write(Bun.stdout, `${SENTINEL}${JSON.stringify(out)}\n`);
+  await emitChildResult(SENTINEL, out);
   process.exit(0);
 }
 

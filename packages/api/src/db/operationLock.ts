@@ -62,7 +62,11 @@ const KEY_VERSION = 1;
 /** Ids beyond this are a caller bug (nothing legitimate approaches it), not lock input. */
 const MAX_ID_LENGTH = 256;
 
-/** Deliberately does NOT echo the offending values: ids may become sensitive in future uses. */
+/**
+ * Deliberately does NOT echo the offending values: ids may become sensitive in future uses.
+ * Called by the constructor AND (as the single defense for a FORGED key that bypassed it) at
+ * the top of `acquire` — i.e. before any lock statement and before any `work` callback runs.
+ */
 function assertValidKey(key: OperationLockKey): void {
   if (typeof key.operation !== "string" || key.operation.length === 0) {
     throw new Error("operation lock: operation name must be a non-empty registry entry.");
@@ -80,10 +84,13 @@ export function operationLockKey(operation: OperationLockName, id: string): Oper
 }
 
 /**
- * PRIVATE: derive + take the xact lock on the given transaction. Must be the first statement
- * `withOperationLock` issues in its transaction; released automatically at commit/rollback.
+ * PRIVATE: validate, derive and take the xact lock on the given transaction. The ONE place the
+ * key is checked on the way in (every public entry point funnels through here before its
+ * `work` callback), and the first statement `withOperationLock` issues in its transaction;
+ * released automatically at commit/rollback.
  */
 async function acquire(tx: DbTransaction, key: OperationLockKey): Promise<void> {
+  assertValidKey(key);
   const canonical = JSON.stringify(["enveo-operation-lock", KEY_VERSION, key.operation, key.id]);
   await tx.execute(dsql`SELECT pg_advisory_xact_lock(hashtextextended(${canonical}, 0))`);
 }
@@ -97,9 +104,8 @@ export async function withOperationLock<T>(
   key: OperationLockKey,
   work: (tx: DbTransaction) => Promise<T>,
 ): Promise<T> {
-  assertValidKey(key); // an invalid key must fail BEFORE any database work
   return db.transaction(async (tx) => {
-    await acquire(tx, key);
+    await acquire(tx, key); // validates first — an invalid key never reaches `work`
     return work(tx);
   });
 }
@@ -113,8 +119,7 @@ export async function withOperationLockInTx<T>(
   key: OperationLockKey,
   work: (tx: DbTransaction) => Promise<T>,
 ): Promise<T> {
-  assertValidKey(key);
-  await acquire(tx, key);
+  await acquire(tx, key); // validates first — an invalid key never reaches `work`
   return work(tx);
 }
 
@@ -127,6 +132,5 @@ export async function acquireOperationLockForTests(
   tx: DbTransaction,
   key: OperationLockKey,
 ): Promise<void> {
-  assertValidKey(key);
   await acquire(tx, key);
 }

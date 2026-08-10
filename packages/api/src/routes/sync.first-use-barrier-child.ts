@@ -26,6 +26,14 @@
  *   in  — EXPECT_DATABASE_URL (+ DATABASE_URL, both set to the same throwaway Postgres)
  *   out — one SENTINEL-prefixed JSON line on stdout: FirstUseBarrierOutput
  */
+import {
+  assertThrowawayDb,
+  emitChildResult,
+  lockObserver,
+  waitFor,
+  withTimeout,
+} from "../testSupport";
+
 export const SENTINEL = "__SYNC_FIRST_USE_BARRIER__";
 
 export type FirstUseBarrierOutput = {
@@ -46,49 +54,32 @@ export type FirstUseBarrierOutput = {
   budgetRowCount: number;
 };
 
-const withTimeout = <T>(p: Promise<T>, ms: number, label: string): Promise<T> =>
-  Promise.race([
-    p,
-    Bun.sleep(ms).then(() => {
-      throw new Error(`timeout after ${ms}ms: ${label}`);
-    }),
-  ]);
-
 async function main(): Promise<void> {
-  const expected = process.env.EXPECT_DATABASE_URL ?? "";
   const { env } = await import("../env");
   // The fuse: this process writes users/budgets rows and wipes a budget. Throwaway DB only.
-  if (!expected || env.DATABASE_URL !== expected) {
-    throw new Error(
-      `refusing to run: env.DATABASE_URL is not the throwaway database given by the test ` +
-        `(EXPECT_DATABASE_URL=${expected || "<unset>"})`,
-    );
-  }
+  assertThrowawayDb(env.DATABASE_URL);
 
   const postgres = (await import("postgres")).default;
   const { eq } = await import("drizzle-orm");
   const { Hono } = await import("hono");
   const { db } = await import("../db/client");
   const s = await import("../db/schema");
-  const { syncRoutes } = await import("./sync");
+  const { syncRoutes, CHANGES_CURSOR_LOCK_TEXT } = await import("./sync");
   const { OPERATION_LOCK, operationLockKey, acquireOperationLockForTests } = await import(
     "../db/operationLock"
   );
 
   const observer = postgres(env.DATABASE_URL, { max: 2, onnotice: () => {} });
+  const locks = lockObserver(observer);
+
+  // Derived from the SAME constant production locks on — never a re-typed literal, which would
+  // keep probing the old key after a rename and make the assertions below pass vacuously.
+  const [cursorKeyRow] = await observer<{ key: string }[]>`
+    select hashtext(${CHANGES_CURSOR_LOCK_TEXT}::text)::bigint::text as key`;
+  const changesCursorKey = cursorKeyRow!.key;
 
   /** Ungranted advisory waiters EXCLUDING the changes-cursor key — i.e. operation-lock waiters. */
-  const operationLockWaiters = async (): Promise<number> => {
-    const rows = await observer<{ n: number }[]>`
-      with k as (select hashtext('enveo:changes')::bigint as key)
-      select count(*)::int as n
-        from pg_locks, k
-       where locktype = 'advisory' and not granted
-         and not (classid = ((k.key >> 32) & 4294967295)::oid
-                  and objid = (k.key & 4294967295)::oid
-                  and objsubid = 1)`;
-    return rows[0]?.n ?? 0;
-  };
+  const operationLockWaiters = () => locks.waiters(changesCursorKey);
 
   const [user] = await db
     .insert(s.users)
@@ -156,11 +147,9 @@ async function main(): Promise<void> {
     }),
   );
 
-  let parkedBeforeBarrier = false;
-  for (let i = 0; i < 400 && !parkedBeforeBarrier; i++) {
-    if ((await operationLockWaiters()) >= 3) parkedBeforeBarrier = true;
-    else await Bun.sleep(25);
-  }
+  const parkedBeforeBarrier = await waitFor(async () => (await operationLockWaiters()) >= 3, {
+    attempts: 400,
+  });
 
   // While all three wait on the OPERATION lock, the exclusive changes-cursor lock must be free
   // — the pre-fix code would be holding it here (barrier first, lazy resolve second).
@@ -168,7 +157,7 @@ async function main(): Promise<void> {
   try {
     await observer.begin(async (ptx) => {
       await ptx`set local statement_timeout = 2000`;
-      await ptx`select pg_advisory_xact_lock(hashtext('enveo:changes')::bigint)`;
+      await ptx`select pg_advisory_xact_lock(${changesCursorKey}::bigint)`;
     }); // released at commit
     changesLockFreeWhileParked = true;
   } catch {
@@ -210,7 +199,7 @@ async function main(): Promise<void> {
   await observer.end({ timeout: 5 });
   const { sql } = await import("../db/client");
   await sql.end({ timeout: 5 });
-  await Bun.write(Bun.stdout, `${SENTINEL}${JSON.stringify(out)}\n`);
+  await emitChildResult(SENTINEL, out);
   process.exit(0);
 }
 

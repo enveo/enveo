@@ -20,16 +20,19 @@
  *     bun test packages/api/src/context.test.ts
  * There is deliberately NO fallback to DATABASE_URL (that one points at real data).
  */
-import { afterAll, beforeAll, describe, expect, it, setDefaultTimeout } from "bun:test";
+import { beforeAll, describe, expect, it } from "bun:test";
 import { drizzle } from "drizzle-orm/postgres-js";
 import { migrate } from "drizzle-orm/postgres-js/migrator";
 import postgres from "postgres";
 // Constant + type only — the child's app imports are lazy (see its header), so importing it
 // here does NOT pull env/db/client into this process.
 import { SENTINEL, type BudgetInitOutput } from "./context.budget-init-child";
+import { runChild } from "./testSupport";
 
-// The child forces real lock waits (bounded pg_locks polling) — beyond bun's 5 s default.
-setDefaultTimeout(60_000);
+/** The child forces real lock waits (bounded pg_locks polling) — beyond bun's 5 s default.
+ *  Applied to the ONE hook that spawns it, NOT via setDefaultTimeout (process-global in bun:
+ *  it would silently relax every other suite sharing the run). */
+const CHILD_TIMEOUT_MS = 120_000;
 import * as s from "./db/schema";
 
 const TEST_URL = process.env.TEST_DATABASE_URL ?? "";
@@ -49,27 +52,13 @@ describe.skipIf(!TEST_URL)("getBudgetId: serialized lazy initial-budget creation
     });
     await client.end({ timeout: 5 });
 
-    const child = Bun.spawn([process.execPath, CHILD], {
+    out = await runChild<BudgetInitOutput>({
+      path: CHILD,
+      testUrl: TEST_URL,
+      sentinel: SENTINEL,
       cwd: new URL(".", import.meta.url).pathname,
-      env: { ...process.env, DATABASE_URL: TEST_URL, EXPECT_DATABASE_URL: TEST_URL },
-      stdout: "pipe",
-      stderr: "pipe",
     });
-    const [stdout, stderr] = await Promise.all([
-      new Response(child.stdout).text(),
-      new Response(child.stderr).text(),
-    ]);
-    const code = await child.exited;
-    const line = stdout.split("\n").find((l) => l.startsWith(SENTINEL));
-    if (code !== 0 || !line) {
-      throw new Error(
-        `budget-init child failed (exit ${code})\nstdout:\n${stdout}\nstderr:\n${stderr}`,
-      );
-    }
-    out = JSON.parse(line.slice(SENTINEL.length)) as BudgetInitOutput;
-  });
-
-  afterAll(() => {});
+  }, CHILD_TIMEOUT_MS);
 
   it("two concurrent first calls really raced (both parked on the operation lock)", () => {
     expect(out.race.bothParkedObserved).toBe(true);
@@ -88,6 +77,14 @@ describe.skipIf(!TEST_URL)("getBudgetId: serialized lazy initial-budget creation
     expect(out.twoUsers.id1).not.toBe(out.twoUsers.id2);
     expect(out.twoUsers.rowCount1).toBe(1);
     expect(out.twoUsers.rowCount2).toBe(1);
+  });
+
+  it("a caller-owned transaction locks IN PLACE (withOperationLockInTx), creating one budget", () => {
+    // Guards the executor discrimination: the lock is held by the OUTER transaction's own
+    // backend while it is still open — the pooled path would have locked another connection.
+    expect(out.inTxPath.lockHeldByOuterTxPid).toBe(true);
+    expect(out.inTxPath.createdId).not.toBe("");
+    expect(out.inTxPath.rowCount).toBe(1);
   });
 
   it("an existing single budget takes the fast path: returned as-is, no new rows, no journal noise", () => {

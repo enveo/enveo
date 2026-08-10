@@ -5,9 +5,19 @@
  * (dev/E2E flow: register → seed → the account sees the demo data); a stub
  * owner is created only on an empty database.
  * Run: bun run db:seed
+ *
+ * SERIALIZED against lazy initial-budget creation (backlog §0b): this is the SECOND path that
+ * turns "zero budgets" into the owner's first budget, and the documented dev flow runs it while
+ * the stack is up — an open tab's sync cycle can ensure an empty budget in the exact window
+ * between the wipe and the demo insert, leaving TWO budgets whose `ORDER BY id` winner is a
+ * coin flip ("the seed didn't take"). Wipe + rebuild therefore run inside ONE transaction
+ * holding the owner's `budget.ensure-initial` lock, exactly as the operation-lock module
+ * demands of every first/default-budget path. (The wipe still clears OTHER users' budgets too —
+ * unchanged dev-tool behavior; the lock is per-user and cannot serialize those.)
  */
 import { asc } from "drizzle-orm";
-import { db, sql } from "./client";
+import { db, sql, type DbTransaction } from "./client";
+import { OPERATION_LOCK, operationLockKey, withOperationLock } from "./operationLock";
 import * as s from "./schema";
 
 const PLN = (z: number) => Math.round(z * 100); // złoty → grosz (major → minor units)
@@ -45,11 +55,11 @@ const PLACES = ["Supermarket", "Stacja paliw", "Sklep osiedlowy"];
 
 export async function seed() {
   console.log("Wiping budgets and seeding the database…");
-  await db.delete(s.budgets); // cascade removes all budget data; users/auth stay
 
   // Ordered by REGISTRATION TIME, not by id: users.id is defaultRandom(), so ordering by it
   // hands the demo data to an arbitrary account as soon as a second one exists (the owner who
   // just registered would see an empty budget, and a stranger's account would get the demo).
+  // Resolved BEFORE the lock — the lock key is that owner's id.
   const existing = await db
     .select({ id: s.users.id })
     .from(s.users)
@@ -58,13 +68,31 @@ export async function seed() {
   const owner =
     existing[0] ??
     (await db.insert(s.users).values({ email: "owner@example.com" }).returning())[0]!;
-  const [budget] = await db
+
+  const { accounts, envelopes, allocations } = await withOperationLock(
+    operationLockKey(OPERATION_LOCK.ensureInitialBudget, owner.id),
+    (tx) => seedInto(tx, owner.id),
+  );
+
+  console.log(
+    `✓ seed done: ${accounts} accounts, ${envelopes} envelopes, ${allocations} allocations`,
+  );
+}
+
+/** The wipe + rebuild itself — one transaction, under the owner's ensure-initial lock. */
+async function seedInto(
+  tx: DbTransaction,
+  ownerId: string,
+): Promise<{ accounts: number; envelopes: number; allocations: number }> {
+  await tx.delete(s.budgets); // cascade removes all budget data; users/auth stay
+
+  const [budget] = await tx
     .insert(s.budgets)
-    .values({ userId: owner.id, name: "Household budget" })
+    .values({ userId: ownerId, name: "Household budget" })
     .returning();
   const bid = budget!.id;
 
-  const accRows = await db
+  const accRows = await tx
     .insert(s.accounts)
     .values(
       ACCOUNTS.map((a, i) => ({
@@ -81,13 +109,13 @@ export async function seed() {
     .returning();
   const acc = (name: string) => accRows.find((a) => a.name === name)!;
 
-  const groupRows = await db
+  const groupRows = await tx
     .insert(s.envelopeGroups)
     .values(GROUPS.map((name, i) => ({ budgetId: bid, name, sort: i })))
     .returning();
   const grp = (name: string) => groupRows.find((g) => g.name === name)!;
 
-  const envRows = await db
+  const envRows = await tx
     .insert(s.envelopes)
     .values(
       ENVELOPES.map(([name, group, color, icon, , isSavings], i) => ({
@@ -103,8 +131,8 @@ export async function seed() {
     .returning();
   const env = (name: string) => envRows.find((e) => e.name === name)!;
 
-  await db.insert(s.categories).values(CATEGORIES.map((name) => ({ budgetId: bid, name })));
-  await db.insert(s.places).values(PLACES.map((name) => ({ budgetId: bid, name })));
+  await tx.insert(s.categories).values(CATEGORIES.map((name) => ({ budgetId: bid, name })));
+  await tx.insert(s.places).values(PLACES.map((name) => ({ budgetId: bid, name })));
 
   // allocations for the current month (from the add column above)
   const month = new Date().toISOString().slice(0, 7);
@@ -114,21 +142,21 @@ export async function seed() {
     month,
     amount: PLN(add),
   }));
-  if (allocs.length) await db.insert(s.allocations).values(allocs);
+  if (allocs.length) await tx.insert(s.allocations).values(allocs);
 
   // a handful of sample transactions in the current month
   const cat = async (name: string) => {
-    const rows = await db.select().from(s.categories);
+    const rows = await tx.select().from(s.categories);
     return rows.find((c) => c.name === name)?.id ?? null;
   };
   const place = async (name: string) => {
-    const rows = await db.select().from(s.places);
+    const rows = await tx.select().from(s.places);
     return rows.find((p) => p.name === name)?.id ?? null;
   };
   const shoppingCat = await cat("Zakupy");
   const supermarket = await place("Supermarket");
 
-  await db.insert(s.transactions).values([
+  await tx.insert(s.transactions).values([
     {
       budgetId: bid,
       type: "expense" as const,
@@ -177,9 +205,7 @@ export async function seed() {
     },
   ]);
 
-  console.log(
-    `✓ seed done: ${accRows.length} accounts, ${envRows.length} envelopes, ${allocs.length} allocations`,
-  );
+  return { accounts: accRows.length, envelopes: envRows.length, allocations: allocs.length };
 }
 
 if (import.meta.main) {

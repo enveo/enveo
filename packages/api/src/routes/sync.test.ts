@@ -17,7 +17,7 @@
  *     bun test packages/api/src/routes/sync.test.ts
  * There is deliberately NO fallback to DATABASE_URL (that one points at real data).
  */
-import { afterAll, beforeAll, describe, expect, it, setDefaultTimeout } from "bun:test";
+import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { and, eq, isNull } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/postgres-js";
 import { migrate } from "drizzle-orm/postgres-js/migrator";
@@ -39,10 +39,12 @@ import {
   SENTINEL as BARRIER_SENTINEL,
   type FirstUseBarrierOutput,
 } from "./sync.first-use-barrier-child";
+import { runChild } from "../testSupport";
 
-// The lock-order child forces real lock waits (bounded pg_locks polling) — beyond bun's
-// 5 s default.
-setDefaultTimeout(60_000);
+/** The lock-order child forces real lock waits (bounded pg_locks polling) — beyond bun's 5 s
+ *  default. Applied to the ONE hook that spawns it, NOT via setDefaultTimeout (process-global
+ *  in bun: it would silently relax every other suite sharing the run). */
+const CHILD_TIMEOUT_MS = 120_000;
 
 const UUID_A = "11111111-1111-1111-1111-111111111111";
 const UUID_B = "22222222-2222-2222-2222-222222222222";
@@ -411,25 +413,13 @@ describe.skipIf(!TEST_URL)(
       });
       await barrierClient.end({ timeout: 5 });
 
-      const child = Bun.spawn([process.execPath, BARRIER_CHILD], {
+      out = await runChild<FirstUseBarrierOutput>({
+        path: BARRIER_CHILD,
+        testUrl: TEST_URL,
+        sentinel: BARRIER_SENTINEL,
         cwd: new URL("../..", import.meta.url).pathname,
-        env: { ...process.env, DATABASE_URL: TEST_URL, EXPECT_DATABASE_URL: TEST_URL },
-        stdout: "pipe",
-        stderr: "pipe",
       });
-      const [stdout, stderr] = await Promise.all([
-        new Response(child.stdout).text(),
-        new Response(child.stderr).text(),
-      ]);
-      const code = await child.exited;
-      const line = stdout.split("\n").find((l) => l.startsWith(BARRIER_SENTINEL));
-      if (code !== 0 || !line) {
-        throw new Error(
-          `first-use-barrier child failed (exit ${code})\nstdout:\n${stdout}\nstderr:\n${stderr}`,
-        );
-      }
-      out = JSON.parse(line.slice(BARRIER_SENTINEL.length)) as FirstUseBarrierOutput;
-    });
+    }, CHILD_TIMEOUT_MS);
 
     it("all three routes really parked on the OPERATION lock (the interleaving was forced)", () => {
       expect(out.parkedBeforeBarrier).toBe(true);

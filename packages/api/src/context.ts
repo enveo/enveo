@@ -62,8 +62,7 @@ export async function getBudgetId(c: UserCtx, x: DbExecutor = db): Promise<strin
     if (!rows[0]) throw new Error("No budget found.");
     return rows[0].id;
   }
-  const userId = c.get("userId");
-  if (!userId) throw new Error("No user in context — session middleware did not set userId.");
+  const userId = requireUserId(c);
   // Fast path — no lock when a budget exists (the overwhelmingly common case).
   const existing = await firstBudgetIdOf(x, userId);
   if (existing) return existing;
@@ -80,15 +79,44 @@ export async function getBudgetId(c: UserCtx, x: DbExecutor = db): Promise<strin
     if (!created) throw new Error("Failed to create the user's budget.");
     return created.id;
   };
-  // A transaction owned by the caller (structurally: only transactions have `rollback`) locks
-  // in place — the lock then lives until the OUTER commit; the pooled db gets its own
-  // transaction whose commit/rollback releases the lock.
-  return isTransaction(x)
-    ? withOperationLockInTx(x, key, ensure)
-    : withOperationLock(key, ensure);
+  // A transaction owned by the caller locks IN PLACE (the lock then lives until the OUTER
+  // commit); the pooled db gets its own transaction, whose commit/rollback releases it.
+  return isPooledDb(x) ? withOperationLock(key, ensure) : withOperationLockInTx(asTx(x), key, ensure);
 }
 
-const isTransaction = (x: DbExecutor): x is DbTransaction => "rollback" in x;
+/**
+ * Which executor is this? Discriminated by IDENTITY against this module's own pool singleton,
+ * NOT structurally.
+ *
+ * FAILURE MODE GUARDED: a structural probe (e.g. `"rollback" in x`) is correct for today's
+ * drizzle, but if an upgrade — or a test/RLS wrapper — ever gave the pooled `db` a `rollback`
+ * member, the pooled database would be misread as a transaction and
+ * `pg_advisory_xact_lock` would run on an AUTOCOMMIT pool connection: the lock would be
+ * released at statement end and the serialization would silently vanish (no error, and no
+ * failing test outside a concurrency harness). Identity cannot drift that way.
+ *
+ * Anything that is neither this module's pool nor a real transaction (e.g. a foreign drizzle
+ * instance built over another pool) is refused LOUDLY rather than silently locked on an
+ * autocommit connection.
+ */
+const isPooledDb = (x: DbExecutor): x is typeof db => x === db;
+
+function asTx(x: DbExecutor): DbTransaction {
+  if (!("rollback" in x)) {
+    throw new Error(
+      "getBudgetId: executor is neither the module's pooled db nor a transaction — " +
+        "lazy budget creation needs one of the two to hold the operation lock.",
+    );
+  }
+  return x;
+}
+
+/** The user this request authenticated as; absent only outside HTTP (programmer error here). */
+function requireUserId(c: NonNullable<UserCtx>): string {
+  const userId = c.get("userId");
+  if (!userId) throw new Error("No user in context — session middleware did not set userId.");
+  return userId;
+}
 
 /** The session user's currently-selected budget: deterministic ORDER BY id, first row. */
 async function firstBudgetIdOf(x: DbExecutor, userId: string): Promise<string | null> {
@@ -123,8 +151,18 @@ async function readBudgetMeta(x: DbExecutor, id: string): Promise<BudgetMeta> {
     .select({ tier: budgets.tier, epoch: budgets.epoch })
     .from(budgets)
     .where(eq(budgets.id, id));
-  return { id, tier: (row?.tier ?? "plain") as "plain" | "e2ee", epoch: row?.epoch ?? 0 };
+  return toBudgetMeta(id, row);
 }
+
+/** The ONE row→BudgetMeta mapping (defaults for a pre-E2EE row: plain, epoch 0). */
+const toBudgetMeta = (
+  id: string,
+  row: { tier: string | null; epoch: number | null } | undefined,
+): BudgetMeta => ({
+  id,
+  tier: (row?.tier ?? "plain") as "plain" | "e2ee",
+  epoch: row?.epoch ?? 0,
+});
 
 /** Wrong tier for the route — mapped in app.onError to 409 { error: "tier_mismatch" }. */
 export class TierMismatch extends Error {
@@ -171,8 +209,10 @@ export async function requireExistingTier(
   want: "plain" | "e2ee",
   x: DbExecutor = db,
 ): Promise<BudgetMeta> {
-  const userId = sessionUserId(c);
-  if (!userId) throw new Error("No user in context — session middleware did not set userId.");
+  if (c === null) throw new Error("requireExistingTier needs an HTTP context (session user).");
+  const userId = requireUserId(c);
+  // ONE round-trip: this runs INSIDE the cursor-barrier transaction, which holds the exclusive
+  // changes lock — do not split it into a select-id + select-meta pair.
   const rows = await x
     .select({ id: budgets.id, tier: budgets.tier, epoch: budgets.epoch })
     .from(budgets)
@@ -181,11 +221,7 @@ export async function requireExistingTier(
     .limit(1);
   const row = rows[0];
   if (!row) throw new BudgetVanished();
-  const meta: BudgetMeta = {
-    id: row.id,
-    tier: (row.tier ?? "plain") as "plain" | "e2ee",
-    epoch: row.epoch ?? 0,
-  };
+  const meta = toBudgetMeta(row.id, row);
   if (meta.tier !== want) throw new TierMismatch(meta);
   return meta;
 }
