@@ -18,8 +18,15 @@ import { and, eq, gt, inArray, sql as dsql } from "drizzle-orm";
 import { Hono } from "hono";
 import postgres from "postgres";
 import { z } from "zod";
-import { requireTier, sessionUserId } from "../context";
-import { db } from "../db/client";
+import {
+  BudgetVanished,
+  getBudgetId,
+  requireExistingTier,
+  requireTier,
+  sessionUserId,
+  type BudgetMeta,
+} from "../context";
+import { db, type DbTransaction } from "../db/client";
 import * as s from "../db/schema";
 import {
   applyAccountCreate,
@@ -87,14 +94,52 @@ async function maxSeq(x: Executor): Promise<number> {
   return row?.cursor ?? 0;
 }
 
+/** Bounded retries of the ensure → barrier sequence (BudgetVanished — a concurrent reseed). */
+const ENSURE_BARRIER_ATTEMPTS = 3;
+
+/**
+ * Ensure-then-barrier (LOCK ORDER, backlog §0b — see db/operationLock.ts): an initializer's
+ * order is operation lock → SHARED changes lock (the budget INSERT fires `log_change()`),
+ * while this barrier takes the EXCLUSIVE changes lock. Lazy budget creation INSIDE the barrier
+ * transaction would therefore take the two locks in the inverse order and deadlock against a
+ * concurrent initializer. So:
+ *
+ *  - PHASE 1 ensures the initial budget through the STANDALONE operation-lock path
+ *    (`getBudgetId` on the pooled db — a lock-free fast-path select when it already exists),
+ *  - PHASE 2 opens the barrier transaction, whose FIRST statement stays `lockChangesCursor`
+ *    (the shared-lock counterpart in the `log_change()` triggers depends on it), and resolves
+ *    an EXISTING budget only (`requireExistingTier` — never creates).
+ *
+ * If a concurrent destructive reseed removed the budget between the two phases, the whole
+ * ensure → barrier sequence retries a bounded number of times.
+ */
+async function withCursorBarrier<T>(
+  c: Parameters<typeof requireTier>[0],
+  work: (tx: DbTransaction, meta: BudgetMeta) => Promise<T>,
+): Promise<T> {
+  for (let attempt = 1; ; attempt++) {
+    await getBudgetId(c); // phase 1 — standalone ensure, NEVER under the changes lock
+    try {
+      return await db.transaction(async (tx) => {
+        await lockChangesCursor(tx); // MUST stay the first statement of this transaction
+        const meta = await requireExistingTier(c, "plain", tx);
+        return work(tx, meta);
+      });
+    } catch (e) {
+      if (e instanceof BudgetVanished && attempt < ENSURE_BARRIER_ATTEMPTS) continue;
+      throw e;
+    }
+  }
+}
+
 /* ── GET /sync/snapshot — full replica + cursor, consistently (cursor barrier) ── */
 
 syncRoutes.get("/sync/snapshot", async (c) => {
-  const { budgetId, cursor, ledger } = await db.transaction(async (tx) => {
-    await lockChangesCursor(tx);
-    const budgetId = (await requireTier(c, "plain", tx)).id;
-    return { budgetId, cursor: await maxSeq(tx), ledger: await loadClientLedger(tx, budgetId) };
-  });
+  const { budgetId, cursor, ledger } = await withCursorBarrier(c, async (tx, meta) => ({
+    budgetId: meta.id,
+    cursor: await maxSeq(tx),
+    ledger: await loadClientLedger(tx, meta.id),
+  }));
   return c.json({ budgetId, cursor, ...ledger });
 });
 
@@ -256,24 +301,21 @@ syncRoutes.get("/sync/pull", async (c) => {
     return c.json({ error: "since must be an integer ≥ 0" }, 400);
   }
 
-  const { budgetId, ...result } = await db.transaction(
-    async (tx) => {
-      await lockChangesCursor(tx);
-      const budgetId = (await requireTier(c, "plain", tx)).id;
-      const cursor = await maxSeq(tx);
-      // client is ahead of a log that no longer exists (server reset / future pruning), or its
-      // cursor predates the un-attributable pre-0015 rows → full snapshot instead of a delta
-      if (since > cursor || since < (await legacyChangesWatermark(tx))) {
-        return { budgetId, cursor, resetRequired: true, changes: [] as PullChange[] };
-      }
-      return {
-        budgetId,
-        cursor,
-        resetRequired: false,
-        changes: await pullChanges(tx, budgetId, since),
-      };
-    },
-  );
+  const { budgetId, ...result } = await withCursorBarrier(c, async (tx, meta) => {
+    const budgetId = meta.id;
+    const cursor = await maxSeq(tx);
+    // client is ahead of a log that no longer exists (server reset / future pruning), or its
+    // cursor predates the un-attributable pre-0015 rows → full snapshot instead of a delta
+    if (since > cursor || since < (await legacyChangesWatermark(tx))) {
+      return { budgetId, cursor, resetRequired: true, changes: [] as PullChange[] };
+    }
+    return {
+      budgetId,
+      cursor,
+      resetRequired: false,
+      changes: await pullChanges(tx, budgetId, since),
+    };
+  });
 
   return c.json({ budgetId, ...result });
 });
@@ -642,12 +684,11 @@ syncRoutes.post("/sync/replace", async (c) => {
   const { ledger, userId } = parsed.data;
 
   try {
-    const result = await db.transaction(async (tx) => {
-      // Cursor barrier FIRST (like snapshot/pull) — the exclusive lock is held
-      // until COMMIT: no concurrent push can weave in between our wipe and the
-      // cursor read, and maxSeq after the inserts sees every seq we assigned.
-      await lockChangesCursor(tx);
-      const budgetId = (await requireTier(c, "plain", tx)).id;
+    // Cursor barrier (like snapshot/pull, via the ensure-then-barrier sequence) — the
+    // exclusive lock is held until COMMIT: no concurrent push can weave in between our wipe
+    // and the cursor read, and maxSeq after the inserts sees every seq we assigned.
+    const result = await withCursorBarrier(c, async (tx, meta) => {
+      const budgetId = meta.id;
       // PER-REQUEST tenant assertion — BEFORE the wipe: the session may have been swapped in
       // another tab while this (possibly large) ledger was being serialized and uploaded, and
       // this route REPLACES the resolved budget wholesale. Mismatch ⇒ write nothing.

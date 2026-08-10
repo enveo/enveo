@@ -17,7 +17,7 @@
  *     bun test packages/api/src/routes/sync.test.ts
  * There is deliberately NO fallback to DATABASE_URL (that one points at real data).
  */
-import { afterAll, beforeAll, describe, expect, it } from "bun:test";
+import { afterAll, beforeAll, describe, expect, it, setDefaultTimeout } from "bun:test";
 import { and, eq, isNull } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/postgres-js";
 import { migrate } from "drizzle-orm/postgres-js/migrator";
@@ -35,6 +35,14 @@ import {
 // Constant + type only — this module's app/db imports are lazy (see the file header), so
 // importing it here does NOT pull env/db/client into THIS process.
 import { SENTINEL as REPLACE_SENTINEL, type ReplaceRecurrenceOutput } from "./sync.replace-recurrence-child";
+import {
+  SENTINEL as BARRIER_SENTINEL,
+  type FirstUseBarrierOutput,
+} from "./sync.first-use-barrier-child";
+
+// The lock-order child forces real lock waits (bounded pg_locks polling) — beyond bun's
+// 5 s default.
+setDefaultTimeout(60_000);
 
 const UUID_A = "11111111-1111-1111-1111-111111111111";
 const UUID_B = "22222222-2222-2222-2222-222222222222";
@@ -373,3 +381,79 @@ describe.skipIf(!TEST_URL)("sync/pull: the change journal is scoped to one budge
     expect(out.transactionsRecurrenceIdColumnExists).toBe(false);
   });
 });
+
+/* ── Lock order: first-use snapshot/pull/replace vs. a concurrent initializer (§0b) ──────
+ *
+ * An initializer's order is operation lock → shared changes lock (the budget INSERT fires
+ * `log_change()`). Snapshot/pull/replace take the EXCLUSIVE changes lock for their cursor
+ * barrier — if they lazily created the budget INSIDE that transaction, their order would be the
+ * exact inverse and a concurrent initializer would deadlock with them. The routes must instead
+ * ensure the initial budget through the STANDALONE operation-lock path BEFORE the barrier and
+ * resolve only an EXISTING budget inside it (requireExistingTier).
+ *
+ * The child (sync.first-use-barrier-child.ts) FORCES the interleaving: a gate holds the fresh
+ * user's ensure-initial lock, all three routes are fired and observed parked on the OPERATION
+ * lock via pg_locks (changes-cursor waiters excluded), the changes lock is probed FREE at that
+ * moment, then the gate inserts the budget (shared changes lock — must not deadlock) and
+ * commits. */
+
+const BARRIER_CHILD = new URL("./sync.first-use-barrier-child.ts", import.meta.url).pathname;
+
+describe.skipIf(!TEST_URL)(
+  "sync first use: ensure-initial runs BEFORE the cursor barrier (no deadlock, no split budget)",
+  () => {
+    let out: FirstUseBarrierOutput;
+
+    beforeAll(async () => {
+      const barrierClient = postgres(TEST_URL, { max: 1, onnotice: () => {} });
+      await migrate(drizzle(barrierClient, { schema: s }), {
+        migrationsFolder: new URL("../../drizzle", import.meta.url).pathname,
+      });
+      await barrierClient.end({ timeout: 5 });
+
+      const child = Bun.spawn([process.execPath, BARRIER_CHILD], {
+        cwd: new URL("../..", import.meta.url).pathname,
+        env: { ...process.env, DATABASE_URL: TEST_URL, EXPECT_DATABASE_URL: TEST_URL },
+        stdout: "pipe",
+        stderr: "pipe",
+      });
+      const [stdout, stderr] = await Promise.all([
+        new Response(child.stdout).text(),
+        new Response(child.stderr).text(),
+      ]);
+      const code = await child.exited;
+      const line = stdout.split("\n").find((l) => l.startsWith(BARRIER_SENTINEL));
+      if (code !== 0 || !line) {
+        throw new Error(
+          `first-use-barrier child failed (exit ${code})\nstdout:\n${stdout}\nstderr:\n${stderr}`,
+        );
+      }
+      out = JSON.parse(line.slice(BARRIER_SENTINEL.length)) as FirstUseBarrierOutput;
+    });
+
+    it("all three routes really parked on the OPERATION lock (the interleaving was forced)", () => {
+      expect(out.parkedBeforeBarrier).toBe(true);
+    });
+
+    it("none of them held the exclusive changes-cursor lock while waiting", () => {
+      expect(out.changesLockFreeWhileParked).toBe(true);
+    });
+
+    it("the concurrent initializer's insert (shared changes lock) did not deadlock", () => {
+      expect(out.gateInsertCompleted).toBe(true);
+    });
+
+    it("snapshot, pull and replace all finish 200 on the initializer's budget", () => {
+      expect(out.snapshotStatus).toBe(200);
+      expect(out.pullStatus).toBe(200);
+      expect(out.replaceStatus).toBe(200);
+      expect(out.snapshotBudgetId).toBe(out.gateBudgetId);
+      expect(out.pullBudgetId).toBe(out.gateBudgetId);
+      expect(out.replaceBudgetId).toBe(out.gateBudgetId);
+    });
+
+    it("exactly one budget row — no split across budget ids", () => {
+      expect(out.budgetRowCount).toBe(1);
+    });
+  },
+);
