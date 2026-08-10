@@ -1,7 +1,6 @@
 import { eq } from "drizzle-orm";
-import { db } from "./db/client";
+import { db, type DbExecutor } from "./db/client";
 import { budgets } from "./db/schema";
-import type { Executor } from "./sync/apply";
 
 /** Minimal Hono context needed to resolve the user (null = call outside HTTP). */
 type UserCtx = { get: (k: "userId") => string | undefined } | null;
@@ -33,7 +32,7 @@ export function sessionUserId(c: UserCtx): string | undefined {
  * transaction as the data (consistent budgetId+ledger pair even during a
  * background reseed).
  */
-export async function getBudgetId(c: UserCtx, x: Executor = db): Promise<string> {
+export async function getBudgetId(c: UserCtx, x: DbExecutor = db): Promise<string> {
   if (c === null) {
     // non-HTTP callers (scripts/tests): single-budget convenience — first budget row
     const rows = await x.select({ id: budgets.id }).from(budgets).limit(1);
@@ -69,7 +68,7 @@ export interface BudgetMeta {
 }
 
 /** Budget id + tier + epoch in one read (same executor as the data). */
-export async function getBudgetMeta(c: UserCtx, x: Executor = db): Promise<BudgetMeta> {
+export async function getBudgetMeta(c: UserCtx, x: DbExecutor = db): Promise<BudgetMeta> {
   const id = await getBudgetId(c, x);
   const [row] = await x
     .select({ tier: budgets.tier, epoch: budgets.epoch })
@@ -93,7 +92,7 @@ export class TierMismatch extends Error {
 export async function requireTier(
   c: UserCtx,
   want: "plain" | "e2ee",
-  x: Executor = db,
+  x: DbExecutor = db,
 ): Promise<BudgetMeta> {
   const meta = await getBudgetMeta(c, x);
   if (meta.tier !== want) throw new TierMismatch(meta);

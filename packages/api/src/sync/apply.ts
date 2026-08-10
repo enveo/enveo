@@ -22,11 +22,11 @@ import type {
   TxnPayload,
 } from "@enveo/shared";
 import { and, eq } from "drizzle-orm";
-import { db } from "../db/client";
+import { db, type DbExecutor } from "../db/client";
 import * as s from "../db/schema";
 
-type DbTx = Parameters<Parameters<typeof db.transaction>[0]>[0];
-export type Executor = typeof db | DbTx;
+/** Legacy alias — the canonical type now lives in db/client.ts (DbExecutor/DbTransaction). */
+export type Executor = DbExecutor;
 
 export const NOT_FOUND = "not_found" as const;
 export type NotFound = typeof NOT_FOUND;
