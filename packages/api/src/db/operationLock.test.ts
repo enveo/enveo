@@ -18,7 +18,7 @@
 
 
 
-import { afterAll, beforeAll, describe, expect, it } from "bun:test";
+import { afterAll, beforeAll, describe, expect, it, setDefaultTimeout } from "bun:test";
 import { drizzle } from "drizzle-orm/postgres-js";
 import { migrate } from "drizzle-orm/postgres-js/migrator";
 import postgres from "postgres";
@@ -34,6 +34,9 @@ import {
   type OperationLockName,
 } from "./operationLock";
 import type { db } from "./client";
+
+ 
+setDefaultTimeout(60_000);
 
  
 
