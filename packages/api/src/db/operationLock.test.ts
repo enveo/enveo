@@ -18,7 +18,7 @@
  *     bun test packages/api/src/db/operationLock.test.ts
  * There is deliberately NO fallback to DATABASE_URL (that one points at real data).
  */
-import { afterAll, beforeAll, describe, expect, it } from "bun:test";
+import { afterAll, beforeAll, describe, expect, it, setDefaultTimeout } from "bun:test";
 import { drizzle } from "drizzle-orm/postgres-js";
 import { migrate } from "drizzle-orm/postgres-js/migrator";
 import postgres from "postgres";
@@ -34,6 +34,9 @@ import {
   type OperationLockName,
 } from "./operationLock";
 import type { db } from "./client";
+
+// The child forces real lock waits (bounded pg_locks polling) — beyond bun's 5 s default.
+setDefaultTimeout(60_000);
 
 /* ── operationLockKey: central registry + validation (pure) ─────────────── */
 
