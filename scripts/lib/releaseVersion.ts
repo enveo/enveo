@@ -180,6 +180,120 @@ export function checkAppVersion(release: ReleaseTag, appVersion: string | null):
   );
 }
 
+/** Parse a bare version string (no leading `v`), e.g. one read from an OCI label. */
+export function parseVersion(text: string): ReleaseTag | null {
+  const verdict = parseReleaseTag(`v${text}`);
+  return verdict.ok ? verdict.release : null;
+}
+
+/**
+ * SemVer precedence: negative if `a` sorts before `b`, positive if after, 0 if equal.
+ *
+ * Implements the prerelease rules too, not just the numeric core: a version WITHOUT a prerelease
+ * outranks the same core WITH one, numeric identifiers compare numerically and rank below
+ * alphanumeric ones, and a shorter identifier list loses when every preceding field is equal.
+ * Aliases only ever serve stable versions today, but a comparison that silently mis-ranks
+ * `3.8.0-rc.1` against `3.8.0` is the kind of thing that is discovered by a downgrade.
+ */
+export function compareVersions(a: ReleaseTag, b: ReleaseTag): number {
+  for (const [x, y] of [
+    [a.major, b.major],
+    [a.minor, b.minor],
+    [a.patch, b.patch],
+  ] as const) {
+    if (x !== y) return x < y ? -1 : 1;
+  }
+  if (a.prerelease === null && b.prerelease === null) return 0;
+  if (a.prerelease === null) return 1;
+  if (b.prerelease === null) return -1;
+
+  const left = a.prerelease.split(".");
+  const right = b.prerelease.split(".");
+  for (let index = 0; index < Math.max(left.length, right.length); index += 1) {
+    const l = left[index];
+    const r = right[index];
+    if (l === undefined) return -1;
+    if (r === undefined) return 1;
+    if (l === r) continue;
+    const lNumeric = ALL_DIGITS.test(l);
+    const rNumeric = ALL_DIGITS.test(r);
+    if (lNumeric && rNumeric) return Number(l) < Number(r) ? -1 : 1;
+    if (lNumeric !== rNumeric) return lNumeric ? -1 : 1;
+    return l < r ? -1 : 1;
+  }
+  return 0;
+}
+
+/** What an alias currently serves, as read from the registry. */
+export type AliasState = Readonly<{
+  alias: string;
+  /** Whether the alias tag exists at all. */
+  present: boolean;
+  /** The version the alias currently serves, or `null` when it could not be determined. */
+  version: string | null;
+}>;
+
+export type AliasDecision = Readonly<{
+  alias: string;
+  action: "move" | "noop" | "skip";
+  reason: string;
+}>;
+
+/**
+ * Decide, per alias, whether this release may take it over. ALIASES ONLY EVER MOVE FORWARD.
+ *
+ * The failure this prevents: v3.8.0 stops partway (say at attestation), v3.8.1 is released and
+ * correctly takes `latest`, and then somebody re-runs v3.8.0 to finish its missing GitHub
+ * Release. Everything about that re-run is legitimate — the tag exists, the image verifies, the
+ * resume is exactly the documented recovery path — and without this check it would quietly drag
+ * `latest` back to 3.8.0 for every self-hoster who pulls it.
+ *
+ * A skip is NOT a failure: the rest of the resume is valid work and must still complete. It is
+ * reported loudly instead.
+ *
+ * An alias whose version cannot be determined is also skipped rather than taken over: refusing to
+ * move is recoverable by hand, whereas an unnoticed downgrade is not.
+ */
+export function planAliasMoves(
+  release: ReleaseTag,
+  states: readonly AliasState[],
+): AliasDecision[] {
+  return states.map(({ alias, present, version }): AliasDecision => {
+    if (!present) {
+      return { alias, action: "move", reason: `${alias} does not exist yet` };
+    }
+    if (version === null || version === "") {
+      return {
+        alias,
+        action: "skip",
+        reason: `${alias} exists but does not say which version it serves — refusing to move it blindly`,
+      };
+    }
+    const current = parseVersion(version);
+    if (current === null) {
+      return {
+        alias,
+        action: "skip",
+        reason: `${alias} serves an unparseable version ${JSON.stringify(version)} — refusing to move it blindly`,
+      };
+    }
+    const order = compareVersions(release, current);
+    if (order > 0) {
+      return { alias, action: "move", reason: `${alias} serves ${version}, older than ${release.version}` };
+    }
+    if (order === 0) {
+      return { alias, action: "noop", reason: `${alias} already serves ${release.version}` };
+    }
+    return {
+      alias,
+      action: "skip",
+      reason:
+        `${alias} serves ${version}, which is NEWER than ${release.version} — not moving it backwards ` +
+        "(re-running an older tag must not downgrade what self-hosters pull)",
+    };
+  });
+}
+
 /**
  * The MUTABLE tags a release earns, in the order they should be moved.
  *

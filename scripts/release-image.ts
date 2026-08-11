@@ -36,6 +36,7 @@ import {
   type AnnotationSource,
   type ImageIndex,
 } from "./lib/releaseImage";
+import { parseReleaseTag, planAliasMoves, type AliasState } from "./lib/releaseVersion";
 
 const EXIT_VIOLATIONS = 1;
 const EXIT_USAGE = 2;
@@ -149,6 +150,65 @@ function checkIdentity(reference: string, options: Options): string[] {
   return violations;
 }
 
+/**
+ * Decide which mutable aliases this release may take over, and emit the list to move.
+ *
+ * Reads what each alias CURRENTLY serves from its own OCI metadata rather than assuming this
+ * release is the newest thing that ever pointed there. Aliases only move forward: a legitimate
+ * re-run of an older tag (to finish a GitHub Release, say) must not drag `latest` backwards.
+ *
+ * A skip is reported, not fatal — the rest of the resume is real work.
+ */
+function aliasPlan(image: string, version: string, aliases: readonly string[]): number {
+  const verdict = parseReleaseTag(`v${version}`);
+  if (!verdict.ok) {
+    fail(`cannot parse the release version ${JSON.stringify(version)}: ${verdict.reason}`);
+    return EXIT_VIOLATIONS;
+  }
+
+  const states: AliasState[] = aliases.map((alias) => {
+    const raw = inspect(`${image}:${alias}`, "{{json .Image}}");
+    if (raw.code !== 0) {
+      if (classifyInspectFailure(raw.stderr) === "absent") {
+        return { alias, present: false, version: null };
+      }
+      // A registry error is NOT "absent": treating it as such would move the alias blindly.
+      throw new Error(`cannot read what ${image}:${alias} currently serves: ${raw.stderr}`);
+    }
+    return { alias, present: true, version: versionLabelOf(parse<unknown>(raw.stdout, "image config")) };
+  });
+
+  const decisions = planAliasMoves(verdict.release, states);
+  console.log(`release-image alias-plan: ${image} → ${version}`);
+  for (const decision of decisions) {
+    const mark = decision.action === "move" ? "→" : decision.action === "noop" ? "=" : "✗";
+    console.log(`  ${mark} ${decision.action.toUpperCase().padEnd(4)} ${decision.reason}`);
+  }
+
+  const move = decisions.filter((d) => d.action === "move").map((d) => d.alias);
+  const skipped = decisions.filter((d) => d.action === "skip");
+  if (skipped.length > 0) {
+    // Visible in the log AND in the job summary — a silently skipped alias is how somebody
+    // later concludes the pipeline is broken.
+    for (const decision of skipped) console.log(`::warning::alias not moved — ${decision.reason}`);
+  }
+  emit({ move: move.join(","), skipped: skipped.map((d) => d.alias).join(",") });
+  return 0;
+}
+
+/** The version an already-published image says it is, from any platform's labels. */
+function versionLabelOf(imageJson: unknown): string | null {
+  const root = (imageJson ?? {}) as Record<string, unknown>;
+  const entries = "config" in root ? [root] : Object.values(root);
+  for (const entry of entries) {
+    const labels = ((entry as Record<string, unknown> | null)?.["config"] as { Labels?: Record<string, string> } | undefined)
+      ?.Labels;
+    const version = labels?.["org.opencontainers.image.version"];
+    if (version !== undefined && version !== "") return version;
+  }
+  return null;
+}
+
 /** Print `platform<TAB>manifest-digest` per runnable platform, for the per-arch inventory. */
 function platforms(reference: string): number {
   const raw = inspect(reference);
@@ -246,6 +306,25 @@ function main(argv: readonly string[]): number {
   const image = flag("image");
   const revision = flag("revision");
   const version = flag("version");
+
+  if (mode === "alias-plan") {
+    const aliases = (flag("aliases") ?? "").split(",").filter((a) => a !== "");
+    if (image === undefined || version === undefined) {
+      console.error("usage: bun scripts/release-image.ts alias-plan --image <repo> --version <v> --aliases a,b");
+      return EXIT_USAGE;
+    }
+    if (aliases.length === 0) {
+      console.log("release-image alias-plan: no aliases for this release (a prerelease moves nothing)");
+      emit({ move: "", skipped: "" });
+      return 0;
+    }
+    try {
+      return aliasPlan(image, version, aliases);
+    } catch (error) {
+      fail(error instanceof Error ? error.message : String(error));
+      return EXIT_REGISTRY_ERROR;
+    }
+  }
 
   // `platforms` is a lookup, not a check: it needs neither revision nor version.
   if (mode === "platforms") {

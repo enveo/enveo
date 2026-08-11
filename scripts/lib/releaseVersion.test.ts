@@ -11,8 +11,10 @@ import { describe, expect, it } from "bun:test";
 import {
   aliasImageTags,
   checkAppVersion,
+  compareVersions,
   extractAppVersion,
   parseReleaseTag,
+  planAliasMoves,
   type ReleaseTag,
 } from "./releaseVersion";
 
@@ -199,5 +201,84 @@ describe("aliasImageTags", () => {
 
   it("derives the alias from the parsed components, not from string slicing", () => {
     expect(aliasImageTags(parsed("v10.20.30"))).toEqual(["10.20", "latest"]);
+  });
+});
+
+describe("compareVersions", () => {
+  const cmp = (a: string, b: string): number => Math.sign(compareVersions(parsed(`v${a}`), parsed(`v${b}`)));
+
+  it("orders by numeric core, not lexically", () => {
+    expect(cmp("3.8.0", "3.8.1")).toBe(-1);
+    expect(cmp("3.10.0", "3.9.0")).toBe(1); // lexically "3.10" sorts below "3.9"
+    expect(cmp("4.0.0", "3.99.99")).toBe(1);
+    expect(cmp("3.8.0", "3.8.0")).toBe(0);
+  });
+
+  it("ranks a prerelease BELOW the stable release of the same core", () => {
+    expect(cmp("3.8.0-rc.1", "3.8.0")).toBe(-1);
+    expect(cmp("3.8.0", "3.8.0-rc.1")).toBe(1);
+  });
+
+  it("compares prerelease identifiers per SemVer", () => {
+    expect(cmp("3.8.0-rc.1", "3.8.0-rc.2")).toBe(-1);
+    expect(cmp("3.8.0-rc.2", "3.8.0-rc.10")).toBe(-1); // numeric, not lexical
+    expect(cmp("3.8.0-alpha", "3.8.0-beta")).toBe(-1);
+    expect(cmp("3.8.0-1", "3.8.0-alpha")).toBe(-1); // numeric ranks below alphanumeric
+    expect(cmp("3.8.0-rc", "3.8.0-rc.1")).toBe(-1); // fewer identifiers loses
+    expect(cmp("3.8.0-rc.1", "3.8.0-rc.1")).toBe(0);
+  });
+});
+
+describe("planAliasMoves — aliases only ever move FORWARD", () => {
+  const plan = (tag: string, states: Array<{ alias: string; present: boolean; version: string | null }>) =>
+    planAliasMoves(parsed(tag), states);
+
+  it("moves an alias that does not exist yet", () => {
+    const [decision] = plan("v3.8.0", [{ alias: "latest", present: false, version: null }]);
+
+    expect(decision?.action).toBe("move");
+    expect(decision?.reason).toMatch(/does not exist yet/);
+  });
+
+  it("moves an alias serving an OLDER version", () => {
+    expect(plan("v3.8.1", [{ alias: "latest", present: true, version: "3.8.0" }])[0]?.action).toBe("move");
+  });
+
+  it("is a no-op when the alias already serves this version", () => {
+    const [decision] = plan("v3.8.0", [{ alias: "3.8", present: true, version: "3.8.0" }]);
+
+    expect(decision?.action).toBe("noop");
+    expect(decision?.reason).toMatch(/already serves/);
+  });
+
+  it("SKIPS an alias serving a NEWER version — the downgrade this exists to prevent", () => {
+    // v3.8.0 stopped at attestation; v3.8.1 shipped and took `latest`; someone re-runs v3.8.0 to
+    // finish its missing GitHub Release. Every step of that re-run is legitimate, and without
+    // this check it would drag `latest` back to 3.8.0 for everyone pulling it.
+    const [decision] = plan("v3.8.0", [{ alias: "latest", present: true, version: "3.8.1" }]);
+
+    expect(decision?.action).toBe("skip");
+    expect(decision?.reason).toMatch(/NEWER/);
+    expect(decision?.reason).toMatch(/backwards/);
+  });
+
+  it("skips rather than guesses when the alias does not say what it serves", () => {
+    expect(plan("v3.8.0", [{ alias: "latest", present: true, version: null }])[0]?.action).toBe("skip");
+    expect(plan("v3.8.0", [{ alias: "latest", present: true, version: "" }])[0]?.action).toBe("skip");
+    expect(plan("v3.8.0", [{ alias: "latest", present: true, version: "garbage" }])[0]?.action).toBe("skip");
+  });
+
+  it("decides each alias independently — 3.8 may move while latest must not", () => {
+    // Re-running v3.8.2 after v3.9.0 shipped: `3.8` is still legitimately this release's, `latest` is not.
+    const decisions = plan("v3.8.2", [
+      { alias: "3.8", present: true, version: "3.8.1" },
+      { alias: "latest", present: true, version: "3.9.0" },
+    ]);
+
+    expect(decisions.map((d) => d.action)).toEqual(["move", "skip"]);
+  });
+
+  it("does not let a prerelease take an alias from the stable it precedes", () => {
+    expect(plan("v3.8.0-rc.1", [{ alias: "latest", present: true, version: "3.8.0" }])[0]?.action).toBe("skip");
   });
 });
