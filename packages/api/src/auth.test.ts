@@ -32,11 +32,11 @@ import { migrate } from "drizzle-orm/postgres-js/migrator";
 import postgres from "postgres";
 // Constant only — this module's app imports are lazy (see the file header), so importing it
 // here does NOT pull env/db/client into the test process.
-import { SENTINEL, type RaceOutput, type RaceResult } from "./auth.signup-race-child";
+import { SENTINEL, type RaceOutput, type RaceResult } from "./auth.signup-race.test-child";
 import * as s from "./db/schema";
 
 /** Must match SIGNUP_GATE_LOCK in auth.ts. It is not exported, and importing auth.ts here
- *  would pin db/client to the ambient DATABASE_URL — see auth.signup-race-child.ts. The
+ *  would pin db/client to the ambient DATABASE_URL — see auth.signup-race.test-child.ts. The
  *  drift guard below fails loudly if the two ever diverge. */
 const SIGNUP_GATE_LOCK = 815901;
 
@@ -47,7 +47,7 @@ const BASE_URL = "http://127.0.0.1:8095";
 /** `Secure` as a cookie ATTRIBUTE (not the substring — "__Secure-" is a name prefix). */
 const SECURE_ATTR = /(?:^|;\s*)secure\s*(?:;|$)/i;
 
-const CHILD = new URL("./auth.signup-race-child.ts", import.meta.url).pathname;
+const CHILD = new URL("./auth.signup-race.test-child.ts", import.meta.url).pathname;
 
 /* ── better-auth's rule: Secure tracks the baseURL scheme (no DB needed) ──────
  *

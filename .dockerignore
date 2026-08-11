@@ -5,11 +5,22 @@ packages/web/dev-dist
 *.log
 
 # Tests never run inside the image, and the runtime stage COPIEs whole source directories
-# (packages/api/src, packages/shared/src) — without this the 28 *.test.ts files that live next
-# to those sources would ship to users. Keeping them out of the CONTEXT is what makes the
-# runtime allowlist honest; `scripts/image-inventory.ts` asserts the result.
+# (packages/api/src, packages/shared/src) — without this the test files that live next to those
+# sources would ship to users. Keeping them out of the CONTEXT is what makes the runtime
+# allowlist honest; `scripts/image-inventory.ts` asserts the result in the BUILT ARTEFACT,
+# which is the load-bearing check (this file is easy to bypass by adding a differently-named
+# file later).
+#
+# THE CONVENTION: a test-only module inside a shipped `src/` tree carries `.test` in its
+# basename — `*.test.ts` for suites, `*.test-support.ts` for helpers, `*.test-child.ts` for the
+# processes DB tests spawn. One glob then covers all of them. Do NOT invent a fourth spelling:
+# `test-helpers.ts` and `testSupport.ts` used to exist, matched nothing, and shipped — including
+# a module importing `fast-check`, which the production prune correctly removes, so users got an
+# unloadable file.
 **/*.test.ts
 **/*.test.tsx
+**/*.test-*.ts
+**/*.test-*.tsx
 packages/*/src/**/__fixtures__
 
 # No dot-prefixed files or directories belong in the image (.git, env files,

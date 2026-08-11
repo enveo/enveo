@@ -5,7 +5,7 @@
  * WHY A SEPARATE PROCESS. `getBudgetId`'s locked ensure path deliberately runs on the POOLED
  * `db` (db/client.ts), whose Postgres pool is pinned to `env.DATABASE_URL` at IMPORT time, and
  * bun's test runner shares ONE module registry across every test file — locally `DATABASE_URL`
- * points at a real database (see auth.signup-race-child.ts). The EXPECT_DATABASE_URL fuse below
+ * points at a real database (see auth.signup-race.test-child.ts). The EXPECT_DATABASE_URL fuse below
  * refuses to run against anything but the throwaway Postgres the test hands over.
  *
  * The two-initializer race is FORCED, not lucky: a gate transaction holds the user's
@@ -18,7 +18,7 @@
  *   out — one SENTINEL-prefixed JSON line on stdout: BudgetInitOutput
  */
 import { and, eq, sql as dsql } from "drizzle-orm";
-import { assertThrowawayDb, emitChildResult, lockObserver, waitFor, withTimeout } from "./testSupport";
+import { assertThrowawayDb, emitChildResult, lockObserver, waitFor, withTimeout } from "./api.test-support";
 
 export const SENTINEL = "__BUDGET_INIT_CHILD__";
 

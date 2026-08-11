@@ -37,7 +37,7 @@ import {
   mkOp,
   specArb,
   tx,
-} from "./test-helpers";
+} from "./ledger.test-support";
 import type { ClientLedger, SyncOp } from "./index";
 
  

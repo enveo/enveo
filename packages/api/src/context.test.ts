@@ -26,8 +26,8 @@ import { migrate } from "drizzle-orm/postgres-js/migrator";
 import postgres from "postgres";
 // Constant + type only — the child's app imports are lazy (see its header), so importing it
 // here does NOT pull env/db/client into this process.
-import { SENTINEL, type BudgetInitOutput } from "./context.budget-init-child";
-import { runChild } from "./testSupport";
+import { SENTINEL, type BudgetInitOutput } from "./context.budget-init.test-child";
+import { runChild } from "./api.test-support";
 
 /** The child forces real lock waits (bounded pg_locks polling) — beyond bun's 5 s default.
  *  Applied to the ONE hook that spawns it, NOT via setDefaultTimeout (process-global in bun:
@@ -40,7 +40,7 @@ if (TEST_URL && TEST_URL === process.env.DATABASE_URL) {
   throw new Error("TEST_DATABASE_URL must differ from DATABASE_URL — this suite writes to the DB.");
 }
 
-const CHILD = new URL("./context.budget-init-child.ts", import.meta.url).pathname;
+const CHILD = new URL("./context.budget-init.test-child.ts", import.meta.url).pathname;
 
 describe.skipIf(!TEST_URL)("getBudgetId: serialized lazy initial-budget creation", () => {
   let out: BudgetInitOutput;
