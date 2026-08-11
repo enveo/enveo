@@ -5,15 +5,40 @@ lives.
 
 ## Update
 
+An update is **deliberate**, in this order:
+
 ```bash
-# Update to the newest release (migrations run on start — back up first)
-docker compose pull && docker compose up -d
+# 1. Back up (see below) and check the archive
+docker compose exec -T db pg_dump -U enveo enveo | gzip > enveo-$(date +%F).sql.gz
+gzip -t enveo-*.sql.gz
+
+# 2. Read the release notes: https://github.com/enveo/enveo/releases
+
+# 3. Fetch the new image and recreate the containers (migrations run on start)
+docker compose pull
+docker compose up -d
+
+# 4. Check it came up and your data is there
+curl -fsS http://127.0.0.1:8081/api/health          # {"ok":true}
+docker compose logs --tail=50 app                   # migrations, then "listening"
 ```
 
-**Pin the version** once real data is in it: swap `:latest` in `compose.yml`
-for a [release tag](https://github.com/enveo/enveo/releases) (e.g.
-`ghcr.io/enveo/enveo:3.6.2`), so `docker compose pull` cannot carry you across
-a major version by surprise.
+Then open the app, confirm you are still signed in and that the current month's
+budget and a recent transaction look right.
+
+**About the `:latest` tag.** `ghcr.io/enveo/enveo:latest` is a *mutable alias*.
+The release pipeline moves it onto a stable release only after that exact image
+has passed the full gate — multi-architecture manifest, vulnerability scan,
+provenance and SBOM — so it never points at a prerelease, but it **can advance
+across a major version**. That is safe to live with because nothing moves on its
+own: the first `docker compose up` fetches the image, and restarting an existing
+install keeps running the image already on the machine. Your deployment changes
+only when you run step 3 above.
+
+**Going back is not just a tag edit.** If the new version migrated the database,
+the old image cannot read the new schema — recovery is restoring the backup you
+took in step 1. Repointing `latest`, or keeping an old image around locally, is
+not a downgrade path.
 
 ## Back up and restore
 

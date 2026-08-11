@@ -24,42 +24,57 @@ their install docs:
   vouches for. Nothing is wired up yet. Umbrel and CasaOS are the most plausible future
   candidates: both define apps as a plain `docker-compose.yml` plus a manifest, which is
   the closest structural match to Enveo's own compose file of any platform surveyed — but
-  CasaOS additionally requires pinned image tags (Enveo currently floats `:latest`), and
-  neither has an open PR.
+  CasaOS additionally requires a pinned image tag, while the documented self-host path here
+  is the `:latest` alias (immutable version tags exist in GHCR, they are simply not what
+  this guide hands out), and neither has an open PR.
 
 ---
 
-## Publishing the image (maintainer, one-time)
+## The image everything here pulls
 
-Everything below — and the README quickstart, and `compose.selfhost.yml` — pulls
-`ghcr.io/enveo/enveo`. That image exists only once a **version tag** has been built by
-[`.github/workflows/release.yml`](../.github/workflows/release.yml), and only becomes
-pullable by strangers once the GHCR package is **public**. GHCR packages default to
-**private**, and a private package fails `docker compose pull` with `denied` *even when
-the repository is public* — so the visibility flip is a real step, not a formality.
+Every channel below — and the README quickstart, and `compose.selfhost.yml` — pulls
+**`ghcr.io/enveo/enveo:latest`**, and that is the only reference this documentation names.
 
-The first *public* image is whichever version tag is newest at publication time —
-**v2.3.2 or later** (check `git tag -l`); `v2.0.0` predates the workflow, so nothing was
-ever built for it — do not offer it as a tag to pin. Steps, none of which can be
-committed:
+`latest` is a **mutable alias**. The release pipeline moves it onto a stable release only
+after that exact image has passed the whole gate (multi-architecture manifest,
+vulnerability scan, provenance, SBOM, digest attestation), and it moves only forward and
+only by digest — see [releasing.md](releasing.md). It therefore never points at a
+prerelease, but it **can advance across a major version**.
 
-1. Push `main` and make **`github.com/enveo/enveo` public**.
-2. Tag and push the release — the tag must MATCH `APP_VERSION` in
-   `packages/web/src/lib/version.ts`, which is bumped by hand:
-   `git tag vX.Y.Z && git push origin vX.Y.Z`. To re-publish an existing tag after a
-   failed run, use the workflow's `workflow_dispatch` input instead.
-3. Watch it: `gh run watch` — the arm64 leg is emulated and slow on a first run.
-4. GHCR → the `enveo` package → **Package settings**: change visibility to **Public**, and
-   enable **Inherit access from source repository**.
-5. Verify from a logged-out machine (this is the check that catches step 4):
+Nothing moves under a running install on its own: a first start fetches the image, and
+restarting an existing installation keeps the image already on the machine. The deployment
+changes when its operator deliberately pulls — the update recipe (back up, read the release
+notes, pull, recreate, check) is in [operations.md](operations.md#update). If an update
+migrated the database, going back means restoring that backup; repointing the alias or
+re-running an old local image is not a downgrade path.
+
+Exact version tags **do** exist in GHCR and are immutable, and prereleases publish their
+exact tag only. Both are for people who go looking in
+[Releases](https://github.com/enveo/enveo/releases) or GHCR; the maintained public path is
+`:latest`.
+
+### Making it pullable (maintainer, one-time)
+
+An image exists only once a version tag has been built by
+[`.github/workflows/release.yml`](../.github/workflows/release.yml) — the runbook for that
+is [releasing.md](releasing.md). Publication then needs steps that cannot be committed:
+
+1. Push `main` and make **`github.com/enveo/enveo` public** (artifact attestations require
+   it on Free/Pro/Team, so the release itself depends on this).
+2. Cut a release as [releasing.md](releasing.md#cutting-a-release) describes.
+3. GHCR → the `enveo` package → **Package settings**: change visibility to **Public**, and
+   enable **Inherit access from source repository**. GHCR packages default to **private**,
+   and a private package fails `docker compose pull` with `denied` *even when the
+   repository is public* — so this flip is a real step, not a formality.
+4. Verify from a logged-out machine (this is the check that catches step 3):
 
    ```bash
    docker logout ghcr.io
-   docker pull ghcr.io/enveo/enveo:latest      # must succeed anonymously
-   docker manifest inspect ghcr.io/enveo/enveo:2.3.2 | grep architecture   # amd64 + arm64
+   docker pull ghcr.io/enveo/enveo:latest                        # must succeed anonymously
+   docker manifest inspect ghcr.io/enveo/enveo:latest | grep architecture   # amd64 + arm64
    ```
 
-6. Drop the "Not published yet" note from the README (it is marked `TODO(maintainer)`).
+5. Drop the "Image not public yet" note from the README (it is marked `TODO(maintainer)`).
 
 ---
 
@@ -132,7 +147,7 @@ Set these on the **Enveo** service:
 | `BETTER_AUTH_SECRET` | `${{secret(64, "abcdef0123456789")}}` | **Required**, min 32 chars. In a Railway *template*, `secret()` generates it per deploy, so no two installs share a session secret. Setting it by hand: `openssl rand -hex 32`. |
 | `BETTER_AUTH_URL` | `https://${{RAILWAY_PUBLIC_DOMAIN}}` | Strongly recommended — see below. |
 | `DEPLOYMENT` | `selfhost` | Registration closes after the first (owner) account. |
-| `OPENAI_API_KEY` / `OPENAI_MODEL` | optional | Only for server-mode AI; without it, budget suggestions fall back to local rules, and screenshot import is AI-only and stays hidden. |
+| `OPENAI_API_KEY` / `OPENAI_MODEL` | optional | Enables **server-mode** AI (screenshot import, budget suggestions), paid by this key. Without it, budget suggestions fall back to local rules and server-mode screenshot import is unavailable — a trusted device can still use screenshot import with its own key (BYOK), straight from the browser. |
 
 **Do not set `PORT`.** Railway provides and exposes a `PORT` for you *as long as you have
 not defined one yourself*, and the app must listen on `0.0.0.0:$PORT`. Enveo does:
@@ -282,8 +297,10 @@ Where Enveo stands against that list:
 [feedback board](https://feedback.pikapods.com/) ("suggest or vote for it"), and
 `hello@pikapods.com` is the direct route for maintainers. Their update policy is worth
 knowing up front: they do not ship releases automatically — a release is tested in staging
-first and must have been out for **at least 3 days** as a stable release. That means the
-published image needs stable, immutable version tags (`2.3.2`), not just `latest`.
+first and must have been out for **at least 3 days** as a stable release. That needs
+immutable per-version image tags rather than the `latest` alias, which the release pipeline
+already publishes: every release writes its exact SemVer tag once and never overwrites it
+(see [releasing.md](releasing.md)).
 
 Two things are still unresolved and worth asking about in that same e-mail: PikaPods'
 exact revenue-share percentage for a newly listed app (their public statements describe

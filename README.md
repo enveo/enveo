@@ -34,7 +34,10 @@ background (optionally end-to-end encrypted), and your data stays yours.
 > package visibility flips with the repo — until then, build from source
 > ([docs/development.md](docs/development.md)).
 
-Docker, an empty directory, two generated secrets — nothing is compiled:
+An empty directory, two generated secrets — nothing is compiled. You bring
+**Docker Engine with the Compose v2 plugin** ([Docker's own install
+docs](https://docs.docker.com/engine/install/); `docker compose version` must
+answer):
 
 ```bash
 mkdir enveo && cd enveo
@@ -43,6 +46,13 @@ curl -fsSL https://raw.githubusercontent.com/enveo/enveo/main/compose.selfhost.y
   echo "BETTER_AUTH_SECRET=$(openssl rand -hex 32)"; } > .env
 docker compose up -d
 ```
+
+That compose file runs **`ghcr.io/enveo/enveo:latest`** — a mutable alias moved
+onto a stable release only after that exact image passed the release gate, so it
+never serves a prerelease but may advance across a major version. It does not
+move under you: restarting an install keeps the image it already has, and you
+update deliberately (back up → read the release notes → `docker compose pull` →
+recreate → check), as [operations.md](docs/operations.md#update) spells out.
 
 Open **http://localhost:8081** and create the **owner account** right away —
 registration closes as soon as it exists, so nobody who finds your URL can sign

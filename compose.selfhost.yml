@@ -12,8 +12,11 @@
 # everyone working on the code. Outside the repo the name does not matter: save it
 # as compose.yml (as above) and every `docker compose …` command finds it with no -f.
 #
-# Update:  docker compose pull && docker compose up -d
 # Backup:  docker compose exec -T db pg_dump -U enveo enveo | gzip > enveo-$(date +%F).sql.gz
+# Update:  back up (line above), read the release notes, THEN
+#          docker compose pull && docker compose up -d
+#          — an update may migrate the database, so going back can mean restoring that
+#            backup; see docs/operations.md before you run it.
 #
 # Run it from its OWN directory (as above), not from a checkout of the repo. Compose
 # derives the project name — which is what ties containers and the data volume together
@@ -51,10 +54,13 @@ services:
       retries: 10
 
   app:
-    # `latest` follows the newest release. To pin a version, replace the tag with a
-    # released one, e.g. ghcr.io/enveo/enveo:2.3.2 — recommended once you have real
-    # data in it: an explicit tag means `docker compose pull` cannot move you to a new
-    # major without you editing this line. Releases: github.com/enveo/enveo/releases
+    # `latest` is a MUTABLE alias. The release pipeline moves it onto a stable release only
+    # after that exact image passed the full gate (multi-arch manifest, vulnerability scan,
+    # provenance, SBOM); it never points at a prerelease, and it may cross a major version.
+    # Nothing moves under you on its own: the first `up` fetches the image, and restarting an
+    # existing install keeps running the image you already have. You advance deliberately —
+    # back up, read the release notes, `docker compose pull`, then `docker compose up -d`
+    # (docs/operations.md). Releases: github.com/enveo/enveo/releases
     image: ghcr.io/enveo/enveo:latest
     restart: unless-stopped
     depends_on:
@@ -99,9 +105,14 @@ services:
       # Requires BETTER_AUTH_URL — the OAuth redirect URI is derived from it.
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
       GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
-      # Optional AI (screenshot import, smart quick-add, budget assistant).
-      # Empty = budget suggestions fall back to local rules; quick-add and
-      # screenshot import are AI-only and stay hidden. Zero egress either way.
+      # Optional AI (screenshot import of statements, budget suggestions). A key here
+      # enables SERVER-side AI: each device still has to opt in, and the requests are
+      # paid by this key. Empty = no server AI — budget suggestions fall back to local
+      # rules and screenshot import is unavailable in server mode (it is AI-only).
+      # This does NOT disable AI on the device: a trusted device can use its own OpenAI
+      # key (BYOK, Settings → AI), and those requests go straight from the browser to
+      # OpenAI, never through this server. AI is off by default; with no key set and no
+      # device opting in, Enveo makes no outbound request at all.
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       OPENAI_MODEL: ${OPENAI_MODEL:-gpt-5.5}
     ports:
