@@ -19,7 +19,9 @@
 # BETTER_AUTH_SECRET is added (the API refuses to boot without one).
 #
 # Exit codes:  0 ok · 1 the app did not become healthy · 2 no docker CLI
-#              3 no Compose v2 plugin · 4 Docker daemon unreachable · 5 another tool missing
+#              3 no Compose v2 plugin · 4 Docker daemon unreachable
+#              5 another required tool missing, or secret generation failed
+#              6 an existing BETTER_AUTH_SECRET is too short to boot with
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -44,8 +46,9 @@ if ! command -v docker >/dev/null 2>&1; then
   fail "Docker is not installed (no \`docker\` command)."
   cat >&2 <<EOF
   Enveo runs in containers; installing Docker is your call, not this script's.
-  This script supports Ubuntu and Debian hosts. Install Docker Engine with the
-  Compose v2 plugin from Docker's own documentation:
+  Ubuntu and Debian are what this script is tested on — the links below cover
+  them. Install Docker Engine with the Compose v2 plugin from Docker's own
+  documentation:
 
     Ubuntu: ${DOCS_INSTALL_UBUNTU}
     Debian: ${DOCS_INSTALL_DEBIAN}
@@ -120,24 +123,102 @@ EOF
 fi
 
 # ---------------------------------------------------------------------------------------------
-# 2) .env — the first thing that writes anything. Values are never echoed: a generated secret
-#    that lands in a terminal scrollback, a CI log or a screenshot is a leaked secret.
+# 2) .env — the first thing that writes anything.
+#
+# Three rules here, each of them learned the hard way:
+#
+#  * A secret is generated into a VARIABLE and checked, never inlined into another command's
+#    arguments. `sed "s|…|…=$(openssl rand -hex 24)|"` looks equivalent and is not: `set -e`
+#    sees sed's status (0), so a failed openssl writes an EMPTY password — and compose's
+#    `${POSTGRES_PASSWORD:-enveo}` substitutes on empty as well as unset, initialising the
+#    database volume, permanently, with a well-known password.
+#  * A secret never reaches another process's argv (/proc/<pid>/cmdline is world-readable) and
+#    never reaches an xtrace line. Substitution is done by the shell's own read/printf builtins,
+#    with tracing suspended around it.
+#  * Values are never echoed: a secret in a terminal scrollback, a CI log or a screenshot is a
+#    leaked secret. `.env` itself is created 0600.
 # ---------------------------------------------------------------------------------------------
+
+gen_secret() {  # $1 = hex byte count; prints the secret on stdout, fails loudly on an empty one
+  local value
+  value="$(openssl rand -hex "$1")" || return 1
+  [ -n "$value" ] || return 1
+  printf '%s' "$value"
+}
+
+write_new_env() {
+  local trace=0
+  case "$-" in *x*) trace=1; set +x ;; esac
+  local pass secret line status=0
+  if ! pass="$(gen_secret 24)" || ! secret="$(gen_secret 32)"; then status=1; fi
+  if [ "$status" = 0 ]; then
+    umask 077
+    : > .env.tmp
+    while IFS= read -r line || [ -n "$line" ]; do
+      case "$line" in
+        POSTGRES_PASSWORD=*)  printf 'POSTGRES_PASSWORD=%s\n' "$pass"   >> .env.tmp ;;
+        BETTER_AUTH_SECRET=*) printf 'BETTER_AUTH_SECRET=%s\n' "$secret" >> .env.tmp ;;
+        *)                    printf '%s\n' "$line"                      >> .env.tmp ;;
+      esac
+    done < .env.example
+    mv .env.tmp .env
+    chmod 600 .env
+  fi
+  if [ "$trace" = 1 ]; then set -x; fi
+  return "$status"
+}
+
+append_secret() {
+  local trace=0
+  case "$-" in *x*) trace=1; set +x ;; esac
+  local secret status=0
+  if secret="$(gen_secret 32)"; then
+    printf 'BETTER_AUTH_SECRET=%s\n' "$secret" >> .env
+  else
+    status=1
+  fi
+  if [ "$trace" = 1 ]; then set -x; fi
+  return "$status"
+}
+
+secret_failed() {
+  fail "Could not generate a secret — \`openssl rand\` failed."
+  cat >&2 <<EOF
+  Nothing was written: an empty password here would be worse than no file at
+  all, because compose substitutes its default on an EMPTY value and the
+  database volume would be initialised with it, permanently.
+
+  Check your openssl installation and run this script again.
+EOF
+  exit 5
+}
+
 if [ ! -f .env ]; then
   say "Creating .env with generated secrets…"
-  cp .env.example .env
-  sed -i "s|^POSTGRES_PASSWORD=.*|POSTGRES_PASSWORD=$(openssl rand -hex 24)|" .env
-  sed -i "s|^BETTER_AUTH_SECRET=.*|BETTER_AUTH_SECRET=$(openssl rand -hex 32)|" .env
-  echo "  wrote .env (POSTGRES_PASSWORD and BETTER_AUTH_SECRET generated — values not printed)"
+  write_new_env || secret_failed
+  echo "  wrote .env, mode 600 (POSTGRES_PASSWORD and BETTER_AUTH_SECRET generated — values not printed)"
 else
   echo "  .env already exists — leaving it alone."
-  if ! grep -q '^BETTER_AUTH_SECRET=..' .env; then
-    if grep -q '^BETTER_AUTH_SECRET=' .env; then
-      sed -i "s|^BETTER_AUTH_SECRET=.*|BETTER_AUTH_SECRET=$(openssl rand -hex 32)|" .env
-    else
-      printf 'BETTER_AUTH_SECRET=%s\n' "$(openssl rand -hex 32)" >> .env
-    fi
+  current="$(grep -m1 '^BETTER_AUTH_SECRET=' .env || true)"
+  current="${current#BETTER_AUTH_SECRET=}"
+  if [ -z "$current" ]; then
+    append_secret || secret_failed
     echo "  added the missing BETTER_AUTH_SECRET (value not printed)"
+  elif [ "${#current}" -lt 32 ]; then
+    fail "BETTER_AUTH_SECRET in .env is too short (${#current} characters; the API requires at least 32)."
+    cat >&2 <<'EOF'
+  The API refuses to boot without a 32+ character session secret, so starting
+  the stack now would only produce a container that exits and an unhelpful
+  "did not become healthy" eighty seconds later.
+
+  This script will NOT overwrite it: replacing a real secret signs every device
+  out. Set it yourself, then run this script again:
+
+    openssl rand -hex 32     # put the output in .env as BETTER_AUTH_SECRET=…
+
+  Nothing has been changed.
+EOF
+    exit 6
   fi
 fi
 
@@ -161,7 +242,10 @@ while [ "$i" -lt "$attempts" ]; do
     healthy=1
     break
   fi
-  sleep "$delay"
+  # No sleep after the LAST attempt: the answer is already known, and waiting two more
+  # seconds only delays the failure message. An `&&` here would be a `set -e` trap — on the
+  # final iteration it evaluates false, and that is the loop body's exit status.
+  if [ "$i" -lt "$attempts" ]; then sleep "$delay"; fi
 done
 if [ "$healthy" != 1 ]; then
   fail "The app did not become healthy — check: docker compose logs app"

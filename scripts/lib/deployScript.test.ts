@@ -11,14 +11,25 @@
  * tests prove the behaviour, that one proves nobody put `curl … | sh` back.
  */
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import {
+  chmodSync,
+  cpSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 const REPO_ROOT = join(import.meta.dir, "..", "..");
 
 /** Exit codes the script promises. Each prerequisite failure is distinguishable. */
-const EXIT = { ok: 0, failed: 1, noDocker: 2, noCompose: 3, noDaemon: 4, noTool: 5 } as const;
+const EXIT = { ok: 0, failed: 1, noDocker: 2, noCompose: 3, noDaemon: 4, noTool: 5, badSecret: 6 } as const;
 
 /**
  * Coreutils the script may legitimately use. Symlinked into the sandbox one by one so the fake
@@ -28,6 +39,14 @@ const EXIT = { ok: 0, failed: 1, noDocker: 2, noCompose: 3, noDaemon: 4, noTool:
 const BASE_TOOLS = ["dirname", "cp", "sed", "grep", "sleep", "cat", "tr", "head", "rm", "mv", "date"];
 
 type Stub = "docker" | "curl" | "openssl";
+
+/**
+ * Commands the script must NEVER invoke. They are stubbed too — otherwise "it did not run apt"
+ * passes for the wrong reason (`apt` is simply not on the fake PATH, so the assertion holds even
+ * if the script tried). Stubbed, a call would be recorded, and only then does absence mean
+ * something.
+ */
+const FORBIDDEN_TOOLS = ["apt-get", "apt", "sudo", "wget", "sh", "bash", "dnf", "apk"] as const;
 
 let sandbox = "";
 
@@ -68,6 +87,9 @@ if [ "\${FAKE_HEALTH_OK:-1}" != "1" ]; then exit 7; fi
 echo '{"ok":true}'
 exit 0`,
     openssl: `
+if [ "\${FAKE_OPENSSL_FAIL:-0}" = "1" ]; then
+  echo "openssl: unable to open random state" >&2; exit 1
+fi
 echo "\${FAKE_SECRET:-00000000000000000000000000000000000000000000000000000000000000ff}"
 exit 0`,
   };
@@ -92,6 +114,13 @@ function makeSandbox(stubs: readonly Stub[]): { dir: string; bin: string; log: s
     if (real) symlinkSync(real, join(bin, tool));
   }
   for (const stub of stubs) writeStub(bin, stub);
+  // Recorders for the commands that must never run. They only log and exit 0.
+  for (const forbidden of FORBIDDEN_TOOLS) {
+    const path = join(bin, forbidden);
+    if (existsSync(path)) continue;
+    writeFileSync(path, `#!/bin/bash\nprintf '%s\\n' "${forbidden} $*" >> "$STUB_LOG"\nexit 0\n`);
+    chmodSync(path, 0o755);
+  }
   return { dir, bin, log: join(dir, "stub.log") };
 }
 
@@ -141,8 +170,25 @@ describe("prerequisites are checked before anything is written", () => {
 
   it("missing docker CLI: never tries to install anything", async () => {
     const run = await runDeploy(["curl", "openssl"]);
-    expect(output(run)).not.toMatch(/get\.docker\.com|\| *sh\b/);
-    expect(run.calls.join("\n")).not.toMatch(/apt|sudo/);
+    expect(output(run)).not.toMatch(/get\.docker\.com/);
+    // `apt`, `sudo`, `wget` and `sh` ARE on the fake PATH as recorders, so this assertion can
+    // only pass because the script did not call them.
+    for (const forbidden of FORBIDDEN_TOOLS) {
+      expect(run.calls.some((c) => c.startsWith(`${forbidden} `))).toBe(false);
+    }
+  });
+
+  it("no run of the script — successful or not — ever invokes a package manager or sudo", async () => {
+    const runs = [
+      await runDeploy(),
+      await runDeploy(["docker", "curl", "openssl"], { FAKE_DAEMON_OK: "0" }),
+      await runDeploy(["docker", "openssl"]),
+    ];
+    for (const run of runs) {
+      for (const forbidden of FORBIDDEN_TOOLS) {
+        expect(run.calls.some((c) => c.startsWith(`${forbidden} `))).toBe(false);
+      }
+    }
   });
 
   it("missing Compose v2 plugin: a DIFFERENT failure from a missing CLI", async () => {
@@ -216,6 +262,56 @@ describe("the success path", () => {
     }
   });
 
+  it("a FAILING openssl aborts before `.env` exists — never an empty password", async () => {
+    // The regression this pins: with the generation inlined into another command's arguments,
+    // `set -e` sees that command's status (0) and a failed openssl silently yields an EMPTY
+    // value. `${POSTGRES_PASSWORD:-enveo}` in the dev compose file substitutes on empty as well
+    // as unset, so the database volume would be initialised, permanently, with a well-known
+    // password — and a later hand-fix of .env then fails authentication for no visible reason.
+    const run = await runDeploy(undefined, { FAKE_OPENSSL_FAIL: "1" });
+    expect(run.code).not.toBe(EXIT.ok);
+    expect(run.env).toBeNull();
+    expect(output(run)).toMatch(/openssl|secret/i);
+    expect(run.calls.some((c) => c.startsWith("docker compose up"))).toBe(false);
+  });
+
+  it("`.env` is created readable by its owner only", async () => {
+    const { dir, bin, log } = makeSandbox(["docker", "curl", "openssl"]);
+    sandbox = dir;
+    const proc = Bun.spawn(["/bin/bash", "scripts/deploy.sh"], {
+      cwd: dir,
+      env: { PATH: bin, HOME: dir, STUB_LOG: log },
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    await proc.exited;
+    expect(statSync(join(dir, ".env")).mode & 0o777).toBe(0o600);
+  });
+
+  it("keeps secrets out of an xtrace, where a debugging operator would paste them", async () => {
+    const { dir, bin, log } = makeSandbox(["docker", "curl", "openssl"]);
+    sandbox = dir;
+    const proc = Bun.spawn(["/bin/bash", "-x", "scripts/deploy.sh"], {
+      cwd: dir,
+      env: { PATH: bin, HOME: dir, STUB_LOG: log, FAKE_SECRET: "xtrace-must-not-show-this" },
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    const [stdout, stderr] = await Promise.all([
+      new Response(proc.stdout).text(),
+      new Response(proc.stderr).text(),
+    ]);
+    await proc.exited;
+    expect(`${stdout}\n${stderr}`).not.toContain("xtrace-must-not-show-this");
+  });
+
+  it("never passes a secret in another command's argv", async () => {
+    // /proc/<pid>/cmdline is world-readable, so a secret in `sed`'s arguments is visible to
+    // every local user for the lifetime of that process. The stubs record their argv verbatim.
+    const run = await runDeploy(undefined, { FAKE_SECRET: "argv-must-not-show-this" });
+    expect(run.calls.join("\n")).not.toContain("argv-must-not-show-this");
+  });
+
   it("reports failure when the app never answers", async () => {
     const run = await runDeploy(undefined, { FAKE_HEALTH_OK: "0", ENVEO_HEALTH_ATTEMPTS: "2", ENVEO_HEALTH_DELAY: "0" });
     expect(run.code).toBe(EXIT.failed);
@@ -227,7 +323,9 @@ describe("idempotency", () => {
   it("leaves a complete existing `.env` byte-identical", async () => {
     const { dir, bin, log } = makeSandbox(["docker", "curl", "openssl"]);
     sandbox = dir;
-    const existing = "POSTGRES_PASSWORD=mine\nBETTER_AUTH_SECRET=alreadyhere\nDEPLOYMENT=selfhost\n";
+    // A realistic secret: 64 hex characters, as `openssl rand -hex 32` produces.
+    const existingSecret = "a".repeat(64);
+    const existing = `POSTGRES_PASSWORD=mine\nBETTER_AUTH_SECRET=${existingSecret}\nDEPLOYMENT=selfhost\n`;
     writeFileSync(join(dir, ".env"), existing);
     const proc = Bun.spawn(["/bin/bash", "scripts/deploy.sh"], {
       cwd: dir,
@@ -238,7 +336,30 @@ describe("idempotency", () => {
     const [stdout, code] = await Promise.all([new Response(proc.stdout).text(), proc.exited]);
     expect(code).toBe(EXIT.ok);
     expect(readFileSync(join(dir, ".env"), "utf8")).toBe(existing);
-    expect(stdout).not.toContain("alreadyhere");
+    expect(stdout).not.toContain(existingSecret);
+  });
+
+  it("refuses a too-SHORT existing BETTER_AUTH_SECRET instead of booting into a refusal", async () => {
+    // better-auth requires >= 32 characters and the API aborts its boot without one. Accepting
+    // a 5-character value here buys the operator ~80 seconds of health polling and a generic
+    // "did not become healthy". It is also not ours to overwrite: replacing a real secret signs
+    // every device out.
+    const { dir, bin, log } = makeSandbox(["docker", "curl", "openssl"]);
+    sandbox = dir;
+    const existing = "POSTGRES_PASSWORD=mine\nBETTER_AUTH_SECRET=short\n";
+    writeFileSync(join(dir, ".env"), existing);
+    const proc = Bun.spawn(["/bin/bash", "scripts/deploy.sh"], {
+      cwd: dir,
+      env: { PATH: bin, HOME: dir, STUB_LOG: log },
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    const [stderr, code] = await Promise.all([new Response(proc.stderr).text(), proc.exited]);
+    expect(code).toBe(EXIT.badSecret);
+    expect(stderr).toMatch(/32/);
+    expect(readFileSync(join(dir, ".env"), "utf8")).toBe(existing); // not overwritten
+    const calls = readFileSync(log, "utf8");
+    expect(calls).not.toContain("docker compose up");
   });
 
   it("adds only a MISSING BETTER_AUTH_SECRET and keeps every other line", async () => {
