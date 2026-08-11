@@ -16,6 +16,13 @@
  *    downloads, pipes into a shell and package-manager automation — deliberately NOT the
  *    script's own localhost health probe.
  *
+ * **What this is, honestly:** a regression fence over literal source text, not a sandbox. It
+ * reads the files as strings and matches patterns; indirection defeats it (a URL assembled from
+ * a variable, an installer invoked through a helper) and it is not a security boundary. What it
+ * does buy is that the specific mistakes we already made — a numeric tag pasted into the
+ * quickstart, `curl … | sh` reintroduced during a "quick fix" — cannot come back unnoticed, and
+ * a reviewer gets the failure instead of a self-hoster.
+ *
  * Everything here is PURE (callers pass file contents in) so the rules are unit-testable;
  * `scripts/check-sources.ts` applies them to the real tree and `sourcePolicy.test.ts` covers
  * both the rules and the current repository. The check never queries GHCR: documentation
@@ -44,8 +51,15 @@ export type PolicyViolation = Readonly<{
   detail: string;
 }>;
 
-/** The Enveo image, with whatever tag/digest follows it. Stops at markup and prose delimiters. */
-const ENVEO_IMAGE = /ghcr\.io\/enveo\/enveo([:@][^\s`'"<>,)\]]*)?/g;
+/**
+ * An Enveo GHCR image, with whatever tag/digest follows it. Stops at markup and prose delimiters.
+ *
+ * The `[\w.-]*` after the package name is load-bearing: without it the pattern matches the
+ * `…/enveo` PREFIX of `…/enveo-web:3.6.2` and then reads `-web:3.6.2` as "no tag at all", so a
+ * pinned sibling package would pass the gate. Case-insensitive because a registry reference is
+ * not case-sensitive to the reader who copies it.
+ */
+const ENVEO_IMAGE = /ghcr\.io\/enveo\/enveo[\w.-]*([:@][^\s`'"<>,)\]]*)?/gi;
 
 /** `X.Y.Z` / `vX.Y.Z` — the placeholder this policy replaced. */
 const VERSION_PLACEHOLDER = /\bv?X\.Y\.Z\b/g;
@@ -92,8 +106,14 @@ export function checkSelfHostImageRefs(file: string, text: string): PolicyViolat
 }
 
 /** A URL that points back at the machine running the script (the health probe). */
-const LOCAL_HOSTS = new Set(["127.0.0.1", "localhost", "[::1]", "::1", "0.0.0.0"]);
+const LOCAL_HOSTS = new Set(["127.0.0.1", "localhost", "::1", "0.0.0.0"]);
 const URL_IN_LINE = /\bhttps?:\/\/([^\s'"|)\/]+)/g;
+
+/** `[::1]:8081` → `::1`. An IPv6 literal is bracketed, and the brackets are not part of the host. */
+function hostOf(authority: string): string {
+  const bracketed = /^\[([^\]]+)\]/.exec(authority);
+  return bracketed ? bracketed[1]! : authority.split(":")[0]!;
+}
 const DOWNLOADER = /\b(curl|wget)\b/;
 const PIPE_TO_SHELL = /\|\s*(?:sudo\s+)?(?:ba|z|k|d)?sh\b/;
 const PACKAGE_MANAGER = /\b(?:apt-get|apt|apk|dnf|yum|pacman|zypper|brew|snap)\s+(?:install|add|-S)\b/;
@@ -105,8 +125,7 @@ export function checkDeployScript(text: string): PolicyViolation[] {
     const line = index + 1;
     if (DOWNLOADER.test(raw)) {
       for (const match of raw.matchAll(URL_IN_LINE)) {
-        const host = (match[1] ?? "").split(":")[0]!;
-        if (LOCAL_HOSTS.has(host) || LOCAL_HOSTS.has(match[1] ?? "")) continue;
+        if (LOCAL_HOSTS.has(hostOf(match[1] ?? ""))) continue;
         violations.push({
           file: DEPLOY_SCRIPT,
           line,

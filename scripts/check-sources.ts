@@ -31,9 +31,13 @@ export const EXIT_FAILED_CLOSED = 2;
 
 const ROOT = new URL("../", import.meta.url);
 
-export function runSourcePolicy(log: (line: string) => void = console.log): number {
+export function runSourcePolicy(
+  log: (line: string) => void = console.log,
+  /** Overridable ONLY so the tests can drive the violation and unreadable-file paths. */
+  paths: readonly string[] = [...SELF_HOST_DOCS, DEPLOY_SCRIPT],
+): number {
   const violations: PolicyViolation[] = [];
-  const files = [...SELF_HOST_DOCS, DEPLOY_SCRIPT];
+  const files = paths;
   for (const file of files) {
     let text: string;
     try {

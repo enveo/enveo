@@ -71,11 +71,40 @@ describe("checkSelfHostImageRefs", () => {
   it("ignores an image of another project", () => {
     expect(checkSelfHostImageRefs("compose.selfhost.yml", "image: postgres:16-alpine\n")).toEqual([]);
   });
+
+  it("does not stop at the package name — a SIBLING package with a numeric tag is still caught", () => {
+    // Without a boundary the pattern matches the `…/enveo` prefix of `…/enveo-web` and then
+    // reads `-web:3.6.2` as "no tag", so a pinned sibling image would sail through.
+    const found = checkSelfHostImageRefs("docs/hosting.md", "image: ghcr.io/enveo/enveo-web:3.6.2\n");
+    expect(found).toHaveLength(1);
+    expect(found[0]!.rule).toBe("image-tag");
+  });
+
+  it("accepts a sibling package on the alias", () => {
+    expect(checkSelfHostImageRefs("docs/hosting.md", "ghcr.io/enveo/enveo-web:latest\n")).toEqual([]);
+  });
+
+  it("is case-insensitive — a registry reference is not case-sensitive to a reader", () => {
+    const found = checkSelfHostImageRefs("README.md", "GHCR.IO/enveo/enveo:3.6.2\n");
+    expect(found).toHaveLength(1);
+  });
+
+  it("rejects an alias that also carries a digest", () => {
+    const found = checkSelfHostImageRefs(
+      "README.md",
+      "ghcr.io/enveo/enveo:latest@sha256:0000000000000000000000000000000000000000000000000000000000000000",
+    );
+    expect(found).toHaveLength(1);
+  });
 });
 
 describe("checkDeployScript", () => {
   it("accepts the localhost health probe — the rule bans installers, not every curl", () => {
     expect(checkDeployScript("curl -fsS http://127.0.0.1:8081/api/health >/dev/null 2>&1\n")).toEqual([]);
+  });
+
+  it("accepts an IPv6 loopback probe — brackets are host syntax, not a remote host", () => {
+    expect(checkDeployScript("curl -fsS http://[::1]:8081/api/health >/dev/null 2>&1\n")).toEqual([]);
   });
 
   it("accepts printed guidance that merely MENTIONS sudo in a heredoc", () => {
