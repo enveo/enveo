@@ -1,0 +1,23 @@
+# Reviewed, EXPIRING exceptions for the runtime image scan (`bun run image:scan`).
+#
+# Same discipline as security/audit-policy.json (§0a), expressed in Trivy's native ignore
+# format so accepted items keep showing up in the table (`--show-suppressed`) instead of
+# vanishing:
+#
+#   - one entry per EXACT advisory id — never a package, a directory or a severity class;
+#   - `statement` records WHY it is accepted and who owns it;
+#   - `expired_at` is mandatory and is 90 days or the next release, WHICHEVER IS EARLIER.
+#     Trivy stops honouring the entry after that date, so a stale acceptance fails the gate
+#     instead of quietly ageing.
+#
+# There is NO blanket entry and no `--ignore-unfixed`: "upstream has no fix" is a reason to
+# record a reviewed exception, not a reason to hide the finding.
+#
+# EMPTY ON PURPOSE. The image currently carries 4 CRITICAL and 21 HIGH findings, ALL of them
+# inherited Debian packages from oven/bun:1.3.14 (perl-base ×4 critical, no Debian fix
+# available; libssl3t64/openssl-provider-legacy and libcap2 have fixes awaiting a base
+# rebuild). None come from Enveo's own dependency closure — the application layers scan clean.
+# Accepting them is the owner's call under the §0a rules, and it must happen before the first
+# public image is published; this file is where those decisions go.
+
+vulnerabilities: []
