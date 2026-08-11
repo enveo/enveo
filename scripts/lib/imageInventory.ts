@@ -51,6 +51,17 @@ export type ImageFacts = Readonly<{
    * Bun than `verify:ci` exercised and than the audit parser was written against.
    */
   bunVersion: string;
+  /**
+   * Every OS package installed in the image, as `name-version` (`apk info -v`), sorted.
+   *
+   * RECORDED, not judged: no rule below reads it. The runtime stage runs `apk upgrade`, which
+   * deliberately carries no version pin — Alpine's repository keeps only the CURRENT build of a
+   * package per branch, so pinning would break the build on Alpine's release schedule rather
+   * than ours. That makes the OS patch level of two builds of the same commit potentially
+   * different, and this is what turns that difference from invisible into a line in the audit
+   * trail. The vulnerability gate itself is `bun run image:scan`, which fails closed.
+   */
+  osPackages: readonly string[];
 }>;
 
 /** Repository-derived expectations the image is measured against. */

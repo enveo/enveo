@@ -52,6 +52,12 @@ RUN cd packages/web && bun run build
 
 # ── Stage 2: the production dependency closure (Alpine — the runtime platform) ──────────────
 FROM oven/bun:1.3.14-alpine@sha256:5acc90a93e91ff07bf72aa90a7c9f0fa189765aec90b47bdbf2152d2196383c0 AS deps
+
+# Patch level within the PINNED Alpine branch — see the long note on the runtime stage below.
+# Nothing from this stage's operating system reaches the image (only the pure-JS dependency
+# closure is COPYed out), so this is defence in depth, not the fix.
+RUN apk upgrade --no-cache
+
 WORKDIR /app
 
 # All four manifests are copied even though only two workspaces are installed: `--frozen-lockfile`
@@ -75,6 +81,42 @@ RUN bun scripts/prune-runtime-deps.ts /app && rm -rf scripts
 
 # ── Stage 3: runtime (Alpine) ───────────────────────────────────────────────────────────────
 FROM oven/bun:1.3.14-alpine@sha256:5acc90a93e91ff07bf72aa90a7c9f0fa189765aec90b47bdbf2152d2196383c0 AS runtime
+
+# The ONE thing apk is allowed to do to this image: bring the packages the base ALREADY ships up
+# to the current patch level of the Alpine branch the pinned digest is built on. Nothing new is
+# installed — that rule is unchanged, and "no bash, no curl, no convenience tools" still holds.
+#
+# Why it exists: Alpine 3.22.4 inside the pinned base ships openssl 3.5.6-r0, which carries
+# CVE-2026-45447 (HIGH — heap use-after-free in PKCS7_verify()). `bun run image:scan` fails closed
+# on HIGH and critical/high have NO exception path, so the finding has to be FIXED;
+# security/image-scan-ignore.yaml stays empty. Upstream oven/bun has not rebuilt on a patched
+# Alpine and 1.3.14 is the newest Bun, so re-pinning the base was not available.
+#
+# Worth knowing before anyone panics about the CVE or, later, about dropping this line: the
+# vulnerable code was never LOADED here. Bun statically bundles BoringSSL — `ldd
+# /usr/local/bin/bun` reports only musl, libstdc++ and libgcc. The only binaries in the image
+# linking libssl/libcrypto are apk itself, busybox's `ssl_client` and the OpenSSL engines, and
+# none of them run: the entrypoint `exec`s bun and the compose healthcheck is `bun -e fetch(...)`.
+# Reachability is why this was not an emergency; policy is why it is fixed anyway.
+#
+# DELIBERATELY NOT PINNED to a package version. Alpine's repository keeps only the CURRENT build
+# of a package per branch, so `libcrypto3=3.5.7-r0` would break every build the day 3.5.8-r0 is
+# published and the old build disappears from the mirror — random release-blocking, on someone
+# else's schedule, for a package we upgrade precisely to stay current. THE SECURITY PROPERTY IS
+# ENFORCED BY THE SCAN, NOT BY A PIN: if Alpine's current build is still vulnerable, image:scan
+# fails and the release stops. Do not "harden" this by adding a version back.
+#
+# The base image itself stays digest-pinned; this moves patch level only, inside that branch.
+#
+# `--no-cache` keeps THIS command from leaving an index behind. The `rm` clears the 2.5 MB of
+# APKINDEX tarballs the BASE image already ships in /var/cache/apk — upstream's, not ours; the
+# same files are there without this line. Nothing in the container ever runs apk, so a package
+# index is inert weight in the filesystem.
+#
+# It does NOT make the image smaller, and nobody should expect it to: those bytes live in a layer
+# below this one, so deleting them here only writes whiteouts. The download is unchanged. Only a
+# rebuilt base could actually drop them.
+RUN apk upgrade --no-cache && rm -rf /var/cache/apk/*
 
 ARG SOURCE_COMMIT=""
 LABEL org.opencontainers.image.title="Enveo" \
