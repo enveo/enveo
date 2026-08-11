@@ -351,6 +351,7 @@ jobs:
       # ALREADY VERIFIED digest — no rebuild, so `latest` cannot end up on an artifact that
       # differs from the one every check above inspected. A prerelease has no aliases at all.
       - name: Move the mutable aliases to the verified digest
+        id: aliases
         if: needs.validate.outputs.aliases != ''
         env:
           DIGEST: ${{ steps.digest.outputs.digest }}
@@ -364,29 +365,41 @@ jobs:
           # shellcheck disable=SC2086
           docker buildx imagetools create $TAGS "$IMAGE@$DIGEST"
 
+      # `always()` on purpose: the summary is most useful precisely when the release STOPPED —
+      # it names the digest that is already published, which is what the recovery path in
+      # docs/releasing.md needs in order to resume without rebuilding.
       - name: Summary
+        if: always()
         env:
           DIGEST: ${{ steps.digest.outputs.digest }}
           TAG: ${{ needs.validate.outputs.tag }}
           BUILT: ${{ steps.probe.outputs.state }}
+          ALIAS_OUTCOME: ${{ steps.aliases.outcome }}
         run: |
+          case "$ALIAS_OUTCOME" in
+            success) alias_cell="\`$ALIASES\` — moved to this digest" ;;
+            skipped) alias_cell="none${ALIASES:+ (\`$ALIASES\` NOT moved — the release stopped first)}" ;;
+            *)       alias_cell="\`$ALIASES\` — the move FAILED" ;;
+          esac
           {
-            echo "### Published \`$TAG\`"
+            echo "### Release \`$TAG\`"
             echo
             echo "| | |"
             echo "|---|---|"
             echo "| tag | \`$TAG\` |"
             echo "| commit | [\`$SHA\`]($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/commit/$SHA) |"
             echo "| image | \`$IMAGE:$VERSION\` |"
-            echo "| digest | \`$DIGEST\` |"
+            echo "| digest | \`${DIGEST:-<nothing was published>}\` |"
             echo "| platforms | \`$PLATFORMS\` (inventoried and scanned per architecture) |"
-            echo "| aliases moved | \`${ALIASES:-none — prerelease}\` |"
-            echo "| source | ${BUILT} (\`present\` = resumed from the existing digest, nothing rebuilt) |"
-            echo
-            echo '```'
-            echo "docker pull $IMAGE@$DIGEST"
-            echo "gh attestation verify oci://$IMAGE@$DIGEST -R $GITHUB_REPOSITORY"
-            echo '```'
+            echo "| aliases | $alias_cell |"
+            echo "| exact tag | ${BUILT:-unknown} (\`present\` = resumed from the existing digest, nothing rebuilt) |"
+            if [ -n "$DIGEST" ]; then
+              echo
+              echo '```'
+              echo "docker pull $IMAGE@$DIGEST"
+              echo "gh attestation verify oci://$IMAGE@$DIGEST -R $GITHUB_REPOSITORY"
+              echo '```'
+            fi
             echo
             echo "[Workflow run]($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID)"
           } >> "$GITHUB_STEP_SUMMARY"
