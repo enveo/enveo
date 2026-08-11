@@ -241,7 +241,10 @@ function parseIsoDate(value: unknown): Date | null {
   return date.toISOString().slice(0, 10) === value ? date : null;
 }
 
-export function parsePolicy(text: string): ParseResult<AuditPolicy> {
+/** Clock-skew tolerance for a self-declared `addedOn`, in days. */
+const ADDED_ON_SKEW_DAYS = 2;
+
+export function parsePolicy(text: string, now: Date = new Date()): ParseResult<AuditPolicy> {
   if (!nonEmptyString(text)) return fail("the audit policy file is empty");
   let root: unknown;
   try {
@@ -313,10 +316,26 @@ export function parsePolicy(text: string): ParseResult<AuditPolicy> {
     if (expires.getTime() <= addedOn.getTime()) {
       return fail(`exception ${advisoryId} expires on or before the date it was added`);
     }
-    const days = Math.round((expires.getTime() - addedOn.getTime()) / DAY_MS);
+    // `addedOn` is self-declared, so it cannot be trusted to bound anything on its own:
+    // dating an entry in the future would compute a short window while suppressing the
+    // advisory for far longer. Reject a future date, then measure the cap from whichever of
+    // (addedOn, today) is LATER — what matters is how long the suppression still has to run.
+    if (addedOn.getTime() > now.getTime() + ADDED_ON_SKEW_DAYS * DAY_MS) {
+      return fail(
+        `exception ${advisoryId} has an \`addedOn\` in the future (${raw.addedOn}) — ` +
+          "the expiry window must be measured from a real date",
+      );
+    }
+    // Cap BOTH the declared window (expires - addedOn) and the remaining one (expires - now),
+    // i.e. measure from whichever date is EARLIER. Capping only the declared window lets a
+    // future addedOn inflate the real suppression; capping only the remaining window lets an
+    // over-long entry become acceptable simply by ageing into its last 90 days.
+    const from = Math.min(addedOn.getTime(), now.getTime());
+    const days = Math.ceil((expires.getTime() - from) / DAY_MS);
     if (days > MAX_EXCEPTION_DAYS) {
       return fail(
-        `exception ${advisoryId} lasts ${days} days — the limit is 90 days or the next release`,
+        `exception ${advisoryId} spans ${days} days — the limit is 90 days or the next release, ` +
+          "whichever is earlier",
       );
     }
 

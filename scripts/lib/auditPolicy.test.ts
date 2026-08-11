@@ -371,6 +371,76 @@ describe("parsePolicy", () => {
     expect(tooLong.error).toContain("90 days");
   });
 
+  it("rejects an addedOn in the future, which would smuggle in a long suppression", () => {
+    // addedOn is self-declared. Measuring the 90-day cap from it alone lets
+    // addedOn 2027-03-01 / expires 2027-05-29 compute an 89-day window while actually
+    // suppressing the advisory for ~290 days from today.
+    const parsed = parsePolicy(
+      JSON.stringify({
+        schemaVersion: 1,
+        exceptions: [
+          { ...policyWith().exceptions[0], addedOn: "2027-03-01", expires: "2027-05-29" },
+        ],
+      }),
+      NOW,
+    );
+
+    expect(parsed.ok).toBe(false);
+    if (parsed.ok) return;
+    expect(parsed.error).toContain("future");
+  });
+
+  it("caps the REMAINING window, not `expires - addedOn`", () => {
+    // Inside the skew tolerance, so addedOn is accepted — but exactly 90 days from addedOn is
+    // 91 days from today. Measuring from addedOn alone would pass this; measuring the
+    // suppression that still has to run rejects it.
+    const parsed = parsePolicy(
+      JSON.stringify({
+        schemaVersion: 1,
+        exceptions: [
+          { ...policyWith().exceptions[0], addedOn: "2026-08-12", expires: "2026-11-10" },
+        ],
+      }),
+      NOW, // 2026-08-11
+    );
+
+    expect(parsed.ok).toBe(false);
+    if (parsed.ok) return;
+    expect(parsed.error).toContain("90 days");
+  });
+
+  it("does not let an over-long entry become acceptable by ageing", () => {
+    // Declared window is 210 days. Once only 30 days remain, a "remaining window" rule alone
+    // would accept it; the declared window must stay capped too.
+    const parsed = parsePolicy(
+      JSON.stringify({
+        schemaVersion: 1,
+        exceptions: [
+          { ...policyWith().exceptions[0], addedOn: "2026-02-01", expires: "2026-08-30" },
+        ],
+      }),
+      NOW, // 2026-08-11, i.e. 19 days left
+    );
+
+    expect(parsed.ok).toBe(false);
+    if (parsed.ok) return;
+    expect(parsed.error).toContain("90 days");
+  });
+
+  it("tolerates a small clock skew on addedOn", () => {
+    const parsed = parsePolicy(
+      JSON.stringify({
+        schemaVersion: 1,
+        exceptions: [
+          { ...policyWith().exceptions[0], addedOn: "2026-08-12", expires: "2026-11-08" },
+        ],
+      }),
+      NOW, // 2026-08-11 — the entry is dated "tomorrow", within tolerance
+    );
+
+    expect(parsed.ok).toBe(true);
+  });
+
   it("rejects a critical/high exception outright — those have no exception path", () => {
     const parsed = parsePolicy(JSON.stringify({
       schemaVersion: 1,

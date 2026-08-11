@@ -130,7 +130,7 @@ export async function runAudit(options: AuditRunOptions = {}): Promise<number> {
     return closed(`cannot read bun.lock (${(error as Error).message})`);
   }
 
-  const policy = parsePolicy(policyText);
+  const policy = parsePolicy(policyText, now);
   if (!policy.ok) return closed(`invalid audit policy: ${policy.error}`);
   const installed = parseBunLock(lockText);
   if (!installed.ok) return closed(installed.error);
