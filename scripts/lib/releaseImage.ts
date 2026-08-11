@@ -25,7 +25,17 @@ export type IndexManifest = Readonly<{
   annotations?: Readonly<Record<string, string>>;
 }>;
 
-export type ImageIndex = Readonly<{ manifests?: readonly IndexManifest[] }>;
+export type ImageIndex = Readonly<{
+  manifests?: readonly IndexManifest[];
+  /** Annotations on the index itself (`DOCKER_METADATA_ANNOTATIONS_LEVELS` including `index`). */
+  annotations?: Readonly<Record<string, string>>;
+}>;
+
+/** One place that carries OCI annotations, named so a violation says WHERE it was wrong. */
+export type AnnotationSource = Readonly<{
+  where: string;
+  annotations: Readonly<Record<string, string>> | undefined;
+}>;
 
 export type IdentityExpectations = Readonly<{
   platforms: readonly string[];
@@ -51,9 +61,27 @@ const platformOf = (manifest: IndexManifest): string =>
     .filter((part): part is string => part !== undefined && part !== "")
     .join("/");
 
+/** A runnable platform manifest: what to pull, and what it claims to be. */
+export type RunnableManifest = Readonly<{ platform: string; digest: string }>;
+
+/**
+ * Every runnable manifest in the index, WITH its own digest.
+ *
+ * The digest matters as much as the platform: pulling two platforms through the SAME index
+ * digest reference fails (`cannot overwrite digest …`), because the reference can only map to
+ * one local image. Per-platform manifest digests are distinct references, so each architecture
+ * can be pulled and inspected independently — and it means the inventory covers exactly what
+ * the index contains rather than an architecture list someone hardcoded next to it.
+ */
+export function runnableManifests(index: ImageIndex): RunnableManifest[] {
+  return (index.manifests ?? [])
+    .filter((m) => !isAttestation(m))
+    .map((m) => ({ platform: platformOf(m), digest: m.digest ?? "" }));
+}
+
 /** Every platform in the index that a `docker run` can actually use. */
 export function runnablePlatforms(index: ImageIndex): string[] {
-  return (index.manifests ?? []).filter((m) => !isAttestation(m)).map(platformOf);
+  return runnableManifests(index).map((m) => m.platform);
 }
 
 /**
@@ -102,6 +130,50 @@ export function checkLabels(imageJson: unknown, expected: IdentityExpectations):
       if (found !== value) {
         violations.push(
           `${platform}: ${label} is ${JSON.stringify(found ?? null)}, expected ${JSON.stringify(value)}`,
+        );
+      }
+    }
+  }
+  return violations;
+}
+
+/**
+ * OCI ANNOTATIONS on the index and on every platform manifest must name the released commit.
+ *
+ * This exists because of a bug that shipped past the label check: `docker/metadata-action`
+ * honours a `labels:` override but re-derives ANNOTATIONS from `github.sha`, which on a
+ * workflow_dispatch is the branch head rather than the released commit. The image config said
+ * one commit and the published manifest metadata said another — and the inventory could not
+ * notice, because it reads the config label.
+ *
+ * Annotations are not decoration: they travel on the index/manifest, which is what registries
+ * display and what supply-chain tooling reads without pulling the config blob.
+ *
+ * A source with NO annotations at all is a violation, not a pass. "Nothing to compare" is how
+ * this class of bug hides.
+ */
+export function checkAnnotations(
+  sources: readonly AnnotationSource[],
+  expected: Readonly<{ revision: string; version: string }>,
+): string[] {
+  if (sources.length === 0) return ["no annotation sources were inspected — nothing was verified"];
+
+  const violations: string[] = [];
+  const wanted: ReadonlyArray<readonly [string, string]> = [
+    ["org.opencontainers.image.revision", expected.revision],
+    ["org.opencontainers.image.version", expected.version],
+  ];
+
+  for (const source of sources) {
+    if (source.annotations === undefined || Object.keys(source.annotations).length === 0) {
+      violations.push(`${source.where}: no OCI annotations at all`);
+      continue;
+    }
+    for (const [key, value] of wanted) {
+      const found = source.annotations[key];
+      if (found !== value) {
+        violations.push(
+          `${source.where}: ${key} is ${JSON.stringify(found ?? null)}, expected ${JSON.stringify(value)}`,
         );
       }
     }

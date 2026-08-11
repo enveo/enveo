@@ -10,10 +10,12 @@
  */
 import { describe, expect, it } from "bun:test";
 import {
+  checkAnnotations,
   checkAttachment,
   checkAttestationCoverage,
   checkLabels,
   classifyInspectFailure,
+  runnableManifests,
   runnablePlatforms,
 } from "./releaseImage";
 
@@ -113,6 +115,78 @@ describe("runnablePlatforms", () => {
     expect(
       runnablePlatforms({ manifests: [{ digest: "sha256:x", platform: { os: "linux", architecture: "arm", variant: "v7" } }] }),
     ).toEqual(["linux/arm/v7"]);
+  });
+});
+
+describe("runnableManifests", () => {
+  it("pairs each runnable platform with its OWN manifest digest", () => {
+    expect(runnableManifests(INDEX)).toEqual([
+      { platform: "linux/amd64", digest: "sha256:amd" },
+      { platform: "linux/arm64", digest: "sha256:arm" },
+    ]);
+  });
+
+  it("excludes attestation referrers, so nothing tries to pull one as an image", () => {
+    // Why the digests matter: pulling two platforms through the SAME index digest fails with
+    // `cannot overwrite digest …`, which is exactly how the published inventory broke.
+    expect(runnableManifests(ATTESTED).map((m) => m.digest)).toEqual(["sha256:amd", "sha256:arm"]);
+  });
+});
+
+describe("checkAnnotations", () => {
+  const expected = { revision: EXPECTED.revision, version: EXPECTED.version };
+  const good = {
+    "org.opencontainers.image.revision": EXPECTED.revision,
+    "org.opencontainers.image.version": EXPECTED.version,
+  };
+
+  it("passes when the index and every manifest name the released commit", () => {
+    expect(
+      checkAnnotations(
+        [
+          { where: "index", annotations: good },
+          { where: "linux/amd64", annotations: good },
+          { where: "linux/arm64", annotations: good },
+        ],
+        expected,
+      ),
+    ).toEqual([]);
+  });
+
+  it("catches THE bug: annotations carrying github.sha while the label is correct", () => {
+    // metadata-action honours a `labels:` override but re-derives ANNOTATIONS from github.sha,
+    // which on a workflow_dispatch is the branch head, not the released commit. This shipped.
+    const branchHead = "fb27b122bdc3664e09d9a599a551bdeefe2a811f";
+    const violations = checkAnnotations(
+      [{ where: "index", annotations: { ...good, "org.opencontainers.image.revision": branchHead } }],
+      expected,
+    );
+
+    expect(violations).toHaveLength(1);
+    expect(violations[0]).toContain("revision");
+    expect(violations[0]).toContain(branchHead);
+  });
+
+  it("treats a source with NO annotations as a violation, not as nothing to check", () => {
+    expect(checkAnnotations([{ where: "index", annotations: undefined }], expected)[0]).toMatch(/no OCI annotations/);
+    expect(checkAnnotations([{ where: "index", annotations: {} }], expected)[0]).toMatch(/no OCI annotations/);
+  });
+
+  it("fails when nothing was inspected — an empty sweep must not read as a pass", () => {
+    expect(checkAnnotations([], expected)[0]).toMatch(/nothing was verified/);
+  });
+
+  it("reports the offending platform by name", () => {
+    const violations = checkAnnotations(
+      [
+        { where: "index", annotations: good },
+        { where: "linux/arm64", annotations: { ...good, "org.opencontainers.image.version": "3.7.2" } },
+      ],
+      expected,
+    );
+
+    expect(violations).toHaveLength(1);
+    expect(violations[0]).toContain("linux/arm64");
   });
 });
 

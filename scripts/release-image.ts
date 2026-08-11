@@ -26,11 +26,14 @@
  */
 import { appendFileSync } from "node:fs";
 import {
+  checkAnnotations,
   checkAttachment,
   checkAttestationCoverage,
   checkLabels,
   classifyInspectFailure,
+  runnableManifests,
   runnablePlatforms,
+  type AnnotationSource,
   type ImageIndex,
 } from "./lib/releaseImage";
 
@@ -113,12 +116,53 @@ function checkIdentity(reference: string, options: Options): string[] {
     source: options.source,
   });
   report(
-    `OCI identity: revision=${options.revision} version=${options.version} source=${options.source}`,
+    `OCI identity labels: revision=${options.revision} version=${options.version} source=${options.source}`,
     labelViolations,
   );
   violations.push(...labelViolations);
 
+  // ANNOTATIONS, separately from labels — they live on the index/manifest rather than in the
+  // config blob, they are what registries and supply-chain tooling read without pulling the
+  // config, and metadata-action derives them from github.sha unless told otherwise. A published
+  // image whose config says one commit and whose manifest says another is exactly the bug this
+  // catches; reading only the label kept passing while the published metadata lied.
+  const base = reference.split("@")[0] ?? reference;
+  const sources: AnnotationSource[] = [{ where: "index", annotations: index.annotations }];
+  for (const manifest of runnableManifests(index)) {
+    const raw = inspect(`${base}@${manifest.digest}`);
+    if (raw.code !== 0) {
+      violations.push(`${manifest.platform}: cannot read its manifest: ${raw.stderr}`);
+      continue;
+    }
+    sources.push({
+      where: manifest.platform,
+      annotations: parse<{ annotations?: Record<string, string> }>(raw.stdout, "manifest").annotations,
+    });
+  }
+  const annotationViolations = checkAnnotations(sources, {
+    revision: options.revision,
+    version: options.version,
+  });
+  report(`OCI annotations on the index and every platform manifest`, annotationViolations);
+  violations.push(...annotationViolations);
+
   return violations;
+}
+
+/** Print `platform<TAB>manifest-digest` per runnable platform, for the per-arch inventory. */
+function platforms(reference: string): number {
+  const raw = inspect(reference);
+  if (raw.code !== 0) {
+    fail(`inspect ${reference} failed: ${raw.stderr}`);
+    return EXIT_REGISTRY_ERROR;
+  }
+  const manifests = runnableManifests(parse<ImageIndex>(raw.stdout, "image index"));
+  if (manifests.length === 0) {
+    fail(`${reference} has no runnable platform manifests`);
+    return EXIT_VIOLATIONS;
+  }
+  for (const manifest of manifests) console.log(`${manifest.platform}\t${manifest.digest}`);
+  return 0;
 }
 
 function probe(reference: string, options: Options): number {
@@ -202,11 +246,28 @@ function main(argv: readonly string[]): number {
   const image = flag("image");
   const revision = flag("revision");
   const version = flag("version");
+
+  // `platforms` is a lookup, not a check: it needs neither revision nor version.
+  if (mode === "platforms") {
+    const digest = flag("digest");
+    if (image === undefined || digest === undefined) {
+      console.error("usage: bun scripts/release-image.ts platforms --image <repo> --digest <sha256:…>");
+      return EXIT_USAGE;
+    }
+    try {
+      return platforms(`${image}@${digest}`);
+    } catch (error) {
+      fail(error instanceof Error ? error.message : String(error));
+      return EXIT_REGISTRY_ERROR;
+    }
+  }
+
   if ((mode !== "probe" && mode !== "verify") || image === undefined || revision === undefined || version === undefined) {
     console.error(
       "usage:\n" +
-        "  bun scripts/release-image.ts probe  --image <repo> --tag <exact> --revision <sha> --version <v> [--platforms a,b]\n" +
-        "  bun scripts/release-image.ts verify --image <repo> --digest <sha256:…> --revision <sha> --version <v> [--platforms a,b] [--attestations]",
+        "  bun scripts/release-image.ts probe     --image <repo> --tag <exact> --revision <sha> --version <v> [--platforms a,b]\n" +
+        "  bun scripts/release-image.ts verify    --image <repo> --digest <sha256:…> --revision <sha> --version <v> [--platforms a,b] [--attestations]\n" +
+        "  bun scripts/release-image.ts platforms --image <repo> --digest <sha256:…>",
     );
     return EXIT_USAGE;
   }
