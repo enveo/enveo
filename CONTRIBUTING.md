@@ -34,7 +34,7 @@ registered user, so your account sees it after a reload.
 - **English everywhere**: code, comments, tests, commit messages.
 - **Conventional Commits** with scope: `feat(api): …`, `fix(web): …`, `chore: …`.
 - **Verification must pass**: `bun run verify` (typecheck + tests + production
-  build). It needs no network and no database, and it forces `OPENAI_API_KEY` and
+  build + the self-host source policy). It needs no network and no database, and it forces `OPENAI_API_KEY` and
   `TEST_DATABASE_URL` empty so an auto-loaded `.env` cannot change the result.
   CI runs `bun run verify:ci`, which adds the DB-backed suites and the dependency
   audit — see [Running the full gate](#running-the-full-gate).
@@ -51,13 +51,14 @@ registered user, so your account sees it after a reload.
 
 | Command | What it does |
 |---|---|
-| `bun run verify` | What you run before pushing: `typecheck` + `test` + `build`. Offline, no database. |
+| `bun run verify` | What you run before pushing: `typecheck` + `test` + `build` + `policy:sources`. Offline, no database. |
 | `bun run test` | Shared, API, web-lib and tooling tests. Forces `OPENAI_API_KEY=""` and `TEST_DATABASE_URL=""`, so DB-backed groups skip. |
 | `bun run test:db` | The same tests with the DB-backed groups **required** against a throwaway PostgreSQL. |
 | `bun run typecheck` | Shared, API, web app, web tests and repository tooling. |
 | `bun run build` | The production web/PWA build. |
 | `bun run security:audit` | `bun audit` evaluated against `security/audit-policy.json`. |
-| `bun run verify:ci` | What CI runs: `typecheck` + `test:db` + `build` + `security:audit`. |
+| `bun run policy:sources` | Self-host source policy: every Enveo image reference in the canonical docs is `ghcr.io/enveo/enveo:latest`, and `scripts/deploy.sh` downloads nothing. Offline — it never asks GHCR anything. |
+| `bun run verify:ci` | What CI runs: `typecheck` + `test:db` + `build` + `policy:sources` + `security:audit`. |
 
 CI and the release pipeline both call the same reusable workflow to run `verify:ci`, so
 neither keeps a second list of commands — a phase is added by editing the root
