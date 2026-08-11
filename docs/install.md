@@ -7,9 +7,16 @@ reset) see [operations.md](operations.md).
 
 ## Quickstart
 
-Docker, an empty directory, two generated secrets. Nothing is compiled — this
-pulls the published image. (Until the GHCR package is public, pulls fail with
-403 — build from source instead: [development.md](development.md).)
+An empty directory and two generated secrets. Nothing is compiled — this pulls
+the published image, `ghcr.io/enveo/enveo:latest`. (Until the GHCR package is
+public, pulls fail with 403 — build from source instead:
+[development.md](development.md).)
+
+**Prerequisite:** Docker Engine with the Compose v2 plugin, installed and
+running as your host operator's choice — Enveo does not install or configure it.
+Follow [Docker's own installation
+documentation](https://docs.docker.com/engine/install/) for your distribution,
+then check `docker compose version` before continuing.
 
 ```bash
 mkdir enveo && cd enveo
@@ -28,7 +35,8 @@ Both secrets are **required**: with either unset the stack refuses to start
 rather than come up with a guessable one. Everything else is optional —
 [`.env.selfhost.example`](../.env.selfhost.example) documents the knobs (host
 port, bind address, OpenAI key, Google sign-in, public URL). Migrations run
-automatically on start, on every update.
+automatically on start, on every update — updating is a deliberate step, see
+[operations.md](operations.md#update).
 
 ## Accounts and registration
 
