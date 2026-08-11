@@ -1,5 +1,18 @@
 # Developing Enveo
 
+## Toolchain
+
+Enveo pins **one** Bun version, **Bun 1.3.14**, and uses it everywhere: your machine, CI, the
+weekly audit workflow, `@types/bun` and both Docker stages (there at an immutable
+`@sha256:` base digest). `.bun-version` is the single source of truth and
+`scripts/lib/bunVersion.test.ts` fails `bun run test` the moment any of those disagree —
+`bun audit --json` output is parsed against a known shape and the published image must run the
+runtime the gate actually exercised.
+
+Install it with `curl -fsSL https://bun.sh/install | bash -s "bun-v1.3.14"`, or let a version
+manager read `.bun-version`. Upgrading Bun is a deliberate PR that moves the version, the
+digest, `@types/bun` and the lockfile together, then reruns `bun run verify:ci`.
+
 The development stack ([`docker-compose.yml`](../docker-compose.yml)) **builds
 from source** — that is the only difference from the self-host quickstart.
 
