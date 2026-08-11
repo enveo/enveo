@@ -1,0 +1,76 @@
+name: Translation fix
+description: A wrong, awkward or missing translation in one of Enveo's languages
+labels: [i18n]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for improving a translation — this is the most useful kind of small contribution.
+
+        Enveo's non-English dictionaries are **community translations**: they may be incomplete
+        or clumsy, and English is always the fallback for anything missing. Reporting one string
+        is enough; nobody has to finish a language.
+
+        **Please do not paste your budget.** No amounts, account names, transaction history or
+        screenshots showing real financial data. The English source sentence and the wrong
+        translation are all that is needed — Enveo's own text, not yours.
+  - type: input
+    id: locale
+    attributes:
+      label: Language
+      description: The language you are reporting about, as shown in Settings → Appearance.
+      placeholder: e.g. Deutsch (de), Čeština (cs)
+    validations:
+      required: true
+  - type: textarea
+    id: source
+    attributes:
+      label: English source message
+      description: >-
+        The English sentence this text comes from — it is literally the key in the dictionary.
+        If you do not know it, switch the app to English, find the same screen and copy what it
+        says there.
+      placeholder: e.g. "Type {word} to confirm:"
+    validations:
+      required: true
+  - type: textarea
+    id: current
+    attributes:
+      label: Current translation
+      description: What the app shows today (copy it exactly, including any placeholders).
+    validations:
+      required: true
+  - type: textarea
+    id: proposed
+    attributes:
+      label: Proposed translation
+      description: >-
+        Your suggestion. Keep every `{placeholder}` exactly as it appears in the English source —
+        they are filled in with numbers and names at runtime, and a renamed or dropped one breaks
+        the sentence.
+    validations:
+      required: true
+  - type: textarea
+    id: context
+    attributes:
+      label: Where it appears, and what is wrong
+      description: >-
+        The screen or action (e.g. "Settings → Data → Delete budget confirmation"), and why the
+        current wording is wrong: mistranslation, wrong grammatical form, wrong word for this
+        screen, too long and clipped, or simply untranslated.
+    validations:
+      required: true
+  - type: checkboxes
+    id: no-private-data
+    attributes:
+      label: Before you submit
+      options:
+        - label: This report contains no personal or financial data of mine or anyone else's.
+          required: true
+  - type: markdown
+    attributes:
+      value: |
+        A fix changes only the translated value — **never the English key**, because the English
+        sentence *is* the key and editing it orphans that string in every other language. See
+        [CONTRIBUTING.md → Add a language](https://github.com/enveo/enveo/blob/main/CONTRIBUTING.md#add-a-language)
+        if you would like to open the pull request yourself; a one-line change is welcome.
