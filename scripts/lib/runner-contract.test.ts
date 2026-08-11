@@ -10,7 +10,7 @@ import { describe, expect, it } from "bun:test";
 import { describeDbTarget, RUNNER_MARKER, RUNNER_MARKER_VALUE, RUNNER_MODE } from "./testEnv";
 
 const underRunner = process.env[RUNNER_MARKER] === RUNNER_MARKER_VALUE;
-const mode = process.env[RUNNER_MODE];
+const mode = process.env[RUNNER_MODE] ?? "";
 
 describe.skipIf(!underRunner)("environment delivered by run-tests.ts", () => {
   it("always disables AI, whatever .env held", () => {
