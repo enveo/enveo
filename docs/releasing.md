@@ -80,10 +80,23 @@ gh attestation verify oci://ghcr.io/enveo/enveo@sha256:… -R enveo/enveo
 ```
 
 **On GitHub Free/Pro/Team, artifact attestations are available for public repositories only.**
-While this repository is private the attestation step fails, and that failure is the intended
-behaviour — the release stops there, before the mutable aliases move and before the GitHub
-Release exists. It is deliberately not conditional and not `continue-on-error`: a release that
-silently skips its provenance is worse than one that stops.
+While this repository is private the attestation step fails, with GitHub's own message:
+
+```
+Failed to persist attestation: Feature not available for the enveo organization.
+To enable this feature, please upgrade the billing plan, or make this repository public.
+```
+
+That failure is the intended behaviour — the release stops there, before the mutable aliases move
+and before the GitHub Release exists. It is deliberately not conditional and not
+`continue-on-error`: a release that silently skips its provenance is worse than one that stops.
+
+**The first release after the repository becomes public is the moment attestation becomes real,
+and it must be watched.** Everything up to and including the published per-architecture inventory
+has been exercised; the attestation call itself, the `gh attestation verify` that follows it, the
+alias move on a stable release and anonymous pulls have never run successfully, because they are
+all downstream of a step that cannot succeed on a private repository. Treat that first public
+release as a supervised run, not a routine one.
 
 ## When it stops halfway
 
@@ -96,6 +109,25 @@ repeats.
 | Candidate scan or inventory | Nothing was pushed. | Fix the finding, or add an exact, reviewed, expiring entry to `security/image-scan-ignore.yaml`. Then re-run. |
 | After the push, before attestation | The exact immutable tag is published. The aliases have **not** moved and there is no GitHub Release. | Re-run the same tag. The probe finds the tag, checks its identity labels against the release commit, and resumes from that digest **without rebuilding**. |
 | Attestation, alias move or GitHub Release | As above. | Same: re-run the same tag. |
+
+### A worked example (this actually happened)
+
+`v3.7.4-rc.2` was published by a run that then stopped at attestation. The exact tag existed and
+was immutable; `3.7`/`latest` had not moved; there was no GitHub Release. Separately, that image
+turned out to carry the *wrong commit* in its manifest annotations (a `metadata-action` default —
+see below), so it was not the artifact the tag was supposed to mean.
+
+What the pipeline did about it, without anybody editing history:
+
+- re-running `v3.7.4-rc.2` does **not** silently republish it. The probe finds the tag, compares
+  its identity against the release commit, sees the annotation mismatch and **stops for
+  investigation** — exit 1, nothing written;
+- the fix shipped as **`v3.7.4-rc.3`**, a new version. The broken image stays exactly where it is.
+
+That is the no-overwrite policy working: a published exact tag is never repaired in place, because
+"the same tag now means something different" is precisely the property self-hosters rely on not
+happening. When the tag is genuinely correct, the same probe reports `state=present` and the run
+**resumes from that digest without rebuilding**.
 
 Two things the probe deliberately refuses to do:
 
@@ -124,6 +156,23 @@ Create a GitHub **tag ruleset** for `v*`:
 - restrict creation to maintainers.
 
 Signed tags may be added later; the pipeline does not require local signing infrastructure.
+
+## Identity: labels *and* annotations
+
+The released commit has to appear in two places, and they are separate outputs:
+
+- **labels** — in the image config, what `docker inspect` shows;
+- **annotations** — on the index and each platform manifest, what registries display and what
+  supply-chain tooling reads without pulling the config blob.
+
+`docker/metadata-action` honours a `labels:` override but re-derives **annotations** from
+`github.sha`, which on a manual re-run is the branch head rather than the released commit. A
+release shipped that way once: correct commit in the config, branch head on both manifests, and no
+annotations on the index at all, because the default annotation level covers manifests only. The
+workflow therefore overrides `annotations:` alongside `labels:` and sets
+`DOCKER_METADATA_ANNOTATIONS_LEVELS: manifest,index`, and `release-image.ts verify` checks the
+index and every platform manifest — treating "no annotations" as a violation, not as nothing to
+compare.
 
 ## Pinning
 
