@@ -20,8 +20,14 @@ export type DbTarget = Readonly<{
   host: string;
   port: string;
   database: string;
-  /** `host:port/database` — never a user name, never a password, never the full URL. */
+  /** `host:port/database` for HUMANS — never a user name, never a password, never the full URL. */
   redacted: string;
+  /**
+   * The same triple for COMPARISON, with loopback spellings collapsed. `localhost`,
+   * `127.0.0.1` and `[::1]` are one machine; comparing raw hostnames would let
+   * `localhost:5432/enveo` pass as "different" from `127.0.0.1:5432/enveo`.
+   */
+  key: string;
 }>;
 
 export type TestEnvPlan = Readonly<{
@@ -62,6 +68,31 @@ export const RUNNER_MODE = "ENVEO_TEST_MODE";
 export const DEAD_DB_URL = "postgres://unused:unused@127.0.0.1:1/enveo_no_such_database";
 
 /**
+ * The target `packages/api/src/env.ts` `resolveDatabaseUrl()` falls back to when NOTHING is
+ * configured — and "nothing configured" is the DOCUMENTED DEFAULT: `.env.example` ships
+ * `DATABASE_URL` commented out.
+ *
+ * It is therefore never a throwaway. On a developer machine it is the docker-compose database;
+ * on a self-host machine it is the live application database. `test:db` refuses it outright,
+ * independently of whether `DATABASE_URL` happens to be set — see `planTestEnv`.
+ */
+export const DEFAULT_APP_DB_URL = "postgres://enveo:enveo@localhost:5432/enveo";
+
+/** Spellings of "this machine". Collapsed to one token before any target comparison. */
+const LOOPBACK_HOSTS = new Set([
+  "localhost",
+  "127.0.0.1",
+  "::1",
+  "0.0.0.0",
+  "::ffff:127.0.0.1",
+]);
+
+function canonicalHost(host: string): string {
+  const bare = host.toLowerCase().replace(/^\[/, "").replace(/\]$/, "");
+  return LOOPBACK_HOSTS.has(bare) ? "localhost" : bare;
+}
+
+/**
  * Parse a PostgreSQL URL down to the only three parts we are allowed to show a human.
  * Returns null when the value is not a usable PostgreSQL URL — callers must fail closed.
  */
@@ -78,7 +109,13 @@ export function describeDbTarget(url: string): DbTarget | null {
   const port = parsed.port || "5432";
   const database = parsed.pathname.replace(/^\//, "");
   if (!database) return null;
-  return { host, port, database, redacted: `${host}:${port}/${database}` };
+  return {
+    host,
+    port,
+    database,
+    redacted: `${host}:${port}/${database}`,
+    key: `${canonicalHost(host)}:${port}/${database}`,
+  };
 }
 
 /**
@@ -133,17 +170,37 @@ export function planTestEnv(mode: TestMode, env: EnvRecord): TestEnvResult {
   if (testUrl && !testTarget) {
     errors.push("TEST_DATABASE_URL is not a valid PostgreSQL URL (expected postgres://…).");
   }
-  if (testUrl && appUrl) {
-    if (testUrl === appUrl) {
-      errors.push("TEST_DATABASE_URL must differ from DATABASE_URL — this suite writes to it.");
-    } else {
-      const appTarget = describeDbTarget(appUrl);
-      if (testTarget && appTarget && testTarget.redacted === appTarget.redacted) {
-        errors.push(
-          `TEST_DATABASE_URL points at the same PostgreSQL target as DATABASE_URL ` +
-            `(${testTarget.redacted}) — different credentials are not a different database.`,
-        );
+  // Separation from the APPLICATION database. Both halves below are deliberately unconditional
+  // in their own right: the per-suite fuses inside packages/api ("TEST_URL === DATABASE_URL")
+  // can no longer fire, because the child's DATABASE_URL is overwritten with DEAD_DB_URL. This
+  // is the only place left that can stop a writing suite from reaching real data.
+  if (testTarget) {
+    // (a) against an explicitly configured DATABASE_URL, compared on the CANONICAL target so
+    //     localhost/127.0.0.1/::1 cannot be used to sneak past the check.
+    if (appUrl) {
+      if (testUrl === appUrl) {
+        errors.push("TEST_DATABASE_URL must differ from DATABASE_URL — this suite writes to it.");
+      } else {
+        const appTarget = describeDbTarget(appUrl);
+        if (appTarget && appTarget.key === testTarget.key) {
+          errors.push(
+            `TEST_DATABASE_URL points at the same PostgreSQL target as DATABASE_URL ` +
+              `(${testTarget.redacted}) — different credentials, a different host spelling or a ` +
+              "different user are not a different database.",
+          );
+        }
       }
+    }
+    // (b) and ALWAYS against the built-in fallback, because DATABASE_URL being UNSET is the
+    //     documented default — in that case the app silently uses this target, so it is by
+    //     definition the live database rather than a throwaway.
+    const fallbackTarget = describeDbTarget(DEFAULT_APP_DB_URL);
+    if (fallbackTarget && testTarget.key === fallbackTarget.key) {
+      errors.push(
+        `TEST_DATABASE_URL is the default application database target (${testTarget.redacted}) — ` +
+          "that is what the app itself falls back to when DATABASE_URL is unset, so it is never a " +
+          "throwaway. Start a fresh PostgreSQL on another port or use another database name.",
+      );
     }
   }
 
