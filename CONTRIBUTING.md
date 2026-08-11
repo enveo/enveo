@@ -5,7 +5,9 @@ anything larger than a small fix, please open an issue to discuss it first.
 
 ## Development setup
 
-See [README](README.md) for the quick start (including creating `.env`). In short:
+See [README](README.md) for the quick start (including creating `.env`). Use **Bun 1.3.14** —
+the version in `.bun-version`, which CI and the Docker image also use; a drift check in
+`bun run test` enforces it. In short:
 
 `bun` auto-loads `.env` from its own working directory, not the repo root, so export the
 values into each shell before running anything below — otherwise `BETTER_AUTH_SECRET`
