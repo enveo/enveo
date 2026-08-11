@@ -25,15 +25,18 @@ describe("planTestEnv — default mode", () => {
     expect(result.plan.overrides.TEST_DATABASE_URL).toBe("");
   });
 
-  it("overrides only those two variables and never needs a sentinel", () => {
+  it("overrides the two sensitive variables plus the runner markers, and needs no sentinel", () => {
     const result = planTestEnv("default", {});
 
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(Object.keys(result.plan.overrides).sort()).toEqual([
+      "ENVEO_TEST_MODE",
+      "ENVEO_TEST_RUNNER",
       "OPENAI_API_KEY",
       "TEST_DATABASE_URL",
     ]);
+    expect(result.plan.overrides.ENVEO_TEST_MODE).toBe("default");
   });
 
   it("never prints a credential or a full URL in its banner", () => {
