@@ -11,6 +11,7 @@
  *   bun fake-audit.ts findings    → exit 1, the real esbuild advisory (what main reports today)
  *   bun fake-audit.ts high        → exit 1, a synthetic high advisory
  *   bun fake-audit.ts toolfailure → exit 1, EMPTY stdout + a registry error on stderr
+ *   bun fake-audit.ts emptyfindings → exit 1, a VALID but empty body + an error on stderr
  *   bun fake-audit.ts garbage     → exit 0, output that is not the documented schema
  *   bun fake-audit.ts crash       → exit 7, an unexpected status
  */
@@ -54,6 +55,13 @@ switch (MODE) {
     process.exit(1);
   case "toolfailure":
     process.stderr.write("error: failed to resolve the registry: connection refused\n");
+    process.exit(1);
+  case "emptyfindings":
+    // The nastiest shape: the "we found something" exit status with a body that parses to
+    // NOTHING. A proxy or a degraded registry can produce it, and read naively it looks like
+    // a clean scan.
+    process.stderr.write("error: registry returned 503 for 3 packages\n");
+    process.stdout.write("{}\n");
     process.exit(1);
   case "garbage":
     process.stdout.write("<!doctype html><html>proxy login page</html>\n");

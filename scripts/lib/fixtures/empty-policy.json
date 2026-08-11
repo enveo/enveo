@@ -1,0 +1,9 @@
+{
+  "$comment": [
+    "Test fixture: a policy with NO exceptions — the normal steady state once the dependency",
+    "graph is clean. Used to prove the gate is fail-closed on its own merits, without a stale",
+    "exception accidentally producing a failure and masking a fail-open path."
+  ],
+  "schemaVersion": 1,
+  "exceptions": []
+}
