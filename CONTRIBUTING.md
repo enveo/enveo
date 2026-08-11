@@ -70,8 +70,12 @@ ENVEO_TEST_DB_ACK=throwaway bun run test:db
 ```
 
 Create a **fresh** container for this; the sentinel proves you meant it, not that the
-data is expendable. The runner also refuses a URL that resolves to the same
-host/port/database as `DATABASE_URL`.
+data is expendable. The runner additionally refuses a `TEST_DATABASE_URL` that resolves
+to the same `host:port/database` as `DATABASE_URL`, **and** one that resolves to the
+application's own default target (`localhost:5432/enveo`) — that is where Enveo itself
+connects when `DATABASE_URL` is unset, so it is a live database, never a throwaway.
+`localhost`, `127.0.0.1` and `::1` count as the same host, and different credentials do
+not make a different database.
 
 `security:audit` fails on any critical/high advisory, and on any moderate/low one that
 is not covered by an exact, unexpired entry in `security/audit-policy.json`. It fails
