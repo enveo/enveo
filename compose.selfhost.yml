@@ -60,6 +60,21 @@ services:
     depends_on:
       db:
         condition: service_healthy
+
+    # Container hardening. The image runs as the unprivileged `bun` user (uid 1000) with
+    # root-owned application files; these lines close the container boundary. `init` gives a
+    # PID 1 that forwards SIGTERM (clean stops), the API needs no Linux capability, no setuid
+    # binary may raise privileges, and the root filesystem is immutable with /tmp — in RAM —
+    # as the only writable path. Enveo writes no files: your data is in the `pgdata` volume.
+    init: true
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+
     environment:
       DATABASE_URL: "postgres://enveo:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env next to this file — generate one with `openssl rand -hex 24`}@db:5432/enveo"
       PORT: 8080

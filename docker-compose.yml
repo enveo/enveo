@@ -27,6 +27,28 @@ services:
     depends_on:
       db:
         condition: service_healthy
+
+    # ── container hardening (§3e) ─────────────────────────────────────────────────────
+    # The image already runs as the unprivileged `bun` user (uid 1000) with root-owned
+    # application files. These four lines close what is left at the container boundary.
+    #
+    # `init` — a real init as PID 1: it reaps zombies and forwards SIGTERM, so `docker
+    #          compose stop` is a clean shutdown instead of a 10s wait ending in SIGKILL.
+    # `cap_drop: ALL` — the API opens one TCP socket on 8080 (>1024) and talks to
+    #          Postgres. It needs no Linux capability at all, not even NET_BIND_SERVICE.
+    # `no-new-privileges` — no setuid binary in the image can ever raise privileges.
+    # `read_only` — the whole root filesystem is immutable; /tmp is the ONLY writable
+    #          path, as tmpfs (RAM, wiped on restart, never a bind mount). Enveo writes
+    #          no files: data lives in Postgres and the web assets are served read-only.
+    init: true
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+
     environment:
       DATABASE_URL: postgres://${POSTGRES_USER:-enveo}:${POSTGRES_PASSWORD:-enveo}@db:5432/${POSTGRES_DB:-enveo}
       PORT: 8080
