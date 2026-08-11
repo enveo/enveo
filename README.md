@@ -64,7 +64,7 @@ operations](docs/operations.md), [architecture](docs/architecture.md),
 ```bash
 cp .env.example .env    # set POSTGRES_PASSWORD and BETTER_AUTH_SECRET (openssl rand -hex 32)
 make up                 # build + start → http://127.0.0.1:8081
-bun test packages/shared packages/api packages/web/src/lib
+bun run verify          # typecheck + tests + production build (offline, no database needed)
 ```
 
 Details (running without Docker, demo data, translations):
