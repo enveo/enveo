@@ -1,9 +1,8 @@
 # CI: the root verification contract + the Docker image build.
 #
-# This workflow deliberately keeps NO second, hand-written list of package commands. The gate is
-# `bun run verify:ci` (typecheck → test:db → build → security:audit) — the same command a
-# developer can run locally — so CI and local verification cannot drift apart. Add a phase by
-# editing package.json, not this file.
+# The gate itself lives in `verify.yml` and is CALLED from here, because the release pipeline
+# calls the same file on the tagged commit (§3d). Neither workflow keeps a second, hand-written
+# list of package commands, and neither can drift from `bun run verify:ci`.
 #
 # E2E (agent-browser) stays outside CI — it runs locally against a throwaway stack.
 name: CI
@@ -18,75 +17,36 @@ permissions:
   contents: read
 
 env:
-  # Pinned on purpose: the audit parser is written against a KNOWN `bun audit --json` shape,
-  # and the test suites run on this runtime. A Bun bump is a reviewed change — if its output
-  # schema moves, the audit gate must fail visibly rather than silently pass.
+  # Pinned on purpose — see verify.yml. scripts/lib/bunVersion.test.ts fails the suite if this
+  # drifts from `.bun-version`.
   BUN_VERSION: "1.3.14"
 
 jobs:
-  quality:
-    name: verify:ci — typecheck, tests (with PostgreSQL), PWA build, dependency audit
-    runs-on: ubuntu-latest
-    services:
-      # THROWAWAY PostgreSQL for the DB-backed suites (auth/sync/operation-lock): they migrate
-      # and WRITE, so they must never see a real database. `bun run test:db` refuses to start
-      # unless TEST_DATABASE_URL is set, differs from DATABASE_URL and the ack sentinel is present.
-      postgres:
-        image: postgres:16-alpine
-        env:
-          POSTGRES_USER: enveo
-          POSTGRES_PASSWORD: enveo
-          POSTGRES_DB: enveotest
-        ports:
-          - 5499:5432
-        options: >-
-          --health-cmd "pg_isready -U enveo"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 10
-    env:
-      # bun auto-loads .env locally — absent in CI. Drizzle connections are lazy, so a dummy
-      # app URL is enough; it exists mainly so the runner can prove the test URL differs from it.
-      DATABASE_URL: postgres://ci:ci@127.0.0.1:5432/ci
-      TEST_DATABASE_URL: postgres://enveo:enveo@127.0.0.1:5499/enveotest
-      ENVEO_TEST_DB_ACK: throwaway
-      # Explicit: the "no AI key" paths must fail for the right reason.
-      OPENAI_API_KEY: ""
-    steps:
-      - uses: actions/checkout@v4
-
-      # AGENTS.md is the byte-identical public mirror of CLAUDE.md (agent-standard filename);
-      # they have drifted before — this is the guard.
-      - name: AGENTS.md mirrors CLAUDE.md
-        run: diff -u CLAUDE.md AGENTS.md
-
-      - uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: ${{ env.BUN_VERSION }}
-
-      - name: Install (frozen lockfile)
-        run: bun install --frozen-lockfile
-
-      # The authoritative gate. Each phase announces itself in the log:
-      #   "$ bun run typecheck:*"            — shared, api, web app, web tests, tooling
-      #   "run-tests: mode=db …"             — the full suite with DB-backed groups REQUIRED
-      #   "vite build"                       — the production PWA build
-      #   "security:audit — bun audit --json"— the fail-closed dependency policy gate
-      - name: Verify
-        run: bun run verify:ci
+  verify:
+    # `github.sha` is the right ref here: on a pull_request it is the merge commit CI is meant to
+    # test, and on a push it is the pushed commit. The release path resolves its own SHA instead.
+    permissions:
+      contents: read
+    uses: ./.github/workflows/verify.yml
+    with:
+      ref: ${{ github.sha }}
 
   docker:
     # Catches a class of problems invisible in tests (e.g. a dependency outside `dependencies`
     # → frozen-lockfile in the image fails; historical failure mode).
     #
-    # Gated on `quality` so no image is ever built from a revision that already failed types,
+    # Gated on `verify` so no image is ever built from a revision that already failed types,
     # tests, the PWA build or the dependency audit.
-    needs: quality
+    #
+    # This is a SINGLE-ARCH build on the runner's own architecture, and it is not the release
+    # gate: the release workflow builds, scans and inventories BOTH published architectures
+    # (§3d carry-overs). Keeping it here makes an image break show up on the pull request.
+    needs: verify
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - uses: oven-sh/setup-bun@v2
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version: ${{ env.BUN_VERSION }}
 
@@ -98,6 +58,6 @@ jobs:
 
       # The image contract (§3e): the runtime allowlist is present, the dev/build tree is not,
       # the container is unprivileged and /app is read-only to it. Rules in
-      # scripts/lib/imageInventory.ts, unit-tested in the `quality` job above.
+      # scripts/lib/imageInventory.ts, unit-tested in the `verify` job above.
       - name: Image inventory (runtime allowlist + non-root)
         run: bun run image:inventory enveo-ci --sha ${{ github.sha }}

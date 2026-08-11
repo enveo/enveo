@@ -1,0 +1,85 @@
+# The verification gate, as ONE reusable workflow (§3a/§3d).
+#
+# Branch CI and the release pipeline both call this file. That is the whole point: the release
+# must run the SAME gate as an ordinary pull request, on the exact commit it is about to publish,
+# and neither caller may keep a second hand-written list of commands.
+#
+# The gate itself is `bun run verify:ci` (typecheck → test:db → build → security:audit) — the
+# same command a developer runs locally. Add a phase by editing root package.json, never here.
+#
+# The caller passes an explicit ref. On the release path that is the SHA the tag resolved to,
+# never a branch name and never `github.sha` (which on a workflow_dispatch is the default branch
+# head, not the released commit).
+name: Verify
+
+on:
+  workflow_call:
+    inputs:
+      ref:
+        description: "Commit SHA to check out and verify. Release passes the resolved tag commit."
+        required: true
+        type: string
+
+# Least privilege: this workflow reads source and writes nothing, anywhere.
+permissions:
+  contents: read
+
+env:
+  # Pinned on purpose: the audit parser is written against a KNOWN `bun audit --json` shape,
+  # and the test suites run on this runtime. `.bun-version` is the source of truth and
+  # scripts/lib/bunVersion.test.ts fails the suite if this drifts from it.
+  BUN_VERSION: "1.3.14"
+
+jobs:
+  verify:
+    name: verify:ci — typecheck, tests (with PostgreSQL), PWA build, dependency audit
+    runs-on: ubuntu-latest
+    services:
+      # THROWAWAY PostgreSQL for the DB-backed suites (auth/sync/operation-lock): they migrate
+      # and WRITE, so they must never see a real database. `bun run test:db` refuses to start
+      # unless TEST_DATABASE_URL is set, differs from DATABASE_URL and the ack sentinel is present.
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: enveo
+          POSTGRES_PASSWORD: enveo
+          POSTGRES_DB: enveotest
+        ports:
+          - 5499:5432
+        options: >-
+          --health-cmd "pg_isready -U enveo"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      # bun auto-loads .env locally — absent in CI. Drizzle connections are lazy, so a dummy
+      # app URL is enough; it exists mainly so the runner can prove the test URL differs from it.
+      DATABASE_URL: postgres://ci:ci@127.0.0.1:5432/ci
+      TEST_DATABASE_URL: postgres://enveo:enveo@127.0.0.1:5499/enveotest
+      ENVEO_TEST_DB_ACK: throwaway
+      # Explicit: the "no AI key" paths must fail for the right reason.
+      OPENAI_API_KEY: ""
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.ref }}
+
+      # AGENTS.md is the byte-identical public mirror of CLAUDE.md (agent-standard filename);
+      # they have drifted before — this is the guard.
+      - name: AGENTS.md mirrors CLAUDE.md
+        run: diff -u CLAUDE.md AGENTS.md
+
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+
+      - name: Install (frozen lockfile)
+        run: bun install --frozen-lockfile
+
+      # The authoritative gate. Each phase announces itself in the log:
+      #   "$ bun run typecheck:*"            — shared, api, web app, web tests, tooling
+      #   "run-tests: mode=db …"             — the full suite with DB-backed groups REQUIRED
+      #   "vite build"                       — the production PWA build
+      #   "security:audit — bun audit --json"— the fail-closed dependency policy gate
+      - name: Verify
+        run: bun run verify:ci
