@@ -37,9 +37,37 @@ This Code of Conduct applies within all community spaces, and also applies when 
 
 ## Enforcement
 
-Instances of abusive, harassing, or otherwise unacceptable behavior may be reported to the maintainers via GitHub private vulnerability reporting or a direct message. All complaints will be reviewed and investigated promptly and fairly.
+Report abusive, harassing, or otherwise unacceptable behavior by e-mail to
+**conduct@enveo.app**. That is the only reporting channel; please do not open a public issue
+about an incident.
 
-All community leaders are obligated to respect the privacy and security of the reporter of any incident.
+**Who reads it.** Enveo is maintained by one person, and that maintainer is currently the only
+one with access to this mailbox. Reports are handled as privately as is practicable, and the
+maintainer will not share a report or a reporter's identity beyond what an investigation
+genuinely requires. Being honest about the limits of that:
+
+- **There is no independent adjudicator.** A complaint *about* the maintainer is read by the
+  person it concerns. This project cannot pretend otherwise. If a trusted community member later
+  agrees to act as an escalation contact, this policy will be updated to name them and to
+  describe how conflicts are handled — until it does, no such route exists.
+- **No anonymity guarantee.** E-mail carries an address, and a detailed account can identify its
+  author. If you need to be unidentifiable, say so in your first message and share as little as
+  possible until we agree how to proceed.
+- **No response-time promise.** One maintainer means replies can take days; a busy week is not a
+  dismissal. You will get an acknowledgement.
+
+**What helps.** Describe what happened and where (a link, a date, a screenshot), who was
+involved, and what outcome you are hoping for. Say how you would like to be contacted back.
+Please include only the personal data the report actually needs — yours or anyone else's.
+
+**If it is a security vulnerability, use the other channel.** An exploitable flaw in Enveo or in
+this repository belongs in GitHub's private vulnerability reporting (Security → Report a
+vulnerability), not here and not in a public issue — see [SECURITY.md](SECURITY.md). If a conduct
+report happens to describe one, you may be asked to refile the technical part there; the details
+will not be copied into a public channel on your behalf.
+
+Whoever handles a report is obliged to respect the privacy and security of the person who made
+it, and to keep only what is needed to investigate and act on it.
 
 ## Enforcement Guidelines
 

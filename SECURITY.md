@@ -14,3 +14,6 @@ patch releases with credit unless you prefer otherwise.
 Enveo stores financial data. Reports about data exposure between accounts,
 authentication bypasses, or the multi-tenant guard are treated with the highest
 priority.
+
+This channel is for vulnerabilities only. Conduct concerns go to
+`conduct@enveo.app` instead — see [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md).
