@@ -4,10 +4,11 @@
 # Multi-arch on purpose: linux/amd64 (typical VPS) AND linux/arm64 (Raspberry Pi,
 # Ampere/Graviton VPS, Apple Silicon). The arm64 leg is built under QEMU emulation —
 # slow on a first run (bun install + vite build are emulated), fast afterwards thanks
-# to the GitHub Actions layer cache. The Dockerfile is cross-build safe: both stages
-# use oven/bun:1 (published for amd64 + arm64) and nothing downloads an arch-pinned
-# binary; the native deps (rollup/esbuild/sharp) resolve per-arch from bun.lock, which
-# carries every linux-arm64 variant.
+# to the GitHub Actions layer cache. The Dockerfile is cross-build safe: every stage uses
+# the SAME pinned oven/bun multi-arch manifest digest (§3e — the index covers amd64 and
+# arm64, so `--platform` selects the right leg without changing the pin) and nothing
+# downloads an arch-pinned binary; the native deps (rollup/esbuild/sharp) resolve per-arch
+# from bun.lock, which carries every linux-arm64 variant.
 name: Release
 
 on:
@@ -92,6 +93,11 @@ jobs:
           file: ./Dockerfile
           platforms: linux/amd64,linux/arm64
           push: true
+          # `.git` is excluded from the build context, so the release identity is PASSED IN
+          # (§3e). It reaches the web build stamp shown in the app menu and the OCI
+          # `org.opencontainers.image.revision` label; both must equal this value.
+          build-args: |
+            SOURCE_COMMIT=${{ github.sha }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           annotations: ${{ steps.meta.outputs.annotations }}

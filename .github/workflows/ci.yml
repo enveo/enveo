@@ -85,5 +85,19 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+
+      # SOURCE_COMMIT is the release identity: `.git` is excluded from the build context, so the
+      # sha cannot be recovered inside Docker. It flows into the web build stamp AND the OCI
+      # revision label, and the inventory below asserts BOTH equal what was passed.
       - name: Build prod image
-        run: docker build -t enveo-ci .
+        run: docker build --build-arg SOURCE_COMMIT=${{ github.sha }} -t enveo-ci .
+
+      # The image contract (§3e): the runtime allowlist is present, the dev/build tree is not,
+      # the container is unprivileged and /app is read-only to it. Rules in
+      # scripts/lib/imageInventory.ts, unit-tested in the `quality` job above.
+      - name: Image inventory (runtime allowlist + non-root)
+        run: bun run image:inventory enveo-ci --sha ${{ github.sha }}
