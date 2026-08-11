@@ -112,7 +112,7 @@ services:
       # This does NOT disable AI on the device: a trusted device can use its own OpenAI
       # key (BYOK, Settings → AI), and those requests go straight from the browser to
       # OpenAI, never through this server. AI is off by default; with no key set and no
-      # device opting in, Enveo makes no outbound request at all.
+      # device opting in, Enveo makes no outbound AI request at all.
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       OPENAI_MODEL: ${OPENAI_MODEL:-gpt-5.5}
     ports:
