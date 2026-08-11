@@ -145,13 +145,86 @@ describe("planTestEnv — db mode", () => {
     expect(result.errors.join("\n")).toContain("not a valid PostgreSQL URL");
   });
 
-  it("accepts a throwaway URL when DATABASE_URL is absent entirely", () => {
+  it("accepts a genuinely separate database when DATABASE_URL is absent entirely", () => {
     const result = planTestEnv("db", {
       TEST_DATABASE_URL: THROWAWAY,
       ENVEO_TEST_DB_ACK: "throwaway",
     });
 
     expect(result.ok).toBe(true);
+  });
+
+  it("accepts the default host/port with a different database name", () => {
+    const result = planTestEnv("db", {
+      TEST_DATABASE_URL: "postgres://enveo:enveo@127.0.0.1:5432/enveotest",
+      ENVEO_TEST_DB_ACK: "throwaway",
+    });
+
+    expect(result.ok).toBe(true);
+  });
+
+  // The check below must NOT depend on DATABASE_URL being set: `.env.example` ships it
+  // COMMENTED OUT, so "unset" is the documented default, and resolveDatabaseUrl() then falls
+  // back to localhost:5432/enveo — a real, running Enveo database on developer and self-host
+  // machines. Accepting that as a "throwaway" would point the migrating, WRITING suites at it.
+  it("refuses the default application database target even with DATABASE_URL unset", () => {
+    for (const host of ["localhost", "127.0.0.1", "[::1]", "0.0.0.0"]) {
+      const result = planTestEnv("db", {
+        TEST_DATABASE_URL: `postgres://enveo:whatever@${host}:5432/enveo`,
+        ENVEO_TEST_DB_ACK: "throwaway",
+      });
+
+      expect(result.ok).toBe(false);
+      if (result.ok) return;
+      expect(result.errors.join("\n")).toContain("default application database target");
+    }
+  });
+
+  it("refuses the default target written without an explicit port", () => {
+    const result = planTestEnv("db", {
+      TEST_DATABASE_URL: "postgres://enveo:whatever@localhost/enveo",
+      ENVEO_TEST_DB_ACK: "throwaway",
+    });
+
+    expect(result.ok).toBe(false);
+  });
+
+  it("treats localhost and 127.0.0.1 as the SAME host when comparing with DATABASE_URL", () => {
+    const result = planTestEnv("db", {
+      DATABASE_URL: "postgres://app:app@127.0.0.1:5433/enveo",
+      TEST_DATABASE_URL: "postgres://test:test@localhost:5433/enveo",
+      ENVEO_TEST_DB_ACK: "throwaway",
+    });
+
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.errors.join("\n")).toContain("same PostgreSQL target");
+  });
+
+  it("treats ::1 as the same host as localhost", () => {
+    const result = planTestEnv("db", {
+      DATABASE_URL: "postgres://app:app@localhost:5433/enveo",
+      TEST_DATABASE_URL: "postgres://test:test@[::1]:5433/enveo",
+      ENVEO_TEST_DB_ACK: "throwaway",
+    });
+
+    expect(result.ok).toBe(false);
+  });
+
+  it("still accepts a different port or database on the same host", () => {
+    const differentPort = planTestEnv("db", {
+      DATABASE_URL: "postgres://app:app@127.0.0.1:5432/enveo",
+      TEST_DATABASE_URL: "postgres://test:test@localhost:5499/enveo",
+      ENVEO_TEST_DB_ACK: "throwaway",
+    });
+    const differentDb = planTestEnv("db", {
+      DATABASE_URL: "postgres://app:app@127.0.0.1:5433/enveo",
+      TEST_DATABASE_URL: "postgres://test:test@127.0.0.1:5433/enveotest",
+      ENVEO_TEST_DB_ACK: "throwaway",
+    });
+
+    expect(differentPort.ok).toBe(true);
+    expect(differentDb.ok).toBe(true);
   });
 
   it("collects every violation at once instead of failing on the first", () => {
@@ -170,7 +243,16 @@ describe("describeDbTarget", () => {
       port: "5432",
       database: "enveo",
       redacted: "db.internal:5432/enveo",
+      key: "db.internal:5432/enveo",
     });
+  });
+
+  it("keeps the original host for display but canonicalises loopback in the key", () => {
+    const target = describeDbTarget("postgres://u:p@127.0.0.1:5432/enveo");
+
+    expect(target?.redacted).toBe("127.0.0.1:5432/enveo");
+    expect(target?.key).toBe("localhost:5432/enveo");
+    expect(describeDbTarget("postgres://u:p@[::1]:5432/enveo")?.key).toBe(target?.key);
   });
 
   it("returns null for a non-postgres or malformed URL", () => {
