@@ -87,10 +87,13 @@ Why each key:
 - **`builder: DOCKERFILE`** — Railway auto-detects a root `Dockerfile`, but pinning it
   means a future change to Railway's build autodetection cannot silently switch us to
   Railpack/Nixpacks.
-- **no `startCommand`** — the image's `CMD` already is
-  `bun packages/api/src/db/migrate.ts && bun packages/api/src/index.ts` (migrations, then
-  the server), and Railway runs the image's `CMD` when no start command is set. Repeating
-  it here would only create a second copy to keep in sync.
+- **no `startCommand`** — the image's `ENTRYPOINT` already runs
+  `packages/api/src/db/migrate.ts` and then `exec`s `packages/api/src/index.ts` (migrations,
+  then the server; a failed migration means no server), and Railway runs the image's
+  entrypoint when no start command is set. Repeating it here would only create a second copy
+  to keep in sync. Leave it unset: the entrypoint treats an explicit command as a maintenance
+  escape hatch (`docker run … bun packages/api/src/db/seed.ts`) and `exec`s it INSTEAD of the
+  migrate→start sequence, so a start command configured here would silently skip migrations.
 - **`healthcheckPath: /api/health`** — the health route is deliberately exempt from the
   CSRF origin-guard *and* the session middleware, and it does not touch the database, so
   Railway's internal, cookie-less probe gets a clean `200 {"ok":true}`.
