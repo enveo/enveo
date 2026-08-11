@@ -123,10 +123,23 @@ jobs:
       SHA: ${{ needs.validate.outputs.sha }}
       ALIASES: ${{ needs.validate.outputs.aliases }}
     steps:
-      # The RESOLVED commit, not the ref that triggered the run.
+      # The RESOLVED commit, not the ref that triggered the run. This is the tree the image is
+      # built from, and the tree `image:inventory`/`image:scan` judge it against: the expected
+      # migration set, `.bun-version` and the reviewed entries in the scan ignore file all
+      # describe THIS release, so they must come from the released source.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ needs.validate.outputs.sha }}
+
+      # The release MACHINERY, on the other hand, belongs to the workflow that is running, not to
+      # the commit being released — a manual re-publish of an older tag would otherwise be driven
+      # by whatever release scripts that tag happened to contain, and this workflow's CLI flags
+      # would not exist there at all. Checked out separately, under a dot-prefixed path that
+      # `.dockerignore`'s `.*` already keeps out of the build context.
+      - name: Check out the release tooling (this workflow's revision)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: .release-tooling
 
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
@@ -152,7 +165,7 @@ jobs:
       - name: Does the exact tag already exist?
         id: probe
         run: |
-          bun scripts/release-image.ts probe \
+          bun .release-tooling/scripts/release-image.ts probe \
             --image "$IMAGE" --tag "$VERSION" \
             --revision "$SHA" --version "$VERSION" --platforms "$PLATFORMS"
 
@@ -280,7 +293,7 @@ jobs:
         env:
           DIGEST: ${{ steps.digest.outputs.digest }}
         run: |
-          bun scripts/release-image.ts verify \
+          bun .release-tooling/scripts/release-image.ts verify \
             --image "$IMAGE" --digest "$DIGEST" \
             --revision "$SHA" --version "$VERSION" --platforms "$PLATFORMS"
 
@@ -330,7 +343,7 @@ jobs:
         run: |
           set -eu
           gh attestation verify "oci://$IMAGE@$DIGEST" -R "$GITHUB_REPOSITORY"
-          bun scripts/release-image.ts verify \
+          bun .release-tooling/scripts/release-image.ts verify \
             --image "$IMAGE" --digest "$DIGEST" \
             --revision "$SHA" --version "$VERSION" --platforms "$PLATFORMS" --attestations
 

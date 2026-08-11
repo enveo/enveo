@@ -108,6 +108,13 @@ Two things the probe deliberately refuses to do:
 Never delete or overwrite a published exact version tag to fix a release. Destructive package
 cleanup is an explicit owner action with a recorded reason.
 
+One consequence worth knowing: the image is built from the **released** commit, and so are the
+checks that judge it against the repository (the expected migration set, `.bun-version`, the scan
+ignore file) — but the release machinery itself comes from the revision of the workflow that is
+running. Re-publishing a tag from before these gates existed therefore fails at the candidate
+gate, because that tree has no `image:scan`. That is intended: an old tag cannot be rebuilt under
+a gate it was never written for.
+
 ## Tag protection (repository setting, done once)
 
 Create a GitHub **tag ruleset** for `v*`:
