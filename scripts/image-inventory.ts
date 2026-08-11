@@ -148,6 +148,11 @@ function collect(image: string): ImageFacts {
   ).trim();
   const buildStampSha = stamp === "" ? null : (stamp.match(/sha:"([^"]*)"/)?.[1] ?? null);
 
+  // Recorded for the audit trail, not judged (see ImageFacts.osPackages). `apk upgrade` in the
+  // runtime stage is intentionally unpinned, so this is where the resulting patch level becomes
+  // visible instead of implicit.
+  const osPackages = lines(inImage(image, "apk info -v 2>/dev/null | sort || true"));
+
   const nativeBinaries = lines(bunInImage(image, ELF_SWEEP));
   const unresolvableImports = lines(bunInImage(image, IMPORT_SWEEP));
   const bunVersion = run(["docker", "run", "--rm", "--network=none", "--entrypoint", "bun", image, "--version"]).trim();
@@ -155,6 +160,7 @@ function collect(image: string): ImageFacts {
   return {
     unresolvableImports,
     bunVersion,
+    osPackages,
     appFiles,
     storeEntries,
     configUser: config.User ?? "",
@@ -194,6 +200,10 @@ function main(argv: readonly string[]): number {
   console.log(`  installed packages      ${facts.storeEntries.length}`);
   console.log(`  migrations expected     ${migrations.length}`);
   console.log(`  bun in image            ${facts.bunVersion} (.bun-version pins ${bunVersion})`);
+  // The OpenSSL pair is called out by name because it is why the runtime stage upgrades at all
+  // (CVE-2026-45447); the full list follows so any OS drift is legible in the same output.
+  const openssl = facts.osPackages.filter((pkg) => /^lib(ssl|crypto)\d/.test(pkg));
+  console.log(`  OS packages             ${facts.osPackages.length}${openssl.length === 0 ? "" : ` (${openssl.join(", ")})`}`);
   console.log(`  unresolvable imports    ${facts.unresolvableImports.length} (must be 0)`);
   console.log(`  user                    ${facts.configUser} (effective uid ${facts.effectiveUid})`);
   console.log(`  /app writable           ${facts.appWritable}`);

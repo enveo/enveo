@@ -45,6 +45,8 @@ const facts = (overrides: Partial<ImageFacts> = {}): ImageFacts => ({
   nativeBinaries: [],
   unresolvableImports: [],
   bunVersion: "1.3.14",
+   
+  osPackages: ["libcrypto3-3.5.7-r0", "libssl3-3.5.7-r0", "musl-1.2.5-r10"],
   ...overrides,
 });
 
