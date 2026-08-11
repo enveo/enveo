@@ -122,7 +122,30 @@ the app: any message you leave out simply renders its English text.
    `bun test packages/web/src/lib/i18n`. The tests report orphaned messages,
    incomplete plural categories and dropped `{placeholders}` by name.
 
-Fixing an existing translation is welcome and needs no ceremony — open a PR.
+## Fix a translation
+
+Every language except English and Polish is a **community translation**: written without a
+native review, labelled as such in Settings, and free to be incomplete — anything missing
+renders its English source, so a partial correction ships on its own. Reporting or fixing a
+single string is a complete contribution; you never have to finish a language.
+
+- **Report one:** the [translation fix
+  form](https://github.com/enveo/enveo/issues/new?template=translation_fix.yml) (also reachable
+  from Settings → Appearance → "Report a fix" whenever a community language is active). It asks
+  for the language, the English source message, the current and proposed text, and the screen it
+  appears on. Please do not paste amounts, account names or screenshots of your own budget — the
+  app's text is all it needs.
+- **Fix one yourself:** change **only the value** in
+  `packages/web/src/lib/i18n/locales/<code>.ts`. The English sentence on the left is the *key*,
+  and editing it is not a translation fix — it changes which message the code asks for and
+  orphans that string in every other language. Keep the `{placeholders}` exactly as the key has
+  them, and for a plural entry supply every CLDR category your language requires
+  (`new Intl.PluralRules("cs").resolvedOptions().pluralCategories`). Then run
+  `bun run i18n:extract` (in `packages/web`) and `bun test packages/web/src/lib/i18n`.
+
+**Changing the English copy is a different job** and belongs to whoever changes the UI: it mints
+a new key, so `bun run i18n:extract` must be run and the orphan report read — the orphans name
+exactly which translations of the old sentence now need re-translating.
 
 > **For maintainers editing English copy:** changing an English string CHANGES ITS
 > KEY, which silently orphans every translation of it. Run `bun run i18n:extract`

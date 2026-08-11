@@ -8,7 +8,10 @@ import { Helper, Row, Seg } from "./ui";
 
 /** Where a translator reports a bad string. Community locales are labelled, not hidden — honest, and
  *  it is the only route a reader of a wrong sentence has back to us. */
-const TRANSLATION_ISSUES_URL = "https://github.com/enveo/enveo/issues";
+/** The dedicated translation-fix issue form (.github/ISSUE_TEMPLATE/translation_fix.yml), not the
+ *  generic issue list: it asks for locale / source message / current / proposed / context and
+ *  warns against pasting financial data, which a blank issue does not. */
+const TRANSLATION_ISSUES_URL = "https://github.com/enveo/enveo/issues/new?template=translation_fix.yml";
 
 /** Order of theme tiles in Settings, and the name of each (the ids are historical).
  *  Reduced to two tiles (redesign 06) — "koral"/"atrament" are unreachable from the
