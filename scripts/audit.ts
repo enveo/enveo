@@ -167,6 +167,18 @@ export async function runAudit(options: AuditRunOptions = {}): Promise<number> {
     );
   }
 
+  // Exit 1 is the "advisories found" status, so a body that parses to ZERO advisories
+  // contradicts it. A degraded registry or proxy can produce exactly that (exit 1 while
+  // printing `{}`), and read naively it looks like a clean scan. Nothing else would catch it
+  // once the policy file is empty — the normal steady state — so enforce the invariant here.
+  if (exitCode === 1 && advisories.value.length === 0) {
+    return closed(
+      "the audit command exited 1 (its \"advisories found\" status) but reported no advisories — " +
+        "that combination cannot come from a successful scan" +
+        (stderr.trim() ? `; tool output: ${sanitizeToolOutput(stderr)}` : ""),
+    );
+  }
+
   const report = evaluateAudit({
     advisories: advisories.value,
     installed: installed.value,

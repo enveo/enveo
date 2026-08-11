@@ -58,6 +58,61 @@ describe("runAudit (real child process, fake audit command)", () => {
     expect(output).toContain("connection refused");
   });
 
+  it("fails closed on exit code 1 with a VALID but empty body", async () => {
+    // Exit 1 is the "advisories found" status. A body that parses to zero advisories therefore
+    // contradicts it, and must never be reported as a clean scan — otherwise a degraded
+    // registry that exits 1 while printing `{}` passes the gate. With an empty policy (the
+    // normal steady state) nothing else would catch it.
+    const { code, output } = await run("emptyfindings");
+
+    expect(code).toBe(EXIT_FAILED_CLOSED);
+    expect(output).toContain("FAILED CLOSED");
+    expect(output).toContain("no advisories");
+    expect(output).toContain("503");
+    expect(output).not.toContain("PASSED");
+  });
+
+  it("fails closed on exit 1 + empty body even with an EMPTY policy", async () => {
+    // The steady state: once no exception is needed, a stale entry can no longer accidentally
+    // turn this into a failure. Without the explicit invariant this run reported
+    // "PASSED — zero unreviewed findings" and exited 0.
+    const sink = silent();
+    const code = await runAudit({
+      command: ["bun", FAKE, "emptyfindings"],
+      policyPath: new URL("./fixtures/empty-policy.json", import.meta.url).pathname,
+      lockfilePath: LOCK,
+      now: NOW,
+      log: sink.log,
+    });
+
+    expect(code).toBe(EXIT_FAILED_CLOSED);
+    expect(sink.lines.join("\n")).not.toContain("PASSED");
+  });
+
+  it("passes cleanly on exit 0 with an empty body and an EMPTY policy", async () => {
+    // The genuine clean scan, so the invariant above cannot be satisfied by rejecting everything.
+    const sink = silent();
+    const code = await runAudit({
+      command: ["bun", FAKE, "clean"],
+      policyPath: new URL("./fixtures/empty-policy.json", import.meta.url).pathname,
+      lockfilePath: LOCK,
+      now: NOW,
+      log: sink.log,
+    });
+
+    expect(code).toBe(EXIT_OK);
+    expect(sink.lines.join("\n")).toContain("security:audit PASSED");
+  });
+
+  it("still evaluates exit code 1 that carries a real finding", async () => {
+    // The counterpart to the case above: this shape is legitimate and must NOT fail closed.
+    const { code, output } = await run("findings");
+
+    expect(code).toBe(EXIT_OK);
+    expect(output).not.toContain("FAILED CLOSED");
+    expect(output).toContain("security:audit PASSED");
+  });
+
   it("fails closed on output that is not the documented JSON schema", async () => {
     const { code } = await run("garbage");
 
@@ -111,21 +166,44 @@ describe("runAudit (real child process, fake audit command)", () => {
     expect(missing).toBe(EXIT_FAILED_CLOSED);
   });
 
-  it("propagates the exit code when invoked as a real script", async () => {
-    const child = Bun.spawn(["bun", new URL("../audit.ts", import.meta.url).pathname], {
-      cwd: new URL("../../", import.meta.url).pathname,
-      stdout: "pipe",
-      stderr: "pipe",
-      env: { ...process.env },
-    });
+  // Exit-code propagation through a real process boundary. Driven by the fake audit command,
+  // NOT the live registry: `bun run test` (and therefore `bun run verify`) must stay offline
+  // and fast, and asserting "some exit code in {0,1,2}" would assert nothing at all.
+  const HARNESS = new URL("./fixtures/audit-harness.ts", import.meta.url).pathname;
+  const EMPTY_POLICY = new URL("./fixtures/empty-policy.json", import.meta.url).pathname;
+
+  async function spawnHarness(mode: string, policyPath?: string) {
+    const child = Bun.spawn(
+      ["bun", HARNESS, mode, ...(policyPath ? [policyPath] : [])],
+      { stdout: "pipe", stderr: "pipe" },
+    );
     const stdout = await new Response(child.stdout).text();
     const code = await child.exited;
+    return { code, stdout };
+  }
 
-    // Whatever the live registry says, the script must reach a VERDICT (0 or 1) and print the
-    // table — never crash, never exit with an undefined status.
-    expect([EXIT_OK, EXIT_POLICY_VIOLATION, EXIT_FAILED_CLOSED]).toContain(code);
-    expect(stdout).toContain("security:audit");
-  }, 60_000);
+  it("exits 0 through a real process boundary when the policy covers the finding", async () => {
+    const { code, stdout } = await spawnHarness("findings");
+
+    expect(code).toBe(EXIT_OK);
+    expect(stdout).toContain("GHSA-67mh-4wv8-2f99");
+    expect(stdout).toContain("security:audit PASSED");
+  });
+
+  it("exits 1 through a real process boundary on a forbidden advisory", async () => {
+    const { code, stdout } = await spawnHarness("high", EMPTY_POLICY);
+
+    expect(code).toBe(EXIT_POLICY_VIOLATION);
+    expect(stdout).toContain("no exception path");
+    expect(stdout).toContain("security:audit FAILED");
+  });
+
+  it("exits 2 through a real process boundary when the tool fails", async () => {
+    const { code, stdout } = await spawnHarness("toolfailure", EMPTY_POLICY);
+
+    expect(code).toBe(EXIT_FAILED_CLOSED);
+    expect(stdout).toContain("FAILED CLOSED");
+  });
 });
 
 describe("sanitizeToolOutput", () => {
