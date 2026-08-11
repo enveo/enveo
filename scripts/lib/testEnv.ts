@@ -42,6 +42,15 @@ const POSTGRES_PROTOCOLS = new Set(["postgres:", "postgresql:"]);
 export const TEST_DB_ACK = "throwaway";
 
 /**
+ * Markers stamped on every child. They let `runner-contract.test.ts` assert FROM INSIDE the
+ * test process that the environment it actually got is the one this module promised — the
+ * proof that an ambient `.env` never reaches the suite.
+ */
+export const RUNNER_MARKER = "ENVEO_TEST_RUNNER";
+export const RUNNER_MARKER_VALUE = "run-tests";
+export const RUNNER_MODE = "ENVEO_TEST_MODE";
+
+/**
  * Parse a PostgreSQL URL down to the only three parts we are allowed to show a human.
  * Returns null when the value is not a usable PostgreSQL URL — callers must fail closed.
  */
@@ -78,7 +87,12 @@ export function planTestEnv(mode: TestMode, env: EnvRecord): TestEnvResult {
       ok: true,
       plan: {
         mode,
-        overrides: { OPENAI_API_KEY: "", TEST_DATABASE_URL: "" },
+        overrides: {
+          OPENAI_API_KEY: "",
+          TEST_DATABASE_URL: "",
+          [RUNNER_MARKER]: RUNNER_MARKER_VALUE,
+          [RUNNER_MODE]: "default",
+        },
         banner:
           'mode=default — AI disabled (OPENAI_API_KEY=""), DB-backed groups skipped ' +
           '(TEST_DATABASE_URL=""). Ambient values from .env are ignored.',
@@ -129,7 +143,12 @@ export function planTestEnv(mode: TestMode, env: EnvRecord): TestEnvResult {
     ok: true,
     plan: {
       mode,
-      overrides: { OPENAI_API_KEY: "", TEST_DATABASE_URL: testUrl },
+      overrides: {
+        OPENAI_API_KEY: "",
+        TEST_DATABASE_URL: testUrl,
+        [RUNNER_MARKER]: RUNNER_MARKER_VALUE,
+        [RUNNER_MODE]: "db",
+      },
       banner:
         `mode=db — AI disabled (OPENAI_API_KEY=""), DB-backed groups REQUIRED against ` +
         `${testTarget.redacted} (acknowledged throwaway).`,
