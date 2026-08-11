@@ -177,13 +177,27 @@ jobs:
         id: meta
         if: steps.probe.outputs.state == 'absent'
         uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
+        env:
+          # Annotate the INDEX as well as each manifest. For a multi-arch image the index is what
+          # a registry resolves first and what most tooling reads, and by default only `manifest`
+          # is annotated — leaving the index with no revision at all.
+          DOCKER_METADATA_ANNOTATIONS_LEVELS: manifest,index
         with:
           images: ${{ env.IMAGE }}
           tags: type=raw,value=${{ needs.validate.outputs.version }}
           flavor: latest=false
           # metadata-action derives revision from github.sha, which is the DEFAULT BRANCH HEAD on
-          # a workflow_dispatch. Both identity labels come from the validated release instead.
+          # a workflow_dispatch — not the released commit.
+          #
+          # BOTH lists are overridden, and that is not redundant: a `labels:` override alone fixes
+          # the image CONFIG while metadata-action still derives ANNOTATIONS from github.sha. That
+          # shipped once — the config said the released commit and the published manifest said the
+          # branch head. Labels and annotations are separate outputs; override both, and
+          # release-image.ts verifies both against the resolved commit.
           labels: |
+            org.opencontainers.image.revision=${{ needs.validate.outputs.sha }}
+            org.opencontainers.image.version=${{ needs.validate.outputs.version }}
+          annotations: |
             org.opencontainers.image.revision=${{ needs.validate.outputs.sha }}
             org.opencontainers.image.version=${{ needs.validate.outputs.version }}
 
@@ -301,26 +315,38 @@ jobs:
       # CI's single-arch throwaway build is not evidence about the arm64 image users pull, and
       # neither is the candidate above — this pulls what the registry now serves.
       #
-      # The architecture assertion matters: `docker pull --platform` for two platforms of one
-      # digest reference reuses the same name, so without it a mix-up would silently inventory
-      # the same architecture twice and report a green multi-arch gate.
+      # Each platform is pulled by its OWN manifest digest, taken from the index. Pulling two
+      # platforms through the same INDEX digest fails outright — `cannot overwrite digest …`,
+      # because one reference can only map to one local image — and that is how this step broke
+      # the first time it ran. Per-platform digests are distinct references.
+      #
+      # The list comes from the index rather than being hardcoded here, so the architectures
+      # inventoried are by construction the architectures published. The architecture assertion
+      # then closes the remaining hole: if two entries ever resolved to the same image, the second
+      # one would report the wrong architecture and fail instead of quietly passing twice.
       - name: Inventory the PUBLISHED artifact, per architecture
         env:
           DIGEST: ${{ steps.digest.outputs.digest }}
         run: |
           set -eu
-          for arch in amd64 arm64; do
-            echo "::group::published linux/$arch"
-            docker pull --quiet --platform "linux/$arch" "$IMAGE@$DIGEST"
-            docker tag "$IMAGE@$DIGEST" "enveo-published:$arch"
+          bun .release-tooling/scripts/release-image.ts platforms \
+            --image "$IMAGE" --digest "$DIGEST" > platforms.tsv
+          cat platforms.tsv
+
+          while IFS="$(printf '\t')" read -r platform manifest; do
+            [ -n "$platform" ] || continue
+            arch="${platform#linux/}"
+            echo "::group::published $platform ($manifest)"
+            docker pull --quiet "$IMAGE@$manifest"
+            docker tag "$IMAGE@$manifest" "enveo-published:$arch"
             found=$(docker image inspect --format '{{.Architecture}}' "enveo-published:$arch")
             if [ "$found" != "$arch" ]; then
-              echo "::error::pulled linux/$arch but the local image reports $found"
+              echo "::error::$platform resolved to an image reporting $found — refusing to report a multi-arch gate that inspected one architecture twice"
               exit 1
             fi
             bun run image:inventory "enveo-published:$arch" --sha "$SHA"
             echo "::endgroup::"
-          done
+          done < platforms.tsv
 
       # REQUIRED, deliberately not conditional and never continue-on-error.
       #
