@@ -31,8 +31,11 @@ registered user, so your account sees it after a reload.
 
 - **English everywhere**: code, comments, tests, commit messages.
 - **Conventional Commits** with scope: `feat(api): …`, `fix(web): …`, `chore: …`.
-- **Tests must pass**: `bun test packages/shared packages/api packages/web/src/lib`
-  and `bun run build:web`. CI runs the same gates.
+- **Verification must pass**: `bun run verify` (typecheck + tests + production
+  build). It needs no network and no database, and it forces `OPENAI_API_KEY` and
+  `TEST_DATABASE_URL` empty so an auto-loaded `.env` cannot change the result.
+  CI runs `bun run verify:ci`, which adds the DB-backed suites and the dependency
+  audit — see [Running the full gate](#running-the-full-gate).
 - Amounts are integer minor units — never floats. Balances are derived from the
   ledger — never add a stored balance column.
 - New mutation ops need full parity: zod schema (`shared/ops.ts`) + `applyOp`
@@ -41,6 +44,40 @@ registered user, so your account sees it after a reload.
   `M()`/`formatMoney`.
 - Read `AGENTS.md` for architecture, invariants, and known pitfalls before
   diving in — it will save you time.
+
+## Running the full gate
+
+| Command | What it does |
+|---|---|
+| `bun run verify` | What you run before pushing: `typecheck` + `test` + `build`. Offline, no database. |
+| `bun run test` | Shared, API, web-lib and tooling tests. Forces `OPENAI_API_KEY=""` and `TEST_DATABASE_URL=""`, so DB-backed groups skip. |
+| `bun run test:db` | The same tests with the DB-backed groups **required** against a throwaway PostgreSQL. |
+| `bun run typecheck` | Shared, API, web app, web tests and repository tooling. |
+| `bun run build` | The production web/PWA build. |
+| `bun run security:audit` | `bun audit` evaluated against `security/audit-policy.json`. |
+| `bun run verify:ci` | What CI runs: `typecheck` + `test:db` + `build` + `security:audit`. |
+
+The DB-backed suites migrate and **write**, so `test:db` refuses to start unless you
+point it at a database you have explicitly acknowledged as disposable:
+
+```bash
+docker run -d --rm --name enveotest \
+  -e POSTGRES_USER=enveo -e POSTGRES_PASSWORD=enveo -e POSTGRES_DB=enveotest \
+  -p 127.0.0.1:5499:5432 postgres:16-alpine
+
+TEST_DATABASE_URL=postgres://enveo:enveo@127.0.0.1:5499/enveotest \
+ENVEO_TEST_DB_ACK=throwaway bun run test:db
+```
+
+Create a **fresh** container for this; the sentinel proves you meant it, not that the
+data is expendable. The runner also refuses a URL that resolves to the same
+host/port/database as `DATABASE_URL`.
+
+`security:audit` fails on any critical/high advisory, and on any moderate/low one that
+is not covered by an exact, unexpired entry in `security/audit-policy.json`. It fails
+closed: an unreachable registry or unparseable output is a failure, never a pass. If a
+new advisory blocks your unrelated PR, that is intended — fix the dependency or open the
+policy discussion; do not weaken the gate.
 
 ## Add a language
 
