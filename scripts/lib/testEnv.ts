@@ -51,6 +51,17 @@ export const RUNNER_MARKER_VALUE = "run-tests";
 export const RUNNER_MODE = "ENVEO_TEST_MODE";
 
 /**
+ * DATABASE_URL for the child, in BOTH modes. Deliberately unroutable (port 1 refuses instantly).
+ *
+ * Not paranoia: `resolveDatabaseUrl()` falls back to `postgres://enveo:enveo@localhost:5432/enveo`
+ * when nothing is configured, and route-level tests exercise real handlers through the POOLED db.
+ * On a developer machine that default IS a real, running Enveo database — a `bun test` with no
+ * `.env` was observed authenticating against one. DB-backed suites never use this value: they
+ * hand their child processes the acknowledged TEST_DATABASE_URL explicitly.
+ */
+export const DEAD_DB_URL = "postgres://unused:unused@127.0.0.1:1/enveo_no_such_database";
+
+/**
  * Parse a PostgreSQL URL down to the only three parts we are allowed to show a human.
  * Returns null when the value is not a usable PostgreSQL URL — callers must fail closed.
  */
@@ -90,12 +101,13 @@ export function planTestEnv(mode: TestMode, env: EnvRecord): TestEnvResult {
         overrides: {
           OPENAI_API_KEY: "",
           TEST_DATABASE_URL: "",
+          DATABASE_URL: DEAD_DB_URL,
           [RUNNER_MARKER]: RUNNER_MARKER_VALUE,
           [RUNNER_MODE]: "default",
         },
         banner:
           'mode=default — AI disabled (OPENAI_API_KEY=""), DB-backed groups skipped ' +
-          '(TEST_DATABASE_URL=""). Ambient values from .env are ignored.',
+          '(TEST_DATABASE_URL=""), no reachable database. Ambient values from .env are ignored.',
       },
     };
   }
@@ -146,6 +158,7 @@ export function planTestEnv(mode: TestMode, env: EnvRecord): TestEnvResult {
       overrides: {
         OPENAI_API_KEY: "",
         TEST_DATABASE_URL: testUrl,
+        DATABASE_URL: DEAD_DB_URL,
         [RUNNER_MARKER]: RUNNER_MARKER_VALUE,
         [RUNNER_MODE]: "db",
       },

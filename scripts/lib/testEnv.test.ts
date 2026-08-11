@@ -6,7 +6,7 @@
  * process layer only has to spawn what `planTestEnv` returns.
  */
 import { describe, expect, it } from "bun:test";
-import { describeDbTarget, planTestEnv } from "./testEnv";
+import { DEAD_DB_URL, describeDbTarget, planTestEnv } from "./testEnv";
 
 const PROD_LIKE = "postgres://enveo:s3cr3t-password@127.0.0.1:5432/enveo";
 const THROWAWAY = "postgres://enveo:enveo@127.0.0.1:5495/enveo";
@@ -25,18 +25,30 @@ describe("planTestEnv — default mode", () => {
     expect(result.plan.overrides.TEST_DATABASE_URL).toBe("");
   });
 
-  it("overrides the two sensitive variables plus the runner markers, and needs no sentinel", () => {
+  it("overrides the sensitive variables plus the runner markers, and needs no sentinel", () => {
     const result = planTestEnv("default", {});
 
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(Object.keys(result.plan.overrides).sort()).toEqual([
+      "DATABASE_URL",
       "ENVEO_TEST_MODE",
       "ENVEO_TEST_RUNNER",
       "OPENAI_API_KEY",
       "TEST_DATABASE_URL",
     ]);
     expect(result.plan.overrides.ENVEO_TEST_MODE).toBe("default");
+  });
+
+  it("points DATABASE_URL at an unroutable host, so the pooled db cannot reach a real server", () => {
+    // resolveDatabaseUrl() otherwise falls back to postgres://enveo:enveo@localhost:5432/enveo,
+    // which on a developer machine is a REAL running database.
+    const result = planTestEnv("default", { DATABASE_URL: PROD_LIKE });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.plan.overrides.DATABASE_URL).toBe(DEAD_DB_URL);
+    expect(describeDbTarget(DEAD_DB_URL)?.port).toBe("1");
   });
 
   it("never prints a credential or a full URL in its banner", () => {
@@ -68,6 +80,14 @@ describe("planTestEnv — db mode", () => {
     if (!result.ok) return;
     expect(result.plan.overrides.TEST_DATABASE_URL).toBe(THROWAWAY);
     expect(result.plan.overrides.OPENAI_API_KEY).toBe("");
+  });
+
+  it("still blanks the app's own DATABASE_URL — only the throwaway may be reached", () => {
+    const result = planTestEnv("db", ok);
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.plan.overrides.DATABASE_URL).toBe(DEAD_DB_URL);
   });
 
   it("reports the target as host:port/database only — no user, no password, no full URL", () => {
