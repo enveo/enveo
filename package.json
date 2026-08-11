@@ -7,7 +7,17 @@
     "packages/*"
   ],
   "scripts": {
-    "test": "bun test packages/shared",
+    "test": "bun scripts/run-tests.ts",
+    "test:db": "bun scripts/run-tests.ts --db",
+    "typecheck": "bun run typecheck:shared && bun run typecheck:api && bun run typecheck:web && bun run typecheck:scripts",
+    "typecheck:shared": "bun run --cwd packages/shared typecheck",
+    "typecheck:api": "bun run --cwd packages/api typecheck",
+    "typecheck:web": "bun run --cwd packages/web typecheck",
+    "typecheck:scripts": "tsc --noEmit -p tsconfig.scripts.json",
+    "build": "bun run build:web",
+    "security:audit": "bun scripts/audit.ts",
+    "verify": "bun run typecheck && bun run test && bun run build",
+    "verify:ci": "bun run typecheck && bun run test:db && bun run build && bun run security:audit",
     "dev:api": "bun run --cwd packages/api dev",
     "dev:web": "bun run --cwd packages/web dev",
     "build:web": "bun run --cwd packages/web build",
