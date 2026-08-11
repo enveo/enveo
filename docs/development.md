@@ -24,6 +24,15 @@ make up                 # build + start db + app → http://127.0.0.1:8081
 make logs               # follow logs; `make help` lists every target
 ```
 
+[`scripts/deploy.sh`](../scripts/deploy.sh) does the same thing unattended on an
+**Ubuntu/Debian** server you already administer: generate the two secrets into `.env` if they
+are not there, build and start the stack, wait for `/api/health`. It configures **Enveo** and
+nothing else — Docker Engine and its Compose v2 plugin are your responsibility, it installs
+no packages, downloads nothing and never asks for root. If a prerequisite is missing it stops
+before touching anything, with the official documentation link and its own exit code (2 no
+`docker`, 3 no Compose v2, 4 daemon unreachable, 5 another tool missing). It does not
+provision, update or harden the operating system, and it is not a substitute for doing so.
+
 ## Without Docker
 
 `bun` auto-loads `.env` from its own working directory, not the repo root, and

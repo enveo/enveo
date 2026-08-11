@@ -13,10 +13,10 @@ public, pulls fail with 403 — build from source instead:
 [development.md](development.md).)
 
 **Prerequisite:** Docker Engine with the Compose v2 plugin, installed and
-running as your host operator's choice — Enveo does not install or configure it.
-Follow [Docker's own installation
+running. Enveo neither installs nor configures it — provisioning the host is the
+operator's job. Follow [Docker's own installation
 documentation](https://docs.docker.com/engine/install/) for your distribution,
-then check `docker compose version` before continuing.
+then check that `docker compose version` answers before continuing.
 
 ```bash
 mkdir enveo && cd enveo
