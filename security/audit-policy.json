@@ -1,0 +1,34 @@
+{
+  "$comment": [
+    "Reviewed dependency-audit exceptions. Read by `bun run security:audit` (scripts/audit.ts).",
+    "Critical/high advisories have NO exception path — this file may only ever contain",
+    "moderate/low entries, each with an exact advisory id, package, affected range, the",
+    "installed version(s)/dependency path(s) resolved from bun.lock, a reachability analysis,",
+    "an owner and a hard expiry of at most 90 days (or the next release, whichever is earlier).",
+    "Every field is machine-checked: a changed severity, range, version or path fails the gate,",
+    "and so does an entry that no longer matches an installed finding. Contains no secrets."
+  ],
+  "schemaVersion": 1,
+  "exceptions": [
+    {
+      "advisoryId": "GHSA-67mh-4wv8-2f99",
+      "package": "esbuild",
+      "severity": "moderate",
+      "vulnerableVersions": "<=0.24.2",
+      "installed": [
+        {
+          "version": "0.18.20",
+          "path": "@esbuild-kit/core-utils/esbuild"
+        }
+      ],
+      "scope": "Build/dev tooling only: reached exclusively through the drizzle-kit CLI (db:generate). Not in the production runtime image's dependency closure, not in the browser bundle, not used by the test suites.",
+      "reachability": "Unreachable. The advisory is about esbuild's development SERVER, which answers cross-origin requests from any website; this path only ever runs esbuild's transform/bundle API inside the deprecated @esbuild-kit wrapper that drizzle-kit uses to load drizzle.config.ts. No esbuild dev server is started anywhere in this repository, and the CLI is never run on a machine serving untrusted web content.",
+      "mitigation": "None required for reachability. Kept visible in every audit run rather than suppressed; drizzle-kit is re-checked at each dependency review for a release that drops @esbuild-kit/esm-loader.",
+      "fixedVersion": "0.25.0",
+      "owner": "Lukasz",
+      "rationale": "Not fixable from this repository today: drizzle-kit 0.31.10 (the latest stable, and the version Better Auth's peer range requires) still depends on @esbuild-kit/esm-loader > @esbuild-kit/core-utils, which pins esbuild to ~0.18.20. Overriding it would replace a wrapper's pinned dependency with an untested major jump for zero security benefit, since the vulnerable code path is never executed.",
+      "addedOn": "2026-08-11",
+      "expires": "2026-11-08"
+    }
+  ]
+}
