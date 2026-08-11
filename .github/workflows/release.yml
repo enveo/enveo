@@ -1,158 +1,425 @@
-# Release: publish the runtime image to GHCR on every version tag, so self-hosters
-# can `docker pull` instead of building from source.
+# Release: a version tag is a REQUEST to publish, never an authorisation (§3d).
 #
-# Multi-arch on purpose: linux/amd64 (typical VPS) AND linux/arm64 (Raspberry Pi,
-# Ampere/Graviton VPS, Apple Silicon). The arm64 leg is built under QEMU emulation —
-# slow on a first run (bun install + vite build are emulated), fast afterwards thanks
-# to the GitHub Actions layer cache. The Dockerfile is cross-build safe: every stage uses
-# the SAME pinned oven/bun multi-arch manifest digest (§3e — the index covers amd64 and
-# arm64, so `--platform` selects the right leg without changing the pin) and nothing
-# downloads an arch-pinned binary; the native deps (rollup/esbuild/sharp) resolve per-arch
-# from bun.lock, which carries every linux-arm64 variant.
+# Four ordered jobs, each with only the permissions it needs:
+#
+#   validate  (contents: read)   the tag is a version tag, EXISTS, is on main, and APP_VERSION
+#                                at that commit agrees with it. Read-only. No registry, no login.
+#   verify    (contents: read)   the SAME reusable gate branch CI runs (`bun run verify:ci`),
+#                                on the exact commit the tag resolved to.
+#   publish   (packages: write)  build → scan + inventory BOTH architectures → push the exact
+#                                immutable tag → attest → verify what the registry now holds →
+#                                only then move the mutable aliases.
+#   release   (contents: write)  the GitHub Release, last and idempotent.
+#
+# Nothing before `publish` can write anywhere, so a bad tag fails with no write-scoped job ever
+# having started. Every third-party action is pinned to a full commit SHA with its upstream
+# release tag in a comment; local reusable workflows use the `./` form so the caller's revision
+# is the one that runs.
+#
+# Multi-arch on purpose: linux/amd64 (typical VPS) AND linux/arm64 (Raspberry Pi, Ampere/Graviton,
+# Apple Silicon). The arm64 leg is built under QEMU emulation. The Dockerfile is cross-build safe:
+# every stage uses the SAME pinned oven/bun multi-arch manifest digest (§3e) and nothing downloads
+# an arch-pinned binary.
 name: Release
 
 on:
   push:
     tags: ["v*"]
-  # Manual re-run of an ALREADY EXISTING tag (e.g. the first publish failed).
-  # There is no branch path into this workflow: the version is always a v* tag.
+  # Manual re-run of an ALREADY EXISTING tag (e.g. the first publish failed after the push).
+  # There is no branch path into this workflow: the version is always a v* tag, and
+  # release-validate.ts rejects a branch name or a raw SHA outright.
   workflow_dispatch:
     inputs:
       tag:
-        description: "Existing version tag to (re)publish, e.g. v2.1.0"
+        description: "Existing version tag to (re)publish, e.g. v3.8.0"
         required: true
         type: string
 
-permissions:
-  contents: write  # write: gh release create below; the image push still only needs packages
-  packages: write
+# Granted per job below. A workflow-level grant would hand write scopes to the validation jobs.
+permissions: {}
 
-# Never publish the same tag twice concurrently (tag push + a manual re-run).
+# Never publish the same tag twice concurrently (tag push + a manual re-run). Not cancellable:
+# interrupting a half-finished publish is worse than waiting for it.
 concurrency:
   group: release-${{ inputs.tag || github.ref_name }}
   cancel-in-progress: false
 
+env:
+  # Pinned on purpose — see verify.yml. scripts/lib/bunVersion.test.ts fails the suite on drift.
+  BUN_VERSION: "1.3.14"
+  # The runnable architectures this release promises. Used for the build, and asserted against
+  # the published manifest afterwards.
+  PLATFORMS: linux/amd64,linux/arm64
+
 jobs:
-  image:
+  # ── 1. validate ────────────────────────────────────────────────────────────────────────────
+  validate:
+    name: validate — may this tag be released at all?
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      tag: ${{ steps.release.outputs.tag }}
+      version: ${{ steps.release.outputs.version }}
+      sha: ${{ steps.release.outputs.sha }}
+      stable: ${{ steps.release.outputs.stable }}
+      aliases: ${{ steps.release.outputs.aliases }}
     steps:
-      # Resolves the version from either trigger and refuses anything that is not a
-      # version tag. This is the guard that keeps a branch build from ever being pushed.
-      - name: Resolve version tag
-        id: ver
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # The ancestry check needs real history on both sides, not a shallow tag checkout.
+          fetch-depth: 0
+
+      - name: Fetch main and the tags
+        run: |
+          set -eu
+          git fetch --force --no-tags origin +refs/heads/main:refs/remotes/origin/main
+          git fetch --force --tags origin
+
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+
+      # No `bun install`: the validator imports nothing outside scripts/lib, so the gate that
+      # decides whether to publish does not depend on a dependency tree resolving first.
+      #
+      # Rejects, in order: a non-version tag (strict SemVer subset, no build metadata, no leading
+      # zeros, no suffix garbage, no ref-like input), a tag that does not exist, a tag whose
+      # commit is not an ancestor of main, and an APP_VERSION at that commit that disagrees.
+      - name: Validate the release tag
+        id: release
         env:
           TAG: ${{ inputs.tag || github.ref_name }}
-        run: |
-          set -euo pipefail
-          case "$TAG" in
-            # prerelease (v2.1.0-rc.1): publish the exact version only
-            v[0-9]*.[0-9]*.[0-9]*-*) stable=false ;;
-            # stable (v2.1.0)
-            v[0-9]*.[0-9]*.[0-9]*)   stable=true  ;;
-            *) echo "::error::not a version tag: '$TAG' (expected vMAJOR.MINOR.PATCH)"; exit 1 ;;
-          esac
-          echo "tag=$TAG"       >> "$GITHUB_OUTPUT"
-          echo "stable=$stable" >> "$GITHUB_OUTPUT"
+        run: bun scripts/release-validate.ts --tag "$TAG"
 
-      - uses: actions/checkout@v4
+  # ── 2. verify ──────────────────────────────────────────────────────────────────────────────
+  # The same file branch CI calls, on the resolved commit. No secrets are passed in.
+  verify:
+    name: verify
+    needs: validate
+    permissions:
+      contents: read
+    uses: ./.github/workflows/verify.yml
+    with:
+      ref: ${{ needs.validate.outputs.sha }}
+
+  # ── 3. publish ─────────────────────────────────────────────────────────────────────────────
+  publish:
+    name: publish — build, gate, push, attest, then move aliases
+    needs: [validate, verify]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+      # Both are required by actions/attest-build-provenance: id-token to mint the OIDC token
+      # the signing service verifies, attestations to record the result against this repository.
+      id-token: write
+      attestations: write
+    outputs:
+      digest: ${{ steps.digest.outputs.digest }}
+    env:
+      IMAGE: ghcr.io/${{ github.repository }}
+      VERSION: ${{ needs.validate.outputs.version }}
+      SHA: ${{ needs.validate.outputs.sha }}
+      ALIASES: ${{ needs.validate.outputs.aliases }}
+    steps:
+      # The RESOLVED commit, not the ref that triggered the run.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          # on workflow_dispatch github.ref is a branch — check out the tag instead
-          ref: ${{ steps.ver.outputs.tag }}
+          ref: ${{ needs.validate.outputs.sha }}
 
-      # …and therefore `github.sha` is the WRONG commit on that path: it is the default branch
-      # head, while the checkout above is the tag. Re-publishing an existing tag (the documented
-      # recovery path) would otherwise stamp the image — both the OCI revision label and the
-      # in-app build stamp — with a commit that is not the released source. Nothing would catch
-      # it: image-inventory compares the label against the stamp, and both would be equally
-      # wrong. Resolve what was actually checked out and use that everywhere.
-      - name: Resolve the released commit
-        id: src
-        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
-
-      # Image name follows the repository (ghcr.io/<owner>/<repo>) — no hardcoded owner.
-      # metadata-action also emits org.opencontainers.image.source, which is what links
-      # the GHCR package back to this repo (README + "inherit access from repository").
-      - name: Docker metadata
-        id: meta
-        uses: docker/metadata-action@v5
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
-          images: ghcr.io/${{ github.repository }}
-          # v2.1.0     -> 2.1.0, 2.1, latest
-          # v2.1.0-rc.1 -> 2.1.0-rc.1 only (a prerelease must never move `2.1` or `latest`)
-          tags: |
-            type=semver,pattern={{version}},value=${{ steps.ver.outputs.tag }}
-            type=semver,pattern={{major}}.{{minor}},value=${{ steps.ver.outputs.tag }},enable=${{ steps.ver.outputs.stable }}
-          flavor: |
-            latest=${{ steps.ver.outputs.stable }}
-          # metadata-action derives image.revision from github.sha; override it with the commit
-          # the tag actually points at (see "Resolve the released commit" above).
-          labels: |
-            org.opencontainers.image.revision=${{ steps.src.outputs.sha }}
+          bun-version: ${{ env.BUN_VERSION }}
 
-      # QEMU only matters for the arm64 leg; buildx gives us the multi-platform driver.
-      - uses: docker/setup-qemu-action@v3
-      - uses: docker/setup-buildx-action@v3
+      # QEMU is set up unconditionally: the arm64 leg needs it to BUILD, and the inventory needs
+      # it to RUN arm64 containers — including on the resume path, which builds nothing.
+      - uses: docker/setup-qemu-action@96fe6ef7f33517b61c61be40b68a1882f3264fb8 # v4.2.0
+      - uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
 
       - name: Log in to GHCR
-        uses: docker/login-action@v3
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build and push (linux/amd64, linux/arm64)
-        uses: docker/build-push-action@v6
+      # Is this a first publish or a re-run? An exact SemVer tag is NEVER overwritten:
+      #   absent            → build it
+      #   present, matching → resume from its digest without rebuilding
+      #   present, differs  → stop for investigation
+      #   registry error    → stop (exit 3); an unresolved answer is never read as "absent"
+      - name: Does the exact tag already exist?
+        id: probe
+        run: |
+          bun scripts/release-image.ts probe \
+            --image "$IMAGE" --tag "$VERSION" \
+            --revision "$SHA" --version "$VERSION" --platforms "$PLATFORMS"
+
+      # Image name follows the repository (ghcr.io/<owner>/<repo>) — no hardcoded owner.
+      # metadata-action also emits org.opencontainers.image.source, which is what links the GHCR
+      # package back to this repo. Only the EXACT tag is produced here; the mutable aliases are
+      # moved at the very end, by digest, after everything has been verified.
+      - name: Docker metadata
+        id: meta
+        if: steps.probe.outputs.state == 'absent'
+        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
+        with:
+          images: ${{ env.IMAGE }}
+          tags: type=raw,value=${{ needs.validate.outputs.version }}
+          flavor: latest=false
+          # metadata-action derives revision from github.sha, which is the DEFAULT BRANCH HEAD on
+          # a workflow_dispatch. Both identity labels come from the validated release instead.
+          labels: |
+            org.opencontainers.image.revision=${{ needs.validate.outputs.sha }}
+            org.opencontainers.image.version=${{ needs.validate.outputs.version }}
+
+      # ── the pre-publication gate ────────────────────────────────────────────────────────────
+      #
+      # Built one architecture at a time and LOADED locally, because nothing unscanned may ever
+      # reach the registry (§3d carry-over 1) and the runtime contract is a PER-ARCHITECTURE
+      # property (carry-over 2): the dependency prune runs inside the per-arch `deps` stage, so
+      # an arch-specific optional dependency or a differently-resolved store entry would only
+      # show up on the leg that self-hosters on a Pi or Graviton actually pull.
+      #
+      # The multi-arch push below then reuses these exact layers from the build cache.
+      - name: Build the linux/amd64 candidate (loaded, not pushed)
+        if: steps.probe.outputs.state == 'absent'
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
         with:
           context: .
           file: ./Dockerfile
-          platforms: linux/amd64,linux/arm64
-          push: true
-          # `.git` is excluded from the build context, so the release identity is PASSED IN
-          # (§3e). It reaches the web build stamp shown in the app menu and the OCI
-          # `org.opencontainers.image.revision` label; both must equal this value.
-          build-args: |
-            SOURCE_COMMIT=${{ steps.src.outputs.sha }}
-          tags: ${{ steps.meta.outputs.tags }}
+          platforms: linux/amd64
+          load: true
+          tags: enveo-candidate:amd64
           labels: ${{ steps.meta.outputs.labels }}
-          annotations: ${{ steps.meta.outputs.annotations }}
+          # `.git` is excluded from the build context, so the release identity is PASSED IN
+          # (§3e). It reaches the web build stamp shown in the app menu AND the OCI revision
+          # label; the inventory asserts both equal this value.
+          build-args: |
+            SOURCE_COMMIT=${{ needs.validate.outputs.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
-          # Attestations would add "unknown/unknown" entries to the package listing and
-          # need id-token: write; skipped to keep permissions minimal and the tag clean.
+          # A local `--load` cannot carry attestations; the pushed image below gets them.
           provenance: false
           sbom: false
 
-      # ── STILL OWED BY §3d (deliberately NOT done here) ───────────────────────────────────
-      # 1. Run `bun run image:scan` on the built image BEFORE the push, so no unscanned image is
-      #    ever published. The scanner exists and fails closed (scripts/scan-image.ts); it is
-      #    simply not wired in, because a release gate belongs to §3d's workflow rewrite.
-      # 2. Inventory the MULTI-ARCH manifest this job publishes. `bun run image:inventory` runs
-      #    in CI against a single-arch throwaway build only, so the arm64 leg that ships to users
-      #    is never inspected.
+      - name: Build the linux/arm64 candidate (loaded, not pushed)
+        if: steps.probe.outputs.state == 'absent'
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
+        with:
+          context: .
+          file: ./Dockerfile
+          platforms: linux/arm64
+          load: true
+          tags: enveo-candidate:arm64
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            SOURCE_COMMIT=${{ needs.validate.outputs.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          provenance: false
+          sbom: false
+
+      # image:inventory — the §3e runtime contract (allowlist, no dev/build packages, every
+      # shipped import resolves, zero ELF binaries, non-root, /app read-only, identity labels).
+      # image:scan — digest-pinned Trivy over OS + application layers, fail-closed: a scanner-DB
+      # outage or an unparseable report is an UNSCANNED image, not a clean one.
+      - name: Gate both candidates — runtime contract + vulnerability scan
+        if: steps.probe.outputs.state == 'absent'
+        run: |
+          set -eu
+          for arch in amd64 arm64; do
+            echo "::group::image-inventory linux/$arch"
+            bun run image:inventory "enveo-candidate:$arch" --sha "$SHA"
+            echo "::endgroup::"
+            echo "::group::image-scan linux/$arch"
+            bun run image:scan "enveo-candidate:$arch"
+            echo "::endgroup::"
+          done
+
+      - name: Build and push the multi-arch release image
+        id: push
+        if: steps.probe.outputs.state == 'absent'
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
+        with:
+          context: .
+          file: ./Dockerfile
+          platforms: ${{ env.PLATFORMS }}
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          annotations: ${{ steps.meta.outputs.annotations }}
+          build-args: |
+            SOURCE_COMMIT=${{ needs.validate.outputs.sha }}
+          cache-from: type=gha
+          # Supply-chain metadata for a public image. The extra `unknown/unknown` entries this
+          # adds to GHCR's package list are attestation referrers, not runnable architectures —
+          # cosmetic package-list simplicity is not a reason to publish without provenance.
+          provenance: mode=max
+          sbom: true
+
+      # One digest for everything that follows: the freshly pushed one, or the existing one the
+      # probe resolved. Never a tag string — a tag is mutable, a digest is the artifact.
+      - name: Resolve the published digest
+        id: digest
+        env:
+          PUSHED: ${{ steps.push.outputs.digest }}
+          EXISTING: ${{ steps.probe.outputs.digest }}
+        run: |
+          set -eu
+          DIGEST="${PUSHED:-$EXISTING}"
+          if [ -z "$DIGEST" ]; then
+            echo "::error::no digest resolved — refusing to attest or alias an unknown artifact"
+            exit 1
+          fi
+          echo "digest=$DIGEST" >> "$GITHUB_OUTPUT"
+          echo "publishing $IMAGE@$DIGEST"
+
+      - name: Verify the published manifest (platforms + OCI identity)
+        env:
+          DIGEST: ${{ steps.digest.outputs.digest }}
+        run: |
+          bun scripts/release-image.ts verify \
+            --image "$IMAGE" --digest "$DIGEST" \
+            --revision "$SHA" --version "$VERSION" --platforms "$PLATFORMS"
+
+      # §3d carry-over 2: inventory the artifact that is ACTUALLY published, per architecture.
+      # CI's single-arch throwaway build is not evidence about the arm64 image users pull, and
+      # neither is the candidate above — this pulls what the registry now serves.
+      #
+      # The architecture assertion matters: `docker pull --platform` for two platforms of one
+      # digest reference reuses the same name, so without it a mix-up would silently inventory
+      # the same architecture twice and report a green multi-arch gate.
+      - name: Inventory the PUBLISHED artifact, per architecture
+        env:
+          DIGEST: ${{ steps.digest.outputs.digest }}
+        run: |
+          set -eu
+          for arch in amd64 arm64; do
+            echo "::group::published linux/$arch"
+            docker pull --quiet --platform "linux/$arch" "$IMAGE@$DIGEST"
+            docker tag "$IMAGE@$DIGEST" "enveo-published:$arch"
+            found=$(docker image inspect --format '{{.Architecture}}' "enveo-published:$arch")
+            if [ "$found" != "$arch" ]; then
+              echo "::error::pulled linux/$arch but the local image reports $found"
+              exit 1
+            fi
+            bun run image:inventory "enveo-published:$arch" --sha "$SHA"
+            echo "::endgroup::"
+          done
+
+      # REQUIRED, deliberately not conditional and never continue-on-error.
+      #
+      # On GitHub Free/Pro/Team, artifact attestations are available for PUBLIC repositories
+      # only. While enveo/enveo is private this step fails, and that failure is the intended
+      # behaviour: the release stops here, BEFORE the mutable aliases move and before the
+      # GitHub Release exists. The exact immutable tag stays published and a re-run resumes
+      # from its digest without rebuilding.
+      - name: Attest the pushed digest (GitHub artifact attestation)
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-name: ${{ env.IMAGE }}
+          subject-digest: ${{ steps.digest.outputs.digest }}
+          push-to-registry: true
+
+      - name: Verify provenance, SBOM and the GitHub attestation
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DIGEST: ${{ steps.digest.outputs.digest }}
+        run: |
+          set -eu
+          gh attestation verify "oci://$IMAGE@$DIGEST" -R "$GITHUB_REPOSITORY"
+          bun scripts/release-image.ts verify \
+            --image "$IMAGE" --digest "$DIGEST" \
+            --revision "$SHA" --version "$VERSION" --platforms "$PLATFORMS" --attestations
+
+      # Only now, and only for a stable release. `imagetools create` repoints a tag at an
+      # ALREADY VERIFIED digest — no rebuild, so `latest` cannot end up on an artifact that
+      # differs from the one every check above inspected. A prerelease has no aliases at all.
+      - name: Move the mutable aliases to the verified digest
+        if: needs.validate.outputs.aliases != ''
+        env:
+          DIGEST: ${{ steps.digest.outputs.digest }}
+        run: |
+          set -eu
+          TAGS=""
+          IFS=','
+          for alias in $ALIASES; do TAGS="$TAGS --tag $IMAGE:$alias"; done
+          unset IFS
+          echo "moving: $ALIASES -> $DIGEST"
+          # shellcheck disable=SC2086
+          docker buildx imagetools create $TAGS "$IMAGE@$DIGEST"
 
       - name: Summary
         env:
-          TAGS: ${{ steps.meta.outputs.tags }}
+          DIGEST: ${{ steps.digest.outputs.digest }}
+          TAG: ${{ needs.validate.outputs.tag }}
+          BUILT: ${{ steps.probe.outputs.state }}
         run: |
           {
-            echo "### Published to GHCR"
+            echo "### Published \`$TAG\`"
+            echo
+            echo "| | |"
+            echo "|---|---|"
+            echo "| tag | \`$TAG\` |"
+            echo "| commit | [\`$SHA\`]($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/commit/$SHA) |"
+            echo "| image | \`$IMAGE:$VERSION\` |"
+            echo "| digest | \`$DIGEST\` |"
+            echo "| platforms | \`$PLATFORMS\` (inventoried and scanned per architecture) |"
+            echo "| aliases moved | \`${ALIASES:-none — prerelease}\` |"
+            echo "| source | ${BUILT} (\`present\` = resumed from the existing digest, nothing rebuilt) |"
             echo
             echo '```'
-            echo "$TAGS"
+            echo "docker pull $IMAGE@$DIGEST"
+            echo "gh attestation verify oci://$IMAGE@$DIGEST -R $GITHUB_REPOSITORY"
             echo '```'
+            echo
+            echo "[Workflow run]($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID)"
           } >> "$GITHUB_STEP_SUMMARY"
 
-      # A tag alone shows raw commit text on GitHub's UI; a Release carries
-      # readable notes. Idempotent: a manual re-run of an existing tag skips it.
-      - name: GitHub Release
+  # ── 4. github-release ──────────────────────────────────────────────────────────────────────
+  # Last and idempotent. Its absence never implies the image should be rebuilt: the image is
+  # already published and verified by the time this job starts.
+  github-release:
+    name: github-release
+    needs: [validate, publish]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Create the GitHub Release (idempotent)
         env:
           GH_TOKEN: ${{ github.token }}
-          TAG: ${{ steps.ver.outputs.tag }}
+          TAG: ${{ needs.validate.outputs.tag }}
+          STABLE: ${{ needs.validate.outputs.stable }}
+          IMAGE: ghcr.io/${{ github.repository }}
+          DIGEST: ${{ needs.publish.outputs.digest }}
+          SHA: ${{ needs.validate.outputs.sha }}
         run: |
+          set -eu
           if gh release view "$TAG" -R "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            echo "release for $TAG exists — skipping"
-          else
-            EXTRA=""
-            [ "${{ steps.ver.outputs.stable }}" = "false" ] && EXTRA="--prerelease"
-            gh release create "$TAG" -R "$GITHUB_REPOSITORY" --verify-tag --generate-notes $EXTRA
+            echo "a release for $TAG already exists — nothing to do"
+            exit 0
           fi
+          if [ "$STABLE" = "true" ]; then
+            gh release create "$TAG" -R "$GITHUB_REPOSITORY" --verify-tag --generate-notes
+          else
+            gh release create "$TAG" -R "$GITHUB_REPOSITORY" --verify-tag --generate-notes --prerelease
+          fi
+          # Generated notes plus the verified digest, so the release page names the artifact and
+          # not just the tag.
+          gh release view "$TAG" -R "$GITHUB_REPOSITORY" --json body -q .body > notes.md
+          {
+            echo
+            echo "---"
+            echo
+            echo "**Container image**"
+            echo
+            echo '```'
+            echo "docker pull $IMAGE@$DIGEST"
+            echo '```'
+            echo
+            echo "Built from \`$SHA\`, provenance and SBOM attached, digest attested to this repository."
+          } >> notes.md
+          gh release edit "$TAG" -R "$GITHUB_REPOSITORY" --notes-file notes.md

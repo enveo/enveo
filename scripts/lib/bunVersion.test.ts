@@ -195,7 +195,12 @@ describe("findBunVersionDrift", () => {
 
 
 
-const WORKFLOW_FILES = [".github/workflows/ci.yml", ".github/workflows/security-audit.yml"] as const;
+const WORKFLOW_FILES = [
+  ".github/workflows/ci.yml",
+  ".github/workflows/verify.yml",
+  ".github/workflows/release.yml",
+  ".github/workflows/security-audit.yml",
+] as const;
 const DOC_FILES = ["README.md", "CONTRIBUTING.md", "docs/development.md", "docs/hosting.md", "docs/install.md"] as const;
 
 describe(`the repository pins ONE Bun version (${BUN_VERSION_FILE})`, () => {
