@@ -7,6 +7,14 @@ const buildInfo = (() => {
   const d = new Date();
   const pad = (n: number) => String(n).padStart(2, "0");
   const time = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  
+
+
+
+
+  const passed = process.env.ENVEO_BUILD_SHA?.trim();
+  if (passed) return { time, sha: passed };
+
   let sha = "";
   try {
     sha = execSync("git rev-parse --short HEAD", { stdio: ["ignore", "pipe", "ignore"] }).toString().trim();
