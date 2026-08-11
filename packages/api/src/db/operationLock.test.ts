@@ -80,9 +80,10 @@ describe("operationLockKey", () => {
  * `typeof db`, the @ts-expect-error below would become an "unused directive" and the typecheck
  * would fail; that is the whole point of the overload split.
  *
- * ENFORCEMENT IS A TYPECHECK RUN, NOT THIS TEST: `bun test` strips types, and packages/api has
- * no typecheck script wired into CI today (backlog §3a owns the root typecheck contract). Until
- * then this fires on a manual `bunx tsc --noEmit -p packages/api/tsconfig.json`. */
+ * ENFORCEMENT IS A TYPECHECK RUN, NOT THIS TEST: `bun test` strips types. The gate is
+ * `bun run typecheck` (root, §3a) → `bun run --cwd packages/api typecheck`, which CI runs
+ * through `bun run verify:ci`. Proven by widening the parameter to accept the pooled `db`:
+ * the run then fails with "TS2578: Unused '@ts-expect-error' directive". */
 
 async function _rejectPooledDbAtCompileTime(pooled: typeof db, key: OperationLockKey) {
   // @ts-expect-error — the pooled db is not a DbTransaction: a session-scoped acquire through
