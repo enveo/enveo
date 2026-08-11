@@ -9,9 +9,18 @@ halfway, and the two rules that are never bent.
 1. **An exact version image tag is immutable.** `ghcr.io/enveo/enveo:3.8.0` is written once and
    never overwritten, not even by a re-run of the same release. A broken published image is
    replaced by a new patch version, not by mutable history.
-2. **`latest` and `MAJOR.MINOR` only ever move to an already-verified digest.** They are
-   repointed at the end, by digest, without rebuilding — so a partial failure can never leave
-   them on an artifact no gate inspected. A prerelease moves neither.
+2. **`latest` and `MAJOR.MINOR` only ever move to an already-verified digest, and only ever
+   forward.** They are repointed at the end, by digest, without rebuilding — so a partial failure
+   can never leave them on an artifact no gate inspected. A prerelease moves neither.
+
+   "Forward" is a real check, not a description. Before moving an alias the pipeline reads which
+   version it currently serves and skips it if that is already newer. The case this prevents:
+   v3.8.0 stops at attestation, v3.8.1 ships and correctly takes `latest`, and then someone
+   re-runs v3.8.0 to finish its missing GitHub Release — an entirely legitimate recovery — which
+   would otherwise drag `latest` back to 3.8.0 for everyone pulling it. A skipped alias is
+   reported loudly in the job summary and does **not** fail the run; the rest of the resume is
+   valid work. An alias that does not say which version it serves is skipped too: refusing to
+   move is recoverable by hand, an unnoticed downgrade is not.
 
 ## Cutting a release
 
@@ -51,10 +60,30 @@ Every version the workflow resolves comes from the **tag**, never from `github.s
 re-run `github.sha` is the default branch head, not the released commit, and it would otherwise
 end up in the OCI revision label and the in-app build stamp.
 
-## Nothing unscanned is ever published
+## Nothing unscanned is ever released
 
-The two architectures are built and loaded locally **before** the push, and each one is checked
-on its own:
+The scan runs **twice**, and the second one is the authority.
+
+**Before the push**, each architecture is built, loaded locally and checked on its own. This is
+fast feedback: it catches a bad build in minutes rather than after a push.
+
+**After the push**, every architecture the index actually contains is pulled back from the
+registry by its own manifest digest and scanned and inventoried again — before attestation and
+before any alias moves.
+
+The second pass is not belt-and-braces, it is the real gate. The push is a *separate* BuildKit
+invocation; its only link to the gated candidates is a best-effort layer cache, and the runtime
+stage's `apk upgrade` deliberately carries no version pin (Alpine keeps only one build per
+package per branch). On a cache miss the published image can legitimately contain different OS
+package builds than Trivy judged minutes earlier. Scanning only the candidate would let a
+CRITICAL reach users while the log claimed the opposite.
+
+So the honest guarantee is: **nothing unscanned is ever *released***. A finding on the published
+artifact stops the run with the exact tag pushed but never attested, never aliased and never
+released — recover by publishing a new patch version, exactly as for any other post-push failure.
+The exact tag is never overwritten.
+
+Both passes check the same two things per architecture:
 
 - `bun run image:scan` — digest-pinned Trivy over OS and application layers, fail-closed. A
   critical/high finding blocks the release; so does a scanner-database outage or an unparseable
@@ -64,11 +93,15 @@ on its own:
   shipped module's imports resolve, zero ELF binaries, non-root, `/app` read-only, and the
   identity labels.
 
-The multi-arch push then reuses exactly those layers from the build cache, and the inventory runs
-**again** against what the registry actually serves, per architecture. This is deliberate: the
-dependency prune runs inside the per-architecture `deps` stage, so the closure and ELF-purity are
-per-arch properties. CI's single-arch build says nothing about the `linux/arm64` image a
-Raspberry Pi or Graviton self-hoster pulls.
+Per-architecture is not pedantry: the dependency prune runs inside the per-architecture `deps`
+stage, so the closure and ELF-purity are per-arch properties. CI's single-arch build says nothing
+about the `linux/arm64` image a Raspberry Pi or Graviton self-hoster pulls.
+
+The architecture list lives in exactly **one** place — the `PLATFORMS` environment value. The
+candidate builds, the pre-push gate and the published-artifact loop all derive from it (the last
+one from the published index itself), so the set that gets gated cannot drift from the set that
+gets published. `scripts/lib/releaseWorkflow.ts` fails the test suite if any architecture is ever
+named anywhere else in the workflow.
 
 ## Attestations
 
@@ -147,7 +180,7 @@ running. Re-publishing a tag from before these gates existed therefore fails at 
 gate, because that tree has no `image:scan`. That is intended: an old tag cannot be rebuilt under
 a gate it was never written for.
 
-## Tag protection (repository setting, done once)
+## Tag protection, and what the ancestry check is *not*
 
 Create a GitHub **tag ruleset** for `v*`:
 
@@ -156,6 +189,18 @@ Create a GitHub **tag ruleset** for `v*`:
 - restrict creation to maintainers.
 
 Signed tags may be added later; the pipeline does not require local signing infrastructure.
+
+**This ruleset is the actual security boundary — the ancestry check is not.** Being honest about
+why: on a tag push, GitHub reads `release.yml` *itself* from the tag's ref. Someone able to create
+a `v*` tag can therefore point it at a commit carrying their own workflow file, and no check
+inside this pipeline runs at all. The validation and publish jobs do take their tooling from a
+trusted ref rather than from the tagged tree — so a tag cannot supply the code that judges its own
+ancestry, and an accident cannot quietly approve itself — but that is defence against a mistake,
+not against a hostile tag creator.
+
+What actually keeps a hostile release out is: who may create a `v*` tag (the ruleset above), and
+who may push to `main` (branch protection). Treat those two settings as the boundary and this
+pipeline as the correctness gate inside it.
 
 ## Identity: labels *and* annotations
 

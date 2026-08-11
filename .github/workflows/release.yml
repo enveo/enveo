@@ -76,6 +76,27 @@ jobs:
           git fetch --force --no-tags origin +refs/heads/main:refs/remotes/origin/main
           git fetch --force --tags origin
 
+      # The validator must not come from the tree it is judging. On a tag push the primary
+      # checkout above IS the tagged commit, so running scripts/release-validate.ts from it would
+      # let the tag approve its own ancestry check. Same reasoning the publish job uses for its
+      # tooling — it simply has to apply to the job that decides whether the tag may be released
+      # at all.
+      #
+      # Trusted ref: the DEFAULT BRANCH on a tag push. On workflow_dispatch it is the ref the
+      # operator chose, which already supplied this workflow file, so taking the tooling from it
+      # grants no additional power.
+      #
+      # RESIDUAL LIMIT, stated plainly: GitHub reads release.yml itself from the tag ref on a tag
+      # push, so someone who can create a `v*` tag can supply their own workflow and skip this
+      # entirely. This is defence against a mistake, not against a hostile tag creator — the
+      # mitigations for that are the maintainer-only `v*` tag ruleset and branch protection.
+      # See docs/releasing.md.
+      - name: Check out the validation tooling (trusted ref)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && github.ref || github.event.repository.default_branch }}
+          path: .release-tooling
+
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version: ${{ env.BUN_VERSION }}
@@ -86,11 +107,12 @@ jobs:
       # Rejects, in order: a non-version tag (strict SemVer subset, no build metadata, no leading
       # zeros, no suffix garbage, no ref-like input), a tag that does not exist, a tag whose
       # commit is not an ancestor of main, and an APP_VERSION at that commit that disagrees.
+      # It runs from the trusted checkout but reads git history from the primary one.
       - name: Validate the release tag
         id: release
         env:
           TAG: ${{ inputs.tag || github.ref_name }}
-        run: bun scripts/release-validate.ts --tag "$TAG"
+        run: bun .release-tooling/scripts/release-validate.ts --tag "$TAG"
 
   # ── 2. verify ──────────────────────────────────────────────────────────────────────────────
   # The same file branch CI calls, on the resolved commit. No secrets are passed in.
@@ -136,9 +158,12 @@ jobs:
       # by whatever release scripts that tag happened to contain, and this workflow's CLI flags
       # would not exist there at all. Checked out separately, under a dot-prefixed path that
       # `.dockerignore`'s `.*` already keeps out of the build context.
-      - name: Check out the release tooling (this workflow's revision)
+      # Same trusted ref as `validate` — on a tag push the primary checkout is the tagged commit,
+      # which must not supply the machinery that judges and publishes it.
+      - name: Check out the release tooling (trusted ref)
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && github.ref || github.event.repository.default_branch }}
           path: .release-tooling
 
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
@@ -201,67 +226,58 @@ jobs:
             org.opencontainers.image.revision=${{ needs.validate.outputs.sha }}
             org.opencontainers.image.version=${{ needs.validate.outputs.version }}
 
-      # ── the pre-publication gate ────────────────────────────────────────────────────────────
+      # ── the pre-publication gate (FAST FEEDBACK, not the authority) ─────────────────────────
       #
-      # Built one architecture at a time and LOADED locally, because nothing unscanned may ever
-      # reach the registry (§3d carry-over 1) and the runtime contract is a PER-ARCHITECTURE
-      # property (carry-over 2): the dependency prune runs inside the per-arch `deps` stage, so
-      # an arch-specific optional dependency or a differently-resolved store entry would only
-      # show up on the leg that self-hosters on a Pi or Graviton actually pull.
+      # One loop over $PLATFORMS, which is the SINGLE source of truth for which architectures
+      # this release covers. The set gated here therefore cannot drift from the set pushed below:
+      # adding linux/arm/v7 to PLATFORMS extends this automatically, and
+      # scripts/lib/releaseWorkflow.ts fails the test suite if an architecture is ever hardcoded
+      # anywhere else in this file.
       #
-      # The multi-arch push below then reuses these exact layers from the build cache.
-      - name: Build the linux/amd64 candidate (loaded, not pushed)
-        if: steps.probe.outputs.state == 'absent'
-        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
-        with:
-          context: .
-          file: ./Dockerfile
-          platforms: linux/amd64
-          load: true
-          tags: enveo-candidate:amd64
-          labels: ${{ steps.meta.outputs.labels }}
-          # `.git` is excluded from the build context, so the release identity is PASSED IN
-          # (§3e). It reaches the web build stamp shown in the app menu AND the OCI revision
-          # label; the inventory asserts both equal this value.
-          build-args: |
-            SOURCE_COMMIT=${{ needs.validate.outputs.sha }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-          # A local `--load` cannot carry attestations; the pushed image below gets them.
-          provenance: false
-          sbom: false
-
-      - name: Build the linux/arm64 candidate (loaded, not pushed)
-        if: steps.probe.outputs.state == 'absent'
-        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
-        with:
-          context: .
-          file: ./Dockerfile
-          platforms: linux/arm64
-          load: true
-          tags: enveo-candidate:arm64
-          labels: ${{ steps.meta.outputs.labels }}
-          build-args: |
-            SOURCE_COMMIT=${{ needs.validate.outputs.sha }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-          provenance: false
-          sbom: false
-
-      # image:inventory — the §3e runtime contract (allowlist, no dev/build packages, every
-      # shipped import resolves, zero ELF binaries, non-root, /app read-only, identity labels).
-      # image:scan — digest-pinned Trivy over OS + application layers, fail-closed: a scanner-DB
-      # outage or an unparseable report is an UNSCANNED image, not a clean one.
-      - name: Gate both candidates — runtime contract + vulnerability scan
+      # These candidates are LOADED locally and never pushed. They catch a bad build in ~minutes
+      # instead of after a push — but they are NOT the evidence that what ships is clean. The
+      # multi-arch push below is a separate BuildKit invocation whose only link to these is a
+      # best-effort cache, and this stage's `apk upgrade` is deliberately unpinned, so a cache
+      # miss can legitimately resolve different OS package builds. The AUTHORITATIVE scan is the
+      # one that runs against the PUBLISHED artifact after the push.
+      - name: Build and gate a candidate per platform
         if: steps.probe.outputs.state == 'absent'
         run: |
           set -eu
-          for arch in amd64 arm64; do
-            echo "::group::image-inventory linux/$arch"
-            bun run image:inventory "enveo-candidate:$arch" --sha "$SHA"
+          for platform in $(echo "$PLATFORMS" | tr ',' ' '); do
+            local_tag="enveo-candidate:$(echo "$platform" | tr '/' '-')"
+
+            echo "::group::build candidate $platform"
+            # `.git` is excluded from the build context, so the release identity is PASSED IN
+            # (§3e). It reaches the web build stamp shown in the app menu AND the OCI revision
+            # label; the inventory asserts both equal this value.
+            #
+            # A per-platform cache scope: the default scope is shared, so two platforms writing
+            # to it leave at most one usable. This is an efficiency measure only — nothing below
+            # trusts the cache for correctness.
+            docker buildx build \
+              --platform "$platform" \
+              --load \
+              --tag "$local_tag" \
+              --file ./Dockerfile \
+              --build-arg "SOURCE_COMMIT=$SHA" \
+              --label "org.opencontainers.image.revision=$SHA" \
+              --label "org.opencontainers.image.version=$VERSION" \
+              --label "org.opencontainers.image.source=$GITHUB_SERVER_URL/$GITHUB_REPOSITORY" \
+              --cache-from "type=gha,scope=$platform" \
+              --cache-to "type=gha,mode=max,scope=$platform" \
+              --provenance false \
+              --sbom false \
+              .
             echo "::endgroup::"
-            echo "::group::image-scan linux/$arch"
-            bun run image:scan "enveo-candidate:$arch"
+
+            # image:inventory — the §3e runtime contract (allowlist, no dev/build packages, every
+            # shipped import resolves, zero ELF binaries, non-root, /app read-only, identity).
+            # image:scan — digest-pinned Trivy, fail-closed: a scanner-DB outage or an
+            # unparseable report is an UNSCANNED image, not a clean one.
+            echo "::group::gate $platform"
+            bun run image:inventory "$local_tag" --sha "$SHA"
+            bun run image:scan "$local_tag"
             echo "::endgroup::"
           done
 
@@ -324,7 +340,20 @@ jobs:
       # inventoried are by construction the architectures published. The architecture assertion
       # then closes the remaining hole: if two entries ever resolved to the same image, the second
       # one would report the wrong architecture and fail instead of quietly passing twice.
-      - name: Inventory the PUBLISHED artifact, per architecture
+      # THE AUTHORITATIVE GATE. Everything above this point is fast feedback about a candidate;
+      # this is the only check that inspects the exact bytes the registry will serve.
+      #
+      # Why it cannot be skipped in favour of the pre-push gate: the push is a separate BuildKit
+      # invocation, linked to the candidates only by a best-effort cache, and the runtime stage's
+      # `apk upgrade` carries no version pin (deliberately — Alpine keeps one build per branch).
+      # On a cache miss the published image can legitimately contain different OS package builds
+      # than Trivy judged minutes earlier. Scanning only the candidate would let a CRITICAL reach
+      # users while the log claimed otherwise.
+      #
+      # It runs BEFORE attestation and BEFORE any alias moves, so a finding stops the release
+      # with the exact tag published but never attested, never aliased and never released — the
+      # recovery path in docs/releasing.md.
+      - name: Scan and inventory the PUBLISHED artifact, per architecture
         env:
           DIGEST: ${{ steps.digest.outputs.digest }}
         run: |
@@ -335,16 +364,25 @@ jobs:
 
           while IFS="$(printf '\t')" read -r platform manifest; do
             [ -n "$platform" ] || continue
-            arch="${platform#linux/}"
+            local_tag="enveo-published:$(echo "$platform" | tr '/' '-')"
+            arch=$(echo "$platform" | cut -d/ -f2)
+            variant=$(echo "$platform" | cut -d/ -f3)
+
             echo "::group::published $platform ($manifest)"
+            # By its OWN manifest digest: two `docker pull --platform` calls against the same
+            # INDEX digest fail outright, because one reference maps to one local image.
             docker pull --quiet "$IMAGE@$manifest"
-            docker tag "$IMAGE@$manifest" "enveo-published:$arch"
-            found=$(docker image inspect --format '{{.Architecture}}' "enveo-published:$arch")
-            if [ "$found" != "$arch" ]; then
-              echo "::error::$platform resolved to an image reporting $found — refusing to report a multi-arch gate that inspected one architecture twice"
+            docker tag "$IMAGE@$manifest" "$local_tag"
+
+            found=$(docker image inspect --format '{{.Architecture}}' "$local_tag")
+            found_variant=$(docker image inspect --format '{{.Variant}}' "$local_tag")
+            if [ "$found" != "$arch" ] || { [ -n "$variant" ] && [ "$found_variant" != "$variant" ]; }; then
+              echo "::error::$platform resolved to an image reporting $found${found_variant:+/$found_variant} — refusing to report a multi-arch gate that inspected one architecture twice"
               exit 1
             fi
-            bun run image:inventory "enveo-published:$arch" --sha "$SHA"
+
+            bun run image:inventory "$local_tag" --sha "$SHA"
+            bun run image:scan "$local_tag"
             echo "::endgroup::"
           done < platforms.tsv
 
@@ -376,18 +414,29 @@ jobs:
       # Only now, and only for a stable release. `imagetools create` repoints a tag at an
       # ALREADY VERIFIED digest — no rebuild, so `latest` cannot end up on an artifact that
       # differs from the one every check above inspected. A prerelease has no aliases at all.
+      # ALIASES ONLY MOVE FORWARD. Re-running an older tag is a legitimate recovery path (to
+      # finish a missing GitHub Release, say), and without this it would quietly drag `latest`
+      # back to the older version for every self-hoster who pulls it. The plan reads what each
+      # alias CURRENTLY serves and skips any that already point at something newer — reported
+      # loudly, but NOT fatal, because the rest of the resume is real work.
+      - name: Plan the alias moves
+        id: aliasplan
+        if: needs.validate.outputs.aliases != ''
+        run: |
+          bun .release-tooling/scripts/release-image.ts alias-plan \
+            --image "$IMAGE" --version "$VERSION" --aliases "$ALIASES"
+
       - name: Move the mutable aliases to the verified digest
         id: aliases
-        if: needs.validate.outputs.aliases != ''
+        if: steps.aliasplan.outputs.move != ''
         env:
           DIGEST: ${{ steps.digest.outputs.digest }}
+          MOVE: ${{ steps.aliasplan.outputs.move }}
         run: |
           set -eu
           TAGS=""
-          IFS=','
-          for alias in $ALIASES; do TAGS="$TAGS --tag $IMAGE:$alias"; done
-          unset IFS
-          echo "moving: $ALIASES -> $DIGEST"
+          for alias in $(echo "$MOVE" | tr ',' ' '); do TAGS="$TAGS --tag $IMAGE:$alias"; done
+          echo "moving: $MOVE -> $DIGEST"
           # shellcheck disable=SC2086
           docker buildx imagetools create $TAGS "$IMAGE@$DIGEST"
 
@@ -401,12 +450,18 @@ jobs:
           TAG: ${{ needs.validate.outputs.tag }}
           BUILT: ${{ steps.probe.outputs.state }}
           ALIAS_OUTCOME: ${{ steps.aliases.outcome }}
+          MOVED: ${{ steps.aliasplan.outputs.move }}
+          ALIAS_SKIPPED: ${{ steps.aliasplan.outputs.skipped }}
         run: |
           case "$ALIAS_OUTCOME" in
-            success) alias_cell="\`$ALIASES\` — moved to this digest" ;;
+            success) alias_cell="\`$MOVED\` — moved to this digest" ;;
             skipped) alias_cell="none${ALIASES:+ (\`$ALIASES\` NOT moved — the release stopped first)}" ;;
-            *)       alias_cell="\`$ALIASES\` — the move FAILED" ;;
+            *)       alias_cell="\`$MOVED\` — the move FAILED" ;;
           esac
+          # A skipped alias is a deliberate refusal to downgrade, not a silent omission.
+          if [ -n "$ALIAS_SKIPPED" ]; then
+            alias_cell="$alias_cell · **\`$ALIAS_SKIPPED\` left alone** (already serves a newer release)"
+          fi
           {
             echo "### Release \`$TAG\`"
             echo
