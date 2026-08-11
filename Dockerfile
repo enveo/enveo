@@ -8,13 +8,27 @@
 # The old image was `COPY --from=build /app /app`: the whole build workspace, its dev
 # dependencies and a root shell. Nothing here copies a directory the runtime does not execute.
 #
-# BUN VERSION. Pinned to one exact version AND the multi-architecture manifest digest, in every
-# stage. `.bun-version` is the single source of truth and `scripts/lib/bunVersion.test.ts` fails
-# the build when this file, CI, `@types/bun` or the documentation drift apart. The digest below
-# is the linux/amd64 + linux/arm64 index for oven/bun:1.3.14 — bump version and digest together,
-# never one alone, and rerun the whole gate.
+# BUN VERSION. ONE exact version, pinned together with the multi-architecture manifest digest, in
+# every stage. `.bun-version` is the single source of truth and `scripts/lib/bunVersion.test.ts`
+# fails the build when this file, CI, `@types/bun` or the documentation drift apart. Both digests
+# below are linux/amd64 + linux/arm64 indexes — bump version and digests together, never one
+# alone, and rerun the whole gate.
+#
+# TWO BASES, deliberately:
+#   build            → Debian (`oven/bun:1.3.14`). Vite's toolchain is native and glibc-linked
+#                      (rollup, esbuild, sharp). None of it is copied forward.
+#   deps + runtime   → Alpine (`oven/bun:1.3.14-alpine`). Alpine's OS surface is dramatically
+#                      smaller: 0 CRITICAL / 2 HIGH versus Debian trixie's 4 CRITICAL / 21 HIGH,
+#                      four of which are perl-base CVEs Debian has no fix for.
+#
+# Mixing bases is safe here for ONE checked reason: the production closure is 26 packages of
+# PURE JAVASCRIPT with zero native binaries, so nothing glibc-linked crosses the stage boundary.
+# `scripts/image-inventory.ts` asserts that — it fails if any ELF binary appears under /app.
+# Bun bundles its own ICU (75.1 on both images), so Intl — money formatting, CURRENCY_DIGITS,
+# CLDR plural categories — is byte-identical on musl; verified, not assumed.
+# `deps` runs on the RUNTIME base so the tree that ships is the one that platform resolved.
 
-# ── Stage 1: build the PWA ──────────────────────────────────────────────────────────────────
+# ── Stage 1: build the PWA (Debian — native build toolchain) ────────────────────────────────
 FROM oven/bun:1.3.14@sha256:e10577f0db68676a7024391c6e5cb4b879ebd17188ab750cf10024a6d700e5c4 AS build
 WORKDIR /app
 
@@ -36,8 +50,8 @@ ARG SOURCE_COMMIT=""
 ENV ENVEO_BUILD_SHA=${SOURCE_COMMIT}
 RUN cd packages/web && bun run build
 
-# ── Stage 2: the production dependency closure ──────────────────────────────────────────────
-FROM oven/bun:1.3.14@sha256:e10577f0db68676a7024391c6e5cb4b879ebd17188ab750cf10024a6d700e5c4 AS deps
+# ── Stage 2: the production dependency closure (Alpine — the runtime platform) ──────────────
+FROM oven/bun:1.3.14-alpine@sha256:5acc90a93e91ff07bf72aa90a7c9f0fa189765aec90b47bdbf2152d2196383c0 AS deps
 WORKDIR /app
 
 # All four manifests are copied even though only two workspaces are installed: `--frozen-lockfile`
@@ -59,8 +73,8 @@ COPY scripts/prune-runtime-deps.ts scripts/
 COPY scripts/lib/runtimeClosure.ts scripts/lib/
 RUN bun scripts/prune-runtime-deps.ts /app && rm -rf scripts
 
-# ── Stage 3: runtime ────────────────────────────────────────────────────────────────────────
-FROM oven/bun:1.3.14@sha256:e10577f0db68676a7024391c6e5cb4b879ebd17188ab750cf10024a6d700e5c4 AS runtime
+# ── Stage 3: runtime (Alpine) ───────────────────────────────────────────────────────────────
+FROM oven/bun:1.3.14-alpine@sha256:5acc90a93e91ff07bf72aa90a7c9f0fa189765aec90b47bdbf2152d2196383c0 AS runtime
 
 ARG SOURCE_COMMIT=""
 LABEL org.opencontainers.image.title="Enveo" \
@@ -96,8 +110,9 @@ COPY packages/api/drizzle packages/api/drizzle
 COPY --from=build /app/packages/web/dist packages/web/dist
 COPY scripts/docker-entrypoint.sh /usr/local/bin/enveo-entrypoint
 
-# `bun` (uid/gid 1000) ships with the official image. No shell escalation path is added: the
-# entrypoint is the only executable this user needs, and it is not writable by them.
+# `bun` (uid/gid 1000) ships with the official image — the same uid on the Alpine variant as on
+# Debian. No shell escalation path is added: the entrypoint is the only executable this user
+# needs, and it is not writable by them. It is POSIX `sh` only, which is all busybox provides.
 USER bun
 
 EXPOSE 8080
