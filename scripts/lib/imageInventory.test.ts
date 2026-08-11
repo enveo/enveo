@@ -43,12 +43,15 @@ const facts = (overrides: Partial<ImageFacts> = {}): ImageFacts => ({
   entrypoint: ["/usr/local/bin/enveo-entrypoint"],
   buildStampSha: "abc1234",
   nativeBinaries: [],
+  unresolvableImports: [],
+  bunVersion: "1.3.14",
   ...overrides,
 });
 
 const expectations = (overrides: Partial<Expectations> = {}): Expectations => ({
   migrations: MIGRATIONS,
   sourceCommit: "abc1234",
+  bunVersion: "1.3.14",
   ...overrides,
 });
 
@@ -107,6 +110,27 @@ describe("checkImage — the runtime allowlist", () => {
 });
 
 describe("checkImage — the denylist", () => {
+  // Every one of these SHIPPED before the rule was widened from `*.test.ts` to `.test` +
+  // separator. `sync.replace-recurrence.test-child.ts` wipes and re-inserts a budget's rows.
+  it.each([
+    ["packages/shared/src/ledger.test-support.ts", "shared test helpers (imports fast-check)"],
+    ["packages/api/src/api.test-support.ts", "API test helpers"],
+    ["packages/api/src/auth.signup-race.test-child.ts", "spawned DB test child"],
+    ["packages/api/src/context.budget-init.test-child.ts", "spawned DB test child"],
+    ["packages/api/src/db/operationLock.serialization.test-child.ts", "spawned DB test child"],
+    ["packages/api/src/routes/sync.first-use-barrier.test-child.ts", "spawned DB test child"],
+    ["packages/api/src/routes/sync.replace-recurrence.test-child.ts", "spawned DB test child that WIPES rows"],
+  ])("rejects the test-support module %s", (path) => {
+    expect(checkImage(facts({ appFiles: [...OK_FILES, path] }), expectations()).join(" ")).toContain(path);
+  });
+
+  it("does not reject a production module whose name merely contains the word test", () => {
+    // `latest.ts` / `attestation.ts` must survive: the rule keys on `.test` + a separator.
+    const innocent = [...OK_FILES, "packages/api/src/routes/latest.ts", "packages/api/src/attestation.ts"];
+
+    expect(checkImage(facts({ appFiles: innocent }), expectations())).toEqual([]);
+  });
+
   it.each([
     ["packages/api/src/context.test.ts", "test file"],
     ["packages/web/src/App.tsx", "web source"],
@@ -163,6 +187,39 @@ describe("checkImage — no native binaries (the two-base safety property)", () 
 
   it("passes when the closure is pure JavaScript", () => {
     expect(checkImage(facts({ nativeBinaries: [] }), expectations())).toEqual([]);
+  });
+});
+
+describe("checkImage — every shipped module can load", () => {
+  it("rejects a shipped module importing a package the prune removed", () => {
+    // The name-independent backstop: this fires whatever the file is called.
+    const broken = facts({
+      unresolvableImports: ["packages/shared/src/ledger.test-support.ts -> fast-check"],
+    });
+
+    expect(checkImage(broken, expectations()).join(" ")).toContain("cannot resolve");
+  });
+
+  it("names the file and the specifier so the fix is obvious", () => {
+    const broken = facts({ unresolvableImports: ["packages/api/src/x.ts -> drizzle-kit"] });
+
+    expect(checkImage(broken, expectations()).join(" ")).toContain("packages/api/src/x.ts -> drizzle-kit");
+  });
+});
+
+describe("checkImage — the base digest really is the pinned version", () => {
+  it("rejects an image whose Bun differs from .bun-version", () => {
+    // A Bun bump that pastes a stale or wrong-tag digest passes every text-vs-text check;
+    // only asking the IMAGE catches it.
+    const stale = facts({ bunVersion: "1.3.9" });
+
+    expect(checkImage(stale, expectations({ bunVersion: "1.3.14" })).join(" ")).toContain(
+      "image runs Bun 1.3.9, but .bun-version pins 1.3.14",
+    );
+  });
+
+  it("passes when the image reports exactly the pinned version", () => {
+    expect(checkImage(facts({ bunVersion: "1.3.14" }), expectations({ bunVersion: "1.3.14" }))).toEqual([]);
   });
 });
 

@@ -6,7 +6,7 @@
  * which builds its Postgres pool from `env.DATABASE_URL` at IMPORT time, and bun's test runner
  * shares ONE module registry across every test file in a run: whichever suite imports
  * `db/client` first pins that pool for the whole process — and locally `DATABASE_URL` points at
- * a real database (see auth.signup-race-child.ts, which hit the exact hazard first). The lock
+ * a real database (see auth.signup-race.test-child.ts, which hit the exact hazard first). The lock
  * semantics under test (same backend connection as the callback, transaction scope, pool
  * concurrency) are exactly what cannot be exercised through a test-owned executor, so the whole
  * scenario runs in a fresh process that gets the throwaway `DATABASE_URL` from the test. The
@@ -27,7 +27,7 @@ import {
   lockObserver,
   waitFor,
   withTimeout,
-} from "../testSupport";
+} from "../api.test-support";
 
 export const SENTINEL = "__OPERATION_LOCK_CHILD__";
 

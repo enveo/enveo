@@ -12,7 +12,7 @@ import {
   type CashflowPoint,
 } from "./reports";
 import { computeBudgetState } from "./budget";
-import { acc, alloc, asClientLedger, env, grp, ledgerArb, tx } from "./test-helpers";
+import { acc, alloc, asClientLedger, env, grp, ledgerArb, tx } from "./ledger.test-support";
 import fc from "fast-check";
 import type { Ledger } from "./types";
 import { applyOp } from "./applyOp";

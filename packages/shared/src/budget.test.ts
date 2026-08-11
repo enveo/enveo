@@ -7,7 +7,7 @@ import {
   prevMonth,
   totalOnBudget,
 } from "./budget";
-import { acc, alloc, env, grp, ledgerArb, MONTHS, tx } from "./test-helpers";
+import { acc, alloc, env, grp, ledgerArb, MONTHS, tx } from "./ledger.test-support";
 import type { Ledger } from "./types";
 
 /* ── Unit tests on concrete scenarios ───────────────────────────────── */

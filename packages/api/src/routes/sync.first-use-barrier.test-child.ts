@@ -19,7 +19,7 @@
  * routes must finish 200 on the gate's budget id, with exactly one budget row at the end.
  *
  * WHY A SEPARATE PROCESS: the route handlers run on the POOLED `db` (db/client.ts), pinned to
- * `env.DATABASE_URL` at import time — see auth.signup-race-child.ts. The EXPECT_DATABASE_URL
+ * `env.DATABASE_URL` at import time — see auth.signup-race.test-child.ts. The EXPECT_DATABASE_URL
  * fuse refuses anything but the throwaway Postgres.
  *
  * Contract (all app imports are lazy):
@@ -32,7 +32,7 @@ import {
   lockObserver,
   waitFor,
   withTimeout,
-} from "../testSupport";
+} from "../api.test-support";
 
 export const SENTINEL = "__SYNC_FIRST_USE_BARRIER__";
 

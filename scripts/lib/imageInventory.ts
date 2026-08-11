@@ -35,6 +35,22 @@ export type ImageFacts = Readonly<{
    * Alpine/musl, and that is only safe because nothing native crosses the boundary.
    */
   nativeBinaries: readonly string[];
+  /**
+   * Shipped source modules with an import the image cannot resolve, as `file → specifier`.
+   * NAME-INDEPENDENT backstop for the rule above: a denylist only catches files someone named
+   * according to the convention, while this catches any shipped module that cannot actually
+   * load — which is the property that matters. It is what would have caught
+   * `test-helpers.ts` (`import fc from "fast-check"`) whatever it had been called.
+   */
+  unresolvableImports: readonly string[];
+  /**
+   * `bun --version` executed INSIDE the image. Binds the pinned base DIGEST to the version it
+   * claims: every other check compares text against text, so a Bun bump that pastes a stale or
+   * wrong-tag digest leaves `.bun-version`, CI, `@types/bun`, the docs and both `FROM` tags all
+   * reading the same version, the whole gate green, and the shipped image running a different
+   * Bun than `verify:ci` exercised and than the audit parser was written against.
+   */
+  bunVersion: string;
 }>;
 
 /** Repository-derived expectations the image is measured against. */
@@ -43,6 +59,8 @@ export type Expectations = Readonly<{
   migrations: readonly string[];
   /** The SHA passed as `--build-arg SOURCE_COMMIT`, or `null` when the build passed none. */
   sourceCommit: string | null;
+  /** The contents of `.bun-version` — what the image's own `bun --version` must report. */
+  bunVersion: string;
 }>;
 
 /** Files without which the container cannot do its job. */
@@ -64,7 +82,12 @@ const REQUIRED_FILES: ReadonlyArray<readonly [string, string]> = [
  * repository metadata are not runtime inputs; shipping them is attack surface and scanner noise.
  */
 const FORBIDDEN_PATHS: ReadonlyArray<readonly [RegExp, string]> = [
-  [/(^|\/)[^/]+\.test\.tsx?$/, "test file"],
+  // `.test.` (suites) AND `.test-` (support modules, spawned children). One rule, because the
+  // repository convention is "a test-only module inside a shipped src/ tree has `.test` in its
+  // basename". Matching only `*.test.ts` is how `test-helpers.ts`, `testSupport.ts` and five
+  // `*-child.ts` DB drivers shipped to users — including one that imports `fast-check`, which
+  // the production prune removes, so it could never load.
+  [/(^|\/)[^/]+\.test[.-][^/]*$/, "test file / test-support module"],
   [/^packages\/web\/src\//, "web source (only the built dist is a runtime input)"],
   [/^packages\/web\/(scripts|public)\//, "web build tooling"],
   [/^packages\/api\/drizzle\.config\.ts$/, "drizzle-kit configuration (the CLI is not installed)"],
@@ -165,6 +188,19 @@ export function checkImage(facts: ImageFacts, expectations: Expectations): strin
     violations.push(
       `native ELF binary in the runtime image: ${binary} — the runtime closure must stay pure JavaScript ` +
         `(build stage is glibc, runtime is musl)`,
+    );
+  }
+
+  // ── every shipped module can actually load ──────────────────────────────────────────────
+  for (const problem of facts.unresolvableImports) {
+    violations.push(`shipped module has an import the image cannot resolve: ${problem}`);
+  }
+
+  // ── the pinned digest really is the pinned version ──────────────────────────────────────
+  if (facts.bunVersion !== expectations.bunVersion) {
+    violations.push(
+      `image runs Bun ${facts.bunVersion}, but .bun-version pins ${expectations.bunVersion} — ` +
+        `the base digest does not match the version it claims`,
     );
   }
 

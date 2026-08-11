@@ -34,12 +34,12 @@ import {
 } from "./sync";
 // Constant + type only — this module's app/db imports are lazy (see the file header), so
 // importing it here does NOT pull env/db/client into THIS process.
-import { SENTINEL as REPLACE_SENTINEL, type ReplaceRecurrenceOutput } from "./sync.replace-recurrence-child";
+import { SENTINEL as REPLACE_SENTINEL, type ReplaceRecurrenceOutput } from "./sync.replace-recurrence.test-child";
 import {
   SENTINEL as BARRIER_SENTINEL,
   type FirstUseBarrierOutput,
-} from "./sync.first-use-barrier-child";
-import { runChild } from "../testSupport";
+} from "./sync.first-use-barrier.test-child";
+import { runChild } from "../api.test-support";
 
 /** The lock-order child forces real lock waits (bounded pg_locks polling) — beyond bun's 5 s
  *  default. Applied to the ONE hook that spawns it, NOT via setDefaultTimeout (process-global
@@ -208,7 +208,7 @@ if (TEST_URL && TEST_URL === process.env.DATABASE_URL) {
   throw new Error("TEST_DATABASE_URL must differ from DATABASE_URL — this suite writes to the DB.");
 }
 
-const REPLACE_CHILD = new URL("./sync.replace-recurrence-child.ts", import.meta.url).pathname;
+const REPLACE_CHILD = new URL("./sync.replace-recurrence.test-child.ts", import.meta.url).pathname;
 
 /** Same construction as db/client.ts — so the instance IS an `Executor`. */
 const connect = (url: string) => {
@@ -334,7 +334,7 @@ describe.skipIf(!TEST_URL)("sync/pull: the change journal is scoped to one budge
    * (imported by this very file, above) already pins `db/client.ts`'s pool to whatever
    * `DATABASE_URL` resolves to for the WHOLE test process the moment it's first imported —
    * locally (and on a real deployment host) that is the real database, not `TEST_DATABASE_URL`
-   * (see auth.signup-race-child.ts, which hit the identical hazard first). So this runs in a
+   * (see auth.signup-race.test-child.ts, which hit the identical hazard first). So this runs in a
    * CHILD process that gets `DATABASE_URL` handed to it explicitly, with a fuse that refuses to
    * write unless it matches the throwaway Postgres this suite migrated. */
   it("POST /api/sync/replace (child process): a ledger with pre-3.2 recurrence fields imports cleanly — the unknown keys are silently dropped", async () => {
@@ -393,13 +393,13 @@ describe.skipIf(!TEST_URL)("sync/pull: the change journal is scoped to one budge
  * ensure the initial budget through the STANDALONE operation-lock path BEFORE the barrier and
  * resolve only an EXISTING budget inside it (requireExistingTier).
  *
- * The child (sync.first-use-barrier-child.ts) FORCES the interleaving: a gate holds the fresh
+ * The child (sync.first-use-barrier.test-child.ts) FORCES the interleaving: a gate holds the fresh
  * user's ensure-initial lock, all three routes are fired and observed parked on the OPERATION
  * lock via pg_locks (changes-cursor waiters excluded), the changes lock is probed FREE at that
  * moment, then the gate inserts the budget (shared changes lock — must not deadlock) and
  * commits. */
 
-const BARRIER_CHILD = new URL("./sync.first-use-barrier-child.ts", import.meta.url).pathname;
+const BARRIER_CHILD = new URL("./sync.first-use-barrier.test-child.ts", import.meta.url).pathname;
 
 describe.skipIf(!TEST_URL)(
   "sync first use: ensure-initial runs BEFORE the cursor barrier (no deadlock, no split budget)",

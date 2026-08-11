@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import { computeEnvelopeBudgetStats } from "./aiBudget";
-import { alloc, asClientLedger, env, grp, tx } from "./test-helpers";
+import { alloc, asClientLedger, env, grp, tx } from "./ledger.test-support";
 import type { Ledger } from "./types";
 
 function ledgerWithSpend(envId: string, spendByMonth: Record<string, number>): Ledger {
@@ -109,7 +109,7 @@ describe("buildBudgetSuggestionBasis", () => {
 
 import fc from "fast-check";
 import { buildRulesBudgetSuggestion, normalizeBudgetSuggestion } from "./aiBudget";
-import { ledgerArb } from "./test-helpers";
+import { ledgerArb } from "./ledger.test-support";
 
 const bigLedger = () => {
   const g = grp();

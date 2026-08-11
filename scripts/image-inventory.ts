@@ -13,7 +13,7 @@
  * run INSIDE a throwaway container for the filesystem and the effective uid. Nothing here
  * inspects the Dockerfile: "the Dockerfile looks fine" is not evidence.
  */
-import { readdirSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { checkImage, type ImageFacts } from "./lib/imageInventory";
 
@@ -69,6 +69,53 @@ walk("/app");
 console.log(found.join("\\n"));
 `;
 
+/**
+ * Every bare import specifier in the shipped `src` trees that the image cannot resolve.
+ *
+ * Uses `Bun.resolveSync` from INSIDE the image, so it answers the only question that matters:
+ * would this module load here? Only `node:`/`bun:` builtins are skipped.
+ *
+ * BARE specifiers catch a module importing a dev dependency the production prune removed — the
+ * name-independent backstop to the `*.test*` denylist, and what would have caught
+ * `test-helpers.ts` (`import fc from "fast-check"`) under any name.
+ *
+ * RELATIVE specifiers catch the opposite mistake: EXCLUDING a file that a shipped module still
+ * imports. Widening `.dockerignore` is exactly how that happens, so the two rules guard each
+ * other — neither the allowlist (a handful of required files) nor the denylist would notice.
+ */
+const IMPORT_SWEEP = `
+const { readdirSync, readFileSync } = require("node:fs");
+const { dirname } = require("node:path");
+const roots = ["/app/packages/api/src", "/app/packages/shared/src"];
+const files = [];
+const walk = (dir) => {
+  let entries;
+  try { entries = readdirSync(dir, { withFileTypes: true }); } catch { return; }
+  for (const entry of entries) {
+    const path = dir + "/" + entry.name;
+    if (entry.isSymbolicLink()) continue;
+    if (entry.isDirectory()) walk(path);
+    else if (entry.isFile() && /\\.tsx?$/.test(entry.name)) files.push(path);
+  }
+};
+for (const root of roots) walk(root);
+
+const problems = [];
+for (const file of files) {
+  const source = readFileSync(file, "utf8");
+  const specifiers = new Set();
+  for (const m of source.matchAll(/(?:^|[\\s;])(?:import|export)[^'"\\n]*?from\\s*['"]([^'"]+)['"]/g)) specifiers.add(m[1]);
+  for (const m of source.matchAll(/(?:^|[\\s;])import\\s*['"]([^'"]+)['"]/g)) specifiers.add(m[1]);
+  for (const m of source.matchAll(/\\brequire\\s*\\(\\s*['"]([^'"]+)['"]\\s*\\)/g)) specifiers.add(m[1]);
+  for (const specifier of specifiers) {
+    if (specifier.startsWith("node:") || specifier.startsWith("bun:")) continue;
+    try { Bun.resolveSync(specifier, dirname(file)); }
+    catch { problems.push(file.slice("/app/".length) + " -> " + specifier); }
+  }
+}
+console.log(problems.join("\\n"));
+`;
+
 function collect(image: string): ImageFacts {
   const config = JSON.parse(
     run(["docker", "image", "inspect", image, "--format", "{{json .Config}}"]),
@@ -102,8 +149,12 @@ function collect(image: string): ImageFacts {
   const buildStampSha = stamp === "" ? null : (stamp.match(/sha:"([^"]*)"/)?.[1] ?? null);
 
   const nativeBinaries = lines(bunInImage(image, ELF_SWEEP));
+  const unresolvableImports = lines(bunInImage(image, IMPORT_SWEEP));
+  const bunVersion = run(["docker", "run", "--rm", "--network=none", "--entrypoint", "bun", image, "--version"]).trim();
 
   return {
+    unresolvableImports,
+    bunVersion,
     appFiles,
     storeEntries,
     configUser: config.User ?? "",
@@ -131,13 +182,19 @@ function main(argv: readonly string[]): number {
     .filter((name) => name.endsWith(".sql"))
     .sort();
 
+  // `.bun-version` is the repository's single source of truth; the image must AGREE with it,
+  // which is what binds the pinned base digest to the version its tag claims.
+  const bunVersion = readFileSync(join(import.meta.dir, "..", ".bun-version"), "utf8").trim();
+
   const facts = collect(image);
-  const violations = checkImage(facts, { migrations, sourceCommit });
+  const violations = checkImage(facts, { migrations, sourceCommit, bunVersion });
 
   console.log(`image-inventory: ${image}`);
   console.log(`  files under /app        ${facts.appFiles.length}`);
   console.log(`  installed packages      ${facts.storeEntries.length}`);
   console.log(`  migrations expected     ${migrations.length}`);
+  console.log(`  bun in image            ${facts.bunVersion} (.bun-version pins ${bunVersion})`);
+  console.log(`  unresolvable imports    ${facts.unresolvableImports.length} (must be 0)`);
   console.log(`  user                    ${facts.configUser} (effective uid ${facts.effectiveUid})`);
   console.log(`  /app writable           ${facts.appWritable}`);
   console.log(`  native ELF binaries     ${facts.nativeBinaries.length} (must be 0)`);

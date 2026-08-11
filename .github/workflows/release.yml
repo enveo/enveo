@@ -59,6 +59,16 @@ jobs:
           # on workflow_dispatch github.ref is a branch — check out the tag instead
           ref: ${{ steps.ver.outputs.tag }}
 
+      # …and therefore `github.sha` is the WRONG commit on that path: it is the default branch
+      # head, while the checkout above is the tag. Re-publishing an existing tag (the documented
+      # recovery path) would otherwise stamp the image — both the OCI revision label and the
+      # in-app build stamp — with a commit that is not the released source. Nothing would catch
+      # it: image-inventory compares the label against the stamp, and both would be equally
+      # wrong. Resolve what was actually checked out and use that everywhere.
+      - name: Resolve the released commit
+        id: src
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
       # Image name follows the repository (ghcr.io/<owner>/<repo>) — no hardcoded owner.
       # metadata-action also emits org.opencontainers.image.source, which is what links
       # the GHCR package back to this repo (README + "inherit access from repository").
@@ -74,6 +84,10 @@ jobs:
             type=semver,pattern={{major}}.{{minor}},value=${{ steps.ver.outputs.tag }},enable=${{ steps.ver.outputs.stable }}
           flavor: |
             latest=${{ steps.ver.outputs.stable }}
+          # metadata-action derives image.revision from github.sha; override it with the commit
+          # the tag actually points at (see "Resolve the released commit" above).
+          labels: |
+            org.opencontainers.image.revision=${{ steps.src.outputs.sha }}
 
       # QEMU only matters for the arm64 leg; buildx gives us the multi-platform driver.
       - uses: docker/setup-qemu-action@v3
@@ -97,7 +111,7 @@ jobs:
           # (§3e). It reaches the web build stamp shown in the app menu and the OCI
           # `org.opencontainers.image.revision` label; both must equal this value.
           build-args: |
-            SOURCE_COMMIT=${{ github.sha }}
+            SOURCE_COMMIT=${{ steps.src.outputs.sha }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           annotations: ${{ steps.meta.outputs.annotations }}
@@ -107,6 +121,14 @@ jobs:
           # need id-token: write; skipped to keep permissions minimal and the tag clean.
           provenance: false
           sbom: false
+
+      # ── STILL OWED BY §3d (deliberately NOT done here) ───────────────────────────────────
+      # 1. Run `bun run image:scan` on the built image BEFORE the push, so no unscanned image is
+      #    ever published. The scanner exists and fails closed (scripts/scan-image.ts); it is
+      #    simply not wired in, because a release gate belongs to §3d's workflow rewrite.
+      # 2. Inventory the MULTI-ARCH manifest this job publishes. `bun run image:inventory` runs
+      #    in CI against a single-arch throwaway build only, so the arm64 leg that ships to users
+      #    is never inspected.
 
       - name: Summary
         env:

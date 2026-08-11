@@ -16,7 +16,7 @@ import {
   MONTHS,
   specArb,
   tx,
-} from "./test-helpers";
+} from "./ledger.test-support";
 import type { ClientLedger, Transaction } from "./types";
 
 /** Applies an op on a DEEP-FROZEN ledger — any input mutation will throw. */

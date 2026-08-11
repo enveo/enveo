@@ -1,7 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import { applyOp } from "./applyOp";
 import { clientLedgerSchema, REPLICATED_TABLES, type SyncOp } from "./ops";
-import { asClientLedger, grp } from "./test-helpers";
+import { asClientLedger, grp } from "./ledger.test-support";
 
 describe("budget entity", () => {
   const base = () =>

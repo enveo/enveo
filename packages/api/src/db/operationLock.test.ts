@@ -6,7 +6,7 @@
  *  - pure part (no DB): `operationLockKey` validation and the compile-time guard that the
  *    "InTx" overload cannot accept the pooled `db`;
  *  - DB-backed part: serialization/rollback/connection-identity/xact-scope semantics, run in a
- *    CHILD process (operationLock.serialization-child.ts) because the lock deliberately runs on
+ *    CHILD process (operationLock.serialization.test-child.ts) because the lock deliberately runs on
  *    the pooled `db`, whose pool is pinned to `env.DATABASE_URL` at import time.
  *
  * OPT-IN: set TEST_DATABASE_URL to a THROWAWAY Postgres — the child takes advisory locks and
@@ -22,10 +22,10 @@ import { beforeAll, describe, expect, it } from "bun:test";
 import { drizzle } from "drizzle-orm/postgres-js";
 import { migrate } from "drizzle-orm/postgres-js/migrator";
 import postgres from "postgres";
-import { runChild } from "../testSupport";
+import { runChild } from "../api.test-support";
 // Constant + type only — the child's app imports are lazy (see its header), so importing it
 // here does NOT pull env/db/client into this process.
-import { SENTINEL, type LockChildOutput } from "./operationLock.serialization-child";
+import { SENTINEL, type LockChildOutput } from "./operationLock.serialization.test-child";
 import * as s from "./schema";
 import {
   OPERATION_LOCK,
@@ -100,7 +100,7 @@ if (TEST_URL && TEST_URL === process.env.DATABASE_URL) {
   throw new Error("TEST_DATABASE_URL must differ from DATABASE_URL — this suite writes to the DB.");
 }
 
-const CHILD = new URL("./operationLock.serialization-child.ts", import.meta.url).pathname;
+const CHILD = new URL("./operationLock.serialization.test-child.ts", import.meta.url).pathname;
 
 describe.skipIf(!TEST_URL)("operation lock semantics (DB-backed, child process)", () => {
   let out: LockChildOutput;

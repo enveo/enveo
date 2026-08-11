@@ -12,7 +12,7 @@
  * pool from `env.DATABASE_URL` at IMPORT time, and bun's test runner shares ONE module registry
  * across every test file in a run: whichever suite imports `db/client` first pins that pool for
  * the whole process — and locally (and on a real deployment host) `DATABASE_URL` is the REAL
- * database (see auth.signup-race-child.ts, which hit the exact same hazard first). Exercising
+ * database (see auth.signup-race.test-child.ts, which hit the exact same hazard first). Exercising
  * the real `/api/sync/replace` HANDLER — not just the pure input schema — means calling code
  * that does `db.transaction(...)` for real, so it must run in a fresh process that gets the
  * `DATABASE_URL` the test hands it. The EXPECT_DATABASE_URL fuse below refuses to run if that
