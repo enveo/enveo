@@ -59,6 +59,13 @@ registered user, so your account sees it after a reload.
 | `bun run security:audit` | `bun audit` evaluated against `security/audit-policy.json`. |
 | `bun run verify:ci` | What CI runs: `typecheck` + `test:db` + `build` + `security:audit`. |
 
+CI and the release pipeline both call the same reusable workflow to run `verify:ci`, so
+neither keeps a second list of commands — a phase is added by editing the root
+`package.json`, never a workflow. Two more commands need a **built image** and therefore
+sit outside `verify`: `bun run image:inventory <ref>` (the runtime contract) and
+`bun run image:scan <ref>` (pinned, fail-closed Trivy). The release runs both, per
+architecture — see [docs/releasing.md](docs/releasing.md).
+
 The DB-backed suites migrate and **write**, so `test:db` refuses to start unless you
 point it at a database you have explicitly acknowledged as disposable:
 

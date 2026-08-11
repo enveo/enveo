@@ -12,6 +12,8 @@
   the cost warning for operator keys.
 - **[Developing](development.md)** — running from source, demo data, tests,
   adding a translation.
+- **[Releasing](releasing.md)** — what a version tag does, the gates it passes,
+  and how to recover from a partial release.
 
 ## Screens
 
