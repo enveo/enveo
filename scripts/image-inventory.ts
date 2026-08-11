@@ -33,6 +33,42 @@ function run(argv: readonly string[]): string {
 const inImage = (image: string, script: string): string =>
   run(["docker", "run", "--rm", "--network=none", "--entrypoint", "/bin/sh", image, "-c", script]);
 
+/**
+ * Run JavaScript with the image's OWN Bun. Used for the ELF sweep: the runtime base is Alpine,
+ * where `file` is a busybox applet and `od`-per-file would be thousands of spawns. Bun is the
+ * one tool guaranteed present on every Enveo image, whatever the base.
+ */
+const bunInImage = (image: string, source: string): string =>
+  run(["docker", "run", "--rm", "--network=none", "--entrypoint", "bun", image, "-e", source]);
+
+/**
+ * Every file under /app starting with the ELF magic (`\x7fELF`). Symlinks are not followed —
+ * the isolated store is a symlink forest and each real file is visited exactly once through its
+ * store path.
+ */
+const ELF_SWEEP = `
+const { readdirSync, openSync, readSync, closeSync } = require("node:fs");
+const magic = Buffer.alloc(4);
+const found = [];
+const walk = (dir) => {
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    const path = dir + "/" + entry.name;
+    if (entry.isSymbolicLink()) continue;
+    if (entry.isDirectory()) { walk(path); continue; }
+    if (!entry.isFile()) continue;
+    let fd;
+    try { fd = openSync(path, "r"); } catch { continue; }
+    const read = readSync(fd, magic, 0, 4, 0);
+    closeSync(fd);
+    if (read === 4 && magic[0] === 0x7f && magic[1] === 0x45 && magic[2] === 0x4c && magic[3] === 0x46) {
+      found.push(path.slice("/app/".length));
+    }
+  }
+};
+walk("/app");
+console.log(found.join("\\n"));
+`;
+
 function collect(image: string): ImageFacts {
   const config = JSON.parse(
     run(["docker", "image", "inspect", image, "--format", "{{json .Config}}"]),
@@ -55,11 +91,17 @@ function collect(image: string): ImageFacts {
   const effectiveUid = Number(inImage(image, "id -u").trim());
 
   // The web build stamp: vite inlines __BUILD_INFO__ as `{time:"…",sha:"…"}` into the entry chunk.
+  // Deliberately `[^"]*` and not `[0-9a-f]*`: a real commit SHA is hex, but matching only hex
+  // means a WRONG value (or a build arg that never reached the bundle) reads back as "no stamp
+  // found" and gets reported as absent instead of as a mismatch. Extract whatever is there and
+  // let the comparison do the judging.
   const stamp = inImage(
     image,
-    "grep -ho 'sha:\"[0-9a-f]*\"' /app/packages/web/dist/assets/index-*.js | head -1 || true",
+    "grep -ho 'sha:\"[^\"]*\"' /app/packages/web/dist/assets/index-*.js | head -1 || true",
   ).trim();
-  const buildStampSha = stamp === "" ? null : (stamp.match(/sha:"([0-9a-f]*)"/)?.[1] ?? null);
+  const buildStampSha = stamp === "" ? null : (stamp.match(/sha:"([^"]*)"/)?.[1] ?? null);
+
+  const nativeBinaries = lines(bunInImage(image, ELF_SWEEP));
 
   return {
     appFiles,
@@ -70,6 +112,7 @@ function collect(image: string): ImageFacts {
     labels: config.Labels ?? {},
     entrypoint: config.Entrypoint ?? [],
     buildStampSha,
+    nativeBinaries,
   };
 }
 
@@ -97,6 +140,7 @@ function main(argv: readonly string[]): number {
   console.log(`  migrations expected     ${migrations.length}`);
   console.log(`  user                    ${facts.configUser} (effective uid ${facts.effectiveUid})`);
   console.log(`  /app writable           ${facts.appWritable}`);
+  console.log(`  native ELF binaries     ${facts.nativeBinaries.length} (must be 0)`);
   console.log(`  entrypoint              ${facts.entrypoint.join(" ")}`);
   console.log(`  build stamp sha         ${facts.buildStampSha ?? "<none>"}`);
   console.log(`  OCI revision            ${facts.labels["org.opencontainers.image.revision"] || "<none>"}`);

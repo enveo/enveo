@@ -29,6 +29,12 @@ export type ImageFacts = Readonly<{
   entrypoint: readonly string[];
   /** The `sha` baked into the web bundle's build stamp, or `null` if it could not be read. */
   buildStampSha: string | null;
+  /**
+   * Files under `/app` whose first four bytes are the ELF magic — i.e. native executables or
+   * shared objects. MUST be empty: the build stage runs on Debian/glibc and the runtime on
+   * Alpine/musl, and that is only safe because nothing native crosses the boundary.
+   */
+  nativeBinaries: readonly string[];
 }>;
 
 /** Repository-derived expectations the image is measured against. */
@@ -146,6 +152,20 @@ export function checkImage(facts: ImageFacts, expectations: Expectations): strin
       const entry = facts.storeEntries.find((e) => packageNameOfStoreEntry(e) === name);
       violations.push(`dev/build package present in the runtime image: ${entry ?? name}`);
     }
+  }
+
+  // ── nothing native crossed the stage boundary ───────────────────────────────────────────
+  //
+  // The load-bearing check for the two-base build. `deps`/`runtime` are Alpine (musl) while
+  // `build` is Debian (glibc); a native `.node` addon or ELF helper copied forward from the
+  // build stage — or pulled in by a future dependency — would be linked against the wrong libc
+  // and fail at require() time, possibly only on a code path nobody smoke-tests. An empty set
+  // is what makes mixing the bases legitimate, so it is asserted, not assumed.
+  for (const binary of facts.nativeBinaries) {
+    violations.push(
+      `native ELF binary in the runtime image: ${binary} — the runtime closure must stay pure JavaScript ` +
+        `(build stage is glibc, runtime is musl)`,
+    );
   }
 
   // ── the container runs unprivileged ─────────────────────────────────────────────────────

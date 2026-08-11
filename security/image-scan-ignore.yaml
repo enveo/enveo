@@ -13,11 +13,15 @@
 # There is NO blanket entry and no `--ignore-unfixed`: "upstream has no fix" is a reason to
 # record a reviewed exception, not a reason to hide the finding.
 #
-# EMPTY ON PURPOSE. The image currently carries 4 CRITICAL and 21 HIGH findings, ALL of them
-# inherited Debian packages from oven/bun:1.3.14 (perl-base ×4 critical, no Debian fix
-# available; libssl3t64/openssl-provider-legacy and libcap2 have fixes awaiting a base
-# rebuild). None come from Enveo's own dependency closure — the application layers scan clean.
-# Accepting them is the owner's call under the §0a rules, and it must happen before the first
-# public image is published; this file is where those decisions go.
+# EMPTY ON PURPOSE. The runtime base is Alpine (oven/bun:1.3.14-alpine), which leaves
+# 0 CRITICAL and 2 HIGH — both the SAME advisory, CVE-2026-45447 (OpenSSL PKCS7_verify
+# use-after-free) in libcrypto3/libssl3, and Alpine has ALREADY published the fix (3.5.7-r0).
+# It clears itself when oven/bun rebuilds its Alpine image; the right response is a base bump,
+# not an exception. Enveo's own dependency closure scans clean (0 findings, application layers).
+#
+# For reference, the Debian base this replaced carried 4 CRITICAL + 21 HIGH, including four
+# perl-base criticals with no Debian fix at all — that is why the base moved.
+#
+# If an exception ever is needed, the owner writes it here under the §0a rules above.
 
 vulnerabilities: []

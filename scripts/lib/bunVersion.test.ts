@@ -67,12 +67,23 @@ describe("collectDockerfileBunBases", () => {
     );
 
     expect(bases).toHaveLength(2);
-    expect(bases[0]).toMatchObject({ version: "1.3.14", digest: "sha256:aa" });
+    expect(bases[0]).toMatchObject({ version: "1.3.14", variant: null, digest: "sha256:aa" });
     expect(bases[1]?.where).toContain("runtime");
+  });
+
+  it("splits the variant out of the tag, so two bases of one version compare correctly", () => {
+    const bases = collectDockerfileBunBases("FROM oven/bun:1.3.14-alpine@sha256:bb AS runtime");
+
+    expect(bases[0]).toMatchObject({ version: "1.3.14", variant: "alpine", digest: "sha256:bb" });
   });
 
   it("reports a bare tag as digestless rather than silently accepting it", () => {
     expect(collectDockerfileBunBases("FROM oven/bun:1 AS build")[0]?.digest).toBeNull();
+  });
+
+  it("keeps an unparseable tag verbatim so the version comparison rejects it", () => {
+    // `1` must not quietly parse as some plausible version — it has to FAIL the gate.
+    expect(collectDockerfileBunBases("FROM oven/bun:1 AS build")[0]?.version).toBe("1");
   });
 });
 
@@ -93,13 +104,46 @@ describe("findDockerBaseProblems", () => {
     expect(findDockerBaseProblems("1.3.14", bases).join(" ")).toContain("no @sha256 digest");
   });
 
-  it("rejects stages that disagree on the digest — build and ship must be one image", () => {
+  it("rejects two stages on the SAME variant with different digests", () => {
     const other = `sha256:${"b".repeat(64)}`;
     const bases = collectDockerfileBunBases(
       [`FROM oven/bun:1.3.14@${digest} AS build`, `FROM oven/bun:1.3.14@${other} AS runtime`].join("\n"),
     );
 
-    expect(findDockerBaseProblems("1.3.14", bases).join(" ")).toContain("disagree on the base digest");
+    expect(findDockerBaseProblems("1.3.14", bases).join(" ")).toContain("disagree on its digest");
+  });
+
+  it("accepts two DIFFERENT variants of the pinned version, each pinned separately", () => {
+    // Enveo builds on Debian (native toolchain) and runs on Alpine (pure-JS closure).
+    const alpine = `sha256:${"b".repeat(64)}`;
+    const bases = collectDockerfileBunBases(
+      [
+        `FROM oven/bun:1.3.14@${digest} AS build`,
+        `FROM oven/bun:1.3.14-alpine@${alpine} AS deps`,
+        `FROM oven/bun:1.3.14-alpine@${alpine} AS runtime`,
+      ].join("\n"),
+    );
+
+    expect(findDockerBaseProblems("1.3.14", bases)).toEqual([]);
+  });
+
+  it("still rejects a variant whose VERSION drifted from the pin", () => {
+    const alpine = `sha256:${"b".repeat(64)}`;
+    const bases = collectDockerfileBunBases(
+      [`FROM oven/bun:1.3.14@${digest} AS build`, `FROM oven/bun:1.4.0-alpine@${alpine} AS runtime`].join("\n"),
+    );
+
+    expect(findDockerBaseProblems("1.3.14", bases).join(" ")).toContain("version 1.4.0, expected 1.3.14");
+  });
+
+  it("rejects two stages on the same ALPINE variant with different digests", () => {
+    const a = `sha256:${"b".repeat(64)}`;
+    const b = `sha256:${"c".repeat(64)}`;
+    const bases = collectDockerfileBunBases(
+      [`FROM oven/bun:1.3.14-alpine@${a} AS deps`, `FROM oven/bun:1.3.14-alpine@${b} AS runtime`].join("\n"),
+    );
+
+    expect(findDockerBaseProblems("1.3.14", bases).join(" ")).toContain("alpine base disagree on its digest");
   });
 
   it("rejects a Dockerfile with no Bun base at all", () => {

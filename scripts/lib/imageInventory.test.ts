@@ -42,6 +42,7 @@ const facts = (overrides: Partial<ImageFacts> = {}): ImageFacts => ({
   },
   entrypoint: ["/usr/local/bin/enveo-entrypoint"],
   buildStampSha: "abc1234",
+  nativeBinaries: [],
   ...overrides,
 });
 
@@ -142,6 +143,27 @@ describe("checkImage — the denylist", () => {
       expect(checkImage(facts({ storeEntries: withDev }), expectations()).join(" ")).toContain(entry);
     },
   );
+});
+
+describe("checkImage — no native binaries (the two-base safety property)", () => {
+  it("rejects a native addon copied forward from the glibc build stage", () => {
+    const withAddon = facts({
+      nativeBinaries: ["node_modules/.bun/sharp@0.35.3/node_modules/sharp/build/Release/sharp.node"],
+    });
+
+    expect(checkImage(withAddon, expectations()).join(" ")).toContain("native ELF binary");
+  });
+
+  it("rejects a bare ELF helper with no telling file extension", () => {
+    // esbuild's binary is exactly this shape — no extension, pure ELF.
+    const withHelper = facts({ nativeBinaries: ["node_modules/.bun/esbuild@0.25.12/bin/esbuild"] });
+
+    expect(checkImage(withHelper, expectations()).join(" ")).toContain("must stay pure JavaScript");
+  });
+
+  it("passes when the closure is pure JavaScript", () => {
+    expect(checkImage(facts({ nativeBinaries: [] }), expectations())).toEqual([]);
+  });
 });
 
 describe("checkImage — unprivileged runtime", () => {

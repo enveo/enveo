@@ -45,7 +45,14 @@ export type Drift = Readonly<{
 /** One `FROM oven/bun:…` line. */
 export type BunBase = Readonly<{
   where: string;
+  /** The `MAJOR.MINOR.PATCH` part of the tag. */
   version: string;
+  /**
+   * The image VARIANT — the tag suffix after the version (`alpine`), or `null` for the plain
+   * Debian image. Enveo deliberately uses two: Debian for the native build toolchain, Alpine
+   * for the pure-JS runtime. One digest per variant, one version across all of them.
+   */
+  variant: string | null;
   /** `sha256:…`, or `null` when the line carries no digest at all. */
   digest: string | null;
 }>;
@@ -85,15 +92,21 @@ export function collectWorkflowBunVersions(file: string, yaml: string): VersionR
 /**
  * Every `FROM oven/bun:…` in a Dockerfile, with its stage name. A line without a digest is
  * reported with `digest: null` so the caller can reject it — `oven/bun:1.3.14` alone is a
- * mutable tag that can be republished.
+ * mutable tag that can be republished. The tag is split into version and variant, because
+ * Enveo runs two variants of the SAME version (Debian to build, Alpine to run).
  */
 export function collectDockerfileBunBases(text: string): BunBase[] {
   const bases: BunBase[] = [];
   const pattern = /^\s*FROM\s+oven\/bun:([^\s@]+)(?:@(\S+))?(?:\s+AS\s+(\S+))?/gim;
   for (const match of text.matchAll(pattern)) {
+    const tag = match[1] ?? "";
+    const parts = /^(\d+\.\d+\.\d+)(?:-(.+))?$/.exec(tag);
     bases.push({
-      where: `FROM oven/bun (stage: ${match[3] ?? "<unnamed>"})`,
-      version: match[1] ?? "",
+      where: `FROM oven/bun:${tag} (stage: ${match[3] ?? "<unnamed>"})`,
+      // A tag that is not `MAJOR.MINOR.PATCH[-variant]` keeps its raw text, so the version
+      // comparison below reports it instead of silently parsing to something plausible.
+      version: parts?.[1] ?? tag,
+      variant: parts?.[2] ?? null,
       digest: match[2] ?? null,
     });
   }
@@ -136,8 +149,10 @@ export function findBunVersionDrift(expected: string, refs: readonly VersionRef[
 }
 
 /**
- * Docker bases must all name the pinned version AND carry one identical, well-formed digest.
- * Two stages on different digests would build the app on one runtime and ship another.
+ * Docker bases must all name the pinned VERSION and carry a well-formed digest, and every stage
+ * using the SAME variant must use the same digest. Two stages on one variant but different
+ * digests would build the app on one image and ship another; different variants are a reviewed
+ * decision (Debian builds, Alpine runs) and each is pinned independently.
  */
 export function findDockerBaseProblems(expected: string, bases: readonly BunBase[]): string[] {
   const problems: string[] = [];
@@ -156,11 +171,20 @@ export function findDockerBaseProblems(expected: string, bases: readonly BunBase
     }
   }
 
-  const digests = new Set(bases.map((b) => b.digest).filter((d): d is string => d !== null));
-  if (digests.size > 1) {
-    problems.push(
-      `stages disagree on the base digest (${[...digests].join(", ")}) — every stage must use one reviewed image`,
-    );
+  const byVariant = new Map<string, Set<string>>();
+  for (const base of bases) {
+    if (base.digest === null) continue;
+    const key = base.variant ?? "<debian>";
+    const digests = byVariant.get(key) ?? new Set<string>();
+    digests.add(base.digest);
+    byVariant.set(key, digests);
+  }
+  for (const [variant, digests] of byVariant) {
+    if (digests.size > 1) {
+      problems.push(
+        `stages on the ${variant} base disagree on its digest (${[...digests].join(", ")}) — one reviewed image per variant`,
+      );
+    }
   }
   return problems;
 }
