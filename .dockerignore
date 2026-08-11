@@ -4,6 +4,14 @@ node_modules
 packages/web/dev-dist
 *.log
 
+# Tests never run inside the image, and the runtime stage COPIEs whole source directories
+# (packages/api/src, packages/shared/src) — without this the 28 *.test.ts files that live next
+# to those sources would ship to users. Keeping them out of the CONTEXT is what makes the
+# runtime allowlist honest; `scripts/image-inventory.ts` asserts the result.
+**/*.test.ts
+**/*.test.tsx
+packages/*/src/**/__fixtures__
+
 # No dot-prefixed files or directories belong in the image (.git, env files,
 # editor and agent scratch dirs). .gitignore does NOT apply to the Docker build
 # context, so without this `COPY . .` would bake a maintainer's local working

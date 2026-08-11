@@ -7,11 +7,19 @@ const buildInfo = (() => {
   const d = new Date();
   const pad = (n: number) => String(n).padStart(2, "0");
   const time = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  // The container build has no `.git` (it is in .dockerignore), so the release identity is
+  // PASSED IN instead of recovered: Dockerfile `ARG SOURCE_COMMIT` → ENVEO_BUILD_SHA. The
+  // release workflow (§3d) supplies the validated tag SHA, and the same value goes into the
+  // OCI `org.opencontainers.image.revision` label, so the UI stamp and the image agree.
+  // Absent (a plain local `docker build`) degrades to the old behaviour: timestamp only.
+  const passed = process.env.ENVEO_BUILD_SHA?.trim();
+  if (passed) return { time, sha: passed };
+
   let sha = "";
   try {
     sha = execSync("git rev-parse --short HEAD", { stdio: ["ignore", "pipe", "ignore"] }).toString().trim();
   } catch {
-    sha = ""; // .git absent (Docker image) — we rely on `time`
+    sha = ""; // no .git and no build arg — we rely on `time`
   }
   return { time, sha };
 })();
