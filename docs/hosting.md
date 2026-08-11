@@ -33,7 +33,7 @@ their install docs:
 ## The image everything here pulls
 
 Every channel below — and the README quickstart, and `compose.selfhost.yml` — pulls
-**`ghcr.io/enveo/enveo:latest`**, and that is the only reference this documentation names.
+**`ghcr.io/enveo/enveo:latest`**, and that is the only *tag* this documentation hands out.
 
 `latest` is a **mutable alias**. The release pipeline moves it onto a stable release only
 after that exact image has passed the whole gate (multi-architecture manifest,
