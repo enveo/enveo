@@ -20,7 +20,8 @@ docker compose up -d
 
 # 4. Check it came up and your data is there
 curl -fsS http://127.0.0.1:8081/api/health          # {"ok":true}
-docker compose logs --tail=50 app                   # migrations, then "listening"
+docker compose logs --tail=50 app                   # "enveo: applying database migrations",
+                                                    # then "Enveo API → http://localhost:8080"
 ```
 
 Then open the app, confirm you are still signed in and that the current month's

@@ -110,7 +110,7 @@ services:
       # paid by this key. Empty = no server AI — budget suggestions fall back to local
       # rules and screenshot import is unavailable in server mode (it is AI-only).
       # This does NOT disable AI on the device: a trusted device can use its own OpenAI
-      # key (BYOK, Settings → AI), and those requests go straight from the browser to
+      # key (BYOK, Settings → Artificial intelligence), and those requests go straight
       # OpenAI, never through this server. AI is off by default; with no key set and no
       # device opting in, Enveo makes no outbound AI request at all.
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}

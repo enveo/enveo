@@ -4,7 +4,8 @@
 # must run the SAME gate as an ordinary pull request, on the exact commit it is about to publish,
 # and neither caller may keep a second hand-written list of commands.
 #
-# The gate itself is `bun run verify:ci` (typecheck → test:db → build → security:audit) — the
+# The gate itself is `bun run verify:ci` (typecheck → test:db → build → policy:sources →
+# security:audit) — the
 # same command a developer runs locally. Add a phase by editing root package.json, never here.
 #
 # The caller passes an explicit ref. On the release path that is the SHA the tag resolved to,
@@ -80,6 +81,7 @@ jobs:
       #   "$ bun run typecheck:*"            — shared, api, web app, web tests, tooling
       #   "run-tests: mode=db …"             — the full suite with DB-backed groups REQUIRED
       #   "vite build"                       — the production PWA build
+      #   "policy:sources: …"                — the self-host documentation/bootstrap source policy
       #   "security:audit — bun audit --json"— the fail-closed dependency policy gate
       - name: Verify
         run: bun run verify:ci
