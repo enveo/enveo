@@ -8,6 +8,10 @@ const DESKTOP_CHROME = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/53
 const IOS_SAFARI = "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 Version/17.0 Mobile/15E148 Safari/604.1";
 const IOS_CHROME = "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 CriOS/126 Mobile/15E148 Safari/604.1";
 const IOS_INAPP = "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 Mobile/15E148 [FBAN/FBIOS]";
+// In-app browsers that KEEP the `Safari` token (real UA shapes: DuckDuckGo appends
+// `Ddg/<version>`, the Google app appends `GSA/<version>`) — no Share → A2HS flow.
+const IOS_DDG = "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1 Ddg/17.0";
+const IOS_GSA = "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) GSA/280.0.560472678 Mobile/15E148 Safari/604.1";
 const DESKTOP_FF = "Mozilla/5.0 (X11; Linux x86_64; rv:126.0) Gecko/20100101 Firefox/126.0";
 
 describe("installState", () => {
@@ -28,6 +32,11 @@ describe("installState", () => {
   it("iOS Chrome / in-app webview → ios-other", () => {
     expect(installState(null, IOS_CHROME, false)).toBe("ios-other");
     expect(installState(null, IOS_INAPP, false)).toBe("ios-other");
+  });
+
+  it("iOS in-app browsers keeping the Safari token (DuckDuckGo Ddg/, Google app GSA/) → ios-other, not ios-safari", () => {
+    expect(installState(null, IOS_DDG, false)).toBe("ios-other");
+    expect(installState(null, IOS_GSA, false)).toBe("ios-other");
   });
 
   it("desktop Firefox with no event → unavailable", () => {

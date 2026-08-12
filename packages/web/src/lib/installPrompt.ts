@@ -20,12 +20,21 @@ export interface BeforeInstallPromptEvent extends Event {
  * NOTE: iPadOS 13+ Safari reports a desktop-Mac UA and lands in "unavailable"
  * (no beforeinstallprompt on desktop Safari) — accepted; those users can still add
  * via Share manually, we just don't detect them.
+ *
+ * `ddg\/` / `gsa\/` below: iOS in-app browsers that KEEP the stock `Safari` token but
+ * have no Share → Add-to-Home-Screen flow, so "ios-safari" instructions would describe
+ * a menu that does not exist — they belong in "ios-other" ("open {host} in Safari").
+ * Tokens verified against real UA strings: DuckDuckGo appends `Ddg/<version>`
+ * (duckduckgo/iOS UserAgentManager), the Google app appends `GSA/<version>`
+ * (documented in Google's "user agent strings for Google Search App" help page).
+ * Keep this list CONSERVATIVE — add a token only with a named source; an unrecognized
+ * in-app browser misclassified as Safari is a known, accepted gap.
  */
 export function installState(deferred: unknown, userAgent: string, standalone: boolean): InstallState {
   if (standalone) return "installed";
   if (deferred) return "promptable";
   if (/iphone|ipad|ipod/i.test(userAgent)) {
-    const otherBrowser = /crios|fxios|edgios|opios/i.test(userAgent);
+    const otherBrowser = /crios|fxios|edgios|opios|ddg\/|gsa\//i.test(userAgent);
     const isSafari = !otherBrowser && /safari/i.test(userAgent);
     return isSafari ? "ios-safari" : "ios-other";
   }
