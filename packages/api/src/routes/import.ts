@@ -1,11 +1,11 @@
-import { aiLocaleSchema, buildImportExtractPrompt, languageDirectives, languageName, parseImportExtractResponse, supportsReasoningEffort, type ChatRequest, type ImportExtractItem } from "@enveo/shared";
+import { AI_VISION_TIMEOUT_MS, aiLocaleSchema, buildImportExtractPrompt, languageDirectives, languageName, parseImportExtractResponse, supportsReasoningEffort, type ChatRequest, type ImportExtractItem } from "@enveo/shared";
 import { and, eq, inArray } from "drizzle-orm";
 import { Hono } from "hono";
 import { z } from "zod";
 import { requireTier } from "../context";
 import { db } from "../db/client";
 import { env } from "../env";
-import { openAiChatFetch } from "../openaiHttp";
+import { openAiChatFetch, transportFailureJson, UpstreamHttpError } from "../openaiHttp";
 import * as s from "../db/schema";
 import { assertBudgetFks } from "../sync/apply";
 import { budgetAssertionFails } from "./sync";
@@ -132,22 +132,18 @@ export async function matchHistory(budgetId: string, rawPlaces: string[]): Promi
   return out;
 }
 
- 
-class OpenAiError extends Error {
-  constructor(readonly status: number) {
-    super(`openai ${status}`);
-  }
-}
 
-async function openaiJson(req: ChatRequest): Promise<string> {
+
+
+async function openaiJson(req: ChatRequest, timeoutMs?: number): Promise<string> {
   const res = await openAiChatFetch(
     { model: env.OPENAI_MODEL, messages: req.messages, ...(req.responseFormat ? { response_format: req.responseFormat } : {}), ...(req.reasoningEffort && supportsReasoningEffort(env.OPENAI_MODEL) ? { reasoning_effort: req.reasoningEffort } : {}) },
-    { apiKey: env.OPENAI_API_KEY },
+    { apiKey: env.OPENAI_API_KEY, timeoutMs },
   );
   if (!res.ok) {
     const detail = await res.text().catch(() => "");
     console.error("openai:", res.status, detail.slice(0, 500));
-    throw new OpenAiError(res.status);
+    throw new UpstreamHttpError(res.status);
   }
   const data = (await res.json()) as { choices?: Array<{ message?: { content?: string } }> };
   return data.choices?.[0]?.message?.content ?? "{}";
@@ -170,12 +166,15 @@ importRoutes.post("/import/extract", async (c) => {
    
   let found: ImportExtractItem[];
   try {
-    const raw = await openaiJson(buildImportExtractPrompt(images, { envelopes: [], categories: [] }, today, locale, currency));
+    const raw = await openaiJson(buildImportExtractPrompt(images, { envelopes: [], categories: [] }, today, locale, currency), AI_VISION_TIMEOUT_MS);
     found = parseImportExtractResponse(raw);
   } catch (e) {
-     
+    
+
     console.error("import/extract cycle 1 failed:", (e as Error).message);
-    return c.json({ error: "ai_upstream_error", ...(e instanceof OpenAiError ? { status: e.status } : {}) }, 502);
+    const failure = transportFailureJson(e);
+    if (failure) return c.json(failure.body, failure.status);
+    return c.json({ error: "ai_upstream_error", ...(e instanceof UpstreamHttpError ? { status: e.status } : {}) }, 502);
   }
   if (found.length === 0) return c.json({ items: [] });
 

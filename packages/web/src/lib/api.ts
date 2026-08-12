@@ -6,7 +6,8 @@ import { getSyncStatus, subscribeSyncStatus, type SyncStatus } from "./sync";
 
  
 export type { AccountView, EnvelopeView, StateResponse } from "@enveo/shared";
-import type { AiLocale, BudgetSuggestProfile, BudgetSuggestResponse, ClientLedger } from "@enveo/shared";
+import { AI_IMPORT_EXTRACT_TIMEOUT_MS, type AiLocale, type BudgetSuggestProfile, type BudgetSuggestResponse, type ClientLedger } from "@enveo/shared";
+import { timeoutSignal } from "./timeoutSignal";
 export type { BudgetSuggestProfile, BudgetSuggestResponse } from "@enveo/shared";
 
  
@@ -69,6 +70,11 @@ const ERROR_KEYS: Record<string, Message> = {
   ai_unavailable: msg("The server has no OpenAI key configured. Set OPENAI_API_KEY and restart the app, or use your own key in Settings → Artificial intelligence."),  
   ai_upstream_error: msg("OpenAI rejected the request — check the key and the model, then try again."),  
   upstream: msg("OpenAI rejected the request — check the key and the model, then try again."),  
+  /* Transport failures get their OWN honest wording (since the AI-transport package): a timeout
+     or an unreachable service is NOT a key/model problem — the same two codes come from the
+     server routes (openaiHttp.ts classification) and from our own transport (openai.ts, http()). */
+  ai_timeout: msg("The AI service took too long to answer — nothing was changed. Try again in a moment."),  
+  ai_unreachable: msg("Could not reach the AI service — check the network connection and try again."),  
   backup_invalid: msg("This is not a valid backup file — nothing was loaded."), // /sync/replace — the payload is not a ledger
   foreign_ref: msg("The data references records that do not exist here (a corrupted or foreign file). Nothing was changed."),  
   budget_mismatch: msg("The signed-in account changed while the data was being sent — nothing was written. Reload the app and try again."),  
@@ -126,12 +132,27 @@ export function apiErrorMessage(e: unknown): string {
 }
 
  
-async function http<T>(method: string, path: string, body?: unknown): Promise<T> {
-  const res = await fetch(`/api${path}`, {
-    method,
-    headers: body !== undefined ? { "content-type": "application/json" } : undefined,
-    body: body !== undefined ? JSON.stringify(body) : undefined,
-  });
+
+
+
+
+async function http<T>(method: string, path: string, body?: unknown, timeoutMs?: number): Promise<T> {
+  const t = timeoutMs === undefined ? undefined : timeoutSignal(timeoutMs);
+  let res: Response;
+  try {
+    res = await fetch(`/api${path}`, {
+      method,
+      headers: body !== undefined ? { "content-type": "application/json" } : undefined,
+      body: body !== undefined ? JSON.stringify(body) : undefined,
+      signal: t?.signal,
+    });
+  } catch (e) {
+    if (!t) throw e;
+    if (t.timedOut()) throw new Error("ai_timeout");
+    throw new Error(typeof navigator !== "undefined" && navigator.onLine === false ? "ai_offline" : "ai_unreachable");
+  } finally {
+    t?.clear();
+  }
   if (!res.ok) {
     const txt = await res.text().catch(() => "");
     throw new Error(`${res.status} ${txt}`);
@@ -151,7 +172,7 @@ export const api = {
 
   /* `locale` = the UI language (any BCP-47 tag): the model writes its names, notes and
      rationales in it. Not to be confused with demoSeed's pl|en, which picks a SEED DATASET. */
-  importExtract: (images: string[], locale: AiLocale) => http<{ items: ImportItem[] }>("POST", "/import/extract", { images, locale }),
+  importExtract: (images: string[], locale: AiLocale) => http<{ items: ImportItem[] }>("POST", "/import/extract", { images, locale }, AI_IMPORT_EXTRACT_TIMEOUT_MS),
   /* `budgetId` = the same PER-REQUEST tenant assertion as the sync push: the batch creates
      FRESH transactions in whatever budget the session cookie resolves to, and the cookie can
      be swapped in another tab while the import sheet is open. The caller passes the replica's

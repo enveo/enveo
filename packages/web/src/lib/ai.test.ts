@@ -198,10 +198,10 @@ describe("runImportExtract (byok) failures reach the user as localized sentences
     expect(text).toBe("You are offline — screenshot import needs a connection. Manual entry works without one.");
   });
 
-  it("the network drops while online (DNS, a dead proxy) → ai_upstream_error", async () => {
+  it("the network drops while online (DNS, a dead proxy) → ai_unreachable, NOT the key/model blame", async () => {
     const { code, text } = await failure(BYOK, rejecting(), true);
-    expect(code).toBe("ai_upstream_error");
-    expect(text).toBe("OpenAI rejected the request — check the key and the model, then try again.");
+    expect(code).toBe("ai_unreachable");
+    expect(text).toBe("Could not reach the AI service — check the network connection and try again.");
   });
 
   it("the model answers prose instead of JSON → ai_upstream_error, not a raw SyntaxError", async () => {
@@ -260,13 +260,26 @@ describe("chatJson (server target → the /api/ai mirror)", () => {
     });
   });
 
-  it("fetch rejects (no response at all) → ai_offline when offline, ai_upstream_error when online — same as byok", async () => {
+  it("fetch rejects (no response at all) → ai_offline when offline, ai_unreachable when online — same as byok", async () => {
     await withFetch(rejecting(), async () => {
       await expect(chatJson(req, target)).rejects.toThrow("ai_offline");
     }, false);
     await withFetch(rejecting(), async () => {
-      await expect(chatJson(req, target)).rejects.toThrow("ai_upstream_error");
+      await expect(chatJson(req, target)).rejects.toThrow("ai_unreachable");
     }, true);
+  });
+
+  it("a round-trip exceeding the cap → ai_timeout — never ai_unreachable, never the key/model message", async () => {
+    /* A stub that answers only when aborted — exactly what a hung model looks like to fetch. */
+    const hanging: typeof fetch = ((_url: unknown, init?: { signal?: AbortSignal }) =>
+      new Promise((_resolve, reject) => {
+        init?.signal?.addEventListener("abort", () => reject(new DOMException("Aborted", "AbortError")));
+      })) as unknown as typeof fetch;
+    await withFetch(hanging, async () => {
+      const e = await chatJson(req, target, 20).then(() => null).catch((err: unknown) => err);
+      expect(String((e as Error).message)).toBe("ai_timeout");
+      expect(apiErrorMessage(e)).toBe("The AI service took too long to answer — nothing was changed. Try again in a moment.");
+    });
   });
 
   it("a raw 401 (not the mirror's own code) → ai_upstream_error, NEVER ai_key_invalid (that mapping is byok-only)", async () => {
