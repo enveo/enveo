@@ -114,7 +114,7 @@ services:
       # OpenAI, never through this server. AI is off by default; with no key set and no
       # device opting in, Enveo makes no outbound AI request at all.
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
-      OPENAI_MODEL: ${OPENAI_MODEL:-gpt-5.5}
+      OPENAI_MODEL: ${OPENAI_MODEL:-gpt-5.6-luna}
     ports:
       # bind:host:container. Loopback by default — see EXPOSURE at the top of this file.
       # ENVEO_PORT changes the host port (ENVEO_PORT=9000 → http://localhost:9000);
