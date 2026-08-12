@@ -4,12 +4,12 @@ import { AmountPadHost, type AmountPadTarget } from "../components/AmountPadShee
 import { Sheet } from "../components/chrome";
 import { ImportSheet } from "../components/ImportSheet";
 import { CardBox, HighlightedText, PickerSearch, SectionEyebrow, useBand } from "../components/kit";
-import { Numpad, ScrollPicker } from "../components/pickers";
+import { Numpad } from "../components/pickers";
 import { hasOpenOp, type PadState, padKey } from "../lib/amount";
-import { type EditedImportItem, type ImportItem, type StateResponse, useLedgerVersion } from "../lib/api";
+import { type StateResponse, useLedgerVersion } from "../lib/api";
 import { categoryCountsFor, rankCategories } from "../lib/categoryIndex";
 import { useCurrency, useMask, useTheme } from "../lib/contexts";
-import { currentMonth, formatDateLong, monthNames, todayISO } from "../lib/dates";
+import { currentMonth, formatDateLong, todayISO } from "../lib/dates";
 import { currencySymbol, evalExpression, formatMoney } from "../lib/format";
 import { haptic } from "../lib/haptics";
 import { type Message, msg, useT } from "../lib/i18n";
@@ -21,18 +21,10 @@ import { store } from "../lib/store";
 import { rankEnvelopes, rankPlaces } from "../lib/suggest";
 import { CORAL, font, P, TEAL, tint } from "../lib/theme";
 
-export type Tab = "expense" | "income" | "transfer";
+import { DateSheet } from "./add/DateSheet";
+import type { AddDraft, Tab } from "./add/types";
 
-/** Draft mode: import item editor — full AddScreen look, but submit does
- *  NOT save a transaction (zero local.*), it only hands an EditedImportItem
- *  back to ImportSheet (corrections go later through /import/apply). */
-export interface AddDraft {
-  item: ImportItem;
-  accountId: string;
-  initial?: EditedImportItem;
-  onSave: (e: EditedImportItem) => void;
-  onCancel: () => void;
-}
+export type { AddDraft, Tab } from "./add/types";
 
 /** Top `take` of `ranked`, but guaranteed to include `pinnedId` (prepended, bumping the tail)
  *  when it exists in `ranked` and would otherwise fall outside the slice — a selection made via
@@ -1597,57 +1589,5 @@ function SplitEditor({
         }}
       </Sheet>
     </div>
-  );
-}
-
-function DateSheet({ show, date, onClose, onChange }: { show: boolean; date: string; onClose: () => void; onChange: (iso: string) => void }) {
-  const { t, lang } = useT();
-  const months = monthNames(lang);
-  const [y, m, d] = date.split("-").map(Number) as [number, number, number];
-  const set = (day: number, monIdx: number, year: number) => {
-    const maxDay = new Date(Date.UTC(year, monIdx + 1, 0)).getUTCDate();
-    const dd = Math.min(day, maxDay);
-    onChange(`${year}-${String(monIdx + 1).padStart(2, "0")}-${String(dd).padStart(2, "0")}`);
-  };
-  const days = Array.from({ length: 31 }, (_, i) => i + 1);
-  const years = [y - 2, y - 1, y, y + 1, y + 2].filter((v, i, a) => a.indexOf(v) === i);
-  const todayIso = new Date().toISOString().slice(0, 10);
-  return (
-    <Sheet show={show} onClose={onClose} lockSwipe>
-      {(C) => (
-        <>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", paddingBottom: 10, borderBottom: `1px solid ${C.line}` }}>
-            <button
-              onClick={() => {
-                const dt = new Date(`${todayIso}T00:00Z`);
-                dt.setUTCDate(dt.getUTCDate() - 1);
-                onChange(dt.toISOString().slice(0, 10));
-                onClose();
-              }}
-              style={{ background: "none", border: "none", color: TEAL, fontSize: 13.5, fontWeight: 600, cursor: "pointer" }}
-            >
-              {t("Yesterday")}
-            </button>
-            <button
-              onClick={() => {
-                onChange(todayIso);
-                onClose();
-              }}
-              style={{ background: "none", border: "none", color: TEAL, fontSize: 13.5, fontWeight: 600, cursor: "pointer" }}
-            >
-              {t("Today")}
-            </button>
-            <button onClick={onClose} style={{ background: "none", border: "none", color: TEAL, fontSize: 13.5, fontWeight: 600, cursor: "pointer" }}>
-              OK
-            </button>
-          </div>
-          <div style={{ display: "flex", justifyContent: "center", marginTop: 4 }}>
-            <ScrollPicker items={days} selected={d} onSelect={(v) => set(v, m - 1, y)} width="28%" />
-            <ScrollPicker items={months} selected={months[m - 1]!} onSelect={(v) => set(d, months.indexOf(v), y)} width="44%" />
-            <ScrollPicker items={years} selected={y} onSelect={(v) => set(d, m - 1, v)} width="28%" />
-          </div>
-        </>
-      )}
-    </Sheet>
   );
 }
