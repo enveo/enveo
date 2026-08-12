@@ -1,7 +1,7 @@
 import { computeStateResponse, type Transaction, type TxnPayload } from "@enveo/shared";
-import { type CSSProperties, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { ImportSheet } from "../components/ImportSheet";
-import { SectionEyebrow, useBand } from "../components/kit";
+import { useBand } from "../components/kit";
 import { Numpad } from "../components/pickers";
 import { hasOpenOp, type PadState, padKey } from "../lib/amount";
 import { type StateResponse, useLedgerVersion } from "../lib/api";
@@ -11,20 +11,20 @@ import { currentMonth, formatDateLong, todayISO } from "../lib/dates";
 import { evalExpression } from "../lib/format";
 import { haptic } from "../lib/haptics";
 import { type Message, msg, useT } from "../lib/i18n";
-import { Glyph, Ico } from "../lib/icons";
 import { preferredAccountId, setLastAccountId } from "../lib/lastAccount";
 import { local } from "../lib/mutate";
 import { store } from "../lib/store";
 import { rankEnvelopes, rankPlaces } from "../lib/suggest";
-import { font, P, TEAL, tint } from "../lib/theme";
+import { P } from "../lib/theme";
 
 import { AccountPickerSheet, DestinationAccountSheet } from "./add/AccountPickerSheet";
 import { AddHeader } from "./add/AddHeader";
 import { AmountSection } from "./add/AmountSection";
 import { DateSheet } from "./add/DateSheet";
 import { EnvelopePickerSheet } from "./add/EnvelopePickerSheet";
-import { SplitEditor } from "./add/SplitEditor";
+import { ExpenseFields } from "./add/ExpenseFields";
 import { TransactionFields } from "./add/TransactionFields";
+import { TransferFields } from "./add/TransferFields";
 import type { AddDraft, Tab } from "./add/types";
 
 export type { AddDraft, Tab } from "./add/types";
@@ -327,63 +327,6 @@ export function AddScreen({
   const envAfter = (env?.available ?? 0) + (plus ? minor : -minor);
   const envPreviewText = envAfter < 0 ? t("over by {amount}", { amount: M(-envAfter) }) : t("{amount} left", { amount: M(envAfter) });
 
-  // Chip surface (board spec: pill, centered flex-wrap) — the ghost variant marks "type your own".
-  const chipStyle = (selected: boolean): CSSProperties => ({
-    background: selected ? "var(--accent-1a)" : C.card,
-    border: `1px solid ${selected ? "var(--accent)" : C.line}`,
-    color: selected ? "var(--accent)" : C.text,
-    borderRadius: 999,
-    padding: "5px 11px",
-    fontSize: 11,
-    fontWeight: selected ? 650 : 600,
-    cursor: "pointer",
-  });
-  const ghostChipStyle: CSSProperties = {
-    background: C.card,
-    border: `1px solid ${C.line}`,
-    color: C.mute,
-    borderRadius: 999,
-    padding: "5px 11px",
-    fontSize: 11,
-    cursor: "pointer",
-  };
-  // KOPERTA/NA KONTO suggestion card (2×2 grid) and its collapsed single-row summary.
-  const gridCardStyle = (selected: boolean): CSSProperties => ({
-    display: "flex",
-    alignItems: "center",
-    gap: 7,
-    background: C.card,
-    textAlign: "left",
-    width: "100%",
-    border: `${selected ? 2 : 1}px solid ${selected ? "var(--accent)" : C.line}`,
-    borderRadius: 11,
-    padding: selected ? "7px 9px" : "8px 10px",
-    cursor: "pointer",
-  });
-  const collapsedRowStyle = (accent: boolean): CSSProperties => ({
-    display: "flex",
-    alignItems: "center",
-    gap: 9,
-    textAlign: "left",
-    width: `calc(100% - ${2 * P}px)`,
-    background: accent ? C.card : "none",
-    border: accent ? `2px solid var(--accent)` : `1.3px dashed ${C.line}`,
-    borderRadius: 12,
-    padding: "9px 12px",
-    margin: `0 ${P}px`,
-    cursor: "pointer",
-  });
-  const linkBtnStyle: CSSProperties = {
-    background: "none",
-    border: "none",
-    padding: 0,
-    color: "var(--accent)",
-    fontSize: 11,
-    fontWeight: 600,
-    cursor: "pointer",
-    fontFamily: font,
-  };
-
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column" }}>
       <AddHeader
@@ -439,390 +382,101 @@ export function AddScreen({
 
       <div className="gs" style={{ flex: 1, overflowY: "auto" }} onClick={() => setNumpad(false)}>
         {tab === "transfer" ? (
-          <>
-            <SectionEyebrow
-              label={t("Destination account")}
-              right={
-                <button onClick={() => setShowTo(true)} style={linkBtnStyle}>
-                  {destOpen ? t("All") : t("Change")} ›
-                </button>
-              }
-            />
-            {destOpen ? (
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 7, padding: `0 ${P}px` }}>
-                {destList.map((a) => (
-                  <button
-                    key={a.id}
-                    onClick={() => {
-                      setToAccountId(a.id);
-                      setDestOpen(false);
-                    }}
-                    style={gridCardStyle(a.id === toAccountId)}
-                  >
-                    <Glyph name={a.icon} size={15} color={a.color} sw={1.8} />
-                    <span style={{ minWidth: 0 }}>
-                      <span
-                        style={{
-                          display: "block",
-                          fontSize: 11,
-                          fontWeight: 650,
-                          color: C.text,
-                          overflow: "hidden",
-                          textOverflow: "ellipsis",
-                          whiteSpace: "nowrap",
-                        }}
-                      >
-                        {a.name}
-                      </span>
-                      <span style={{ display: "block", fontSize: 9, color: C.soft, fontVariantNumeric: "tabular-nums" }}>{M(a.balance)}</span>
-                    </span>
-                  </button>
-                ))}
-              </div>
-            ) : (
-              <button onClick={() => setShowTo(true)} style={collapsedRowStyle(true)}>
-                {toAcc && <Glyph name={toAcc.icon} size={17} color={toAcc.color} sw={1.8} />}
-                <span
-                  style={{
-                    flex: 1,
-                    minWidth: 0,
-                    fontSize: 12.5,
-                    fontWeight: 650,
-                    color: C.text,
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
-                    whiteSpace: "nowrap",
-                  }}
-                >
-                  {toAcc?.name ?? t("Destination account")}
-                </span>
-              </button>
-            )}
-          </>
-        ) : tab === "expense" && splitMode ? (
-          <SplitEditor items={items} setItems={setItems} envelopes={state.envelopes} total={minor} onCancel={() => setSplitMode(false)} />
+          <TransferFields
+            destOpen={destOpen}
+            destList={destList}
+            toAccountId={toAccountId}
+            toAcc={toAcc}
+            onOpenSheet={() => setShowTo(true)}
+            onPickDest={(id) => {
+              setToAccountId(id);
+              setDestOpen(false);
+            }}
+          />
         ) : tab === "expense" ? (
-          <>
-            <SectionEyebrow
-              label={t("Envelope")}
-              right={
-                <button onClick={() => setShowEnv(true)} style={linkBtnStyle}>
-                  {envOpen ? t("All") : t("Change")} ›
-                </button>
+          <ExpenseFields
+            splitMode={splitMode}
+            isDraft={!!draft}
+            items={items}
+            setItems={setItems}
+            envelopes={state.envelopes}
+            splitTotal={minor}
+            onCancelSplit={() => setSplitMode(false)}
+            onEnterSplit={enterSplit}
+            envOpen={envOpen}
+            envGridList={envGridList}
+            envelopeId={envelopeId}
+            env={env}
+            envPreviewText={envPreviewText}
+            onOpenEnvSheet={() => setShowEnv(true)}
+            onPickEnvelope={(id) => {
+              setEnvelopeId(id);
+              setEnvOpen(false);
+            }}
+            onExpandEnvGrid={() => setEnvOpen(true)}
+            catOpen={catOpen}
+            catList={catList}
+            categoryId={categoryId}
+            catInput={catInput}
+            filteredCats={filteredCats}
+            categories={state.categories}
+            onOpenCat={() => setCatOpen(true)}
+            onToggleCategory={(id) => {
+              setCategoryId(categoryId === id ? null : id);
+              setCatOpen(false);
+            }}
+            onCatInputChange={setCatInput}
+            onPickCategory={(id) => {
+              setCategoryId(id);
+              setCatInput("");
+              setCatOpen(false);
+            }}
+            onCreateCategory={() => {
+              const c = local.createCategory(catInput);
+              setCategoryId(c.id);
+              setCatInput("");
+              setCatOpen(false);
+            }}
+            placeList={placeList}
+            places={state.places}
+            placeId={placeId}
+            placeInput={placeInput}
+            showPlace={showPlace}
+            placeAutoFocus={placeAutoFocus}
+            filteredPlaces={filteredPlaces}
+            onTogglePlaceChip={(id) => {
+              if (placeId === id) setPlaceId(null);
+              else {
+                setPlaceId(id);
+                setPlaceInput("");
+                setShowPlace(false);
               }
-            />
-            {envOpen ? (
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 7, padding: `0 ${P}px` }}>
-                {envGridList.map((e) => (
-                  <button
-                    key={e.id}
-                    onClick={() => {
-                      setEnvelopeId(e.id);
-                      setEnvOpen(false);
-                    }}
-                    style={gridCardStyle(e.id === envelopeId)}
-                  >
-                    <Glyph name={e.icon} size={15} color={e.color} sw={1.8} />
-                    <span style={{ minWidth: 0 }}>
-                      <span
-                        style={{
-                          display: "block",
-                          fontSize: 11,
-                          fontWeight: 650,
-                          color: C.text,
-                          overflow: "hidden",
-                          textOverflow: "ellipsis",
-                          whiteSpace: "nowrap",
-                        }}
-                      >
-                        {e.name}
-                      </span>
-                      <span style={{ display: "block", fontSize: 9, color: C.soft, fontVariantNumeric: "tabular-nums" }}>
-                        {e.available < 0 ? "−" : ""}
-                        {M(Math.abs(e.available))}
-                      </span>
-                    </span>
-                  </button>
-                ))}
-              </div>
-            ) : env ? (
-              <button onClick={() => setShowEnv(true)} style={collapsedRowStyle(true)}>
-                <Glyph name={env.icon} size={17} color={env.color} sw={1.8} />
-                <span
-                  style={{
-                    flex: 1,
-                    minWidth: 0,
-                    fontSize: 12.5,
-                    fontWeight: 650,
-                    color: C.text,
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
-                    whiteSpace: "nowrap",
-                  }}
-                >
-                  {env.name}
-                </span>
-                <span style={{ fontSize: 11, color: C.soft, fontVariantNumeric: "tabular-nums", flexShrink: 0 }}>{envPreviewText}</span>
-              </button>
-            ) : (
-              <button onClick={() => setEnvOpen(true)} style={collapsedRowStyle(false)}>
-                <span style={{ flex: 1, fontSize: 12.5, color: C.mute }}>{t("Choose an envelope")}</span>
-              </button>
-            )}
-          </>
+            }}
+            onTogglePlaceInput={() => {
+              const next = !showPlace;
+              setShowPlace(next);
+              setPlaceAutoFocus(next);
+            }}
+            onPlaceInputChange={(value) => {
+              setPlaceInput(value);
+              setPlaceId(null);
+            }}
+            onClearPlace={() => {
+              setPlaceId(null);
+              setPlaceInput("");
+            }}
+            onPickPlace={(id) => {
+              setPlaceId(id);
+              setPlaceInput("");
+            }}
+            onCreatePlace={() => {
+              const p = local.createPlace(placeInput);
+              setPlaceId(p.id);
+              setPlaceInput("");
+            }}
+            onFieldFocus={() => setNumpad(false)}
+          />
         ) : null}
-
-        {tab === "expense" && !splitMode && (
-          <>
-            <SectionEyebrow
-              label={t("Category")}
-              right={
-                <button onClick={() => setCatOpen(true)} style={linkBtnStyle}>
-                  {t("Other")} ›
-                </button>
-              }
-            />
-            {!catOpen && (
-              <div style={{ display: "flex", flexWrap: "wrap", gap: 6, padding: `0 ${P}px 4px` }}>
-                {catList.map((c) => (
-                  <button
-                    key={c.id}
-                    onClick={() => {
-                      setCategoryId(categoryId === c.id ? null : c.id);
-                      setCatOpen(false);
-                    }}
-                    style={chipStyle(categoryId === c.id)}
-                  >
-                    {c.name}
-                  </button>
-                ))}
-              </div>
-            )}
-            {catOpen && (
-              <div style={{ padding: `0 ${P}px 6px` }}>
-                <input
-                  value={catInput}
-                  onChange={(e) => setCatInput(e.target.value)}
-                  onFocus={() => setNumpad(false)}
-                  placeholder={t("Type or pick a category...")}
-                  style={{
-                    width: "100%",
-                    padding: "8px 10px",
-                    borderRadius: 8,
-                    border: `1px solid ${C.line}`,
-                    background: C.bg,
-                    color: C.text,
-                    fontSize: 12,
-                    fontFamily: font,
-                    boxSizing: "border-box",
-                    marginBottom: 6,
-                  }}
-                />
-                <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginBottom: 6 }}>
-                  {filteredCats.slice(0, 8).map((c) => (
-                    <button
-                      key={c.id}
-                      onClick={() => {
-                        setCategoryId(c.id);
-                        setCatInput("");
-                        setCatOpen(false);
-                      }}
-                      style={{
-                        padding: "5px 10px",
-                        borderRadius: 8,
-                        fontSize: 11,
-                        background: C.chip,
-                        color: C.text,
-                        border: `1px solid ${C.line}`,
-                        cursor: "pointer",
-                      }}
-                    >
-                      {c.name}
-                    </button>
-                  ))}
-                </div>
-                {/* category creation = local.createCategory — unavailable in draft (zero local.*) */}
-                {!draft && catInput && !state.categories.some((c) => c.name.toLowerCase() === catInput.toLowerCase()) && (
-                  <button
-                    onClick={() => {
-                      const c = local.createCategory(catInput);
-                      setCategoryId(c.id);
-                      setCatInput("");
-                      setCatOpen(false);
-                    }}
-                    style={{
-                      padding: "7px 10px",
-                      borderRadius: 8,
-                      fontSize: 11,
-                      background: tint(C.pos, 0.1),
-                      color: C.pos,
-                      border: `1px solid ${tint(C.pos, 0.27)}`,
-                      cursor: "pointer",
-                      width: "100%",
-                      textAlign: "left",
-                    }}
-                  >
-                    {t("+ Add “{name}”", { name: catInput })}
-                  </button>
-                )}
-              </div>
-            )}
-          </>
-        )}
-
-        {tab === "expense" && (
-          <>
-            <SectionEyebrow label={t("Place")} />
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 6, padding: `0 ${P}px 4px` }}>
-              {placeList.map((p) => (
-                <button
-                  key={p.id}
-                  onClick={() => {
-                    if (placeId === p.id) setPlaceId(null);
-                    else {
-                      setPlaceId(p.id);
-                      setPlaceInput("");
-                      setShowPlace(false);
-                    }
-                  }}
-                  style={chipStyle(placeId === p.id)}
-                >
-                  {p.name}
-                </button>
-              ))}
-              <button
-                onClick={() => {
-                  const next = !showPlace;
-                  setShowPlace(next);
-                  setPlaceAutoFocus(next);
-                }}
-                style={ghostChipStyle}
-              >
-                {t("Type a place…")}
-              </button>
-            </div>
-            {showPlace && (
-              <div style={{ position: "relative", padding: `0 ${P}px 6px` }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  <Ico d="M3 9l9-7 9 7v11a1 1 0 01-1 1h-4v-7H8v7H4a1 1 0 01-1-1V9z" size={15} color={placeId ? TEAL : C.mute} />
-                  <input
-                    // biome-ignore lint/a11y/noAutofocus: flag-gated — set only right after the user taps "Type a place…", never on a programmatic expand
-                    autoFocus={placeAutoFocus}
-                    placeholder={t("Place")}
-                    value={placeId ? (state.places.find((p) => p.id === placeId)?.name ?? "") : placeInput}
-                    onChange={(e) => {
-                      setPlaceInput(e.target.value);
-                      setPlaceId(null);
-                    }}
-                    onFocus={() => setNumpad(false)}
-                    style={{
-                      flex: 1,
-                      background: "none",
-                      border: "none",
-                      borderBottom: `1px solid ${C.line}`,
-                      color: C.text,
-                      fontSize: 12,
-                      fontFamily: font,
-                      padding: "4px 0",
-                    }}
-                  />
-                  {placeId && (
-                    <button
-                      onClick={() => {
-                        setPlaceId(null);
-                        setPlaceInput("");
-                      }}
-                      style={{ background: "none", border: "none", color: C.mute, fontSize: 11, cursor: "pointer" }}
-                    >
-                      ✕
-                    </button>
-                  )}
-                </div>
-                {/* in draft the place travels by NAME to /import/apply (server creates/matches) —
-                    no local.createPlace button; dropdown only when there are suggestions */}
-                {placeInput && !placeId && (!draft || filteredPlaces.length > 0) && (
-                  <div
-                    style={{
-                      position: "absolute",
-                      top: "100%",
-                      left: 23,
-                      right: 0,
-                      background: C.card,
-                      border: `1px solid ${C.line}`,
-                      borderRadius: 8,
-                      zIndex: 10,
-                      maxHeight: 140,
-                      overflowY: "auto",
-                      marginTop: 2,
-                      boxShadow: "0 4px 14px rgba(0,0,0,0.1)",
-                    }}
-                  >
-                    {filteredPlaces.map((p) => (
-                      <button
-                        key={p.id}
-                        onClick={() => {
-                          setPlaceId(p.id);
-                          setPlaceInput("");
-                        }}
-                        style={{
-                          display: "block",
-                          width: "100%",
-                          padding: "8px 11px",
-                          background: "none",
-                          border: "none",
-                          borderBottom: `1px solid ${C.line}`,
-                          color: C.text,
-                          fontSize: 11,
-                          cursor: "pointer",
-                          textAlign: "left",
-                          fontFamily: font,
-                        }}
-                      >
-                        {p.name}
-                      </button>
-                    ))}
-                    {!draft && (
-                      <button
-                        onClick={() => {
-                          const p = local.createPlace(placeInput);
-                          setPlaceId(p.id);
-                          setPlaceInput("");
-                        }}
-                        style={{
-                          display: "block",
-                          width: "100%",
-                          padding: "8px 11px",
-                          background: "none",
-                          border: "none",
-                          color: TEAL,
-                          fontSize: 11,
-                          cursor: "pointer",
-                          textAlign: "left",
-                          fontFamily: font,
-                        }}
-                      >
-                        {t("+ “{name}”", { name: placeInput })}
-                      </button>
-                    )}
-                  </div>
-                )}
-              </div>
-            )}
-          </>
-        )}
-
-        {/* Footer: split link (expense only) — the old bottom icon row's remaining link. Hidden
-            in draft (import editing is the past; it never splits). */}
-        {!draft && tab === "expense" && !splitMode && (
-          <div style={{ textAlign: "center", padding: "10px 0 6px" }}>
-            <button
-              onClick={enterSplit}
-              style={{ background: "none", border: "none", color: C.soft, fontSize: 11, fontWeight: 600, cursor: "pointer", padding: 0 }}
-            >
-              {t("Split across envelopes")} ›
-            </button>
-          </div>
-        )}
       </div>
 
       {/* Numpad above the CTA (board order: tgrow → numpad → cta2). Contextual OK like the
