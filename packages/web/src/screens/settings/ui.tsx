@@ -38,6 +38,21 @@ export function Helper({ children }: { children: ReactNode }) {
 const WORD_MARK = "\u0000";
 
 /**
+ * Split a translated sentence around a placeholder MARK into [before, after]; the caller
+ * renders its own element (a bold word, an icon reference) between the halves. This is the
+ * whole-phrase + NUL-sentinel rule shared by ConfirmWordHint and InstallBody's iOS steps —
+ * never "simplify" it back into fragments glued in JSX, which force English word order on
+ * every other language. A translation that dropped (or duplicated) the placeholder degrades
+ * to [sentence + " ", ""]: the element still appears, after the text. Hiding it instead
+ * would be a lock-out — e.g. the very word the user must type to confirm a destructive
+ * action. i18n.test.ts enforces placeholder parity; this degrades safely regardless.
+ */
+export function splitAround(text: string, mark: string): [string, string] {
+  const parts = text.split(mark);
+  return parts.length === 2 ? [parts[0]!, parts[1]!] : [`${parts[0] ?? ""} `, ""];
+}
+
+/**
  * "Type DELETE to confirm:" — the prompt above every destructive confirmation input (wipe server
  * data, factory reset, disable E2EE), with the word the user must reproduce in bold.
  *
@@ -54,10 +69,7 @@ const WORD_MARK = "\u0000";
  */
 export function ConfirmWordHint({ word }: { word: string }) {
   const { t } = useT();
-  const parts = t("Type {word} to confirm:", { word: WORD_MARK }).split(WORD_MARK);
-  // A translation that dropped {word} would hide the very word the user must type — a lock-out, not
-  // a cosmetic bug. i18n.test.ts enforces placeholder parity; this degrades safely regardless.
-  const [before, after] = parts.length === 2 ? parts : [`${parts[0] ?? ""} `, ""];
+  const [before, after] = splitAround(t("Type {word} to confirm:", { word: WORD_MARK }), WORD_MARK);
   return (
     <>
       {before}
