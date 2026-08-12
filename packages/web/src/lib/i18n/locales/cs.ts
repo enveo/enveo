@@ -536,7 +536,7 @@ export const cs: Dict = {
   "{n} item | {n} items": { one: "{n} položka", few: "{n} položky", many: "{n} položky", other: "{n} položek" },
   "{n} minute ago | {n} minutes ago": { one: "před {n} minutou", few: "před {n} minutami", many: "před {n} minuty", other: "před {n} minutami" },
   "{n} near limit": "{n} blízko limitu",
-  "{n} over": "{n} překročeno",
+  "{n} over | {n} over": { one: "{n} překročená", few: "{n} překročené", many: "{n} překročené", other: "{n} překročených" },
   "{n} transaction | {n} transactions": { one: "{n} transakce", few: "{n} transakce", many: "{n} transakce", other: "{n} transakcí" },
   "{pct}% of net worth": "{pct} % čistého majetku",
   "{sym}/mo": "{sym}/měs.",

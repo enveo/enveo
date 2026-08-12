@@ -536,7 +536,7 @@ export const nl: Dict = {
   "{n} item | {n} items": { one: "{n} regel", other: "{n} regels" },
   "{n} minute ago | {n} minutes ago": { one: "{n} minuut geleden", other: "{n} minuten geleden" },
   "{n} near limit": "{n} tegen de limiet",
-  "{n} over": "{n} overschreden",
+  "{n} over | {n} over": { one: "{n} overschreden", other: "{n} overschreden" },
   "{n} transaction | {n} transactions": { one: "{n} transactie", other: "{n} transacties" },
   "{pct}% of net worth": "{pct}% van het vermogen",
   "{sym}/mo": "{sym}/mnd",

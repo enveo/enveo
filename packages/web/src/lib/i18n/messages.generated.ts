@@ -624,7 +624,7 @@ export const MESSAGES = [
   "{n} minute ago | {n} minutes ago",
   "{n} months to {month}",
   "{n} near limit",
-  "{n} over",
+  "{n} over | {n} over",
   "{n} rising · {m} falling",
   "{n} transaction | {n} transactions",
   "{pct}% of net worth",

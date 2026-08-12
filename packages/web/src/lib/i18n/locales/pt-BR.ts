@@ -536,7 +536,7 @@ export const ptBR: Dict = {
   "{n} item | {n} items": { one: "{n} item", many: "{n} itens", other: "{n} itens" },
   "{n} minute ago | {n} minutes ago": { one: "há {n} minuto", many: "há {n} minutos", other: "há {n} minutos" },
   "{n} near limit": "{n} perto do limite",
-  "{n} over": "{n} estourados",
+  "{n} over | {n} over": { one: "{n} estourado", many: "{n} estourados", other: "{n} estourados" },
   "{n} transaction | {n} transactions": { one: "{n} transação", many: "{n} transações", other: "{n} transações" },
   "{pct}% of net worth": "{pct}% do patrimônio líquido",
   "{sym}/mo": "{sym}/mês",

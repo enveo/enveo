@@ -536,7 +536,7 @@ export const es: Dict = {
   "{n} item | {n} items": { one: "{n} línea", many: "{n} líneas", other: "{n} líneas" },
   "{n} minute ago | {n} minutes ago": { one: "hace {n} minuto", many: "hace {n} minutos", other: "hace {n} minutos" },
   "{n} near limit": "{n} cerca del límite",
-  "{n} over": "{n} sobregastados",
+  "{n} over | {n} over": { one: "{n} sobregastado", many: "{n} sobregastados", other: "{n} sobregastados" },
   "{n} transaction | {n} transactions": { one: "{n} transacción", many: "{n} transacciones", other: "{n} transacciones" },
   "{pct}% of net worth": "{pct}% del patrimonio neto",
   "{sym}/mo": "{sym}/mes",
