@@ -38,6 +38,10 @@ export const env = {
   ALLOWED_ORIGINS: process.env.ALLOWED_ORIGINS ?? "",
   DEPLOYMENT: (process.env.DEPLOYMENT === "cloud" ? "cloud" : "selfhost") as "selfhost" | "cloud",
   ALLOW_SIGNUPS: process.env.ALLOW_SIGNUPS ?? "",
+  /** DEDICATED secret for the privacy-preserving `safety_identifier` on operator OpenAI calls
+   *  (domain-separated HMAC over the user id — aiSpend/safetyIdentifier.ts). Optional: absent ⇒
+   *  the field is omitted. MUST NOT reuse BETTER_AUTH_SECRET (assertAiSpendEnv fails the boot). */
+  AI_SAFETY_IDENTIFIER_SECRET: process.env.AI_SAFETY_IDENTIFIER_SECRET ?? "",
   BETTER_AUTH_SECRET: process.env.BETTER_AUTH_SECRET ?? "",
   BETTER_AUTH_URL: process.env.BETTER_AUTH_URL ?? "http://localhost:8080",
   GOOGLE_CLIENT_ID: process.env.GOOGLE_CLIENT_ID ?? "",
