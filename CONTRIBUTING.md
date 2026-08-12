@@ -33,11 +33,13 @@ registered user, so your account sees it after a reload.
 
 - **English everywhere**: code, comments, tests, commit messages.
 - **Conventional Commits** with scope: `feat(api): …`, `fix(web): …`, `chore: …`.
-- **Verification must pass**: `bun run verify` (typecheck + tests + production
+- **Verification must pass**: `bun run verify` (typecheck + lint + tests + production
   build + the self-host source policy). It needs no network and no database, and it forces `OPENAI_API_KEY` and
   `TEST_DATABASE_URL` empty so an auto-loaded `.env` cannot change the result.
   CI runs `bun run verify:ci`, which adds the DB-backed suites and the dependency
   audit — see [Running the full gate](#running-the-full-gate).
+- **Formatting and linting are Biome**, pinned in root `package.json` and configured in
+  `biome.json` — see [Formatting, linting and the pre-commit hook](#formatting-linting-and-the-pre-commit-hook).
 - Amounts are integer minor units — never floats. Balances are derived from the
   ledger — never add a stored balance column.
 - New mutation ops need full parity: zod schema (`shared/ops.ts`) + `applyOp`
@@ -51,14 +53,17 @@ registered user, so your account sees it after a reload.
 
 | Command | What it does |
 |---|---|
-| `bun run verify` | What you run before pushing: `typecheck` + `test` + `build` + `policy:sources`. Offline, no database. |
+| `bun run verify` | What you run before pushing: `typecheck` + `lint` + `test` + `build` + `policy:sources`. Offline, no database. |
+| `bun run lint` | Non-mutating Biome check (format + lint + import organization) over the whole repository. |
+| `bun run format` | The **only** command that rewrites files (`biome format --write`). Run it yourself and review the diff — nothing else ever formats for you. |
+| `bun run format:check` | Non-mutating formatter check. |
 | `bun run test` | Shared, API, web-lib and tooling tests. Forces `OPENAI_API_KEY=""` and `TEST_DATABASE_URL=""`, so DB-backed groups skip. |
 | `bun run test:db` | The same tests with the DB-backed groups **required** against a throwaway PostgreSQL. |
 | `bun run typecheck` | Shared, API, web app, web tests and repository tooling. |
 | `bun run build` | The production web/PWA build. |
 | `bun run security:audit` | `bun audit` evaluated against `security/audit-policy.json`. |
 | `bun run policy:sources` | Self-host source policy: every Enveo image reference in the canonical docs is `ghcr.io/enveo/enveo:latest`, and `scripts/deploy.sh` downloads nothing. Offline — it never asks GHCR anything. |
-| `bun run verify:ci` | What CI runs: `typecheck` + `test:db` + `build` + `policy:sources` + `security:audit`. |
+| `bun run verify:ci` | What CI runs: `typecheck` + `lint:ci` + `test:db` + `build` + `policy:sources` + `security:audit`. |
 
 CI and the release pipeline both call the same reusable workflow to run `verify:ci`, so
 neither keeps a second list of commands — a phase is added by editing the root
@@ -92,6 +97,39 @@ is not covered by an exact, unexpired entry in `security/audit-policy.json`. It 
 closed: an unreachable registry or unparseable output is a failure, never a pass. If a
 new advisory blocks your unrelated PR, that is intended — fix the dependency or open the
 policy discussion; do not weaken the gate.
+
+## Formatting, linting and the pre-commit hook
+
+Biome (pinned exactly in the root `package.json`, configured in `biome.json`) owns
+formatting, linting and import organization for JS/TS/JSX/TSX/JSON. The style is the
+repository's established one: two-space indent, double quotes, semicolons, trailing
+commas, 160-column width.
+
+- `bun run format` — the **only** command that rewrites files. Run it, review the diff,
+  stage the result yourself.
+- `bun run lint` — non-mutating check of everything; `bun run lint:ci` is the CI form.
+- `bun run hooks:install` — installs the git hooks; it also runs automatically as the
+  root `prepare` script on every `bun install` in a real checkout (and skips cleanly
+  where there is no `.git`, e.g. inside Docker builds).
+
+The **pre-commit hook** (lefthook) runs two sequential, blocking, *non-mutating*
+phases: a Biome check over the supported **staged** files only, then the complete
+`bun run typecheck`. It never rewrites or re-stages anything — if it rejects your
+commit, run `bun run format` (or fix the type error), review, re-stage, retry. There is
+no pre-push hook; tests, build and the DB-backed gate stay in the explicit `verify`
+commands and CI. Bypassing hooks locally does not bypass the project gate: CI runs
+`lint:ci` inside `verify:ci` either way.
+
+Some recommended Biome rules are **deliberately disabled** in `biome.json` because
+their fixes change behavior and the adoption pass was required to be mechanical:
+`useExhaustiveDependencies` (effect dependency lists in the local-first sync/UI code
+are intentional; "fixing" them changes effect timing), `noArrayIndexKey` (changing
+keys remounts components), `useButtonType` plus six a11y rules (adding `type=`, roles,
+keyboard handlers or SVG titles is a DOM-semantics change deferred to a dedicated a11y
+audit), `noNonNullAssertion` (an established idiom under strict TypeScript), and
+`useTemplate` (long messages are deliberately built with `+`; Biome classifies its own
+fix unsafe). `noExplicitAny` is off for `*.test*` files only. Don't re-enable a rule —
+or "fix" its findings — inside an unrelated PR; each of these is its own discussion.
 
 ## Add a language
 
