@@ -12,11 +12,12 @@ import {
 import { and, eq, inArray } from "drizzle-orm";
 import { Hono } from "hono";
 import { z } from "zod";
-import { requireTier } from "../context";
+import { aiBudgetExhaustedBody, meteredOperatorChat, operatorChatPayload, SpendDenied } from "../aiSpend/transport";
+import { requireTier, sessionUserId } from "../context";
 import { db } from "../db/client";
 import * as s from "../db/schema";
 import { env } from "../env";
-import { openAiChatFetch, transportFailureJson, UpstreamHttpError } from "../openaiHttp";
+import { transportFailureJson, UpstreamHttpError } from "../openaiHttp";
 import { assertBudgetFks } from "../sync/apply";
 import { buildDupIndex, classifyDup } from "./import-dedupe";
 import { confidentSourceRef, decideAssignment, type HistGroup, type HistPattern, rankPatterns } from "./import-match";
@@ -158,23 +159,17 @@ export async function matchHistory(budgetId: string, rawPlaces: string[]): Promi
 
 
 
-async function openaiJson(req: ChatRequest, timeoutMs?: number): Promise<string> {
-  const res = await openAiChatFetch(
-    {
-      model: env.OPENAI_MODEL,
-      messages: req.messages,
-      ...(req.responseFormat ? { response_format: req.responseFormat } : {}),
-      ...(req.reasoningEffort && supportsReasoningEffort(env.OPENAI_MODEL) ? { reasoning_effort: req.reasoningEffort } : {}),
-    },
-    { apiKey: env.OPENAI_API_KEY, timeoutMs },
-  );
-  if (!res.ok) {
-    const detail = await res.text().catch(() => "");
-    console.error("openai:", res.status, detail.slice(0, 500));
-    throw new UpstreamHttpError(res.status);
+
+
+async function openaiJson(req: ChatRequest, userId: string | undefined, timeoutMs?: number): Promise<string> {
+  const out = await meteredOperatorChat({ userId, payload: operatorChatPayload(req), timeoutMs });
+  if (out.kind === "denied") throw new SpendDenied(out.retryAfterSeconds);
+  if (out.kind === "upstream_error") {
+    console.error("openai:", out.status, out.detail.slice(0, 500));
+    throw new UpstreamHttpError(out.status);
   }
-  const data = (await res.json()) as { choices?: Array<{ message?: { content?: string } }> };
-  return data.choices?.[0]?.message?.content ?? "{}";
+  if (out.kind === "invalid_body") throw new Error("openai: unreadable 2xx body");
+  return out.content || "{}";
 }
 
 /* The API answers with stable machine CODES (never prose): the client owns the wording
@@ -192,11 +187,15 @@ importRoutes.post("/import/extract", async (c) => {
   const currency = budgetRow?.currency ?? "EUR";
 
    
+  const userId = sessionUserId(c);
   let found: ImportExtractItem[];
   try {
-    const raw = await openaiJson(buildImportExtractPrompt(images, { envelopes: [], categories: [] }, today, locale, currency), AI_VISION_TIMEOUT_MS);
+    const raw = await openaiJson(buildImportExtractPrompt(images, { envelopes: [], categories: [] }, today, locale, currency), userId, AI_VISION_TIMEOUT_MS);
     found = parseImportExtractResponse(raw);
   } catch (e) {
+    
+
+    if (e instanceof SpendDenied) return c.json(aiBudgetExhaustedBody(e.retryAfterSeconds), 429, { "Retry-After": String(e.retryAfterSeconds) });
     
 
     console.error("import/extract cycle 1 failed:", (e as Error).message);
@@ -253,21 +252,26 @@ importRoutes.post("/import/extract", async (c) => {
       })),
     };
     try {
-      const raw = await openaiJson({
-        messages: [
-          { role: "system", content: sysEnrich },
-          { role: "user", content: JSON.stringify(enrichPayload) },
-        ],
-        responseFormat: { type: "json_schema", json_schema: ENRICH_JSON_SCHEMA },
-        
+      const raw = await openaiJson(
+        {
+          messages: [
+            { role: "system", content: sysEnrich },
+            { role: "user", content: JSON.stringify(enrichPayload) },
+          ],
+          responseFormat: { type: "json_schema", json_schema: ENRICH_JSON_SCHEMA },
+          
 
 
-        reasoningEffort: "low",
-      });
+          reasoningEffort: "low",
+        },
+        userId,
+      );
       // size only — the answer carries the user's transactions; it NEVER goes to the server log
       console.log(`import/extract cycle 2: ${raw.length} B answer`);
       enriched = new Map(enrichedOutput.parse(JSON.parse(raw)).transactions.map((t) => [t.index, t]));
     } catch (e) {
+      
+
       console.warn("import/extract cycle 2 (enrichment) failed — returning raw data:", (e as Error).message);
     }
   }

@@ -73,6 +73,15 @@ describe("generateSuggestion — rules path", () => {
     expect(r.source).toBe("rules");
     expect(r.warnings).toContain("warn.aiUnavailable");
   });
+
+  it("an exhausted spend allowance (SpendDenied) falls back to LOCAL RULES — never an error (backlog §1)", async () => {
+    const r = await generateSuggestion(req(), async () => {
+      throw new SpendDenied(3600);
+    });
+    expect(r.source).toBe("rules");
+    expect(r.warnings).toContain("warn.aiUnavailable");
+    expect(r.items.reduce((s, i) => s + i.proposedDelta, 0)).toBe(1000_00); // full rules proposal, not empty
+  });
 });
 
 describe("generateSuggestion — agent path (profile=custom, single prompt)", () => {
@@ -114,7 +123,12 @@ describe("generateSuggestion — agent path (profile=custom, single prompt)", ()
   });
 });
 
-import { openAiAskModel } from "./budgetSuggest";
+import { SpendDenied } from "../aiSpend/transport";
+import { openAiAskModelFor } from "./budgetSuggest";
+
+
+
+const openAiAskModel = openAiAskModelFor(undefined);
 
 describe("openAiAskModel — custom = single prompt with two months (globalThis.fetch stub)", () => {
   const jsonResponse = (content: string) =>
