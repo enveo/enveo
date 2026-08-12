@@ -5,15 +5,7 @@
  */
 import fc from "fast-check";
 import type { OpKind, OpPayload, SyncOp } from "./ops";
-import type {
-  Account,
-  Allocation,
-  ClientLedger,
-  Envelope,
-  EnvelopeGroup,
-  Ledger,
-  Transaction,
-} from "./types";
+import type { Account, Allocation, ClientLedger, Envelope, EnvelopeGroup, Ledger, Transaction } from "./types";
 
 let idc = 0;
 export const uid = (p: string) => `${p}_${idc++}`;
@@ -138,9 +130,7 @@ export function ledgerArb(): fc.Arbitrary<Ledger> {
             initialBalance: initials[i]!,
           }));
           const envs: Envelope[] = Array.from({ length: nEnv }, (_, i) => env(g.id, { id: `E${i}` }));
-          const allocations: Allocation[] = allocSpecs.map((s) =>
-            alloc(envs[s.envIdx]!.id, s.month, s.amount),
-          );
+          const allocations: Allocation[] = allocSpecs.map((s) => alloc(envs[s.envIdx]!.id, s.month, s.amount));
           const transactions: Transaction[] = txSpecs.map((s) => {
             const day = "10";
             const date = `${s.month}-${day}`;
@@ -200,8 +190,7 @@ export function deepFreeze<T>(value: T): T {
  * `interpret` materializes them against the CURRENT ledger (indexes → real ids),
  * skipping domain-invalid ops (e.g. deleting an envelope that has an expense). */
 
-export const mkOp = <K extends OpKind>(kind: K, payload: OpPayload<K>): SyncOp =>
-  ({ opId: uid("op"), kind, payload }) as SyncOp;
+export const mkOp = <K extends OpKind>(kind: K, payload: OpPayload<K>): SyncOp => ({ opId: uid("op"), kind, payload }) as SyncOp;
 
 export type Spec =
   | {
@@ -260,8 +249,7 @@ export const specArb: fc.Arbitrary<Spec> = fc.oneof(
   fc.record({ k: fc.constant("placeCreate" as const) }),
 );
 
-const pick = <T>(arr: readonly T[], i: number): T | undefined =>
-  arr.length > 0 ? arr[i % arr.length] : undefined;
+const pick = <T>(arr: readonly T[], i: number): T | undefined => (arr.length > 0 ? arr[i % arr.length] : undefined);
 
 /**
  * An envelope is safe to delete when no expense references it (directly or
@@ -270,11 +258,7 @@ const pick = <T>(arr: readonly T[], i: number): T | undefined =>
  * References from income are OK (SET NULL moves the amount to toBeBudgeted).
  */
 export const envDeletable = (l: ClientLedger, envId: string): boolean =>
-  !l.transactions.some(
-    (t) =>
-      (t.type === "expense" && t.envelopeId === envId) ||
-      t.items.some((i) => i.envelopeId === envId),
-  );
+  !l.transactions.some((t) => (t.type === "expense" && t.envelopeId === envId) || t.items.some((i) => i.envelopeId === envId));
 
 /** Spec → a concrete, DOMAIN-VALID op against the current ledger (or null → skip). */
 export function interpret(l: ClientLedger, s: Spec, nextId: () => string): SyncOp | null {
@@ -367,16 +351,17 @@ export function interpret(l: ClientLedger, s: Spec, nextId: () => string): SyncO
       return e ? mkOp("envelope.update", { id: e.id, name: "Zmieniona", archived: true }) : null;
     }
     case "envDelete": {
-      const e = pick(l.envelopes.filter((x) => envDeletable(l, x.id)), s.ei);
+      const e = pick(
+        l.envelopes.filter((x) => envDeletable(l, x.id)),
+        s.ei,
+      );
       return e ? mkOp("envelope.delete", { id: e.id }) : null;
     }
     case "grpCreate":
       return mkOp("group.create", { id: nextId(), name: "Grupa" });
     case "grpDelete": {
       const g = pick(
-        l.groups.filter((x) =>
-          l.envelopes.filter((e) => e.groupId === x.id).every((e) => envDeletable(l, e.id)),
-        ),
+        l.groups.filter((x) => l.envelopes.filter((e) => e.groupId === x.id).every((e) => envDeletable(l, e.id))),
         s.gi,
       );
       return g ? mkOp("group.delete", { id: g.id }) : null;

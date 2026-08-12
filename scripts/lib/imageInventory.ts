@@ -197,8 +197,7 @@ export function checkImage(facts: ImageFacts, expectations: Expectations): strin
   // is what makes mixing the bases legitimate, so it is asserted, not assumed.
   for (const binary of facts.nativeBinaries) {
     violations.push(
-      `native ELF binary in the runtime image: ${binary} — the runtime closure must stay pure JavaScript ` +
-        `(build stage is glibc, runtime is musl)`,
+      `native ELF binary in the runtime image: ${binary} — the runtime closure must stay pure JavaScript ` + `(build stage is glibc, runtime is musl)`,
     );
   }
 
@@ -210,8 +209,7 @@ export function checkImage(facts: ImageFacts, expectations: Expectations): strin
   // ── the pinned digest really is the pinned version ──────────────────────────────────────
   if (facts.bunVersion !== expectations.bunVersion) {
     violations.push(
-      `image runs Bun ${facts.bunVersion}, but .bun-version pins ${expectations.bunVersion} — ` +
-        `the base digest does not match the version it claims`,
+      `image runs Bun ${facts.bunVersion}, but .bun-version pins ${expectations.bunVersion} — ` + `the base digest does not match the version it claims`,
     );
   }
 
@@ -233,14 +231,10 @@ export function checkImage(facts: ImageFacts, expectations: Expectations): strin
   if (source === "") violations.push("missing OCI label org.opencontainers.image.source");
   if (expectations.sourceCommit !== null) {
     if (revision !== expectations.sourceCommit) {
-      violations.push(
-        `OCI revision label is ${JSON.stringify(revision)}, expected ${JSON.stringify(expectations.sourceCommit)}`,
-      );
+      violations.push(`OCI revision label is ${JSON.stringify(revision)}, expected ${JSON.stringify(expectations.sourceCommit)}`);
     }
     if (facts.buildStampSha !== expectations.sourceCommit) {
-      violations.push(
-        `web build stamp sha is ${JSON.stringify(facts.buildStampSha)}, expected ${JSON.stringify(expectations.sourceCommit)}`,
-      );
+      violations.push(`web build stamp sha is ${JSON.stringify(facts.buildStampSha)}, expected ${JSON.stringify(expectations.sourceCommit)}`);
     }
   }
 

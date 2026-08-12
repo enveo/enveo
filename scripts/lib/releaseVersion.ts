@@ -32,9 +32,7 @@ export type ReleaseTag = Readonly<{
   stable: boolean;
 }>;
 
-export type TagVerdict =
-  | Readonly<{ ok: true; release: ReleaseTag }>
-  | Readonly<{ ok: false; reason: string }>;
+export type TagVerdict = Readonly<{ ok: true; release: ReleaseTag }> | Readonly<{ ok: false; reason: string }>;
 
 /** `MAJOR.MINOR.PATCH`, digits only — leading zeros are checked separately for a clear message. */
 const CORE = /^(\d+)\.(\d+)\.(\d+)$/;
@@ -44,8 +42,7 @@ const IDENTIFIER = /^[0-9A-Za-z-]+$/;
 
 const ALL_DIGITS = /^\d+$/;
 
-const hasLeadingZero = (component: string): boolean =>
-  component.length > 1 && component.startsWith("0");
+const hasLeadingZero = (component: string): boolean => component.length > 1 && component.startsWith("0");
 
 /**
  * Parse a git tag against the release policy.
@@ -96,7 +93,11 @@ export function parseReleaseTag(raw: string): TagVerdict {
     };
   }
   const [, major = "", minor = "", patch = ""] = match;
-  for (const [name, component] of [["major", major], ["minor", minor], ["patch", patch]] as const) {
+  for (const [name, component] of [
+    ["major", major],
+    ["minor", minor],
+    ["patch", patch],
+  ] as const) {
     if (hasLeadingZero(component)) {
       return { ok: false, reason: `${name} component "${component}" has a leading zero` };
     }
@@ -254,10 +255,7 @@ export type AliasDecision = Readonly<{
  * An alias whose version cannot be determined is also skipped rather than taken over: refusing to
  * move is recoverable by hand, whereas an unnoticed downgrade is not.
  */
-export function planAliasMoves(
-  release: ReleaseTag,
-  states: readonly AliasState[],
-): AliasDecision[] {
+export function planAliasMoves(release: ReleaseTag, states: readonly AliasState[]): AliasDecision[] {
   return states.map(({ alias, present, version }): AliasDecision => {
     if (!present) {
       return { alias, action: "move", reason: `${alias} does not exist yet` };

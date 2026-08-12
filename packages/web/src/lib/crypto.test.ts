@@ -1,5 +1,16 @@
 import { describe, expect, it } from "bun:test";
-import { deriveKek, generateDek, wrapDek, unwrapDek, encryptPayload, decryptPayload, encodePairing, decodePairing, generateSalt, DEFAULT_KDF_PARAMS } from "./crypto";
+import {
+  deriveKek,
+  generateDek,
+  wrapDek,
+  unwrapDek,
+  encryptPayload,
+  decryptPayload,
+  encodePairing,
+  decodePairing,
+  generateSalt,
+  DEFAULT_KDF_PARAMS,
+} from "./crypto";
 
 describe("e2ee crypto", () => {
   it("the KDF is deterministic for (passphrase, salt) and differs for others", async () => {

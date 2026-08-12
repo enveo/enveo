@@ -28,9 +28,7 @@ describe("an old replica without budgets (pre-1.1.8)", () => {
 
   it("applyPulled upserts a budgets row without falling over", () => {
     store.replace(oldLedger(), 0, "b1");
-    const ch: PullChange[] = [
-      { seq: 1, table: "budgets", op: "upsert", row: { id: "b1", name: "Budżet", currency: "EUR" } },
-    ];
+    const ch: PullChange[] = [{ seq: 1, table: "budgets", op: "upsert", row: { id: "b1", name: "Budżet", currency: "EUR" } }];
     expect(() => store.applyPulled(ch, 1)).not.toThrow();
     expect(store.getLedger()!.budgets[0]!.currency).toBe("EUR");
   });

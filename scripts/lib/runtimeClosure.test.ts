@@ -7,15 +7,7 @@
  * third — otherwise a "production" image ships a build toolchain.
  */
 import { describe, expect, it } from "bun:test";
-import {
-  closureProblems,
-  computeClosure,
-  deadStoreEntries,
-  requiredSpecifiers,
-  type Link,
-  type Manifest,
-  type StoreReader,
-} from "./runtimeClosure";
+import { closureProblems, computeClosure, deadStoreEntries, requiredSpecifiers, type Link, type Manifest, type StoreReader } from "./runtimeClosure";
 
 // ── A synthetic store, shaped like `node_modules/.bun` ──────────────────────────────────────
 
@@ -59,9 +51,7 @@ const LINKS: Record<string, Link[]> = {
     { name: "drizzle-orm", storeId: "drizzle-orm@0.45.2", workspaceDir: null },
     { name: "react", storeId: "react@18.3.1", workspaceDir: null },
   ],
-  "/store/drizzle-kit@0.31.10/node_modules": [
-    { name: "esbuild", storeId: "esbuild@0.25.12", workspaceDir: null },
-  ],
+  "/store/drizzle-kit@0.31.10/node_modules": [{ name: "esbuild", storeId: "esbuild@0.25.12", workspaceDir: null }],
 };
 
 const reader: StoreReader = {
@@ -101,13 +91,7 @@ describe("computeClosure", () => {
   const closure = computeClosure(reader, ROOTS);
 
   it("keeps the API's own dependency graph", () => {
-    expect([...closure.keep].sort()).toEqual([
-      "better-auth@1.6.26",
-      "drizzle-orm@0.45.2",
-      "jose@6.2.8",
-      "kysely@0.29.5",
-      "zod@3.25.76",
-    ]);
+    expect([...closure.keep].sort()).toEqual(["better-auth@1.6.26", "drizzle-orm@0.45.2", "jose@6.2.8", "kysely@0.29.5", "zod@3.25.76"]);
   });
 
   it("drops the optional peers that only exist because of dev/web workspaces", () => {
@@ -145,8 +129,7 @@ describe("computeClosure", () => {
               : dir === "/app/packages/api/node_modules"
                 ? [{ name: "a", storeId: "a@1", workspaceDir: null }]
                 : [],
-        manifestOfStoreEntry: (id): Manifest =>
-          id === "a@1" ? { dependencies: { b: "*" } } : { dependencies: { a: "*" } },
+        manifestOfStoreEntry: (id): Manifest => (id === "a@1" ? { dependencies: { b: "*" } } : { dependencies: { a: "*" } }),
         manifestOfWorkspace: () => ({ dependencies: { a: "*" } }),
       },
       ["/app/packages/api"],

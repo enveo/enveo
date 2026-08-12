@@ -53,7 +53,10 @@ export interface BudgetAiContext {
 }
 export type AskModel = (ctx: BudgetAiContext) => Promise<ProposedEnvelopeDelta[]>;
 
-export async function generateSuggestion(input: BudgetSuggestInput & { ledger: NonNullable<BudgetSuggestInput["ledger"]> }, askModel?: AskModel): Promise<BudgetSuggestResponse> {
+export async function generateSuggestion(
+  input: BudgetSuggestInput & { ledger: NonNullable<BudgetSuggestInput["ledger"]> },
+  askModel?: AskModel,
+): Promise<BudgetSuggestResponse> {
   const generatedAt = new Date().toISOString();
   const ledger = input.ledger as unknown as ClientLedger;
   const basis = buildBudgetSuggestionBasis({ ledger, month: input.month, profile: input.profile, customPrompt: input.customPrompt });
@@ -66,13 +69,14 @@ export async function generateSuggestion(input: BudgetSuggestInput & { ledger: N
     undistributedRemainder: norm.undistributedRemainder,
     generatedAt,
     items: norm.items,
-    warnings: norm.undistributedRemainder > 0
-      ? [...norm.warnings, "warn.capped"]
-      : norm.warnings,
+    warnings: norm.undistributedRemainder > 0 ? [...norm.warnings, "warn.capped"] : norm.warnings,
   });
 
   if (basis.amountToDistribute <= 0) {
-    return wrap({ amountToDistribute: 0, distributed: 0, undistributedRemainder: 0, repaired: false, items: [], warnings: ["warn.nothingToDistribute"] }, "rules");
+    return wrap(
+      { amountToDistribute: 0, distributed: 0, undistributedRemainder: 0, repaired: false, items: [], warnings: ["warn.nothingToDistribute"] },
+      "rules",
+    );
   }
 
   /* Custom profile = AGENT (single prompt: current + previous month —
@@ -89,7 +93,15 @@ export async function generateSuggestion(input: BudgetSuggestInput & { ledger: N
     });
     if (!askModel) return wrap(empty(["agent_requires_ai"]), "rules");
     try {
-      const proposed = await askModel({ month: input.month, profile: input.profile, customPrompt: input.customPrompt, locale: input.locale ?? "en", amountToDistribute: basis.amountToDistribute, basis, ledger });
+      const proposed = await askModel({
+        month: input.month,
+        profile: input.profile,
+        customPrompt: input.customPrompt,
+        locale: input.locale ?? "en",
+        amountToDistribute: basis.amountToDistribute,
+        basis,
+        ledger,
+      });
       const norm = normalizeAgentSuggestion(proposed, basis, basis.amountToDistribute);
       return wrap(norm, norm.repaired ? "ai_repaired" : "ai");
     } catch {
@@ -100,7 +112,15 @@ export async function generateSuggestion(input: BudgetSuggestInput & { ledger: N
   if (!askModel) return wrap(buildRulesBudgetSuggestion(basis), "rules");
 
   try {
-    const proposed = await askModel({ month: input.month, profile: input.profile, customPrompt: input.customPrompt, locale: input.locale ?? "en", amountToDistribute: basis.amountToDistribute, basis, ledger });
+    const proposed = await askModel({
+      month: input.month,
+      profile: input.profile,
+      customPrompt: input.customPrompt,
+      locale: input.locale ?? "en",
+      amountToDistribute: basis.amountToDistribute,
+      basis,
+      ledger,
+    });
     const norm = normalizeBudgetSuggestion(basis, proposed);
     return wrap(norm, norm.repaired ? "ai_repaired" : "ai");
   } catch {
@@ -130,7 +150,13 @@ async function openaiChat(req: ChatRequest): Promise<string> {
  *  shot with two months), predefined ones = rules-engine prompt. */
 export const openAiAskModel: AskModel = async (ctx) => {
   if (ctx.profile === "custom") {
-    const agentCtx = buildAgentSuggestContext({ ledger: ctx.ledger, month: ctx.month, basis: ctx.basis, directive: ctx.customPrompt ?? "", locale: ctx.locale });
+    const agentCtx = buildAgentSuggestContext({
+      ledger: ctx.ledger,
+      month: ctx.month,
+      basis: ctx.basis,
+      directive: ctx.customPrompt ?? "",
+      locale: ctx.locale,
+    });
     return parseAgentSuggestResponse(await openaiChat(buildAgentSuggestPrompt(agentCtx)));
   }
   const raw = await openaiChat(
@@ -158,7 +184,10 @@ export const openAiAskModel: AskModel = async (ctx) => {
    multi-tenant deployment, where the operator key would be exposed to untrusted
    signups. */
 const aiChatSchema = z.object({
-  messages: z.array(z.object({ role: z.enum(["system", "user"]), content: z.string().max(200_000) })).min(1).max(4),
+  messages: z
+    .array(z.object({ role: z.enum(["system", "user"]), content: z.string().max(200_000) }))
+    .min(1)
+    .max(4),
   responseFormat: z.record(z.string(), z.unknown()).optional(),
   reasoningEffort: z.enum(["low", "medium", "high"]).optional(),
 });
@@ -167,7 +196,10 @@ const aiChatSchema = z.object({
    (always env.OPENAI_MODEL; we don't let clients pick a model at the operator's expense). */
 const openAiWireSchema = z.object({
   model: z.string().optional(),
-  messages: z.array(z.object({ role: z.enum(["system", "user"]), content: z.string().max(200_000) })).min(1).max(4),
+  messages: z
+    .array(z.object({ role: z.enum(["system", "user"]), content: z.string().max(200_000) }))
+    .min(1)
+    .max(4),
   response_format: z.record(z.string(), z.unknown()).optional(),
   reasoning_effort: z.enum(["low", "medium", "high"]).optional(),
 });

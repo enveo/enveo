@@ -5,11 +5,16 @@
  */
 import { argon2id } from "hash-wasm";
 
-export interface KdfParams { algo: "argon2id"; m: number; t: number; p: number; saltB64: string }
+export interface KdfParams {
+  algo: "argon2id";
+  m: number;
+  t: number;
+  p: number;
+  saltB64: string;
+}
 export const DEFAULT_KDF_PARAMS: Omit<KdfParams, "saltB64"> = { algo: "argon2id", m: 65536, t: 3, p: 1 };
 
-const b64 = (u: Uint8Array): string =>
-  typeof btoa === "function" ? btoa(String.fromCharCode(...u)) : Buffer.from(u).toString("base64");
+const b64 = (u: Uint8Array): string => (typeof btoa === "function" ? btoa(String.fromCharCode(...u)) : Buffer.from(u).toString("base64"));
 const unb64 = (s: string): Uint8Array =>
   typeof atob === "function" ? Uint8Array.from(atob(s), (c) => c.charCodeAt(0)) : new Uint8Array(Buffer.from(s, "base64"));
 
@@ -29,7 +34,8 @@ async function aesEncrypt(plain: Uint8Array, keyRaw: Uint8Array): Promise<string
   const key = await aesKey(keyRaw);
   const ct = new Uint8Array(await crypto.subtle.encrypt({ name: "AES-GCM", iv: nonce as BufferSource }, key, plain as BufferSource));
   const out = new Uint8Array(nonce.length + ct.length);
-  out.set(nonce); out.set(ct, nonce.length);
+  out.set(nonce);
+  out.set(ct, nonce.length);
   return "v1." + b64(out);
 }
 

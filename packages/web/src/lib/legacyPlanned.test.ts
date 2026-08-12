@@ -33,8 +33,7 @@ const baseTxn = (id: string): Transaction => ({
 
 /** Simulates an old IDB blob / e2ee replica that still carries the legacy `planned` field —
  *  the TS type no longer declares it, so it must be attached past the type. */
-const withLegacyPlanned = (id: string, planned: boolean): Transaction =>
-  ({ ...baseTxn(id), planned }) as unknown as Transaction;
+const withLegacyPlanned = (id: string, planned: boolean): Transaction => ({ ...baseTxn(id), planned }) as unknown as Transaction;
 
 describe("purgeLegacyPlannedIds", () => {
   test("a ledger with no legacy planned rows → empty list", () => {
@@ -58,11 +57,7 @@ describe("purgeLegacyPlannedIds", () => {
   test("multiple leftover rows → every id is returned, in ledger order", () => {
     const ledger: ClientLedger = {
       ...emptyLedger(),
-      transactions: [
-        withLegacyPlanned("p1", true),
-        baseTxn("normal"),
-        withLegacyPlanned("p2", true),
-      ],
+      transactions: [withLegacyPlanned("p1", true), baseTxn("normal"), withLegacyPlanned("p2", true)],
     };
     expect(purgeLegacyPlannedIds(ledger)).toEqual(["p1", "p2"]);
   });

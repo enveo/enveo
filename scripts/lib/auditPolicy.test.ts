@@ -7,14 +7,7 @@
  * `bun audit --json` and hands the text to these functions.
  */
 import { describe, expect, it } from "bun:test";
-import {
-  evaluateAudit,
-  parseAuditJson,
-  parseBunLock,
-  parsePolicy,
-  type AuditPolicy,
-  type InstalledIndex,
-} from "./auditPolicy";
+import { evaluateAudit, parseAuditJson, parseBunLock, parsePolicy, type AuditPolicy, type InstalledIndex } from "./auditPolicy";
 
 const NOW = new Date("2026-08-11T12:00:00Z");
 
@@ -131,9 +124,7 @@ describe("parseAuditJson", () => {
       ],
     });
     const badUrl = JSON.stringify({
-      esbuild: [
-        { id: 1, url: "https://example.com/x", title: "t", severity: "low", vulnerable_versions: "<1" },
-      ],
+      esbuild: [{ id: 1, url: "https://example.com/x", title: "t", severity: "low", vulnerable_versions: "<1" }],
     });
 
     expect(parseAuditJson(noSeverity).ok).toBe(false);
@@ -162,9 +153,7 @@ describe("parseBunLock", () => {
       { version: "0.25.12", path: "esbuild" },
       { version: "0.18.20", path: "@esbuild-kit/core-utils/esbuild" },
     ]);
-    expect(parsed.value.get("@enveo/shared")).toEqual([
-      { version: "workspace:packages/shared", path: "@enveo/shared" },
-    ]);
+    expect(parsed.value.get("@enveo/shared")).toEqual([{ version: "workspace:packages/shared", path: "@enveo/shared" }]);
   });
 
   it("fails closed on an unsupported lockfileVersion so a format change is reviewed", () => {
@@ -242,9 +231,7 @@ describe("evaluateAudit", () => {
     expect(report.ok).toBe(true);
     expect(report.entries[0]?.verdict).toBe("accepted");
     expect(report.entries[0]?.daysUntilExpiry).toBe(89);
-    expect(report.entries[0]?.installed).toEqual([
-      { version: "0.18.20", path: "@esbuild-kit/core-utils/esbuild" },
-    ]);
+    expect(report.entries[0]?.installed).toEqual([{ version: "0.18.20", path: "@esbuild-kit/core-utils/esbuild" }]);
   });
 
   it("rejects an unknown advisory (no policy entry at all)", () => {
@@ -352,20 +339,30 @@ describe("parsePolicy", () => {
   });
 
   it("rejects an invalid date, an expiry before the entry date and a window over 90 days", () => {
-    expect(parsePolicy(JSON.stringify({
-      schemaVersion: 1,
-      exceptions: [{ ...policyWith().exceptions[0], expires: "2026-13-45" }],
-    })).ok).toBe(false);
+    expect(
+      parsePolicy(
+        JSON.stringify({
+          schemaVersion: 1,
+          exceptions: [{ ...policyWith().exceptions[0], expires: "2026-13-45" }],
+        }),
+      ).ok,
+    ).toBe(false);
 
-    expect(parsePolicy(JSON.stringify({
-      schemaVersion: 1,
-      exceptions: [{ ...policyWith().exceptions[0], expires: "2026-08-10" }],
-    })).ok).toBe(false);
+    expect(
+      parsePolicy(
+        JSON.stringify({
+          schemaVersion: 1,
+          exceptions: [{ ...policyWith().exceptions[0], expires: "2026-08-10" }],
+        }),
+      ).ok,
+    ).toBe(false);
 
-    const tooLong = parsePolicy(JSON.stringify({
-      schemaVersion: 1,
-      exceptions: [{ ...policyWith().exceptions[0], expires: "2026-12-01" }],
-    }));
+    const tooLong = parsePolicy(
+      JSON.stringify({
+        schemaVersion: 1,
+        exceptions: [{ ...policyWith().exceptions[0], expires: "2026-12-01" }],
+      }),
+    );
     expect(tooLong.ok).toBe(false);
     if (tooLong.ok) return;
     expect(tooLong.error).toContain("90 days");
@@ -378,9 +375,7 @@ describe("parsePolicy", () => {
     const parsed = parsePolicy(
       JSON.stringify({
         schemaVersion: 1,
-        exceptions: [
-          { ...policyWith().exceptions[0], addedOn: "2027-03-01", expires: "2027-05-29" },
-        ],
+        exceptions: [{ ...policyWith().exceptions[0], addedOn: "2027-03-01", expires: "2027-05-29" }],
       }),
       NOW,
     );
@@ -397,9 +392,7 @@ describe("parsePolicy", () => {
     const parsed = parsePolicy(
       JSON.stringify({
         schemaVersion: 1,
-        exceptions: [
-          { ...policyWith().exceptions[0], addedOn: "2026-08-12", expires: "2026-11-10" },
-        ],
+        exceptions: [{ ...policyWith().exceptions[0], addedOn: "2026-08-12", expires: "2026-11-10" }],
       }),
       NOW, // 2026-08-11
     );
@@ -415,9 +408,7 @@ describe("parsePolicy", () => {
     const parsed = parsePolicy(
       JSON.stringify({
         schemaVersion: 1,
-        exceptions: [
-          { ...policyWith().exceptions[0], addedOn: "2026-02-01", expires: "2026-08-30" },
-        ],
+        exceptions: [{ ...policyWith().exceptions[0], addedOn: "2026-02-01", expires: "2026-08-30" }],
       }),
       NOW, // 2026-08-11, i.e. 19 days left
     );
@@ -431,9 +422,7 @@ describe("parsePolicy", () => {
     const parsed = parsePolicy(
       JSON.stringify({
         schemaVersion: 1,
-        exceptions: [
-          { ...policyWith().exceptions[0], addedOn: "2026-08-12", expires: "2026-11-08" },
-        ],
+        exceptions: [{ ...policyWith().exceptions[0], addedOn: "2026-08-12", expires: "2026-11-08" }],
       }),
       NOW, // 2026-08-11 — the entry is dated "tomorrow", within tolerance
     );
@@ -442,10 +431,12 @@ describe("parsePolicy", () => {
   });
 
   it("rejects a critical/high exception outright — those have no exception path", () => {
-    const parsed = parsePolicy(JSON.stringify({
-      schemaVersion: 1,
-      exceptions: [{ ...policyWith().exceptions[0], severity: "high" }],
-    }));
+    const parsed = parsePolicy(
+      JSON.stringify({
+        schemaVersion: 1,
+        exceptions: [{ ...policyWith().exceptions[0], severity: "high" }],
+      }),
+    );
 
     expect(parsed.ok).toBe(false);
     if (parsed.ok) return;
@@ -454,10 +445,12 @@ describe("parsePolicy", () => {
 
   it("requires the reviewer fields (owner, rationale, reachability, mitigation, scope)", () => {
     for (const field of ["owner", "rationale", "reachability", "mitigation", "scope"]) {
-      const parsed = parsePolicy(JSON.stringify({
-        schemaVersion: 1,
-        exceptions: [{ ...policyWith().exceptions[0], [field]: "" }],
-      }));
+      const parsed = parsePolicy(
+        JSON.stringify({
+          schemaVersion: 1,
+          exceptions: [{ ...policyWith().exceptions[0], [field]: "" }],
+        }),
+      );
       expect(parsed.ok).toBe(false);
     }
   });

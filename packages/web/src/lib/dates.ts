@@ -19,7 +19,7 @@ export function monthNames(lang: Lang): string[] {
 
 export function shiftMonth(month: string, delta: number): string {
   const [y, m] = month.split("-").map(Number) as [number, number];
-  const idx = (y * 12 + (m - 1) + delta);
+  const idx = y * 12 + (m - 1) + delta;
   const ny = Math.floor(idx / 12);
   const nm = (idx % 12) + 1;
   return `${ny}-${String(nm).padStart(2, "0")}`;
@@ -45,7 +45,9 @@ export function shortDate(iso: string, lang: Lang, withYear = false): string {
 /** Full date per locale, e.g. "poniedziałek, 7 lipca 2026" / "Monday, July 7, 2026". */
 export function formatDateLong(iso: string, lang: Lang): string {
   const [y, m, d] = iso.split("-").map(Number) as [number, number, number];
-  return new Intl.DateTimeFormat(LOCALE_OF[lang], { weekday: "long", day: "numeric", month: "long", year: "numeric", timeZone: "UTC" }).format(new Date(Date.UTC(y, m - 1, d)));
+  return new Intl.DateTimeFormat(LOCALE_OF[lang], { weekday: "long", day: "numeric", month: "long", year: "numeric", timeZone: "UTC" }).format(
+    new Date(Date.UTC(y, m - 1, d)),
+  );
 }
 
 /** Relative time of the last synchronization ("just now", "5 min ago", a date). */

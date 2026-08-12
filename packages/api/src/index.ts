@@ -63,7 +63,7 @@ app.use(
       baseUri: ["'self'"],
       frameAncestors: ["'none'"],
     },
-  })
+  }),
 );
 
 app.use(
@@ -71,7 +71,7 @@ app.use(
   bodyLimit({
     maxSize: 16 * 1024 * 1024,
     onError: (c) => c.json({ error: "too_large" }, 413),
-  })
+  }),
 );
 
 // Origin-guard (CSRF): rejects mutations from a FOREIGN Origin. Same-origin is

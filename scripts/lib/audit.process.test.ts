@@ -173,10 +173,7 @@ describe("runAudit (real child process, fake audit command)", () => {
   const EMPTY_POLICY = new URL("./fixtures/empty-policy.json", import.meta.url).pathname;
 
   async function spawnHarness(mode: string, policyPath?: string) {
-    const child = Bun.spawn(
-      ["bun", HARNESS, mode, ...(policyPath ? [policyPath] : [])],
-      { stdout: "pipe", stderr: "pipe" },
-    );
+    const child = Bun.spawn(["bun", HARNESS, mode, ...(policyPath ? [policyPath] : [])], { stdout: "pipe", stderr: "pipe" });
     const stdout = await new Response(child.stdout).text();
     const code = await child.exited;
     return { code, stdout };

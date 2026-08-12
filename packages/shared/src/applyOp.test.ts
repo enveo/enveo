@@ -3,25 +3,11 @@ import fc from "fast-check";
 import { applyOp, MISSING_CREATED_AT } from "./applyOp";
 import { budgetedPlusToBeBudgeted, computeBudgetState, totalOnBudget } from "./budget";
 import type { OpKind, OpPayload, SyncOp } from "./ops";
-import {
-  acc,
-  alloc,
-  asClientLedger,
-  deepFreeze,
-  env,
-  grp,
-  interpret,
-  ledgerArb,
-  mkOp,
-  MONTHS,
-  specArb,
-  tx,
-} from "./ledger.test-support";
+import { acc, alloc, asClientLedger, deepFreeze, env, grp, interpret, ledgerArb, mkOp, MONTHS, specArb, tx } from "./ledger.test-support";
 import type { ClientLedger, Transaction } from "./types";
 
 /** Applies an op on a DEEP-FROZEN ledger — any input mutation will throw. */
-const apply = <K extends OpKind>(l: ClientLedger, kind: K, payload: OpPayload<K>) =>
-  applyOp(deepFreeze(l), mkOp(kind, payload));
+const apply = <K extends OpKind>(l: ClientLedger, kind: K, payload: OpPayload<K>) => applyOp(deepFreeze(l), mkOp(kind, payload));
 
 /** Base ledger for the unit tests. */
 function base(): ClientLedger {
@@ -428,9 +414,7 @@ describe("applyOp: group.*", () => {
     expect(next.envelopes.map((e) => e.id)).toEqual(["E3"]);
     expect(next.allocations.map((a) => a.envelopeId)).toEqual(["E3"]);
     expect(next.transactions[0]!.envelopeId).toBeNull();
-    expect(next.transactions[1]!.items).toEqual([
-      { id: "i2", envelopeId: "E3", categoryId: null, amount: 20_00 },
-    ]);
+    expect(next.transactions[1]!.items).toEqual([{ id: "i2", envelopeId: "E3", categoryId: null, amount: 20_00 }]);
   });
 });
 
@@ -534,7 +518,6 @@ describe("applyOp: input immutability", () => {
 });
 
 /* ── Property: random op sequences hold invariant §2.3 ──────────────── */
-
 
 describe("applyOp: invariant §2.3 (property-based)", () => {
   it("random sequences of valid ops hold Σ available + toBeBudgeted = Σ on-budget balances", () => {

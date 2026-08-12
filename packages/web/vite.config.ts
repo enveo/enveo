@@ -17,7 +17,9 @@ const buildInfo = (() => {
 
   let sha = "";
   try {
-    sha = execSync("git rev-parse --short HEAD", { stdio: ["ignore", "pipe", "ignore"] }).toString().trim();
+    sha = execSync("git rev-parse --short HEAD", { stdio: ["ignore", "pipe", "ignore"] })
+      .toString()
+      .trim();
   } catch {
     sha = ""; // no .git and no build arg — we rely on `time`
   }

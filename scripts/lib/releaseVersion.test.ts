@@ -8,15 +8,7 @@
  * `refs/tags/v1.2.3` reached a registry in the reviewed workflow.
  */
 import { describe, expect, it } from "bun:test";
-import {
-  aliasImageTags,
-  checkAppVersion,
-  compareVersions,
-  extractAppVersion,
-  parseReleaseTag,
-  planAliasMoves,
-  type ReleaseTag,
-} from "./releaseVersion";
+import { aliasImageTags, checkAppVersion, compareVersions, extractAppVersion, parseReleaseTag, planAliasMoves, type ReleaseTag } from "./releaseVersion";
 
 /** Parse and assert success — the tests below are about the PARSED shape, not the wrapper. */
 const parsed = (raw: string): ReleaseTag => {
@@ -230,8 +222,7 @@ describe("compareVersions", () => {
 });
 
 describe("planAliasMoves — aliases only ever move FORWARD", () => {
-  const plan = (tag: string, states: Array<{ alias: string; present: boolean; version: string | null }>) =>
-    planAliasMoves(parsed(tag), states);
+  const plan = (tag: string, states: Array<{ alias: string; present: boolean; version: string | null }>) => planAliasMoves(parsed(tag), states);
 
   it("moves an alias that does not exist yet", () => {
     const [decision] = plan("v3.8.0", [{ alias: "latest", present: false, version: null }]);

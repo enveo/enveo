@@ -79,10 +79,7 @@ export function transportFailureJson(e: unknown): { body: { error: "ai_timeout" 
   return null;
 }
 
-export async function openAiChatFetch(
-  payload: unknown,
-  opts: { apiKey: string; url?: string; timeoutMs?: number },
-): Promise<Response> {
+export async function openAiChatFetch(payload: unknown, opts: { apiKey: string; url?: string; timeoutMs?: number }): Promise<Response> {
   const ms = opts.timeoutMs ?? AI_CHAT_TIMEOUT_MS;
   const t = timeoutSignal(ms);
   try {

@@ -6,13 +6,7 @@
  * classified `ai_timeout` answer is about to arrive.
  */
 import { describe, expect, it } from "bun:test";
-import {
-  AI_CHAT_TIMEOUT_MS,
-  AI_IMPORT_EXTRACT_TIMEOUT_MS,
-  AI_PROXY_CHAT_TIMEOUT_MS,
-  AI_PROXY_MARGIN_MS,
-  AI_VISION_TIMEOUT_MS,
-} from "./aiTransport";
+import { AI_CHAT_TIMEOUT_MS, AI_IMPORT_EXTRACT_TIMEOUT_MS, AI_PROXY_CHAT_TIMEOUT_MS, AI_PROXY_MARGIN_MS, AI_VISION_TIMEOUT_MS } from "./aiTransport";
 
 describe("AI transport timeout constants", () => {
   it("are positive integers (milliseconds)", () => {

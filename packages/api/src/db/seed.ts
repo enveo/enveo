@@ -65,31 +65,20 @@ export async function seed() {
     .from(s.users)
     .orderBy(asc(s.users.createdAt), asc(s.users.id)) // id = deterministic tie-break
     .limit(1);
-  const owner =
-    existing[0] ??
-    (await db.insert(s.users).values({ email: "owner@example.com" }).returning())[0]!;
+  const owner = existing[0] ?? (await db.insert(s.users).values({ email: "owner@example.com" }).returning())[0]!;
 
-  const { accounts, envelopes, allocations } = await withOperationLock(
-    operationLockKey(OPERATION_LOCK.ensureInitialBudget, owner.id),
-    (tx) => seedInto(tx, owner.id),
+  const { accounts, envelopes, allocations } = await withOperationLock(operationLockKey(OPERATION_LOCK.ensureInitialBudget, owner.id), (tx) =>
+    seedInto(tx, owner.id),
   );
 
-  console.log(
-    `✓ seed done: ${accounts} accounts, ${envelopes} envelopes, ${allocations} allocations`,
-  );
+  console.log(`✓ seed done: ${accounts} accounts, ${envelopes} envelopes, ${allocations} allocations`);
 }
 
 /** The wipe + rebuild itself — one transaction, under the owner's ensure-initial lock. */
-async function seedInto(
-  tx: DbTransaction,
-  ownerId: string,
-): Promise<{ accounts: number; envelopes: number; allocations: number }> {
+async function seedInto(tx: DbTransaction, ownerId: string): Promise<{ accounts: number; envelopes: number; allocations: number }> {
   await tx.delete(s.budgets); // cascade removes all budget data; users/auth stay
 
-  const [budget] = await tx
-    .insert(s.budgets)
-    .values({ userId: ownerId, name: "Household budget" })
-    .returning();
+  const [budget] = await tx.insert(s.budgets).values({ userId: ownerId, name: "Household budget" }).returning();
   const bid = budget!.id;
 
   const accRows = await tx

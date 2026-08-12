@@ -269,14 +269,7 @@ export function getLastBootSource(): BootSource {
  * The UI does NOT key off this state, though: it is transient (every re-proof passes through
  * "syncing" on its way back here). What it reads is the sticky SyncStatus.ownerUnproven below.
  */
-export type SyncState =
-  | "synced"
-  | "syncing"
-  | "offline"
-  | "error"
-  | "local"
-  | "unauthed"
-  | "unverified";
+export type SyncState = "synced" | "syncing" | "offline" | "error" | "local" | "unauthed" | "unverified";
 
 export interface SyncStatus {
   state: SyncState;
@@ -714,10 +707,7 @@ async function doPullE2ee(dek: Uint8Array, userId: string): Promise<void> {
 export type IdentityVerdict = "unauthed" | "foreign" | "ok";
 
 /** Pure decision: what to do with a replica stamped `stamped` under session `sessionUserId`. */
-export function decideIdentity(
-  sessionUserId: string | null,
-  stamped: string | undefined,
-): IdentityVerdict {
+export function decideIdentity(sessionUserId: string | null, stamped: string | undefined): IdentityVerdict {
   if (!sessionUserId) return "unauthed";
   if (stamped && stamped !== sessionUserId) return "foreign";
   return "ok"; // same account, or a replica with no stamp yet (proved + adopted below)
@@ -1953,11 +1943,7 @@ async function applyPeerUpdate(): Promise<void> {
 }
 
 interface LockManagerLike {
-  request(
-    name: string,
-    options: { mode: "exclusive" | "shared" },
-    cb: () => Promise<void>,
-  ): Promise<void>;
+  request(name: string, options: { mode: "exclusive" | "shared" }, cb: () => Promise<void>): Promise<void>;
 }
 
 function installMultiTab(): void {
@@ -1997,7 +1983,8 @@ function installMultiTab(): void {
         const m = msg.mode;
         if (m === "off" || m === "paused" || m === "wiped") {
           localMode = m;
-          if (m === "off") void syncNow("peer-localmode-off"); // still unproven? the cycle re-proves
+          if (m === "off")
+            void syncNow("peer-localmode-off"); // still unproven? the cycle re-proves
           else {
             setOwnerUnproven(false); // sync is off by choice now — same as applyLocalMode
             setState("local");

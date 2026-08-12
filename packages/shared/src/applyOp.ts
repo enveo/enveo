@@ -40,17 +40,7 @@
  * arrive via pull/snapshot.
  */
 import type { OpPayload, SyncOp } from "./ops";
-import type {
-  Account,
-  Allocation,
-  Category,
-  ClientLedger,
-  Envelope,
-  EnvelopeGroup,
-  Place,
-  Transaction,
-  TxnItem,
-} from "./types";
+import type { Account, Allocation, Category, ClientLedger, Envelope, EnvelopeGroup, Place, Transaction, TxnItem } from "./types";
 
 /**
  * Sentinel for when a `txn.create` op carries no `createdAt` (the client is
@@ -227,9 +217,7 @@ export function applyOp(ledger: ClientLedger, op: SyncOp): ClientLedger {
       // does NOT create an orphan — critical for fullResync replay idempotency
       // after a group/envelope.delete cascade.
       if (!ledger.envelopes.some((e) => e.id === p.envelopeId)) return ledger;
-      const idx = ledger.allocations.findIndex(
-        (a) => a.envelopeId === p.envelopeId && a.month === p.month,
-      );
+      const idx = ledger.allocations.findIndex((a) => a.envelopeId === p.envelopeId && a.month === p.month);
       if (idx >= 0) {
         const prev = ledger.allocations[idx]!;
         return { ...ledger, allocations: replaceAt(ledger.allocations, idx, { ...prev, amount: p.amount }) };

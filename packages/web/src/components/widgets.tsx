@@ -20,7 +20,6 @@ import { Sheet, type ScreenId } from "./chrome";
 import { Sparkline } from "./reportKit";
 import { matchesSearch, SEARCH_THRESHOLD } from "../lib/search";
 
-
 /** Props every Start-screen widget receives — a component picks the subset it needs. */
 export interface WidgetProps {
   state: StateResponse;
@@ -87,7 +86,22 @@ export function QuickActions({ onNav, onQuickAdd, opts }: WidgetProps) {
           {keys.map((key) => {
             const def = QUICK_ACTION_DEFS[key];
             return (
-              <button key={key} onClick={handlers[key]} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 6, background: "none", border: "none", cursor: "pointer", padding: "4px 2px", minWidth: 56, fontFamily: font }}>
+              <button
+                key={key}
+                onClick={handlers[key]}
+                style={{
+                  display: "flex",
+                  flexDirection: "column",
+                  alignItems: "center",
+                  gap: 6,
+                  background: "none",
+                  border: "none",
+                  cursor: "pointer",
+                  padding: "4px 2px",
+                  minWidth: 56,
+                  fontFamily: font,
+                }}
+              >
                 {def.glyph ? <Glyph name={def.glyph} size={18} color={C.soft} sw={1.8} /> : <Ico d={def.d!} size={18} color={C.soft} sw={1.8} />}
                 <span style={{ fontSize: 10.5, fontWeight: 600, color: C.text }}>{t(def.label)}</span>
               </button>
@@ -133,7 +147,10 @@ export function AccountsWidget({ onNav, onOpenTxns, opts }: WidgetProps) {
       <CardBox style={band ? { marginTop: -26, paddingTop: 30, position: "relative", zIndex: 0, boxShadow: "0 8px 22px rgba(29,42,71,0.14)" } : undefined}>
         {band && (
           <div style={{ textAlign: "center", fontSize: 9.5, fontWeight: 750, letterSpacing: "0.14em", color: C.soft, paddingBottom: 4 }}>
-            {tp("{n} account · total {amount} | {n} accounts · total {amount}", accounts.length, { n: String(accounts.length), amount: accountsTotal }).toUpperCase()}
+            {tp("{n} account · total {amount} | {n} accounts · total {amount}", accounts.length, {
+              n: String(accounts.length),
+              amount: accountsTotal,
+            }).toUpperCase()}
           </div>
         )}
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", columnGap: 16, rowGap: 0 }}>
@@ -145,49 +162,116 @@ export function AccountsWidget({ onNav, onOpenTxns, opts }: WidgetProps) {
           })}
           {/* always the right column — its own row when shown.length is even, shares
               the last account's row when odd (gridColumnStart forces column 2 either way) */}
-          <button onClick={() => onNav("accounts")} style={{ gridColumnStart: 2, display: "flex", alignItems: "center", justifyContent: "center", padding: "7px 0", background: "none", border: "none", fontSize: 11, fontWeight: 600, color: C.mute, cursor: "pointer", fontFamily: font }}>
+          <button
+            onClick={() => onNav("accounts")}
+            style={{
+              gridColumnStart: 2,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              padding: "7px 0",
+              background: "none",
+              border: "none",
+              fontSize: 11,
+              fontWeight: 600,
+              color: C.mute,
+              cursor: "pointer",
+              fontFamily: font,
+            }}
+          >
             {t("+ new account")}
           </button>
         </div>
       </CardBox>
       {accounts.length > count && (
         <div style={{ textAlign: "center", padding: "2px 0 0" }}>
-          <button onClick={() => setExpanded((v) => !v)} style={{ background: "none", border: "none", fontSize: 11, fontWeight: 600, color: C.mute, cursor: "pointer", fontFamily: font }}>
+          <button
+            onClick={() => setExpanded((v) => !v)}
+            style={{ background: "none", border: "none", fontSize: 11, fontWeight: 600, color: C.mute, cursor: "pointer", fontFamily: font }}
+          >
             {expanded ? t("collapse ▴") : t("show all ({n}) ▾", { n: String(accounts.length) })}
           </button>
         </div>
       )}
 
       <Sheet show={!!selAcc} onClose={() => setSelAcc(null)}>
-        {(C) => selAcc && (
-          <div>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8, gap: 10 }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0 }}>
-                <div style={{ width: 42, height: 42, borderRadius: 11, background: selAcc.color, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                  <Glyph name={selAcc.icon} size={20} color={accountIconColor(selAcc.color)} />
-                </div>
-                <span style={{ fontSize: 18, fontWeight: 600, color: C.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{selAcc.name}</span>
-              </div>
-              <span style={{ fontSize: 18, fontWeight: 700, color: C.text, fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap" }}>{M(selAcc.balance)}</span>
-            </div>
-            <div style={{ height: 1, background: C.line, margin: "0 0 12px" }} />
-            <div style={{ display: "flex", justifyContent: "space-evenly", marginTop: 16 }}>
-              {(
-                [
-                  ["M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2", t("Transactions"), () => { const a = selAcc; setSelAcc(null); onOpenTxns({ accId: a.id }); }],
-                  ["M8 7h12m0 0l-4-4m4 4l-4 4M16 17H4m0 0l4 4m-4-4l4-4", t("Reconcile"), () => { const a = selAcc; setSelAcc(null); setReconcile(a); }],
-                ] as const
-              ).map(([d, label, onClick]) => (
-                <button key={label} onClick={onClick} style={{ background: "none", border: "none", cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 7, padding: 0 }}>
-                  <span style={{ width: 52, height: 52, borderRadius: "50%", background: C.bg, display: "flex", alignItems: "center", justifyContent: "center" }}>
-                    <Ico d={d} size={20} color={C.text} sw={1.5} />
+        {(C) =>
+          selAcc && (
+            <div>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8, gap: 10 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0 }}>
+                  <div
+                    style={{
+                      width: 42,
+                      height: 42,
+                      borderRadius: 11,
+                      background: selAcc.color,
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      flexShrink: 0,
+                    }}
+                  >
+                    <Glyph name={selAcc.icon} size={20} color={accountIconColor(selAcc.color)} />
+                  </div>
+                  <span style={{ fontSize: 18, fontWeight: 600, color: C.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {selAcc.name}
                   </span>
-                  <span style={{ fontSize: 12, color: C.text }}>{label}</span>
-                </button>
-              ))}
+                </div>
+                <span style={{ fontSize: 18, fontWeight: 700, color: C.text, fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap" }}>
+                  {M(selAcc.balance)}
+                </span>
+              </div>
+              <div style={{ height: 1, background: C.line, margin: "0 0 12px" }} />
+              <div style={{ display: "flex", justifyContent: "space-evenly", marginTop: 16 }}>
+                {(
+                  [
+                    [
+                      "M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2",
+                      t("Transactions"),
+                      () => {
+                        const a = selAcc;
+                        setSelAcc(null);
+                        onOpenTxns({ accId: a.id });
+                      },
+                    ],
+                    [
+                      "M8 7h12m0 0l-4-4m4 4l-4 4M16 17H4m0 0l4 4m-4-4l4-4",
+                      t("Reconcile"),
+                      () => {
+                        const a = selAcc;
+                        setSelAcc(null);
+                        setReconcile(a);
+                      },
+                    ],
+                  ] as const
+                ).map(([d, label, onClick]) => (
+                  <button
+                    key={label}
+                    onClick={onClick}
+                    style={{
+                      background: "none",
+                      border: "none",
+                      cursor: "pointer",
+                      display: "flex",
+                      flexDirection: "column",
+                      alignItems: "center",
+                      gap: 7,
+                      padding: 0,
+                    }}
+                  >
+                    <span
+                      style={{ width: 52, height: 52, borderRadius: "50%", background: C.bg, display: "flex", alignItems: "center", justifyContent: "center" }}
+                    >
+                      <Ico d={d} size={20} color={C.text} sw={1.5} />
+                    </span>
+                    <span style={{ fontSize: 12, color: C.text }}>{label}</span>
+                  </button>
+                ))}
+              </div>
             </div>
-          </div>
-        )}
+          )
+        }
       </Sheet>
 
       <ReconcileSheet account={reconcile} onClose={() => setReconcile(null)} />
@@ -202,7 +286,9 @@ function ReconcileSheet({ account, onClose }: { account: AccountView | null; onC
   const currency = useCurrency();
   const [val, setVal] = useState("");
   const [pad, setPad] = useState<AmountPadTarget | null>(null);
-  useEffect(() => { if (account) setVal((account.balance / 100).toFixed(2).replace(".", ",")); }, [account]);
+  useEffect(() => {
+    if (account) setVal((account.balance / 100).toFixed(2).replace(".", ","));
+  }, [account]);
   if (!account) return null;
   const openPad = () =>
     setPad({
@@ -214,7 +300,10 @@ function ReconcileSheet({ account, onClose }: { account: AccountView | null; onC
   const real = parseAmount(val);
   const diff = real === null ? 0 : real - account.balance;
   const submit = () => {
-    if (real === null || diff === 0) { onClose(); return; }
+    if (real === null || diff === 0) {
+      onClose();
+      return;
+    }
     local.createTxn({
       type: diff > 0 ? "income" : "expense",
       accountId: account.id,
@@ -228,43 +317,82 @@ function ReconcileSheet({ account, onClose }: { account: AccountView | null; onC
   };
   return (
     <>
-    <Sheet show={!!account} onClose={onClose}>
-      {(C) => (
-        <>
-          <div style={{ fontSize: 17, fontWeight: 700, color: C.text }}>{t("Reconcile account")}</div>
-          <div style={{ fontSize: 12.5, color: C.soft, marginBottom: 16 }}>{account.name}</div>
-          <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 12 }}>
-            <span style={{ fontSize: 13, color: C.soft }}>{t("Balance in the app")}</span>
-            <span style={{ fontSize: 13, fontWeight: 600, color: C.text, fontVariantNumeric: "tabular-nums" }}>{M(account.balance)}</span>
-          </div>
-          <div style={{ fontSize: 10.5, color: C.mute, fontWeight: 600, textTransform: "uppercase", letterSpacing: 0.6, marginBottom: 6 }}>{t("Actual balance (from your bank)")}</div>
-          <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 12 }}>
-            <input value={val} readOnly onClick={openPad} onFocus={openPad} style={{ flex: 1, padding: "9px 11px", borderRadius: 9, border: `1px solid ${C.line}`, background: C.surface, color: C.text, fontSize: 16, fontWeight: 600, fontFamily: font, fontVariantNumeric: "tabular-nums", cursor: "pointer" }} />
-            <span style={{ color: C.mute, fontSize: 13 }}>{currencySymbol(currency, lang)}</span>
-          </div>
-          {real !== null && diff !== 0 && (
-            <div style={{ fontSize: 12.5, marginBottom: 12, color: diff > 0 ? C.pos : C.neg }}>
-              {t("Difference: {sign}{amount} → this will create a correcting {kind}", {
-                sign: diff > 0 ? "+" : "−",
-                amount: M(Math.abs(diff)),
-                kind: t(diff > 0 ? msg("income") : msg("expense")),
-              })}
+      <Sheet show={!!account} onClose={onClose}>
+        {(C) => (
+          <>
+            <div style={{ fontSize: 17, fontWeight: 700, color: C.text }}>{t("Reconcile account")}</div>
+            <div style={{ fontSize: 12.5, color: C.soft, marginBottom: 16 }}>{account.name}</div>
+            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 12 }}>
+              <span style={{ fontSize: 13, color: C.soft }}>{t("Balance in the app")}</span>
+              <span style={{ fontSize: 13, fontWeight: 600, color: C.text, fontVariantNumeric: "tabular-nums" }}>{M(account.balance)}</span>
             </div>
-          )}
-          <button onClick={submit} disabled={real === null || diff === 0} style={{ width: "100%", padding: "12px 0", borderRadius: 12, border: "none", background: TEAL, color: "#fff", fontSize: 13.5, fontWeight: 600, cursor: "pointer", opacity: real === null || diff === 0 ? 0.5 : 1 }}>
-            {real !== null && diff === 0 ? t("Balance matches") : t("Reconcile")}
-          </button>
-        </>
-      )}
-    </Sheet>
-    {/* Sibling of the Sheet (not a child) — the panel's transform would break the pad's position:fixed. */}
-    <AmountPadHost target={pad} onClose={() => setPad(null)} />
+            <div style={{ fontSize: 10.5, color: C.mute, fontWeight: 600, textTransform: "uppercase", letterSpacing: 0.6, marginBottom: 6 }}>
+              {t("Actual balance (from your bank)")}
+            </div>
+            <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 12 }}>
+              <input
+                value={val}
+                readOnly
+                onClick={openPad}
+                onFocus={openPad}
+                style={{
+                  flex: 1,
+                  padding: "9px 11px",
+                  borderRadius: 9,
+                  border: `1px solid ${C.line}`,
+                  background: C.surface,
+                  color: C.text,
+                  fontSize: 16,
+                  fontWeight: 600,
+                  fontFamily: font,
+                  fontVariantNumeric: "tabular-nums",
+                  cursor: "pointer",
+                }}
+              />
+              <span style={{ color: C.mute, fontSize: 13 }}>{currencySymbol(currency, lang)}</span>
+            </div>
+            {real !== null && diff !== 0 && (
+              <div style={{ fontSize: 12.5, marginBottom: 12, color: diff > 0 ? C.pos : C.neg }}>
+                {t("Difference: {sign}{amount} → this will create a correcting {kind}", {
+                  sign: diff > 0 ? "+" : "−",
+                  amount: M(Math.abs(diff)),
+                  kind: t(diff > 0 ? msg("income") : msg("expense")),
+                })}
+              </div>
+            )}
+            <button
+              onClick={submit}
+              disabled={real === null || diff === 0}
+              style={{
+                width: "100%",
+                padding: "12px 0",
+                borderRadius: 12,
+                border: "none",
+                background: TEAL,
+                color: "#fff",
+                fontSize: 13.5,
+                fontWeight: 600,
+                cursor: "pointer",
+                opacity: real === null || diff === 0 ? 0.5 : 1,
+              }}
+            >
+              {real !== null && diff === 0 ? t("Balance matches") : t("Reconcile")}
+            </button>
+          </>
+        )}
+      </Sheet>
+      {/* Sibling of the Sheet (not a child) — the panel's transform would break the pad's position:fixed. */}
+      <AmountPadHost target={pad} onClose={() => setPad(null)} />
     </>
   );
 }
 
 /** Envelope groups to render for a given `opts.mode` — "all" | "savings" | `group:<id>` | `picked:<ids>`. */
-function envelopeSections(state: StateResponse, mode: string, t: (m: Message, p?: Record<string, string | number>) => string): Array<{ label: string; list: EnvelopeView[] }> {
+function envelopeSections(
+  state: StateResponse,
+  mode: string,
+  t: (m: Message, p?: Record<string, string | number>) => string,
+): Array<{ label: string; list: EnvelopeView[] }> {
   const envelopes = [...state.envelopes].filter((e) => !e.archived).sort((a, b) => a.sort - b.sort);
   if (mode === "savings") return [{ label: t("Envelopes · Savings"), list: envelopes.filter((e) => e.isSavings) }];
   if (mode.startsWith("group:")) {
@@ -323,11 +451,33 @@ export function CashflowWidget({ state, onNav }: WidgetProps) {
     <div>
       <SectionEyebrow
         label={t("Report · Cash flow")}
-        right={<button onClick={() => onNav("reports")} style={{ background: "none", border: "none", padding: 0, color: "var(--accent)", fontSize: 11, fontWeight: 600, cursor: "pointer", fontFamily: font }}>{t("details")} ›</button>}
+        right={
+          <button
+            onClick={() => onNav("reports")}
+            style={{
+              background: "none",
+              border: "none",
+              padding: 0,
+              color: "var(--accent)",
+              fontSize: 11,
+              fontWeight: 600,
+              cursor: "pointer",
+              fontFamily: font,
+            }}
+          >
+            {t("details")} ›
+          </button>
+        }
       />
       <CardBox>
         <div style={{ display: "flex", gap: 8, padding: "10px 0" }}>
-          {([[t("Income"), state.monthIncome, C.pos], [t("Expense"), state.monthExpense, C.neg], [t("Net"), net, net >= 0 ? C.pos : C.neg]] as const).map(([label, val, col]) => (
+          {(
+            [
+              [t("Income"), state.monthIncome, C.pos],
+              [t("Expense"), state.monthExpense, C.neg],
+              [t("Net"), net, net >= 0 ? C.pos : C.neg],
+            ] as const
+          ).map(([label, val, col]) => (
             <div key={label} style={{ flex: 1 }}>
               <div style={{ fontSize: 10.5, color: C.soft }}>{label}</div>
               <div style={{ fontSize: 13.5, fontWeight: 700, color: col, fontVariantNumeric: "tabular-nums" }}>{M(val)}</div>
@@ -355,12 +505,33 @@ export function NetWorthWidget({ month, onNav }: WidgetProps) {
     <div>
       <SectionEyebrow
         label={t("Report · Net worth")}
-        right={<button onClick={() => onNav("reports")} style={{ background: "none", border: "none", padding: 0, color: "var(--accent)", fontSize: 11, fontWeight: 600, cursor: "pointer", fontFamily: font }}>{t("details")} ›</button>}
+        right={
+          <button
+            onClick={() => onNav("reports")}
+            style={{
+              background: "none",
+              border: "none",
+              padding: 0,
+              color: "var(--accent)",
+              fontSize: 11,
+              fontWeight: 600,
+              cursor: "pointer",
+              fontFamily: font,
+            }}
+          >
+            {t("details")} ›
+          </button>
+        }
       />
       <CardBox style={{ padding: "10px 14px" }}>
         <div style={{ display: "flex", alignItems: "baseline", gap: 10 }}>
           <span style={{ fontSize: 18, fontWeight: 700, color: C.text, fontVariantNumeric: "tabular-nums" }}>{M(nwLast)}</span>
-          {nwDelta !== 0 && <span style={{ fontSize: 11.5, fontWeight: 600, color: nwDelta > 0 ? C.pos : C.neg, fontVariantNumeric: "tabular-nums" }}>{nwDelta > 0 ? "▲ +" : "▼ "}{M(Math.abs(nwDelta))}</span>}
+          {nwDelta !== 0 && (
+            <span style={{ fontSize: 11.5, fontWeight: 600, color: nwDelta > 0 ? C.pos : C.neg, fontVariantNumeric: "tabular-nums" }}>
+              {nwDelta > 0 ? "▲ +" : "▼ "}
+              {M(Math.abs(nwDelta))}
+            </span>
+          )}
         </div>
         <Sparkline points={netWorth} />
       </CardBox>
@@ -409,23 +580,55 @@ function widgetSubtitle(w: WidgetConfig, state: StateResponse, t: (m: Message, p
   switch (w.id) {
     // reuses the same "Selected (n)" key envModeLabel uses for envelopes' picked mode. RAW count
     // (not resolveActions' default-on-empty) — an intentional "all unchecked" must read as 0.
-    case "quickActions": return t("Selected ({n})", { n: String((w.opts?.actions ?? []).length) });
+    case "quickActions":
+      return t("Selected ({n})", { n: String((w.opts?.actions ?? []).length) });
     case "accounts": {
       const collapsed = w.opts?.collapsed ?? true;
       return collapsed ? t("collapsed · {n} shown ›", { n: String(w.opts?.count ?? 4) }) : t("all shown ›");
     }
-    case "envelopes": return envModeLabel(w.opts?.mode ?? "all", state.groups, t);
-    case "envelopesSavings": return t("Savings only");
-    case "reportCashflow": return t("current month");
-    case "reportNetWorth": return t("12-month sparkline");
+    case "envelopes":
+      return envModeLabel(w.opts?.mode ?? "all", state.groups, t);
+    case "envelopesSavings":
+      return t("Savings only");
+    case "reportCashflow":
+      return t("current month");
+    case "reportNetWorth":
+      return t("12-month sparkline");
   }
 }
 
 function Toggle({ on, onClick, label }: { on: boolean; onClick: () => void; label: string }) {
   const C = useTheme();
   return (
-    <button onClick={onClick} aria-label={label} aria-pressed={on} style={{ width: 40, height: 22, borderRadius: 12, background: on ? "var(--accent)" : C.line, position: "relative", border: "none", cursor: "pointer", flexShrink: 0, padding: 0 }}>
-      <span style={{ position: "absolute", top: 2, left: on ? 20 : 2, width: 18, height: 18, borderRadius: "50%", background: "#fff", transition: "left .2s", boxShadow: "0 1px 2px rgba(0,0,0,0.2)" }} />
+    <button
+      onClick={onClick}
+      aria-label={label}
+      aria-pressed={on}
+      style={{
+        width: 40,
+        height: 22,
+        borderRadius: 12,
+        background: on ? "var(--accent)" : C.line,
+        position: "relative",
+        border: "none",
+        cursor: "pointer",
+        flexShrink: 0,
+        padding: 0,
+      }}
+    >
+      <span
+        style={{
+          position: "absolute",
+          top: 2,
+          left: on ? 20 : 2,
+          width: 18,
+          height: 18,
+          borderRadius: "50%",
+          background: "#fff",
+          transition: "left .2s",
+          boxShadow: "0 1px 2px rgba(0,0,0,0.2)",
+        }}
+      />
     </button>
   );
 }
@@ -433,8 +636,13 @@ function Toggle({ on, onClick, label }: { on: boolean; onClick: () => void; labe
 /** Shared chip/tab look for the mode switchers below (Accounts' All/Selected, Envelopes' All/Savings/Group/Selected). */
 function chipStyle(C: Theme, active: boolean): CSSProperties {
   return {
-    padding: "5px 10px", borderRadius: 999, fontSize: 11, fontWeight: 600, cursor: "pointer",
-    background: active ? "var(--accent-1a)" : C.chip, color: active ? "var(--accent)" : C.text,
+    padding: "5px 10px",
+    borderRadius: 999,
+    fontSize: 11,
+    fontWeight: 600,
+    cursor: "pointer",
+    background: active ? "var(--accent-1a)" : C.chip,
+    color: active ? "var(--accent)" : C.text,
     border: `1px solid ${active ? "var(--accent)" : C.line}`,
   };
 }
@@ -446,7 +654,17 @@ function CheckBox({ checked }: { checked: boolean }) {
   return (
     <span
       aria-hidden
-      style={{ width: 18, height: 18, borderRadius: 5, border: `1.5px solid ${checked ? "var(--accent)" : C.line}`, background: checked ? "var(--accent)" : "transparent", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}
+      style={{
+        width: 18,
+        height: 18,
+        borderRadius: 5,
+        border: `1.5px solid ${checked ? "var(--accent)" : C.line}`,
+        background: checked ? "var(--accent)" : "transparent",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        flexShrink: 0,
+      }}
     >
       {checked && <Ico d="M5 13l4 4L19 7" size={12} color="#fff" sw={3} />}
     </span>
@@ -456,14 +674,55 @@ function CheckBox({ checked }: { checked: boolean }) {
 /** A tinted-icon + name + checkbox row — the "picked" checklist idiom shared by AccountsOptions and
  *  EnvelopesOptions (accounts/envelopes both carry their own {color, icon}). `query` (when the list
  *  is under search) highlights the matched span instead of just rendering the plain name. */
-function PickRow({ icon, color, name, checked, onToggle, query = "" }: { icon: string; color: string; name: string; checked: boolean; onToggle: () => void; query?: string }) {
+function PickRow({
+  icon,
+  color,
+  name,
+  checked,
+  onToggle,
+  query = "",
+}: {
+  icon: string;
+  color: string;
+  name: string;
+  checked: boolean;
+  onToggle: () => void;
+  query?: string;
+}) {
   const C = useTheme();
   return (
-    <button onClick={onToggle} style={{ display: "flex", alignItems: "center", gap: 8, width: "100%", padding: "6px 0", background: "none", border: "none", cursor: "pointer", textAlign: "left", fontFamily: font }}>
-      <span style={{ width: 22, height: 22, borderRadius: 7, background: tint(color, 0.15), display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+    <button
+      onClick={onToggle}
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: 8,
+        width: "100%",
+        padding: "6px 0",
+        background: "none",
+        border: "none",
+        cursor: "pointer",
+        textAlign: "left",
+        fontFamily: font,
+      }}
+    >
+      <span
+        style={{
+          width: 22,
+          height: 22,
+          borderRadius: 7,
+          background: tint(color, 0.15),
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          flexShrink: 0,
+        }}
+      >
         <Glyph name={icon} size={12} color={color} sw={1.8} />
       </span>
-      <span style={{ flex: 1, fontSize: 12, color: C.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}><HighlightedText text={name} query={query} /></span>
+      <span style={{ flex: 1, fontSize: 12, color: C.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+        <HighlightedText text={name} query={query} />
+      </span>
       <CheckBox checked={checked} />
     </button>
   );
@@ -479,9 +738,22 @@ function AccountsOptions({ w, state, onChange }: { w: WidgetConfig; state: State
   const [q, setQ] = useState("");
   // reset only on the "all"→"picked" transition (undefined→array) — NOT on every checkbox toggle,
   // which also produces a new `picked` array reference and would otherwise clear what was typed.
-  useEffect(() => { if (picked !== undefined) setQ(""); }, [picked !== undefined]);
+  useEffect(() => {
+    if (picked !== undefined) setQ("");
+  }, [picked !== undefined]);
   const filteredAccounts = accounts.filter((a) => matchesSearch(a.name, q));
-  const stepBtn = { width: 26, height: 26, borderRadius: 8, border: `1px solid ${C.line}`, background: C.chip, color: C.text, fontSize: 14, fontWeight: 700, cursor: "pointer", lineHeight: 1 } as const;
+  const stepBtn = {
+    width: 26,
+    height: 26,
+    borderRadius: 8,
+    border: `1px solid ${C.line}`,
+    background: C.chip,
+    color: C.text,
+    fontSize: 14,
+    fontWeight: 700,
+    cursor: "pointer",
+    lineHeight: 1,
+  } as const;
   const tabs: Array<{ key: "all" | "picked"; label: Message; onClick: () => void }> = [
     { key: "all", label: msg("All"), onClick: () => onChange({ picked: undefined }) },
     { key: "picked", label: msg("Selected"), onClick: () => onChange({ picked: picked ?? [] }) },
@@ -495,14 +767,20 @@ function AccountsOptions({ w, state, onChange }: { w: WidgetConfig; state: State
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
         <span style={{ fontSize: 12, color: C.text }}>{t("Accounts shown when collapsed")}</span>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <button onClick={() => onChange({ count: Math.max(2, count - 1) })} style={stepBtn}>−</button>
+          <button onClick={() => onChange({ count: Math.max(2, count - 1) })} style={stepBtn}>
+            −
+          </button>
           <span style={{ fontSize: 13, fontWeight: 700, color: C.text, width: 16, textAlign: "center", fontVariantNumeric: "tabular-nums" }}>{count}</span>
-          <button onClick={() => onChange({ count: Math.min(8, count + 1) })} style={stepBtn}>+</button>
+          <button onClick={() => onChange({ count: Math.min(8, count + 1) })} style={stepBtn}>
+            +
+          </button>
         </div>
       </div>
       <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
         {tabs.map((tb) => (
-          <button key={tb.key} onClick={tb.onClick} style={chipStyle(C, picked !== undefined ? tb.key === "picked" : tb.key === "all")}>{t(tb.label)}</button>
+          <button key={tb.key} onClick={tb.onClick} style={chipStyle(C, picked !== undefined ? tb.key === "picked" : tb.key === "all")}>
+            {t(tb.label)}
+          </button>
         ))}
       </div>
       {picked !== undefined && (
@@ -512,7 +790,16 @@ function AccountsOptions({ w, state, onChange }: { w: WidgetConfig; state: State
               not shrink the checklist and reflow the whole widget-editor sheet under it (same shrink-
               behind-keyboard bug as the picker sheets in chrome.tsx, contained here since this list
               isn't the whole sheet). */}
-          <div className="gs" style={{ display: "flex", flexDirection: "column", gap: 2, ...(accounts.length > SEARCH_THRESHOLD ? { height: 200 } : { maxHeight: 200 }), overflowY: "auto" }}>
+          <div
+            className="gs"
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              gap: 2,
+              ...(accounts.length > SEARCH_THRESHOLD ? { height: 200 } : { maxHeight: 200 }),
+              overflowY: "auto",
+            }}
+          >
             {filteredAccounts.length === 0 ? (
               <div style={{ textAlign: "center", color: C.mute, fontSize: 12, padding: "10px 0" }}>{t("No matches")}</div>
             ) : (
@@ -554,7 +841,9 @@ function EnvelopesOptions({ w, state, onChange }: { w: WidgetConfig; state: Stat
   const [q, setQ] = useState("");
   // reset only on the transition INTO "picked" — not on every checkbox toggle, which also changes
   // `mode` (the picked-ids suffix) and would otherwise clear what was typed.
-  useEffect(() => { if (base === "picked") setQ(""); }, [base === "picked"]);
+  useEffect(() => {
+    if (base === "picked") setQ("");
+  }, [base === "picked"]);
   const filteredEnvelopes = envelopes.filter((e) => matchesSearch(e.name, q));
   const tabs: Array<{ key: string; label: Message; onClick: () => void }> = [
     { key: "all", label: msg("All"), onClick: () => onChange({ mode: "all" }) },
@@ -566,13 +855,17 @@ function EnvelopesOptions({ w, state, onChange }: { w: WidgetConfig; state: Stat
     <div style={{ padding: "0 0 10px 26px" }}>
       <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 8 }}>
         {tabs.map((tb) => (
-          <button key={tb.key} onClick={tb.onClick} style={chipStyle(C, base === tb.key)}>{t(tb.label)}</button>
+          <button key={tb.key} onClick={tb.onClick} style={chipStyle(C, base === tb.key)}>
+            {t(tb.label)}
+          </button>
         ))}
       </div>
       {base === "group" && (
         <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
           {groups.map((g) => (
-            <button key={g.id} onClick={() => onChange({ mode: `group:${g.id}` })} style={chipStyle(C, mode === `group:${g.id}`)}>{g.name}</button>
+            <button key={g.id} onClick={() => onChange({ mode: `group:${g.id}` })} style={chipStyle(C, mode === `group:${g.id}`)}>
+              {g.name}
+            </button>
           ))}
         </div>
       )}
@@ -580,7 +873,16 @@ function EnvelopesOptions({ w, state, onChange }: { w: WidgetConfig; state: Stat
         <>
           {envelopes.length > SEARCH_THRESHOLD && <PickerSearch value={q} onChange={setQ} />}
           {/* fixed (not max-) height once the search box is showing — see AccountsOptions' comment. */}
-          <div className="gs" style={{ display: "flex", flexDirection: "column", gap: 2, ...(envelopes.length > SEARCH_THRESHOLD ? { height: 200 } : { maxHeight: 200 }), overflowY: "auto" }}>
+          <div
+            className="gs"
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              gap: 2,
+              ...(envelopes.length > SEARCH_THRESHOLD ? { height: 200 } : { maxHeight: 200 }),
+              overflowY: "auto",
+            }}
+          >
             {filteredEnvelopes.length === 0 ? (
               <div style={{ textAlign: "center", color: C.mute, fontSize: 12, padding: "10px 0" }}>{t("No matches")}</div>
             ) : (
@@ -633,9 +935,31 @@ function QuickActionsOptions({ w, onChange }: { w: WidgetConfig; onChange: (o: W
               // canonical order regardless of tap order — keeps QuickActions' row stable
               onChange({ actions: QUICK_ACTION_ORDER.filter((k) => set.has(k)) });
             }}
-            style={{ display: "flex", alignItems: "center", gap: 8, width: "100%", padding: "6px 0", background: "none", border: "none", cursor: "pointer", textAlign: "left", fontFamily: font }}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 8,
+              width: "100%",
+              padding: "6px 0",
+              background: "none",
+              border: "none",
+              cursor: "pointer",
+              textAlign: "left",
+              fontFamily: font,
+            }}
           >
-            <span style={{ width: 22, height: 22, borderRadius: 7, background: C.chip, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+            <span
+              style={{
+                width: 22,
+                height: 22,
+                borderRadius: 7,
+                background: C.chip,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                flexShrink: 0,
+              }}
+            >
               {def.glyph ? <Glyph name={def.glyph} size={12} color={C.soft} sw={1.8} /> : <Ico d={def.d!} size={12} color={C.soft} sw={1.8} />}
             </span>
             <span style={{ flex: 1, fontSize: 12, color: C.text }}>{t(def.label)}</span>
@@ -662,7 +986,8 @@ export function EditWidgetsSheet({ show, state, onClose }: { show: boolean; stat
   const dnd = useDragReorder(commitMove);
 
   const toggle = (id: WidgetId) => setSettings({ ...settings, startWidgets: list.map((w) => (w.id === id ? { ...w, enabled: !w.enabled } : w)) });
-  const setOpts = (id: WidgetId, opts: WidgetOpts) => setSettings({ ...settings, startWidgets: list.map((w) => (w.id === id ? { ...w, opts: { ...w.opts, ...opts } } : w)) });
+  const setOpts = (id: WidgetId, opts: WidgetOpts) =>
+    setSettings({ ...settings, startWidgets: list.map((w) => (w.id === id ? { ...w, opts: { ...w.opts, ...opts } } : w)) });
   const configurable = (id: WidgetId) => id === "accounts" || id === "envelopes" || id === "quickActions";
 
   return (
@@ -679,18 +1004,44 @@ export function EditWidgetsSheet({ show, state, onClose }: { show: boolean; stat
               <div
                 key={w.id}
                 ref={dnd.itemRef(idx)}
-                style={{ borderBottom: `1px solid ${C.line}`, background: dnd.dragging === idx ? C.bg : "transparent", outline: dnd.over === idx && dnd.dragging !== idx ? `2px dashed ${TEAL}` : "none", outlineOffset: -2, borderRadius: 8 }}
+                style={{
+                  borderBottom: `1px solid ${C.line}`,
+                  background: dnd.dragging === idx ? C.bg : "transparent",
+                  outline: dnd.over === idx && dnd.dragging !== idx ? `2px dashed ${TEAL}` : "none",
+                  outlineOffset: -2,
+                  borderRadius: 8,
+                }}
               >
                 <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 0" }}>
-                  <span {...b} aria-label={t("Drag {name}", { name: title })} style={{ ...b.style, color: C.mute, fontSize: 15, padding: "4px 2px", display: "flex" }}>≡</span>
+                  <span
+                    {...b}
+                    aria-label={t("Drag {name}", { name: title })}
+                    style={{ ...b.style, color: C.mute, fontSize: 15, padding: "4px 2px", display: "flex" }}
+                  >
+                    ≡
+                  </span>
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontSize: 13.5, fontWeight: 600, color: C.text }}>{title}</div>
                     {configurable(w.id) ? (
-                      <button onClick={() => setOpenOptions(openOptions === w.id ? null : w.id)} style={{ background: "none", border: "none", padding: 0, fontSize: 11, color: C.mute, cursor: "pointer", textAlign: "left", fontFamily: font }}>
+                      <button
+                        onClick={() => setOpenOptions(openOptions === w.id ? null : w.id)}
+                        style={{
+                          background: "none",
+                          border: "none",
+                          padding: 0,
+                          fontSize: 11,
+                          color: C.mute,
+                          cursor: "pointer",
+                          textAlign: "left",
+                          fontFamily: font,
+                        }}
+                      >
                         {widgetSubtitle(w, state, t)}
                       </button>
                     ) : (
-                      <div style={{ fontSize: 11, color: C.mute, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{widgetSubtitle(w, state, t)}</div>
+                      <div style={{ fontSize: 11, color: C.mute, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                        {widgetSubtitle(w, state, t)}
+                      </div>
                     )}
                   </div>
                   <Toggle on={w.enabled} onClick={() => toggle(w.id)} label={title} />
@@ -701,7 +1052,21 @@ export function EditWidgetsSheet({ show, state, onClose }: { show: boolean; stat
               </div>
             );
           })}
-          <button onClick={onClose} style={{ width: "100%", marginTop: 14, padding: "12px 0", borderRadius: 12, border: "none", background: TEAL, color: "#fff", fontSize: 13.5, fontWeight: 600, cursor: "pointer" }}>
+          <button
+            onClick={onClose}
+            style={{
+              width: "100%",
+              marginTop: 14,
+              padding: "12px 0",
+              borderRadius: 12,
+              border: "none",
+              background: TEAL,
+              color: "#fff",
+              fontSize: 13.5,
+              fontWeight: 600,
+              cursor: "pointer",
+            }}
+          >
             {t("Done")}
           </button>
         </>

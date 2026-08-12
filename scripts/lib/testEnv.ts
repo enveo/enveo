@@ -38,9 +38,7 @@ export type TestEnvPlan = Readonly<{
   banner: string;
 }>;
 
-export type TestEnvResult =
-  | { ok: true; plan: TestEnvPlan }
-  | { ok: false; mode: TestMode; errors: readonly string[] };
+export type TestEnvResult = { ok: true; plan: TestEnvPlan } | { ok: false; mode: TestMode; errors: readonly string[] };
 
 const POSTGRES_PROTOCOLS = new Set(["postgres:", "postgresql:"]);
 
@@ -79,13 +77,7 @@ export const DEAD_DB_URL = "postgres://unused:unused@127.0.0.1:1/enveo_no_such_d
 export const DEFAULT_APP_DB_URL = "postgres://enveo:enveo@localhost:5432/enveo";
 
 /** Spellings of "this machine". Collapsed to one token before any target comparison. */
-const LOOPBACK_HOSTS = new Set([
-  "localhost",
-  "127.0.0.1",
-  "::1",
-  "0.0.0.0",
-  "::ffff:127.0.0.1",
-]);
+const LOOPBACK_HOSTS = new Set(["localhost", "127.0.0.1", "::1", "0.0.0.0", "::ffff:127.0.0.1"]);
 
 function canonicalHost(host: string): string {
   const bare = host.toLowerCase().replace(/^\[/, "").replace(/\]$/, "");
@@ -155,9 +147,7 @@ export function planTestEnv(mode: TestMode, env: EnvRecord): TestEnvResult {
   const ack = env.ENVEO_TEST_DB_ACK ?? "";
 
   if (!testUrl) {
-    errors.push(
-      "TEST_DATABASE_URL is empty — DB mode needs an explicit THROWAWAY PostgreSQL URL.",
-    );
+    errors.push("TEST_DATABASE_URL is empty — DB mode needs an explicit THROWAWAY PostgreSQL URL.");
   }
   if (ack !== TEST_DB_ACK) {
     errors.push(
@@ -219,9 +209,7 @@ export function planTestEnv(mode: TestMode, env: EnvRecord): TestEnvResult {
         [RUNNER_MARKER]: RUNNER_MARKER_VALUE,
         [RUNNER_MODE]: "db",
       },
-      banner:
-        `mode=db — AI disabled (OPENAI_API_KEY=""), DB-backed groups REQUIRED against ` +
-        `${testTarget.redacted} (acknowledged throwaway).`,
+      banner: `mode=db — AI disabled (OPENAI_API_KEY=""), DB-backed groups REQUIRED against ` + `${testTarget.redacted} (acknowledged throwaway).`,
     },
   };
 }

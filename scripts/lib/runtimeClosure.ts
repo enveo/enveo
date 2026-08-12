@@ -64,10 +64,7 @@ export type Closure = Readonly<{
  * declaring it optional the dependent promises to work without it.
  */
 export function requiredSpecifiers(manifest: Manifest): Set<string> {
-  const required = new Set<string>([
-    ...Object.keys(manifest.dependencies ?? {}),
-    ...Object.keys(manifest.optionalDependencies ?? {}),
-  ]);
+  const required = new Set<string>([...Object.keys(manifest.dependencies ?? {}), ...Object.keys(manifest.optionalDependencies ?? {})]);
   for (const peer of Object.keys(manifest.peerDependencies ?? {})) {
     if (manifest.peerDependenciesMeta?.[peer]?.optional !== true) required.add(peer);
   }

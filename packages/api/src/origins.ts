@@ -16,7 +16,9 @@ type OriginEnv = Pick<typeof env, "ALLOWED_ORIGINS" | "BETTER_AUTH_URL" | "WEB_D
  *  in dev (no WEB_DIST) also the vite origin. */
 export function staticAllowedOrigins(e: OriginEnv = env): Set<string> {
   return new Set<string>([
-    ...e.ALLOWED_ORIGINS.split(",").map((s) => s.trim()).filter(Boolean),
+    ...e.ALLOWED_ORIGINS.split(",")
+      .map((s) => s.trim())
+      .filter(Boolean),
     ...(e.BETTER_AUTH_URL ? [new URL(e.BETTER_AUTH_URL).origin] : []),
     ...(e.WEB_DIST ? [] : ["http://localhost:5173"]), // dev (vite)
   ]);
@@ -27,10 +29,7 @@ export function staticAllowedOrigins(e: OriginEnv = env): Set<string> {
  *  host, whatever public hostname/IP/port the deployment uses (127.0.0.1 vs
  *  localhost, a LAN IP, a host-remapped port, a Tailscale/HTTPS hostname).
  *  Malformed Origin → treated as foreign. */
-export function isSameHostOrigin(
-  origin: string | null | undefined,
-  host: string | null | undefined,
-): boolean {
+export function isSameHostOrigin(origin: string | null | undefined, host: string | null | undefined): boolean {
   if (!origin || !host) return false;
   try {
     return new URL(origin).host === host;

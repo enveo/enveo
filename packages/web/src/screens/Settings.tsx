@@ -33,7 +33,17 @@ const SUB_TITLE: Record<SubId, Message> = {
 /** Category glyph — 1.7px stroked SVG (patterns from the mock), stroke via style (CSS vars OK). */
 function Glyph({ color, children }: { color: string; children: ReactNode }) {
   return (
-    <svg width={19} height={19} viewBox="0 0 24 24" fill="none" style={{ stroke: color }} strokeWidth={1.7} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <svg
+      width={19}
+      height={19}
+      viewBox="0 0 24 24"
+      fill="none"
+      style={{ stroke: color }}
+      strokeWidth={1.7}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
       {children}
     </svg>
   );
@@ -69,7 +79,8 @@ export function SettingsScreen({ onNav, onInstall }: { onNav: (s: ScreenId) => v
     sw.current = null;
     if (!st || sub === null) return; // on the hub the gesture bubbles to App (back to Start)
     const p = e.changedTouches[0]!;
-    const dx = p.clientX - st.x, dy = p.clientY - st.y;
+    const dx = p.clientX - st.x,
+      dy = p.clientY - st.y;
     if (dx > 60 && Math.abs(dy) < 45 && (st.x < 40 || dx > 110)) {
       e.stopPropagation();
       go(null);
@@ -80,7 +91,11 @@ export function SettingsScreen({ onNav, onInstall }: { onNav: (s: ScreenId) => v
     <div ref={scRef} className="gs" onTouchStart={onTouchStart} onTouchEnd={onTouchEnd} style={{ flex: 1, overflowY: "auto", paddingBottom: 6 }}>
       <div data-band={band || undefined} style={band ? { background: C.headerBg, paddingBottom: 2 } : undefined}>
         <div style={{ display: "flex", alignItems: "center", padding: `12px ${P}px`, gap: 10 }}>
-          <button onClick={() => (sub !== null ? go(null) : onNav("start"))} aria-label={t("Back")} style={{ background: "none", border: "none", cursor: "pointer", padding: 4, display: "flex" }}>
+          <button
+            onClick={() => (sub !== null ? go(null) : onNav("start"))}
+            aria-label={t("Back")}
+            style={{ background: "none", border: "none", cursor: "pointer", padding: 4, display: "flex" }}
+          >
             <Ico d="M19 12H5m0 0l7 7m-7-7l7-7" size={18} color={hc(C.headerInk, C.text)} />
           </button>
           <span style={{ fontSize: 17, fontWeight: 700, color: hc(C.headerInk, C.text) }}>{sub !== null ? t(SUB_TITLE[sub]) : t("Settings")}</span>
@@ -90,7 +105,8 @@ export function SettingsScreen({ onNav, onInstall }: { onNav: (s: ScreenId) => v
       {sub === null ? (
         <Hub onOpen={go} onInstall={onInstall} />
       ) : (
-        <div key={sub} className="fi" style={{ padding: `0 ${P + 2}px` }}>{/* fi, not fu: transform on an ancestor breaks position:fixed sheets (e.g. the E2EE wizard) */}
+        <div key={sub} className="fi" style={{ padding: `0 ${P + 2}px` }}>
+          {/* fi, not fu: transform on an ancestor breaks position:fixed sheets (e.g. the E2EE wizard) */}
           {sub === "appearance" && <AppearanceSection />}
           {sub === "ai" && <AiSection />}
           {sub === "data" && <DataSection />}
@@ -109,9 +125,8 @@ function Hub({ onOpen, onInstall }: { onOpen: (s: SubId) => void; onInstall: () 
   const { t } = useT();
   const { settings } = useSettings();
   const { state: installState } = useInstall();
-  const isDark = settings.themeMode === "auto"
-    ? typeof window !== "undefined" && window.matchMedia("(prefers-color-scheme: dark)").matches
-    : settings.themeMode === "dark";
+  const isDark =
+    settings.themeMode === "auto" ? typeof window !== "undefined" && window.matchMedia("(prefers-color-scheme: dark)").matches : settings.themeMode === "dark";
 
   // category colors (glyph + tint); lighter shades in dark mode
   const catAppearance = isDark ? "#ff8d7d" : "#f0685c";
@@ -151,7 +166,12 @@ function Hub({ onOpen, onInstall }: { onOpen: (s: SubId) => void; onInstall: () 
         }
         title={t("Appearance")}
         desc={t("theme, language, currency, discreet")}
-        status={<span aria-hidden style={{ width: 16, height: 16, borderRadius: "50%", background: "var(--cta)", outline: `2px solid ${C.line}`, outlineOffset: 2, flexShrink: 0 }} />}
+        status={
+          <span
+            aria-hidden
+            style={{ width: 16, height: 16, borderRadius: "50%", background: "var(--cta)", outline: `2px solid ${C.line}`, outlineOffset: 2, flexShrink: 0 }}
+          />
+        }
         onClick={() => onOpen("appearance")}
       />
       <HubCard
@@ -217,14 +237,49 @@ function Hub({ onOpen, onInstall }: { onOpen: (s: SubId) => void; onInstall: () 
   );
 }
 
-function HubCard({ tint, icon, title, desc, status, onClick }: { tint: string; icon: ReactNode; title: string; desc: string; status: ReactNode; onClick: () => void }) {
+function HubCard({
+  tint,
+  icon,
+  title,
+  desc,
+  status,
+  onClick,
+}: {
+  tint: string;
+  icon: ReactNode;
+  title: string;
+  desc: string;
+  status: ReactNode;
+  onClick: () => void;
+}) {
   const C = useTheme();
   return (
-    <button onClick={onClick} style={{ display: "flex", alignItems: "center", gap: 13, width: "100%", background: C.card, border: "none", borderRadius: 14, padding: "13px 14px", cursor: "pointer", textAlign: "left", boxShadow: "0 1px 3px rgba(0,0,0,0.05)" }}>
-      <span style={{ width: 38, height: 38, borderRadius: 11, background: tint, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>{icon}</span>
+    <button
+      onClick={onClick}
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: 13,
+        width: "100%",
+        background: C.card,
+        border: "none",
+        borderRadius: 14,
+        padding: "13px 14px",
+        cursor: "pointer",
+        textAlign: "left",
+        boxShadow: "0 1px 3px rgba(0,0,0,0.05)",
+      }}
+    >
+      <span
+        style={{ width: 38, height: 38, borderRadius: 11, background: tint, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}
+      >
+        {icon}
+      </span>
       <span style={{ flex: 1, minWidth: 0 }}>
         <span style={{ display: "block", fontSize: 14, fontWeight: 700, color: C.text }}>{title}</span>
-        <span style={{ display: "block", fontSize: 11, color: C.mute, marginTop: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{desc}</span>
+        <span style={{ display: "block", fontSize: 11, color: C.mute, marginTop: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+          {desc}
+        </span>
       </span>
       {status}
       <Ico d="M9 5l7 7-7 7" size={14} color={C.mute} sw={2} />
@@ -250,7 +305,9 @@ function E2eeBadge({ color }: { color: string }) {
   useLedgerVersion();
   if (e2ee.getTierMeta().tier !== "e2ee") return null;
   return (
-    <span style={{ fontSize: 10.5, fontWeight: 700, color, background: tint(color, 0.08), borderRadius: 8, padding: "3px 8px", flexShrink: 0 }}>{t("E2EE")}</span>
+    <span style={{ fontSize: 10.5, fontWeight: 700, color, background: tint(color, 0.08), borderRadius: 8, padding: "3px 8px", flexShrink: 0 }}>
+      {t("E2EE")}
+    </span>
   );
 }
 

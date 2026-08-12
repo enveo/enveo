@@ -6,15 +6,7 @@
  * (month filter + sort comparator + account/envelope flattening).
  */
 import { computeBudgetState, monthOf } from "./budget";
-import type {
-  Account,
-  Category,
-  ClientLedger,
-  Envelope,
-  EnvelopeGroup,
-  Place,
-  Transaction,
-} from "./types";
+import type { Account, Category, ClientLedger, Envelope, EnvelopeGroup, Place, Transaction } from "./types";
 
 /* ── API response shapes (source of truth; web re-exports) ───────────── */
 

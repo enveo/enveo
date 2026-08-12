@@ -61,9 +61,7 @@ export type BunBase = Readonly<{
 export function parseBunVersionFile(text: string): string {
   const version = text.trim();
   if (!EXACT_VERSION.test(version)) {
-    throw new Error(
-      `${BUN_VERSION_FILE} must contain one exact Bun version (MAJOR.MINOR.PATCH), got: ${JSON.stringify(text)}`,
-    );
+    throw new Error(`${BUN_VERSION_FILE} must contain one exact Bun version (MAJOR.MINOR.PATCH), got: ${JSON.stringify(text)}`);
   }
   return version;
 }
@@ -143,9 +141,7 @@ export function collectTypesBunVersion(file: string, packageJson: string): Versi
 
 /** Every reference that disagrees with the pinned version. Empty array = no drift. */
 export function findBunVersionDrift(expected: string, refs: readonly VersionRef[]): Drift[] {
-  return refs
-    .filter((ref) => ref.version !== expected)
-    .map((ref) => ({ file: ref.file, where: ref.where, found: ref.version, expected }));
+  return refs.filter((ref) => ref.version !== expected).map((ref) => ({ file: ref.file, where: ref.where, found: ref.version, expected }));
 }
 
 /**
@@ -163,9 +159,7 @@ export function findDockerBaseProblems(expected: string, bases: readonly BunBase
       problems.push(`${base.where}: version ${base.version}, expected ${expected}`);
     }
     if (base.digest === null) {
-      problems.push(
-        `${base.where}: no @sha256 digest — a bare tag is mutable and can be republished`,
-      );
+      problems.push(`${base.where}: no @sha256 digest — a bare tag is mutable and can be republished`);
     } else if (!DIGEST.test(base.digest)) {
       problems.push(`${base.where}: malformed digest ${base.digest}`);
     }
@@ -181,9 +175,7 @@ export function findDockerBaseProblems(expected: string, bases: readonly BunBase
   }
   for (const [variant, digests] of byVariant) {
     if (digests.size > 1) {
-      problems.push(
-        `stages on the ${variant} base disagree on its digest (${[...digests].join(", ")}) — one reviewed image per variant`,
-      );
+      problems.push(`stages on the ${variant} base disagree on its digest (${[...digests].join(", ")}) — one reviewed image per variant`);
     }
   }
   return problems;
@@ -191,7 +183,5 @@ export function findDockerBaseProblems(expected: string, bases: readonly BunBase
 
 /** One-line human summary used by the test failure message. */
 export function formatDrift(drift: readonly Drift[]): string {
-  return drift
-    .map((d) => `  • ${d.file} (${d.where}): ${d.found} — expected ${d.expected}`)
-    .join("\n");
+  return drift.map((d) => `  • ${d.file} (${d.where}): ${d.found} — expected ${d.expected}`).join("\n");
 }

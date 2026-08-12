@@ -11,7 +11,6 @@ import { Glyph, Ico } from "../lib/icons";
 import { matchesSearch, SEARCH_THRESHOLD } from "../lib/search";
 import { P, TRANSFER, TEAL, tint, font } from "../lib/theme";
 
-
 export function TransactionsScreen({
   state,
   month,
@@ -48,7 +47,9 @@ export function TransactionsScreen({
   // One search box filters both the envelope AND account grids below — a single "koperty/konta"
   // sheet reads more naturally with one search than a duplicated box per section.
   const [pickQ, setPickQ] = useState("");
-  useEffect(() => { if (pickFilter) setPickQ(""); }, [pickFilter]);
+  useEffect(() => {
+    if (pickFilter) setPickQ("");
+  }, [pickFilter]);
 
   const envById = useMemo(() => new Map(state.envelopes.map((e) => [e.id, e])), [state.envelopes]);
   const accById = useMemo(() => new Map(state.accounts.map((a) => [a.id, a])), [state.accounts]);
@@ -93,8 +94,7 @@ export function TransactionsScreen({
   // source OR destination account (transfers visible from both sides)
   const matchesAcc = (t: Transaction) =>
     accFilter.size === 0 || accFilter.has(t.accountId) || (t.type === "transfer" && !!t.toAccountId && accFilter.has(t.toAccountId));
-  const matchesQuery = (t: Transaction) =>
-    !q || `${descOf(t)} ${subOf(t)} ${accById.get(t.accountId)?.name ?? ""}`.toLowerCase().includes(q);
+  const matchesQuery = (t: Transaction) => !q || `${descOf(t)} ${subOf(t)} ${accById.get(t.accountId)?.name ?? ""}`.toLowerCase().includes(q);
   const txns = state.transactions.filter((t) => matchesEnv(t) && matchesAcc(t) && matchesQuery(t));
 
   // grouping by date (descending order preserved)
@@ -121,14 +121,28 @@ export function TransactionsScreen({
     else next.add(id);
     setAccFilter(next);
   };
-  const clearFilters = () => { setEnvFilter(new Set()); setAccFilter(new Set()); };
+  const clearFilters = () => {
+    setEnvFilter(new Set());
+    setAccFilter(new Set());
+  };
 
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
       <div className="gs" style={{ flex: 1, overflowY: "auto", paddingBottom: 6 }}>
         <div data-band={band || undefined} style={band ? { background: C.headerBg, paddingBottom: 4 } : undefined}>
           <Header month={month} onMenu={onMenu} onPrev={onPrev} onNext={onNext} onBand={band} />
-          <div style={{ display: "flex", alignItems: "center", gap: 8, margin: `2px ${P}px 6px`, padding: "8px 12px", background: hc(tint(C.headerInk, 0.13), C.card), borderRadius: 12, boxShadow: band ? "none" : "0 1px 2px rgba(20,20,28,0.05)" }}>
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 8,
+              margin: `2px ${P}px 6px`,
+              padding: "8px 12px",
+              background: hc(tint(C.headerInk, 0.13), C.card),
+              borderRadius: 12,
+              boxShadow: band ? "none" : "0 1px 2px rgba(20,20,28,0.05)",
+            }}
+          >
             <Ico d="M11 19a8 8 0 100-16 8 8 0 000 16zM21 21l-4.3-4.3" size={17} color={hc(C.headerMute, C.mute)} sw={1.8} />
             <input
               value={query}
@@ -137,18 +151,49 @@ export function TransactionsScreen({
               style={{ flex: 1, minWidth: 0, background: "none", border: "none", fontSize: 14.5, color: hc(C.headerInk, C.text), fontFamily: font }}
             />
             {query && (
-              <button onClick={() => setQuery("")} aria-label={t("Clear search")} style={{ background: "none", border: "none", cursor: "pointer", padding: 2, display: "flex" }}>
+              <button
+                onClick={() => setQuery("")}
+                aria-label={t("Clear search")}
+                style={{ background: "none", border: "none", cursor: "pointer", padding: 2, display: "flex" }}
+              >
                 <Ico d="M6 6l12 12M18 6L6 18" size={14} color={hc(C.headerMute, C.mute)} sw={2} />
               </button>
             )}
-            <button onClick={() => setPickFilter(true)} aria-label={t("Filter")} style={{ background: "none", border: "none", cursor: "pointer", padding: 2, display: "flex" }}>
-              <Ico d="M4 4h16l-6.3 7.4V19l-3.4-2v-5.6L4 4zM17.5 14.5v6M14.5 17.5h6" size={18} color={envFilter.size || accFilter.size ? hc("var(--cta)", TEAL) : hc(C.headerMute, C.mute)} sw={1.8} />
+            <button
+              onClick={() => setPickFilter(true)}
+              aria-label={t("Filter")}
+              style={{ background: "none", border: "none", cursor: "pointer", padding: 2, display: "flex" }}
+            >
+              <Ico
+                d="M4 4h16l-6.3 7.4V19l-3.4-2v-5.6L4 4zM17.5 14.5v6M14.5 17.5h6"
+                size={18}
+                color={envFilter.size || accFilter.size ? hc("var(--cta)", TEAL) : hc(C.headerMute, C.mute)}
+                sw={1.8}
+              />
             </button>
           </div>
-          <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "baseline", gap: 6, padding: `0 ${P + 4}px 8px`, fontSize: 11, color: hc(C.headerMute, C.soft) }}>
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "flex-end",
+              alignItems: "baseline",
+              gap: 6,
+              padding: `0 ${P + 4}px 8px`,
+              fontSize: 11,
+              color: hc(C.headerMute, C.soft),
+            }}
+          >
             {t("Balance:")}
-            <span style={{ fontSize: 12, fontWeight: 700, fontVariantNumeric: "tabular-nums", color: balance < 0 ? hc(C.headerNeg, C.neg) : balance > 0 ? hc(C.headerPos, C.pos) : hc(C.headerInk, C.text) }}>
-              {balance < 0 ? "-" : balance > 0 ? "+" : ""}{M(Math.abs(balance))}
+            <span
+              style={{
+                fontSize: 12,
+                fontWeight: 700,
+                fontVariantNumeric: "tabular-nums",
+                color: balance < 0 ? hc(C.headerNeg, C.neg) : balance > 0 ? hc(C.headerPos, C.pos) : hc(C.headerInk, C.text),
+              }}
+            >
+              {balance < 0 ? "-" : balance > 0 ? "+" : ""}
+              {M(Math.abs(balance))}
             </span>
           </div>
         </div>
@@ -157,8 +202,34 @@ export function TransactionsScreen({
           <div className="gs" style={{ display: "flex", alignItems: "center", gap: 7, padding: `0 ${P}px 8px`, overflowX: "auto" }}>
             <span style={{ fontSize: 13.5, color: C.text, flexShrink: 0 }}>{t("Filter:")}</span>
             {activeEnvs.map((e) => (
-              <button key={e.id} onClick={() => toggleEnv(e.id)} style={{ display: "flex", alignItems: "center", gap: 7, padding: "5px 11px 5px 6px", borderRadius: 18, border: "none", background: C.surface, cursor: "pointer", whiteSpace: "nowrap", boxShadow: "0 1px 2px rgba(0,0,0,0.1)", flexShrink: 0 }}>
-                <span style={{ width: 24, height: 24, borderRadius: 7, background: tint(e.color, 0.16), display: "flex", alignItems: "center", justifyContent: "center" }}>
+              <button
+                key={e.id}
+                onClick={() => toggleEnv(e.id)}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 7,
+                  padding: "5px 11px 5px 6px",
+                  borderRadius: 18,
+                  border: "none",
+                  background: C.surface,
+                  cursor: "pointer",
+                  whiteSpace: "nowrap",
+                  boxShadow: "0 1px 2px rgba(0,0,0,0.1)",
+                  flexShrink: 0,
+                }}
+              >
+                <span
+                  style={{
+                    width: 24,
+                    height: 24,
+                    borderRadius: 7,
+                    background: tint(e.color, 0.16),
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                  }}
+                >
                   <Glyph name={e.icon} size={13} color={e.color} sw={1.7} />
                 </span>
                 <span style={{ fontSize: 13.5, color: C.text }}>{e.name}</span>
@@ -166,8 +237,34 @@ export function TransactionsScreen({
               </button>
             ))}
             {activeAccs.map((a) => (
-              <button key={a.id} onClick={() => toggleAcc(a.id)} style={{ display: "flex", alignItems: "center", gap: 7, padding: "5px 11px 5px 6px", borderRadius: 18, border: "none", background: C.surface, cursor: "pointer", whiteSpace: "nowrap", boxShadow: "0 1px 2px rgba(0,0,0,0.1)", flexShrink: 0 }}>
-                <span style={{ width: 24, height: 24, borderRadius: "50%", background: tint(a.color, 0.16), display: "flex", alignItems: "center", justifyContent: "center" }}>
+              <button
+                key={a.id}
+                onClick={() => toggleAcc(a.id)}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 7,
+                  padding: "5px 11px 5px 6px",
+                  borderRadius: 18,
+                  border: "none",
+                  background: C.surface,
+                  cursor: "pointer",
+                  whiteSpace: "nowrap",
+                  boxShadow: "0 1px 2px rgba(0,0,0,0.1)",
+                  flexShrink: 0,
+                }}
+              >
+                <span
+                  style={{
+                    width: 24,
+                    height: 24,
+                    borderRadius: "50%",
+                    background: tint(a.color, 0.16),
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                  }}
+                >
                   <Glyph name={a.icon} size={12} color={a.color} sw={1.7} />
                 </span>
                 <span style={{ fontSize: 13.5, color: C.text }}>{a.name}</span>
@@ -193,20 +290,78 @@ export function TransactionsScreen({
                     role="button"
                     tabIndex={0}
                     onClick={() => onEditTxn(tx)}
-                    onKeyDown={(e) => { if (e.target !== e.currentTarget) return; if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onEditTxn(tx); } }}
+                    onKeyDown={(e) => {
+                      if (e.target !== e.currentTarget) return;
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        onEditTxn(tx);
+                      }
+                    }}
                     className="fu"
-                    style={{ animationDelay: `${i * 20}ms`, display: "flex", alignItems: "center", padding: "6px 0", gap: 10, cursor: "pointer", width: "100%", background: "none", border: "none", borderBottom: i === group.items.length - 1 ? "none" : `1px solid ${C.line}`, textAlign: "left" }}
+                    style={{
+                      animationDelay: `${i * 20}ms`,
+                      display: "flex",
+                      alignItems: "center",
+                      padding: "6px 0",
+                      gap: 10,
+                      cursor: "pointer",
+                      width: "100%",
+                      background: "none",
+                      border: "none",
+                      borderBottom: i === group.items.length - 1 ? "none" : `1px solid ${C.line}`,
+                      textAlign: "left",
+                    }}
                   >
-                    <div style={{ width: 28, height: 28, borderRadius: 8, flexShrink: 0, background: tint(col, 0.16), display: "flex", alignItems: "center", justifyContent: "center" }}>
+                    <div
+                      style={{
+                        width: 28,
+                        height: 28,
+                        borderRadius: 8,
+                        flexShrink: 0,
+                        background: tint(col, 0.16),
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                      }}
+                    >
                       {tx.type === "transfer" ? (
                         <Ico d="M7 16V4m0 0L3 8m4-4l4 4M17 8v12m0 0l4-4m-4 4l-4-4" size={14} color={col} sw={2} />
                       ) : (
-                        <Glyph name={tx.type === "income" ? "moneybag" : tx.envelopeId ? (envById.get(tx.envelopeId)?.icon ?? "tag") : "tag"} size={14} color={col} sw={1.7} />
+                        <Glyph
+                          name={tx.type === "income" ? "moneybag" : tx.envelopeId ? (envById.get(tx.envelopeId)?.icon ?? "tag") : "tag"}
+                          size={14}
+                          color={col}
+                          sw={1.7}
+                        />
                       )}
                     </div>
                     <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ color: C.text, fontSize: 13.5, fontWeight: 550, lineHeight: 1.25, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{descOf(tx)}</div>
-                      <div style={{ color: C.soft, fontSize: 10.5, lineHeight: 1.25, marginTop: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{subOf(tx)}</div>
+                      <div
+                        style={{
+                          color: C.text,
+                          fontSize: 13.5,
+                          fontWeight: 550,
+                          lineHeight: 1.25,
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        {descOf(tx)}
+                      </div>
+                      <div
+                        style={{
+                          color: C.soft,
+                          fontSize: 10.5,
+                          lineHeight: 1.25,
+                          marginTop: 1,
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        {subOf(tx)}
+                      </div>
                     </div>
                     <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", flexShrink: 0 }}>
                       <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
@@ -242,16 +397,54 @@ export function TransactionsScreen({
                   <>
                     {filteredEnvs.length > 0 && (
                       <>
-                        <div style={{ fontSize: 10.5, fontWeight: 600, color: C.soft, textTransform: "uppercase", letterSpacing: 0.6, marginBottom: 8 }}>{t("Envelopes")}</div>
+                        <div style={{ fontSize: 10.5, fontWeight: 600, color: C.soft, textTransform: "uppercase", letterSpacing: 0.6, marginBottom: 8 }}>
+                          {t("Envelopes")}
+                        </div>
                         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
                           {filteredEnvs.map((e) => {
                             const on = envFilter.has(e.id);
                             return (
-                              <button key={e.id} onClick={() => toggleEnv(e.id)} style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 10px", borderRadius: 11, border: `1.5px solid ${on ? TEAL : C.line}`, background: on ? "var(--accent-14)" : C.surface, cursor: "pointer" }}>
-                                <span style={{ width: 26, height: 26, borderRadius: 7, background: tint(e.color, 0.16), display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                              <button
+                                key={e.id}
+                                onClick={() => toggleEnv(e.id)}
+                                style={{
+                                  display: "flex",
+                                  alignItems: "center",
+                                  gap: 8,
+                                  padding: "8px 10px",
+                                  borderRadius: 11,
+                                  border: `1.5px solid ${on ? TEAL : C.line}`,
+                                  background: on ? "var(--accent-14)" : C.surface,
+                                  cursor: "pointer",
+                                }}
+                              >
+                                <span
+                                  style={{
+                                    width: 26,
+                                    height: 26,
+                                    borderRadius: 7,
+                                    background: tint(e.color, 0.16),
+                                    display: "flex",
+                                    alignItems: "center",
+                                    justifyContent: "center",
+                                    flexShrink: 0,
+                                  }}
+                                >
                                   <Glyph name={e.icon} size={13} color={e.color} sw={1.7} />
                                 </span>
-                                <span style={{ fontSize: 13, color: C.text, flex: 1, textAlign: "left", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}><HighlightedText text={e.name} query={pickQ} /></span>
+                                <span
+                                  style={{
+                                    fontSize: 13,
+                                    color: C.text,
+                                    flex: 1,
+                                    textAlign: "left",
+                                    overflow: "hidden",
+                                    textOverflow: "ellipsis",
+                                    whiteSpace: "nowrap",
+                                  }}
+                                >
+                                  <HighlightedText text={e.name} query={pickQ} />
+                                </span>
                                 {on && <Ico d="M5 13l4 4L19 7" size={14} color={TEAL} sw={2.4} />}
                               </button>
                             );
@@ -262,16 +455,54 @@ export function TransactionsScreen({
 
                     {filteredAccs.length > 0 && (
                       <>
-                        <div style={{ fontSize: 10.5, fontWeight: 600, color: C.soft, textTransform: "uppercase", letterSpacing: 0.6, margin: "16px 0 8px" }}>{t("Accounts")}</div>
+                        <div style={{ fontSize: 10.5, fontWeight: 600, color: C.soft, textTransform: "uppercase", letterSpacing: 0.6, margin: "16px 0 8px" }}>
+                          {t("Accounts")}
+                        </div>
                         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
                           {filteredAccs.map((a) => {
                             const on = accFilter.has(a.id);
                             return (
-                              <button key={a.id} onClick={() => toggleAcc(a.id)} style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 10px", borderRadius: 11, border: `1.5px solid ${on ? TEAL : C.line}`, background: on ? "var(--accent-14)" : C.surface, cursor: "pointer" }}>
-                                <span style={{ width: 26, height: 26, borderRadius: "50%", background: tint(a.color, 0.16), display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                              <button
+                                key={a.id}
+                                onClick={() => toggleAcc(a.id)}
+                                style={{
+                                  display: "flex",
+                                  alignItems: "center",
+                                  gap: 8,
+                                  padding: "8px 10px",
+                                  borderRadius: 11,
+                                  border: `1.5px solid ${on ? TEAL : C.line}`,
+                                  background: on ? "var(--accent-14)" : C.surface,
+                                  cursor: "pointer",
+                                }}
+                              >
+                                <span
+                                  style={{
+                                    width: 26,
+                                    height: 26,
+                                    borderRadius: "50%",
+                                    background: tint(a.color, 0.16),
+                                    display: "flex",
+                                    alignItems: "center",
+                                    justifyContent: "center",
+                                    flexShrink: 0,
+                                  }}
+                                >
                                   <Glyph name={a.icon} size={13} color={a.color} sw={1.7} />
                                 </span>
-                                <span style={{ fontSize: 13, color: C.text, flex: 1, textAlign: "left", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}><HighlightedText text={a.name} query={pickQ} /></span>
+                                <span
+                                  style={{
+                                    fontSize: 13,
+                                    color: C.text,
+                                    flex: 1,
+                                    textAlign: "left",
+                                    overflow: "hidden",
+                                    textOverflow: "ellipsis",
+                                    whiteSpace: "nowrap",
+                                  }}
+                                >
+                                  <HighlightedText text={a.name} query={pickQ} />
+                                </span>
                                 {on && <Ico d="M5 13l4 4L19 7" size={14} color={TEAL} sw={2.4} />}
                               </button>
                             );
@@ -284,7 +515,22 @@ export function TransactionsScreen({
               </div>
 
               {(envFilter.size > 0 || accFilter.size > 0) && (
-                <button onClick={clearFilters} style={{ flexShrink: 0, marginTop: 16, width: "100%", padding: "11px 0", borderRadius: 11, border: `1px solid ${C.line}`, background: C.bg, color: C.neg, fontSize: 13, fontWeight: 600, cursor: "pointer" }}>
+                <button
+                  onClick={clearFilters}
+                  style={{
+                    flexShrink: 0,
+                    marginTop: 16,
+                    width: "100%",
+                    padding: "11px 0",
+                    borderRadius: 11,
+                    border: `1px solid ${C.line}`,
+                    background: C.bg,
+                    color: C.neg,
+                    fontSize: 13,
+                    fontWeight: 600,
+                    cursor: "pointer",
+                  }}
+                >
                   {t("Clear filters")}
                 </button>
               )}
@@ -292,7 +538,6 @@ export function TransactionsScreen({
           );
         }}
       </Sheet>
-
     </div>
   );
 }

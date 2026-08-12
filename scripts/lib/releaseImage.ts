@@ -52,8 +52,7 @@ const ATTESTATION_SUBJECT = "vnd.docker.reference.digest";
 
 /** True for an attestation/referrer manifest: metadata about an image, not an image. */
 const isAttestation = (manifest: IndexManifest): boolean =>
-  manifest.annotations?.[ATTESTATION_TYPE] === "attestation-manifest" ||
-  manifest.platform?.architecture === "unknown";
+  manifest.annotations?.[ATTESTATION_TYPE] === "attestation-manifest" || manifest.platform?.architecture === "unknown";
 
 /** `linux/amd64`, or `linux/arm/v7` when the platform carries a variant. */
 const platformOf = (manifest: IndexManifest): string =>
@@ -74,9 +73,7 @@ export type RunnableManifest = Readonly<{ platform: string; digest: string }>;
  * the index contains rather than an architecture list someone hardcoded next to it.
  */
 export function runnableManifests(index: ImageIndex): RunnableManifest[] {
-  return (index.manifests ?? [])
-    .filter((m) => !isAttestation(m))
-    .map((m) => ({ platform: platformOf(m), digest: m.digest ?? "" }));
+  return (index.manifests ?? []).filter((m) => !isAttestation(m)).map((m) => ({ platform: platformOf(m), digest: m.digest ?? "" }));
 }
 
 /** Every platform in the index that a `docker run` can actually use. */
@@ -91,10 +88,7 @@ export function runnablePlatforms(index: ImageIndex): string[] {
  * yields the image config itself. Both shapes are accepted so the same rules can judge a
  * per-architecture artifact pulled by digest.
  */
-function labelsByPlatform(
-  imageJson: unknown,
-  platforms: readonly string[],
-): Map<string, Record<string, string> | null> {
+function labelsByPlatform(imageJson: unknown, platforms: readonly string[]): Map<string, Record<string, string> | null> {
   const byPlatform = new Map<string, Record<string, string> | null>();
   const root = (imageJson ?? {}) as Record<string, unknown>;
   const single = "config" in root;
@@ -128,9 +122,7 @@ export function checkLabels(imageJson: unknown, expected: IdentityExpectations):
     for (const [label, value] of wanted) {
       const found = labels[label];
       if (found !== value) {
-        violations.push(
-          `${platform}: ${label} is ${JSON.stringify(found ?? null)}, expected ${JSON.stringify(value)}`,
-        );
+        violations.push(`${platform}: ${label} is ${JSON.stringify(found ?? null)}, expected ${JSON.stringify(value)}`);
       }
     }
   }
@@ -152,10 +144,7 @@ export function checkLabels(imageJson: unknown, expected: IdentityExpectations):
  * A source with NO annotations at all is a violation, not a pass. "Nothing to compare" is how
  * this class of bug hides.
  */
-export function checkAnnotations(
-  sources: readonly AnnotationSource[],
-  expected: Readonly<{ revision: string; version: string }>,
-): string[] {
+export function checkAnnotations(sources: readonly AnnotationSource[], expected: Readonly<{ revision: string; version: string }>): string[] {
   if (sources.length === 0) return ["no annotation sources were inspected — nothing was verified"];
 
   const violations: string[] = [];
@@ -172,9 +161,7 @@ export function checkAnnotations(
     for (const [key, value] of wanted) {
       const found = source.annotations[key];
       if (found !== value) {
-        violations.push(
-          `${source.where}: ${key} is ${JSON.stringify(found ?? null)}, expected ${JSON.stringify(value)}`,
-        );
+        violations.push(`${source.where}: ${key} is ${JSON.stringify(found ?? null)}, expected ${JSON.stringify(value)}`);
       }
     }
   }
@@ -209,11 +196,7 @@ export function checkAttestationCoverage(index: ImageIndex): string[] {
  * `--format '{{json .SBOM}}'` prints exactly `{}` when nothing is attached, so "the command
  * succeeded" proves nothing on its own — which is how `sbom: false` survived unnoticed.
  */
-export function checkAttachment(
-  what: string,
-  value: unknown,
-  platforms: readonly string[],
-): string[] {
+export function checkAttachment(what: string, value: unknown, platforms: readonly string[]): string[] {
   const root = (value ?? {}) as Record<string, unknown>;
   const keys = Object.keys(root);
   // Single-platform shape: the payload (`SPDX`, `SLSA`, …) sits at the root.

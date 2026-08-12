@@ -30,10 +30,7 @@ export function tbbState(toBeBudgeted: number): TbbState {
   return toBeBudgeted === 0 ? "zero" : toBeBudgeted > 0 ? "positive" : "negative";
 }
 
-export function sumAvailable(
-  envs: Array<{ available: number; archived: boolean; isSavings: boolean }>,
-  savings: boolean,
-): number {
+export function sumAvailable(envs: Array<{ available: number; archived: boolean; isSavings: boolean }>, savings: boolean): number {
   return envs.filter((e) => !e.archived && e.isSavings === savings).reduce((s, e) => s + e.available, 0);
 }
 

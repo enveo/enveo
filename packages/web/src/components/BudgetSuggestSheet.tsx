@@ -1,5 +1,12 @@
 import { useEffect, useState, type CSSProperties } from "react";
-import { buildBudgetSuggestionBasis, buildPrevMonthSuggestion, buildTopUpNegativesSuggestion, computeStateResponse, type ClientLedger, type NormalizedBudgetSuggestion } from "@enveo/shared";
+import {
+  buildBudgetSuggestionBasis,
+  buildPrevMonthSuggestion,
+  buildTopUpNegativesSuggestion,
+  computeStateResponse,
+  type ClientLedger,
+  type NormalizedBudgetSuggestion,
+} from "@enveo/shared";
 import { Sheet } from "./chrome";
 import { AiConsentSheet } from "./AiConsentSheet";
 import { AmountPadHost, type AmountPadTarget } from "./AmountPadSheet";
@@ -15,12 +22,17 @@ import { store } from "../lib/store";
 
 /** Predefined rules-engine strategies (no "custom" — user-defined ones are always named). */
 const PROFILES: Array<{ id: BudgetSuggestProfile; labelKey: Message; descKey: Message }> = [
-  { id: "cautious", labelKey: msg("By history"), descKey: msg("Median of historical monthly spending — resistant to one-off spikes; the free remainder is spread proportionally.") },
+  {
+    id: "cautious",
+    labelKey: msg("By history"),
+    descKey: msg("Median of historical monthly spending — resistant to one-off spikes; the free remainder is spread proportionally."),
+  },
   { id: "investor", labelKey: msg("Investor"), descKey: msg("Savings envelopes first — the free remainder goes to them.") },
 ];
 
 const LOCK_D = "M8 11V7a4 4 0 018 0v4M6 11h12v9H6z";
-const GEAR_D = "M12 15a3 3 0 100-6 3 3 0 000 6zm7.4-3a7.4 7.4 0 00-.1-1.2l2-1.6-2-3.4-2.4 1a7.5 7.5 0 00-2.1-1.2L14.4 3h-4l-.4 2.6a7.5 7.5 0 00-2.1 1.2l-2.4-1-2 3.4 2 1.6a7.4 7.4 0 000 2.4l-2 1.6 2 3.4 2.4-1c.6.5 1.4.9 2.1 1.2l.4 2.6h4l.4-2.6a7.5 7.5 0 002.1-1.2l2.4 1 2-3.4-2-1.6c.1-.4.1-.8.1-1.2z";
+const GEAR_D =
+  "M12 15a3 3 0 100-6 3 3 0 000 6zm7.4-3a7.4 7.4 0 00-.1-1.2l2-1.6-2-3.4-2.4 1a7.5 7.5 0 00-2.1-1.2L14.4 3h-4l-.4 2.6a7.5 7.5 0 00-2.1 1.2l-2.4-1-2 3.4 2 1.6a7.4 7.4 0 000 2.4l-2 1.6 2 3.4 2.4-1c.6.5 1.4.9 2.1 1.2l.4 2.6h4l.4-2.6a7.5 7.5 0 002.1-1.2l2.4 1 2-3.4-2-1.6c.1-.4.1-.8.1-1.2z";
 
 type CustomProfile = Settings["customProfiles"][number];
 
@@ -80,11 +92,26 @@ export function BudgetSuggestSheet({ show, state, month, onClose }: { show: bool
 
   // A profile deleted in "Manage" also disappears from the picker — fall back to Historical.
   useEffect(() => {
-    if (profile === "custom" && !selProfile) { setProfile("cautious"); setSelCustom(null); }
+    if (profile === "custom" && !selProfile) {
+      setProfile("cautious");
+      setSelCustom(null);
+    }
   }, [profile, selProfile]);
 
-  const reset = () => { setPhase("setup"); setResp(null); setEdited({}); setChecked({}); setError(null); };
-  const close = () => { reset(); setShowConsent(false); setConsented(false); setShowManage(false); onClose(); };
+  const reset = () => {
+    setPhase("setup");
+    setResp(null);
+    setEdited({});
+    setChecked({});
+    setError(null);
+  };
+  const close = () => {
+    reset();
+    setShowConsent(false);
+    setConsented(false);
+    setShowManage(false);
+    onClose();
+  };
 
   const startReview = (r: BudgetSuggestResponse) => {
     setResp(r);
@@ -95,7 +122,10 @@ export function BudgetSuggestSheet({ show, state, month, onClose }: { show: bool
 
   const doGenerate = async () => {
     const ledger = store.getLedger();
-    if (!ledger) { setError(t("The local replica is not ready.")); return; }
+    if (!ledger) {
+      setError(t("The local replica is not ready."));
+      return;
+    }
     setPhase("loading");
     setError(null);
     try {
@@ -110,7 +140,10 @@ export function BudgetSuggestSheet({ show, state, month, onClose }: { show: bool
   /** Deterministic strategies: computed LOCALLY on the replica — zero AI, zero fetch, zero consent. */
   const doDetGenerate = (kind: DetStrategy) => {
     const ledger = store.getLedger();
-    if (!ledger) { setError(t("The local replica is not ready.")); return; }
+    if (!ledger) {
+      setError(t("The local replica is not ready."));
+      return;
+    }
     setError(null);
     const basis = buildBudgetSuggestionBasis({ ledger, month, profile: "historical" });
     const norm: NormalizedBudgetSuggestion =
@@ -136,8 +169,14 @@ export function BudgetSuggestSheet({ show, state, month, onClose }: { show: bool
   }, [pendingGen]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const generate = () => {
-    if (det) { doDetGenerate(det); return; }
-    if (settings.aiMode === "off" && !consented) { setShowConsent(true); return; }
+    if (det) {
+      doDetGenerate(det);
+      return;
+    }
+    if (settings.aiMode === "off" && !consented) {
+      setShowConsent(true);
+      return;
+    }
     void doGenerate();
   };
 
@@ -220,156 +259,371 @@ export function BudgetSuggestSheet({ show, state, month, onClose }: { show: bool
 
   return (
     <>
-    <Sheet show={show} onClose={close}>
-      {(C) => (
-        <>
-          <div style={{ fontSize: 17, fontWeight: 700, color: C.text, marginBottom: 4 }}>{t("Suggest a distribution")}</div>
-          <div style={{ fontSize: 12.5, color: C.soft, marginBottom: 14 }}>
-            {t("To be budgeted this month:")} <b style={{ color: state.toBeBudgeted < 0 ? CORAL : C.text, fontVariantNumeric: "tabular-nums" }}>{formatMoney(Math.max(0, state.toBeBudgeted), currency, lang, { trim: true })}</b>
-          </div>
+      <Sheet show={show} onClose={close}>
+        {(C) => (
+          <>
+            <div style={{ fontSize: 17, fontWeight: 700, color: C.text, marginBottom: 4 }}>{t("Suggest a distribution")}</div>
+            <div style={{ fontSize: 12.5, color: C.soft, marginBottom: 14 }}>
+              {t("To be budgeted this month:")}{" "}
+              <b style={{ color: state.toBeBudgeted < 0 ? CORAL : C.text, fontVariantNumeric: "tabular-nums" }}>
+                {formatMoney(Math.max(0, state.toBeBudgeted), currency, lang, { trim: true })}
+              </b>
+            </div>
 
-          {phase !== "review" && (
-            <>
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", margin: "2px 0 8px" }}>
-                <span style={{ fontSize: 11, fontWeight: 700, color: C.mute, letterSpacing: 0.5, textTransform: "uppercase" }}>{t("Strategy")}</span>
-                <button onClick={() => setShowManage(true)} aria-label={t("Manage…")} style={{ width: 28, height: 28, borderRadius: 9, border: "none", background: C.inset, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>
-                  <Ico d={GEAR_D} size={15} color={C.soft} sw={1.4} />
-                </button>
-              </div>
-              <div style={{ display: "flex", flexDirection: "column", gap: 7, marginBottom: 14 }}>
-                <StrategyOption C={C} name={t("Top up negatives")} desc={t("Distributes the amount only to envelopes in the red — proportionally to shortfalls, never past zero.")} badge="noai" active={det === "topUp"} onSelect={() => { setDet("topUp"); setSelCustom(null); }} />
-                <StrategyOption C={C} name={t("Like last month")} desc={t("Tops envelopes up to last month's allocations. Uncheck what you don't want.")} badge="noai" active={det === "prevMonth"} onSelect={() => { setDet("prevMonth"); setSelCustom(null); }} />
-                {PROFILES.map((p) => (
-                  <StrategyOption key={p.id} C={C} name={t(p.labelKey)} desc={t(p.descKey)} badge={settings.aiMode === "off" ? "noai" : "ai"} active={!det && profile === p.id && !selProfile} onSelect={() => { setDet(null); setProfile(p.id); setSelCustom(null); }} />
-                ))}
-                {settings.customProfiles.map((cp) => (
+            {phase !== "review" && (
+              <>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", margin: "2px 0 8px" }}>
+                  <span style={{ fontSize: 11, fontWeight: 700, color: C.mute, letterSpacing: 0.5, textTransform: "uppercase" }}>{t("Strategy")}</span>
+                  <button
+                    onClick={() => setShowManage(true)}
+                    aria-label={t("Manage…")}
+                    style={{
+                      width: 28,
+                      height: 28,
+                      borderRadius: 9,
+                      border: "none",
+                      background: C.inset,
+                      cursor: "pointer",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                    }}
+                  >
+                    <Ico d={GEAR_D} size={15} color={C.soft} sw={1.4} />
+                  </button>
+                </div>
+                <div style={{ display: "flex", flexDirection: "column", gap: 7, marginBottom: 14 }}>
                   <StrategyOption
-                    key={cp.id}
                     C={C}
-                    name={`✎ ${cp.name}`}
-                    desc={`“${cp.prompt}”`}
-                    badge="ai"
-                    note={customDisabled ? t("Requires AI (server mode or your own key).") : undefined}
-                    disabled={customDisabled}
-                    active={!det && selProfile?.id === cp.id}
-                    onSelect={() => { setDet(null); setProfile("custom"); setSelCustom(cp.id); }}
+                    name={t("Top up negatives")}
+                    desc={t("Distributes the amount only to envelopes in the red — proportionally to shortfalls, never past zero.")}
+                    badge="noai"
+                    active={det === "topUp"}
+                    onSelect={() => {
+                      setDet("topUp");
+                      setSelCustom(null);
+                    }}
                   />
-                ))}
-              </div>
-              {error && <div style={{ fontSize: 12.5, color: CORAL, marginBottom: 10 }}>{error}</div>}
-              <button onClick={generate} disabled={phase === "loading" || state.toBeBudgeted <= 0} style={{ width: "100%", padding: "12px 0", borderRadius: 12, border: "none", background: CTA, color: "#fff", fontSize: 13.5, fontWeight: 600, cursor: "pointer", opacity: phase === "loading" || state.toBeBudgeted <= 0 ? 0.5 : 1 }}>
-                {phase === "loading" ? t("Generating…") : state.toBeBudgeted <= 0 ? t("No funds to distribute") : t("Generate suggestion")}
-              </button>
-            </>
-          )}
+                  <StrategyOption
+                    C={C}
+                    name={t("Like last month")}
+                    desc={t("Tops envelopes up to last month's allocations. Uncheck what you don't want.")}
+                    badge="noai"
+                    active={det === "prevMonth"}
+                    onSelect={() => {
+                      setDet("prevMonth");
+                      setSelCustom(null);
+                    }}
+                  />
+                  {PROFILES.map((p) => (
+                    <StrategyOption
+                      key={p.id}
+                      C={C}
+                      name={t(p.labelKey)}
+                      desc={t(p.descKey)}
+                      badge={settings.aiMode === "off" ? "noai" : "ai"}
+                      active={!det && profile === p.id && !selProfile}
+                      onSelect={() => {
+                        setDet(null);
+                        setProfile(p.id);
+                        setSelCustom(null);
+                      }}
+                    />
+                  ))}
+                  {settings.customProfiles.map((cp) => (
+                    <StrategyOption
+                      key={cp.id}
+                      C={C}
+                      name={`✎ ${cp.name}`}
+                      desc={`“${cp.prompt}”`}
+                      badge="ai"
+                      note={customDisabled ? t("Requires AI (server mode or your own key).") : undefined}
+                      disabled={customDisabled}
+                      active={!det && selProfile?.id === cp.id}
+                      onSelect={() => {
+                        setDet(null);
+                        setProfile("custom");
+                        setSelCustom(cp.id);
+                      }}
+                    />
+                  ))}
+                </div>
+                {error && <div style={{ fontSize: 12.5, color: CORAL, marginBottom: 10 }}>{error}</div>}
+                <button
+                  onClick={generate}
+                  disabled={phase === "loading" || state.toBeBudgeted <= 0}
+                  style={{
+                    width: "100%",
+                    padding: "12px 0",
+                    borderRadius: 12,
+                    border: "none",
+                    background: CTA,
+                    color: "#fff",
+                    fontSize: 13.5,
+                    fontWeight: 600,
+                    cursor: "pointer",
+                    opacity: phase === "loading" || state.toBeBudgeted <= 0 ? 0.5 : 1,
+                  }}
+                >
+                  {phase === "loading" ? t("Generating…") : state.toBeBudgeted <= 0 ? t("No funds to distribute") : t("Generate suggestion")}
+                </button>
+              </>
+            )}
 
-          {phase === "review" && resp && (
-            <>
-              <div style={{ fontSize: 11, color: C.mute, marginBottom: 6 }}>
-                {t("Source: {src}", { src: resp.source === "rules" ? t("rules") : resp.source === "ai" ? t("AI") : t("AI (corrected)") })}
-                {resp.warnings.map((w, i) => {
-                  const m = warnMessage(w);
-                  return m ? <div key={i} style={{ color: CORAL, marginTop: 3 }}>{t(m)}</div> : null;
-                })}
-                {resp.undistributedRemainder > 0 && <div style={{ color: CORAL, marginTop: 3 }}>{t("{amount} stays in “To be budgeted”.", { amount: formatMoney(resp.undistributedRemainder, currency, lang, { trim: true }) })}</div>}
-              </div>
+            {phase === "review" && resp && (
+              <>
+                <div style={{ fontSize: 11, color: C.mute, marginBottom: 6 }}>
+                  {t("Source: {src}", { src: resp.source === "rules" ? t("rules") : resp.source === "ai" ? t("AI") : t("AI (corrected)") })}
+                  {resp.warnings.map((w, i) => {
+                    const m = warnMessage(w);
+                    return m ? (
+                      <div key={i} style={{ color: CORAL, marginTop: 3 }}>
+                        {t(m)}
+                      </div>
+                    ) : null;
+                  })}
+                  {resp.undistributedRemainder > 0 && (
+                    <div style={{ color: CORAL, marginTop: 3 }}>
+                      {t("{amount} stays in “To be budgeted”.", { amount: formatMoney(resp.undistributedRemainder, currency, lang, { trim: true }) })}
+                    </div>
+                  )}
+                </div>
 
-              {sections.map((s) => {
-                const anyOn = s.rows.some((it) => checked[it.envelopeId]);
-                const allOn = s.rows.every((it) => checked[it.envelopeId]);
-                // Sum of the group's checked items; a skipped group shows the struck-through sum of all.
-                const groupSum = s.rows.reduce((x, it) => x + (!anyOn || checked[it.envelopeId] ? deltaOf(it) : 0), 0);
-                return (
-                  <div key={s.key}>
-                    {s.name !== "" && (
-                      <button onClick={() => toggleGroup(s.rows)} role="checkbox" aria-checked={allOn} style={{ display: "flex", alignItems: "center", gap: 10, width: "100%", border: "none", background: "none", padding: "10px 0 6px", cursor: "pointer", textAlign: "left" }}>
-                        <CheckBox on={allOn} C={C} />
-                        <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: 11, fontWeight: 700, letterSpacing: 0.7, textTransform: "uppercase", color: C.soft, opacity: anyOn ? 1 : 0.5 }}>
-                          {s.name}{anyOn ? "" : ` — ${t("skipped")}`}
-                        </span>
-                        <span style={{ fontSize: 11, color: C.mute, fontWeight: 600, fontVariantNumeric: "tabular-nums", textDecoration: anyOn ? "none" : "line-through" }}>
-                          {formatMoney(groupSum, currency, lang, { trim: true })}
-                        </span>
-                      </button>
-                    )}
-                    {s.rows.map((it, ri) => {
-                      const on = !!checked[it.envelopeId];
-                      const env = envById.get(it.envelopeId);
-                      const delta = deltaOf(it);
-                      const isEdited = delta !== it.proposedDelta;
-                      return (
-                        <div key={it.envelopeId} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 0", borderBottom: ri < s.rows.length - 1 ? `1px solid ${C.line}` : "none" }}>
-                          <button onClick={() => toggleRow(it.envelopeId)} role="checkbox" aria-checked={on} aria-label={env?.name ?? it.envelopeId} style={{ border: "none", background: "none", padding: 0, cursor: "pointer", display: "flex" }}>
-                            <CheckBox on={on} C={C} />
-                          </button>
-                          <div style={{ display: "flex", alignItems: "center", gap: 10, flex: 1, minWidth: 0, opacity: on ? 1 : 0.4 }}>
-                            <div style={{ width: 30, height: 30, borderRadius: 8, flexShrink: 0, background: env?.color ?? C.inset, display: "flex", alignItems: "center", justifyContent: "center" }}>
-                              <Glyph name={env?.icon ?? "wallet"} size={14} color={env && isLight(env.color) ? "#33312c" : "#fff"} sw={1.6} />
-                            </div>
-                            <div style={{ flex: 1, minWidth: 0 }}>
-                              <div style={{ fontSize: 13, fontWeight: 600, color: C.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{env?.name ?? it.envelopeId}</div>
-                              <div style={{ fontSize: 10.5, color: C.mute }}>
-                                {on ? t("available after: {amount}", { amount: formatMoney(it.currentAvailable + delta, currency, lang, { trim: true }) }) : t("skipped")}
+                {sections.map((s) => {
+                  const anyOn = s.rows.some((it) => checked[it.envelopeId]);
+                  const allOn = s.rows.every((it) => checked[it.envelopeId]);
+                  // Sum of the group's checked items; a skipped group shows the struck-through sum of all.
+                  const groupSum = s.rows.reduce((x, it) => x + (!anyOn || checked[it.envelopeId] ? deltaOf(it) : 0), 0);
+                  return (
+                    <div key={s.key}>
+                      {s.name !== "" && (
+                        <button
+                          onClick={() => toggleGroup(s.rows)}
+                          role="checkbox"
+                          aria-checked={allOn}
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 10,
+                            width: "100%",
+                            border: "none",
+                            background: "none",
+                            padding: "10px 0 6px",
+                            cursor: "pointer",
+                            textAlign: "left",
+                          }}
+                        >
+                          <CheckBox on={allOn} C={C} />
+                          <span
+                            style={{
+                              flex: 1,
+                              minWidth: 0,
+                              overflow: "hidden",
+                              textOverflow: "ellipsis",
+                              whiteSpace: "nowrap",
+                              fontSize: 11,
+                              fontWeight: 700,
+                              letterSpacing: 0.7,
+                              textTransform: "uppercase",
+                              color: C.soft,
+                              opacity: anyOn ? 1 : 0.5,
+                            }}
+                          >
+                            {s.name}
+                            {anyOn ? "" : ` — ${t("skipped")}`}
+                          </span>
+                          <span
+                            style={{
+                              fontSize: 11,
+                              color: C.mute,
+                              fontWeight: 600,
+                              fontVariantNumeric: "tabular-nums",
+                              textDecoration: anyOn ? "none" : "line-through",
+                            }}
+                          >
+                            {formatMoney(groupSum, currency, lang, { trim: true })}
+                          </span>
+                        </button>
+                      )}
+                      {s.rows.map((it, ri) => {
+                        const on = !!checked[it.envelopeId];
+                        const env = envById.get(it.envelopeId);
+                        const delta = deltaOf(it);
+                        const isEdited = delta !== it.proposedDelta;
+                        return (
+                          <div
+                            key={it.envelopeId}
+                            style={{
+                              display: "flex",
+                              alignItems: "center",
+                              gap: 10,
+                              padding: "8px 0",
+                              borderBottom: ri < s.rows.length - 1 ? `1px solid ${C.line}` : "none",
+                            }}
+                          >
+                            <button
+                              onClick={() => toggleRow(it.envelopeId)}
+                              role="checkbox"
+                              aria-checked={on}
+                              aria-label={env?.name ?? it.envelopeId}
+                              style={{ border: "none", background: "none", padding: 0, cursor: "pointer", display: "flex" }}
+                            >
+                              <CheckBox on={on} C={C} />
+                            </button>
+                            <div style={{ display: "flex", alignItems: "center", gap: 10, flex: 1, minWidth: 0, opacity: on ? 1 : 0.4 }}>
+                              <div
+                                style={{
+                                  width: 30,
+                                  height: 30,
+                                  borderRadius: 8,
+                                  flexShrink: 0,
+                                  background: env?.color ?? C.inset,
+                                  display: "flex",
+                                  alignItems: "center",
+                                  justifyContent: "center",
+                                }}
+                              >
+                                <Glyph name={env?.icon ?? "wallet"} size={14} color={env && isLight(env.color) ? "#33312c" : "#fff"} sw={1.6} />
+                              </div>
+                              <div style={{ flex: 1, minWidth: 0 }}>
+                                <div
+                                  style={{ fontSize: 13, fontWeight: 600, color: C.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
+                                >
+                                  {env?.name ?? it.envelopeId}
+                                </div>
+                                <div style={{ fontSize: 10.5, color: C.mute }}>
+                                  {on
+                                    ? t("available after: {amount}", { amount: formatMoney(it.currentAvailable + delta, currency, lang, { trim: true }) })
+                                    : t("skipped")}
+                                </div>
+                              </div>
+                              <div
+                                onClick={on ? () => openPadFor(it) : undefined}
+                                style={{
+                                  display: "flex",
+                                  alignItems: "center",
+                                  gap: 3,
+                                  border: `1px solid ${on && isEdited ? TEAL : C.line}`,
+                                  background: C.inset,
+                                  borderRadius: 9,
+                                  padding: "6px 9px",
+                                  cursor: on ? "pointer" : "default",
+                                }}
+                              >
+                                <span style={{ fontSize: 11, color: C.soft }}>+</span>
+                                <input
+                                  value={edited[it.envelopeId] ?? ""}
+                                  readOnly
+                                  tabIndex={on ? 0 : -1}
+                                  onClick={on ? () => openPadFor(it) : undefined}
+                                  onFocus={on ? () => openPadFor(it) : undefined}
+                                  style={{
+                                    width: 60,
+                                    background: "none",
+                                    border: "none",
+                                    textAlign: "right",
+                                    fontSize: 13,
+                                    fontWeight: 700,
+                                    color: on && isEdited ? TEAL : C.text,
+                                    fontFamily: font,
+                                    fontVariantNumeric: "tabular-nums",
+                                    cursor: on ? "pointer" : "default",
+                                    textDecoration: on ? "none" : "line-through",
+                                    padding: 0,
+                                  }}
+                                />
+                                <span style={{ fontSize: 11, color: C.soft }}>{currencySymbol(currency, lang)}</span>
                               </div>
                             </div>
-                            <div onClick={on ? () => openPadFor(it) : undefined} style={{ display: "flex", alignItems: "center", gap: 3, border: `1px solid ${on && isEdited ? TEAL : C.line}`, background: C.inset, borderRadius: 9, padding: "6px 9px", cursor: on ? "pointer" : "default" }}>
-                              <span style={{ fontSize: 11, color: C.soft }}>+</span>
-                              <input
-                                value={edited[it.envelopeId] ?? ""}
-                                readOnly
-                                tabIndex={on ? 0 : -1}
-                                onClick={on ? () => openPadFor(it) : undefined}
-                                onFocus={on ? () => openPadFor(it) : undefined}
-                                style={{ width: 60, background: "none", border: "none", textAlign: "right", fontSize: 13, fontWeight: 700, color: on && isEdited ? TEAL : C.text, fontFamily: font, fontVariantNumeric: "tabular-nums", cursor: on ? "pointer" : "default", textDecoration: on ? "none" : "line-through", padding: 0 }}
-                              />
-                              <span style={{ fontSize: 11, color: C.soft }}>{currencySymbol(currency, lang)}</span>
-                            </div>
                           </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                );
-              })}
+                        );
+                      })}
+                    </div>
+                  );
+                })}
 
-              {error && <div style={{ fontSize: 12.5, color: CORAL, margin: "10px 0 0" }}>{error}</div>}
+                {error && <div style={{ fontSize: 12.5, color: CORAL, margin: "10px 0 0" }}>{error}</div>}
 
-              {/* STICKY bar — position:sticky within the sheet's scroll (NOT fixed: the Sheet has a transform).
+                {/* STICKY bar — position:sticky within the sheet's scroll (NOT fixed: the Sheet has a transform).
                   NOTE: NO negative bottom margin — it ate 28px+safe-area of content height
                   (scrollHeight==clientHeight → dead scroll, last row permanently under the
                   bar; on iOS a whole row disappeared). Side -20px (full-bleed) stays. */}
-              <div style={{ position: "sticky", bottom: 0, zIndex: 3, background: C.sheet, borderTop: `1px solid ${C.line}`, margin: "10px -20px 0", padding: "10px 20px 4px" }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
-                  <span style={{ fontSize: 11.5, fontWeight: 600, color: remaining >= 0 ? C.pos : C.neg }}>{t(remaining >= 0 ? msg("Left after changes") : msg("Short after changes"))}</span>
-                  <span style={{ fontSize: 16, fontWeight: 700, color: remaining >= 0 ? C.pos : C.neg, fontVariantNumeric: "tabular-nums" }}>
-                    {(remaining >= 0 ? "+" : "−") + formatMoney(Math.abs(remaining), currency, lang, { trim: true })}
-                  </span>
+                <div
+                  style={{
+                    position: "sticky",
+                    bottom: 0,
+                    zIndex: 3,
+                    background: C.sheet,
+                    borderTop: `1px solid ${C.line}`,
+                    margin: "10px -20px 0",
+                    padding: "10px 20px 4px",
+                  }}
+                >
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                    <span style={{ fontSize: 11.5, fontWeight: 600, color: remaining >= 0 ? C.pos : C.neg }}>
+                      {t(remaining >= 0 ? msg("Left after changes") : msg("Short after changes"))}
+                    </span>
+                    <span style={{ fontSize: 16, fontWeight: 700, color: remaining >= 0 ? C.pos : C.neg, fontVariantNumeric: "tabular-nums" }}>
+                      {(remaining >= 0 ? "+" : "−") + formatMoney(Math.abs(remaining), currency, lang, { trim: true })}
+                    </span>
+                  </div>
+                  <div style={{ display: "flex", gap: 10 }}>
+                    <button
+                      onClick={reset}
+                      style={{
+                        flex: 1,
+                        padding: "11px 0",
+                        borderRadius: 12,
+                        border: `1px solid ${C.line}`,
+                        background: "transparent",
+                        color: C.text,
+                        fontSize: 13,
+                        fontWeight: 600,
+                        cursor: "pointer",
+                      }}
+                    >
+                      {t("Back")}
+                    </button>
+                    <button
+                      onClick={apply}
+                      disabled={nSel === 0}
+                      style={{
+                        flex: 2,
+                        padding: "11px 0",
+                        borderRadius: 12,
+                        border: "none",
+                        background: CTA,
+                        color: "#fff",
+                        fontSize: 13.5,
+                        fontWeight: 600,
+                        cursor: "pointer",
+                        opacity: nSel === 0 ? 0.5 : 1,
+                      }}
+                    >
+                      {t("Apply ({n})", { n: nSel })}
+                    </button>
+                  </div>
                 </div>
-                <div style={{ display: "flex", gap: 10 }}>
-                  <button onClick={reset} style={{ flex: 1, padding: "11px 0", borderRadius: 12, border: `1px solid ${C.line}`, background: "transparent", color: C.text, fontSize: 13, fontWeight: 600, cursor: "pointer" }}>{t("Back")}</button>
-                  <button onClick={apply} disabled={nSel === 0} style={{ flex: 2, padding: "11px 0", borderRadius: 12, border: "none", background: CTA, color: "#fff", fontSize: 13.5, fontWeight: 600, cursor: "pointer", opacity: nSel === 0 ? 0.5 : 1 }}>{t("Apply ({n})", { n: nSel })}</button>
-                </div>
-              </div>
-            </>
-          )}
-        </>
-      )}
-    </Sheet>
-    {/* Sibling of the Sheet (not a child) — the panel's transform would break position:fixed. */}
-    <ProfileManageSheet show={showManage} onClose={() => setShowManage(false)} />
-    <AmountPadHost target={pad} onClose={() => setPad(null)} />
-    <AiConsentSheet
-      show={showConsent}
-      feature="suggest"
-      onClose={() => setShowConsent(false)}
-      onDecided={() => {
-        // "rules" keeps aiMode=off (local), server/byok have already saved settings —
-        // we generate in every case, with the fresh mode (pendingGen effect).
-        setShowConsent(false);
-        setConsented(true);
-        setPendingGen(true);
-      }}
-    />
+              </>
+            )}
+          </>
+        )}
+      </Sheet>
+      {/* Sibling of the Sheet (not a child) — the panel's transform would break position:fixed. */}
+      <ProfileManageSheet show={showManage} onClose={() => setShowManage(false)} />
+      <AmountPadHost target={pad} onClose={() => setPad(null)} />
+      <AiConsentSheet
+        show={showConsent}
+        feature="suggest"
+        onClose={() => setShowConsent(false)}
+        onDecided={() => {
+          // "rules" keeps aiMode=off (local), server/byok have already saved settings —
+          // we generate in every case, with the fresh mode (pendingGen effect).
+          setShowConsent(false);
+          setConsented(true);
+          setPendingGen(true);
+        }}
+      />
     </>
   );
 }
@@ -387,7 +641,21 @@ function prevAllocations(ledger: ClientLedger, month: string): Map<string, numbe
 /** Result-list checkbox: 20px, radius 7, ✓ on C.pos (import list pattern). */
 function CheckBox({ on, C }: { on: boolean; C: Theme }) {
   return (
-    <span aria-hidden style={{ width: 20, height: 20, borderRadius: 7, flexShrink: 0, boxSizing: "border-box", border: `1.6px solid ${on ? C.pos : C.mute}`, background: on ? C.pos : "transparent", display: "flex", alignItems: "center", justifyContent: "center" }}>
+    <span
+      aria-hidden
+      style={{
+        width: 20,
+        height: 20,
+        borderRadius: 7,
+        flexShrink: 0,
+        boxSizing: "border-box",
+        border: `1.6px solid ${on ? C.pos : C.mute}`,
+        background: on ? C.pos : "transparent",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+      }}
+    >
       {on && (
         <svg width={12} height={12} viewBox="0 0 24 24" fill="none" style={{ stroke: "#fff" }} strokeWidth={3.2} strokeLinecap="round" strokeLinejoin="round">
           <path d="M4 12l6 6L20 6" />
@@ -398,18 +666,79 @@ function CheckBox({ on, C }: { on: boolean; C: Theme }) {
 }
 
 /** Strategy radio row: dot, name, one-line description (custom ones: start of the prompt). */
-function StrategyOption({ C, name, desc, note, badge, active, disabled, onSelect }: { C: Theme; name: string; desc: string; note?: string; badge?: "noai" | "ai"; active: boolean; disabled?: boolean; onSelect: () => void }) {
+function StrategyOption({
+  C,
+  name,
+  desc,
+  note,
+  badge,
+  active,
+  disabled,
+  onSelect,
+}: {
+  C: Theme;
+  name: string;
+  desc: string;
+  note?: string;
+  badge?: "noai" | "ai";
+  active: boolean;
+  disabled?: boolean;
+  onSelect: () => void;
+}) {
   const { t } = useT();
   return (
-    <button onClick={disabled ? undefined : onSelect} role="radio" aria-checked={active} aria-disabled={disabled || undefined} style={{ display: "flex", alignItems: "flex-start", gap: 11, width: "100%", textAlign: "left", padding: "11px 13px", borderRadius: 13, border: `1px solid ${active ? TEAL : C.line}`, background: active ? "var(--accent-14)" : "transparent", cursor: disabled ? "default" : "pointer", opacity: disabled ? 0.45 : 1 }}>
-      <span style={{ width: 18, height: 18, borderRadius: "50%", border: `2px solid ${active ? TEAL : C.mute}`, flexShrink: 0, marginTop: 1, display: "flex", alignItems: "center", justifyContent: "center" }}>
+    <button
+      onClick={disabled ? undefined : onSelect}
+      role="radio"
+      aria-checked={active}
+      aria-disabled={disabled || undefined}
+      style={{
+        display: "flex",
+        alignItems: "flex-start",
+        gap: 11,
+        width: "100%",
+        textAlign: "left",
+        padding: "11px 13px",
+        borderRadius: 13,
+        border: `1px solid ${active ? TEAL : C.line}`,
+        background: active ? "var(--accent-14)" : "transparent",
+        cursor: disabled ? "default" : "pointer",
+        opacity: disabled ? 0.45 : 1,
+      }}
+    >
+      <span
+        style={{
+          width: 18,
+          height: 18,
+          borderRadius: "50%",
+          border: `2px solid ${active ? TEAL : C.mute}`,
+          flexShrink: 0,
+          marginTop: 1,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+        }}
+      >
         {active && <span style={{ width: 8, height: 8, borderRadius: "50%", background: TEAL }} />}
       </span>
       <span style={{ minWidth: 0, flex: 1 }}>
         <span style={{ display: "flex", alignItems: "flex-start", gap: 8 }}>
           <span style={{ fontSize: 13.5, fontWeight: 700, color: active ? TEAL : C.text, minWidth: 0 }}>{name}</span>
           {badge && (
-            <span style={{ marginLeft: "auto", flexShrink: 0, marginTop: 1, fontSize: 9.5, fontWeight: 700, letterSpacing: 0.4, padding: "2px 7px", borderRadius: 8, background: badge === "noai" ? tint(C.pos, 0.15) : tint(C.warn, 0.15), color: badge === "noai" ? C.pos : C.warn }}>
+            <span
+              style={{
+                marginLeft: "auto",
+                flexShrink: 0,
+                marginTop: 1,
+                fontSize: 9.5,
+                fontWeight: 700,
+                letterSpacing: 0.4,
+                padding: "2px 7px",
+                borderRadius: 8,
+                background: badge === "noai" ? tint(C.pos, 0.15) : tint(C.warn, 0.15),
+                color: badge === "noai" ? C.pos : C.warn,
+              }}
+            >
               {badge === "noai" ? t("NO AI") : t("AI")}
             </span>
           )}
@@ -431,8 +760,14 @@ function ProfileManageSheet({ show, onClose }: { show: boolean; onClose: () => v
   const [form, setForm] = useState<{ id: string | null; name: string; prompt: string } | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
 
-  const closeForm = () => { setForm(null); setFormError(null); };
-  const close = () => { closeForm(); onClose(); };
+  const closeForm = () => {
+    setForm(null);
+    setFormError(null);
+  };
+  const close = () => {
+    closeForm();
+    onClose();
+  };
 
   const save = () => {
     if (!form) return;
@@ -440,7 +775,10 @@ function ProfileManageSheet({ show, onClose }: { show: boolean; onClose: () => v
     const prompt = form.prompt.trim();
     if (!name || !prompt) return;
     const taken = settings.customProfiles.some((p) => p.id !== form.id && p.name.trim().toLowerCase() === name.toLowerCase());
-    if (taken) { setFormError(t("A profile with this name already exists.")); return; }
+    if (taken) {
+      setFormError(t("A profile with this name already exists."));
+      return;
+    }
     const next: CustomProfile[] = form.id
       ? settings.customProfiles.map((p) => (p.id === form.id ? { ...p, name, prompt } : p))
       : [...settings.customProfiles, { id: crypto.randomUUID(), name, prompt }];
@@ -454,8 +792,28 @@ function ProfileManageSheet({ show, onClose }: { show: boolean; onClose: () => v
   };
 
   const rowStyle = (C: Theme): CSSProperties => ({ display: "flex", alignItems: "center", gap: 8, padding: "9px 0", borderBottom: `1px solid ${C.line}` });
-  const smallBtn = (C: Theme, danger = false): CSSProperties => ({ padding: "5px 10px", borderRadius: 8, border: `1px solid ${danger ? CORAL : C.line}`, background: "transparent", color: danger ? CORAL : C.text, fontSize: 12, fontWeight: 600, cursor: "pointer" });
-  const inputStyle = (C: Theme): CSSProperties => ({ width: "100%", boxSizing: "border-box", padding: "9px 11px", borderRadius: 9, border: `1px solid ${C.line}`, background: C.bg, color: C.text, fontSize: 13, fontFamily: font, marginBottom: 8 });
+  const smallBtn = (C: Theme, danger = false): CSSProperties => ({
+    padding: "5px 10px",
+    borderRadius: 8,
+    border: `1px solid ${danger ? CORAL : C.line}`,
+    background: "transparent",
+    color: danger ? CORAL : C.text,
+    fontSize: 12,
+    fontWeight: 600,
+    cursor: "pointer",
+  });
+  const inputStyle = (C: Theme): CSSProperties => ({
+    width: "100%",
+    boxSizing: "border-box",
+    padding: "9px 11px",
+    borderRadius: 9,
+    border: `1px solid ${C.line}`,
+    background: C.bg,
+    color: C.text,
+    fontSize: 13,
+    fontFamily: font,
+    marginBottom: 8,
+  });
 
   return (
     <Sheet show={show} onClose={close}>
@@ -474,29 +832,108 @@ function ProfileManageSheet({ show, onClose }: { show: boolean; onClose: () => v
             </div>
           ))}
 
-          <div style={{ fontSize: 11, fontWeight: 700, color: C.mute, letterSpacing: 0.4, textTransform: "uppercase", margin: "14px 0 2px" }}>{t("Custom")}</div>
+          <div style={{ fontSize: 11, fontWeight: 700, color: C.mute, letterSpacing: 0.4, textTransform: "uppercase", margin: "14px 0 2px" }}>
+            {t("Custom")}
+          </div>
           {settings.customProfiles.map((p) => (
             <div key={p.id} style={rowStyle(C)}>
-              <span style={{ flex: 1, minWidth: 0, fontSize: 13.5, color: C.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>✎ {p.name}</span>
-              <button onClick={() => { setForm({ id: p.id, name: p.name, prompt: p.prompt }); setFormError(null); }} style={smallBtn(C)}>{t("Edit")}</button>
-              <button onClick={() => remove(p)} style={smallBtn(C, true)}>{t("Delete")}</button>
+              <span style={{ flex: 1, minWidth: 0, fontSize: 13.5, color: C.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                ✎ {p.name}
+              </span>
+              <button
+                onClick={() => {
+                  setForm({ id: p.id, name: p.name, prompt: p.prompt });
+                  setFormError(null);
+                }}
+                style={smallBtn(C)}
+              >
+                {t("Edit")}
+              </button>
+              <button onClick={() => remove(p)} style={smallBtn(C, true)}>
+                {t("Delete")}
+              </button>
             </div>
           ))}
 
           {form ? (
             <div style={{ marginTop: 12 }}>
               <div style={{ fontSize: 12, color: C.soft, marginBottom: 4 }}>{t("Name")}</div>
-              <input value={form.name} onChange={(e) => { setForm({ ...form, name: e.target.value }); setFormError(null); }} style={inputStyle(C)} />
+              <input
+                value={form.name}
+                onChange={(e) => {
+                  setForm({ ...form, name: e.target.value });
+                  setFormError(null);
+                }}
+                style={inputStyle(C)}
+              />
               <div style={{ fontSize: 12, color: C.soft, marginBottom: 4 }}>{t("Prompt")}</div>
-              <textarea value={form.prompt} onChange={(e) => setForm({ ...form, prompt: e.target.value })} maxLength={2000} rows={4} placeholder={t("Describe how to distribute (e.g. prioritize savings, less on entertainment)")} style={{ ...inputStyle(C), resize: "vertical" }} />
+              <textarea
+                value={form.prompt}
+                onChange={(e) => setForm({ ...form, prompt: e.target.value })}
+                maxLength={2000}
+                rows={4}
+                placeholder={t("Describe how to distribute (e.g. prioritize savings, less on entertainment)")}
+                style={{ ...inputStyle(C), resize: "vertical" }}
+              />
               {formError && <div style={{ fontSize: 12.5, color: CORAL, marginBottom: 8 }}>{formError}</div>}
               <div style={{ display: "flex", gap: 8 }}>
-                <button onClick={closeForm} style={{ flex: 1, padding: "10px 0", borderRadius: 10, border: `1px solid ${C.line}`, background: "transparent", color: C.text, fontSize: 13, fontWeight: 600, cursor: "pointer" }}>{t("Cancel")}</button>
-                <button onClick={save} disabled={!form.name.trim() || !form.prompt.trim()} style={{ flex: 2, padding: "10px 0", borderRadius: 10, border: "none", background: CTA, color: "#fff", fontSize: 13, fontWeight: 600, cursor: "pointer", opacity: form.name.trim() && form.prompt.trim() ? 1 : 0.5 }}>{t("Save")}</button>
+                <button
+                  onClick={closeForm}
+                  style={{
+                    flex: 1,
+                    padding: "10px 0",
+                    borderRadius: 10,
+                    border: `1px solid ${C.line}`,
+                    background: "transparent",
+                    color: C.text,
+                    fontSize: 13,
+                    fontWeight: 600,
+                    cursor: "pointer",
+                  }}
+                >
+                  {t("Cancel")}
+                </button>
+                <button
+                  onClick={save}
+                  disabled={!form.name.trim() || !form.prompt.trim()}
+                  style={{
+                    flex: 2,
+                    padding: "10px 0",
+                    borderRadius: 10,
+                    border: "none",
+                    background: CTA,
+                    color: "#fff",
+                    fontSize: 13,
+                    fontWeight: 600,
+                    cursor: "pointer",
+                    opacity: form.name.trim() && form.prompt.trim() ? 1 : 0.5,
+                  }}
+                >
+                  {t("Save")}
+                </button>
               </div>
             </div>
           ) : (
-            <button onClick={() => { setForm({ id: null, name: "", prompt: "" }); setFormError(null); }} style={{ width: "100%", marginTop: 12, padding: "11px 0", borderRadius: 12, border: `1px dashed ${C.line}`, background: "transparent", color: C.text, fontSize: 13, fontWeight: 600, cursor: "pointer" }}>{t("+ Add profile")}</button>
+            <button
+              onClick={() => {
+                setForm({ id: null, name: "", prompt: "" });
+                setFormError(null);
+              }}
+              style={{
+                width: "100%",
+                marginTop: 12,
+                padding: "11px 0",
+                borderRadius: 12,
+                border: `1px dashed ${C.line}`,
+                background: "transparent",
+                color: C.text,
+                fontSize: 13,
+                fontWeight: 600,
+                cursor: "pointer",
+              }}
+            >
+              {t("+ Add profile")}
+            </button>
           )}
 
           <div style={{ fontSize: 11, color: C.mute, lineHeight: 1.5, marginTop: 12 }}>{t("Custom profiles are stored only on this device.")}</div>

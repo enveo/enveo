@@ -4,14 +4,7 @@
  */
 import { E2EE_DISABLE_CONFIRM } from "@enveo/shared";
 import { describe, expect, it } from "bun:test";
-import {
-  e2eeDisableInput,
-  e2eeEnableInput,
-  sync2PushInput,
-  sync2RekeyInput,
-  sync2ResetInput,
-  sync2SnapshotInput,
-} from "./sync2";
+import { e2eeDisableInput, e2eeEnableInput, sync2PushInput, sync2RekeyInput, sync2ResetInput, sync2SnapshotInput } from "./sync2";
 
 const UUID = "11111111-1111-1111-1111-111111111111";
 
@@ -38,22 +31,14 @@ describe("sync2 — input validation", () => {
   });
 
   it("push: rejects a bad opId uuid and a too-short ciphertext", () => {
-    expect(
-      sync2PushInput.safeParse({ epoch: 1, ops: [{ opId: "not-a-uuid", ciphertext: "v1.AAAAAAAA" }] })
-        .success,
-    ).toBe(false);
-    expect(
-      sync2PushInput.safeParse({ epoch: 1, ops: [{ opId: UUID, ciphertext: "x" }] }).success,
-    ).toBe(false);
+    expect(sync2PushInput.safeParse({ epoch: 1, ops: [{ opId: "not-a-uuid", ciphertext: "v1.AAAAAAAA" }] }).success).toBe(false);
+    expect(sync2PushInput.safeParse({ epoch: 1, ops: [{ opId: UUID, ciphertext: "x" }] }).success).toBe(false);
   });
 
   it("push: rejects a batch > 500 and a non-integer epoch", () => {
     const ops = Array.from({ length: 501 }, () => ({ opId: UUID, ciphertext: "v1.AAAAAAAA" }));
     expect(sync2PushInput.safeParse({ epoch: 1, ops }).success).toBe(false);
-    expect(
-      sync2PushInput.safeParse({ epoch: 1.5, ops: [{ opId: UUID, ciphertext: "v1.AAAAAAAA" }] })
-        .success,
-    ).toBe(false);
+    expect(sync2PushInput.safeParse({ epoch: 1.5, ops: [{ opId: UUID, ciphertext: "v1.AAAAAAAA" }] }).success).toBe(false);
   });
 
   it("snapshot: requires integer epoch/uptoSeq and a non-empty blob", () => {
@@ -67,18 +52,14 @@ describe("sync2 — input validation", () => {
     // the client fires it in the BACKGROUND at the end of a cycle — the widest window there is
     // for a cookie swapped in another tab. The epoch cannot catch it (two independently-encrypted
     // budgets both sit at epoch 1), so the body names the tenant the client verified.
-    expect(
-      sync2SnapshotInput.safeParse({ epoch: 2, uptoSeq: 10, blob: "v1.z", userId: "user-A" }).success,
-    ).toBe(true);
+    expect(sync2SnapshotInput.safeParse({ epoch: 2, uptoSeq: 10, blob: "v1.z", userId: "user-A" }).success).toBe(true);
     expect(sync2SnapshotInput.safeParse({ epoch: 2, uptoSeq: 10, blob: "v1.z", userId: "" }).success).toBe(false);
     // a pre-2.0 client omits it — then there is simply nothing to assert
     expect(sync2SnapshotInput.safeParse({ epoch: 2, uptoSeq: 10, blob: "v1.z" }).success).toBe(true);
   });
 
   it("enable: requires wrappedDek + kdfParams + snapshotBlob", () => {
-    expect(
-      e2eeEnableInput.safeParse({ wrappedDek: "v1.a", kdfParams: "{}", snapshotBlob: "v1.b" }).success,
-    ).toBe(true);
+    expect(e2eeEnableInput.safeParse({ wrappedDek: "v1.a", kdfParams: "{}", snapshotBlob: "v1.b" }).success).toBe(true);
     expect(e2eeEnableInput.safeParse({ wrappedDek: "", kdfParams: "{}", snapshotBlob: "v1.b" }).success).toBe(false);
     expect(e2eeEnableInput.safeParse({ wrappedDek: "v1.a", kdfParams: "{}" }).success).toBe(false);
   });
@@ -142,13 +123,8 @@ describe("sync2 — input validation", () => {
     };
     expect(sync2ResetInput.safeParse({ epoch: 3, snapshotBlob: "v1.z", userId: "user-A" }).success).toBe(true);
     expect(sync2ResetInput.safeParse({ epoch: 3, snapshotBlob: "v1.z", userId: "" }).success).toBe(false);
-    expect(
-      e2eeEnableInput.safeParse({ wrappedDek: "v1.a", kdfParams: "{}", snapshotBlob: "v1.b", userId: "user-A" })
-        .success,
-    ).toBe(true);
-    expect(
-      e2eeDisableInput.safeParse({ confirm: E2EE_DISABLE_CONFIRM, ledger: emptyLedger, userId: "user-A" }).success,
-    ).toBe(true);
+    expect(e2eeEnableInput.safeParse({ wrappedDek: "v1.a", kdfParams: "{}", snapshotBlob: "v1.b", userId: "user-A" }).success).toBe(true);
+    expect(e2eeDisableInput.safeParse({ confirm: E2EE_DISABLE_CONFIRM, ledger: emptyLedger, userId: "user-A" }).success).toBe(true);
     // a pre-2.0 client omits it — then there is simply nothing to assert
     expect(e2eeDisableInput.safeParse({ confirm: E2EE_DISABLE_CONFIRM, ledger: emptyLedger }).success).toBe(true);
   });

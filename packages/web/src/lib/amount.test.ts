@@ -270,17 +270,23 @@ describe("evalExpression — split sum regression", () => {
 describe("evalExpression — an eval-free evaluator (CSP-safe)", () => {
   const eq = (expr: string, gr: number | null) => expect(evalExpression(expr)).toBe(gr);
   test("basic operations and precedence", () => {
-    eq("50+24", 7400); eq("50−24", 2600); eq("74+12", 8600);
-    eq("2×50", 10000); eq("10+2×50", 11000); // × before +
-    eq("100÷4", 2500); eq("100÷0", null);     // division by zero → null
-    eq("200-500", -30000);                     // negative result
-    eq("1000×1000", 100000000);                // large
+    eq("50+24", 7400);
+    eq("50−24", 2600);
+    eq("74+12", 8600);
+    eq("2×50", 10000);
+    eq("10+2×50", 11000); // × before +
+    eq("100÷4", 2500);
+    eq("100÷0", null); // division by zero → null
+    eq("200-500", -30000); // negative result
+    eq("1000×1000", 100000000); // large
   });
   test("decimal comma and mixed operators", () => {
-    eq("12,50", 1250); eq("47,30+2,70", 5000); eq("3×2,5", 750);
+    eq("12,50", 1250);
+    eq("47,30+2,70", 5000);
+    eq("3×2,5", 750);
   });
   test("no eval — a malicious string returns null or an amount, never executes code", () => {
-    eq("alert(1)", null);            // non-arithmetic → parseAmount → null
+    eq("alert(1)", null); // non-arithmetic → parseAmount → null
     expect(evalExpression("1;2")).toBe(100); // parseAmount fallback (safe: takes the leading number, ZERO code execution)
   });
 });

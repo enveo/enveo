@@ -24,9 +24,7 @@ export function resolveDatabaseUrl(): string {
 export function assertDbEnv(): void {
   if (process.env.NODE_ENV !== "production") return;
   if (process.env.DATABASE_URL || process.env.DB_HOST) return;
-  throw new Error(
-    "DATABASE_URL is required in production (or DB_HOST/DB_PORT/DB_USER/DB_PASS/DB_NAME for hosts that inject discrete parts).",
-  );
+  throw new Error("DATABASE_URL is required in production (or DB_HOST/DB_PORT/DB_USER/DB_PASS/DB_NAME for hosts that inject discrete parts).");
 }
 
 export const env = {
@@ -49,8 +47,6 @@ export const env = {
 /** Fail fast on boot: accounts are mandatory, so the session secret is too. */
 export function assertAuthEnv(): void {
   if (env.BETTER_AUTH_SECRET.length < 32) {
-    throw new Error(
-      "BETTER_AUTH_SECRET is required (min 32 chars). Generate one with: openssl rand -hex 32",
-    );
+    throw new Error("BETTER_AUTH_SECRET is required (min 32 chars). Generate one with: openssl rand -hex 32");
   }
 }

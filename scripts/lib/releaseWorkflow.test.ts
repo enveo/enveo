@@ -46,11 +46,7 @@ describe("findPlatformDivergence", () => {
   });
 
   it("catches the exact defect: a hardcoded gate loop beside a PLATFORMS push", () => {
-    const yaml = workflow(
-      "env:",
-      "  PLATFORMS: linux/amd64,linux/arm64",
-      "      - run: for arch in linux/amd64 linux/arm64; do gate $arch; done",
-    );
+    const yaml = workflow("env:", "  PLATFORMS: linux/amd64,linux/arm64", "      - run: for arch in linux/amd64 linux/arm64; do gate $arch; done");
 
     const problems = findPlatformDivergence(RELEASE, yaml);
 

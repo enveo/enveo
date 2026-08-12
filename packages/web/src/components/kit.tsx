@@ -63,7 +63,11 @@ export function PickerSearch({ value, onChange, placeholder }: { value: string; 
         style={{ flex: 1, minWidth: 0, background: "none", border: "none", fontSize: 13.5, color: C.text, fontFamily: font }}
       />
       {value && (
-        <button onClick={() => onChange("")} aria-label={t("Clear search")} style={{ background: "none", border: "none", cursor: "pointer", padding: 2, display: "flex" }}>
+        <button
+          onClick={() => onChange("")}
+          aria-label={t("Clear search")}
+          style={{ background: "none", border: "none", cursor: "pointer", padding: 2, display: "flex" }}
+        >
           <Ico d="M6 6l12 12M18 6L6 18" size={13} color={C.mute} sw={2} />
         </button>
       )}
@@ -79,7 +83,9 @@ export function HighlightedText({ text, query }: { text: string; query: string }
     <>
       {segments.map((seg, i) =>
         seg.hit ? (
-          <span key={i} style={{ fontWeight: 750, color: "var(--accent)" }}>{seg.text}</span>
+          <span key={i} style={{ fontWeight: 750, color: "var(--accent)" }}>
+            {seg.text}
+          </span>
         ) : (
           <span key={i}>{seg.text}</span>
         ),
@@ -94,13 +100,15 @@ export function GoalRing({ pct, size = 14, color = "var(--accent)" }: { pct: num
   const C = useTheme();
   const r = (size - 3) / 2;
   const c = 2 * Math.PI * r;
-  const arc = Math.min(100, Math.max(0, pct)) / 100 * c;
+  const arc = (Math.min(100, Math.max(0, pct)) / 100) * c;
   const mid = size / 2;
   return (
     <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} aria-hidden="true" style={{ flexShrink: 0 }}>
       <circle cx={mid} cy={mid} r={r} style={{ fill: "none", stroke: C.line, strokeWidth: 3 }} />
       <circle
-        cx={mid} cy={mid} r={r}
+        cx={mid}
+        cy={mid}
+        r={r}
         style={{ fill: "none", stroke: color, strokeWidth: 3, strokeLinecap: "round", strokeDasharray: `${arc} ${c}` }}
         transform={`rotate(-90 ${mid} ${mid})`}
       />

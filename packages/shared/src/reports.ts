@@ -78,12 +78,7 @@ const NULL_LABEL: Record<SpendingDimension, string> = {
 };
 
 /** Expense transaction contribution to the per-dimension breakdown (parity with spentOf rules). */
-function expenseByDimension(
-  t: Transaction,
-  dim: SpendingDimension,
-  envGroup: Map<string, string>,
-  savings: Set<string>,
-): Array<[string | null, Money]> {
+function expenseByDimension(t: Transaction, dim: SpendingDimension, envGroup: Map<string, string>, savings: Set<string>): Array<[string | null, Money]> {
   if (t.type !== "expense") return [];
   const sign = t.isRefund ? -1 : 1;
   if (t.items.length > 0) {
@@ -99,17 +94,20 @@ function expenseByDimension(
   }
   if (t.envelopeId && savings.has(t.envelopeId)) return []; // net-worth envelope — not consumption
   const key =
-    dim === "place" ? t.placeId : dim === "category" ? t.categoryId : dim === "group" ? (t.envelopeId ? (envGroup.get(t.envelopeId) ?? null) : null) : t.envelopeId;
+    dim === "place"
+      ? t.placeId
+      : dim === "category"
+        ? t.categoryId
+        : dim === "group"
+          ? t.envelopeId
+            ? (envGroup.get(t.envelopeId) ?? null)
+            : null
+          : t.envelopeId;
   return [[key, sign * t.amount]];
 }
 
 /** Spending breakdown [fromMonth, toMonth] by dimension; sorted descending, with % share. */
-export function computeSpendingByDimension(
-  ledger: ClientLedger,
-  fromMonth: string,
-  toMonth: string,
-  dim: SpendingDimension,
-): SpendingRow[] {
+export function computeSpendingByDimension(ledger: ClientLedger, fromMonth: string, toMonth: string, dim: SpendingDimension): SpendingRow[] {
   const envGroup = new Map(ledger.envelopes.map((e) => [e.id, e.groupId]));
   const savings = new Set(ledger.envelopes.filter((e) => e.isSavings).map((e) => e.id));
   const nameOf = (key: string | null): string => {
@@ -324,9 +322,7 @@ function contextFor(t: Transaction, ledger: ClientLedger, label: string, savings
 export function largestExpenses(ledger: ClientLedger, month: string, limit = 5): LargestExpense[] {
   const savings = new Set(ledger.envelopes.filter((e) => e.isSavings).map((e) => e.id));
   return ledger.transactions
-    .filter(
-      (t) => t.type === "expense" && !t.isRefund && monthOf(t.date) === month && !savingsSplit(t, savings).fullySavings,
-    )
+    .filter((t) => t.type === "expense" && !t.isRefund && monthOf(t.date) === month && !savingsSplit(t, savings).fullySavings)
     .map((t) => {
       const label = labelFor(t, ledger);
       return { id: t.id, label, context: contextFor(t, ledger, label, savings), date: t.date, amount: t.amount };
@@ -346,12 +342,7 @@ export function largestExpenses(ledger: ClientLedger, month: string, limit = 5):
  * entry at all (it never appeared in any month's breakdown), which is not
  * the same as "present with amount 0" but should read as the same thing.
  */
-export function spendingBaseline(
-  ledger: ClientLedger,
-  month: string,
-  dim: SpendingDimension,
-  months = 3,
-): Map<string | null, Money> {
+export function spendingBaseline(ledger: ClientLedger, month: string, dim: SpendingDimension, months = 3): Map<string | null, Money> {
   const priorMonths: string[] = [];
   let m = month;
   for (let i = 0; i < months; i++) {

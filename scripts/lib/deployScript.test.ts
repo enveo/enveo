@@ -11,18 +11,7 @@
  * tests prove the behaviour, that one proves nobody put `curl … | sh` back.
  */
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import {
-  chmodSync,
-  cpSync,
-  existsSync,
-  mkdirSync,
-  mkdtempSync,
-  readFileSync,
-  rmSync,
-  statSync,
-  symlinkSync,
-  writeFileSync,
-} from "node:fs";
+import { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -103,10 +92,7 @@ function makeSandbox(stubs: readonly Stub[]): { dir: string; bin: string; log: s
   const dir = mkdtempSync(join(tmpdir(), "enveo-deploy-"));
   mkdirSync(join(dir, "scripts"));
   cpSync(join(REPO_ROOT, "scripts", "deploy.sh"), join(dir, "scripts", "deploy.sh"));
-  writeFileSync(
-    join(dir, ".env.example"),
-    ["# fixture", "POSTGRES_PASSWORD=", "BETTER_AUTH_SECRET=", "DEPLOYMENT=selfhost", ""].join("\n"),
-  );
+  writeFileSync(join(dir, ".env.example"), ["# fixture", "POSTGRES_PASSWORD=", "BETTER_AUTH_SECRET=", "DEPLOYMENT=selfhost", ""].join("\n"));
   const bin = join(dir, "bin");
   mkdirSync(bin);
   for (const tool of BASE_TOOLS) {
@@ -126,10 +112,7 @@ function makeSandbox(stubs: readonly Stub[]): { dir: string; bin: string; log: s
 
 type Run = { code: number; stdout: string; stderr: string; calls: string[]; env: string | null };
 
-async function runDeploy(
-  stubs: readonly Stub[] = ["docker", "curl", "openssl"],
-  fake: Record<string, string> = {},
-): Promise<Run> {
+async function runDeploy(stubs: readonly Stub[] = ["docker", "curl", "openssl"], fake: Record<string, string> = {}): Promise<Run> {
   const { dir, bin, log } = makeSandbox(stubs);
   sandbox = dir;
   const proc = Bun.spawn(["/bin/bash", "scripts/deploy.sh"], {
@@ -140,11 +123,7 @@ async function runDeploy(
     stdout: "pipe",
     stderr: "pipe",
   });
-  const [stdout, stderr, code] = await Promise.all([
-    new Response(proc.stdout).text(),
-    new Response(proc.stderr).text(),
-    proc.exited,
-  ]);
+  const [stdout, stderr, code] = await Promise.all([new Response(proc.stdout).text(), new Response(proc.stderr).text(), proc.exited]);
   const calls = existsSync(log) ? readFileSync(log, "utf8").trim().split("\n").filter(Boolean) : [];
   const env = existsSync(join(dir, ".env")) ? readFileSync(join(dir, ".env"), "utf8") : null;
   return { code, stdout, stderr, calls, env };
@@ -179,11 +158,7 @@ describe("prerequisites are checked before anything is written", () => {
   });
 
   it("no run of the script — successful or not — ever invokes a package manager or sudo", async () => {
-    const runs = [
-      await runDeploy(),
-      await runDeploy(["docker", "curl", "openssl"], { FAKE_DAEMON_OK: "0" }),
-      await runDeploy(["docker", "openssl"]),
-    ];
+    const runs = [await runDeploy(), await runDeploy(["docker", "curl", "openssl"], { FAKE_DAEMON_OK: "0" }), await runDeploy(["docker", "openssl"])];
     for (const run of runs) {
       for (const forbidden of FORBIDDEN_TOOLS) {
         expect(run.calls.some((c) => c.startsWith(`${forbidden} `))).toBe(false);
@@ -297,10 +272,7 @@ describe("the success path", () => {
       stdout: "pipe",
       stderr: "pipe",
     });
-    const [stdout, stderr] = await Promise.all([
-      new Response(proc.stdout).text(),
-      new Response(proc.stderr).text(),
-    ]);
+    const [stdout, stderr] = await Promise.all([new Response(proc.stdout).text(), new Response(proc.stderr).text()]);
     await proc.exited;
     expect(`${stdout}\n${stderr}`).not.toContain("xtrace-must-not-show-this");
   });

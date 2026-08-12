@@ -98,8 +98,7 @@ async function maxE2eeSeq(x: Executor, budgetId: string): Promise<number> {
 }
 
 /** 409 in the tier_mismatch shape with the CURRENT epoch — the client bootstraps. */
-const epochMismatch = (meta: BudgetMeta) =>
-  ({ error: "tier_mismatch", tier: meta.tier, epoch: meta.epoch }) as const;
+const epochMismatch = (meta: BudgetMeta) => ({ error: "tier_mismatch", tier: meta.tier, epoch: meta.epoch }) as const;
 
 /* ── POST /sync2/push — append ciphertexts, idempotent by (budget,opId) ── */
 
@@ -147,10 +146,7 @@ sync2Routes.get("/sync2/pull", async (c) => {
 
 sync2Routes.get("/sync2/snapshot", async (c) => {
   const meta = await requireTier(c, "e2ee");
-  const [budget] = await db
-    .select({ wrappedDek: s.budgets.wrappedDek, kdfParams: s.budgets.kdfParams })
-    .from(s.budgets)
-    .where(eq(s.budgets.id, meta.id));
+  const [budget] = await db.select({ wrappedDek: s.budgets.wrappedDek, kdfParams: s.budgets.kdfParams }).from(s.budgets).where(eq(s.budgets.id, meta.id));
   const [snap] = await db
     .select({ uptoSeq: s.e2eeSnapshots.uptoSeq, blob: s.e2eeSnapshots.blob })
     .from(s.e2eeSnapshots)
@@ -203,10 +199,7 @@ sync2Routes.post("/sync2/rekey", async (c) => {
   // client derives the KEK with Argon2id before calling it: a multi-second window in which the
   // shared cookie can be swapped, after which this device's password would lock ANOTHER account.
   if (ownerAssertionFails(body.userId, sessionUserId(c))) return c.json(ownerMismatch(meta.id), 409);
-  await db
-    .update(s.budgets)
-    .set({ wrappedDek: body.wrappedDek, kdfParams: body.kdfParams })
-    .where(eq(s.budgets.id, meta.id));
+  await db.update(s.budgets).set({ wrappedDek: body.wrappedDek, kdfParams: body.kdfParams }).where(eq(s.budgets.id, meta.id));
   return c.json({ epoch: meta.epoch });
 });
 
@@ -252,10 +245,7 @@ sync2Routes.post("/budget/e2ee/enable", async (c) => {
     // plaintext with THIS device's ciphertext and re-keys it under THIS device's wrappedDek.
     if (ownerAssertionFails(body.userId, sessionUserId(c))) return { mismatch: true, id: meta.id } as const;
     const nextEpoch = meta.epoch + 1;
-    await tx
-      .update(s.budgets)
-      .set({ tier: "e2ee", wrappedDek: body.wrappedDek, kdfParams: body.kdfParams, epoch: nextEpoch })
-      .where(eq(s.budgets.id, meta.id));
+    await tx.update(s.budgets).set({ tier: "e2ee", wrappedDek: body.wrappedDek, kdfParams: body.kdfParams, epoch: nextEpoch }).where(eq(s.budgets.id, meta.id));
     await tx
       .insert(s.e2eeSnapshots)
       .values({ budgetId: meta.id, uptoSeq: 0, blob: body.snapshotBlob, updatedAt: dsql`now()` })
@@ -284,10 +274,7 @@ sync2Routes.post("/budget/e2ee/disable", async (c) => {
     if (ownerAssertionFails(body.userId, sessionUserId(c))) return { mismatch: true, id: meta.id } as const;
     const nextEpoch = meta.epoch + 1;
     await restoreLedger(tx, meta.id, body.ledger);
-    await tx
-      .update(s.budgets)
-      .set({ tier: "plain", wrappedDek: null, kdfParams: null, epoch: nextEpoch })
-      .where(eq(s.budgets.id, meta.id));
+    await tx.update(s.budgets).set({ tier: "plain", wrappedDek: null, kdfParams: null, epoch: nextEpoch }).where(eq(s.budgets.id, meta.id));
     await tx.delete(s.e2eeOps).where(eq(s.e2eeOps.budgetId, meta.id));
     await tx.delete(s.e2eeSnapshots).where(eq(s.e2eeSnapshots.budgetId, meta.id));
     return { mismatch: false, id: meta.id, epoch: nextEpoch } as const;

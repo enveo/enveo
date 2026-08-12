@@ -32,14 +32,36 @@ import { ACCOUNT_COLORS, CORAL, P, TEAL, font } from "../lib/theme";
 type TplRow = { name?: Message; custom?: string; isSavings?: boolean; checked: boolean; color: string; icon: string };
 
 /** Full-width action button (Settings idiom). */
-function BigButton({ label, onClick, disabled, variant = "teal" }: { label: ReactNode; onClick: () => void; disabled?: boolean; variant?: "teal" | "outline" }) {
+function BigButton({
+  label,
+  onClick,
+  disabled,
+  variant = "teal",
+}: {
+  label: ReactNode;
+  onClick: () => void;
+  disabled?: boolean;
+  variant?: "teal" | "outline";
+}) {
   const C = useTheme();
   const styles: React.CSSProperties =
-    variant === "teal"
-      ? { border: "none", background: TEAL, color: "#fff" }
-      : { border: `1px solid ${C.line}`, background: C.bg, color: C.text };
+    variant === "teal" ? { border: "none", background: TEAL, color: "#fff" } : { border: `1px solid ${C.line}`, background: C.bg, color: C.text };
   return (
-    <button onClick={onClick} disabled={disabled} style={{ width: "100%", padding: "13px 0", borderRadius: 11, fontSize: 13.5, fontWeight: 600, cursor: disabled ? "default" : "pointer", opacity: disabled ? 0.5 : 1, fontFamily: font, ...styles }}>
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      style={{
+        width: "100%",
+        padding: "13px 0",
+        borderRadius: 11,
+        fontSize: 13.5,
+        fontWeight: 600,
+        cursor: disabled ? "default" : "pointer",
+        opacity: disabled ? 0.5 : 1,
+        fontFamily: font,
+        ...styles,
+      }}
+    >
       {label}
     </button>
   );
@@ -177,7 +199,16 @@ export function OnboardingScreen({ onDone }: { onDone: () => void }) {
       const sel = rows[gi]!.filter((r) => r.checked);
       if (sel.length === 0) return;
       const g = local.createGroup(t(tpl.group));
-      sel.forEach((r, i) => local.createEnvelope({ groupId: g.id, name: r.custom ?? t(r.name!), sort: i, color: r.color, icon: r.icon, ...(r.isSavings ? { isSavings: true } : {}) }));
+      sel.forEach((r, i) =>
+        local.createEnvelope({
+          groupId: g.id,
+          name: r.custom ?? t(r.name!),
+          sort: i,
+          color: r.color,
+          icon: r.icon,
+          ...(r.isSavings ? { isSavings: true } : {}),
+        }),
+      );
     });
     finish(); // empty-budget condition cleared → App renders Start (or the install card first)
   };
@@ -188,10 +219,27 @@ export function OnboardingScreen({ onDone }: { onDone: () => void }) {
         <div style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "center", gap: 18 }}>
           <div style={{ textAlign: "center" }}>
             <div style={{ fontSize: 20, fontWeight: 800, color: C.text, marginBottom: 6 }}>{t("Add Enveo to your phone")}</div>
-            <div style={{ fontSize: 13.5, color: C.soft, lineHeight: 1.5 }}>{t("One tap and Enveo lives on your home screen — offline, full screen, no browser bar.")}</div>
+            <div style={{ fontSize: 13.5, color: C.soft, lineHeight: 1.5 }}>
+              {t("One tap and Enveo lives on your home screen — offline, full screen, no browser bar.")}
+            </div>
           </div>
           <InstallBody onDone={doneWithInstall} />
-          <button onClick={doneWithInstall} style={{ width: "100%", marginTop: 4, padding: "11px 0", borderRadius: 11, border: "none", background: "transparent", color: C.soft, fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: font }}>
+          <button
+            onClick={doneWithInstall}
+            style={{
+              width: "100%",
+              marginTop: 4,
+              padding: "11px 0",
+              borderRadius: 11,
+              border: "none",
+              background: "transparent",
+              color: C.soft,
+              fontSize: 13,
+              fontWeight: 600,
+              cursor: "pointer",
+              fontFamily: font,
+            }}
+          >
             {t("Skip for now")}
           </button>
         </div>
@@ -201,9 +249,13 @@ export function OnboardingScreen({ onDone }: { onDone: () => void }) {
           {step === 0 && (
             <div style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "center" }}>
               <div style={{ display: "flex", flexDirection: "column", alignItems: "center", textAlign: "center", marginBottom: 26 }}>
-                <div style={{ marginBottom: 16 }}><LogoMark size={74} /></div>
+                <div style={{ marginBottom: 16 }}>
+                  <LogoMark size={74} />
+                </div>
                 <div style={{ fontSize: 21, fontWeight: 700, color: C.text, marginBottom: 8 }}>{t("Welcome to Enveo")}</div>
-                <div style={{ fontSize: 13, color: C.soft, lineHeight: 1.6, maxWidth: 300 }}>{t("Envelope budgeting: assign your income to envelopes and always know how much you can still spend.")}</div>
+                <div style={{ fontSize: 13, color: C.soft, lineHeight: 1.6, maxWidth: 300 }}>
+                  {t("Envelope budgeting: assign your income to envelopes and always know how much you can still spend.")}
+                </div>
               </div>
 
               <Row label={t("Language")}>
@@ -216,7 +268,16 @@ export function OnboardingScreen({ onDone }: { onDone: () => void }) {
                     const id = e.target.value as Lang;
                     void loadLocale(id).then(() => setSettings({ ...settings, lang: id }));
                   }}
-                  style={{ padding: "7px 10px", borderRadius: 9, border: `1px solid ${C.line}`, background: C.bg, color: C.text, fontSize: 12.5, fontWeight: 600, fontFamily: font }}
+                  style={{
+                    padding: "7px 10px",
+                    borderRadius: 9,
+                    border: `1px solid ${C.line}`,
+                    background: C.bg,
+                    color: C.text,
+                    fontSize: 12.5,
+                    fontWeight: 600,
+                    fontFamily: font,
+                  }}
                 >
                   {LOCALES.map((l) => (
                     <option key={l.code} value={l.code}>
@@ -229,7 +290,16 @@ export function OnboardingScreen({ onDone }: { onDone: () => void }) {
                 <select
                   value={currency}
                   onChange={(e) => setCurrency(e.target.value)}
-                  style={{ padding: "7px 10px", borderRadius: 9, border: `1px solid ${C.line}`, background: C.bg, color: C.text, fontSize: 12.5, fontWeight: 600, fontFamily: font }}
+                  style={{
+                    padding: "7px 10px",
+                    borderRadius: 9,
+                    border: `1px solid ${C.line}`,
+                    background: C.bg,
+                    color: C.text,
+                    fontSize: 12.5,
+                    fontWeight: 600,
+                    fontFamily: font,
+                  }}
                 >
                   {SUPPORTED_CURRENCIES.map((c) => (
                     <option key={c} value={c}>
@@ -250,7 +320,12 @@ export function OnboardingScreen({ onDone }: { onDone: () => void }) {
                 variant="teal"
               />
               <div style={{ height: 10 }} />
-              <BigButton label={busy ? t("Loading sample data…") : t("Try it with sample data")} onClick={() => void tryDemo()} disabled={busy} variant="outline" />
+              <BigButton
+                label={busy ? t("Loading sample data…") : t("Try it with sample data")}
+                onClick={() => void tryDemo()}
+                disabled={busy}
+                variant="outline"
+              />
               {error && <div style={{ fontSize: 12, color: CORAL, marginTop: 10, lineHeight: 1.5 }}>{error}</div>}
             </div>
           )}
@@ -259,16 +334,45 @@ export function OnboardingScreen({ onDone }: { onDone: () => void }) {
           {step === 1 && (
             <div style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "center" }}>
               <div style={{ fontSize: 19, fontWeight: 700, color: C.text, marginBottom: 8 }}>{t("Your first account")}</div>
-              <div style={{ fontSize: 12.5, color: C.soft, lineHeight: 1.6, marginBottom: 22 }}>{t("Add the account you spend from. The balance can be approximate — it is easy to adjust later.")}</div>
+              <div style={{ fontSize: 12.5, color: C.soft, lineHeight: 1.6, marginBottom: 22 }}>
+                {t("Add the account you spend from. The balance can be approximate — it is easy to adjust later.")}
+              </div>
 
               <div style={{ fontSize: 11, color: C.mute, fontWeight: 600, marginBottom: 6 }}>{t("Account name")}</div>
-              <input value={accName} onChange={(e) => setAccName(e.target.value)} placeholder={t("e.g. Checking")} style={{ ...inputStyle(C.line, C.bg, C.text), marginBottom: 14 }} />
+              <input
+                value={accName}
+                onChange={(e) => setAccName(e.target.value)}
+                placeholder={t("e.g. Checking")}
+                style={{ ...inputStyle(C.line, C.bg, C.text), marginBottom: 14 }}
+              />
 
               <div style={{ fontSize: 11, color: C.mute, fontWeight: 600, marginBottom: 6 }}>{`${t("Starting balance")} (${currency})`}</div>
-              <input value={accBal} readOnly onClick={openBalancePad} onFocus={openBalancePad} placeholder="0,00" style={{ ...inputStyle(C.line, C.bg, C.text), marginBottom: 22, cursor: "pointer" }} />
+              <input
+                value={accBal}
+                readOnly
+                onClick={openBalancePad}
+                onFocus={openBalancePad}
+                placeholder="0,00"
+                style={{ ...inputStyle(C.line, C.bg, C.text), marginBottom: 22, cursor: "pointer" }}
+              />
 
               <BigButton label={t("Add account")} onClick={createAccount} disabled={!accName.trim()} variant="teal" />
-              <button onClick={() => setStep(0)} style={{ width: "100%", marginTop: 12, padding: "11px 0", borderRadius: 11, border: "none", background: "transparent", color: C.soft, fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: font }}>
+              <button
+                onClick={() => setStep(0)}
+                style={{
+                  width: "100%",
+                  marginTop: 12,
+                  padding: "11px 0",
+                  borderRadius: 11,
+                  border: "none",
+                  background: "transparent",
+                  color: C.soft,
+                  fontSize: 13,
+                  fontWeight: 600,
+                  cursor: "pointer",
+                  fontFamily: font,
+                }}
+              >
                 {t("Back")}
               </button>
             </div>
@@ -278,17 +382,58 @@ export function OnboardingScreen({ onDone }: { onDone: () => void }) {
           {step === 2 && (
             <div>
               <div style={{ fontSize: 19, fontWeight: 700, color: C.text, marginBottom: 8, marginTop: 6 }}>{t("Your envelopes")}</div>
-              <div style={{ fontSize: 12.5, color: C.soft, lineHeight: 1.6, marginBottom: 18 }}>{t("Pick the envelopes you want to start with — you can change them or add new ones anytime.")}</div>
+              <div style={{ fontSize: 12.5, color: C.soft, lineHeight: 1.6, marginBottom: 18 }}>
+                {t("Pick the envelopes you want to start with — you can change them or add new ones anytime.")}
+              </div>
 
               {TEMPLATE.map((tpl, gi) => (
                 <div key={tpl.group} style={{ marginBottom: 18 }}>
-                  <div style={{ fontSize: 10.5, fontWeight: 600, color: C.mute, textTransform: "uppercase", letterSpacing: 0.6, marginBottom: 6 }}>{t(tpl.group)}</div>
+                  <div style={{ fontSize: 10.5, fontWeight: 600, color: C.mute, textTransform: "uppercase", letterSpacing: 0.6, marginBottom: 6 }}>
+                    {t(tpl.group)}
+                  </div>
                   <div style={{ background: C.bg, borderRadius: 11, border: `1px solid ${C.line}`, padding: "2px 12px" }}>
                     {rows[gi]!.map((r, ri) => (
-                      <button key={r.custom ?? r.name} onClick={() => toggleRow(gi, ri)} style={{ display: "flex", alignItems: "center", gap: 10, width: "100%", padding: "11px 0", background: "none", border: "none", borderBottom: `1px solid ${C.line}`, cursor: "pointer", textAlign: "left" }}>
-                        <span aria-hidden="true" style={{ width: 20, height: 20, borderRadius: 6, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", background: r.checked ? TEAL : "transparent", border: r.checked ? "none" : `1.5px solid ${C.line}` }}>
+                      <button
+                        key={r.custom ?? r.name}
+                        onClick={() => toggleRow(gi, ri)}
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 10,
+                          width: "100%",
+                          padding: "11px 0",
+                          background: "none",
+                          border: "none",
+                          borderBottom: `1px solid ${C.line}`,
+                          cursor: "pointer",
+                          textAlign: "left",
+                        }}
+                      >
+                        <span
+                          aria-hidden="true"
+                          style={{
+                            width: 20,
+                            height: 20,
+                            borderRadius: 6,
+                            flexShrink: 0,
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            background: r.checked ? TEAL : "transparent",
+                            border: r.checked ? "none" : `1.5px solid ${C.line}`,
+                          }}
+                        >
                           {r.checked && (
-                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="3.2" strokeLinecap="round" strokeLinejoin="round">
+                            <svg
+                              width="12"
+                              height="12"
+                              viewBox="0 0 24 24"
+                              fill="none"
+                              stroke="#fff"
+                              strokeWidth="3.2"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                            >
                               <path d="M4.5 12.5l5 5 10-11" />
                             </svg>
                           )}
@@ -306,7 +451,24 @@ export function OnboardingScreen({ onDone }: { onDone: () => void }) {
                         placeholder={t("Custom envelope…")}
                         style={{ ...inputStyle(C.line, C.bg, C.text), padding: "8px 10px", fontSize: 13 }}
                       />
-                      <button onClick={() => addCustom(gi)} disabled={!drafts[gi]?.trim()} aria-label={t("Add a custom envelope")} style={{ flexShrink: 0, width: 38, borderRadius: 10, border: `1px solid ${C.line}`, background: C.bg, color: C.text, fontSize: 18, fontWeight: 600, cursor: "pointer", opacity: drafts[gi]?.trim() ? 1 : 0.5, fontFamily: font }}>
+                      <button
+                        onClick={() => addCustom(gi)}
+                        disabled={!drafts[gi]?.trim()}
+                        aria-label={t("Add a custom envelope")}
+                        style={{
+                          flexShrink: 0,
+                          width: 38,
+                          borderRadius: 10,
+                          border: `1px solid ${C.line}`,
+                          background: C.bg,
+                          color: C.text,
+                          fontSize: 18,
+                          fontWeight: 600,
+                          cursor: "pointer",
+                          opacity: drafts[gi]?.trim() ? 1 : 0.5,
+                          fontFamily: font,
+                        }}
+                      >
                         +
                       </button>
                     </div>

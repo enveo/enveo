@@ -21,10 +21,7 @@ function missingOf(target: number, allocated: number): number {
  * - `missing` = max(0, target − max(0, allocated)) — a negative allocation counts
  *   as zero, so the full target is missing (consistent with pct = 0).
  */
-export function goalProgress(e: {
-  monthlyTarget: number | null;
-  allocated: number;
-}): GoalProgress | null {
+export function goalProgress(e: { monthlyTarget: number | null; allocated: number }): GoalProgress | null {
   const target = e.monthlyTarget;
   if (target == null || target <= 0) return null;
   const allocated = Math.max(0, e.allocated);
@@ -80,9 +77,7 @@ export function fillByGoals(
   available: number,
 ): FillProposal[] {
   if (available <= 0) return [];
-  const candidates = envelopes
-    .filter((e) => !e.archived && (e.monthlyTarget ?? 0) > 0)
-    .sort((a, b) => a.groupSort - b.groupSort || a.sort - b.sort);
+  const candidates = envelopes.filter((e) => !e.archived && (e.monthlyTarget ?? 0) > 0).sort((a, b) => a.groupSort - b.groupSort || a.sort - b.sort);
 
   const out: FillProposal[] = [];
   let remaining = available;

@@ -11,11 +11,7 @@ import { CORAL, TEAL, font } from "../../lib/theme";
 
 export function Eyebrow({ children }: { children: ReactNode }) {
   const C = useTheme();
-  return (
-    <div style={{ fontSize: 10.5, fontWeight: 600, color: C.mute, textTransform: "uppercase", letterSpacing: 0.6, marginBottom: 8 }}>
-      {children}
-    </div>
-  );
+  return <div style={{ fontSize: 10.5, fontWeight: 600, color: C.mute, textTransform: "uppercase", letterSpacing: 0.6, marginBottom: 8 }}>{children}</div>;
 }
 
 export function Row({ label, children }: { label: string; children: ReactNode }) {
@@ -85,7 +81,11 @@ export function Collapsible({ title, children }: { title: string; children: Reac
   const [open, setOpen] = useState(false);
   return (
     <div style={{ marginTop: 24 }}>
-      <button onClick={() => setOpen((v) => !v)} aria-expanded={open} style={{ display: "flex", alignItems: "center", gap: 8, width: "100%", padding: 0, background: "none", border: "none", cursor: "pointer" }}>
+      <button
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+        style={{ display: "flex", alignItems: "center", gap: 8, width: "100%", padding: 0, background: "none", border: "none", cursor: "pointer" }}
+      >
         <span style={{ display: "flex", transform: open ? "rotate(90deg)" : "none", transition: "transform .2s" }}>
           <Ico d="M9 5l7 7-7 7" size={13} color={C.mute} />
         </span>
@@ -102,7 +102,21 @@ export function Seg<T extends string>({ value, options, onChange }: { value: T; 
   return (
     <div style={{ display: "flex", background: C.bg, borderRadius: 9, padding: 2, border: `1px solid ${C.line}` }}>
       {options.map((o) => (
-        <button key={o.id} onClick={() => onChange(o.id)} style={{ padding: "6px 12px", borderRadius: 7, border: "none", fontSize: 11.5, fontWeight: 600, cursor: "pointer", background: value === o.id ? TEAL : "transparent", color: value === o.id ? "#fff" : C.soft, whiteSpace: "nowrap" }}>
+        <button
+          key={o.id}
+          onClick={() => onChange(o.id)}
+          style={{
+            padding: "6px 12px",
+            borderRadius: 7,
+            border: "none",
+            fontSize: 11.5,
+            fontWeight: 600,
+            cursor: "pointer",
+            background: value === o.id ? TEAL : "transparent",
+            color: value === o.id ? "#fff" : C.soft,
+            whiteSpace: "nowrap",
+          }}
+        >
           {o.label}
         </button>
       ))}
@@ -128,7 +142,16 @@ export function ActionGroup({ children }: { children: ReactNode }) {
 /** Action row icon — a stroke 1.8 glyph in the tone color (currentColor from the wrapper span). */
 export function ActionIcon({ paths, size = 19 }: { paths: string[]; size?: number }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" style={{ stroke: "currentColor" }} strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      style={{ stroke: "currentColor" }}
+      strokeWidth={1.8}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
       {paths.map((d, i) => (
         <path key={i} d={d} />
       ))}
@@ -162,7 +185,19 @@ export function ActionRow({
     <button
       onClick={onClick}
       disabled={disabled}
-      style={{ display: "flex", alignItems: "center", gap: 12, width: "100%", padding: "13px 14px", background: "none", border: "none", textAlign: "left", fontFamily: font, cursor: disabled ? "default" : "pointer", opacity: disabled ? 0.5 : 1 }}
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: 12,
+        width: "100%",
+        padding: "13px 14px",
+        background: "none",
+        border: "none",
+        textAlign: "left",
+        fontFamily: font,
+        cursor: disabled ? "default" : "pointer",
+        opacity: disabled ? 0.5 : 1,
+      }}
     >
       {icon && <span style={{ display: "flex", flexShrink: 0, color: toneColor }}>{icon}</span>}
       <span style={{ flex: 1, minWidth: 0 }}>
@@ -195,7 +230,15 @@ export function ActionButton({
   style?: React.CSSProperties;
 }) {
   const C = useTheme();
-  const base: React.CSSProperties = { width: "100%", padding: "12px 0", borderRadius: 11, fontSize: 13.5, fontWeight: 600, cursor: disabled ? "default" : "pointer", opacity: disabled ? 0.5 : 1 };
+  const base: React.CSSProperties = {
+    width: "100%",
+    padding: "12px 0",
+    borderRadius: 11,
+    fontSize: 13.5,
+    fontWeight: 600,
+    cursor: disabled ? "default" : "pointer",
+    opacity: disabled ? 0.5 : 1,
+  };
   const variants: Record<string, React.CSSProperties> = {
     teal: { border: "none", background: TEAL, color: "#fff" },
     coral: { border: "none", background: CORAL, color: "#fff" },

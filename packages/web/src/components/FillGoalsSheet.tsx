@@ -79,7 +79,10 @@ export function FillGoalsSheet({ show, state, month, onClose }: { show: boolean;
       onCommit: (minor) => setEdited((s) => ({ ...s, [p.envelopeId]: fmtTrim(minor) })),
     });
 
-  const close = () => { setPad(null); onClose(); };
+  const close = () => {
+    setPad(null);
+    onClose();
+  };
 
   // Confirm: per proposed row with a final positive add, read `allocated` FRESH from the
   // replica (not the `state` prop, which may already be a render behind the outbox) and write
@@ -87,7 +90,10 @@ export function FillGoalsSheet({ show, state, month, onClose }: { show: boolean;
   const confirm = () => {
     const ledger = store.getLedger();
     const live = ledger ? computeStateResponse(ledger, month) : null;
-    if (!live) { close(); return; }
+    if (!live) {
+      close();
+      return;
+    }
     for (const p of proposals) {
       const add = editedMinor(p.envelopeId, p.add);
       if (add <= 0) continue;
@@ -109,22 +115,60 @@ export function FillGoalsSheet({ show, state, month, onClose }: { show: boolean;
             {visibleProposals.map((p, i) => {
               const env = envById.get(p.envelopeId)!; // visibleProposals already excludes missing/archived
               return (
-                <div key={p.envelopeId} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 0", borderBottom: i < visibleProposals.length - 1 ? `1px solid ${C.line}` : "none" }}>
-                  <div style={{ width: 30, height: 30, borderRadius: 8, flexShrink: 0, background: env.color, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                <div
+                  key={p.envelopeId}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 10,
+                    padding: "8px 0",
+                    borderBottom: i < visibleProposals.length - 1 ? `1px solid ${C.line}` : "none",
+                  }}
+                >
+                  <div
+                    style={{
+                      width: 30,
+                      height: 30,
+                      borderRadius: 8,
+                      flexShrink: 0,
+                      background: env.color,
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                    }}
+                  >
                     <Glyph name={env.icon} size={14} color={isLight(env.color) ? "#33312c" : "#fff"} sw={1.6} />
                   </div>
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 13, fontWeight: 600, color: C.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{env.name}</div>
-                    <div style={{ fontSize: 10.5, color: C.mute, fontVariantNumeric: "tabular-nums" }}>{M(env.allocated)} → {M(env.monthlyTarget ?? 0)}</div>
+                    <div style={{ fontSize: 13, fontWeight: 600, color: C.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {env.name}
+                    </div>
+                    <div style={{ fontSize: 10.5, color: C.mute, fontVariantNumeric: "tabular-nums" }}>
+                      {M(env.allocated)} → {M(env.monthlyTarget ?? 0)}
+                    </div>
                   </div>
                   {/* Discreet mode (AllocCell precedent, Budget.tsx): masked, non-interactive — no
                       tap target that would reveal an amount via the pad's prefill. */}
                   {settings.discreet ? (
-                    <div style={{ display: "flex", alignItems: "center", border: `1px solid ${C.line}`, background: C.inset, borderRadius: 9, padding: "6px 9px" }}>
+                    <div
+                      style={{ display: "flex", alignItems: "center", border: `1px solid ${C.line}`, background: C.inset, borderRadius: 9, padding: "6px 9px" }}
+                    >
                       <span style={{ fontSize: 13, color: C.text }}>•••• {currencySymbol(currency, lang)}</span>
                     </div>
                   ) : (
-                    <div onClick={() => openPadFor(p)} style={{ display: "flex", alignItems: "center", gap: 3, border: `1px solid ${TEAL}`, background: C.inset, borderRadius: 9, padding: "6px 9px", cursor: "pointer" }}>
+                    <div
+                      onClick={() => openPadFor(p)}
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 3,
+                        border: `1px solid ${TEAL}`,
+                        background: C.inset,
+                        borderRadius: 9,
+                        padding: "6px 9px",
+                        cursor: "pointer",
+                      }}
+                    >
                       <span style={{ fontSize: 11, color: C.soft }}>+</span>
                       <input
                         value={edited[p.envelopeId] ?? ""}
@@ -132,7 +176,19 @@ export function FillGoalsSheet({ show, state, month, onClose }: { show: boolean;
                         tabIndex={0}
                         onClick={() => openPadFor(p)}
                         onFocus={() => openPadFor(p)}
-                        style={{ width: 60, background: "none", border: "none", textAlign: "right", fontSize: 13, fontWeight: 700, color: TEAL, fontFamily: font, fontVariantNumeric: "tabular-nums", cursor: "pointer", padding: 0 }}
+                        style={{
+                          width: 60,
+                          background: "none",
+                          border: "none",
+                          textAlign: "right",
+                          fontSize: 13,
+                          fontWeight: 700,
+                          color: TEAL,
+                          fontFamily: font,
+                          fontVariantNumeric: "tabular-nums",
+                          cursor: "pointer",
+                          padding: 0,
+                        }}
                       />
                       <span style={{ fontSize: 11, color: C.soft }}>{currencySymbol(currency, lang)}</span>
                     </div>
@@ -145,7 +201,22 @@ export function FillGoalsSheet({ show, state, month, onClose }: { show: boolean;
               <div style={{ fontSize: 12, color: over ? C.neg : C.soft, marginBottom: 10 }}>
                 {t("Assigning {sum} of {available}", { sum: M(sum), available: M(state.readyToAssign) })}
               </div>
-              <button onClick={confirm} disabled={sum === 0} style={{ width: "100%", padding: "12px 0", borderRadius: 12, border: "none", background: CTA, color: "#fff", fontSize: 13.5, fontWeight: 600, cursor: "pointer", opacity: sum === 0 ? 0.5 : 1 }}>
+              <button
+                onClick={confirm}
+                disabled={sum === 0}
+                style={{
+                  width: "100%",
+                  padding: "12px 0",
+                  borderRadius: 12,
+                  border: "none",
+                  background: CTA,
+                  color: "#fff",
+                  fontSize: 13.5,
+                  fontWeight: 600,
+                  cursor: "pointer",
+                  opacity: sum === 0 ? 0.5 : 1,
+                }}
+              >
                 {t("Assign {sum}", { sum: M(sum) })}
               </button>
             </div>

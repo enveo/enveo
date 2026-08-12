@@ -1,16 +1,4 @@
-import type {
-  Account,
-  Allocation,
-  Budget,
-  Category,
-  ClientLedger,
-  Envelope,
-  EnvelopeGroup,
-  Ledger,
-  Place,
-  Transaction,
-  TxnItem,
-} from "@enveo/shared";
+import type { Account, Allocation, Budget, Category, ClientLedger, Envelope, EnvelopeGroup, Ledger, Place, Transaction, TxnItem } from "@enveo/shared";
 import { eq } from "drizzle-orm";
 import { db } from "./db/client";
 import type { Executor } from "./sync/apply";
@@ -70,17 +58,14 @@ export const mapAllocation = (a: typeof s.allocations.$inferSelect): Allocation 
   amount: a.amount,
 });
 
-export const mapTxnItem = (i: {
-  id: string;
-  envelopeId: string;
-  categoryId: string | null;
-  amount: number;
-}): TxnItem => ({ id: i.id, envelopeId: i.envelopeId, categoryId: i.categoryId, amount: i.amount });
+export const mapTxnItem = (i: { id: string; envelopeId: string; categoryId: string | null; amount: number }): TxnItem => ({
+  id: i.id,
+  envelopeId: i.envelopeId,
+  categoryId: i.categoryId,
+  amount: i.amount,
+});
 
-export const mapTransaction = (
-  t: typeof s.transactions.$inferSelect,
-  items: TxnItem[],
-): Transaction => ({
+export const mapTransaction = (t: typeof s.transactions.$inferSelect, items: TxnItem[]): Transaction => ({
   id: t.id,
   type: t.type,
   accountId: t.accountId,

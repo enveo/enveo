@@ -15,12 +15,7 @@ import { constants } from "node:os";
 import { planTestEnv, type TestMode } from "./lib/testEnv";
 
 /** Everything that must pass before Enveo ships. Shared/API/web-lib domain plus this tooling. */
-export const TEST_PATHS = [
-  "packages/shared",
-  "packages/api",
-  "packages/web/src/lib",
-  "scripts",
-] as const;
+export const TEST_PATHS = ["packages/shared", "packages/api", "packages/web/src/lib", "scripts"] as const;
 
 /** Refusal to run (unsafe/incomplete configuration) — deliberately distinct from a test failure. */
 const EXIT_REFUSED = 2;

@@ -110,25 +110,19 @@ let overwriteOwners: (string | undefined)[] = [];
 /** The bodies POSTed to /sync2/snapshot (the e2ee checkpoint — a whole-budget overwrite too). */
 let snapshotUploads: { userId?: string; uptoSeq: number }[] = [];
 const realFetch = globalThis.fetch;
-const json = (body: unknown): Response =>
-  new Response(JSON.stringify(body), { status: 200, headers: { "content-type": "application/json" } });
-const conflict = (body: unknown): Response =>
-  new Response(JSON.stringify(body), { status: 409, headers: { "content-type": "application/json" } });
+const json = (body: unknown): Response => new Response(JSON.stringify(body), { status: 200, headers: { "content-type": "application/json" } });
+const conflict = (body: unknown): Response => new Response(JSON.stringify(body), { status: 409, headers: { "content-type": "application/json" } });
 const tierMismatch = (): Response => conflict({ error: "tier_mismatch", tier: "plain", epoch: 0 });
 /** The server's PER-REQUEST tenant assertion: the pushed budget must be the session's. */
 const budgetMismatch = (claimed: string | undefined): Response | null =>
-  claimed !== undefined && claimed !== serverBudget
-    ? conflict({ error: "budget_mismatch", budgetId: serverBudget })
-    : null;
+  claimed !== undefined && claimed !== serverBudget ? conflict({ error: "budget_mismatch", budgetId: serverBudget }) : null;
 /**
  * The server's PER-REQUEST OWNER assertion on the full-budget OVERWRITE routes (api
  * ownerAssertionFails): the body names the tenant the client verified, and the server compares it
  * with the session IT resolves for THIS request — a cookie swapped mid-upload is refused.
  */
 const ownerMismatch = (claimed: string | undefined): Response | null =>
-  claimed !== undefined && claimed !== session?.user.id
-    ? conflict({ error: "budget_mismatch", budgetId: serverBudget })
-    : null;
+  claimed !== undefined && claimed !== session?.user.id ? conflict({ error: "budget_mismatch", budgetId: serverBudget }) : null;
 const wrote = (budgetId: string): string[] => writes[budgetId] ?? [];
 
 /** A ledger with one account — the session's budget "holds data" (something to destroy). */

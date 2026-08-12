@@ -36,11 +36,7 @@ async function resetPassword(email: string, password: string): Promise<number> {
 
   // Sign-up stores the email lowercased; match case-insensitively so the operator
   // does not have to reproduce the exact casing.
-  const [user] = await db
-    .select({ id: s.users.id, email: s.users.email })
-    .from(s.users)
-    .where(raw`lower(${s.users.email}) = ${email.toLowerCase()}`)
-    .limit(1);
+  const [user] = await db.select({ id: s.users.id, email: s.users.email }).from(s.users).where(raw`lower(${s.users.email}) = ${email.toLowerCase()}`).limit(1);
   if (!user) {
     console.error(`No user with email ${email}.`);
     return 1;

@@ -30,16 +30,14 @@ function run(argv: readonly string[]): string {
 }
 
 /** Run a shell command inside a throwaway container built from the image under test. */
-const inImage = (image: string, script: string): string =>
-  run(["docker", "run", "--rm", "--network=none", "--entrypoint", "/bin/sh", image, "-c", script]);
+const inImage = (image: string, script: string): string => run(["docker", "run", "--rm", "--network=none", "--entrypoint", "/bin/sh", image, "-c", script]);
 
 /**
  * Run JavaScript with the image's OWN Bun. Used for the ELF sweep: the runtime base is Alpine,
  * where `file` is a busybox applet and `od`-per-file would be thousands of spawns. Bun is the
  * one tool guaranteed present on every Enveo image, whatever the base.
  */
-const bunInImage = (image: string, source: string): string =>
-  run(["docker", "run", "--rm", "--network=none", "--entrypoint", "bun", image, "-e", source]);
+const bunInImage = (image: string, source: string): string => run(["docker", "run", "--rm", "--network=none", "--entrypoint", "bun", image, "-e", source]);
 
 /**
  * Every file under /app starting with the ELF magic (`\x7fELF`). Symlinks are not followed —
@@ -117,23 +115,23 @@ console.log(problems.join("\\n"));
 `;
 
 function collect(image: string): ImageFacts {
-  const config = JSON.parse(
-    run(["docker", "image", "inspect", image, "--format", "{{json .Config}}"]),
-  ) as { User?: string; Labels?: Record<string, string>; Entrypoint?: string[] };
+  const config = JSON.parse(run(["docker", "image", "inspect", image, "--format", "{{json .Config}}"])) as {
+    User?: string;
+    Labels?: Record<string, string>;
+    Entrypoint?: string[];
+  };
 
   const lines = (text: string): string[] =>
-    text.split("\n").map((l) => l.trim()).filter((l) => l !== "");
+    text
+      .split("\n")
+      .map((l) => l.trim())
+      .filter((l) => l !== "");
 
   const appFiles = lines(inImage(image, "cd /app && find . -type f | sed 's|^\\./||'"));
-  const storeEntries = lines(
-    inImage(image, "ls /app/node_modules/.bun 2>/dev/null | grep -v '^node_modules$' || true"),
-  );
+  const storeEntries = lines(inImage(image, "ls /app/node_modules/.bun 2>/dev/null | grep -v '^node_modules$' || true"));
 
   // `|| true` so an expected failure (a read-only /app) is a clean "no", not a crashed probe.
-  const appWritable =
-    inImage(image, "touch /app/.write-probe 2>/dev/null && echo WRITABLE || echo READONLY").includes(
-      "WRITABLE",
-    );
+  const appWritable = inImage(image, "touch /app/.write-probe 2>/dev/null && echo WRITABLE || echo READONLY").includes("WRITABLE");
 
   const effectiveUid = Number(inImage(image, "id -u").trim());
 
@@ -142,10 +140,7 @@ function collect(image: string): ImageFacts {
   // means a WRONG value (or a build arg that never reached the bundle) reads back as "no stamp
   // found" and gets reported as absent instead of as a mismatch. Extract whatever is there and
   // let the comparison do the judging.
-  const stamp = inImage(
-    image,
-    "grep -ho 'sha:\"[^\"]*\"' /app/packages/web/dist/assets/index-*.js | head -1 || true",
-  ).trim();
+  const stamp = inImage(image, 'grep -ho \'sha:"[^"]*"\' /app/packages/web/dist/assets/index-*.js | head -1 || true').trim();
   const buildStampSha = stamp === "" ? null : (stamp.match(/sha:"([^"]*)"/)?.[1] ?? null);
 
   // Recorded for the audit trail, not judged (see ImageFacts.osPackages). `apk upgrade` in the

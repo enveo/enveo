@@ -102,13 +102,10 @@ const todayISO = (): string => new Date().toISOString().slice(0, 10);
  * (byok path) AND previewSuggestPrompt. Thanks to this the prompt preview is
  * EXACTLY what we send (zero drift; identity test in ai.test.ts).
  */
-function buildSuggestChat(args: {
-  ledger: ClientLedger;
-  month: string;
-  profile: BudgetSuggestProfile;
-  customPrompt?: string;
-  locale: AiLocale;
-}): { basis: BudgetSuggestionBasis; request: ChatRequest } {
+function buildSuggestChat(args: { ledger: ClientLedger; month: string; profile: BudgetSuggestProfile; customPrompt?: string; locale: AiLocale }): {
+  basis: BudgetSuggestionBasis;
+  request: ChatRequest;
+} {
   const { ledger, month, profile, customPrompt, locale } = args;
   const basis = buildBudgetSuggestionBasis({ ledger, month, profile, customPrompt });
   return { basis, request: buildSuggestPrompt({ basis, ledger, month, profile, customPrompt, locale }) };
@@ -120,12 +117,10 @@ function buildSuggestChat(args: {
  * buildAgentSuggestPrompt — used by runSuggest (byok) AND
  * previewSuggestPrompt (zero drift; the preview is again 1:1 with the send).
  */
-function buildAgentChat(args: {
-  ledger: ClientLedger;
-  month: string;
-  customPrompt?: string;
-  locale: AiLocale;
-}): { basis: BudgetSuggestionBasis; request: ChatRequest } {
+function buildAgentChat(args: { ledger: ClientLedger; month: string; customPrompt?: string; locale: AiLocale }): {
+  basis: BudgetSuggestionBasis;
+  request: ChatRequest;
+} {
   const { ledger, month, customPrompt, locale } = args;
   const basis = buildBudgetSuggestionBasis({ ledger, month, profile: "custom", customPrompt });
   const ctx = buildAgentSuggestContext({ ledger, month, basis, directive: customPrompt ?? "", locale });
@@ -133,8 +128,7 @@ function buildAgentChat(args: {
 }
 
 /** Message content as a string (suggest always builds strings). */
-const messageText = (m: ChatMessage | undefined): string =>
-  typeof m?.content === "string" ? m.content : JSON.stringify(m?.content ?? "");
+const messageText = (m: ChatMessage | undefined): string => (typeof m?.content === "string" ? m.content : JSON.stringify(m?.content ?? ""));
 
 /**
  * A 1:1 preview of the suggestion prompt (the "Suggest" sheet → 👁): the
@@ -150,9 +144,7 @@ export function previewSuggestPrompt(
   locale: AiLocale,
 ): { system: string; user: string } {
   const { request } =
-    profile === "custom"
-      ? buildAgentChat({ ledger, month, customPrompt, locale })
-      : buildSuggestChat({ ledger, month, profile, customPrompt, locale });
+    profile === "custom" ? buildAgentChat({ ledger, month, customPrompt, locale }) : buildSuggestChat({ ledger, month, profile, customPrompt, locale });
   return {
     system: messageText(request.messages.find((m) => m.role === "system")),
     user: messageText(request.messages.find((m) => m.role === "user")),
@@ -239,12 +231,7 @@ export async function runSuggest(args: {
 
 /* ── Screenshot import ───────────────────────────────────────────────── */
 
-export async function runImportExtract(args: {
-  images: string[];
-  locale: AiLocale;
-  ledger: ClientLedger;
-  settings: AiSettings;
-}): Promise<ImportItem[]> {
+export async function runImportExtract(args: { images: string[]; locale: AiLocale; ledger: ClientLedger; settings: AiSettings }): Promise<ImportItem[]> {
   const { images, locale, ledger, settings } = args;
   /* DELIBERATE difference vs suggest: in the server mode the import GOES via the
      /import/extract route — (1) vision (images as content-parts) doesn't go

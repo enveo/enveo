@@ -75,9 +75,9 @@ describe("openAiChatFetch", () => {
   it("aborts a hung upstream after timeoutMs and types it UpstreamTimeoutError", async () => {
     const hang = Bun.serve({ port: 0, fetch: () => new Promise<Response>(() => {}) });
     try {
-      await expect(
-        openAiChatFetch({ messages: [] }, { apiKey: "k", url: `http://127.0.0.1:${hang.port}/`, timeoutMs: 60 }),
-      ).rejects.toBeInstanceOf(UpstreamTimeoutError);
+      await expect(openAiChatFetch({ messages: [] }, { apiKey: "k", url: `http://127.0.0.1:${hang.port}/`, timeoutMs: 60 })).rejects.toBeInstanceOf(
+        UpstreamTimeoutError,
+      );
     } finally {
       hang.stop(true);
     }
@@ -87,9 +87,9 @@ describe("openAiChatFetch", () => {
     const probe = Bun.serve({ port: 0, fetch: () => Response.json({}) });
     const deadPort = probe.port;
     probe.stop(true); // freed → connection refused
-    await expect(
-      openAiChatFetch({ messages: [] }, { apiKey: "k", url: `http://127.0.0.1:${deadPort}/`, timeoutMs: 5_000 }),
-    ).rejects.toBeInstanceOf(UpstreamNetworkError);
+    await expect(openAiChatFetch({ messages: [] }, { apiKey: "k", url: `http://127.0.0.1:${deadPort}/`, timeoutMs: 5_000 })).rejects.toBeInstanceOf(
+      UpstreamNetworkError,
+    );
   });
 
   it("passes the bearer key and the JSON payload through to the upstream", async () => {
@@ -104,7 +104,10 @@ describe("openAiChatFetch", () => {
       },
     });
     try {
-      const res = await openAiChatFetch({ model: "m", messages: [{ role: "user", content: "hi" }] }, { apiKey: "sk-test", url: `http://127.0.0.1:${echo.port}/`, timeoutMs: 2000 });
+      const res = await openAiChatFetch(
+        { model: "m", messages: [{ role: "user", content: "hi" }] },
+        { apiKey: "sk-test", url: `http://127.0.0.1:${echo.port}/`, timeoutMs: 2000 },
+      );
       expect(res.ok).toBe(true);
       expect(seenAuth).toBe("Bearer sk-test");
       expect(seenBody).toEqual({ model: "m", messages: [{ role: "user", content: "hi" }] });

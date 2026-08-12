@@ -79,11 +79,22 @@ export function ImportSheet({ show, onClose, state, onApplied }: { show: boolean
     const root = document.getElementById("root");
     if (!root) return;
     root.style.opacity = "0.9999";
-    const raf = requestAnimationFrame(() => { root.style.opacity = ""; });
+    const raf = requestAnimationFrame(() => {
+      root.style.opacity = "";
+    });
     return () => cancelAnimationFrame(raf);
   }, [editorIdx]);
 
-  const reset = () => { setImages([]); setPhase("pick"); setItems([]); setError(null); setBusy(false); setShowConsent(false); setEdited({}); setEditorIdx(null); };
+  const reset = () => {
+    setImages([]);
+    setPhase("pick");
+    setItems([]);
+    setError(null);
+    setBusy(false);
+    setShowConsent(false);
+    setEdited({});
+    setEditorIdx(null);
+  };
   const close = () => {
     const applied = phase === "done" && doneStats.added > 0;
     reset();
@@ -109,7 +120,10 @@ export function ImportSheet({ show, onClose, state, onApplied }: { show: boolean
     setError(null);
     try {
       const ledger = store.getLedger();
-      if (!ledger) { setError(t("The local replica is not ready.")); return; }
+      if (!ledger) {
+        setError(t("The local replica is not ready."));
+        return;
+      }
       // extraction via AI dispatch (server → /api, byok → OpenAI directly);
       // apply/dry-run ALWAYS through the API (writing to the ledger is the server's domain)
       const extracted = await runImportExtract({ images, locale: lang, ledger, settings });
@@ -144,7 +158,10 @@ export function ImportSheet({ show, onClose, state, onApplied }: { show: boolean
 
   // Rules can't read screenshots — in off mode the import requires AI consent.
   const process = () => {
-    if (settings.aiMode === "off") { setShowConsent(true); return; }
+    if (settings.aiMode === "off") {
+      setShowConsent(true);
+      return;
+    }
     void doProcess();
   };
 
@@ -209,206 +226,391 @@ export function ImportSheet({ show, onClose, state, onApplied }: { show: boolean
     return (
       <Sheet show={show} onClose={close}>
         <div style={{ fontSize: 17, fontWeight: 700, color: C.text, textAlign: "center", marginBottom: 10 }}>{t("Import from screenshots")}</div>
-        <div style={{ fontSize: 12.5, color: C.soft, lineHeight: 1.6, textAlign: "center", marginBottom: 8 }}>{t("Server-side import is unavailable while end-to-end encryption is on — the server cannot see your data. Use a JSON backup (export/import) or disable encryption.")}</div>
+        <div style={{ fontSize: 12.5, color: C.soft, lineHeight: 1.6, textAlign: "center", marginBottom: 8 }}>
+          {t(
+            "Server-side import is unavailable while end-to-end encryption is on — the server cannot see your data. Use a JSON backup (export/import) or disable encryption.",
+          )}
+        </div>
       </Sheet>
     );
   }
 
   return (
     <>
-    <Sheet show={show} onClose={close}>
-      {phase === "pick" && (
-        <>
-          <div style={{ fontSize: 17, fontWeight: 700, color: C.text, textAlign: "center", marginBottom: 4 }}>{t("Import from screenshots")}</div>
-          <div style={{ fontSize: 12, color: C.mute, textAlign: "center", marginBottom: 16 }}>
-            {t("Apple Wallet or bank history — AI will recognize the transactions, duplicates will be skipped")}
-          </div>
+      <Sheet show={show} onClose={close}>
+        {phase === "pick" && (
+          <>
+            <div style={{ fontSize: 17, fontWeight: 700, color: C.text, textAlign: "center", marginBottom: 4 }}>{t("Import from screenshots")}</div>
+            <div style={{ fontSize: 12, color: C.mute, textAlign: "center", marginBottom: 16 }}>
+              {t("Apple Wallet or bank history — AI will recognize the transactions, duplicates will be skipped")}
+            </div>
 
-          <div style={label}>{t("Account")}</div>
-          <select
-            value={accountId}
-            onChange={(e) => setAccountId(e.target.value)}
-            style={{ width: "100%", padding: "10px 12px", borderRadius: 10, border: `1px solid ${C.line}`, background: C.bg, color: C.text, fontSize: 14, fontFamily: font, marginBottom: 14 }}
-          >
-            {accounts.map((a) => (
-              <option key={a.id} value={a.id}>{a.name}</option>
-            ))}
-          </select>
+            <div style={label}>{t("Account")}</div>
+            <select
+              value={accountId}
+              onChange={(e) => setAccountId(e.target.value)}
+              style={{
+                width: "100%",
+                padding: "10px 12px",
+                borderRadius: 10,
+                border: `1px solid ${C.line}`,
+                background: C.bg,
+                color: C.text,
+                fontSize: 14,
+                fontFamily: font,
+                marginBottom: 14,
+              }}
+            >
+              {accounts.map((a) => (
+                <option key={a.id} value={a.id}>
+                  {a.name}
+                </option>
+              ))}
+            </select>
 
-          <div style={label}>{t("Screenshots ({n}/6)", { n: images.length })}</div>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, marginBottom: 14 }}>
-            {images.map((url, i) => (
-              <div key={i} style={{ position: "relative" }}>
-                <img src={url} alt={t("Screenshot {n}", { n: i + 1 })} style={{ width: "100%", height: 96, objectFit: "cover", borderRadius: 10, display: "block" }} />
+            <div style={label}>{t("Screenshots ({n}/6)", { n: images.length })}</div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, marginBottom: 14 }}>
+              {images.map((url, i) => (
+                <div key={i} style={{ position: "relative" }}>
+                  <img
+                    src={url}
+                    alt={t("Screenshot {n}", { n: i + 1 })}
+                    style={{ width: "100%", height: 96, objectFit: "cover", borderRadius: 10, display: "block" }}
+                  />
+                  <button
+                    onClick={() => setImages(images.filter((_, x) => x !== i))}
+                    aria-label={t("Remove screenshot {n}", { n: i + 1 })}
+                    style={{
+                      position: "absolute",
+                      top: -6,
+                      right: -6,
+                      width: 22,
+                      height: 22,
+                      borderRadius: "50%",
+                      border: "none",
+                      background: CORAL,
+                      color: "#fff",
+                      fontSize: 12,
+                      cursor: "pointer",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                    }}
+                  >
+                    ✕
+                  </button>
+                </div>
+              ))}
+              {images.length < 6 && (
                 <button
-                  onClick={() => setImages(images.filter((_, x) => x !== i))}
-                  aria-label={t("Remove screenshot {n}", { n: i + 1 })}
-                  style={{ position: "absolute", top: -6, right: -6, width: 22, height: 22, borderRadius: "50%", border: "none", background: CORAL, color: "#fff", fontSize: 12, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}
+                  onClick={() => fileRef.current?.click()}
+                  style={{
+                    height: 96,
+                    borderRadius: 10,
+                    border: `1.5px dashed ${C.line}`,
+                    background: C.bg,
+                    cursor: "pointer",
+                    display: "flex",
+                    flexDirection: "column",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    gap: 6,
+                    color: C.soft,
+                  }}
                 >
-                  ✕
+                  <Ico
+                    d="M4 8.5A1.5 1.5 0 015.5 7H8l1.6-2.4a1 1 0 01.9-.6h3a1 1 0 01.9.6L16 7h2.5A1.5 1.5 0 0120 8.5v9a1.5 1.5 0 01-1.5 1.5h-13A1.5 1.5 0 014 17.5v-9zM12 16a3.5 3.5 0 100-7 3.5 3.5 0 000 7z"
+                    size={22}
+                    color={C.soft}
+                    sw={1.5}
+                  />
+                  <span style={{ fontSize: 11, fontWeight: 600 }}>{t("Add screenshots")}</span>
                 </button>
-              </div>
-            ))}
-            {images.length < 6 && (
-              <button
-                onClick={() => fileRef.current?.click()}
-                style={{ height: 96, borderRadius: 10, border: `1.5px dashed ${C.line}`, background: C.bg, cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 6, color: C.soft }}
-              >
-                <Ico d="M4 8.5A1.5 1.5 0 015.5 7H8l1.6-2.4a1 1 0 01.9-.6h3a1 1 0 01.9.6L16 7h2.5A1.5 1.5 0 0120 8.5v9a1.5 1.5 0 01-1.5 1.5h-13A1.5 1.5 0 014 17.5v-9zM12 16a3.5 3.5 0 100-7 3.5 3.5 0 000 7z" size={22} color={C.soft} sw={1.5} />
-                <span style={{ fontSize: 11, fontWeight: 600 }}>{t("Add screenshots")}</span>
-              </button>
-            )}
-          </div>
-          <input ref={fileRef} type="file" accept="image/*" multiple onChange={(e) => addFiles(e.target.files)} style={{ display: "none" }} />
+              )}
+            </div>
+            <input ref={fileRef} type="file" accept="image/*" multiple onChange={(e) => addFiles(e.target.files)} style={{ display: "none" }} />
 
-          {error && <div style={{ fontSize: 12.5, color: CORAL, marginBottom: 10 }}>{error}</div>}
+            {error && <div style={{ fontSize: 12.5, color: CORAL, marginBottom: 10 }}>{error}</div>}
 
-          <button
-            onClick={process}
-            disabled={images.length === 0 || busy}
-            style={{ width: "100%", padding: "13px 0", borderRadius: 12, border: "none", background: TEAL, color: "#fff", fontSize: 14, fontWeight: 600, cursor: "pointer", opacity: images.length === 0 || busy ? 0.5 : 1 }}
-          >
-            {busy ? t("Recognizing…") : t("Process screenshots")}
-          </button>
-        </>
-      )}
+            <button
+              onClick={process}
+              disabled={images.length === 0 || busy}
+              style={{
+                width: "100%",
+                padding: "13px 0",
+                borderRadius: 12,
+                border: "none",
+                background: TEAL,
+                color: "#fff",
+                fontSize: 14,
+                fontWeight: 600,
+                cursor: "pointer",
+                opacity: images.length === 0 || busy ? 0.5 : 1,
+              }}
+            >
+              {busy ? t("Recognizing…") : t("Process screenshots")}
+            </button>
+          </>
+        )}
 
-      {phase === "review" && (
-        <>
-          <div style={{ fontSize: 17, fontWeight: 700, color: C.text, textAlign: "center", marginBottom: 4 }}>{t("Recognized transactions")}</div>
-          <div style={{ fontSize: 12, color: C.mute, textAlign: "center", marginBottom: 12 }}>
-            {t("Untick what you don't want. Duplicates are skipped — tap one to edit and add it anyway.")}
-          </div>
+        {phase === "review" && (
+          <>
+            <div style={{ fontSize: 17, fontWeight: 700, color: C.text, textAlign: "center", marginBottom: 4 }}>{t("Recognized transactions")}</div>
+            <div style={{ fontSize: 12, color: C.mute, textAlign: "center", marginBottom: 12 }}>
+              {t("Untick what you don't want. Duplicates are skipped — tap one to edit and add it anyway.")}
+            </div>
 
-          {items.map((it, idx) => {
-            // the row shows post-edit values (edited[idx]), the original when there are no corrections
-            const e = edited[idx] as EditedImportItem | undefined;
-            const type = e?.type ?? it.type;
-            const amount = e?.amount ?? it.amount;
-            const name = (e ? e.name : it.name) || it.tag;
-            const envId = e ? e.envelopeId : it.envelopeId;
-            const env = envId ? envById.get(envId) : null;
-            const catName = e ? (e.categoryId ? state.categories.find((c) => c.id === e.categoryId)?.name ?? null : null) : (it.categoryName ?? null);
-            const refund = e?.isRefund ?? it.isRefund ?? false;
-            const exists = it.status === "exists" && !e; // an edited duplicate is treated as a new item
-            // FX row: the extracted amount is in a currency other than the budget's — nothing was
-            // converted (we never guess a rate), so the user must eyeball it. fxOriginal (when
-            // present) is the original foreign charge that WAS converted/settled server-side.
-            const fxMismatch = !!it.currency && it.currency !== currency;
-            return (
-              <div key={idx} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 2px", opacity: exists ? 0.45 : 1 }}>
-                <span
-                  onClick={() => toggle(idx)}
-                  role="checkbox"
-                  aria-checked={it.include}
-                  style={{ width: 22, height: 22, borderRadius: "50%", flexShrink: 0, cursor: exists ? "default" : "pointer", border: `2px solid ${it.include ? TEAL : C.line}`, background: it.include ? TEAL : "transparent", display: "flex", alignItems: "center", justifyContent: "center" }}
-                >
-                  {it.include && <Ico d="M5 13l4 4L19 7" size={12} color="#fff" sw={3} />}
-                </span>
-                {/* tap on content (outside the checkbox) → full-screen item editor */}
-                <div
-                  onClick={() => setEditorIdx(idx)} /* duplicates are editable too — once saved they count as new (force) */
-                  role="button"
-                  aria-label={t("Edit item {n}", { n: idx + 1 })}
-                  style={{ flex: 1, minWidth: 0, display: "flex", alignItems: "center", gap: 10, cursor: "pointer" }}
-                >
-                  <span style={{ width: 30, height: 30, borderRadius: 8, flexShrink: 0, background: env?.color ?? C.inset, display: "flex", alignItems: "center", justifyContent: "center" }}>
-                    <Glyph name={env?.icon ?? "tag"} size={15} color={env ? (isLight(env.color) ? "#33312c" : "#fff") : C.mute} sw={1.6} />
+            {items.map((it, idx) => {
+              // the row shows post-edit values (edited[idx]), the original when there are no corrections
+              const e = edited[idx] as EditedImportItem | undefined;
+              const type = e?.type ?? it.type;
+              const amount = e?.amount ?? it.amount;
+              const name = (e ? e.name : it.name) || it.tag;
+              const envId = e ? e.envelopeId : it.envelopeId;
+              const env = envId ? envById.get(envId) : null;
+              const catName = e ? (e.categoryId ? (state.categories.find((c) => c.id === e.categoryId)?.name ?? null) : null) : (it.categoryName ?? null);
+              const refund = e?.isRefund ?? it.isRefund ?? false;
+              const exists = it.status === "exists" && !e; // an edited duplicate is treated as a new item
+              // FX row: the extracted amount is in a currency other than the budget's — nothing was
+              // converted (we never guess a rate), so the user must eyeball it. fxOriginal (when
+              // present) is the original foreign charge that WAS converted/settled server-side.
+              const fxMismatch = !!it.currency && it.currency !== currency;
+              return (
+                <div key={idx} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 2px", opacity: exists ? 0.45 : 1 }}>
+                  <span
+                    onClick={() => toggle(idx)}
+                    role="checkbox"
+                    aria-checked={it.include}
+                    style={{
+                      width: 22,
+                      height: 22,
+                      borderRadius: "50%",
+                      flexShrink: 0,
+                      cursor: exists ? "default" : "pointer",
+                      border: `2px solid ${it.include ? TEAL : C.line}`,
+                      background: it.include ? TEAL : "transparent",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                    }}
+                  >
+                    {it.include && <Ico d="M5 13l4 4L19 7" size={12} color="#fff" sw={3} />}
                   </span>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 13.5, color: C.text, display: "flex", alignItems: "center", gap: 5, minWidth: 0 }}>
-                      {e && <span aria-label={t("edited")} title={t("edited")} style={{ color: TEAL, fontWeight: 700, flexShrink: 0 }}>✎ </span>}
-                      <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0 }}>{name}</span>
+                  {/* tap on content (outside the checkbox) → full-screen item editor */}
+                  <div
+                    onClick={() => setEditorIdx(idx)} /* duplicates are editable too — once saved they count as new (force) */
+                    role="button"
+                    aria-label={t("Edit item {n}", { n: idx + 1 })}
+                    style={{ flex: 1, minWidth: 0, display: "flex", alignItems: "center", gap: 10, cursor: "pointer" }}
+                  >
+                    <span
+                      style={{
+                        width: 30,
+                        height: 30,
+                        borderRadius: 8,
+                        flexShrink: 0,
+                        background: env?.color ?? C.inset,
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                      }}
+                    >
+                      <Glyph name={env?.icon ?? "tag"} size={15} color={env ? (isLight(env.color) ? "#33312c" : "#fff") : C.mute} sw={1.6} />
+                    </span>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 13.5, color: C.text, display: "flex", alignItems: "center", gap: 5, minWidth: 0 }}>
+                        {e && (
+                          <span aria-label={t("edited")} title={t("edited")} style={{ color: TEAL, fontWeight: 700, flexShrink: 0 }}>
+                            ✎{" "}
+                          </span>
+                        )}
+                        <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0 }}>{name}</span>
+                        {fxMismatch && (
+                          <span
+                            style={{
+                              flexShrink: 0,
+                              fontSize: 9.5,
+                              fontWeight: 700,
+                              letterSpacing: 0.4,
+                              padding: "2px 7px",
+                              borderRadius: 8,
+                              background: tint(C.warn, 0.15),
+                              color: C.warn,
+                            }}
+                          >
+                            {it.currency}
+                          </span>
+                        )}
+                      </div>
+                      <div style={{ fontSize: 10.5, color: C.mute, marginTop: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                        {e?.date ?? it.date} · {(e ? e.placeName : it.placeName) ?? it.tag}
+                        {env ? ` · ${env.name}` : ""}
+                        {catName ? ` · ${catName}` : ""}
+                        {refund ? ` · ${t("refund")}` : ""}
+                        {exists ? ` · ${t("already exists")}` : ""}
+                        {it.status === "probable" && <span style={{ color: C.warn, fontWeight: 600 }}> · {t("probable duplicate")}</span>}
+                      </div>
+                      {it.fxOriginal && <div style={{ fontSize: 10, color: C.mute, marginTop: 1 }}>{it.fxOriginal}</div>}
                       {fxMismatch && (
-                        <span style={{ flexShrink: 0, fontSize: 9.5, fontWeight: 700, letterSpacing: 0.4, padding: "2px 7px", borderRadius: 8, background: tint(C.warn, 0.15), color: C.warn }}>
-                          {it.currency}
-                        </span>
+                        <div style={{ fontSize: 10, color: C.warn, marginTop: 1 }}>
+                          {t("Recorded in {currency} — check the amount.", { currency: it.currency! })}
+                        </div>
                       )}
                     </div>
-                    <div style={{ fontSize: 10.5, color: C.mute, marginTop: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                      {e?.date ?? it.date} · {(e ? e.placeName : it.placeName) ?? it.tag}{env ? ` · ${env.name}` : ""}{catName ? ` · ${catName}` : ""}{refund ? ` · ${t("refund")}` : ""}{exists ? ` · ${t("already exists")}` : ""}
-                      {it.status === "probable" && <span style={{ color: C.warn, fontWeight: 600 }}> · {t("probable duplicate")}</span>}
-                    </div>
-                    {it.fxOriginal && (
-                      <div style={{ fontSize: 10, color: C.mute, marginTop: 1 }}>{it.fxOriginal}</div>
-                    )}
-                    {fxMismatch && (
-                      <div style={{ fontSize: 10, color: C.warn, marginTop: 1 }}>{t("Recorded in {currency} — check the amount.", { currency: it.currency! })}</div>
-                    )}
+                    <span
+                      style={{
+                        fontSize: 13.5,
+                        fontWeight: 600,
+                        fontVariantNumeric: "tabular-nums",
+                        color: type === "transfer" ? TRANSFER : type === "income" || refund ? C.pos : C.text,
+                        flexShrink: 0,
+                      }}
+                    >
+                      {type === "transfer" ? "↔ " : type === "income" || refund ? "+" : "-"}
+                      {formatMoney(amount, currency, lang)}
+                    </span>
                   </div>
-                  <span style={{ fontSize: 13.5, fontWeight: 600, fontVariantNumeric: "tabular-nums", color: type === "transfer" ? TRANSFER : type === "income" || refund ? C.pos : C.text, flexShrink: 0 }}>
-                    {type === "transfer" ? "↔ " : type === "income" || refund ? "+" : "-"}{formatMoney(amount, currency, lang)}
-                  </span>
                 </div>
-              </div>
-            );
-          })}
+              );
+            })}
 
-          {error && <div style={{ fontSize: 12.5, color: CORAL, margin: "10px 0" }}>{error}</div>}
+            {error && <div style={{ fontSize: 12.5, color: CORAL, margin: "10px 0" }}>{error}</div>}
 
-          <div style={{ display: "flex", gap: 8, marginTop: 14 }}>
-            <button onClick={() => { setPhase("pick"); setItems([]); setEdited({}); }} style={{ flex: 1, padding: "12px 0", borderRadius: 12, border: `1px solid ${C.line}`, background: C.bg, color: C.soft, fontSize: 13.5, fontWeight: 600, cursor: "pointer" }}>
-              {t("Back")}
-            </button>
-            <button
-              onClick={apply}
-              disabled={busy || selectedCount === 0}
-              style={{ flex: 2, padding: "12px 0", borderRadius: 12, border: "none", background: TEAL, color: "#fff", fontSize: 13.5, fontWeight: 600, cursor: "pointer", opacity: busy || selectedCount === 0 ? 0.5 : 1 }}
+            <div style={{ display: "flex", gap: 8, marginTop: 14 }}>
+              <button
+                onClick={() => {
+                  setPhase("pick");
+                  setItems([]);
+                  setEdited({});
+                }}
+                style={{
+                  flex: 1,
+                  padding: "12px 0",
+                  borderRadius: 12,
+                  border: `1px solid ${C.line}`,
+                  background: C.bg,
+                  color: C.soft,
+                  fontSize: 13.5,
+                  fontWeight: 600,
+                  cursor: "pointer",
+                }}
+              >
+                {t("Back")}
+              </button>
+              <button
+                onClick={apply}
+                disabled={busy || selectedCount === 0}
+                style={{
+                  flex: 2,
+                  padding: "12px 0",
+                  borderRadius: 12,
+                  border: "none",
+                  background: TEAL,
+                  color: "#fff",
+                  fontSize: 13.5,
+                  fontWeight: 600,
+                  cursor: "pointer",
+                  opacity: busy || selectedCount === 0 ? 0.5 : 1,
+                }}
+              >
+                {busy ? t("Adding…") : tp("Add {n} transaction | Add {n} transactions", selectedCount)}
+              </button>
+            </div>
+          </>
+        )}
+
+        {phase === "done" && (
+          <div style={{ textAlign: "center", padding: "10px 0 4px" }}>
+            <div
+              style={{
+                width: 56,
+                height: 56,
+                borderRadius: "50%",
+                background: TEAL,
+                margin: "0 auto 14px",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+              }}
             >
-              {busy ? t("Adding…") : tp("Add {n} transaction | Add {n} transactions", selectedCount)}
+              <Ico d="M5 13l4 4L19 7" size={26} color="#fff" sw={2.6} />
+            </div>
+            <div style={{ fontSize: 16, fontWeight: 700, color: C.text, marginBottom: 4 }}>
+              {tp("Added {n} transaction | Added {n} transactions", doneStats.added)}
+            </div>
+            {doneStats.dup > 0 && <div style={{ fontSize: 12.5, color: C.soft, marginBottom: 4 }}>{t("Duplicates skipped: {n}", { n: doneStats.dup })}</div>}
+            <button
+              onClick={close}
+              style={{
+                marginTop: 14,
+                width: "100%",
+                padding: "13px 0",
+                borderRadius: 12,
+                border: "none",
+                background: TEAL,
+                color: "#fff",
+                fontSize: 14,
+                fontWeight: 600,
+                cursor: "pointer",
+              }}
+            >
+              {t("Close")}
             </button>
           </div>
-        </>
-      )}
-
-      {phase === "done" && (
-        <div style={{ textAlign: "center", padding: "10px 0 4px" }}>
-          <div style={{ width: 56, height: 56, borderRadius: "50%", background: TEAL, margin: "0 auto 14px", display: "flex", alignItems: "center", justifyContent: "center" }}>
-            <Ico d="M5 13l4 4L19 7" size={26} color="#fff" sw={2.6} />
-          </div>
-          <div style={{ fontSize: 16, fontWeight: 700, color: C.text, marginBottom: 4 }}>
-            {tp("Added {n} transaction | Added {n} transactions", doneStats.added)}
-          </div>
-          {doneStats.dup > 0 && (
-            <div style={{ fontSize: 12.5, color: C.soft, marginBottom: 4 }}>{t("Duplicates skipped: {n}", { n: doneStats.dup })}</div>
-          )}
-          <button onClick={close} style={{ marginTop: 14, width: "100%", padding: "13px 0", borderRadius: 12, border: "none", background: TEAL, color: "#fff", fontSize: 14, fontWeight: 600, cursor: "pointer" }}>
-            {t("Close")}
-          </button>
-        </div>
-      )}
-    </Sheet>
-    {/* Full-screen item editor = AddScreen in draft mode. Portal to body
+        )}
+      </Sheet>
+      {/* Full-screen item editor = AddScreen in draft mode. Portal to body
         (IconColorPicker pattern) — the Sheet has a transform, position:fixed inside it breaks. */}
-    {show && editorIdx !== null && items[editorIdx] && createPortal(
-      <div style={{ position: "fixed", inset: 0, zIndex: 200, background: C.bg, maxWidth: 420, margin: "0 auto", display: "flex", flexDirection: "column", overflow: "hidden", paddingTop: "env(safe-area-inset-top)", fontFamily: font }}>
-        <AddScreen
-          state={state}
-          editTxn={null}
-          onDone={() => setEditorIdx(null)}
-          draft={{
-            item: items[editorIdx],
-            accountId,
-            initial: edited[editorIdx],
-            onSave: (e) => { setEdited((prev) => ({ ...prev, [editorIdx]: e })); setItems((prev) => prev.map((x, k) => (k === editorIdx ? { ...x, include: true } : x))); setEditorIdx(null); },
-            onCancel: () => setEditorIdx(null),
-          }}
-        />
-      </div>,
-      document.body,
-    )}
-    {/* Sibling of the Sheet (not a child) — the panel's transform would break position:fixed. */}
-    <AiConsentSheet
-      show={showConsent}
-      feature="import"
-      onClose={() => setShowConsent(false)}
-      onDecided={(mode) => {
-        // "Cancel" (rules) = abort the import — rules can't read screenshots;
-        // server/byok saved settings — extraction will start with the fresh mode.
-        setShowConsent(false);
-        if (mode !== "rules") setPendingProcess(true);
-      }}
-    />
+      {show &&
+        editorIdx !== null &&
+        items[editorIdx] &&
+        createPortal(
+          <div
+            style={{
+              position: "fixed",
+              inset: 0,
+              zIndex: 200,
+              background: C.bg,
+              maxWidth: 420,
+              margin: "0 auto",
+              display: "flex",
+              flexDirection: "column",
+              overflow: "hidden",
+              paddingTop: "env(safe-area-inset-top)",
+              fontFamily: font,
+            }}
+          >
+            <AddScreen
+              state={state}
+              editTxn={null}
+              onDone={() => setEditorIdx(null)}
+              draft={{
+                item: items[editorIdx],
+                accountId,
+                initial: edited[editorIdx],
+                onSave: (e) => {
+                  setEdited((prev) => ({ ...prev, [editorIdx]: e }));
+                  setItems((prev) => prev.map((x, k) => (k === editorIdx ? { ...x, include: true } : x)));
+                  setEditorIdx(null);
+                },
+                onCancel: () => setEditorIdx(null),
+              }}
+            />
+          </div>,
+          document.body,
+        )}
+      {/* Sibling of the Sheet (not a child) — the panel's transform would break position:fixed. */}
+      <AiConsentSheet
+        show={showConsent}
+        feature="import"
+        onClose={() => setShowConsent(false)}
+        onDecided={(mode) => {
+          // "Cancel" (rules) = abort the import — rules can't read screenshots;
+          // server/byok saved settings — extraction will start with the fresh mode.
+          setShowConsent(false);
+          if (mode !== "rules") setPendingProcess(true);
+        }}
+      />
     </>
   );
 }

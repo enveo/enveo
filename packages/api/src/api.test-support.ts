@@ -24,10 +24,7 @@ import type postgres from "postgres";
 export function assertThrowawayDb(resolvedUrl: string): void {
   const expected = process.env.EXPECT_DATABASE_URL ?? "";
   if (!expected || resolvedUrl !== expected) {
-    throw new Error(
-      `refusing to run: env.DATABASE_URL is not the throwaway database given by the test ` +
-        `(EXPECT_DATABASE_URL=${expected || "<unset>"})`,
-    );
+    throw new Error(`refusing to run: env.DATABASE_URL is not the throwaway database given by the test ` + `(EXPECT_DATABASE_URL=${expected || "<unset>"})`);
   }
 }
 
@@ -96,13 +93,7 @@ export async function emitChildResult(sentinel: string, out: unknown): Promise<v
  * parses its single SENTINEL line. A non-zero exit or a missing line raises with the child's
  * full stdout/stderr — a silently swallowed child failure would make a suite pass vacuously.
  */
-export async function runChild<T>(opts: {
-  path: string;
-  testUrl: string;
-  sentinel: string;
-  cwd: string;
-  env?: Record<string, string>;
-}): Promise<T> {
+export async function runChild<T>(opts: { path: string; testUrl: string; sentinel: string; cwd: string; env?: Record<string, string> }): Promise<T> {
   const child = Bun.spawn([process.execPath, opts.path], {
     cwd: opts.cwd,
     env: {
@@ -114,16 +105,11 @@ export async function runChild<T>(opts: {
     stdout: "pipe",
     stderr: "pipe",
   });
-  const [stdout, stderr] = await Promise.all([
-    new Response(child.stdout).text(),
-    new Response(child.stderr).text(),
-  ]);
+  const [stdout, stderr] = await Promise.all([new Response(child.stdout).text(), new Response(child.stderr).text()]);
   const code = await child.exited;
   const line = stdout.split("\n").find((l) => l.startsWith(opts.sentinel));
   if (code !== 0 || !line) {
-    throw new Error(
-      `child ${opts.path} failed (exit ${code})\nstdout:\n${stdout}\nstderr:\n${stderr}`,
-    );
+    throw new Error(`child ${opts.path} failed (exit ${code})\nstdout:\n${stdout}\nstderr:\n${stderr}`);
   }
   return JSON.parse(line.slice(opts.sentinel.length)) as T;
 }

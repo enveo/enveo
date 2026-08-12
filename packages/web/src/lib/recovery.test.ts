@@ -18,8 +18,7 @@ describe("isUnprovenReplicaError", () => {
 /** Steps that record their call order; each async step can be made to fail. */
 function makeSteps(opts: { userId?: string | null; failAt?: "budgetReset" | "signOut" } = {}) {
   const calls: string[] = [];
-  const fail = (name: string) =>
-    opts.failAt === name ? Promise.reject(new Error(`${name}_failed`)) : Promise.resolve();
+  const fail = (name: string) => (opts.failAt === name ? Promise.reject(new Error(`${name}_failed`)) : Promise.resolve());
   const steps: RecoverySteps = {
     fetchSessionUserId: () => {
       calls.push("fetchSessionUserId");

@@ -17,7 +17,15 @@ describe("computeEnvelopeBudgetStats", () => {
   it("uses the 6 fully-elapsed months before the selected month", () => {
     // selected month 2026-07 → window is 2026-01..2026-06
     const l = asClientLedger(
-      ledgerWithSpend("E0", { "2026-01": 100_00, "2026-02": 100_00, "2026-03": 100_00, "2026-04": 100_00, "2026-05": 100_00, "2026-06": 100_00, "2026-07": 999_00 }),
+      ledgerWithSpend("E0", {
+        "2026-01": 100_00,
+        "2026-02": 100_00,
+        "2026-03": 100_00,
+        "2026-04": 100_00,
+        "2026-05": 100_00,
+        "2026-06": 100_00,
+        "2026-07": 999_00,
+      }),
     );
     const s = computeEnvelopeBudgetStats(l, "E0", "2026-07", 0, 0);
     expect(s.months).toEqual([100_00, 100_00, 100_00, 100_00, 100_00, 100_00]);
@@ -38,7 +46,17 @@ describe("computeEnvelopeBudgetStats", () => {
 import { buildBudgetSuggestionBasis } from "./aiBudget";
 import type { Account } from "./types";
 
-const onAcc = (initial: number): Account => ({ id: "A0", name: "K", color: "#fff", icon: "wallet", type: "checking", onBudget: true, initialBalance: initial, archived: false, sort: 0 });
+const onAcc = (initial: number): Account => ({
+  id: "A0",
+  name: "K",
+  color: "#fff",
+  icon: "wallet",
+  type: "checking",
+  onBudget: true,
+  initialBalance: initial,
+  archived: false,
+  sort: 0,
+});
 
 describe("buildBudgetSuggestionBasis", () => {
   it("amountToDistribute is max(0, toBeBudgeted); no allocations => full amount free", () => {
@@ -201,7 +219,27 @@ describe("monthlyTarget field", () => {
   });
 
   it("clientLedgerSchema accepts envelopes with and without monthlyTarget", () => {
-    const withT = { accounts: [], groups: [{ id: "11111111-1111-1111-1111-111111111111", name: "G", sort: 0 }], envelopes: [{ id: "22222222-2222-2222-2222-222222222222", groupId: "11111111-1111-1111-1111-111111111111", name: "E", color: "#fff", icon: "tag", note: null, sort: 0, archived: false, monthlyTarget: 100_00 }], categories: [], places: [], allocations: [], transactions: [] };
+    const withT = {
+      accounts: [],
+      groups: [{ id: "11111111-1111-1111-1111-111111111111", name: "G", sort: 0 }],
+      envelopes: [
+        {
+          id: "22222222-2222-2222-2222-222222222222",
+          groupId: "11111111-1111-1111-1111-111111111111",
+          name: "E",
+          color: "#fff",
+          icon: "tag",
+          note: null,
+          sort: 0,
+          archived: false,
+          monthlyTarget: 100_00,
+        },
+      ],
+      categories: [],
+      places: [],
+      allocations: [],
+      transactions: [],
+    };
     expect(clientLedgerSchema.safeParse(withT).success).toBe(true);
     const withoutT = { ...withT, envelopes: [{ ...withT.envelopes[0], monthlyTarget: undefined }] };
     delete (withoutT.envelopes[0] as Record<string, unknown>).monthlyTarget;
@@ -339,7 +377,9 @@ describe("buildPrevMonthSuggestion", () => {
   it("property: delta_i == max(0, prev_i − curr_i) exactly; over_tbb iff Σ > amount", () => {
     fc.assert(
       fc.property(
-        fc.array(fc.record({ curr: fc.integer({ min: 0, max: 100_000 }), prev: fc.option(fc.integer({ min: 0, max: 100_000 }), { nil: undefined }) }), { maxLength: 8 }),
+        fc.array(fc.record({ curr: fc.integer({ min: 0, max: 100_000 }), prev: fc.option(fc.integer({ min: 0, max: 100_000 }), { nil: undefined }) }), {
+          maxLength: 8,
+        }),
         fc.integer({ min: 0, max: 200_000 }),
         (envs, amount) => {
           const cands = envs.map((e, i) => mkCand(`E${i}`, 0, e.curr));
@@ -364,7 +404,14 @@ describe("buildPrevMonthSuggestion", () => {
 describe("normalizeAgentSuggestion", () => {
   it("valid proposal with Σ == amount stays unchanged (repaired=false, no hint codes)", () => {
     const basis = mkBasis([mkCand("E1", 0), mkCand("E2", 0)], 0);
-    const r = normalizeAgentSuggestion([{ envelopeId: "E1", proposedDelta: 60 }, { envelopeId: "E2", proposedDelta: 40 }], basis, 100);
+    const r = normalizeAgentSuggestion(
+      [
+        { envelopeId: "E1", proposedDelta: 60 },
+        { envelopeId: "E2", proposedDelta: 40 },
+      ],
+      basis,
+      100,
+    );
     expect(r.repaired).toBe(false);
     expect(r.amountToDistribute).toBe(100);
     expect(r.distributed).toBe(100);
@@ -376,7 +423,14 @@ describe("normalizeAgentSuggestion", () => {
 
   it("under-sum scales UP only within the agent's set — never tops up omitted envelopes", () => {
     const basis = mkBasis([mkCand("E1", 0), mkCand("E2", 0), mkCand("OMITTED", -999_00)], 0);
-    const r = normalizeAgentSuggestion([{ envelopeId: "E1", proposedDelta: 30 }, { envelopeId: "E2", proposedDelta: 10 }], basis, 100);
+    const r = normalizeAgentSuggestion(
+      [
+        { envelopeId: "E1", proposedDelta: 30 },
+        { envelopeId: "E2", proposedDelta: 10 },
+      ],
+      basis,
+      100,
+    );
     expect(r.repaired).toBe(true);
     expect(r.items.some((i) => i.envelopeId === "OMITTED")).toBe(false);
     expect(r.items.find((i) => i.envelopeId === "E1")!.proposedDelta).toBe(75);
@@ -386,7 +440,14 @@ describe("normalizeAgentSuggestion", () => {
 
   it("over-sum scales DOWN proportionally to Σ == amount", () => {
     const basis = mkBasis([mkCand("E1", 0), mkCand("E2", 0)], 0);
-    const r = normalizeAgentSuggestion([{ envelopeId: "E1", proposedDelta: 300 }, { envelopeId: "E2", proposedDelta: 100 }], basis, 100);
+    const r = normalizeAgentSuggestion(
+      [
+        { envelopeId: "E1", proposedDelta: 300 },
+        { envelopeId: "E2", proposedDelta: 100 },
+      ],
+      basis,
+      100,
+    );
     expect(r.items.find((i) => i.envelopeId === "E1")!.proposedDelta).toBe(75);
     expect(r.items.find((i) => i.envelopeId === "E2")!.proposedDelta).toBe(25);
     expect(r.distributed).toBe(100);
@@ -395,7 +456,14 @@ describe("normalizeAgentSuggestion", () => {
 
   it("unknown ids dropped and negatives clamped; nothing valid left → agent_empty, items=[]", () => {
     const basis = mkBasis([mkCand("E1", 0)], 0);
-    const r = normalizeAgentSuggestion([{ envelopeId: "GHOST", proposedDelta: 100 }, { envelopeId: "E1", proposedDelta: -50 }], basis, 100);
+    const r = normalizeAgentSuggestion(
+      [
+        { envelopeId: "GHOST", proposedDelta: 100 },
+        { envelopeId: "E1", proposedDelta: -50 },
+      ],
+      basis,
+      100,
+    );
     expect(r.items).toEqual([]);
     expect(r.warnings).toEqual(["agent_empty"]);
     expect(r.distributed).toBe(0);
@@ -490,7 +558,11 @@ describe("monthlyTarget in the engine", () => {
     const g = grp();
     const e1 = env(g.id, { id: "T1", name: "Obligacje", monthlyTarget: 100_00 });
     const a = { id: "A0", name: "K", color: "#fff", icon: "wallet", type: "checking", onBudget: true, initialBalance: 300_00, archived: false, sort: 0 };
-    const basis = buildBudgetSuggestionBasis({ ledger: asClientLedger({ accounts: [a], groups: [g], envelopes: [e1], allocations: [], transactions: [] }), month: "2026-07", profile: "investor" });
+    const basis = buildBudgetSuggestionBasis({
+      ledger: asClientLedger({ accounts: [a], groups: [g], envelopes: [e1], allocations: [], transactions: [] }),
+      month: "2026-07",
+      profile: "investor",
+    });
     const r = buildRulesBudgetSuggestion(basis);
     expect(r.distributed).toBe(100_00);
     expect(r.undistributedRemainder).toBe(200_00);

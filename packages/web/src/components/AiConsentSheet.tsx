@@ -25,7 +25,12 @@ const PAYLOAD_KEY: Record<AiFeature, Message> = {
   import: msg("The AI model (OpenAI) will receive: the screenshots and the names of your envelopes and categories."),
 };
 
-export function AiConsentSheet({ show, feature, onClose, onDecided }: {
+export function AiConsentSheet({
+  show,
+  feature,
+  onClose,
+  onDecided,
+}: {
   show: boolean;
   feature: AiFeature;
   onClose: () => void;
@@ -39,7 +44,10 @@ export function AiConsentSheet({ show, feature, onClose, onDecided }: {
   const [key, setKey] = useState(settings.openaiKey);
   const [model, setModel] = useState<OpenAiModel>(settings.openaiModel);
 
-  const close = () => { setByokOpen(false); onClose(); };
+  const close = () => {
+    setByokOpen(false);
+    onClose();
+  };
 
   const chooseServer = () => {
     setSettings({ ...settings, aiMode: "server" });
@@ -53,14 +61,39 @@ export function AiConsentSheet({ show, feature, onClose, onDecided }: {
   return (
     <Sheet show={show} onClose={close}>
       {(C) => {
-        const secondary = { width: "100%", padding: "12px 0", borderRadius: 12, border: `1px solid ${C.line}`, background: "transparent", color: C.text, fontSize: 13.5, fontWeight: 600, cursor: "pointer", marginBottom: 8 } as const;
+        const secondary = {
+          width: "100%",
+          padding: "12px 0",
+          borderRadius: 12,
+          border: `1px solid ${C.line}`,
+          background: "transparent",
+          color: C.text,
+          fontSize: 13.5,
+          fontWeight: 600,
+          cursor: "pointer",
+          marginBottom: 8,
+        } as const;
         return (
           <>
             <div style={{ fontSize: 17, fontWeight: 700, color: C.text, marginBottom: 6 }}>{t("Enable AI assistance?")}</div>
             <div style={{ fontSize: 12.5, color: C.soft, lineHeight: 1.5, marginBottom: 14 }}>{t(PAYLOAD_KEY[feature])}</div>
 
             {aiInfo?.serverAi && (
-              <button onClick={chooseServer} style={{ width: "100%", padding: "12px 0", borderRadius: 12, border: "none", background: TEAL, color: "#fff", fontSize: 13.5, fontWeight: 600, cursor: "pointer", marginBottom: 8 }}>
+              <button
+                onClick={chooseServer}
+                style={{
+                  width: "100%",
+                  padding: "12px 0",
+                  borderRadius: 12,
+                  border: "none",
+                  background: TEAL,
+                  color: "#fff",
+                  fontSize: 13.5,
+                  fontWeight: 600,
+                  cursor: "pointer",
+                  marginBottom: 8,
+                }}
+              >
                 {t("Enable via server")}
               </button>
             )}
@@ -80,17 +113,59 @@ export function AiConsentSheet({ show, feature, onClose, onDecided }: {
                   autoCorrect="off"
                   spellCheck={false}
                   aria-label={t("OpenAI key")}
-                  style={{ width: "100%", boxSizing: "border-box", padding: "10px 12px", borderRadius: 10, border: `1px solid ${C.line}`, background: C.bg, color: C.text, fontSize: 13, fontFamily: font, marginBottom: 8 }}
+                  style={{
+                    width: "100%",
+                    boxSizing: "border-box",
+                    padding: "10px 12px",
+                    borderRadius: 10,
+                    border: `1px solid ${C.line}`,
+                    background: C.bg,
+                    color: C.text,
+                    fontSize: 13,
+                    fontFamily: font,
+                    marginBottom: 8,
+                  }}
                 />
                 <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
                   {(["gpt-5.5-mini", "gpt-5.5"] as const).map((m) => (
-                    <button key={m} onClick={() => setModel(m)} style={{ flex: 1, padding: "8px 0", borderRadius: 10, border: `1px solid ${model === m ? TEAL : C.line}`, background: model === m ? "var(--accent-1a)" : "transparent", color: model === m ? TEAL : C.text, fontSize: 12.5, fontWeight: 600, cursor: "pointer" }}>
+                    <button
+                      key={m}
+                      onClick={() => setModel(m)}
+                      style={{
+                        flex: 1,
+                        padding: "8px 0",
+                        borderRadius: 10,
+                        border: `1px solid ${model === m ? TEAL : C.line}`,
+                        background: model === m ? "var(--accent-1a)" : "transparent",
+                        color: model === m ? TEAL : C.text,
+                        fontSize: 12.5,
+                        fontWeight: 600,
+                        cursor: "pointer",
+                      }}
+                    >
                       {m}
                     </button>
                   ))}
                 </div>
-                <div style={{ fontSize: 11.5, color: C.mute, lineHeight: 1.5, marginBottom: 10 }}>{t("The key is stored only in this browser (localStorage) — it is never synced or sent to the app server.")}</div>
-                <button onClick={chooseByok} disabled={!key.trim()} style={{ width: "100%", padding: "12px 0", borderRadius: 12, border: "none", background: TEAL, color: "#fff", fontSize: 13.5, fontWeight: 600, cursor: "pointer", opacity: key.trim() ? 1 : 0.5 }}>
+                <div style={{ fontSize: 11.5, color: C.mute, lineHeight: 1.5, marginBottom: 10 }}>
+                  {t("The key is stored only in this browser (localStorage) — it is never synced or sent to the app server.")}
+                </div>
+                <button
+                  onClick={chooseByok}
+                  disabled={!key.trim()}
+                  style={{
+                    width: "100%",
+                    padding: "12px 0",
+                    borderRadius: 12,
+                    border: "none",
+                    background: TEAL,
+                    color: "#fff",
+                    fontSize: 13.5,
+                    fontWeight: 600,
+                    cursor: "pointer",
+                    opacity: key.trim() ? 1 : 0.5,
+                  }}
+                >
                   {t("Save key & enable")}
                 </button>
               </div>

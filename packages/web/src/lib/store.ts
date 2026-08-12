@@ -48,8 +48,7 @@ export type BootStatus = "booting" | "ready" | "error" | "unauthed" | "locked" |
  * Pending-guard key for allocations (natural key) — MUST match
  * the format in outbox.pendingKeys().
  */
-const allocPendingKey = (a: Pick<Allocation, "envelopeId" | "month">): string =>
-  `allocations:${a.envelopeId}|${a.month}`;
+const allocPendingKey = (a: Pick<Allocation, "envelopeId" | "month">): string => `allocations:${a.envelopeId}|${a.month}`;
 
 /* ── Module state ─────────────────────────────────────────────────────── */
 
@@ -79,11 +78,7 @@ function normalizeLedger(l: ClientLedger): ClientLedger {
 let hydratePromise: Promise<"ready" | "empty"> | null = null;
 
 async function doHydrate(): Promise<"ready" | "empty"> {
-  const [l, c, b] = await Promise.all([
-    idbGet<ClientLedger>("meta", "ledger"),
-    idbGet<number>("meta", "cursor"),
-    idbGet<string>("meta", "budgetId"),
-  ]);
+  const [l, c, b] = await Promise.all([idbGet<ClientLedger>("meta", "ledger"), idbGet<number>("meta", "cursor"), idbGet<string>("meta", "budgetId")]);
   if (!l) return "empty";
   ledger = normalizeLedger(l);
   cursor = c ?? 0;
@@ -141,11 +136,7 @@ export const store = {
    *   in outbox.pendingKeys()).
    * ONLY memory + version++ — durability is done by the caller (persist.persistLedger).
    */
-  applyPulled(
-    changes: PullChange[],
-    nextCursor: number,
-    pendingKeys?: ReadonlySet<string>,
-  ): void {
+  applyPulled(changes: PullChange[], nextCursor: number, pendingKeys?: ReadonlySet<string>): void {
     if (!ledger) return; // no bootstrap — pull has nothing to apply onto
     const next = { ...ledger };
     const copied = new Map<keyof ClientLedger, Array<{ id: string }>>();
@@ -170,10 +161,7 @@ export const store = {
         const i = arr.findIndex((r) => r.id === ch.rowId);
         if (i < 0) continue; // unknown id → ignore
         if (pendingKeys) {
-          const pk =
-            ch.table === "allocations"
-              ? allocPendingKey(arr[i] as unknown as Allocation)
-              : `${key}:${ch.rowId}`;
+          const pk = ch.table === "allocations" ? allocPendingKey(arr[i] as unknown as Allocation) : `${key}:${ch.rowId}`;
           if (pendingKeys.has(pk)) continue; // pending-guard
         }
         arr.splice(i, 1);
@@ -181,19 +169,14 @@ export const store = {
       }
       const row = ch.row as { id: string };
       if (pendingKeys) {
-        const pk =
-          ch.table === "allocations"
-            ? allocPendingKey(row as unknown as Allocation)
-            : `${key}:${row.id}`;
+        const pk = ch.table === "allocations" ? allocPendingKey(row as unknown as Allocation) : `${key}:${row.id}`;
         if (pendingKeys.has(pk)) continue; // pending-guard
       }
       let i = arr.findIndex((r) => r.id === row.id);
       if (i < 0 && ch.table === "allocations") {
         // natural key — the canonical row replaces its local counterpart
         const a = row as unknown as Allocation;
-        i = (arr as unknown as Allocation[]).findIndex(
-          (r) => r.envelopeId === a.envelopeId && r.month === a.month,
-        );
+        i = (arr as unknown as Allocation[]).findIndex((r) => r.envelopeId === a.envelopeId && r.month === a.month);
       }
       if (i >= 0) arr[i] = row;
       else arr.push(row);
@@ -241,11 +224,7 @@ export const store = {
    * (no write loop). Empty blob (nothing persisted yet) → no-op.
    */
   async rehydrateFromIdb(): Promise<void> {
-    const [l, c, b] = await Promise.all([
-      idbGet<ClientLedger>("meta", "ledger"),
-      idbGet<number>("meta", "cursor"),
-      idbGet<string>("meta", "budgetId"),
-    ]);
+    const [l, c, b] = await Promise.all([idbGet<ClientLedger>("meta", "ledger"), idbGet<number>("meta", "cursor"), idbGet<string>("meta", "budgetId")]);
     if (!l) return;
     ledger = normalizeLedger(l);
     cursor = c ?? cursor;

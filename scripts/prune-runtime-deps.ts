@@ -19,14 +19,7 @@
  */
 import { readdirSync, readFileSync, readlinkSync, rmSync, statSync, type Dirent } from "node:fs";
 import { resolve } from "node:path";
-import {
-  closureProblems,
-  computeClosure,
-  deadStoreEntries,
-  type Link,
-  type Manifest,
-  type StoreReader,
-} from "./lib/runtimeClosure";
+import { closureProblems, computeClosure, deadStoreEntries, type Link, type Manifest, type StoreReader } from "./lib/runtimeClosure";
 
 /** Workspaces the runtime image actually runs. */
 const WORKSPACES = ["packages/api", "packages/shared"] as const;
@@ -94,8 +87,7 @@ function makeReader(appDir: string): StoreReader {
 
   return {
     linksIn: (dir) => linksIn(dir),
-    manifestOfStoreEntry: (storeId) =>
-      readManifest(`${store}/${storeId}/node_modules/${packageNameFromStoreId(storeId)}`, storeId),
+    manifestOfStoreEntry: (storeId) => readManifest(`${store}/${storeId}/node_modules/${packageNameFromStoreId(storeId)}`, storeId),
     manifestOfWorkspace: (dir) => readManifest(dir, dir),
     nodeModulesOfStoreEntry: (storeId) => `${store}/${storeId}/node_modules`,
     nodeModulesOfWorkspace: (dir) => `${dir}/node_modules`,
@@ -125,9 +117,7 @@ function main(argv: readonly string[]): number {
   const dead = deadStoreEntries(readdirSync(store), closure);
   for (const id of dead) rmSync(`${store}/${id}`, { recursive: true, force: true });
 
-  console.log(
-    `prune-runtime-deps: kept ${closure.keep.size} store entries, removed ${dead.length}`,
-  );
+  console.log(`prune-runtime-deps: kept ${closure.keep.size} store entries, removed ${dead.length}`);
   if (dead.length > 0) console.log(`  removed: ${dead.join(" ")}`);
   return 0;
 }

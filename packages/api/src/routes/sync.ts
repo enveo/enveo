@@ -5,27 +5,12 @@
  * Every response carries `budgetId` — the epoch marker: a DB wipe+reseed yields
  * a new `budgets.id`, and on mismatch the client does a fullResync().
  */
-import {
-  clientLedgerSchema,
-  opSchemas,
-  REPLICATED_TABLES,
-  type ClientLedgerInput,
-  type OpKind,
-  type OpPayload,
-  type ReplicatedTable,
-} from "@enveo/shared";
+import { clientLedgerSchema, opSchemas, REPLICATED_TABLES, type ClientLedgerInput, type OpKind, type OpPayload, type ReplicatedTable } from "@enveo/shared";
 import { and, eq, gt, inArray, sql as dsql } from "drizzle-orm";
 import { Hono } from "hono";
 import postgres from "postgres";
 import { z } from "zod";
-import {
-  BudgetVanished,
-  getBudgetId,
-  requireExistingTier,
-  requireTier,
-  sessionUserId,
-  type BudgetMeta,
-} from "../context";
+import { BudgetVanished, getBudgetId, requireExistingTier, requireTier, sessionUserId, type BudgetMeta } from "../context";
 import { db, type DbTransaction } from "../db/client";
 import * as s from "../db/schema";
 import {
@@ -52,18 +37,7 @@ import {
   type Executor,
 } from "../sync/apply";
 import { claimOp } from "../sync/idempotency";
-import {
-  loadClientLedger,
-  mapAccount,
-  mapAllocation,
-  mapBudget,
-  mapCategory,
-  mapEnvelope,
-  mapGroup,
-  mapPlace,
-  mapTransaction,
-  mapTxnItem,
-} from "../repo";
+import { loadClientLedger, mapAccount, mapAllocation, mapBudget, mapCategory, mapEnvelope, mapGroup, mapPlace, mapTransaction, mapTxnItem } from "../repo";
 
 export const syncRoutes = new Hono();
 
@@ -93,16 +67,12 @@ export const CHANGES_CURSOR_LOCK_TEXT = "enveo:changes";
 async function lockChangesCursor(x: Executor): Promise<void> {
   // ::text on the parameter — an untyped bind would leave `hashtext(unknown)` to resolve, and
   // the KEY must stay byte-identical to the triggers' `hashtext('enveo:changes')`.
-  await x.execute(
-    dsql`SELECT pg_advisory_xact_lock(hashtext(${CHANGES_CURSOR_LOCK_TEXT}::text)::bigint)`,
-  );
+  await x.execute(dsql`SELECT pg_advisory_xact_lock(hashtext(${CHANGES_CURSOR_LOCK_TEXT}::text)::bigint)`);
 }
 
 /** COALESCE(MAX(seq),0) — change-log cursor; call AFTER `lockChangesCursor`. */
 async function maxSeq(x: Executor): Promise<number> {
-  const [row] = await x
-    .select({ cursor: dsql<number>`COALESCE(MAX(${s.changes.seq}), 0)`.mapWith(Number) })
-    .from(s.changes);
+  const [row] = await x.select({ cursor: dsql<number>`COALESCE(MAX(${s.changes.seq}), 0)`.mapWith(Number) }).from(s.changes);
   return row?.cursor ?? 0;
 }
 
@@ -125,10 +95,7 @@ const ENSURE_BARRIER_ATTEMPTS = 3;
  * If a concurrent destructive reseed removed the budget between the two phases, the whole
  * ensure → barrier sequence retries a bounded number of times.
  */
-async function withCursorBarrier<T>(
-  c: Parameters<typeof requireTier>[0],
-  work: (tx: DbTransaction, meta: BudgetMeta) => Promise<T>,
-): Promise<T> {
+async function withCursorBarrier<T>(c: Parameters<typeof requireTier>[0], work: (tx: DbTransaction, meta: BudgetMeta) => Promise<T>): Promise<T> {
   for (let attempt = 1; ; attempt++) {
     await getBudgetId(c); // phase 1 — standalone ensure, NEVER under the changes lock
     try {
@@ -142,9 +109,7 @@ async function withCursorBarrier<T>(
         // In production NOTHING deletes a budgets row, so a firing retry is an anomaly worth
         // seeing (a botched restore, a future cascade bug, or a dev reseed against a live
         // stack) — never silent. No ids: the message must stay tenant-free.
-        console.warn(
-          `[sync] budget_vanished between ensure and cursor barrier — retrying (attempt ${attempt}/${ENSURE_BARRIER_ATTEMPTS})`,
-        );
+        console.warn(`[sync] budget_vanished between ensure and cursor barrier — retrying (attempt ${attempt}/${ENSURE_BARRIER_ATTEMPTS})`);
         continue;
       }
       throw e;
@@ -165,17 +130,10 @@ syncRoutes.get("/sync/snapshot", async (c) => {
 
 /* ── GET /sync/pull?since=<seq> — delta with per-row coalescing ─────── */
 
-type PullChange =
-  | { seq: number; table: ReplicatedTable; op: "upsert"; row: unknown }
-  | { seq: number; table: ReplicatedTable; op: "delete"; rowId: string };
+type PullChange = { seq: number; table: ReplicatedTable; op: "upsert"; row: unknown } | { seq: number; table: ReplicatedTable; op: "delete"; rowId: string };
 
 /** Current table rows (mapped to shared types), by id. */
-async function loadCurrentRows(
-  x: Executor,
-  budgetId: string,
-  table: ReplicatedTable,
-  ids: string[],
-): Promise<Map<string, unknown>> {
+async function loadCurrentRows(x: Executor, budgetId: string, table: ReplicatedTable, ids: string[]): Promise<Map<string, unknown>> {
   switch (table) {
     case "accounts": {
       const rows = await x
@@ -250,8 +208,7 @@ async function loadCurrentRows(
   }
 }
 
-const isReplicated = (t: string): t is ReplicatedTable =>
-  (REPLICATED_TABLES as readonly string[]).includes(t);
+const isReplicated = (t: string): t is ReplicatedTable => (REPLICATED_TABLES as readonly string[]).includes(t);
 
 /**
  * The highest seq of a change row that carries NO budget (pre-0015 — the journal used to be
@@ -273,11 +230,7 @@ export async function legacyChangesWatermark(x: Executor): Promise<number> {
  * since 0015), coalesced per (table, row), materialized as upsert rows / delete tombstones.
  * Exported for the DB-backed tests: this is where tenant isolation of the pull lives.
  */
-export async function pullChanges(
-  x: Executor,
-  budgetId: string,
-  since: number,
-): Promise<PullChange[]> {
+export async function pullChanges(x: Executor, budgetId: string, since: number): Promise<PullChange[]> {
   const rows = await x
     .select()
     .from(s.changes)
@@ -347,9 +300,7 @@ export const pushInput = z.object({
   /** The budget the CLIENT believes it is writing to — see budgetAssertionFails. Optional:
    *  a pre-2.0 client omits it, and so does a legacy e2ee replica that cannot name its budget. */
   budgetId: z.string().uuid().optional(),
-  ops: z
-    .array(z.object({ opId: z.string().uuid(), kind: z.string(), payload: z.unknown() }))
-    .max(100),
+  ops: z.array(z.object({ opId: z.string().uuid(), kind: z.string(), payload: z.unknown() })).max(100),
 });
 
 /**
@@ -382,10 +333,7 @@ export function budgetAssertionFails(claimed: string | undefined, resolved: stri
  * taken from another install. The session user id is what the client's guard actually verified
  * (fetchSessionUserId) and what a mid-flight cookie swap changes.
  */
-export function ownerAssertionFails(
-  claimed: string | undefined,
-  sessionUser: string | undefined,
-): boolean {
+export function ownerAssertionFails(claimed: string | undefined, sessionUser: string | undefined): boolean {
   return claimed !== undefined && claimed !== sessionUser;
 }
 
@@ -409,9 +357,7 @@ function isDomainRejection(e: unknown): boolean {
   if (e instanceof ScopeViolation) return true;
   // SQLSTATE class 23 = constraint violation (PK/FK/CHECK/NOT NULL),
   // class 22 = bad data (e.g. invalid UUID/date format)
-  return (
-    e instanceof postgres.PostgresError && (e.code.startsWith("23") || e.code.startsWith("22"))
-  );
+  return e instanceof postgres.PostgresError && (e.code.startsWith("23") || e.code.startsWith("22"));
 }
 
 async function applyOp(x: Executor, budgetId: string, kind: OpKind, payload: unknown): Promise<void> {
@@ -499,11 +445,7 @@ const RETIRED_OP_KINDS = new Set<string>(["recurrence.create", "recurrence.updat
  * Exported for tests: a retired or unrecognized kind rejects WITHOUT touching the database, so
  * it is testable without a live Postgres.
  */
-export async function applyPushOp(
-  budgetId: string,
-  clientId: string,
-  op: { opId: string; kind: string; payload?: unknown },
-): Promise<PushResult> {
+export async function applyPushOp(budgetId: string, clientId: string, op: { opId: string; kind: string; payload?: unknown }): Promise<PushResult> {
   if (RETIRED_OP_KINDS.has(op.kind)) {
     // pre-removal client, queued before the feature went away — dead-letter it exactly like an
     // unknown kind (below): never a silent "applied" no-op.
@@ -575,8 +517,7 @@ export const replaceInput = z.object({
 });
 
 /** Splits an array into chunks of `n` (bulk insert without oversized queries). */
-const chunk = <T,>(arr: T[], n: number): T[][] =>
-  Array.from({ length: Math.ceil(arr.length / n) }, (_, i) => arr.slice(i * n, (i + 1) * n));
+const chunk = <T>(arr: T[], n: number): T[][] => Array.from({ length: Math.ceil(arr.length / n) }, (_, i) => arr.slice(i * n, (i + 1) * n));
 
 async function insertLedger(x: Executor, budgetId: string, ledger: ClientLedgerInput): Promise<void> {
   // §4.2 scope guard for the restore path: every FK must point INSIDE the
@@ -631,17 +572,11 @@ async function insertLedger(x: Executor, budgetId: string, ledger: ClientLedgerI
   // Scope guard: an allocation may only reference an envelope of THIS budget
   // (just inserted above) — a foreign envelopeId is silently dropped instead of
   // hijacking another budget's allocation row via the (envelopeId, month) unique.
-  const ownEnvIds = new Set(
-    (await x.select({ id: s.envelopes.id }).from(s.envelopes).where(eq(s.envelopes.budgetId, budgetId))).map(
-      (r) => r.id,
-    ),
-  );
+  const ownEnvIds = new Set((await x.select({ id: s.envelopes.id }).from(s.envelopes).where(eq(s.envelopes.budgetId, budgetId))).map((r) => r.id));
   const ownAllocs = ledger.allocations.filter((a) => ownEnvIds.has(a.envelopeId));
   for (const part of chunk(ownAllocs, 500)) {
     // allocation ids are NOT preserved (natural key env+month; may be synthetic)
-    await x.insert(s.allocations).values(
-      part.map((a) => ({ budgetId, envelopeId: a.envelopeId, month: a.month, amount: a.amount })),
-    );
+    await x.insert(s.allocations).values(part.map((a) => ({ budgetId, envelopeId: a.envelopeId, month: a.month, amount: a.amount })));
   }
   for (const part of chunk(ledger.transactions, 300)) {
     await x.insert(s.transactions).values(
@@ -664,9 +599,7 @@ async function insertLedger(x: Executor, budgetId: string, ledger: ClientLedgerI
       })),
     );
     // split items — fresh ids (they may be synthetic in the ledger)
-    const items = part.flatMap((t) =>
-      t.items.map((it) => ({ transactionId: t.id, envelopeId: it.envelopeId, categoryId: it.categoryId, amount: it.amount })),
-    );
+    const items = part.flatMap((t) => t.items.map((it) => ({ transactionId: t.id, envelopeId: it.envelopeId, categoryId: it.categoryId, amount: it.amount })));
     for (const ipart of chunk(items, 500)) {
       if (ipart.length > 0) await x.insert(s.txnItems).values(ipart);
     }
@@ -678,19 +611,12 @@ async function insertLedger(x: Executor, budgetId: string, ledger: ClientLedgerI
  * `/sync/replace` and `/budget/e2ee/disable` (sync2). Call INSIDE a transaction:
  * wipe (FK-safe) → insert the whole ledger → currency from the backup (if carried).
  */
-export async function restoreLedger(
-  x: Executor,
-  budgetId: string,
-  ledger: ClientLedgerInput,
-): Promise<void> {
+export async function restoreLedger(x: Executor, budgetId: string, ledger: ClientLedgerInput): Promise<void> {
   await wipeBudgetData(x, budgetId);
   await insertLedger(x, budgetId, ledger);
   // currency from the backup — only when the backup carries it (old backups lack `budgets`)
   if (ledger.budgets?.[0]?.currency) {
-    await x
-      .update(s.budgets)
-      .set({ currency: ledger.budgets[0].currency })
-      .where(eq(s.budgets.id, budgetId));
+    await x.update(s.budgets).set({ currency: ledger.budgets[0].currency }).where(eq(s.budgets.id, budgetId));
   }
 }
 
@@ -722,10 +648,7 @@ syncRoutes.post("/sync/replace", async (c) => {
     // ScopeViolation: a FK inside the payload points OUTSIDE it (foreign/corrupt file);
     // PostgresError class 23/22: constraint violation (FK/PK/CHECK) or bad data.
     // Either way the whole transaction rolled back (atomically).
-    if (
-      e instanceof ScopeViolation ||
-      (e instanceof postgres.PostgresError && (e.code.startsWith("23") || e.code.startsWith("22")))
-    ) {
+    if (e instanceof ScopeViolation || (e instanceof postgres.PostgresError && (e.code.startsWith("23") || e.code.startsWith("22")))) {
       // same code the global onError uses for a ScopeViolation (index.ts) — one meaning, one code
       return c.json({ error: "foreign_ref" }, 400);
     }

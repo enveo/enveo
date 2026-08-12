@@ -13,14 +13,7 @@
  *   toAccountId preserved; items>0 ⇒ parent's envelopeId/categoryId null;
  *   tag on update only when sent; items on update delete+reinsert.
  */
-import type {
-  AccountPayload,
-  AllocPayload,
-  ClientLedgerInput,
-  EnvelopePayload,
-  GroupPayload,
-  TxnPayload,
-} from "@enveo/shared";
+import type { AccountPayload, AllocPayload, ClientLedgerInput, EnvelopePayload, GroupPayload, TxnPayload } from "@enveo/shared";
 import { and, eq } from "drizzle-orm";
 import { db, type DbExecutor } from "../db/client";
 import * as s from "../db/schema";
@@ -124,21 +117,13 @@ export function findForeignLedgerRef(ledger: ClientLedgerInput): string | null {
 /* ── Budget (single-row entity — display currency only) ─────────────── */
 
 export async function applyBudgetUpdate(x: Executor, budgetId: string, currency: string) {
-  const [row] = await x
-    .update(s.budgets)
-    .set({ currency })
-    .where(eq(s.budgets.id, budgetId))
-    .returning();
+  const [row] = await x.update(s.budgets).set({ currency }).where(eq(s.budgets.id, budgetId)).returning();
   return row ?? NOT_FOUND;
 }
 
 /* ── Transactions ───────────────────────────────────────────────────── */
 
-export async function applyTxnCreate(
-  x: Executor,
-  budgetId: string,
-  body: TxnPayload & { id?: string },
-) {
+export async function applyTxnCreate(x: Executor, budgetId: string, body: TxnPayload & { id?: string }) {
   await assertBudgetFks(x, budgetId, body);
   const items = body.items ?? [];
   for (const i of items) {
@@ -179,11 +164,7 @@ export async function applyTxnCreate(
 }
 
 /** Full field replacement (LWW); items delete+reinsert. `createdAt` is not changed. */
-export async function applyTxnUpdate(
-  x: Executor,
-  budgetId: string,
-  body: TxnPayload & { id: string },
-) {
+export async function applyTxnUpdate(x: Executor, budgetId: string, body: TxnPayload & { id: string }) {
   await assertBudgetFks(x, budgetId, body);
   const items = body.items ?? [];
   for (const i of items) {
@@ -225,9 +206,7 @@ export async function applyTxnUpdate(
 
 /** Idempotent — a missing row is also a success. */
 export async function applyTxnDelete(x: Executor, budgetId: string, id: string): Promise<void> {
-  await x
-    .delete(s.transactions)
-    .where(and(eq(s.transactions.id, id), eq(s.transactions.budgetId, budgetId)));
+  await x.delete(s.transactions).where(and(eq(s.transactions.id, id), eq(s.transactions.budgetId, budgetId)));
 }
 
 /* ── Allocations (natural key envelopeId+month, upsert) ─────────────── */
@@ -249,11 +228,7 @@ export async function applyAllocSet(x: Executor, budgetId: string, body: AllocPa
 
 /* ── Accounts ───────────────────────────────────────────────────────── */
 
-export async function applyAccountCreate(
-  x: Executor,
-  budgetId: string,
-  body: AccountPayload & { id?: string },
-) {
+export async function applyAccountCreate(x: Executor, budgetId: string, body: AccountPayload & { id?: string }) {
   const { id, ...fields } = body;
   const [row] = await x
     .insert(s.accounts)
@@ -262,11 +237,7 @@ export async function applyAccountCreate(
   return row!;
 }
 
-export async function applyAccountUpdate(
-  x: Executor,
-  budgetId: string,
-  body: Partial<AccountPayload> & { id: string },
-) {
+export async function applyAccountUpdate(x: Executor, budgetId: string, body: Partial<AccountPayload> & { id: string }) {
   const { id, ...fields } = body;
   const [row] = await x
     .update(s.accounts)
@@ -282,11 +253,7 @@ export async function applyAccountDelete(x: Executor, budgetId: string, id: stri
 
 /* ── Envelope groups ────────────────────────────────────────────────── */
 
-export async function applyGroupCreate(
-  x: Executor,
-  budgetId: string,
-  body: GroupPayload & { id?: string },
-) {
+export async function applyGroupCreate(x: Executor, budgetId: string, body: GroupPayload & { id?: string }) {
   const { id, ...fields } = body;
   const [row] = await x
     .insert(s.envelopeGroups)
@@ -295,11 +262,7 @@ export async function applyGroupCreate(
   return row!;
 }
 
-export async function applyGroupUpdate(
-  x: Executor,
-  budgetId: string,
-  body: Partial<GroupPayload> & { id: string },
-) {
+export async function applyGroupUpdate(x: Executor, budgetId: string, body: Partial<GroupPayload> & { id: string }) {
   const { id, ...fields } = body;
   const [row] = await x
     .update(s.envelopeGroups)
@@ -310,18 +273,12 @@ export async function applyGroupUpdate(
 }
 
 export async function applyGroupDelete(x: Executor, budgetId: string, id: string): Promise<void> {
-  await x
-    .delete(s.envelopeGroups)
-    .where(and(eq(s.envelopeGroups.id, id), eq(s.envelopeGroups.budgetId, budgetId)));
+  await x.delete(s.envelopeGroups).where(and(eq(s.envelopeGroups.id, id), eq(s.envelopeGroups.budgetId, budgetId)));
 }
 
 /* ── Envelopes ──────────────────────────────────────────────────────── */
 
-export async function applyEnvelopeCreate(
-  x: Executor,
-  budgetId: string,
-  body: EnvelopePayload & { id?: string },
-) {
+export async function applyEnvelopeCreate(x: Executor, budgetId: string, body: EnvelopePayload & { id?: string }) {
   // groupId is a body FK (NOT NULL, ON DELETE CASCADE): a foreign group would
   // attach the envelope to ANOTHER budget's group — the victim's group delete
   // would then cascade into this budget. Same guard as every other body FK.
@@ -334,11 +291,7 @@ export async function applyEnvelopeCreate(
   return row!;
 }
 
-export async function applyEnvelopeUpdate(
-  x: Executor,
-  budgetId: string,
-  body: Partial<EnvelopePayload> & { id: string },
-) {
+export async function applyEnvelopeUpdate(x: Executor, budgetId: string, body: Partial<EnvelopePayload> & { id: string }) {
   await assertBudgetFks(x, budgetId, { groupId: body.groupId }); // no-op when the patch omits groupId
   const { id, ...fields } = body;
   const [row] = await x
@@ -373,11 +326,7 @@ export async function wipeBudgetData(x: Executor, budgetId: string): Promise<voi
  * Plain insert. Name-based dedupe is NOT here — REST does the lookup in the
  * handler (preserving today's behavior), the sync client dedupes in the local mirror.
  */
-export async function applyCategoryCreate(
-  x: Executor,
-  budgetId: string,
-  body: { id?: string; name: string },
-) {
+export async function applyCategoryCreate(x: Executor, budgetId: string, body: { id?: string; name: string }) {
   const [row] = await x
     .insert(s.categories)
     .values({ ...(body.id ? { id: body.id } : {}), budgetId, name: body.name })
@@ -385,11 +334,7 @@ export async function applyCategoryCreate(
   return row!;
 }
 
-export async function applyPlaceCreate(
-  x: Executor,
-  budgetId: string,
-  body: { id?: string; name: string },
-) {
+export async function applyPlaceCreate(x: Executor, budgetId: string, body: { id?: string; name: string }) {
   const [row] = await x
     .insert(s.places)
     .values({ ...(body.id ? { id: body.id } : {}), budgetId, name: body.name })

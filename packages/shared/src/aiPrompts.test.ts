@@ -293,14 +293,14 @@ describe("buildImportExtractPrompt / parseImportExtractResponse", () => {
 
   it("throws on a malformed payload (route maps this to 502)", () => {
     expect(() =>
-      parseImportExtractResponse('{"transactions":[{"date":"1 lipca","amount":-5,"type":"expense","rawPlace":"x","tag":"X","currency":"PLN","fxOriginal":""}]}'),
+      parseImportExtractResponse(
+        '{"transactions":[{"date":"1 lipca","amount":-5,"type":"expense","rawPlace":"x","tag":"X","currency":"PLN","fxOriginal":""}]}',
+      ),
     ).toThrow();
   });
 
   it("throws when currency/fxOriginal are missing (strict output guarantees them)", () => {
-    expect(() =>
-      parseImportExtractResponse('{"transactions":[{"date":"2026-07-01","amount":1299,"type":"expense","rawPlace":"x","tag":"X"}]}'),
-    ).toThrow();
+    expect(() => parseImportExtractResponse('{"transactions":[{"date":"2026-07-01","amount":1299,"type":"expense","rawPlace":"x","tag":"X"}]}')).toThrow();
   });
 });
 

@@ -44,11 +44,13 @@ describe("origin-guard (CSRF)", () => {
 
   it("POST same-origin (Origin.host == request Host) → non-403 (PWA sync)", async () => {
     // a real browser always attaches Host; a synthetic Request does not, so explicitly.
-    const res = await app.fetch(new Request("http://enveo.example/api/sync/replace", {
-      method: "POST",
-      headers: { origin: "http://enveo.example", host: "enveo.example", "content-type": "application/json" },
-      body: "{}",
-    }));
+    const res = await app.fetch(
+      new Request("http://enveo.example/api/sync/replace", {
+        method: "POST",
+        headers: { origin: "http://enveo.example", host: "enveo.example", "content-type": "application/json" },
+        body: "{}",
+      }),
+    );
     expect(res.status).not.toBe(403);
   });
 
@@ -91,10 +93,7 @@ describe("better-auth trusted origins (login CSRF)", () => {
   });
 
   it("same-host Origin (host ≠ BETTER_AUTH_URL, e.g. LAN IP) → non-403", async () => {
-    const res = await signIn(
-      { origin: "http://192.168.1.7:8081", "sec-fetch-site": "same-origin", "sec-fetch-mode": "cors" },
-      "192.168.1.7:8081",
-    );
+    const res = await signIn({ origin: "http://192.168.1.7:8081", "sec-fetch-site": "same-origin", "sec-fetch-mode": "cors" }, "192.168.1.7:8081");
     expect(res.status).not.toBe(403);
   });
 

@@ -100,7 +100,10 @@ export function BudgetScreen({
         (document.querySelector('[data-pad-cell="1"]') as HTMLElement | null)?.scrollIntoView({ block: "center", behavior: "smooth" });
       });
     });
-    return () => { cancelAnimationFrame(raf1); cancelAnimationFrame(raf2); };
+    return () => {
+      cancelAnimationFrame(raf1);
+      cancelAnimationFrame(raf2);
+    };
   }, [editing?.envelopeId]);
   // Long expression: keep the end (and the cursor) in view of the overflowX cell.
   useEffect(() => {
@@ -131,16 +134,55 @@ export function BudgetScreen({
               {t("All money assigned")}
             </div>
           ) : (
-            <div style={{ fontSize: 20, fontWeight: 800, letterSpacing: "-0.015em", fontVariantNumeric: "tabular-nums", color: tbbLive < 0 ? C.neg : hc("var(--cta)", C.pos) }}>{M(tbbLive)}</div>
+            <div
+              style={{
+                fontSize: 20,
+                fontWeight: 800,
+                letterSpacing: "-0.015em",
+                fontVariantNumeric: "tabular-nums",
+                color: tbbLive < 0 ? C.neg : hc("var(--cta)", C.pos),
+              }}
+            >
+              {M(tbbLive)}
+            </div>
           )}
           {canFillGoals && (
-            <button onClick={() => setFillGoals(true)} style={{ marginTop: 2, padding: 0, background: "none", border: "none", color: hc("var(--cta)", TEAL), fontSize: 11, fontWeight: 600, cursor: "pointer", fontFamily: font }}>
+            <button
+              onClick={() => setFillGoals(true)}
+              style={{
+                marginTop: 2,
+                padding: 0,
+                background: "none",
+                border: "none",
+                color: hc("var(--cta)", TEAL),
+                fontSize: 11,
+                fontWeight: 600,
+                cursor: "pointer",
+                fontFamily: font,
+              }}
+            >
               {t("Fill by goals")}
             </button>
           )}
         </div>
-        <button onClick={() => setSuggest(true)} aria-label={t("Suggest a distribution")} style={{ flexShrink: 0, padding: "6px 13px", borderRadius: 999, border: `1.5px solid ${hc("var(--cta)", "var(--accent)")}`, background: "transparent", color: hc("var(--cta)", TEAL), fontSize: 11.5, fontWeight: 700, cursor: "pointer", fontFamily: font }}>
-          {"✨ "}{t("Suggest")}
+        <button
+          onClick={() => setSuggest(true)}
+          aria-label={t("Suggest a distribution")}
+          style={{
+            flexShrink: 0,
+            padding: "6px 13px",
+            borderRadius: 999,
+            border: `1.5px solid ${hc("var(--cta)", "var(--accent)")}`,
+            background: "transparent",
+            color: hc("var(--cta)", TEAL),
+            fontSize: 11.5,
+            fontWeight: 700,
+            cursor: "pointer",
+            fontFamily: font,
+          }}
+        >
+          {"✨ "}
+          {t("Suggest")}
         </button>
       </CardBox>
 
@@ -157,7 +199,21 @@ export function BudgetScreen({
       {/* Empty state (backstop outside the wizard): no active envelopes → CTA to the manage sheet */}
       {envs.length === 0 && (
         <CardBox style={{ margin: `6px ${P}px 10px`, padding: "12px 14px" }}>
-          <button onClick={() => setManage(true)} style={{ width: "100%", padding: "10px 0", borderRadius: 10, border: "none", background: TEAL, color: "#fff", fontSize: 12.5, fontWeight: 600, cursor: "pointer", fontFamily: font }}>
+          <button
+            onClick={() => setManage(true)}
+            style={{
+              width: "100%",
+              padding: "10px 0",
+              borderRadius: 10,
+              border: "none",
+              background: TEAL,
+              color: "#fff",
+              fontSize: 12.5,
+              fontWeight: 600,
+              cursor: "pointer",
+              fontFamily: font,
+            }}
+          >
             {t("Create your first envelopes")}
           </button>
         </CardBox>
@@ -172,7 +228,9 @@ export function BudgetScreen({
           <div key={g.id} className="fu" style={{ animationDelay: `${gi * 40}ms`, marginBottom: 2 }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", padding: "7px 18px 4px" }}>
               <span style={{ fontSize: 12, fontWeight: 750, color: C.text }}>{g.name}</span>
-              <span style={{ fontSize: 10, color: C.soft, fontVariantNumeric: "tabular-nums" }}>{M(gA)} · {M(gV)}</span>
+              <span style={{ fontSize: 10, color: C.soft, fontVariantNumeric: "tabular-nums" }}>
+                {M(gA)} · {M(gV)}
+              </span>
             </div>
             <CardBox style={{ padding: "0 12px", marginBottom: 6 }}>
               {items.map((e, ei) => {
@@ -185,9 +243,36 @@ export function BudgetScreen({
                 const zero = avail === 0;
                 const gp = goalProgress(e);
                 return (
-                  <div key={e.id} role="button" onClick={() => onOpenEnvelope(e.id, month)} style={{ display: "grid", gridTemplateColumns: COLS, padding: "6px 0", gap: 8, width: "100%", boxSizing: "border-box", cursor: "pointer", alignItems: "center", borderBottom: ei === items.length - 1 ? "none" : `1px solid ${C.line}` }}>
+                  <div
+                    key={e.id}
+                    role="button"
+                    onClick={() => onOpenEnvelope(e.id, month)}
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: COLS,
+                      padding: "6px 0",
+                      gap: 8,
+                      width: "100%",
+                      boxSizing: "border-box",
+                      cursor: "pointer",
+                      alignItems: "center",
+                      borderBottom: ei === items.length - 1 ? "none" : `1px solid ${C.line}`,
+                    }}
+                  >
                     <div style={{ display: "flex", alignItems: "center", gap: 9, minWidth: 0 }}>
-                      <span style={{ position: "relative", width: 28, height: 28, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", borderRadius: 8, background: tint(e.color, 0.16) }}>
+                      <span
+                        style={{
+                          position: "relative",
+                          width: 28,
+                          height: 28,
+                          flexShrink: 0,
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          borderRadius: 8,
+                          background: tint(e.color, 0.16),
+                        }}
+                      >
                         <Glyph name={e.icon} size={14} color={e.color} sw={1.6} />
                         {gp && (
                           <span style={{ position: "absolute", left: -4, top: -4, width: 36, height: 36, pointerEvents: "none" }}>
@@ -196,7 +281,19 @@ export function BudgetScreen({
                         )}
                       </span>
                       <div style={{ minWidth: 0, flex: 1 }}>
-                        <span style={{ display: "block", fontSize: 14.5, color: C.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", textAlign: "left" }}>{e.name}</span>
+                        <span
+                          style={{
+                            display: "block",
+                            fontSize: 14.5,
+                            color: C.text,
+                            overflow: "hidden",
+                            textOverflow: "ellipsis",
+                            whiteSpace: "nowrap",
+                            textAlign: "left",
+                          }}
+                        >
+                          {e.name}
+                        </span>
                         {/* Carry-over from the previous month (Variant A — may be negative); caption under
                             the name so the 3-column grid (name/allocated/available) stays intact.
                             VISUAL: the name column is the narrow 1fr of "1fr 94px 108px" minus the 28px
@@ -207,9 +304,21 @@ export function BudgetScreen({
                         {e.carryIn !== 0 && (
                           <span
                             aria-label={t("from last month {amount}", { amount: `${e.carryIn < 0 ? "-" : "+"}${M(Math.abs(e.carryIn))}` })}
-                            style={{ display: "block", fontSize: 10.5, fontWeight: 600, color: e.carryIn < 0 ? C.neg : C.pos, fontVariantNumeric: "tabular-nums", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", textAlign: "left" }}
+                            style={{
+                              display: "block",
+                              fontSize: 10.5,
+                              fontWeight: 600,
+                              color: e.carryIn < 0 ? C.neg : C.pos,
+                              fontVariantNumeric: "tabular-nums",
+                              overflow: "hidden",
+                              textOverflow: "ellipsis",
+                              whiteSpace: "nowrap",
+                              textAlign: "left",
+                            }}
                           >
-                            {"↳ "}{e.carryIn < 0 ? "-" : "+"}{M(Math.abs(e.carryIn))}
+                            {"↳ "}
+                            {e.carryIn < 0 ? "-" : "+"}
+                            {M(Math.abs(e.carryIn))}
                           </span>
                         )}
                       </div>
@@ -218,8 +327,18 @@ export function BudgetScreen({
                       <AllocCell e={e} editing={active ? { expr: active.pad.expr, err: active.err } : null} onStart={(el) => startEdit(e, el)} />
                     </div>
                     <div style={{ textAlign: "right" }}>
-                      <span style={{ fontSize: 13.5, fontWeight: 750, fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap", color: struck ? C.neg : neg ? C.neg : zero ? C.mute : C.text, textDecoration: struck ? "line-through" : "none" }}>
-                        {neg ? "-" : ""}{M(Math.abs(avail))}
+                      <span
+                        style={{
+                          fontSize: 13.5,
+                          fontWeight: 750,
+                          fontVariantNumeric: "tabular-nums",
+                          whiteSpace: "nowrap",
+                          color: struck ? C.neg : neg ? C.neg : zero ? C.mute : C.text,
+                          textDecoration: struck ? "line-through" : "none",
+                        }}
+                      >
+                        {neg ? "-" : ""}
+                        {M(Math.abs(avail))}
                       </span>
                     </div>
                   </div>
@@ -276,22 +395,62 @@ function AllocCell({ e, editing, onStart }: { e: EnvelopeView; editing: { expr: 
         data-pad-cell="1"
         onClick={(ev) => ev.stopPropagation()}
         aria-label={t("Allocated: {name}", { name: e.name })}
-        style={{ ...box, textAlign: "right" as const, fontSize: 13, color: editing.err ? "var(--danger)" : C.text, fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap", overflowX: "auto", boxSizing: "border-box", borderBottom: `2px solid ${editing.err ? "var(--danger)" : "var(--accent)"}`, borderRadius: "7px 7px 0 0" }}
+        style={{
+          ...box,
+          textAlign: "right" as const,
+          fontSize: 13,
+          color: editing.err ? "var(--danger)" : C.text,
+          fontVariantNumeric: "tabular-nums",
+          whiteSpace: "nowrap",
+          overflowX: "auto",
+          boxSizing: "border-box",
+          borderBottom: `2px solid ${editing.err ? "var(--danger)" : "var(--accent)"}`,
+          borderRadius: "7px 7px 0 0",
+        }}
       >
         {editing.expr || "0"}
         {/* blinking cursor — like the amount on the Add screen */}
-        <span style={{ display: "inline-block", width: 2, height: 13, background: editing.err ? "var(--danger)" : "var(--accent)", borderRadius: 1, marginLeft: 2, verticalAlign: "-2px", animation: "fi .6s ease-in-out infinite alternate" }} />
+        <span
+          style={{
+            display: "inline-block",
+            width: 2,
+            height: 13,
+            background: editing.err ? "var(--danger)" : "var(--accent)",
+            borderRadius: 1,
+            marginLeft: 2,
+            verticalAlign: "-2px",
+            animation: "fi .6s ease-in-out infinite alternate",
+          }}
+        />
       </div>
     );
   }
   return (
-    <div onClick={(ev) => { ev.stopPropagation(); onStart(ev.currentTarget); }} style={{ ...box, display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 3, cursor: "pointer" }}>
+    <div
+      onClick={(ev) => {
+        ev.stopPropagation();
+        onStart(ev.currentTarget);
+      }}
+      style={{ ...box, display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 3, cursor: "pointer" }}
+    >
       <input
         value={fmtSignedTrim(e.allocated)}
         readOnly
         aria-label={t("Allocated: {name}", { name: e.name })}
         onFocus={(ev) => onStart(ev.currentTarget)}
-        style={{ width: "100%", minWidth: 0, background: "none", border: "none", textAlign: "right", fontSize: 13, color: e.allocated < 0 ? C.neg : C.text, fontFamily: font, fontVariantNumeric: "tabular-nums", padding: 0, cursor: "pointer" }}
+        style={{
+          width: "100%",
+          minWidth: 0,
+          background: "none",
+          border: "none",
+          textAlign: "right",
+          fontSize: 13,
+          color: e.allocated < 0 ? C.neg : C.text,
+          fontFamily: font,
+          fontVariantNumeric: "tabular-nums",
+          padding: 0,
+          cursor: "pointer",
+        }}
       />
     </div>
   );
@@ -320,22 +479,91 @@ function EnvManageSheet({ show, state, onClose }: { show: boolean; state: StateR
 
           {archived.length > 0 && (
             <div style={{ marginTop: 16 }}>
-              <div style={{ fontSize: 10.5, fontWeight: 600, color: C.mute, textTransform: "uppercase", letterSpacing: 0.6, marginBottom: 6 }}>{t("Archived")}</div>
+              <div style={{ fontSize: 10.5, fontWeight: 600, color: C.mute, textTransform: "uppercase", letterSpacing: 0.6, marginBottom: 6 }}>
+                {t("Archived")}
+              </div>
               {archived.map((e) => (
                 <div key={e.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "7px 0", opacity: 0.75 }}>
-                  <div style={{ width: 24, height: 24, borderRadius: 6, background: e.color, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                  <div
+                    style={{
+                      width: 24,
+                      height: 24,
+                      borderRadius: 6,
+                      background: e.color,
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      flexShrink: 0,
+                    }}
+                  >
                     <Glyph name={e.icon} size={12} color={isLight(e.color) ? "#33312c" : "#fff"} sw={1.6} />
                   </div>
-                  <span style={{ flex: 1, minWidth: 0, fontSize: 12.5, color: C.soft, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{e.name}</span>
-                  <button onClick={() => local.updateEnvelope(e.id, { archived: false })} style={{ flexShrink: 0, padding: "6px 12px", borderRadius: 8, border: `1px solid var(--accent-55)`, background: "var(--accent-1a)", color: TEAL, fontSize: 11.5, fontWeight: 600, cursor: "pointer" }}>{t("Restore")}</button>
+                  <span style={{ flex: 1, minWidth: 0, fontSize: 12.5, color: C.soft, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {e.name}
+                  </span>
+                  <button
+                    onClick={() => local.updateEnvelope(e.id, { archived: false })}
+                    style={{
+                      flexShrink: 0,
+                      padding: "6px 12px",
+                      borderRadius: 8,
+                      border: `1px solid var(--accent-55)`,
+                      background: "var(--accent-1a)",
+                      color: TEAL,
+                      fontSize: 11.5,
+                      fontWeight: 600,
+                      cursor: "pointer",
+                    }}
+                  >
+                    {t("Restore")}
+                  </button>
                 </div>
               ))}
             </div>
           )}
 
           <div style={{ display: "flex", gap: 6, marginTop: 8, paddingTop: 12, borderTop: `1px solid ${C.line}` }}>
-            <input value={newGroup} onChange={(ev) => setNewGroup(ev.target.value)} onKeyDown={(ev) => { if (ev.key === "Enter" && newGroup.trim()) { local.createGroup(newGroup.trim()); setNewGroup(""); } }} placeholder={t("New group")} style={{ flex: 1, padding: "8px 11px", borderRadius: 9, border: `1px solid ${C.line}`, background: C.bg, color: C.text, fontSize: 13, fontFamily: font }} />
-            <button onClick={() => { if (newGroup.trim()) { local.createGroup(newGroup.trim()); setNewGroup(""); } }} style={{ padding: "8px 14px", borderRadius: 9, border: `1px solid var(--accent-55)`, background: "var(--accent-1a)", color: TEAL, fontSize: 12.5, fontWeight: 600, cursor: "pointer" }}>{t("+ Group")}</button>
+            <input
+              value={newGroup}
+              onChange={(ev) => setNewGroup(ev.target.value)}
+              onKeyDown={(ev) => {
+                if (ev.key === "Enter" && newGroup.trim()) {
+                  local.createGroup(newGroup.trim());
+                  setNewGroup("");
+                }
+              }}
+              placeholder={t("New group")}
+              style={{
+                flex: 1,
+                padding: "8px 11px",
+                borderRadius: 9,
+                border: `1px solid ${C.line}`,
+                background: C.bg,
+                color: C.text,
+                fontSize: 13,
+                fontFamily: font,
+              }}
+            />
+            <button
+              onClick={() => {
+                if (newGroup.trim()) {
+                  local.createGroup(newGroup.trim());
+                  setNewGroup("");
+                }
+              }}
+              style={{
+                padding: "8px 14px",
+                borderRadius: 9,
+                border: `1px solid var(--accent-55)`,
+                background: "var(--accent-1a)",
+                color: TEAL,
+                fontSize: 12.5,
+                fontWeight: 600,
+                cursor: "pointer",
+              }}
+            >
+              {t("+ Group")}
+            </button>
           </div>
         </>
       )}
@@ -368,7 +596,8 @@ function ManageGroup({ g, list, flat }: { g: StateResponse["groups"][number]; li
   const addEnvelope = () => {
     const name = addName.trim();
     // rotating color from the palette (like accounts) — the final color/icon is chosen in envelope editing
-    if (name) local.createEnvelope({ groupId: g.id, name, color: ENV_PALETTE[flat.length % ENV_PALETTE.length]!, sort: (flat[flat.length - 1]?.sort ?? -1) + 1 });
+    if (name)
+      local.createEnvelope({ groupId: g.id, name, color: ENV_PALETTE[flat.length % ENV_PALETTE.length]!, sort: (flat[flat.length - 1]?.sort ?? -1) + 1 });
     setAddName("");
     setAdding(false);
   };
@@ -378,11 +607,30 @@ function ManageGroup({ g, list, flat }: { g: StateResponse["groups"][number]; li
       <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 6 }}>
         <input
           defaultValue={g.name}
-          onBlur={(ev) => { const v = ev.target.value.trim(); if (v && v !== g.name) local.updateGroup(g.id, { name: v }); }}
-          style={{ flex: 1, fontSize: 13, fontWeight: 700, color: C.text, background: "none", border: "none", borderBottom: `1px solid transparent`, fontFamily: font, padding: "2px 0" }}
+          onBlur={(ev) => {
+            const v = ev.target.value.trim();
+            if (v && v !== g.name) local.updateGroup(g.id, { name: v });
+          }}
+          style={{
+            flex: 1,
+            fontSize: 13,
+            fontWeight: 700,
+            color: C.text,
+            background: "none",
+            border: "none",
+            borderBottom: `1px solid transparent`,
+            fontFamily: font,
+            padding: "2px 0",
+          }}
         />
         {list.length === 0 && (
-          <button onClick={() => { if (window.confirm(t("Delete the empty group “{name}”?", { name: g.name }))) local.deleteGroup(g.id); }} aria-label={t("Delete group")} style={{ background: "none", border: "none", cursor: "pointer", padding: 4, display: "flex" }}>
+          <button
+            onClick={() => {
+              if (window.confirm(t("Delete the empty group “{name}”?", { name: g.name }))) local.deleteGroup(g.id);
+            }}
+            aria-label={t("Delete group")}
+            style={{ background: "none", border: "none", cursor: "pointer", padding: 4, display: "flex" }}
+          >
             <Ico d="M3 6h18M8 6V4h8v2m-9 0v14a1 1 0 001 1h8a1 1 0 001-1V6" size={15} color={CORAL} />
           </button>
         )}
@@ -394,20 +642,51 @@ function ManageGroup({ g, list, flat }: { g: StateResponse["groups"][number]; li
           <div
             key={e.id}
             ref={dnd.itemRef(idx)}
-            style={{ display: "flex", alignItems: "center", gap: 4, padding: "6px 0", borderBottom: `1px solid ${C.line}`, borderRadius: 8, background: dnd.dragging === idx ? C.bg : "transparent", outline: dnd.over === idx && dnd.dragging !== idx ? `2px dashed ${TEAL}` : "none", outlineOffset: -2 }}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 4,
+              padding: "6px 0",
+              borderBottom: `1px solid ${C.line}`,
+              borderRadius: 8,
+              background: dnd.dragging === idx ? C.bg : "transparent",
+              outline: dnd.over === idx && dnd.dragging !== idx ? `2px dashed ${TEAL}` : "none",
+              outlineOffset: -2,
+            }}
           >
             <span {...b} aria-label={t("Drag {name}", { name: e.name })} style={{ ...b.style, display: "flex", padding: "8px 6px", marginLeft: -4 }}>
               <Ico d="M4 7h16M4 12h16M4 17h16" size={14} color={C.mute} />
             </span>
-            <div style={{ width: 24, height: 24, borderRadius: 6, background: e.color, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+            <div
+              style={{
+                width: 24,
+                height: 24,
+                borderRadius: 6,
+                background: e.color,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                flexShrink: 0,
+              }}
+            >
               <Glyph name={e.icon} size={12} color={isLight(e.color) ? "#33312c" : "#fff"} sw={1.6} />
             </div>
             <input
               defaultValue={e.name}
-              onBlur={(ev) => { const v = ev.target.value.trim(); if (v && v !== e.name) local.updateEnvelope(e.id, { name: v }); }}
+              onBlur={(ev) => {
+                const v = ev.target.value.trim();
+                if (v && v !== e.name) local.updateEnvelope(e.id, { name: v });
+              }}
               style={{ flex: 1, minWidth: 0, fontSize: 12.5, color: C.text, background: "none", border: "none", fontFamily: font, padding: "2px 0" }}
             />
-            <button onClick={() => { if (window.confirm(t("Delete the envelope “{name}”? Its transactions will be left without an envelope.", { name: e.name }))) local.deleteEnvelope(e.id); }} aria-label={t("Delete {name}", { name: e.name })} style={{ background: "none", border: "none", cursor: "pointer", padding: 6, display: "flex" }}>
+            <button
+              onClick={() => {
+                if (window.confirm(t("Delete the envelope “{name}”? Its transactions will be left without an envelope.", { name: e.name })))
+                  local.deleteEnvelope(e.id);
+              }}
+              aria-label={t("Delete {name}", { name: e.name })}
+              style={{ background: "none", border: "none", cursor: "pointer", padding: 6, display: "flex" }}
+            >
               <Ico d="M3 6h18M8 6V4h8v2m-9 0v14a1 1 0 001 1h8a1 1 0 001-1V6" size={15} color={CORAL} />
             </button>
           </div>
@@ -416,11 +695,40 @@ function ManageGroup({ g, list, flat }: { g: StateResponse["groups"][number]; li
 
       {adding ? (
         <div style={{ display: "flex", gap: 6, marginTop: 8 }}>
-          <input autoFocus value={addName} onChange={(ev) => setAddName(ev.target.value)} onKeyDown={(ev) => ev.key === "Enter" && addEnvelope()} placeholder={t("Envelope name")} style={{ flex: 1, padding: "7px 10px", borderRadius: 8, border: `1px solid ${C.line}`, background: C.bg, color: C.text, fontSize: 12, fontFamily: font }} />
-          <button onClick={addEnvelope} style={{ padding: "7px 12px", borderRadius: 8, border: "none", background: TEAL, color: "#fff", fontSize: 12, fontWeight: 600, cursor: "pointer" }}>{t("Add")}</button>
+          <input
+            autoFocus
+            value={addName}
+            onChange={(ev) => setAddName(ev.target.value)}
+            onKeyDown={(ev) => ev.key === "Enter" && addEnvelope()}
+            placeholder={t("Envelope name")}
+            style={{
+              flex: 1,
+              padding: "7px 10px",
+              borderRadius: 8,
+              border: `1px solid ${C.line}`,
+              background: C.bg,
+              color: C.text,
+              fontSize: 12,
+              fontFamily: font,
+            }}
+          />
+          <button
+            onClick={addEnvelope}
+            style={{ padding: "7px 12px", borderRadius: 8, border: "none", background: TEAL, color: "#fff", fontSize: 12, fontWeight: 600, cursor: "pointer" }}
+          >
+            {t("Add")}
+          </button>
         </div>
       ) : (
-        <button onClick={() => { setAdding(true); setAddName(""); }} style={{ marginTop: 8, padding: "6px 0", background: "none", border: "none", color: TEAL, fontSize: 11, fontWeight: 600, cursor: "pointer" }}>{t("+ Add envelope")}</button>
+        <button
+          onClick={() => {
+            setAdding(true);
+            setAddName("");
+          }}
+          style={{ marginTop: 8, padding: "6px 0", background: "none", border: "none", color: TEAL, fontSize: 11, fontWeight: 600, cursor: "pointer" }}
+        >
+          {t("+ Add envelope")}
+        </button>
       )}
     </div>
   );
@@ -440,7 +748,11 @@ export function EnvEdit({ env, groups, onClose }: { env: EnvelopeView | null; gr
   const [pad, setPad] = useState<AmountPadTarget | null>(null);
   useEffect(() => {
     if (env) {
-      setName(env.name); setGroupId(env.groupId); setColor(env.color); setIcon(env.icon); setArchived(env.archived);
+      setName(env.name);
+      setGroupId(env.groupId);
+      setColor(env.color);
+      setIcon(env.icon);
+      setArchived(env.archived);
       setSaving(!!env.isSavings);
       setTarget(env.monthlyTarget != null ? (env.monthlyTarget / 100).toFixed(2).replace(".", ",") : "");
     }
@@ -455,55 +767,163 @@ export function EnvEdit({ env, groups, onClose }: { env: EnvelopeView | null; gr
     });
   return (
     <>
-    <Sheet show={!!env} onClose={onClose}>
-      {(C) => (
-        <>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 18 }}>
-            <span style={{ fontSize: 17, fontWeight: 700, color: C.text }}>{t("Edit envelope")}</span>
-            <button onClick={() => {
-              if (archived && !env.archived) {
-                const ok = window.confirm(t("The envelope “{name}” will disappear from the Budget and Start screens. Its transaction history stays, and available funds remain in the envelope. You can restore it in “Manage envelopes” → Archived.\n\nArchive it?", { name }));
-                if (!ok) return; // save nothing — the sheet stays open
-              }
-              const mt = target.trim() === "" ? null : parseAmount(target);
-              local.updateEnvelope(env.id, { name, groupId, color, icon, archived, monthlyTarget: mt, isSavings: saving });
-              onClose();
-            }} style={{ background: "none", border: "none", cursor: "pointer", padding: 4 }}>
-              <Ico d="M5 13l4 4L19 7" size={20} color={TEAL} sw={2.4} />
-            </button>
-          </div>
-          <div style={{ fontSize: 10.5, color: C.mute, fontWeight: 600, marginBottom: 4, textTransform: "uppercase", letterSpacing: 0.6 }}>{t("Envelope name")}</div>
-          <input value={name} onChange={(e) => setName(e.target.value)} style={{ width: "100%", padding: "8px 0", border: "none", borderBottom: `1px solid ${C.line}`, background: "none", color: C.text, fontSize: 15, fontFamily: font, marginBottom: 16, boxSizing: "border-box" }} />
-          <div style={{ fontSize: 10.5, color: C.mute, fontWeight: 600, marginBottom: 8, textTransform: "uppercase", letterSpacing: 0.6 }}>{t("Group")}</div>
-          <select value={groupId} onChange={(e) => setGroupId(e.target.value)} style={{ width: "100%", padding: "8px 0", border: "none", borderBottom: `1px solid ${C.line}`, background: "none", color: C.text, fontSize: 14, fontFamily: font, marginBottom: 16 }}>
-            {groups.map((g) => (
-              <option key={g.id} value={g.id}>{g.name}</option>
-            ))}
-          </select>
-          <IconColorPicker palette={ENV_PALETTE} color={color} icon={icon} onColor={setColor} onIcon={setIcon} />
-          <div style={{ fontSize: 10.5, color: C.mute, fontWeight: 600, marginBottom: 4, textTransform: "uppercase", letterSpacing: 0.6 }}>{t("Monthly target (optional)")}</div>
-          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 18 }}>
-            <input value={target} readOnly onClick={openTargetPad} onFocus={openTargetPad} placeholder={t("e.g. 5000")} style={{ flex: 1, padding: "8px 0", border: "none", borderBottom: `1px solid ${C.line}`, background: "none", color: C.text, fontSize: 15, fontFamily: font, fontVariantNumeric: "tabular-nums", cursor: "pointer" }} />
-            <span style={{ color: C.mute, fontSize: 13 }}>{t("{sym}/mo", { sym: currencySymbol(currency, lang) })}</span>
-          </div>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
-            <span style={{ fontSize: 14, color: C.text }}>{t("Wealth envelope (savings/investments)")}</span>
-            <button onClick={() => setSaving(!saving)} style={{ width: 42, height: 24, borderRadius: 12, background: saving ? TEAL : C.line, position: "relative", border: "none", cursor: "pointer", transition: "background .2s" }}>
-              <div style={{ width: 20, height: 20, borderRadius: "50%", background: "#fff", position: "absolute", top: 2, left: saving ? 20 : 2, transition: "left .2s", boxShadow: "0 1px 2px rgba(0,0,0,0.2)" }} />
-            </button>
-          </div>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-            <span style={{ fontSize: 14, color: C.text }}>{t("Archive")}</span>
-            <button onClick={() => setArchived(!archived)} style={{ width: 42, height: 24, borderRadius: 12, background: archived ? TEAL : C.line, position: "relative", border: "none", cursor: "pointer", transition: "background .2s" }}>
-              <div style={{ width: 20, height: 20, borderRadius: "50%", background: "#fff", position: "absolute", top: 2, left: archived ? 20 : 2, transition: "left .2s", boxShadow: "0 1px 2px rgba(0,0,0,0.2)" }} />
-            </button>
-          </div>
-        </>
-      )}
-    </Sheet>
-    {/* Sibling of the Sheet (not a child) — the panel's transform would break the pad's position:fixed. */}
-    <AmountPadHost target={pad} onClose={() => setPad(null)} />
+      <Sheet show={!!env} onClose={onClose}>
+        {(C) => (
+          <>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 18 }}>
+              <span style={{ fontSize: 17, fontWeight: 700, color: C.text }}>{t("Edit envelope")}</span>
+              <button
+                onClick={() => {
+                  if (archived && !env.archived) {
+                    const ok = window.confirm(
+                      t(
+                        "The envelope “{name}” will disappear from the Budget and Start screens. Its transaction history stays, and available funds remain in the envelope. You can restore it in “Manage envelopes” → Archived.\n\nArchive it?",
+                        { name },
+                      ),
+                    );
+                    if (!ok) return; // save nothing — the sheet stays open
+                  }
+                  const mt = target.trim() === "" ? null : parseAmount(target);
+                  local.updateEnvelope(env.id, { name, groupId, color, icon, archived, monthlyTarget: mt, isSavings: saving });
+                  onClose();
+                }}
+                style={{ background: "none", border: "none", cursor: "pointer", padding: 4 }}
+              >
+                <Ico d="M5 13l4 4L19 7" size={20} color={TEAL} sw={2.4} />
+              </button>
+            </div>
+            <div style={{ fontSize: 10.5, color: C.mute, fontWeight: 600, marginBottom: 4, textTransform: "uppercase", letterSpacing: 0.6 }}>
+              {t("Envelope name")}
+            </div>
+            <input
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              style={{
+                width: "100%",
+                padding: "8px 0",
+                border: "none",
+                borderBottom: `1px solid ${C.line}`,
+                background: "none",
+                color: C.text,
+                fontSize: 15,
+                fontFamily: font,
+                marginBottom: 16,
+                boxSizing: "border-box",
+              }}
+            />
+            <div style={{ fontSize: 10.5, color: C.mute, fontWeight: 600, marginBottom: 8, textTransform: "uppercase", letterSpacing: 0.6 }}>{t("Group")}</div>
+            <select
+              value={groupId}
+              onChange={(e) => setGroupId(e.target.value)}
+              style={{
+                width: "100%",
+                padding: "8px 0",
+                border: "none",
+                borderBottom: `1px solid ${C.line}`,
+                background: "none",
+                color: C.text,
+                fontSize: 14,
+                fontFamily: font,
+                marginBottom: 16,
+              }}
+            >
+              {groups.map((g) => (
+                <option key={g.id} value={g.id}>
+                  {g.name}
+                </option>
+              ))}
+            </select>
+            <IconColorPicker palette={ENV_PALETTE} color={color} icon={icon} onColor={setColor} onIcon={setIcon} />
+            <div style={{ fontSize: 10.5, color: C.mute, fontWeight: 600, marginBottom: 4, textTransform: "uppercase", letterSpacing: 0.6 }}>
+              {t("Monthly target (optional)")}
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 18 }}>
+              <input
+                value={target}
+                readOnly
+                onClick={openTargetPad}
+                onFocus={openTargetPad}
+                placeholder={t("e.g. 5000")}
+                style={{
+                  flex: 1,
+                  padding: "8px 0",
+                  border: "none",
+                  borderBottom: `1px solid ${C.line}`,
+                  background: "none",
+                  color: C.text,
+                  fontSize: 15,
+                  fontFamily: font,
+                  fontVariantNumeric: "tabular-nums",
+                  cursor: "pointer",
+                }}
+              />
+              <span style={{ color: C.mute, fontSize: 13 }}>{t("{sym}/mo", { sym: currencySymbol(currency, lang) })}</span>
+            </div>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+              <span style={{ fontSize: 14, color: C.text }}>{t("Wealth envelope (savings/investments)")}</span>
+              <button
+                onClick={() => setSaving(!saving)}
+                style={{
+                  width: 42,
+                  height: 24,
+                  borderRadius: 12,
+                  background: saving ? TEAL : C.line,
+                  position: "relative",
+                  border: "none",
+                  cursor: "pointer",
+                  transition: "background .2s",
+                }}
+              >
+                <div
+                  style={{
+                    width: 20,
+                    height: 20,
+                    borderRadius: "50%",
+                    background: "#fff",
+                    position: "absolute",
+                    top: 2,
+                    left: saving ? 20 : 2,
+                    transition: "left .2s",
+                    boxShadow: "0 1px 2px rgba(0,0,0,0.2)",
+                  }}
+                />
+              </button>
+            </div>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <span style={{ fontSize: 14, color: C.text }}>{t("Archive")}</span>
+              <button
+                onClick={() => setArchived(!archived)}
+                style={{
+                  width: 42,
+                  height: 24,
+                  borderRadius: 12,
+                  background: archived ? TEAL : C.line,
+                  position: "relative",
+                  border: "none",
+                  cursor: "pointer",
+                  transition: "background .2s",
+                }}
+              >
+                <div
+                  style={{
+                    width: 20,
+                    height: 20,
+                    borderRadius: "50%",
+                    background: "#fff",
+                    position: "absolute",
+                    top: 2,
+                    left: archived ? 20 : 2,
+                    transition: "left .2s",
+                    boxShadow: "0 1px 2px rgba(0,0,0,0.2)",
+                  }}
+                />
+              </button>
+            </div>
+          </>
+        )}
+      </Sheet>
+      {/* Sibling of the Sheet (not a child) — the panel's transform would break the pad's position:fixed. */}
+      <AmountPadHost target={pad} onClose={() => setPad(null)} />
     </>
   );
 }
-

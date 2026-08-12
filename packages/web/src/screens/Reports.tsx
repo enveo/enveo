@@ -52,7 +52,27 @@ const RANGES: Array<{ n: number; label: Message }> = [
 ];
 type Mask = (n: number) => string;
 
-export function ReportsScreen({ state, month, view, onView, onOpenEnvelope, onFillGoals, onMenu, onPrev, onNext }: { state: StateResponse; month: string; view: ReportView; onView: (v: ReportView) => void; onOpenEnvelope: (envId: string, month: string) => void; onFillGoals: () => void; onMenu: () => void; onPrev: () => void; onNext: () => void }) {
+export function ReportsScreen({
+  state,
+  month,
+  view,
+  onView,
+  onOpenEnvelope,
+  onFillGoals,
+  onMenu,
+  onPrev,
+  onNext,
+}: {
+  state: StateResponse;
+  month: string;
+  view: ReportView;
+  onView: (v: ReportView) => void;
+  onOpenEnvelope: (envId: string, month: string) => void;
+  onFillGoals: () => void;
+  onMenu: () => void;
+  onPrev: () => void;
+  onNext: () => void;
+}) {
   const M = useMask();
   const version = useLedgerVersion();
   // "Envelope" by default — in an envelope app it's the natural breakdown (categories are often empty)
@@ -178,20 +198,24 @@ export function ReportsScreen({ state, month, view, onView, onOpenEnvelope, onFi
         />
       )}
       {view === "budgets" && <BudgetsReport state={state} M={M} onOpenEnvelope={onOpenEnvelope} onPrev={onPrev} onNext={onNext} onBack={back} />}
-      {view === "goals" && <GoalsReport state={state} M={M} onOpenEnvelope={onOpenEnvelope} onFillGoals={onFillGoals} onPrev={onPrev} onNext={onNext} onBack={back} />}
-      {view === "month" && (
-        <MonthReport cashflow={cashflow} days={dailySpending} places={monthPlaces} largest={monthLargest} M={M} month={month} onPrev={onPrev} onNext={onNext} onBack={back} />
+      {view === "goals" && (
+        <GoalsReport state={state} M={M} onOpenEnvelope={onOpenEnvelope} onFillGoals={onFillGoals} onPrev={onPrev} onNext={onNext} onBack={back} />
       )}
-      {view === "trends" && (
-        <TrendsReport
-          trends={envelopeTrends}
+      {view === "month" && (
+        <MonthReport
+          cashflow={cashflow}
+          days={dailySpending}
+          places={monthPlaces}
+          largest={monthLargest}
           M={M}
           month={month}
-          onOpenEnvelope={onOpenEnvelope}
           onPrev={onPrev}
           onNext={onNext}
           onBack={back}
         />
+      )}
+      {view === "trends" && (
+        <TrendsReport trends={envelopeTrends} M={M} month={month} onOpenEnvelope={onOpenEnvelope} onPrev={onPrev} onNext={onNext} onBack={back} />
       )}
     </div>
   );
@@ -256,9 +280,20 @@ function ReportsHub({
         <Header month={month} onMenu={onMenu} onPrev={onPrev} onNext={onNext} onBand={band} />
         <button
           onClick={() => onView("assets")}
-          style={{ display: "block", width: "100%", background: "none", border: "none", padding: `10px ${P}px 0`, textAlign: "left", cursor: "pointer", fontFamily: "inherit" }}
+          style={{
+            display: "block",
+            width: "100%",
+            background: "none",
+            border: "none",
+            padding: `10px ${P}px 0`,
+            textAlign: "left",
+            cursor: "pointer",
+            fontFamily: "inherit",
+          }}
         >
-          <div style={{ fontSize: 10.5, fontWeight: 750, letterSpacing: "0.17em", textTransform: "uppercase", color: hc(C.headerMute, C.mute) }}>{t("Net worth")}</div>
+          <div style={{ fontSize: 10.5, fontWeight: 750, letterSpacing: "0.17em", textTransform: "uppercase", color: hc(C.headerMute, C.mute) }}>
+            {t("Net worth")}
+          </div>
           <div style={{ fontSize: 30, fontWeight: 750, color: hc(C.headerInk, C.text), fontVariantNumeric: "tabular-nums" }}>{M(nwLast)}</div>
           <div style={{ fontSize: 12, color: hc(C.headerMute, C.soft) }}>
             {nwDelta !== 0 && (
@@ -299,7 +334,21 @@ function MiniCard({ title, onClick, children }: { title: string; onClick: () => 
   return (
     <button
       onClick={onClick}
-      style={{ display: "flex", flexDirection: "column", alignItems: "stretch", justifyContent: "flex-start", width: "100%", background: C.card, border: "none", boxShadow: "0 1px 3px rgba(20,20,28,0.06)", borderRadius: 14, padding: "12px 13px", cursor: "pointer", textAlign: "left", fontFamily: "inherit" }}
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "stretch",
+        justifyContent: "flex-start",
+        width: "100%",
+        background: C.card,
+        border: "none",
+        boxShadow: "0 1px 3px rgba(20,20,28,0.06)",
+        borderRadius: 14,
+        padding: "12px 13px",
+        cursor: "pointer",
+        textAlign: "left",
+        fontFamily: "inherit",
+      }}
     >
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", fontSize: 11, fontWeight: 700, color: C.soft, marginBottom: 6 }}>
         <span>{title}</span>
@@ -312,10 +361,22 @@ function MiniCard({ title, onClick, children }: { title: string; onClick: () => 
 
 /** Cashflow mini-card: 12-mo diverging columns (up in C.pos / down in C.neg from a C.line
  *  baseline), current month's net (sign-colored), and the current savings rate. */
-function CashflowMini({ cashflow, onView, M }: { cashflow: { month: string; income: number; expense: number; net: number }[]; onView: (v: ReportView) => void; M: Mask }) {
+function CashflowMini({
+  cashflow,
+  onView,
+  M,
+}: {
+  cashflow: { month: string; income: number; expense: number; net: number }[];
+  onView: (v: ReportView) => void;
+  M: Mask;
+}) {
   const C = useTheme();
   const { t } = useT();
-  const barW = 7, gap = 2, H = 34, base = H / 2, maxH = 15;
+  const barW = 7,
+    gap = 2,
+    H = 34,
+    base = H / 2,
+    maxH = 15;
   const W = cashflow.length * barW + Math.max(0, cashflow.length - 1) * gap;
   const maxAbs = Math.max(...cashflow.map((p) => Math.abs(p.net)), 1);
   const net = cashflow.at(-1)?.net ?? 0;
@@ -364,7 +425,10 @@ function SpendingMini({
   const total = rows.reduce((s, r) => s + r.amount, 0);
   const restAmt = Math.max(0, total - top.reduce((s, r) => s + r.amount, 0));
   const colorOf = (r: { key: string | null }, i: number) => (r.key && envColor.get(r.key)) || SPENDING_FALLBACK_COLORS[i % SPENDING_FALLBACK_COLORS.length]!;
-  const segments = [...top.map((r, i) => ({ weight: Math.max(0, r.amount), color: colorOf(r, i) })), ...(restAmt > 0 ? [{ weight: restAmt, color: C.line }] : [])];
+  const segments = [
+    ...top.map((r, i) => ({ weight: Math.max(0, r.amount), color: colorOf(r, i) })),
+    ...(restAmt > 0 ? [{ weight: restAmt, color: C.line }] : []),
+  ];
   // baseline = median of the 3 months BEFORE the current one (cashflow always ends at `month`)
   const baseline = median(cashflow.slice(-4, -1).map((p) => p.expense));
   const deltaPct = baseline > 0 ? (total - baseline) / baseline : null;
@@ -392,7 +456,10 @@ function BudgetsMini({ envelopes, onView, M }: { envelopes: StateResponse["envel
   // this for the pill counters, budgetsOverAmount mirrors the same rule for the € amount).
   const overAmt = budgetsOverAmount(envelopes);
   const pill = (label: string, bg: string, color: string, key: string) => (
-    <span key={key} style={{ display: "inline-flex", alignItems: "center", fontSize: 11.5, fontWeight: 650, borderRadius: 9, padding: "4px 9px", background: bg, color }}>
+    <span
+      key={key}
+      style={{ display: "inline-flex", alignItems: "center", fontSize: 11.5, fontWeight: 650, borderRadius: 9, padding: "4px 9px", background: bg, color }}
+    >
       {label}
     </span>
   );
@@ -464,13 +531,7 @@ function trendColor(tr: EnvelopeTrend, C: Theme): string {
 
 /** Trends mini-card: the top-2 biggest-moving envelopes (already sorted by computeEnvelopeTrends),
  *  a mini TrendSpark (red rising / green falling / muted flat) and an arrow per row. */
-function TrendsMini({
-  trends,
-  onView,
-}: {
-  trends: EnvelopeTrend[];
-  onView: (v: ReportView) => void;
-}) {
+function TrendsMini({ trends, onView }: { trends: EnvelopeTrend[]; onView: (v: ReportView) => void }) {
   const C = useTheme();
   const { t } = useT();
   const top = trends.slice(0, 2);
@@ -485,8 +546,7 @@ function TrendsMini({
           <div key={tr.id} style={{ marginBottom: 4 }}>
             <TrendSpark series={tr.series} color={color} w={150} h={16} />
             <div style={{ fontSize: 11, color: C.soft, marginTop: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-              {tr.name}{" "}
-              {rising && <span style={{ color: C.neg, fontWeight: 650 }}>↑</span>}
+              {tr.name} {rising && <span style={{ color: C.neg, fontWeight: 650 }}>↑</span>}
               {falling && <span style={{ color: C.pos, fontWeight: 650 }}>↓</span>}
             </div>
           </div>
@@ -502,7 +562,23 @@ function TrendsMini({
  * reads as a cream line on navy rather than the invisible navy-on-navy TEAL would give. Body:
  * the "Wealth" section (envelopes flagged `isSavings`) unchanged in content, bars via `Bar`.
  */
-function AssetsReport({ netWorth, state, M, month, onPrev, onNext, onBack }: { netWorth: { month: string; total: number }[]; state: StateResponse; M: Mask; month: string; onPrev: () => void; onNext: () => void; onBack: () => void }) {
+function AssetsReport({
+  netWorth,
+  state,
+  M,
+  month,
+  onPrev,
+  onNext,
+  onBack,
+}: {
+  netWorth: { month: string; total: number }[];
+  state: StateResponse;
+  M: Mask;
+  month: string;
+  onPrev: () => void;
+  onNext: () => void;
+  onBack: () => void;
+}) {
   const C = useTheme();
   const { t } = useT();
   const { band } = useBand();
@@ -534,7 +610,9 @@ function AssetsReport({ netWorth, state, M, month, onPrev, onNext, onBack }: { n
       <div style={{ fontSize: 15, fontWeight: 700, color: C.text, margin: "20px 0 4px" }}>{t("Wealth")}</div>
       {savings.length === 0 ? (
         <div style={{ fontSize: 12.5, color: C.mute, padding: "4px 0", lineHeight: 1.6 }}>
-          {t("No envelopes are marked as wealth envelopes. Open an envelope → Edit and turn on “Wealth envelope” (e.g. Bonds, Retirement, Savings), and we will count them here.")}
+          {t(
+            "No envelopes are marked as wealth envelopes. Open an envelope → Edit and turn on “Wealth envelope” (e.g. Bonds, Retirement, Savings), and we will count them here.",
+          )}
         </div>
       ) : (
         <>
@@ -546,7 +624,9 @@ function AssetsReport({ netWorth, state, M, month, onPrev, onNext, onBack }: { n
             <div key={e.id} style={{ marginBottom: 9 }}>
               <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 3 }}>
                 <span style={{ fontSize: 13, color: C.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{e.name}</span>
-                <span style={{ fontSize: 12.5, fontWeight: 600, color: C.text, fontVariantNumeric: "tabular-nums", flexShrink: 0, marginLeft: 8 }}>{M(e.available)}</span>
+                <span style={{ fontSize: 12.5, fontWeight: 600, color: C.text, fontVariantNumeric: "tabular-nums", flexShrink: 0, marginLeft: 8 }}>
+                  {M(e.available)}
+                </span>
               </div>
               <Bar pct={(Math.max(0, e.available) / max) * 100} color={TEAL} />
             </div>
@@ -577,7 +657,21 @@ function AssetsReport({ netWorth, state, M, month, onPrev, onNext, onBack }: { n
  * Intl "long" month name (Polish has no short form here), and "Październik’25" alone needs 79px
  * (`scrollWidth`), so 64px — the initially-planned width — still clipped into the bar column.
  */
-function CashflowReport({ cashflow, M, month, onPrev, onNext, onBack }: { cashflow: { month: string; income: number; expense: number; net: number }[]; M: Mask; month: string; onPrev: () => void; onNext: () => void; onBack: () => void }) {
+function CashflowReport({
+  cashflow,
+  M,
+  month,
+  onPrev,
+  onNext,
+  onBack,
+}: {
+  cashflow: { month: string; income: number; expense: number; net: number }[];
+  M: Mask;
+  month: string;
+  onPrev: () => void;
+  onNext: () => void;
+  onBack: () => void;
+}) {
   const C = useTheme();
   const { t, lang } = useT();
   const { hc } = useBand();
@@ -617,7 +711,13 @@ function CashflowReport({ cashflow, M, month, onPrev, onNext, onBack }: { cashfl
       bandChart={cashflow.length > 0 ? <CashflowBandChart cashflow={cashflow} /> : undefined}
     >
       <div style={{ display: "flex", gap: 8, marginBottom: 14, marginTop: 4 }}>
-        {([[t("Income"), totIncome, C.pos], [t("Expense"), totExpense, C.neg], [t("Net"), totNet, totNet >= 0 ? C.pos : C.neg]] as const).map(([label, val, col]) => (
+        {(
+          [
+            [t("Income"), totIncome, C.pos],
+            [t("Expense"), totExpense, C.neg],
+            [t("Net"), totNet, totNet >= 0 ? C.pos : C.neg],
+          ] as const
+        ).map(([label, val, col]) => (
           <div key={label} style={{ flex: 1 }}>
             <div style={{ fontSize: 10.5, color: C.soft }}>{label}</div>
             <div style={{ fontSize: 14, fontWeight: 700, color: col, fontVariantNumeric: "tabular-nums" }}>{M(val)}</div>
@@ -631,9 +731,32 @@ function CashflowReport({ cashflow, M, month, onPrev, onNext, onBack }: { cashfl
             <span style={{ fontSize: 11, color: C.soft, width: 82, textAlign: "right", flexShrink: 0 }}>{rowLabel(p.month)}</span>
             <div style={{ flex: 1, position: "relative", height: 12 }}>
               <div style={{ position: "absolute", left: "50%", top: 0, bottom: 0, width: 1, background: C.line }} />
-              <div style={{ position: "absolute", top: 2, height: 8, borderRadius: 3, background: p.net >= 0 ? C.pos : C.neg, left: p.net >= 0 ? "50%" : `${50 - w}%`, width: `${w}%` }} />
+              <div
+                style={{
+                  position: "absolute",
+                  top: 2,
+                  height: 8,
+                  borderRadius: 3,
+                  background: p.net >= 0 ? C.pos : C.neg,
+                  left: p.net >= 0 ? "50%" : `${50 - w}%`,
+                  width: `${w}%`,
+                }}
+              />
             </div>
-            <span style={{ fontSize: 11.5, fontWeight: 600, color: p.net >= 0 ? C.pos : C.neg, width: 80, textAlign: "right", flexShrink: 0, fontVariantNumeric: "tabular-nums" }}>{p.net >= 0 ? "+" : "−"}{M(Math.abs(p.net))}</span>
+            <span
+              style={{
+                fontSize: 11.5,
+                fontWeight: 600,
+                color: p.net >= 0 ? C.pos : C.neg,
+                width: 80,
+                textAlign: "right",
+                flexShrink: 0,
+                fontVariantNumeric: "tabular-nums",
+              }}
+            >
+              {p.net >= 0 ? "+" : "−"}
+              {M(Math.abs(p.net))}
+            </span>
           </div>
         );
       })}
@@ -659,7 +782,11 @@ function CashflowReport({ cashflow, M, month, onPrev, onNext, onBack }: { cashfl
 function CashflowBandChart({ cashflow }: { cashflow: { month: string; income: number; expense: number; net: number }[] }) {
   const C = useTheme();
   const { hc } = useBand();
-  const W = 358, gap = 6, H = 60, base = H / 2, maxH = 24;
+  const W = 358,
+    gap = 6,
+    H = 60,
+    base = H / 2,
+    maxH = 24;
   const n = cashflow.length;
   const barW = (W - Math.max(0, n - 1) * gap) / n;
   const maxAbs = Math.max(...cashflow.map((p) => Math.abs(p.net)), 1);
@@ -730,14 +857,18 @@ function SpendingReport({
   const totalDelta = baseline3 > 0 ? (spTotal - baseline3) / baseline3 : null;
 
   const envColor = new Map(state.envelopes.map((e) => [e.id, e.color]));
-  const rowColor = (r: { key: string | null }, i: number): string => (dim === "envelope" && r.key && envColor.get(r.key)) || ENV_PALETTE[i % ENV_PALETTE.length]!;
+  const rowColor = (r: { key: string | null }, i: number): string =>
+    (dim === "envelope" && r.key && envColor.get(r.key)) || ENV_PALETTE[i % ENV_PALETTE.length]!;
 
   const top5 = spending.slice(0, 5);
   const restAmt = Math.max(0, spTotal - top5.reduce((s, r) => s + r.amount, 0));
   // on a Duet band the "rest" segment must still read on navy — a low-alpha tint of the header
   // ink; a plain theme falls back to the ordinary track color.
   const restColor = hc(tint(C.headerInk, 0.25), C.line);
-  const segments = [...top5.map((r, i) => ({ weight: Math.max(0, r.amount), color: rowColor(r, i) })), ...(restAmt > 0 ? [{ weight: restAmt, color: restColor }] : [])];
+  const segments = [
+    ...top5.map((r, i) => ({ weight: Math.max(0, r.amount), color: rowColor(r, i) })),
+    ...(restAmt > 0 ? [{ weight: restAmt, color: restColor }] : []),
+  ];
 
   const shown = expanded ? spending : spending.slice(0, 10);
   const rest = spending.slice(10);
@@ -829,7 +960,18 @@ function SpendingReport({
         return (
           <div key={r.key ?? "none"} style={{ marginBottom: 12 }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 8, marginBottom: 3 }}>
-              <span style={{ display: "flex", alignItems: "center", gap: 7, fontSize: 13.5, color: C.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              <span
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 7,
+                  fontSize: 13.5,
+                  color: C.text,
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  whiteSpace: "nowrap",
+                }}
+              >
                 <span aria-hidden style={{ width: 8, height: 8, borderRadius: 3, background: color, flexShrink: 0 }} />
                 {r.name}
               </span>
@@ -849,7 +991,18 @@ function SpendingReport({
       {!expanded && rest.length > 0 && (
         <button
           onClick={() => setExpanded(true)}
-          style={{ display: "block", width: "100%", background: "none", border: "none", textAlign: "center", padding: "2px 0 8px", fontSize: 12, color: C.mute, cursor: "pointer", fontFamily: "inherit" }}
+          style={{
+            display: "block",
+            width: "100%",
+            background: "none",
+            border: "none",
+            textAlign: "center",
+            padding: "2px 0 8px",
+            fontSize: 12,
+            color: C.mute,
+            cursor: "pointer",
+            fontFamily: "inherit",
+          }}
         >
           {tp("+ {n} more · {amount} | + {n} more · {amount}", rest.length, { amount: M(rest.reduce((s, r) => s + r.amount, 0)) })}
         </button>
@@ -882,9 +1035,23 @@ function BudgetRow({
 }) {
   const C = useTheme();
   return (
-    <button onClick={onClick} style={{ display: "block", width: "100%", background: "none", border: "none", padding: "0 0 12px", cursor: "pointer", textAlign: "left" as const, fontFamily: "inherit" }}>
+    <button
+      onClick={onClick}
+      style={{
+        display: "block",
+        width: "100%",
+        background: "none",
+        border: "none",
+        padding: "0 0 12px",
+        cursor: "pointer",
+        textAlign: "left" as const,
+        fontFamily: "inherit",
+      }}
+    >
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" as const, gap: 8, marginBottom: 3 }}>
-        <span style={{ fontSize: 13, color: C.text, overflow: "hidden" as const, textOverflow: "ellipsis" as const, whiteSpace: "nowrap" as const }}>{name}</span>
+        <span style={{ fontSize: 13, color: C.text, overflow: "hidden" as const, textOverflow: "ellipsis" as const, whiteSpace: "nowrap" as const }}>
+          {name}
+        </span>
         <span style={{ fontSize: 12.5, fontWeight: 700, color: statusColor, fontVariantNumeric: "tabular-nums", flexShrink: 0 }}>{status}</span>
       </div>
       {caption != null && <div style={{ fontSize: 10.5, color: C.soft, marginBottom: 4 }}>{caption}</div>}
@@ -943,7 +1110,17 @@ function BudgetsReport({
   const pill = (label: string, swatch: string, key: string) => (
     <span
       key={key}
-      style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 11.5, fontWeight: 650, borderRadius: 9, padding: "4px 9px", background: hc(tint(C.headerInk, 0.13), C.chip), color: hc(C.headerInk, C.text) }}
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 5,
+        fontSize: 11.5,
+        fontWeight: 650,
+        borderRadius: 9,
+        padding: "4px 9px",
+        background: hc(tint(C.headerInk, 0.13), C.chip),
+        color: hc(C.headerInk, C.text),
+      }}
     >
       <span aria-hidden style={{ width: 7, height: 7, borderRadius: "50%", background: swatch, flexShrink: 0 }} />
       {label}
@@ -980,7 +1157,9 @@ function BudgetsReport({
 
       {overRows.length > 0 && (
         <>
-          <div style={{ fontSize: 10.5, fontWeight: 750, letterSpacing: "0.16em", textTransform: "uppercase", color: C.neg, margin: "4px 2px 8px" }}>{t("Overspent")}</div>
+          <div style={{ fontSize: 10.5, fontWeight: 750, letterSpacing: "0.16em", textTransform: "uppercase", color: C.neg, margin: "4px 2px 8px" }}>
+            {t("Overspent")}
+          </div>
           {overRows.map(({ e, pct, left, budget }) => (
             <BudgetRow
               key={e.id}
@@ -998,7 +1177,9 @@ function BudgetsReport({
 
       {nearRows.length > 0 && (
         <>
-          <div style={{ fontSize: 10.5, fontWeight: 750, letterSpacing: "0.16em", textTransform: "uppercase", color: C.warn, margin: "18px 2px 8px" }}>{t("Near limit · ≥ 80%")}</div>
+          <div style={{ fontSize: 10.5, fontWeight: 750, letterSpacing: "0.16em", textTransform: "uppercase", color: C.warn, margin: "18px 2px 8px" }}>
+            {t("Near limit · ≥ 80%")}
+          </div>
           {nearRows.map(({ e, pct, left }) => (
             <BudgetRow
               key={e.id}
@@ -1015,7 +1196,9 @@ function BudgetsReport({
 
       {(usedUpRows.length > 0 || restOkRows.length > 0) && (
         <>
-          <div style={{ fontSize: 10.5, fontWeight: 750, letterSpacing: "0.16em", textTransform: "uppercase", color: C.mute, margin: "18px 2px 8px" }}>{t("Within budget")}</div>
+          <div style={{ fontSize: 10.5, fontWeight: 750, letterSpacing: "0.16em", textTransform: "uppercase", color: C.mute, margin: "18px 2px 8px" }}>
+            {t("Within budget")}
+          </div>
           {usedUpRows.map(({ e, pct }) => (
             <BudgetRow
               key={e.id}
@@ -1043,7 +1226,18 @@ function BudgetsReport({
             ) : (
               <button
                 onClick={() => setExpanded(true)}
-                style={{ display: "block", width: "100%", background: "none", border: "none", textAlign: "center", padding: "2px 0 8px", fontSize: 12, color: C.mute, cursor: "pointer", fontFamily: "inherit" }}
+                style={{
+                  display: "block",
+                  width: "100%",
+                  background: "none",
+                  border: "none",
+                  textAlign: "center",
+                  padding: "2px 0 8px",
+                  fontSize: 12,
+                  color: C.mute,
+                  cursor: "pointer",
+                  fontFamily: "inherit",
+                }}
               >
                 {tp("+ {n} envelope within budget (avg {pct}%) | + {n} envelopes within budget (avg {pct}%)", restOkRows.length, { pct: restAvgPct })}
               </button>
@@ -1124,34 +1318,70 @@ function GoalsReport({
       eyebrow={t("Monthly goals")}
       hero={`${pctTotal}%`}
       sub={
-        rows.length === 0
-          ? undefined
-          : allFunded
-            ? <span style={{ color: hc(C.headerPos, C.pos) }}>{t("All goals funded ✓")}</span>
-            : (
+        rows.length === 0 ? undefined : allFunded ? (
+          <span style={{ color: hc(C.headerPos, C.pos) }}>{t("All goals funded ✓")}</span>
+        ) : (
+          <>
+            {t("{amount} to go", { amount: M(missSum) })}
+            {canFillGoals && (
               <>
-                {t("{amount} to go", { amount: M(missSum) })}
-                {canFillGoals && (
-                  <>
-                    {" · "}
-                    <button onClick={onFillGoals} style={{ background: "none", border: "none", padding: 0, margin: 0, font: "inherit", color: hc(C.headerInk, TEAL), fontWeight: 700, cursor: "pointer" }}>
-                      {t("Fill ›")}
-                    </button>
-                  </>
-                )}
+                {" · "}
+                <button
+                  onClick={onFillGoals}
+                  style={{
+                    background: "none",
+                    border: "none",
+                    padding: 0,
+                    margin: 0,
+                    font: "inherit",
+                    color: hc(C.headerInk, TEAL),
+                    fontWeight: 700,
+                    cursor: "pointer",
+                  }}
+                >
+                  {t("Fill ›")}
+                </button>
               </>
-            )
+            )}
+          </>
+        )
       }
     >
-      {rows.length === 0 && <div style={{ fontSize: 12.5, color: C.mute, padding: "8px 0" }}>{t("No envelopes with a goal. Set a monthly target when editing an envelope.")}</div>}
+      {rows.length === 0 && (
+        <div style={{ fontSize: 12.5, color: C.mute, padding: "8px 0" }}>{t("No envelopes with a goal. Set a monthly target when editing an envelope.")}</div>
+      )}
       {rows.map(({ e, gp }) => {
         const barColor = gp.funded ? C.pos : "var(--accent)";
         const fundedAmt = Math.min(Math.max(0, e.allocated), e.monthlyTarget ?? 0);
         return (
-          <button key={e.id} onClick={() => onOpenEnvelope(e.id, state.month)} style={{ display: "block", width: "100%", background: "none", border: "none", padding: "0 0 12px", cursor: "pointer", textAlign: "left", fontFamily: "inherit" }}>
+          <button
+            key={e.id}
+            onClick={() => onOpenEnvelope(e.id, state.month)}
+            style={{
+              display: "block",
+              width: "100%",
+              background: "none",
+              border: "none",
+              padding: "0 0 12px",
+              cursor: "pointer",
+              textAlign: "left",
+              fontFamily: "inherit",
+            }}
+          >
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8, marginBottom: 3 }}>
               <div style={{ minWidth: 0, flex: 1 }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 7, fontSize: 13, color: C.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 7,
+                    fontSize: 13,
+                    color: C.text,
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    whiteSpace: "nowrap",
+                  }}
+                >
                   <GoalRing pct={gp.pct} size={16} color={gp.funded ? C.pos : undefined} />
                   {e.name}
                 </div>
@@ -1162,7 +1392,9 @@ function GoalsReport({
                 </div>
               </div>
               <span style={{ textAlign: "right", flexShrink: 0 }}>
-                <span style={{ display: "block", fontSize: 12.5, fontWeight: 700, color: gp.funded ? C.pos : C.text, fontVariantNumeric: "tabular-nums" }}>{Math.round(gp.pct)}%</span>
+                <span style={{ display: "block", fontSize: 12.5, fontWeight: 700, color: gp.funded ? C.pos : C.text, fontVariantNumeric: "tabular-nums" }}>
+                  {Math.round(gp.pct)}%
+                </span>
                 <span style={{ display: "block", fontSize: 10.5, color: gp.funded ? C.pos : C.soft, fontVariantNumeric: "tabular-nums" }}>
                   {gp.funded ? t("funded ✓") : t("{amount} to go", { amount: M(gp.missing) })}
                 </span>
@@ -1174,7 +1406,10 @@ function GoalsReport({
       })}
       {rows.length > 0 && noGoalCount > 0 && (
         <div style={{ fontSize: 11, color: C.mute, padding: "6px 0 4px" }}>
-          {tp("+ {n} envelope without a goal — set one when editing an envelope. | + {n} envelopes without a goal — set one when editing an envelope.", noGoalCount)}
+          {tp(
+            "+ {n} envelope without a goal — set one when editing an envelope. | + {n} envelopes without a goal — set one when editing an envelope.",
+            noGoalCount,
+          )}
         </div>
       )}
     </ReportShell>
@@ -1238,7 +1473,14 @@ function MonthReport({
   const avg = days.length > 0 ? Math.round(totExpense / days.length) : 0;
 
   const eyebrowStyle = { fontSize: 10.5, fontWeight: 750, letterSpacing: "0.16em", textTransform: "uppercase" as const, color: C.mute, margin: "18px 2px 8px" };
-  const rowStyle = (last: boolean) => ({ display: "flex", justifyContent: "space-between", alignItems: "baseline" as const, padding: "9px 1px", borderBottom: last ? "none" : `1px solid ${C.line}`, fontSize: 13.5 });
+  const rowStyle = (last: boolean) => ({
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "baseline" as const,
+    padding: "9px 1px",
+    borderBottom: last ? "none" : `1px solid ${C.line}`,
+    fontSize: 13.5,
+  });
 
   return (
     <ReportShell
@@ -1351,9 +1593,7 @@ function TrendsReport({
       hero={t("{n} rising · {m} falling", { n: rising, m: falling })}
     >
       {trends.length === 0 && (
-        <div style={{ fontSize: 12.5, color: C.mute, padding: "8px 0" }}>
-          {t("Not enough history yet — trends appear after two months of spending.")}
-        </div>
+        <div style={{ fontSize: 12.5, color: C.mute, padding: "8px 0" }}>{t("Not enough history yet — trends appear after two months of spending.")}</div>
       )}
       {trends.map((tr, i) => {
         const color = trendColor(tr, C);
@@ -1361,9 +1601,33 @@ function TrendsReport({
           <button
             key={tr.id}
             onClick={() => onOpenEnvelope(tr.id, month)}
-            style={{ display: "flex", alignItems: "center", gap: 10, width: "100%", padding: "10px 0", background: "none", border: "none", borderBottom: i === trends.length - 1 ? "none" : `1px solid ${C.line}`, cursor: "pointer", textAlign: "left", fontFamily: "inherit" }}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 10,
+              width: "100%",
+              padding: "10px 0",
+              background: "none",
+              border: "none",
+              borderBottom: i === trends.length - 1 ? "none" : `1px solid ${C.line}`,
+              cursor: "pointer",
+              textAlign: "left",
+              fontFamily: "inherit",
+            }}
           >
-            <span style={{ display: "flex", alignItems: "center", gap: 7, flex: 1, fontSize: 13.5, color: C.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            <span
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 7,
+                flex: 1,
+                fontSize: 13.5,
+                color: C.text,
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+              }}
+            >
               <span aria-hidden style={{ width: 8, height: 8, borderRadius: 3, background: tr.color, flexShrink: 0 }} />
               {tr.name}
             </span>
@@ -1399,8 +1663,12 @@ function NetWorthChart({ points, mask, onBand }: { points: { month: string; tota
   const max = Math.max(...totals);
   const range = max - min || 1;
   const flat = max === min;
-  const W = 340, H = 118, padX = 6, padY = 12;
-  const innerW = W - 2 * padX, innerH = H - 2 * padY;
+  const W = 340,
+    H = 118,
+    padX = 6,
+    padY = 12;
+  const innerW = W - 2 * padX,
+    innerH = H - 2 * padY;
   const x = (i: number) => padX + (n <= 1 ? innerW / 2 : (i / (n - 1)) * innerW);
   const y = (v: number) => (flat ? padY + innerH / 2 : padY + (1 - (v - min) / range) * innerH);
   const pts = points.map((p, i) => [x(i), y(p.total)] as const);
@@ -1416,7 +1684,15 @@ function NetWorthChart({ points, mask, onBand }: { points: { month: string; tota
         <path d={area} style={{ fill: stroke }} opacity={0.12} />
         <path d={line} fill="none" style={{ stroke }} strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" vectorEffect="non-scaling-stroke" />
         {pts.map(([px, py], i) => (
-          <circle key={i} cx={px} cy={py} r={i === n - 1 ? 4 : 2.4} style={{ fill: i === n - 1 ? stroke : hole, stroke }} strokeWidth={1.6} vectorEffect="non-scaling-stroke" />
+          <circle
+            key={i}
+            cx={px}
+            cy={py}
+            r={i === n - 1 ? 4 : 2.4}
+            style={{ fill: i === n - 1 ? stroke : hole, stroke }}
+            strokeWidth={1.6}
+            vectorEffect="non-scaling-stroke"
+          />
         ))}
       </svg>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginTop: 4, fontSize: 10.5, color: caption }}>

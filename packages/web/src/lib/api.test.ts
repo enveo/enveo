@@ -23,10 +23,18 @@ describe("apiErrorMessage", () => {
     expect(apiErrorMessage(httpError(503, { error: "ai_unavailable" }))).toBe(
       "The server has no OpenAI key configured. Set OPENAI_API_KEY and restart the app, or use your own key in Settings → Artificial intelligence.",
     );
-    expect(apiErrorMessage(httpError(502, { error: "ai_upstream_error", status: 401 }))).toBe("OpenAI rejected the request — check the key and the model, then try again.");
-    expect(apiErrorMessage(httpError(400, { error: "backup_invalid", detail: "ledger: Required" }))).toBe("This is not a valid backup file — nothing was loaded.");
-    expect(apiErrorMessage(httpError(400, { error: "foreign_ref" }))).toBe("The data references records that do not exist here (a corrupted or foreign file). Nothing was changed.");
-    expect(apiErrorMessage(httpError(409, { error: "budget_mismatch", budgetId: "b1" }))).toBe("The signed-in account changed while the data was being sent — nothing was written. Reload the app and try again.");
+    expect(apiErrorMessage(httpError(502, { error: "ai_upstream_error", status: 401 }))).toBe(
+      "OpenAI rejected the request — check the key and the model, then try again.",
+    );
+    expect(apiErrorMessage(httpError(400, { error: "backup_invalid", detail: "ledger: Required" }))).toBe(
+      "This is not a valid backup file — nothing was loaded.",
+    );
+    expect(apiErrorMessage(httpError(400, { error: "foreign_ref" }))).toBe(
+      "The data references records that do not exist here (a corrupted or foreign file). Nothing was changed.",
+    );
+    expect(apiErrorMessage(httpError(409, { error: "budget_mismatch", budgetId: "b1" }))).toBe(
+      "The signed-in account changed while the data was being sent — nothing was written. Reload the app and try again.",
+    );
   });
 
   it("localizes the client-side foreign_replica sentinel (thrown bare by the multi-tenant guard)", () => {

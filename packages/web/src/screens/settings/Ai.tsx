@@ -20,7 +20,11 @@ export function AiSection() {
   // Check server-mode availability only when it is selected (zero unnecessary requests).
   const { data: aiInfo } = useQuery({ queryKey: ["aiInfo"], queryFn: api.aiInfo, enabled: settings.aiMode === "server" });
   const helper =
-    settings.aiMode === "off" ? t("AI is off — suggestions run locally on rules; nothing leaves this device.") : settings.aiMode === "server" ? t("AI requests go to OpenAI through the app server (operator's key).") : t("The app talks to OpenAI directly from this browser using your own key — bypassing the server.");
+    settings.aiMode === "off"
+      ? t("AI is off — suggestions run locally on rules; nothing leaves this device.")
+      : settings.aiMode === "server"
+        ? t("AI requests go to OpenAI through the app server (operator's key).")
+        : t("The app talks to OpenAI directly from this browser using your own key — bypassing the server.");
 
   return (
     <div style={{ marginTop: 4 }}>
@@ -38,7 +42,9 @@ export function AiSection() {
       <Helper>{helper}</Helper>
 
       {settings.aiMode === "server" && aiInfo && !aiInfo.serverAi && (
-        <div style={{ fontSize: 12, color: CORAL, marginTop: 8, lineHeight: 1.5 }}>{t("The server has no OpenAI key configured — server mode is unavailable. Use your own key or keep AI off.")}</div>
+        <div style={{ fontSize: 12, color: CORAL, marginTop: 8, lineHeight: 1.5 }}>
+          {t("The server has no OpenAI key configured — server mode is unavailable. Use your own key or keep AI off.")}
+        </div>
       )}
 
       {settings.aiMode === "byok" && (
@@ -54,7 +60,17 @@ export function AiSection() {
             autoCorrect="off"
             spellCheck={false}
             aria-label={t("OpenAI key")}
-            style={{ width: "100%", boxSizing: "border-box", padding: "10px 12px", borderRadius: 10, border: `1px solid ${C.line}`, background: C.bg, color: C.text, fontSize: 13, fontFamily: font }}
+            style={{
+              width: "100%",
+              boxSizing: "border-box",
+              padding: "10px 12px",
+              borderRadius: 10,
+              border: `1px solid ${C.line}`,
+              background: C.bg,
+              color: C.text,
+              fontSize: 13,
+              fontFamily: font,
+            }}
           />
           <Row label={t("Model")}>
             <Seg

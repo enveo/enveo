@@ -23,12 +23,7 @@
  * released artifact's identity.
  */
 import { appendFileSync } from "node:fs";
-import {
-  aliasImageTags,
-  checkAppVersion,
-  extractAppVersion,
-  parseReleaseTag,
-} from "./lib/releaseVersion";
+import { aliasImageTags, checkAppVersion, extractAppVersion, parseReleaseTag } from "./lib/releaseVersion";
 
 const APP_VERSION_FILE = "packages/web/src/lib/version.ts";
 
@@ -85,8 +80,7 @@ function main(argv: readonly string[]): number {
   const resolved = git("rev-parse", "--verify", "--quiet", `refs/tags/${release.tag}^{commit}`);
   if (resolved.code !== 0 || resolved.stdout === "") {
     return fail(
-      `tag ${release.tag} does not exist (fetch tags first, and note that a manual re-run may ` +
-        `only name a tag that ALREADY exists on the remote)`,
+      `tag ${release.tag} does not exist (fetch tags first, and note that a manual re-run may ` + `only name a tag that ALREADY exists on the remote)`,
     );
   }
   const sha = resolved.stdout;
@@ -102,10 +96,7 @@ function main(argv: readonly string[]): number {
   }
   const ancestry = git("merge-base", "--is-ancestor", sha, mainRef);
   if (ancestry.code !== 0) {
-    return fail(
-      `${release.tag} (${sha}) is NOT an ancestor of ${mainRef} (${mainSha.stdout}) — only ` +
-        `commits that reached main may be released`,
-    );
+    return fail(`${release.tag} (${sha}) is NOT an ancestor of ${mainRef} (${mainSha.stdout}) — only ` + `commits that reached main may be released`);
   }
 
   // ── 4. APP_VERSION at the TAGGED commit agrees with the tag ─────────────────────────────

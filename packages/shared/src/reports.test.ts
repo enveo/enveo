@@ -25,7 +25,10 @@ describe("computeNetWorthSeries", () => {
     const g = grp();
     const e = env(g.id, { id: "E" });
     const l = asClientLedger({
-      accounts: [on, off], groups: [g], envelopes: [e], allocations: [],
+      accounts: [on, off],
+      groups: [g],
+      envelopes: [e],
+      allocations: [],
       transactions: [tx({ type: "expense", accountId: "ON", envelopeId: "E", amount: 40_00, date: "2026-06-10" })],
     });
     const series = computeNetWorthSeries(l, "2026-07", 12);
@@ -36,13 +39,16 @@ describe("computeNetWorthSeries", () => {
   });
 
   it("property: each point equals Σ of ALL account balances from computeBudgetState", () => {
-    fc.assert(fc.property(ledgerArb(), (ledger: Ledger) => {
-      const cl = asClientLedger(ledger);
-      for (const p of computeNetWorthSeries(cl, "2026-07", 4)) {
-        const expected = computeBudgetState(cl, p.month).accounts.reduce((s, a) => s + a.balance, 0);
-        expect(p.total).toBe(expected);
-      }
-    }), { numRuns: 100 });
+    fc.assert(
+      fc.property(ledgerArb(), (ledger: Ledger) => {
+        const cl = asClientLedger(ledger);
+        for (const p of computeNetWorthSeries(cl, "2026-07", 4)) {
+          const expected = computeBudgetState(cl, p.month).accounts.reduce((s, a) => s + a.balance, 0);
+          expect(p.total).toBe(expected);
+        }
+      }),
+      { numRuns: 100 },
+    );
   });
 });
 
@@ -52,7 +58,10 @@ describe("computeSpendingByDimension", () => {
     const e = env(g.id, { id: "E" });
     const a = acc({ id: "A", onBudget: true });
     const l = asClientLedger({
-      accounts: [a], groups: [g], envelopes: [e], allocations: [],
+      accounts: [a],
+      groups: [g],
+      envelopes: [e],
+      allocations: [],
       transactions: [
         tx({ type: "expense", accountId: "A", envelopeId: "E", categoryId: "C1", amount: 300_00, date: "2026-07-05" }),
         tx({ type: "expense", accountId: "A", envelopeId: "E", categoryId: "C2", amount: 100_00, date: "2026-07-06" }),
@@ -60,9 +69,15 @@ describe("computeSpendingByDimension", () => {
         tx({ type: "income", accountId: "A", amount: 999_00, date: "2026-07-08" }),
       ],
     });
-    l.categories = [{ id: "C1", name: "Jedzenie" }, { id: "C2", name: "Auto" }];
+    l.categories = [
+      { id: "C1", name: "Jedzenie" },
+      { id: "C2", name: "Auto" },
+    ];
     const rows = computeSpendingByDimension(l, "2026-07", "2026-07", "category");
-    expect(rows.map((r) => [r.name, r.amount])).toEqual([["Jedzenie", 200_00], ["Auto", 100_00]]); // C1: 300−100 refund
+    expect(rows.map((r) => [r.name, r.amount])).toEqual([
+      ["Jedzenie", 200_00],
+      ["Auto", 100_00],
+    ]); // C1: 300−100 refund
     expect(rows[0]!.pct).toBeCloseTo(200_00 / 300_00, 5);
   });
 
@@ -71,7 +86,10 @@ describe("computeSpendingByDimension", () => {
     const e = env(g.id, { id: "E" });
     const a = acc({ id: "A" });
     const l = asClientLedger({
-      accounts: [a], groups: [g], envelopes: [e], allocations: [],
+      accounts: [a],
+      groups: [g],
+      envelopes: [e],
+      allocations: [],
       transactions: [tx({ type: "expense", accountId: "A", envelopeId: "E", categoryId: null, amount: 50_00, date: "2026-07-05" })],
     });
     expect(computeSpendingByDimension(l, "2026-07", "2026-07", "category")[0]!.name).toBe("Bez kategorii");
@@ -99,7 +117,10 @@ describe("computeCashflowSeries", () => {
     const e = env(g.id, { id: "E" });
     const a = acc({ id: "A" });
     const l = asClientLedger({
-      accounts: [a], groups: [g], envelopes: [e], allocations: [],
+      accounts: [a],
+      groups: [g],
+      envelopes: [e],
+      allocations: [],
       transactions: [
         tx({ type: "income", accountId: "A", amount: 500_00, date: "2026-07-03" }),
         tx({ type: "expense", accountId: "A", envelopeId: "E", amount: 200_00, date: "2026-07-05" }),
@@ -119,7 +140,10 @@ describe("computeCashflowSeries", () => {
     const eSav = env(g.id, { id: "S", name: "Obligacje", isSavings: true });
     const a = acc({ id: "A" });
     const l = asClientLedger({
-      accounts: [a], groups: [g], envelopes: [eNorm, eSav], allocations: [],
+      accounts: [a],
+      groups: [g],
+      envelopes: [eNorm, eSav],
+      allocations: [],
       transactions: [
         tx({ type: "income", accountId: "A", amount: 1000_00, date: "2026-07-03" }),
         tx({ type: "expense", accountId: "A", envelopeId: "N", amount: 200_00, date: "2026-07-05" }),
@@ -139,7 +163,10 @@ describe("computeSpendingByDimension savings exclusion", () => {
     const eSav = env(g.id, { id: "S", name: "Obligacje", isSavings: true });
     const a = acc({ id: "A" });
     const l = asClientLedger({
-      accounts: [a], groups: [g], envelopes: [eNorm, eSav], allocations: [],
+      accounts: [a],
+      groups: [g],
+      envelopes: [eNorm, eSav],
+      allocations: [],
       transactions: [
         tx({ type: "expense", accountId: "A", envelopeId: "N", categoryId: "C1", amount: 100_00, date: "2026-07-05" }),
         tx({ type: "expense", accountId: "A", envelopeId: "S", categoryId: "C1", amount: 900_00, date: "2026-07-06" }),
@@ -160,7 +187,10 @@ describe("computeDailySpending", () => {
     const eSav = env(g.id, { id: "S", isSavings: true });
     const a = acc({ id: "A" });
     const l = asClientLedger({
-      accounts: [a], groups: [g], envelopes: [eNorm, eSav], allocations: [],
+      accounts: [a],
+      groups: [g],
+      envelopes: [eNorm, eSav],
+      allocations: [],
       transactions: [
         tx({ type: "expense", accountId: "A", envelopeId: "N", amount: 100_00, date: "2026-07-05" }),
         tx({ type: "expense", accountId: "A", envelopeId: "N", amount: 30_00, isRefund: true, date: "2026-07-05" }),
@@ -198,13 +228,22 @@ describe("computeDailySpending / computeCashflowSeries parity", () => {
     const eSav = env(g.id, { id: "S", isSavings: true });
     const a = acc({ id: "A" });
     const l = asClientLedger({
-      accounts: [a], groups: [g], envelopes: [eNorm, eSav], allocations: [],
+      accounts: [a],
+      groups: [g],
+      envelopes: [eNorm, eSav],
+      allocations: [],
       transactions: [
         tx({ type: "expense", accountId: "A", envelopeId: "N", amount: 100_00, date: "2026-07-03" }),
         tx({ type: "expense", accountId: "A", envelopeId: "N", amount: 20_00, isRefund: true, date: "2026-07-05" }),
         tx({
-          type: "expense", accountId: "A", amount: 100_00, date: "2026-07-10",
-          items: [{ id: "i1", envelopeId: "N", categoryId: null, amount: 60_00 }, { id: "i2", envelopeId: "S", categoryId: null, amount: 40_00 }],
+          type: "expense",
+          accountId: "A",
+          amount: 100_00,
+          date: "2026-07-10",
+          items: [
+            { id: "i1", envelopeId: "N", categoryId: null, amount: 60_00 },
+            { id: "i2", envelopeId: "S", categoryId: null, amount: 40_00 },
+          ],
         }),
         tx({ type: "expense", accountId: "A", envelopeId: "S", amount: 30_00, date: "2026-07-15" }), // fully savings — excluded from both
       ],
@@ -222,7 +261,10 @@ describe("topPlaces", () => {
     const e = env(g.id, { id: "E" });
     const a = acc({ id: "A" });
     const l = asClientLedger({
-      accounts: [a], groups: [g], envelopes: [e], allocations: [],
+      accounts: [a],
+      groups: [g],
+      envelopes: [e],
+      allocations: [],
       transactions: [
         tx({ type: "expense", accountId: "A", envelopeId: "E", placeId: "P1", amount: 100_00, date: "2026-07-01" }),
         tx({ type: "expense", accountId: "A", envelopeId: "E", placeId: "P1", amount: 150_00, date: "2026-07-02" }), // P1: count 2, total 250
@@ -233,7 +275,11 @@ describe("topPlaces", () => {
         tx({ type: "expense", accountId: "A", envelopeId: "E", amount: 50_00, date: "2026-07-07" }), // no place — must not appear
       ],
     });
-    l.places = [{ id: "P1", name: "Sklep A" }, { id: "P2", name: "Sklep B" }, { id: "P3", name: "Sklep C" }];
+    l.places = [
+      { id: "P1", name: "Sklep A" },
+      { id: "P2", name: "Sklep B" },
+      { id: "P3", name: "Sklep C" },
+    ];
     const top = topPlaces(l, "2026-07", "2026-07");
     expect(top.map((p) => p.name)).toEqual(["Sklep B", "Sklep A", "Sklep C"]);
     expect(top[0]!.count).toBe(2);
@@ -247,7 +293,10 @@ describe("topPlaces", () => {
     const a = acc({ id: "A" });
     const placeIds = ["P1", "P2", "P3", "P4", "P5", "P6"];
     const l = asClientLedger({
-      accounts: [a], groups: [g], envelopes: [e], allocations: [],
+      accounts: [a],
+      groups: [g],
+      envelopes: [e],
+      allocations: [],
       transactions: placeIds.map((pid, i) =>
         tx({ type: "expense", accountId: "A", envelopeId: "E", placeId: pid, amount: (i + 1) * 10_00, date: "2026-07-10" }),
       ),
@@ -262,13 +311,19 @@ describe("topPlaces", () => {
     const e = env(g.id, { id: "E" });
     const a = acc({ id: "A" });
     const l = asClientLedger({
-      accounts: [a], groups: [g], envelopes: [e], allocations: [],
+      accounts: [a],
+      groups: [g],
+      envelopes: [e],
+      allocations: [],
       transactions: [
         tx({ type: "expense", accountId: "A", envelopeId: "E", placeId: "PZ", amount: 100_00, date: "2026-07-01" }),
         tx({ type: "expense", accountId: "A", envelopeId: "E", placeId: "PA", amount: 100_00, date: "2026-07-02" }),
       ],
     });
-    l.places = [{ id: "PZ", name: "Zeta" }, { id: "PA", name: "Alfa" }];
+    l.places = [
+      { id: "PZ", name: "Zeta" },
+      { id: "PA", name: "Alfa" },
+    ];
     expect(topPlaces(l, "2026-07", "2026-07").map((p) => p.name)).toEqual(["Alfa", "Zeta"]);
   });
 
@@ -278,11 +333,21 @@ describe("topPlaces", () => {
     const eSav = env(g.id, { id: "S", isSavings: true });
     const a = acc({ id: "A" });
     const l = asClientLedger({
-      accounts: [a], groups: [g], envelopes: [eNorm, eSav], allocations: [],
+      accounts: [a],
+      groups: [g],
+      envelopes: [eNorm, eSav],
+      allocations: [],
       transactions: [
         tx({
-          type: "expense", accountId: "A", placeId: "P1", amount: 200_00, date: "2026-07-05",
-          items: [{ id: "i1", envelopeId: "N", categoryId: null, amount: 50_00 }, { id: "i2", envelopeId: "S", categoryId: null, amount: 150_00 }],
+          type: "expense",
+          accountId: "A",
+          placeId: "P1",
+          amount: 200_00,
+          date: "2026-07-05",
+          items: [
+            { id: "i1", envelopeId: "N", categoryId: null, amount: 50_00 },
+            { id: "i2", envelopeId: "S", categoryId: null, amount: 150_00 },
+          ],
         }),
       ],
     });
@@ -298,7 +363,10 @@ describe("topPlaces", () => {
     const eSav = env(g.id, { id: "S", isSavings: true });
     const a = acc({ id: "A" });
     const l = asClientLedger({
-      accounts: [a], groups: [g], envelopes: [eSav], allocations: [],
+      accounts: [a],
+      groups: [g],
+      envelopes: [eSav],
+      allocations: [],
       transactions: [tx({ type: "expense", accountId: "A", envelopeId: "S", placeId: "P1", amount: 500_00, date: "2026-07-05" })],
     });
     l.places = [{ id: "P1", name: "Sklep" }];
@@ -312,7 +380,10 @@ describe("largestExpenses", () => {
     const e = env(g.id, { id: "E" });
     const a = acc({ id: "A" });
     const l = asClientLedger({
-      accounts: [a], groups: [g], envelopes: [e], allocations: [],
+      accounts: [a],
+      groups: [g],
+      envelopes: [e],
+      allocations: [],
       transactions: [
         tx({ type: "expense", accountId: "A", envelopeId: "E", amount: 100_00, date: "2026-07-01" }),
         tx({ type: "expense", accountId: "A", envelopeId: "E", amount: 300_00, date: "2026-07-02" }),
@@ -329,7 +400,10 @@ describe("largestExpenses", () => {
     const e = env(g.id, { id: "E" });
     const a = acc({ id: "A" });
     const l = asClientLedger({
-      accounts: [a], groups: [g], envelopes: [e], allocations: [],
+      accounts: [a],
+      groups: [g],
+      envelopes: [e],
+      allocations: [],
       transactions: [
         tx({ id: "z", type: "expense", accountId: "A", envelopeId: "E", amount: 100_00, date: "2026-07-10" }),
         tx({ id: "a", type: "expense", accountId: "A", envelopeId: "E", amount: 100_00, date: "2026-07-10" }), // same amount+date as "z" → id asc
@@ -345,10 +419,34 @@ describe("largestExpenses", () => {
     const e = env(g.id, { id: "E", name: "Jedzenie" });
     const a = acc({ id: "A" });
     const l = asClientLedger({
-      accounts: [a], groups: [g], envelopes: [e], allocations: [],
+      accounts: [a],
+      groups: [g],
+      envelopes: [e],
+      allocations: [],
       transactions: [
-        tx({ id: "t1", type: "expense", accountId: "A", envelopeId: "E", categoryId: "C1", placeId: "P1", name: "Kawa", note: "Nota", amount: 10_00, date: "2026-07-01" }),
-        tx({ id: "t2", type: "expense", accountId: "A", envelopeId: "E", categoryId: "C1", name: "Kawa u Zosi", note: "Nota", amount: 20_00, date: "2026-07-02" }),
+        tx({
+          id: "t1",
+          type: "expense",
+          accountId: "A",
+          envelopeId: "E",
+          categoryId: "C1",
+          placeId: "P1",
+          name: "Kawa",
+          note: "Nota",
+          amount: 10_00,
+          date: "2026-07-01",
+        }),
+        tx({
+          id: "t2",
+          type: "expense",
+          accountId: "A",
+          envelopeId: "E",
+          categoryId: "C1",
+          name: "Kawa u Zosi",
+          note: "Nota",
+          amount: 20_00,
+          date: "2026-07-02",
+        }),
         tx({ id: "t3", type: "expense", accountId: "A", envelopeId: "E", categoryId: "C1", note: "Nota", amount: 30_00, date: "2026-07-03" }),
         tx({ id: "t4", type: "expense", accountId: "A", envelopeId: "E", categoryId: "C1", amount: 40_00, date: "2026-07-04" }),
         tx({ id: "t5", type: "expense", accountId: "A", envelopeId: "E", amount: 50_00, date: "2026-07-05" }),
@@ -372,11 +470,20 @@ describe("largestExpenses", () => {
     const e2 = env(g.id, { id: "E2" });
     const a = acc({ id: "A" });
     const l = asClientLedger({
-      accounts: [a], groups: [g], envelopes: [e1, e2], allocations: [],
+      accounts: [a],
+      groups: [g],
+      envelopes: [e1, e2],
+      allocations: [],
       transactions: [
         tx({
-          type: "expense", accountId: "A", amount: 150_00, date: "2026-07-01",
-          items: [{ id: "i1", envelopeId: "E1", categoryId: null, amount: 100_00 }, { id: "i2", envelopeId: "E2", categoryId: null, amount: 50_00 }],
+          type: "expense",
+          accountId: "A",
+          amount: 150_00,
+          date: "2026-07-01",
+          items: [
+            { id: "i1", envelopeId: "E1", categoryId: null, amount: 100_00 },
+            { id: "i2", envelopeId: "E2", categoryId: null, amount: 50_00 },
+          ],
         }),
       ],
     });
@@ -391,11 +498,20 @@ describe("largestExpenses", () => {
     const eSav = env(g.id, { id: "S", isSavings: true });
     const a = acc({ id: "A" });
     const l = asClientLedger({
-      accounts: [a], groups: [g], envelopes: [eNorm, eSav], allocations: [],
+      accounts: [a],
+      groups: [g],
+      envelopes: [eNorm, eSav],
+      allocations: [],
       transactions: [
         tx({
-          type: "expense", accountId: "A", amount: 200_00, date: "2026-07-05",
-          items: [{ id: "i1", envelopeId: "N", categoryId: null, amount: 50_00 }, { id: "i2", envelopeId: "S", categoryId: null, amount: 150_00 }],
+          type: "expense",
+          accountId: "A",
+          amount: 200_00,
+          date: "2026-07-05",
+          items: [
+            { id: "i1", envelopeId: "N", categoryId: null, amount: 50_00 },
+            { id: "i2", envelopeId: "S", categoryId: null, amount: 150_00 },
+          ],
         }),
       ],
     });
@@ -409,11 +525,17 @@ describe("largestExpenses", () => {
     const eSav = env(g.id, { id: "S", isSavings: true });
     const a = acc({ id: "A" });
     const l = asClientLedger({
-      accounts: [a], groups: [g], envelopes: [eSav], allocations: [],
+      accounts: [a],
+      groups: [g],
+      envelopes: [eSav],
+      allocations: [],
       transactions: [
         tx({ type: "expense", accountId: "A", envelopeId: "S", amount: 500_00, date: "2026-07-05" }), // fully savings, non-split
         tx({
-          type: "expense", accountId: "A", amount: 300_00, date: "2026-07-06",
+          type: "expense",
+          accountId: "A",
+          amount: 300_00,
+          date: "2026-07-06",
           items: [{ id: "i1", envelopeId: "S", categoryId: null, amount: 300_00 }], // fully savings, split
         }),
       ],
@@ -426,7 +548,10 @@ describe("largestExpenses", () => {
     const e = env(g.id, { id: "E", name: "Jedzenie" });
     const a = acc({ id: "A" });
     const l = asClientLedger({
-      accounts: [a], groups: [g], envelopes: [e], allocations: [],
+      accounts: [a],
+      groups: [g],
+      envelopes: [e],
+      allocations: [],
       transactions: [tx({ id: "t1", type: "expense", accountId: "A", envelopeId: "E", placeId: "P1", amount: 10_00, date: "2026-07-01" })],
     });
     l.places = [{ id: "P1", name: "Sklep" }];
@@ -440,7 +565,10 @@ describe("largestExpenses", () => {
     const e = env(g.id, { id: "E", name: "Jedzenie" });
     const a = acc({ id: "A" });
     const l = asClientLedger({
-      accounts: [a], groups: [g], envelopes: [e], allocations: [],
+      accounts: [a],
+      groups: [g],
+      envelopes: [e],
+      allocations: [],
       transactions: [tx({ id: "t1", type: "expense", accountId: "A", envelopeId: "E", amount: 10_00, date: "2026-07-01" })],
     });
     const rows = largestExpenses(l, "2026-07");
@@ -455,10 +583,18 @@ describe("largestExpenses", () => {
     const eSav = env(g.id, { id: "SAV", name: "Oszczednosci", isSavings: true });
     const a = acc({ id: "A" });
     const l = asClientLedger({
-      accounts: [a], groups: [g], envelopes: [eSmall, eBig, eSav], allocations: [],
+      accounts: [a],
+      groups: [g],
+      envelopes: [eSmall, eBig, eSav],
+      allocations: [],
       transactions: [
         tx({
-          id: "t1", type: "expense", accountId: "A", placeId: "P1", amount: 700_00, date: "2026-07-01",
+          id: "t1",
+          type: "expense",
+          accountId: "A",
+          placeId: "P1",
+          amount: 700_00,
+          date: "2026-07-01",
           items: [
             { id: "i1", envelopeId: "SM", categoryId: null, amount: 50_00 },
             { id: "i2", envelopeId: "BIG", categoryId: null, amount: 150_00 }, // dominant among non-savings items
@@ -479,7 +615,10 @@ describe("spendingBaseline", () => {
     const e = env(g.id, { id: "E" });
     const a = acc({ id: "A" });
     const l = asClientLedger({
-      accounts: [a], groups: [g], envelopes: [e], allocations: [],
+      accounts: [a],
+      groups: [g],
+      envelopes: [e],
+      allocations: [],
       transactions: [
         tx({ type: "expense", accountId: "A", envelopeId: "E", categoryId: "C1", amount: 100_00, date: "2026-06-10" }),
         // 2026-05: no C1 txn → counts as 0
@@ -497,7 +636,10 @@ describe("spendingBaseline", () => {
     const e = env(g.id, { id: "E" });
     const a = acc({ id: "A" });
     const l = asClientLedger({
-      accounts: [a], groups: [g], envelopes: [e], allocations: [],
+      accounts: [a],
+      groups: [g],
+      envelopes: [e],
+      allocations: [],
       transactions: [
         tx({ type: "expense", accountId: "A", envelopeId: "E", categoryId: "C1", amount: 100_00, date: "2026-06-10" }),
         tx({ type: "expense", accountId: "A", envelopeId: "E", categoryId: "C1", amount: 300_00, date: "2026-04-10" }), // outside a 2-month window
@@ -515,13 +657,22 @@ describe("computeEnvelopeTrends", () => {
     const e1 = env(g.id, { id: "E1", name: "Jedzenie", color: "#111" });
     const a = acc({ id: "A" });
     const l = asClientLedger({
-      accounts: [a], groups: [g], envelopes: [e1], allocations: [],
+      accounts: [a],
+      groups: [g],
+      envelopes: [e1],
+      allocations: [],
       transactions: [
         tx({ type: "expense", accountId: "A", amount: 100_00, date: "2026-05-10", items: [{ id: "i1", envelopeId: "E1", categoryId: null, amount: 100_00 }] }),
         tx({ type: "expense", accountId: "A", amount: 300_00, date: "2026-06-10", items: [{ id: "i2", envelopeId: "E1", categoryId: null, amount: 300_00 }] }),
         tx({
-          type: "expense", accountId: "A", amount: 60_00, date: "2026-07-05",
-          items: [{ id: "i3", envelopeId: "E1", categoryId: null, amount: 40_00 }, { id: "i4", envelopeId: "E1", categoryId: null, amount: 20_00 }],
+          type: "expense",
+          accountId: "A",
+          amount: 60_00,
+          date: "2026-07-05",
+          items: [
+            { id: "i3", envelopeId: "E1", categoryId: null, amount: 40_00 },
+            { id: "i4", envelopeId: "E1", categoryId: null, amount: 20_00 },
+          ],
         }),
       ],
     });
@@ -542,7 +693,10 @@ describe("computeEnvelopeTrends", () => {
     const eArchived = env(g.id, { id: "ARCH", archived: true });
     const a = acc({ id: "A" });
     const l = asClientLedger({
-      accounts: [a], groups: [g], envelopes: [eUsed, eUnused, eArchived], allocations: [],
+      accounts: [a],
+      groups: [g],
+      envelopes: [eUsed, eUnused, eArchived],
+      allocations: [],
       transactions: [
         tx({ type: "expense", accountId: "A", envelopeId: "USED", amount: 50_00, date: "2026-07-05" }),
         tx({ type: "expense", accountId: "A", envelopeId: "ARCH", amount: 999_00, date: "2026-07-05" }),
@@ -557,7 +711,10 @@ describe("computeEnvelopeTrends", () => {
     const eSav = env(g.id, { id: "S", isSavings: true });
     const a = acc({ id: "A" });
     const l = asClientLedger({
-      accounts: [a], groups: [g], envelopes: [eSav], allocations: [],
+      accounts: [a],
+      groups: [g],
+      envelopes: [eSav],
+      allocations: [],
       transactions: [tx({ type: "expense", accountId: "A", envelopeId: "S", amount: 500_00, date: "2026-07-05" })],
     });
     expect(computeEnvelopeTrends(l, "2026-07", 3)).toEqual([]);
@@ -568,7 +725,10 @@ describe("computeEnvelopeTrends", () => {
     const e = env(g.id, { id: "E" });
     const a = acc({ id: "A" });
     const l = asClientLedger({
-      accounts: [a], groups: [g], envelopes: [e], allocations: [],
+      accounts: [a],
+      groups: [g],
+      envelopes: [e],
+      allocations: [],
       transactions: [tx({ type: "expense", accountId: "A", envelopeId: "E", amount: 100_00, date: "2026-07-05" })],
     });
     const t = computeEnvelopeTrends(l, "2026-07", 2)[0]!;
@@ -583,7 +743,10 @@ describe("computeEnvelopeTrends", () => {
     const eSmall = env(g.id, { id: "SMALL" });
     const a = acc({ id: "A" });
     const l = asClientLedger({
-      accounts: [a], groups: [g], envelopes: [eBig, eSmall], allocations: [],
+      accounts: [a],
+      groups: [g],
+      envelopes: [eBig, eSmall],
+      allocations: [],
       transactions: [
         tx({ type: "expense", accountId: "A", envelopeId: "BIG", amount: 100_00, date: "2026-06-10" }),
         tx({ type: "expense", accountId: "A", envelopeId: "BIG", amount: 900_00, date: "2026-07-10" }), // |900−100| = 800

@@ -21,13 +21,7 @@
  *   out — one SENTINEL-prefixed JSON line on stdout: LockChildOutput
  */
 import { sql as dsql, type SQL } from "drizzle-orm";
-import {
-  assertThrowawayDb,
-  emitChildResult,
-  lockObserver,
-  waitFor,
-  withTimeout,
-} from "../api.test-support";
+import { assertThrowawayDb, emitChildResult, lockObserver, waitFor, withTimeout } from "../api.test-support";
 
 export const SENTINEL = "__OPERATION_LOCK_CHILD__";
 
@@ -80,12 +74,7 @@ async function main(): Promise<void> {
   const postgres = (await import("postgres")).default;
   const { db } = await import("./client");
   const s = await import("./schema");
-  const {
-    OPERATION_LOCK,
-    operationLockKey,
-    withOperationLock,
-    withOperationLockInTx,
-  } = await import("./operationLock");
+  const { OPERATION_LOCK, operationLockKey, withOperationLock, withOperationLockInTx } = await import("./operationLock");
   type OperationLockName = (typeof OPERATION_LOCK)[keyof typeof OPERATION_LOCK];
   type Key = ReturnType<typeof operationLockKey>;
 
@@ -130,10 +119,7 @@ async function main(): Promise<void> {
   // While A still holds (operation, sameId): a different id and a different operation both
   // complete — a derivation that ignored half the tuple would block here.
   const otherIdFinishedWhileHeld = await withTimeout(
-    withOperationLock(
-      operationLockKey(OPERATION_LOCK.ensureInitialBudget, `other-${crypto.randomUUID()}`),
-      async () => true,
-    ),
+    withOperationLock(operationLockKey(OPERATION_LOCK.ensureInitialBudget, `other-${crypto.randomUUID()}`), async () => true),
     5_000,
     "different id under a held lock",
   );
@@ -154,10 +140,7 @@ async function main(): Promise<void> {
 
   /* ── 3: a thrown callback rolls back its writes and releases the lock ── */
 
-  const keyRollback = operationLockKey(
-    OPERATION_LOCK.ensureInitialBudget,
-    `rollback-${crypto.randomUUID()}`,
-  );
+  const keyRollback = operationLockKey(OPERATION_LOCK.ensureInitialBudget, `rollback-${crypto.randomUUID()}`);
   const rollbackEmail = `lock-rollback-${crypto.randomUUID()}@example.test`;
   let threw = false;
   try {
@@ -181,13 +164,10 @@ async function main(): Promise<void> {
 
   let callbackPid = 0;
   let lockHeldByCallbackPid = false;
-  await withOperationLock(
-    operationLockKey(OPERATION_LOCK.ensureInitialBudget, `samepid-${crypto.randomUUID()}`),
-    async (tx) => {
-      callbackPid = await backendPid(tx);
-      lockHeldByCallbackPid = (await locks.heldByPid(callbackPid)) >= 1;
-    },
-  );
+  await withOperationLock(operationLockKey(OPERATION_LOCK.ensureInitialBudget, `samepid-${crypto.randomUUID()}`), async (tx) => {
+    callbackPid = await backendPid(tx);
+    lockHeldByCallbackPid = (await locks.heldByPid(callbackPid)) >= 1;
+  });
 
   /* ── 4b: withOperationLockInTx holds until the OUTER transaction commits ── */
 
@@ -196,13 +176,9 @@ async function main(): Promise<void> {
   let outerPid = 0;
   await db.transaction(async (outer) => {
     outerPid = await backendPid(outer);
-    await withOperationLockInTx(
-      outer,
-      operationLockKey(OPERATION_LOCK.ensureInitialBudget, `intx-${crypto.randomUUID()}`),
-      async (tx) => {
-        callbackTxIsOuterTx = tx === outer;
-      },
-    );
+    await withOperationLockInTx(outer, operationLockKey(OPERATION_LOCK.ensureInitialBudget, `intx-${crypto.randomUUID()}`), async (tx) => {
+      callbackTxIsOuterTx = tx === outer;
+    });
     // callback is DONE — the lock must still be held while the outer tx is open
     heldAfterCallbackReturned = (await locks.heldByPid(outerPid)) >= 1;
   });
@@ -227,9 +203,7 @@ async function main(): Promise<void> {
   const forged = (operation: string, id: string): Key => ({ operation, id }) as Key;
   const emptyOperationRejected = await rejects(forged("", "some-id"));
   const emptyIdRejected = await rejects(forged(OPERATION_LOCK.ensureInitialBudget, ""));
-  const oversizedIdRejected = await rejects(
-    forged(OPERATION_LOCK.ensureInitialBudget, "a".repeat(10_000)),
-  );
+  const oversizedIdRejected = await rejects(forged(OPERATION_LOCK.ensureInitialBudget, "a".repeat(10_000)));
   let inTxInvalidRejected = false;
   await db.transaction(async (outer) => {
     try {

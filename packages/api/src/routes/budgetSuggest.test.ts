@@ -2,7 +2,17 @@ import { describe, expect, it } from "bun:test";
 import type { Account, ClientLedger } from "@enveo/shared";
 import { generateSuggestion } from "./budgetSuggest";
 
-const onAcc = (initial: number): Account => ({ id: "A0", name: "K", color: "#fff", icon: "wallet", type: "checking", onBudget: true, initialBalance: initial, archived: false, sort: 0 });
+const onAcc = (initial: number): Account => ({
+  id: "A0",
+  name: "K",
+  color: "#fff",
+  icon: "wallet",
+  type: "checking",
+  onBudget: true,
+  initialBalance: initial,
+  archived: false,
+  sort: 0,
+});
 
 function fixture(): ClientLedger {
   return {
@@ -57,7 +67,9 @@ describe("generateSuggestion — rules path", () => {
   });
 
   it("falls back to rules when askModel throws", async () => {
-    const r = await generateSuggestion(req(), async () => { throw new Error("boom"); });
+    const r = await generateSuggestion(req(), async () => {
+      throw new Error("boom");
+    });
     expect(r.source).toBe("rules");
     expect(r.warnings).toContain("warn.aiUnavailable");
   });
@@ -93,7 +105,9 @@ describe("generateSuggestion — agent path (profile=custom, single prompt)", ()
   });
 
   it("askModel throwing → empty result with warn.aiUnavailable (no rules fallback for custom)", async () => {
-    const r = await generateSuggestion(custom(), async () => { throw new Error("boom"); });
+    const r = await generateSuggestion(custom(), async () => {
+      throw new Error("boom");
+    });
     expect(r.items).toEqual([]);
     expect(r.warnings).toContain("warn.aiUnavailable");
     expect(r.source).toBe("rules");
@@ -115,10 +129,7 @@ describe("openAiAskModel — custom = single prompt with two months (globalThis.
     }) as unknown as typeof globalThis.fetch;
 
     try {
-      const r = await generateSuggestion(
-        { month: "2026-07", profile: "custom", customPrompt: "pomiń Obligacje", ledger: fixture() },
-        openAiAskModel,
-      );
+      const r = await generateSuggestion({ month: "2026-07", profile: "custom", customPrompt: "pomiń Obligacje", ledger: fixture() }, openAiAskModel);
 
       expect(bodies.length).toBe(1); // SINGLE prompt — exactly one call
       const msgs = bodies[0]!.messages as Array<{ role: string; content: string }>;
@@ -142,10 +153,7 @@ describe("openAiAskModel — custom = single prompt with two months (globalThis.
     const realFetch = globalThis.fetch;
     globalThis.fetch = (async () => new Response("nope", { status: 500 })) as unknown as typeof globalThis.fetch;
     try {
-      const r = await generateSuggestion(
-        { month: "2026-07", profile: "custom", customPrompt: "x", ledger: fixture() },
-        openAiAskModel,
-      );
+      const r = await generateSuggestion({ month: "2026-07", profile: "custom", customPrompt: "x", ledger: fixture() }, openAiAskModel);
       expect(r.items).toEqual([]);
       expect(r.warnings).toContain("warn.aiUnavailable");
     } finally {
@@ -170,7 +178,13 @@ describe("POST /ai/chat — operator-key proxy (local-only mode)", () => {
     const { budgetSuggestRoutes } = await import("./budgetSuggest");
     const { Hono } = await import("hono");
     const app = new Hono().route("/", budgetSuggestRoutes);
-    const res = await app.fetch(new Request("http://x/ai/chat", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ messages: [{ role: "user", content: "hi" }] }) }));
+    const res = await app.fetch(
+      new Request("http://x/ai/chat", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ messages: [{ role: "user", content: "hi" }] }),
+      }),
+    );
     // env.OPENAI_API_KEY empty in tests → 503; with an env key the test would need a stub
     if (!process.env.OPENAI_API_KEY) expect(res.status).toBe(503);
   });

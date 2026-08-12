@@ -50,10 +50,7 @@ describe("collectWorkflowBunVersions", () => {
   });
 
   it("skips a `${{ }}` expression — it is an indirection, checked where it is defined", () => {
-    const refs = collectWorkflowBunVersions(
-      "ci.yml",
-      ["env:", '  BUN_VERSION: "1.3.14"', "      bun-version: ${{ env.BUN_VERSION }}"].join("\n"),
-    );
+    const refs = collectWorkflowBunVersions("ci.yml", ["env:", '  BUN_VERSION: "1.3.14"', "      bun-version: ${{ env.BUN_VERSION }}"].join("\n"));
 
     expect(refs).toHaveLength(1);
     expect(refs[0]?.version).toBe("1.3.14");
@@ -62,9 +59,7 @@ describe("collectWorkflowBunVersions", () => {
 
 describe("collectDockerfileBunBases", () => {
   it("reads version, digest and stage name from every FROM line", () => {
-    const bases = collectDockerfileBunBases(
-      ["FROM oven/bun:1.3.14@sha256:aa AS build", "RUN true", "FROM oven/bun:1.3.14@sha256:aa AS runtime"].join("\n"),
-    );
+    const bases = collectDockerfileBunBases(["FROM oven/bun:1.3.14@sha256:aa AS build", "RUN true", "FROM oven/bun:1.3.14@sha256:aa AS runtime"].join("\n"));
 
     expect(bases).toHaveLength(2);
     expect(bases[0]).toMatchObject({ version: "1.3.14", variant: null, digest: "sha256:aa" });
@@ -91,9 +86,7 @@ describe("findDockerBaseProblems", () => {
   const digest = `sha256:${"a".repeat(64)}`;
 
   it("passes when every stage names the pinned version and one well-formed digest", () => {
-    const bases = collectDockerfileBunBases(
-      [`FROM oven/bun:1.3.14@${digest} AS build`, `FROM oven/bun:1.3.14@${digest} AS runtime`].join("\n"),
-    );
+    const bases = collectDockerfileBunBases([`FROM oven/bun:1.3.14@${digest} AS build`, `FROM oven/bun:1.3.14@${digest} AS runtime`].join("\n"));
 
     expect(findDockerBaseProblems("1.3.14", bases)).toEqual([]);
   });
@@ -106,9 +99,7 @@ describe("findDockerBaseProblems", () => {
 
   it("rejects two stages on the SAME variant with different digests", () => {
     const other = `sha256:${"b".repeat(64)}`;
-    const bases = collectDockerfileBunBases(
-      [`FROM oven/bun:1.3.14@${digest} AS build`, `FROM oven/bun:1.3.14@${other} AS runtime`].join("\n"),
-    );
+    const bases = collectDockerfileBunBases([`FROM oven/bun:1.3.14@${digest} AS build`, `FROM oven/bun:1.3.14@${other} AS runtime`].join("\n"));
 
     expect(findDockerBaseProblems("1.3.14", bases).join(" ")).toContain("disagree on its digest");
   });
@@ -117,11 +108,9 @@ describe("findDockerBaseProblems", () => {
     // Enveo builds on Debian (native toolchain) and runs on Alpine (pure-JS closure).
     const alpine = `sha256:${"b".repeat(64)}`;
     const bases = collectDockerfileBunBases(
-      [
-        `FROM oven/bun:1.3.14@${digest} AS build`,
-        `FROM oven/bun:1.3.14-alpine@${alpine} AS deps`,
-        `FROM oven/bun:1.3.14-alpine@${alpine} AS runtime`,
-      ].join("\n"),
+      [`FROM oven/bun:1.3.14@${digest} AS build`, `FROM oven/bun:1.3.14-alpine@${alpine} AS deps`, `FROM oven/bun:1.3.14-alpine@${alpine} AS runtime`].join(
+        "\n",
+      ),
     );
 
     expect(findDockerBaseProblems("1.3.14", bases)).toEqual([]);
@@ -129,9 +118,7 @@ describe("findDockerBaseProblems", () => {
 
   it("still rejects a variant whose VERSION drifted from the pin", () => {
     const alpine = `sha256:${"b".repeat(64)}`;
-    const bases = collectDockerfileBunBases(
-      [`FROM oven/bun:1.3.14@${digest} AS build`, `FROM oven/bun:1.4.0-alpine@${alpine} AS runtime`].join("\n"),
-    );
+    const bases = collectDockerfileBunBases([`FROM oven/bun:1.3.14@${digest} AS build`, `FROM oven/bun:1.4.0-alpine@${alpine} AS runtime`].join("\n"));
 
     expect(findDockerBaseProblems("1.3.14", bases).join(" ")).toContain("version 1.4.0, expected 1.3.14");
   });
@@ -139,9 +126,7 @@ describe("findDockerBaseProblems", () => {
   it("rejects two stages on the same ALPINE variant with different digests", () => {
     const a = `sha256:${"b".repeat(64)}`;
     const b = `sha256:${"c".repeat(64)}`;
-    const bases = collectDockerfileBunBases(
-      [`FROM oven/bun:1.3.14-alpine@${a} AS deps`, `FROM oven/bun:1.3.14-alpine@${b} AS runtime`].join("\n"),
-    );
+    const bases = collectDockerfileBunBases([`FROM oven/bun:1.3.14-alpine@${a} AS deps`, `FROM oven/bun:1.3.14-alpine@${b} AS runtime`].join("\n"));
 
     expect(findDockerBaseProblems("1.3.14", bases).join(" ")).toContain("alpine base disagree on its digest");
   });
@@ -184,9 +169,7 @@ describe("findBunVersionDrift", () => {
       { file: "package.json", where: "@types/bun", version: "1.2.0" },
     ];
 
-    expect(findBunVersionDrift("1.3.14", refs)).toEqual([
-      { file: "package.json", where: "@types/bun", found: "1.2.0", expected: "1.3.14" },
-    ]);
+    expect(findBunVersionDrift("1.3.14", refs)).toEqual([{ file: "package.json", where: "@types/bun", found: "1.2.0", expected: "1.3.14" }]);
   });
 });
 

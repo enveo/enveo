@@ -209,10 +209,7 @@ export function parseBunLock(text: string): ParseResult<InstalledIndex> {
   }
   if (!isRecord(root)) return fail("bun.lock is not a JSON object");
   if (root.lockfileVersion !== 1) {
-    return fail(
-      `unsupported bun.lock lockfileVersion ${JSON.stringify(root.lockfileVersion)} — ` +
-        "review this parser before trusting the audit gate again",
-    );
+    return fail(`unsupported bun.lock lockfileVersion ${JSON.stringify(root.lockfileVersion)} — ` + "review this parser before trusting the audit gate again");
   }
   const packages = root.packages;
   if (!isRecord(packages)) return fail("bun.lock has no `packages` object");
@@ -254,10 +251,7 @@ export function parsePolicy(text: string, now: Date = new Date()): ParseResult<A
   }
   if (!isRecord(root)) return fail("the audit policy file is not a JSON object");
   if (root.schemaVersion !== 1) {
-    return fail(
-      `unsupported audit policy schemaVersion ${JSON.stringify(root.schemaVersion)} — ` +
-        "the evaluator must be reviewed alongside a format change",
-    );
+    return fail(`unsupported audit policy schemaVersion ${JSON.stringify(root.schemaVersion)} — ` + "the evaluator must be reviewed alongside a format change");
   }
   if (!Array.isArray(root.exceptions)) return fail("the audit policy has no `exceptions` array");
 
@@ -280,20 +274,9 @@ export function parsePolicy(text: string, now: Date = new Date()): ParseResult<A
     }
     const severity = raw.severity as Severity;
     if (FORBIDDEN.includes(severity)) {
-      return fail(
-        `exception ${advisoryId} is ${severity}: critical/high advisories have NO exception path`,
-      );
+      return fail(`exception ${advisoryId} is ${severity}: critical/high advisories have NO exception path`);
     }
-    for (const field of [
-      "package",
-      "vulnerableVersions",
-      "scope",
-      "reachability",
-      "mitigation",
-      "fixedVersion",
-      "owner",
-      "rationale",
-    ] as const) {
+    for (const field of ["package", "vulnerableVersions", "scope", "reachability", "mitigation", "fixedVersion", "owner", "rationale"] as const) {
       if (!nonEmptyString(raw[field])) {
         return fail(`exception ${advisoryId} is missing the reviewed field "${field}"`);
       }
@@ -321,10 +304,7 @@ export function parsePolicy(text: string, now: Date = new Date()): ParseResult<A
     // advisory for far longer. Reject a future date, then measure the cap from whichever of
     // (addedOn, today) is LATER — what matters is how long the suppression still has to run.
     if (addedOn.getTime() > now.getTime() + ADDED_ON_SKEW_DAYS * DAY_MS) {
-      return fail(
-        `exception ${advisoryId} has an \`addedOn\` in the future (${raw.addedOn}) — ` +
-          "the expiry window must be measured from a real date",
-      );
+      return fail(`exception ${advisoryId} has an \`addedOn\` in the future (${raw.addedOn}) — ` + "the expiry window must be measured from a real date");
     }
     // Cap BOTH the declared window (expires - addedOn) and the remaining one (expires - now),
     // i.e. measure from whichever date is EARLIER. Capping only the declared window lets a
@@ -333,10 +313,7 @@ export function parsePolicy(text: string, now: Date = new Date()): ParseResult<A
     const from = Math.min(addedOn.getTime(), now.getTime());
     const days = Math.ceil((expires.getTime() - from) / DAY_MS);
     if (days > MAX_EXCEPTION_DAYS) {
-      return fail(
-        `exception ${advisoryId} spans ${days} days — the limit is 90 days or the next release, ` +
-          "whichever is earlier",
-      );
+      return fail(`exception ${advisoryId} spans ${days} days — the limit is 90 days or the next release, ` + "whichever is earlier");
     }
 
     exceptions.push({
@@ -383,12 +360,7 @@ function daysBetween(from: Date, to: Date): number {
   return Math.ceil((to.getTime() - from.getTime()) / DAY_MS);
 }
 
-export function evaluateAudit(input: {
-  advisories: readonly Advisory[];
-  installed: InstalledIndex;
-  policy: AuditPolicy;
-  now: Date;
-}): AuditReport {
+export function evaluateAudit(input: { advisories: readonly Advisory[]; installed: InstalledIndex; policy: AuditPolicy; now: Date }): AuditReport {
   const { advisories, installed, policy, now } = input;
   const entries: ReportEntry[] = [];
   const problems: string[] = [];
@@ -407,15 +379,12 @@ export function evaluateAudit(input: {
     }
     if (matched.length === 0) {
       reject(
-        `no installed version of "${advisory.package}" in bun.lock matches ` +
-          `"${advisory.vulnerableVersions}" — the audit output and the lockfile disagree`,
+        `no installed version of "${advisory.package}" in bun.lock matches ` + `"${advisory.vulnerableVersions}" — the audit output and the lockfile disagree`,
       );
       continue;
     }
 
-    const exception = policy.exceptions.find(
-      (e) => idKey(e.advisoryId) === idKey(advisory.advisoryId),
-    );
+    const exception = policy.exceptions.find((e) => idKey(e.advisoryId) === idKey(advisory.advisoryId));
     if (!exception) {
       reject("no reviewed policy entry — triage it, fix it, or add an exact exception");
       continue;
@@ -427,26 +396,16 @@ export function evaluateAudit(input: {
       continue;
     }
     if (exception.severity !== advisory.severity) {
-      const increased =
-        SEVERITIES.indexOf(advisory.severity) > SEVERITIES.indexOf(exception.severity);
-      reject(
-        `severity ${increased ? "INCREASED" : "changed"} from ${exception.severity} to ` +
-          `${advisory.severity} since the entry was reviewed`,
-      );
+      const increased = SEVERITIES.indexOf(advisory.severity) > SEVERITIES.indexOf(exception.severity);
+      reject(`severity ${increased ? "INCREASED" : "changed"} from ${exception.severity} to ` + `${advisory.severity} since the entry was reviewed`);
       continue;
     }
     if (exception.vulnerableVersions !== advisory.vulnerableVersions) {
-      reject(
-        `affected range changed from "${exception.vulnerableVersions}" to ` +
-          `"${advisory.vulnerableVersions}" since the entry was reviewed`,
-      );
+      reject(`affected range changed from "${exception.vulnerableVersions}" to ` + `"${advisory.vulnerableVersions}" since the entry was reviewed`);
       continue;
     }
     if (!sameInstances(exception.installed, matched)) {
-      reject(
-        "the installed version(s)/path(s) no longer match the entry — got " +
-          matched.map((i) => `${i.version} via ${i.path}`).join(", "),
-      );
+      reject("the installed version(s)/path(s) no longer match the entry — got " + matched.map((i) => `${i.version} via ${i.path}`).join(", "));
       continue;
     }
 
@@ -472,13 +431,9 @@ export function evaluateAudit(input: {
     });
   }
 
-  const staleExceptions = policy.exceptions
-    .filter((e) => !usedExceptions.has(idKey(e.advisoryId)))
-    .map((e) => e.advisoryId);
+  const staleExceptions = policy.exceptions.filter((e) => !usedExceptions.has(idKey(e.advisoryId))).map((e) => e.advisoryId);
   for (const id of staleExceptions) {
-    problems.push(
-      `${id}: stale exception — no installed finding matches it any more, remove it from the policy`,
-    );
+    problems.push(`${id}: stale exception — no installed finding matches it any more, remove it from the policy`);
   }
 
   return { ok: problems.length === 0, entries, staleExceptions, problems };

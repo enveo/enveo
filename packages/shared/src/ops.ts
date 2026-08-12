@@ -275,14 +275,5 @@ export type ClientLedgerInput = z.infer<typeof clientLedgerSchema>;
 export const E2EE_DISABLE_CONFIRM = "DISABLE-E2EE";
 
 /** Tables replicated to the client (DB names; the client maps envelope_groups → groups). */
-export const REPLICATED_TABLES = [
-  "accounts",
-  "envelope_groups",
-  "envelopes",
-  "categories",
-  "places",
-  "transactions",
-  "allocations",
-  "budgets",
-] as const;
+export const REPLICATED_TABLES = ["accounts", "envelope_groups", "envelopes", "categories", "places", "transactions", "allocations", "budgets"] as const;
 export type ReplicatedTable = (typeof REPLICATED_TABLES)[number];

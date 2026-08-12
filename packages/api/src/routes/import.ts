@@ -1,4 +1,14 @@
-import { AI_VISION_TIMEOUT_MS, aiLocaleSchema, buildImportExtractPrompt, languageDirectives, languageName, parseImportExtractResponse, supportsReasoningEffort, type ChatRequest, type ImportExtractItem } from "@enveo/shared";
+import {
+  AI_VISION_TIMEOUT_MS,
+  aiLocaleSchema,
+  buildImportExtractPrompt,
+  languageDirectives,
+  languageName,
+  parseImportExtractResponse,
+  supportsReasoningEffort,
+  type ChatRequest,
+  type ImportExtractItem,
+} from "@enveo/shared";
 import { and, eq, inArray } from "drizzle-orm";
 import { Hono } from "hono";
 import { z } from "zod";
@@ -23,7 +33,10 @@ import { buildDupIndex, classifyDup } from "./import-dedupe";
 export const importRoutes = new Hono();
 
 const extractInput = z.object({
-  images: z.array(z.string().regex(/^data:image\//, "expected an image data-URL")).min(1).max(6),
+  images: z
+    .array(z.string().regex(/^data:image\//, "expected an image data-URL"))
+    .min(1)
+    .max(6),
   /* Any BCP-47 tag (the UI ships ten languages since 2.2.0). Omitted → English, the language
      the app itself is written in; every current client sends its UI language explicitly. */
   locale: aiLocaleSchema.optional(),
@@ -83,7 +96,17 @@ export interface HistMatch {
 export async function matchHistory(budgetId: string, rawPlaces: string[]): Promise<Record<string, HistMatch>> {
   const [txns, envs, cats, plcs] = await Promise.all([
     db
-      .select({ name: s.transactions.name, envelopeId: s.transactions.envelopeId, categoryId: s.transactions.categoryId, placeId: s.transactions.placeId, tag: s.transactions.tag, sourceRef: s.transactions.sourceRef, type: s.transactions.type, isRefund: s.transactions.isRefund, toAccountId: s.transactions.toAccountId })
+      .select({
+        name: s.transactions.name,
+        envelopeId: s.transactions.envelopeId,
+        categoryId: s.transactions.categoryId,
+        placeId: s.transactions.placeId,
+        tag: s.transactions.tag,
+        sourceRef: s.transactions.sourceRef,
+        type: s.transactions.type,
+        isRefund: s.transactions.isRefund,
+        toAccountId: s.transactions.toAccountId,
+      })
       .from(s.transactions)
       .where(eq(s.transactions.budgetId, budgetId)),
     db.select().from(s.envelopes).where(eq(s.envelopes.budgetId, budgetId)),
@@ -137,7 +160,12 @@ export async function matchHistory(budgetId: string, rawPlaces: string[]): Promi
  *  the enrichment chat (cycle 2) stays on the default chat cap. */
 async function openaiJson(req: ChatRequest, timeoutMs?: number): Promise<string> {
   const res = await openAiChatFetch(
-    { model: env.OPENAI_MODEL, messages: req.messages, ...(req.responseFormat ? { response_format: req.responseFormat } : {}), ...(req.reasoningEffort && supportsReasoningEffort(env.OPENAI_MODEL) ? { reasoning_effort: req.reasoningEffort } : {}) },
+    {
+      model: env.OPENAI_MODEL,
+      messages: req.messages,
+      ...(req.responseFormat ? { response_format: req.responseFormat } : {}),
+      ...(req.reasoningEffort && supportsReasoningEffort(env.OPENAI_MODEL) ? { reasoning_effort: req.reasoningEffort } : {}),
+    },
     { apiKey: env.OPENAI_API_KEY, timeoutMs },
   );
   if (!res.ok) {
@@ -180,10 +208,16 @@ importRoutes.post("/import/extract", async (c) => {
 
   /* ── cycle 2: similarity with history + assignments the way the user made them ── */
   const [envelopes, categories] = await Promise.all([
-    db.select({ id: s.envelopes.id, name: s.envelopes.name }).from(s.envelopes).where(and(eq(s.envelopes.budgetId, budgetId), eq(s.envelopes.archived, false))),
+    db
+      .select({ id: s.envelopes.id, name: s.envelopes.name })
+      .from(s.envelopes)
+      .where(and(eq(s.envelopes.budgetId, budgetId), eq(s.envelopes.archived, false))),
     db.select({ id: s.categories.id, name: s.categories.name }).from(s.categories).where(eq(s.categories.budgetId, budgetId)),
   ]);
-  const history = await matchHistory(budgetId, found.map((t) => t.rawPlace));
+  const history = await matchHistory(
+    budgetId,
+    found.map((t) => t.rawPlace),
+  );
 
   const sysEnrich =
     "You assign bank-statement transactions EXACTLY in the style the user has assigned them historically. " +
@@ -208,7 +242,15 @@ importRoutes.post("/import/extract", async (c) => {
   let enriched = new Map<number, z.infer<typeof enrichedTxn>>();
   if (uncertain.length > 0) {
     const enrichPayload = {
-      transactions: uncertain.map(({ t, index }) => ({ index, date: t.date, amount: t.amount, type: t.type, rawPlace: t.rawPlace, tag: t.tag, patterns: history[t.rawPlace]?.patterns ?? [] })),
+      transactions: uncertain.map(({ t, index }) => ({
+        index,
+        date: t.date,
+        amount: t.amount,
+        type: t.type,
+        rawPlace: t.rawPlace,
+        tag: t.tag,
+        patterns: history[t.rawPlace]?.patterns ?? [],
+      })),
     };
     try {
       const raw = await openaiJson({
@@ -256,7 +298,7 @@ importRoutes.post("/import/extract", async (c) => {
       // reclassified as a normal expense. Only when the live read is false does confident
       // learned history (source_ref) get to override it (the previous ?? let a
       // isRefund:false history entry beat a true live read — the bug fixed here).
-      isRefund: proposedType === "expense" ? (t.isRefund || (conf?.isRefund ?? false)) : false,
+      isRefund: proposedType === "expense" ? t.isRefund || (conf?.isRefund ?? false) : false,
       toAccountId: proposedType === "transfer" ? (conf?.toAccountId ?? null) : null,
       name: pick.name,
       tag: t.tag,
@@ -321,13 +363,8 @@ export type ApplyItem = z.infer<typeof applyInput>["items"][number];
 
 /** Transfer validation error in a batch: a transfer without a target account
  *  or with a target account equal to the item's account. Null when all valid. */
-export function findTransferError(
-  items: ApplyItem[],
-  globalAccountId: string,
-): { error: "transfer_invalid"; index: number } | null {
-  const index = items.findIndex(
-    (it) => it.type === "transfer" && (!it.toAccountId || it.toAccountId === (it.accountId ?? globalAccountId)),
-  );
+export function findTransferError(items: ApplyItem[], globalAccountId: string): { error: "transfer_invalid"; index: number } | null {
+  const index = items.findIndex((it) => it.type === "transfer" && (!it.toAccountId || it.toAccountId === (it.accountId ?? globalAccountId)));
   return index === -1 ? null : { error: "transfer_invalid", index };
 }
 
@@ -430,4 +467,3 @@ importRoutes.post("/import/apply", async (c) => {
   }
   return c.json({ added, skipped, dryRun: !!body.dryRun, results });
 });
-

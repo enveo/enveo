@@ -21,7 +21,6 @@ import { Glyph, Ico } from "../lib/icons";
 import { matchesSearch, SEARCH_THRESHOLD } from "../lib/search";
 import { CORAL, P, TEAL, font, tint } from "../lib/theme";
 
-
 export type Tab = "expense" | "income" | "transfer";
 
 /** Draft mode: import item editor — full AddScreen look, but submit does
@@ -134,9 +133,15 @@ export function AddScreen({
   const [accQ, setAccQ] = useState("");
   const [toQ, setToQ] = useState("");
   const [envQ, setEnvQ] = useState("");
-  useEffect(() => { if (showAcc) setAccQ(""); }, [showAcc]);
-  useEffect(() => { if (showTo) setToQ(""); }, [showTo]);
-  useEffect(() => { if (showEnv) setEnvQ(""); }, [showEnv]);
+  useEffect(() => {
+    if (showAcc) setAccQ("");
+  }, [showAcc]);
+  useEffect(() => {
+    if (showTo) setToQ("");
+  }, [showTo]);
+  useEffect(() => {
+    if (showEnv) setEnvQ("");
+  }, [showEnv]);
 
   // editing an existing transaction
   useEffect(() => {
@@ -226,12 +231,22 @@ export function AddScreen({
 
   const press = (k: string) => setPad((p) => padKey(p, k === "DEL" ? "⌫" : k));
 
-  const reset = () => { setEnvelopeId(null); setItems([]); setSplitMode(false); setCategoryId(null); setCatInput(""); setCatOpen(false); };
+  const reset = () => {
+    setEnvelopeId(null);
+    setItems([]);
+    setSplitMode(false);
+    setCategoryId(null);
+    setCatInput("");
+    setCatOpen(false);
+  };
 
   const minor = evalExpression(amount) ?? 0;
   // scroll the amount field to the end (cursor visible) for a long expression
   const amtRef = useRef<HTMLDivElement | null>(null);
-  useEffect(() => { const el = amtRef.current; if (el) el.scrollLeft = el.scrollWidth; }, [amount]);
+  useEffect(() => {
+    const el = amtRef.current;
+    if (el) el.scrollLeft = el.scrollWidth;
+  }, [amount]);
   const splitSum = items.reduce((s, i) => s + i.amount, 0);
   // entering split: the selected envelope becomes the first item with the whole amount
   const enterSplit = () => {
@@ -239,9 +254,7 @@ export function AddScreen({
     setSplitMode(true);
   };
   const submitLabel: Message =
-    tab === "expense" ? (isRefund ? msg("Add refund") : msg("Add expense"))
-      : tab === "income" ? msg("Add income")
-        : msg("Add transfer");
+    tab === "expense" ? (isRefund ? msg("Add refund") : msg("Add expense")) : tab === "income" ? msg("Add income") : msg("Add transfer");
 
   // empty-state backstop: without an account there is nothing to save a transaction on
   const noAccount = accounts.length === 0;
@@ -323,7 +336,11 @@ export function AddScreen({
   const envGridList = withPinned(rankedEnvObjs, envelopeId, 4);
   const catList = withPinned(rankedCats, categoryId, 4);
   const placeList = withPinned(rankedPlaceObjs, placeId, 3);
-  const destList = withPinned(accounts.filter((a) => a.id !== accountId), toAccountId, 4);
+  const destList = withPinned(
+    accounts.filter((a) => a.id !== accountId),
+    toAccountId,
+    4,
+  );
 
   // Live preview for the collapsed KOPERTA row: what the envelope's "available" becomes after
   // this transaction (income/refund add, expense subtracts) — reuses the existing Reports idiom.
@@ -332,23 +349,60 @@ export function AddScreen({
 
   // Chip surface (board spec: pill, centered flex-wrap) — the ghost variant marks "type your own".
   const chipStyle = (selected: boolean): CSSProperties => ({
-    background: selected ? "var(--accent-1a)" : C.card, border: `1px solid ${selected ? "var(--accent)" : C.line}`,
-    color: selected ? "var(--accent)" : C.text, borderRadius: 999, padding: "5px 11px", fontSize: 11,
-    fontWeight: selected ? 650 : 600, cursor: "pointer",
+    background: selected ? "var(--accent-1a)" : C.card,
+    border: `1px solid ${selected ? "var(--accent)" : C.line}`,
+    color: selected ? "var(--accent)" : C.text,
+    borderRadius: 999,
+    padding: "5px 11px",
+    fontSize: 11,
+    fontWeight: selected ? 650 : 600,
+    cursor: "pointer",
   });
-  const ghostChipStyle: CSSProperties = { background: C.card, border: `1px solid ${C.line}`, color: C.mute, borderRadius: 999, padding: "5px 11px", fontSize: 11, cursor: "pointer" };
+  const ghostChipStyle: CSSProperties = {
+    background: C.card,
+    border: `1px solid ${C.line}`,
+    color: C.mute,
+    borderRadius: 999,
+    padding: "5px 11px",
+    fontSize: 11,
+    cursor: "pointer",
+  };
   // KOPERTA/NA KONTO suggestion card (2×2 grid) and its collapsed single-row summary.
   const gridCardStyle = (selected: boolean): CSSProperties => ({
-    display: "flex", alignItems: "center", gap: 7, background: C.card, textAlign: "left", width: "100%",
-    border: `${selected ? 2 : 1}px solid ${selected ? "var(--accent)" : C.line}`, borderRadius: 11,
-    padding: selected ? "7px 9px" : "8px 10px", cursor: "pointer",
+    display: "flex",
+    alignItems: "center",
+    gap: 7,
+    background: C.card,
+    textAlign: "left",
+    width: "100%",
+    border: `${selected ? 2 : 1}px solid ${selected ? "var(--accent)" : C.line}`,
+    borderRadius: 11,
+    padding: selected ? "7px 9px" : "8px 10px",
+    cursor: "pointer",
   });
   const collapsedRowStyle = (accent: boolean): CSSProperties => ({
-    display: "flex", alignItems: "center", gap: 9, textAlign: "left", width: `calc(100% - ${2 * P}px)`,
-    background: accent ? C.card : "none", border: accent ? `2px solid var(--accent)` : `1.3px dashed ${C.line}`,
-    borderRadius: 12, padding: "9px 12px", margin: `0 ${P}px`, cursor: "pointer",
+    display: "flex",
+    alignItems: "center",
+    gap: 9,
+    textAlign: "left",
+    width: `calc(100% - ${2 * P}px)`,
+    background: accent ? C.card : "none",
+    border: accent ? `2px solid var(--accent)` : `1.3px dashed ${C.line}`,
+    borderRadius: 12,
+    padding: "9px 12px",
+    margin: `0 ${P}px`,
+    cursor: "pointer",
   });
-  const linkBtnStyle: CSSProperties = { background: "none", border: "none", padding: 0, color: "var(--accent)", fontSize: 11, fontWeight: 600, cursor: "pointer", fontFamily: font };
+  const linkBtnStyle: CSSProperties = {
+    background: "none",
+    border: "none",
+    padding: 0,
+    color: "var(--accent)",
+    fontSize: 11,
+    fontWeight: 600,
+    cursor: "pointer",
+    fontFamily: font,
+  };
 
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column" }}>
@@ -356,12 +410,36 @@ export function AddScreen({
           in edit, trash + kebab on the right instead of the alignment spacer */}
       <div data-band={band || undefined} style={band ? { background: C.headerBg, paddingBottom: draft ? 6 : undefined } : undefined}>
         <div style={{ display: "flex", alignItems: "center", padding: "8px 10px", gap: 6 }}>
-          <button onClick={draft ? draft.onCancel : onDone} aria-label={t("Back")} style={{ background: "none", border: "none", cursor: "pointer", padding: 4, display: "flex" }}>
+          <button
+            onClick={draft ? draft.onCancel : onDone}
+            aria-label={t("Back")}
+            style={{ background: "none", border: "none", cursor: "pointer", padding: 4, display: "flex" }}
+          >
             <Ico d="M19 12H5m0 0l7 7m-7-7l7-7" size={18} color={hc(C.headerInk, C.text)} />
           </button>
           <div style={{ display: "flex", background: hc(tint(C.headerInk, 0.14), C.chip), borderRadius: 14, padding: 2, flex: 1, border: "none" }}>
             {(["expense", "income", "transfer"] as Tab[]).map((tb) => (
-              <button key={tb} onClick={() => { setTab(tb); reset(); setIsRefund(false); setEnvOpen(tb === "expense"); setDestOpen(false); }} style={{ flex: 1, padding: "8px 0", borderRadius: 11, border: "none", fontSize: 12, fontWeight: 650, cursor: "pointer", background: tab === tb ? (band ? "var(--cta)" : C.text) : "transparent", color: tab === tb ? (band ? C.headerBg : C.card) : band ? C.headerMute : C.soft }}>
+              <button
+                key={tb}
+                onClick={() => {
+                  setTab(tb);
+                  reset();
+                  setIsRefund(false);
+                  setEnvOpen(tb === "expense");
+                  setDestOpen(false);
+                }}
+                style={{
+                  flex: 1,
+                  padding: "8px 0",
+                  borderRadius: 11,
+                  border: "none",
+                  fontSize: 12,
+                  fontWeight: 650,
+                  cursor: "pointer",
+                  background: tab === tb ? (band ? "var(--cta)" : C.text) : "transparent",
+                  color: tab === tb ? (band ? C.headerBg : C.card) : band ? C.headerMute : C.soft,
+                }}
+              >
                 {t(({ expense: msg("Expense"), income: msg("Income"), transfer: msg("Transfer") } as const)[tb])}
               </button>
             ))}
@@ -369,29 +447,91 @@ export function AddScreen({
           {editTxn ? (
             <>
               <button
-                onClick={() => { if (window.confirm(t("Delete this transaction? This cannot be undone."))) { local.deleteTxn(editTxn.id); onDone(); } }}
+                onClick={() => {
+                  if (window.confirm(t("Delete this transaction? This cannot be undone."))) {
+                    local.deleteTxn(editTxn.id);
+                    onDone();
+                  }
+                }}
                 aria-label={t("Delete")}
-                style={{ width: 34, height: 34, borderRadius: 10, border: "none", background: hc(tint(C.headerInk, 0.13), C.surface), cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}
+                style={{
+                  width: 34,
+                  height: 34,
+                  borderRadius: 10,
+                  border: "none",
+                  background: hc(tint(C.headerInk, 0.13), C.surface),
+                  cursor: "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  flexShrink: 0,
+                }}
               >
                 {/* trash: lid + bucket */}
-                <Ico d="M4 7h16M9 7V5a1 1 0 011-1h6a1 1 0 011 1v2m3 0l-.9 12.1A2 2 0 0115.1 21H8.9a2 2 0 01-2-1.9L6 7m4 4v6m4-6v6" size={17} color={hc(C.headerNeg, CORAL)} sw={2} />
+                <Ico
+                  d="M4 7h16M9 7V5a1 1 0 011-1h6a1 1 0 011 1v2m3 0l-.9 12.1A2 2 0 0115.1 21H8.9a2 2 0 01-2-1.9L6 7m4 4v6m4-6v6"
+                  size={17}
+                  color={hc(C.headerNeg, CORAL)}
+                  sw={2}
+                />
               </button>
               <div style={{ position: "relative", flexShrink: 0 }}>
                 <button
                   onClick={() => setShowTxnMenu((v) => !v)}
                   aria-label={t("Duplicate")}
-                  style={{ width: 34, height: 34, borderRadius: 10, border: "none", background: hc(tint(C.headerInk, 0.13), C.surface), cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}
+                  style={{
+                    width: 34,
+                    height: 34,
+                    borderRadius: 10,
+                    border: "none",
+                    background: hc(tint(C.headerInk, 0.13), C.surface),
+                    cursor: "pointer",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                  }}
                 >
                   {/* kebab: 3 dots */}
                   <svg width="17" height="17" viewBox="0 0 24 24" fill={hc(C.headerInk, C.text)}>
-                    <circle cx="12" cy="5" r="2" /><circle cx="12" cy="12" r="2" /><circle cx="12" cy="19" r="2" />
+                    <circle cx="12" cy="5" r="2" />
+                    <circle cx="12" cy="12" r="2" />
+                    <circle cx="12" cy="19" r="2" />
                   </svg>
                 </button>
                 {showTxnMenu && (
-                  <div style={{ position: "absolute", top: 38, right: 0, background: C.card, border: `1px solid ${C.line}`, borderRadius: 10, boxShadow: "0 6px 18px rgba(0,0,0,0.16)", zIndex: 30, minWidth: 150, overflow: "hidden" }}>
+                  <div
+                    style={{
+                      position: "absolute",
+                      top: 38,
+                      right: 0,
+                      background: C.card,
+                      border: `1px solid ${C.line}`,
+                      borderRadius: 10,
+                      boxShadow: "0 6px 18px rgba(0,0,0,0.16)",
+                      zIndex: 30,
+                      minWidth: 150,
+                      overflow: "hidden",
+                    }}
+                  >
                     <button
-                      onClick={() => { setShowTxnMenu(false); local.duplicateTxn(editTxn); onDone(); }}
-                      style={{ display: "block", width: "100%", padding: "11px 14px", background: "none", border: "none", color: C.text, fontSize: 13, fontWeight: 500, cursor: "pointer", textAlign: "left", fontFamily: font }}
+                      onClick={() => {
+                        setShowTxnMenu(false);
+                        local.duplicateTxn(editTxn);
+                        onDone();
+                      }}
+                      style={{
+                        display: "block",
+                        width: "100%",
+                        padding: "11px 14px",
+                        background: "none",
+                        border: "none",
+                        color: C.text,
+                        fontSize: 13,
+                        fontWeight: 500,
+                        cursor: "pointer",
+                        textAlign: "left",
+                        fontFamily: font,
+                      }}
                     >
                       {t("Duplicate")}
                     </button>
@@ -402,8 +542,17 @@ export function AddScreen({
           ) : draft ? (
             <div style={{ width: 26 }} />
           ) : (
-            <button onClick={() => setShowImport(true)} aria-label={t("From screenshot")} style={{ background: "none", border: "none", cursor: "pointer", padding: 4, display: "flex", flexShrink: 0 }}>
-              <Ico d="M4 8.5A1.5 1.5 0 015.5 7H8l1.6-2.4a1 1 0 01.9-.6h3a1 1 0 01.9.6L16 7h2.5A1.5 1.5 0 0120 8.5v9a1.5 1.5 0 01-1.5 1.5h-13A1.5 1.5 0 014 17.5v-9zM12 16a3.5 3.5 0 100-7 3.5 3.5 0 000 7z" size={19} color={hc(C.headerInk, C.soft)} sw={1.7} />
+            <button
+              onClick={() => setShowImport(true)}
+              aria-label={t("From screenshot")}
+              style={{ background: "none", border: "none", cursor: "pointer", padding: 4, display: "flex", flexShrink: 0 }}
+            >
+              <Ico
+                d="M4 8.5A1.5 1.5 0 015.5 7H8l1.6-2.4a1 1 0 01.9-.6h3a1 1 0 01.9.6L16 7h2.5A1.5 1.5 0 0120 8.5v9a1.5 1.5 0 01-1.5 1.5h-13A1.5 1.5 0 014 17.5v-9zM12 16a3.5 3.5 0 100-7 3.5 3.5 0 000 7z"
+                size={19}
+                color={hc(C.headerInk, C.soft)}
+                sw={1.7}
+              />
             </button>
           )}
         </div>
@@ -415,19 +564,47 @@ export function AddScreen({
 
       {/* Amount hero (board .amt-big): centered, 38px/800 tabular; tap anywhere → open the pad.
           The horizontally-scrolling inner div keeps a long expression's cursor end visible. */}
-      <div role="button" tabIndex={0} onClick={() => setNumpad(true)} onKeyDown={(e) => { if (e.target !== e.currentTarget) return; if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setNumpad(true); } }} style={{ padding: "8px 0 2px", cursor: "pointer", display: "flex", justifyContent: "center" }}>
+      <div
+        role="button"
+        tabIndex={0}
+        onClick={() => setNumpad(true)}
+        onKeyDown={(e) => {
+          if (e.target !== e.currentTarget) return;
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            setNumpad(true);
+          }
+        }}
+        style={{ padding: "8px 0 2px", cursor: "pointer", display: "flex", justifyContent: "center" }}
+      >
         <div style={{ display: "inline-flex", alignItems: "baseline", maxWidth: "100%" }}>
           {/* Expense-only sign toggle: −/+ flips isRefund right next to the number (board spec) —
               income/transfer never show it (income is always +, transfer has no sign). */}
           {tab === "expense" && (
             <button
-              onClick={(e) => { e.stopPropagation(); setIsRefund((v) => !v); }}
+              onClick={(e) => {
+                e.stopPropagation();
+                setIsRefund((v) => !v);
+              }}
               aria-label={t("Toggle refund")}
               style={{
-                width: 28, height: 28, borderRadius: "50%", alignSelf: "center", flexShrink: 0, marginRight: 7,
-                border: `1.5px solid ${isRefund ? C.pos : C.line}`, background: isRefund ? tint(C.pos, 0.12) : "none",
-                color: isRefund ? C.pos : C.text, fontSize: 17, fontWeight: 800, lineHeight: 1, padding: 0,
-                display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer",
+                width: 28,
+                height: 28,
+                borderRadius: "50%",
+                alignSelf: "center",
+                flexShrink: 0,
+                marginRight: 7,
+                border: `1.5px solid ${isRefund ? C.pos : C.line}`,
+                background: isRefund ? tint(C.pos, 0.12) : "none",
+                color: isRefund ? C.pos : C.text,
+                fontSize: 17,
+                fontWeight: 800,
+                lineHeight: 1,
+                padding: 0,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                cursor: "pointer",
               }}
             >
               {isRefund ? "+" : "−"}
@@ -435,7 +612,20 @@ export function AddScreen({
           )}
           <div ref={amtRef} className="gs" style={{ overflowX: "auto", whiteSpace: "nowrap", maxWidth: "100%" }}>
             <span style={{ fontSize: 38, fontWeight: 800, color: plus ? C.pos : C.text, fontVariantNumeric: "tabular-nums" }}>{amount || "0"}</span>
-            {numpad && <span style={{ display: "inline-block", width: 2, height: 28, background: "var(--accent)", borderRadius: 1, marginLeft: 3, verticalAlign: "text-bottom", animation: "fi .6s ease-in-out infinite alternate" }} />}
+            {numpad && (
+              <span
+                style={{
+                  display: "inline-block",
+                  width: 2,
+                  height: 28,
+                  background: "var(--accent)",
+                  borderRadius: 1,
+                  marginLeft: 3,
+                  verticalAlign: "text-bottom",
+                  animation: "fi .6s ease-in-out infinite alternate",
+                }}
+              />
+            )}
           </div>
           <span style={{ fontSize: 17, color: C.soft, fontWeight: 700, marginLeft: 5, flexShrink: 0 }}>{currencySymbol(currency, lang)}</span>
         </div>
@@ -446,12 +636,21 @@ export function AddScreen({
           sentence — tiny icons carry the meaning instead ("from account X … date Y" reads in the
           wrong order in several languages). A non-today date warns amber. */}
       <div style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: 6, padding: "0 0 8px" }}>
-        <button onClick={() => setShowAcc(true)} style={{ display: "flex", alignItems: "center", gap: 4, background: "none", border: "none", padding: 2, cursor: "pointer" }}>
+        <button
+          onClick={() => setShowAcc(true)}
+          style={{ display: "flex", alignItems: "center", gap: 4, background: "none", border: "none", padding: 2, cursor: "pointer" }}
+        >
           <Glyph name="wallet" size={11} color={C.mute} />
           <span style={{ fontSize: 11, fontWeight: 700, color: C.soft }}>{accObj?.name ?? t("Account")}</span>
         </button>
         <span style={{ fontSize: 11, color: C.mute }}>·</span>
-        <button onClick={() => { setShowDate(true); setNumpad(false); }} style={{ display: "flex", alignItems: "center", gap: 4, background: "none", border: "none", padding: 2, cursor: "pointer" }}>
+        <button
+          onClick={() => {
+            setShowDate(true);
+            setNumpad(false);
+          }}
+          style={{ display: "flex", alignItems: "center", gap: 4, background: "none", border: "none", padding: 2, cursor: "pointer" }}
+        >
           <Glyph name="calendar" size={11} color={dateColor} />
           <span style={{ fontSize: 11, fontWeight: 700, color: dateColor }}>{dateLabel}</span>
         </button>
@@ -465,7 +664,17 @@ export function AddScreen({
           onChange={(e) => setName(e.target.value)}
           onFocus={() => setNumpad(false)}
           placeholder={t("Name")}
-          style={{ width: "100%", boxSizing: "border-box", background: "none", border: "none", borderBottom: `1px solid ${C.line}`, color: C.text, fontSize: 14, fontFamily: font, padding: "5px 2px" }}
+          style={{
+            width: "100%",
+            boxSizing: "border-box",
+            background: "none",
+            border: "none",
+            borderBottom: `1px solid ${C.line}`,
+            color: C.text,
+            fontSize: 14,
+            fontFamily: font,
+            padding: "5px 2px",
+          }}
         />
       </div>
 
@@ -474,8 +683,12 @@ export function AddScreen({
       {note && (
         <div style={{ display: "flex", alignItems: "center", gap: 8, padding: `0 ${P}px 4px` }}>
           <Ico d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z" size={14} color={C.mute} />
-          <span style={{ flex: 1, minWidth: 0, fontSize: 12.5, color: C.soft, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{note}</span>
-          <button onClick={() => setNote("")} style={{ background: "none", border: "none", color: C.mute, fontSize: 11, cursor: "pointer", flexShrink: 0 }}>✕</button>
+          <span style={{ flex: 1, minWidth: 0, fontSize: 12.5, color: C.soft, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            {note}
+          </span>
+          <button onClick={() => setNote("")} style={{ background: "none", border: "none", color: C.mute, fontSize: 11, cursor: "pointer", flexShrink: 0 }}>
+            ✕
+          </button>
         </div>
       )}
 
@@ -484,15 +697,38 @@ export function AddScreen({
           <>
             <SectionEyebrow
               label={t("Destination account")}
-              right={<button onClick={() => setShowTo(true)} style={linkBtnStyle}>{destOpen ? t("All") : t("Change")} ›</button>}
+              right={
+                <button onClick={() => setShowTo(true)} style={linkBtnStyle}>
+                  {destOpen ? t("All") : t("Change")} ›
+                </button>
+              }
             />
             {destOpen ? (
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 7, padding: `0 ${P}px` }}>
                 {destList.map((a) => (
-                  <button key={a.id} onClick={() => { setToAccountId(a.id); setDestOpen(false); }} style={gridCardStyle(a.id === toAccountId)}>
+                  <button
+                    key={a.id}
+                    onClick={() => {
+                      setToAccountId(a.id);
+                      setDestOpen(false);
+                    }}
+                    style={gridCardStyle(a.id === toAccountId)}
+                  >
                     <Glyph name={a.icon} size={15} color={a.color} sw={1.8} />
                     <span style={{ minWidth: 0 }}>
-                      <span style={{ display: "block", fontSize: 11, fontWeight: 650, color: C.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{a.name}</span>
+                      <span
+                        style={{
+                          display: "block",
+                          fontSize: 11,
+                          fontWeight: 650,
+                          color: C.text,
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        {a.name}
+                      </span>
                       <span style={{ display: "block", fontSize: 9, color: C.soft, fontVariantNumeric: "tabular-nums" }}>{M(a.balance)}</span>
                     </span>
                   </button>
@@ -501,7 +737,20 @@ export function AddScreen({
             ) : (
               <button onClick={() => setShowTo(true)} style={collapsedRowStyle(true)}>
                 {toAcc && <Glyph name={toAcc.icon} size={17} color={toAcc.color} sw={1.8} />}
-                <span style={{ flex: 1, minWidth: 0, fontSize: 12.5, fontWeight: 650, color: C.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{toAcc?.name ?? t("Destination account")}</span>
+                <span
+                  style={{
+                    flex: 1,
+                    minWidth: 0,
+                    fontSize: 12.5,
+                    fontWeight: 650,
+                    color: C.text,
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  {toAcc?.name ?? t("Destination account")}
+                </span>
               </button>
             )}
           </>
@@ -511,16 +760,42 @@ export function AddScreen({
           <>
             <SectionEyebrow
               label={t("Envelope")}
-              right={<button onClick={() => setShowEnv(true)} style={linkBtnStyle}>{envOpen ? t("All") : t("Change")} ›</button>}
+              right={
+                <button onClick={() => setShowEnv(true)} style={linkBtnStyle}>
+                  {envOpen ? t("All") : t("Change")} ›
+                </button>
+              }
             />
             {envOpen ? (
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 7, padding: `0 ${P}px` }}>
                 {envGridList.map((e) => (
-                  <button key={e.id} onClick={() => { setEnvelopeId(e.id); setEnvOpen(false); }} style={gridCardStyle(e.id === envelopeId)}>
+                  <button
+                    key={e.id}
+                    onClick={() => {
+                      setEnvelopeId(e.id);
+                      setEnvOpen(false);
+                    }}
+                    style={gridCardStyle(e.id === envelopeId)}
+                  >
                     <Glyph name={e.icon} size={15} color={e.color} sw={1.8} />
                     <span style={{ minWidth: 0 }}>
-                      <span style={{ display: "block", fontSize: 11, fontWeight: 650, color: C.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{e.name}</span>
-                      <span style={{ display: "block", fontSize: 9, color: C.soft, fontVariantNumeric: "tabular-nums" }}>{e.available < 0 ? "−" : ""}{M(Math.abs(e.available))}</span>
+                      <span
+                        style={{
+                          display: "block",
+                          fontSize: 11,
+                          fontWeight: 650,
+                          color: C.text,
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        {e.name}
+                      </span>
+                      <span style={{ display: "block", fontSize: 9, color: C.soft, fontVariantNumeric: "tabular-nums" }}>
+                        {e.available < 0 ? "−" : ""}
+                        {M(Math.abs(e.available))}
+                      </span>
                     </span>
                   </button>
                 ))}
@@ -528,7 +803,20 @@ export function AddScreen({
             ) : env ? (
               <button onClick={() => setShowEnv(true)} style={collapsedRowStyle(true)}>
                 <Glyph name={env.icon} size={17} color={env.color} sw={1.8} />
-                <span style={{ flex: 1, minWidth: 0, fontSize: 12.5, fontWeight: 650, color: C.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{env.name}</span>
+                <span
+                  style={{
+                    flex: 1,
+                    minWidth: 0,
+                    fontSize: 12.5,
+                    fontWeight: 650,
+                    color: C.text,
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  {env.name}
+                </span>
                 <span style={{ fontSize: 11, color: C.soft, fontVariantNumeric: "tabular-nums", flexShrink: 0 }}>{envPreviewText}</span>
               </button>
             ) : (
@@ -541,25 +829,96 @@ export function AddScreen({
 
         {tab === "expense" && !splitMode && (
           <>
-            <SectionEyebrow label={t("Category")} right={<button onClick={() => setCatOpen(true)} style={linkBtnStyle}>{t("Other")} ›</button>} />
+            <SectionEyebrow
+              label={t("Category")}
+              right={
+                <button onClick={() => setCatOpen(true)} style={linkBtnStyle}>
+                  {t("Other")} ›
+                </button>
+              }
+            />
             {!catOpen && (
               <div style={{ display: "flex", flexWrap: "wrap", gap: 6, padding: `0 ${P}px 4px` }}>
                 {catList.map((c) => (
-                  <button key={c.id} onClick={() => { setCategoryId(categoryId === c.id ? null : c.id); setCatOpen(false); }} style={chipStyle(categoryId === c.id)}>{c.name}</button>
+                  <button
+                    key={c.id}
+                    onClick={() => {
+                      setCategoryId(categoryId === c.id ? null : c.id);
+                      setCatOpen(false);
+                    }}
+                    style={chipStyle(categoryId === c.id)}
+                  >
+                    {c.name}
+                  </button>
                 ))}
               </div>
             )}
             {catOpen && (
               <div style={{ padding: `0 ${P}px 6px` }}>
-                <input value={catInput} onChange={(e) => setCatInput(e.target.value)} onFocus={() => setNumpad(false)} placeholder={t("Type or pick a category...")} style={{ width: "100%", padding: "8px 10px", borderRadius: 8, border: `1px solid ${C.line}`, background: C.bg, color: C.text, fontSize: 12, fontFamily: font, boxSizing: "border-box", marginBottom: 6 }} />
+                <input
+                  value={catInput}
+                  onChange={(e) => setCatInput(e.target.value)}
+                  onFocus={() => setNumpad(false)}
+                  placeholder={t("Type or pick a category...")}
+                  style={{
+                    width: "100%",
+                    padding: "8px 10px",
+                    borderRadius: 8,
+                    border: `1px solid ${C.line}`,
+                    background: C.bg,
+                    color: C.text,
+                    fontSize: 12,
+                    fontFamily: font,
+                    boxSizing: "border-box",
+                    marginBottom: 6,
+                  }}
+                />
                 <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginBottom: 6 }}>
                   {filteredCats.slice(0, 8).map((c) => (
-                    <button key={c.id} onClick={() => { setCategoryId(c.id); setCatInput(""); setCatOpen(false); }} style={{ padding: "5px 10px", borderRadius: 8, fontSize: 11, background: C.chip, color: C.text, border: `1px solid ${C.line}`, cursor: "pointer" }}>{c.name}</button>
+                    <button
+                      key={c.id}
+                      onClick={() => {
+                        setCategoryId(c.id);
+                        setCatInput("");
+                        setCatOpen(false);
+                      }}
+                      style={{
+                        padding: "5px 10px",
+                        borderRadius: 8,
+                        fontSize: 11,
+                        background: C.chip,
+                        color: C.text,
+                        border: `1px solid ${C.line}`,
+                        cursor: "pointer",
+                      }}
+                    >
+                      {c.name}
+                    </button>
                   ))}
                 </div>
                 {/* category creation = local.createCategory — unavailable in draft (zero local.*) */}
                 {!draft && catInput && !state.categories.some((c) => c.name.toLowerCase() === catInput.toLowerCase()) && (
-                  <button onClick={() => { const c = local.createCategory(catInput); setCategoryId(c.id); setCatInput(""); setCatOpen(false); }} style={{ padding: "7px 10px", borderRadius: 8, fontSize: 11, background: tint(C.pos, 0.10), color: C.pos, border: `1px solid ${tint(C.pos, 0.27)}`, cursor: "pointer", width: "100%", textAlign: "left" }}>{t("+ Add “{name}”", { name: catInput })}</button>
+                  <button
+                    onClick={() => {
+                      const c = local.createCategory(catInput);
+                      setCategoryId(c.id);
+                      setCatInput("");
+                      setCatOpen(false);
+                    }}
+                    style={{
+                      padding: "7px 10px",
+                      borderRadius: 8,
+                      fontSize: 11,
+                      background: tint(C.pos, 0.1),
+                      color: C.pos,
+                      border: `1px solid ${tint(C.pos, 0.27)}`,
+                      cursor: "pointer",
+                      width: "100%",
+                      textAlign: "left",
+                    }}
+                  >
+                    {t("+ Add “{name}”", { name: catInput })}
+                  </button>
                 )}
               </div>
             )}
@@ -573,30 +932,131 @@ export function AddScreen({
               {placeList.map((p) => (
                 <button
                   key={p.id}
-                  onClick={() => { if (placeId === p.id) setPlaceId(null); else { setPlaceId(p.id); setPlaceInput(""); setShowPlace(false); } }}
+                  onClick={() => {
+                    if (placeId === p.id) setPlaceId(null);
+                    else {
+                      setPlaceId(p.id);
+                      setPlaceInput("");
+                      setShowPlace(false);
+                    }
+                  }}
                   style={chipStyle(placeId === p.id)}
                 >
                   {p.name}
                 </button>
               ))}
-              <button onClick={() => { const next = !showPlace; setShowPlace(next); setPlaceAutoFocus(next); }} style={ghostChipStyle}>{t("Type a place…")}</button>
+              <button
+                onClick={() => {
+                  const next = !showPlace;
+                  setShowPlace(next);
+                  setPlaceAutoFocus(next);
+                }}
+                style={ghostChipStyle}
+              >
+                {t("Type a place…")}
+              </button>
             </div>
             {showPlace && (
               <div style={{ position: "relative", padding: `0 ${P}px 6px` }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                   <Ico d="M3 9l9-7 9 7v11a1 1 0 01-1 1h-4v-7H8v7H4a1 1 0 01-1-1V9z" size={15} color={placeId ? TEAL : C.mute} />
-                  <input autoFocus={placeAutoFocus} placeholder={t("Place")} value={placeId ? (state.places.find((p) => p.id === placeId)?.name ?? "") : placeInput} onChange={(e) => { setPlaceInput(e.target.value); setPlaceId(null); }} onFocus={() => setNumpad(false)} style={{ flex: 1, background: "none", border: "none", borderBottom: `1px solid ${C.line}`, color: C.text, fontSize: 12, fontFamily: font, padding: "4px 0" }} />
-                  {placeId && <button onClick={() => { setPlaceId(null); setPlaceInput(""); }} style={{ background: "none", border: "none", color: C.mute, fontSize: 11, cursor: "pointer" }}>✕</button>}
+                  <input
+                    autoFocus={placeAutoFocus}
+                    placeholder={t("Place")}
+                    value={placeId ? (state.places.find((p) => p.id === placeId)?.name ?? "") : placeInput}
+                    onChange={(e) => {
+                      setPlaceInput(e.target.value);
+                      setPlaceId(null);
+                    }}
+                    onFocus={() => setNumpad(false)}
+                    style={{
+                      flex: 1,
+                      background: "none",
+                      border: "none",
+                      borderBottom: `1px solid ${C.line}`,
+                      color: C.text,
+                      fontSize: 12,
+                      fontFamily: font,
+                      padding: "4px 0",
+                    }}
+                  />
+                  {placeId && (
+                    <button
+                      onClick={() => {
+                        setPlaceId(null);
+                        setPlaceInput("");
+                      }}
+                      style={{ background: "none", border: "none", color: C.mute, fontSize: 11, cursor: "pointer" }}
+                    >
+                      ✕
+                    </button>
+                  )}
                 </div>
                 {/* in draft the place travels by NAME to /import/apply (server creates/matches) —
                     no local.createPlace button; dropdown only when there are suggestions */}
                 {placeInput && !placeId && (!draft || filteredPlaces.length > 0) && (
-                  <div style={{ position: "absolute", top: "100%", left: 23, right: 0, background: C.card, border: `1px solid ${C.line}`, borderRadius: 8, zIndex: 10, maxHeight: 140, overflowY: "auto", marginTop: 2, boxShadow: "0 4px 14px rgba(0,0,0,0.1)" }}>
+                  <div
+                    style={{
+                      position: "absolute",
+                      top: "100%",
+                      left: 23,
+                      right: 0,
+                      background: C.card,
+                      border: `1px solid ${C.line}`,
+                      borderRadius: 8,
+                      zIndex: 10,
+                      maxHeight: 140,
+                      overflowY: "auto",
+                      marginTop: 2,
+                      boxShadow: "0 4px 14px rgba(0,0,0,0.1)",
+                    }}
+                  >
                     {filteredPlaces.map((p) => (
-                      <button key={p.id} onClick={() => { setPlaceId(p.id); setPlaceInput(""); }} style={{ display: "block", width: "100%", padding: "8px 11px", background: "none", border: "none", borderBottom: `1px solid ${C.line}`, color: C.text, fontSize: 11, cursor: "pointer", textAlign: "left", fontFamily: font }}>{p.name}</button>
+                      <button
+                        key={p.id}
+                        onClick={() => {
+                          setPlaceId(p.id);
+                          setPlaceInput("");
+                        }}
+                        style={{
+                          display: "block",
+                          width: "100%",
+                          padding: "8px 11px",
+                          background: "none",
+                          border: "none",
+                          borderBottom: `1px solid ${C.line}`,
+                          color: C.text,
+                          fontSize: 11,
+                          cursor: "pointer",
+                          textAlign: "left",
+                          fontFamily: font,
+                        }}
+                      >
+                        {p.name}
+                      </button>
                     ))}
                     {!draft && (
-                      <button onClick={() => { const p = local.createPlace(placeInput); setPlaceId(p.id); setPlaceInput(""); }} style={{ display: "block", width: "100%", padding: "8px 11px", background: "none", border: "none", color: TEAL, fontSize: 11, cursor: "pointer", textAlign: "left", fontFamily: font }}>{t("+ “{name}”", { name: placeInput })}</button>
+                      <button
+                        onClick={() => {
+                          const p = local.createPlace(placeInput);
+                          setPlaceId(p.id);
+                          setPlaceInput("");
+                        }}
+                        style={{
+                          display: "block",
+                          width: "100%",
+                          padding: "8px 11px",
+                          background: "none",
+                          border: "none",
+                          color: TEAL,
+                          fontSize: 11,
+                          cursor: "pointer",
+                          textAlign: "left",
+                          fontFamily: font,
+                        }}
+                      >
+                        {t("+ “{name}”", { name: placeInput })}
+                      </button>
                     )}
                   </div>
                 )}
@@ -609,7 +1069,12 @@ export function AddScreen({
             in draft (import editing is the past; it never splits). */}
         {!draft && tab === "expense" && !splitMode && (
           <div style={{ textAlign: "center", padding: "10px 0 6px" }}>
-            <button onClick={enterSplit} style={{ background: "none", border: "none", color: C.soft, fontSize: 11, fontWeight: 600, cursor: "pointer", padding: 0 }}>{t("Split across envelopes")} ›</button>
+            <button
+              onClick={enterSplit}
+              style={{ background: "none", border: "none", color: C.soft, fontSize: 11, fontWeight: 600, cursor: "pointer", padding: 0 }}
+            >
+              {t("Split across envelopes")} ›
+            </button>
           </div>
         )}
       </div>
@@ -619,15 +1084,40 @@ export function AddScreen({
       {numpad && (
         <Numpad
           onKey={press}
-          onOk={() => { if (hasOpenOp(amount)) press("="); else setNumpad(false); }}
+          onOk={() => {
+            if (hasOpenOp(amount)) press("=");
+            else setNumpad(false);
+          }}
           okGlyph={hasOpenOp(amount) ? "equals" : "check"}
           variant="sheet"
         />
       )}
 
       <div style={{ padding: `0 ${P}px calc(8px + env(safe-area-inset-bottom))` }}>
-        {noAccount && <div style={{ fontSize: 11.5, color: C.neg, textAlign: "center", marginBottom: 6 }}>{t("Add an account first — you need one to save a transaction.")}</div>}
-        <button onClick={submit} disabled={minor <= 0 || noAccount} style={{ display: "block", width: "100%", margin: "10px 0 0", background: "var(--cta)", color: band ? C.headerBg : "#fff", textAlign: "center", border: "none", borderRadius: 13, padding: "13px 0", fontSize: 13.5, fontWeight: 700, cursor: "pointer", opacity: minor > 0 && !noAccount ? 1 : 0.4 }}>
+        {noAccount && (
+          <div style={{ fontSize: 11.5, color: C.neg, textAlign: "center", marginBottom: 6 }}>
+            {t("Add an account first — you need one to save a transaction.")}
+          </div>
+        )}
+        <button
+          onClick={submit}
+          disabled={minor <= 0 || noAccount}
+          style={{
+            display: "block",
+            width: "100%",
+            margin: "10px 0 0",
+            background: "var(--cta)",
+            color: band ? C.headerBg : "#fff",
+            textAlign: "center",
+            border: "none",
+            borderRadius: 13,
+            padding: "13px 0",
+            fontSize: 13.5,
+            fontWeight: 700,
+            cursor: "pointer",
+            opacity: minor > 0 && !noAccount ? 1 : 0.4,
+          }}
+        >
           {draft ? t("Save item") : editTxn ? t("Save changes") : t(submitLabel)}
         </button>
       </div>
@@ -646,10 +1136,54 @@ export function AddScreen({
                   <div style={{ textAlign: "center", color: C.mute, fontSize: 13, padding: "24px 0" }}>{t("No matches")}</div>
                 ) : (
                   filtered.map((a) => (
-                    <button key={a.id} onClick={() => { setAccountId(a.id); if (toAccountId === a.id) setToAccountId(accounts.find((x) => x.id !== a.id)?.id ?? ""); setShowAcc(false); }} style={{ display: "flex", alignItems: "center", gap: 11, width: "100%", padding: "9px 0", background: "none", border: "none", cursor: "pointer" }}>
-                      <div style={{ width: 22, height: 22, borderRadius: "50%", border: `2px solid ${accountId === a.id ? TEAL : C.line}`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>{accountId === a.id && <div style={{ width: 11, height: 11, borderRadius: "50%", background: TEAL }} />}</div>
-                      <div style={{ width: 34, height: 34, borderRadius: 10, background: tint(a.color, 0.15), display: "flex", alignItems: "center", justifyContent: "center" }}><Glyph name={a.icon} size={16} color={a.color} /></div>
-                      <span style={{ flex: 1, textAlign: "left", fontSize: 14, color: C.text, fontWeight: 500 }}><HighlightedText text={a.name} query={accQ} /></span>
+                    <button
+                      key={a.id}
+                      onClick={() => {
+                        setAccountId(a.id);
+                        if (toAccountId === a.id) setToAccountId(accounts.find((x) => x.id !== a.id)?.id ?? "");
+                        setShowAcc(false);
+                      }}
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 11,
+                        width: "100%",
+                        padding: "9px 0",
+                        background: "none",
+                        border: "none",
+                        cursor: "pointer",
+                      }}
+                    >
+                      <div
+                        style={{
+                          width: 22,
+                          height: 22,
+                          borderRadius: "50%",
+                          border: `2px solid ${accountId === a.id ? TEAL : C.line}`,
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          flexShrink: 0,
+                        }}
+                      >
+                        {accountId === a.id && <div style={{ width: 11, height: 11, borderRadius: "50%", background: TEAL }} />}
+                      </div>
+                      <div
+                        style={{
+                          width: 34,
+                          height: 34,
+                          borderRadius: 10,
+                          background: tint(a.color, 0.15),
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                        }}
+                      >
+                        <Glyph name={a.icon} size={16} color={a.color} />
+                      </div>
+                      <span style={{ flex: 1, textAlign: "left", fontSize: 14, color: C.text, fontWeight: 500 }}>
+                        <HighlightedText text={a.name} query={accQ} />
+                      </span>
                     </button>
                   ))
                 )}
@@ -673,9 +1207,48 @@ export function AddScreen({
                   <div style={{ textAlign: "center", color: C.mute, fontSize: 13, padding: "24px 0" }}>{t("No matches")}</div>
                 ) : (
                   filtered.map((a) => (
-                    <button key={a.id} onClick={() => { setToAccountId(a.id); setDestOpen(false); setShowTo(false); }} style={{ display: "flex", alignItems: "center", gap: 11, width: "100%", padding: "9px 0", background: "none", border: "none", cursor: "pointer" }}>
-                      <div style={{ width: 34, height: 34, borderRadius: 10, background: tint(a.color, 0.15), display: "flex", alignItems: "center", justifyContent: "center" }}><Glyph name={a.icon} size={16} color={a.color} /></div>
-                      <span style={{ flex: 1, textAlign: "left", fontSize: 14, color: toAccountId === a.id ? TEAL : C.text, fontWeight: toAccountId === a.id ? 600 : 500 }}><HighlightedText text={a.name} query={toQ} /></span>
+                    <button
+                      key={a.id}
+                      onClick={() => {
+                        setToAccountId(a.id);
+                        setDestOpen(false);
+                        setShowTo(false);
+                      }}
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 11,
+                        width: "100%",
+                        padding: "9px 0",
+                        background: "none",
+                        border: "none",
+                        cursor: "pointer",
+                      }}
+                    >
+                      <div
+                        style={{
+                          width: 34,
+                          height: 34,
+                          borderRadius: 10,
+                          background: tint(a.color, 0.15),
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                        }}
+                      >
+                        <Glyph name={a.icon} size={16} color={a.color} />
+                      </div>
+                      <span
+                        style={{
+                          flex: 1,
+                          textAlign: "left",
+                          fontSize: 14,
+                          color: toAccountId === a.id ? TEAL : C.text,
+                          fontWeight: toAccountId === a.id ? 600 : 500,
+                        }}
+                      >
+                        <HighlightedText text={a.name} query={toQ} />
+                      </span>
                     </button>
                   ))
                 )}
@@ -710,12 +1283,58 @@ export function AddScreen({
                       <div style={{ fontSize: 13.5, fontWeight: 600, color: C.text, marginBottom: 8 }}>{g.name}</div>
                       <div>
                         {list.map((e) => (
-                          <button key={e.id} onClick={() => { setEnvelopeId(e.id); setEnvOpen(false); setShowEnv(false); }} style={{ display: "flex", alignItems: "center", gap: 10, width: "100%", padding: "8px 0", background: "none", border: "none", borderBottom: `1px solid ${C.line}`, cursor: "pointer", textAlign: "left" }}>
-                            <span style={{ width: 28, height: 28, borderRadius: 8, background: tint(e.color, 0.16), display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                          <button
+                            key={e.id}
+                            onClick={() => {
+                              setEnvelopeId(e.id);
+                              setEnvOpen(false);
+                              setShowEnv(false);
+                            }}
+                            style={{
+                              display: "flex",
+                              alignItems: "center",
+                              gap: 10,
+                              width: "100%",
+                              padding: "8px 0",
+                              background: "none",
+                              border: "none",
+                              borderBottom: `1px solid ${C.line}`,
+                              cursor: "pointer",
+                              textAlign: "left",
+                            }}
+                          >
+                            <span
+                              style={{
+                                width: 28,
+                                height: 28,
+                                borderRadius: 8,
+                                background: tint(e.color, 0.16),
+                                display: "flex",
+                                alignItems: "center",
+                                justifyContent: "center",
+                                flexShrink: 0,
+                              }}
+                            >
                               <Glyph name={e.icon} size={14} color={e.color} sw={1.7} />
                             </span>
-                            <span style={{ flex: 1, minWidth: 0, fontSize: 13.5, fontWeight: 550, color: C.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}><HighlightedText text={e.name} query={envQ} /></span>
-                            <span style={{ fontSize: 12.5, fontWeight: 700, fontVariantNumeric: "tabular-nums", color: e.available < 0 ? C.neg : C.text }}>{e.available < 0 ? "−" : ""}{M(Math.abs(e.available))}</span>
+                            <span
+                              style={{
+                                flex: 1,
+                                minWidth: 0,
+                                fontSize: 13.5,
+                                fontWeight: 550,
+                                color: C.text,
+                                overflow: "hidden",
+                                textOverflow: "ellipsis",
+                                whiteSpace: "nowrap",
+                              }}
+                            >
+                              <HighlightedText text={e.name} query={envQ} />
+                            </span>
+                            <span style={{ fontSize: 12.5, fontWeight: 700, fontVariantNumeric: "tabular-nums", color: e.available < 0 ? C.neg : C.text }}>
+                              {e.available < 0 ? "−" : ""}
+                              {M(Math.abs(e.available))}
+                            </span>
                           </button>
                         ))}
                       </div>
@@ -731,7 +1350,19 @@ export function AddScreen({
   );
 }
 
-function SplitEditor({ items, setItems, envelopes, total, onCancel }: { items: Array<{ envelopeId: string; amount: number }>; setItems: (i: Array<{ envelopeId: string; amount: number }>) => void; envelopes: StateResponse["envelopes"]; total: number; onCancel: () => void }) {
+function SplitEditor({
+  items,
+  setItems,
+  envelopes,
+  total,
+  onCancel,
+}: {
+  items: Array<{ envelopeId: string; amount: number }>;
+  setItems: (i: Array<{ envelopeId: string; amount: number }>) => void;
+  envelopes: StateResponse["envelopes"];
+  total: number;
+  onCancel: () => void;
+}) {
   const C = useTheme();
   const M = useMask();
   const { t, lang } = useT();
@@ -758,7 +1389,9 @@ function SplitEditor({ items, setItems, envelopes, total, onCancel }: { items: A
   // balances) — reopening the full grouped showEnv sheet for every row would be noisy for a split.
   const [pickFor, setPickFor] = useState<number | null>(null);
   const [splitQ, setSplitQ] = useState("");
-  useEffect(() => { if (pickFor !== null) setSplitQ(""); }, [pickFor]);
+  useEffect(() => {
+    if (pickFor !== null) setSplitQ("");
+  }, [pickFor]);
   const matched = sum === total;
   const fillPct = total > 0 ? Math.min(100, Math.max(0, Math.round((sum / total) * 100))) : 0;
 
@@ -766,29 +1399,118 @@ function SplitEditor({ items, setItems, envelopes, total, onCancel }: { items: A
     <div style={{ padding: "4px 0 10px" }}>
       <SectionEyebrow
         label={t("Split across envelopes")}
-        right={<button onClick={onCancel} style={{ background: "none", border: "none", color: C.soft, fontSize: 11, fontWeight: 600, cursor: "pointer", padding: 0 }}>{t("cancel split")}</button>}
+        right={
+          <button
+            onClick={onCancel}
+            style={{ background: "none", border: "none", color: C.soft, fontSize: 11, fontWeight: 600, cursor: "pointer", padding: 0 }}
+          >
+            {t("cancel split")}
+          </button>
+        }
       />
       <CardBox style={{ padding: 0 }}>
         {items.map((it, idx) => {
           const e = envById.get(it.envelopeId);
           return (
-            <div key={idx} style={{ display: "flex", alignItems: "center", gap: 9, padding: "10px 14px", borderBottom: idx < items.length - 1 ? `1px solid ${C.line}` : "none" }}>
-              <button onClick={() => setPickFor(idx)} style={{ display: "flex", alignItems: "center", gap: 8, flex: 1, minWidth: 0, background: "none", border: "none", padding: 0, cursor: "pointer", textAlign: "left" }}>
-                <span style={{ width: 26, height: 26, borderRadius: 8, background: e ? tint(e.color, 0.16) : C.chip, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+            <div
+              key={idx}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 9,
+                padding: "10px 14px",
+                borderBottom: idx < items.length - 1 ? `1px solid ${C.line}` : "none",
+              }}
+            >
+              <button
+                onClick={() => setPickFor(idx)}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 8,
+                  flex: 1,
+                  minWidth: 0,
+                  background: "none",
+                  border: "none",
+                  padding: 0,
+                  cursor: "pointer",
+                  textAlign: "left",
+                }}
+              >
+                <span
+                  style={{
+                    width: 26,
+                    height: 26,
+                    borderRadius: 8,
+                    background: e ? tint(e.color, 0.16) : C.chip,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    flexShrink: 0,
+                  }}
+                >
                   {e && <Glyph name={e.icon} size={13} color={e.color} sw={1.7} />}
                 </span>
-                <span style={{ flex: 1, minWidth: 0, fontSize: 12.5, fontWeight: 600, color: e ? C.text : C.mute, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                <span
+                  style={{
+                    flex: 1,
+                    minWidth: 0,
+                    fontSize: 12.5,
+                    fontWeight: 600,
+                    color: e ? C.text : C.mute,
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    whiteSpace: "nowrap",
+                  }}
+                >
                   {e?.name ?? t("Pick an envelope…")}
                 </span>
               </button>
-              <button onClick={() => openPad(idx)} style={{ background: C.chip, border: "none", borderRadius: 8, padding: "6px 10px", color: C.text, fontSize: 12.5, fontWeight: 650, fontFamily: font, fontVariantNumeric: "tabular-nums", cursor: "pointer", flexShrink: 0 }}>
+              <button
+                onClick={() => openPad(idx)}
+                style={{
+                  background: C.chip,
+                  border: "none",
+                  borderRadius: 8,
+                  padding: "6px 10px",
+                  color: C.text,
+                  fontSize: 12.5,
+                  fontWeight: 650,
+                  fontFamily: font,
+                  fontVariantNumeric: "tabular-nums",
+                  cursor: "pointer",
+                  flexShrink: 0,
+                }}
+              >
                 {formatMoney(it.amount, currency, lang)}
               </button>
-              <button onClick={() => setItems(items.filter((_, i) => i !== idx))} style={{ background: "none", border: "none", color: C.neg, fontSize: 15, cursor: "pointer", padding: "0 0 0 2px", flexShrink: 0 }}>✕</button>
+              <button
+                onClick={() => setItems(items.filter((_, i) => i !== idx))}
+                style={{ background: "none", border: "none", color: C.neg, fontSize: 15, cursor: "pointer", padding: "0 0 0 2px", flexShrink: 0 }}
+              >
+                ✕
+              </button>
             </div>
           );
         })}
-        <button onClick={add} style={{ display: "block", width: "100%", boxSizing: "border-box", padding: "10px 14px", background: "none", border: "none", borderTop: items.length ? `1.3px dashed ${C.line}` : "none", color: C.mute, fontSize: 12, fontWeight: 600, fontFamily: font, cursor: "pointer", textAlign: "center" }}>
+        <button
+          onClick={add}
+          style={{
+            display: "block",
+            width: "100%",
+            boxSizing: "border-box",
+            padding: "10px 14px",
+            background: "none",
+            border: "none",
+            borderTop: items.length ? `1.3px dashed ${C.line}` : "none",
+            color: C.mute,
+            fontSize: 12,
+            fontWeight: 600,
+            fontFamily: font,
+            cursor: "pointer",
+            textAlign: "center",
+          }}
+        >
           {t("+ Add item")}
         </button>
       </CardBox>
@@ -820,13 +1542,51 @@ function SplitEditor({ items, setItems, envelopes, total, onCancel }: { items: A
                   filtered.map((e) => (
                     <button
                       key={e.id}
-                      onClick={() => { if (pickFor !== null) setItems(items.map((x, i) => (i === pickFor ? { ...x, envelopeId: e.id } : x))); setPickFor(null); }}
-                      style={{ display: "flex", alignItems: "center", gap: 10, width: "100%", padding: "8px 0", background: "none", border: "none", borderBottom: `1px solid ${C.line}`, cursor: "pointer", textAlign: "left" }}
+                      onClick={() => {
+                        if (pickFor !== null) setItems(items.map((x, i) => (i === pickFor ? { ...x, envelopeId: e.id } : x)));
+                        setPickFor(null);
+                      }}
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 10,
+                        width: "100%",
+                        padding: "8px 0",
+                        background: "none",
+                        border: "none",
+                        borderBottom: `1px solid ${C.line}`,
+                        cursor: "pointer",
+                        textAlign: "left",
+                      }}
                     >
-                      <span style={{ width: 28, height: 28, borderRadius: 8, background: tint(e.color, 0.16), display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                      <span
+                        style={{
+                          width: 28,
+                          height: 28,
+                          borderRadius: 8,
+                          background: tint(e.color, 0.16),
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          flexShrink: 0,
+                        }}
+                      >
                         <Glyph name={e.icon} size={14} color={e.color} sw={1.7} />
                       </span>
-                      <span style={{ flex: 1, minWidth: 0, fontSize: 13.5, fontWeight: 550, color: C.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}><HighlightedText text={e.name} query={splitQ} /></span>
+                      <span
+                        style={{
+                          flex: 1,
+                          minWidth: 0,
+                          fontSize: 13.5,
+                          fontWeight: 550,
+                          color: C.text,
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        <HighlightedText text={e.name} query={splitQ} />
+                      </span>
                     </button>
                   ))
                 )}
@@ -856,9 +1616,29 @@ function DateSheet({ show, date, onClose, onChange }: { show: boolean; date: str
       {(C) => (
         <>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", paddingBottom: 10, borderBottom: `1px solid ${C.line}` }}>
-            <button onClick={() => { const dt = new Date(`${todayIso}T00:00Z`); dt.setUTCDate(dt.getUTCDate() - 1); onChange(dt.toISOString().slice(0, 10)); onClose(); }} style={{ background: "none", border: "none", color: TEAL, fontSize: 13.5, fontWeight: 600, cursor: "pointer" }}>{t("Yesterday")}</button>
-            <button onClick={() => { onChange(todayIso); onClose(); }} style={{ background: "none", border: "none", color: TEAL, fontSize: 13.5, fontWeight: 600, cursor: "pointer" }}>{t("Today")}</button>
-            <button onClick={onClose} style={{ background: "none", border: "none", color: TEAL, fontSize: 13.5, fontWeight: 600, cursor: "pointer" }}>OK</button>
+            <button
+              onClick={() => {
+                const dt = new Date(`${todayIso}T00:00Z`);
+                dt.setUTCDate(dt.getUTCDate() - 1);
+                onChange(dt.toISOString().slice(0, 10));
+                onClose();
+              }}
+              style={{ background: "none", border: "none", color: TEAL, fontSize: 13.5, fontWeight: 600, cursor: "pointer" }}
+            >
+              {t("Yesterday")}
+            </button>
+            <button
+              onClick={() => {
+                onChange(todayIso);
+                onClose();
+              }}
+              style={{ background: "none", border: "none", color: TEAL, fontSize: 13.5, fontWeight: 600, cursor: "pointer" }}
+            >
+              {t("Today")}
+            </button>
+            <button onClick={onClose} style={{ background: "none", border: "none", color: TEAL, fontSize: 13.5, fontWeight: 600, cursor: "pointer" }}>
+              OK
+            </button>
           </div>
           <div style={{ display: "flex", justifyContent: "center", marginTop: 4 }}>
             <ScrollPicker items={days} selected={d} onSelect={(v) => set(v, m - 1, y)} width="28%" />

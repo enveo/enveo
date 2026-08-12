@@ -114,10 +114,7 @@ class IdbBackend implements StorageBackend {
             return await openRaw();
           } catch (second) {
             this.fellBack = true;
-            console.warn(
-              "IndexedDB unrecoverable — in-memory mode (the app works, nothing persists)",
-              second,
-            );
+            console.warn("IndexedDB unrecoverable — in-memory mode (the app works, nothing persists)", second);
             return null;
           }
         }
@@ -277,10 +274,7 @@ export function idbPut(store: StoreName, value: unknown, key?: IDBValidKey): Pro
 }
 
 /** Multiple puts in ONE transaction (atomic: all or nothing). */
-export function idbPutMany(
-  store: StoreName,
-  entries: Array<{ value: unknown; key?: IDBValidKey }>,
-): Promise<void> {
+export function idbPutMany(store: StoreName, entries: Array<{ value: unknown; key?: IDBValidKey }>): Promise<void> {
   return activeBackend().putMany(store, entries);
 }
 

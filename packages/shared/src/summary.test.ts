@@ -12,15 +12,15 @@ import type { ClientLedger } from "./types";
 function fixture(): ClientLedger {
   const g = grp({ id: "G1" });
   return {
-    accounts: [
-      acc({ id: "A-on", initialBalance: 100_00 }),
-      acc({ id: "A-off", onBudget: false }),
-    ],
+    accounts: [acc({ id: "A-on", initialBalance: 100_00 }), acc({ id: "A-off", onBudget: false })],
     groups: [g],
     envelopes: [env("G1", { id: "E1" }), env("G1", { id: "E2" })],
     allocations: [alloc("E1", "2026-06", 50_00)],
     transactions: [],
-    categories: [{ id: "C1", name: "Jedzenie" }, { id: "C2", name: "Chemia" }],
+    categories: [
+      { id: "C1", name: "Jedzenie" },
+      { id: "C2", name: "Chemia" },
+    ],
     places: [],
   };
 }
@@ -28,21 +28,12 @@ function fixture(): ClientLedger {
 describe("computeEnvelopeSummary — 6-month series", () => {
   it("covers the selected month + 5 back, in ascending order", () => {
     const s = computeEnvelopeSummary(deepFreeze(fixture()), "E1", "2026-07");
-    expect(s.series.map((p) => p.month)).toEqual([
-      "2026-02",
-      "2026-03",
-      "2026-04",
-      "2026-05",
-      "2026-06",
-      "2026-07",
-    ]);
+    expect(s.series.map((p) => p.month)).toEqual(["2026-02", "2026-03", "2026-04", "2026-05", "2026-06", "2026-07"]);
   });
 
   it("QUIRK: counts spending also from OFF-budget accounts (unlike computeBudgetState)", () => {
     const l = fixture();
-    l.transactions = [
-      tx({ accountId: "A-off", envelopeId: "E1", amount: 7_00, date: "2026-06-05" }),
-    ];
+    l.transactions = [tx({ accountId: "A-off", envelopeId: "E1", amount: 7_00, date: "2026-06-05" })];
     const s = computeEnvelopeSummary(l, "E1", "2026-06");
     expect(s.series.at(-1)!.spent).toBe(7_00); // the series counts it
     expect(computeBudgetState(l, "2026-06").envelopes[0]!.spent).toBe(0); // the budget does not
@@ -161,7 +152,10 @@ function windowFixture(): ClientLedger {
       tx({ accountId: "A-on", envelopeId: "E1", categoryId: "C1", amount: 999_00, date: "2025-06-20" }),
     ],
     budgets: [],
-    categories: [{ id: "C1", name: "Jedzenie" }, { id: "C2", name: "Chemia" }],
+    categories: [
+      { id: "C1", name: "Jedzenie" },
+      { id: "C2", name: "Chemia" },
+    ],
     places: [],
   };
 }
@@ -175,9 +169,7 @@ describe("computeEnvelopeSummary — category windows (opts.categoryMonths)", ()
       { categoryId: "C2", name: "Chemia", amount: 12_00 },
     ]);
     // explicit {categoryMonths: 1} = same as default
-    expect(computeEnvelopeSummary(windowFixture(), "E1", "2026-06", { categoryMonths: 1 }).categories).toEqual(
-      s.categories,
-    );
+    expect(computeEnvelopeSummary(windowFixture(), "E1", "2026-06", { categoryMonths: 1 }).categories).toEqual(s.categories);
     expect(s.categoriesTotal).toBe(27_00);
   });
 

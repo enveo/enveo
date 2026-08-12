@@ -23,7 +23,9 @@ export function InstallBody({ onDone }: { onDone?: () => void }) {
 
   const step = (d: string, label: React.ReactNode) => (
     <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-      <span style={{ width: 34, height: 34, borderRadius: 9, background: C.inset, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+      <span
+        style={{ width: 34, height: 34, borderRadius: 9, background: C.inset, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}
+      >
         <Ico d={d} size={18} color={C.soft} sw={1.7} />
       </span>
       <span style={{ fontSize: 13.5, color: C.text }}>{label}</span>
@@ -37,10 +39,24 @@ export function InstallBody({ onDone }: { onDone?: () => void }) {
           {t("Add Enveo to your device so it opens like any other app — offline, full screen, one tap away.")}
         </div>
         <button
-          onClick={() => void promptInstall().catch(() => {}).finally(() => onDone?.())}
+          onClick={() =>
+            void promptInstall()
+              .catch(() => {})
+              .finally(() => onDone?.())
+          }
           // band-aware CTA ink, the same idiom as every other primary button (screens/Add.tsx):
           // on the Duet theme (navy band) the ink is the header background, not white
-          style={{ width: "100%", padding: "13px 0", borderRadius: 12, border: "none", background: "var(--cta)", color: band ? C.headerBg : "#fff", fontSize: 15, fontWeight: 700, cursor: "pointer" }}
+          style={{
+            width: "100%",
+            padding: "13px 0",
+            borderRadius: 12,
+            border: "none",
+            background: "var(--cta)",
+            color: band ? C.headerBg : "#fff",
+            fontSize: 15,
+            fontWeight: 700,
+            cursor: "pointer",
+          }}
         >
           {t("Install")}
         </button>
@@ -57,11 +73,23 @@ export function InstallBody({ onDone }: { onDone?: () => void }) {
 
     return (
       <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-        <div style={{ fontSize: 13.5, color: C.soft, lineHeight: 1.45 }}>
-          {t("Add Enveo to your home screen so it opens like any other app:")}
-        </div>
-        {step(SHARE, <span>{tapShareBefore}<b>{share}</b>{tapShareAfter}</span>)}
-        {step(PLUS_BOX, <span>{thenAddBefore}<b>{addToHome}</b>{thenAddAfter}</span>)}
+        <div style={{ fontSize: 13.5, color: C.soft, lineHeight: 1.45 }}>{t("Add Enveo to your home screen so it opens like any other app:")}</div>
+        {step(
+          SHARE,
+          <span>
+            {tapShareBefore}
+            <b>{share}</b>
+            {tapShareAfter}
+          </span>,
+        )}
+        {step(
+          PLUS_BOX,
+          <span>
+            {thenAddBefore}
+            <b>{addToHome}</b>
+            {thenAddAfter}
+          </span>,
+        )}
       </div>
     );
   }

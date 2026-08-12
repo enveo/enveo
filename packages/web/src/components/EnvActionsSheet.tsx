@@ -39,32 +39,67 @@ export function EnvActionsSheet({
           </div>
         );
         const secondary = (label: string, onClick: () => void) => (
-          <button onClick={onClick} style={{ flex: 1, padding: 11, borderRadius: 12, background: C.bg, border: `1px solid ${C.line}`, color: C.text, fontSize: 13.5, fontWeight: 600, cursor: "pointer" }}>
+          <button
+            onClick={onClick}
+            style={{
+              flex: 1,
+              padding: 11,
+              borderRadius: 12,
+              background: C.bg,
+              border: `1px solid ${C.line}`,
+              color: C.text,
+              fontSize: 13.5,
+              fontWeight: 600,
+              cursor: "pointer",
+            }}
+          >
             {label}
           </button>
         );
         return (
           <>
             <div style={{ display: "flex", alignItems: "center", gap: 13, marginBottom: 14 }}>
-              <div style={{ width: 44, height: 44, borderRadius: 11, background: env.color, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+              <div
+                style={{
+                  width: 44,
+                  height: 44,
+                  borderRadius: 11,
+                  background: env.color,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  flexShrink: 0,
+                }}
+              >
                 <Glyph name={env.icon} size={20} color={isLight(env.color) ? "#33312c" : "#fff"} />
               </div>
               <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 19, fontWeight: 700, color: C.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{env.name}</div>
+                <div style={{ fontSize: 19, fontWeight: 700, color: C.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  {env.name}
+                </div>
                 <div style={{ fontSize: 12.5, color: C.soft, fontVariantNumeric: "tabular-nums", marginTop: 2 }}>
                   {t("Allocated {allocated} · Spent {spent}", { allocated: M(env.allocated), spent: M(Math.max(0, env.spent)) })}
                 </div>
               </div>
             </div>
             <div style={{ display: "flex", gap: 8, marginBottom: 14 }}>
-              {badge(
-                t("AVAILABLE"),
-                `${env.available < 0 ? "-" : ""}${M(Math.abs(env.available))}`,
-                env.available < 0 ? C.neg : C.pos,
-              )}
+              {badge(t("AVAILABLE"), `${env.available < 0 ? "-" : ""}${M(Math.abs(env.available))}`, env.available < 0 ? C.neg : C.pos)}
               {badge(t("CARRIED OVER"), `${sign}${M(Math.abs(env.carryIn))}`, C.soft)}
             </div>
-            <button onClick={onSummary} style={{ width: "100%", padding: 12, borderRadius: 12, border: "none", background: CTA, color: "#fff", fontSize: 14, fontWeight: 700, cursor: "pointer" }}>
+            <button
+              onClick={onSummary}
+              style={{
+                width: "100%",
+                padding: 12,
+                borderRadius: 12,
+                border: "none",
+                background: CTA,
+                color: "#fff",
+                fontSize: 14,
+                fontWeight: 700,
+                cursor: "pointer",
+              }}
+            >
               {t("Summary")}
             </button>
             <div style={{ display: "flex", gap: 8, marginTop: 8, paddingBottom: 4 }}>

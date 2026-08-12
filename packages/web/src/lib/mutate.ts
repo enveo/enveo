@@ -59,8 +59,7 @@ function ledger() {
   return l;
 }
 
-const findByName = <T extends { name: string }>(rows: T[], name: string): T | undefined =>
-  rows.find((r) => r.name.toLowerCase() === name.toLowerCase());
+const findByName = <T extends { name: string }>(rows: T[], name: string): T | undefined => rows.find((r) => r.name.toLowerCase() === name.toLowerCase());
 
 /* ── Transactions ──────────────────────────────────────────────────────── */
 

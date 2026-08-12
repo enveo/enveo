@@ -51,9 +51,7 @@ describe("import/apply — extended items", () => {
       index: 0,
     });
     // toAccountId == the account overridden per item (global one differs — still an error)
-    expect(
-      findTransferError([baseItem({ type: "transfer", accountId: ACC_B, toAccountId: ACC_B })], ACC_A),
-    ).toEqual({ error: "transfer_invalid", index: 0 });
+    expect(findTransferError([baseItem({ type: "transfer", accountId: ACC_B, toAccountId: ACC_B })], ACC_A)).toEqual({ error: "transfer_invalid", index: 0 });
   });
 
   it("refund: is_refund true only for expense; ignored for income", () => {

@@ -1,19 +1,5 @@
 import { sql } from "drizzle-orm";
-import {
-  bigint,
-  bigserial,
-  boolean,
-  date,
-  index,
-  integer,
-  pgEnum,
-  pgTable,
-  text,
-  timestamp,
-  unique,
-  uniqueIndex,
-  uuid,
-} from "drizzle-orm/pg-core";
+import { bigint, bigserial, boolean, date, index, integer, pgEnum, pgTable, text, timestamp, unique, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 
 /** Amounts in MINOR UNITS / grosz (BIGINT, mode number — safe for a household budget). */
 const money = (name: string) => bigint(name, { mode: "number" });
@@ -33,7 +19,9 @@ export const users = pgTable("users", {
 /** better-auth sessions (model `session`). */
 export const authSessions = pgTable("auth_sessions", {
   id: uuid("id").primaryKey(),
-  userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  userId: uuid("user_id")
+    .notNull()
+    .references(() => users.id, { onDelete: "cascade" }),
   token: text("token").notNull().unique(),
   expiresAt: timestamp("expires_at", { withTimezone: true, mode: "date" }).notNull(),
   ipAddress: text("ip_address"),
@@ -45,7 +33,9 @@ export const authSessions = pgTable("auth_sessions", {
 /** better-auth OAuth identities/passwords (model `account`) — do NOT confuse with the domain `accounts`. */
 export const authAccounts = pgTable("auth_accounts", {
   id: uuid("id").primaryKey(),
-  userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  userId: uuid("user_id")
+    .notNull()
+    .references(() => users.id, { onDelete: "cascade" }),
   accountId: text("account_id").notNull(),
   providerId: text("provider_id").notNull(),
   accessToken: text("access_token"),
@@ -236,9 +226,7 @@ export const changes = pgTable(
   },
   (t) => ({
     byBudget: index("changes_budget_seq_idx").on(t.budgetId, t.seq),
-    legacy: uniqueIndex("changes_legacy_seq_idx")
-      .on(t.seq)
-      .where(sql`"budget_id" is null`),
+    legacy: uniqueIndex("changes_legacy_seq_idx").on(t.seq).where(sql`"budget_id" is null`),
   }),
 );
 
@@ -261,9 +249,7 @@ export const syncOps = pgTable(
   },
   (t) => ({
     uniqOp: uniqueIndex("sync_ops_budget_op_uniq").on(t.budgetId, t.opId),
-    uniqLegacyOp: uniqueIndex("sync_ops_legacy_op_uniq")
-      .on(t.opId)
-      .where(sql`"budget_id" is null`),
+    uniqLegacyOp: uniqueIndex("sync_ops_legacy_op_uniq").on(t.opId).where(sql`"budget_id" is null`),
   }),
 );
 
@@ -272,7 +258,9 @@ export const e2eeOps = pgTable(
   "e2ee_ops",
   {
     seq: bigserial("seq", { mode: "number" }).primaryKey(),
-    budgetId: uuid("budget_id").notNull().references(() => budgets.id, { onDelete: "cascade" }),
+    budgetId: uuid("budget_id")
+      .notNull()
+      .references(() => budgets.id, { onDelete: "cascade" }),
     opId: uuid("op_id").notNull(),
     ciphertext: text("ciphertext").notNull(),
     createdAt: timestamp("created_at", { withTimezone: true, mode: "string" }).notNull().defaultNow(),
@@ -285,7 +273,9 @@ export const e2eeOps = pgTable(
 
 /** Encrypted ledger checkpoint (bootstraps a new device without replaying the whole log). */
 export const e2eeSnapshots = pgTable("e2ee_snapshots", {
-  budgetId: uuid("budget_id").primaryKey().references(() => budgets.id, { onDelete: "cascade" }),
+  budgetId: uuid("budget_id")
+    .primaryKey()
+    .references(() => budgets.id, { onDelete: "cascade" }),
   uptoSeq: bigint("upto_seq", { mode: "number" }).notNull().default(0),
   blob: text("blob").notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true, mode: "string" }).notNull().defaultNow(),

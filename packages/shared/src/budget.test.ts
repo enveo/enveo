@@ -1,12 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import fc from "fast-check";
-import {
-  budgetedPlusToBeBudgeted,
-  computeBudgetState,
-  nextMonth,
-  prevMonth,
-  totalOnBudget,
-} from "./budget";
+import { budgetedPlusToBeBudgeted, computeBudgetState, nextMonth, prevMonth, totalOnBudget } from "./budget";
 import { acc, alloc, env, grp, ledgerArb, MONTHS, tx } from "./ledger.test-support";
 import type { Ledger } from "./types";
 
@@ -41,10 +35,7 @@ describe("computeBudgetState — scenarios", () => {
       groups: [g],
       envelopes: [e],
       allocations: [alloc(e.id, "2026-06", 50_00)],
-      transactions: [
-        tx({ accountId: a.id, envelopeId: e.id, amount: 30_00 }),
-        tx({ accountId: a.id, envelopeId: e.id, amount: 10_00, isRefund: true }),
-      ],
+      transactions: [tx({ accountId: a.id, envelopeId: e.id, amount: 30_00 }), tx({ accountId: a.id, envelopeId: e.id, amount: 10_00, isRefund: true })],
     };
     const s = computeBudgetState(ledger, "2026-06");
     expect(s.accounts[0]!.balance).toBe(80_00);

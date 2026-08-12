@@ -231,11 +231,7 @@ export function resetOpsCounter(): void {
  * device's uptoSeq) as THEIR checkpoint, which their next new-device bootstrap could not decrypt.
  * The server refuses a session it did not verify (409) — hence, per the contract above, a no-op.
  */
-export async function maybeUploadSnapshot(
-  ledger: ClientLedger | null,
-  cursor: number,
-  userId: string,
-): Promise<void> {
+export async function maybeUploadSnapshot(ledger: ClientLedger | null, cursor: number, userId: string): Promise<void> {
   if (opsSinceSnap < SNAPSHOT_EVERY_OPS) return;
   if (!dek || !ledger || tierMeta.tier !== "e2ee") return;
   const blob = await encryptSnapshot(ledger, dek);

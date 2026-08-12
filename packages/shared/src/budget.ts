@@ -11,15 +11,7 @@
  * as a negative carry-in (envelope "in the red").
  */
 
-import type {
-  Account,
-  Allocation,
-  BudgetState,
-  EnvelopeState,
-  Ledger,
-  Money,
-  Transaction,
-} from "./types";
+import type { Account, Allocation, BudgetState, EnvelopeState, Ledger, Money, Transaction } from "./types";
 
 export const monthOf = (date: string): string => date.slice(0, 7);
 
@@ -59,10 +51,7 @@ function accountDeltas(t: Transaction): Array<[string, Money]> {
  *  - income→envelope:  spent -= amount (raises available)
  *  - transfer:         none
  */
-function envelopeSpentDeltas(
-  t: Transaction,
-  isOnBudget: (accountId: string) => boolean,
-): Array<[string, Money]> {
+function envelopeSpentDeltas(t: Transaction, isOnBudget: (accountId: string) => boolean): Array<[string, Money]> {
   if (t.type === "transfer") return [];
   if (!isOnBudget(t.accountId)) return [];
 
@@ -201,9 +190,7 @@ export function computeBudgetState(ledger: Ledger, month: string): BudgetState {
 
 /** Sum of on-budget account balances (≤ end of month). Helper for tests/invariant. */
 export function totalOnBudget(state: BudgetState): Money {
-  return state.accounts
-    .filter((a) => a.account.onBudget)
-    .reduce((s, a) => s + a.balance, 0);
+  return state.accounts.filter((a) => a.account.onBudget).reduce((s, a) => s + a.balance, 0);
 }
 
 /** Left side of the invariant: Σ available + toBeBudgeted. */

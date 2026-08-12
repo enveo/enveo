@@ -1,12 +1,7 @@
 import { eq } from "drizzle-orm";
 import { db, type DbExecutor, type DbTransaction } from "./db/client";
 import { budgets } from "./db/schema";
-import {
-  OPERATION_LOCK,
-  operationLockKey,
-  withOperationLock,
-  withOperationLockInTx,
-} from "./db/operationLock";
+import { OPERATION_LOCK, operationLockKey, withOperationLock, withOperationLockInTx } from "./db/operationLock";
 
 /** Minimal Hono context needed to resolve the user (null = call outside HTTP). */
 type UserCtx = { get: (k: "userId") => string | undefined } | null;
@@ -72,10 +67,7 @@ export async function getBudgetId(c: UserCtx, x: DbExecutor = db): Promise<strin
     // Re-check under the lock (read committed): a concurrent initializer may have won.
     const winner = await firstBudgetIdOf(tx, userId);
     if (winner) return winner;
-    const [created] = await tx
-      .insert(budgets)
-      .values({ userId, name: "Budget" })
-      .returning({ id: budgets.id });
+    const [created] = await tx.insert(budgets).values({ userId, name: "Budget" }).returning({ id: budgets.id });
     if (!created) throw new Error("Failed to create the user's budget.");
     return created.id;
   };
@@ -104,8 +96,7 @@ const isPooledDb = (x: DbExecutor): x is typeof db => x === db;
 function asTx(x: DbExecutor): DbTransaction {
   if (!("rollback" in x)) {
     throw new Error(
-      "getBudgetId: executor is neither the module's pooled db nor a transaction — " +
-        "lazy budget creation needs one of the two to hold the operation lock.",
+      "getBudgetId: executor is neither the module's pooled db nor a transaction — " + "lazy budget creation needs one of the two to hold the operation lock.",
     );
   }
   return x;
@@ -120,12 +111,7 @@ function requireUserId(c: NonNullable<UserCtx>): string {
 
 /** The session user's currently-selected budget: deterministic ORDER BY id, first row. */
 async function firstBudgetIdOf(x: DbExecutor, userId: string): Promise<string | null> {
-  const rows = await x
-    .select({ id: budgets.id })
-    .from(budgets)
-    .where(eq(budgets.userId, userId))
-    .orderBy(budgets.id)
-    .limit(1);
+  const rows = await x.select({ id: budgets.id }).from(budgets).where(eq(budgets.userId, userId)).orderBy(budgets.id).limit(1);
   return rows[0]?.id ?? null;
 }
 
@@ -147,18 +133,12 @@ export async function getBudgetMeta(c: UserCtx, x: DbExecutor = db): Promise<Bud
 }
 
 async function readBudgetMeta(x: DbExecutor, id: string): Promise<BudgetMeta> {
-  const [row] = await x
-    .select({ tier: budgets.tier, epoch: budgets.epoch })
-    .from(budgets)
-    .where(eq(budgets.id, id));
+  const [row] = await x.select({ tier: budgets.tier, epoch: budgets.epoch }).from(budgets).where(eq(budgets.id, id));
   return toBudgetMeta(id, row);
 }
 
 /** The ONE row→BudgetMeta mapping (defaults for a pre-E2EE row: plain, epoch 0). */
-const toBudgetMeta = (
-  id: string,
-  row: { tier: string | null; epoch: number | null } | undefined,
-): BudgetMeta => ({
+const toBudgetMeta = (id: string, row: { tier: string | null; epoch: number | null } | undefined): BudgetMeta => ({
   id,
   tier: (row?.tier ?? "plain") as "plain" | "e2ee",
   epoch: row?.epoch ?? 0,
@@ -176,11 +156,7 @@ export class TierMismatch extends Error {
  * For a budget in the default 'plain' tier the v1 routes pass with no
  * behavior change (zero impact on existing flows).
  */
-export async function requireTier(
-  c: UserCtx,
-  want: "plain" | "e2ee",
-  x: DbExecutor = db,
-): Promise<BudgetMeta> {
+export async function requireTier(c: UserCtx, want: "plain" | "e2ee", x: DbExecutor = db): Promise<BudgetMeta> {
   const meta = await getBudgetMeta(c, x);
   if (meta.tier !== want) throw new TierMismatch(meta);
   return meta;
@@ -204,11 +180,7 @@ export class BudgetVanished extends Error {
  * order and deadlock against a concurrent initializer. Resolves an EXISTING budget only; when
  * none exists it throws `BudgetVanished` (see above) instead of creating one.
  */
-export async function requireExistingTier(
-  c: UserCtx,
-  want: "plain" | "e2ee",
-  x: DbExecutor = db,
-): Promise<BudgetMeta> {
+export async function requireExistingTier(c: UserCtx, want: "plain" | "e2ee", x: DbExecutor = db): Promise<BudgetMeta> {
   if (c === null) throw new Error("requireExistingTier needs an HTTP context (session user).");
   const userId = requireUserId(c);
   // ONE round-trip: this runs INSIDE the cursor-barrier transaction, which holds the exclusive

@@ -30,10 +30,7 @@ export function categoryCountsFor(ledger: ClientLedger, version: number, envelop
 }
 
 /** Category list sorting: frequent with THIS envelope first (descending), the rest alphabetically. */
-export function rankCategories<T extends { id: string; name: string }>(
-  cats: T[],
-  counts: Map<string, number>,
-): T[] {
+export function rankCategories<T extends { id: string; name: string }>(cats: T[], counts: Map<string, number>): T[] {
   return [...cats].sort((a, b) => {
     const ca = counts.get(a.id) ?? 0;
     const cb = counts.get(b.id) ?? 0;

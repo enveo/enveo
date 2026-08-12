@@ -5,12 +5,7 @@
  * `bun run image:inventory <ref>`, which CI runs after `docker build`.
  */
 import { describe, expect, it } from "bun:test";
-import {
-  checkImage,
-  packageNameOfStoreEntry,
-  type Expectations,
-  type ImageFacts,
-} from "./imageInventory";
+import { checkImage, packageNameOfStoreEntry, type Expectations, type ImageFacts } from "./imageInventory";
 
 const MIGRATIONS = ["0000_rainy_wraith.sql", "0001_add_txn_tag.sql"] as const;
 
@@ -77,9 +72,7 @@ describe("checkImage — the runtime allowlist", () => {
   it("fails when the API entry point is missing", () => {
     const missing = OK_FILES.filter((f) => f !== "packages/api/src/index.ts");
 
-    expect(checkImage(facts({ appFiles: missing }), expectations()).join(" ")).toContain(
-      "packages/api/src/index.ts",
-    );
+    expect(checkImage(facts({ appFiles: missing }), expectations()).join(" ")).toContain("packages/api/src/index.ts");
   });
 
   it("fails when the migration journal is missing — migration ORDER comes from it", () => {
@@ -91,9 +84,7 @@ describe("checkImage — the runtime allowlist", () => {
   it("fails when the drizzle tree arrived incomplete", () => {
     const missing = OK_FILES.filter((f) => !f.endsWith("0001_add_txn_tag.sql"));
 
-    expect(checkImage(facts({ appFiles: missing }), expectations()).join(" ")).toContain(
-      "0001_add_txn_tag.sql",
-    );
+    expect(checkImage(facts({ appFiles: missing }), expectations()).join(" ")).toContain("0001_add_txn_tag.sql");
   });
 
   it("fails when a PWA asset is missing", () => {
@@ -105,9 +96,7 @@ describe("checkImage — the runtime allowlist", () => {
   it("fails when a package the API imports was pruned away", () => {
     const pruned = OK_STORE.filter((e) => !e.startsWith("hono@"));
 
-    expect(checkImage(facts({ storeEntries: pruned }), expectations()).join(" ")).toContain(
-      "required runtime package not installed: hono",
-    );
+    expect(checkImage(facts({ storeEntries: pruned }), expectations()).join(" ")).toContain("required runtime package not installed: hono");
   });
 });
 
@@ -147,10 +136,7 @@ describe("checkImage — the denylist", () => {
   });
 
   it("ignores a dependency's OWN bundled test files — zod publishes src/**/tests/*.test.ts", () => {
-    const withVendorTests = [
-      ...OK_FILES,
-      "node_modules/.bun/zod@4.4.3/node_modules/zod/src/v3/tests/string.test.ts",
-    ];
+    const withVendorTests = [...OK_FILES, "node_modules/.bun/zod@4.4.3/node_modules/zod/src/v3/tests/string.test.ts"];
 
     expect(checkImage(facts({ appFiles: withVendorTests }), expectations())).toEqual([]);
   });
@@ -215,9 +201,7 @@ describe("checkImage — the base digest really is the pinned version", () => {
     // only asking the IMAGE catches it.
     const stale = facts({ bunVersion: "1.3.9" });
 
-    expect(checkImage(stale, expectations({ bunVersion: "1.3.14" })).join(" ")).toContain(
-      "image runs Bun 1.3.9, but .bun-version pins 1.3.14",
-    );
+    expect(checkImage(stale, expectations({ bunVersion: "1.3.14" })).join(" ")).toContain("image runs Bun 1.3.9, but .bun-version pins 1.3.14");
   });
 
   it("passes when the image reports exactly the pinned version", () => {
@@ -249,9 +233,7 @@ describe("checkImage — unprivileged runtime", () => {
 
 describe("checkImage — release metadata", () => {
   it("requires the OCI source label", () => {
-    expect(checkImage(facts({ labels: { "org.opencontainers.image.revision": "abc1234" } }), expectations()).join(" ")).toContain(
-      "image.source",
-    );
+    expect(checkImage(facts({ labels: { "org.opencontainers.image.revision": "abc1234" } }), expectations()).join(" ")).toContain("image.source");
   });
 
   it("requires the OCI revision label to equal the passed SHA", () => {

@@ -46,7 +46,6 @@ const rejecting = (): typeof fetch =>
     throw new TypeError("Failed to fetch"); // what a browser throws with no network
   }) as unknown as typeof fetch;
 
-
 const MONTH = "2026-07";
 
 const txn = (over: Partial<Transaction> & Pick<Transaction, "id" | "type" | "amount" | "date">): Transaction => ({
@@ -66,13 +65,33 @@ const txn = (over: Partial<Transaction> & Pick<Transaction, "id" | "type" | "amo
 
 /** Fixture: an account + 2 envelopes + income and expenses (pattern from e2ee.test.ts). */
 const fixtureLedger = (): ClientLedger => ({
-  accounts: [
-    { id: "acc1", name: "Konto", color: "#111111", icon: "bank", type: "checking", onBudget: true, initialBalance: 0, archived: false, sort: 0 },
-  ],
+  accounts: [{ id: "acc1", name: "Konto", color: "#111111", icon: "bank", type: "checking", onBudget: true, initialBalance: 0, archived: false, sort: 0 }],
   groups: [{ id: "grp1", name: "Życie", sort: 0 }],
   envelopes: [
-    { id: "env1", groupId: "grp1", name: "Jedzenie", color: "#22aa22", icon: "food", note: null, monthlyTarget: null, isSavings: false, sort: 0, archived: false },
-    { id: "env2", groupId: "grp1", name: "Transport", color: "#2222aa", icon: "car", note: null, monthlyTarget: null, isSavings: false, sort: 1, archived: false },
+    {
+      id: "env1",
+      groupId: "grp1",
+      name: "Jedzenie",
+      color: "#22aa22",
+      icon: "food",
+      note: null,
+      monthlyTarget: null,
+      isSavings: false,
+      sort: 0,
+      archived: false,
+    },
+    {
+      id: "env2",
+      groupId: "grp1",
+      name: "Transport",
+      color: "#2222aa",
+      icon: "car",
+      note: null,
+      monthlyTarget: null,
+      isSavings: false,
+      sort: 1,
+      archived: false,
+    },
   ],
   transactions: [
     txn({ id: "t1", type: "income", amount: 500000, date: "2026-07-01" }),
@@ -160,7 +179,9 @@ describe("aiTarget / hasAiTarget", () => {
       const imp = runImportExtract({ images: ["data:image/png;base64,x"], locale: "pl", ledger: fixtureLedger(), settings: s });
       await expect(imp).rejects.toThrow("ai_consent_required");
       // the message IS the code: apiErrorMessage maps it to a sentence in the UI language (api.test.ts)
-      expect(apiErrorMessage(await imp.catch((e: unknown) => e))).toBe("AI is not set up on this device. Pick a mode in Settings → Artificial intelligence (with your own key, paste it there).");
+      expect(apiErrorMessage(await imp.catch((e: unknown) => e))).toBe(
+        "AI is not set up on this device. Pick a mode in Settings → Artificial intelligence (with your own key, paste it there).",
+      );
     }
   });
 });
@@ -181,7 +202,14 @@ describe("runImportExtract (byok) failures reach the user as localized sentences
   const run = (s: AiSettings) => runImportExtract({ images: ["data:image/png;base64,x"], locale: "pl", ledger: fixtureLedger(), settings: s });
 
   const failure = async (s: AiSettings, f: typeof fetch, onLine = true): Promise<{ code: string; text: string }> => {
-    const e = await withFetch(f, () => run(s).then(() => null).catch((err: unknown) => err), onLine);
+    const e = await withFetch(
+      f,
+      () =>
+        run(s)
+          .then(() => null)
+          .catch((err: unknown) => err),
+      onLine,
+    );
     const code = String((e as Error).message);
     return { code, text: apiErrorMessage(e) };
   };
@@ -192,7 +220,7 @@ describe("runImportExtract (byok) failures reach the user as localized sentences
     expect(text).toBe("OpenAI rejected your key — check it in Settings → Artificial intelligence.");
   });
 
-  it("offline (fetch rejects, navigator.onLine === false) → ai_offline, not \"Failed to fetch\"", async () => {
+  it('offline (fetch rejects, navigator.onLine === false) → ai_offline, not "Failed to fetch"', async () => {
     const { code, text } = await failure(BYOK, rejecting(), false);
     expect(code).toBe("ai_offline");
     expect(text).toBe("You are offline — screenshot import needs a connection. Manual entry works without one.");
@@ -226,7 +254,11 @@ describe("runImportExtract (byok) failures reach the user as localized sentences
 
   it("the happy path still works (the transport refactor did not break a good answer)", async () => {
     const items = await withFetch(
-      replying(JSON.stringify({ transactions: [{ date: "2026-07-02", amount: 1230, type: "expense", rawPlace: "Lidl", tag: "LIDL", currency: "PLN", fxOriginal: "" }] })),
+      replying(
+        JSON.stringify({
+          transactions: [{ date: "2026-07-02", amount: 1230, type: "expense", rawPlace: "Lidl", tag: "LIDL", currency: "PLN", fxOriginal: "" }],
+        }),
+      ),
       () => run(BYOK),
     );
     expect(items).toHaveLength(1);
@@ -246,7 +278,12 @@ describe("runImportExtract (byok) failures reach the user as localized sentences
  */
 describe("chatJson (server target → the /api/ai mirror)", () => {
   const target: ChatTarget = { kind: "server" };
-  const req = { messages: [{ role: "system" as const, content: "sys" }, { role: "user" as const, content: "usr" }] };
+  const req = {
+    messages: [
+      { role: "system" as const, content: "sys" },
+      { role: "user" as const, content: "usr" },
+    ],
+  };
 
   it("503 {error:ai_unavailable} passes through — the operator has no key configured", async () => {
     await withFetch(answering(503, { error: "ai_unavailable" }), async () => {
@@ -261,12 +298,20 @@ describe("chatJson (server target → the /api/ai mirror)", () => {
   });
 
   it("fetch rejects (no response at all) → ai_offline when offline, ai_unreachable when online — same as byok", async () => {
-    await withFetch(rejecting(), async () => {
-      await expect(chatJson(req, target)).rejects.toThrow("ai_offline");
-    }, false);
-    await withFetch(rejecting(), async () => {
-      await expect(chatJson(req, target)).rejects.toThrow("ai_unreachable");
-    }, true);
+    await withFetch(
+      rejecting(),
+      async () => {
+        await expect(chatJson(req, target)).rejects.toThrow("ai_offline");
+      },
+      false,
+    );
+    await withFetch(
+      rejecting(),
+      async () => {
+        await expect(chatJson(req, target)).rejects.toThrow("ai_unreachable");
+      },
+      true,
+    );
   });
 
   it("a round-trip exceeding the cap → ai_timeout — never ai_unreachable, never the key/model message", async () => {
@@ -276,7 +321,9 @@ describe("chatJson (server target → the /api/ai mirror)", () => {
         init?.signal?.addEventListener("abort", () => reject(new DOMException("Aborted", "AbortError")));
       })) as unknown as typeof fetch;
     await withFetch(hanging, async () => {
-      const e = await chatJson(req, target, 20).then(() => null).catch((err: unknown) => err);
+      const e = await chatJson(req, target, 20)
+        .then(() => null)
+        .catch((err: unknown) => err);
       expect(String((e as Error).message)).toBe("ai_timeout");
       expect(apiErrorMessage(e)).toBe("The AI service took too long to answer — nothing was changed. Try again in a moment.");
     });

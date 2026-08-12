@@ -49,17 +49,17 @@ function monthAt(offset: number): { ym: string; day: (d: number) => string } {
 
 /* ── Demo names (PL/EN) — data, not UI, so they don't go through web i18n ── */
 
-const NAMES: Record<Locale, {
-  accounts: [string, string, string];
-  groups: [string, string, string];
-  env: Record<
-    "housing" | "utilities" | "subs" | "groceries" | "transport" | "health" | "fun" | "savings" | "rainy",
-    string
-  >;
-  categories: [string, string, string]; // Shopping, Home, Car
-  places: [string, string]; // Supermarket, Gas station
-  tx: { salary: string; rent: string; utilities: string; subs: string; groceries: string; fuel: string; fun: string; health: string };
-}> = {
+const NAMES: Record<
+  Locale,
+  {
+    accounts: [string, string, string];
+    groups: [string, string, string];
+    env: Record<"housing" | "utilities" | "subs" | "groceries" | "transport" | "health" | "fun" | "savings" | "rainy", string>;
+    categories: [string, string, string]; // Shopping, Home, Car
+    places: [string, string]; // Supermarket, Gas station
+    tx: { salary: string; rent: string; utilities: string; subs: string; groceries: string; fuel: string; fun: string; health: string };
+  }
+> = {
   pl: {
     accounts: ["Konto osobiste", "Oszczędnościowe", "Gotówka"],
     groups: ["Rachunki", "Życie", "Oszczędności"],
@@ -145,16 +145,8 @@ demoRoutes.post("/demo/seed", async (c) => {
     const budgetId = (await requireTier(c, "plain", tx)).id;
 
     // Empty-budget guard: any account OR transaction ⇒ refuse.
-    const [anyAccount] = await tx
-      .select({ id: s.accounts.id })
-      .from(s.accounts)
-      .where(eq(s.accounts.budgetId, budgetId))
-      .limit(1);
-    const [anyTxn] = await tx
-      .select({ id: s.transactions.id })
-      .from(s.transactions)
-      .where(eq(s.transactions.budgetId, budgetId))
-      .limit(1);
+    const [anyAccount] = await tx.select({ id: s.accounts.id }).from(s.accounts).where(eq(s.accounts.budgetId, budgetId)).limit(1);
+    const [anyTxn] = await tx.select({ id: s.transactions.id }).from(s.transactions).where(eq(s.transactions.budgetId, budgetId)).limit(1);
     if (anyAccount || anyTxn) return false;
 
     /* Accounts */

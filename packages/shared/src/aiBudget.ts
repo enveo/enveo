@@ -57,9 +57,7 @@ export function computeEnvelopeBudgetStats(
   const months = window.map((mm) =>
     Math.max(
       0,
-      ledger.transactions
-        .filter((t) => monthOf(t.date) === mm)
-        .reduce((x, t) => x + spentOfEnvelope(t, envId), 0),
+      ledger.transactions.filter((t) => monthOf(t.date) === mm).reduce((x, t) => x + spentOfEnvelope(t, envId), 0),
     ),
   );
   const sorted = [...months].sort((a, b) => a - b);
@@ -99,9 +97,7 @@ function pickRemainder(cands: BudgetSuggestionCandidate[], profile: BudgetSugges
     const sav = [...cands].filter((c) => c.savingsLike && c.stats.targetGap == null).sort(byPriorityDesc)[0];
     if (sav) return sav.envelopeId;
   } else {
-    const top = [...cands].sort(
-      (a, b) => b.stats.avgSpend - a.stats.avgSpend || (a.envelopeId < b.envelopeId ? -1 : 1),
-    )[0];
+    const top = [...cands].sort((a, b) => b.stats.avgSpend - a.stats.avgSpend || (a.envelopeId < b.envelopeId ? -1 : 1))[0];
     if (top && top.stats.avgSpend > 0) return top.envelopeId;
   }
   const nonTarget = [...cands].filter((c) => c.stats.targetGap == null).sort(byPriorityDesc);
@@ -278,16 +274,16 @@ export function buildRulesBudgetSuggestion(basis: BudgetSuggestionBasis): Normal
     if (remaining <= 0) break;
     const cur = deltas.get(c.envelopeId) ?? 0;
     const give = Math.min(c.baseDelta, remaining, c.maxDelta - cur);
-    if (give > 0) { deltas.set(c.envelopeId, cur + give); remaining -= give; }
+    if (give > 0) {
+      deltas.set(c.envelopeId, cur + give);
+      remaining -= give;
+    }
   }
   const undistributed = placeRemainder(basis, deltas, remaining);
   return buildResult(basis, deltas, false, undistributed, []);
 }
 
-export function normalizeBudgetSuggestion(
-  basis: BudgetSuggestionBasis,
-  proposed: ProposedEnvelopeDelta[],
-): NormalizedBudgetSuggestion {
+export function normalizeBudgetSuggestion(basis: BudgetSuggestionBasis, proposed: ProposedEnvelopeDelta[]): NormalizedBudgetSuggestion {
   const byId = new Map(basis.candidates.map((c) => [c.envelopeId, c]));
   const deltas = new Map<string, number>();
   const rationales = new Map<string, string>();
@@ -296,9 +292,15 @@ export function normalizeBudgetSuggestion(
 
   for (const p of proposed) {
     const c = byId.get(p.envelopeId);
-    if (!c) { repaired = true; continue; } // unknown/archived
+    if (!c) {
+      repaired = true;
+      continue;
+    } // unknown/archived
     const d = Math.round(p.proposedDelta ?? 0);
-    if (!Number.isFinite(d) || d <= 0) { if (d < 0) repaired = true; continue; }
+    if (!Number.isFinite(d) || d <= 0) {
+      if (d < 0) repaired = true;
+      continue;
+    }
     const clamped = Math.min(Math.max(0, d), c.maxDelta);
     if (clamped !== d) repaired = true;
     deltas.set(p.envelopeId, (deltas.get(p.envelopeId) ?? 0) + clamped);
@@ -338,9 +340,7 @@ export function normalizeBudgetSuggestion(
  */
 export function buildTopUpNegativesSuggestion(basis: BudgetSuggestionBasis): NormalizedBudgetSuggestion {
   const amount = basis.amountToDistribute;
-  const deficits: [string, number][] = basis.candidates
-    .filter((c) => c.stats.available < 0)
-    .map((c) => [c.envelopeId, -c.stats.available]);
+  const deficits: [string, number][] = basis.candidates.filter((c) => c.stats.available < 0).map((c) => [c.envelopeId, -c.stats.available]);
   const sumDef = deficits.reduce((x, [, d]) => x + d, 0);
   const deltas = new Map<string, number>();
   const warnings: string[] = [];
@@ -360,10 +360,7 @@ export function buildTopUpNegativesSuggestion(basis: BudgetSuggestionBasis): Nor
  * for active envelopes (existing allocations are not taken away). Σdeltas MAY
  * exceed TBB — then an "over_tbb" warning (the user trims/unchecks in the editor).
  */
-export function buildPrevMonthSuggestion(
-  basis: BudgetSuggestionBasis,
-  prevAllocations: Map<string, number>,
-): NormalizedBudgetSuggestion {
+export function buildPrevMonthSuggestion(basis: BudgetSuggestionBasis, prevAllocations: Map<string, number>): NormalizedBudgetSuggestion {
   const deltas = new Map<string, number>();
   let sum = 0;
   for (const c of basis.candidates) {
@@ -388,20 +385,22 @@ export function buildPrevMonthSuggestion(
  * "agent_empty" warning — NO silent fallback to rules; NEVER adds funds
  * to envelopes the agent skipped.
  */
-export function normalizeAgentSuggestion(
-  deltas: ProposedEnvelopeDelta[],
-  basis: BudgetSuggestionBasis,
-  amount: number,
-): NormalizedBudgetSuggestion {
+export function normalizeAgentSuggestion(deltas: ProposedEnvelopeDelta[], basis: BudgetSuggestionBasis, amount: number): NormalizedBudgetSuggestion {
   const byId = new Map(basis.candidates.map((c) => [c.envelopeId, c]));
   const agg = new Map<string, number>();
   const rationales = new Map<string, string>();
   const confidences = new Map<string, number>();
   let repaired = false;
   for (const p of deltas) {
-    if (!byId.has(p.envelopeId)) { repaired = true; continue; } // unknown/archived
+    if (!byId.has(p.envelopeId)) {
+      repaired = true;
+      continue;
+    } // unknown/archived
     const d = Math.round(p.proposedDelta ?? 0);
-    if (!Number.isFinite(d) || d <= 0) { if (d !== 0) repaired = true; continue; } // clamp negatives/garbage → 0
+    if (!Number.isFinite(d) || d <= 0) {
+      if (d !== 0) repaired = true;
+      continue;
+    } // clamp negatives/garbage → 0
     agg.set(p.envelopeId, (agg.get(p.envelopeId) ?? 0) + d);
     if (p.rationale) rationales.set(p.envelopeId, p.rationale);
     if (typeof p.confidence === "number") confidences.set(p.envelopeId, p.confidence);

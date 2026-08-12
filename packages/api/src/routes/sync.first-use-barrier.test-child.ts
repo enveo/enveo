@@ -26,13 +26,7 @@
  *   in  — EXPECT_DATABASE_URL (+ DATABASE_URL, both set to the same throwaway Postgres)
  *   out — one SENTINEL-prefixed JSON line on stdout: FirstUseBarrierOutput
  */
-import {
-  assertThrowawayDb,
-  emitChildResult,
-  lockObserver,
-  waitFor,
-  withTimeout,
-} from "../api.test-support";
+import { assertThrowawayDb, emitChildResult, lockObserver, waitFor, withTimeout } from "../api.test-support";
 
 export const SENTINEL = "__SYNC_FIRST_USE_BARRIER__";
 
@@ -65,9 +59,7 @@ async function main(): Promise<void> {
   const { db } = await import("../db/client");
   const s = await import("../db/schema");
   const { syncRoutes, CHANGES_CURSOR_LOCK_TEXT } = await import("./sync");
-  const { OPERATION_LOCK, operationLockKey, acquireOperationLockForTests } = await import(
-    "../db/operationLock"
-  );
+  const { OPERATION_LOCK, operationLockKey, acquireOperationLockForTests } = await import("../db/operationLock");
 
   const observer = postgres(env.DATABASE_URL, { max: 2, onnotice: () => {} });
   const locks = lockObserver(observer);
@@ -116,18 +108,12 @@ async function main(): Promise<void> {
 
   const gateTx = db
     .transaction(async (tx) => {
-      await acquireOperationLockForTests(
-        tx,
-        operationLockKey(OPERATION_LOCK.ensureInitialBudget, userId),
-      );
+      await acquireOperationLockForTests(tx, operationLockKey(OPERATION_LOCK.ensureInitialBudget, userId));
       signalHeld();
       await gate; // orchestrator: routes parked + changes lock probed
       // The concurrent initializer's second step: INSERT fires log_change() → SHARED changes
       // lock. If any parked route held the EXCLUSIVE changes lock, this would deadlock.
-      const [b] = await tx
-        .insert(s.budgets)
-        .values({ userId, name: "Budget" })
-        .returning({ id: s.budgets.id });
+      const [b] = await tx.insert(s.budgets).values({ userId, name: "Budget" }).returning({ id: s.budgets.id });
       gateBudgetId = b!.id;
       gateInsertCompleted = true;
     })
@@ -177,10 +163,7 @@ async function main(): Promise<void> {
     return body.budgetId ?? null;
   };
 
-  const budgetRows = await db
-    .select({ id: s.budgets.id })
-    .from(s.budgets)
-    .where(eq(s.budgets.userId, userId));
+  const budgetRows = await db.select({ id: s.budgets.id }).from(s.budgets).where(eq(s.budgets.userId, userId));
 
   const out: FirstUseBarrierOutput = {
     parkedBeforeBarrier,

@@ -47,12 +47,7 @@ export interface EnvelopeSummaryOpts {
  * + a 6-month series for the envelope. Without `opts` the result is identical
  * to before (existing fields byte-for-byte — the api endpoint calls without opts).
  */
-export function computeEnvelopeSummary(
-  ledger: ClientLedger,
-  envId: string,
-  month: string,
-  opts?: EnvelopeSummaryOpts,
-): EnvelopeSummary {
+export function computeEnvelopeSummary(ledger: ClientLedger, envId: string, month: string, opts?: EnvelopeSummaryOpts): EnvelopeSummary {
   // expenses assigned to the envelope (splits included)
   const spentOf = (t: (typeof ledger.transactions)[number]): number => {
     if (t.type === "transfer") return 0;
@@ -69,9 +64,7 @@ export function computeEnvelopeSummary(
   for (let i = 0; i < 5; i++) monthsBack.unshift(prevMonth(monthsBack[0]!));
   const series = monthsBack.map((m) => ({
     month: m,
-    spent: ledger.transactions
-      .filter((t) => monthOf(t.date) === m)
-      .reduce((x, t) => x + spentOf(t), 0),
+    spent: ledger.transactions.filter((t) => monthOf(t.date) === m).reduce((x, t) => x + spentOf(t), 0),
   }));
 
   // category breakdown in the [month−(n−1) … month] window (default: month alone)
@@ -92,9 +85,7 @@ export function computeEnvelopeSummary(
   }
   const cats = ledger.categories;
   const catName = (id: string | null) => (id ? (cats.find((x) => x.id === id)?.name ?? "Inne") : "Bez kategorii");
-  const categories = [...byCat.entries()]
-    .map(([id, amount]) => ({ categoryId: id, name: catName(id), amount }))
-    .sort((a, b) => b.amount - a.amount);
+  const categories = [...byCat.entries()].map(([id, amount]) => ({ categoryId: id, name: catName(id), amount })).sort((a, b) => b.amount - a.amount);
 
   const categoriesTotal = categories.reduce((s, c) => s + c.amount, 0);
 

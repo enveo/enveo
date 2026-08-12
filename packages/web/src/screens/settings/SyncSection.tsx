@@ -114,10 +114,20 @@ function UnverifiedReplicaNotice() {
     <div style={{ marginTop: 14 }}>
       <div style={{ padding: 14, background: C.bg, borderRadius: 11, border: `1px solid ${C.line}` }}>
         <div style={{ fontSize: 13, fontWeight: 700, color: C.text, marginBottom: 6 }}>{t("Not syncing with your account")}</div>
-        <div style={{ fontSize: 11.5, color: C.soft, lineHeight: 1.6, marginBottom: 8 }}>{t("The copy of the budget on this device has not been matched to the account you are signed in with. Nothing is being sent to the server and nothing has been deleted — your changes are waiting safely here. There are two reasons this happens:")}</div>
+        <div style={{ fontSize: 11.5, color: C.soft, lineHeight: 1.6, marginBottom: 8 }}>
+          {t(
+            "The copy of the budget on this device has not been matched to the account you are signed in with. Nothing is being sent to the server and nothing has been deleted — your changes are waiting safely here. There are two reasons this happens:",
+          )}
+        </div>
         <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-          <Cause>{t("An upgrade or a restore is in progress: the account's budget on the server is not this device's budget yet. Once it is, sync will resume by itself.")}</Cause>
-          <Cause>{t("This data may belong to a different account. Then it will never be sent — download a backup and remove the copy from this device.")}</Cause>
+          <Cause>
+            {t(
+              "An upgrade or a restore is in progress: the account's budget on the server is not this device's budget yet. Once it is, sync will resume by itself.",
+            )}
+          </Cause>
+          <Cause>
+            {t("This data may belong to a different account. Then it will never be sent — download a backup and remove the copy from this device.")}
+          </Cause>
         </div>
       </div>
 
@@ -154,7 +164,11 @@ function UnverifiedReplicaNotice() {
 
       {confirm && (
         <div style={{ marginTop: 10, padding: 14, background: C.bg, borderRadius: 11, border: `1px solid var(--danger-66)` }}>
-          <div style={{ fontSize: 11.5, color: C.soft, lineHeight: 1.6, marginBottom: 10 }}>{t("The local copy — including any unsent changes — will be permanently removed from this device. If this is the only copy of that budget, download a backup first.")}</div>
+          <div style={{ fontSize: 11.5, color: C.soft, lineHeight: 1.6, marginBottom: 10 }}>
+            {t(
+              "The local copy — including any unsent changes — will be permanently removed from this device. If this is the only copy of that budget, download a backup first.",
+            )}
+          </div>
           <ActionButton
             variant="coral"
             label={busy ? t("Removing…") : t("Yes, remove the data from this device")}
@@ -166,7 +180,9 @@ function UnverifiedReplicaNotice() {
       )}
 
       {error && <div style={{ fontSize: 12, color: CORAL, marginTop: 10, lineHeight: 1.5 }}>{error}</div>}
-      <div style={{ fontSize: 11, color: C.mute, lineHeight: 1.6, margin: "10px 4px 0" }}>{t("The check repeats by itself when you open the app, and roughly once a minute.")}</div>
+      <div style={{ fontSize: 11, color: C.mute, lineHeight: 1.6, margin: "10px 4px 0" }}>
+        {t("The check repeats by itself when you open the app, and roughly once a minute.")}
+      </div>
     </div>
   );
 }
@@ -225,15 +241,20 @@ function SyncActions() {
       <div style={{ marginTop: 14, fontSize: 11.5, color: C.soft, lineHeight: 1.6 }}>
         {t("Paused — local mode.")}{" "}
         {localMode === "wiped" ? t("Server data has been deleted.") : t("Changes are saved locally and will be sent after you resume.")}
-        {pending > 0 && ` ${tp("{n} change is waiting locally. | {n} changes are waiting locally.", pending)}`}
-        {" "}
-        {t("Resume it in the “Advanced” section.")}
+        {pending > 0 && ` ${tp("{n} change is waiting locally. | {n} changes are waiting locally.", pending)}`} {t("Resume it in the “Advanced” section.")}
       </div>
     );
   }
 
   const resync = () => {
-    if (!window.confirm(t("Download everything anew from the server? We will replace the local copy with the current server state. Unsent changes in the queue will be kept and pushed."))) return;
+    if (
+      !window.confirm(
+        t(
+          "Download everything anew from the server? We will replace the local copy with the current server state. Unsent changes in the queue will be kept and pushed.",
+        ),
+      )
+    )
+      return;
     void fullResync();
   };
 
@@ -249,7 +270,12 @@ function SyncActions() {
           disabled={state === "syncing"}
           busyLabel={state === "syncing" ? t("Syncing…") : undefined}
         />
-        <ActionRow icon={<ActionIcon paths={IC.redownload} />} label={t("Download everything anew")} desc={t("Full resync from the server. Use when data looks out of sync.")} onClick={resync} />
+        <ActionRow
+          icon={<ActionIcon paths={IC.redownload} />}
+          label={t("Download everything anew")}
+          desc={t("Full resync from the server. Use when data looks out of sync.")}
+          onClick={resync}
+        />
       </ActionGroup>
       <div style={{ fontSize: 11.5, color: C.soft, lineHeight: 1.6, margin: "8px 4px 0" }}>
         {t("Last sync: {rel}.", { rel: relSync(lastSyncAt, lang) })}
@@ -274,10 +300,22 @@ function DeadLetters() {
   return (
     <div style={{ marginTop: 14, padding: 12, background: C.bg, borderRadius: 11, border: `1px solid ${C.line}` }}>
       <div style={{ fontSize: 11.5, color: C.soft, lineHeight: 1.6, marginBottom: 4 }}>
-        {t("The server rejected these changes — usually because you edited something that was meanwhile deleted on another device. Your data has already been restored to the server state. “Discard” removes the failed attempt from the list.")}
+        {t(
+          "The server rejected these changes — usually because you edited something that was meanwhile deleted on another device. Your data has already been restored to the server state. “Discard” removes the failed attempt from the list.",
+        )}
       </div>
       {deadLetters.map((dl, i) => (
-        <div key={dl.opId} style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, padding: "10px 0", borderTop: i === 0 ? "none" : `1px solid ${C.line}` }}>
+        <div
+          key={dl.opId}
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "flex-start",
+            gap: 12,
+            padding: "10px 0",
+            borderTop: i === 0 ? "none" : `1px solid ${C.line}`,
+          }}
+        >
           <div style={{ minWidth: 0 }}>
             {/* defensive fallback: a dead-letter persisted in IDB by an OLDER app build can still
                 carry an op kind from a feature retired since then, at RUNTIME, even though
@@ -290,7 +328,17 @@ function DeadLetters() {
           </div>
           <button
             onClick={() => discardDeadLetter(dl.opId)}
-            style={{ flexShrink: 0, padding: "6px 12px", borderRadius: 8, border: `1px solid ${C.line}`, background: "transparent", color: C.soft, fontSize: 11.5, fontWeight: 600, cursor: "pointer" }}
+            style={{
+              flexShrink: 0,
+              padding: "6px 12px",
+              borderRadius: 8,
+              border: `1px solid ${C.line}`,
+              background: "transparent",
+              color: C.soft,
+              fontSize: 11.5,
+              fontWeight: 600,
+              cursor: "pointer",
+            }}
           >
             {t("Discard")}
           </button>

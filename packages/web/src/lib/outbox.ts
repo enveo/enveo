@@ -78,10 +78,7 @@ let hydratePromise: Promise<void> | null = null;
 export function hydrate(): Promise<void> {
   if (!hydratePromise) {
     const p = (async () => {
-      const [rows, dls] = await Promise.all([
-        idbGetAll<{ localSeq: number; op: SyncOp }>("outbox"),
-        idbGetAll<DeadLetter>("deadletter"),
-      ]);
+      const [rows, dls] = await Promise.all([idbGetAll<{ localSeq: number; op: SyncOp }>("outbox"), idbGetAll<DeadLetter>("deadletter")]);
       rows.sort((a, b) => a.localSeq - b.localSeq);
       entries = rows.map((r) => ({ localSeq: r.localSeq, op: r.op }));
       deadLetters = dls.sort((a, b) => a.at.localeCompare(b.at));
@@ -209,17 +206,13 @@ async function reconcileInner(): Promise<ReconcileResult> {
   for (const e of entries) known.add(e.op.opId);
   for (const id of inFlight) known.add(id);
   for (const d of deadLetters) known.add(d.opId);
-  const orphanEntries: OutboxEntry[] = rows
-    .filter((r) => !known.has(r.op.opId))
-    .map((r) => ({ localSeq: r.localSeq, op: r.op }));
+  const orphanEntries: OutboxEntry[] = rows.filter((r) => !known.has(r.op.opId)).map((r) => ({ localSeq: r.localSeq, op: r.op }));
 
   if (orphanEntries.length > 0) {
     changed = true;
     // merge by localSeq; own entries without localSeq (the freshest) at the end
     const nulls = entries.filter((e) => e.localSeq === null);
-    const withSeq = [...entries.filter((e) => e.localSeq !== null), ...orphanEntries].sort(
-      (a, b) => (a.localSeq as number) - (b.localSeq as number),
-    );
+    const withSeq = [...entries.filter((e) => e.localSeq !== null), ...orphanEntries].sort((a, b) => (a.localSeq as number) - (b.localSeq as number));
     entries = [...withSeq, ...nulls];
   }
 

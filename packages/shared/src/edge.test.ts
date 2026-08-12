@@ -25,19 +25,7 @@
 import { describe, expect, it } from "bun:test";
 import fc from "fast-check";
 import { applyOp } from "./applyOp";
-import {
-  acc,
-  alloc,
-  asClientLedger,
-  deepFreeze,
-  env,
-  grp,
-  interpret,
-  ledgerArb,
-  mkOp,
-  specArb,
-  tx,
-} from "./ledger.test-support";
+import { acc, alloc, asClientLedger, deepFreeze, env, grp, interpret, ledgerArb, mkOp, specArb, tx } from "./ledger.test-support";
 import type { ClientLedger, SyncOp } from "./index";
 
 /* ── 1a. envelope.delete: FK cascades in one fixture ────────────────── */
@@ -101,9 +89,7 @@ describe("FK cascade parity: envelope.delete", () => {
     // envelope removed, E2/E3 stay
     expect(next.envelopes.map((e) => e.id)).toEqual(["E2", "E3"]);
     // E1 allocation deleted (CASCADE); E2 allocation untouched
-    expect(next.allocations).toEqual([
-      { id: next.allocations[0]!.id, envelopeId: "E2", month: "2026-06", amount: 25_00 },
-    ]);
+    expect(next.allocations).toEqual([{ id: next.allocations[0]!.id, envelopeId: "E2", month: "2026-06", amount: 25_00 }]);
 
     const byId = Object.fromEntries(next.transactions.map((t) => [t.id, t]));
     // T1 expense — SET NULL
@@ -208,24 +194,47 @@ describe("FK cascade parity: group.delete", () => {
 
 describe("fullResync: outbox replay idempotency", () => {
   /** Replay ops in order — exactly what sync.replayOutbox / store.applyLocal does. */
-  const replay = (l: ClientLedger, ops: readonly SyncOp[]): ClientLedger =>
-    ops.reduce((accL, op) => applyOp(accL, op), l);
+  const replay = (l: ClientLedger, ops: readonly SyncOp[]): ClientLedger => ops.reduce((accL, op) => applyOp(accL, op), l);
 
   /**
    * Create-guard: no collection has duplicate ids, and items within a
    * transaction are unique too. Evidence that replay injected no duplicate.
    */
   const assertUniqueIds = (l: ClientLedger): void => {
-    const uniq = (ids: string[], label: string) =>
-      expect(new Set(ids).size, `duplicate ids in ${label}`).toBe(ids.length);
-    uniq(l.accounts.map((a) => a.id), "accounts");
-    uniq(l.groups.map((g) => g.id), "groups");
-    uniq(l.envelopes.map((e) => e.id), "envelopes");
-    uniq(l.categories.map((c) => c.id), "categories");
-    uniq(l.places.map((p) => p.id), "places");
-    uniq(l.transactions.map((t) => t.id), "transactions");
-    uniq(l.allocations.map((a) => a.id), "allocations");
-    for (const t of l.transactions) uniq(t.items.map((i) => i.id), `items(${t.id})`);
+    const uniq = (ids: string[], label: string) => expect(new Set(ids).size, `duplicate ids in ${label}`).toBe(ids.length);
+    uniq(
+      l.accounts.map((a) => a.id),
+      "accounts",
+    );
+    uniq(
+      l.groups.map((g) => g.id),
+      "groups",
+    );
+    uniq(
+      l.envelopes.map((e) => e.id),
+      "envelopes",
+    );
+    uniq(
+      l.categories.map((c) => c.id),
+      "categories",
+    );
+    uniq(
+      l.places.map((p) => p.id),
+      "places",
+    );
+    uniq(
+      l.transactions.map((t) => t.id),
+      "transactions",
+    );
+    uniq(
+      l.allocations.map((a) => a.id),
+      "allocations",
+    );
+    for (const t of l.transactions)
+      uniq(
+        t.items.map((i) => i.id),
+        `items(${t.id})`,
+      );
   };
 
   it("replaying the same ops over a state that already reflects them changes nothing and duplicates no rows", () => {

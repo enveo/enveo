@@ -28,9 +28,28 @@ import { P, TEAL, type Theme } from "../lib/theme";
  *  that zeroes whichever element ends up as the body's actual first DOM child — simpler and more
  *  robust than hand-editing every subscreen's first element (Budgets' first section alone varies
  *  by data: Overspent/Near/Within budget each carry a different top margin). */
-export function ReportShell({ title, month, onPrev, onNext, onBack, eyebrow, hero, sub, bandChart, children }: {
-  title: string; month: string; onPrev: () => void; onNext: () => void; onBack: () => void;
-  eyebrow: string; hero: ReactNode; sub?: ReactNode; bandChart?: ReactNode; children: ReactNode;
+export function ReportShell({
+  title,
+  month,
+  onPrev,
+  onNext,
+  onBack,
+  eyebrow,
+  hero,
+  sub,
+  bandChart,
+  children,
+}: {
+  title: string;
+  month: string;
+  onPrev: () => void;
+  onNext: () => void;
+  onBack: () => void;
+  eyebrow: string;
+  hero: ReactNode;
+  sub?: ReactNode;
+  bandChart?: ReactNode;
+  children: ReactNode;
 }) {
   const C = useTheme();
   const { band, hc } = useBand();
@@ -39,16 +58,90 @@ export function ReportShell({ title, month, onPrev, onNext, onBack, eyebrow, her
     <>
       <div data-band={band || undefined} style={band ? { background: C.headerBg, paddingBottom: 14 } : { paddingBottom: 14 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 6, padding: `12px ${P}px 10px` }}>
-          <button aria-label={t("Back")} onClick={onBack} style={{ flexShrink: 0, width: 30, height: 30, borderRadius: 15, border: "none", background: "transparent", color: hc(C.headerInk, C.text), fontSize: 22, lineHeight: 1, cursor: "pointer", padding: 0, marginLeft: -6, display: "flex", alignItems: "center", justifyContent: "center" }}>‹</button>
-          <span style={{ flex: 1, fontSize: 16, fontWeight: 700, color: hc(C.headerInk, C.text), overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{title}</span>
+          <button
+            aria-label={t("Back")}
+            onClick={onBack}
+            style={{
+              flexShrink: 0,
+              width: 30,
+              height: 30,
+              borderRadius: 15,
+              border: "none",
+              background: "transparent",
+              color: hc(C.headerInk, C.text),
+              fontSize: 22,
+              lineHeight: 1,
+              cursor: "pointer",
+              padding: 0,
+              marginLeft: -6,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
+            ‹
+          </button>
+          <span
+            style={{
+              flex: 1,
+              fontSize: 16,
+              fontWeight: 700,
+              color: hc(C.headerInk, C.text),
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
+            }}
+          >
+            {title}
+          </span>
           <span style={{ display: "flex", alignItems: "center", gap: 0, flexShrink: 0 }}>
             {/* 30x30 hit target (matches the back button above) around the same 17px glyph — a bare
                `padding: "2px 7px"` box measured 21x21, under the touch-target floor (see task-14
                report); aria-label reuses chrome.tsx's existing "Previous/Next month" keys so this
                control reads the same as the global header's equivalent. */}
-            <button aria-label={t("Previous month")} onClick={onPrev} style={{ border: "none", background: "transparent", color: hc(C.headerMute, C.soft), fontSize: 17, lineHeight: 1, cursor: "pointer", padding: 0, width: 30, height: 30, display: "flex", alignItems: "center", justifyContent: "center" }}>‹</button>
-            <span style={{ fontSize: 12.5, fontWeight: 600, color: hc(C.headerInk, C.text), minWidth: 58, textAlign: "center" }}>{monthLabel(month, lang).split(" ")[0]}</span>
-            <button aria-label={t("Next month")} onClick={onNext} style={{ border: "none", background: "transparent", color: hc(C.headerMute, C.soft), fontSize: 17, lineHeight: 1, cursor: "pointer", padding: 0, width: 30, height: 30, display: "flex", alignItems: "center", justifyContent: "center" }}>›</button>
+            <button
+              aria-label={t("Previous month")}
+              onClick={onPrev}
+              style={{
+                border: "none",
+                background: "transparent",
+                color: hc(C.headerMute, C.soft),
+                fontSize: 17,
+                lineHeight: 1,
+                cursor: "pointer",
+                padding: 0,
+                width: 30,
+                height: 30,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+            >
+              ‹
+            </button>
+            <span style={{ fontSize: 12.5, fontWeight: 600, color: hc(C.headerInk, C.text), minWidth: 58, textAlign: "center" }}>
+              {monthLabel(month, lang).split(" ")[0]}
+            </span>
+            <button
+              aria-label={t("Next month")}
+              onClick={onNext}
+              style={{
+                border: "none",
+                background: "transparent",
+                color: hc(C.headerMute, C.soft),
+                fontSize: 17,
+                lineHeight: 1,
+                cursor: "pointer",
+                padding: 0,
+                width: 30,
+                height: 30,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+            >
+              ›
+            </button>
           </span>
         </div>
         <div style={{ padding: `0 ${P}px` }}>
@@ -120,8 +213,16 @@ function mondayIndex(iso: string): number {
 /** Visually hides an element from sighted view while keeping it in the accessibility tree —
  *  the standard 1px-clip technique (no utility class for this exists yet in the codebase). */
 const visuallyHidden: CSSProperties = {
-  position: "absolute", width: 1, height: 1, padding: 0, margin: -1, overflow: "hidden",
-  clip: "rect(0,0,0,0)", clipPath: "inset(50%)", whiteSpace: "nowrap", border: 0,
+  position: "absolute",
+  width: 1,
+  height: 1,
+  padding: 0,
+  margin: -1,
+  overflow: "hidden",
+  clip: "rect(0,0,0,0)",
+  clipPath: "inset(50%)",
+  whiteSpace: "nowrap",
+  border: 0,
 };
 
 /** Quartile heat ramp shared by `CalendarHeatmap` and the Reports hub's `MonthMini`: one hue
@@ -162,17 +263,17 @@ export function CalendarHeatmap({ days, lang, mask }: { days: DailySpendingPoint
       <span style={visuallyHidden}>{t("Daily spending in {month}", { month: monthName })}</span>
       <div aria-hidden="true" style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 3, marginBottom: 4 }}>
         {weekdays.map((w, i) => (
-          <div key={i} style={{ fontSize: 9.5, color: C.mute, textAlign: "center" }}>{w}</div>
+          <div key={i} style={{ fontSize: 9.5, color: C.mute, textAlign: "center" }}>
+            {w}
+          </div>
         ))}
       </div>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 3 }}>
-        {Array.from({ length: offset }, (_, i) => <div key={`pad${i}`} />)}
+        {Array.from({ length: offset }, (_, i) => (
+          <div key={`pad${i}`} />
+        ))}
         {days.map((d) => (
-          <div
-            key={d.date}
-            aria-label={`${d.date} · ${mask(d.total)}`}
-            style={{ aspectRatio: 1, borderRadius: 4, background: heatColor(d.total, max, C) }}
-          />
+          <div key={d.date} aria-label={`${d.date} · ${mask(d.total)}`} style={{ aspectRatio: 1, borderRadius: 4, background: heatColor(d.total, max, C) }} />
         ))}
       </div>
     </div>
@@ -206,7 +307,15 @@ export function TrendSpark({ series, color, w = 64, h = 24 }: { series: number[]
     .join(" ");
   return (
     <svg viewBox={`0 0 ${w} ${h}`} width={w} height={h} aria-hidden style={{ display: "block" }}>
-      <polyline points={pts} fill="none" style={{ stroke: color }} strokeWidth={1.5} strokeLinejoin="round" strokeLinecap="round" vectorEffect="non-scaling-stroke" />
+      <polyline
+        points={pts}
+        fill="none"
+        style={{ stroke: color }}
+        strokeWidth={1.5}
+        strokeLinejoin="round"
+        strokeLinecap="round"
+        vectorEffect="non-scaling-stroke"
+      />
     </svg>
   );
 }
@@ -219,8 +328,15 @@ export function TrendSpark({ series, color, w = 64, h = 24 }: { series: number[]
 export function Sparkline({ points, stroke = TEAL, dotColor }: { points: { month: string; total: number }[]; stroke?: string; dotColor?: string }) {
   const n = points.length;
   if (n < 2) return null;
-  const W = 320, H = 44, pad = 3;
-  const coords = polylineCoords(points.map((p) => p.total), W, H, pad);
+  const W = 320,
+    H = 44,
+    pad = 3;
+  const coords = polylineCoords(
+    points.map((p) => p.total),
+    W,
+    H,
+    pad,
+  );
   const pts = coords.map(([x, y]) => `${x.toFixed(1)},${y.toFixed(1)}`).join(" ");
   const last = coords[coords.length - 1]!;
   return (

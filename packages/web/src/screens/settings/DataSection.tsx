@@ -115,9 +115,13 @@ function LogoutRow() {
         <ActionRow
           icon={<ActionIcon paths={IC.logout} />}
           label={t("Sign out")}
-          desc={cloud
-            ? t("Signs you out and removes the local copy from this device. Your data stays on the server and comes back when you sign in again.")
-            : t("Signs you out of this device. The local copy and the server data both stay — everything resumes when you sign back in. To remove the copy from this device, use “Clear local data”.")}
+          desc={
+            cloud
+              ? t("Signs you out and removes the local copy from this device. Your data stays on the server and comes back when you sign in again.")
+              : t(
+                  "Signs you out of this device. The local copy and the server data both stay — everything resumes when you sign back in. To remove the copy from this device, use “Clear local data”.",
+                )
+          }
           tone="danger"
           onClick={() => void doLogout()}
           disabled={busy}
@@ -171,7 +175,12 @@ function DataBackup() {
     <div style={{ marginTop: 14 }}>
       <Eyebrow>{t("Backup")}</Eyebrow>
       <ActionGroup>
-        <ActionRow icon={<ActionIcon paths={IC.download} />} label={t("Export backup (JSON)")} desc={t("Downloads all your data as a file. Keep a backup, especially in local mode.")} onClick={doExport} />
+        <ActionRow
+          icon={<ActionIcon paths={IC.download} />}
+          label={t("Export backup (JSON)")}
+          desc={t("Downloads all your data as a file. Keep a backup, especially in local mode.")}
+          onClick={doExport}
+        />
         <ActionRow
           icon={<ActionIcon paths={IC.upload} />}
           label={t("Load backup (JSON)")}
@@ -318,7 +327,13 @@ function E2eeEnableWizard() {
   return (
     <>
       <ActionGroup>
-        <ActionRow icon={<ActionIcon paths={IC.shield} />} label={t("Enable end-to-end encryption")} desc={t("Budget data will be encrypted on your device before it reaches the server. Server-side features will be unavailable.")} onClick={open} chevron />
+        <ActionRow
+          icon={<ActionIcon paths={IC.shield} />}
+          label={t("Enable end-to-end encryption")}
+          desc={t("Budget data will be encrypted on your device before it reaches the server. Server-side features will be unavailable.")}
+          onClick={open}
+          chevron
+        />
       </ActionGroup>
 
       <Sheet show={sheet} onClose={() => !busy && setSheet(false)}>
@@ -328,7 +343,11 @@ function E2eeEnableWizard() {
             {step === 1 ? (
               <>
                 {/* STEP 1 — explanation + FORCED JSON export (Next disabled without the checkbox) */}
-                <div style={{ fontSize: 12.5, color: SC.soft, lineHeight: 1.6, marginBottom: 12 }}>{t("Once enabled, the server stores ciphertexts only. The key is your password, which the server does NOT know — without it (or a pairing code from a trusted device) the data cannot be recovered.")}</div>
+                <div style={{ fontSize: 12.5, color: SC.soft, lineHeight: 1.6, marginBottom: 12 }}>
+                  {t(
+                    "Once enabled, the server stores ciphertexts only. The key is your password, which the server does NOT know — without it (or a pairing code from a trusted device) the data cannot be recovered.",
+                  )}
+                </div>
                 <div style={{ fontSize: 12.5, color: SC.text, fontWeight: 600, lineHeight: 1.6, marginBottom: 12 }}>
                   {t("Before you continue, download a JSON backup and keep it somewhere safe.")}
                 </div>
@@ -347,7 +366,12 @@ function E2eeEnableWizard() {
                   />
                 </ActionGroup>
                 <label style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 14, cursor: "pointer" }}>
-                  <input type="checkbox" checked={haveBackup} onChange={(e) => setHaveBackup(e.target.checked)} style={{ width: 18, height: 18, flexShrink: 0 }} />
+                  <input
+                    type="checkbox"
+                    checked={haveBackup}
+                    onChange={(e) => setHaveBackup(e.target.checked)}
+                    style={{ width: 18, height: 18, flexShrink: 0 }}
+                  />
                   <span style={{ fontSize: 13, color: SC.text }}>{t("I have a backup in a safe place")}</span>
                 </label>
                 <div style={{ marginTop: 14 }}>
@@ -356,14 +380,30 @@ function E2eeEnableWizard() {
                   </ActionGroup>
                 </div>
                 {error && <div style={{ fontSize: 12, color: CORAL, marginTop: 10, lineHeight: 1.5 }}>{error}</div>}
-                <button onClick={() => setSheet(false)} style={{ width: "100%", marginTop: 12, padding: "11px 0", borderRadius: 11, border: "none", background: "transparent", color: SC.soft, fontSize: 13, fontWeight: 600, cursor: "pointer" }}>
+                <button
+                  onClick={() => setSheet(false)}
+                  style={{
+                    width: "100%",
+                    marginTop: 12,
+                    padding: "11px 0",
+                    borderRadius: 11,
+                    border: "none",
+                    background: "transparent",
+                    color: SC.soft,
+                    fontSize: 13,
+                    fontWeight: 600,
+                    cursor: "pointer",
+                  }}
+                >
                   {t("Cancel")}
                 </button>
               </>
             ) : (
               <>
                 {/* STEP 2 — password ×2 + strength meter; STEP 3 (execution) = the same button with a spinner */}
-                <div style={{ fontSize: 12.5, color: CORAL, lineHeight: 1.6, marginBottom: 12 }}>{t("Losing the password means losing your data — the server cannot reset it or decrypt your budget.")}</div>
+                <div style={{ fontSize: 12.5, color: CORAL, lineHeight: 1.6, marginBottom: 12 }}>
+                  {t("Losing the password means losing your data — the server cannot reset it or decrypt your budget.")}
+                </div>
                 <input
                   type="password"
                   value={pass}
@@ -383,9 +423,7 @@ function E2eeEnableWizard() {
                   aria-label={t("Repeat password")}
                   style={{ ...inputStyle(SC), marginTop: 10 }}
                 />
-                {pass2.length > 0 && pass2 !== pass && (
-                  <div style={{ fontSize: 11.5, color: CORAL, marginTop: 6 }}>{t("Passwords do not match.")}</div>
-                )}
+                {pass2.length > 0 && pass2 !== pass && <div style={{ fontSize: 11.5, color: CORAL, marginTop: 6 }}>{t("Passwords do not match.")}</div>}
                 <div style={{ marginTop: 14 }}>
                   <ActionGroup>
                     <ActionRow
@@ -398,7 +436,22 @@ function E2eeEnableWizard() {
                   </ActionGroup>
                 </div>
                 {error && <div style={{ fontSize: 12, color: CORAL, marginTop: 10, lineHeight: 1.5 }}>{error}</div>}
-                <button onClick={() => setStep(1)} disabled={busy} style={{ width: "100%", marginTop: 12, padding: "11px 0", borderRadius: 11, border: "none", background: "transparent", color: SC.soft, fontSize: 13, fontWeight: 600, cursor: busy ? "default" : "pointer" }}>
+                <button
+                  onClick={() => setStep(1)}
+                  disabled={busy}
+                  style={{
+                    width: "100%",
+                    marginTop: 12,
+                    padding: "11px 0",
+                    borderRadius: 11,
+                    border: "none",
+                    background: "transparent",
+                    color: SC.soft,
+                    fontSize: 13,
+                    fontWeight: 600,
+                    cursor: busy ? "default" : "pointer",
+                  }}
+                >
                   {t("Back")}
                 </button>
               </>
@@ -421,7 +474,9 @@ function E2eeManage() {
         <E2eePairCode />
         <E2eeDisable />
       </ActionGroup>
-      <div style={{ fontSize: 11.5, color: C.soft, lineHeight: 1.5, margin: "8px 4px 0" }}>{t("Enabled — the server stores only encrypted data and never knows your password or key.")}</div>
+      <div style={{ fontSize: 11.5, color: C.soft, lineHeight: 1.5, margin: "8px 4px 0" }}>
+        {t("Enabled — the server stores only encrypted data and never knows your password or key.")}
+      </div>
     </>
   );
 }
@@ -503,13 +558,35 @@ function E2eeChangePass() {
           return (
             <div>
               <div style={{ fontSize: 16.5, fontWeight: 700, color: SC.text, marginBottom: 12 }}>{t("Change encryption password")}</div>
-              <input type="password" value={oldPass} onChange={(e) => setOldPass(e.target.value)} placeholder={t("Current password")} autoComplete="current-password" aria-label={t("Current password")} style={inputStyle} />
-              <input type="password" value={pass} onChange={(e) => setPass(e.target.value)} placeholder={t("Encryption password (min. 10 characters)")} autoComplete="new-password" aria-label={t("Encryption password (min. 10 characters)")} style={{ ...inputStyle, marginTop: 10 }} />
+              <input
+                type="password"
+                value={oldPass}
+                onChange={(e) => setOldPass(e.target.value)}
+                placeholder={t("Current password")}
+                autoComplete="current-password"
+                aria-label={t("Current password")}
+                style={inputStyle}
+              />
+              <input
+                type="password"
+                value={pass}
+                onChange={(e) => setPass(e.target.value)}
+                placeholder={t("Encryption password (min. 10 characters)")}
+                autoComplete="new-password"
+                aria-label={t("Encryption password (min. 10 characters)")}
+                style={{ ...inputStyle, marginTop: 10 }}
+              />
               <StrengthMeter pass={pass} />
-              <input type="password" value={pass2} onChange={(e) => setPass2(e.target.value)} placeholder={t("Repeat password")} autoComplete="new-password" aria-label={t("Repeat password")} style={{ ...inputStyle, marginTop: 10 }} />
-              {pass2.length > 0 && pass2 !== pass && (
-                <div style={{ fontSize: 11.5, color: CORAL, marginTop: 6 }}>{t("Passwords do not match.")}</div>
-              )}
+              <input
+                type="password"
+                value={pass2}
+                onChange={(e) => setPass2(e.target.value)}
+                placeholder={t("Repeat password")}
+                autoComplete="new-password"
+                aria-label={t("Repeat password")}
+                style={{ ...inputStyle, marginTop: 10 }}
+              />
+              {pass2.length > 0 && pass2 !== pass && <div style={{ fontSize: 11.5, color: CORAL, marginTop: 6 }}>{t("Passwords do not match.")}</div>}
               <div style={{ marginTop: 14 }}>
                 <ActionGroup>
                   <ActionRow
@@ -523,7 +600,21 @@ function E2eeChangePass() {
               </div>
               {error && <div style={{ fontSize: 12, color: SC.neg, marginTop: 10, lineHeight: 1.5 }}>{error}</div>}
               {done && <div style={{ fontSize: 12, color: SC.pos, marginTop: 10, lineHeight: 1.5 }}>{t("Password changed.")}</div>}
-              <button onClick={() => !busy && setSheet(false)} style={{ width: "100%", marginTop: 12, padding: "11px 0", borderRadius: 11, border: "none", background: "transparent", color: SC.soft, fontSize: 13, fontWeight: 600, cursor: "pointer" }}>
+              <button
+                onClick={() => !busy && setSheet(false)}
+                style={{
+                  width: "100%",
+                  marginTop: 12,
+                  padding: "11px 0",
+                  borderRadius: 11,
+                  border: "none",
+                  background: "transparent",
+                  color: SC.soft,
+                  fontSize: 13,
+                  fontWeight: 600,
+                  cursor: "pointer",
+                }}
+              >
                 {t("Close")}
               </button>
             </div>
@@ -570,17 +661,41 @@ function E2eePairCode() {
 
   return (
     <>
-      <ActionRow icon={<ActionIcon paths={IC.qr} />} label={t("Pairing code")} desc={t("unlock the budget on a new device without the password")} onClick={open} />
+      <ActionRow
+        icon={<ActionIcon paths={IC.qr} />}
+        label={t("Pairing code")}
+        desc={t("unlock the budget on a new device without the password")}
+        onClick={open}
+      />
       <Sheet show={sheet} onClose={() => setSheet(false)}>
         {(SC) => (
           <div>
             <div style={{ fontSize: 16.5, fontWeight: 700, color: SC.text, marginBottom: 8 }}>{t("Pairing code")}</div>
-            <div style={{ fontSize: 12.5, color: CORAL, lineHeight: 1.6, marginBottom: 14 }}>{t("This code contains your encryption key in plain form. Show it only on your own trusted device — anyone with the code can read the budget.")}</div>
+            <div style={{ fontSize: 12.5, color: CORAL, lineHeight: 1.6, marginBottom: 14 }}>
+              {t("This code contains your encryption key in plain form. Show it only on your own trusted device — anyone with the code can read the budget.")}
+            </div>
             {code && svg ? (
               <>
                 {/* white background under the QR — readable in dark mode too */}
-                <div style={{ background: "#fff", padding: 12, borderRadius: 12, maxWidth: 220, margin: "0 auto 14px" }} dangerouslySetInnerHTML={{ __html: svg }} />
-                <div style={{ fontSize: 10.5, fontFamily: "ui-monospace, monospace", color: SC.soft, wordBreak: "break-all", lineHeight: 1.5, userSelect: "all", background: SC.bg, border: `1px solid ${SC.line}`, borderRadius: 10, padding: 10, marginBottom: 12 }}>
+                <div
+                  style={{ background: "#fff", padding: 12, borderRadius: 12, maxWidth: 220, margin: "0 auto 14px" }}
+                  dangerouslySetInnerHTML={{ __html: svg }}
+                />
+                <div
+                  style={{
+                    fontSize: 10.5,
+                    fontFamily: "ui-monospace, monospace",
+                    color: SC.soft,
+                    wordBreak: "break-all",
+                    lineHeight: 1.5,
+                    userSelect: "all",
+                    background: SC.bg,
+                    border: `1px solid ${SC.line}`,
+                    borderRadius: 10,
+                    padding: 10,
+                    marginBottom: 12,
+                  }}
+                >
                   {code}
                 </div>
                 <ActionGroup>
@@ -590,7 +705,21 @@ function E2eePairCode() {
             ) : (
               <div style={{ fontSize: 12.5, color: SC.soft, lineHeight: 1.6 }}>{t("Pairing code unavailable — no key on this device.")}</div>
             )}
-            <button onClick={() => setSheet(false)} style={{ width: "100%", marginTop: 12, padding: "11px 0", borderRadius: 11, border: "none", background: "transparent", color: SC.soft, fontSize: 13, fontWeight: 600, cursor: "pointer" }}>
+            <button
+              onClick={() => setSheet(false)}
+              style={{
+                width: "100%",
+                marginTop: 12,
+                padding: "11px 0",
+                borderRadius: 11,
+                border: "none",
+                background: "transparent",
+                color: SC.soft,
+                fontSize: 13,
+                fontWeight: 600,
+                cursor: "pointer",
+              }}
+            >
               {t("Close")}
             </button>
           </div>
@@ -644,13 +773,19 @@ function E2eeDisable() {
         label={t("Disable encryption")}
         desc={t("the server will store your data in plain form again")}
         tone="danger"
-        onClick={() => { setText(""); setError(null); setSheet(true); }}
+        onClick={() => {
+          setText("");
+          setError(null);
+          setSheet(true);
+        }}
       />
       <Sheet show={sheet} onClose={() => !busy && setSheet(false)}>
         {(SC) => (
           <div>
             <div style={{ fontSize: 15, fontWeight: 700, color: CORAL, marginBottom: 8 }}>{t("Disable end-to-end encryption?")}</div>
-            <div style={{ fontSize: 12.5, color: SC.soft, lineHeight: 1.6, marginBottom: 14 }}>{t("Your data will be decrypted and stored on the server in plain form (as before enabling). Make sure you have a current backup.")}</div>
+            <div style={{ fontSize: 12.5, color: SC.soft, lineHeight: 1.6, marginBottom: 14 }}>
+              {t("Your data will be decrypted and stored on the server in plain form (as before enabling). Make sure you have a current backup.")}
+            </div>
             <div style={{ fontSize: 11, color: SC.mute, marginBottom: 6 }}>
               <ConfirmWordHint word={t("DISABLE-E2EE")} />
             </div>
@@ -660,7 +795,18 @@ function E2eeDisable() {
               autoCapitalize="characters"
               autoComplete="off"
               placeholder={t("DISABLE-E2EE")}
-              style={{ width: "100%", boxSizing: "border-box", padding: "10px 12px", borderRadius: 10, border: `1px solid var(--danger-66)`, background: SC.bg, color: SC.text, fontSize: 14, fontFamily: font, marginBottom: 12 }}
+              style={{
+                width: "100%",
+                boxSizing: "border-box",
+                padding: "10px 12px",
+                borderRadius: 10,
+                border: `1px solid var(--danger-66)`,
+                background: SC.bg,
+                color: SC.text,
+                fontSize: 14,
+                fontFamily: font,
+                marginBottom: 12,
+              }}
             />
             <ActionGroup>
               <ActionRow
@@ -672,7 +818,21 @@ function E2eeDisable() {
               />
             </ActionGroup>
             {error && <div style={{ fontSize: 12, color: CORAL, marginTop: 10, lineHeight: 1.5 }}>{error}</div>}
-            <button onClick={() => !busy && setSheet(false)} style={{ width: "100%", marginTop: 12, padding: "11px 0", borderRadius: 11, border: "none", background: "transparent", color: SC.soft, fontSize: 13, fontWeight: 600, cursor: "pointer" }}>
+            <button
+              onClick={() => !busy && setSheet(false)}
+              style={{
+                width: "100%",
+                marginTop: 12,
+                padding: "11px 0",
+                borderRadius: 11,
+                border: "none",
+                background: "transparent",
+                color: SC.soft,
+                fontSize: 13,
+                fontWeight: 600,
+                cursor: "pointer",
+              }}
+            >
               {t("Cancel")}
             </button>
           </div>

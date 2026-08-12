@@ -21,7 +21,12 @@ export const LOCALE_OF: Record<Lang, string> = {
 /** Amount with a currency symbol per locale (minor units → e.g. "1 234,56 zł" / "$1,234.56"). */
 export function formatMoney(minor: number, currency: string, lang: Lang, opts?: { trim?: boolean }): string {
   const whole = opts?.trim && minor % 100 === 0;
-  return new Intl.NumberFormat(LOCALE_OF[lang], { style: "currency", currency, minimumFractionDigits: whole ? 0 : 2, maximumFractionDigits: whole ? 0 : 2 }).format(minor / 100);
+  return new Intl.NumberFormat(LOCALE_OF[lang], {
+    style: "currency",
+    currency,
+    minimumFractionDigits: whole ? 0 : 2,
+    maximumFractionDigits: whole ? 0 : 2,
+  }).format(minor / 100);
 }
 
 /** The currency symbol alone ("zł", "$", "€") — for labels next to inputs. */
@@ -83,7 +88,11 @@ export function parseAmount(raw: string): number | null {
 export function evalExpression(raw: string): number | null {
   if (!raw) return null;
   const norm = raw
-    .replace(/×/g, "*").replace(/÷/g, "/").replace(/−/g, "-").replace(/,/g, ".").replace(/\s/g, "")
+    .replace(/×/g, "*")
+    .replace(/÷/g, "/")
+    .replace(/−/g, "-")
+    .replace(/,/g, ".")
+    .replace(/\s/g, "")
     // leading zeros ("047.30", "07") are octal literals in strict mode → SyntaxError
     // → null → a split sum of "0,00" despite the typed amount; we strip them per numeric token
     .replace(/(^|[+\-*/])0+(?=\d)/g, "$1");

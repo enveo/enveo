@@ -27,13 +27,7 @@ import { runChild } from "../api.test-support";
 // here does NOT pull env/db/client into this process.
 import { SENTINEL, type LockChildOutput } from "./operationLock.serialization.test-child";
 import * as s from "./schema";
-import {
-  OPERATION_LOCK,
-  operationLockKey,
-  withOperationLockInTx,
-  type OperationLockKey,
-  type OperationLockName,
-} from "./operationLock";
+import { OPERATION_LOCK, operationLockKey, withOperationLockInTx, type OperationLockKey, type OperationLockName } from "./operationLock";
 import type { db } from "./client";
 
 /** The child forces real lock waits (bounded pg_locks polling) — beyond bun's 5 s default.
@@ -54,9 +48,7 @@ describe("operationLockKey", () => {
   });
 
   it("rejects an unreasonably large id", () => {
-    expect(() =>
-      operationLockKey(OPERATION_LOCK.ensureInitialBudget, "a".repeat(10_000)),
-    ).toThrow();
+    expect(() => operationLockKey(OPERATION_LOCK.ensureInitialBudget, "a".repeat(10_000))).toThrow();
   });
 
   it("rejects an empty operation (a forged key cannot pick a lock domain by accident)", () => {
@@ -124,12 +116,7 @@ describe.skipIf(!TEST_URL)("operation lock semantics (DB-backed, child process)"
     // B really parked on the lock (pg_locks showed the ungranted waiter) …
     expect(out.serialization.waiterObserved).toBe(true);
     // … and could only enter after A's callback finished.
-    expect(out.serialization.events).toEqual([
-      "A-enter",
-      "B-blocked-observed",
-      "A-exit",
-      "B-enter",
-    ]);
+    expect(out.serialization.events).toEqual(["A-enter", "B-blocked-observed", "A-exit", "B-enter"]);
   });
 
   it("a different id and a different operation do not block (both tuple halves reach the key)", () => {

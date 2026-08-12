@@ -50,11 +50,7 @@ export function SyncBadge({ onOpenSync }: { onOpenSync: () => void }) {
   if (deadLetters > 0) {
     const label = tp("The server rejected {n} change — tap to open settings | The server rejected {n} changes — tap to open settings", deadLetters);
     return (
-      <button
-        onClick={onOpenSync}
-        aria-label={label}
-        style={{ ...anchor, background: "none", border: "none", cursor: "pointer", padding: 0 }}
-      >
+      <button onClick={onOpenSync} aria-label={label} style={{ ...anchor, background: "none", border: "none", cursor: "pointer", padding: 0 }}>
         <span
           style={{
             width: 9,
@@ -104,13 +100,10 @@ export function SyncBadge({ onOpenSync }: { onOpenSync: () => void }) {
   // Local mode (sync DISABLED by choice) — a quiet, NON-red accessory:
   // a small padlock. Tappable → Settings. No counter (calm; details in the section).
   if (localMode !== "off" || state === "local") {
-    const label = localMode === "wiped" ? t("Local mode — data deleted from server. Tap to open settings") : t("Local mode — sync paused. Tap to open settings");
+    const label =
+      localMode === "wiped" ? t("Local mode — data deleted from server. Tap to open settings") : t("Local mode — sync paused. Tap to open settings");
     return (
-      <button
-        onClick={onOpenSync}
-        aria-label={label}
-        style={{ ...anchor, background: "none", border: "none", cursor: "pointer", padding: 0 }}
-      >
+      <button onClick={onOpenSync} aria-label={label} style={{ ...anchor, background: "none", border: "none", cursor: "pointer", padding: 0 }}>
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke={C.mute} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
           <path d="M8 11V8a4 4 0 118 0v3" />
           <path d="M6 11h12a1 1 0 011 1v7a1 1 0 01-1 1H6a1 1 0 01-1-1v-7a1 1 0 011-1z" />

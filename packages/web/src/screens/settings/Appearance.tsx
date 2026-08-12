@@ -28,9 +28,8 @@ function ThemeTiles() {
   const C = useTheme();
   const { settings, setSettings } = useSettings();
   const { t } = useT();
-  const isDark = settings.themeMode === "auto"
-    ? typeof window !== "undefined" && window.matchMedia("(prefers-color-scheme: dark)").matches
-    : settings.themeMode === "dark";
+  const isDark =
+    settings.themeMode === "auto" ? typeof window !== "undefined" && window.matchMedia("(prefers-color-scheme: dark)").matches : settings.themeMode === "dark";
   return (
     <div style={{ display: "flex", gap: 8, padding: "14px 0", borderBottom: `1px solid ${C.line}` }}>
       {THEME_IDS.map((id) => {
@@ -46,7 +45,18 @@ function ThemeTiles() {
             key={id}
             onClick={() => setSettings({ ...settings, accentTheme: id })}
             aria-pressed={active}
-            style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 6, padding: "10px 4px", borderRadius: 10, cursor: "pointer", background: C.bg, border: `2px solid ${active ? accent : C.line}` }}
+            style={{
+              flex: 1,
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              gap: 6,
+              padding: "10px 4px",
+              borderRadius: 10,
+              cursor: "pointer",
+              background: C.bg,
+              border: `2px solid ${active ? accent : C.line}`,
+            }}
           >
             <div style={{ position: "relative", width: "100%", height: 26, borderRadius: 7, background: previewBg, border: `1px solid ${C.line}` }}>
               <div style={{ position: "absolute", right: 4, bottom: 4, width: 8, height: 8, borderRadius: "50%", background: dot }} />
@@ -70,7 +80,16 @@ export function AppearanceSection() {
   const currency = useCurrency();
   // guard: without a booted replica / a budgets entity there is nothing to update
   const budgetId = store.getLedger()?.budgets?.[0]?.id;
-  const selectStyle = { padding: "7px 10px", borderRadius: 9, border: `1px solid ${C.line}`, background: C.bg, color: C.text, fontSize: 12.5, fontWeight: 600, fontFamily: font } as const;
+  const selectStyle = {
+    padding: "7px 10px",
+    borderRadius: 9,
+    border: `1px solid ${C.line}`,
+    background: C.bg,
+    color: C.text,
+    fontSize: 12.5,
+    fontWeight: 600,
+    fontFamily: font,
+  } as const;
   const community = LOCALES.find((l) => l.code === settings.lang)?.community;
 
   return (
@@ -130,8 +149,32 @@ export function AppearanceSection() {
         </select>
       </Row>
       <Row label={t("Discreet mode")}>
-        <button onClick={() => setSettings({ ...settings, discreet: !settings.discreet })} style={{ width: 44, height: 25, borderRadius: 13, background: settings.discreet ? TEAL : C.line, position: "relative", border: "none", cursor: "pointer", transition: "background .2s" }}>
-          <div style={{ width: 21, height: 21, borderRadius: "50%", background: "#fff", position: "absolute", top: 2, left: settings.discreet ? 21 : 2, transition: "left .2s", boxShadow: "0 1px 2px rgba(0,0,0,0.2)" }} />
+        <button
+          onClick={() => setSettings({ ...settings, discreet: !settings.discreet })}
+          style={{
+            width: 44,
+            height: 25,
+            borderRadius: 13,
+            background: settings.discreet ? TEAL : C.line,
+            position: "relative",
+            border: "none",
+            cursor: "pointer",
+            transition: "background .2s",
+          }}
+        >
+          <div
+            style={{
+              width: 21,
+              height: 21,
+              borderRadius: "50%",
+              background: "#fff",
+              position: "absolute",
+              top: 2,
+              left: settings.discreet ? 21 : 2,
+              transition: "left .2s",
+              boxShadow: "0 1px 2px rgba(0,0,0,0.2)",
+            }}
+          />
         </button>
       </Row>
     </div>

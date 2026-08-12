@@ -58,6 +58,11 @@ describe("sums", () => {
     expect(sumAvailable(envs, true)).toBe(5000);
   });
   test("sumBalances skips archived accounts", () => {
-    expect(sumBalances([{ balance: 10, archived: false }, { balance: 99, archived: true }])).toBe(10);
+    expect(
+      sumBalances([
+        { balance: 10, archived: false },
+        { balance: 99, archived: true },
+      ]),
+    ).toBe(10);
   });
 });

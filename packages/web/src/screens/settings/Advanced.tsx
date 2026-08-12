@@ -47,8 +47,7 @@ function StorageDiagSection() {
   }, []);
   const src = getLastBootSource();
   const mode = storageMode();
-  const srcLabel =
-    src === "replica" ? t("from local copy") : src === "snapshot" ? t("fetched from server") : src === "local" ? t("local mode") : "—";
+  const srcLabel = src === "replica" ? t("from local copy") : src === "snapshot" ? t("fetched from server") : src === "local" ? t("local mode") : "—";
   const srcColor = src === "snapshot" ? C.neg : src === "replica" ? C.pos : C.text;
   const persisted = diag?.persisted;
   const mb = (b: number | null) => (b == null ? "—" : `${(b / 1_048_576).toFixed(1)} MB`);
@@ -69,9 +68,15 @@ function StorageDiagSection() {
           {diag ? `${mb(diag.usageBytes)} / ${mb(diag.quotaBytes)}` : "—"}
         </span>
       </Row>
-      {mode === "memory-fallback" && <Helper>{t("WARNING: IndexedDB unavailable — data is kept only in session memory (it will not survive closing the app).")}</Helper>}
+      {mode === "memory-fallback" && (
+        <Helper>{t("WARNING: IndexedDB unavailable — data is kept only in session memory (it will not survive closing the app).")}</Helper>
+      )}
       {mode === "memory-forced" && <Helper>{t("Guest session — the budget lives only in this tab's memory and leaves no copy on this device.")}</Helper>}
-      <Helper>{t("If “Last launch: fetched from server” appears every time you open the app, iOS is deleting the local copy between sessions — that is why the first load is slow. “Persistent storage: Yes” lowers the risk of such eviction.")}</Helper>
+      <Helper>
+        {t(
+          "If “Last launch: fetched from server” appears every time you open the app, iOS is deleting the local copy between sessions — that is why the first load is slow. “Persistent storage: Yes” lowers the risk of such eviction.",
+        )}
+      </Helper>
     </div>
   );
 }
@@ -137,7 +142,11 @@ function LocalModeControl() {
           <ActionRow
             icon={<ActionIcon paths={IC.unlock} />}
             label={t("Turn off local mode")}
-            desc={wiped ? t("We will send your local data back to the server and resume sync.") : t("We will send pending changes and resume sync. Server data is untouched.")}
+            desc={
+              wiped
+                ? t("We will send your local data back to the server and resume sync.")
+                : t("We will send pending changes and resume sync. Server data is untouched.")
+            }
             onClick={() => void doDisable()}
             disabled={busy}
             busyLabel={busy ? t("Resuming…") : undefined}
@@ -145,7 +154,9 @@ function LocalModeControl() {
         </ActionGroup>
         <div style={{ fontSize: 11.5, color: C.soft, lineHeight: 1.6, margin: "8px 4px 0" }}>
           {t("Local mode")} — {wiped ? t("data deleted from server") : t("offline")}.{" "}
-          {wiped ? t("Your data now lives only on this device. Make a backup (Export) — it is the only way not to lose it.") : t("Sync is paused. Changes are saved locally and will be sent once you resume. Server data stays intact.")}
+          {wiped
+            ? t("Your data now lives only on this device. Make a backup (Export) — it is the only way not to lose it.")
+            : t("Sync is paused. Changes are saved locally and will be sent once you resume. Server data stays intact.")}
         </div>
         {error && <div style={{ fontSize: 12, color: CORAL, margin: "8px 4px 0", lineHeight: 1.5 }}>{error}</div>}
       </div>
@@ -186,7 +197,9 @@ function LocalModeControl() {
               <div>
                 <div style={{ fontSize: 15, fontWeight: 700, color: CORAL, marginBottom: 8 }}>{t("Delete data from the server?")}</div>
                 <div style={{ fontSize: 12.5, color: SC.soft, lineHeight: 1.6, marginBottom: 14 }}>
-                  {t("We will irreversibly erase all data from the server — this cannot be undone from the app. Other devices will lose access. Your data will remain only on this device. Make a backup first (Export).")}
+                  {t(
+                    "We will irreversibly erase all data from the server — this cannot be undone from the app. Other devices will lose access. Your data will remain only on this device. Make a backup first (Export).",
+                  )}
                 </div>
                 <div style={{ fontSize: 11, color: SC.mute, marginBottom: 6 }}>
                   <ConfirmWordHint word={t("DELETE")} />
@@ -196,7 +209,18 @@ function LocalModeControl() {
                   onChange={(e) => setConfirmText(e.target.value)}
                   autoCapitalize="characters"
                   placeholder={t("DELETE")}
-                  style={{ width: "100%", boxSizing: "border-box", padding: "10px 12px", borderRadius: 10, border: `1px solid var(--danger-66)`, background: SC.bg, color: SC.text, fontSize: 14, fontFamily: font, marginBottom: 12 }}
+                  style={{
+                    width: "100%",
+                    boxSizing: "border-box",
+                    padding: "10px 12px",
+                    borderRadius: 10,
+                    border: `1px solid var(--danger-66)`,
+                    background: SC.bg,
+                    color: SC.text,
+                    fontSize: 14,
+                    fontFamily: font,
+                    marginBottom: 12,
+                  }}
                 />
                 <ActionGroup>
                   <ActionRow
@@ -208,7 +232,21 @@ function LocalModeControl() {
                   />
                 </ActionGroup>
                 {error && <div style={{ fontSize: 12, color: CORAL, marginTop: 10, lineHeight: 1.5 }}>{error}</div>}
-                <button onClick={() => setConfirmWipe(false)} style={{ width: "100%", marginTop: 12, padding: "11px 0", borderRadius: 11, border: "none", background: "transparent", color: SC.soft, fontSize: 13, fontWeight: 600, cursor: "pointer" }}>
+                <button
+                  onClick={() => setConfirmWipe(false)}
+                  style={{
+                    width: "100%",
+                    marginTop: 12,
+                    padding: "11px 0",
+                    borderRadius: 11,
+                    border: "none",
+                    background: "transparent",
+                    color: SC.soft,
+                    fontSize: 13,
+                    fontWeight: 600,
+                    cursor: "pointer",
+                  }}
+                >
                   {t("Back")}
                 </button>
               </div>
@@ -221,7 +259,11 @@ function LocalModeControl() {
 
                 {/* SAFE PATH — no confirmation (non-destructive) */}
                 <ActionGroup>
-                  <ActionRow label={t("Work offline")} desc={t("Sync is paused. Changes will be saved locally and sent once you resume. Server data stays intact.")} onClick={doPause} />
+                  <ActionRow
+                    label={t("Work offline")}
+                    desc={t("Sync is paused. Changes will be saved locally and sent once you resume. Server data stays intact.")}
+                    onClick={doPause}
+                  />
                 </ActionGroup>
 
                 <div style={{ height: 1, background: SC.line, margin: "18px 0" }} />
@@ -241,7 +283,21 @@ function LocalModeControl() {
                 </ActionGroup>
                 {error && <div style={{ fontSize: 12, color: CORAL, marginTop: 10, lineHeight: 1.5 }}>{error}</div>}
 
-                <button onClick={() => setSheet(false)} style={{ width: "100%", marginTop: 18, padding: "11px 0", borderRadius: 11, border: "none", background: "transparent", color: SC.soft, fontSize: 13, fontWeight: 600, cursor: "pointer" }}>
+                <button
+                  onClick={() => setSheet(false)}
+                  style={{
+                    width: "100%",
+                    marginTop: 18,
+                    padding: "11px 0",
+                    borderRadius: 11,
+                    border: "none",
+                    background: "transparent",
+                    color: SC.soft,
+                    fontSize: 13,
+                    fontWeight: 600,
+                    cursor: "pointer",
+                  }}
+                >
                   {t("Cancel")}
                 </button>
               </>
@@ -273,10 +329,14 @@ function ResetSection() {
   const wipe = async () => {
     const msg =
       localMode === "wiped"
-        ? t("WARNING: in local mode this data exists ONLY on this device (the server is empty). Clearing it will delete it permanently. Make a backup first (Export). Continue?")
+        ? t(
+            "WARNING: in local mode this data exists ONLY on this device (the server is empty). Clearing it will delete it permanently. Make a backup first (Export). Continue?",
+          )
         : localMode === "paused"
           ? t("Clear local data? In local mode, unsent changes will be lost permanently. Make a backup first (Export). Continue?")
-          : t("Clear local data? We will delete the local copy on this device and download everything anew from the server. Changes still waiting in the queue will be lost.");
+          : t(
+              "Clear local data? We will delete the local copy on this device and download everything anew from the server. Changes still waiting in the queue will be lost.",
+            );
     if (!window.confirm(msg)) return;
     // wipeLocalData: clears the stores (multi-tab safe — does not delete the DB) →
     // broadcasts "wipe" to other tabs → reload. Does not block on another tab's connection.
@@ -335,11 +395,19 @@ function ResetSection() {
     <div style={{ marginTop: 18 }}>
       <Eyebrow>{t("Clear & reset")}</Eyebrow>
       <ActionGroup>
-        <ActionRow icon={<ActionIcon paths={IC.trash} />} label={t("Clear local data")} desc={t("Deletes the local copy on this device and downloads everything anew from the server. Use when something looks off.")} tone="danger" onClick={() => void wipe()} />
+        <ActionRow
+          icon={<ActionIcon paths={IC.trash} />}
+          label={t("Clear local data")}
+          desc={t("Deletes the local copy on this device and downloads everything anew from the server. Use when something looks off.")}
+          tone="danger"
+          onClick={() => void wipe()}
+        />
         <ActionRow
           icon={<ActionIcon paths={IC.restart} />}
           label={t("Start from scratch")}
-          desc={t("Deletes ALL budget data from the server and this device — irreversible. Export a backup first. The app will reopen with the first-run wizard.")}
+          desc={t(
+            "Deletes ALL budget data from the server and this device — irreversible. Export a backup first. The app will reopen with the first-run wizard.",
+          )}
           tone="danger"
           onClick={() => {
             setConfirmText("");
@@ -354,7 +422,9 @@ function ResetSection() {
         /* Confirmation form (type RESET) — unchanged, the row only triggers it. */
         <div style={{ marginTop: 10, padding: 14, background: C.bg, borderRadius: 11, border: `1px solid var(--danger-66)` }}>
           <div style={{ fontSize: 12.5, fontWeight: 700, color: CORAL, marginBottom: 6 }}>{t("Start from scratch")}</div>
-          <div style={{ fontSize: 11.5, color: C.soft, lineHeight: 1.6, marginBottom: 10 }}>{t("Deletes ALL budget data from the server and this device — irreversible. Export a backup first. The app will reopen with the first-run wizard.")}</div>
+          <div style={{ fontSize: 11.5, color: C.soft, lineHeight: 1.6, marginBottom: 10 }}>
+            {t("Deletes ALL budget data from the server and this device — irreversible. Export a backup first. The app will reopen with the first-run wizard.")}
+          </div>
           <div style={{ fontSize: 11, color: C.mute, marginBottom: 6 }}>
             <ConfirmWordHint word={t("RESET")} />
           </div>
@@ -363,7 +433,18 @@ function ResetSection() {
             onChange={(e) => setConfirmText(e.target.value)}
             autoCapitalize="characters"
             placeholder={t("RESET")}
-            style={{ width: "100%", boxSizing: "border-box", padding: "10px 12px", borderRadius: 10, border: `1px solid var(--danger-66)`, background: C.bg, color: C.text, fontSize: 14, fontFamily: font, marginBottom: 12 }}
+            style={{
+              width: "100%",
+              boxSizing: "border-box",
+              padding: "10px 12px",
+              borderRadius: 10,
+              border: `1px solid var(--danger-66)`,
+              background: C.bg,
+              color: C.text,
+              fontSize: 14,
+              fontFamily: font,
+              marginBottom: 12,
+            }}
           />
           <ActionGroup>
             <ActionRow
@@ -377,7 +458,18 @@ function ResetSection() {
           {error && <div style={{ fontSize: 12, color: CORAL, marginTop: 10, lineHeight: 1.5 }}>{error}</div>}
           <button
             onClick={() => setConfirm(false)}
-            style={{ width: "100%", marginTop: 12, padding: "11px 0", borderRadius: 11, border: "none", background: "transparent", color: C.soft, fontSize: 13, fontWeight: 600, cursor: "pointer" }}
+            style={{
+              width: "100%",
+              marginTop: 12,
+              padding: "11px 0",
+              borderRadius: 11,
+              border: "none",
+              background: "transparent",
+              color: C.soft,
+              fontSize: 13,
+              fontWeight: 600,
+              cursor: "pointer",
+            }}
           >
             {t("Back")}
           </button>
@@ -392,10 +484,17 @@ function ResetSection() {
         <div style={{ marginTop: 10, padding: 14, background: C.bg, borderRadius: 11, border: `1px solid var(--danger-66)` }}>
           <div style={{ fontSize: 12.5, fontWeight: 700, color: CORAL, marginBottom: 6 }}>{t("This device's local copy cannot be linked to this account")}</div>
           <div style={{ fontSize: 11.5, color: C.soft, lineHeight: 1.6, marginBottom: 10 }}>
-            {t("The budget data on this device could not be matched to the account you are signed in with, so nothing can be sent to the server. Nothing has been deleted yet. Download a backup first — this device may hold the only copy of that data. “Delete everything and start fresh” erases this account's data on the server and the local copy on this device, then signs you out.")}
+            {t(
+              "The budget data on this device could not be matched to the account you are signed in with, so nothing can be sent to the server. Nothing has been deleted yet. Download a backup first — this device may hold the only copy of that data. “Delete everything and start fresh” erases this account's data on the server and the local copy on this device, then signs you out.",
+            )}
           </div>
           <ActionGroup>
-            <ActionRow label={t("Download a backup (JSON)")} desc={t("the whole local copy as a file — no network needed")} onClick={recoveryExport} disabled={busy} />
+            <ActionRow
+              label={t("Download a backup (JSON)")}
+              desc={t("the whole local copy as a file — no network needed")}
+              onClick={recoveryExport}
+              disabled={busy}
+            />
             <ActionRow
               label={t("Delete everything and start fresh")}
               tone="danger"
@@ -408,7 +507,18 @@ function ResetSection() {
           <button
             onClick={() => setRecovery(false)}
             disabled={busy}
-            style={{ width: "100%", marginTop: 12, padding: "11px 0", borderRadius: 11, border: "none", background: "transparent", color: C.soft, fontSize: 13, fontWeight: 600, cursor: "pointer" }}
+            style={{
+              width: "100%",
+              marginTop: 12,
+              padding: "11px 0",
+              borderRadius: 11,
+              border: "none",
+              background: "transparent",
+              color: C.soft,
+              fontSize: 13,
+              fontWeight: 600,
+              cursor: "pointer",
+            }}
           >
             {t("Back")}
           </button>

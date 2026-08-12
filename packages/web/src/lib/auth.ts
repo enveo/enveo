@@ -29,10 +29,7 @@ export async function fetchAuthMeta(): Promise<AuthMeta> {
  * throw a snake_case CODE, let lib/api.ts (ERROR_KEYS) own the wording per locale.
  * An unmapped code falls back to a generic per-action key rather than the library's prose.
  */
-function authErrorCode(
-  error: { code?: string; message?: string } | null | undefined,
-  fallback: "sign_in_failed" | "sign_up_failed",
-): string {
+function authErrorCode(error: { code?: string; message?: string } | null | undefined, fallback: "sign_in_failed" | "sign_up_failed"): string {
   const code = error?.code?.toLowerCase();
   return code && AUTH_CODES.has(code) ? code : fallback;
 }

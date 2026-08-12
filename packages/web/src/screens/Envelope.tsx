@@ -89,7 +89,18 @@ export function EnvelopeScreen({
         {/* header: back + icon + name */}
         <div style={{ display: "flex", alignItems: "center", gap: 10, padding: `12px ${P}px 4px` }}>
           {backBtn}
-          <div style={{ width: 34, height: 34, borderRadius: 9, background: env.color, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+          <div
+            style={{
+              width: 34,
+              height: 34,
+              borderRadius: 9,
+              background: env.color,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              flexShrink: 0,
+            }}
+          >
             <Glyph name={env.icon} size={17} color={txt} />
           </div>
           <span style={{ fontSize: 18, fontWeight: 700, color: C.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{env.name}</span>
@@ -97,11 +108,19 @@ export function EnvelopeScreen({
 
         {/* month navigation (local to the screen) */}
         <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 10, padding: "4px 0 12px" }}>
-          <button onClick={() => setM(shiftMonth(m, -1))} aria-label={t("Previous month")} style={{ background: "none", border: "none", cursor: "pointer", padding: 2, display: "flex" }}>
+          <button
+            onClick={() => setM(shiftMonth(m, -1))}
+            aria-label={t("Previous month")}
+            style={{ background: "none", border: "none", cursor: "pointer", padding: 2, display: "flex" }}
+          >
             <Ico d="M15 19l-7-7 7-7" size={17} />
           </button>
           <span style={{ color: C.text, fontSize: 16.5, fontWeight: 600, minWidth: 128, textAlign: "center", letterSpacing: 0.2 }}>{monthLabel(m, lang)}</span>
-          <button onClick={() => setM(shiftMonth(m, 1))} aria-label={t("Next month")} style={{ background: "none", border: "none", cursor: "pointer", padding: 2, display: "flex" }}>
+          <button
+            onClick={() => setM(shiftMonth(m, 1))}
+            aria-label={t("Next month")}
+            style={{ background: "none", border: "none", cursor: "pointer", padding: 2, display: "flex" }}
+          >
             <Ico d="M9 5l7 7-7 7" size={17} />
           </button>
         </div>
@@ -131,7 +150,9 @@ export function EnvelopeScreen({
             <div style={{ flex: 1, height: 8, background: C.inset, borderRadius: 4, overflow: "hidden" }}>
               <div style={{ height: "100%", width: `${(Math.max(0, s.spent) / maxSpent) * 100}%`, background: env.color, borderRadius: 4 }} />
             </div>
-            <span style={{ fontSize: 12, fontWeight: 600, color: C.text, width: 76, textAlign: "right", fontVariantNumeric: "tabular-nums" }}>{M(Math.max(0, s.spent))}</span>
+            <span style={{ fontSize: 12, fontWeight: 600, color: C.text, width: 76, textAlign: "right", fontVariantNumeric: "tabular-nums" }}>
+              {M(Math.max(0, s.spent))}
+            </span>
           </div>
         ))}
 
@@ -139,7 +160,22 @@ export function EnvelopeScreen({
         <div style={{ fontSize: 13, fontWeight: 600, color: C.text, margin: `10px ${P}px 8px` }}>{t("Breakdown by category")}</div>
         <div style={{ display: "flex", gap: 6, margin: `0 ${P}px 12px` }}>
           {PERIODS.map((p) => (
-            <button key={p} onClick={() => setPeriod(p)} style={{ flex: 1, padding: "6px 0", borderRadius: 9, border: `1px solid ${period === p ? TEAL : C.line}`, background: period === p ? "var(--accent-1a)" : "transparent", color: period === p ? TEAL : C.soft, fontSize: 11.5, fontWeight: 600, cursor: "pointer", fontFamily: font }}>
+            <button
+              key={p}
+              onClick={() => setPeriod(p)}
+              style={{
+                flex: 1,
+                padding: "6px 0",
+                borderRadius: 9,
+                border: `1px solid ${period === p ? TEAL : C.line}`,
+                background: period === p ? "var(--accent-1a)" : "transparent",
+                color: period === p ? TEAL : C.soft,
+                fontSize: 11.5,
+                fontWeight: 600,
+                cursor: "pointer",
+                fontFamily: font,
+              }}
+            >
               {t(PERIOD_KEY[p])}
             </button>
           ))}
@@ -149,7 +185,9 @@ export function EnvelopeScreen({
           return (
             <div key={c.categoryId ?? "none"} style={{ margin: `0 ${P}px 10px` }}>
               <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
-                <span style={{ flex: 1, minWidth: 0, fontSize: 13, color: C.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.name}</span>
+                <span style={{ flex: 1, minWidth: 0, fontSize: 13, color: C.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  {c.name}
+                </span>
                 <span style={{ fontSize: 11.5, color: C.mute, fontVariantNumeric: "tabular-nums" }}>{share.toFixed(1)}%</span>
                 <span style={{ fontSize: 13, fontWeight: 600, color: C.text, fontVariantNumeric: "tabular-nums" }}>{M(c.amount)}</span>
               </div>
@@ -159,18 +197,65 @@ export function EnvelopeScreen({
             </div>
           );
         })}
-        <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "baseline", gap: 8, margin: `2px ${P}px 18px`, paddingTop: 8, borderTop: `1px solid ${C.line}` }}>
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "flex-end",
+            alignItems: "baseline",
+            gap: 8,
+            margin: `2px ${P}px 18px`,
+            paddingTop: 8,
+            borderTop: `1px solid ${C.line}`,
+          }}
+        >
           <span style={{ fontSize: 12.5, color: C.soft }}>{t("Total")}</span>
           <span style={{ fontSize: 13.5, fontWeight: 700, color: C.text, fontVariantNumeric: "tabular-nums" }}>{M(total)}</span>
         </div>
       </div>
 
       {/* bottom actions */}
-      <div style={{ display: "flex", gap: 10, padding: `10px ${P}px calc(10px + env(safe-area-inset-bottom))`, borderTop: `1px solid ${C.line}`, background: C.bg, flexShrink: 0 }}>
-        <button onClick={() => onOpenTxns({ envId: envelopeId })} style={{ flex: 1, padding: "12px 0", borderRadius: 12, border: `1px solid var(--accent-55)`, background: "var(--accent-1a)", color: TEAL, fontSize: 13.5, fontWeight: 600, cursor: "pointer", fontFamily: font }}>
+      <div
+        style={{
+          display: "flex",
+          gap: 10,
+          padding: `10px ${P}px calc(10px + env(safe-area-inset-bottom))`,
+          borderTop: `1px solid ${C.line}`,
+          background: C.bg,
+          flexShrink: 0,
+        }}
+      >
+        <button
+          onClick={() => onOpenTxns({ envId: envelopeId })}
+          style={{
+            flex: 1,
+            padding: "12px 0",
+            borderRadius: 12,
+            border: `1px solid var(--accent-55)`,
+            background: "var(--accent-1a)",
+            color: TEAL,
+            fontSize: 13.5,
+            fontWeight: 600,
+            cursor: "pointer",
+            fontFamily: font,
+          }}
+        >
           {t("Transactions")}
         </button>
-        <button onClick={() => setEdit(env)} style={{ flex: 1, padding: "12px 0", borderRadius: 12, border: "none", background: TEAL, color: "#fff", fontSize: 13.5, fontWeight: 600, cursor: "pointer", fontFamily: font }}>
+        <button
+          onClick={() => setEdit(env)}
+          style={{
+            flex: 1,
+            padding: "12px 0",
+            borderRadius: 12,
+            border: "none",
+            background: TEAL,
+            color: "#fff",
+            fontSize: 13.5,
+            fontWeight: 600,
+            cursor: "pointer",
+            fontFamily: font,
+          }}
+        >
           {t("Edit")}
         </button>
       </div>

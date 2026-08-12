@@ -30,9 +30,7 @@ function writeStubLefthook(dir: string, exitCode: number): { bin: string; argvFi
   const bin = join(dir, "stub-lefthook.ts");
   writeFileSync(
     bin,
-    `#!/usr/bin/env bun\n` +
-      `await Bun.write(${JSON.stringify(argvFile)}, JSON.stringify(process.argv.slice(2)));\n` +
-      `process.exit(${exitCode});\n`,
+    `#!/usr/bin/env bun\n` + `await Bun.write(${JSON.stringify(argvFile)}, JSON.stringify(process.argv.slice(2)));\n` + `process.exit(${exitCode});\n`,
   );
   chmodSync(bin, 0o755);
   return { bin, argvFile };

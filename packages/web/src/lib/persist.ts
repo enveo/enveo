@@ -39,10 +39,7 @@ export const isDurableBroken = (): boolean => durableBroken;
 function markBroken(e: unknown): void {
   if (durableBroken) return;
   durableBroken = true;
-  console.warn(
-    "persist: durable IDB write failed — continuing memory-only for this session (reload loses the non-durable tail)",
-    e,
-  );
+  console.warn("persist: durable IDB write failed — continuing memory-only for this session (reload loses the non-durable tail)", e);
 }
 
 /**

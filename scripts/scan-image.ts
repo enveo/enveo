@@ -71,16 +71,26 @@ function main(argv: readonly string[]): number {
     // The human-readable table first: accepted items must stay visible, not silently dropped.
     const table = Bun.spawnSync(
       [
-        "docker", "run", "--rm",
-        "-v", `${tarball}:/scan/image.tar:ro`,
-        "-v", `${join(repoRoot, "security")}:/policy:ro`,
+        "docker",
+        "run",
+        "--rm",
+        "-v",
+        `${tarball}:/scan/image.tar:ro`,
+        "-v",
+        `${join(repoRoot, "security")}:/policy:ro`,
         TRIVY,
-        "image", "--input", "/scan/image.tar",
-        "--scanners", "vuln",
-        "--severity", BLOCKING,
+        "image",
+        "--input",
+        "/scan/image.tar",
+        "--scanners",
+        "vuln",
+        "--severity",
+        BLOCKING,
         "--show-suppressed",
-        "--ignorefile", `/policy/${IGNORE_FILE.split("/")[1]}`,
-        "--exit-code", "0",
+        "--ignorefile",
+        `/policy/${IGNORE_FILE.split("/")[1]}`,
+        "--exit-code",
+        "0",
       ],
       { stdio: ["ignore", "inherit", "inherit"] },
     );
@@ -92,17 +102,28 @@ function main(argv: readonly string[]): number {
     // …then the machine-readable pass used for the verdict.
     const json = Bun.spawnSync(
       [
-        "docker", "run", "--rm",
-        "-v", `${tarball}:/scan/image.tar:ro`,
-        "-v", `${join(repoRoot, "security")}:/policy:ro`,
+        "docker",
+        "run",
+        "--rm",
+        "-v",
+        `${tarball}:/scan/image.tar:ro`,
+        "-v",
+        `${join(repoRoot, "security")}:/policy:ro`,
         TRIVY,
-        "image", "--input", "/scan/image.tar",
-        "--scanners", "vuln",
-        "--severity", BLOCKING,
-        "--ignorefile", `/policy/${IGNORE_FILE.split("/")[1]}`,
-        "--format", "json",
+        "image",
+        "--input",
+        "/scan/image.tar",
+        "--scanners",
+        "vuln",
+        "--severity",
+        BLOCKING,
+        "--ignorefile",
+        `/policy/${IGNORE_FILE.split("/")[1]}`,
+        "--format",
+        "json",
         "--quiet",
-        "--exit-code", "0",
+        "--exit-code",
+        "0",
       ],
       { stdio: ["ignore", "pipe", "pipe"] },
     );
@@ -123,9 +144,7 @@ function main(argv: readonly string[]): number {
       return EXIT_SCAN_FAILED;
     }
 
-    const blocking = report.Results.flatMap((result) =>
-      (result.Vulnerabilities ?? []).map((vulnerability) => ({ target: result.Target, vulnerability })),
-    );
+    const blocking = report.Results.flatMap((result) => (result.Vulnerabilities ?? []).map((vulnerability) => ({ target: result.Target, vulnerability })));
 
     if (blocking.length > 0) {
       console.error(`\nscan-image: ${blocking.length} unaccepted critical/high finding(s):`);
@@ -135,9 +154,7 @@ function main(argv: readonly string[]): number {
             `${vulnerability.InstalledVersion} (fix: ${vulnerability.FixedVersion ?? "none"}) — ${target}`,
         );
       }
-      console.error(
-        `\nFix the package, bump the base image, or add an exact, reviewed, EXPIRING entry to ${IGNORE_FILE}.`,
-      );
+      console.error(`\nFix the package, bump the base image, or add an exact, reviewed, EXPIRING entry to ${IGNORE_FILE}.`);
       return EXIT_FINDINGS;
     }
 

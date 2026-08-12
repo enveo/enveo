@@ -13,7 +13,11 @@
  */
 
 const normTxt = (s: string): string =>
-  s.toLowerCase().replace(/[^a-z0-9ąćęłńóśźż]+/gi, " ").replace(/\s+/g, " ").trim();
+  s
+    .toLowerCase()
+    .replace(/[^a-z0-9ąćęłńóśźż]+/gi, " ")
+    .replace(/\s+/g, " ")
+    .trim();
 
 function trigramsOf(s: string): Set<string> {
   const p = `  ${s} `;
@@ -76,7 +80,17 @@ export function rankPatterns(raw: string, groups: HistGroup[]): HistPattern[] {
     .filter((x) => x.sim >= MIN_SIM)
     .sort((a, b) => b.sim - a.sim || b.g.count - a.g.count)
     .slice(0, TOP_N)
-    .map(({ g }) => ({ place: g.place, name: g.name, envelope: g.envelope, category: g.category, count: g.count, fromSourceRef: g.fromSourceRef, type: g.type, isRefund: g.isRefund, toAccountId: g.toAccountId }));
+    .map(({ g }) => ({
+      place: g.place,
+      name: g.name,
+      envelope: g.envelope,
+      category: g.category,
+      count: g.count,
+      fromSourceRef: g.fromSourceRef,
+      type: g.type,
+      isRefund: g.isRefund,
+      toAccountId: g.toAccountId,
+    }));
 }
 
 /** Model proposal (cycle 2) — raw names before conversion to ids. */
@@ -142,5 +156,15 @@ export function confidentSourceRef(raw: string, groups: HistGroup[]): HistPatter
   // and the type is exactly what we want to learn from it.
   const learnsType = g.type !== "expense" || g.isRefund;
   if (g.envelope === null && g.category === null && g.place === null && !learnsType) return null; // nothing to copy → to the AI
-  return { place: g.place, name: g.name, envelope: g.envelope, category: g.category, count: g.count, fromSourceRef: true, type: g.type, isRefund: g.isRefund, toAccountId: g.toAccountId };
+  return {
+    place: g.place,
+    name: g.name,
+    envelope: g.envelope,
+    category: g.category,
+    count: g.count,
+    fromSourceRef: true,
+    type: g.type,
+    isRefund: g.isRefund,
+    toAccountId: g.toAccountId,
+  };
 }

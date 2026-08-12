@@ -45,9 +45,7 @@ describe("collectActionUses", () => {
 });
 
 describe("findPinProblems", () => {
-  const use = (reference: string, comment: string | null = "v1.2.3") => [
-    { file: "w.yml", reference, comment, line: 1 },
-  ];
+  const use = (reference: string, comment: string | null = "v1.2.3") => [{ file: "w.yml", reference, comment, line: 1 }];
 
   it("accepts a full SHA with a version comment", () => {
     expect(findPinProblems(use(`actions/checkout@${SHA_A}`, "v7.0.1"))).toEqual([]);
@@ -114,9 +112,7 @@ describe("every workflow pins its third-party actions", () => {
   });
 
   it("pins each one to a full commit SHA with a maintainable version comment", () => {
-    const uses = files.flatMap((name) =>
-      collectActionUses(`.github/workflows/${name}`, readFileSync(join(WORKFLOW_DIR, name), "utf8")),
-    );
+    const uses = files.flatMap((name) => collectActionUses(`.github/workflows/${name}`, readFileSync(join(WORKFLOW_DIR, name), "utf8")));
 
     // A gate that finds nothing is not a gate.
     expect(uses.length).toBeGreaterThan(5);

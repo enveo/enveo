@@ -50,10 +50,7 @@ async function main(): Promise<void> {
   // The fuse: this process is about to WRITE (wipe + insert) a budget's data. It may only
   // ever do that against the throwaway database the test handed it.
   if (!expected || env.DATABASE_URL !== expected) {
-    throw new Error(
-      `refusing to run: env.DATABASE_URL is not the throwaway database given by the test ` +
-        `(EXPECT_DATABASE_URL=${expected || "<unset>"})`,
-    );
+    throw new Error(`refusing to run: env.DATABASE_URL is not the throwaway database given by the test ` + `(EXPECT_DATABASE_URL=${expected || "<unset>"})`);
   }
 
   const { db, sql } = await import("../db/client");
@@ -64,10 +61,7 @@ async function main(): Promise<void> {
     .insert(s.users)
     .values({ email: `replace-compat-child-${crypto.randomUUID()}@example.test` })
     .returning({ id: s.users.id });
-  const [budget] = await db
-    .insert(s.budgets)
-    .values({ userId: user!.id, name: "backup-compat" })
-    .returning({ id: s.budgets.id });
+  const [budget] = await db.insert(s.budgets).values({ userId: user!.id, name: "backup-compat" }).returning({ id: s.budgets.id });
   const budgetId = budget!.id;
 
   // Minimal stand-in for index.ts's session middleware: sets the same context variable
@@ -82,9 +76,7 @@ async function main(): Promise<void> {
   const accId = crypto.randomUUID();
   const groupId = crypto.randomUUID();
   const ledgerWithRecurrence = {
-    accounts: [
-      { id: accId, name: "Checking", color: "#fff", icon: "wallet", type: "checking", onBudget: true, initialBalance: 0, archived: false, sort: 0 },
-    ],
+    accounts: [{ id: accId, name: "Checking", color: "#fff", icon: "wallet", type: "checking", onBudget: true, initialBalance: 0, archived: false, sort: 0 }],
     groups: [{ id: groupId, name: "Grupa", sort: 0 }],
     envelopes: [
       // A pre-flag envelope: `isSavings` is entirely ABSENT, exactly as a pre-3.7 backup ships
@@ -97,9 +89,7 @@ async function main(): Promise<void> {
     ],
     categories: [],
     places: [],
-    recurrences: [
-      { id: crypto.randomUUID(), rule: "monthly", startDate: "2026-01-01", endDate: null, pausedUntil: null },
-    ],
+    recurrences: [{ id: crypto.randomUUID(), rule: "monthly", startDate: "2026-01-01", endDate: null, pausedUntil: null }],
     allocations: [],
     transactions: [
       {

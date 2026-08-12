@@ -72,9 +72,7 @@ async function main(): Promise<void> {
   const { db } = await import("./db/client");
   const s = await import("./db/schema");
   const { getBudgetId } = await import("./context");
-  const { OPERATION_LOCK, operationLockKey, acquireOperationLockForTests } = await import(
-    "./db/operationLock"
-  );
+  const { OPERATION_LOCK, operationLockKey, acquireOperationLockForTests } = await import("./db/operationLock");
 
   const observer = postgres(env.DATABASE_URL, { max: 1, onnotice: () => {} });
   const locks = lockObserver(observer);
@@ -87,19 +85,12 @@ async function main(): Promise<void> {
     return u!.id;
   };
   const ctxFor = (userId: string) => ({ get: (_k: "userId") => userId });
-  const budgetRowsOf = async (userId: string) =>
-    db.select({ id: s.budgets.id }).from(s.budgets).where(eq(s.budgets.userId, userId));
+  const budgetRowsOf = async (userId: string) => db.select({ id: s.budgets.id }).from(s.budgets).where(eq(s.budgets.userId, userId));
   const journalInsertsOf = async (budgetId: string): Promise<number> => {
     const rows = await db
       .select({ seq: s.changes.seq })
       .from(s.changes)
-      .where(
-        and(
-          eq(s.changes.tableName, "budgets"),
-          eq(s.changes.rowId, budgetId),
-          eq(s.changes.op, "upsert"),
-        ),
-      );
+      .where(and(eq(s.changes.tableName, "budgets"), eq(s.changes.rowId, budgetId), eq(s.changes.op, "upsert")));
     return rows.length;
   };
 
@@ -125,11 +116,7 @@ async function main(): Promise<void> {
   const bothParkedObserved = await waitFor(async () => (await locks.waiters()) >= 2);
   releaseGate();
   await withTimeout(gateTx, 15_000, "gate releasing the operation lock");
-  const [idA, idB] = await withTimeout(
-    Promise.all([pA, pB]),
-    30_000,
-    "both initializers finishing",
-  );
+  const [idA, idB] = await withTimeout(Promise.all([pA, pB]), 30_000, "both initializers finishing");
 
   const race: BudgetInitOutput["race"] = {
     bothParkedObserved,
@@ -142,10 +129,7 @@ async function main(): Promise<void> {
   /* ── 7: two different new users initialize independently ── */
 
   const [user1, user2] = await Promise.all([newUser("u1"), newUser("u2")]);
-  const [id1, id2] = await Promise.all([
-    getBudgetId(ctxFor(user1!)),
-    getBudgetId(ctxFor(user2!)),
-  ]);
+  const [id1, id2] = await Promise.all([getBudgetId(ctxFor(user1!)), getBudgetId(ctxFor(user2!))]);
   const twoUsers: BudgetInitOutput["twoUsers"] = {
     id1,
     id2,
@@ -182,10 +166,7 @@ async function main(): Promise<void> {
   /* ── 8a: an existing single budget takes the fast path — returned, not replaced ── */
 
   const fastUser = await newUser("fast");
-  const [preexisting] = await db
-    .insert(s.budgets)
-    .values({ userId: fastUser, name: "Existing" })
-    .returning({ id: s.budgets.id });
+  const [preexisting] = await db.insert(s.budgets).values({ userId: fastUser, name: "Existing" }).returning({ id: s.budgets.id });
   const journalBefore = await journalInsertsOf(preexisting!.id);
   const fastResolved = await getBudgetId(ctxFor(fastUser));
   const fastPath: BudgetInitOutput["fastPath"] = {

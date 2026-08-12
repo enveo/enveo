@@ -76,7 +76,18 @@ export default function App() {
 
   // nav = entry from menu/navigation: a fresh Add returns to start;
   // Reports from the menu always start at the card overview (deep link overrides below)
-  const nav = (s: ScreenId) => { if (s !== "addExpense") setEditTxn(null); if (s === "addExpense") setAddPreset({}); if (s === "budget") { setBudgetSuggest(false); setBudgetFillGoals(false); } setEnvView(null); setEditReturn("start"); if (s === "reports") setReportsView("overview"); setScreen(s); };
+  const nav = (s: ScreenId) => {
+    if (s !== "addExpense") setEditTxn(null);
+    if (s === "addExpense") setAddPreset({});
+    if (s === "budget") {
+      setBudgetSuggest(false);
+      setBudgetFillGoals(false);
+    }
+    setEnvView(null);
+    setEditReturn("start");
+    if (s === "reports") setReportsView("overview");
+    setScreen(s);
+  };
   // Start "quick actions": Przelew/Ze zrzutu open a FRESH Add pre-set to a tab or with the
   // import sheet already showing; Zasugeruj opens a FRESH Budget with the suggest sheet already
   // open (Wydatek goes through plain `nav` — see Start.tsx).
@@ -95,10 +106,16 @@ export default function App() {
   // Deep link: Reports opened DIRECTLY on a subscreen — the menu's "Envelope budgets" shortcut.
   // setReportsView AFTER nav — within the same batch the last write wins, so it overrides the
   // reset to "overview".
-  const openReports = (tab: ReportTab) => { nav("reports"); setReportsView(tab); };
+  const openReports = (tab: ReportTab) => {
+    nav("reports");
+    setReportsView(tab);
+  };
   // Deep link: Goals report's "Fill ›" → a fresh Budget with the fill-by-goals sheet open
   // (same after-`nav` override as `openReports`, so the reset in `nav` doesn't win the batch).
-  const openBudgetFillGoals = () => { nav("budget"); setBudgetFillGoals(true); };
+  const openBudgetFillGoals = () => {
+    nav("budget");
+    setBudgetFillGoals(true);
+  };
   // enter the transaction list with a preselected filter (envelope OR account) — from an
   // envelope/account tile or sheet. Clean, focused view: set the given filter, clear the
   // other dimension and the search box.
@@ -120,8 +137,16 @@ export default function App() {
   // editing from the list: remember where from, to return there (filters preserved)
   // A stale quick-action preset must never leak into an unrelated edit (bypasses `nav`, which
   // otherwise clears it) — e.g. import-sheet-on-mount popping up over a transaction being edited.
-  const editTxnFrom = (t: Transaction, from: ScreenId) => { setEditTxn(t); setEditReturn(from); setAddPreset({}); setScreen("addExpense"); };
-  const doneEdit = () => { setEditTxn(null); setScreen(editReturn); };
+  const editTxnFrom = (t: Transaction, from: ScreenId) => {
+    setEditTxn(t);
+    setEditReturn(from);
+    setAddPreset({});
+    setScreen("addExpense");
+  };
+  const doneEdit = () => {
+    setEditTxn(null);
+    setScreen(editReturn);
+  };
   const prev = () => setMonth((m) => shiftMonth(m, -1));
   const next = () => setMonth((m) => shiftMonth(m, 1));
   const wide = typeof window !== "undefined" && window.innerWidth > 500;
@@ -149,14 +174,25 @@ export default function App() {
 
   // Swipe right = go back (screens with a back arrow — pinned PWA has no Safari gesture).
   const canBack = envView !== null || screen === "addExpense" || screen === "settings";
-  const back = () => { if (envView) setEnvView(null); else if (screen === "addExpense") { setEditTxn(null); setScreen(editReturn); } else setScreen("start"); };
+  const back = () => {
+    if (envView) setEnvView(null);
+    else if (screen === "addExpense") {
+      setEditTxn(null);
+      setScreen(editReturn);
+    } else setScreen("start");
+  };
   const sw = useRef<{ x: number; y: number } | null>(null);
-  const onTouchStart = (e: React.TouchEvent) => { const t = e.touches[0]!; sw.current = { x: t.clientX, y: t.clientY }; };
+  const onTouchStart = (e: React.TouchEvent) => {
+    const t = e.touches[0]!;
+    sw.current = { x: t.clientX, y: t.clientY };
+  };
   const onTouchEnd = (e: React.TouchEvent) => {
-    const st = sw.current; sw.current = null;
+    const st = sw.current;
+    sw.current = null;
     if (!st) return;
     const t = e.changedTouches[0]!;
-    const dx = t.clientX - st.x, dy = t.clientY - st.y;
+    const dx = t.clientX - st.x,
+      dy = t.clientY - st.y;
     if (canBack) {
       // from the left edge (edge-swipe) or a clear horizontal rightward gesture
       if (dx > 60 && Math.abs(dy) < 45 && (st.x < 40 || dx > 110)) back();
@@ -169,7 +205,22 @@ export default function App() {
   if (unauthed || locked || foreign) {
     return (
       <div style={backdrop}>
-        <div style={{ maxWidth: 420, margin: "0 auto", height: "100dvh", background: C.bg, display: "flex", flexDirection: "column", fontFamily: font, overflow: "hidden", borderRadius: wide ? 24 : 0, boxShadow: wide ? "0 0 80px rgba(0,0,0,0.4)" : "none", WebkitFontSmoothing: "antialiased", position: "relative" }}>
+        <div
+          style={{
+            maxWidth: 420,
+            margin: "0 auto",
+            height: "100dvh",
+            background: C.bg,
+            display: "flex",
+            flexDirection: "column",
+            fontFamily: font,
+            overflow: "hidden",
+            borderRadius: wide ? 24 : 0,
+            boxShadow: wide ? "0 0 80px rgba(0,0,0,0.4)" : "none",
+            WebkitFontSmoothing: "antialiased",
+            position: "relative",
+          }}
+        >
           <StyleInjector />
           <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", paddingTop: "env(safe-area-inset-top)" }}>
             {unauthed ? <LoginScreen /> : foreign ? <ForeignReplicaScreen /> : <UnlockScreen />}
@@ -181,7 +232,24 @@ export default function App() {
 
   return (
     <div style={backdrop}>
-      <div onTouchStart={onTouchStart} onTouchEnd={onTouchEnd} style={{ maxWidth: 420, margin: "0 auto", height: "100dvh", background: C.bg, display: "flex", flexDirection: "column", fontFamily: font, overflow: "hidden", borderRadius: wide ? 24 : 0, boxShadow: wide ? "0 0 80px rgba(0,0,0,0.4)" : "none", WebkitFontSmoothing: "antialiased", position: "relative" }}>
+      <div
+        onTouchStart={onTouchStart}
+        onTouchEnd={onTouchEnd}
+        style={{
+          maxWidth: 420,
+          margin: "0 auto",
+          height: "100dvh",
+          background: C.bg,
+          display: "flex",
+          flexDirection: "column",
+          fontFamily: font,
+          overflow: "hidden",
+          borderRadius: wide ? 24 : 0,
+          boxShadow: wide ? "0 0 80px rgba(0,0,0,0.4)" : "none",
+          WebkitFontSmoothing: "antialiased",
+          position: "relative",
+        }}
+      >
         <StyleInjector />
         <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", paddingTop: "env(safe-area-inset-top)" }}>
           {isLoading && <BootSkeleton />}
@@ -192,12 +260,66 @@ export default function App() {
           )}
           {state && !onboarding && !envView && (
             <>
-              {screen === "start" && <StartScreen state={state} month={month} onOpenTxns={openTxns} onOpenEnvelope={openEnvelope} onMenu={() => setDrawer(true)} onPrev={prev} onNext={next} onNav={nav} onQuickAdd={onQuickAdd} />}
-              {screen === "budget" && <BudgetScreen state={state} month={month} onMenu={() => setDrawer(true)} onPrev={prev} onNext={next} onOpenEnvelope={openEnvelope} initialSuggest={budgetSuggest} onSuggestConsumed={() => setBudgetSuggest(false)} initialFillGoals={budgetFillGoals} onFillGoalsConsumed={() => setBudgetFillGoals(false)} />}
-              {screen === "transactions" && <TransactionsScreen state={state} month={month} onMenu={() => setDrawer(true)} onPrev={prev} onNext={next} onEditTxn={(t) => editTxnFrom(t, "transactions")} query={txQuery} setQuery={setTxQuery} envFilter={txEnvFilter} setEnvFilter={setTxEnvFilter} accFilter={txAccFilter} setAccFilter={setTxAccFilter} />}
+              {screen === "start" && (
+                <StartScreen
+                  state={state}
+                  month={month}
+                  onOpenTxns={openTxns}
+                  onOpenEnvelope={openEnvelope}
+                  onMenu={() => setDrawer(true)}
+                  onPrev={prev}
+                  onNext={next}
+                  onNav={nav}
+                  onQuickAdd={onQuickAdd}
+                />
+              )}
+              {screen === "budget" && (
+                <BudgetScreen
+                  state={state}
+                  month={month}
+                  onMenu={() => setDrawer(true)}
+                  onPrev={prev}
+                  onNext={next}
+                  onOpenEnvelope={openEnvelope}
+                  initialSuggest={budgetSuggest}
+                  onSuggestConsumed={() => setBudgetSuggest(false)}
+                  initialFillGoals={budgetFillGoals}
+                  onFillGoalsConsumed={() => setBudgetFillGoals(false)}
+                />
+              )}
+              {screen === "transactions" && (
+                <TransactionsScreen
+                  state={state}
+                  month={month}
+                  onMenu={() => setDrawer(true)}
+                  onPrev={prev}
+                  onNext={next}
+                  onEditTxn={(t) => editTxnFrom(t, "transactions")}
+                  query={txQuery}
+                  setQuery={setTxQuery}
+                  envFilter={txEnvFilter}
+                  setEnvFilter={setTxEnvFilter}
+                  accFilter={txAccFilter}
+                  setAccFilter={setTxAccFilter}
+                />
+              )}
               {screen === "accounts" && <AccountsScreen state={state} onMenu={() => setDrawer(true)} />}
-              {screen === "reports" && <ReportsScreen state={state} month={month} view={reportsView} onView={setReportsView} onOpenEnvelope={openEnvelope} onFillGoals={openBudgetFillGoals} onMenu={() => setDrawer(true)} onPrev={prev} onNext={next} />}
-              {screen === "addExpense" && <AddScreen state={state} editTxn={editTxn} onDone={doneEdit} initialTab={addPreset.tab} initialImport={addPreset.importSheet} />}
+              {screen === "reports" && (
+                <ReportsScreen
+                  state={state}
+                  month={month}
+                  view={reportsView}
+                  onView={setReportsView}
+                  onOpenEnvelope={openEnvelope}
+                  onFillGoals={openBudgetFillGoals}
+                  onMenu={() => setDrawer(true)}
+                  onPrev={prev}
+                  onNext={next}
+                />
+              )}
+              {screen === "addExpense" && (
+                <AddScreen state={state} editTxn={editTxn} onDone={doneEdit} initialTab={addPreset.tab} initialImport={addPreset.importSheet} />
+              )}
               {screen === "settings" && <SettingsScreen onNav={nav} onInstall={() => setInstallSheet(true)} />}
             </>
           )}
@@ -208,9 +330,24 @@ export default function App() {
         <EnvActionsSheet
           env={actionsEnv}
           onClose={() => setEnvActions(null)}
-          onTxns={() => { if (envActions) { openTxns({ envId: envActions.envelopeId }); setEnvActions(null); } }}
-          onSummary={() => { if (envActions) { setEnvView(envActions); setEnvActions(null); } }}
-          onEdit={() => { if (envActions) { setEnvEdit(envActions.envelopeId); setEnvActions(null); } }}
+          onTxns={() => {
+            if (envActions) {
+              openTxns({ envId: envActions.envelopeId });
+              setEnvActions(null);
+            }
+          }}
+          onSummary={() => {
+            if (envActions) {
+              setEnvView(envActions);
+              setEnvActions(null);
+            }
+          }}
+          onEdit={() => {
+            if (envActions) {
+              setEnvEdit(envActions.envelopeId);
+              setEnvActions(null);
+            }
+          }}
         />
         <EnvEdit env={editEnv} groups={state?.groups ?? []} onClose={() => setEnvEdit(null)} />
         <Drawer open={drawer} onClose={() => setDrawer(false)} onNav={nav} onOpenReports={openReports} onInstall={() => setInstallSheet(true)} />
@@ -251,10 +388,14 @@ function BootSkeleton() {
         <Box w={150} h={48} r={12} />
       </div>
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 7, padding: `4px ${P}px 12px` }}>
-        {Array.from({ length: 4 }).map((_, i) => <Box key={i} h={66} />)}
+        {Array.from({ length: 4 }).map((_, i) => (
+          <Box key={i} h={66} />
+        ))}
       </div>
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 7, padding: `0 ${P}px 10px` }}>
-        {Array.from({ length: 9 }).map((_, i) => <Box key={i} h={76} />)}
+        {Array.from({ length: 9 }).map((_, i) => (
+          <Box key={i} h={76} />
+        ))}
       </div>
     </div>
   );
@@ -265,11 +406,23 @@ function FirstBootError() {
   const C = useTheme();
   const { t } = useT();
   return (
-    <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 16, padding: 32, textAlign: "center" }}>
+    <div
+      style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 16, padding: 32, textAlign: "center" }}
+    >
       <span style={{ color: C.mute, fontSize: 13, lineHeight: 1.6 }}>{t("The first launch requires a connection to the server")}</span>
       <button
         onClick={() => void retryBoot()}
-        style={{ padding: "11px 22px", borderRadius: 11, border: "none", background: TEAL, color: "#fff", fontSize: 13.5, fontWeight: 600, cursor: "pointer", fontFamily: font }}
+        style={{
+          padding: "11px 22px",
+          borderRadius: 11,
+          border: "none",
+          background: TEAL,
+          color: "#fff",
+          fontSize: 13.5,
+          fontWeight: 600,
+          cursor: "pointer",
+          fontFamily: font,
+        }}
       >
         {t("Try again")}
       </button>

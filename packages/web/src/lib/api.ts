@@ -67,7 +67,9 @@ export interface ImportApplyResponse {
  * through to the raw text, so the user always sees something rather than an empty error.
  */
 const ERROR_KEYS: Record<string, Message> = {
-  ai_unavailable: msg("The server has no OpenAI key configured. Set OPENAI_API_KEY and restart the app, or use your own key in Settings → Artificial intelligence."), // /import/extract, /budget/suggest, the /api/ai mirror — no operator key
+  ai_unavailable: msg(
+    "The server has no OpenAI key configured. Set OPENAI_API_KEY and restart the app, or use your own key in Settings → Artificial intelligence.",
+  ), // /import/extract, /budget/suggest, the /api/ai mirror — no operator key
   ai_upstream_error: msg("OpenAI rejected the request — check the key and the model, then try again."), // OpenAI rejected the call or answered unparsably
   upstream: msg("OpenAI rejected the request — check the key and the model, then try again."), // /budget/suggest names the same failure this way
   /* Transport failures get their OWN honest wording (since the AI-transport package): a timeout
@@ -84,7 +86,9 @@ const ERROR_KEYS: Record<string, Message> = {
 
   /* Client-side codes — the same contract: lib/* throws a CODE (never a sentence, never a locale),
      the wording lives here. They reach a user through the very same setError(apiErrorMessage(e)). */
-  foreign_replica: msg("This device's local copy could not be confirmed to belong to the signed-in account — nothing was sent to the server. Settings → Sync explains what happened and what you can do."), // assertOwnReplica — the replica is not the session's
+  foreign_replica: msg(
+    "This device's local copy could not be confirmed to belong to the signed-in account — nothing was sent to the server. Settings → Sync explains what happened and what you can do.",
+  ), // assertOwnReplica — the replica is not the session's
   no_local_replica: msg("The local copy of the budget has not loaded yet — nothing was sent. Reload the app and try again."), // pushLocalToServer/resetServerE2ee before the mirror booted
   no_encryption_key: msg("This device has no encryption key — unlock the budget with your password (or a pairing code) and try again."), // resetServerE2ee with no DEK on this device (locked)
   empty_unbound_replica: msg("There is no data on this device to send — nothing was sent to the server. Reload the app to fetch your budget first."), // refused: an empty unbound replica can only wipe
@@ -172,7 +176,8 @@ export const api = {
 
   /* `locale` = the UI language (any BCP-47 tag): the model writes its names, notes and
      rationales in it. Not to be confused with demoSeed's pl|en, which picks a SEED DATASET. */
-  importExtract: (images: string[], locale: AiLocale) => http<{ items: ImportItem[] }>("POST", "/import/extract", { images, locale }, AI_IMPORT_EXTRACT_TIMEOUT_MS),
+  importExtract: (images: string[], locale: AiLocale) =>
+    http<{ items: ImportItem[] }>("POST", "/import/extract", { images, locale }, AI_IMPORT_EXTRACT_TIMEOUT_MS),
   /* `budgetId` = the same PER-REQUEST tenant assertion as the sync push: the batch creates
      FRESH transactions in whatever budget the session cookie resolves to, and the cookie can
      be swapped in another tab while the import sheet is open. The caller passes the replica's
@@ -195,10 +200,8 @@ export const api = {
      budget, and the caller's ownership check (assertOwnReplica) is a different request than this
      one — the shared cookie can be swapped in between. The server refuses a body whose userId is
      not the session it resolves (409 budget_mismatch, nothing written). */
-  e2eeEnable: (b: { wrappedDek: string; kdfParams: string; snapshotBlob: string; userId: string }) =>
-    http<{ epoch: number }>("POST", "/budget/e2ee/enable", b),
-  e2eeDisable: (b: { confirm: string; ledger: ClientLedger; userId: string }) =>
-    http<{ epoch: number }>("POST", "/budget/e2ee/disable", b),
+  e2eeEnable: (b: { wrappedDek: string; kdfParams: string; snapshotBlob: string; userId: string }) => http<{ epoch: number }>("POST", "/budget/e2ee/enable", b),
+  e2eeDisable: (b: { confirm: string; ledger: ClientLedger; userId: string }) => http<{ epoch: number }>("POST", "/budget/e2ee/disable", b),
   e2eeRekey: (b: { wrappedDek: string; kdfParams: string; userId: string }) => http<{ epoch: number }>("POST", "/sync2/rekey", b),
   /** GET /sync2/snapshot — the session's budgetId + key envelope (password verification on change) + checkpoint. */
   e2eeSnapshot: () =>
