@@ -101,14 +101,20 @@ describe("sync2 — input validation (format v2)", () => {
     expect(e2eeDisableInput.safeParse({ confirm: E2EE_DISABLE_CONFIRM, ledger: emptyLedger }).success).toBe(false); // assertion required
   });
 
-  it("rekey: requires a v2 wrappedDek, kdfParams and the owner assertion", () => {
-    expect(sync2RekeyInput.safeParse({ wrappedDek: "v2.aaaaaaaa", kdfParams: "{}", userId: "user-A" }).success).toBe(true);
-    expect(sync2RekeyInput.safeParse({ wrappedDek: "v1.aaaaaaaa", kdfParams: "{}", userId: "user-A" }).success).toBe(false);
-    expect(sync2RekeyInput.safeParse({ wrappedDek: "", kdfParams: "{}", userId: "user-A" }).success).toBe(false);
-    expect(sync2RekeyInput.safeParse({ wrappedDek: "v2.aaaaaaaa", userId: "user-A" }).success).toBe(false);
+  it("rekey: requires a v2 wrappedDek, kdfParams, expectedEpoch and the owner assertion", () => {
+    const ok = { wrappedDek: "v2.aaaaaaaa", kdfParams: "{}", userId: "user-A", expectedEpoch: 2 };
+    expect(sync2RekeyInput.safeParse(ok).success).toBe(true);
+    expect(sync2RekeyInput.safeParse({ ...ok, wrappedDek: "v1.aaaaaaaa" }).success).toBe(false);
+    expect(sync2RekeyInput.safeParse({ ...ok, wrappedDek: "" }).success).toBe(false);
+    expect(sync2RekeyInput.safeParse({ ...ok, kdfParams: undefined }).success).toBe(false);
+    // the new envelope's AAD is bound to ONE epoch — a rekey landing on any other generation
+    // would brick every future unlock, so the expectation is REQUIRED and validated
+    expect(sync2RekeyInput.safeParse({ ...ok, expectedEpoch: undefined }).success).toBe(false);
+    expect(sync2RekeyInput.safeParse({ ...ok, expectedEpoch: -1 }).success).toBe(false);
+    expect(sync2RekeyInput.safeParse({ ...ok, expectedEpoch: 1.5 }).success).toBe(false);
     // the client derives the KEK (Argon2id) BEFORE calling — seconds in which the cookie can be
     // swapped, after which this device's password would re-key ANOTHER account's budget
-    expect(sync2RekeyInput.safeParse({ wrappedDek: "v2.aaaaaaaa", kdfParams: "{}" }).success).toBe(false);
+    expect(sync2RekeyInput.safeParse({ ...ok, userId: undefined }).success).toBe(false);
   });
 
   it("reset: integer epoch, optional uptoCursor (≥0), v2 blob, owner assertion", () => {

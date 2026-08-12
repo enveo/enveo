@@ -76,8 +76,10 @@ export type Sync2DbOutput = {
   concurrentEnvelopeIsAWinner: boolean; // stored wrapped_dek equals the 200 response's request
   /* 9 — tenant assertions */
   cookieSwapStatus: number;
+  cookieSwapError: string | null;
   cookieSwapWroteNothing: boolean;
   foreignBudgetIdStatus: number;
+  foreignBudgetIdError: string | null;
   /* 10 — disable */
   disableStatus: number;
   disabledRow: { tier: string; wrappedDek: string | null } | null;
@@ -253,7 +255,16 @@ async function main(): Promise<void> {
 
   /* ── 9a. Tenant assertions on the upgrade route (BEFORE the real upgrade) ── */
 
+  // userB gets an E2EE v2 budget of their OWN — a userB session must reach the OWNER assertion
+  // and fail exactly there (409 budget_mismatch). Without it, requireTier would lazily create
+  // a PLAIN budget for B and throw TierMismatch, and the test would pass with the assertion
+  // deleted (the 409 would come from the tier guard — a vacuous scenario).
   const userB = await mkUser("b");
+  const [bB] = await db
+    .insert(s.budgets)
+    .values({ userId: userB, name: "B", tier: "e2ee", epoch: 1, wrappedDek: "v2.wrapB", kdfParams: "{}", cipherVersion: 2 })
+    .returning({ id: s.budgets.id });
+  const budgetB = bB!.id;
   const upgradeBodyOf = (wrappedDek: string) => ({
     budgetId: budgetL,
     userId: userL,
@@ -263,14 +274,25 @@ async function main(): Promise<void> {
     kdfParams: JSON.stringify({ algo: "argon2id", m: 65536, t: 3, p: 1, saltB64: "AAAA" }),
     snapshotBlob: "v2.newCheckpointAAAA",
   });
-  // the shared cookie was swapped to B mid-ceremony: session ≠ the userId the client verified
+  // the shared cookie was swapped to B mid-ceremony: session ≠ the userId the client verified.
+  // The body still names L's budget and L's user; B's session resolves B's own e2ee budget, so
+  // the request must die on the per-request assertions — with the budget_mismatch CODE.
   sessionUser = userB;
   const cookieSwap = await call("POST", "/budget/e2ee/upgrade-v2", upgradeBodyOf("v2.newWrapSWAP"));
+  const cookieSwapBody = await jsonOf(cookieSwap);
   sessionUser = userL;
   const rowAfterSwap = await budgetRow(budgetL);
-  const cookieSwapWroteNothing = rowAfterSwap?.cipherVersion === 1 && rowAfterSwap.wrappedDek === "v1.legacyWrap" && (await journalCount(budgetL)) === 3;
-  // a body naming ANOTHER budget than the session's
+  const rowBAfterSwap = await budgetRow(budgetB);
+  const cookieSwapWroteNothing =
+    rowAfterSwap?.cipherVersion === 1 &&
+    rowAfterSwap.wrappedDek === "v1.legacyWrap" &&
+    (await journalCount(budgetL)) === 3 &&
+    // …and B's own budget was not touched either (no stray epoch bump / envelope swap)
+    rowBAfterSwap?.epoch === 1 &&
+    rowBAfterSwap.wrappedDek === "v2.wrapB";
+  // a body naming ANOTHER budget than the session's (same session as the target's owner)
   const foreignBudgetId = await call("POST", "/budget/e2ee/upgrade-v2", { ...upgradeBodyOf("v2.newWrapFOREIGN"), budgetId: budgetA });
+  const foreignBudgetIdBody = await jsonOf(foreignBudgetId);
 
   /* ── 7. Forced mid-transaction failure → full rollback ────────────── */
 
@@ -394,8 +416,10 @@ async function main(): Promise<void> {
     concurrentEpoch: rowC?.epoch ?? null,
     concurrentEnvelopeIsAWinner: rowC?.wrappedDek === winner && (c1.status === 200) !== (c2.status === 200),
     cookieSwapStatus: cookieSwap.status,
+    cookieSwapError: (cookieSwapBody.error as string) ?? null,
     cookieSwapWroteNothing,
     foreignBudgetIdStatus: foreignBudgetId.status,
+    foreignBudgetIdError: (foreignBudgetIdBody.error as string) ?? null,
     disableStatus: disableRes.status,
     disabledRow: disabledRow && { tier: disabledRow.tier, wrappedDek: disabledRow.wrappedDek },
     disableCipherStateCleared: disableOps === 0 && disableSnap === undefined,

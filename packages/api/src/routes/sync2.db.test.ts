@@ -107,10 +107,14 @@ describe.skipIf(!TEST_URL)("sync2 e2ee v2 (DB-backed)", () => {
     expect(out.concurrentEnvelopeIsAWinner).toBe(true); // the stored envelope is the winner's
   });
 
-  it("a cookie-swapped tenant and a foreign budgetId write NOTHING (409 budget_mismatch)", () => {
+  it("a cookie-swapped tenant and a foreign budgetId write NOTHING — the budget_mismatch CODE, not a tier guard", () => {
+    // userB owns an e2ee v2 budget, so the request reaches (and dies on) the per-request
+    // assertions themselves: the specific error code proves it is not TierMismatch in disguise.
     expect(out.cookieSwapStatus).toBe(409);
+    expect(out.cookieSwapError).toBe("budget_mismatch");
     expect(out.cookieSwapWroteNothing).toBe(true);
     expect(out.foreignBudgetIdStatus).toBe(409);
+    expect(out.foreignBudgetIdError).toBe("budget_mismatch");
   });
 
   it("disable still restores the plaintext and clears all ciphertext state", () => {

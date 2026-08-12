@@ -91,6 +91,11 @@ export const e2eeDisableInput = z.object({
 
 export const sync2RekeyInput = z.object({
   ...ownerAssertion,
+  /** The epoch the new envelope's AAD was built for. REQUIRED: a rekey landing on any OTHER
+   *  generation would permanently brick every future unlock — the v2 wrap hard-fails under a
+   *  different epoch — so the server refuses a stale expectation before overwriting the
+   *  budget's ONLY envelope. Safe to require: every client that can produce a v2 wrap is v2. */
+  expectedEpoch: z.number().int().min(0),
   wrappedDek: v2Ciphertext,
   kdfParams: z.string().min(1),
 });
@@ -244,6 +249,10 @@ sync2Routes.post("/sync2/rekey", async (c) => {
   // new client can neither unwrap nor rebuild; the upgrade ceremony rotates the key instead.
   if (meta.cipherVersion !== 2) return c.json(upgradeRequired(meta), 409);
   const body = sync2RekeyInput.parse(await c.req.json());
+  // The new envelope is BOUND to the epoch the client built its AAD for — installing it under
+  // any other generation would brick every future unlock. Refuse a stale expectation with the
+  // current meta; the client refreshes and re-runs the whole flow (fresh unwrap included).
+  if (body.expectedEpoch !== meta.epoch) return c.json(epochMismatch(meta), 409);
   // PER-REQUEST tenant assertion — this route re-keys the resolved budget's envelope, and the
   // client derives the KEK with Argon2id before calling it: a multi-second window in which the
   // shared cookie can be swapped, after which this device's password would lock ANOTHER account.
