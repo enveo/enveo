@@ -11,10 +11,11 @@
  *    context a translator needs), and a translation must keep its {placeholders};
  *  - and the words a user must TYPE to confirm a destructive action must stay typeable.
  */
-import { E2EE_DISABLE_CONFIRM } from "@enveo/shared";
+
 import { describe, expect, it } from "bun:test";
+import { E2EE_DISABLE_CONFIRM } from "@enveo/shared";
 import { ambiguous, extract, extractSites, matchMessages } from "../../../scripts/i18n-extract-lib";
-import { loadLocale, translate, translatePlural, type Dict, type Lang } from "./index";
+import { type Dict, type Lang, loadLocale, translate, translatePlural } from "./index";
 import { pl } from "./locales/pl";
 import { MESSAGES, type Message } from "./messages.generated";
 import { LOCALES } from "./registry";
@@ -66,7 +67,7 @@ describe("i18n runtime", () => {
     for (const l of TRANSLATED) {
       const dict = await l.load();
       await loadLocale(l.code);
-      expect({ locale: l.code, out: translate(l.code, "Settings") }).toEqual({ locale: l.code, out: dict["Settings"] as string });
+      expect({ locale: l.code, out: translate(l.code, "Settings") }).toEqual({ locale: l.code, out: dict.Settings as string });
     }
   });
 

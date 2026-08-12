@@ -15,7 +15,7 @@
  * visible to every reviewer, so suppression happens in the reviewed policy file, never in the
  * command line that produces the evidence.
  */
-import { evaluateAudit, parseAuditJson, parseBunLock, parsePolicy, type AuditReport } from "./lib/auditPolicy";
+import { type AuditReport, evaluateAudit, parseAuditJson, parseBunLock, parsePolicy } from "./lib/auditPolicy";
 
 export const EXIT_OK = 0;
 export const EXIT_POLICY_VIOLATION = 1;
@@ -36,7 +36,7 @@ export type AuditRunOptions = Readonly<{
 /** Drop ANSI colours and anything that looks like `user:password@` before echoing tool output. */
 export function sanitizeToolOutput(text: string, limit = 800): string {
   const plain = text
-    // eslint-disable-next-line no-control-regex -- stripping ANSI escapes is the point
+    // biome-ignore lint/suspicious/noControlCharactersInRegex: stripping ANSI escapes is the point
     .replace(/\[[0-9;]*m/g, "")
     .replace(/\/\/[^/@\s]+:[^/@\s]+@/g, "//***:***@")
     .trim();

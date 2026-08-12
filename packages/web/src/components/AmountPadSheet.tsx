@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { fmtSignedTrim, padKey, padPreview, type PadState } from "../lib/amount";
+import { fmtSignedTrim, type PadState, padKey, padPreview } from "../lib/amount";
 import { useMask } from "../lib/contexts";
 import { useT } from "../lib/i18n";
 import { CORAL } from "../lib/theme";

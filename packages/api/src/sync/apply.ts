@@ -15,7 +15,7 @@
  */
 import type { AccountPayload, AllocPayload, ClientLedgerInput, EnvelopePayload, GroupPayload, TxnPayload } from "@enveo/shared";
 import { and, eq } from "drizzle-orm";
-import { db, type DbExecutor } from "../db/client";
+import type { DbExecutor } from "../db/client";
 import * as s from "../db/schema";
 
 /** Legacy alias — the canonical type now lives in db/client.ts (DbExecutor/DbTransaction). */

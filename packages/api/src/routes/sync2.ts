@@ -15,13 +15,13 @@
  * distinguish tenants (two independently-encrypted budgets both sit at epoch 1).
  */
 import { clientLedgerSchema, E2EE_DISABLE_CONFIRM } from "@enveo/shared";
-import { and, eq, gt, sql as dsql } from "drizzle-orm";
+import { and, sql as dsql, eq, gt } from "drizzle-orm";
 import { Hono } from "hono";
 import { z } from "zod";
-import { requireTier, sessionUserId, type BudgetMeta } from "../context";
+import { type BudgetMeta, requireTier, sessionUserId } from "../context";
 import { db } from "../db/client";
 import * as s from "../db/schema";
-import { wipeBudgetData, type Executor } from "../sync/apply";
+import { type Executor, wipeBudgetData } from "../sync/apply";
 import { budgetAssertionFails, ownerAssertionFails, restoreLedger } from "./sync";
 
 export const sync2Routes = new Hono();

@@ -1,12 +1,12 @@
-import { useMask, useSettings, useTheme } from "../lib/contexts";
-import { goalProgress } from "../lib/goals";
-import { Glyph } from "../lib/icons";
-import { fmtTrimLocale } from "../lib/format";
-import { tint } from "../lib/theme";
 import type { AccountView, EnvelopeView } from "../lib/api";
+import { useMask, useSettings, useTheme } from "../lib/contexts";
+import { fmtTrimLocale } from "../lib/format";
+import { goalProgress } from "../lib/goals";
+import { useT } from "../lib/i18n";
+import { Glyph } from "../lib/icons";
+import { tint } from "../lib/theme";
 import { spendMeter } from "../lib/uiState";
 import { GoalRing, SpendLine } from "./kit";
-import { useT } from "../lib/i18n";
 
 /** Envelope list row: name (+goal ring), available amount, spend line (spec §3.2-3.3). */
 export function EnvRow({ e, onClick, last }: { e: EnvelopeView; onClick: () => void; last?: boolean }) {

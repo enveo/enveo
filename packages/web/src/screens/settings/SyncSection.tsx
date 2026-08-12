@@ -1,11 +1,11 @@
-import { useEffect, useState } from "react";
 import type { OpKind, SyncOp } from "@enveo/shared";
+import { useEffect, useState } from "react";
 import { useSyncStatus } from "../../lib/api";
 import { useCurrency, useTheme } from "../../lib/contexts";
 import { exportBackup } from "../../lib/data";
 import { relSync } from "../../lib/dates";
 import { formatMoney } from "../../lib/format";
-import { msg, useT, type Lang, type Message } from "../../lib/i18n";
+import { type Lang, type Message, msg, useT } from "../../lib/i18n";
 import { discardDeadLetter, getDeadLetters } from "../../lib/outbox";
 import { discardLocalReplica, fullResync, recheckReplicaOwner, syncNow } from "../../lib/sync";
 import { CORAL } from "../../lib/theme";

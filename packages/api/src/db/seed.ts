@@ -16,7 +16,7 @@
  * unchanged dev-tool behavior; the lock is per-user and cannot serialize those.)
  */
 import { asc } from "drizzle-orm";
-import { db, sql, type DbTransaction } from "./client";
+import { type DbTransaction, db, sql } from "./client";
 import { OPERATION_LOCK, operationLockKey, withOperationLock } from "./operationLock";
 import * as s from "./schema";
 

@@ -4,8 +4,8 @@
  * transfer validation (findTransferError) and dedupe (import-dedupe).
  */
 import { describe, expect, it } from "bun:test";
-import { buildDupIndex, classifyDup } from "./import-dedupe";
 import { type ApplyItem, applyInput, applyTxnValues, findTransferError } from "./import";
+import { buildDupIndex, classifyDup } from "./import-dedupe";
 import { budgetAssertionFails } from "./sync";
 
 const ACC_A = "11111111-1111-1111-1111-111111111111";

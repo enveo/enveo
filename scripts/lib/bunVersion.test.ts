@@ -49,7 +49,9 @@ describe("collectWorkflowBunVersions", () => {
     expect(refs.map((r) => r.version)).toEqual(["1.3.14", "1.2.0"]);
   });
 
+  // biome-ignore lint/suspicious/noTemplateCurlyInString: the literal `${{ }}` Actions expression IS the case under test
   it("skips a `${{ }}` expression — it is an indirection, checked where it is defined", () => {
+    // biome-ignore lint/suspicious/noTemplateCurlyInString: workflow YAML fixture — `${{ env.BUN_VERSION }}` must stay literal
     const refs = collectWorkflowBunVersions("ci.yml", ["env:", '  BUN_VERSION: "1.3.14"', "      bun-version: ${{ env.BUN_VERSION }}"].join("\n"));
 
     expect(refs).toHaveLength(1);

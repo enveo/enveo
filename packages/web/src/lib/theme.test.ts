@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { CORAL, CTA, TEAL, dark, light, themeTokens, tint, type AccentTheme } from "./theme";
+import { type AccentTheme, CORAL, CTA, dark, light, TEAL, themeTokens, tint } from "./theme";
 
 /** Alpha suffixes from the concatenation audit — forms `X+"xx"` (14/18/1a/22) and `${X}xx` (40/44/55/66). */
 const ALPHA_SUFFIXES = ["14", "18", "1a", "22", "40", "44", "55", "66"] as const;
@@ -269,7 +269,10 @@ describe("C3 contrast audit — dark-mode AA regression guard", () => {
   });
   const relLum = (hex: string) => {
     const { r, g, b } = hexToRgb(hex);
-    const f = (v: number) => ((v /= 255) <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4));
+    const f = (channel: number) => {
+      const v = channel / 255;
+      return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4;
+    };
     return 0.2126 * f(r) + 0.7152 * f(g) + 0.0722 * f(b);
   };
   const ratio = (fg: string, bg: string) => {

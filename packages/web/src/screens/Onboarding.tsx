@@ -10,23 +10,23 @@
  * All writes go through the existing local-first path (mirror + outbox).
  * On completion we call onDone — App removes the wizard and shows Start.
  */
-import { useEffect, useState, type ReactNode } from "react";
+import { type ReactNode, useEffect, useState } from "react";
 import { AmountPadHost, type AmountPadTarget } from "../components/AmountPadSheet";
 import { LogoMark } from "../components/chrome";
 import { markInstallOffered } from "../components/InstallBanner";
 import { InstallBody } from "../components/InstallBody";
+import { fmtSignedTrim } from "../lib/amount";
 import { api, apiErrorMessage } from "../lib/api";
 import { useSettings, useTheme } from "../lib/contexts";
-import { SUPPORTED_CURRENCIES, browserLocales, wizardCurrency } from "../lib/currency";
-import { fmtSignedTrim } from "../lib/amount";
+import { browserLocales, SUPPORTED_CURRENCIES, wizardCurrency } from "../lib/currency";
 import { parseAmount } from "../lib/format";
-import { loadLocale, LOCALES, useT, type Lang, type Message } from "../lib/i18n";
+import { type Lang, LOCALES, loadLocale, type Message, useT } from "../lib/i18n";
 import { getInstallState, isInstallable, useInstall } from "../lib/installPrompt";
 import { local } from "../lib/mutate";
 import { customEnvelopeStyle, TEMPLATE } from "../lib/onboardingTemplate";
 import { store } from "../lib/store";
 import { assertOwnReplica, fullResync } from "../lib/sync";
-import { ACCOUNT_COLORS, CORAL, P, TEAL, font } from "../lib/theme";
+import { ACCOUNT_COLORS, CORAL, font, P, TEAL } from "../lib/theme";
 
 /** Checklist row: a template item (name=Message, color/icon from TEMPLATE) or a custom envelope (custom, styled via customEnvelopeStyle). */
 type TplRow = { name?: Message; custom?: string; isSavings?: boolean; checked: boolean; color: string; icon: string };
@@ -199,7 +199,7 @@ export function OnboardingScreen({ onDone }: { onDone: () => void }) {
       const sel = rows[gi]!.filter((r) => r.checked);
       if (sel.length === 0) return;
       const g = local.createGroup(t(tpl.group));
-      sel.forEach((r, i) =>
+      sel.forEach((r, i) => {
         local.createEnvelope({
           groupId: g.id,
           name: r.custom ?? t(r.name!),
@@ -207,8 +207,8 @@ export function OnboardingScreen({ onDone }: { onDone: () => void }) {
           color: r.color,
           icon: r.icon,
           ...(r.isSavings ? { isSavings: true } : {}),
-        }),
-      );
+        });
+      });
     });
     finish(); // empty-budget condition cleared → App renders Start (or the install card first)
   };

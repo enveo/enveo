@@ -1,15 +1,15 @@
 import { describe, expect, it } from "bun:test";
 import {
-  deriveKek,
-  generateDek,
-  wrapDek,
-  unwrapDek,
-  encryptPayload,
-  decryptPayload,
-  encodePairing,
-  decodePairing,
-  generateSalt,
   DEFAULT_KDF_PARAMS,
+  decodePairing,
+  decryptPayload,
+  deriveKek,
+  encodePairing,
+  encryptPayload,
+  generateDek,
+  generateSalt,
+  unwrapDek,
+  wrapDek,
 } from "./crypto";
 
 describe("e2ee crypto", () => {

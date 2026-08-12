@@ -1,24 +1,24 @@
-import { useEffect, useState, type CSSProperties } from "react";
 import {
   buildBudgetSuggestionBasis,
   buildPrevMonthSuggestion,
   buildTopUpNegativesSuggestion,
-  computeStateResponse,
   type ClientLedger,
+  computeStateResponse,
   type NormalizedBudgetSuggestion,
 } from "@enveo/shared";
-import { Sheet } from "./chrome";
-import { AiConsentSheet } from "./AiConsentSheet";
-import { AmountPadHost, type AmountPadTarget } from "./AmountPadSheet";
-import { useCurrency, useSettings, type Settings } from "../lib/contexts";
-import { currencySymbol, fmtTrim, formatMoney, isLight, parseAmount } from "../lib/format";
-import { useT, type Message, msg } from "../lib/i18n";
-import { Glyph, Ico } from "../lib/icons";
-import { CORAL, CTA, TEAL, font, tint, type Theme } from "../lib/theme";
-import { apiErrorMessage, type BudgetSuggestProfile, type BudgetSuggestResponse, type StateResponse } from "../lib/api";
+import { type CSSProperties, useEffect, useState } from "react";
 import { runSuggest } from "../lib/ai";
+import { apiErrorMessage, type BudgetSuggestProfile, type BudgetSuggestResponse, type StateResponse } from "../lib/api";
+import { type Settings, useCurrency, useSettings } from "../lib/contexts";
+import { currencySymbol, fmtTrim, formatMoney, isLight, parseAmount } from "../lib/format";
+import { type Message, msg, useT } from "../lib/i18n";
+import { Glyph, Ico } from "../lib/icons";
 import { local } from "../lib/mutate";
 import { store } from "../lib/store";
+import { CORAL, CTA, font, TEAL, type Theme, tint } from "../lib/theme";
+import { AiConsentSheet } from "./AiConsentSheet";
+import { AmountPadHost, type AmountPadTarget } from "./AmountPadSheet";
+import { Sheet } from "./chrome";
 
 /** Predefined rules-engine strategies (no "custom" — user-defined ones are always named). */
 const PROFILES: Array<{ id: BudgetSuggestProfile; labelKey: Message; descKey: Message }> = [

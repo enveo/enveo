@@ -4,8 +4,9 @@
  * by the restore path. The DB behavior (foreign id → rejected op) is covered
  * by E2E.
  */
-import type { ClientLedgerInput } from "@enveo/shared";
+
 import { describe, expect, it } from "bun:test";
+import type { ClientLedgerInput } from "@enveo/shared";
 import { collectFkChecks, findForeignLedgerRef } from "./apply";
 
 describe("collectFkChecks", () => {

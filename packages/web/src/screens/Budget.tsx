@@ -1,21 +1,21 @@
 import { useEffect, useState } from "react";
-import { type EnvelopeView, type StateResponse } from "../lib/api";
-import { fmtSignedTrim, padPreview, padPreviewLive, type PadState } from "../lib/amount";
-import { local } from "../lib/mutate";
-import { Header, Sheet } from "../components/chrome";
 import { AmountPadHost, type AmountPadTarget } from "../components/AmountPadSheet";
 import { BudgetSuggestSheet } from "../components/BudgetSuggestSheet";
-import { FillGoalsSheet } from "../components/FillGoalsSheet";
-import { CardBox, GoalRing, useBand } from "../components/kit";
+import { Header, Sheet } from "../components/chrome";
 import { DockedNumpad } from "../components/DockedNumpad";
+import { FillGoalsSheet } from "../components/FillGoalsSheet";
 import { IconColorPicker } from "../components/IconColorPicker";
+import { CardBox, GoalRing, useBand } from "../components/kit";
+import { fmtSignedTrim, type PadState, padPreview, padPreviewLive } from "../lib/amount";
+import type { EnvelopeView, StateResponse } from "../lib/api";
 import { useCurrency, useMask, useSettings, useTheme } from "../lib/contexts";
 import { useDragReorder } from "../lib/dnd";
 import { currencySymbol, fmtTrim, isLight, parseAmount } from "../lib/format";
 import { goalProgress } from "../lib/goals";
 import { useT } from "../lib/i18n";
 import { Glyph, Ico } from "../lib/icons";
-import { CORAL, ENV_PALETTE, P, TEAL, font, tint } from "../lib/theme";
+import { local } from "../lib/mutate";
+import { CORAL, ENV_PALETTE, font, P, TEAL, tint } from "../lib/theme";
 
 export function BudgetScreen({
   state,
@@ -696,6 +696,7 @@ function ManageGroup({ g, list, flat }: { g: StateResponse["groups"][number]; li
       {adding ? (
         <div style={{ display: "flex", gap: 6, marginTop: 8 }}>
           <input
+            // biome-ignore lint/a11y/noAutofocus: the input exists only because the user just tapped "add" — focus follows that explicit action
             autoFocus
             value={addName}
             onChange={(ev) => setAddName(ev.target.value)}

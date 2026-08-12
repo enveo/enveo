@@ -1,5 +1,5 @@
 import { LOCALE_OF } from "./format";
-import { translate, translatePlural, type Lang, type Message } from "./i18n";
+import { type Lang, type Message, translate, translatePlural } from "./i18n";
 
 export const todayISO = (): string => new Date().toISOString().slice(0, 10);
 export const currentMonth = (): string => new Date().toISOString().slice(0, 7);

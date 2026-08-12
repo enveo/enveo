@@ -1,8 +1,8 @@
 import type { Account, Allocation, Budget, Category, ClientLedger, Envelope, EnvelopeGroup, Ledger, Place, Transaction, TxnItem } from "@enveo/shared";
 import { eq } from "drizzle-orm";
 import { db } from "./db/client";
-import type { Executor } from "./sync/apply";
 import * as s from "./db/schema";
+import type { Executor } from "./sync/apply";
 
 /* ── Mapping DB row → shared type (without budgetId/externalId) ──
    One place for snapshot / pull / state — parity guaranteed. */

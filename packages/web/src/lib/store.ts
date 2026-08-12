@@ -15,7 +15,7 @@
  * (UI in the same tick); durability is provided by the persist.ts chain (addOutbox of the op
  * → persistLedger of the snapshot) + outbox replay at boot.
  */
-import { applyOp, type Allocation, type ClientLedger, type ReplicatedTable, type SyncOp } from "@enveo/shared";
+import { type Allocation, applyOp, type ClientLedger, type ReplicatedTable, type SyncOp } from "@enveo/shared";
 import { idbGet } from "./idb";
 
 /** A change from GET /api/sync/pull (shape from packages/api/src/routes/sync.ts). */

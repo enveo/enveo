@@ -1,11 +1,11 @@
 import { useEffect, useState } from "react";
-import { apiErrorMessage } from "../lib/api";
 import { LogoMark } from "../components/chrome";
-import { fetchAuthMeta, signInEmail, signInGoogle, signUpEmail, type AuthMeta } from "../lib/auth";
+import { apiErrorMessage } from "../lib/api";
+import { type AuthMeta, fetchAuthMeta, signInEmail, signInGoogle, signUpEmail } from "../lib/auth";
 import { useTheme } from "../lib/contexts";
 import { cacheDeployment, setDeviceTrust } from "../lib/deviceTrust";
 import { useT } from "../lib/i18n";
-import { CORAL, TEAL, font } from "../lib/theme";
+import { CORAL, font, TEAL } from "../lib/theme";
 
 /**
  * Login screen — shown when the backend responded 401 (BootStatus "unauthed").

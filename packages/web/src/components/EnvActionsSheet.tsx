@@ -1,8 +1,8 @@
-import { type EnvelopeView } from "../lib/api";
+import type { EnvelopeView } from "../lib/api";
 import { useMask } from "../lib/contexts";
 import { isLight } from "../lib/format";
-import { Glyph } from "../lib/icons";
 import { useT } from "../lib/i18n";
+import { Glyph } from "../lib/icons";
 import { CTA } from "../lib/theme";
 import { Sheet } from "./chrome";
 

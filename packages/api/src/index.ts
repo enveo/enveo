@@ -1,6 +1,6 @@
-import { serveStatic } from "hono/bun";
 import { Hono } from "hono";
 import { bodyLimit } from "hono/body-limit";
+import { serveStatic } from "hono/bun";
 import { compress } from "hono/compress";
 import { cors } from "hono/cors";
 import { secureHeaders } from "hono/secure-headers";
@@ -10,15 +10,15 @@ import { authMetaBody } from "./authPolicy";
 import { TierMismatch } from "./context";
 import { assertAuthEnv, assertDbEnv, env } from "./env";
 import { isSameHostOrigin, staticAllowedOrigins } from "./origins";
+import { budgetSuggestRoutes } from "./routes/budgetSuggest";
 import { crudRoutes } from "./routes/crud";
+import { demoRoutes } from "./routes/demo";
 import { extraRoutes } from "./routes/extras";
 import { importRoutes } from "./routes/import";
 import { stateRoutes } from "./routes/state";
 import { syncRoutes } from "./routes/sync";
 import { sync2Routes } from "./routes/sync2";
 import { txnRoutes } from "./routes/transactions";
-import { budgetSuggestRoutes } from "./routes/budgetSuggest";
-import { demoRoutes } from "./routes/demo";
 import { ScopeViolation } from "./sync/apply";
 
 // Fail fast on real boot (entrypoint run — dev, Docker CMD): accounts are

@@ -32,7 +32,7 @@ import { migrate } from "drizzle-orm/postgres-js/migrator";
 import postgres from "postgres";
 // Constant only — this module's app imports are lazy (see the file header), so importing it
 // here does NOT pull env/db/client into the test process.
-import { SENTINEL, type RaceOutput, type RaceResult } from "./auth.signup-race.test-child";
+import { type RaceOutput, type RaceResult, SENTINEL } from "./auth.signup-race.test-child";
 import * as s from "./db/schema";
 
 /** Must match SIGNUP_GATE_LOCK in auth.ts. It is not exported, and importing auth.ts here

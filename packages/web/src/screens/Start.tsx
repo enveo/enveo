@@ -1,14 +1,14 @@
 import { useState } from "react";
-import { Ico } from "../lib/icons";
-import { useMask, useSettings, useTheme } from "../lib/contexts";
-import { useT } from "../lib/i18n";
-import { P, TEAL, font, tint } from "../lib/theme";
+import { Header, type ScreenId } from "../components/chrome";
 import { CardBox, useBand } from "../components/kit";
 import { EditWidgetsSheet, START_WIDGETS } from "../components/widgets";
-import { Header, type ScreenId } from "../components/chrome";
-import { type StateResponse } from "../lib/api";
-import { LOCALE_OF } from "../lib/format";
+import type { StateResponse } from "../lib/api";
+import { useMask, useSettings, useTheme } from "../lib/contexts";
 import { todayISO } from "../lib/dates";
+import { LOCALE_OF } from "../lib/format";
+import { useT } from "../lib/i18n";
+import { Ico } from "../lib/icons";
+import { font, P, TEAL, tint } from "../lib/theme";
 import { monthRuler, tbbState } from "../lib/uiState";
 
 export function StartScreen({
@@ -219,7 +219,7 @@ export function StartScreen({
 function AmountHero({ value }: { value: number }) {
   const C = useTheme();
   const M = useMask();
-  const { band, hc } = useBand();
+  const { hc } = useBand();
   const neg = value < 0;
   const big = neg ? hc(C.headerNeg, C.neg) : hc("var(--cta)", C.text);
   // A two-tone negative would read weird — keep the same red as the big part, just smaller.

@@ -107,7 +107,7 @@ export function checkSelfHostImageRefs(file: string, text: string): PolicyViolat
 
 /** A URL that points back at the machine running the script (the health probe). */
 const LOCAL_HOSTS = new Set(["127.0.0.1", "localhost", "::1", "0.0.0.0"]);
-const URL_IN_LINE = /\bhttps?:\/\/([^\s'"|)\/]+)/g;
+const URL_IN_LINE = /\bhttps?:\/\/([^\s'"|)/]+)/g;
 
 /** `[::1]:8081` → `::1`. An IPv6 literal is bracketed, and the brackets are not part of the host. */
 function hostOf(authority: string): string {

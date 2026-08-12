@@ -13,7 +13,10 @@ function build(ledger: ClientLedger): Map<string, Map<string, number>> {
   const bump = (envId: string | null | undefined, catId: string | null | undefined) => {
     if (!envId || !catId) return;
     let m = byEnv.get(envId);
-    if (!m) byEnv.set(envId, (m = new Map()));
+    if (!m) {
+      m = new Map();
+      byEnv.set(envId, m);
+    }
     m.set(catId, (m.get(catId) ?? 0) + 1);
   };
   for (const t of ledger.transactions) {

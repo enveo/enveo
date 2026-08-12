@@ -1,13 +1,15 @@
 import { computeStateResponse, type StateResponse } from "@enveo/shared";
 import { useMemo, useSyncExternalStore } from "react";
-import { translate, uiLang, type Message, msg } from "./i18n";
+import { type Message, msg, translate, uiLang } from "./i18n";
 import { store } from "./store";
-import { getSyncStatus, subscribeSyncStatus, type SyncStatus } from "./sync";
+import { getSyncStatus, type SyncStatus, subscribeSyncStatus } from "./sync";
 
 /* ── API response shapes — @enveo/shared is the source of truth ──── */
 export type { AccountView, EnvelopeView, StateResponse } from "@enveo/shared";
+
 import { AI_IMPORT_EXTRACT_TIMEOUT_MS, type AiLocale, type BudgetSuggestProfile, type BudgetSuggestResponse, type ClientLedger } from "@enveo/shared";
 import { timeoutSignal } from "./timeoutSignal";
+
 export type { BudgetSuggestProfile, BudgetSuggestResponse } from "@enveo/shared";
 
 /* Screenshot import (OpenAI, 2 cycles: facts → assignments from history) */

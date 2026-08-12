@@ -7,7 +7,7 @@
  * `bun audit --json` and hands the text to these functions.
  */
 import { describe, expect, it } from "bun:test";
-import { evaluateAudit, parseAuditJson, parseBunLock, parsePolicy, type AuditPolicy, type InstalledIndex } from "./auditPolicy";
+import { type AuditPolicy, evaluateAudit, type InstalledIndex, parseAuditJson, parseBunLock, parsePolicy } from "./auditPolicy";
 
 const NOW = new Date("2026-08-11T12:00:00Z");
 

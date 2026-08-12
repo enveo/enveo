@@ -12,7 +12,6 @@
  * durability and network run in the background.
  */
 import {
-  opSchemas,
   type Account,
   type AccountPayload,
   type AllocPayload,
@@ -23,6 +22,7 @@ import {
   type GroupPayload,
   type OpKind,
   type OpPayload,
+  opSchemas,
   type Place,
   type SyncOp,
   type Transaction,

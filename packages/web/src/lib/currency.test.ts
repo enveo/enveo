@@ -1,11 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import {
   CURRENCY_DIGITS,
+  currencyForLocale,
+  currencyForLocales,
   FALLBACK_CURRENCY,
   SUPPORTED_CURRENCIES,
   UNSET_BUDGET_CURRENCIES,
-  currencyForLocale,
-  currencyForLocales,
   wizardCurrency,
 } from "./currency";
 import { currencySymbol, formatMoney } from "./format";

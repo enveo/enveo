@@ -1,5 +1,4 @@
 import { describe, expect, it } from "bun:test";
-import type { ClientLedger } from "./types";
 import { buildBudgetSuggestionBasis } from "./aiBudget";
 import {
   aiLocaleSchema,
@@ -7,15 +6,16 @@ import {
   buildAgentSuggestPrompt,
   buildImportExtractPrompt,
   buildSuggestPrompt,
+  type ChatMessage,
   IMPORT_EXTRACT_JSON_SCHEMA,
   languageDirectives,
   languageName,
   parseAgentSuggestResponse,
-  supportsReasoningEffort,
   parseImportExtractResponse,
   parseSuggestResponse,
-  type ChatMessage,
+  supportsReasoningEffort,
 } from "./aiPrompts";
+import type { ClientLedger } from "./types";
 
 function fixture(): ClientLedger {
   return {

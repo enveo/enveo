@@ -1,7 +1,7 @@
 import { useEffect, useRef } from "react";
 import { useTheme } from "../lib/contexts";
 import { haptic } from "../lib/haptics";
-import { TEAL, font } from "../lib/theme";
+import { font, TEAL } from "../lib/theme";
 
 export function ScrollPicker<T extends string | number>({
   items,

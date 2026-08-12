@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Sheet } from "../../components/chrome";
 import { api, apiErrorMessage, useSyncStatus } from "../../lib/api";
 import { useTheme } from "../../lib/contexts";
 import { exportBackup } from "../../lib/data";
@@ -8,7 +9,6 @@ import { deleteEverythingAndStartFresh, isUnprovenReplicaError } from "../../lib
 import { getStorageDiag, type StorageDiag } from "../../lib/storage";
 import { assertOwnReplica, disableLocal, enablePaused, enableWiped, getLastBootSource, wipeLocalData } from "../../lib/sync";
 import { CORAL, font } from "../../lib/theme";
-import { Sheet } from "../../components/chrome";
 import { ActionGroup, ActionIcon, ActionRow, ConfirmWordHint, Eyebrow, Helper, Row } from "./ui";
 
 /* ── Advanced: device storage + local mode + clear local data + reset ── */

@@ -39,6 +39,7 @@ describe("findPlatformDivergence", () => {
       "    steps:",
       "      - run: for p in $(echo \"$PLATFORMS\" | tr ',' ' '); do build $p; done",
       "      - with:",
+      // biome-ignore lint/suspicious/noTemplateCurlyInString: workflow YAML fixture — `${{ env.PLATFORMS }}` must stay literal
       "          platforms: ${{ env.PLATFORMS }}",
     );
 

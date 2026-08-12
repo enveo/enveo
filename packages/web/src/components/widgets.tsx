@@ -1,24 +1,24 @@
-import { useEffect, useMemo, useState, type CSSProperties, type ReactNode } from "react";
 import { computeNetWorthSeries, computeStateResponse } from "@enveo/shared";
-import { useLedgerVersion, type AccountView, type EnvelopeView, type StateResponse } from "../lib/api";
-import { useCurrency, useMask, useSettings, useTheme } from "../lib/contexts";
-import type { WidgetConfig, WidgetId, WidgetOpts } from "../lib/contexts";
-import { currentMonth } from "../lib/dates";
-import { useT, type Message, msg } from "../lib/i18n";
-import { TEAL, font, tint, type Theme } from "../lib/theme";
-import { Glyph, Ico } from "../lib/icons";
-import { currencySymbol, parseAmount } from "../lib/format";
+import { type CSSProperties, type ReactNode, useEffect, useMemo, useState } from "react";
 import { fmtSignedTrim } from "../lib/amount";
-import { local } from "../lib/mutate";
-import { store } from "../lib/store";
+import { type AccountView, type EnvelopeView, type StateResponse, useLedgerVersion } from "../lib/api";
+import type { WidgetConfig, WidgetId, WidgetOpts } from "../lib/contexts";
+import { useCurrency, useMask, useSettings, useTheme } from "../lib/contexts";
+import { currentMonth } from "../lib/dates";
 import { useDragReorder } from "../lib/dnd";
-import { sumBalances } from "../lib/uiState";
-import { AccCell, accountIconColor, EnvRow } from "./tiles";
-import { SectionEyebrow, CardBox, HighlightedText, PickerSearch, useBand } from "./kit";
-import { AmountPadHost, type AmountPadTarget } from "./AmountPadSheet";
-import { Sheet, type ScreenId } from "./chrome";
-import { Sparkline } from "./reportKit";
+import { currencySymbol, parseAmount } from "../lib/format";
+import { type Message, msg, useT } from "../lib/i18n";
+import { Glyph, Ico } from "../lib/icons";
+import { local } from "../lib/mutate";
 import { matchesSearch, SEARCH_THRESHOLD } from "../lib/search";
+import { store } from "../lib/store";
+import { font, TEAL, type Theme, tint } from "../lib/theme";
+import { sumBalances } from "../lib/uiState";
+import { AmountPadHost, type AmountPadTarget } from "./AmountPadSheet";
+import { type ScreenId, Sheet } from "./chrome";
+import { CardBox, HighlightedText, PickerSearch, SectionEyebrow, useBand } from "./kit";
+import { Sparkline } from "./reportKit";
+import { AccCell, accountIconColor, EnvRow } from "./tiles";
 
 /** Props every Start-screen widget receives — a component picks the subset it needs. */
 export interface WidgetProps {

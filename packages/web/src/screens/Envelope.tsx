@@ -1,13 +1,13 @@
-import { useMemo, useState } from "react";
 import { computeEnvelopeSummary, computeStateResponse } from "@enveo/shared";
-import { useLedgerVersion, type EnvelopeView } from "../lib/api";
-import { store } from "../lib/store";
+import { useMemo, useState } from "react";
+import { type EnvelopeView, useLedgerVersion } from "../lib/api";
 import { useMask, useTheme } from "../lib/contexts";
-import { isLight } from "../lib/format";
 import { monthLabel, shiftMonth } from "../lib/dates";
-import { useT, msg } from "../lib/i18n";
+import { isLight } from "../lib/format";
+import { msg, useT } from "../lib/i18n";
 import { Glyph, Ico } from "../lib/icons";
-import { P, TEAL, font } from "../lib/theme";
+import { store } from "../lib/store";
+import { font, P, TEAL } from "../lib/theme";
 import { EnvEdit } from "./Budget";
 
 const PERIODS = [1, 3, 6, 12] as const;

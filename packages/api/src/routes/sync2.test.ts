@@ -2,8 +2,9 @@
  * Pure sync2 input-validation tests (zod) — no DB. DB logic (push/pull/
  * snapshot, enable/disable, epoch guards) is covered e2e in stage 2.
  */
-import { E2EE_DISABLE_CONFIRM } from "@enveo/shared";
+
 import { describe, expect, it } from "bun:test";
+import { E2EE_DISABLE_CONFIRM } from "@enveo/shared";
 import { e2eeDisableInput, e2eeEnableInput, sync2PushInput, sync2RekeyInput, sync2ResetInput, sync2SnapshotInput } from "./sync2";
 
 const UUID = "11111111-1111-1111-1111-111111111111";

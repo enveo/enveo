@@ -2,8 +2,8 @@ import { describe, expect, it } from "bun:test";
 import fc from "fast-check";
 import { applyOp, MISSING_CREATED_AT } from "./applyOp";
 import { budgetedPlusToBeBudgeted, computeBudgetState, totalOnBudget } from "./budget";
-import type { OpKind, OpPayload, SyncOp } from "./ops";
-import { acc, alloc, asClientLedger, deepFreeze, env, grp, interpret, ledgerArb, mkOp, MONTHS, specArb, tx } from "./ledger.test-support";
+import { acc, alloc, asClientLedger, deepFreeze, env, grp, interpret, ledgerArb, MONTHS, mkOp, specArb, tx } from "./ledger.test-support";
+import type { OpKind, OpPayload } from "./ops";
 import type { ClientLedger, Transaction } from "./types";
 
 /** Applies an op on a DEEP-FROZEN ledger — any input mutation will throw. */

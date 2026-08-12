@@ -17,30 +17,30 @@
  */
 import {
   AI_VISION_TIMEOUT_MS,
+  type AiLocale,
+  type BudgetSuggestionBasis,
+  type BudgetSuggestProfile,
+  type BudgetSuggestResponse,
   buildAgentSuggestContext,
   buildAgentSuggestPrompt,
   buildBudgetSuggestionBasis,
   buildImportExtractPrompt,
   buildRulesBudgetSuggestion,
   buildSuggestPrompt,
+  type ChatMessage,
+  type ChatRequest,
+  type ClientLedger,
+  type NormalizedBudgetSuggestion,
   normalizeAgentSuggestion,
   normalizeBudgetSuggestion,
   parseAgentSuggestResponse,
   parseImportExtractResponse,
   parseSuggestResponse,
-  type AiLocale,
-  type BudgetSuggestProfile,
-  type BudgetSuggestResponse,
-  type BudgetSuggestionBasis,
-  type ChatMessage,
-  type ChatRequest,
-  type ClientLedger,
-  type NormalizedBudgetSuggestion,
 } from "@enveo/shared";
 import { api, type ImportItem } from "./api";
 import type { Settings } from "./contexts";
 import { browserLocales, currencyForLocales } from "./currency";
-import { chatJson, type ChatTarget } from "./openai";
+import { type ChatTarget, chatJson } from "./openai";
 
 /** Settings subset read by the dispatch (device-only, from localStorage). */
 export type AiSettings = Pick<Settings, "aiMode" | "openaiKey" | "openaiModel">;

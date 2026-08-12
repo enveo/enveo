@@ -23,12 +23,12 @@ import { drizzle } from "drizzle-orm/postgres-js";
 import { migrate } from "drizzle-orm/postgres-js/migrator";
 import postgres from "postgres";
 import { runChild } from "../api.test-support";
+import type { db } from "./client";
+import { OPERATION_LOCK, type OperationLockKey, type OperationLockName, operationLockKey, withOperationLockInTx } from "./operationLock";
 // Constant + type only — the child's app imports are lazy (see its header), so importing it
 // here does NOT pull env/db/client into this process.
-import { SENTINEL, type LockChildOutput } from "./operationLock.serialization.test-child";
+import { type LockChildOutput, SENTINEL } from "./operationLock.serialization.test-child";
 import * as s from "./schema";
-import { OPERATION_LOCK, operationLockKey, withOperationLockInTx, type OperationLockKey, type OperationLockName } from "./operationLock";
-import type { db } from "./client";
 
 /** The child forces real lock waits (bounded pg_locks polling) — beyond bun's 5 s default.
  *  Applied to the ONE hook that spawns it, NOT via setDefaultTimeout (process-global in bun:

@@ -26,17 +26,17 @@
  */
 import { appendFileSync } from "node:fs";
 import {
+  type AnnotationSource,
   checkAnnotations,
   checkAttachment,
   checkAttestationCoverage,
   checkLabels,
   classifyInspectFailure,
+  type ImageIndex,
   runnableManifests,
   runnablePlatforms,
-  type AnnotationSource,
-  type ImageIndex,
 } from "./lib/releaseImage";
-import { parseReleaseTag, planAliasMoves, type AliasState } from "./lib/releaseVersion";
+import { type AliasState, parseReleaseTag, planAliasMoves } from "./lib/releaseVersion";
 
 const EXIT_VIOLATIONS = 1;
 const EXIT_USAGE = 2;
@@ -78,7 +78,7 @@ function report(title: string, violations: readonly string[]): boolean {
 }
 
 function emit(outputs: Readonly<Record<string, string>>): void {
-  const path = process.env["GITHUB_OUTPUT"];
+  const path = process.env.GITHUB_OUTPUT;
   const lines = Object.entries(outputs).map(([key, value]) => `${key}=${value}`);
   for (const line of lines) console.log(`  ${line}`);
   if (path !== undefined && path !== "") appendFileSync(path, `${lines.join("\n")}\n`);
@@ -198,7 +198,7 @@ function versionLabelOf(imageJson: unknown): string | null {
   const root = (imageJson ?? {}) as Record<string, unknown>;
   const entries = "config" in root ? [root] : Object.values(root);
   for (const entry of entries) {
-    const labels = ((entry as Record<string, unknown> | null)?.["config"] as { Labels?: Record<string, string> } | undefined)?.Labels;
+    const labels = ((entry as Record<string, unknown> | null)?.config as { Labels?: Record<string, string> } | undefined)?.Labels;
     const version = labels?.["org.opencontainers.image.version"];
     if (version !== undefined && version !== "") return version;
   }
@@ -352,7 +352,7 @@ function main(argv: readonly string[]): number {
     revision,
     version,
     platforms: (flag("platforms") ?? "linux/amd64,linux/arm64").split(",").filter((p) => p !== ""),
-    source: flag("source") ?? `https://github.com/${process.env["GITHUB_REPOSITORY"] ?? ""}`,
+    source: flag("source") ?? `https://github.com/${process.env.GITHUB_REPOSITORY ?? ""}`,
   };
 
   try {

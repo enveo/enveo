@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { ICONS, ICON_CATEGORIES } from "./icons";
+import { ICON_CATEGORIES, ICONS } from "./icons";
 import { EXT_PALETTE } from "./theme";
 
 describe("biblioteka ikon (picker)", () => {
@@ -20,6 +20,7 @@ describe("biblioteka ikon (picker)", () => {
 });
 
 import { normHex } from "../components/IconColorPicker";
+
 describe("normHex — a custom color", () => {
   test("akceptuje warianty i normalizuje", () => {
     expect(normHex("#4FA583")).toBe("#4fa583");

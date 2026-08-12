@@ -23,7 +23,7 @@
  * must always beat the client's abort. `AbortSignal.timeout` is absent on
  * WebKit < 16 (iOS 15 Safari) — timeoutSignal builds it from parts.
  */
-import { AI_CHAT_TIMEOUT_MS, AI_PROXY_CHAT_TIMEOUT_MS, supportsReasoningEffort, type ChatRequest } from "@enveo/shared";
+import { AI_CHAT_TIMEOUT_MS, AI_PROXY_CHAT_TIMEOUT_MS, type ChatRequest, supportsReasoningEffort } from "@enveo/shared";
 import { timeoutSignal } from "./timeoutSignal";
 
 /** Transport target: OpenAI with the user's key (byok) OR the mirror on our API

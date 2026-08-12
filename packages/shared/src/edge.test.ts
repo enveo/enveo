@@ -25,8 +25,8 @@
 import { describe, expect, it } from "bun:test";
 import fc from "fast-check";
 import { applyOp } from "./applyOp";
-import { acc, alloc, asClientLedger, deepFreeze, env, grp, interpret, ledgerArb, mkOp, specArb, tx } from "./ledger.test-support";
 import type { ClientLedger, SyncOp } from "./index";
+import { acc, alloc, asClientLedger, deepFreeze, env, grp, interpret, ledgerArb, mkOp, specArb, tx } from "./ledger.test-support";
 
 /* ── 1a. envelope.delete: FK cascades in one fixture ────────────────── */
 

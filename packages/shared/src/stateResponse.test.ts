@@ -1,7 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import { computeBudgetState } from "./budget";
-import { computeStateResponse } from "./stateResponse";
 import { acc, alloc, deepFreeze, env, grp, tx } from "./ledger.test-support";
+import { computeStateResponse } from "./stateResponse";
 import type { ClientLedger } from "./types";
 
 function fixture(): ClientLedger {

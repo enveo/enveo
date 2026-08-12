@@ -1,21 +1,21 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import qrcode from "qrcode-generator";
 import { E2EE_DISABLE_CONFIRM } from "@enveo/shared";
+import qrcode from "qrcode-generator";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Sheet } from "../../components/chrome";
 import { api, apiErrorMessage, useLedgerVersion } from "../../lib/api";
 import { hasSession, signOutKeepingReplica, signOutSessionOnly } from "../../lib/auth";
-import { DEFAULT_KDF_PARAMS, deriveKek, encodePairing, generateDek, generateSalt, unwrapDek, wrapDek, type KdfParams } from "../../lib/crypto";
+import { useTheme } from "../../lib/contexts";
+import { DEFAULT_KDF_PARAMS, deriveKek, encodePairing, generateDek, generateSalt, type KdfParams, unwrapDek, wrapDek } from "../../lib/crypto";
 import { exportBackup, importBackup } from "../../lib/data";
 import { clearDeviceTrust, getCachedDeployment } from "../../lib/deviceTrust";
-import { clearLastAccountId } from "../../lib/lastAccount";
-import { clearPersistedSettings } from "../../lib/settingsPersist";
 import * as e2ee from "../../lib/e2ee";
-import * as persist from "../../lib/persist";
-import { assertOwnReplica, discardLocalReplica, enterLoginKeepingReplica, flushOutboxForSignOut, fullResync, syncNow } from "../../lib/sync";
-import { useTheme } from "../../lib/contexts";
 import { useT } from "../../lib/i18n";
+import { clearLastAccountId } from "../../lib/lastAccount";
+import * as persist from "../../lib/persist";
+import { clearPersistedSettings } from "../../lib/settingsPersist";
 import { store } from "../../lib/store";
+import { assertOwnReplica, discardLocalReplica, enterLoginKeepingReplica, flushOutboxForSignOut, fullResync, syncNow } from "../../lib/sync";
 import { CORAL, font } from "../../lib/theme";
-import { Sheet } from "../../components/chrome";
 import { ActionGroup, ActionIcon, ActionRow, ConfirmWordHint, Eyebrow } from "./ui";
 
 /* ── Data: backup (export/import) + E2E encryption + account ────────── */
@@ -679,6 +679,7 @@ function E2eePairCode() {
                 {/* white background under the QR — readable in dark mode too */}
                 <div
                   style={{ background: "#fff", padding: 12, borderRadius: 12, maxWidth: 220, margin: "0 auto 14px" }}
+                  // biome-ignore lint/security/noDangerouslySetInnerHtml: the SVG comes from the local qrcode generator over data this device just produced — no untrusted input reaches it
                   dangerouslySetInnerHTML={{ __html: svg }}
                 />
                 <div

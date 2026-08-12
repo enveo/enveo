@@ -7,7 +7,7 @@
  * third — otherwise a "production" image ships a build toolchain.
  */
 import { describe, expect, it } from "bun:test";
-import { closureProblems, computeClosure, deadStoreEntries, requiredSpecifiers, type Link, type Manifest, type StoreReader } from "./runtimeClosure";
+import { closureProblems, computeClosure, deadStoreEntries, type Link, type Manifest, requiredSpecifiers, type StoreReader } from "./runtimeClosure";
 
 // ── A synthetic store, shaped like `node_modules/.bun` ──────────────────────────────────────
 

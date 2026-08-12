@@ -5,7 +5,7 @@
  * `bun run image:inventory <ref>`, which CI runs after `docker build`.
  */
 import { describe, expect, it } from "bun:test";
-import { checkImage, packageNameOfStoreEntry, type Expectations, type ImageFacts } from "./imageInventory";
+import { checkImage, type Expectations, type ImageFacts, packageNameOfStoreEntry } from "./imageInventory";
 
 const MIGRATIONS = ["0000_rainy_wraith.sql", "0001_add_txn_tag.sql"] as const;
 

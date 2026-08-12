@@ -6,7 +6,7 @@
  */
 import { describe, expect, it } from "bun:test";
 import type { ClientLedger } from "@enveo/shared";
-import { store, type PullChange } from "./store";
+import { type PullChange, store } from "./store";
 
 /** A pre-1.1.8 replica — without the budgets field (what an old blob looks like after hydrate). */
 const oldLedger = (): ClientLedger =>

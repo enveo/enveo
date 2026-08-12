@@ -1,30 +1,30 @@
-import { useMemo, useState, type ReactNode } from "react";
 import {
   computeCashflowSeries,
   computeDailySpending,
   computeEnvelopeTrends,
   computeNetWorthSeries,
   computeSpendingByDimension,
+  type EnvelopeTrend,
   largestExpenses,
   median,
   prevMonth,
+  type SpendingDimension,
   savingsRate,
   spendingBaseline,
   topPlaces,
-  type EnvelopeTrend,
-  type SpendingDimension,
 } from "@enveo/shared";
-import { useLedgerVersion, type StateResponse } from "../lib/api";
-import { store } from "../lib/store";
+import { type ReactNode, useMemo, useState } from "react";
 import { Header } from "../components/chrome";
 import { GoalRing, useBand } from "../components/kit";
 import { Bar, CalendarHeatmap, DeltaTag, heatColor, ReportShell, SegBar, Sparkline, TrendSpark } from "../components/reportKit";
+import { type StateResponse, useLedgerVersion } from "../lib/api";
 import { useMask, useTheme } from "../lib/contexts";
 import { monthLabel, shortDate } from "../lib/dates";
 import { goalProgress } from "../lib/goals";
-import { useT, type Message, msg } from "../lib/i18n";
+import { type Message, msg, useT } from "../lib/i18n";
 import { budgetsOverAmount, budgetsSummary, classifyBudget } from "../lib/reportSummary";
-import { ENV_PALETTE, P, TEAL, tint, type Theme } from "../lib/theme";
+import { store } from "../lib/store";
+import { ENV_PALETTE, P, TEAL, type Theme, tint } from "../lib/theme";
 
 export type ReportTab = "assets" | "cashflow" | "spending" | "budgets" | "goals" | "month" | "trends";
 /** Reports view: hub (band hero + mini-card grid) or a full-screen report subscreen. */

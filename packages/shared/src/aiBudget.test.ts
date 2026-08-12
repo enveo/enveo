@@ -203,8 +203,8 @@ describe("barrel export", () => {
   });
 });
 
-import { applyOp, clientLedgerSchema } from "./index";
 import type { SyncOp } from "./index";
+import { applyOp, clientLedgerSchema } from "./index";
 
 describe("monthlyTarget field", () => {
   it("envelope.create carries monthlyTarget; envelope.update sets/clears it", () => {
@@ -247,8 +247,8 @@ describe("monthlyTarget field", () => {
   });
 });
 
-import { buildPrevMonthSuggestion, buildTopUpNegativesSuggestion, normalizeAgentSuggestion } from "./aiBudget";
 import type { BudgetSuggestionBasis, BudgetSuggestionCandidate } from "./aiBudget";
+import { buildPrevMonthSuggestion, buildTopUpNegativesSuggestion, normalizeAgentSuggestion } from "./aiBudget";
 
 /** Hand-built basis — precise control of available/allocated per envelope. */
 const mkCand = (id: string, available: number, allocated = 0): BudgetSuggestionCandidate => ({

@@ -4,7 +4,7 @@
  * the seed's PL names correspond 1:1 to the EN message keys below, so a fresh
  * "empty budget" start and the "sample data" path land on visually matching envelopes.
  */
-import { msg, type Message } from "./i18n";
+import { type Message, msg } from "./i18n";
 
 export type TemplateEnvelope = { name: Message; color: string; icon: string; isSavings?: boolean };
 export type TemplateGroup = { group: Message; envelopes: TemplateEnvelope[] };
