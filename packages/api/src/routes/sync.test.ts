@@ -375,6 +375,14 @@ describe.skipIf(!TEST_URL)("sync/pull: the change journal is scoped to one budge
     expect(out.transactionRows).toHaveLength(2);
     expect(out.transactionRows.map((r) => r.amount).sort((a, b) => a - b)).toEqual([500, 777]);
     expect(out.transactionRows.every((r) => r.amount !== 999999)).toBe(true);
+    // isSavings restore normalization (the flag is the ONLY savings signal since 3.7): the
+    // fixture's "Legacy" envelope omits the field entirely, as every pre-flag backup does —
+    // the restore boundary (clientLedgerSchema) must land it as `false` in the DB row, while
+    // the explicitly flagged "Savings" envelope keeps its `true`.
+    expect(out.envelopeRows).toEqual([
+      { name: "Legacy", isSavings: false },
+      { name: "Savings", isSavings: true },
+    ]);
     // GROUND TRUTH, not just "the code doesn't reference it": query information_schema
     // directly, so a future re-introduction of `recurrences` fails this test loudly instead of
     // the guard quietly losing its teeth (it did once — see migration 0018's fix-up commit).

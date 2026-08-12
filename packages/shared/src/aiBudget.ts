@@ -117,7 +117,6 @@ export function buildBudgetSuggestionBasis(input: {
   const { ledger, month, profile } = input;
   const state = computeBudgetState(ledger, month);
   const amountToDistribute = Math.max(0, state.toBeBudgeted);
-  const groupName = new Map(ledger.groups.map((g) => [g.id, g.name]));
 
   const active = state.envelopes.filter((e) => !e.envelope.archived);
   const candidates: BudgetSuggestionCandidate[] = active.map((e) => {
