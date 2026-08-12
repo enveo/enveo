@@ -444,6 +444,7 @@ export const nl: Dict = {
   "Transactions": "Transacties",
   "Transfer": "Overboeking",
   "Transport": "Vervoer",
+  "Trust this device — remember my data and sign-in": "Vertrouw dit apparaat — onthoud mijn gegevens en aanmelding",
   "Try again": "Opnieuw proberen",
   "Try it with sample data": "Proberen met voorbeeldgegevens",
   "Turn off local mode": "Lokale modus uitschakelen",

@@ -444,6 +444,7 @@ export const it: Dict = {
   "Transactions": "Transazioni",
   "Transfer": "Giroconto",
   "Transport": "Trasporti",
+  "Trust this device — remember my data and sign-in": "Considera attendibile questo dispositivo — ricorda i miei dati e l'accesso",
   "Try again": "Riprova",
   "Try it with sample data": "Provala con dati di esempio",
   "Turn off local mode": "Disattiva la modalità locale",
