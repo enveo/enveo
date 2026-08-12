@@ -26,18 +26,10 @@ import { budgetsOverAmount, budgetsSummary, classifyBudget } from "../lib/report
 import { store } from "../lib/store";
 import { ENV_PALETTE, P, TEAL, type Theme, tint } from "../lib/theme";
 
-export type ReportTab = "assets" | "cashflow" | "spending" | "budgets" | "goals" | "month" | "trends";
-/** Reports view: hub (band hero + mini-card grid) or a full-screen report subscreen. */
-export type ReportView = "overview" | ReportTab;
-const TITLES: Record<ReportTab, Message> = {
-  assets: msg("Wealth"),
-  cashflow: msg("Cash flow"),
-  spending: msg("Spending"),
-  budgets: msg("Budgets"),
-  goals: msg("Goals"),
-  month: msg("Month in a nutshell"),
-  trends: msg("Envelope trends"),
-};
+import { type Mask, type ReportTab, type ReportView, TITLES } from "./reports/types";
+
+export type { ReportTab, ReportView } from "./reports/types";
+
 const DIMENSIONS: Array<{ id: SpendingDimension; label: Message }> = [
   { id: "category", label: msg("Category") },
   { id: "envelope", label: msg("Envelope") },
@@ -50,7 +42,6 @@ const RANGES: Array<{ n: number; label: Message }> = [
   { n: 6, label: msg("6 mo") },
   { n: 12, label: msg("12 mo") },
 ];
-type Mask = (n: number) => string;
 
 export function ReportsScreen({
   state,
