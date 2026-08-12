@@ -33,7 +33,11 @@ FROM oven/bun:1.3.14@sha256:e10577f0db68676a7024391c6e5cb4b879ebd17188ab750cf100
 WORKDIR /app
 
 # Manifests first: the install layer is then cached across source-only changes.
+# bun runs the root `prepare` script (the guarded hook installer) on EVERY install,
+# so that one script must exist before the install — with no `.git` in the build
+# context it prints a one-line skip and exits 0.
 COPY package.json bun.lock tsconfig.base.json ./
+COPY scripts/install-hooks.ts scripts/
 COPY packages/shared/package.json packages/shared/
 COPY packages/api/package.json packages/api/
 COPY packages/web/package.json packages/web/
@@ -64,6 +68,8 @@ WORKDIR /app
 # verifies the lockfile against the COMPLETE workspace set, so omitting packages/web here would
 # fail the integrity check. Only `--filter`ed workspaces get a link tree.
 COPY package.json bun.lock ./
+# Root `prepare` (guarded hook installer) runs on this install too; no `.git` → clean skip.
+COPY scripts/install-hooks.ts scripts/
 COPY packages/shared/package.json packages/shared/
 COPY packages/api/package.json packages/api/
 COPY packages/web/package.json packages/web/
