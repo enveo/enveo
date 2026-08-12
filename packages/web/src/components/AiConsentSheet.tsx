@@ -127,7 +127,7 @@ export function AiConsentSheet({
                   }}
                 />
                 <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
-                  {(["gpt-5.5-mini", "gpt-5.5"] as const).map((m) => (
+                  {(["gpt-5.6-luna", "gpt-5.5-mini", "gpt-5.5"] as const).map((m) => (
                     <button
                       key={m}
                       onClick={() => setModel(m)}

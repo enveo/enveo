@@ -168,6 +168,19 @@ describe("aiTarget / hasAiTarget", () => {
     expect(hasAiTarget(settings({ aiMode: "server" }))).toBe(true);
   });
 
+  it("Luna is selectable for byok; legacy persisted choices stay valid; server mode carries NO client model", () => {
+    // gpt-5.6-luna joined the registry as the FRESH-settings default (backlog §1)…
+    expect(aiTarget(settings({ aiMode: "byok", openaiKey: "sk-x", openaiModel: "gpt-5.6-luna" }))).toEqual({
+      kind: "byok",
+      key: "sk-x",
+      model: "gpt-5.6-luna",
+    });
+    // …while a device with a persisted legacy model keeps it (the union still parses it).
+    expect(aiTarget(settings({ aiMode: "byok", openaiKey: "sk-x", openaiModel: "gpt-5.5" }))).toEqual({ kind: "byok", key: "sk-x", model: "gpt-5.5" });
+    // The server target has no model field at all — the operator's env decides, never the client.
+    expect(aiTarget(settings({ aiMode: "server", openaiModel: "gpt-5.6-luna" }))).toEqual({ kind: "server" });
+  });
+
   it("off → no target; byok WITHOUT a key → no target either (the state the import sheet must hide the feature in)", () => {
     expect(aiTarget(settings({ aiMode: "off" }))).toBeNull();
     expect(aiTarget(settings({ aiMode: "byok", openaiKey: "" }))).toBeNull();

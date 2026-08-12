@@ -21,7 +21,10 @@ export type ChatMessage = { role: "system" | "user"; content: string | Array<Rec
 export interface ChatRequest {
   messages: ChatMessage[];
   responseFormat?: Record<string, unknown>;
-  reasoningEffort?: "low" | "medium" | "high"; // no "minimal" — gpt-5.5 rejects it in chat/completions (400)
+  /* The enum deliberately stops at "low": some models reject "minimal"/"none" in
+   * chat/completions with 400 (gpt-5.5 did for "minimal"). gpt-5.6-luna accepts a wider set
+   * (none…max) — expanding is a deliberate per-model decision, not a transport change. */
+  reasoningEffort?: "low" | "medium" | "high";
 }
 
 /** Whether the model accepts reasoning_effort (OpenAI reasoning families). */
@@ -146,8 +149,9 @@ export function buildSuggestPrompt(ctx: SuggestPromptContext): ChatRequest {
     ],
     /* STRUCTURED OUTPUT (strict) instead of json_object — schema guarantee. */
     responseFormat: { type: "json_schema", json_schema: SUGGEST_JSON_SCHEMA },
-    /* Splitting an amount is simple arithmetic — full gpt-5.5 reasoning can
-       grind for tens of seconds with no quality gain. */
+    /* Splitting an amount is simple arithmetic — full default-effort reasoning can
+       grind for tens of seconds with no quality gain (measured on gpt-5.5; the GPT-5.6
+       migration guide's advice is the same setting or one lower). */
     reasoningEffort: "low",
   };
 }

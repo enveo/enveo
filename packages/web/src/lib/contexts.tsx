@@ -9,7 +9,11 @@ import { type AccentTheme, light, type Theme, themeTokens } from "./theme";
 
 export type ThemeMode = "light" | "dark" | "auto";
 export type AiMode = "off" | "server" | "byok";
-export type OpenAiModel = "gpt-5.5" | "gpt-5.5-mini";
+/** BYOK model registry. `gpt-5.6-luna` is the default for FRESH settings only — a persisted
+ *  legacy choice (`gpt-5.5`/`gpt-5.5-mini`) survives loadSettings' merge and stays selectable. */
+export type OpenAiModel = "gpt-5.6-luna" | "gpt-5.5" | "gpt-5.5-mini";
+export const OPENAI_MODELS: readonly OpenAiModel[] = ["gpt-5.6-luna", "gpt-5.5", "gpt-5.5-mini"];
+export const DEFAULT_OPENAI_MODEL: OpenAiModel = "gpt-5.6-luna";
 
 /** Start-screen widget stack (per DEVICE — like themeMode, no synchronization). */
 export type WidgetId = "quickActions" | "accounts" | "envelopes" | "envelopesSavings" | "reportCashflow" | "reportNetWorth";
@@ -68,7 +72,7 @@ const DEFAULT_SETTINGS: Settings = {
   lang: detectLang(),
   aiMode: "off",
   openaiKey: "",
-  openaiModel: "gpt-5.5-mini",
+  openaiModel: DEFAULT_OPENAI_MODEL,
   customProfiles: [],
   startWidgets: defaultStartWidgets(),
 };

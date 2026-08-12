@@ -53,7 +53,7 @@ services:
       DATABASE_URL: postgres://${POSTGRES_USER:-enveo}:${POSTGRES_PASSWORD:-enveo}@db:5432/${POSTGRES_DB:-enveo}
       PORT: 8080
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
-      OPENAI_MODEL: ${OPENAI_MODEL:-gpt-5.5}
+      OPENAI_MODEL: ${OPENAI_MODEL:-gpt-5.6-luna}
       # auth (mandatory accounts): the API refuses to boot without a session secret
       BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:-}
       BETTER_AUTH_URL: ${BETTER_AUTH_URL:-http://localhost:8080}

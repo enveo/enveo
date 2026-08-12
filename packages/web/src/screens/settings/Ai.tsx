@@ -77,6 +77,7 @@ export function AiSection() {
               value={settings.openaiModel}
               onChange={(id) => setSettings({ ...settings, openaiModel: id })}
               options={[
+                { id: "gpt-5.6-luna", label: "gpt-5.6-luna" },
                 { id: "gpt-5.5-mini", label: "gpt-5.5-mini" },
                 { id: "gpt-5.5", label: "gpt-5.5" },
               ]}

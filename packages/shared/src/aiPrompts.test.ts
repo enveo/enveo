@@ -318,6 +318,7 @@ describe("reasoningEffort — fast responses for suggest", () => {
   it("supportsReasoningEffort: gpt-5*/o* yes, others no", () => {
     expect(supportsReasoningEffort("gpt-5.5")).toBe(true);
     expect(supportsReasoningEffort("gpt-5.5-mini")).toBe(true);
+    expect(supportsReasoningEffort("gpt-5.6-luna")).toBe(true); // the operator default since backlog §1
     expect(supportsReasoningEffort("o3-mini")).toBe(true);
     expect(supportsReasoningEffort("gpt-4o")).toBe(false);
   });

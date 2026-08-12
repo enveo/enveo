@@ -31,7 +31,7 @@ export const env = {
   DATABASE_URL: resolveDatabaseUrl(),
   PORT: Number(process.env.PORT ?? 8080),
   OPENAI_API_KEY: process.env.OPENAI_API_KEY ?? "",
-  OPENAI_MODEL: process.env.OPENAI_MODEL ?? "gpt-5.5",
+  OPENAI_MODEL: process.env.OPENAI_MODEL ?? "gpt-5.6-luna",
   // directory with the built frontend (served in production)
   WEB_DIST: process.env.WEB_DIST ?? "",
   // CSV of app origins allowed for cross-origin mutations (CORS + origin-guard)
