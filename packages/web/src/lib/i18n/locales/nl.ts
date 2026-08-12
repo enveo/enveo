@@ -55,6 +55,8 @@ export const nl: Dict = {
   "Added {n} transaction | Added {n} transactions": { one: "{n} transactie toegevoegd", other: "{n} transacties toegevoegd" },
   "Adding…": "Bezig met toevoegen…",
   Advanced: "Geavanceerd",
+  "Afterwards, other devices must unlock again with the new password or a fresh pairing code — old pairing codes stop working.":
+    "Daarna moeten andere apparaten opnieuw ontgrendelen met het nieuwe wachtwoord of een verse koppelcode — oude koppelcodes werken niet meer.",
   "All goals funded ✓": "Alle doelen gefinancierd ✓",
   Allocated: "Toegewezen",
   "Allocated {allocated} · Spent {spent}": "Toegewezen {allocated} · Uitgegeven {spent}",
@@ -361,6 +363,7 @@ export const nl: Dict = {
   Prompt: "Instructie",
   RESET: "RESET",
   "Rainy day": "Onvoorzien",
+  "Re-encrypt and upgrade": "Opnieuw versleutelen en upgraden",
   "Recognized transactions": "Herkende transacties",
   "Recognizing…": "Bezig met herkennen…",
   Reconcile: "Afstemmen",
@@ -451,6 +454,8 @@ export const nl: Dict = {
   "The app talks to OpenAI directly from this browser using your own key — bypassing the server.":
     "De app praat met je eigen sleutel rechtstreeks vanuit deze browser met OpenAI — buiten de server om.",
   "The backup is corrupted and was not loaded: {detail}": "De back-up is beschadigd en is niet geladen: {detail}",
+  "The budget changed on the server in the meantime — nothing was written. Try again.":
+    "Het budget is intussen op de server gewijzigd — er is niets geschreven. Probeer het opnieuw.",
   "The budget has changed since this was generated — generate a new suggestion.":
     "Het budget is gewijzigd sinds dit werd gegenereerd — genereer een nieuwe suggestie.",
   "The budget data on this device could not be matched to the account you are signed in with, so nothing can be sent to the server. Nothing has been deleted yet. Download a backup first — this device may hold the only copy of that data. “Delete everything and start fresh” erases this account's data on the server and the local copy on this device, then signs you out.":
@@ -487,6 +492,8 @@ export const nl: Dict = {
     "Op de server is geen OpenAI-sleutel ingesteld. Stel OPENAI_API_KEY in en herstart de app, of gebruik je eigen sleutel in Instellingen → Kunstmatige intelligentie.",
   "The server hit an unexpected error. Nothing was changed — try again.":
     "Op de server is een onverwachte fout opgetreden. Er is niets gewijzigd — probeer het opnieuw.",
+  "The server refuses to sync this budget until its encryption is upgraded to the new format.":
+    "De server weigert dit budget te synchroniseren totdat de versleuteling naar het nieuwe formaat is geüpgraded.",
   "The server rejected these changes — usually because you edited something that was meanwhile deleted on another device. Your data has already been restored to the server state. “Discard” removes the failed attempt from the list.":
     "De server heeft deze wijzigingen geweigerd — meestal omdat je iets hebt bewerkt dat intussen op een ander apparaat is verwijderd. Je gegevens zijn al teruggezet naar de serverstand. ‘Verwerpen’ haalt de mislukte poging uit de lijst.",
   "The server rejected {n} change — tap to open settings | The server rejected {n} changes — tap to open settings": {
@@ -495,6 +502,7 @@ export const nl: Dict = {
   },
   "The signed-in account changed while the data was being sent — nothing was written. Reload the app and try again.":
     "Het aangemelde account is gewijzigd terwijl de gegevens werden verstuurd — er is niets weggeschreven. Herlaad de app en probeer het opnieuw.",
+  "The upgrade failed — nothing was changed on the server.": "De upgrade is mislukt — er is niets gewijzigd op de server.",
   "The upload is too large — try fewer (or smaller) screenshots.": "De upload is te groot — probeer het met minder (of kleinere) schermafbeeldingen.",
   Theme: "Thema",
   "Then tap {action}": "Tik daarna op {action}",
@@ -502,12 +510,21 @@ export const nl: Dict = {
     "Er staan geen gegevens op dit apparaat om te versturen — er is niets naar de server gestuurd. Herlaad de app om eerst je budget op te halen.",
   "There is nothing to export yet — wait for the app to finish loading.": "Er valt nog niets te exporteren — wacht tot de app klaar is met laden.",
   "This budget is encrypted": "Dit budget is versleuteld",
+  "This budget is encrypted with an older format that new versions of the app no longer read. Upgrading re-encrypts it with a fresh key built from the data on THIS device: pick a new encryption password (it may be the same one), and the server's copy is replaced in one step.":
+    "Dit budget is versleuteld met een ouder formaat dat nieuwe versies van de app niet meer lezen. De upgrade versleutelt het opnieuw met een verse sleutel op basis van de gegevens op DIT apparaat: kies een nieuw versleutelingswachtwoord (het mag hetzelfde zijn), en de kopie op de server wordt in één stap vervangen.",
+  "This budget needs an encryption upgrade": "Dit budget heeft een versleutelingsupgrade nodig",
+  "This budget was encrypted with an older format that this version of the app no longer reads, and this device has no copy of the data. Open Enveo on the device that holds the budget (or restore a JSON backup there) and run the encryption upgrade in Settings → Privacy — then unlock here with the new password.":
+    "Dit budget is versleuteld met een ouder formaat dat deze versie van de app niet meer leest, en dit apparaat heeft geen kopie van de gegevens. Open Enveo op het apparaat dat het budget bevat (of zet daar een JSON-back-up terug) en voer de versleutelingsupgrade uit in Instellingen → Privacy — ontgrendel daarna hier met het nieuwe wachtwoord.",
   "This budget's data is end-to-end encrypted. Enter the encryption password to unlock it on this device.":
     "De gegevens van dit budget zijn eind-tot-eind versleuteld. Voer het versleutelingswachtwoord in om ze op dit apparaat te ontgrendelen.",
+  "This budget's encryption must be upgraded before it can sync — open Settings → Privacy on a device that holds the data and run the upgrade.":
+    "De versleuteling van dit budget moet worden geüpgraded voordat het kan synchroniseren — open Instellingen → Privacy op een apparaat dat de gegevens bevat en voer de upgrade uit.",
   "This code contains your encryption key in plain form. Show it only on your own trusted device — anyone with the code can read the budget.":
     "Deze code bevat je versleutelingssleutel in leesbare vorm. Toon hem alleen op je eigen vertrouwde apparaat — iedereen met de code kan het budget lezen.",
   "This data may belong to a different account. Then it will never be sent — download a backup and remove the copy from this device.":
     "Deze gegevens horen misschien bij een ander account. Dan worden ze nooit verstuurd — download een back-up en verwijder de kopie van dit apparaat.",
+  "This data uses an older encryption format that this version no longer reads — run the encryption upgrade in Settings → Privacy on the device that holds the budget.":
+    "Deze gegevens gebruiken een ouder versleutelingsformaat dat deze versie niet meer leest — voer de versleutelingsupgrade uit in Instellingen → Privacy op het apparaat dat het budget bevat.",
   "This device has no encryption key — unlock the budget with your password (or a pairing code) and try again.":
     "Dit apparaat heeft geen versleutelingssleutel — ontgrendel het budget met je wachtwoord (of een koppelcode) en probeer het opnieuw.",
   "This device's data has not been matched to your account — nothing is being sent to the server. Tap to open settings":
@@ -551,6 +568,7 @@ export const nl: Dict = {
   Unlock: "Ontgrendelen",
   "Unlock with password": "Ontgrendelen met wachtwoord",
   "Unlocking…": "Bezig met ontgrendelen…",
+  "Upgrade encryption": "Versleuteling upgraden",
   "Untick what you don't want. Duplicates are skipped — tap one to edit and add it anyway.":
     "Vink uit wat je niet wilt. Duplicaten worden overgeslagen — tik op een duplicaat om het te bewerken en alsnog toe te voegen.",
   Usage: "Gebruik",

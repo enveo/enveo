@@ -5,7 +5,18 @@ import { Sheet } from "../../components/chrome";
 import { api, apiErrorMessage, useLedgerVersion } from "../../lib/api";
 import { hasSession, signOutKeepingReplica, signOutSessionOnly } from "../../lib/auth";
 import { useTheme } from "../../lib/contexts";
-import { DEFAULT_KDF_PARAMS, deriveKek, encodePairing, generateDek, generateSalt, type KdfParams, unwrapDek, wrapDek } from "../../lib/crypto";
+import {
+  DEFAULT_KDF_PARAMS,
+  dekWrapAadContext,
+  deriveKek,
+  encodePairing,
+  freshKdfParams,
+  generateDek,
+  generateSalt,
+  type KdfParams,
+  unwrapDek,
+  wrapDek,
+} from "../../lib/crypto";
 import { exportBackup, importBackup } from "../../lib/data";
 import { clearDeviceTrust, getCachedDeployment } from "../../lib/deviceTrust";
 import * as e2ee from "../../lib/e2ee";
@@ -16,6 +27,7 @@ import { clearPersistedSettings } from "../../lib/settingsPersist";
 import { store } from "../../lib/store";
 import { assertOwnReplica, discardLocalReplica, enterLoginKeepingReplica, flushOutboxForSignOut, fullResync, syncNow } from "../../lib/sync";
 import { CORAL, font } from "../../lib/theme";
+import { E2eeUpgradePanel } from "./E2eeUpgradePanel";
 import { ActionGroup, ActionIcon, ActionRow, ConfirmWordHint, Eyebrow } from "./ui";
 
 /* ── Data: backup (export/import) + E2E encryption + account ────────── */
@@ -205,14 +217,7 @@ function DataBackup() {
  * disable (type the localized confirmation word). Crypto ENTIRELY on the device
  * (lib/crypto.ts) — the server receives only wrappedDek+kdfParams+ciphertexts. */
 
-const toB64 = (u: Uint8Array): string => btoa(String.fromCharCode(...u));
 const fromB64 = (s: string): Uint8Array => Uint8Array.from(atob(s), (c) => c.charCodeAt(0));
-
-/** Fresh kdfParams (new salt) as a string for the server — Unlock reads this shape. */
-function freshKdfParams(salt: Uint8Array): string {
-  const kp: KdfParams = { ...DEFAULT_KDF_PARAMS, saltB64: toB64(salt) };
-  return JSON.stringify(kp);
-}
 
 /** Simple strength meter: 0 = too short (<10 chars — blocks), 1..3 = length + character classes. */
 function passStrength(p: string): 0 | 1 | 2 | 3 {
@@ -288,16 +293,40 @@ function E2eeEnableWizard() {
       // travels WITH the write (userId) — Argon2id + encrypting the whole ledger takes seconds,
       // and the cookie can be swapped in that window; the server refuses a mismatch.
       const userId = await assertOwnReplica();
-      // crypto ON THE DEVICE: fresh DEK + KEK from the password (Argon2id) + ciphertext of the whole replica
+      // The v2 contexts need the budget id — a plain replica always names its own (fail-closed
+      // otherwise, same code the sync guard uses for a replica it cannot attribute).
+      const budgetId = store.getBudgetId();
+      if (!budgetId) throw new Error("foreign_replica");
+      // crypto ON THE DEVICE: fresh DEK + KEK from the password (Argon2id) + ciphertext of the
+      // whole replica, both bound to the NEXT epoch (enable bumps it — the server refuses a
+      // stale expectation, and one retry recomputes from the fresh meta the 409 delivered).
       const salt = generateSalt();
       const dek = generateDek();
       const kek = await deriveKek(pass, salt, DEFAULT_KDF_PARAMS);
-      const wrappedDek = await wrapDek(dek, kek);
-      const snapshotBlob = await e2ee.encryptSnapshot(ledger, dek);
-      const { epoch } = await api.e2eeEnable({ wrappedDek, kdfParams: freshKdfParams(salt), snapshotBlob, userId });
+      let epoch: number;
+      for (let attempt = 0; ; attempt++) {
+        const nextEpoch = e2ee.getTierMeta().epoch + 1;
+        const wrappedDek = await wrapDek(dek, kek, dekWrapAadContext(budgetId, nextEpoch));
+        const snapshotBlob = await e2ee.encryptSnapshot(ledger, dek, { budgetId, epoch: nextEpoch, uptoSeq: 0 });
+        try {
+          ({ epoch } = await api.e2eeEnable({ wrappedDek, kdfParams: freshKdfParams(salt), snapshotBlob, userId, budgetId, nextEpoch }));
+          break;
+        } catch (err) {
+          // 409 tier_mismatch with tier "plain" = only our epoch expectation was stale
+          // (a fresh device may not know the budget's current epoch): adopt it, retry ONCE.
+          const m = /\{.*\}$/s.exec(String((err as Error).message ?? ""));
+          const body = m ? (JSON.parse(m[0]) as { error?: string; tier?: string; epoch?: number }) : null;
+          if (attempt === 0 && body?.error === "tier_mismatch" && body.tier === "plain") {
+            e2ee.setTierMeta({ tier: "plain", epoch: body.epoch ?? 0 });
+            continue;
+          }
+          throw err;
+        }
+      }
       // local flip ONLY after server success (error above ⇒ nothing changed, replica untouched)
       e2ee.setDek(dek);
       e2ee.setTierMeta({ tier: "e2ee", epoch });
+      e2ee.setCipherVersion(2);
       e2ee.resetOpsCounter();
       // the v1 cursor makes no sense in the v2 journal (e2ee_ops counts seq from 1) —
       // the checkpoint from enable represents exactly THIS replica at seq 0
@@ -463,12 +492,15 @@ function E2eeEnableWizard() {
   );
 }
 
-/** E2ee tier panel: management rows (password change / pairing code / disable) + status below the group. */
+/** E2ee tier panel: management rows (password change / pairing code / disable) + status below the group.
+ *  When the server reported a LEGACY v1-format budget (409 e2ee_upgrade_required → cipherVersion
+ *  meta 1), the mandatory upgrade action leads the panel — sync is refused until it has run. */
 function E2eeManage() {
   const C = useTheme();
   const { t } = useT();
   return (
     <>
+      {e2ee.getCipherVersion() === 1 && <E2eeUpgradeRow />}
       <ActionGroup>
         <E2eeChangePass />
         <E2eePairCode />
@@ -478,6 +510,33 @@ function E2eeManage() {
         {t("Enabled — the server stores only encrypted data and never knows your password or key.")}
       </div>
     </>
+  );
+}
+
+/** The mandatory v1→v2 encryption upgrade — an ActionRow + sheet hosting the shared panel. */
+function E2eeUpgradeRow() {
+  const { t } = useT();
+  const [sheet, setSheet] = useState(false);
+  return (
+    <div style={{ marginBottom: 10 }}>
+      <ActionGroup>
+        <ActionRow
+          icon={<ActionIcon paths={IC.shield} />}
+          label={t("Upgrade encryption")}
+          desc={t("The server refuses to sync this budget until its encryption is upgraded to the new format.")}
+          onClick={() => setSheet(true)}
+          chevron
+        />
+      </ActionGroup>
+      <Sheet show={sheet} onClose={() => setSheet(false)}>
+        {(SC) => (
+          <div>
+            <div style={{ fontSize: 16.5, fontWeight: 700, color: SC.text, marginBottom: 6 }}>{t("Upgrade encryption")}</div>
+            <E2eeUpgradePanel onDone={() => setSheet(false)} />
+          </div>
+        )}
+      </Sheet>
+    </div>
   );
 }
 
@@ -514,18 +573,22 @@ function E2eeChangePass() {
       const userId = await assertOwnReplica();
       const snap = await api.e2eeSnapshot();
       if (!snap.wrappedDek || !snap.kdfParams) throw new Error(t("Wrong encryption password."));
+      // A password change REWRAPS the SAME DEK under the SAME epoch — the ciphertexts in the
+      // journal/checkpoint stay valid; only the password wrapping of the key changes. (The
+      // full data-key rotation is the separate v1→v2 upgrade ceremony, not this flow.)
+      const envelopeCtx = dekWrapAadContext(snap.budgetId, snap.epoch);
       let dek: Uint8Array;
       try {
         const kp = JSON.parse(snap.kdfParams) as KdfParams;
         const kek = await deriveKek(oldPass, fromB64(kp.saltB64), kp);
-        dek = await unwrapDek(snap.wrappedDek, kek); // wrong password = GCM rejects
+        dek = await unwrapDek(snap.wrappedDek, kek, envelopeCtx); // wrong password = GCM rejects
       } catch {
         setError(t("Wrong encryption password."));
         return;
       }
       const salt = generateSalt();
       const newKek = await deriveKek(pass, salt, DEFAULT_KDF_PARAMS);
-      const wrappedDek = await wrapDek(dek, newKek);
+      const wrappedDek = await wrapDek(dek, newKek, envelopeCtx);
       await api.e2eeRekey({ wrappedDek, kdfParams: freshKdfParams(salt), userId });
       e2ee.setDek(dek); // refresh the local DEK from the canonical unwrap (same key)
       setDone(true);

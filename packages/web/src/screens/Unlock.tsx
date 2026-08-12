@@ -2,31 +2,40 @@ import { useState } from "react";
 import { LogoMark } from "../components/chrome";
 import { apiErrorMessage } from "../lib/api";
 import { useTheme } from "../lib/contexts";
-import { decodePairing, deriveKek, type KdfParams, unwrapDek } from "../lib/crypto";
+import { decodePairing, dekWrapAadContext, deriveKek, type KdfParams, unwrapDek } from "../lib/crypto";
 import * as e2ee from "../lib/e2ee";
 import { useT } from "../lib/i18n";
 import { store } from "../lib/store";
 import { retryBoot } from "../lib/sync";
 import { CORAL, font, TEAL } from "../lib/theme";
+import { E2eeUpgradePanel } from "./settings/E2eeUpgradePanel";
 
 /**
  * E2EE unlock screen (BootStatus "locked") — the budget is on the e2ee tier
  * and this device has no DEK. Two paths:
- *  - password: GET /sync2/snapshot → deriveKek(Argon2id) → unwrapDek; verification
- *    = decrypting the checkpoint (blob) MUST succeed (GCM rejects a bad KEK
- *    at unwrap anyway) → setDek → retryBoot,
+ *  - password: GET /sync2/snapshot → deriveKek(Argon2id) → unwrapDek under the envelope's
+ *    authenticated context (budgetId, epoch) — a wrong password OR a lying context makes
+ *    GCM reject the unwrap; verification = decrypting the checkpoint (blob) under its own
+ *    (budgetId, epoch, uptoSeq) context MUST succeed → setDek → retryBoot,
  *  - pairing code "enveo1.…" pasted from a trusted device (Settings →
- *    Pairing code): decodePairing → budgetId validation (if known locally)
- *    → the same checkpoint verification → setDek → retryBoot.
+ *    Pairing code): decodePairing → budgetId validation (the code's budget is the TRUSTED
+ *    expectation) → the same checkpoint verification → setDek → retryBoot.
  * QR-SCAN deliberately omitted (BarcodeDetector unreliable on iOS) — the code
  * is shown by the trusted device, here it's paste-only.
  *
  * 409 tier_mismatch (budget went back to plain before unlocking): tierMeta from
  * the body + retryBoot — boot takes the v1 path and the screen disappears keyless.
+ *
+ * 409 e2ee_upgrade_required (LEGACY v1-format budget): the dedicated upgrade state — never
+ * "wrong password". Unlocking is impossible by design (the new build reads no v1 ciphertext);
+ * a device that still holds a replica of the data runs the upgrade ceremony right here,
+ * a device without one is pointed at the device that has it.
  */
 
 interface Snap2 {
+  budgetId?: string | null;
   epoch: number;
+  cipherVersion?: number;
   wrappedDek: string | null;
   kdfParams: string | null;
   uptoSeq: number;
@@ -38,9 +47,13 @@ const unb64 = (s: string): Uint8Array => Uint8Array.from(atob(s), (c) => c.charC
 /** "Bad passphrase/key" signal (crypto), distinguishable from network errors. */
 class BadKeyError extends Error {}
 
+/** The server refuses every normal sync2 channel until the v1→v2 upgrade ceremony has run. */
+class UpgradeRequiredSignal extends Error {}
+
 /**
  * GET /api/sync2/snapshot; 409 tier_mismatch → tierMeta from the body + retryBoot
- * (returns null — the caller finishes without error, boot takes over on the right path).
+ * (returns null — the caller finishes without error, boot takes over on the right path);
+ * 409 e2ee_upgrade_required → record the legacy format and throw the upgrade signal.
  */
 async function fetchSnap2(): Promise<Snap2 | null> {
   const res = await fetch("/api/sync2/snapshot");
@@ -51,21 +64,31 @@ async function fetchSnap2(): Promise<Snap2 | null> {
       void retryBoot();
       return null;
     }
+    if (body?.error === "e2ee_upgrade_required") {
+      e2ee.setTierMeta({ tier: "e2ee", epoch: body.epoch ?? 0 });
+      e2ee.setCipherVersion(1);
+      throw new UpgradeRequiredSignal();
+    }
   }
   if (!res.ok) throw new Error(`${res.status} ${await res.text().catch(() => "")}`);
   return (await res.json()) as Snap2;
 }
 
-/** DEK verification against the checkpoint (if any) → setDek + tierMeta → retryBoot. */
-async function acceptDek(dek: Uint8Array, snap: Snap2): Promise<void> {
+/**
+ * DEK verification against the checkpoint (if any) → setDek + tierMeta → retryBoot.
+ * `expectedBudgetId` = the caller's authenticated expectation: the pairing code's budget
+ * (trusted device) or the budget the key envelope's own unwrap just vouched for.
+ */
+async function acceptDek(dek: Uint8Array, snap: Snap2, expectedBudgetId: string): Promise<void> {
   if (snap.blob) {
     try {
-      await e2ee.decryptSnapshot(snap.blob, dek);
+      await e2ee.decryptSnapshot(snap.blob, dek, { budgetId: expectedBudgetId, epoch: snap.epoch, uptoSeq: snap.uptoSeq });
     } catch {
       throw new BadKeyError("dek does not decrypt the checkpoint");
     }
   }
   e2ee.setTierMeta({ tier: "e2ee", epoch: snap.epoch });
+  e2ee.setCipherVersion(2);
   e2ee.setDek(dek);
   await retryBoot();
 }
@@ -73,7 +96,9 @@ async function acceptDek(dek: Uint8Array, snap: Snap2): Promise<void> {
 export function UnlockScreen() {
   const C = useTheme();
   const { t } = useT();
-  const [mode, setMode] = useState<"pass" | "pair">("pass");
+  // The sync engine records the server's format BEFORE routing here (cipherVersion meta is
+  // durable), so a legacy budget opens straight on the upgrade state — never "wrong password".
+  const [mode, setMode] = useState<"pass" | "pair" | "upgrade">(e2ee.getCipherVersion() === 1 ? "upgrade" : "pass");
   const [pass, setPass] = useState("");
   const [code, setCode] = useState("");
   const [busy, setBusy] = useState(false);
@@ -85,17 +110,24 @@ export function UnlockScreen() {
     try {
       const snap = await fetchSnap2();
       if (!snap) return; // tier went back to plain — retryBoot already on its way
-      if (!snap.wrappedDek || !snap.kdfParams) throw new BadKeyError("missing key envelope");
+      if (!snap.wrappedDek || !snap.kdfParams || !snap.budgetId) throw new BadKeyError("missing key envelope");
       let dek: Uint8Array;
       try {
         const kp = JSON.parse(snap.kdfParams) as KdfParams;
         const kek = await deriveKek(pass, unb64(kp.saltB64), kp);
-        dek = await unwrapDek(snap.wrappedDek, kek); // wrong password = GCM rejects
+        // Wrong password OR a context the envelope was not made for = GCM rejects. A successful
+        // unwrap under (budgetId, epoch) is what authenticates those two response fields — only
+        // the real budget's envelope for exactly this generation opens under them.
+        dek = await unwrapDek(snap.wrappedDek, kek, dekWrapAadContext(snap.budgetId, snap.epoch));
       } catch {
         throw new BadKeyError("wrong password");
       }
-      await acceptDek(dek, snap);
+      await acceptDek(dek, snap, snap.budgetId);
     } catch (e) {
+      if (e instanceof UpgradeRequiredSignal) {
+        setMode("upgrade");
+        return;
+      }
       setError(e instanceof BadKeyError ? t("Wrong encryption password.") : apiErrorMessage(e));
     } finally {
       setBusy(false);
@@ -123,8 +155,17 @@ export function UnlockScreen() {
       }
       const snap = await fetchSnap2();
       if (!snap) return; // tier went back to plain — retryBoot already on its way
-      await acceptDek(dek, snap);
+      if (snap.budgetId && snap.budgetId !== codeBudgetId) {
+        setError(t("This pairing code belongs to a different budget."));
+        return;
+      }
+      // The code's budget id came from a TRUSTED device — it is the expected context here.
+      await acceptDek(dek, snap, codeBudgetId);
     } catch (e) {
+      if (e instanceof UpgradeRequiredSignal) {
+        setMode("upgrade");
+        return;
+      }
       setError(e instanceof BadKeyError ? t("Invalid pairing code.") : apiErrorMessage(e));
     } finally {
       setBusy(false);
@@ -176,9 +217,28 @@ export function UnlockScreen() {
       <div style={{ marginBottom: 4 }}>
         <LogoMark size={64} />
       </div>
-      <div style={{ fontSize: 18, fontWeight: 700, color: C.text }}>{t("This budget is encrypted")}</div>
+      <div style={{ fontSize: 18, fontWeight: 700, color: C.text }}>
+        {mode === "upgrade" ? t("This budget needs an encryption upgrade") : t("This budget is encrypted")}
+      </div>
 
-      {mode === "pass" ? (
+      {mode === "upgrade" ? (
+        <div style={{ width: "100%", maxWidth: 340 }}>
+          {(() => {
+            const ledger = store.getLedger();
+            const hasData = !!ledger && ledger.accounts.length + ledger.envelopes.length + ledger.transactions.length + ledger.categories.length > 0;
+            return hasData ? (
+              // This device still holds the budget's data — the ceremony can run right here.
+              <E2eeUpgradePanel onDone={() => void retryBoot()} />
+            ) : (
+              <div style={{ fontSize: 13, color: C.soft, lineHeight: 1.6 }}>
+                {t(
+                  "This budget was encrypted with an older format that this version of the app no longer reads, and this device has no copy of the data. Open Enveo on the device that holds the budget (or restore a JSON backup there) and run the encryption upgrade in Settings → Privacy — then unlock here with the new password.",
+                )}
+              </div>
+            );
+          })()}
+        </div>
+      ) : mode === "pass" ? (
         <form
           onSubmit={(e) => {
             e.preventDefault();

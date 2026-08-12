@@ -55,6 +55,8 @@ export const sv: Dict = {
   "Added {n} transaction | Added {n} transactions": { one: "{n} transaktion tillagd", other: "{n} transaktioner tillagda" },
   "Adding…": "Lägger till…",
   Advanced: "Avancerat",
+  "Afterwards, other devices must unlock again with the new password or a fresh pairing code — old pairing codes stop working.":
+    "Efteråt måste andra enheter låsas upp igen med det nya lösenordet eller en färsk parkopplingskod — gamla parkopplingskoder slutar fungera.",
   "All goals funded ✓": "Alla mål finansierade ✓",
   Allocated: "Tilldelat",
   "Allocated {allocated} · Spent {spent}": "Tilldelat {allocated} · Spenderat {spent}",
@@ -355,6 +357,7 @@ export const sv: Dict = {
   Prompt: "Instruktion",
   RESET: "RESET",
   "Rainy day": "Buffert",
+  "Re-encrypt and upgrade": "Kryptera om och uppgradera",
   "Recognized transactions": "Igenkända transaktioner",
   "Recognizing…": "Känner igen…",
   Reconcile: "Stäm av",
@@ -445,6 +448,8 @@ export const sv: Dict = {
   "The app talks to OpenAI directly from this browser using your own key — bypassing the server.":
     "Appen pratar med OpenAI direkt från den här webbläsaren med din egen nyckel — förbi servern.",
   "The backup is corrupted and was not loaded: {detail}": "Säkerhetskopian är skadad och lästes inte in: {detail}",
+  "The budget changed on the server in the meantime — nothing was written. Try again.":
+    "Budgeten ändrades på servern under tiden — ingenting skrevs. Försök igen.",
   "The budget has changed since this was generated — generate a new suggestion.": "Budgeten har ändrats sedan det här togs fram — ta fram ett nytt förslag.",
   "The budget data on this device could not be matched to the account you are signed in with, so nothing can be sent to the server. Nothing has been deleted yet. Download a backup first — this device may hold the only copy of that data. “Delete everything and start fresh” erases this account's data on the server and the local copy on this device, then signs you out.":
     "Budgetdatan på den här enheten kunde inte matchas mot kontot du är inloggad med, så inget kan skickas till servern. Inget har raderats ännu. Ladda först ned en säkerhetskopia — den här enheten kan ha den enda kopian av datan. ”Radera allt och börja om på nytt” raderar det här kontots data på servern och den lokala kopian på den här enheten och loggar sedan ut dig.",
@@ -478,6 +483,8 @@ export const sv: Dict = {
   "The server has no OpenAI key configured. Set OPENAI_API_KEY and restart the app, or use your own key in Settings → Artificial intelligence.":
     "Servern har ingen OpenAI-nyckel konfigurerad. Sätt OPENAI_API_KEY och starta om appen, eller använd din egen nyckel i Inställningar → Artificiell intelligens.",
   "The server hit an unexpected error. Nothing was changed — try again.": "Servern råkade ut för ett oväntat fel. Ingenting ändrades — försök igen.",
+  "The server refuses to sync this budget until its encryption is upgraded to the new format.":
+    "Servern vägrar synkronisera den här budgeten tills dess kryptering har uppgraderats till det nya formatet.",
   "The server rejected these changes — usually because you edited something that was meanwhile deleted on another device. Your data has already been restored to the server state. “Discard” removes the failed attempt from the list.":
     "Servern avvisade de här ändringarna — oftast för att du redigerade något som under tiden togs bort på en annan enhet. Dina data har redan återställts till serverns läge. ”Kasta” tar bort det misslyckade försöket från listan.",
   "The server rejected {n} change — tap to open settings | The server rejected {n} changes — tap to open settings": {
@@ -486,6 +493,7 @@ export const sv: Dict = {
   },
   "The signed-in account changed while the data was being sent — nothing was written. Reload the app and try again.":
     "Det inloggade kontot ändrades medan data skickades — ingenting skrevs. Ladda om appen och försök igen.",
+  "The upgrade failed — nothing was changed on the server.": "Uppgraderingen misslyckades — ingenting ändrades på servern.",
   "The upload is too large — try fewer (or smaller) screenshots.": "Uppladdningen är för stor — testa med färre (eller mindre) skärmbilder.",
   Theme: "Tema",
   "Then tap {action}": "Tryck sedan på {action}",
@@ -493,12 +501,21 @@ export const sv: Dict = {
     "Det finns inga data på den här enheten att skicka — ingenting skickades till servern. Ladda om appen för att hämta din budget först.",
   "There is nothing to export yet — wait for the app to finish loading.": "Det finns inget att exportera än — vänta tills appen har laddat klart.",
   "This budget is encrypted": "Den här budgeten är krypterad",
+  "This budget is encrypted with an older format that new versions of the app no longer read. Upgrading re-encrypts it with a fresh key built from the data on THIS device: pick a new encryption password (it may be the same one), and the server's copy is replaced in one step.":
+    "Den här budgeten är krypterad med ett äldre format som nya versioner av appen inte längre läser. Uppgraderingen krypterar om den med en färsk nyckel byggd av data på DEN HÄR enheten: välj ett nytt krypteringslösenord (det kan vara detsamma), och serverns kopia ersätts i ett enda steg.",
+  "This budget needs an encryption upgrade": "Den här budgeten behöver en krypteringsuppgradering",
+  "This budget was encrypted with an older format that this version of the app no longer reads, and this device has no copy of the data. Open Enveo on the device that holds the budget (or restore a JSON backup there) and run the encryption upgrade in Settings → Privacy — then unlock here with the new password.":
+    "Den här budgeten krypterades med ett äldre format som den här versionen av appen inte längre läser, och den här enheten har ingen kopia av data. Öppna Enveo på enheten som har budgeten (eller återställ en JSON-säkerhetskopia där) och kör krypteringsuppgraderingen i Inställningar → Integritet — lås sedan upp här med det nya lösenordet.",
   "This budget's data is end-to-end encrypted. Enter the encryption password to unlock it on this device.":
     "Den här budgetens data är totalsträckskrypterade. Ange krypteringslösenordet för att låsa upp dem på den här enheten.",
+  "This budget's encryption must be upgraded before it can sync — open Settings → Privacy on a device that holds the data and run the upgrade.":
+    "Den här budgetens kryptering måste uppgraderas innan den kan synkronisera — öppna Inställningar → Integritet på en enhet som har data och kör uppgraderingen.",
   "This code contains your encryption key in plain form. Show it only on your own trusted device — anyone with the code can read the budget.":
     "Den här koden innehåller din krypteringsnyckel i klartext. Visa den bara på din egen betrodda enhet — vem som helst med koden kan läsa budgeten.",
   "This data may belong to a different account. Then it will never be sent — download a backup and remove the copy from this device.":
     "Dessa data kan tillhöra ett annat konto. Då kommer de aldrig att skickas — ladda ned en säkerhetskopia och ta bort kopian från den här enheten.",
+  "This data uses an older encryption format that this version no longer reads — run the encryption upgrade in Settings → Privacy on the device that holds the budget.":
+    "Dessa data använder ett äldre krypteringsformat som den här versionen inte längre läser — kör krypteringsuppgraderingen i Inställningar → Integritet på enheten som har budgeten.",
   "This device has no encryption key — unlock the budget with your password (or a pairing code) and try again.":
     "Den här enheten har ingen krypteringsnyckel — lås upp budgeten med ditt lösenord (eller med en parkopplingskod) och försök igen.",
   "This device's data has not been matched to your account — nothing is being sent to the server. Tap to open settings":
@@ -542,6 +559,7 @@ export const sv: Dict = {
   Unlock: "Lås upp",
   "Unlock with password": "Lås upp med lösenord",
   "Unlocking…": "Låser upp…",
+  "Upgrade encryption": "Uppgradera krypteringen",
   "Untick what you don't want. Duplicates are skipped — tap one to edit and add it anyway.":
     "Bocka av det du inte vill ha. Dubbletter hoppas över — tryck på en för att redigera den och lägga till den ändå.",
   Usage: "Användning",

@@ -90,6 +90,9 @@ export const pl: Dict = {
   },
   "Adding…": "Dodawanie…",
   Advanced: "Zaawansowane",
+  // NEW (e2ee v2 upgrade) — do przejrzenia
+  "Afterwards, other devices must unlock again with the new password or a fresh pairing code — old pairing codes stop working.":
+    "Potem pozostałe urządzenia trzeba odblokować ponownie nowym hasłem albo świeżym kodem parowania — stare kody parowania przestają działać.",
   All: "Wszystkie",
   "All (Everyday + Savings)": "Wszystkie (codzienne + oszczędnościowe)",
   "All goals funded ✓": "Wszystkie cele sfinansowane ✓",
@@ -425,6 +428,7 @@ export const pl: Dict = {
   "Quick actions": "Szybkie akcje",
   RESET: "RESET",
   "Rainy day": "Nieprzewidziane",
+  "Re-encrypt and upgrade": "Zaszyfruj na nowo i zaktualizuj",
   "Recognized transactions": "Rozpoznane transakcje",
   "Recognizing…": "Rozpoznawanie…",
   Reconcile: "Wyrównaj",
@@ -521,6 +525,8 @@ export const pl: Dict = {
   "The app talks to OpenAI directly from this browser using your own key — bypassing the server.":
     "Aplikacja łączy się z OpenAI bezpośrednio z tej przeglądarki, używając Twojego klucza — z pominięciem serwera.",
   "The backup is corrupted and was not loaded: {detail}": "Kopia jest uszkodzona i nie została wczytana: {detail}",
+  "The budget changed on the server in the meantime — nothing was written. Try again.":
+    "Budżet w międzyczasie zmienił się na serwerze — nic nie zostało zapisane. Spróbuj ponownie.",
   "The budget has changed since this was generated — generate a new suggestion.": "Budżet zmienił się od wygenerowania — wygeneruj propozycję ponownie.",
   "The budget data on this device could not be matched to the account you are signed in with, so nothing can be sent to the server. Nothing has been deleted yet. Download a backup first — this device may hold the only copy of that data. “Delete everything and start fresh” erases this account's data on the server and the local copy on this device, then signs you out.":
     "Danych budżetu na tym urządzeniu nie udało się dopasować do zalogowanego konta, więc nic nie może zostać wysłane na serwer. Nic jeszcze nie zostało usunięte. Najpierw pobierz kopię zapasową — to urządzenie może mieć jedyną kopię tych danych. „Usuń wszystko i zacznij na czysto” usuwa dane tego konta z serwera oraz lokalną kopię z tego urządzenia, a potem Cię wylogowuje.",
@@ -554,6 +560,8 @@ export const pl: Dict = {
   "The server has no OpenAI key configured. Set OPENAI_API_KEY and restart the app, or use your own key in Settings → Artificial intelligence.":
     "Serwer nie ma skonfigurowanego klucza OpenAI. Ustaw OPENAI_API_KEY i zrestartuj aplikację albo użyj własnego klucza w Ustawieniach → Sztuczna inteligencja.",
   "The server hit an unexpected error. Nothing was changed — try again.": "Serwer napotkał nieoczekiwany błąd. Nic nie zostało zmienione — spróbuj ponownie.",
+  "The server refuses to sync this budget until its encryption is upgraded to the new format.":
+    "Serwer odmawia synchronizacji tego budżetu, dopóki jego szyfrowanie nie zostanie zaktualizowane do nowego formatu.",
   "The server rejected these changes — usually because you edited something that was meanwhile deleted on another device. Your data has already been restored to the server state. “Discard” removes the failed attempt from the list.":
     'Te zmiany serwer odrzucił — zwykle dlatego, że edytowałeś coś, co w międzyczasie zniknęło na innym urządzeniu. Dane wróciły już do stanu z serwera. „Odrzuć" usuwa nieudaną próbę z listy.',
   "The server rejected {n} change — tap to open settings | The server rejected {n} changes — tap to open settings": {
@@ -564,6 +572,7 @@ export const pl: Dict = {
   },
   "The signed-in account changed while the data was being sent — nothing was written. Reload the app and try again.":
     "W trakcie wysyłania zmieniło się zalogowane konto — nic nie zostało zapisane. Odśwież aplikację i spróbuj ponownie.",
+  "The upgrade failed — nothing was changed on the server.": "Aktualizacja się nie powiodła — na serwerze nic nie zostało zmienione.",
   "The upload is too large — try fewer (or smaller) screenshots.": "Wysyłka jest za duża — spróbuj z mniejszą liczbą zrzutów (albo lżejszymi).",
   Theme: "Motyw",
   "Then tap {action}": "Następnie stuknij {action}",
@@ -571,12 +580,21 @@ export const pl: Dict = {
     "Na tym urządzeniu nie ma danych do wysłania — nic nie zostało wysłane na serwer. Odśwież aplikację, aby najpierw pobrać budżet.",
   "There is nothing to export yet — wait for the app to finish loading.": "Nie ma jeszcze czego eksportować — poczekaj, aż aplikacja się wczyta.",
   "This budget is encrypted": "Budżet jest zaszyfrowany",
+  "This budget is encrypted with an older format that new versions of the app no longer read. Upgrading re-encrypts it with a fresh key built from the data on THIS device: pick a new encryption password (it may be the same one), and the server's copy is replaced in one step.":
+    "Ten budżet jest zaszyfrowany starszym formatem, którego nowe wersje aplikacji już nie odczytują. Aktualizacja szyfruje go na nowo świeżym kluczem zbudowanym z danych na TYM urządzeniu: wybierz nowe hasło szyfrowania (może być to samo), a kopia na serwerze zostanie podmieniona w jednym kroku.",
+  "This budget needs an encryption upgrade": "Ten budżet wymaga aktualizacji szyfrowania",
+  "This budget was encrypted with an older format that this version of the app no longer reads, and this device has no copy of the data. Open Enveo on the device that holds the budget (or restore a JSON backup there) and run the encryption upgrade in Settings → Privacy — then unlock here with the new password.":
+    "Ten budżet został zaszyfrowany starszym formatem, którego ta wersja aplikacji już nie odczytuje, a to urządzenie nie ma kopii danych. Otwórz Enveo na urządzeniu, które ma budżet (albo odtwórz tam kopię zapasową JSON), i uruchom aktualizację szyfrowania w Ustawieniach → Prywatność — potem odblokuj tutaj nowym hasłem.",
   "This budget's data is end-to-end encrypted. Enter the encryption password to unlock it on this device.":
     "Dane tego budżetu są zaszyfrowane end-to-end. Podaj hasło szyfrowania, aby odblokować je na tym urządzeniu.",
+  "This budget's encryption must be upgraded before it can sync — open Settings → Privacy on a device that holds the data and run the upgrade.":
+    "Szyfrowanie tego budżetu trzeba zaktualizować, zanim będzie mógł się synchronizować — otwórz Ustawienia → Prywatność na urządzeniu, które ma dane, i uruchom aktualizację.",
   "This code contains your encryption key in plain form. Show it only on your own trusted device — anyone with the code can read the budget.":
     "Ten kod zawiera klucz szyfrowania w postaci jawnej. Pokaż go wyłącznie na własnym, zaufanym urządzeniu — każdy, kto ma kod, odczyta budżet.",
   "This data may belong to a different account. Then it will never be sent — download a backup and remove the copy from this device.":
     "Te dane mogą należeć do innego konta. Wtedy nigdy się nie wyślą — pobierz kopię zapasową i usuń kopię z tego urządzenia.",
+  "This data uses an older encryption format that this version no longer reads — run the encryption upgrade in Settings → Privacy on the device that holds the budget.":
+    "Te dane używają starszego formatu szyfrowania, którego ta wersja już nie odczytuje — uruchom aktualizację szyfrowania w Ustawieniach → Prywatność na urządzeniu, które ma budżet.",
   "This device has no encryption key — unlock the budget with your password (or a pairing code) and try again.":
     "To urządzenie nie ma klucza szyfrowania — odblokuj budżet hasłem (albo kodem parowania) i spróbuj ponownie.",
   "This device's data has not been matched to your account — nothing is being sent to the server. Tap to open settings":
@@ -621,6 +639,7 @@ export const pl: Dict = {
   Unlock: "Odblokuj",
   "Unlock with password": "Odblokuj hasłem",
   "Unlocking…": "Odblokowywanie…",
+  "Upgrade encryption": "Zaktualizuj szyfrowanie",
   "Untick what you don't want. Duplicates are skipped — tap one to edit and add it anyway.":
     "Odznacz, czego nie dodawać. Duplikaty są pomijane — tapnij duplikat, aby mimo to edytować i dodać.",
   Usage: "Zajętość",
