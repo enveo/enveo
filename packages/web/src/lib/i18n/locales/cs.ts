@@ -101,6 +101,7 @@ export const cs: Dict = {
   "Choose an account": "Vyber účet",
   "Choose an envelope": "Vyber obálku",
   "Choose an icon": "Vyber ikonu",
+  "Cisza": "Ticho",
   "Clear & reset": "Vyprázdnit a resetovat",
   "Clear filters": "Zrušit filtry",
   "Clear local data": "Smazat lokální data",

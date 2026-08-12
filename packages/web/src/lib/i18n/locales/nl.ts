@@ -101,6 +101,7 @@ export const nl: Dict = {
   "Choose an account": "Kies een rekening",
   "Choose an envelope": "Kies een envelop",
   "Choose an icon": "Kies een pictogram",
+  "Cisza": "Stilte",
   "Clear & reset": "Legen en resetten",
   "Clear filters": "Filters wissen",
   "Clear local data": "Lokale gegevens wissen",

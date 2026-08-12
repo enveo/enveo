@@ -101,6 +101,7 @@ export const ptBR: Dict = {
   "Choose an account": "Escolha uma conta",
   "Choose an envelope": "Escolha um envelope",
   "Choose an icon": "Escolha um ícone",
+  "Cisza": "Silêncio",
   "Clear & reset": "Limpar e redefinir",
   "Clear filters": "Limpar os filtros",
   "Clear local data": "Apagar os dados locais",

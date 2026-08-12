@@ -101,6 +101,7 @@ export const sv: Dict = {
   "Choose an account": "Välj ett konto",
   "Choose an envelope": "Välj ett kuvert",
   "Choose an icon": "Välj en ikon",
+  "Cisza": "Stillhet",
   "Clear & reset": "Töm och nollställ",
   "Clear filters": "Rensa filtren",
   "Clear local data": "Rensa lokala data",
