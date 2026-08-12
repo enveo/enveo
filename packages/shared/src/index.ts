@@ -6,5 +6,6 @@ export * from "./stateResponse";
 export * from "./summary";
 export * from "./aiBudget";
 export * from "./aiPrompts";
+export * from "./aiTransport";
 export * from "./reports";
 export * from "./goals";

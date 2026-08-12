@@ -26,7 +26,7 @@ import { loadClientLedger } from "../repo";
 import { db } from "../db/client";
 import { z } from "zod";
 import { env } from "../env";
-import { openAiChatFetch } from "../openaiHttp";
+import { openAiChatFetch, transportFailureJson, UpstreamHttpError } from "../openaiHttp";
 
 const requestSchema = z.object({
   month: z.string().regex(/^\d{4}-\d{2}$/),
@@ -120,7 +120,7 @@ async function openaiChat(req: ChatRequest): Promise<string> {
     },
     { apiKey: env.OPENAI_API_KEY },
   );
-  if (!res.ok) throw new Error(`openai ${res.status}`);
+  if (!res.ok) throw new UpstreamHttpError(res.status);
   const data = (await res.json()) as { choices?: Array<{ message?: { content?: string } }> };
   return data.choices?.[0]?.message?.content ?? "{}";
 }
@@ -192,9 +192,12 @@ budgetSuggestRoutes.post("/ai/v1/chat/completions", async (c) => {
       },
       { apiKey: env.OPENAI_API_KEY },
     );
-  } catch {
-    // timeout or network failure on the way to OpenAI — same code as a non-2xx answer
-    return c.json({ error: "upstream", status: 504 }, 502);
+  } catch (e) {
+    /* timeout vs network failure on the way to OpenAI — DISTINCT stable codes since
+       the AI-transport package (the old contract folded both into upstream/504). */
+    const failure = transportFailureJson(e);
+    if (failure) return c.json(failure.body, failure.status);
+    throw e; // openAiChatFetch only throws the two classified errors
   }
   if (!res.ok) return c.json({ error: "upstream", status: res.status }, 502);
   return c.json(await res.json());
@@ -207,8 +210,13 @@ budgetSuggestRoutes.post("/ai/chat", async (c) => {
   const req = aiChatSchema.parse(await c.req.json());
   try {
     return c.json({ content: await openaiChat(req as ChatRequest) });
-  } catch {
-    return c.json({ error: "upstream", status: 504 }, 502);
+  } catch (e) {
+    /* Same classification as /ai/v1 above — this alias used to fold EVERY failure
+       (a real upstream 401 included) into {error:"upstream",status:504}. */
+    const failure = transportFailureJson(e);
+    if (failure) return c.json(failure.body, failure.status);
+    if (e instanceof UpstreamHttpError) return c.json({ error: "upstream", status: e.status }, 502);
+    return c.json({ error: "upstream", status: 504 }, 502); // an unreadable 2xx body — the historical catch-all
   }
 });
 

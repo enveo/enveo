@@ -9,12 +9,22 @@
  * thrown `OpenAI 503` put an English developer string in a Polish UI. lib/api.ts (ERROR_KEYS)
  * owns the wording in every locale. The codes:
  *   ai_offline        — fetch never left the device (a local-first PWA is offline all the time)
+ *   ai_timeout        — OUR timer cut a round-trip that exceeded its cap (the model hung)
+ *   ai_unreachable    — fetch rejected while online (DNS, a dropped connection, a dead server)
  *   ai_unavailable    — the mirror has no operator key (503 {"error":"ai_unavailable"})
  *   ai_key_invalid    — byok: OpenAI rejected the user's key (401/403)
- *   ai_upstream_error — anything else: an upstream failure, or an answer we cannot read
+ *   ai_upstream_error — anything else: an upstream rejection, or an answer we cannot read
  * api.test.ts guards this file: no template-literal throws (that is how the prose got in).
+ *
+ * TIMEOUTS come from @enveo/shared/aiTransport (ONE budget with the server —
+ * openaiHttp.ts consumes the same constants): byok talks to OpenAI directly and
+ * uses the operation's own cap (chat vs vision); the server mirror is PROXIED, so
+ * the client waits the server's cap PLUS a margin — the server's classified answer
+ * must always beat the client's abort. `AbortSignal.timeout` is absent on
+ * WebKit < 16 (iOS 15 Safari) — timeoutSignal builds it from parts.
  */
-import { supportsReasoningEffort, type ChatRequest } from "@enveo/shared";
+import { AI_CHAT_TIMEOUT_MS, AI_PROXY_CHAT_TIMEOUT_MS, supportsReasoningEffort, type ChatRequest } from "@enveo/shared";
+import { timeoutSignal } from "./timeoutSignal";
 
 /** Transport target: OpenAI with the user's key (byok) OR the mirror on our API
  *  (server — an operator-key proxy; the server picks the model, reasoning_effort
@@ -27,7 +37,7 @@ const CODE = /^[a-z0-9_]+$/;
 /** fetch() rejected — there is no response at all (offline, DNS, a dropped connection). */
 function transportError(): Error {
   const offline = typeof navigator !== "undefined" && navigator.onLine === false;
-  return new Error(offline ? "ai_offline" : "ai_upstream_error");
+  return new Error(offline ? "ai_offline" : "ai_unreachable");
 }
 
 /**
@@ -48,17 +58,18 @@ async function responseError(res: Response, kind: ChatTarget["kind"]): Promise<E
   return new Error("ai_upstream_error");
 }
 
-/** Hard cap for one upstream round-trip — a hung upstream must become a normal
- *  transport error (code + retry), not a spinner that never resolves. */
-const CHAT_TIMEOUT_MS = 120_000;
-
-/** The one transport step (fetch → non-2xx → body): the single place a failure becomes a code. */
-async function postChat(url: string, headers: Record<string, string>, body: unknown, kind: ChatTarget["kind"]): Promise<unknown> {
+/** The one transport step (fetch → non-2xx → body): the single place a failure becomes a code.
+ *  A hung upstream must become a normal transport error (code + retry), not a spinner that
+ *  never resolves — the cap is the caller's (chat vs vision vs proxied, see the module comment). */
+async function postChat(url: string, headers: Record<string, string>, body: unknown, kind: ChatTarget["kind"], timeoutMs: number): Promise<unknown> {
+  const t = timeoutSignal(timeoutMs);
   let res: Response;
   try {
-    res = await fetch(url, { method: "POST", headers, body: JSON.stringify(body), signal: AbortSignal.timeout(CHAT_TIMEOUT_MS) });
+    res = await fetch(url, { method: "POST", headers, body: JSON.stringify(body), signal: t.signal });
   } catch {
-    throw transportError();
+    throw t.timedOut() ? new Error("ai_timeout") : transportError();
+  } finally {
+    t.clear();
   }
   if (!res.ok) throw await responseError(res, kind);
   try {
@@ -68,7 +79,10 @@ async function postChat(url: string, headers: Record<string, string>, body: unkn
   }
 }
 
-export async function chatJson(req: ChatRequest, cfg: ChatTarget): Promise<string> {
+/** `timeoutMs` — only vision calls (screenshot extraction, byok) override it; the default is
+ *  the operation-correct chat cap: server mode goes through the mirror (server cap + margin,
+ *  so the mirror's own classified `ai_timeout` answer wins), byok talks to OpenAI directly. */
+export async function chatJson(req: ChatRequest, cfg: ChatTarget, timeoutMs?: number): Promise<string> {
   const url = cfg.kind === "byok" ? OPENAI_URL : "/api/ai/v1/chat/completions";
   const headers: Record<string, string> = { "content-type": "application/json" };
   if (cfg.kind === "byok") headers.authorization = `Bearer ${cfg.key}`;
@@ -83,6 +97,7 @@ export async function chatJson(req: ChatRequest, cfg: ChatTarget): Promise<strin
       ...(sendEffort ? { reasoning_effort: req.reasoningEffort } : {}),
     },
     cfg.kind,
+    timeoutMs ?? (cfg.kind === "server" ? AI_PROXY_CHAT_TIMEOUT_MS : AI_CHAT_TIMEOUT_MS),
   )) as { choices?: Array<{ message?: { content?: string } }> };
   return data.choices?.[0]?.message?.content ?? "";
 }

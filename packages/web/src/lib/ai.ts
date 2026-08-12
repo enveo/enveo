@@ -16,6 +16,7 @@
  * /api/* — the only egress in byok is api.openai.com.
  */
 import {
+  AI_VISION_TIMEOUT_MS,
   buildAgentSuggestContext,
   buildAgentSuggestPrompt,
   buildBudgetSuggestionBasis,
@@ -265,7 +266,8 @@ export async function runImportExtract(args: {
   // fresh/wiped replica, exactly like useCurrency()) — the prompt-identity tests require the
   // byok request to stay byte-identical to the server's for the same budget.
   const currency = ledger.budgets[0]?.currency ?? currencyForLocales(browserLocales());
-  const raw = await chatJson(buildImportExtractPrompt(images, refs, todayISO(), locale, currency), target);
+  // vision cap, not the chat cap: multi-screenshot extraction is the slow end (shared budget)
+  const raw = await chatJson(buildImportExtractPrompt(images, refs, todayISO(), locale, currency), target, AI_VISION_TIMEOUT_MS);
   return parseOrFail(() => parseImportExtractResponse(raw)).map((t) => ({
     date: t.date,
     amount: t.amount,
