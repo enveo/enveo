@@ -26,11 +26,40 @@ answers in the UI language.
 ## Server mode setup
 
 Set `OPENAI_API_KEY` (and optionally `OPENAI_MODEL`) in `.env` — the key stays
-on your server; devices still have to opt in individually.
+on your server; devices still have to opt in individually. The default model
+is `gpt-5.6-luna`.
 
-> **Cost warning.** Server-mode AI calls are **not rate-limited**: every
-> signed-in account spends the operator's key at will. With registration closed
-> (the selfhost default) that means "trusted household members" — fine. Never
-> combine an operator key with **open registration** (`ALLOW_SIGNUPS=1` left
-> on, or `DEPLOYMENT=cloud`) on an internet-facing instance: anyone who signs
+> **Cost warning (selfhost).** On a selfhost deployment, server-mode AI calls
+> are **not limited by Enveo**: every signed-in account spends the operator's
+> key at will. With registration closed (the selfhost default) that means
+> "trusted household members" — fine. Never combine an operator key with
+> `ALLOW_SIGNUPS=1` on an internet-facing selfhost instance: anyone who signs
 > up can run up an unmetered OpenAI bill. On shared instances, prefer BYOK.
+
+## The cloud per-user AI budget
+
+On `DEPLOYMENT=cloud` (open registration) each account gets an independent,
+**approximate USD 5.00 allowance per UTC calendar month** for server-mode AI,
+enforced against the operator's key:
+
+- A request is admitted whenever the **already-recorded** spend is below the
+  threshold; the actual cost (from OpenAI's returned token usage, priced by a
+  server-side registry) is added **after** a successful answer. A request that
+  starts under the limit is allowed to finish even if it crosses it, and two
+  concurrent requests may both be admitted — modest overshoot is accepted by
+  design. User comfort wins over strict accounting.
+- When the allowance is used up, operator-key AI routes answer
+  `429 {"error":"ai_budget_exhausted","retryAfterSeconds":<int>}` with a
+  matching `Retry-After` header (seconds until the next UTC month). Budget
+  suggestions fall back to local rules; an import already past its first cycle
+  returns the raw extracted items. BYOK is never limited.
+- Accounting is **fail-open**: a counter failure never blocks or degrades an
+  AI answer. Failed/timed-out calls, malformed usage and unknown models are
+  never charged. Recorded spend is never revealed to the client.
+- There is **no instance-wide cap**: aggregate operator cost management (e.g.
+  an OpenAI-side budget) is the operator's own responsibility, outside Enveo.
+
+A cloud boot also requires the configured `OPENAI_MODEL` to have a registered
+price entry, and `AI_SAFETY_IDENTIFIER_SECRET` (optional; a dedicated secret,
+never `BETTER_AUTH_SECRET`) enables a privacy-preserving `safety_identifier`
+on operator calls — a keyed hash, never the raw user id or email.
