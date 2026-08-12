@@ -10,13 +10,7 @@
 import { describe, expect, it } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import {
-  checkDeployScript,
-  checkSelfHostImageRefs,
-  DEPLOY_SCRIPT,
-  formatViolations,
-  SELF_HOST_DOCS,
-} from "./sourcePolicy";
+import { checkDeployScript, checkSelfHostImageRefs, DEPLOY_SCRIPT, formatViolations, SELF_HOST_DOCS } from "./sourcePolicy";
 
 const REPO_ROOT = join(import.meta.dir, "..", "..");
 const read = (relative: string): string => readFileSync(join(REPO_ROOT, relative), "utf8");
@@ -44,10 +38,7 @@ describe("checkSelfHostImageRefs", () => {
   });
 
   it("rejects a digest pin — the canonical path is the alias, not a digest", () => {
-    const found = checkSelfHostImageRefs(
-      "docs/hosting.md",
-      "ghcr.io/enveo/enveo@sha256:0000000000000000000000000000000000000000000000000000000000000000",
-    );
+    const found = checkSelfHostImageRefs("docs/hosting.md", "ghcr.io/enveo/enveo@sha256:0000000000000000000000000000000000000000000000000000000000000000");
     expect(found).toHaveLength(1);
   });
 
@@ -90,10 +81,7 @@ describe("checkSelfHostImageRefs", () => {
   });
 
   it("rejects an alias that also carries a digest", () => {
-    const found = checkSelfHostImageRefs(
-      "README.md",
-      "ghcr.io/enveo/enveo:latest@sha256:0000000000000000000000000000000000000000000000000000000000000000",
-    );
+    const found = checkSelfHostImageRefs("README.md", "ghcr.io/enveo/enveo:latest@sha256:0000000000000000000000000000000000000000000000000000000000000000");
     expect(found).toHaveLength(1);
   });
 });
@@ -108,9 +96,7 @@ describe("checkDeployScript", () => {
   });
 
   it("accepts printed guidance that merely MENTIONS sudo in a heredoc", () => {
-    expect(checkDeployScript("cat <<'EOF'\n  sudo tailscale serve --bg https / http://127.0.0.1:8081\nEOF\n")).toEqual(
-      [],
-    );
+    expect(checkDeployScript("cat <<'EOF'\n  sudo tailscale serve --bg https / http://127.0.0.1:8081\nEOF\n")).toEqual([]);
   });
 
   it("rejects the Docker convenience installer by name", () => {

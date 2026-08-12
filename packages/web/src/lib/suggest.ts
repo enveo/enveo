@@ -90,7 +90,5 @@ export function rankPlaces(ledger: ClientLedger, envelopeId: string | null, cate
       if (t.date > cur.lastDate) cur.lastDate = t.date;
     }
   }
-  return [...counts.entries()]
-    .sort(([, a], [, b]) => (b.count !== a.count ? b.count - a.count : b.lastDate.localeCompare(a.lastDate)))
-    .map(([id]) => id);
+  return [...counts.entries()].sort(([, a], [, b]) => (b.count !== a.count ? b.count - a.count : b.lastDate.localeCompare(a.lastDate))).map(([id]) => id);
 }

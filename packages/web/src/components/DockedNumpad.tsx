@@ -31,15 +31,7 @@ export type DockedNumpadTarget = {
   onInvalid: () => void;
 };
 
-export function DockedNumpad({
-  target,
-  state,
-  onState,
-}: {
-  target: DockedNumpadTarget | null;
-  state: PadState | null;
-  onState: (s: PadState) => void;
-}) {
+export function DockedNumpad({ target, state, onState }: { target: DockedNumpadTarget | null; state: PadState | null; onState: (s: PadState) => void }) {
   const C = useTheme();
   const M = useMask();
   const { t } = useT();
@@ -68,17 +60,34 @@ export function DockedNumpad({
       <div style={{ height: 40, display: "flex", alignItems: "center", gap: 8, padding: `0 ${P}px`, borderBottom: `1px solid ${C.line}` }}>
         <div style={{ flex: 1, minWidth: 0, display: "flex", alignItems: "center", gap: 8 }}>
           {target.icon && target.color && (
-            <div style={{ width: 22, height: 22, borderRadius: 6, background: target.color, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+            <div
+              style={{
+                width: 22,
+                height: 22,
+                borderRadius: 6,
+                background: target.color,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                flexShrink: 0,
+              }}
+            >
               <Glyph name={target.icon} size={12} color={isLight(target.color) ? "#33312c" : "#fff"} sw={1.6} />
             </div>
           )}
-          <span style={{ minWidth: 0, fontSize: 13, fontWeight: 600, color: C.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{target.label}</span>
+          <span style={{ minWidth: 0, fontSize: 13, fontWeight: 600, color: C.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            {target.label}
+          </span>
         </div>
         <span style={{ fontSize: 13, color: C.mute, fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap" }}>
           {open && preview !== null ? t("= {amount}", { amount: M(preview) }) : ""}
         </span>
         <div style={{ flex: 1, display: "flex", justifyContent: "flex-end" }}>
-          <button onClick={target.onCancel} aria-label={t("Cancel editing")} style={{ background: "none", border: "none", cursor: "pointer", padding: 8, marginRight: -8, display: "flex" }}>
+          <button
+            onClick={target.onCancel}
+            aria-label={t("Cancel editing")}
+            style={{ background: "none", border: "none", cursor: "pointer", padding: 8, marginRight: -8, display: "flex" }}
+          >
             <Ico d="M6 6l12 12M18 6L6 18" size={15} color={C.mute} sw={2} />
           </button>
         </div>

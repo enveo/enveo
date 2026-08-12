@@ -15,13 +15,7 @@
  * visible to every reviewer, so suppression happens in the reviewed policy file, never in the
  * command line that produces the evidence.
  */
-import {
-  evaluateAudit,
-  parseAuditJson,
-  parseBunLock,
-  parsePolicy,
-  type AuditReport,
-} from "./lib/auditPolicy";
+import { evaluateAudit, parseAuditJson, parseBunLock, parsePolicy, type AuditReport } from "./lib/auditPolicy";
 
 export const EXIT_OK = 0;
 export const EXIT_POLICY_VIOLATION = 1;
@@ -72,15 +66,9 @@ export function formatReport(report: AuditReport): string {
       id: Math.max(10, ...rows.map((r) => r.id.length)),
       verdict: 8,
     };
-    lines.push(
-      `${pad("SEVERITY", w.severity)}  ${pad("PACKAGE", w.pkg)}  ${pad("ADVISORY", w.id)}  ` +
-        `${pad("VERDICT", w.verdict)}  INSTALLED`,
-    );
+    lines.push(`${pad("SEVERITY", w.severity)}  ${pad("PACKAGE", w.pkg)}  ${pad("ADVISORY", w.id)}  ` + `${pad("VERDICT", w.verdict)}  INSTALLED`);
     for (const r of rows) {
-      lines.push(
-        `${pad(r.severity, w.severity)}  ${pad(r.pkg, w.pkg)}  ${pad(r.id, w.id)}  ` +
-          `${pad(r.verdict, w.verdict)}  ${r.where}`,
-      );
+      lines.push(`${pad(r.severity, w.severity)}  ${pad(r.pkg, w.pkg)}  ${pad(r.id, w.id)}  ` + `${pad(r.verdict, w.verdict)}  ${r.where}`);
     }
   }
 
@@ -142,10 +130,7 @@ export async function runAudit(options: AuditRunOptions = {}): Promise<number> {
   let exitCode: number;
   try {
     const child = Bun.spawn([...command], { cwd, stdout: "pipe", stderr: "pipe" });
-    [stdout, stderr] = await Promise.all([
-      new Response(child.stdout).text(),
-      new Response(child.stderr).text(),
-    ]);
+    [stdout, stderr] = await Promise.all([new Response(child.stdout).text(), new Response(child.stderr).text()]);
     exitCode = await child.exited;
     if (child.signalCode) return closed(`the audit command was terminated by ${child.signalCode}`);
   } catch (error) {
@@ -155,16 +140,11 @@ export async function runAudit(options: AuditRunOptions = {}): Promise<number> {
   // Bun exits 1 BOTH for "advisories found" and for a tool/registry failure (the latter with
   // empty stdout), so the exit code alone can never be trusted — the body must parse.
   if (exitCode !== 0 && exitCode !== 1) {
-    return closed(
-      `unexpected exit code ${exitCode} from the audit command: ${sanitizeToolOutput(stderr)}`,
-    );
+    return closed(`unexpected exit code ${exitCode} from the audit command: ${sanitizeToolOutput(stderr)}`);
   }
   const advisories = parseAuditJson(stdout);
   if (!advisories.ok) {
-    return closed(
-      `${advisories.error}` +
-        (stderr.trim() ? ` — tool output: ${sanitizeToolOutput(stderr)}` : ""),
-    );
+    return closed(`${advisories.error}` + (stderr.trim() ? ` — tool output: ${sanitizeToolOutput(stderr)}` : ""));
   }
 
   // Exit 1 is the "advisories found" status, so a body that parses to ZERO advisories
@@ -173,7 +153,7 @@ export async function runAudit(options: AuditRunOptions = {}): Promise<number> {
   // once the policy file is empty — the normal steady state — so enforce the invariant here.
   if (exitCode === 1 && advisories.value.length === 0) {
     return closed(
-      "the audit command exited 1 (its \"advisories found\" status) but reported no advisories — " +
+      'the audit command exited 1 (its "advisories found" status) but reported no advisories — ' +
         "that combination cannot come from a successful scan" +
         (stderr.trim() ? `; tool output: ${sanitizeToolOutput(stderr)}` : ""),
     );

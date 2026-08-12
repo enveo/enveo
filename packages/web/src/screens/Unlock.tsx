@@ -170,8 +170,12 @@ export function UnlockScreen() {
   };
 
   return (
-    <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 14, padding: 32, textAlign: "center" }}>
-      <div style={{ marginBottom: 4 }}><LogoMark size={64} /></div>
+    <div
+      style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 14, padding: 32, textAlign: "center" }}
+    >
+      <div style={{ marginBottom: 4 }}>
+        <LogoMark size={64} />
+      </div>
       <div style={{ fontSize: 18, fontWeight: 700, color: C.text }}>{t("This budget is encrypted")}</div>
 
       {mode === "pass" ? (
@@ -182,7 +186,9 @@ export function UnlockScreen() {
           }}
           style={{ display: "flex", flexDirection: "column", gap: 12, width: "100%", maxWidth: 300 }}
         >
-          <div style={{ fontSize: 13, color: C.soft, lineHeight: 1.6 }}>{t("This budget's data is end-to-end encrypted. Enter the encryption password to unlock it on this device.")}</div>
+          <div style={{ fontSize: 13, color: C.soft, lineHeight: 1.6 }}>
+            {t("This budget's data is end-to-end encrypted. Enter the encryption password to unlock it on this device.")}
+          </div>
           <input
             type="password"
             value={pass}
@@ -196,7 +202,14 @@ export function UnlockScreen() {
           <button type="submit" disabled={busy || pass.length === 0} style={primaryBtn}>
             {busy ? t("Unlocking…") : t("Unlock")}
           </button>
-          <button type="button" onClick={() => { setMode("pair"); setError(null); }} style={linkBtn}>
+          <button
+            type="button"
+            onClick={() => {
+              setMode("pair");
+              setError(null);
+            }}
+            style={linkBtn}
+          >
             {t("I have a pairing code")}
           </button>
         </form>
@@ -225,7 +238,14 @@ export function UnlockScreen() {
           <button type="submit" disabled={busy || code.trim().length === 0} style={primaryBtn}>
             {busy ? t("Unlocking…") : t("Unlock")}
           </button>
-          <button type="button" onClick={() => { setMode("pass"); setError(null); }} style={linkBtn}>
+          <button
+            type="button"
+            onClick={() => {
+              setMode("pass");
+              setError(null);
+            }}
+            style={linkBtn}
+          >
             {t("Unlock with password")}
           </button>
         </form>

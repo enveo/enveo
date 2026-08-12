@@ -126,19 +126,13 @@ describe("rankPlaces", () => {
   });
 
   test("falls back to category context when no envelope is given", () => {
-    const txns = [
-      txn({ categoryId: "C1", placeId: "P1", date: back(TODAY, 5) }),
-      txn({ categoryId: "C2", placeId: "P2", date: back(TODAY, 5) }),
-    ];
+    const txns = [txn({ categoryId: "C1", placeId: "P1", date: back(TODAY, 5) }), txn({ categoryId: "C2", placeId: "P2", date: back(TODAY, 5) })];
     const ledger = L([], txns);
     expect(rankPlaces(ledger, null, "C1")).toEqual(["P1"]);
   });
 
   test("breaks equal counts by most recent use", () => {
-    const txns = [
-      txn({ placeId: "POld", date: back(TODAY, 50) }),
-      txn({ placeId: "PNew", date: back(TODAY, 5) }),
-    ];
+    const txns = [txn({ placeId: "POld", date: back(TODAY, 50) }), txn({ placeId: "PNew", date: back(TODAY, 5) })];
     const ledger = L([], txns);
     expect(rankPlaces(ledger, null, null)).toEqual(["PNew", "POld"]);
   });

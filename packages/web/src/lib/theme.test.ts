@@ -156,10 +156,7 @@ describe("4×2 snapshot of the key fields (accent/danger/cta/nav-bg)", () => {
       ALL_THEMES.flatMap((t) =>
         [false, true].map((isDark) => {
           const { vars } = themeTokens(t, isDark);
-          return [
-            `${t}.${isDark ? "dark" : "light"}`,
-            { accent: vars["--accent"], danger: vars["--danger"], cta: vars["--cta"], navBg: vars["--nav-bg"] },
-          ];
+          return [`${t}.${isDark ? "dark" : "light"}`, { accent: vars["--accent"], danger: vars["--danger"], cta: vars["--cta"], navBg: vars["--nav-bg"] }];
         }),
       ),
     );
@@ -272,11 +269,12 @@ describe("C3 contrast audit — dark-mode AA regression guard", () => {
   });
   const relLum = (hex: string) => {
     const { r, g, b } = hexToRgb(hex);
-    const f = (v: number) => (v /= 255) <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4);
+    const f = (v: number) => ((v /= 255) <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4));
     return 0.2126 * f(r) + 0.7152 * f(g) + 0.0722 * f(b);
   };
   const ratio = (fg: string, bg: string) => {
-    const l1 = relLum(fg), l2 = relLum(bg);
+    const l1 = relLum(fg),
+      l2 = relLum(bg);
     const [hi, lo] = l1 > l2 ? [l1, l2] : [l2, l1];
     return (hi + 0.05) / (lo + 0.05);
   };

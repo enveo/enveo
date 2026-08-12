@@ -44,9 +44,7 @@ export const auth = betterAuth({
     schema: { user: s.users, session: s.authSessions, account: s.authAccounts, verification: s.authVerifications },
   }),
   socialProviders:
-    env.GOOGLE_CLIENT_ID && env.GOOGLE_CLIENT_SECRET
-      ? { google: { clientId: env.GOOGLE_CLIENT_ID, clientSecret: env.GOOGLE_CLIENT_SECRET } }
-      : {},
+    env.GOOGLE_CLIENT_ID && env.GOOGLE_CLIENT_SECRET ? { google: { clientId: env.GOOGLE_CLIENT_ID, clientSecret: env.GOOGLE_CLIENT_SECRET } } : {},
   emailAndPassword: { enabled: true },
   session: { expiresIn: 60 * 60 * 24 * 90, updateAge: 60 * 60 * 24 },
   advanced: {

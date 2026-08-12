@@ -112,9 +112,7 @@ describe("runnablePlatforms", () => {
   });
 
   it("keeps a variant visible, so linux/arm/v7 is not silently read as linux/arm", () => {
-    expect(
-      runnablePlatforms({ manifests: [{ digest: "sha256:x", platform: { os: "linux", architecture: "arm", variant: "v7" } }] }),
-    ).toEqual(["linux/arm/v7"]);
+    expect(runnablePlatforms({ manifests: [{ digest: "sha256:x", platform: { os: "linux", architecture: "arm", variant: "v7" } }] })).toEqual(["linux/arm/v7"]);
   });
 });
 
@@ -157,10 +155,7 @@ describe("checkAnnotations", () => {
     // metadata-action honours a `labels:` override but re-derives ANNOTATIONS from github.sha,
     // which on a workflow_dispatch is the branch head, not the released commit. This shipped.
     const branchHead = "fb27b122bdc3664e09d9a599a551bdeefe2a811f";
-    const violations = checkAnnotations(
-      [{ where: "index", annotations: { ...good, "org.opencontainers.image.revision": branchHead } }],
-      expected,
-    );
+    const violations = checkAnnotations([{ where: "index", annotations: { ...good, "org.opencontainers.image.revision": branchHead } }], expected);
 
     expect(violations).toHaveLength(1);
     expect(violations[0]).toContain("revision");

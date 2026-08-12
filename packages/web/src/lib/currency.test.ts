@@ -132,9 +132,45 @@ describe("wizardCurrency — the onboarding preselect", () => {
 
 describe("the supported list stays compatible with the money path", () => {
   test("every mapped/preselected currency is offered by the settings list", () => {
-    const tags = ["pl-PL", "en-US", "en-GB", "de-DE", "de-CH", "cs-CZ", "sv-SE", "nb-NO", "da-DK", "uk-UA", "fr-CA", "en-AU", "en-NZ",
-      "hu-HU", "ro-RO", "bg-BG", "sr-RS", "tr-TR", "he-IL", "hi-IN", "en-SG", "zh-HK", "ms-MY", "th-TH", "fil-PH", "id-ID", "en-ZA",
-      "pt-BR", "es-MX", "es-AR", "es-CO", "es-PE", "ar-AE", "ar-SA", "is-IS", "ja-JP", ""];
+    const tags = [
+      "pl-PL",
+      "en-US",
+      "en-GB",
+      "de-DE",
+      "de-CH",
+      "cs-CZ",
+      "sv-SE",
+      "nb-NO",
+      "da-DK",
+      "uk-UA",
+      "fr-CA",
+      "en-AU",
+      "en-NZ",
+      "hu-HU",
+      "ro-RO",
+      "bg-BG",
+      "sr-RS",
+      "tr-TR",
+      "he-IL",
+      "hi-IN",
+      "en-SG",
+      "zh-HK",
+      "ms-MY",
+      "th-TH",
+      "fil-PH",
+      "id-ID",
+      "en-ZA",
+      "pt-BR",
+      "es-MX",
+      "es-AR",
+      "es-CO",
+      "es-PE",
+      "ar-AE",
+      "ar-SA",
+      "is-IS",
+      "ja-JP",
+      "",
+    ];
     for (const tag of tags) expect(SUPPORTED_CURRENCIES).toContain(currencyForLocale(tag));
     expect(SUPPORTED_CURRENCIES).toContain(FALLBACK_CURRENCY);
   });
@@ -171,8 +207,7 @@ describe("the supported list stays compatible with the money path", () => {
     // Not the gate (that is CURRENCY_DIGITS above), but a live cross-check: on a runtime whose ICU
     // matches the table, drift shows up here. Skipped where the runtime is known to lag, so this can
     // never turn the invariant green for the wrong reason — it can only report a real CLDR change.
-    const icuIsCurrent =
-      new Intl.NumberFormat("en-US", { style: "currency", currency: "HUF" }).resolvedOptions().maximumFractionDigits === 0;
+    const icuIsCurrent = new Intl.NumberFormat("en-US", { style: "currency", currency: "HUF" }).resolvedOptions().maximumFractionDigits === 0;
     if (!icuIsCurrent) return; // bun ICU 75 — the pinned table stands on its own
     for (const [c, digits] of Object.entries(CURRENCY_DIGITS)) {
       const live = new Intl.NumberFormat("en-US", { style: "currency", currency: c }).resolvedOptions().maximumFractionDigits;

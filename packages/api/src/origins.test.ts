@@ -8,14 +8,7 @@ describe("staticAllowedOrigins", () => {
       BETTER_AUTH_URL: "http://localhost:8080/some/path",
       WEB_DIST: "",
     });
-    expect(set).toEqual(
-      new Set([
-        "https://app.example.com",
-        "https://ts.example.net",
-        "http://localhost:8080",
-        "http://localhost:5173",
-      ]),
-    );
+    expect(set).toEqual(new Set(["https://app.example.com", "https://ts.example.net", "http://localhost:8080", "http://localhost:5173"]));
   });
 
   it("prod (WEB_DIST set): no vite origin", () => {

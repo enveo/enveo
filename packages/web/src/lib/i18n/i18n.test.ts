@@ -81,8 +81,7 @@ describe("i18n runtime", () => {
       code,
       endonym: "Test",
       community: true,
-      load: () =>
-        ++attempts === 1 ? Promise.reject(new Error("chunk 404")) : Promise.resolve({ Transactions: "Zz" } as Dict),
+      load: () => (++attempts === 1 ? Promise.reject(new Error("chunk 404")) : Promise.resolve({ Transactions: "Zz" } as Dict)),
     };
     LOCALES.unshift(entry);
     try {

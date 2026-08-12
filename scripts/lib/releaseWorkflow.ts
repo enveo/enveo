@@ -45,18 +45,14 @@ export function findPlatformDivergence(file: string, yaml: string): string[] {
   const problems: string[] = [];
   const lines = stripComments(yaml).split("\n");
 
-  const definitions = lines
-    .map((line, index) => ({ line, index }))
-    .filter(({ line }) => DEFINITION.test(line));
+  const definitions = lines.map((line, index) => ({ line, index })).filter(({ line }) => DEFINITION.test(line));
 
   if (definitions.length === 0) {
     return [`${file}: no PLATFORMS definition — the architecture list must live in exactly one place`];
   }
   if (definitions.length > 1) {
     problems.push(
-      `${file}: PLATFORMS is defined ${definitions.length} times (lines ${definitions
-        .map((d) => d.index + 1)
-        .join(", ")}) — there can be only one`,
+      `${file}: PLATFORMS is defined ${definitions.length} times (lines ${definitions.map((d) => d.index + 1).join(", ")}) — there can be only one`,
     );
   }
   const definitionLines = new Set(definitions.map((d) => d.index));

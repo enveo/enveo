@@ -3,8 +3,15 @@ import type { ClientLedger } from "@enveo/shared";
 import { categoryCountsFor, rankCategories } from "./categoryIndex";
 
 const L = (txns: Array<Partial<ClientLedger["transactions"][number]>>): ClientLedger =>
-  ({ accounts: [], groups: [], envelopes: [], categories: [], places: [], allocations: [],
-     transactions: txns as ClientLedger["transactions"] }) as unknown as ClientLedger;
+  ({
+    accounts: [],
+    groups: [],
+    envelopes: [],
+    categories: [],
+    places: [],
+    allocations: [],
+    transactions: txns as ClientLedger["transactions"],
+  }) as unknown as ClientLedger;
 
 describe("envelope→categories index", () => {
   test("counts co-occurrences (also from splits) and sorts descending, ties alphabetically", () => {
@@ -37,6 +44,14 @@ describe("envelope→categories index", () => {
   test("no envelope / no history → an empty map, ranking = alphabetical", () => {
     const ledger = L([]);
     expect(categoryCountsFor(ledger, 2, null).size).toBe(0);
-    expect(rankCategories([{ id: "b", name: "B" }, { id: "a", name: "A" }], new Map()).map((x) => x.id)).toEqual(["a", "b"]);
+    expect(
+      rankCategories(
+        [
+          { id: "b", name: "B" },
+          { id: "a", name: "A" },
+        ],
+        new Map(),
+      ).map((x) => x.id),
+    ).toEqual(["a", "b"]);
   });
 });

@@ -12,13 +12,7 @@ export type AiMode = "off" | "server" | "byok";
 export type OpenAiModel = "gpt-5.5" | "gpt-5.5-mini";
 
  
-export type WidgetId =
-  | "quickActions"
-  | "accounts"
-  | "envelopes"
-  | "envelopesSavings"
-  | "reportCashflow"
-  | "reportNetWorth";
+export type WidgetId = "quickActions" | "accounts" | "envelopes" | "envelopesSavings" | "reportCashflow" | "reportNetWorth";
 export interface WidgetOpts {
    
   collapsed?: boolean;
@@ -135,9 +129,7 @@ export function useMask() {
 
 export function AppProviders({ children }: { children: ReactNode }) {
   const [settings, setSettingsState] = useState<Settings>(loadSettings);
-  const [prefersDark, setPrefersDark] = useState(
-    () => typeof window !== "undefined" && window.matchMedia("(prefers-color-scheme: dark)").matches,
-  );
+  const [prefersDark, setPrefersDark] = useState(() => typeof window !== "undefined" && window.matchMedia("(prefers-color-scheme: dark)").matches);
 
   useEffect(() => {
     const mq = window.matchMedia("(prefers-color-scheme: dark)");

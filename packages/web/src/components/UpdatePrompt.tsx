@@ -37,13 +37,46 @@ export function UpdatePrompt() {
 
   if (!need) return null;
   return (
-    <div style={{ position: "fixed", top: "calc(env(safe-area-inset-top) + 8px)", left: 0, right: 0, zIndex: 130, display: "flex", justifyContent: "center", pointerEvents: "none" }}>
-      <div style={{ pointerEvents: "auto", display: "flex", alignItems: "center", gap: 10, maxWidth: 420, width: "calc(100% - 24px)", background: TEAL, color: "#fff", borderRadius: 12, padding: "10px 12px", boxShadow: "0 6px 20px rgba(0,0,0,0.25)", fontFamily: font }}>
+    <div
+      style={{
+        position: "fixed",
+        top: "calc(env(safe-area-inset-top) + 8px)",
+        left: 0,
+        right: 0,
+        zIndex: 130,
+        display: "flex",
+        justifyContent: "center",
+        pointerEvents: "none",
+      }}
+    >
+      <div
+        style={{
+          pointerEvents: "auto",
+          display: "flex",
+          alignItems: "center",
+          gap: 10,
+          maxWidth: 420,
+          width: "calc(100% - 24px)",
+          background: TEAL,
+          color: "#fff",
+          borderRadius: 12,
+          padding: "10px 12px",
+          boxShadow: "0 6px 20px rgba(0,0,0,0.25)",
+          fontFamily: font,
+        }}
+      >
         <span style={{ flex: 1, fontSize: 13, fontWeight: 600 }}>{t("New version available")}</span>
-        <button onClick={() => void updateRef.current?.(true)} style={{ border: "none", background: "#fff", color: TEAL, borderRadius: 8, padding: "6px 12px", fontSize: 12.5, fontWeight: 700, cursor: "pointer" }}>
+        <button
+          onClick={() => void updateRef.current?.(true)}
+          style={{ border: "none", background: "#fff", color: TEAL, borderRadius: 8, padding: "6px 12px", fontSize: 12.5, fontWeight: 700, cursor: "pointer" }}
+        >
           {t("Refresh")}
         </button>
-        <button onClick={() => setNeed(false)} aria-label={t("Close")} style={{ border: "none", background: "transparent", color: "#fff", fontSize: 16, cursor: "pointer", lineHeight: 1, padding: 4 }}>
+        <button
+          onClick={() => setNeed(false)}
+          aria-label={t("Close")}
+          style={{ border: "none", background: "transparent", color: "#fff", fontSize: 16, cursor: "pointer", lineHeight: 1, padding: 4 }}
+        >
           ×
         </button>
       </div>

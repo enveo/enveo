@@ -30,13 +30,7 @@ describe("planTestEnv — default mode", () => {
 
     expect(result.ok).toBe(true);
     if (!result.ok) return;
-    expect(Object.keys(result.plan.overrides).sort()).toEqual([
-      "DATABASE_URL",
-      "ENVEO_TEST_MODE",
-      "ENVEO_TEST_RUNNER",
-      "OPENAI_API_KEY",
-      "TEST_DATABASE_URL",
-    ]);
+    expect(Object.keys(result.plan.overrides).sort()).toEqual(["DATABASE_URL", "ENVEO_TEST_MODE", "ENVEO_TEST_RUNNER", "OPENAI_API_KEY", "TEST_DATABASE_URL"]);
     expect(result.plan.overrides.ENVEO_TEST_MODE).toBe("default");
   });
 

@@ -56,8 +56,7 @@ const CHILD = new URL("./auth.signup-race.test-child.ts", import.meta.url).pathn
  * proves "no Secure" is a consequence of the http:// base URL, and would fail if a
  * better-auth upgrade ever started forcing Secure (which would lock LAN self-hosters out). */
 
-const cookieFor = (baseURL: string) =>
-  betterAuth({ baseURL, secret: "a".repeat(64), emailAndPassword: { enabled: true } });
+const cookieFor = (baseURL: string) => betterAuth({ baseURL, secret: "a".repeat(64), emailAndPassword: { enabled: true } });
 
 describe("session cookie: Secure follows the baseURL scheme", () => {
   it("an http:// base URL yields a cookie with NO Secure and no __Secure- prefix", async () => {
@@ -162,10 +161,7 @@ describe.skipIf(!TEST_URL)("signup gate: two concurrent first registrations", ()
       await gate`select pg_advisory_unlock(${SIGNUP_GATE_LOCK})`;
     }
 
-    const [stdout, stderr] = await Promise.all([
-      new Response(child.stdout).text(),
-      new Response(child.stderr).text(),
-    ]);
+    const [stdout, stderr] = await Promise.all([new Response(child.stdout).text(), new Response(child.stderr).text()]);
     const code = await child.exited;
     const line = stdout.split("\n").find((l) => l.startsWith(SENTINEL));
     if (code !== 0 || !line) {

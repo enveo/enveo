@@ -40,10 +40,7 @@ async function main(): Promise<void> {
   
 
   if (!expected || env.DATABASE_URL !== expected) {
-    throw new Error(
-      `refusing to run: env.DATABASE_URL is not the throwaway database given by the test ` +
-        `(EXPECT_DATABASE_URL=${expected || "<unset>"})`,
-    );
+    throw new Error(`refusing to run: env.DATABASE_URL is not the throwaway database given by the test ` + `(EXPECT_DATABASE_URL=${expected || "<unset>"})`);
   }
 
   const emailA = process.env.RACE_EMAIL_A ?? "";

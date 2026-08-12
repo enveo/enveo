@@ -16,14 +16,7 @@
  *   2  FAIL CLOSED — a file under policy could not be read at all
  */
 import { readFileSync } from "node:fs";
-import {
-  checkDeployScript,
-  checkSelfHostImageRefs,
-  DEPLOY_SCRIPT,
-  formatViolations,
-  SELF_HOST_DOCS,
-  type PolicyViolation,
-} from "./lib/sourcePolicy";
+import { checkDeployScript, checkSelfHostImageRefs, DEPLOY_SCRIPT, formatViolations, SELF_HOST_DOCS, type PolicyViolation } from "./lib/sourcePolicy";
 
 export const EXIT_OK = 0;
 export const EXIT_POLICY_VIOLATION = 1;

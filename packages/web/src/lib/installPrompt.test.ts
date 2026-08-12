@@ -10,8 +10,10 @@ const IOS_CHROME = "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) Apple
 const IOS_INAPP = "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 Mobile/15E148 [FBAN/FBIOS]";
 // In-app browsers that KEEP the `Safari` token (real UA shapes: DuckDuckGo appends
 // `Ddg/<version>`, the Google app appends `GSA/<version>`) — no Share → A2HS flow.
-const IOS_DDG = "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1 Ddg/17.0";
-const IOS_GSA = "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) GSA/280.0.560472678 Mobile/15E148 Safari/604.1";
+const IOS_DDG =
+  "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1 Ddg/17.0";
+const IOS_GSA =
+  "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) GSA/280.0.560472678 Mobile/15E148 Safari/604.1";
 const DESKTOP_FF = "Mozilla/5.0 (X11; Linux x86_64; rv:126.0) Gecko/20100101 Firefox/126.0";
 
 describe("installState", () => {
@@ -83,7 +85,9 @@ describe("runPrompt", () => {
   it("resolves to the native userChoice outcome", async () => {
     let prompted = false;
     const e = {
-      prompt: async () => { prompted = true; },
+      prompt: async () => {
+        prompted = true;
+      },
       userChoice: Promise.resolve({ outcome: "accepted" as const, platform: "web" }),
     };
     const outcome = await runPrompt(e as never);

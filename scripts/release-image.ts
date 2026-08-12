@@ -116,10 +116,7 @@ function checkIdentity(reference: string, options: Options): string[] {
     version: options.version,
     source: options.source,
   });
-  report(
-    `OCI identity labels: revision=${options.revision} version=${options.version} source=${options.source}`,
-    labelViolations,
-  );
+  report(`OCI identity labels: revision=${options.revision} version=${options.version} source=${options.source}`, labelViolations);
   violations.push(...labelViolations);
 
   // ANNOTATIONS, separately from labels — they live on the index/manifest rather than in the
@@ -201,8 +198,7 @@ function versionLabelOf(imageJson: unknown): string | null {
   const root = (imageJson ?? {}) as Record<string, unknown>;
   const entries = "config" in root ? [root] : Object.values(root);
   for (const entry of entries) {
-    const labels = ((entry as Record<string, unknown> | null)?.["config"] as { Labels?: Record<string, string> } | undefined)
-      ?.Labels;
+    const labels = ((entry as Record<string, unknown> | null)?.["config"] as { Labels?: Record<string, string> } | undefined)?.Labels;
     const version = labels?.["org.opencontainers.image.version"];
     if (version !== undefined && version !== "") return version;
   }
@@ -237,7 +233,7 @@ function probe(reference: string, options: Options): number {
     }
     fail(
       `cannot determine whether ${reference} exists: ${raw.stderr}\n` +
-        "Refusing to continue: an unresolved registry answer must never be read as \"absent\", " +
+        'Refusing to continue: an unresolved registry answer must never be read as "absent", ' +
         "because that would rebuild and overwrite an already-released immutable tag.",
     );
     return EXIT_REGISTRY_ERROR;

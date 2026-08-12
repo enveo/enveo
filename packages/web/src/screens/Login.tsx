@@ -111,10 +111,18 @@ export function LoginScreen() {
   const title = mode === "signup" ? (firstRun ? t("Create the owner account") : t("Create an account")) : t("Sign in to Enveo");
 
   return (
-    <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 14, padding: 32, textAlign: "center" }}>
-      <div style={{ marginBottom: 4 }}><LogoMark size={64} /></div>
+    <div
+      style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 14, padding: 32, textAlign: "center" }}
+    >
+      <div style={{ marginBottom: 4 }}>
+        <LogoMark size={64} />
+      </div>
       <div style={{ fontSize: 18, fontWeight: 700, color: C.text }}>{title}</div>
-      <div style={{ fontSize: 13, color: C.soft, lineHeight: 1.6, maxWidth: 280 }}>{firstRun ? t("This is the first account on this server — once it exists, registration closes.") : t("Your budget is tied to your account. Sign in to continue.")}</div>
+      <div style={{ fontSize: 13, color: C.soft, lineHeight: 1.6, maxWidth: 280 }}>
+        {firstRun
+          ? t("This is the first account on this server — once it exists, registration closes.")
+          : t("Your budget is tied to your account. Sign in to continue.")}
+      </div>
 
       <form
         onSubmit={(e) => {
@@ -144,12 +152,7 @@ export function LoginScreen() {
           style={inputStyle}
         />
         <label style={{ display: "flex", alignItems: "flex-start", gap: 8, fontSize: 12.5, color: C.soft, lineHeight: 1.5, cursor: "pointer" }}>
-          <input
-            type="checkbox"
-            checked={trust}
-            onChange={(e) => setTrust(e.target.checked)}
-            style={{ marginTop: 2, accentColor: TEAL }}
-          />
+          <input type="checkbox" checked={trust} onChange={(e) => setTrust(e.target.checked)} style={{ marginTop: 2, accentColor: TEAL }} />
           <span>{t("Trust this device — remember my data and sign-in")}</span>
         </label>
         {!trust && (
@@ -160,24 +163,51 @@ export function LoginScreen() {
         <button
           type="submit"
           disabled={!canSubmit}
-          style={{ marginTop: 2, padding: "12px 26px", borderRadius: 11, border: "none", background: TEAL, color: "#fff", fontSize: 13.5, fontWeight: 600, cursor: canSubmit ? "pointer" : "default", opacity: canSubmit ? 1 : 0.5, fontFamily: font }}
+          style={{
+            marginTop: 2,
+            padding: "12px 26px",
+            borderRadius: 11,
+            border: "none",
+            background: TEAL,
+            color: "#fff",
+            fontSize: 13.5,
+            fontWeight: 600,
+            cursor: canSubmit ? "pointer" : "default",
+            opacity: canSubmit ? 1 : 0.5,
+            fontFamily: font,
+          }}
         >
           {mode === "signup" ? t("Create account") : t("Sign in")}
         </button>
       </form>
 
       {mode === "signin" && meta?.signupsOpen === true && !firstRun && (
-        <button onClick={() => switchMode("signup")} disabled={busy} style={linkStyle}>{t("No account yet? Create one")}</button>
+        <button onClick={() => switchMode("signup")} disabled={busy} style={linkStyle}>
+          {t("No account yet? Create one")}
+        </button>
       )}
       {mode === "signup" && !firstRun && (
-        <button onClick={() => switchMode("signin")} disabled={busy} style={linkStyle}>{t("Already have an account? Sign in")}</button>
+        <button onClick={() => switchMode("signin")} disabled={busy} style={linkStyle}>
+          {t("Already have an account? Sign in")}
+        </button>
       )}
 
       {meta?.providers.google === true && (
         <button
           onClick={() => void doGoogle()}
           disabled={busy}
-          style={{ padding: "12px 26px", borderRadius: 11, border: `1px solid ${C.line}`, background: C.surface, color: C.text, fontSize: 13.5, fontWeight: 600, cursor: busy ? "default" : "pointer", opacity: busy ? 0.5 : 1, fontFamily: font }}
+          style={{
+            padding: "12px 26px",
+            borderRadius: 11,
+            border: `1px solid ${C.line}`,
+            background: C.surface,
+            color: C.text,
+            fontSize: 13.5,
+            fontWeight: 600,
+            cursor: busy ? "default" : "pointer",
+            opacity: busy ? 0.5 : 1,
+            fontFamily: font,
+          }}
         >
           {t("Sign in with Google")}
         </button>

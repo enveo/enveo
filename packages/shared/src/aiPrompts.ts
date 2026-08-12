@@ -236,8 +236,8 @@ export function buildAgentSuggestContext(args: {
   const { ledger, month, basis, directive, locale } = args;
   const groupName = new Map(ledger.groups.map((g) => [g.id, g.name]));
   const envelopesFor = (m: string): AgentSuggestEnvelope[] =>
-    computeBudgetState(ledger, m).envelopes
-      .filter((e) => !e.envelope.archived)
+    computeBudgetState(ledger, m)
+      .envelopes.filter((e) => !e.envelope.archived)
       .map((e) => ({
         id: e.envelope.id,
         name: e.envelope.name,
@@ -323,7 +323,9 @@ export function parseAgentSuggestResponse(raw: string): ProposedEnvelopeDelta[] 
   try {
     const obj = JSON.parse(sliceJson(raw)) as { items?: unknown };
     if (Array.isArray(obj.items)) parsed = obj.items;
-  } catch { /* not an object — try the array below */ }
+  } catch {
+    /* not an object — try the array below */
+  }
   if (!Array.isArray(parsed)) {
     const start = raw.indexOf("[");
     const end = raw.lastIndexOf("]");
@@ -376,7 +378,10 @@ export const IMPORT_EXTRACT_JSON_SCHEMA = {
             rawPlace: { type: "string", description: "Raw payee/store description exactly as shown on the screenshot" },
             tag: { type: "string", description: "Short normalized merchant tag, e.g. LIDL (UPPERCASE, no address/numbers)" },
             currency: { type: "string", description: "ISO-4217 code of the returned amount — the account currency unless this row shows a different one" },
-            fxOriginal: { type: "string", description: "Original foreign-currency amount when this row is a converted/settled charge, e.g. \"5.00 USD\"; empty string otherwise" },
+            fxOriginal: {
+              type: "string",
+              description: 'Original foreign-currency amount when this row is a converted/settled charge, e.g. "5.00 USD"; empty string otherwise',
+            },
           },
           required: ["date", "amount", "type", "rawPlace", "tag", "currency", "fxOriginal"],
         },

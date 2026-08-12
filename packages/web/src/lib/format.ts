@@ -21,7 +21,12 @@ export const LOCALE_OF: Record<Lang, string> = {
  
 export function formatMoney(minor: number, currency: string, lang: Lang, opts?: { trim?: boolean }): string {
   const whole = opts?.trim && minor % 100 === 0;
-  return new Intl.NumberFormat(LOCALE_OF[lang], { style: "currency", currency, minimumFractionDigits: whole ? 0 : 2, maximumFractionDigits: whole ? 0 : 2 }).format(minor / 100);
+  return new Intl.NumberFormat(LOCALE_OF[lang], {
+    style: "currency",
+    currency,
+    minimumFractionDigits: whole ? 0 : 2,
+    maximumFractionDigits: whole ? 0 : 2,
+  }).format(minor / 100);
 }
 
  
@@ -83,7 +88,11 @@ export function parseAmount(raw: string): number | null {
 export function evalExpression(raw: string): number | null {
   if (!raw) return null;
   const norm = raw
-    .replace(/×/g, "*").replace(/÷/g, "/").replace(/−/g, "-").replace(/,/g, ".").replace(/\s/g, "")
+    .replace(/×/g, "*")
+    .replace(/÷/g, "/")
+    .replace(/−/g, "-")
+    .replace(/,/g, ".")
+    .replace(/\s/g, "")
     
 
     .replace(/(^|[+\-*/])0+(?=\d)/g, "$1");

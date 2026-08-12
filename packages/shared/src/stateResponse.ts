@@ -6,15 +6,7 @@
 
 
 import { computeBudgetState, monthOf } from "./budget";
-import type {
-  Account,
-  Category,
-  ClientLedger,
-  Envelope,
-  EnvelopeGroup,
-  Place,
-  Transaction,
-} from "./types";
+import type { Account, Category, ClientLedger, Envelope, EnvelopeGroup, Place, Transaction } from "./types";
 
  
 

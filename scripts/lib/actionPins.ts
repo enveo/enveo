@@ -84,17 +84,11 @@ export function findPinProblems(uses: readonly ActionUse[]): string[] {
     const ref = use.reference.slice(at + 1);
 
     if (!FULL_SHA.test(ref)) {
-      problems.push(
-        `${where}: ${action} is pinned to ${JSON.stringify(ref)} — a tag or branch is a MOVING ` +
-          "pointer; use the full 40-character commit SHA",
-      );
+      problems.push(`${where}: ${action} is pinned to ${JSON.stringify(ref)} — a tag or branch is a MOVING ` + "pointer; use the full 40-character commit SHA");
       continue;
     }
     if (use.comment === null || !VERSION_COMMENT.test(use.comment)) {
-      problems.push(
-        `${where}: ${action}@${ref.slice(0, 7)}… has no upstream version comment — add ` +
-          "`# vX.Y.Z` so the pin can be maintained",
-      );
+      problems.push(`${where}: ${action}@${ref.slice(0, 7)}… has no upstream version comment — add ` + "`# vX.Y.Z` so the pin can be maintained");
     }
 
     const byRef = shaByAction.get(action) ?? new Map<string, string[]>();
@@ -104,9 +98,7 @@ export function findPinProblems(uses: readonly ActionUse[]): string[] {
 
   for (const [action, byRef] of shaByAction) {
     if (byRef.size > 1) {
-      const spellings = [...byRef]
-        .map(([ref, places]) => `${ref.slice(0, 7)}… (${places.join(", ")})`)
-        .join(" vs ");
+      const spellings = [...byRef].map(([ref, places]) => `${ref.slice(0, 7)}… (${places.join(", ")})`).join(" vs ");
       problems.push(`${action} is pinned to more than one SHA: ${spellings}`);
     }
   }

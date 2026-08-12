@@ -4,9 +4,10 @@ import { EXT_PALETTE } from "./theme";
 
 describe("biblioteka ikon (picker)", () => {
   test("every category icon has a drawn glyph", () => {
-    for (const cat of ICON_CATEGORIES) for (const ic of cat.icons) {
-      expect(ICONS[ic], `brak glifu: ${ic}`).toBeDefined();
-    }
+    for (const cat of ICON_CATEGORIES)
+      for (const ic of cat.icons) {
+        expect(ICONS[ic], `brak glifu: ${ic}`).toBeDefined();
+      }
   });
   test("no duplicates across categories", () => {
     const all = ICON_CATEGORIES.flatMap((c) => c.icons);

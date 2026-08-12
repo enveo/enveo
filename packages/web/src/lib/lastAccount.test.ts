@@ -18,11 +18,27 @@ describe("lastAccount — per-device account preference", () => {
   });
   test("preselection: the remembered active account wins over the fallback", () => {
     setLastAccountId("A2");
-    expect(preferredAccountId([{ id: "A1", archived: false }, { id: "A2", archived: false }], "A1")).toBe("A2");
+    expect(
+      preferredAccountId(
+        [
+          { id: "A1", archived: false },
+          { id: "A2", archived: false },
+        ],
+        "A1",
+      ),
+    ).toBe("A2");
   });
   test("archived or nonexistent → fallback", () => {
     setLastAccountId("A2");
-    expect(preferredAccountId([{ id: "A1", archived: false }, { id: "A2", archived: true }], "A1")).toBe("A1");
+    expect(
+      preferredAccountId(
+        [
+          { id: "A1", archived: false },
+          { id: "A2", archived: true },
+        ],
+        "A1",
+      ),
+    ).toBe("A1");
     setLastAccountId("GHOST");
     expect(preferredAccountId([{ id: "A1", archived: false }], "A1")).toBe("A1");
   });

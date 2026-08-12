@@ -120,15 +120,11 @@ describe("findForeignLedgerRef", () => {
 
   it("flags split items with a foreign envelopeId or categoryId", () => {
     const foreignEnv = ledger({
-      transactions: [
-        txn({ envelopeId: null, items: [{ id: "i1", envelopeId: FOREIGN, categoryId: null, amount: 100 }] }),
-      ],
+      transactions: [txn({ envelopeId: null, items: [{ id: "i1", envelopeId: FOREIGN, categoryId: null, amount: 100 }] })],
     });
     expect(findForeignLedgerRef(foreignEnv)).toContain("items.envelopeId");
     const foreignCat = ledger({
-      transactions: [
-        txn({ envelopeId: null, items: [{ id: "i1", envelopeId: U(3), categoryId: FOREIGN, amount: 100 }] }),
-      ],
+      transactions: [txn({ envelopeId: null, items: [{ id: "i1", envelopeId: U(3), categoryId: FOREIGN, amount: 100 }] })],
     });
     expect(findForeignLedgerRef(foreignCat)).toContain("items.categoryId");
   });

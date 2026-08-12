@@ -100,10 +100,7 @@ async function acquire(tx: DbTransaction, key: OperationLockKey): Promise<void> 
  * same transaction, and commits/rolls back with the callback. Every guarded read/write must use
  * the `tx` argument — reads through the pooled `db` would escape the serialization.
  */
-export async function withOperationLock<T>(
-  key: OperationLockKey,
-  work: (tx: DbTransaction) => Promise<T>,
-): Promise<T> {
+export async function withOperationLock<T>(key: OperationLockKey, work: (tx: DbTransaction) => Promise<T>): Promise<T> {
   return db.transaction(async (tx) => {
     await acquire(tx, key); // validates first — an invalid key never reaches `work`
     return work(tx);
@@ -114,11 +111,7 @@ export async function withOperationLock<T>(
  * For a transaction the CALLER already owns (never the pooled `db` — rejected at compile time).
  * The lock stays held until the OUTER transaction ends, not merely until the callback returns.
  */
-export async function withOperationLockInTx<T>(
-  tx: DbTransaction,
-  key: OperationLockKey,
-  work: (tx: DbTransaction) => Promise<T>,
-): Promise<T> {
+export async function withOperationLockInTx<T>(tx: DbTransaction, key: OperationLockKey, work: (tx: DbTransaction) => Promise<T>): Promise<T> {
   await acquire(tx, key); // validates first — an invalid key never reaches `work`
   return work(tx);
 }
@@ -128,9 +121,6 @@ export async function withOperationLockInTx<T>(
  * (hold the lock, observe waiters via pg_locks) without duplicating the private hash
  * expression. Not for production callers — the numeric key stays an implementation detail.
  */
-export async function acquireOperationLockForTests(
-  tx: DbTransaction,
-  key: OperationLockKey,
-): Promise<void> {
+export async function acquireOperationLockForTests(tx: DbTransaction, key: OperationLockKey): Promise<void> {
   await acquire(tx, key);
 }

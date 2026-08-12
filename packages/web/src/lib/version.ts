@@ -2,8 +2,7 @@
 export const APP_VERSION = "3.7.7";
 
  
-export const BUILD_INFO: { time: string; sha: string } =
-  typeof __BUILD_INFO__ !== "undefined" ? __BUILD_INFO__ : { time: "", sha: "" };
+export const BUILD_INFO: { time: string; sha: string } = typeof __BUILD_INFO__ !== "undefined" ? __BUILD_INFO__ : { time: "", sha: "" };
 
  
 export function buildLabel(): string {

@@ -4,13 +4,7 @@ import { Hono } from "hono";
 import { requireTier } from "../context";
 import { db } from "../db/client";
 import * as s from "../db/schema";
-import {
-  applyAllocSet,
-  applyTxnCreate,
-  applyTxnDelete,
-  applyTxnUpdate,
-  NOT_FOUND,
-} from "../sync/apply";
+import { applyAllocSet, applyTxnCreate, applyTxnDelete, applyTxnUpdate, NOT_FOUND } from "../sync/apply";
 
 export const txnRoutes = new Hono();
 

@@ -39,11 +39,7 @@ let db: ReturnType<typeof connect>["db"];
 let budgetA = "";
 let budgetB = "";
 
-const opsFor = (opId: string) =>
-  db
-    .select({ opId: s.syncOps.opId, budgetId: s.syncOps.budgetId })
-    .from(s.syncOps)
-    .where(eq(s.syncOps.opId, opId));
+const opsFor = (opId: string) => db.select({ opId: s.syncOps.opId, budgetId: s.syncOps.budgetId }).from(s.syncOps).where(eq(s.syncOps.opId, opId));
 
 describe.skipIf(!TEST_URL)("push idempotency guard (per budget)", () => {
   beforeAll(async () => {
@@ -82,9 +78,7 @@ describe.skipIf(!TEST_URL)("push idempotency guard (per budget)", () => {
     const opId = crypto.randomUUID();
     expect(await claimOp(db, { opId, budgetId: budgetA, clientId: CLIENT_ID, kind: KIND })).toBe(true);
     expect(await claimOp(db, { opId, budgetId: budgetA, clientId: CLIENT_ID, kind: KIND })).toBe(false);
-    expect(await claimOp(db, { opId, budgetId: budgetA, clientId: "other-device", kind: KIND })).toBe(
-      false,
-    );
+    expect(await claimOp(db, { opId, budgetId: budgetA, clientId: "other-device", kind: KIND })).toBe(false);
     expect(await opsFor(opId)).toHaveLength(1);
   });
 
@@ -102,9 +96,7 @@ describe.skipIf(!TEST_URL)("push idempotency guard (per budget)", () => {
     const opId = crypto.randomUUID();
     await expect(
       db.transaction(async (tx) => {
-        expect(await claimOp(tx, { opId, budgetId: budgetA, clientId: CLIENT_ID, kind: KIND })).toBe(
-          true,
-        );
+        expect(await claimOp(tx, { opId, budgetId: budgetA, clientId: CLIENT_ID, kind: KIND })).toBe(true);
         throw new Error("domain rejection");
       }),
     ).rejects.toThrow("domain rejection");
