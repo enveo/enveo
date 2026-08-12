@@ -182,7 +182,14 @@ const envelopeEntity = z.object({
   icon: z.string(),
   note: z.string().nullable(),
   monthlyTarget: zMoney.nullable().optional(),
-  isSavings: z.boolean().optional(),
+  // Restore-boundary normalization (same ONE-place rule as droppingLegacyPlannedRows below):
+  // pre-flag backups simply omit `isSavings`, and the flag is the ONLY savings signal since 3.7
+  // (the name/group regex is gone for good) — without the default, `undefined` flows through the
+  // boolean-typed `Envelope.isSavings` into every consumer of the parsed ledger (web
+  // `importBackup`, `/api/sync/replace`, aiBudget's `savingsLike`). The key is KNOWN here, so
+  // zod's own `.default()` at the parse boundary is the fix; a preprocess is only needed when
+  // zod would otherwise strip an unknown key.
+  isSavings: z.boolean().default(false),
   sort: z.number().int(),
   archived: z.boolean(),
 });

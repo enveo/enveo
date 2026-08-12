@@ -102,6 +102,18 @@ describe("clientLedgerSchema", () => {
     expect(clientLedgerSchema.safeParse(l).success).toBe(true);
   });
 
+  test("a pre-flag envelope without isSavings parses to false, never undefined (flag = only savings signal)", () => {
+    const l = fullLedger();
+    // fullLedger()'s envelope deliberately omits `isSavings` — exactly what a pre-flag backup looks like.
+    const flagged = { ...l.envelopes[0]!, id: U(10), name: "Poduszka", isSavings: true };
+    l.envelopes = [l.envelopes[0]!, flagged];
+    const res = clientLedgerSchema.safeParse(l);
+    expect(res.success).toBe(true);
+    if (!res.success) return;
+    expect(res.data.envelopes[0]!.isSavings).toBe(false); // normalized at the restore boundary
+    expect(res.data.envelopes[1]!.isSavings).toBe(true); // an explicit flag survives
+  });
+
   test("pre-3.2 planned=true template rows are dropped on parse (never materialize as real money)", () => {
     const l = fullLedger();
     const base = l.transactions[0]!;

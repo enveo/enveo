@@ -33,6 +33,9 @@ export type ReplaceRecurrenceOutput = {
   budgetId: string;
   responseBudgetId: string | undefined;
   transactionRows: Array<{ amount: number; accountId: string }>;
+  // Ordered by name. Proves the restore boundary normalized a pre-flag envelope's missing
+  // `isSavings` to false all the way into the DB row, and kept an explicit `true`.
+  envelopeRows: Array<{ name: string; isSavings: boolean }>;
   // information_schema ground truth — proves the recurrence objects are GONE from the database,
   // not merely unused by this code path (a future re-introduction of `recurrences` must fail
   // this loudly instead of silently importing pre-3.2 backups into a resurrected table).
@@ -77,12 +80,21 @@ async function main(): Promise<void> {
   app.route("/api", syncRoutes);
 
   const accId = crypto.randomUUID();
+  const groupId = crypto.randomUUID();
   const ledgerWithRecurrence = {
     accounts: [
       { id: accId, name: "Checking", color: "#fff", icon: "wallet", type: "checking", onBudget: true, initialBalance: 0, archived: false, sort: 0 },
     ],
-    groups: [],
-    envelopes: [],
+    groups: [{ id: groupId, name: "Grupa", sort: 0 }],
+    envelopes: [
+      // A pre-flag envelope: `isSavings` is entirely ABSENT, exactly as a pre-3.7 backup ships
+      // it. clientLedgerSchema's restore-boundary default must materialize it as `false` — the
+      // flag is the ONLY savings signal, so `undefined` sneaking through the boolean-typed field
+      // is the type-hygiene hole this fixture guards against.
+      { id: crypto.randomUUID(), groupId, name: "Legacy", color: "#fff", icon: "food", note: null, sort: 0, archived: false },
+      // An explicitly flagged savings envelope — the default must not touch a present value.
+      { id: crypto.randomUUID(), groupId, name: "Savings", color: "#fff", icon: "piggy", note: null, isSavings: true, sort: 1, archived: false },
+    ],
     categories: [],
     places: [],
     recurrences: [
@@ -179,6 +191,12 @@ async function main(): Promise<void> {
     .from(s.transactions)
     .where(eq(s.transactions.budgetId, budgetId));
 
+  const envRows = await db
+    .select({ name: s.envelopes.name, isSavings: s.envelopes.isSavings })
+    .from(s.envelopes)
+    .where(eq(s.envelopes.budgetId, budgetId))
+    .orderBy(s.envelopes.name);
+
   // The DB ground truth (not just "no code references it"): the `recurrences` table and the
   // `transactions.planned`/`recurrence_id` columns must actually be absent (migration 0018).
   const [tableRow] = await sql<{ exists: boolean }[]>`
@@ -198,6 +216,7 @@ async function main(): Promise<void> {
     budgetId,
     responseBudgetId: body.budgetId,
     transactionRows: txnRows,
+    envelopeRows: envRows,
     recurrencesTableExists: tableRow!.exists,
     transactionsPlannedColumnExists: columnRows.some((r) => r.column_name === "planned"),
     transactionsRecurrenceIdColumnExists: columnRows.some((r) => r.column_name === "recurrence_id"),
