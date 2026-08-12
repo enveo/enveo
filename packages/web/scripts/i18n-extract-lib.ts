@@ -28,21 +28,36 @@ const unescapeLiteral = (raw: string): string => {
   }
 };
 
+/**
+ * Pure matcher: every message literal in ONE source text, with the 1-based line of its call.
+ * Deliberately matched against the WHOLE text, not line by line: the formatter wraps calls
+ * longer than the line width, so `t(` and its string literal legally live on different lines —
+ * a line-based matcher silently drops those messages and orphans their translations.
+ */
+export function matchMessages(src: string): { message: string; line: number }[] {
+  const out: { message: string; line: number }[] = [];
+  let line = 1;
+  let counted = 0;
+  for (const m of src.matchAll(CALL)) {
+    for (let i = counted; i < m.index; i++) if (src.charCodeAt(i) === 10) line++;
+    counted = m.index;
+    out.push({ message: unescapeLiteral((m[1] ?? m[2])!), line });
+  }
+  return out;
+}
+
 /** Every message with the call sites ("file:line") that produce it — the raw material below. */
 export async function extractSites(): Promise<Map<string, string[]>> {
   const sites = new Map<string, string[]>();
   for (const f of new Bun.Glob("**/*.{ts,tsx}").scanSync(SRC)) {
     if (f.includes("messages.generated") || f.includes("i18n/locales/")) continue; // generated / translated
     const src = await Bun.file(SRC + f).text();
-    src.split("\n").forEach((line, i) => {
-      for (const m of line.matchAll(CALL)) {
-        const message = unescapeLiteral((m[1] ?? m[2])!);
-        const at = `${f}:${i + 1}`;
-        const seen = sites.get(message);
-        if (seen) seen.push(at);
-        else sites.set(message, [at]);
-      }
-    });
+    for (const { message, line } of matchMessages(src)) {
+      const at = `${f}:${line}`;
+      const seen = sites.get(message);
+      if (seen) seen.push(at);
+      else sites.set(message, [at]);
+    }
   }
   return sites;
 }

@@ -13,7 +13,7 @@
  */
 import { E2EE_DISABLE_CONFIRM } from "@enveo/shared";
 import { describe, expect, it } from "bun:test";
-import { ambiguous, extract, extractSites } from "../../../scripts/i18n-extract-lib";
+import { ambiguous, extract, extractSites, matchMessages } from "../../../scripts/i18n-extract-lib";
 import { loadLocale, translate, translatePlural, type Dict, type Lang } from "./index";
 import { pl } from "./locales/pl";
 import { MESSAGES, type Message } from "./messages.generated";
@@ -100,6 +100,24 @@ describe("i18n runtime", () => {
 describe("i18n messages", () => {
   it("messages.generated.ts is up to date (run `bun run i18n:extract`)", async () => {
     expect(await extract()).toEqual([...MESSAGES]);
+  });
+
+  it("extraction is layout-independent: the formatter may split a long call across lines", () => {
+    // Biome wraps calls longer than the line width, putting the string literal on its own
+    // line. A line-based matcher silently DROPS such messages — the union shrinks, and every
+    // translation of the dropped key is orphaned. The matcher must see the whole file.
+    // The probe source is COMPOSED so this test file itself never contains a `t(`-shaped
+    // sequence the extractor (which scans raw test sources too) would pick up as a message.
+    const call = (name: string, ...body: string[]) => [`const x = ${name}` + String.fromCharCode(40), ...body, ");"].join("\n");
+    const src = `${call("t", '  "A long message that was wrapped by the formatter.",')}\n${call("tp", '  "{n} thing | {n} things",', "  n,")}\n`;
+    expect(matchMessages(src).map((m) => m.message)).toEqual(["A long message that was wrapped by the formatter.", "{n} thing | {n} things"]);
+    // The site line points at the call, matching the previous single-line attribution.
+    expect(matchMessages(src).map((m) => m.line)).toEqual([1, 4]);
+  });
+
+  it("single-line calls report their exact line, as before", () => {
+    const oneLiner = `const a = t${String.fromCharCode(40)}"A single-line probe message");\n`;
+    expect(matchMessages(`const x = 1;\n${oneLiner}`)).toEqual([{ message: "A single-line probe message", line: 2 }]);
   });
 
   it("plural messages carry exactly one ' | ' separator (the English one/other source)", () => {
