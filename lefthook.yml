@@ -1,0 +1,25 @@
+# Pre-commit ONLY (hook-scope decision 2026-08-10) — two sequential, blocking,
+# NON-MUTATING phases:
+#   10-biome-staged  non-mutating Biome over supported STAGED files only
+#                    (scripts/check-staged.ts — NUL-safe selection, argument
+#                    arrays end to end; never lefthook's {staged_files}
+#                    templates, which interpolate filenames through a shell)
+#   20-typecheck     the complete root `bun run typecheck` contract
+#
+# The hook never rewrites or re-stages files: run `bun run format` yourself and
+# review the diff before committing. There is NO pre-push hook — tests, build,
+# DB-backed verification and the dependency audit stay in the explicit
+# `bun run verify` / `bun run verify:ci` workflows and CI, which remain
+# authoritative even if a commit bypasses hooks with --no-verify.
+#
+# `piped: true` + `parallel: false` = strict name order (10- before 20-),
+# stopping at the first failing phase; lefthook reports which phase failed and
+# propagates its status.
+pre-commit:
+  parallel: false
+  piped: true
+  commands:
+    10-biome-staged:
+      run: bun run lint:staged
+    20-typecheck:
+      run: bun run typecheck
