@@ -124,6 +124,11 @@ export interface BudgetMeta {
   id: string;
   tier: "plain" | "e2ee";
   epoch: number;
+  /** E2EE ciphertext wire format (meaningful on tier 'e2ee'): 1 = legacy pre-AAD — every normal
+   *  sync2 route refuses it (409 e2ee_upgrade_required) until the explicit upgrade ceremony has
+   *  run; 2 = the authenticated-context format. Distinct axis from `tier` (plain vs E2EE) and
+   *  from `epoch` (data generation). */
+  cipherVersion: 1 | 2;
 }
 
 /** Budget id + tier + epoch in one read (same executor as the data). */
@@ -133,15 +138,16 @@ export async function getBudgetMeta(c: UserCtx, x: DbExecutor = db): Promise<Bud
 }
 
 async function readBudgetMeta(x: DbExecutor, id: string): Promise<BudgetMeta> {
-  const [row] = await x.select({ tier: budgets.tier, epoch: budgets.epoch }).from(budgets).where(eq(budgets.id, id));
+  const [row] = await x.select({ tier: budgets.tier, epoch: budgets.epoch, cipherVersion: budgets.cipherVersion }).from(budgets).where(eq(budgets.id, id));
   return toBudgetMeta(id, row);
 }
 
-/** The ONE row→BudgetMeta mapping (defaults for a pre-E2EE row: plain, epoch 0). */
-const toBudgetMeta = (id: string, row: { tier: string | null; epoch: number | null } | undefined): BudgetMeta => ({
+/** The ONE row→BudgetMeta mapping (defaults for a pre-E2EE row: plain, epoch 0, format 2). */
+const toBudgetMeta = (id: string, row: { tier: string | null; epoch: number | null; cipherVersion?: number | null } | undefined): BudgetMeta => ({
   id,
   tier: (row?.tier ?? "plain") as "plain" | "e2ee",
   epoch: row?.epoch ?? 0,
+  cipherVersion: row?.cipherVersion === 1 ? 1 : 2,
 });
 
 /** Wrong tier for the route — mapped in app.onError to 409 { error: "tier_mismatch" }. */
@@ -186,7 +192,7 @@ export async function requireExistingTier(c: UserCtx, want: "plain" | "e2ee", x:
   // ONE round-trip: this runs INSIDE the cursor-barrier transaction, which holds the exclusive
   // changes lock — do not split it into a select-id + select-meta pair.
   const rows = await x
-    .select({ id: budgets.id, tier: budgets.tier, epoch: budgets.epoch })
+    .select({ id: budgets.id, tier: budgets.tier, epoch: budgets.epoch, cipherVersion: budgets.cipherVersion })
     .from(budgets)
     .where(eq(budgets.userId, userId))
     .orderBy(budgets.id)

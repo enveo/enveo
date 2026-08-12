@@ -148,6 +148,13 @@
       "when": 1786536611541,
       "tag": "0020_ai_user_monthly_spend",
       "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1786565582795,
+      "tag": "0021_e2ee_cipher_version",
+      "breakpoints": true
     }
   ]
 }

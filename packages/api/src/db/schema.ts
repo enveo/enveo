@@ -75,24 +75,37 @@ export const authVerifications = pgTable("auth_verifications", {
   updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" }).notNull().defaultNow(),
 });
 
-export const budgets = pgTable("budgets", {
-  id: uuid("id").primaryKey().defaultRandom(),
-  userId: uuid("user_id")
-    .notNull()
-    .references(() => users.id, { onDelete: "cascade" }),
-  name: text("name").notNull(),
-  /** Display currency (ISO 4217). The default only ever shows on a lazily created budget until
-   *  onboarding writes the user's pick (preselected from the browser locale) — see 0016. */
-  currency: text("currency").notNull().default("EUR"),
-  /** Sync tier: 'plain' (v1, server sees the data) or 'e2ee' (sync2, ciphertexts only). */
-  tier: text("tier").notNull().default("plain"),
-  /** DEK wrapped with the KEK (client-side) — the server never sees the key in plaintext. */
-  wrappedDek: text("wrapped_dek"),
-  /** KDF params (JSON: argon2id m/t/p + salt) to re-derive the KEK on a new device. */
-  kdfParams: text("kdf_params"),
-  /** Encryption epoch — bumped on enable/disable; guards sync-channel compatibility. */
-  epoch: integer("epoch").notNull().default(0),
-});
+export const budgets = pgTable(
+  "budgets",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    /** Display currency (ISO 4217). The default only ever shows on a lazily created budget until
+     *  onboarding writes the user's pick (preselected from the browser locale) — see 0016. */
+    currency: text("currency").notNull().default("EUR"),
+    /** Sync tier: 'plain' (v1, server sees the data) or 'e2ee' (sync2, ciphertexts only). */
+    tier: text("tier").notNull().default("plain"),
+    /** DEK wrapped with the KEK (client-side) — the server never sees the key in plaintext. */
+    wrappedDek: text("wrapped_dek"),
+    /** KDF params (JSON: argon2id m/t/p + salt) to re-derive the KEK on a new device. */
+    kdfParams: text("kdf_params"),
+    /** Encryption epoch — bumped on enable/disable/upgrade; guards sync-channel compatibility. */
+    epoch: integer("epoch").notNull().default(0),
+    /** E2EE ciphertext wire format (meaningful only on tier 'e2ee'): 1 = legacy pre-AAD "v1."
+     *  ciphertext — every normal sync2 route refuses it (409 e2ee_upgrade_required) until the
+     *  explicit upgrade ceremony (fresh DEK, epoch bump, new checkpoint) has run; 2 = the
+     *  authenticated-context format. NEVER flip this with SQL alone: that would label
+     *  unauthenticated ciphertext as v2 without rotating the DEK or rebuilding the snapshot
+     *  (migration 0021 marks pre-existing e2ee rows as 1 exactly once). */
+    cipherVersion: integer("cipher_version").notNull().default(2),
+  },
+  (t) => ({
+    cipherVersionValid: check("budgets_cipher_version_valid", sql`${t.cipherVersion} IN (1, 2)`),
+  }),
+);
 
 export const accounts = pgTable(
   "accounts",
