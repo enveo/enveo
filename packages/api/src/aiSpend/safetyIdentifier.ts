@@ -25,9 +25,11 @@ export function deriveSafetyIdentifier(secret: string, userId: string): string {
     .digest("hex");
 }
 
-/** The identifier for this request, or null when unconfigured / no session user (never a raw id). */
-export function safetyIdentifierFor(userId: string | undefined): string | null {
-  const secret = env.AI_SAFETY_IDENTIFIER_SECRET;
+/** The identifier for this request, or null when unconfigured / no session user (never a raw id).
+ *  `secret` is a parameter (defaulting to the deployment env) so tests construct their input
+ *  explicitly instead of depending on the machine; the runner additionally forces the env var
+ *  empty in both test modes (scripts/lib/testEnv.ts). */
+export function safetyIdentifierFor(userId: string | undefined, secret: string = env.AI_SAFETY_IDENTIFIER_SECRET): string | null {
   if (!secret || !userId) return null;
   return deriveSafetyIdentifier(secret, userId);
 }

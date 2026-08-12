@@ -12,9 +12,10 @@ const PROD_LIKE = "postgres://enveo:s3cr3t-password@127.0.0.1:5432/enveo";
 const THROWAWAY = "postgres://enveo:enveo@127.0.0.1:5495/enveo";
 
 describe("planTestEnv — default mode", () => {
-  it("forces both sensitive variables empty even when the parent supplied them", () => {
+  it("forces the sensitive variables empty even when the parent supplied them", () => {
     const result = planTestEnv("default", {
       OPENAI_API_KEY: "sk-live-should-never-reach-the-child",
+      AI_SAFETY_IDENTIFIER_SECRET: "ambient-secret-from-dotenv",
       TEST_DATABASE_URL: PROD_LIKE,
       DATABASE_URL: PROD_LIKE,
     });
@@ -22,6 +23,7 @@ describe("planTestEnv — default mode", () => {
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.plan.overrides.OPENAI_API_KEY).toBe("");
+    expect(result.plan.overrides.AI_SAFETY_IDENTIFIER_SECRET).toBe("");
     expect(result.plan.overrides.TEST_DATABASE_URL).toBe("");
   });
 
@@ -30,7 +32,14 @@ describe("planTestEnv — default mode", () => {
 
     expect(result.ok).toBe(true);
     if (!result.ok) return;
-    expect(Object.keys(result.plan.overrides).sort()).toEqual(["DATABASE_URL", "ENVEO_TEST_MODE", "ENVEO_TEST_RUNNER", "OPENAI_API_KEY", "TEST_DATABASE_URL"]);
+    expect(Object.keys(result.plan.overrides).sort()).toEqual([
+      "AI_SAFETY_IDENTIFIER_SECRET",
+      "DATABASE_URL",
+      "ENVEO_TEST_MODE",
+      "ENVEO_TEST_RUNNER",
+      "OPENAI_API_KEY",
+      "TEST_DATABASE_URL",
+    ]);
     expect(result.plan.overrides.ENVEO_TEST_MODE).toBe("default");
   });
 
@@ -65,15 +74,17 @@ describe("planTestEnv — db mode", () => {
     ENVEO_TEST_DB_ACK: "throwaway",
     DATABASE_URL: PROD_LIKE,
     OPENAI_API_KEY: "sk-live-should-never-reach-the-child",
+    AI_SAFETY_IDENTIFIER_SECRET: "ambient-secret-from-dotenv",
   };
 
-  it("keeps the acknowledged throwaway URL and still disables AI", () => {
+  it("keeps the acknowledged throwaway URL and still disables AI (key AND safety secret)", () => {
     const result = planTestEnv("db", ok);
 
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.plan.overrides.TEST_DATABASE_URL).toBe(THROWAWAY);
     expect(result.plan.overrides.OPENAI_API_KEY).toBe("");
+    expect(result.plan.overrides.AI_SAFETY_IDENTIFIER_SECRET).toBe("");
   });
 
   it("still blanks the app's own DATABASE_URL — only the throwaway may be reached", () => {

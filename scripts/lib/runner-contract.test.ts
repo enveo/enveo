@@ -17,6 +17,10 @@ describe.skipIf(!underRunner)("environment delivered by run-tests.ts", () => {
     expect(process.env.OPENAI_API_KEY ?? "").toBe("");
   });
 
+  it("always clears the AI safety-identifier secret, whatever .env held", () => {
+    expect(process.env.AI_SAFETY_IDENTIFIER_SECRET ?? "").toBe("");
+  });
+
   it("declares a known mode", () => {
     expect(["default", "db"]).toContain(mode);
   });

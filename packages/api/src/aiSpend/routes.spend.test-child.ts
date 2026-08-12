@@ -9,6 +9,9 @@
  * import: the child sets DEPLOYMENT=cloud + an operator key + a PRICED model in process.env
  * BEFORE the lazy imports, which no in-process test could do.
  */
+// type-only: erased at runtime, so the child's lazy-import contract (no app/db modules at
+// module scope) is preserved
+import type postgresT from "postgres";
 import { assertThrowawayDb, emitChildResult } from "../api.test-support";
 
 export const SENTINEL = "__AI_SPEND_ROUTES_CHILD__";
@@ -54,6 +57,15 @@ export type SpendRoutesChildOutput = {
     checks: number;
     records: number;
   };
+  stalledCounter: {
+    /** The REAL check stalled on a held ACCESS EXCLUSIVE table lock — the answer still arrived. */
+    status: number;
+    contentOk: boolean;
+    upstreamCalled: boolean;
+    /** Both bounded deadlines (check + record) fired well inside the request. */
+    elapsedMs: number;
+    withinDeadlines: boolean;
+  };
 };
 
 async function main() {
@@ -67,6 +79,7 @@ async function main() {
   const { db, sql: pooled } = await import("../db/client");
   const { drizzle } = await import("drizzle-orm/postgres-js");
   const { migrate } = await import("drizzle-orm/postgres-js/migrator");
+  const postgres = (await import("postgres")).default;
   const s = await import("../db/schema");
   const { Hono } = await import("hono");
   const { budgetSuggestRoutes } = await import("../routes/budgetSuggest");
@@ -251,6 +264,41 @@ async function main() {
     records: counters.records - before6.records,
   };
 
+  /* ── 7. a STALLED counter (decision 7): the REAL check blocks on a held table lock; the
+     bounded deadlines fire, the attempt fails OPEN and the answer arrives anyway ── */
+  const u7 = await newUser("stalled");
+  const app7 = appFor(u7.userId);
+  const locker = postgres(env.DATABASE_URL, { max: 1, onnotice: () => {} });
+  let stalledCounter: SpendRoutesChildOutput["stalledCounter"] = {
+    status: -1,
+    contentOk: false,
+    upstreamCalled: false,
+    elapsedMs: -1,
+    withinDeadlines: false,
+  };
+  await locker
+    .begin(async (tx: postgresT.TransactionSql) => {
+      // Every checkSpend statement on this table now queues behind the exclusive lock.
+      await tx`lock table ai_user_monthly_spend in access exclusive mode`;
+      script = [chatBody("stalled but served")];
+      const before = upstreamCalls;
+      const started = Date.now();
+      const res = await post(app7, "/ai/chat", { messages: [{ role: "user", content: "hi" }] });
+      const body = (await res.json()) as { content?: string };
+      const elapsedMs = Date.now() - started;
+      stalledCounter = {
+        status: res.status,
+        contentOk: body.content === "stalled but served",
+        upstreamCalled: upstreamCalls === before + 1,
+        elapsedMs,
+        // check deadline (2 s) + record deadline (2 s) + slack — far below a user-facing timeout
+        withinDeadlines: elapsedMs < 10_000,
+      };
+      throw new Error("release the lock via rollback");
+    })
+    .catch(() => {});
+  await locker.end({ timeout: 5 });
+
   const out: SpendRoutesChildOutput = {
     proxyOk,
     proxyDenied,
@@ -259,6 +307,7 @@ async function main() {
     suggestDenied,
     importDeniedBeforeCycle1,
     importCycle2Denied,
+    stalledCounter,
   };
   await emitChildResult(SENTINEL, out);
   await pooled.end({ timeout: 5 });

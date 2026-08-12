@@ -1,5 +1,13 @@
 import { describe, expect, it } from "bun:test";
-import { AI_PRICE_REGISTRY, assertOperatorModelPriced, chatCostNanoUsd, type ModelPriceEntry, priceEntryFor, responseModelMatches } from "./pricing";
+import {
+  AI_PRICE_REGISTRY,
+  assertOperatorModelPriced,
+  chatCostNanoUsd,
+  MAX_CHARGEABLE_NANO_USD,
+  type ModelPriceEntry,
+  priceEntryFor,
+  responseModelMatches,
+} from "./pricing";
 
 const luna = priceEntryFor("gpt-5.6-luna")!;
 
@@ -165,10 +173,17 @@ describe("chatCostNanoUsd — arithmetic properties (seeded randomized boundary 
     }
   });
 
-  it("stays exact at the extreme safe-integer end (bigint, no precision loss)", () => {
+  it("an absurd cost is capped by the checked-arithmetic ceiling — a pricing failure, never a bigint INSERT error", () => {
+    // MAX_SAFE_INTEGER token counts price to ~1.26e19 nanoUsd — beyond Postgres int8 (~9.22e18).
+    // The ceiling turns that into the skip-charge-and-warn path long before any SQL runs.
     const big = Number.MAX_SAFE_INTEGER;
     const entry: ModelPriceEntry = { ...luna, longContext: null };
-    const r = chatCostNanoUsd(entry, "gpt-5.6-luna", usage(big, big));
-    expect(r.ok && r.nanoUsd).toBe(BigInt(big) * 200n + BigInt(big) * 1_200n);
+    expect(chatCostNanoUsd(entry, "gpt-5.6-luna", usage(big, big))).toEqual({ ok: false, reason: "cost_out_of_range" });
+    // exactly AT the ceiling still charges; one nano-USD above does not
+    const atCeiling = MAX_CHARGEABLE_NANO_USD / 200n; // tokens whose input cost is exactly the ceiling
+    const rAt = chatCostNanoUsd(entry, "gpt-5.6-luna", usage(Number(atCeiling), 0));
+    expect(rAt.ok && rAt.nanoUsd).toBe(MAX_CHARGEABLE_NANO_USD);
+    const above = chatCostNanoUsd(entry, "gpt-5.6-luna", { ...usage(Number(atCeiling), 0), completion_tokens: 1 });
+    expect(above).toEqual({ ok: false, reason: "cost_out_of_range" });
   });
 });

@@ -22,11 +22,14 @@ describe("deriveSafetyIdentifier — domain-separated HMAC over the user id", ()
   });
 });
 
-describe("safetyIdentifierFor — env-gated derivation", () => {
-  it("yields null with no configured secret (the test env never sets AI_SAFETY_IDENTIFIER_SECRET)", () => {
-    expect(safetyIdentifierFor("user-1")).toBeNull();
+describe("safetyIdentifierFor — env-gated derivation (secret passed EXPLICITLY, never read from the machine)", () => {
+  it("yields null with no configured secret", () => {
+    expect(safetyIdentifierFor("user-1", "")).toBeNull();
   });
-  it("yields null without a session user", () => {
-    expect(safetyIdentifierFor(undefined)).toBeNull();
+  it("yields null without a session user, even with a secret", () => {
+    expect(safetyIdentifierFor(undefined, "secret-1")).toBeNull();
+  });
+  it("derives when both are present, matching the raw HMAC", () => {
+    expect(safetyIdentifierFor("user-1", "secret-1")).toBe(deriveSafetyIdentifier("secret-1", "user-1"));
   });
 });

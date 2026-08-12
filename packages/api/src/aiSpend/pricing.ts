@@ -88,7 +88,17 @@ export function responseModelMatches(entry: ModelPriceEntry, responseModel: stri
 
 export type CostOutcome =
   | { ok: true; nanoUsd: bigint; priceVersion: string; responseModel: string }
-  | { ok: false; reason: "unknown_model" | "invalid_usage" | "unpriced_long_context" };
+  | { ok: false; reason: "unknown_model" | "invalid_usage" | "unpriced_long_context" | "cost_out_of_range" };
+
+/**
+ * Checked-arithmetic ceiling on a SINGLE response's cost: $1M in nano-USD (1e15). Any real
+ * chat completion costs fractions of a cent, so a computed cost anywhere near this is a
+ * corrupt/absurd `usage` — and, decisively, values above Postgres `bigint` range (~9.22e18)
+ * would otherwise surface later as an INSERT error inside recordSpend (swallowed by fail-open
+ * only by accident). Above the ceiling the outcome is a pricing failure: the answer is
+ * returned, the charge is skipped, and the transport logs a safe warning — never a DB error.
+ */
+export const MAX_CHARGEABLE_NANO_USD = 1_000_000_000_000_000n;
 
 /** A non-negative safe integer, or null. Absent optional counters read as 0 (`?? 0` per spec). */
 const counter = (v: unknown): number | null => (typeof v === "number" && Number.isSafeInteger(v) && v >= 0 ? v : null);
@@ -127,7 +137,7 @@ export function chatCostNanoUsd(entry: ModelPriceEntry, responseModel: string, u
     // price only the fully uncached case; otherwise skip the charge (see module comment).
     if (cached > 0 || cacheWrite > 0) return { ok: false, reason: "unpriced_long_context" };
     const nanoUsd = BigInt(prompt) * entry.longContext.inputNanoUsdPerToken + BigInt(completion) * entry.longContext.outputNanoUsdPerToken;
-    return { ok: true, nanoUsd, priceVersion: entry.priceVersion, responseModel };
+    return boundedCost(nanoUsd, entry, responseModel);
   }
 
   const nanoUsd =
@@ -135,5 +145,11 @@ export function chatCostNanoUsd(entry: ModelPriceEntry, responseModel: string, u
     BigInt(cached) * entry.cachedInputNanoUsdPerToken +
     BigInt(cacheWrite) * entry.cacheWriteNanoUsdPerToken +
     BigInt(completion) * entry.outputNanoUsdPerToken;
+  return boundedCost(nanoUsd, entry, responseModel);
+}
+
+/** The checked-arithmetic gate every computed cost passes through (see MAX_CHARGEABLE_NANO_USD). */
+function boundedCost(nanoUsd: bigint, entry: ModelPriceEntry, responseModel: string): CostOutcome {
+  if (nanoUsd < 0n || nanoUsd > MAX_CHARGEABLE_NANO_USD) return { ok: false, reason: "cost_out_of_range" };
   return { ok: true, nanoUsd, priceVersion: entry.priceVersion, responseModel };
 }

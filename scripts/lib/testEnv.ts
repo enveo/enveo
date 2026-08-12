@@ -129,6 +129,10 @@ export function planTestEnv(mode: TestMode, env: EnvRecord): TestEnvResult {
         mode,
         overrides: {
           OPENAI_API_KEY: "",
+          // Same class of ambient hazard as the key: a developer following .env.example gets a
+          // populated safety secret, and the "no secret configured" tests must still pass for
+          // the right reason. Forced empty in BOTH modes.
+          AI_SAFETY_IDENTIFIER_SECRET: "",
           TEST_DATABASE_URL: "",
           DATABASE_URL: DEAD_DB_URL,
           [RUNNER_MARKER]: RUNNER_MARKER_VALUE,
@@ -204,6 +208,7 @@ export function planTestEnv(mode: TestMode, env: EnvRecord): TestEnvResult {
       mode,
       overrides: {
         OPENAI_API_KEY: "",
+        AI_SAFETY_IDENTIFIER_SECRET: "", // see the default-mode note — forced empty in both modes
         TEST_DATABASE_URL: testUrl,
         DATABASE_URL: DEAD_DB_URL,
         [RUNNER_MARKER]: RUNNER_MARKER_VALUE,

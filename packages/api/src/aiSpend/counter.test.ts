@@ -11,8 +11,10 @@
  * operationLock.test.ts for the local recipe). No fallback to DATABASE_URL, ever.
  */
 import { beforeAll, describe, expect, it } from "bun:test";
+import { readdirSync, readFileSync } from "node:fs";
+import { join } from "node:path";
 import { runChild } from "../api.test-support";
-import { type checkSpend, recordSpend, SPEND_POLICY, spendAllowed, spendThresholdNanoUsd } from "./counter";
+import { recordSpend, SPEND_POLICY, type SpendCheck, spendAllowed, spendThresholdNanoUsd } from "./counter";
 // Constant + type only — the child's app imports are lazy (see its header).
 import { type CounterChildOutput, SENTINEL } from "./counter.concurrency.test-child";
 
@@ -51,13 +53,47 @@ describe("recordSpend/checkSpend input validation (throws before any SQL)", () =
   });
 });
 
+/* ── No reservation machinery exists (the design the spec rejects) ────────
+ *
+ * Two guards, honestly labelled:
+ *
+ * 1. COMPILE-TIME (enforced by `bun run typecheck`, NOT by bun test — bun strips types): the
+ *    allowed arm of SpendCheck carries exactly {allowed, periodKey, recordedNanoUsd}. Adding
+ *    reservation state (reservedNanoUsd, a lease handle, maximumNanoUsd…) makes `ExtraKeys`
+ *    non-never and the constant below stops compiling. */
+type AllowedCheck = Extract<SpendCheck, { allowed: true }>;
+type ExtraKeys = Exclude<keyof AllowedCheck, "allowed" | "periodKey" | "recordedNanoUsd">;
+const _noReservationFieldsAtCompileTime: [ExtraKeys] extends [never] ? true : never = true;
+void _noReservationFieldsAtCompileTime;
+
+/* 2. SOURCE-LEVEL (a real runtime assertion, like the repo's other source gates): no
+ *    reservation-shaped IDENTIFIER anywhere in the shipped aiSpend modules or the 0020
+ *    migration — comments stripped first, because the modules legitimately explain that
+ *    reservations are rejected. */
 describe("no reservation machinery exists (the design the spec rejects)", () => {
-  it("checkSpend's result carries no reserved/lease/maximum state and no per-request handle", () => {
-    // Shape contract: an allowed check is {allowed, periodKey, recordedNanoUsd} and nothing else.
-    // (Executed against the DB in the child; here we pin the TYPE surface.)
-    type Allowed = Extract<Awaited<ReturnType<typeof checkSpend>>, { allowed: true }>;
-    const keys: Record<keyof Allowed, true> = { allowed: true, periodKey: true, recordedNanoUsd: true };
-    expect(Object.keys(keys).sort()).toEqual(["allowed", "periodKey", "recordedNanoUsd"]);
+  const DIR = new URL(".", import.meta.url).pathname;
+  const MIGRATION = new URL("../../drizzle/0020_ai_user_monthly_spend.sql", import.meta.url).pathname;
+  const stripComments = (src: string) =>
+    src
+      .replace(/\/\*[\s\S]*?\*\//g, "")
+      .replace(/\/\/[^\n]*/g, "")
+      .replace(/--[^\n]*/g, "");
+  // token-based, so "release"/"released" (which contain "lease") cannot false-positive
+  const forbiddenToken = (t: string) => t.toLowerCase().includes("reserv") || /^(in_?flight|leases?|max_completion_tokens|maximum_?nano_?usd)$/i.test(t);
+
+  it("no reservation/lease/in-flight/maximum-cost identifier in shipped aiSpend sources or migration 0020", () => {
+    const shipped = readdirSync(DIR)
+      .filter((f) => f.endsWith(".ts") && !f.includes(".test"))
+      .map((f) => join(DIR, f));
+    const offenders: string[] = [];
+    for (const file of [...shipped, MIGRATION]) {
+      const tokens = stripComments(readFileSync(file, "utf8")).match(/[A-Za-z_][A-Za-z0-9_]*/g) ?? [];
+      for (const t of tokens) {
+        if (forbiddenToken(t)) offenders.push(`${file}: ${t}`);
+      }
+    }
+    expect(offenders).toEqual([]);
+    expect(readFileSync(MIGRATION, "utf8")).toContain("ai_user_monthly_spend"); // the scan really read the migration
   });
 });
 
