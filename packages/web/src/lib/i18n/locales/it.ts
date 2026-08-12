@@ -101,6 +101,7 @@ export const it: Dict = {
   "Choose an account": "Scegli un conto",
   "Choose an envelope": "Scegli una busta",
   "Choose an icon": "Scegli un'icona",
+  "Cisza": "Silenzio",
   "Clear & reset": "Svuota e reimposta",
   "Clear filters": "Azzera i filtri",
   "Clear local data": "Cancella i dati locali",
