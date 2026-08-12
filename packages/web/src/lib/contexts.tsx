@@ -151,6 +151,13 @@ export function AppProviders({ children }: { children: ReactNode }) {
     persistSettings(s); // no-op in guest mode — settings live in React state only
   };
 
+  // <html lang> must follow the UI language (screen-reader pronunciation, hyphenation, :lang()
+  // and browser translate prompts). index.html ships lang="en" only as the pre-boot default;
+  // this is the single writer once React is up — on mount (init/reload) and on every switch.
+  useEffect(() => {
+    document.documentElement.lang = settings.lang;
+  }, [settings.lang]);
+
   const isDark = settings.themeMode === "auto" ? prefersDark : settings.themeMode === "dark";
   const { vars, palette: theme } = useMemo(() => themeTokens(settings.accentTheme, isDark), [settings.accentTheme, isDark]);
 
