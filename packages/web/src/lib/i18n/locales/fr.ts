@@ -463,6 +463,8 @@ export const fr: Dict = {
   "The local copy — including any unsent changes — will be permanently removed from this device. If this is the only copy of that budget, download a backup first.":
     "La copie locale — y compris les modifications non envoyées — sera définitivement supprimée de cet appareil. Si c'est la seule copie de ce budget, téléchargez d'abord une sauvegarde.",
   "The local replica is not ready.": "La réplique locale n'est pas prête.",
+  "The monthly AI allowance for this account is used up — it resets at the start of the next month (UTC). You can keep using AI right away with your own key in Settings → Artificial intelligence.":
+    "Le quota mensuel d’IA de ce compte est épuisé — il se renouvelle au début du mois prochain (UTC). Vous pouvez continuer à utiliser l’IA immédiatement avec votre propre clé dans Réglages → Intelligence artificielle.",
   "The password must be at least 8 characters.": "Le mot de passe doit contenir au moins 8 caractères.",
   "The proposal exceeds “To be budgeted” — uncheck or reduce items.": "La proposition dépasse « À budgétiser » — décochez ou réduisez des lignes.",
   "The server has no OpenAI key configured — server mode is unavailable. Use your own key or keep AI off.":

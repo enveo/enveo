@@ -464,6 +464,8 @@ export const nl: Dict = {
   "The local copy — including any unsent changes — will be permanently removed from this device. If this is the only copy of that budget, download a backup first.":
     "De lokale kopie — inclusief niet-verstuurde wijzigingen — wordt definitief van dit apparaat verwijderd. Als dit de enige kopie van dat budget is, download dan eerst een back-up.",
   "The local replica is not ready.": "De lokale replica is niet gereed.",
+  "The monthly AI allowance for this account is used up — it resets at the start of the next month (UTC). You can keep using AI right away with your own key in Settings → Artificial intelligence.":
+    "Het maandelijkse AI-tegoed van dit account is opgebruikt — het wordt vernieuwd aan het begin van de volgende maand (UTC). Met je eigen sleutel in Instellingen → Kunstmatige intelligentie kun je AI meteen blijven gebruiken.",
   "The password must be at least 8 characters.": "Het wachtwoord moet minstens 8 tekens lang zijn.",
   "The proposal exceeds “To be budgeted” — uncheck or reduce items.": "Het voorstel overschrijdt ‘Te budgetteren’ — vink regels uit of verlaag ze.",
   "The server has no OpenAI key configured — server mode is unavailable. Use your own key or keep AI off.":

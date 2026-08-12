@@ -458,6 +458,8 @@ export const sv: Dict = {
   "The local copy — including any unsent changes — will be permanently removed from this device. If this is the only copy of that budget, download a backup first.":
     "Den lokala kopian — inklusive ändringar som inte skickats — tas bort permanent från den här enheten. Om det är den enda kopian av den budgeten bör du ladda ned en säkerhetskopia först.",
   "The local replica is not ready.": "Den lokala repliken är inte redo.",
+  "The monthly AI allowance for this account is used up — it resets at the start of the next month (UTC). You can keep using AI right away with your own key in Settings → Artificial intelligence.":
+    "Kontots månatliga AI-kvot är förbrukad — den förnyas vid början av nästa månad (UTC). Med din egen nyckel i Inställningar → Artificiell intelligens kan du fortsätta använda AI direkt.",
   "The password must be at least 8 characters.": "Lösenordet måste vara minst 8 tecken.",
   "The proposal exceeds “To be budgeted” — uncheck or reduce items.": "Förslaget överstiger ”Att budgetera” — bocka av eller minska poster.",
   "The server has no OpenAI key configured — server mode is unavailable. Use your own key or keep AI off.":

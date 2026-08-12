@@ -463,6 +463,8 @@ export const cs: Dict = {
   "The local copy — including any unsent changes — will be permanently removed from this device. If this is the only copy of that budget, download a backup first.":
     "Lokální kopie — včetně neodeslaných změn — se z tohoto zařízení trvale odstraní. Pokud je to jediná kopie toho rozpočtu, nejdřív si stáhni zálohu.",
   "The local replica is not ready.": "Lokální replika není připravená.",
+  "The monthly AI allowance for this account is used up — it resets at the start of the next month (UTC). You can keep using AI right away with your own key in Settings → Artificial intelligence.":
+    "Měsíční limit AI pro tento účet je vyčerpán — obnoví se na začátku dalšího měsíce (UTC). S vlastním klíčem v Nastavení → Umělá inteligence můžeš AI používat dál hned.",
   "The password must be at least 8 characters.": "Heslo musí mít aspoň 8 znaků.",
   "The proposal exceeds “To be budgeted” — uncheck or reduce items.": "Návrh překračuje „K rozdělení“ — odškrtni nebo sniž položky.",
   "The server has no OpenAI key configured — server mode is unavailable. Use your own key or keep AI off.":
