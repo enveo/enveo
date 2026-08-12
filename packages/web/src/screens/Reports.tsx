@@ -4,38 +4,25 @@ import {
   computeEnvelopeTrends,
   computeNetWorthSeries,
   computeSpendingByDimension,
-  type EnvelopeTrend,
   largestExpenses,
-  median,
   prevMonth,
   type SpendingDimension,
-  savingsRate,
   spendingBaseline,
   topPlaces,
 } from "@enveo/shared";
-import { type ReactNode, useMemo, useState } from "react";
-import { Header } from "../components/chrome";
-import { GoalRing, useBand } from "../components/kit";
-import { Bar, CalendarHeatmap, DeltaTag, heatColor, ReportShell, SegBar, Sparkline, TrendSpark } from "../components/reportKit";
+import { useMemo, useState } from "react";
 import { type StateResponse, useLedgerVersion } from "../lib/api";
-import { useMask, useTheme } from "../lib/contexts";
-import { monthLabel, shortDate } from "../lib/dates";
-import { goalProgress } from "../lib/goals";
-import { type Message, msg, useT } from "../lib/i18n";
-import { budgetsOverAmount, budgetsSummary, classifyBudget } from "../lib/reportSummary";
+import { useMask } from "../lib/contexts";
 import { store } from "../lib/store";
-import { ENV_PALETTE, P, TEAL, type Theme, tint } from "../lib/theme";
-
 import { AssetsReport } from "./reports/AssetsReport";
 import { BudgetsReport } from "./reports/BudgetsReport";
 import { CashflowReport } from "./reports/CashflowReport";
-import { trendColor } from "./reports/charts";
 import { GoalsReport } from "./reports/GoalsReport";
 import { MonthReport } from "./reports/MonthReport";
 import { ReportsHub } from "./reports/ReportsHub";
 import { SpendingReport } from "./reports/SpendingReport";
 import { TrendsReport } from "./reports/TrendsReport";
-import { type Mask, type ReportTab, type ReportView, TITLES } from "./reports/types";
+import type { ReportView } from "./reports/types";
 
 export type { ReportTab, ReportView } from "./reports/types";
 
