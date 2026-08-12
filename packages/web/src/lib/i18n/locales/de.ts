@@ -536,7 +536,7 @@ export const de: Dict = {
   "{n} item | {n} items": { one: "{n} Position", other: "{n} Positionen" },
   "{n} minute ago | {n} minutes ago": { one: "vor {n} Minute", other: "vor {n} Minuten" },
   "{n} near limit": "{n} nahe am Limit",
-  "{n} over": "{n} überzogen",
+  "{n} over | {n} over": { one: "{n} überzogen", other: "{n} überzogen" },
   "{n} transaction | {n} transactions": { one: "{n} Transaktion", other: "{n} Transaktionen" },
   "{pct}% of net worth": "{pct}% des Vermögens",
   "{sym}/mo": "{sym}/Mon.",

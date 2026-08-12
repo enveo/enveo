@@ -536,7 +536,7 @@ export const sv: Dict = {
   "{n} item | {n} items": { one: "{n} rad", other: "{n} rader" },
   "{n} minute ago | {n} minutes ago": { one: "för {n} minut sedan", other: "för {n} minuter sedan" },
   "{n} near limit": "{n} nära gränsen",
-  "{n} over": "{n} överskridna",
+  "{n} over | {n} over": { one: "{n} överskridet", other: "{n} överskridna" },
   "{n} transaction | {n} transactions": { one: "{n} transaktion", other: "{n} transaktioner" },
   "{pct}% of net worth": "{pct} % av nettoförmögenheten",
   "{sym}/mo": "{sym}/mån",

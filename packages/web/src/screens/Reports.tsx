@@ -384,7 +384,7 @@ function SpendingMini({
  *  budgetsSummary (Task 9 refines the rule; this card just consumes it). */
 function BudgetsMini({ envelopes, onView, M }: { envelopes: StateResponse["envelopes"]; onView: (v: ReportView) => void; M: Mask }) {
   const C = useTheme();
-  const { t } = useT();
+  const { t, tp } = useT();
   const bs = budgetsSummary(envelopes);
   // Same classifier as budgetsSummary (classifyBudget: over = left < 0, on the RAW unfloored
   // budget) — NOT an inline `pct > 100` check, which misses the zero-budget boundary (raw
@@ -399,7 +399,7 @@ function BudgetsMini({ envelopes, onView, M }: { envelopes: StateResponse["envel
   return (
     <MiniCard title={t("Budgets")} onClick={() => onView("budgets")}>
       <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
-        {pill(t("{n} over", { n: bs.over }), "var(--danger-14)", C.neg, "over")}
+        {pill(tp("{n} over | {n} over", bs.over), "var(--danger-14)", C.neg, "over")}
         {pill(t("{n} near limit", { n: bs.near }), C.chip, C.warn, "near")}
         {pill(t("{n} OK", { n: bs.ok }), C.chip, C.pos, "ok")}
       </div>
@@ -968,7 +968,7 @@ function BudgetsReport({
       bandChart={
         rows.length > 0 ? (
           <div style={{ display: "flex", gap: 6, marginTop: 12, flexWrap: "wrap" }}>
-            {pill(t("{n} over", { n: overRows.length }), hc(C.headerNeg, C.neg), "over")}
+            {pill(tp("{n} over | {n} over", overRows.length), hc(C.headerNeg, C.neg), "over")}
             {/* no dedicated on-band amber token exists (headerWarn) — C.warn already reads fine on the navy band */}
             {pill(t("{n} near limit", { n: nearRows.length }), C.warn, "near")}
             {pill(t("{n} OK", { n: okRows.length }), hc(C.headerPos, C.pos), "ok")}
