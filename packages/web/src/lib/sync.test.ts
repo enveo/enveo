@@ -27,7 +27,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import type { ClientLedger, SyncOp } from "@enveo/shared";
-import { generateDek } from "./crypto";
+import { decryptPayload, generateDek, opAadContext } from "./crypto";
 import * as e2ee from "./e2ee";
 import { clearLocalData, idbGet, idbPut } from "./idb";
 import * as outbox from "./outbox";
@@ -108,7 +108,14 @@ let onOverwrite: (() => void) | null = null;
 /** The `userId` each full-budget OVERWRITE named in its body (the per-request owner assertion). */
 let overwriteOwners: (string | undefined)[] = [];
 /** The bodies POSTed to /sync2/snapshot (the e2ee checkpoint — a whole-budget overwrite too). */
-let snapshotUploads: { userId?: string; uptoSeq: number }[] = [];
+let snapshotUploads: { userId?: string; uptoSeq: number; blob?: string }[] = [];
+/** Journal rows served by /api/sync2/pull (v2 ciphertext rows; empty = journal caught up). */
+let serverPullOps: Array<{ seq: number; opId: string; ciphertext: string }> = [];
+/** The v2 rows each /sync2/push carried — lets a test verify the encryption context. */
+let pushedCipherOps: Array<{ opId: string; ciphertext: string }> = [];
+/** LEGACY v1-format budget: every normal /api/sync2/* call answers 409 e2ee_upgrade_required. */
+let serverUpgradeRequired = false;
+const upgradeRequired = (): Response => conflict({ error: "e2ee_upgrade_required", tier: "e2ee", epoch: 1, cipherVersion: 1, budgetId: serverBudget });
 const realFetch = globalThis.fetch;
 const json = (body: unknown): Response => new Response(JSON.stringify(body), { status: 200, headers: { "content-type": "application/json" } });
 const conflict = (body: unknown): Response => new Response(JSON.stringify(body), { status: 409, headers: { "content-type": "application/json" } });
@@ -159,6 +166,9 @@ beforeEach(async () => {
   onOverwrite = null;
   overwriteOwners = [];
   snapshotUploads = [];
+  serverPullOps = [];
+  pushedCipherOps = [];
+  serverUpgradeRequired = false;
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
     calls.push(url);
@@ -166,11 +176,12 @@ beforeEach(async () => {
     if (url.startsWith("/api/auth/get-session")) return json(session); // 200 + `null` = no session
     if (url.startsWith("/api/sync2/")) {
       if (serverIsPlain) return tierMismatch();
+      if (serverUpgradeRequired) return upgradeRequired();
       if (url.startsWith("/api/sync2/snapshot")) {
         // POST = the CHECKPOINT UPLOAD: it overwrites the resolved budget's whole checkpoint
         // (blob + uptoSeq), so it carries the owner assertion just like /sync2/reset.
         if (init?.method === "POST") {
-          const body = JSON.parse(String(init.body ?? "{}")) as { userId?: string; uptoSeq: number };
+          const body = JSON.parse(String(init.body ?? "{}")) as { userId?: string; uptoSeq: number; blob?: string };
           snapshotUploads.push(body);
           const refused = ownerMismatch(body.userId);
           if (refused) return refused;
@@ -182,8 +193,9 @@ beforeEach(async () => {
       if (url.startsWith("/api/sync2/push")) {
         const body = JSON.parse(String(init?.body ?? "{}")) as {
           budgetId?: string;
-          ops: Array<{ opId: string }>;
+          ops: Array<{ opId: string; ciphertext: string }>;
         };
+        pushedCipherOps.push(...body.ops);
         const refused = budgetMismatch(body.budgetId);
         if (refused) return refused;
         writes[serverBudget] = [...wrote(serverBudget), ...body.ops.map((o) => o.opId)];
@@ -192,6 +204,10 @@ beforeEach(async () => {
       }
       if (url.startsWith("/api/sync2/pull")) {
         onPull?.(); // a session swap lands between the identity check and the pull's answer
+        if (serverPullOps.length > 0) {
+          const cursor = serverPullOps[serverPullOps.length - 1]!.seq;
+          return json({ cursor, epoch: 1, ops: serverPullOps });
+        }
         return json({ cursor: serverE2eeCursor, epoch: 1, ops: [] });
       }
       if (url.startsWith("/api/sync2/reset")) {
@@ -249,6 +265,7 @@ beforeEach(async () => {
   e2ee.clearDek();
   e2ee.resetOpsCounter(); // the checkpoint counter is module state — it outlives clearLocalData
   e2ee.setTierMeta({ tier: "plain", epoch: 0 });
+  e2ee.setCipherVersion(2); // module state — a previous test's recorded legacy format must not leak
   await clearLocalData(); // no stamp, no ledger blob — each test sets up its own
   store.replace(emptyLedger(), 0, BUDGET_A); // a booted replica of budget A
   store.setBootStatus("ready");
@@ -1043,6 +1060,115 @@ describe("sync e2ee: the checkpoint upload carries the verified owner", () => {
   });
 });
 
+/* ── v2 context discipline on the wire (backlog §2, test group 3) ─────────
+ *
+ * Push must encrypt under the replica's OWN (budgetId, epoch); pull must decrypt with the
+ * locally EXPECTED context, so a substituted/foreign/re-labelled journal row fails BEFORE the
+ * mirror is touched or the cursor advances; the periodic checkpoint authenticates the cursor
+ * it claims; and the 409 e2ee_upgrade_required of a legacy budget stops the cycle without
+ * consuming the outbox or the replica. */
+
+describe("sync e2ee v2: encryption context discipline", () => {
+  const BUDGET_V2 = "aaaaaaaa-0000-4000-8000-0000000000aa";
+  const dek = generateDek();
+  const v2Replica = async (epoch = 1) => {
+    await idbPut("meta", "user-A", "userId");
+    session = { user: { id: "user-A" } };
+    serverBudget = BUDGET_V2;
+    store.replace(emptyLedger(), 0, BUDGET_V2);
+    e2ee.setTierMeta({ tier: "e2ee", epoch });
+    e2ee.setDek(dek);
+  };
+
+  it("push encrypts under the replica's exact (budgetId, epoch) and NAMES the budget", async () => {
+    await v2Replica();
+    const op = catOp();
+    outbox.add(op);
+
+    await syncNow("test");
+
+    expect(pushedCipherOps).toHaveLength(1);
+    const row = pushedCipherOps[0]!;
+    expect(row.opId).toBe(op.opId);
+    // decrypts ONLY under the local context the cycle was supposed to use…
+    const pt = await decryptPayload(row.ciphertext, dek, opAadContext(BUDGET_V2, 1, op.opId));
+    expect(JSON.parse(pt).kind).toBe("category.create");
+    // …and under any other epoch/budget/opId it fails (the vectors in crypto.test.ts)
+    await expect(decryptPayload(row.ciphertext, dek, opAadContext(BUDGET_V2, 2, op.opId))).rejects.toThrow();
+    expect(outbox.size()).toBe(0); // acked
+  });
+
+  it("pull: a substituted ciphertext (valid rows, swapped outer opIds) applies NOTHING and keeps the cursor", async () => {
+    await v2Replica();
+    const opA = catOp();
+    const opB = catOp();
+    const ctx = { budgetId: BUDGET_V2, epoch: 1 };
+    const rowA = await e2ee.encryptOp(opA, dek, ctx);
+    const rowB = await e2ee.encryptOp(opB, dek, ctx);
+    // the storage server re-pairs B's valid ciphertext with A's clear opId (and vice versa)
+    serverPullOps = [
+      { seq: 1, opId: rowA.opId, ciphertext: rowB.ciphertext },
+      { seq: 2, opId: rowB.opId, ciphertext: rowA.ciphertext },
+    ];
+
+    await syncNow("test");
+
+    expect(store.getLedger()!.categories).toEqual([]); // neither op reached the mirror
+    expect(store.getCursor()).toBe(0); // the cursor did not advance past unauthenticated rows
+    expect(getSyncStatus().state).toBe("error"); // the cycle failed loudly, not silently
+  });
+
+  it("pull: rows from another epoch (response-epoch drift) fail before the mirror is touched", async () => {
+    await v2Replica(1);
+    const op = catOp();
+    // the server serves a journal row belonging to another generation of the same budget
+    const stale = await e2ee.encryptOp(op, dek, { budgetId: BUDGET_V2, epoch: 2 });
+    serverPullOps = [{ seq: 1, opId: stale.opId, ciphertext: stale.ciphertext }];
+
+    await syncNow("test");
+
+    expect(store.getLedger()!.categories).toEqual([]);
+    expect(store.getCursor()).toBe(0);
+  });
+
+  it("the periodic checkpoint is bound to the cursor it claims (uptoSeq inside the AAD)", async () => {
+    await v2Replica();
+    const op = catOp();
+    const row = await e2ee.encryptOp(op, dek, { budgetId: BUDGET_V2, epoch: 1 });
+    serverPullOps = [{ seq: 7, opId: row.opId, ciphertext: row.ciphertext }];
+    e2ee.noteOpsSeen(e2ee.SNAPSHOT_EVERY_OPS); // the checkpoint threshold is due
+
+    await syncNow("test");
+    for (let i = 0; i < 100 && snapshotUploads.length === 0; i++) {
+      await new Promise((r) => setTimeout(r, 5));
+    }
+
+    expect(snapshotUploads).toHaveLength(1);
+    const up = snapshotUploads[0]!;
+    expect(up.uptoSeq).toBe(7); // the cursor after the applied row
+    // the blob authenticates exactly that position — a replay at another uptoSeq fails
+    await expect(e2ee.decryptSnapshot(up.blob!, dek, { budgetId: BUDGET_V2, epoch: 1, uptoSeq: 7 })).resolves.toBeDefined();
+    await expect(e2ee.decryptSnapshot(up.blob!, dek, { budgetId: BUDGET_V2, epoch: 1, uptoSeq: 0 })).rejects.toThrow();
+  });
+
+  it("409 e2ee_upgrade_required: the cycle stops; outbox, replica and cursor are preserved", async () => {
+    await v2Replica();
+    store.applyLocal(catOp()); // some local state that must survive
+    const queued = catOp();
+    outbox.add(queued);
+    serverUpgradeRequired = true;
+
+    await syncNow("test");
+
+    expect(outbox.size()).toBe(1); // nothing consumed
+    expect(store.getLedger()!.categories).toHaveLength(1); // mirror untouched
+    expect(store.getCursor()).toBe(0);
+    expect(wrote(BUDGET_V2)).toEqual([]); // the server refused before any write
+    expect(e2ee.getCipherVersion()).toBe(1); // the legacy format is recorded (Settings shows the action)
+    expect(getSyncStatus().state).toBe("error");
+  });
+});
+
 /* ── A 401 outside a cycle must reach the Login screen too ─────────────── */
 
 describe("sync: 401 on an out-of-cycle write routes to Login", () => {
@@ -1134,7 +1260,10 @@ describe("sync: the e2ee ownership proof and the DEK's provenance", () => {
 
   it("a DEK that came WITH the replica and opens the session's checkpoint → ours (adopted)", async () => {
     const dek = generateDek();
-    serverBlob = await e2ee.encryptSnapshot(emptyLedger(), dek);
+    // The checkpoint is bound to its (budgetId, epoch, uptoSeq) context — exactly what the fake
+    // server serves below; the successful authenticated decrypt is what lets the replica adopt
+    // the budget id its own key just vouched for (v2 writes are fail-closed without one).
+    serverBlob = await e2ee.encryptSnapshot(emptyLedger(), dek, { budgetId: BUDGET_B, epoch: 1, uptoSeq: 0 });
     await idbPut("meta", dek, "e2eeDek"); // as a pre-2.0 build left it: key, no provenance
     legacyE2eeReplica();
     await reload();
@@ -1156,7 +1285,7 @@ describe("sync: the e2ee ownership proof and the DEK's provenance", () => {
     // own checkpoint would decrypt with it ("ours"), A's replica would be stamped as B's, A's
     // queued ops would be pushed into B's journal and a pending replace would overwrite it.
     const dekOfB = generateDek();
-    serverBlob = await e2ee.encryptSnapshot(emptyLedger(), dekOfB); // B's checkpoint, B's key
+    serverBlob = await e2ee.encryptSnapshot(emptyLedger(), dekOfB, { budgetId: BUDGET_B, epoch: 1, uptoSeq: 0 }); // B's checkpoint, B's key
     legacyE2eeReplica(); // …but the replica on this device is A's
     e2ee.setDek(dekOfB); // Unlock / password change under B's session
     outbox.add(catOp()); // A's unsent op

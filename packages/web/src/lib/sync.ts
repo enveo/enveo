@@ -28,6 +28,7 @@
  */
 import type { ClientLedger } from "@enveo/shared";
 import { fetchSessionUserId } from "./auth";
+import { DEFAULT_KDF_PARAMS, dekWrapAadContext, deriveKek, freshKdfParams, generateDek, generateSalt, wrapDek } from "./crypto";
 import * as e2ee from "./e2ee";
 import { clearLocalData, idbGet, idbPut, storageMode } from "./idb";
 import { purgeLegacyPlannedIds } from "./legacyPlanned";
@@ -109,6 +110,39 @@ export class TierMismatchError extends Error {
   ) {
     super(`tier_mismatch: ${tier}/${epoch}`);
     this.name = "TierMismatchError";
+  }
+}
+
+/**
+ * HTTP 409 { error: "e2ee_upgrade_required", tier, epoch, cipherVersion: 1, budgetId } — the
+ * session's budget still holds LEGACY (pre-AAD, "v1.") ciphertext, and every normal sync2
+ * channel refuses to read or extend it. This is fail-closed BY DESIGN: the only way forward is
+ * the explicit upgrade ceremony (fresh DEK, next epoch, new v2 checkpoint from the trusted
+ * local replica — lib/e2eeUpgrade.ts). It is NOT a tier mismatch: re-bootstrapping would just
+ * hit the same 409, so the handler records the server's format (cipherVersion meta) and stops
+ * the cycle without touching the replica, the cursor or the outbox.
+ */
+export class E2eeUpgradeRequiredError extends Error {
+  constructor(
+    public readonly epoch: number,
+    public readonly budgetId: string | null,
+  ) {
+    super("e2ee_upgrade_required");
+    this.name = "E2eeUpgradeRequiredError";
+  }
+}
+
+/** 409 e2ee_upgrade_required → record epoch + cipherVersion 1 and throw; other statuses = no-op. */
+async function throwIfUpgradeRequired(res: Response): Promise<void> {
+  if (res.status !== 409) return;
+  const body = (await res
+    .clone()
+    .json()
+    .catch(() => null)) as { error?: string; epoch?: number; budgetId?: string } | null;
+  if (body?.error === "e2ee_upgrade_required") {
+    e2ee.setTierMeta({ tier: "e2ee", epoch: body.epoch ?? 0 });
+    e2ee.setCipherVersion(1);
+    throw new E2eeUpgradeRequiredError(body.epoch ?? 0, body.budgetId ?? null);
   }
 }
 
@@ -449,11 +483,23 @@ async function fetchSnapshotE2ee(): Promise<"ready" | "locked"> {
   if (!dek) return "locked";
   const res = await fetch("/api/sync2/snapshot");
   if (res.status === 401) throw unauthorized();
+  await throwIfUpgradeRequired(res); // legacy v1-format budget → the explicit upgrade ceremony
   await throwIfTierMismatch(res); // budget flipped back to plain → v1 path (bootstrapReplica)
   if (!res.ok) throw new Error(`sync2 snapshot: ${res.status}`);
   const body = (await res.json()) as E2eeSnapshotResponse;
   e2ee.setTierMeta({ tier: "e2ee", epoch: body.epoch });
-  const ledger = body.blob ? await e2ee.decryptSnapshot(body.blob, dek) : EMPTY_LEDGER;
+  e2ee.setCipherVersion(2); // the server only answers 200 here for a v2-format budget
+  // Decryption context: the locally BOUND budget id when this replica has one (caller-expected
+  // value — a bootstrap of an already-bound replica must not let the response redefine it); a
+  // genuinely fresh device has no local expectation yet and uses the named budget, whose
+  // (budgetId, epoch) the DEK's own authenticated unwrap already vouched for (Unlock/pairing).
+  // The AAD then binds blob ↔ uptoSeq: a checkpoint served at a false position fails, so the
+  // cursor below can only ever start where the blob was really made.
+  const expectedBudgetId = e2eeReplicaBudgetId() || body.budgetId || "";
+  if (body.blob && !expectedBudgetId) throw new Error("bad_ciphertext"); // no context — cannot authenticate
+  const ledger = body.blob
+    ? await e2ee.decryptSnapshot(body.blob, dek, { budgetId: expectedBudgetId, epoch: body.epoch, uptoSeq: body.uptoSeq })
+    : EMPTY_LEDGER;
   // The v2 channel is guarded by `epoch`, but the snapshot NAMES its budget: remember it, so
   // this replica can later prove whose it is (multi-tenant guard). An older server omits it
   // → keep whatever we knew (a legacy e2ee replica may end up with no budgetId at all).
@@ -476,6 +522,10 @@ async function bootstrapReplica(): Promise<"ready" | "locked"> {
       return "ready";
     } catch (err) {
       if (err instanceof TierMismatchError && attempt === 0) continue; // tierMeta already fresh
+      // Legacy v1-format budget: nothing on the v2 path can read it, and re-bootstrapping in a
+      // loop would just repeat the 409. "locked" routes the UI to the Unlock screen, which
+      // renders the dedicated upgrade state (cipherVersion meta is already 1).
+      if (err instanceof E2eeUpgradeRequiredError) return "locked";
       throw err;
     }
   }
@@ -609,10 +659,17 @@ async function doPull(): Promise<void> {
  */
 async function doPullE2ee(dek: Uint8Array, userId: string): Promise<void> {
   if (!store.getLedger()) return; // before bootstrap
+  // Decryption context = CALLER-EXPECTED values: the budget this replica is locally bound to
+  // and the epoch WE requested — never the response's own metadata, which would let a malicious
+  // store redefine the expected AAD and bless its own substitution. A replica that cannot name
+  // its budget cannot authenticate anything → fail closed (no legacy tolerance on this path).
+  const budgetId = e2eeReplicaBudgetId();
+  if (!budgetId) throw new Error("e2ee: replica names no budget"); // internal abort — doCycle catch-all, never rendered
   for (;;) {
     const epoch = e2ee.getTierMeta().epoch;
     const res = await fetch(`/api/sync2/pull?since=${store.getCursor()}&epoch=${epoch}`);
     if (res.status === 401) throw unauthorized();
+    await throwIfUpgradeRequired(res); // legacy v1-format budget → the explicit upgrade ceremony
     await throwIfTierMismatch(res); // flip/epoch → re-bootstrap (catch in doCycle)
     if (!res.ok) throw new Error(`sync2 pull: ${res.status}`);
     const body = (await res.json()) as {
@@ -621,7 +678,9 @@ async function doPullE2ee(dek: Uint8Array, userId: string): Promise<void> {
       ops: Array<{ seq: number; opId: string; ciphertext: string }>;
     };
     if (body.ops.length === 0 && body.cursor === store.getCursor()) return;
-    const ops = await e2ee.decryptOps(body.ops, dek);
+    // A failed decrypt (substituted/foreign/tampered row) throws HERE — before any op reaches
+    // the mirror and before the cursor advances: nothing is applied, nothing is skipped.
+    const ops = await e2ee.decryptOps(body.ops, dek, { budgetId, epoch });
     const ownPending = new Set(outbox.snapshot().map((en) => en.op.opId));
     const nextCursor = body.ops.length > 0 ? body.ops[body.ops.length - 1]!.seq : body.cursor;
     store.applyRemoteOps(ops, nextCursor, ownPending);
@@ -633,7 +692,7 @@ async function doPullE2ee(dek: Uint8Array, userId: string): Promise<void> {
     // WRITE (it overwrites the session budget's whole checkpoint), so it carries the tenant this
     // cycle verified: fired in the background, it is the LAST thing to reach the server in a
     // cycle and the widest open window for a cookie swapped in another tab.
-    void e2ee.maybeUploadSnapshot(store.getLedger(), store.getCursor(), userId).catch(() => {});
+    void e2ee.maybeUploadSnapshot(store.getLedger(), store.getCursor(), userId, budgetId).catch(() => {});
     if (body.ops.length === 0 || nextCursor >= body.cursor) return; // journal caught up
   }
 }
@@ -925,14 +984,29 @@ function e2eeReplicaBudgetId(): string {
   return store.getBudgetId() || store.getLedger()?.budgets?.[0]?.id || "";
 }
 
-/** The budget the SESSION owns on the v2 path + its checkpoint (a READ; no DEK needed). */
-async function fetchServerE2eeIdentity(): Promise<{ budgetId: string | null; blob: string | null }> {
+/** The budget the SESSION owns on the v2 path + its checkpoint (a READ; no DEK needed).
+ *  A 409 e2ee_upgrade_required still NAMES the session's budget — the ownership proof needs
+ *  exactly that id before the upgrade ceremony may write, so it is an identity answer here
+ *  (with no readable checkpoint), not an error. epoch/uptoSeq ride along for the DEK-fallback
+ *  proof, whose decrypt needs the checkpoint's claimed context. */
+async function fetchServerE2eeIdentity(): Promise<{ budgetId: string | null; blob: string | null; epoch: number; uptoSeq: number }> {
   const res = await fetch("/api/sync2/snapshot");
   if (res.status === 401) throw unauthorized();
+  if (res.status === 409) {
+    const body = (await res
+      .clone()
+      .json()
+      .catch(() => null)) as { error?: string; epoch?: number; budgetId?: string } | null;
+    if (body?.error === "e2ee_upgrade_required") {
+      e2ee.setTierMeta({ tier: "e2ee", epoch: body.epoch ?? 0 });
+      e2ee.setCipherVersion(1);
+      return { budgetId: body.budgetId ?? null, blob: null, epoch: body.epoch ?? 0, uptoSeq: 0 };
+    }
+  }
   await throwIfTierMismatch(res);
   if (!res.ok) throw new Error(`sync2 snapshot: ${res.status}`);
   const body = (await res.json()) as E2eeSnapshotResponse;
-  return { budgetId: body.budgetId ?? null, blob: body.blob };
+  return { budgetId: body.budgetId ?? null, blob: body.blob, epoch: body.epoch, uptoSeq: body.uptoSeq };
 }
 
 /**
@@ -984,9 +1058,21 @@ async function proveOwnership(): Promise<Ownership> {
         const mine = e2eeReplicaBudgetId();
         if (mine && server.budgetId) return mine === server.budgetId ? "ours" : "unknown";
         const dek = e2ee.getDek();
-        if (!dek || !e2ee.isDekFromStore() || !server.blob) return "unknown";
+        if (!dek || !e2ee.isDekFromStore() || !server.blob || !server.budgetId) return "unknown";
         try {
-          await e2ee.decryptSnapshot(server.blob, dek);
+          // The checkpoint's claimed context comes with it; what the proof establishes is that
+          // THIS replica's stored key authenticates the session's checkpoint under exactly that
+          // context — a foreign budget's blob (different DEK) cannot pass.
+          await e2ee.decryptSnapshot(server.blob, dek, { budgetId: server.budgetId, epoch: server.epoch, uptoSeq: server.uptoSeq });
+          // The successful decrypt just AUTHENTICATED the claimed budget id with the replica's
+          // own stored key (GCM verifies the AAD tuple). Bind the replica to it: v2 writes are
+          // fail-closed without a named budget, so an adopted legacy replica must learn the id
+          // its own key just vouched for.
+          const ledger = store.getLedger();
+          if (ledger && !store.getBudgetId()) {
+            store.replace(ledger, store.getCursor(), server.budgetId);
+            void persist.persistLedger(store.snapshotForPersist());
+          }
           return "ours"; // the session's checkpoint opens with the replica's own key
         } catch {
           return "unknown"; // …it does not: a stale key OR another budget — indistinguishable
@@ -1162,22 +1248,27 @@ async function doCycle(): Promise<boolean> {
       // so ops enqueued while still in the plain tier go out on the correct path.
       // The server dedupes by (budgetId, opId) — no per-op "rejected" in v2:
       // HTTP success = whole batch accepted (applied/duplicate) → remove from the outbox.
+      // The op AAD needs the budget id, so a replica that cannot name its budget cannot
+      // push AT ALL — fail-closed (v2 has no "legacy replica without a budget" tolerance;
+      // such a replica belongs to a v1-format budget and must cross the upgrade ceremony).
+      const pushBudgetId = e2eeReplicaBudgetId();
+      if (outbox.size() > 0 && !pushBudgetId) {
+        throw new Error("e2ee: replica names no budget"); // internal abort — doCycle catch-all, never rendered
+      }
       while (outbox.size() > 0) {
         const batch = outbox.takeBatch(PUSH_BATCH);
         try {
-          const ops = await Promise.all(batch.map((en) => e2ee.encryptOp(en.op, dek)));
+          const epoch = e2ee.getTierMeta().epoch;
+          const ops = await Promise.all(batch.map((en) => e2ee.encryptOp(en.op, dek, { budgetId: pushBudgetId, epoch })));
           const res = await fetch("/api/sync2/push", {
             method: "POST",
             headers: { "content-type": "application/json" },
-            // budgetId = the PER-REQUEST tenant assertion (see the v1 push below); a legacy
-            // replica that cannot name its budget sends none — the server then cannot check
-            body: JSON.stringify({
-              epoch: e2ee.getTierMeta().epoch,
-              budgetId: e2eeReplicaBudgetId() || undefined,
-              ops,
-            }),
+            // budgetId = the PER-REQUEST tenant assertion (see the v1 push below) — in v2 it is
+            // also the authenticated op context, so it is REQUIRED, never optional
+            body: JSON.stringify({ epoch, budgetId: pushBudgetId, ops }),
           });
           if (res.status === 401) throw unauthorized();
+          await throwIfUpgradeRequired(res); // legacy v1-format budget → ceremony; ops STAY queued
           await throwIfTierMismatch(res); // flip/epoch → re-bootstrap; ops STAY in the outbox
           await throwIfBudgetMismatch(res); // not the session's budget → nothing was written
           if (!res.ok) throw new Error(`sync2 push: ${res.status}`);
@@ -1290,6 +1381,16 @@ async function doCycle(): Promise<boolean> {
     }
     if (e instanceof TierMismatchError) return handleTierFlip();
     if (e instanceof BudgetMismatchError) return handleBudgetMismatch();
+    if (e instanceof E2eeUpgradeRequiredError) {
+      // Legacy v1-format budget: the server refuses every normal sync2 channel until the
+      // explicit upgrade ceremony has run. NOT a tier flip (a re-bootstrap would hit the same
+      // 409) and NOT a resync trigger: replica, cursor and outbox stay untouched, the
+      // cipherVersion meta is already 1 (Settings shows the upgrade action), and the cycle
+      // retries on the normal backoff so a completed upgrade elsewhere is picked up.
+      setState("error");
+      scheduleRetry();
+      return false;
+    }
     setState(typeof navigator !== "undefined" && navigator.onLine === false ? "offline" : "error");
     scheduleRetry();
     return false;
@@ -1528,7 +1629,13 @@ export async function resetServerE2ee(dek?: Uint8Array): Promise<void> {
   if (!ledger) throw new Error("no_local_replica");
   const key = dek ?? e2ee.getDek();
   if (!key) throw new Error("no_encryption_key");
-  const snapshotBlob = await e2ee.encryptSnapshot(ledger, key);
+  // The snapshot AAD binds the blob to (budgetId, epoch, uptoSeq) — a replica that cannot name
+  // its budget cannot produce an authenticated checkpoint and must not write (fail-closed).
+  const budgetId = e2eeReplicaBudgetId();
+  if (!budgetId) throw new Error("foreign_replica");
+  const cursor = store.getCursor();
+  const epoch = e2ee.getTierMeta().epoch;
+  const snapshotBlob = await e2ee.encryptSnapshot(ledger, key, { budgetId, epoch, uptoSeq: cursor });
   const res = await fetch("/api/sync2/reset", {
     method: "POST",
     headers: { "content-type": "application/json" },
@@ -1536,13 +1643,14 @@ export async function resetServerE2ee(dek?: Uint8Array): Promise<void> {
     // whole replica takes seconds, and the epoch does NOT distinguish tenants (two independently
     // encrypted budgets both sit at epoch 1) — the server refuses a session it did not verify.
     body: JSON.stringify({
-      epoch: e2ee.getTierMeta().epoch,
-      uptoCursor: store.getCursor(),
+      epoch,
+      uptoCursor: cursor,
       snapshotBlob,
       userId,
     }),
   });
   if (res.status === 401) throw unauthorized();
+  await throwIfUpgradeRequired(res); // legacy v1-format budget → the explicit upgrade ceremony
   await throwIfTierMismatch(res); // flip meanwhile → tierMeta fresh; the cycle retries on the right path
   await throwIfBudgetMismatch(res); // the session was swapped mid-upload → nothing was written
   if (!res.ok) {
@@ -1552,6 +1660,66 @@ export async function resetServerE2ee(dek?: Uint8Array): Promise<void> {
   outbox.clearAll(); // server == ciphertext of local → pre-import ops are moot
   e2ee.resetOpsCounter(); // fresh checkpoint — the counter to the next one starts from zero
   clearReplacePending(); // replace obligation fulfilled
+}
+
+/**
+ * The MANDATORY v1→v2 upgrade ceremony (client side) — the only boundary a legacy pre-AAD
+ * E2EE budget may cross. This is a REAL data-key rotation, not the same-DEK password rewrap
+ * of /sync2/rekey: a fresh DEK + salt + KEK are generated, the epoch increments, the complete
+ * LOCAL ledger (outbox effects included — they are already applied to the mirror) becomes the
+ * new v2 checkpoint at uptoSeq 0, and the server atomically swaps envelope + journal +
+ * checkpoint. Old pairing codes and the old DEK die with the rotation; other devices hit an
+ * epoch mismatch and unlock with the new password or a freshly minted pairing code.
+ *
+ * Preconditions enforced here: proven replica ownership (assertOwnReplica — an unstamped or
+ * foreign replica must not perform this full-budget overwrite) and a replica that names its
+ * budget. The UI enforces the fresh-backup acknowledgement before calling. The old server key
+ * envelope is deliberately NOT used or required.
+ *
+ * NOTHING local changes until the server confirms: a failed or interrupted request leaves
+ * both sides on the old generation and retrying is safe (the server is idempotent for a
+ * repeated identical attempt and refuses a stale epoch).
+ */
+export async function upgradeServerE2eeV2(password: string): Promise<void> {
+  const userId = await assertOwnReplica(); // foreign/unverified — no write
+  const ledger = store.getLedger();
+  if (!ledger) throw new Error("no_local_replica"); // error CODES, never prose — lib/api.ts owns the wording
+  const budgetId = e2eeReplicaBudgetId();
+  if (!budgetId) throw new Error("foreign_replica");
+  const expectedEpoch = e2ee.getTierMeta().epoch;
+  const nextEpoch = expectedEpoch + 1;
+  const salt = generateSalt();
+  const dek = generateDek();
+  const kek = await deriveKek(password, salt, DEFAULT_KDF_PARAMS);
+  const wrappedDek = await wrapDek(dek, kek, dekWrapAadContext(budgetId, nextEpoch));
+  const snapshotBlob = await e2ee.encryptSnapshot(ledger, dek, { budgetId, epoch: nextEpoch, uptoSeq: 0 });
+  const res = await fetch("/api/budget/e2ee/upgrade-v2", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    // budgetId AND userId = the per-request tenant assertions (both REQUIRED on this route);
+    // expectedEpoch makes concurrent/repeated attempts explicit: one winner or an idempotent
+    // already-upgraded answer, never two epoch increments.
+    body: JSON.stringify({ budgetId, userId, expectedEpoch, cipherVersion: 2, wrappedDek, kdfParams: freshKdfParams(salt), snapshotBlob }),
+  });
+  if (res.status === 401) throw unauthorized();
+  await throwIfTierMismatch(res); // stale epoch or upgraded elsewhere → tierMeta fresh, caller may retry
+  await throwIfBudgetMismatch(res); // the session was swapped mid-upload → nothing was written
+  if (!res.ok) {
+    const txt = await res.text().catch(() => "");
+    throw new Error(`${res.status} ${txt}`); // UI: apiErrorMessage extracts { error }
+  }
+  const body = (await res.json()) as { epoch: number };
+  // COMMIT — only after server success: install the new generation atomically on this device.
+  e2ee.setDek(dek);
+  e2ee.setTierMeta({ tier: "e2ee", epoch: body.epoch });
+  e2ee.setCipherVersion(2);
+  e2ee.resetOpsCounter(); // the checkpoint at uptoSeq 0 IS this replica — counter restarts
+  outbox.clearAll(); // every queued op's effect is inside the uploaded snapshot
+  store.replace(ledger, 0, budgetId); // cursor := 0 (the journal restarts under the new epoch)
+  void persist.persistLedger(store.snapshotForPersist());
+  clearReplacePending(); // the upgrade IS a full server replace from local
+  notePeersMayNeedUpdate(); // other live tabs rehydrate; stale devices hit the epoch 409 → Unlock
+  void syncNow("e2ee-upgrade-v2");
 }
 
 /** Broadcast the local-mode change to other tabs (best-effort). */

@@ -100,6 +100,12 @@ const ERROR_KEYS: Record<string, Message> = {
   no_encryption_key: msg("This device has no encryption key — unlock the budget with your password (or a pairing code) and try again."), // resetServerE2ee with no DEK on this device (locked)
   empty_unbound_replica: msg("There is no data on this device to send — nothing was sent to the server. Reload the app to fetch your budget first."), // refused: an empty unbound replica can only wipe
   bad_ciphertext: msg("The encrypted data could not be read on this device — nothing was changed. Make sure the app is up to date, or restore from a backup."), // crypto.ts — envelope this build cannot read (corrupt/foreign)
+  legacy_ciphertext: msg(
+    "This data uses an older encryption format that this version no longer reads — run the encryption upgrade in Settings → Privacy on the device that holds the budget.",
+  ), // crypto.ts — a pre-AAD "v1." value reached a normal decrypt (fail-closed by design)
+  e2ee_upgrade_required: msg(
+    "This budget's encryption must be upgraded before it can sync — open Settings → Privacy on a device that holds the data and run the upgrade.",
+  ), // sync2 routes — the server refuses every normal channel of a legacy-format budget
   bad_pairing_code: msg("This is not a valid pairing code — copy it again from the device where the budget is already unlocked."), // crypto.ts — decodePairing on a code that is not ours
   ai_consent_required: msg("AI is not set up on this device. Pick a mode in Settings → Artificial intelligence (with your own key, paste it there)."), // ai.ts — no usable target (AI off, or byok with no key)
   /* openai.ts — screenshot import is AI-only, so a failed model call is SHOWN (no rules fallback to
@@ -207,7 +213,11 @@ export const api = {
      budget, and the caller's ownership check (assertOwnReplica) is a different request than this
      one — the shared cookie can be swapped in between. The server refuses a body whose userId is
      not the session it resolves (409 budget_mismatch, nothing written). */
-  e2eeEnable: (b: { wrappedDek: string; kdfParams: string; snapshotBlob: string; userId: string }) => http<{ epoch: number }>("POST", "/budget/e2ee/enable", b),
+  /* `budgetId` + `nextEpoch` since ciphertext v2: the wrapped DEK and the snapshot are BOUND to
+     (budgetId, nextEpoch) by their authenticated context, so the client must name the epoch it
+     encrypted for — the server refuses a stale expectation (409 with the current meta). */
+  e2eeEnable: (b: { wrappedDek: string; kdfParams: string; snapshotBlob: string; userId: string; budgetId: string; nextEpoch: number }) =>
+    http<{ epoch: number }>("POST", "/budget/e2ee/enable", b),
   e2eeDisable: (b: { confirm: string; ledger: ClientLedger; userId: string }) => http<{ epoch: number }>("POST", "/budget/e2ee/disable", b),
   e2eeRekey: (b: { wrappedDek: string; kdfParams: string; userId: string }) => http<{ epoch: number }>("POST", "/sync2/rekey", b),
   /** GET /sync2/snapshot — the session's budgetId + key envelope (password verification on change) + checkpoint. */
@@ -215,6 +225,7 @@ export const api = {
     http<{
       budgetId: string;
       epoch: number;
+      cipherVersion?: number;
       wrappedDek: string | null;
       kdfParams: string | null;
       uptoSeq: number;
