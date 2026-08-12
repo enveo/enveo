@@ -32,13 +32,28 @@ export function installState(deferred: unknown, userAgent: string, standalone: b
   return "unavailable";
 }
 
-/** Fire the native install dialog and report the user's choice. */
+/**
+ * The ONE installability predicate: is there anything to offer this user? Every UI site
+ * (banner, Drawer row, Settings hub card, onboarding finish, InstallBody's null-return)
+ * must call this instead of re-spelling the two-state comparison — five hand-written
+ * copies in two polarities is how one of them drifts.
+ */
+export function isInstallable(state: InstallState): boolean {
+  return state !== "installed" && state !== "unavailable";
+}
+
+/**
+ * Fire the native install dialog and report the user's choice.
+ * Exported as an intentional unit-test seam: installPrompt.test.ts drives it directly to
+ * prove the native prompt is invoked and the browser's userChoice outcome is returned —
+ * do not un-export it to trim the module API, and do not replace it with injection.
+ */
 export async function runPrompt(e: BeforeInstallPromptEvent): Promise<"accepted" | "dismissed"> {
   await e.prompt();
   return (await e.userChoice).outcome;
 }
 
-export function isStandalone(): boolean {
+function isStandalone(): boolean {
   if (typeof window === "undefined") return false;
   const nav = window.navigator as Navigator & { standalone?: boolean };
   return nav.standalone === true || window.matchMedia("(display-mode: standalone)").matches;
@@ -95,6 +110,11 @@ export async function promptInstall(): Promise<"accepted" | "dismissed" | "unava
 }
 
 const getSnapshot = (): InstallState => snapshot;
+
+/** Non-hook read of the live state — for logic outside render (e.g. Onboarding's finish()). */
+export function getInstallState(): InstallState {
+  return snapshot;
+}
 const subscribe = (fn: () => void): (() => void) => {
   listeners.add(fn);
   return () => listeners.delete(fn);

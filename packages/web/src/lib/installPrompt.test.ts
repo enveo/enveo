@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
-import { initInstallPrompt, installState, promptInstall, runPrompt } from "./installPrompt";
+import { getInstallState, initInstallPrompt, installState, isInstallable, promptInstall, runPrompt, type InstallState } from "./installPrompt";
 
 const ANDROID = "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 Chrome/126 Mobile Safari/537.36";
 const DESKTOP_CHROME = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/126 Safari/537.36";
@@ -30,6 +30,26 @@ describe("installState", () => {
 
   it("desktop Firefox with no event → unavailable", () => {
     expect(installState(null, DESKTOP_FF, false)).toBe("unavailable");
+  });
+});
+
+/**
+ * The ONE installability predicate — every UI site (banner, Drawer row, Settings card,
+ * onboarding finish, InstallBody's null-return) must go through it instead of re-spelling
+ * the two-state comparison in either polarity.
+ */
+describe("isInstallable", () => {
+  it("true exactly for the states with something to offer", () => {
+    const verdicts: Record<InstallState, boolean> = {
+      promptable: true,
+      "ios-safari": true,
+      "ios-other": true,
+      installed: false,
+      unavailable: false,
+    };
+    for (const [state, expected] of Object.entries(verdicts)) {
+      expect(isInstallable(state as InstallState)).toBe(expected);
+    }
   });
 });
 
@@ -116,5 +136,18 @@ describe("promptInstall", () => {
     expect(prompts).toBe(1);
     expect(await promptInstall()).toBe("unavailable");
     expect(prompts).toBe(1);
+  });
+
+  /** Non-hook mirror of the store — for reads outside render (Onboarding's finish()). */
+  it("getInstallState reads the live snapshot without a hook", async () => {
+    expect(getInstallState()).toBe("unavailable");
+    fire({
+      preventDefault: () => {},
+      prompt: async () => {},
+      userChoice: Promise.resolve({ outcome: "dismissed" as const }),
+    });
+    expect(getInstallState()).toBe("promptable");
+    await promptInstall();
+    expect(getInstallState()).toBe("unavailable"); // consumed — the snapshot moved with it
   });
 });
