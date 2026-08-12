@@ -141,6 +141,13 @@
       "when": 1785330002369,
       "tag": "0019_drop_confirmed",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1786533461935,
+      "tag": "0020_ai_user_monthly_spend",
+      "breakpoints": true
     }
   ]
 }
