@@ -50,6 +50,12 @@ const allowedOrigins = staticAllowedOrigins();
 // secure-headers + CSP. connect-src MUST include api.openai.com (BYOK mode calls
 // OpenAI directly from the browser); style-src 'unsafe-inline' because inline
 // styles + StyleInjector + QR generate styles on the fly.
+// script-src carries 'wasm-unsafe-eval': the E2EE key derivation is Argon2id via
+// hash-wasm, and current Chromium refuses WebAssembly.compile() under a bare
+// 'self' — without it EVERY prod-served E2EE flow (enable, unlock, password
+// change, the v1→v2 upgrade ceremony) dies at deriveKek. The directive allows
+// WASM COMPILATION ONLY; JS eval()/new Function() stay blocked ('unsafe-eval'
+// remains deliberately absent — the amount calculator stays eval-free).
 app.use(
   "*",
   secureHeaders({
@@ -58,7 +64,7 @@ app.use(
     referrerPolicy: "same-origin",
     contentSecurityPolicy: {
       defaultSrc: ["'self'"],
-      scriptSrc: ["'self'"],
+      scriptSrc: ["'self'", "'wasm-unsafe-eval'"],
       styleSrc: ["'self'", "'unsafe-inline'"],
       imgSrc: ["'self'", "data:", "blob:"],
       connectSrc: ["'self'", "https://api.openai.com"],
