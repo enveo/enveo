@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { authMetaBody, signupsOpen } from "./authPolicy";
+import { authMetaBody, operatorAiSpendLimited, signupsOpen } from "./authPolicy";
 
 const base = { deployment: "selfhost" as const, allowSignups: "", hasCredentialedUser: true };
 
@@ -15,6 +15,28 @@ describe("signupsOpen", () => {
   });
   it("cloud: always open", () => {
     expect(signupsOpen({ ...base, deployment: "cloud" })).toBe(true);
+  });
+});
+
+describe("operatorAiSpendLimited (backlog §1 — cloud operator-key AI spend budget)", () => {
+  const cloud = { deployment: "cloud" as const, allowSignups: "", operatorKeyPresent: true };
+
+  it("cloud with open registration and an operator key: limited", () => {
+    expect(operatorAiSpendLimited(cloud)).toBe(true);
+  });
+  it("cloud without an operator key: nothing to protect (byok charges the user's key; off sends nothing)", () => {
+    expect(operatorAiSpendLimited({ ...cloud, operatorKeyPresent: false })).toBe(false);
+  });
+  it("selfhost with closed registration: bypasses all spend reads/writes", () => {
+    expect(operatorAiSpendLimited({ deployment: "selfhost", allowSignups: "", operatorKeyPresent: true })).toBe(false);
+  });
+  it("selfhost with ALLOW_SIGNUPS=1: deliberately NOT limited (decision 6 — the docs warn instead)", () => {
+    expect(operatorAiSpendLimited({ deployment: "selfhost", allowSignups: "1", operatorKeyPresent: true })).toBe(false);
+  });
+  it("follows the authoritative signup policy on cloud (open today under every credentialed state)", () => {
+    // signupsOpen(cloud) is true regardless of the other inputs — pin the coupling so a future
+    // "closed cloud" policy change automatically turns the limiter off with registration.
+    expect(signupsOpen({ deployment: "cloud", allowSignups: "", hasCredentialedUser: true })).toBe(true);
   });
 });
 
