@@ -15,6 +15,8 @@ export const cs: Dict = {
   "3 mo": "3 měs.",
   "6 mo": "6 měs.",
   "= {amount}": "= {amount}",
+  "A previous upgrade attempt was interrupted before it could finish. Resume it to complete the upgrade with the password you chose then — a new password cannot be set until this attempt finishes or is discarded.":
+    "Předchozí pokus o aktualizaci byl přerušen, než se stihl dokončit. Pokračuj v něm a dokonči aktualizaci tehdy zvoleným heslem — nové heslo nelze nastavit, dokud tento pokus neskončí nebo nebude zahozen.",
   "A profile with this name already exists.": "Profil s tímto názvem už existuje.",
   AI: "AI",
   "AI (corrected)": "AI (opraveno)",
@@ -188,6 +190,9 @@ export const cs: Dict = {
   "Disable end-to-end encryption?": "Vypnout end-to-end šifrování?",
   "Disabling…": "Vypínám…",
   Discard: "Zahodit",
+  "Discard the unfinished attempt": "Zahodit nedokončený pokus",
+  "Discarding starts over with a fresh key. If the server had already completed the interrupted attempt, this device will ask you to unlock with the password you chose then.":
+    "Zahozením se začne znovu s čerstvým klíčem. Pokud server přerušený pokus už stihl dokončit, toto zařízení tě požádá o odemknutí tehdy zvoleným heslem.",
   "Discreet mode": "Diskrétní režim",
   "Distributes the amount only to envelopes in the red — proportionally to shortfalls, never past zero.":
     "Rozdělí částku jen mezi obálky v mínusu — poměrně podle schodku, nikdy přes nulu.",
@@ -382,6 +387,7 @@ export const cs: Dict = {
   Restore: "Obnovit",
   "Resume it in the “Advanced” section.": "Obnov ji v sekci „Pokročilé“.",
   "Resume sync? Local changes will be sent to the server.": "Obnovit synchronizaci? Lokální změny se odešlou na server.",
+  "Resume upgrade": "Pokračovat v aktualizaci",
   "Resuming…": "Obnovuji…",
   SPENT: "UTRACENO",
   Save: "Uložit",

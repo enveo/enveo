@@ -219,7 +219,10 @@ export const api = {
   e2eeEnable: (b: { wrappedDek: string; kdfParams: string; snapshotBlob: string; userId: string; budgetId: string; nextEpoch: number }) =>
     http<{ epoch: number }>("POST", "/budget/e2ee/enable", b),
   e2eeDisable: (b: { confirm: string; ledger: ClientLedger; userId: string }) => http<{ epoch: number }>("POST", "/budget/e2ee/disable", b),
-  e2eeRekey: (b: { wrappedDek: string; kdfParams: string; userId: string }) => http<{ epoch: number }>("POST", "/sync2/rekey", b),
+  /* `expectedEpoch` = the epoch the new envelope's AAD was built for: a rekey landing on any
+     OTHER generation would permanently brick every unlock (the v2 wrap hard-fails under a
+     different epoch), so the server refuses a stale expectation before writing. */
+  e2eeRekey: (b: { wrappedDek: string; kdfParams: string; userId: string; expectedEpoch: number }) => http<{ epoch: number }>("POST", "/sync2/rekey", b),
   /** GET /sync2/snapshot — the session's budgetId + key envelope (password verification on change) + checkpoint. */
   e2eeSnapshot: () =>
     http<{

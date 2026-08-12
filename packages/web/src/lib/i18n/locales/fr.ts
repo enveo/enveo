@@ -15,6 +15,8 @@ export const fr: Dict = {
   "3 mo": "3 mois",
   "6 mo": "6 mois",
   "= {amount}": "= {amount}",
+  "A previous upgrade attempt was interrupted before it could finish. Resume it to complete the upgrade with the password you chose then — a new password cannot be set until this attempt finishes or is discarded.":
+    "Une précédente tentative de mise à niveau a été interrompue avant de pouvoir se terminer. Reprenez-la pour achever la mise à niveau avec le mot de passe choisi à ce moment-là — aucun nouveau mot de passe ne peut être défini tant que cette tentative n'est pas terminée ou abandonnée.",
   "A profile with this name already exists.": "Un profil portant ce nom existe déjà.",
   AI: "IA",
   "AI (corrected)": "IA (corrigé)",
@@ -181,6 +183,9 @@ export const fr: Dict = {
   "Disable end-to-end encryption?": "Désactiver le chiffrement de bout en bout ?",
   "Disabling…": "Désactivation…",
   Discard: "Abandonner",
+  "Discard the unfinished attempt": "Abandonner la tentative inachevée",
+  "Discarding starts over with a fresh key. If the server had already completed the interrupted attempt, this device will ask you to unlock with the password you chose then.":
+    "Abandonner repart de zéro avec une nouvelle clé. Si le serveur avait déjà terminé la tentative interrompue, cet appareil vous demandera de déverrouiller avec le mot de passe choisi à ce moment-là.",
   "Discreet mode": "Mode discret",
   "Distributes the amount only to envelopes in the red — proportionally to shortfalls, never past zero.":
     "Répartit le montant uniquement entre les enveloppes dans le rouge — proportionnellement au manque, sans jamais dépasser zéro.",
@@ -380,6 +385,7 @@ export const fr: Dict = {
   Restore: "Restaurer",
   "Resume it in the “Advanced” section.": "Reprenez-la dans la section « Avancé ».",
   "Resume sync? Local changes will be sent to the server.": "Reprendre la synchronisation ? Les modifications locales seront envoyées au serveur.",
+  "Resume upgrade": "Reprendre la mise à niveau",
   "Resuming…": "Reprise…",
   SPENT: "DÉPENSÉ",
   Save: "Enregistrer",

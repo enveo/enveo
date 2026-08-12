@@ -25,7 +25,15 @@ import { clearLastAccountId } from "../../lib/lastAccount";
 import * as persist from "../../lib/persist";
 import { clearPersistedSettings } from "../../lib/settingsPersist";
 import { store } from "../../lib/store";
-import { assertOwnReplica, discardLocalReplica, enterLoginKeepingReplica, flushOutboxForSignOut, fullResync, syncNow } from "../../lib/sync";
+import {
+  assertOwnReplica,
+  broadcastKeysChanged,
+  discardLocalReplica,
+  enterLoginKeepingReplica,
+  flushOutboxForSignOut,
+  fullResync,
+  syncNow,
+} from "../../lib/sync";
 import { CORAL, font } from "../../lib/theme";
 import { E2eeUpgradePanel } from "./E2eeUpgradePanel";
 import { ActionGroup, ActionIcon, ActionRow, ConfirmWordHint, Eyebrow } from "./ui";
@@ -324,7 +332,7 @@ function E2eeEnableWizard() {
         }
       }
       // local flip ONLY after server success (error above ⇒ nothing changed, replica untouched)
-      e2ee.setDek(dek);
+      e2ee.setDek(dek, epoch); // validated for the epoch the ciphertexts were bound to
       e2ee.setTierMeta({ tier: "e2ee", epoch });
       e2ee.setCipherVersion(2);
       e2ee.resetOpsCounter();
@@ -332,6 +340,7 @@ function E2eeEnableWizard() {
       // the checkpoint from enable represents exactly THIS replica at seq 0
       store.replace(ledger, 0, store.getBudgetId() ?? "");
       void persist.persistLedger(store.snapshotForPersist());
+      void broadcastKeysChanged(); // peer tabs pick up the fresh key state before their next cycle
       void syncNow("e2ee-enable"); // backlogged outbox ops go out via a normal v2 push
       setSheet(false); // the section switches to the e2ee panel (statusOn = confirmation)
     } catch (e) {
@@ -589,8 +598,11 @@ function E2eeChangePass() {
       const salt = generateSalt();
       const newKek = await deriveKek(pass, salt, DEFAULT_KDF_PARAMS);
       const wrappedDek = await wrapDek(dek, newKek, envelopeCtx);
-      await api.e2eeRekey({ wrappedDek, kdfParams: freshKdfParams(salt), userId });
-      e2ee.setDek(dek); // refresh the local DEK from the canonical unwrap (same key)
+      // expectedEpoch = the epoch envelopeCtx was built for — the server refuses any other
+      // generation (a stale rewrap would brick every future unlock under the v2 AAD).
+      await api.e2eeRekey({ wrappedDek, kdfParams: freshKdfParams(salt), userId, expectedEpoch: snap.epoch });
+      e2ee.setDek(dek, snap.epoch); // same key, same epoch — the unwrap above validated it
+      void broadcastKeysChanged(); // peer tabs re-read the (re-validated) key state
       setDone(true);
       setOldPass("");
       setPass("");
@@ -819,6 +831,7 @@ function E2eeDisable() {
       const { epoch } = await api.e2eeDisable({ confirm: E2EE_DISABLE_CONFIRM, ledger, userId });
       // return to the v1 path ONLY after server success; the local replica stays
       e2ee.clearDek();
+      void broadcastKeysChanged(); // peer tabs drop the retired key
       e2ee.setTierMeta({ tier: "plain", epoch });
       e2ee.resetOpsCounter();
       setSheet(false);

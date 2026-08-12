@@ -1,10 +1,10 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { apiErrorMessage } from "../../lib/api";
 import { useTheme } from "../../lib/contexts";
 import { exportBackup } from "../../lib/data";
 import { useT } from "../../lib/i18n";
 import { store } from "../../lib/store";
-import { TierMismatchError, upgradeServerE2eeV2 } from "../../lib/sync";
+import { discardPendingE2eeUpgrade, hasPendingE2eeUpgrade, TierMismatchError, upgradeServerE2eeV2 } from "../../lib/sync";
 import { CORAL, font } from "../../lib/theme";
 import { ActionGroup, ActionIcon, ActionRow } from "./ui";
 
@@ -27,21 +27,47 @@ export function E2eeUpgradePanel({ onDone }: { onDone: () => void }) {
   const [pass2, setPass2] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // An interrupted ceremony leaves a durable intent record: the retry must reuse ITS materials
+  // (the interrupted attempt's password stays the operative one), so the password inputs are
+  // replaced by Resume/Discard until the record is finished or deliberately abandoned.
+  const [pending, setPending] = useState<boolean | null>(null);
 
-  const run = async () => {
+  useEffect(() => {
+    let alive = true;
+    void hasPendingE2eeUpgrade().then((p) => alive && setPending(p));
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  const run = async (resume: boolean) => {
     setBusy(true);
     setError(null);
     try {
-      await upgradeServerE2eeV2(pass);
+      await upgradeServerE2eeV2(resume ? null : pass);
       onDone();
     } catch (e) {
+      setPending(await hasPendingE2eeUpgrade()); // a stale-epoch refusal drops the record
       if (e instanceof TierMismatchError) {
         // Stale epoch / upgraded or flipped on another device — local meta is already fresh
         // (throwIfTierMismatch), so a retry recomputes the contexts from the new state.
         setError(t("The budget changed on the server in the meantime — nothing was written. Try again."));
       } else {
+        // the intent record survives a network failure — hasPendingE2eeUpgrade above already
+        // switched the panel to Resume/Discard for the next attempt
         setError(`${t("The upgrade failed — nothing was changed on the server.")} ${apiErrorMessage(e)}`);
       }
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const discard = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      await discardPendingE2eeUpgrade();
+      setPending(false);
     } finally {
       setBusy(false);
     }
@@ -59,6 +85,51 @@ export function E2eeUpgradePanel({ onDone }: { onDone: () => void }) {
     fontSize: 14,
     fontFamily: font,
   };
+
+  if (pending === true) {
+    return (
+      <div style={{ textAlign: "left" }}>
+        <div style={{ fontSize: 12.5, color: C.soft, lineHeight: 1.6, marginBottom: 12 }}>
+          {t(
+            "A previous upgrade attempt was interrupted before it could finish. Resume it to complete the upgrade with the password you chose then — a new password cannot be set until this attempt finishes or is discarded.",
+          )}
+        </div>
+        <ActionGroup>
+          <ActionRow
+            icon={<ActionIcon paths={["M12 2l8 3v6c0 5-3.5 9.4-8 11-4.5-1.6-8-6-8-11V5z", "M12 11v3m0-6v.01"]} />}
+            label={t("Resume upgrade")}
+            onClick={() => void run(true)}
+            disabled={busy}
+            busyLabel={busy ? t("Encrypting…") : undefined}
+          />
+        </ActionGroup>
+        <div style={{ fontSize: 12, color: C.soft, lineHeight: 1.6, margin: "14px 0 8px" }}>
+          {t(
+            "Discarding starts over with a fresh key. If the server had already completed the interrupted attempt, this device will ask you to unlock with the password you chose then.",
+          )}
+        </div>
+        <button
+          type="button"
+          onClick={() => void discard()}
+          disabled={busy}
+          style={{
+            border: "none",
+            background: "none",
+            padding: "6px 0",
+            color: CORAL,
+            fontSize: 12.5,
+            fontWeight: 600,
+            cursor: busy ? "default" : "pointer",
+            fontFamily: font,
+            textDecoration: "underline",
+          }}
+        >
+          {t("Discard the unfinished attempt")}
+        </button>
+        {error && <div style={{ fontSize: 12, color: CORAL, marginTop: 10, lineHeight: 1.5 }}>{error}</div>}
+      </div>
+    );
+  }
 
   return (
     <div style={{ textAlign: "left" }}>
@@ -115,8 +186,8 @@ export function E2eeUpgradePanel({ onDone }: { onDone: () => void }) {
           <ActionRow
             icon={<ActionIcon paths={["M12 2l8 3v6c0 5-3.5 9.4-8 11-4.5-1.6-8-6-8-11V5z", "M12 11v3m0-6v.01"]} />}
             label={t("Re-encrypt and upgrade")}
-            onClick={() => void run()}
-            disabled={busy || !haveBackup || pass.length < 10 || pass !== pass2 || !store.getLedger()}
+            onClick={() => void run(false)}
+            disabled={busy || pending !== false || !haveBackup || pass.length < 10 || pass !== pass2 || !store.getLedger()}
             busyLabel={busy ? t("Encrypting…") : undefined}
           />
         </ActionGroup>

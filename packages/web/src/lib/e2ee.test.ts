@@ -22,9 +22,14 @@ import {
   encryptOp,
   encryptSnapshot,
   getDek,
+  getTierMeta,
   hydrate,
   isDekFromStore,
+  isDekValidForEpoch,
+  markDekValidated,
+  rehydrateKeysFromPeer,
   setDek,
+  setTierMeta,
 } from "./e2ee";
 import { clearLocalData, idbPut } from "./idb";
 import * as persist from "./persist";
@@ -131,7 +136,7 @@ describe("e2ee: DEK provenance survives a reload", () => {
 
   it("setDek (Unlock / enable / password change) is NOT a proof — not now, not after a reload", async () => {
     await hydrate(); // boot: no key on this device
-    setDek(generateDek()); // …unwrapped from the SESSION budget's key envelope
+    setDek(generateDek(), 1); // …unwrapped from the SESSION budget's key envelope
     expect(isDekFromStore()).toBe(false);
 
     await reload(); // the bug: hydrate() used to re-mark every persisted key as "store"
@@ -144,7 +149,7 @@ describe("e2ee: DEK provenance survives a reload", () => {
     // after setDek — so its body CAN run again in the SAME page load, with the key already in
     // IDB. It must not overwrite what setDek told us first-hand.
     await hydrate();
-    setDek(generateDek());
+    setDek(generateDek(), 1);
     await persist.flushed();
     __forgetHydrationForTests();
     await hydrate();
@@ -160,6 +165,82 @@ describe("e2ee: DEK provenance survives a reload", () => {
     await reload();
     expect(getDek()).toBeNull(); // the removal is durable too
     expect(isDekFromStore()).toBe(false);
+  });
+});
+
+/* ── The DEK lifecycle across an epoch change (review F1/F7) ──────────────
+ *
+ * A DEK is trusted ONLY for the epoch it was validated for. Adopting a new epoch (any 409
+ * body) leaves the key in memory but silently invalidates it; only an authenticated use under
+ * the new epoch's AAD (markDekValidated) restores trust. Peer tabs re-read the whole key
+ * state on the "keys" broadcast — the memoized hydrate alone would keep a dead key alive. */
+
+describe("e2ee: DEK validity is per-epoch", () => {
+  beforeEach(async () => {
+    __resetDekForTests();
+    await clearLocalData();
+  });
+
+  it("setDek records the validated epoch; a tierMeta epoch bump invalidates WITHOUT clearing", async () => {
+    await hydrate();
+    setTierMeta({ tier: "e2ee", epoch: 1 });
+    setDek(generateDek(), 1);
+    expect(isDekValidForEpoch(1)).toBe(true);
+    setTierMeta({ tier: "e2ee", epoch: 2 }); // a 409 body adopted the new generation
+    expect(getDek()).not.toBeNull(); // the key stays (it may still be re-validated)…
+    expect(isDekValidForEpoch(2)).toBe(false); // …but it may not touch the new epoch
+    expect(isDekValidForEpoch(1)).toBe(true); // (its own generation is still its own)
+  });
+
+  it("markDekValidated is the ONLY promotion to a new epoch, and it survives a reload", async () => {
+    await hydrate();
+    setDek(generateDek(), 1);
+    markDekValidated(2); // an authenticated decrypt under epoch 2 vouched for the key
+    expect(isDekValidForEpoch(2)).toBe(true);
+    await persist.flushed();
+    __resetDekForTests();
+    await hydrate();
+    expect(isDekValidForEpoch(2)).toBe(true); // durable — a reload must not regress trust
+  });
+
+  it("a key persisted WITHOUT a validation epoch (pre-lifecycle install) is NOT validated", async () => {
+    await idbPut("meta", generateDek(), "e2eeDek"); // old build: key, no e2eeDekEpoch
+    await hydrate();
+    expect(getDek()).not.toBeNull();
+    expect(isDekValidForEpoch(0)).toBe(false); // never trusted until an authenticated use
+    expect(isDekValidForEpoch(1)).toBe(false);
+  });
+
+  it("rehydrateKeysFromPeer drops this tab's in-memory key state and re-reads IDB (F7)", async () => {
+    await hydrate();
+    const oldDek = generateDek();
+    setDek(oldDek, 1); // this tab's stale in-memory state (dekTouched latch is now set)
+    await persist.flushed();
+
+    // ANOTHER tab rotated the generation and persisted the new state
+    const newDek = generateDek();
+    await idbPut("meta", newDek, "e2eeDek");
+    await idbPut("meta", "session", "e2eeDekOrigin");
+    await idbPut("meta", 2, "e2eeDekEpoch");
+    await idbPut("meta", 2, "e2eeEpoch");
+    await idbPut("meta", "e2ee", "e2eeTier");
+
+    await rehydrateKeysFromPeer(); // the "keys" broadcast handler
+    expect(Buffer.from(getDek()!).toString("hex")).toBe(Buffer.from(newDek).toString("hex"));
+    expect(isDekValidForEpoch(2)).toBe(true);
+    expect(getTierMeta()).toEqual({ tier: "e2ee", epoch: 2 });
+  });
+
+  it("clearDek forgets the validation epoch too", async () => {
+    await hydrate();
+    setDek(generateDek(), 3);
+    clearDek();
+    expect(isDekValidForEpoch(3)).toBe(false);
+    await persist.flushed();
+    __resetDekForTests();
+    await hydrate();
+    expect(getDek()).toBeNull();
+    expect(isDekValidForEpoch(3)).toBe(false);
   });
 });
 

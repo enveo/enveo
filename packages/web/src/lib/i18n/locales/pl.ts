@@ -93,6 +93,12 @@ export const pl: Dict = {
   // NEW (e2ee v2 upgrade) — do przejrzenia
   "Afterwards, other devices must unlock again with the new password or a fresh pairing code — old pairing codes stop working.":
     "Potem pozostałe urządzenia trzeba odblokować ponownie nowym hasłem albo świeżym kodem parowania — stare kody parowania przestają działać.",
+  "A previous upgrade attempt was interrupted before it could finish. Resume it to complete the upgrade with the password you chose then — a new password cannot be set until this attempt finishes or is discarded.":
+    "Poprzednia próba aktualizacji została przerwana, zanim zdążyła się zakończyć. Wznów ją, aby dokończyć aktualizację wybranym wtedy hasłem — nowego hasła nie da się ustawić, dopóki ta próba się nie zakończy albo nie zostanie odrzucona.",
+  "Resume upgrade": "Wznów aktualizację",
+  "Discard the unfinished attempt": "Odrzuć niedokończoną próbę",
+  "Discarding starts over with a fresh key. If the server had already completed the interrupted attempt, this device will ask you to unlock with the password you chose then.":
+    "Odrzucenie zaczyna od nowa ze świeżym kluczem. Jeśli serwer zdążył już dokończyć przerwaną próbę, to urządzenie poprosi o odblokowanie wybranym wtedy hasłem.",
   All: "Wszystkie",
   "All (Everyday + Savings)": "Wszystkie (codzienne + oszczędnościowe)",
   "All goals funded ✓": "Wszystkie cele sfinansowane ✓",

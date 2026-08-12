@@ -46,6 +46,7 @@ import {
   flushOutboxForSignOut,
   getLocalMode,
   getSyncStatus,
+  hasPendingE2eeUpgrade,
   markReplacePending,
   pushLocalToServer,
   recheckReplicaOwner,
@@ -53,6 +54,7 @@ import {
   retryBoot,
   subscribeSyncStatus,
   syncNow,
+  upgradeServerE2eeV2,
 } from "./sync";
 
 const BUDGET_A = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa";
@@ -115,6 +117,14 @@ let serverPullOps: Array<{ seq: number; opId: string; ciphertext: string }> = []
 let pushedCipherOps: Array<{ opId: string; ciphertext: string }> = [];
 /** LEGACY v1-format budget: every normal /api/sync2/* call answers 409 e2ee_upgrade_required. */
 let serverUpgradeRequired = false;
+/** The e2ee epoch the SESSION's budget currently sits at (the fake's tier_mismatch guard). */
+let serverEpoch = 1;
+/** Raw JSON bodies POSTed to /budget/e2ee/upgrade-v2 — F2 asserts retry bodies byte-identical. */
+let upgradeCalls: string[] = [];
+/** Simulate a network failure on the upgrade endpoint (fetch never completes). */
+let upgradeNetworkFail = false;
+/** Runs INSIDE the fake upgrade endpoint before it answers — a "second tab edits mid-ceremony". */
+let onUpgrade: (() => void) | null = null;
 const upgradeRequired = (): Response => conflict({ error: "e2ee_upgrade_required", tier: "e2ee", epoch: 1, cipherVersion: 1, budgetId: serverBudget });
 const realFetch = globalThis.fetch;
 const json = (body: unknown): Response => new Response(JSON.stringify(body), { status: 200, headers: { "content-type": "application/json" } });
@@ -169,6 +179,10 @@ beforeEach(async () => {
   serverPullOps = [];
   pushedCipherOps = [];
   serverUpgradeRequired = false;
+  serverEpoch = 1;
+  upgradeCalls = [];
+  upgradeNetworkFail = false;
+  onUpgrade = null;
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
     calls.push(url);
@@ -181,34 +195,40 @@ beforeEach(async () => {
         // POST = the CHECKPOINT UPLOAD: it overwrites the resolved budget's whole checkpoint
         // (blob + uptoSeq), so it carries the owner assertion just like /sync2/reset.
         if (init?.method === "POST") {
-          const body = JSON.parse(String(init.body ?? "{}")) as { userId?: string; uptoSeq: number; blob?: string };
+          const body = JSON.parse(String(init.body ?? "{}")) as { userId?: string; uptoSeq: number; blob?: string; epoch?: number };
+          if (body.epoch !== serverEpoch) return conflict({ error: "tier_mismatch", tier: "e2ee", epoch: serverEpoch });
           snapshotUploads.push(body);
           const refused = ownerMismatch(body.userId);
           if (refused) return refused;
           writes[serverBudget] = [...wrote(serverBudget), "snapshot"];
-          return json({ epoch: 1, uptoSeq: body.uptoSeq });
+          return json({ epoch: serverEpoch, uptoSeq: body.uptoSeq });
         }
-        return json({ budgetId: serverBudget, epoch: 1, wrappedDek: null, kdfParams: null, uptoSeq: 0, blob: serverBlob });
+        return json({ budgetId: serverBudget, epoch: serverEpoch, wrappedDek: null, kdfParams: null, uptoSeq: 0, blob: serverBlob });
       }
       if (url.startsWith("/api/sync2/push")) {
         const body = JSON.parse(String(init?.body ?? "{}")) as {
           budgetId?: string;
+          epoch?: number;
           ops: Array<{ opId: string; ciphertext: string }>;
         };
+        // the REAL route checks the epoch BEFORE anything is written or recorded
+        if (body.epoch !== serverEpoch) return conflict({ error: "tier_mismatch", tier: "e2ee", epoch: serverEpoch });
         pushedCipherOps.push(...body.ops);
         const refused = budgetMismatch(body.budgetId);
         if (refused) return refused;
         writes[serverBudget] = [...wrote(serverBudget), ...body.ops.map((o) => o.opId)];
         onPush?.(); // a session swap lands BETWEEN two batches of the same push loop
-        return json({ cursor: 1, epoch: 1 });
+        return json({ cursor: 1, epoch: serverEpoch });
       }
       if (url.startsWith("/api/sync2/pull")) {
         onPull?.(); // a session swap lands between the identity check and the pull's answer
+        const reqEpoch = Number(new URLSearchParams(url.split("?")[1] ?? "").get("epoch"));
+        if (reqEpoch !== serverEpoch) return conflict({ error: "tier_mismatch", tier: "e2ee", epoch: serverEpoch });
         if (serverPullOps.length > 0) {
           const cursor = serverPullOps[serverPullOps.length - 1]!.seq;
-          return json({ cursor, epoch: 1, ops: serverPullOps });
+          return json({ cursor, epoch: serverEpoch, ops: serverPullOps });
         }
-        return json({ cursor: serverE2eeCursor, epoch: 1, ops: [] });
+        return json({ cursor: serverE2eeCursor, epoch: serverEpoch, ops: [] });
       }
       if (url.startsWith("/api/sync2/reset")) {
         const body = JSON.parse(String(init?.body ?? "{}")) as { userId?: string };
@@ -219,6 +239,19 @@ beforeEach(async () => {
         writes[serverBudget] = [...wrote(serverBudget), "reset"];
         return json({ epoch: 1, uptoSeq: 0 });
       }
+    }
+    if (url.startsWith("/api/budget/e2ee/upgrade-v2")) {
+      const rawBody = String(init?.body ?? "{}");
+      upgradeCalls.push(rawBody); // recorded BEFORE any simulated failure — F2 compares bodies
+      if (upgradeNetworkFail) throw new TypeError("network failure mid-ceremony");
+      const body = JSON.parse(rawBody) as { expectedEpoch: number; userId?: string };
+      if (body.expectedEpoch !== serverEpoch) return conflict({ error: "tier_mismatch", tier: "e2ee", epoch: serverEpoch });
+      const refused = ownerMismatch(body.userId);
+      if (refused) return refused;
+      onUpgrade?.(); // a second tab edits while the ceremony's request is in flight
+      serverEpoch = body.expectedEpoch + 1; // the fake commits: new generation
+      writes[serverBudget] = [...wrote(serverBudget), "upgrade-v2"];
+      return json({ budgetId: serverBudget, epoch: serverEpoch, cipherVersion: 2, uptoSeq: 0 });
     }
     if (url.startsWith("/api/sync/push")) {
       const body = JSON.parse(String(init?.body ?? "{}")) as { budgetId?: string; ops: SyncOp[] };
@@ -1018,7 +1051,7 @@ describe("sync boot: a leftover `planned` transaction is swept before the replic
 describe("sync e2ee: the checkpoint upload carries the verified owner", () => {
   const e2eeReplicaDue = () => {
     e2ee.setTierMeta({ tier: "e2ee", epoch: 1 });
-    e2ee.setDek(generateDek());
+    e2ee.setDek(generateDek(), 1); // validated for the epoch the fixture runs at
     e2ee.noteOpsSeen(e2ee.SNAPSHOT_EVERY_OPS); // the checkpoint threshold is due
     serverE2eeCursor = 5; // the journal moved past the client's cursor → the pull body is non-trivial
   };
@@ -1077,7 +1110,7 @@ describe("sync e2ee v2: encryption context discipline", () => {
     serverBudget = BUDGET_V2;
     store.replace(emptyLedger(), 0, BUDGET_V2);
     e2ee.setTierMeta({ tier: "e2ee", epoch });
-    e2ee.setDek(dek);
+    e2ee.setDek(dek, 1); // validated for the fixture's epoch
   };
 
   it("push encrypts under the replica's exact (budgetId, epoch) and NAMES the budget", async () => {
@@ -1169,6 +1202,127 @@ describe("sync e2ee v2: encryption context discipline", () => {
   });
 });
 
+/* ── The DEK lifecycle across an epoch change (review F1/F2/F3/F5) ──────────
+ *
+ * One design, not three patches: adopting a NEW epoch (any 409 body) invalidates trust in the
+ * held DEK until an authenticated use under the new generation re-validates it; validation
+ * failure drops the key and lands on Unlock; NO op is ever encrypted with an unvalidated key;
+ * and the upgrade ceremony persists its materials so a retry is byte-identical. */
+
+describe("sync e2ee v2: DEK lifecycle across an epoch change", () => {
+  const BUDGET_V2 = "aaaaaaaa-0000-4000-8000-0000000000aa";
+  const oldDek = generateDek();
+  const stampedReplica = async (epoch: number) => {
+    await idbPut("meta", "user-A", "userId");
+    session = { user: { id: "user-A" } };
+    serverBudget = BUDGET_V2;
+    store.replace({ ...emptyLedger(), categories: [{ id: crypto.randomUUID(), name: "pre-existing" }] }, 3, BUDGET_V2);
+    e2ee.setTierMeta({ tier: "e2ee", epoch });
+    e2ee.setDek(oldDek, epoch); // validated for the CURRENT generation
+  };
+
+  it("F1/F3: a key rotation on another device ends on Unlock — never a poisoned push or an error loop", async () => {
+    await stampedReplica(1);
+    const queued = catOp();
+    outbox.add(queued);
+    // ANOTHER device ran the upgrade: epoch 2, new DEK, new checkpoint
+    const newDek = generateDek();
+    serverEpoch = 2;
+    serverBlob = await e2ee.encryptSnapshot(emptyLedger(), newDek, { budgetId: BUDGET_V2, epoch: 2, uptoSeq: 0 });
+
+    await syncNow("test");
+
+    // the push met the epoch 409 BEFORE anything was stored; bootstrap then found a checkpoint
+    // the held key cannot open → trust is over: key dropped, Unlock takes the screen
+    expect(pushedCipherOps).toEqual([]); // nothing under the dead key ever reached the journal
+    expect(wrote(BUDGET_V2)).toEqual([]);
+    expect(store.getBootStatus()).toBe("locked"); // the Unlock screen — not a silent error loop
+    expect(e2ee.getDek()).toBeNull(); // the dead key is gone (memory AND IDB)
+    expect(outbox.size()).toBe(1); // the queued edit survives — it pushes under the NEW key
+    expect(store.getLedger()!.categories.map((c) => c.name)).toEqual(["pre-existing"]); // mirror untouched
+  });
+
+  it("F1 precondition: an ADOPTED epoch alone never pushes — the unvalidated key locks the engine", async () => {
+    await stampedReplica(1);
+    outbox.add(catOp());
+    // a 409 body was adopted somewhere (tierMeta moved), but NOTHING re-validated the key
+    e2ee.setTierMeta({ tier: "e2ee", epoch: 2 });
+    serverEpoch = 2;
+
+    await syncNow("test");
+
+    expect(called("/api/sync2/push")).toBe(false); // the hard precondition: no encrypt, no network
+    expect(store.getBootStatus()).toBe("locked");
+    expect(outbox.size()).toBe(1);
+  });
+
+  it("F2: a ceremony retry re-sends the byte-identical body — the interrupted attempt's materials win", async () => {
+    await stampedReplica(1);
+    e2ee.setCipherVersion(1); // a legacy budget awaiting the ceremony
+    upgradeNetworkFail = true;
+
+    await expect(upgradeServerE2eeV2("ceremony-pass-123")).rejects.toThrow();
+    expect(await hasPendingE2eeUpgrade()).toBe(true); // the intent survived the network failure
+    expect(upgradeCalls).toHaveLength(1);
+
+    // adoptions in between (409 bodies from other channels) must not clobber the intent
+    e2ee.setTierMeta({ tier: "e2ee", epoch: 7 });
+
+    upgradeNetworkFail = false;
+    await upgradeServerE2eeV2(null); // RESUME — no new password, no new materials
+
+    expect(upgradeCalls).toHaveLength(2);
+    expect(upgradeCalls[1]).toBe(upgradeCalls[0]); // byte-identical: the server's idempotency branch is reachable
+    expect(await hasPendingE2eeUpgrade()).toBe(false); // fulfilled
+    expect(e2ee.getTierMeta()).toEqual({ tier: "e2ee", epoch: 2 }); // expectedEpoch(1)+1 — from the RECORD
+    expect(e2ee.isDekValidForEpoch(2)).toBe(true); // the SAME DEK, validated for the new generation
+    expect(e2ee.getCipherVersion()).toBe(2);
+  });
+
+  it("F2: a stale-epoch refusal drops the intent (it can never commit) — a fresh attempt may start over", async () => {
+    await stampedReplica(1);
+    e2ee.setCipherVersion(1);
+    upgradeNetworkFail = true;
+    await expect(upgradeServerE2eeV2("ceremony-pass-123")).rejects.toThrow();
+    upgradeNetworkFail = false;
+    serverEpoch = 5; // ANOTHER device changed the generation meanwhile
+
+    await expect(upgradeServerE2eeV2(null)).rejects.toThrow("tier_mismatch");
+
+    expect(await hasPendingE2eeUpgrade()).toBe(false); // authoritatively dead — dropped
+  });
+
+  it("F5: an edit made in another tab DURING the ceremony survives commit and pushes under the new epoch", async () => {
+    await stampedReplica(1);
+    e2ee.setCipherVersion(1);
+    const before = catOp();
+    store.applyLocal(before);
+    outbox.add(before); // captured by the ceremony's snapshot
+    const late = catOp();
+    onUpgrade = () => {
+      // a second tab commits an edit while the ceremony's request is in flight
+      store.applyLocal(late);
+      outbox.add(late);
+      onUpgrade = null;
+    };
+
+    await upgradeServerE2eeV2("ceremony-pass-123");
+
+    // commit acked EXACTLY the captured ops — the late edit is still queued and still visible
+    expect(outbox.size()).toBe(1);
+    expect(outbox.snapshot()[0]!.op.opId).toBe(late.opId);
+    const names = store.getLedger()!.categories.map((c) => c.name);
+    expect(names).toContain("Food"); // both catOps create "Food" — assert by id below
+    expect(store.getLedger()!.categories).toHaveLength(3); // pre-existing + before + late (no wipe)
+
+    await syncNow("test"); // the late op goes out under the NEW generation with the NEW key
+    expect(outbox.size()).toBe(0);
+    expect(wrote(BUDGET_V2)).toContain(late.opId);
+    const pushed = pushedCipherOps.find((r) => r.opId === late.opId);
+    expect(pushed).toBeDefined(); // encrypted at push time — after the DEK swap, valid for epoch 2
+  });
+});
+
 /* ── A 401 outside a cycle must reach the Login screen too ─────────────── */
 
 describe("sync: 401 on an out-of-cycle write routes to Login", () => {
@@ -1199,7 +1353,7 @@ describe("sync: 401 on an out-of-cycle write routes to Login", () => {
 describe("sync cycle: e2ee replica with no owner stamp", () => {
   it("an unproven e2ee budget is neither pushed to nor reset (and not wiped either)", async () => {
     e2ee.setTierMeta({ tier: "e2ee", epoch: 1 });
-    e2ee.setDek(new Uint8Array(32));
+    e2ee.setDek(new Uint8Array(32), 1); // validated for the fixture's epoch
     outbox.add(catOp()); // queued ops (plaintext, waiting to be encrypted at push)
     markReplacePending(); // …and a pending full replace of the server
     session = { user: { id: "user-B" } };
@@ -1218,7 +1372,7 @@ describe("sync cycle: e2ee replica with no owner stamp", () => {
     // PLAIN. The 409 must not escape into handleTierFlip: that re-bootstraps from B's budget
     // and replays A's plaintext outbox onto it, which the next cycle would push.
     e2ee.setTierMeta({ tier: "e2ee", epoch: 1 });
-    e2ee.setDek(new Uint8Array(32));
+    e2ee.setDek(new Uint8Array(32), 1); // validated for the fixture's epoch
     store.replace(emptyLedger(), 0, ""); // no budgetId to compare against
     outbox.add(catOp());
     session = { user: { id: "user-B" } };
@@ -1287,7 +1441,7 @@ describe("sync: the e2ee ownership proof and the DEK's provenance", () => {
     const dekOfB = generateDek();
     serverBlob = await e2ee.encryptSnapshot(emptyLedger(), dekOfB, { budgetId: BUDGET_B, epoch: 1, uptoSeq: 0 }); // B's checkpoint, B's key
     legacyE2eeReplica(); // …but the replica on this device is A's
-    e2ee.setDek(dekOfB); // Unlock / password change under B's session
+    e2ee.setDek(dekOfB, 1); // Unlock / password change under B's session
     outbox.add(catOp()); // A's unsent op
     markReplacePending(); // …and A's pending full replace of the server
     session = { user: { id: "user-B" } };
@@ -1339,7 +1493,7 @@ describe("sync: full-budget overwrites carry the verified owner", () => {
 
   it("/sync2/reset names the verified user, and a mid-upload sign-in as B is refused", async () => {
     e2ee.setTierMeta({ tier: "e2ee", epoch: 1 });
-    e2ee.setDek(generateDek());
+    e2ee.setDek(generateDek(), 1);
     await idbPut("meta", "user-A", "userId");
     session = { user: { id: "user-A" } };
     onOverwrite = () => {

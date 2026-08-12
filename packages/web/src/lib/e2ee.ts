@@ -85,6 +85,17 @@ let dekOrigin: DekOrigin | null = null;
  * overwrite the provenance we know first-hand with what happens to sit in IDB.
  */
 let dekTouched = false;
+/**
+ * The epoch the held DEK was last VALIDATED for — null = never validated. A DEK is trusted
+ * for encryption/decryption ONLY while dekEpoch === tierMeta.epoch: adopting a NEW epoch
+ * (any 409 body) leaves the key in memory but silently invalidates it, and it must be
+ * re-validated against the new generation (an authenticated envelope unwrap on Unlock, or a
+ * checkpoint decrypt in bootstrap/ownership proof) before any op is encrypted or decrypted
+ * with it. Without this, a device that missed a key rotation would keep encrypting under the
+ * DEAD key at the new epoch — the blind server accepts, and every CORRECT device's fail-closed
+ * pull then freezes forever. Durable ("e2eeDekEpoch"), like the key and its provenance.
+ */
+let dekEpoch: number | null = null;
 let tierMeta: TierMeta = { tier: "plain", epoch: 0 };
 let cipherVersion: CipherVersion = 2;
 let opsSinceSnap = 0;
@@ -99,13 +110,14 @@ let hydratePromise: Promise<void> | null = null;
 export function hydrate(): Promise<void> {
   if (!hydratePromise) {
     const p = (async () => {
-      const [d, o, t, e, n, cv] = await Promise.all([
+      const [d, o, t, e, n, cv, de] = await Promise.all([
         idbGet<Uint8Array | ArrayBuffer>("meta", "e2eeDek"),
         idbGet<DekOrigin>("meta", "e2eeDekOrigin"),
         idbGet<Tier>("meta", "e2eeTier"),
         idbGet<number>("meta", "e2eeEpoch"),
         idbGet<number>("meta", "e2eeOpsSinceSnap"),
         idbGet<number>("meta", "e2eeCipherVersion"),
+        idbGet<number>("meta", "e2eeDekEpoch"),
       ]);
       // The key state of THIS page load wins over IDB: setDek/clearDek already told us the
       // provenance first-hand (and a re-run of hydrate must not launder it into "store").
@@ -117,6 +129,9 @@ export function hydrate(): Promise<void> {
         // A key persisted by setDek() carries its origin; one persisted by a pre-2.0 build
         // does not — and that one DID come with the replica (there were no accounts yet).
         dekOrigin = dek ? (o === "session" ? "session" : "store") : null;
+        // No recorded validation epoch (a pre-lifecycle install) = NOT validated: the key may
+        // not encrypt anything until an authenticated unwrap/checkpoint decrypt vouches for it.
+        dekEpoch = dek && typeof de === "number" ? de : null;
       }
       if (t === "plain" || t === "e2ee") tierMeta = { tier: t, epoch: e ?? 0 };
       cipherVersion = cv === 1 ? 1 : 2; // absent = 2 (fresh installs and every post-upgrade budget)
@@ -150,27 +165,63 @@ export const isDekFromStore = (): boolean => dek !== null && dekOrigin === "stor
  * persisted alongside it: such a key is NOT evidence of the replica's ownership, now or after
  * any number of reloads.
  */
-export function setDek(next: Uint8Array): void {
+export function setDek(next: Uint8Array, validEpoch: number): void {
   dek = next;
   dekOrigin = "session";
+  dekEpoch = validEpoch;
   dekTouched = true;
   void persist.putMeta("e2eeDek", next);
   void persist.putMeta("e2eeDekOrigin", "session");
+  void persist.putMeta("e2eeDekEpoch", validEpoch);
+}
+
+/** The epoch the held DEK was last validated for (null = never). */
+export const getDekEpoch = (): number | null => dekEpoch;
+
+/** Is the held DEK VALIDATED for `epoch`? The hard precondition of every encrypt/decrypt path. */
+export const isDekValidForEpoch = (epoch: number): boolean => dek !== null && dekEpoch === epoch;
+
+/**
+ * Record a successful AUTHENTICATED use of the held DEK under `epoch` (an envelope unwrap or a
+ * checkpoint decrypt whose AAD carried that epoch) — the only way a key becomes trusted for a
+ * generation it was not handed out for.
+ */
+export function markDekValidated(epoch: number): void {
+  if (!dek) return;
+  dekEpoch = epoch;
+  dekTouched = true;
+  void persist.putMeta("e2eeDekEpoch", epoch);
 }
 
 /** Remove the DEK (disabling E2EE / "forget the key"). */
 export function clearDek(): void {
   dek = null;
   dekOrigin = null;
+  dekEpoch = null;
   dekTouched = true;
   void persist.putMeta("e2eeDek", null);
   void persist.putMeta("e2eeDekOrigin", null);
+  void persist.putMeta("e2eeDekEpoch", null);
+}
+
+/**
+ * A PEER TAB changed the key generation (upgrade / enable / disable / unlock — the "keys"
+ * broadcast): drop this tab's in-memory key state and re-read everything from IDB. The plain
+ * "updated" rehydrate re-reads only the LEDGER, and hydrate() is memoized with dekTouched
+ * blocking a re-read — without this a second tab keeps a dead DEK and the old epoch in memory
+ * and pushes poison under the new generation.
+ */
+export async function rehydrateKeysFromPeer(): Promise<void> {
+  dekTouched = false;
+  hydratePromise = null;
+  await hydrate();
 }
 
 /** Test hook (unit tests only): forget the key state, so hydrate() re-runs as on a fresh load. */
 export function __resetDekForTests(): void {
   dek = null;
   dekOrigin = null;
+  dekEpoch = null;
   dekTouched = false;
   hydratePromise = null;
 }
@@ -276,6 +327,7 @@ export function resetOpsCounter(): void {
 export async function maybeUploadSnapshot(ledger: ClientLedger | null, cursor: number, userId: string, budgetId: string): Promise<void> {
   if (opsSinceSnap < SNAPSHOT_EVERY_OPS) return;
   if (!dek || !ledger || tierMeta.tier !== "e2ee" || !budgetId) return;
+  if (dekEpoch !== tierMeta.epoch) return; // never encrypt with a key not validated for this epoch
   const blob = await encryptSnapshot(ledger, dek, { budgetId, epoch: tierMeta.epoch, uptoSeq: cursor });
   const res = await fetch("/api/sync2/snapshot", {
     method: "POST",

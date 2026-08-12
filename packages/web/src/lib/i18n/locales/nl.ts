@@ -15,6 +15,8 @@ export const nl: Dict = {
   "3 mo": "3 mnd",
   "6 mo": "6 mnd",
   "= {amount}": "= {amount}",
+  "A previous upgrade attempt was interrupted before it could finish. Resume it to complete the upgrade with the password you chose then — a new password cannot be set until this attempt finishes or is discarded.":
+    "Een eerdere upgradepoging is onderbroken voordat die kon worden afgerond. Hervat die om de upgrade af te ronden met het wachtwoord dat je toen koos — een nieuw wachtwoord kan pas worden ingesteld als deze poging is afgerond of verworpen.",
   "A profile with this name already exists.": "Er bestaat al een profiel met deze naam.",
   AI: "AI",
   "AI (corrected)": "AI (gecorrigeerd)",
@@ -180,6 +182,9 @@ export const nl: Dict = {
   "Disable end-to-end encryption?": "Eind-tot-eindversleuteling uitschakelen?",
   "Disabling…": "Bezig met uitschakelen…",
   Discard: "Verwerpen",
+  "Discard the unfinished attempt": "De onafgemaakte poging verwerpen",
+  "Discarding starts over with a fresh key. If the server had already completed the interrupted attempt, this device will ask you to unlock with the password you chose then.":
+    "Verwerpen begint opnieuw met een verse sleutel. Als de server de onderbroken poging al had afgerond, vraagt dit apparaat je te ontgrendelen met het wachtwoord dat je toen koos.",
   "Discreet mode": "Discrete modus",
   "Distributes the amount only to envelopes in the red — proportionally to shortfalls, never past zero.":
     "Verdeelt het bedrag alleen over enveloppen die in het rood staan — naar rato van het tekort, nooit voorbij nul.",
@@ -381,6 +386,7 @@ export const nl: Dict = {
   Restore: "Herstellen",
   "Resume it in the “Advanced” section.": "Hervat die in het gedeelte ‘Geavanceerd’.",
   "Resume sync? Local changes will be sent to the server.": "Synchronisatie hervatten? Lokale wijzigingen worden naar de server gestuurd.",
+  "Resume upgrade": "Upgrade hervatten",
   "Resuming…": "Bezig met hervatten…",
   SPENT: "UITGEGEVEN",
   Save: "Opslaan",

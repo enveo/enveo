@@ -6,7 +6,7 @@ import { decodePairing, dekWrapAadContext, deriveKek, type KdfParams, unwrapDek 
 import * as e2ee from "../lib/e2ee";
 import { useT } from "../lib/i18n";
 import { store } from "../lib/store";
-import { retryBoot } from "../lib/sync";
+import { broadcastKeysChanged, retryBoot } from "../lib/sync";
 import { CORAL, font, TEAL } from "../lib/theme";
 import { E2eeUpgradePanel } from "./settings/E2eeUpgradePanel";
 
@@ -89,7 +89,10 @@ async function acceptDek(dek: Uint8Array, snap: Snap2, expectedBudgetId: string)
   }
   e2ee.setTierMeta({ tier: "e2ee", epoch: snap.epoch });
   e2ee.setCipherVersion(2);
-  e2ee.setDek(dek);
+  // Validated for exactly this epoch: the envelope unwrap (password path) or the checkpoint
+  // decrypt above carried this epoch in its authenticated context.
+  e2ee.setDek(dek, snap.epoch);
+  void broadcastKeysChanged(); // other live tabs drop their stale key state
   await retryBoot();
 }
 
