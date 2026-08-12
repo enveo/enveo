@@ -462,6 +462,8 @@ export const ptBR: Dict = {
   "The local copy — including any unsent changes — will be permanently removed from this device. If this is the only copy of that budget, download a backup first.":
     "A cópia local — inclusive as mudanças não enviadas — será removida definitivamente deste dispositivo. Se esta for a única cópia desse orçamento, baixe um backup antes.",
   "The local replica is not ready.": "A réplica local não está pronta.",
+  "The monthly AI allowance for this account is used up — it resets at the start of the next month (UTC). You can keep using AI right away with your own key in Settings → Artificial intelligence.":
+    "O limite mensal de IA desta conta foi esgotado — ele se renova no início do próximo mês (UTC). Você pode continuar usando a IA imediatamente com sua própria chave em Configurações → Inteligência artificial.",
   "The password must be at least 8 characters.": "A senha precisa ter pelo menos 8 caracteres.",
   "The proposal exceeds “To be budgeted” — uncheck or reduce items.": "A proposta ultrapassa “A orçar” — desmarque ou reduza itens.",
   "The server has no OpenAI key configured — server mode is unavailable. Use your own key or keep AI off.":

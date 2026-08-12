@@ -79,6 +79,11 @@ const ERROR_KEYS: Record<string, Message> = {
      server routes (openaiHttp.ts classification) and from our own transport (openai.ts, http()). */
   ai_timeout: msg("The AI service took too long to answer — nothing was changed. Try again in a moment."),  
   ai_unreachable: msg("Could not reach the AI service — check the network connection and try again."),  
+  /* Cloud per-user spend budget (429 from every operator-key AI route): the server sends only
+     the machine code + retryAfterSeconds — never the recorded spend. One whole phrase. */
+  ai_budget_exhausted: msg(
+    "The monthly AI allowance for this account is used up — it resets at the start of the next month (UTC). You can keep using AI right away with your own key in Settings → Artificial intelligence.",
+  ),
   backup_invalid: msg("This is not a valid backup file — nothing was loaded."), // /sync/replace — the payload is not a ledger
   foreign_ref: msg("The data references records that do not exist here (a corrupted or foreign file). Nothing was changed."),  
   budget_mismatch: msg("The signed-in account changed while the data was being sent — nothing was written. Reload the app and try again."),  
