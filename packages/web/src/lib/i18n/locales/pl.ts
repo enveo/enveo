@@ -234,7 +234,7 @@ export const pl: Dict = {
   "Generating…": "Generuję…",
   "Goals": "Cele",
   "Good": "Dobre",
-  "Groceries": "Jedzenie",
+  "Groceries": "Spożywcze",
   "Group": "Grupa",
   "Group: {name}": "Grupa: {name}",
   "Group…": "Grupa…",
