@@ -4,12 +4,11 @@ import { useSettings, useTheme } from "../lib/contexts";
 import { relSync } from "../lib/dates";
 import * as e2ee from "../lib/e2ee";
 import { useT, type Message, msg } from "../lib/i18n";
-import { Ico } from "../lib/icons";
-import { useInstall } from "../lib/installPrompt";
+import { D_INSTALL, Ico } from "../lib/icons";
+import { isInstallable, useInstall } from "../lib/installPrompt";
 import { P, tint } from "../lib/theme";
 import type { ScreenId } from "../components/chrome";
 import { useBand } from "../components/kit";
-import { InstallSheet } from "../components/InstallSheet";
 import { APP_VERSION, buildLabel } from "../lib/version";
 import { AiSection } from "./settings/Ai";
 import { AdvancedSection } from "./settings/Advanced";
@@ -40,7 +39,13 @@ function Glyph({ color, children }: { color: string; children: ReactNode }) {
   );
 }
 
-export function SettingsScreen({ onNav }: { onNav: (s: ScreenId) => void }) {
+/**
+ * `onInstall` opens App's install sheet — App is the SOLE owner and renderer of the
+ * InstallSheet host (M7): the Drawer entry and the hub card below call the same callback, so
+ * at most one dialog can ever exist and the appinstalled transition closes the one host.
+ * Explicit props, not a store/context: two entry points, and App already owns the lifetime.
+ */
+export function SettingsScreen({ onNav, onInstall }: { onNav: (s: ScreenId) => void; onInstall: () => void }) {
   const C = useTheme();
   const { t } = useT();
   const { band, hc } = useBand();
@@ -83,7 +88,7 @@ export function SettingsScreen({ onNav }: { onNav: (s: ScreenId) => void }) {
       </div>
 
       {sub === null ? (
-        <Hub onOpen={go} />
+        <Hub onOpen={go} onInstall={onInstall} />
       ) : (
         <div key={sub} className="fi" style={{ padding: `0 ${P + 2}px` }}>{/* fi, not fu: transform on an ancestor breaks position:fixed sheets (e.g. the E2EE wizard) */}
           {sub === "appearance" && <AppearanceSection />}
@@ -99,12 +104,11 @@ export function SettingsScreen({ onNav }: { onNav: (s: ScreenId) => void }) {
 
 /* ── Hub: category cards with statuses (per mock S2) ────────────────── */
 
-function Hub({ onOpen }: { onOpen: (s: SubId) => void }) {
+function Hub({ onOpen, onInstall }: { onOpen: (s: SubId) => void; onInstall: () => void }) {
   const C = useTheme();
   const { t } = useT();
   const { settings } = useSettings();
   const { state: installState } = useInstall();
-  const [sheet, setSheet] = useState(false);
   const isDark = settings.themeMode === "auto"
     ? typeof window !== "undefined" && window.matchMedia("(prefers-color-scheme: dark)").matches
     : settings.themeMode === "dark";
@@ -114,21 +118,24 @@ function Hub({ onOpen }: { onOpen: (s: SubId) => void }) {
   const catAi = isDark ? "#e0aa58" : "#d99a3f";
   const catData = isDark ? "#8fa2cc" : "#1d2a47";
   const catSync = isDark ? "#6cbf9b" : "#4fa583";
+  // one color per category is the hub's visual language — install gets its OWN token
+  // (violet), not a reuse of the Data navy (M10)
+  const catInstall = isDark ? "#a89bdd" : "#6f5bb5";
 
   return (
     <div className="fi" style={{ padding: "2px 14px", display: "flex", flexDirection: "column", gap: 9 }}>
-      {installState !== "installed" && installState !== "unavailable" && (
+      {isInstallable(installState) && (
         <HubCard
-          tint={tint(catData, 0.1)}
+          tint={tint(catInstall, 0.1)}
           icon={
-            <Glyph color={catData}>
-              <path d="M12 4v10 M8 10l4 4 4-4 M5 20h14" />
+            <Glyph color={catInstall}>
+              <path d={D_INSTALL} />
             </Glyph>
           }
           title={t("Install app")}
           desc={t("Add Enveo to your home screen")}
           status={null}
-          onClick={() => setSheet(true)}
+          onClick={onInstall}
         />
       )}
       <HubCard
@@ -206,7 +213,6 @@ function Hub({ onOpen }: { onOpen: (s: SubId) => void }) {
         {`Enveo v${APP_VERSION}`}
         {buildLabel() ? ` · ${buildLabel()}` : ""}
       </div>
-      <InstallSheet show={sheet} onClose={() => setSheet(false)} />
     </div>
   );
 }

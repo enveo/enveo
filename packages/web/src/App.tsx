@@ -198,7 +198,7 @@ export default function App() {
               {screen === "accounts" && <AccountsScreen state={state} onMenu={() => setDrawer(true)} />}
               {screen === "reports" && <ReportsScreen state={state} month={month} view={reportsView} onView={setReportsView} onOpenEnvelope={openEnvelope} onFillGoals={openBudgetFillGoals} onMenu={() => setDrawer(true)} onPrev={prev} onNext={next} />}
               {screen === "addExpense" && <AddScreen state={state} editTxn={editTxn} onDone={doneEdit} initialTab={addPreset.tab} initialImport={addPreset.importSheet} />}
-              {screen === "settings" && <SettingsScreen onNav={nav} />}
+              {screen === "settings" && <SettingsScreen onNav={nav} onInstall={() => setInstallSheet(true)} />}
             </>
           )}
         </div>

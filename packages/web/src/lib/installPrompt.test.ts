@@ -1,4 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
+import { readdirSync, readFileSync } from "node:fs";
+import { join } from "node:path";
 import { getInstallState, initInstallPrompt, installState, isInstallable, promptInstall, runPrompt, type InstallState } from "./installPrompt";
 
 const ANDROID = "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 Chrome/126 Mobile Safari/537.36";
@@ -50,6 +52,21 @@ describe("isInstallable", () => {
     for (const [state, expected] of Object.entries(verdicts)) {
       expect(isInstallable(state as InstallState)).toBe(expected);
     }
+  });
+});
+
+/**
+ * M7: exactly ONE install-sheet host, owned by App. A second InstallSheet renderer
+ * (Settings used to keep its own) doubles the dialog and reopens the empty-chrome gap
+ * M5 closed — this scan keeps one from coming back anywhere in src/. It matches the JSX
+ * form only, so importing the component or naming it in prose stays legal.
+ */
+describe("single install-sheet host", () => {
+  it("App.tsx is the only file rendering an InstallSheet element", () => {
+    const SRC = join(import.meta.dir, "..");
+    const files = readdirSync(SRC, { recursive: true, encoding: "utf8" }).filter((f) => /\.tsx?$/.test(f));
+    const renderers = files.filter((f) => /<InstallSheet[\s/>]/.test(readFileSync(join(SRC, f), "utf8")));
+    expect(renderers).toEqual(["App.tsx"]);
   });
 });
 

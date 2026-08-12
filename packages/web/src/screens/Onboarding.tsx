@@ -10,7 +10,7 @@
  * All writes go through the existing local-first path (mirror + outbox).
  * On completion we call onDone — App removes the wizard and shows Start.
  */
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { AmountPadHost, type AmountPadTarget } from "../components/AmountPadSheet";
 import { LogoMark } from "../components/chrome";
 import { markInstallOffered } from "../components/InstallBanner";
@@ -21,7 +21,7 @@ import { SUPPORTED_CURRENCIES, browserLocales, wizardCurrency } from "../lib/cur
 import { fmtSignedTrim } from "../lib/amount";
 import { parseAmount } from "../lib/format";
 import { loadLocale, LOCALES, useT, type Lang, type Message } from "../lib/i18n";
-import { useInstall } from "../lib/installPrompt";
+import { getInstallState, isInstallable, useInstall } from "../lib/installPrompt";
 import { local } from "../lib/mutate";
 import { customEnvelopeStyle, TEMPLATE } from "../lib/onboardingTemplate";
 import { store } from "../lib/store";
@@ -79,13 +79,6 @@ export function OnboardingScreen({ onDone }: { onDone: () => void }) {
   // Once the budget exists, offer the install step only where it is actually possible;
   // otherwise leave straight away — the card must never block completion.
   const { state: installState } = useInstall();
-  // tryDemo is async (awaits demoSeed + fullResync) — a beforeinstallprompt/appinstalled
-  // event can land mid-flight, so finish() must read the LIVE state, not the value closed
-  // over at click time. The ref is kept in sync with the hook on every render.
-  const installStateRef = useRef(installState);
-  useEffect(() => {
-    installStateRef.current = installState;
-  }, [installState]);
   const [showInstall, setShowInstall] = useState(false);
   // The card IS the one-time install offer. Marking it as made keeps the banner from sliding up
   // on Start seconds later, asking the same thing again.
@@ -94,10 +87,19 @@ export function OnboardingScreen({ onDone }: { onDone: () => void }) {
     onDone();
   };
   const finish = () => {
-    const s = installStateRef.current;
-    if (s === "promptable" || s === "ios-safari" || s === "ios-other") setShowInstall(true);
+    // tryDemo is async (awaits demoSeed + fullResync) — a beforeinstallprompt/appinstalled
+    // event can land mid-flight, so read the LIVE store state (non-hook getter), not the
+    // value the hook closed over at click time.
+    if (isInstallable(getInstallState())) setShowInstall(true);
     else onDone();
   };
+  // M5: `appinstalled` while the card is open (e.g. Chrome's omnibox install) — the offer
+  // succeeded; InstallBody would render null under the heading. Finish exactly like the
+  // card's own paths do.
+  useEffect(() => {
+    if (showInstall && !isInstallable(installState)) doneWithInstall();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showInstall, installState]);
 
   // step 0 — currency. PRESELECTED from the browser locale (the budget row still carries the bare
   // server default at this point); the pick lives in local state and is written to the ledger when

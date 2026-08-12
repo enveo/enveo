@@ -97,6 +97,9 @@ export const ICON_CATEGORIES: Array<{ label: Message; icons: string[] }> = [
   { label: msg("Other"), icons: ["star", "umbrella", "globe", "calendar", "shield", "leaf", "envelope"] },
 ];
 
+/** Install glyph (arrow into a tray) — ONE home; drawn by the Drawer row and the Settings hub card. */
+export const D_INSTALL = "M12 4v10 M8 10l4 4 4-4 M5 20h14";
+
 export function Glyph({ name, size = 20, color, sw = 1.7 }: { name: string; size?: number; color: string; sw?: number }) {
   const paths = ICONS[name] ?? ICONS.wallet!;
   // stroke via style, not an attribute — var(--accent) etc. does not work in SVG presentation attributes.
