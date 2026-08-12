@@ -444,6 +444,7 @@ export const ptBR: Dict = {
   "Transactions": "Transações",
   "Transfer": "Transferência",
   "Transport": "Transporte",
+  "Trust this device — remember my data and sign-in": "Confiar neste dispositivo — lembrar meus dados e meu login",
   "Try again": "Tentar de novo",
   "Try it with sample data": "Testar com dados de exemplo",
   "Turn off local mode": "Desligar o modo local",

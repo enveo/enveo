@@ -444,6 +444,7 @@ export const cs: Dict = {
   "Transactions": "Transakce",
   "Transfer": "Převod",
   "Transport": "Doprava",
+  "Trust this device — remember my data and sign-in": "Důvěřovat tomuto zařízení — zapamatovat si moje data a přihlášení",
   "Try again": "Zkusit znovu",
   "Try it with sample data": "Vyzkoušet na ukázkových datech",
   "Turn off local mode": "Vypnout lokální režim",

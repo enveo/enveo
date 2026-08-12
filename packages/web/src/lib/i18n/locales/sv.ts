@@ -444,6 +444,7 @@ export const sv: Dict = {
   "Transactions": "Transaktioner",
   "Transfer": "Överföring",
   "Transport": "Transport",
+  "Trust this device — remember my data and sign-in": "Lita på den här enheten — kom ihåg mina data och min inloggning",
   "Try again": "Försök igen",
   "Try it with sample data": "Testa med exempeldata",
   "Turn off local mode": "Stäng av lokalt läge",

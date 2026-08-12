@@ -499,6 +499,7 @@ export const pl: Dict = {
   "Transactions": "Transakcje",
   "Transfer": "Przelew",
   "Transport": "Transport",
+  "Trust this device — remember my data and sign-in": "Zaufaj temu urządzeniu — zapamiętaj moje dane i logowanie",
   "Try again": "Spróbuj ponownie",
   "Try it with sample data": "Wypróbuj z danymi przykładowymi",
   "Turn off local mode": "Wyłącz tryb lokalny",
