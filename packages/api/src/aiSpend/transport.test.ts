@@ -89,6 +89,20 @@ describe("meteredOperatorChat — admission", () => {
     expect(calls.record).toEqual([]);  
   });
 
+  it("a STALLED counter read is cut by the bounded deadline and fails OPEN (decision 7: no counter problem may degrade the AI path)", async () => {
+    const calls = wire({});
+    operatorAiDeps.checkSpend = () => {
+      calls.check++;
+      return new Promise(() => {}); // a degraded-but-up database: the query never settles
+    };
+    const started = Date.now();
+    const out = await attempt();
+    expect(out.kind).toBe("ok");  
+    expect(calls.fetch).toBe(1);
+    expect(calls.record).toEqual([]);  
+    expect(Date.now() - started).toBeLessThan(10_000);
+  }, 15_000);
+
   it("each attempt is checked independently (per-attempt, not per-route)", async () => {
     const calls = wire({});
     await attempt();

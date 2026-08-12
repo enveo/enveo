@@ -71,6 +71,14 @@ export const operatorAiDeps = {
  *  hostage to a slow database — past this, the answer returns and the charge is dropped. */
 const RECORD_TIMEOUT_MS = 2_000;
 
+/** Bounded budget for the PREFLIGHT check, for the same reason in the other direction: fail-open
+ *  must cover a STALL, not just a rejection. A degraded-but-up Postgres (saturated pool, lock
+ *  wait) would otherwise queue the check forever and no OpenAI request would ever be made —
+ *  a counter problem degrading the AI path, which decision 7 forbids. Past this, the check is
+ *  treated as a counter-read failure: log a safe reason and proceed with the attempt (uncharged,
+ *  because there is no checked period to record into). */
+const CHECK_TIMEOUT_MS = 2_000;
+
 /** The one payload builder for operator-key requests (model comes from env, NEVER the client). */
 export function operatorChatPayload(req: ChatRequest): Record<string, unknown> & { model: string } {
   return {
@@ -95,11 +103,15 @@ export async function meteredOperatorChat(opts: {
   let admitted: Extract<SpendCheck, { allowed: true }> | null = null;
   if (metering) {
     try {
-      const check = await operatorAiDeps.checkSpend({ policy: SPEND_POLICY.operatorAi, userId: opts.userId as string });
+      const check = await withDeadline(
+        operatorAiDeps.checkSpend({ policy: SPEND_POLICY.operatorAi, userId: opts.userId as string }),
+        CHECK_TIMEOUT_MS,
+        "ai-spend check",
+      );
       if (!check.allowed) return { kind: "denied", retryAfterSeconds: check.retryAfterSeconds };
       admitted = check;
     } catch (e) {
-      // FAIL OPEN: a broken counter must not take AI down. Safe metadata only — no user id.
+      // FAIL OPEN — a broken OR STALLED counter must not take AI down. Safe metadata only, no user id.
       console.error("ai-spend: counter read failed — allowing the attempt (fail open):", (e as Error).message);
     }
   }

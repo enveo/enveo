@@ -60,6 +60,13 @@ describe.skipIf(!TEST_URL)("spend budget route contracts (DB-backed, child proce
     expect(out.importDeniedBeforeCycle1).toEqual({ status: 429, error: "ai_budget_exhausted", hasRetryAfterHeader: true, upstreamNotCalled: true });
   });
 
+  it("a STALLED counter fails OPEN: with the spend table exclusively locked, the answer still arrives inside the bounded deadlines", () => {
+    expect(out.stalledCounter.status).toBe(200);
+    expect(out.stalledCounter.contentOk).toBe(true);
+    expect(out.stalledCounter.upstreamCalled).toBe(true);
+    expect(out.stalledCounter.withinDeadlines).toBe(true);
+  });
+
   it("cycle-1 charge exhausts the allowance: cycle 2 is independently checked, denied, and the RAW items return", () => {
     expect(out.importCycle2Denied.status).toBe(200);
     expect(out.importCycle2Denied.itemCount).toBe(2);

@@ -71,6 +71,12 @@ describe("operator model default — every server/default surface names gpt-5.6-
     const { assertOperatorModelPriced } = await import("./aiSpend/pricing");
     expect(() => assertOperatorModelPriced("gpt-5.6-luna")).not.toThrow();
   });
+
+  it("both compose files FORWARD AI_SAFETY_IDENTIFIER_SECRET (they enumerate env explicitly — an advertised var that is not listed never reaches the container)", () => {
+    const passthrough = "AI_SAFETY_IDENTIFIER_SECRET: $" + "{AI_SAFETY_IDENTIFIER_SECRET:-}";
+    expect(read("docker-compose.yml")).toContain(passthrough);
+    expect(read("compose.selfhost.yml")).toContain(passthrough);
+  });
 });
 
 describe("assertDbEnv", () => {
