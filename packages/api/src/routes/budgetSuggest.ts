@@ -22,10 +22,11 @@ import {
 } from "@enveo/shared";
 import { Hono } from "hono";
 import { z } from "zod";
-import { requireTier } from "../context";
+import { aiBudgetExhaustedBody, meteredOperatorChat, operatorChatPayload, SpendDenied } from "../aiSpend/transport";
+import { requireTier, sessionUserId } from "../context";
 import { db } from "../db/client";
 import { env } from "../env";
-import { openAiChatFetch, transportFailureJson, UpstreamHttpError } from "../openaiHttp";
+import { transportFailureJson, UpstreamHttpError } from "../openaiHttp";
 import { loadClientLedger } from "../repo";
 
 const requestSchema = z.object({
@@ -129,48 +130,46 @@ export async function generateSuggestion(
   }
 }
 
-/** Local fetch layer (operator key) — prompt/parsing in shared/aiPrompts. */
-async function openaiChat(req: ChatRequest): Promise<string> {
-  const res = await openAiChatFetch(
-    {
-      model: env.OPENAI_MODEL,
-      messages: req.messages,
-      ...(req.responseFormat ? { response_format: req.responseFormat } : {}),
-      ...(req.reasoningEffort && supportsReasoningEffort(env.OPENAI_MODEL) ? { reasoning_effort: req.reasoningEffort } : {}),
-    },
-    { apiKey: env.OPENAI_API_KEY },
-  );
-  if (!res.ok) throw new UpstreamHttpError(res.status);
-  const data = (await res.json()) as { choices?: Array<{ message?: { content?: string } }> };
-  return data.choices?.[0]?.message?.content ?? "{}";
+/** Local chat helper (operator key) — prompt/parsing in shared/aiPrompts; the transport is the
+ *  metered one (spend check per actual attempt). Throws SpendDenied on an exhausted allowance —
+ *  generateSuggestion's catch turns that into the local-rules fallback (backlog §1). */
+async function openaiChat(req: ChatRequest, userId: string | undefined): Promise<string> {
+  const out = await meteredOperatorChat({ userId, payload: operatorChatPayload(req) });
+  if (out.kind === "denied") throw new SpendDenied(out.retryAfterSeconds);
+  if (out.kind === "upstream_error") throw new UpstreamHttpError(out.status);
+  if (out.kind === "invalid_body") throw new Error("openai: unreadable 2xx body");
+  return out.content || "{}";
 }
 
-/** Default provider — OpenAI. Prompt+parsing from shared (parity with byok);
- *  throws → generateSuggestion catches. Custom profile = agent prompt (single
- *  shot with two months), predefined ones = rules-engine prompt. */
-export const openAiAskModel: AskModel = async (ctx) => {
-  if (ctx.profile === "custom") {
-    const agentCtx = buildAgentSuggestContext({
-      ledger: ctx.ledger,
-      month: ctx.month,
-      basis: ctx.basis,
-      directive: ctx.customPrompt ?? "",
-      locale: ctx.locale,
-    });
-    return parseAgentSuggestResponse(await openaiChat(buildAgentSuggestPrompt(agentCtx)));
-  }
-  const raw = await openaiChat(
-    buildSuggestPrompt({
-      basis: ctx.basis,
-      ledger: ctx.ledger,
-      month: ctx.month,
-      profile: ctx.profile,
-      customPrompt: ctx.customPrompt,
-      locale: ctx.locale,
-    }),
-  );
-  return parseSuggestResponse(raw);
-};
+/** Default provider — OpenAI, bound to the SESSION USER for spend accounting. Prompt+parsing
+ *  from shared (parity with byok); throws → generateSuggestion catches. Custom profile = agent
+ *  prompt (single shot with two months), predefined ones = rules-engine prompt. */
+export const openAiAskModelFor =
+  (userId: string | undefined): AskModel =>
+  async (ctx) => {
+    if (ctx.profile === "custom") {
+      const agentCtx = buildAgentSuggestContext({
+        ledger: ctx.ledger,
+        month: ctx.month,
+        basis: ctx.basis,
+        directive: ctx.customPrompt ?? "",
+        locale: ctx.locale,
+      });
+      return parseAgentSuggestResponse(await openaiChat(buildAgentSuggestPrompt(agentCtx), userId));
+    }
+    const raw = await openaiChat(
+      buildSuggestPrompt({
+        basis: ctx.basis,
+        ledger: ctx.ledger,
+        month: ctx.month,
+        profile: ctx.profile,
+        customPrompt: ctx.customPrompt,
+        locale: ctx.locale,
+      }),
+      userId,
+    );
+    return parseSuggestResponse(raw);
+  };
 
 /* Narrow chat proxy for "local only" mode + operator key (v1.24.5):
    the client builds the prompt LOCALLY (same builders as byok — for suggest
@@ -178,11 +177,12 @@ export const openAiAskModel: AskModel = async (ctx) => {
    messages; the server attaches the key and forwards. Size limit + rigid zod
    shape (no extra OpenAI fields outside the contract). Auth: the session
    middleware in index.ts gates every /api/* route, so this proxy is reachable
-   only by a signed-in user — but it is deliberately NOT throttled. That is fine
-   for a self-hosted deployment (a handful of trusted accounts spending the
-   operator's own key); a per-account throttle is intended before any hosted,
-   multi-tenant deployment, where the operator key would be exposed to untrusted
-   signups. */
+   only by a signed-in user. Spend protection (backlog §1): on cloud (open
+   registration + operator key) every attempt runs through the metered
+   transport — an approximate ~$5/user/UTC-month allowance, 429
+   ai_budget_exhausted when it is used up. A normal selfhost deployment
+   (trusted accounts spending the operator's own key) bypasses the counter
+   entirely and stays unlimited by this mechanism. */
 const aiChatSchema = z.object({
   messages: z
     .array(z.object({ role: z.enum(["system", "user"]), content: z.string().max(200_000) }))
@@ -213,26 +213,28 @@ budgetSuggestRoutes.post("/ai/v1/chat/completions", async (c) => {
   if (!env.OPENAI_API_KEY) return c.json({ error: "ai_unavailable" }, 503);
   await requireTier(c, "plain");
   const req = openAiWireSchema.parse(await c.req.json());
-  let res: Response;
+  let out: Awaited<ReturnType<typeof meteredOperatorChat>>;
   try {
-    res = await openAiChatFetch(
-      {
+    out = await meteredOperatorChat({
+      userId: sessionUserId(c),
+      payload: {
         model: env.OPENAI_MODEL,
         messages: req.messages,
         ...(req.response_format ? { response_format: req.response_format } : {}),
         ...(req.reasoning_effort && supportsReasoningEffort(env.OPENAI_MODEL) ? { reasoning_effort: req.reasoning_effort } : {}),
       },
-      { apiKey: env.OPENAI_API_KEY },
-    );
+    });
   } catch (e) {
     /* timeout vs network failure on the way to OpenAI — DISTINCT stable codes since
        the AI-transport package (the old contract folded both into upstream/504). */
     const failure = transportFailureJson(e);
     if (failure) return c.json(failure.body, failure.status);
-    throw e; // openAiChatFetch only throws the two classified errors
+    throw e; // the metered transport only throws the two classified errors
   }
-  if (!res.ok) return c.json({ error: "upstream", status: res.status }, 502);
-  return c.json(await res.json());
+  if (out.kind === "denied") return c.json(aiBudgetExhaustedBody(out.retryAfterSeconds), 429, { "Retry-After": String(out.retryAfterSeconds) });
+  if (out.kind === "upstream_error") return c.json({ error: "upstream", status: out.status }, 502);
+  if (out.kind === "invalid_body") return c.json({ error: "upstream", status: 502 }, 502);
+  return c.json(out.json); // the ORIGINAL upstream JSON, usage included (wire 1:1)
 });
 
 /* DEPRECATED alias (1.24.5–1.25.0) — remove once clients are refreshed. */
@@ -241,8 +243,9 @@ budgetSuggestRoutes.post("/ai/chat", async (c) => {
   await requireTier(c, "plain");
   const req = aiChatSchema.parse(await c.req.json());
   try {
-    return c.json({ content: await openaiChat(req as ChatRequest) });
+    return c.json({ content: await openaiChat(req as ChatRequest, sessionUserId(c)) });
   } catch (e) {
+    if (e instanceof SpendDenied) return c.json(aiBudgetExhaustedBody(e.retryAfterSeconds), 429, { "Retry-After": String(e.retryAfterSeconds) });
     /* Same classification as /ai/v1 above — this alias used to fold EVERY failure
        (a real upstream 401 included) into {error:"upstream",status:504}. */
     const failure = transportFailureJson(e);
@@ -257,6 +260,8 @@ budgetSuggestRoutes.post("/budget/suggest", async (c) => {
   const input = requestSchema.parse(await c.req.json());
   const ledger = input.ledger ?? ((await loadClientLedger(db, meta.id)) as unknown as BudgetSuggestInput["ledger"] & object);
   const useAi = Boolean(input.useAi && env.OPENAI_API_KEY);
-  const resp = await generateSuggestion({ ...input, ledger }, useAi ? openAiAskModel : undefined);
+  /* An exhausted allowance surfaces as SpendDenied inside the ask-model; generateSuggestion's
+     catch keeps the existing LOCAL-RULES fallback (warn.aiUnavailable) — never a 429 here. */
+  const resp = await generateSuggestion({ ...input, ledger }, useAi ? openAiAskModelFor(sessionUserId(c)) : undefined);
   return c.json(resp);
 });

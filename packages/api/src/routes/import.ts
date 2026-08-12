@@ -12,11 +12,12 @@ import {
 import { and, eq, inArray } from "drizzle-orm";
 import { Hono } from "hono";
 import { z } from "zod";
-import { requireTier } from "../context";
+import { aiBudgetExhaustedBody, meteredOperatorChat, operatorChatPayload, SpendDenied } from "../aiSpend/transport";
+import { requireTier, sessionUserId } from "../context";
 import { db } from "../db/client";
 import * as s from "../db/schema";
 import { env } from "../env";
-import { openAiChatFetch, transportFailureJson, UpstreamHttpError } from "../openaiHttp";
+import { transportFailureJson, UpstreamHttpError } from "../openaiHttp";
 import { assertBudgetFks } from "../sync/apply";
 import { buildDupIndex, classifyDup } from "./import-dedupe";
 import { confidentSourceRef, decideAssignment, type HistGroup, type HistPattern, rankPatterns } from "./import-match";
@@ -157,24 +158,18 @@ export async function matchHistory(budgetId: string, rawPlaces: string[]): Promi
 
 /** `timeoutMs` per cycle: vision (cycle 1) gets AI_VISION_TIMEOUT_MS — multi-screenshot
  *  extraction is legitimately slow and AI-only (no fallback to hide a premature cut);
- *  the enrichment chat (cycle 2) stays on the default chat cap. */
-async function openaiJson(req: ChatRequest, timeoutMs?: number): Promise<string> {
-  const res = await openAiChatFetch(
-    {
-      model: env.OPENAI_MODEL,
-      messages: req.messages,
-      ...(req.responseFormat ? { response_format: req.responseFormat } : {}),
-      ...(req.reasoningEffort && supportsReasoningEffort(env.OPENAI_MODEL) ? { reasoning_effort: req.reasoningEffort } : {}),
-    },
-    { apiKey: env.OPENAI_API_KEY, timeoutMs },
-  );
-  if (!res.ok) {
-    const detail = await res.text().catch(() => "");
-    console.error("openai:", res.status, detail.slice(0, 500));
-    throw new UpstreamHttpError(res.status);
+ *  the enrichment chat (cycle 2) stays on the default chat cap. Each call is ONE metered
+ *  attempt (backlog §1): cycle 1 and cycle 2 are checked/recorded separately, so a cycle-1
+ *  charge that exhausts the allowance denies cycle 2 (SpendDenied → the caller's fallback). */
+async function openaiJson(req: ChatRequest, userId: string | undefined, timeoutMs?: number): Promise<string> {
+  const out = await meteredOperatorChat({ userId, payload: operatorChatPayload(req), timeoutMs });
+  if (out.kind === "denied") throw new SpendDenied(out.retryAfterSeconds);
+  if (out.kind === "upstream_error") {
+    console.error("openai:", out.status, out.detail.slice(0, 500));
+    throw new UpstreamHttpError(out.status);
   }
-  const data = (await res.json()) as { choices?: Array<{ message?: { content?: string } }> };
-  return data.choices?.[0]?.message?.content ?? "{}";
+  if (out.kind === "invalid_body") throw new Error("openai: unreadable 2xx body");
+  return out.content || "{}";
 }
 
 /* The API answers with stable machine CODES (never prose): the client owns the wording
@@ -192,11 +187,15 @@ importRoutes.post("/import/extract", async (c) => {
   const currency = budgetRow?.currency ?? "EUR";
 
   /* ── cycle 1: facts from the screenshot (prompt+parsing from shared — parity with byok) ── */
+  const userId = sessionUserId(c);
   let found: ImportExtractItem[];
   try {
-    const raw = await openaiJson(buildImportExtractPrompt(images, { envelopes: [], categories: [] }, today, locale, currency), AI_VISION_TIMEOUT_MS);
+    const raw = await openaiJson(buildImportExtractPrompt(images, { envelopes: [], categories: [] }, today, locale, currency), userId, AI_VISION_TIMEOUT_MS);
     found = parseImportExtractResponse(raw);
   } catch (e) {
+    // Import is AI-only: an exhausted monthly allowance before the FIRST cycle has nothing to
+    // fall back to — the stable 429 contract tells the client when to come back.
+    if (e instanceof SpendDenied) return c.json(aiBudgetExhaustedBody(e.retryAfterSeconds), 429, { "Retry-After": String(e.retryAfterSeconds) });
     // the details stay in the server log; the client gets a DISTINCT stable code per
     // failure class (timeout / unreachable / upstream rejection or unparsable answer)
     console.error("import/extract cycle 1 failed:", (e as Error).message);
@@ -253,21 +252,26 @@ importRoutes.post("/import/extract", async (c) => {
       })),
     };
     try {
-      const raw = await openaiJson({
-        messages: [
-          { role: "system", content: sysEnrich },
-          { role: "user", content: JSON.stringify(enrichPayload) },
-        ],
-        responseFormat: { type: "json_schema", json_schema: ENRICH_JSON_SCHEMA },
-        /* Matching against history patterns = simple comparisons — full
-           gpt-5.5 reasoning only slowed the import down (cycle 1/vision STAYS
-           on the default: OCR precision matters there). */
-        reasoningEffort: "low",
-      });
+      const raw = await openaiJson(
+        {
+          messages: [
+            { role: "system", content: sysEnrich },
+            { role: "user", content: JSON.stringify(enrichPayload) },
+          ],
+          responseFormat: { type: "json_schema", json_schema: ENRICH_JSON_SCHEMA },
+          /* Matching against history patterns = simple comparisons — full default-effort
+             reasoning only slowed the import down (cycle 1/vision STAYS on the default:
+             OCR precision matters there). */
+          reasoningEffort: "low",
+        },
+        userId,
+      );
       // size only — the answer carries the user's transactions; it NEVER goes to the server log
       console.log(`import/extract cycle 2: ${raw.length} B answer`);
       enriched = new Map(enrichedOutput.parse(JSON.parse(raw)).transactions.map((t) => [t.index, t]));
     } catch (e) {
+      // SpendDenied lands here too: cycle 1 exhausted the allowance → skip AI enrichment and
+      // return the already-extracted raw items through this existing graceful fallback.
       console.warn("import/extract cycle 2 (enrichment) failed — returning raw data:", (e as Error).message);
     }
   }

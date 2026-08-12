@@ -73,6 +73,15 @@ describe("generateSuggestion — rules path", () => {
     expect(r.source).toBe("rules");
     expect(r.warnings).toContain("warn.aiUnavailable");
   });
+
+  it("an exhausted spend allowance (SpendDenied) falls back to LOCAL RULES — never an error (backlog §1)", async () => {
+    const r = await generateSuggestion(req(), async () => {
+      throw new SpendDenied(3600);
+    });
+    expect(r.source).toBe("rules");
+    expect(r.warnings).toContain("warn.aiUnavailable");
+    expect(r.items.reduce((s, i) => s + i.proposedDelta, 0)).toBe(1000_00); // full rules proposal, not empty
+  });
 });
 
 describe("generateSuggestion — agent path (profile=custom, single prompt)", () => {
@@ -114,7 +123,12 @@ describe("generateSuggestion — agent path (profile=custom, single prompt)", ()
   });
 });
 
-import { openAiAskModel } from "./budgetSuggest";
+import { SpendDenied } from "../aiSpend/transport";
+import { openAiAskModelFor } from "./budgetSuggest";
+
+// No session user here — the ask-model is exercised UNMETERED (spend accounting has its own
+// suite: aiSpend/transport.test.ts + the DB-backed route child).
+const openAiAskModel = openAiAskModelFor(undefined);
 
 describe("openAiAskModel — custom = single prompt with two months (globalThis.fetch stub)", () => {
   const jsonResponse = (content: string) =>
@@ -139,7 +153,7 @@ describe("openAiAskModel — custom = single prompt with two months (globalThis.
       expect(user.previousMonth.note).toContain("reference");
       expect(user.directive).toBe("pomiń Obligacje");
       expect(bodies[0]!.tools).toBeUndefined(); // no tools — a pure single shot
-      expect(bodies[0]!.reasoning_effort).toBe("low"); // gpt-5.5: low thinking budget
+      expect(bodies[0]!.reasoning_effort).toBe("low"); // reasoning model: low thinking budget
 
       expect(r.source).toBe("ai");
       expect(r.items.map((i) => i.envelopeId).sort()).toEqual(["E1", "E2"]);

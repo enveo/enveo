@@ -5,6 +5,7 @@ import { compress } from "hono/compress";
 import { cors } from "hono/cors";
 import { secureHeaders } from "hono/secure-headers";
 import { ZodError } from "zod";
+import { assertAiSpendEnv } from "./aiSpend/transport";
 import { auth, hasCredentialedUser } from "./auth";
 import { authMetaBody } from "./authPolicy";
 import { TierMismatch } from "./context";
@@ -28,6 +29,9 @@ import { ScopeViolation } from "./sync/apply";
 if (import.meta.main) {
   assertAuthEnv();
   assertDbEnv();
+  // Cloud spend budget (backlog §1): an unpriced OPENAI_MODEL override cannot silently spend
+  // at Luna's prices, and the safety-identifier secret must be dedicated (never the auth secret).
+  assertAiSpendEnv();
 }
 
 const app = new Hono<{ Variables: { userId?: string } }>();

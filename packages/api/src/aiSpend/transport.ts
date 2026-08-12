@@ -37,6 +37,12 @@ export class SpendDenied extends Error {
   }
 }
 
+/** The ONE stable denial body: never reveals recorded spend or remaining dollars — only the
+ *  machine code and when to try again (the web maps the code to one whole localized phrase). */
+export function aiBudgetExhaustedBody(retryAfterSeconds: number): { error: "ai_budget_exhausted"; retryAfterSeconds: number } {
+  return { error: "ai_budget_exhausted", retryAfterSeconds };
+}
+
 export type OperatorChatOutcome =
   /** Denied BEFORE any upstream request — the allowance for this UTC month is used up. */
   | { kind: "denied"; retryAfterSeconds: number }
