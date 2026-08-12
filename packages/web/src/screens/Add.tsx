@@ -1,8 +1,7 @@
 import { computeStateResponse, type Transaction, type TxnPayload } from "@enveo/shared";
 import { type CSSProperties, useEffect, useMemo, useRef, useState } from "react";
-import { Sheet } from "../components/chrome";
 import { ImportSheet } from "../components/ImportSheet";
-import { HighlightedText, PickerSearch, SectionEyebrow, useBand } from "../components/kit";
+import { SectionEyebrow, useBand } from "../components/kit";
 import { Numpad } from "../components/pickers";
 import { hasOpenOp, type PadState, padKey } from "../lib/amount";
 import { type StateResponse, useLedgerVersion } from "../lib/api";
@@ -15,12 +14,13 @@ import { type Message, msg, useT } from "../lib/i18n";
 import { Glyph, Ico } from "../lib/icons";
 import { preferredAccountId, setLastAccountId } from "../lib/lastAccount";
 import { local } from "../lib/mutate";
-import { matchesSearch, SEARCH_THRESHOLD } from "../lib/search";
 import { store } from "../lib/store";
 import { rankEnvelopes, rankPlaces } from "../lib/suggest";
 import { CORAL, font, P, TEAL, tint } from "../lib/theme";
 
+import { AccountPickerSheet, DestinationAccountSheet } from "./add/AccountPickerSheet";
 import { DateSheet } from "./add/DateSheet";
+import { EnvelopePickerSheet } from "./add/EnvelopePickerSheet";
 import { SplitEditor } from "./add/SplitEditor";
 import type { AddDraft, Tab } from "./add/types";
 
@@ -120,20 +120,6 @@ export function AddScreen({
   const [showImport, setShowImport] = useState(!!initialImport);
   const [splitMode, setSplitMode] = useState(false);
   const [showTxnMenu, setShowTxnMenu] = useState(false); // kebab in the edit header
-
-  // Picker-sheet search — one query per sheet, reset whenever that sheet opens.
-  const [accQ, setAccQ] = useState("");
-  const [toQ, setToQ] = useState("");
-  const [envQ, setEnvQ] = useState("");
-  useEffect(() => {
-    if (showAcc) setAccQ("");
-  }, [showAcc]);
-  useEffect(() => {
-    if (showTo) setToQ("");
-  }, [showTo]);
-  useEffect(() => {
-    if (showEnv) setEnvQ("");
-  }, [showEnv]);
 
   // editing an existing transaction
   useEffect(() => {
@@ -1115,230 +1101,44 @@ export function AddScreen({
         </button>
       </div>
 
-      <Sheet show={showAcc} onClose={() => setShowAcc(false)} tall={accounts.length > SEARCH_THRESHOLD}>
-        {(C) => {
-          const filtered = accounts.filter((a) => matchesSearch(a.name, accQ));
-          return (
-            <>
-              <div style={{ flexShrink: 0 }}>
-                <div style={{ fontSize: 16, fontWeight: 600, color: C.text, marginBottom: 10 }}>{t("Choose an account")}</div>
-                {accounts.length > SEARCH_THRESHOLD && <PickerSearch value={accQ} onChange={setAccQ} />}
-              </div>
-              <div className="gs" style={{ flex: 1, overflowY: "auto", overscrollBehavior: "contain" }}>
-                {filtered.length === 0 ? (
-                  <div style={{ textAlign: "center", color: C.mute, fontSize: 13, padding: "24px 0" }}>{t("No matches")}</div>
-                ) : (
-                  filtered.map((a) => (
-                    <button
-                      key={a.id}
-                      onClick={() => {
-                        setAccountId(a.id);
-                        if (toAccountId === a.id) setToAccountId(accounts.find((x) => x.id !== a.id)?.id ?? "");
-                        setShowAcc(false);
-                      }}
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: 11,
-                        width: "100%",
-                        padding: "9px 0",
-                        background: "none",
-                        border: "none",
-                        cursor: "pointer",
-                      }}
-                    >
-                      <div
-                        style={{
-                          width: 22,
-                          height: 22,
-                          borderRadius: "50%",
-                          border: `2px solid ${accountId === a.id ? TEAL : C.line}`,
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "center",
-                          flexShrink: 0,
-                        }}
-                      >
-                        {accountId === a.id && <div style={{ width: 11, height: 11, borderRadius: "50%", background: TEAL }} />}
-                      </div>
-                      <div
-                        style={{
-                          width: 34,
-                          height: 34,
-                          borderRadius: 10,
-                          background: tint(a.color, 0.15),
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "center",
-                        }}
-                      >
-                        <Glyph name={a.icon} size={16} color={a.color} />
-                      </div>
-                      <span style={{ flex: 1, textAlign: "left", fontSize: 14, color: C.text, fontWeight: 500 }}>
-                        <HighlightedText text={a.name} query={accQ} />
-                      </span>
-                    </button>
-                  ))
-                )}
-              </div>
-            </>
-          );
+      <AccountPickerSheet
+        show={showAcc}
+        onClose={() => setShowAcc(false)}
+        accounts={accounts}
+        selectedId={accountId}
+        onSelect={(id) => {
+          setAccountId(id);
+          if (toAccountId === id) setToAccountId(accounts.find((x) => x.id !== id)?.id ?? "");
+          setShowAcc(false);
         }}
-      </Sheet>
-      <Sheet show={showTo} onClose={() => setShowTo(false)} tall={accounts.filter((a) => a.id !== accountId).length > SEARCH_THRESHOLD}>
-        {(C) => {
-          const destAccounts = accounts.filter((a) => a.id !== accountId);
-          const filtered = destAccounts.filter((a) => matchesSearch(a.name, toQ));
-          return (
-            <>
-              <div style={{ flexShrink: 0 }}>
-                <div style={{ fontSize: 16, fontWeight: 600, color: C.text, marginBottom: 10 }}>{t("Destination account")}</div>
-                {destAccounts.length > SEARCH_THRESHOLD && <PickerSearch value={toQ} onChange={setToQ} />}
-              </div>
-              <div className="gs" style={{ flex: 1, overflowY: "auto", overscrollBehavior: "contain" }}>
-                {filtered.length === 0 ? (
-                  <div style={{ textAlign: "center", color: C.mute, fontSize: 13, padding: "24px 0" }}>{t("No matches")}</div>
-                ) : (
-                  filtered.map((a) => (
-                    <button
-                      key={a.id}
-                      onClick={() => {
-                        setToAccountId(a.id);
-                        setDestOpen(false);
-                        setShowTo(false);
-                      }}
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: 11,
-                        width: "100%",
-                        padding: "9px 0",
-                        background: "none",
-                        border: "none",
-                        cursor: "pointer",
-                      }}
-                    >
-                      <div
-                        style={{
-                          width: 34,
-                          height: 34,
-                          borderRadius: 10,
-                          background: tint(a.color, 0.15),
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "center",
-                        }}
-                      >
-                        <Glyph name={a.icon} size={16} color={a.color} />
-                      </div>
-                      <span
-                        style={{
-                          flex: 1,
-                          textAlign: "left",
-                          fontSize: 14,
-                          color: toAccountId === a.id ? TEAL : C.text,
-                          fontWeight: toAccountId === a.id ? 600 : 500,
-                        }}
-                      >
-                        <HighlightedText text={a.name} query={toQ} />
-                      </span>
-                    </button>
-                  ))
-                )}
-              </div>
-            </>
-          );
+      />
+      <DestinationAccountSheet
+        show={showTo}
+        onClose={() => setShowTo(false)}
+        accounts={accounts}
+        excludeId={accountId}
+        selectedId={toAccountId}
+        onSelect={(id) => {
+          setToAccountId(id);
+          setDestOpen(false);
+          setShowTo(false);
         }}
-      </Sheet>
+      />
       <DateSheet show={showDate} date={date} onClose={() => setShowDate(false)} onChange={setDate} />
       {/* !editTxn is NOT required here: the "From screenshot" toggle restores edit-mode access
           (pre-redesign behavior — the edit header has no camera button, trash+kebab instead). */}
       {!draft && <ImportSheet show={showImport} onClose={() => setShowImport(false)} state={state} onApplied={onDone} />}
-      <Sheet show={showEnv} onClose={() => setShowEnv(false)} tall={state.envelopes.filter((e) => !e.archived).length > SEARCH_THRESHOLD}>
-        {(C) => {
-          const allEnvelopes = state.envelopes.filter((e) => !e.archived);
-          const groups = [...state.groups]
-            .sort((a, b) => a.sort - b.sort)
-            .map((g) => ({ group: g, list: allEnvelopes.filter((e) => e.groupId === g.id && matchesSearch(e.name, envQ)) }))
-            .filter((g) => g.list.length > 0);
-          return (
-            <>
-              <div style={{ flexShrink: 0 }}>
-                <div style={{ fontSize: 17, fontWeight: 700, color: C.text, marginBottom: 14, textAlign: "center" }}>{t("Choose an envelope")}</div>
-                {allEnvelopes.length > SEARCH_THRESHOLD && <PickerSearch value={envQ} onChange={setEnvQ} />}
-              </div>
-              <div className="gs" style={{ flex: 1, overflowY: "auto", overscrollBehavior: "contain" }}>
-                {groups.length === 0 ? (
-                  <div style={{ textAlign: "center", color: C.mute, fontSize: 13, padding: "24px 0" }}>{t("No matches")}</div>
-                ) : (
-                  groups.map(({ group: g, list }) => (
-                    <div key={g.id} style={{ marginBottom: 14 }}>
-                      <div style={{ fontSize: 13.5, fontWeight: 600, color: C.text, marginBottom: 8 }}>{g.name}</div>
-                      <div>
-                        {list.map((e) => (
-                          <button
-                            key={e.id}
-                            onClick={() => {
-                              setEnvelopeId(e.id);
-                              setEnvOpen(false);
-                              setShowEnv(false);
-                            }}
-                            style={{
-                              display: "flex",
-                              alignItems: "center",
-                              gap: 10,
-                              width: "100%",
-                              padding: "8px 0",
-                              background: "none",
-                              border: "none",
-                              borderBottom: `1px solid ${C.line}`,
-                              cursor: "pointer",
-                              textAlign: "left",
-                            }}
-                          >
-                            <span
-                              style={{
-                                width: 28,
-                                height: 28,
-                                borderRadius: 8,
-                                background: tint(e.color, 0.16),
-                                display: "flex",
-                                alignItems: "center",
-                                justifyContent: "center",
-                                flexShrink: 0,
-                              }}
-                            >
-                              <Glyph name={e.icon} size={14} color={e.color} sw={1.7} />
-                            </span>
-                            <span
-                              style={{
-                                flex: 1,
-                                minWidth: 0,
-                                fontSize: 13.5,
-                                fontWeight: 550,
-                                color: C.text,
-                                overflow: "hidden",
-                                textOverflow: "ellipsis",
-                                whiteSpace: "nowrap",
-                              }}
-                            >
-                              <HighlightedText text={e.name} query={envQ} />
-                            </span>
-                            <span style={{ fontSize: 12.5, fontWeight: 700, fontVariantNumeric: "tabular-nums", color: e.available < 0 ? C.neg : C.text }}>
-                              {e.available < 0 ? "−" : ""}
-                              {M(Math.abs(e.available))}
-                            </span>
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  ))
-                )}
-              </div>
-            </>
-          );
+      <EnvelopePickerSheet
+        show={showEnv}
+        onClose={() => setShowEnv(false)}
+        envelopes={state.envelopes}
+        groups={state.groups}
+        onSelect={(id) => {
+          setEnvelopeId(id);
+          setEnvOpen(false);
+          setShowEnv(false);
         }}
-      </Sheet>
+      />
     </div>
   );
 }
