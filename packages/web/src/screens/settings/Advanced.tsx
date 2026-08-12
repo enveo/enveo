@@ -1,8 +1,10 @@
 import { useEffect, useState } from "react";
 import { api, apiErrorMessage, useSyncStatus } from "../../lib/api";
 import { useTheme } from "../../lib/contexts";
+import { exportBackup } from "../../lib/data";
 import { useT } from "../../lib/i18n";
 import { storageMode } from "../../lib/idb";
+import { deleteEverythingAndStartFresh, isUnprovenReplicaError } from "../../lib/recovery";
 import { getStorageDiag, type StorageDiag } from "../../lib/storage";
 import { assertOwnReplica, disableLocal, enablePaused, enableWiped, getLastBootSource, wipeLocalData } from "../../lib/sync";
 import { CORAL, font } from "../../lib/theme";
@@ -265,6 +267,8 @@ function ResetSection() {
   const [confirmText, setConfirmText] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // UNPROVEN-replica recovery dialog (owner decision, 2026-08-12) — see run() below.
+  const [recovery, setRecovery] = useState(false);
 
   const wipe = async () => {
     const msg =
@@ -288,7 +292,41 @@ function ResetSection() {
       await api.budgetReset(userId); // server FIRST — the local copy is cleared only after success
       await wipeLocalData(); // clears the stores + broadcasts to tabs → reload → wizard
     } catch (e) {
+      // The guard refused because the replica cannot be linked to this account (UNPROVEN — e.g.
+      // local-only → clear-local → re-enable-sync): the reset above IS the escape hatch from that
+      // state, so a bare error would be a dead end. Show the recovery dialog instead (export the
+      // local copy / delete everything and start fresh). A genuinely FOREIGN stamp never gets
+      // here as a dialog: enterForeignReplica has already flipped the boot status, and the app
+      // unmounts Settings into ForeignReplicaScreen.
+      if (isUnprovenReplicaError(e)) {
+        setConfirm(false);
+        setRecovery(true);
+        setBusy(false);
+        return;
+      }
       setError(apiErrorMessage(e));
+      setBusy(false);
+    }
+  };
+
+  const recoveryExport = () => {
+    setError(null);
+    try {
+      exportBackup(); // local mirror → JSON file; no server call
+    } catch (e) {
+      setError(apiErrorMessage(e));
+    }
+  };
+
+  const recoveryDelete = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      // Server budget reset (session-scoped — nothing from the replica is sent) → sign out →
+      // wipe the device (settings + replica), reload → Login. Order rationale in lib/recovery.ts.
+      await deleteEverythingAndStartFresh();
+    } catch (e) {
+      setError(apiErrorMessage(e)); // nothing local was touched — the dialog (and export) stay
       setBusy(false);
     }
   };
@@ -306,6 +344,7 @@ function ResetSection() {
           onClick={() => {
             setConfirmText("");
             setError(null);
+            setRecovery(false); // the confirm card and the recovery dialog never stack
             setConfirm(true);
           }}
         />
@@ -338,6 +377,37 @@ function ResetSection() {
           {error && <div style={{ fontSize: 12, color: CORAL, marginTop: 10, lineHeight: 1.5 }}>{error}</div>}
           <button
             onClick={() => setConfirm(false)}
+            style={{ width: "100%", marginTop: 12, padding: "11px 0", borderRadius: 11, border: "none", background: "transparent", color: C.soft, fontSize: 13, fontWeight: 600, cursor: "pointer" }}
+          >
+            {t("Back")}
+          </button>
+        </div>
+      )}
+
+      {recovery && (
+        /* UNPROVEN-replica recovery (owner decision, 2026-08-12): the reset refused to run because
+         * the local copy cannot be linked to the signed-in account. ONE dialog, export FIRST —
+         * the local copy may be the LAST copy of that data, and the explicit choice here is the
+         * human in the loop the never-destroy-unattended invariant requires. */
+        <div style={{ marginTop: 10, padding: 14, background: C.bg, borderRadius: 11, border: `1px solid var(--danger-66)` }}>
+          <div style={{ fontSize: 12.5, fontWeight: 700, color: CORAL, marginBottom: 6 }}>{t("This device's local copy cannot be linked to this account")}</div>
+          <div style={{ fontSize: 11.5, color: C.soft, lineHeight: 1.6, marginBottom: 10 }}>
+            {t("The budget data on this device could not be matched to the account you are signed in with, so nothing can be sent to the server. Nothing has been deleted yet. Download a backup first — this device may hold the only copy of that data. “Delete everything and start fresh” erases this account's data on the server and the local copy on this device, then signs you out.")}
+          </div>
+          <ActionGroup>
+            <ActionRow label={t("Download a backup (JSON)")} desc={t("the whole local copy as a file — no network needed")} onClick={recoveryExport} disabled={busy} />
+            <ActionRow
+              label={t("Delete everything and start fresh")}
+              tone="danger"
+              onClick={() => void recoveryDelete()}
+              disabled={busy}
+              busyLabel={busy ? t("Deleting…") : undefined}
+            />
+          </ActionGroup>
+          {error && <div style={{ fontSize: 12, color: CORAL, marginTop: 10, lineHeight: 1.5 }}>{error}</div>}
+          <button
+            onClick={() => setRecovery(false)}
+            disabled={busy}
             style={{ width: "100%", marginTop: 12, padding: "11px 0", borderRadius: 11, border: "none", background: "transparent", color: C.soft, fontSize: 13, fontWeight: 600, cursor: "pointer" }}
           >
             {t("Back")}
