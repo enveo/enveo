@@ -319,6 +319,10 @@ describe("reasoningEffort — fast responses for suggest", () => {
     expect(supportsReasoningEffort("gpt-5.5")).toBe(true);
     expect(supportsReasoningEffort("gpt-5.5-mini")).toBe(true);
     expect(supportsReasoningEffort("gpt-5.6-luna")).toBe(true); // the operator default since backlog §1
+    // §1b BYOK tiers — live docs (2026-08-12) list reasoning none…max for both; the effort
+    // enum Enveo sends stays low/medium/high (a valid subset), only the gate matters here.
+    expect(supportsReasoningEffort("gpt-5.6-terra")).toBe(true);
+    expect(supportsReasoningEffort("gpt-5.6-sol")).toBe(true);
     expect(supportsReasoningEffort("o3-mini")).toBe(true);
     expect(supportsReasoningEffort("gpt-4o")).toBe(false);
   });

@@ -1,8 +1,11 @@
 import { useQuery } from "@tanstack/react-query";
+import { useEffect, useRef, useState } from "react";
+import { AI_MODEL_TIERS, costMultiplier, isLegacyOpenAiModel, LEGACY_OPENAI_MODELS, type ModelTier } from "../../lib/aiModelTiers";
 import { api } from "../../lib/api";
-import { useSettings, useTheme } from "../../lib/contexts";
+import { OPENAI_MODELS, type OpenAiModel, useSettings, useTheme } from "../../lib/contexts";
 import { useT } from "../../lib/i18n";
-import { CORAL, font } from "../../lib/theme";
+import { checkModelAvailability, type ModelAvailability } from "../../lib/openaiModels";
+import { CORAL, font, TEAL } from "../../lib/theme";
 import { Helper, Row, Seg } from "./ui";
 
 /**
@@ -12,6 +15,15 @@ import { Helper, Row, Seg } from "./ui";
  *            has no key (`/api/ai/info` → serverAi=false) we show a warning,
  *  - byok:   user's own OpenAI key — lives ONLY in this browser's localStorage,
  *            calls go straight to api.openai.com (bypassing the server).
+ *
+ * BYOK model choice (§1b) is a quality/cost TIER picker over lib/aiModelTiers.ts, not raw model
+ * ids; the id shows as secondary detail. With a key present the curated ids are validated against
+ * `GET /v1/models` straight from the browser (debounced per key, cached only in query memory —
+ * gcTime 0, never persisted): only a definite 200 verdict disables an option; an invalid key or
+ * a failed check leaves every tier selectable and reports itself in one quiet status line.
+ * A persisted legacy choice (gpt-5.5 / gpt-5.5-mini) renders as its own extra option — selected,
+ * never silently rewritten — and stays offered until the end of the visit even after switching
+ * to a tier, so an accidental tap is reversible.
  */
 export function AiSection() {
   const C = useTheme();
@@ -19,12 +31,73 @@ export function AiSection() {
   const { settings, setSettings } = useSettings();
   // Check server-mode availability only when it is selected (zero unnecessary requests).
   const { data: aiInfo } = useQuery({ queryKey: ["aiInfo"], queryFn: api.aiInfo, enabled: settings.aiMode === "server" });
+
+  // BYOK availability probe: debounce the key so typing does not fire a request per keystroke.
+  const key = settings.openaiKey.trim();
+  const [settledKey, setSettledKey] = useState(key);
+  useEffect(() => {
+    const id = setTimeout(() => setSettledKey(key), 800);
+    return () => clearTimeout(id);
+  }, [key]);
+  const modelCheck = useQuery({
+    queryKey: ["openaiModelAvailability", settledKey],
+    queryFn: () => checkModelAvailability(settledKey, OPENAI_MODELS),
+    enabled: settings.aiMode === "byok" && settledKey.length > 0,
+    staleTime: 60_000,
+    gcTime: 0, // transient by design — the verdict must not outlive the screen
+    retry: false,
+  });
+  const avail: ModelAvailability | undefined = modelCheck.data;
+
+  // The legacy option a user arrived with stays rendered for the whole visit (ref, not state):
+  // switching to a tier must not make the way back disappear under the finger.
+  const legacyAtMount = useRef<OpenAiModel | null>(isLegacyOpenAiModel(settings.openaiModel) ? settings.openaiModel : null);
+  const legacyShown = LEGACY_OPENAI_MODELS.filter((m) => m === settings.openaiModel || m === legacyAtMount.current);
+
   const helper =
     settings.aiMode === "off"
       ? t("AI is off — suggestions run locally on rules; nothing leaves this device.")
       : settings.aiMode === "server"
         ? t("AI requests go to OpenAI through the app server (operator's key).")
         : t("The app talks to OpenAI directly from this browser using your own key — bypassing the server.");
+
+  const unavailable = (model: OpenAiModel) => avail?.state === "checked" && !avail.available.has(model);
+  const select = (model: OpenAiModel) => setSettings({ ...settings, openaiModel: model });
+
+  const option = (model: OpenAiModel, label: string, hint: string, tier?: ModelTier) => {
+    const selected = settings.openaiModel === model;
+    const off = unavailable(model);
+    return (
+      <button
+        key={model}
+        role="radio"
+        aria-checked={selected}
+        disabled={off && !selected}
+        onClick={() => select(model)}
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "stretch",
+          gap: 3,
+          textAlign: "left",
+          padding: "10px 12px",
+          borderRadius: 10,
+          border: `1px solid ${selected ? TEAL : C.line}`,
+          background: selected ? "var(--accent-1a)" : "transparent",
+          opacity: off && !selected ? 0.55 : 1,
+          cursor: off && !selected ? "default" : "pointer",
+          fontFamily: font,
+        }}
+      >
+        <span style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 8 }}>
+          <span style={{ fontSize: 13, fontWeight: 600, color: selected ? TEAL : C.text }}>{label}</span>
+          {tier && <span style={{ fontSize: 10.5, color: C.mute, whiteSpace: "nowrap" }}>{model}</span>}
+        </span>
+        <span style={{ fontSize: 11, color: C.mute, lineHeight: 1.45 }}>{hint}</span>
+        {off && <span style={{ fontSize: 11, color: CORAL, lineHeight: 1.45 }}>{t("Not available with your OpenAI key.")}</span>}
+      </button>
+    );
+  };
 
   return (
     <div style={{ marginTop: 4 }}>
@@ -72,17 +145,29 @@ export function AiSection() {
               fontFamily: font,
             }}
           />
-          <Row label={t("Model")}>
-            <Seg
-              value={settings.openaiModel}
-              onChange={(id) => setSettings({ ...settings, openaiModel: id })}
-              options={[
-                { id: "gpt-5.6-luna", label: "gpt-5.6-luna" },
-                { id: "gpt-5.5-mini", label: "gpt-5.5-mini" },
-                { id: "gpt-5.5", label: "gpt-5.5" },
-              ]}
-            />
-          </Row>
+          <div style={{ fontSize: 11.5, fontWeight: 600, color: C.text, margin: "14px 0 6px" }}>{t("Model")}</div>
+          <div role="radiogroup" aria-label={t("Model")} style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            {AI_MODEL_TIERS.map((tier) =>
+              option(
+                tier.model,
+                t(tier.label),
+                tier.id === "low"
+                  ? t("Lowest cost — a typical screenshot import costs a fraction of a cent.")
+                  : t("About {n}× the cost of the cheapest tier.", { n: costMultiplier(tier) }),
+                tier,
+              ),
+            )}
+            {legacyShown.map((m) => option(m, m, t("Previously selected model — it stays available until you pick a tier.")))}
+          </div>
+          {modelCheck.isFetching ? (
+            <Helper>{t("Checking which models your key can use…")}</Helper>
+          ) : avail?.state === "invalid_key" ? (
+            <div style={{ fontSize: 11, color: CORAL, marginTop: 8, lineHeight: 1.5 }}>
+              {t("OpenAI rejected this key — model availability could not be checked.")}
+            </div>
+          ) : avail?.state === "unknown" ? (
+            <Helper>{t("Could not check model availability right now — every tier stays selectable.")}</Helper>
+          ) : null}
           <Helper>{t("The key is stored only in this browser (localStorage) — it is never synced or sent to the app server.")}</Helper>
         </div>
       )}

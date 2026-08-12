@@ -13,6 +13,11 @@ describe("BYOK model registry", () => {
     expect(OPENAI_MODELS[0]).toBe("gpt-5.6-luna");
   });
 
+  it("the §1b tier models are registered persistable choices", () => {
+    expect(OPENAI_MODELS).toContain("gpt-5.6-terra");
+    expect(OPENAI_MODELS).toContain("gpt-5.6-sol");
+  });
+
   it("legacy persisted choices remain registered (never silently overwritten)", () => {
     expect(OPENAI_MODELS).toContain("gpt-5.5");
     expect(OPENAI_MODELS).toContain("gpt-5.5-mini");

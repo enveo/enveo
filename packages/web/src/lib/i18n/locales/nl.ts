@@ -27,6 +27,7 @@ export const nl: Dict = {
   "AI unavailable — rules were used instead.": "AI niet beschikbaar — er zijn regels gebruikt.",
   AVAILABLE: "BESCHIKBAAR",
   Account: "Rekening",
+  "About {n}× the cost of the cheapest tier.": "Ongeveer {n}× de kosten van het goedkoopste niveau.",
   "Account change": "Rekening gewijzigd",
   "Account deletion": "Rekening verwijderd",
   "Account name": "Naam van de rekening",
@@ -83,8 +84,10 @@ export const nl: Dict = {
   "Balance in the app": "Saldo in de app",
   "Balance matches": "Saldo komt overeen",
   "Balance:": "Saldo:",
+  Balanced: "Gebalanceerd",
   "Before you continue, download a JSON backup and keep it somewhere safe.": "Download eerst een JSON-back-up en bewaar die op een veilige plek.",
   Bills: "Rekeningen betalen",
+  "Best quality": "Beste kwaliteit",
   "Breakdown by category": "Uitsplitsing per categorie",
   Budget: "Budget",
   "Budget currency change": "Valuta gewijzigd",
@@ -103,6 +106,7 @@ export const nl: Dict = {
   "Changes are saved locally and will be sent after you resume.": "Wijzigingen worden lokaal opgeslagen en verstuurd zodra je hervat.",
   "Changing…": "Bezig met wijzigen…",
   "Check again": "Opnieuw controleren",
+  "Checking which models your key can use…": "Controleren welke modellen je sleutel kan gebruiken…",
   "Checking…": "Bezig met controleren…",
   "Choose a color": "Kies een kleur",
   "Choose an account": "Kies een rekening",
@@ -124,6 +128,8 @@ export const nl: Dict = {
   "Community translation — it may be incomplete.": "Vertaling door de community — die kan onvolledig zijn.",
   "Copied.": "Gekopieerd.",
   "Copy code": "Code kopiëren",
+  "Could not check model availability right now — every tier stays selectable.":
+    "De beschikbaarheid van modellen kon nu niet worden gecontroleerd — alle niveaus blijven selecteerbaar.",
   "Could not create the account — please try again.": "Het account kon niet worden aangemaakt — probeer het opnieuw.",
   "Could not reach the AI service — check the network connection and try again.":
     "Kan de AI-dienst niet bereiken — controleer de netwerkverbinding en probeer het opnieuw.",
@@ -187,6 +193,7 @@ export const nl: Dict = {
   "Duplicates skipped: {n}": "Overgeslagen duplicaten: {n}",
   E2EE: "E2EE",
   Edit: "Bewerken",
+  Economical: "Zuinig",
   "Edit account": "Rekening bewerken",
   "Edit envelope": "Envelop bewerken",
   "Edit item {n}": "Regel {n} bewerken",
@@ -271,6 +278,8 @@ export const nl: Dict = {
   "Local mode — sync paused. Tap to open settings": "Lokale modus — synchronisatie gepauzeerd. Tik om de instellingen te openen",
   "Losing the password means losing your data — the server cannot reset it or decrypt your budget.":
     "Je wachtwoord kwijt betekent je gegevens kwijt — de server kan het niet resetten en je budget niet ontsleutelen.",
+  "Lowest cost — a typical screenshot import costs a fraction of a cent.":
+    "Laagste kosten — een gemiddelde schermafbeelding-import kost een fractie van een cent.",
   "Manage envelopes": "Enveloppen beheren",
   "Manage…": "Beheren…",
   "Median of historical monthly spending — resistant to one-off spikes; the free remainder is spread proportionally.":
@@ -308,6 +317,7 @@ export const nl: Dict = {
   "No spending in this period.": "Geen uitgaven in deze periode.",
   "No transactions were recognized in the screenshots.": "In de schermafbeeldingen zijn geen transacties herkend.",
   "No transactions.": "Geen transacties.",
+  "Not available with your OpenAI key.": "Niet beschikbaar met je OpenAI-sleutel.",
   "Not sending": "Wordt niet verstuurd",
   "Not syncing with your account": "Synchroniseert niet met je account",
   Off: "Uit",
@@ -321,6 +331,8 @@ export const nl: Dict = {
   "OpenAI key": "OpenAI-sleutel",
   "OpenAI rejected the request — check the key and the model, then try again.":
     "OpenAI heeft het verzoek geweigerd — controleer de sleutel en het model en probeer het opnieuw.",
+  "OpenAI rejected this key — model availability could not be checked.":
+    "OpenAI heeft deze sleutel geweigerd — de beschikbaarheid van modellen kon niet worden gecontroleerd.",
   "OpenAI rejected your key — check it in Settings → Artificial intelligence.":
     "OpenAI heeft je sleutel geweigerd — controleer die in Instellingen → Kunstmatige intelligentie.",
   Other: "Overig",
@@ -344,6 +356,7 @@ export const nl: Dict = {
   Predefined: "Vooraf ingesteld",
   "Previous month": "Vorige maand",
   Privacy: "Privacy",
+  "Previously selected model — it stays available until you pick a tier.": "Eerder gekozen model — het blijft beschikbaar totdat je een niveau kiest.",
   "Process screenshots": "Schermafbeeldingen verwerken",
   Prompt: "Instructie",
   RESET: "RESET",

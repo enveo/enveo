@@ -10,9 +10,11 @@ import { type AccentTheme, light, type Theme, themeTokens } from "./theme";
 export type ThemeMode = "light" | "dark" | "auto";
 export type AiMode = "off" | "server" | "byok";
 /** BYOK model registry. `gpt-5.6-luna` is the default for FRESH settings only — a persisted
- *  legacy choice (`gpt-5.5`/`gpt-5.5-mini`) survives loadSettings' merge and stays selectable. */
-export type OpenAiModel = "gpt-5.6-luna" | "gpt-5.5" | "gpt-5.5-mini";
-export const OPENAI_MODELS: readonly OpenAiModel[] = ["gpt-5.6-luna", "gpt-5.5", "gpt-5.5-mini"];
+ *  legacy choice (`gpt-5.5`/`gpt-5.5-mini`) survives loadSettings' merge and stays selectable.
+ *  Since §1b the pickers render quality/cost TIERS (lib/aiModelTiers.ts) over the GPT-5.6
+ *  family; this union stays the authority on what may be PERSISTED in settings. */
+export type OpenAiModel = "gpt-5.6-luna" | "gpt-5.6-terra" | "gpt-5.6-sol" | "gpt-5.5" | "gpt-5.5-mini";
+export const OPENAI_MODELS: readonly OpenAiModel[] = ["gpt-5.6-luna", "gpt-5.6-terra", "gpt-5.6-sol", "gpt-5.5", "gpt-5.5-mini"];
 export const DEFAULT_OPENAI_MODEL: OpenAiModel = "gpt-5.6-luna";
 
 /** Start-screen widget stack (per DEVICE — like themeMode, no synchronization). */

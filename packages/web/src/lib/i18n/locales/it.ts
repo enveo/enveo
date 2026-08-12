@@ -27,6 +27,7 @@ export const it: Dict = {
   "AI unavailable — rules were used instead.": "IA non disponibile: sono state usate le regole.",
   AVAILABLE: "DISPONIBILE",
   Account: "Conto",
+  "About {n}× the cost of the cheapest tier.": "Circa {n}× il costo del livello più economico.",
   "Account change": "Modifica del conto",
   "Account deletion": "Eliminazione del conto",
   "Account name": "Nome del conto",
@@ -83,8 +84,10 @@ export const it: Dict = {
   "Balance in the app": "Saldo nell'app",
   "Balance matches": "Il saldo coincide",
   "Balance:": "Saldo:",
+  Balanced: "Bilanciato",
   "Before you continue, download a JSON backup and keep it somewhere safe.": "Prima di continuare, scarica un backup JSON e conservalo in un posto sicuro.",
   Bills: "Bollette",
+  "Best quality": "Qualità massima",
   "Breakdown by category": "Ripartizione per categoria",
   Budget: "Budget",
   "Budget currency change": "Cambio di valuta",
@@ -103,6 +106,7 @@ export const it: Dict = {
   "Changes are saved locally and will be sent after you resume.": "Le modifiche vengono salvate in locale e saranno inviate alla ripresa.",
   "Changing…": "Modifica in corso…",
   "Check again": "Controlla di nuovo",
+  "Checking which models your key can use…": "Verifica dei modelli utilizzabili con la tua chiave…",
   "Checking…": "Controllo…",
   "Choose a color": "Scegli un colore",
   "Choose an account": "Scegli un conto",
@@ -124,6 +128,8 @@ export const it: Dict = {
   "Community translation — it may be incomplete.": "Traduzione della comunità: può essere incompleta.",
   "Copied.": "Copiato.",
   "Copy code": "Copia il codice",
+  "Could not check model availability right now — every tier stays selectable.":
+    "Al momento non è stato possibile verificare la disponibilità dei modelli: tutti i livelli restano selezionabili.",
   "Could not create the account — please try again.": "Impossibile creare l'account: riprova.",
   "Could not reach the AI service — check the network connection and try again.":
     "Impossibile raggiungere il servizio IA: controlla la connessione di rete e riprova.",
@@ -185,6 +191,7 @@ export const it: Dict = {
   "Duplicates skipped: {n}": "Duplicati saltati: {n}",
   E2EE: "E2EE",
   Edit: "Modifica",
+  Economical: "Economico",
   "Edit account": "Modifica il conto",
   "Edit envelope": "Modifica la busta",
   "Edit item {n}": "Modifica la voce {n}",
@@ -269,6 +276,8 @@ export const it: Dict = {
   "Local mode — sync paused. Tap to open settings": "Modalità locale: sincronizzazione in pausa. Tocca per aprire le impostazioni",
   "Losing the password means losing your data — the server cannot reset it or decrypt your budget.":
     "Perdere la password significa perdere i dati: il server non può reimpostarla né decifrare il tuo budget.",
+  "Lowest cost — a typical screenshot import costs a fraction of a cent.":
+    "Costo minimo: una tipica importazione di screenshot costa una frazione di centesimo.",
   "Manage envelopes": "Gestisci le buste",
   "Manage…": "Gestisci…",
   "Median of historical monthly spending — resistant to one-off spikes; the free remainder is spread proportionally.":
@@ -306,6 +315,7 @@ export const it: Dict = {
   "No spending in this period.": "Nessuna spesa in questo periodo.",
   "No transactions were recognized in the screenshots.": "Negli screenshot non è stata riconosciuta alcuna transazione.",
   "No transactions.": "Nessuna transazione.",
+  "Not available with your OpenAI key.": "Non disponibile con la tua chiave OpenAI.",
   "Not sending": "Invio sospeso",
   "Not syncing with your account": "Nessuna sincronizzazione con il tuo account",
   Off: "Disattivata",
@@ -319,6 +329,8 @@ export const it: Dict = {
   "OpenAI key": "Chiave OpenAI",
   "OpenAI rejected the request — check the key and the model, then try again.":
     "OpenAI ha rifiutato la richiesta: controlla la chiave e il modello, poi riprova.",
+  "OpenAI rejected this key — model availability could not be checked.":
+    "OpenAI ha rifiutato questa chiave: non è stato possibile verificare la disponibilità dei modelli.",
   "OpenAI rejected your key — check it in Settings → Artificial intelligence.":
     "OpenAI ha rifiutato la tua chiave: controllala in Impostazioni → Intelligenza artificiale.",
   Other: "Altro",
@@ -342,6 +354,7 @@ export const it: Dict = {
   Predefined: "Predefinito",
   "Previous month": "Mese precedente",
   Privacy: "Privacy",
+  "Previously selected model — it stays available until you pick a tier.": "Modello scelto in precedenza: resta disponibile finché non scegli un livello.",
   "Process screenshots": "Elabora gli screenshot",
   Prompt: "Istruzione",
   RESET: "REIMPOSTA",
