@@ -6,9 +6,9 @@ import { Numpad } from "../components/pickers";
 import { hasOpenOp, type PadState, padKey } from "../lib/amount";
 import { type StateResponse, useLedgerVersion } from "../lib/api";
 import { categoryCountsFor, rankCategories } from "../lib/categoryIndex";
-import { useCurrency, useMask, useTheme } from "../lib/contexts";
+import { useMask, useTheme } from "../lib/contexts";
 import { currentMonth, formatDateLong, todayISO } from "../lib/dates";
-import { currencySymbol, evalExpression } from "../lib/format";
+import { evalExpression } from "../lib/format";
 import { haptic } from "../lib/haptics";
 import { type Message, msg, useT } from "../lib/i18n";
 import { Glyph, Ico } from "../lib/icons";
@@ -16,12 +16,15 @@ import { preferredAccountId, setLastAccountId } from "../lib/lastAccount";
 import { local } from "../lib/mutate";
 import { store } from "../lib/store";
 import { rankEnvelopes, rankPlaces } from "../lib/suggest";
-import { CORAL, font, P, TEAL, tint } from "../lib/theme";
+import { font, P, TEAL, tint } from "../lib/theme";
 
 import { AccountPickerSheet, DestinationAccountSheet } from "./add/AccountPickerSheet";
+import { AddHeader } from "./add/AddHeader";
+import { AmountSection } from "./add/AmountSection";
 import { DateSheet } from "./add/DateSheet";
 import { EnvelopePickerSheet } from "./add/EnvelopePickerSheet";
 import { SplitEditor } from "./add/SplitEditor";
+import { TransactionFields } from "./add/TransactionFields";
 import type { AddDraft, Tab } from "./add/types";
 
 export type { AddDraft, Tab } from "./add/types";
@@ -65,9 +68,8 @@ export function AddScreen({
 }) {
   const C = useTheme();
   const M = useMask();
-  const { band, hc } = useBand();
+  const { band } = useBand();
   const { t, lang } = useT();
-  const currency = useCurrency();
   const ledgerVersion = useLedgerVersion();
   // Accounts are CURRENT-balance always — never scoped to the viewed month (unlike envelopes).
   // Recomputed from the replica at `currentMonth()` regardless of which month `state` was built
@@ -384,291 +386,56 @@ export function AddScreen({
 
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column" }}>
-      {/* one header for create and edit: type tabs always (type editable);
-          in edit, trash + kebab on the right instead of the alignment spacer */}
-      <div data-band={band || undefined} style={band ? { background: C.headerBg, paddingBottom: draft ? 6 : undefined } : undefined}>
-        <div style={{ display: "flex", alignItems: "center", padding: "8px 10px", gap: 6 }}>
-          <button
-            onClick={draft ? draft.onCancel : onDone}
-            aria-label={t("Back")}
-            style={{ background: "none", border: "none", cursor: "pointer", padding: 4, display: "flex" }}
-          >
-            <Ico d="M19 12H5m0 0l7 7m-7-7l7-7" size={18} color={hc(C.headerInk, C.text)} />
-          </button>
-          <div style={{ display: "flex", background: hc(tint(C.headerInk, 0.14), C.chip), borderRadius: 14, padding: 2, flex: 1, border: "none" }}>
-            {(["expense", "income", "transfer"] as Tab[]).map((tb) => (
-              <button
-                key={tb}
-                onClick={() => {
-                  setTab(tb);
-                  reset();
-                  setIsRefund(false);
-                  setEnvOpen(tb === "expense");
-                  setDestOpen(false);
-                }}
-                style={{
-                  flex: 1,
-                  padding: "8px 0",
-                  borderRadius: 11,
-                  border: "none",
-                  fontSize: 12,
-                  fontWeight: 650,
-                  cursor: "pointer",
-                  background: tab === tb ? (band ? "var(--cta)" : C.text) : "transparent",
-                  color: tab === tb ? (band ? C.headerBg : C.card) : band ? C.headerMute : C.soft,
-                }}
-              >
-                {t(({ expense: msg("Expense"), income: msg("Income"), transfer: msg("Transfer") } as const)[tb])}
-              </button>
-            ))}
-          </div>
-          {editTxn ? (
-            <>
-              <button
-                onClick={() => {
-                  if (window.confirm(t("Delete this transaction? This cannot be undone."))) {
-                    local.deleteTxn(editTxn.id);
-                    onDone();
-                  }
-                }}
-                aria-label={t("Delete")}
-                style={{
-                  width: 34,
-                  height: 34,
-                  borderRadius: 10,
-                  border: "none",
-                  background: hc(tint(C.headerInk, 0.13), C.surface),
-                  cursor: "pointer",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  flexShrink: 0,
-                }}
-              >
-                {/* trash: lid + bucket */}
-                <Ico
-                  d="M4 7h16M9 7V5a1 1 0 011-1h6a1 1 0 011 1v2m3 0l-.9 12.1A2 2 0 0115.1 21H8.9a2 2 0 01-2-1.9L6 7m4 4v6m4-6v6"
-                  size={17}
-                  color={hc(C.headerNeg, CORAL)}
-                  sw={2}
-                />
-              </button>
-              <div style={{ position: "relative", flexShrink: 0 }}>
-                <button
-                  onClick={() => setShowTxnMenu((v) => !v)}
-                  aria-label={t("Duplicate")}
-                  style={{
-                    width: 34,
-                    height: 34,
-                    borderRadius: 10,
-                    border: "none",
-                    background: hc(tint(C.headerInk, 0.13), C.surface),
-                    cursor: "pointer",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                  }}
-                >
-                  {/* kebab: 3 dots */}
-                  <svg width="17" height="17" viewBox="0 0 24 24" fill={hc(C.headerInk, C.text)}>
-                    <circle cx="12" cy="5" r="2" />
-                    <circle cx="12" cy="12" r="2" />
-                    <circle cx="12" cy="19" r="2" />
-                  </svg>
-                </button>
-                {showTxnMenu && (
-                  <div
-                    style={{
-                      position: "absolute",
-                      top: 38,
-                      right: 0,
-                      background: C.card,
-                      border: `1px solid ${C.line}`,
-                      borderRadius: 10,
-                      boxShadow: "0 6px 18px rgba(0,0,0,0.16)",
-                      zIndex: 30,
-                      minWidth: 150,
-                      overflow: "hidden",
-                    }}
-                  >
-                    <button
-                      onClick={() => {
-                        setShowTxnMenu(false);
-                        local.duplicateTxn(editTxn);
-                        onDone();
-                      }}
-                      style={{
-                        display: "block",
-                        width: "100%",
-                        padding: "11px 14px",
-                        background: "none",
-                        border: "none",
-                        color: C.text,
-                        fontSize: 13,
-                        fontWeight: 500,
-                        cursor: "pointer",
-                        textAlign: "left",
-                        fontFamily: font,
-                      }}
-                    >
-                      {t("Duplicate")}
-                    </button>
-                  </div>
-                )}
-              </div>
-            </>
-          ) : draft ? (
-            <div style={{ width: 26 }} />
-          ) : (
-            <button
-              onClick={() => setShowImport(true)}
-              aria-label={t("From screenshot")}
-              style={{ background: "none", border: "none", cursor: "pointer", padding: 4, display: "flex", flexShrink: 0 }}
-            >
-              <Ico
-                d="M4 8.5A1.5 1.5 0 015.5 7H8l1.6-2.4a1 1 0 01.9-.6h3a1 1 0 01.9.6L16 7h2.5A1.5 1.5 0 0120 8.5v9a1.5 1.5 0 01-1.5 1.5h-13A1.5 1.5 0 014 17.5v-9zM12 16a3.5 3.5 0 100-7 3.5 3.5 0 000 7z"
-                size={19}
-                color={hc(C.headerInk, C.soft)}
-                sw={1.7}
-              />
-            </button>
-          )}
-        </div>
-
-        {draft && (
-          <div style={{ textAlign: "center", fontSize: 12, fontWeight: 600, color: hc(C.headerMute, C.soft), padding: "0 10px 4px" }}>{t("Imported item")}</div>
-        )}
-      </div>
-
-      {/* Amount hero (board .amt-big): centered, 38px/800 tabular; tap anywhere → open the pad.
-          The horizontally-scrolling inner div keeps a long expression's cursor end visible. */}
-      <div
-        role="button"
-        tabIndex={0}
-        onClick={() => setNumpad(true)}
-        onKeyDown={(e) => {
-          if (e.target !== e.currentTarget) return;
-          if (e.key === "Enter" || e.key === " ") {
-            e.preventDefault();
-            setNumpad(true);
+      <AddHeader
+        tab={tab}
+        isEdit={!!editTxn}
+        isDraft={!!draft}
+        menuOpen={showTxnMenu}
+        onBack={draft ? draft.onCancel : onDone}
+        onTabSelect={(tb) => {
+          setTab(tb);
+          reset();
+          setIsRefund(false);
+          setEnvOpen(tb === "expense");
+          setDestOpen(false);
+        }}
+        onDelete={() => {
+          if (!editTxn) return;
+          if (window.confirm(t("Delete this transaction? This cannot be undone."))) {
+            local.deleteTxn(editTxn.id);
+            onDone();
           }
         }}
-        style={{ padding: "8px 0 2px", cursor: "pointer", display: "flex", justifyContent: "center" }}
-      >
-        <div style={{ display: "inline-flex", alignItems: "baseline", maxWidth: "100%" }}>
-          {/* Expense-only sign toggle: −/+ flips isRefund right next to the number (board spec) —
-              income/transfer never show it (income is always +, transfer has no sign). */}
-          {tab === "expense" && (
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                setIsRefund((v) => !v);
-              }}
-              aria-label={t("Toggle refund")}
-              style={{
-                width: 28,
-                height: 28,
-                borderRadius: "50%",
-                alignSelf: "center",
-                flexShrink: 0,
-                marginRight: 7,
-                border: `1.5px solid ${isRefund ? C.pos : C.line}`,
-                background: isRefund ? tint(C.pos, 0.12) : "none",
-                color: isRefund ? C.pos : C.text,
-                fontSize: 17,
-                fontWeight: 800,
-                lineHeight: 1,
-                padding: 0,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                cursor: "pointer",
-              }}
-            >
-              {isRefund ? "+" : "−"}
-            </button>
-          )}
-          <div ref={amtRef} className="gs" style={{ overflowX: "auto", whiteSpace: "nowrap", maxWidth: "100%" }}>
-            <span style={{ fontSize: 38, fontWeight: 800, color: plus ? C.pos : C.text, fontVariantNumeric: "tabular-nums" }}>{amount || "0"}</span>
-            {numpad && (
-              <span
-                style={{
-                  display: "inline-block",
-                  width: 2,
-                  height: 28,
-                  background: "var(--accent)",
-                  borderRadius: 1,
-                  marginLeft: 3,
-                  verticalAlign: "text-bottom",
-                  animation: "fi .6s ease-in-out infinite alternate",
-                }}
-              />
-            )}
-          </div>
-          <span style={{ fontSize: 17, color: C.soft, fontWeight: 700, marginLeft: 5, flexShrink: 0 }}>{currencySymbol(currency, lang)}</span>
-        </div>
-      </div>
+        onToggleMenu={() => setShowTxnMenu((v) => !v)}
+        onDuplicate={() => {
+          if (!editTxn) return;
+          setShowTxnMenu(false);
+          local.duplicateTxn(editTxn);
+          onDone();
+        }}
+        onOpenImport={() => setShowImport(true)}
+      />
 
-      {/* Account + date — one quiet line under the amount (board B6v2 spec): two independent tap
-          targets (account → showAcc; date → the existing DateSheet), composed WITHOUT gluing a
-          sentence — tiny icons carry the meaning instead ("from account X … date Y" reads in the
-          wrong order in several languages). A non-today date warns amber. */}
-      <div style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: 6, padding: "0 0 8px" }}>
-        <button
-          onClick={() => setShowAcc(true)}
-          style={{ display: "flex", alignItems: "center", gap: 4, background: "none", border: "none", padding: 2, cursor: "pointer" }}
-        >
-          <Glyph name="wallet" size={11} color={C.mute} />
-          <span style={{ fontSize: 11, fontWeight: 700, color: C.soft }}>{accObj?.name ?? t("Account")}</span>
-        </button>
-        <span style={{ fontSize: 11, color: C.mute }}>·</span>
-        <button
-          onClick={() => {
-            setShowDate(true);
-            setNumpad(false);
-          }}
-          style={{ display: "flex", alignItems: "center", gap: 4, background: "none", border: "none", padding: 2, cursor: "pointer" }}
-        >
-          <Glyph name="calendar" size={11} color={dateColor} />
-          <span style={{ fontSize: 11, fontWeight: 700, color: dateColor }}>{dateLabel}</span>
-        </button>
-      </div>
+      <AmountSection
+        tab={tab}
+        isRefund={isRefund}
+        plus={plus}
+        amount={amount}
+        numpadOpen={numpad}
+        amtRef={amtRef}
+        accountName={accObj?.name ?? null}
+        dateLabel={dateLabel}
+        dateColor={dateColor}
+        onOpenPad={() => setNumpad(true)}
+        onToggleRefund={() => setIsRefund((v) => !v)}
+        onOpenAccountSheet={() => setShowAcc(true)}
+        onOpenDateSheet={() => {
+          setShowDate(true);
+          setNumpad(false);
+        }}
+      />
 
-      {/* Name — the transaction title, kept from the shipped Add as one slim underline field
-          (shared across all three tabs now that it no longer sits beside the category chip). */}
-      <div style={{ padding: `0 ${P}px 4px` }}>
-        <input
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          onFocus={() => setNumpad(false)}
-          placeholder={t("Name")}
-          style={{
-            width: "100%",
-            boxSizing: "border-box",
-            background: "none",
-            border: "none",
-            borderBottom: `1px solid ${C.line}`,
-            color: C.text,
-            fontSize: 14,
-            fontFamily: font,
-            padding: "5px 2px",
-          }}
-        />
-      </div>
-
-      {/* An existing note is shown read-only (new notes can no longer be added) — ✕ clears it,
-          taking effect when the transaction is saved. */}
-      {note && (
-        <div style={{ display: "flex", alignItems: "center", gap: 8, padding: `0 ${P}px 4px` }}>
-          <Ico d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z" size={14} color={C.mute} />
-          <span style={{ flex: 1, minWidth: 0, fontSize: 12.5, color: C.soft, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-            {note}
-          </span>
-          <button onClick={() => setNote("")} style={{ background: "none", border: "none", color: C.mute, fontSize: 11, cursor: "pointer", flexShrink: 0 }}>
-            ✕
-          </button>
-        </div>
-      )}
+      <TransactionFields name={name} note={note} onNameChange={setName} onFieldFocus={() => setNumpad(false)} onClearNote={() => setNote("")} />
 
       <div className="gs" style={{ flex: 1, overflowY: "auto" }} onClick={() => setNumpad(false)}>
         {tab === "transfer" ? (
