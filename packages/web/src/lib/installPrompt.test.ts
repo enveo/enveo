@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { getInstallState, initInstallPrompt, installState, isInstallable, promptInstall, runPrompt, type InstallState } from "./installPrompt";
+import { getInstallState, type InstallState, initInstallPrompt, installState, isInstallable, promptInstall, runPrompt } from "./installPrompt";
 
 const ANDROID = "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 Chrome/126 Mobile Safari/537.36";
 const DESKTOP_CHROME = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/126 Safari/537.36";

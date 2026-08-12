@@ -1,5 +1,11 @@
 import { describe, expect, it } from "bun:test";
+import fc from "fast-check";
+import { applyOp } from "./applyOp";
+import { computeBudgetState } from "./budget";
+import { acc, asClientLedger, env, grp, ledgerArb, tx } from "./ledger.test-support";
+import type { SyncOp } from "./ops";
 import {
+  type CashflowPoint,
   computeCashflowSeries,
   computeDailySpending,
   computeEnvelopeTrends,
@@ -9,14 +15,8 @@ import {
   savingsRate,
   spendingBaseline,
   topPlaces,
-  type CashflowPoint,
 } from "./reports";
-import { computeBudgetState } from "./budget";
-import { acc, alloc, asClientLedger, env, grp, ledgerArb, tx } from "./ledger.test-support";
-import fc from "fast-check";
 import type { Ledger } from "./types";
-import { applyOp } from "./applyOp";
-import type { SyncOp } from "./ops";
 
 describe("computeNetWorthSeries", () => {
   it("sums ALL accounts (on + off budget) at each month's end", () => {

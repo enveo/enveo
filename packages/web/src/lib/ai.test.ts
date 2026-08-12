@@ -14,9 +14,9 @@ import {
   type ClientLedger,
   type Transaction,
 } from "@enveo/shared";
-import { aiTarget, hasAiTarget, previewSuggestPrompt, runImportExtract, type AiSettings } from "./ai";
+import { type AiSettings, aiTarget, hasAiTarget, previewSuggestPrompt, runImportExtract } from "./ai";
 import { apiErrorMessage } from "./api";
-import { chatJson, type ChatTarget } from "./openai";
+import { type ChatTarget, chatJson } from "./openai";
 
  
 async function withFetch<T>(fetchStub: typeof fetch, fn: () => Promise<T>, onLine = true): Promise<T> {

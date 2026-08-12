@@ -10,10 +10,10 @@
  */
 import { useSettings } from "../contexts";
 import type { Message } from "./messages.generated";
-import { detectLang, LOCALES, uiLang, type Lang } from "./registry";
+import { detectLang, type Lang, LOCALES, uiLang } from "./registry";
 
-export { detectLang, LOCALES, uiLang };
 export type { Lang, Message };
+export { detectLang, LOCALES, uiLang };
 export type PluralForms = Partial<Record<Intl.LDMLPluralRule, string>>;
 export type Dict = Partial<Record<Message, string | PluralForms>>;
 

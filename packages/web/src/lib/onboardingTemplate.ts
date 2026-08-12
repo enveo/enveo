@@ -4,7 +4,7 @@
 
 
 
-import { msg, type Message } from "./i18n";
+import { type Message, msg } from "./i18n";
 
 export type TemplateEnvelope = { name: Message; color: string; icon: string; isSavings?: boolean };
 export type TemplateGroup = { group: Message; envelopes: TemplateEnvelope[] };

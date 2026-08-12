@@ -1,8 +1,8 @@
-import { Children, useState, type ReactNode } from "react";
+import { Children, type ReactNode, useState } from "react";
 import { useTheme } from "../../lib/contexts";
 import { useT } from "../../lib/i18n";
 import { Ico } from "../../lib/icons";
-import { CORAL, TEAL, font } from "../../lib/theme";
+import { CORAL, font, TEAL } from "../../lib/theme";
 
 /* ── Shared Settings section patterns (moved 1:1 from Settings.tsx) ──
  * Failed writes are rendered with apiErrorMessage (lib/api.ts): it turns every server error CODE

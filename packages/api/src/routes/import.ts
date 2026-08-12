@@ -2,25 +2,25 @@ import {
   AI_VISION_TIMEOUT_MS,
   aiLocaleSchema,
   buildImportExtractPrompt,
+  type ChatRequest,
+  type ImportExtractItem,
   languageDirectives,
   languageName,
   parseImportExtractResponse,
   supportsReasoningEffort,
-  type ChatRequest,
-  type ImportExtractItem,
 } from "@enveo/shared";
 import { and, eq, inArray } from "drizzle-orm";
 import { Hono } from "hono";
 import { z } from "zod";
 import { requireTier } from "../context";
 import { db } from "../db/client";
+import * as s from "../db/schema";
 import { env } from "../env";
 import { openAiChatFetch, transportFailureJson, UpstreamHttpError } from "../openaiHttp";
-import * as s from "../db/schema";
 import { assertBudgetFks } from "../sync/apply";
-import { budgetAssertionFails } from "./sync";
-import { confidentSourceRef, decideAssignment, type HistGroup, type HistPattern, rankPatterns } from "./import-match";
 import { buildDupIndex, classifyDup } from "./import-dedupe";
+import { confidentSourceRef, decideAssignment, type HistGroup, type HistPattern, rankPatterns } from "./import-match";
+import { budgetAssertionFails } from "./sync";
 
 /**
  * Expense import from screenshots (Apple Wallet / bank history).

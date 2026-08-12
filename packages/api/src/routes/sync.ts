@@ -5,14 +5,15 @@
  * Every response carries `budgetId` — the epoch marker: a DB wipe+reseed yields
  * a new `budgets.id`, and on mismatch the client does a fullResync().
  */
-import { clientLedgerSchema, opSchemas, REPLICATED_TABLES, type ClientLedgerInput, type OpKind, type OpPayload, type ReplicatedTable } from "@enveo/shared";
-import { and, eq, gt, inArray, sql as dsql } from "drizzle-orm";
+import { type ClientLedgerInput, clientLedgerSchema, type OpKind, type OpPayload, opSchemas, REPLICATED_TABLES, type ReplicatedTable } from "@enveo/shared";
+import { and, sql as dsql, eq, gt, inArray } from "drizzle-orm";
 import { Hono } from "hono";
 import postgres from "postgres";
 import { z } from "zod";
-import { BudgetVanished, getBudgetId, requireExistingTier, requireTier, sessionUserId, type BudgetMeta } from "../context";
-import { db, type DbTransaction } from "../db/client";
+import { type BudgetMeta, BudgetVanished, getBudgetId, requireExistingTier, requireTier, sessionUserId } from "../context";
+import { type DbTransaction, db } from "../db/client";
 import * as s from "../db/schema";
+import { loadClientLedger, mapAccount, mapAllocation, mapBudget, mapCategory, mapEnvelope, mapGroup, mapPlace, mapTransaction, mapTxnItem } from "../repo";
 import {
   applyAccountCreate,
   applyAccountDelete,
@@ -30,14 +31,13 @@ import {
   applyTxnCreate,
   applyTxnDelete,
   applyTxnUpdate,
+  type Executor,
   findForeignLedgerRef,
   NOT_FOUND,
   ScopeViolation,
   wipeBudgetData,
-  type Executor,
 } from "../sync/apply";
 import { claimOp } from "../sync/idempotency";
-import { loadClientLedger, mapAccount, mapAllocation, mapBudget, mapCategory, mapEnvelope, mapGroup, mapPlace, mapTransaction, mapTxnItem } from "../repo";
 
 export const syncRoutes = new Hono();
 

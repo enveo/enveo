@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { applyAmountKey, hasOpenOp, padKey, padPreview, padPreviewLive, type PadState } from "./amount";
+import { applyAmountKey, hasOpenOp, type PadState, padKey, padPreview, padPreviewLive } from "./amount";
 import { evalExpression } from "./format";
 
 describe("applyAmountKey", () => {

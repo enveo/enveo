@@ -1,15 +1,14 @@
-import { useEffect, useMemo, useState } from "react";
 import type { Transaction } from "@enveo/shared";
-import type { StateResponse } from "../lib/api";
+import { useEffect, useMemo, useState } from "react";
 import { Header, Sheet } from "../components/chrome";
-import type { ScreenId } from "../components/chrome";
-import { SectionEyebrow, CardBox, HighlightedText, PickerSearch, useBand } from "../components/kit";
+import { CardBox, HighlightedText, PickerSearch, SectionEyebrow, useBand } from "../components/kit";
+import type { StateResponse } from "../lib/api";
 import { useMask, useTheme } from "../lib/contexts";
 import { dayHeading } from "../lib/dates";
 import { useT } from "../lib/i18n";
 import { Glyph, Ico } from "../lib/icons";
 import { matchesSearch, SEARCH_THRESHOLD } from "../lib/search";
-import { P, TRANSFER, TEAL, tint, font } from "../lib/theme";
+import { font, P, TEAL, TRANSFER, tint } from "../lib/theme";
 
 export function TransactionsScreen({
   state,

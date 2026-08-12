@@ -1,5 +1,5 @@
 import { useTheme } from "./contexts";
-import { msg, type Message } from "./i18n";
+import { type Message, msg } from "./i18n";
 
  
 export const ICONS: Record<string, string[]> = {

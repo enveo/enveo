@@ -11,7 +11,7 @@
  * as a negative carry-in (envelope "in the red").
  */
 
-import type { Account, Allocation, BudgetState, EnvelopeState, Ledger, Money, Transaction } from "./types";
+import type { Account, BudgetState, EnvelopeState, Ledger, Money, Transaction } from "./types";
 
 export const monthOf = (date: string): string => date.slice(0, 7);
 

@@ -5,7 +5,7 @@
  * clientLedgerSchema) BEFORE anything is replaced — a corrupted file NEVER breaks
  * the local state or reaches the server.
  */
-import { clientLedgerSchema, type ClientLedger } from "@enveo/shared";
+import { type ClientLedger, clientLedgerSchema } from "@enveo/shared";
 import { getTierMeta } from "./e2ee";
 import { translate, uiLang } from "./i18n";
 import * as outbox from "./outbox";

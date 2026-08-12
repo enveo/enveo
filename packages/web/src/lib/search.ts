@@ -9,6 +9,7 @@
 // served/decoded under a non-UTF-8 charset (bit us when bundling for external tooling).
 const DIACRITIC_RE = (() => {
   try {
+    // biome-ignore lint/complexity/useRegexLiterals: the constructor is the point — a literal fails at PARSE time, where this try/catch cannot reach it
     return new RegExp("\\p{Diacritic}", "gu");
   } catch {
     return /[\u0300-\u036f]/g;

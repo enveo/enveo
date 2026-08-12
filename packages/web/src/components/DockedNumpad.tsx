@@ -1,4 +1,4 @@
-import { hasOpenOp, padKey, padPreview, type PadState } from "../lib/amount";
+import { hasOpenOp, type PadState, padKey, padPreview } from "../lib/amount";
 import { useMask, useTheme } from "../lib/contexts";
 import { isLight } from "../lib/format";
 import { useT } from "../lib/i18n";

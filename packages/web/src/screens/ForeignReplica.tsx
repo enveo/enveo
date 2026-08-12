@@ -6,7 +6,7 @@ import { exportBackup } from "../lib/data";
 import { getCachedDeployment } from "../lib/deviceTrust";
 import { useT } from "../lib/i18n";
 import { discardLocalReplica, enterLoginKeepingReplica } from "../lib/sync";
-import { CORAL, TEAL, font } from "../lib/theme";
+import { CORAL, font, TEAL } from "../lib/theme";
 
 /**
  * BootStatus "foreign" — the replica on this device carries an owner stamp naming a DIFFERENT

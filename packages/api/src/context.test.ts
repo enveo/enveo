@@ -24,15 +24,16 @@ import { beforeAll, describe, expect, it } from "bun:test";
 import { drizzle } from "drizzle-orm/postgres-js";
 import { migrate } from "drizzle-orm/postgres-js/migrator";
 import postgres from "postgres";
+import { runChild } from "./api.test-support";
 // Constant + type only — the child's app imports are lazy (see its header), so importing it
 // here does NOT pull env/db/client into this process.
-import { SENTINEL, type BudgetInitOutput } from "./context.budget-init.test-child";
-import { runChild } from "./api.test-support";
+import { type BudgetInitOutput, SENTINEL } from "./context.budget-init.test-child";
 
 /** The child forces real lock waits (bounded pg_locks polling) — beyond bun's 5 s default.
  *  Applied to the ONE hook that spawns it, NOT via setDefaultTimeout (process-global in bun:
  *  it would silently relax every other suite sharing the run). */
 const CHILD_TIMEOUT_MS = 120_000;
+
 import * as s from "./db/schema";
 
 const TEST_URL = process.env.TEST_DATABASE_URL ?? "";

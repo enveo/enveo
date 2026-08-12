@@ -6,7 +6,7 @@
  */
 import { describe, expect, it } from "bun:test";
 import type { ClientLedger } from "@enveo/shared";
-import { store, type PullChange } from "./store";
+import { type PullChange, store } from "./store";
 
  
 const oldLedger = (): ClientLedger =>

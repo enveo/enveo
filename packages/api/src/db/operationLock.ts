@@ -37,7 +37,7 @@
  * own dedicated protocols; neither may be migrated onto this utility.
  */
 import { sql as dsql } from "drizzle-orm";
-import { db, type DbTransaction } from "./client";
+import { type DbTransaction, db } from "./client";
 
 /**
  * Central registry — the only source of operation names. A free-form string is rejected by the

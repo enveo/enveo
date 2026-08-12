@@ -1,25 +1,25 @@
-import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { computeStateResponse, type Transaction, type TxnPayload } from "@enveo/shared";
-import { useLedgerVersion, type EditedImportItem, type ImportItem, type StateResponse } from "../lib/api";
-import { hasOpenOp, padKey, type PadState } from "../lib/amount";
-import { categoryCountsFor, rankCategories } from "../lib/categoryIndex";
-import { rankEnvelopes, rankPlaces } from "../lib/suggest";
-import { preferredAccountId, setLastAccountId } from "../lib/lastAccount";
-import { local } from "../lib/mutate";
-import { store } from "../lib/store";
-import { Sheet } from "../components/chrome";
+import { type CSSProperties, useEffect, useMemo, useRef, useState } from "react";
 import { AmountPadHost, type AmountPadTarget } from "../components/AmountPadSheet";
+import { Sheet } from "../components/chrome";
 import { ImportSheet } from "../components/ImportSheet";
 import { CardBox, HighlightedText, PickerSearch, SectionEyebrow, useBand } from "../components/kit";
 import { Numpad, ScrollPicker } from "../components/pickers";
+import { hasOpenOp, type PadState, padKey } from "../lib/amount";
+import { type EditedImportItem, type ImportItem, type StateResponse, useLedgerVersion } from "../lib/api";
+import { categoryCountsFor, rankCategories } from "../lib/categoryIndex";
 import { useCurrency, useMask, useTheme } from "../lib/contexts";
-import { haptic } from "../lib/haptics";
-import { currencySymbol, evalExpression, formatMoney } from "../lib/format";
 import { currentMonth, formatDateLong, monthNames, todayISO } from "../lib/dates";
-import { useT, type Message, msg } from "../lib/i18n";
+import { currencySymbol, evalExpression, formatMoney } from "../lib/format";
+import { haptic } from "../lib/haptics";
+import { type Message, msg, useT } from "../lib/i18n";
 import { Glyph, Ico } from "../lib/icons";
+import { preferredAccountId, setLastAccountId } from "../lib/lastAccount";
+import { local } from "../lib/mutate";
 import { matchesSearch, SEARCH_THRESHOLD } from "../lib/search";
-import { CORAL, P, TEAL, font, tint } from "../lib/theme";
+import { store } from "../lib/store";
+import { rankEnvelopes, rankPlaces } from "../lib/suggest";
+import { CORAL, font, P, TEAL, tint } from "../lib/theme";
 
 export type Tab = "expense" | "income" | "transfer";
 
@@ -961,6 +961,7 @@ export function AddScreen({
                 <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                   <Ico d="M3 9l9-7 9 7v11a1 1 0 01-1 1h-4v-7H8v7H4a1 1 0 01-1-1V9z" size={15} color={placeId ? TEAL : C.mute} />
                   <input
+                    // biome-ignore lint/a11y/noAutofocus: flag-gated — set only right after the user taps "Type a place…", never on a programmatic expand
                     autoFocus={placeAutoFocus}
                     placeholder={t("Place")}
                     value={placeId ? (state.places.find((p) => p.id === placeId)?.name ?? "") : placeInput}

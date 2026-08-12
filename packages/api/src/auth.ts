@@ -2,9 +2,9 @@
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { APIError } from "better-auth/api";
+import { signupsOpen } from "./authPolicy";
 import { db, sql } from "./db/client";
 import * as s from "./db/schema";
-import { signupsOpen } from "./authPolicy";
 import { env } from "./env";
 import { authTrustedOrigins } from "./origins";
 import type { Executor } from "./sync/apply";

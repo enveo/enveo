@@ -1,11 +1,11 @@
-import { createContext, useContext, useEffect, useMemo, useState, useSyncExternalStore, type ReactNode } from "react";
+import { createContext, type ReactNode, useContext, useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { browserLocales, currencyForLocales } from "./currency";
 import { formatMoney } from "./format";
 // the REGISTRY, not lib/i18n: that one reads useSettings() from here — importing it would close the cycle
 import { detectLang, type Lang } from "./i18n/registry";
 import { loadPersistedSettings, persistSettings } from "./settingsPersist";
 import { store } from "./store";
-import { light, themeTokens, type AccentTheme, type Theme } from "./theme";
+import { type AccentTheme, light, type Theme, themeTokens } from "./theme";
 
 export type ThemeMode = "light" | "dark" | "auto";
 export type AiMode = "off" | "server" | "byok";

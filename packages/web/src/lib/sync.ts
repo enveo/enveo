@@ -26,7 +26,7 @@
  *   "locked" → Unlock screen). 409 tier_mismatch from ANY call (v1 and v2)
  *   updates tierMeta from the body and forces a hard re-bootstrap on the right path.
  */
-import type { ClientLedger, SyncOp } from "@enveo/shared";
+import type { ClientLedger } from "@enveo/shared";
 import { fetchSessionUserId } from "./auth";
 import * as e2ee from "./e2ee";
 import { clearLocalData, idbGet, idbPut, storageMode } from "./idb";
@@ -37,7 +37,7 @@ import { purgeLegacyPlannedIds } from "./legacyPlanned";
 import * as outbox from "./outbox";
 import * as persist from "./persist";
 import { requestPersistentStorage } from "./storage";
-import { store, type PullChange } from "./store";
+import { type PullChange, store } from "./store";
 
 interface SnapshotResponse extends ClientLedger {
   budgetId: string;

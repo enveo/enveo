@@ -48,7 +48,7 @@ function fail(message: string): number {
 }
 
 function emit(outputs: Readonly<Record<string, string>>): void {
-  const path = process.env["GITHUB_OUTPUT"];
+  const path = process.env.GITHUB_OUTPUT;
   const lines = Object.entries(outputs).map(([key, value]) => `${key}=${value}`);
   for (const line of lines) console.log(`  ${line}`);
   if (path !== undefined && path !== "") appendFileSync(path, `${lines.join("\n")}\n`);

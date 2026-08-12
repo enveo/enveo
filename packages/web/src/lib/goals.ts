@@ -1,2 +1,2 @@
  
-export { goalProgress, type GoalProgress } from "@enveo/shared";
+export { type GoalProgress, goalProgress } from "@enveo/shared";

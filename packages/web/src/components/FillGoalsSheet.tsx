@@ -1,16 +1,16 @@
+import { computeStateResponse, type FillProposal, fillByGoals } from "@enveo/shared";
 import { useEffect, useState } from "react";
-import { computeStateResponse, fillByGoals, type FillProposal } from "@enveo/shared";
-import { Sheet } from "./chrome";
-import { AmountPadHost, type AmountPadTarget } from "./AmountPadSheet";
+import type { StateResponse } from "../lib/api";
 import { useCurrency, useMask, useSettings } from "../lib/contexts";
 import { currencySymbol, fmtTrim, isLight, parseAmount } from "../lib/format";
+import { haptic } from "../lib/haptics";
 import { useT } from "../lib/i18n";
 import { Glyph } from "../lib/icons";
-import { CTA, TEAL, font } from "../lib/theme";
-import { haptic } from "../lib/haptics";
 import { local } from "../lib/mutate";
 import { store } from "../lib/store";
-import { type StateResponse } from "../lib/api";
+import { CTA, font, TEAL } from "../lib/theme";
+import { AmountPadHost, type AmountPadTarget } from "./AmountPadSheet";
+import { Sheet } from "./chrome";
 
 /**
  * "Fill by goals" preview (spec 2026-07-31): on open, proposes how to spend the current

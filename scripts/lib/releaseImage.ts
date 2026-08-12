@@ -99,7 +99,7 @@ function labelsByPlatform(imageJson: unknown, platforms: readonly string[]): Map
       byPlatform.set(platform, null);
       continue;
     }
-    const config = entry["config"] as { Labels?: Record<string, string> } | undefined;
+    const config = entry.config as { Labels?: Record<string, string> } | undefined;
     byPlatform.set(platform, config?.Labels ?? {});
   }
   return byPlatform;

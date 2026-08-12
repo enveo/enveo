@@ -1,10 +1,10 @@
-import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Sheet } from "./chrome";
-import { useSettings, type OpenAiModel } from "../lib/contexts";
-import { useT, type Message, msg } from "../lib/i18n";
+import { useState } from "react";
 import { api } from "../lib/api";
-import { TEAL, font } from "../lib/theme";
+import { type OpenAiModel, useSettings } from "../lib/contexts";
+import { type Message, msg, useT } from "../lib/i18n";
+import { font, TEAL } from "../lib/theme";
+import { Sheet } from "./chrome";
 
 /**
  * AI consent sheet — intercepts the FIRST use of an AI feature in off mode.

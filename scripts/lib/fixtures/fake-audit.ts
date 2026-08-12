@@ -15,6 +15,7 @@
  *   bun fake-audit.ts garbage     → exit 0, output that is not the documented schema
  *   bun fake-audit.ts crash       → exit 7, an unexpected status
  */
+// biome-ignore-all lint/suspicious/noFallthroughSwitchClause: every case ends in process.exit — the linter cannot see the process terminate, but nothing falls through
 const MODE = process.argv[2] ?? "clean";
 
 const ESBUILD = {

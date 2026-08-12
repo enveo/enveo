@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { useTheme } from "../lib/contexts";
 import { isLight } from "../lib/format";
-import { useT, type Message } from "../lib/i18n";
+import { useT } from "../lib/i18n";
 import { Glyph, ICON_CATEGORIES, Ico } from "../lib/icons";
 import { EXT_PALETTE, font } from "../lib/theme";
 import { Sheet } from "./chrome";

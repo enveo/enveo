@@ -1,6 +1,6 @@
 import { useCurrency, useSettings, useTheme } from "../../lib/contexts";
 import { SUPPORTED_CURRENCIES } from "../../lib/currency";
-import { loadLocale, LOCALES, msg, useT, type Lang, type Message } from "../../lib/i18n";
+import { type Lang, LOCALES, loadLocale, type Message, msg, useT } from "../../lib/i18n";
 import { local } from "../../lib/mutate";
 import { store } from "../../lib/store";
 import { font, TEAL, themeTokens } from "../../lib/theme";

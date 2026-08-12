@@ -22,13 +22,13 @@ import { and, eq, isNull } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/postgres-js";
 import { migrate } from "drizzle-orm/postgres-js/migrator";
 import postgres from "postgres";
+import { runChild } from "../api.test-support";
 import * as s from "../db/schema";
 import { applyPushOp, budgetAssertionFails, legacyChangesWatermark, ownerAssertionFails, pullChanges, pushInput, replaceInput } from "./sync";
+import { SENTINEL as BARRIER_SENTINEL, type FirstUseBarrierOutput } from "./sync.first-use-barrier.test-child";
 // Constant + type only — this module's app/db imports are lazy (see the file header), so
 // importing it here does NOT pull env/db/client into THIS process.
 import { SENTINEL as REPLACE_SENTINEL, type ReplaceRecurrenceOutput } from "./sync.replace-recurrence.test-child";
-import { SENTINEL as BARRIER_SENTINEL, type FirstUseBarrierOutput } from "./sync.first-use-barrier.test-child";
-import { runChild } from "../api.test-support";
 
 /** The lock-order child forces real lock waits (bounded pg_locks polling) — beyond bun's 5 s
  *  default. Applied to the ONE hook that spawns it, NOT via setDefaultTimeout (process-global

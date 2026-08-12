@@ -1,10 +1,10 @@
-import type { CSSProperties, ReactNode } from "react";
 import type { DailySpendingPoint } from "@enveo/shared";
-import { useBand } from "./kit";
+import type { CSSProperties, ReactNode } from "react";
 import { useTheme } from "../lib/contexts";
 import { monthLabel } from "../lib/dates";
 import { useT } from "../lib/i18n";
 import { P, TEAL, type Theme } from "../lib/theme";
+import { useBand } from "./kit";
 
 /**
  * Report component kit — the shared visual language for every report subscreen (Tasks 8–12):

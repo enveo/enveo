@@ -1,13 +1,13 @@
 import { useState } from "react";
-import { apiErrorMessage } from "../lib/api";
 import { LogoMark } from "../components/chrome";
-import { deriveKek, unwrapDek, decodePairing, type KdfParams } from "../lib/crypto";
+import { apiErrorMessage } from "../lib/api";
 import { useTheme } from "../lib/contexts";
+import { decodePairing, deriveKek, type KdfParams, unwrapDek } from "../lib/crypto";
 import * as e2ee from "../lib/e2ee";
 import { useT } from "../lib/i18n";
 import { store } from "../lib/store";
 import { retryBoot } from "../lib/sync";
-import { CORAL, TEAL, font } from "../lib/theme";
+import { CORAL, font, TEAL } from "../lib/theme";
 
 /**
  * E2EE unlock screen (BootStatus "locked") — the budget is on the e2ee tier
@@ -195,6 +195,7 @@ export function UnlockScreen() {
             onChange={(e) => setPass(e.target.value)}
             placeholder={t("Encryption password")}
             autoComplete="current-password"
+            // biome-ignore lint/a11y/noAutofocus: the password field is this screen's single purpose — focusing it is the expected behavior
             autoFocus
             aria-label={t("Encryption password")}
             style={inputStyle}
@@ -231,6 +232,7 @@ export function UnlockScreen() {
             autoCorrect="off"
             spellCheck={false}
             rows={4}
+            // biome-ignore lint/a11y/noAutofocus: the pairing-code field is this screen's single purpose — focusing it is the expected behavior
             autoFocus
             aria-label={t("Pairing code")}
             style={{ ...inputStyle, resize: "none", fontSize: 12, wordBreak: "break-all" }}

@@ -17,7 +17,7 @@
  *   in  — EXPECT_DATABASE_URL (+ DATABASE_URL, both set to the same throwaway Postgres)
  *   out — one SENTINEL-prefixed JSON line on stdout: BudgetInitOutput
  */
-import { and, eq, sql as dsql } from "drizzle-orm";
+import { and, sql as dsql, eq } from "drizzle-orm";
 import { assertThrowawayDb, emitChildResult, lockObserver, waitFor, withTimeout } from "./api.test-support";
 
 export const SENTINEL = "__BUDGET_INIT_CHILD__";

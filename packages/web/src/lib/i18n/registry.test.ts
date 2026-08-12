@@ -11,7 +11,7 @@
  */
 import { afterEach, describe, expect, test } from "bun:test";
 import { __resetStorageForTests } from "../idb";
-import { detectLang, LOCALES, uiLang, type Lang } from "./registry";
+import { detectLang, type Lang, LOCALES, uiLang } from "./registry";
 
 function stubLocalStorage(initial: Record<string, string> = {}) {
   const m = new Map<string, string>(Object.entries(initial));

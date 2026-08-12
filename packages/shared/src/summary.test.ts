@@ -1,7 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import { computeBudgetState } from "./budget";
-import { computeEnvelopeSummary } from "./summary";
 import { acc, alloc, deepFreeze, env, grp, tx } from "./ledger.test-support";
+import { computeEnvelopeSummary } from "./summary";
 import type { ClientLedger } from "./types";
 
 /**

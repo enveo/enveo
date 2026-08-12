@@ -1,7 +1,7 @@
-import { useEffect, useRef, useState } from "react";
 import { registerSW } from "virtual:pwa-register";
+import { useEffect, useRef, useState } from "react";
 import { useT } from "../lib/i18n";
-import { TEAL, font } from "../lib/theme";
+import { font, TEAL } from "../lib/theme";
 
 /**
  * Registers the service worker in "prompt" mode and shows the "New version

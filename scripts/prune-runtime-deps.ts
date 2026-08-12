@@ -17,7 +17,7 @@
  *
  *   bun scripts/prune-runtime-deps.ts /app
  */
-import { readdirSync, readFileSync, readlinkSync, rmSync, statSync, type Dirent } from "node:fs";
+import { type Dirent, readdirSync, readFileSync, readlinkSync, rmSync, statSync } from "node:fs";
 import { resolve } from "node:path";
 import { closureProblems, computeClosure, deadStoreEntries, type Link, type Manifest, type StoreReader } from "./lib/runtimeClosure";
 
