@@ -56,6 +56,8 @@ export const fr: Dict = {
   "Added {n} transaction | Added {n} transactions": { one: "{n} transaction ajoutée", many: "{n} transactions ajoutées", other: "{n} transactions ajoutées" },
   "Adding…": "Ajout…",
   Advanced: "Avancé",
+  "Afterwards, other devices must unlock again with the new password or a fresh pairing code — old pairing codes stop working.":
+    "Ensuite, les autres appareils devront être déverrouillés à nouveau avec le nouveau mot de passe ou un nouveau code d'appairage — les anciens codes d'appairage ne fonctionnent plus.",
   "All goals funded ✓": "Tous les objectifs financés ✓",
   Allocated: "Alloué",
   "Allocated {allocated} · Spent {spent}": "Alloué {allocated} · Dépensé {spent}",
@@ -360,6 +362,7 @@ export const fr: Dict = {
   Prompt: "Consigne",
   RESET: "REINITIALISER",
   "Rainy day": "Imprévus",
+  "Re-encrypt and upgrade": "Rechiffrer et mettre à niveau",
   "Recognized transactions": "Transactions reconnues",
   "Recognizing…": "Reconnaissance…",
   Reconcile: "Rapprocher",
@@ -450,6 +453,8 @@ export const fr: Dict = {
   "The app talks to OpenAI directly from this browser using your own key — bypassing the server.":
     "L'application parle à OpenAI directement depuis ce navigateur avec votre propre clé — sans passer par le serveur.",
   "The backup is corrupted and was not loaded: {detail}": "La sauvegarde est corrompue et n'a pas été chargée : {detail}",
+  "The budget changed on the server in the meantime — nothing was written. Try again.":
+    "Le budget a changé sur le serveur entre-temps — rien n'a été écrit. Réessayez.",
   "The budget has changed since this was generated — generate a new suggestion.": "Le budget a changé depuis la génération — générez une nouvelle suggestion.",
   "The budget data on this device could not be matched to the account you are signed in with, so nothing can be sent to the server. Nothing has been deleted yet. Download a backup first — this device may hold the only copy of that data. “Delete everything and start fresh” erases this account's data on the server and the local copy on this device, then signs you out.":
     "Les données du budget sur cet appareil n'ont pas pu être associées au compte connecté, donc rien ne peut être envoyé au serveur. Rien n'a encore été supprimé. Téléchargez d'abord une sauvegarde — cet appareil détient peut-être la seule copie de ces données. « Tout supprimer et repartir de zéro » efface les données de ce compte sur le serveur et la copie locale de cet appareil, puis vous déconnecte.",
@@ -484,6 +489,8 @@ export const fr: Dict = {
   "The server has no OpenAI key configured. Set OPENAI_API_KEY and restart the app, or use your own key in Settings → Artificial intelligence.":
     "Le serveur n'a aucune clé OpenAI configurée. Définissez OPENAI_API_KEY et redémarrez l'application, ou utilisez votre propre clé dans Réglages → Intelligence artificielle.",
   "The server hit an unexpected error. Nothing was changed — try again.": "Le serveur a rencontré une erreur inattendue. Rien n'a été modifié — réessayez.",
+  "The server refuses to sync this budget until its encryption is upgraded to the new format.":
+    "Le serveur refuse de synchroniser ce budget tant que son chiffrement n'a pas été mis à niveau vers le nouveau format.",
   "The server rejected these changes — usually because you edited something that was meanwhile deleted on another device. Your data has already been restored to the server state. “Discard” removes the failed attempt from the list.":
     "Le serveur a rejeté ces modifications — le plus souvent parce que vous avez modifié quelque chose qui avait entre-temps été supprimé sur un autre appareil. Vos données ont déjà été ramenées à l'état du serveur. « Abandonner » retire la tentative échouée de la liste.",
   "The server rejected {n} change — tap to open settings | The server rejected {n} changes — tap to open settings": {
@@ -493,6 +500,7 @@ export const fr: Dict = {
   },
   "The signed-in account changed while the data was being sent — nothing was written. Reload the app and try again.":
     "Le compte connecté a changé pendant l'envoi des données — rien n'a été écrit. Rechargez l'application et réessayez.",
+  "The upgrade failed — nothing was changed on the server.": "La mise à niveau a échoué — rien n'a été modifié sur le serveur.",
   "The upload is too large — try fewer (or smaller) screenshots.":
     "L'envoi est trop volumineux — essayez avec moins de captures (ou des captures plus petites).",
   Theme: "Thème",
@@ -501,12 +509,21 @@ export const fr: Dict = {
     "Il n'y a aucune donnée à envoyer sur cet appareil — rien n'a été envoyé au serveur. Rechargez l'application pour récupérer d'abord votre budget.",
   "There is nothing to export yet — wait for the app to finish loading.": "Il n'y a encore rien à exporter — attendez la fin du chargement de l'application.",
   "This budget is encrypted": "Ce budget est chiffré",
+  "This budget is encrypted with an older format that new versions of the app no longer read. Upgrading re-encrypts it with a fresh key built from the data on THIS device: pick a new encryption password (it may be the same one), and the server's copy is replaced in one step.":
+    "Ce budget est chiffré avec un ancien format que les nouvelles versions de l'application ne lisent plus. La mise à niveau le rechiffre avec une clé neuve construite à partir des données de CET appareil : choisissez un nouveau mot de passe de chiffrement (ce peut être le même), et la copie du serveur est remplacée en une seule étape.",
+  "This budget needs an encryption upgrade": "Ce budget nécessite une mise à niveau du chiffrement",
+  "This budget was encrypted with an older format that this version of the app no longer reads, and this device has no copy of the data. Open Enveo on the device that holds the budget (or restore a JSON backup there) and run the encryption upgrade in Settings → Privacy — then unlock here with the new password.":
+    "Ce budget a été chiffré avec un ancien format que cette version de l'application ne lit plus, et cet appareil n'a pas de copie des données. Ouvrez Enveo sur l'appareil qui détient le budget (ou restaurez-y une sauvegarde JSON) et lancez la mise à niveau du chiffrement dans Réglages → Confidentialité — puis déverrouillez ici avec le nouveau mot de passe.",
   "This budget's data is end-to-end encrypted. Enter the encryption password to unlock it on this device.":
     "Les données de ce budget sont chiffrées de bout en bout. Saisissez le mot de passe de chiffrement pour les déverrouiller sur cet appareil.",
+  "This budget's encryption must be upgraded before it can sync — open Settings → Privacy on a device that holds the data and run the upgrade.":
+    "Le chiffrement de ce budget doit être mis à niveau avant qu'il puisse se synchroniser — ouvrez Réglages → Confidentialité sur un appareil qui détient les données et lancez la mise à niveau.",
   "This code contains your encryption key in plain form. Show it only on your own trusted device — anyone with the code can read the budget.":
     "Ce code contient votre clé de chiffrement en clair. Ne l'affichez que sur votre propre appareil de confiance — quiconque a le code peut lire le budget.",
   "This data may belong to a different account. Then it will never be sent — download a backup and remove the copy from this device.":
     "Ces données appartiennent peut-être à un autre compte. Dans ce cas elles ne seront jamais envoyées — téléchargez une sauvegarde et retirez la copie de cet appareil.",
+  "This data uses an older encryption format that this version no longer reads — run the encryption upgrade in Settings → Privacy on the device that holds the budget.":
+    "Ces données utilisent un ancien format de chiffrement que cette version ne lit plus — lancez la mise à niveau du chiffrement dans Réglages → Confidentialité sur l'appareil qui détient le budget.",
   "This device has no encryption key — unlock the budget with your password (or a pairing code) and try again.":
     "Cet appareil n'a pas de clé de chiffrement — déverrouillez le budget avec votre mot de passe (ou un code d'appairage) et réessayez.",
   "This device's data has not been matched to your account — nothing is being sent to the server. Tap to open settings":
@@ -550,6 +567,7 @@ export const fr: Dict = {
   Unlock: "Déverrouiller",
   "Unlock with password": "Déverrouiller avec le mot de passe",
   "Unlocking…": "Déverrouillage…",
+  "Upgrade encryption": "Mettre à niveau le chiffrement",
   "Untick what you don't want. Duplicates are skipped — tap one to edit and add it anyway.":
     "Décochez ce que vous ne voulez pas. Les doublons sont ignorés — touchez-en un pour le modifier et l'ajouter quand même.",
   Usage: "Utilisation",

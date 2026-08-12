@@ -65,6 +65,8 @@ export const cs: Dict = {
   },
   "Adding…": "Přidávám…",
   Advanced: "Pokročilé",
+  "Afterwards, other devices must unlock again with the new password or a fresh pairing code — old pairing codes stop working.":
+    "Na ostatních zařízeních pak bude potřeba znovu odemknout novým heslem nebo čerstvým párovacím kódem — staré párovací kódy přestanou fungovat.",
   "All goals funded ✓": "Všechny cíle financovány ✓",
   Allocated: "Přiděleno",
   "Allocated {allocated} · Spent {spent}": "Přiděleno {allocated} · Utraceno {spent}",
@@ -362,6 +364,7 @@ export const cs: Dict = {
   Prompt: "Zadání",
   RESET: "RESET",
   "Rainy day": "Železná rezerva",
+  "Re-encrypt and upgrade": "Znovu zašifrovat a aktualizovat",
   "Recognized transactions": "Rozpoznané transakce",
   "Recognizing…": "Rozpoznávám…",
   Reconcile: "Spárovat",
@@ -451,6 +454,8 @@ export const cs: Dict = {
   "The app talks to OpenAI directly from this browser using your own key — bypassing the server.":
     "Aplikace mluví s OpenAI přímo z tohoto prohlížeče tvým vlastním klíčem — server obchází.",
   "The backup is corrupted and was not loaded: {detail}": "Záloha je poškozená a nebyla načtena: {detail}",
+  "The budget changed on the server in the meantime — nothing was written. Try again.":
+    "Rozpočet se mezitím na serveru změnil — nic se nezapsalo. Zkus to znovu.",
   "The budget has changed since this was generated — generate a new suggestion.": "Rozpočet se od vygenerování změnil — vygeneruj nový návrh.",
   "The budget data on this device could not be matched to the account you are signed in with, so nothing can be sent to the server. Nothing has been deleted yet. Download a backup first — this device may hold the only copy of that data. “Delete everything and start fresh” erases this account's data on the server and the local copy on this device, then signs you out.":
     "Data rozpočtu na tomto zařízení se nepodařilo přiřadit k přihlášenému účtu, takže na server nelze nic odeslat. Zatím se nic nesmazalo. Nejdřív si stáhni zálohu — toto zařízení může mít jedinou kopii těchto dat. „Smazat vše a začít od nuly“ smaže data tohoto účtu na serveru i lokální kopii na tomto zařízení a pak tě odhlásí.",
@@ -483,6 +488,8 @@ export const cs: Dict = {
   "The server has no OpenAI key configured. Set OPENAI_API_KEY and restart the app, or use your own key in Settings → Artificial intelligence.":
     "Server nemá nastavený žádný klíč OpenAI. Nastav OPENAI_API_KEY a restartuj aplikaci, nebo použij vlastní klíč v Nastavení → Umělá inteligence.",
   "The server hit an unexpected error. Nothing was changed — try again.": "Na serveru nastala neočekávaná chyba. Nic se nezměnilo — zkus to znovu.",
+  "The server refuses to sync this budget until its encryption is upgraded to the new format.":
+    "Server odmítá tento rozpočet synchronizovat, dokud se jeho šifrování neaktualizuje na nový formát.",
   "The server rejected these changes — usually because you edited something that was meanwhile deleted on another device. Your data has already been restored to the server state. “Discard” removes the failed attempt from the list.":
     "Server tyto změny odmítl — obvykle proto, že jsi upravil něco, co mezitím na jiném zařízení někdo smazal. Tvá data jsme už vrátili do stavu ze serveru. „Zahodit“ odstraní neúspěšný pokus ze seznamu.",
   "The server rejected {n} change — tap to open settings | The server rejected {n} changes — tap to open settings": {
@@ -493,6 +500,7 @@ export const cs: Dict = {
   },
   "The signed-in account changed while the data was being sent — nothing was written. Reload the app and try again.":
     "Přihlášený účet se během odesílání dat změnil — nic se nezapsalo. Načti aplikaci znovu a zkus to znovu.",
+  "The upgrade failed — nothing was changed on the server.": "Aktualizace se nezdařila — na serveru se nic nezměnilo.",
   "The upload is too large — try fewer (or smaller) screenshots.": "Odesílaná data jsou příliš velká — zkus méně (nebo menší) snímků obrazovky.",
   Theme: "Motiv",
   "Then tap {action}": "Potom klepni na {action}",
@@ -500,12 +508,21 @@ export const cs: Dict = {
     "Na tomto zařízení nejsou žádná data k odeslání — na server se nic neodeslalo. Načti aplikaci znovu, aby se nejdřív stáhl tvůj rozpočet.",
   "There is nothing to export yet — wait for the app to finish loading.": "Zatím není co exportovat — počkej, až se aplikace donačte.",
   "This budget is encrypted": "Tento rozpočet je zašifrovaný",
+  "This budget is encrypted with an older format that new versions of the app no longer read. Upgrading re-encrypts it with a fresh key built from the data on THIS device: pick a new encryption password (it may be the same one), and the server's copy is replaced in one step.":
+    "Tento rozpočet je zašifrovaný starším formátem, který nové verze aplikace už nečtou. Aktualizace ho znovu zašifruje čerstvým klíčem vytvořeným z dat na TOMTO zařízení: zvol nové heslo šifrování (může být stejné) a kopie na serveru se nahradí v jednom kroku.",
+  "This budget needs an encryption upgrade": "Tento rozpočet potřebuje aktualizaci šifrování",
+  "This budget was encrypted with an older format that this version of the app no longer reads, and this device has no copy of the data. Open Enveo on the device that holds the budget (or restore a JSON backup there) and run the encryption upgrade in Settings → Privacy — then unlock here with the new password.":
+    "Tento rozpočet byl zašifrovaný starším formátem, který tato verze aplikace už nepřečte, a toto zařízení nemá kopii dat. Otevři Enveo na zařízení, které rozpočet má (nebo tam obnov zálohu JSON), a spusť aktualizaci šifrování v Nastavení → Soukromí — pak tady odemkni novým heslem.",
   "This budget's data is end-to-end encrypted. Enter the encryption password to unlock it on this device.":
     "Data tohoto rozpočtu jsou šifrovaná end-to-end. Zadej heslo šifrování, abys je na tomto zařízení odemkl.",
+  "This budget's encryption must be upgraded before it can sync — open Settings → Privacy on a device that holds the data and run the upgrade.":
+    "Šifrování tohoto rozpočtu je potřeba aktualizovat, než se bude moct synchronizovat — otevři Nastavení → Soukromí na zařízení, které data má, a spusť aktualizaci.",
   "This code contains your encryption key in plain form. Show it only on your own trusted device — anyone with the code can read the budget.":
     "Tento kód obsahuje tvůj šifrovací klíč v čitelné podobě. Ukazuj ho jen na svém důvěryhodném zařízení — kdokoli s tímto kódem si může rozpočet přečíst.",
   "This data may belong to a different account. Then it will never be sent — download a backup and remove the copy from this device.":
     "Tato data možná patří jinému účtu. Pak se nikdy neodešlou — stáhni si zálohu a kopii z tohoto zařízení odstraň.",
+  "This data uses an older encryption format that this version no longer reads — run the encryption upgrade in Settings → Privacy on the device that holds the budget.":
+    "Tato data používají starší formát šifrování, který tato verze už nepřečte — spusť aktualizaci šifrování v Nastavení → Soukromí na zařízení, které rozpočet má.",
   "This device has no encryption key — unlock the budget with your password (or a pairing code) and try again.":
     "Toto zařízení nemá šifrovací klíč — odemkni rozpočet heslem (nebo párovacím kódem) a zkus to znovu.",
   "This device's data has not been matched to your account — nothing is being sent to the server. Tap to open settings":
@@ -548,6 +565,7 @@ export const cs: Dict = {
   Unlock: "Odemknout",
   "Unlock with password": "Odemknout heslem",
   "Unlocking…": "Odemykám…",
+  "Upgrade encryption": "Aktualizovat šifrování",
   "Untick what you don't want. Duplicates are skipped — tap one to edit and add it anyway.":
     "Odškrtni, co nechceš. Duplicity přeskakujeme — klepnutím na jednu ji upravíš a přidáš i tak.",
   Usage: "Využití",

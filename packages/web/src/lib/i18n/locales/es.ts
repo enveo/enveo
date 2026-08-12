@@ -56,6 +56,8 @@ export const es: Dict = {
   "Added {n} transaction | Added {n} transactions": { one: "Añadida {n} transacción", many: "Añadidas {n} transacciones", other: "Añadidas {n} transacciones" },
   "Adding…": "Añadiendo…",
   Advanced: "Avanzado",
+  "Afterwards, other devices must unlock again with the new password or a fresh pairing code — old pairing codes stop working.":
+    "Después, los demás dispositivos tendrán que desbloquearse otra vez con la nueva contraseña o con un código de vinculación nuevo: los códigos de vinculación antiguos dejan de funcionar.",
   "All goals funded ✓": "Todos los objetivos financiados ✓",
   Allocated: "Asignado",
   "Allocated {allocated} · Spent {spent}": "Asignado {allocated} · Gastado {spent}",
@@ -357,6 +359,7 @@ export const es: Dict = {
   Prompt: "Instrucción",
   RESET: "REINICIAR",
   "Rainy day": "Imprevistos",
+  "Re-encrypt and upgrade": "Volver a cifrar y actualizar",
   "Recognized transactions": "Transacciones reconocidas",
   "Recognizing…": "Reconociendo…",
   Reconcile: "Conciliar",
@@ -448,6 +451,8 @@ export const es: Dict = {
   "The app talks to OpenAI directly from this browser using your own key — bypassing the server.":
     "La aplicación habla con OpenAI directamente desde este navegador usando tu propia clave, sin pasar por el servidor.",
   "The backup is corrupted and was not loaded: {detail}": "La copia de seguridad está dañada y no se ha cargado: {detail}",
+  "The budget changed on the server in the meantime — nothing was written. Try again.":
+    "El presupuesto ha cambiado en el servidor mientras tanto: no se ha escrito nada. Inténtalo de nuevo.",
   "The budget has changed since this was generated — generate a new suggestion.":
     "El presupuesto ha cambiado desde que se generó esto: genera una sugerencia nueva.",
   "The budget data on this device could not be matched to the account you are signed in with, so nothing can be sent to the server. Nothing has been deleted yet. Download a backup first — this device may hold the only copy of that data. “Delete everything and start fresh” erases this account's data on the server and the local copy on this device, then signs you out.":
@@ -484,6 +489,8 @@ export const es: Dict = {
     "El servidor no tiene configurada ninguna clave de OpenAI. Define OPENAI_API_KEY y reinicia la aplicación, o usa tu propia clave en Ajustes → Inteligencia artificial.",
   "The server hit an unexpected error. Nothing was changed — try again.":
     "El servidor ha sufrido un error inesperado. No se ha cambiado nada: inténtalo de nuevo.",
+  "The server refuses to sync this budget until its encryption is upgraded to the new format.":
+    "El servidor se niega a sincronizar este presupuesto hasta que su cifrado se actualice al nuevo formato.",
   "The server rejected these changes — usually because you edited something that was meanwhile deleted on another device. Your data has already been restored to the server state. “Discard” removes the failed attempt from the list.":
     "El servidor ha rechazado estos cambios, normalmente porque has editado algo que mientras tanto se eliminó en otro dispositivo. Tus datos ya se han restaurado al estado del servidor. «Descartar» quita de la lista el intento fallido.",
   "The server rejected {n} change — tap to open settings | The server rejected {n} changes — tap to open settings": {
@@ -493,6 +500,7 @@ export const es: Dict = {
   },
   "The signed-in account changed while the data was being sent — nothing was written. Reload the app and try again.":
     "La cuenta con la sesión iniciada ha cambiado mientras se enviaban los datos: no se ha escrito nada. Recarga la aplicación e inténtalo de nuevo.",
+  "The upgrade failed — nothing was changed on the server.": "La actualización ha fallado: no se ha cambiado nada en el servidor.",
   "The upload is too large — try fewer (or smaller) screenshots.": "La subida es demasiado grande: prueba con menos capturas (o más pequeñas).",
   Theme: "Tema",
   "Then tap {action}": "Después toca {action}",
@@ -500,12 +508,21 @@ export const es: Dict = {
     "No hay datos que enviar en este dispositivo: no se ha enviado nada al servidor. Recarga la aplicación para descargar antes tu presupuesto.",
   "There is nothing to export yet — wait for the app to finish loading.": "Todavía no hay nada que exportar: espera a que la aplicación termine de cargar.",
   "This budget is encrypted": "Este presupuesto está cifrado",
+  "This budget is encrypted with an older format that new versions of the app no longer read. Upgrading re-encrypts it with a fresh key built from the data on THIS device: pick a new encryption password (it may be the same one), and the server's copy is replaced in one step.":
+    "Este presupuesto está cifrado con un formato antiguo que las versiones nuevas de la aplicación ya no leen. Al actualizar se vuelve a cifrar con una clave nueva construida a partir de los datos de ESTE dispositivo: elige una nueva contraseña de cifrado (puede ser la misma) y la copia del servidor se reemplaza en un solo paso.",
+  "This budget needs an encryption upgrade": "Este presupuesto necesita una actualización del cifrado",
+  "This budget was encrypted with an older format that this version of the app no longer reads, and this device has no copy of the data. Open Enveo on the device that holds the budget (or restore a JSON backup there) and run the encryption upgrade in Settings → Privacy — then unlock here with the new password.":
+    "Este presupuesto se cifró con un formato antiguo que esta versión de la aplicación ya no lee, y este dispositivo no tiene copia de los datos. Abre Enveo en el dispositivo que tiene el presupuesto (o restaura allí una copia de seguridad JSON) y ejecuta la actualización del cifrado en Ajustes → Privacidad; después, desbloquea aquí con la nueva contraseña.",
   "This budget's data is end-to-end encrypted. Enter the encryption password to unlock it on this device.":
     "Los datos de este presupuesto están cifrados de extremo a extremo. Introduce la contraseña de cifrado para desbloquearlo en este dispositivo.",
+  "This budget's encryption must be upgraded before it can sync — open Settings → Privacy on a device that holds the data and run the upgrade.":
+    "El cifrado de este presupuesto debe actualizarse antes de poder sincronizar: abre Ajustes → Privacidad en un dispositivo que tenga los datos y ejecuta la actualización.",
   "This code contains your encryption key in plain form. Show it only on your own trusted device — anyone with the code can read the budget.":
     "Este código contiene tu clave de cifrado en claro. Muéstralo solo en tu propio dispositivo de confianza: cualquiera que tenga el código puede leer el presupuesto.",
   "This data may belong to a different account. Then it will never be sent — download a backup and remove the copy from this device.":
     "Puede que estos datos pertenezcan a otra cuenta. En ese caso nunca se enviarán: descarga una copia de seguridad y quita la copia de este dispositivo.",
+  "This data uses an older encryption format that this version no longer reads — run the encryption upgrade in Settings → Privacy on the device that holds the budget.":
+    "Estos datos usan un formato de cifrado antiguo que esta versión ya no lee: ejecuta la actualización del cifrado en Ajustes → Privacidad en el dispositivo que tiene el presupuesto.",
   "This device has no encryption key — unlock the budget with your password (or a pairing code) and try again.":
     "Este dispositivo no tiene clave de cifrado: desbloquea el presupuesto con tu contraseña (o con un código de vinculación) e inténtalo de nuevo.",
   "This device's data has not been matched to your account — nothing is being sent to the server. Tap to open settings":
@@ -549,6 +566,7 @@ export const es: Dict = {
   Unlock: "Desbloquear",
   "Unlock with password": "Desbloquear con la contraseña",
   "Unlocking…": "Desbloqueando…",
+  "Upgrade encryption": "Actualizar el cifrado",
   "Untick what you don't want. Duplicates are skipped — tap one to edit and add it anyway.":
     "Desmarca lo que no quieras. Los duplicados se omiten: toca uno para editarlo y añadirlo de todos modos.",
   Usage: "Uso",

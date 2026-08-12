@@ -59,6 +59,8 @@ export const ptBR: Dict = {
   },
   "Adding…": "Adicionando…",
   Advanced: "Avançado",
+  "Afterwards, other devices must unlock again with the new password or a fresh pairing code — old pairing codes stop working.":
+    "Depois, os outros dispositivos precisarão desbloquear de novo com a nova senha ou com um código de pareamento novo — os códigos de pareamento antigos deixam de funcionar.",
   "All goals funded ✓": "Todas as metas financiadas ✓",
   Allocated: "Alocado",
   "Allocated {allocated} · Spent {spent}": "Alocado {allocated} · Gasto {spent}",
@@ -360,6 +362,7 @@ export const ptBR: Dict = {
   Prompt: "Instrução",
   RESET: "REDEFINIR",
   "Rainy day": "Imprevistos",
+  "Re-encrypt and upgrade": "Criptografar de novo e atualizar",
   "Recognized transactions": "Transações reconhecidas",
   "Recognizing…": "Reconhecendo…",
   Reconcile: "Conciliar",
@@ -450,6 +453,8 @@ export const ptBR: Dict = {
   "The app talks to OpenAI directly from this browser using your own key — bypassing the server.":
     "O app fala com a OpenAI direto deste navegador usando sua própria chave — sem passar pelo servidor.",
   "The backup is corrupted and was not loaded: {detail}": "O backup está corrompido e não foi carregado: {detail}",
+  "The budget changed on the server in the meantime — nothing was written. Try again.":
+    "O orçamento mudou no servidor nesse meio-tempo — nada foi gravado. Tente de novo.",
   "The budget has changed since this was generated — generate a new suggestion.": "O orçamento mudou desde que isto foi gerado — gere uma nova sugestão.",
   "The budget data on this device could not be matched to the account you are signed in with, so nothing can be sent to the server. Nothing has been deleted yet. Download a backup first — this device may hold the only copy of that data. “Delete everything and start fresh” erases this account's data on the server and the local copy on this device, then signs you out.":
     "Os dados do orçamento neste dispositivo não puderam ser associados à conta conectada, então nada pode ser enviado ao servidor. Nada foi excluído ainda. Baixe primeiro um backup — este dispositivo pode ter a única cópia desses dados. “Excluir tudo e começar do zero” exclui os dados desta conta no servidor e a cópia local deste dispositivo, e depois desconecta você.",
@@ -484,6 +489,8 @@ export const ptBR: Dict = {
   "The server has no OpenAI key configured. Set OPENAI_API_KEY and restart the app, or use your own key in Settings → Artificial intelligence.":
     "O servidor não tem nenhuma chave da OpenAI configurada. Defina OPENAI_API_KEY e reinicie o app, ou use sua própria chave em Configurações → Inteligência artificial.",
   "The server hit an unexpected error. Nothing was changed — try again.": "O servidor encontrou um erro inesperado. Nada foi alterado — tente de novo.",
+  "The server refuses to sync this budget until its encryption is upgraded to the new format.":
+    "O servidor se recusa a sincronizar este orçamento até que a criptografia seja atualizada para o novo formato.",
   "The server rejected these changes — usually because you edited something that was meanwhile deleted on another device. Your data has already been restored to the server state. “Discard” removes the failed attempt from the list.":
     "O servidor rejeitou estas mudanças — normalmente porque você editou algo que, enquanto isso, foi excluído em outro dispositivo. Seus dados já foram restaurados ao estado do servidor. “Descartar” tira a tentativa que falhou da lista.",
   "The server rejected {n} change — tap to open settings | The server rejected {n} changes — tap to open settings": {
@@ -493,6 +500,7 @@ export const ptBR: Dict = {
   },
   "The signed-in account changed while the data was being sent — nothing was written. Reload the app and try again.":
     "A conta conectada mudou enquanto os dados eram enviados — nada foi gravado. Recarregue o app e tente de novo.",
+  "The upgrade failed — nothing was changed on the server.": "A atualização falhou — nada foi alterado no servidor.",
   "The upload is too large — try fewer (or smaller) screenshots.": "O envio é grande demais — tente com menos capturas de tela (ou capturas menores).",
   Theme: "Tema",
   "Then tap {action}": "Depois toque em {action}",
@@ -500,12 +508,21 @@ export const ptBR: Dict = {
     "Não há dados neste dispositivo para enviar — nada foi enviado ao servidor. Recarregue o app para baixar seu orçamento primeiro.",
   "There is nothing to export yet — wait for the app to finish loading.": "Ainda não há nada para exportar — espere o app terminar de carregar.",
   "This budget is encrypted": "Este orçamento está criptografado",
+  "This budget is encrypted with an older format that new versions of the app no longer read. Upgrading re-encrypts it with a fresh key built from the data on THIS device: pick a new encryption password (it may be the same one), and the server's copy is replaced in one step.":
+    "Este orçamento está criptografado com um formato antigo que as versões novas do app não leem mais. A atualização o criptografa de novo com uma chave nova construída a partir dos dados DESTE dispositivo: escolha uma nova senha de criptografia (pode ser a mesma), e a cópia do servidor é substituída em uma única etapa.",
+  "This budget needs an encryption upgrade": "Este orçamento precisa de uma atualização da criptografia",
+  "This budget was encrypted with an older format that this version of the app no longer reads, and this device has no copy of the data. Open Enveo on the device that holds the budget (or restore a JSON backup there) and run the encryption upgrade in Settings → Privacy — then unlock here with the new password.":
+    "Este orçamento foi criptografado com um formato antigo que esta versão do app não lê mais, e este dispositivo não tem cópia dos dados. Abra o Enveo no dispositivo que tem o orçamento (ou restaure lá um backup JSON) e execute a atualização da criptografia em Configurações → Privacidade — depois, desbloqueie aqui com a nova senha.",
   "This budget's data is end-to-end encrypted. Enter the encryption password to unlock it on this device.":
     "Os dados deste orçamento são criptografados de ponta a ponta. Digite a senha de criptografia para desbloqueá-los neste dispositivo.",
+  "This budget's encryption must be upgraded before it can sync — open Settings → Privacy on a device that holds the data and run the upgrade.":
+    "A criptografia deste orçamento precisa ser atualizada antes que ele possa sincronizar — abra Configurações → Privacidade em um dispositivo que tenha os dados e execute a atualização.",
   "This code contains your encryption key in plain form. Show it only on your own trusted device — anyone with the code can read the budget.":
     "Este código contém sua chave de criptografia em texto claro. Mostre-o apenas no seu próprio dispositivo confiável — quem tiver o código consegue ler o orçamento.",
   "This data may belong to a different account. Then it will never be sent — download a backup and remove the copy from this device.":
     "Estes dados podem pertencer a outra conta. Nesse caso eles nunca serão enviados — baixe um backup e remova a cópia deste dispositivo.",
+  "This data uses an older encryption format that this version no longer reads — run the encryption upgrade in Settings → Privacy on the device that holds the budget.":
+    "Estes dados usam um formato de criptografia antigo que esta versão não lê mais — execute a atualização da criptografia em Configurações → Privacidade no dispositivo que tem o orçamento.",
   "This device has no encryption key — unlock the budget with your password (or a pairing code) and try again.":
     "Este dispositivo não tem chave de criptografia — desbloqueie o orçamento com sua senha (ou com um código de pareamento) e tente de novo.",
   "This device's data has not been matched to your account — nothing is being sent to the server. Tap to open settings":
@@ -549,6 +566,7 @@ export const ptBR: Dict = {
   Unlock: "Desbloquear",
   "Unlock with password": "Desbloquear com a senha",
   "Unlocking…": "Desbloqueando…",
+  "Upgrade encryption": "Atualizar a criptografia",
   "Untick what you don't want. Duplicates are skipped — tap one to edit and add it anyway.":
     "Desmarque o que não quiser. As duplicadas são ignoradas — toque em uma para editá-la e adicioná-la mesmo assim.",
   Usage: "Uso",
