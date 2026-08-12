@@ -27,6 +27,7 @@ export const sv: Dict = {
   "AI unavailable — rules were used instead.": "AI är inte tillgängligt — regler användes i stället.",
   AVAILABLE: "TILLGÄNGLIGT",
   Account: "Konto",
+  "About {n}× the cost of the cheapest tier.": "Ungefär {n}× kostnaden för den billigaste nivån.",
   "Account change": "Kontoändring",
   "Account deletion": "Kontoborttagning",
   "Account name": "Kontonamn",
@@ -83,9 +84,11 @@ export const sv: Dict = {
   "Balance in the app": "Saldo i appen",
   "Balance matches": "Saldot stämmer",
   "Balance:": "Saldo:",
+  Balanced: "Balanserad",
   "Before you continue, download a JSON backup and keep it somewhere safe.":
     "Ladda ned en JSON-säkerhetskopia och förvara den på ett säkert ställe innan du fortsätter.",
   Bills: "Räkningar",
+  "Best quality": "Bästa kvalitet",
   "Breakdown by category": "Fördelning per kategori",
   Budget: "Budget",
   "Budget currency change": "Byte av valuta",
@@ -104,6 +107,7 @@ export const sv: Dict = {
   "Changes are saved locally and will be sent after you resume.": "Ändringarna sparas lokalt och skickas när du återupptar.",
   "Changing…": "Ändrar…",
   "Check again": "Kontrollera igen",
+  "Checking which models your key can use…": "Kontrollerar vilka modeller din nyckel kan använda…",
   "Checking…": "Kontrollerar…",
   "Choose a color": "Välj en färg",
   "Choose an account": "Välj ett konto",
@@ -125,6 +129,8 @@ export const sv: Dict = {
   "Community translation — it may be incomplete.": "Gemenskapsöversättning — den kan vara ofullständig.",
   "Copied.": "Kopierat.",
   "Copy code": "Kopiera koden",
+  "Could not check model availability right now — every tier stays selectable.":
+    "Modelltillgängligheten kunde inte kontrolleras just nu — alla nivåer går fortfarande att välja.",
   "Could not create the account — please try again.": "Kontot kunde inte skapas — försök igen.",
   "Could not reach the AI service — check the network connection and try again.":
     "Det gick inte att nå AI-tjänsten — kontrollera nätverksanslutningen och försök igen.",
@@ -187,6 +193,7 @@ export const sv: Dict = {
   "Duplicates skipped: {n}": "Överhoppade dubbletter: {n}",
   E2EE: "E2EE",
   Edit: "Redigera",
+  Economical: "Ekonomisk",
   "Edit account": "Redigera kontot",
   "Edit envelope": "Redigera kuvertet",
   "Edit item {n}": "Redigera rad {n}",
@@ -269,6 +276,7 @@ export const sv: Dict = {
   "Local mode — sync paused. Tap to open settings": "Lokalt läge — synkroniseringen pausad. Tryck för att öppna inställningarna",
   "Losing the password means losing your data — the server cannot reset it or decrypt your budget.":
     "Att tappa lösenordet är att tappa dina data — servern kan varken återställa det eller dekryptera din budget.",
+  "Lowest cost — a typical screenshot import costs a fraction of a cent.": "Lägst kostnad — en typisk skärmbildsimport kostar en bråkdel av en cent.",
   "Manage envelopes": "Hantera kuverten",
   "Manage…": "Hantera…",
   "Median of historical monthly spending — resistant to one-off spikes; the free remainder is spread proportionally.":
@@ -305,6 +313,7 @@ export const sv: Dict = {
   "No spending in this period.": "Inga utgifter under den här perioden.",
   "No transactions were recognized in the screenshots.": "Inga transaktioner kändes igen i skärmbilderna.",
   "No transactions.": "Inga transaktioner.",
+  "Not available with your OpenAI key.": "Inte tillgänglig med din OpenAI-nyckel.",
   "Not sending": "Skickar inte",
   "Not syncing with your account": "Synkroniserar inte med ditt konto",
   Off: "Av",
@@ -317,6 +326,7 @@ export const sv: Dict = {
     "Öppna {host} i Safari för att lägga till appen på hemskärmen — på iPhone och iPad fungerar installation bara från Safari.",
   "OpenAI key": "OpenAI-nyckel",
   "OpenAI rejected the request — check the key and the model, then try again.": "OpenAI avvisade anropet — kontrollera nyckeln och modellen och försök igen.",
+  "OpenAI rejected this key — model availability could not be checked.": "OpenAI avvisade den här nyckeln — modelltillgängligheten kunde inte kontrolleras.",
   "OpenAI rejected your key — check it in Settings → Artificial intelligence.":
     "OpenAI avvisade din nyckel — kontrollera den i Inställningar → Artificiell intelligens.",
   Other: "Övrigt",
@@ -340,6 +350,7 @@ export const sv: Dict = {
   Predefined: "Fördefinierad",
   "Previous month": "Föregående månad",
   Privacy: "Integritet",
+  "Previously selected model — it stays available until you pick a tier.": "Tidigare vald modell — den finns kvar tills du väljer en nivå.",
   "Process screenshots": "Bearbeta skärmbilderna",
   Prompt: "Instruktion",
   RESET: "RESET",

@@ -27,6 +27,7 @@ export const ptBR: Dict = {
   "AI unavailable — rules were used instead.": "IA indisponível — foram usadas regras no lugar.",
   AVAILABLE: "DISPONÍVEL",
   Account: "Conta",
+  "About {n}× the cost of the cheapest tier.": "Cerca de {n}× o custo do nível mais barato.",
   "Account change": "Alteração de conta",
   "Account deletion": "Exclusão de conta",
   "Account name": "Nome da conta",
@@ -87,8 +88,10 @@ export const ptBR: Dict = {
   "Balance in the app": "Saldo no app",
   "Balance matches": "O saldo confere",
   "Balance:": "Saldo:",
+  Balanced: "Equilibrado",
   "Before you continue, download a JSON backup and keep it somewhere safe.": "Antes de continuar, baixe um backup JSON e guarde-o em um lugar seguro.",
   Bills: "Contas a pagar",
+  "Best quality": "Melhor qualidade",
   "Breakdown by category": "Detalhamento por categoria",
   Budget: "Orçamento",
   "Budget currency change": "Mudança de moeda",
@@ -107,6 +110,7 @@ export const ptBR: Dict = {
   "Changes are saved locally and will be sent after you resume.": "As mudanças são salvas localmente e serão enviadas quando você retomar.",
   "Changing…": "Alterando…",
   "Check again": "Verificar de novo",
+  "Checking which models your key can use…": "Verificando quais modelos sua chave pode usar…",
   "Checking…": "Verificando…",
   "Choose a color": "Escolha uma cor",
   "Choose an account": "Escolha uma conta",
@@ -128,6 +132,8 @@ export const ptBR: Dict = {
   "Community translation — it may be incomplete.": "Tradução da comunidade — pode estar incompleta.",
   "Copied.": "Copiado.",
   "Copy code": "Copiar o código",
+  "Could not check model availability right now — every tier stays selectable.":
+    "Não foi possível verificar a disponibilidade dos modelos agora — todos os níveis continuam selecionáveis.",
   "Could not create the account — please try again.": "Não foi possível criar a conta — tente de novo.",
   "Could not reach the AI service — check the network connection and try again.":
     "Não foi possível conectar ao serviço de IA — verifique a conexão de rede e tente de novo.",
@@ -189,6 +195,7 @@ export const ptBR: Dict = {
   "Duplicates skipped: {n}": "Duplicadas ignoradas: {n}",
   E2EE: "E2EE",
   Edit: "Editar",
+  Economical: "Econômico",
   "Edit account": "Editar a conta",
   "Edit envelope": "Editar o envelope",
   "Edit item {n}": "Editar o item {n}",
@@ -272,6 +279,8 @@ export const ptBR: Dict = {
   "Local mode — sync paused. Tap to open settings": "Modo local — sincronização pausada. Toque para abrir as configurações",
   "Losing the password means losing your data — the server cannot reset it or decrypt your budget.":
     "Perder a senha é perder os dados — o servidor não consegue redefini-la nem descriptografar seu orçamento.",
+  "Lowest cost — a typical screenshot import costs a fraction of a cent.":
+    "Menor custo — uma importação típica de captura de tela custa uma fração de centavo.",
   "Manage envelopes": "Gerenciar os envelopes",
   "Manage…": "Gerenciar…",
   "Median of historical monthly spending — resistant to one-off spikes; the free remainder is spread proportionally.":
@@ -308,6 +317,7 @@ export const ptBR: Dict = {
   "No spending in this period.": "Nenhum gasto neste período.",
   "No transactions were recognized in the screenshots.": "Nenhuma transação foi reconhecida nas capturas de tela.",
   "No transactions.": "Nenhuma transação.",
+  "Not available with your OpenAI key.": "Indisponível com a sua chave da OpenAI.",
   "Not sending": "Sem envio",
   "Not syncing with your account": "Não está sincronizando com a sua conta",
   Off: "Desligada",
@@ -320,6 +330,8 @@ export const ptBR: Dict = {
     "Abra {host} no Safari para adicionar à tela de início — no iPhone e no iPad a instalação só funciona pelo Safari.",
   "OpenAI key": "Chave da OpenAI",
   "OpenAI rejected the request — check the key and the model, then try again.": "A OpenAI rejeitou a requisição — confira a chave e o modelo e tente de novo.",
+  "OpenAI rejected this key — model availability could not be checked.":
+    "A OpenAI rejeitou esta chave — não foi possível verificar a disponibilidade dos modelos.",
   "OpenAI rejected your key — check it in Settings → Artificial intelligence.":
     "A OpenAI rejeitou sua chave — confira-a em Configurações → Inteligência artificial.",
   Other: "Outros",
@@ -343,6 +355,7 @@ export const ptBR: Dict = {
   Predefined: "Predefinido",
   "Previous month": "Mês anterior",
   Privacy: "Privacidade",
+  "Previously selected model — it stays available until you pick a tier.": "Modelo escolhido anteriormente — continua disponível até você escolher um nível.",
   "Process screenshots": "Processar as capturas de tela",
   Prompt: "Instrução",
   RESET: "REDEFINIR",

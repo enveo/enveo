@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
+import { AI_MODEL_TIERS, isLegacyOpenAiModel } from "../lib/aiModelTiers";
 import { api } from "../lib/api";
 import { type OpenAiModel, useSettings } from "../lib/contexts";
 import { type Message, msg, useT } from "../lib/i18n";
@@ -126,14 +127,23 @@ export function AiConsentSheet({
                     marginBottom: 8,
                   }}
                 />
-                <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
-                  {(["gpt-5.6-luna", "gpt-5.5-mini", "gpt-5.5"] as const).map((m) => (
+                <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 8 }}>
+                  {[
+                    ...AI_MODEL_TIERS.map((tier) => ({ m: tier.model, label: t(tier.label) })),
+                    // A persisted legacy choice stays offered here too — same §1b rule as Settings → AI.
+                    ...(isLegacyOpenAiModel(settings.openaiModel) ? [{ m: settings.openaiModel, label: settings.openaiModel }] : []),
+                  ].map(({ m, label }) => (
                     <button
                       key={m}
+                      role="radio"
+                      aria-checked={model === m}
                       onClick={() => setModel(m)}
                       style={{
-                        flex: 1,
-                        padding: "8px 0",
+                        display: "flex",
+                        justifyContent: "space-between",
+                        alignItems: "baseline",
+                        gap: 8,
+                        padding: "8px 12px",
                         borderRadius: 10,
                         border: `1px solid ${model === m ? TEAL : C.line}`,
                         background: model === m ? "var(--accent-1a)" : "transparent",
@@ -141,9 +151,11 @@ export function AiConsentSheet({
                         fontSize: 12.5,
                         fontWeight: 600,
                         cursor: "pointer",
+                        fontFamily: font,
                       }}
                     >
-                      {m}
+                      <span>{label}</span>
+                      {label !== m && <span style={{ fontSize: 10, fontWeight: 500, color: C.mute, whiteSpace: "nowrap" }}>{m}</span>}
                     </button>
                   ))}
                 </div>
