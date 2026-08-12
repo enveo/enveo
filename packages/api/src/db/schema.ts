@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { bigint, bigserial, boolean, date, index, integer, pgEnum, pgTable, text, timestamp, unique, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import { bigint, bigserial, boolean, date, index, integer, pgEnum, pgTable, primaryKey, text, timestamp, unique, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 
 /** Amounts in MINOR UNITS / grosz (BIGINT, mode number — safe for a household budget). */
 const money = (name: string) => bigint(name, { mode: "number" });
@@ -280,6 +280,32 @@ export const e2eeSnapshots = pgTable("e2ee_snapshots", {
   blob: text("blob").notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true, mode: "string" }).notNull().defaultNow(),
 });
+
+/**
+ * Cloud operator-key AI spend budget (backlog §1): ONE aggregate row per (policy, user, UTC
+ * calendar month) — no reservations, no per-request billing events. `spent_nano_usd` is integer
+ * nano-USD (bigint end to end; 1 USD = 1e9) and only grows by atomic upsert-increments of actual
+ * usage-derived cost (may overshoot the threshold — accepted). Period key 'YYYY-MM' is derived
+ * from POSTGRES time; start/end pin the half-open UTC month. Written EXCLUSIVELY by
+ * aiSpend/counter.ts; deliberately no retention job.
+ */
+export const aiUserMonthlySpend = pgTable(
+  "ai_user_monthly_spend",
+  {
+    policy: text("policy").notNull(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    periodKey: text("period_key").notNull(),
+    periodStart: timestamp("period_start", { withTimezone: true, mode: "date" }).notNull(),
+    periodEnd: timestamp("period_end", { withTimezone: true, mode: "date" }).notNull(),
+    /** Non-negative (CHECK in migration 0020) — a rollback can lose an increment, never invent one. */
+    spentNanoUsd: bigint("spent_nano_usd", { mode: "bigint" }).notNull().default(sql`0`),
+    createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" }).notNull().defaultNow(),
+  },
+  (t) => ({ pk: primaryKey({ columns: [t.policy, t.userId, t.periodKey] }) }),
+);
 
 export const allocations = pgTable(
   "allocations",
