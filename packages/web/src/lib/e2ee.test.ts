@@ -48,25 +48,62 @@ const U2 = "22222222-2222-2222-2222-222222222222";
 const U3 = "33333333-3333-3333-3333-333333333333";
 const U4 = "44444444-4444-4444-4444-444444444444";
 
-describe("e2ee: encrypting ops and snapshots", () => {
-  it("encryptOp → decryptOps restores kind/payload; opId in the clear; v1. ciphertext without plaintext", async () => {
+const BUDGET = "aaaaaaaa-0000-4000-8000-000000000001";
+const OTHER_BUDGET = "bbbbbbbb-0000-4000-8000-000000000002";
+const CTX = { budgetId: BUDGET, epoch: 1 };
+
+describe("e2ee: encrypting ops and snapshots (v2 authenticated context)", () => {
+  it("encryptOp → decryptOps restores kind/payload; opId in the clear; v2. ciphertext without plaintext", async () => {
     const dek = generateDek();
     const op = catOp(U1, U3, "Jedzenie");
-    const row = await encryptOp(op, dek);
+    const row = await encryptOp(op, dek, CTX);
     expect(row.opId).toBe(U1);
-    expect(row.ciphertext.startsWith("v1.")).toBe(true);
+    expect(row.ciphertext.startsWith("v2.")).toBe(true);
     expect(row.ciphertext).not.toContain("Jedzenie");
-    const [back] = await decryptOps([row], dek);
+    const [back] = await decryptOps([row], dek, CTX);
     expect(back).toEqual(op);
   });
+
+  it("SUBSTITUTION: swapping two valid ciphertexts while keeping their outer opIds fails", async () => {
+    // The attack this format exists to stop: a malicious store pairs op B's valid ciphertext
+    // with op A's clear opId, so B would be applied under A's idempotency identity.
+    const dek = generateDek();
+    const rowA = await encryptOp(catOp(U1, U3, "A"), dek, CTX);
+    const rowB = await encryptOp(catOp(U2, U4, "B"), dek, CTX);
+    const swapped = [
+      { opId: rowA.opId, ciphertext: rowB.ciphertext },
+      { opId: rowB.opId, ciphertext: rowA.ciphertext },
+    ];
+    await expect(decryptOps(swapped, dek, CTX)).rejects.toThrow();
+  });
+
+  it("REPLAY under another budget fails; replay under another epoch fails", async () => {
+    const dek = generateDek();
+    const row = await encryptOp(catOp(U1, U3, "X"), dek, CTX);
+    await expect(decryptOps([row], dek, { budgetId: OTHER_BUDGET, epoch: 1 })).rejects.toThrow();
+    await expect(decryptOps([row], dek, { budgetId: BUDGET, epoch: 2 })).rejects.toThrow();
+  });
+  // NOTE deliberately ABSENT: a "changed seq fails" op vector. PostgreSQL allocates the journal
+  // seq AFTER the client encrypted and pushed, so seq is not part of the op AAD — this design
+  // does not authenticate the server-chosen global order, and no test may claim it does.
 
   it("encryptSnapshot → decryptSnapshot restores the whole ledger; a wrong DEK throws", async () => {
     const dek = generateDek();
     const ledger = { ...emptyLedger(), categories: [{ id: U3, name: "Paliwo" }] };
-    const blob = await encryptSnapshot(ledger, dek);
+    const sctx = { budgetId: BUDGET, epoch: 1, uptoSeq: 42 };
+    const blob = await encryptSnapshot(ledger, dek, sctx);
     expect(blob).not.toContain("Paliwo");
-    expect(await decryptSnapshot(blob, dek)).toEqual(ledger);
-    await expect(decryptSnapshot(blob, generateDek())).rejects.toThrow();
+    expect(await decryptSnapshot(blob, dek, sctx)).toEqual(ledger);
+    await expect(decryptSnapshot(blob, generateDek(), sctx)).rejects.toThrow();
+  });
+
+  it("a snapshot paired with another uptoSeq (or budget/epoch) fails — checkpoint-position substitution", async () => {
+    const dek = generateDek();
+    const ledger = { ...emptyLedger(), categories: [{ id: U3, name: "Paliwo" }] };
+    const blob = await encryptSnapshot(ledger, dek, { budgetId: BUDGET, epoch: 1, uptoSeq: 42 });
+    await expect(decryptSnapshot(blob, dek, { budgetId: BUDGET, epoch: 1, uptoSeq: 0 })).rejects.toThrow();
+    await expect(decryptSnapshot(blob, dek, { budgetId: BUDGET, epoch: 2, uptoSeq: 42 })).rejects.toThrow();
+    await expect(decryptSnapshot(blob, dek, { budgetId: OTHER_BUDGET, epoch: 1, uptoSeq: 42 })).rejects.toThrow();
   });
 });
 

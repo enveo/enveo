@@ -6,8 +6,10 @@
  *   that came with the replica); tier/epoch in meta ("e2eeTier"/"e2eeEpoch") — hydrate once at
  *   boot (StrictMode-safe).
  * - Encryption/decryption of ops and snapshots: thin wrappers over
- *   crypto.ts (AES-GCM, "v1." format). The server NEVER sees plaintext —
- *   the outbox stays plaintext locally, we encrypt EXCLUSIVELY at push
+ *   crypto.ts (AES-GCM, ciphertext format v2 with MANDATORY authenticated context — the
+ *   caller supplies the budgetId/epoch/uptoSeq it EXPECTS, and a ciphertext moved to another
+ *   op identity, budget, epoch or checkpoint position fails to decrypt). The server NEVER
+ *   sees plaintext — the outbox stays plaintext locally, we encrypt EXCLUSIVELY at push
  *   (thanks to this backlogged ops survive tier flips).
  * - Checkpoint: op counter since the last snapshot (meta "e2eeOpsSinceSnap");
  *   maybeUploadSnapshot() every SNAPSHOT_EVERY_OPS ops sends an encrypted
@@ -17,7 +19,7 @@
  * Zero dependencies on store/sync (the caller provides the replica/cursor) — no cycles.
  */
 import type { ClientLedger, SyncOp } from "@enveo/shared";
-import { decryptPayload, encryptPayload } from "./crypto";
+import { decryptPayload, encryptPayload, opAadContext, snapshotAadContext } from "./crypto";
 import { idbGet } from "./idb";
 import * as persist from "./persist";
 
@@ -26,6 +28,25 @@ export type Tier = "plain" | "e2ee";
 export interface TierMeta {
   tier: Tier;
   epoch: number;
+}
+
+/** The E2EE ciphertext wire format of the SERVER's budget, as last reported by it
+ *  (the 409 e2ee_upgrade_required body or a v2 snapshot response). 1 = legacy pre-AAD
+ *  ciphertext — every normal sync2 channel refuses it until the explicit upgrade
+ *  ceremony (fresh DEK, next epoch) has run; 2 = the current authenticated format. */
+export type CipherVersion = 1 | 2;
+
+/** Caller-EXPECTED context for op encryption/decryption (the opId comes from each row). */
+export interface OpCryptoContext {
+  budgetId: string;
+  epoch: number;
+}
+
+/** Caller-EXPECTED context for a checkpoint blob — binds it to its claimed position. */
+export interface SnapshotCryptoContext {
+  budgetId: string;
+  epoch: number;
+  uptoSeq: number;
 }
 
 /** A sync2 channel row (push body / pull response). */
@@ -65,6 +86,7 @@ let dekOrigin: DekOrigin | null = null;
  */
 let dekTouched = false;
 let tierMeta: TierMeta = { tier: "plain", epoch: 0 };
+let cipherVersion: CipherVersion = 2;
 let opsSinceSnap = 0;
 
 let hydratePromise: Promise<void> | null = null;
@@ -77,12 +99,13 @@ let hydratePromise: Promise<void> | null = null;
 export function hydrate(): Promise<void> {
   if (!hydratePromise) {
     const p = (async () => {
-      const [d, o, t, e, n] = await Promise.all([
+      const [d, o, t, e, n, cv] = await Promise.all([
         idbGet<Uint8Array | ArrayBuffer>("meta", "e2eeDek"),
         idbGet<DekOrigin>("meta", "e2eeDekOrigin"),
         idbGet<Tier>("meta", "e2eeTier"),
         idbGet<number>("meta", "e2eeEpoch"),
         idbGet<number>("meta", "e2eeOpsSinceSnap"),
+        idbGet<number>("meta", "e2eeCipherVersion"),
       ]);
       // The key state of THIS page load wins over IDB: setDek/clearDek already told us the
       // provenance first-hand (and a re-run of hydrate must not launder it into "store").
@@ -96,6 +119,7 @@ export function hydrate(): Promise<void> {
         dekOrigin = dek ? (o === "session" ? "session" : "store") : null;
       }
       if (t === "plain" || t === "e2ee") tierMeta = { tier: t, epoch: e ?? 0 };
+      cipherVersion = cv === 1 ? 1 : 2; // absent = 2 (fresh installs and every post-upgrade budget)
       opsSinceSnap = n ?? 0;
     })();
     p.catch(() => {
@@ -170,21 +194,34 @@ export function setTierMeta(next: TierMeta): void {
   void persist.putMeta("e2eeEpoch", next.epoch);
 }
 
+/** The server budget's ciphertext format as last reported (see CipherVersion). */
+export const getCipherVersion = (): CipherVersion => cipherVersion;
+
+/** Record the server's reported format (409 e2ee_upgrade_required → 1; upgrade success / v2
+ *  snapshot → 2). Durable: the Settings upgrade action must survive a reload. */
+export function setCipherVersion(next: CipherVersion): void {
+  cipherVersion = next;
+  void persist.putMeta("e2eeCipherVersion", next);
+}
+
 /* ── Encrypting ops and snapshots ───────────────────────────────────── */
 
-/** An outbox op → a push v2 row: opId in the clear (idempotency), the rest in the ciphertext. */
-export async function encryptOp(op: SyncOp, key: Uint8Array): Promise<CipherOp> {
+/** An outbox op → a push v2 row: opId in the clear (idempotency) AND inside the authenticated
+ *  context — the ciphertext cannot later be paired with another op's clear opId. */
+export async function encryptOp(op: SyncOp, key: Uint8Array, ctx: OpCryptoContext): Promise<CipherOp> {
   return {
     opId: op.opId,
-    ciphertext: await encryptPayload(JSON.stringify({ kind: op.kind, payload: op.payload }), key),
+    ciphertext: await encryptPayload(JSON.stringify({ kind: op.kind, payload: op.payload }), key, opAadContext(ctx.budgetId, ctx.epoch, op.opId)),
   };
 }
 
-/** Pull v2 rows → SyncOp[] (input order = journal order). */
-export async function decryptOps(rows: readonly CipherOp[], key: Uint8Array): Promise<SyncOp[]> {
+/** Pull v2 rows → SyncOp[] (input order = journal order). `ctx` is the budget/epoch the CALLER
+ *  expects (locally bound values — never the response's own metadata); each row's outer opId is
+ *  its claimed identity, and decryption fails unless the ciphertext was made for exactly it. */
+export async function decryptOps(rows: readonly CipherOp[], key: Uint8Array, ctx: OpCryptoContext): Promise<SyncOp[]> {
   return Promise.all(
     rows.map(async (r) => {
-      const body = JSON.parse(await decryptPayload(r.ciphertext, key)) as {
+      const body = JSON.parse(await decryptPayload(r.ciphertext, key, opAadContext(ctx.budgetId, ctx.epoch, r.opId))) as {
         kind: SyncOp["kind"];
         payload: SyncOp["payload"];
       };
@@ -193,13 +230,15 @@ export async function decryptOps(rows: readonly CipherOp[], key: Uint8Array): Pr
   );
 }
 
-/** The whole replica (ClientLedger) as one ciphertext — checkpoint / enable. */
-export function encryptSnapshot(ledger: ClientLedger, key: Uint8Array): Promise<string> {
-  return encryptPayload(JSON.stringify(ledger), key);
+/** The whole replica (ClientLedger) as one ciphertext — checkpoint / enable / upgrade. The AAD
+ *  binds the blob to (budgetId, epoch, uptoSeq): a checkpoint replayed at another position or
+ *  under another generation fails to decrypt. */
+export function encryptSnapshot(ledger: ClientLedger, key: Uint8Array, ctx: SnapshotCryptoContext): Promise<string> {
+  return encryptPayload(JSON.stringify(ledger), key, snapshotAadContext(ctx.budgetId, ctx.epoch, ctx.uptoSeq));
 }
 
-export async function decryptSnapshot(blob: string, key: Uint8Array): Promise<ClientLedger> {
-  return JSON.parse(await decryptPayload(blob, key)) as ClientLedger;
+export async function decryptSnapshot(blob: string, key: Uint8Array, ctx: SnapshotCryptoContext): Promise<ClientLedger> {
+  return JSON.parse(await decryptPayload(blob, key, snapshotAadContext(ctx.budgetId, ctx.epoch, ctx.uptoSeq))) as ClientLedger;
 }
 
 /* ── Checkpoint (op counter + snapshot upload) ────────────────────── */
@@ -230,11 +269,14 @@ export function resetOpsCounter(): void {
  * mid-cycle sign-in as somebody else would otherwise store THIS budget's ciphertext (and this
  * device's uptoSeq) as THEIR checkpoint, which their next new-device bootstrap could not decrypt.
  * The server refuses a session it did not verify (409) — hence, per the contract above, a no-op.
+ *
+ * `budgetId` = the budget this replica is bound to (the snapshot AAD needs it, and a replica
+ * that cannot name its budget must not write — fail-closed, not optional legacy compatibility).
  */
-export async function maybeUploadSnapshot(ledger: ClientLedger | null, cursor: number, userId: string): Promise<void> {
+export async function maybeUploadSnapshot(ledger: ClientLedger | null, cursor: number, userId: string, budgetId: string): Promise<void> {
   if (opsSinceSnap < SNAPSHOT_EVERY_OPS) return;
-  if (!dek || !ledger || tierMeta.tier !== "e2ee") return;
-  const blob = await encryptSnapshot(ledger, dek);
+  if (!dek || !ledger || tierMeta.tier !== "e2ee" || !budgetId) return;
+  const blob = await encryptSnapshot(ledger, dek, { budgetId, epoch: tierMeta.epoch, uptoSeq: cursor });
   const res = await fetch("/api/sync2/snapshot", {
     method: "POST",
     headers: { "content-type": "application/json" },
