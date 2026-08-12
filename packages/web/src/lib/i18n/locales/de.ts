@@ -15,6 +15,8 @@ export const de: Dict = {
   "3 mo": "3 Mon.",
   "6 mo": "6 Mon.",
   "= {amount}": "= {amount}",
+  "A previous upgrade attempt was interrupted before it could finish. Resume it to complete the upgrade with the password you chose then — a new password cannot be set until this attempt finishes or is discarded.":
+    "Ein früherer Aktualisierungsversuch wurde unterbrochen, bevor er abgeschlossen werden konnte. Setze ihn fort, um die Aktualisierung mit dem damals gewählten Passwort abzuschließen — ein neues Passwort lässt sich erst festlegen, wenn dieser Versuch abgeschlossen oder verworfen ist.",
   "A profile with this name already exists.": "Ein Profil mit diesem Namen existiert bereits.",
   AI: "KI",
   "AI (corrected)": "KI (korrigiert)",
@@ -180,6 +182,9 @@ export const de: Dict = {
   "Disable end-to-end encryption?": "Ende-zu-Ende-Verschlüsselung deaktivieren?",
   "Disabling…": "Wird deaktiviert…",
   Discard: "Verwerfen",
+  "Discard the unfinished attempt": "Unvollendeten Versuch verwerfen",
+  "Discarding starts over with a fresh key. If the server had already completed the interrupted attempt, this device will ask you to unlock with the password you chose then.":
+    "Beim Verwerfen geht es mit einem frischen Schlüssel von vorn los. Hatte der Server den unterbrochenen Versuch bereits abgeschlossen, bittet dich dieses Gerät, mit dem damals gewählten Passwort zu entsperren.",
   "Discreet mode": "Diskreter Modus",
   "Distributes the amount only to envelopes in the red — proportionally to shortfalls, never past zero.":
     "Verteilt den Betrag nur auf Umschläge im Minus — proportional zur Unterdeckung, nie über null hinaus.",
@@ -381,6 +386,7 @@ export const de: Dict = {
   Restore: "Wiederherstellen",
   "Resume it in the “Advanced” section.": "Setze sie im Bereich „Erweitert“ fort.",
   "Resume sync? Local changes will be sent to the server.": "Synchronisierung fortsetzen? Lokale Änderungen werden an den Server gesendet.",
+  "Resume upgrade": "Aktualisierung fortsetzen",
   "Resuming…": "Wird fortgesetzt…",
   SPENT: "AUSGEGEBEN",
   Save: "Speichern",

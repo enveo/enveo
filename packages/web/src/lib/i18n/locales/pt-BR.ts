@@ -15,6 +15,8 @@ export const ptBR: Dict = {
   "3 mo": "3 meses",
   "6 mo": "6 meses",
   "= {amount}": "= {amount}",
+  "A previous upgrade attempt was interrupted before it could finish. Resume it to complete the upgrade with the password you chose then — a new password cannot be set until this attempt finishes or is discarded.":
+    "Uma tentativa de atualização anterior foi interrompida antes de terminar. Retome-a para concluir a atualização com a senha que você escolheu na época — não é possível definir uma nova senha até que esta tentativa termine ou seja descartada.",
   "A profile with this name already exists.": "Já existe um perfil com este nome.",
   AI: "IA",
   "AI (corrected)": "IA (corrigido)",
@@ -182,6 +184,9 @@ export const ptBR: Dict = {
   "Disable end-to-end encryption?": "Desativar a criptografia de ponta a ponta?",
   "Disabling…": "Desativando…",
   Discard: "Descartar",
+  "Discard the unfinished attempt": "Descartar a tentativa inacabada",
+  "Discarding starts over with a fresh key. If the server had already completed the interrupted attempt, this device will ask you to unlock with the password you chose then.":
+    "Descartar começa de novo com uma chave nova. Se o servidor já tiver concluído a tentativa interrompida, este dispositivo pedirá que você desbloqueie com a senha que escolheu na época.",
   "Discreet mode": "Modo discreto",
   "Distributes the amount only to envelopes in the red — proportionally to shortfalls, never past zero.":
     "Distribui o valor apenas entre os envelopes no vermelho — na proporção do déficit, nunca além de zero.",
@@ -380,6 +385,7 @@ export const ptBR: Dict = {
   Restore: "Restaurar",
   "Resume it in the “Advanced” section.": "Retome-a na seção “Avançado”.",
   "Resume sync? Local changes will be sent to the server.": "Retomar a sincronização? As mudanças locais serão enviadas ao servidor.",
+  "Resume upgrade": "Retomar a atualização",
   "Resuming…": "Retomando…",
   SPENT: "GASTO",
   Save: "Salvar",

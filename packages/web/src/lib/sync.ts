@@ -497,9 +497,33 @@ async function fetchSnapshotE2ee(): Promise<"ready" | "locked"> {
   // cursor below can only ever start where the blob was really made.
   const expectedBudgetId = e2eeReplicaBudgetId() || body.budgetId || "";
   if (body.blob && !expectedBudgetId) throw new Error("bad_ciphertext"); // no context — cannot authenticate
-  const ledger = body.blob
-    ? await e2ee.decryptSnapshot(body.blob, dek, { budgetId: expectedBudgetId, epoch: body.epoch, uptoSeq: body.uptoSeq })
-    : EMPTY_LEDGER;
+  let ledger: ClientLedger;
+  if (body.blob) {
+    try {
+      ledger = await e2ee.decryptSnapshot(body.blob, dek, { budgetId: expectedBudgetId, epoch: body.epoch, uptoSeq: body.uptoSeq });
+    } catch (err) {
+      // Our own codes mean the DATA is unreadable (legacy/malformed) — the key proved nothing
+      // either way; keep it and surface the error. Anything else is an AUTHENTICATION failure:
+      // the held DEK does not open this generation's checkpoint (the key was rotated on another
+      // device). Trust in it is over — drop it (memory AND IDB) and route to Unlock, where the
+      // new password or a fresh pairing code re-keys this device. The replica, cursor and
+      // outbox stay untouched; the queued ops go out under the NEW key after unlocking.
+      const code = err instanceof Error ? err.message : "";
+      if (code === "legacy_ciphertext" || code === "bad_ciphertext") throw err;
+      e2ee.clearDek();
+      return "locked";
+    }
+    // The authenticated decrypt just PROVED the key opens this generation — record it, so the
+    // push/pull precondition (doCycle) accepts the key for exactly this epoch and nothing else.
+    e2ee.markDekValidated(body.epoch);
+  } else {
+    // No checkpoint to validate against: only a key already validated for THIS epoch (it was
+    // handed out for it — Unlock/enable/upgrade) may proceed. Never guess — a wrong key here
+    // would poison the new journal on the first push. Fail closed to Unlock; the key stays
+    // (nothing proved it wrong), and the envelope unwrap there is the validation.
+    if (e2ee.getDekEpoch() !== body.epoch) return "locked";
+    ledger = EMPTY_LEDGER;
+  }
   // The v2 channel is guarded by `epoch`, but the snapshot NAMES its budget: remember it, so
   // this replica can later prove whose it is (multi-tenant guard). An older server omits it
   // → keep whatever we knew (a legacy e2ee replica may end up with no budgetId at all).
@@ -1064,6 +1088,9 @@ async function proveOwnership(): Promise<Ownership> {
           // THIS replica's stored key authenticates the session's checkpoint under exactly that
           // context — a foreign budget's blob (different DEK) cannot pass.
           await e2ee.decryptSnapshot(server.blob, dek, { budgetId: server.budgetId, epoch: server.epoch, uptoSeq: server.uptoSeq });
+          // The successful decrypt also VALIDATED the stored key for exactly this generation
+          // (the AAD carried server.epoch) — record it for the push/pull precondition.
+          e2ee.markDekValidated(server.epoch);
           // The successful decrypt just AUTHENTICATED the claimed budget id with the replica's
           // own stored key (GCM verifies the AAD tuple). Bind the replica to it: v2 writes are
           // fail-closed without a named budget, so an adopted legacy replica must learn the id
@@ -1240,7 +1267,12 @@ async function doCycle(): Promise<boolean> {
     // ── E2EE path: encrypted push/pull on /sync2 (the outbox stays plaintext) ──
     if (isE2ee) {
       const dek = e2ee.getDek();
-      if (!dek) {
+      // HARD PRECONDITION: no op is ever encrypted or decrypted with a DEK that has not been
+      // VALIDATED for the current epoch (an authenticated unwrap or checkpoint decrypt under
+      // exactly this epoch's AAD). Adopting a new epoch from a 409 body invalidates the held
+      // key until bootstrap/Unlock re-proves it — pushing on adoption alone would write
+      // dead-key ciphertext the blind server accepts and every correct device chokes on.
+      if (!dek || !e2ee.isDekValidForEpoch(e2ee.getTierMeta().epoch)) {
         enterLocked();  
         return true;
       }
@@ -1629,6 +1661,10 @@ export async function resetServerE2ee(dek?: Uint8Array): Promise<void> {
   if (!ledger) throw new Error("no_local_replica");
   const key = dek ?? e2ee.getDek();
   if (!key) throw new Error("no_encryption_key");
+  // A module key must be VALIDATED for the epoch this ciphertext claims — an unvalidated key
+  // may be a dead generation's, and this route swaps the budget's ONLY checkpoint. (A caller-
+  // supplied key comes from a flow that just validated it — the cycle's precondition.)
+  if (!dek && !e2ee.isDekValidForEpoch(e2ee.getTierMeta().epoch)) throw new Error("no_encryption_key");
   // The snapshot AAD binds the blob to (budgetId, epoch, uptoSeq) — a replica that cannot name
   // its budget cannot produce an authenticated checkpoint and must not write (fail-closed).
   const budgetId = e2eeReplicaBudgetId();
@@ -1680,45 +1716,152 @@ export async function resetServerE2ee(dek?: Uint8Array): Promise<void> {
 
 
 
-export async function upgradeServerE2eeV2(password: string): Promise<void> {
+/**
+ * The durable CEREMONY-INTENT record. Materials (salt/DEK/KEK, wrapped envelope, snapshot
+ * blob) are generated ONCE per ceremony and persisted BEFORE the first POST, so a RETRY —
+ * after a network failure, a crash, or a server commit whose response was lost — re-sends the
+ * byte-identical body. That is what makes the server's idempotency branch (same envelope +
+ * expected epoch bump ⇒ 200) actually reachable: fresh materials on every call would turn a
+ * committed-but-unconfirmed upgrade into an unrecoverable stale-epoch loop, with the server's
+ * copy encrypted under the password typed in the INTERRUPTED attempt.
+ */
+export interface PendingE2eeUpgrade {
+  budgetId: string;
+  expectedEpoch: number;
+  nextEpoch: number;
+  dek: Uint8Array;
+  wrappedDek: string;
+  kdfParams: string;
+  snapshotBlob: string;
+  /** The outbox ops whose effects are INSIDE snapshotBlob — commit acks exactly these, never
+   *  clearAll: an edit made in another tab during the (seconds-long) ceremony must survive. */
+  opIds: string[];
+}
+
+async function loadPendingE2eeUpgrade(): Promise<PendingE2eeUpgrade | null> {
+  const raw = await idbGet<(Omit<PendingE2eeUpgrade, "dek"> & { dek: Uint8Array | ArrayBuffer }) | null>("meta", "e2eePendingUpgrade").catch(() => null);
+  if (!raw?.budgetId || !raw.wrappedDek || !raw.snapshotBlob) return null;
+   
+  const dek = raw.dek instanceof Uint8Array ? raw.dek : raw.dek instanceof ArrayBuffer ? new Uint8Array(raw.dek) : null;
+  if (!dek) return null;
+  return { ...raw, dek };
+}
+
+ 
+export async function hasPendingE2eeUpgrade(): Promise<boolean> {
+  return (await loadPendingE2eeUpgrade()) !== null;
+}
+
+/**
+ * DELIBERATE abandonment of an interrupted ceremony (its own button + copy in the panel —
+ * never automatic on error). If the server had in fact committed the interrupted attempt, the
+ * next fresh attempt gets a stale-epoch 409, this device re-bootstraps into Unlock, and the
+ * password typed in the INTERRUPTED attempt opens the budget — the panel's copy says so.
+ */
+export async function discardPendingE2eeUpgrade(): Promise<void> {
+  await persist.putMeta("e2eePendingUpgrade", null);
+  await persist.flushed();
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+export async function upgradeServerE2eeV2(password: string | null): Promise<void> {
   const userId = await assertOwnReplica();  
-  const ledger = store.getLedger();
-  if (!ledger) throw new Error("no_local_replica"); // error CODES, never prose — lib/api.ts owns the wording
   const budgetId = e2eeReplicaBudgetId();
   if (!budgetId) throw new Error("foreign_replica");
-  const expectedEpoch = e2ee.getTierMeta().epoch;
-  const nextEpoch = expectedEpoch + 1;
-  const salt = generateSalt();
-  const dek = generateDek();
-  const kek = await deriveKek(password, salt, DEFAULT_KDF_PARAMS);
-  const wrappedDek = await wrapDek(dek, kek, dekWrapAadContext(budgetId, nextEpoch));
-  const snapshotBlob = await e2ee.encryptSnapshot(ledger, dek, { budgetId, epoch: nextEpoch, uptoSeq: 0 });
+  let pending = await loadPendingE2eeUpgrade();
+  if (pending && pending.budgetId !== budgetId) {
+    // a record for a different replica (account switch since) — never send it for this budget
+    await discardPendingE2eeUpgrade();
+    pending = null;
+  }
+  if (!pending) {
+    if (password === null) throw new Error("no_encryption_key");  
+    const ledger = store.getLedger();
+    if (!ledger) throw new Error("no_local_replica");  
+    const expectedEpoch = e2ee.getTierMeta().epoch;
+    const nextEpoch = expectedEpoch + 1;
+    const salt = generateSalt();
+    const dek = generateDek();
+    const kek = await deriveKek(password, salt, DEFAULT_KDF_PARAMS);
+    pending = {
+      budgetId,
+      expectedEpoch,
+      nextEpoch,
+      dek,
+      wrappedDek: await wrapDek(dek, kek, dekWrapAadContext(budgetId, nextEpoch)),
+      kdfParams: freshKdfParams(salt),
+      snapshotBlob: await e2ee.encryptSnapshot(ledger, dek, { budgetId, epoch: nextEpoch, uptoSeq: 0 }),
+      opIds: outbox.snapshot().map((en) => en.op.opId),  
+    };
+    // DURABLE before the first POST — a lost response must find the same materials on retry.
+    await persist.putMeta("e2eePendingUpgrade", pending);
+    await persist.flushed();
+  }
   const res = await fetch("/api/budget/e2ee/upgrade-v2", {
     method: "POST",
     headers: { "content-type": "application/json" },
     // budgetId AND userId = the per-request tenant assertions (both REQUIRED on this route);
     // expectedEpoch makes concurrent/repeated attempts explicit: one winner or an idempotent
     // already-upgraded answer, never two epoch increments.
-    body: JSON.stringify({ budgetId, userId, expectedEpoch, cipherVersion: 2, wrappedDek, kdfParams: freshKdfParams(salt), snapshotBlob }),
+    body: JSON.stringify({
+      budgetId: pending.budgetId,
+      userId,
+      expectedEpoch: pending.expectedEpoch,
+      cipherVersion: 2,
+      wrappedDek: pending.wrappedDek,
+      kdfParams: pending.kdfParams,
+      snapshotBlob: pending.snapshotBlob,
+    }),
   });
   if (res.status === 401) throw unauthorized();
-  await throwIfTierMismatch(res); // stale epoch or upgraded elsewhere → tierMeta fresh, caller may retry
-  await throwIfBudgetMismatch(res);  
+  try {
+    await throwIfTierMismatch(res); // stale epoch: upgraded/flipped ELSEWHERE — tierMeta fresh
+    await throwIfBudgetMismatch(res);  
+  } catch (err) {
+    // A stale-epoch refusal is authoritative: this exact body can never commit (our own
+    // committed attempt would have answered 200 via the envelope comparison). Keeping the
+    // record would 409 on every retry forever — drop it; budget_mismatch keeps it (the right
+    // session may retry the very same intent).
+    if (err instanceof TierMismatchError) await discardPendingE2eeUpgrade();
+    throw err;
+  }
   if (!res.ok) {
     const txt = await res.text().catch(() => "");
     throw new Error(`${res.status} ${txt}`);  
   }
   const body = (await res.json()) as { epoch: number };
    
-  e2ee.setDek(dek);
+  e2ee.setDek(pending.dek, body.epoch); // validated for the new epoch by construction
   e2ee.setTierMeta({ tier: "e2ee", epoch: body.epoch });
   e2ee.setCipherVersion(2);
-  e2ee.resetOpsCounter();  
-  outbox.clearAll();  
-  store.replace(ledger, 0, budgetId); // cursor := 0 (the journal restarts under the new epoch)
+  e2ee.resetOpsCounter(); // the checkpoint at uptoSeq 0 IS the captured replica — counter restarts
+  // Ack EXACTLY the ops the snapshot contains — an edit made in another tab DURING the
+  // ceremony stays queued and pushes under the new epoch right after this. The live mirror is
+  // NOT replaced (it already equals captured + later edits; resetServerE2ee deliberately never
+  // replaces either), and the cursor needs no reset: e2ee_ops.seq is a global bigserial, so
+  // post-upgrade rows sort after any old cursor and the first pull converges it.
+  outbox.removeAcked(pending.opIds);
   void persist.persistLedger(store.snapshotForPersist());
   clearReplacePending();  
-  notePeersMayNeedUpdate(); // other live tabs rehydrate; stale devices hit the epoch 409 → Unlock
+  await persist.putMeta("e2eePendingUpgrade", null);  
+  await broadcastKeysChanged();  
   void syncNow("e2ee-upgrade-v2");
 }
 
@@ -2071,7 +2214,20 @@ function notePeersMayNeedUpdate(): void {
   broadcastPending = true;
 }
 
-function postMsg(type: "updated" | "poke" | "wipe"): void {
+/**
+ * The KEY GENERATION on this device changed (upgrade / enable / disable / unlock / password
+ * change): flush the persist chain first — the peers re-READ from IDB — then tell every other
+ * live tab to drop its in-memory key state and rehydrate ("keys"). The plain "updated"
+ * broadcast is NOT enough: it re-reads only the ledger, while the e2ee module's hydrate is
+ * memoized and its dekTouched latch blocks a re-read — a second tab would keep the dead DEK
+ * and the old epoch in memory and push poison under the new generation.
+ */
+export async function broadcastKeysChanged(): Promise<void> {
+  await persist.flushed();
+  postMsg("keys");
+}
+
+function postMsg(type: "updated" | "poke" | "wipe" | "keys"): void {
   try {
     channel?.postMessage({ type });
   } catch {
@@ -2139,7 +2295,13 @@ function installMultiTab(): void {
       const msg = e.data as { type?: string; mode?: LocalMode } | null;
       if (!msg) return;
       if (msg.type === "updated") void applyPeerUpdate();
-      else if (msg.type === "poke" && isLeader) void syncNow("peer-poke");
+      else if (msg.type === "keys") {
+        
+
+        void e2ee.rehydrateKeysFromPeer().then(() => {
+          if (store.getBootStatus() === "locked" || store.getBootStatus() === "ready") void retryBoot();
+        });
+      } else if (msg.type === "poke" && isLeader) void syncNow("peer-poke");
       // another tab cleared the local data → reload and boot from empty
       // stores (fresh snapshot); we persist NOTHING along the way (no race)
       else if (msg.type === "wipe" && typeof location !== "undefined") location.reload();

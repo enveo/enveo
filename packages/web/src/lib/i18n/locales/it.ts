@@ -15,6 +15,8 @@ export const it: Dict = {
   "3 mo": "3 mesi",
   "6 mo": "6 mesi",
   "= {amount}": "= {amount}",
+  "A previous upgrade attempt was interrupted before it could finish. Resume it to complete the upgrade with the password you chose then — a new password cannot be set until this attempt finishes or is discarded.":
+    "Un precedente tentativo di aggiornamento è stato interrotto prima di poter finire. Riprendilo per completare l'aggiornamento con la password scelta allora: non si può impostare una nuova password finché questo tentativo non finisce o non viene scartato.",
   "A profile with this name already exists.": "Esiste già un profilo con questo nome.",
   AI: "IA",
   "AI (corrected)": "IA (corretto)",
@@ -178,6 +180,9 @@ export const it: Dict = {
   "Disable end-to-end encryption?": "Disattivare la cifratura end-to-end?",
   "Disabling…": "Disattivazione…",
   Discard: "Scarta",
+  "Discard the unfinished attempt": "Scarta il tentativo incompiuto",
+  "Discarding starts over with a fresh key. If the server had already completed the interrupted attempt, this device will ask you to unlock with the password you chose then.":
+    "Scartando si ricomincia da capo con una chiave nuova. Se il server aveva già completato il tentativo interrotto, questo dispositivo chiederà di sbloccare con la password scelta allora.",
   "Discreet mode": "Modalità discreta",
   "Distributes the amount only to envelopes in the red — proportionally to shortfalls, never past zero.":
     "Ripartisce l'importo solo tra le buste in rosso, in proporzione allo scoperto e mai oltre lo zero.",
@@ -379,6 +384,7 @@ export const it: Dict = {
   Restore: "Ripristina",
   "Resume it in the “Advanced” section.": "Riprendila nella sezione «Avanzate».",
   "Resume sync? Local changes will be sent to the server.": "Riprendere la sincronizzazione? Le modifiche locali verranno inviate al server.",
+  "Resume upgrade": "Riprendi l'aggiornamento",
   "Resuming…": "Ripresa…",
   SPENT: "SPESO",
   Save: "Salva",

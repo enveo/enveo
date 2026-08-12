@@ -15,6 +15,8 @@ export const sv: Dict = {
   "3 mo": "3 mån",
   "6 mo": "6 mån",
   "= {amount}": "= {amount}",
+  "A previous upgrade attempt was interrupted before it could finish. Resume it to complete the upgrade with the password you chose then — a new password cannot be set until this attempt finishes or is discarded.":
+    "Ett tidigare uppgraderingsförsök avbröts innan det hann bli klart. Återuppta det för att slutföra uppgraderingen med lösenordet du valde då — ett nytt lösenord kan inte anges förrän det här försöket är klart eller kastas.",
   "A profile with this name already exists.": "Det finns redan en profil med det här namnet.",
   AI: "AI",
   "AI (corrected)": "AI (korrigerad)",
@@ -180,6 +182,9 @@ export const sv: Dict = {
   "Disable end-to-end encryption?": "Stänga av totalsträckskryptering?",
   "Disabling…": "Stänger av…",
   Discard: "Kasta",
+  "Discard the unfinished attempt": "Kasta det oavslutade försöket",
+  "Discarding starts over with a fresh key. If the server had already completed the interrupted attempt, this device will ask you to unlock with the password you chose then.":
+    "Att kasta börjar om med en färsk nyckel. Om servern redan hade slutfört det avbrutna försöket ber den här enheten dig att låsa upp med lösenordet du valde då.",
   "Discreet mode": "Diskret läge",
   "Distributes the amount only to envelopes in the red — proportionally to shortfalls, never past zero.":
     "Fördelar beloppet bara till kuvert som är på minus — i proportion till underskottet och aldrig förbi noll.",
@@ -375,6 +380,7 @@ export const sv: Dict = {
   Restore: "Återställ",
   "Resume it in the “Advanced” section.": "Återuppta den i avsnittet ”Avancerat”.",
   "Resume sync? Local changes will be sent to the server.": "Återuppta synkroniseringen? Lokala ändringar skickas till servern.",
+  "Resume upgrade": "Återuppta uppgraderingen",
   "Resuming…": "Återupptar…",
   SPENT: "SPENDERAT",
   Save: "Spara",
