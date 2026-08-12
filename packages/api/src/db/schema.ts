@@ -1,5 +1,21 @@
 import { sql } from "drizzle-orm";
-import { bigint, bigserial, boolean, date, index, integer, pgEnum, pgTable, primaryKey, text, timestamp, unique, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import {
+  bigint,
+  bigserial,
+  boolean,
+  check,
+  date,
+  index,
+  integer,
+  pgEnum,
+  pgTable,
+  primaryKey,
+  text,
+  timestamp,
+  unique,
+  uniqueIndex,
+  uuid,
+} from "drizzle-orm/pg-core";
 
 /** Amounts in MINOR UNITS / grosz (BIGINT, mode number — safe for a household budget). */
 const money = (name: string) => bigint(name, { mode: "number" });
@@ -299,12 +315,15 @@ export const aiUserMonthlySpend = pgTable(
     periodKey: text("period_key").notNull(),
     periodStart: timestamp("period_start", { withTimezone: true, mode: "date" }).notNull(),
     periodEnd: timestamp("period_end", { withTimezone: true, mode: "date" }).notNull(),
-    /** Non-negative (CHECK in migration 0020) — a rollback can lose an increment, never invent one. */
+    /** Non-negative (CHECK below/migration 0020) — a rollback can lose an increment, never invent one. */
     spentNanoUsd: bigint("spent_nano_usd", { mode: "bigint" }).notNull().default(sql`0`),
     createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" }).notNull().defaultNow(),
   },
-  (t) => ({ pk: primaryKey({ columns: [t.policy, t.userId, t.periodKey] }) }),
+  (t) => ({
+    pk: primaryKey({ columns: [t.policy, t.userId, t.periodKey] }),
+    nonNegative: check("ai_user_monthly_spend_nonneg", sql`${t.spentNanoUsd} >= 0`),
+  }),
 );
 
 export const allocations = pgTable(
