@@ -1,7 +1,9 @@
 import { useTheme } from "../lib/contexts";
 import { useT } from "../lib/i18n";
 import { Ico } from "../lib/icons";
-import { useInstall } from "../lib/installPrompt";
+import { isInstallable, useInstall } from "../lib/installPrompt";
+import { splitAround } from "../screens/settings/ui";
+import { useBand } from "./kit";
 
 const SHARE = "M12 4v11 M8.5 7.5L12 4l3.5 3.5 M6 11v7a2 2 0 002 2h8a2 2 0 002-2v-7";
 const PLUS_BOX = "M12 8.5v7 M8.5 12h7 M5 4h14a1 1 0 011 1v14a1 1 0 01-1 1H5a1 1 0 01-1-1V5a1 1 0 011-1z";
@@ -14,9 +16,10 @@ const MARK = "\u0000";
 export function InstallBody({ onDone }: { onDone?: () => void }) {
   const C = useTheme();
   const { t } = useT();
+  const { band } = useBand();
   const { state, promptInstall } = useInstall();
 
-  if (state === "installed" || state === "unavailable") return null;
+  if (!isInstallable(state)) return null;
 
   const step = (d: string, label: React.ReactNode) => (
     <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
@@ -35,7 +38,9 @@ export function InstallBody({ onDone }: { onDone?: () => void }) {
         </div>
         <button
           onClick={() => void promptInstall().catch(() => {}).finally(() => onDone?.())}
-          style={{ width: "100%", padding: "13px 0", borderRadius: 12, border: "none", background: "var(--cta)", color: "#fff", fontSize: 15, fontWeight: 700, cursor: "pointer" }}
+          // band-aware CTA ink, the same idiom as every other primary button (screens/Add.tsx):
+          // on the Duet theme (navy band) the ink is the header background, not white
+          style={{ width: "100%", padding: "13px 0", borderRadius: 12, border: "none", background: "var(--cta)", color: band ? C.headerBg : "#fff", fontSize: 15, fontWeight: 700, cursor: "pointer" }}
         >
           {t("Install")}
         </button>
@@ -47,11 +52,8 @@ export function InstallBody({ onDone }: { onDone?: () => void }) {
     const share = t("Share");
     const addToHome = t("Add to Home Screen");
 
-    const tapShareParts = t("Tap {action} to continue", { action: MARK }).split(MARK);
-    const [tapShareBefore, tapShareAfter] = tapShareParts.length === 2 ? tapShareParts : [`${tapShareParts[0] ?? ""} `, ""];
-
-    const thenAddParts = t("Then tap {action}", { action: MARK }).split(MARK);
-    const [thenAddBefore, thenAddAfter] = thenAddParts.length === 2 ? thenAddParts : [`${thenAddParts[0] ?? ""} `, ""];
+    const [tapShareBefore, tapShareAfter] = splitAround(t("Tap {action} to continue", { action: MARK }), MARK);
+    const [thenAddBefore, thenAddAfter] = splitAround(t("Then tap {action}", { action: MARK }), MARK);
 
     return (
       <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
