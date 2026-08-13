@@ -549,6 +549,7 @@ export const ptBR: Dict = {
   "This is the first account on this server — once it exists, registration closes.":
     "Esta é a primeira conta neste servidor — assim que ela existir, o cadastro é fechado.",
   "This pairing code belongs to a different budget.": "Este código de pareamento pertence a outro orçamento.",
+  "This part of the app could not be loaded.": "Não foi possível carregar esta parte do app.",
   "This pairing code is no longer valid — the budget was re-encrypted with a new key after the code was created. Generate a fresh code on a device that is already unlocked.":
     "Este código de pareamento não é mais válido — o orçamento foi criptografado de novo com uma chave nova depois que o código foi criado. Gere um código novo em um dispositivo que já esteja desbloqueado.",
   "This will replace all current data. Continue?": "Isso vai substituir todos os dados atuais. Continuar?",

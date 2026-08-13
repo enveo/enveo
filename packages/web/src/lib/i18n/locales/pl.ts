@@ -622,6 +622,7 @@ export const pl: Dict = {
   "This is the first account on this server — once it exists, registration closes.":
     "To pierwsze konto na tym serwerze — po jego utworzeniu rejestracja zostanie zamknięta.",
   "This pairing code belongs to a different budget.": "Ten kod parowania pochodzi z innego budżetu.",
+  "This part of the app could not be loaded.": "Nie udało się wczytać tej części aplikacji.",
   "This will replace all current data. Continue?": "Zastąpi wszystkie obecne dane. Kontynuować?",
   "To be budgeted": "Do rozdysponowania",
   "To be budgeted is ≤ 0 — there is nothing to distribute.": "Do rozdysponowania jest ≤ 0 — nie ma czego rozdzielać.",

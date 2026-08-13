@@ -542,6 +542,7 @@ export const sv: Dict = {
   "This is the first account on this server — once it exists, registration closes.":
     "Det här är det första kontot på den här servern — så snart det finns stängs registreringen.",
   "This pairing code belongs to a different budget.": "Den här parkopplingskoden tillhör en annan budget.",
+  "This part of the app could not be loaded.": "Den här delen av appen kunde inte läsas in.",
   "This pairing code is no longer valid — the budget was re-encrypted with a new key after the code was created. Generate a fresh code on a device that is already unlocked.":
     "Den här parkopplingskoden gäller inte längre — budgeten krypterades om med en ny nyckel efter att koden skapades. Ta fram en färsk kod på en enhet som redan är upplåst.",
   "This will replace all current data. Continue?": "Det här ersätter alla nuvarande data. Fortsätta?",

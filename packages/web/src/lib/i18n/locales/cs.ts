@@ -549,6 +549,7 @@ export const cs: Dict = {
   "This is the first account on this server — once it exists, registration closes.":
     "Tohle je první účet na tomto serveru — jakmile bude existovat, registrace se uzavře.",
   "This pairing code belongs to a different budget.": "Tento párovací kód patří jinému rozpočtu.",
+  "This part of the app could not be loaded.": "Tuto část aplikace se nepodařilo načíst.",
   "This pairing code is no longer valid — the budget was re-encrypted with a new key after the code was created. Generate a fresh code on a device that is already unlocked.":
     "Tento párovací kód už neplatí — rozpočet byl po vytvoření kódu znovu zašifrován novým klíčem. Vygeneruj čerstvý kód na zařízení, které je už odemčené.",
   "This will replace all current data. Continue?": "Tímto nahradíš všechna současná data. Pokračovat?",

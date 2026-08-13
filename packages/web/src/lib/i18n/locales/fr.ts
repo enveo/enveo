@@ -550,6 +550,7 @@ export const fr: Dict = {
   "This is the first account on this server — once it exists, registration closes.":
     "C'est le premier compte sur ce serveur — une fois créé, les inscriptions se ferment.",
   "This pairing code belongs to a different budget.": "Ce code d'appairage appartient à un autre budget.",
+  "This part of the app could not be loaded.": "Cette partie de l'application n'a pas pu être chargée.",
   "This pairing code is no longer valid — the budget was re-encrypted with a new key after the code was created. Generate a fresh code on a device that is already unlocked.":
     "Ce code d'appairage n'est plus valide — le budget a été rechiffré avec une nouvelle clé après la création du code. Générez un nouveau code sur un appareil déjà déverrouillé.",
   "This will replace all current data. Continue?": "Cela remplacera toutes les données actuelles. Continuer ?",

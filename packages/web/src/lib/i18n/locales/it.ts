@@ -550,6 +550,7 @@ export const it: Dict = {
   "This is the first account on this server — once it exists, registration closes.":
     "Questo è il primo account su questo server: una volta creato, le registrazioni si chiudono.",
   "This pairing code belongs to a different budget.": "Questo codice di abbinamento appartiene a un altro budget.",
+  "This part of the app could not be loaded.": "Non è stato possibile caricare questa parte dell'app.",
   "This pairing code is no longer valid — the budget was re-encrypted with a new key after the code was created. Generate a fresh code on a device that is already unlocked.":
     "Questo codice di abbinamento non è più valido: il budget è stato ricifrato con una nuova chiave dopo la creazione del codice. Genera un codice nuovo su un dispositivo già sbloccato.",
   "This will replace all current data. Continue?": "Questo sostituirà tutti i dati attuali. Continuare?",
