@@ -158,6 +158,27 @@ export interface SyncStatus {
 
 export type IdentityVerdict = "unauthed" | "foreign" | "ok";
 
+
+
+
+
+
+
+export interface LocalModeDeps {
+  setState(s: SyncState): void;
+  setOwnerUnproven(v: boolean): void;
+  broadcastLocalMode(mode: LocalMode): void;
+   
+  wipeServer(): Promise<void>;
+   
+  pushLocalToServer(): Promise<void>;
+   
+  awaitInFlightCycle(): Promise<void>;
+  syncNow(reason: string): Promise<void>;
+   
+  isEmptyUnboundReplica(): boolean;
+}
+
 /**
  * The durable CEREMONY-INTENT record (v1→v2 E2EE upgrade). Materials (salt/DEK/KEK, wrapped
  * envelope, snapshot blob) are generated ONCE per ceremony and persisted BEFORE the first POST,
