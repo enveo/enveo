@@ -147,7 +147,9 @@ app.onError((err, c) => {
   }
    
   if (err instanceof TierMismatch) {
-    return c.json({ error: "tier_mismatch", tier: err.meta.tier, epoch: err.meta.epoch }, 409);
+    
+
+    return c.json({ error: "tier_mismatch", tier: err.meta.tier, epoch: err.meta.epoch, cipherVersion: err.meta.cipherVersion }, 409);
   }
   
 
