@@ -1,11 +1,10 @@
-import { useEffect, useState } from "react";
+import { lazy, useEffect, useState } from "react";
 import { AmountPadHost, type AmountPadTarget } from "../components/AmountPadSheet";
-import { BudgetSuggestSheet } from "../components/BudgetSuggestSheet";
 import { Header, Sheet } from "../components/chrome";
 import { DockedNumpad } from "../components/DockedNumpad";
-import { FillGoalsSheet } from "../components/FillGoalsSheet";
 import { IconColorPicker } from "../components/IconColorPicker";
 import { CardBox, GoalRing, useBand } from "../components/kit";
+import { LazyChunk, useOpenedOnce } from "../components/lazy";
 import { fmtSignedTrim, type PadState, padPreview, padPreviewLive } from "../lib/amount";
 import type { EnvelopeView, StateResponse } from "../lib/api";
 import { useCurrency, useMask, useSettings, useTheme } from "../lib/contexts";
@@ -16,6 +15,15 @@ import { useT } from "../lib/i18n";
 import { Glyph, Ico } from "../lib/icons";
 import { local } from "../lib/mutate";
 import { CORAL, ENV_PALETTE, font, P, TEAL, tint } from "../lib/theme";
+
+// The budget assistant is the second AI surface (§3f). It is the only thing on this screen that
+// needs the AI dispatch and the response parsers, and it opens on a deliberate tap — so it loads
+// then. Allocation, the docked numpad and "Fill by goals" (pure local math) stay eager.
+const BudgetSuggestSheet = lazy(() => import("../components/BudgetSuggestSheet").then((m) => ({ default: m.BudgetSuggestSheet })));
+// "Fill by goals" is the assistant's twin: same deliberate-tap lifecycle, same one-shot deep link
+// from the Goals report. Leaving one of the pair eager and the other lazy would draw an arbitrary
+// line through one feature.
+const FillGoalsSheet = lazy(() => import("../components/FillGoalsSheet").then((m) => ({ default: m.FillGoalsSheet })));
 
 export function BudgetScreen({
   state,
@@ -52,7 +60,10 @@ export function BudgetScreen({
   const { t } = useT();
   const [manage, setManage] = useState(false);
   const [suggest, setSuggest] = useState(!!initialSuggest);
+  // Latched — see Add.tsx: mount on first open, stay mounted, so state survives close→reopen.
+  const suggestOpened = useOpenedOnce(suggest);
   const [fillGoals, setFillGoals] = useState(!!initialFillGoals);
+  const fillGoalsOpened = useOpenedOnce(fillGoals);
   // Consume the deep-link flags right at mount, not on close — this component can remount
   // (envelope Summary → back) without ever going through App's `nav()`, which is the only other
   // place these flags get cleared. Consuming here means only the FIRST mount after App sets a
@@ -350,8 +361,16 @@ export function BudgetScreen({
       })}
 
       <EnvManageSheet show={manage} state={state} onClose={() => setManage(false)} />
-      <BudgetSuggestSheet show={suggest} state={state} month={month} onClose={() => setSuggest(false)} />
-      <FillGoalsSheet show={fillGoals} state={state} month={month} onClose={() => setFillGoals(false)} />
+      {suggestOpened && (
+        <LazyChunk variant="overlay" onDismiss={() => setSuggest(false)}>
+          <BudgetSuggestSheet show={suggest} state={state} month={month} onClose={() => setSuggest(false)} />
+        </LazyChunk>
+      )}
+      {fillGoalsOpened && (
+        <LazyChunk variant="overlay" onDismiss={() => setFillGoals(false)}>
+          <FillGoalsSheet show={fillGoals} state={state} month={month} onClose={() => setFillGoals(false)} />
+        </LazyChunk>
+      )}
       {/* Docked numpad instead of a sheet (no backdrop — the list stays visible). */}
       <DockedNumpad
         target={

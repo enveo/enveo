@@ -1,9 +1,10 @@
 import type { Transaction } from "@enveo/shared";
-import { useEffect, useRef, useState } from "react";
+import { lazy, useEffect, useRef, useState } from "react";
 import { BottomNav, Drawer, type ScreenId, StyleInjector } from "./components/chrome";
 import { EnvActionsSheet } from "./components/EnvActionsSheet";
 import { InstallBanner } from "./components/InstallBanner";
 import { InstallSheet } from "./components/InstallSheet";
+import { LazyChunk } from "./components/lazy";
 import { SyncBadge } from "./components/SyncBadge";
 import { UpdatePrompt } from "./components/UpdatePrompt";
 import { useStateQuery } from "./lib/api";
@@ -13,18 +14,37 @@ import { useT } from "./lib/i18n";
 import { store } from "./lib/store";
 import { bootOnce, retryBoot } from "./lib/sync";
 import { font, P, TEAL } from "./lib/theme";
-import { AccountsScreen } from "./screens/Accounts";
 import { AddScreen, type Tab as AddTab } from "./screens/Add";
 import { BudgetScreen, EnvEdit } from "./screens/Budget";
-import { EnvelopeScreen } from "./screens/Envelope";
-import { ForeignReplicaScreen } from "./screens/ForeignReplica";
 import { LoginScreen } from "./screens/Login";
-import { OnboardingScreen } from "./screens/Onboarding";
-import { ReportsScreen, type ReportTab, type ReportView } from "./screens/Reports";
-import { SettingsScreen } from "./screens/Settings";
+import type { ReportTab, ReportView } from "./screens/reports/types";
 import { StartScreen } from "./screens/Start";
-import { TransactionsScreen } from "./screens/Transactions";
-import { UnlockScreen } from "./screens/Unlock";
+
+// Code-split routes (§3f).
+//
+// EAGER, deliberately: everything the app needs to BOOT and to record a transaction. The local
+// replica boot and sync engine (`bootOnce`/`store`/`useStateQuery`), the auth guard
+// (`LoginScreen` — the screen an unauthenticated boot lands on), the app chrome, `StartScreen`,
+// `BudgetScreen` with its allocation numpad, and `AddScreen` with the whole transaction-entry
+// subtree. Those are the first paint and the app's most-repeated action; a chunk fetch in front
+// of either would trade real latency for bytes we do not need to save.
+//
+// LAZY: one chunk per screen the user is never on at boot. Reports (the whole suite with its
+// charts), Settings (backup/restore, E2EE, pairing QR, the AI panel), the once-per-account
+// onboarding wizard, the transaction list, Accounts, the full-screen envelope summary, and the
+// two boot-decision screens — Unlock (E2EE passphrase; a plain-tier budget never renders it)
+// and ForeignReplica (a replica belonging to another account). Every hashed chunk is precached
+// by the service worker, so an installed PWA loads all of them offline.
+//
+// Each mount goes through `LazyChunk`: themed pending state, focused failure boundary.
+const ReportsScreen = lazy(() => import("./screens/Reports").then((m) => ({ default: m.ReportsScreen })));
+const SettingsScreen = lazy(() => import("./screens/Settings").then((m) => ({ default: m.SettingsScreen })));
+const OnboardingScreen = lazy(() => import("./screens/Onboarding").then((m) => ({ default: m.OnboardingScreen })));
+const TransactionsScreen = lazy(() => import("./screens/Transactions").then((m) => ({ default: m.TransactionsScreen })));
+const AccountsScreen = lazy(() => import("./screens/Accounts").then((m) => ({ default: m.AccountsScreen })));
+const EnvelopeScreen = lazy(() => import("./screens/Envelope").then((m) => ({ default: m.EnvelopeScreen })));
+const UnlockScreen = lazy(() => import("./screens/Unlock").then((m) => ({ default: m.UnlockScreen })));
+const ForeignReplicaScreen = lazy(() => import("./screens/ForeignReplica").then((m) => ({ default: m.ForeignReplicaScreen })));
 
 export default function App() {
   const C = useTheme();
@@ -222,7 +242,7 @@ export default function App() {
         >
           <StyleInjector />
           <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", paddingTop: "env(safe-area-inset-top)" }}>
-            {unauthed ? <LoginScreen /> : foreign ? <ForeignReplicaScreen /> : <UnlockScreen />}
+            {unauthed ? <LoginScreen /> : <LazyChunk>{foreign ? <ForeignReplicaScreen /> : <UnlockScreen />}</LazyChunk>}
           </div>
         </div>
       </div>
@@ -253,9 +273,15 @@ export default function App() {
         <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", paddingTop: "env(safe-area-inset-top)" }}>
           {isLoading && <BootSkeleton />}
           {isError && <FirstBootError />}
-          {state && onboarding && <OnboardingScreen onDone={() => setWizard(false)} />}
+          {state && onboarding && (
+            <LazyChunk>
+              <OnboardingScreen onDone={() => setWizard(false)} />
+            </LazyChunk>
+          )}
           {state && !onboarding && envView && (
-            <EnvelopeScreen envelopeId={envView.envelopeId} initialMonth={envView.month} onBack={() => setEnvView(null)} onOpenTxns={openTxns} />
+            <LazyChunk onDismiss={() => setEnvView(null)}>
+              <EnvelopeScreen envelopeId={envView.envelopeId} initialMonth={envView.month} onBack={() => setEnvView(null)} onOpenTxns={openTxns} />
+            </LazyChunk>
           )}
           {state && !onboarding && !envView && (
             <>
@@ -287,39 +313,51 @@ export default function App() {
                 />
               )}
               {screen === "transactions" && (
-                <TransactionsScreen
-                  state={state}
-                  month={month}
-                  onMenu={() => setDrawer(true)}
-                  onPrev={prev}
-                  onNext={next}
-                  onEditTxn={(t) => editTxnFrom(t, "transactions")}
-                  query={txQuery}
-                  setQuery={setTxQuery}
-                  envFilter={txEnvFilter}
-                  setEnvFilter={setTxEnvFilter}
-                  accFilter={txAccFilter}
-                  setAccFilter={setTxAccFilter}
-                />
+                <LazyChunk onDismiss={() => nav("start")}>
+                  <TransactionsScreen
+                    state={state}
+                    month={month}
+                    onMenu={() => setDrawer(true)}
+                    onPrev={prev}
+                    onNext={next}
+                    onEditTxn={(t) => editTxnFrom(t, "transactions")}
+                    query={txQuery}
+                    setQuery={setTxQuery}
+                    envFilter={txEnvFilter}
+                    setEnvFilter={setTxEnvFilter}
+                    accFilter={txAccFilter}
+                    setAccFilter={setTxAccFilter}
+                  />
+                </LazyChunk>
               )}
-              {screen === "accounts" && <AccountsScreen state={state} onMenu={() => setDrawer(true)} />}
+              {screen === "accounts" && (
+                <LazyChunk onDismiss={() => nav("start")}>
+                  <AccountsScreen state={state} onMenu={() => setDrawer(true)} />
+                </LazyChunk>
+              )}
               {screen === "reports" && (
-                <ReportsScreen
-                  state={state}
-                  month={month}
-                  view={reportsView}
-                  onView={setReportsView}
-                  onOpenEnvelope={openEnvelope}
-                  onFillGoals={openBudgetFillGoals}
-                  onMenu={() => setDrawer(true)}
-                  onPrev={prev}
-                  onNext={next}
-                />
+                <LazyChunk onDismiss={() => nav("start")}>
+                  <ReportsScreen
+                    state={state}
+                    month={month}
+                    view={reportsView}
+                    onView={setReportsView}
+                    onOpenEnvelope={openEnvelope}
+                    onFillGoals={openBudgetFillGoals}
+                    onMenu={() => setDrawer(true)}
+                    onPrev={prev}
+                    onNext={next}
+                  />
+                </LazyChunk>
               )}
               {screen === "addExpense" && (
                 <AddScreen state={state} editTxn={editTxn} onDone={doneEdit} initialTab={addPreset.tab} initialImport={addPreset.importSheet} />
               )}
-              {screen === "settings" && <SettingsScreen onNav={nav} onInstall={() => setInstallSheet(true)} />}
+              {screen === "settings" && (
+                <LazyChunk onDismiss={() => nav("start")}>
+                  <SettingsScreen onNav={nav} onInstall={() => setInstallSheet(true)} />
+                </LazyChunk>
+              )}
             </>
           )}
         </div>

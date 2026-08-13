@@ -1,7 +1,7 @@
 import { computeStateResponse, type Transaction, type TxnPayload } from "@enveo/shared";
-import { useEffect, useMemo, useRef, useState } from "react";
-import { ImportSheet } from "../components/ImportSheet";
+import { lazy, useEffect, useMemo, useRef, useState } from "react";
 import { useBand } from "../components/kit";
+import { LazyChunk, useOpenedOnce } from "../components/lazy";
 import { Numpad } from "../components/pickers";
 import { hasOpenOp, type PadState, padKey } from "../lib/amount";
 import { type StateResponse, useLedgerVersion } from "../lib/api";
@@ -28,6 +28,12 @@ import { TransferFields } from "./add/TransferFields";
 import type { AddDraft, Tab } from "./add/types";
 
 export type { AddDraft, Tab } from "./add/types";
+
+// Screenshot import is the app's one AI-only surface (§3f): the review sheet, the AI dispatch
+// and the response parsers it pulls in serve a path most sessions never open, while manual
+// transaction entry — everything else on this screen — stays eager. The chunk is fetched the
+// first time the sheet is opened and then stays mounted, exactly as it was before.
+const ImportSheet = lazy(() => import("../components/ImportSheet").then((m) => ({ default: m.ImportSheet })));
 
 /** Top `take` of `ranked`, but guaranteed to include `pinnedId` (prepended, bumping the tail)
  *  when it exists in `ranked` and would otherwise fall outside the slice — a selection made via
@@ -120,6 +126,9 @@ export function AddScreen({
   const [showDate, setShowDate] = useState(false);
   const [showEnv, setShowEnv] = useState(false);
   const [showImport, setShowImport] = useState(!!initialImport);
+  // Latched: the sheet chunk is fetched on the FIRST open and then stays mounted, so closing and
+  // reopening keeps its state exactly as it did when the import was statically imported.
+  const importOpened = useOpenedOnce(showImport);
   const [splitMode, setSplitMode] = useState(false);
   const [showTxnMenu, setShowTxnMenu] = useState(false); // kebab in the edit header
 
@@ -548,7 +557,11 @@ export function AddScreen({
       <DateSheet show={showDate} date={date} onClose={() => setShowDate(false)} onChange={setDate} />
       {/* !editTxn is NOT required here: the "From screenshot" toggle restores edit-mode access
           (pre-redesign behavior — the edit header has no camera button, trash+kebab instead). */}
-      {!draft && <ImportSheet show={showImport} onClose={() => setShowImport(false)} state={state} onApplied={onDone} />}
+      {!draft && importOpened && (
+        <LazyChunk variant="overlay" onDismiss={() => setShowImport(false)}>
+          <ImportSheet show={showImport} onClose={() => setShowImport(false)} state={state} onApplied={onDone} />
+        </LazyChunk>
+      )}
       <EnvelopePickerSheet
         show={showEnv}
         onClose={() => setShowEnv(false)}
