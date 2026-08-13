@@ -9,7 +9,7 @@ import { type StateResponse, useLedgerVersion } from "../lib/api";
 import { useMask, useTheme } from "../lib/contexts";
 import { currentMonth } from "../lib/dates";
 import { useDragReorder } from "../lib/dnd";
-import { parseAmount } from "../lib/format";
+import { localizePadExpression, parseAmount } from "../lib/format";
 import { useT } from "../lib/i18n";
 import { Glyph, Ico } from "../lib/icons";
 import { local } from "../lib/mutate";
@@ -19,7 +19,7 @@ import { ACCOUNT_COLORS, font, P, TEAL } from "../lib/theme";
 export function AccountsScreen({ onMenu }: { state: StateResponse; onMenu: () => void }) {
   const C = useTheme();
   const M = useMask();
-  const { t } = useT();
+  const { t, lang } = useT();
   
 
 
@@ -252,7 +252,8 @@ export function AccountsScreen({ onMenu }: { state: StateResponse; onMenu: () =>
               }}
             />
             <input
-              value={bl}
+               
+              value={localizePadExpression(bl, lang)}
               readOnly
               onClick={openBalancePad}
               onFocus={openBalancePad}
