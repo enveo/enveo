@@ -174,6 +174,20 @@ export interface TransportDeps {
 }
 
 /**
+ * Dependencies the CYCLE needs from the multi-tab layer (workflow §3c-3): the broadcast
+ * channel and its pending-"updated" flag are owned by multitab, which is installed by the
+ * facade — injected here so cycle stays importable without a composed facade.
+ */
+export interface CycleDeps {
+  /** Mark that this cycle changed data — finishSuccess broadcasts "updated" at the end. */
+  notePeersMayNeedUpdate(): void;
+  /** finishSuccess: if this cycle changed data, post "updated" so peer tabs rehydrate. */
+  broadcastUpdatedIfPending(): void;
+  /** poke: notify a possibly-live leader tab to sync right away. */
+  postPokeToPeers(): void;
+}
+
+/**
  * Dependencies the local-mode TRANSITIONS need from higher layers (workflow §3c-3): the
  * status setters (status.ts imports this module's flag, so importing status back would be a
  * cycle), the multi-tab broadcast, and the server-write operations — injected EXPLICITLY by
