@@ -38,51 +38,34 @@ import { purgeLegacyPlannedIds } from "./legacyPlanned";
 import * as outbox from "./outbox";
 import * as persist from "./persist";
 import { requestPersistentStorage } from "./storage";
-import { type PullChange, store } from "./store";
+import { store } from "./store";
+import {
+  BACKOFF_MAX_MS,
+  type BootSource,
+  BudgetMismatchError,
+  type E2eeSnapshotResponse,
+  E2eeUpgradeRequiredError,
+  EMPTY_LEDGER,
+  type IdentityVerdict,
+  INTERVAL_MS,
+  type LocalMode,
+  type PendingE2eeUpgrade,
+  POKE_DEBOUNCE_MS,
+  PUSH_BATCH,
+  type PullResponse,
+  type PushResponse,
+  type SnapshotResponse,
+  TierMismatchError,
+  UnauthorizedError,
+} from "./sync/contracts";
+import { getLocalMode, setLocalModeValue, writeLocalModeToStorage } from "./sync/localMode";
+import { bumpStatus, getLastSyncAt, getSyncStatus, installOutboxStatusListener, setLastSyncAt, setOwnerUnproven, setState } from "./sync/status";
 
-interface SnapshotResponse extends ClientLedger {
-  budgetId: string;
-  cursor: number;
-}
-
-interface PullResponse {
-  budgetId: string;
-  cursor: number;
-  resetRequired: boolean;
-  changes: PullChange[];
-}
-
-interface PushResponse {
-  budgetId: string;
-  results: Array<{ opId: string; status: "applied" | "duplicate" | "rejected"; error?: string }>;
-}
-
-/** GET /sync2/snapshot — `budgetId` is absent on servers older than 2.0. */
-interface E2eeSnapshotResponse {
-  budgetId?: string | null;
-  epoch: number;
-  wrappedDek: string | null;
-  kdfParams: string | null;
-  uptoSeq: number;
-  blob: string | null;
-}
-
-const PUSH_BATCH = 100;
-const BACKOFF_MAX_MS = 60_000;
-const POKE_DEBOUNCE_MS = 300;
-const INTERVAL_MS = 60_000;
-
-/**
- * HTTP 401 (missing/expired session) — a "please log in" signal,
- * NOT a network failure: no retry/backoff loop. During boot → BootStatus "unauthed"
- * (login screen), while running → SyncState "unauthed" (badge).
- */
-class UnauthorizedError extends Error {
-  constructor() {
-    super("unauthorized: 401");
-    this.name = "UnauthorizedError";
-  }
-}
+export type { BootSource, IdentityVerdict, LocalMode, PendingE2eeUpgrade, SyncState, SyncStatus } from "./sync/contracts";
+/* ── Re-exported public surface (types, errors, constants — see sync/contracts.ts) ── */
+export { E2eeUpgradeRequiredError, EMPTY_LEDGER, TierMismatchError } from "./sync/contracts";
+export { getLocalMode, isLocalOnly } from "./sync/localMode";
+export { getSyncStatus, subscribeSyncStatus } from "./sync/status";
 
 /**
  * A 401 from ANY channel (cycle, boot, or an out-of-cycle write such as /sync/replace,
@@ -97,41 +80,6 @@ function unauthorized(): UnauthorizedError {
   return new UnauthorizedError();
 }
 
-/**
- * HTTP 409 { error: "tier_mismatch", tier, epoch } — the budget is in a DIFFERENT tier
- * (or a different e2ee epoch) than the called channel assumes. It's a "switch path" signal,
- * NOT a failure: throwIfTierMismatch updates tierMeta from the body BEFORE throwing,
- * and the catcher does a hard re-bootstrap (fresh snapshot on the right path).
- */
-export class TierMismatchError extends Error {
-  constructor(
-    public readonly tier: e2ee.Tier,
-    public readonly epoch: number,
-  ) {
-    super(`tier_mismatch: ${tier}/${epoch}`);
-    this.name = "TierMismatchError";
-  }
-}
-
-/**
- * HTTP 409 { error: "e2ee_upgrade_required", tier, epoch, cipherVersion: 1, budgetId } — the
- * session's budget still holds LEGACY (pre-AAD, "v1.") ciphertext, and every normal sync2
- * channel refuses to read or extend it. This is fail-closed BY DESIGN: the only way forward is
- * the explicit upgrade ceremony (fresh DEK, next epoch, new v2 checkpoint from the trusted
- * local replica — lib/e2eeUpgrade.ts). It is NOT a tier mismatch: re-bootstrapping would just
- * hit the same 409, so the handler records the server's format (cipherVersion meta) and stops
- * the cycle without touching the replica, the cursor or the outbox.
- */
-export class E2eeUpgradeRequiredError extends Error {
-  constructor(
-    public readonly epoch: number,
-    public readonly budgetId: string | null,
-  ) {
-    super("e2ee_upgrade_required");
-    this.name = "E2eeUpgradeRequiredError";
-  }
-}
-
 /** 409 e2ee_upgrade_required → record epoch + cipherVersion 1 and throw; other statuses = no-op. */
 async function throwIfUpgradeRequired(res: Response): Promise<void> {
   if (res.status !== 409) return;
@@ -143,23 +91,6 @@ async function throwIfUpgradeRequired(res: Response): Promise<void> {
     e2ee.setTierMeta({ tier: "e2ee", epoch: body.epoch ?? 0 });
     e2ee.setCipherVersion(1);
     throw new E2eeUpgradeRequiredError(body.epoch ?? 0, body.budgetId ?? null);
-  }
-}
-
-/**
- * HTTP 409 { error: "budget_mismatch", budgetId } — the PER-REQUEST tenant assertion failed:
- * the budget this replica names in the push body is not the budget the session owns. The
- * server wrote NOTHING. Two ways to get here, and the handler (handleBudgetMismatch) tells
- * them apart by re-verifying the session:
- *  - the session was swapped between two batches of the SAME push loop (the cookie is shared
- *    by all tabs, and one cycle can push many batches) — a cross-tenant write, refused,
- *  - the same user's budget was rotated (wipe+reseed, DB restore, reattach) — a new data
- *    epoch, which is exactly what fullResync is for.
- */
-class BudgetMismatchError extends Error {
-  constructor(public readonly serverBudgetId: string | null) {
-    super(`budget_mismatch: ${serverBudgetId ?? "?"}`);
-    this.name = "BudgetMismatchError";
   }
 }
 
@@ -221,174 +152,16 @@ export function getClientId(): Promise<string> {
   return clientIdPromise;
 }
 
-/* ── Local mode (offline / privacy) ─────────────────────────────────────
- *
- * Tri-state (NOT a boolean) — key to the "we never lose data" promise:
- *  - "off"    — normal synchronization with the server,
- *  - "paused" — offline by choice: sync SUSPENDED, server data STAYS,
- *               the outbox grows and flushes on resume (safe, no network),
- *  - "wiped"  — privacy: data DELETED from the server (a deliberate, separate choice);
- *               local mirror untouched, on disable we upload it back.
- *
- * Module flag read at load time (BEFORE React), kept in localStorage
- * (keys under the old brand are migrated by storage.ts, imported by this module).
- * Migration of the old boolean "enveo.localOnly"==="true" → "paused" (the SAFE state,
- * no server destruction). */
-export type LocalMode = "off" | "paused" | "wiped";
+/* ── Boot diagnostics (BootSource type in sync/contracts.ts) ────────────── */
 
-const LOCAL_MODE_KEY = "enveo.localMode";
-const LEGACY_LOCAL_KEY = "enveo.localOnly";
-
-function readLocalMode(): LocalMode {
-  try {
-    const v = localStorage.getItem(LOCAL_MODE_KEY);
-    if (v === "off" || v === "paused" || v === "wiped") return v;
-    if (localStorage.getItem(LEGACY_LOCAL_KEY) === "true") {
-      // migrate to the SAFE state (paused doesn't wipe the server)
-      try {
-        localStorage.setItem(LOCAL_MODE_KEY, "paused");
-        localStorage.removeItem(LEGACY_LOCAL_KEY);
-      } catch {
-        /* ignore */
-      }
-      return "paused";
-    }
-  } catch {
-    /* localStorage unavailable — treat as off */
-  }
-  return "off";
-}
-
-let localMode: LocalMode = readLocalMode();
-
-/** Current local mode (off/paused/wiped). */
-export function getLocalMode(): LocalMode {
-  return localMode;
-}
-
-/** Whether local mode is on (paused OR wiped) — sync is suspended. */
-export function isLocalOnly(): boolean {
-  return localMode !== "off";
-}
-
-/** Empty ledger — server wipe (/sync/replace) and UI init when there is no local replica. */
-export const EMPTY_LEDGER: ClientLedger = {
-  accounts: [],
-  groups: [],
-  envelopes: [],
-  transactions: [],
-  allocations: [],
-  categories: [],
-  places: [],
-  budgets: [],
-};
-
-/* ── Boot diagnostics (where the replica started from — shown in Settings) ──
- *  "replica"  — hydrate from IDB yielded data: fast, local-first works,
- *  "snapshot" — empty replica ⇒ full fetchSnapshot: slow (this is also what
- *               a cold start AFTER iOS IDB eviction looks like),
- *  "local"    — local mode (no network),
- *  null       — before boot / first-start error. */
-export type BootSource = "replica" | "snapshot" | "local" | null;
 let lastBootSource: BootSource = null;
 export function getLastBootSource(): BootSource {
   return lastBootSource;
 }
 
-/* ── Sync status (consumed by the UI in Phase 5) ────────────────────── */
-
-/**
- * "unverified" is deliberately its OWN state and not a flavour of "error": the app is working
- * perfectly (local-first), the server is reachable, and nothing is broken — we simply cannot yet
- * prove that this device's replica belongs to the signed-in account, so we send NOTHING. Folding
- * that into "error" made the UI lie twice: a generic red badge suggesting a fault to retry, and —
- * once anything was queued — the reassuring "⇄ N" pill promising the changes "will send
- * themselves", which they never would. See enterUnverified and the Sync section in Settings.
- *
- * The UI does NOT key off this state, though: it is transient (every re-proof passes through
- * "syncing" on its way back here). What it reads is the sticky SyncStatus.ownerUnproven below.
- */
-export type SyncState = "synced" | "syncing" | "offline" | "error" | "local" | "unauthed" | "unverified";
-
-export interface SyncStatus {
-  state: SyncState;
-  pending: number;
-  deadLetters: number;
-  lastSyncAt: string | null;
-  localMode: LocalMode;
-  /** @see ownerUnproven — the STICKY fact behind SyncState "unverified". */
-  ownerUnproven: boolean;
-}
-
-let syncState: SyncState = localMode !== "off" ? "local" : "synced";
-let lastSyncAt: string | null = null;
-
-/**
- * "This replica's owner has not been proved" — a FACT that holds until the proof succeeds, unlike
- * SyncState, which is a momentary thing. Every cycle passes through "syncing" on its way BACK to
- * "unverified" (doCycle sets "syncing" before ensureIdentity), so a UI keyed on the state alone
- * flickers on every trigger — the 60 s interval, focus, a local edit's poke and, worst, the
- * human's own "Check again": the very panel that explains the state (and hosts an open discard
- * confirmation) would unmount mid-interaction and be replaced, for the duration of the network
- * proof, by "Sync now" / "N changes waiting to be sent" — the reassuring lie this state exists to
- * remove. So the badge, the Settings dot and the Sync section read THIS instead.
- *
- * Set by enterUnverified, cleared the moment ensureIdentity proves (or adopts) the replica — and
- * on the verdicts that supersede it: no session (Login), a foreign stamp (ForeignReplicaScreen),
- * or local mode (sync is off by choice; the next "off" cycle re-proves from scratch).
- */
-let ownerUnproven = false;
-
-const statusListeners = new Set<() => void>();
-let statusSnapshot: SyncStatus = {
-  state: syncState,
-  pending: 0,
-  deadLetters: 0,
-  lastSyncAt: null,
-  localMode,
-  ownerUnproven: false,
-};
-
-function bumpStatus(): void {
-  statusSnapshot = {
-    state: syncState,
-    pending: outbox.size(),
-    deadLetters: outbox.getDeadLetters().length,
-    lastSyncAt,
-    localMode,
-    ownerUnproven,
-  };
-  for (const fn of statusListeners) fn();
-}
-
-function setState(s: SyncState): void {
-  if (syncState === s) {
-    bumpStatus(); // counters may have changed
-    return;
-  }
-  syncState = s;
-  bumpStatus();
-}
-
-/** The sticky "owner unproven" fact (see above) — notifies the UI when it actually changes. */
-function setOwnerUnproven(v: boolean): void {
-  if (ownerUnproven === v) return;
-  ownerUnproven = v;
-  bumpStatus();
-}
-
-/** Status snapshot (stable reference between changes — useSyncExternalStore). */
-export function getSyncStatus(): SyncStatus {
-  return statusSnapshot;
-}
-
-export function subscribeSyncStatus(fn: () => void): () => void {
-  statusListeners.add(fn);
-  return () => statusListeners.delete(fn);
-}
-
-// every outbox queue change (add/ack/dead-letter) refreshes the status
-outbox.setOnChange(bumpStatus);
+// every outbox queue change (add/ack/dead-letter) refreshes the status —
+// explicit, idempotent installation (sync/status.ts), done at composition time
+installOutboxStatusListener();
 
 /* ── Backoff (network / 5xx / 429) ──────────────────────────────────── */
 
@@ -792,8 +565,6 @@ async function doPullE2ee(dek: Uint8Array, userId: string): Promise<void> {
  * asymmetry the guard keeps is: an unproven owner ⇒ refuse every server write, destroy nothing.
  */
 
-export type IdentityVerdict = "unauthed" | "foreign" | "ok";
-
 /** Pure decision: what to do with a replica stamped `stamped` under session `sessionUserId`. */
 export function decideIdentity(sessionUserId: string | null, stamped: string | undefined): IdentityVerdict {
   if (!sessionUserId) return "unauthed";
@@ -886,7 +657,7 @@ function enterForeignReplica(): void {
  */
 export async function discardLocalReplica(): Promise<void> {
   outbox.clearAll(); // in-memory queue too: nothing of the previous owner's may go out
-  if (localMode !== "off") applyLocalMode("off"); // the mode was the previous owner's choice
+  if (getLocalMode() !== "off") applyLocalMode("off"); // the mode was the previous owner's choice
   await persist.flushed(); // let queued writes land BEFORE the stores are cleared
   await wipeLocalData(); // clears IDB (mirror, outbox, DEK), tells other tabs, reloads
 }
@@ -1197,7 +968,7 @@ export async function assertOwnReplica(): Promise<string> {
 async function doCycle(): Promise<boolean> {
   // Defense: local mode may have been enabled BETWEEN iterations of the single-flight
   // loop (dirty re-loop) — bail without network (the gate is also in syncNow before the first cycle).
-  if (localMode !== "off") {
+  if (getLocalMode() !== "off") {
     setState("local");
     return true;
   }
@@ -1508,10 +1279,11 @@ async function handleTierFlip(): Promise<boolean> {
 
 function finishSuccess(): void {
   resetBackoff();
-  lastSyncAt = new Date().toISOString();
+  const at = new Date().toISOString();
+  setLastSyncAt(at);
   // D6: "last sync" is written ONLY here (persistLedger doesn't stamp it),
   // so offline local edits don't masquerade as a fresh synchronization.
-  void persist.putMeta("lastSyncAt", lastSyncAt);
+  void persist.putMeta("lastSyncAt", at);
   setState("synced");
   if (broadcastPending) {
     broadcastPending = false;
@@ -1530,7 +1302,7 @@ export function syncNow(reason: string): Promise<void> {
   // Local-mode GATE: no cycle whatsoever (push/pull/snapshot). All
   // triggers (boot/poke/focus/online/interval/leader/peer-poke) still call syncNow
   // — here they bail harmlessly. The outbox grows and flushes on resume.
-  if (localMode !== "off") {
+  if (getLocalMode() !== "off") {
     setState("local");
     return Promise.resolve();
   }
@@ -1732,28 +1504,7 @@ export async function resetServerE2ee(dek?: Uint8Array): Promise<void> {
  * both sides on the old generation and retrying is safe (the server is idempotent for a
  * repeated identical attempt and refuses a stale epoch).
  */
-/**
- * The durable CEREMONY-INTENT record. Materials (salt/DEK/KEK, wrapped envelope, snapshot
- * blob) are generated ONCE per ceremony and persisted BEFORE the first POST, so a RETRY —
- * after a network failure, a crash, or a server commit whose response was lost — re-sends the
- * byte-identical body. That is what makes the server's idempotency branch (same envelope +
- * expected epoch bump ⇒ 200) actually reachable: fresh materials on every call would turn a
- * committed-but-unconfirmed upgrade into an unrecoverable stale-epoch loop, with the server's
- * copy encrypted under the password typed in the INTERRUPTED attempt.
- */
-export interface PendingE2eeUpgrade {
-  budgetId: string;
-  expectedEpoch: number;
-  nextEpoch: number;
-  dek: Uint8Array;
-  wrappedDek: string;
-  kdfParams: string;
-  snapshotBlob: string;
-  /** The outbox ops whose effects are INSIDE snapshotBlob — commit acks exactly these, never
-   *  clearAll: an edit made in another tab during the (seconds-long) ceremony must survive. */
-  opIds: string[];
-}
-
+/** The durable CEREMONY-INTENT record — type + rationale in sync/contracts.ts (PendingE2eeUpgrade). */
 async function loadPendingE2eeUpgrade(): Promise<PendingE2eeUpgrade | null> {
   const raw = await idbGet<(Omit<PendingE2eeUpgrade, "dek"> & { dek: Uint8Array | ArrayBuffer }) | null>("meta", "e2eePendingUpgrade").catch(() => null);
   if (!raw?.budgetId || !raw.wrappedDek || !raw.snapshotBlob) return null;
@@ -1896,12 +1647,8 @@ function broadcastLocalMode(mode: LocalMode): void {
  * → "local" state.
  */
 function applyLocalMode(mode: LocalMode): void {
-  localMode = mode;
-  try {
-    localStorage.setItem(LOCAL_MODE_KEY, mode);
-  } catch {
-    /* ignore — the flag lives in session memory anyway */
-  }
+  setLocalModeValue(mode);
+  writeLocalModeToStorage(mode);
   broadcastLocalMode(mode);
   // Local mode supersedes the unproven state (sync is off by the user's own choice, and the local
   // UI says so); leaving it "off" re-proves from scratch on the next cycle.
@@ -1959,7 +1706,7 @@ export async function enableWiped(): Promise<void> {
  *    offline→online; server untouched, no replace.
  */
 export async function disableLocal(): Promise<void> {
-  if (localMode === "wiped") {
+  if (getLocalMode() === "wiped") {
     if (isEmptyUnboundReplica()) {
       applyLocalMode("off"); // nothing to restore — do NOT push an empty ledger over the server
       if (typeof location !== "undefined") location.reload(); // boot bootstraps from the server
@@ -1967,7 +1714,7 @@ export async function disableLocal(): Promise<void> {
     }
     await pushLocalToServer(); // throws on failure → localMode stays "wiped"
     applyLocalMode("off");
-  } else if (localMode === "paused") {
+  } else if (getLocalMode() === "paused") {
     applyLocalMode("off");
     void syncNow("resume");
   }
@@ -2003,7 +1750,7 @@ async function loadSyncMeta(): Promise<void> {
     console.warn("reading e2ee state failed", e);
   }
   try {
-    lastSyncAt = (await idbGet<string>("meta", "lastSyncAt")) ?? lastSyncAt;
+    setLastSyncAt((await idbGet<string>("meta", "lastSyncAt")) ?? getLastSyncAt());
   } catch (e) {
     console.warn("reading lastSyncAt failed", e);
   }
@@ -2104,7 +1851,7 @@ async function bootOwnerOk(): Promise<boolean> {
     return false;
   }
   if (!sessionUser) {
-    if (localMode !== "off") return true; // see the contract above
+    if (getLocalMode() !== "off") return true; // see the contract above
     enterUnauthed(); // Login BEFORE the data is on screen; the replica and the outbox stay
     return false;
   }
@@ -2121,7 +1868,7 @@ async function boot(): Promise<void> {
     await loadSyncMeta();
     // Whose replica is this? BEFORE it reaches the UI (and before any bootstrap) — see bootOwnerOk
     if (!(await bootOwnerOk())) return;
-    if (localMode !== "off") {
+    if (getLocalMode() !== "off") {
       lastBootSource = "local";
       await bootLocalReady(hydrated); // local mode — no network
       return;
@@ -2161,7 +1908,7 @@ async function boot(): Promise<void> {
       replayOutbox();
       await sweepLegacyPlanned();
       store.setBootStatus("ready");
-      if (localMode !== "off") {
+      if (getLocalMode() !== "off") {
         setState("local");
         return;
       }
@@ -2328,7 +2075,7 @@ function installMultiTab(): void {
       else if (msg.type === "localmode") {
         const m = msg.mode;
         if (m === "off" || m === "paused" || m === "wiped") {
-          localMode = m;
+          setLocalModeValue(m);
           if (m === "off")
             void syncNow("peer-localmode-off"); // still unproven? the cycle re-proves
           else {
@@ -2401,7 +2148,7 @@ if (import.meta.env.DEV && typeof window !== "undefined") {
     resyncPending: () => resyncPending,
     replacePending: () => replacePending,
     isLeader: () => isLeader,
-    localMode: () => localMode,
+    localMode: () => getLocalMode(),
     tierMeta: () => e2ee.getTierMeta(),
     dekLoaded: () => e2ee.getDek() !== null,
     enablePaused: () => enablePaused(),
