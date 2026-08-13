@@ -178,6 +178,20 @@ export interface TransportDeps {
 
 
 
+export interface CycleDeps {
+   
+  notePeersMayNeedUpdate(): void;
+   
+  broadcastUpdatedIfPending(): void;
+   
+  postPokeToPeers(): void;
+}
+
+
+
+
+
+
 
 export interface LocalModeDeps {
   setState(s: SyncState): void;
