@@ -196,7 +196,7 @@ beforeEach(async () => {
         // (blob + uptoSeq), so it carries the owner assertion just like /sync2/reset.
         if (init?.method === "POST") {
           const body = JSON.parse(String(init.body ?? "{}")) as { userId?: string; uptoSeq: number; blob?: string; epoch?: number };
-          if (body.epoch !== serverEpoch) return conflict({ error: "tier_mismatch", tier: "e2ee", epoch: serverEpoch });
+          if (body.epoch !== serverEpoch) return conflict({ error: "tier_mismatch", tier: "e2ee", epoch: serverEpoch, cipherVersion: 2 });
           snapshotUploads.push(body);
           const refused = ownerMismatch(body.userId);
           if (refused) return refused;
@@ -212,7 +212,7 @@ beforeEach(async () => {
           ops: Array<{ opId: string; ciphertext: string }>;
         };
         // the REAL route checks the epoch BEFORE anything is written or recorded
-        if (body.epoch !== serverEpoch) return conflict({ error: "tier_mismatch", tier: "e2ee", epoch: serverEpoch });
+        if (body.epoch !== serverEpoch) return conflict({ error: "tier_mismatch", tier: "e2ee", epoch: serverEpoch, cipherVersion: 2 });
         pushedCipherOps.push(...body.ops);
         const refused = budgetMismatch(body.budgetId);
         if (refused) return refused;
@@ -223,7 +223,7 @@ beforeEach(async () => {
       if (url.startsWith("/api/sync2/pull")) {
         onPull?.(); // a session swap lands between the identity check and the pull's answer
         const reqEpoch = Number(new URLSearchParams(url.split("?")[1] ?? "").get("epoch"));
-        if (reqEpoch !== serverEpoch) return conflict({ error: "tier_mismatch", tier: "e2ee", epoch: serverEpoch });
+        if (reqEpoch !== serverEpoch) return conflict({ error: "tier_mismatch", tier: "e2ee", epoch: serverEpoch, cipherVersion: 2 });
         if (serverPullOps.length > 0) {
           const cursor = serverPullOps[serverPullOps.length - 1]!.seq;
           return json({ cursor, epoch: serverEpoch, ops: serverPullOps });
@@ -245,7 +245,7 @@ beforeEach(async () => {
       upgradeCalls.push(rawBody); // recorded BEFORE any simulated failure — F2 compares bodies
       if (upgradeNetworkFail) throw new TypeError("network failure mid-ceremony");
       const body = JSON.parse(rawBody) as { expectedEpoch: number; userId?: string };
-      if (body.expectedEpoch !== serverEpoch) return conflict({ error: "tier_mismatch", tier: "e2ee", epoch: serverEpoch });
+      if (body.expectedEpoch !== serverEpoch) return conflict({ error: "tier_mismatch", tier: "e2ee", epoch: serverEpoch, cipherVersion: 2 });
       const refused = ownerMismatch(body.userId);
       if (refused) return refused;
       onUpgrade?.(); // a second tab edits while the ceremony's request is in flight
@@ -1290,6 +1290,46 @@ describe("sync e2ee v2: DEK lifecycle across an epoch change", () => {
     await expect(upgradeServerE2eeV2(null)).rejects.toThrow("tier_mismatch");
 
     expect(await hasPendingE2eeUpgrade()).toBe(false); // authoritatively dead — dropped
+    // R2: the authoritative refusal also re-taught this device the server's CURRENT format —
+    // the durable "format 1" meta must not pin the Unlock screen to the upgrade state forever.
+    expect(e2ee.getCipherVersion()).toBe(2);
+  });
+
+  it("R1: a replace obligation NEVER runs with an unvalidated key — locked, zero writes, obligation preserved", async () => {
+    // The catastrophic interleaving: rotation elsewhere, epoch adopted (409 body), bootstrap
+    // failed TRANSIENTLY (key not dropped) — and this device carries a durable replace
+    // obligation. The obligation branch runs FIRST in the cycle and posts /sync2/reset, which
+    // deletes the whole journal and swaps the only checkpoint: with the dead key that write
+    // would destroy the server copy beyond recovery. The validated-key precondition must gate
+    // it BEFORE any obligation processing.
+    await stampedReplica(1);
+    markReplacePending(); // e.g. a JSON backup import awaiting its server replace
+    e2ee.setTierMeta({ tier: "e2ee", epoch: 2 }); // adopted from a 409 — key NOT re-validated
+    serverEpoch = 2;
+
+    await syncNow("test");
+
+    expect(overwriteOwners).toEqual([]); // /sync2/reset was never posted
+    expect(wrote(BUDGET_V2)).toEqual([]); // nothing reached the server at all
+    expect(store.getBootStatus()).toBe("locked"); // waiting for Unlock, not silently erroring
+
+    // …and the obligation SURVIVES: after re-validation (Unlock) the very next cycle consumes it
+    const newDek = generateDek();
+    e2ee.setDek(newDek, 2); // Unlock installed + validated the new generation's key
+    store.setBootStatus("ready");
+    await syncNow("test");
+    expect(overwriteOwners).toEqual(["user-A"]); // the reset ran — WITH the validated key
+    expect(wrote(BUDGET_V2)).toContain("reset");
+  });
+
+  it("R1: resetServerE2ee refuses an unvalidated key even when passed EXPLICITLY", async () => {
+    await stampedReplica(1);
+    e2ee.setTierMeta({ tier: "e2ee", epoch: 2 }); // adopted; the held key is validated for 1 only
+    serverEpoch = 2;
+
+    await expect(resetServerE2ee(e2ee.getDek()!)).rejects.toThrow("no_encryption_key");
+
+    expect(overwriteOwners).toEqual([]); // nothing was posted
   });
 
   it("F5: an edit made in another tab DURING the ceremony survives commit and pushes under the new epoch", async () => {

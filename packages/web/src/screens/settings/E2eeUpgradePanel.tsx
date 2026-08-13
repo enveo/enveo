@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { apiErrorMessage } from "../../lib/api";
 import { useTheme } from "../../lib/contexts";
 import { exportBackup } from "../../lib/data";
+import * as e2ee from "../../lib/e2ee";
 import { useT } from "../../lib/i18n";
 import { store } from "../../lib/store";
 import { discardPendingE2eeUpgrade, hasPendingE2eeUpgrade, TierMismatchError, upgradeServerE2eeV2 } from "../../lib/sync";
@@ -19,7 +20,7 @@ import { ActionGroup, ActionIcon, ActionRow } from "./ui";
  * The fresh-backup acknowledgement is FORCED here (checkbox gates the run button), because
  * the local replica is the canonical source the new generation is built from.
  */
-export function E2eeUpgradePanel({ onDone }: { onDone: () => void }) {
+export function E2eeUpgradePanel({ onDone, onServerNowV2 }: { onDone: () => void; onServerNowV2?: () => void }) {
   const { t } = useT();
   const theme = useTheme();
   const [haveBackup, setHaveBackup] = useState(false);
@@ -49,7 +50,14 @@ export function E2eeUpgradePanel({ onDone }: { onDone: () => void }) {
     } catch (e) {
       setPending(await hasPendingE2eeUpgrade()); // a stale-epoch refusal drops the record
       if (e instanceof TierMismatchError) {
-        // Stale epoch / upgraded or flipped on another device — local meta is already fresh
+        // The authoritative refusal also named the budget's CURRENT format (throwIfTierMismatch
+        // adopted it). If the server is v2 the ceremony is MOOT — another device completed it;
+        // the host switches to a normal unlock instead of looping here (round 3, R2).
+        if (e2ee.getCipherVersion() === 2 && onServerNowV2) {
+          onServerNowV2();
+          return;
+        }
+        // Stale epoch / flipped on another device — local meta is already fresh
         // (throwIfTierMismatch), so a retry recomputes the contexts from the new state.
         setError(t("The budget changed on the server in the meantime — nothing was written. Try again."));
       } else {

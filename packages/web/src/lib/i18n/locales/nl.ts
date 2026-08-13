@@ -347,6 +347,8 @@ export const nl: Dict = {
   "Own key": "Eigen sleutel",
   "Pairing code": "Koppelcode",
   "Pairing code unavailable — no key on this device.": "Koppelcode niet beschikbaar — er staat geen sleutel op dit apparaat.",
+  "Pairing code unavailable — this device's key has not been confirmed for the budget's current encryption yet. Unlock again or let a sync finish first.":
+    "Koppelcode niet beschikbaar — de sleutel van dit apparaat is nog niet bevestigd voor de huidige versleuteling van het budget. Ontgrendel opnieuw of laat eerst een synchronisatie afronden.",
   Palette: "Palet",
   Password: "Wachtwoord",
   "Password changed.": "Wachtwoord gewijzigd.",
@@ -460,6 +462,8 @@ export const nl: Dict = {
   "The app talks to OpenAI directly from this browser using your own key — bypassing the server.":
     "De app praat met je eigen sleutel rechtstreeks vanuit deze browser met OpenAI — buiten de server om.",
   "The backup is corrupted and was not loaded: {detail}": "De back-up is beschadigd en is niet geladen: {detail}",
+  "The budget's encryption was already upgraded on another device — unlock with the new encryption password.":
+    "De versleuteling van het budget is al op een ander apparaat geüpgraded — ontgrendel met het nieuwe versleutelingswachtwoord.",
   "The budget changed on the server in the meantime — nothing was written. Try again.":
     "Het budget is intussen op de server gewijzigd — er is niets geschreven. Probeer het opnieuw.",
   "The budget has changed since this was generated — generate a new suggestion.":
@@ -547,6 +551,8 @@ export const nl: Dict = {
   "This is the first account on this server — once it exists, registration closes.":
     "Dit is het eerste account op deze server — zodra het bestaat, sluit de registratie.",
   "This pairing code belongs to a different budget.": "Deze koppelcode hoort bij een ander budget.",
+  "This pairing code is no longer valid — the budget was re-encrypted with a new key after the code was created. Generate a fresh code on a device that is already unlocked.":
+    "Deze koppelcode is niet meer geldig — het budget is na het aanmaken van de code opnieuw versleuteld met een nieuwe sleutel. Genereer een verse code op een apparaat dat al ontgrendeld is.",
   "This will replace all current data. Continue?": "Hiermee worden alle huidige gegevens vervangen. Doorgaan?",
   "To be budgeted": "Te budgetteren",
   "To be budgeted is ≤ 0 — there is nothing to distribute.": "‘Te budgetteren’ is ≤ 0 — er valt niets te verdelen.",

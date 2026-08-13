@@ -165,9 +165,11 @@ export const isDekFromStore = (): boolean => dek !== null && dekOrigin === "stor
  * persisted alongside it: such a key is NOT evidence of the replica's ownership, now or after
  * any number of reloads.
  */
-export function setDek(next: Uint8Array, validEpoch: number): void {
+export function setDek(next: Uint8Array, validEpoch: number | null): void {
   dek = next;
   dekOrigin = "session";
+  // null = the key was INSTALLED but not yet authenticated under any epoch (a pairing code on a
+  // checkpoint-less budget): it may not encrypt anything until an authenticated use validates it.
   dekEpoch = validEpoch;
   dekTouched = true;
   void persist.putMeta("e2eeDek", next);
@@ -202,6 +204,10 @@ export function clearDek(): void {
   void persist.putMeta("e2eeDek", null);
   void persist.putMeta("e2eeDekOrigin", null);
   void persist.putMeta("e2eeDekEpoch", null);
+  // The pending upgrade-ceremony record (sync.ts) holds a RAW candidate DEK for a possibly-live
+  // generation. "Forget the key" — disable, a rotation-detected drop, any clearDek — must not
+  // leave that raw key readable in IndexedDB behind the user's back.
+  void persist.putMeta("e2eePendingUpgrade", null);
 }
 
 /**

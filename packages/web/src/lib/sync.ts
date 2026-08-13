@@ -170,9 +170,14 @@ async function throwIfTierMismatch(res: Response): Promise<void> {
   const body = (await res
     .clone()
     .json()
-    .catch(() => null)) as { error?: string; tier?: string; epoch?: number } | null;
+    .catch(() => null)) as { error?: string; tier?: string; epoch?: number; cipherVersion?: number } | null;
   if (body?.error === "tier_mismatch" && (body.tier === "plain" || body.tier === "e2ee")) {
     e2ee.setTierMeta({ tier: body.tier, epoch: body.epoch ?? 0 });
+    // The authoritative answer also names the budget's CURRENT ciphertext format (since round
+    // 3). Adopting it here is what lets a device pinned to the upgrade state re-learn that the
+    // server is v2 (another device completed the ceremony) and fall back to a normal unlock —
+    // without it the durable cipherVersion=1 meta was a one-way trap.
+    if (body.cipherVersion === 1 || body.cipherVersion === 2) e2ee.setCipherVersion(body.cipherVersion);
     throw new TierMismatchError(body.tier, body.epoch ?? 0);
   }
 }
@@ -1225,6 +1230,16 @@ async function doCycle(): Promise<boolean> {
     // success; after a full replacement server==local, so any resync
     // obligation is moot (we clear it). Failure (network/5xx) → the catch below
     // schedules a retry, and the flag stays up → the next cycle retries the replace.
+    // HARD PRECONDITION (round 3, R1) — gates the ENTIRE e2ee branch of the cycle, the replace
+    // obligation INCLUDED (it runs first and posts /sync2/reset, the single most destructive
+    // write there is: it deletes the whole journal and swaps the only checkpoint). A key that
+    // is not VALIDATED for the current epoch may be a dead generation's — encrypting the
+    // obligation's checkpoint with it would wipe the server copy beyond recovery. Locked, not
+    // an error: Unlock re-validates, and the durable obligation is consumed right after.
+    if (isE2ee && !e2ee.isDekValidForEpoch(e2ee.getTierMeta().epoch)) {
+      enterLocked();
+      return true;
+    }
     if (replacePending) {
       if (isE2ee) {
         const dek = e2ee.getDek();
@@ -1661,10 +1676,11 @@ export async function resetServerE2ee(dek?: Uint8Array): Promise<void> {
   if (!ledger) throw new Error("no_local_replica");
   const key = dek ?? e2ee.getDek();
   if (!key) throw new Error("no_encryption_key");
-  // A module key must be VALIDATED for the epoch this ciphertext claims — an unvalidated key
-  // may be a dead generation's, and this route swaps the budget's ONLY checkpoint. (A caller-
-  // supplied key comes from a flow that just validated it — the cycle's precondition.)
-  if (!dek && !e2ee.isDekValidForEpoch(e2ee.getTierMeta().epoch)) throw new Error("no_encryption_key");
+  // The key must be VALIDATED for the epoch this ciphertext claims — UNCONDITIONALLY, explicit
+  // parameter or not (round 3, R1: the explicit-key call path bypassed the module-key guard,
+  // making it dead code). An unvalidated key may be a dead generation's, and this route swaps
+  // the budget's ONLY checkpoint after deleting the whole journal — no caller may bypass.
+  if (!e2ee.isDekValidForEpoch(e2ee.getTierMeta().epoch)) throw new Error("no_encryption_key");
   // The snapshot AAD binds the blob to (budgetId, epoch, uptoSeq) — a replica that cannot name
   // its budget cannot produce an authenticated checkpoint and must not write (fail-closed).
   const budgetId = e2eeReplicaBudgetId();

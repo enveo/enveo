@@ -47,6 +47,10 @@ const unb64 = (s: string): Uint8Array => Uint8Array.from(atob(s), (c) => c.charC
 /** "Bad passphrase/key" signal (crypto), distinguishable from network errors. */
 class BadKeyError extends Error {}
 
+/** The key material itself is from a DEAD generation (a rotation happened after it was made) —
+ *  distinguishable from a malformed code, so the user hears the truth, not "invalid code". */
+class StaleKeyError extends BadKeyError {}
+
 /** The server refuses every normal sync2 channel until the v1→v2 upgrade ceremony has run. */
 class UpgradeRequiredSignal extends Error {}
 
@@ -78,20 +82,26 @@ async function fetchSnap2(): Promise<Snap2 | null> {
  * DEK verification against the checkpoint (if any) → setDek + tierMeta → retryBoot.
  * `expectedBudgetId` = the caller's authenticated expectation: the pairing code's budget
  * (trusted device) or the budget the key envelope's own unwrap just vouched for.
+ * `unwrapAuthenticated` = the PASSWORD path already proved the key under (budgetId, epoch)
+ * via the envelope unwrap; the pairing path proved nothing yet. A key is marked VALIDATED
+ * only after an authenticated use — on a checkpoint-less budget a pairing-code key is
+ * installed UNVALIDATED and the first authenticated operation (or the next unlock) must
+ * vouch for it; marking it validated blind would re-open the dead-key push hole (F1/R3).
  */
-async function acceptDek(dek: Uint8Array, snap: Snap2, expectedBudgetId: string): Promise<void> {
+async function acceptDek(dek: Uint8Array, snap: Snap2, expectedBudgetId: string, unwrapAuthenticated: boolean): Promise<void> {
+  let validated = unwrapAuthenticated;
   if (snap.blob) {
     try {
       await e2ee.decryptSnapshot(snap.blob, dek, { budgetId: expectedBudgetId, epoch: snap.epoch, uptoSeq: snap.uptoSeq });
+      validated = true; // an authenticated decrypt under exactly (budgetId, epoch, uptoSeq)
     } catch {
-      throw new BadKeyError("dek does not decrypt the checkpoint");
+      // The key does not open the CURRENT generation's checkpoint — it is from a dead one.
+      throw new StaleKeyError("dek does not decrypt the checkpoint");
     }
   }
   e2ee.setTierMeta({ tier: "e2ee", epoch: snap.epoch });
   e2ee.setCipherVersion(2);
-  // Validated for exactly this epoch: the envelope unwrap (password path) or the checkpoint
-  // decrypt above carried this epoch in its authenticated context.
-  e2ee.setDek(dek, snap.epoch);
+  e2ee.setDek(dek, validated ? snap.epoch : null);
   void broadcastKeysChanged(); // other live tabs drop their stale key state
   await retryBoot();
 }
@@ -125,7 +135,7 @@ export function UnlockScreen() {
       } catch {
         throw new BadKeyError("wrong password");
       }
-      await acceptDek(dek, snap, snap.budgetId);
+      await acceptDek(dek, snap, snap.budgetId, true); // the unwrap authenticated (budgetId, epoch)
     } catch (e) {
       if (e instanceof UpgradeRequiredSignal) {
         setMode("upgrade");
@@ -162,11 +172,21 @@ export function UnlockScreen() {
         setError(t("This pairing code belongs to a different budget."));
         return;
       }
-      // The code's budget id came from a TRUSTED device — it is the expected context here.
-      await acceptDek(dek, snap, codeBudgetId);
+      // The code's budget id came from a TRUSTED device — it is the expected context here,
+      // but the code itself authenticates nothing: only the checkpoint decrypt can validate.
+      await acceptDek(dek, snap, codeBudgetId, false);
     } catch (e) {
       if (e instanceof UpgradeRequiredSignal) {
         setMode("upgrade");
+        return;
+      }
+      if (e instanceof StaleKeyError) {
+        // the honest reason: the code was fine — the KEY it carries died with a rotation
+        setError(
+          t(
+            "This pairing code is no longer valid — the budget was re-encrypted with a new key after the code was created. Generate a fresh code on a device that is already unlocked.",
+          ),
+        );
         return;
       }
       setError(e instanceof BadKeyError ? t("Invalid pairing code.") : apiErrorMessage(e));
@@ -231,7 +251,16 @@ export function UnlockScreen() {
             const hasData = !!ledger && ledger.accounts.length + ledger.envelopes.length + ledger.transactions.length + ledger.categories.length > 0;
             return hasData ? (
               // This device still holds the budget's data — the ceremony can run right here.
-              <E2eeUpgradePanel onDone={() => void retryBoot()} />
+              // If the server turns out to be v2 already (another device completed the
+              // ceremony), the panel reports it and we fall back to a NORMAL unlock — the
+              // upgrade state must never be a dead end (round 3, R2).
+              <E2eeUpgradePanel
+                onDone={() => void retryBoot()}
+                onServerNowV2={() => {
+                  setMode("pass");
+                  setError(t("The budget's encryption was already upgraded on another device — unlock with the new encryption password."));
+                }}
+              />
             ) : (
               <div style={{ fontSize: 13, color: C.soft, lineHeight: 1.6 }}>
                 {t(
@@ -240,6 +269,29 @@ export function UnlockScreen() {
               </div>
             );
           })()}
+          {/* No branch of this screen may trap the user: the password and pairing paths stay
+              reachable — trying one on a still-v1 budget simply routes back here, and on a
+              budget upgraded elsewhere it is exactly the way out. */}
+          <button
+            type="button"
+            onClick={() => {
+              setMode("pass");
+              setError(null);
+            }}
+            style={linkBtn}
+          >
+            {t("Unlock with password")}
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setMode("pair");
+              setError(null);
+            }}
+            style={linkBtn}
+          >
+            {t("I have a pairing code")}
+          </button>
         </div>
       ) : mode === "pass" ? (
         <form

@@ -348,6 +348,8 @@ export const cs: Dict = {
   "Own key": "Vlastní klíč",
   "Pairing code": "Párovací kód",
   "Pairing code unavailable — no key on this device.": "Párovací kód není dostupný — na tomto zařízení není klíč.",
+  "Pairing code unavailable — this device's key has not been confirmed for the budget's current encryption yet. Unlock again or let a sync finish first.":
+    "Párovací kód není dostupný — klíč tohoto zařízení ještě nebyl potvrzen pro aktuální šifrování rozpočtu. Odemkni znovu, nebo nech nejdřív doběhnout synchronizaci.",
   Palette: "Paleta",
   Password: "Heslo",
   "Password changed.": "Heslo změněno.",
@@ -460,6 +462,8 @@ export const cs: Dict = {
   "The app talks to OpenAI directly from this browser using your own key — bypassing the server.":
     "Aplikace mluví s OpenAI přímo z tohoto prohlížeče tvým vlastním klíčem — server obchází.",
   "The backup is corrupted and was not loaded: {detail}": "Záloha je poškozená a nebyla načtena: {detail}",
+  "The budget's encryption was already upgraded on another device — unlock with the new encryption password.":
+    "Šifrování rozpočtu už bylo aktualizováno na jiném zařízení — odemkni rozpočet novým heslem šifrování.",
   "The budget changed on the server in the meantime — nothing was written. Try again.":
     "Rozpočet se mezitím na serveru změnil — nic se nezapsalo. Zkus to znovu.",
   "The budget has changed since this was generated — generate a new suggestion.": "Rozpočet se od vygenerování změnil — vygeneruj nový návrh.",
@@ -545,6 +549,8 @@ export const cs: Dict = {
   "This is the first account on this server — once it exists, registration closes.":
     "Tohle je první účet na tomto serveru — jakmile bude existovat, registrace se uzavře.",
   "This pairing code belongs to a different budget.": "Tento párovací kód patří jinému rozpočtu.",
+  "This pairing code is no longer valid — the budget was re-encrypted with a new key after the code was created. Generate a fresh code on a device that is already unlocked.":
+    "Tento párovací kód už neplatí — rozpočet byl po vytvoření kódu znovu zašifrován novým klíčem. Vygeneruj čerstvý kód na zařízení, které je už odemčené.",
   "This will replace all current data. Continue?": "Tímto nahradíš všechna současná data. Pokračovat?",
   "To be budgeted": "K rozdělení",
   "To be budgeted is ≤ 0 — there is nothing to distribute.": "„K rozdělení“ je ≤ 0 — není co rozdělovat.",

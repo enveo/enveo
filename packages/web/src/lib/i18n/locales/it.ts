@@ -345,6 +345,8 @@ export const it: Dict = {
   "Own key": "Chiave propria",
   "Pairing code": "Codice di abbinamento",
   "Pairing code unavailable — no key on this device.": "Codice di abbinamento non disponibile: su questo dispositivo non c'è nessuna chiave.",
+  "Pairing code unavailable — this device's key has not been confirmed for the budget's current encryption yet. Unlock again or let a sync finish first.":
+    "Codice di abbinamento non disponibile: la chiave di questo dispositivo non è ancora stata confermata per la cifratura attuale del budget. Sblocca di nuovo oppure lascia prima terminare una sincronizzazione.",
   Palette: "Tavolozza",
   Password: "Password",
   "Password changed.": "Password cambiata.",
@@ -458,6 +460,8 @@ export const it: Dict = {
   "The app talks to OpenAI directly from this browser using your own key — bypassing the server.":
     "L'app parla con OpenAI direttamente da questo browser usando la tua chiave, saltando il server.",
   "The backup is corrupted and was not loaded: {detail}": "Il backup è danneggiato e non è stato caricato: {detail}",
+  "The budget's encryption was already upgraded on another device — unlock with the new encryption password.":
+    "La cifratura del budget è già stata aggiornata su un altro dispositivo: sblocca con la nuova password di cifratura.",
   "The budget changed on the server in the meantime — nothing was written. Try again.":
     "Nel frattempo il budget è cambiato sul server: non è stato scritto nulla. Riprova.",
   "The budget has changed since this was generated — generate a new suggestion.":
@@ -546,6 +550,8 @@ export const it: Dict = {
   "This is the first account on this server — once it exists, registration closes.":
     "Questo è il primo account su questo server: una volta creato, le registrazioni si chiudono.",
   "This pairing code belongs to a different budget.": "Questo codice di abbinamento appartiene a un altro budget.",
+  "This pairing code is no longer valid — the budget was re-encrypted with a new key after the code was created. Generate a fresh code on a device that is already unlocked.":
+    "Questo codice di abbinamento non è più valido: il budget è stato ricifrato con una nuova chiave dopo la creazione del codice. Genera un codice nuovo su un dispositivo già sbloccato.",
   "This will replace all current data. Continue?": "Questo sostituirà tutti i dati attuali. Continuare?",
   "To be budgeted": "Da assegnare",
   "To be budgeted is ≤ 0 — there is nothing to distribute.": "«Da assegnare» è ≤ 0: non c'è nulla da ripartire.",

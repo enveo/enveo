@@ -541,7 +541,9 @@ function E2eeUpgradeRow() {
         {(SC) => (
           <div>
             <div style={{ fontSize: 16.5, fontWeight: 700, color: SC.text, marginBottom: 6 }}>{t("Upgrade encryption")}</div>
-            <E2eeUpgradePanel onDone={() => setSheet(false)} />
+            {/* server already v2 (upgraded elsewhere) → the row itself disappears on the next
+                render (cipherVersion meta flipped); just close the sheet */}
+            <E2eeUpgradePanel onDone={() => setSheet(false)} onServerNowV2={() => setSheet(false)} />
           </div>
         )}
       </Sheet>
@@ -706,12 +708,20 @@ function E2eePairCode() {
   const [sheet, setSheet] = useState(false);
   const [copied, setCopied] = useState(false);
   const [code, setCode] = useState<string | null>(null);
+  /** A key exists but is NOT validated for the current epoch — the honest reason, not "no key". */
+  const [stale, setStale] = useState(false);
 
   const open = () => {
     const dek = e2ee.getDek();
     // budgetId: known from the v1 era or from the budgets entity in the replica (pure v2 bootstrap)
     const budgetId = store.getBudgetId() || store.getLedger()?.budgets?.[0]?.id || "";
-    setCode(dek && budgetId ? encodePairing(dek, budgetId) : null);
+    // A pairing code EXPORTS the raw key — only a key VALIDATED for the budget's current epoch
+    // may leave the device (round 3, R3): in the stale-key window after an epoch adoption the
+    // held key may belong to a DEAD generation, and handing it out would ship a code that can
+    // never unlock anything (or worse, mislead the receiver about which generation it opens).
+    const valid = e2ee.isDekValidForEpoch(e2ee.getTierMeta().epoch);
+    setCode(dek && budgetId && valid ? encodePairing(dek, budgetId) : null);
+    setStale(!!dek && !valid);
     setCopied(false);
     setSheet(true);
   };
@@ -779,7 +789,13 @@ function E2eePairCode() {
                 </ActionGroup>
               </>
             ) : (
-              <div style={{ fontSize: 12.5, color: SC.soft, lineHeight: 1.6 }}>{t("Pairing code unavailable — no key on this device.")}</div>
+              <div style={{ fontSize: 12.5, color: SC.soft, lineHeight: 1.6 }}>
+                {stale
+                  ? t(
+                      "Pairing code unavailable — this device's key has not been confirmed for the budget's current encryption yet. Unlock again or let a sync finish first.",
+                    )
+                  : t("Pairing code unavailable — no key on this device.")}
+              </div>
             )}
             <button
               onClick={() => setSheet(false)}

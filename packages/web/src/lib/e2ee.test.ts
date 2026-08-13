@@ -31,7 +31,7 @@ import {
   setDek,
   setTierMeta,
 } from "./e2ee";
-import { clearLocalData, idbPut } from "./idb";
+import { clearLocalData, idbGet, idbPut } from "./idb";
 import * as persist from "./persist";
 import { store } from "./store";
 
@@ -229,6 +229,28 @@ describe("e2ee: DEK validity is per-epoch", () => {
     expect(Buffer.from(getDek()!).toString("hex")).toBe(Buffer.from(newDek).toString("hex"));
     expect(isDekValidForEpoch(2)).toBe(true);
     expect(getTierMeta()).toEqual({ tier: "e2ee", epoch: 2 });
+  });
+
+  it("R3: setDek with a NULL epoch installs the key UNVALIDATED (pairing on a checkpoint-less budget)", async () => {
+    await hydrate();
+    setDek(generateDek(), null); // installed, but no authenticated use vouched for it yet
+    expect(getDek()).not.toBeNull();
+    expect(isDekValidForEpoch(0)).toBe(false);
+    expect(isDekValidForEpoch(1)).toBe(false);
+    await persist.flushed();
+    __resetDekForTests();
+    await hydrate();
+    expect(getDek()).not.toBeNull(); // the key survives a reload…
+    expect(isDekValidForEpoch(1)).toBe(false); // …but stays untrusted until validated
+  });
+
+  it("R4: clearDek destroys the pending upgrade-ceremony record (it holds a RAW candidate DEK)", async () => {
+    await hydrate();
+    await idbPut("meta", { budgetId: "b", dek: generateDek(), wrappedDek: "v2.x", snapshotBlob: "v2.y" }, "e2eePendingUpgrade");
+    setDek(generateDek(), 1);
+    clearDek(); // "forget the key" — disable, a rotation-detected drop, sign-out flows
+    await persist.flushed();
+    expect(await idbGet("meta", "e2eePendingUpgrade")).toBeNull(); // no raw key left behind
   });
 
   it("clearDek forgets the validation epoch too", async () => {
