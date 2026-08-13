@@ -65,6 +65,7 @@ export type Sync2DbOutput = {
   epochAfterRetry: number | null; // still expectedEpoch+1 — never two bumps
   staleAttemptStatus: number; // different attempt after the upgrade
   staleAttemptEpochInBody: number | null;
+  staleAttemptCipherVersionInBody: number | null; // round 3 (R2): the refusal re-teaches the format
   rowAfterStaleAttempt: { epoch: number; wrappedDek: string | null } | null;
   /* 7 — forced failure */
   forcedFailureStatus: number;
@@ -404,6 +405,7 @@ async function main(): Promise<void> {
     epochAfterRetry: rowAfterRetry?.epoch ?? null,
     staleAttemptStatus: staleRes.status,
     staleAttemptEpochInBody: (staleBody.epoch as number) ?? null,
+    staleAttemptCipherVersionInBody: (staleBody.cipherVersion as number) ?? null,
     rowAfterStaleAttempt: rowAfterStale && { epoch: rowAfterStale.epoch, wrappedDek: rowAfterStale.wrappedDek },
     forcedFailureStatus: forcedFailure.status,
     rowAfterForcedFailure: rowAfterForcedFailure && {

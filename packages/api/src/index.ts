@@ -147,7 +147,9 @@ app.onError((err, c) => {
   }
   // wrong tier for the route (v1 requires plain, sync2 e2ee) — client switches channel
   if (err instanceof TierMismatch) {
-    return c.json({ error: "tier_mismatch", tier: err.meta.tier, epoch: err.meta.epoch }, 409);
+    // cipherVersion rides along (round 3): an authoritative tier_mismatch is one of the ways a
+    // device stuck on stale "format 1" meta re-learns that the budget is v2 now.
+    return c.json({ error: "tier_mismatch", tier: err.meta.tier, epoch: err.meta.epoch, cipherVersion: err.meta.cipherVersion }, 409);
   }
   // cross-budget FK in a request body (REST/import/e2ee-disable restore paths;
   // push maps it per-op, /sync/replace maps it to its own 400 message)

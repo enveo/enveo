@@ -134,8 +134,11 @@ async function maxE2eeSeq(x: Executor, budgetId: string): Promise<number> {
   return row?.cursor ?? 0;
 }
 
-/** 409 in the tier_mismatch shape with the CURRENT epoch — the client bootstraps. */
-const epochMismatch = (meta: BudgetMeta) => ({ error: "tier_mismatch", tier: meta.tier, epoch: meta.epoch }) as const;
+/** 409 in the tier_mismatch shape with the CURRENT epoch — the client bootstraps. Carries the
+ *  budget's current cipherVersion too (round 3): a device whose durable meta still says
+ *  "format 1" must be able to re-learn from any authoritative refusal that another device
+ *  completed the upgrade — otherwise the Unlock screen's upgrade state is a one-way trap. */
+const epochMismatch = (meta: BudgetMeta) => ({ error: "tier_mismatch", tier: meta.tier, epoch: meta.epoch, cipherVersion: meta.cipherVersion }) as const;
 
 /** 409 for a LEGACY (pre-AAD, format 1) budget: no normal sync2 channel may read or extend it.
  *  The body NAMES the budget — the client's ownership proof needs the id before the upgrade
@@ -399,9 +402,11 @@ sync2Routes.post("/budget/e2ee/upgrade-v2", async (c) => {
       if (row.epoch === body.expectedEpoch + 1 && row.wrappedDek === body.wrappedDek) {
         return { kind: "done", id: meta.id, epoch: row.epoch } as const;
       }
-      return { kind: "stale", meta: { ...meta, epoch: row.epoch } } as const;
+      // row.* is the state read UNDER the lock — authoritative, unlike the pre-lock meta
+      return { kind: "stale", meta: { ...meta, epoch: row.epoch, cipherVersion: 2 } } as const;
     }
-    if (row.epoch !== body.expectedEpoch) return { kind: "stale", meta: { ...meta, epoch: row.epoch } } as const;
+    if (row.epoch !== body.expectedEpoch)
+      return { kind: "stale", meta: { ...meta, epoch: row.epoch, cipherVersion: row.cipherVersion === 1 ? 1 : 2 } } as const;
     const nextEpoch = row.epoch + 1;
     await tx
       .update(s.budgets)

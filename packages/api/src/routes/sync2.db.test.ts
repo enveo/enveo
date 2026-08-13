@@ -92,6 +92,7 @@ describe.skipIf(!TEST_URL)("sync2 e2ee v2 (DB-backed)", () => {
     expect(out.epochAfterRetry).toBe(2); // never two epoch increments
     expect(out.staleAttemptStatus).toBe(409);
     expect(out.staleAttemptEpochInBody).toBe(2); // the loser learns the current generation
+    expect(out.staleAttemptCipherVersionInBody).toBe(2); // …and the current FORMAT (R2: no one-way trap)
     expect(out.rowAfterStaleAttempt).toEqual({ epoch: 2, wrappedDek: "v2.newWrapWINNER" }); // untouched
   });
 
