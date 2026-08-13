@@ -39,7 +39,6 @@ import {
   __resetObligations,
   __setLocalMode,
   assertOwnReplica,
-  decideIdentity,
   disableLocal,
   discardLocalReplica,
   enterLoginKeepingReplica,
@@ -313,20 +312,6 @@ afterEach(() => {
 });
 
  
-
-describe("decideIdentity", () => {
-  it("no session → unauthed (regardless of the stamp)", () => {
-    expect(decideIdentity(null, "user-A")).toBe("unauthed");
-    expect(decideIdentity(null, undefined)).toBe("unauthed");
-  });
-  it("stamped with a DIFFERENT user → foreign", () => {
-    expect(decideIdentity("user-B", "user-A")).toBe("foreign");
-  });
-  it("same user → ok; no stamp yet → ok (ownership is proved separately)", () => {
-    expect(decideIdentity("user-A", "user-A")).toBe("ok");
-    expect(decideIdentity("user-A", undefined)).toBe("ok");
-  });
-});
 
  
 
