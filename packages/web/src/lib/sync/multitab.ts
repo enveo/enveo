@@ -128,6 +128,15 @@ async function applyPeerUpdate(): Promise<void> {
   }
 }
 
+/** Test hook (unit tests only): close the channel and reset state so the bun process can exit. */
+export function __resetMultiTabForTests(): void {
+  channel?.close();
+  channel = null;
+  isLeader = false;
+  broadcastPending = false;
+  applyingPeerUpdate = false;
+}
+
 interface LockManagerLike {
   request(name: string, options: { mode: "exclusive" | "shared" }, cb: () => Promise<void>): Promise<void>;
 }
