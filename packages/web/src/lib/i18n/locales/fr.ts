@@ -679,7 +679,9 @@ export const fr: Dict = {
   "{n} hour ago | {n} hours ago": { one: "il y a {n} heure", many: "il y a {n} heures", other: "il y a {n} heures" },
   "{n} item | {n} items": { one: "{n} ligne", many: "{n} lignes", other: "{n} lignes" },
   "{n} minute ago | {n} minutes ago": { one: "il y a {n} minute", many: "il y a {n} minutes", other: "il y a {n} minutes" },
-  "{n} near limit": "{n} proches de la limite",
+  // Invariant locution ("près de"), NOT the agreeing adjective "proche/proches": this message is a
+  // t() call, not tp(), so one form must read correctly at n = 0, 1 and 2+ (see the other locales).
+  "{n} near limit": "{n} près de la limite",
   "{n} over | {n} over": { one: "{n} dépassée", many: "{n} dépassées", other: "{n} dépassées" },
   "{n} transaction | {n} transactions": { one: "{n} transaction", many: "{n} transactions", other: "{n} transactions" },
   "{pct}% of net worth": "{pct} % du patrimoine net",
