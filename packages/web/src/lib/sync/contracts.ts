@@ -164,6 +164,21 @@ export type IdentityVerdict = "unauthed" | "foreign" | "ok";
 
 
 
+export interface TransportDeps {
+   
+  enterUnauthed(): void;
+  /** The multi-tenant guard for full-budget overwrites; returns the VERIFIED session user id. */
+  assertOwnReplica(): Promise<string>;
+   
+  notePeersMayNeedUpdate(): void;
+}
+
+
+
+
+
+
+
 export interface LocalModeDeps {
   setState(s: SyncState): void;
   setOwnerUnproven(v: boolean): void;
