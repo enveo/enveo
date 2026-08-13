@@ -28,21 +28,30 @@
  */
 import { DEFAULT_KDF_PARAMS, dekWrapAadContext, deriveKek, freshKdfParams, generateDek, generateSalt, wrapDek } from "./crypto";
 import * as e2ee from "./e2ee";
-import { clearLocalData, idbGet, storageMode } from "./idb";
+import { idbGet, storageMode } from "./idb";
 // NOTE: no static `import { local } from "./mutate"` here — mutate.ts imports `poke` from this
 // facade, so a static edge in the other direction would be a cycle. The one place the engine
 // needs `local` (sweepLegacyPlanned in sync/boot.ts) does a lazy `await import("../mutate")`.
 import * as outbox from "./outbox";
 import * as persist from "./persist";
 import { store } from "./store";
-import { retryBoot } from "./sync/boot";
 import { INTERVAL_MS, type LocalMode, type PendingE2eeUpgrade, TierMismatchError } from "./sync/contracts";
 import { awaitInFlightCycle, configureCycle, getLastSyncReason, resetBackoff, syncNow } from "./sync/cycle";
 import { assertOwnReplica, enterUnauthed } from "./sync/identity";
-import { applyLocalMode, configureLocalMode, disableLocal, enablePaused, enableWiped, getLocalMode, setLocalModeValue } from "./sync/localMode";
+import { applyLocalMode, configureLocalMode, disableLocal, enablePaused, enableWiped, getLocalMode } from "./sync/localMode";
+import {
+  broadcastKeysChanged,
+  broadcastLocalMode,
+  broadcastUpdatedIfPending,
+  installMultiTab,
+  isLeaderTab,
+  notePeersMayNeedUpdate,
+  postMsg,
+  wipeLocalData,
+} from "./sync/multitab";
 import { clearReplacePending, isReplacePending, isResyncPending } from "./sync/obligations";
-import { e2eeReplicaBudgetId, isEmptyUnboundReplica, replayOutbox } from "./sync/replica";
-import { bumpStatus, getSyncStatus, installOutboxStatusListener, setOwnerUnproven, setState } from "./sync/status";
+import { e2eeReplicaBudgetId, isEmptyUnboundReplica } from "./sync/replica";
+import { getSyncStatus, installOutboxStatusListener, setOwnerUnproven, setState } from "./sync/status";
 import { configureTransport, pushLocalToServer, throwIfBudgetMismatch, throwIfTierMismatch, unauthorized, wipeServer } from "./sync/transport";
 
 /* ── Re-exported public surface (types, errors, constants — see sync/contracts.ts) ── */
@@ -52,6 +61,7 @@ export { E2eeUpgradeRequiredError, EMPTY_LEDGER, TierMismatchError } from "./syn
 export { __resetBackoff, flushOutboxForSignOut, fullResync, poke, pullNow, recheckReplicaOwner, syncNow } from "./sync/cycle";
 export { __resetIdentity, assertOwnReplica, decideIdentity, enterLoginKeepingReplica } from "./sync/identity";
 export { disableLocal, enablePaused, enableWiped, getLocalMode, isLocalOnly } from "./sync/localMode";
+export { broadcastKeysChanged, wipeLocalData } from "./sync/multitab";
 export { __resetObligations, markReplacePending } from "./sync/obligations";
 export { getSyncStatus, subscribeSyncStatus } from "./sync/status";
 export { fetchSnapshot, getClientId, pushLocalToServer, resetServerE2ee } from "./sync/transport";
@@ -229,168 +239,6 @@ export async function upgradeServerE2eeV2(password: string | null): Promise<void
   void syncNow("e2ee-upgrade-v2");
 }
 
-/** Broadcast the local-mode change to other tabs (best-effort). */
-function broadcastLocalMode(mode: LocalMode): void {
-  try {
-    channel?.postMessage({ type: "localmode", mode });
-  } catch {
-    /* best-effort — channel closed during unload */
-  }
-}
-
-/* ── Multi-tab (Web Locks leader + BroadcastChannel) ──────────────────── */
-
-/**
- * CHOSEN MODEL (simple and RESILIENT — correctness before optimization):
- *
- * EACH tab pushes on its own triggers (enqueue / focus / online / visible
- * / boot / leader interval), and EVERY cycle FIRST absorbs "orphans" from IDB —
- * ops enqueued by ANOTHER tab (outbox.reconcileFromIdb in doCycle).
- * Outbox memory is PER TAB and is read from IDB only at boot, so without
- * this an op enqueued in tab B, which closed before its own push,
- * would be stuck in IDB until a full reload (no live tab would re-read the outbox).
- * Reconcile closes that: the SHARED durable outbox is the source of truth, and any live
- * tab drains it. Server idempotency (the sync_ops guard) dedupes possible
- * double sends (two tabs absorbing the same orphan).
- *
- * The leader (Web Locks, exclusive lock held "forever") gates ONLY the
- * 60 s interval — one tab polls the server in the background instead of N. Closing
- * the leader tab releases the lock → another tab takes it over, immediately runs a cycle
- * (absorbs orphans left by the previous leader) and resumes the interval. No Web Locks
- * ⇒ isLeader=true in every tab (behavior as before — harmless thanks to
- * idempotency + reconcile).
- *
- * BroadcastChannel("enveo-sync"):
- *  - "updated" (after a cycle that changed data): other tabs rehydrate the mirror
- *    from IDB + replay their own outbox (applyPeerUpdate) — they reflect this tab's
- *    sync WITHOUT their own network request,
- *  - "poke" (after a local enqueue): the leader syncs right away (doesn't wait for
- *    the interval). Both sides feature-detect; no channel ⇒ tabs converge
- *    via their own pulls (focus/interval).
- * Loop protection: receive handlers do NOT broadcast (applyPeerUpdate
- * posts nothing and persists nothing).
- */
-let isLeader = false;
-let channel: BroadcastChannel | null = null;
-let broadcastPending = false; // this cycle changed data → broadcast "updated" at the end
-let applyingPeerUpdate = false;
-
-/** Mark that the current cycle changed data — finishSuccess broadcasts "updated". */
-function notePeersMayNeedUpdate(): void {
-  broadcastPending = true;
-}
-
-/**
- * The KEY GENERATION on this device changed (upgrade / enable / disable / unlock / password
- * change): flush the persist chain first — the peers re-READ from IDB — then tell every other
- * live tab to drop its in-memory key state and rehydrate ("keys"). The plain "updated"
- * broadcast is NOT enough: it re-reads only the ledger, while the e2ee module's hydrate is
- * memoized and its dekTouched latch blocks a re-read — a second tab would keep the dead DEK
- * and the old epoch in memory and push poison under the new generation.
- */
-export async function broadcastKeysChanged(): Promise<void> {
-  await persist.flushed();
-  postMsg("keys");
-}
-
-function postMsg(type: "updated" | "poke" | "wipe" | "keys"): void {
-  try {
-    channel?.postMessage({ type });
-  } catch {
-    /* best-effort — channel closed during unload */
-  }
-}
-
-/**
- * "Clear local data" (Settings) — multi-tab safe. First CLEARS the IDB stores
- * (doesn't delete the database → doesn't block on another tab's connection), THEN broadcasts
- * "wipe" so the remaining tabs reload too (they boot from empty stores =
- * fresh snapshot), and finally reloads ITSELF. The order (clear → broadcast →
- * reload) guarantees tabs receiving "wipe" boot from ALREADY EMPTY stores.
- */
-export async function wipeLocalData(): Promise<void> {
-  await clearLocalData();
-  postMsg("wipe");
-  if (typeof location !== "undefined") location.reload();
-}
-
-/**
- * Receiving "updated" from another tab: apply its sync without our own network. Rehydrate
- * the ledger blob from IDB, THEN replay our own outbox (idempotent — doesn't lose
- * THIS tab's optimistic ops). Does NOT broadcast and does NOT persist (no loop).
- */
-async function applyPeerUpdate(): Promise<void> {
-  if (applyingPeerUpdate) return; // coalescing — rehydrate reads the freshest blob anyway
-  if (store.getBootStatus() !== "ready") return; // before boot our own hydrate handles it
-  applyingPeerUpdate = true;
-  try {
-    await store.rehydrateFromIdb();
-    replayOutbox();
-    bumpStatus();
-  } finally {
-    applyingPeerUpdate = false;
-  }
-}
-
-interface LockManagerLike {
-  request(name: string, options: { mode: "exclusive" | "shared" }, cb: () => Promise<void>): Promise<void>;
-}
-
-function installMultiTab(): void {
-  const locks = (navigator as Navigator & { locks?: LockManagerLike }).locks;
-  if (locks && typeof locks.request === "function") {
-    locks
-      .request("enveo-sync-leader", { mode: "exclusive" }, () => {
-        isLeader = true;
-        // a freshly elected leader (the previous one closed its tab) inherits the background:
-        // run a cycle right away — it absorbs from IDB any "orphans" left by the previous leader
-        // (an op enqueued just before it closed), without waiting for the interval
-        void syncNow("leader");
-        return new Promise<void>(() => {}); // hold the lock until the tab closes
-      })
-      .catch(() => {
-        isLeader = true; // lock failure → act as leader (safer to poll)
-      });
-  } else {
-    isLeader = true; // no Web Locks → every tab is a leader
-  }
-
-  if (typeof BroadcastChannel !== "undefined") {
-    channel = new BroadcastChannel("enveo-sync");
-    channel.onmessage = (e: MessageEvent) => {
-      const msg = e.data as { type?: string; mode?: LocalMode } | null;
-      if (!msg) return;
-      if (msg.type === "updated") void applyPeerUpdate();
-      else if (msg.type === "keys") {
-        // a peer tab rotated/validated/dropped the key state — re-read it, then let the
-        // normal machinery converge (a locked tab may now be unlockable and vice versa)
-        void e2ee.rehydrateKeysFromPeer().then(() => {
-          if (store.getBootStatus() === "locked" || store.getBootStatus() === "ready") void retryBoot();
-        });
-      } else if (msg.type === "poke" && isLeader) void syncNow("peer-poke");
-      // another tab cleared the local data → reload and boot from empty
-      // stores (fresh snapshot); we persist NOTHING along the way (no race)
-      else if (msg.type === "wipe" && typeof location !== "undefined") location.reload();
-      // another tab changed the local mode → update the module flag (localStorage is
-      // shared, but the in-memory flag was read once at load time). Crucial:
-      // after enabling local mode in one tab, the OTHERS must stop syncing
-      // (the gate in syncNow). After disabling — resume the cycle.
-      else if (msg.type === "localmode") {
-        const m = msg.mode;
-        if (m === "off" || m === "paused" || m === "wiped") {
-          setLocalModeValue(m);
-          if (m === "off")
-            void syncNow("peer-localmode-off"); // still unproven? the cycle re-proves
-          else {
-            setOwnerUnproven(false); // sync is off by choice now — same as applyLocalMode
-            setState("local");
-          }
-        }
-      }
-    };
-  }
-}
-
 /* ── Triggers (idempotent installation — StrictMode-safe) ──────────── */
 
 let triggersInstalled = false;
@@ -428,7 +276,7 @@ function installTriggers(): void {
   setInterval(() => {
     // only the leader polls in the background (Web Locks) — the other tabs sync on
     // interaction/enqueue; no Web Locks ⇒ isLeader=true (every tab, as before)
-    if (isLeader && document.visibilityState === "visible") void syncNow("interval");
+    if (isLeaderTab() && document.visibilityState === "visible") void syncNow("interval");
   }, INTERVAL_MS);
 }
 
@@ -440,16 +288,11 @@ configureTransport({
   notePeersMayNeedUpdate,
 });
 
-// The cycle's multi-tab broadcasts (the channel and its pending-"updated" flag live here
-// until the multitab extraction) — the facade is the composition root (workflow §3c-3).
+// The cycle's multi-tab broadcasts (the channel and its pending-"updated" flag live in
+// sync/multitab.ts) — the facade is the composition root (workflow §3c-3).
 configureCycle({
   notePeersMayNeedUpdate,
-  broadcastUpdatedIfPending: () => {
-    if (broadcastPending) {
-      broadcastPending = false;
-      postMsg("updated"); // this cycle changed data → other tabs rehydrate from IDB
-    }
-  },
+  broadcastUpdatedIfPending,
   postPokeToPeers: () => postMsg("poke"),
 });
 
@@ -482,7 +325,7 @@ if (import.meta.env.DEV && typeof window !== "undefined") {
     durableBroken: () => persist.isDurableBroken(),
     resyncPending: () => isResyncPending(),
     replacePending: () => isReplacePending(),
-    isLeader: () => isLeader,
+    isLeader: () => isLeaderTab(),
     localMode: () => getLocalMode(),
     tierMeta: () => e2ee.getTierMeta(),
     dekLoaded: () => e2ee.getDek() !== null,
