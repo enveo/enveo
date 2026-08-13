@@ -159,6 +159,21 @@ export interface SyncStatus {
 export type IdentityVerdict = "unauthed" | "foreign" | "ok";
 
 /**
+ * Dependencies the TRANSPORT layer needs from higher layers (workflow §3c-3): identity owns
+ * the unauthed transition and the ownership guard, multitab owns the peer broadcast — both
+ * sit ABOVE transport in the module graph, so they are injected by the facade at composition
+ * time instead of imported (which would be a cycle).
+ */
+export interface TransportDeps {
+  /** Route the app to the Login screen (identity.enterUnauthed) — every 401 goes through it. */
+  enterUnauthed(): void;
+  /** The multi-tenant guard for full-budget overwrites; returns the VERIFIED session user id. */
+  assertOwnReplica(): Promise<string>;
+  /** Mark that this cycle changed data — finishSuccess broadcasts "updated" to peer tabs. */
+  notePeersMayNeedUpdate(): void;
+}
+
+/**
  * Dependencies the local-mode TRANSITIONS need from higher layers (workflow §3c-3): the
  * status setters (status.ts imports this module's flag, so importing status back would be a
  * cycle), the multi-tab broadcast, and the server-write operations — injected EXPLICITLY by

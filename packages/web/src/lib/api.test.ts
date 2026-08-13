@@ -6,7 +6,7 @@
  * not know still degrades to something readable instead of an empty error.
  */
 import { describe, expect, it } from "bun:test";
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { apiErrorMessage } from "./api";
@@ -105,9 +105,26 @@ describe("no prose thrown from the UI-reachable libs", () => {
   // openai.ts joined it after `throw new Error(\`OpenAI ${res.status}\`)` printed "OpenAI 503" in a
   // Polish UI: screenshot import is AI-only, so the model transport's errors stopped being
   // swallowed by a rules fallback and became text a user reads.
-  for (const file of ["sync.ts", "crypto.ts", "ai.ts", "openai.ts"]) {
-    it(`${file} throws codes, not sentences`, () => {
-      const src = readFileSync(join(LIB_DIR, file), "utf8");
+  //
+  // The sync engine is ONE unit split across lib/sync.ts + lib/sync/*.ts (workflow §3c-3), all of
+  // it reachable through the facade — so its entry lists the whole directory: moving a throw into
+  // a submodule must not move it out of this gate (that is exactly what the split would otherwise
+  // have done to no_local_replica/no_encryption_key/empty_unbound_replica & co. in transport.ts).
+  const SYNC_ENGINE_SOURCES = [
+    "sync.ts",
+    ...readdirSync(join(LIB_DIR, "sync"))
+      .filter((f) => f.endsWith(".ts") && !f.includes(".test"))
+      .map((f) => `sync/${f}`),
+  ];
+  const SCANNED: Array<[label: string, files: string[]]> = [
+    ["sync engine (sync.ts + sync/*.ts)", SYNC_ENGINE_SOURCES],
+    ["crypto.ts", ["crypto.ts"]],
+    ["ai.ts", ["ai.ts"]],
+    ["openai.ts", ["openai.ts"]],
+  ];
+  for (const [label, files] of SCANNED) {
+    it(`${label} throws codes, not sentences`, () => {
+      const src = files.map((f) => readFileSync(join(LIB_DIR, f), "utf8")).join("\n");
       // Double-quoted literals only: `throw new Error(\`pull: ${res.status}\`)` is a technical
       // status line the UI never shows as prose, and apiErrorMessage parses the {error} out of it.
       const thrown = [...src.matchAll(/(?:new Error|super)\("([^"]+)"\)/g)].map((m) => m[1]!);

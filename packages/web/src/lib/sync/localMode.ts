@@ -83,7 +83,7 @@ export function configureLocalMode(d: LocalModeDeps): void {
 }
 
 function requireDeps(): LocalModeDeps {
-  if (!deps) throw new Error("sync/localMode: not configured"); // composition bug — never user-reachable
+  if (!deps) throw new Error("sync_localmode_unconfigured"); // composition bug — never user-reachable
   return deps;
 }
 
