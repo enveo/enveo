@@ -27,8 +27,6 @@
  *
  * Never log keys, plaintext, AAD values or ciphertext from this module.
  */
-import { argon2id } from "hash-wasm";
-
 export interface KdfParams {
   algo: "argon2id";
   m: number;
@@ -45,7 +43,16 @@ const unb64 = (s: string): Uint8Array =>
 export const generateSalt = (): Uint8Array => crypto.getRandomValues(new Uint8Array(16));
 export const generateDek = (): Uint8Array => crypto.getRandomValues(new Uint8Array(32));
 
+/**
+ * KEK derivation. `hash-wasm` is loaded through a dynamic `import()` (§3f): it is ~28 kB of
+ * embedded Argon2 that only ever runs when a passphrase is turned into a key — unlocking a
+ * device, enabling E2EE, a rekey or the v1→v2 upgrade — and every one of those already awaits
+ * this call. It must NOT become a static import again: on a plain-tier budget the module would
+ * be downloaded on every single boot and never called. Everything else in this file (AES-GCM,
+ * the AAD tuples, the encoder) is WebCrypto and stays eager.
+ */
 export async function deriveKek(passphrase: string, salt: Uint8Array, p: Omit<KdfParams, "saltB64">): Promise<Uint8Array> {
+  const { argon2id } = await import("hash-wasm");
   return argon2id({ password: passphrase, salt, parallelism: p.p, iterations: p.t, memorySize: p.m, hashLength: 32, outputType: "binary" });
 }
 

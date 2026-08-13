@@ -518,6 +518,7 @@ export const MESSAGES = [
   "This is the first account on this server — once it exists, registration closes.",
   "This pairing code belongs to a different budget.",
   "This pairing code is no longer valid — the budget was re-encrypted with a new key after the code was created. Generate a fresh code on a device that is already unlocked.",
+  "This part of the app could not be loaded.",
   "This will replace all current data. Continue?",
   "To be budgeted",
   "To be budgeted is ≤ 0 — there is nothing to distribute.",
