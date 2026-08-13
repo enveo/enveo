@@ -1,6 +1,8 @@
 import { useEffect, useRef } from "react";
 import { useTheme } from "../lib/contexts";
 import { haptic } from "../lib/haptics";
+import { useT } from "../lib/i18n";
+import { NUMPAD_KEYS, numpadKeyLabel } from "../lib/numpad";
 import { font, TEAL } from "../lib/theme";
 
 export function ScrollPicker<T extends string | number>({
@@ -117,28 +119,6 @@ export function ScrollPicker<T extends string | number>({
   );
 }
 
-type Key = [string, "n" | "o" | "f" | "k" | ""];
-/** Same key order as the docked variant's rows: [1 2 3 ⌫][4 5 6 +][7 8 9 −][× 0 , ✓] —
- * both variants share it (digits 1-2-3 on top, comma under 9, contextual OK bottom-right). */
-const KEYS: Key[] = [
-  ["1", "n"],
-  ["2", "n"],
-  ["3", "n"],
-  ["DEL", "f"],
-  ["4", "n"],
-  ["5", "n"],
-  ["6", "n"],
-  ["+", "o"],
-  ["7", "n"],
-  ["8", "n"],
-  ["9", "n"],
-  ["−", "o"],
-  ["×", "o"],
-  ["0", "n"],
-  [",", "n"],
-  ["OK", "k"],
-];
-
 export function Numpad({
   onKey,
   onOk,
@@ -153,11 +133,14 @@ export function Numpad({
   variant?: "docked" | "sheet";
 }) {
   const C = useTheme();
+  const { lang } = useT();
+  // Presentation only: the click handlers below emit NUMPAD_KEYS' canonical key in every language.
+  const keyLabel = (k: string): string => numpadKeyLabel(k, lang, okGlyph);
 
   if (variant === "sheet") {
     return (
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 7, padding: "8px 14px 0", background: "transparent" }}>
-        {KEYS.map((k, i) => {
+        {NUMPAD_KEYS.map((k, i) => {
           const isOk = k[0] === "OK";
           const op = k[1] === "o" || k[0] === "DEL";
           if (variant === "sheet" && k[0] === "×") {
@@ -184,7 +167,7 @@ export function Numpad({
                 boxShadow: op || isOk ? "none" : "0 1px 2px rgba(30,30,40,0.08)",
               }}
             >
-              {k[0] === "DEL" ? "⌫" : isOk ? (okGlyph === "equals" ? "=" : "✓") : k[0]}
+              {keyLabel(k[0])}
             </button>
           );
         })}
@@ -195,7 +178,7 @@ export function Numpad({
   return (
     // env(safe-area-inset-bottom): the bottom row must not slide under the iOS home indicator (viewport-fit=cover)
     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 1, background: C.keybg, paddingBottom: "env(safe-area-inset-bottom)" }}>
-      {KEYS.map((k, i) => (
+      {NUMPAD_KEYS.map((k, i) => (
         <button
           key={i}
           onClick={() => {
@@ -215,7 +198,7 @@ export function Numpad({
             cursor: "pointer",
           }}
         >
-          {k[0] === "DEL" ? "⌫" : k[0] === "OK" ? (okGlyph === "equals" ? "=" : "✓") : k[0]}
+          {keyLabel(k[0])}
         </button>
       ))}
     </div>

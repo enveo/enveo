@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { fmtSignedTrim, type PadState, padKey, padPreview } from "../lib/amount";
 import { useMask } from "../lib/contexts";
+import { localizePadExpression } from "../lib/format";
 import { useT } from "../lib/i18n";
 import { CORAL } from "../lib/theme";
 import { Sheet } from "./chrome";
@@ -59,7 +60,7 @@ export function AmountPadSheet({
   onClose: () => void;
 }) {
   const M = useMask();
-  const { t } = useT();
+  const { t, lang } = useT();
   const [state, setState] = useState<PadState>({ expr: "", fresh: true });
   const [error, setError] = useState(false);
 
@@ -112,7 +113,7 @@ export function AmountPadSheet({
               whiteSpace: "nowrap",
             }}
           >
-            {state.expr || "0"}
+            {localizePadExpression(state.expr, lang) || "0"}
           </div>
           <div style={{ minHeight: 20, textAlign: "right", fontSize: 14, color: C.mute, fontVariantNumeric: "tabular-nums", margin: "6px 2px 10px" }}>
             {hasOp && preview !== null ? t("= {amount}", { amount: M(preview) }) : ""}

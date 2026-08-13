@@ -9,7 +9,7 @@ import { fmtSignedTrim, type PadState, padPreview, padPreviewLive } from "../lib
 import type { EnvelopeView, StateResponse } from "../lib/api";
 import { useCurrency, useMask, useSettings, useTheme } from "../lib/contexts";
 import { useDragReorder } from "../lib/dnd";
-import { currencySymbol, fmtTrim, isLight, parseAmount } from "../lib/format";
+import { currencySymbol, fmtTrim, isLight, localizePadExpression, parseAmount } from "../lib/format";
 import { goalProgress } from "../lib/goals";
 import { useT } from "../lib/i18n";
 import { Glyph, Ico } from "../lib/icons";
@@ -427,7 +427,7 @@ function AllocCell({ e, editing, onStart }: { e: EnvelopeView; editing: { expr: 
           borderRadius: "7px 7px 0 0",
         }}
       >
-        {editing.expr || "0"}
+        {localizePadExpression(editing.expr, lang) || "0"}
         {/* blinking cursor — like the amount on the Add screen */}
         <span
           style={{
@@ -453,7 +453,10 @@ function AllocCell({ e, editing, onStart }: { e: EnvelopeView; editing: { expr: 
       style={{ ...box, display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 3, cursor: "pointer" }}
     >
       <input
-        value={fmtSignedTrim(e.allocated)}
+        // The RESTING cell of the same editor: localized so tapping it (→ the localized pad line
+        // above) cannot flip "12,50" to "12.50" for one and the same number. Display only — the
+        // pad still starts from fmtSignedTrim(e.allocated), never from this string.
+        value={localizePadExpression(fmtSignedTrim(e.allocated), lang)}
         readOnly
         aria-label={t("Allocated: {name}", { name: e.name })}
         onFocus={(ev) => onStart(ev.currentTarget)}
@@ -859,7 +862,9 @@ export function EnvEdit({ env, groups, onClose }: { env: EnvelopeView | null; gr
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 18 }}>
               <input
-                value={target}
+                // `target` is CANONICAL pad output (fmtTrim) and is read back with parseAmount —
+                // only its rendering is localized.
+                value={localizePadExpression(target, lang)}
                 readOnly
                 onClick={openTargetPad}
                 onFocus={openTargetPad}

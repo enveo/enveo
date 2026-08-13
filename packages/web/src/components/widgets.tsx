@@ -6,7 +6,7 @@ import type { WidgetConfig, WidgetId, WidgetOpts } from "../lib/contexts";
 import { useCurrency, useMask, useSettings, useTheme } from "../lib/contexts";
 import { currentMonth } from "../lib/dates";
 import { useDragReorder } from "../lib/dnd";
-import { currencySymbol, parseAmount } from "../lib/format";
+import { currencySymbol, localizePadExpression, parseAmount } from "../lib/format";
 import { type Message, msg, useT } from "../lib/i18n";
 import { Glyph, Ico } from "../lib/icons";
 import { local } from "../lib/mutate";
@@ -331,7 +331,8 @@ function ReconcileSheet({ account, onClose }: { account: AccountView | null; onC
             </div>
             <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 12 }}>
               <input
-                value={val}
+                // `val` stays CANONICAL (pad output in, parseAmount out) — display only is localized.
+                value={localizePadExpression(val, lang)}
                 readOnly
                 onClick={openPad}
                 onFocus={openPad}

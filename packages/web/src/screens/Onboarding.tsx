@@ -19,7 +19,7 @@ import { fmtSignedTrim } from "../lib/amount";
 import { api, apiErrorMessage } from "../lib/api";
 import { useSettings, useTheme } from "../lib/contexts";
 import { browserLocales, SUPPORTED_CURRENCIES, wizardCurrency } from "../lib/currency";
-import { parseAmount } from "../lib/format";
+import { localizePadExpression, parseAmount } from "../lib/format";
 import { type Lang, LOCALES, loadLocale, type Message, useT } from "../lib/i18n";
 import { getInstallState, isInstallable, useInstall } from "../lib/installPrompt";
 import { local } from "../lib/mutate";
@@ -348,11 +348,13 @@ export function OnboardingScreen({ onDone }: { onDone: () => void }) {
 
               <div style={{ fontSize: 11, color: C.mute, fontWeight: 600, marginBottom: 6 }}>{`${t("Starting balance")} (${currency})`}</div>
               <input
-                value={accBal}
+                // `accBal` stays CANONICAL (fmtSignedTrim in, parseAmount out) — display only is
+                // localized, placeholder included ("0.00" in en, "0,00" in pl).
+                value={localizePadExpression(accBal, lang)}
                 readOnly
                 onClick={openBalancePad}
                 onFocus={openBalancePad}
-                placeholder="0,00"
+                placeholder={localizePadExpression("0,00", lang)}
                 style={{ ...inputStyle(C.line, C.bg, C.text), marginBottom: 22, cursor: "pointer" }}
               />
 

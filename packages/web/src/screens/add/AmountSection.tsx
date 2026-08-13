@@ -1,6 +1,6 @@
 import type { MutableRefObject } from "react";
 import { useCurrency, useTheme } from "../../lib/contexts";
-import { currencySymbol } from "../../lib/format";
+import { currencySymbol, localizePadExpression } from "../../lib/format";
 import { useT } from "../../lib/i18n";
 import { Glyph } from "../../lib/icons";
 import { tint } from "../../lib/theme";
@@ -28,6 +28,7 @@ export function AmountSection({
   tab: Tab;
   isRefund: boolean;
   plus: boolean;
+  /** The CANONICAL pad expression (comma-decimal) — rendered in the UI language below, never localized upstream. */
   amount: string;
   numpadOpen: boolean;
   amtRef: MutableRefObject<HTMLDivElement | null>;
@@ -93,7 +94,9 @@ export function AmountSection({
             </button>
           )}
           <div ref={amtRef} className="gs" style={{ overflowX: "auto", whiteSpace: "nowrap", maxWidth: "100%" }}>
-            <span style={{ fontSize: 38, fontWeight: 800, color: plus ? C.pos : C.text, fontVariantNumeric: "tabular-nums" }}>{amount || "0"}</span>
+            <span style={{ fontSize: 38, fontWeight: 800, color: plus ? C.pos : C.text, fontVariantNumeric: "tabular-nums" }}>
+              {localizePadExpression(amount, lang) || "0"}
+            </span>
             {numpadOpen && (
               <span
                 style={{

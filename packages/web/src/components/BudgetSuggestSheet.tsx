@@ -10,7 +10,7 @@ import { type CSSProperties, useEffect, useState } from "react";
 import { runSuggest } from "../lib/ai";
 import { apiErrorMessage, type BudgetSuggestProfile, type BudgetSuggestResponse, type StateResponse } from "../lib/api";
 import { type Settings, useCurrency, useSettings } from "../lib/contexts";
-import { currencySymbol, fmtTrim, formatMoney, isLight, parseAmount } from "../lib/format";
+import { currencySymbol, fmtTrim, formatMoney, isLight, localizePadExpression, parseAmount } from "../lib/format";
 import { type Message, msg, useT } from "../lib/i18n";
 import { Glyph, Ico } from "../lib/icons";
 import { local } from "../lib/mutate";
@@ -512,7 +512,8 @@ export function BudgetSuggestSheet({ show, state, month, onClose }: { show: bool
                               >
                                 <span style={{ fontSize: 11, color: C.soft }}>+</span>
                                 <input
-                                  value={edited[it.envelopeId] ?? ""}
+                                  // `edited` stays CANONICAL (fmtTrim in, parseAmount out) — display only is localized.
+                                  value={localizePadExpression(edited[it.envelopeId] ?? "", lang)}
                                   readOnly
                                   tabIndex={on ? 0 : -1}
                                   onClick={on ? () => openPadFor(it) : undefined}

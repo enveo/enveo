@@ -66,6 +66,34 @@ export function fmtTrimLocale(minor: number, lang: Lang): string {
   return new Intl.NumberFormat(LOCALE_OF[lang], { minimumFractionDigits: whole ? 0 : 2, maximumFractionDigits: whole ? 0 : 2 }).format(minor / 100);
 }
 
+/**
+ * The decimal separator the UI language writes numbers with ("." in en-US, "," in pl-PL),
+ * taken from Intl — the same source as money formatting, never a dictionary.
+ *
+ * PRESENTATION ONLY. The amount engine (`PadState.expr`, `padKey`, `evalExpression`, `fmtTrim`)
+ * stays on its canonical comma; this is what the numpad KEY shows and what
+ * `localizePadExpression` renders. Falls back to "." when the runtime yields no decimal part
+ * or one outside the two separators a 2-decimal currency UI can use.
+ */
+export function decimalSeparator(lang: Lang): "." | "," {
+  const sep = new Intl.NumberFormat(LOCALE_OF[lang]).formatToParts(1.1).find((p) => p.type === "decimal")?.value;
+  return sep === "," ? "," : ".";
+}
+
+/**
+ * Renders a canonical pad expression ("12,50+2,70") in the UI language ("12.50+2.70" in English).
+ * Substitutes the decimal separator and NOTHING else: no grouping, no rounding, no parsing,
+ * no operator/sign rewriting.
+ *
+ * ONE DIRECTION ONLY — the result is for display and for the accessible name that must match it.
+ * Never feed it back into `padKey`/`evalExpression`: those read canonical commas, and an en-US
+ * grouping separator inside editable state would misparse (the same trap `fmtTrimLocale` documents).
+ */
+export function localizePadExpression(expr: string, lang: Lang): string {
+  const sep = decimalSeparator(lang);
+  return sep === "," ? expr : expr.replace(/,/g, sep);
+}
+
 /** Whether a color is light (for picking dark/light text). */
 export function isLight(hex: string): boolean {
   const c = hex.replace("#", "");

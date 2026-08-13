@@ -2,7 +2,7 @@ import { computeStateResponse, type FillProposal, fillByGoals } from "@enveo/sha
 import { useEffect, useState } from "react";
 import type { StateResponse } from "../lib/api";
 import { useCurrency, useMask, useSettings } from "../lib/contexts";
-import { currencySymbol, fmtTrim, isLight, parseAmount } from "../lib/format";
+import { currencySymbol, fmtTrim, isLight, localizePadExpression, parseAmount } from "../lib/format";
 import { haptic } from "../lib/haptics";
 import { useT } from "../lib/i18n";
 import { Glyph } from "../lib/icons";
@@ -171,7 +171,8 @@ export function FillGoalsSheet({ show, state, month, onClose }: { show: boolean;
                     >
                       <span style={{ fontSize: 11, color: C.soft }}>+</span>
                       <input
-                        value={edited[p.envelopeId] ?? ""}
+                        // `edited` stays CANONICAL (fmtTrim in, parseAmount out) — display only is localized.
+                        value={localizePadExpression(edited[p.envelopeId] ?? "", lang)}
                         readOnly
                         tabIndex={0}
                         onClick={() => openPadFor(p)}
