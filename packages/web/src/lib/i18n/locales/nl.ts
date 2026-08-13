@@ -551,6 +551,7 @@ export const nl: Dict = {
   "This is the first account on this server — once it exists, registration closes.":
     "Dit is het eerste account op deze server — zodra het bestaat, sluit de registratie.",
   "This pairing code belongs to a different budget.": "Deze koppelcode hoort bij een ander budget.",
+  "This part of the app could not be loaded.": "Dit deel van de app kon niet worden geladen.",
   "This pairing code is no longer valid — the budget was re-encrypted with a new key after the code was created. Generate a fresh code on a device that is already unlocked.":
     "Deze koppelcode is niet meer geldig — het budget is na het aanmaken van de code opnieuw versleuteld met een nieuwe sleutel. Genereer een verse code op een apparaat dat al ontgrendeld is.",
   "This will replace all current data. Continue?": "Hiermee worden alle huidige gegevens vervangen. Doorgaan?",
