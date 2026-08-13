@@ -30,6 +30,14 @@ export default defineConfig({
   define: {
     __BUILD_INFO__: JSON.stringify(buildInfo),
   },
+  build: {
+    // The initial-JS budget (§3f) is measured from this manifest by
+    // `scripts/check-web-bundle.ts`: it starts at the HTML entry and follows STATIC
+    // `imports` edges only, so moving eager code into another statically imported chunk
+    // cannot buy headroom. `chunkSizeWarningLimit` stays at Vite's 500 kB default on
+    // purpose — it is the secondary, per-chunk diagnostic, never the budget.
+    manifest: true,
+  },
   plugins: [
     react(),
     VitePWA({
