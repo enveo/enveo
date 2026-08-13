@@ -30,7 +30,13 @@ import {
 } from "@enveo/shared";
 import * as outbox from "./outbox";
 import { store } from "./store";
-import { poke } from "./sync";
+// `poke` is imported from its OWN module rather than through the `./sync` facade. The facade
+// re-exports the whole engine (boot included), so going through it made mutate.ts → sync →
+// sync/boot → mutate.ts a cycle, which sync/boot.ts then had to break with a dynamic
+// `import("../mutate")` — an import that could never split a chunk (mutate.ts is statically
+// imported by half the UI) and that Vite warned about on every build. One authoritative module
+// path per dependency: cycle-free, no warning, same runtime behaviour.
+import { poke } from "./sync/cycle";
 
 function enqueue<K extends OpKind>(kind: K, payload: OpPayload<K>): void {
   // safeParse: validation is a safety net (a call-site bug). Loud fail

@@ -7,6 +7,7 @@
 import * as e2ee from "../e2ee";
 import { idbGet } from "../idb";
 import { purgeLegacyPlannedIds } from "../legacyPlanned";
+import { local } from "../mutate";
 import * as outbox from "../outbox";
 import * as persist from "../persist";
 import { requestPersistentStorage } from "../storage";
@@ -62,18 +63,17 @@ async function loadSyncMeta(): Promise<void> {
  * the delete pushes encrypted on e2ee, and is an idempotent no-op push on plain (the server
  * already dropped the row). Idempotent overall — nothing is left to find on the next boot.
  *
- * `local` is fetched via a lazy `import("../mutate")` rather than a static top-of-file import:
- * mutate.ts imports `poke` from the sync facade, so a static edge from inside the engine back
- * to mutate.ts would form an import cycle. This is the ONLY place the engine needs `local`, so
- * the lazy import keeps the dependency graph acyclic at negligible cost (mutate.ts is already
- * statically imported elsewhere in the app, so this resolves from the already-loaded module).
+ * `local` is a plain static import. It used to be a lazy `import("../mutate")` purely to break
+ * a cycle: mutate.ts reached `poke` through the `./sync` FACADE, which re-exports this module.
+ * The cycle is gone at its source — mutate.ts now imports `poke` from `./sync/cycle` directly —
+ * and the dynamic form had to go with it, because mutate.ts is statically imported across the
+ * UI, so that `import()` could never split a chunk and only produced a build warning (§3f).
  */
 async function sweepLegacyPlanned(): Promise<void> {
   const ledger = store.getLedger();
   if (!ledger) return;
   const ids = purgeLegacyPlannedIds(ledger);
   if (ids.length === 0) return;
-  const { local } = await import("../mutate");
   for (const id of ids) local.deleteTxn(id);
 }
 
