@@ -347,6 +347,8 @@ export const de: Dict = {
   "Own key": "Eigener Schlüssel",
   "Pairing code": "Kopplungscode",
   "Pairing code unavailable — no key on this device.": "Kopplungscode nicht verfügbar — auf diesem Gerät ist kein Schlüssel vorhanden.",
+  "Pairing code unavailable — this device's key has not been confirmed for the budget's current encryption yet. Unlock again or let a sync finish first.":
+    "Kopplungscode nicht verfügbar — der Schlüssel dieses Geräts ist für die aktuelle Verschlüsselung des Budgets noch nicht bestätigt. Entsperre erneut oder lass zuerst eine Synchronisierung durchlaufen.",
   Palette: "Palette",
   Password: "Passwort",
   "Password changed.": "Passwort geändert.",
@@ -461,6 +463,8 @@ export const de: Dict = {
   "The app talks to OpenAI directly from this browser using your own key — bypassing the server.":
     "Die App spricht mit deinem eigenen Schlüssel direkt aus diesem Browser mit OpenAI — am Server vorbei.",
   "The backup is corrupted and was not loaded: {detail}": "Die Sicherung ist beschädigt und wurde nicht geladen: {detail}",
+  "The budget's encryption was already upgraded on another device — unlock with the new encryption password.":
+    "Die Verschlüsselung des Budgets wurde bereits auf einem anderen Gerät aktualisiert — entsperre mit dem neuen Verschlüsselungspasswort.",
   "The budget changed on the server in the meantime — nothing was written. Try again.":
     "Das Budget hat sich inzwischen auf dem Server geändert — es wurde nichts geschrieben. Versuche es erneut.",
   "The budget has changed since this was generated — generate a new suggestion.":
@@ -548,6 +552,8 @@ export const de: Dict = {
   "This is the first account on this server — once it exists, registration closes.":
     "Das ist das erste Konto auf diesem Server — sobald es existiert, wird die Registrierung geschlossen.",
   "This pairing code belongs to a different budget.": "Dieser Kopplungscode gehört zu einem anderen Budget.",
+  "This pairing code is no longer valid — the budget was re-encrypted with a new key after the code was created. Generate a fresh code on a device that is already unlocked.":
+    "Dieser Kopplungscode ist nicht mehr gültig — das Budget wurde nach dem Erstellen des Codes mit einem neuen Schlüssel neu verschlüsselt. Erzeuge einen frischen Code auf einem Gerät, das bereits entsperrt ist.",
   "This will replace all current data. Continue?": "Damit werden alle aktuellen Daten ersetzt. Fortfahren?",
   "To be budgeted": "Zu budgetieren",
   "To be budgeted is ≤ 0 — there is nothing to distribute.": "„Zu budgetieren“ ist ≤ 0 — es gibt nichts zu verteilen.",

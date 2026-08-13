@@ -346,6 +346,8 @@ export const ptBR: Dict = {
   "Own key": "Chave própria",
   "Pairing code": "Código de pareamento",
   "Pairing code unavailable — no key on this device.": "Código de pareamento indisponível — não há chave neste dispositivo.",
+  "Pairing code unavailable — this device's key has not been confirmed for the budget's current encryption yet. Unlock again or let a sync finish first.":
+    "Código de pareamento indisponível — a chave deste dispositivo ainda não foi confirmada para a criptografia atual do orçamento. Desbloqueie de novo ou deixe uma sincronização terminar primeiro.",
   Palette: "Paleta",
   Password: "Senha",
   "Password changed.": "Senha alterada.",
@@ -459,6 +461,8 @@ export const ptBR: Dict = {
   "The app talks to OpenAI directly from this browser using your own key — bypassing the server.":
     "O app fala com a OpenAI direto deste navegador usando sua própria chave — sem passar pelo servidor.",
   "The backup is corrupted and was not loaded: {detail}": "O backup está corrompido e não foi carregado: {detail}",
+  "The budget's encryption was already upgraded on another device — unlock with the new encryption password.":
+    "A criptografia do orçamento já foi atualizada em outro dispositivo — desbloqueie com a nova senha de criptografia.",
   "The budget changed on the server in the meantime — nothing was written. Try again.":
     "O orçamento mudou no servidor nesse meio-tempo — nada foi gravado. Tente de novo.",
   "The budget has changed since this was generated — generate a new suggestion.": "O orçamento mudou desde que isto foi gerado — gere uma nova sugestão.",
@@ -545,6 +549,8 @@ export const ptBR: Dict = {
   "This is the first account on this server — once it exists, registration closes.":
     "Esta é a primeira conta neste servidor — assim que ela existir, o cadastro é fechado.",
   "This pairing code belongs to a different budget.": "Este código de pareamento pertence a outro orçamento.",
+  "This pairing code is no longer valid — the budget was re-encrypted with a new key after the code was created. Generate a fresh code on a device that is already unlocked.":
+    "Este código de pareamento não é mais válido — o orçamento foi criptografado de novo com uma chave nova depois que o código foi criado. Gere um código novo em um dispositivo que já esteja desbloqueado.",
   "This will replace all current data. Continue?": "Isso vai substituir todos os dados atuais. Continuar?",
   "To be budgeted": "A orçar",
   "To be budgeted is ≤ 0 — there is nothing to distribute.": "“A orçar” está ≤ 0 — não há nada para distribuir.",

@@ -99,6 +99,12 @@ export const pl: Dict = {
   "Discard the unfinished attempt": "Odrzuć niedokończoną próbę",
   "Discarding starts over with a fresh key. If the server had already completed the interrupted attempt, this device will ask you to unlock with the password you chose then.":
     "Odrzucenie zaczyna od nowa ze świeżym kluczem. Jeśli serwer zdążył już dokończyć przerwaną próbę, to urządzenie poprosi o odblokowanie wybranym wtedy hasłem.",
+  "The budget's encryption was already upgraded on another device — unlock with the new encryption password.":
+    "Szyfrowanie budżetu zostało już zaktualizowane na innym urządzeniu — odblokuj nowym hasłem szyfrowania.",
+  "This pairing code is no longer valid — the budget was re-encrypted with a new key after the code was created. Generate a fresh code on a device that is already unlocked.":
+    "Ten kod parowania jest już nieważny — po jego utworzeniu budżet został ponownie zaszyfrowany nowym kluczem. Wygeneruj świeży kod na urządzeniu, które jest już odblokowane.",
+  "Pairing code unavailable — this device's key has not been confirmed for the budget's current encryption yet. Unlock again or let a sync finish first.":
+    "Kod parowania niedostępny — klucz tego urządzenia nie został jeszcze potwierdzony dla obecnego szyfrowania budżetu. Odblokuj ponownie albo poczekaj najpierw, aż skończy się synchronizacja.",
   All: "Wszystkie",
   "All (Everyday + Savings)": "Wszystkie (codzienne + oszczędnościowe)",
   "All goals funded ✓": "Wszystkie cele sfinansowane ✓",

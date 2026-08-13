@@ -341,6 +341,8 @@ export const sv: Dict = {
   "Own key": "Egen nyckel",
   "Pairing code": "Parkopplingskod",
   "Pairing code unavailable — no key on this device.": "Parkopplingskoden är inte tillgänglig — det finns ingen nyckel på den här enheten.",
+  "Pairing code unavailable — this device's key has not been confirmed for the budget's current encryption yet. Unlock again or let a sync finish first.":
+    "Parkopplingskoden är inte tillgänglig — den här enhetens nyckel har ännu inte bekräftats för budgetens nuvarande kryptering. Lås upp igen eller låt en synkronisering bli klar först.",
   Palette: "Palett",
   Password: "Lösenord",
   "Password changed.": "Lösenordet har bytts.",
@@ -454,6 +456,8 @@ export const sv: Dict = {
   "The app talks to OpenAI directly from this browser using your own key — bypassing the server.":
     "Appen pratar med OpenAI direkt från den här webbläsaren med din egen nyckel — förbi servern.",
   "The backup is corrupted and was not loaded: {detail}": "Säkerhetskopian är skadad och lästes inte in: {detail}",
+  "The budget's encryption was already upgraded on another device — unlock with the new encryption password.":
+    "Budgetens kryptering har redan uppgraderats på en annan enhet — lås upp med det nya krypteringslösenordet.",
   "The budget changed on the server in the meantime — nothing was written. Try again.":
     "Budgeten ändrades på servern under tiden — ingenting skrevs. Försök igen.",
   "The budget has changed since this was generated — generate a new suggestion.": "Budgeten har ändrats sedan det här togs fram — ta fram ett nytt förslag.",
@@ -538,6 +542,8 @@ export const sv: Dict = {
   "This is the first account on this server — once it exists, registration closes.":
     "Det här är det första kontot på den här servern — så snart det finns stängs registreringen.",
   "This pairing code belongs to a different budget.": "Den här parkopplingskoden tillhör en annan budget.",
+  "This pairing code is no longer valid — the budget was re-encrypted with a new key after the code was created. Generate a fresh code on a device that is already unlocked.":
+    "Den här parkopplingskoden gäller inte längre — budgeten krypterades om med en ny nyckel efter att koden skapades. Ta fram en färsk kod på en enhet som redan är upplåst.",
   "This will replace all current data. Continue?": "Det här ersätter alla nuvarande data. Fortsätta?",
   "To be budgeted": "Att budgetera",
   "To be budgeted is ≤ 0 — there is nothing to distribute.": "”Att budgetera” är ≤ 0 — det finns ingenting att fördela.",

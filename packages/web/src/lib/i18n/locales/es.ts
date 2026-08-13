@@ -343,6 +343,8 @@ export const es: Dict = {
   "Own key": "Clave propia",
   "Pairing code": "Código de vinculación",
   "Pairing code unavailable — no key on this device.": "Código de vinculación no disponible: no hay ninguna clave en este dispositivo.",
+  "Pairing code unavailable — this device's key has not been confirmed for the budget's current encryption yet. Unlock again or let a sync finish first.":
+    "Código de vinculación no disponible: la clave de este dispositivo aún no está confirmada para el cifrado actual del presupuesto. Desbloquea otra vez o deja que una sincronización termine primero.",
   Palette: "Paleta",
   Password: "Contraseña",
   "Password changed.": "Contraseña cambiada.",
@@ -457,6 +459,8 @@ export const es: Dict = {
   "The app talks to OpenAI directly from this browser using your own key — bypassing the server.":
     "La aplicación habla con OpenAI directamente desde este navegador usando tu propia clave, sin pasar por el servidor.",
   "The backup is corrupted and was not loaded: {detail}": "La copia de seguridad está dañada y no se ha cargado: {detail}",
+  "The budget's encryption was already upgraded on another device — unlock with the new encryption password.":
+    "El cifrado del presupuesto ya se actualizó en otro dispositivo: desbloquéalo con la nueva contraseña de cifrado.",
   "The budget changed on the server in the meantime — nothing was written. Try again.":
     "El presupuesto ha cambiado en el servidor mientras tanto: no se ha escrito nada. Inténtalo de nuevo.",
   "The budget has changed since this was generated — generate a new suggestion.":
@@ -545,6 +549,8 @@ export const es: Dict = {
   "This is the first account on this server — once it exists, registration closes.":
     "Esta es la primera cuenta de este servidor: en cuanto exista, el registro se cierra.",
   "This pairing code belongs to a different budget.": "Este código de vinculación pertenece a otro presupuesto.",
+  "This pairing code is no longer valid — the budget was re-encrypted with a new key after the code was created. Generate a fresh code on a device that is already unlocked.":
+    "Este código de vinculación ya no es válido: el presupuesto se volvió a cifrar con una clave nueva después de crear el código. Genera un código nuevo en un dispositivo que ya esté desbloqueado.",
   "This will replace all current data. Continue?": "Esto reemplazará todos los datos actuales. ¿Continuar?",
   "To be budgeted": "Por presupuestar",
   "To be budgeted is ≤ 0 — there is nothing to distribute.": "«Por presupuestar» es ≤ 0: no hay nada que repartir.",
