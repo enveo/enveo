@@ -679,7 +679,9 @@ export const it: Dict = {
   "{n} hour ago | {n} hours ago": { one: "{n} ora fa", many: "{n} ore fa", other: "{n} ore fa" },
   "{n} item | {n} items": { one: "{n} voce", many: "{n} voci", other: "{n} voci" },
   "{n} minute ago | {n} minutes ago": { one: "{n} minuto fa", many: "{n} minuti fa", other: "{n} minuti fa" },
-  "{n} near limit": "{n} vicine al limite",
+  // Invariant adverbial "vicino a", NOT the agreeing adjective "vicina/vicine": this message is a
+  // t() call, not tp(), so one form must read correctly at n = 0, 1 and 2+ (see the other locales).
+  "{n} near limit": "{n} vicino al limite",
   "{n} over | {n} over": { one: "{n} sforata", many: "{n} sforate", other: "{n} sforate" },
   "{n} transaction | {n} transactions": { one: "{n} transazione", many: "{n} transazioni", other: "{n} transazioni" },
   "{pct}% of net worth": "{pct}% del patrimonio netto",
