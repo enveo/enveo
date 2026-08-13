@@ -58,13 +58,15 @@ import {
   TierMismatchError,
   UnauthorizedError,
 } from "./sync/contracts";
-import { getLocalMode, setLocalModeValue, writeLocalModeToStorage } from "./sync/localMode";
+import { applyLocalMode, configureLocalMode, disableLocal, enablePaused, enableWiped, getLocalMode, setLocalModeValue } from "./sync/localMode";
+import { clearReplacePending, clearResyncPending, hydrateObligations, isReplacePending, isResyncPending, markResyncPending } from "./sync/obligations";
 import { bumpStatus, getLastSyncAt, getSyncStatus, installOutboxStatusListener, setLastSyncAt, setOwnerUnproven, setState } from "./sync/status";
 
 export type { BootSource, IdentityVerdict, LocalMode, PendingE2eeUpgrade, SyncState, SyncStatus } from "./sync/contracts";
 /* ── Re-exported public surface (types, errors, constants — see sync/contracts.ts) ── */
 export { E2eeUpgradeRequiredError, EMPTY_LEDGER, TierMismatchError } from "./sync/contracts";
-export { getLocalMode, isLocalOnly } from "./sync/localMode";
+export { disableLocal, enablePaused, enableWiped, getLocalMode, isLocalOnly } from "./sync/localMode";
+export { __resetObligations, markReplacePending } from "./sync/obligations";
 export { getSyncStatus, subscribeSyncStatus } from "./sync/status";
 
 /**
@@ -179,51 +181,6 @@ function resetBackoff(): void {
   backoffMs = 0;
   clearTimeout(retryTimer);
   retryTimer = undefined;
-}
-
-/* ── Durable resync obligation (D1) ────────────────────────────────────── */
-
-/**
- * Kept ACROSS cycles and (mirrored in IDB) across reloads. An op rejected
- * by the server leaves a phantom in the mirror that ONLY snapshot+replay removes
- * (the server never accepted the client's id, so no tombstone will ever arrive
- * via pull). If the obligation were cycle-local, a transient blip in doPull/snapshot
- * after the rejection would lose it FOREVER. Consumed EXCLUSIVELY in doCycle after push+pull.
- */
-let resyncPending = false;
-
-function markResyncPending(): void {
-  resyncPending = true;
-  void persist.putMeta("resyncPending", true);
-}
-
-function clearResyncPending(): void {
-  resyncPending = false;
-  void persist.putMeta("resyncPending", false);
-}
-
-/* ── Durable REPLACE obligation (JSON backup import) ─────────────────────
- *
- * A backup import makes the LOCAL mirror canonical — it must REPLACE the server
- * (pushLocalToServer → /sync/replace), NEVER the other way around. When the push is DEFERRED
- * (local mode — no network) or FAILS (network/5xx), the next cycle
- * (consumer in doCycle) / resume will FINISH the replace. Without this durable
- * obligation, a delta pull(since=0) after the import would revert the imported data to
- * the (old) server state — silent loss of the restore. Persisted BEFORE swapping
- * the mirror on the SAME serial persist chain, so: durable-mirror ⟹
- * durable-flag (a crash won't leave an imported mirror without the obligation
- * to push it). Consumed EXCLUSIVELY in doCycle (under the syncNow mutex). */
-let replacePending = false;
-
-/** Set the durable replace obligation (called from backup import BEFORE swapping the mirror). */
-export function markReplacePending(): void {
-  replacePending = true;
-  void persist.putMeta("replacePending", true);
-}
-
-function clearReplacePending(): void {
-  replacePending = false;
-  void persist.putMeta("replacePending", false);
 }
 
 /* ── Snapshot / fullResync ───────────────────────────────────────────── */
@@ -581,12 +538,6 @@ export function __resetIdentity(): void {
   identityVerifiedFor = null;
   identityBlocked = false;
   setOwnerUnproven(false);
-}
-
-/** Test hook (unit tests only): drop the durable obligations held in module memory. */
-export function __resetObligations(): void {
-  resyncPending = false;
-  replacePending = false;
 }
 
 /** Test hook (unit tests only): cancel a pending retry so it cannot fire into the next test. */
@@ -1011,7 +962,7 @@ async function doCycle(): Promise<boolean> {
       enterLocked();
       return true;
     }
-    if (replacePending) {
+    if (isReplacePending()) {
       if (isE2ee) {
         const dek = e2ee.getDek();
         if (!dek) {
@@ -1102,7 +1053,7 @@ async function doCycle(): Promise<boolean> {
 
       // CONSUMER of the durable resync obligation — as in v1 (resyncVerified goes by tier, and
       // re-proves the session first: a resync REPLACES the mirror with the session's budget)
-      if (resyncPending && !(await resyncVerified())) return true;
+      if (isResyncPending() && !(await resyncVerified())) return true;
       finishSuccess();
       return true;
     }
@@ -1185,7 +1136,7 @@ async function doCycle(): Promise<boolean> {
     // Always AFTER push+pull; on success clears the flag, on failure leaves it (retry). It goes
     // through resyncVerified: a resync REPLACES this replica with the SESSION's budget, and the
     // pull that asked for it may have been answered under a cookie swapped in another tab.
-    if (resyncPending && !(await resyncVerified())) return true;
+    if (isResyncPending() && !(await resyncVerified())) return true;
 
     finishSuccess();
     return true;
@@ -1641,85 +1592,6 @@ function broadcastLocalMode(mode: LocalMode): void {
   }
 }
 
-/**
- * Set local mode: module flag + localStorage + broadcast to other tabs +
- * UI state. "off" → "synced" state (a real cycle finalizes it via syncNow); paused/wiped
- * → "local" state.
- */
-function applyLocalMode(mode: LocalMode): void {
-  setLocalModeValue(mode);
-  writeLocalModeToStorage(mode);
-  broadcastLocalMode(mode);
-  // Local mode supersedes the unproven state (sync is off by the user's own choice, and the local
-  // UI says so); leaving it "off" re-proves from scratch on the next cycle.
-  setOwnerUnproven(false);
-  setState(mode === "off" ? "synced" : "local");
-}
-
-/**
- * "Work offline" (paused) — NON-DESTRUCTIVE and immediate: sync suspended,
- * server data STAYS, outbox PRESERVED (flushes on resume). No network.
- */
-export function enablePaused(): void {
-  applyLocalMode("paused");
-}
-
-/**
- * "Enable local mode and delete server data" (wiped) — DESTRUCTIVE for the server.
- *
- * ORDER is critical for "we never lose data": FIRST we raise the gate
- * (the "wiped" flag + broadcast to other tabs), ONLY THEN we wipe the server.
- * Otherwise the wipe would run with the gate DOWN and a concurrent cycle — from the
- * interval / focus / online / visible / poke, or a cycle ALREADY in flight — would pull
- * in the wipe's DELETEs (budgetId unchanged, resetRequired=false) and clear the local
- * mirror: catastrophe (local EMPTY and server EMPTY). The "wiped" gate (a) blocks every
- * NEW cycle (syncNow) and in ALL tabs (broadcast), (b) makes an in-flight cycle
- * bail in its dirty loop. An in-flight cycle may however be in the
- * middle of doPull (no mode re-check) — so we let it FINISH (await running) on
- * the PRE-wipe state, BEFORE we wipe the server. Only then the wipe.
- *
- * Wipe failure (replace atomic ⇒ server untouched) → we go back to "off"
- * (synced, local data intact) and rethrow; no cycle started in the meantime
- * (the gate was up, and the in-flight cycle finished), so the return to "off" is clean.
- */
-export async function enableWiped(): Promise<void> {
-  applyLocalMode("wiped"); // gate UP (this tab + others) BEFORE destroying the server
-  if (running) await running.catch(() => {}); // finish the in-flight cycle on the PRE-wipe state
-  try {
-    await wipeServer(); // atomic: success ⇒ server empty; failure ⇒ server untouched
-  } catch (e) {
-    applyLocalMode("off"); // clean failure → back to "off" (server and local untouched)
-    throw e;
-  }
-  outbox.clearAll(); // server empty; local mirror canonical (comes back via "Disable local mode")
-}
-
-/**
- * "Disable local mode" — resume synchronization.
- *  - from "wiped": upload local data to the (empty) server, ONLY THEN lift the flag;
- *    failure → the flag stays "wiped" (rethrow; nothing uploaded). EXCEPT when there is nothing
- *    to upload: an empty replica bound to no budget (the mirror was cleared while the mode was
- *    on) would REPLACE the session user's budget with an empty ledger — the one and only thing
- *    such a replica can do. Then we simply resume normal sync and let the boot bootstrap from
- *    the server (whatever it holds, it survives),
- *  - from "paused": lift the flag and run a cycle (outbox flush + pull) — exactly
- *    offline→online; server untouched, no replace.
- */
-export async function disableLocal(): Promise<void> {
-  if (getLocalMode() === "wiped") {
-    if (isEmptyUnboundReplica()) {
-      applyLocalMode("off"); // nothing to restore — do NOT push an empty ledger over the server
-      if (typeof location !== "undefined") location.reload(); // boot bootstraps from the server
-      return;
-    }
-    await pushLocalToServer(); // throws on failure → localMode stays "wiped"
-    applyLocalMode("off");
-  } else if (getLocalMode() === "paused") {
-    applyLocalMode("off");
-    void syncNow("resume");
-  }
-}
-
 /* ── poke — new op in the outbox (debounce catches a reorder burst) ───── */
 
 let pokeTimer: ReturnType<typeof setTimeout> | undefined;
@@ -1754,18 +1626,8 @@ async function loadSyncMeta(): Promise<void> {
   } catch (e) {
     console.warn("reading lastSyncAt failed", e);
   }
-  try {
-    resyncPending = (await idbGet<boolean>("meta", "resyncPending")) ?? resyncPending;
-  } catch (e) {
-    console.warn("reading resyncPending failed", e);
-  }
-  try {
-    // the durable replace obligation (backup import) MUST survive a reload — otherwise
-    // after a restart doCycle would pull instead of pushLocalToServer and revert the import
-    replacePending = (await idbGet<boolean>("meta", "replacePending")) ?? replacePending;
-  } catch (e) {
-    console.warn("reading replacePending failed", e);
-  }
+  // durable resync + replace obligations (sync/obligations.ts): both must reach memory
+  await hydrateObligations();
 }
 
 /**
@@ -2129,6 +1991,21 @@ function installTriggers(): void {
   }, INTERVAL_MS);
 }
 
+// Local-mode transitions live in sync/localMode.ts; their status/broadcast/server-write
+// effects are wired in HERE — the facade is the composition root (workflow §3c-3).
+configureLocalMode({
+  setState,
+  setOwnerUnproven,
+  broadcastLocalMode,
+  wipeServer,
+  pushLocalToServer,
+  awaitInFlightCycle: async () => {
+    if (running) await running.catch(() => {}); // finish the in-flight cycle on the PRE-wipe state
+  },
+  syncNow,
+  isEmptyUnboundReplica,
+});
+
 installTriggers();
 
 /* ── Debug (dev only — also used by e2e verification) ───────────── */
@@ -2145,8 +2022,8 @@ if (import.meta.env.DEV && typeof window !== "undefined") {
     syncNow: () => syncNow("debug"),
     getLastReason: () => lastReason,
     durableBroken: () => persist.isDurableBroken(),
-    resyncPending: () => resyncPending,
-    replacePending: () => replacePending,
+    resyncPending: () => isResyncPending(),
+    replacePending: () => isReplacePending(),
     isLeader: () => isLeader,
     localMode: () => getLocalMode(),
     tierMeta: () => e2ee.getTierMeta(),

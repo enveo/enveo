@@ -159,6 +159,27 @@ export interface SyncStatus {
 export type IdentityVerdict = "unauthed" | "foreign" | "ok";
 
 /**
+ * Dependencies the local-mode TRANSITIONS need from higher layers (workflow §3c-3): the
+ * status setters (status.ts imports this module's flag, so importing status back would be a
+ * cycle), the multi-tab broadcast, and the server-write operations — injected EXPLICITLY by
+ * the facade at composition time, exactly as the module map prescribes.
+ */
+export interface LocalModeDeps {
+  setState(s: SyncState): void;
+  setOwnerUnproven(v: boolean): void;
+  broadcastLocalMode(mode: LocalMode): void;
+  /** Delete the budget's data on the server (empty /sync/replace) — see enableWiped. */
+  wipeServer(): Promise<void>;
+  /** Upload the ENTIRE local mirror to the server (server := local) — see disableLocal. */
+  pushLocalToServer(): Promise<void>;
+  /** Resolve once the in-flight cycle (if any) has finished — see enableWiped's ordering. */
+  awaitInFlightCycle(): Promise<void>;
+  syncNow(reason: string): Promise<void>;
+  /** An EMPTY replica bound to NO budget can only destroy — see disableLocal. */
+  isEmptyUnboundReplica(): boolean;
+}
+
+/**
  * The durable CEREMONY-INTENT record (v1→v2 E2EE upgrade). Materials (salt/DEK/KEK, wrapped
  * envelope, snapshot blob) are generated ONCE per ceremony and persisted BEFORE the first POST,
  * so a RETRY — after a network failure, a crash, or a server commit whose response was lost —
