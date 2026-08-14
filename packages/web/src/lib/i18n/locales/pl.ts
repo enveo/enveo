@@ -171,9 +171,6 @@ export const pl: Dict = {
   "Choose an icon": "Wybierz ikonę",
   "Clear & reset": "Czyszczenie i reset",
   "Clear filters": "Wyczyść filtry",
-  "Clear local data": "Wyczyść dane lokalne",
-  "Clear local data? We will delete the local copy on this device and download everything anew from the server. Changes still waiting in the queue will be lost.":
-    "Wyczyścić dane lokalne? Skasujemy lokalną kopię na tym urządzeniu i pobierzemy wszystko od nowa z serwera. Zmiany jeszcze niewysłane z kolejki przepadną.",
   "Clear search": "Wyczyść wyszukiwanie",
   Close: "Zamknij",
   Closed: "Zamknięte",
@@ -216,8 +213,6 @@ export const pl: Dict = {
   "Delete {name}": "Usuń {name}",
   "Deletes ALL budget data from the server and this device — irreversible. Export a backup first. The app will reopen with the first-run wizard.":
     "Usuwa WSZYSTKIE dane budżetu z serwera i z tego urządzenia — nieodwracalnie. Zrób najpierw eksport kopii. Aplikacja otworzy się z kreatorem pierwszego uruchomienia.",
-  "Deletes the local copy on this device and downloads everything anew from the server. Use when something looks off.":
-    "Kasuje lokalną kopię na tym urządzeniu i pobiera wszystko od nowa z serwera. Użyj, gdy coś się rozjedzie.",
   "Deleting…": "Usuwanie…",
   "Describe how to distribute (e.g. prioritize savings, less on entertainment)": "Opisz jak rozdzielić (np. priorytet oszczędności, mniej na rozrywkę)",
   "Destination account": "Konto docelowe",
@@ -232,9 +227,8 @@ export const pl: Dict = {
     "Rozdziela kwotę tylko na koperty pod kreską — proporcjonalnie do braków, nigdy ponad wyzerowanie.",
   Done: "Gotowe",
   "Download a backup (JSON)": "Pobierz kopię zapasową (JSON)",
-  "Download everything anew": "Pobierz wszystko od nowa",
-  "Download everything anew from the server? We will replace the local copy with the current server state. Unsent changes in the queue will be kept and pushed.":
-    "Pobrać wszystko od nowa z serwera? Zastąpimy lokalną kopię aktualnym stanem z serwera. Niewysłane zmiany z kolejki zostaną zachowane i dopchnięte.",
+  "Downloads a fresh server copy, then reapplies changes still waiting to be sent.":
+    "Pobiera świeżą kopię z serwera, a następnie ponownie nakłada zmiany oczekujące na wysłanie.",
   "Downloads all your data as a file. Keep a backup before destructive changes.":
     "Pobiera wszystkie dane jako plik. Zachowaj kopię zapasową przed operacjami destrukcyjnymi.",
   "Drag to reorder": "Przeciągnij, aby zmienić kolejność",
@@ -287,7 +281,6 @@ export const pl: Dict = {
   "Finance & shopping": "Finanse i zakupy",
   "Food & drink": "Jedzenie",
   "From screenshot": "Ze zrzutu",
-  "Full resync from the server. Use when data looks out of sync.": "Pełny resync z serwera. Użyj, gdy dane wyglądają na rozjechane.",
   Fun: "Rozrywka",
   "Generate suggestion": "Generuj propozycję",
   "Generating…": "Generuję…",
@@ -427,6 +420,8 @@ export const pl: Dict = {
   RESET: "RESET",
   "Rainy day": "Nieprzewidziane",
   "Re-encrypt and upgrade": "Zaszyfruj na nowo i zaktualizuj",
+  "Rebuild data on this device": "Odbuduj dane na tym urządzeniu",
+  "Rebuilding…": "Odbudowywanie…",
   "Recognized transactions": "Rozpoznane transakcje",
   "Recognizing…": "Rozpoznawanie…",
   Reconcile: "Wyrównaj",
@@ -543,6 +538,8 @@ export const pl: Dict = {
   "The monthly AI allowance for this account is used up — it resets at the start of the next month (UTC). You can keep using AI right away with your own key in Settings → Artificial intelligence.":
     "Miesięczny limit AI dla tego konta został wykorzystany — odnowi się z początkiem kolejnego miesiąca (UTC). Możesz dalej korzystać z AI od razu, z własnym kluczem w Ustawieniach → Sztuczna inteligencja.",
   "The password must be at least 8 characters.": "Hasło musi mieć co najmniej 8 znaków.",
+  "The pending-change queue cannot be read safely, so Enveo left the local copy untouched.":
+    "Nie można bezpiecznie odczytać kolejki oczekujących zmian, dlatego Enveo pozostawiło lokalną kopię bez zmian.",
   "The proposal exceeds “To be budgeted” — uncheck or reduce items.": "Suma propozycji przekracza „Do rozdysponowania” — odznacz albo zmniejsz pozycje.",
   "The server has no OpenAI key configured — server mode is unavailable. Use your own key or keep AI off.":
     "Serwer nie ma skonfigurowanego klucza OpenAI — tryb serwerowy jest niedostępny. Użyj własnego klucza albo zostaw AI wyłączone.",
@@ -591,6 +588,8 @@ export const pl: Dict = {
   "This device's data has not been matched to your account — nothing is being sent to the server. Tap to open settings":
     "Dane z tego urządzenia nie zostały przypisane do Twojego konta — nic nie jest wysyłane na serwer. Dotknij, aby otworzyć ustawienia",
   "This device's local copy cannot be linked to this account": "Lokalnej kopii na tym urządzeniu nie można powiązać z tym kontem",
+  "This device's local copy could not be confirmed to belong to the signed-in account — nothing was changed.":
+    "Nie udało się potwierdzić, że lokalna kopia na tym urządzeniu należy do zalogowanego konta — nic nie zostało zmienione.",
   "This device's local copy could not be confirmed to belong to the signed-in account — nothing was sent to the server. Settings → Sync explains what happened and what you can do.":
     "Nie udało się potwierdzić, że lokalna kopia na tym urządzeniu należy do zalogowanego konta — nic nie zostało wysłane na serwer. Szczegóły i możliwe kroki znajdziesz w Ustawieniach → Synchronizacja.",
   "This is not a backup of this app — choose a file exported from this application.": "To nie jest kopia Enveo — wybierz plik wyeksportowany z tej aplikacji.",
@@ -627,6 +626,7 @@ export const pl: Dict = {
   "Type or pick a category...": "Wpisz lub wybierz kategorię...",
   "Type {word} to confirm:": "Wpisz {word}, aby potwierdzić:",
   Unlock: "Odblokuj",
+  "Unlock this encrypted budget before rebuilding the local copy.": "Odblokuj ten zaszyfrowany budżet przed odbudowaniem lokalnej kopii.",
   "Unlock with password": "Odblokuj hasłem",
   "Unlocking…": "Odblokowywanie…",
   "Upgrade encryption": "Zaktualizuj szyfrowanie",

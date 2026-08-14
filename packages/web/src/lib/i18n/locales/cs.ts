@@ -128,9 +128,6 @@ export const cs: Dict = {
   Cisza: "Ticho",
   "Clear & reset": "Vyprázdnit a resetovat",
   "Clear filters": "Zrušit filtry",
-  "Clear local data": "Smazat lokální data",
-  "Clear local data? We will delete the local copy on this device and download everything anew from the server. Changes still waiting in the queue will be lost.":
-    "Smazat lokální data? Smažeme lokální kopii na tomto zařízení a stáhneme vše znovu ze serveru. Změny čekající ve frontě se ztratí.",
   "Clear search": "Vymazat hledání",
   Close: "Zavřít",
   Closed: "Zavřené",
@@ -170,8 +167,6 @@ export const cs: Dict = {
   "Delete {name}": "Smazat {name}",
   "Deletes ALL budget data from the server and this device — irreversible. Export a backup first. The app will reopen with the first-run wizard.":
     "Smaže VŠECHNA data rozpočtu ze serveru i z tohoto zařízení — nevratně. Nejdřív si vyexportuj zálohu. Aplikace se znovu otevře s úvodním průvodcem.",
-  "Deletes the local copy on this device and downloads everything anew from the server. Use when something looks off.":
-    "Smaže lokální kopii na tomto zařízení a stáhne vše znovu ze serveru. Použij, když něco nesedí.",
   "Deleting…": "Mažu…",
   "Describe how to distribute (e.g. prioritize savings, less on entertainment)": "Popiš, jak rozdělit (např. upřednostnit spoření, méně na zábavu)",
   "Destination account": "Cílový účet",
@@ -189,9 +184,6 @@ export const cs: Dict = {
     "Rozdělí částku jen mezi obálky v mínusu — poměrně podle schodku, nikdy přes nulu.",
   Done: "Hotovo",
   "Download a backup (JSON)": "Stáhnout zálohu (JSON)",
-  "Download everything anew": "Stáhnout vše znovu",
-  "Download everything anew from the server? We will replace the local copy with the current server state. Unsent changes in the queue will be kept and pushed.":
-    "Stáhnout vše znovu ze serveru? Nahradíme lokální kopii aktuálním stavem ze serveru. Neodeslané změny ve frontě zůstanou a odešlou se.",
   "Drag {name}": "Přetáhnout {name}",
   Duplicate: "Duplikovat",
   "Duplicates skipped: {n}": "Přeskočené duplicity: {n}",
@@ -233,7 +225,6 @@ export const cs: Dict = {
   "Finance & shopping": "Finance a nákupy",
   "Food & drink": "Jídlo a pití",
   "From screenshot": "Ze snímku obrazovky",
-  "Full resync from the server. Use when data looks out of sync.": "Úplná resynchronizace ze serveru. Použij, když data nesedí.",
   Fun: "Zábava",
   "Generate suggestion": "Vygenerovat návrh",
   "Generating…": "Generuji…",

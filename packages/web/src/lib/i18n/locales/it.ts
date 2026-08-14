@@ -118,9 +118,6 @@ export const it: Dict = {
   Cisza: "Silenzio",
   "Clear & reset": "Svuota e reimposta",
   "Clear filters": "Azzera i filtri",
-  "Clear local data": "Cancella i dati locali",
-  "Clear local data? We will delete the local copy on this device and download everything anew from the server. Changes still waiting in the queue will be lost.":
-    "Cancellare i dati locali? Elimineremo la copia locale su questo dispositivo e riscaricheremo tutto dal server. Le modifiche ancora in coda andranno perse.",
   "Clear search": "Cancella la ricerca",
   Close: "Chiudi",
   Closed: "Chiusi",
@@ -160,8 +157,6 @@ export const it: Dict = {
   "Delete {name}": "Elimina {name}",
   "Deletes ALL budget data from the server and this device — irreversible. Export a backup first. The app will reopen with the first-run wizard.":
     "Elimina TUTTI i dati del budget dal server e da questo dispositivo: è irreversibile. Esporta prima un backup. L'app si riaprirà con la procedura guidata iniziale.",
-  "Deletes the local copy on this device and downloads everything anew from the server. Use when something looks off.":
-    "Elimina la copia locale su questo dispositivo e riscarica tutto dal server. Usalo quando qualcosa non torna.",
   "Deleting…": "Eliminazione…",
   "Describe how to distribute (e.g. prioritize savings, less on entertainment)": "Descrivi come ripartire (es. dare priorità al risparmio, meno per lo svago)",
   "Destination account": "Conto di destinazione",
@@ -179,9 +174,6 @@ export const it: Dict = {
     "Ripartisce l'importo solo tra le buste in rosso, in proporzione allo scoperto e mai oltre lo zero.",
   Done: "Fatto",
   "Download a backup (JSON)": "Scarica un backup (JSON)",
-  "Download everything anew": "Riscarica tutto",
-  "Download everything anew from the server? We will replace the local copy with the current server state. Unsent changes in the queue will be kept and pushed.":
-    "Riscaricare tutto dal server? Sostituiremo la copia locale con lo stato attuale del server. Le modifiche non inviate in coda verranno conservate e trasmesse.",
   "Drag {name}": "Trascina {name}",
   Duplicate: "Duplica",
   "Duplicates skipped: {n}": "Duplicati saltati: {n}",
@@ -225,7 +217,6 @@ export const it: Dict = {
   "Finance & shopping": "Finanza e acquisti",
   "Food & drink": "Cibo e bevande",
   "From screenshot": "Da screenshot",
-  "Full resync from the server. Use when data looks out of sync.": "Risincronizzazione completa dal server. Usala quando i dati sembrano disallineati.",
   Fun: "Svago",
   "Generate suggestion": "Genera un suggerimento",
   "Generating…": "Generazione…",

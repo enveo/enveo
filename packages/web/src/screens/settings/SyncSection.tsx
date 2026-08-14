@@ -6,8 +6,9 @@ import { exportBackup } from "../../lib/data";
 import { relSync } from "../../lib/dates";
 import { formatMoney } from "../../lib/format";
 import { type Lang, type Message, msg, useT } from "../../lib/i18n";
+import { type RepairResult, rebuildLocalReplica } from "../../lib/localRepair";
 import { discardDeadLetter, getDeadLetters } from "../../lib/outbox";
-import { discardLocalReplica, fullResync, recheckReplicaOwner, syncNow } from "../../lib/sync";
+import { discardLocalReplica, recheckReplicaOwner, syncNow } from "../../lib/sync";
 import { CORAL } from "../../lib/theme";
 import { ActionButton, ActionGroup, ActionIcon, ActionRow, Eyebrow } from "./ui";
 
@@ -221,11 +222,14 @@ function opDetail(op: SyncOp, currency: string, lang: Lang): string {
   return parts.join(" · ");
 }
 
-/** Sync action group (sync-now + full resync) with the status BELOW the group. */
+/** Sync action group with one safe local-repair flow and the status below it. */
 function SyncActions() {
   const C = useTheme();
   const { t, tp, lang } = useT();
   const { state, pending, lastSyncAt } = useSyncStatus();
+  const [repairing, setRepairing] = useState(false);
+  const [blocked, setBlocked] = useState<Extract<RepairResult, { kind: "blocked" }>["reason"] | null>(null);
+  const [repairError, setRepairError] = useState<string | null>(null);
 
   // refresh the relative time every ~30 s while the section is open
   const [, setTick] = useState(0);
@@ -234,16 +238,39 @@ function SyncActions() {
     return () => clearInterval(id);
   }, []);
 
-  const resync = () => {
+  const repair = async () => {
+    setRepairing(true);
+    setBlocked(null);
+    setRepairError(null);
+    try {
+      const result = await rebuildLocalReplica();
+      if (result.kind === "blocked") setBlocked(result.reason);
+    } catch (error) {
+      setRepairError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setRepairing(false);
+    }
+  };
+
+  const repairExport = () => {
+    setRepairError(null);
+    try {
+      exportBackup();
+    } catch (error) {
+      setRepairError(error instanceof Error ? error.message : String(error));
+    }
+  };
+
+  const repairDiscard = async () => {
     if (
       !window.confirm(
         t(
-          "Download everything anew from the server? We will replace the local copy with the current server state. Unsent changes in the queue will be kept and pushed.",
+          "The local copy — including any unsent changes — will be permanently removed from this device. If this is the only copy of that budget, download a backup first.",
         ),
       )
     )
       return;
-    void fullResync();
+    await discardLocalReplica();
   };
 
   return (
@@ -260,11 +287,29 @@ function SyncActions() {
         />
         <ActionRow
           icon={<ActionIcon paths={IC.redownload} />}
-          label={t("Download everything anew")}
-          desc={t("Full resync from the server. Use when data looks out of sync.")}
-          onClick={resync}
+          label={t("Rebuild data on this device")}
+          desc={t("Downloads a fresh server copy, then reapplies changes still waiting to be sent.")}
+          onClick={() => void repair()}
+          disabled={repairing || state === "syncing"}
+          busyLabel={repairing ? t("Rebuilding…") : undefined}
         />
       </ActionGroup>
+      {blocked && (
+        <div style={{ marginTop: 10, padding: 12, background: C.bg, borderRadius: 11, border: `1px solid ${C.line}` }}>
+          <div style={{ fontSize: 11.5, color: C.soft, lineHeight: 1.6, marginBottom: 10 }}>
+            {blocked === "outbox_unreadable"
+              ? t("The pending-change queue cannot be read safely, so Enveo left the local copy untouched.")
+              : blocked === "locked"
+                ? t("Unlock this encrypted budget before rebuilding the local copy.")
+                : t("This device's local copy could not be confirmed to belong to the signed-in account — nothing was changed.")}
+          </div>
+          <ActionGroup>
+            <ActionRow label={t("Download a backup (JSON)")} desc={t("the whole local copy as a file — no network needed")} onClick={repairExport} />
+            <ActionRow label={t("Remove this data and continue")} tone="danger" onClick={() => void repairDiscard()} />
+          </ActionGroup>
+        </div>
+      )}
+      {repairError && <div style={{ fontSize: 12, color: CORAL, marginTop: 10, lineHeight: 1.5 }}>{repairError}</div>}
       <div style={{ fontSize: 11.5, color: C.soft, lineHeight: 1.6, margin: "8px 4px 0" }}>
         {t("Last sync: {rel}.", { rel: relSync(lastSyncAt, lang) })}
         {pending > 0

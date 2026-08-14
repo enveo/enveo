@@ -7,7 +7,7 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import type { ClientLedger } from "@enveo/shared";
 import { store } from "../store";
-import { __resetBackoff, awaitInFlightCycle, syncNow } from "./cycle";
+import { __resetBackoff, awaitInFlightCycle, runWithSyncMutex, syncNow } from "./cycle";
 import { __resetIdentity, enterForeignReplica } from "./identity";
 
 const emptyLedger = (): ClientLedger => ({
@@ -56,6 +56,29 @@ describe("sync/cycle: single-flight with dirty coalescing", () => {
     const p = syncNow("flight");
     await awaitInFlightCycle(); // resolves only once the in-flight cycle finished
     await p;
+  });
+
+  it("serializes a local rebuild with sync and drains a trigger that arrives during maintenance", async () => {
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const events: string[] = [];
+    const repair = runWithSyncMutex(async () => {
+      events.push("repair:start");
+      await gate;
+      events.push("repair:end");
+      return "rebuilt";
+    });
+    await Promise.resolve();
+
+    const triggered = syncNow("during-repair");
+    expect(events).toEqual(["repair:start"]);
+    release();
+
+    expect(await repair).toBe("rebuilt");
+    await triggered;
+    expect(events).toEqual(["repair:start", "repair:end"]);
   });
 });
 

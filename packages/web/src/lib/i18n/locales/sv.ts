@@ -119,9 +119,6 @@ export const sv: Dict = {
   Cisza: "Stillhet",
   "Clear & reset": "Töm och nollställ",
   "Clear filters": "Rensa filtren",
-  "Clear local data": "Rensa lokala data",
-  "Clear local data? We will delete the local copy on this device and download everything anew from the server. Changes still waiting in the queue will be lost.":
-    "Rensa lokala data? Vi tar bort den lokala kopian på den här enheten och hämtar allt på nytt från servern. Ändringar som fortfarande står i kö går förlorade.",
   "Clear search": "Rensa sökningen",
   Close: "Stäng",
   Closed: "Stängda",
@@ -161,8 +158,6 @@ export const sv: Dict = {
   "Delete {name}": "Ta bort {name}",
   "Deletes ALL budget data from the server and this device — irreversible. Export a backup first. The app will reopen with the first-run wizard.":
     "Tar bort ALL budgetdata från servern och från den här enheten — går inte att ångra. Exportera en säkerhetskopia först. Appen öppnas sedan med startguiden.",
-  "Deletes the local copy on this device and downloads everything anew from the server. Use when something looks off.":
-    "Tar bort den lokala kopian på den här enheten och hämtar allt på nytt från servern. Använd det när något ser fel ut.",
   "Deleting…": "Tar bort…",
   "Describe how to distribute (e.g. prioritize savings, less on entertainment)":
     "Beskriv hur pengarna ska fördelas (t.ex. prioritera sparande, mindre på nöjen)",
@@ -181,9 +176,6 @@ export const sv: Dict = {
     "Fördelar beloppet bara till kuvert som är på minus — i proportion till underskottet och aldrig förbi noll.",
   Done: "Klart",
   "Download a backup (JSON)": "Ladda ned en säkerhetskopia (JSON)",
-  "Download everything anew": "Hämta allt på nytt",
-  "Download everything anew from the server? We will replace the local copy with the current server state. Unsent changes in the queue will be kept and pushed.":
-    "Hämta allt på nytt från servern? Vi ersätter den lokala kopian med serverns nuvarande läge. Ändringar i kön som inte skickats behålls och skickas.",
   "Drag {name}": "Dra {name}",
   Duplicate: "Duplicera",
   "Duplicates skipped: {n}": "Överhoppade dubbletter: {n}",
@@ -225,7 +217,6 @@ export const sv: Dict = {
   "Finance & shopping": "Ekonomi och shopping",
   "Food & drink": "Mat och dryck",
   "From screenshot": "Från skärmbild",
-  "Full resync from the server. Use when data looks out of sync.": "Fullständig omsynkronisering från servern. Använd det när data ser osynkade ut.",
   Fun: "Nöje",
   "Generate suggestion": "Ta fram ett förslag",
   "Generating…": "Tar fram…",

@@ -11,7 +11,6 @@ import { CORAL, font } from "../../lib/theme";
 import { ActionGroup, ActionIcon, ActionRow, ConfirmWordHint, Eyebrow, Helper, Row } from "./ui";
 
 const IC = {
-  trash: ["M3 6h18", "M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2", "M10 11v6", "M14 11v6"],
   restart: ["M1 4v6h6", "M3.51 15a9 9 0 102.13-9.36L1 10"],
 };
 
@@ -78,18 +77,6 @@ function ResetSection() {
   const [error, setError] = useState<string | null>(null);
   const [recovery, setRecovery] = useState(false);
 
-  const wipe = async () => {
-    if (
-      !window.confirm(
-        t(
-          "Clear local data? We will delete the local copy on this device and download everything anew from the server. Changes still waiting in the queue will be lost.",
-        ),
-      )
-    )
-      return;
-    await wipeLocalData();
-  };
-
   const run = async () => {
     setBusy(true);
     setError(null);
@@ -132,13 +119,6 @@ function ResetSection() {
     <div style={{ marginTop: 18 }}>
       <Eyebrow>{t("Clear & reset")}</Eyebrow>
       <ActionGroup>
-        <ActionRow
-          icon={<ActionIcon paths={IC.trash} />}
-          label={t("Clear local data")}
-          desc={t("Deletes the local copy on this device and downloads everything anew from the server. Use when something looks off.")}
-          tone="danger"
-          onClick={() => void wipe()}
-        />
         <ActionRow
           icon={<ActionIcon paths={IC.restart} />}
           label={t("Start from scratch")}

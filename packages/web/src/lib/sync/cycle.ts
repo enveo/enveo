@@ -466,6 +466,36 @@ function finishSuccess(): void {
 let running: Promise<void> | null = null;
 let dirty = false;
 
+/**
+ * Run a maintenance operation under the same single-flight mutex as push/pull. Sync triggers
+ * arriving while the task runs mark the flight dirty and are drained immediately afterwards.
+ */
+export async function runWithSyncMutex<T>(task: () => Promise<T>): Promise<T> {
+  while (running) await running.catch(() => {});
+  let result!: T;
+  let failure: unknown;
+  let failed = false;
+  const current = (async () => {
+    try {
+      result = await task();
+    } catch (error) {
+      failure = error;
+      failed = true;
+    }
+    while (dirty) {
+      dirty = false;
+      const ok = await doCycle();
+      if (!ok) break;
+    }
+  })().finally(() => {
+    if (running === current) running = null;
+  });
+  running = current;
+  await current;
+  if (failed) throw failure;
+  return result;
+}
+
 export function syncNow(reason: string): Promise<void> {
   void reason; // diagnostics (dev: window.__sync.lastReason)
   if (import.meta.env.DEV) lastReason = reason;

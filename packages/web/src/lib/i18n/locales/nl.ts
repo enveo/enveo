@@ -118,9 +118,6 @@ export const nl: Dict = {
   Cisza: "Stilte",
   "Clear & reset": "Legen en resetten",
   "Clear filters": "Filters wissen",
-  "Clear local data": "Lokale gegevens wissen",
-  "Clear local data? We will delete the local copy on this device and download everything anew from the server. Changes still waiting in the queue will be lost.":
-    "Lokale gegevens wissen? We verwijderen de lokale kopie op dit apparaat en halen alles opnieuw op bij de server. Wijzigingen die nog in de wachtrij staan, gaan verloren.",
   "Clear search": "Zoekopdracht wissen",
   Close: "Sluiten",
   Closed: "Gesloten",
@@ -161,8 +158,6 @@ export const nl: Dict = {
   "Delete {name}": "{name} verwijderen",
   "Deletes ALL budget data from the server and this device — irreversible. Export a backup first. The app will reopen with the first-run wizard.":
     "Verwijdert ALLE budgetgegevens van de server en van dit apparaat — onomkeerbaar. Exporteer eerst een back-up. De app opent daarna weer met de installatiewizard.",
-  "Deletes the local copy on this device and downloads everything anew from the server. Use when something looks off.":
-    "Verwijdert de lokale kopie op dit apparaat en haalt alles opnieuw op bij de server. Gebruik dit als er iets niet klopt.",
   "Deleting…": "Bezig met verwijderen…",
   "Describe how to distribute (e.g. prioritize savings, less on entertainment)":
     "Beschrijf hoe er verdeeld moet worden (bijv. sparen voorop, minder voor uitgaan)",
@@ -181,9 +176,6 @@ export const nl: Dict = {
     "Verdeelt het bedrag alleen over enveloppen die in het rood staan — naar rato van het tekort, nooit voorbij nul.",
   Done: "Klaar",
   "Download a backup (JSON)": "Back-up downloaden (JSON)",
-  "Download everything anew": "Alles opnieuw ophalen",
-  "Download everything anew from the server? We will replace the local copy with the current server state. Unsent changes in the queue will be kept and pushed.":
-    "Alles opnieuw ophalen bij de server? We vervangen de lokale kopie door de huidige serverstand. Niet-verstuurde wijzigingen in de wachtrij blijven behouden en worden verstuurd.",
   "Drag {name}": "{name} slepen",
   Duplicate: "Dupliceren",
   "Duplicates skipped: {n}": "Overgeslagen duplicaten: {n}",
@@ -226,8 +218,6 @@ export const nl: Dict = {
   "Finance & shopping": "Financiën en aankopen",
   "Food & drink": "Eten en drinken",
   "From screenshot": "Uit schermafbeelding",
-  "Full resync from the server. Use when data looks out of sync.":
-    "Volledige hersynchronisatie vanaf de server. Gebruik dit als de gegevens niet lijken te kloppen.",
   Fun: "Vrije tijd",
   "Generate suggestion": "Suggestie genereren",
   "Generating…": "Bezig met genereren…",

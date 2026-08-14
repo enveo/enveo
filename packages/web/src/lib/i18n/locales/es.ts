@@ -120,9 +120,6 @@ export const es: Dict = {
   Cisza: "Silencio",
   "Clear & reset": "Vaciar y reiniciar",
   "Clear filters": "Borrar filtros",
-  "Clear local data": "Borrar los datos locales",
-  "Clear local data? We will delete the local copy on this device and download everything anew from the server. Changes still waiting in the queue will be lost.":
-    "¿Borrar los datos locales? Eliminaremos la copia local de este dispositivo y descargaremos todo de nuevo del servidor. Los cambios que sigan en la cola se perderán.",
   "Clear search": "Borrar la búsqueda",
   Close: "Cerrar",
   Closed: "Cerradas",
@@ -162,8 +159,6 @@ export const es: Dict = {
   "Delete {name}": "Eliminar {name}",
   "Deletes ALL budget data from the server and this device — irreversible. Export a backup first. The app will reopen with the first-run wizard.":
     "Elimina TODOS los datos del presupuesto del servidor y de este dispositivo: es irreversible. Exporta antes una copia de seguridad. La aplicación se reabrirá con el asistente inicial.",
-  "Deletes the local copy on this device and downloads everything anew from the server. Use when something looks off.":
-    "Elimina la copia local de este dispositivo y descarga todo de nuevo del servidor. Úsalo cuando algo no cuadre.",
   "Deleting…": "Eliminando…",
   "Describe how to distribute (e.g. prioritize savings, less on entertainment)": "Describe cómo repartir (p. ej. priorizar el ahorro, menos en ocio)",
   "Destination account": "Cuenta de destino",
@@ -181,9 +176,6 @@ export const es: Dict = {
     "Reparte el importe solo entre los sobres en números rojos, en proporción al déficit y nunca más allá de cero.",
   Done: "Hecho",
   "Download a backup (JSON)": "Descargar una copia de seguridad (JSON)",
-  "Download everything anew": "Descargarlo todo de nuevo",
-  "Download everything anew from the server? We will replace the local copy with the current server state. Unsent changes in the queue will be kept and pushed.":
-    "¿Descargarlo todo de nuevo del servidor? Reemplazaremos la copia local por el estado actual del servidor. Los cambios sin enviar que estén en la cola se conservarán y se enviarán.",
   "Drag {name}": "Arrastrar {name}",
   Duplicate: "Duplicar",
   "Duplicates skipped: {n}": "Duplicados omitidos: {n}",
@@ -226,7 +218,6 @@ export const es: Dict = {
   "Finance & shopping": "Finanzas y compras",
   "Food & drink": "Comida y bebida",
   "From screenshot": "Desde una captura",
-  "Full resync from the server. Use when data looks out of sync.": "Resincronización completa desde el servidor. Úsalo cuando los datos parezcan descuadrados.",
   Fun: "Ocio",
   "Generate suggestion": "Generar sugerencia",
   "Generating…": "Generando…",
