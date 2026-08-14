@@ -89,11 +89,14 @@ export interface Allocation {
   amount: Money;
 }
 
-/** Budget — metadata (display currency). Single-row replicated entity. */
+import type { BudgetPreferences } from "./preferences";
+
+/** Budget — metadata and durable budget-scoped preferences. Single-row replicated entity. */
 export interface Budget {
   id: string;
   name: string;
   currency: string; // ISO 4217, e.g. "PLN"
+  preferences: BudgetPreferences;
 }
 
 /** Full ledger — input to the pure state-computing functions. */

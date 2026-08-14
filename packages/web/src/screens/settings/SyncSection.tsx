@@ -205,6 +205,7 @@ const OP_LABEL: Record<OpKind, Message> = {
   "category.create": msg("New category"),
   "place.create": msg("New place"),
   "budget.update": msg("Budget currency change"),
+  "budget.preferences.update": msg("Budget settings change"),
 };
 
 /** Short, human description of a rejected op (no jargon — name / amount / month). */

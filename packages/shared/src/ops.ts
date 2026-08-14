@@ -8,6 +8,7 @@
  * Payload schemas carried over VERBATIM from packages/api/src/routes/*.
  */
 import { z } from "zod";
+import { budgetPreferencesPatchSchema, reconcileBudgetPreferences } from "./preferences";
 
 /* ── Transactions (from routes/transactions.ts) ─────────────────────── */
 
@@ -115,6 +116,7 @@ export const opSchemas = {
   "place.create": z.object({ ...withId, name: z.string().min(1) }),
   // budget metadata (single-row entity) — for now only the display currency
   "budget.update": z.object({ id: z.string().uuid(), currency: z.string().regex(/^[A-Z]{3}$/) }),
+  "budget.preferences.update": z.object({ id: z.string().uuid(), patch: budgetPreferencesPatchSchema }).strict(),
 } as const;
 
 export type OpKind = keyof typeof opSchemas;
@@ -234,7 +236,9 @@ const transactionEntity = z
     }
   });
 
-const budgetEntity = z.object({ id: zUuid, name: z.string(), currency: z.string() });
+const budgetEntity = z
+  .object({ id: zUuid, name: z.string(), currency: z.string(), preferences: z.unknown().optional() })
+  .transform((budget) => ({ ...budget, preferences: reconcileBudgetPreferences(budget.preferences) }));
 
 /**
  * Pre-3.2 backups/replicas carry per-transaction `planned: true` template rows (the recurring-

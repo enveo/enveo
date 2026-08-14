@@ -5,6 +5,7 @@ export * from "./applyOp";
 export * from "./budget";
 export * from "./goals";
 export * from "./ops";
+export * from "./preferences";
 export * from "./reports";
 export * from "./stateResponse";
 export * from "./summary";

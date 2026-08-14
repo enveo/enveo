@@ -98,6 +98,7 @@ export const MESSAGES = [
   "Budget",
   "Budget currency change",
   "Budget data will be encrypted on your device before it reaches the server. Server-side features will be unavailable.",
+  "Budget settings change",
   "Budgets",
   "By history",
   "CARRIED OVER",

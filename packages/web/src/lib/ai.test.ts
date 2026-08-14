@@ -12,6 +12,7 @@ import {
   buildBudgetSuggestionBasis,
   buildSuggestPrompt,
   type ClientLedger,
+  createDefaultBudgetPreferences,
   type Transaction,
 } from "@enveo/shared";
 import { type AiSettings, aiTarget, hasAiTarget, previewSuggestPrompt, runImportExtract } from "./ai";
@@ -102,7 +103,7 @@ const fixtureLedger = (): ClientLedger => ({
   allocations: [{ id: "al1", envelopeId: "env1", month: MONTH, amount: 10000 }],
   categories: [],
   places: [],
-  budgets: [{ id: "b1", name: "Budżet", currency: "PLN" }],
+  budgets: [{ id: "b1", name: "Budżet", currency: "PLN", preferences: createDefaultBudgetPreferences() }],
 });
 
 describe("previewSuggestPrompt", () => {
