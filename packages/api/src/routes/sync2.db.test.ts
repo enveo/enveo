@@ -129,4 +129,29 @@ describe.skipIf(!TEST_URL)("sync2 e2ee v2 (DB-backed)", () => {
     expect(out.disablePlaintextRestored).toBe(true);
     expect(out.disablePreferencesRestored).toBe(true);
   });
+
+  it("refuses E2EE while a server-vault credential exists without touching either copy", () => {
+    expect(out.credentialBlock).toEqual({
+      status: 409,
+      error: "credential_migration_required",
+      tier: "plain",
+      credentialIntact: true,
+      plaintextIntact: true,
+    });
+  });
+
+  it("serializes credential save against E2EE enable and never commits an e2ee + server_vault budget", () => {
+    expect(out.credentialRace.saveOutcome).not.toBe("unexpected_error");
+    expect(out.credentialRace.forbiddenCombinationAbsent).toBe(true);
+    if (out.credentialRace.saveOutcome === "saved") {
+      expect(out.credentialRace).toMatchObject({
+        enableStatus: 409,
+        enableError: "credential_migration_required",
+        finalTier: "plain",
+        credentialCount: 1,
+      });
+    } else {
+      expect(out.credentialRace).toMatchObject({ enableStatus: 200, finalTier: "e2ee", credentialCount: 0 });
+    }
+  });
 });

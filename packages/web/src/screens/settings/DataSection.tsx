@@ -1,4 +1,5 @@
 import { E2EE_DISABLE_CONFIRM } from "@enveo/shared";
+import { useQuery } from "@tanstack/react-query";
 import qrcode from "qrcode-generator";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Sheet } from "../../components/chrome";
@@ -254,6 +255,14 @@ function E2eeSection() {
 /** Enable wizard (plain tier). Does NOT flip without "I have a backup" checked. */
 function E2eeEnableWizard() {
   const { t } = useT();
+  const budgetId = store.getBudgetId() || store.getLedger()?.budgets[0]?.id || "";
+  const credentialStatus = useQuery({
+    queryKey: ["e2eeEnableCredentialStatus", budgetId],
+    queryFn: () => api.byokCredentialStatus(budgetId),
+    enabled: budgetId.length > 0,
+    retry: false,
+  });
+  const hasServerCredential = credentialStatus.data?.configured === true;
   const [sheet, setSheet] = useState(false);
   const [step, setStep] = useState<1 | 2>(1);
   const [haveBackup, setHaveBackup] = useState(false);
@@ -351,8 +360,13 @@ function E2eeEnableWizard() {
         <ActionRow
           icon={<ActionIcon paths={IC.shield} />}
           label={t("Enable end-to-end encryption")}
-          desc={t("Budget data will be encrypted on your device before it reaches the server. Server-side features will be unavailable.")}
+          desc={
+            hasServerCredential
+              ? t("Remove the server-stored Own OpenAI key in Settings → Artificial intelligence before enabling end-to-end encryption.")
+              : t("Budget data will be encrypted on your device before it reaches the server. Server-side features will be unavailable.")
+          }
           onClick={open}
+          disabled={hasServerCredential}
           chevron
         />
       </ActionGroup>
