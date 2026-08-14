@@ -1,8 +1,13 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { createDefaultAccountPreferences, createDefaultBudgetPreferences } from "@enveo/shared";
 import { __resetStorageForTests } from "./idb";
-import { runLegacySettingsMigration } from "./legacySettingsMigration";
-import { clearPersistedSettings, legacyCredentialMigration, loadPersistedSettings, persistSettings, readLegacySettings } from "./settingsPersist";
+import {
+  clearPersistedSettings,
+  legacyCredentialMigration,
+  loadPersistedSettings,
+  persistSettings,
+  readLegacySettings,
+  removeLegacySettingsIfUnchanged,
+} from "./settingsPersist";
 
 function stubLocalStorage(initial: Record<string, string> = {}) {
   const values = new Map<string, string>(Object.entries(initial));
@@ -35,26 +40,19 @@ describe("legacy settings quarantine", () => {
     expect(loadPersistedSettings()).toBeNull();
   });
 
-  test("reports an existing BYOK as pending Stage 3 and migration preserves its bytes", async () => {
+  test("reports the tier-specific migration and removes only the exact inspected bytes", () => {
     const raw = '{ "aiMode": "byok", "openaiKey": "sk-byte-for-byte", "openaiModel": "gpt-5.5-mini" }';
     const storage = stubLocalStorage({ "enveo.settings": raw });
     __resetStorageForTests();
 
-    expect(legacyCredentialMigration()).toBe("pending-stage-3");
-    await runLegacySettingsMigration({
-      readLegacy: () => readLegacySettings()?.value ?? null,
-      loadAck: async () => ({ schemaVersion: 1 }),
-      saveAck: async () => {},
-      accountState: () => ({ value: createDefaultAccountPreferences(), revision: 0, dirty: {} }),
-      updateAccount: async () => {},
-      budgetState: createDefaultBudgetPreferences,
-      updateBudget: async () => {},
-      deviceState: () => ({ value: { schemaVersion: 1, discreet: false }, present: false }),
-      updateDevice: async () => {},
-    });
+    expect(legacyCredentialMigration("plain")).toBe("pending-vault");
+    expect(legacyCredentialMigration("e2ee")).toBe("pending-stage-4");
     expect(readLegacySettings()?.raw).toBe(raw);
+    expect(removeLegacySettingsIfUnchanged("different bytes")).toBe(false);
     expect(storage.values.get("enveo.settings")).toBe(raw);
-    expect(storage.removed).toEqual([]);
+    expect(removeLegacySettingsIfUnchanged(raw)).toBe(true);
+    expect(storage.values.has("enveo.settings")).toBe(false);
+    expect(storage.removed).toEqual(["enveo.settings"]);
   });
 
   test("all new generic settings writes are disabled during quarantine", () => {

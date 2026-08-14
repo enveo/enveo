@@ -6,6 +6,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import type { ClientLedger } from "@enveo/shared";
+import * as e2ee from "../e2ee";
 import { store } from "../store";
 import { __resetBackoff, awaitInFlightCycle, runWithSyncMutex, syncNow } from "./cycle";
 import { __resetIdentity, enterForeignReplica } from "./identity";
@@ -32,6 +33,7 @@ beforeEach(() => {
   }) as typeof fetch;
   __resetIdentity();
   __resetBackoff();
+  e2ee.setTierMeta({ tier: "plain", epoch: 0 });
    
   store.replace(emptyLedger(), 0, "");
   store.setBootStatus("ready");
