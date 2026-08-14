@@ -173,6 +173,17 @@ export function apiErrorMessage(e: unknown): string {
   return localizeError(m); // sentinels thrown client-side (foreign_replica); otherwise the raw text
 }
 
+export function apiErrorBody(e: unknown): { error?: string; tier?: "plain" | "e2ee"; epoch?: number; cipherVersion?: number; budgetId?: string } | null {
+  const message = String((e as Error).message ?? e);
+  const start = message.indexOf("{");
+  if (start < 0) return null;
+  try {
+    return JSON.parse(message.slice(start)) as { error?: string; tier?: "plain" | "e2ee"; epoch?: number; cipherVersion?: number; budgetId?: string };
+  } catch {
+    return null;
+  }
+}
+
 /* ── Client ─────────────────────────────────────────────────────────── */
 /** `timeoutMs` — only the slow AI route (/import/extract) sets it: an explicit cap that
  *  outwaits the server's own budget (see @enveo/shared/aiTransport), with the failure

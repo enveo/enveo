@@ -52,6 +52,7 @@ import { clearLocalData, storageMode } from "./idb";
 // needs `local` (sweepLegacyPlanned in sync/boot.ts) does a lazy `await import("../mutate")`.
 import * as outbox from "./outbox";
 import * as persist from "./persist";
+import { store } from "./store";
 import { INTERVAL_MS } from "./sync/contracts";
 import { configureCycle, getLastSyncReason, resetBackoff, syncNow } from "./sync/cycle";
 import { assertOwnReplica, enterUnauthed } from "./sync/identity";
@@ -91,6 +92,8 @@ export async function discardLocalReplica(): Promise<void> {
 /** Clear every account-derived browser record without ending the session or reloading. */
 export async function clearLocalAccountData(): Promise<void> {
   outbox.clearAll();
+  e2ee.clearDek(); // clear the live in-memory key too; deleting IDB alone is insufficient before reload
+  store.clearMemory();
   await persist.flushed();
   await Promise.all([accountPreferences.clear(), devicePreferences.clear()]);
   await clearLocalData(); // replica, outbox, owner stamp, DEK and sync metadata

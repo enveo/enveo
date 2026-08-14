@@ -1,8 +1,9 @@
 import { AI_VISION_TIMEOUT_MS, buildImportExtractPrompt, type ChatRequest, type OpenAiModel, parseImportExtractResponse } from "@enveo/shared";
-import { api, type E2eeCredentialResponse } from "../api";
+import { api, apiErrorBody, type E2eeCredentialResponse } from "../api";
 import { budgetSecretAadContext, decryptPayload, encryptPayload } from "../crypto";
-import { getTierMeta, requireValidatedDek } from "../e2ee";
+import * as e2ee from "../e2ee";
 import { directChatJson } from "../openai";
+import { store } from "../store";
 import { type AiProvider, type AiStatus, capabilitiesForProvider, type ImportExtractInput, type ImportExtractResult } from "./contracts";
 
 export interface E2eeByokDependencies {
@@ -16,6 +17,7 @@ export interface E2eeByokDependencies {
   save: (budgetId: string, expectedEpoch: number, ciphertext: string) => Promise<void>;
   remove: (budgetId: string, expectedEpoch: number) => Promise<void>;
   directChat: (key: string, model: OpenAiModel, request: ChatRequest, timeoutMs?: number) => Promise<string>;
+  onTierMismatch: (meta: { tier: "plain" | "e2ee"; epoch: number; cipherVersion?: number }) => void;
 }
 
 export class E2eeByokProvider implements AiProvider {
@@ -31,9 +33,22 @@ export class E2eeByokProvider implements AiProvider {
     if (record.epoch !== epoch) throw new Error("tier_mismatch");
   }
 
+  private async serverCall<T>(work: () => Promise<T>): Promise<T> {
+    try {
+      return await work();
+    } catch (error) {
+      const body = apiErrorBody(error);
+      if (body?.error === "tier_mismatch" && (body.tier === "plain" || body.tier === "e2ee")) {
+        this.deps.onTierMismatch({ tier: body.tier, epoch: body.epoch ?? 0, cipherVersion: body.cipherVersion });
+        throw new Error("tier_mismatch");
+      }
+      throw error;
+    }
+  }
+
   private async withCredential<T>(use: (key: string) => Promise<T>): Promise<T> {
     const epoch = this.expectedEpoch();
-    const record = await this.deps.get(this.deps.budgetId);
+    const record = await this.serverCall(() => this.deps.get(this.deps.budgetId));
     this.validateRecord(record, epoch);
     if (!record.configured || !record.ciphertext) throw new Error("credential_not_configured");
     const dek = this.deps.requireDek(epoch);
@@ -51,7 +66,7 @@ export class E2eeByokProvider implements AiProvider {
     if (this.deps.tier !== "e2ee") return { provider: "openai", code: "tier-unavailable", capabilities: new Set(), configured: false };
     if (!this.deps.unlocked) return { provider: "openai", code: "locked", capabilities: new Set(), configured: false };
     const epoch = this.expectedEpoch();
-    const record = await this.deps.get(this.deps.budgetId);
+    const record = await this.serverCall(() => this.deps.get(this.deps.budgetId));
     this.validateRecord(record, epoch);
     if (!record.configured) return { provider: "openai", code: "not-configured", capabilities: new Set(), configured: false };
     const key = this.deps.requireDek(epoch);
@@ -66,7 +81,7 @@ export class E2eeByokProvider implements AiProvider {
     let plaintext = key;
     try {
       const ciphertext = await encryptPayload(plaintext, dek, budgetSecretAadContext(this.deps.budgetId, epoch, "openai"));
-      await this.deps.save(this.deps.budgetId, epoch, ciphertext);
+      await this.serverCall(() => this.deps.save(this.deps.budgetId, epoch, ciphertext));
     } finally {
       plaintext = "";
       key = "";
@@ -77,7 +92,7 @@ export class E2eeByokProvider implements AiProvider {
   async removeCredential(): Promise<void> {
     const epoch = this.expectedEpoch();
     this.deps.requireDek(epoch).fill(0);
-    await this.deps.remove(this.deps.budgetId, epoch);
+    await this.serverCall(() => this.deps.remove(this.deps.budgetId, epoch));
   }
 
   async testConnection(): Promise<void> {
@@ -120,11 +135,17 @@ export function createE2eeByokProvider(budgetId: string, model: OpenAiModel, unl
     unlocked,
     budgetId,
     model,
-    currentEpoch: () => getTierMeta().epoch,
-    requireDek: requireValidatedDek,
+    currentEpoch: () => e2ee.getTierMeta().epoch,
+    requireDek: e2ee.requireValidatedDek,
     get: api.e2eeByokCredentialGet,
     save: async (id, epoch, ciphertext) => void (await api.e2eeByokCredentialSave(id, epoch, ciphertext)),
     remove: async (id, epoch) => void (await api.e2eeByokCredentialDelete(id, epoch)),
     directChat: (key, selectedModel, request, timeoutMs) => directChatJson(request, key, selectedModel, timeoutMs),
+    onTierMismatch: (meta) => {
+      e2ee.setTierMeta({ tier: meta.tier, epoch: meta.epoch });
+      if (meta.cipherVersion === 1 || meta.cipherVersion === 2) e2ee.setCipherVersion(meta.cipherVersion);
+      e2ee.clearDek();
+      if (meta.tier === "e2ee") store.setBootStatus("locked");
+    },
   });
 }

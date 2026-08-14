@@ -260,6 +260,16 @@ export const store = {
   getVersion: (): number => version,
   getBootStatus: (): BootStatus => bootStatus,
 
+  /** Drop account-derived state from the live tab after an explicit local wipe. */
+  clearMemory(): void {
+    ledger = null;
+    cursor = 0;
+    budgetId = null;
+    hydratePromise = null;
+    bootStatus = "booting";
+    bump();
+  },
+
   setBootStatus(s: BootStatus): void {
     if (bootStatus === s) return;
     bootStatus = s;
