@@ -736,12 +736,8 @@ export const pl: Dict = {
   "{count} unsent changes are still on this device. Retry when online, export a backup, or explicitly discard them.":
     "Na tym urządzeniu nadal są niewysłane zmiany ({count}). Połącz się z internetem i ponów, wyeksportuj kopię albo jawnie je odrzuć.",
   "Account preferences": "Ustawienia konta",
-  "A new own key can be added after secure credential vault migration is available.":
-    "Nowy własny klucz będzie można dodać po udostępnieniu migracji do bezpiecznego sejfu.",
   "AI is not configured. Choose server AI or an existing own key in Settings → Artificial intelligence.":
     "AI nie jest skonfigurowane. Wybierz AI serwera albo istniejący własny klucz w Ustawieniach → Sztuczna inteligencja.",
-  "An existing browser key is present and waiting for migration to the secure credential vault.":
-    "Istniejący klucz w przeglądarce czeka na migrację do bezpiecznego sejfu danych uwierzytelniających.",
   "Appearance and dashboard": "Wygląd i dashboard",
   "Budget preferences": "Ustawienia budżetu",
   "Choose their order, visibility, and options.": "Wybierz kolejność, widoczność i opcje.",
@@ -754,12 +750,9 @@ export const pl: Dict = {
   "End-to-end encryption, password, and device pairing": "Szyfrowanie end-to-end, hasło i parowanie urządzeń",
   "Encryption settings apply to this budget and follow it across devices.":
     "Ustawienia szyfrowania dotyczą tego budżetu i są synchronizowane między urządzeniami.",
-  "Migration status: pending secure server acknowledgement.": "Status migracji: oczekiwanie na bezpieczne potwierdzenie serwera.",
-  "No own key is configured. Secure credential management will become available after the vault migration.":
-    "Nie skonfigurowano własnego klucza. Bezpieczne zarządzanie nim będzie dostępne po migracji sejfu.",
+  "On a new device, enter the encryption password once to unlock both the budget and its encrypted Own OpenAI key. Enveo cannot recover either if you lose the password, every unlocked device, all pairing codes and your backups.":
+    "Na nowym urządzeniu podaj raz hasło szyfrowania, aby odblokować budżet i zaszyfrowany klucz Własnego OpenAI. Enveo nie odzyska żadnego z nich, jeśli utracisz hasło, wszystkie odblokowane urządzenia, kody parowania i kopie zapasowe.",
   "Own OpenAI credential": "Własny klucz OpenAI",
-  "Own OpenAI is unavailable until a key is stored in the secure credential vault.":
-    "Własne OpenAI jest niedostępne, dopóki klucz nie zostanie zapisany w bezpiecznym sejfie.",
   "Privacy and encryption": "Prywatność i szyfrowanie",
   "Provider, model, and secure credential status": "Dostawca, model i status bezpiecznego klucza",
   "Sync, backup, repair, diagnostics, and reset": "Synchronizacja, kopie, naprawa, diagnostyka i reset",
@@ -767,8 +760,6 @@ export const pl: Dict = {
     "Miesięczny limit AI dla tego konta został wykorzystany — odnowi się z początkiem następnego miesiąca (UTC). Nadal możesz wybrać istniejący własny klucz w Ustawieniach → Sztuczna inteligencja.",
   "The server has no OpenAI key configured — server mode is unavailable. Use an existing own key or keep AI on rules.":
     "Serwer nie ma skonfigurowanego klucza OpenAI — tryb serwerowy jest niedostępny. Użyj istniejącego własnego klucza albo pozostań przy regułach.",
-  "The server has no OpenAI key configured. Set OPENAI_API_KEY and restart the app, or keep AI on rules until secure own-key storage is available.":
-    "Serwer nie ma skonfigurowanego klucza OpenAI. Ustaw OPENAI_API_KEY i uruchom aplikację ponownie albo pozostań przy regułach do czasu udostępnienia bezpiecznego przechowywania własnego klucza.",
   "The AI provider and model follow this budget on every device.": "Dostawca AI i model są synchronizowane z tym budżetem na wszystkich urządzeniach.",
   "Theme and language follow your account on every device.": "Motyw i język są synchronizowane z kontem na wszystkich urządzeniach.",
   "Theme, language, currency, privacy display, and widgets": "Motyw, język, waluta, dyskretny widok i widgety",
@@ -776,6 +767,8 @@ export const pl: Dict = {
   "Use the existing own key": "Użyj istniejącego własnego klucza",
   "A key is stored in the server vault. Enveo cannot display it; saving below replaces it atomically.":
     "Klucz jest zapisany w sejfie na serwerze. Enveo nie może go wyświetlić; zapisanie nowego klucza poniżej zastąpi go atomowo.",
+  "A key is stored as zero-knowledge ciphertext. Enveo cannot display or decrypt it; saving below replaces it atomically.":
+    "Klucz jest zapisany jako szyfrogram zero-knowledge. Enveo nie może go wyświetlić ani odszyfrować; zapisanie nowego klucza poniżej zastąpi go atomowo.",
   "Add an OpenAI key in Settings → Artificial intelligence to use Own OpenAI.":
     "Dodaj klucz OpenAI w Ustawieniach → Sztuczna inteligencja, aby używać Własnego OpenAI.",
   "Connection successful.": "Połączenie działa.",
@@ -790,10 +783,12 @@ export const pl: Dict = {
   "OpenAI key removed.": "Klucz OpenAI został usunięty.",
   "OpenAI key saved securely.": "Klucz OpenAI został bezpiecznie zapisany.",
   "Own OpenAI": "Własne OpenAI",
-  "Own OpenAI for end-to-end encrypted budgets will require the zero-knowledge vault.":
-    "Własne OpenAI dla budżetów szyfrowanych end-to-end będzie wymagać sejfu zero-knowledge.",
+  "Own OpenAI is encrypted by the same budget key. After unlocking on another device it works there too, while Enveo still cannot decrypt the credential.":
+    "Własne OpenAI jest szyfrowane tym samym kluczem co budżet. Po odblokowaniu na innym urządzeniu działa również tam, a Enveo nadal nie może odszyfrować klucza.",
   "Paste the key once. Enveo stores only an envelope-encrypted credential and never returns it.":
     "Wklej klucz jeden raz. Enveo zapisze tylko klucz zaszyfrowany kopertowo i nigdy go nie zwróci.",
+  "Paste the key once. It is encrypted on this device with the budget key before Enveo stores the ciphertext.":
+    "Wklej klucz jeden raz. Zostanie zaszyfrowany na tym urządzeniu kluczem budżetu, zanim Enveo zapisze szyfrogram.",
   Provider: "Dostawca",
   "Ready to use.": "Gotowe do użycia.",
   "Remove key": "Usuń klucz",
@@ -808,10 +803,17 @@ export const pl: Dict = {
   "The server operator has not enabled Enveo AI.": "Operator serwera nie włączył AI Enveo.",
   "This provider is unavailable for an end-to-end encrypted budget.": "Ten dostawca jest niedostępny dla budżetu szyfrowanego end-to-end.",
   "Unlock the budget to use this provider.": "Odblokuj budżet, aby użyć tego dostawcy.",
+  "Unlock the budget to use Own OpenAI.": "Odblokuj budżet, aby użyć Własnego OpenAI.",
   "Use Own OpenAI": "Użyj Własnego OpenAI",
   "Without AI": "Bez AI",
   "Your browser calls Enveo; Enveo decrypts your key only for the request and calls OpenAI. The key is never returned to a device.":
     "Przeglądarka wywołuje Enveo; Enveo odszyfrowuje Twój klucz tylko na czas żądania i wywołuje OpenAI. Klucz nigdy nie jest zwracany na urządzenie.",
+  "Your OpenAI key is encrypted with your budget key. This browser decrypts it only for one request and calls OpenAI directly; Enveo never receives the key, prompt or screenshots.":
+    "Twój klucz OpenAI jest zaszyfrowany kluczem budżetu. Ta przeglądarka odszyfrowuje go tylko na czas jednego żądania i łączy się bezpośrednio z OpenAI; Enveo nie otrzymuje klucza, promptu ani zrzutów ekranu.",
+  "Your Own OpenAI key will move into the encrypted budget. Re-enter it once because the server vault cannot return the old key; Enveo will store only ciphertext after the switch.":
+    "Twój klucz Własnego OpenAI zostanie przeniesiony do zaszyfrowanego budżetu. Podaj go ponownie raz, ponieważ sejf serwera nie może zwrócić starego klucza; po przełączeniu Enveo zapisze tylko szyfrogram.",
+  "If Own OpenAI is configured, its key moves from zero-knowledge ciphertext into the server vault in the same atomic operation.":
+    "Jeśli Własne OpenAI jest skonfigurowane, jego klucz zostanie przeniesiony z szyfrogramu zero-knowledge do sejfu serwera w tej samej atomowej operacji.",
   "{pct}% of net worth": "{pct}% wartości netto",
   "{sym}/mo": "{sym}/mies",
 };

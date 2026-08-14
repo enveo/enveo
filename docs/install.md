@@ -46,6 +46,24 @@ Enveo decrypts that budget's key only for the duration of the request and calls
 OpenAI. PostgreSQL stores only envelope-encrypted material. The master key must
 therefore live outside PostgreSQL, the image and `.env`.
 
+An E2EE budget does not use this server vault. The browser encrypts the OpenAI
+key with the budget DEK and PostgreSQL stores only zero-knowledge ciphertext plus
+its epoch. After the user unlocks the budget on a new device, that browser can
+decrypt the credential for one direct request to OpenAI; Enveo receives neither
+the key nor the E2EE prompt, screenshots or ledger. The encryption password and
+pairing codes are therefore also recovery material for Own OpenAI. Recovering the
+stored credential requires both its server ciphertext and a way to recover the
+budget DEK (password, unlocked device or pairing code). A JSON budget backup can
+restore the ledger, but it does not contain the OpenAI credential; after loss of
+either side the user must enter a new OpenAI key. The operator cannot recover it.
+
+Changing tiers moves the credential atomically with the budget. Plain → E2EE
+asks the user to re-enter the key because the write-only server vault has no API
+that can return it. E2EE → plain decrypts it in the browser for the authenticated
+conversion request, then stores a fresh server-vault envelope. A password change
+rewraps the same DEK and leaves the credential ciphertext unchanged; a true DEK
+rotation re-encrypts it for the new epoch.
+
 The ordinary stack deliberately starts without this vault. To enable it, download
 [`compose.ai-vault.yml`](../compose.ai-vault.yml) next to `compose.yml`, then create
 a key ring (the command prints only random bytes into the protected file):

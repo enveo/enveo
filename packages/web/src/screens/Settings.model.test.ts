@@ -33,8 +33,20 @@ describe("Settings information architecture", () => {
     expect(source).toContain('type="password"');
     expect(source).toContain('useState("")');
     expect(source).toContain("provider.saveCredential(value)");
+    expect(source.indexOf('setKey("")')).toBeLessThan(source.indexOf("provider.saveCredential(value)"));
     expect(source).not.toContain("readLegacyOpenAiCredential");
     expect(source).not.toContain("getCredential");
     expect(source).not.toContain("setEphemeralOpenAiCredential");
+  });
+
+  it("offers zero-knowledge Own OpenAI for unlocked E2EE budgets without temporary block copy", async () => {
+    const ai = await Bun.file(`${import.meta.dir}/settings/Ai.tsx`).text();
+    const consent = await Bun.file(`${import.meta.dir}/../components/AiConsentSheet.tsx`).text();
+
+    expect(ai).toContain("encrypted with your budget key");
+    expect(ai).not.toContain("will require the zero-knowledge vault");
+    expect(ai).not.toContain('disabled={tier !== "plain"');
+    expect(consent).toContain("createE2eeByokProvider");
+    expect(consent).not.toContain("enabled: show && plain && budgetId.length > 0");
   });
 });

@@ -59,6 +59,11 @@ export function PrivacySection() {
   return (
     <div style={{ marginTop: 4 }}>
       <Helper>{t("Encryption settings apply to this budget and follow it across devices.")}</Helper>
+      <Helper>
+        {t(
+          "On a new device, enter the encryption password once to unlock both the budget and its encrypted Own OpenAI key. Enveo cannot recover either if you lose the password, every unlocked device, all pairing codes and your backups.",
+        )}
+      </Helper>
       <E2eeSection />
     </div>
   );
@@ -287,7 +292,17 @@ function E2eeEnableWizard() {
     setSheet(true);
   };
 
+  const close = () => {
+    if (busy) return;
+    setOpenAIKey("");
+    setPass("");
+    setPass2("");
+    setSheet(false);
+  };
+
   const run = async () => {
+    let submittedOpenAIKey = openAIKey;
+    setOpenAIKey("");
     setBusy(true);
     setError(null);
     try {
@@ -319,7 +334,7 @@ function E2eeEnableWizard() {
         const snapshotBlob = await e2ee.encryptSnapshot(ledger, dek, { budgetId, epoch: nextEpoch, uptoSeq: 0 });
         const credentialAction = await prepareEnableCredentialAction({
           configured: credentialStatus.configured,
-          key: openAIKey,
+          key: submittedOpenAIKey,
           budgetId,
           nextEpoch,
           dek,
@@ -363,6 +378,7 @@ function E2eeEnableWizard() {
     } catch (e) {
       setError(`${t("Enabling failed — nothing was changed, your data stays as it was.")} ${apiErrorMessage(e)}`);
     } finally {
+      submittedOpenAIKey = "";
       setBusy(false);
     }
   };
@@ -387,7 +403,9 @@ function E2eeEnableWizard() {
           label={t("Enable end-to-end encryption")}
           desc={
             hasServerCredential
-              ? t("Your Own OpenAI key will move into the encrypted budget. Re-enter it once during setup.")
+              ? t(
+                  "Your Own OpenAI key will move into the encrypted budget. Re-enter it once because the server vault cannot return the old key; Enveo will store only ciphertext after the switch.",
+                )
               : t("Budget data will be encrypted on your device before it reaches the server. Server-side features will be unavailable.")
           }
           onClick={open}
@@ -395,7 +413,7 @@ function E2eeEnableWizard() {
         />
       </ActionGroup>
 
-      <Sheet show={sheet} onClose={() => !busy && setSheet(false)}>
+      <Sheet show={sheet} onClose={close}>
         {(SC) => (
           <div>
             <div style={{ fontSize: 16.5, fontWeight: 700, color: SC.text, marginBottom: 6 }}>{t("Enable end-to-end encryption")}</div>
@@ -440,7 +458,7 @@ function E2eeEnableWizard() {
                 </div>
                 {error && <div style={{ fontSize: 12, color: CORAL, marginTop: 10, lineHeight: 1.5 }}>{error}</div>}
                 <button
-                  onClick={() => setSheet(false)}
+                  onClick={close}
                   style={{
                     width: "100%",
                     marginTop: 12,
@@ -549,6 +567,11 @@ function E2eeManage() {
       </ActionGroup>
       <div style={{ fontSize: 11.5, color: C.soft, lineHeight: 1.5, margin: "8px 4px 0" }}>
         {t("Enabled — the server stores only encrypted data and never knows your password or key.")}
+      </div>
+      <div style={{ fontSize: 11.5, color: C.soft, lineHeight: 1.5, margin: "8px 4px 0" }}>
+        {t(
+          "Own OpenAI is encrypted by the same budget key. After unlocking on another device it works there too, while Enveo still cannot decrypt the credential.",
+        )}
       </div>
     </>
   );
@@ -924,6 +947,9 @@ function E2eeDisable() {
             <div style={{ fontSize: 15, fontWeight: 700, color: CORAL, marginBottom: 8 }}>{t("Disable end-to-end encryption?")}</div>
             <div style={{ fontSize: 12.5, color: SC.soft, lineHeight: 1.6, marginBottom: 14 }}>
               {t("Your data will be decrypted and stored on the server in plain form (as before enabling). Make sure you have a current backup.")}
+            </div>
+            <div style={{ fontSize: 12.5, color: SC.soft, lineHeight: 1.6, marginBottom: 14 }}>
+              {t("If Own OpenAI is configured, its key moves from zero-knowledge ciphertext into the server vault in the same atomic operation.")}
             </div>
             <div style={{ fontSize: 11, color: SC.mute, marginBottom: 6 }}>
               <ConfirmWordHint word={t("DISABLE-E2EE")} />
