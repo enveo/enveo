@@ -1,10 +1,8 @@
 import type { Transaction } from "@enveo/shared";
 import { lazy, useEffect, useRef, useState } from "react";
 import { BottomNav, Drawer, type ScreenId, StyleInjector } from "./components/chrome";
-import { EnvActionsSheet } from "./components/EnvActionsSheet";
 import { InstallBanner } from "./components/InstallBanner";
-import { InstallSheet } from "./components/InstallSheet";
-import { LazyChunk } from "./components/lazy";
+import { LazyChunk, useOpenedOnce } from "./components/lazy";
 import { SyncBadge } from "./components/SyncBadge";
 import { UpdatePrompt } from "./components/UpdatePrompt";
 import { useStateQuery } from "./lib/api";
@@ -45,6 +43,8 @@ const AccountsScreen = lazy(() => import("./screens/Accounts").then((m) => ({ de
 const EnvelopeScreen = lazy(() => import("./screens/Envelope").then((m) => ({ default: m.EnvelopeScreen })));
 const UnlockScreen = lazy(() => import("./screens/Unlock").then((m) => ({ default: m.UnlockScreen })));
 const ForeignReplicaScreen = lazy(() => import("./screens/ForeignReplica").then((m) => ({ default: m.ForeignReplicaScreen })));
+const InstallSheet = lazy(() => import("./components/InstallSheet").then((m) => ({ default: m.InstallSheet })));
+const EnvActionsSheet = lazy(() => import("./components/EnvActionsSheet").then((m) => ({ default: m.EnvActionsSheet })));
 
 export default function App() {
   const C = useTheme();
@@ -52,6 +52,7 @@ export default function App() {
   const [month, setMonth] = useState(currentMonth());
   const [drawer, setDrawer] = useState(false);
   const [installSheet, setInstallSheet] = useState(false);
+  const installSheetMounted = useOpenedOnce(installSheet);
   const [editTxn, setEditTxn] = useState<Transaction | null>(null);
   // Start "quick actions" widget preset for a FRESH Add — read once at mount (AddScreen fully
   // unmounts/remounts with `screen`, so this never leaks into an unrelated later Add). Reset
@@ -149,6 +150,7 @@ export default function App() {
   };
   // tapping an envelope on Start/Budget → action sheet (Transactions / Summary / Edit)
   const [envActions, setEnvActions] = useState<{ envelopeId: string; month: string } | null>(null);
+  const envActionsMounted = useOpenedOnce(envActions !== null);
   const [envEdit, setEnvEdit] = useState<string | null>(null);
   const openEnvelope = (envelopeId: string, m: string) => setEnvActions({ envelopeId, month: m });
   const actionsEnv = envActions ? (state?.envelopes.find((e) => e.id === envActions.envelopeId) ?? null) : null;
@@ -364,34 +366,42 @@ export default function App() {
         {!["addExpense", "settings"].includes(screen) && !onboarding && !envView && <BottomNav active={screen} onNav={nav} />}
         {/* badge anchors top-right; on Add the header is the type tabs → collision, hide it */}
         {screen !== "addExpense" && <SyncBadge onOpenSync={() => nav("settings")} />}
-        <EnvActionsSheet
-          env={actionsEnv}
-          onClose={() => setEnvActions(null)}
-          onTxns={() => {
-            if (envActions) {
-              openTxns({ envId: envActions.envelopeId });
-              setEnvActions(null);
-            }
-          }}
-          onSummary={() => {
-            if (envActions) {
-              setEnvView(envActions);
-              setEnvActions(null);
-            }
-          }}
-          onEdit={() => {
-            if (envActions) {
-              setEnvEdit(envActions.envelopeId);
-              setEnvActions(null);
-            }
-          }}
-        />
+        {envActionsMounted && (
+          <LazyChunk variant="overlay" onDismiss={() => setEnvActions(null)}>
+            <EnvActionsSheet
+              env={actionsEnv}
+              onClose={() => setEnvActions(null)}
+              onTxns={() => {
+                if (envActions) {
+                  openTxns({ envId: envActions.envelopeId });
+                  setEnvActions(null);
+                }
+              }}
+              onSummary={() => {
+                if (envActions) {
+                  setEnvView(envActions);
+                  setEnvActions(null);
+                }
+              }}
+              onEdit={() => {
+                if (envActions) {
+                  setEnvEdit(envActions.envelopeId);
+                  setEnvActions(null);
+                }
+              }}
+            />
+          </LazyChunk>
+        )}
         <EnvEdit env={editEnv} groups={state?.groups ?? []} onClose={() => setEnvEdit(null)} />
         <Drawer open={drawer} onClose={() => setDrawer(false)} onNav={nav} onOpenReports={openReports} onInstall={() => setInstallSheet(true)} />
         {/* not during onboarding: the wizard ends with its own install card (a second ask), the
             BottomNav the banner's offset clears is hidden there, and it must not cover the skeleton */}
         {state && !onboarding && <InstallBanner />}
-        <InstallSheet show={installSheet} onClose={() => setInstallSheet(false)} />
+        {installSheetMounted && (
+          <LazyChunk variant="overlay" onDismiss={() => setInstallSheet(false)}>
+            <InstallSheet show={installSheet} onClose={() => setInstallSheet(false)} />
+          </LazyChunk>
+        )}
         <UpdatePrompt />
       </div>
     </div>
