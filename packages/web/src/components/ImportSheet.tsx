@@ -1,9 +1,11 @@
+import { useQuery } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { runImportExtract } from "../lib/ai";
+import { importExecution } from "../lib/aiProvider/capabilities";
 import { useAiProvider } from "../lib/aiProvider/useAiProvider";
 import { api, apiErrorMessage, type EditedImportItem, type ImportApplyItem, type ImportItem, type StateResponse } from "../lib/api";
-import { useCurrency, useSettings, useTheme } from "../lib/contexts";
+import { useCurrency, useTheme } from "../lib/contexts";
 import * as e2ee from "../lib/e2ee";
 import { formatMoney, isLight } from "../lib/format";
 import { useT } from "../lib/i18n";
@@ -45,8 +47,13 @@ export function ImportSheet({ show, onClose, state, onApplied }: { show: boolean
   const C = useTheme();
   const { t, tp, lang } = useT();
   const currency = useCurrency();
-  const { settings } = useSettings();
   const provider = useAiProvider();
+  const { data: providerStatus } = useQuery({
+    queryKey: ["aiProviderStatus", provider, show],
+    queryFn: () => provider.status(),
+    enabled: show,
+    retry: false,
+  });
   const accounts = [...state.accounts].filter((a) => !a.archived).sort((a, b) => a.sort - b.sort);
   const envById = new Map(state.envelopes.map((e) => [e.id, e]));
 
@@ -158,9 +165,9 @@ export function ImportSheet({ show, onClose, state, onApplied }: { show: boolean
     void doProcess();
   }, [pendingProcess]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Rules can't read screenshots — in off mode the import requires AI consent.
+  // Rules and unavailable model providers cannot read screenshots.
   const process = () => {
-    if (settings.aiMode === "off") {
+    if (!providerStatus || importExecution(providerStatus) === "unavailable") {
       setShowConsent(true);
       return;
     }

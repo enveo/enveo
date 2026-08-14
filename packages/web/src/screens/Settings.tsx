@@ -2,7 +2,7 @@ import { type ReactNode, useEffect, useRef, useState } from "react";
 import type { ScreenId } from "../components/chrome";
 import { useBand } from "../components/kit";
 import { useLedgerVersion, useSyncStatus } from "../lib/api";
-import { useSettings, useTheme } from "../lib/contexts";
+import { useBudgetPreferences, useSettings, useTheme } from "../lib/contexts";
 import { relSync } from "../lib/dates";
 import * as e2ee from "../lib/e2ee";
 import { type Message, msg, useT } from "../lib/i18n";
@@ -280,12 +280,12 @@ function HubCard({
   );
 }
 
-/** AI mode badge (rules / server / own key) — a budget preference. */
+/** AI provider badge — a budget preference. */
 function AiBadge() {
   const C = useTheme();
   const { t } = useT();
-  const { settings } = useSettings();
-  const key: Message = settings.aiMode === "server" ? msg("server") : settings.aiMode === "byok" ? msg("own key") : msg("off");
+  const { preferences } = useBudgetPreferences();
+  const key: Message = preferences.aiProvider === "enveo" ? msg("server") : preferences.aiProvider === "openai" ? msg("own key") : msg("rules");
   return (
     <span style={{ fontSize: 10.5, fontWeight: 700, color: C.mute, background: C.inset, borderRadius: 8, padding: "3px 8px", flexShrink: 0 }}>{t(key)}</span>
   );

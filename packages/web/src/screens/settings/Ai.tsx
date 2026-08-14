@@ -1,85 +1,96 @@
+import type { OpenAiModel } from "@enveo/shared";
 import { useQuery } from "@tanstack/react-query";
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { AI_MODEL_TIERS, costMultiplier, isLegacyOpenAiModel, LEGACY_OPENAI_MODELS, type ModelTier } from "../../lib/aiModelTiers";
-import { api } from "../../lib/api";
-import { OPENAI_MODELS, type OpenAiModel, useSettings, useTheme } from "../../lib/contexts";
-import { useT } from "../../lib/i18n";
-import { checkModelAvailability, type ModelAvailability } from "../../lib/openaiModels";
-import { legacyCredentialMigration, readLegacyOpenAiCredential } from "../../lib/settingsPersist";
+import type { AiProviderKind } from "../../lib/aiProvider/contracts";
+import { useAiProvider } from "../../lib/aiProvider/useAiProvider";
+import { apiErrorMessage } from "../../lib/api";
+import { useBudgetPreferences, useTheme } from "../../lib/contexts";
+import * as e2ee from "../../lib/e2ee";
+import { type Message, msg, useT } from "../../lib/i18n";
 import { CORAL, font, TEAL } from "../../lib/theme";
 import { Eyebrow, Helper, Row, Seg } from "./ui";
 
-/**
- * AI provider and model are budget-scoped and synchronized. During the staged migration:
- *  - off:    suggestions computed locally on rules — zero egress,
- *  - server: requests via the app server (operator's key); when the server
- *            has no key (`/api/ai/info` → serverAi=false) we show a warning,
- *  - byok:   an existing legacy OpenAI key remains in a read-only quarantine until Stage 3,
- *            while calls still go straight to api.openai.com.
- *
- * BYOK model choice (§1b) is a quality/cost TIER picker over lib/aiModelTiers.ts, not raw model
- * ids; the id shows as secondary detail. With a key present the curated ids are validated against
- * `GET /v1/models` straight from the browser (debounced per key, cached only in query memory —
- * gcTime 0, never persisted): only a definite 200 verdict disables an option; an invalid key or
- * a failed check leaves every tier selectable and reports itself in one quiet status line.
- * A persisted legacy choice (gpt-5.5 / gpt-5.5-mini) renders as its own extra option — selected,
- * never silently rewritten — and stays offered until the end of the visit even after switching
- * to a tier, so an accidental tap is reversible.
- */
+type ActionState = "idle" | "saving" | "testing" | "deleting";
+
+const STATUS_COPY: Record<"ready" | "not-configured" | "operator-unavailable" | "tier-unavailable" | "locked" | "vault-unavailable", Message> = {
+  ready: msg("Ready to use."),
+  "not-configured": msg("No OpenAI key is configured."),
+  "operator-unavailable": msg("The server operator has not enabled Enveo AI."),
+  "tier-unavailable": msg("This provider is unavailable for an end-to-end encrypted budget."),
+  locked: msg("Unlock the budget to use this provider."),
+  "vault-unavailable": msg("The server credential vault is not configured."),
+};
+
+/** Budget-scoped AI preferences. The only plaintext-key boundary is the save
+ * action below; after acknowledgement the input is cleared and no read API
+ * exists. */
 export function AiSection() {
   const C = useTheme();
   const { t } = useT();
-  const { settings, setSettings } = useSettings();
-  const [key] = useState(() => readLegacyOpenAiCredential()?.key ?? "");
-  // Check server-mode availability only when it is selected (zero unnecessary requests).
-  const { data: aiInfo } = useQuery({ queryKey: ["aiInfo"], queryFn: api.aiInfo, enabled: settings.aiMode === "server" });
-
-  // BYOK availability probe: debounce the key so typing does not fire a request per keystroke.
-  const trimmedKey = key.trim();
-  const [settledKey, setSettledKey] = useState(trimmedKey);
-  useEffect(() => {
-    const id = setTimeout(() => setSettledKey(trimmedKey), 800);
-    return () => clearTimeout(id);
-  }, [trimmedKey]);
-  const modelCheck = useQuery({
-    queryKey: ["openaiModelAvailability", settledKey],
-    queryFn: () => checkModelAvailability(settledKey, OPENAI_MODELS),
-    enabled: settings.aiMode === "byok" && settledKey.length > 0,
-    staleTime: 60_000,
-    gcTime: 0, // transient by design — the verdict must not outlive the screen
+  const { preferences, update } = useBudgetPreferences();
+  const provider = useAiProvider();
+  const tier = e2ee.getTierMeta().tier;
+  const [key, setKey] = useState("");
+  const [action, setAction] = useState<ActionState>("idle");
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [actionOk, setActionOk] = useState<string | null>(null);
+  const statusQuery = useQuery({
+    queryKey: ["aiProviderStatus", tier, preferences.aiProvider, preferences.openaiModel],
+    queryFn: () => provider.status(),
     retry: false,
   });
-  const avail: ModelAvailability | undefined = modelCheck.data;
+  const status = statusQuery.data;
 
-  // The legacy option a user arrived with stays rendered for the whole visit (ref, not state):
-  // switching to a tier must not make the way back disappear under the finger.
-  const legacyAtMount = useRef<OpenAiModel | null>(isLegacyOpenAiModel(settings.openaiModel) ? settings.openaiModel : null);
-  const legacyShown = LEGACY_OPENAI_MODELS.filter((m) => m === settings.openaiModel || m === legacyAtMount.current);
+  const legacyAtMount = useRef<OpenAiModel | null>(isLegacyOpenAiModel(preferences.openaiModel) ? preferences.openaiModel : null);
+  const legacyShown = LEGACY_OPENAI_MODELS.filter((model) => model === preferences.openaiModel || model === legacyAtMount.current);
 
-  const helper =
-    settings.aiMode === "off"
-      ? t("AI is off — suggestions run locally on rules; nothing leaves this device.")
-      : settings.aiMode === "server"
-        ? t("AI requests go to OpenAI through the app server (operator's key).")
-        : key
-          ? t("The app talks to OpenAI directly from this browser using your own key — bypassing the server.")
-          : t("Own OpenAI is unavailable until a key is stored in the secure credential vault.");
-
-  const unavailable = (model: OpenAiModel) => avail?.state === "checked" && !avail.available.has(model);
-  const select = (model: OpenAiModel) => {
-    setSettings({ ...settings, openaiModel: model });
+  const selectProvider = (selected: "rules" | "enveo" | "openai") => {
+    setActionError(null);
+    setActionOk(null);
+    update({ aiProvider: selected });
   };
 
-  const option = (model: OpenAiModel, label: string, hint: string, tier?: ModelTier) => {
-    const selected = settings.openaiModel === model;
-    const off = unavailable(model);
+  const runAction = async (next: Exclude<ActionState, "idle">, work: () => Promise<void>, success: string) => {
+    setAction(next);
+    setActionError(null);
+    setActionOk(null);
+    try {
+      await work();
+      setActionOk(success);
+      await statusQuery.refetch();
+    } catch (error) {
+      setActionError(apiErrorMessage(error));
+    } finally {
+      setAction("idle");
+    }
+  };
+
+  const save = () => {
+    const value = key.trim();
+    if (!value) return;
+    void runAction(
+      "saving",
+      async () => {
+        await provider.saveCredential(value);
+        setKey("");
+      },
+      t("OpenAI key saved securely."),
+    );
+  };
+
+  const remove = () => void runAction("deleting", () => provider.removeCredential(), t("OpenAI key removed."));
+  const test = () => void runAction("testing", () => provider.testConnection(), t("Connection successful."));
+
+  const selectModel = (model: OpenAiModel) => update({ openaiModel: model });
+  const option = (model: OpenAiModel, label: string, hint: string, modelTier?: ModelTier) => {
+    const selected = preferences.openaiModel === model;
     return (
       <button
         key={model}
         role="radio"
         aria-checked={selected}
-        disabled={off && !selected}
-        onClick={() => select(model)}
+        onClick={() => selectModel(model)}
         style={{
           display: "flex",
           flexDirection: "column",
@@ -90,79 +101,130 @@ export function AiSection() {
           borderRadius: 10,
           border: `1px solid ${selected ? TEAL : C.line}`,
           background: selected ? "var(--accent-1a)" : "transparent",
-          opacity: off && !selected ? 0.55 : 1,
-          cursor: off && !selected ? "default" : "pointer",
+          cursor: "pointer",
           fontFamily: font,
         }}
       >
         <span style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 8 }}>
           <span style={{ fontSize: 13, fontWeight: 600, color: selected ? TEAL : C.text }}>{label}</span>
-          {tier && <span style={{ fontSize: 10.5, color: C.mute, whiteSpace: "nowrap" }}>{model}</span>}
+          {modelTier && <span style={{ fontSize: 10.5, color: C.mute, whiteSpace: "nowrap" }}>{model}</span>}
         </span>
         <span style={{ fontSize: 11, color: C.mute, lineHeight: 1.45 }}>{hint}</span>
-        {off && <span style={{ fontSize: 11, color: CORAL, lineHeight: 1.45 }}>{t("Not available with your OpenAI key.")}</span>}
       </button>
     );
   };
 
+  const flow =
+    preferences.aiProvider === "rules"
+      ? t("Suggestions are calculated on this device. No data is sent to an AI service.")
+      : preferences.aiProvider === "enveo"
+        ? t("Enveo sends the required prompt or screenshots to OpenAI using the server operator's key.")
+        : tier === "plain"
+          ? t("Your browser calls Enveo; Enveo decrypts your key only for the request and calls OpenAI. The key is never returned to a device.")
+          : t("Own OpenAI for end-to-end encrypted budgets will require the zero-knowledge vault.");
+
   return (
     <div style={{ marginTop: 4 }}>
       <Eyebrow>{t("Budget preferences")}</Eyebrow>
-      <Helper>{t("The AI provider and model follow this budget on every device.")}</Helper>
-      <Row label={t("Mode")}>
+      <Helper>{t("The AI provider, model and custom profiles follow this budget on every device.")}</Helper>
+      <Row label={t("Provider")}>
         <Seg
-          value={settings.aiMode}
-          onChange={(id) => setSettings({ ...settings, aiMode: id })}
+          value={preferences.aiProvider}
+          onChange={(id) => selectProvider(id as AiProviderKind)}
           options={[
-            { id: "off", label: t("Off") },
-            { id: "server", label: t("Server") },
-            { id: "byok", label: t("Own key") },
+            { id: "rules", label: t("Without AI") },
+            { id: "enveo", label: t("Enveo AI") },
+            { id: "openai", label: t("Own OpenAI") },
           ]}
         />
       </Row>
-      <Helper>{helper}</Helper>
+      <Helper>{flow}</Helper>
 
-      {settings.aiMode === "server" && aiInfo && !aiInfo.serverAi && (
-        <div style={{ fontSize: 12, color: CORAL, marginTop: 8, lineHeight: 1.5 }}>
-          {t("The server has no OpenAI key configured — server mode is unavailable. Use an existing own key or keep AI on rules.")}
-        </div>
-      )}
+      {status && status.code !== "ready" && <div style={{ fontSize: 12, color: CORAL, marginTop: 8, lineHeight: 1.5 }}>{t(STATUS_COPY[status.code])}</div>}
 
-      {settings.aiMode === "byok" && (
+      {preferences.aiProvider === "openai" && (
         <div style={{ marginTop: 14 }}>
-          <div style={{ fontSize: 11.5, fontWeight: 600, color: C.text, marginBottom: 6 }}>{t("Own OpenAI credential")}</div>
+          <div style={{ fontSize: 11.5, fontWeight: 600, color: C.text, marginBottom: 6 }}>{t("OpenAI key")}</div>
           <Helper>
-            {key
-              ? t("An existing browser key is present and waiting for migration to the secure credential vault.")
-              : t("No own key is configured. Secure credential management will become available after the vault migration.")}
+            {status?.configured
+              ? t("A key is stored in the server vault. Enveo cannot display it; saving below replaces it atomically.")
+              : t("Paste the key once. Enveo stores only an envelope-encrypted credential and never returns it.")}
           </Helper>
-          <div style={{ fontSize: 11.5, fontWeight: 600, color: C.text, margin: "14px 0 6px" }}>{t("Model")}</div>
+          <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+            <input
+              type="password"
+              value={key}
+              onChange={(event) => setKey(event.target.value)}
+              placeholder={status?.configured ? t("New key (replaces current)") : t("OpenAI API key")}
+              autoComplete="off"
+              spellCheck={false}
+              disabled={tier !== "plain" || status?.code === "vault-unavailable" || action !== "idle"}
+              style={{
+                flex: 1,
+                minWidth: 0,
+                padding: "10px 11px",
+                borderRadius: 10,
+                border: `1px solid ${C.line}`,
+                background: C.bg,
+                color: C.text,
+                fontFamily: font,
+              }}
+            />
+            <button
+              onClick={save}
+              disabled={!key.trim() || tier !== "plain" || action !== "idle"}
+              style={{
+                padding: "0 14px",
+                borderRadius: 10,
+                border: "none",
+                background: TEAL,
+                color: "#fff",
+                fontWeight: 600,
+                opacity: !key.trim() || action !== "idle" ? 0.5 : 1,
+              }}
+            >
+              {action === "saving" ? t("Saving…") : t("Save")}
+            </button>
+          </div>
+          {status?.configured && tier === "plain" && (
+            <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+              <button
+                onClick={test}
+                disabled={action !== "idle"}
+                style={{ flex: 1, padding: "10px", borderRadius: 10, border: `1px solid ${C.line}`, background: "transparent", color: C.text }}
+              >
+                {action === "testing" ? t("Testing…") : t("Test connection")}
+              </button>
+              <button
+                onClick={remove}
+                disabled={action !== "idle"}
+                style={{ flex: 1, padding: "10px", borderRadius: 10, border: `1px solid ${CORAL}`, background: "transparent", color: CORAL }}
+              >
+                {action === "deleting" ? t("Removing…") : t("Remove key")}
+              </button>
+            </div>
+          )}
+          {actionOk && <div style={{ fontSize: 11.5, color: C.pos, marginTop: 8 }}>{actionOk}</div>}
+          {actionError && <div style={{ fontSize: 11.5, color: CORAL, marginTop: 8 }}>{actionError}</div>}
+
+          <div style={{ fontSize: 11.5, fontWeight: 600, color: C.text, margin: "16px 0 6px" }}>{t("Model")}</div>
           <div role="radiogroup" aria-label={t("Model")} style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-            {AI_MODEL_TIERS.map((tier) =>
+            {AI_MODEL_TIERS.map((modelTier) =>
               option(
-                tier.model,
-                t(tier.label),
-                tier.id === "low"
+                modelTier.model,
+                t(modelTier.label),
+                modelTier.id === "low"
                   ? t("Lowest cost — a typical screenshot import costs a fraction of a cent.")
-                  : t("About {n}× the cost of the cheapest tier.", { n: costMultiplier(tier) }),
-                tier,
+                  : t("About {n}× the cost of the cheapest tier.", { n: costMultiplier(modelTier) }),
+                modelTier,
               ),
             )}
-            {legacyShown.map((m) => option(m, m, t("Previously selected model — it stays available until you pick a tier.")))}
+            {legacyShown.map((model) => option(model, model, t("Previously selected model — it stays available until you pick a tier.")))}
           </div>
-          {modelCheck.isFetching ? (
-            <Helper>{t("Checking which models your key can use…")}</Helper>
-          ) : avail?.state === "invalid_key" ? (
-            <div style={{ fontSize: 11, color: CORAL, marginTop: 8, lineHeight: 1.5 }}>
-              {t("OpenAI rejected this key — model availability could not be checked.")}
-            </div>
-          ) : avail?.state === "unknown" ? (
-            <Helper>{t("Could not check model availability right now — every tier stays selectable.")}</Helper>
-          ) : null}
-          {legacyCredentialMigration() === "pending-stage-3" && <Helper>{t("Migration status: pending secure server acknowledgement.")}</Helper>}
-          <Helper>{t("Existing browser credentials remain read-only until secure vault migration completes.")}</Helper>
         </div>
       )}
+
+      <Helper>{t("Custom suggestion profiles configured for this budget: {n}.", { n: preferences.customProfiles.length })}</Helper>
     </div>
   );
 }

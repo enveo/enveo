@@ -124,6 +124,10 @@ const ERROR_KEYS: Record<string, Message> = {
      above are reused (the mirror's own codes), these two are client-only. */
   ai_offline: msg("You are offline — screenshot import needs a connection. Manual entry works without one."), // fetch never left the device — the normal state of an offline PWA
   ai_key_invalid: msg("OpenAI rejected your key — check it in Settings → Artificial intelligence."), // byok: OpenAI rejected the user's key (401/403)
+  ai_model_unavailable: msg("This OpenAI key cannot use the selected model. Choose another model and try again."),
+  credential_not_configured: msg("No OpenAI key is configured for this budget."),
+  vault_unavailable: msg("The server credential vault is not configured. Ask the server operator to enable it."),
+  ai_capability_unsupported: msg("The selected AI provider does not support this feature."),
 
   /* better-auth codes (lib/auth.ts lowercases them): the library's own `message` is English
      prose, and the login screen is the FIRST thing a non-English user sees. */

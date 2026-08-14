@@ -1,8 +1,9 @@
 import { useQuery } from "@tanstack/react-query";
 import { api } from "../lib/api";
-import { useSettings } from "../lib/contexts";
+import { useBudgetPreferences } from "../lib/contexts";
+import * as e2ee from "../lib/e2ee";
 import { type Message, msg, useT } from "../lib/i18n";
-import { readLegacyOpenAiCredential } from "../lib/settingsPersist";
+import { store } from "../lib/store";
 import { TEAL } from "../lib/theme";
 import { Sheet } from "./chrome";
 
@@ -10,10 +11,9 @@ import { Sheet } from "./chrome";
  * AI consent sheet — intercepts the FIRST use of an AI feature in off mode.
  * Shows exactly what will be sent to OpenAI (per-feature payload description)
  * and offers three ways out:
- *  - "Enable via server"  → aiMode="server" (only when /api/ai/info → serverAi=true),
- *  - an existing legacy key may still be selected while it awaits Stage-3 vault migration;
- *    this screen never accepts a new credential,
- *  - "Stay with rules" → does NOT change aiMode. Only the budget SUGGESTION has a rules
+ *  - "Enable via Enveo" → budget provider "enveo" when operator AI is available,
+ *  - a configured server-vault credential may select "Own OpenAI",
+ *  - "Stay with rules" → keeps provider "rules". Only the budget SUGGESTION has a rules
  *    engine to stay with; for the import (AI-only, no rules parser at all) the way out
  *    is "Cancel".
  * After the choice it calls `onDecided(mode)` — closing the sheet is the parent's job.
@@ -38,20 +38,27 @@ export function AiConsentSheet({
   onDecided: (mode: "server" | "byok" | "rules") => void;
 }) {
   const { t } = useT();
-  const { settings, setSettings } = useSettings();
+  const { update } = useBudgetPreferences();
+  const budgetId = store.getBudgetId() || store.getLedger()?.budgets[0]?.id || "";
+  const plain = e2ee.getTierMeta().tier === "plain";
   // Server-mode availability is checked only when the sheet opens.
-  const { data: aiInfo } = useQuery({ queryKey: ["aiInfo"], queryFn: api.aiInfo, enabled: show });
-  const credential = readLegacyOpenAiCredential();
+  const { data: aiInfo } = useQuery({ queryKey: ["aiInfo"], queryFn: api.aiInfo, enabled: show && plain });
+  const { data: credential } = useQuery({
+    queryKey: ["byokCredentialStatus", budgetId],
+    queryFn: () => api.byokCredentialStatus(budgetId),
+    enabled: show && plain && budgetId.length > 0,
+    retry: false,
+  });
 
   const close = () => onClose();
 
   const chooseServer = () => {
-    setSettings({ ...settings, aiMode: "server" });
+    update({ aiProvider: "enveo" });
     onDecided("server");
   };
   const chooseByok = () => {
-    if (!credential) return;
-    setSettings({ ...settings, aiMode: "byok", openaiModel: credential.model ?? settings.openaiModel });
+    if (!credential?.configured) return;
+    update({ aiProvider: "openai" });
     onDecided("byok");
   };
 
@@ -95,13 +102,13 @@ export function AiConsentSheet({
               </button>
             )}
 
-            {credential ? (
+            {credential?.configured ? (
               <button onClick={chooseByok} style={secondary}>
-                {t("Use the existing own key")}
+                {t("Use Own OpenAI")}
               </button>
             ) : (
               <div style={{ fontSize: 11.5, color: C.mute, lineHeight: 1.5, marginBottom: 10 }}>
-                {t("A new own key can be added after secure credential vault migration is available.")}
+                {t("Add an OpenAI key in Settings → Artificial intelligence to use Own OpenAI.")}
               </div>
             )}
 
