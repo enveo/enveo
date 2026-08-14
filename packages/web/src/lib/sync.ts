@@ -44,21 +44,17 @@
  */
 
 import { accountPreferences } from "./accountPreferences";
-import { budgetPreferences } from "./budgetPreferences";
 import { devicePreferences } from "./devicePreferences";
 import * as e2ee from "./e2ee";
-import { clearLocalData, idbDelete, idbGet, idbPut, storageMode } from "./idb";
-import { configureLegacySettingsMigration, parseLegacyMigrationAck } from "./legacySettingsMigration";
+import { clearLocalData, storageMode } from "./idb";
 // NOTE: no static `import { local } from "./mutate"` here — mutate.ts imports `poke` from this
 // facade, so a static edge in the other direction would be a cycle. The one place the engine
 // needs `local` (sweepLegacyPlanned in sync/boot.ts) does a lazy `await import("../mutate")`.
 import * as outbox from "./outbox";
 import * as persist from "./persist";
-import { readLegacySettings, removeLegacySettingsIfUnchanged } from "./settingsPersist";
-import { store } from "./store";
 import { INTERVAL_MS } from "./sync/contracts";
 import { configureCycle, getLastSyncReason, resetBackoff, syncNow } from "./sync/cycle";
-import { assertOwnReplica, enterUnauthed, verifiedIdentityUserId } from "./sync/identity";
+import { assertOwnReplica, enterUnauthed } from "./sync/identity";
 import { broadcastUpdatedIfPending, installMultiTab, isLeaderTab, notePeersMayNeedUpdate, postMsg } from "./sync/multitab";
 import { isReplacePending, isResyncPending } from "./sync/obligations";
 import { getSyncStatus, installOutboxStatusListener } from "./sync/status";
@@ -79,47 +75,6 @@ export { discardPendingE2eeUpgrade, hasPendingE2eeUpgrade, upgradeServerE2eeV2 }
 // every outbox queue change (add/ack/dead-letter) refreshes the status —
 // explicit, idempotent installation (sync/status.ts), done at composition time
 installOutboxStatusListener();
-
-let legacyMigrationAckCleared = false;
-
-configureLegacySettingsMigration({
-  readLegacy: readLegacySettings,
-  removeLegacy: removeLegacySettingsIfUnchanged,
-  loadAck: async () => parseLegacyMigrationAck(await idbGet("meta", "legacySettingsMigrationV1")),
-  saveAck: async (value) => {
-    await idbPut("meta", value, "legacySettingsMigrationV1");
-    legacyMigrationAckCleared = false;
-  },
-  clearAck: async () => {
-    if (legacyMigrationAckCleared) return;
-    await idbDelete("meta", "legacySettingsMigrationV1");
-    legacyMigrationAckCleared = true;
-  },
-  context: () => {
-    const userId = verifiedIdentityUserId();
-    const budgetId = store.getBudgetId() || store.getLedger()?.budgets[0]?.id;
-    return userId && budgetId ? { userId, budgetId, tier: e2ee.getTierMeta().tier } : null;
-  },
-  accountState: accountPreferences.migrationState,
-  updateAccount: accountPreferences.update,
-  budgetState: budgetPreferences.getSnapshot,
-  updateBudget: async (patch) => {
-    budgetPreferences.update(patch);
-    await outbox.flushed();
-  },
-  budgetPreferencePending: () => outbox.snapshot().some(({ op }) => op.kind === "budget.preferences.update"),
-  deviceState: devicePreferences.migrationState,
-  updateDevice: devicePreferences.update,
-  credentialStatus: async (budgetId) => {
-    const { createPlainByokProvider } = await import("./aiProvider/plainByok");
-    const status = await createPlainByokProvider("plain", budgetId, budgetPreferences.getSnapshot().openaiModel).status();
-    return { configured: status.configured, available: status.code !== "vault-unavailable" };
-  },
-  saveCredential: async (budgetId, model, key) => {
-    const { createPlainByokProvider } = await import("./aiProvider/plainByok");
-    await createPlainByokProvider("plain", budgetId, model).saveCredential(key);
-  },
-});
 
 /**
  * The human chose "remove this data and continue" — on ForeignReplicaScreen (the replica is

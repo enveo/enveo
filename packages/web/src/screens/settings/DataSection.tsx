@@ -1,5 +1,4 @@
 import { E2EE_DISABLE_CONFIRM } from "@enveo/shared";
-import { useQuery } from "@tanstack/react-query";
 import qrcode from "qrcode-generator";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Sheet } from "../../components/chrome";
@@ -256,13 +255,18 @@ function E2eeSection() {
 function E2eeEnableWizard() {
   const { t } = useT();
   const budgetId = store.getBudgetId() || store.getLedger()?.budgets[0]?.id || "";
-  const credentialStatus = useQuery({
-    queryKey: ["e2eeEnableCredentialStatus", budgetId],
-    queryFn: () => api.byokCredentialStatus(budgetId),
-    enabled: budgetId.length > 0,
-    retry: false,
-  });
-  const hasServerCredential = credentialStatus.data?.configured === true;
+  const [hasServerCredential, setHasServerCredential] = useState(false);
+  useEffect(() => {
+    let current = true;
+    if (budgetId)
+      void api.byokCredentialStatus(budgetId).then(
+        (status) => current && setHasServerCredential(status.configured),
+        () => {},
+      );
+    return () => {
+      current = false;
+    };
+  }, [budgetId]);
   const [sheet, setSheet] = useState(false);
   const [step, setStep] = useState<1 | 2>(1);
   const [haveBackup, setHaveBackup] = useState(false);
