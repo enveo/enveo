@@ -31,6 +31,7 @@ const txnBase = z.object({
   name: z.string().nullable().optional(),
   note: z.string().nullable().optional(),
   tag: z.string().nullable().optional(),
+  sourceRef: z.string().nullable().optional(),
   items: z.array(txnItemPayload).optional(),
   // the client sets it at create (stable list order within a day); REST may omit it
   createdAt: z.string().datetime().optional(),
@@ -224,6 +225,8 @@ const transactionEntity = z
     name: z.string().nullable(),
     note: z.string().nullable(),
     tag: z.string().nullable(),
+    // Old backups predate replicated import-learning metadata.
+    sourceRef: z.string().nullable().default(null),
     items: z.array(txnItemEntity),
     createdAt: z.string(),
   })

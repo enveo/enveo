@@ -106,6 +106,7 @@ export function txnToPayload(t: Transaction): TxnPayload {
     name: t.name,
     note: t.note,
     tag: t.tag,
+    sourceRef: t.sourceRef,
     items: t.items.map((i) => ({ envelopeId: i.envelopeId, categoryId: i.categoryId, amount: i.amount })),
   };
 }
@@ -121,20 +122,24 @@ export function txnToPayload(t: Transaction): TxnPayload {
  * envelopeId/categoryId = null, amount unchanged), so the validation doesn't throw
  * and the "Duplicate" sheet doesn't jam. A balanced split is copied verbatim.
  */
-function duplicateTxn(t: Transaction): string {
-  const base = { ...txnToPayload(t), date: new Date().toISOString().slice(0, 10), tag: null };
+export function txnToDuplicatePayload(t: Transaction, today: string): TxnPayload {
+  const base = { ...txnToPayload(t), date: today, tag: null, sourceRef: null };
   const itemsSum = t.items.reduce((s, i) => s + i.amount, 0);
   if (t.items.length > 0 && itemsSum === t.amount) {
     // balanced split — verbatim copy (the parent has envelopeId/categoryId null anyway;
     // base.items is already the id-stripped mapping from txnToPayload)
-    return createTxn({ ...base, envelopeId: null, categoryId: null });
+    return { ...base, envelopeId: null, categoryId: null };
   }
   if (t.items.length > 0) {
     // orphaned split (Σ items ≠ amount) — a regular transaction without items
-    return createTxn({ ...base, envelopeId: null, categoryId: null, items: undefined });
+    return { ...base, envelopeId: null, categoryId: null, items: undefined };
   }
   // regular transaction — keep the envelope/category (base.items is already [] here)
-  return createTxn({ ...base, envelopeId: t.envelopeId, categoryId: t.categoryId });
+  return { ...base, envelopeId: t.envelopeId, categoryId: t.categoryId };
+}
+
+function duplicateTxn(t: Transaction): string {
+  return createTxn(txnToDuplicatePayload(t, new Date().toISOString().slice(0, 10)));
 }
 
 /* ── Allocations ────────────────────────────────────────────────────────── */

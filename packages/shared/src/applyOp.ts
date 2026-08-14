@@ -80,6 +80,7 @@ function txnFromCreate(p: OpPayload<"txn.create">): Transaction {
     name: p.name ?? null,
     note: p.note ?? null,
     tag: p.tag ?? null,
+    sourceRef: p.sourceRef ?? null,
     items: buildItems(p.id, p.items),
     createdAt: p.createdAt ?? MISSING_CREATED_AT,
   };
@@ -103,6 +104,8 @@ function txnFromUpdate(prev: Transaction, p: OpPayload<"txn.update">): Transacti
     note: p.note ?? null,
     // keep tag when the update does not send it (UI edits don't know import tags)
     tag: p.tag !== undefined ? p.tag : prev.tag,
+    // Preserve on legacy/UI updates that do not know this import-only field.
+    sourceRef: p.sourceRef !== undefined ? p.sourceRef : prev.sourceRef,
     items: buildItems(prev.id, p.items),
     createdAt: prev.createdAt, // server PATCH does not touch created_at
   };

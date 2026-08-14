@@ -93,6 +93,7 @@ export const mapTransaction = (t: typeof s.transactions.$inferSelect, items: Txn
   name: t.name,
   note: t.note,
   tag: t.tag,
+  sourceRef: t.sourceRef,
   items,
   createdAt: t.createdAt,
 });

@@ -27,6 +27,7 @@ const baseTxn = (id: string): Transaction => ({
   name: null,
   note: null,
   tag: null,
+  sourceRef: null,
   items: [],
   createdAt: "2026-01-01T00:00:00.000Z",
 });

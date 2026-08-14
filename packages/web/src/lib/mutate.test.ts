@@ -5,7 +5,7 @@
  */
 import { describe, expect, it } from "bun:test";
 import type { Transaction, TxnPayload } from "@enveo/shared";
-import { txnToPayload } from "./mutate";
+import { txnToDuplicatePayload, txnToPayload } from "./mutate";
 
 const ACC = crypto.randomUUID();
 const ENV1 = crypto.randomUUID();
@@ -33,6 +33,7 @@ const splitTxn = (): Transaction => ({
   name: "Zakupy",
   note: "z paragonu",
   tag: "merchant:biedronka",
+  sourceRef: "BIEDRONKA 123 POZNAN",
   items: [
     { id: "item-a", envelopeId: ENV1, categoryId: null, amount: 2000 },
     { id: "item-b", envelopeId: ENV2, categoryId: CAT1, amount: 3000 },
@@ -56,6 +57,7 @@ describe("txnToPayload (pure mapping)", () => {
       name: "Zakupy",
       note: "z paragonu",
       tag: "merchant:biedronka",
+      sourceRef: "BIEDRONKA 123 POZNAN",
       items: [
         { envelopeId: ENV1, categoryId: null, amount: 2000 },
         { envelopeId: ENV2, categoryId: CAT1, amount: 3000 },
@@ -70,5 +72,13 @@ describe("txnToPayload (pure mapping)", () => {
     expect(p.items).toEqual([]);
     expect(p.envelopeId).toBe(ENV1);
     expect(p.categoryId).toBe(CAT1);
+  });
+
+  it("a user duplicate clears both import identifiers", () => {
+    expect(txnToDuplicatePayload(splitTxn(), "2026-08-14")).toMatchObject({
+      date: "2026-08-14",
+      tag: null,
+      sourceRef: null,
+    });
   });
 });

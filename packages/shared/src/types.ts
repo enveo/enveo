@@ -77,6 +77,7 @@ export interface Transaction {
   name: string | null; // short transaction name (list title)
   note: string | null; // longer note (separate from the name)
   tag: string | null; // normalized merchant tag (import idempotency key)
+  sourceRef: string | null; // raw import description; replicated so E2EE can learn from corrections locally
   items: TxnItem[]; // [] when not a split
   createdAt: string;
 }

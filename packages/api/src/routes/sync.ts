@@ -516,8 +516,7 @@ syncRoutes.post("/sync/push", async (c) => {
    (FK-safe order) → INSERT all entities PRESERVING ids (transactions also
    createdAt/tag). Allocation and split-item ids are NOT preserved (they may be
    synthetic from offline mode — the server assigns uuids).
-   Transactions' source_ref/external_id are NOT in ClientLedger → a known,
-   accepted loss (import matching starts from zero after restore).
+   Transactions' source_ref is replicated and restored; external_id remains server-only.
 
    An empty ledger = a clean server wipe (used by "local only" mode).
    Returns { budgetId, cursor } — the client sets this cursor locally (server ==
@@ -609,7 +608,8 @@ async function insertLedger(x: Executor, budgetId: string, ledger: ClientLedgerI
         categoryId: t.categoryId,
         name: t.name,
         note: t.note,
-        tag: t.tag, // preserved (it is in ClientLedger); source_ref/external_id are not
+        tag: t.tag,
+        sourceRef: t.sourceRef,
         createdAt: t.createdAt,
       })),
     );

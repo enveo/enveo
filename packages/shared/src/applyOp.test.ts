@@ -41,6 +41,7 @@ describe("applyOp: txn.create", () => {
       amount: 30_00,
       date: "2026-06-05",
       envelopeId: "E1",
+      sourceRef: "LIDL 123 WARSZAWA",
       createdAt: "2026-06-05T10:00:00.000Z",
     });
     expect(next.transactions.map((t) => t.id)).toEqual(["T0", "T1"]); // appended
@@ -58,6 +59,7 @@ describe("applyOp: txn.create", () => {
       name: null,
       note: null,
       tag: null,
+      sourceRef: "LIDL 123 WARSZAWA",
       items: [],
       createdAt: "2026-06-05T10:00:00.000Z",
     });
@@ -129,11 +131,12 @@ describe("applyOp: txn.update", () => {
       amount: 30_00,
       note: "stara notatka",
       tag: "LIDL",
+      sourceRef: "LIDL 123 WARSZAWA",
       createdAt: "2026-06-01T08:00:00.000Z",
       items: [{ id: "srv-item-1", envelopeId: "E1", categoryId: null, amount: 30_00 }],
     });
 
-  it("full field replacement: fields missing from the payload revert to defaults (except tag/createdAt)", () => {
+  it("full field replacement: fields missing from the payload revert to defaults (except import metadata/createdAt)", () => {
     const l = { ...base(), transactions: [existing()] };
     const next = apply(l, "txn.update", {
       id: "T1",
@@ -157,6 +160,7 @@ describe("applyOp: txn.update", () => {
       name: null,
       note: null, // full replacement — a field not sent = null
       tag: "LIDL", // tag undefined → kept
+      sourceRef: "LIDL 123 WARSZAWA", // sourceRef undefined → kept for correction learning
       items: [], // delete+reinsert: payload without items ⇒ empty
       createdAt: "2026-06-01T08:00:00.000Z", // NEVER changed
     });
@@ -177,6 +181,23 @@ describe("applyOp: txn.update", () => {
     expect(upd(undefined)).toBe("LIDL");
     expect(upd(null)).toBeNull();
     expect(upd("BIEDRONKA")).toBe("BIEDRONKA");
+  });
+
+  it("sourceRef: null overwrites, a value overwrites, undefined keeps", () => {
+    const l = { ...base(), transactions: [existing()] };
+    const upd = (sourceRef: string | null | undefined) =>
+      apply(l, "txn.update", {
+        id: "T1",
+        type: "expense",
+        accountId: "A1",
+        amount: 30_00,
+        date: "2026-06-01",
+        envelopeId: "E1",
+        ...(sourceRef !== undefined ? { sourceRef } : {}),
+      }).transactions[0]!.sourceRef;
+    expect(upd(undefined)).toBe("LIDL 123 WARSZAWA");
+    expect(upd(null)).toBeNull();
+    expect(upd("BIEDRONKA RAW")).toBe("BIEDRONKA RAW");
   });
 
   it("items: delete+reinsert with fresh synthetic ids", () => {

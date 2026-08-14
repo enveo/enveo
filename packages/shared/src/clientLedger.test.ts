@@ -38,6 +38,7 @@ function fullLedger(): ClientLedger {
         name: "Zakupy",
         note: null,
         tag: null,
+        sourceRef: "LIDL POZNAN 123",
         items: [
           { id: "item-local:7:0", envelopeId: U(3), categoryId: U(4), amount: 100 },
           { id: "item-local:7:1", envelopeId: U(3), categoryId: null, amount: 200 },
@@ -100,6 +101,14 @@ describe("clientLedgerSchema", () => {
     const l = fullLedger();
     l.transactions[0]!.items = [];
     expect(clientLedgerSchema.safeParse(l).success).toBe(true);
+  });
+
+  test("sourceRef round-trips, while an old backup without it defaults to null", () => {
+    const current = clientLedgerSchema.parse(fullLedger());
+    expect(current.transactions[0]!.sourceRef).toBe("LIDL POZNAN 123");
+    const old = fullLedger() as unknown as { transactions: Array<Record<string, unknown>> };
+    delete old.transactions[0]!.sourceRef;
+    expect(clientLedgerSchema.parse(old).transactions[0]!.sourceRef).toBeNull();
   });
 
   test("a pre-flag envelope without isSavings parses to false, never undefined (flag = only savings signal)", () => {
