@@ -47,9 +47,7 @@ function requireDeps(): TransportDeps {
  * A 401 from ANY channel (cycle, boot, or an out-of-cycle write such as /sync/replace,
  * /sync2/reset, Settings → E2EE): route the app to the Login screen (enterUnauthed) and hand
  * the caller the error to throw. Callers that do NOT go through doCycle used to let the raw
- * "unauthorized: 401" bubble into an error label, which is a dead end on a device in local
- * mode "wiped": boot never touches the network there, so BootStatus stays "ready" and the
- * Login screen was unreachable — while the local replica is the ONLY copy of the budget.
+ * "unauthorized: 401" bubble into an error label instead of making Login reachable.
  */
 export function unauthorized(): UnauthorizedError {
   requireDeps().enterUnauthed();
@@ -441,8 +439,8 @@ export async function fetchServerE2eeIdentity(): Promise<{ budgetId: string | nu
  * on !ok — the whole server operation is atomic (either the entire replace or nothing).
  */
 async function replaceServer(ledger: ClientLedger): Promise<{ budgetId: string; cursor: number }> {
-  // MULTI-TENANT GUARD — /sync/replace is reachable OUTSIDE a cycle ("disable local mode"
-  // uploads the mirror, "delete server data" wipes it, a JSON import replaces it), so the
+  // MULTI-TENANT GUARD — /sync/replace is reachable OUTSIDE a cycle (a JSON import replaces
+  // the mirror), so the
   // check cannot live in doCycle alone: replacing ANOTHER account's budget with this replica
   // is the worst write of all. The verdict for an already-verified session is reused, so
   // inside a cycle this costs one cheap /api/auth/get-session.
@@ -468,11 +466,6 @@ async function replaceServer(ledger: ClientLedger): Promise<{ budgetId: string; 
   return (await res.json()) as { budgetId: string; cursor: number };
 }
 
-/** Delete the budget's data on the server (empty replace). Does NOT touch the local mirror. */
-export async function wipeServer(): Promise<void> {
-  await replaceServer(EMPTY_LEDGER);
-}
-
 /**
  * Upload the ENTIRE local mirror to the server (server := local). On success: the queue is
  * moot (outbox.clearAll — server == local), cursor := the returned maxSeq
@@ -482,13 +475,12 @@ export async function wipeServer(): Promise<void> {
  */
 export async function pushLocalToServer(): Promise<void> {
   const ledger = store.getLedger();
-  // Error CODES, never prose: this is reachable from the UI (backup import, disable local mode)
+  // Error CODES, never prose: this is reachable from the UI (backup import)
   // and lib/api.ts owns the wording in every locale (ERROR_KEYS → apiErrorMessage).
   if (!ledger) throw new Error("no_local_replica");
   // Nothing to upload, everything to lose: an empty replica bound to no budget can only wipe the
-  // session user's budget (see isEmptyUnboundReplica). Refuse — the callers that can legitimately
-  // reach this state (disableLocal) resume a normal sync instead, and "delete server data"
-  // (enableWiped) goes through replaceServer directly, so a DELIBERATE empty replace still works.
+  // session user's budget (see isEmptyUnboundReplica). Refuse rather than turning an empty,
+  // unbound client state into a destructive full-budget replacement.
   if (isEmptyUnboundReplica()) throw new Error("empty_unbound_replica");
   const { budgetId, cursor } = await replaceServer(ledger);
   outbox.clearAll(); // server == local → queued ops are already reflected

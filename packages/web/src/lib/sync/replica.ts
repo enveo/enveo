@@ -36,7 +36,7 @@ export function e2eeReplicaBudgetId(): string {
  * An EMPTY replica that is bound to NO budget: it carries no data and names no server budget, so
  * it can prove nothing and restore nothing — the only thing a full-budget replace built from it
  * can do is DESTROY the session user's budget. It is reachable: "Clear local data" while in local
- * mode leaves exactly this (bootLocalReady puts an EMPTY_LEDGER with no budgetId in place), and
+ * a cleared replica can leave exactly this, and
  * so does the discard of a foreign replica.
  */
 export function isEmptyUnboundReplica(): boolean {

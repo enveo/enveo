@@ -15,8 +15,8 @@
  * NOTHING is destroyed unattended. Only the userId STAMP can prove a replica FOREIGN, and even
  * that verdict merely BLOCKS every server write and hands the decision to the human (BootStatus
  * "foreign" → ForeignReplicaScreen: export a backup / remove and continue): the replica can be
- * the last copy of that budget (local mode "wiped" deleted the server's), and a user id does not
- * survive a server rebuild (same e-mail, new uuid). A failed proof for an UNSTAMPED replica — a
+ * the last copy of that budget, and a user id does not survive a server rebuild (same e-mail,
+ * new uuid). A failed proof for an UNSTAMPED replica — a
  * budgetId that differs, a checkpoint its DEK cannot open — is merely inconclusive (budgetId is
  * the epoch marker and the session's budget may have just been lazily created), so it refuses
  * every write too. And an UNBOUND replica (no budgetId at all) is adopted only where adoption
@@ -38,13 +38,10 @@ import {
   __resetBackoff,
   __resetIdentity,
   __resetObligations,
-  __setLocalMode,
   assertOwnReplica,
-  disableLocal,
   discardLocalReplica,
   enterLoginKeepingReplica,
   flushOutboxForSignOut,
-  getLocalMode,
   getSyncStatus,
   hasPendingE2eeUpgrade,
   markReplacePending,
@@ -307,7 +304,6 @@ beforeEach(async () => {
   __resetIdentity();
   __resetObligations();
   __resetBackoff();
-  __setLocalMode("off");
   outbox.clearAll();
   e2ee.__resetDekForTests();
   e2ee.clearDek();
@@ -385,8 +381,7 @@ describe("sync cycle: session guard before the push", () => {
     expect(store.getBootStatus()).toBe("ready");
   });
 
-  it("only the human's explicit choice destroys a foreign replica (and it clears local mode)", async () => {
-    __setLocalMode("wiped"); // the previous owner's choice — the server holds nothing of theirs
+  it("only the human's explicit choice destroys a foreign replica", async () => {
     await idbPut("meta", "user-A", "userId");
     outbox.add(catOp());
     session = { user: { id: "user-B" } };
@@ -399,9 +394,6 @@ describe("sync cycle: session guard before the push", () => {
     expect(await idbGet("meta", "ledger")).toBeUndefined(); // now, and only now, it is gone
     expect(await idbGet("meta", "userId")).toBeUndefined();
     expect(outbox.size()).toBe(0);
-    // The local-mode flag was the PREVIOUS owner's: left at "wiped", B would boot network-free on
-    // an empty unbound replica and "Disable local mode" would upload it over B's server budget.
-    expect(getLocalMode()).toBe("off");
   });
 
   it("same account → the cycle runs and the owner stamp is (re)written", async () => {
@@ -418,6 +410,25 @@ describe("sync cycle: session guard before the push", () => {
     expect(store.getBootStatus()).toBe("ready");
   });
 
+  it("an offline attempt keeps the outbox and a later trigger retries it", async () => {
+    await idbPut("meta", "user-A", "userId");
+    const op = catOp();
+    outbox.add(op);
+    session = { user: { id: "user-A" } };
+    offline = true;
+
+    await syncNow("offline-attempt");
+
+    expect(outbox.snapshot().map((queued) => queued.op.opId)).toEqual([op.opId]);
+    expect(wrote(BUDGET_A)).toEqual([]);
+
+    offline = false;
+    await syncNow("online-trigger");
+
+    expect(outbox.size()).toBe(0);
+    expect(wrote(BUDGET_A)).toContain(op.opId);
+  });
+
   it("syncs an offline account preference only after the replica owner is verified", async () => {
     await idbPut("meta", "user-A", "userId");
     session = { user: { id: "user-A" } };
@@ -431,7 +442,7 @@ describe("sync cycle: session guard before the push", () => {
     expect(accountPreferences.getCacheForTests()?.dirty).toEqual({});
   });
 
-  it("server replace outside a cycle (disable local mode) is guarded too", async () => {
+  it("server replace outside a cycle is guarded too", async () => {
     await idbPut("meta", "user-A", "userId");
     session = { user: { id: "user-B" } };
 
@@ -439,34 +450,6 @@ describe("sync cycle: session guard before the push", () => {
     expect(called("/api/sync/replace")).toBe(false);
     expect(store.getBootStatus()).toBe("foreign");
     expect(await idbGet("meta", "ledger")).toBeDefined(); // …and A's data is still here
-  });
-});
-
-/* ── The foreign verdict must not destroy the LAST copy of a budget ──────
- *
- * In local mode "wiped" the server data was deliberately deleted, so the IDB replica is the ONLY
- * copy — and the mode makes boot skip the network entirely, so the foreign replica surfaces only
- * when someone taps "Disable local mode". Wiping there (the first cut of this guard did) destroys
- * the budget outright: local gone, server empty by design. The same holds for a self-hoster who
- * rebuilt their server and got a NEW user id for the same e-mail — the "foreign" stamp is then a
- * false positive over the very data the rebuild is meant to recover. */
-
-describe("sync: a foreign replica in local mode 'wiped' (the only copy left)", () => {
-  it("'Disable local mode' as another user destroys nothing — it blocks and asks", async () => {
-    __setLocalMode("wiped"); // A deleted the server copy; IDB holds the only one
-    await idbPut("meta", "user-A", "userId");
-    outbox.add(catOp());
-    session = { user: { id: "user-B" } }; // A's cookie lapsed; B signed in on the shared device
-
-    await expect(disableLocal()).rejects.toThrow(); // "foreign" → refused
-
-    expect(called("/api/sync/replace")).toBe(false); // A's ledger does NOT overwrite B's budget
-    expect(store.getBootStatus()).toBe("foreign"); // …the human is asked what to do with it
-    expect(reloads).toBe(0);
-    expect(getLocalMode()).toBe("wiped"); // still A's mode — nothing was silently switched
-    await persist.flushed();
-    expect(await idbGet("meta", "ledger")).toBeDefined(); // the LAST copy of A's budget survives
-    expect(outbox.size()).toBe(1);
   });
 });
 
@@ -541,7 +524,7 @@ describe("sync cycle: replica with no owner stamp", () => {
     expect(called("/api/sync/replace")).toBe(false); // B's budget is NOT overwritten
   });
 
-  it("pushLocalToServer (import / disable local mode) proves ownership as well", async () => {
+  it("pushLocalToServer (backup import) proves ownership as well", async () => {
     session = { user: { id: "user-B" } };
     serverBudget = BUDGET_B;
 
@@ -566,15 +549,14 @@ describe("sync cycle: replica with no owner stamp", () => {
  *
  * "No budgetId" points at no account — neither this one nor another. Adopting it authorizes
  * /sync/replace, which WIPES the session user's budget and re-inserts this replica; such a
- * replica is reachable ("Clear local data" in local mode leaves exactly an empty unbound one, and
- * an offline start then fills it with data), so the proof must be about what a wrong answer would
+ * replica is reachable after local data is cleared and an offline start fills it again, so the
+ * proof must be about what a wrong answer would
  * COST: an empty session budget has nothing to lose, one that holds data has everything. */
 
 describe("sync: an UNBOUND replica (no budgetId)", () => {
   it("is refused against a session budget that HOLDS DATA (no cross-tenant overwrite)", async () => {
-    // The chain: A's device, "Clear local data" while in local mode (mirror + owner stamp gone,
-    // budgetId with them), data created offline again → an unbound, unstamped, NON-empty replica.
-    // A's session lapses, B signs in, B taps "Disable local mode" → pushLocalToServer.
+    // The chain: A's device clears its mirror, owner stamp and budgetId, then creates data offline
+    // again → an unbound, unstamped, NON-empty replica. A's session lapses and B signs in.
     store.replace(nonEmptyLedger(), 0, ""); // data bound to no budget, stamped by nobody
     await persist.persistLedger(store.snapshotForPersist());
     session = { user: { id: "user-B" } };
@@ -599,23 +581,6 @@ describe("sync: an UNBOUND replica (no budgetId)", () => {
     expect(wrote(BUDGET_A)).toEqual(["replace"]); // the offline data lands in the empty budget
     await persist.flushed();
     expect(await idbGet<string>("meta", "userId")).toBe("user-B");
-  });
-
-  it("'Disable local mode' on an EMPTY unbound replica never replaces the server with nothing", async () => {
-    // The chain the foreign-wipe used to open: IDB cleared (mirror + stamp gone) while the mode
-    // was on → bootLocalReady puts an EMPTY_LEDGER with no budgetId in place → the user signs in
-    // → "Disable local mode" would upload THAT over the session user's whole budget.
-    __setLocalMode("wiped");
-    await clearLocalData();
-    store.replace(emptyLedger(), 0, ""); // exactly what bootLocalReady leaves behind
-    session = { user: { id: "user-B" } };
-    serverHasData = true; // B's budget is full of B's data
-
-    await disableLocal();
-
-    expect(called("/api/sync/replace")).toBe(false); // B's budget survives untouched
-    expect(getLocalMode()).toBe("off"); // …and the device leaves local mode anyway
-    expect(reloads).toBe(1); // boot bootstraps B's data from the server
   });
 });
 
@@ -789,18 +754,6 @@ describe("sync status: ownerUnproven is sticky across the re-proof", () => {
     expect(getSyncStatus().ownerUnproven).toBe(false);
     expect(getSyncStatus().state).toBe("unauthed");
   });
-
-  it("clears in local mode — there sync is off by the user's own choice", async () => {
-    session = { user: { id: "user-owner" } };
-    serverBudget = BUDGET_B;
-    await syncNow("test");
-    expect(getSyncStatus().ownerUnproven).toBe(true);
-
-    __setLocalMode("paused"); // "Work offline": the local-mode text explains the silence instead
-
-    expect(getSyncStatus().ownerUnproven).toBe(false);
-    expect(getSyncStatus().state).toBe("local");
-  });
 });
 
 /* ── The session can also change BETWEEN two batches of ONE push loop ────
@@ -904,9 +857,7 @@ describe("sync pull: a resync never replaces the mirror on an unverified session
  *
  * boot() hydrates from IDB and sets BootStatus "ready" BEFORE the first cycle runs, so the guard
  * that protects writes cannot protect the screen. The ways a device changes hands are routine (a
- * 90-day cookie expires → Login; sign-out keeps the replica → Login; the next account signs in),
- * and in local mode doCycle bails before ensureIdentity ever runs — there the window would never
- * close at all. */
+ * 90-day cookie expires → Login; sign-out keeps the replica → Login; the next account signs in). */
 
 describe("sync boot: the replica's owner is checked BEFORE it is rendered", () => {
   it("another account signed in → ForeignReplicaScreen, not the previous owner's budget", async () => {
@@ -963,33 +914,6 @@ describe("sync boot: the replica's owner is checked BEFORE it is rendered", () =
     await syncNow("drain"); // join the cycle boot fired, so its backoff timer is deterministic
 
     expect(store.getBootStatus()).toBe("ready");
-  });
-
-  it("LOCAL MODE + another account → foreign (no cycle ever runs there to catch it)", async () => {
-    // doCycle bails on `localMode !== "off"` BEFORE the identity checks, so without the boot-time
-    // guard the previous owner's budget would simply BE the app — permanently.
-    __setLocalMode("paused");
-    await idbPut("meta", "user-A", "userId");
-    session = { user: { id: "user-B" } };
-
-    await retryBoot();
-
-    expect(store.getBootStatus()).toBe("foreign");
-    expect(await idbGet("meta", "ledger")).toBeDefined(); // …blocked, not destroyed
-  });
-
-  it("LOCAL MODE + no session → the replica still boots (the server may be gone for good)", async () => {
-    // Mode "wiped" DELETED the server's copy on purpose: IDB holds the only one. Forcing Login
-    // (the normal-mode answer) would lock the owner out of their own budget. Nobody else is
-    // claiming the device either — a sign-in needs the server.
-    __setLocalMode("wiped");
-    await idbPut("meta", "user-A", "userId");
-    session = null;
-
-    await retryBoot();
-
-    expect(store.getBootStatus()).toBe("ready");
-    expect(called("/api/sync/snapshot")).toBe(false); // still no data egress in local mode
   });
 });
 
@@ -1382,10 +1306,8 @@ describe("sync e2ee v2: DEK lifecycle across an epoch change", () => {
 
 describe("sync: 401 on an out-of-cycle write routes to Login", () => {
   it("pushLocalToServer with no session → BootStatus unauthed (not a raw error string)", async () => {
-    // The 2.0 upgrade path of a device in local mode "wiped": the server data was deliberately
-    // deleted, so the IDB replica is the ONLY copy — and boot in local mode makes NO network
-    // call, so nothing else can put the Login screen on screen. Without this, "Disable local
-    // mode" ends in "unauthorized: 401" and the only offered remedy destroys the sole copy.
+    // An out-of-cycle full replacement must classify 401 exactly like the regular cycle so the
+    // app reaches Login while retaining the local replica and queued work.
     session = null;
     await idbPut("meta", "user-A", "userId");
 

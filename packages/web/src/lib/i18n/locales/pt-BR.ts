@@ -111,7 +111,6 @@ export const ptBR: Dict = {
   Change: "Alterar",
   "Change encryption password": "Alterar a senha de criptografia",
   "Change password": "Alterar a senha",
-  "Changes are saved locally and will be sent after you resume.": "As mudanças são salvas localmente e serão enviadas quando você retomar.",
   "Changing…": "Alterando…",
   "Check again": "Verificar de novo",
   "Checking which models your key can use…": "Verificando quais modelos sua chave pode usar…",
@@ -124,8 +123,6 @@ export const ptBR: Dict = {
   "Clear & reset": "Limpar e redefinir",
   "Clear filters": "Limpar os filtros",
   "Clear local data": "Apagar os dados locais",
-  "Clear local data? In local mode, unsent changes will be lost permanently. Make a backup first (Export). Continue?":
-    "Apagar os dados locais? No modo local, as mudanças não enviadas serão perdidas para sempre. Faça um backup antes (Exportar). Continuar?",
   "Clear local data? We will delete the local copy on this device and download everything anew from the server. Changes still waiting in the queue will be lost.":
     "Apagar os dados locais? Vamos excluir a cópia local deste dispositivo e baixar tudo de novo do servidor. As mudanças ainda na fila serão perdidas.",
   "Clear search": "Limpar a busca",
@@ -153,15 +150,10 @@ export const ptBR: Dict = {
   "Custom color": "Cor personalizada",
   "Custom envelope…": "Envelope personalizado…",
   "Custom profiles are stored only on this device.": "Os perfis personalizados ficam guardados apenas neste dispositivo.",
-  "Cut the app off from the server. Choose how: work offline (server data stays) or keep your data only on this device.":
-    "Desconecte o app do servidor. Escolha como: trabalhar offline (os dados do servidor continuam lá) ou manter seus dados só neste dispositivo.",
-  DELETE: "EXCLUIR",
   "DISABLE-E2EE": "DESATIVAR-E2EE",
   Dark: "Escuro",
   Data: "Dados",
   Delete: "Excluir",
-  "Delete data from server": "Excluir os dados do servidor",
-  "Delete data from the server?": "Excluir os dados do servidor?",
   "Delete everything and start fresh": "Excluir tudo e começar do zero",
   "Delete everything and start over": "Excluir tudo e começar de novo",
   "Delete group": "Excluir o grupo",
@@ -174,7 +166,6 @@ export const ptBR: Dict = {
     "Exclui TODOS os dados do orçamento do servidor e deste dispositivo — irreversível. Exporte um backup antes. O app reabrirá com o assistente inicial.",
   "Deletes the local copy on this device and downloads everything anew from the server. Use when something looks off.":
     "Exclui a cópia local deste dispositivo e baixa tudo de novo do servidor. Use quando algo parecer errado.",
-  "Deleting from server…": "Excluindo do servidor…",
   "Deleting…": "Excluindo…",
   "Describe how to distribute (e.g. prioritize savings, less on entertainment)": "Descreva como distribuir (ex.: priorizar poupança, menos em lazer)",
   "Destination account": "Conta de destino",
@@ -195,8 +186,6 @@ export const ptBR: Dict = {
   "Download everything anew": "Baixar tudo de novo",
   "Download everything anew from the server? We will replace the local copy with the current server state. Unsent changes in the queue will be kept and pushed.":
     "Baixar tudo de novo do servidor? Vamos substituir a cópia local pelo estado atual do servidor. As mudanças não enviadas que estão na fila serão mantidas e enviadas.",
-  "Downloads all your data as a file. Keep a backup, especially in local mode.":
-    "Baixa todos os seus dados como um arquivo. Guarde um backup, principalmente no modo local.",
   "Drag {name}": "Arrastar {name}",
   Duplicate: "Duplicar",
   "Duplicates skipped: {n}": "Duplicadas ignoradas: {n}",
@@ -209,7 +198,6 @@ export const ptBR: Dict = {
   "Edit names in place; drag the handle to reorder": "Edite os nomes no lugar; arraste a alça para reordenar",
   Email: "E-mail",
   "Enable AI assistance?": "Ativar a assistência da IA?",
-  "Enable and delete server data": "Ativar e excluir os dados do servidor",
   "Enable end-to-end encryption": "Ativar a criptografia de ponta a ponta",
   "Enable via server": "Ativar pelo servidor",
   "Enabled — the server stores only encrypted data and never knows your password or key.":
@@ -267,8 +255,6 @@ export const ptBR: Dict = {
   "Install app": "Instalar o app",
   "Invalid pairing code.": "Código de pareamento inválido.",
   Investor: "Investidor",
-  "Irreversibly deletes data from the server; other devices will lose access. Make a backup first (Export).":
-    "Exclui os dados do servidor de forma irreversível; os outros dispositivos perdem o acesso. Faça um backup antes (Exportar).",
   "Item total: {sum} / {total}": "Total dos itens: {sum} / {total}",
   Language: "Idioma",
   "Last launch": "Último início",
@@ -281,9 +267,6 @@ export const ptBR: Dict = {
   "Load backup (JSON)": "Carregar backup (JSON)",
   "Loading sample data…": "Carregando dados de exemplo…",
   "Loading…": "Carregando…",
-  "Local mode": "Modo local",
-  "Local mode — data deleted from server. Tap to open settings": "Modo local — dados excluídos do servidor. Toque para abrir as configurações",
-  "Local mode — sync paused. Tap to open settings": "Modo local — sincronização pausada. Toque para abrir as configurações",
   "Losing the password means losing your data — the server cannot reset it or decrypt your budget.":
     "Perder a senha é perder os dados — o servidor não consegue redefini-la nem descriptografar seu orçamento.",
   "Lowest cost — a typical screenshot import costs a fraction of a cent.":
@@ -354,7 +337,6 @@ export const ptBR: Dict = {
   "Passwords do not match.": "As senhas não coincidem.",
   "Paste the pairing code shown on another unlocked device (Settings → Pairing code).":
     "Cole o código de pareamento exibido em um dispositivo confiável (Configurações → Código de pareamento).",
-  "Paused — local mode.": "Pausado — modo local.",
   "People & pets": "Pessoas e pets",
   "Persistent storage": "Armazenamento persistente",
   "Pick an envelope…": "Escolha um envelope…",
@@ -385,10 +367,7 @@ export const ptBR: Dict = {
   Reports: "Relatórios",
   "Requires AI (server mode or your own key).": "Requer IA (modo servidor ou chave própria).",
   Restore: "Restaurar",
-  "Resume it in the “Advanced” section.": "Retome-a na seção “Avançado”.",
-  "Resume sync? Local changes will be sent to the server.": "Retomar a sincronização? As mudanças locais serão enviadas ao servidor.",
   "Resume upgrade": "Retomar a atualização",
-  "Resuming…": "Retomando…",
   SPENT: "GASTO",
   Save: "Salvar",
   "Save changes": "Salvar as mudanças",
@@ -400,8 +379,6 @@ export const ptBR: Dict = {
   "Screenshots ({n}/6)": "Capturas de tela ({n}/6)",
   "Search...": "Buscar...",
   Server: "Servidor",
-  "Server connection": "Conexão com o servidor",
-  "Server data has been deleted.": "Os dados do servidor foram excluídos.",
   "Server sync": "Sincronização com o servidor",
   "Server temporarily unreachable — your data is safe, we will retry.":
     "Servidor temporariamente inacessível — seus dados estão seguros, vamos tentar de novo.",
@@ -440,10 +417,6 @@ export const ptBR: Dict = {
   Summary: "Resumo",
   Sync: "Sincronização",
   "Sync in progress": "Sincronização em andamento",
-  "Sync is paused. Changes are saved locally and will be sent once you resume. Server data stays intact.":
-    "A sincronização está pausada. As mudanças são salvas localmente e serão enviadas quando você retomar. Os dados do servidor ficam intactos.",
-  "Sync is paused. Changes will be saved locally and sent once you resume. Server data stays intact.":
-    "A sincronização está pausada. As mudanças serão salvas localmente e enviadas quando você retomar. Os dados do servidor ficam intactos.",
   "Sync now": "Sincronizar agora",
   "Syncing…": "Sincronizando…",
   "Tap {action} to continue": "Toque em {action} para continuar",
@@ -572,7 +545,6 @@ export const ptBR: Dict = {
   Transport: "Transporte",
   "Try again": "Tentar de novo",
   "Try it with sample data": "Testar com dados de exemplo",
-  "Turn off local mode": "Desligar o modo local",
   "Type or pick a category...": "Digite ou escolha uma categoria...",
   "Type {word} to confirm:": "Digite {word} para confirmar:",
   Unlock: "Desbloquear",
@@ -587,19 +559,11 @@ export const ptBR: Dict = {
   Utilities: "Serviços",
   "WARNING: IndexedDB unavailable — data is kept only in session memory (it will not survive closing the app).":
     "AVISO: IndexedDB indisponível — os dados ficam apenas na memória da sessão (não sobrevivem ao fechamento do app).",
-  "WARNING: in local mode this data exists ONLY on this device (the server is empty). Clearing it will delete it permanently. Make a backup first (Export). Continue?":
-    "AVISO: no modo local estes dados existem SÓ neste dispositivo (o servidor está vazio). Apagá-los os elimina para sempre. Faça um backup antes (Exportar). Continuar?",
-  "We will irreversibly erase all data from the server — this cannot be undone from the app. Other devices will lose access. Your data will remain only on this device. Make a backup first (Export).":
-    "Vamos apagar todos os dados do servidor de forma irreversível — não dá para desfazer isso pelo app. Os outros dispositivos perdem o acesso. Seus dados vão ficar só neste dispositivo. Faça um backup antes (Exportar).",
-  "We will send pending changes and resume sync. Server data is untouched.":
-    "Vamos enviar as mudanças pendentes e retomar a sincronização. Os dados do servidor não são tocados.",
   "We will send them once the server is reachable.": "Vamos enviá-las assim que o servidor estiver acessível.",
-  "We will send your local data back to the server and resume sync.": "Vamos enviar seus dados locais de volta ao servidor e retomar a sincronização.",
   Weak: "Fraca",
   Wealth: "Patrimônio",
   "Wealth envelope (savings/investments)": "Envelope de patrimônio (poupança/investimentos)",
   "Welcome to Enveo": "Boas-vindas ao Enveo",
-  "Work offline": "Trabalhar offline",
   "Wrong email or password.": "E-mail ou senha incorretos.",
   "Wrong encryption password.": "Senha de criptografia incorreta.",
   Yes: "Sim",
@@ -608,8 +572,6 @@ export const ptBR: Dict = {
   "You are offline — screenshot import needs a connection. Manual entry works without one.":
     "Você está offline — a importação de capturas precisa de conexão. A entrada manual funciona sem ela.",
   "Your budget is tied to your account. Sign in to continue.": "Seu orçamento está vinculado à sua conta. Entre para continuar.",
-  "Your data now lives only on this device. Make a backup (Export) — it is the only way not to lose it.":
-    "Seus dados agora existem só neste dispositivo. Faça um backup (Exportar) — é o único jeito de não perdê-los.",
   "Your data will be decrypted and stored on the server in plain form (as before enabling). Make sure you have a current backup.":
     "Seus dados serão descriptografados e guardados no servidor em texto claro (como antes de ativar). Confira se você tem um backup atual.",
   "Your envelopes": "Seus envelopes",
@@ -619,9 +581,7 @@ export const ptBR: Dict = {
   "backup, end-to-end encryption, account": "backup, criptografia de ponta a ponta, conta",
   "cancel split": "cancelar a divisão",
   dark: "escuro",
-  "data deleted from server": "dados excluídos do servidor",
   details: "detalhes",
-  "device storage, local mode, reset": "armazenamento do dispositivo, modo local, redefinição",
   discreet: "discreto",
   "e.g. 5000": "ex.: 5000",
   "e.g. Checking": "ex.: Conta corrente",
@@ -632,12 +592,10 @@ export const ptBR: Dict = {
   "funded ✓": "financiado ✓",
   income: "receita",
   "just now": "agora mesmo",
-  "local mode": "modo local",
   "m/m": "m/m",
   "new password for all devices": "nova senha para todos os dispositivos",
   "not yet": "ainda não",
   off: "desligada",
-  offline: "offline",
   "over by {amount}": "estourou {amount}",
   "own key": "chave própria",
   "probable duplicate": "provável duplicada",
@@ -657,18 +615,12 @@ export const ptBR: Dict = {
   today: "hoje",
   unknown: "desconhecido",
   "unlock the budget on a new device without the password": "desbloquear o orçamento em um dispositivo novo sem a senha",
-  "work offline or keep data only on this device": "trabalhar offline ou manter os dados só neste dispositivo",
   yesterday: "ontem",
   "{amount} from the previous month": "{amount} do mês anterior",
   "{amount} left": "sobram {amount}",
   "{amount} stays in “To be budgeted”.": "{amount} ficam em “A orçar”.",
   "{amount} to go": "faltam {amount}",
   "{n} OK": "{n} OK",
-  "{n} change is waiting locally. | {n} changes are waiting locally.": {
-    one: "{n} mudança esperando localmente.",
-    many: "{n} mudanças esperando localmente.",
-    other: "{n} mudanças esperando localmente.",
-  },
   "{n} change is waiting to be sent | {n} changes are waiting to be sent": {
     one: "{n} mudança esperando para ser enviada",
     many: "{n} mudanças esperando para ser enviadas",

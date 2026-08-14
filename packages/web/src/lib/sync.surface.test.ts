@@ -13,31 +13,24 @@ import {
   __resetBackoff,
   __resetIdentity,
   __resetObligations,
-  __setLocalMode,
   assertOwnReplica,
   type BootSource,
   bootOnce,
   broadcastKeysChanged,
   decideIdentity,
-  disableLocal,
   discardLocalReplica,
   discardPendingE2eeUpgrade,
   E2eeUpgradeRequiredError,
   EMPTY_LEDGER,
-  enablePaused,
-  enableWiped,
   enterLoginKeepingReplica,
   fetchSnapshot,
   flushOutboxForSignOut,
   fullResync,
   getClientId,
   getLastBootSource,
-  getLocalMode,
   getSyncStatus,
   hasPendingE2eeUpgrade,
   type IdentityVerdict,
-  isLocalOnly,
-  type LocalMode,
   markReplacePending,
   type PendingE2eeUpgrade,
   poke,
@@ -58,8 +51,6 @@ import {
 /* ── Value signatures (a changed parameter or return type is a compile error) ── */
 
 const _getClientId: () => Promise<string> = getClientId;
-const _getLocalMode: () => LocalMode = getLocalMode;
-const _isLocalOnly: () => boolean = isLocalOnly;
 const _emptyLedger: ClientLedger = EMPTY_LEDGER;
 const _getLastBootSource: () => BootSource = getLastBootSource;
 const _getSyncStatus: () => SyncStatus = getSyncStatus;
@@ -71,7 +62,6 @@ const _decideIdentity: (sessionUserId: string | null, stamped: string | undefine
 const _resetIdentity: () => void = __resetIdentity;
 const _resetObligations: () => void = __resetObligations;
 const _resetBackoff: () => void = __resetBackoff;
-const _setLocalMode: (mode: LocalMode) => void = __setLocalMode;
 const _discardLocalReplica: () => Promise<void> = discardLocalReplica;
 const _enterLoginKeepingReplica: () => void = enterLoginKeepingReplica;
 const _flushOutboxForSignOut: () => Promise<number> = flushOutboxForSignOut;
@@ -84,9 +74,6 @@ const _resetServerE2ee: (dek?: Uint8Array) => Promise<void> = resetServerE2ee;
 const _hasPendingE2eeUpgrade: () => Promise<boolean> = hasPendingE2eeUpgrade;
 const _discardPendingE2eeUpgrade: () => Promise<void> = discardPendingE2eeUpgrade;
 const _upgradeServerE2eeV2: (password: string | null) => Promise<void> = upgradeServerE2eeV2;
-const _enablePaused: () => void = enablePaused;
-const _enableWiped: () => Promise<void> = enableWiped;
-const _disableLocal: () => Promise<void> = disableLocal;
 const _poke: () => void = poke;
 const _bootOnce: () => Promise<void> = bootOnce;
 const _retryBoot: () => Promise<void> = retryBoot;
@@ -104,16 +91,14 @@ const _budgetOfUpgrade: string | null = _upgradeRequired.budgetId;
 
 /* ── Type shapes ── */
 
-const _localModes: LocalMode[] = ["off", "paused", "wiped"];
-const _bootSources: BootSource[] = ["replica", "snapshot", "local", null];
-const _syncStates: SyncState[] = ["synced", "syncing", "offline", "error", "local", "unauthed", "unverified"];
+const _bootSources: BootSource[] = ["replica", "snapshot", null];
+const _syncStates: SyncState[] = ["synced", "syncing", "offline", "error", "unauthed", "unverified"];
 const _verdicts: IdentityVerdict[] = ["unauthed", "foreign", "ok"];
 const _status: SyncStatus = {
   state: "synced",
   pending: 0,
   deadLetters: 0,
   lastSyncAt: null,
-  localMode: "off",
   ownerUnproven: false,
 };
 const _pendingUpgrade: PendingE2eeUpgrade = {
@@ -130,8 +115,6 @@ const _pendingUpgrade: PendingE2eeUpgrade = {
 // Silence "declared but never read" without changing tsconfig: one reference each.
 const surface = [
   _getClientId,
-  _getLocalMode,
-  _isLocalOnly,
   _emptyLedger,
   _getLastBootSource,
   _getSyncStatus,
@@ -143,7 +126,6 @@ const surface = [
   _resetIdentity,
   _resetObligations,
   _resetBackoff,
-  _setLocalMode,
   _discardLocalReplica,
   _enterLoginKeepingReplica,
   _flushOutboxForSignOut,
@@ -156,9 +138,6 @@ const surface = [
   _hasPendingE2eeUpgrade,
   _discardPendingE2eeUpgrade,
   _upgradeServerE2eeV2,
-  _enablePaused,
-  _enableWiped,
-  _disableLocal,
   _poke,
   _bootOnce,
   _retryBoot,
@@ -170,7 +149,6 @@ const surface = [
   _upgradeRequired,
   _epochOfUpgrade,
   _budgetOfUpgrade,
-  _localModes,
   _bootSources,
   _syncStates,
   _verdicts,
@@ -180,7 +158,7 @@ const surface = [
 
 describe("sync public surface (compile-time fixture)", () => {
   it("every export is present and callable-shaped", () => {
-    expect(surface.length).toBe(47);
+    expect(surface.length).toBe(40);
     expect(_tierMismatch.name).toBe("TierMismatchError");
     expect(_upgradeRequired.name).toBe("E2eeUpgradeRequiredError");
   });

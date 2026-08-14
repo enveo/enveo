@@ -25,7 +25,6 @@ import {
   UnauthorizedError,
 } from "./contracts";
 import { ensureIdentity, enterUnauthed, invalidateIdentityVerdict, isIdentityBlocked } from "./identity";
-import { getLocalMode } from "./localMode";
 import { clearResyncPending, isReplacePending, isResyncPending, markResyncPending } from "./obligations";
 import { e2eeReplicaBudgetId, replayOutbox } from "./replica";
 import { bumpStatus, setLastSyncAt, setState } from "./status";
@@ -165,12 +164,6 @@ export function recheckReplicaOwner(): Promise<void> {
 
 /** One full cycle; returns false on error (backoff already scheduled). */
 async function doCycle(): Promise<boolean> {
-  // Defense: local mode may have been enabled BETWEEN iterations of the single-flight
-  // loop (dirty re-loop) — bail without network (the gate is also in syncNow before the first cycle).
-  if (getLocalMode() !== "off") {
-    setState("local");
-    return true;
-  }
   // E2ee tier without a key → the UI sits on the Unlock screen; no network until unlocked
   // (setDek + retryBoot will lift "locked" and resume a normal boot + cycle).
   if (store.getBootStatus() === "locked") return true;
@@ -476,13 +469,6 @@ let dirty = false;
 export function syncNow(reason: string): Promise<void> {
   void reason; // diagnostics (dev: window.__sync.lastReason)
   if (import.meta.env.DEV) lastReason = reason;
-  // Local-mode GATE: no cycle whatsoever (push/pull/snapshot). All
-  // triggers (boot/poke/focus/online/interval/leader/peer-poke) still call syncNow
-  // — here they bail harmlessly. The outbox grows and flushes on resume.
-  if (getLocalMode() !== "off") {
-    setState("local");
-    return Promise.resolve();
-  }
   // Foreign replica (another account signed in on this device): the app is on
   // ForeignReplicaScreen and nothing of the previous owner's may reach this account's budget.
   if (isIdentityBlocked()) return Promise.resolve();
@@ -510,7 +496,7 @@ export function pullNow(): Promise<void> {
   return syncNow("pull");
 }
 
-/** Resolve once the in-flight cycle (if any) has finished — enableWiped's ordering depends on it. */
+/** Resolve once the in-flight cycle (if any) has finished. */
 export async function awaitInFlightCycle(): Promise<void> {
   if (running) await running.catch(() => {}); // finish the in-flight cycle on the PRE-wipe state
 }

@@ -224,7 +224,7 @@ function Hub({ onOpen, onInstall }: { onOpen: (s: SubId) => void; onInstall: () 
           </Glyph>
         }
         title={t("Advanced")}
-        desc={t("device storage, local mode, reset")}
+        desc={t("device storage and reset")}
         status={null}
         onClick={() => onOpen("advanced")}
       />
@@ -315,7 +315,7 @@ function E2eeBadge({ color }: { color: string }) {
 function SyncStatusBadge({ okColor }: { okColor: string }) {
   const C = useTheme();
   const { lang } = useT();
-  const { state, lastSyncAt, localMode, ownerUnproven } = useSyncStatus();
+  const { state, lastSyncAt, ownerUnproven } = useSyncStatus();
 
   // refresh the relative time every ~30 s while the hub is open
   const [, setTick] = useState(0);
@@ -329,7 +329,7 @@ function SyncStatusBadge({ okColor }: { okColor: string }) {
   // explained). The STICKY flag, not SyncState "unverified": a re-proof cycle passes through
   // "syncing", and the dot would flip back to the healthy colour every time it ran.
   const attention = state === "offline" || state === "error" || ownerUnproven;
-  const color = localMode !== "off" ? C.mute : attention ? C.neg : okColor;
+  const color = attention ? C.neg : okColor;
   return (
     <span style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 10.5, color, fontWeight: 700, flexShrink: 0 }}>
       <span aria-hidden style={{ width: 7, height: 7, borderRadius: "50%", background: color }} />

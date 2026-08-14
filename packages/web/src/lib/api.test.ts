@@ -88,7 +88,7 @@ describe("client-side error codes", () => {
     ai_key_invalid: "OpenAI rejected your key — check it in Settings → Artificial intelligence.", // openai.ts — byok: OpenAI rejected the user's key (401/403)
   };
 
-  it("localizes every code lib/* throws (Settings → backup import, disable local mode, Unlock)", () => {
+  it("localizes every code lib/* throws (Settings → backup import and Unlock)", () => {
     for (const [code, message] of Object.entries(CLIENT_CODES)) {
       expect(apiErrorMessage(new Error(code))).toBe(message); // in English the message IS the answer
       expect(message).not.toBe(code); // mapped, not the raw code falling through

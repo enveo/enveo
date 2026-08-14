@@ -241,8 +241,7 @@ export async function runImportExtract(args: { images: string[]; locale: AiLocal
   /* DELIBERATE difference vs suggest: in the server mode the import GOES via the
      /import/extract route — (1) vision (images as content-parts) doesn't go
      through the /api/ai mirror (content=string, limit), (2) cycle 2 (assignments
-     from history) is inherently server-side. In local-only+server it works like
-     byok: facts yes, assignments empty (DB wiped). */
+     from history) is inherently server-side. */
   if (settings.aiMode === "server") return (await api.importExtract(images, locale)).items;
   const target = aiTarget(settings);
   if (target?.kind !== "byok") throw new AiConsentRequired(); // off, or byok with an empty key
@@ -255,7 +254,7 @@ export async function runImportExtract(args: { images: string[]; locale: AiLocal
     categories: ledger.categories.map((c) => ({ id: c.id, name: c.name })),
   };
   // SAME currency the server would read for this budget (falls back to the browser locale on a
-  // fresh/wiped replica, exactly like useCurrency()) — the prompt-identity tests require the
+  // fresh replica, exactly like useCurrency()) — the prompt-identity tests require the
   // byok request to stay byte-identical to the server's for the same budget.
   const currency = ledger.budgets[0]?.currency ?? currencyForLocales(browserLocales());
   // vision cap, not the chat cap: multi-screenshot extraction is the slow end (shared budget)

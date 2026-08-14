@@ -13,8 +13,8 @@ import { CORAL, font, TEAL } from "../lib/theme";
  * account than the one signed in (see the multi-tenant guard in sync.ts). Every server write is
  * already blocked; this screen exists because the remaining decision is NOT the app's to make:
  *
- *  - the local replica may be the LAST copy of that budget (local mode "wiped" deletes the
- *    server's copy on purpose, and the outbox can hold ops the server has never seen),
+ *  - the local replica may be the LAST copy of that budget (for example after offline edits or a
+ *    server rebuild),
  *  - a user id is not stable across a server rebuild — a self-hoster who lost the database and
  *    re-registered with the same e-mail gets a NEW uuid, and their phone's complete replica would
  *    look "foreign" while being exactly the data they are trying to recover.
@@ -51,7 +51,7 @@ export function ForeignReplicaScreen() {
     setBusy(true);
     setError(null);
     try {
-      await discardLocalReplica(); // clears IDB + outbox + local mode, then reloads
+      await discardLocalReplica(); // clears IDB + outbox, then reloads
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
       setBusy(false);

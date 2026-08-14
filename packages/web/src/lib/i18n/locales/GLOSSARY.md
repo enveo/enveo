@@ -27,7 +27,6 @@ translation of the English.
 | **on-budget / off-budget** | Whether an account's balance participates in the budget maths. | — |
 | **wealth envelope** | An envelope flagged as savings/investment; it feeds Net worth and is excluded from spending reports. | — |
 | **reconcile** | Compare the app's account balance with the bank's and book the difference. | The accounting term, if your language has one. |
-| **sync / local mode** | Sync = push/pull with the server. Local mode = the device keeps the data and the server holds nothing. | — |
 | **pairing code** | A one-shot code that carries the encryption key to a new device. | Not a "password" and not a "2FA code". |
 
 ## Rules

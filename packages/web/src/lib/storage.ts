@@ -25,9 +25,7 @@ import { storageMode } from "./idb";
  * only then remove the old one. The new key is NEVER overwritten
  * (idempotent; safe when another tab has already migrated).
  *
- * Runs when THIS module loads — sync.ts reads the local mode at
- * module level but imports storage.ts, so ESM semantics guarantee
- * the migration runs first. Additionally main.tsx imports this module
+ * Runs when THIS module loads. Additionally main.tsx imports this module
  * first (belt and suspenders for fresh profiles and lazy chunks).
  *
  * The old prefix is CONCATENATED at runtime (join) so that neither a de-branding
@@ -36,7 +34,8 @@ import { storageMode } from "./idb";
 const LEGACY_PREFIX = ["4gros", "ze."].join("");
 const PREFIX = "enveo.";
 /** All known device keys (without prefix) ever written under the old brand. */
-const DEVICE_KEYS = ["settings", "a2hs", "localMode", "localOnly"] as const;
+const DEVICE_KEYS = ["settings", "a2hs"] as const;
+const OBSOLETE_LOCAL_MODE_KEYS = ["localMode", "localOnly"] as const;
 
 export function migrateLegacyLocalStorage(): void {
   try {
@@ -48,6 +47,12 @@ export function migrateLegacyLocalStorage(): void {
       if (localStorage.getItem(newKey) === null) localStorage.setItem(newKey, oldVal);
       // remove the old key ONLY after confirming the new one exists
       if (localStorage.getItem(newKey) !== null) localStorage.removeItem(oldKey);
+    }
+    // Local-only mode no longer exists. These values are non-sensitive behavior flags, so they
+    // can be discarded immediately; importantly, none of their old pause/wipe semantics runs.
+    for (const k of OBSOLETE_LOCAL_MODE_KEYS) {
+      localStorage.removeItem(LEGACY_PREFIX + k);
+      localStorage.removeItem(PREFIX + k);
     }
   } catch {
     /* localStorage unavailable (tests/private mode with quota=0) — a fresh profile works without migration */

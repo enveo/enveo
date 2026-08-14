@@ -6,9 +6,8 @@
  */
 import * as outbox from "../outbox";
 import type { SyncState, SyncStatus } from "./contracts";
-import { getLocalMode } from "./localMode";
 
-let syncState: SyncState = getLocalMode() !== "off" ? "local" : "synced";
+let syncState: SyncState = "synced";
 let lastSyncAt: string | null = null;
 
 /**
@@ -22,8 +21,8 @@ let lastSyncAt: string | null = null;
  * remove. So the badge, the Settings dot and the Sync section read THIS instead.
  *
  * Set by enterUnverified, cleared the moment ensureIdentity proves (or adopts) the replica — and
- * on the verdicts that supersede it: no session (Login), a foreign stamp (ForeignReplicaScreen),
- * or local mode (sync is off by choice; the next "off" cycle re-proves from scratch).
+ * on the verdicts that supersede it: no session (Login) or a foreign stamp
+ * (ForeignReplicaScreen).
  */
 let ownerUnproven = false;
 
@@ -33,7 +32,6 @@ let statusSnapshot: SyncStatus = {
   pending: 0,
   deadLetters: 0,
   lastSyncAt: null,
-  localMode: getLocalMode(),
   ownerUnproven: false,
 };
 
@@ -43,7 +41,6 @@ export function bumpStatus(): void {
     pending: outbox.size(),
     deadLetters: outbox.getDeadLetters().length,
     lastSyncAt,
-    localMode: getLocalMode(),
     ownerUnproven,
   };
   for (const fn of statusListeners) fn();

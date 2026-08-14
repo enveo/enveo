@@ -41,11 +41,9 @@ import { clearLocalData } from "../idb";
 import * as persist from "../persist";
 import { store } from "../store";
 import { retryBoot } from "./boot";
-import type { LocalMode } from "./contracts";
 import { syncNow } from "./cycle";
-import { setLocalModeValue } from "./localMode";
 import { replayOutbox } from "./replica";
-import { bumpStatus, setOwnerUnproven, setState } from "./status";
+import { bumpStatus } from "./status";
 
 let isLeader = false;
 let channel: BroadcastChannel | null = null;
@@ -86,15 +84,6 @@ export async function broadcastKeysChanged(): Promise<void> {
 export function postMsg(type: "updated" | "poke" | "wipe" | "keys" | "preferences"): void {
   try {
     channel?.postMessage({ type });
-  } catch {
-    /* best-effort — channel closed during unload */
-  }
-}
-
-/** Broadcast the local-mode change to other tabs (best-effort). */
-export function broadcastLocalMode(mode: LocalMode): void {
-  try {
-    channel?.postMessage({ type: "localmode", mode });
   } catch {
     /* best-effort — channel closed during unload */
   }
@@ -168,7 +157,7 @@ export function installMultiTab(): void {
   if (typeof BroadcastChannel !== "undefined") {
     channel = new BroadcastChannel("enveo-sync");
     channel.onmessage = (e: MessageEvent) => {
-      const msg = e.data as { type?: string; mode?: LocalMode } | null;
+      const msg = e.data as { type?: string } | null;
       if (!msg) return;
       if (msg.type === "updated") void applyPeerUpdate();
       else if (msg.type === "preferences") void accountPreferences.rehydrateCurrent();
@@ -182,22 +171,6 @@ export function installMultiTab(): void {
       // another tab cleared the local data → reload and boot from empty
       // stores (fresh snapshot); we persist NOTHING along the way (no race)
       else if (msg.type === "wipe" && typeof location !== "undefined") location.reload();
-      // another tab changed the local mode → update the module flag (localStorage is
-      // shared, but the in-memory flag was read once at load time). Crucial:
-      // after enabling local mode in one tab, the OTHERS must stop syncing
-      // (the gate in syncNow). After disabling — resume the cycle.
-      else if (msg.type === "localmode") {
-        const m = msg.mode;
-        if (m === "off" || m === "paused" || m === "wiped") {
-          setLocalModeValue(m);
-          if (m === "off")
-            void syncNow("peer-localmode-off"); // still unproven? the cycle re-proves
-          else {
-            setOwnerUnproven(false); // sync is off by choice now — same as applyLocalMode
-            setState("local");
-          }
-        }
-      }
     };
   }
 }

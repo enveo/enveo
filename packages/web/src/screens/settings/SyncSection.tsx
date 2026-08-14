@@ -22,17 +22,16 @@ const IC = {
 };
 
 export function SyncSection() {
-  const { ownerUnproven, localMode } = useSyncStatus();
+  const { ownerUnproven } = useSyncStatus();
   // The replica's owner could not be established: no cycle writes anything and none will until
   // the proof succeeds, so "Sync now" / "Download everything anew" would be theatre. The notice
-  // takes the section over — it is the ONE place where this state is explained. (Local mode wins:
-  // there sync is off by the user's own choice, and the SyncActions text already says so.)
+  // takes the section over — it is the ONE place where this state is explained.
   //
   // The gate is the STICKY ownerUnproven, never SyncState "unverified": a re-proof runs as a normal
   // cycle, which flips the state to "syncing" first — keying on the state would tear this panel
   // down (with its open discard confirmation and its "Checking…" label) on every 60 s interval,
   // every focus, every local edit and, absurdly, on the "Check again" tap that starts the proof.
-  if (localMode === "off" && ownerUnproven) {
+  if (ownerUnproven) {
     return (
       <div style={{ marginTop: 4 }}>
         <UnverifiedReplicaNotice />
@@ -94,7 +93,7 @@ function UnverifiedReplicaNotice() {
     setBusy(true);
     setError(null);
     try {
-      await discardLocalReplica(); // clears IDB + outbox + local mode, then reloads
+      await discardLocalReplica(); // clears IDB + outbox, then reloads
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
       setBusy(false);
@@ -226,7 +225,7 @@ function opDetail(op: SyncOp, currency: string, lang: Lang): string {
 function SyncActions() {
   const C = useTheme();
   const { t, tp, lang } = useT();
-  const { state, pending, lastSyncAt, localMode } = useSyncStatus();
+  const { state, pending, lastSyncAt } = useSyncStatus();
 
   // refresh the relative time every ~30 s while the section is open
   const [, setTick] = useState(0);
@@ -234,18 +233,6 @@ function SyncActions() {
     const id = setInterval(() => setTick((n) => n + 1), 30_000);
     return () => clearInterval(id);
   }, []);
-
-  if (localMode !== "off") {
-    // In local mode sync is PAUSED — we hide "sync now",
-    // "download again" and the rejection list (nothing to push or pull).
-    return (
-      <div style={{ marginTop: 14, fontSize: 11.5, color: C.soft, lineHeight: 1.6 }}>
-        {t("Paused — local mode.")}{" "}
-        {localMode === "wiped" ? t("Server data has been deleted.") : t("Changes are saved locally and will be sent after you resume.")}
-        {pending > 0 && ` ${tp("{n} change is waiting locally. | {n} changes are waiting locally.", pending)}`} {t("Resume it in the “Advanced” section.")}
-      </div>
-    );
-  }
 
   const resync = () => {
     if (
@@ -295,9 +282,8 @@ function DeadLetters() {
   const C = useTheme();
   const { t, lang } = useT();
   const currency = useCurrency();
-  const { localMode } = useSyncStatus();
   const deadLetters = getDeadLetters();
-  if (localMode !== "off" || deadLetters.length === 0) return null; // in local mode there is nothing to pull
+  if (deadLetters.length === 0) return null;
   return (
     <div style={{ marginTop: 14, padding: 12, background: C.bg, borderRadius: 11, border: `1px solid ${C.line}` }}>
       <div style={{ fontSize: 11.5, color: C.soft, lineHeight: 1.6, marginBottom: 4 }}>

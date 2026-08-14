@@ -34,7 +34,6 @@
  * - sync/contracts.ts   — shared types, wire shapes, constants, error classes, dep interfaces
  * - sync/status.ts      — SyncState/lastSyncAt/ownerUnproven + listeners/snapshot
  * - sync/obligations.ts — durable resync/replace flags + IDB mirrors
- * - sync/localMode.ts   — the off/paused/wiped flag + transitions (deps injected below)
  * - sync/replica.ts     — stateless helpers over store/outbox (replay, budget id, emptiness)
  * - sync/transport.ts   — request construction/classification + every wire call (deps below)
  * - sync/identity.ts    — the multi-tenant guard: verdict state, ownership proof, boot check
@@ -56,23 +55,20 @@ import { configureLegacySettingsMigration, parseLegacyMigrationAck } from "./leg
 import * as outbox from "./outbox";
 import * as persist from "./persist";
 import { readLegacySettings } from "./settingsPersist";
-import { INTERVAL_MS, type LocalMode } from "./sync/contracts";
-import { awaitInFlightCycle, configureCycle, getLastSyncReason, resetBackoff, syncNow } from "./sync/cycle";
+import { INTERVAL_MS } from "./sync/contracts";
+import { configureCycle, getLastSyncReason, resetBackoff, syncNow } from "./sync/cycle";
 import { assertOwnReplica, enterUnauthed } from "./sync/identity";
-import { applyLocalMode, configureLocalMode, disableLocal, enablePaused, enableWiped, getLocalMode } from "./sync/localMode";
-import { broadcastLocalMode, broadcastUpdatedIfPending, installMultiTab, isLeaderTab, notePeersMayNeedUpdate, postMsg, wipeLocalData } from "./sync/multitab";
+import { broadcastUpdatedIfPending, installMultiTab, isLeaderTab, notePeersMayNeedUpdate, postMsg, wipeLocalData } from "./sync/multitab";
 import { isReplacePending, isResyncPending } from "./sync/obligations";
-import { isEmptyUnboundReplica } from "./sync/replica";
-import { getSyncStatus, installOutboxStatusListener, setOwnerUnproven, setState } from "./sync/status";
-import { configureTransport, pushLocalToServer, wipeServer } from "./sync/transport";
+import { getSyncStatus, installOutboxStatusListener } from "./sync/status";
+import { configureTransport } from "./sync/transport";
 
 /* ── Re-exported public surface (unchanged import paths for every caller) ── */
 export { bootOnce, getLastBootSource, retryBoot } from "./sync/boot";
-export type { BootSource, IdentityVerdict, LocalMode, PendingE2eeUpgrade, SyncState, SyncStatus } from "./sync/contracts";
+export type { BootSource, IdentityVerdict, PendingE2eeUpgrade, SyncState, SyncStatus } from "./sync/contracts";
 export { E2eeUpgradeRequiredError, EMPTY_LEDGER, TierMismatchError } from "./sync/contracts";
 export { __resetBackoff, flushOutboxForSignOut, fullResync, poke, pullNow, recheckReplicaOwner, syncNow } from "./sync/cycle";
 export { __resetIdentity, assertOwnReplica, decideIdentity, enterLoginKeepingReplica } from "./sync/identity";
-export { disableLocal, enablePaused, enableWiped, getLocalMode, isLocalOnly } from "./sync/localMode";
 export { broadcastKeysChanged, wipeLocalData } from "./sync/multitab";
 export { __resetObligations, markReplacePending } from "./sync/obligations";
 export { getSyncStatus, subscribeSyncStatus } from "./sync/status";
@@ -98,25 +94,15 @@ configureLegacySettingsMigration({
   updateDevice: devicePreferences.update,
 });
 
-/** Test hook (unit tests only): set the local-mode flag without touching the server. */
-export function __setLocalMode(mode: LocalMode): void {
-  applyLocalMode(mode);
-}
-
 /**
  * The human chose "remove this data and continue" — on ForeignReplicaScreen (the replica is
  * stamped by another account) or in the unverified-replica notice (its owner cannot be proved).
  * This is the ONLY path that destroys such a replica, and it destroys it whole (mirror + outbox +
  * DEK + owner stamp), then reloads so the boot bootstraps the signed-in account's data.
  *
- * The local-mode flag goes with it: it belonged to the PREVIOUS owner (and after the discard there
- * is nothing left to keep offline). Leaving it at "wiped" would boot the signed-in user into a
- * network-free app on an EMPTY, unbound replica — and their first "Disable local mode" would
- * upload exactly that empty replica over their server budget.
  */
 export async function discardLocalReplica(): Promise<void> {
   outbox.clearAll(); // in-memory queue too: nothing of the previous owner's may go out
-  if (getLocalMode() !== "off") applyLocalMode("off"); // the mode was the previous owner's choice
   await persist.flushed(); // let queued writes land BEFORE the stores are cleared
   await wipeLocalData(); // clears IDB (mirror, outbox, DEK), tells other tabs, reloads
 }
@@ -180,19 +166,6 @@ configureCycle({
   postPokeToPeers: () => postMsg("poke"),
 });
 
-// Local-mode transitions live in sync/localMode.ts; their status/broadcast/server-write
-// effects are wired in HERE (status.ts reads the flag, so the reverse import would cycle).
-configureLocalMode({
-  setState,
-  setOwnerUnproven,
-  broadcastLocalMode,
-  wipeServer,
-  pushLocalToServer,
-  awaitInFlightCycle,
-  syncNow,
-  isEmptyUnboundReplica,
-});
-
 installTriggers();
 
 /* ── Debug (dev only — also used by e2e verification) ───────────── */
@@ -210,11 +183,7 @@ if (import.meta.env.DEV && typeof window !== "undefined") {
     resyncPending: () => isResyncPending(),
     replacePending: () => isReplacePending(),
     isLeader: () => isLeaderTab(),
-    localMode: () => getLocalMode(),
     tierMeta: () => e2ee.getTierMeta(),
     dekLoaded: () => e2ee.getDek() !== null,
-    enablePaused: () => enablePaused(),
-    enableWiped: () => enableWiped(),
-    disableLocal: () => disableLocal(),
   };
 }
