@@ -24,7 +24,7 @@ export const mapBudget = (b: typeof s.budgets.$inferSelect): Budget => ({
   id: b.id,
   name: b.name,
   currency: b.currency,
-  preferences: reconcileBudgetPreferences(undefined),
+  preferences: reconcileBudgetPreferences(b.preferences),
 });
 
 export const mapAccount = (a: typeof s.accounts.$inferSelect): Account => ({

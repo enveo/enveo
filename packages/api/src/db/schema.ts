@@ -7,6 +7,7 @@ import {
   date,
   index,
   integer,
+  jsonb,
   pgEnum,
   pgTable,
   primaryKey,
@@ -31,6 +32,26 @@ export const users = pgTable("users", {
   createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" }).notNull().defaultNow(),
 });
+
+export const accountPreferences = pgTable(
+  "account_preferences",
+  {
+    userId: uuid("user_id")
+      .primaryKey()
+      .references(() => users.id, { onDelete: "cascade" }),
+    lang: text("lang").notNull(),
+    themeMode: text("theme_mode").notNull(),
+    accentTheme: text("accent_theme").notNull(),
+    revision: bigint("revision", { mode: "number" }).notNull().default(0),
+    updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" }).notNull().defaultNow(),
+  },
+  (t) => ({
+    langValid: check("account_preferences_lang_valid", sql`${t.lang} IN ('en','pl','de','es','fr','it','nl','pt-BR','cs','sv')`),
+    themeModeValid: check("account_preferences_theme_mode_valid", sql`${t.themeMode} IN ('light','dark','auto')`),
+    accentThemeValid: check("account_preferences_accent_theme_valid", sql`${t.accentTheme} IN ('teal','duet')`),
+    revisionNonnegative: check("account_preferences_revision_nonnegative", sql`${t.revision} >= 0`),
+  }),
+);
 
 /** better-auth sessions (model `session`). */
 export const authSessions = pgTable("auth_sessions", {
@@ -101,6 +122,8 @@ export const budgets = pgTable(
      *  unauthenticated ciphertext as v2 without rotating the DEK or rebuilding the snapshot
      *  (migration 0021 marks pre-existing e2ee rows as 1 exactly once). */
     cipherVersion: integer("cipher_version").notNull().default(2),
+    /** Plain-tier budget preferences. NULL for legacy/default rows and every E2EE budget. */
+    preferences: jsonb("preferences").$type<unknown>(),
   },
   (t) => ({
     cipherVersionValid: check("budgets_cipher_version_valid", sql`${t.cipherVersion} IN (1, 2)`),
