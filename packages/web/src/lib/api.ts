@@ -87,9 +87,7 @@ export interface E2eeCredentialResponse {
  * through to the raw text, so the user always sees something rather than an empty error.
  */
 const ERROR_KEYS: Record<string, Message> = {
-  ai_unavailable: msg(
-    "The server has no OpenAI key configured. Set OPENAI_API_KEY and restart the app, or keep AI on rules until secure own-key storage is available.",
-  ), // /import/extract, /budget/suggest, the /api/ai mirror — no operator key
+  ai_unavailable: msg("The server has no OpenAI key configured — server mode is unavailable. Use an existing own key or keep AI on rules."), // /import/extract, /budget/suggest, the /api/ai mirror — no operator key
   ai_upstream_error: msg("OpenAI rejected the request — check the key and the model, then try again."), // OpenAI rejected the call or answered unparsably
   upstream: msg("OpenAI rejected the request — check the key and the model, then try again."), // /budget/suggest names the same failure this way
   /* Transport failures get their OWN honest wording (since the AI-transport package): a timeout

@@ -41,7 +41,7 @@ describe("apiErrorMessage", () => {
   // IS the message: the expected sentence below is literally the key lib/api.ts maps the code to.
   it("turns a server error code into a localized sentence", () => {
     expect(apiErrorMessage(httpError(503, { error: "ai_unavailable" }))).toBe(
-      "The server has no OpenAI key configured. Set OPENAI_API_KEY and restart the app, or keep AI on rules until secure own-key storage is available.",
+      "The server has no OpenAI key configured — server mode is unavailable. Use an existing own key or keep AI on rules.",
     );
     expect(apiErrorMessage(httpError(502, { error: "ai_upstream_error", status: 401 }))).toBe(
       "OpenAI rejected the request — check the key and the model, then try again.",

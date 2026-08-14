@@ -1,4 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
+import { useMemo } from "react";
+import { createE2eeByokProvider } from "../lib/aiProvider/e2eeByok";
+import { createPlainByokProvider } from "../lib/aiProvider/plainByok";
 import { api } from "../lib/api";
 import { useBudgetPreferences } from "../lib/contexts";
 import * as e2ee from "../lib/e2ee";
@@ -12,7 +15,7 @@ import { Sheet } from "./chrome";
  * Shows exactly what will be sent to OpenAI (per-feature payload description)
  * and offers three ways out:
  *  - "Enable via Enveo" → budget provider "enveo" when operator AI is available,
- *  - a configured server-vault credential may select "Own OpenAI",
+ *  - a configured Own OpenAI credential may be selected in either storage tier,
  *  - "Stay with rules" → keeps provider "rules". Only the budget SUGGESTION has a rules
  *    engine to stay with; for the import (AI-only, no rules parser at all) the way out
  *    is "Cancel".
@@ -38,15 +41,21 @@ export function AiConsentSheet({
   onDecided: (mode: "server" | "byok" | "rules") => void;
 }) {
   const { t } = useT();
-  const { update } = useBudgetPreferences();
+  const { preferences, update } = useBudgetPreferences();
   const budgetId = store.getBudgetId() || store.getLedger()?.budgets[0]?.id || "";
-  const plain = e2ee.getTierMeta().tier === "plain";
+  const tierMeta = e2ee.getTierMeta();
+  const plain = tierMeta.tier === "plain";
+  const unlocked = plain || e2ee.isDekValidForEpoch(tierMeta.epoch);
+  const ownProvider = useMemo(
+    () => (plain ? createPlainByokProvider("plain", budgetId, preferences.openaiModel) : createE2eeByokProvider(budgetId, preferences.openaiModel, unlocked)),
+    [plain, budgetId, preferences.openaiModel, unlocked],
+  );
   // Server-mode availability is checked only when the sheet opens.
   const { data: aiInfo } = useQuery({ queryKey: ["aiInfo"], queryFn: api.aiInfo, enabled: show && plain });
   const { data: credential } = useQuery({
-    queryKey: ["byokCredentialStatus", budgetId],
-    queryFn: () => api.byokCredentialStatus(budgetId),
-    enabled: show && plain && budgetId.length > 0,
+    queryKey: ["ownOpenAiStatus", tierMeta.tier, tierMeta.epoch, budgetId, unlocked],
+    queryFn: () => ownProvider.status(),
+    enabled: show && budgetId.length > 0,
     retry: false,
   });
 
@@ -57,7 +66,7 @@ export function AiConsentSheet({
     onDecided("server");
   };
   const chooseByok = () => {
-    if (!credential?.configured) return;
+    if (!credential?.configured || credential.code !== "ready") return;
     update({ aiProvider: "openai" });
     onDecided("byok");
   };
@@ -102,13 +111,15 @@ export function AiConsentSheet({
               </button>
             )}
 
-            {credential?.configured ? (
+            {credential?.configured && credential.code === "ready" ? (
               <button onClick={chooseByok} style={secondary}>
                 {t("Use Own OpenAI")}
               </button>
             ) : (
               <div style={{ fontSize: 11.5, color: C.mute, lineHeight: 1.5, marginBottom: 10 }}>
-                {t("Add an OpenAI key in Settings → Artificial intelligence to use Own OpenAI.")}
+                {credential?.code === "locked"
+                  ? t("Unlock the budget to use Own OpenAI.")
+                  : t("Add an OpenAI key in Settings → Artificial intelligence to use Own OpenAI.")}
               </div>
             )}
 

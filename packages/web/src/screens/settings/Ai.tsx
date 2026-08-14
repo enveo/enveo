@@ -8,6 +8,7 @@ import { apiErrorMessage } from "../../lib/api";
 import { useBudgetPreferences, useTheme } from "../../lib/contexts";
 import * as e2ee from "../../lib/e2ee";
 import { type Message, msg, useT } from "../../lib/i18n";
+import { store } from "../../lib/store";
 import { CORAL, font, TEAL } from "../../lib/theme";
 import { Eyebrow, Helper, Row, Seg } from "./ui";
 
@@ -30,13 +31,15 @@ export function AiSection() {
   const { t } = useT();
   const { preferences, update } = useBudgetPreferences();
   const provider = useAiProvider();
-  const tier = e2ee.getTierMeta().tier;
+  const tierMeta = e2ee.getTierMeta();
+  const tier = tierMeta.tier;
+  const budgetId = store.getBudgetId() || store.getLedger()?.budgets[0]?.id || "";
   const [key, setKey] = useState("");
   const [action, setAction] = useState<ActionState>("idle");
   const [actionError, setActionError] = useState<string | null>(null);
   const [actionOk, setActionOk] = useState<string | null>(null);
   const statusQuery = useQuery({
-    queryKey: ["aiProviderStatus", tier, preferences.aiProvider, preferences.openaiModel],
+    queryKey: ["aiProviderStatus", budgetId, tier, tierMeta.epoch, preferences.aiProvider, preferences.openaiModel],
     queryFn: () => provider.status(),
     retry: false,
   });
@@ -69,14 +72,9 @@ export function AiSection() {
   const save = () => {
     const value = key.trim();
     if (!value) return;
-    void runAction(
-      "saving",
-      async () => {
-        await provider.saveCredential(value);
-        setKey("");
-      },
-      t("OpenAI key saved securely."),
-    );
+    // The submitted secret leaves React state before the first asynchronous boundary.
+    setKey("");
+    void runAction("saving", () => provider.saveCredential(value), t("OpenAI key saved securely."));
   };
 
   const remove = () => void runAction("deleting", () => provider.removeCredential(), t("OpenAI key removed."));
@@ -121,7 +119,11 @@ export function AiSection() {
         ? t("Enveo sends the required prompt or screenshots to OpenAI using the server operator's key.")
         : tier === "plain"
           ? t("Your browser calls Enveo; Enveo decrypts your key only for the request and calls OpenAI. The key is never returned to a device.")
-          : t("Own OpenAI for end-to-end encrypted budgets will require the zero-knowledge vault.");
+          : t(
+              "Your OpenAI key is encrypted with your budget key. This browser decrypts it only for one request and calls OpenAI directly; Enveo never receives the key, prompt or screenshots.",
+            );
+
+  const credentialEditable = status?.code === "ready" || status?.code === "not-configured";
 
   return (
     <div style={{ marginTop: 4 }}>
@@ -147,8 +149,12 @@ export function AiSection() {
           <div style={{ fontSize: 11.5, fontWeight: 600, color: C.text, marginBottom: 6 }}>{t("OpenAI key")}</div>
           <Helper>
             {status?.configured
-              ? t("A key is stored in the server vault. Enveo cannot display it; saving below replaces it atomically.")
-              : t("Paste the key once. Enveo stores only an envelope-encrypted credential and never returns it.")}
+              ? tier === "plain"
+                ? t("A key is stored in the server vault. Enveo cannot display it; saving below replaces it atomically.")
+                : t("A key is stored as zero-knowledge ciphertext. Enveo cannot display or decrypt it; saving below replaces it atomically.")
+              : tier === "plain"
+                ? t("Paste the key once. Enveo stores only an envelope-encrypted credential and never returns it.")
+                : t("Paste the key once. It is encrypted on this device with the budget key before Enveo stores the ciphertext.")}
           </Helper>
           <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
             <input
@@ -158,7 +164,7 @@ export function AiSection() {
               placeholder={status?.configured ? t("New key (replaces current)") : t("OpenAI API key")}
               autoComplete="off"
               spellCheck={false}
-              disabled={tier !== "plain" || status?.code === "vault-unavailable" || action !== "idle"}
+              disabled={!credentialEditable || action !== "idle"}
               style={{
                 flex: 1,
                 minWidth: 0,
@@ -172,7 +178,7 @@ export function AiSection() {
             />
             <button
               onClick={save}
-              disabled={!key.trim() || tier !== "plain" || action !== "idle"}
+              disabled={!key.trim() || !credentialEditable || action !== "idle"}
               style={{
                 padding: "0 14px",
                 borderRadius: 10,
@@ -186,7 +192,7 @@ export function AiSection() {
               {action === "saving" ? t("Saving…") : t("Save")}
             </button>
           </div>
-          {status?.configured && tier === "plain" && (
+          {status?.configured && credentialEditable && (
             <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
               <button
                 onClick={test}
