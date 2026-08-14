@@ -262,7 +262,9 @@ describe("wire shapes: v2 E2EE endpoints", () => {
 
     await upgradeServerE2eeV2("ceremony-pass-123");
 
-    const up = req("/api/budget/e2ee/upgrade-v2");
+    // The ceremony first reads the optional legacy credential from the same route family;
+    // select the mutation explicitly rather than the preceding GET.
+    const up = requests.find((request) => request.url.startsWith("/api/budget/e2ee/upgrade-v2") && request.method === "POST");
     expect(up).toBeDefined();
     expect(up!.method).toBe("POST");
     expect(up!.contentType).toBe("application/json");
