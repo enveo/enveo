@@ -29,6 +29,7 @@ export function createDevicePreferencesStore(deps: DevicePreferencesStoreDeps) {
   let hydratePromise: Promise<void> | null = null;
   let editGeneration = 0;
   let persistChain = Promise.resolve();
+  let canonicalPresent = false;
   const listeners = new Set<() => void>();
 
   function publish(value: DevicePreferences): void {
@@ -42,7 +43,10 @@ export function createDevicePreferencesStore(deps: DevicePreferencesStoreDeps) {
       hydratePromise = deps
         .load()
         .then((raw) => {
-          if (editGeneration === generation) publish(parseDevicePreferences(raw) ?? DEFAULT_DEVICE_PREFERENCES);
+          if (editGeneration !== generation) return;
+          const parsed = parseDevicePreferences(raw);
+          canonicalPresent = parsed !== null;
+          publish(parsed ?? DEFAULT_DEVICE_PREFERENCES);
         })
         .catch(() => {
           if (editGeneration === generation) publish(DEFAULT_DEVICE_PREFERENCES);
@@ -55,6 +59,7 @@ export function createDevicePreferencesStore(deps: DevicePreferencesStoreDeps) {
     const next = { ...snapshot, ...patch };
     if (typeof next.discreet !== "boolean") throw new Error("invalid_device_preferences");
     editGeneration++;
+    canonicalPresent = true;
     publish(next);
     persistChain = persistChain.then(() => deps.save(next));
     await persistChain;
@@ -62,6 +67,7 @@ export function createDevicePreferencesStore(deps: DevicePreferencesStoreDeps) {
 
   async function clear(): Promise<void> {
     editGeneration++;
+    canonicalPresent = false;
     hydratePromise = null;
     publish(DEFAULT_DEVICE_PREFERENCES);
     await persistChain.catch(() => {});
@@ -73,6 +79,7 @@ export function createDevicePreferencesStore(deps: DevicePreferencesStoreDeps) {
     update,
     clear,
     getSnapshot: () => snapshot,
+    migrationState: () => ({ value: snapshot, present: canonicalPresent }),
     subscribe(listener: () => void) {
       listeners.add(listener);
       return () => listeners.delete(listener);

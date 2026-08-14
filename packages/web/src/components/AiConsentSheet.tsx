@@ -4,6 +4,7 @@ import { AI_MODEL_TIERS, isLegacyOpenAiModel } from "../lib/aiModelTiers";
 import { api } from "../lib/api";
 import { type OpenAiModel, useSettings } from "../lib/contexts";
 import { type Message, msg, useT } from "../lib/i18n";
+import { readLegacyOpenAiCredential, setEphemeralOpenAiCredential } from "../lib/settingsPersist";
 import { font, TEAL } from "../lib/theme";
 import { Sheet } from "./chrome";
 
@@ -12,7 +13,8 @@ import { Sheet } from "./chrome";
  * Shows exactly what will be sent to OpenAI (per-feature payload description)
  * and offers three ways out:
  *  - "Enable via server"  → aiMode="server" (only when /api/ai/info → serverAi=true),
- *  - "Use your own key" → inline key + model → aiMode="byok" (key ONLY in localStorage),
+ *  - "Use your own key" → inline key + model → aiMode="byok" (Stage-2 bridge keeps a newly
+ *    entered key in memory only; Stage 3 replaces this with the credential vault),
  *  - "Stay with rules" → does NOT change aiMode. Only the budget SUGGESTION has a rules
  *    engine to stay with; for the import (AI-only, no rules parser at all) the way out
  *    is "Cancel".
@@ -42,7 +44,7 @@ export function AiConsentSheet({
   // Server-mode availability is checked only when the sheet opens.
   const { data: aiInfo } = useQuery({ queryKey: ["aiInfo"], queryFn: api.aiInfo, enabled: show });
   const [byokOpen, setByokOpen] = useState(false);
-  const [key, setKey] = useState(settings.openaiKey);
+  const [key, setKey] = useState(() => readLegacyOpenAiCredential()?.key ?? "");
   const [model, setModel] = useState<OpenAiModel>(settings.openaiModel);
 
   const close = () => {
@@ -55,7 +57,8 @@ export function AiConsentSheet({
     onDecided("server");
   };
   const chooseByok = () => {
-    setSettings({ ...settings, aiMode: "byok", openaiKey: key.trim(), openaiModel: model });
+    setEphemeralOpenAiCredential(key, model);
+    setSettings({ ...settings, aiMode: "byok", openaiModel: model });
     onDecided("byok");
   };
 

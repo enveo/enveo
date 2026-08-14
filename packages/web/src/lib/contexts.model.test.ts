@@ -14,7 +14,6 @@ const settings = (): Settings => ({
   discreet: false,
   lang: "en",
   aiMode: "off",
-  openaiKey: "",
   openaiModel: DEFAULT_OPENAI_MODEL,
   customProfiles: [],
   startWidgets: createDefaultBudgetPreferences().startWidgets,

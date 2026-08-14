@@ -6,6 +6,7 @@
 import { createAuthClient } from "better-auth/client";
 import { accountPreferences } from "./accountPreferences";
 import { devicePreferences } from "./devicePreferences";
+import { clearEphemeralOpenAiCredential } from "./settingsPersist";
 
 export const authClient = createAuthClient();
 
@@ -105,6 +106,7 @@ export async function fetchSessionUserId(): Promise<string | null> {
  */
 export async function signOutKeepingReplica(enterLogin: () => void): Promise<void> {
   await authClient.signOut();
+  clearEphemeralOpenAiCredential();
   await Promise.all([accountPreferences.clear(), devicePreferences.clear()]);
   enterLogin();
 }
@@ -117,6 +119,7 @@ export async function signOutKeepingReplica(enterLogin: () => void): Promise<voi
  */
 export async function signOutSessionOnly(): Promise<void> {
   await authClient.signOut();
+  clearEphemeralOpenAiCredential();
   await Promise.all([accountPreferences.clear(), devicePreferences.clear()]);
 }
 
