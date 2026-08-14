@@ -130,6 +130,39 @@ export const budgets = pgTable(
   }),
 );
 
+/**
+ * Protected budget-scoped OpenAI credential. `server_vault` rows are envelope-encrypted by
+ * the API; `e2ee_ciphertext` rows are opaque browser ciphertext. The database constraint keeps
+ * the two shapes disjoint, and row existence is the only configured-status signal.
+ */
+export const budgetAiCredentials = pgTable(
+  "budget_ai_credentials",
+  {
+    budgetId: uuid("budget_id")
+      .primaryKey()
+      .references(() => budgets.id, { onDelete: "cascade" }),
+    provider: text("provider").notNull(),
+    storageKind: text("storage_kind").notNull(),
+    framingVersion: integer("framing_version").notNull(),
+    ciphertext: text("ciphertext").notNull(),
+    wrappedRecordDek: text("wrapped_record_dek"),
+    masterKeyId: text("master_key_id"),
+    e2eeEpoch: integer("e2ee_epoch"),
+    recordVersion: bigint("record_version", { mode: "number" }).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" }).notNull().defaultNow(),
+  },
+  (t) => ({
+    providerValid: check("budget_ai_credentials_provider_valid", sql`${t.provider} = 'openai'`),
+    ciphertextNonempty: check("budget_ai_credentials_ciphertext_nonempty", sql`char_length(${t.ciphertext}) > 0`),
+    recordVersionPositive: check("budget_ai_credentials_record_version_positive", sql`${t.recordVersion} > 0`),
+    storageShapeValid: check(
+      "budget_ai_credentials_storage_shape_valid",
+      sql`(${t.storageKind} = 'server_vault' AND ${t.framingVersion} = 1 AND ${t.wrappedRecordDek} IS NOT NULL AND char_length(${t.wrappedRecordDek}) > 0 AND ${t.masterKeyId} IS NOT NULL AND char_length(${t.masterKeyId}) > 0 AND ${t.e2eeEpoch} IS NULL) OR (${t.storageKind} = 'e2ee_ciphertext' AND ${t.framingVersion} = 2 AND ${t.wrappedRecordDek} IS NULL AND ${t.masterKeyId} IS NULL AND ${t.e2eeEpoch} >= 0)`,
+    ),
+  }),
+);
+
 export const accounts = pgTable(
   "accounts",
   {
