@@ -47,22 +47,20 @@ const AUTH_CODES = new Set([
   "signups_closed", // our own gate (auth.ts before-create hook)
 ]);
 
-/** Email+password sign-in; throws a translatable CODE on failure.
- *  rememberMe=false ⇒ a browser-session cookie (the untrusted-device half of the
- *  trust checkbox — the other half is the memory-only replica in idb.ts). */
-export async function signInEmail(email: string, password: string, rememberMe: boolean): Promise<void> {
-  const { error } = await authClient.signIn.email({ email, password, rememberMe });
+/** Email+password sign-in; persistent=false means a browser-session cookie. */
+export async function signInEmail(email: string, password: string, persistent: boolean): Promise<void> {
+  const { error } = await authClient.signIn.email({ email, password, rememberMe: persistent });
   if (error) throw new Error(authErrorCode(error, "sign_in_failed"));
 }
 
 /** Registration — the server gate (signupsOpen) decides; a closed gate answers 403 signups_closed. */
-export async function signUpEmail(email: string, password: string, rememberMe: boolean): Promise<void> {
+export async function signUpEmail(email: string, password: string, persistent: boolean): Promise<void> {
   // better-auth's client TYPE for this one route (InferSignUpEmailCtx) hand-overrides the
   // otherwise-generic inference and forgets rememberMe, even though the server route schema
   // has it (dist/api/routes/sign-up.d.mts) and the client runtime spreads whatever body
   // properties it's given. Binding to a variable first avoids the excess-property check on
   // the object literal without widening anything else — a TS quirk, not a behavior change.
-  const body = { email, password, name: email.split("@")[0] ?? email, rememberMe };
+  const body = { email, password, name: email.split("@")[0] ?? email, rememberMe: persistent };
   const { error } = await authClient.signUp.email(body);
   if (error) throw new Error(authErrorCode(error, "sign_up_failed"));
 }

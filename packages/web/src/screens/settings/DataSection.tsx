@@ -18,7 +18,7 @@ import {
   wrapDek,
 } from "../../lib/crypto";
 import { exportBackup, importBackup } from "../../lib/data";
-import { clearDeviceTrust, getCachedDeployment } from "../../lib/deviceTrust";
+import { clearDeviceStoragePolicy, getCachedDeployment } from "../../lib/deviceStoragePolicy";
 import * as e2ee from "../../lib/e2ee";
 import { useT } from "../../lib/i18n";
 import { clearLastAccountId } from "../../lib/lastAccount";
@@ -63,7 +63,7 @@ export function DataSection() {
 
 /**
  * Logout — visible ONLY when the backend confirms a session (hasSession()). The behavior splits
- * by deployment (device-trust spec, 2026-07-17):
+ * by deployment (device-storage-policy spec, 2026-07-17):
  *
  * SELFHOST does NOT wipe the local replica (spec §3, binding owner decision): the ledger mirror,
  * the DEK and — crucially — every op still queued in the durable outbox stay on the device, so a
@@ -107,7 +107,7 @@ function LogoutRow() {
       }
       // Cloud: the server is the durable copy — flush, end the session, then wipe this device.
       // Order: a failed wipe after a successful signOut leaves the same state as an expired
-      // session on a trusted device (accepted residual risk of the trust choice); a wipe before
+      // session with persistent storage (accepted residual risk of that choice); a wipe before
       // a failed signOut would strand a signed-in session on an empty replica.
       const left = await flushOutboxForSignOut();
       if (left > 0 && !window.confirm(t("Some changes have not reached the server yet. Sign out anyway and lose them?"))) {
@@ -115,7 +115,7 @@ function LogoutRow() {
         return;
       }
       await signOutSessionOnly();
-      clearDeviceTrust(); // the next login asks again (default per deployment)
+      clearDeviceStoragePolicy(); // the next login applies its deployment default
       // Leaving the device takes the per-device state with it: the settings hold the BYOK
       // OpenAI key (a billing credential must not outlive the account on a shared machine),
       // and the last-account preference names an account of a budget this device no longer has.
@@ -383,7 +383,7 @@ function E2eeEnableWizard() {
                 {/* STEP 1 — explanation + FORCED JSON export (Next disabled without the checkbox) */}
                 <div style={{ fontSize: 12.5, color: SC.soft, lineHeight: 1.6, marginBottom: 12 }}>
                   {t(
-                    "Once enabled, the server stores ciphertexts only. The key is your password, which the server does NOT know — without it (or a pairing code from a trusted device) the data cannot be recovered.",
+                    "Once enabled, the server stores ciphertexts only. The key is your password, which the server does NOT know — without it (or a pairing code from another unlocked device) the data cannot be recovered.",
                   )}
                 </div>
                 <div style={{ fontSize: 12.5, color: SC.text, fontWeight: 600, lineHeight: 1.6, marginBottom: 12 }}>
@@ -757,7 +757,7 @@ function E2eePairCode() {
           <div>
             <div style={{ fontSize: 16.5, fontWeight: 700, color: SC.text, marginBottom: 8 }}>{t("Pairing code")}</div>
             <div style={{ fontSize: 12.5, color: CORAL, lineHeight: 1.6, marginBottom: 14 }}>
-              {t("This code contains your encryption key in plain form. Show it only on your own trusted device — anyone with the code can read the budget.")}
+              {t("This code contains your encryption key in plain form. Show it only on your own private device — anyone with the code can read the budget.")}
             </div>
             {code && svg ? (
               <>

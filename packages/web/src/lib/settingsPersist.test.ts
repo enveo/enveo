@@ -78,7 +78,7 @@ describe("legacy settings quarantine", () => {
 describe("session device", () => {
   test("does not read a previous persistent user's legacy credential", () => {
     stubLocalStorage({
-      "enveo.deviceTrust": "untrusted",
+      "enveo.deviceStoragePolicy": "session",
       "enveo.settings": '{"openaiKey":"sk-LEAK","themeMode":"dark"}',
     });
     __resetStorageForTests();

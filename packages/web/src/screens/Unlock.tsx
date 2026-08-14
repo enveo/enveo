@@ -17,11 +17,11 @@ import { E2eeUpgradePanel } from "./settings/E2eeUpgradePanel";
  *    authenticated context (budgetId, epoch) — a wrong password OR a lying context makes
  *    GCM reject the unwrap; verification = decrypting the checkpoint (blob) under its own
  *    (budgetId, epoch, uptoSeq) context MUST succeed → setDek → retryBoot,
- *  - pairing code "enveo1.…" pasted from a trusted device (Settings →
+ *  - pairing code "enveo1.…" pasted from another unlocked device (Settings →
  *    Pairing code): decodePairing → budgetId validation (the code's budget is the TRUSTED
  *    expectation) → the same checkpoint verification → setDek → retryBoot.
  * QR-SCAN deliberately omitted (BarcodeDetector unreliable on iOS) — the code
- * is shown by the trusted device, here it's paste-only.
+ * is shown by the unlocked device, here it's paste-only.
  *
  * 409 tier_mismatch (budget went back to plain before unlocking): tierMeta from
  * the body + retryBoot — boot takes the v1 path and the screen disappears keyless.
@@ -81,7 +81,7 @@ async function fetchSnap2(): Promise<Snap2 | null> {
 /**
  * DEK verification against the checkpoint (if any) → setDek + tierMeta → retryBoot.
  * `expectedBudgetId` = the caller's authenticated expectation: the pairing code's budget
- * (trusted device) or the budget the key envelope's own unwrap just vouched for.
+ * (unlocked device) or the budget the key envelope's own unwrap just vouched for.
  * `unwrapAuthenticated` = the PASSWORD path already proved the key under (budgetId, epoch)
  * via the envelope unwrap; the pairing path proved nothing yet. A key is marked VALIDATED
  * only after an authenticated use — on a checkpoint-less budget a pairing-code key is
@@ -337,7 +337,9 @@ export function UnlockScreen() {
           }}
           style={{ display: "flex", flexDirection: "column", gap: 12, width: "100%", maxWidth: 300 }}
         >
-          <div style={{ fontSize: 13, color: C.soft, lineHeight: 1.6 }}>{t("Paste the pairing code shown on a trusted device (Settings → Pairing code).")}</div>
+          <div style={{ fontSize: 13, color: C.soft, lineHeight: 1.6 }}>
+            {t("Paste the pairing code shown on another unlocked device (Settings → Pairing code).")}
+          </div>
           <textarea
             value={code}
             onChange={(e) => setCode(e.target.value)}

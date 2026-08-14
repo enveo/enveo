@@ -3,7 +3,7 @@ import { LogoMark } from "../components/chrome";
 import { signOutKeepingReplica } from "../lib/auth";
 import { useTheme } from "../lib/contexts";
 import { exportBackup } from "../lib/data";
-import { getCachedDeployment } from "../lib/deviceTrust";
+import { getCachedDeployment } from "../lib/deviceStoragePolicy";
 import { useT } from "../lib/i18n";
 import { discardLocalReplica, enterLoginKeepingReplica } from "../lib/sync";
 import { CORAL, font, TEAL } from "../lib/theme";
@@ -34,7 +34,7 @@ export function ForeignReplicaScreen() {
 
   // CLOUD: no export button. The server is the durable copy of that account's budget (operator
   // backups), and "download the previous user's whole ledger without being them" is exactly the
-  // shared-computer hole the device-trust model closes. SELFHOST keeps the export: the replica
+  // shared-computer hole the session-storage policy closes. SELFHOST keeps the export: the replica
   // there may be the LAST copy (see the header comment) and the rescue path must stay.
   const cloud = getCachedDeployment() === "cloud";
 

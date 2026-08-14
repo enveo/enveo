@@ -6,7 +6,7 @@
  * process, so leaving stubs behind would poison the facade suites.
  *
  * A localStorage stub on globalThis (bun test has no DOM — the pattern of storage.test.ts and
- * deviceTrust.test.ts) makes the persistence side observable; it is removed again in afterAll.
+ * deviceStoragePolicy.test.ts) makes the persistence side observable; it is removed again in afterAll.
  */
 import { afterAll, beforeEach, describe, expect, it } from "bun:test";
 import type { LocalModeDeps, SyncState } from "./contracts";

@@ -145,12 +145,12 @@ function installTriggers(): void {
   window.addEventListener("pagehide", () => {
     if (outbox.size() > 0) postMsg("poke");
   });
-  // Untrusted device (memory-forced): the replica AND the outbox live only in this tab's
+  // Session policy (memory-session): the replica AND the outbox live only in this tab's
   // memory — closing the tab with unsent ops loses them for good. Best-effort warning
-  // (the browser shows its own generic prompt). Trusted devices need none: the outbox is
+  // (the browser shows its own generic prompt). Persistent replicas need none: the outbox is
   // durable and any live tab (or the next boot) drains it.
   window.addEventListener("beforeunload", (e) => {
-    if (storageMode() === "memory-forced" && outbox.size() > 0) {
+    if (storageMode() === "memory-session" && outbox.size() > 0) {
       e.preventDefault();
       e.returnValue = ""; // legacy engines only show the dialog when returnValue is set
     }

@@ -126,6 +126,7 @@ const ERROR_KEYS: Record<string, Message> = {
   sign_in_failed: msg("Could not sign in — please try again."), // generic fallback — an unmapped better-auth code
   sign_up_failed: msg("Could not create the account — please try again."),
   auth_meta_failed: msg("Could not sign in — please try again."), // /api/auth/meta unreachable → same user-facing advice
+  device_storage_unavailable: msg("This browser blocked access to storage. Allow site storage before signing in."),
 };
 
 /** Turns a server error code into a sentence in the UI language; unknown codes stay as-is. */

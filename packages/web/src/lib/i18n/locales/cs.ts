@@ -333,7 +333,7 @@ export const cs: Dict = {
   "Not syncing with your account": "Nesynchronizuje se s tvým účtem",
   Off: "Vypnuto",
   "On-device storage": "Úložiště v zařízení",
-  "Once enabled, the server stores ciphertexts only. The key is your password, which the server does NOT know — without it (or a pairing code from a trusted device) the data cannot be recovered.":
+  "Once enabled, the server stores ciphertexts only. The key is your password, which the server does NOT know — without it (or a pairing code from another unlocked device) the data cannot be recovered.":
     "Po zapnutí server ukládá jen šifrované texty. Klíčem je tvé heslo, které server NEZNÁ — bez něj (nebo bez párovacího kódu z důvěryhodného zařízení) data nelze obnovit.",
   "One tap and Enveo lives on your home screen — offline, full screen, no browser bar.":
     "Jedno klepnutí a Enveo je na tvé ploše — offline, na celou obrazovku, bez lišty prohlížeče.",
@@ -354,7 +354,7 @@ export const cs: Dict = {
   Password: "Heslo",
   "Password changed.": "Heslo změněno.",
   "Passwords do not match.": "Hesla se neshodují.",
-  "Paste the pairing code shown on a trusted device (Settings → Pairing code).":
+  "Paste the pairing code shown on another unlocked device (Settings → Pairing code).":
     "Vlož párovací kód zobrazený na důvěryhodném zařízení (Nastavení → Párovací kód).",
   "Paused — local mode.": "Pozastaveno — lokální režim.",
   "People & pets": "Lidé a mazlíčci",
@@ -527,7 +527,7 @@ export const cs: Dict = {
     "Data tohoto rozpočtu jsou šifrovaná end-to-end. Zadej heslo šifrování, abys je na tomto zařízení odemkl.",
   "This budget's encryption must be upgraded before it can sync — open Settings → Privacy on a device that holds the data and run the upgrade.":
     "Šifrování tohoto rozpočtu je potřeba aktualizovat, než se bude moct synchronizovat — otevři Nastavení → Soukromí na zařízení, které data má, a spusť aktualizaci.",
-  "This code contains your encryption key in plain form. Show it only on your own trusted device — anyone with the code can read the budget.":
+  "This code contains your encryption key in plain form. Show it only on your own private device — anyone with the code can read the budget.":
     "Tento kód obsahuje tvůj šifrovací klíč v čitelné podobě. Ukazuj ho jen na svém důvěryhodném zařízení — kdokoli s tímto kódem si může rozpočet přečíst.",
   "This data may belong to a different account. Then it will never be sent — download a backup and remove the copy from this device.":
     "Tato data možná patří jinému účtu. Pak se nikdy neodešlou — stáhni si zálohu a kopii z tohoto zařízení odstraň.",
@@ -569,7 +569,6 @@ export const cs: Dict = {
   Transactions: "Transakce",
   Transfer: "Převod",
   Transport: "Doprava",
-  "Trust this device — remember my data and sign-in": "Důvěřovat tomuto zařízení — zapamatovat si moje data a přihlášení",
   "Try again": "Zkusit znovu",
   "Try it with sample data": "Vyzkoušet na ukázkových datech",
   "Turn off local mode": "Vypnout lokální režim",

@@ -4,8 +4,8 @@
  * uiLang() is the non-React / pre-boot reader of the UI language (main.tsx's
  * locale preload, data.ts, api.ts). It must route through the same gate as
  * the React Settings context (settingsPersist.loadPersistedSettings()): a
- * guest device (storageMode() "memory-forced") must not read a previous
- * trusted user's on-disk `lang` — it should fall back to detectLang(), same
+ * session device (storageMode() "memory-session") must not read a previous
+ * persistent user's on-disk `lang` — it should fall back to detectLang(), same
  * as contexts.tsx does for the rest of settings. localStorage stub + reset
  * pattern as in settingsPersist.test.ts.
  */
@@ -65,8 +65,8 @@ describe("locale registry provenance", () => {
   });
 });
 
-describe("uiLang() vs device trust", () => {
-  test("trusted device: reads lang from on-disk settings", () => {
+describe("uiLang() vs device storage policy", () => {
+  test("persistent device: reads lang from on-disk settings", () => {
     stubLocalStorage({ "enveo.settings": '{"lang":"pl"}' });
     __resetStorageForTests();
     expect(uiLang()).toBe("pl");
@@ -74,7 +74,7 @@ describe("uiLang() vs device trust", () => {
 
   test("guest mode: ignores a stranger's on-disk lang, falls back to detectLang()", () => {
     stubLocalStorage({
-      "enveo.deviceTrust": "untrusted",
+      "enveo.deviceStoragePolicy": "session",
       "enveo.settings": '{"lang":"pl"}',
     });
     __resetStorageForTests();

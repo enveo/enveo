@@ -329,7 +329,7 @@ export const nl: Dict = {
   "Not syncing with your account": "Synchroniseert niet met je account",
   Off: "Uit",
   "On-device storage": "Opslag op het apparaat",
-  "Once enabled, the server stores ciphertexts only. The key is your password, which the server does NOT know — without it (or a pairing code from a trusted device) the data cannot be recovered.":
+  "Once enabled, the server stores ciphertexts only. The key is your password, which the server does NOT know — without it (or a pairing code from another unlocked device) the data cannot be recovered.":
     "Eenmaal ingeschakeld bewaart de server alleen nog versleutelde tekst. De sleutel is jouw wachtwoord, dat de server NIET kent — zonder dat wachtwoord (of een koppelcode van een vertrouwd apparaat) zijn de gegevens niet te herstellen.",
   "One tap and Enveo lives on your home screen — offline, full screen, no browser bar.":
     "Eén tik en Enveo staat op je beginscherm — offline, schermvullend, zonder browserbalk.",
@@ -353,7 +353,7 @@ export const nl: Dict = {
   Password: "Wachtwoord",
   "Password changed.": "Wachtwoord gewijzigd.",
   "Passwords do not match.": "De wachtwoorden komen niet overeen.",
-  "Paste the pairing code shown on a trusted device (Settings → Pairing code).":
+  "Paste the pairing code shown on another unlocked device (Settings → Pairing code).":
     "Plak de koppelcode die op een vertrouwd apparaat wordt getoond (Instellingen → Koppelcode).",
   "Paused — local mode.": "Gepauzeerd — lokale modus.",
   "People & pets": "Mensen en huisdieren",
@@ -529,7 +529,7 @@ export const nl: Dict = {
     "De gegevens van dit budget zijn eind-tot-eind versleuteld. Voer het versleutelingswachtwoord in om ze op dit apparaat te ontgrendelen.",
   "This budget's encryption must be upgraded before it can sync — open Settings → Privacy on a device that holds the data and run the upgrade.":
     "De versleuteling van dit budget moet worden geüpgraded voordat het kan synchroniseren — open Instellingen → Privacy op een apparaat dat de gegevens bevat en voer de upgrade uit.",
-  "This code contains your encryption key in plain form. Show it only on your own trusted device — anyone with the code can read the budget.":
+  "This code contains your encryption key in plain form. Show it only on your own private device — anyone with the code can read the budget.":
     "Deze code bevat je versleutelingssleutel in leesbare vorm. Toon hem alleen op je eigen vertrouwde apparaat — iedereen met de code kan het budget lezen.",
   "This data may belong to a different account. Then it will never be sent — download a backup and remove the copy from this device.":
     "Deze gegevens horen misschien bij een ander account. Dan worden ze nooit verstuurd — download een back-up en verwijder de kopie van dit apparaat.",
@@ -572,7 +572,6 @@ export const nl: Dict = {
   Transactions: "Transacties",
   Transfer: "Overboeking",
   Transport: "Vervoer",
-  "Trust this device — remember my data and sign-in": "Vertrouw dit apparaat — onthoud mijn gegevens en aanmelding",
   "Try again": "Opnieuw proberen",
   "Try it with sample data": "Proberen met voorbeeldgegevens",
   "Turn off local mode": "Lokale modus uitschakelen",

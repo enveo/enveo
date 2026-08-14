@@ -160,7 +160,7 @@ export function enterForeignReplica(): void {
  * A SELFHOST sign-out does NOT wipe (spec §3, owner's decision): the replica may be the last
  * copy of the budget (local mode "wiped" deleted the server's on purpose) and the outbox may
  * hold ops the server has never seen — a window.confirm is not consent to destroy them. CLOUD
- * sign-out is the deliberate exception (device-trust spec, 2026-07-17): there the server is the
+ * sign-out is the deliberate exception (device-storage-policy spec, 2026-07-17): there the server is the
  * durable copy, so LogoutRow flushes the outbox, ends the session and only then wipes — and a
  * non-empty remainder still requires the human's explicit consent. What protects the NEXT
  * account to sign in on this device is the guard, not a wipe: bootOwnerOk refuses to render a

@@ -61,23 +61,23 @@ function stubLocalStorage(initial: Record<string, string> = {}) {
   return m;
 }
 
-describe("backend selection (device trust)", () => {
+describe("backend selection (device storage policy)", () => {
   afterEach(() => {
     delete (globalThis as Record<string, unknown>).localStorage;
   });
 
-  test("untrusted device → memory-forced; IndexedDB is NEVER opened", async () => {
+  test("session policy → memory-session; IndexedDB is NEVER opened", async () => {
     const factory = new IDBFactory();
     (globalThis as Record<string, unknown>).indexedDB = factory;
-    stubLocalStorage({ "enveo.deviceTrust": "untrusted" });
+    stubLocalStorage({ "enveo.deviceStoragePolicy": "session" });
     __resetStorageForTests();
     await idbPut("meta", "value", "k");
     expect(await idbGet<string>("meta", "k")).toBe("value");
-    expect(storageMode()).toBe("memory-forced");
+    expect(storageMode()).toBe("memory-session");
     expect(await factory.databases()).toEqual([]); // the factory saw no open()
   });
 
-  test("absent flag → IdbBackend (trusted legacy default)", async () => {
+  test("absent policy → IdbBackend (persistent legacy default)", async () => {
     (globalThis as Record<string, unknown>).indexedDB = new IDBFactory();
     stubLocalStorage({});
     __resetStorageForTests();
@@ -85,10 +85,28 @@ describe("backend selection (device trust)", () => {
     expect(storageMode()).toBe("idb");
   });
 
-  test("cold call: storageMode() alone reports memory-forced (no prior storage op)", () => {
+  test("cold call: storageMode() alone reports memory-session (no prior storage op)", () => {
     (globalThis as Record<string, unknown>).indexedDB = new IDBFactory();
-    stubLocalStorage({ "enveo.deviceTrust": "untrusted" });
+    stubLocalStorage({ "enveo.deviceStoragePolicy": "session" });
     __resetStorageForTests();
-    expect(storageMode()).toBe("memory-forced");
+    expect(storageMode()).toBe("memory-session");
+  });
+
+  test("session policy leaves a previous persistent database untouched", async () => {
+    const factory = new IDBFactory();
+    (globalThis as Record<string, unknown>).indexedDB = factory;
+    const request = factory.open("enveo", 1);
+    const db = await new Promise<IDBDatabase>((resolve, reject) => {
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+    db.close();
+    stubLocalStorage({ "enveo.deviceStoragePolicy": "session" });
+    __resetStorageForTests();
+
+    await idbPut("meta", "session-value", "k");
+
+    expect(storageMode()).toBe("memory-session");
+    expect((await factory.databases()).map((entry) => entry.name)).toContain("enveo");
   });
 });
