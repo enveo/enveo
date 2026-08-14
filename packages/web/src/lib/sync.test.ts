@@ -39,6 +39,7 @@ import {
   __resetIdentity,
   __resetObligations,
   assertOwnReplica,
+  clearLocalAccountData,
   discardLocalReplica,
   enterLoginPreservingReplica,
   flushOutboxForSignOut,
@@ -887,12 +888,15 @@ describe("sync boot: the replica's owner is checked BEFORE it is rendered", () =
     await idbPut("meta", "user-A", "userId");
     outbox.add(catOp());
     session = null;  
+    e2ee.setTierMeta({ tier: "e2ee", epoch: 3 });
+    e2ee.setDek(generateDek(), 3);
 
     await retryBoot();
 
     expect(store.getBootStatus()).toBe("unauthed");  
     expect(outbox.size()).toBe(1);  
     expect(await idbGet("meta", "ledger")).toBeDefined();
+    expect(e2ee.isDekValidForEpoch(3)).toBe(true); // re-auth + unlock policy, not destructive sign-out
   });
 
   it("the same account → the replica boots normally (the check is not a new refusal)", async () => {
@@ -1564,6 +1568,16 @@ describe("sync: full-budget overwrites carry the verified owner", () => {
  
 
 describe("flushOutboxForSignOut (explicit sign-out clears the replica afterwards)", () => {
+  it("the explicit local-account wipe clears the in-memory DEK with the replica", async () => {
+    e2ee.setTierMeta({ tier: "e2ee", epoch: 3 });
+    e2ee.setDek(generateDek(), 3);
+
+    await clearLocalAccountData();
+
+    expect(e2ee.getDek()).toBeNull();
+    expect(store.getLedger()).toBeNull();
+  });
+
   it("pushes the queue and reports 0 left — the wipe loses nothing", async () => {
     await idbPut("meta", "user-A", "userId");
     session = { user: { id: "user-A" } };

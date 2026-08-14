@@ -52,6 +52,7 @@ import { clearLocalData, storageMode } from "./idb";
 
 import * as outbox from "./outbox";
 import * as persist from "./persist";
+import { store } from "./store";
 import { INTERVAL_MS } from "./sync/contracts";
 import { configureCycle, getLastSyncReason, resetBackoff, syncNow } from "./sync/cycle";
 import { assertOwnReplica, enterUnauthed } from "./sync/identity";
@@ -91,6 +92,8 @@ export async function discardLocalReplica(): Promise<void> {
  
 export async function clearLocalAccountData(): Promise<void> {
   outbox.clearAll();
+  e2ee.clearDek();  
+  store.clearMemory();
   await persist.flushed();
   await Promise.all([accountPreferences.clear(), devicePreferences.clear()]);
   await clearLocalData();  

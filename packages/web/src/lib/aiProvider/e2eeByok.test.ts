@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import type { ChatRequest, ClientLedger } from "@enveo/shared";
-import { budgetSecretAadContext, encryptPayload, generateDek } from "../crypto";
+import { budgetSecretAadContext, encryptPayload, generateDek, snapshotAadContext } from "../crypto";
 import { E2eeByokProvider } from "./e2eeByok";
 
 const BUDGET = "11111111-1111-1111-1111-111111111111";
@@ -8,7 +8,16 @@ const OTHER_BUDGET = "22222222-2222-2222-2222-222222222222";
 const request: ChatRequest = { messages: [{ role: "user", content: "hello" }] };
 const ledger: ClientLedger = { budgets: [], accounts: [], groups: [], envelopes: [], categories: [], places: [], transactions: [], allocations: [] };
 
-function fixture(options: { unlocked?: boolean; configured?: boolean; directError?: string; responseBudgetId?: string; responseEpoch?: number } = {}) {
+function fixture(
+  options: {
+    unlocked?: boolean;
+    configured?: boolean;
+    directError?: string;
+    responseBudgetId?: string;
+    responseEpoch?: number;
+    staleOn?: "get" | "save" | "remove";
+  } = {},
+) {
   const dek = generateDek();
   let ciphertext: string | undefined;
   const calls = {
@@ -16,7 +25,9 @@ function fixture(options: { unlocked?: boolean; configured?: boolean; directErro
     save: [] as Array<{ budgetId: string; epoch: number; ciphertext: string }>,
     remove: [] as Array<{ budgetId: string; epoch: number }>,
     direct: [] as Array<{ key: string; model: string; request: ChatRequest; timeoutMs?: number }>,
+    mismatch: [] as Array<{ tier: "plain" | "e2ee"; epoch: number; cipherVersion?: number }>,
   };
+  const stale = () => new Error('409 {"error":"tier_mismatch","tier":"e2ee","epoch":4,"cipherVersion":2}');
   const provider = new E2eeByokProvider({
     tier: "e2ee",
     unlocked: options.unlocked ?? true,
@@ -28,6 +39,7 @@ function fixture(options: { unlocked?: boolean; configured?: boolean; directErro
       return dek.slice();
     },
     get: async (budgetId) => {
+      if (options.staleOn === "get") throw stale();
       calls.get.push(budgetId);
       return {
         configured: options.configured ?? ciphertext !== undefined,
@@ -37,10 +49,12 @@ function fixture(options: { unlocked?: boolean; configured?: boolean; directErro
       };
     },
     save: async (budgetId, epoch, nextCiphertext) => {
+      if (options.staleOn === "save") throw stale();
       calls.save.push({ budgetId, epoch, ciphertext: nextCiphertext });
       ciphertext = nextCiphertext;
     },
     remove: async (budgetId, epoch) => {
+      if (options.staleOn === "remove") throw stale();
       calls.remove.push({ budgetId, epoch });
       ciphertext = undefined;
     },
@@ -51,6 +65,7 @@ function fixture(options: { unlocked?: boolean; configured?: boolean; directErro
         ? '{"transactions":[{"date":"2026-08-01","amount":1234,"type":"expense","rawPlace":"SHOP 1","tag":"SHOP","currency":"EUR","fxOriginal":""}]}'
         : "direct-answer";
     },
+    onTierMismatch: (meta) => calls.mismatch.push(meta),
   });
   return {
     provider,
@@ -123,11 +138,32 @@ describe("E2EE Own OpenAI provider", () => {
     await expect(stale.provider.complete(request)).rejects.toThrow();
     expect(stale.calls.direct).toEqual([]);
 
+    const wrongKind = fixture();
+    const snapshotCiphertext = await encryptPayload("sk-wrong-kind", wrongKind.dek, snapshotAadContext(BUDGET, 3, 0));
+    wrongKind.setCiphertext(snapshotCiphertext);
+    await expect(wrongKind.provider.complete(request)).rejects.toThrow();
+    expect(wrongKind.calls.direct).toEqual([]);
+
     for (const response of [fixture({ responseBudgetId: OTHER_BUDGET }), fixture({ responseEpoch: 4 })]) {
       await response.provider.saveCredential("sk-record-assertion");
       await expect(response.provider.complete(request)).rejects.toThrow();
       expect(response.calls.direct).toEqual([]);
     }
+  });
+
+  it("adopts a stale server epoch before save, delete or use and never calls OpenAI", async () => {
+    const save = fixture({ staleOn: "save" });
+    await expect(save.provider.saveCredential("sk-stale-save")).rejects.toThrow("tier_mismatch");
+    expect(save.calls.mismatch).toEqual([{ tier: "e2ee", epoch: 4, cipherVersion: 2 }]);
+
+    const remove = fixture({ staleOn: "remove" });
+    await expect(remove.provider.removeCredential()).rejects.toThrow("tier_mismatch");
+    expect(remove.calls.mismatch).toEqual([{ tier: "e2ee", epoch: 4, cipherVersion: 2 }]);
+
+    const use = fixture({ staleOn: "get" });
+    await expect(use.provider.complete(request)).rejects.toThrow("tier_mismatch");
+    expect(use.calls.mismatch).toEqual([{ tier: "e2ee", epoch: 4, cipherVersion: 2 }]);
+    expect(use.calls.direct).toEqual([]);
   });
 
   it("propagates a classified direct-upstream failure without retaining the key", async () => {
