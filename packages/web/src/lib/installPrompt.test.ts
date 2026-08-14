@@ -79,6 +79,18 @@ describe("single install-sheet host", () => {
     const renderers = files.filter((f) => /<InstallSheet[\s/>]/.test(readFileSync(join(SRC, f), "utf8")));
     expect(renderers).toEqual(["App.tsx"]);
   });
+
+  it("loads the install sheet only when the user asks for it", () => {
+    const app = readFileSync(join(import.meta.dir, "..", "App.tsx"), "utf8");
+    expect(app).not.toMatch(/import\s*{\s*InstallSheet\s*}\s*from\s*["']\.\/components\/InstallSheet["']/);
+    expect(app).toContain('lazy(() => import("./components/InstallSheet")');
+  });
+
+  it("keeps the envelope action overlay out of the boot bundle", () => {
+    const app = readFileSync(join(import.meta.dir, "..", "App.tsx"), "utf8");
+    expect(app).not.toMatch(/import\s*{\s*EnvActionsSheet\s*}\s*from\s*["']\.\/components\/EnvActionsSheet["']/);
+    expect(app).toContain('lazy(() => import("./components/EnvActionsSheet")');
+  });
 });
 
 describe("runPrompt", () => {
