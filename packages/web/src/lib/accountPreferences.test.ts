@@ -64,6 +64,18 @@ describe("account preference cache", () => {
     expect(f.store.getSnapshot()).toEqual(createDefaultAccountPreferences());
   });
 
+  it("hides account state on logout without deleting offline edits", async () => {
+    const f = fixture();
+    await f.store.hydrateForUser("user-a");
+    await f.store.update({ lang: "pl" });
+
+    f.store.dehydrate();
+
+    expect(f.store.getSnapshot()).toEqual(createDefaultAccountPreferences());
+    expect(f.persisted()?.value.lang).toBe("pl");
+    expect(f.persisted()?.dirty).toEqual({ lang: true });
+  });
+
   it("persists optimistic offline edits and reloads their dirty state", async () => {
     const f = fixture();
     await f.store.hydrateForUser("user-a");

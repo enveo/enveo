@@ -15,7 +15,7 @@ export type OpenAiModel = (typeof OPENAI_MODELS)[number];
 export const WIDGET_IDS = ["quickActions", "accounts", "envelopes", "envelopesSavings", "reportCashflow", "reportNetWorth"] as const;
 export type WidgetId = (typeof WIDGET_IDS)[number];
 
-export const QUICK_ACTION_IDS = ["expense", "transfer", "import", "suggest"] as const;
+export const QUICK_ACTION_IDS = ["expense", "transfer", "import", "suggest", "discreet", "darkMode", "reports"] as const;
 export type QuickActionId = (typeof QUICK_ACTION_IDS)[number];
 
 export interface WidgetOpts {

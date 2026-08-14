@@ -67,6 +67,13 @@ describe("reconcileBudgetPreferences", () => {
 
     expect(preferences.startWidgets).toEqual(createDefaultBudgetPreferences().startWidgets);
   });
+
+  test("accepts every quick action currently offered by the dashboard editor", () => {
+    const actions = ["expense", "transfer", "import", "suggest", "discreet", "darkMode", "reports"];
+    const preferences = reconcileBudgetPreferences({ startWidgets: [{ id: "quickActions", enabled: true, opts: { actions } }] });
+
+    expect(preferences.startWidgets[0]).toEqual({ id: "quickActions", enabled: true, opts: { actions } });
+  });
 });
 
 describe("preference patch schemas", () => {

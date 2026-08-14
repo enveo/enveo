@@ -179,7 +179,14 @@ export function createAccountPreferencesStore(deps: AccountPreferencesStoreDeps)
     hydratedFor = null;
     syncFlight = null;
     publish(createDefaultAccountPreferences());
+    await persistChain.catch(() => {});
     await deps.remove();
+  }
+
+  function dehydrate(): void {
+    cache = null;
+    hydratedFor = null;
+    publish(createDefaultAccountPreferences());
   }
 
   return {
@@ -194,6 +201,7 @@ export function createAccountPreferencesStore(deps: AccountPreferencesStoreDeps)
     update,
     sync,
     clear,
+    dehydrate,
   };
 }
 

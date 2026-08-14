@@ -63,6 +63,8 @@
  * budget and because a user id does not survive a server rebuild — see enterForeignReplica. The
  * asymmetry the guard keeps is: an unproven owner ⇒ refuse every server write, destroy nothing.
  */
+
+import { accountPreferences } from "../accountPreferences";
 import { fetchSessionUserId } from "../auth";
 import * as e2ee from "../e2ee";
 import { idbGet } from "../idb";
@@ -115,6 +117,7 @@ export function __resetIdentity(): void {
  */
 export function enterUnauthed(): void {
   identityVerifiedFor = null;
+  accountPreferences.dehydrate();  
   setOwnerUnproven(false);  
   store.setBootStatus("unauthed");
   setState("unauthed"); // no retry loop — a 401 does not clear on its own
@@ -141,6 +144,7 @@ export function enterUnauthed(): void {
  */
 export function enterForeignReplica(): void {
   identityBlocked = true;  
+  accountPreferences.dehydrate(); // the signed-in account is not the cache owner
   setOwnerUnproven(false);  
   console.warn("sync: the local replica belongs to a different account — every server write is refused");
   store.setBootStatus("foreign");  
