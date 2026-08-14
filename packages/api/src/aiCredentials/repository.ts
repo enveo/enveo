@@ -32,6 +32,15 @@ export class CredentialNotConfigured extends Error {
   }
 }
 
+export class CredentialVaultUnavailable extends Error {
+  readonly code = "vault_unavailable" as const;
+
+  constructor() {
+    super("vault_unavailable");
+    this.name = "CredentialVaultUnavailable";
+  }
+}
+
 async function lockPlainBudget(tx: DbTransaction, owner: CredentialOwner, budgetId: string): Promise<void> {
   const [row] = await tx
     .select({ userId: budgets.userId, tier: budgets.tier, epoch: budgets.epoch, cipherVersion: budgets.cipherVersion })
@@ -61,7 +70,7 @@ function sealedFromRow(row: {
   };
 }
 
-export function createCredentialRepository(masterKeys: VaultMasterKeyProvider) {
+export function createCredentialRepository(masterKeys: VaultMasterKeyProvider | null) {
   return {
     async credentialStatus(tx: DbTransaction, owner: CredentialOwner, budgetId: string): Promise<CredentialStatus> {
       await lockPlainBudget(tx, owner, budgetId);
@@ -74,6 +83,7 @@ export function createCredentialRepository(masterKeys: VaultMasterKeyProvider) {
     },
 
     async replaceServerCredential(tx: DbTransaction, owner: CredentialOwner, budgetId: string, plaintext: string): Promise<void> {
+      if (!masterKeys) throw new CredentialVaultUnavailable();
       await lockPlainBudget(tx, owner, budgetId);
       const [current] = await tx
         .select({ recordVersion: budgetAiCredentials.recordVersion })
@@ -117,6 +127,7 @@ export function createCredentialRepository(masterKeys: VaultMasterKeyProvider) {
     },
 
     async withServerCredential<T>(tx: DbTransaction, owner: CredentialOwner, budgetId: string, use: (credential: string) => Promise<T>): Promise<T> {
+      if (!masterKeys) throw new CredentialVaultUnavailable();
       await lockPlainBudget(tx, owner, budgetId);
       const [row] = await tx.select().from(budgetAiCredentials).where(eq(budgetAiCredentials.budgetId, budgetId));
       if (row?.storageKind !== "server_vault") throw new CredentialNotConfigured();

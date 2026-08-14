@@ -12,6 +12,7 @@ import { authMetaBody } from "./authPolicy";
 import { TierMismatch } from "./context";
 import { assertAuthEnv, assertDbEnv, env } from "./env";
 import { isSameHostOrigin, staticAllowedOrigins } from "./origins";
+import { createAiCredentialRoutes } from "./routes/aiCredentials";
 import { budgetSuggestRoutes } from "./routes/budgetSuggest";
 import { crudRoutes } from "./routes/crud";
 import { demoRoutes } from "./routes/demo";
@@ -148,6 +149,7 @@ api.route("/", preferencesRoutes);
 api.route("/", syncRoutes);
 api.route("/", sync2Routes);
 api.route("/", budgetSuggestRoutes);
+api.route("/", createAiCredentialRoutes({ masterKeys: vaultMasterKeyProvider }));
 api.route("/", demoRoutes);
 app.route("/api", api);
 
