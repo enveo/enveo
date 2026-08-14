@@ -1,7 +1,8 @@
 /**
- * The fetch layer for the byok mode — calls OpenAI DIRECTLY from the browser
- * (the user's key from localStorage, never through our server). Prompts and
- * parsing live in @enveo/shared/aiPrompts (parity with the server mode).
+ * Low-level chat transport. Plain-tier execution uses only the server target:
+ * operator AI and vaulted BYOK are selected behind lib/aiProvider. The direct
+ * target remains quarantined for the legacy migration tests and the Stage-4
+ * zero-knowledge provider; no plain feature constructs one.
  *
  * ERROR CONTRACT (as everywhere in lib/*): a failure leaves this module as a snake_case CODE —
  * never prose, never a status line. Screenshot import is AI-only, so these errors are RENDERED
