@@ -20,11 +20,8 @@ export const nl: Dict = {
   "A profile with this name already exists.": "Er bestaat al een profiel met deze naam.",
   AI: "AI",
   "AI (corrected)": "AI (gecorrigeerd)",
-  "AI is not set up on this device. Pick a mode in Settings → Artificial intelligence (with your own key, paste it there).":
-    "AI is niet ingesteld op dit apparaat. Kies een modus in Instellingen → Kunstmatige intelligentie (met een eigen sleutel plak je die daar).",
   "AI is off — suggestions run locally on rules; nothing leaves this device.":
     "AI staat uit — suggesties worden lokaal met regels berekend; er verlaat niets dit apparaat.",
-  "AI mode, your own key": "AI-modus, eigen sleutel",
   "AI requests go to OpenAI through the app server (operator's key).": "AI-verzoeken gaan via de server van de app naar OpenAI (sleutel van de beheerder).",
   "AI unavailable — rules were used instead.": "AI niet beschikbaar — er zijn regels gebruikt.",
   AVAILABLE: "BESCHIKBAAR",
@@ -56,7 +53,6 @@ export const nl: Dict = {
   "Add {n} transaction | Add {n} transactions": { one: "{n} transactie toevoegen", other: "{n} transacties toevoegen" },
   "Added {n} transaction | Added {n} transactions": { one: "{n} transactie toegevoegd", other: "{n} transacties toegevoegd" },
   "Adding…": "Bezig met toevoegen…",
-  Advanced: "Geavanceerd",
   "Afterwards, other devices must unlock again with the new password or a fresh pairing code — old pairing codes stop working.":
     "Daarna moeten andere apparaten opnieuw ontgrendelen met het nieuwe wachtwoord of een verse koppelcode — oude koppelcodes werken niet meer.",
   "All goals funded ✓": "Alle doelen gefinancierd ✓",
@@ -68,7 +64,6 @@ export const nl: Dict = {
   "An upgrade or a restore is in progress: the account's budget on the server is not this device's budget yet. Once it is, sync will resume by itself.":
     "Er loopt een upgrade of een herstel: het budget van het account op de server is nog niet dat van dit apparaat. Zodra dat wel zo is, hervat de synchronisatie vanzelf.",
   "Another account's data": "Gegevens van een ander account",
-  Appearance: "Weergave",
   "Apple Wallet or bank history — AI will recognize the transactions, duplicates will be skipped":
     "Apple Wallet of je bankafschriften — de AI herkent de transacties, dubbele worden overgeslagen",
   "Apply ({n})": "Toepassen ({n})",
@@ -145,7 +140,6 @@ export const nl: Dict = {
   "Custom profiles are stored only on this device.": "Eigen profielen worden alleen op dit apparaat bewaard.",
   "DISABLE-E2EE": "E2EE-UIT",
   Dark: "Donker",
-  Data: "Gegevens",
   Delete: "Verwijderen",
   "Delete everything and start fresh": "Alles wissen en met een schone lei beginnen",
   "Delete everything and start over": "Alles verwijderen en opnieuw beginnen",
@@ -301,14 +295,12 @@ export const nl: Dict = {
   "Not sending": "Wordt niet verstuurd",
   "Not syncing with your account": "Synchroniseert niet met je account",
   Off: "Uit",
-  "On-device storage": "Opslag op het apparaat",
   "Once enabled, the server stores ciphertexts only. The key is your password, which the server does NOT know — without it (or a pairing code from another unlocked device) the data cannot be recovered.":
     "Eenmaal ingeschakeld bewaart de server alleen nog versleutelde tekst. De sleutel is jouw wachtwoord, dat de server NIET kent — zonder dat wachtwoord (of een koppelcode van een vertrouwd apparaat) zijn de gegevens niet te herstellen.",
   "One tap and Enveo lives on your home screen — offline, full screen, no browser bar.":
     "Eén tik en Enveo staat op je beginscherm — offline, schermvullend, zonder browserbalk.",
   "Open {host} in Safari to add it to your home screen — installing only works from Safari on iPhone and iPad.":
     "Open {host} in Safari om de app op je beginscherm te zetten — op iPhone en iPad werkt installeren alleen vanuit Safari.",
-  "OpenAI key": "OpenAI-sleutel",
   "OpenAI rejected the request — check the key and the model, then try again.":
     "OpenAI heeft het verzoek geweigerd — controleer de sleutel en het model en probeer het opnieuw.",
   "OpenAI rejected this key — model availability could not be checked.":
@@ -363,7 +355,6 @@ export const nl: Dict = {
   Save: "Opslaan",
   "Save changes": "Wijzigingen opslaan",
   "Save item": "Regel opslaan",
-  "Save key & enable": "Sleutel opslaan en inschakelen",
   Savings: "Sparen",
   "Savings envelopes first — the free remainder goes to them.": "Eerst de spaarenveloppen — het vrije restant gaat daarheen.",
   "Screenshot {n}": "Schermafbeelding {n}",
@@ -403,7 +394,6 @@ export const nl: Dict = {
   Suggest: "Voorstellen",
   "Suggest a distribution": "Een verdeling voorstellen",
   Summary: "Samenvatting",
-  Sync: "Synchronisatie",
   "Sync in progress": "Synchronisatie bezig",
   "Sync now": "Nu synchroniseren",
   "Syncing…": "Bezig met synchroniseren…",
@@ -443,8 +433,6 @@ export const nl: Dict = {
   "The envelope “{name}” will disappear from the Budget and Start screens. Its transaction history stays, and available funds remain in the envelope. You can restore it in “Manage envelopes” → Archived.\n\nArchive it?":
     "De envelop ‘{name}’ verdwijnt van de schermen Budget en Start. De transactiehistorie blijft en het beschikbare geld blijft in de envelop. Je kunt hem herstellen in ‘Enveloppen beheren’ → Gearchiveerd.\n\nArchiveren?",
   "The first launch requires a connection to the server": "De eerste start vereist een verbinding met de server",
-  "The key is stored only in this browser (localStorage) — it is never synced or sent to the app server.":
-    "De sleutel wordt alleen in deze browser bewaard (localStorage) — hij wordt nooit gesynchroniseerd of naar de server van de app gestuurd.",
   "The local copy of the budget has not loaded yet — nothing was sent. Reload the app and try again.":
     "De lokale kopie van het budget is nog niet geladen — er is niets verstuurd. Herlaad de app en probeer het opnieuw.",
   "The local copy of the budget on this device belongs to a different account than the one you are signed in with. Nothing has been sent to the server and nothing has been deleted.":
@@ -452,14 +440,8 @@ export const nl: Dict = {
   "The local copy — including any unsent changes — will be permanently removed from this device. If this is the only copy of that budget, download a backup first.":
     "De lokale kopie — inclusief niet-verstuurde wijzigingen — wordt definitief van dit apparaat verwijderd. Als dit de enige kopie van dat budget is, download dan eerst een back-up.",
   "The local replica is not ready.": "De lokale replica is niet gereed.",
-  "The monthly AI allowance for this account is used up — it resets at the start of the next month (UTC). You can keep using AI right away with your own key in Settings → Artificial intelligence.":
-    "Het maandelijkse AI-tegoed van dit account is opgebruikt — het wordt vernieuwd aan het begin van de volgende maand (UTC). Met je eigen sleutel in Instellingen → Kunstmatige intelligentie kun je AI meteen blijven gebruiken.",
   "The password must be at least 8 characters.": "Het wachtwoord moet minstens 8 tekens lang zijn.",
   "The proposal exceeds “To be budgeted” — uncheck or reduce items.": "Het voorstel overschrijdt ‘Te budgetteren’ — vink regels uit of verlaag ze.",
-  "The server has no OpenAI key configured — server mode is unavailable. Use your own key or keep AI off.":
-    "Op de server is geen OpenAI-sleutel ingesteld — de servermodus is niet beschikbaar. Gebruik je eigen sleutel of laat AI uit staan.",
-  "The server has no OpenAI key configured. Set OPENAI_API_KEY and restart the app, or use your own key in Settings → Artificial intelligence.":
-    "Op de server is geen OpenAI-sleutel ingesteld. Stel OPENAI_API_KEY in en herstart de app, of gebruik je eigen sleutel in Instellingen → Kunstmatige intelligentie.",
   "The server hit an unexpected error. Nothing was changed — try again.":
     "Op de server is een onverwachte fout opgetreden. Er is niets gewijzigd — probeer het opnieuw.",
   "The server refuses to sync this budget until its encryption is upgraded to the new format.":
@@ -544,7 +526,6 @@ export const nl: Dict = {
     "Vink uit wat je niet wilt. Duplicaten worden overgeslagen — tik op een duplicaat om het te bewerken en alsnog toe te voegen.",
   Usage: "Gebruik",
   Use: "Gebruiken",
-  "Use your own key": "Je eigen sleutel gebruiken",
   Utilities: "Nutsvoorzieningen",
   "WARNING: IndexedDB unavailable — data is kept only in session memory (it will not survive closing the app).":
     "WAARSCHUWING: IndexedDB is niet beschikbaar — de gegevens staan alleen in het sessiegeheugen (ze overleven het sluiten van de app niet).",
@@ -567,7 +548,6 @@ export const nl: Dict = {
   "Your first account": "Je eerste rekening",
   "already exists": "bestaat al",
   "available after: {amount}": "daarna beschikbaar: {amount}",
-  "backup, end-to-end encryption, account": "back-up, eind-tot-eindversleuteling, account",
   "cancel split": "splitsen annuleren",
   dark: "donker",
   details: "details",
@@ -597,10 +577,8 @@ export const nl: Dict = {
   server: "server",
   settings: "instellingen",
   skipped: "overgeslagen",
-  "status, re-download": "status, opnieuw ophalen",
   "the server will store your data in plain form again": "de server bewaart je gegevens weer in leesbare vorm",
   "the whole local copy as a file — no network needed": "de hele lokale kopie als bestand — zonder netwerk",
-  "theme, language, currency, discreet": "thema, taal, valuta, discreet",
   today: "vandaag",
   unknown: "onbekend",
   "unlock the budget on a new device without the password": "het budget op een nieuw apparaat ontgrendelen zonder het wachtwoord",

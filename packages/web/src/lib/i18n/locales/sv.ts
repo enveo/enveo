@@ -20,11 +20,8 @@ export const sv: Dict = {
   "A profile with this name already exists.": "Det finns redan en profil med det här namnet.",
   AI: "AI",
   "AI (corrected)": "AI (korrigerad)",
-  "AI is not set up on this device. Pick a mode in Settings → Artificial intelligence (with your own key, paste it there).":
-    "AI är inte konfigurerat på den här enheten. Välj ett läge i Inställningar → Artificiell intelligens (med egen nyckel klistrar du in den där).",
   "AI is off — suggestions run locally on rules; nothing leaves this device.":
     "AI är av — förslagen räknas ut lokalt med regler; ingenting lämnar den här enheten.",
-  "AI mode, your own key": "AI-läge, egen nyckel",
   "AI requests go to OpenAI through the app server (operator's key).": "AI-anrop går till OpenAI via appens server (operatörens nyckel).",
   "AI unavailable — rules were used instead.": "AI är inte tillgängligt — regler användes i stället.",
   AVAILABLE: "TILLGÄNGLIGT",
@@ -56,7 +53,6 @@ export const sv: Dict = {
   "Add {n} transaction | Add {n} transactions": { one: "Lägg till {n} transaktion", other: "Lägg till {n} transaktioner" },
   "Added {n} transaction | Added {n} transactions": { one: "{n} transaktion tillagd", other: "{n} transaktioner tillagda" },
   "Adding…": "Lägger till…",
-  Advanced: "Avancerat",
   "Afterwards, other devices must unlock again with the new password or a fresh pairing code — old pairing codes stop working.":
     "Efteråt måste andra enheter låsas upp igen med det nya lösenordet eller en färsk parkopplingskod — gamla parkopplingskoder slutar fungera.",
   "All goals funded ✓": "Alla mål finansierade ✓",
@@ -68,7 +64,6 @@ export const sv: Dict = {
   "An upgrade or a restore is in progress: the account's budget on the server is not this device's budget yet. Once it is, sync will resume by itself.":
     "En uppgradering eller en återställning pågår: kontots budget på servern är ännu inte den här enhetens budget. Så snart den är det återupptas synkroniseringen av sig själv.",
   "Another account's data": "Data från ett annat konto",
-  Appearance: "Utseende",
   "Apple Wallet or bank history — AI will recognize the transactions, duplicates will be skipped":
     "Apple Wallet eller bankens historik — AI känner igen transaktionerna, dubbletter hoppas över",
   "Apply ({n})": "Använd ({n})",
@@ -146,7 +141,6 @@ export const sv: Dict = {
   "Custom profiles are stored only on this device.": "Egna profiler sparas bara på den här enheten.",
   "DISABLE-E2EE": "E2EE-AV",
   Dark: "Mörkt",
-  Data: "Data",
   Delete: "Ta bort",
   "Delete everything and start fresh": "Radera allt och börja om på nytt",
   "Delete everything and start over": "Ta bort allt och börja om",
@@ -298,14 +292,12 @@ export const sv: Dict = {
   "Not sending": "Skickar inte",
   "Not syncing with your account": "Synkroniserar inte med ditt konto",
   Off: "Av",
-  "On-device storage": "Lagring på enheten",
   "Once enabled, the server stores ciphertexts only. The key is your password, which the server does NOT know — without it (or a pairing code from another unlocked device) the data cannot be recovered.":
     "När det är aktiverat lagrar servern bara krypterad text. Nyckeln är ditt lösenord, som servern INTE känner till — utan det (eller utan en parkopplingskod från en betrodd enhet) går data inte att återskapa.",
   "One tap and Enveo lives on your home screen — offline, full screen, no browser bar.":
     "Ett tryck och Enveo finns på hemskärmen — offline, i helskärm, utan webbläsarfält.",
   "Open {host} in Safari to add it to your home screen — installing only works from Safari on iPhone and iPad.":
     "Öppna {host} i Safari för att lägga till appen på hemskärmen — på iPhone och iPad fungerar installation bara från Safari.",
-  "OpenAI key": "OpenAI-nyckel",
   "OpenAI rejected the request — check the key and the model, then try again.": "OpenAI avvisade anropet — kontrollera nyckeln och modellen och försök igen.",
   "OpenAI rejected this key — model availability could not be checked.": "OpenAI avvisade den här nyckeln — modelltillgängligheten kunde inte kontrolleras.",
   "OpenAI rejected your key — check it in Settings → Artificial intelligence.":
@@ -358,7 +350,6 @@ export const sv: Dict = {
   Save: "Spara",
   "Save changes": "Spara ändringarna",
   "Save item": "Spara raden",
-  "Save key & enable": "Spara nyckeln och aktivera",
   Savings: "Sparande",
   "Savings envelopes first — the free remainder goes to them.": "Sparkuverten först — det fria överskottet går till dem.",
   "Screenshot {n}": "Skärmbild {n}",
@@ -398,7 +389,6 @@ export const sv: Dict = {
   Suggest: "Föreslå",
   "Suggest a distribution": "Föreslå en fördelning",
   Summary: "Sammanfattning",
-  Sync: "Synkronisering",
   "Sync in progress": "Synkronisering pågår",
   "Sync now": "Synkronisera nu",
   "Syncing…": "Synkroniserar…",
@@ -436,8 +426,6 @@ export const sv: Dict = {
   "The envelope “{name}” will disappear from the Budget and Start screens. Its transaction history stays, and available funds remain in the envelope. You can restore it in “Manage envelopes” → Archived.\n\nArchive it?":
     "Kuvertet ”{name}” försvinner från skärmarna Budget och Start. Transaktionshistoriken blir kvar och de tillgängliga medlen ligger kvar i kuvertet. Du kan återställa det i ”Hantera kuverten” → Arkiverade.\n\nArkivera det?",
   "The first launch requires a connection to the server": "Den första starten kräver en anslutning till servern",
-  "The key is stored only in this browser (localStorage) — it is never synced or sent to the app server.":
-    "Nyckeln sparas bara i den här webbläsaren (localStorage) — den synkroniseras aldrig och skickas aldrig till appens server.",
   "The local copy of the budget has not loaded yet — nothing was sent. Reload the app and try again.":
     "Den lokala kopian av budgeten har inte lästs in än — ingenting skickades. Ladda om appen och försök igen.",
   "The local copy of the budget on this device belongs to a different account than the one you are signed in with. Nothing has been sent to the server and nothing has been deleted.":
@@ -445,14 +433,8 @@ export const sv: Dict = {
   "The local copy — including any unsent changes — will be permanently removed from this device. If this is the only copy of that budget, download a backup first.":
     "Den lokala kopian — inklusive ändringar som inte skickats — tas bort permanent från den här enheten. Om det är den enda kopian av den budgeten bör du ladda ned en säkerhetskopia först.",
   "The local replica is not ready.": "Den lokala repliken är inte redo.",
-  "The monthly AI allowance for this account is used up — it resets at the start of the next month (UTC). You can keep using AI right away with your own key in Settings → Artificial intelligence.":
-    "Kontots månatliga AI-kvot är förbrukad — den förnyas vid början av nästa månad (UTC). Med din egen nyckel i Inställningar → Artificiell intelligens kan du fortsätta använda AI direkt.",
   "The password must be at least 8 characters.": "Lösenordet måste vara minst 8 tecken.",
   "The proposal exceeds “To be budgeted” — uncheck or reduce items.": "Förslaget överstiger ”Att budgetera” — bocka av eller minska poster.",
-  "The server has no OpenAI key configured — server mode is unavailable. Use your own key or keep AI off.":
-    "Servern har ingen OpenAI-nyckel konfigurerad — serverläget är inte tillgängligt. Använd din egen nyckel eller låt AI vara av.",
-  "The server has no OpenAI key configured. Set OPENAI_API_KEY and restart the app, or use your own key in Settings → Artificial intelligence.":
-    "Servern har ingen OpenAI-nyckel konfigurerad. Sätt OPENAI_API_KEY och starta om appen, eller använd din egen nyckel i Inställningar → Artificiell intelligens.",
   "The server hit an unexpected error. Nothing was changed — try again.": "Servern råkade ut för ett oväntat fel. Ingenting ändrades — försök igen.",
   "The server refuses to sync this budget until its encryption is upgraded to the new format.":
     "Servern vägrar synkronisera den här budgeten tills dess kryptering har uppgraderats till det nya formatet.",
@@ -536,7 +518,6 @@ export const sv: Dict = {
     "Bocka av det du inte vill ha. Dubbletter hoppas över — tryck på en för att redigera den och lägga till den ändå.",
   Usage: "Användning",
   Use: "Använd",
-  "Use your own key": "Använd din egen nyckel",
   Utilities: "El, vatten och sopor",
   "WARNING: IndexedDB unavailable — data is kept only in session memory (it will not survive closing the app).":
     "VARNING: IndexedDB är inte tillgängligt — data finns bara i sessionsminnet (de överlever inte att appen stängs).",
@@ -559,7 +540,6 @@ export const sv: Dict = {
   "Your first account": "Ditt första konto",
   "already exists": "finns redan",
   "available after: {amount}": "tillgängligt efteråt: {amount}",
-  "backup, end-to-end encryption, account": "säkerhetskopia, totalsträckskryptering, konto",
   "cancel split": "avbryt uppdelningen",
   dark: "mörkt",
   details: "detaljer",
@@ -589,10 +569,8 @@ export const sv: Dict = {
   server: "server",
   settings: "inställningar",
   skipped: "överhoppad",
-  "status, re-download": "status, hämta på nytt",
   "the server will store your data in plain form again": "servern lagrar dina data i klartext igen",
   "the whole local copy as a file — no network needed": "hela den lokala kopian som en fil — inget nätverk behövs",
-  "theme, language, currency, discreet": "tema, språk, valuta, diskret",
   today: "i dag",
   unknown: "okänt",
   "unlock the budget on a new device without the password": "låsa upp budgeten på en ny enhet utan lösenordet",

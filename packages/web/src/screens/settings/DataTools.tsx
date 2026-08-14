@@ -14,7 +14,7 @@ const IC = {
   restart: ["M1 4v6h6", "M3.51 15a9 9 0 102.13-9.36L1 10"],
 };
 
-export function AdvancedSection() {
+export function DataToolsSection() {
   return (
     <div style={{ marginTop: 4 }}>
       <StorageDiagSection />
@@ -38,33 +38,37 @@ function StorageDiagSection() {
   const mb = (bytes: number | null) => (bytes == null ? "—" : `${(bytes / 1_048_576).toFixed(1)} MB`);
 
   return (
-    <div style={{ marginTop: 14 }}>
-      <div style={{ fontSize: 11.5, fontWeight: 600, color: C.text, marginBottom: 4 }}>{t("On-device storage")}</div>
-      <Row label={t("Last launch")}>
-        <span style={{ fontSize: 13, fontWeight: 600, color: sourceColor }}>{sourceLabel}</span>
-      </Row>
-      <Row label={t("Persistent storage")}>
-        <span style={{ fontSize: 13, fontWeight: 600, color: persisted === true ? C.pos : persisted === false ? C.neg : C.soft }}>
-          {persisted === true ? t("Yes") : persisted === false ? t("No") : "—"}
-        </span>
-      </Row>
-      <Row label={t("Usage")}>
-        <span style={{ fontSize: 13, fontWeight: 600, color: C.text, fontVariantNumeric: "tabular-nums" }}>
-          {diag ? `${mb(diag.usageBytes)} / ${mb(diag.quotaBytes)}` : "—"}
-        </span>
-      </Row>
-      {mode === "memory-fallback" && (
-        <Helper>{t("WARNING: IndexedDB unavailable — data is kept only in session memory (it will not survive closing the app).")}</Helper>
-      )}
-      {mode === "memory-session" && (
-        <Helper>{t("Session storage — the budget lives only in this tab's memory and leaves no local copy after it closes.")}</Helper>
-      )}
-      <Helper>
-        {t(
-          "If “Last launch: fetched from server” appears every time you open the app, iOS is deleting the local copy between sessions — that is why the first load is slow. “Persistent storage: Yes” lowers the risk of such eviction.",
+    <details style={{ marginTop: 18 }}>
+      <summary style={{ fontSize: 11.5, fontWeight: 650, color: C.soft, cursor: "pointer", padding: "8px 0" }}>
+        {t("Diagnostics and on-device storage")}
+      </summary>
+      <div style={{ marginTop: 4 }}>
+        <Row label={t("Last launch")}>
+          <span style={{ fontSize: 13, fontWeight: 600, color: sourceColor }}>{sourceLabel}</span>
+        </Row>
+        <Row label={t("Persistent storage")}>
+          <span style={{ fontSize: 13, fontWeight: 600, color: persisted === true ? C.pos : persisted === false ? C.neg : C.soft }}>
+            {persisted === true ? t("Yes") : persisted === false ? t("No") : "—"}
+          </span>
+        </Row>
+        <Row label={t("Usage")}>
+          <span style={{ fontSize: 13, fontWeight: 600, color: C.text, fontVariantNumeric: "tabular-nums" }}>
+            {diag ? `${mb(diag.usageBytes)} / ${mb(diag.quotaBytes)}` : "—"}
+          </span>
+        </Row>
+        {mode === "memory-fallback" && (
+          <Helper>{t("WARNING: IndexedDB unavailable — data is kept only in session memory (it will not survive closing the app).")}</Helper>
         )}
-      </Helper>
-    </div>
+        {mode === "memory-session" && (
+          <Helper>{t("Session storage — the budget lives only in this tab's memory and leaves no local copy after it closes.")}</Helper>
+        )}
+        <Helper>
+          {t(
+            "If “Last launch: fetched from server” appears every time you open the app, iOS is deleting the local copy between sessions — that is why the first load is slow. “Persistent storage: Yes” lowers the risk of such eviction.",
+          )}
+        </Helper>
+      </div>
+    </details>
   );
 }
 

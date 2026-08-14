@@ -20,11 +20,8 @@ export const de: Dict = {
   "A profile with this name already exists.": "Ein Profil mit diesem Namen existiert bereits.",
   AI: "KI",
   "AI (corrected)": "KI (korrigiert)",
-  "AI is not set up on this device. Pick a mode in Settings → Artificial intelligence (with your own key, paste it there).":
-    "KI ist auf diesem Gerät nicht eingerichtet. Wähle einen Modus in Einstellungen → Künstliche Intelligenz (bei eigenem Schlüssel dort einfügen).",
   "AI is off — suggestions run locally on rules; nothing leaves this device.":
     "KI ist aus — Vorschläge laufen lokal über Regeln; nichts verlässt dieses Gerät.",
-  "AI mode, your own key": "KI-Modus, eigener Schlüssel",
   "AI requests go to OpenAI through the app server (operator's key).": "KI-Anfragen gehen über den App-Server an OpenAI (Schlüssel des Betreibers).",
   "AI unavailable — rules were used instead.": "KI nicht verfügbar — es wurden stattdessen Regeln verwendet.",
   AVAILABLE: "VERFÜGBAR",
@@ -56,7 +53,6 @@ export const de: Dict = {
   "Add {n} transaction | Add {n} transactions": { one: "{n} Transaktion hinzufügen", other: "{n} Transaktionen hinzufügen" },
   "Added {n} transaction | Added {n} transactions": { one: "{n} Transaktion hinzugefügt", other: "{n} Transaktionen hinzugefügt" },
   "Adding…": "Wird hinzugefügt…",
-  Advanced: "Erweitert",
   "Afterwards, other devices must unlock again with the new password or a fresh pairing code — old pairing codes stop working.":
     "Danach müssen andere Geräte erneut mit dem neuen Passwort oder einem frischen Kopplungscode entsperrt werden — alte Kopplungscodes funktionieren nicht mehr.",
   "All goals funded ✓": "Alle Ziele finanziert ✓",
@@ -68,7 +64,6 @@ export const de: Dict = {
   "An upgrade or a restore is in progress: the account's budget on the server is not this device's budget yet. Once it is, sync will resume by itself.":
     "Ein Upgrade oder eine Wiederherstellung läuft: Das Budget des Kontos auf dem Server ist noch nicht das Budget dieses Geräts. Sobald es das ist, läuft die Synchronisierung von selbst weiter.",
   "Another account's data": "Daten eines anderen Kontos",
-  Appearance: "Darstellung",
   "Apple Wallet or bank history — AI will recognize the transactions, duplicates will be skipped":
     "Apple Wallet oder Kontoauszug — die KI erkennt die Transaktionen, Duplikate werden übersprungen",
   "Apply ({n})": "Übernehmen ({n})",
@@ -145,7 +140,6 @@ export const de: Dict = {
   "Custom profiles are stored only on this device.": "Eigene Profile werden nur auf diesem Gerät gespeichert.",
   "DISABLE-E2EE": "E2EE-AUS",
   Dark: "Dunkel",
-  Data: "Daten",
   Delete: "Löschen",
   "Delete everything and start fresh": "Alles löschen und neu anfangen",
   "Delete everything and start over": "Alles löschen und neu beginnen",
@@ -302,14 +296,12 @@ export const de: Dict = {
   "Not sending": "Wird nicht gesendet",
   "Not syncing with your account": "Keine Synchronisierung mit deinem Konto",
   Off: "Aus",
-  "On-device storage": "Speicher auf dem Gerät",
   "Once enabled, the server stores ciphertexts only. The key is your password, which the server does NOT know — without it (or a pairing code from another unlocked device) the data cannot be recovered.":
     "Nach der Aktivierung speichert der Server nur noch Chiffretexte. Der Schlüssel ist dein Passwort, das der Server NICHT kennt — ohne es (oder einen Kopplungscode von einem vertrauenswürdigen Gerät) sind die Daten nicht wiederherstellbar.",
   "One tap and Enveo lives on your home screen — offline, full screen, no browser bar.":
     "Ein Tipp und Enveo liegt auf deinem Home-Bildschirm — offline, im Vollbild, ohne Browserleiste.",
   "Open {host} in Safari to add it to your home screen — installing only works from Safari on iPhone and iPad.":
     "Öffne {host} in Safari, um Enveo zum Home-Bildschirm hinzuzufügen — auf iPhone und iPad klappt das nur in Safari.",
-  "OpenAI key": "OpenAI-Schlüssel",
   "OpenAI rejected the request — check the key and the model, then try again.":
     "OpenAI hat die Anfrage abgelehnt — prüfe Schlüssel und Modell und versuche es erneut.",
   "OpenAI rejected this key — model availability could not be checked.":
@@ -364,7 +356,6 @@ export const de: Dict = {
   Save: "Speichern",
   "Save changes": "Änderungen speichern",
   "Save item": "Position speichern",
-  "Save key & enable": "Schlüssel speichern & aktivieren",
   Savings: "Ersparnisse",
   "Savings envelopes first — the free remainder goes to them.": "Spar-Umschläge zuerst — der freie Rest geht an sie.",
   "Screenshot {n}": "Screenshot {n}",
@@ -405,7 +396,6 @@ export const de: Dict = {
   Suggest: "Vorschlagen",
   "Suggest a distribution": "Verteilung vorschlagen",
   Summary: "Zusammenfassung",
-  Sync: "Synchronisierung",
   "Sync in progress": "Synchronisierung läuft",
   "Sync now": "Jetzt synchronisieren",
   "Syncing…": "Wird synchronisiert…",
@@ -445,8 +435,6 @@ export const de: Dict = {
   "The envelope “{name}” will disappear from the Budget and Start screens. Its transaction history stays, and available funds remain in the envelope. You can restore it in “Manage envelopes” → Archived.\n\nArchive it?":
     "Der Umschlag „{name}“ verschwindet aus den Bildschirmen Budget und Start. Seine Transaktionshistorie bleibt, und die verfügbaren Mittel bleiben im Umschlag. Du kannst ihn unter „Umschläge verwalten“ → Archiviert wiederherstellen.\n\nArchivieren?",
   "The first launch requires a connection to the server": "Der erste Start erfordert eine Verbindung zum Server",
-  "The key is stored only in this browser (localStorage) — it is never synced or sent to the app server.":
-    "Der Schlüssel wird nur in diesem Browser gespeichert (localStorage) — er wird nie synchronisiert oder an den App-Server gesendet.",
   "The local copy of the budget has not loaded yet — nothing was sent. Reload the app and try again.":
     "Die lokale Kopie des Budgets ist noch nicht geladen — es wurde nichts gesendet. Lade die App neu und versuche es erneut.",
   "The local copy of the budget on this device belongs to a different account than the one you are signed in with. Nothing has been sent to the server and nothing has been deleted.":
@@ -454,14 +442,8 @@ export const de: Dict = {
   "The local copy — including any unsent changes — will be permanently removed from this device. If this is the only copy of that budget, download a backup first.":
     "Die lokale Kopie — samt aller nicht gesendeten Änderungen — wird dauerhaft von diesem Gerät entfernt. Wenn das die einzige Kopie dieses Budgets ist, lade zuerst eine Sicherung herunter.",
   "The local replica is not ready.": "Die lokale Replik ist nicht bereit.",
-  "The monthly AI allowance for this account is used up — it resets at the start of the next month (UTC). You can keep using AI right away with your own key in Settings → Artificial intelligence.":
-    "Das monatliche KI-Kontingent dieses Kontos ist aufgebraucht — es erneuert sich zu Beginn des nächsten Monats (UTC). Mit deinem eigenen Schlüssel in Einstellungen → Künstliche Intelligenz kannst du KI sofort weiter nutzen.",
   "The password must be at least 8 characters.": "Das Passwort muss mindestens 8 Zeichen lang sein.",
   "The proposal exceeds “To be budgeted” — uncheck or reduce items.": "Der Vorschlag übersteigt „Zu budgetieren“ — hake Positionen ab oder reduziere sie.",
-  "The server has no OpenAI key configured — server mode is unavailable. Use your own key or keep AI off.":
-    "Auf dem Server ist kein OpenAI-Schlüssel konfiguriert — der Servermodus ist nicht verfügbar. Nutze deinen eigenen Schlüssel oder lass die KI aus.",
-  "The server has no OpenAI key configured. Set OPENAI_API_KEY and restart the app, or use your own key in Settings → Artificial intelligence.":
-    "Auf dem Server ist kein OpenAI-Schlüssel konfiguriert. Setze OPENAI_API_KEY und starte die App neu, oder nutze deinen eigenen Schlüssel in Einstellungen → Künstliche Intelligenz.",
   "The server hit an unexpected error. Nothing was changed — try again.":
     "Auf dem Server ist ein unerwarteter Fehler aufgetreten. Es wurde nichts geändert — versuche es erneut.",
   "The server refuses to sync this budget until its encryption is upgraded to the new format.":
@@ -546,7 +528,6 @@ export const de: Dict = {
     "Hake ab, was du nicht möchtest. Duplikate werden übersprungen — tippe auf eines, um es zu bearbeiten und trotzdem hinzuzufügen.",
   Usage: "Nutzung",
   Use: "Verwenden",
-  "Use your own key": "Eigenen Schlüssel verwenden",
   Utilities: "Nebenkosten",
   "WARNING: IndexedDB unavailable — data is kept only in session memory (it will not survive closing the app).":
     "WARNUNG: IndexedDB nicht verfügbar — die Daten liegen nur im Sitzungsspeicher (sie überleben das Schließen der App nicht).",
@@ -569,7 +550,6 @@ export const de: Dict = {
   "Your first account": "Dein erstes Konto",
   "already exists": "existiert bereits",
   "available after: {amount}": "verfügbar danach: {amount}",
-  "backup, end-to-end encryption, account": "Sicherung, Ende-zu-Ende-Verschlüsselung, Konto",
   "cancel split": "Aufteilung abbrechen",
   dark: "dunkel",
   details: "Details",
@@ -599,10 +579,8 @@ export const de: Dict = {
   server: "Server",
   settings: "Einstellungen",
   skipped: "übersprungen",
-  "status, re-download": "Status, erneut laden",
   "the server will store your data in plain form again": "der Server speichert deine Daten wieder im Klartext",
   "the whole local copy as a file — no network needed": "die gesamte lokale Kopie als Datei — ohne Netz",
-  "theme, language, currency, discreet": "Design, Sprache, Währung, diskret",
   today: "heute",
   unknown: "unbekannt",
   "unlock the budget on a new device without the password": "das Budget auf einem neuen Gerät ohne Passwort entsperren",

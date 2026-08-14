@@ -42,11 +42,8 @@ export const pl: Dict = {
   "A profile with this name already exists.": "Profil o tej nazwie już istnieje.",
   AI: "AI",
   "AI (corrected)": "AI (poprawione)",
-  "AI is not set up on this device. Pick a mode in Settings → Artificial intelligence (with your own key, paste it there).":
-    "AI nie jest skonfigurowane na tym urządzeniu. Wybierz tryb w Ustawieniach → Sztuczna inteligencja (przy własnym kluczu wklej go tam).",
   "AI is off — suggestions run locally on rules; nothing leaves this device.":
     "AI wyłączone — podpowiedzi działają lokalnie na regułach, nic nie jest wysyłane poza to urządzenie.",
-  "AI mode, your own key": "tryb AI, własny klucz",
   "AI requests go to OpenAI through the app server (operator's key).": "Zapytania AI idą przez serwer aplikacji (klucz operatora) do OpenAI.",
   "AI unavailable — rules were used instead.": "AI niedostępne — użyto reguł.",
   AVAILABLE: "DOSTĘPNE",
@@ -89,7 +86,6 @@ export const pl: Dict = {
     other: "Dodano {n} transakcji",
   },
   "Adding…": "Dodawanie…",
-  Advanced: "Zaawansowane",
   // NEW (e2ee v2 upgrade) — do przejrzenia
   "Afterwards, other devices must unlock again with the new password or a fresh pairing code — old pairing codes stop working.":
     "Potem pozostałe urządzenia trzeba odblokować ponownie nowym hasłem albo świeżym kodem parowania — stare kody parowania przestają działać.",
@@ -118,7 +114,6 @@ export const pl: Dict = {
   "An upgrade or a restore is in progress: the account's budget on the server is not this device's budget yet. Once it is, sync will resume by itself.":
     "Trwa aktualizacja albo odtwarzanie danych: budżet konta na serwerze to jeszcze nie jest budżet tego urządzenia. Gdy nim będzie, synchronizacja ruszy sama.",
   "Another account's data": "Dane innego konta",
-  Appearance: "Wygląd",
   "Apple Wallet or bank history — AI will recognize the transactions, duplicates will be skipped":
     "Apple Wallet albo historia banku — AI rozpozna transakcje, duplikaty pominiemy",
   "Apply ({n})": "Zastosuj ({n})",
@@ -200,7 +195,6 @@ export const pl: Dict = {
   "DISABLE-E2EE": "WYŁĄCZ-E2EE",
   "Daily spending in {month}": "Wydatki dzienne — {month}",
   Dark: "Ciemny",
-  Data: "Dane",
   "Day by day": "Dzień po dniu",
   Delete: "Usuń",
   "Delete everything and start fresh": "Usuń wszystko i zacznij na czysto",
@@ -381,14 +375,12 @@ export const pl: Dict = {
   "Not sending": "Nie wysyłam",
   "Not syncing with your account": "Brak synchronizacji z kontem",
   Off: "Wył.",
-  "On-device storage": "Pamięć na urządzeniu",
   "Once enabled, the server stores ciphertexts only. The key is your password, which the server does NOT know — without it (or a pairing code from another unlocked device) the data cannot be recovered.":
     "Po włączeniu serwer przechowuje wyłącznie szyfrogramy. Kluczem jest hasło, którego serwer NIE zna — bez hasła (albo kodu parowania z innego odblokowanego urządzenia) danych nie da się odzyskać.",
   "One tap and Enveo lives on your home screen — offline, full screen, no browser bar.":
     "Jedno dotknięcie i Enveo ląduje na ekranie początkowym — offline, na pełnym ekranie, bez paska przeglądarki.",
   "Open {host} in Safari to add it to your home screen — installing only works from Safari on iPhone and iPad.":
     "Otwórz {host} w Safari, aby dodać aplikację do ekranu początkowego — na iPhonie i iPadzie instalacja działa tylko z Safari.",
-  "OpenAI key": "Klucz OpenAI",
   "OpenAI rejected the request — check the key and the model, then try again.": "OpenAI odrzuciło zapytanie — sprawdź klucz i model, potem spróbuj ponownie.",
   "OpenAI rejected this key — model availability could not be checked.": "OpenAI odrzuciło ten klucz — nie udało się sprawdzić dostępności modeli.",
   "OpenAI rejected your key — check it in Settings → Artificial intelligence.":
@@ -448,7 +440,6 @@ export const pl: Dict = {
   Save: "Zapisz",
   "Save changes": "Zapisz zmiany",
   "Save item": "Zapisz pozycję",
-  "Save key & enable": "Zapisz klucz i włącz",
   Savings: "Oszczędności",
   "Savings envelopes first — the free remainder goes to them.": "Priorytet kopert oszczędnościowych — wolna reszta trafia do nich.",
   "Savings only": "Tylko oszczędnościowe",
@@ -495,7 +486,6 @@ export const pl: Dict = {
   Suggest: "Zasugeruj",
   "Suggest a distribution": "Zaproponuj rozdział",
   Summary: "Podsumowanie",
-  Sync: "Synchronizacja",
   "Sync in progress": "Synchronizowanie w toku",
   "Sync now": "Synchronizuj teraz",
   "Syncing…": "Synchronizuję…",
@@ -531,8 +521,6 @@ export const pl: Dict = {
   "The envelope “{name}” will disappear from the Budget and Start screens. Its transaction history stays, and available funds remain in the envelope. You can restore it in “Manage envelopes” → Archived.\n\nArchive it?":
     "Koperta „{name}” zniknie z Budżetu i ekranu Start. Historia transakcji zostaje, a dostępne środki pozostają w kopercie. Przywrócisz ją w „Zarządzaj kopertami” → Zarchiwizowane.\n\nArchiwizować?",
   "The first launch requires a connection to the server": "Pierwsze uruchomienie wymaga połączenia z serwerem",
-  "The key is stored only in this browser (localStorage) — it is never synced or sent to the app server.":
-    "Klucz jest zapisany wyłącznie w tej przeglądarce (localStorage) — nie jest synchronizowany ani wysyłany na serwer aplikacji.",
   "The local copy of the budget has not loaded yet — nothing was sent. Reload the app and try again.":
     "Lokalna kopia budżetu jeszcze się nie wczytała — nic nie zostało wysłane. Odśwież aplikację i spróbuj ponownie.",
   "The local copy of the budget on this device belongs to a different account than the one you are signed in with. Nothing has been sent to the server and nothing has been deleted.":
@@ -540,16 +528,10 @@ export const pl: Dict = {
   "The local copy — including any unsent changes — will be permanently removed from this device. If this is the only copy of that budget, download a backup first.":
     "Lokalna kopia (razem z niewysłanymi zmianami) zostanie trwale usunięta z tego urządzenia. Jeśli to jedyna kopia tego budżetu, najpierw pobierz kopię zapasową.",
   "The local replica is not ready.": "Replika nie jest gotowa.",
-  "The monthly AI allowance for this account is used up — it resets at the start of the next month (UTC). You can keep using AI right away with your own key in Settings → Artificial intelligence.":
-    "Miesięczny limit AI dla tego konta został wykorzystany — odnowi się z początkiem kolejnego miesiąca (UTC). Możesz dalej korzystać z AI od razu, z własnym kluczem w Ustawieniach → Sztuczna inteligencja.",
   "The password must be at least 8 characters.": "Hasło musi mieć co najmniej 8 znaków.",
   "The pending-change queue cannot be read safely, so Enveo left the local copy untouched.":
     "Nie można bezpiecznie odczytać kolejki oczekujących zmian, dlatego Enveo pozostawiło lokalną kopię bez zmian.",
   "The proposal exceeds “To be budgeted” — uncheck or reduce items.": "Suma propozycji przekracza „Do rozdysponowania” — odznacz albo zmniejsz pozycje.",
-  "The server has no OpenAI key configured — server mode is unavailable. Use your own key or keep AI off.":
-    "Serwer nie ma skonfigurowanego klucza OpenAI — tryb serwerowy jest niedostępny. Użyj własnego klucza albo zostaw AI wyłączone.",
-  "The server has no OpenAI key configured. Set OPENAI_API_KEY and restart the app, or use your own key in Settings → Artificial intelligence.":
-    "Serwer nie ma skonfigurowanego klucza OpenAI. Ustaw OPENAI_API_KEY i zrestartuj aplikację albo użyj własnego klucza w Ustawieniach → Sztuczna inteligencja.",
   "The server hit an unexpected error. Nothing was changed — try again.": "Serwer napotkał nieoczekiwany błąd. Nic nie zostało zmienione — spróbuj ponownie.",
   "The server refuses to sync this budget until its encryption is upgraded to the new format.":
     "Serwer odmawia synchronizacji tego budżetu, dopóki jego szyfrowanie nie zostanie zaktualizowane do nowego formatu.",
@@ -639,7 +621,6 @@ export const pl: Dict = {
     "Odznacz, czego nie dodawać. Duplikaty są pomijane — tapnij duplikat, aby mimo to edytować i dodać.",
   Usage: "Zajętość",
   Use: "Użyj",
-  "Use your own key": "Użyj własnego klucza",
   Utilities: "Media",
   "WARNING: IndexedDB unavailable — data is kept only in session memory (it will not survive closing the app).":
     "UWAGA: IndexedDB niedostępne — dane trzymane tylko w pamięci sesji (nie przetrwają zamknięcia apki).",
@@ -666,7 +647,6 @@ export const pl: Dict = {
   "available after: {amount}": "dostępne po: {amount}",
   "avg {amount}/day": "śr. {amount}/dzień",
   "avg {avg}/day · peak: {date} ({peak})": "śr. {avg}/dzień · szczyt: {date} ({peak})",
-  "backup, end-to-end encryption, account": "kopia, szyfrowanie E2E, konto",
   "cancel split": "anuluj podział",
   "collapse ▴": "zwiń ▴",
   "collapsed · {n} shown ›": "zwinięte · {n} widoczne ›",
@@ -709,10 +689,8 @@ export const pl: Dict = {
   "show all ({n}) ▾": "pokaż wszystkie ({n}) ▾",
   skipped: "pominięta",
   "spent {spent} of {budget}": "wydano {spent} z {budget}",
-  "status, re-download": "status, pobierz od nowa",
   "the server will store your data in plain form again": "serwer znów będzie przechowywał dane w postaci jawnej",
   "the whole local copy as a file — no network needed": "cała lokalna kopia do pliku — bez sieci",
-  "theme, language, currency, discreet": "motyw, język, waluta, dyskretny",
   today: "dzisiaj",
   "total {amount}": "razem {amount}",
   unknown: "nieznana",
@@ -753,6 +731,45 @@ export const pl: Dict = {
   "{n} transaction | {n} transactions": { one: "{n} transakcja", few: "{n} transakcje", many: "{n} transakcji", other: "{n} transakcji" },
   "{count} unsent changes are still on this device. Retry when online, export a backup, or explicitly discard them.":
     "Na tym urządzeniu nadal są niewysłane zmiany ({count}). Połącz się z internetem i ponów, wyeksportuj kopię albo jawnie je odrzuć.",
+  "Account preferences": "Ustawienia konta",
+  "A new own key can be added after secure credential vault migration is available.":
+    "Nowy własny klucz będzie można dodać po udostępnieniu migracji do bezpiecznego sejfu.",
+  "AI is not configured. Choose server AI or an existing own key in Settings → Artificial intelligence.":
+    "AI nie jest skonfigurowane. Wybierz AI serwera albo istniejący własny klucz w Ustawieniach → Sztuczna inteligencja.",
+  "An existing browser key is present and waiting for migration to the secure credential vault.":
+    "Istniejący klucz w przeglądarce czeka na migrację do bezpiecznego sejfu danych uwierzytelniających.",
+  "Appearance and dashboard": "Wygląd i dashboard",
+  "Budget preferences": "Ustawienia budżetu",
+  "Choose their order, visibility, and options.": "Wybierz kolejność, widoczność i opcje.",
+  "Currency and dashboard widgets follow this budget on every device.":
+    "Waluta i widgety dashboardu są synchronizowane z tym budżetem na wszystkich urządzeniach.",
+  "Data and synchronization": "Dane i synchronizacja",
+  "Diagnostics and on-device storage": "Diagnostyka i pamięć urządzenia",
+  "Discreet mode stays only on this device.": "Tryb dyskretny pozostaje tylko na tym urządzeniu.",
+  "Edit dashboard widgets": "Edytuj widgety dashboardu",
+  "End-to-end encryption, password, and device pairing": "Szyfrowanie end-to-end, hasło i parowanie urządzeń",
+  "Encryption settings apply to this budget and follow it across devices.":
+    "Ustawienia szyfrowania dotyczą tego budżetu i są synchronizowane między urządzeniami.",
+  "Migration status: pending secure server acknowledgement.": "Status migracji: oczekiwanie na bezpieczne potwierdzenie serwera.",
+  "No own key is configured. Secure credential management will become available after the vault migration.":
+    "Nie skonfigurowano własnego klucza. Bezpieczne zarządzanie nim będzie dostępne po migracji sejfu.",
+  "Own OpenAI credential": "Własny klucz OpenAI",
+  "Own OpenAI is unavailable until a key is stored in the secure credential vault.":
+    "Własne OpenAI jest niedostępne, dopóki klucz nie zostanie zapisany w bezpiecznym sejfie.",
+  "Privacy and encryption": "Prywatność i szyfrowanie",
+  "Provider, model, and secure credential status": "Dostawca, model i status bezpiecznego klucza",
+  "Sync, backup, repair, diagnostics, and reset": "Synchronizacja, kopie, naprawa, diagnostyka i reset",
+  "The monthly AI allowance for this account is used up — it resets at the start of the next month (UTC). An existing own key can still be selected in Settings → Artificial intelligence.":
+    "Miesięczny limit AI dla tego konta został wykorzystany — odnowi się z początkiem następnego miesiąca (UTC). Nadal możesz wybrać istniejący własny klucz w Ustawieniach → Sztuczna inteligencja.",
+  "The server has no OpenAI key configured — server mode is unavailable. Use an existing own key or keep AI on rules.":
+    "Serwer nie ma skonfigurowanego klucza OpenAI — tryb serwerowy jest niedostępny. Użyj istniejącego własnego klucza albo pozostań przy regułach.",
+  "The server has no OpenAI key configured. Set OPENAI_API_KEY and restart the app, or keep AI on rules until secure own-key storage is available.":
+    "Serwer nie ma skonfigurowanego klucza OpenAI. Ustaw OPENAI_API_KEY i uruchom aplikację ponownie albo pozostań przy regułach do czasu udostępnienia bezpiecznego przechowywania własnego klucza.",
+  "The AI provider and model follow this budget on every device.": "Dostawca AI i model są synchronizowane z tym budżetem na wszystkich urządzeniach.",
+  "Theme and language follow your account on every device.": "Motyw i język są synchronizowane z kontem na wszystkich urządzeniach.",
+  "Theme, language, currency, privacy display, and widgets": "Motyw, język, waluta, dyskretny widok i widgety",
+  "This device": "To urządzenie",
+  "Use the existing own key": "Użyj istniejącego własnego klucza",
   "{pct}% of net worth": "{pct}% wartości netto",
   "{sym}/mo": "{sym}/mies",
 };

@@ -25,8 +25,10 @@ import { completeExplicitSignOut, ExplicitSignOutPendingError, type SignOutPrepa
 import { store } from "../../lib/store";
 import { assertOwnReplica, broadcastKeysChanged, fullResync, syncNow } from "../../lib/sync";
 import { CORAL, font } from "../../lib/theme";
+import { DataToolsSection } from "./DataTools";
 import { E2eeUpgradePanel } from "./E2eeUpgradePanel";
-import { ActionGroup, ActionIcon, ActionRow, ConfirmWordHint, Eyebrow } from "./ui";
+import { SyncSection } from "./SyncSection";
+import { ActionGroup, ActionIcon, ActionRow, ConfirmWordHint, Eyebrow, Helper } from "./ui";
 
 /* ── Data: backup (export/import) + E2E encryption + account ────────── */
 
@@ -44,11 +46,25 @@ const IC = {
 export function DataSection() {
   return (
     <div style={{ marginTop: 4 }}>
+      <SyncSection />
       <DataBackup />
-      <E2eeSection />
-      <LogoutRow />
+      <DataToolsSection />
     </div>
   );
+}
+
+export function PrivacySection() {
+  const { t } = useT();
+  return (
+    <div style={{ marginTop: 4 }}>
+      <Helper>{t("Encryption settings apply to this budget and follow it across devices.")}</Helper>
+      <E2eeSection />
+    </div>
+  );
+}
+
+export function LogoutSection() {
+  return <LogoutRow />;
 }
 
 /** Explicit sign-out is identical for cloud and self-hosted deployments. */

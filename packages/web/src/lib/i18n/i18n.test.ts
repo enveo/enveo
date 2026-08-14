@@ -220,7 +220,7 @@ describe("i18n — ambiguity report", () => {
  */
 describe("i18n — typed confirmation words", () => {
   // EVERY word compared with `input.trim().toUpperCase() !== t(word)`. Keep this list exhaustive —
-  // grep `toUpperCase` in packages/web/src: Advanced.tsx ("RESET") and DataSection.tsx
+  // grep `toUpperCase` in packages/web/src: DataTools.tsx ("RESET") and DataSection.tsx
   // ("DISABLE-E2EE"). A word missing from here is a lock-out waiting for a locale.
   const CONFIRM_WORDS: Message[] = ["DISABLE-E2EE", "RESET"];
 

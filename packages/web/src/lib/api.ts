@@ -71,7 +71,7 @@ export interface ImportApplyResponse {
  */
 const ERROR_KEYS: Record<string, Message> = {
   ai_unavailable: msg(
-    "The server has no OpenAI key configured. Set OPENAI_API_KEY and restart the app, or use your own key in Settings → Artificial intelligence.",
+    "The server has no OpenAI key configured. Set OPENAI_API_KEY and restart the app, or keep AI on rules until secure own-key storage is available.",
   ), // /import/extract, /budget/suggest, the /api/ai mirror — no operator key
   ai_upstream_error: msg("OpenAI rejected the request — check the key and the model, then try again."), // OpenAI rejected the call or answered unparsably
   upstream: msg("OpenAI rejected the request — check the key and the model, then try again."), // /budget/suggest names the same failure this way
@@ -83,7 +83,7 @@ const ERROR_KEYS: Record<string, Message> = {
   /* Cloud per-user spend budget (429 from every operator-key AI route): the server sends only
      the machine code + retryAfterSeconds — never the recorded spend. One whole phrase. */
   ai_budget_exhausted: msg(
-    "The monthly AI allowance for this account is used up — it resets at the start of the next month (UTC). You can keep using AI right away with your own key in Settings → Artificial intelligence.",
+    "The monthly AI allowance for this account is used up — it resets at the start of the next month (UTC). An existing own key can still be selected in Settings → Artificial intelligence.",
   ),
   backup_invalid: msg("This is not a valid backup file — nothing was loaded."), // /sync/replace — the payload is not a ledger
   foreign_ref: msg("The data references records that do not exist here (a corrupted or foreign file). Nothing was changed."), // a reference points outside the budget (corrupt/foreign file)
@@ -108,7 +108,7 @@ const ERROR_KEYS: Record<string, Message> = {
     "This budget's encryption must be upgraded before it can sync — open Settings → Privacy on a device that holds the data and run the upgrade.",
   ), // sync2 routes — the server refuses every normal channel of a legacy-format budget
   bad_pairing_code: msg("This is not a valid pairing code — copy it again from the device where the budget is already unlocked."), // crypto.ts — decodePairing on a code that is not ours
-  ai_consent_required: msg("AI is not set up on this device. Pick a mode in Settings → Artificial intelligence (with your own key, paste it there)."), // ai.ts — no usable target (AI off, or byok with no key)
+  ai_consent_required: msg("AI is not configured. Choose server AI or an existing own key in Settings → Artificial intelligence."), // ai.ts — no usable target (AI off, or byok with no key)
   /* openai.ts — screenshot import is AI-only, so a failed model call is SHOWN (no rules fallback to
      hide it). The transport maps every failure onto a code here; ai_unavailable/ai_upstream_error
      above are reused (the mirror's own codes), these two are client-only. */
