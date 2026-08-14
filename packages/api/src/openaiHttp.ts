@@ -22,6 +22,7 @@
 import { AI_CHAT_TIMEOUT_MS } from "@enveo/shared";
 
 export const OPENAI_CHAT_URL = "https://api.openai.com/v1/chat/completions";
+export const OPENAI_MODELS_URL = "https://api.openai.com/v1/models";
 
 /** The upstream round-trip exceeded its cap (the abort came from OUR timer). */
 export class UpstreamTimeoutError extends Error {
@@ -79,14 +80,13 @@ export function transportFailureJson(e: unknown): { body: { error: "ai_timeout" 
   return null;
 }
 
-export async function openAiChatFetch(payload: unknown, opts: { apiKey: string; url?: string; timeoutMs?: number }): Promise<Response> {
+async function openAiAuthorizedFetch(url: string, init: Omit<RequestInit, "signal">, opts: { apiKey: string; timeoutMs?: number }): Promise<Response> {
   const ms = opts.timeoutMs ?? AI_CHAT_TIMEOUT_MS;
   const t = timeoutSignal(ms);
   try {
-    return await fetch(opts.url ?? OPENAI_CHAT_URL, {
-      method: "POST",
-      headers: { "content-type": "application/json", authorization: `Bearer ${opts.apiKey}` },
-      body: JSON.stringify(payload),
+    return await fetch(url, {
+      ...init,
+      headers: { ...init.headers, authorization: `Bearer ${opts.apiKey}` },
       signal: t.signal,
     });
   } catch (e) {
@@ -94,4 +94,18 @@ export async function openAiChatFetch(payload: unknown, opts: { apiKey: string; 
   } finally {
     t.clear();
   }
+}
+
+export async function openAiChatFetch(payload: unknown, opts: { apiKey: string; url?: string; timeoutMs?: number }): Promise<Response> {
+  return openAiAuthorizedFetch(
+    opts.url ?? OPENAI_CHAT_URL,
+    { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(payload) },
+    opts,
+  );
+}
+
+/** Credential/model probe: a free metadata read, never a chat completion. */
+export async function openAiModelFetch(model: string, opts: { apiKey: string; baseUrl?: string; timeoutMs?: number }): Promise<Response> {
+  const base = (opts.baseUrl ?? OPENAI_MODELS_URL).replace(/\/$/, "");
+  return openAiAuthorizedFetch(`${base}/${encodeURIComponent(model)}`, { method: "GET" }, opts);
 }

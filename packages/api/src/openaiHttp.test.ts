@@ -7,7 +7,7 @@
  * healthy upstream gets the bearer key + JSON body unchanged.
  */
 import { describe, expect, it } from "bun:test";
-import { openAiChatFetch, timeoutSignal, transportFailureJson, UpstreamNetworkError, UpstreamTimeoutError } from "./openaiHttp";
+import { openAiChatFetch, openAiModelFetch, timeoutSignal, transportFailureJson, UpstreamNetworkError, UpstreamTimeoutError } from "./openaiHttp";
 
 describe("timeoutSignal — AbortSignal.timeout built from AbortController + setTimeout (WebKit < 16)", () => {
   /** Fake timers: capture the callback, fire it by hand, record clears. */
@@ -123,6 +123,27 @@ describe("openAiChatFetch", () => {
       expect(res.status).toBe(401);
     } finally {
       nope.stop(true);
+    }
+  });
+});
+
+describe("openAiModelFetch", () => {
+  it("tests one model with the user credential without sending a request body", async () => {
+    let seen: { method: string; auth: string; path: string; body: string } | undefined;
+    const echo = Bun.serve({
+      port: 0,
+      fetch: async (req) => {
+        const url = new URL(req.url);
+        seen = { method: req.method, auth: req.headers.get("authorization") ?? "", path: url.pathname, body: await req.text() };
+        return Response.json({ id: "gpt-5.6-luna" });
+      },
+    });
+    try {
+      const response = await openAiModelFetch("gpt-5.6-luna", { apiKey: "sk-user", baseUrl: `http://127.0.0.1:${echo.port}/v1/models`, timeoutMs: 2_000 });
+      expect(response.ok).toBe(true);
+      expect(seen).toEqual({ method: "GET", auth: "Bearer sk-user", path: "/v1/models/gpt-5.6-luna", body: "" });
+    } finally {
+      echo.stop(true);
     }
   });
 });

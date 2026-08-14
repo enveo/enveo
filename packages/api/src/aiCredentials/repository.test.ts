@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { CredentialBudgetMismatch, CredentialNotConfigured, createCredentialRepository } from "./repository";
+import { CredentialBudgetMismatch, CredentialNotConfigured, CredentialVaultUnavailable, createCredentialRepository } from "./repository";
 
 describe("AI credential repository surface", () => {
   it("offers scoped operations and no plaintext read method", () => {
@@ -14,5 +14,6 @@ describe("AI credential repository surface", () => {
   it("uses stable tenant/configuration error codes without identifiers", () => {
     expect(new CredentialBudgetMismatch().message).toBe("budget_mismatch");
     expect(new CredentialNotConfigured().message).toBe("credential_not_configured");
+    expect(new CredentialVaultUnavailable().message).toBe("vault_unavailable");
   });
 });
