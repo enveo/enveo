@@ -4,6 +4,7 @@ export * from "./aiTransport";
 export * from "./applyOp";
 export * from "./budget";
 export * from "./goals";
+export * from "./importDedupe";
 export * from "./ops";
 export * from "./preferences";
 export * from "./reports";
