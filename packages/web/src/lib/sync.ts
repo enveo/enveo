@@ -47,7 +47,7 @@ import { accountPreferences } from "./accountPreferences";
 import { budgetPreferences } from "./budgetPreferences";
 import { devicePreferences } from "./devicePreferences";
 import * as e2ee from "./e2ee";
-import { idbGet, idbPut, storageMode } from "./idb";
+import { clearLocalData, idbGet, idbPut, storageMode } from "./idb";
 import { configureLegacySettingsMigration, parseLegacyMigrationAck } from "./legacySettingsMigration";
 
 
@@ -58,7 +58,7 @@ import { readLegacySettings } from "./settingsPersist";
 import { INTERVAL_MS } from "./sync/contracts";
 import { configureCycle, getLastSyncReason, resetBackoff, syncNow } from "./sync/cycle";
 import { assertOwnReplica, enterUnauthed } from "./sync/identity";
-import { broadcastUpdatedIfPending, installMultiTab, isLeaderTab, notePeersMayNeedUpdate, postMsg, wipeLocalData } from "./sync/multitab";
+import { broadcastUpdatedIfPending, installMultiTab, isLeaderTab, notePeersMayNeedUpdate, postMsg } from "./sync/multitab";
 import { isReplacePending, isResyncPending } from "./sync/obligations";
 import { getSyncStatus, installOutboxStatusListener } from "./sync/status";
 import { configureTransport } from "./sync/transport";
@@ -68,7 +68,7 @@ export { bootOnce, getLastBootSource, retryBoot } from "./sync/boot";
 export type { BootSource, IdentityVerdict, PendingE2eeUpgrade, SyncState, SyncStatus } from "./sync/contracts";
 export { E2eeUpgradeRequiredError, EMPTY_LEDGER, TierMismatchError } from "./sync/contracts";
 export { __resetBackoff, flushOutboxForSignOut, fullResync, poke, pullNow, recheckReplicaOwner, syncNow } from "./sync/cycle";
-export { __resetIdentity, assertOwnReplica, decideIdentity, enterLoginKeepingReplica } from "./sync/identity";
+export { __resetIdentity, assertOwnReplica, decideIdentity, enterLoginPreservingReplica } from "./sync/identity";
 export { broadcastKeysChanged, wipeLocalData } from "./sync/multitab";
 export { __resetObligations, markReplacePending } from "./sync/obligations";
 export { getSyncStatus, subscribeSyncStatus } from "./sync/status";
@@ -102,9 +102,17 @@ configureLegacySettingsMigration({
  *
  */
 export async function discardLocalReplica(): Promise<void> {
-  outbox.clearAll();  
-  await persist.flushed();  
-  await wipeLocalData();  
+  await clearLocalAccountData();
+  if (typeof location !== "undefined") location.reload();
+}
+
+ 
+export async function clearLocalAccountData(): Promise<void> {
+  outbox.clearAll();
+  await persist.flushed();
+  await Promise.all([accountPreferences.clear(), devicePreferences.clear()]);
+  await clearLocalData();  
+  postMsg("wipe");
 }
 
 /* ── Triggers (idempotent installation — StrictMode-safe) ──────────── */

@@ -21,7 +21,7 @@ export function setLastAccountId(id: string): void {
   }
 }
 
- 
+/** Explicit sign-out: this account-derived device preference must not remain behind. */
 export function clearLastAccountId(): void {
   try {
     localStorage.removeItem(KEY);

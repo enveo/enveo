@@ -222,6 +222,8 @@ export const pl: Dict = {
   "Disable end-to-end encryption?": "Wyłączyć szyfrowanie end-to-end?",
   "Disabling…": "Wyłączanie…",
   Discard: "Odrzuć",
+  "Discard the unsent changes and sign out? This cannot be undone.": "Odrzucić niewysłane zmiany i wylogować się? Tej operacji nie można cofnąć.",
+  "Discard unsent changes and sign out": "Odrzuć niewysłane zmiany i wyloguj się",
   "Discreet mode": "Tryb dyskretny",
   "Distributes the amount only to envelopes in the red — proportionally to shortfalls, never past zero.":
     "Rozdziela kwotę tylko na koperty pod kreską — proporcjonalnie do braków, nigdy ponad wyzerowanie.",
@@ -273,6 +275,7 @@ export const pl: Dict = {
   "Envelopes · {group}": "Koperty · {group}",
   Expense: "Wydatek",
   "Export backup (JSON)": "Eksportuj kopię (JSON)",
+  "Export backup and sign out": "Eksportuj kopię i wyloguj się",
   "Failed to load the image.": "Nie udało się wczytać obrazka.",
   "Fill by goals": "Wypełnij wg celów",
   "Fill ›": "Wypełnij ›",
@@ -432,6 +435,7 @@ export const pl: Dict = {
   "Remove screenshot {n}": "Usuń zrzut {n}",
   "Remove this data and continue": "Usuń te dane i kontynuuj",
   "Removing…": "Usuwanie…",
+  "Retry sending changes": "Ponów wysyłanie zmian",
   "Repeat password": "Powtórz hasło",
   "Replaces all current data with the data from the selected file.": "Zastępuje wszystkie obecne dane danymi z wybranego pliku.",
   "Report a fix": "Zgłoś poprawkę",
@@ -469,10 +473,11 @@ export const pl: Dict = {
   "Sign in with Google": "Zaloguj się przez Google",
   "Sign out": "Wyloguj się",
   "Sign out and use another account": "Wyloguj i zaloguj się na inne konto",
-  "Sign out? Your data stays on this device and on the server.": "Wylogować się? Dane pozostaną na tym urządzeniu i na serwerze.",
+  "Sign out and remove this account's local data from this device? Your data already on the server will stay there.":
+    "Wylogować się i usunąć lokalne dane tego konta z urządzenia? Dane zapisane na serwerze pozostaną bez zmian.",
+  "Signs you out and removes this account's local copy, encryption keys, and credentials from the device.":
+    "Wylogowuje i usuwa z urządzenia lokalną kopię tego konta, klucze szyfrowania oraz dane uwierzytelniające.",
   "Signing out…": "Wylogowywanie…",
-  "Signs you out of this device. The local copy and the server data both stay — everything resumes when you sign back in. To remove the copy from this device, use “Clear local data”.":
-    "Wylogowuje z konta na tym urządzeniu. Lokalna kopia i dane na serwerze pozostają — wszystko wraca po ponownym zalogowaniu. Aby usunąć kopię z urządzenia, użyj „Wyczyść dane lokalne”.",
   "Skip for now": "Pomiń na razie",
   "Some funds stayed in To be budgeted — envelopes are at their target caps.": "Część środków została w Do rozdysponowania — koperty na pułapie celów.",
   "Source: {src}": "Źródło: {src}",
@@ -746,6 +751,8 @@ export const pl: Dict = {
   "{n} over | {n} over": { one: "{n} przekroczona", few: "{n} przekroczone", many: "{n} przekroczonych", other: "{n} przekroczonych" },
   "{n} rising · {m} falling": "{n} w górę · {m} w dół",
   "{n} transaction | {n} transactions": { one: "{n} transakcja", few: "{n} transakcje", many: "{n} transakcji", other: "{n} transakcji" },
+  "{count} unsent changes are still on this device. Retry when online, export a backup, or explicitly discard them.":
+    "Na tym urządzeniu nadal są niewysłane zmiany ({count}). Połącz się z internetem i ponów, wyeksportuj kopię albo jawnie je odrzuć.",
   "{pct}% of net worth": "{pct}% wartości netto",
   "{sym}/mo": "{sym}/mies",
 };

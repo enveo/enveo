@@ -379,10 +379,7 @@ export const sv: Dict = {
   "Sign in with Google": "Logga in med Google",
   "Sign out": "Logga ut",
   "Sign out and use another account": "Logga ut och använd ett annat konto",
-  "Sign out? Your data stays on this device and on the server.": "Logga ut? Dina data ligger kvar på den här enheten och på servern.",
   "Signing out…": "Loggar ut…",
-  "Signs you out of this device. The local copy and the server data both stay — everything resumes when you sign back in. To remove the copy from this device, use “Clear local data”.":
-    "Loggar ut dig från den här enheten. Både den lokala kopian och data på servern ligger kvar — allt återupptas när du loggar in igen. Använd ”Rensa lokala data” för att ta bort kopian från den här enheten.",
   "Skip for now": "Hoppa över just nu",
   "Some funds stayed in To be budgeted — envelopes are at their target caps.":
     "En del av medlen blev kvar i ”Att budgetera” — kuverten har nått taket för sina mål.",

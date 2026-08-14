@@ -29,6 +29,10 @@ export interface Backup {
   ledger: ClientLedger;
 }
 
+export function hasExportableBackup(): boolean {
+  return store.getLedger() !== null;
+}
+
 
 
 
