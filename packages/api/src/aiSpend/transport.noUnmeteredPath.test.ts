@@ -11,13 +11,16 @@ import { join } from "node:path";
 
 const SRC = new URL("..", import.meta.url).pathname; // packages/api/src
 
-/** Modules allowed to name the raw fetch: its home, the metered wrapper, and their tests. */
+/** Modules allowed to name the raw fetch: its home, the metered OPERATOR wrapper, the explicitly
+ * user-funded vault wrapper, and their tests. */
 const ALLOWED = new Set([
   "openaiHttp.ts", // defines it
   "openaiHttp.test.ts", // tests it
   "aiSpend/transport.ts", // the ONE metered wrapper
   "aiSpend/transport.test.ts",
   "aiSpend/transport.noUnmeteredPath.test.ts", // this gate
+  "aiCredentials/transport.ts", // BYOK: request-scoped user credential, deliberately not operator-metered
+  "aiCredentials/transport.test.ts",
 ]);
 
 function walk(dir: string, acc: string[] = []): string[] {
@@ -30,12 +33,20 @@ function walk(dir: string, acc: string[] = []): string[] {
 }
 
 describe("no unmetered raw operator transport path", () => {
-  it("only the metered transport (and openaiHttp's own home/tests) references openAiChatFetch", () => {
+  it("only the operator-metered wrapper and explicit user-funded wrapper reference openAiChatFetch", () => {
     const offenders = walk(SRC)
       .filter((p) => readFileSync(p, "utf8").includes("openAiChatFetch"))
       .map((p) => p.slice(SRC.length))
       .filter((rel) => !ALLOWED.has(rel));
     expect(offenders).toEqual([]);
+  });
+
+  it("the BYOK wrapper cannot substitute the operator key or enter operator spend accounting", () => {
+    const source = readFileSync(join(SRC, "aiCredentials/transport.ts"), "utf8");
+    expect(source).not.toContain("env.OPENAI_API_KEY");
+    expect(source).not.toContain("meteredOperatorChat");
+    expect(source).not.toContain("checkSpend");
+    expect(source).toContain("options.apiKey");
   });
 
   it("the allowlist itself stays honest (files exist; home and wrapper do reference the symbol)", () => {

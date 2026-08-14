@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { credentialBudgetInput, credentialSaveInput, credentialTestInput, publicCredentialStatus } from "./aiCredentials";
+import { byokChatInput, byokImportInput, credentialBudgetInput, credentialSaveInput, credentialTestInput, publicCredentialStatus } from "./aiCredentials";
 
 describe("plain BYOK route contracts", () => {
   it("requires strict budget assertions and bounded credentials", () => {
@@ -24,5 +24,16 @@ describe("plain BYOK route contracts", () => {
     for (const forbidden of ["key", "ciphertext", "nonce", "wrappedRecordDek", "masterKeyId", "fragment"]) {
       expect(JSON.stringify(body).toLowerCase()).not.toContain(forbidden.toLowerCase());
     }
+  });
+
+  it("bounds provider workloads and requires the budget/model on every request", () => {
+    const budgetId = crypto.randomUUID();
+    expect(byokChatInput.safeParse({ budgetId, model: "gpt-5.6-luna", messages: [{ role: "user", content: "hello" }], reasoningEffort: "low" }).success).toBe(
+      true,
+    );
+    expect(byokChatInput.safeParse({ model: "gpt-5.6-luna", messages: [{ role: "user", content: "hello" }] }).success).toBe(false);
+    expect(byokChatInput.safeParse({ budgetId, model: "gpt-5.6-luna", messages: [] }).success).toBe(false);
+    expect(byokImportInput.safeParse({ budgetId, model: "gpt-5.6-luna", images: ["data:image/png;base64,AA=="], locale: "pl" }).success).toBe(true);
+    expect(byokImportInput.safeParse({ budgetId, model: "gpt-5.6-luna", images: ["https://foreign/image.png"], locale: "pl" }).success).toBe(false);
   });
 });

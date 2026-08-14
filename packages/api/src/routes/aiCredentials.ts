@@ -1,4 +1,4 @@
-import { OPENAI_MODELS } from "@enveo/shared";
+import { aiLocaleSchema, type ChatRequest, OPENAI_MODELS } from "@enveo/shared";
 import type { Context } from "hono";
 import { Hono } from "hono";
 import { z } from "zod";
@@ -10,14 +10,42 @@ import {
   CredentialVaultUnavailable,
   createCredentialRepository,
 } from "../aiCredentials/repository";
+import { ByokInvalidBodyError, ByokUpstreamError, byokChatContent } from "../aiCredentials/transport";
 import { requireTier, sessionUserId } from "../context";
 import { type DbTransaction, db } from "../db/client";
 import { openAiModelFetch, transportFailureJson } from "../openaiHttp";
+import { extractImportForBudget, ImportCycleOneFailure } from "./import";
 
 const budgetId = z.string().uuid();
 export const credentialBudgetInput = z.object({ budgetId }).strict();
 export const credentialSaveInput = z.object({ budgetId, key: z.string().min(1).max(4096) }).strict();
 export const credentialTestInput = z.object({ budgetId, model: z.enum(OPENAI_MODELS) }).strict();
+const chatMessage = z
+  .object({
+    role: z.enum(["system", "user"]),
+    content: z.union([z.string().max(200_000), z.array(z.record(z.string(), z.unknown())).max(20)]),
+  })
+  .strict();
+export const byokChatInput = z
+  .object({
+    budgetId,
+    model: z.enum(OPENAI_MODELS),
+    messages: z.array(chatMessage).min(1).max(4),
+    responseFormat: z.record(z.string(), z.unknown()).optional(),
+    reasoningEffort: z.enum(["low", "medium", "high"]).optional(),
+  })
+  .strict();
+export const byokImportInput = z
+  .object({
+    budgetId,
+    model: z.enum(OPENAI_MODELS),
+    images: z
+      .array(z.string().regex(/^data:image\//, "expected an image data-URL"))
+      .min(1)
+      .max(6),
+    locale: aiLocaleSchema.optional(),
+  })
+  .strict();
 
 export type CredentialUnavailableReason = "vault_unavailable";
 
@@ -57,6 +85,17 @@ function credentialError(c: Context, error: unknown): Response {
   if (error instanceof CredentialVaultUnavailable) return c.json({ error: error.code }, 503);
   if (error instanceof CredentialNotConfigured) return c.json({ error: error.code }, 409);
   throw error;
+}
+
+function byokFailure(c: Context, error: unknown): Response {
+  const transport = transportFailureJson(error);
+  if (transport) return c.json(transport.body, transport.status);
+  if (error instanceof ByokUpstreamError) {
+    if (error.status === 401 || error.status === 403) return c.json({ error: "ai_key_invalid" }, 422);
+    return c.json({ error: "ai_upstream_error", status: error.status }, 502);
+  }
+  if (error instanceof ByokInvalidBodyError) return c.json({ error: "ai_upstream_error" }, 502);
+  return credentialError(c, error);
 }
 
 export function createAiCredentialRoutes(options: { masterKeys: VaultMasterKeyProvider | null; modelProbe?: ModelProbe }) {
@@ -106,6 +145,38 @@ export function createAiCredentialRoutes(options: { masterKeys: VaultMasterKeyPr
       const transport = transportFailureJson(error);
       if (transport) return c.json(transport.body, transport.status);
       return credentialError(c, error);
+    }
+  });
+
+  routes.post("/ai/byok/chat", async (c) => {
+    const input = byokChatInput.parse(await c.req.json());
+    const request: ChatRequest = { messages: input.messages, responseFormat: input.responseFormat, reasoningEffort: input.reasoningEffort };
+    try {
+      const content = await withClaimedPlainBudget(c, input.budgetId, (tx, owner) =>
+        repository.withServerCredential(tx, owner, input.budgetId, (credential) => byokChatContent({ apiKey: credential, model: input.model, request })),
+      );
+      return c.json({ content });
+    } catch (error) {
+      return byokFailure(c, error);
+    }
+  });
+
+  routes.post("/ai/byok/import/extract", async (c) => {
+    const input = byokImportInput.parse(await c.req.json());
+    try {
+      const items = await withClaimedPlainBudget(c, input.budgetId, (tx, owner) =>
+        repository.withServerCredential(tx, owner, input.budgetId, (credential) =>
+          extractImportForBudget({
+            budgetId: input.budgetId,
+            images: input.images,
+            locale: input.locale ?? "en",
+            chat: (request, timeoutMs) => byokChatContent({ apiKey: credential, model: input.model, request, timeoutMs }),
+          }),
+        ),
+      );
+      return c.json({ items });
+    } catch (error) {
+      return byokFailure(c, error instanceof ImportCycleOneFailure ? error.reason : error);
     }
   });
 
