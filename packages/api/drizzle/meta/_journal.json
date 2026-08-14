@@ -162,6 +162,13 @@
       "when": 1786716000000,
       "tag": "0022_account_budget_preferences",
       "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1786723200000,
+      "tag": "0023_budget_ai_credentials",
+      "breakpoints": true
     }
   ]
 }
