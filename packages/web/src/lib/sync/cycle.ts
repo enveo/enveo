@@ -8,7 +8,9 @@
  */
 
 import { accountPreferences } from "../accountPreferences";
+import { devicePreferences } from "../devicePreferences";
 import * as e2ee from "../e2ee";
+import { migrateLegacySettings } from "../legacySettingsMigration";
 import * as outbox from "../outbox";
 import * as persist from "../persist";
 import { store } from "../store";
@@ -187,7 +189,13 @@ async function doCycle(): Promise<boolean> {
     if (!userId) return true;
     await accountPreferences.hydrateForUser(userId);
     // Preferences are an auxiliary channel: a temporary failure must not stall ledger sync.
-    await accountPreferences.sync(userId).catch((error) => console.warn("account preference sync failed", error));
+    try {
+      await accountPreferences.sync(userId);
+      await devicePreferences.hydrate();
+      await migrateLegacySettings();
+    } catch (error) {
+      console.warn("account preference sync or legacy migration failed", error);
+    }
     // The ownership proof may have learned that the session's budget sits in the OTHER tier
     // (409 → tierMeta refreshed): take the path the server actually serves.
     isE2ee = e2ee.getTierMeta().tier === "e2ee";

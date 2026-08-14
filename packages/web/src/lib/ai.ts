@@ -40,10 +40,14 @@ import {
 import { api, type ImportItem } from "./api";
 import type { Settings } from "./contexts";
 import { browserLocales, currencyForLocales } from "./currency";
-import { type ChatTarget, chatJson } from "./openai";
+import { type ChatTarget, chatJson, legacyByokTarget } from "./openai";
+import { readLegacyOpenAiCredential } from "./settingsPersist";
 
 /** Settings subset read by the dispatch (device-only, from localStorage). */
-export type AiSettings = Pick<Settings, "aiMode" | "openaiKey" | "openaiModel">;
+export type AiSettings = Pick<Settings, "aiMode" | "openaiModel"> & {
+  /** Test-only injection; production reads an existing key through the quarantine adapter. */
+  openaiKey?: string;
+};
 
 /* The UI language goes to the prompt builders AS IS (a `Lang` is a BCP-47 tag and AiLocale takes
    any of them since 2.2.0): the model names, notes and rationales come back in the user's
@@ -72,7 +76,8 @@ export class AiConsentRequired extends Error {
  */
 export function aiTarget(settings: AiSettings): ChatTarget | null {
   if (settings.aiMode === "server") return { kind: "server" };
-  if (settings.aiMode === "byok" && settings.openaiKey) return { kind: "byok", key: settings.openaiKey, model: settings.openaiModel };
+  const credential = settings.openaiKey ? { key: settings.openaiKey, model: settings.openaiModel } : readLegacyOpenAiCredential();
+  if (settings.aiMode === "byok" && credential) return legacyByokTarget(credential.key, credential.model ?? settings.openaiModel);
   return null;
 }
 

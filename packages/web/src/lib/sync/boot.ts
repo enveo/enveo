@@ -6,9 +6,11 @@
  */
 
 import { accountPreferences } from "../accountPreferences";
+import { devicePreferences } from "../devicePreferences";
 import * as e2ee from "../e2ee";
 import { idbGet } from "../idb";
 import { purgeLegacyPlannedIds } from "../legacyPlanned";
+import { migrateLegacySettings } from "../legacySettingsMigration";
 import { local } from "../mutate";
 import * as outbox from "../outbox";
 import * as persist from "../persist";
@@ -106,7 +108,16 @@ async function boot(): Promise<void> {
     // Whose replica is this? BEFORE it reaches the UI (and before any bootstrap) — see bootOwnerOk
     if (!(await bootOwnerOk())) return;
     const verifiedUserId = verifiedIdentityUserId();
-    if (verifiedUserId) await accountPreferences.hydrateForUser(verifiedUserId);
+    if (verifiedUserId) {
+      await accountPreferences.hydrateForUser(verifiedUserId);
+      try {
+        await accountPreferences.sync(verifiedUserId);
+        await devicePreferences.hydrate();
+        await migrateLegacySettings();
+      } catch (error) {
+        console.warn("legacy preference migration deferred", error);
+      }
+    }
     if (getLocalMode() !== "off") {
       lastBootSource = "local";
       await bootLocalReady(hydrated); // local mode — no network

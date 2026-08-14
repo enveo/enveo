@@ -31,6 +31,11 @@ import { timeoutSignal } from "./timeoutSignal";
  *  is always forwarded, the server gates by its own model). Wire 1:1. */
 export type ChatTarget = { kind: "byok"; key: string; model: string } | { kind: "server" };
 
+/** Stage-2 compatibility boundary: only the quarantined legacy adapter constructs BYOK targets. */
+export function legacyByokTarget(key: string, model: string): ChatTarget {
+  return { kind: "byok", key, model };
+}
+
 const OPENAI_URL = "https://api.openai.com/v1/chat/completions";
 const CODE = /^[a-z0-9_]+$/;
 

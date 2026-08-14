@@ -18,7 +18,6 @@ import { type DevicePreferencesPatch, devicePreferences } from "./devicePreferen
 import { formatMoney } from "./format";
 // the REGISTRY, not lib/i18n: that one reads useSettings() from here — importing it would close the cycle
 import { detectLang, type Lang } from "./i18n/registry";
-import { loadPersistedSettings, persistSettings } from "./settingsPersist";
 import { store } from "./store";
 import { light, type Theme, themeTokens } from "./theme";
 
@@ -39,8 +38,6 @@ export interface Settings {
   lang: Lang;
   /** Compatibility view over the budget-scoped AI provider. */
   aiMode: AiMode;
-  /** OpenAI key (byok) — this browser's localStorage ONLY, and never persisted in guest mode. */
-  openaiKey: string;
   openaiModel: OpenAiModel;
   /** Budget-scoped custom "Suggest" profiles. */
   customProfiles: Array<{ id: string; name: string; prompt: string }>;
@@ -84,37 +81,10 @@ const DEFAULT_SETTINGS: Settings = {
   discreet: false,
   lang: detectLang(),
   aiMode: "off",
-  openaiKey: "",
   openaiModel: DEFAULT_OPENAI_MODEL,
   customProfiles: [],
   startWidgets: defaultStartWidgets(),
 };
-
-function loadSettings(): Settings {
-  const raw = loadPersistedSettings(); // null in guest mode — a guest inherits nothing
-  const s = raw ? { ...DEFAULT_SETTINGS, ...raw } : { ...DEFAULT_SETTINGS };
-  // The theme picker was reduced to two tiles (Cisza/Duet) — a device that still has the
-  // retired "koral"/"atrament" tile selected (pre-redesign-06) normalizes to the new default.
-  // The AccentTheme type and THEMES entries stay so this remains parseable either way.
-  const legacyAccent = String(s.accentTheme);
-  if (legacyAccent === "koral" || legacyAccent === "atrament") s.accentTheme = "teal";
-  // Migration for devices from before the widget stack existed (or a corrupted/empty array).
-  if (!Array.isArray(s.startWidgets) || s.startWidgets.length === 0) {
-    s.startWidgets = defaultStartWidgets();
-  } else {
-    // Reconcile an already-persisted stack against the current defaults: a widget added in a
-    // later release (e.g. envelopesSavings) must still reach upgrading devices — appended in
-    // default order, disabled/opts as shipped — while preserving the user's existing order and
-    // per-widget enabled/opts. Also drops any entry whose id is no longer known (forward-safety
-    // against a downgrade or a corrupted persist).
-    const defaults = defaultStartWidgets();
-    const known = new Set(defaults.map((w) => w.id));
-    const present = new Set(s.startWidgets.map((w) => w.id));
-    const missing = defaults.filter((w) => !present.has(w.id));
-    s.startWidgets = s.startWidgets.filter((w) => known.has(w.id)).concat(missing);
-  }
-  return s;
-}
 
 const ThemeCtx = createContext<Theme>(light);
 const SettingsCtx = createContext<{ settings: Settings; setSettings: (s: Settings) => void }>({
@@ -168,7 +138,6 @@ export function useMask() {
 }
 
 export function AppProviders({ children }: { children: ReactNode }) {
-  const [legacySettings, setLegacySettings] = useState<Settings>(loadSettings);
   const { preferences: account, update: updateAccount } = useAccountPreferences();
   const { preferences: budget, update: updateBudget } = useBudgetPreferences();
   const { preferences: device, update: updateDevice } = useDevicePreferences();
@@ -185,12 +154,11 @@ export function AppProviders({ children }: { children: ReactNode }) {
       lang: account.lang,
       discreet: device.discreet,
       aiMode: budget.aiProvider === "enveo" ? "server" : budget.aiProvider === "openai" ? "byok" : "off",
-      openaiKey: legacySettings.openaiKey,
       openaiModel: budget.openaiModel,
       customProfiles: budget.customProfiles,
       startWidgets: budget.startWidgets,
     }),
-    [account, budget, device, legacySettings.openaiKey],
+    [account, budget, device],
   );
 
   useEffect(() => {
@@ -205,8 +173,6 @@ export function AppProviders({ children }: { children: ReactNode }) {
     if (Object.keys(patch.account).length > 0) updateAccount(patch.account);
     if (Object.keys(patch.budget).length > 0) updateBudget(patch.budget);
     if (Object.keys(patch.device).length > 0) updateDevice(patch.device);
-    if (s.openaiKey !== legacySettings.openaiKey) setLegacySettings(s);
-    persistSettings(s); // Stage 9 reads this legacy object without deleting a pending BYOK.
   };
 
   // <html lang> must follow the UI language (screen-reader pronunciation, hyphenation, :lang()

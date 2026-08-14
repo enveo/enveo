@@ -5,16 +5,17 @@ import { api } from "../../lib/api";
 import { OPENAI_MODELS, type OpenAiModel, useSettings, useTheme } from "../../lib/contexts";
 import { useT } from "../../lib/i18n";
 import { checkModelAvailability, type ModelAvailability } from "../../lib/openaiModels";
+import { legacyCredentialMigration, readLegacyOpenAiCredential, setEphemeralOpenAiCredential } from "../../lib/settingsPersist";
 import { CORAL, font, TEAL } from "../../lib/theme";
 import { Helper, Row, Seg } from "./ui";
 
 /**
- * AI mode (a DEVICE setting, not synced):
+ * AI provider and model are budget-scoped and synchronized. During the staged migration:
  *  - off:    suggestions computed locally on rules — zero egress,
  *  - server: requests via the app server (operator's key); when the server
  *            has no key (`/api/ai/info` → serverAi=false) we show a warning,
- *  - byok:   user's own OpenAI key — lives ONLY in this browser's localStorage,
- *            calls go straight to api.openai.com (bypassing the server).
+ *  - byok:   an existing legacy OpenAI key remains in a read-only quarantine until Stage 3,
+ *            while calls still go straight to api.openai.com.
  *
  * BYOK model choice (§1b) is a quality/cost TIER picker over lib/aiModelTiers.ts, not raw model
  * ids; the id shows as secondary detail. With a key present the curated ids are validated against
@@ -29,16 +30,17 @@ export function AiSection() {
   const C = useTheme();
   const { t } = useT();
   const { settings, setSettings } = useSettings();
+  const [key, setKey] = useState(() => readLegacyOpenAiCredential()?.key ?? "");
   // Check server-mode availability only when it is selected (zero unnecessary requests).
   const { data: aiInfo } = useQuery({ queryKey: ["aiInfo"], queryFn: api.aiInfo, enabled: settings.aiMode === "server" });
 
   // BYOK availability probe: debounce the key so typing does not fire a request per keystroke.
-  const key = settings.openaiKey.trim();
-  const [settledKey, setSettledKey] = useState(key);
+  const trimmedKey = key.trim();
+  const [settledKey, setSettledKey] = useState(trimmedKey);
   useEffect(() => {
-    const id = setTimeout(() => setSettledKey(key), 800);
+    const id = setTimeout(() => setSettledKey(trimmedKey), 800);
     return () => clearTimeout(id);
-  }, [key]);
+  }, [trimmedKey]);
   const modelCheck = useQuery({
     queryKey: ["openaiModelAvailability", settledKey],
     queryFn: () => checkModelAvailability(settledKey, OPENAI_MODELS),
@@ -62,7 +64,10 @@ export function AiSection() {
         : t("The app talks to OpenAI directly from this browser using your own key — bypassing the server.");
 
   const unavailable = (model: OpenAiModel) => avail?.state === "checked" && !avail.available.has(model);
-  const select = (model: OpenAiModel) => setSettings({ ...settings, openaiModel: model });
+  const select = (model: OpenAiModel) => {
+    setEphemeralOpenAiCredential(key, model);
+    setSettings({ ...settings, openaiModel: model });
+  };
 
   const option = (model: OpenAiModel, label: string, hint: string, tier?: ModelTier) => {
     const selected = settings.openaiModel === model;
@@ -125,8 +130,11 @@ export function AiSection() {
           <div style={{ fontSize: 11.5, fontWeight: 600, color: C.text, marginBottom: 6 }}>{t("OpenAI key")}</div>
           <input
             type="password"
-            value={settings.openaiKey}
-            onChange={(e) => setSettings({ ...settings, openaiKey: e.target.value.trim() })}
+            value={key}
+            onChange={(e) => {
+              setKey(e.target.value);
+              setEphemeralOpenAiCredential(e.target.value, settings.openaiModel);
+            }}
             placeholder="sk-…"
             autoComplete="off"
             autoCapitalize="none"
@@ -168,7 +176,10 @@ export function AiSection() {
           ) : avail?.state === "unknown" ? (
             <Helper>{t("Could not check model availability right now — every tier stays selectable.")}</Helper>
           ) : null}
-          <Helper>{t("The key is stored only in this browser (localStorage) — it is never synced or sent to the app server.")}</Helper>
+          {import.meta.env.DEV && legacyCredentialMigration() === "pending-stage-3" && (
+            <Helper>{t("An existing browser key is waiting for migration to the secure credential vault.")}</Helper>
+          )}
+          <Helper>{t("Existing browser credentials remain read-only until secure vault migration completes.")}</Helper>
         </div>
       )}
     </div>

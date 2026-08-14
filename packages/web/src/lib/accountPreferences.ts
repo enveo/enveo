@@ -194,6 +194,7 @@ export function createAccountPreferencesStore(deps: AccountPreferencesStoreDeps)
     rehydrateCurrent,
     getSnapshot: () => snapshot,
     getCacheForTests: () => cache,
+    migrationState: () => cache,
     subscribe(listener: () => void) {
       listeners.add(listener);
       return () => listeners.delete(listener);

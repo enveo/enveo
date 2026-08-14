@@ -43,13 +43,19 @@
  * - sync/multitab.ts    — Web Locks leadership, BroadcastChannel, peer-update application
  * - sync/upgrade.ts     — the v1→v2 E2EE upgrade ceremony + its durable intent record
  */
+
+import { accountPreferences } from "./accountPreferences";
+import { budgetPreferences } from "./budgetPreferences";
+import { devicePreferences } from "./devicePreferences";
 import * as e2ee from "./e2ee";
-import { storageMode } from "./idb";
+import { idbGet, idbPut, storageMode } from "./idb";
+import { configureLegacySettingsMigration, parseLegacyMigrationAck } from "./legacySettingsMigration";
 // NOTE: no static `import { local } from "./mutate"` here — mutate.ts imports `poke` from this
 // facade, so a static edge in the other direction would be a cycle. The one place the engine
 // needs `local` (sweepLegacyPlanned in sync/boot.ts) does a lazy `await import("../mutate")`.
 import * as outbox from "./outbox";
 import * as persist from "./persist";
+import { readLegacySettings } from "./settingsPersist";
 import { INTERVAL_MS, type LocalMode } from "./sync/contracts";
 import { awaitInFlightCycle, configureCycle, getLastSyncReason, resetBackoff, syncNow } from "./sync/cycle";
 import { assertOwnReplica, enterUnauthed } from "./sync/identity";
@@ -76,6 +82,21 @@ export { discardPendingE2eeUpgrade, hasPendingE2eeUpgrade, upgradeServerE2eeV2 }
 // every outbox queue change (add/ack/dead-letter) refreshes the status —
 // explicit, idempotent installation (sync/status.ts), done at composition time
 installOutboxStatusListener();
+
+configureLegacySettingsMigration({
+  readLegacy: () => readLegacySettings()?.value ?? null,
+  loadAck: async () => parseLegacyMigrationAck(await idbGet("meta", "legacySettingsMigrationV1")),
+  saveAck: (value) => idbPut("meta", value, "legacySettingsMigrationV1"),
+  accountState: accountPreferences.migrationState,
+  updateAccount: accountPreferences.update,
+  budgetState: budgetPreferences.getSnapshot,
+  updateBudget: async (patch) => {
+    budgetPreferences.update(patch);
+    await outbox.flushed(); // acknowledgement may not outrun the durable op
+  },
+  deviceState: devicePreferences.migrationState,
+  updateDevice: devicePreferences.update,
+});
 
 /** Test hook (unit tests only): set the local-mode flag without touching the server. */
 export function __setLocalMode(mode: LocalMode): void {
