@@ -1,7 +1,6 @@
 import type { Transaction } from "@enveo/shared";
 import { lazy, useEffect, useRef, useState } from "react";
 import { BottomNav, Drawer, type ScreenId, StyleInjector } from "./components/chrome";
-import { InstallBanner } from "./components/InstallBanner";
 import { LazyChunk, useOpenedOnce } from "./components/lazy";
 import { SyncBadge } from "./components/SyncBadge";
 import { UpdatePrompt } from "./components/UpdatePrompt";
@@ -45,6 +44,7 @@ const UnlockScreen = lazy(() => import("./screens/Unlock").then((m) => ({ defaul
 const ForeignReplicaScreen = lazy(() => import("./screens/ForeignReplica").then((m) => ({ default: m.ForeignReplicaScreen })));
 const InstallSheet = lazy(() => import("./components/InstallSheet").then((m) => ({ default: m.InstallSheet })));
 const EnvActionsSheet = lazy(() => import("./components/EnvActionsSheet").then((m) => ({ default: m.EnvActionsSheet })));
+const InstallBanner = lazy(() => import("./components/InstallBanner").then((m) => ({ default: m.InstallBanner })));
 
 export default function App() {
   const C = useTheme();
@@ -396,7 +396,11 @@ export default function App() {
         <Drawer open={drawer} onClose={() => setDrawer(false)} onNav={nav} onOpenReports={openReports} onInstall={() => setInstallSheet(true)} />
         {/* not during onboarding: the wizard ends with its own install card (a second ask), the
             BottomNav the banner's offset clears is hidden there, and it must not cover the skeleton */}
-        {state && !onboarding && <InstallBanner />}
+        {state && !onboarding && (
+          <LazyChunk variant="silent">
+            <InstallBanner />
+          </LazyChunk>
+        )}
         {installSheetMounted && (
           <LazyChunk variant="overlay" onDismiss={() => setInstallSheet(false)}>
             <InstallSheet show={installSheet} onClose={() => setInstallSheet(false)} />
