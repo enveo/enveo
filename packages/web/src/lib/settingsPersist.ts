@@ -25,14 +25,12 @@ export interface LegacySettings {
   customProfiles?: Array<{ id: string; name: string; prompt: string }>;
   startWidgets?: WidgetConfig[];
 }
-export type CredentialMigration = "pending-stage-3";
+export type CredentialMigration = "pending-vault" | "pending-stage-4";
 
 export interface LegacySettingsRecord {
   raw: string;
   value: LegacySettings;
 }
-
-let ephemeralCredential: { key: string; model?: OpenAiModel } | null = null;
 
 const LEGACY_KEYS = new Set(["themeMode", "accentTheme", "discreet", "lang", "aiMode", "openaiKey", "openaiModel", "customProfiles", "startWidgets"]);
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -95,33 +93,29 @@ export function loadPersistedSettings(): LegacySettings | null {
   return readLegacySettings()?.value ?? null;
 }
 
-export function legacyCredentialMigration(): CredentialMigration | null {
+export function legacyCredentialMigration(tier: "plain" | "e2ee" = "plain"): CredentialMigration | null {
   const key = readLegacySettings()?.value.openaiKey;
-  return key && key.trim().length > 0 ? "pending-stage-3" : null;
-}
-
-export function readLegacyOpenAiCredential(): { key: string; model?: OpenAiModel } | null {
-  if (ephemeralCredential) return ephemeralCredential;
-  const value = readLegacySettings()?.value;
-  if (!value?.openaiKey?.trim()) return null;
-  return { key: value.openaiKey, model: value.openaiModel };
-}
-
-/** Temporary in-memory bridge for a key entered before the Stage 3 vault is available. */
-export function setEphemeralOpenAiCredential(key: string, model?: OpenAiModel): void {
-  ephemeralCredential = key.trim() ? { key: key.trim(), model } : null;
-}
-
-export function clearEphemeralOpenAiCredential(): void {
-  ephemeralCredential = null;
+  return key && key.trim().length > 0 ? (tier === "e2ee" ? "pending-stage-4" : "pending-vault") : null;
 }
 
 /** Quarantine is read-only: scoped stores own every new preference write. */
 export function persistSettings(_settings: unknown): void {}
 
+/** Removes exactly the object the migration inspected. A concurrent/new value
+ * is never deleted, and an untrusted session never touches persistent storage. */
+export function removeLegacySettingsIfUnchanged(expectedRaw: string): boolean {
+  if (storageMode() === "memory-session") return false;
+  try {
+    if (localStorage.getItem(SETTINGS_KEY) !== expectedRaw) return false;
+    localStorage.removeItem(SETTINGS_KEY);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 /** Explicit sign-out from a shared/cloud device is still allowed to remove the credential. */
 export function clearPersistedSettings(): void {
-  clearEphemeralOpenAiCredential();
   try {
     localStorage.removeItem(SETTINGS_KEY);
   } catch {
