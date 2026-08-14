@@ -73,6 +73,13 @@ export interface ImportApplyResponse {
   results: Array<ImportItem & { status: "added" | "exists" | "probable" }>;
 }
 
+export interface E2eeCredentialResponse {
+  configured: boolean;
+  budgetId: string;
+  epoch: number;
+  ciphertext?: string;
+}
+
 /**
  * Server error CODES (snake_case) → dictionary key. The API never sends prose: it answers with a
  * stable machine code (structured detail rides in its own field), and the CLIENT owns the wording
@@ -216,6 +223,11 @@ export const api = {
   byokCredentialDelete: (budgetId: string) => http<{ configured: false }>("DELETE", "/ai/credentials/openai", { budgetId }),
   byokCredentialTest: (budgetId: string, model: OpenAiModel) =>
     http<{ ok: true; model: OpenAiModel }>("POST", "/ai/credentials/openai/test", { budgetId, model }),
+  e2eeByokCredentialGet: (budgetId: string) => http<E2eeCredentialResponse>("GET", `/ai/credentials/openai/e2ee?budgetId=${encodeURIComponent(budgetId)}`),
+  e2eeByokCredentialSave: (budgetId: string, expectedEpoch: number, ciphertext: string) =>
+    http<E2eeCredentialResponse>("PUT", "/ai/credentials/openai/e2ee", { budgetId, expectedEpoch, ciphertext }),
+  e2eeByokCredentialDelete: (budgetId: string, expectedEpoch: number) =>
+    http<E2eeCredentialResponse>("DELETE", "/ai/credentials/openai/e2ee", { budgetId, expectedEpoch }),
   byokChat: (budgetId: string, model: OpenAiModel, request: ChatRequest) =>
     http<{ content: string }>(
       "POST",

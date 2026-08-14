@@ -14,6 +14,13 @@ export interface CredentialStatus {
   storageKind?: "server_vault" | "e2ee_ciphertext";
 }
 
+export interface E2eeCredentialRecord {
+  configured: boolean;
+  budgetId: string;
+  epoch: number;
+  ciphertext?: string;
+}
+
 export class CredentialBudgetMismatch extends Error {
   readonly code = "budget_mismatch" as const;
 
@@ -41,6 +48,15 @@ export class CredentialVaultUnavailable extends Error {
   }
 }
 
+export class CredentialE2eeUpgradeRequired extends Error {
+  readonly code = "e2ee_upgrade_required" as const;
+
+  constructor(readonly meta: { id: string; tier: "e2ee"; epoch: number; cipherVersion: 1 }) {
+    super("e2ee_upgrade_required");
+    this.name = "CredentialE2eeUpgradeRequired";
+  }
+}
+
 async function lockPlainBudget(tx: DbTransaction, owner: CredentialOwner, budgetId: string): Promise<void> {
   const [row] = await tx
     .select({ userId: budgets.userId, tier: budgets.tier, epoch: budgets.epoch, cipherVersion: budgets.cipherVersion })
@@ -51,6 +67,22 @@ async function lockPlainBudget(tx: DbTransaction, owner: CredentialOwner, budget
   if (row.tier !== "plain") {
     throw new TierMismatch({ id: budgetId, tier: "e2ee", epoch: row.epoch, cipherVersion: row.cipherVersion === 1 ? 1 : 2 });
   }
+}
+
+async function lockE2eeBudget(tx: DbTransaction, owner: CredentialOwner, budgetId: string, expectedEpoch?: number): Promise<number> {
+  const [row] = await tx
+    .select({ userId: budgets.userId, tier: budgets.tier, epoch: budgets.epoch, cipherVersion: budgets.cipherVersion })
+    .from(budgets)
+    .where(eq(budgets.id, budgetId))
+    .for("update");
+  if (!row || row.userId !== owner.userId) throw new CredentialBudgetMismatch();
+  const cipherVersion = row.cipherVersion === 1 ? 1 : 2;
+  if (row.tier !== "e2ee") throw new TierMismatch({ id: budgetId, tier: "plain", epoch: row.epoch, cipherVersion });
+  if (cipherVersion !== 2) throw new CredentialE2eeUpgradeRequired({ id: budgetId, tier: "e2ee", epoch: row.epoch, cipherVersion: 1 });
+  if (expectedEpoch !== undefined && row.epoch !== expectedEpoch) {
+    throw new TierMismatch({ id: budgetId, tier: "e2ee", epoch: row.epoch, cipherVersion: 2 });
+  }
+  return row.epoch;
 }
 
 function sealedFromRow(row: {
@@ -124,6 +156,60 @@ export function createCredentialRepository(masterKeys: VaultMasterKeyProvider | 
     async deleteCredential(tx: DbTransaction, owner: CredentialOwner, budgetId: string): Promise<void> {
       await lockPlainBudget(tx, owner, budgetId);
       await tx.delete(budgetAiCredentials).where(eq(budgetAiCredentials.budgetId, budgetId));
+    },
+
+    async e2eeCredential(tx: DbTransaction, owner: CredentialOwner, budgetId: string): Promise<E2eeCredentialRecord> {
+      const epoch = await lockE2eeBudget(tx, owner, budgetId);
+      const [row] = await tx
+        .select({ storageKind: budgetAiCredentials.storageKind, ciphertext: budgetAiCredentials.ciphertext, e2eeEpoch: budgetAiCredentials.e2eeEpoch })
+        .from(budgetAiCredentials)
+        .where(eq(budgetAiCredentials.budgetId, budgetId));
+      if (row?.storageKind !== "e2ee_ciphertext" || row.e2eeEpoch !== epoch) return { configured: false, budgetId, epoch };
+      return { configured: true, budgetId, epoch, ciphertext: row.ciphertext };
+    },
+
+    async replaceE2eeCredential(tx: DbTransaction, owner: CredentialOwner, budgetId: string, expectedEpoch: number, ciphertext: string): Promise<number> {
+      const epoch = await lockE2eeBudget(tx, owner, budgetId, expectedEpoch);
+      const [current] = await tx
+        .select({ recordVersion: budgetAiCredentials.recordVersion })
+        .from(budgetAiCredentials)
+        .where(eq(budgetAiCredentials.budgetId, budgetId));
+      const recordVersion = (current?.recordVersion ?? 0) + 1;
+      if (!Number.isSafeInteger(recordVersion)) throw new Error("ai_vault_record_version_exhausted");
+      await tx
+        .insert(budgetAiCredentials)
+        .values({
+          budgetId,
+          provider: "openai",
+          storageKind: "e2ee_ciphertext",
+          framingVersion: 2,
+          ciphertext,
+          wrappedRecordDek: null,
+          masterKeyId: null,
+          e2eeEpoch: epoch,
+          recordVersion,
+        })
+        .onConflictDoUpdate({
+          target: budgetAiCredentials.budgetId,
+          set: {
+            provider: "openai",
+            storageKind: "e2ee_ciphertext",
+            framingVersion: 2,
+            ciphertext,
+            wrappedRecordDek: null,
+            masterKeyId: null,
+            e2eeEpoch: epoch,
+            recordVersion,
+            updatedAt: dsql`now()`,
+          },
+        });
+      return epoch;
+    },
+
+    async deleteE2eeCredential(tx: DbTransaction, owner: CredentialOwner, budgetId: string, expectedEpoch: number): Promise<number> {
+      const epoch = await lockE2eeBudget(tx, owner, budgetId, expectedEpoch);
+      await tx.delete(budgetAiCredentials).where(and(eq(budgetAiCredentials.budgetId, budgetId), eq(budgetAiCredentials.storageKind, "e2ee_ciphertext")));
+      return epoch;
     },
 
     async withServerCredential<T>(tx: DbTransaction, owner: CredentialOwner, budgetId: string, use: (credential: string) => Promise<T>): Promise<T> {
