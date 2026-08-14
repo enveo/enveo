@@ -6,6 +6,8 @@
  * durable obligations in obligations.ts. Peer-tab broadcasts are injected (configureCycle) —
  * the channel is owned by the multi-tab layer above.
  */
+
+import { accountPreferences } from "../accountPreferences";
 import * as e2ee from "../e2ee";
 import * as outbox from "../outbox";
 import * as persist from "../persist";
@@ -183,6 +185,9 @@ async function doCycle(): Promise<boolean> {
     // overwrite this cycle makes (per-REQUEST assertion — the cookie can still be swapped later).
     const userId = await ensureIdentity();
     if (!userId) return true;
+    await accountPreferences.hydrateForUser(userId);
+    // Preferences are an auxiliary channel: a temporary failure must not stall ledger sync.
+    await accountPreferences.sync(userId).catch((error) => console.warn("account preference sync failed", error));
     // The ownership proof may have learned that the session's budget sits in the OTHER tier
     // (409 → tierMeta refreshed): take the path the server actually serves.
     isE2ee = e2ee.getTierMeta().tier === "e2ee";

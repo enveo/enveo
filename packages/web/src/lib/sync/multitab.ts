@@ -33,6 +33,8 @@
  * reaches it only through the deps the facade injects (configureCycle), so the static module
  * graph stays acyclic (multitab → cycle/boot, never the reverse).
  */
+
+import { accountPreferences, configureAccountPreferencesBroadcast } from "../accountPreferences";
 import * as e2ee from "../e2ee";
 import { clearLocalData } from "../idb";
 import * as persist from "../persist";
@@ -80,7 +82,7 @@ export async function broadcastKeysChanged(): Promise<void> {
   postMsg("keys");
 }
 
-export function postMsg(type: "updated" | "poke" | "wipe" | "keys"): void {
+export function postMsg(type: "updated" | "poke" | "wipe" | "keys" | "preferences"): void {
   try {
     channel?.postMessage({ type });
   } catch {
@@ -105,6 +107,7 @@ export function broadcastLocalMode(mode: LocalMode): void {
  * reload) guarantees tabs receiving "wipe" boot from ALREADY EMPTY stores.
  */
 export async function wipeLocalData(): Promise<void> {
+  await accountPreferences.clear();
   await clearLocalData();
   postMsg("wipe");
   if (typeof location !== "undefined") location.reload();
@@ -142,6 +145,7 @@ interface LockManagerLike {
 }
 
 export function installMultiTab(): void {
+  configureAccountPreferencesBroadcast(() => postMsg("preferences"));
   const locks = (navigator as Navigator & { locks?: LockManagerLike }).locks;
   if (locks && typeof locks.request === "function") {
     locks
@@ -166,6 +170,7 @@ export function installMultiTab(): void {
       const msg = e.data as { type?: string; mode?: LocalMode } | null;
       if (!msg) return;
       if (msg.type === "updated") void applyPeerUpdate();
+      else if (msg.type === "preferences") void accountPreferences.rehydrateCurrent();
       else if (msg.type === "keys") {
         // a peer tab rotated/validated/dropped the key state — re-read it, then let the
         // normal machinery converge (a locked tab may now be unlockable and vice versa)

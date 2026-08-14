@@ -4,6 +4,8 @@
  * promise (bootOnce/retryBoot; StrictMode mounts effects twice). Single owner of
  * lastBootSource.
  */
+
+import { accountPreferences } from "../accountPreferences";
 import * as e2ee from "../e2ee";
 import { idbGet } from "../idb";
 import { purgeLegacyPlannedIds } from "../legacyPlanned";
@@ -14,7 +16,7 @@ import { requestPersistentStorage } from "../storage";
 import { store } from "../store";
 import { type BootSource, EMPTY_LEDGER, UnauthorizedError } from "./contracts";
 import { syncNow } from "./cycle";
-import { bootOwnerOk, enterUnauthed } from "./identity";
+import { bootOwnerOk, enterUnauthed, verifiedIdentityUserId } from "./identity";
 import { getLocalMode } from "./localMode";
 import { hydrateObligations } from "./obligations";
 import { replayOutbox } from "./replica";
@@ -103,6 +105,8 @@ async function boot(): Promise<void> {
     await loadSyncMeta();
     // Whose replica is this? BEFORE it reaches the UI (and before any bootstrap) — see bootOwnerOk
     if (!(await bootOwnerOk())) return;
+    const verifiedUserId = verifiedIdentityUserId();
+    if (verifiedUserId) await accountPreferences.hydrateForUser(verifiedUserId);
     if (getLocalMode() !== "off") {
       lastBootSource = "local";
       await bootLocalReady(hydrated); // local mode — no network

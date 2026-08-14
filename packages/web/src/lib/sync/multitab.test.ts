@@ -6,6 +6,7 @@
  * dedicated test hook — an open BroadcastChannel keeps the bun process alive.
  */
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "bun:test";
+import { accountPreferences } from "../accountPreferences";
 import { idbGet, idbPut } from "../idb";
 import { __resetMultiTabForTests, broadcastUpdatedIfPending, installMultiTab, isLeaderTab, notePeersMayNeedUpdate, wipeLocalData } from "./multitab";
 
@@ -64,6 +65,19 @@ describe("sync/multitab", () => {
     broadcastUpdatedIfPending(); // consumed — the second call posts nothing
     await flush();
     expect(received).toEqual(["updated"]);
+  });
+
+  it("broadcasts a persisted account preference edit without echoing a peer notification", async () => {
+    await accountPreferences.clear();
+    await accountPreferences.hydrateForUser("user-a");
+    await accountPreferences.update({ lang: "pl" });
+    await flush();
+    expect(received).toEqual(["preferences"]);
+
+    received = [];
+    receiver?.postMessage({ type: "preferences" });
+    await flush();
+    expect(received).toEqual([]); // the receive-side rehydrate never broadcasts
   });
 
   it("wipeLocalData clears the stores, THEN broadcasts 'wipe', THEN reloads", async () => {

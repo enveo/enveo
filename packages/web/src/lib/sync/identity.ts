@@ -328,6 +328,11 @@ export async function ensureIdentity(): Promise<string | null> {
   return sessionUserId;
 }
 
+/** Account whose session and replica stamp have been matched in this tab. */
+export function verifiedIdentityUserId(): string | null {
+  return identityVerifiedFor;
+}
+
 /**
  * The guard for server writes made OUTSIDE this module: Settings → "Enable E2EE" (POST
  * /e2ee/enable uploads an encrypted snapshot of the whole replica AND flips the session

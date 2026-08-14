@@ -26,7 +26,8 @@
  * installs no triggers — the cycle can be driven directly with syncNow().
  */
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import type { ClientLedger, SyncOp } from "@enveo/shared";
+import { type ClientLedger, createDefaultAccountPreferences, type SyncOp } from "@enveo/shared";
+import { accountPreferences } from "./accountPreferences";
 import { decryptPayload, generateDek, opAadContext } from "./crypto";
 import * as e2ee from "./e2ee";
 import { clearLocalData, idbGet, idbPut } from "./idb";
@@ -124,6 +125,8 @@ let upgradeCalls: string[] = [];
 let upgradeNetworkFail = false;
 /** Runs INSIDE the fake upgrade endpoint before it answers — a "second tab edits mid-ceremony". */
 let onUpgrade: (() => void) | null = null;
+let serverAccountPreferences = createDefaultAccountPreferences();
+let serverAccountPreferencesRevision = 0;
 const upgradeRequired = (): Response => conflict({ error: "e2ee_upgrade_required", tier: "e2ee", epoch: 1, cipherVersion: 1, budgetId: serverBudget });
 const realFetch = globalThis.fetch;
 const json = (body: unknown): Response => new Response(JSON.stringify(body), { status: 200, headers: { "content-type": "application/json" } });
@@ -182,11 +185,24 @@ beforeEach(async () => {
   upgradeCalls = [];
   upgradeNetworkFail = false;
   onUpgrade = null;
+  serverAccountPreferences = createDefaultAccountPreferences();
+  serverAccountPreferencesRevision = 0;
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
     calls.push(url);
     if (offline) throw new TypeError("offline"); // network failure — NOT a "signed out" answer
     if (url.startsWith("/api/auth/get-session")) return json(session); // 200 + `null` = no session
+    if (url.startsWith("/api/preferences/account")) {
+      if (!session) return new Response(JSON.stringify({ error: "unauthorized" }), { status: 401 });
+      if (init?.method === "PATCH") {
+        const body = JSON.parse(String(init.body ?? "{}")) as { userId?: string; patch?: Partial<typeof serverAccountPreferences> };
+        const refused = ownerMismatch(body.userId);
+        if (refused) return refused;
+        serverAccountPreferences = { ...serverAccountPreferences, ...body.patch };
+        serverAccountPreferencesRevision++;
+      }
+      return json({ ...serverAccountPreferences, revision: serverAccountPreferencesRevision });
+    }
     if (url.startsWith("/api/sync2/")) {
       if (serverIsPlain) return tierMismatch();
       if (serverUpgradeRequired) return upgradeRequired();
@@ -298,6 +314,7 @@ beforeEach(async () => {
   e2ee.resetOpsCounter(); // the checkpoint counter is module state — it outlives clearLocalData
   e2ee.setTierMeta({ tier: "plain", epoch: 0 });
   e2ee.setCipherVersion(2); // module state — a previous test's recorded legacy format must not leak
+  await accountPreferences.clear();
   await clearLocalData(); // no stamp, no ledger blob — each test sets up its own
   store.replace(emptyLedger(), 0, BUDGET_A); // a booted replica of budget A
   store.setBootStatus("ready");
@@ -399,6 +416,19 @@ describe("sync cycle: session guard before the push", () => {
     await persist.flushed();
     expect(await idbGet<string>("meta", "userId")).toBe("user-A");
     expect(store.getBootStatus()).toBe("ready");
+  });
+
+  it("syncs an offline account preference only after the replica owner is verified", async () => {
+    await idbPut("meta", "user-A", "userId");
+    session = { user: { id: "user-A" } };
+    await accountPreferences.hydrateForUser("user-A");
+    await accountPreferences.update({ lang: "pl" });
+
+    await syncNow("test");
+
+    expect(serverAccountPreferences.lang).toBe("pl");
+    expect(called("/api/preferences/account")).toBe(true);
+    expect(accountPreferences.getCacheForTests()?.dirty).toEqual({});
   });
 
   it("server replace outside a cycle (disable local mode) is guarded too", async () => {

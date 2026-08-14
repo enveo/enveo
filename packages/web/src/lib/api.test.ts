@@ -9,12 +9,32 @@ import { describe, expect, it } from "bun:test";
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { apiErrorMessage } from "./api";
+import { api, apiErrorMessage } from "./api";
 import type { Message } from "./i18n";
 import { pl } from "./i18n/locales/pl";
 
 /** How lib/sync.ts and lib/api.ts surface a failed request: "<status> <body>". */
 const httpError = (status: number, body: unknown) => new Error(`${status} ${JSON.stringify(body)}`);
+
+describe("account preferences API client", () => {
+  it("sends the verified user assertion with a strict field patch", async () => {
+    const originalFetch = globalThis.fetch;
+    let request: { url: string; init?: RequestInit } | undefined;
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      request = { url: String(input), init };
+      return Response.json({ schemaVersion: 1, lang: "pl", themeMode: "light", accentTheme: "teal", revision: 1 });
+    }) as typeof fetch;
+    try {
+      await api.accountPreferencesPatch("user-a", { lang: "pl" });
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+
+    expect(request?.url).toBe("/api/preferences/account");
+    expect(request?.init?.method).toBe("PATCH");
+    expect(JSON.parse(String(request?.init?.body))).toEqual({ userId: "user-a", patch: { lang: "pl" } });
+  });
+});
 
 describe("apiErrorMessage", () => {
   // no localStorage in the test env → uiLang() falls back to the browser language (en), and English

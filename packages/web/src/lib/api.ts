@@ -8,6 +8,7 @@ import { getSyncStatus, type SyncStatus, subscribeSyncStatus } from "./sync";
 export type { AccountView, EnvelopeView, StateResponse } from "@enveo/shared";
 
 import { AI_IMPORT_EXTRACT_TIMEOUT_MS, type AiLocale, type BudgetSuggestProfile, type BudgetSuggestResponse, type ClientLedger } from "@enveo/shared";
+import { getAccountPreferencesRemote, patchAccountPreferencesRemote } from "./accountPreferencesRemote";
 import { timeoutSignal } from "./timeoutSignal";
 
 export type { BudgetSuggestProfile, BudgetSuggestResponse } from "@enveo/shared";
@@ -184,6 +185,9 @@ async function http<T>(method: string, path: string, body?: unknown, timeoutMs?:
  * remain here: imports (AI) and their apply step.
  */
 export const api = {
+  accountPreferencesGet: getAccountPreferencesRemote,
+  accountPreferencesPatch: patchAccountPreferencesRemote,
+
   /** Whether the server has an OpenAI key configured (the "server" mode available). */
   aiInfo: () => http<{ serverAi: boolean }>("GET", "/ai/info"),
 
