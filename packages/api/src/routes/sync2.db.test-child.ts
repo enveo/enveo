@@ -45,10 +45,12 @@ export type Sync2DbOutput = {
   enabledRow: { tier: string; cipherVersion: number; epoch: number; wrappedDek: string | null } | null;
   enableSnapshotUptoSeq: number | null;
   enablePlaintextWiped: boolean;
+  enablePreferencesCleared: boolean;
   /* 2 — normal v2 push/pull */
   pushStatus: number;
   pulledOpIds: string[];
   pulledCiphertexts: string[];
+  resetPreferencesCleared: boolean;
   /* 3 — legacy budget: every normal route refuses */
   legacyStatuses: Record<string, { status: number; error: string | null; budgetId: string | null; epoch: number | null; cipherVersion: number | null }>;
   legacyJournalIntactAfterRefusals: boolean;
@@ -60,6 +62,7 @@ export type Sync2DbOutput = {
   upgradedRow: { tier: string; cipherVersion: number; epoch: number; wrappedDek: string | null; kdfParams: string | null } | null;
   upgradeJournalRowCount: number; // must be 0 — the legacy journal is gone
   upgradeSnapshot: { uptoSeq: number; blob: string } | null;
+  upgradePreferencesCleared: boolean;
   retryStatus: number; // idempotent same-attempt retry
   retryEpoch: number | null;
   epochAfterRetry: number | null; // still expectedEpoch+1 — never two bumps
@@ -71,6 +74,7 @@ export type Sync2DbOutput = {
   forcedFailureStatus: number;
   rowAfterForcedFailure: { cipherVersion: number; epoch: number; wrappedDek: string | null } | null;
   journalIntactAfterForcedFailure: boolean;
+  forcedFailurePreferencesPreserved: boolean;
   /* 8 — concurrency */
   concurrentStatuses: number[]; // sorted: [200, 409]
   concurrentEpoch: number | null; // exactly expectedEpoch+1
@@ -86,6 +90,7 @@ export type Sync2DbOutput = {
   disabledRow: { tier: string; wrappedDek: string | null } | null;
   disableCipherStateCleared: boolean;
   disablePlaintextRestored: boolean;
+  disablePreferencesRestored: boolean;
 };
 
 async function main(): Promise<void> {
@@ -158,6 +163,7 @@ async function main(): Promise<void> {
         epoch: s.budgets.epoch,
         wrappedDek: s.budgets.wrappedDek,
         kdfParams: s.budgets.kdfParams,
+        preferences: s.budgets.preferences,
       })
       .from(s.budgets)
       .where(eq(s.budgets.id, id));
@@ -172,7 +178,10 @@ async function main(): Promise<void> {
 
   const userA = await mkUser("a");
   sessionUser = userA;
-  const [bA] = await db.insert(s.budgets).values({ userId: userA, name: "A" }).returning({ id: s.budgets.id });
+  const [bA] = await db
+    .insert(s.budgets)
+    .values({ userId: userA, name: "A", preferences: { schemaVersion: 1, aiProvider: "openai" } })
+    .returning({ id: s.budgets.id });
   const budgetA = bA!.id;
   await db.insert(s.accounts).values({ budgetId: budgetA, name: "plain acc" }); // plaintext to wipe
 
@@ -212,6 +221,13 @@ async function main(): Promise<void> {
   const pullRes = await call("GET", "/sync2/pull?since=0&epoch=1");
   const pullBody = (await jsonOf(pullRes)) as unknown as { ops: Array<{ opId: string; ciphertext: string }> };
 
+  await db
+    .update(s.budgets)
+    .set({ preferences: { leaked: true } })
+    .where(eq(s.budgets.id, budgetA));
+  await call("POST", "/sync2/reset", { userId: userA, epoch: 1, snapshotBlob: "v2.resetAAAA" });
+  const afterReset = await budgetRow(budgetA);
+
   // an OLD CLIENT (pre-v2 build) pushing v1 ciphertext against a v2 budget: rejected at the
   // schema boundary (400), never stored. (Against a LEGACY budget the same push meets the
   // cipher-version guard first and 409s — asserted with the other legacy refusals below.)
@@ -223,7 +239,16 @@ async function main(): Promise<void> {
   sessionUser = userL;
   const [bL] = await db
     .insert(s.budgets)
-    .values({ userId: userL, name: "L", tier: "e2ee", epoch: 1, wrappedDek: "v1.legacyWrap", kdfParams: "{}", cipherVersion: 1 })
+    .values({
+      userId: userL,
+      name: "L",
+      tier: "e2ee",
+      epoch: 1,
+      wrappedDek: "v1.legacyWrap",
+      kdfParams: "{}",
+      cipherVersion: 1,
+      preferences: { legacyLeak: true },
+    })
     .returning({ id: s.budgets.id });
   const budgetL = bL!.id;
   const legacyOps = [uuid(), uuid(), uuid()];
@@ -367,6 +392,20 @@ async function main(): Promise<void> {
     confirm: "DISABLE-E2EE",
     ledger: {
       ...EMPTY_LEDGER,
+      budgets: [
+        {
+          id: budgetL,
+          name: "L",
+          currency: "EUR",
+          preferences: {
+            schemaVersion: 1,
+            aiProvider: "openai",
+            openaiModel: "gpt-5.6-sol",
+            customProfiles: [],
+            startWidgets: [],
+          },
+        },
+      ],
       accounts: [
         { id: uuid(), name: "restored", color: "#fff", icon: "wallet", type: "checking", onBudget: true, initialBalance: 0, archived: false, sort: 0 },
       ],
@@ -383,9 +422,11 @@ async function main(): Promise<void> {
     enabledRow: enabledRow && { tier: enabledRow.tier, cipherVersion: enabledRow.cipherVersion, epoch: enabledRow.epoch, wrappedDek: enabledRow.wrappedDek },
     enableSnapshotUptoSeq: enSnap?.uptoSeq ?? null,
     enablePlaintextWiped: plainAfter.length === 0,
+    enablePreferencesCleared: enabledRow?.preferences === null,
     pushStatus: pushRes.status,
     pulledOpIds: pullBody.ops?.map((o) => o.opId) ?? [],
     pulledCiphertexts: pullBody.ops?.map((o) => o.ciphertext) ?? [],
+    resetPreferencesCleared: afterReset?.preferences === null,
     legacyStatuses,
     legacyJournalIntactAfterRefusals,
     v1PushStatus: v1Push.status,
@@ -400,6 +441,7 @@ async function main(): Promise<void> {
     },
     upgradeJournalRowCount,
     upgradeSnapshot: upSnap ?? null,
+    upgradePreferencesCleared: upgradedRow?.preferences === null,
     retryStatus: retryRes.status,
     retryEpoch: (retryBody.epoch as number) ?? null,
     epochAfterRetry: rowAfterRetry?.epoch ?? null,
@@ -414,6 +456,7 @@ async function main(): Promise<void> {
       wrappedDek: rowAfterForcedFailure.wrappedDek,
     },
     journalIntactAfterForcedFailure,
+    forcedFailurePreferencesPreserved: JSON.stringify(rowAfterForcedFailure?.preferences) === JSON.stringify({ legacyLeak: true }),
     concurrentStatuses: [c1.status, c2.status].sort((x, y) => x - y),
     concurrentEpoch: rowC?.epoch ?? null,
     concurrentEnvelopeIsAWinner: rowC?.wrappedDek === winner && (c1.status === 200) !== (c2.status === 200),
@@ -426,6 +469,7 @@ async function main(): Promise<void> {
     disabledRow: disabledRow && { tier: disabledRow.tier, wrappedDek: disabledRow.wrappedDek },
     disableCipherStateCleared: disableOps === 0 && disableSnap === undefined,
     disablePlaintextRestored: restored.length === 1 && restored[0]!.name === "restored",
+    disablePreferencesRestored: (disabledRow?.preferences as { aiProvider?: string } | null)?.aiProvider === "openai",
   };
 
   await raw.end();

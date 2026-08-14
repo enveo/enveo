@@ -282,6 +282,7 @@ sync2Routes.post("/sync2/reset", async (c) => {
 
   const uptoSeq = body.uptoCursor ?? 0;
   await db.transaction(async (tx) => {
+    await tx.update(s.budgets).set({ preferences: null }).where(eq(s.budgets.id, meta.id));
     await tx.delete(s.e2eeOps).where(eq(s.e2eeOps.budgetId, meta.id));
     await tx
       .insert(s.e2eeSnapshots)
@@ -316,7 +317,7 @@ sync2Routes.post("/budget/e2ee/enable", async (c) => {
     if (body.nextEpoch !== nextEpoch) return { mismatch: false, stale: true, meta } as const;
     await tx
       .update(s.budgets)
-      .set({ tier: "e2ee", wrappedDek: body.wrappedDek, kdfParams: body.kdfParams, epoch: nextEpoch, cipherVersion: 2 })
+      .set({ tier: "e2ee", wrappedDek: body.wrappedDek, kdfParams: body.kdfParams, epoch: nextEpoch, cipherVersion: 2, preferences: null })
       .where(eq(s.budgets.id, meta.id));
     await tx
       .insert(s.e2eeSnapshots)
@@ -410,7 +411,7 @@ sync2Routes.post("/budget/e2ee/upgrade-v2", async (c) => {
     const nextEpoch = row.epoch + 1;
     await tx
       .update(s.budgets)
-      .set({ wrappedDek: body.wrappedDek, kdfParams: body.kdfParams, cipherVersion: 2, epoch: nextEpoch })
+      .set({ wrappedDek: body.wrappedDek, kdfParams: body.kdfParams, cipherVersion: 2, epoch: nextEpoch, preferences: null })
       .where(eq(s.budgets.id, meta.id));
     await tx.delete(s.e2eeOps).where(eq(s.e2eeOps.budgetId, meta.id)); // the ENTIRE legacy journal
     await tx
