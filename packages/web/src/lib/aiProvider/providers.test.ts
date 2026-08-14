@@ -1,5 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import { createDefaultBudgetPreferences } from "@enveo/shared";
+import { E2eeByokProvider } from "./e2eeByok";
 import { EnveoAiProvider } from "./enveo";
 import { createAiProvider } from "./factory";
 import { PlainByokProvider } from "./plainByok";
@@ -90,6 +91,6 @@ describe("AI provider implementations", () => {
       PlainByokProvider,
     );
     const unavailable = createAiProvider({ tier: "e2ee", budgetId: "b", unlocked: true, preferences: { ...preferences, aiProvider: "openai" } });
-    expect(unavailable).toBeInstanceOf(PlainByokProvider);
+    expect(unavailable).toBeInstanceOf(E2eeByokProvider);
   });
 });
