@@ -78,8 +78,9 @@ const realSteps: RecoverySteps = {
  *  2. sign-out BEFORE the wipe — a wipe before a failed sign-out would strand a signed-in
  *     session on an empty replica; a failed sign-out after a successful reset just re-shows
  *     the dialog (retrying the reset is harmless — the budget is already empty),
- *  3. only then the per-device state (storage policy, settings incl. the BYOK key, last-account)
- *     and the replica itself — discardLocalReplica clears the outbox, the local-mode flag and
+ *  3. only then the per-device state (storage policy, legacy-settings migration marker,
+ *     last-account) and the replica itself — the server-vault BYOK key is budget data and was
+ *     already removed by the server reset; discardLocalReplica clears the outbox and
  *     IDB, then reloads; with no session the boot lands on Login with a clean device.
  *
  * If the session evaporated before step 1 (signed out in another tab), there is nothing to

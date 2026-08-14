@@ -17,9 +17,8 @@
  * api.test.ts guards this file: no template-literal throws (that is how the prose got in).
  *
  * TIMEOUTS come from @enveo/shared/aiTransport (ONE budget with the server —
- * openaiHttp.ts consumes the same constants): byok talks to OpenAI directly and
- * uses the operation's own cap (chat vs vision); the server mirror is PROXIED, so
- * the client waits the server's cap PLUS a margin — the server's classified answer
+ * openaiHttp.ts consumes the same constants). This transport is PROXIED, so the
+ * client waits the server's cap PLUS a margin — the server's classified answer
  * must always beat the client's abort. `AbortSignal.timeout` is absent on
  * WebKit < 16 (iOS 15 Safari) — timeoutSignal builds it from parts.
  */
@@ -77,7 +76,6 @@ async function postChat(body: unknown, timeoutMs: number): Promise<unknown> {
     throw new Error("ai_upstream_error"); // 2xx whose body is not JSON (a captive portal, a broken proxy)
   }
 }
-
 
 
 
