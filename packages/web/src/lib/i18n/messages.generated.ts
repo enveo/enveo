@@ -434,7 +434,6 @@ export const MESSAGES = [
   "Server",
   "Server sync",
   "Server temporarily unreachable — your data is safe, we will retry.",
-  "Server-side import is unavailable while end-to-end encryption is on — the server cannot see your data. Use a JSON backup (export/import) or disable encryption.",
   "Session expired",
   "Session storage — the budget lives only in this tab's memory and leaves no local copy after it closes.",
   "Settings",
