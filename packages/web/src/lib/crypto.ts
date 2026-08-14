@@ -59,14 +59,15 @@ export async function deriveKek(passphrase: string, salt: Uint8Array, p: Omit<Kd
 /* ── v2 authenticated context (AAD) ──────────────────────────────────── */
 
 /**
- * The three fixed-position AAD tuples of ciphertext format v2. Position, not property
+ * The four fixed-position AAD tuples of ciphertext format v2. Position, not property
  * names, carries meaning — the encoded AAD is the exact JSON.stringify of one of these,
  * never object-property iteration, string concatenation or locale-dependent formatting.
  */
 export type E2eeAadContext =
   | readonly ["enveo-e2ee", 2, "op", string /* budgetId */, number /* epoch */, string /* opId */]
   | readonly ["enveo-e2ee", 2, "snapshot", string /* budgetId */, number /* epoch */, number /* uptoSeq */]
-  | readonly ["enveo-e2ee", 2, "dek-wrap", string /* budgetId */, number /* epoch */];
+  | readonly ["enveo-e2ee", 2, "dek-wrap", string /* budgetId */, number /* epoch */]
+  | readonly ["enveo-e2ee", 2, "budget-secret", string /* budgetId */, number /* epoch */, "openai"];
 
 /** Canonical lowercase textual UUID — validated, never normalized silently. */
 const CANONICAL_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
@@ -97,6 +98,13 @@ export function snapshotAadContext(budgetId: string, epoch: number, uptoSeq: num
  *  epoch; the mandatory v1→v2 upgrade instead generates a fresh DEK and increments the epoch. */
 export function dekWrapAadContext(budgetId: string, epoch: number): E2eeAadContext {
   return ["enveo-e2ee", 2, "dek-wrap", requireUuid(budgetId), requireCounter(epoch)] as const;
+}
+
+/** Budget-secret AAD: (budgetId, epoch, kind) — binds a zero-knowledge secret to its
+ *  budget, DEK generation and one deliberately closed secret namespace. */
+export function budgetSecretAadContext(budgetId: string, epoch: number, kind: "openai"): E2eeAadContext {
+  if (kind !== "openai") throw new Error("bad_aad_context");
+  return ["enveo-e2ee", 2, "budget-secret", requireUuid(budgetId), requireCounter(epoch), kind] as const;
 }
 
 const enc = new TextEncoder();

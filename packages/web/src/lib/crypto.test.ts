@@ -15,6 +15,7 @@
  */
 import { describe, expect, it } from "bun:test";
 import {
+  budgetSecretAadContext,
   DEFAULT_KDF_PARAMS,
   decodePairing,
   decryptPayload,
@@ -54,6 +55,7 @@ describe("v2 AAD tuple builders", () => {
     expect(JSON.stringify(opAadContext(BUDGET_A, 3, OP_1))).toBe(`["enveo-e2ee",2,"op","${BUDGET_A}",3,"${OP_1}"]`);
     expect(JSON.stringify(snapshotAadContext(BUDGET_A, 3, 42))).toBe(`["enveo-e2ee",2,"snapshot","${BUDGET_A}",3,42]`);
     expect(JSON.stringify(dekWrapAadContext(BUDGET_A, 3))).toBe(`["enveo-e2ee",2,"dek-wrap","${BUDGET_A}",3]`);
+    expect(JSON.stringify(budgetSecretAadContext(BUDGET_A, 3, "openai"))).toBe(`["enveo-e2ee",2,"budget-secret","${BUDGET_A}",3,"openai"]`);
   });
 
   it("reject a non-canonical or malformed budget/op UUID (validate, never normalize silently)", () => {
@@ -64,6 +66,7 @@ describe("v2 AAD tuple builders", () => {
     expect(() => opAadContext(BUDGET_A, 1, upper)).toThrow("bad_aad_context");
     expect(() => snapshotAadContext("xx", 1, 0)).toThrow("bad_aad_context");
     expect(() => dekWrapAadContext(`${BUDGET_A} `, 1)).toThrow("bad_aad_context");
+    expect(() => budgetSecretAadContext("not-a-uuid", 1, "openai")).toThrow("bad_aad_context");
   });
 
   it("reject a negative, fractional or unsafe epoch/uptoSeq", () => {
@@ -73,6 +76,30 @@ describe("v2 AAD tuple builders", () => {
     expect(() => snapshotAadContext(BUDGET_A, 1, -1)).toThrow("bad_aad_context");
     expect(() => snapshotAadContext(BUDGET_A, 1, 0.25)).toThrow("bad_aad_context");
     expect(() => dekWrapAadContext(BUDGET_A, Number.NaN)).toThrow("bad_aad_context");
+    expect(() => budgetSecretAadContext(BUDGET_A, -1, "openai")).toThrow("bad_aad_context");
+    expect(() => budgetSecretAadContext(BUDGET_A, 1, "other" as never)).toThrow("bad_aad_context");
+  });
+});
+
+describe("v2 budget-secret ciphertext", () => {
+  it("authenticates the secret kind, budget and epoch", async () => {
+    const dek = generateDek();
+    const ciphertext = await encryptPayload("sk-zero-knowledge", dek, budgetSecretAadContext(BUDGET_A, 4, "openai"));
+    expect(ciphertext).not.toContain("sk-zero-knowledge");
+    expect(await decryptPayload(ciphertext, dek, budgetSecretAadContext(BUDGET_A, 4, "openai"))).toBe("sk-zero-knowledge");
+    await expect(decryptPayload(ciphertext, dek, budgetSecretAadContext(BUDGET_B, 4, "openai"))).rejects.toThrow();
+    await expect(decryptPayload(ciphertext, dek, budgetSecretAadContext(BUDGET_A, 5, "openai"))).rejects.toThrow();
+  });
+
+  it("fails closed on tamper, legacy and truncated ciphertext", async () => {
+    const dek = generateDek();
+    const context = budgetSecretAadContext(BUDGET_A, 4, "openai");
+    const ciphertext = await encryptPayload("secret", dek, context);
+    const raw = Uint8Array.from(atob(ciphertext.slice(3)), (c) => c.charCodeAt(0));
+    raw[12] = (raw[12] ?? 0) ^ 0xff;
+    await expect(decryptPayload(`v2.${btoa(String.fromCharCode(...raw))}`, dek, context)).rejects.toThrow();
+    await expect(decryptPayload(await legacyV1Encrypt("secret", dek), dek, context)).rejects.toThrow("legacy_ciphertext");
+    await expect(decryptPayload("v2.AAAA", dek, context)).rejects.toThrow("bad_ciphertext");
   });
 });
 
