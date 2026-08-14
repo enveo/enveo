@@ -34,8 +34,8 @@ export function clearResyncPending(): void {
  *
  * A backup import makes the LOCAL mirror canonical — it must REPLACE the server
  * (pushLocalToServer → /sync/replace), NEVER the other way around. When the push is DEFERRED
- * (local mode — no network) or FAILS (network/5xx), the next cycle
- * (consumer in doCycle) / resume will FINISH the replace. Without this durable
+ * FAILS (network/5xx), the next cycle (consumer in doCycle) will FINISH the replace.
+ * Without this durable
  * obligation, a delta pull(since=0) after the import would revert the imported data to
  * the (old) server state — silent loss of the restore. Persisted BEFORE swapping
  * the mirror on the SAME serial persist chain, so: durable-mirror ⟹

@@ -107,7 +107,6 @@ export const de: Dict = {
   Change: "Ändern",
   "Change encryption password": "Verschlüsselungspasswort ändern",
   "Change password": "Passwort ändern",
-  "Changes are saved locally and will be sent after you resume.": "Änderungen werden lokal gespeichert und gesendet, sobald du fortsetzt.",
   "Changing…": "Wird geändert…",
   "Check again": "Erneut prüfen",
   "Checking which models your key can use…": "Prüfe, welche Modelle dein Schlüssel nutzen kann…",
@@ -120,8 +119,6 @@ export const de: Dict = {
   "Clear & reset": "Leeren & zurücksetzen",
   "Clear filters": "Filter zurücksetzen",
   "Clear local data": "Lokale Daten löschen",
-  "Clear local data? In local mode, unsent changes will be lost permanently. Make a backup first (Export). Continue?":
-    "Lokale Daten löschen? Im lokalen Modus gehen nicht gesendete Änderungen unwiderruflich verloren. Erstelle zuerst eine Sicherung (Export). Fortfahren?",
   "Clear local data? We will delete the local copy on this device and download everything anew from the server. Changes still waiting in the queue will be lost.":
     "Lokale Daten löschen? Wir löschen die lokale Kopie auf diesem Gerät und laden alles neu vom Server. Änderungen, die noch in der Warteschlange stehen, gehen verloren.",
   "Clear search": "Suche leeren",
@@ -149,15 +146,10 @@ export const de: Dict = {
   "Custom color": "Eigene Farbe",
   "Custom envelope…": "Eigener Umschlag…",
   "Custom profiles are stored only on this device.": "Eigene Profile werden nur auf diesem Gerät gespeichert.",
-  "Cut the app off from the server. Choose how: work offline (server data stays) or keep your data only on this device.":
-    "Trenne die App vom Server. Wähle wie: offline arbeiten (Serverdaten bleiben) oder deine Daten nur auf diesem Gerät behalten.",
-  DELETE: "LOESCHEN",
   "DISABLE-E2EE": "E2EE-AUS",
   Dark: "Dunkel",
   Data: "Daten",
   Delete: "Löschen",
-  "Delete data from server": "Daten vom Server löschen",
-  "Delete data from the server?": "Daten vom Server löschen?",
   "Delete everything and start fresh": "Alles löschen und neu anfangen",
   "Delete everything and start over": "Alles löschen und neu beginnen",
   "Delete group": "Gruppe löschen",
@@ -171,7 +163,6 @@ export const de: Dict = {
     "Löscht ALLE Budgetdaten vom Server und von diesem Gerät — unwiderruflich. Exportiere zuerst eine Sicherung. Die App startet danach mit dem Einrichtungsassistenten.",
   "Deletes the local copy on this device and downloads everything anew from the server. Use when something looks off.":
     "Löscht die lokale Kopie auf diesem Gerät und lädt alles neu vom Server. Nutze das, wenn etwas nicht stimmt.",
-  "Deleting from server…": "Wird vom Server gelöscht…",
   "Deleting…": "Wird gelöscht…",
   "Describe how to distribute (e.g. prioritize savings, less on entertainment)":
     "Beschreibe, wie verteilt werden soll (z. B. Sparen priorisieren, weniger für Freizeit)",
@@ -193,8 +184,6 @@ export const de: Dict = {
   "Download everything anew": "Alles neu herunterladen",
   "Download everything anew from the server? We will replace the local copy with the current server state. Unsent changes in the queue will be kept and pushed.":
     "Alles neu vom Server herunterladen? Wir ersetzen die lokale Kopie durch den aktuellen Serverstand. Nicht gesendete Änderungen in der Warteschlange bleiben erhalten und werden übertragen.",
-  "Downloads all your data as a file. Keep a backup, especially in local mode.":
-    "Lädt alle deine Daten als Datei herunter. Bewahre eine Sicherung auf, besonders im lokalen Modus.",
   "Drag {name}": "{name} ziehen",
   Duplicate: "Duplizieren",
   "Duplicates skipped: {n}": "Übersprungene Duplikate: {n}",
@@ -207,7 +196,6 @@ export const de: Dict = {
   "Edit names in place; drag the handle to reorder": "Namen direkt bearbeiten; zum Umsortieren am Griff ziehen",
   Email: "E-Mail",
   "Enable AI assistance?": "KI-Unterstützung aktivieren?",
-  "Enable and delete server data": "Aktivieren und Serverdaten löschen",
   "Enable end-to-end encryption": "Ende-zu-Ende-Verschlüsselung aktivieren",
   "Enable via server": "Über den Server aktivieren",
   "Enabled — the server stores only encrypted data and never knows your password or key.":
@@ -266,8 +254,6 @@ export const de: Dict = {
   "Install app": "App installieren",
   "Invalid pairing code.": "Ungültiger Kopplungscode.",
   Investor: "Investor",
-  "Irreversibly deletes data from the server; other devices will lose access. Make a backup first (Export).":
-    "Löscht die Daten unwiderruflich vom Server; andere Geräte verlieren den Zugriff. Erstelle zuerst eine Sicherung (Export).",
   "Item total: {sum} / {total}": "Summe der Positionen: {sum} / {total}",
   Language: "Sprache",
   "Last launch": "Letzter Start",
@@ -280,9 +266,6 @@ export const de: Dict = {
   "Load backup (JSON)": "Sicherung laden (JSON)",
   "Loading sample data…": "Beispieldaten werden geladen…",
   "Loading…": "Wird geladen…",
-  "Local mode": "Lokaler Modus",
-  "Local mode — data deleted from server. Tap to open settings": "Lokaler Modus — Daten vom Server gelöscht. Tippen, um die Einstellungen zu öffnen",
-  "Local mode — sync paused. Tap to open settings": "Lokaler Modus — Synchronisierung pausiert. Tippen, um die Einstellungen zu öffnen",
   "Losing the password means losing your data — the server cannot reset it or decrypt your budget.":
     "Das Passwort zu verlieren heißt, die Daten zu verlieren — der Server kann es weder zurücksetzen noch dein Budget entschlüsseln.",
   "Lowest cost — a typical screenshot import costs a fraction of a cent.":
@@ -355,7 +338,6 @@ export const de: Dict = {
   "Passwords do not match.": "Die Passwörter stimmen nicht überein.",
   "Paste the pairing code shown on another unlocked device (Settings → Pairing code).":
     "Füge den Kopplungscode ein, der auf einem vertrauenswürdigen Gerät angezeigt wird (Einstellungen → Kopplungscode).",
-  "Paused — local mode.": "Pausiert — lokaler Modus.",
   "People & pets": "Menschen & Tiere",
   "Persistent storage": "Dauerhafter Speicher",
   "Pick an envelope…": "Umschlag wählen…",
@@ -386,10 +368,7 @@ export const de: Dict = {
   Reports: "Berichte",
   "Requires AI (server mode or your own key).": "Erfordert KI (Servermodus oder eigener Schlüssel).",
   Restore: "Wiederherstellen",
-  "Resume it in the “Advanced” section.": "Setze sie im Bereich „Erweitert“ fort.",
-  "Resume sync? Local changes will be sent to the server.": "Synchronisierung fortsetzen? Lokale Änderungen werden an den Server gesendet.",
   "Resume upgrade": "Aktualisierung fortsetzen",
-  "Resuming…": "Wird fortgesetzt…",
   SPENT: "AUSGEGEBEN",
   Save: "Speichern",
   "Save changes": "Änderungen speichern",
@@ -401,8 +380,6 @@ export const de: Dict = {
   "Screenshots ({n}/6)": "Screenshots ({n}/6)",
   "Search...": "Suchen…",
   Server: "Server",
-  "Server connection": "Serververbindung",
-  "Server data has been deleted.": "Die Serverdaten wurden gelöscht.",
   "Server sync": "Server-Synchronisierung",
   "Server temporarily unreachable — your data is safe, we will retry.":
     "Server vorübergehend nicht erreichbar — deine Daten sind sicher, wir versuchen es erneut.",
@@ -442,10 +419,6 @@ export const de: Dict = {
   Summary: "Zusammenfassung",
   Sync: "Synchronisierung",
   "Sync in progress": "Synchronisierung läuft",
-  "Sync is paused. Changes are saved locally and will be sent once you resume. Server data stays intact.":
-    "Die Synchronisierung ist pausiert. Änderungen werden lokal gespeichert und gesendet, sobald du fortsetzt. Die Serverdaten bleiben unverändert.",
-  "Sync is paused. Changes will be saved locally and sent once you resume. Server data stays intact.":
-    "Die Synchronisierung ist pausiert. Änderungen werden lokal gespeichert und gesendet, sobald du fortsetzt. Die Serverdaten bleiben unverändert.",
   "Sync now": "Jetzt synchronisieren",
   "Syncing…": "Wird synchronisiert…",
   "Tap {action} to continue": "Tippe auf {action}, um fortzufahren",
@@ -575,7 +548,6 @@ export const de: Dict = {
   Transport: "Verkehr",
   "Try again": "Erneut versuchen",
   "Try it with sample data": "Mit Beispieldaten ausprobieren",
-  "Turn off local mode": "Lokalen Modus ausschalten",
   "Type or pick a category...": "Kategorie eingeben oder wählen…",
   "Type {word} to confirm:": "Gib zur Bestätigung {word} ein:",
   Unlock: "Entsperren",
@@ -590,20 +562,11 @@ export const de: Dict = {
   Utilities: "Nebenkosten",
   "WARNING: IndexedDB unavailable — data is kept only in session memory (it will not survive closing the app).":
     "WARNUNG: IndexedDB nicht verfügbar — die Daten liegen nur im Sitzungsspeicher (sie überleben das Schließen der App nicht).",
-  "WARNING: in local mode this data exists ONLY on this device (the server is empty). Clearing it will delete it permanently. Make a backup first (Export). Continue?":
-    "WARNUNG: Im lokalen Modus existieren diese Daten NUR auf diesem Gerät (der Server ist leer). Sie zu löschen bedeutet, sie dauerhaft zu verlieren. Erstelle zuerst eine Sicherung (Export). Fortfahren?",
-  "We will irreversibly erase all data from the server — this cannot be undone from the app. Other devices will lose access. Your data will remain only on this device. Make a backup first (Export).":
-    "Wir löschen alle Daten unwiderruflich vom Server — das lässt sich aus der App nicht rückgängig machen. Andere Geräte verlieren den Zugriff. Deine Daten bleiben nur auf diesem Gerät. Erstelle zuerst eine Sicherung (Export).",
-  "We will send pending changes and resume sync. Server data is untouched.":
-    "Wir senden ausstehende Änderungen und setzen die Synchronisierung fort. Die Serverdaten bleiben unberührt.",
   "We will send them once the server is reachable.": "Wir senden sie, sobald der Server erreichbar ist.",
-  "We will send your local data back to the server and resume sync.":
-    "Wir senden deine lokalen Daten zurück an den Server und setzen die Synchronisierung fort.",
   Weak: "Schwach",
   Wealth: "Vermögen",
   "Wealth envelope (savings/investments)": "Vermögensumschlag (Sparen/Anlage)",
   "Welcome to Enveo": "Willkommen bei Enveo",
-  "Work offline": "Offline arbeiten",
   "Wrong email or password.": "Falsche E-Mail oder falsches Passwort.",
   "Wrong encryption password.": "Falsches Verschlüsselungspasswort.",
   Yes: "Ja",
@@ -612,8 +575,6 @@ export const de: Dict = {
   "You are offline — screenshot import needs a connection. Manual entry works without one.":
     "Du bist offline — Screenshot-Import braucht eine Verbindung. Die manuelle Eingabe funktioniert auch ohne.",
   "Your budget is tied to your account. Sign in to continue.": "Dein Budget ist an dein Konto gebunden. Melde dich an, um fortzufahren.",
-  "Your data now lives only on this device. Make a backup (Export) — it is the only way not to lose it.":
-    "Deine Daten liegen jetzt nur noch auf diesem Gerät. Erstelle eine Sicherung (Export) — nur so gehen sie nicht verloren.",
   "Your data will be decrypted and stored on the server in plain form (as before enabling). Make sure you have a current backup.":
     "Deine Daten werden entschlüsselt und im Klartext auf dem Server gespeichert (wie vor der Aktivierung). Stelle sicher, dass du eine aktuelle Sicherung hast.",
   "Your envelopes": "Deine Umschläge",
@@ -623,9 +584,7 @@ export const de: Dict = {
   "backup, end-to-end encryption, account": "Sicherung, Ende-zu-Ende-Verschlüsselung, Konto",
   "cancel split": "Aufteilung abbrechen",
   dark: "dunkel",
-  "data deleted from server": "Daten vom Server gelöscht",
   details: "Details",
-  "device storage, local mode, reset": "Gerätespeicher, lokaler Modus, Reset",
   discreet: "diskret",
   "e.g. 5000": "z. B. 5000",
   "e.g. Checking": "z. B. Girokonto",
@@ -636,12 +595,10 @@ export const de: Dict = {
   "funded ✓": "finanziert ✓",
   income: "Einnahme",
   "just now": "gerade eben",
-  "local mode": "lokaler Modus",
   "m/m": "M/M",
   "new password for all devices": "neues Passwort für alle Geräte",
   "not yet": "noch nicht",
   off: "aus",
-  offline: "offline",
   "over by {amount}": "um {amount} überzogen",
   "own key": "eigener Schlüssel",
   "probable duplicate": "wahrscheinliches Duplikat",
@@ -661,14 +618,12 @@ export const de: Dict = {
   today: "heute",
   unknown: "unbekannt",
   "unlock the budget on a new device without the password": "das Budget auf einem neuen Gerät ohne Passwort entsperren",
-  "work offline or keep data only on this device": "offline arbeiten oder Daten nur auf diesem Gerät behalten",
   yesterday: "gestern",
   "{amount} from the previous month": "{amount} aus dem Vormonat",
   "{amount} left": "{amount} übrig",
   "{amount} stays in “To be budgeted”.": "{amount} bleiben in „Zu budgetieren“.",
   "{amount} to go": "{amount} fehlen",
   "{n} OK": "{n} OK",
-  "{n} change is waiting locally. | {n} changes are waiting locally.": { one: "{n} Änderung wartet lokal.", other: "{n} Änderungen warten lokal." },
   "{n} change is waiting to be sent | {n} changes are waiting to be sent": {
     one: "{n} Änderung wartet auf den Versand",
     other: "{n} Änderungen warten auf den Versand",

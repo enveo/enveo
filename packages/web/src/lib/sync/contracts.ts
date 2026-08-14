@@ -103,16 +103,6 @@ export class BudgetMismatchError extends Error {
   }
 }
 
-/* ── Local mode (offline / privacy) ─────────────────────────────────────
- *
- * Tri-state (NOT a boolean) — key to the "we never lose data" promise:
- *  - "off"    — normal synchronization with the server,
- *  - "paused" — offline by choice: sync SUSPENDED, server data STAYS,
- *               the outbox grows and flushes on resume (safe, no network),
- *  - "wiped"  — privacy: data DELETED from the server (a deliberate, separate choice);
- *               local mirror untouched, on disable we upload it back. */
-export type LocalMode = "off" | "paused" | "wiped";
-
  
 export const EMPTY_LEDGER: ClientLedger = {
   accounts: [],
@@ -130,8 +120,7 @@ export const EMPTY_LEDGER: ClientLedger = {
 
 
 
-
-export type BootSource = "replica" | "snapshot" | "local" | null;
+export type BootSource = "replica" | "snapshot" | null;
 
 /**
  * "unverified" is deliberately its OWN state and not a flavour of "error": the app is working
@@ -144,14 +133,13 @@ export type BootSource = "replica" | "snapshot" | "local" | null;
  * The UI does NOT key off this state, though: it is transient (every re-proof passes through
  * "syncing" on its way back here). What it reads is the sticky SyncStatus.ownerUnproven below.
  */
-export type SyncState = "synced" | "syncing" | "offline" | "error" | "local" | "unauthed" | "unverified";
+export type SyncState = "synced" | "syncing" | "offline" | "error" | "unauthed" | "unverified";
 
 export interface SyncStatus {
   state: SyncState;
   pending: number;
   deadLetters: number;
   lastSyncAt: string | null;
-  localMode: LocalMode;
    
   ownerUnproven: boolean;
 }
@@ -185,27 +173,6 @@ export interface CycleDeps {
   broadcastUpdatedIfPending(): void;
    
   postPokeToPeers(): void;
-}
-
-
-
-
-
-
-
-export interface LocalModeDeps {
-  setState(s: SyncState): void;
-  setOwnerUnproven(v: boolean): void;
-  broadcastLocalMode(mode: LocalMode): void;
-   
-  wipeServer(): Promise<void>;
-   
-  pushLocalToServer(): Promise<void>;
-   
-  awaitInFlightCycle(): Promise<void>;
-  syncNow(reason: string): Promise<void>;
-   
-  isEmptyUnboundReplica(): boolean;
 }
 
 /**

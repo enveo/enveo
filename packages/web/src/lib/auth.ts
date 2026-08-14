@@ -96,7 +96,7 @@ export async function fetchSessionUserId(): Promise<string | null> {
  * the ledger and every queued op exactly where they stopped).
  *
  * Wiping here would be a data-loss path with no undo: the replica can be the LAST copy of the
- * budget (local mode "wiped" deleted the server's copy on purpose) and the outbox can hold ops the
+ * budget and the outbox can hold ops the
  * server has never seen (offline, or a failing push) — a window.confirm is not consent to destroy
  * them. The NEXT account to sign in on this device is protected by the multi-tenant guard in
  * sync.ts (a foreign replica is neither rendered nor written anywhere), not by a wipe. Deleting

@@ -15,17 +15,7 @@ import { clearLocalData, idbPut } from "../idb";
 import * as outbox from "../outbox";
 import * as persist from "../persist";
 import { store } from "../store";
-import {
-  __resetBackoff,
-  __resetIdentity,
-  __resetObligations,
-  __setLocalMode,
-  fetchSnapshot,
-  pushLocalToServer,
-  resetServerE2ee,
-  syncNow,
-  upgradeServerE2eeV2,
-} from "../sync";
+import { __resetBackoff, __resetIdentity, __resetObligations, fetchSnapshot, pushLocalToServer, resetServerE2ee, syncNow, upgradeServerE2eeV2 } from "../sync";
 
 const BUDGET_A = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa";
 
@@ -101,7 +91,6 @@ beforeEach(async () => {
   __resetIdentity();
   __resetObligations();
   __resetBackoff();
-  __setLocalMode("off");
   outbox.clearAll();
   e2ee.__resetDekForTests();
   e2ee.clearDek();

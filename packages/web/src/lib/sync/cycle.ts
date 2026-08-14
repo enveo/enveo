@@ -25,7 +25,6 @@ import {
   UnauthorizedError,
 } from "./contracts";
 import { ensureIdentity, enterUnauthed, invalidateIdentityVerdict, isIdentityBlocked } from "./identity";
-import { getLocalMode } from "./localMode";
 import { clearResyncPending, isReplacePending, isResyncPending, markResyncPending } from "./obligations";
 import { e2eeReplicaBudgetId, replayOutbox } from "./replica";
 import { bumpStatus, setLastSyncAt, setState } from "./status";
@@ -165,12 +164,6 @@ export function recheckReplicaOwner(): Promise<void> {
 
  
 async function doCycle(): Promise<boolean> {
-  
-
-  if (getLocalMode() !== "off") {
-    setState("local");
-    return true;
-  }
   
 
   if (store.getBootStatus() === "locked") return true;
@@ -476,13 +469,6 @@ let dirty = false;
 export function syncNow(reason: string): Promise<void> {
   void reason;  
   if (import.meta.env.DEV) lastReason = reason;
-  
-
-
-  if (getLocalMode() !== "off") {
-    setState("local");
-    return Promise.resolve();
-  }
   
 
   if (isIdentityBlocked()) return Promise.resolve();

@@ -68,7 +68,7 @@ export function DataSection() {
  * SELFHOST does NOT wipe the local replica (spec §3, binding owner decision): the ledger mirror,
  * the DEK and — crucially — every op still queued in the durable outbox stay on the device, so a
  * sign-out while offline (or with a failing push) cannot silently throw unsynced data away, and a
- * replica that is the last copy of its budget (local mode "wiped") survives. Signing back in
+ * replica that is the last copy of its budget survives. Signing back in
  * resumes exactly where it stopped; a DIFFERENT account signing in is handled by the multi-tenant
  * guard in sync.ts (the foreign replica is neither rendered nor written anywhere, and the human
  * decides its fate). Deleting the local copy on purpose remains available: Settings → Clear local
@@ -198,7 +198,7 @@ function DataBackup() {
         <ActionRow
           icon={<ActionIcon paths={IC.download} />}
           label={t("Export backup (JSON)")}
-          desc={t("Downloads all your data as a file. Keep a backup, especially in local mode.")}
+          desc={t("Downloads all your data as a file. Keep a backup before destructive changes.")}
           onClick={doExport}
         />
         <ActionRow

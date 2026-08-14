@@ -3,7 +3,7 @@
  *
  * The context: "Start from scratch" (Settings → Advanced) is gated on assertOwnReplica(),
  * which throws for a replica whose owner cannot be established — and an unproven replica is
- * exactly the state a user lands in after local-only → clear-local → re-enable-sync, where
+ * exactly the state a user can land in after clearing an unbound replica, where
  * this reset WAS the escape hatch. Instead of a dead-end error, the UI shows ONE dialog
  * ("this device's local copy cannot be linked to this account") with two actions: export a
  * backup of the local copy (it may be the last copy), or delete everything and start fresh.

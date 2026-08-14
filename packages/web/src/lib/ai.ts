@@ -241,8 +241,7 @@ export async function runImportExtract(args: { images: string[]; locale: AiLocal
   /* DELIBERATE difference vs suggest: in the server mode the import GOES via the
      /import/extract route — (1) vision (images as content-parts) doesn't go
      through the /api/ai mirror (content=string, limit), (2) cycle 2 (assignments
-     from history) is inherently server-side. In local-only+server it works like
-     byok: facts yes, assignments empty (DB wiped). */
+     from history) is inherently server-side. */
   if (settings.aiMode === "server") return (await api.importExtract(images, locale)).items;
   const target = aiTarget(settings);
   if (target?.kind !== "byok") throw new AiConsentRequired();  

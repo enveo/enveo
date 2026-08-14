@@ -107,7 +107,6 @@ export const nl: Dict = {
   Change: "Wijzigen",
   "Change encryption password": "Versleutelingswachtwoord wijzigen",
   "Change password": "Wachtwoord wijzigen",
-  "Changes are saved locally and will be sent after you resume.": "Wijzigingen worden lokaal opgeslagen en verstuurd zodra je hervat.",
   "Changing…": "Bezig met wijzigen…",
   "Check again": "Opnieuw controleren",
   "Checking which models your key can use…": "Controleren welke modellen je sleutel kan gebruiken…",
@@ -120,8 +119,6 @@ export const nl: Dict = {
   "Clear & reset": "Legen en resetten",
   "Clear filters": "Filters wissen",
   "Clear local data": "Lokale gegevens wissen",
-  "Clear local data? In local mode, unsent changes will be lost permanently. Make a backup first (Export). Continue?":
-    "Lokale gegevens wissen? In de lokale modus gaan niet-verstuurde wijzigingen definitief verloren. Maak eerst een back-up (Exporteren). Doorgaan?",
   "Clear local data? We will delete the local copy on this device and download everything anew from the server. Changes still waiting in the queue will be lost.":
     "Lokale gegevens wissen? We verwijderen de lokale kopie op dit apparaat en halen alles opnieuw op bij de server. Wijzigingen die nog in de wachtrij staan, gaan verloren.",
   "Clear search": "Zoekopdracht wissen",
@@ -149,15 +146,10 @@ export const nl: Dict = {
   "Custom color": "Eigen kleur",
   "Custom envelope…": "Eigen envelop…",
   "Custom profiles are stored only on this device.": "Eigen profielen worden alleen op dit apparaat bewaard.",
-  "Cut the app off from the server. Choose how: work offline (server data stays) or keep your data only on this device.":
-    "Koppel de app los van de server. Kies hoe: offline werken (de gegevens op de server blijven staan) of je gegevens alleen op dit apparaat houden.",
-  DELETE: "VERWIJDEREN",
   "DISABLE-E2EE": "E2EE-UIT",
   Dark: "Donker",
   Data: "Gegevens",
   Delete: "Verwijderen",
-  "Delete data from server": "Gegevens van de server verwijderen",
-  "Delete data from the server?": "Gegevens van de server verwijderen?",
   "Delete everything and start fresh": "Alles wissen en met een schone lei beginnen",
   "Delete everything and start over": "Alles verwijderen en opnieuw beginnen",
   "Delete group": "Groep verwijderen",
@@ -171,7 +163,6 @@ export const nl: Dict = {
     "Verwijdert ALLE budgetgegevens van de server en van dit apparaat — onomkeerbaar. Exporteer eerst een back-up. De app opent daarna weer met de installatiewizard.",
   "Deletes the local copy on this device and downloads everything anew from the server. Use when something looks off.":
     "Verwijdert de lokale kopie op dit apparaat en haalt alles opnieuw op bij de server. Gebruik dit als er iets niet klopt.",
-  "Deleting from server…": "Bezig met verwijderen van de server…",
   "Deleting…": "Bezig met verwijderen…",
   "Describe how to distribute (e.g. prioritize savings, less on entertainment)":
     "Beschrijf hoe er verdeeld moet worden (bijv. sparen voorop, minder voor uitgaan)",
@@ -193,8 +184,6 @@ export const nl: Dict = {
   "Download everything anew": "Alles opnieuw ophalen",
   "Download everything anew from the server? We will replace the local copy with the current server state. Unsent changes in the queue will be kept and pushed.":
     "Alles opnieuw ophalen bij de server? We vervangen de lokale kopie door de huidige serverstand. Niet-verstuurde wijzigingen in de wachtrij blijven behouden en worden verstuurd.",
-  "Downloads all your data as a file. Keep a backup, especially in local mode.":
-    "Downloadt al je gegevens als bestand. Bewaar een back-up, zeker in de lokale modus.",
   "Drag {name}": "{name} slepen",
   Duplicate: "Dupliceren",
   "Duplicates skipped: {n}": "Overgeslagen duplicaten: {n}",
@@ -207,7 +196,6 @@ export const nl: Dict = {
   "Edit names in place; drag the handle to reorder": "Bewerk namen ter plekke; sleep aan de greep om de volgorde te wijzigen",
   Email: "E-mail",
   "Enable AI assistance?": "AI-ondersteuning inschakelen?",
-  "Enable and delete server data": "Inschakelen en servergegevens verwijderen",
   "Enable end-to-end encryption": "Eind-tot-eindversleuteling inschakelen",
   "Enable via server": "Inschakelen via de server",
   "Enabled — the server stores only encrypted data and never knows your password or key.":
@@ -266,8 +254,6 @@ export const nl: Dict = {
   "Install app": "App installeren",
   "Invalid pairing code.": "Ongeldige koppelcode.",
   Investor: "Belegger",
-  "Irreversibly deletes data from the server; other devices will lose access. Make a backup first (Export).":
-    "Verwijdert de gegevens onherroepelijk van de server; andere apparaten verliezen de toegang. Maak eerst een back-up (Exporteren).",
   "Item total: {sum} / {total}": "Totaal van de regels: {sum} / {total}",
   Language: "Taal",
   "Last launch": "Laatste start",
@@ -280,9 +266,6 @@ export const nl: Dict = {
   "Load backup (JSON)": "Back-up laden (JSON)",
   "Loading sample data…": "Voorbeeldgegevens laden…",
   "Loading…": "Bezig met laden…",
-  "Local mode": "Lokale modus",
-  "Local mode — data deleted from server. Tap to open settings": "Lokale modus — gegevens van de server verwijderd. Tik om de instellingen te openen",
-  "Local mode — sync paused. Tap to open settings": "Lokale modus — synchronisatie gepauzeerd. Tik om de instellingen te openen",
   "Losing the password means losing your data — the server cannot reset it or decrypt your budget.":
     "Je wachtwoord kwijt betekent je gegevens kwijt — de server kan het niet resetten en je budget niet ontsleutelen.",
   "Lowest cost — a typical screenshot import costs a fraction of a cent.":
@@ -355,7 +338,6 @@ export const nl: Dict = {
   "Passwords do not match.": "De wachtwoorden komen niet overeen.",
   "Paste the pairing code shown on another unlocked device (Settings → Pairing code).":
     "Plak de koppelcode die op een vertrouwd apparaat wordt getoond (Instellingen → Koppelcode).",
-  "Paused — local mode.": "Gepauzeerd — lokale modus.",
   "People & pets": "Mensen en huisdieren",
   "Persistent storage": "Permanente opslag",
   "Pick an envelope…": "Kies een envelop…",
@@ -386,10 +368,7 @@ export const nl: Dict = {
   Reports: "Rapporten",
   "Requires AI (server mode or your own key).": "Vereist AI (servermodus of een eigen sleutel).",
   Restore: "Herstellen",
-  "Resume it in the “Advanced” section.": "Hervat die in het gedeelte ‘Geavanceerd’.",
-  "Resume sync? Local changes will be sent to the server.": "Synchronisatie hervatten? Lokale wijzigingen worden naar de server gestuurd.",
   "Resume upgrade": "Upgrade hervatten",
-  "Resuming…": "Bezig met hervatten…",
   SPENT: "UITGEGEVEN",
   Save: "Opslaan",
   "Save changes": "Wijzigingen opslaan",
@@ -401,8 +380,6 @@ export const nl: Dict = {
   "Screenshots ({n}/6)": "Schermafbeeldingen ({n}/6)",
   "Search...": "Zoeken...",
   Server: "Server",
-  "Server connection": "Serververbinding",
-  "Server data has been deleted.": "De gegevens op de server zijn verwijderd.",
   "Server sync": "Synchronisatie met de server",
   "Server temporarily unreachable — your data is safe, we will retry.": "Server tijdelijk onbereikbaar — je gegevens zijn veilig, we proberen het opnieuw.",
   "Server-side import is unavailable while end-to-end encryption is on — the server cannot see your data. Use a JSON backup (export/import) or disable encryption.":
@@ -441,10 +418,6 @@ export const nl: Dict = {
   Summary: "Samenvatting",
   Sync: "Synchronisatie",
   "Sync in progress": "Synchronisatie bezig",
-  "Sync is paused. Changes are saved locally and will be sent once you resume. Server data stays intact.":
-    "De synchronisatie is gepauzeerd. Wijzigingen worden lokaal opgeslagen en verstuurd zodra je hervat. De gegevens op de server blijven intact.",
-  "Sync is paused. Changes will be saved locally and sent once you resume. Server data stays intact.":
-    "De synchronisatie is gepauzeerd. Wijzigingen worden lokaal opgeslagen en verstuurd zodra je hervat. De gegevens op de server blijven intact.",
   "Sync now": "Nu synchroniseren",
   "Syncing…": "Bezig met synchroniseren…",
   "Tap {action} to continue": "Tik op {action} om verder te gaan",
@@ -574,7 +547,6 @@ export const nl: Dict = {
   Transport: "Vervoer",
   "Try again": "Opnieuw proberen",
   "Try it with sample data": "Proberen met voorbeeldgegevens",
-  "Turn off local mode": "Lokale modus uitschakelen",
   "Type or pick a category...": "Typ of kies een categorie...",
   "Type {word} to confirm:": "Typ {word} ter bevestiging:",
   Unlock: "Ontgrendelen",
@@ -589,19 +561,11 @@ export const nl: Dict = {
   Utilities: "Nutsvoorzieningen",
   "WARNING: IndexedDB unavailable — data is kept only in session memory (it will not survive closing the app).":
     "WAARSCHUWING: IndexedDB is niet beschikbaar — de gegevens staan alleen in het sessiegeheugen (ze overleven het sluiten van de app niet).",
-  "WARNING: in local mode this data exists ONLY on this device (the server is empty). Clearing it will delete it permanently. Make a backup first (Export). Continue?":
-    "WAARSCHUWING: in de lokale modus bestaan deze gegevens ALLEEN op dit apparaat (de server is leeg). Ze wissen verwijdert ze definitief. Maak eerst een back-up (Exporteren). Doorgaan?",
-  "We will irreversibly erase all data from the server — this cannot be undone from the app. Other devices will lose access. Your data will remain only on this device. Make a backup first (Export).":
-    "We wissen alle gegevens onherroepelijk van de server — dit kun je vanuit de app niet ongedaan maken. Andere apparaten verliezen de toegang. Je gegevens blijven alleen op dit apparaat staan. Maak eerst een back-up (Exporteren).",
-  "We will send pending changes and resume sync. Server data is untouched.":
-    "We versturen de openstaande wijzigingen en hervatten de synchronisatie. De gegevens op de server blijven onaangeroerd.",
   "We will send them once the server is reachable.": "We sturen ze zodra de server bereikbaar is.",
-  "We will send your local data back to the server and resume sync.": "We sturen je lokale gegevens terug naar de server en hervatten de synchronisatie.",
   Weak: "Zwak",
   Wealth: "Vermogen",
   "Wealth envelope (savings/investments)": "Vermogensenvelop (sparen/beleggen)",
   "Welcome to Enveo": "Welkom bij Enveo",
-  "Work offline": "Offline werken",
   "Wrong email or password.": "Onjuist e-mailadres of wachtwoord.",
   "Wrong encryption password.": "Onjuist versleutelingswachtwoord.",
   Yes: "Ja",
@@ -610,8 +574,6 @@ export const nl: Dict = {
   "You are offline — screenshot import needs a connection. Manual entry works without one.":
     "Je bent offline — importeren uit schermafbeeldingen heeft een verbinding nodig. Handmatig invoeren werkt ook zonder.",
   "Your budget is tied to your account. Sign in to continue.": "Je budget is gekoppeld aan je account. Meld je aan om verder te gaan.",
-  "Your data now lives only on this device. Make a backup (Export) — it is the only way not to lose it.":
-    "Je gegevens staan nu alleen nog op dit apparaat. Maak een back-up (Exporteren) — alleen zo raak je ze niet kwijt.",
   "Your data will be decrypted and stored on the server in plain form (as before enabling). Make sure you have a current backup.":
     "Je gegevens worden ontsleuteld en in leesbare vorm op de server opgeslagen (zoals vóór het inschakelen). Zorg dat je een actuele back-up hebt.",
   "Your envelopes": "Je enveloppen",
@@ -621,9 +583,7 @@ export const nl: Dict = {
   "backup, end-to-end encryption, account": "back-up, eind-tot-eindversleuteling, account",
   "cancel split": "splitsen annuleren",
   dark: "donker",
-  "data deleted from server": "gegevens van de server verwijderd",
   details: "details",
-  "device storage, local mode, reset": "opslag op het apparaat, lokale modus, reset",
   discreet: "discreet",
   "e.g. 5000": "bijv. 5000",
   "e.g. Checking": "bijv. Betaalrekening",
@@ -634,12 +594,10 @@ export const nl: Dict = {
   "funded ✓": "gefinancierd ✓",
   income: "inkomsten",
   "just now": "zojuist",
-  "local mode": "lokale modus",
   "m/m": "m/m",
   "new password for all devices": "nieuw wachtwoord voor alle apparaten",
   "not yet": "nog niet",
   off: "uit",
-  offline: "offline",
   "over by {amount}": "{amount} over de limiet",
   "own key": "eigen sleutel",
   "probable duplicate": "waarschijnlijk duplicaat",
@@ -659,14 +617,12 @@ export const nl: Dict = {
   today: "vandaag",
   unknown: "onbekend",
   "unlock the budget on a new device without the password": "het budget op een nieuw apparaat ontgrendelen zonder het wachtwoord",
-  "work offline or keep data only on this device": "offline werken of gegevens alleen op dit apparaat houden",
   yesterday: "gisteren",
   "{amount} from the previous month": "{amount} uit de vorige maand",
   "{amount} left": "{amount} over",
   "{amount} stays in “To be budgeted”.": "{amount} blijft in ‘Te budgetteren’ staan.",
   "{amount} to go": "nog {amount}",
   "{n} OK": "{n} OK",
-  "{n} change is waiting locally. | {n} changes are waiting locally.": { one: "{n} wijziging wacht lokaal.", other: "{n} wijzigingen wachten lokaal." },
   "{n} change is waiting to be sent | {n} changes are waiting to be sent": {
     one: "{n} wijziging wacht om verstuurd te worden",
     other: "{n} wijzigingen wachten om verstuurd te worden",
