@@ -7,7 +7,15 @@ describe("AI credential repository surface", () => {
       active: () => ({ id: "active", key: new Uint8Array(32) }),
       byId: () => new Uint8Array(32),
     });
-    expect(Object.keys(repository).sort()).toEqual(["credentialStatus", "deleteCredential", "replaceServerCredential", "withServerCredential"]);
+    expect(Object.keys(repository).sort()).toEqual([
+      "credentialStatus",
+      "deleteCredential",
+      "deleteE2eeCredential",
+      "e2eeCredential",
+      "replaceE2eeCredential",
+      "replaceServerCredential",
+      "withServerCredential",
+    ]);
     expect("getCredential" in repository).toBe(false);
   });
 

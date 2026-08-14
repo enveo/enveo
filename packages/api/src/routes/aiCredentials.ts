@@ -5,6 +5,7 @@ import { z } from "zod";
 import type { VaultMasterKeyProvider } from "../aiCredentials/keyProvider";
 import {
   CredentialBudgetMismatch,
+  CredentialE2eeUpgradeRequired,
   CredentialNotConfigured,
   type CredentialOwner,
   CredentialVaultUnavailable,
@@ -20,6 +21,13 @@ const budgetId = z.string().uuid();
 export const credentialBudgetInput = z.object({ budgetId }).strict();
 export const credentialSaveInput = z.object({ budgetId, key: z.string().min(1).max(4096) }).strict();
 export const credentialTestInput = z.object({ budgetId, model: z.enum(OPENAI_MODELS) }).strict();
+const e2eeCiphertext = z
+  .string()
+  .min(4)
+  .max(8192)
+  .regex(/^v2\.[A-Za-z0-9+/]+={0,2}$/);
+export const e2eeCredentialSaveInput = z.object({ budgetId, expectedEpoch: z.number().int().nonnegative(), ciphertext: e2eeCiphertext }).strict();
+export const e2eeCredentialDeleteInput = z.object({ budgetId, expectedEpoch: z.number().int().nonnegative() }).strict();
 const chatMessage = z
   .object({
     role: z.enum(["system", "user"]),
@@ -80,8 +88,17 @@ async function withClaimedPlainBudget<T>(
   });
 }
 
+async function withClaimedBudget<T>(c: Context<{ Variables: Variables }>, work: (tx: DbTransaction, owner: CredentialOwner) => Promise<T>): Promise<T> {
+  const userId = sessionUserId(c);
+  if (!userId) throw new Error("unauthorized");
+  return db.transaction((tx) => work(tx, { userId }));
+}
+
 function credentialError(c: Context, error: unknown): Response {
   if (error instanceof CredentialBudgetMismatch) return c.json({ error: error.code }, 409);
+  if (error instanceof CredentialE2eeUpgradeRequired) {
+    return c.json({ error: error.code, tier: error.meta.tier, epoch: error.meta.epoch, cipherVersion: error.meta.cipherVersion, budgetId: error.meta.id }, 409);
+  }
   if (error instanceof CredentialVaultUnavailable) return c.json({ error: error.code }, 503);
   if (error instanceof CredentialNotConfigured) return c.json({ error: error.code }, 409);
   throw error;
@@ -128,6 +145,38 @@ export function createAiCredentialRoutes(options: { masterKeys: VaultMasterKeyPr
     try {
       await withClaimedPlainBudget(c, input.budgetId, (tx, owner) => repository.deleteCredential(tx, owner, input.budgetId));
       return c.json({ configured: false });
+    } catch (error) {
+      return credentialError(c, error);
+    }
+  });
+
+  routes.get("/ai/credentials/openai/e2ee", async (c) => {
+    const input = credentialBudgetInput.parse(c.req.query());
+    try {
+      const result = await withClaimedBudget(c, (tx, owner) => repository.e2eeCredential(tx, owner, input.budgetId));
+      return c.json(result);
+    } catch (error) {
+      return credentialError(c, error);
+    }
+  });
+
+  routes.put("/ai/credentials/openai/e2ee", async (c) => {
+    const input = e2eeCredentialSaveInput.parse(await c.req.json());
+    try {
+      const epoch = await withClaimedBudget(c, (tx, owner) =>
+        repository.replaceE2eeCredential(tx, owner, input.budgetId, input.expectedEpoch, input.ciphertext),
+      );
+      return c.json({ configured: true, budgetId: input.budgetId, epoch });
+    } catch (error) {
+      return credentialError(c, error);
+    }
+  });
+
+  routes.delete("/ai/credentials/openai/e2ee", async (c) => {
+    const input = e2eeCredentialDeleteInput.parse(await c.req.json());
+    try {
+      const epoch = await withClaimedBudget(c, (tx, owner) => repository.deleteE2eeCredential(tx, owner, input.budgetId, input.expectedEpoch));
+      return c.json({ configured: false, budgetId: input.budgetId, epoch });
     } catch (error) {
       return credentialError(c, error);
     }

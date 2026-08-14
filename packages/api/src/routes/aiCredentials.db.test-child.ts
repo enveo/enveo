@@ -7,6 +7,32 @@ export interface AiCredentialsRoutesOutput {
   unavailable: { statusAvailable: boolean; statusReason: string | null; saveStatus: number; deleteStatus: number };
   tierStatus: number;
   workloads: { chatStatus: number; chatContent: string | null; importStatus: number; importItems: number; sentVaultKey: boolean; sentChosenModel: boolean };
+  e2eeLifecycle: {
+    saveStatus: number;
+    getStatus: number;
+    configured: boolean;
+    returnedCiphertext: boolean;
+    responseExposedVaultFields: boolean;
+    storageShapeValid: boolean;
+    replaceStatus: number;
+    deleteStatus: number;
+    deleted: boolean;
+    cascadeDeleted: boolean;
+  };
+  e2eeGuards: {
+    staleStatus: number;
+    staleUnchanged: boolean;
+    concurrentStaleStatus: number;
+    concurrentStaleUnchanged: boolean;
+    swappedStatus: number;
+    swappedError: string | null;
+    swappedUnchanged: boolean;
+    legacyStatus: number;
+    legacyError: string | null;
+    plainTierStatus: number;
+    malformedStatus: number;
+    oversizedStatus: number;
+  };
 }
 
 async function main() {
@@ -136,6 +162,105 @@ async function main() {
     await db.update(s.budgets).set({ tier: "e2ee", wrappedDek: "v2.x", kdfParams: "{}", epoch: 1 }).where(eq(s.budgets.id, budgetB!.id));
     const tierResponse = await app.request(`/api/ai/credentials/openai/status?budgetId=${budgetB!.id}`);
 
+    const ciphertextA = "v2.AAAA";
+    const ciphertextB = "v2.BBBB";
+    const e2eeSave = await app.request("/api/ai/credentials/openai/e2ee", {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ budgetId: budgetB!.id, expectedEpoch: 1, ciphertext: ciphertextA }),
+    });
+    const e2eeGet = await app.request(`/api/ai/credentials/openai/e2ee?budgetId=${budgetB!.id}`);
+    const e2eeGetText = await e2eeGet.text();
+    const e2eeGetBody = JSON.parse(e2eeGetText) as { configured?: boolean; ciphertext?: string };
+    const [e2eeStored] = await db.select().from(s.budgetAiCredentials).where(eq(s.budgetAiCredentials.budgetId, budgetB!.id));
+    const e2eeReplace = await app.request("/api/ai/credentials/openai/e2ee", {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ budgetId: budgetB!.id, expectedEpoch: 1, ciphertext: ciphertextB }),
+    });
+    const [afterReplace] = await db.select().from(s.budgetAiCredentials).where(eq(s.budgetAiCredentials.budgetId, budgetB!.id));
+
+    const staleBefore = JSON.stringify(afterReplace);
+    const stale = await app.request("/api/ai/credentials/openai/e2ee", {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ budgetId: budgetB!.id, expectedEpoch: 0, ciphertext: "v2.CCCC" }),
+    });
+    const [afterStale] = await db.select().from(s.budgetAiCredentials).where(eq(s.budgetAiCredentials.budgetId, budgetB!.id));
+
+    let releaseEpochRotation = () => {};
+    let announceBudgetLock = () => {};
+    const budgetLocked = new Promise<void>((resolve) => {
+      announceBudgetLock = resolve;
+    });
+    const rotationMayCommit = new Promise<void>((resolve) => {
+      releaseEpochRotation = resolve;
+    });
+    const rotateEpoch = db.transaction(async (tx) => {
+      await tx.select({ id: s.budgets.id }).from(s.budgets).where(eq(s.budgets.id, budgetB!.id)).for("update");
+      announceBudgetLock();
+      await rotationMayCommit;
+      await tx.update(s.budgets).set({ epoch: 2 }).where(eq(s.budgets.id, budgetB!.id));
+    });
+    await budgetLocked;
+    const concurrentStalePromise = app.request("/api/ai/credentials/openai/e2ee", {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ budgetId: budgetB!.id, expectedEpoch: 1, ciphertext: "v2.CCCC" }),
+    });
+    await Bun.sleep(25);
+    releaseEpochRotation();
+    await rotateEpoch;
+    const concurrentStale = await concurrentStalePromise;
+    const [afterConcurrentStale] = await db.select().from(s.budgetAiCredentials).where(eq(s.budgetAiCredentials.budgetId, budgetB!.id));
+
+    sessionUser = userA;
+    const swapped = await app.request("/api/ai/credentials/openai/e2ee", {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ budgetId: budgetB!.id, expectedEpoch: 2, ciphertext: "v2.DDDD" }),
+    });
+    const swappedBody = (await swapped.json()) as { error?: string };
+    const [afterSwapped] = await db.select().from(s.budgetAiCredentials).where(eq(s.budgetAiCredentials.budgetId, budgetB!.id));
+    sessionUser = userB;
+
+    await db.update(s.budgets).set({ cipherVersion: 1 }).where(eq(s.budgets.id, budgetB!.id));
+    const legacy = await app.request(`/api/ai/credentials/openai/e2ee?budgetId=${budgetB!.id}`);
+    const legacyBody = (await legacy.json()) as { error?: string };
+    await db.update(s.budgets).set({ cipherVersion: 2, tier: "plain" }).where(eq(s.budgets.id, budgetB!.id));
+    const plainTier = await app.request(`/api/ai/credentials/openai/e2ee?budgetId=${budgetB!.id}`);
+    await db.update(s.budgets).set({ tier: "e2ee" }).where(eq(s.budgets.id, budgetB!.id));
+
+    const malformed = await app.request("/api/ai/credentials/openai/e2ee", {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ budgetId: budgetB!.id, expectedEpoch: 1, ciphertext: "v1.AAAA" }),
+    });
+    const oversized = await app.request("/api/ai/credentials/openai/e2ee", {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ budgetId: budgetB!.id, expectedEpoch: 1, ciphertext: `v2.${"A".repeat(8190)}` }),
+    });
+
+    const e2eeDelete = await app.request("/api/ai/credentials/openai/e2ee", {
+      method: "DELETE",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ budgetId: budgetB!.id, expectedEpoch: 2 }),
+    });
+    const [afterDelete] = await db.select().from(s.budgetAiCredentials).where(eq(s.budgetAiCredentials.budgetId, budgetB!.id));
+
+    const [cascadeBudget] = await db
+      .insert(s.budgets)
+      .values({ userId: userB, name: "cascade", tier: "e2ee", cipherVersion: 2, epoch: 3, wrappedDek: "v2.x", kdfParams: "{}" })
+      .returning({ id: s.budgets.id });
+    await app.request("/api/ai/credentials/openai/e2ee", {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ budgetId: cascadeBudget!.id, expectedEpoch: 3, ciphertext: ciphertextA }),
+    });
+    await db.delete(s.budgets).where(eq(s.budgets.id, cascadeBudget!.id));
+    const [afterCascade] = await db.select().from(s.budgetAiCredentials).where(eq(s.budgetAiCredentials.budgetId, cascadeBudget!.id));
+
     const allResponses = `${saveText}${statusText}${testText}`;
     await emitChildResult(SENTINEL, {
       lifecycle: {
@@ -166,6 +291,37 @@ async function main() {
         importItems: importBody.items?.length ?? -1,
         sentVaultKey,
         sentChosenModel,
+      },
+      e2eeLifecycle: {
+        saveStatus: e2eeSave.status,
+        getStatus: e2eeGet.status,
+        configured: e2eeGetBody.configured === true,
+        returnedCiphertext: e2eeGetBody.ciphertext === ciphertextA,
+        responseExposedVaultFields: /wrappedRecordDek|masterKeyId|recordVersion|storageKind/i.test(e2eeGetText),
+        storageShapeValid:
+          e2eeStored?.storageKind === "e2ee_ciphertext" &&
+          e2eeStored.framingVersion === 2 &&
+          e2eeStored.wrappedRecordDek === null &&
+          e2eeStored.masterKeyId === null &&
+          e2eeStored.e2eeEpoch === 1,
+        replaceStatus: e2eeReplace.status,
+        deleteStatus: e2eeDelete.status,
+        deleted: !afterDelete,
+        cascadeDeleted: !afterCascade,
+      },
+      e2eeGuards: {
+        staleStatus: stale.status,
+        staleUnchanged: staleBefore === JSON.stringify(afterStale),
+        concurrentStaleStatus: concurrentStale.status,
+        concurrentStaleUnchanged: staleBefore === JSON.stringify(afterConcurrentStale),
+        swappedStatus: swapped.status,
+        swappedError: swappedBody.error ?? null,
+        swappedUnchanged: staleBefore === JSON.stringify(afterSwapped),
+        legacyStatus: legacy.status,
+        legacyError: legacyBody.error ?? null,
+        plainTierStatus: plainTier.status,
+        malformedStatus: malformed.status,
+        oversizedStatus: oversized.status,
       },
     } satisfies AiCredentialsRoutesOutput);
   } finally {

@@ -1,5 +1,14 @@
 import { describe, expect, it } from "bun:test";
-import { byokChatInput, byokImportInput, credentialBudgetInput, credentialSaveInput, credentialTestInput, publicCredentialStatus } from "./aiCredentials";
+import {
+  byokChatInput,
+  byokImportInput,
+  credentialBudgetInput,
+  credentialSaveInput,
+  credentialTestInput,
+  e2eeCredentialDeleteInput,
+  e2eeCredentialSaveInput,
+  publicCredentialStatus,
+} from "./aiCredentials";
 
 describe("plain BYOK route contracts", () => {
   it("requires strict budget assertions and bounded credentials", () => {
@@ -35,5 +44,20 @@ describe("plain BYOK route contracts", () => {
     expect(byokChatInput.safeParse({ budgetId, model: "gpt-5.6-luna", messages: [] }).success).toBe(false);
     expect(byokImportInput.safeParse({ budgetId, model: "gpt-5.6-luna", images: ["data:image/png;base64,AA=="], locale: "pl" }).success).toBe(true);
     expect(byokImportInput.safeParse({ budgetId, model: "gpt-5.6-luna", images: ["https://foreign/image.png"], locale: "pl" }).success).toBe(false);
+  });
+});
+
+describe("zero-knowledge E2EE credential route contracts", () => {
+  const budgetId = crypto.randomUUID();
+
+  it("requires a budget assertion, exact non-negative epoch and bounded v2 ciphertext", () => {
+    expect(e2eeCredentialSaveInput.safeParse({ budgetId, expectedEpoch: 2, ciphertext: "v2.AAAA" }).success).toBe(true);
+    expect(e2eeCredentialSaveInput.safeParse({ budgetId, expectedEpoch: -1, ciphertext: "v2.AAAA" }).success).toBe(false);
+    expect(e2eeCredentialSaveInput.safeParse({ budgetId, expectedEpoch: 2, ciphertext: "v1.AAAA" }).success).toBe(false);
+    expect(e2eeCredentialSaveInput.safeParse({ budgetId, expectedEpoch: 2, ciphertext: "v2." }).success).toBe(false);
+    expect(e2eeCredentialSaveInput.safeParse({ budgetId, expectedEpoch: 2, ciphertext: `v2.${"A".repeat(8190)}` }).success).toBe(false);
+    expect(e2eeCredentialSaveInput.safeParse({ budgetId, expectedEpoch: 2, ciphertext: "v2.AAAA", extra: true }).success).toBe(false);
+    expect(e2eeCredentialDeleteInput.safeParse({ budgetId, expectedEpoch: 2 }).success).toBe(true);
+    expect(e2eeCredentialDeleteInput.safeParse({ budgetId }).success).toBe(false);
   });
 });

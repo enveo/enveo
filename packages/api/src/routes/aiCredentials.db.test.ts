@@ -39,4 +39,36 @@ describe.skipIf(!TEST_URL)("plain BYOK credential routes", () => {
       sentChosenModel: true,
     });
   });
+
+  test("E2EE ciphertext can be created, read, replaced and deleted without exposing vault material", () => {
+    expect(output.e2eeLifecycle).toEqual({
+      saveStatus: 200,
+      getStatus: 200,
+      configured: true,
+      returnedCiphertext: true,
+      responseExposedVaultFields: false,
+      storageShapeValid: true,
+      replaceStatus: 200,
+      deleteStatus: 200,
+      deleted: true,
+      cascadeDeleted: true,
+    });
+  });
+
+  test("E2EE writes fail closed for stale epochs, swapped accounts, legacy formats and malformed bodies", () => {
+    expect(output.e2eeGuards).toEqual({
+      staleStatus: 409,
+      staleUnchanged: true,
+      concurrentStaleStatus: 409,
+      concurrentStaleUnchanged: true,
+      swappedStatus: 409,
+      swappedError: "budget_mismatch",
+      swappedUnchanged: true,
+      legacyStatus: 409,
+      legacyError: "e2ee_upgrade_required",
+      plainTierStatus: 409,
+      malformedStatus: 400,
+      oversizedStatus: 400,
+    });
+  });
 });
