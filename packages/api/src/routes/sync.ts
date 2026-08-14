@@ -518,7 +518,7 @@ syncRoutes.post("/sync/push", async (c) => {
    synthetic from offline mode — the server assigns uuids).
    Transactions' source_ref is replicated and restored; external_id remains server-only.
 
-   An empty ledger = a clean server wipe (used by "local only" mode).
+   An empty ledger = a clean server wipe (used by reset and restore workflows).
    Returns { budgetId, cursor } — the client sets this cursor locally (server ==
    local, no pull needed). Validation / FK violation → 400 (the whole
    transaction rolls back — atomically). */
