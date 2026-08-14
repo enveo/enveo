@@ -187,7 +187,7 @@ it("response carries target fields and undistributedRemainder", async () => {
   expect(typeof r.undistributedRemainder).toBe("number");
 });
 
-describe("POST /ai/chat — operator-key proxy (local-only mode)", () => {
+describe("POST /ai/chat — deprecated operator-key proxy", () => {
   it("without OPENAI_API_KEY → 503 ai_unavailable (no fetch call)", async () => {
     const { budgetSuggestRoutes } = await import("./budgetSuggest");
     const { Hono } = await import("hono");

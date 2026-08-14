@@ -6,6 +6,7 @@ export interface AiCredentialsRoutesOutput {
   mismatch: { status: number; error: string | null; rowUnchanged: boolean; probeCallsUnchanged: boolean };
   unavailable: { statusAvailable: boolean; statusReason: string | null; saveStatus: number; deleteStatus: number };
   tierStatus: number;
+  workloads: { chatStatus: number; chatContent: string | null; importStatus: number; importItems: number; sentVaultKey: boolean; sentChosenModel: boolean };
 }
 
 async function main() {
@@ -20,6 +21,7 @@ async function main() {
   const { db, sql } = await import("../db/client");
   const s = await import("../db/schema");
   const { createAiCredentialRoutes } = await import("./aiCredentials");
+  const { byokTransportDeps } = await import("../aiCredentials/transport");
 
   await migrate(drizzle(sql, { schema: s }), { migrationsFolder: new URL("../../drizzle", import.meta.url).pathname });
   const users = await db
@@ -34,6 +36,8 @@ async function main() {
   let sessionUser = userA;
   let probeCalls = 0;
   let probeSawKey = false;
+  let sentVaultKey = false;
+  let sentChosenModel = false;
   const masterKeys = {
     active: () => ({ id: "test-active", key: new Uint8Array(32).fill(7) }),
     byId: (id: string) => (id === "test-active" ? new Uint8Array(32).fill(7) : null),
@@ -81,6 +85,26 @@ async function main() {
     });
     const testText = await tested.text();
     const [stored] = await db.select().from(s.budgetAiCredentials).where(eq(s.budgetAiCredentials.budgetId, budgetA!.id));
+
+    byokTransportDeps.fetchChat = async (payload, options) => {
+      sentVaultKey ||= options.apiKey === marker;
+      sentChosenModel ||= (payload as { model?: string }).model === "gpt-5.6-luna";
+      const messages = (payload as { messages?: Array<{ content?: unknown }> }).messages;
+      const vision = Array.isArray(messages?.[1]?.content);
+      return Response.json({ choices: [{ message: { content: vision ? '{"transactions":[]}' : "byok-answer" } }], model: "gpt-5.6-luna" });
+    };
+    const chatResponse = await app.request("/api/ai/byok/chat", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ budgetId: budgetA!.id, model: "gpt-5.6-luna", messages: [{ role: "user", content: "hello" }] }),
+    });
+    const chatBody = (await chatResponse.json()) as { content?: string };
+    const importResponse = await app.request("/api/ai/byok/import/extract", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ budgetId: budgetA!.id, model: "gpt-5.6-luna", images: ["data:image/png;base64,AA=="], locale: "pl" }),
+    });
+    const importBody = (await importResponse.json()) as { items?: unknown[] };
 
     const beforeMismatch = JSON.stringify(stored);
     const probeBeforeMismatch = probeCalls;
@@ -135,6 +159,14 @@ async function main() {
         deleteStatus: unavailableDelete.status,
       },
       tierStatus: tierResponse.status,
+      workloads: {
+        chatStatus: chatResponse.status,
+        chatContent: chatBody.content ?? null,
+        importStatus: importResponse.status,
+        importItems: importBody.items?.length ?? -1,
+        sentVaultKey,
+        sentChosenModel,
+      },
     } satisfies AiCredentialsRoutesOutput);
   } finally {
     await db.delete(s.users).where(eq(s.users.id, userA));

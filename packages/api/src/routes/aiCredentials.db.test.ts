@@ -28,4 +28,15 @@ describe.skipIf(!TEST_URL)("plain BYOK credential routes", () => {
   test("E2EE budgets are refused by the plain credential surface", () => {
     expect(output.tierStatus).toBe(409);
   });
+
+  test("chat and screenshot extraction use the vaulted key without operator metering", () => {
+    expect(output.workloads).toEqual({
+      chatStatus: 200,
+      chatContent: "byok-answer",
+      importStatus: 200,
+      importItems: 0,
+      sentVaultKey: true,
+      sentChosenModel: true,
+    });
+  });
 });
