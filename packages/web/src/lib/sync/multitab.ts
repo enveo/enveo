@@ -35,6 +35,7 @@
  */
 
 import { accountPreferences, configureAccountPreferencesBroadcast } from "../accountPreferences";
+import { devicePreferences } from "../devicePreferences";
 import * as e2ee from "../e2ee";
 import { clearLocalData } from "../idb";
 import * as persist from "../persist";
@@ -107,7 +108,7 @@ export function broadcastLocalMode(mode: LocalMode): void {
  * reload) guarantees tabs receiving "wipe" boot from ALREADY EMPTY stores.
  */
 export async function wipeLocalData(): Promise<void> {
-  await accountPreferences.clear();
+  await Promise.all([accountPreferences.clear(), devicePreferences.clear()]);
   await clearLocalData();
   postMsg("wipe");
   if (typeof location !== "undefined") location.reload();

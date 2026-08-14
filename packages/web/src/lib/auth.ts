@@ -4,6 +4,8 @@
  * needs a session, so a boot without one lands on LoginScreen.
  */
 import { createAuthClient } from "better-auth/client";
+import { accountPreferences } from "./accountPreferences";
+import { devicePreferences } from "./devicePreferences";
 
 export const authClient = createAuthClient();
 
@@ -103,6 +105,7 @@ export async function fetchSessionUserId(): Promise<string | null> {
  */
 export async function signOutKeepingReplica(enterLogin: () => void): Promise<void> {
   await authClient.signOut();
+  await Promise.all([accountPreferences.clear(), devicePreferences.clear()]);
   enterLogin();
 }
 
@@ -114,6 +117,7 @@ export async function signOutKeepingReplica(enterLogin: () => void): Promise<voi
  */
 export async function signOutSessionOnly(): Promise<void> {
   await authClient.signOut();
+  await Promise.all([accountPreferences.clear(), devicePreferences.clear()]);
 }
 
 /** Does the backend have a session at all? */

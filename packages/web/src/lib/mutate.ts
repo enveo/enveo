@@ -15,6 +15,8 @@ import {
   type Account,
   type AccountPayload,
   type AllocPayload,
+  type BudgetPreferencesPatch,
+  budgetPreferencesPatchSchema,
   type Category,
   type Envelope,
   type EnvelopeGroup,
@@ -209,6 +211,10 @@ function updateBudget(id: string, currency: string): void {
   enqueue("budget.update", { id, currency });
 }
 
+function updateBudgetPreferences(id: string, patch: BudgetPreferencesPatch): void {
+  enqueue("budget.preferences.update", { id, patch: budgetPreferencesPatchSchema.parse(patch) });
+}
+
 export const local = {
   createTxn,
   updateTxn,
@@ -227,6 +233,7 @@ export const local = {
   createCategory,
   createPlace,
   updateBudget,
+  updateBudgetPreferences,
 };
 
 // Dev-only: lets e2e verification run local mutations from the console (no UI clicking).
