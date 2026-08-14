@@ -9,6 +9,7 @@ export type { AccountView, EnvelopeView, StateResponse } from "@enveo/shared";
 
 import { AI_IMPORT_EXTRACT_TIMEOUT_MS, type AiLocale, type BudgetSuggestProfile, type BudgetSuggestResponse, type ClientLedger } from "@enveo/shared";
 import { getAccountPreferencesRemote, patchAccountPreferencesRemote } from "./accountPreferencesRemote";
+import type { ImportExtractResult } from "./aiProvider/contracts";
 import { timeoutSignal } from "./timeoutSignal";
 
 export type { BudgetSuggestProfile, BudgetSuggestResponse } from "@enveo/shared";
@@ -194,8 +195,7 @@ export const api = {
 
   /* `locale` = the UI language (any BCP-47 tag): the model writes its names, notes and
      rationales in it. Not to be confused with demoSeed's pl|en, which picks a SEED DATASET. */
-  importExtract: (images: string[], locale: AiLocale) =>
-    http<{ items: ImportItem[] }>("POST", "/import/extract", { images, locale }, AI_IMPORT_EXTRACT_TIMEOUT_MS),
+  importExtract: (images: string[], locale: AiLocale) => http<ImportExtractResult>("POST", "/import/extract", { images, locale }, AI_IMPORT_EXTRACT_TIMEOUT_MS),
   /* `budgetId` = the same PER-REQUEST tenant assertion as the sync push: the batch creates
      FRESH transactions in whatever budget the session cookie resolves to, and the cookie can
      be swapped in another tab while the import sheet is open. The caller passes the replica's
