@@ -153,6 +153,21 @@ describe.skipIf(!TEST_URL)("sync2 e2ee v2 (DB-backed)", () => {
     });
   });
 
+  it("moves E2EE BYOK back into the server vault atomically and retries idempotently", () => {
+    expect(out.credentialReturnToVault).toEqual({
+      forcedFailureStatus: 500,
+      rollbackPreserved: true,
+      status: 200,
+      retryStatus: 200,
+      tier: "plain",
+      storageKind: "server_vault",
+      e2eeEpoch: null,
+      vaultFieldsPresent: true,
+      openedKey: "sk-returned-secret",
+      cipherStateCleared: true,
+    });
+  });
+
   it("serializes credential save against E2EE enable and never commits an e2ee + server_vault budget", () => {
     expect(out.credentialRace.saveOutcome).not.toBe("unexpected_error");
     expect(out.credentialRace.forbiddenCombinationAbsent).toBe(true);

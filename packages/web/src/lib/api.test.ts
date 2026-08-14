@@ -55,8 +55,11 @@ describe("apiErrorMessage", () => {
     expect(apiErrorMessage(httpError(409, { error: "budget_mismatch", budgetId: "b1" }))).toBe(
       "The signed-in account changed while the data was being sent — nothing was written. Reload the app and try again.",
     );
-    expect(apiErrorMessage(httpError(409, { error: "credential_migration_required", budgetId: "b1" }))).toBe(
-      "Remove the server-stored Own OpenAI key in Settings → Artificial intelligence before enabling end-to-end encryption.",
+    expect(apiErrorMessage(httpError(409, { error: "credential_move_required", budgetId: "b1" }))).toBe(
+      "Re-enter your OpenAI API key so it can move into the encrypted budget.",
+    );
+    expect(apiErrorMessage(httpError(409, { error: "credential_move_invalid", budgetId: "b1" }))).toBe(
+      "The OpenAI key changed on another device. Refresh its status and try again.",
     );
   });
 

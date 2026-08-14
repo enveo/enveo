@@ -276,7 +276,14 @@ export const api = {
     nextEpoch: number;
     credentialAction: { kind: "none" } | { kind: "server-vault-to-e2ee"; ciphertext: string };
   }) => http<{ epoch: number }>("POST", "/budget/e2ee/enable", b),
-  e2eeDisable: (b: { confirm: string; ledger: ClientLedger; userId: string }) => http<{ epoch: number }>("POST", "/budget/e2ee/disable", b),
+  e2eeDisable: (b: {
+    confirm: string;
+    ledger: ClientLedger;
+    userId: string;
+    budgetId: string;
+    expectedEpoch: number;
+    credentialAction: { kind: "none" } | { kind: "e2ee-to-server-vault"; key: string };
+  }) => http<{ epoch: number }>("POST", "/budget/e2ee/disable", b),
   /* `expectedEpoch` = the epoch the new envelope's AAD was built for: a rekey landing on any
      OTHER generation would permanently brick every unlock (the v2 wrap hard-fails under a
      different epoch), so the server refuses a stale expectation before writing. */

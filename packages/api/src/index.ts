@@ -21,7 +21,7 @@ import { importRoutes } from "./routes/import";
 import { preferencesRoutes } from "./routes/preferences";
 import { stateRoutes } from "./routes/state";
 import { syncRoutes } from "./routes/sync";
-import { sync2Routes } from "./routes/sync2";
+import { createSync2Routes } from "./routes/sync2";
 import { txnRoutes } from "./routes/transactions";
 import { ScopeViolation } from "./sync/apply";
 
@@ -147,7 +147,7 @@ api.route("/", extraRoutes);
 api.route("/", importRoutes);
 api.route("/", preferencesRoutes);
 api.route("/", syncRoutes);
-api.route("/", sync2Routes);
+api.route("/", createSync2Routes({ masterKeys: vaultMasterKeyProvider }));
 api.route("/", budgetSuggestRoutes);
 api.route("/", createAiCredentialRoutes({ masterKeys: vaultMasterKeyProvider }));
 api.route("/", demoRoutes);
