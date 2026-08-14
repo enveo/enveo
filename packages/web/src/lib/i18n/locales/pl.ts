@@ -382,6 +382,7 @@ export const pl: Dict = {
   "Next month": "Następny miesiąc",
   No: "Nie",
   "No account yet? Create one": "Nie masz konta? Załóż je",
+  "No budget": "Brak budżetu",
   "No envelopes are marked as wealth envelopes. Open an envelope → Edit and turn on “Wealth envelope” (e.g. Bonds, Retirement, Savings), and we will count them here.":
     'Brak kopert oznaczonych jako majątkowe. Otwórz kopertę → Edytuj i włącz „Koperta majątkowa" (np. Obligacje, IKE, Oszczędności), a policzymy je tutaj.',
   "No envelopes with a budget or spending this month.": "Brak kopert z budżetem lub wydatkami w tym miesiącu.",
