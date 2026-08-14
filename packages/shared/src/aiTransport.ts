@@ -1,7 +1,7 @@
 /**
  * AI transport timeout budget — the ONE source of truth for both transports
- * (`packages/api/src/openaiHttp.ts` — operator key; `packages/web/src/lib/openai.ts` —
- * byok and the /api/ai mirror). Before this module each side kept its own private
+ * (`packages/api/src/openaiHttp.ts` — operator and vaulted BYOK keys;
+ * `packages/web/src/lib/openai.ts` — the /api/ai mirror). Before this module each side kept its own private
  * `120_000`, and the two had already started to drift in meaning (the server's cap
  * claimed to cover "vision, the slow end" while actually cutting it at chat speed).
  *

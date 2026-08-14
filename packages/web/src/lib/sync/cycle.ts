@@ -10,7 +10,7 @@
 import { accountPreferences } from "../accountPreferences";
 import { devicePreferences } from "../devicePreferences";
 import * as e2ee from "../e2ee";
-import { migrateLegacySettings } from "../legacySettingsMigration";
+import { migrateLegacySettings } from "../legacySettingsMigrationRuntime";
 import * as outbox from "../outbox";
 import * as persist from "../persist";
 import { store } from "../store";

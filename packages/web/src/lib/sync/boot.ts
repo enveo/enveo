@@ -10,7 +10,7 @@ import { devicePreferences } from "../devicePreferences";
 import * as e2ee from "../e2ee";
 import { idbGet } from "../idb";
 import { purgeLegacyPlannedIds } from "../legacyPlanned";
-import { migrateLegacySettings } from "../legacySettingsMigration";
+import { migrateLegacySettings } from "../legacySettingsMigrationRuntime";
 import { local } from "../mutate";
 import * as outbox from "../outbox";
 import * as persist from "../persist";
