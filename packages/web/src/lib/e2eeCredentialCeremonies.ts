@@ -1,4 +1,4 @@
-import { budgetSecretAadContext, decryptPayload, encryptPayload } from "./crypto";
+import { budgetSecretAadContext, decryptPayload, type E2eeAadContext, encryptPayload } from "./crypto";
 
 export type EnableCredentialAction = { kind: "none" } | { kind: "server-vault-to-e2ee"; ciphertext: string };
 export type DisableCredentialAction = { kind: "none" } | { kind: "e2ee-to-server-vault"; key: string };
@@ -32,4 +32,19 @@ export async function prepareDisableCredentialAction(input: {
     kind: "e2ee-to-server-vault",
     key: await decryptPayload(input.record.ciphertext, input.dek, budgetSecretAadContext(input.budgetId, input.epoch, "openai")),
   };
+}
+
+export async function reencryptBudgetSecret(input: {
+  ciphertext: string;
+  oldDek: Uint8Array;
+  oldContext: E2eeAadContext;
+  newDek: Uint8Array;
+  newContext: E2eeAadContext;
+}): Promise<string> {
+  let plaintext = await decryptPayload(input.ciphertext, input.oldDek, input.oldContext);
+  try {
+    return await encryptPayload(plaintext, input.newDek, input.newContext);
+  } finally {
+    plaintext = "";
+  }
 }

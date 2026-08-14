@@ -192,7 +192,7 @@ export interface PendingE2eeUpgrade {
   wrappedDek: string;
   kdfParams: string;
   snapshotBlob: string;
-  credentialAction: { kind: "none" } | { kind: "legacy-local-to-e2ee"; ciphertext: string };
+  credentialAction: { kind: "none" } | { kind: "legacy-local-to-e2ee"; ciphertext: string } | { kind: "e2ee-to-next-epoch"; ciphertext: string };
   /** SHA-256 of the quarantined object that supplied legacy BYOK. The pending intent never
    *  duplicates the plaintext key into IndexedDB; the digest only gates compare-and-delete. */
   legacySettingsDigest?: string;

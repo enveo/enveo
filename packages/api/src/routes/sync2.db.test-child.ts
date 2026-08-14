@@ -381,7 +381,7 @@ async function main(): Promise<void> {
     wrappedDek,
     kdfParams: JSON.stringify({ algo: "argon2id", m: 65536, t: 3, p: 1, saltB64: "AAAA" }),
     snapshotBlob: "v2.newCheckpointAAAA",
-    credentialAction: { kind: "legacy-local-to-e2ee", ciphertext: "v2.upgradedCredential" } as const,
+    credentialAction: { kind: "e2ee-to-next-epoch", ciphertext: "v2.upgradedCredential" } as const,
   });
   // the shared cookie was swapped to B mid-ceremony: session ≠ the userId the client verified.
   // The body still names L's budget and L's user; B's session resolves B's own e2ee budget, so
