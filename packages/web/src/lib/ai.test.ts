@@ -194,7 +194,7 @@ describe("aiTarget / hasAiTarget", () => {
       await expect(imp).rejects.toThrow("ai_consent_required");
        
       expect(apiErrorMessage(await imp.catch((e: unknown) => e))).toBe(
-        "AI is not set up on this device. Pick a mode in Settings → Artificial intelligence (with your own key, paste it there).",
+        "AI is not configured. Choose server AI or an existing own key in Settings → Artificial intelligence.",
       );
     }
   });

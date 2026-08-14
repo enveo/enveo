@@ -20,11 +20,8 @@ export const fr: Dict = {
   "A profile with this name already exists.": "Un profil portant ce nom existe déjà.",
   AI: "IA",
   "AI (corrected)": "IA (corrigé)",
-  "AI is not set up on this device. Pick a mode in Settings → Artificial intelligence (with your own key, paste it there).":
-    "L'IA n'est pas configurée sur cet appareil. Choisissez un mode dans Réglages → Intelligence artificielle (avec votre propre clé, collez-la là).",
   "AI is off — suggestions run locally on rules; nothing leaves this device.":
     "L'IA est désactivée — les suggestions sont calculées localement par des règles ; rien ne quitte cet appareil.",
-  "AI mode, your own key": "mode IA, votre propre clé",
   "AI requests go to OpenAI through the app server (operator's key).": "Les requêtes IA vont à OpenAI via le serveur de l'application (clé de l'hébergeur).",
   "AI unavailable — rules were used instead.": "IA indisponible — les règles ont été utilisées à la place.",
   AVAILABLE: "DISPONIBLE",
@@ -57,7 +54,6 @@ export const fr: Dict = {
   "Add {n} transaction | Add {n} transactions": { one: "Ajouter {n} transaction", many: "Ajouter {n} transactions", other: "Ajouter {n} transactions" },
   "Added {n} transaction | Added {n} transactions": { one: "{n} transaction ajoutée", many: "{n} transactions ajoutées", other: "{n} transactions ajoutées" },
   "Adding…": "Ajout…",
-  Advanced: "Avancé",
   "Afterwards, other devices must unlock again with the new password or a fresh pairing code — old pairing codes stop working.":
     "Ensuite, les autres appareils devront être déverrouillés à nouveau avec le nouveau mot de passe ou un nouveau code d'appairage — les anciens codes d'appairage ne fonctionnent plus.",
   "All goals funded ✓": "Tous les objectifs financés ✓",
@@ -69,7 +65,6 @@ export const fr: Dict = {
   "An upgrade or a restore is in progress: the account's budget on the server is not this device's budget yet. Once it is, sync will resume by itself.":
     "Une mise à niveau ou une restauration est en cours : le budget du compte sur le serveur n'est pas encore celui de cet appareil. Dès qu'il le sera, la synchronisation reprendra d'elle-même.",
   "Another account's data": "Données d'un autre compte",
-  Appearance: "Apparence",
   "Apple Wallet or bank history — AI will recognize the transactions, duplicates will be skipped":
     "Apple Wallet ou l'historique bancaire — l'IA reconnaîtra les transactions, les doublons seront ignorés",
   "Apply ({n})": "Appliquer ({n})",
@@ -146,7 +141,6 @@ export const fr: Dict = {
   "Custom profiles are stored only on this device.": "Les profils personnalisés sont stockés uniquement sur cet appareil.",
   "DISABLE-E2EE": "DESACTIVER-E2EE",
   Dark: "Sombre",
-  Data: "Données",
   Delete: "Supprimer",
   "Delete everything and start fresh": "Tout supprimer et repartir de zéro",
   "Delete everything and start over": "Tout supprimer et recommencer",
@@ -301,14 +295,12 @@ export const fr: Dict = {
   "Not sending": "Envoi suspendu",
   "Not syncing with your account": "Pas de synchronisation avec votre compte",
   Off: "Désactivée",
-  "On-device storage": "Stockage sur l'appareil",
   "Once enabled, the server stores ciphertexts only. The key is your password, which the server does NOT know — without it (or a pairing code from another unlocked device) the data cannot be recovered.":
     "Une fois activé, le serveur ne stocke que des textes chiffrés. La clé, c'est votre mot de passe, que le serveur NE connaît PAS — sans lui (ou sans un code d'appairage venu d'un appareil de confiance), les données sont irrécupérables.",
   "One tap and Enveo lives on your home screen — offline, full screen, no browser bar.":
     "Un appui et Enveo s'installe sur votre écran d'accueil — hors ligne, en plein écran, sans barre de navigateur.",
   "Open {host} in Safari to add it to your home screen — installing only works from Safari on iPhone and iPad.":
     "Ouvrez {host} dans Safari pour l'ajouter à votre écran d'accueil — sur iPhone et iPad, l'installation ne fonctionne que depuis Safari.",
-  "OpenAI key": "Clé OpenAI",
   "OpenAI rejected the request — check the key and the model, then try again.": "OpenAI a rejeté la requête — vérifiez la clé et le modèle, puis réessayez.",
   "OpenAI rejected this key — model availability could not be checked.": "OpenAI a rejeté cette clé — la disponibilité des modèles n'a pas pu être vérifiée.",
   "OpenAI rejected your key — check it in Settings → Artificial intelligence.":
@@ -362,7 +354,6 @@ export const fr: Dict = {
   Save: "Enregistrer",
   "Save changes": "Enregistrer les modifications",
   "Save item": "Enregistrer la ligne",
-  "Save key & enable": "Enregistrer la clé et activer",
   Savings: "Épargne",
   "Savings envelopes first — the free remainder goes to them.": "Les enveloppes d'épargne d'abord — le reste libre leur revient.",
   "Screenshot {n}": "Capture {n}",
@@ -402,7 +393,6 @@ export const fr: Dict = {
   Suggest: "Suggérer",
   "Suggest a distribution": "Suggérer une répartition",
   Summary: "Résumé",
-  Sync: "Synchronisation",
   "Sync in progress": "Synchronisation en cours",
   "Sync now": "Synchroniser maintenant",
   "Syncing…": "Synchronisation…",
@@ -441,8 +431,6 @@ export const fr: Dict = {
   "The envelope “{name}” will disappear from the Budget and Start screens. Its transaction history stays, and available funds remain in the envelope. You can restore it in “Manage envelopes” → Archived.\n\nArchive it?":
     "L'enveloppe « {name} » disparaîtra des écrans Budget et Accueil. Son historique de transactions reste, et les fonds disponibles restent dans l'enveloppe. Vous pouvez la restaurer dans « Gérer les enveloppes » → Archivées.\n\nL'archiver ?",
   "The first launch requires a connection to the server": "Le premier lancement nécessite une connexion au serveur",
-  "The key is stored only in this browser (localStorage) — it is never synced or sent to the app server.":
-    "La clé est stockée uniquement dans ce navigateur (localStorage) — elle n'est jamais synchronisée ni envoyée au serveur de l'application.",
   "The local copy of the budget has not loaded yet — nothing was sent. Reload the app and try again.":
     "La copie locale du budget n'est pas encore chargée — rien n'a été envoyé. Rechargez l'application et réessayez.",
   "The local copy of the budget on this device belongs to a different account than the one you are signed in with. Nothing has been sent to the server and nothing has been deleted.":
@@ -450,14 +438,8 @@ export const fr: Dict = {
   "The local copy — including any unsent changes — will be permanently removed from this device. If this is the only copy of that budget, download a backup first.":
     "La copie locale — y compris les modifications non envoyées — sera définitivement supprimée de cet appareil. Si c'est la seule copie de ce budget, téléchargez d'abord une sauvegarde.",
   "The local replica is not ready.": "La réplique locale n'est pas prête.",
-  "The monthly AI allowance for this account is used up — it resets at the start of the next month (UTC). You can keep using AI right away with your own key in Settings → Artificial intelligence.":
-    "Le quota mensuel d’IA de ce compte est épuisé — il se renouvelle au début du mois prochain (UTC). Vous pouvez continuer à utiliser l’IA immédiatement avec votre propre clé dans Réglages → Intelligence artificielle.",
   "The password must be at least 8 characters.": "Le mot de passe doit contenir au moins 8 caractères.",
   "The proposal exceeds “To be budgeted” — uncheck or reduce items.": "La proposition dépasse « À budgétiser » — décochez ou réduisez des lignes.",
-  "The server has no OpenAI key configured — server mode is unavailable. Use your own key or keep AI off.":
-    "Le serveur n'a aucune clé OpenAI configurée — le mode serveur est indisponible. Utilisez votre propre clé ou laissez l'IA désactivée.",
-  "The server has no OpenAI key configured. Set OPENAI_API_KEY and restart the app, or use your own key in Settings → Artificial intelligence.":
-    "Le serveur n'a aucune clé OpenAI configurée. Définissez OPENAI_API_KEY et redémarrez l'application, ou utilisez votre propre clé dans Réglages → Intelligence artificielle.",
   "The server hit an unexpected error. Nothing was changed — try again.": "Le serveur a rencontré une erreur inattendue. Rien n'a été modifié — réessayez.",
   "The server refuses to sync this budget until its encryption is upgraded to the new format.":
     "Le serveur refuse de synchroniser ce budget tant que son chiffrement n'a pas été mis à niveau vers le nouveau format.",
@@ -543,7 +525,6 @@ export const fr: Dict = {
     "Décochez ce que vous ne voulez pas. Les doublons sont ignorés — touchez-en un pour le modifier et l'ajouter quand même.",
   Usage: "Utilisation",
   Use: "Utiliser",
-  "Use your own key": "Utiliser ma propre clé",
   Utilities: "Charges",
   "WARNING: IndexedDB unavailable — data is kept only in session memory (it will not survive closing the app).":
     "ATTENTION : IndexedDB indisponible — les données ne sont conservées qu'en mémoire de session (elles ne survivront pas à la fermeture de l'application).",
@@ -566,7 +547,6 @@ export const fr: Dict = {
   "Your first account": "Votre premier compte",
   "already exists": "existe déjà",
   "available after: {amount}": "disponible ensuite : {amount}",
-  "backup, end-to-end encryption, account": "sauvegarde, chiffrement de bout en bout, compte",
   "cancel split": "annuler la ventilation",
   dark: "sombre",
   details: "détails",
@@ -596,10 +576,8 @@ export const fr: Dict = {
   server: "serveur",
   settings: "réglages",
   skipped: "ignoré",
-  "status, re-download": "état, retéléchargement",
   "the server will store your data in plain form again": "le serveur stockera de nouveau vos données en clair",
   "the whole local copy as a file — no network needed": "toute la copie locale dans un fichier — sans réseau",
-  "theme, language, currency, discreet": "thème, langue, devise, discret",
   today: "aujourd'hui",
   unknown: "inconnu",
   "unlock the budget on a new device without the password": "déverrouiller le budget sur un nouvel appareil sans le mot de passe",

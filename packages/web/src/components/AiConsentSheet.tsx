@@ -1,11 +1,9 @@
 import { useQuery } from "@tanstack/react-query";
-import { useState } from "react";
-import { AI_MODEL_TIERS, isLegacyOpenAiModel } from "../lib/aiModelTiers";
 import { api } from "../lib/api";
-import { type OpenAiModel, useSettings } from "../lib/contexts";
+import { useSettings } from "../lib/contexts";
 import { type Message, msg, useT } from "../lib/i18n";
-import { readLegacyOpenAiCredential, setEphemeralOpenAiCredential } from "../lib/settingsPersist";
-import { font, TEAL } from "../lib/theme";
+import { readLegacyOpenAiCredential } from "../lib/settingsPersist";
+import { TEAL } from "../lib/theme";
 import { Sheet } from "./chrome";
 
 /**
@@ -13,8 +11,8 @@ import { Sheet } from "./chrome";
  * Shows exactly what will be sent to OpenAI (per-feature payload description)
  * and offers three ways out:
  *  - "Enable via server"  → aiMode="server" (only when /api/ai/info → serverAi=true),
- *  - "Use your own key" → inline key + model → aiMode="byok" (Stage-2 bridge keeps a newly
- *    entered key in memory only; Stage 3 replaces this with the credential vault),
+ *  - an existing legacy key may still be selected while it awaits Stage-3 vault migration;
+ *    this screen never accepts a new credential,
  *  - "Stay with rules" → does NOT change aiMode. Only the budget SUGGESTION has a rules
  *    engine to stay with; for the import (AI-only, no rules parser at all) the way out
  *    is "Cancel".
@@ -43,22 +41,17 @@ export function AiConsentSheet({
   const { settings, setSettings } = useSettings();
   // Server-mode availability is checked only when the sheet opens.
   const { data: aiInfo } = useQuery({ queryKey: ["aiInfo"], queryFn: api.aiInfo, enabled: show });
-  const [byokOpen, setByokOpen] = useState(false);
-  const [key, setKey] = useState(() => readLegacyOpenAiCredential()?.key ?? "");
-  const [model, setModel] = useState<OpenAiModel>(settings.openaiModel);
+  const credential = readLegacyOpenAiCredential();
 
-  const close = () => {
-    setByokOpen(false);
-    onClose();
-  };
+  const close = () => onClose();
 
   const chooseServer = () => {
     setSettings({ ...settings, aiMode: "server" });
     onDecided("server");
   };
   const chooseByok = () => {
-    setEphemeralOpenAiCredential(key, model);
-    setSettings({ ...settings, aiMode: "byok", openaiModel: model });
+    if (!credential) return;
+    setSettings({ ...settings, aiMode: "byok", openaiModel: credential.model ?? settings.openaiModel });
     onDecided("byok");
   };
 
@@ -102,87 +95,13 @@ export function AiConsentSheet({
               </button>
             )}
 
-            <button onClick={() => setByokOpen(!byokOpen)} style={{ ...secondary, borderColor: byokOpen ? TEAL : C.line, color: byokOpen ? TEAL : C.text }}>
-              {t("Use your own key")}
-            </button>
-            {byokOpen && (
-              <div style={{ padding: "2px 0 10px" }}>
-                <input
-                  type="password"
-                  value={key}
-                  onChange={(e) => setKey(e.target.value)}
-                  placeholder="sk-…"
-                  autoComplete="off"
-                  autoCapitalize="none"
-                  autoCorrect="off"
-                  spellCheck={false}
-                  aria-label={t("OpenAI key")}
-                  style={{
-                    width: "100%",
-                    boxSizing: "border-box",
-                    padding: "10px 12px",
-                    borderRadius: 10,
-                    border: `1px solid ${C.line}`,
-                    background: C.bg,
-                    color: C.text,
-                    fontSize: 13,
-                    fontFamily: font,
-                    marginBottom: 8,
-                  }}
-                />
-                <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 8 }}>
-                  {[
-                    ...AI_MODEL_TIERS.map((tier) => ({ m: tier.model, label: t(tier.label) })),
-                    // A persisted legacy choice stays offered here too — same §1b rule as Settings → AI.
-                    ...(isLegacyOpenAiModel(settings.openaiModel) ? [{ m: settings.openaiModel, label: settings.openaiModel }] : []),
-                  ].map(({ m, label }) => (
-                    <button
-                      key={m}
-                      role="radio"
-                      aria-checked={model === m}
-                      onClick={() => setModel(m)}
-                      style={{
-                        display: "flex",
-                        justifyContent: "space-between",
-                        alignItems: "baseline",
-                        gap: 8,
-                        padding: "8px 12px",
-                        borderRadius: 10,
-                        border: `1px solid ${model === m ? TEAL : C.line}`,
-                        background: model === m ? "var(--accent-1a)" : "transparent",
-                        color: model === m ? TEAL : C.text,
-                        fontSize: 12.5,
-                        fontWeight: 600,
-                        cursor: "pointer",
-                        fontFamily: font,
-                      }}
-                    >
-                      <span>{label}</span>
-                      {label !== m && <span style={{ fontSize: 10, fontWeight: 500, color: C.mute, whiteSpace: "nowrap" }}>{m}</span>}
-                    </button>
-                  ))}
-                </div>
-                <div style={{ fontSize: 11.5, color: C.mute, lineHeight: 1.5, marginBottom: 10 }}>
-                  {t("The key is stored only in this browser (localStorage) — it is never synced or sent to the app server.")}
-                </div>
-                <button
-                  onClick={chooseByok}
-                  disabled={!key.trim()}
-                  style={{
-                    width: "100%",
-                    padding: "12px 0",
-                    borderRadius: 12,
-                    border: "none",
-                    background: TEAL,
-                    color: "#fff",
-                    fontSize: 13.5,
-                    fontWeight: 600,
-                    cursor: "pointer",
-                    opacity: key.trim() ? 1 : 0.5,
-                  }}
-                >
-                  {t("Save key & enable")}
-                </button>
+            {credential ? (
+              <button onClick={chooseByok} style={secondary}>
+                {t("Use the existing own key")}
+              </button>
+            ) : (
+              <div style={{ fontSize: 11.5, color: C.mute, lineHeight: 1.5, marginBottom: 10 }}>
+                {t("A new own key can be added after secure credential vault migration is available.")}
               </div>
             )}
 

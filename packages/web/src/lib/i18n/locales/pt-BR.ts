@@ -20,11 +20,8 @@ export const ptBR: Dict = {
   "A profile with this name already exists.": "Já existe um perfil com este nome.",
   AI: "IA",
   "AI (corrected)": "IA (corrigido)",
-  "AI is not set up on this device. Pick a mode in Settings → Artificial intelligence (with your own key, paste it there).":
-    "A IA não está configurada neste dispositivo. Escolha um modo em Configurações → Inteligência artificial (se usar sua própria chave, cole-a lá).",
   "AI is off — suggestions run locally on rules; nothing leaves this device.":
     "A IA está desligada — as sugestões são calculadas localmente por regras; nada sai deste dispositivo.",
-  "AI mode, your own key": "modo de IA, sua própria chave",
   "AI requests go to OpenAI through the app server (operator's key).": "As requisições de IA vão para a OpenAI através do servidor do app (chave do operador).",
   "AI unavailable — rules were used instead.": "IA indisponível — foram usadas regras no lugar.",
   AVAILABLE: "DISPONÍVEL",
@@ -60,7 +57,6 @@ export const ptBR: Dict = {
     other: "{n} transações adicionadas",
   },
   "Adding…": "Adicionando…",
-  Advanced: "Avançado",
   "Afterwards, other devices must unlock again with the new password or a fresh pairing code — old pairing codes stop working.":
     "Depois, os outros dispositivos precisarão desbloquear de novo com a nova senha ou com um código de pareamento novo — os códigos de pareamento antigos deixam de funcionar.",
   "All goals funded ✓": "Todas as metas financiadas ✓",
@@ -72,7 +68,6 @@ export const ptBR: Dict = {
   "An upgrade or a restore is in progress: the account's budget on the server is not this device's budget yet. Once it is, sync will resume by itself.":
     "Há uma atualização ou uma restauração em andamento: o orçamento da conta no servidor ainda não é o deste dispositivo. Assim que for, a sincronização volta sozinha.",
   "Another account's data": "Dados de outra conta",
-  Appearance: "Aparência",
   "Apple Wallet or bank history — AI will recognize the transactions, duplicates will be skipped":
     "Apple Wallet ou o extrato do banco — a IA reconhece as transações e as duplicadas são ignoradas",
   "Apply ({n})": "Aplicar ({n})",
@@ -149,7 +144,6 @@ export const ptBR: Dict = {
   "Custom profiles are stored only on this device.": "Os perfis personalizados ficam guardados apenas neste dispositivo.",
   "DISABLE-E2EE": "DESATIVAR-E2EE",
   Dark: "Escuro",
-  Data: "Dados",
   Delete: "Excluir",
   "Delete everything and start fresh": "Excluir tudo e começar do zero",
   "Delete everything and start over": "Excluir tudo e começar de novo",
@@ -301,14 +295,12 @@ export const ptBR: Dict = {
   "Not sending": "Sem envio",
   "Not syncing with your account": "Não está sincronizando com a sua conta",
   Off: "Desligada",
-  "On-device storage": "Armazenamento no dispositivo",
   "Once enabled, the server stores ciphertexts only. The key is your password, which the server does NOT know — without it (or a pairing code from another unlocked device) the data cannot be recovered.":
     "Depois de ativada, o servidor guarda apenas textos cifrados. A chave é a sua senha, que o servidor NÃO conhece — sem ela (ou sem um código de pareamento de um dispositivo confiável) os dados não podem ser recuperados.",
   "One tap and Enveo lives on your home screen — offline, full screen, no browser bar.":
     "Um toque e o Enveo fica na sua tela de início — offline, em tela cheia, sem a barra do navegador.",
   "Open {host} in Safari to add it to your home screen — installing only works from Safari on iPhone and iPad.":
     "Abra {host} no Safari para adicionar à tela de início — no iPhone e no iPad a instalação só funciona pelo Safari.",
-  "OpenAI key": "Chave da OpenAI",
   "OpenAI rejected the request — check the key and the model, then try again.": "A OpenAI rejeitou a requisição — confira a chave e o modelo e tente de novo.",
   "OpenAI rejected this key — model availability could not be checked.":
     "A OpenAI rejeitou esta chave — não foi possível verificar a disponibilidade dos modelos.",
@@ -362,7 +354,6 @@ export const ptBR: Dict = {
   Save: "Salvar",
   "Save changes": "Salvar as mudanças",
   "Save item": "Salvar o item",
-  "Save key & enable": "Salvar a chave e ativar",
   Savings: "Poupança",
   "Savings envelopes first — the free remainder goes to them.": "Primeiro os envelopes de poupança — a sobra livre vai para eles.",
   "Screenshot {n}": "Captura de tela {n}",
@@ -402,7 +393,6 @@ export const ptBR: Dict = {
   Suggest: "Sugerir",
   "Suggest a distribution": "Sugerir uma distribuição",
   Summary: "Resumo",
-  Sync: "Sincronização",
   "Sync in progress": "Sincronização em andamento",
   "Sync now": "Sincronizar agora",
   "Syncing…": "Sincronizando…",
@@ -441,8 +431,6 @@ export const ptBR: Dict = {
   "The envelope “{name}” will disappear from the Budget and Start screens. Its transaction history stays, and available funds remain in the envelope. You can restore it in “Manage envelopes” → Archived.\n\nArchive it?":
     "O envelope “{name}” vai sumir das telas Orçamento e Início. O histórico de transações permanece e os recursos disponíveis continuam no envelope. Você pode restaurá-lo em “Gerenciar os envelopes” → Arquivados.\n\nArquivar?",
   "The first launch requires a connection to the server": "O primeiro início exige uma conexão com o servidor",
-  "The key is stored only in this browser (localStorage) — it is never synced or sent to the app server.":
-    "A chave fica guardada apenas neste navegador (localStorage) — ela nunca é sincronizada nem enviada ao servidor do app.",
   "The local copy of the budget has not loaded yet — nothing was sent. Reload the app and try again.":
     "A cópia local do orçamento ainda não carregou — nada foi enviado. Recarregue o app e tente de novo.",
   "The local copy of the budget on this device belongs to a different account than the one you are signed in with. Nothing has been sent to the server and nothing has been deleted.":
@@ -450,14 +438,8 @@ export const ptBR: Dict = {
   "The local copy — including any unsent changes — will be permanently removed from this device. If this is the only copy of that budget, download a backup first.":
     "A cópia local — inclusive as mudanças não enviadas — será removida definitivamente deste dispositivo. Se esta for a única cópia desse orçamento, baixe um backup antes.",
   "The local replica is not ready.": "A réplica local não está pronta.",
-  "The monthly AI allowance for this account is used up — it resets at the start of the next month (UTC). You can keep using AI right away with your own key in Settings → Artificial intelligence.":
-    "O limite mensal de IA desta conta foi esgotado — ele se renova no início do próximo mês (UTC). Você pode continuar usando a IA imediatamente com sua própria chave em Configurações → Inteligência artificial.",
   "The password must be at least 8 characters.": "A senha precisa ter pelo menos 8 caracteres.",
   "The proposal exceeds “To be budgeted” — uncheck or reduce items.": "A proposta ultrapassa “A orçar” — desmarque ou reduza itens.",
-  "The server has no OpenAI key configured — server mode is unavailable. Use your own key or keep AI off.":
-    "O servidor não tem nenhuma chave da OpenAI configurada — o modo servidor está indisponível. Use sua própria chave ou deixe a IA desligada.",
-  "The server has no OpenAI key configured. Set OPENAI_API_KEY and restart the app, or use your own key in Settings → Artificial intelligence.":
-    "O servidor não tem nenhuma chave da OpenAI configurada. Defina OPENAI_API_KEY e reinicie o app, ou use sua própria chave em Configurações → Inteligência artificial.",
   "The server hit an unexpected error. Nothing was changed — try again.": "O servidor encontrou um erro inesperado. Nada foi alterado — tente de novo.",
   "The server refuses to sync this budget until its encryption is upgraded to the new format.":
     "O servidor se recusa a sincronizar este orçamento até que a criptografia seja atualizada para o novo formato.",
@@ -542,7 +524,6 @@ export const ptBR: Dict = {
     "Desmarque o que não quiser. As duplicadas são ignoradas — toque em uma para editá-la e adicioná-la mesmo assim.",
   Usage: "Uso",
   Use: "Usar",
-  "Use your own key": "Usar minha própria chave",
   Utilities: "Serviços",
   "WARNING: IndexedDB unavailable — data is kept only in session memory (it will not survive closing the app).":
     "AVISO: IndexedDB indisponível — os dados ficam apenas na memória da sessão (não sobrevivem ao fechamento do app).",
@@ -565,7 +546,6 @@ export const ptBR: Dict = {
   "Your first account": "Sua primeira conta",
   "already exists": "já existe",
   "available after: {amount}": "disponível depois: {amount}",
-  "backup, end-to-end encryption, account": "backup, criptografia de ponta a ponta, conta",
   "cancel split": "cancelar a divisão",
   dark: "escuro",
   details: "detalhes",
@@ -595,10 +575,8 @@ export const ptBR: Dict = {
   server: "servidor",
   settings: "configurações",
   skipped: "ignorada",
-  "status, re-download": "status, baixar de novo",
   "the server will store your data in plain form again": "o servidor vai guardar seus dados em texto claro de novo",
   "the whole local copy as a file — no network needed": "toda a cópia local como um arquivo — sem precisar de rede",
-  "theme, language, currency, discreet": "tema, idioma, moeda, discreto",
   today: "hoje",
   unknown: "desconhecido",
   "unlock the budget on a new device without the password": "desbloquear o orçamento em um dispositivo novo sem a senha",

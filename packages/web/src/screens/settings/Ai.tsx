@@ -5,9 +5,9 @@ import { api } from "../../lib/api";
 import { OPENAI_MODELS, type OpenAiModel, useSettings, useTheme } from "../../lib/contexts";
 import { useT } from "../../lib/i18n";
 import { checkModelAvailability, type ModelAvailability } from "../../lib/openaiModels";
-import { legacyCredentialMigration, readLegacyOpenAiCredential, setEphemeralOpenAiCredential } from "../../lib/settingsPersist";
+import { legacyCredentialMigration, readLegacyOpenAiCredential } from "../../lib/settingsPersist";
 import { CORAL, font, TEAL } from "../../lib/theme";
-import { Helper, Row, Seg } from "./ui";
+import { Eyebrow, Helper, Row, Seg } from "./ui";
 
 /**
  * AI provider and model are budget-scoped and synchronized. During the staged migration:
@@ -30,7 +30,7 @@ export function AiSection() {
   const C = useTheme();
   const { t } = useT();
   const { settings, setSettings } = useSettings();
-  const [key, setKey] = useState(() => readLegacyOpenAiCredential()?.key ?? "");
+  const [key] = useState(() => readLegacyOpenAiCredential()?.key ?? "");
   // Check server-mode availability only when it is selected (zero unnecessary requests).
   const { data: aiInfo } = useQuery({ queryKey: ["aiInfo"], queryFn: api.aiInfo, enabled: settings.aiMode === "server" });
 
@@ -61,11 +61,12 @@ export function AiSection() {
       ? t("AI is off — suggestions run locally on rules; nothing leaves this device.")
       : settings.aiMode === "server"
         ? t("AI requests go to OpenAI through the app server (operator's key).")
-        : t("The app talks to OpenAI directly from this browser using your own key — bypassing the server.");
+        : key
+          ? t("The app talks to OpenAI directly from this browser using your own key — bypassing the server.")
+          : t("Own OpenAI is unavailable until a key is stored in the secure credential vault.");
 
   const unavailable = (model: OpenAiModel) => avail?.state === "checked" && !avail.available.has(model);
   const select = (model: OpenAiModel) => {
-    setEphemeralOpenAiCredential(key, model);
     setSettings({ ...settings, openaiModel: model });
   };
 
@@ -106,6 +107,8 @@ export function AiSection() {
 
   return (
     <div style={{ marginTop: 4 }}>
+      <Eyebrow>{t("Budget preferences")}</Eyebrow>
+      <Helper>{t("The AI provider and model follow this budget on every device.")}</Helper>
       <Row label={t("Mode")}>
         <Seg
           value={settings.aiMode}
@@ -121,38 +124,18 @@ export function AiSection() {
 
       {settings.aiMode === "server" && aiInfo && !aiInfo.serverAi && (
         <div style={{ fontSize: 12, color: CORAL, marginTop: 8, lineHeight: 1.5 }}>
-          {t("The server has no OpenAI key configured — server mode is unavailable. Use your own key or keep AI off.")}
+          {t("The server has no OpenAI key configured — server mode is unavailable. Use an existing own key or keep AI on rules.")}
         </div>
       )}
 
       {settings.aiMode === "byok" && (
         <div style={{ marginTop: 14 }}>
-          <div style={{ fontSize: 11.5, fontWeight: 600, color: C.text, marginBottom: 6 }}>{t("OpenAI key")}</div>
-          <input
-            type="password"
-            value={key}
-            onChange={(e) => {
-              setKey(e.target.value);
-              setEphemeralOpenAiCredential(e.target.value, settings.openaiModel);
-            }}
-            placeholder="sk-…"
-            autoComplete="off"
-            autoCapitalize="none"
-            autoCorrect="off"
-            spellCheck={false}
-            aria-label={t("OpenAI key")}
-            style={{
-              width: "100%",
-              boxSizing: "border-box",
-              padding: "10px 12px",
-              borderRadius: 10,
-              border: `1px solid ${C.line}`,
-              background: C.bg,
-              color: C.text,
-              fontSize: 13,
-              fontFamily: font,
-            }}
-          />
+          <div style={{ fontSize: 11.5, fontWeight: 600, color: C.text, marginBottom: 6 }}>{t("Own OpenAI credential")}</div>
+          <Helper>
+            {key
+              ? t("An existing browser key is present and waiting for migration to the secure credential vault.")
+              : t("No own key is configured. Secure credential management will become available after the vault migration.")}
+          </Helper>
           <div style={{ fontSize: 11.5, fontWeight: 600, color: C.text, margin: "14px 0 6px" }}>{t("Model")}</div>
           <div role="radiogroup" aria-label={t("Model")} style={{ display: "flex", flexDirection: "column", gap: 8 }}>
             {AI_MODEL_TIERS.map((tier) =>
@@ -176,9 +159,7 @@ export function AiSection() {
           ) : avail?.state === "unknown" ? (
             <Helper>{t("Could not check model availability right now — every tier stays selectable.")}</Helper>
           ) : null}
-          {import.meta.env.DEV && legacyCredentialMigration() === "pending-stage-3" && (
-            <Helper>{t("An existing browser key is waiting for migration to the secure credential vault.")}</Helper>
-          )}
+          {legacyCredentialMigration() === "pending-stage-3" && <Helper>{t("Migration status: pending secure server acknowledgement.")}</Helper>}
           <Helper>{t("Existing browser credentials remain read-only until secure vault migration completes.")}</Helper>
         </div>
       )}
