@@ -164,6 +164,7 @@ describe("sync2 — input validation (format v2)", () => {
       wrappedDek: "v2.aaaaaaaa",
       kdfParams: "{}",
       snapshotBlob: "v2.bbbbbbbb",
+      credentialAction: { kind: "none" },
     };
     expect(e2eeUpgradeV2Input.safeParse(ok).success).toBe(true);
     expect(e2eeUpgradeV2Input.safeParse({ ...ok, budgetId: undefined }).success).toBe(false); // tenant assertion
@@ -175,5 +176,8 @@ describe("sync2 — input validation (format v2)", () => {
     expect(e2eeUpgradeV2Input.safeParse({ ...ok, wrappedDek: "v1.aaaaaaaa" }).success).toBe(false); // the old envelope is never reused
     expect(e2eeUpgradeV2Input.safeParse({ ...ok, snapshotBlob: "v1.bbbbbbbb" }).success).toBe(false);
     expect(e2eeUpgradeV2Input.safeParse({ ...ok, snapshotBlob: "" }).success).toBe(false);
+    expect(e2eeUpgradeV2Input.safeParse({ ...ok, credentialAction: undefined }).success).toBe(false);
+    expect(e2eeUpgradeV2Input.safeParse({ ...ok, credentialAction: { kind: "legacy-local-to-e2ee", ciphertext: "v2.credentialAAAA" } }).success).toBe(true);
+    expect(e2eeUpgradeV2Input.safeParse({ ...ok, credentialAction: { kind: "legacy-local-to-e2ee", ciphertext: "v1.credentialAAAA" } }).success).toBe(false);
   });
 });

@@ -192,6 +192,10 @@ export interface PendingE2eeUpgrade {
   wrappedDek: string;
   kdfParams: string;
   snapshotBlob: string;
+  credentialAction: { kind: "none" } | { kind: "legacy-local-to-e2ee"; ciphertext: string };
+  /** SHA-256 of the quarantined object that supplied legacy BYOK. The pending intent never
+   *  duplicates the plaintext key into IndexedDB; the digest only gates compare-and-delete. */
+  legacySettingsDigest?: string;
   /** The outbox ops whose effects are INSIDE snapshotBlob — commit acks exactly these, never
    *  clearAll: an edit made in another tab during the (seconds-long) ceremony must survive. */
   opIds: string[];

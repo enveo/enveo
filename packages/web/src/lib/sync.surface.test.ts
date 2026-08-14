@@ -111,6 +111,7 @@ const _pendingUpgrade: PendingE2eeUpgrade = {
   wrappedDek: "w",
   kdfParams: "k",
   snapshotBlob: "s",
+  credentialAction: { kind: "none" },
   opIds: [],
 };
 
