@@ -363,8 +363,6 @@ export const nl: Dict = {
   Server: "Server",
   "Server sync": "Synchronisatie met de server",
   "Server temporarily unreachable — your data is safe, we will retry.": "Server tijdelijk onbereikbaar — je gegevens zijn veilig, we proberen het opnieuw.",
-  "Server-side import is unavailable while end-to-end encryption is on — the server cannot see your data. Use a JSON backup (export/import) or disable encryption.":
-    "Importeren aan de serverkant is niet beschikbaar met eind-tot-eindversleuteling aan — de server kan je gegevens niet zien. Gebruik een JSON-back-up (exporteren/importeren) of schakel de versleuteling uit.",
   "Session expired": "Sessie verlopen",
   Settings: "Instellingen",
   Share: "Delen",

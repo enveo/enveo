@@ -133,10 +133,23 @@ describe.skipIf(!TEST_URL)("sync2 e2ee v2 (DB-backed)", () => {
   it("refuses E2EE while a server-vault credential exists without touching either copy", () => {
     expect(out.credentialBlock).toEqual({
       status: 409,
-      error: "credential_migration_required",
+      error: "credential_move_required",
       tier: "plain",
       credentialIntact: true,
       plaintextIntact: true,
+    });
+  });
+
+  it("moves a server-vault credential into the new E2EE epoch atomically and retries idempotently", () => {
+    expect(out.credentialMove).toEqual({
+      status: 200,
+      retryStatus: 200,
+      tier: "e2ee",
+      storageKind: "e2ee_ciphertext",
+      e2eeEpoch: 1,
+      ciphertext: "v2.movedCredential",
+      vaultFieldsCleared: true,
+      plaintextWiped: true,
     });
   });
 
@@ -146,7 +159,7 @@ describe.skipIf(!TEST_URL)("sync2 e2ee v2 (DB-backed)", () => {
     if (out.credentialRace.saveOutcome === "saved") {
       expect(out.credentialRace).toMatchObject({
         enableStatus: 409,
-        enableError: "credential_migration_required",
+        enableError: "credential_move_required",
         finalTier: "plain",
         credentialCount: 1,
       });

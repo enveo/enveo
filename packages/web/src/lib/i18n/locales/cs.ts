@@ -365,8 +365,6 @@ export const cs: Dict = {
   Server: "Server",
   "Server sync": "Synchronizace se serverem",
   "Server temporarily unreachable — your data is safe, we will retry.": "Server je dočasně nedostupný — tvá data jsou v bezpečí, zkusíme to znovu.",
-  "Server-side import is unavailable while end-to-end encryption is on — the server cannot see your data. Use a JSON backup (export/import) or disable encryption.":
-    "Import na serveru není při zapnutém end-to-end šifrování dostupný — server tvá data nevidí. Použij zálohu JSON (export/import), nebo šifrování vypni.",
   "Session expired": "Relace vypršela",
   Settings: "Nastavení",
   Share: "Sdílet",
