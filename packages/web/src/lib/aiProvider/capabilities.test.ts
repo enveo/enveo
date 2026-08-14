@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import type { BudgetSuggestProfile } from "@enveo/shared";
-import { importExecution, suggestionExecution } from "./capabilities";
+import { importExecution, importFlow, suggestionExecution } from "./capabilities";
 import type { AiStatus } from "./contracts";
 
 const status = (over: Partial<AiStatus> = {}): AiStatus => ({
@@ -29,10 +29,23 @@ describe("AI capability decisions", () => {
     expect(importExecution(model)).toBe("provider");
   });
 
-  it("Stage-3 E2EE/unconfigured model providers expose no model execution", () => {
+  it("E2EE rules/Enveo or a locked Own OpenAI provider expose no model execution", () => {
     const unavailable = status({ provider: "openai", code: "tier-unavailable", configured: false, capabilities: new Set() });
     expect(suggestionExecution(unavailable, "cautious")).toBe("local-rules");
     expect(suggestionExecution(unavailable, "custom")).toBe("unavailable");
     expect(importExecution(unavailable)).toBe("unavailable");
+  });
+
+  it("unlocked E2EE Own OpenAI exposes direct screenshot import", () => {
+    const direct = status({
+      provider: "openai",
+      code: "ready",
+      configured: true,
+      capabilities: new Set(["budget-suggestion", "custom-prompt", "screenshot-import"]),
+    });
+    expect(importExecution(direct)).toBe("provider");
+    expect(importFlow(direct, "e2ee")).toBe("local-e2ee");
+    expect(importFlow(direct, "plain")).toBe("server");
+    expect(importFlow(status(), "e2ee")).toBe("unavailable");
   });
 });
