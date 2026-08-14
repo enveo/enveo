@@ -64,6 +64,7 @@ const txn = (over: Partial<Transaction> & Pick<Transaction, "id" | "type" | "amo
   items: [],
   createdAt: "2026-07-01T00:00:00.000Z",
   ...over,
+  sourceRef: over.sourceRef ?? null,
 });
 
  

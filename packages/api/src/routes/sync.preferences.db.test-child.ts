@@ -7,6 +7,7 @@ export interface SyncPreferencesOutput {
   guards: { replayDuplicate: boolean; emptyRejected: boolean; foreignRejected: boolean; rejectedDidNotMutate: boolean };
   pullCarriesCompletePreferences: boolean;
   restore: { currentRoundTrips: boolean; oldBackupGetsDefaults: boolean };
+  sourceRef: { createApplied: boolean; updateApplied: boolean; snapshotPreserved: boolean; pullPreserved: boolean; restorePreserved: boolean };
 }
 
 async function main() {
@@ -72,7 +73,46 @@ async function main() {
     const pulledPreferences = budgetChange?.op === "upsert" ? (budgetChange.row as { preferences?: unknown }).preferences : undefined;
     const pullCarriesCompletePreferences = JSON.stringify(pulledPreferences) === JSON.stringify(after.budgets[0]!.preferences);
 
-    const current = structuredClone(after);
+    const accountId = crypto.randomUUID();
+    await applyPushOp(budgetId, "source-ref-client", {
+      opId: crypto.randomUUID(),
+      kind: "account.create",
+      payload: { id: accountId, name: "Import account" },
+    });
+    const transactionId = crypto.randomUUID();
+    const createTxn = await applyPushOp(budgetId, "source-ref-client", {
+      opId: crypto.randomUUID(),
+      kind: "txn.create",
+      payload: {
+        id: transactionId,
+        type: "expense",
+        accountId,
+        amount: 1234,
+        date: "2026-08-14",
+        sourceRef: "RAW BANK CREATE",
+      },
+    });
+    const updateTxn = await applyPushOp(budgetId, "source-ref-client", {
+      opId: crypto.randomUUID(),
+      kind: "txn.update",
+      payload: {
+        id: transactionId,
+        type: "expense",
+        accountId,
+        amount: 1234,
+        date: "2026-08-14",
+        sourceRef: "RAW BANK UPDATED",
+      },
+    });
+    const sourceSnapshot = await loadClientLedger(db, budgetId);
+    const snapshotPreserved = sourceSnapshot.transactions[0]?.sourceRef === "RAW BANK UPDATED";
+    const sourceChanges = await pullChanges(db, budgetId, 0);
+    const transactionChange = [...sourceChanges]
+      .reverse()
+      .find((change) => change.table === "transactions" && change.op === "upsert" && (change.row as { id?: string }).id === transactionId);
+    const pullPreserved = transactionChange?.op === "upsert" && (transactionChange.row as { sourceRef?: string }).sourceRef === "RAW BANK UPDATED";
+
+    const current = structuredClone(sourceSnapshot);
     current.budgets[0]!.preferences = {
       ...current.budgets[0]!.preferences,
       aiProvider: "openai",
@@ -81,6 +121,7 @@ async function main() {
     await db.transaction((tx) => restoreLedger(tx, budgetId, clientLedgerSchema.parse(current)));
     const restored = await loadClientLedger(db, budgetId);
     const currentRoundTrips = JSON.stringify(restored.budgets[0]!.preferences) === JSON.stringify(current.budgets[0]!.preferences);
+    const restorePreserved = restored.transactions[0]?.sourceRef === "RAW BANK UPDATED";
 
     const oldBackup = clientLedgerSchema.parse({ accounts: [], groups: [], envelopes: [], categories: [], places: [], allocations: [], transactions: [] });
     await db.transaction((tx) => restoreLedger(tx, budgetId, oldBackup));
@@ -96,6 +137,13 @@ async function main() {
       },
       pullCarriesCompletePreferences,
       restore: { currentRoundTrips, oldBackupGetsDefaults: JSON.stringify(afterOld.budgets[0]!.preferences) === JSON.stringify(defaults) },
+      sourceRef: {
+        createApplied: createTxn.status === "applied",
+        updateApplied: updateTxn.status === "applied",
+        snapshotPreserved,
+        pullPreserved,
+        restorePreserved,
+      },
     } satisfies SyncPreferencesOutput);
   } finally {
     await db.delete(s.users).where((await import("drizzle-orm")).eq(s.users.id, user!.id));

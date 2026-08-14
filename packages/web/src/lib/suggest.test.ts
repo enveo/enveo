@@ -41,6 +41,7 @@ const txn = (partial: Partial<Transaction> & { date: string }): Transaction => (
   items: [],
   createdAt: partial.date,
   ...partial,
+  sourceRef: partial.sourceRef ?? null,
 });
 
 const L = (envelopes: Envelope[], transactions: Transaction[]): ClientLedger =>

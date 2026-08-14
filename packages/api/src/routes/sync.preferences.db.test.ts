@@ -29,4 +29,8 @@ describe.skipIf(!TEST_URL)("plain sync budget preferences", () => {
   test("restore round-trips current preferences and defaults old backups", () => {
     expect(output.restore).toEqual({ currentRoundTrips: true, oldBackupGetsDefaults: true });
   });
+
+  test("sourceRef survives create, update, pull, snapshot and restore", () => {
+    expect(output.sourceRef).toEqual({ createApplied: true, updateApplied: true, snapshotPreserved: true, pullPreserved: true, restorePreserved: true });
+  });
 });

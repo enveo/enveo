@@ -164,6 +164,7 @@ export async function applyTxnCreate(x: Executor, budgetId: string, body: TxnPay
       name: body.name ?? null,
       note: body.note ?? null,
       tag: body.tag ?? null,
+      sourceRef: body.sourceRef ?? null,
       ...(body.createdAt ? { createdAt: body.createdAt } : {}),
     })
     .returning();
@@ -203,6 +204,7 @@ export async function applyTxnUpdate(x: Executor, budgetId: string, body: TxnPay
       note: body.note ?? null,
       // tag is preserved when the update does not send it (UI edits don't know import tags)
       ...(body.tag !== undefined ? { tag: body.tag } : {}),
+      ...(body.sourceRef !== undefined ? { sourceRef: body.sourceRef } : {}),
     })
     .where(and(eq(s.transactions.id, body.id), eq(s.transactions.budgetId, budgetId)))
     .returning();

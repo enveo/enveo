@@ -70,6 +70,26 @@ describe("e2ee: encrypting ops and snapshots (v2 authenticated context)", () => 
     expect(back).toEqual(op);
   });
 
+  it("an encrypted transaction op preserves import-learning sourceRef inside ciphertext", async () => {
+    const dek = generateDek();
+    const op: SyncOp = {
+      opId: U1,
+      kind: "txn.create",
+      payload: {
+        id: U2,
+        type: "expense",
+        accountId: U3,
+        amount: 1234,
+        date: "2026-08-14",
+        sourceRef: "RAW BANK DESCRIPTION",
+      },
+    };
+    const encrypted = await encryptOp(op, dek, { budgetId: BUDGET, epoch: 1 });
+    expect(encrypted.ciphertext).not.toContain("RAW BANK DESCRIPTION");
+    const [decrypted] = await decryptOps([encrypted], dek, { budgetId: BUDGET, epoch: 1 });
+    expect((decrypted?.payload as { sourceRef?: string } | undefined)?.sourceRef).toBe("RAW BANK DESCRIPTION");
+  });
+
   it("SUBSTITUTION: swapping two valid ciphertexts while keeping their outer opIds fails", async () => {
     // The attack this format exists to stop: a malicious store pairs op B's valid ciphertext
     // with op A's clear opId, so B would be applied under A's idempotency identity.
