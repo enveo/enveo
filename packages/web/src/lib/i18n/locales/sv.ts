@@ -358,8 +358,6 @@ export const sv: Dict = {
   Server: "Server",
   "Server sync": "Synkronisering med servern",
   "Server temporarily unreachable — your data is safe, we will retry.": "Servern går tillfälligt inte att nå — dina data är trygga, vi försöker igen.",
-  "Server-side import is unavailable while end-to-end encryption is on — the server cannot see your data. Use a JSON backup (export/import) or disable encryption.":
-    "Import på serversidan är inte tillgänglig när totalsträckskryptering är på — servern kan inte se dina data. Använd en JSON-säkerhetskopia (exportera/importera) eller stäng av krypteringen.",
   "Session expired": "Sessionen har gått ut",
   Settings: "Inställningar",
   Share: "Dela",

@@ -363,8 +363,6 @@ export const ptBR: Dict = {
   "Server sync": "Sincronização com o servidor",
   "Server temporarily unreachable — your data is safe, we will retry.":
     "Servidor temporariamente inacessível — seus dados estão seguros, vamos tentar de novo.",
-  "Server-side import is unavailable while end-to-end encryption is on — the server cannot see your data. Use a JSON backup (export/import) or disable encryption.":
-    "A importação no servidor fica indisponível com a criptografia de ponta a ponta ligada — o servidor não consegue ver seus dados. Use um backup JSON (exportar/importar) ou desative a criptografia.",
   "Session expired": "Sessão expirada",
   Settings: "Configurações",
   Share: "Compartilhar",

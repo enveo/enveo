@@ -95,6 +95,16 @@ export type Sync2DbOutput = {
   disablePreferencesRestored: boolean;
   /* 11 — server-vault credential / E2EE exclusion */
   credentialBlock: { status: number; error: string | null; tier: string | null; credentialIntact: boolean; plaintextIntact: boolean };
+  credentialMove: {
+    status: number;
+    retryStatus: number;
+    tier: string | null;
+    storageKind: string | null;
+    e2eeEpoch: number | null;
+    ciphertext: string | null;
+    vaultFieldsCleared: boolean;
+    plaintextWiped: boolean;
+  };
   credentialRace: {
     enableStatus: number;
     enableError: string | null;
@@ -206,6 +216,7 @@ async function main(): Promise<void> {
     wrappedDek: "v2.wrapAAAA",
     kdfParams: "{}",
     snapshotBlob: "v2.snapAAAA",
+    credentialAction: { kind: "none" },
   });
   const enableRes = await call("POST", "/budget/e2ee/enable", {
     userId: userA,
@@ -214,6 +225,7 @@ async function main(): Promise<void> {
     wrappedDek: "v2.wrapAAAA",
     kdfParams: "{}",
     snapshotBlob: "v2.snapAAAA",
+    credentialAction: { kind: "none" },
   });
   const enabledRow = await budgetRow(budgetA);
   const [enSnap] = await db.select({ uptoSeq: s.e2eeSnapshots.uptoSeq }).from(s.e2eeSnapshots).where(eq(s.e2eeSnapshots.budgetId, budgetA));
@@ -453,6 +465,7 @@ async function main(): Promise<void> {
     wrappedDek: "v2.blockedWrap",
     kdfParams: "{}",
     snapshotBlob: "v2.blockedSnapshot",
+    credentialAction: { kind: "none" },
   });
   const blockedEnableBody = await jsonOf(blockedEnable);
   const blockedAfter = await budgetRow(blockedBudget);
@@ -461,6 +474,20 @@ async function main(): Promise<void> {
     .from(s.budgetAiCredentials)
     .where(eq(s.budgetAiCredentials.budgetId, blockedBudget));
   const blockedPlaintextRows = await db.select({ id: s.accounts.id }).from(s.accounts).where(eq(s.accounts.budgetId, blockedBudget));
+  const moveBody = {
+    userId: userBlocked,
+    budgetId: blockedBudget,
+    nextEpoch: 1,
+    wrappedDek: "v2.movedWrap",
+    kdfParams: "{}",
+    snapshotBlob: "v2.movedSnapshot",
+    credentialAction: { kind: "server-vault-to-e2ee", ciphertext: "v2.movedCredential" } as const,
+  };
+  const movedEnable = await call("POST", "/budget/e2ee/enable", moveBody);
+  const movedRetry = await call("POST", "/budget/e2ee/enable", moveBody);
+  const movedAfter = await budgetRow(blockedBudget);
+  const [movedCredential] = await db.select().from(s.budgetAiCredentials).where(eq(s.budgetAiCredentials.budgetId, blockedBudget));
+  const movedPlaintextRows = await db.select({ id: s.accounts.id }).from(s.accounts).where(eq(s.accounts.budgetId, blockedBudget));
 
   const userRace = await mkUser("credential-race");
   sessionUser = userRace;
@@ -483,6 +510,7 @@ async function main(): Promise<void> {
     wrappedDek: "v2.raceWrap",
     kdfParams: "{}",
     snapshotBlob: "v2.raceSnapshot",
+    credentialAction: { kind: "none" },
   });
   const [saveOutcome, raceEnable] = await Promise.all([savePromise, raceEnablePromise]);
   const raceEnableBody = await jsonOf(raceEnable);
@@ -552,6 +580,16 @@ async function main(): Promise<void> {
       tier: blockedAfter?.tier ?? null,
       credentialIntact: blockedCredentialRows.length === 1,
       plaintextIntact: blockedPlaintextRows.length === 1,
+    },
+    credentialMove: {
+      status: movedEnable.status,
+      retryStatus: movedRetry.status,
+      tier: movedAfter?.tier ?? null,
+      storageKind: movedCredential?.storageKind ?? null,
+      e2eeEpoch: movedCredential?.e2eeEpoch ?? null,
+      ciphertext: movedCredential?.ciphertext ?? null,
+      vaultFieldsCleared: movedCredential?.wrappedRecordDek === null && movedCredential?.masterKeyId === null,
+      plaintextWiped: movedPlaintextRows.length === 0,
     },
     credentialRace: {
       enableStatus: raceEnable.status,

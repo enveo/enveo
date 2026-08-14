@@ -50,8 +50,6 @@ export const pl: Dict = {
   "This OpenAI key cannot use the selected model. Choose another model and try again.":
     "Ten klucz OpenAI nie ma dostępu do wybranego modelu. Wybierz inny model i spróbuj ponownie.",
   "No OpenAI key is configured for this budget.": "Dla tego budżetu nie skonfigurowano klucza OpenAI.",
-  "Remove the server-stored Own OpenAI key in Settings → Artificial intelligence before enabling end-to-end encryption.":
-    "Przed włączeniem szyfrowania end-to-end usuń klucz Własne OpenAI przechowywany na serwerze w Ustawienia → Sztuczna inteligencja.",
   "The server credential vault is not configured. Ask the server operator to enable it.":
     "Sejf kluczy na serwerze nie jest skonfigurowany. Poproś operatora serwera o jego włączenie.",
   AVAILABLE: "DOSTĘPNE",
@@ -460,8 +458,6 @@ export const pl: Dict = {
   Server: "Serwer",
   "Server sync": "Synchronizacja z serwerem",
   "Server temporarily unreachable — your data is safe, we will retry.": "Serwer chwilowo nieosiągalny — dane są bezpieczne, spróbujemy ponownie.",
-  "Server-side import is unavailable while end-to-end encryption is on — the server cannot see your data. Use a JSON backup (export/import) or disable encryption.":
-    "Import przez serwer jest niedostępny przy włączonym szyfrowaniu end-to-end — serwer nie widzi Twoich danych. Użyj kopii JSON (eksport/import) albo wyłącz szyfrowanie.",
   "Session expired": "Sesja wygasła",
   Settings: "Ustawienia",
   Share: "Udostępnij",

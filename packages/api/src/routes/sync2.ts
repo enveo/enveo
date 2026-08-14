@@ -25,7 +25,7 @@ import { clientLedgerSchema, E2EE_DISABLE_CONFIRM } from "@enveo/shared";
 import { and, sql as dsql, eq, gt } from "drizzle-orm";
 import { Hono } from "hono";
 import { z } from "zod";
-import { type BudgetMeta, requireTier, sessionUserId, TierMismatch } from "../context";
+import { type BudgetMeta, getBudgetMeta, requireTier, sessionUserId, TierMismatch } from "../context";
 import { db } from "../db/client";
 import * as s from "../db/schema";
 import { type Executor, wipeBudgetData } from "../sync/apply";
@@ -39,6 +39,11 @@ export const sync2Routes = new Hono();
  *  it stays blind to the contents. "v1." (and anything else) is a 400 at the boundary: an old
  *  client must not extend the journal/checkpoint/envelope with unauthenticated ciphertext. */
 const v2Ciphertext = z.string().min(8).startsWith("v2.");
+const budgetSecretCiphertext = z
+  .string()
+  .min(8)
+  .max(8_192)
+  .regex(/^v2\.[A-Za-z0-9+/=_-]+$/);
 
 export const sync2PushInput = z.object({
   epoch: z.number().int(),
@@ -78,6 +83,12 @@ export const e2eeEnableInput = z.object({
   wrappedDek: v2Ciphertext,
   kdfParams: z.string().min(1),
   snapshotBlob: v2Ciphertext,
+  /** The credential moves in the SAME transaction as the tier flip. The server never receives
+   *  its plaintext: the client re-enters the key and encrypts it under the fresh E2EE DEK. */
+  credentialAction: z.discriminatedUnion("kind", [
+    z.object({ kind: z.literal("none") }),
+    z.object({ kind: z.literal("server-vault-to-e2ee"), ciphertext: budgetSecretCiphertext }),
+  ]),
 });
 
 export const e2eeDisableInput = z.object({
@@ -303,7 +314,7 @@ sync2Routes.post("/sync2/reset", async (c) => {
 sync2Routes.post("/budget/e2ee/enable", async (c) => {
   const body = e2eeEnableInput.parse(await c.req.json());
   const result = await db.transaction(async (tx) => {
-    const resolvedMeta = await requireTier(c, "plain", tx);
+    const resolvedMeta = await getBudgetMeta(c, tx);
     // PER-REQUEST tenant assertions — BEFORE anything: this route replaces the resolved budget's
     // plaintext with THIS device's ciphertext and re-keys it under THIS device's wrappedDek.
     // Both the budget AND the owner are asserted since v2 (the ciphertexts NAME the budget in
@@ -316,7 +327,7 @@ sync2Routes.post("/budget/e2ee/enable", async (c) => {
     // forbidden state `tier=e2ee` + `storage_kind=server_vault`. Re-read the tier after acquiring
     // the lock because requireTier's earlier snapshot may have raced with another transaction.
     const [locked] = await tx
-      .select({ tier: s.budgets.tier, epoch: s.budgets.epoch, cipherVersion: s.budgets.cipherVersion })
+      .select({ tier: s.budgets.tier, epoch: s.budgets.epoch, cipherVersion: s.budgets.cipherVersion, wrappedDek: s.budgets.wrappedDek })
       .from(s.budgets)
       .where(eq(s.budgets.id, resolvedMeta.id))
       .for("update");
@@ -327,13 +338,31 @@ sync2Routes.post("/budget/e2ee/enable", async (c) => {
       epoch: locked.epoch ?? 0,
       cipherVersion: locked.cipherVersion === 1 ? 1 : 2,
     };
-    if (meta.tier !== "plain") throw new TierMismatch(meta);
-
     const [credential] = await tx
-      .select({ storageKind: s.budgetAiCredentials.storageKind })
+      .select({
+        storageKind: s.budgetAiCredentials.storageKind,
+        recordVersion: s.budgetAiCredentials.recordVersion,
+        ciphertext: s.budgetAiCredentials.ciphertext,
+      })
       .from(s.budgetAiCredentials)
       .where(eq(s.budgetAiCredentials.budgetId, meta.id));
-    if (credential?.storageKind === "server_vault") return { kind: "credential", id: meta.id } as const;
+    if (meta.tier === "e2ee") {
+      const credentialMatches =
+        body.credentialAction.kind === "none"
+          ? credential === undefined
+          : credential?.storageKind === "e2ee_ciphertext" && credential.ciphertext === body.credentialAction.ciphertext && locked.epoch === body.nextEpoch;
+      if (locked.wrappedDek === body.wrappedDek && locked.epoch === body.nextEpoch && locked.cipherVersion === 2 && credentialMatches) {
+        return { kind: "enabled", epoch: locked.epoch } as const;
+      }
+      throw new TierMismatch(meta);
+    }
+    const hasServerCredential = credential?.storageKind === "server_vault";
+    if (hasServerCredential && body.credentialAction.kind !== "server-vault-to-e2ee") {
+      return { kind: "credential-required", id: meta.id } as const;
+    }
+    if (!hasServerCredential && body.credentialAction.kind !== "none") {
+      return { kind: "credential-invalid", id: meta.id } as const;
+    }
 
     const nextEpoch = meta.epoch + 1;
     // The client's ciphertexts are BOUND to the epoch it expected — installing them under any
@@ -351,11 +380,27 @@ sync2Routes.post("/budget/e2ee/enable", async (c) => {
         target: s.e2eeSnapshots.budgetId,
         set: { uptoSeq: 0, blob: body.snapshotBlob, updatedAt: dsql`now()` },
       });
+    if (body.credentialAction.kind === "server-vault-to-e2ee") {
+      await tx
+        .update(s.budgetAiCredentials)
+        .set({
+          storageKind: "e2ee_ciphertext",
+          framingVersion: 2,
+          ciphertext: body.credentialAction.ciphertext,
+          wrappedRecordDek: null,
+          masterKeyId: null,
+          e2eeEpoch: nextEpoch,
+          recordVersion: (credential?.recordVersion ?? 0) + 1,
+          updatedAt: dsql`now()`,
+        })
+        .where(and(eq(s.budgetAiCredentials.budgetId, meta.id), eq(s.budgetAiCredentials.storageKind, "server_vault")));
+    }
     await wipeBudgetData(tx, meta.id); // plaintext disappears ONLY after the ciphertext is written
     return { kind: "enabled", epoch: nextEpoch } as const;
   });
   if (result.kind === "mismatch") return c.json(ownerMismatch(result.id), 409);
-  if (result.kind === "credential") return c.json({ error: "credential_migration_required", budgetId: result.id }, 409);
+  if (result.kind === "credential-required") return c.json({ error: "credential_move_required", budgetId: result.id }, 409);
+  if (result.kind === "credential-invalid") return c.json({ error: "credential_move_invalid", budgetId: result.id }, 409);
   if (result.kind === "stale") return c.json(epochMismatch(result.meta), 409);
   return c.json({ epoch: result.epoch });
 });

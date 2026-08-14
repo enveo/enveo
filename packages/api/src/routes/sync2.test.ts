@@ -73,7 +73,15 @@ describe("sync2 — input validation (format v2)", () => {
   });
 
   it("enable: requires v2 wrappedDek/snapshotBlob, kdfParams, the owner assertion, budgetId and nextEpoch", () => {
-    const ok = { wrappedDek: "v2.aaaaaaaa", kdfParams: "{}", snapshotBlob: "v2.bbbbbbbb", userId: "user-A", budgetId: UUID, nextEpoch: 1 };
+    const ok = {
+      wrappedDek: "v2.aaaaaaaa",
+      kdfParams: "{}",
+      snapshotBlob: "v2.bbbbbbbb",
+      userId: "user-A",
+      budgetId: UUID,
+      nextEpoch: 1,
+      credentialAction: { kind: "none" },
+    };
     expect(e2eeEnableInput.safeParse(ok).success).toBe(true);
     expect(e2eeEnableInput.safeParse({ ...ok, wrappedDek: "v1.aaaaaaaa" }).success).toBe(false); // old client
     expect(e2eeEnableInput.safeParse({ ...ok, snapshotBlob: "v1.bbbbbbbb" }).success).toBe(false);
@@ -82,6 +90,10 @@ describe("sync2 — input validation (format v2)", () => {
     expect(e2eeEnableInput.safeParse({ ...ok, budgetId: undefined }).success).toBe(false);
     expect(e2eeEnableInput.safeParse({ ...ok, nextEpoch: undefined }).success).toBe(false);
     expect(e2eeEnableInput.safeParse({ ...ok, nextEpoch: 0 }).success).toBe(false); // enable always bumps to ≥1
+    expect(e2eeEnableInput.safeParse({ ...ok, credentialAction: undefined }).success).toBe(false);
+    expect(e2eeEnableInput.safeParse({ ...ok, credentialAction: { kind: "server-vault-to-e2ee", ciphertext: "v2.credentialAAAA" } }).success).toBe(true);
+    expect(e2eeEnableInput.safeParse({ ...ok, credentialAction: { kind: "server-vault-to-e2ee", ciphertext: "v1.credentialAAAA" } }).success).toBe(false);
+    expect(e2eeEnableInput.safeParse({ ...ok, credentialAction: { kind: "server-vault-to-e2ee", ciphertext: `v2.${"a".repeat(8_193)}` } }).success).toBe(false);
   });
 
   /* The WIRE literal must stay locale-independent ASCII: the word the user TYPES is localized

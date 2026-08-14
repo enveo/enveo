@@ -362,8 +362,6 @@ export const fr: Dict = {
   Server: "Serveur",
   "Server sync": "Synchronisation avec le serveur",
   "Server temporarily unreachable — your data is safe, we will retry.": "Serveur temporairement injoignable — vos données sont en sécurité, nous réessaierons.",
-  "Server-side import is unavailable while end-to-end encryption is on — the server cannot see your data. Use a JSON backup (export/import) or disable encryption.":
-    "L'import côté serveur est indisponible quand le chiffrement de bout en bout est actif — le serveur ne peut pas voir vos données. Utilisez une sauvegarde JSON (export/import) ou désactivez le chiffrement.",
   "Session expired": "Session expirée",
   Settings: "Réglages",
   Share: "Partager",

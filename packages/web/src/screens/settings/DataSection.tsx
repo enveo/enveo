@@ -19,6 +19,7 @@ import {
 } from "../../lib/crypto";
 import { exportBackup, importBackup } from "../../lib/data";
 import * as e2ee from "../../lib/e2ee";
+import { prepareEnableCredentialAction } from "../../lib/e2eeCredentialCeremonies";
 import { useT } from "../../lib/i18n";
 import * as persist from "../../lib/persist";
 import { completeExplicitSignOut, ExplicitSignOutPendingError, type SignOutPreparation } from "../../lib/signOut";
@@ -272,6 +273,7 @@ function E2eeEnableWizard() {
   const [haveBackup, setHaveBackup] = useState(false);
   const [pass, setPass] = useState("");
   const [pass2, setPass2] = useState("");
+  const [openAIKey, setOpenAIKey] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -280,6 +282,7 @@ function E2eeEnableWizard() {
     setHaveBackup(false);
     setPass("");
     setPass2("");
+    setOpenAIKey("");
     setError(null);
     setSheet(true);
   };
@@ -307,13 +310,30 @@ function E2eeEnableWizard() {
       const salt = generateSalt();
       const dek = generateDek();
       const kek = await deriveKek(pass, salt, DEFAULT_KDF_PARAMS);
+      const credentialStatus = await api.byokCredentialStatus(budgetId);
+      setHasServerCredential(credentialStatus.configured);
       let epoch: number;
       for (let attempt = 0; ; attempt++) {
         const nextEpoch = e2ee.getTierMeta().epoch + 1;
         const wrappedDek = await wrapDek(dek, kek, dekWrapAadContext(budgetId, nextEpoch));
         const snapshotBlob = await e2ee.encryptSnapshot(ledger, dek, { budgetId, epoch: nextEpoch, uptoSeq: 0 });
+        const credentialAction = await prepareEnableCredentialAction({
+          configured: credentialStatus.configured,
+          key: openAIKey,
+          budgetId,
+          nextEpoch,
+          dek,
+        });
         try {
-          ({ epoch } = await api.e2eeEnable({ wrappedDek, kdfParams: freshKdfParams(salt), snapshotBlob, userId, budgetId, nextEpoch }));
+          ({ epoch } = await api.e2eeEnable({
+            wrappedDek,
+            kdfParams: freshKdfParams(salt),
+            snapshotBlob,
+            userId,
+            budgetId,
+            nextEpoch,
+            credentialAction,
+          }));
           break;
         } catch (err) {
           // 409 tier_mismatch with tier "plain" = only our epoch expectation was stale
@@ -338,6 +358,7 @@ function E2eeEnableWizard() {
       void persist.persistLedger(store.snapshotForPersist());
       void broadcastKeysChanged(); // peer tabs pick up the fresh key state before their next cycle
       void syncNow("e2ee-enable"); // backlogged outbox ops go out via a normal v2 push
+      setOpenAIKey("");
       setSheet(false); // the section switches to the e2ee panel (statusOn = confirmation)
     } catch (e) {
       setError(`${t("Enabling failed — nothing was changed, your data stays as it was.")} ${apiErrorMessage(e)}`);
@@ -366,11 +387,10 @@ function E2eeEnableWizard() {
           label={t("Enable end-to-end encryption")}
           desc={
             hasServerCredential
-              ? t("Remove the server-stored Own OpenAI key in Settings → Artificial intelligence before enabling end-to-end encryption.")
+              ? t("Your Own OpenAI key will move into the encrypted budget. Re-enter it once during setup.")
               : t("Budget data will be encrypted on your device before it reaches the server. Server-side features will be unavailable.")
           }
           onClick={open}
-          disabled={hasServerCredential}
           chevron
         />
       </ActionGroup>
@@ -453,6 +473,17 @@ function E2eeEnableWizard() {
                   style={inputStyle(SC)}
                 />
                 <StrengthMeter pass={pass} />
+                {hasServerCredential && (
+                  <input
+                    type="password"
+                    value={openAIKey}
+                    onChange={(e) => setOpenAIKey(e.target.value)}
+                    placeholder={t("Re-enter your OpenAI API key")}
+                    autoComplete="off"
+                    aria-label={t("Re-enter your OpenAI API key")}
+                    style={{ ...inputStyle(SC), marginTop: 10 }}
+                  />
+                )}
                 <input
                   type="password"
                   value={pass2}
@@ -469,7 +500,7 @@ function E2eeEnableWizard() {
                       icon={<ActionIcon paths={IC.shield} />}
                       label={t("Encrypt and enable")}
                       onClick={() => void run()}
-                      disabled={busy || passStrength(pass) === 0 || pass !== pass2}
+                      disabled={busy || passStrength(pass) === 0 || pass !== pass2 || (hasServerCredential && openAIKey.trim().length === 0)}
                       busyLabel={busy ? t("Encrypting…") : undefined}
                     />
                   </ActionGroup>

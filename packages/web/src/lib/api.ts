@@ -133,7 +133,8 @@ const ERROR_KEYS: Record<string, Message> = {
   ai_key_invalid: msg("OpenAI rejected your key — check it in Settings → Artificial intelligence."), // byok: OpenAI rejected the user's key (401/403)
   ai_model_unavailable: msg("This OpenAI key cannot use the selected model. Choose another model and try again."),
   credential_not_configured: msg("No OpenAI key is configured for this budget."),
-  credential_migration_required: msg("Remove the server-stored Own OpenAI key in Settings → Artificial intelligence before enabling end-to-end encryption."),
+  credential_move_required: msg("Re-enter your OpenAI API key so it can move into the encrypted budget."),
+  credential_move_invalid: msg("The OpenAI key changed on another device. Refresh its status and try again."),
   vault_unavailable: msg("The server credential vault is not configured. Ask the server operator to enable it."),
   ai_capability_unsupported: msg("The selected AI provider does not support this feature."),
 
@@ -266,8 +267,15 @@ export const api = {
   /* `budgetId` + `nextEpoch` since ciphertext v2: the wrapped DEK and the snapshot are BOUND to
      (budgetId, nextEpoch) by their authenticated context, so the client must name the epoch it
      encrypted for — the server refuses a stale expectation (409 with the current meta). */
-  e2eeEnable: (b: { wrappedDek: string; kdfParams: string; snapshotBlob: string; userId: string; budgetId: string; nextEpoch: number }) =>
-    http<{ epoch: number }>("POST", "/budget/e2ee/enable", b),
+  e2eeEnable: (b: {
+    wrappedDek: string;
+    kdfParams: string;
+    snapshotBlob: string;
+    userId: string;
+    budgetId: string;
+    nextEpoch: number;
+    credentialAction: { kind: "none" } | { kind: "server-vault-to-e2ee"; ciphertext: string };
+  }) => http<{ epoch: number }>("POST", "/budget/e2ee/enable", b),
   e2eeDisable: (b: { confirm: string; ledger: ClientLedger; userId: string }) => http<{ epoch: number }>("POST", "/budget/e2ee/disable", b),
   /* `expectedEpoch` = the epoch the new envelope's AAD was built for: a rekey landing on any
      OTHER generation would permanently brick every unlock (the v2 wrap hard-fails under a
