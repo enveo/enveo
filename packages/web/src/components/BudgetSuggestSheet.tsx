@@ -8,6 +8,7 @@ import {
 } from "@enveo/shared";
 import { type CSSProperties, useEffect, useState } from "react";
 import { runSuggest } from "../lib/ai";
+import { useAiProvider } from "../lib/aiProvider/useAiProvider";
 import { apiErrorMessage, type BudgetSuggestProfile, type BudgetSuggestResponse, type StateResponse } from "../lib/api";
 import { type Settings, useCurrency, useSettings } from "../lib/contexts";
 import { currencySymbol, fmtTrim, formatMoney, isLight, localizePadExpression, parseAmount } from "../lib/format";
@@ -67,6 +68,7 @@ export function BudgetSuggestSheet({ show, state, month, onClose }: { show: bool
   const { t, lang } = useT();
   const currency = useCurrency();
   const { settings } = useSettings();
+  const provider = useAiProvider();
   const [phase, setPhase] = useState<Phase>("setup");
   const [profile, setProfile] = useState<BudgetSuggestProfile>("cautious");
   /** Selected CUSTOM profile (id from settings.customProfiles) — then profile==="custom". */
@@ -129,7 +131,7 @@ export function BudgetSuggestSheet({ show, state, month, onClose }: { show: bool
     setPhase("loading");
     setError(null);
     try {
-      const r = await runSuggest({ ledger, month, profile, customPrompt: effectivePrompt, locale: lang, settings });
+      const r = await runSuggest({ ledger, month, profile, customPrompt: effectivePrompt, locale: lang, provider });
       startReview(r);
     } catch (e) {
       setError(apiErrorMessage(e));

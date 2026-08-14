@@ -1,22 +1,7 @@
-/**
- * AI function dispatch per mode (`settings.aiMode`) — PURE functions without
- * hooks (settings passed explicitly):
- *
- *  - off:    local rule engine — ZERO network — for the budget SUGGESTION only.
- *            Screenshot import is AI-only, so in this mode the UI gates it behind
- *            the consent sheet instead of running it.
- *  - byok:   prompt from shared → OpenAI directly from the browser (lib/openai.ts),
- *            the user's key; a failed SUGGESTION falls back to rules — import has
- *            nothing to fall back to and surfaces the error.
- *  - server: SUGGEST since v1.25.0 uses the same local path as byok, only the chat
- *            goes through /api/ai/chat (operator-key proxy — no replica
- *            and no computation on the server); the import still via /api routes.
- *
- * PRIVACY CONTRACT: in the off and byok modes suggest generation does NOT touch
- * /api/* — the only egress in byok is api.openai.com.
- */
+/** Provider-neutral AI workflows. Provider selection, credential storage and
+ * transport live behind lib/aiProvider; this module only builds and normalizes
+ * domain requests. Deterministic rules remain local and perform no fetch. */
 import {
-  AI_VISION_TIMEOUT_MS,
   type AiLocale,
   type BudgetSuggestionBasis,
   type BudgetSuggestProfile,
@@ -24,7 +9,6 @@ import {
   buildAgentSuggestContext,
   buildAgentSuggestPrompt,
   buildBudgetSuggestionBasis,
-  buildImportExtractPrompt,
   buildRulesBudgetSuggestion,
   buildSuggestPrompt,
   type ChatMessage,
@@ -34,20 +18,10 @@ import {
   normalizeAgentSuggestion,
   normalizeBudgetSuggestion,
   parseAgentSuggestResponse,
-  parseImportExtractResponse,
   parseSuggestResponse,
 } from "@enveo/shared";
-import { api, type ImportItem } from "./api";
-import type { Settings } from "./contexts";
-import { browserLocales, currencyForLocales } from "./currency";
-import { type ChatTarget, chatJson, legacyByokTarget } from "./openai";
-import { readLegacyOpenAiCredential } from "./settingsPersist";
-
-/** Settings subset read by the dispatch (device-only, from localStorage). */
-export type AiSettings = Pick<Settings, "aiMode" | "openaiModel"> & {
-  /** Test-only injection; production reads an existing key through the quarantine adapter. */
-  openaiKey?: string;
-};
+import type { AiProvider } from "./aiProvider/contracts";
+import type { ImportItem } from "./api";
 
 /* The UI language goes to the prompt builders AS IS (a `Lang` is a BCP-47 tag and AiLocale takes
    any of them since 2.2.0): the model names, notes and rationales come back in the user's
@@ -65,40 +39,6 @@ export class AiConsentRequired extends Error {
     this.name = "AiConsentRequired";
   }
 }
-
-/**
- * The SINGLE decision "can this device talk to a model, and how" — used by every AI entry point
- * AND by the UI that offers them (the import sheet). Keeping one function is the point:
- * `aiMode !== "off"` is NOT the same question. Settings switches the mode to `byok` before a key
- * is typed (and clearing the field persists an empty one), so byok-without-key is an everyday
- * state in which there is no target — the UI must hide AI-only entry points instead of letting
- * the user run into an error.
- */
-export function aiTarget(settings: AiSettings): ChatTarget | null {
-  if (settings.aiMode === "server") return { kind: "server" };
-  const credential = settings.openaiKey ? { key: settings.openaiKey, model: settings.openaiModel } : readLegacyOpenAiCredential();
-  if (settings.aiMode === "byok" && credential) return legacyByokTarget(credential.key, credential.model ?? settings.openaiModel);
-  return null;
-}
-
-/** Is any AI-only feature (screenshot import) usable right now? */
-export const hasAiTarget = (settings: AiSettings): boolean => aiTarget(settings) !== null;
-
-/**
- * The model answered something that is not our schema (empty, truncated, prose instead of JSON):
- * a CODE, not the raw SyntaxError from JSON.parse. The import sheet renders what it catches, so
- * an unwrapped parse error would print "Unexpected token < in JSON at position 0" at the user —
- * lib/api.ts maps ai_upstream_error to a sentence in their language instead.
- */
-function parseOrFail<T>(parse: () => T): T {
-  try {
-    return parse();
-  } catch {
-    throw new Error("ai_upstream_error");
-  }
-}
-
-const todayISO = (): string => new Date().toISOString().slice(0, 10);
 
 /* ── Budget suggestion ─────────────────────────────────────────────── */
 
@@ -162,18 +102,9 @@ export async function runSuggest(args: {
   profile: BudgetSuggestProfile;
   customPrompt?: string;
   locale: AiLocale;
-  settings: AiSettings;
+  provider: AiProvider;
 }): Promise<BudgetSuggestResponse> {
-  const { ledger, month, profile, customPrompt, locale, settings } = args;
-  /* Since v1.25.0 ONE path in all modes: the prompt (envelope snapshots of
-     2 months / rules candidates) is built LOCALLY from the replica — i.e. from
-     what you see on screen — and only the model transport differs:
-       byok   → straight to api.openai.com with the user's key,
-       server → via /api/ai/chat (a narrow operator-key proxy),
-       off    → no model (pure rules).
-     The /budget/suggest route stays on the server only for old clients. */
-  const target = aiTarget(settings);
-  const llm: ((req: ChatRequest) => Promise<string>) | null = target ? (req) => chatJson(req, target) : null;
+  const { ledger, month, profile, customPrompt, locale, provider } = args;
 
   /* off | byok — LOCALLY (no /api/*). Response assembly like in
      generateSuggestion on the server side (the wrap is 10 lines; the server
@@ -207,13 +138,14 @@ export async function runSuggest(args: {
       "rules",
     );
   }
+  const status = await provider.status();
   /* Custom profile = AGENT (single prompt: current + previous month):
      requires AI; NO silent fallback to rules (the user's directive must not
      "vanish" into history candidates). */
   if (agent) {
-    if (!llm) return wrap(empty(["agent_requires_ai"]), "rules");
+    if (!status.capabilities.has("custom-prompt")) return wrap(empty(["agent_requires_ai"]), "rules");
     try {
-      const raw = await llm(agent.request);
+      const raw = await provider.complete(agent.request);
       const norm = normalizeAgentSuggestion(parseAgentSuggestResponse(raw), basis, basis.amountToDistribute);
       return wrap(norm, norm.repaired ? "ai_repaired" : "ai");
     } catch {
@@ -222,10 +154,10 @@ export async function runSuggest(args: {
   }
 
   const request = chat.request;
-  if (!llm) return wrap(buildRulesBudgetSuggestion(basis), "rules");
+  if (status.provider === "rules" || !status.capabilities.has("budget-suggestion")) return wrap(buildRulesBudgetSuggestion(basis), "rules");
 
   try {
-    const raw = await llm(request);
+    const raw = await provider.complete(request);
     const norm = normalizeBudgetSuggestion(basis, parseSuggestResponse(raw));
     return wrap(norm, norm.repaired ? "ai_repaired" : "ai");
   } catch {
@@ -236,43 +168,9 @@ export async function runSuggest(args: {
 
 /* ── Screenshot import ───────────────────────────────────────────────── */
 
-export async function runImportExtract(args: { images: string[]; locale: AiLocale; ledger: ClientLedger; settings: AiSettings }): Promise<ImportItem[]> {
-  const { images, locale, ledger, settings } = args;
-  /* DELIBERATE difference vs suggest: in the server mode the import GOES via the
-     /import/extract route — (1) vision (images as content-parts) doesn't go
-     through the /api/ai mirror (content=string, limit), (2) cycle 2 (assignments
-     from history) is inherently server-side. */
-  if (settings.aiMode === "server") return (await api.importExtract(images, locale)).items;
-  const target = aiTarget(settings);
-  if (target?.kind !== "byok") throw new AiConsentRequired(); // off, or byok with an empty key
-
-  /* byok: cycle 1 (facts from the screenshot) via the user's key; historical
-     assignments (cycle 2) are server-only — items come back unassigned,
-     the user fills them in the review sheet. */
-  const refs = {
-    envelopes: ledger.envelopes.filter((e) => !e.archived).map((e) => ({ id: e.id, name: e.name })),
-    categories: ledger.categories.map((c) => ({ id: c.id, name: c.name })),
-  };
-  // SAME currency the server would read for this budget (falls back to the browser locale on a
-  // fresh replica, exactly like useCurrency()) — the prompt-identity tests require the
-  // byok request to stay byte-identical to the server's for the same budget.
-  const currency = ledger.budgets[0]?.currency ?? currencyForLocales(browserLocales());
-  // vision cap, not the chat cap: multi-screenshot extraction is the slow end (shared budget)
-  const raw = await chatJson(buildImportExtractPrompt(images, refs, todayISO(), locale, currency), target, AI_VISION_TIMEOUT_MS);
-  return parseOrFail(() => parseImportExtractResponse(raw)).map((t) => ({
-    date: t.date,
-    amount: t.amount,
-    type: t.type,
-    isRefund: t.isRefund,
-    name: "",
-    tag: t.tag,
-    rawPlace: t.rawPlace,
-    envelopeId: null,
-    envelopeName: null,
-    categoryId: null,
-    categoryName: null,
-    placeName: null,
-    currency: t.currency,
-    fxOriginal: t.fxOriginal,
-  }));
+export async function runImportExtract(args: { images: string[]; locale: AiLocale; ledger: ClientLedger; provider: AiProvider }): Promise<ImportItem[]> {
+  const { images, locale, ledger, provider } = args;
+  const status = await provider.status();
+  if (!status.capabilities.has("screenshot-import")) throw new AiConsentRequired();
+  return (await provider.extractImport({ images, locale, ledger })).items;
 }

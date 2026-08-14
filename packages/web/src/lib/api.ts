@@ -7,7 +7,16 @@ import { getSyncStatus, type SyncStatus, subscribeSyncStatus } from "./sync";
 /* ── API response shapes — @enveo/shared is the source of truth ──── */
 export type { AccountView, EnvelopeView, StateResponse } from "@enveo/shared";
 
-import { AI_IMPORT_EXTRACT_TIMEOUT_MS, type AiLocale, type BudgetSuggestProfile, type BudgetSuggestResponse, type ClientLedger } from "@enveo/shared";
+import {
+  AI_IMPORT_EXTRACT_TIMEOUT_MS,
+  AI_PROXY_CHAT_TIMEOUT_MS,
+  type AiLocale,
+  type BudgetSuggestProfile,
+  type BudgetSuggestResponse,
+  type ChatRequest,
+  type ClientLedger,
+  type OpenAiModel,
+} from "@enveo/shared";
 import { getAccountPreferencesRemote, patchAccountPreferencesRemote } from "./accountPreferencesRemote";
 import type { ImportExtractResult } from "./aiProvider/contracts";
 import { timeoutSignal } from "./timeoutSignal";
@@ -192,6 +201,25 @@ export const api = {
 
   /** Whether the server has an OpenAI key configured (the "server" mode available). */
   aiInfo: () => http<{ serverAi: boolean }>("GET", "/ai/info"),
+
+  byokCredentialStatus: (budgetId: string) =>
+    http<{ configured: boolean; available: boolean; reason?: "vault_unavailable" }>(
+      "GET",
+      `/ai/credentials/openai/status?budgetId=${encodeURIComponent(budgetId)}`,
+    ),
+  byokCredentialSave: (budgetId: string, key: string) => http<{ configured: true }>("PUT", "/ai/credentials/openai", { budgetId, key }),
+  byokCredentialDelete: (budgetId: string) => http<{ configured: false }>("DELETE", "/ai/credentials/openai", { budgetId }),
+  byokCredentialTest: (budgetId: string, model: OpenAiModel) =>
+    http<{ ok: true; model: OpenAiModel }>("POST", "/ai/credentials/openai/test", { budgetId, model }),
+  byokChat: (budgetId: string, model: OpenAiModel, request: ChatRequest) =>
+    http<{ content: string }>(
+      "POST",
+      "/ai/byok/chat",
+      { budgetId, model, messages: request.messages, responseFormat: request.responseFormat, reasoningEffort: request.reasoningEffort },
+      AI_PROXY_CHAT_TIMEOUT_MS,
+    ),
+  byokImportExtract: (budgetId: string, model: OpenAiModel, images: string[], locale: AiLocale) =>
+    http<ImportExtractResult>("POST", "/ai/byok/import/extract", { budgetId, model, images, locale }, AI_IMPORT_EXTRACT_TIMEOUT_MS),
 
   /* `locale` = the UI language (any BCP-47 tag): the model writes its names, notes and
      rationales in it. Not to be confused with demoSeed's pl|en, which picks a SEED DATASET. */

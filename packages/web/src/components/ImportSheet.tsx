@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { runImportExtract } from "../lib/ai";
+import { useAiProvider } from "../lib/aiProvider/useAiProvider";
 import { api, apiErrorMessage, type EditedImportItem, type ImportApplyItem, type ImportItem, type StateResponse } from "../lib/api";
 import { useCurrency, useSettings, useTheme } from "../lib/contexts";
 import * as e2ee from "../lib/e2ee";
@@ -45,6 +46,7 @@ export function ImportSheet({ show, onClose, state, onApplied }: { show: boolean
   const { t, tp, lang } = useT();
   const currency = useCurrency();
   const { settings } = useSettings();
+  const provider = useAiProvider();
   const accounts = [...state.accounts].filter((a) => !a.archived).sort((a, b) => a.sort - b.sort);
   const envById = new Map(state.envelopes.map((e) => [e.id, e]));
 
@@ -126,7 +128,7 @@ export function ImportSheet({ show, onClose, state, onApplied }: { show: boolean
       }
       // extraction via AI dispatch (server → /api, byok → OpenAI directly);
       // apply/dry-run ALWAYS through the API (writing to the ledger is the server's domain)
-      const extracted = await runImportExtract({ images, locale: lang, ledger, settings });
+      const extracted = await runImportExtract({ images, locale: lang, ledger, provider });
       if (extracted.length === 0) {
         setError(t("No transactions were recognized in the screenshots."));
         return;
