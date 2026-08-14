@@ -48,6 +48,8 @@ export type Sync2DbOutput = {
   enableSnapshotUptoSeq: number | null;
   enablePlaintextWiped: boolean;
   enablePreferencesCleared: boolean;
+  rekeyCredentialPreserved: boolean;
+  rekeyEpochUnchanged: boolean;
   /* 2 — normal v2 push/pull */
   pushStatus: number;
   pulledOpIds: string[];
@@ -251,6 +253,23 @@ async function main(): Promise<void> {
   const enabledRow = await budgetRow(budgetA);
   const [enSnap] = await db.select({ uptoSeq: s.e2eeSnapshots.uptoSeq }).from(s.e2eeSnapshots).where(eq(s.e2eeSnapshots.budgetId, budgetA));
   const plainAfter = await db.select({ id: s.accounts.id }).from(s.accounts).where(eq(s.accounts.budgetId, budgetA));
+  await db.insert(s.budgetAiCredentials).values({
+    budgetId: budgetA,
+    provider: "openai",
+    storageKind: "e2ee_ciphertext",
+    framingVersion: 2,
+    ciphertext: "v2.rekeyCredential",
+    e2eeEpoch: 1,
+    recordVersion: 1,
+  });
+  const rekeyRes = await call("POST", "/sync2/rekey", {
+    userId: userA,
+    expectedEpoch: 1,
+    wrappedDek: "v2.rewrappedSameDek",
+    kdfParams: '{"changed":true}',
+  });
+  const rekeyBudget = await budgetRow(budgetA);
+  const [rekeyCredential] = await db.select().from(s.budgetAiCredentials).where(eq(s.budgetAiCredentials.budgetId, budgetA));
 
   /* ── 2. Normal v2 push/pull ───────────────────────────────────────── */
 
@@ -597,6 +616,13 @@ async function main(): Promise<void> {
     enableSnapshotUptoSeq: enSnap?.uptoSeq ?? null,
     enablePlaintextWiped: plainAfter.length === 0,
     enablePreferencesCleared: enabledRow?.preferences === null,
+    rekeyCredentialPreserved:
+      rekeyRes.status === 200 &&
+      rekeyCredential?.storageKind === "e2ee_ciphertext" &&
+      rekeyCredential.ciphertext === "v2.rekeyCredential" &&
+      rekeyCredential.e2eeEpoch === 1 &&
+      rekeyCredential.recordVersion === 1,
+    rekeyEpochUnchanged: rekeyBudget?.epoch === 1 && rekeyBudget.wrappedDek === "v2.rewrappedSameDek",
     pushStatus: pushRes.status,
     pulledOpIds: pullBody.ops?.map((o) => o.opId) ?? [],
     pulledCiphertexts: pullBody.ops?.map((o) => o.ciphertext) ?? [],

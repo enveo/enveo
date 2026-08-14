@@ -59,6 +59,11 @@ describe.skipIf(!TEST_URL)("sync2 e2ee v2 (DB-backed)", () => {
     expect(out.resetPreferencesCleared).toBe(true);
   });
 
+  it("password rekey preserves the E2EE credential because the DEK and epoch do not change", () => {
+    expect(out.rekeyCredentialPreserved).toBe(true);
+    expect(out.rekeyEpochUnchanged).toBe(true);
+  });
+
   it("EVERY normal sync2 route refuses a legacy budget with 409 e2ee_upgrade_required — reads included", () => {
     for (const [name, r] of Object.entries(out.legacyStatuses)) {
       expect({ name, status: r.status }).toEqual({ name, status: 409 });
