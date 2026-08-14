@@ -46,6 +46,12 @@ export const pl: Dict = {
     "AI wyłączone — podpowiedzi działają lokalnie na regułach, nic nie jest wysyłane poza to urządzenie.",
   "AI requests go to OpenAI through the app server (operator's key).": "Zapytania AI idą przez serwer aplikacji (klucz operatora) do OpenAI.",
   "AI unavailable — rules were used instead.": "AI niedostępne — użyto reguł.",
+  "The selected AI provider does not support this feature.": "Wybrany dostawca AI nie obsługuje tej funkcji.",
+  "This OpenAI key cannot use the selected model. Choose another model and try again.":
+    "Ten klucz OpenAI nie ma dostępu do wybranego modelu. Wybierz inny model i spróbuj ponownie.",
+  "No OpenAI key is configured for this budget.": "Dla tego budżetu nie skonfigurowano klucza OpenAI.",
+  "The server credential vault is not configured. Ask the server operator to enable it.":
+    "Sejf kluczy na serwerze nie jest skonfigurowany. Poproś operatora serwera o jego włączenie.",
   AVAILABLE: "DOSTĘPNE",
   Account: "Konto",
   "About {n}× the cost of the cheapest tier.": "Około {n}× ceny najtańszego wariantu.",
@@ -770,6 +776,44 @@ export const pl: Dict = {
   "Theme, language, currency, privacy display, and widgets": "Motyw, język, waluta, dyskretny widok i widgety",
   "This device": "To urządzenie",
   "Use the existing own key": "Użyj istniejącego własnego klucza",
+  "A key is stored in the server vault. Enveo cannot display it; saving below replaces it atomically.":
+    "Klucz jest zapisany w sejfie na serwerze. Enveo nie może go wyświetlić; zapisanie nowego klucza poniżej zastąpi go atomowo.",
+  "Add an OpenAI key in Settings → Artificial intelligence to use Own OpenAI.":
+    "Dodaj klucz OpenAI w Ustawieniach → Sztuczna inteligencja, aby używać Własnego OpenAI.",
+  "Connection successful.": "Połączenie działa.",
+  "Custom suggestion profiles configured for this budget: {n}.": "Własne profile podpowiedzi skonfigurowane dla tego budżetu: {n}.",
+  "Enveo AI": "AI Enveo",
+  "Enveo sends the required prompt or screenshots to OpenAI using the server operator's key.":
+    "Enveo wysyła wymagany prompt lub zrzuty ekranu do OpenAI, używając klucza operatora serwera.",
+  "New key (replaces current)": "Nowy klucz (zastąpi obecny)",
+  "No OpenAI key is configured.": "Nie skonfigurowano klucza OpenAI.",
+  "OpenAI API key": "Klucz API OpenAI",
+  "OpenAI key": "Klucz OpenAI",
+  "OpenAI key removed.": "Klucz OpenAI został usunięty.",
+  "OpenAI key saved securely.": "Klucz OpenAI został bezpiecznie zapisany.",
+  "Own OpenAI": "Własne OpenAI",
+  "Own OpenAI for end-to-end encrypted budgets will require the zero-knowledge vault.":
+    "Własne OpenAI dla budżetów szyfrowanych end-to-end będzie wymagać sejfu zero-knowledge.",
+  "Paste the key once. Enveo stores only an envelope-encrypted credential and never returns it.":
+    "Wklej klucz jeden raz. Enveo zapisze tylko klucz zaszyfrowany kopertowo i nigdy go nie zwróci.",
+  Provider: "Dostawca",
+  "Ready to use.": "Gotowe do użycia.",
+  "Remove key": "Usuń klucz",
+  "Saving…": "Zapisywanie…",
+  "Suggestions are calculated on this device. No data is sent to an AI service.":
+    "Podpowiedzi są obliczane na tym urządzeniu. Żadne dane nie są wysyłane do usługi AI.",
+  "Test connection": "Sprawdź połączenie",
+  "Testing…": "Sprawdzanie…",
+  "The AI provider, model and custom profiles follow this budget on every device.":
+    "Dostawca AI, model i własne profile są synchronizowane z tym budżetem na wszystkich urządzeniach.",
+  "The server credential vault is not configured.": "Sejf kluczy na serwerze nie jest skonfigurowany.",
+  "The server operator has not enabled Enveo AI.": "Operator serwera nie włączył AI Enveo.",
+  "This provider is unavailable for an end-to-end encrypted budget.": "Ten dostawca jest niedostępny dla budżetu szyfrowanego end-to-end.",
+  "Unlock the budget to use this provider.": "Odblokuj budżet, aby użyć tego dostawcy.",
+  "Use Own OpenAI": "Użyj Własnego OpenAI",
+  "Without AI": "Bez AI",
+  "Your browser calls Enveo; Enveo decrypts your key only for the request and calls OpenAI. The key is never returned to a device.":
+    "Przeglądarka wywołuje Enveo; Enveo odszyfrowuje Twój klucz tylko na czas żądania i wywołuje OpenAI. Klucz nigdy nie jest zwracany na urządzenie.",
   "{pct}% of net worth": "{pct}% wartości netto",
   "{sym}/mo": "{sym}/mies",
 };

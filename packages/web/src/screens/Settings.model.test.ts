@@ -24,12 +24,17 @@ describe("Settings information architecture", () => {
     expect(sources.join("\n")).not.toMatch(/local-only|Local mode/);
   });
 
-  it("shows legacy BYOK migration state without exposing a new-key input", async () => {
+  it("accepts a write-only BYOK credential without exposing or prefilling a stored key", async () => {
     const sources = await Promise.all([
       Bun.file(`${import.meta.dir}/settings/Ai.tsx`).text(),
       Bun.file(`${import.meta.dir}/../components/AiConsentSheet.tsx`).text(),
     ]);
-    expect(sources.join("\n")).not.toContain('type="password"');
-    expect(sources.join("\n")).not.toContain("setEphemeralOpenAiCredential");
+    const source = sources.join("\n");
+    expect(source).toContain('type="password"');
+    expect(source).toContain('useState("")');
+    expect(source).toContain("provider.saveCredential(value)");
+    expect(source).not.toContain("readLegacyOpenAiCredential");
+    expect(source).not.toContain("getCredential");
+    expect(source).not.toContain("setEphemeralOpenAiCredential");
   });
 });
