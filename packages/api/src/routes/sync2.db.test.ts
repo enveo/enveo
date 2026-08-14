@@ -92,6 +92,7 @@ describe.skipIf(!TEST_URL)("sync2 e2ee v2 (DB-backed)", () => {
     expect(out.upgradeJournalRowCount).toBe(0); // the entire legacy journal is gone
     expect(out.upgradeSnapshot).toEqual({ uptoSeq: 0, blob: "v2.newCheckpointAAAA" });
     expect(out.upgradePreferencesCleared).toBe(true);
+    expect(out.upgradeCredentialRotated).toBe(true);
   });
 
   it("a retry of the SAME committed attempt is idempotent; a DIFFERENT attempt is a stale-epoch 409", () => {

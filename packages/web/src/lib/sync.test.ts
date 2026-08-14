@@ -28,7 +28,7 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { type ClientLedger, createDefaultAccountPreferences, type SyncOp } from "@enveo/shared";
 import { accountPreferences } from "./accountPreferences";
-import { decryptPayload, generateDek, opAadContext } from "./crypto";
+import { budgetSecretAadContext, decryptPayload, generateDek, opAadContext } from "./crypto";
 import * as e2ee from "./e2ee";
 import { clearLocalData, idbGet, idbPut } from "./idb";
 import * as outbox from "./outbox";
@@ -322,6 +322,7 @@ afterEach(() => {
   __resetBackoff(); // a scheduled retry would fire into the NEXT test's stub (and its `calls`)
   globalThis.fetch = realFetch;
   delete (globalThis as { location?: unknown }).location;
+  delete (globalThis as { localStorage?: unknown }).localStorage;
 });
 
 /* ── Pure decision: decideIdentity moved to sync/identity.test.ts with its module ── */
@@ -1216,6 +1217,30 @@ describe("sync e2ee v2: DEK lifecycle across an epoch change", () => {
     expect(e2ee.getTierMeta()).toEqual({ tier: "e2ee", epoch: 2 }); // expectedEpoch(1)+1 — from the RECORD
     expect(e2ee.isDekValidForEpoch(2)).toBe(true); // the SAME DEK, validated for the new generation
     expect(e2ee.getCipherVersion()).toBe(2);
+  });
+
+  it("rotates a quarantined legacy BYOK key into the new E2EE generation and removes plaintext only after success", async () => {
+    await stampedReplica(1);
+    e2ee.setCipherVersion(1);
+    const values = new Map([["enveo.settings", JSON.stringify({ aiMode: "byok", openaiKey: "sk-legacy-local", openaiModel: "gpt-5.6-luna" })]]);
+    (globalThis as { localStorage?: unknown }).localStorage = {
+      getItem: (key: string) => values.get(key) ?? null,
+      removeItem: (key: string) => values.delete(key),
+    };
+
+    upgradeNetworkFail = true;
+    await expect(upgradeServerE2eeV2("ceremony-pass-123")).rejects.toThrow();
+    expect(values.has("enveo.settings")).toBe(true);
+    upgradeNetworkFail = false;
+    await upgradeServerE2eeV2(null);
+
+    expect(upgradeCalls[1]).toBe(upgradeCalls[0]);
+    const sent = JSON.parse(upgradeCalls[1]!) as { credentialAction: { kind: string; ciphertext: string } };
+    expect(sent.credentialAction.kind).toBe("legacy-local-to-e2ee");
+    expect(await decryptPayload(sent.credentialAction.ciphertext, e2ee.requireValidatedDek(2), budgetSecretAadContext(BUDGET_V2, 2, "openai"))).toBe(
+      "sk-legacy-local",
+    );
+    expect(values.has("enveo.settings")).toBe(false);
   });
 
   it("F2: a stale-epoch refusal drops the intent (it can never commit) — a fresh attempt may start over", async () => {

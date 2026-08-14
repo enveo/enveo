@@ -135,6 +135,10 @@ export const e2eeUpgradeV2Input = z.object({
   wrappedDek: v2Ciphertext,
   kdfParams: z.string().min(1),
   snapshotBlob: v2Ciphertext,
+  credentialAction: z.discriminatedUnion("kind", [
+    z.object({ kind: z.literal("none") }),
+    z.object({ kind: z.literal("legacy-local-to-e2ee"), ciphertext: budgetSecretCiphertext }),
+  ]),
 });
 
 /** 409 in the budget_mismatch shape — the client re-proves its identity and writes nothing. */
@@ -563,19 +567,68 @@ export function createSync2Routes(options: { masterKeys: VaultMasterKeyProvider 
         // Anything else (another device won, or the budget was upgraded long ago) is a stale
         // generation: refuse with the current epoch — the loser re-bootstraps via Unlock.
         if (row.epoch === body.expectedEpoch + 1 && row.wrappedDek === body.wrappedDek) {
-          return { kind: "done", id: meta.id, epoch: row.epoch } as const;
+          const [credential] = await tx
+            .select({
+              storageKind: s.budgetAiCredentials.storageKind,
+              e2eeEpoch: s.budgetAiCredentials.e2eeEpoch,
+              ciphertext: s.budgetAiCredentials.ciphertext,
+            })
+            .from(s.budgetAiCredentials)
+            .where(eq(s.budgetAiCredentials.budgetId, meta.id));
+          const credentialMatches =
+            body.credentialAction.kind === "none"
+              ? credential === undefined
+              : credential?.storageKind === "e2ee_ciphertext" &&
+                credential.e2eeEpoch === row.epoch &&
+                credential.ciphertext === body.credentialAction.ciphertext;
+          if (credentialMatches) return { kind: "done", id: meta.id, epoch: row.epoch } as const;
         }
         // row.* is the state read UNDER the lock — authoritative, unlike the pre-lock meta
         return { kind: "stale", meta: { ...meta, epoch: row.epoch, cipherVersion: 2 } } as const;
       }
       if (row.epoch !== body.expectedEpoch)
         return { kind: "stale", meta: { ...meta, epoch: row.epoch, cipherVersion: row.cipherVersion === 1 ? 1 : 2 } } as const;
+      const [legacyCredential] = await tx
+        .select({ recordVersion: s.budgetAiCredentials.recordVersion })
+        .from(s.budgetAiCredentials)
+        .where(eq(s.budgetAiCredentials.budgetId, meta.id));
+      if (legacyCredential && body.credentialAction.kind === "none") return { kind: "credential-required", id: meta.id } as const;
       const nextEpoch = row.epoch + 1;
       await tx
         .update(s.budgets)
         .set({ wrappedDek: body.wrappedDek, kdfParams: body.kdfParams, cipherVersion: 2, epoch: nextEpoch, preferences: null })
         .where(eq(s.budgets.id, meta.id));
       await tx.delete(s.e2eeOps).where(eq(s.e2eeOps.budgetId, meta.id)); // the ENTIRE legacy journal
+      if (body.credentialAction.kind === "legacy-local-to-e2ee") {
+        const recordVersion = (legacyCredential?.recordVersion ?? 0) + 1;
+        if (!Number.isSafeInteger(recordVersion)) throw new Error("ai_vault_record_version_exhausted");
+        await tx
+          .insert(s.budgetAiCredentials)
+          .values({
+            budgetId: meta.id,
+            provider: "openai",
+            storageKind: "e2ee_ciphertext",
+            framingVersion: 2,
+            ciphertext: body.credentialAction.ciphertext,
+            wrappedRecordDek: null,
+            masterKeyId: null,
+            e2eeEpoch: nextEpoch,
+            recordVersion,
+          })
+          .onConflictDoUpdate({
+            target: s.budgetAiCredentials.budgetId,
+            set: {
+              storageKind: "e2ee_ciphertext",
+              framingVersion: 2,
+              ciphertext: body.credentialAction.ciphertext,
+              wrappedRecordDek: null,
+              masterKeyId: null,
+              e2eeEpoch: nextEpoch,
+              recordVersion,
+              updatedAt: dsql`now()`,
+            },
+          });
+      }
       await tx
         .insert(s.e2eeSnapshots)
         .values({ budgetId: meta.id, uptoSeq: 0, blob: body.snapshotBlob, updatedAt: dsql`now()` })
@@ -587,6 +640,7 @@ export function createSync2Routes(options: { masterKeys: VaultMasterKeyProvider 
     });
     if (result.kind === "mismatch") return c.json(ownerMismatch(result.id), 409);
     if (result.kind === "stale") return c.json(epochMismatch(result.meta), 409);
+    if (result.kind === "credential-required") return c.json({ error: "credential_move_required", budgetId: result.id }, 409);
     return c.json({ budgetId: result.id, epoch: result.epoch, cipherVersion: 2, uptoSeq: 0 });
   });
 

@@ -67,6 +67,7 @@ export type Sync2DbOutput = {
   upgradeJournalRowCount: number; // must be 0 — the legacy journal is gone
   upgradeSnapshot: { uptoSeq: number; blob: string } | null;
   upgradePreferencesCleared: boolean;
+  upgradeCredentialRotated: boolean;
   retryStatus: number; // idempotent same-attempt retry
   retryEpoch: number | null;
   epochAfterRetry: number | null; // still expectedEpoch+1 — never two bumps
@@ -319,6 +320,15 @@ async function main(): Promise<void> {
   const legacyOps = [uuid(), uuid(), uuid()];
   await db.insert(s.e2eeOps).values(legacyOps.map((opId) => ({ budgetId: budgetL, opId, ciphertext: "v1.legacyOp" })));
   await db.insert(s.e2eeSnapshots).values({ budgetId: budgetL, uptoSeq: 2, blob: "v1.legacyBlob" });
+  await db.insert(s.budgetAiCredentials).values({
+    budgetId: budgetL,
+    provider: "openai",
+    storageKind: "e2ee_ciphertext",
+    framingVersion: 2,
+    ciphertext: "v1.legacyCredential",
+    e2eeEpoch: 1,
+    recordVersion: 1,
+  });
 
   const legacyCalls: Record<string, Response> = {
     pushV2: await call("POST", "/sync2/push", { epoch: 1, budgetId: budgetL, ops: [{ opId: uuid(), ciphertext: "v2.freshAAAA" }] }),
@@ -371,6 +381,7 @@ async function main(): Promise<void> {
     wrappedDek,
     kdfParams: JSON.stringify({ algo: "argon2id", m: 65536, t: 3, p: 1, saltB64: "AAAA" }),
     snapshotBlob: "v2.newCheckpointAAAA",
+    credentialAction: { kind: "legacy-local-to-e2ee", ciphertext: "v2.upgradedCredential" } as const,
   });
   // the shared cookie was swapped to B mid-ceremony: session ≠ the userId the client verified.
   // The body still names L's budget and L's user; B's session resolves B's own e2ee budget, so
@@ -410,7 +421,11 @@ async function main(): Promise<void> {
   await raw`DROP TRIGGER test_fail_snapshot ON e2ee_snapshots`;
   await raw`DROP FUNCTION test_fail_snapshot()`;
   const rowAfterForcedFailure = await budgetRow(budgetL);
-  const journalIntactAfterForcedFailure = (await journalCount(budgetL)) === 3;
+  const [credentialAfterForcedFailure] = await db.select().from(s.budgetAiCredentials).where(eq(s.budgetAiCredentials.budgetId, budgetL));
+  const journalIntactAfterForcedFailure =
+    (await journalCount(budgetL)) === 3 &&
+    credentialAfterForcedFailure?.ciphertext === "v1.legacyCredential" &&
+    credentialAfterForcedFailure.recordVersion === 1;
 
   /* ── 5. The upgrade ceremony succeeds ─────────────────────────────── */
 
@@ -422,6 +437,7 @@ async function main(): Promise<void> {
     .select({ uptoSeq: s.e2eeSnapshots.uptoSeq, blob: s.e2eeSnapshots.blob })
     .from(s.e2eeSnapshots)
     .where(eq(s.e2eeSnapshots.budgetId, budgetL));
+  const [upgradedCredential] = await db.select().from(s.budgetAiCredentials).where(eq(s.budgetAiCredentials.budgetId, budgetL));
 
   /* ── 6. Idempotent retry vs. a different stale attempt ────────────── */
 
@@ -451,10 +467,15 @@ async function main(): Promise<void> {
       wrappedDek,
       kdfParams: "{}",
       snapshotBlob: "v2.checkpointC",
+      credentialAction: { kind: "none" },
     });
   const [c1, c2] = await Promise.all([attempt("v2.wrapDeviceONE"), attempt("v2.wrapDeviceTWO")]);
   const rowC = await budgetRow(budgetC);
   const winner = c1.status === 200 ? "v2.wrapDeviceONE" : "v2.wrapDeviceTWO";
+
+  // The synthetic legacy credential above exists only to exercise rotation; keep the following
+  // plain disable scenario focused on its explicit no-credential branch.
+  await db.delete(s.budgetAiCredentials).where(eq(s.budgetAiCredentials.budgetId, budgetL));
 
   /* ── 10. Disable restores plaintext (on the upgraded v2 budget L) ─── */
 
@@ -642,6 +663,11 @@ async function main(): Promise<void> {
     upgradeJournalRowCount,
     upgradeSnapshot: upSnap ?? null,
     upgradePreferencesCleared: upgradedRow?.preferences === null,
+    upgradeCredentialRotated:
+      upgradedCredential?.storageKind === "e2ee_ciphertext" &&
+      upgradedCredential.ciphertext === "v2.upgradedCredential" &&
+      upgradedCredential.e2eeEpoch === 2 &&
+      upgradedCredential.recordVersion === 2,
     retryStatus: retryRes.status,
     retryEpoch: (retryBody.epoch as number) ?? null,
     epochAfterRetry: rowAfterRetry?.epoch ?? null,

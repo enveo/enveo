@@ -20,11 +20,23 @@
  * both sides on the old generation and retrying is safe (the server is idempotent for a
  * repeated identical attempt and refuses a stale epoch).
  */
-import { DEFAULT_KDF_PARAMS, dekWrapAadContext, deriveKek, freshKdfParams, generateDek, generateSalt, wrapDek } from "../crypto";
+import { budgetPreferences } from "../budgetPreferences";
+import {
+  budgetSecretAadContext,
+  DEFAULT_KDF_PARAMS,
+  dekWrapAadContext,
+  deriveKek,
+  encryptPayload,
+  freshKdfParams,
+  generateDek,
+  generateSalt,
+  wrapDek,
+} from "../crypto";
 import * as e2ee from "../e2ee";
-import { idbGet } from "../idb";
+import { idbDelete, idbGet } from "../idb";
 import * as outbox from "../outbox";
 import * as persist from "../persist";
+import { readLegacySettings, removeLegacySettingsIfUnchanged } from "../settingsPersist";
 import { store } from "../store";
 import { type PendingE2eeUpgrade, TierMismatchError } from "./contracts";
 import { syncNow } from "./cycle";
@@ -34,6 +46,11 @@ import { clearReplacePending } from "./obligations";
 import { e2eeReplicaBudgetId } from "./replica";
 import { throwIfBudgetMismatch, throwIfTierMismatch, unauthorized } from "./transport";
 
+async function settingsDigest(raw: string): Promise<string> {
+  const bytes = new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(raw)));
+  return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
 /** The durable CEREMONY-INTENT record — type + rationale in sync/contracts.ts (PendingE2eeUpgrade). */
 async function loadPendingE2eeUpgrade(): Promise<PendingE2eeUpgrade | null> {
   const raw = await idbGet<(Omit<PendingE2eeUpgrade, "dek"> & { dek: Uint8Array | ArrayBuffer }) | null>("meta", "e2eePendingUpgrade").catch(() => null);
@@ -41,7 +58,7 @@ async function loadPendingE2eeUpgrade(): Promise<PendingE2eeUpgrade | null> {
   // structured clone preserves Uint8Array; defensively accept ArrayBuffer too (see e2ee.hydrate)
   const dek = raw.dek instanceof Uint8Array ? raw.dek : raw.dek instanceof ArrayBuffer ? new Uint8Array(raw.dek) : null;
   if (!dek) return null;
-  return { ...raw, dek };
+  return { ...raw, credentialAction: raw.credentialAction ?? { kind: "none" }, dek };
 }
 
 /** Does an interrupted upgrade ceremony await completion? (The panel offers Resume/Discard.) */
@@ -92,6 +109,8 @@ export async function upgradeServerE2eeV2(password: string | null): Promise<void
     const salt = generateSalt();
     const dek = generateDek();
     const kek = await deriveKek(password, salt, DEFAULT_KDF_PARAMS);
+    const legacy = readLegacySettings();
+    const legacyKey = legacy?.value.openaiKey?.trim() ?? "";
     pending = {
       budgetId,
       expectedEpoch,
@@ -100,6 +119,13 @@ export async function upgradeServerE2eeV2(password: string | null): Promise<void
       wrappedDek: await wrapDek(dek, kek, dekWrapAadContext(budgetId, nextEpoch)),
       kdfParams: freshKdfParams(salt),
       snapshotBlob: await e2ee.encryptSnapshot(ledger, dek, { budgetId, epoch: nextEpoch, uptoSeq: 0 }),
+      credentialAction: legacyKey
+        ? {
+            kind: "legacy-local-to-e2ee",
+            ciphertext: await encryptPayload(legacyKey, dek, budgetSecretAadContext(budgetId, nextEpoch, "openai")),
+          }
+        : { kind: "none" },
+      ...(legacyKey && legacy ? { legacySettingsDigest: await settingsDigest(legacy.raw) } : {}),
       opIds: outbox.snapshot().map((en) => en.op.opId), // their effects are inside the snapshot
     };
     // DURABLE before the first POST — a lost response must find the same materials on retry.
@@ -120,6 +146,7 @@ export async function upgradeServerE2eeV2(password: string | null): Promise<void
       wrappedDek: pending.wrappedDek,
       kdfParams: pending.kdfParams,
       snapshotBlob: pending.snapshotBlob,
+      credentialAction: pending.credentialAction,
     }),
   });
   if (res.status === 401) throw unauthorized();
@@ -152,6 +179,14 @@ export async function upgradeServerE2eeV2(password: string | null): Promise<void
   outbox.removeAcked(pending.opIds);
   void persist.persistLedger(store.snapshotForPersist());
   clearReplacePending(); // the upgrade IS a full server replace from local
+  if (pending.legacySettingsDigest) {
+    // The E2EE copy is committed. Point the encrypted budget preferences at it through the
+    // ordinary local op, then remove ONLY the exact quarantined plaintext object we consumed.
+    budgetPreferences.update({ aiProvider: "openai" });
+    const legacy = readLegacySettings();
+    if (legacy && (await settingsDigest(legacy.raw)) === pending.legacySettingsDigest) removeLegacySettingsIfUnchanged(legacy.raw);
+    await idbDelete("meta", "legacySettingsMigrationV1");
+  }
   await persist.putMeta("e2eePendingUpgrade", null); // the intent is fulfilled
   await broadcastKeysChanged(); // peer tabs drop dead key state; stale devices hit the 409 → Unlock
   void syncNow("e2ee-upgrade-v2");

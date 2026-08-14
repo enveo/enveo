@@ -266,12 +266,13 @@ describe("wire shapes: v2 E2EE endpoints", () => {
     expect(up!.method).toBe("POST");
     expect(up!.contentType).toBe("application/json");
     const body = bodyOf(up);
-    expect(Object.keys(body)).toEqual(["budgetId", "userId", "expectedEpoch", "cipherVersion", "wrappedDek", "kdfParams", "snapshotBlob"]);
+    expect(Object.keys(body)).toEqual(["budgetId", "userId", "expectedEpoch", "cipherVersion", "wrappedDek", "kdfParams", "snapshotBlob", "credentialAction"]);
     expect(body.budgetId).toBe(BUDGET_A);
     expect(body.userId).toBe("user-A");
     expect(body.expectedEpoch).toBe(1);
     expect(body.cipherVersion).toBe(2);
     expect(String(body.snapshotBlob).startsWith("v2.")).toBe(true);
+    expect(body.credentialAction).toEqual({ kind: "none" });
     expect(typeof body.wrappedDek).toBe("string");
     expect(typeof body.kdfParams).toBe("string");
   });
