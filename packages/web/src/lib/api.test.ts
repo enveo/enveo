@@ -55,6 +55,9 @@ describe("apiErrorMessage", () => {
     expect(apiErrorMessage(httpError(409, { error: "budget_mismatch", budgetId: "b1" }))).toBe(
       "The signed-in account changed while the data was being sent — nothing was written. Reload the app and try again.",
     );
+    expect(apiErrorMessage(httpError(409, { error: "credential_migration_required", budgetId: "b1" }))).toBe(
+      "Remove the server-stored Own OpenAI key in Settings → Artificial intelligence before enabling end-to-end encryption.",
+    );
   });
 
   it("localizes the client-side foreign_replica sentinel (thrown bare by the multi-tenant guard)", () => {

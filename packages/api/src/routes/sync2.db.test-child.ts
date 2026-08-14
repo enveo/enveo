@@ -19,7 +19,9 @@
  *  8. two genuinely CONCURRENT upgrades of one budget produce one winner, one 409 and ONE
  *     generation (the stored envelope is the winner's);
  *  9. a cookie-swapped tenant (session ≠ body.userId) and a foreign budgetId write NOTHING;
- * 10. disable still restores the plaintext and clears all ciphertext state.
+ * 10. disable still restores the plaintext and clears all ciphertext state;
+ * 11. a server-vault BYOK credential blocks plain→E2EE, and a concurrent credential save
+ *     versus E2EE enable can never commit the forbidden e2ee + server_vault combination.
  *
  * WHY A SEPARATE PROCESS: the route handlers run on the POOLED `db` (db/client.ts), pinned to
  * `env.DATABASE_URL` at import time. The EXPECT_DATABASE_URL fuse refuses anything but the
@@ -91,6 +93,16 @@ export type Sync2DbOutput = {
   disableCipherStateCleared: boolean;
   disablePlaintextRestored: boolean;
   disablePreferencesRestored: boolean;
+  /* 11 — server-vault credential / E2EE exclusion */
+  credentialBlock: { status: number; error: string | null; tier: string | null; credentialIntact: boolean; plaintextIntact: boolean };
+  credentialRace: {
+    enableStatus: number;
+    enableError: string | null;
+    saveOutcome: "saved" | "tier_mismatch" | "unexpected_error";
+    finalTier: string | null;
+    credentialCount: number;
+    forbiddenCombinationAbsent: boolean;
+  };
 };
 
 async function main(): Promise<void> {
@@ -107,6 +119,7 @@ async function main(): Promise<void> {
   const s = await import("../db/schema");
   const { sync2Routes } = await import("./sync2");
   const { TierMismatch } = await import("../context");
+  const { createCredentialRepository } = await import("../aiCredentials/repository");
   const { ZodError } = await import("zod");
 
   // Migrations run on an independent connection (same folder the production migrator uses).
@@ -416,6 +429,69 @@ async function main(): Promise<void> {
   const [disableSnap] = await db.select({ uptoSeq: s.e2eeSnapshots.uptoSeq }).from(s.e2eeSnapshots).where(eq(s.e2eeSnapshots.budgetId, budgetL));
   const restored = await db.select({ name: s.accounts.name }).from(s.accounts).where(eq(s.accounts.budgetId, budgetL));
 
+  /* ── 11. A server-vault credential and E2EE are mutually exclusive ──── */
+
+  const userBlocked = await mkUser("credential-block");
+  sessionUser = userBlocked;
+  const [blockedBudgetRow] = await db.insert(s.budgets).values({ userId: userBlocked, name: "credential block" }).returning({ id: s.budgets.id });
+  const blockedBudget = blockedBudgetRow!.id;
+  await db.insert(s.accounts).values({ budgetId: blockedBudget, name: "must survive" });
+  await db.insert(s.budgetAiCredentials).values({
+    budgetId: blockedBudget,
+    provider: "openai",
+    storageKind: "server_vault",
+    framingVersion: 1,
+    ciphertext: "v1.credential",
+    wrappedRecordDek: "v1.wrapped-dek",
+    masterKeyId: "test-key",
+    recordVersion: 1,
+  });
+  const blockedEnable = await call("POST", "/budget/e2ee/enable", {
+    userId: userBlocked,
+    budgetId: blockedBudget,
+    nextEpoch: 1,
+    wrappedDek: "v2.blockedWrap",
+    kdfParams: "{}",
+    snapshotBlob: "v2.blockedSnapshot",
+  });
+  const blockedEnableBody = await jsonOf(blockedEnable);
+  const blockedAfter = await budgetRow(blockedBudget);
+  const blockedCredentialRows = await db
+    .select({ budgetId: s.budgetAiCredentials.budgetId })
+    .from(s.budgetAiCredentials)
+    .where(eq(s.budgetAiCredentials.budgetId, blockedBudget));
+  const blockedPlaintextRows = await db.select({ id: s.accounts.id }).from(s.accounts).where(eq(s.accounts.budgetId, blockedBudget));
+
+  const userRace = await mkUser("credential-race");
+  sessionUser = userRace;
+  const [raceBudgetRow] = await db.insert(s.budgets).values({ userId: userRace, name: "credential race" }).returning({ id: s.budgets.id });
+  const raceBudget = raceBudgetRow!.id;
+  await db.insert(s.accounts).values({ budgetId: raceBudget, name: "race plaintext" });
+  const masterKey = new Uint8Array(32).fill(7);
+  const credentials = createCredentialRepository({
+    active: () => ({ id: "test-key", key: masterKey.slice() }),
+    byId: (id: string) => (id === "test-key" ? masterKey.slice() : null),
+  });
+  const savePromise = db
+    .transaction((tx) => credentials.replaceServerCredential(tx, { userId: userRace }, raceBudget, "sk-race-secret"))
+    .then(() => "saved" as const)
+    .catch((error: unknown) => (error instanceof TierMismatch ? ("tier_mismatch" as const) : ("unexpected_error" as const)));
+  const raceEnablePromise = call("POST", "/budget/e2ee/enable", {
+    userId: userRace,
+    budgetId: raceBudget,
+    nextEpoch: 1,
+    wrappedDek: "v2.raceWrap",
+    kdfParams: "{}",
+    snapshotBlob: "v2.raceSnapshot",
+  });
+  const [saveOutcome, raceEnable] = await Promise.all([savePromise, raceEnablePromise]);
+  const raceEnableBody = await jsonOf(raceEnable);
+  const raceAfter = await budgetRow(raceBudget);
+  const raceCredentialRows = await db
+    .select({ budgetId: s.budgetAiCredentials.budgetId })
+    .from(s.budgetAiCredentials)
+    .where(eq(s.budgetAiCredentials.budgetId, raceBudget));
+
   const out: Sync2DbOutput = {
     enableStaleEpochStatus: enableStale.status,
     enableStatus: enableRes.status,
@@ -470,6 +546,21 @@ async function main(): Promise<void> {
     disableCipherStateCleared: disableOps === 0 && disableSnap === undefined,
     disablePlaintextRestored: restored.length === 1 && restored[0]!.name === "restored",
     disablePreferencesRestored: (disabledRow?.preferences as { aiProvider?: string } | null)?.aiProvider === "openai",
+    credentialBlock: {
+      status: blockedEnable.status,
+      error: (blockedEnableBody.error as string) ?? null,
+      tier: blockedAfter?.tier ?? null,
+      credentialIntact: blockedCredentialRows.length === 1,
+      plaintextIntact: blockedPlaintextRows.length === 1,
+    },
+    credentialRace: {
+      enableStatus: raceEnable.status,
+      enableError: (raceEnableBody.error as string) ?? null,
+      saveOutcome,
+      finalTier: raceAfter?.tier ?? null,
+      credentialCount: raceCredentialRows.length,
+      forbiddenCombinationAbsent: !(raceAfter?.tier === "e2ee" && raceCredentialRows.length > 0),
+    },
   };
 
   await raw.end();

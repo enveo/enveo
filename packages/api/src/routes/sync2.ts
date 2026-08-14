@@ -303,18 +303,43 @@ sync2Routes.post("/sync2/reset", async (c) => {
 sync2Routes.post("/budget/e2ee/enable", async (c) => {
   const body = e2eeEnableInput.parse(await c.req.json());
   const result = await db.transaction(async (tx) => {
-    const meta = await requireTier(c, "plain", tx);
+    const resolvedMeta = await requireTier(c, "plain", tx);
     // PER-REQUEST tenant assertions — BEFORE anything: this route replaces the resolved budget's
     // plaintext with THIS device's ciphertext and re-keys it under THIS device's wrappedDek.
     // Both the budget AND the owner are asserted since v2 (the ciphertexts NAME the budget in
     // their authenticated context, so installing them on another budget bricks its bootstrap).
-    if (ownerAssertionFails(body.userId, sessionUserId(c))) return { mismatch: true, id: meta.id } as const;
-    if (budgetAssertionFails(body.budgetId, meta.id)) return { mismatch: true, id: meta.id } as const;
+    if (ownerAssertionFails(body.userId, sessionUserId(c))) return { kind: "mismatch", id: resolvedMeta.id } as const;
+    if (budgetAssertionFails(body.budgetId, resolvedMeta.id)) return { kind: "mismatch", id: resolvedMeta.id } as const;
+
+    // The budget row is the serialization point shared with every credential mutation. Without
+    // this lock, an E2EE enable and a BYOK save could both pass their tier checks and commit the
+    // forbidden state `tier=e2ee` + `storage_kind=server_vault`. Re-read the tier after acquiring
+    // the lock because requireTier's earlier snapshot may have raced with another transaction.
+    const [locked] = await tx
+      .select({ tier: s.budgets.tier, epoch: s.budgets.epoch, cipherVersion: s.budgets.cipherVersion })
+      .from(s.budgets)
+      .where(eq(s.budgets.id, resolvedMeta.id))
+      .for("update");
+    if (!locked) throw new Error("budget_vanished");
+    const meta: BudgetMeta = {
+      id: resolvedMeta.id,
+      tier: locked.tier === "e2ee" ? "e2ee" : "plain",
+      epoch: locked.epoch ?? 0,
+      cipherVersion: locked.cipherVersion === 1 ? 1 : 2,
+    };
+    if (meta.tier !== "plain") throw new TierMismatch(meta);
+
+    const [credential] = await tx
+      .select({ storageKind: s.budgetAiCredentials.storageKind })
+      .from(s.budgetAiCredentials)
+      .where(eq(s.budgetAiCredentials.budgetId, meta.id));
+    if (credential?.storageKind === "server_vault") return { kind: "credential", id: meta.id } as const;
+
     const nextEpoch = meta.epoch + 1;
     // The client's ciphertexts are BOUND to the epoch it expected — installing them under any
     // other value would produce an envelope/checkpoint no device could ever open. Refuse a
     // stale expectation with the current meta; the client recomputes and retries.
-    if (body.nextEpoch !== nextEpoch) return { mismatch: false, stale: true, meta } as const;
+    if (body.nextEpoch !== nextEpoch) return { kind: "stale", meta } as const;
     await tx
       .update(s.budgets)
       .set({ tier: "e2ee", wrappedDek: body.wrappedDek, kdfParams: body.kdfParams, epoch: nextEpoch, cipherVersion: 2, preferences: null })
@@ -327,10 +352,11 @@ sync2Routes.post("/budget/e2ee/enable", async (c) => {
         set: { uptoSeq: 0, blob: body.snapshotBlob, updatedAt: dsql`now()` },
       });
     await wipeBudgetData(tx, meta.id); // plaintext disappears ONLY after the ciphertext is written
-    return { mismatch: false, stale: false, id: meta.id, epoch: nextEpoch } as const;
+    return { kind: "enabled", epoch: nextEpoch } as const;
   });
-  if (result.mismatch) return c.json(ownerMismatch(result.id), 409);
-  if (result.stale) return c.json(epochMismatch(result.meta), 409);
+  if (result.kind === "mismatch") return c.json(ownerMismatch(result.id), 409);
+  if (result.kind === "credential") return c.json({ error: "credential_migration_required", budgetId: result.id }, 409);
+  if (result.kind === "stale") return c.json(epochMismatch(result.meta), 409);
   return c.json({ epoch: result.epoch });
 });
 

@@ -404,6 +404,7 @@ export const MESSAGES = [
   "Registration is closed on this server.",
   "Remove key",
   "Remove screenshot {n}",
+  "Remove the server-stored Own OpenAI key in Settings → Artificial intelligence before enabling end-to-end encryption.",
   "Remove this data and continue",
   "Removing…",
   "Repeat password",

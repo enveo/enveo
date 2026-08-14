@@ -126,6 +126,7 @@ const ERROR_KEYS: Record<string, Message> = {
   ai_key_invalid: msg("OpenAI rejected your key — check it in Settings → Artificial intelligence."), // byok: OpenAI rejected the user's key (401/403)
   ai_model_unavailable: msg("This OpenAI key cannot use the selected model. Choose another model and try again."),
   credential_not_configured: msg("No OpenAI key is configured for this budget."),
+  credential_migration_required: msg("Remove the server-stored Own OpenAI key in Settings → Artificial intelligence before enabling end-to-end encryption."),
   vault_unavailable: msg("The server credential vault is not configured. Ask the server operator to enable it."),
   ai_capability_unsupported: msg("The selected AI provider does not support this feature."),
 
