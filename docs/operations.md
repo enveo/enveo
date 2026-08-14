@@ -53,7 +53,11 @@ zcat enveo-2026-07-13.sql.gz | docker compose exec -T db psql -U enveo -d enveo
 ```
 
 Keep at least one copy of the backup **and of your `.env`** off the machine —
-losing `BETTER_AUTH_SECRET` signs every device out.
+losing `BETTER_AUTH_SECRET` signs every device out. If the optional Own OpenAI
+vault is enabled, back up its key-ring file separately and offline too. It is not
+inside PostgreSQL: restoring the database without the matching ring leaves vaulted
+OpenAI keys unreadable. Generation, rotation and the reference-check query are in
+[install.md](install.md#own-openai-credential-vault-optional).
 
 ## Reset a forgotten password
 

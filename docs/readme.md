@@ -8,7 +8,7 @@
   reset, version pinning, ports.
 - **[Architecture](architecture.md)** — the domain model and its invariant,
   local-first sync, optional end-to-end encryption, the monorepo layout.
-- **[AI features](ai.md)** — the off/BYOK/server modes, what needs a key, and
+- **[AI features](ai.md)** — Without AI, Own OpenAI and Enveo AI, what needs a key, and
   the cost warning for operator keys.
 - **[Developing](development.md)** — running from source, demo data, tests,
   adding a translation.

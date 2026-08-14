@@ -4,6 +4,7 @@ build/
 *.log
 .env
 .env.local
+/secrets/enveo-ai-vault-key-ring.json
 .DS_Store
 packages/*/dist/
 packages/web/dev-dist/

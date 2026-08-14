@@ -16,6 +16,10 @@ const REPO_ROOT = join(import.meta.dir, "..", "..");
 const read = (relative: string): string => readFileSync(join(REPO_ROOT, relative), "utf8");
 
 describe("checkSelfHostImageRefs", () => {
+  it("covers the opt-in AI vault compose file handed to self-hosters", () => {
+    expect(SELF_HOST_DOCS).toContain("compose.ai-vault.yml");
+  });
+
   it("accepts the canonical alias", () => {
     expect(checkSelfHostImageRefs("compose.selfhost.yml", "    image: ghcr.io/enveo/enveo:latest\n")).toEqual([]);
   });

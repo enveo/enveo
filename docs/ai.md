@@ -1,7 +1,8 @@
 # AI features
 
 AI is **off by default** (zero egress), gated behind an explicit in-app
-consent. Every device chooses its own mode in Settings.
+choice. The selected provider and model belong to the budget and follow it
+across devices.
 
 ## What works without AI
 
@@ -11,25 +12,29 @@ import** is LLM-only: it needs a real model to read the picture, so there is no
 rule-based fallback for it. With AI off, import asks you to enable AI first —
 manual entry (pad + calculator) is untouched.
 
-## The three modes
+## The three providers
 
-| Mode | Where requests go | Whose key |
+| Provider | Where requests go | Whose key |
 |---|---|---|
-| **Off** (default) | nowhere — local rules only | — |
-| **BYOK** | the device talks to OpenAI directly | the user's, stored on their device |
-| **Server** | the app server proxies to OpenAI | the operator's (`OPENAI_API_KEY` in `.env`) |
+| **Without AI** (default) | nowhere — deterministic rules on the device | — |
+| **Own OpenAI** | browser → Enveo → OpenAI | the user's, envelope-encrypted in the optional server vault |
+| **Enveo AI** | browser → Enveo → OpenAI | the operator's (`OPENAI_API_KEY` in `.env`) |
 
-Server and BYOK build **identical requests from the same shared code** — the
-prompts live in one place (`packages/shared/src/aiPrompts.ts`) and the model
-answers in the UI language.
+Both model providers build requests from the same shared prompt code
+(`packages/shared/src/aiPrompts.ts`) and the model answers in the UI language.
+Own OpenAI keys are write-only from the browser's perspective: there is status,
+replace, delete and test, but no endpoint that returns the stored key. Enveo
+decrypts one only inside the request that uses it. The vault setup and recovery
+rules are in [install.md](install.md#own-openai-credential-vault-optional).
+At this stage Own OpenAI is available for non-E2EE budgets; an E2EE budget keeps
+server-side model providers disabled until its zero-knowledge credential vault is enabled.
 
-## Server mode setup
+## Enveo AI setup
 
-Set `OPENAI_API_KEY` (and optionally `OPENAI_MODEL`) in `.env` — the key stays
-on your server; devices still have to opt in individually. The default model
-is `gpt-5.6-luna`.
+Set `OPENAI_API_KEY` (and optionally `OPENAI_MODEL`) in `.env` — the operator
+key stays on your server. The default model is `gpt-5.6-luna`.
 
-> **Cost warning (selfhost).** On a selfhost deployment, server-mode AI calls
+> **Cost warning (selfhost).** On a selfhost deployment, Enveo AI calls
 > are **not limited by Enveo**: every signed-in account spends the operator's
 > key at will. With registration closed (the selfhost default) that means
 > "trusted household members" — fine. Never combine an operator key with
@@ -52,7 +57,8 @@ enforced against the operator's key:
   `429 {"error":"ai_budget_exhausted","retryAfterSeconds":<int>}` with a
   matching `Retry-After` header (seconds until the next UTC month). Budget
   suggestions fall back to local rules; an import already past its first cycle
-  returns the raw extracted items. BYOK is never limited.
+  returns the raw extracted items. Own OpenAI is user-funded and never charged
+  to this allowance.
 - Accounting is **fail-open**: a counter failure never blocks or degrades an
   AI answer. Failed/timed-out calls, malformed usage and unknown models are
   never charged. Recorded spend is never revealed to the client.

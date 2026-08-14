@@ -38,6 +38,64 @@ port, bind address, OpenAI key, Google sign-in, public URL). Migrations run
 automatically on start, on every update — updating is a deliberate step, see
 [operations.md](operations.md#update).
 
+## Own OpenAI credential vault (optional)
+
+Own OpenAI lets each budget use its own OpenAI key without entering it again on
+every device. For a normal, non-E2EE budget the browser sends requests to Enveo;
+Enveo decrypts that budget's key only for the duration of the request and calls
+OpenAI. PostgreSQL stores only envelope-encrypted material. The master key must
+therefore live outside PostgreSQL, the image and `.env`.
+
+The ordinary stack deliberately starts without this vault. To enable it, download
+[`compose.ai-vault.yml`](../compose.ai-vault.yml) next to `compose.yml`, then create
+a key ring (the command prints only random bytes into the protected file):
+
+```bash
+mkdir -p secrets
+chmod 700 secrets
+KEY_ID="$(date -u +%Y-%m)"
+KEY_VALUE="$(openssl rand -base64 32)"
+printf '{"version":1,"activeKeyId":"%s","keys":{"%s":"%s"}}\n' \
+  "$KEY_ID" "$KEY_ID" "$KEY_VALUE" > secrets/enveo-ai-vault-key-ring.json
+unset KEY_VALUE
+chmod 600 secrets/enveo-ai-vault-key-ring.json
+echo 'AI_VAULT_KEY_RING_PATH=./secrets/enveo-ai-vault-key-ring.json' >> .env
+docker compose -f compose.yml -f compose.ai-vault.yml up -d
+```
+
+The app container runs as uid `1000`. The mounted file must be readable by that uid;
+on a host where the file has a different numeric owner, set it explicitly with
+`sudo chown 1000:1000 secrets/enveo-ai-vault-key-ring.json`, keep mode `600`, and
+restart with the same two `-f` arguments. `docker compose logs app` reports an
+unreadable or malformed ring using a stable error code and never prints its contents.
+
+Back up the key-ring file separately from the PostgreSQL dump and keep that copy
+offline. A database restore containing vaulted credentials needs the matching ring.
+Losing it does not damage budget transactions, but existing Own OpenAI keys become
+unrecoverable and must be deleted/re-entered after a new ring is installed. Do not put
+the JSON itself in `.env`, Git, a container image, or ordinary log/backup automation.
+
+Rotation is additive: generate another 32-byte value, add it under a new id, make that
+id `activeKeyId`, and retain every older entry. Normal credential use lazily rewraps its
+per-record DEK with the active master key without re-encrypting the OpenAI key. Keep an
+old key until this query returns no row that names it:
+
+```bash
+docker compose exec -T db psql -U enveo -d enveo -c \
+  "SELECT master_key_id, count(*) FROM budget_ai_credentials WHERE storage_kind='server_vault' GROUP BY master_key_id ORDER BY master_key_id;"
+```
+
+Replace the ring file atomically, then recreate `app` so Docker remounts the new
+file and the process loads it:
+
+```bash
+docker compose -f compose.yml -f compose.ai-vault.yml up -d --force-recreate app
+```
+
+Exercise each active Own OpenAI credential, then run the query. Removing a
+still-referenced old key makes those rows unreadable; restoring the previous ring
+and recreating `app` is the recovery.
+
 ## Accounts and registration
 
 An account is **mandatory** — there is no no-login mode. The first person to
