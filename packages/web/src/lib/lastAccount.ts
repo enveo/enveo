@@ -13,7 +13,7 @@ export function getLastAccountId(): string | null {
 }
 
 export function setLastAccountId(id: string): void {
-  if (storageMode() === "memory-forced") return;  
+  if (storageMode() === "memory-session") return;  
   try {
     localStorage.setItem(KEY, id);
   } catch {

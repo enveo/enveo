@@ -150,7 +150,7 @@ function installTriggers(): void {
 
 
   window.addEventListener("beforeunload", (e) => {
-    if (storageMode() === "memory-forced" && outbox.size() > 0) {
+    if (storageMode() === "memory-session" && outbox.size() > 0) {
       e.preventDefault();
       e.returnValue = ""; // legacy engines only show the dialog when returnValue is set
     }

@@ -326,7 +326,7 @@ export const es: Dict = {
   "Not syncing with your account": "No se sincroniza con tu cuenta",
   Off: "Desactivada",
   "On-device storage": "Almacenamiento en el dispositivo",
-  "Once enabled, the server stores ciphertexts only. The key is your password, which the server does NOT know — without it (or a pairing code from a trusted device) the data cannot be recovered.":
+  "Once enabled, the server stores ciphertexts only. The key is your password, which the server does NOT know — without it (or a pairing code from another unlocked device) the data cannot be recovered.":
     "Una vez activado, el servidor solo guarda textos cifrados. La clave es tu contraseña, que el servidor NO conoce: sin ella (o sin un código de vinculación de un dispositivo de confianza) los datos no se pueden recuperar.",
   "One tap and Enveo lives on your home screen — offline, full screen, no browser bar.":
     "Un toque y Enveo estará en tu pantalla de inicio — sin conexión, a pantalla completa, sin barra del navegador.",
@@ -349,7 +349,7 @@ export const es: Dict = {
   Password: "Contraseña",
   "Password changed.": "Contraseña cambiada.",
   "Passwords do not match.": "Las contraseñas no coinciden.",
-  "Paste the pairing code shown on a trusted device (Settings → Pairing code).":
+  "Paste the pairing code shown on another unlocked device (Settings → Pairing code).":
     "Pega el código de vinculación que aparece en un dispositivo de confianza (Ajustes → Código de vinculación).",
   "Paused — local mode.": "En pausa: modo local.",
   "People & pets": "Personas y mascotas",
@@ -527,7 +527,7 @@ export const es: Dict = {
     "Los datos de este presupuesto están cifrados de extremo a extremo. Introduce la contraseña de cifrado para desbloquearlo en este dispositivo.",
   "This budget's encryption must be upgraded before it can sync — open Settings → Privacy on a device that holds the data and run the upgrade.":
     "El cifrado de este presupuesto debe actualizarse antes de poder sincronizar: abre Ajustes → Privacidad en un dispositivo que tenga los datos y ejecuta la actualización.",
-  "This code contains your encryption key in plain form. Show it only on your own trusted device — anyone with the code can read the budget.":
+  "This code contains your encryption key in plain form. Show it only on your own private device — anyone with the code can read the budget.":
     "Este código contiene tu clave de cifrado en claro. Muéstralo solo en tu propio dispositivo de confianza: cualquiera que tenga el código puede leer el presupuesto.",
   "This data may belong to a different account. Then it will never be sent — download a backup and remove the copy from this device.":
     "Puede que estos datos pertenezcan a otra cuenta. En ese caso nunca se enviarán: descarga una copia de seguridad y quita la copia de este dispositivo.",
@@ -570,7 +570,6 @@ export const es: Dict = {
   Transactions: "Transacciones",
   Transfer: "Traspaso",
   Transport: "Transporte",
-  "Trust this device — remember my data and sign-in": "Confiar en este dispositivo — recordar mis datos y mi inicio de sesión",
   "Try again": "Reintentar",
   "Try it with sample data": "Probarlo con datos de ejemplo",
   "Turn off local mode": "Desactivar el modo local",

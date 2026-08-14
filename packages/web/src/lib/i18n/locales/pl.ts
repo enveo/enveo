@@ -401,8 +401,8 @@ export const pl: Dict = {
   "Not syncing with your account": "Brak synchronizacji z kontem",
   Off: "Wył.",
   "On-device storage": "Pamięć na urządzeniu",
-  "Once enabled, the server stores ciphertexts only. The key is your password, which the server does NOT know — without it (or a pairing code from a trusted device) the data cannot be recovered.":
-    "Po włączeniu serwer przechowuje wyłącznie szyfrogramy. Kluczem jest hasło, którego serwer NIE zna — bez hasła (albo kodu parowania z zaufanego urządzenia) danych nie da się odzyskać.",
+  "Once enabled, the server stores ciphertexts only. The key is your password, which the server does NOT know — without it (or a pairing code from another unlocked device) the data cannot be recovered.":
+    "Po włączeniu serwer przechowuje wyłącznie szyfrogramy. Kluczem jest hasło, którego serwer NIE zna — bez hasła (albo kodu parowania z innego odblokowanego urządzenia) danych nie da się odzyskać.",
   "One tap and Enveo lives on your home screen — offline, full screen, no browser bar.":
     "Jedno dotknięcie i Enveo ląduje na ekranie początkowym — offline, na pełnym ekranie, bez paska przeglądarki.",
   "Open {host} in Safari to add it to your home screen — installing only works from Safari on iPhone and iPad.":
@@ -424,8 +424,8 @@ export const pl: Dict = {
   Password: "Hasło",
   "Password changed.": "Hasło zmienione.",
   "Passwords do not match.": "Hasła się różnią.",
-  "Paste the pairing code shown on a trusted device (Settings → Pairing code).":
-    "Wklej kod parowania wyświetlony na zaufanym urządzeniu (Ustawienia → Kod parowania).",
+  "Paste the pairing code shown on another unlocked device (Settings → Pairing code).":
+    "Wklej kod parowania wyświetlony na innym odblokowanym urządzeniu (Ustawienia → Kod parowania).",
   "Paused — local mode.": "Wstrzymana — tryb lokalny.",
   "People & pets": "Ludzie i zwierzęta",
   "Persistent storage": "Trwała pamięć",
@@ -593,6 +593,8 @@ export const pl: Dict = {
   "There is no data on this device to send — nothing was sent to the server. Reload the app to fetch your budget first.":
     "Na tym urządzeniu nie ma danych do wysłania — nic nie zostało wysłane na serwer. Odśwież aplikację, aby najpierw pobrać budżet.",
   "There is nothing to export yet — wait for the app to finish loading.": "Nie ma jeszcze czego eksportować — poczekaj, aż aplikacja się wczyta.",
+  "This browser blocked access to storage. Allow site storage before signing in.":
+    "Ta przeglądarka zablokowała dostęp do pamięci. Zezwól witrynie na przechowywanie danych przed zalogowaniem.",
   "This budget is encrypted": "Budżet jest zaszyfrowany",
   "This budget is encrypted with an older format that new versions of the app no longer read. Upgrading re-encrypts it with a fresh key built from the data on THIS device: pick a new encryption password (it may be the same one), and the server's copy is replaced in one step.":
     "Ten budżet jest zaszyfrowany starszym formatem, którego nowe wersje aplikacji już nie odczytują. Aktualizacja szyfruje go na nowo świeżym kluczem zbudowanym z danych na TYM urządzeniu: wybierz nowe hasło szyfrowania (może być to samo), a kopia na serwerze zostanie podmieniona w jednym kroku.",
@@ -603,8 +605,8 @@ export const pl: Dict = {
     "Dane tego budżetu są zaszyfrowane end-to-end. Podaj hasło szyfrowania, aby odblokować je na tym urządzeniu.",
   "This budget's encryption must be upgraded before it can sync — open Settings → Privacy on a device that holds the data and run the upgrade.":
     "Szyfrowanie tego budżetu trzeba zaktualizować, zanim będzie mógł się synchronizować — otwórz Ustawienia → Prywatność na urządzeniu, które ma dane, i uruchom aktualizację.",
-  "This code contains your encryption key in plain form. Show it only on your own trusted device — anyone with the code can read the budget.":
-    "Ten kod zawiera klucz szyfrowania w postaci jawnej. Pokaż go wyłącznie na własnym, zaufanym urządzeniu — każdy, kto ma kod, odczyta budżet.",
+  "This code contains your encryption key in plain form. Show it only on your own private device — anyone with the code can read the budget.":
+    "Ten kod zawiera klucz szyfrowania w postaci jawnej. Pokaż go wyłącznie na własnym, prywatnym urządzeniu — każdy, kto ma kod, odczyta budżet.",
   "This data may belong to a different account. Then it will never be sent — download a backup and remove the copy from this device.":
     "Te dane mogą należeć do innego konta. Wtedy nigdy się nie wyślą — pobierz kopię zapasową i usuń kopię z tego urządzenia.",
   "This data uses an older encryption format that this version no longer reads — run the encryption upgrade in Settings → Privacy on the device that holds the budget.":
@@ -644,7 +646,6 @@ export const pl: Dict = {
   Transactions: "Transakcje",
   Transfer: "Przelew",
   Transport: "Transport",
-  "Trust this device — remember my data and sign-in": "Zaufaj temu urządzeniu — zapamiętaj moje dane i logowanie",
   "Try again": "Spróbuj ponownie",
   "Try it with sample data": "Wypróbuj z danymi przykładowymi",
   "Turn off local mode": "Wyłącz tryb lokalny",

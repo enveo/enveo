@@ -79,7 +79,7 @@ function parseLegacySettings(raw: unknown): LegacySettings | null {
 }
 
 export function readLegacySettings(): LegacySettingsRecord | null {
-  if (storageMode() === "memory-forced") return null;
+  if (storageMode() === "memory-session") return null;
   try {
     const raw = localStorage.getItem(SETTINGS_KEY);
     if (!raw) return null;

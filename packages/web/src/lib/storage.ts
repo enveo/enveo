@@ -67,7 +67,7 @@ export async function requestPersistentStorage(): Promise<void> {
   if (persistRequested) return;
   
 
-  if (storageMode() === "memory-forced") return;
+  if (storageMode() === "memory-session") return;
   persistRequested = true;
   try {
     const s = navigator.storage;

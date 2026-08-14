@@ -329,7 +329,7 @@ export const fr: Dict = {
   "Not syncing with your account": "Pas de synchronisation avec votre compte",
   Off: "Désactivée",
   "On-device storage": "Stockage sur l'appareil",
-  "Once enabled, the server stores ciphertexts only. The key is your password, which the server does NOT know — without it (or a pairing code from a trusted device) the data cannot be recovered.":
+  "Once enabled, the server stores ciphertexts only. The key is your password, which the server does NOT know — without it (or a pairing code from another unlocked device) the data cannot be recovered.":
     "Une fois activé, le serveur ne stocke que des textes chiffrés. La clé, c'est votre mot de passe, que le serveur NE connaît PAS — sans lui (ou sans un code d'appairage venu d'un appareil de confiance), les données sont irrécupérables.",
   "One tap and Enveo lives on your home screen — offline, full screen, no browser bar.":
     "Un appui et Enveo s'installe sur votre écran d'accueil — hors ligne, en plein écran, sans barre de navigateur.",
@@ -351,7 +351,7 @@ export const fr: Dict = {
   Password: "Mot de passe",
   "Password changed.": "Mot de passe modifié.",
   "Passwords do not match.": "Les mots de passe ne correspondent pas.",
-  "Paste the pairing code shown on a trusted device (Settings → Pairing code).":
+  "Paste the pairing code shown on another unlocked device (Settings → Pairing code).":
     "Collez le code d'appairage affiché sur un appareil de confiance (Réglages → Code d'appairage).",
   "Paused — local mode.": "En pause — mode local.",
   "People & pets": "Proches et animaux",
@@ -528,7 +528,7 @@ export const fr: Dict = {
     "Les données de ce budget sont chiffrées de bout en bout. Saisissez le mot de passe de chiffrement pour les déverrouiller sur cet appareil.",
   "This budget's encryption must be upgraded before it can sync — open Settings → Privacy on a device that holds the data and run the upgrade.":
     "Le chiffrement de ce budget doit être mis à niveau avant qu'il puisse se synchroniser — ouvrez Réglages → Confidentialité sur un appareil qui détient les données et lancez la mise à niveau.",
-  "This code contains your encryption key in plain form. Show it only on your own trusted device — anyone with the code can read the budget.":
+  "This code contains your encryption key in plain form. Show it only on your own private device — anyone with the code can read the budget.":
     "Ce code contient votre clé de chiffrement en clair. Ne l'affichez que sur votre propre appareil de confiance — quiconque a le code peut lire le budget.",
   "This data may belong to a different account. Then it will never be sent — download a backup and remove the copy from this device.":
     "Ces données appartiennent peut-être à un autre compte. Dans ce cas elles ne seront jamais envoyées — téléchargez une sauvegarde et retirez la copie de cet appareil.",
@@ -571,7 +571,6 @@ export const fr: Dict = {
   Transactions: "Transactions",
   Transfer: "Virement",
   Transport: "Transports",
-  "Trust this device — remember my data and sign-in": "Faire confiance à cet appareil — mémoriser mes données et ma connexion",
   "Try again": "Réessayer",
   "Try it with sample data": "Essayer avec des données d'exemple",
   "Turn off local mode": "Désactiver le mode local",

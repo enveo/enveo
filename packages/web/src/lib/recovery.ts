@@ -22,7 +22,7 @@
  */
 import { api } from "./api";
 import { fetchSessionUserId, signOutSessionOnly } from "./auth";
-import { clearDeviceTrust } from "./deviceTrust";
+import { clearDeviceStoragePolicy } from "./deviceStoragePolicy";
 import { clearLastAccountId } from "./lastAccount";
 import { clearPersistedSettings } from "./settingsPersist";
 import { discardLocalReplica, enterLoginKeepingReplica } from "./sync";
@@ -47,7 +47,7 @@ export interface RecoverySteps {
    
   signOut: () => Promise<void>;
   /** Per-device state that must not outlive the account (the LogoutRow wipe set). */
-  clearDeviceTrust: () => void;
+  clearDeviceStoragePolicy: () => void;
   clearPersistedSettings: () => void;
   clearLastAccountId: () => void;
    
@@ -60,7 +60,7 @@ const realSteps: RecoverySteps = {
   fetchSessionUserId,
   budgetReset: (userId) => api.budgetReset(userId),
   signOut: signOutSessionOnly,
-  clearDeviceTrust,
+  clearDeviceStoragePolicy,
   clearPersistedSettings,
   clearLastAccountId,
   discardLocalReplica,
@@ -78,7 +78,7 @@ const realSteps: RecoverySteps = {
  *  2. sign-out BEFORE the wipe — a wipe before a failed sign-out would strand a signed-in
  *     session on an empty replica; a failed sign-out after a successful reset just re-shows
  *     the dialog (retrying the reset is harmless — the budget is already empty),
- *  3. only then the per-device state (device trust, settings incl. the BYOK key, last-account)
+ *  3. only then the per-device state (storage policy, settings incl. the BYOK key, last-account)
  *     and the replica itself — discardLocalReplica clears the outbox, the local-mode flag and
  *     IDB, then reloads; with no session the boot lands on Login with a clean device.
  *
@@ -93,7 +93,7 @@ export async function deleteEverythingAndStartFresh(steps: RecoverySteps = realS
   }
   await steps.budgetReset(userId);  
   await steps.signOut();  
-  steps.clearDeviceTrust();
+  steps.clearDeviceStoragePolicy();
   steps.clearPersistedSettings();
   steps.clearLastAccountId();
   await steps.discardLocalReplica();  
