@@ -171,8 +171,8 @@ export const openAiAskModelFor =
     return parseSuggestResponse(raw);
   };
 
-/* Narrow chat proxy for "local only" mode + operator key (v1.24.5):
-   the client builds the prompt LOCALLY (same builders as byok — for suggest
+/* Narrow chat proxy for Enveo AI + the operator key:
+   the client builds the prompt locally (same builders as BYOK — for suggest
    these are 2-month envelope snapshots, not the replica) and sends only the
    messages; the server attaches the key and forwards. Size limit + rigid zod
    shape (no extra OpenAI fields outside the contract). Auth: the session
