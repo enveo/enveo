@@ -183,6 +183,13 @@ export const getDekEpoch = (): number | null => dekEpoch;
 /** Is the held DEK VALIDATED for `epoch`? The hard precondition of every encrypt/decrypt path. */
 export const isDekValidForEpoch = (epoch: number): boolean => dek !== null && dekEpoch === epoch;
 
+/** Obtain key material for one authenticated operation. It is available only for the current
+ * E2EE generation and is returned as a defensive copy so callers cannot mutate module state. */
+export function requireValidatedDek(expectedEpoch: number): Uint8Array {
+  if (tierMeta.tier !== "e2ee" || tierMeta.epoch !== expectedEpoch || !dek || dekEpoch !== expectedEpoch) throw new Error("locked");
+  return dek.slice();
+}
+
 /**
  * Record a successful AUTHENTICATED use of the held DEK under `epoch` (an envelope unwrap or a
  * checkpoint decrypt whose AAD carried that epoch) — the only way a key becomes trusted for a

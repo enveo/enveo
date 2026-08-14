@@ -19,7 +19,7 @@ import { previewSuggestPrompt, runImportExtract, runSuggest } from "./ai";
 import type { AiCapability, AiProvider, AiProviderKind } from "./aiProvider/contracts";
 import { RulesProvider } from "./aiProvider/rules";
 import { apiErrorMessage } from "./api";
-import { type ChatTarget, chatJson } from "./openai";
+import { type ChatTarget, chatJson, directChatJson } from "./openai";
 
 /** Runs `fn` with fetch (and optionally navigator.onLine) stubbed; always restores both. */
 async function withFetch<T>(fetchStub: typeof fetch, fn: () => Promise<T>, onLine = true): Promise<T> {
@@ -303,5 +303,36 @@ describe("chatJson (server target → the /api/ai mirror)", () => {
   it("the happy path still works (server model reply parses like byok's)", async () => {
     const content = await withFetch(replying("hello"), () => chatJson(req, target));
     expect(content).toBe("hello");
+  });
+});
+
+describe("directChatJson (E2EE BYOK → OpenAI, never Enveo)", () => {
+  const req = { messages: [{ role: "user" as const, content: "private prompt" }] };
+
+  it("sends the key only as OpenAI authorization and includes the selected model", async () => {
+    let seen: { url: string; authorization: string | null; body: string } | undefined;
+    const stub: typeof fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const headers = new Headers(init?.headers);
+      seen = { url: String(input), authorization: headers.get("authorization"), body: String(init?.body) };
+      return Response.json({ choices: [{ message: { content: "direct" } }] });
+    }) as typeof fetch;
+    const result = await withFetch(stub, () => directChatJson(req, "sk-direct", "gpt-5.6-luna"));
+    expect(result).toBe("direct");
+    expect(seen?.url).toBe("https://api.openai.com/v1/chat/completions");
+    expect(seen?.authorization).toBe("Bearer sk-direct");
+    expect(JSON.parse(seen?.body ?? "{}")).toMatchObject({ model: "gpt-5.6-luna", messages: req.messages });
+    expect(seen?.body).not.toContain("sk-direct");
+  });
+
+  it("classifies direct credential/model/upstream failures without exposing OpenAI prose", async () => {
+    await withFetch(answering(401, { error: { message: "secret rejected" } }), async () => {
+      await expect(directChatJson(req, "sk-bad", "gpt-5.6-luna")).rejects.toThrow("ai_key_invalid");
+    });
+    await withFetch(answering(404, { error: { message: "model unavailable" } }), async () => {
+      await expect(directChatJson(req, "sk-ok", "gpt-5.6-luna")).rejects.toThrow("ai_model_unavailable");
+    });
+    await withFetch(answering(429, { error: { message: "quota details" } }), async () => {
+      await expect(directChatJson(req, "sk-ok", "gpt-5.6-luna")).rejects.toThrow("ai_upstream_error");
+    });
   });
 });

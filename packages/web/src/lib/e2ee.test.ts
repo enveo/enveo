@@ -28,6 +28,7 @@ import {
   isDekValidForEpoch,
   markDekValidated,
   rehydrateKeysFromPeer,
+  requireValidatedDek,
   setDek,
   setTierMeta,
 } from "./e2ee";
@@ -190,6 +191,22 @@ describe("e2ee: DEK validity is per-epoch", () => {
     expect(getDek()).not.toBeNull(); // the key stays (it may still be re-validated)…
     expect(isDekValidForEpoch(2)).toBe(false); // …but it may not touch the new epoch
     expect(isDekValidForEpoch(1)).toBe(true); // (its own generation is still its own)
+  });
+
+  it("returns a defensive copy only for the current E2EE epoch and otherwise fails locked", async () => {
+    await hydrate();
+    const original = generateDek();
+    setTierMeta({ tier: "e2ee", epoch: 4 });
+    setDek(original, 4);
+    const first = requireValidatedDek(4);
+    expect(Buffer.from(first).toString("hex")).toBe(Buffer.from(original).toString("hex"));
+    first[0] = (first[0] ?? 0) ^ 0xff;
+    expect(Buffer.from(requireValidatedDek(4)).toString("hex")).toBe(Buffer.from(original).toString("hex"));
+    expect(() => requireValidatedDek(3)).toThrow("locked");
+    setTierMeta({ tier: "plain", epoch: 4 });
+    expect(() => requireValidatedDek(4)).toThrow("locked");
+    clearDek();
+    expect(() => requireValidatedDek(4)).toThrow("locked");
   });
 
   it("markDekValidated is the ONLY promotion to a new epoch, and it survives a reload", async () => {

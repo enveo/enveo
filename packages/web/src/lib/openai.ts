@@ -1,7 +1,6 @@
 /**
- * Low-level operator-AI chat transport. Vaulted plain BYOK has its own Enveo
- * route; direct OpenAI transport is introduced only by the Stage-4 E2EE
- * provider, which cannot share this server-only target by accident.
+ * Low-level chat transport with explicit targets. Operator AI uses Enveo's mirror;
+ * E2EE BYOK uses OpenAI directly so plaintext prompts and credentials never reach Enveo.
  *
  * ERROR CONTRACT (as everywhere in lib/*): a failure leaves this module as a snake_case CODE —
  * never prose, never a status line. Screenshot import is AI-only, so these errors are RENDERED
@@ -22,10 +21,10 @@
  * must always beat the client's abort. `AbortSignal.timeout` is absent on
  * WebKit < 16 (iOS 15 Safari) — timeoutSignal builds it from parts.
  */
-import { AI_PROXY_CHAT_TIMEOUT_MS, type ChatRequest } from "@enveo/shared";
+import { AI_CHAT_TIMEOUT_MS, AI_PROXY_CHAT_TIMEOUT_MS, type ChatRequest, type OpenAiModel } from "@enveo/shared";
 import { timeoutSignal } from "./timeoutSignal";
 
-export type ChatTarget = { kind: "server" };
+export type ChatTarget = { kind: "server" } | { kind: "direct"; apiKey: string; model: OpenAiModel };
 const CODE = /^[a-z0-9_]+$/;
 
 /** fetch() rejected — there is no response at all (offline, DNS, a dropped connection). */
@@ -39,28 +38,33 @@ function transportError(): Error {
  * `{"error":"upstream"}`) so those pass straight through to the dictionary; OpenAI answers with an
  * `{error:{message,…}}` OBJECT, which must never reach the UI — there the status decides.
  */
-async function responseError(res: Response): Promise<Error> {
+async function responseError(res: Response, target: ChatTarget): Promise<Error> {
   const body = await res.text().catch(() => "");
-  try {
-    const code = (JSON.parse(body) as { error?: unknown }).error;
-    if (typeof code === "string" && CODE.test(code)) return new Error(code);
-  } catch {
-    /* not JSON (e.g. a proxy's HTML error page) → the status decides */
+  if (target.kind === "server") {
+    try {
+      const code = (JSON.parse(body) as { error?: unknown }).error;
+      if (typeof code === "string" && CODE.test(code)) return new Error(code);
+    } catch {
+      /* not JSON (e.g. a proxy's HTML error page) → the status decides */
+    }
+    if (res.status === 503) return new Error("ai_unavailable");
+  } else {
+    if (res.status === 401 || res.status === 403) return new Error("ai_key_invalid");
+    if (res.status === 404) return new Error("ai_model_unavailable");
   }
-  if (res.status === 503) return new Error("ai_unavailable");
   return new Error("ai_upstream_error");
 }
 
 /** The one transport step (fetch → non-2xx → body): the single place a failure becomes a code.
  *  A hung upstream must become a normal transport error (code + retry), not a spinner that
  *  never resolves — the cap is the caller's (chat vs vision vs proxied, see the module comment). */
-async function postChat(body: unknown, timeoutMs: number): Promise<unknown> {
+async function postChat(body: unknown, timeoutMs: number, target: ChatTarget): Promise<unknown> {
   const t = timeoutSignal(timeoutMs);
   let res: Response;
   try {
-    res = await fetch("/api/ai/v1/chat/completions", {
+    res = await fetch(target.kind === "server" ? "/api/ai/v1/chat/completions" : "https://api.openai.com/v1/chat/completions", {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: { "content-type": "application/json", ...(target.kind === "direct" ? { authorization: `Bearer ${target.apiKey}` } : {}) },
       body: JSON.stringify(body),
       signal: t.signal,
     });
@@ -69,7 +73,7 @@ async function postChat(body: unknown, timeoutMs: number): Promise<unknown> {
   } finally {
     t.clear();
   }
-  if (!res.ok) throw await responseError(res);
+  if (!res.ok) throw await responseError(res, target);
   try {
     return await res.json();
   } catch {
@@ -79,14 +83,22 @@ async function postChat(body: unknown, timeoutMs: number): Promise<unknown> {
 
 /** `timeoutMs` lets a proxied operation choose its cap; the default is the operator-chat
  *  budget (server cap + margin, so the mirror's own classified `ai_timeout` answer wins). */
-export async function chatJson(req: ChatRequest, _cfg: ChatTarget, timeoutMs?: number): Promise<string> {
+export async function chatJson(req: ChatRequest, target: ChatTarget, timeoutMs?: number): Promise<string> {
   const data = (await postChat(
     {
+      ...(target.kind === "direct" ? { model: target.model } : {}),
       messages: req.messages,
       ...(req.responseFormat ? { response_format: req.responseFormat } : {}),
       ...(req.reasoningEffort ? { reasoning_effort: req.reasoningEffort } : {}),
     },
-    timeoutMs ?? AI_PROXY_CHAT_TIMEOUT_MS,
+    timeoutMs ?? (target.kind === "direct" ? AI_CHAT_TIMEOUT_MS : AI_PROXY_CHAT_TIMEOUT_MS),
+    target,
   )) as { choices?: Array<{ message?: { content?: string } }> };
   return data.choices?.[0]?.message?.content ?? "";
+}
+
+/** E2EE BYOK transport. The plaintext key is request-scoped and reaches only OpenAI's
+ * Authorization header; prompts and screenshots never transit Enveo. */
+export function directChatJson(req: ChatRequest, apiKey: string, model: OpenAiModel, timeoutMs?: number): Promise<string> {
+  return chatJson(req, { kind: "direct", apiKey, model }, timeoutMs);
 }
