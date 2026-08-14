@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import { budgetSecretAadContext, decryptPayload, encryptPayload, generateDek } from "./crypto";
-import { prepareDisableCredentialAction, prepareEnableCredentialAction } from "./e2eeCredentialCeremonies";
+import { prepareDisableCredentialAction, prepareEnableCredentialAction, reencryptBudgetSecret } from "./e2eeCredentialCeremonies";
 
 const BUDGET = "11111111-1111-1111-1111-111111111111";
 
@@ -37,5 +37,20 @@ describe("E2EE credential ceremony", () => {
     await expect(
       prepareDisableCredentialAction({ record: { configured: true, budgetId: BUDGET, epoch: 3, ciphertext }, budgetId: BUDGET, epoch: 4, dek }),
     ).rejects.toThrow("credential_epoch_mismatch");
+  });
+
+  it("re-encrypts a budget secret under a fresh DEK and authenticated next-epoch context", async () => {
+    const oldDek = generateDek();
+    const newDek = generateDek();
+    const oldContext = budgetSecretAadContext(BUDGET, 4, "openai");
+    const newContext = budgetSecretAadContext(BUDGET, 5, "openai");
+    const oldCiphertext = await encryptPayload("sk-rotate", oldDek, oldContext);
+
+    const rotated = await reencryptBudgetSecret({ ciphertext: oldCiphertext, oldDek, oldContext, newDek, newContext });
+
+    expect(rotated).not.toBe(oldCiphertext);
+    expect(await decryptPayload(rotated, newDek, newContext)).toBe("sk-rotate");
+    await expect(reencryptBudgetSecret({ ciphertext: oldCiphertext, oldDek: generateDek(), oldContext, newDek, newContext })).rejects.toThrow();
+    await expect(reencryptBudgetSecret({ ciphertext: "v1.legacy", oldDek, oldContext, newDek, newContext })).rejects.toThrow("legacy_ciphertext");
   });
 });

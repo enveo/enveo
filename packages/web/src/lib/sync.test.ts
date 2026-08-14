@@ -28,7 +28,7 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { type ClientLedger, createDefaultAccountPreferences, type SyncOp } from "@enveo/shared";
 import { accountPreferences } from "./accountPreferences";
-import { budgetSecretAadContext, decryptPayload, generateDek, opAadContext } from "./crypto";
+import { budgetSecretAadContext, decryptPayload, encryptPayload, generateDek, opAadContext } from "./crypto";
 import * as e2ee from "./e2ee";
 import { clearLocalData, idbGet, idbPut } from "./idb";
 import * as outbox from "./outbox";
@@ -118,6 +118,7 @@ let serverUpgradeRequired = false;
 let serverEpoch = 1;
 /** Raw JSON bodies POSTed to /budget/e2ee/upgrade-v2 — F2 asserts retry bodies byte-identical. */
 let upgradeCalls: string[] = [];
+let serverUpgradeCredential: string | null = null;
 /** Simulate a network failure on the upgrade endpoint (fetch never completes). */
 let upgradeNetworkFail = false;
 /** Runs INSIDE the fake upgrade endpoint before it answers — a "second tab edits mid-ceremony". */
@@ -180,6 +181,7 @@ beforeEach(async () => {
   serverUpgradeRequired = false;
   serverEpoch = 1;
   upgradeCalls = [];
+  serverUpgradeCredential = null;
   upgradeNetworkFail = false;
   onUpgrade = null;
   serverAccountPreferences = createDefaultAccountPreferences();
@@ -253,6 +255,14 @@ beforeEach(async () => {
       }
     }
     if (url.startsWith("/api/budget/e2ee/upgrade-v2")) {
+      if (init?.method !== "POST") {
+        return json({
+          configured: serverUpgradeCredential !== null,
+          budgetId: serverBudget,
+          epoch: serverEpoch,
+          ...(serverUpgradeCredential ? { ciphertext: serverUpgradeCredential } : {}),
+        });
+      }
       const rawBody = String(init?.body ?? "{}");
       upgradeCalls.push(rawBody); // recorded BEFORE any simulated failure — F2 compares bodies
       if (upgradeNetworkFail) throw new TypeError("network failure mid-ceremony");
@@ -1241,6 +1251,21 @@ describe("sync e2ee v2: DEK lifecycle across an epoch change", () => {
       "sk-legacy-local",
     );
     expect(values.has("enveo.settings")).toBe(false);
+  });
+
+  it("re-encrypts an existing server E2EE credential with the fresh DEK and next epoch", async () => {
+    await stampedReplica(1);
+    e2ee.setCipherVersion(1);
+    serverUpgradeCredential = await encryptPayload("sk-server-generation-one", oldDek, budgetSecretAadContext(BUDGET_V2, 1, "openai"));
+
+    await upgradeServerE2eeV2("ceremony-pass-123");
+
+    const sent = JSON.parse(upgradeCalls[0]!) as { credentialAction: { kind: string; ciphertext: string } };
+    expect(sent.credentialAction.kind).toBe("e2ee-to-next-epoch");
+    expect(await decryptPayload(sent.credentialAction.ciphertext, e2ee.requireValidatedDek(2), budgetSecretAadContext(BUDGET_V2, 2, "openai"))).toBe(
+      "sk-server-generation-one",
+    );
+    await expect(decryptPayload(serverUpgradeCredential, e2ee.requireValidatedDek(2), budgetSecretAadContext(BUDGET_V2, 2, "openai"))).rejects.toThrow();
   });
 
   it("F2: a stale-epoch refusal drops the intent (it can never commit) — a fresh attempt may start over", async () => {

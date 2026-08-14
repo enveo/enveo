@@ -74,6 +74,7 @@ beforeEach(async () => {
     if (url.startsWith("/api/sync2/pull")) return json({ cursor: 0, epoch: serverEpoch, ops: [] });
     if (url.startsWith("/api/sync2/reset")) return json({ epoch: serverEpoch, uptoSeq: 0 });
     if (url.startsWith("/api/budget/e2ee/upgrade-v2")) {
+      if (init?.method !== "POST") return json({ configured: false, budgetId: BUDGET_A, epoch: serverEpoch });
       const body = JSON.parse(String(init?.body ?? "{}")) as { expectedEpoch: number };
       serverEpoch = body.expectedEpoch + 1;
       return json({ budgetId: BUDGET_A, epoch: serverEpoch, cipherVersion: 2, uptoSeq: 0 });

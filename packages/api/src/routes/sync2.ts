@@ -138,8 +138,11 @@ export const e2eeUpgradeV2Input = z.object({
   credentialAction: z.discriminatedUnion("kind", [
     z.object({ kind: z.literal("none") }),
     z.object({ kind: z.literal("legacy-local-to-e2ee"), ciphertext: budgetSecretCiphertext }),
+    z.object({ kind: z.literal("e2ee-to-next-epoch"), ciphertext: budgetSecretCiphertext }),
   ]),
 });
+
+export const e2eeUpgradeCredentialQuery = z.object({ budgetId: z.string().uuid(), expectedEpoch: z.coerce.number().int().min(0) }).strict();
 
 /** 409 in the budget_mismatch shape — the client re-proves its identity and writes nothing. */
 const ownerMismatch = (budgetId: string) => ({ error: "budget_mismatch", budgetId }) as const;
@@ -545,6 +548,20 @@ export function createSync2Routes(options: { masterKeys: VaultMasterKeyProvider 
    operation lock is never taken on this path (an e2ee budget exists by
    definition — requireTier's fast path resolves it). */
 
+  sync2Routes.get("/budget/e2ee/upgrade-v2/credential", async (c) => {
+    const body = e2eeUpgradeCredentialQuery.parse(c.req.query());
+    const meta = await getBudgetMeta(c);
+    if (budgetAssertionFails(body.budgetId, meta.id)) return c.json(ownerMismatch(meta.id), 409);
+    if (meta.tier !== "e2ee" || meta.epoch !== body.expectedEpoch) return c.json(epochMismatch(meta), 409);
+    const [credential] = await db
+      .select({ storageKind: s.budgetAiCredentials.storageKind, e2eeEpoch: s.budgetAiCredentials.e2eeEpoch, ciphertext: s.budgetAiCredentials.ciphertext })
+      .from(s.budgetAiCredentials)
+      .where(eq(s.budgetAiCredentials.budgetId, meta.id));
+    if (!credential) return c.json({ configured: false, budgetId: meta.id, epoch: meta.epoch });
+    if (credential.storageKind !== "e2ee_ciphertext" || credential.e2eeEpoch !== meta.epoch) throw new Error("e2ee_credential_generation_invalid");
+    return c.json({ configured: true, budgetId: meta.id, epoch: meta.epoch, ciphertext: credential.ciphertext });
+  });
+
   sync2Routes.post("/budget/e2ee/upgrade-v2", async (c) => {
     const body = e2eeUpgradeV2Input.parse(await c.req.json());
     const result = await db.transaction(async (tx) => {
@@ -592,14 +609,15 @@ export function createSync2Routes(options: { masterKeys: VaultMasterKeyProvider 
         .select({ recordVersion: s.budgetAiCredentials.recordVersion })
         .from(s.budgetAiCredentials)
         .where(eq(s.budgetAiCredentials.budgetId, meta.id));
-      if (legacyCredential && body.credentialAction.kind === "none") return { kind: "credential-required", id: meta.id } as const;
+      if (legacyCredential && body.credentialAction.kind !== "e2ee-to-next-epoch") return { kind: "credential-required", id: meta.id } as const;
+      if (!legacyCredential && body.credentialAction.kind === "e2ee-to-next-epoch") return { kind: "credential-invalid", id: meta.id } as const;
       const nextEpoch = row.epoch + 1;
       await tx
         .update(s.budgets)
         .set({ wrappedDek: body.wrappedDek, kdfParams: body.kdfParams, cipherVersion: 2, epoch: nextEpoch, preferences: null })
         .where(eq(s.budgets.id, meta.id));
       await tx.delete(s.e2eeOps).where(eq(s.e2eeOps.budgetId, meta.id)); // the ENTIRE legacy journal
-      if (body.credentialAction.kind === "legacy-local-to-e2ee") {
+      if (body.credentialAction.kind !== "none") {
         const recordVersion = (legacyCredential?.recordVersion ?? 0) + 1;
         if (!Number.isSafeInteger(recordVersion)) throw new Error("ai_vault_record_version_exhausted");
         await tx
@@ -641,6 +659,7 @@ export function createSync2Routes(options: { masterKeys: VaultMasterKeyProvider 
     if (result.kind === "mismatch") return c.json(ownerMismatch(result.id), 409);
     if (result.kind === "stale") return c.json(epochMismatch(result.meta), 409);
     if (result.kind === "credential-required") return c.json({ error: "credential_move_required", budgetId: result.id }, 409);
+    if (result.kind === "credential-invalid") return c.json({ error: "credential_move_invalid", budgetId: result.id }, 409);
     return c.json({ budgetId: result.id, epoch: result.epoch, cipherVersion: 2, uptoSeq: 0 });
   });
 

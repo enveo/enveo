@@ -33,6 +33,7 @@ import {
   wrapDek,
 } from "../crypto";
 import * as e2ee from "../e2ee";
+import { reencryptBudgetSecret } from "../e2eeCredentialCeremonies";
 import { idbDelete, idbGet } from "../idb";
 import * as outbox from "../outbox";
 import * as persist from "../persist";
@@ -49,6 +50,19 @@ import { throwIfBudgetMismatch, throwIfTierMismatch, unauthorized } from "./tran
 async function settingsDigest(raw: string): Promise<string> {
   const bytes = new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(raw)));
   return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+async function fetchUpgradeCredential(budgetId: string, expectedEpoch: number): Promise<{ configured: boolean; ciphertext?: string }> {
+  const query = new URLSearchParams({ budgetId, expectedEpoch: String(expectedEpoch) });
+  const response = await fetch(`/api/budget/e2ee/upgrade-v2/credential?${query}`);
+  if (response.status === 401) throw unauthorized();
+  await throwIfTierMismatch(response);
+  await throwIfBudgetMismatch(response);
+  if (!response.ok) {
+    const text = await response.text().catch(() => "");
+    throw new Error(`${response.status} ${text}`);
+  }
+  return (await response.json()) as { configured: boolean; ciphertext?: string };
 }
 
 /** The durable CEREMONY-INTENT record — type + rationale in sync/contracts.ts (PendingE2eeUpgrade). */
@@ -111,6 +125,26 @@ export async function upgradeServerE2eeV2(password: string | null): Promise<void
     const kek = await deriveKek(password, salt, DEFAULT_KDF_PARAMS);
     const legacy = readLegacySettings();
     const legacyKey = legacy?.value.openaiKey?.trim() ?? "";
+    const serverCredential = await fetchUpgradeCredential(budgetId, expectedEpoch);
+    let credentialAction: PendingE2eeUpgrade["credentialAction"] = { kind: "none" };
+    if (serverCredential.configured) {
+      if (!serverCredential.ciphertext) throw new Error("credential_bad_record");
+      credentialAction = {
+        kind: "e2ee-to-next-epoch",
+        ciphertext: await reencryptBudgetSecret({
+          ciphertext: serverCredential.ciphertext,
+          oldDek: e2ee.requireValidatedDek(expectedEpoch),
+          oldContext: budgetSecretAadContext(budgetId, expectedEpoch, "openai"),
+          newDek: dek,
+          newContext: budgetSecretAadContext(budgetId, nextEpoch, "openai"),
+        }),
+      };
+    } else if (legacyKey) {
+      credentialAction = {
+        kind: "legacy-local-to-e2ee",
+        ciphertext: await encryptPayload(legacyKey, dek, budgetSecretAadContext(budgetId, nextEpoch, "openai")),
+      };
+    }
     pending = {
       budgetId,
       expectedEpoch,
@@ -119,13 +153,8 @@ export async function upgradeServerE2eeV2(password: string | null): Promise<void
       wrappedDek: await wrapDek(dek, kek, dekWrapAadContext(budgetId, nextEpoch)),
       kdfParams: freshKdfParams(salt),
       snapshotBlob: await e2ee.encryptSnapshot(ledger, dek, { budgetId, epoch: nextEpoch, uptoSeq: 0 }),
-      credentialAction: legacyKey
-        ? {
-            kind: "legacy-local-to-e2ee",
-            ciphertext: await encryptPayload(legacyKey, dek, budgetSecretAadContext(budgetId, nextEpoch, "openai")),
-          }
-        : { kind: "none" },
-      ...(legacyKey && legacy ? { legacySettingsDigest: await settingsDigest(legacy.raw) } : {}),
+      credentialAction,
+      ...(!serverCredential.configured && legacyKey && legacy ? { legacySettingsDigest: await settingsDigest(legacy.raw) } : {}),
       opIds: outbox.snapshot().map((en) => en.op.opId), // their effects are inside the snapshot
     };
     // DURABLE before the first POST — a lost response must find the same materials on retry.

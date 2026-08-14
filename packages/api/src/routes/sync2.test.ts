@@ -13,7 +13,16 @@
 
 import { describe, expect, it } from "bun:test";
 import { E2EE_DISABLE_CONFIRM } from "@enveo/shared";
-import { e2eeDisableInput, e2eeEnableInput, e2eeUpgradeV2Input, sync2PushInput, sync2RekeyInput, sync2ResetInput, sync2SnapshotInput } from "./sync2";
+import {
+  e2eeDisableInput,
+  e2eeEnableInput,
+  e2eeUpgradeCredentialQuery,
+  e2eeUpgradeV2Input,
+  sync2PushInput,
+  sync2RekeyInput,
+  sync2ResetInput,
+  sync2SnapshotInput,
+} from "./sync2";
 
 const UUID = "11111111-1111-1111-1111-111111111111";
 
@@ -179,5 +188,8 @@ describe("sync2 — input validation (format v2)", () => {
     expect(e2eeUpgradeV2Input.safeParse({ ...ok, credentialAction: undefined }).success).toBe(false);
     expect(e2eeUpgradeV2Input.safeParse({ ...ok, credentialAction: { kind: "legacy-local-to-e2ee", ciphertext: "v2.credentialAAAA" } }).success).toBe(true);
     expect(e2eeUpgradeV2Input.safeParse({ ...ok, credentialAction: { kind: "legacy-local-to-e2ee", ciphertext: "v1.credentialAAAA" } }).success).toBe(false);
+    expect(e2eeUpgradeV2Input.safeParse({ ...ok, credentialAction: { kind: "e2ee-to-next-epoch", ciphertext: "v2.credentialAAAA" } }).success).toBe(true);
+    expect(e2eeUpgradeCredentialQuery.safeParse({ budgetId: UUID, expectedEpoch: "1" }).success).toBe(true);
+    expect(e2eeUpgradeCredentialQuery.safeParse({ budgetId: UUID, expectedEpoch: "-1" }).success).toBe(false);
   });
 });
