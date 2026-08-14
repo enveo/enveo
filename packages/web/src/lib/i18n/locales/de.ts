@@ -118,9 +118,6 @@ export const de: Dict = {
   Cisza: "Stille",
   "Clear & reset": "Leeren & zurücksetzen",
   "Clear filters": "Filter zurücksetzen",
-  "Clear local data": "Lokale Daten löschen",
-  "Clear local data? We will delete the local copy on this device and download everything anew from the server. Changes still waiting in the queue will be lost.":
-    "Lokale Daten löschen? Wir löschen die lokale Kopie auf diesem Gerät und laden alles neu vom Server. Änderungen, die noch in der Warteschlange stehen, gehen verloren.",
   "Clear search": "Suche leeren",
   Close: "Schließen",
   Closed: "Geschlossen",
@@ -161,8 +158,6 @@ export const de: Dict = {
   "Delete {name}": "{name} löschen",
   "Deletes ALL budget data from the server and this device — irreversible. Export a backup first. The app will reopen with the first-run wizard.":
     "Löscht ALLE Budgetdaten vom Server und von diesem Gerät — unwiderruflich. Exportiere zuerst eine Sicherung. Die App startet danach mit dem Einrichtungsassistenten.",
-  "Deletes the local copy on this device and downloads everything anew from the server. Use when something looks off.":
-    "Löscht die lokale Kopie auf diesem Gerät und lädt alles neu vom Server. Nutze das, wenn etwas nicht stimmt.",
   "Deleting…": "Wird gelöscht…",
   "Describe how to distribute (e.g. prioritize savings, less on entertainment)":
     "Beschreibe, wie verteilt werden soll (z. B. Sparen priorisieren, weniger für Freizeit)",
@@ -181,9 +176,6 @@ export const de: Dict = {
     "Verteilt den Betrag nur auf Umschläge im Minus — proportional zur Unterdeckung, nie über null hinaus.",
   Done: "Fertig",
   "Download a backup (JSON)": "Sicherung herunterladen (JSON)",
-  "Download everything anew": "Alles neu herunterladen",
-  "Download everything anew from the server? We will replace the local copy with the current server state. Unsent changes in the queue will be kept and pushed.":
-    "Alles neu vom Server herunterladen? Wir ersetzen die lokale Kopie durch den aktuellen Serverstand. Nicht gesendete Änderungen in der Warteschlange bleiben erhalten und werden übertragen.",
   "Drag {name}": "{name} ziehen",
   Duplicate: "Duplizieren",
   "Duplicates skipped: {n}": "Übersprungene Duplikate: {n}",
@@ -227,7 +219,6 @@ export const de: Dict = {
   "Finance & shopping": "Finanzen & Einkäufe",
   "Food & drink": "Essen & Trinken",
   "From screenshot": "Vom Screenshot",
-  "Full resync from the server. Use when data looks out of sync.": "Vollständiger Neuabgleich mit dem Server. Nutze das, wenn die Daten nicht zusammenpassen.",
   Fun: "Freizeit",
   "Generate suggestion": "Vorschlag erzeugen",
   "Generating…": "Wird erzeugt…",

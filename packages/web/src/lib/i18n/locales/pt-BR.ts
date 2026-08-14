@@ -122,9 +122,6 @@ export const ptBR: Dict = {
   Cisza: "Silêncio",
   "Clear & reset": "Limpar e redefinir",
   "Clear filters": "Limpar os filtros",
-  "Clear local data": "Apagar os dados locais",
-  "Clear local data? We will delete the local copy on this device and download everything anew from the server. Changes still waiting in the queue will be lost.":
-    "Apagar os dados locais? Vamos excluir a cópia local deste dispositivo e baixar tudo de novo do servidor. As mudanças ainda na fila serão perdidas.",
   "Clear search": "Limpar a busca",
   Close: "Fechar",
   Closed: "Fechadas",
@@ -164,8 +161,6 @@ export const ptBR: Dict = {
   "Delete {name}": "Excluir {name}",
   "Deletes ALL budget data from the server and this device — irreversible. Export a backup first. The app will reopen with the first-run wizard.":
     "Exclui TODOS os dados do orçamento do servidor e deste dispositivo — irreversível. Exporte um backup antes. O app reabrirá com o assistente inicial.",
-  "Deletes the local copy on this device and downloads everything anew from the server. Use when something looks off.":
-    "Exclui a cópia local deste dispositivo e baixa tudo de novo do servidor. Use quando algo parecer errado.",
   "Deleting…": "Excluindo…",
   "Describe how to distribute (e.g. prioritize savings, less on entertainment)": "Descreva como distribuir (ex.: priorizar poupança, menos em lazer)",
   "Destination account": "Conta de destino",
@@ -183,9 +178,6 @@ export const ptBR: Dict = {
     "Distribui o valor apenas entre os envelopes no vermelho — na proporção do déficit, nunca além de zero.",
   Done: "Pronto",
   "Download a backup (JSON)": "Baixar um backup (JSON)",
-  "Download everything anew": "Baixar tudo de novo",
-  "Download everything anew from the server? We will replace the local copy with the current server state. Unsent changes in the queue will be kept and pushed.":
-    "Baixar tudo de novo do servidor? Vamos substituir a cópia local pelo estado atual do servidor. As mudanças não enviadas que estão na fila serão mantidas e enviadas.",
   "Drag {name}": "Arrastar {name}",
   Duplicate: "Duplicar",
   "Duplicates skipped: {n}": "Duplicadas ignoradas: {n}",
@@ -227,8 +219,6 @@ export const ptBR: Dict = {
   "Finance & shopping": "Finanças e compras",
   "Food & drink": "Alimentação",
   "From screenshot": "De uma captura de tela",
-  "Full resync from the server. Use when data looks out of sync.":
-    "Ressincronização completa a partir do servidor. Use quando os dados parecerem fora de sincronia.",
   Fun: "Lazer",
   "Generate suggestion": "Gerar sugestão",
   "Generating…": "Gerando…",
