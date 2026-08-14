@@ -5,6 +5,7 @@ import { compress } from "hono/compress";
 import { cors } from "hono/cors";
 import { secureHeaders } from "hono/secure-headers";
 import { ZodError } from "zod";
+import { loadVaultMasterKeyProvider } from "./aiCredentials/keyProvider";
 import { assertAiSpendEnv } from "./aiSpend/transport";
 import { auth, hasCredentialedUser } from "./auth";
 import { authMetaBody } from "./authPolicy";
@@ -22,6 +23,13 @@ import { syncRoutes } from "./routes/sync";
 import { sync2Routes } from "./routes/sync2";
 import { txnRoutes } from "./routes/transactions";
 import { ScopeViolation } from "./sync/apply";
+
+/** Loaded exactly once. `null` disables user BYOK only; ordinary budgeting still boots. */
+export const vaultMasterKeyProvider = loadVaultMasterKeyProvider({
+  nodeEnv: process.env.NODE_ENV ?? "development",
+  filePath: env.AI_VAULT_KEY_RING_FILE,
+  devKeyRingJson: env.ENVEO_DEV_AI_VAULT_KEY_RING_JSON,
+});
 
 // Fail fast on real boot (entrypoint run — dev, Docker CMD): accounts are
 // mandatory (BETTER_AUTH_SECRET), and production needs explicit database config.

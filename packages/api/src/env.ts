@@ -42,6 +42,10 @@ export const env = {
    *  (domain-separated HMAC over the user id — aiSpend/safetyIdentifier.ts). Optional: absent ⇒
    *  the field is omitted. MUST NOT reuse BETTER_AUTH_SECRET (assertAiSpendEnv fails the boot). */
   AI_SAFETY_IDENTIFIER_SECRET: process.env.AI_SAFETY_IDENTIFIER_SECRET ?? "",
+  /** Production BYOK vault key material comes only from a read-only mounted JSON file. */
+  AI_VAULT_KEY_RING_FILE: process.env.AI_VAULT_KEY_RING_FILE ?? "",
+  /** Explicit development/test seam; keyProvider rejects it when NODE_ENV=production. */
+  ENVEO_DEV_AI_VAULT_KEY_RING_JSON: process.env.ENVEO_DEV_AI_VAULT_KEY_RING_JSON ?? "",
   BETTER_AUTH_SECRET: process.env.BETTER_AUTH_SECRET ?? "",
   BETTER_AUTH_URL: process.env.BETTER_AUTH_URL ?? "http://localhost:8080",
   GOOGLE_CLIENT_ID: process.env.GOOGLE_CLIENT_ID ?? "",
