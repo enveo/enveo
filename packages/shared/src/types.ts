@@ -89,11 +89,14 @@ export interface Allocation {
   amount: Money;
 }
 
+import type { BudgetPreferences } from "./preferences";
+
  
 export interface Budget {
   id: string;
   name: string;
   currency: string;  
+  preferences: BudgetPreferences;
 }
 
  

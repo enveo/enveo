@@ -40,6 +40,7 @@
  * arrive via pull/snapshot.
  */
 import type { OpPayload, SyncOp } from "./ops";
+import { reconcileBudgetPreferences } from "./preferences";
 import type { Account, Allocation, Category, ClientLedger, Envelope, EnvelopeGroup, Place, Transaction, TxnItem } from "./types";
 
 /**
@@ -299,6 +300,14 @@ export function applyOp(ledger: ClientLedger, op: SyncOp): ClientLedger {
       const idx = ledger.budgets.findIndex((b) => b.id === p.id);
       if (idx < 0) return ledger;
       return { ...ledger, budgets: replaceAt(ledger.budgets, idx, { ...ledger.budgets[idx]!, currency: p.currency }) };
+    }
+    case "budget.preferences.update": {
+      const p = op.payload as OpPayload<"budget.preferences.update">;
+      const idx = ledger.budgets.findIndex((budget) => budget.id === p.id);
+      if (idx < 0) return ledger;
+      const budget = ledger.budgets[idx]!;
+      const preferences = reconcileBudgetPreferences({ ...budget.preferences, ...p.patch });
+      return { ...ledger, budgets: replaceAt(ledger.budgets, idx, { ...budget, preferences }) };
     }
     default: {
       const _exhaustive: never = op.kind; // a NEW kind without a reducer must not compile

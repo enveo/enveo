@@ -1,4 +1,17 @@
-import type { Account, Allocation, Budget, Category, ClientLedger, Envelope, EnvelopeGroup, Ledger, Place, Transaction, TxnItem } from "@enveo/shared";
+import {
+  type Account,
+  type Allocation,
+  type Budget,
+  type Category,
+  type ClientLedger,
+  type Envelope,
+  type EnvelopeGroup,
+  type Ledger,
+  type Place,
+  reconcileBudgetPreferences,
+  type Transaction,
+  type TxnItem,
+} from "@enveo/shared";
 import { eq } from "drizzle-orm";
 import { db } from "./db/client";
 import * as s from "./db/schema";
@@ -11,6 +24,7 @@ export const mapBudget = (b: typeof s.budgets.$inferSelect): Budget => ({
   id: b.id,
   name: b.name,
   currency: b.currency,
+  preferences: reconcileBudgetPreferences(undefined),
 });
 
 export const mapAccount = (a: typeof s.accounts.$inferSelect): Account => ({

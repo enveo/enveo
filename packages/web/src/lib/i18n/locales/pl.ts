@@ -148,6 +148,7 @@ export const pl: Dict = {
   "Breakdown by category": "Zestawienie według kategorii",
   Budget: "Budżet",
   "Budget currency change": "Zmiana waluty budżetu",
+  "Budget settings change": "Zmiana ustawień budżetu",
   "Budget data will be encrypted on your device before it reaches the server. Server-side features will be unavailable.":
     "Dane budżetu będą szyfrowane na urządzeniu, zanim trafią na serwer. Funkcje serwerowe będą niedostępne.",
   Budgets: "Budżety",
