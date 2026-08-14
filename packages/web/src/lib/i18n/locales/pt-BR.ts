@@ -384,10 +384,7 @@ export const ptBR: Dict = {
   "Sign in with Google": "Entrar com o Google",
   "Sign out": "Sair",
   "Sign out and use another account": "Sair e usar outra conta",
-  "Sign out? Your data stays on this device and on the server.": "Sair? Seus dados continuam neste dispositivo e no servidor.",
   "Signing out…": "Saindo…",
-  "Signs you out of this device. The local copy and the server data both stay — everything resumes when you sign back in. To remove the copy from this device, use “Clear local data”.":
-    "Desconecta você deste dispositivo. A cópia local e os dados do servidor continuam existindo — tudo volta quando você entrar de novo. Para remover a cópia deste dispositivo, use “Apagar os dados locais”.",
   "Skip for now": "Pular por enquanto",
   "Some funds stayed in To be budgeted — envelopes are at their target caps.": "Parte dos recursos ficou em “A orçar” — os envelopes chegaram ao teto da meta.",
   "Source: {src}": "Origem: {src}",

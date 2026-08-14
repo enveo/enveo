@@ -1,11 +1,11 @@
 import { useState } from "react";
 import { LogoMark } from "../components/chrome";
-import { signOutKeepingReplica } from "../lib/auth";
+import { endSession } from "../lib/auth";
 import { useTheme } from "../lib/contexts";
 import { exportBackup } from "../lib/data";
 import { getCachedDeployment } from "../lib/deviceStoragePolicy";
 import { useT } from "../lib/i18n";
-import { discardLocalReplica, enterLoginKeepingReplica } from "../lib/sync";
+import { discardLocalReplica, enterLoginPreservingReplica } from "../lib/sync";
 import { CORAL, font, TEAL } from "../lib/theme";
 
 /**
@@ -65,7 +65,8 @@ export function ForeignReplicaScreen() {
     setBusy(true);
     setError(null);
     try {
-      await signOutKeepingReplica(enterLoginKeepingReplica); // → Login; the replica stays
+      await endSession();
+      enterLoginPreservingReplica(); // → Login; the foreign replica stays
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {

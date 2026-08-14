@@ -17,12 +17,13 @@ import {
   type BootSource,
   bootOnce,
   broadcastKeysChanged,
+  clearLocalAccountData,
   decideIdentity,
   discardLocalReplica,
   discardPendingE2eeUpgrade,
   E2eeUpgradeRequiredError,
   EMPTY_LEDGER,
-  enterLoginKeepingReplica,
+  enterLoginPreservingReplica,
   fetchSnapshot,
   flushOutboxForSignOut,
   fullResync,
@@ -63,7 +64,8 @@ const _resetIdentity: () => void = __resetIdentity;
 const _resetObligations: () => void = __resetObligations;
 const _resetBackoff: () => void = __resetBackoff;
 const _discardLocalReplica: () => Promise<void> = discardLocalReplica;
-const _enterLoginKeepingReplica: () => void = enterLoginKeepingReplica;
+const _clearLocalAccountData: () => Promise<void> = clearLocalAccountData;
+const _enterLoginPreservingReplica: () => void = enterLoginPreservingReplica;
 const _flushOutboxForSignOut: () => Promise<number> = flushOutboxForSignOut;
 const _recheckReplicaOwner: () => Promise<void> = recheckReplicaOwner;
 const _assertOwnReplica: () => Promise<string> = assertOwnReplica;
@@ -127,7 +129,8 @@ const surface = [
   _resetObligations,
   _resetBackoff,
   _discardLocalReplica,
-  _enterLoginKeepingReplica,
+  _clearLocalAccountData,
+  _enterLoginPreservingReplica,
   _flushOutboxForSignOut,
   _recheckReplicaOwner,
   _assertOwnReplica,
@@ -158,7 +161,7 @@ const surface = [
 
 describe("sync public surface (compile-time fixture)", () => {
   it("every export is present and callable-shaped", () => {
-    expect(surface.length).toBe(40);
+    expect(surface.length).toBe(41);
     expect(_tierMismatch.name).toBe("TierMismatchError");
     expect(_upgradeRequired.name).toBe("E2eeUpgradeRequiredError");
   });

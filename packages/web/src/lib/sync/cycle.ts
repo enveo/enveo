@@ -136,12 +136,9 @@ export function fullResync(): Promise<void> {
 }
 
 /**
- * Pre-sign-out outbox flush for CLOUD deployments. Their sign-out wipes the replica (the server
- * is the durable copy there — operator backups, not this device), and queued ops would go with
- * it; selfhost sign-out keeps the replica instead (see enterLoginKeepingReplica — it may be the
- * LAST copy). One ordinary cycle through the usual mutex; returns how many ops are STILL queued
- * afterwards. 0 ⇒ a wipe loses nothing; anything else (offline, 5xx, an unproven replica) ⇒ the
- * caller must obtain explicit consent before discarding, or abort the sign-out.
+ * Pre-sign-out outbox flush for every deployment. Explicit sign-out clears local account data,
+ * so queued ops must first get an ordinary cycle through the usual mutex. The remaining count
+ * determines whether the human must retry, export a backup, or explicitly discard.
  */
 export async function flushOutboxForSignOut(): Promise<number> {
   await syncNow("sign-out");

@@ -29,6 +29,10 @@ export interface Backup {
   ledger: ClientLedger;
 }
 
+export function hasExportableBackup(): boolean {
+  return store.getLedger() !== null;
+}
+
 /**
  * Download the whole replica as a `enveo-backup-<YYYY-MM-DD>.json` file (Blob + anchor).
  * Works offline (local mirror only). No data → a friendly exception.

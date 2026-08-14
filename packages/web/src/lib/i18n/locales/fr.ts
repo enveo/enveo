@@ -383,10 +383,7 @@ export const fr: Dict = {
   "Sign in with Google": "Se connecter avec Google",
   "Sign out": "Se déconnecter",
   "Sign out and use another account": "Se déconnecter et utiliser un autre compte",
-  "Sign out? Your data stays on this device and on the server.": "Se déconnecter ? Vos données restent sur cet appareil et sur le serveur.",
   "Signing out…": "Déconnexion…",
-  "Signs you out of this device. The local copy and the server data both stay — everything resumes when you sign back in. To remove the copy from this device, use “Clear local data”.":
-    "Vous déconnecte de cet appareil. La copie locale et les données du serveur restent toutes deux — tout reprend à la reconnexion. Pour retirer la copie de cet appareil, utilisez « Effacer les données locales ».",
   "Skip for now": "Passer pour l'instant",
   "Some funds stayed in To be budgeted — envelopes are at their target caps.":
     "Une partie des fonds est restée dans « À budgétiser » — les enveloppes ont atteint le plafond de leur objectif.",

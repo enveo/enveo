@@ -3,7 +3,7 @@ import qrcode from "qrcode-generator";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Sheet } from "../../components/chrome";
 import { api, apiErrorMessage, useLedgerVersion } from "../../lib/api";
-import { hasSession, signOutKeepingReplica, signOutSessionOnly } from "../../lib/auth";
+import { hasSession } from "../../lib/auth";
 import { useTheme } from "../../lib/contexts";
 import {
   DEFAULT_KDF_PARAMS,
@@ -18,22 +18,12 @@ import {
   wrapDek,
 } from "../../lib/crypto";
 import { exportBackup, importBackup } from "../../lib/data";
-import { clearDeviceStoragePolicy, getCachedDeployment } from "../../lib/deviceStoragePolicy";
 import * as e2ee from "../../lib/e2ee";
 import { useT } from "../../lib/i18n";
-import { clearLastAccountId } from "../../lib/lastAccount";
 import * as persist from "../../lib/persist";
-import { clearPersistedSettings } from "../../lib/settingsPersist";
+import { completeExplicitSignOut, ExplicitSignOutPendingError, type SignOutPreparation } from "../../lib/signOut";
 import { store } from "../../lib/store";
-import {
-  assertOwnReplica,
-  broadcastKeysChanged,
-  discardLocalReplica,
-  enterLoginKeepingReplica,
-  flushOutboxForSignOut,
-  fullResync,
-  syncNow,
-} from "../../lib/sync";
+import { assertOwnReplica, broadcastKeysChanged, fullResync, syncNow } from "../../lib/sync";
 import { CORAL, font } from "../../lib/theme";
 import { E2eeUpgradePanel } from "./E2eeUpgradePanel";
 import { ActionGroup, ActionIcon, ActionRow, ConfirmWordHint, Eyebrow } from "./ui";
@@ -61,71 +51,42 @@ export function DataSection() {
   );
 }
 
-/**
- * Logout — visible ONLY when the backend confirms a session (hasSession()). The behavior splits
- * by deployment (device-storage-policy spec, 2026-07-17):
- *
- * SELFHOST does NOT wipe the local replica (spec §3, binding owner decision): the ledger mirror,
- * the DEK and — crucially — every op still queued in the durable outbox stay on the device, so a
- * sign-out while offline (or with a failing push) cannot silently throw unsynced data away, and a
- * replica that is the last copy of its budget survives. Signing back in
- * resumes exactly where it stopped; a DIFFERENT account signing in is handled by the multi-tenant
- * guard in sync.ts (the foreign replica is neither rendered nor written anywhere, and the human
- * decides its fate). Deleting the local copy on purpose remains available: Settings → Clear local
- * data (Advanced).
- *
- * CLOUD is the deliberate exception: the server is the durable copy there (operator backups, not
- * this device), so sign-out flushes the outbox, ends the session and only then wipes the local
- * copy — a non-empty remainder after the flush still requires the human's explicit consent before
- * anything is discarded.
- * The wipe also clears the persisted settings (the BYOK OpenAI key lives there) and the
- * last-account preference — nothing of the account's stays on a device it signed off from.
- */
+/** Explicit sign-out is identical for cloud and self-hosted deployments. */
 function LogoutRow() {
   const { t } = useT();
   const [session, setSession] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [pending, setPending] = useState<Exclude<SignOutPreparation, { kind: "ready" }> | null>(null);
   useEffect(() => {
     void hasSession().then(setSession);
   }, []);
   if (!session) return null;
 
-  const cloud = getCachedDeployment() === "cloud";
-
-  const doLogout = async () => {
-    const prompt = cloud
-      ? t("Sign out? The local copy will be removed from this device — your data stays on the server.")
-      : t("Sign out? Your data stays on this device and on the server.");
-    if (!window.confirm(prompt)) return;
+  const finish = async (decision: "retry" | "export" | "discard") => {
     setBusy(true);
     setError(null);
     try {
-      if (!cloud) {
-        await signOutKeepingReplica(enterLoginKeepingReplica); // sign out → Login; the replica stays
-        return;
-      }
-      // Cloud: the server is the durable copy — flush, end the session, then wipe this device.
-      // Order: a failed wipe after a successful signOut leaves the same state as an expired
-      // session with persistent storage (accepted residual risk of that choice); a wipe before
-      // a failed signOut would strand a signed-in session on an empty replica.
-      const left = await flushOutboxForSignOut();
-      if (left > 0 && !window.confirm(t("Some changes have not reached the server yet. Sign out anyway and lose them?"))) {
+      await completeExplicitSignOut(decision);
+    } catch (e) {
+      if (e instanceof ExplicitSignOutPendingError) {
+        setPending(e.preparation);
         setBusy(false);
         return;
       }
-      await signOutSessionOnly();
-      clearDeviceStoragePolicy(); // the next login applies its deployment default
-      // Leaving the device takes the per-device state with it: the settings hold the BYOK
-      // OpenAI key (a billing credential must not outlive the account on a shared machine),
-      // and the last-account preference names an account of a budget this device no longer has.
-      clearPersistedSettings();
-      clearLastAccountId();
-      await discardLocalReplica(); // clears the local copy (memory or IDB) and reloads → Login
-    } catch (e) {
       setError(apiErrorMessage(e));
       setBusy(false);
     }
+  };
+
+  const doLogout = () => {
+    if (!window.confirm(t("Sign out and remove this account's local data from this device? Your data already on the server will stay there."))) return;
+    void finish("retry");
+  };
+
+  const discardPending = () => {
+    if (!window.confirm(t("Discard the unsent changes and sign out? This cannot be undone."))) return;
+    void finish("discard");
   };
 
   return (
@@ -135,19 +96,25 @@ function LogoutRow() {
         <ActionRow
           icon={<ActionIcon paths={IC.logout} />}
           label={t("Sign out")}
-          desc={
-            cloud
-              ? t("Signs you out and removes the local copy from this device. Your data stays on the server and comes back when you sign in again.")
-              : t(
-                  "Signs you out of this device. The local copy and the server data both stay — everything resumes when you sign back in. To remove the copy from this device, use “Clear local data”.",
-                )
-          }
+          desc={t("Signs you out and removes this account's local copy, encryption keys, and credentials from the device.")}
           tone="danger"
           onClick={() => void doLogout()}
           disabled={busy}
           busyLabel={busy ? t("Signing out…") : undefined}
         />
       </ActionGroup>
+      {pending && (
+        <div style={{ margin: "10px 4px 0", padding: 12, borderRadius: 11, border: `1px solid ${CORAL}55` }}>
+          <div style={{ fontSize: 12, color: CORAL, lineHeight: 1.55, marginBottom: 10 }}>
+            {t("{count} unsent changes are still on this device. Retry when online, export a backup, or explicitly discard them.", { count: pending.count })}
+          </div>
+          <ActionGroup>
+            <ActionRow label={t("Retry sending changes")} onClick={() => void finish("retry")} disabled={busy} />
+            {pending.kind === "pending" && <ActionRow label={t("Export backup and sign out")} onClick={() => void finish("export")} disabled={busy} />}
+            <ActionRow label={t("Discard unsent changes and sign out")} tone="danger" onClick={discardPending} disabled={busy} />
+          </ActionGroup>
+        </div>
+      )}
       {error && <div style={{ fontSize: 12, color: CORAL, margin: "8px 4px 0", lineHeight: 1.5 }}>{error}</div>}
     </div>
   );

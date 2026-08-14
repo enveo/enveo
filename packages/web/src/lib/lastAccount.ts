@@ -21,7 +21,7 @@ export function setLastAccountId(id: string): void {
   }
 }
 
-/** Cloud sign-out: the preference leaves the device with the account. */
+/** Explicit sign-out: this account-derived device preference must not remain behind. */
 export function clearLastAccountId(): void {
   try {
     localStorage.removeItem(KEY);

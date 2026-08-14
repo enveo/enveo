@@ -384,10 +384,7 @@ export const nl: Dict = {
   "Sign in with Google": "Aanmelden met Google",
   "Sign out": "Afmelden",
   "Sign out and use another account": "Afmelden en een ander account gebruiken",
-  "Sign out? Your data stays on this device and on the server.": "Afmelden? Je gegevens blijven op dit apparaat en op de server staan.",
   "Signing out…": "Bezig met afmelden…",
-  "Signs you out of this device. The local copy and the server data both stay — everything resumes when you sign back in. To remove the copy from this device, use “Clear local data”.":
-    "Meldt je af op dit apparaat. De lokale kopie en de gegevens op de server blijven allebei staan — alles gaat verder zodra je je weer aanmeldt. Gebruik ‘Lokale gegevens wissen’ om de kopie van dit apparaat te verwijderen.",
   "Skip for now": "Nu overslaan",
   "Some funds stayed in To be budgeted — envelopes are at their target caps.":
     "Een deel van het geld bleef in ‘Te budgetteren’ staan — de enveloppen zitten aan het plafond van hun doel.",

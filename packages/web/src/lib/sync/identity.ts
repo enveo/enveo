@@ -150,21 +150,16 @@ export function enterForeignReplica(): void {
 }
 
 /**
- * Where EVERY sign-out lands (auth.signOutKeepingReplica calls this once the session is gone —
- * from Settings and from ForeignReplicaScreen alike): back to Login WITHOUT touching the replica.
+ * Where session expiry and the protected foreign-replica exit land: back to Login WITHOUT
+ * touching the replica.
  * The owner (or the same human after a server rebuild handed them a new user id) signs back in,
  * their stamp matches again, and the ledger plus every queued op resume where they stopped.
  *
- * A SELFHOST sign-out does NOT wipe (spec §3, owner's decision): the replica may be the last
- * copy of the budget and the outbox may hold ops the server has never seen — a window.confirm
- * is not consent to destroy them. CLOUD
- * sign-out is the deliberate exception (device-storage-policy spec, 2026-07-17): there the server is the
- * durable copy, so LogoutRow flushes the outbox, ends the session and only then wipes — and a
- * non-empty remainder still requires the human's explicit consent. What protects the NEXT
- * account to sign in on this device is the guard, not a wipe: bootOwnerOk refuses to render a
- * replica stamped by somebody else, and ensureIdentity refuses to write it anywhere.
+ * Ordinary explicit sign-out uses the separate signOut flow and clears local account data after
+ * handling pending writes. A foreign replica is the exception because it is not owned by the
+ * signed-in session and may be the previous owner's last copy.
  */
-export function enterLoginKeepingReplica(): void {
+export function enterLoginPreservingReplica(): void {
   identityVerifiedFor = null;
   identityBlocked = false; // a NEW session must be verified from scratch — see ensureIdentity
   enterUnauthed(); // Login screen, replica intact

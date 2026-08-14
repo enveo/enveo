@@ -382,10 +382,7 @@ export const es: Dict = {
   "Sign in with Google": "Iniciar sesión con Google",
   "Sign out": "Cerrar sesión",
   "Sign out and use another account": "Cerrar sesión y usar otra cuenta",
-  "Sign out? Your data stays on this device and on the server.": "¿Cerrar sesión? Tus datos se quedan en este dispositivo y en el servidor.",
   "Signing out…": "Cerrando sesión…",
-  "Signs you out of this device. The local copy and the server data both stay — everything resumes when you sign back in. To remove the copy from this device, use “Clear local data”.":
-    "Cierra tu sesión en este dispositivo. La copia local y los datos del servidor se conservan: todo se reanuda cuando vuelvas a iniciar sesión. Para quitar la copia de este dispositivo, usa «Borrar los datos locales».",
   "Skip for now": "Omitir por ahora",
   "Some funds stayed in To be budgeted — envelopes are at their target caps.":
     "Parte de los fondos se ha quedado en «Por presupuestar»: los sobres han alcanzado el tope de su objetivo.",

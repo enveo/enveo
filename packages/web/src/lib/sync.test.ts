@@ -40,7 +40,7 @@ import {
   __resetObligations,
   assertOwnReplica,
   discardLocalReplica,
-  enterLoginKeepingReplica,
+  enterLoginPreservingReplica,
   flushOutboxForSignOut,
   getSyncStatus,
   hasPendingE2eeUpgrade,
@@ -358,7 +358,7 @@ describe("sync cycle: session guard before the push", () => {
     expect(outbox.size()).toBe(1); // …and A's unsent op with it
   });
 
-  it("the previous owner can sign back in — the sign-out KEEPS the replica", async () => {
+  it("the previous owner can sign back in after the protected foreign-session exit", async () => {
     // The non-destructive way off ForeignReplicaScreen (and the reason "destroy nothing" is not a
     // dead end): the app is not rendered there, so Settings → sign out is unreachable.
     await idbPut("meta", "user-A", "userId");
@@ -367,8 +367,8 @@ describe("sync cycle: session guard before the push", () => {
     await expect(assertOwnReplica()).rejects.toThrow();
     expect(store.getBootStatus()).toBe("foreign");
 
-    session = null; // auth.signOutKeepingReplica ends the session, then calls this:
-    enterLoginKeepingReplica();
+    session = null; // session expiry returns to Login without clearing the replica:
+    enterLoginPreservingReplica();
 
     expect(store.getBootStatus()).toBe("unauthed"); // Login — A can sign back in
     expect(await idbGet("meta", "ledger")).toBeDefined(); // …with the replica untouched
@@ -749,7 +749,7 @@ describe("sync status: ownerUnproven is sticky across the re-proof", () => {
     await syncNow("test");
     expect(getSyncStatus().ownerUnproven).toBe(true);
 
-    enterLoginKeepingReplica(); // the replica stays; the next session proves it from scratch
+    enterLoginPreservingReplica(); // the replica stays; the next session proves it from scratch
 
     expect(getSyncStatus().ownerUnproven).toBe(false);
     expect(getSyncStatus().state).toBe("unauthed");
@@ -856,8 +856,8 @@ describe("sync pull: a resync never replaces the mirror on an unverified session
 /* ── BOOT is the READ side: the app must not render a foreign replica ─────
  *
  * boot() hydrates from IDB and sets BootStatus "ready" BEFORE the first cycle runs, so the guard
- * that protects writes cannot protect the screen. The ways a device changes hands are routine (a
- * 90-day cookie expires → Login; sign-out keeps the replica → Login; the next account signs in). */
+ * that protects writes cannot protect the screen. A session can expire while a persistent replica
+ * remains; the next authenticated account must never see it before ownership is checked. */
 
 describe("sync boot: the replica's owner is checked BEFORE it is rendered", () => {
   it("another account signed in → ForeignReplicaScreen, not the previous owner's budget", async () => {
@@ -1511,9 +1511,9 @@ describe("sync: full-budget overwrites carry the verified owner", () => {
   });
 });
 
-/* ── Cloud sign-out: pre-wipe outbox flush ──────────────────────────────── */
+/* ── Explicit sign-out: pre-wipe outbox flush ──────────────────────────── */
 
-describe("flushOutboxForSignOut (cloud sign-out wipes the replica afterwards)", () => {
+describe("flushOutboxForSignOut (explicit sign-out clears the replica afterwards)", () => {
   it("pushes the queue and reports 0 left — the wipe loses nothing", async () => {
     await idbPut("meta", "user-A", "userId");
     session = { user: { id: "user-A" } };

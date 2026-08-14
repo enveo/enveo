@@ -21,11 +21,11 @@
  * destructive action starts the sequence below.
  */
 import { api } from "./api";
-import { fetchSessionUserId, signOutSessionOnly } from "./auth";
+import { endSession, fetchSessionUserId } from "./auth";
 import { clearDeviceStoragePolicy } from "./deviceStoragePolicy";
 import { clearLastAccountId } from "./lastAccount";
 import { clearPersistedSettings } from "./settingsPersist";
-import { discardLocalReplica, enterLoginKeepingReplica } from "./sync";
+import { discardLocalReplica, enterLoginPreservingReplica } from "./sync";
 
 /**
  * Did a server-write guard refuse because the replica is not provably the session's?
@@ -59,12 +59,12 @@ export interface RecoverySteps {
 const realSteps: RecoverySteps = {
   fetchSessionUserId,
   budgetReset: (userId) => api.budgetReset(userId),
-  signOut: signOutSessionOnly,
+  signOut: endSession,
   clearDeviceStoragePolicy,
   clearPersistedSettings,
   clearLastAccountId,
   discardLocalReplica,
-  enterLogin: enterLoginKeepingReplica,
+  enterLogin: enterLoginPreservingReplica,
 };
 
 /**

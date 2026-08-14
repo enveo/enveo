@@ -386,10 +386,7 @@ export const cs: Dict = {
   "Sign in with Google": "Přihlásit se přes Google",
   "Sign out": "Odhlásit se",
   "Sign out and use another account": "Odhlásit se a použít jiný účet",
-  "Sign out? Your data stays on this device and on the server.": "Odhlásit se? Tvá data zůstanou na tomto zařízení i na serveru.",
   "Signing out…": "Odhlašuji…",
-  "Signs you out of this device. The local copy and the server data both stay — everything resumes when you sign back in. To remove the copy from this device, use “Clear local data”.":
-    "Odhlásí tě z tohoto zařízení. Lokální kopie i data na serveru zůstanou — po opětovném přihlášení vše pokračuje. Kopii z tohoto zařízení odstraníš přes „Smazat lokální data“.",
   "Skip for now": "Zatím přeskočit",
   "Some funds stayed in To be budgeted — envelopes are at their target caps.": "Část prostředků zůstala v „K rozdělení“ — obálky dosáhly stropu svého cíle.",
   "Source: {src}": "Zdroj: {src}",

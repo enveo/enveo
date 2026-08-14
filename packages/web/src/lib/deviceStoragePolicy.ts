@@ -42,7 +42,7 @@ export function setDeviceStoragePolicy(value: DeviceStoragePolicy): boolean {
   }
 }
 
-/** Cloud sign-out clears the choice so the next login applies the deployment default again. */
+/** Recovery/reset may clear the non-account policy so the next login uses deployment defaults. */
 export function clearDeviceStoragePolicy(): void {
   try {
     localStorage.removeItem(POLICY_KEY);

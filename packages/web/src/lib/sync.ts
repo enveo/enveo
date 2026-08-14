@@ -47,7 +47,7 @@ import { accountPreferences } from "./accountPreferences";
 import { budgetPreferences } from "./budgetPreferences";
 import { devicePreferences } from "./devicePreferences";
 import * as e2ee from "./e2ee";
-import { idbGet, idbPut, storageMode } from "./idb";
+import { clearLocalData, idbGet, idbPut, storageMode } from "./idb";
 import { configureLegacySettingsMigration, parseLegacyMigrationAck } from "./legacySettingsMigration";
 // NOTE: no static `import { local } from "./mutate"` here — mutate.ts imports `poke` from this
 // facade, so a static edge in the other direction would be a cycle. The one place the engine
@@ -58,7 +58,7 @@ import { readLegacySettings } from "./settingsPersist";
 import { INTERVAL_MS } from "./sync/contracts";
 import { configureCycle, getLastSyncReason, resetBackoff, syncNow } from "./sync/cycle";
 import { assertOwnReplica, enterUnauthed } from "./sync/identity";
-import { broadcastUpdatedIfPending, installMultiTab, isLeaderTab, notePeersMayNeedUpdate, postMsg, wipeLocalData } from "./sync/multitab";
+import { broadcastUpdatedIfPending, installMultiTab, isLeaderTab, notePeersMayNeedUpdate, postMsg } from "./sync/multitab";
 import { isReplacePending, isResyncPending } from "./sync/obligations";
 import { getSyncStatus, installOutboxStatusListener } from "./sync/status";
 import { configureTransport } from "./sync/transport";
@@ -68,7 +68,7 @@ export { bootOnce, getLastBootSource, retryBoot } from "./sync/boot";
 export type { BootSource, IdentityVerdict, PendingE2eeUpgrade, SyncState, SyncStatus } from "./sync/contracts";
 export { E2eeUpgradeRequiredError, EMPTY_LEDGER, TierMismatchError } from "./sync/contracts";
 export { __resetBackoff, flushOutboxForSignOut, fullResync, poke, pullNow, recheckReplicaOwner, syncNow } from "./sync/cycle";
-export { __resetIdentity, assertOwnReplica, decideIdentity, enterLoginKeepingReplica } from "./sync/identity";
+export { __resetIdentity, assertOwnReplica, decideIdentity, enterLoginPreservingReplica } from "./sync/identity";
 export { broadcastKeysChanged, wipeLocalData } from "./sync/multitab";
 export { __resetObligations, markReplacePending } from "./sync/obligations";
 export { getSyncStatus, subscribeSyncStatus } from "./sync/status";
@@ -102,9 +102,17 @@ configureLegacySettingsMigration({
  *
  */
 export async function discardLocalReplica(): Promise<void> {
-  outbox.clearAll(); // in-memory queue too: nothing of the previous owner's may go out
-  await persist.flushed(); // let queued writes land BEFORE the stores are cleared
-  await wipeLocalData(); // clears IDB (mirror, outbox, DEK), tells other tabs, reloads
+  await clearLocalAccountData();
+  if (typeof location !== "undefined") location.reload();
+}
+
+/** Clear every account-derived browser record without ending the session or reloading. */
+export async function clearLocalAccountData(): Promise<void> {
+  outbox.clearAll();
+  await persist.flushed();
+  await Promise.all([accountPreferences.clear(), devicePreferences.clear()]);
+  await clearLocalData(); // replica, outbox, owner stamp, DEK and sync metadata
+  postMsg("wipe");
 }
 
 /* ── Triggers (idempotent installation — StrictMode-safe) ──────────── */
