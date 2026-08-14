@@ -321,6 +321,7 @@ export const MESSAGES = [
   "Next month",
   "No",
   "No account yet? Create one",
+  "No budget",
   "No envelopes are marked as wealth envelopes. Open an envelope → Edit and turn on “Wealth envelope” (e.g. Bonds, Retirement, Savings), and we will count them here.",
   "No envelopes with a budget or spending this month.",
   "No envelopes with a goal. Set a monthly target when editing an envelope.",
