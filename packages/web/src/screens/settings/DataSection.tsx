@@ -19,7 +19,7 @@ import {
 } from "../../lib/crypto";
 import { exportBackup, importBackup } from "../../lib/data";
 import * as e2ee from "../../lib/e2ee";
-import { prepareEnableCredentialAction } from "../../lib/e2eeCredentialCeremonies";
+import { prepareDisableCredentialAction, prepareEnableCredentialAction } from "../../lib/e2eeCredentialCeremonies";
 import { useT } from "../../lib/i18n";
 import * as persist from "../../lib/persist";
 import { completeExplicitSignOut, ExplicitSignOutPendingError, type SignOutPreparation } from "../../lib/signOut";
@@ -876,7 +876,21 @@ function E2eeDisable() {
       // rebuilds the session budget's rows from it: a full-budget overwrite (see assertOwnReplica).
       // The verified user id travels WITH the write — the check and the upload are two requests.
       const userId = await assertOwnReplica();
-      const { epoch } = await api.e2eeDisable({ confirm: E2EE_DISABLE_CONFIRM, ledger, userId });
+      const budgetId = store.getBudgetId();
+      if (!budgetId) throw new Error("foreign_replica");
+      const tierMeta = e2ee.getTierMeta();
+      if (tierMeta.tier !== "e2ee") throw new Error("tier_mismatch");
+      const dek = e2ee.requireValidatedDek(tierMeta.epoch);
+      const credentialRecord = await api.e2eeByokCredentialGet(budgetId);
+      const credentialAction = await prepareDisableCredentialAction({ record: credentialRecord, budgetId, epoch: tierMeta.epoch, dek });
+      const { epoch } = await api.e2eeDisable({
+        confirm: E2EE_DISABLE_CONFIRM,
+        ledger,
+        userId,
+        budgetId,
+        expectedEpoch: tierMeta.epoch,
+        credentialAction,
+      });
       // return to the v1 path ONLY after server success; the local replica stays
       e2ee.clearDek();
       void broadcastKeysChanged(); // peer tabs drop the retired key

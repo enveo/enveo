@@ -104,13 +104,26 @@ describe("sync2 — input validation (format v2)", () => {
   });
 
   it("disable: requires EXACTLY the confirmation literal and the owner assertion", () => {
-    expect(e2eeDisableInput.safeParse({ confirm: E2EE_DISABLE_CONFIRM, ledger: emptyLedger, userId: "user-A" }).success).toBe(true);
-    expect(e2eeDisableInput.safeParse({ confirm: "disable-e2ee", ledger: emptyLedger, userId: "user-A" }).success).toBe(false);
+    const ok = {
+      confirm: E2EE_DISABLE_CONFIRM,
+      ledger: emptyLedger,
+      userId: "user-A",
+      budgetId: UUID,
+      expectedEpoch: 2,
+      credentialAction: { kind: "none" },
+    };
+    expect(e2eeDisableInput.safeParse(ok).success).toBe(true);
+    expect(e2eeDisableInput.safeParse({ ...ok, confirm: "disable-e2ee" }).success).toBe(false);
     // the LOCALIZED word the user types never reaches the wire — only the fixed constant does
-    expect(e2eeDisableInput.safeParse({ confirm: "WYŁĄCZ-E2EE", ledger: emptyLedger, userId: "user-A" }).success).toBe(false);
-    expect(e2eeDisableInput.safeParse({ confirm: "YES", ledger: emptyLedger, userId: "user-A" }).success).toBe(false);
-    expect(e2eeDisableInput.safeParse({ ledger: emptyLedger, userId: "user-A" }).success).toBe(false);
-    expect(e2eeDisableInput.safeParse({ confirm: E2EE_DISABLE_CONFIRM, ledger: emptyLedger }).success).toBe(false); // assertion required
+    expect(e2eeDisableInput.safeParse({ ...ok, confirm: "WYŁĄCZ-E2EE" }).success).toBe(false);
+    expect(e2eeDisableInput.safeParse({ ...ok, confirm: "YES" }).success).toBe(false);
+    expect(e2eeDisableInput.safeParse({ ...ok, confirm: undefined }).success).toBe(false);
+    expect(e2eeDisableInput.safeParse({ ...ok, userId: undefined }).success).toBe(false); // assertion required
+    expect(e2eeDisableInput.safeParse({ ...ok, budgetId: undefined }).success).toBe(false);
+    expect(e2eeDisableInput.safeParse({ ...ok, expectedEpoch: undefined }).success).toBe(false);
+    expect(e2eeDisableInput.safeParse({ ...ok, credentialAction: undefined }).success).toBe(false);
+    expect(e2eeDisableInput.safeParse({ ...ok, credentialAction: { kind: "e2ee-to-server-vault", key: "sk-move" } }).success).toBe(true);
+    expect(e2eeDisableInput.safeParse({ ...ok, credentialAction: { kind: "e2ee-to-server-vault", key: "" } }).success).toBe(false);
   });
 
   it("rekey: requires a v2 wrappedDek, kdfParams, expectedEpoch and the owner assertion", () => {

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
-import { budgetSecretAadContext, decryptPayload, generateDek } from "./crypto";
-import { prepareEnableCredentialAction } from "./e2eeCredentialCeremonies";
+import { budgetSecretAadContext, decryptPayload, encryptPayload, generateDek } from "./crypto";
+import { prepareDisableCredentialAction, prepareEnableCredentialAction } from "./e2eeCredentialCeremonies";
 
 const BUDGET = "11111111-1111-1111-1111-111111111111";
 
@@ -22,5 +22,20 @@ describe("E2EE credential ceremony", () => {
     expect(action.kind).toBe("server-vault-to-e2ee");
     if (action.kind !== "server-vault-to-e2ee") throw new Error("wrong_action");
     expect(await decryptPayload(action.ciphertext, dek, budgetSecretAadContext(BUDGET, 4, "openai"))).toBe("sk-move-me");
+  });
+
+  it("decrypts E2EE BYOK only for the matching budget epoch before disabling", async () => {
+    const dek = generateDek();
+    const ciphertext = await encryptPayload("sk-return-to-vault", dek, budgetSecretAadContext(BUDGET, 4, "openai"));
+
+    expect(await prepareDisableCredentialAction({ record: { configured: false, budgetId: BUDGET, epoch: 4 }, budgetId: BUDGET, epoch: 4, dek })).toEqual({
+      kind: "none",
+    });
+    expect(
+      await prepareDisableCredentialAction({ record: { configured: true, budgetId: BUDGET, epoch: 4, ciphertext }, budgetId: BUDGET, epoch: 4, dek }),
+    ).toEqual({ kind: "e2ee-to-server-vault", key: "sk-return-to-vault" });
+    await expect(
+      prepareDisableCredentialAction({ record: { configured: true, budgetId: BUDGET, epoch: 3, ciphertext }, budgetId: BUDGET, epoch: 4, dek }),
+    ).rejects.toThrow("credential_epoch_mismatch");
   });
 });
