@@ -13,7 +13,16 @@
  *   toAccountId preserved; items>0 ⇒ parent's envelopeId/categoryId null;
  *   tag on update only when sent; items on update delete+reinsert.
  */
-import type { AccountPayload, AllocPayload, ClientLedgerInput, EnvelopePayload, GroupPayload, TxnPayload } from "@enveo/shared";
+import {
+  type AccountPayload,
+  type AllocPayload,
+  type BudgetPreferencesPatch,
+  type ClientLedgerInput,
+  type EnvelopePayload,
+  type GroupPayload,
+  reconcileBudgetPreferences,
+  type TxnPayload,
+} from "@enveo/shared";
 import { and, eq } from "drizzle-orm";
 import type { DbExecutor } from "../db/client";
 import * as s from "../db/schema";
@@ -119,6 +128,14 @@ export function findForeignLedgerRef(ledger: ClientLedgerInput): string | null {
 export async function applyBudgetUpdate(x: Executor, budgetId: string, currency: string) {
   const [row] = await x.update(s.budgets).set({ currency }).where(eq(s.budgets.id, budgetId)).returning();
   return row ?? NOT_FOUND;
+}
+
+/** Row-locked field merge: concurrent disjoint patches preserve both named fields. */
+export async function applyBudgetPreferencesUpdate(x: Executor, budgetId: string, patch: BudgetPreferencesPatch): Promise<typeof NOT_FOUND | undefined> {
+  const [row] = await x.select({ preferences: s.budgets.preferences }).from(s.budgets).where(eq(s.budgets.id, budgetId)).for("update");
+  if (!row) return NOT_FOUND;
+  const preferences = reconcileBudgetPreferences({ ...reconcileBudgetPreferences(row.preferences), ...patch });
+  await x.update(s.budgets).set({ preferences }).where(eq(s.budgets.id, budgetId));
 }
 
 /* ── Transactions ───────────────────────────────────────────────────── */
