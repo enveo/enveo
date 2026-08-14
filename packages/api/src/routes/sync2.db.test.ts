@@ -49,12 +49,14 @@ describe.skipIf(!TEST_URL)("sync2 e2ee v2 (DB-backed)", () => {
     expect(out.enabledRow).toEqual({ tier: "e2ee", cipherVersion: 2, epoch: 1, wrappedDek: "v2.wrapAAAA" });
     expect(out.enableSnapshotUptoSeq).toBe(0);
     expect(out.enablePlaintextWiped).toBe(true); // ciphertext first, plaintext wiped only after
+    expect(out.enablePreferencesCleared).toBe(true);
   });
 
   it("normal v2 push/pull work and round-trip the journal rows", () => {
     expect(out.pushStatus).toBe(200);
     expect(out.pulledOpIds).toHaveLength(2);
     expect(out.pulledCiphertexts.every((ct) => ct.startsWith("v2."))).toBe(true);
+    expect(out.resetPreferencesCleared).toBe(true);
   });
 
   it("EVERY normal sync2 route refuses a legacy budget with 409 e2ee_upgrade_required — reads included", () => {
@@ -84,6 +86,7 @@ describe.skipIf(!TEST_URL)("sync2 e2ee v2 (DB-backed)", () => {
     expect(out.upgradedRow?.wrappedDek).toBe("v2.newWrapWINNER"); // a FRESH envelope — never the old one
     expect(out.upgradeJournalRowCount).toBe(0); // the entire legacy journal is gone
     expect(out.upgradeSnapshot).toEqual({ uptoSeq: 0, blob: "v2.newCheckpointAAAA" });
+    expect(out.upgradePreferencesCleared).toBe(true);
   });
 
   it("a retry of the SAME committed attempt is idempotent; a DIFFERENT attempt is a stale-epoch 409", () => {
@@ -100,6 +103,7 @@ describe.skipIf(!TEST_URL)("sync2 e2ee v2 (DB-backed)", () => {
     expect(out.forcedFailureStatus).toBe(500);
     expect(out.rowAfterForcedFailure).toEqual({ cipherVersion: 1, epoch: 1, wrappedDek: "v1.legacyWrap" });
     expect(out.journalIntactAfterForcedFailure).toBe(true);
+    expect(out.forcedFailurePreferencesPreserved).toBe(true);
   });
 
   it("two concurrent upgrades produce ONE generation: one winner, one 409, one epoch bump", () => {
@@ -123,5 +127,6 @@ describe.skipIf(!TEST_URL)("sync2 e2ee v2 (DB-backed)", () => {
     expect(out.disabledRow).toEqual({ tier: "plain", wrappedDek: null });
     expect(out.disableCipherStateCleared).toBe(true);
     expect(out.disablePlaintextRestored).toBe(true);
+    expect(out.disablePreferencesRestored).toBe(true);
   });
 });
