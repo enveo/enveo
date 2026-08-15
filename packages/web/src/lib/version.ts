@@ -1,5 +1,5 @@
  
-export const APP_VERSION = "3.7.20";
+export const APP_VERSION = "3.7.21";
 
  
 export const BUILD_INFO: { time: string; sha: string } = typeof __BUILD_INFO__ !== "undefined" ? __BUILD_INFO__ : { time: "", sha: "" };
