@@ -17,17 +17,19 @@ manual entry (pad + calculator) is untouched.
 | Provider | Where requests go | Whose key |
 |---|---|---|
 | **Without AI** (default) | nowhere — deterministic rules on the device | — |
-| **Own OpenAI** | browser → Enveo → OpenAI | the user's, envelope-encrypted in the optional server vault |
+| **Own OpenAI** | plain: browser → Enveo → OpenAI; E2EE: unlocked browser → OpenAI directly | the user's; server-vaulted for plain or zero-knowledge ciphertext for E2EE |
 | **Enveo AI** | browser → Enveo → OpenAI | the operator's (`OPENAI_API_KEY` in `.env`) |
 
 Both model providers build requests from the same shared prompt code
 (`packages/shared/src/aiPrompts.ts`) and the model answers in the UI language.
-Own OpenAI keys are write-only from the browser's perspective: there is status,
-replace, delete and test, but no endpoint that returns the stored key. Enveo
-decrypts one only inside the request that uses it. The vault setup and recovery
-rules are in [install.md](install.md#own-openai-credential-vault-optional).
-At this stage Own OpenAI is available for non-E2EE budgets; an E2EE budget keeps
-server-side model providers disabled until its zero-knowledge credential vault is enabled.
+For a plain budget, Own OpenAI keys are write-only from the browser's
+perspective: there is status, replace, delete and test, but no endpoint that
+returns the stored key. Enveo decrypts one only inside the request that uses it.
+For an E2EE budget, Enveo returns only ciphertext; after the budget is unlocked,
+the browser decrypts the credential for one direct OpenAI request. Enveo receives
+neither the key nor that request's prompt or screenshots. Tier conversion moves
+the credential atomically with the budget. The vault setup and recovery rules
+are in [install.md](install.md#own-openai-credential-vault-optional).
 
 ## Enveo AI setup
 
