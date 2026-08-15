@@ -97,6 +97,7 @@ describe("duet", () => {
   test("light: navy accent, coral CTA, navy nav, cream surfaces", () => {
     const { vars, palette } = themeTokens("duet", false);
     expect(vars["--accent"]).toBe("#1d2a47");
+    expect(vars["--input-underline"]).toBe(vars["--accent"]);
     expect(vars["--cta"]).toBe("#f0685c");
     expect(vars["--nav-bg"]).toBe("#1d2a47");
     expect(vars["--nav-on"]).toBe("#ff8d7d");
@@ -110,6 +111,7 @@ describe("duet", () => {
   });
   test("dark: a navy world — bg/card/surface/line overrides + CTA #ff8d7d", () => {
     const { vars, palette } = themeTokens("duet", true);
+    expect(vars["--input-underline"]).toBe(vars["--accent"]);
     expect(vars["--cta"]).toBe("#ff8d7d");
     expect(palette.bg).toBe("#131b2e");
     expect(palette.card).toBe("#1d2a47");
@@ -191,6 +193,7 @@ describe("theme screen tokens", () => {
         expect(palette.headerMute).toMatch(/^#/);
         expect(palette.headerPos).toMatch(/^#/);
         expect(palette.headerNeg).toMatch(/^#/);
+        expect(themeTokens(t, isDark).vars["--input-underline"]).toBe(themeTokens(t, isDark).vars["--accent"]);
       }
     }
   });
