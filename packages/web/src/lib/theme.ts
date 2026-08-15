@@ -330,9 +330,9 @@ export function themeTokens(t: AccentTheme, isDark: boolean): { vars: Record<str
   // Nav defaults = EXACTLY today's BottomNav (bg C.bg, active C.text,
   // indicator = accent, inactive C.mute) — a teal regression guard.
   const nav = (isDark ? def.navDark : def.nav) ?? { bg: palette.bg, on: palette.text, mute: palette.mute, ind: accent };
-  // The same focus token is intentionally used by search shells on both the header band and
-  // content sheets. Plain themes retain their accent; Duet supplies colors that contrast with
-  // both its navy band and cream content surface.
+  // Search shells and text inputs use the same underline token as the active allocation input
+  // on Budget. The general focus ring remains separate for controls that need a contrasting
+  // keyboard outline on Duet's navy band.
   const focusRing = (isDark ? def.focusRingDark : def.focusRing) ?? accent;
   const vars: Record<string, string> = {
     "--accent": accent,
@@ -343,6 +343,7 @@ export function themeTokens(t: AccentTheme, isDark: boolean): { vars: Record<str
     "--nav-mute": nav.mute,
     "--nav-ind": nav.ind,
     "--focus-ring": focusRing,
+    "--input-underline": accent,
   };
   for (const s of ALPHA_SUFFIXES) {
     vars[`--accent-${s}`] = hexAlpha(accent, s);
