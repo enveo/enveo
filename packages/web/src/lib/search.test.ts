@@ -10,6 +10,7 @@ describe("normalizeForSearch", () => {
     expect(normalizeForSearch("Oszczędności")).toBe("oszczednosci");
     expect(normalizeForSearch("Żabka")).toBe("zabka");
     expect(normalizeForSearch("Środki")).toBe("srodki");
+    expect(normalizeForSearch("Łódź")).toBe("lodz");
   });
 
   test("leaves already-plain text untouched (aside from casing)", () => {
@@ -85,6 +86,7 @@ describe("highlightRanges", () => {
       { text: "rodki", hit: true },
       { text: " własne", hit: false },
     ]);
+    expect(highlightRanges("Łódź", "lodz")).toEqual([{ text: "Łódź", hit: true }]);
   });
 
   test("query longer than the text: no match, whole text unhit", () => {
