@@ -5,7 +5,16 @@
  * Every response carries `budgetId` — the epoch marker: a DB wipe+reseed yields
  * a new `budgets.id`, and on mismatch the client does a fullResync().
  */
-import { type ClientLedgerInput, clientLedgerSchema, type OpKind, type OpPayload, opSchemas, REPLICATED_TABLES, type ReplicatedTable } from "@enveo/shared";
+import {
+  type ClientLedgerInput,
+  clientLedgerSchema,
+  type OpKind,
+  type OpPayload,
+  opSchemas,
+  REPLICATED_TABLES,
+  type ReplicatedTable,
+  reconcileBudgetPreferences,
+} from "@enveo/shared";
 import { and, sql as dsql, eq, gt, inArray } from "drizzle-orm";
 import { Hono } from "hono";
 import postgres from "postgres";
@@ -19,6 +28,7 @@ import {
   applyAccountDelete,
   applyAccountUpdate,
   applyAllocSet,
+  applyBudgetPreferencesUpdate,
   applyBudgetUpdate,
   applyCategoryCreate,
   applyEnvelopeCreate,
@@ -416,6 +426,11 @@ async function applyOp(x: Executor, budgetId: string, kind: OpKind, payload: unk
       ensure(p.id === budgetId ? await applyBudgetUpdate(x, budgetId, p.currency) : NOT_FOUND);
       return;
     }
+    case "budget.preferences.update": {
+      const p = payload as OpPayload<"budget.preferences.update">;
+      ensure(p.id === budgetId ? await applyBudgetPreferencesUpdate(x, budgetId, p.patch) : NOT_FOUND);
+      return;
+    }
   }
 }
 
@@ -501,10 +516,9 @@ syncRoutes.post("/sync/push", async (c) => {
    (FK-safe order) → INSERT all entities PRESERVING ids (transactions also
    createdAt/tag). Allocation and split-item ids are NOT preserved (they may be
    synthetic from offline mode — the server assigns uuids).
-   Transactions' source_ref/external_id are NOT in ClientLedger → a known,
-   accepted loss (import matching starts from zero after restore).
+   Transactions' source_ref is replicated and restored; external_id remains server-only.
 
-   An empty ledger = a clean server wipe (used by "local only" mode).
+   An empty ledger = a clean server wipe (used by reset and restore workflows).
    Returns { budgetId, cursor } — the client sets this cursor locally (server ==
    local, no pull needed). Validation / FK violation → 400 (the whole
    transaction rolls back — atomically). */
@@ -594,7 +608,8 @@ async function insertLedger(x: Executor, budgetId: string, ledger: ClientLedgerI
         categoryId: t.categoryId,
         name: t.name,
         note: t.note,
-        tag: t.tag, // preserved (it is in ClientLedger); source_ref/external_id are not
+        tag: t.tag,
+        sourceRef: t.sourceRef,
         createdAt: t.createdAt,
       })),
     );
@@ -615,9 +630,13 @@ export async function restoreLedger(x: Executor, budgetId: string, ledger: Clien
   await wipeBudgetData(x, budgetId);
   await insertLedger(x, budgetId, ledger);
   // currency from the backup — only when the backup carries it (old backups lack `budgets`)
-  if (ledger.budgets?.[0]?.currency) {
-    await x.update(s.budgets).set({ currency: ledger.budgets[0].currency }).where(eq(s.budgets.id, budgetId));
-  }
+  await x
+    .update(s.budgets)
+    .set({
+      ...(ledger.budgets?.[0]?.currency ? { currency: ledger.budgets[0].currency } : {}),
+      preferences: reconcileBudgetPreferences(ledger.budgets?.[0]?.preferences),
+    })
+    .where(eq(s.budgets.id, budgetId));
 }
 
 syncRoutes.post("/sync/replace", async (c) => {

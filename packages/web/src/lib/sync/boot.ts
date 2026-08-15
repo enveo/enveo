@@ -4,21 +4,24 @@
  * promise (bootOnce/retryBoot; StrictMode mounts effects twice). Single owner of
  * lastBootSource.
  */
+
+import { accountPreferences } from "../accountPreferences";
+import { devicePreferences } from "../devicePreferences";
 import * as e2ee from "../e2ee";
 import { idbGet } from "../idb";
 import { purgeLegacyPlannedIds } from "../legacyPlanned";
+import { migrateLegacySettings } from "../legacySettingsMigrationRuntime";
 import { local } from "../mutate";
 import * as outbox from "../outbox";
 import * as persist from "../persist";
 import { requestPersistentStorage } from "../storage";
 import { store } from "../store";
-import { type BootSource, EMPTY_LEDGER, UnauthorizedError } from "./contracts";
+import { type BootSource, UnauthorizedError } from "./contracts";
 import { syncNow } from "./cycle";
-import { bootOwnerOk, enterUnauthed } from "./identity";
-import { getLocalMode } from "./localMode";
+import { bootOwnerOk, enterUnauthed, verifiedIdentityUserId } from "./identity";
 import { hydrateObligations } from "./obligations";
 import { replayOutbox } from "./replica";
-import { bumpStatus, getLastSyncAt, setLastSyncAt, setState } from "./status";
+import { bumpStatus, getLastSyncAt, setLastSyncAt } from "./status";
 import { bootstrapReplica, getClientId } from "./transport";
 
 /* ── Boot diagnostics (BootSource type in sync/contracts.ts) ────────────── */
@@ -77,23 +80,6 @@ async function sweepLegacyPlanned(): Promise<void> {
   for (const id of ids) local.deleteTxn(id);
 }
 
-/**
- * Boot in LOCAL MODE (paused/wiped): we operate EXCLUSIVELY off the local replica —
- * NO fetchSnapshot/pull (respect the offline/privacy choice). No local
- * data (rare: "Clear local data" while in local mode) → empty ledger, so the
- * UI doesn't hang on "Loading…"; the real data comes back after disabling the mode.
- */
-async function bootLocalReady(hydrated: "ready" | "empty"): Promise<void> {
-  if (hydrated === "empty" || !store.getLedger()) {
-    store.replace(EMPTY_LEDGER, store.getCursor(), store.getBudgetId() ?? "");
-  }
-  replayOutbox();
-  await sweepLegacyPlanned();
-  if (outbox.size() > 0) void persist.persistLedger(store.snapshotForPersist());
-  store.setBootStatus("ready");
-  setState("local");
-}
-
 async function boot(): Promise<void> {
   store.setBootStatus("booting");
   void getClientId(); // persist the installation identifier as early as possible
@@ -103,10 +89,16 @@ async function boot(): Promise<void> {
     await loadSyncMeta();
     // Whose replica is this? BEFORE it reaches the UI (and before any bootstrap) — see bootOwnerOk
     if (!(await bootOwnerOk())) return;
-    if (getLocalMode() !== "off") {
-      lastBootSource = "local";
-      await bootLocalReady(hydrated); // local mode — no network
-      return;
+    const verifiedUserId = verifiedIdentityUserId();
+    if (verifiedUserId) {
+      await accountPreferences.hydrateForUser(verifiedUserId);
+      try {
+        await accountPreferences.sync(verifiedUserId);
+        await devicePreferences.hydrate();
+        await migrateLegacySettings();
+      } catch (error) {
+        console.warn("legacy preference migration deferred", error);
+      }
     }
     if (hydrated === "empty") {
       lastBootSource = "snapshot"; // empty replica ⇒ full snapshot (slow; also after eviction)
@@ -143,10 +135,6 @@ async function boot(): Promise<void> {
       replayOutbox();
       await sweepLegacyPlanned();
       store.setBootStatus("ready");
-      if (getLocalMode() !== "off") {
-        setState("local");
-        return;
-      }
       bumpStatus();
       void syncNow("boot");
     } else {

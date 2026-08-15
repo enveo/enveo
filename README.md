@@ -21,7 +21,9 @@ background (optionally end-to-end encrypted), and your data stays yours.
   sees plaintext.
 - **AI where it helps, off by default** — a budget assistant (works rule-based
   with no key at all) and screenshot import of bank statements; bring your own
-  OpenAI key or configure one on the server.
+  OpenAI key or configure an operator key on the server. A normal budget uses
+  the optional server vault; an E2EE budget encrypts the key with its budget key
+  and calls OpenAI directly from the unlocked browser.
 - **Reports** — net worth, cash flow, spending, budget health.
 - **10 languages** ([add yours](CONTRIBUTING.md#add-a-language)), **31
   currencies**, dark mode, four accent themes.

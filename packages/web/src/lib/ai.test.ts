@@ -12,11 +12,14 @@ import {
   buildBudgetSuggestionBasis,
   buildSuggestPrompt,
   type ClientLedger,
+  createDefaultBudgetPreferences,
   type Transaction,
 } from "@enveo/shared";
-import { type AiSettings, aiTarget, hasAiTarget, previewSuggestPrompt, runImportExtract } from "./ai";
+import { previewSuggestPrompt, runImportExtract, runSuggest } from "./ai";
+import type { AiCapability, AiProvider, AiProviderKind } from "./aiProvider/contracts";
+import { RulesProvider } from "./aiProvider/rules";
 import { apiErrorMessage } from "./api";
-import { type ChatTarget, chatJson } from "./openai";
+import { type ChatTarget, chatJson, directChatJson } from "./openai";
 
 /** Runs `fn` with fetch (and optionally navigator.onLine) stubbed; always restores both. */
 async function withFetch<T>(fetchStub: typeof fetch, fn: () => Promise<T>, onLine = true): Promise<T> {
@@ -61,6 +64,7 @@ const txn = (over: Partial<Transaction> & Pick<Transaction, "id" | "type" | "amo
   items: [],
   createdAt: "2026-07-01T00:00:00.000Z",
   ...over,
+  sourceRef: over.sourceRef ?? null,
 });
 
 /** Fixture: an account + 2 envelopes + income and expenses (pattern from e2ee.test.ts). */
@@ -102,7 +106,7 @@ const fixtureLedger = (): ClientLedger => ({
   allocations: [{ id: "al1", envelopeId: "env1", month: MONTH, amount: 10000 }],
   categories: [],
   places: [],
-  budgets: [{ id: "b1", name: "Budżet", currency: "PLN" }],
+  budgets: [{ id: "b1", name: "Budżet", currency: "PLN", preferences: createDefaultBudgetPreferences() }],
 });
 
 describe("previewSuggestPrompt", () => {
@@ -152,131 +156,80 @@ describe("previewSuggestPrompt", () => {
   });
 });
 
-/**
- * aiTarget is the SINGLE answer to "can this device talk to a model" — the AI-only entry point
- * (screenshot import) dispatches on it AND the import sheet decides on it whether to offer the
- * feature at all. Regression it exists for: an earlier entry point was shown on `aiMode !== "off"`,
- * which is TRUE for byok with an empty key — Settings switches the mode before the key is typed
- * (and clearing the field persists an empty one), so it was offered on a path that could only throw.
- */
-describe("aiTarget / hasAiTarget", () => {
-  const settings = (over: Partial<AiSettings>): AiSettings => ({ aiMode: "off", openaiKey: "", openaiModel: "gpt-5.5-mini", ...over });
-
-  it("server → the /api mirror; byok WITH a key → straight to OpenAI", () => {
-    expect(aiTarget(settings({ aiMode: "server" }))).toEqual({ kind: "server" });
-    expect(aiTarget(settings({ aiMode: "byok", openaiKey: "sk-x" }))).toEqual({ kind: "byok", key: "sk-x", model: "gpt-5.5-mini" });
-    expect(hasAiTarget(settings({ aiMode: "server" }))).toBe(true);
-  });
-
-  it("Luna is selectable for byok; legacy persisted choices stay valid; server mode carries NO client model", () => {
-    // gpt-5.6-luna joined the registry as the FRESH-settings default (backlog §1)…
-    expect(aiTarget(settings({ aiMode: "byok", openaiKey: "sk-x", openaiModel: "gpt-5.6-luna" }))).toEqual({
-      kind: "byok",
-      key: "sk-x",
-      model: "gpt-5.6-luna",
-    });
-    // …while a device with a persisted legacy model keeps it (the union still parses it).
-    expect(aiTarget(settings({ aiMode: "byok", openaiKey: "sk-x", openaiModel: "gpt-5.5" }))).toEqual({ kind: "byok", key: "sk-x", model: "gpt-5.5" });
-    // The server target has no model field at all — the operator's env decides, never the client.
-    expect(aiTarget(settings({ aiMode: "server", openaiModel: "gpt-5.6-luna" }))).toEqual({ kind: "server" });
-  });
-
-  it("off → no target; byok WITHOUT a key → no target either (the state the import sheet must hide the feature in)", () => {
-    expect(aiTarget(settings({ aiMode: "off" }))).toBeNull();
-    expect(aiTarget(settings({ aiMode: "byok", openaiKey: "" }))).toBeNull();
-    expect(hasAiTarget(settings({ aiMode: "byok", openaiKey: "" }))).toBe(false);
-  });
-
-  it("with no target the AI-only entry point throws a CODE (localized by apiErrorMessage), never prose", async () => {
-    for (const s of [settings({ aiMode: "off" }), settings({ aiMode: "byok", openaiKey: "" })]) {
-      const imp = runImportExtract({ images: ["data:image/png;base64,x"], locale: "pl", ledger: fixtureLedger(), settings: s });
-      await expect(imp).rejects.toThrow("ai_consent_required");
-      // the message IS the code: apiErrorMessage maps it to a sentence in the UI language (api.test.ts)
-      expect(apiErrorMessage(await imp.catch((e: unknown) => e))).toBe(
-        "AI is not set up on this device. Pick a mode in Settings → Artificial intelligence (with your own key, paste it there).",
-      );
-    }
-  });
-});
-
-/**
- * REGRESSION (release blocker, originally caught on the now-removed quick-add path): a failed
- * model call must be RENDERED in the import sheet's error line, never swallowed and never leaked
- * as raw transport prose — the transport used to throw `new Error(\`OpenAI ${res.status}\`)`, so a
- * Polish user with a byok key rejected by OpenAI read "OpenAI 401" in coral. Every everyday
- * failure (offline, a rejected byok key, an answer that is not JSON) must arrive as a CODE that
- * apiErrorMessage turns into a sentence. Screenshot import (byok) is the only AI-only entry point
- * left that surfaces chatJson's errors directly to the user — suggest always falls back to rules.
- */
-describe("runImportExtract (byok) failures reach the user as localized sentences", () => {
-  const settings = (over: Partial<AiSettings>): AiSettings => ({ aiMode: "off", openaiKey: "", openaiModel: "gpt-5.5-mini", ...over });
-  const BYOK = settings({ aiMode: "byok", openaiKey: "sk-x" });
-
-  const run = (s: AiSettings) => runImportExtract({ images: ["data:image/png;base64,x"], locale: "pl", ledger: fixtureLedger(), settings: s });
-
-  const failure = async (s: AiSettings, f: typeof fetch, onLine = true): Promise<{ code: string; text: string }> => {
-    const e = await withFetch(
-      f,
-      () =>
-        run(s)
-          .then(() => null)
-          .catch((err: unknown) => err),
-      onLine,
-    );
-    const code = String((e as Error).message);
-    return { code, text: apiErrorMessage(e) };
+function providerStub(kind: AiProviderKind, capabilities: readonly AiCapability[], overrides: Partial<AiProvider> = {}): AiProvider {
+  return {
+    status: async () => ({ provider: kind, code: "ready", configured: true, capabilities: new Set(capabilities) }),
+    saveCredential: async () => {},
+    removeCredential: async () => {},
+    testConnection: async () => {},
+    complete: async () => "",
+    extractImport: async () => ({ items: [] }),
+    ...overrides,
   };
+}
 
-  it("byok with an expired key → ai_key_invalid (OpenAI's {error:{message}} OBJECT never reaches the UI)", async () => {
-    const { code, text } = await failure(BYOK, answering(401, { error: { message: "Incorrect API key provided: sk-x", type: "invalid_request_error" } }));
-    expect(code).toBe("ai_key_invalid");
-    expect(text).toBe("OpenAI rejected your key — check it in Settings → Artificial intelligence.");
+describe("provider-neutral AI workflows", () => {
+  it("rules suggestions never call a model transport", async () => {
+    let calls = 0;
+    const provider = providerStub("rules", ["budget-suggestion"], {
+      complete: async () => {
+        calls += 1;
+        throw new Error("must_not_fetch");
+      },
+    });
+    const result = await runSuggest({ ledger: fixtureLedger(), month: MONTH, profile: "cautious", locale: "pl", provider });
+    expect(result.source).toBe("rules");
+    expect(calls).toBe(0);
   });
 
-  it('offline (fetch rejects, navigator.onLine === false) → ai_offline, not "Failed to fetch"', async () => {
-    const { code, text } = await failure(BYOK, rejecting(), false);
-    expect(code).toBe("ai_offline");
-    expect(text).toBe("You are offline — screenshot import needs a connection. Manual entry works without one.");
+  it("custom prompts require the explicit model capability and do not silently execute rules", async () => {
+    const result = await runSuggest({
+      ledger: fixtureLedger(),
+      month: MONTH,
+      profile: "custom",
+      customPrompt: "all to food",
+      locale: "pl",
+      provider: new RulesProvider(),
+    });
+    expect(result.items).toEqual([]);
+    expect(result.warnings).toContain("agent_requires_ai");
   });
 
-  it("the network drops while online (DNS, a dead proxy) → ai_unreachable, NOT the key/model blame", async () => {
-    const { code, text } = await failure(BYOK, rejecting(), true);
-    expect(code).toBe("ai_unreachable");
-    expect(text).toBe("Could not reach the AI service — check the network connection and try again.");
+  it("screenshot import delegates once to the selected provider", async () => {
+    const seenLedgers: ClientLedger[] = [];
+    const item = {
+      date: "2026-07-02",
+      amount: 1230,
+      type: "expense" as const,
+      isRefund: false,
+      name: "",
+      tag: "LIDL",
+      rawPlace: "Lidl",
+      envelopeId: null,
+      envelopeName: null,
+      categoryId: null,
+      categoryName: null,
+      placeName: null,
+      currency: "PLN",
+      fxOriginal: "",
+    };
+    const provider = providerStub("openai", ["screenshot-import"], {
+      extractImport: async (input) => {
+        seenLedgers.push(input.ledger);
+        return { items: [item] };
+      },
+    });
+    const ledger = fixtureLedger();
+    expect(await runImportExtract({ images: ["data:image/png;base64,x"], locale: "pl", ledger, provider })).toEqual([item]);
+    expect(seenLedgers).toEqual([ledger]);
   });
 
-  it("the model answers prose instead of JSON → ai_upstream_error, not a raw SyntaxError", async () => {
-    const { code, text } = await failure(BYOK, replying("Sure! Here are the transactions."));
-    expect(code).toBe("ai_upstream_error");
-    expect(text).toBe("OpenAI rejected the request — check the key and the model, then try again.");
-  });
-
-  it("no failure leaks prose: every code is snake_case and localizes to a sentence", async () => {
-    const cases: Array<[AiSettings, typeof fetch, boolean]> = [
-      [BYOK, answering(401, { error: { message: "bad key" } }), true],
-      [BYOK, answering(500, "<html>gateway error</html>"), true], // a proxy's HTML page, not JSON
-      [BYOK, rejecting(), false],
-      [BYOK, replying("not json"), true],
-    ];
-    for (const [s, f, onLine] of cases) {
-      const { code, text } = await failure(s, f, onLine);
-      expect(code).toMatch(/^[a-z0-9_]+$/); // no "OpenAI 401", no "Failed to fetch", no SyntaxError
-      expect(text).not.toBe(code); // ERROR_KEYS knows it → the user reads a sentence, in their language
-    }
-  });
-
-  it("the happy path still works (the transport refactor did not break a good answer)", async () => {
-    const items = await withFetch(
-      replying(
-        JSON.stringify({
-          transactions: [{ date: "2026-07-02", amount: 1230, type: "expense", rawPlace: "Lidl", tag: "LIDL", currency: "PLN", fxOriginal: "" }],
-        }),
-      ),
-      () => run(BYOK),
+  it("unsupported screenshot import throws a stable localized code", async () => {
+    const run = runImportExtract({ images: ["data:image/png;base64,x"], locale: "pl", ledger: fixtureLedger(), provider: new RulesProvider() });
+    await expect(run).rejects.toThrow("ai_consent_required");
+    expect(apiErrorMessage(await run.catch((error: unknown) => error))).toBe(
+      "AI is not configured. Choose server AI or an existing own key in Settings → Artificial intelligence.",
     );
-    expect(items).toHaveLength(1);
-    expect(items[0]!.amount).toBe(1230);
-    expect(items[0]!.tag).toBe("LIDL");
   });
 });
 
@@ -351,5 +304,36 @@ describe("chatJson (server target → the /api/ai mirror)", () => {
   it("the happy path still works (server model reply parses like byok's)", async () => {
     const content = await withFetch(replying("hello"), () => chatJson(req, target));
     expect(content).toBe("hello");
+  });
+});
+
+describe("directChatJson (E2EE BYOK → OpenAI, never Enveo)", () => {
+  const req = { messages: [{ role: "user" as const, content: "private prompt" }] };
+
+  it("sends the key only as OpenAI authorization and includes the selected model", async () => {
+    let seen: { url: string; authorization: string | null; body: string } | undefined;
+    const stub: typeof fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const headers = new Headers(init?.headers);
+      seen = { url: String(input), authorization: headers.get("authorization"), body: String(init?.body) };
+      return Response.json({ choices: [{ message: { content: "direct" } }] });
+    }) as typeof fetch;
+    const result = await withFetch(stub, () => directChatJson(req, "sk-direct", "gpt-5.6-luna"));
+    expect(result).toBe("direct");
+    expect(seen?.url).toBe("https://api.openai.com/v1/chat/completions");
+    expect(seen?.authorization).toBe("Bearer sk-direct");
+    expect(JSON.parse(seen?.body ?? "{}")).toMatchObject({ model: "gpt-5.6-luna", messages: req.messages });
+    expect(seen?.body).not.toContain("sk-direct");
+  });
+
+  it("classifies direct credential/model/upstream failures without exposing OpenAI prose", async () => {
+    await withFetch(answering(401, { error: { message: "secret rejected" } }), async () => {
+      await expect(directChatJson(req, "sk-bad", "gpt-5.6-luna")).rejects.toThrow("ai_key_invalid");
+    });
+    await withFetch(answering(404, { error: { message: "model unavailable" } }), async () => {
+      await expect(directChatJson(req, "sk-ok", "gpt-5.6-luna")).rejects.toThrow("ai_model_unavailable");
+    });
+    await withFetch(answering(429, { error: { message: "quota details" } }), async () => {
+      await expect(directChatJson(req, "sk-ok", "gpt-5.6-luna")).rejects.toThrow("ai_upstream_error");
+    });
   });
 });

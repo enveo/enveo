@@ -1,0 +1,27 @@
+import { describe, expect, it } from "bun:test";
+import { CredentialBudgetMismatch, CredentialNotConfigured, CredentialVaultUnavailable, createCredentialRepository } from "./repository";
+
+describe("AI credential repository surface", () => {
+  it("offers scoped operations and no plaintext read method", () => {
+    const repository = createCredentialRepository({
+      active: () => ({ id: "active", key: new Uint8Array(32) }),
+      byId: () => new Uint8Array(32),
+    });
+    expect(Object.keys(repository).sort()).toEqual([
+      "credentialStatus",
+      "deleteCredential",
+      "deleteE2eeCredential",
+      "e2eeCredential",
+      "replaceE2eeCredential",
+      "replaceServerCredential",
+      "withServerCredential",
+    ]);
+    expect("getCredential" in repository).toBe(false);
+  });
+
+  it("uses stable tenant/configuration error codes without identifiers", () => {
+    expect(new CredentialBudgetMismatch().message).toBe("budget_mismatch");
+    expect(new CredentialNotConfigured().message).toBe("credential_not_configured");
+    expect(new CredentialVaultUnavailable().message).toBe("vault_unavailable");
+  });
+});

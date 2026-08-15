@@ -7,7 +7,7 @@
  */
 import { afterEach, describe, expect, it } from "bun:test";
 import { store } from "../store";
-import { __resetIdentity, decideIdentity, enterForeignReplica, enterLoginKeepingReplica, enterUnauthed, isIdentityBlocked } from "./identity";
+import { __resetIdentity, decideIdentity, enterForeignReplica, enterLoginPreservingReplica, enterUnauthed, isIdentityBlocked } from "./identity";
 import { getSyncStatus } from "./status";
 
 afterEach(() => {
@@ -43,9 +43,9 @@ describe("sync/identity: verdict state transitions", () => {
     expect(getSyncStatus().ownerUnproven).toBe(false); // a PROVEN foreign stamp supersedes it
   });
 
-  it("enterLoginKeepingReplica unblocks — a NEW session is verified from scratch", () => {
+  it("enterLoginPreservingReplica unblocks — a NEW session is verified from scratch", () => {
     enterForeignReplica();
-    enterLoginKeepingReplica();
+    enterLoginPreservingReplica();
     expect(isIdentityBlocked()).toBe(false);
     expect(store.getBootStatus()).toBe("unauthed"); // Login screen, replica intact
     expect(getSyncStatus().state).toBe("unauthed");

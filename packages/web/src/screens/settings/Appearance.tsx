@@ -1,10 +1,14 @@
+import { useState } from "react";
+import { EditWidgetsSheet } from "../../components/widgets";
+import { useStateQuery } from "../../lib/api";
 import { useCurrency, useSettings, useTheme } from "../../lib/contexts";
 import { SUPPORTED_CURRENCIES } from "../../lib/currency";
+import { todayISO } from "../../lib/dates";
 import { type Lang, LOCALES, loadLocale, type Message, msg, useT } from "../../lib/i18n";
 import { local } from "../../lib/mutate";
 import { store } from "../../lib/store";
 import { font, TEAL, themeTokens } from "../../lib/theme";
-import { Helper, Row, Seg } from "./ui";
+import { ActionGroup, ActionRow, Eyebrow, Helper, Row, Seg } from "./ui";
 
 /** Where a translator reports a bad string. Community locales are labelled, not hidden — honest, and
  *  it is the only route a reader of a wrong sentence has back to us. */
@@ -78,6 +82,8 @@ export function AppearanceSection() {
   const { settings, setSettings } = useSettings();
   const { t } = useT();
   const currency = useCurrency();
+  const [widgetsOpen, setWidgetsOpen] = useState(false);
+  const { data: currentState } = useStateQuery(todayISO().slice(0, 7));
   // guard: without a booted replica / a budgets entity there is nothing to update
   const budgetId = store.getLedger()?.budgets?.[0]?.id;
   const selectStyle = {
@@ -94,6 +100,8 @@ export function AppearanceSection() {
 
   return (
     <div style={{ marginTop: 4 }}>
+      <Eyebrow>{t("Account preferences")}</Eyebrow>
+      <Helper>{t("Theme and language follow your account on every device.")}</Helper>
       <ThemeTiles />
       <Row label={t("Theme")}>
         <Seg
@@ -132,6 +140,10 @@ export function AppearanceSection() {
           </a>
         </Helper>
       )}
+      <div style={{ marginTop: 18 }}>
+        <Eyebrow>{t("Budget preferences")}</Eyebrow>
+        <Helper>{t("Currency and dashboard widgets follow this budget on every device.")}</Helper>
+      </div>
       <Row label={t("Currency")}>
         <select
           value={currency}
@@ -148,6 +160,19 @@ export function AppearanceSection() {
           ))}
         </select>
       </Row>
+      <ActionGroup>
+        <ActionRow
+          label={t("Edit dashboard widgets")}
+          desc={t("Choose their order, visibility, and options.")}
+          onClick={() => setWidgetsOpen(true)}
+          disabled={!currentState}
+          chevron
+        />
+      </ActionGroup>
+      <div style={{ marginTop: 18 }}>
+        <Eyebrow>{t("This device")}</Eyebrow>
+        <Helper>{t("Discreet mode stays only on this device.")}</Helper>
+      </div>
       <Row label={t("Discreet mode")}>
         <button
           onClick={() => setSettings({ ...settings, discreet: !settings.discreet })}
@@ -177,6 +202,7 @@ export function AppearanceSection() {
           />
         </button>
       </Row>
+      {currentState && <EditWidgetsSheet show={widgetsOpen} state={currentState} onClose={() => setWidgetsOpen(false)} />}
     </div>
   );
 }

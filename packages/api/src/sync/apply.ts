@@ -13,7 +13,16 @@
  *   toAccountId preserved; items>0 ⇒ parent's envelopeId/categoryId null;
  *   tag on update only when sent; items on update delete+reinsert.
  */
-import type { AccountPayload, AllocPayload, ClientLedgerInput, EnvelopePayload, GroupPayload, TxnPayload } from "@enveo/shared";
+import {
+  type AccountPayload,
+  type AllocPayload,
+  type BudgetPreferencesPatch,
+  type ClientLedgerInput,
+  type EnvelopePayload,
+  type GroupPayload,
+  reconcileBudgetPreferences,
+  type TxnPayload,
+} from "@enveo/shared";
 import { and, eq } from "drizzle-orm";
 import type { DbExecutor } from "../db/client";
 import * as s from "../db/schema";
@@ -121,6 +130,14 @@ export async function applyBudgetUpdate(x: Executor, budgetId: string, currency:
   return row ?? NOT_FOUND;
 }
 
+/** Row-locked field merge: concurrent disjoint patches preserve both named fields. */
+export async function applyBudgetPreferencesUpdate(x: Executor, budgetId: string, patch: BudgetPreferencesPatch): Promise<typeof NOT_FOUND | undefined> {
+  const [row] = await x.select({ preferences: s.budgets.preferences }).from(s.budgets).where(eq(s.budgets.id, budgetId)).for("update");
+  if (!row) return NOT_FOUND;
+  const preferences = reconcileBudgetPreferences({ ...reconcileBudgetPreferences(row.preferences), ...patch });
+  await x.update(s.budgets).set({ preferences }).where(eq(s.budgets.id, budgetId));
+}
+
 /* ── Transactions ───────────────────────────────────────────────────── */
 
 export async function applyTxnCreate(x: Executor, budgetId: string, body: TxnPayload & { id?: string }) {
@@ -147,6 +164,7 @@ export async function applyTxnCreate(x: Executor, budgetId: string, body: TxnPay
       name: body.name ?? null,
       note: body.note ?? null,
       tag: body.tag ?? null,
+      sourceRef: body.sourceRef ?? null,
       ...(body.createdAt ? { createdAt: body.createdAt } : {}),
     })
     .returning();
@@ -186,6 +204,7 @@ export async function applyTxnUpdate(x: Executor, budgetId: string, body: TxnPay
       note: body.note ?? null,
       // tag is preserved when the update does not send it (UI edits don't know import tags)
       ...(body.tag !== undefined ? { tag: body.tag } : {}),
+      ...(body.sourceRef !== undefined ? { sourceRef: body.sourceRef } : {}),
     })
     .where(and(eq(s.transactions.id, body.id), eq(s.transactions.budgetId, budgetId)))
     .returning();

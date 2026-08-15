@@ -1,19 +1,22 @@
 import { useQuery } from "@tanstack/react-query";
-import { useState } from "react";
-import { AI_MODEL_TIERS, isLegacyOpenAiModel } from "../lib/aiModelTiers";
+import { useMemo } from "react";
+import { createE2eeByokProvider } from "../lib/aiProvider/e2eeByok";
+import { createPlainByokProvider } from "../lib/aiProvider/plainByok";
 import { api } from "../lib/api";
-import { type OpenAiModel, useSettings } from "../lib/contexts";
+import { useBudgetPreferences } from "../lib/contexts";
+import * as e2ee from "../lib/e2ee";
 import { type Message, msg, useT } from "../lib/i18n";
-import { font, TEAL } from "../lib/theme";
+import { store } from "../lib/store";
+import { TEAL } from "../lib/theme";
 import { Sheet } from "./chrome";
 
 /**
  * AI consent sheet — intercepts the FIRST use of an AI feature in off mode.
  * Shows exactly what will be sent to OpenAI (per-feature payload description)
  * and offers three ways out:
- *  - "Enable via server"  → aiMode="server" (only when /api/ai/info → serverAi=true),
- *  - "Use your own key" → inline key + model → aiMode="byok" (key ONLY in localStorage),
- *  - "Stay with rules" → does NOT change aiMode. Only the budget SUGGESTION has a rules
+ *  - "Enable via Enveo" → budget provider "enveo" when operator AI is available,
+ *  - a configured Own OpenAI credential may be selected in either storage tier,
+ *  - "Stay with rules" → keeps provider "rules". Only the budget SUGGESTION has a rules
  *    engine to stay with; for the import (AI-only, no rules parser at all) the way out
  *    is "Cancel".
  * After the choice it calls `onDecided(mode)` — closing the sheet is the parent's job.
@@ -38,24 +41,33 @@ export function AiConsentSheet({
   onDecided: (mode: "server" | "byok" | "rules") => void;
 }) {
   const { t } = useT();
-  const { settings, setSettings } = useSettings();
+  const { preferences, update } = useBudgetPreferences();
+  const budgetId = store.getBudgetId() || store.getLedger()?.budgets[0]?.id || "";
+  const tierMeta = e2ee.getTierMeta();
+  const plain = tierMeta.tier === "plain";
+  const unlocked = plain || e2ee.isDekValidForEpoch(tierMeta.epoch);
+  const ownProvider = useMemo(
+    () => (plain ? createPlainByokProvider("plain", budgetId, preferences.openaiModel) : createE2eeByokProvider(budgetId, preferences.openaiModel, unlocked)),
+    [plain, budgetId, preferences.openaiModel, unlocked],
+  );
   // Server-mode availability is checked only when the sheet opens.
-  const { data: aiInfo } = useQuery({ queryKey: ["aiInfo"], queryFn: api.aiInfo, enabled: show });
-  const [byokOpen, setByokOpen] = useState(false);
-  const [key, setKey] = useState(settings.openaiKey);
-  const [model, setModel] = useState<OpenAiModel>(settings.openaiModel);
+  const { data: aiInfo } = useQuery({ queryKey: ["aiInfo"], queryFn: api.aiInfo, enabled: show && plain });
+  const { data: credential } = useQuery({
+    queryKey: ["ownOpenAiStatus", tierMeta.tier, tierMeta.epoch, budgetId, unlocked],
+    queryFn: () => ownProvider.status(),
+    enabled: show && budgetId.length > 0,
+    retry: false,
+  });
 
-  const close = () => {
-    setByokOpen(false);
-    onClose();
-  };
+  const close = () => onClose();
 
   const chooseServer = () => {
-    setSettings({ ...settings, aiMode: "server" });
+    update({ aiProvider: "enveo" });
     onDecided("server");
   };
   const chooseByok = () => {
-    setSettings({ ...settings, aiMode: "byok", openaiKey: key.trim(), openaiModel: model });
+    if (!credential?.configured || credential.code !== "ready") return;
+    update({ aiProvider: "openai" });
     onDecided("byok");
   };
 
@@ -99,87 +111,15 @@ export function AiConsentSheet({
               </button>
             )}
 
-            <button onClick={() => setByokOpen(!byokOpen)} style={{ ...secondary, borderColor: byokOpen ? TEAL : C.line, color: byokOpen ? TEAL : C.text }}>
-              {t("Use your own key")}
-            </button>
-            {byokOpen && (
-              <div style={{ padding: "2px 0 10px" }}>
-                <input
-                  type="password"
-                  value={key}
-                  onChange={(e) => setKey(e.target.value)}
-                  placeholder="sk-…"
-                  autoComplete="off"
-                  autoCapitalize="none"
-                  autoCorrect="off"
-                  spellCheck={false}
-                  aria-label={t("OpenAI key")}
-                  style={{
-                    width: "100%",
-                    boxSizing: "border-box",
-                    padding: "10px 12px",
-                    borderRadius: 10,
-                    border: `1px solid ${C.line}`,
-                    background: C.bg,
-                    color: C.text,
-                    fontSize: 13,
-                    fontFamily: font,
-                    marginBottom: 8,
-                  }}
-                />
-                <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 8 }}>
-                  {[
-                    ...AI_MODEL_TIERS.map((tier) => ({ m: tier.model, label: t(tier.label) })),
-                    // A persisted legacy choice stays offered here too — same §1b rule as Settings → AI.
-                    ...(isLegacyOpenAiModel(settings.openaiModel) ? [{ m: settings.openaiModel, label: settings.openaiModel }] : []),
-                  ].map(({ m, label }) => (
-                    <button
-                      key={m}
-                      role="radio"
-                      aria-checked={model === m}
-                      onClick={() => setModel(m)}
-                      style={{
-                        display: "flex",
-                        justifyContent: "space-between",
-                        alignItems: "baseline",
-                        gap: 8,
-                        padding: "8px 12px",
-                        borderRadius: 10,
-                        border: `1px solid ${model === m ? TEAL : C.line}`,
-                        background: model === m ? "var(--accent-1a)" : "transparent",
-                        color: model === m ? TEAL : C.text,
-                        fontSize: 12.5,
-                        fontWeight: 600,
-                        cursor: "pointer",
-                        fontFamily: font,
-                      }}
-                    >
-                      <span>{label}</span>
-                      {label !== m && <span style={{ fontSize: 10, fontWeight: 500, color: C.mute, whiteSpace: "nowrap" }}>{m}</span>}
-                    </button>
-                  ))}
-                </div>
-                <div style={{ fontSize: 11.5, color: C.mute, lineHeight: 1.5, marginBottom: 10 }}>
-                  {t("The key is stored only in this browser (localStorage) — it is never synced or sent to the app server.")}
-                </div>
-                <button
-                  onClick={chooseByok}
-                  disabled={!key.trim()}
-                  style={{
-                    width: "100%",
-                    padding: "12px 0",
-                    borderRadius: 12,
-                    border: "none",
-                    background: TEAL,
-                    color: "#fff",
-                    fontSize: 13.5,
-                    fontWeight: 600,
-                    cursor: "pointer",
-                    opacity: key.trim() ? 1 : 0.5,
-                  }}
-                >
-                  {t("Save key & enable")}
-                </button>
+            {credential?.configured && credential.code === "ready" ? (
+              <button onClick={chooseByok} style={secondary}>
+                {t("Use Own OpenAI")}
+              </button>
+            ) : (
+              <div style={{ fontSize: 11.5, color: C.mute, lineHeight: 1.5, marginBottom: 10 }}>
+                {credential?.code === "locked"
+                  ? t("Unlock the budget to use Own OpenAI.")
+                  : t("Add an OpenAI key in Settings → Artificial intelligence to use Own OpenAI.")}
               </div>
             )}
 

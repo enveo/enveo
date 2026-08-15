@@ -30,7 +30,7 @@ function reduceMotion(): boolean {
 export function SyncBadge({ onOpenSync }: { onOpenSync: () => void }) {
   const C = useTheme();
   const { t, tp } = useT();
-  const { state, pending, deadLetters, localMode, ownerUnproven } = useSyncStatus();
+  const { state, pending, deadLetters, ownerUnproven } = useSyncStatus();
 
   // shared anchoring in the shell corner (above content, below sheet/drawer)
   const anchor: React.CSSProperties = {
@@ -93,21 +93,6 @@ export function SyncBadge({ onOpenSync }: { onOpenSync: () => void }) {
           <path d="M6 11h12a1 1 0 011 1v7a1 1 0 01-1 1H6a1 1 0 01-1-1v-7a1 1 0 011-1z" />
         </svg>
         <span>{label}</span>
-      </button>
-    );
-  }
-
-  // Local mode (sync DISABLED by choice) — a quiet, NON-red accessory:
-  // a small padlock. Tappable → Settings. No counter (calm; details in the section).
-  if (localMode !== "off" || state === "local") {
-    const label =
-      localMode === "wiped" ? t("Local mode — data deleted from server. Tap to open settings") : t("Local mode — sync paused. Tap to open settings");
-    return (
-      <button onClick={onOpenSync} aria-label={label} style={{ ...anchor, background: "none", border: "none", cursor: "pointer", padding: 0 }}>
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke={C.mute} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-          <path d="M8 11V8a4 4 0 118 0v3" />
-          <path d="M6 11h12a1 1 0 011 1v7a1 1 0 01-1 1H6a1 1 0 01-1-1v-7a1 1 0 011-1z" />
-        </svg>
       </button>
     );
   }

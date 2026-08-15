@@ -7,7 +7,6 @@ import {
   languageDirectives,
   languageName,
   parseImportExtractResponse,
-  supportsReasoningEffort,
 } from "@enveo/shared";
 import { and, eq, inArray } from "drizzle-orm";
 import { Hono } from "hono";
@@ -172,38 +171,32 @@ async function openaiJson(req: ChatRequest, userId: string | undefined, timeoutM
   return out.content || "{}";
 }
 
-/* The API answers with stable machine CODES (never prose): the client owns the wording
-   in every locale (web/lib/api.ts → i18n). Structured detail travels in its own field. */
-importRoutes.post("/import/extract", async (c) => {
-  if (!env.OPENAI_API_KEY) {
-    return c.json({ error: "ai_unavailable" }, 503);
+export type ImportModelChat = (request: ChatRequest, timeoutMs?: number) => Promise<string>;
+
+export class ImportCycleOneFailure extends Error {
+  constructor(readonly reason: unknown) {
+    super("import_cycle_one_failed");
   }
-  const budgetId = (await requireTier(c, "plain")).id;
-  const { images, locale: rawLocale } = extractInput.parse(await c.req.json());
-  const locale = rawLocale ?? "en";
+}
+
+/** Shared operator/BYOK import pipeline. Prompt construction and both parsing cycles stay in
+ * one place; only the request-scoped model transport differs. */
+export async function extractImportForBudget(input: { budgetId: string; images: string[]; locale: string; chat: ImportModelChat }) {
+  const { budgetId, images, locale, chat } = input;
   const language = languageName(locale);
   const today = new Date().toISOString().slice(0, 10);
   const [budgetRow] = await db.select({ currency: s.budgets.currency }).from(s.budgets).where(eq(s.budgets.id, budgetId));
   const currency = budgetRow?.currency ?? "EUR";
 
   /* ── cycle 1: facts from the screenshot (prompt+parsing from shared — parity with byok) ── */
-  const userId = sessionUserId(c);
   let found: ImportExtractItem[];
   try {
-    const raw = await openaiJson(buildImportExtractPrompt(images, { envelopes: [], categories: [] }, today, locale, currency), userId, AI_VISION_TIMEOUT_MS);
+    const raw = await chat(buildImportExtractPrompt(images, { envelopes: [], categories: [] }, today, locale, currency), AI_VISION_TIMEOUT_MS);
     found = parseImportExtractResponse(raw);
-  } catch (e) {
-    // Import is AI-only: an exhausted monthly allowance before the FIRST cycle has nothing to
-    // fall back to — the stable 429 contract tells the client when to come back.
-    if (e instanceof SpendDenied) return c.json(aiBudgetExhaustedBody(e.retryAfterSeconds), 429, { "Retry-After": String(e.retryAfterSeconds) });
-    // the details stay in the server log; the client gets a DISTINCT stable code per
-    // failure class (timeout / unreachable / upstream rejection or unparsable answer)
-    console.error("import/extract cycle 1 failed:", (e as Error).message);
-    const failure = transportFailureJson(e);
-    if (failure) return c.json(failure.body, failure.status);
-    return c.json({ error: "ai_upstream_error", ...(e instanceof UpstreamHttpError ? { status: e.status } : {}) }, 502);
+  } catch (reason) {
+    throw new ImportCycleOneFailure(reason);
   }
-  if (found.length === 0) return c.json({ items: [] });
+  if (found.length === 0) return [];
 
   /* ── cycle 2: similarity with history + assignments the way the user made them ── */
   const [envelopes, categories] = await Promise.all([
@@ -229,8 +222,8 @@ importRoutes.post("/import/extract", async (c) => {
     `envelope — one of the envelopes: ${envelopes.map((e) => e.name).join(", ")} — or null; ` +
     `category — one of the categories: ${categories.map((x) => x.name).join(", ")} — or null; ` +
     "place — a readable, short place name (e.g. Lidl, Netflix). Do not change amounts or dates. " +
-    /* Cycle 2 is server-only (no byok twin), but it carries the SAME language contract as every
-       shared prompt — the names it invents land in the user's ledger. */
+    /* Cycle 2 is shared by operator and vaulted-BYOK transport, and carries the SAME language
+       contract as every shared prompt — the names it invents land in the user's ledger. */
     languageDirectives(locale) +
     "Return JSON.";
   // Items with a SURE source_ref hit are assigned DETERMINISTICALLY — we do NOT ask the AI
@@ -252,20 +245,17 @@ importRoutes.post("/import/extract", async (c) => {
       })),
     };
     try {
-      const raw = await openaiJson(
-        {
-          messages: [
-            { role: "system", content: sysEnrich },
-            { role: "user", content: JSON.stringify(enrichPayload) },
-          ],
-          responseFormat: { type: "json_schema", json_schema: ENRICH_JSON_SCHEMA },
-          /* Matching against history patterns = simple comparisons — full default-effort
+      const raw = await chat({
+        messages: [
+          { role: "system", content: sysEnrich },
+          { role: "user", content: JSON.stringify(enrichPayload) },
+        ],
+        responseFormat: { type: "json_schema", json_schema: ENRICH_JSON_SCHEMA },
+        /* Matching against history patterns = simple comparisons — full default-effort
              reasoning only slowed the import down (cycle 1/vision STAYS on the default:
              OCR precision matters there). */
-          reasoningEffort: "low",
-        },
-        userId,
-      );
+        reasoningEffort: "low",
+      });
       // size only — the answer carries the user's transactions; it NEVER goes to the server log
       console.log(`import/extract cycle 2: ${raw.length} B answer`);
       enriched = new Map(enrichedOutput.parse(JSON.parse(raw)).transactions.map((t) => [t.index, t]));
@@ -319,7 +309,33 @@ importRoutes.post("/import/extract", async (c) => {
       fxOriginal: t.fxOriginal,
     };
   });
-  return c.json({ items });
+  return items;
+}
+
+/* The API answers with stable machine CODES (never prose): the client owns the wording
+   in every locale (web/lib/api.ts → i18n). Structured detail travels in its own field. */
+importRoutes.post("/import/extract", async (c) => {
+  if (!env.OPENAI_API_KEY) return c.json({ error: "ai_unavailable" }, 503);
+  const budgetId = (await requireTier(c, "plain")).id;
+  const { images, locale: rawLocale } = extractInput.parse(await c.req.json());
+  const userId = sessionUserId(c);
+  try {
+    const items = await extractImportForBudget({
+      budgetId,
+      images,
+      locale: rawLocale ?? "en",
+      chat: (request, timeoutMs) => openaiJson(request, userId, timeoutMs),
+    });
+    return c.json({ items });
+  } catch (error) {
+    if (!(error instanceof ImportCycleOneFailure)) throw error;
+    const reason = error.reason;
+    if (reason instanceof SpendDenied) return c.json(aiBudgetExhaustedBody(reason.retryAfterSeconds), 429, { "Retry-After": String(reason.retryAfterSeconds) });
+    console.error("import/extract cycle 1 failed:", (reason as Error).message);
+    const failure = transportFailureJson(reason);
+    if (failure) return c.json(failure.body, failure.status);
+    return c.json({ error: "ai_upstream_error", ...(reason instanceof UpstreamHttpError ? { status: reason.status } : {}) }, 502);
+  }
 });
 
 export const applyInput = z.object({

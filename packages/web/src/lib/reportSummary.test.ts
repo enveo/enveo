@@ -1,21 +1,11 @@
 /**
  * Reports overview card summaries (reportSummary.ts).
  *
- * budgetsSummary: THRESHOLD cases (79.9 / 80 / 100 / 100.1 %) — parity with the
- * BudgetsReport thresholds, via the shared `classifyBudget` rule: over = left < 0
- * (equivalent to spent > budget on the RAW, unfloored budget); near = !over && pct >= 80
- * && left > 0; else ok (the "amber-wall" fix — pct === 100 with left === 0, i.e. spent
- * EXACTLY down to the budget with no room left to overrun, reads as calm).
- *
- * `over` is defined on `left`, NOT on `pct`, because callers compute `pct` against a
- * FLOORED budget (`Math.max(1, allocated+carryIn)`) to avoid divide-by-zero, while `left`
- * stays on the RAW (unfloored) budget — so a zero/negative raw budget with any positive
- * spend can land pct AT exactly 100 (not > 100) while `left` is already negative. Using
- * `pct > 100` for `over` would misclassify that as "ok"/"used up" — a real overspend
- * reading as calm, the amber-wall failure inverted.
+ * `budgetUsage` owns the denominator and threshold rules for both report surfaces.
+ * Non-positive budgets deliberately have `pct: null`; overspending remains `left < 0`.
  */
 import { describe, expect, test } from "bun:test";
-import { budgetsOverAmount, budgetsSummary, classifyBudget } from "./reportSummary";
+import { type BudgetUsage, budgetRowPresentation, budgetsOverAmount, budgetsSummary, budgetUsage, compareBudgetUsageRows } from "./reportSummary";
 
 const envRow = (over: Partial<{ archived: boolean; allocated: number; carryIn: number; spent: number }> = {}) => ({
   archived: false,
@@ -25,29 +15,75 @@ const envRow = (over: Partial<{ archived: boolean; allocated: number; carryIn: n
   ...over,
 });
 
-describe("classifyBudget", () => {
-  test("over: left < 0, regardless of pct", () => {
-    expect(classifyBudget(100.1, -1)).toBe("over");
-    expect(classifyBudget(101, -5)).toBe("over");
+const calculateUsage = (row: ReturnType<typeof envRow>): BudgetUsage => budgetUsage(row);
+
+describe("budgetUsage", () => {
+  test("a zero budget with spending has no percentage and remains overspent", () => {
+    // given: an envelope with no allocation or carry-in
+    const envelope = envRow({ spent: 500 });
+
+    // when: report usage is calculated
+    const usage = calculateUsage(envelope);
+
+    // then: the report keeps the real zero denominator instead of inventing one minor unit
+    expect(usage).toEqual({ rawBudget: 0, spent: 500, left: -500, pct: null, status: "over" });
   });
 
-  test("the zero/negative-budget boundary: floored-budget pct lands at exactly 100 (not > 100) while left is already negative → still over, not ok", () => {
-    // e.g. allocated=0, carryIn=0, spent=1 → floored budget=1 → pct=100, left=-1
-    expect(classifyBudget(100, -1)).toBe("over");
+  test("a negative effective budget never produces a percentage", () => {
+    const usage = calculateUsage(envRow({ carryIn: -200, spent: 100 }));
+
+    expect(usage).toEqual({ rawBudget: -200, spent: 100, left: -300, pct: null, status: "over" });
   });
 
-  test("near requires BOTH pct >= 80 AND left > 0", () => {
-    expect(classifyBudget(80, 1)).toBe("near");
-    expect(classifyBudget(99, 1)).toBe("near");
-    expect(classifyBudget(100, 1)).toBe("near"); // pct===100 but still room left (left>0) → near, not used-up
+  test.each([
+    { spent: 799, pct: 79.9, left: 201, status: "ok" as const },
+    { spent: 800, pct: 80, left: 200, status: "near" as const },
+    { spent: 1000, pct: 100, left: 0, status: "ok" as const },
+    { spent: 1001, pct: 100.1, left: -1, status: "over" as const },
+  ])("classifies a positive budget at $pct% as $status", ({ spent, pct, left, status }) => {
+    expect(calculateUsage(envRow({ allocated: 1000, spent }))).toEqual({ rawBudget: 1000, spent, left, pct, status });
+  });
+});
+
+describe("budget report row presentation", () => {
+  test("a zero-budget overspend uses an em dash percentage and a full warning bar without changing business data", () => {
+    const usage = calculateUsage(envRow({ spent: 500 }))!;
+    const presentation = budgetRowPresentation(usage);
+
+    expect(presentation).toEqual({ percentage: null, visualBarPct: 100, noBudget: true, overspend: 500 });
   });
 
-  test("the amber-wall fix: pct === 100 with left === 0 (used up, no room to overrun) is calm, not near", () => {
-    expect(classifyBudget(100, 0)).toBe("ok");
+  test("a positive budget keeps its real percentage for display and bar width", () => {
+    const usage = calculateUsage(envRow({ allocated: 1000, spent: 800 }))!;
+    const presentation = budgetRowPresentation(usage);
+
+    expect(presentation).toEqual({ percentage: 80, visualBarPct: 80, noBudget: false, overspend: 0 });
+  });
+});
+
+describe("budget report row ordering", () => {
+  type Row = BudgetUsage & { name: string };
+  const compare = (a: Row, b: Row): number => compareBudgetUsageRows(a, b, (left, right) => left.localeCompare(right, "en"));
+
+  test("orders rows with real budgets by descending percentage", () => {
+    const low = { ...calculateUsage(envRow({ allocated: 1000, spent: 800 }))!, name: "Low" };
+    const high = { ...calculateUsage(envRow({ allocated: 1000, spent: 1200 }))!, name: "High" };
+
+    expect([low, high].sort(compare).map((row) => row.name)).toEqual(["High", "Low"]);
   });
 
-  test("ok below 80%", () => {
-    expect(classifyBudget(79.9, 500)).toBe("ok");
+  test("orders undefined-percentage overspends by descending overspend amount", () => {
+    const small = { ...calculateUsage(envRow({ spent: 300 }))!, name: "Small" };
+    const large = { ...calculateUsage(envRow({ spent: 500 }))!, name: "Large" };
+
+    expect([small, large].sort(compare).map((row) => row.name)).toEqual(["Large", "Small"]);
+  });
+
+  test("uses the injected name comparer as a stable final tie-breaker", () => {
+    const beta = { ...calculateUsage(envRow({ spent: 500 }))!, name: "Beta" };
+    const alpha = { ...calculateUsage(envRow({ spent: 500 }))!, name: "Alpha" };
+
+    expect([beta, alpha].sort(compare).map((row) => row.name)).toEqual(["Alpha", "Beta"]);
   });
 });
 
@@ -75,11 +111,11 @@ describe("budgetsSummary", () => {
     expect(out).toEqual({ over: 0, near: 0, ok: 0 });
   });
 
-  test("spending without an allocation → the budget has a 1-minor-unit floor → over", () => {
+  test("spending without an allocation remains over without inventing a budget", () => {
     expect(budgetsSummary([envRow({ spent: 500 })])).toEqual({ over: 1, near: 0, ok: 0 });
   });
 
-  test("the zero-budget boundary: spent === the 1-minor-unit floor exactly → pct lands at 100 (not > 100) but left=-1 → still over", () => {
+  test("the zero-budget boundary remains over even though percentage is undefined", () => {
     expect(budgetsSummary([envRow({ spent: 1 })])).toEqual({ over: 1, near: 0, ok: 0 });
   });
 
@@ -97,9 +133,7 @@ describe("budgetsOverAmount", () => {
     expect(budgetsOverAmount([envRow({ allocated: 1000, spent: 1300 })])).toBe(300); // left=-300
   });
 
-  test("the zero-budget boundary: no allocation, spent=1 → floored-budget pct is exactly 100 (not > 100), left=-1 → still counted", () => {
-    // an inline `pct > 100` filter would miss this row entirely (pct===100) and return 0,
-    // even though budgetsSummary already counts it as `over`.
+  test("the zero-budget boundary: no allocation and spent=1 contributes the real overspend", () => {
     expect(budgetsOverAmount([envRow({ spent: 1 })])).toBe(1);
   });
 

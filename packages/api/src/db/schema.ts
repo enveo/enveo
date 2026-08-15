@@ -7,6 +7,7 @@ import {
   date,
   index,
   integer,
+  jsonb,
   pgEnum,
   pgTable,
   primaryKey,
@@ -31,6 +32,26 @@ export const users = pgTable("users", {
   createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" }).notNull().defaultNow(),
 });
+
+export const accountPreferences = pgTable(
+  "account_preferences",
+  {
+    userId: uuid("user_id")
+      .primaryKey()
+      .references(() => users.id, { onDelete: "cascade" }),
+    lang: text("lang").notNull(),
+    themeMode: text("theme_mode").notNull(),
+    accentTheme: text("accent_theme").notNull(),
+    revision: bigint("revision", { mode: "number" }).notNull().default(0),
+    updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" }).notNull().defaultNow(),
+  },
+  (t) => ({
+    langValid: check("account_preferences_lang_valid", sql`${t.lang} IN ('en','pl','de','es','fr','it','nl','pt-BR','cs','sv')`),
+    themeModeValid: check("account_preferences_theme_mode_valid", sql`${t.themeMode} IN ('light','dark','auto')`),
+    accentThemeValid: check("account_preferences_accent_theme_valid", sql`${t.accentTheme} IN ('teal','duet')`),
+    revisionNonnegative: check("account_preferences_revision_nonnegative", sql`${t.revision} >= 0`),
+  }),
+);
 
 /** better-auth sessions (model `session`). */
 export const authSessions = pgTable("auth_sessions", {
@@ -101,9 +122,44 @@ export const budgets = pgTable(
      *  unauthenticated ciphertext as v2 without rotating the DEK or rebuilding the snapshot
      *  (migration 0021 marks pre-existing e2ee rows as 1 exactly once). */
     cipherVersion: integer("cipher_version").notNull().default(2),
+    /** Plain-tier budget preferences. NULL for legacy/default rows and every E2EE budget. */
+    preferences: jsonb("preferences").$type<unknown>(),
   },
   (t) => ({
     cipherVersionValid: check("budgets_cipher_version_valid", sql`${t.cipherVersion} IN (1, 2)`),
+  }),
+);
+
+/**
+ * Protected budget-scoped OpenAI credential. `server_vault` rows are envelope-encrypted by
+ * the API; `e2ee_ciphertext` rows are opaque browser ciphertext. The database constraint keeps
+ * the two shapes disjoint, and row existence is the only configured-status signal.
+ */
+export const budgetAiCredentials = pgTable(
+  "budget_ai_credentials",
+  {
+    budgetId: uuid("budget_id")
+      .primaryKey()
+      .references(() => budgets.id, { onDelete: "cascade" }),
+    provider: text("provider").notNull(),
+    storageKind: text("storage_kind").notNull(),
+    framingVersion: integer("framing_version").notNull(),
+    ciphertext: text("ciphertext").notNull(),
+    wrappedRecordDek: text("wrapped_record_dek"),
+    masterKeyId: text("master_key_id"),
+    e2eeEpoch: integer("e2ee_epoch"),
+    recordVersion: bigint("record_version", { mode: "number" }).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" }).notNull().defaultNow(),
+  },
+  (t) => ({
+    providerValid: check("budget_ai_credentials_provider_valid", sql`${t.provider} = 'openai'`),
+    ciphertextNonempty: check("budget_ai_credentials_ciphertext_nonempty", sql`char_length(${t.ciphertext}) > 0`),
+    recordVersionPositive: check("budget_ai_credentials_record_version_positive", sql`${t.recordVersion} > 0`),
+    storageShapeValid: check(
+      "budget_ai_credentials_storage_shape_valid",
+      sql`(${t.storageKind} = 'server_vault' AND ${t.framingVersion} = 1 AND ${t.wrappedRecordDek} IS NOT NULL AND char_length(${t.wrappedRecordDek}) > 0 AND ${t.masterKeyId} IS NOT NULL AND char_length(${t.masterKeyId}) > 0 AND ${t.e2eeEpoch} IS NULL) OR (${t.storageKind} = 'e2ee_ciphertext' AND ${t.framingVersion} = 2 AND ${t.wrappedRecordDek} IS NULL AND ${t.masterKeyId} IS NULL AND ${t.e2eeEpoch} >= 0)`,
+    ),
   }),
 );
 

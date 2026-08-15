@@ -13,7 +13,16 @@
 
 import { describe, expect, it } from "bun:test";
 import { E2EE_DISABLE_CONFIRM } from "@enveo/shared";
-import { e2eeDisableInput, e2eeEnableInput, e2eeUpgradeV2Input, sync2PushInput, sync2RekeyInput, sync2ResetInput, sync2SnapshotInput } from "./sync2";
+import {
+  e2eeDisableInput,
+  e2eeEnableInput,
+  e2eeUpgradeCredentialQuery,
+  e2eeUpgradeV2Input,
+  sync2PushInput,
+  sync2RekeyInput,
+  sync2ResetInput,
+  sync2SnapshotInput,
+} from "./sync2";
 
 const UUID = "11111111-1111-1111-1111-111111111111";
 
@@ -73,7 +82,15 @@ describe("sync2 — input validation (format v2)", () => {
   });
 
   it("enable: requires v2 wrappedDek/snapshotBlob, kdfParams, the owner assertion, budgetId and nextEpoch", () => {
-    const ok = { wrappedDek: "v2.aaaaaaaa", kdfParams: "{}", snapshotBlob: "v2.bbbbbbbb", userId: "user-A", budgetId: UUID, nextEpoch: 1 };
+    const ok = {
+      wrappedDek: "v2.aaaaaaaa",
+      kdfParams: "{}",
+      snapshotBlob: "v2.bbbbbbbb",
+      userId: "user-A",
+      budgetId: UUID,
+      nextEpoch: 1,
+      credentialAction: { kind: "none" },
+    };
     expect(e2eeEnableInput.safeParse(ok).success).toBe(true);
     expect(e2eeEnableInput.safeParse({ ...ok, wrappedDek: "v1.aaaaaaaa" }).success).toBe(false); // old client
     expect(e2eeEnableInput.safeParse({ ...ok, snapshotBlob: "v1.bbbbbbbb" }).success).toBe(false);
@@ -82,6 +99,10 @@ describe("sync2 — input validation (format v2)", () => {
     expect(e2eeEnableInput.safeParse({ ...ok, budgetId: undefined }).success).toBe(false);
     expect(e2eeEnableInput.safeParse({ ...ok, nextEpoch: undefined }).success).toBe(false);
     expect(e2eeEnableInput.safeParse({ ...ok, nextEpoch: 0 }).success).toBe(false); // enable always bumps to ≥1
+    expect(e2eeEnableInput.safeParse({ ...ok, credentialAction: undefined }).success).toBe(false);
+    expect(e2eeEnableInput.safeParse({ ...ok, credentialAction: { kind: "server-vault-to-e2ee", ciphertext: "v2.credentialAAAA" } }).success).toBe(true);
+    expect(e2eeEnableInput.safeParse({ ...ok, credentialAction: { kind: "server-vault-to-e2ee", ciphertext: "v1.credentialAAAA" } }).success).toBe(false);
+    expect(e2eeEnableInput.safeParse({ ...ok, credentialAction: { kind: "server-vault-to-e2ee", ciphertext: `v2.${"a".repeat(8_193)}` } }).success).toBe(false);
   });
 
   /* The WIRE literal must stay locale-independent ASCII: the word the user TYPES is localized
@@ -92,13 +113,26 @@ describe("sync2 — input validation (format v2)", () => {
   });
 
   it("disable: requires EXACTLY the confirmation literal and the owner assertion", () => {
-    expect(e2eeDisableInput.safeParse({ confirm: E2EE_DISABLE_CONFIRM, ledger: emptyLedger, userId: "user-A" }).success).toBe(true);
-    expect(e2eeDisableInput.safeParse({ confirm: "disable-e2ee", ledger: emptyLedger, userId: "user-A" }).success).toBe(false);
+    const ok = {
+      confirm: E2EE_DISABLE_CONFIRM,
+      ledger: emptyLedger,
+      userId: "user-A",
+      budgetId: UUID,
+      expectedEpoch: 2,
+      credentialAction: { kind: "none" },
+    };
+    expect(e2eeDisableInput.safeParse(ok).success).toBe(true);
+    expect(e2eeDisableInput.safeParse({ ...ok, confirm: "disable-e2ee" }).success).toBe(false);
     // the LOCALIZED word the user types never reaches the wire — only the fixed constant does
-    expect(e2eeDisableInput.safeParse({ confirm: "WYŁĄCZ-E2EE", ledger: emptyLedger, userId: "user-A" }).success).toBe(false);
-    expect(e2eeDisableInput.safeParse({ confirm: "YES", ledger: emptyLedger, userId: "user-A" }).success).toBe(false);
-    expect(e2eeDisableInput.safeParse({ ledger: emptyLedger, userId: "user-A" }).success).toBe(false);
-    expect(e2eeDisableInput.safeParse({ confirm: E2EE_DISABLE_CONFIRM, ledger: emptyLedger }).success).toBe(false); // assertion required
+    expect(e2eeDisableInput.safeParse({ ...ok, confirm: "WYŁĄCZ-E2EE" }).success).toBe(false);
+    expect(e2eeDisableInput.safeParse({ ...ok, confirm: "YES" }).success).toBe(false);
+    expect(e2eeDisableInput.safeParse({ ...ok, confirm: undefined }).success).toBe(false);
+    expect(e2eeDisableInput.safeParse({ ...ok, userId: undefined }).success).toBe(false); // assertion required
+    expect(e2eeDisableInput.safeParse({ ...ok, budgetId: undefined }).success).toBe(false);
+    expect(e2eeDisableInput.safeParse({ ...ok, expectedEpoch: undefined }).success).toBe(false);
+    expect(e2eeDisableInput.safeParse({ ...ok, credentialAction: undefined }).success).toBe(false);
+    expect(e2eeDisableInput.safeParse({ ...ok, credentialAction: { kind: "e2ee-to-server-vault", key: "sk-move" } }).success).toBe(true);
+    expect(e2eeDisableInput.safeParse({ ...ok, credentialAction: { kind: "e2ee-to-server-vault", key: "" } }).success).toBe(false);
   });
 
   it("rekey: requires a v2 wrappedDek, kdfParams, expectedEpoch and the owner assertion", () => {
@@ -139,6 +173,7 @@ describe("sync2 — input validation (format v2)", () => {
       wrappedDek: "v2.aaaaaaaa",
       kdfParams: "{}",
       snapshotBlob: "v2.bbbbbbbb",
+      credentialAction: { kind: "none" },
     };
     expect(e2eeUpgradeV2Input.safeParse(ok).success).toBe(true);
     expect(e2eeUpgradeV2Input.safeParse({ ...ok, budgetId: undefined }).success).toBe(false); // tenant assertion
@@ -150,5 +185,11 @@ describe("sync2 — input validation (format v2)", () => {
     expect(e2eeUpgradeV2Input.safeParse({ ...ok, wrappedDek: "v1.aaaaaaaa" }).success).toBe(false); // the old envelope is never reused
     expect(e2eeUpgradeV2Input.safeParse({ ...ok, snapshotBlob: "v1.bbbbbbbb" }).success).toBe(false);
     expect(e2eeUpgradeV2Input.safeParse({ ...ok, snapshotBlob: "" }).success).toBe(false);
+    expect(e2eeUpgradeV2Input.safeParse({ ...ok, credentialAction: undefined }).success).toBe(false);
+    expect(e2eeUpgradeV2Input.safeParse({ ...ok, credentialAction: { kind: "legacy-local-to-e2ee", ciphertext: "v2.credentialAAAA" } }).success).toBe(true);
+    expect(e2eeUpgradeV2Input.safeParse({ ...ok, credentialAction: { kind: "legacy-local-to-e2ee", ciphertext: "v1.credentialAAAA" } }).success).toBe(false);
+    expect(e2eeUpgradeV2Input.safeParse({ ...ok, credentialAction: { kind: "e2ee-to-next-epoch", ciphertext: "v2.credentialAAAA" } }).success).toBe(true);
+    expect(e2eeUpgradeCredentialQuery.safeParse({ budgetId: UUID, expectedEpoch: "1" }).success).toBe(true);
+    expect(e2eeUpgradeCredentialQuery.safeParse({ budgetId: UUID, expectedEpoch: "-1" }).success).toBe(false);
   });
 });

@@ -33,6 +33,7 @@
 export const SELF_HOST_DOCS = [
   "README.md",
   "compose.selfhost.yml",
+  "compose.ai-vault.yml",
   ".env.selfhost.example",
   "docs/install.md",
   "docs/hosting.md",

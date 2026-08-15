@@ -32,7 +32,7 @@ function makeSteps(opts: { userId?: string | null; failAt?: "budgetReset" | "sig
       calls.push("signOut");
       return fail("signOut");
     },
-    clearDeviceTrust: () => void calls.push("clearDeviceTrust"),
+    clearDeviceStoragePolicy: () => void calls.push("clearDeviceStoragePolicy"),
     clearPersistedSettings: () => void calls.push("clearPersistedSettings"),
     clearLastAccountId: () => void calls.push("clearLastAccountId"),
     discardLocalReplica: () => {
@@ -52,7 +52,7 @@ describe("deleteEverythingAndStartFresh", () => {
       "fetchSessionUserId",
       "budgetReset(user-1)", // the SESSION user's id travels in the body (per-request assertion)
       "signOut",
-      "clearDeviceTrust",
+      "clearDeviceStoragePolicy",
       "clearPersistedSettings",
       "clearLastAccountId",
       "discardLocalReplica",

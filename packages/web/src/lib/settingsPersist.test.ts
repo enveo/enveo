@@ -1,23 +1,26 @@
-/**
- * Settings persistence vs device trust (settingsPersist.ts).
- *
- * Guest mode ("memory-forced") is gated in BOTH directions: a guest neither
- * INHERITS the previous user's on-disk settings (the BYOK OpenAI key lives
- * there) nor leaves any of their own on disk. Trusted devices keep today's
- * behavior byte-identically. localStorage stub as in storageBackend.test.ts.
- */
 import { afterEach, describe, expect, test } from "bun:test";
 import { __resetStorageForTests } from "./idb";
-import { clearPersistedSettings, loadPersistedSettings, persistSettings } from "./settingsPersist";
+import {
+  clearPersistedSettings,
+  legacyCredentialMigration,
+  loadPersistedSettings,
+  persistSettings,
+  readLegacySettings,
+  removeLegacySettingsIfUnchanged,
+} from "./settingsPersist";
 
 function stubLocalStorage(initial: Record<string, string> = {}) {
-  const m = new Map<string, string>(Object.entries(initial));
+  const values = new Map<string, string>(Object.entries(initial));
+  const removed: string[] = [];
   (globalThis as Record<string, unknown>).localStorage = {
-    getItem: (k: string) => (m.has(k) ? m.get(k)! : null),
-    setItem: (k: string, v: string) => void m.set(k, String(v)),
-    removeItem: (k: string) => void m.delete(k),
+    getItem: (key: string) => values.get(key) ?? null,
+    setItem: (key: string, value: string) => values.set(key, String(value)),
+    removeItem: (key: string) => {
+      removed.push(key);
+      values.delete(key);
+    },
   };
-  return m;
+  return { values, removed };
 }
 
 afterEach(() => {
@@ -25,41 +28,59 @@ afterEach(() => {
   __resetStorageForTests();
 });
 
-describe("trusted device (flag absent) — behavior identical to before", () => {
-  test("persist → load round-trip", () => {
-    stubLocalStorage();
+describe("legacy settings quarantine", () => {
+  test("strictly accepts the known legacy shape and rejects malformed or unknown fields", () => {
+    const storage = stubLocalStorage({
+      "enveo.settings": JSON.stringify({ themeMode: "dark", lang: "pl", aiMode: "byok", openaiKey: "sk-old", openaiModel: "gpt-5.5" }),
+    });
     __resetStorageForTests();
-    persistSettings({ themeMode: "dark", openaiKey: "sk-x" });
-    expect(loadPersistedSettings()).toEqual({ themeMode: "dark", openaiKey: "sk-x" });
-  });
-  test("absent key → null; unparsable JSON → null", () => {
-    const m = stubLocalStorage();
-    __resetStorageForTests();
-    expect(loadPersistedSettings()).toBeNull();
-    m.set("enveo.settings", "{broken");
+    expect(loadPersistedSettings()).toEqual({ themeMode: "dark", lang: "pl", aiMode: "byok", openaiKey: "sk-old", openaiModel: "gpt-5.5" });
+
+    storage.values.set("enveo.settings", JSON.stringify({ themeMode: "sepia", unknown: true }));
     expect(loadPersistedSettings()).toBeNull();
   });
-  test("clearPersistedSettings removes the key", () => {
-    const m = stubLocalStorage({ "enveo.settings": '{"themeMode":"dark"}' });
+
+  test("reports the tier-specific migration and removes only the exact inspected bytes", () => {
+    const raw = '{ "aiMode": "byok", "openaiKey": "sk-byte-for-byte", "openaiModel": "gpt-5.5-mini" }';
+    const storage = stubLocalStorage({ "enveo.settings": raw });
+    __resetStorageForTests();
+
+    expect(legacyCredentialMigration("plain")).toBe("pending-vault");
+    expect(legacyCredentialMigration("e2ee")).toBe("pending-stage-4");
+    expect(readLegacySettings()?.raw).toBe(raw);
+    expect(removeLegacySettingsIfUnchanged("different bytes")).toBe(false);
+    expect(storage.values.get("enveo.settings")).toBe(raw);
+    expect(removeLegacySettingsIfUnchanged(raw)).toBe(true);
+    expect(storage.values.has("enveo.settings")).toBe(false);
+    expect(storage.removed).toEqual(["enveo.settings"]);
+  });
+
+  test("all new generic settings writes are disabled during quarantine", () => {
+    const raw = '{"openaiKey":"sk-existing"}';
+    const storage = stubLocalStorage({ "enveo.settings": raw });
+    __resetStorageForTests();
+
+    persistSettings({ openaiKey: "sk-new", themeMode: "dark" });
+
+    expect(storage.values.get("enveo.settings")).toBe(raw);
+  });
+
+  test("explicit account removal may still clear the quarantined credential", () => {
+    const storage = stubLocalStorage({ "enveo.settings": '{"openaiKey":"sk-existing"}' });
     __resetStorageForTests();
     clearPersistedSettings();
-    expect(m.has("enveo.settings")).toBe(false);
+    expect(storage.values.has("enveo.settings")).toBe(false);
   });
 });
 
-describe("guest mode (memory-forced) — no disk in either direction", () => {
-  test("persist is a no-op (an entered BYOK key never reaches localStorage)", () => {
-    const m = stubLocalStorage({ "enveo.deviceTrust": "untrusted" });
-    __resetStorageForTests();
-    persistSettings({ openaiKey: "sk-guest" });
-    expect(m.has("enveo.settings")).toBe(false);
-  });
-  test("load ignores on-disk settings (a guest must not inherit a stranger's key)", () => {
+describe("session device", () => {
+  test("does not read a previous persistent user's legacy credential", () => {
     stubLocalStorage({
-      "enveo.deviceTrust": "untrusted",
+      "enveo.deviceStoragePolicy": "session",
       "enveo.settings": '{"openaiKey":"sk-LEAK","themeMode":"dark"}',
     });
     __resetStorageForTests();
     expect(loadPersistedSettings()).toBeNull();
+    expect(legacyCredentialMigration()).toBeNull();
   });
 });

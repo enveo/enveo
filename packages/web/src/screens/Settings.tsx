@@ -2,7 +2,7 @@ import { type ReactNode, useEffect, useRef, useState } from "react";
 import type { ScreenId } from "../components/chrome";
 import { useBand } from "../components/kit";
 import { useLedgerVersion, useSyncStatus } from "../lib/api";
-import { useSettings, useTheme } from "../lib/contexts";
+import { useBudgetPreferences, useSettings, useTheme } from "../lib/contexts";
 import { relSync } from "../lib/dates";
 import * as e2ee from "../lib/e2ee";
 import { type Message, msg, useT } from "../lib/i18n";
@@ -10,24 +10,29 @@ import { D_INSTALL, Ico } from "../lib/icons";
 import { isInstallable, useInstall } from "../lib/installPrompt";
 import { P, tint } from "../lib/theme";
 import { APP_VERSION, buildLabel } from "../lib/version";
-import { AdvancedSection } from "./settings/Advanced";
 import { AiSection } from "./settings/Ai";
 import { AppearanceSection } from "./settings/Appearance";
-import { DataSection } from "./settings/DataSection";
-import { SyncSection } from "./settings/SyncSection";
+import { DataSection, LogoutSection } from "./settings/DataSection";
+import { PrivacySection } from "./settings/PrivacySection";
 
-/* ── Settings S2: category hub with statuses + subscreens ──────────────
- * The container holds ONLY navigation (hub ↔ subscreen); all section logic
- * lives in screens/settings/* — moved 1:1, zero behavior changes. */
+/* ── Settings: four scoped categories plus a separate sign-out action ── */
 
-type SubId = "appearance" | "ai" | "data" | "sync" | "advanced";
+export const SETTINGS_CATEGORIES = [
+  { id: "appearance", title: msg("Appearance and dashboard") },
+  { id: "ai", title: msg("Artificial intelligence") },
+  { id: "privacy", title: msg("Privacy and encryption") },
+  { id: "data", title: msg("Data and synchronization") },
+] as const;
+
+export const SETTINGS_HUB_FOOTER_ACTIONS = ["signOut"] as const;
+
+type SubId = (typeof SETTINGS_CATEGORIES)[number]["id"];
 
 const SUB_TITLE: Record<SubId, Message> = {
-  appearance: msg("Appearance"),
+  appearance: msg("Appearance and dashboard"),
   ai: msg("Artificial intelligence"),
-  data: msg("Data"),
-  sync: msg("Sync"),
-  advanced: msg("Advanced"),
+  privacy: msg("Privacy and encryption"),
+  data: msg("Data and synchronization"),
 };
 
 /** Category glyph — 1.7px stroked SVG (patterns from the mock), stroke via style (CSS vars OK). */
@@ -109,9 +114,8 @@ export function SettingsScreen({ onNav, onInstall }: { onNav: (s: ScreenId) => v
           {/* fi, not fu: transform on an ancestor breaks position:fixed sheets (e.g. the E2EE wizard) */}
           {sub === "appearance" && <AppearanceSection />}
           {sub === "ai" && <AiSection />}
+          {sub === "privacy" && <PrivacySection />}
           {sub === "data" && <DataSection />}
-          {sub === "sync" && <SyncSection />}
-          {sub === "advanced" && <AdvancedSection />}
         </div>
       )}
     </div>
@@ -131,8 +135,8 @@ function Hub({ onOpen, onInstall }: { onOpen: (s: SubId) => void; onInstall: () 
   // category colors (glyph + tint); lighter shades in dark mode
   const catAppearance = isDark ? "#ff8d7d" : "#f0685c";
   const catAi = isDark ? "#e0aa58" : "#d99a3f";
-  const catData = isDark ? "#8fa2cc" : "#1d2a47";
-  const catSync = isDark ? "#6cbf9b" : "#4fa583";
+  const catPrivacy = isDark ? "#8fa2cc" : "#1d2a47";
+  const catData = isDark ? "#6cbf9b" : "#4fa583";
   // one color per category is the hub's visual language — install gets its OWN token
   // (violet), not a reuse of the Data navy (M10)
   const catInstall = isDark ? "#a89bdd" : "#6f5bb5";
@@ -164,8 +168,8 @@ function Hub({ onOpen, onInstall }: { onOpen: (s: SubId) => void; onInstall: () 
             <path d="M12 2a10 10 0 000 20 2 2 0 002-2v-1a2 2 0 012-2h1a5 5 0 005-5c0-5.5-4.5-10-10-10z" />
           </Glyph>
         }
-        title={t("Appearance")}
-        desc={t("theme, language, currency, discreet")}
+        title={t("Appearance and dashboard")}
+        desc={t("Theme, language, currency, privacy display, and widgets")}
         status={
           <span
             aria-hidden
@@ -183,51 +187,40 @@ function Hub({ onOpen, onInstall }: { onOpen: (s: SubId) => void; onInstall: () 
           </Glyph>
         }
         title={t("Artificial intelligence")}
-        desc={t("AI mode, your own key")}
+        desc={t("Provider, model, and secure credential status")}
         status={<AiBadge />}
         onClick={() => onOpen("ai")}
       />
       <HubCard
-        tint={tint(catData, 0.08)}
+        tint={tint(catPrivacy, 0.08)}
         icon={
-          <Glyph color={catData}>
+          <Glyph color={catPrivacy}>
             <path d="M12 2l8 3v6c0 5-3.5 9.4-8 11-4.5-1.6-8-6-8-11V5z" />
             <path d="M9 12l2 2 4-4" />
           </Glyph>
         }
-        title={t("Data")}
-        desc={t("backup, end-to-end encryption, account")}
-        status={<E2eeBadge color={catData} />}
-        onClick={() => onOpen("data")}
+        title={t("Privacy and encryption")}
+        desc={t("End-to-end encryption, password, and device pairing")}
+        status={<E2eeBadge color={catPrivacy} />}
+        onClick={() => onOpen("privacy")}
       />
       <HubCard
-        tint={tint(catSync, 0.12)}
+        tint={tint(catData, 0.12)}
         icon={
-          <Glyph color={catSync}>
+          <Glyph color={catData}>
             <path d="M21 12a9 9 0 11-2.6-6.4" />
             <path d="M21 3v6h-6" />
           </Glyph>
         }
-        title={t("Sync")}
-        desc={t("status, re-download")}
-        status={<SyncStatusBadge okColor={catSync} />}
-        onClick={() => onOpen("sync")}
+        title={t("Data and synchronization")}
+        desc={t("Sync, backup, repair, diagnostics, and reset")}
+        status={<SyncStatusBadge okColor={catData} />}
+        onClick={() => onOpen("data")}
       />
-      <HubCard
-        tint={C.inset}
-        icon={
-          <Glyph color={C.soft}>
-            <line x1="4" y1="7" x2="20" y2="7" />
-            <circle cx="9" cy="7" r="2.4" fill={C.inset} />
-            <line x1="4" y1="17" x2="20" y2="17" />
-            <circle cx="15" cy="17" r="2.4" fill={C.inset} />
-          </Glyph>
-        }
-        title={t("Advanced")}
-        desc={t("device storage, local mode, reset")}
-        status={null}
-        onClick={() => onOpen("advanced")}
-      />
+
+      <div style={{ marginTop: 12 }}>
+        <LogoutSection />
+      </div>
 
       <div style={{ textAlign: "center", fontSize: 10, color: C.mute, fontVariantNumeric: "tabular-nums", margin: "22px 0 12px" }}>
         {`Enveo v${APP_VERSION}`}
@@ -287,12 +280,12 @@ function HubCard({
   );
 }
 
-/** AI mode badge (off / server / own key) — a device setting. */
+/** AI provider badge — a budget preference. */
 function AiBadge() {
   const C = useTheme();
   const { t } = useT();
-  const { settings } = useSettings();
-  const key: Message = settings.aiMode === "server" ? msg("server") : settings.aiMode === "byok" ? msg("own key") : msg("off");
+  const { preferences } = useBudgetPreferences();
+  const key: Message = preferences.aiProvider === "enveo" ? msg("server") : preferences.aiProvider === "openai" ? msg("own key") : msg("rules");
   return (
     <span style={{ fontSize: 10.5, fontWeight: 700, color: C.mute, background: C.inset, borderRadius: 8, padding: "3px 8px", flexShrink: 0 }}>{t(key)}</span>
   );
@@ -315,7 +308,7 @@ function E2eeBadge({ color }: { color: string }) {
 function SyncStatusBadge({ okColor }: { okColor: string }) {
   const C = useTheme();
   const { lang } = useT();
-  const { state, lastSyncAt, localMode, ownerUnproven } = useSyncStatus();
+  const { state, lastSyncAt, ownerUnproven } = useSyncStatus();
 
   // refresh the relative time every ~30 s while the hub is open
   const [, setTick] = useState(0);
@@ -329,7 +322,7 @@ function SyncStatusBadge({ okColor }: { okColor: string }) {
   // explained). The STICKY flag, not SyncState "unverified": a re-proof cycle passes through
   // "syncing", and the dot would flip back to the healthy colour every time it ran.
   const attention = state === "offline" || state === "error" || ownerUnproven;
-  const color = localMode !== "off" ? C.mute : attention ? C.neg : okColor;
+  const color = attention ? C.neg : okColor;
   return (
     <span style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 10.5, color, fontWeight: 700, flexShrink: 0 }}>
       <span aria-hidden style={{ width: 7, height: 7, borderRadius: "50%", background: color }} />

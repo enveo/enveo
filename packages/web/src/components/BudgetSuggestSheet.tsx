@@ -6,8 +6,11 @@ import {
   computeStateResponse,
   type NormalizedBudgetSuggestion,
 } from "@enveo/shared";
+import { useQuery } from "@tanstack/react-query";
 import { type CSSProperties, useEffect, useState } from "react";
 import { runSuggest } from "../lib/ai";
+import { suggestionExecution } from "../lib/aiProvider/capabilities";
+import { useAiProvider } from "../lib/aiProvider/useAiProvider";
 import { apiErrorMessage, type BudgetSuggestProfile, type BudgetSuggestResponse, type StateResponse } from "../lib/api";
 import { type Settings, useCurrency, useSettings } from "../lib/contexts";
 import { currencySymbol, fmtTrim, formatMoney, isLight, localizePadExpression, parseAmount } from "../lib/format";
@@ -67,6 +70,13 @@ export function BudgetSuggestSheet({ show, state, month, onClose }: { show: bool
   const { t, lang } = useT();
   const currency = useCurrency();
   const { settings } = useSettings();
+  const provider = useAiProvider();
+  const { data: providerStatus } = useQuery({
+    queryKey: ["aiProviderStatus", provider, show],
+    queryFn: () => provider.status(),
+    enabled: show,
+    retry: false,
+  });
   const [phase, setPhase] = useState<Phase>("setup");
   const [profile, setProfile] = useState<BudgetSuggestProfile>("cautious");
   /** Selected CUSTOM profile (id from settings.customProfiles) — then profile==="custom". */
@@ -80,7 +90,6 @@ export function BudgetSuggestSheet({ show, state, month, onClose }: { show: bool
   const [showManage, setShowManage] = useState(false);
   // AI consent — asked once per sheet session (until close), only in off mode.
   const [showConsent, setShowConsent] = useState(false);
-  const [consented, setConsented] = useState(false);
   const [pendingGen, setPendingGen] = useState(false);
   // One numpad sheet per review — the correction row supplies the target on tap.
   const [pad, setPad] = useState<AmountPadTarget | null>(null);
@@ -88,7 +97,7 @@ export function BudgetSuggestSheet({ show, state, month, onClose }: { show: bool
   const envById = new Map(state.envelopes.map((e) => [e.id, e]));
   const selProfile = profile === "custom" && selCustom ? settings.customProfiles.find((p) => p.id === selCustom) : undefined;
   const effectivePrompt = selProfile?.prompt;
-  const customDisabled = settings.aiMode === "off"; // custom profile = agent, requires AI
+  const customDisabled = !providerStatus || suggestionExecution(providerStatus, "custom") === "unavailable";
 
   // A profile deleted in "Manage" also disappears from the picker — fall back to Historical.
   useEffect(() => {
@@ -108,7 +117,6 @@ export function BudgetSuggestSheet({ show, state, month, onClose }: { show: bool
   const close = () => {
     reset();
     setShowConsent(false);
-    setConsented(false);
     setShowManage(false);
     onClose();
   };
@@ -129,7 +137,7 @@ export function BudgetSuggestSheet({ show, state, month, onClose }: { show: bool
     setPhase("loading");
     setError(null);
     try {
-      const r = await runSuggest({ ledger, month, profile, customPrompt: effectivePrompt, locale: lang, settings });
+      const r = await runSuggest({ ledger, month, profile, customPrompt: effectivePrompt, locale: lang, provider });
       startReview(r);
     } catch (e) {
       setError(apiErrorMessage(e));
@@ -173,7 +181,7 @@ export function BudgetSuggestSheet({ show, state, month, onClose }: { show: bool
       doDetGenerate(det);
       return;
     }
-    if (settings.aiMode === "off" && !consented) {
+    if (!providerStatus || suggestionExecution(providerStatus, profile) === "unavailable") {
       setShowConsent(true);
       return;
     }
@@ -321,7 +329,7 @@ export function BudgetSuggestSheet({ show, state, month, onClose }: { show: bool
                       C={C}
                       name={t(p.labelKey)}
                       desc={t(p.descKey)}
-                      badge={settings.aiMode === "off" ? "noai" : "ai"}
+                      badge={!providerStatus || suggestionExecution(providerStatus, p.id) === "local-rules" ? "noai" : "ai"}
                       active={!det && profile === p.id && !selProfile}
                       onSelect={() => {
                         setDet(null);
@@ -338,7 +346,6 @@ export function BudgetSuggestSheet({ show, state, month, onClose }: { show: bool
                       desc={`“${cp.prompt}”`}
                       badge="ai"
                       note={customDisabled ? t("Requires AI (server mode or your own key).") : undefined}
-                      disabled={customDisabled}
                       active={!det && selProfile?.id === cp.id}
                       onSelect={() => {
                         setDet(null);
@@ -351,7 +358,7 @@ export function BudgetSuggestSheet({ show, state, month, onClose }: { show: bool
                 {error && <div style={{ fontSize: 12.5, color: CORAL, marginBottom: 10 }}>{error}</div>}
                 <button
                   onClick={generate}
-                  disabled={phase === "loading" || state.toBeBudgeted <= 0}
+                  disabled={phase === "loading" || state.toBeBudgeted <= 0 || (!det && !providerStatus)}
                   style={{
                     width: "100%",
                     padding: "12px 0",
@@ -617,12 +624,9 @@ export function BudgetSuggestSheet({ show, state, month, onClose }: { show: bool
         show={showConsent}
         feature="suggest"
         onClose={() => setShowConsent(false)}
-        onDecided={() => {
-          // "rules" keeps aiMode=off (local), server/byok have already saved settings —
-          // we generate in every case, with the fresh mode (pendingGen effect).
+        onDecided={(mode) => {
           setShowConsent(false);
-          setConsented(true);
-          setPendingGen(true);
+          if (mode !== "rules") setPendingGen(true);
         }}
       />
     </>

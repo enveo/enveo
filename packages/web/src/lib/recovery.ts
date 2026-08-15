@@ -3,7 +3,7 @@
  *
  * The context: "Start from scratch" (Settings → Advanced) is gated on assertOwnReplica(),
  * which throws for a replica whose owner cannot be established — and an unproven replica is
- * exactly the state a user lands in after local-only → clear-local → re-enable-sync, where
+ * exactly the state a user can land in after clearing an unbound replica, where
  * this reset WAS the escape hatch. Instead of a dead-end error, the UI shows ONE dialog
  * ("this device's local copy cannot be linked to this account") with two actions: export a
  * backup of the local copy (it may be the last copy), or delete everything and start fresh.
@@ -21,11 +21,11 @@
  * destructive action starts the sequence below.
  */
 import { api } from "./api";
-import { fetchSessionUserId, signOutSessionOnly } from "./auth";
-import { clearDeviceTrust } from "./deviceTrust";
+import { endSession, fetchSessionUserId } from "./auth";
+import { clearDeviceStoragePolicy } from "./deviceStoragePolicy";
 import { clearLastAccountId } from "./lastAccount";
 import { clearPersistedSettings } from "./settingsPersist";
-import { discardLocalReplica, enterLoginKeepingReplica } from "./sync";
+import { discardLocalReplica, enterLoginPreservingReplica } from "./sync";
 
 /**
  * Did a server-write guard refuse because the replica is not provably the session's?
@@ -47,7 +47,7 @@ export interface RecoverySteps {
   /** End the session (bare — the local wipe follows separately). */
   signOut: () => Promise<void>;
   /** Per-device state that must not outlive the account (the LogoutRow wipe set). */
-  clearDeviceTrust: () => void;
+  clearDeviceStoragePolicy: () => void;
   clearPersistedSettings: () => void;
   clearLastAccountId: () => void;
   /** Wipe mirror + outbox + DEK + local-mode flag, then reload → Login. */
@@ -59,12 +59,12 @@ export interface RecoverySteps {
 const realSteps: RecoverySteps = {
   fetchSessionUserId,
   budgetReset: (userId) => api.budgetReset(userId),
-  signOut: signOutSessionOnly,
-  clearDeviceTrust,
+  signOut: endSession,
+  clearDeviceStoragePolicy,
   clearPersistedSettings,
   clearLastAccountId,
   discardLocalReplica,
-  enterLogin: enterLoginKeepingReplica,
+  enterLogin: enterLoginPreservingReplica,
 };
 
 /**
@@ -78,8 +78,9 @@ const realSteps: RecoverySteps = {
  *  2. sign-out BEFORE the wipe — a wipe before a failed sign-out would strand a signed-in
  *     session on an empty replica; a failed sign-out after a successful reset just re-shows
  *     the dialog (retrying the reset is harmless — the budget is already empty),
- *  3. only then the per-device state (device trust, settings incl. the BYOK key, last-account)
- *     and the replica itself — discardLocalReplica clears the outbox, the local-mode flag and
+ *  3. only then the per-device state (storage policy, legacy-settings migration marker,
+ *     last-account) and the replica itself — the server-vault BYOK key is budget data and was
+ *     already removed by the server reset; discardLocalReplica clears the outbox and
  *     IDB, then reloads; with no session the boot lands on Login with a clean device.
  *
  * If the session evaporated before step 1 (signed out in another tab), there is nothing to
@@ -93,7 +94,7 @@ export async function deleteEverythingAndStartFresh(steps: RecoverySteps = realS
   }
   await steps.budgetReset(userId); // server FIRST — on failure nothing local is touched
   await steps.signOut(); // before the wipe (see ORDER above)
-  steps.clearDeviceTrust();
+  steps.clearDeviceStoragePolicy();
   steps.clearPersistedSettings();
   steps.clearLastAccountId();
   await steps.discardLocalReplica(); // wipes + reloads → Login on a clean device

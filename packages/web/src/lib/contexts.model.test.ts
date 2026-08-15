@@ -5,7 +5,45 @@
  * existing user's explicit selection alive (a removed id would silently retype their device).
  */
 import { describe, expect, it } from "bun:test";
-import { DEFAULT_OPENAI_MODEL, OPENAI_MODELS, type OpenAiModel } from "./contexts";
+import { createDefaultBudgetPreferences } from "@enveo/shared";
+import { DEFAULT_OPENAI_MODEL, OPENAI_MODELS, type OpenAiModel, type Settings, splitSettingsPatch } from "./contexts";
+
+const settings = (): Settings => ({
+  themeMode: "light",
+  accentTheme: "teal",
+  discreet: false,
+  lang: "en",
+  aiMode: "off",
+  openaiModel: DEFAULT_OPENAI_MODEL,
+  customProfiles: [],
+  startWidgets: createDefaultBudgetPreferences().startWidgets,
+});
+
+describe("settings scope routing", () => {
+  it("routes language and theme only to the account cache", () => {
+    const before = settings();
+    expect(splitSettingsPatch(before, { ...before, lang: "pl", themeMode: "dark" })).toEqual({
+      account: { lang: "pl", themeMode: "dark" },
+      budget: {},
+      device: {},
+    });
+  });
+
+  it("routes dashboard and model changes only to the budget replica", () => {
+    const before = settings();
+    const widgets = before.startWidgets.map((widget) => ({ ...widget, enabled: widget.id === "accounts" ? false : widget.enabled }));
+    expect(splitSettingsPatch(before, { ...before, openaiModel: "gpt-5.6-sol", startWidgets: widgets })).toEqual({
+      account: {},
+      budget: { openaiModel: "gpt-5.6-sol", startWidgets: widgets },
+      device: {},
+    });
+  });
+
+  it("routes discreet mode only to device metadata", () => {
+    const before = settings();
+    expect(splitSettingsPatch(before, { ...before, discreet: true })).toEqual({ account: {}, budget: {}, device: { discreet: true } });
+  });
+});
 
 describe("BYOK model registry", () => {
   it("fresh settings default to gpt-5.6-luna", () => {

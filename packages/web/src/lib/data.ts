@@ -11,7 +11,7 @@ import { translate, uiLang } from "./i18n";
 import * as outbox from "./outbox";
 import * as persist from "./persist";
 import { store } from "./store";
-import { isLocalOnly, markReplacePending, pushLocalToServer, resetServerE2ee } from "./sync";
+import { markReplacePending, pushLocalToServer, resetServerE2ee } from "./sync";
 
 const APP = "enveo";
 // Pre-rebranding backup identifier — old export files MUST keep
@@ -27,6 +27,10 @@ export interface Backup {
   exportedAt: string;
   budgetId: string | null;
   ledger: ClientLedger;
+}
+
+export function hasExportableBackup(): boolean {
+  return store.getLedger() !== null;
 }
 
 /**
@@ -66,12 +70,10 @@ export function exportBackup(): void {
  *  2) after validation set the DURABLE replace obligation (the import is canonical and must
  *     REPLACE the server), then store.replace(ledger) + persist + clear the outbox
  *     (the pre-import queue is moot — we replace the whole state),
- *  3) local mode → the replace is DEFERRED until resume (the obligation stays durable);
- *     otherwise → upload to the server right away (server := import, obligation fulfilled).
+ *  3) upload to the server right away (server := import, obligation fulfilled).
  *
- * We set the replace obligation BEFORE swapping the mirror: when the push is deferred
- * (local mode) or fails (network/5xx), the next cycle / resume
- * FINISHES the replace, and a delta pull(since=0) will NOT revert the import to the (old)
+ * We set the replace obligation BEFORE swapping the mirror: when the push fails (network/5xx),
+ * the next cycle FINISHES the replace, and a delta pull(since=0) will NOT revert the import to the (old)
  * server state. Without this a restore silently vanished on the next synchronization.
  */
 export async function importBackup(file: File): Promise<void> {
@@ -106,9 +108,6 @@ export async function importBackup(file: File): Promise<void> {
   outbox.clearAll(); // the pre-import queue is moot
   await persist.persistLedger(store.snapshotForPersist()); // durability
 
-  if (isLocalOnly()) {
-    return; // local mode — replace deferred until resume (the obligation stays durable)
-  }
   // Path per tier: e2ee → encrypted checkpoint to /sync2/reset (plaintext NEVER
   // leaves the device; /sync/replace would bounce with a 409 tier_mismatch),
   // plain → /sync/replace as before. Both paths clear the replace obligation.

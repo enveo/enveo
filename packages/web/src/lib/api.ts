@@ -7,7 +7,18 @@ import { getSyncStatus, type SyncStatus, subscribeSyncStatus } from "./sync";
 /* ── API response shapes — @enveo/shared is the source of truth ──── */
 export type { AccountView, EnvelopeView, StateResponse } from "@enveo/shared";
 
-import { AI_IMPORT_EXTRACT_TIMEOUT_MS, type AiLocale, type BudgetSuggestProfile, type BudgetSuggestResponse, type ClientLedger } from "@enveo/shared";
+import {
+  AI_IMPORT_EXTRACT_TIMEOUT_MS,
+  AI_PROXY_CHAT_TIMEOUT_MS,
+  type AiLocale,
+  type BudgetSuggestProfile,
+  type BudgetSuggestResponse,
+  type ChatRequest,
+  type ClientLedger,
+  type OpenAiModel,
+} from "@enveo/shared";
+import { getAccountPreferencesRemote, patchAccountPreferencesRemote } from "./accountPreferencesRemote";
+import type { ImportExtractResult } from "./aiProvider/contracts";
 import { timeoutSignal } from "./timeoutSignal";
 
 export type { BudgetSuggestProfile, BudgetSuggestResponse } from "@enveo/shared";
@@ -62,6 +73,13 @@ export interface ImportApplyResponse {
   results: Array<ImportItem & { status: "added" | "exists" | "probable" }>;
 }
 
+export interface E2eeCredentialResponse {
+  configured: boolean;
+  budgetId: string;
+  epoch: number;
+  ciphertext?: string;
+}
+
 /**
  * Server error CODES (snake_case) → dictionary key. The API never sends prose: it answers with a
  * stable machine code (structured detail rides in its own field), and the CLIENT owns the wording
@@ -69,9 +87,7 @@ export interface ImportApplyResponse {
  * through to the raw text, so the user always sees something rather than an empty error.
  */
 const ERROR_KEYS: Record<string, Message> = {
-  ai_unavailable: msg(
-    "The server has no OpenAI key configured. Set OPENAI_API_KEY and restart the app, or use your own key in Settings → Artificial intelligence.",
-  ), // /import/extract, /budget/suggest, the /api/ai mirror — no operator key
+  ai_unavailable: msg("The server has no OpenAI key configured — server mode is unavailable. Use an existing own key or keep AI on rules."), // /import/extract, /budget/suggest, the /api/ai mirror — no operator key
   ai_upstream_error: msg("OpenAI rejected the request — check the key and the model, then try again."), // OpenAI rejected the call or answered unparsably
   upstream: msg("OpenAI rejected the request — check the key and the model, then try again."), // /budget/suggest names the same failure this way
   /* Transport failures get their OWN honest wording (since the AI-transport package): a timeout
@@ -82,7 +98,7 @@ const ERROR_KEYS: Record<string, Message> = {
   /* Cloud per-user spend budget (429 from every operator-key AI route): the server sends only
      the machine code + retryAfterSeconds — never the recorded spend. One whole phrase. */
   ai_budget_exhausted: msg(
-    "The monthly AI allowance for this account is used up — it resets at the start of the next month (UTC). You can keep using AI right away with your own key in Settings → Artificial intelligence.",
+    "The monthly AI allowance for this account is used up — it resets at the start of the next month (UTC). An existing own key can still be selected in Settings → Artificial intelligence.",
   ),
   backup_invalid: msg("This is not a valid backup file — nothing was loaded."), // /sync/replace — the payload is not a ledger
   foreign_ref: msg("The data references records that do not exist here (a corrupted or foreign file). Nothing was changed."), // a reference points outside the budget (corrupt/foreign file)
@@ -107,12 +123,18 @@ const ERROR_KEYS: Record<string, Message> = {
     "This budget's encryption must be upgraded before it can sync — open Settings → Privacy on a device that holds the data and run the upgrade.",
   ), // sync2 routes — the server refuses every normal channel of a legacy-format budget
   bad_pairing_code: msg("This is not a valid pairing code — copy it again from the device where the budget is already unlocked."), // crypto.ts — decodePairing on a code that is not ours
-  ai_consent_required: msg("AI is not set up on this device. Pick a mode in Settings → Artificial intelligence (with your own key, paste it there)."), // ai.ts — no usable target (AI off, or byok with no key)
+  ai_consent_required: msg("AI is not configured. Choose server AI or an existing own key in Settings → Artificial intelligence."), // ai.ts — no usable target (AI off, or byok with no key)
   /* openai.ts — screenshot import is AI-only, so a failed model call is SHOWN (no rules fallback to
      hide it). The transport maps every failure onto a code here; ai_unavailable/ai_upstream_error
      above are reused (the mirror's own codes), these two are client-only. */
   ai_offline: msg("You are offline — screenshot import needs a connection. Manual entry works without one."), // fetch never left the device — the normal state of an offline PWA
   ai_key_invalid: msg("OpenAI rejected your key — check it in Settings → Artificial intelligence."), // byok: OpenAI rejected the user's key (401/403)
+  ai_model_unavailable: msg("This OpenAI key cannot use the selected model. Choose another model and try again."),
+  credential_not_configured: msg("No OpenAI key is configured for this budget."),
+  credential_move_required: msg("Re-enter your OpenAI API key so it can move into the encrypted budget."),
+  credential_move_invalid: msg("The OpenAI key changed on another device. Refresh its status and try again."),
+  vault_unavailable: msg("The server credential vault is not configured. Ask the server operator to enable it."),
+  ai_capability_unsupported: msg("The selected AI provider does not support this feature."),
 
   /* better-auth codes (lib/auth.ts lowercases them): the library's own `message` is English
      prose, and the login screen is the FIRST thing a non-English user sees. */
@@ -125,6 +147,7 @@ const ERROR_KEYS: Record<string, Message> = {
   sign_in_failed: msg("Could not sign in — please try again."), // generic fallback — an unmapped better-auth code
   sign_up_failed: msg("Could not create the account — please try again."),
   auth_meta_failed: msg("Could not sign in — please try again."), // /api/auth/meta unreachable → same user-facing advice
+  device_storage_unavailable: msg("This browser blocked access to storage. Allow site storage before signing in."),
 };
 
 /** Turns a server error code into a sentence in the UI language; unknown codes stay as-is. */
@@ -146,6 +169,17 @@ export function apiErrorMessage(e: unknown): string {
     }
   }
   return localizeError(m); // sentinels thrown client-side (foreign_replica); otherwise the raw text
+}
+
+export function apiErrorBody(e: unknown): { error?: string; tier?: "plain" | "e2ee"; epoch?: number; cipherVersion?: number; budgetId?: string } | null {
+  const message = String((e as Error).message ?? e);
+  const start = message.indexOf("{");
+  if (start < 0) return null;
+  try {
+    return JSON.parse(message.slice(start)) as { error?: string; tier?: "plain" | "e2ee"; epoch?: number; cipherVersion?: number; budgetId?: string };
+  } catch {
+    return null;
+  }
 }
 
 /* ── Client ─────────────────────────────────────────────────────────── */
@@ -184,13 +218,39 @@ async function http<T>(method: string, path: string, body?: unknown, timeoutMs?:
  * remain here: imports (AI) and their apply step.
  */
 export const api = {
+  accountPreferencesGet: getAccountPreferencesRemote,
+  accountPreferencesPatch: patchAccountPreferencesRemote,
+
   /** Whether the server has an OpenAI key configured (the "server" mode available). */
   aiInfo: () => http<{ serverAi: boolean }>("GET", "/ai/info"),
 
+  byokCredentialStatus: (budgetId: string) =>
+    http<{ configured: boolean; available: boolean; reason?: "vault_unavailable" }>(
+      "GET",
+      `/ai/credentials/openai/status?budgetId=${encodeURIComponent(budgetId)}`,
+    ),
+  byokCredentialSave: (budgetId: string, key: string) => http<{ configured: true }>("PUT", "/ai/credentials/openai", { budgetId, key }),
+  byokCredentialDelete: (budgetId: string) => http<{ configured: false }>("DELETE", "/ai/credentials/openai", { budgetId }),
+  byokCredentialTest: (budgetId: string, model: OpenAiModel) =>
+    http<{ ok: true; model: OpenAiModel }>("POST", "/ai/credentials/openai/test", { budgetId, model }),
+  e2eeByokCredentialGet: (budgetId: string) => http<E2eeCredentialResponse>("GET", `/ai/credentials/openai/e2ee?budgetId=${encodeURIComponent(budgetId)}`),
+  e2eeByokCredentialSave: (budgetId: string, expectedEpoch: number, ciphertext: string) =>
+    http<E2eeCredentialResponse>("PUT", "/ai/credentials/openai/e2ee", { budgetId, expectedEpoch, ciphertext }),
+  e2eeByokCredentialDelete: (budgetId: string, expectedEpoch: number) =>
+    http<E2eeCredentialResponse>("DELETE", "/ai/credentials/openai/e2ee", { budgetId, expectedEpoch }),
+  byokChat: (budgetId: string, model: OpenAiModel, request: ChatRequest) =>
+    http<{ content: string }>(
+      "POST",
+      "/ai/byok/chat",
+      { budgetId, model, messages: request.messages, responseFormat: request.responseFormat, reasoningEffort: request.reasoningEffort },
+      AI_PROXY_CHAT_TIMEOUT_MS,
+    ),
+  byokImportExtract: (budgetId: string, model: OpenAiModel, images: string[], locale: AiLocale) =>
+    http<ImportExtractResult>("POST", "/ai/byok/import/extract", { budgetId, model, images, locale }, AI_IMPORT_EXTRACT_TIMEOUT_MS),
+
   /* `locale` = the UI language (any BCP-47 tag): the model writes its names, notes and
      rationales in it. Not to be confused with demoSeed's pl|en, which picks a SEED DATASET. */
-  importExtract: (images: string[], locale: AiLocale) =>
-    http<{ items: ImportItem[] }>("POST", "/import/extract", { images, locale }, AI_IMPORT_EXTRACT_TIMEOUT_MS),
+  importExtract: (images: string[], locale: AiLocale) => http<ImportExtractResult>("POST", "/import/extract", { images, locale }, AI_IMPORT_EXTRACT_TIMEOUT_MS),
   /* `budgetId` = the same PER-REQUEST tenant assertion as the sync push: the batch creates
      FRESH transactions in whatever budget the session cookie resolves to, and the cookie can
      be swapped in another tab while the import sheet is open. The caller passes the replica's
@@ -216,9 +276,23 @@ export const api = {
   /* `budgetId` + `nextEpoch` since ciphertext v2: the wrapped DEK and the snapshot are BOUND to
      (budgetId, nextEpoch) by their authenticated context, so the client must name the epoch it
      encrypted for — the server refuses a stale expectation (409 with the current meta). */
-  e2eeEnable: (b: { wrappedDek: string; kdfParams: string; snapshotBlob: string; userId: string; budgetId: string; nextEpoch: number }) =>
-    http<{ epoch: number }>("POST", "/budget/e2ee/enable", b),
-  e2eeDisable: (b: { confirm: string; ledger: ClientLedger; userId: string }) => http<{ epoch: number }>("POST", "/budget/e2ee/disable", b),
+  e2eeEnable: (b: {
+    wrappedDek: string;
+    kdfParams: string;
+    snapshotBlob: string;
+    userId: string;
+    budgetId: string;
+    nextEpoch: number;
+    credentialAction: { kind: "none" } | { kind: "server-vault-to-e2ee"; ciphertext: string };
+  }) => http<{ epoch: number }>("POST", "/budget/e2ee/enable", b),
+  e2eeDisable: (b: {
+    confirm: string;
+    ledger: ClientLedger;
+    userId: string;
+    budgetId: string;
+    expectedEpoch: number;
+    credentialAction: { kind: "none" } | { kind: "e2ee-to-server-vault"; key: string };
+  }) => http<{ epoch: number }>("POST", "/budget/e2ee/disable", b),
   /* `expectedEpoch` = the epoch the new envelope's AAD was built for: a rekey landing on any
      OTHER generation would permanently brick every unlock (the v2 wrap hard-fails under a
      different epoch), so the server refuses a stale expectation before writing. */

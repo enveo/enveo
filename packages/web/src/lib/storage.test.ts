@@ -33,21 +33,24 @@ describe("migrateLegacyLocalStorage", () => {
     const m = stubLocalStorage({
       [`${OLD_PREFIX}settings`]: '{"lang":"pl","themeMode":"dark"}',
       [`${OLD_PREFIX}a2hs`]: "dismissed",
-      [`${OLD_PREFIX}localMode`]: "paused",
+      [`${OLD_PREFIX}localMode`]: "wiped",
+      "enveo.localMode": "paused",
+      "enveo.localOnly": "true",
     });
     migrateLegacyLocalStorage();
     expect(m.get("enveo.settings")).toBe('{"lang":"pl","themeMode":"dark"}');
     expect(m.get("enveo.a2hs")).toBe("dismissed");
-    expect(m.get("enveo.localMode")).toBe("paused");
+    expect(m.has("enveo.localMode")).toBe(false);
+    expect(m.has("enveo.localOnly")).toBe(false);
     expect(m.has(`${OLD_PREFIX}settings`)).toBe(false);
     expect(m.has(`${OLD_PREFIX}a2hs`)).toBe(false);
     expect(m.has(`${OLD_PREFIX}localMode`)).toBe(false);
   });
 
-  test("also migrates the legacy localOnly boolean (a two-step migration in sync.ts)", () => {
+  test("removes the obsolete localOnly boolean without executing or migrating it", () => {
     const m = stubLocalStorage({ [`${OLD_PREFIX}localOnly`]: "true" });
     migrateLegacyLocalStorage();
-    expect(m.get("enveo.localOnly")).toBe("true");
+    expect(m.has("enveo.localOnly")).toBe(false);
     expect(m.has(`${OLD_PREFIX}localOnly`)).toBe(false);
   });
 

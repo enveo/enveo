@@ -6,11 +6,10 @@
  */
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import type { ClientLedger } from "@enveo/shared";
+import * as e2ee from "../e2ee";
 import { store } from "../store";
-import { __resetBackoff, awaitInFlightCycle, syncNow } from "./cycle";
+import { __resetBackoff, awaitInFlightCycle, runWithSyncMutex, syncNow } from "./cycle";
 import { __resetIdentity, enterForeignReplica } from "./identity";
-import { setLocalModeValue } from "./localMode";
-import { getSyncStatus } from "./status";
 
 const emptyLedger = (): ClientLedger => ({
   accounts: [],
@@ -34,7 +33,7 @@ beforeEach(() => {
   }) as typeof fetch;
   __resetIdentity();
   __resetBackoff();
-  setLocalModeValue("off");
+  e2ee.setTierMeta({ tier: "plain", epoch: 0 });
   // an UNBOUND plain replica: doCycle returns before the identity guard — zero network
   store.replace(emptyLedger(), 0, "");
   store.setBootStatus("ready");
@@ -43,7 +42,6 @@ beforeEach(() => {
 afterEach(() => {
   __resetBackoff();
   __resetIdentity();
-  setLocalModeValue("off");
   globalThis.fetch = realFetch;
 });
 
@@ -61,16 +59,32 @@ describe("sync/cycle: single-flight with dirty coalescing", () => {
     await awaitInFlightCycle(); // resolves only once the in-flight cycle finished
     await p;
   });
+
+  it("serializes a local rebuild with sync and drains a trigger that arrives during maintenance", async () => {
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const events: string[] = [];
+    const repair = runWithSyncMutex(async () => {
+      events.push("repair:start");
+      await gate;
+      events.push("repair:end");
+      return "rebuilt";
+    });
+    await Promise.resolve();
+
+    const triggered = syncNow("during-repair");
+    expect(events).toEqual(["repair:start"]);
+    release();
+
+    expect(await repair).toBe("rebuilt");
+    await triggered;
+    expect(events).toEqual(["repair:start", "repair:end"]);
+  });
 });
 
 describe("sync/cycle: gates that stop a cycle before any request", () => {
-  it("local mode: syncNow bails to state 'local' without touching the network", async () => {
-    setLocalModeValue("paused");
-    await syncNow("gate");
-    expect(fetches).toEqual([]);
-    expect(getSyncStatus().state).toBe("local");
-  });
-
   it("foreign replica: syncNow resolves without a cycle (nothing may reach the network)", async () => {
     enterForeignReplica();
     await syncNow("gate");

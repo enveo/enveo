@@ -4,7 +4,7 @@ import { Bar, ReportShell } from "../../components/reportKit";
 import type { StateResponse } from "../../lib/api";
 import { useTheme } from "../../lib/contexts";
 import { useT } from "../../lib/i18n";
-import { classifyBudget } from "../../lib/reportSummary";
+import { budgetRowPresentation, budgetUsage, compareBudgetUsageRows } from "../../lib/reportSummary";
 import { tint } from "../../lib/theme";
 import { type Mask, TITLES } from "./types";
 
@@ -59,7 +59,7 @@ function BudgetRow({
 
 /**
  * "Budgets" tab (frame A3, triage): three sections — Overspent / Near limit / Within budget —
- * classified via `classifyBudget` (lib/reportSummary.ts), the SAME rule the hub's Budgets
+ * classified via `budgetUsage` (lib/reportSummary.ts), the SAME rule the hub's Budgets
  * mini-card uses via `budgetsSummary` — parity between hub and subscreen is the point of that
  * helper. The "amber-wall" fix: an envelope spent EXACTLY down to 100% (left === 0) has no room
  * left to overrun and reads as calm ("used up"), not a warning — near requires
@@ -81,26 +81,25 @@ export function BudgetsReport({
   onBack: () => void;
 }) {
   const C = useTheme();
-  const { t, tp } = useT();
+  const { t, tp, lang } = useT();
   const { hc } = useBand();
   const [expanded, setExpanded] = useState(false);
 
   const rows = state.envelopes
     .filter((e) => !e.archived && (e.allocated + e.carryIn > 0 || e.spent > 0))
     .map((e) => {
-      const budget = Math.max(1, e.allocated + e.carryIn);
-      const pct = (Math.max(0, e.spent) / budget) * 100;
-      const left = e.available;
-      return { e, pct, left, budget, status: classifyBudget(pct, left) };
+      const usage = budgetUsage(e);
+      return { e, name: e.name, ...usage, presentation: budgetRowPresentation(usage) };
     });
-  const byPctDesc = (a: (typeof rows)[number], b: (typeof rows)[number]) => b.pct - a.pct || a.e.name.localeCompare(b.e.name);
-  const overRows = rows.filter((r) => r.status === "over").sort(byPctDesc);
-  const nearRows = rows.filter((r) => r.status === "near").sort(byPctDesc);
-  const okRows = rows.filter((r) => r.status === "ok");
+  const compareNames = new Intl.Collator(lang).compare;
+  const byUsageDesc = (a: (typeof rows)[number], b: (typeof rows)[number]) => compareBudgetUsageRows(a, b, compareNames);
+  const overRows = rows.filter((r) => r.status === "over").sort(byUsageDesc);
+  const nearRows = rows.filter((r) => r.status === "near").sort(byUsageDesc);
+  const okRows = rows.filter((r) => r.status === "ok").sort(byUsageDesc);
   // within "ok", pct can only be < 80 or exactly 100 (any pct in [80,100) is always "near" —
   // spent < budget there means left > 0 by construction) — so this isolates the used-up rows.
-  const usedUpRows = okRows.filter((r) => r.pct >= 100);
-  const restOkRows = okRows.filter((r) => r.pct < 100);
+  const usedUpRows = okRows.filter((r) => r.pct !== null && r.pct >= 100);
+  const restOkRows = okRows.filter((r): r is typeof r & { pct: number } => r.pct !== null && r.pct < 100);
   const restAvgPct = restOkRows.length > 0 ? Math.round(restOkRows.reduce((s, r) => s + r.pct, 0) / restOkRows.length) : 0;
   const overspendTotal = overRows.reduce((s, r) => s + -r.left, 0);
 
@@ -157,15 +156,15 @@ export function BudgetsReport({
           <div style={{ fontSize: 10.5, fontWeight: 750, letterSpacing: "0.16em", textTransform: "uppercase", color: C.neg, margin: "4px 2px 8px" }}>
             {t("Overspent")}
           </div>
-          {overRows.map(({ e, pct, left, budget }) => (
+          {overRows.map(({ e, left, rawBudget, presentation }) => (
             <BudgetRow
               key={e.id}
               name={e.name}
               onClick={() => onOpenEnvelope(e.id, state.month)}
               statusColor={C.neg}
-              status={`${Math.round(pct)}% · +${M(-left)}`}
-              caption={t("spent {spent} of {budget}", { spent: M(Math.max(0, e.spent)), budget: M(budget) })}
-              barPct={pct}
+              status={`${presentation.percentage === null ? "—" : Math.round(presentation.percentage)}% · +${M(-left)}`}
+              caption={presentation.noBudget ? t("No budget") : t("spent {spent} of {budget}", { spent: M(Math.max(0, e.spent)), budget: M(rawBudget) })}
+              barPct={presentation.visualBarPct}
               barColor={C.neg}
             />
           ))}
@@ -177,14 +176,14 @@ export function BudgetsReport({
           <div style={{ fontSize: 10.5, fontWeight: 750, letterSpacing: "0.16em", textTransform: "uppercase", color: C.warn, margin: "18px 2px 8px" }}>
             {t("Near limit · ≥ 80%")}
           </div>
-          {nearRows.map(({ e, pct, left }) => (
+          {nearRows.map(({ e, pct, left, presentation }) => (
             <BudgetRow
               key={e.id}
               name={e.name}
               onClick={() => onOpenEnvelope(e.id, state.month)}
               statusColor={C.warn}
-              status={`${Math.round(pct)}% · ${t("{amount} left", { amount: M(left) })}`}
-              barPct={pct}
+              status={`${pct === null ? "—" : Math.round(pct)}% · ${t("{amount} left", { amount: M(left) })}`}
+              barPct={presentation.visualBarPct}
               barColor={C.warn}
             />
           ))}
@@ -196,14 +195,14 @@ export function BudgetsReport({
           <div style={{ fontSize: 10.5, fontWeight: 750, letterSpacing: "0.16em", textTransform: "uppercase", color: C.mute, margin: "18px 2px 8px" }}>
             {t("Within budget")}
           </div>
-          {usedUpRows.map(({ e, pct }) => (
+          {usedUpRows.map(({ e, pct, presentation }) => (
             <BudgetRow
               key={e.id}
               name={e.name}
               onClick={() => onOpenEnvelope(e.id, state.month)}
               statusColor={C.soft}
-              status={`${Math.round(pct)}% · ${t("used up")}`}
-              barPct={100}
+              status={`${pct === null ? "—" : Math.round(pct)}% · ${t("used up")}`}
+              barPct={presentation.visualBarPct}
               barColor={C.mute}
             />
           ))}

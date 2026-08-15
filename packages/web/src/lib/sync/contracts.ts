@@ -103,16 +103,6 @@ export class BudgetMismatchError extends Error {
   }
 }
 
-/* ── Local mode (offline / privacy) ─────────────────────────────────────
- *
- * Tri-state (NOT a boolean) — key to the "we never lose data" promise:
- *  - "off"    — normal synchronization with the server,
- *  - "paused" — offline by choice: sync SUSPENDED, server data STAYS,
- *               the outbox grows and flushes on resume (safe, no network),
- *  - "wiped"  — privacy: data DELETED from the server (a deliberate, separate choice);
- *               local mirror untouched, on disable we upload it back. */
-export type LocalMode = "off" | "paused" | "wiped";
-
 /** Empty ledger — server wipe (/sync/replace) and UI init when there is no local replica. */
 export const EMPTY_LEDGER: ClientLedger = {
   accounts: [],
@@ -129,9 +119,8 @@ export const EMPTY_LEDGER: ClientLedger = {
  *  "replica"  — hydrate from IDB yielded data: fast, local-first works,
  *  "snapshot" — empty replica ⇒ full fetchSnapshot: slow (this is also what
  *               a cold start AFTER iOS IDB eviction looks like),
- *  "local"    — local mode (no network),
  *  null       — before boot / first-start error. */
-export type BootSource = "replica" | "snapshot" | "local" | null;
+export type BootSource = "replica" | "snapshot" | null;
 
 /**
  * "unverified" is deliberately its OWN state and not a flavour of "error": the app is working
@@ -144,14 +133,13 @@ export type BootSource = "replica" | "snapshot" | "local" | null;
  * The UI does NOT key off this state, though: it is transient (every re-proof passes through
  * "syncing" on its way back here). What it reads is the sticky SyncStatus.ownerUnproven below.
  */
-export type SyncState = "synced" | "syncing" | "offline" | "error" | "local" | "unauthed" | "unverified";
+export type SyncState = "synced" | "syncing" | "offline" | "error" | "unauthed" | "unverified";
 
 export interface SyncStatus {
   state: SyncState;
   pending: number;
   deadLetters: number;
   lastSyncAt: string | null;
-  localMode: LocalMode;
   /** @see ownerUnproven — the STICKY fact behind SyncState "unverified". */
   ownerUnproven: boolean;
 }
@@ -188,27 +176,6 @@ export interface CycleDeps {
 }
 
 /**
- * Dependencies the local-mode TRANSITIONS need from higher layers (workflow §3c-3): the
- * status setters (status.ts imports this module's flag, so importing status back would be a
- * cycle), the multi-tab broadcast, and the server-write operations — injected EXPLICITLY by
- * the facade at composition time, exactly as the module map prescribes.
- */
-export interface LocalModeDeps {
-  setState(s: SyncState): void;
-  setOwnerUnproven(v: boolean): void;
-  broadcastLocalMode(mode: LocalMode): void;
-  /** Delete the budget's data on the server (empty /sync/replace) — see enableWiped. */
-  wipeServer(): Promise<void>;
-  /** Upload the ENTIRE local mirror to the server (server := local) — see disableLocal. */
-  pushLocalToServer(): Promise<void>;
-  /** Resolve once the in-flight cycle (if any) has finished — see enableWiped's ordering. */
-  awaitInFlightCycle(): Promise<void>;
-  syncNow(reason: string): Promise<void>;
-  /** An EMPTY replica bound to NO budget can only destroy — see disableLocal. */
-  isEmptyUnboundReplica(): boolean;
-}
-
-/**
  * The durable CEREMONY-INTENT record (v1→v2 E2EE upgrade). Materials (salt/DEK/KEK, wrapped
  * envelope, snapshot blob) are generated ONCE per ceremony and persisted BEFORE the first POST,
  * so a RETRY — after a network failure, a crash, or a server commit whose response was lost —
@@ -225,6 +192,10 @@ export interface PendingE2eeUpgrade {
   wrappedDek: string;
   kdfParams: string;
   snapshotBlob: string;
+  credentialAction: { kind: "none" } | { kind: "legacy-local-to-e2ee"; ciphertext: string } | { kind: "e2ee-to-next-epoch"; ciphertext: string };
+  /** SHA-256 of the quarantined object that supplied legacy BYOK. The pending intent never
+   *  duplicates the plaintext key into IndexedDB; the digest only gates compare-and-delete. */
+  legacySettingsDigest?: string;
   /** The outbox ops whose effects are INSIDE snapshotBlob — commit acks exactly these, never
    *  clearAll: an edit made in another tab during the (seconds-long) ceremony must survive. */
   opIds: string[];

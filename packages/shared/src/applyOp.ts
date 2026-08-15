@@ -40,6 +40,7 @@
  * arrive via pull/snapshot.
  */
 import type { OpPayload, SyncOp } from "./ops";
+import { reconcileBudgetPreferences } from "./preferences";
 import type { Account, Allocation, Category, ClientLedger, Envelope, EnvelopeGroup, Place, Transaction, TxnItem } from "./types";
 
 /**
@@ -79,6 +80,7 @@ function txnFromCreate(p: OpPayload<"txn.create">): Transaction {
     name: p.name ?? null,
     note: p.note ?? null,
     tag: p.tag ?? null,
+    sourceRef: p.sourceRef ?? null,
     items: buildItems(p.id, p.items),
     createdAt: p.createdAt ?? MISSING_CREATED_AT,
   };
@@ -102,6 +104,8 @@ function txnFromUpdate(prev: Transaction, p: OpPayload<"txn.update">): Transacti
     note: p.note ?? null,
     // keep tag when the update does not send it (UI edits don't know import tags)
     tag: p.tag !== undefined ? p.tag : prev.tag,
+    // Preserve on legacy/UI updates that do not know this import-only field.
+    sourceRef: p.sourceRef !== undefined ? p.sourceRef : prev.sourceRef,
     items: buildItems(prev.id, p.items),
     createdAt: prev.createdAt, // server PATCH does not touch created_at
   };
@@ -299,6 +303,14 @@ export function applyOp(ledger: ClientLedger, op: SyncOp): ClientLedger {
       const idx = ledger.budgets.findIndex((b) => b.id === p.id);
       if (idx < 0) return ledger;
       return { ...ledger, budgets: replaceAt(ledger.budgets, idx, { ...ledger.budgets[idx]!, currency: p.currency }) };
+    }
+    case "budget.preferences.update": {
+      const p = op.payload as OpPayload<"budget.preferences.update">;
+      const idx = ledger.budgets.findIndex((budget) => budget.id === p.id);
+      if (idx < 0) return ledger;
+      const budget = ledger.budgets[idx]!;
+      const preferences = reconcileBudgetPreferences({ ...budget.preferences, ...p.patch });
+      return { ...ledger, budgets: replaceAt(ledger.budgets, idx, { ...budget, preferences }) };
     }
     default: {
       const _exhaustive: never = op.kind; // a NEW kind without a reducer must not compile

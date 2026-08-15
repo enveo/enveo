@@ -147,7 +147,21 @@ Set these on the **Enveo** service:
 | `BETTER_AUTH_SECRET` | `${{secret(64, "abcdef0123456789")}}` | **Required**, min 32 chars. In a Railway *template*, `secret()` generates it per deploy, so no two installs share a session secret. Setting it by hand: `openssl rand -hex 32`. |
 | `BETTER_AUTH_URL` | `https://${{RAILWAY_PUBLIC_DOMAIN}}` | Strongly recommended — see below. |
 | `DEPLOYMENT` | `selfhost` | Registration closes after the first (owner) account. |
-| `OPENAI_API_KEY` / `OPENAI_MODEL` | optional | Enables **server-mode** AI (screenshot import, budget suggestions), paid by this key. Without it, budget suggestions fall back to local rules and server-mode screenshot import is unavailable — a trusted device can still use screenshot import with its own key (BYOK), straight from the browser. |
+| `OPENAI_API_KEY` / `OPENAI_MODEL` | optional | Enables **server-mode** AI (screenshot import, budget suggestions), paid by the operator key. Without it, deterministic suggestions still work locally. Own OpenAI is separate: plain budgets call OpenAI through Enveo with the user's vaulted key; unlocked E2EE budgets call OpenAI directly with a client-decrypted zero-knowledge credential. |
+
+Own OpenAI requires a read-only key-ring file outside the database and container
+image; production deliberately rejects putting the raw ring JSON in an environment
+variable. The maintained Docker Compose setup provides the opt-in
+[`compose.ai-vault.yml`](../compose.ai-vault.yml) override and full instructions in
+[install.md](install.md#own-openai-credential-vault-optional). On a managed platform,
+enable the feature only if it can mount a persistent secret file at a fixed path and
+set `AI_VAULT_KEY_RING_FILE` to that path. Otherwise Enveo boots normally and reports
+Own OpenAI as unavailable; `OPENAI_API_KEY` continues to enable operator-funded Enveo AI.
+
+That key ring is required only for Own OpenAI credentials belonging to plain
+budgets. E2EE credentials are encrypted by the client with the budget DEK and do
+not depend on an operator vault key. The server stores and relays their ciphertext
+but cannot use or recover it; direct OpenAI calls happen in an unlocked browser.
 
 **Do not set `PORT`.** Railway provides and exposes a `PORT` for you *as long as you have
 not defined one yourself*, and the app must listen on `0.0.0.0:$PORT`. Enveo does:

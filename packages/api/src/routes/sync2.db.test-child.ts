@@ -19,7 +19,9 @@
  *  8. two genuinely CONCURRENT upgrades of one budget produce one winner, one 409 and ONE
  *     generation (the stored envelope is the winner's);
  *  9. a cookie-swapped tenant (session ≠ body.userId) and a foreign budgetId write NOTHING;
- * 10. disable still restores the plaintext and clears all ciphertext state.
+ * 10. disable still restores the plaintext and clears all ciphertext state;
+ * 11. a server-vault BYOK credential blocks plain→E2EE, and a concurrent credential save
+ *     versus E2EE enable can never commit the forbidden e2ee + server_vault combination.
  *
  * WHY A SEPARATE PROCESS: the route handlers run on the POOLED `db` (db/client.ts), pinned to
  * `env.DATABASE_URL` at import time. The EXPECT_DATABASE_URL fuse refuses anything but the
@@ -45,10 +47,14 @@ export type Sync2DbOutput = {
   enabledRow: { tier: string; cipherVersion: number; epoch: number; wrappedDek: string | null } | null;
   enableSnapshotUptoSeq: number | null;
   enablePlaintextWiped: boolean;
+  enablePreferencesCleared: boolean;
+  rekeyCredentialPreserved: boolean;
+  rekeyEpochUnchanged: boolean;
   /* 2 — normal v2 push/pull */
   pushStatus: number;
   pulledOpIds: string[];
   pulledCiphertexts: string[];
+  resetPreferencesCleared: boolean;
   /* 3 — legacy budget: every normal route refuses */
   legacyStatuses: Record<string, { status: number; error: string | null; budgetId: string | null; epoch: number | null; cipherVersion: number | null }>;
   legacyJournalIntactAfterRefusals: boolean;
@@ -60,6 +66,8 @@ export type Sync2DbOutput = {
   upgradedRow: { tier: string; cipherVersion: number; epoch: number; wrappedDek: string | null; kdfParams: string | null } | null;
   upgradeJournalRowCount: number; // must be 0 — the legacy journal is gone
   upgradeSnapshot: { uptoSeq: number; blob: string } | null;
+  upgradePreferencesCleared: boolean;
+  upgradeCredentialRotated: boolean;
   retryStatus: number; // idempotent same-attempt retry
   retryEpoch: number | null;
   epochAfterRetry: number | null; // still expectedEpoch+1 — never two bumps
@@ -71,6 +79,7 @@ export type Sync2DbOutput = {
   forcedFailureStatus: number;
   rowAfterForcedFailure: { cipherVersion: number; epoch: number; wrappedDek: string | null } | null;
   journalIntactAfterForcedFailure: boolean;
+  forcedFailurePreferencesPreserved: boolean;
   /* 8 — concurrency */
   concurrentStatuses: number[]; // sorted: [200, 409]
   concurrentEpoch: number | null; // exactly expectedEpoch+1
@@ -86,6 +95,39 @@ export type Sync2DbOutput = {
   disabledRow: { tier: string; wrappedDek: string | null } | null;
   disableCipherStateCleared: boolean;
   disablePlaintextRestored: boolean;
+  disablePreferencesRestored: boolean;
+  /* 11 — server-vault credential / E2EE exclusion */
+  credentialBlock: { status: number; error: string | null; tier: string | null; credentialIntact: boolean; plaintextIntact: boolean };
+  credentialMove: {
+    status: number;
+    retryStatus: number;
+    tier: string | null;
+    storageKind: string | null;
+    e2eeEpoch: number | null;
+    ciphertext: string | null;
+    vaultFieldsCleared: boolean;
+    plaintextWiped: boolean;
+  };
+  credentialReturnToVault: {
+    forcedFailureStatus: number;
+    rollbackPreserved: boolean;
+    status: number;
+    retryStatus: number;
+    tier: string | null;
+    storageKind: string | null;
+    e2eeEpoch: number | null;
+    vaultFieldsPresent: boolean;
+    openedKey: string | null;
+    cipherStateCleared: boolean;
+  };
+  credentialRace: {
+    enableStatus: number;
+    enableError: string | null;
+    saveOutcome: "saved" | "tier_mismatch" | "unexpected_error";
+    finalTier: string | null;
+    credentialCount: number;
+    forbiddenCombinationAbsent: boolean;
+  };
 };
 
 async function main(): Promise<void> {
@@ -100,8 +142,9 @@ async function main(): Promise<void> {
   const { Hono } = await import("hono");
   const { db } = await import("../db/client");
   const s = await import("../db/schema");
-  const { sync2Routes } = await import("./sync2");
+  const { createSync2Routes } = await import("./sync2");
   const { TierMismatch } = await import("../context");
+  const { createCredentialRepository } = await import("../aiCredentials/repository");
   const { ZodError } = await import("zod");
 
   // Migrations run on an independent connection (same folder the production migrator uses).
@@ -118,7 +161,16 @@ async function main(): Promise<void> {
     c.set("userId", sessionUser);
     await next();
   });
-  app.route("/api", sync2Routes);
+  const routeMasterKey = new Uint8Array(32).fill(7);
+  app.route(
+    "/api",
+    createSync2Routes({
+      masterKeys: {
+        active: () => ({ id: "test-key", key: routeMasterKey.slice() }),
+        byId: (id: string) => (id === "test-key" ? routeMasterKey.slice() : null),
+      },
+    }),
+  );
   app.onError((err, c) => {
     if (err instanceof TierMismatch) return c.json({ error: "tier_mismatch", tier: err.meta.tier, epoch: err.meta.epoch }, 409);
     if (err instanceof ZodError) return c.json({ error: "invalid_body" }, 400);
@@ -158,6 +210,7 @@ async function main(): Promise<void> {
         epoch: s.budgets.epoch,
         wrappedDek: s.budgets.wrappedDek,
         kdfParams: s.budgets.kdfParams,
+        preferences: s.budgets.preferences,
       })
       .from(s.budgets)
       .where(eq(s.budgets.id, id));
@@ -172,7 +225,10 @@ async function main(): Promise<void> {
 
   const userA = await mkUser("a");
   sessionUser = userA;
-  const [bA] = await db.insert(s.budgets).values({ userId: userA, name: "A" }).returning({ id: s.budgets.id });
+  const [bA] = await db
+    .insert(s.budgets)
+    .values({ userId: userA, name: "A", preferences: { schemaVersion: 1, aiProvider: "openai" } })
+    .returning({ id: s.budgets.id });
   const budgetA = bA!.id;
   await db.insert(s.accounts).values({ budgetId: budgetA, name: "plain acc" }); // plaintext to wipe
 
@@ -184,6 +240,7 @@ async function main(): Promise<void> {
     wrappedDek: "v2.wrapAAAA",
     kdfParams: "{}",
     snapshotBlob: "v2.snapAAAA",
+    credentialAction: { kind: "none" },
   });
   const enableRes = await call("POST", "/budget/e2ee/enable", {
     userId: userA,
@@ -192,10 +249,28 @@ async function main(): Promise<void> {
     wrappedDek: "v2.wrapAAAA",
     kdfParams: "{}",
     snapshotBlob: "v2.snapAAAA",
+    credentialAction: { kind: "none" },
   });
   const enabledRow = await budgetRow(budgetA);
   const [enSnap] = await db.select({ uptoSeq: s.e2eeSnapshots.uptoSeq }).from(s.e2eeSnapshots).where(eq(s.e2eeSnapshots.budgetId, budgetA));
   const plainAfter = await db.select({ id: s.accounts.id }).from(s.accounts).where(eq(s.accounts.budgetId, budgetA));
+  await db.insert(s.budgetAiCredentials).values({
+    budgetId: budgetA,
+    provider: "openai",
+    storageKind: "e2ee_ciphertext",
+    framingVersion: 2,
+    ciphertext: "v2.rekeyCredential",
+    e2eeEpoch: 1,
+    recordVersion: 1,
+  });
+  const rekeyRes = await call("POST", "/sync2/rekey", {
+    userId: userA,
+    expectedEpoch: 1,
+    wrappedDek: "v2.rewrappedSameDek",
+    kdfParams: '{"changed":true}',
+  });
+  const rekeyBudget = await budgetRow(budgetA);
+  const [rekeyCredential] = await db.select().from(s.budgetAiCredentials).where(eq(s.budgetAiCredentials.budgetId, budgetA));
 
   /* ── 2. Normal v2 push/pull ───────────────────────────────────────── */
 
@@ -212,6 +287,13 @@ async function main(): Promise<void> {
   const pullRes = await call("GET", "/sync2/pull?since=0&epoch=1");
   const pullBody = (await jsonOf(pullRes)) as unknown as { ops: Array<{ opId: string; ciphertext: string }> };
 
+  await db
+    .update(s.budgets)
+    .set({ preferences: { leaked: true } })
+    .where(eq(s.budgets.id, budgetA));
+  await call("POST", "/sync2/reset", { userId: userA, epoch: 1, snapshotBlob: "v2.resetAAAA" });
+  const afterReset = await budgetRow(budgetA);
+
   // an OLD CLIENT (pre-v2 build) pushing v1 ciphertext against a v2 budget: rejected at the
   // schema boundary (400), never stored. (Against a LEGACY budget the same push meets the
   // cipher-version guard first and 409s — asserted with the other legacy refusals below.)
@@ -223,12 +305,30 @@ async function main(): Promise<void> {
   sessionUser = userL;
   const [bL] = await db
     .insert(s.budgets)
-    .values({ userId: userL, name: "L", tier: "e2ee", epoch: 1, wrappedDek: "v1.legacyWrap", kdfParams: "{}", cipherVersion: 1 })
+    .values({
+      userId: userL,
+      name: "L",
+      tier: "e2ee",
+      epoch: 1,
+      wrappedDek: "v1.legacyWrap",
+      kdfParams: "{}",
+      cipherVersion: 1,
+      preferences: { legacyLeak: true },
+    })
     .returning({ id: s.budgets.id });
   const budgetL = bL!.id;
   const legacyOps = [uuid(), uuid(), uuid()];
   await db.insert(s.e2eeOps).values(legacyOps.map((opId) => ({ budgetId: budgetL, opId, ciphertext: "v1.legacyOp" })));
   await db.insert(s.e2eeSnapshots).values({ budgetId: budgetL, uptoSeq: 2, blob: "v1.legacyBlob" });
+  await db.insert(s.budgetAiCredentials).values({
+    budgetId: budgetL,
+    provider: "openai",
+    storageKind: "e2ee_ciphertext",
+    framingVersion: 2,
+    ciphertext: "v1.legacyCredential",
+    e2eeEpoch: 1,
+    recordVersion: 1,
+  });
 
   const legacyCalls: Record<string, Response> = {
     pushV2: await call("POST", "/sync2/push", { epoch: 1, budgetId: budgetL, ops: [{ opId: uuid(), ciphertext: "v2.freshAAAA" }] }),
@@ -237,7 +337,14 @@ async function main(): Promise<void> {
     snapshotPost: await call("POST", "/sync2/snapshot", { userId: userL, epoch: 1, uptoSeq: 3, blob: "v2.freshBlob" }),
     rekey: await call("POST", "/sync2/rekey", { userId: userL, wrappedDek: "v2.freshWrap", kdfParams: "{}" }),
     reset: await call("POST", "/sync2/reset", { userId: userL, epoch: 1, snapshotBlob: "v2.freshBlob" }),
-    disable: await call("POST", "/budget/e2ee/disable", { userId: userL, confirm: "DISABLE-E2EE", ledger: EMPTY_LEDGER }),
+    disable: await call("POST", "/budget/e2ee/disable", {
+      userId: userL,
+      budgetId: budgetL,
+      expectedEpoch: 1,
+      confirm: "DISABLE-E2EE",
+      ledger: EMPTY_LEDGER,
+      credentialAction: { kind: "none" },
+    }),
   };
   const legacyStatuses: Sync2DbOutput["legacyStatuses"] = {};
   for (const [name, res] of Object.entries(legacyCalls)) {
@@ -274,6 +381,7 @@ async function main(): Promise<void> {
     wrappedDek,
     kdfParams: JSON.stringify({ algo: "argon2id", m: 65536, t: 3, p: 1, saltB64: "AAAA" }),
     snapshotBlob: "v2.newCheckpointAAAA",
+    credentialAction: { kind: "e2ee-to-next-epoch", ciphertext: "v2.upgradedCredential" } as const,
   });
   // the shared cookie was swapped to B mid-ceremony: session ≠ the userId the client verified.
   // The body still names L's budget and L's user; B's session resolves B's own e2ee budget, so
@@ -313,7 +421,11 @@ async function main(): Promise<void> {
   await raw`DROP TRIGGER test_fail_snapshot ON e2ee_snapshots`;
   await raw`DROP FUNCTION test_fail_snapshot()`;
   const rowAfterForcedFailure = await budgetRow(budgetL);
-  const journalIntactAfterForcedFailure = (await journalCount(budgetL)) === 3;
+  const [credentialAfterForcedFailure] = await db.select().from(s.budgetAiCredentials).where(eq(s.budgetAiCredentials.budgetId, budgetL));
+  const journalIntactAfterForcedFailure =
+    (await journalCount(budgetL)) === 3 &&
+    credentialAfterForcedFailure?.ciphertext === "v1.legacyCredential" &&
+    credentialAfterForcedFailure.recordVersion === 1;
 
   /* ── 5. The upgrade ceremony succeeds ─────────────────────────────── */
 
@@ -325,6 +437,7 @@ async function main(): Promise<void> {
     .select({ uptoSeq: s.e2eeSnapshots.uptoSeq, blob: s.e2eeSnapshots.blob })
     .from(s.e2eeSnapshots)
     .where(eq(s.e2eeSnapshots.budgetId, budgetL));
+  const [upgradedCredential] = await db.select().from(s.budgetAiCredentials).where(eq(s.budgetAiCredentials.budgetId, budgetL));
 
   /* ── 6. Idempotent retry vs. a different stale attempt ────────────── */
 
@@ -354,28 +467,168 @@ async function main(): Promise<void> {
       wrappedDek,
       kdfParams: "{}",
       snapshotBlob: "v2.checkpointC",
+      credentialAction: { kind: "none" },
     });
   const [c1, c2] = await Promise.all([attempt("v2.wrapDeviceONE"), attempt("v2.wrapDeviceTWO")]);
   const rowC = await budgetRow(budgetC);
   const winner = c1.status === 200 ? "v2.wrapDeviceONE" : "v2.wrapDeviceTWO";
+
+  // The synthetic legacy credential above exists only to exercise rotation; keep the following
+  // plain disable scenario focused on its explicit no-credential branch.
+  await db.delete(s.budgetAiCredentials).where(eq(s.budgetAiCredentials.budgetId, budgetL));
 
   /* ── 10. Disable restores plaintext (on the upgraded v2 budget L) ─── */
 
   sessionUser = userL;
   const disableRes = await call("POST", "/budget/e2ee/disable", {
     userId: userL,
+    budgetId: budgetL,
+    expectedEpoch: 2,
     confirm: "DISABLE-E2EE",
     ledger: {
       ...EMPTY_LEDGER,
+      budgets: [
+        {
+          id: budgetL,
+          name: "L",
+          currency: "EUR",
+          preferences: {
+            schemaVersion: 1,
+            aiProvider: "openai",
+            openaiModel: "gpt-5.6-sol",
+            customProfiles: [],
+            startWidgets: [],
+          },
+        },
+      ],
       accounts: [
         { id: uuid(), name: "restored", color: "#fff", icon: "wallet", type: "checking", onBudget: true, initialBalance: 0, archived: false, sort: 0 },
       ],
     },
+    credentialAction: { kind: "none" },
   });
   const disabledRow = await budgetRow(budgetL);
   const disableOps = await journalCount(budgetL);
   const [disableSnap] = await db.select({ uptoSeq: s.e2eeSnapshots.uptoSeq }).from(s.e2eeSnapshots).where(eq(s.e2eeSnapshots.budgetId, budgetL));
   const restored = await db.select({ name: s.accounts.name }).from(s.accounts).where(eq(s.accounts.budgetId, budgetL));
+
+  /* ── 11. A server-vault credential and E2EE are mutually exclusive ──── */
+
+  const userBlocked = await mkUser("credential-block");
+  sessionUser = userBlocked;
+  const [blockedBudgetRow] = await db.insert(s.budgets).values({ userId: userBlocked, name: "credential block" }).returning({ id: s.budgets.id });
+  const blockedBudget = blockedBudgetRow!.id;
+  await db.insert(s.accounts).values({ budgetId: blockedBudget, name: "must survive" });
+  await db.insert(s.budgetAiCredentials).values({
+    budgetId: blockedBudget,
+    provider: "openai",
+    storageKind: "server_vault",
+    framingVersion: 1,
+    ciphertext: "v1.credential",
+    wrappedRecordDek: "v1.wrapped-dek",
+    masterKeyId: "test-key",
+    recordVersion: 1,
+  });
+  const blockedEnable = await call("POST", "/budget/e2ee/enable", {
+    userId: userBlocked,
+    budgetId: blockedBudget,
+    nextEpoch: 1,
+    wrappedDek: "v2.blockedWrap",
+    kdfParams: "{}",
+    snapshotBlob: "v2.blockedSnapshot",
+    credentialAction: { kind: "none" },
+  });
+  const blockedEnableBody = await jsonOf(blockedEnable);
+  const blockedAfter = await budgetRow(blockedBudget);
+  const blockedCredentialRows = await db
+    .select({ budgetId: s.budgetAiCredentials.budgetId })
+    .from(s.budgetAiCredentials)
+    .where(eq(s.budgetAiCredentials.budgetId, blockedBudget));
+  const blockedPlaintextRows = await db.select({ id: s.accounts.id }).from(s.accounts).where(eq(s.accounts.budgetId, blockedBudget));
+  const moveBody = {
+    userId: userBlocked,
+    budgetId: blockedBudget,
+    nextEpoch: 1,
+    wrappedDek: "v2.movedWrap",
+    kdfParams: "{}",
+    snapshotBlob: "v2.movedSnapshot",
+    credentialAction: { kind: "server-vault-to-e2ee", ciphertext: "v2.movedCredential" } as const,
+  };
+  const movedEnable = await call("POST", "/budget/e2ee/enable", moveBody);
+  const movedRetry = await call("POST", "/budget/e2ee/enable", moveBody);
+  const movedAfter = await budgetRow(blockedBudget);
+  const [movedCredential] = await db.select().from(s.budgetAiCredentials).where(eq(s.budgetAiCredentials.budgetId, blockedBudget));
+  const movedPlaintextRows = await db.select({ id: s.accounts.id }).from(s.accounts).where(eq(s.accounts.budgetId, blockedBudget));
+  const disableMovedBody = {
+    userId: userBlocked,
+    budgetId: blockedBudget,
+    expectedEpoch: 1,
+    confirm: "DISABLE-E2EE",
+    ledger: EMPTY_LEDGER,
+    credentialAction: { kind: "e2ee-to-server-vault", key: "sk-returned-secret" } as const,
+  };
+  await raw`
+    CREATE OR REPLACE FUNCTION test_fail_e2ee_delete() RETURNS trigger AS $$
+    BEGIN
+      RAISE EXCEPTION 'forced credential move failure';
+    END;
+    $$ LANGUAGE plpgsql
+  `;
+  await raw`CREATE TRIGGER test_fail_e2ee_delete BEFORE DELETE ON e2ee_snapshots FOR EACH ROW EXECUTE FUNCTION test_fail_e2ee_delete()`;
+  const failedDisableMoved = await call("POST", "/budget/e2ee/disable", disableMovedBody);
+  const failedDisableRow = await budgetRow(blockedBudget);
+  const [failedDisableCredential] = await db.select().from(s.budgetAiCredentials).where(eq(s.budgetAiCredentials.budgetId, blockedBudget));
+  const failedDisableRollbackPreserved =
+    failedDisableRow?.tier === "e2ee" &&
+    failedDisableRow.epoch === 1 &&
+    failedDisableCredential?.storageKind === "e2ee_ciphertext" &&
+    failedDisableCredential.ciphertext === "v2.movedCredential";
+  await raw`DROP TRIGGER test_fail_e2ee_delete ON e2ee_snapshots`;
+  await raw`DROP FUNCTION test_fail_e2ee_delete()`;
+  const disabledMoved = await call("POST", "/budget/e2ee/disable", disableMovedBody);
+  const disabledMovedRetry = await call("POST", "/budget/e2ee/disable", disableMovedBody);
+  const disabledMovedAfter = await budgetRow(blockedBudget);
+  const [returnedCredential] = await db.select().from(s.budgetAiCredentials).where(eq(s.budgetAiCredentials.budgetId, blockedBudget));
+  const returnedOps = await journalCount(blockedBudget);
+  const [returnedSnapshot] = await db.select().from(s.e2eeSnapshots).where(eq(s.e2eeSnapshots.budgetId, blockedBudget));
+  const returnedCredentials = createCredentialRepository({
+    active: () => ({ id: "test-key", key: routeMasterKey.slice() }),
+    byId: (id: string) => (id === "test-key" ? routeMasterKey.slice() : null),
+  });
+  const openedReturnedKey = await db.transaction((tx) =>
+    returnedCredentials.withServerCredential(tx, { userId: userBlocked }, blockedBudget, async (key) => key),
+  );
+
+  const userRace = await mkUser("credential-race");
+  sessionUser = userRace;
+  const [raceBudgetRow] = await db.insert(s.budgets).values({ userId: userRace, name: "credential race" }).returning({ id: s.budgets.id });
+  const raceBudget = raceBudgetRow!.id;
+  await db.insert(s.accounts).values({ budgetId: raceBudget, name: "race plaintext" });
+  const masterKey = new Uint8Array(32).fill(7);
+  const credentials = createCredentialRepository({
+    active: () => ({ id: "test-key", key: masterKey.slice() }),
+    byId: (id: string) => (id === "test-key" ? masterKey.slice() : null),
+  });
+  const savePromise = db
+    .transaction((tx) => credentials.replaceServerCredential(tx, { userId: userRace }, raceBudget, "sk-race-secret"))
+    .then(() => "saved" as const)
+    .catch((error: unknown) => (error instanceof TierMismatch ? ("tier_mismatch" as const) : ("unexpected_error" as const)));
+  const raceEnablePromise = call("POST", "/budget/e2ee/enable", {
+    userId: userRace,
+    budgetId: raceBudget,
+    nextEpoch: 1,
+    wrappedDek: "v2.raceWrap",
+    kdfParams: "{}",
+    snapshotBlob: "v2.raceSnapshot",
+    credentialAction: { kind: "none" },
+  });
+  const [saveOutcome, raceEnable] = await Promise.all([savePromise, raceEnablePromise]);
+  const raceEnableBody = await jsonOf(raceEnable);
+  const raceAfter = await budgetRow(raceBudget);
+  const raceCredentialRows = await db
+    .select({ budgetId: s.budgetAiCredentials.budgetId })
+    .from(s.budgetAiCredentials)
+    .where(eq(s.budgetAiCredentials.budgetId, raceBudget));
 
   const out: Sync2DbOutput = {
     enableStaleEpochStatus: enableStale.status,
@@ -383,9 +636,18 @@ async function main(): Promise<void> {
     enabledRow: enabledRow && { tier: enabledRow.tier, cipherVersion: enabledRow.cipherVersion, epoch: enabledRow.epoch, wrappedDek: enabledRow.wrappedDek },
     enableSnapshotUptoSeq: enSnap?.uptoSeq ?? null,
     enablePlaintextWiped: plainAfter.length === 0,
+    enablePreferencesCleared: enabledRow?.preferences === null,
+    rekeyCredentialPreserved:
+      rekeyRes.status === 200 &&
+      rekeyCredential?.storageKind === "e2ee_ciphertext" &&
+      rekeyCredential.ciphertext === "v2.rekeyCredential" &&
+      rekeyCredential.e2eeEpoch === 1 &&
+      rekeyCredential.recordVersion === 1,
+    rekeyEpochUnchanged: rekeyBudget?.epoch === 1 && rekeyBudget.wrappedDek === "v2.rewrappedSameDek",
     pushStatus: pushRes.status,
     pulledOpIds: pullBody.ops?.map((o) => o.opId) ?? [],
     pulledCiphertexts: pullBody.ops?.map((o) => o.ciphertext) ?? [],
+    resetPreferencesCleared: afterReset?.preferences === null,
     legacyStatuses,
     legacyJournalIntactAfterRefusals,
     v1PushStatus: v1Push.status,
@@ -400,6 +662,12 @@ async function main(): Promise<void> {
     },
     upgradeJournalRowCount,
     upgradeSnapshot: upSnap ?? null,
+    upgradePreferencesCleared: upgradedRow?.preferences === null,
+    upgradeCredentialRotated:
+      upgradedCredential?.storageKind === "e2ee_ciphertext" &&
+      upgradedCredential.ciphertext === "v2.upgradedCredential" &&
+      upgradedCredential.e2eeEpoch === 2 &&
+      upgradedCredential.recordVersion === 2,
     retryStatus: retryRes.status,
     retryEpoch: (retryBody.epoch as number) ?? null,
     epochAfterRetry: rowAfterRetry?.epoch ?? null,
@@ -414,6 +682,7 @@ async function main(): Promise<void> {
       wrappedDek: rowAfterForcedFailure.wrappedDek,
     },
     journalIntactAfterForcedFailure,
+    forcedFailurePreferencesPreserved: JSON.stringify(rowAfterForcedFailure?.preferences) === JSON.stringify({ legacyLeak: true }),
     concurrentStatuses: [c1.status, c2.status].sort((x, y) => x - y),
     concurrentEpoch: rowC?.epoch ?? null,
     concurrentEnvelopeIsAWinner: rowC?.wrappedDek === winner && (c1.status === 200) !== (c2.status === 200),
@@ -426,6 +695,44 @@ async function main(): Promise<void> {
     disabledRow: disabledRow && { tier: disabledRow.tier, wrappedDek: disabledRow.wrappedDek },
     disableCipherStateCleared: disableOps === 0 && disableSnap === undefined,
     disablePlaintextRestored: restored.length === 1 && restored[0]!.name === "restored",
+    disablePreferencesRestored: (disabledRow?.preferences as { aiProvider?: string } | null)?.aiProvider === "openai",
+    credentialBlock: {
+      status: blockedEnable.status,
+      error: (blockedEnableBody.error as string) ?? null,
+      tier: blockedAfter?.tier ?? null,
+      credentialIntact: blockedCredentialRows.length === 1,
+      plaintextIntact: blockedPlaintextRows.length === 1,
+    },
+    credentialMove: {
+      status: movedEnable.status,
+      retryStatus: movedRetry.status,
+      tier: movedAfter?.tier ?? null,
+      storageKind: movedCredential?.storageKind ?? null,
+      e2eeEpoch: movedCredential?.e2eeEpoch ?? null,
+      ciphertext: movedCredential?.ciphertext ?? null,
+      vaultFieldsCleared: movedCredential?.wrappedRecordDek === null && movedCredential?.masterKeyId === null,
+      plaintextWiped: movedPlaintextRows.length === 0,
+    },
+    credentialReturnToVault: {
+      forcedFailureStatus: failedDisableMoved.status,
+      rollbackPreserved: failedDisableRollbackPreserved,
+      status: disabledMoved.status,
+      retryStatus: disabledMovedRetry.status,
+      tier: disabledMovedAfter?.tier ?? null,
+      storageKind: returnedCredential?.storageKind ?? null,
+      e2eeEpoch: returnedCredential?.e2eeEpoch ?? null,
+      vaultFieldsPresent: Boolean(returnedCredential?.wrappedRecordDek && returnedCredential.masterKeyId),
+      openedKey: openedReturnedKey,
+      cipherStateCleared: returnedOps === 0 && returnedSnapshot === undefined,
+    },
+    credentialRace: {
+      enableStatus: raceEnable.status,
+      enableError: (raceEnableBody.error as string) ?? null,
+      saveOutcome,
+      finalTier: raceAfter?.tier ?? null,
+      credentialCount: raceCredentialRows.length,
+      forbiddenCombinationAbsent: !(raceAfter?.tier === "e2ee" && raceCredentialRows.length > 0),
+    },
   };
 
   await raw.end();

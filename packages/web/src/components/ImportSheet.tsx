@@ -1,13 +1,17 @@
+import { useQuery } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { runImportExtract } from "../lib/ai";
-import { api, apiErrorMessage, type EditedImportItem, type ImportApplyItem, type ImportItem, type StateResponse } from "../lib/api";
-import { useCurrency, useSettings, useTheme } from "../lib/contexts";
+import { importFlow } from "../lib/aiProvider/capabilities";
+import { useAiProvider } from "../lib/aiProvider/useAiProvider";
+import { api, apiErrorMessage, type EditedImportItem, type ImportApplyItem, type ImportApplyResponse, type ImportItem, type StateResponse } from "../lib/api";
+import { useCurrency, useTheme } from "../lib/contexts";
 import * as e2ee from "../lib/e2ee";
 import { formatMoney, isLight } from "../lib/format";
 import { useT } from "../lib/i18n";
 import { Glyph, Ico } from "../lib/icons";
 import { preferredAccountId, setLastAccountId } from "../lib/lastAccount";
+import { applyLocalImport, planLocalImport } from "../lib/localImport";
 import { store } from "../lib/store";
 import { assertOwnReplica, pullNow } from "../lib/sync";
 import { CORAL, font, TEAL, TRANSFER, tint } from "../lib/theme";
@@ -19,7 +23,7 @@ import { Sheet } from "./chrome";
  * Expense import from screenshots (Apple Wallet / bank history).
  * Step 1: pick account + screenshots → extraction via AI dispatch (lib/ai.ts:
  *         server → /import/extract, byok → OpenAI directly; off → consent sheet).
- * Step 2: review recognized items (duplicates marked) → /import/apply.
+ * Step 2: review recognized items (duplicates marked) → plain API or local E2EE ops.
  */
 
 type Phase = "pick" | "review" | "done";
@@ -44,7 +48,13 @@ export function ImportSheet({ show, onClose, state, onApplied }: { show: boolean
   const C = useTheme();
   const { t, tp, lang } = useT();
   const currency = useCurrency();
-  const { settings } = useSettings();
+  const provider = useAiProvider();
+  const { data: providerStatus } = useQuery({
+    queryKey: ["aiProviderStatus", provider, show],
+    queryFn: () => provider.status(),
+    enabled: show,
+    retry: false,
+  });
   const accounts = [...state.accounts].filter((a) => !a.archived).sort((a, b) => a.sort - b.sort);
   const envById = new Map(state.envelopes.map((e) => [e.id, e]));
 
@@ -62,6 +72,7 @@ export function ImportSheet({ show, onClose, state, onApplied }: { show: boolean
   const [editorIdx, setEditorIdx] = useState<number | null>(null);
   const fileRef = useRef<HTMLInputElement | null>(null);
   const editorWasOpen = useRef(false);
+  const reviewE2eeEpoch = useRef<number | null>(null);
 
   // iOS/WebKit: the full-screen item editor is a position:fixed portal on <body>
   // (sibling of #root). After it UNMOUNTS, the review panel — itself position:fixed
@@ -94,6 +105,7 @@ export function ImportSheet({ show, onClose, state, onApplied }: { show: boolean
     setShowConsent(false);
     setEdited({});
     setEditorIdx(null);
+    reviewE2eeEpoch.current = null;
   };
   const close = () => {
     const applied = phase === "done" && doneStats.added > 0;
@@ -124,18 +136,27 @@ export function ImportSheet({ show, onClose, state, onApplied }: { show: boolean
         setError(t("The local replica is not ready."));
         return;
       }
-      // extraction via AI dispatch (server → /api, byok → OpenAI directly);
-      // apply/dry-run ALWAYS through the API (writing to the ledger is the server's domain)
-      const extracted = await runImportExtract({ images, locale: lang, ledger, settings });
+      const tierAtStart = e2ee.getTierMeta();
+      if (tierAtStart.tier === "e2ee") await assertOwnReplica();
+      // Plain extraction may use Enveo; E2EE Own OpenAI sends images directly to OpenAI.
+      const extracted = await runImportExtract({ images, locale: lang, ledger, provider });
       if (extracted.length === 0) {
         setError(t("No transactions were recognized in the screenshots."));
         return;
       }
-      // dry run marks duplicates (certain: date+amount+source_ref; probable: date+amount) without
-      // writing — but its verdicts feed the user's decision, so it must run against the replica's
-      // budget too: verify ownership and name the budget (per-request tenant assertion).
-      await assertOwnReplica(); // foreign/unverified replica — no server call at all
-      const dry = await api.importApply({ accountId, budgetId: store.getBudgetId() || undefined, items: extracted, dryRun: true });
+      let dry: Pick<ImportApplyResponse, "results">;
+      if (tierAtStart.tier === "e2ee") {
+        const current = e2ee.getTierMeta();
+        if (current.tier !== "e2ee" || current.epoch !== tierAtStart.epoch) throw new Error("no_encryption_key");
+        e2ee.requireValidatedDek(current.epoch).fill(0);
+        dry = planLocalImport({ ledger, globalAccountId: accountId, items: extracted, dryRun: true });
+        reviewE2eeEpoch.current = current.epoch;
+      } else {
+        // The API verdict feeds the user's decision, so name the verified replica budget.
+        await assertOwnReplica();
+        dry = await api.importApply({ accountId, budgetId: store.getBudgetId() || undefined, items: extracted, dryRun: true });
+        reviewE2eeEpoch.current = null;
+      }
       // fx rows (currency differs from the budget's) default to UNCHECKED — the user must
       // consciously confirm the amount before it's included (the amber chip explains why).
       setItems(dry.results.map((r) => ({ ...r, include: r.status === "added" && !(!!r.currency && r.currency !== currency) })));
@@ -156,9 +177,9 @@ export function ImportSheet({ show, onClose, state, onApplied }: { show: boolean
     void doProcess();
   }, [pendingProcess]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Rules can't read screenshots — in off mode the import requires AI consent.
+  // Rules and unavailable model providers cannot read screenshots.
   const process = () => {
-    if (settings.aiMode === "off") {
+    if (!providerStatus || importFlow(providerStatus, e2ee.getTierMeta().tier) === "unavailable") {
       setShowConsent(true);
       return;
     }
@@ -194,16 +215,25 @@ export function ImportSheet({ show, onClose, state, onApplied }: { show: boolean
                 rawPlace: it.rawPlace, // UNTOUCHED on edit
               },
         );
-      // The review can sit open for minutes and the session cookie is shared by every tab —
-      // re-verify ownership and NAME the budget the items' FKs belong to: the server refuses
-      // a mismatch before anything is written (409 budget_mismatch).
+      // The review can sit open for minutes: re-prove ownership before either a server write
+      // or attaching local E2EE ops to this replica.
       let res = { added: 0, skipped: 0 };
       if (chosen.length > 0) {
-        await assertOwnReplica(); // foreign/unverified replica — no server write
-        res = await api.importApply({ accountId, budgetId: store.getBudgetId() || undefined, items: chosen });
+        await assertOwnReplica();
+        const reviewEpoch = reviewE2eeEpoch.current;
+        if (reviewEpoch !== null) {
+          const current = e2ee.getTierMeta();
+          if (current.tier !== "e2ee" || current.epoch !== reviewEpoch) throw new Error("no_encryption_key");
+          e2ee.requireValidatedDek(reviewEpoch).fill(0);
+          const ledger = store.getLedger();
+          if (!ledger) throw new Error("no_local_replica");
+          res = applyLocalImport(planLocalImport({ ledger, globalAccountId: accountId, items: chosen, dryRun: false }));
+        } else {
+          res = await api.importApply({ accountId, budgetId: store.getBudgetId() || undefined, items: chosen });
+        }
       }
       setLastAccountId(accountId); // per-device preference (same as on the Add screen)
-      void pullNow(); // pull the imported entries down into the local replica
+      if (reviewE2eeEpoch.current === null) void pullNow(); // E2EE already updated the mirror through local.*
       setDoneStats({ added: res.added, dup: items.filter((i) => i.status === "exists").length + res.skipped });
       setPhase("done");
     } catch (e) {
@@ -218,22 +248,6 @@ export function ImportSheet({ show, onClose, state, onApplied }: { show: boolean
 
   const selectedCount = items.filter((it, i) => it.include && (it.status !== "exists" || !!edited[i])).length;
   const label = { fontSize: 10.5, color: C.mute, fontWeight: 600, textTransform: "uppercase" as const, letterSpacing: 0.6, marginBottom: 6 };
-
-  // E2EE gating: extraction/write go through the server (plain-tier routes) — in the
-  // e2ee tier the server can't see the ledger, so screenshot import is unavailable.
-  // Early return ONLY after all hooks (rules of hooks across a tier flip).
-  if (e2ee.getTierMeta().tier === "e2ee") {
-    return (
-      <Sheet show={show} onClose={close}>
-        <div style={{ fontSize: 17, fontWeight: 700, color: C.text, textAlign: "center", marginBottom: 10 }}>{t("Import from screenshots")}</div>
-        <div style={{ fontSize: 12.5, color: C.soft, lineHeight: 1.6, textAlign: "center", marginBottom: 8 }}>
-          {t(
-            "Server-side import is unavailable while end-to-end encryption is on — the server cannot see your data. Use a JSON backup (export/import) or disable encryption.",
-          )}
-        </div>
-      </Sheet>
-    );
-  }
 
   return (
     <>

@@ -5,22 +5,32 @@ import { compress } from "hono/compress";
 import { cors } from "hono/cors";
 import { secureHeaders } from "hono/secure-headers";
 import { ZodError } from "zod";
+import { loadVaultMasterKeyProvider } from "./aiCredentials/keyProvider";
 import { assertAiSpendEnv } from "./aiSpend/transport";
 import { auth, hasCredentialedUser } from "./auth";
 import { authMetaBody } from "./authPolicy";
 import { TierMismatch } from "./context";
 import { assertAuthEnv, assertDbEnv, env } from "./env";
 import { isSameHostOrigin, staticAllowedOrigins } from "./origins";
+import { createAiCredentialRoutes } from "./routes/aiCredentials";
 import { budgetSuggestRoutes } from "./routes/budgetSuggest";
 import { crudRoutes } from "./routes/crud";
 import { demoRoutes } from "./routes/demo";
 import { extraRoutes } from "./routes/extras";
 import { importRoutes } from "./routes/import";
+import { preferencesRoutes } from "./routes/preferences";
 import { stateRoutes } from "./routes/state";
 import { syncRoutes } from "./routes/sync";
-import { sync2Routes } from "./routes/sync2";
+import { createSync2Routes } from "./routes/sync2";
 import { txnRoutes } from "./routes/transactions";
 import { ScopeViolation } from "./sync/apply";
+
+/** Loaded exactly once. `null` disables user BYOK only; ordinary budgeting still boots. */
+export const vaultMasterKeyProvider = loadVaultMasterKeyProvider({
+  nodeEnv: process.env.NODE_ENV ?? "development",
+  filePath: env.AI_VAULT_KEY_RING_FILE,
+  devKeyRingJson: env.ENVEO_DEV_AI_VAULT_KEY_RING_JSON,
+});
 
 // Fail fast on real boot (entrypoint run — dev, Docker CMD): accounts are
 // mandatory (BETTER_AUTH_SECRET), and production needs explicit database config.
@@ -135,9 +145,11 @@ api.route("/", crudRoutes);
 api.route("/", txnRoutes);
 api.route("/", extraRoutes);
 api.route("/", importRoutes);
+api.route("/", preferencesRoutes);
 api.route("/", syncRoutes);
-api.route("/", sync2Routes);
+api.route("/", createSync2Routes({ masterKeys: vaultMasterKeyProvider }));
 api.route("/", budgetSuggestRoutes);
+api.route("/", createAiCredentialRoutes({ masterKeys: vaultMasterKeyProvider }));
 api.route("/", demoRoutes);
 app.route("/api", api);
 

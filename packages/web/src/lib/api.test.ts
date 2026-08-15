@@ -9,19 +9,39 @@ import { describe, expect, it } from "bun:test";
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { apiErrorMessage } from "./api";
+import { api, apiErrorMessage } from "./api";
 import type { Message } from "./i18n";
 import { pl } from "./i18n/locales/pl";
 
 /** How lib/sync.ts and lib/api.ts surface a failed request: "<status> <body>". */
 const httpError = (status: number, body: unknown) => new Error(`${status} ${JSON.stringify(body)}`);
 
+describe("account preferences API client", () => {
+  it("sends the verified user assertion with a strict field patch", async () => {
+    const originalFetch = globalThis.fetch;
+    let request: { url: string; init?: RequestInit } | undefined;
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      request = { url: String(input), init };
+      return Response.json({ schemaVersion: 1, lang: "pl", themeMode: "light", accentTheme: "teal", revision: 1 });
+    }) as typeof fetch;
+    try {
+      await api.accountPreferencesPatch("user-a", { lang: "pl" });
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+
+    expect(request?.url).toBe("/api/preferences/account");
+    expect(request?.init?.method).toBe("PATCH");
+    expect(JSON.parse(String(request?.init?.body))).toEqual({ userId: "user-a", patch: { lang: "pl" } });
+  });
+});
+
 describe("apiErrorMessage", () => {
   // no localStorage in the test env → uiLang() falls back to the browser language (en), and English
   // IS the message: the expected sentence below is literally the key lib/api.ts maps the code to.
   it("turns a server error code into a localized sentence", () => {
     expect(apiErrorMessage(httpError(503, { error: "ai_unavailable" }))).toBe(
-      "The server has no OpenAI key configured. Set OPENAI_API_KEY and restart the app, or use your own key in Settings → Artificial intelligence.",
+      "The server has no OpenAI key configured — server mode is unavailable. Use an existing own key or keep AI on rules.",
     );
     expect(apiErrorMessage(httpError(502, { error: "ai_upstream_error", status: 401 }))).toBe(
       "OpenAI rejected the request — check the key and the model, then try again.",
@@ -34,6 +54,12 @@ describe("apiErrorMessage", () => {
     );
     expect(apiErrorMessage(httpError(409, { error: "budget_mismatch", budgetId: "b1" }))).toBe(
       "The signed-in account changed while the data was being sent — nothing was written. Reload the app and try again.",
+    );
+    expect(apiErrorMessage(httpError(409, { error: "credential_move_required", budgetId: "b1" }))).toBe(
+      "Re-enter your OpenAI API key so it can move into the encrypted budget.",
+    );
+    expect(apiErrorMessage(httpError(409, { error: "credential_move_invalid", budgetId: "b1" }))).toBe(
+      "The OpenAI key changed on another device. Refresh its status and try again.",
     );
   });
 
@@ -63,12 +89,12 @@ describe("client-side error codes", () => {
     bad_pairing_code: "This is not a valid pairing code — copy it again from the device where the budget is already unlocked.", // crypto.ts — decodePairing on a code that is not ours
     legacy_ciphertext:
       "This data uses an older encryption format that this version no longer reads — run the encryption upgrade in Settings → Privacy on the device that holds the budget.", // crypto.ts — a pre-AAD "v1." value reached a normal decrypt (fail-closed by design)
-    ai_consent_required: "AI is not set up on this device. Pick a mode in Settings → Artificial intelligence (with your own key, paste it there).", // ai.ts — AiConsentRequired: no usable model on this device
+    ai_consent_required: "AI is not configured. Choose server AI or an existing own key in Settings → Artificial intelligence.", // ai.ts — AiConsentRequired: no usable model on this device
     ai_offline: "You are offline — screenshot import needs a connection. Manual entry works without one.", // openai.ts — fetch never left the device (offline PWA)
     ai_key_invalid: "OpenAI rejected your key — check it in Settings → Artificial intelligence.", // openai.ts — byok: OpenAI rejected the user's key (401/403)
   };
 
-  it("localizes every code lib/* throws (Settings → backup import, disable local mode, Unlock)", () => {
+  it("localizes every code lib/* throws (Settings → backup import and Unlock)", () => {
     for (const [code, message] of Object.entries(CLIENT_CODES)) {
       expect(apiErrorMessage(new Error(code))).toBe(message); // in English the message IS the answer
       expect(message).not.toBe(code); // mapped, not the raw code falling through

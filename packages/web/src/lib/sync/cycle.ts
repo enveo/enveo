@@ -6,7 +6,11 @@
  * durable obligations in obligations.ts. Peer-tab broadcasts are injected (configureCycle) —
  * the channel is owned by the multi-tab layer above.
  */
+
+import { accountPreferences } from "../accountPreferences";
+import { devicePreferences } from "../devicePreferences";
 import * as e2ee from "../e2ee";
+import { migrateLegacySettings } from "../legacySettingsMigrationRuntime";
 import * as outbox from "../outbox";
 import * as persist from "../persist";
 import { store } from "../store";
@@ -21,7 +25,6 @@ import {
   UnauthorizedError,
 } from "./contracts";
 import { ensureIdentity, enterUnauthed, invalidateIdentityVerdict, isIdentityBlocked } from "./identity";
-import { getLocalMode } from "./localMode";
 import { clearResyncPending, isReplacePending, isResyncPending, markResyncPending } from "./obligations";
 import { e2eeReplicaBudgetId, replayOutbox } from "./replica";
 import { bumpStatus, setLastSyncAt, setState } from "./status";
@@ -133,12 +136,9 @@ export function fullResync(): Promise<void> {
 }
 
 /**
- * Pre-sign-out outbox flush for CLOUD deployments. Their sign-out wipes the replica (the server
- * is the durable copy there — operator backups, not this device), and queued ops would go with
- * it; selfhost sign-out keeps the replica instead (see enterLoginKeepingReplica — it may be the
- * LAST copy). One ordinary cycle through the usual mutex; returns how many ops are STILL queued
- * afterwards. 0 ⇒ a wipe loses nothing; anything else (offline, 5xx, an unproven replica) ⇒ the
- * caller must obtain explicit consent before discarding, or abort the sign-out.
+ * Pre-sign-out outbox flush for every deployment. Explicit sign-out clears local account data,
+ * so queued ops must first get an ordinary cycle through the usual mutex. The remaining count
+ * determines whether the human must retry, export a backup, or explicitly discard.
  */
 export async function flushOutboxForSignOut(): Promise<number> {
   await syncNow("sign-out");
@@ -161,12 +161,6 @@ export function recheckReplicaOwner(): Promise<void> {
 
 /** One full cycle; returns false on error (backoff already scheduled). */
 async function doCycle(): Promise<boolean> {
-  // Defense: local mode may have been enabled BETWEEN iterations of the single-flight
-  // loop (dirty re-loop) — bail without network (the gate is also in syncNow before the first cycle).
-  if (getLocalMode() !== "off") {
-    setState("local");
-    return true;
-  }
   // E2ee tier without a key → the UI sits on the Unlock screen; no network until unlocked
   // (setDek + retryBoot will lift "locked" and resume a normal boot + cycle).
   if (store.getBootStatus() === "locked") return true;
@@ -183,6 +177,15 @@ async function doCycle(): Promise<boolean> {
     // overwrite this cycle makes (per-REQUEST assertion — the cookie can still be swapped later).
     const userId = await ensureIdentity();
     if (!userId) return true;
+    await accountPreferences.hydrateForUser(userId);
+    // Preferences are an auxiliary channel: a temporary failure must not stall ledger sync.
+    try {
+      await accountPreferences.sync(userId);
+      await devicePreferences.hydrate();
+      await migrateLegacySettings();
+    } catch (error) {
+      console.warn("account preference sync or legacy migration failed", error);
+    }
     // The ownership proof may have learned that the session's budget sits in the OTHER tier
     // (409 → tierMeta refreshed): take the path the server actually serves.
     isE2ee = e2ee.getTierMeta().tier === "e2ee";
@@ -460,16 +463,39 @@ function finishSuccess(): void {
 let running: Promise<void> | null = null;
 let dirty = false;
 
+/**
+ * Run a maintenance operation under the same single-flight mutex as push/pull. Sync triggers
+ * arriving while the task runs mark the flight dirty and are drained immediately afterwards.
+ */
+export async function runWithSyncMutex<T>(task: () => Promise<T>): Promise<T> {
+  while (running) await running.catch(() => {});
+  let result!: T;
+  let failure: unknown;
+  let failed = false;
+  const current = (async () => {
+    try {
+      result = await task();
+    } catch (error) {
+      failure = error;
+      failed = true;
+    }
+    while (dirty) {
+      dirty = false;
+      const ok = await doCycle();
+      if (!ok) break;
+    }
+  })().finally(() => {
+    if (running === current) running = null;
+  });
+  running = current;
+  await current;
+  if (failed) throw failure;
+  return result;
+}
+
 export function syncNow(reason: string): Promise<void> {
   void reason; // diagnostics (dev: window.__sync.lastReason)
   if (import.meta.env.DEV) lastReason = reason;
-  // Local-mode GATE: no cycle whatsoever (push/pull/snapshot). All
-  // triggers (boot/poke/focus/online/interval/leader/peer-poke) still call syncNow
-  // — here they bail harmlessly. The outbox grows and flushes on resume.
-  if (getLocalMode() !== "off") {
-    setState("local");
-    return Promise.resolve();
-  }
   // Foreign replica (another account signed in on this device): the app is on
   // ForeignReplicaScreen and nothing of the previous owner's may reach this account's budget.
   if (isIdentityBlocked()) return Promise.resolve();
@@ -497,7 +523,7 @@ export function pullNow(): Promise<void> {
   return syncNow("pull");
 }
 
-/** Resolve once the in-flight cycle (if any) has finished — enableWiped's ordering depends on it. */
+/** Resolve once the in-flight cycle (if any) has finished. */
 export async function awaitInFlightCycle(): Promise<void> {
   if (running) await running.catch(() => {}); // finish the in-flight cycle on the PRE-wipe state
 }

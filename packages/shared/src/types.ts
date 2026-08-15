@@ -77,6 +77,7 @@ export interface Transaction {
   name: string | null; // short transaction name (list title)
   note: string | null; // longer note (separate from the name)
   tag: string | null; // normalized merchant tag (import idempotency key)
+  sourceRef: string | null; // raw import description; replicated so E2EE can learn from corrections locally
   items: TxnItem[]; // [] when not a split
   createdAt: string;
 }
@@ -89,11 +90,14 @@ export interface Allocation {
   amount: Money;
 }
 
-/** Budget — metadata (display currency). Single-row replicated entity. */
+import type { BudgetPreferences } from "./preferences";
+
+/** Budget — metadata and durable budget-scoped preferences. Single-row replicated entity. */
 export interface Budget {
   id: string;
   name: string;
   currency: string; // ISO 4217, e.g. "PLN"
+  preferences: BudgetPreferences;
 }
 
 /** Full ledger — input to the pure state-computing functions. */

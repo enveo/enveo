@@ -8,6 +8,7 @@
  * Payload schemas carried over VERBATIM from packages/api/src/routes/*.
  */
 import { z } from "zod";
+import { budgetPreferencesPatchSchema, reconcileBudgetPreferences } from "./preferences";
 
 /* ── Transactions (from routes/transactions.ts) ─────────────────────── */
 
@@ -30,6 +31,7 @@ const txnBase = z.object({
   name: z.string().nullable().optional(),
   note: z.string().nullable().optional(),
   tag: z.string().nullable().optional(),
+  sourceRef: z.string().nullable().optional(),
   items: z.array(txnItemPayload).optional(),
   // the client sets it at create (stable list order within a day); REST may omit it
   createdAt: z.string().datetime().optional(),
@@ -115,6 +117,7 @@ export const opSchemas = {
   "place.create": z.object({ ...withId, name: z.string().min(1) }),
   // budget metadata (single-row entity) — for now only the display currency
   "budget.update": z.object({ id: z.string().uuid(), currency: z.string().regex(/^[A-Z]{3}$/) }),
+  "budget.preferences.update": z.object({ id: z.string().uuid(), patch: budgetPreferencesPatchSchema }).strict(),
 } as const;
 
 export type OpKind = keyof typeof opSchemas;
@@ -222,6 +225,8 @@ const transactionEntity = z
     name: z.string().nullable(),
     note: z.string().nullable(),
     tag: z.string().nullable(),
+    // Old backups predate replicated import-learning metadata.
+    sourceRef: z.string().nullable().default(null),
     items: z.array(txnItemEntity),
     createdAt: z.string(),
   })
@@ -234,7 +239,9 @@ const transactionEntity = z
     }
   });
 
-const budgetEntity = z.object({ id: zUuid, name: z.string(), currency: z.string() });
+const budgetEntity = z
+  .object({ id: zUuid, name: z.string(), currency: z.string(), preferences: z.unknown().optional() })
+  .transform((budget) => ({ ...budget, preferences: reconcileBudgetPreferences(budget.preferences) }));
 
 /**
  * Pre-3.2 backups/replicas carry per-transaction `planned: true` template rows (the recurring-

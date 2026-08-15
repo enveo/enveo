@@ -20,11 +20,8 @@ export const cs: Dict = {
   "A profile with this name already exists.": "Profil s tímto názvem už existuje.",
   AI: "AI",
   "AI (corrected)": "AI (opraveno)",
-  "AI is not set up on this device. Pick a mode in Settings → Artificial intelligence (with your own key, paste it there).":
-    "AI není na tomto zařízení nastavená. Vyber režim v Nastavení → Umělá inteligence (u vlastního klíče ho tam vlož).",
   "AI is off — suggestions run locally on rules; nothing leaves this device.":
     "AI je vypnutá — návrhy počítáme lokálně podle pravidel; toto zařízení nic neopouští.",
-  "AI mode, your own key": "režim AI, vlastní klíč",
   "AI requests go to OpenAI through the app server (operator's key).": "Požadavky AI jdou do OpenAI přes server aplikace (klíč provozovatele).",
   "AI unavailable — rules were used instead.": "AI není dostupná — použila se pravidla.",
   AVAILABLE: "K DISPOZICI",
@@ -66,7 +63,6 @@ export const cs: Dict = {
     other: "Přidáno {n} transakcí",
   },
   "Adding…": "Přidávám…",
-  Advanced: "Pokročilé",
   "Afterwards, other devices must unlock again with the new password or a fresh pairing code — old pairing codes stop working.":
     "Na ostatních zařízeních pak bude potřeba znovu odemknout novým heslem nebo čerstvým párovacím kódem — staré párovací kódy přestanou fungovat.",
   "All goals funded ✓": "Všechny cíle financovány ✓",
@@ -78,7 +74,6 @@ export const cs: Dict = {
   "An upgrade or a restore is in progress: the account's budget on the server is not this device's budget yet. Once it is, sync will resume by itself.":
     "Probíhá upgrade nebo obnova: rozpočet účtu na serveru zatím není rozpočtem tohoto zařízení. Jakmile bude, synchronizace se sama rozběhne.",
   "Another account's data": "Data jiného účtu",
-  Appearance: "Vzhled",
   "Apple Wallet or bank history — AI will recognize the transactions, duplicates will be skipped":
     "Apple Wallet nebo historie z banky — AI rozpozná transakce, duplicity přeskočíme",
   "Apply ({n})": "Použít ({n})",
@@ -117,7 +112,6 @@ export const cs: Dict = {
   Change: "Změnit",
   "Change encryption password": "Změnit heslo šifrování",
   "Change password": "Změnit heslo",
-  "Changes are saved locally and will be sent after you resume.": "Změny se ukládají lokálně a odešlou se po obnovení.",
   "Changing…": "Měním…",
   "Check again": "Zkontrolovat znovu",
   "Checking which models your key can use…": "Zjišťuje se, které modely tvůj klíč podporuje…",
@@ -129,11 +123,6 @@ export const cs: Dict = {
   Cisza: "Ticho",
   "Clear & reset": "Vyprázdnit a resetovat",
   "Clear filters": "Zrušit filtry",
-  "Clear local data": "Smazat lokální data",
-  "Clear local data? In local mode, unsent changes will be lost permanently. Make a backup first (Export). Continue?":
-    "Smazat lokální data? V lokálním režimu se neodeslané změny nenávratně ztratí. Nejdřív si udělej zálohu (Export). Pokračovat?",
-  "Clear local data? We will delete the local copy on this device and download everything anew from the server. Changes still waiting in the queue will be lost.":
-    "Smazat lokální data? Smažeme lokální kopii na tomto zařízení a stáhneme vše znovu ze serveru. Změny čekající ve frontě se ztratí.",
   "Clear search": "Vymazat hledání",
   Close: "Zavřít",
   Closed: "Zavřené",
@@ -159,15 +148,9 @@ export const cs: Dict = {
   "Custom color": "Vlastní barva",
   "Custom envelope…": "Vlastní obálka…",
   "Custom profiles are stored only on this device.": "Vlastní profily jsou uložené jen na tomto zařízení.",
-  "Cut the app off from the server. Choose how: work offline (server data stays) or keep your data only on this device.":
-    "Odpoj aplikaci od serveru. Vyber jak: pracovat offline (data na serveru zůstanou), nebo mít data jen na tomto zařízení.",
-  DELETE: "SMAZAT",
   "DISABLE-E2EE": "VYPNOUT-E2EE",
   Dark: "Tmavý",
-  Data: "Data",
   Delete: "Smazat",
-  "Delete data from server": "Smazat data ze serveru",
-  "Delete data from the server?": "Smazat data ze serveru?",
   "Delete everything and start fresh": "Smazat vše a začít od nuly",
   "Delete everything and start over": "Smazat vše a začít znovu",
   "Delete group": "Smazat skupinu",
@@ -178,9 +161,6 @@ export const cs: Dict = {
   "Delete {name}": "Smazat {name}",
   "Deletes ALL budget data from the server and this device — irreversible. Export a backup first. The app will reopen with the first-run wizard.":
     "Smaže VŠECHNA data rozpočtu ze serveru i z tohoto zařízení — nevratně. Nejdřív si vyexportuj zálohu. Aplikace se znovu otevře s úvodním průvodcem.",
-  "Deletes the local copy on this device and downloads everything anew from the server. Use when something looks off.":
-    "Smaže lokální kopii na tomto zařízení a stáhne vše znovu ze serveru. Použij, když něco nesedí.",
-  "Deleting from server…": "Mažu ze serveru…",
   "Deleting…": "Mažu…",
   "Describe how to distribute (e.g. prioritize savings, less on entertainment)": "Popiš, jak rozdělit (např. upřednostnit spoření, méně na zábavu)",
   "Destination account": "Cílový účet",
@@ -198,11 +178,6 @@ export const cs: Dict = {
     "Rozdělí částku jen mezi obálky v mínusu — poměrně podle schodku, nikdy přes nulu.",
   Done: "Hotovo",
   "Download a backup (JSON)": "Stáhnout zálohu (JSON)",
-  "Download everything anew": "Stáhnout vše znovu",
-  "Download everything anew from the server? We will replace the local copy with the current server state. Unsent changes in the queue will be kept and pushed.":
-    "Stáhnout vše znovu ze serveru? Nahradíme lokální kopii aktuálním stavem ze serveru. Neodeslané změny ve frontě zůstanou a odešlou se.",
-  "Downloads all your data as a file. Keep a backup, especially in local mode.":
-    "Stáhne všechna tvá data jako soubor. Zálohu si uschovej, zvlášť v lokálním režimu.",
   "Drag {name}": "Přetáhnout {name}",
   Duplicate: "Duplikovat",
   "Duplicates skipped: {n}": "Přeskočené duplicity: {n}",
@@ -215,7 +190,6 @@ export const cs: Dict = {
   "Edit names in place; drag the handle to reorder": "Názvy uprav přímo na místě; pořadí změníš tažením za úchyt",
   Email: "E-mail",
   "Enable AI assistance?": "Zapnout asistenci AI?",
-  "Enable and delete server data": "Zapnout a smazat data ze serveru",
   "Enable end-to-end encryption": "Zapnout end-to-end šifrování",
   "Enable via server": "Zapnout přes server",
   "Enabled — the server stores only encrypted data and never knows your password or key.":
@@ -245,7 +219,6 @@ export const cs: Dict = {
   "Finance & shopping": "Finance a nákupy",
   "Food & drink": "Jídlo a pití",
   "From screenshot": "Ze snímku obrazovky",
-  "Full resync from the server. Use when data looks out of sync.": "Úplná resynchronizace ze serveru. Použij, když data nesedí.",
   Fun: "Zábava",
   "Generate suggestion": "Vygenerovat návrh",
   "Generating…": "Generuji…",
@@ -272,8 +245,6 @@ export const cs: Dict = {
   "Install app": "Nainstalovat aplikaci",
   "Invalid pairing code.": "Neplatný párovací kód.",
   Investor: "Investor",
-  "Irreversibly deletes data from the server; other devices will lose access. Make a backup first (Export).":
-    "Nevratně smaže data ze serveru; ostatní zařízení ztratí přístup. Nejdřív si udělej zálohu (Export).",
   "Item total: {sum} / {total}": "Součet položek: {sum} / {total}",
   Language: "Jazyk",
   "Last launch": "Poslední spuštění",
@@ -286,9 +257,6 @@ export const cs: Dict = {
   "Load backup (JSON)": "Načíst zálohu (JSON)",
   "Loading sample data…": "Načítám ukázková data…",
   "Loading…": "Načítám…",
-  "Local mode": "Lokální režim",
-  "Local mode — data deleted from server. Tap to open settings": "Lokální režim — data smazána ze serveru. Klepnutím otevřeš nastavení",
-  "Local mode — sync paused. Tap to open settings": "Lokální režim — synchronizace pozastavena. Klepnutím otevřeš nastavení",
   "Losing the password means losing your data — the server cannot reset it or decrypt your budget.":
     "Ztratit heslo znamená ztratit data — server ho neumí resetovat ani tvůj rozpočet dešifrovat.",
   "Lowest cost — a typical screenshot import costs a fraction of a cent.": "Nejnižší cena — typický import snímku obrazovky stojí zlomek centu.",
@@ -332,14 +300,12 @@ export const cs: Dict = {
   "Not sending": "Neodesílá se",
   "Not syncing with your account": "Nesynchronizuje se s tvým účtem",
   Off: "Vypnuto",
-  "On-device storage": "Úložiště v zařízení",
-  "Once enabled, the server stores ciphertexts only. The key is your password, which the server does NOT know — without it (or a pairing code from a trusted device) the data cannot be recovered.":
+  "Once enabled, the server stores ciphertexts only. The key is your password, which the server does NOT know — without it (or a pairing code from another unlocked device) the data cannot be recovered.":
     "Po zapnutí server ukládá jen šifrované texty. Klíčem je tvé heslo, které server NEZNÁ — bez něj (nebo bez párovacího kódu z důvěryhodného zařízení) data nelze obnovit.",
   "One tap and Enveo lives on your home screen — offline, full screen, no browser bar.":
     "Jedno klepnutí a Enveo je na tvé ploše — offline, na celou obrazovku, bez lišty prohlížeče.",
   "Open {host} in Safari to add it to your home screen — installing only works from Safari on iPhone and iPad.":
     "Otevři {host} v Safari a přidej aplikaci na plochu — na iPhonu a iPadu instalace funguje jen ze Safari.",
-  "OpenAI key": "Klíč OpenAI",
   "OpenAI rejected the request — check the key and the model, then try again.": "OpenAI požadavek odmítlo — zkontroluj klíč a model a zkus to znovu.",
   "OpenAI rejected this key — model availability could not be checked.": "OpenAI tento klíč odmítlo — dostupnost modelů se nepodařilo ověřit.",
   "OpenAI rejected your key — check it in Settings → Artificial intelligence.": "OpenAI odmítlo tvůj klíč — zkontroluj ho v Nastavení → Umělá inteligence.",
@@ -354,9 +320,8 @@ export const cs: Dict = {
   Password: "Heslo",
   "Password changed.": "Heslo změněno.",
   "Passwords do not match.": "Hesla se neshodují.",
-  "Paste the pairing code shown on a trusted device (Settings → Pairing code).":
+  "Paste the pairing code shown on another unlocked device (Settings → Pairing code).":
     "Vlož párovací kód zobrazený na důvěryhodném zařízení (Nastavení → Párovací kód).",
-  "Paused — local mode.": "Pozastaveno — lokální režim.",
   "People & pets": "Lidé a mazlíčci",
   "Persistent storage": "Trvalé úložiště",
   "Pick an envelope…": "Vyber obálku…",
@@ -387,27 +352,19 @@ export const cs: Dict = {
   Reports: "Přehledy",
   "Requires AI (server mode or your own key).": "Vyžaduje AI (serverový režim nebo vlastní klíč).",
   Restore: "Obnovit",
-  "Resume it in the “Advanced” section.": "Obnov ji v sekci „Pokročilé“.",
-  "Resume sync? Local changes will be sent to the server.": "Obnovit synchronizaci? Lokální změny se odešlou na server.",
   "Resume upgrade": "Pokračovat v aktualizaci",
-  "Resuming…": "Obnovuji…",
   SPENT: "UTRACENO",
   Save: "Uložit",
   "Save changes": "Uložit změny",
   "Save item": "Uložit položku",
-  "Save key & enable": "Uložit klíč a zapnout",
   Savings: "Spoření",
   "Savings envelopes first — the free remainder goes to them.": "Nejdřív spořicí obálky — volný zbytek půjde do nich.",
   "Screenshot {n}": "Snímek obrazovky {n}",
   "Screenshots ({n}/6)": "Snímky obrazovky ({n}/6)",
   "Search...": "Hledat...",
   Server: "Server",
-  "Server connection": "Připojení k serveru",
-  "Server data has been deleted.": "Data na serveru byla smazána.",
   "Server sync": "Synchronizace se serverem",
   "Server temporarily unreachable — your data is safe, we will retry.": "Server je dočasně nedostupný — tvá data jsou v bezpečí, zkusíme to znovu.",
-  "Server-side import is unavailable while end-to-end encryption is on — the server cannot see your data. Use a JSON backup (export/import) or disable encryption.":
-    "Import na serveru není při zapnutém end-to-end šifrování dostupný — server tvá data nevidí. Použij zálohu JSON (export/import), nebo šifrování vypni.",
   "Session expired": "Relace vypršela",
   Settings: "Nastavení",
   Share: "Sdílet",
@@ -418,10 +375,7 @@ export const cs: Dict = {
   "Sign in with Google": "Přihlásit se přes Google",
   "Sign out": "Odhlásit se",
   "Sign out and use another account": "Odhlásit se a použít jiný účet",
-  "Sign out? Your data stays on this device and on the server.": "Odhlásit se? Tvá data zůstanou na tomto zařízení i na serveru.",
   "Signing out…": "Odhlašuji…",
-  "Signs you out of this device. The local copy and the server data both stay — everything resumes when you sign back in. To remove the copy from this device, use “Clear local data”.":
-    "Odhlásí tě z tohoto zařízení. Lokální kopie i data na serveru zůstanou — po opětovném přihlášení vše pokračuje. Kopii z tohoto zařízení odstraníš přes „Smazat lokální data“.",
   "Skip for now": "Zatím přeskočit",
   "Some funds stayed in To be budgeted — envelopes are at their target caps.": "Část prostředků zůstala v „K rozdělení“ — obálky dosáhly stropu svého cíle.",
   "Source: {src}": "Zdroj: {src}",
@@ -439,12 +393,7 @@ export const cs: Dict = {
   Suggest: "Navrhnout",
   "Suggest a distribution": "Navrhnout rozdělení",
   Summary: "Souhrn",
-  Sync: "Synchronizace",
   "Sync in progress": "Probíhá synchronizace",
-  "Sync is paused. Changes are saved locally and will be sent once you resume. Server data stays intact.":
-    "Synchronizace je pozastavená. Změny se ukládají lokálně a odešlou se, jakmile ji obnovíš. Data na serveru zůstávají nedotčená.",
-  "Sync is paused. Changes will be saved locally and sent once you resume. Server data stays intact.":
-    "Synchronizace je pozastavená. Změny se budou ukládat lokálně a odešlou se, jakmile ji obnovíš. Data na serveru zůstávají nedotčená.",
   "Sync now": "Synchronizovat teď",
   "Syncing…": "Synchronizuji…",
   "Tap {action} to continue": "Klepni na {action} a pokračuj",
@@ -480,8 +429,6 @@ export const cs: Dict = {
   "The envelope “{name}” will disappear from the Budget and Start screens. Its transaction history stays, and available funds remain in the envelope. You can restore it in “Manage envelopes” → Archived.\n\nArchive it?":
     "Obálka „{name}“ zmizí z obrazovek Rozpočet a Domů. Historie transakcí zůstane a dostupné prostředky zůstanou v obálce. Obnovit ji můžeš ve „Spravovat obálky“ → Archivované.\n\nArchivovat?",
   "The first launch requires a connection to the server": "První spuštění vyžaduje připojení k serveru",
-  "The key is stored only in this browser (localStorage) — it is never synced or sent to the app server.":
-    "Klíč je uložený jen v tomto prohlížeči (localStorage) — nikdy se nesynchronizuje ani neposílá na server aplikace.",
   "The local copy of the budget has not loaded yet — nothing was sent. Reload the app and try again.":
     "Lokální kopie rozpočtu se ještě nenačetla — nic se neodeslalo. Načti aplikaci znovu a zkus to znovu.",
   "The local copy of the budget on this device belongs to a different account than the one you are signed in with. Nothing has been sent to the server and nothing has been deleted.":
@@ -489,14 +436,8 @@ export const cs: Dict = {
   "The local copy — including any unsent changes — will be permanently removed from this device. If this is the only copy of that budget, download a backup first.":
     "Lokální kopie — včetně neodeslaných změn — se z tohoto zařízení trvale odstraní. Pokud je to jediná kopie toho rozpočtu, nejdřív si stáhni zálohu.",
   "The local replica is not ready.": "Lokální replika není připravená.",
-  "The monthly AI allowance for this account is used up — it resets at the start of the next month (UTC). You can keep using AI right away with your own key in Settings → Artificial intelligence.":
-    "Měsíční limit AI pro tento účet je vyčerpán — obnoví se na začátku dalšího měsíce (UTC). S vlastním klíčem v Nastavení → Umělá inteligence můžeš AI používat dál hned.",
   "The password must be at least 8 characters.": "Heslo musí mít aspoň 8 znaků.",
   "The proposal exceeds “To be budgeted” — uncheck or reduce items.": "Návrh překračuje „K rozdělení“ — odškrtni nebo sniž položky.",
-  "The server has no OpenAI key configured — server mode is unavailable. Use your own key or keep AI off.":
-    "Server nemá nastavený žádný klíč OpenAI — serverový režim není dostupný. Použij vlastní klíč, nebo nech AI vypnutou.",
-  "The server has no OpenAI key configured. Set OPENAI_API_KEY and restart the app, or use your own key in Settings → Artificial intelligence.":
-    "Server nemá nastavený žádný klíč OpenAI. Nastav OPENAI_API_KEY a restartuj aplikaci, nebo použij vlastní klíč v Nastavení → Umělá inteligence.",
   "The server hit an unexpected error. Nothing was changed — try again.": "Na serveru nastala neočekávaná chyba. Nic se nezměnilo — zkus to znovu.",
   "The server refuses to sync this budget until its encryption is upgraded to the new format.":
     "Server odmítá tento rozpočet synchronizovat, dokud se jeho šifrování neaktualizuje na nový formát.",
@@ -527,7 +468,7 @@ export const cs: Dict = {
     "Data tohoto rozpočtu jsou šifrovaná end-to-end. Zadej heslo šifrování, abys je na tomto zařízení odemkl.",
   "This budget's encryption must be upgraded before it can sync — open Settings → Privacy on a device that holds the data and run the upgrade.":
     "Šifrování tohoto rozpočtu je potřeba aktualizovat, než se bude moct synchronizovat — otevři Nastavení → Soukromí na zařízení, které data má, a spusť aktualizaci.",
-  "This code contains your encryption key in plain form. Show it only on your own trusted device — anyone with the code can read the budget.":
+  "This code contains your encryption key in plain form. Show it only on your own private device — anyone with the code can read the budget.":
     "Tento kód obsahuje tvůj šifrovací klíč v čitelné podobě. Ukazuj ho jen na svém důvěryhodném zařízení — kdokoli s tímto kódem si může rozpočet přečíst.",
   "This data may belong to a different account. Then it will never be sent — download a backup and remove the copy from this device.":
     "Tato data možná patří jinému účtu. Pak se nikdy neodešlou — stáhni si zálohu a kopii z tohoto zařízení odstraň.",
@@ -569,10 +510,8 @@ export const cs: Dict = {
   Transactions: "Transakce",
   Transfer: "Převod",
   Transport: "Doprava",
-  "Trust this device — remember my data and sign-in": "Důvěřovat tomuto zařízení — zapamatovat si moje data a přihlášení",
   "Try again": "Zkusit znovu",
   "Try it with sample data": "Vyzkoušet na ukázkových datech",
-  "Turn off local mode": "Vypnout lokální režim",
   "Type or pick a category...": "Napiš nebo vyber kategorii...",
   "Type {word} to confirm:": "Pro potvrzení napiš {word}:",
   Unlock: "Odemknout",
@@ -583,23 +522,14 @@ export const cs: Dict = {
     "Odškrtni, co nechceš. Duplicity přeskakujeme — klepnutím na jednu ji upravíš a přidáš i tak.",
   Usage: "Využití",
   Use: "Použít",
-  "Use your own key": "Použít vlastní klíč",
   Utilities: "Energie a služby",
   "WARNING: IndexedDB unavailable — data is kept only in session memory (it will not survive closing the app).":
     "VAROVÁNÍ: IndexedDB není dostupná — data zůstávají jen v paměti relace (zavření aplikace nepřežijí).",
-  "WARNING: in local mode this data exists ONLY on this device (the server is empty). Clearing it will delete it permanently. Make a backup first (Export). Continue?":
-    "VAROVÁNÍ: v lokálním režimu tato data existují JEN na tomto zařízení (server je prázdný). Smazáním je nenávratně ztratíš. Nejdřív si udělej zálohu (Export). Pokračovat?",
-  "We will irreversibly erase all data from the server — this cannot be undone from the app. Other devices will lose access. Your data will remain only on this device. Make a backup first (Export).":
-    "Nevratně smažeme všechna data ze serveru — z aplikace už to nevrátíš. Ostatní zařízení ztratí přístup. Tvá data zůstanou jen na tomto zařízení. Nejdřív si udělej zálohu (Export).",
-  "We will send pending changes and resume sync. Server data is untouched.":
-    "Odešleme čekající změny a obnovíme synchronizaci. Data na serveru zůstanou nedotčená.",
   "We will send them once the server is reachable.": "Odešleme je, jakmile bude server dostupný.",
-  "We will send your local data back to the server and resume sync.": "Odešleme tvá lokální data zpět na server a obnovíme synchronizaci.",
   Weak: "Slabé",
   Wealth: "Majetek",
   "Wealth envelope (savings/investments)": "Majetková obálka (spoření/investice)",
   "Welcome to Enveo": "Vítej v Enveo",
-  "Work offline": "Pracovat offline",
   "Wrong email or password.": "Špatný e-mail nebo heslo.",
   "Wrong encryption password.": "Špatné heslo šifrování.",
   Yes: "Ano",
@@ -608,20 +538,15 @@ export const cs: Dict = {
   "You are offline — screenshot import needs a connection. Manual entry works without one.":
     "Jsi offline — import ze snímků potřebuje připojení. Ruční zadání funguje i bez něj.",
   "Your budget is tied to your account. Sign in to continue.": "Tvůj rozpočet je vázaný na tvůj účet. Pro pokračování se přihlas.",
-  "Your data now lives only on this device. Make a backup (Export) — it is the only way not to lose it.":
-    "Tvá data teď žijí jen na tomto zařízení. Udělej si zálohu (Export) — jen tak o ně nepřijdeš.",
   "Your data will be decrypted and stored on the server in plain form (as before enabling). Make sure you have a current backup.":
     "Tvá data se dešifrují a uloží na server v čitelné podobě (jako před zapnutím). Ověř si, že máš aktuální zálohu.",
   "Your envelopes": "Tvé obálky",
   "Your first account": "Tvůj první účet",
   "already exists": "už existuje",
   "available after: {amount}": "poté k dispozici: {amount}",
-  "backup, end-to-end encryption, account": "záloha, end-to-end šifrování, účet",
   "cancel split": "zrušit rozdělení",
   dark: "tmavý",
-  "data deleted from server": "data smazána ze serveru",
   details: "detaily",
-  "device storage, local mode, reset": "úložiště zařízení, lokální režim, reset",
   discreet: "diskrétní",
   "e.g. 5000": "např. 5000",
   "e.g. Checking": "např. Běžný účet",
@@ -632,12 +557,10 @@ export const cs: Dict = {
   "funded ✓": "financováno ✓",
   income: "příjem",
   "just now": "právě teď",
-  "local mode": "lokální režim",
   "m/m": "m/m",
   "new password for all devices": "nové heslo pro všechna zařízení",
   "not yet": "zatím ne",
   off: "vypnuto",
-  offline: "offline",
   "over by {amount}": "překročeno o {amount}",
   "own key": "vlastní klíč",
   "probable duplicate": "pravděpodobná duplicita",
@@ -650,26 +573,17 @@ export const cs: Dict = {
   server: "server",
   settings: "nastavení",
   skipped: "přeskočeno",
-  "status, re-download": "stav, opětovné stažení",
   "the server will store your data in plain form again": "server bude tvá data zase ukládat v čitelné podobě",
   "the whole local copy as a file — no network needed": "celá lokální kopie jako soubor — bez sítě",
-  "theme, language, currency, discreet": "motiv, jazyk, měna, diskrétní",
   today: "dnes",
   unknown: "neznámé",
   "unlock the budget on a new device without the password": "odemknout rozpočet na novém zařízení bez hesla",
-  "work offline or keep data only on this device": "pracovat offline, nebo mít data jen na tomto zařízení",
   yesterday: "včera",
   "{amount} from the previous month": "{amount} z předchozího měsíce",
   "{amount} left": "zbývá {amount}",
   "{amount} stays in “To be budgeted”.": "{amount} zůstává v „K rozdělení“.",
   "{amount} to go": "chybí {amount}",
   "{n} OK": "{n} OK",
-  "{n} change is waiting locally. | {n} changes are waiting locally.": {
-    one: "{n} změna čeká lokálně.",
-    few: "{n} změny čekají lokálně.",
-    many: "{n} změny čeká lokálně.",
-    other: "{n} změn čeká lokálně.",
-  },
   "{n} change is waiting to be sent | {n} changes are waiting to be sent": {
     one: "{n} změna čeká na odeslání",
     few: "{n} změny čekají na odeslání",

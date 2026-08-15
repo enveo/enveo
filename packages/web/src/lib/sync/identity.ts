@@ -14,7 +14,7 @@
  * and can be swapped mid-cycle, while one cycle makes many server writes):
  *  1. at BOOT — bootOwnerOk(): the replica is not handed to the UI until its stamp has been
  *     compared with the session. This is the READ side (the two below only guard writes): boot
- *     renders from IDB and syncs afterwards, and in local mode no cycle ever runs at all,
+ *     renders from IDB and syncs afterwards,
  *  2. per CYCLE — ensureIdentity() below: no write of any kind until the session's user id has
  *     been compared with the one stamped next to the replica. A resync — which REPLACES the
  *     mirror with the session's budget — re-runs it (resyncVerified), because the very server
@@ -46,7 +46,7 @@
  * is not adopted on trust: proveOwnership() has to show that the SESSION's budget really is
  * this replica's budget before the first write. The trigger is the replica itself, not the
  * outbox: the durable REPLACE obligation is a server-write channel too, and importBackup
- * CLEARS the outbox while setting it (as does the "wiped" local mode) — "outbox empty"
+ * CLEARS the outbox while setting it — "outbox empty"
  * proves nothing.
  *
  * ONLY the stamp can prove FOREIGN. An unstamped replica whose proof fails is merely UNPROVEN:
@@ -63,13 +63,14 @@
  * budget and because a user id does not survive a server rebuild — see enterForeignReplica. The
  * asymmetry the guard keeps is: an unproven owner ⇒ refuse every server write, destroy nothing.
  */
+
+import { accountPreferences } from "../accountPreferences";
 import { fetchSessionUserId } from "../auth";
 import * as e2ee from "../e2ee";
 import { idbGet } from "../idb";
 import * as persist from "../persist";
 import { store } from "../store";
 import { type IdentityVerdict, TierMismatchError } from "./contracts";
-import { getLocalMode } from "./localMode";
 import { e2eeReplicaBudgetId } from "./replica";
 import { setOwnerUnproven, setState } from "./status";
 import { fetchServerBudgetId, fetchServerE2eeIdentity, sessionBudgetIsEmpty, unauthorized } from "./transport";
@@ -115,6 +116,7 @@ export function __resetIdentity(): void {
  */
 export function enterUnauthed(): void {
   identityVerifiedFor = null;
+  accountPreferences.dehydrate(); // no account-scoped UI state may remain visible on Login
   setOwnerUnproven(false); // no session ⇒ nothing to prove YET; the next one proves from scratch
   store.setBootStatus("unauthed");
   setState("unauthed"); // no retry loop — a 401 does not clear on its own
@@ -128,9 +130,8 @@ export function enterUnauthed(): void {
  *
  * It does NOT wipe, and that asymmetry is deliberate — the exact opposite of what the first cut
  * of this guard did:
- *  - the replica can be the LAST copy of that budget. In local mode "wiped" the server data was
- *    deliberately deleted, so IDB holds the only copy; and even in normal mode the outbox may
- *    hold ops the server has never seen.
+ *  - the replica can be the LAST copy of that budget; the outbox may hold ops the server has
+ *    never seen, and a rebuilt server may know nothing about the device copy.
  *  - a user id is not stable across a server rebuild. A self-hoster who loses the Postgres
  *    volume reinstalls, registers with the same e-mail and gets a NEW user uuid — their phone,
  *    which still holds the complete replica, would compare the old stamp against the new id and
@@ -141,6 +142,7 @@ export function enterUnauthed(): void {
  */
 export function enterForeignReplica(): void {
   identityBlocked = true; // no cycle may touch the network until the human decides
+  accountPreferences.dehydrate(); // the signed-in account is not the cache owner
   setOwnerUnproven(false); // a PROVEN foreign stamp supersedes "unproven" (ForeignReplicaScreen)
   console.warn("sync: the local replica belongs to a different account — every server write is refused");
   store.setBootStatus("foreign"); // ForeignReplicaScreen: [Export backup] / [Remove and continue]
@@ -148,21 +150,16 @@ export function enterForeignReplica(): void {
 }
 
 /**
- * Where EVERY sign-out lands (auth.signOutKeepingReplica calls this once the session is gone —
- * from Settings and from ForeignReplicaScreen alike): back to Login WITHOUT touching the replica.
+ * Where session expiry and the protected foreign-replica exit land: back to Login WITHOUT
+ * touching the replica.
  * The owner (or the same human after a server rebuild handed them a new user id) signs back in,
  * their stamp matches again, and the ledger plus every queued op resume where they stopped.
  *
- * A SELFHOST sign-out does NOT wipe (spec §3, owner's decision): the replica may be the last
- * copy of the budget (local mode "wiped" deleted the server's on purpose) and the outbox may
- * hold ops the server has never seen — a window.confirm is not consent to destroy them. CLOUD
- * sign-out is the deliberate exception (device-trust spec, 2026-07-17): there the server is the
- * durable copy, so LogoutRow flushes the outbox, ends the session and only then wipes — and a
- * non-empty remainder still requires the human's explicit consent. What protects the NEXT
- * account to sign in on this device is the guard, not a wipe: bootOwnerOk refuses to render a
- * replica stamped by somebody else, and ensureIdentity refuses to write it anywhere.
+ * Ordinary explicit sign-out uses the separate signOut flow and clears local account data after
+ * handling pending writes. A foreign replica is the exception because it is not owned by the
+ * signed-in session and may be the previous owner's last copy.
  */
-export function enterLoginKeepingReplica(): void {
+export function enterLoginPreservingReplica(): void {
   identityVerifiedFor = null;
   identityBlocked = false; // a NEW session must be verified from scratch — see ensureIdentity
   enterUnauthed(); // Login screen, replica intact
@@ -273,7 +270,7 @@ async function proveOwnership(): Promise<Ownership> {
       // another. Adopt it only where being wrong costs nothing: an EMPTY session budget has
       // nothing to lose. Against a session budget that holds data, an unbound replica is exactly
       // the "adopt + overwrite" hole this guard exists to close (it can arrive on the device via
-      // "Clear local data" in local mode, or an offline start, and it may be another user's).
+      // a previous reset or an offline start, and it may be another user's).
       if (!localBudgetId) return !bornE2ee && (await sessionBudgetIsEmpty()) ? "ours" : "unknown";
       const server = await fetchServerBudgetId();
       if (!server) return "unknown";
@@ -328,6 +325,11 @@ export async function ensureIdentity(): Promise<string | null> {
   return sessionUserId;
 }
 
+/** Account whose session and replica stamp have been matched in this tab. */
+export function verifiedIdentityUserId(): string | null {
+  return identityVerifiedFor;
+}
+
 /**
  * The guard for server writes made OUTSIDE this module: Settings → "Enable E2EE" (POST
  * /e2ee/enable uploads an encrypted snapshot of the whole replica AND flips the session
@@ -358,21 +360,15 @@ export async function assertOwnReplica(): Promise<string> {
  * syncNow("boot")`. Between the two, the previous owner's ENTIRE budget is on screen and
  * editable — and the ways a device changes hands are routine, not exotic: a 90-day cookie
  * expires → Login; a sign-out (which KEEPS the replica — see DataSection/ForeignReplicaScreen) →
- * Login; then the next account signs in. Worse, the window is not always short: in local mode
- * doCycle bails before ensureIdentity ever runs (the mode gate comes first), so without this
- * check the verdict would NEVER be reached and the other account's ledger would simply be the
- * app — permanently.
+ * Login; then the next account signs in.
  *
  * Returns false when the replica may NOT be rendered (BootStatus set to "foreign"/"unauthed").
- * Deliberately NOT a hard gate in two cases, because the replica can be the LAST copy of a budget
- * and a boot that refuses to show it is its own kind of data loss:
+ * Deliberately NOT a hard gate when the server is unreachable, because the replica can be the
+ * LAST copy of a budget and a boot that refuses to show it is its own kind of data loss:
  *  - the server is unreachable (fetchSessionUserId THROWS): being offline is not being somebody
- *    else — local-first wins, and the first cycle that does reach the server enforces the verdict,
- *  - no session in LOCAL MODE: nobody else is claiming this device (a sign-in needs the server),
- *    the mode means "do not talk to the server", and the server may be gone for good (mode
- *    "wiped" deleted its copy on purpose). Forcing Login there would lock the owner out of the
- *    only copy of their budget. In normal mode a missing session DOES go to Login — the cycle
- *    would land there within the second anyway, only after rendering the data first.
+ *    else — local-first wins, and the first cycle that does reach the server enforces the verdict.
+ * A reachable server with no session always routes to Login before rendering; the replica and
+ * outbox remain untouched so the owner can sign back in without losing queued work.
  */
 export async function bootOwnerOk(): Promise<boolean> {
   const stamped = await idbGet<string>("meta", "userId").catch(() => undefined);
@@ -389,7 +385,6 @@ export async function bootOwnerOk(): Promise<boolean> {
     return false;
   }
   if (!sessionUser) {
-    if (getLocalMode() !== "off") return true; // see the contract above
     enterUnauthed(); // Login BEFORE the data is on screen; the replica and the outbox stay
     return false;
   }

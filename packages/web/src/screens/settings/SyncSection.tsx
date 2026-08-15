@@ -6,8 +6,9 @@ import { exportBackup } from "../../lib/data";
 import { relSync } from "../../lib/dates";
 import { formatMoney } from "../../lib/format";
 import { type Lang, type Message, msg, useT } from "../../lib/i18n";
+import { type RepairResult, rebuildLocalReplica } from "../../lib/localRepair";
 import { discardDeadLetter, getDeadLetters } from "../../lib/outbox";
-import { discardLocalReplica, fullResync, recheckReplicaOwner, syncNow } from "../../lib/sync";
+import { discardLocalReplica, recheckReplicaOwner, syncNow } from "../../lib/sync";
 import { CORAL } from "../../lib/theme";
 import { ActionButton, ActionGroup, ActionIcon, ActionRow, Eyebrow } from "./ui";
 
@@ -22,17 +23,16 @@ const IC = {
 };
 
 export function SyncSection() {
-  const { ownerUnproven, localMode } = useSyncStatus();
+  const { ownerUnproven } = useSyncStatus();
   // The replica's owner could not be established: no cycle writes anything and none will until
   // the proof succeeds, so "Sync now" / "Download everything anew" would be theatre. The notice
-  // takes the section over — it is the ONE place where this state is explained. (Local mode wins:
-  // there sync is off by the user's own choice, and the SyncActions text already says so.)
+  // takes the section over — it is the ONE place where this state is explained.
   //
   // The gate is the STICKY ownerUnproven, never SyncState "unverified": a re-proof runs as a normal
   // cycle, which flips the state to "syncing" first — keying on the state would tear this panel
   // down (with its open discard confirmation and its "Checking…" label) on every 60 s interval,
   // every focus, every local edit and, absurdly, on the "Check again" tap that starts the proof.
-  if (localMode === "off" && ownerUnproven) {
+  if (ownerUnproven) {
     return (
       <div style={{ marginTop: 4 }}>
         <UnverifiedReplicaNotice />
@@ -94,7 +94,7 @@ function UnverifiedReplicaNotice() {
     setBusy(true);
     setError(null);
     try {
-      await discardLocalReplica(); // clears IDB + outbox + local mode, then reloads
+      await discardLocalReplica(); // clears IDB + outbox, then reloads
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
       setBusy(false);
@@ -205,6 +205,7 @@ const OP_LABEL: Record<OpKind, Message> = {
   "category.create": msg("New category"),
   "place.create": msg("New place"),
   "budget.update": msg("Budget currency change"),
+  "budget.preferences.update": msg("Budget settings change"),
 };
 
 /** Short, human description of a rejected op (no jargon — name / amount / month). */
@@ -221,11 +222,14 @@ function opDetail(op: SyncOp, currency: string, lang: Lang): string {
   return parts.join(" · ");
 }
 
-/** Sync action group (sync-now + full resync) with the status BELOW the group. */
+/** Sync action group with one safe local-repair flow and the status below it. */
 function SyncActions() {
   const C = useTheme();
   const { t, tp, lang } = useT();
-  const { state, pending, lastSyncAt, localMode } = useSyncStatus();
+  const { state, pending, lastSyncAt } = useSyncStatus();
+  const [repairing, setRepairing] = useState(false);
+  const [blocked, setBlocked] = useState<Extract<RepairResult, { kind: "blocked" }>["reason"] | null>(null);
+  const [repairError, setRepairError] = useState<string | null>(null);
 
   // refresh the relative time every ~30 s while the section is open
   const [, setTick] = useState(0);
@@ -234,28 +238,39 @@ function SyncActions() {
     return () => clearInterval(id);
   }, []);
 
-  if (localMode !== "off") {
-    // In local mode sync is PAUSED — we hide "sync now",
-    // "download again" and the rejection list (nothing to push or pull).
-    return (
-      <div style={{ marginTop: 14, fontSize: 11.5, color: C.soft, lineHeight: 1.6 }}>
-        {t("Paused — local mode.")}{" "}
-        {localMode === "wiped" ? t("Server data has been deleted.") : t("Changes are saved locally and will be sent after you resume.")}
-        {pending > 0 && ` ${tp("{n} change is waiting locally. | {n} changes are waiting locally.", pending)}`} {t("Resume it in the “Advanced” section.")}
-      </div>
-    );
-  }
+  const repair = async () => {
+    setRepairing(true);
+    setBlocked(null);
+    setRepairError(null);
+    try {
+      const result = await rebuildLocalReplica();
+      if (result.kind === "blocked") setBlocked(result.reason);
+    } catch (error) {
+      setRepairError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setRepairing(false);
+    }
+  };
 
-  const resync = () => {
+  const repairExport = () => {
+    setRepairError(null);
+    try {
+      exportBackup();
+    } catch (error) {
+      setRepairError(error instanceof Error ? error.message : String(error));
+    }
+  };
+
+  const repairDiscard = async () => {
     if (
       !window.confirm(
         t(
-          "Download everything anew from the server? We will replace the local copy with the current server state. Unsent changes in the queue will be kept and pushed.",
+          "The local copy — including any unsent changes — will be permanently removed from this device. If this is the only copy of that budget, download a backup first.",
         ),
       )
     )
       return;
-    void fullResync();
+    await discardLocalReplica();
   };
 
   return (
@@ -272,11 +287,29 @@ function SyncActions() {
         />
         <ActionRow
           icon={<ActionIcon paths={IC.redownload} />}
-          label={t("Download everything anew")}
-          desc={t("Full resync from the server. Use when data looks out of sync.")}
-          onClick={resync}
+          label={t("Rebuild data on this device")}
+          desc={t("Downloads a fresh server copy, then reapplies changes still waiting to be sent.")}
+          onClick={() => void repair()}
+          disabled={repairing || state === "syncing"}
+          busyLabel={repairing ? t("Rebuilding…") : undefined}
         />
       </ActionGroup>
+      {blocked && (
+        <div style={{ marginTop: 10, padding: 12, background: C.bg, borderRadius: 11, border: `1px solid ${C.line}` }}>
+          <div style={{ fontSize: 11.5, color: C.soft, lineHeight: 1.6, marginBottom: 10 }}>
+            {blocked === "outbox_unreadable"
+              ? t("The pending-change queue cannot be read safely, so Enveo left the local copy untouched.")
+              : blocked === "locked"
+                ? t("Unlock this encrypted budget before rebuilding the local copy.")
+                : t("This device's local copy could not be confirmed to belong to the signed-in account — nothing was changed.")}
+          </div>
+          <ActionGroup>
+            <ActionRow label={t("Download a backup (JSON)")} desc={t("the whole local copy as a file — no network needed")} onClick={repairExport} />
+            <ActionRow label={t("Remove this data and continue")} tone="danger" onClick={() => void repairDiscard()} />
+          </ActionGroup>
+        </div>
+      )}
+      {repairError && <div style={{ fontSize: 12, color: CORAL, marginTop: 10, lineHeight: 1.5 }}>{repairError}</div>}
       <div style={{ fontSize: 11.5, color: C.soft, lineHeight: 1.6, margin: "8px 4px 0" }}>
         {t("Last sync: {rel}.", { rel: relSync(lastSyncAt, lang) })}
         {pending > 0
@@ -294,9 +327,8 @@ function DeadLetters() {
   const C = useTheme();
   const { t, lang } = useT();
   const currency = useCurrency();
-  const { localMode } = useSyncStatus();
   const deadLetters = getDeadLetters();
-  if (localMode !== "off" || deadLetters.length === 0) return null; // in local mode there is nothing to pull
+  if (deadLetters.length === 0) return null;
   return (
     <div style={{ marginTop: 14, padding: 12, background: C.bg, borderRadius: 11, border: `1px solid ${C.line}` }}>
       <div style={{ fontSize: 11.5, color: C.soft, lineHeight: 1.6, marginBottom: 4 }}>

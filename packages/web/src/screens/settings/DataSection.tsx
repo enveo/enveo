@@ -3,7 +3,7 @@ import qrcode from "qrcode-generator";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Sheet } from "../../components/chrome";
 import { api, apiErrorMessage, useLedgerVersion } from "../../lib/api";
-import { hasSession, signOutKeepingReplica, signOutSessionOnly } from "../../lib/auth";
+import { hasSession } from "../../lib/auth";
 import { useTheme } from "../../lib/contexts";
 import {
   DEFAULT_KDF_PARAMS,
@@ -18,25 +18,18 @@ import {
   wrapDek,
 } from "../../lib/crypto";
 import { exportBackup, importBackup } from "../../lib/data";
-import { clearDeviceTrust, getCachedDeployment } from "../../lib/deviceTrust";
 import * as e2ee from "../../lib/e2ee";
+import { prepareDisableCredentialAction, prepareEnableCredentialAction } from "../../lib/e2eeCredentialCeremonies";
 import { useT } from "../../lib/i18n";
-import { clearLastAccountId } from "../../lib/lastAccount";
 import * as persist from "../../lib/persist";
-import { clearPersistedSettings } from "../../lib/settingsPersist";
+import { completeExplicitSignOut, ExplicitSignOutPendingError, type SignOutPreparation } from "../../lib/signOut";
 import { store } from "../../lib/store";
-import {
-  assertOwnReplica,
-  broadcastKeysChanged,
-  discardLocalReplica,
-  enterLoginKeepingReplica,
-  flushOutboxForSignOut,
-  fullResync,
-  syncNow,
-} from "../../lib/sync";
+import { assertOwnReplica, broadcastKeysChanged, fullResync, syncNow } from "../../lib/sync";
 import { CORAL, font } from "../../lib/theme";
+import { DataToolsSection } from "./DataTools";
 import { E2eeUpgradePanel } from "./E2eeUpgradePanel";
-import { ActionGroup, ActionIcon, ActionRow, ConfirmWordHint, Eyebrow } from "./ui";
+import { SyncSection } from "./SyncSection";
+import { ActionGroup, ActionIcon, ActionRow, ConfirmWordHint, Eyebrow, Helper } from "./ui";
 
 /* ── Data: backup (export/import) + E2E encryption + account ────────── */
 
@@ -54,78 +47,68 @@ const IC = {
 export function DataSection() {
   return (
     <div style={{ marginTop: 4 }}>
+      <SyncSection />
       <DataBackup />
-      <E2eeSection />
-      <LogoutRow />
+      <DataToolsSection />
     </div>
   );
 }
 
-/**
- * Logout — visible ONLY when the backend confirms a session (hasSession()). The behavior splits
- * by deployment (device-trust spec, 2026-07-17):
- *
- * SELFHOST does NOT wipe the local replica (spec §3, binding owner decision): the ledger mirror,
- * the DEK and — crucially — every op still queued in the durable outbox stay on the device, so a
- * sign-out while offline (or with a failing push) cannot silently throw unsynced data away, and a
- * replica that is the last copy of its budget (local mode "wiped") survives. Signing back in
- * resumes exactly where it stopped; a DIFFERENT account signing in is handled by the multi-tenant
- * guard in sync.ts (the foreign replica is neither rendered nor written anywhere, and the human
- * decides its fate). Deleting the local copy on purpose remains available: Settings → Clear local
- * data (Advanced).
- *
- * CLOUD is the deliberate exception: the server is the durable copy there (operator backups, not
- * this device), so sign-out flushes the outbox, ends the session and only then wipes the local
- * copy — a non-empty remainder after the flush still requires the human's explicit consent before
- * anything is discarded.
- * The wipe also clears the persisted settings (the BYOK OpenAI key lives there) and the
- * last-account preference — nothing of the account's stays on a device it signed off from.
- */
+export function PrivacySection() {
+  const { t } = useT();
+  return (
+    <div style={{ marginTop: 4 }}>
+      <Helper>{t("Encryption settings apply to this budget and follow it across devices.")}</Helper>
+      <Helper>
+        {t(
+          "On a new device, enter the encryption password once to unlock both the budget and its encrypted Own OpenAI key. Enveo cannot recover either if you lose the password, every unlocked device, all pairing codes and your backups.",
+        )}
+      </Helper>
+      <E2eeSection />
+    </div>
+  );
+}
+
+export function LogoutSection() {
+  return <LogoutRow />;
+}
+
+/** Explicit sign-out is identical for cloud and self-hosted deployments. */
 function LogoutRow() {
   const { t } = useT();
   const [session, setSession] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [pending, setPending] = useState<Exclude<SignOutPreparation, { kind: "ready" }> | null>(null);
   useEffect(() => {
     void hasSession().then(setSession);
   }, []);
   if (!session) return null;
 
-  const cloud = getCachedDeployment() === "cloud";
-
-  const doLogout = async () => {
-    const prompt = cloud
-      ? t("Sign out? The local copy will be removed from this device — your data stays on the server.")
-      : t("Sign out? Your data stays on this device and on the server.");
-    if (!window.confirm(prompt)) return;
+  const finish = async (decision: "retry" | "export" | "discard") => {
     setBusy(true);
     setError(null);
     try {
-      if (!cloud) {
-        await signOutKeepingReplica(enterLoginKeepingReplica); // sign out → Login; the replica stays
-        return;
-      }
-      // Cloud: the server is the durable copy — flush, end the session, then wipe this device.
-      // Order: a failed wipe after a successful signOut leaves the same state as an expired
-      // session on a trusted device (accepted residual risk of the trust choice); a wipe before
-      // a failed signOut would strand a signed-in session on an empty replica.
-      const left = await flushOutboxForSignOut();
-      if (left > 0 && !window.confirm(t("Some changes have not reached the server yet. Sign out anyway and lose them?"))) {
+      await completeExplicitSignOut(decision);
+    } catch (e) {
+      if (e instanceof ExplicitSignOutPendingError) {
+        setPending(e.preparation);
         setBusy(false);
         return;
       }
-      await signOutSessionOnly();
-      clearDeviceTrust(); // the next login asks again (default per deployment)
-      // Leaving the device takes the per-device state with it: the settings hold the BYOK
-      // OpenAI key (a billing credential must not outlive the account on a shared machine),
-      // and the last-account preference names an account of a budget this device no longer has.
-      clearPersistedSettings();
-      clearLastAccountId();
-      await discardLocalReplica(); // clears the local copy (memory or IDB) and reloads → Login
-    } catch (e) {
       setError(apiErrorMessage(e));
       setBusy(false);
     }
+  };
+
+  const doLogout = () => {
+    if (!window.confirm(t("Sign out and remove this account's local data from this device? Your data already on the server will stay there."))) return;
+    void finish("retry");
+  };
+
+  const discardPending = () => {
+    if (!window.confirm(t("Discard the unsent changes and sign out? This cannot be undone."))) return;
+    void finish("discard");
   };
 
   return (
@@ -135,19 +118,25 @@ function LogoutRow() {
         <ActionRow
           icon={<ActionIcon paths={IC.logout} />}
           label={t("Sign out")}
-          desc={
-            cloud
-              ? t("Signs you out and removes the local copy from this device. Your data stays on the server and comes back when you sign in again.")
-              : t(
-                  "Signs you out of this device. The local copy and the server data both stay — everything resumes when you sign back in. To remove the copy from this device, use “Clear local data”.",
-                )
-          }
+          desc={t("Signs you out and removes this account's local copy, encryption keys, and credentials from the device.")}
           tone="danger"
           onClick={() => void doLogout()}
           disabled={busy}
           busyLabel={busy ? t("Signing out…") : undefined}
         />
       </ActionGroup>
+      {pending && (
+        <div style={{ margin: "10px 4px 0", padding: 12, borderRadius: 11, border: `1px solid ${CORAL}55` }}>
+          <div style={{ fontSize: 12, color: CORAL, lineHeight: 1.55, marginBottom: 10 }}>
+            {t("{count} unsent changes are still on this device. Retry when online, export a backup, or explicitly discard them.", { count: pending.count })}
+          </div>
+          <ActionGroup>
+            <ActionRow label={t("Retry sending changes")} onClick={() => void finish("retry")} disabled={busy} />
+            {pending.kind === "pending" && <ActionRow label={t("Export backup and sign out")} onClick={() => void finish("export")} disabled={busy} />}
+            <ActionRow label={t("Discard unsent changes and sign out")} tone="danger" onClick={discardPending} disabled={busy} />
+          </ActionGroup>
+        </div>
+      )}
       {error && <div style={{ fontSize: 12, color: CORAL, margin: "8px 4px 0", lineHeight: 1.5 }}>{error}</div>}
     </div>
   );
@@ -198,7 +187,7 @@ function DataBackup() {
         <ActionRow
           icon={<ActionIcon paths={IC.download} />}
           label={t("Export backup (JSON)")}
-          desc={t("Downloads all your data as a file. Keep a backup, especially in local mode.")}
+          desc={t("Downloads all your data as a file. Keep a backup before destructive changes.")}
           onClick={doExport}
         />
         <ActionRow
@@ -271,11 +260,25 @@ function E2eeSection() {
 /** Enable wizard (plain tier). Does NOT flip without "I have a backup" checked. */
 function E2eeEnableWizard() {
   const { t } = useT();
+  const budgetId = store.getBudgetId() || store.getLedger()?.budgets[0]?.id || "";
+  const [hasServerCredential, setHasServerCredential] = useState(false);
+  useEffect(() => {
+    let current = true;
+    if (budgetId)
+      void api.byokCredentialStatus(budgetId).then(
+        (status) => current && setHasServerCredential(status.configured),
+        () => {},
+      );
+    return () => {
+      current = false;
+    };
+  }, [budgetId]);
   const [sheet, setSheet] = useState(false);
   const [step, setStep] = useState<1 | 2>(1);
   const [haveBackup, setHaveBackup] = useState(false);
   const [pass, setPass] = useState("");
   const [pass2, setPass2] = useState("");
+  const [openAIKey, setOpenAIKey] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -284,11 +287,22 @@ function E2eeEnableWizard() {
     setHaveBackup(false);
     setPass("");
     setPass2("");
+    setOpenAIKey("");
     setError(null);
     setSheet(true);
   };
 
+  const close = () => {
+    if (busy) return;
+    setOpenAIKey("");
+    setPass("");
+    setPass2("");
+    setSheet(false);
+  };
+
   const run = async () => {
+    let submittedOpenAIKey = openAIKey;
+    setOpenAIKey("");
     setBusy(true);
     setError(null);
     try {
@@ -311,13 +325,30 @@ function E2eeEnableWizard() {
       const salt = generateSalt();
       const dek = generateDek();
       const kek = await deriveKek(pass, salt, DEFAULT_KDF_PARAMS);
+      const credentialStatus = await api.byokCredentialStatus(budgetId);
+      setHasServerCredential(credentialStatus.configured);
       let epoch: number;
       for (let attempt = 0; ; attempt++) {
         const nextEpoch = e2ee.getTierMeta().epoch + 1;
         const wrappedDek = await wrapDek(dek, kek, dekWrapAadContext(budgetId, nextEpoch));
         const snapshotBlob = await e2ee.encryptSnapshot(ledger, dek, { budgetId, epoch: nextEpoch, uptoSeq: 0 });
+        const credentialAction = await prepareEnableCredentialAction({
+          configured: credentialStatus.configured,
+          key: submittedOpenAIKey,
+          budgetId,
+          nextEpoch,
+          dek,
+        });
         try {
-          ({ epoch } = await api.e2eeEnable({ wrappedDek, kdfParams: freshKdfParams(salt), snapshotBlob, userId, budgetId, nextEpoch }));
+          ({ epoch } = await api.e2eeEnable({
+            wrappedDek,
+            kdfParams: freshKdfParams(salt),
+            snapshotBlob,
+            userId,
+            budgetId,
+            nextEpoch,
+            credentialAction,
+          }));
           break;
         } catch (err) {
           // 409 tier_mismatch with tier "plain" = only our epoch expectation was stale
@@ -342,10 +373,12 @@ function E2eeEnableWizard() {
       void persist.persistLedger(store.snapshotForPersist());
       void broadcastKeysChanged(); // peer tabs pick up the fresh key state before their next cycle
       void syncNow("e2ee-enable"); // backlogged outbox ops go out via a normal v2 push
+      setOpenAIKey("");
       setSheet(false); // the section switches to the e2ee panel (statusOn = confirmation)
     } catch (e) {
       setError(`${t("Enabling failed — nothing was changed, your data stays as it was.")} ${apiErrorMessage(e)}`);
     } finally {
+      submittedOpenAIKey = "";
       setBusy(false);
     }
   };
@@ -368,13 +401,19 @@ function E2eeEnableWizard() {
         <ActionRow
           icon={<ActionIcon paths={IC.shield} />}
           label={t("Enable end-to-end encryption")}
-          desc={t("Budget data will be encrypted on your device before it reaches the server. Server-side features will be unavailable.")}
+          desc={
+            hasServerCredential
+              ? t(
+                  "Your Own OpenAI key will move into the encrypted budget. Re-enter it once because the server vault cannot return the old key; Enveo will store only ciphertext after the switch.",
+                )
+              : t("Budget data will be encrypted on your device before it reaches the server. Server-side features will be unavailable.")
+          }
           onClick={open}
           chevron
         />
       </ActionGroup>
 
-      <Sheet show={sheet} onClose={() => !busy && setSheet(false)}>
+      <Sheet show={sheet} onClose={close}>
         {(SC) => (
           <div>
             <div style={{ fontSize: 16.5, fontWeight: 700, color: SC.text, marginBottom: 6 }}>{t("Enable end-to-end encryption")}</div>
@@ -383,7 +422,7 @@ function E2eeEnableWizard() {
                 {/* STEP 1 — explanation + FORCED JSON export (Next disabled without the checkbox) */}
                 <div style={{ fontSize: 12.5, color: SC.soft, lineHeight: 1.6, marginBottom: 12 }}>
                   {t(
-                    "Once enabled, the server stores ciphertexts only. The key is your password, which the server does NOT know — without it (or a pairing code from a trusted device) the data cannot be recovered.",
+                    "Once enabled, the server stores ciphertexts only. The key is your password, which the server does NOT know — without it (or a pairing code from another unlocked device) the data cannot be recovered.",
                   )}
                 </div>
                 <div style={{ fontSize: 12.5, color: SC.text, fontWeight: 600, lineHeight: 1.6, marginBottom: 12 }}>
@@ -419,7 +458,7 @@ function E2eeEnableWizard() {
                 </div>
                 {error && <div style={{ fontSize: 12, color: CORAL, marginTop: 10, lineHeight: 1.5 }}>{error}</div>}
                 <button
-                  onClick={() => setSheet(false)}
+                  onClick={close}
                   style={{
                     width: "100%",
                     marginTop: 12,
@@ -452,6 +491,17 @@ function E2eeEnableWizard() {
                   style={inputStyle(SC)}
                 />
                 <StrengthMeter pass={pass} />
+                {hasServerCredential && (
+                  <input
+                    type="password"
+                    value={openAIKey}
+                    onChange={(e) => setOpenAIKey(e.target.value)}
+                    placeholder={t("Re-enter your OpenAI API key")}
+                    autoComplete="off"
+                    aria-label={t("Re-enter your OpenAI API key")}
+                    style={{ ...inputStyle(SC), marginTop: 10 }}
+                  />
+                )}
                 <input
                   type="password"
                   value={pass2}
@@ -468,7 +518,7 @@ function E2eeEnableWizard() {
                       icon={<ActionIcon paths={IC.shield} />}
                       label={t("Encrypt and enable")}
                       onClick={() => void run()}
-                      disabled={busy || passStrength(pass) === 0 || pass !== pass2}
+                      disabled={busy || passStrength(pass) === 0 || pass !== pass2 || (hasServerCredential && openAIKey.trim().length === 0)}
                       busyLabel={busy ? t("Encrypting…") : undefined}
                     />
                   </ActionGroup>
@@ -517,6 +567,11 @@ function E2eeManage() {
       </ActionGroup>
       <div style={{ fontSize: 11.5, color: C.soft, lineHeight: 1.5, margin: "8px 4px 0" }}>
         {t("Enabled — the server stores only encrypted data and never knows your password or key.")}
+      </div>
+      <div style={{ fontSize: 11.5, color: C.soft, lineHeight: 1.5, margin: "8px 4px 0" }}>
+        {t(
+          "Own OpenAI is encrypted by the same budget key. After unlocking on another device it works there too, while Enveo still cannot decrypt the credential.",
+        )}
       </div>
     </>
   );
@@ -757,7 +812,7 @@ function E2eePairCode() {
           <div>
             <div style={{ fontSize: 16.5, fontWeight: 700, color: SC.text, marginBottom: 8 }}>{t("Pairing code")}</div>
             <div style={{ fontSize: 12.5, color: CORAL, lineHeight: 1.6, marginBottom: 14 }}>
-              {t("This code contains your encryption key in plain form. Show it only on your own trusted device — anyone with the code can read the budget.")}
+              {t("This code contains your encryption key in plain form. Show it only on your own private device — anyone with the code can read the budget.")}
             </div>
             {code && svg ? (
               <>
@@ -844,7 +899,21 @@ function E2eeDisable() {
       // rebuilds the session budget's rows from it: a full-budget overwrite (see assertOwnReplica).
       // The verified user id travels WITH the write — the check and the upload are two requests.
       const userId = await assertOwnReplica();
-      const { epoch } = await api.e2eeDisable({ confirm: E2EE_DISABLE_CONFIRM, ledger, userId });
+      const budgetId = store.getBudgetId();
+      if (!budgetId) throw new Error("foreign_replica");
+      const tierMeta = e2ee.getTierMeta();
+      if (tierMeta.tier !== "e2ee") throw new Error("tier_mismatch");
+      const dek = e2ee.requireValidatedDek(tierMeta.epoch);
+      const credentialRecord = await api.e2eeByokCredentialGet(budgetId);
+      const credentialAction = await prepareDisableCredentialAction({ record: credentialRecord, budgetId, epoch: tierMeta.epoch, dek });
+      const { epoch } = await api.e2eeDisable({
+        confirm: E2EE_DISABLE_CONFIRM,
+        ledger,
+        userId,
+        budgetId,
+        expectedEpoch: tierMeta.epoch,
+        credentialAction,
+      });
       // return to the v1 path ONLY after server success; the local replica stays
       e2ee.clearDek();
       void broadcastKeysChanged(); // peer tabs drop the retired key
@@ -878,6 +947,9 @@ function E2eeDisable() {
             <div style={{ fontSize: 15, fontWeight: 700, color: CORAL, marginBottom: 8 }}>{t("Disable end-to-end encryption?")}</div>
             <div style={{ fontSize: 12.5, color: SC.soft, lineHeight: 1.6, marginBottom: 14 }}>
               {t("Your data will be decrypted and stored on the server in plain form (as before enabling). Make sure you have a current backup.")}
+            </div>
+            <div style={{ fontSize: 12.5, color: SC.soft, lineHeight: 1.6, marginBottom: 14 }}>
+              {t("If Own OpenAI is configured, its key moves from zero-knowledge ciphertext into the server vault in the same atomic operation.")}
             </div>
             <div style={{ fontSize: 11, color: SC.mute, marginBottom: 6 }}>
               <ConfirmWordHint word={t("DISABLE-E2EE")} />

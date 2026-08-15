@@ -1,11 +1,11 @@
 import { useState } from "react";
 import { LogoMark } from "../components/chrome";
-import { signOutKeepingReplica } from "../lib/auth";
+import { endSession } from "../lib/auth";
 import { useTheme } from "../lib/contexts";
 import { exportBackup } from "../lib/data";
-import { getCachedDeployment } from "../lib/deviceTrust";
+import { getCachedDeployment } from "../lib/deviceStoragePolicy";
 import { useT } from "../lib/i18n";
-import { discardLocalReplica, enterLoginKeepingReplica } from "../lib/sync";
+import { discardLocalReplica, enterLoginPreservingReplica } from "../lib/sync";
 import { CORAL, font, TEAL } from "../lib/theme";
 
 /**
@@ -13,8 +13,8 @@ import { CORAL, font, TEAL } from "../lib/theme";
  * account than the one signed in (see the multi-tenant guard in sync.ts). Every server write is
  * already blocked; this screen exists because the remaining decision is NOT the app's to make:
  *
- *  - the local replica may be the LAST copy of that budget (local mode "wiped" deletes the
- *    server's copy on purpose, and the outbox can hold ops the server has never seen),
+ *  - the local replica may be the LAST copy of that budget (for example after offline edits or a
+ *    server rebuild),
  *  - a user id is not stable across a server rebuild — a self-hoster who lost the database and
  *    re-registered with the same e-mail gets a NEW uuid, and their phone's complete replica would
  *    look "foreign" while being exactly the data they are trying to recover.
@@ -34,7 +34,7 @@ export function ForeignReplicaScreen() {
 
   // CLOUD: no export button. The server is the durable copy of that account's budget (operator
   // backups), and "download the previous user's whole ledger without being them" is exactly the
-  // shared-computer hole the device-trust model closes. SELFHOST keeps the export: the replica
+  // shared-computer hole the session-storage policy closes. SELFHOST keeps the export: the replica
   // there may be the LAST copy (see the header comment) and the rescue path must stay.
   const cloud = getCachedDeployment() === "cloud";
 
@@ -51,7 +51,7 @@ export function ForeignReplicaScreen() {
     setBusy(true);
     setError(null);
     try {
-      await discardLocalReplica(); // clears IDB + outbox + local mode, then reloads
+      await discardLocalReplica(); // clears IDB + outbox, then reloads
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
       setBusy(false);
@@ -65,7 +65,8 @@ export function ForeignReplicaScreen() {
     setBusy(true);
     setError(null);
     try {
-      await signOutKeepingReplica(enterLoginKeepingReplica); // → Login; the replica stays
+      await endSession();
+      enterLoginPreservingReplica(); // → Login; the foreign replica stays
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {

@@ -15,8 +15,8 @@
  * NOTHING is destroyed unattended. Only the userId STAMP can prove a replica FOREIGN, and even
  * that verdict merely BLOCKS every server write and hands the decision to the human (BootStatus
  * "foreign" → ForeignReplicaScreen: export a backup / remove and continue): the replica can be
- * the last copy of that budget (local mode "wiped" deleted the server's), and a user id does not
- * survive a server rebuild (same e-mail, new uuid). A failed proof for an UNSTAMPED replica — a
+ * the last copy of that budget, and a user id does not survive a server rebuild (same e-mail,
+ * new uuid). A failed proof for an UNSTAMPED replica — a
  * budgetId that differs, a checkpoint its DEK cannot open — is merely inconclusive (budgetId is
  * the epoch marker and the session's budget may have just been lazily created), so it refuses
  * every write too. And an UNBOUND replica (no budgetId at all) is adopted only where adoption
@@ -26,8 +26,9 @@
  * installs no triggers — the cycle can be driven directly with syncNow().
  */
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import type { ClientLedger, SyncOp } from "@enveo/shared";
-import { decryptPayload, generateDek, opAadContext } from "./crypto";
+import { type ClientLedger, createDefaultAccountPreferences, type SyncOp } from "@enveo/shared";
+import { accountPreferences } from "./accountPreferences";
+import { budgetSecretAadContext, decryptPayload, encryptPayload, generateDek, opAadContext } from "./crypto";
 import * as e2ee from "./e2ee";
 import { clearLocalData, idbGet, idbPut } from "./idb";
 import * as outbox from "./outbox";
@@ -37,13 +38,11 @@ import {
   __resetBackoff,
   __resetIdentity,
   __resetObligations,
-  __setLocalMode,
   assertOwnReplica,
-  disableLocal,
+  clearLocalAccountData,
   discardLocalReplica,
-  enterLoginKeepingReplica,
+  enterLoginPreservingReplica,
   flushOutboxForSignOut,
-  getLocalMode,
   getSyncStatus,
   hasPendingE2eeUpgrade,
   markReplacePending,
@@ -120,10 +119,13 @@ let serverUpgradeRequired = false;
 let serverEpoch = 1;
 /** Raw JSON bodies POSTed to /budget/e2ee/upgrade-v2 — F2 asserts retry bodies byte-identical. */
 let upgradeCalls: string[] = [];
+let serverUpgradeCredential: string | null = null;
 /** Simulate a network failure on the upgrade endpoint (fetch never completes). */
 let upgradeNetworkFail = false;
 /** Runs INSIDE the fake upgrade endpoint before it answers — a "second tab edits mid-ceremony". */
 let onUpgrade: (() => void) | null = null;
+let serverAccountPreferences = createDefaultAccountPreferences();
+let serverAccountPreferencesRevision = 0;
 const upgradeRequired = (): Response => conflict({ error: "e2ee_upgrade_required", tier: "e2ee", epoch: 1, cipherVersion: 1, budgetId: serverBudget });
 const realFetch = globalThis.fetch;
 const json = (body: unknown): Response => new Response(JSON.stringify(body), { status: 200, headers: { "content-type": "application/json" } });
@@ -180,13 +182,27 @@ beforeEach(async () => {
   serverUpgradeRequired = false;
   serverEpoch = 1;
   upgradeCalls = [];
+  serverUpgradeCredential = null;
   upgradeNetworkFail = false;
   onUpgrade = null;
+  serverAccountPreferences = createDefaultAccountPreferences();
+  serverAccountPreferencesRevision = 0;
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
     calls.push(url);
     if (offline) throw new TypeError("offline"); // network failure — NOT a "signed out" answer
     if (url.startsWith("/api/auth/get-session")) return json(session); // 200 + `null` = no session
+    if (url.startsWith("/api/preferences/account")) {
+      if (!session) return new Response(JSON.stringify({ error: "unauthorized" }), { status: 401 });
+      if (init?.method === "PATCH") {
+        const body = JSON.parse(String(init.body ?? "{}")) as { userId?: string; patch?: Partial<typeof serverAccountPreferences> };
+        const refused = ownerMismatch(body.userId);
+        if (refused) return refused;
+        serverAccountPreferences = { ...serverAccountPreferences, ...body.patch };
+        serverAccountPreferencesRevision++;
+      }
+      return json({ ...serverAccountPreferences, revision: serverAccountPreferencesRevision });
+    }
     if (url.startsWith("/api/sync2/")) {
       if (serverIsPlain) return tierMismatch();
       if (serverUpgradeRequired) return upgradeRequired();
@@ -240,6 +256,14 @@ beforeEach(async () => {
       }
     }
     if (url.startsWith("/api/budget/e2ee/upgrade-v2")) {
+      if (init?.method !== "POST") {
+        return json({
+          configured: serverUpgradeCredential !== null,
+          budgetId: serverBudget,
+          epoch: serverEpoch,
+          ...(serverUpgradeCredential ? { ciphertext: serverUpgradeCredential } : {}),
+        });
+      }
       const rawBody = String(init?.body ?? "{}");
       upgradeCalls.push(rawBody); // recorded BEFORE any simulated failure — F2 compares bodies
       if (upgradeNetworkFail) throw new TypeError("network failure mid-ceremony");
@@ -291,13 +315,13 @@ beforeEach(async () => {
   __resetIdentity();
   __resetObligations();
   __resetBackoff();
-  __setLocalMode("off");
   outbox.clearAll();
   e2ee.__resetDekForTests();
   e2ee.clearDek();
   e2ee.resetOpsCounter(); // the checkpoint counter is module state — it outlives clearLocalData
   e2ee.setTierMeta({ tier: "plain", epoch: 0 });
   e2ee.setCipherVersion(2); // module state — a previous test's recorded legacy format must not leak
+  await accountPreferences.clear();
   await clearLocalData(); // no stamp, no ledger blob — each test sets up its own
   store.replace(emptyLedger(), 0, BUDGET_A); // a booted replica of budget A
   store.setBootStatus("ready");
@@ -309,6 +333,7 @@ afterEach(() => {
   __resetBackoff(); // a scheduled retry would fire into the NEXT test's stub (and its `calls`)
   globalThis.fetch = realFetch;
   delete (globalThis as { location?: unknown }).location;
+  delete (globalThis as { localStorage?: unknown }).localStorage;
 });
 
 /* ── Pure decision: decideIdentity moved to sync/identity.test.ts with its module ── */
@@ -345,7 +370,7 @@ describe("sync cycle: session guard before the push", () => {
     expect(outbox.size()).toBe(1); // …and A's unsent op with it
   });
 
-  it("the previous owner can sign back in — the sign-out KEEPS the replica", async () => {
+  it("the previous owner can sign back in after the protected foreign-session exit", async () => {
     // The non-destructive way off ForeignReplicaScreen (and the reason "destroy nothing" is not a
     // dead end): the app is not rendered there, so Settings → sign out is unreachable.
     await idbPut("meta", "user-A", "userId");
@@ -354,8 +379,8 @@ describe("sync cycle: session guard before the push", () => {
     await expect(assertOwnReplica()).rejects.toThrow();
     expect(store.getBootStatus()).toBe("foreign");
 
-    session = null; // auth.signOutKeepingReplica ends the session, then calls this:
-    enterLoginKeepingReplica();
+    session = null; // session expiry returns to Login without clearing the replica:
+    enterLoginPreservingReplica();
 
     expect(store.getBootStatus()).toBe("unauthed"); // Login — A can sign back in
     expect(await idbGet("meta", "ledger")).toBeDefined(); // …with the replica untouched
@@ -368,8 +393,7 @@ describe("sync cycle: session guard before the push", () => {
     expect(store.getBootStatus()).toBe("ready");
   });
 
-  it("only the human's explicit choice destroys a foreign replica (and it clears local mode)", async () => {
-    __setLocalMode("wiped"); // the previous owner's choice — the server holds nothing of theirs
+  it("only the human's explicit choice destroys a foreign replica", async () => {
     await idbPut("meta", "user-A", "userId");
     outbox.add(catOp());
     session = { user: { id: "user-B" } };
@@ -382,9 +406,6 @@ describe("sync cycle: session guard before the push", () => {
     expect(await idbGet("meta", "ledger")).toBeUndefined(); // now, and only now, it is gone
     expect(await idbGet("meta", "userId")).toBeUndefined();
     expect(outbox.size()).toBe(0);
-    // The local-mode flag was the PREVIOUS owner's: left at "wiped", B would boot network-free on
-    // an empty unbound replica and "Disable local mode" would upload it over B's server budget.
-    expect(getLocalMode()).toBe("off");
   });
 
   it("same account → the cycle runs and the owner stamp is (re)written", async () => {
@@ -401,7 +422,39 @@ describe("sync cycle: session guard before the push", () => {
     expect(store.getBootStatus()).toBe("ready");
   });
 
-  it("server replace outside a cycle (disable local mode) is guarded too", async () => {
+  it("an offline attempt keeps the outbox and a later trigger retries it", async () => {
+    await idbPut("meta", "user-A", "userId");
+    const op = catOp();
+    outbox.add(op);
+    session = { user: { id: "user-A" } };
+    offline = true;
+
+    await syncNow("offline-attempt");
+
+    expect(outbox.snapshot().map((queued) => queued.op.opId)).toEqual([op.opId]);
+    expect(wrote(BUDGET_A)).toEqual([]);
+
+    offline = false;
+    await syncNow("online-trigger");
+
+    expect(outbox.size()).toBe(0);
+    expect(wrote(BUDGET_A)).toContain(op.opId);
+  });
+
+  it("syncs an offline account preference only after the replica owner is verified", async () => {
+    await idbPut("meta", "user-A", "userId");
+    session = { user: { id: "user-A" } };
+    await accountPreferences.hydrateForUser("user-A");
+    await accountPreferences.update({ lang: "pl" });
+
+    await syncNow("test");
+
+    expect(serverAccountPreferences.lang).toBe("pl");
+    expect(called("/api/preferences/account")).toBe(true);
+    expect(accountPreferences.getCacheForTests()?.dirty).toEqual({});
+  });
+
+  it("server replace outside a cycle is guarded too", async () => {
     await idbPut("meta", "user-A", "userId");
     session = { user: { id: "user-B" } };
 
@@ -409,34 +462,6 @@ describe("sync cycle: session guard before the push", () => {
     expect(called("/api/sync/replace")).toBe(false);
     expect(store.getBootStatus()).toBe("foreign");
     expect(await idbGet("meta", "ledger")).toBeDefined(); // …and A's data is still here
-  });
-});
-
-/* ── The foreign verdict must not destroy the LAST copy of a budget ──────
- *
- * In local mode "wiped" the server data was deliberately deleted, so the IDB replica is the ONLY
- * copy — and the mode makes boot skip the network entirely, so the foreign replica surfaces only
- * when someone taps "Disable local mode". Wiping there (the first cut of this guard did) destroys
- * the budget outright: local gone, server empty by design. The same holds for a self-hoster who
- * rebuilt their server and got a NEW user id for the same e-mail — the "foreign" stamp is then a
- * false positive over the very data the rebuild is meant to recover. */
-
-describe("sync: a foreign replica in local mode 'wiped' (the only copy left)", () => {
-  it("'Disable local mode' as another user destroys nothing — it blocks and asks", async () => {
-    __setLocalMode("wiped"); // A deleted the server copy; IDB holds the only one
-    await idbPut("meta", "user-A", "userId");
-    outbox.add(catOp());
-    session = { user: { id: "user-B" } }; // A's cookie lapsed; B signed in on the shared device
-
-    await expect(disableLocal()).rejects.toThrow(); // "foreign" → refused
-
-    expect(called("/api/sync/replace")).toBe(false); // A's ledger does NOT overwrite B's budget
-    expect(store.getBootStatus()).toBe("foreign"); // …the human is asked what to do with it
-    expect(reloads).toBe(0);
-    expect(getLocalMode()).toBe("wiped"); // still A's mode — nothing was silently switched
-    await persist.flushed();
-    expect(await idbGet("meta", "ledger")).toBeDefined(); // the LAST copy of A's budget survives
-    expect(outbox.size()).toBe(1);
   });
 });
 
@@ -511,7 +536,7 @@ describe("sync cycle: replica with no owner stamp", () => {
     expect(called("/api/sync/replace")).toBe(false); // B's budget is NOT overwritten
   });
 
-  it("pushLocalToServer (import / disable local mode) proves ownership as well", async () => {
+  it("pushLocalToServer (backup import) proves ownership as well", async () => {
     session = { user: { id: "user-B" } };
     serverBudget = BUDGET_B;
 
@@ -536,15 +561,14 @@ describe("sync cycle: replica with no owner stamp", () => {
  *
  * "No budgetId" points at no account — neither this one nor another. Adopting it authorizes
  * /sync/replace, which WIPES the session user's budget and re-inserts this replica; such a
- * replica is reachable ("Clear local data" in local mode leaves exactly an empty unbound one, and
- * an offline start then fills it with data), so the proof must be about what a wrong answer would
+ * replica is reachable after local data is cleared and an offline start fills it again, so the
+ * proof must be about what a wrong answer would
  * COST: an empty session budget has nothing to lose, one that holds data has everything. */
 
 describe("sync: an UNBOUND replica (no budgetId)", () => {
   it("is refused against a session budget that HOLDS DATA (no cross-tenant overwrite)", async () => {
-    // The chain: A's device, "Clear local data" while in local mode (mirror + owner stamp gone,
-    // budgetId with them), data created offline again → an unbound, unstamped, NON-empty replica.
-    // A's session lapses, B signs in, B taps "Disable local mode" → pushLocalToServer.
+    // The chain: A's device clears its mirror, owner stamp and budgetId, then creates data offline
+    // again → an unbound, unstamped, NON-empty replica. A's session lapses and B signs in.
     store.replace(nonEmptyLedger(), 0, ""); // data bound to no budget, stamped by nobody
     await persist.persistLedger(store.snapshotForPersist());
     session = { user: { id: "user-B" } };
@@ -569,23 +593,6 @@ describe("sync: an UNBOUND replica (no budgetId)", () => {
     expect(wrote(BUDGET_A)).toEqual(["replace"]); // the offline data lands in the empty budget
     await persist.flushed();
     expect(await idbGet<string>("meta", "userId")).toBe("user-B");
-  });
-
-  it("'Disable local mode' on an EMPTY unbound replica never replaces the server with nothing", async () => {
-    // The chain the foreign-wipe used to open: IDB cleared (mirror + stamp gone) while the mode
-    // was on → bootLocalReady puts an EMPTY_LEDGER with no budgetId in place → the user signs in
-    // → "Disable local mode" would upload THAT over the session user's whole budget.
-    __setLocalMode("wiped");
-    await clearLocalData();
-    store.replace(emptyLedger(), 0, ""); // exactly what bootLocalReady leaves behind
-    session = { user: { id: "user-B" } };
-    serverHasData = true; // B's budget is full of B's data
-
-    await disableLocal();
-
-    expect(called("/api/sync/replace")).toBe(false); // B's budget survives untouched
-    expect(getLocalMode()).toBe("off"); // …and the device leaves local mode anyway
-    expect(reloads).toBe(1); // boot bootstraps B's data from the server
   });
 });
 
@@ -754,22 +761,10 @@ describe("sync status: ownerUnproven is sticky across the re-proof", () => {
     await syncNow("test");
     expect(getSyncStatus().ownerUnproven).toBe(true);
 
-    enterLoginKeepingReplica(); // the replica stays; the next session proves it from scratch
+    enterLoginPreservingReplica(); // the replica stays; the next session proves it from scratch
 
     expect(getSyncStatus().ownerUnproven).toBe(false);
     expect(getSyncStatus().state).toBe("unauthed");
-  });
-
-  it("clears in local mode — there sync is off by the user's own choice", async () => {
-    session = { user: { id: "user-owner" } };
-    serverBudget = BUDGET_B;
-    await syncNow("test");
-    expect(getSyncStatus().ownerUnproven).toBe(true);
-
-    __setLocalMode("paused"); // "Work offline": the local-mode text explains the silence instead
-
-    expect(getSyncStatus().ownerUnproven).toBe(false);
-    expect(getSyncStatus().state).toBe("local");
   });
 });
 
@@ -873,10 +868,8 @@ describe("sync pull: a resync never replaces the mirror on an unverified session
 /* ── BOOT is the READ side: the app must not render a foreign replica ─────
  *
  * boot() hydrates from IDB and sets BootStatus "ready" BEFORE the first cycle runs, so the guard
- * that protects writes cannot protect the screen. The ways a device changes hands are routine (a
- * 90-day cookie expires → Login; sign-out keeps the replica → Login; the next account signs in),
- * and in local mode doCycle bails before ensureIdentity ever runs — there the window would never
- * close at all. */
+ * that protects writes cannot protect the screen. A session can expire while a persistent replica
+ * remains; the next authenticated account must never see it before ownership is checked. */
 
 describe("sync boot: the replica's owner is checked BEFORE it is rendered", () => {
   it("another account signed in → ForeignReplicaScreen, not the previous owner's budget", async () => {
@@ -895,12 +888,15 @@ describe("sync boot: the replica's owner is checked BEFORE it is rendered", () =
     await idbPut("meta", "user-A", "userId");
     outbox.add(catOp());
     session = null; // a routine 90-day expiry
+    e2ee.setTierMeta({ tier: "e2ee", epoch: 3 });
+    e2ee.setDek(generateDek(), 3);
 
     await retryBoot();
 
     expect(store.getBootStatus()).toBe("unauthed"); // LoginScreen
     expect(outbox.size()).toBe(1); // signing back in resumes the push
     expect(await idbGet("meta", "ledger")).toBeDefined();
+    expect(e2ee.isDekValidForEpoch(3)).toBe(true); // re-auth + unlock policy, not destructive sign-out
   });
 
   it("the same account → the replica boots normally (the check is not a new refusal)", async () => {
@@ -933,33 +929,6 @@ describe("sync boot: the replica's owner is checked BEFORE it is rendered", () =
     await syncNow("drain"); // join the cycle boot fired, so its backoff timer is deterministic
 
     expect(store.getBootStatus()).toBe("ready");
-  });
-
-  it("LOCAL MODE + another account → foreign (no cycle ever runs there to catch it)", async () => {
-    // doCycle bails on `localMode !== "off"` BEFORE the identity checks, so without the boot-time
-    // guard the previous owner's budget would simply BE the app — permanently.
-    __setLocalMode("paused");
-    await idbPut("meta", "user-A", "userId");
-    session = { user: { id: "user-B" } };
-
-    await retryBoot();
-
-    expect(store.getBootStatus()).toBe("foreign");
-    expect(await idbGet("meta", "ledger")).toBeDefined(); // …blocked, not destroyed
-  });
-
-  it("LOCAL MODE + no session → the replica still boots (the server may be gone for good)", async () => {
-    // Mode "wiped" DELETED the server's copy on purpose: IDB holds the only one. Forcing Login
-    // (the normal-mode answer) would lock the owner out of their own budget. Nobody else is
-    // claiming the device either — a sign-in needs the server.
-    __setLocalMode("wiped");
-    await idbPut("meta", "user-A", "userId");
-    session = null;
-
-    await retryBoot();
-
-    expect(store.getBootStatus()).toBe("ready");
-    expect(called("/api/sync/snapshot")).toBe(false); // still no data egress in local mode
   });
 });
 
@@ -1264,6 +1233,45 @@ describe("sync e2ee v2: DEK lifecycle across an epoch change", () => {
     expect(e2ee.getCipherVersion()).toBe(2);
   });
 
+  it("rotates a quarantined legacy BYOK key into the new E2EE generation and removes plaintext only after success", async () => {
+    await stampedReplica(1);
+    e2ee.setCipherVersion(1);
+    const values = new Map([["enveo.settings", JSON.stringify({ aiMode: "byok", openaiKey: "sk-legacy-local", openaiModel: "gpt-5.6-luna" })]]);
+    (globalThis as { localStorage?: unknown }).localStorage = {
+      getItem: (key: string) => values.get(key) ?? null,
+      removeItem: (key: string) => values.delete(key),
+    };
+
+    upgradeNetworkFail = true;
+    await expect(upgradeServerE2eeV2("ceremony-pass-123")).rejects.toThrow();
+    expect(values.has("enveo.settings")).toBe(true);
+    upgradeNetworkFail = false;
+    await upgradeServerE2eeV2(null);
+
+    expect(upgradeCalls[1]).toBe(upgradeCalls[0]);
+    const sent = JSON.parse(upgradeCalls[1]!) as { credentialAction: { kind: string; ciphertext: string } };
+    expect(sent.credentialAction.kind).toBe("legacy-local-to-e2ee");
+    expect(await decryptPayload(sent.credentialAction.ciphertext, e2ee.requireValidatedDek(2), budgetSecretAadContext(BUDGET_V2, 2, "openai"))).toBe(
+      "sk-legacy-local",
+    );
+    expect(values.has("enveo.settings")).toBe(false);
+  });
+
+  it("re-encrypts an existing server E2EE credential with the fresh DEK and next epoch", async () => {
+    await stampedReplica(1);
+    e2ee.setCipherVersion(1);
+    serverUpgradeCredential = await encryptPayload("sk-server-generation-one", oldDek, budgetSecretAadContext(BUDGET_V2, 1, "openai"));
+
+    await upgradeServerE2eeV2("ceremony-pass-123");
+
+    const sent = JSON.parse(upgradeCalls[0]!) as { credentialAction: { kind: string; ciphertext: string } };
+    expect(sent.credentialAction.kind).toBe("e2ee-to-next-epoch");
+    expect(await decryptPayload(sent.credentialAction.ciphertext, e2ee.requireValidatedDek(2), budgetSecretAadContext(BUDGET_V2, 2, "openai"))).toBe(
+      "sk-server-generation-one",
+    );
+    await expect(decryptPayload(serverUpgradeCredential, e2ee.requireValidatedDek(2), budgetSecretAadContext(BUDGET_V2, 2, "openai"))).rejects.toThrow();
+  });
+
   it("F2: a stale-epoch refusal drops the intent (it can never commit) — a fresh attempt may start over", async () => {
     await stampedReplica(1);
     e2ee.setCipherVersion(1);
@@ -1352,10 +1360,8 @@ describe("sync e2ee v2: DEK lifecycle across an epoch change", () => {
 
 describe("sync: 401 on an out-of-cycle write routes to Login", () => {
   it("pushLocalToServer with no session → BootStatus unauthed (not a raw error string)", async () => {
-    // The 2.0 upgrade path of a device in local mode "wiped": the server data was deliberately
-    // deleted, so the IDB replica is the ONLY copy — and boot in local mode makes NO network
-    // call, so nothing else can put the Login screen on screen. Without this, "Disable local
-    // mode" ends in "unauthorized: 401" and the only offered remedy destroys the sole copy.
+    // An out-of-cycle full replacement must classify 401 exactly like the regular cycle so the
+    // app reaches Login while retaining the local replica and queued work.
     session = null;
     await idbPut("meta", "user-A", "userId");
 
@@ -1559,9 +1565,19 @@ describe("sync: full-budget overwrites carry the verified owner", () => {
   });
 });
 
-/* ── Cloud sign-out: pre-wipe outbox flush ──────────────────────────────── */
+/* ── Explicit sign-out: pre-wipe outbox flush ──────────────────────────── */
 
-describe("flushOutboxForSignOut (cloud sign-out wipes the replica afterwards)", () => {
+describe("flushOutboxForSignOut (explicit sign-out clears the replica afterwards)", () => {
+  it("the explicit local-account wipe clears the in-memory DEK with the replica", async () => {
+    e2ee.setTierMeta({ tier: "e2ee", epoch: 3 });
+    e2ee.setDek(generateDek(), 3);
+
+    await clearLocalAccountData();
+
+    expect(e2ee.getDek()).toBeNull();
+    expect(store.getLedger()).toBeNull();
+  });
+
   it("pushes the queue and reports 0 left — the wipe loses nothing", async () => {
     await idbPut("meta", "user-A", "userId");
     session = { user: { id: "user-A" } };

@@ -20,11 +20,8 @@ export const sv: Dict = {
   "A profile with this name already exists.": "Det finns redan en profil med det här namnet.",
   AI: "AI",
   "AI (corrected)": "AI (korrigerad)",
-  "AI is not set up on this device. Pick a mode in Settings → Artificial intelligence (with your own key, paste it there).":
-    "AI är inte konfigurerat på den här enheten. Välj ett läge i Inställningar → Artificiell intelligens (med egen nyckel klistrar du in den där).",
   "AI is off — suggestions run locally on rules; nothing leaves this device.":
     "AI är av — förslagen räknas ut lokalt med regler; ingenting lämnar den här enheten.",
-  "AI mode, your own key": "AI-läge, egen nyckel",
   "AI requests go to OpenAI through the app server (operator's key).": "AI-anrop går till OpenAI via appens server (operatörens nyckel).",
   "AI unavailable — rules were used instead.": "AI är inte tillgängligt — regler användes i stället.",
   AVAILABLE: "TILLGÄNGLIGT",
@@ -56,7 +53,6 @@ export const sv: Dict = {
   "Add {n} transaction | Add {n} transactions": { one: "Lägg till {n} transaktion", other: "Lägg till {n} transaktioner" },
   "Added {n} transaction | Added {n} transactions": { one: "{n} transaktion tillagd", other: "{n} transaktioner tillagda" },
   "Adding…": "Lägger till…",
-  Advanced: "Avancerat",
   "Afterwards, other devices must unlock again with the new password or a fresh pairing code — old pairing codes stop working.":
     "Efteråt måste andra enheter låsas upp igen med det nya lösenordet eller en färsk parkopplingskod — gamla parkopplingskoder slutar fungera.",
   "All goals funded ✓": "Alla mål finansierade ✓",
@@ -68,7 +64,6 @@ export const sv: Dict = {
   "An upgrade or a restore is in progress: the account's budget on the server is not this device's budget yet. Once it is, sync will resume by itself.":
     "En uppgradering eller en återställning pågår: kontots budget på servern är ännu inte den här enhetens budget. Så snart den är det återupptas synkroniseringen av sig själv.",
   "Another account's data": "Data från ett annat konto",
-  Appearance: "Utseende",
   "Apple Wallet or bank history — AI will recognize the transactions, duplicates will be skipped":
     "Apple Wallet eller bankens historik — AI känner igen transaktionerna, dubbletter hoppas över",
   "Apply ({n})": "Använd ({n})",
@@ -108,7 +103,6 @@ export const sv: Dict = {
   Change: "Ändra",
   "Change encryption password": "Byt krypteringslösenord",
   "Change password": "Byt lösenord",
-  "Changes are saved locally and will be sent after you resume.": "Ändringarna sparas lokalt och skickas när du återupptar.",
   "Changing…": "Ändrar…",
   "Check again": "Kontrollera igen",
   "Checking which models your key can use…": "Kontrollerar vilka modeller din nyckel kan använda…",
@@ -120,11 +114,6 @@ export const sv: Dict = {
   Cisza: "Stillhet",
   "Clear & reset": "Töm och nollställ",
   "Clear filters": "Rensa filtren",
-  "Clear local data": "Rensa lokala data",
-  "Clear local data? In local mode, unsent changes will be lost permanently. Make a backup first (Export). Continue?":
-    "Rensa lokala data? I lokalt läge går ändringar som inte skickats förlorade för alltid. Gör en säkerhetskopia först (Exportera). Fortsätta?",
-  "Clear local data? We will delete the local copy on this device and download everything anew from the server. Changes still waiting in the queue will be lost.":
-    "Rensa lokala data? Vi tar bort den lokala kopian på den här enheten och hämtar allt på nytt från servern. Ändringar som fortfarande står i kö går förlorade.",
   "Clear search": "Rensa sökningen",
   Close: "Stäng",
   Closed: "Stängda",
@@ -150,15 +139,9 @@ export const sv: Dict = {
   "Custom color": "Egen färg",
   "Custom envelope…": "Eget kuvert…",
   "Custom profiles are stored only on this device.": "Egna profiler sparas bara på den här enheten.",
-  "Cut the app off from the server. Choose how: work offline (server data stays) or keep your data only on this device.":
-    "Koppla bort appen från servern. Välj hur: arbeta offline (data på servern ligger kvar) eller behåll dina data enbart på den här enheten.",
-  DELETE: "RADERA",
   "DISABLE-E2EE": "E2EE-AV",
   Dark: "Mörkt",
-  Data: "Data",
   Delete: "Ta bort",
-  "Delete data from server": "Ta bort data från servern",
-  "Delete data from the server?": "Ta bort data från servern?",
   "Delete everything and start fresh": "Radera allt och börja om på nytt",
   "Delete everything and start over": "Ta bort allt och börja om",
   "Delete group": "Ta bort gruppen",
@@ -169,9 +152,6 @@ export const sv: Dict = {
   "Delete {name}": "Ta bort {name}",
   "Deletes ALL budget data from the server and this device — irreversible. Export a backup first. The app will reopen with the first-run wizard.":
     "Tar bort ALL budgetdata från servern och från den här enheten — går inte att ångra. Exportera en säkerhetskopia först. Appen öppnas sedan med startguiden.",
-  "Deletes the local copy on this device and downloads everything anew from the server. Use when something looks off.":
-    "Tar bort den lokala kopian på den här enheten och hämtar allt på nytt från servern. Använd det när något ser fel ut.",
-  "Deleting from server…": "Tar bort från servern…",
   "Deleting…": "Tar bort…",
   "Describe how to distribute (e.g. prioritize savings, less on entertainment)":
     "Beskriv hur pengarna ska fördelas (t.ex. prioritera sparande, mindre på nöjen)",
@@ -190,11 +170,6 @@ export const sv: Dict = {
     "Fördelar beloppet bara till kuvert som är på minus — i proportion till underskottet och aldrig förbi noll.",
   Done: "Klart",
   "Download a backup (JSON)": "Ladda ned en säkerhetskopia (JSON)",
-  "Download everything anew": "Hämta allt på nytt",
-  "Download everything anew from the server? We will replace the local copy with the current server state. Unsent changes in the queue will be kept and pushed.":
-    "Hämta allt på nytt från servern? Vi ersätter den lokala kopian med serverns nuvarande läge. Ändringar i kön som inte skickats behålls och skickas.",
-  "Downloads all your data as a file. Keep a backup, especially in local mode.":
-    "Laddar ned alla dina data som en fil. Spara en säkerhetskopia, särskilt i lokalt läge.",
   "Drag {name}": "Dra {name}",
   Duplicate: "Duplicera",
   "Duplicates skipped: {n}": "Överhoppade dubbletter: {n}",
@@ -207,7 +182,6 @@ export const sv: Dict = {
   "Edit names in place; drag the handle to reorder": "Redigera namnen på plats; dra i handtaget för att ändra ordningen",
   Email: "E-post",
   "Enable AI assistance?": "Aktivera AI-hjälpen?",
-  "Enable and delete server data": "Aktivera och ta bort data från servern",
   "Enable end-to-end encryption": "Aktivera totalsträckskryptering",
   "Enable via server": "Aktivera via servern",
   "Enabled — the server stores only encrypted data and never knows your password or key.":
@@ -237,7 +211,6 @@ export const sv: Dict = {
   "Finance & shopping": "Ekonomi och shopping",
   "Food & drink": "Mat och dryck",
   "From screenshot": "Från skärmbild",
-  "Full resync from the server. Use when data looks out of sync.": "Fullständig omsynkronisering från servern. Använd det när data ser osynkade ut.",
   Fun: "Nöje",
   "Generate suggestion": "Ta fram ett förslag",
   "Generating…": "Tar fram…",
@@ -264,8 +237,6 @@ export const sv: Dict = {
   "Install app": "Installera appen",
   "Invalid pairing code.": "Ogiltig parkopplingskod.",
   Investor: "Investerare",
-  "Irreversibly deletes data from the server; other devices will lose access. Make a backup first (Export).":
-    "Raderar data från servern permanent; andra enheter förlorar åtkomsten. Gör en säkerhetskopia först (Exportera).",
   "Item total: {sum} / {total}": "Summa rader: {sum} / {total}",
   Language: "Språk",
   "Last launch": "Senaste start",
@@ -278,9 +249,6 @@ export const sv: Dict = {
   "Load backup (JSON)": "Läs in säkerhetskopia (JSON)",
   "Loading sample data…": "Läser in exempeldata…",
   "Loading…": "Läser in…",
-  "Local mode": "Lokalt läge",
-  "Local mode — data deleted from server. Tap to open settings": "Lokalt läge — data borttagna från servern. Tryck för att öppna inställningarna",
-  "Local mode — sync paused. Tap to open settings": "Lokalt läge — synkroniseringen pausad. Tryck för att öppna inställningarna",
   "Losing the password means losing your data — the server cannot reset it or decrypt your budget.":
     "Att tappa lösenordet är att tappa dina data — servern kan varken återställa det eller dekryptera din budget.",
   "Lowest cost — a typical screenshot import costs a fraction of a cent.": "Lägst kostnad — en typisk skärmbildsimport kostar en bråkdel av en cent.",
@@ -324,14 +292,12 @@ export const sv: Dict = {
   "Not sending": "Skickar inte",
   "Not syncing with your account": "Synkroniserar inte med ditt konto",
   Off: "Av",
-  "On-device storage": "Lagring på enheten",
-  "Once enabled, the server stores ciphertexts only. The key is your password, which the server does NOT know — without it (or a pairing code from a trusted device) the data cannot be recovered.":
+  "Once enabled, the server stores ciphertexts only. The key is your password, which the server does NOT know — without it (or a pairing code from another unlocked device) the data cannot be recovered.":
     "När det är aktiverat lagrar servern bara krypterad text. Nyckeln är ditt lösenord, som servern INTE känner till — utan det (eller utan en parkopplingskod från en betrodd enhet) går data inte att återskapa.",
   "One tap and Enveo lives on your home screen — offline, full screen, no browser bar.":
     "Ett tryck och Enveo finns på hemskärmen — offline, i helskärm, utan webbläsarfält.",
   "Open {host} in Safari to add it to your home screen — installing only works from Safari on iPhone and iPad.":
     "Öppna {host} i Safari för att lägga till appen på hemskärmen — på iPhone och iPad fungerar installation bara från Safari.",
-  "OpenAI key": "OpenAI-nyckel",
   "OpenAI rejected the request — check the key and the model, then try again.": "OpenAI avvisade anropet — kontrollera nyckeln och modellen och försök igen.",
   "OpenAI rejected this key — model availability could not be checked.": "OpenAI avvisade den här nyckeln — modelltillgängligheten kunde inte kontrolleras.",
   "OpenAI rejected your key — check it in Settings → Artificial intelligence.":
@@ -347,9 +313,8 @@ export const sv: Dict = {
   Password: "Lösenord",
   "Password changed.": "Lösenordet har bytts.",
   "Passwords do not match.": "Lösenorden stämmer inte överens.",
-  "Paste the pairing code shown on a trusted device (Settings → Pairing code).":
+  "Paste the pairing code shown on another unlocked device (Settings → Pairing code).":
     "Klistra in parkopplingskoden som visas på en betrodd enhet (Inställningar → Parkopplingskod).",
-  "Paused — local mode.": "Pausad — lokalt läge.",
   "People & pets": "Människor och husdjur",
   "Persistent storage": "Beständig lagring",
   "Pick an envelope…": "Välj ett kuvert…",
@@ -380,27 +345,19 @@ export const sv: Dict = {
   Reports: "Rapporter",
   "Requires AI (server mode or your own key).": "Kräver AI (serverläge eller egen nyckel).",
   Restore: "Återställ",
-  "Resume it in the “Advanced” section.": "Återuppta den i avsnittet ”Avancerat”.",
-  "Resume sync? Local changes will be sent to the server.": "Återuppta synkroniseringen? Lokala ändringar skickas till servern.",
   "Resume upgrade": "Återuppta uppgraderingen",
-  "Resuming…": "Återupptar…",
   SPENT: "SPENDERAT",
   Save: "Spara",
   "Save changes": "Spara ändringarna",
   "Save item": "Spara raden",
-  "Save key & enable": "Spara nyckeln och aktivera",
   Savings: "Sparande",
   "Savings envelopes first — the free remainder goes to them.": "Sparkuverten först — det fria överskottet går till dem.",
   "Screenshot {n}": "Skärmbild {n}",
   "Screenshots ({n}/6)": "Skärmbilder ({n}/6)",
   "Search...": "Sök...",
   Server: "Server",
-  "Server connection": "Serveranslutning",
-  "Server data has been deleted.": "Data på servern har tagits bort.",
   "Server sync": "Synkronisering med servern",
   "Server temporarily unreachable — your data is safe, we will retry.": "Servern går tillfälligt inte att nå — dina data är trygga, vi försöker igen.",
-  "Server-side import is unavailable while end-to-end encryption is on — the server cannot see your data. Use a JSON backup (export/import) or disable encryption.":
-    "Import på serversidan är inte tillgänglig när totalsträckskryptering är på — servern kan inte se dina data. Använd en JSON-säkerhetskopia (exportera/importera) eller stäng av krypteringen.",
   "Session expired": "Sessionen har gått ut",
   Settings: "Inställningar",
   Share: "Dela",
@@ -411,10 +368,7 @@ export const sv: Dict = {
   "Sign in with Google": "Logga in med Google",
   "Sign out": "Logga ut",
   "Sign out and use another account": "Logga ut och använd ett annat konto",
-  "Sign out? Your data stays on this device and on the server.": "Logga ut? Dina data ligger kvar på den här enheten och på servern.",
   "Signing out…": "Loggar ut…",
-  "Signs you out of this device. The local copy and the server data both stay — everything resumes when you sign back in. To remove the copy from this device, use “Clear local data”.":
-    "Loggar ut dig från den här enheten. Både den lokala kopian och data på servern ligger kvar — allt återupptas när du loggar in igen. Använd ”Rensa lokala data” för att ta bort kopian från den här enheten.",
   "Skip for now": "Hoppa över just nu",
   "Some funds stayed in To be budgeted — envelopes are at their target caps.":
     "En del av medlen blev kvar i ”Att budgetera” — kuverten har nått taket för sina mål.",
@@ -433,12 +387,7 @@ export const sv: Dict = {
   Suggest: "Föreslå",
   "Suggest a distribution": "Föreslå en fördelning",
   Summary: "Sammanfattning",
-  Sync: "Synkronisering",
   "Sync in progress": "Synkronisering pågår",
-  "Sync is paused. Changes are saved locally and will be sent once you resume. Server data stays intact.":
-    "Synkroniseringen är pausad. Ändringarna sparas lokalt och skickas när du återupptar den. Data på servern förblir orörda.",
-  "Sync is paused. Changes will be saved locally and sent once you resume. Server data stays intact.":
-    "Synkroniseringen är pausad. Ändringarna sparas lokalt och skickas när du återupptar den. Data på servern förblir orörda.",
   "Sync now": "Synkronisera nu",
   "Syncing…": "Synkroniserar…",
   "Tap {action} to continue": "Tryck på {action} för att fortsätta",
@@ -475,8 +424,6 @@ export const sv: Dict = {
   "The envelope “{name}” will disappear from the Budget and Start screens. Its transaction history stays, and available funds remain in the envelope. You can restore it in “Manage envelopes” → Archived.\n\nArchive it?":
     "Kuvertet ”{name}” försvinner från skärmarna Budget och Start. Transaktionshistoriken blir kvar och de tillgängliga medlen ligger kvar i kuvertet. Du kan återställa det i ”Hantera kuverten” → Arkiverade.\n\nArkivera det?",
   "The first launch requires a connection to the server": "Den första starten kräver en anslutning till servern",
-  "The key is stored only in this browser (localStorage) — it is never synced or sent to the app server.":
-    "Nyckeln sparas bara i den här webbläsaren (localStorage) — den synkroniseras aldrig och skickas aldrig till appens server.",
   "The local copy of the budget has not loaded yet — nothing was sent. Reload the app and try again.":
     "Den lokala kopian av budgeten har inte lästs in än — ingenting skickades. Ladda om appen och försök igen.",
   "The local copy of the budget on this device belongs to a different account than the one you are signed in with. Nothing has been sent to the server and nothing has been deleted.":
@@ -484,14 +431,8 @@ export const sv: Dict = {
   "The local copy — including any unsent changes — will be permanently removed from this device. If this is the only copy of that budget, download a backup first.":
     "Den lokala kopian — inklusive ändringar som inte skickats — tas bort permanent från den här enheten. Om det är den enda kopian av den budgeten bör du ladda ned en säkerhetskopia först.",
   "The local replica is not ready.": "Den lokala repliken är inte redo.",
-  "The monthly AI allowance for this account is used up — it resets at the start of the next month (UTC). You can keep using AI right away with your own key in Settings → Artificial intelligence.":
-    "Kontots månatliga AI-kvot är förbrukad — den förnyas vid början av nästa månad (UTC). Med din egen nyckel i Inställningar → Artificiell intelligens kan du fortsätta använda AI direkt.",
   "The password must be at least 8 characters.": "Lösenordet måste vara minst 8 tecken.",
   "The proposal exceeds “To be budgeted” — uncheck or reduce items.": "Förslaget överstiger ”Att budgetera” — bocka av eller minska poster.",
-  "The server has no OpenAI key configured — server mode is unavailable. Use your own key or keep AI off.":
-    "Servern har ingen OpenAI-nyckel konfigurerad — serverläget är inte tillgängligt. Använd din egen nyckel eller låt AI vara av.",
-  "The server has no OpenAI key configured. Set OPENAI_API_KEY and restart the app, or use your own key in Settings → Artificial intelligence.":
-    "Servern har ingen OpenAI-nyckel konfigurerad. Sätt OPENAI_API_KEY och starta om appen, eller använd din egen nyckel i Inställningar → Artificiell intelligens.",
   "The server hit an unexpected error. Nothing was changed — try again.": "Servern råkade ut för ett oväntat fel. Ingenting ändrades — försök igen.",
   "The server refuses to sync this budget until its encryption is upgraded to the new format.":
     "Servern vägrar synkronisera den här budgeten tills dess kryptering har uppgraderats till det nya formatet.",
@@ -520,7 +461,7 @@ export const sv: Dict = {
     "Den här budgetens data är totalsträckskrypterade. Ange krypteringslösenordet för att låsa upp dem på den här enheten.",
   "This budget's encryption must be upgraded before it can sync — open Settings → Privacy on a device that holds the data and run the upgrade.":
     "Den här budgetens kryptering måste uppgraderas innan den kan synkronisera — öppna Inställningar → Integritet på en enhet som har data och kör uppgraderingen.",
-  "This code contains your encryption key in plain form. Show it only on your own trusted device — anyone with the code can read the budget.":
+  "This code contains your encryption key in plain form. Show it only on your own private device — anyone with the code can read the budget.":
     "Den här koden innehåller din krypteringsnyckel i klartext. Visa den bara på din egen betrodda enhet — vem som helst med koden kan läsa budgeten.",
   "This data may belong to a different account. Then it will never be sent — download a backup and remove the copy from this device.":
     "Dessa data kan tillhöra ett annat konto. Då kommer de aldrig att skickas — ladda ned en säkerhetskopia och ta bort kopian från den här enheten.",
@@ -563,10 +504,8 @@ export const sv: Dict = {
   Transactions: "Transaktioner",
   Transfer: "Överföring",
   Transport: "Transport",
-  "Trust this device — remember my data and sign-in": "Lita på den här enheten — kom ihåg mina data och min inloggning",
   "Try again": "Försök igen",
   "Try it with sample data": "Testa med exempeldata",
-  "Turn off local mode": "Stäng av lokalt läge",
   "Type or pick a category...": "Skriv eller välj en kategori...",
   "Type {word} to confirm:": "Skriv {word} för att bekräfta:",
   Unlock: "Lås upp",
@@ -577,23 +516,14 @@ export const sv: Dict = {
     "Bocka av det du inte vill ha. Dubbletter hoppas över — tryck på en för att redigera den och lägga till den ändå.",
   Usage: "Användning",
   Use: "Använd",
-  "Use your own key": "Använd din egen nyckel",
   Utilities: "El, vatten och sopor",
   "WARNING: IndexedDB unavailable — data is kept only in session memory (it will not survive closing the app).":
     "VARNING: IndexedDB är inte tillgängligt — data finns bara i sessionsminnet (de överlever inte att appen stängs).",
-  "WARNING: in local mode this data exists ONLY on this device (the server is empty). Clearing it will delete it permanently. Make a backup first (Export). Continue?":
-    "VARNING: i lokalt läge finns dessa data ENDAST på den här enheten (servern är tom). Att rensa dem raderar dem för alltid. Gör en säkerhetskopia först (Exportera). Fortsätta?",
-  "We will irreversibly erase all data from the server — this cannot be undone from the app. Other devices will lose access. Your data will remain only on this device. Make a backup first (Export).":
-    "Vi raderar alla data från servern permanent — det går inte att ångra från appen. Andra enheter förlorar åtkomsten. Dina data blir kvar endast på den här enheten. Gör en säkerhetskopia först (Exportera).",
-  "We will send pending changes and resume sync. Server data is untouched.":
-    "Vi skickar de väntande ändringarna och återupptar synkroniseringen. Data på servern rörs inte.",
   "We will send them once the server is reachable.": "Vi skickar dem så snart servern går att nå.",
-  "We will send your local data back to the server and resume sync.": "Vi skickar tillbaka dina lokala data till servern och återupptar synkroniseringen.",
   Weak: "Svagt",
   Wealth: "Förmögenhet",
   "Wealth envelope (savings/investments)": "Förmögenhetskuvert (sparande/investeringar)",
   "Welcome to Enveo": "Välkommen till Enveo",
-  "Work offline": "Arbeta offline",
   "Wrong email or password.": "Fel e-postadress eller lösenord.",
   "Wrong encryption password.": "Fel krypteringslösenord.",
   Yes: "Ja",
@@ -602,20 +532,15 @@ export const sv: Dict = {
   "You are offline — screenshot import needs a connection. Manual entry works without one.":
     "Du är offline — import från skärmbilder kräver en anslutning. Manuell registrering fungerar utan.",
   "Your budget is tied to your account. Sign in to continue.": "Din budget är kopplad till ditt konto. Logga in för att fortsätta.",
-  "Your data now lives only on this device. Make a backup (Export) — it is the only way not to lose it.":
-    "Dina data finns nu bara på den här enheten. Gör en säkerhetskopia (Exportera) — det är enda sättet att inte förlora dem.",
   "Your data will be decrypted and stored on the server in plain form (as before enabling). Make sure you have a current backup.":
     "Dina data dekrypteras och lagras på servern i klartext (som före aktiveringen). Se till att du har en aktuell säkerhetskopia.",
   "Your envelopes": "Dina kuvert",
   "Your first account": "Ditt första konto",
   "already exists": "finns redan",
   "available after: {amount}": "tillgängligt efteråt: {amount}",
-  "backup, end-to-end encryption, account": "säkerhetskopia, totalsträckskryptering, konto",
   "cancel split": "avbryt uppdelningen",
   dark: "mörkt",
-  "data deleted from server": "data borttagna från servern",
   details: "detaljer",
-  "device storage, local mode, reset": "enhetens lagring, lokalt läge, nollställning",
   discreet: "diskret",
   "e.g. 5000": "t.ex. 5000",
   "e.g. Checking": "t.ex. Lönekonto",
@@ -626,12 +551,10 @@ export const sv: Dict = {
   "funded ✓": "finansierat ✓",
   income: "inkomst",
   "just now": "just nu",
-  "local mode": "lokalt läge",
   "m/m": "m/m",
   "new password for all devices": "nytt lösenord för alla enheter",
   "not yet": "inte än",
   off: "av",
-  offline: "offline",
   "over by {amount}": "över med {amount}",
   "own key": "egen nyckel",
   "probable duplicate": "trolig dubblett",
@@ -644,21 +567,17 @@ export const sv: Dict = {
   server: "server",
   settings: "inställningar",
   skipped: "överhoppad",
-  "status, re-download": "status, hämta på nytt",
   "the server will store your data in plain form again": "servern lagrar dina data i klartext igen",
   "the whole local copy as a file — no network needed": "hela den lokala kopian som en fil — inget nätverk behövs",
-  "theme, language, currency, discreet": "tema, språk, valuta, diskret",
   today: "i dag",
   unknown: "okänt",
   "unlock the budget on a new device without the password": "låsa upp budgeten på en ny enhet utan lösenordet",
-  "work offline or keep data only on this device": "arbeta offline eller behålla data endast på den här enheten",
   yesterday: "i går",
   "{amount} from the previous month": "{amount} från föregående månad",
   "{amount} left": "{amount} kvar",
   "{amount} stays in “To be budgeted”.": "{amount} blir kvar i ”Att budgetera”.",
   "{amount} to go": "{amount} kvar",
   "{n} OK": "{n} OK",
-  "{n} change is waiting locally. | {n} changes are waiting locally.": { one: "{n} ändring väntar lokalt.", other: "{n} ändringar väntar lokalt." },
   "{n} change is waiting to be sent | {n} changes are waiting to be sent": {
     one: "{n} ändring väntar på att skickas",
     other: "{n} ändringar väntar på att skickas",
