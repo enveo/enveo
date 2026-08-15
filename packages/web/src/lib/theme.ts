@@ -330,9 +330,9 @@ export function themeTokens(t: AccentTheme, isDark: boolean): { vars: Record<str
   
 
   const nav = (isDark ? def.navDark : def.nav) ?? { bg: palette.bg, on: palette.text, mute: palette.mute, ind: accent };
-  // The same focus token is intentionally used by search shells on both the header band and
-  // content sheets. Plain themes retain their accent; Duet supplies colors that contrast with
-  // both its navy band and cream content surface.
+  
+
+
   const focusRing = (isDark ? def.focusRingDark : def.focusRing) ?? accent;
   const vars: Record<string, string> = {
     "--accent": accent,
@@ -343,6 +343,7 @@ export function themeTokens(t: AccentTheme, isDark: boolean): { vars: Record<str
     "--nav-mute": nav.mute,
     "--nav-ind": nav.ind,
     "--focus-ring": focusRing,
+    "--input-underline": accent,
   };
   for (const s of ALPHA_SUFFIXES) {
     vars[`--accent-${s}`] = hexAlpha(accent, s);
