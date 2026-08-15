@@ -111,7 +111,9 @@ export function padKey(state: PadState, k: string, opts?: PadKeyOpts): PadState 
   if (state.fresh) {
     // operator while fresh → RELATIVE mode: current value + operator ("200" → "200+")
     if (isOp) return { expr: state.expr + k, fresh: false };
-    // digit/comma/⌫ while fresh → REPLACES the value (entry from scratch)
+    // Backspace always removes exactly one character, including from the field's fresh value.
+    if (k === "⌫") return { expr: applyAmountKey(state.expr, k), fresh: false };
+    // digit/comma while fresh → REPLACES the value (entry from scratch)
     return { expr: applyAmountKey("", k), fresh: false };
   }
 
