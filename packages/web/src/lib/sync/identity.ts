@@ -370,24 +370,46 @@ export async function assertOwnReplica(): Promise<string> {
  * A reachable server with no session always routes to Login before rendering; the replica and
  * outbox remain untouched so the owner can sign back in without losing queued work.
  */
-export async function bootOwnerOk(): Promise<boolean> {
-  const stamped = await idbGet<string>("meta", "userId").catch(() => undefined);
-  if (!stamped) return true; 
+export interface BootOwnerVerdict {
+  ok: boolean;
+  /** Session account whose preferences may be shown; this does not prove replica ownership. */
+  preferenceUserId: string | null;
+}
 
+export async function bootOwnerOk(): Promise<BootOwnerVerdict> {
+  const stamped = await idbGet<string>("meta", "userId").catch(() => undefined);
+  if (!stamped) {
+    
+
+
+    let sessionUser: string | null;
+    try {
+      sessionUser = await fetchSessionUserId();
+    } catch {
+      return { ok: true, preferenceUserId: null };  
+    }
+    if (!sessionUser) {
+      enterUnauthed();
+      return { ok: false, preferenceUserId: null };
+    }
+    return { ok: true, preferenceUserId: sessionUser };
+  }
   let sessionUser: string | null;
   try {
     sessionUser = await fetchSessionUserId();
   } catch {
-    return true; // offline / server down — cannot verify; see the contract above
+    // The durable stamp is sufficient to load that account's cached preferences while offline;
+    // it still does not permit a write until ensureIdentity reaches the server.
+    return { ok: true, preferenceUserId: stamped };
   }
   if (decideIdentity(sessionUser, stamped) === "foreign") {
     enterForeignReplica(); // ForeignReplicaScreen — the other account's budget is never rendered
-    return false;
+    return { ok: false, preferenceUserId: null };
   }
   if (!sessionUser) {
     enterUnauthed();  
-    return false;
+    return { ok: false, preferenceUserId: null };
   }
   identityVerifiedFor = sessionUser;  
-  return true;
+  return { ok: true, preferenceUserId: sessionUser };
 }

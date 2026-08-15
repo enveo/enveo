@@ -6,15 +6,84 @@
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1, user-scalable=no" />
     <meta name="description" content="Envelope budgeting, mobile-first." />
-    <meta name="theme-color" content="#f4f3ef" />
+    <meta name="theme-color" content="#1d2a47" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <meta name="apple-mobile-web-app-title" content="Enveo" />
     <title>Enveo — Envelope Budgeting</title>
+    <style>
+      html { background: #1d2a47; }
+      @keyframes enveo-balance-left {
+        0%, 18%, 100% { transform: translateX(-14px); opacity: 0.58; }
+        48%, 76% { transform: translateX(0); opacity: 1; }
+      }
+      @keyframes enveo-balance-right {
+        0%, 18%, 100% { transform: translateX(14px); opacity: 0.58; }
+        48%, 76% { transform: translateX(0); opacity: 1; }
+      }
+      @keyframes enveo-balance-center {
+        0%, 18%, 100% { opacity: 0.22; }
+        48%, 76% { opacity: 0.48; }
+      }
+      @keyframes enveo-balance-mark {
+        0%, 18%, 100% { opacity: 0.82; }
+        48%, 76% { opacity: 1; }
+      }
+      .startupSplash {
+        position: fixed;
+        inset: 0;
+        z-index: 2147483647;
+        display: grid;
+        place-items: center;
+        overflow: hidden;
+        background: #1d2a47;
+      }
+      .startupSplash__art {
+        display: block;
+        width: min(100vw, 420px);
+        height: 100dvh;
+      }
+      .startupSplash__beam {
+        transform-box: fill-box;
+        transform-origin: center;
+      }
+      .startupSplash__beam--left { animation: enveo-balance-left 1.6s cubic-bezier(.4, 0, .2, 1) infinite; }
+      .startupSplash__beam--right { animation: enveo-balance-right 1.6s cubic-bezier(.4, 0, .2, 1) infinite; }
+      .startupSplash__ring { animation: enveo-balance-center 1.6s cubic-bezier(.4, 0, .2, 1) infinite; }
+      .startupSplash__mark { animation: enveo-balance-mark 1.6s cubic-bezier(.4, 0, .2, 1) infinite; }
+      @media (prefers-reduced-motion: reduce) {
+        .startupSplash__beam,
+        .startupSplash__ring,
+        .startupSplash__mark {
+          animation: none;
+        }
+      }
+    </style>
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root">
+      <div class="startupSplash" role="status" aria-label="Loading Enveo">
+        <svg class="startupSplash__art" viewBox="0 0 390 844" aria-hidden="true">
+          <g class="startupSplash__beam startupSplash__beam--left">
+            <path d="M54 422H146" stroke="#ff7e6b" stroke-width="6" stroke-linecap="round" />
+            <path d="M80 405v34M108 410v24" stroke="#f4efe4" stroke-width="2" stroke-linecap="round" opacity=".38" />
+            <circle cx="54" cy="422" r="5" fill="#ff7e6b" />
+          </g>
+          <g class="startupSplash__beam startupSplash__beam--right">
+            <path d="M244 422H336" stroke="#8fa2cc" stroke-width="6" stroke-linecap="round" />
+            <path d="M282 410v24M310 405v34" stroke="#f4efe4" stroke-width="2" stroke-linecap="round" opacity=".38" />
+            <circle cx="336" cy="422" r="5" fill="#8fa2cc" />
+          </g>
+          <circle class="startupSplash__ring" cx="195" cy="422" r="57" fill="none" stroke="#f4efe4" stroke-width="2" opacity=".22" />
+          <g class="startupSplash__mark" transform="translate(151.5 378.5) scale(.17)">
+            <circle cx="256" cy="256" r="118" fill="none" stroke="#ff7e6b" stroke-width="58" />
+            <line x1="152" y1="256" x2="352" y2="256" stroke="#ff7e6b" stroke-width="52" />
+            <line x1="278" y1="272" x2="424" y2="354" stroke="#1d2a47" stroke-width="72" />
+          </g>
+        </svg>
+      </div>
+    </div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

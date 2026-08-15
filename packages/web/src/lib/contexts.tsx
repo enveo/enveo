@@ -10,7 +10,7 @@ import {
   type WidgetId,
   type WidgetOpts,
 } from "@enveo/shared";
-import { createContext, type ReactNode, useCallback, useContext, useEffect, useMemo, useState, useSyncExternalStore } from "react";
+import { createContext, type ReactNode, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { accountPreferences } from "./accountPreferences";
 import { budgetPreferences } from "./budgetPreferences";
 import { browserLocales, currencyForLocales } from "./currency";
@@ -18,6 +18,7 @@ import { type DevicePreferencesPatch, devicePreferences } from "./devicePreferen
 import { formatMoney } from "./format";
 // the REGISTRY, not lib/i18n: that one reads useSettings() from here — importing it would close the cycle
 import { detectLang, type Lang } from "./i18n/registry";
+import { startupPresentation } from "./startupSplash";
 import { store } from "./store";
 import { light, type Theme, themeTokens } from "./theme";
 
@@ -142,6 +143,7 @@ export function AppProviders({ children }: { children: ReactNode }) {
   const { preferences: budget, update: updateBudget } = useBudgetPreferences();
   const { preferences: device, update: updateDevice } = useDevicePreferences();
   const [prefersDark, setPrefersDark] = useState(() => typeof window !== "undefined" && window.matchMedia("(prefers-color-scheme: dark)").matches);
+  const bootStatus = useSyncExternalStore(store.subscribe, store.getBootStatus);
 
   useEffect(() => {
     void devicePreferences.hydrate();
@@ -185,12 +187,17 @@ export function AppProviders({ children }: { children: ReactNode }) {
   const isDark = settings.themeMode === "auto" ? prefersDark : settings.themeMode === "dark";
   const { vars, palette: theme } = useMemo(() => themeTokens(settings.accentTheme, isDark), [settings.accentTheme, isDark]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
+    const meta = document.querySelector('meta[name="theme-color"]');
+    if (startupPresentation(bootStatus) === "splash") {
+      document.documentElement.style.background = "#1d2a47";
+      if (meta) meta.setAttribute("content", "#1d2a47");
+      return;
+    }
     for (const [k, v] of Object.entries(vars)) document.documentElement.style.setProperty(k, v);
     document.documentElement.style.background = theme.bg;
-    const meta = document.querySelector('meta[name="theme-color"]');
     if (meta) meta.setAttribute("content", isDark ? theme.surface : theme.bg);
-  }, [vars, theme, isDark]);
+  }, [bootStatus, vars, theme, isDark]);
 
   const ctx = useMemo(() => ({ settings, setSettings }), [settings]);
 
