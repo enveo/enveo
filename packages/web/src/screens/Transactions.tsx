@@ -5,6 +5,7 @@ import { CardBox, SectionEyebrow, useBand } from "../components/kit";
 import type { StateResponse } from "../lib/api";
 import { useMask, useTheme } from "../lib/contexts";
 import { dayHeading } from "../lib/dates";
+import { INPUT_FOCUS_CLASS } from "../lib/focusPresentation";
 import { useT } from "../lib/i18n";
 import { Glyph, Ico } from "../lib/icons";
 import { font, P, TEAL, TRANSFER, tint } from "../lib/theme";
@@ -172,6 +173,7 @@ export function TransactionsScreen({
         <div data-band={band || undefined} style={band ? { background: C.headerBg, paddingBottom: 4 } : undefined}>
           <Header month={month} onMenu={onMenu} onPrev={onPrev} onNext={onNext} onBand={band} />
           <div
+            className={INPUT_FOCUS_CLASS}
             style={{
               display: "flex",
               alignItems: "center",

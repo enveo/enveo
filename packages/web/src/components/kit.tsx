@@ -1,5 +1,6 @@
 import type { CSSProperties, ReactNode } from "react";
 import { useTheme } from "../lib/contexts";
+import { INPUT_FOCUS_CLASS } from "../lib/focusPresentation";
 import { useT } from "../lib/i18n";
 import { Ico } from "../lib/icons";
 import { highlightRanges } from "../lib/search";
@@ -54,7 +55,10 @@ export function PickerSearch({ value, onChange, placeholder }: { value: string; 
   const C = useTheme();
   const { t } = useT();
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 10px", marginBottom: 10, background: C.chip, borderRadius: 11 }}>
+    <div
+      className={INPUT_FOCUS_CLASS}
+      style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 10px", marginBottom: 10, background: C.chip, borderRadius: 11 }}
+    >
       <Ico d="M11 19a8 8 0 100-16 8 8 0 000 16zM21 21l-4.3-4.3" size={15} color={C.mute} sw={1.8} />
       <input
         value={value}
