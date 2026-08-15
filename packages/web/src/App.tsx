@@ -1,13 +1,15 @@
 import type { Transaction } from "@enveo/shared";
-import { lazy, useEffect, useRef, useState } from "react";
+import { lazy, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { BottomNav, Drawer, type ScreenId, StyleInjector } from "./components/chrome";
 import { LazyChunk, useOpenedOnce } from "./components/lazy";
+import { StartupSplash } from "./components/StartupSplash";
 import { SyncBadge } from "./components/SyncBadge";
 import { UpdatePrompt } from "./components/UpdatePrompt";
 import { useStateQuery } from "./lib/api";
 import { useTheme } from "./lib/contexts";
 import { currentMonth, shiftMonth } from "./lib/dates";
 import { useT } from "./lib/i18n";
+import { startupPresentation } from "./lib/startupSplash";
 import { store } from "./lib/store";
 import { bootOnce, retryBoot } from "./lib/sync";
 import { font, P, TEAL } from "./lib/theme";
@@ -77,6 +79,7 @@ export default function App() {
   const [txEnvFilter, setTxEnvFilter] = useState<ReadonlySet<string>>(new Set());
   const [txAccFilter, setTxAccFilter] = useState<ReadonlySet<string>>(new Set());
   const { data: state, isLoading, isError } = useStateQuery(month);
+  const bootStatus = useSyncExternalStore(store.subscribe, store.getBootStatus);
 
   // local replica boot: hydrate from IDB → (empty ⇒ snapshot) → pull deltas
   useEffect(() => {
@@ -182,16 +185,16 @@ export default function App() {
   // (no BottomNav/badge). Refreshed via the existing mirror-version mechanism
   // (setBootStatus bumps the version → useStateQuery above re-renders App).
   // After returning from OAuth the page reloads anyway → normal boot.
-  const unauthed = store.getBootStatus() === "unauthed";
+  const unauthed = bootStatus === "unauthed";
 
   // E2EE: budget encrypted, no DEK on this device (BootStatus "locked")
   // → Unlock screen INSTEAD of the app (same pattern as Login); setDek + retryBoot clear it.
-  const locked = store.getBootStatus() === "locked";
+  const locked = bootStatus === "locked";
 
   // The local replica belongs to ANOTHER account (owner stamp ≠ session — BootStatus "foreign").
   // Every server write is already refused; the app must NOT show (or silently destroy) that
   // account's budget, so the decision screen takes over: export a backup / remove and continue.
-  const foreign = store.getBootStatus() === "foreign";
+  const foreign = bootStatus === "foreign";
 
   // Swipe right = go back (screens with a back arrow — pinned PWA has no Safari gesture).
   const canBack = envView !== null || screen === "addExpense" || screen === "settings";
@@ -222,6 +225,8 @@ export default function App() {
     // without "back": edge-swipe from the very left edge opens the menu (like a native drawer)
     if (!drawer && !onboarding && st.x < 28 && dx > 60 && Math.abs(dy) < 45) setDrawer(true);
   };
+
+  if (startupPresentation(bootStatus) === "splash") return <StartupSplash />;
 
   if (unauthed || locked || foreign) {
     return (

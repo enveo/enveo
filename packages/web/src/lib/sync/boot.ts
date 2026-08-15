@@ -18,7 +18,7 @@ import { requestPersistentStorage } from "../storage";
 import { store } from "../store";
 import { type BootSource, UnauthorizedError } from "./contracts";
 import { syncNow } from "./cycle";
-import { bootOwnerOk, enterUnauthed, verifiedIdentityUserId } from "./identity";
+import { bootOwnerOk, enterUnauthed } from "./identity";
 import { hydrateObligations } from "./obligations";
 import { replayOutbox } from "./replica";
 import { bumpStatus, getLastSyncAt, setLastSyncAt } from "./status";
@@ -88,12 +88,12 @@ async function boot(): Promise<void> {
     const [hydrated] = await Promise.all([store.hydrate(), outbox.hydrate()]);
     await loadSyncMeta();
     // Whose replica is this? BEFORE it reaches the UI (and before any bootstrap) — see bootOwnerOk
-    if (!(await bootOwnerOk())) return;
-    const verifiedUserId = verifiedIdentityUserId();
-    if (verifiedUserId) {
-      await accountPreferences.hydrateForUser(verifiedUserId);
+    const ownership = await bootOwnerOk();
+    if (!ownership.ok) return;
+    if (ownership.preferenceUserId) {
+      await accountPreferences.hydrateForUser(ownership.preferenceUserId);
       try {
-        await accountPreferences.sync(verifiedUserId);
+        await accountPreferences.sync(ownership.preferenceUserId);
         await devicePreferences.hydrate();
         await migrateLegacySettings();
       } catch (error) {

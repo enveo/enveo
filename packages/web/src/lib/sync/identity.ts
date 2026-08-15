@@ -370,24 +370,46 @@ export async function assertOwnReplica(): Promise<string> {
  * A reachable server with no session always routes to Login before rendering; the replica and
  * outbox remain untouched so the owner can sign back in without losing queued work.
  */
-export async function bootOwnerOk(): Promise<boolean> {
+export interface BootOwnerVerdict {
+  ok: boolean;
+  /** Session account whose preferences may be shown; this does not prove replica ownership. */
+  preferenceUserId: string | null;
+}
+
+export async function bootOwnerOk(): Promise<BootOwnerVerdict> {
   const stamped = await idbGet<string>("meta", "userId").catch(() => undefined);
-  if (!stamped) return true; // no stamp: nothing to compare (the cycle's proveOwnership decides,
-  // and until it can, it refuses every server WRITE — see proveOwnership)
+  if (!stamped) {
+    // There is no replica owner to compare yet, but the current SESSION still owns the
+    // account-scoped UI preferences. Resolve it before boot releases the splash; ownership of
+    // the ledger remains unproven and the cycle's proveOwnership still guards every write.
+    let sessionUser: string | null;
+    try {
+      sessionUser = await fetchSessionUserId();
+    } catch {
+      return { ok: true, preferenceUserId: null }; // offline: local-first, no identity to hydrate
+    }
+    if (!sessionUser) {
+      enterUnauthed();
+      return { ok: false, preferenceUserId: null };
+    }
+    return { ok: true, preferenceUserId: sessionUser };
+  }
   let sessionUser: string | null;
   try {
     sessionUser = await fetchSessionUserId();
   } catch {
-    return true; // offline / server down — cannot verify; see the contract above
+    // The durable stamp is sufficient to load that account's cached preferences while offline;
+    // it still does not permit a write until ensureIdentity reaches the server.
+    return { ok: true, preferenceUserId: stamped };
   }
   if (decideIdentity(sessionUser, stamped) === "foreign") {
     enterForeignReplica(); // ForeignReplicaScreen — the other account's budget is never rendered
-    return false;
+    return { ok: false, preferenceUserId: null };
   }
   if (!sessionUser) {
     enterUnauthed(); // Login BEFORE the data is on screen; the replica and the outbox stay
-    return false;
+    return { ok: false, preferenceUserId: null };
   }
   identityVerifiedFor = sessionUser; // same account — the first cycle needn't re-read the stamp
-  return true;
+  return { ok: true, preferenceUserId: sessionUser };
 }

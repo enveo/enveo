@@ -908,13 +908,28 @@ describe("sync boot: the replica's owner is checked BEFORE it is rendered", () =
     expect(store.getBootStatus()).toBe("ready");
   });
 
-  it("no owner stamp (a fresh install / pre-guard replica) → boot is untouched", async () => {
+  it("no owner stamp (a fresh install / pre-guard replica) → boot still reaches ready", async () => {
     session = { user: { id: "user-A" } };
 
     await retryBoot();
 
     expect(store.getBootStatus()).toBe("ready");
-    expect(called("/api/auth/get-session")).toBe(true); // (only from the cycle — nothing to compare)
+    expect(called("/api/auth/get-session")).toBe(true); // session preferences are resolved before ready
+  });
+
+  it("no owner stamp → server theme preferences settle before ready releases the startup splash", async () => {
+    session = { user: { id: "user-A" } };
+    serverAccountPreferences = { ...serverAccountPreferences, accentTheme: "duet" };
+    let accentThemeAtReady: string | undefined;
+    const unsubscribe = store.subscribe(() => {
+      if (store.getBootStatus() === "ready" && accentThemeAtReady === undefined) accentThemeAtReady = accountPreferences.getSnapshot().accentTheme;
+    });
+
+    await retryBoot();
+    unsubscribe();
+
+    expect(accentThemeAtReady).toBe("duet");
+    expect(called("/api/preferences/account")).toBe(true);
   });
 
   it("OFFLINE: the owner cannot be verified → local-first wins, the replica is shown", async () => {
