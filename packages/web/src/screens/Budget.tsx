@@ -410,7 +410,7 @@ function AllocCell({ e, editing, onStart }: { e: EnvelopeView; editing: { expr: 
   if (editing) {
     // Active cell: the padKey expression in place of the input; err = ✓ on a bad result.
     // stopPropagation: a tap on the edited cell must not open the envelope action sheet.
-    const activeColor = editing.err ? "var(--danger)" : "var(--accent)";
+    const activeColor = editing.err ? "var(--danger)" : "var(--input-underline)";
     return (
       <div
         data-pad-cell="1"
@@ -435,7 +435,7 @@ function AllocCell({ e, editing, onStart }: { e: EnvelopeView; editing: { expr: 
             display: "inline-block",
             width: 2,
             height: 13,
-            background: editing.err ? "var(--danger)" : "var(--accent)",
+            background: editing.err ? "var(--danger)" : "var(--input-underline)",
             borderRadius: 1,
             marginLeft: 2,
             verticalAlign: "-2px",
