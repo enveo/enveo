@@ -84,8 +84,10 @@ describe("padKey — the amount numpad engine (matrix from the spec)", () => {
     expect(padKey({ expr: "200", fresh: true }, ",").expr).toBe("0,");
   });
 
-  test("fresh + ⌫ clears the line (entry from scratch)", () => {
-    expect(padKey({ expr: "200", fresh: true }, "⌫").expr).toBe("");
+  test("fresh + ⌫ deletes one character instead of clearing the current amount", () => {
+    const first = padKey({ expr: "200", fresh: true }, "⌫");
+    expect(first).toEqual({ expr: "20", fresh: false });
+    expect(padKey(first, "⌫")).toEqual({ expr: "2", fresh: false });
   });
 
   test("fresh goes off after every key", () => {
