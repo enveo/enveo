@@ -112,6 +112,8 @@ export function padKey(state: PadState, k: string, opts?: PadKeyOpts): PadState 
      
     if (isOp) return { expr: state.expr + k, fresh: false };
      
+    if (k === "⌫") return { expr: applyAmountKey(state.expr, k), fresh: false };
+     
     return { expr: applyAmountKey("", k), fresh: false };
   }
 
