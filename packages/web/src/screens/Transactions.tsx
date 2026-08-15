@@ -1,14 +1,21 @@
 import type { Transaction } from "@enveo/shared";
-import { useEffect, useMemo, useState } from "react";
-import { Header, Sheet } from "../components/chrome";
-import { CardBox, HighlightedText, PickerSearch, SectionEyebrow, useBand } from "../components/kit";
+import { useMemo, useState } from "react";
+import { Header } from "../components/chrome";
+import { CardBox, SectionEyebrow, useBand } from "../components/kit";
 import type { StateResponse } from "../lib/api";
 import { useMask, useTheme } from "../lib/contexts";
 import { dayHeading } from "../lib/dates";
 import { useT } from "../lib/i18n";
 import { Glyph, Ico } from "../lib/icons";
-import { matchesSearch, SEARCH_THRESHOLD } from "../lib/search";
 import { font, P, TEAL, TRANSFER, tint } from "../lib/theme";
+import {
+  createTransactionSearchIndex,
+  matchesTransactionFilters,
+  matchesTransactionQuery,
+  type TransactionFilters,
+  transactionFilterReferences,
+} from "../lib/transactionSearch";
+import { activeFilterCount, TransactionFilterSheet } from "./transactions/TransactionFilterSheet";
 
 export function TransactionsScreen({
   state,
@@ -19,10 +26,8 @@ export function TransactionsScreen({
   onEditTxn,
   query,
   setQuery,
-  envFilter,
-  setEnvFilter,
-  accFilter,
-  setAccFilter,
+  filters,
+  setFilters,
 }: {
   state: StateResponse;
   month: string;
@@ -33,29 +38,33 @@ export function TransactionsScreen({
   // filters kept in App — they survive entering an edit and returning
   query: string;
   setQuery: (q: string) => void;
-  envFilter: ReadonlySet<string>;
-  setEnvFilter: (s: ReadonlySet<string>) => void;
-  accFilter: ReadonlySet<string>;
-  setAccFilter: (s: ReadonlySet<string>) => void;
+  filters: TransactionFilters;
+  setFilters: (filters: TransactionFilters) => void;
 }) {
   const C = useTheme();
   const { band, hc } = useBand();
   const M = useMask();
   const { t, tp, lang } = useT();
   const [pickFilter, setPickFilter] = useState(false);
-  // One search box filters both the envelope AND account grids below — a single "koperty/konta"
-  // sheet reads more naturally with one search than a duplicated box per section.
-  const [pickQ, setPickQ] = useState("");
-  useEffect(() => {
-    if (pickFilter) setPickQ("");
-  }, [pickFilter]);
 
   const envById = useMemo(() => new Map(state.envelopes.map((e) => [e.id, e])), [state.envelopes]);
   const accById = useMemo(() => new Map(state.accounts.map((a) => [a.id, a])), [state.accounts]);
   const catById = useMemo(() => new Map(state.categories.map((c) => [c.id, c])), [state.categories]);
-  const envelopes = state.envelopes.filter((e) => !e.archived).sort((a, b) => a.sort - b.sort);
-  // accounts for the picker: active + any archived ones already in the filter
-  const accounts = state.accounts.filter((a) => !a.archived || accFilter.has(a.id)).sort((a, b) => a.sort - b.sort);
+  const placeById = useMemo(() => new Map(state.places.map((p) => [p.id, p])), [state.places]);
+  const filterReferences = useMemo(() => transactionFilterReferences(state.transactions), [state.transactions]);
+  const envelopes = state.envelopes
+    .filter((e) => !e.archived || filters.envelopeIds.has(e.id) || filterReferences.envelopeIds.has(e.id))
+    .sort((a, b) => a.sort - b.sort);
+  // Historical entities referenced by this month remain available for an explicit filter.
+  const accounts = state.accounts
+    .filter((a) => !a.archived || filters.accountIds.has(a.id) || filterReferences.accountIds.has(a.id))
+    .sort((a, b) => a.sort - b.sort);
+  const categories = [...state.categories].sort((a, b) => a.name.localeCompare(b.name));
+  const places = [...state.places].sort((a, b) => a.name.localeCompare(b.name));
+  const searchIndex = useMemo(
+    () => createTransactionSearchIndex({ accounts: state.accounts, envelopes: state.envelopes, categories: state.categories, places: state.places }),
+    [state.accounts, state.categories, state.envelopes, state.places],
+  );
 
   const colorOf = (t: Transaction): string => {
     if (t.type === "transfer") return TRANSFER;
@@ -80,6 +89,7 @@ export function TransactionsScreen({
   const subOf = (tx: Transaction): string => {
     if (tx.type === "transfer") return t("Transfer");
     const parts: string[] = [];
+    if (tx.placeId && placeById.get(tx.placeId)) parts.push(placeById.get(tx.placeId)!.name);
     if (tx.categoryId && catById.get(tx.categoryId)) parts.push(catById.get(tx.categoryId)!.name);
     const env = tx.envelopeId ? envById.get(tx.envelopeId) : null;
     if (env) parts.push(env.name);
@@ -87,14 +97,9 @@ export function TransactionsScreen({
     return parts.join(" · ");
   };
 
-  const q = query.trim().toLowerCase();
-  const matchesEnv = (t: Transaction) =>
-    envFilter.size === 0 || (!!t.envelopeId && envFilter.has(t.envelopeId)) || t.items.some((it) => envFilter.has(it.envelopeId));
-  // source OR destination account (transfers visible from both sides)
-  const matchesAcc = (t: Transaction) =>
-    accFilter.size === 0 || accFilter.has(t.accountId) || (t.type === "transfer" && !!t.toAccountId && accFilter.has(t.toAccountId));
-  const matchesQuery = (t: Transaction) => !q || `${descOf(t)} ${subOf(t)} ${accById.get(t.accountId)?.name ?? ""}`.toLowerCase().includes(q);
-  const txns = state.transactions.filter((t) => matchesEnv(t) && matchesAcc(t) && matchesQuery(t));
+  const txns = state.transactions.filter(
+    (transaction) => matchesTransactionQuery(transaction, query, searchIndex) && matchesTransactionFilters(transaction, filters),
+  );
 
   // grouping by date (descending order preserved)
   const groups: Array<{ date: string; items: Transaction[] }> = [];
@@ -106,24 +111,60 @@ export function TransactionsScreen({
 
   // balance of the visible (filtered) transactions — like the bar in the original
   const balance = txns.reduce((s, t) => (t.type === "transfer" ? s : s + (t.type === "income" || t.isRefund ? t.amount : -t.amount)), 0);
-  const activeEnvs = envelopes.filter((e) => envFilter.has(e.id));
-  const activeAccs = accounts.filter((a) => accFilter.has(a.id));
-  const toggleEnv = (id: string) => {
-    const next = new Set(envFilter);
-    if (next.has(id)) next.delete(id);
-    else next.add(id);
-    setEnvFilter(next);
+  const selectedSummary = (selected: ReadonlySet<string>, options: ReadonlyArray<{ id: string; name: string }>): string => {
+    const picked = options.filter((option) => selected.has(option.id));
+    return picked.length > 1 ? `${picked[0]?.name ?? ""} +${picked.length - 1}` : (picked[0]?.name ?? "");
   };
-  const toggleAcc = (id: string) => {
-    const next = new Set(accFilter);
-    if (next.has(id)) next.delete(id);
-    else next.add(id);
-    setAccFilter(next);
+  const clearDimension = (key: "accountIds" | "envelopeIds" | "placeIds" | "categoryIds" | "kinds" | "amount") => {
+    setFilters({ ...filters, [key]: key === "amount" ? null : new Set() });
   };
-  const clearFilters = () => {
-    setEnvFilter(new Set());
-    setAccFilter(new Set());
-  };
+  const filterChips: Array<{ key: string; label: string; value: string; onRemove: () => void }> = [];
+  if (filters.placeIds.size)
+    filterChips.push({ key: "places", label: t("Place"), value: selectedSummary(filters.placeIds, places), onRemove: () => clearDimension("placeIds") });
+  if (filters.categoryIds.size)
+    filterChips.push({
+      key: "categories",
+      label: t("Category"),
+      value: selectedSummary(filters.categoryIds, categories),
+      onRemove: () => clearDimension("categoryIds"),
+    });
+  if (filters.envelopeIds.size)
+    filterChips.push({
+      key: "envelopes",
+      label: t("Envelope"),
+      value: selectedSummary(filters.envelopeIds, envelopes),
+      onRemove: () => clearDimension("envelopeIds"),
+    });
+  if (filters.accountIds.size)
+    filterChips.push({
+      key: "accounts",
+      label: t("Account"),
+      value: selectedSummary(filters.accountIds, accounts),
+      onRemove: () => clearDimension("accountIds"),
+    });
+  if (filters.kinds.size) {
+    const kindLabels = new Map([
+      ["expense", t("Expense")],
+      ["income", t("Income")],
+      ["refund", t("Refund")],
+      ["transfer", t("Transfer")],
+    ]);
+    const values = [...filters.kinds].map((kind) => kindLabels.get(kind) ?? kind);
+    filterChips.push({
+      key: "kinds",
+      label: t("Type"),
+      value: values.length > 1 ? `${values[0]} +${values.length - 1}` : (values[0] ?? ""),
+      onRemove: () => clearDimension("kinds"),
+    });
+  }
+  if (filters.amount) {
+    const value =
+      filters.amount.mode === "exact"
+        ? M(filters.amount.minor)
+        : `${filters.amount.minMinor === null ? "…" : M(filters.amount.minMinor)} – ${filters.amount.maxMinor === null ? "…" : M(filters.amount.maxMinor)}`;
+    filterChips.push({ key: "amount", label: t("Amount"), value, onRemove: () => clearDimension("amount") });
+  }
+  const filterCount = activeFilterCount(filters);
 
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
@@ -161,14 +202,36 @@ export function TransactionsScreen({
             <button
               onClick={() => setPickFilter(true)}
               aria-label={t("Filter")}
-              style={{ background: "none", border: "none", cursor: "pointer", padding: 2, display: "flex" }}
+              style={{ position: "relative", background: "none", border: "none", cursor: "pointer", padding: 2, display: "flex" }}
             >
               <Ico
                 d="M4 4h16l-6.3 7.4V19l-3.4-2v-5.6L4 4zM17.5 14.5v6M14.5 17.5h6"
                 size={18}
-                color={envFilter.size || accFilter.size ? hc("var(--cta)", TEAL) : hc(C.headerMute, C.mute)}
+                color={filterCount ? hc("var(--cta)", TEAL) : hc(C.headerMute, C.mute)}
                 sw={1.8}
               />
+              {filterCount > 0 && (
+                <span
+                  style={{
+                    position: "absolute",
+                    top: -5,
+                    right: -7,
+                    minWidth: 15,
+                    height: 15,
+                    padding: "0 3px",
+                    borderRadius: 8,
+                    boxSizing: "border-box",
+                    background: "var(--cta)",
+                    color: "#fff",
+                    fontSize: 9,
+                    fontWeight: 800,
+                    lineHeight: "15px",
+                    textAlign: "center",
+                  }}
+                >
+                  {filterCount}
+                </span>
+              )}
             </button>
           </div>
           <div
@@ -197,18 +260,18 @@ export function TransactionsScreen({
           </div>
         </div>
 
-        {(activeEnvs.length > 0 || activeAccs.length > 0) && (
+        {filterChips.length > 0 && (
           <div className="gs" style={{ display: "flex", alignItems: "center", gap: 7, padding: `0 ${P}px 8px`, overflowX: "auto" }}>
             <span style={{ fontSize: 13.5, color: C.text, flexShrink: 0 }}>{t("Filter:")}</span>
-            {activeEnvs.map((e) => (
+            {filterChips.map((chip) => (
               <button
-                key={e.id}
-                onClick={() => toggleEnv(e.id)}
+                key={chip.key}
+                onClick={chip.onRemove}
                 style={{
                   display: "flex",
                   alignItems: "center",
-                  gap: 7,
-                  padding: "5px 11px 5px 6px",
+                  gap: 5,
+                  padding: "6px 9px",
                   borderRadius: 18,
                   border: "none",
                   background: C.surface,
@@ -218,55 +281,8 @@ export function TransactionsScreen({
                   flexShrink: 0,
                 }}
               >
-                <span
-                  style={{
-                    width: 24,
-                    height: 24,
-                    borderRadius: 7,
-                    background: tint(e.color, 0.16),
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                  }}
-                >
-                  <Glyph name={e.icon} size={13} color={e.color} sw={1.7} />
-                </span>
-                <span style={{ fontSize: 13.5, color: C.text }}>{e.name}</span>
-                <Ico d="M6 6l12 12M18 6L6 18" size={13} color={C.soft} sw={2} />
-              </button>
-            ))}
-            {activeAccs.map((a) => (
-              <button
-                key={a.id}
-                onClick={() => toggleAcc(a.id)}
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 7,
-                  padding: "5px 11px 5px 6px",
-                  borderRadius: 18,
-                  border: "none",
-                  background: C.surface,
-                  cursor: "pointer",
-                  whiteSpace: "nowrap",
-                  boxShadow: "0 1px 2px rgba(0,0,0,0.1)",
-                  flexShrink: 0,
-                }}
-              >
-                <span
-                  style={{
-                    width: 24,
-                    height: 24,
-                    borderRadius: "50%",
-                    background: tint(a.color, 0.16),
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                  }}
-                >
-                  <Glyph name={a.icon} size={12} color={a.color} sw={1.7} />
-                </span>
-                <span style={{ fontSize: 13.5, color: C.text }}>{a.name}</span>
+                <span style={{ fontSize: 12, color: C.soft }}>{chip.label}:</span>
+                <span style={{ fontSize: 12.5, color: C.text, fontWeight: 650 }}>{chip.value}</span>
                 <Ico d="M6 6l12 12M18 6L6 18" size={13} color={C.soft} sw={2} />
               </button>
             ))}
@@ -376,167 +392,20 @@ export function TransactionsScreen({
         ))}
       </div>
 
-      <Sheet show={pickFilter} onClose={() => setPickFilter(false)} tall={envelopes.length + accounts.length > SEARCH_THRESHOLD}>
-        {(C) => {
-          const filteredEnvs = envelopes.filter((e) => matchesSearch(e.name, pickQ));
-          const filteredAccs = accounts.filter((a) => matchesSearch(a.name, pickQ));
-          return (
-            <>
-              <div style={{ flexShrink: 0 }}>
-                <div style={{ fontSize: 17, fontWeight: 700, color: C.text, textAlign: "center", marginBottom: 4 }}>{t("Filter")}</div>
-                <div style={{ fontSize: 12, color: C.mute, textAlign: "center", marginBottom: 14 }}>{t("Show only selected envelopes and accounts")}</div>
-
-                {envelopes.length + accounts.length > SEARCH_THRESHOLD && <PickerSearch value={pickQ} onChange={setPickQ} />}
-              </div>
-
-              <div className="gs" style={{ flex: 1, overflowY: "auto", overscrollBehavior: "contain" }}>
-                {filteredEnvs.length === 0 && filteredAccs.length === 0 ? (
-                  <div style={{ textAlign: "center", color: C.mute, fontSize: 13, padding: "24px 0" }}>{t("No matches")}</div>
-                ) : (
-                  <>
-                    {filteredEnvs.length > 0 && (
-                      <>
-                        <div style={{ fontSize: 10.5, fontWeight: 600, color: C.soft, textTransform: "uppercase", letterSpacing: 0.6, marginBottom: 8 }}>
-                          {t("Envelopes")}
-                        </div>
-                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-                          {filteredEnvs.map((e) => {
-                            const on = envFilter.has(e.id);
-                            return (
-                              <button
-                                key={e.id}
-                                onClick={() => toggleEnv(e.id)}
-                                style={{
-                                  display: "flex",
-                                  alignItems: "center",
-                                  gap: 8,
-                                  padding: "8px 10px",
-                                  borderRadius: 11,
-                                  border: `1.5px solid ${on ? TEAL : C.line}`,
-                                  background: on ? "var(--accent-14)" : C.surface,
-                                  cursor: "pointer",
-                                }}
-                              >
-                                <span
-                                  style={{
-                                    width: 26,
-                                    height: 26,
-                                    borderRadius: 7,
-                                    background: tint(e.color, 0.16),
-                                    display: "flex",
-                                    alignItems: "center",
-                                    justifyContent: "center",
-                                    flexShrink: 0,
-                                  }}
-                                >
-                                  <Glyph name={e.icon} size={13} color={e.color} sw={1.7} />
-                                </span>
-                                <span
-                                  style={{
-                                    fontSize: 13,
-                                    color: C.text,
-                                    flex: 1,
-                                    textAlign: "left",
-                                    overflow: "hidden",
-                                    textOverflow: "ellipsis",
-                                    whiteSpace: "nowrap",
-                                  }}
-                                >
-                                  <HighlightedText text={e.name} query={pickQ} />
-                                </span>
-                                {on && <Ico d="M5 13l4 4L19 7" size={14} color={TEAL} sw={2.4} />}
-                              </button>
-                            );
-                          })}
-                        </div>
-                      </>
-                    )}
-
-                    {filteredAccs.length > 0 && (
-                      <>
-                        <div style={{ fontSize: 10.5, fontWeight: 600, color: C.soft, textTransform: "uppercase", letterSpacing: 0.6, margin: "16px 0 8px" }}>
-                          {t("Accounts")}
-                        </div>
-                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-                          {filteredAccs.map((a) => {
-                            const on = accFilter.has(a.id);
-                            return (
-                              <button
-                                key={a.id}
-                                onClick={() => toggleAcc(a.id)}
-                                style={{
-                                  display: "flex",
-                                  alignItems: "center",
-                                  gap: 8,
-                                  padding: "8px 10px",
-                                  borderRadius: 11,
-                                  border: `1.5px solid ${on ? TEAL : C.line}`,
-                                  background: on ? "var(--accent-14)" : C.surface,
-                                  cursor: "pointer",
-                                }}
-                              >
-                                <span
-                                  style={{
-                                    width: 26,
-                                    height: 26,
-                                    borderRadius: "50%",
-                                    background: tint(a.color, 0.16),
-                                    display: "flex",
-                                    alignItems: "center",
-                                    justifyContent: "center",
-                                    flexShrink: 0,
-                                  }}
-                                >
-                                  <Glyph name={a.icon} size={13} color={a.color} sw={1.7} />
-                                </span>
-                                <span
-                                  style={{
-                                    fontSize: 13,
-                                    color: C.text,
-                                    flex: 1,
-                                    textAlign: "left",
-                                    overflow: "hidden",
-                                    textOverflow: "ellipsis",
-                                    whiteSpace: "nowrap",
-                                  }}
-                                >
-                                  <HighlightedText text={a.name} query={pickQ} />
-                                </span>
-                                {on && <Ico d="M5 13l4 4L19 7" size={14} color={TEAL} sw={2.4} />}
-                              </button>
-                            );
-                          })}
-                        </div>
-                      </>
-                    )}
-                  </>
-                )}
-              </div>
-
-              {(envFilter.size > 0 || accFilter.size > 0) && (
-                <button
-                  onClick={clearFilters}
-                  style={{
-                    flexShrink: 0,
-                    marginTop: 16,
-                    width: "100%",
-                    padding: "11px 0",
-                    borderRadius: 11,
-                    border: `1px solid ${C.line}`,
-                    background: C.bg,
-                    color: C.neg,
-                    fontSize: 13,
-                    fontWeight: 600,
-                    cursor: "pointer",
-                  }}
-                >
-                  {t("Clear filters")}
-                </button>
-              )}
-            </>
-          );
-        }}
-      </Sheet>
+      <TransactionFilterSheet
+        show={pickFilter}
+        onClose={() => setPickFilter(false)}
+        filters={filters}
+        onApply={setFilters}
+        transactions={state.transactions}
+        query={query}
+        searchIndex={searchIndex}
+        accounts={accounts}
+        envelopes={envelopes}
+        categories={categories}
+        places={places}
+        formatMoney={M}
+      />
     </div>
   );
 }

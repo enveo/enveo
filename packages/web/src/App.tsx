@@ -13,6 +13,7 @@ import { startupPresentation } from "./lib/startupSplash";
 import { store } from "./lib/store";
 import { bootOnce, retryBoot } from "./lib/sync";
 import { font, P, TEAL } from "./lib/theme";
+import type { TransactionFilters } from "./lib/transactionSearch";
 import { AddScreen, type Tab as AddTab } from "./screens/Add";
 import { BudgetScreen, EnvEdit } from "./screens/Budget";
 import { LoginScreen } from "./screens/Login";
@@ -48,6 +49,15 @@ const InstallSheet = lazy(() => import("./components/InstallSheet").then((m) => 
 const EnvActionsSheet = lazy(() => import("./components/EnvActionsSheet").then((m) => ({ default: m.EnvActionsSheet })));
 const InstallBanner = lazy(() => import("./components/InstallBanner").then((m) => ({ default: m.InstallBanner })));
 
+const initialTransactionFilters = (): TransactionFilters => ({
+  accountIds: new Set(),
+  envelopeIds: new Set(),
+  placeIds: new Set(),
+  categoryIds: new Set(),
+  kinds: new Set(),
+  amount: null,
+});
+
 export default function App() {
   const C = useTheme();
   const [screen, setScreen] = useState<ScreenId>("start");
@@ -76,8 +86,7 @@ export default function App() {
   const [editReturn, setEditReturn] = useState<ScreenId>("start");
   // transaction list filters kept high up so they survive an edit and return
   const [txQuery, setTxQuery] = useState("");
-  const [txEnvFilter, setTxEnvFilter] = useState<ReadonlySet<string>>(new Set());
-  const [txAccFilter, setTxAccFilter] = useState<ReadonlySet<string>>(new Set());
+  const [txFilters, setTxFilters] = useState<TransactionFilters>(initialTransactionFilters);
   const { data: state, isLoading, isError } = useStateQuery(month);
   const bootStatus = useSyncExternalStore(store.subscribe, store.getBootStatus);
 
@@ -144,8 +153,11 @@ export default function App() {
   // other dimension and the search box.
   const openTxns = (f?: { envId?: string; accId?: string }) => {
     setTxQuery("");
-    setTxEnvFilter(f?.envId ? new Set([f.envId]) : new Set());
-    setTxAccFilter(f?.accId ? new Set([f.accId]) : new Set());
+    setTxFilters({
+      ...initialTransactionFilters(),
+      envelopeIds: f?.envId ? new Set([f.envId]) : new Set(),
+      accountIds: f?.accId ? new Set([f.accId]) : new Set(),
+    });
     setEditTxn(null);
     setEnvView(null);
     setEditReturn("start");
@@ -330,10 +342,8 @@ export default function App() {
                     onEditTxn={(t) => editTxnFrom(t, "transactions")}
                     query={txQuery}
                     setQuery={setTxQuery}
-                    envFilter={txEnvFilter}
-                    setEnvFilter={setTxEnvFilter}
-                    accFilter={txAccFilter}
-                    setAccFilter={setTxAccFilter}
+                    filters={txFilters}
+                    setFilters={setTxFilters}
                   />
                 </LazyChunk>
               )}
