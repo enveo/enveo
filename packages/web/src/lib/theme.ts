@@ -190,6 +190,9 @@ interface ThemeDef {
   /** CTA (FAB/primary) — defaults to the mode's accent. */
   cta?: string;
   ctaDark?: string;
+  /** Shared keyboard-focus ring. Plain themes use their accent; Duet needs one color readable on both surfaces. */
+  focusRing?: string;
+  focusRingDark?: string;
   /** Navigation bar — defaults to the mode palette's surface/accent/mute. */
   nav?: NavTokens;
   navDark?: NavTokens;
@@ -242,6 +245,10 @@ export const THEMES: Record<AccentTheme, ThemeDef> = {
     dangerDark: "#ef4b58",
     cta: "#f0685c",
     ctaDark: "#ff8d7d",
+    // Both transaction search and picker search use the same ring. These blue/coral values
+    // clear the 3:1 UI contrast floor against Duet's navy band and cream content surfaces.
+    focusRing: "#4a86c4",
+    focusRingDark: "#ff8d7d",
     nav: { bg: "#1d2a47", on: "#ff8d7d", mute: "#8fa2cc", ind: "#ff8d7d" },
     navDark: { bg: "#1d2a47", on: "#ff8d7d", mute: "#8fa2cc", ind: "#ff8d7d" },
     overrides: {
@@ -323,14 +330,10 @@ export function themeTokens(t: AccentTheme, isDark: boolean): { vars: Record<str
   // Nav defaults = EXACTLY today's BottomNav (bg C.bg, active C.text,
   // indicator = accent, inactive C.mute) — a teal regression guard.
   const nav = (isDark ? def.navDark : def.nav) ?? { bg: palette.bg, on: palette.text, mute: palette.mute, ind: accent };
-  // C3 follow-up: on a "band" theme (Duet), `--accent` IS the band color (headerBg/nav bg are
-  // both the same navy #1d2a47 in both modes) — a `:focus-visible{outline:2px solid var(--accent)}`
-  // ring is then invisible (1.000:1) on the Header/BottomNav. `headerInk` is the token every band
-  // theme already uses for on-band text/icons, and it measures ≥12:1 against headerBg/nav bg in
-  // both modes (Duet), so it doubles as a high-contrast on-band ring. Plain themes (headerStyle
-  // "plain") paint the band the same color as `bg`, so the ordinary accent ring is already correct
-  // there — `--focus-ring-band` is just `--accent` for them (no behavior change).
-  const focusRingBand = palette.headerStyle === "band" ? palette.headerInk : accent;
+  // The same focus token is intentionally used by search shells on both the header band and
+  // content sheets. Plain themes retain their accent; Duet supplies colors that contrast with
+  // both its navy band and cream content surface.
+  const focusRing = (isDark ? def.focusRingDark : def.focusRing) ?? accent;
   const vars: Record<string, string> = {
     "--accent": accent,
     "--danger": danger,
@@ -339,7 +342,7 @@ export function themeTokens(t: AccentTheme, isDark: boolean): { vars: Record<str
     "--nav-on": nav.on,
     "--nav-mute": nav.mute,
     "--nav-ind": nav.ind,
-    "--focus-ring-band": focusRingBand,
+    "--focus-ring": focusRing,
   };
   for (const s of ALPHA_SUFFIXES) {
     vars[`--accent-${s}`] = hexAlpha(accent, s);

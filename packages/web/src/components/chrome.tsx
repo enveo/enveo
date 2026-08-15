@@ -3,7 +3,7 @@ import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { useLedgerVersion } from "../lib/api";
 import { useSettings, useTheme } from "../lib/contexts";
 import { currentMonth, monthLabel } from "../lib/dates";
-import { INPUT_FOCUS_CSS } from "../lib/focusPresentation";
+import { INPUT_FOCUS_CSS, NAME_UNDERLINE_FOCUS_CSS } from "../lib/focusPresentation";
 import { LOCALE_OF } from "../lib/format";
 import { useT } from "../lib/i18n";
 import { D_INSTALL, Ico } from "../lib/icons";
@@ -22,10 +22,8 @@ export function StyleInjector() {
     // outline (measured ~2.2:1 on dark surfaces, under the 3:1 UI floor) — invisible on dark
     // backgrounds. This is desktop/keyboard-only in effect (mobile taps never trigger
     // :focus-visible), so it costs nothing on the primary mobile-first surface.
-    // [data-band] follow-up: on Duet, `--accent` IS the header/nav band color (1.000:1 —
-    // literally invisible there), so band-painted containers (Header wrapper, BottomNav,
-    // ReportShell) are marked `data-band` and get `--focus-ring-band` instead (see theme.ts) —
-    // on-band ink for Duet, identical to `--accent` for plain themes (no-op there).
+    // Search shells on the header band and content sheets share one --focus-ring token, so
+    // keyboard focus has the same color wherever the search field is opened.
     // .rpt-body>:first-child (ReportShell's body div, reportKit.tsx): the body itself carries a
     // consistent paddingTop for the band→content gap, but each subscreen's first element also
     // brings its OWN top margin (a section eyebrow, a stat row, a bare goal row — whatever
@@ -36,7 +34,7 @@ export function StyleInjector() {
     // shell's own paddingTop is the ONE source of that gap everywhere. `!important` is required:
     // an author stylesheet !important rule is the only thing that outranks an inline `style`
     // (itself normal-priority, cascade-wise, despite the specificity myth) — see MDN cascade order.
-    s.textContent = `*{-webkit-tap-highlight-color:transparent}@keyframes fu{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}@keyframes su{from{transform:translateY(100%)}to{transform:translateY(0)}}@keyframes sl{from{transform:translateX(-100%)}to{transform:translateX(0)}}@keyframes fi{from{opacity:0}to{opacity:1}}@keyframes sp{to{transform:rotate(360deg)}}@keyframes wg{from{transform:rotate(-.5deg)}to{transform:rotate(.5deg)}}@keyframes sk{0%,100%{opacity:.5}50%{opacity:.9}}.fu{animation:fu .4s ease-out both}.fi{animation:fi .25s ease-out both}.sk{animation:sk 1.2s ease-in-out infinite}.gs::-webkit-scrollbar{width:0;height:0}body{margin:0}@media(hover:hover){button:not(:disabled):hover{filter:brightness(.96)}}:focus-visible{outline:2px solid var(--accent);outline-offset:2px}[data-band] *:focus-visible{outline-color:var(--focus-ring-band)}${INPUT_FOCUS_CSS}.rpt-body>:first-child{margin-top:0 !important}`;
+    s.textContent = `*{-webkit-tap-highlight-color:transparent}@keyframes fu{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}@keyframes su{from{transform:translateY(100%)}to{transform:translateY(0)}}@keyframes sl{from{transform:translateX(-100%)}to{transform:translateX(0)}}@keyframes fi{from{opacity:0}to{opacity:1}}@keyframes sp{to{transform:rotate(360deg)}}@keyframes wg{from{transform:rotate(-.5deg)}to{transform:rotate(.5deg)}}@keyframes sk{0%,100%{opacity:.5}50%{opacity:.9}}.fu{animation:fu .4s ease-out both}.fi{animation:fi .25s ease-out both}.sk{animation:sk 1.2s ease-in-out infinite}.gs::-webkit-scrollbar{width:0;height:0}body{margin:0}@media(hover:hover){button:not(:disabled):hover{filter:brightness(.96)}}:focus-visible{outline:2px solid var(--focus-ring);outline-offset:2px}${INPUT_FOCUS_CSS}${NAME_UNDERLINE_FOCUS_CSS}.rpt-body>:first-child{margin-top:0 !important}`;
     document.head.appendChild(s);
   }, []);
   return null;
@@ -256,7 +254,7 @@ export function BottomNav({ active, onNav }: { active: ScreenId; onNav: (s: Scre
     { id: "reports", label: t("Reports"), d: "M4 19h16M7 16v-5M12 16V8M17 16v-9" },
   ];
   // data-band: the nav always paints "var(--nav-bg)" as its own background (on Duet that's the
-  // navy band, `--accent` itself — see the [data-band] focus-ring rule in StyleInjector).
+  // navy band, `--accent` itself).
   return (
     <nav
       data-band={C.headerStyle === "band" || undefined}

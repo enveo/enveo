@@ -129,6 +129,7 @@ describe("full var set for 4 themes × 2 modes", () => {
     "--nav-on",
     "--nav-mute",
     "--nav-ind",
+    "--focus-ring",
     ...ALPHA_SUFFIXES.map((s) => `--accent-${s}`),
     ...ALPHA_SUFFIXES.map((s) => `--danger-${s}`),
     ...ALPHA_SUFFIXES.map((s) => `--cta-${s}`),
@@ -298,6 +299,22 @@ describe("C3 contrast audit — dark-mode AA regression guard", () => {
     const { vars, palette } = themeTokens("duet", true);
     expect(ratio(vars["--accent"]!, palette.card)).toBeGreaterThanOrEqual(AA_TEXT);
     expect(vars["--accent"]).toBe("#8fa2cc"); // unchanged — already AA on the navy overridesDark palette
+  });
+
+  test("uses one cross-surface focus ring for both Duet search fields", () => {
+    const lightTokens = themeTokens("duet", false);
+    const darkTokens = themeTokens("duet", true);
+    expect(lightTokens.vars["--focus-ring"]).toBe("#4a86c4");
+    expect(darkTokens.vars["--focus-ring"]).toBe("#ff8d7d");
+    for (const { vars, palette } of [lightTokens, darkTokens]) {
+      for (const bg of [palette.headerBg, palette.bg, palette.card]) {
+        expect(ratio(vars["--focus-ring"]!, bg)).toBeGreaterThanOrEqual(AA_UI);
+      }
+    }
+    for (const th of ["teal", "koral", "atrament"] as const) {
+      expect(themeTokens(th, false).vars["--focus-ring"]).toBe(themeTokens(th, false).vars["--accent"]);
+      expect(themeTokens(th, true).vars["--focus-ring"]).toBe(themeTokens(th, true).vars["--accent"]);
+    }
   });
 
   test("every theme's dark accent clears the 3:1 UI/border floor too (outline chip borders, active filter-chip checkmarks)", () => {

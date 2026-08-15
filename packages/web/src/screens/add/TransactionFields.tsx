@@ -1,4 +1,5 @@
 import { useTheme } from "../../lib/contexts";
+import { NAME_UNDERLINE_FOCUS_CLASS } from "../../lib/focusPresentation";
 import { useT } from "../../lib/i18n";
 import { Ico } from "../../lib/icons";
 import { font, P } from "../../lib/theme";
@@ -26,6 +27,7 @@ export function TransactionFields({
           (shared across all three tabs now that it no longer sits beside the category chip). */}
       <div style={{ padding: `0 ${P}px 4px` }}>
         <input
+          className={NAME_UNDERLINE_FOCUS_CLASS}
           value={name}
           onChange={(e) => onNameChange(e.target.value)}
           onFocus={onFieldFocus}
