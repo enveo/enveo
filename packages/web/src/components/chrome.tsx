@@ -3,6 +3,7 @@ import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { useLedgerVersion } from "../lib/api";
 import { useSettings, useTheme } from "../lib/contexts";
 import { currentMonth, monthLabel } from "../lib/dates";
+import { INPUT_FOCUS_CSS } from "../lib/focusPresentation";
 import { LOCALE_OF } from "../lib/format";
 import { useT } from "../lib/i18n";
 import { D_INSTALL, Ico } from "../lib/icons";
@@ -35,7 +36,7 @@ export function StyleInjector() {
     // shell's own paddingTop is the ONE source of that gap everywhere. `!important` is required:
     // an author stylesheet !important rule is the only thing that outranks an inline `style`
     // (itself normal-priority, cascade-wise, despite the specificity myth) — see MDN cascade order.
-    s.textContent = `*{-webkit-tap-highlight-color:transparent}@keyframes fu{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}@keyframes su{from{transform:translateY(100%)}to{transform:translateY(0)}}@keyframes sl{from{transform:translateX(-100%)}to{transform:translateX(0)}}@keyframes fi{from{opacity:0}to{opacity:1}}@keyframes sp{to{transform:rotate(360deg)}}@keyframes wg{from{transform:rotate(-.5deg)}to{transform:rotate(.5deg)}}@keyframes sk{0%,100%{opacity:.5}50%{opacity:.9}}.fu{animation:fu .4s ease-out both}.fi{animation:fi .25s ease-out both}.sk{animation:sk 1.2s ease-in-out infinite}.gs::-webkit-scrollbar{width:0;height:0}body{margin:0}@media(hover:hover){button:not(:disabled):hover{filter:brightness(.96)}}:focus-visible{outline:2px solid var(--accent);outline-offset:2px}[data-band] *:focus-visible{outline-color:var(--focus-ring-band)}.rpt-body>:first-child{margin-top:0 !important}`;
+    s.textContent = `*{-webkit-tap-highlight-color:transparent}@keyframes fu{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}@keyframes su{from{transform:translateY(100%)}to{transform:translateY(0)}}@keyframes sl{from{transform:translateX(-100%)}to{transform:translateX(0)}}@keyframes fi{from{opacity:0}to{opacity:1}}@keyframes sp{to{transform:rotate(360deg)}}@keyframes wg{from{transform:rotate(-.5deg)}to{transform:rotate(.5deg)}}@keyframes sk{0%,100%{opacity:.5}50%{opacity:.9}}.fu{animation:fu .4s ease-out both}.fi{animation:fi .25s ease-out both}.sk{animation:sk 1.2s ease-in-out infinite}.gs::-webkit-scrollbar{width:0;height:0}body{margin:0}@media(hover:hover){button:not(:disabled):hover{filter:brightness(.96)}}:focus-visible{outline:2px solid var(--accent);outline-offset:2px}[data-band] *:focus-visible{outline-color:var(--focus-ring-band)}${INPUT_FOCUS_CSS}.rpt-body>:first-child{margin-top:0 !important}`;
     document.head.appendChild(s);
   }, []);
   return null;
