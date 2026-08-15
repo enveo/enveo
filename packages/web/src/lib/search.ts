@@ -16,10 +16,31 @@ const DIACRITIC_RE = (() => {
   }
 })();
 
+const SEARCH_FOLDS: Readonly<Record<string, string>> = {
+  Ł: "l",
+  ł: "l",
+  Đ: "d",
+  đ: "d",
+  Ø: "o",
+  ø: "o",
+  Æ: "ae",
+  æ: "ae",
+  Œ: "oe",
+  œ: "oe",
+  ẞ: "ss",
+  ß: "ss",
+};
+const SEARCH_FOLD_RE = /[ŁłĐđØøÆæŒœẞß]/g;
+
 /** Lowercase + strip diacritics (NFD decompose, drop combining marks) — the primary locale is
- *  Polish, so "oszczednosci" must match "Oszczędności", "zabka" → "Żabka", "srodki" → "Środki". */
+ *  Polish, so "oszczednosci" must match "Oszczędności", "zabka" → "Żabka", "lodz" → "Łódź".
+ *  A small explicit fold covers letters such as ł/ß/œ that Unicode NFD does not decompose. */
 export function normalizeForSearch(s: string): string {
-  return s.normalize("NFD").replace(DIACRITIC_RE, "").toLowerCase();
+  return s
+    .replace(SEARCH_FOLD_RE, (letter) => SEARCH_FOLDS[letter] ?? letter)
+    .normalize("NFD")
+    .replace(DIACRITIC_RE, "")
+    .toLowerCase();
 }
 
 /** Diacritic- and case-insensitive substring match. Empty/whitespace query matches everything —
