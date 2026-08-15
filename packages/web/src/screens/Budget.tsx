@@ -9,6 +9,7 @@ import { fmtSignedTrim, type PadState, padPreview, padPreviewLive } from "../lib
 import type { EnvelopeView, StateResponse } from "../lib/api";
 import { useCurrency, useMask, useSettings, useTheme } from "../lib/contexts";
 import { useDragReorder } from "../lib/dnd";
+import { activeAllocationDecoration } from "../lib/focusPresentation";
 import { currencySymbol, fmtTrim, isLight, localizePadExpression, parseAmount } from "../lib/format";
 import { goalProgress } from "../lib/goals";
 import { useT } from "../lib/i18n";
@@ -409,6 +410,7 @@ function AllocCell({ e, editing, onStart }: { e: EnvelopeView; editing: { expr: 
   if (editing) {
     // Active cell: the padKey expression in place of the input; err = ✓ on a bad result.
     // stopPropagation: a tap on the edited cell must not open the envelope action sheet.
+    const activeColor = editing.err ? "var(--danger)" : "var(--accent)";
     return (
       <div
         data-pad-cell="1"
@@ -423,8 +425,7 @@ function AllocCell({ e, editing, onStart }: { e: EnvelopeView; editing: { expr: 
           whiteSpace: "nowrap",
           overflowX: "auto",
           boxSizing: "border-box",
-          borderBottom: `2px solid ${editing.err ? "var(--danger)" : "var(--accent)"}`,
-          borderRadius: "7px 7px 0 0",
+          ...activeAllocationDecoration(activeColor),
         }}
       >
         {localizePadExpression(editing.expr, lang) || "0"}
