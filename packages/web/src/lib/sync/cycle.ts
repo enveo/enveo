@@ -6,7 +6,11 @@
 
 
 
+
+import { accountPreferences } from "../accountPreferences";
+import { devicePreferences } from "../devicePreferences";
 import * as e2ee from "../e2ee";
+import { migrateLegacySettings } from "../legacySettingsMigrationRuntime";
 import * as outbox from "../outbox";
 import * as persist from "../persist";
 import { store } from "../store";
@@ -21,7 +25,6 @@ import {
   UnauthorizedError,
 } from "./contracts";
 import { ensureIdentity, enterUnauthed, invalidateIdentityVerdict, isIdentityBlocked } from "./identity";
-import { getLocalMode } from "./localMode";
 import { clearResyncPending, isReplacePending, isResyncPending, markResyncPending } from "./obligations";
 import { e2eeReplicaBudgetId, replayOutbox } from "./replica";
 import { bumpStatus, setLastSyncAt, setState } from "./status";
@@ -133,12 +136,9 @@ export function fullResync(): Promise<void> {
 }
 
 /**
- * Pre-sign-out outbox flush for CLOUD deployments. Their sign-out wipes the replica (the server
- * is the durable copy there — operator backups, not this device), and queued ops would go with
- * it; selfhost sign-out keeps the replica instead (see enterLoginKeepingReplica — it may be the
- * LAST copy). One ordinary cycle through the usual mutex; returns how many ops are STILL queued
- * afterwards. 0 ⇒ a wipe loses nothing; anything else (offline, 5xx, an unproven replica) ⇒ the
- * caller must obtain explicit consent before discarding, or abort the sign-out.
+ * Pre-sign-out outbox flush for every deployment. Explicit sign-out clears local account data,
+ * so queued ops must first get an ordinary cycle through the usual mutex. The remaining count
+ * determines whether the human must retry, export a backup, or explicitly discard.
  */
 export async function flushOutboxForSignOut(): Promise<number> {
   await syncNow("sign-out");
@@ -163,12 +163,6 @@ export function recheckReplicaOwner(): Promise<void> {
 async function doCycle(): Promise<boolean> {
   
 
-  if (getLocalMode() !== "off") {
-    setState("local");
-    return true;
-  }
-  
-
   if (store.getBootStatus() === "locked") return true;
    
   if (isIdentityBlocked()) return true;
@@ -183,6 +177,15 @@ async function doCycle(): Promise<boolean> {
     // overwrite this cycle makes (per-REQUEST assertion — the cookie can still be swapped later).
     const userId = await ensureIdentity();
     if (!userId) return true;
+    await accountPreferences.hydrateForUser(userId);
+    // Preferences are an auxiliary channel: a temporary failure must not stall ledger sync.
+    try {
+      await accountPreferences.sync(userId);
+      await devicePreferences.hydrate();
+      await migrateLegacySettings();
+    } catch (error) {
+      console.warn("account preference sync or legacy migration failed", error);
+    }
     
 
     isE2ee = e2ee.getTierMeta().tier === "e2ee";
@@ -460,16 +463,39 @@ function finishSuccess(): void {
 let running: Promise<void> | null = null;
 let dirty = false;
 
+
+
+
+
+export async function runWithSyncMutex<T>(task: () => Promise<T>): Promise<T> {
+  while (running) await running.catch(() => {});
+  let result!: T;
+  let failure: unknown;
+  let failed = false;
+  const current = (async () => {
+    try {
+      result = await task();
+    } catch (error) {
+      failure = error;
+      failed = true;
+    }
+    while (dirty) {
+      dirty = false;
+      const ok = await doCycle();
+      if (!ok) break;
+    }
+  })().finally(() => {
+    if (running === current) running = null;
+  });
+  running = current;
+  await current;
+  if (failed) throw failure;
+  return result;
+}
+
 export function syncNow(reason: string): Promise<void> {
   void reason;  
   if (import.meta.env.DEV) lastReason = reason;
-  
-
-
-  if (getLocalMode() !== "off") {
-    setState("local");
-    return Promise.resolve();
-  }
   
 
   if (isIdentityBlocked()) return Promise.resolve();

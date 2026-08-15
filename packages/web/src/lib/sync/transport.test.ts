@@ -15,17 +15,7 @@ import { clearLocalData, idbPut } from "../idb";
 import * as outbox from "../outbox";
 import * as persist from "../persist";
 import { store } from "../store";
-import {
-  __resetBackoff,
-  __resetIdentity,
-  __resetObligations,
-  __setLocalMode,
-  fetchSnapshot,
-  pushLocalToServer,
-  resetServerE2ee,
-  syncNow,
-  upgradeServerE2eeV2,
-} from "../sync";
+import { __resetBackoff, __resetIdentity, __resetObligations, fetchSnapshot, pushLocalToServer, resetServerE2ee, syncNow, upgradeServerE2eeV2 } from "../sync";
 
 const BUDGET_A = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa";
 
@@ -84,6 +74,7 @@ beforeEach(async () => {
     if (url.startsWith("/api/sync2/pull")) return json({ cursor: 0, epoch: serverEpoch, ops: [] });
     if (url.startsWith("/api/sync2/reset")) return json({ epoch: serverEpoch, uptoSeq: 0 });
     if (url.startsWith("/api/budget/e2ee/upgrade-v2")) {
+      if (init?.method !== "POST") return json({ configured: false, budgetId: BUDGET_A, epoch: serverEpoch });
       const body = JSON.parse(String(init?.body ?? "{}")) as { expectedEpoch: number };
       serverEpoch = body.expectedEpoch + 1;
       return json({ budgetId: BUDGET_A, epoch: serverEpoch, cipherVersion: 2, uptoSeq: 0 });
@@ -101,7 +92,6 @@ beforeEach(async () => {
   __resetIdentity();
   __resetObligations();
   __resetBackoff();
-  __setLocalMode("off");
   outbox.clearAll();
   e2ee.__resetDekForTests();
   e2ee.clearDek();
@@ -272,17 +262,20 @@ describe("wire shapes: v2 E2EE endpoints", () => {
 
     await upgradeServerE2eeV2("ceremony-pass-123");
 
-    const up = req("/api/budget/e2ee/upgrade-v2");
+    // The ceremony first reads the optional legacy credential from the same route family;
+    // select the mutation explicitly rather than the preceding GET.
+    const up = requests.find((request) => request.url.startsWith("/api/budget/e2ee/upgrade-v2") && request.method === "POST");
     expect(up).toBeDefined();
     expect(up!.method).toBe("POST");
     expect(up!.contentType).toBe("application/json");
     const body = bodyOf(up);
-    expect(Object.keys(body)).toEqual(["budgetId", "userId", "expectedEpoch", "cipherVersion", "wrappedDek", "kdfParams", "snapshotBlob"]);
+    expect(Object.keys(body)).toEqual(["budgetId", "userId", "expectedEpoch", "cipherVersion", "wrappedDek", "kdfParams", "snapshotBlob", "credentialAction"]);
     expect(body.budgetId).toBe(BUDGET_A);
     expect(body.userId).toBe("user-A");
     expect(body.expectedEpoch).toBe(1);
     expect(body.cipherVersion).toBe(2);
     expect(String(body.snapshotBlob).startsWith("v2.")).toBe(true);
+    expect(body.credentialAction).toEqual({ kind: "none" });
     expect(typeof body.wrappedDek).toBe("string");
     expect(typeof body.kdfParams).toBe("string");
   });

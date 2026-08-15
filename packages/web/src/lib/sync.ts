@@ -34,7 +34,6 @@
  * - sync/contracts.ts   — shared types, wire shapes, constants, error classes, dep interfaces
  * - sync/status.ts      — SyncState/lastSyncAt/ownerUnproven + listeners/snapshot
  * - sync/obligations.ts — durable resync/replace flags + IDB mirrors
- * - sync/localMode.ts   — the off/paused/wiped flag + transitions (deps injected below)
  * - sync/replica.ts     — stateless helpers over store/outbox (replay, budget id, emptiness)
  * - sync/transport.ts   — request construction/classification + every wire call (deps below)
  * - sync/identity.ts    — the multi-tenant guard: verdict state, ownership proof, boot check
@@ -43,30 +42,31 @@
  * - sync/multitab.ts    — Web Locks leadership, BroadcastChannel, peer-update application
  * - sync/upgrade.ts     — the v1→v2 E2EE upgrade ceremony + its durable intent record
  */
+
+import { accountPreferences } from "./accountPreferences";
+import { devicePreferences } from "./devicePreferences";
 import * as e2ee from "./e2ee";
-import { storageMode } from "./idb";
+import { clearLocalData, storageMode } from "./idb";
 
 
 
 import * as outbox from "./outbox";
 import * as persist from "./persist";
-import { INTERVAL_MS, type LocalMode } from "./sync/contracts";
-import { awaitInFlightCycle, configureCycle, getLastSyncReason, resetBackoff, syncNow } from "./sync/cycle";
+import { store } from "./store";
+import { INTERVAL_MS } from "./sync/contracts";
+import { configureCycle, getLastSyncReason, resetBackoff, syncNow } from "./sync/cycle";
 import { assertOwnReplica, enterUnauthed } from "./sync/identity";
-import { applyLocalMode, configureLocalMode, disableLocal, enablePaused, enableWiped, getLocalMode } from "./sync/localMode";
-import { broadcastLocalMode, broadcastUpdatedIfPending, installMultiTab, isLeaderTab, notePeersMayNeedUpdate, postMsg, wipeLocalData } from "./sync/multitab";
+import { broadcastUpdatedIfPending, installMultiTab, isLeaderTab, notePeersMayNeedUpdate, postMsg } from "./sync/multitab";
 import { isReplacePending, isResyncPending } from "./sync/obligations";
-import { isEmptyUnboundReplica } from "./sync/replica";
-import { getSyncStatus, installOutboxStatusListener, setOwnerUnproven, setState } from "./sync/status";
-import { configureTransport, pushLocalToServer, wipeServer } from "./sync/transport";
+import { getSyncStatus, installOutboxStatusListener } from "./sync/status";
+import { configureTransport } from "./sync/transport";
 
  
 export { bootOnce, getLastBootSource, retryBoot } from "./sync/boot";
-export type { BootSource, IdentityVerdict, LocalMode, PendingE2eeUpgrade, SyncState, SyncStatus } from "./sync/contracts";
+export type { BootSource, IdentityVerdict, PendingE2eeUpgrade, SyncState, SyncStatus } from "./sync/contracts";
 export { E2eeUpgradeRequiredError, EMPTY_LEDGER, TierMismatchError } from "./sync/contracts";
 export { __resetBackoff, flushOutboxForSignOut, fullResync, poke, pullNow, recheckReplicaOwner, syncNow } from "./sync/cycle";
-export { __resetIdentity, assertOwnReplica, decideIdentity, enterLoginKeepingReplica } from "./sync/identity";
-export { disableLocal, enablePaused, enableWiped, getLocalMode, isLocalOnly } from "./sync/localMode";
+export { __resetIdentity, assertOwnReplica, decideIdentity, enterLoginPreservingReplica } from "./sync/identity";
 export { broadcastKeysChanged, wipeLocalData } from "./sync/multitab";
 export { __resetObligations, markReplacePending } from "./sync/obligations";
 export { getSyncStatus, subscribeSyncStatus } from "./sync/status";
@@ -77,27 +77,27 @@ export { discardPendingE2eeUpgrade, hasPendingE2eeUpgrade, upgradeServerE2eeV2 }
 // explicit, idempotent installation (sync/status.ts), done at composition time
 installOutboxStatusListener();
 
- 
-export function __setLocalMode(mode: LocalMode): void {
-  applyLocalMode(mode);
-}
-
 /**
  * The human chose "remove this data and continue" — on ForeignReplicaScreen (the replica is
  * stamped by another account) or in the unverified-replica notice (its owner cannot be proved).
  * This is the ONLY path that destroys such a replica, and it destroys it whole (mirror + outbox +
  * DEK + owner stamp), then reloads so the boot bootstraps the signed-in account's data.
  *
- * The local-mode flag goes with it: it belonged to the PREVIOUS owner (and after the discard there
- * is nothing left to keep offline). Leaving it at "wiped" would boot the signed-in user into a
- * network-free app on an EMPTY, unbound replica — and their first "Disable local mode" would
- * upload exactly that empty replica over their server budget.
  */
 export async function discardLocalReplica(): Promise<void> {
-  outbox.clearAll();  
-  if (getLocalMode() !== "off") applyLocalMode("off");  
-  await persist.flushed();  
-  await wipeLocalData();  
+  await clearLocalAccountData();
+  if (typeof location !== "undefined") location.reload();
+}
+
+ 
+export async function clearLocalAccountData(): Promise<void> {
+  outbox.clearAll();
+  e2ee.clearDek();  
+  store.clearMemory();
+  await persist.flushed();
+  await Promise.all([accountPreferences.clear(), devicePreferences.clear()]);
+  await clearLocalData();  
+  postMsg("wipe");
 }
 
 /* ── Triggers (idempotent installation — StrictMode-safe) ──────────── */
@@ -129,7 +129,7 @@ function installTriggers(): void {
 
 
   window.addEventListener("beforeunload", (e) => {
-    if (storageMode() === "memory-forced" && outbox.size() > 0) {
+    if (storageMode() === "memory-session" && outbox.size() > 0) {
       e.preventDefault();
       e.returnValue = ""; // legacy engines only show the dialog when returnValue is set
     }
@@ -159,19 +159,6 @@ configureCycle({
   postPokeToPeers: () => postMsg("poke"),
 });
 
-
-
-configureLocalMode({
-  setState,
-  setOwnerUnproven,
-  broadcastLocalMode,
-  wipeServer,
-  pushLocalToServer,
-  awaitInFlightCycle,
-  syncNow,
-  isEmptyUnboundReplica,
-});
-
 installTriggers();
 
  
@@ -189,11 +176,7 @@ if (import.meta.env.DEV && typeof window !== "undefined") {
     resyncPending: () => isResyncPending(),
     replacePending: () => isReplacePending(),
     isLeader: () => isLeaderTab(),
-    localMode: () => getLocalMode(),
     tierMeta: () => e2ee.getTierMeta(),
     dekLoaded: () => e2ee.getDek() !== null,
-    enablePaused: () => enablePaused(),
-    enableWiped: () => enableWiped(),
-    disableLocal: () => disableLocal(),
   };
 }

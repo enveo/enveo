@@ -77,6 +77,7 @@ const txn = (over: Partial<Txn> = {}): Txn => ({
   items: [],
   createdAt: "2026-01-02T00:00:00.000Z",
   ...over,
+  sourceRef: over.sourceRef ?? null,
 });
 
 describe("findForeignLedgerRef", () => {

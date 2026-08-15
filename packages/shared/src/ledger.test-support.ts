@@ -63,6 +63,7 @@ export function tx(over: Partial<Transaction>): Transaction {
     name: null,
     note: null,
     tag: null,
+    sourceRef: null,
     items: [],
     createdAt: "2026-06-10T00:00:00Z",
     ...over,

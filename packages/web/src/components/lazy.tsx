@@ -110,7 +110,8 @@ function OverlayFailed({ onDismiss }: { onDismiss?: () => void }) {
   );
 }
 
-type BoundaryProps = { children: ReactNode; variant: "screen" | "overlay"; onDismiss?: () => void };
+type LazyVariant = "screen" | "overlay" | "silent";
+type BoundaryProps = { children: ReactNode; variant: LazyVariant; onDismiss?: () => void };
 
 class ChunkErrorBoundary extends Component<BoundaryProps, { failed: boolean }> {
   state = { failed: false };
@@ -126,6 +127,7 @@ class ChunkErrorBoundary extends Component<BoundaryProps, { failed: boolean }> {
 
   render(): ReactNode {
     if (!this.state.failed) return this.props.children;
+    if (this.props.variant === "silent") return null;
     return this.props.variant === "overlay" ? <OverlayFailed onDismiss={this.props.onDismiss} /> : <ChunkFailed onDismiss={this.props.onDismiss} />;
   }
 }
@@ -134,13 +136,14 @@ class ChunkErrorBoundary extends Component<BoundaryProps, { failed: boolean }> {
  * Wraps one code-split surface: pending placeholder + failure boundary.
  *
  * `variant` picks the shape of both states — `screen` fills the content area (a lazy route),
- * `overlay` floats above the current screen (a lazy sheet). `onDismiss` adds a way out that is
+ * `overlay` floats above the current screen (a lazy sheet), and `silent` renders nothing for
+ * optional background UI such as the delayed install offer. `onDismiss` adds a way out that is
  * not a reload; sheets pass their `onClose`.
  */
-export function LazyChunk({ children, variant = "screen", onDismiss }: { children: ReactNode; variant?: "screen" | "overlay"; onDismiss?: () => void }) {
+export function LazyChunk({ children, variant = "screen", onDismiss }: { children: ReactNode; variant?: LazyVariant; onDismiss?: () => void }) {
   return (
     <ChunkErrorBoundary variant={variant} onDismiss={onDismiss}>
-      <Suspense fallback={variant === "overlay" ? <OverlayPending /> : <ScreenPending />}>{children}</Suspense>
+      <Suspense fallback={variant === "silent" ? null : variant === "overlay" ? <OverlayPending /> : <ScreenPending />}>{children}</Suspense>
     </ChunkErrorBoundary>
   );
 }

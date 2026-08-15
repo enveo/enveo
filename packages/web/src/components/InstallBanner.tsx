@@ -18,13 +18,13 @@ const FLAG = "enveo.a2hs2";
  * Remember that the install offer was already made, so the banner never returns. Also called by
  * the onboarding install card, which is the SAME one-time offer arriving earlier — without it the
  * banner would slide up seconds after the user skipped that card.
- * Guest mode (untrusted device, memory-only replica) writes NOTHING to disk — same contract as
+ * Session storage mode writes NOTHING to disk — same contract as
  * settingsPersist.ts: a guest must not leave traces, and must not eat the device owner's one
  * showing. The write is also guarded: localStorage throws in Safari private mode, and a caller
  * closing a screen on the way out must not be taken down with it.
  */
 export function markInstallOffered(): void {
-  if (storageMode() === "memory-forced") return;
+  if (storageMode() === "memory-session") return;
   try {
     localStorage.setItem(FLAG, "dismissed");
   } catch {

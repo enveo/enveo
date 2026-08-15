@@ -47,14 +47,14 @@ describe("lastAccount — per-device account preference", () => {
   });
 });
 
-describe("lastAccount vs device trust", () => {
+describe("lastAccount vs device storage policy", () => {
   beforeEach(() => {
     mem.clear();
     __resetStorageForTests();
   });
   afterEach(() => __resetStorageForTests());
   test("guest mode: setLastAccountId is a no-op", () => {
-    mem.set("enveo.deviceTrust", "untrusted");
+    mem.set("enveo.deviceStoragePolicy", "session");
     __resetStorageForTests();
     setLastAccountId("A1");
     expect(mem.has("enveo.lastAccount")).toBe(false);

@@ -1,0 +1,20 @@
+# Optional override for the server-side Own OpenAI credential vault.
+#
+# Use together with the ordinary self-host stack:
+#   docker compose -f compose.yml -f compose.ai-vault.yml up -d
+#
+# The source file is supplied by AI_VAULT_KEY_RING_PATH in .env. It is mounted read-only
+# and never copied into the image or PostgreSQL. The base stack intentionally does not include
+# this mount: without the file Enveo still boots and reports Own OpenAI as unavailable.
+
+services:
+  app:
+    environment:
+      AI_VAULT_KEY_RING_FILE: /run/secrets/enveo_ai_vault_key_ring
+    volumes:
+      - type: bind
+        source: ${AI_VAULT_KEY_RING_PATH:?set AI_VAULT_KEY_RING_PATH to the key-ring file}
+        target: /run/secrets/enveo_ai_vault_key_ring
+        read_only: true
+        bind:
+          create_host_path: false

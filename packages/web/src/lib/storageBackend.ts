@@ -4,7 +4,7 @@
  * Two implementations:
  *  - IdbBackend (idb.ts) — IndexedDB with the corruption-fallback policy,
  *  - MemoryBackend (here) — plain Maps; nothing survives the tab. It serves two
- *    roles: the FORCED backend on an untrusted device (the replica must leave
+ *    roles: the FORCED backend under the session policy (the replica must leave
  *    no trace on disk, so IndexedDB is never even opened) and the emergency
  *    fallback inside IdbBackend after an unrecoverable IndexedDB failure.
  *

@@ -222,7 +222,7 @@ describe("i18n — typed confirmation words", () => {
   
 
 
-  const CONFIRM_WORDS: Message[] = ["DISABLE-E2EE", "DELETE", "RESET"];
+  const CONFIRM_WORDS: Message[] = ["DISABLE-E2EE", "RESET"];
 
   it("the English words are printable ASCII (typeable on a US keyboard)", () => {
     for (const w of CONFIRM_WORDS) expect(w).toMatch(/^[\x20-\x7e]+$/);

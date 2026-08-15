@@ -77,6 +77,7 @@ export interface Transaction {
   name: string | null;  
   note: string | null;  
   tag: string | null; // normalized merchant tag (import idempotency key)
+  sourceRef: string | null;  
   items: TxnItem[]; // [] when not a split
   createdAt: string;
 }
@@ -89,11 +90,14 @@ export interface Allocation {
   amount: Money;
 }
 
+import type { BudgetPreferences } from "./preferences";
+
  
 export interface Budget {
   id: string;
   name: string;
   currency: string;  
+  preferences: BudgetPreferences;
 }
 
  

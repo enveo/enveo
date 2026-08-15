@@ -53,7 +53,20 @@ zcat enveo-2026-07-13.sql.gz | docker compose exec -T db psql -U enveo -d enveo
 ```
 
 Keep at least one copy of the backup **and of your `.env`** off the machine —
-losing `BETTER_AUTH_SECRET` signs every device out.
+losing `BETTER_AUTH_SECRET` signs every device out. If the optional Own OpenAI
+vault is enabled, back up its key-ring file separately and offline too. It is not
+inside PostgreSQL: restoring the database without the matching ring leaves vaulted
+OpenAI keys unreadable. Generation, rotation and the reference-check query are in
+[install.md](install.md#own-openai-credential-vault-optional).
+
+The operator key ring protects only plain-budget Own OpenAI credentials. E2EE
+credentials are zero-knowledge ciphertext protected by each budget DEK, so their
+recovery requires both the PostgreSQL ciphertext and the encryption password, an
+unlocked device or a pairing code. A JSON budget backup does not include the OpenAI
+credential. An operator cannot decrypt or reset it; the user must re-enter a key if
+either the ciphertext or all DEK recovery material is lost.
+Tier conversion moves a credential in the same transaction as the budget; do not
+manually rewrite `storage_kind`, `e2ee_epoch`, budget tier or cipher version.
 
 ## Reset a forgotten password
 

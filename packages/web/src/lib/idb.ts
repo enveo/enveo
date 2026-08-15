@@ -18,7 +18,7 @@
  * All writes resolve AFTER the IDB transaction completes (tx.oncomplete), not
  * merely after request.onsuccess.
  */
-import { getDeviceTrust } from "./deviceTrust";
+import { getDeviceStoragePolicy } from "./deviceStoragePolicy";
 import { MemoryBackend, type StorageBackend, type StoreName } from "./storageBackend";
 
 export type { StoreName } from "./storageBackend";
@@ -221,29 +221,29 @@ let forcedMemory = false;
 
 function activeBackend(): StorageBackend {
   if (!backend) {
-    // The device-trust flag decides ONCE per page load, before anything touches
-    // storage: untrusted → memory only. IndexedDB is then NEVER opened, so a
-    // previous (trusted) user's on-disk replica is neither read nor destroyed —
-    // a guest session cannot even see that it exists (and never lands on
-    // ForeignReplicaScreen). Trusted / absent flag → the durable default.
-    forcedMemory = getDeviceTrust() === "untrusted";
+    // The storage policy decides ONCE per page load, before anything touches
+    // storage: session → memory only. IndexedDB is then NEVER opened, so a
+    // previous persistent replica is neither read nor destroyed —
+    // this session cannot even see that it exists (and never lands on
+    // ForeignReplicaScreen). Persistent / absent policy → the durable default.
+    forcedMemory = getDeviceStoragePolicy() === "session";
     backend = forcedMemory ? new MemoryBackend() : new IdbBackend();
   }
   return backend;
 }
 
-export type StorageMode = "idb" | "memory-forced" | "memory-fallback";
+export type StorageMode = "idb" | "memory-session" | "memory-fallback";
 
 /**
  * Which backend the replica actually lives in:
  *  - "idb"             — IndexedDB (the durable default),
- *  - "memory-forced"   — untrusted device: memory by CHOICE, IndexedDB never opened,
+ *  - "memory-session"  — session policy: memory by CHOICE, IndexedDB never opened,
  *  - "memory-fallback" — IndexedDB broke irrecoverably; the app runs, nothing persists.
  * Replaces isInMemoryMode(); the old predicate is `storageMode() !== "idb"`.
  */
 export function storageMode(): StorageMode {
   const b = activeBackend();
-  if (forcedMemory) return "memory-forced";
+  if (forcedMemory) return "memory-session";
   return b instanceof IdbBackend && b.usingFallback() ? "memory-fallback" : "idb";
 }
 

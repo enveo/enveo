@@ -4,7 +4,7 @@
  * Deliberately free of runtime imports (only a TYPE import from ./index): lib/contexts.tsx reads
  * detectLang() from here and ./index reads useSettings() from contexts — putting the detection in
  * ./index would close that cycle. `../settingsPersist` is safe to import at runtime: it only pulls
- * in `./idb` (and idb's own leaves, deviceTrust.ts/storageBackend.ts), none of which touch i18n —
+ * in `./idb` (and idb's own leaves, deviceStoragePolicy.ts/storageBackend.ts), none of which touch i18n —
  * so this does NOT reopen the cycle above.
  */
 import { loadPersistedSettings } from "../settingsPersist";
@@ -32,9 +32,8 @@ export const LOCALES: { code: Lang; endonym: string; community: boolean; load: (
 ];
 
 /** UI language outside React (hook-free modules: backups, API error codes) — same store as contexts.tsx.
- *  Routed through the same guest-mode gate as the Settings context: on an untrusted device
- *  (storageMode() "memory-forced") loadPersistedSettings() returns null, so a guest never inherits
- *  a previous trusted user's on-disk language. */
+ *  Under the session policy (storageMode() "memory-session") legacy localStorage is ignored, so
+ *  the session never inherits a previous persistent user's on-disk language. */
 export function uiLang(): Lang {
   const s = loadPersistedSettings();
   const l = s ? (s as { lang?: string }).lang : undefined;
