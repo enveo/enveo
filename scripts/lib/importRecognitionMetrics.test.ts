@@ -400,6 +400,36 @@ describe("gateImportRecognition", () => {
     expect(decision.reasons).toContain("relation_f1_regression");
   });
 
+  test("legacy-zero relation gate rejects false-positive inflation and accepts its exact floor", () => {
+    const expected = [
+      expectedRow(),
+      expectedRow({ id: "fx", relation: { kind: "fx_for", rowId: "purchase" }, expectedProposal: null }),
+      expectedRow({ id: "fee", relation: { kind: "fee_for", rowId: "purchase" }, expectedProposal: null }),
+    ];
+    const baseline = [actualRow(), actualRow({ id: "fx", proposal: null }), actualRow({ id: "fee", proposal: null })];
+    const exactFloor = [
+      actualRow(),
+      actualRow({ id: "fx", relation: { kind: "fx_for", rowId: "purchase" }, proposal: null }),
+      actualRow({ id: "fee", proposal: null }),
+    ];
+    const inflated = [
+      ...exactFloor,
+      ...Array.from({ length: 9 }, (_, index) => actualRow({ id: `noise-${index}`, relation: { kind: "refund_of", rowId: "purchase" }, proposal: null })),
+    ];
+
+    const inflatedDecision = gateImportRecognition(expected, baseline, inflated);
+    expect(inflatedDecision.candidate.relationPrecision.rate).toBe(0.1);
+    expect(inflatedDecision.reasons).toContain("relation_precision_below_absolute_floor");
+    expect(gateImportRecognition(expected, baseline, exactFloor).reasons).not.toEqual(
+      expect.arrayContaining(["relation_precision_below_absolute_floor", "relation_recall_below_absolute_floor", "relation_f1_below_absolute_floor"]),
+    );
+  });
+
+  test("absolute relation floors do not apply when truth has no relations", () => {
+    const decision = gateImportRecognition([expectedRow()], [actualRow()], [actualRow()]);
+    expect(decision.reasons).not.toEqual(expect.arrayContaining([expect.stringContaining("relation_")]));
+  });
+
   test("combined omissions and relabeling cannot game the paired gate", () => {
     const expected = [
       expectedRow(),
@@ -434,61 +464,76 @@ const manifestRow = (overrides: Partial<RecognitionManifestRow> = {}): Recogniti
   ...overrides,
 });
 
+const dynamicCandidateResult = () => ({
+  rows: [
+    {
+      rowId: "row-a",
+      imageIndex: 0,
+      visualOrder: 0,
+      date: "2026-08-15",
+      amount: 1299,
+      currency: "EUR",
+      direction: "debit",
+      postingStatus: "posted",
+      rowRole: "financial_event",
+      semanticKind: "card_purchase",
+      relation: null,
+      rawTextLines: ["MARKET"],
+      confidence: "high",
+      reviewReasons: [],
+    },
+  ],
+  proposals: [
+    {
+      rowId: "row-a",
+      sourceRows: ["row-a"],
+      disposition: "candidate",
+      date: "2026-08-15",
+      amount: 1299,
+      currency: "EUR",
+      type: "expense",
+      isRefund: false,
+      toAccountId: null,
+      semanticKind: "card_purchase",
+      relation: null,
+      name: "Groceries",
+      tag: "MARKET",
+      rawPlace: "MARKET",
+      envelopeId: null,
+      categoryId: null,
+      placeName: null,
+      reviewReasons: [],
+      selected: true,
+      duplicateStatus: "new",
+      sourceAccountInvalid: false,
+    },
+  ],
+});
+
 describe("recognition evaluator adapters", () => {
   test("candidate result validation fails closed before scoring malformed dynamic output", async () => {
     // Break caught: validating only metric-consumed fields lets a dynamically loaded
     // reconciled wire drift while the evaluator still publishes plausible scores.
     const evaluator = (await import("../evaluate-import-recognition")) as Record<string, unknown>;
     expect(typeof evaluator.parseCandidateResult).toBe("function");
-    const parseCandidateResult = evaluator.parseCandidateResult as (value: unknown) => unknown;
+    const parseCandidateResult = evaluator.parseCandidateResult as (value: unknown, imageCount: number) => unknown;
+    const malformed = dynamicCandidateResult();
+    malformed.proposals[0]!.sourceAccountInvalid = "no" as never;
 
-    expect(() =>
-      parseCandidateResult({
-        rows: [
-          {
-            rowId: "row-a",
-            imageIndex: 0,
-            visualOrder: 0,
-            date: "2026-08-15",
-            amount: 1299,
-            currency: "EUR",
-            direction: "debit",
-            postingStatus: "posted",
-            rowRole: "financial_event",
-            semanticKind: "card_purchase",
-            relation: null,
-            rawTextLines: ["MARKET"],
-            confidence: "high",
-            reviewReasons: [],
-          },
-        ],
-        proposals: [
-          {
-            rowId: "row-a",
-            sourceRows: ["row-a"],
-            disposition: "candidate",
-            date: "2026-08-15",
-            amount: 1299,
-            currency: "EUR",
-            type: "expense",
-            isRefund: false,
-            toAccountId: null,
-            semanticKind: "card_purchase",
-            relation: null,
-            name: "Groceries",
-            tag: "MARKET",
-            rawPlace: "MARKET",
-            envelopeId: null,
-            categoryId: null,
-            placeName: null,
-            reviewReasons: [],
-            selected: true,
-            duplicateStatus: "new",
-            sourceAccountInvalid: "no",
-          },
-        ],
-      }),
-    ).toThrow("candidate production result");
+    expect(() => parseCandidateResult(malformed, 1)).toThrow("candidate production result");
+  });
+
+  test("candidate result validation rejects out-of-bounds and duplicate visual positions", async () => {
+    const evaluator = (await import("../evaluate-import-recognition")) as Record<string, unknown>;
+    const parseCandidateResult = evaluator.parseCandidateResult as (value: unknown, imageCount: number) => unknown;
+    const outOfBounds = dynamicCandidateResult();
+    outOfBounds.rows[0]!.imageIndex = 1;
+    const duplicate = dynamicCandidateResult();
+    duplicate.rows.push({ ...duplicate.rows[0]!, rowId: "row-b" });
+    duplicate.proposals.push({ ...duplicate.proposals[0]!, rowId: "row-b", sourceRows: ["row-b"] });
+
+    expect(() => parseCandidateResult(outOfBounds, 1)).toThrow("imageIndex");
+    expect(() => parseCandidateResult(duplicate, 1)).toThrow("duplicate visual position");
   });
 
   test("only a real OpenAI comparison can receive the release-success status", async () => {
@@ -497,18 +542,25 @@ describe("recognition evaluator adapters", () => {
         transport: "openai" | "injected-test",
         criteriaPassed: boolean,
         reasons: string[],
+        identityBound: boolean,
       ) => { releaseEligible: boolean; passed: boolean; reasons: string[]; exitCode: number };
     };
     expect(typeof evaluator.comparisonReleaseStatus).toBe("function");
 
-    expect(evaluator.comparisonReleaseStatus!("openai", true, [])).toEqual({ releaseEligible: true, passed: true, reasons: [], exitCode: 0 });
-    expect(evaluator.comparisonReleaseStatus!("openai", false, ["unsafe_row_constraint_failed"])).toEqual({
+    expect(evaluator.comparisonReleaseStatus!("openai", true, [], true)).toEqual({ releaseEligible: true, passed: true, reasons: [], exitCode: 0 });
+    expect(evaluator.comparisonReleaseStatus!("openai", true, [], false)).toEqual({
+      releaseEligible: false,
+      passed: false,
+      reasons: ["source_identity_unbound"],
+      exitCode: 1,
+    });
+    expect(evaluator.comparisonReleaseStatus!("openai", false, ["unsafe_row_constraint_failed"], true)).toEqual({
       releaseEligible: false,
       passed: false,
       reasons: ["unsafe_row_constraint_failed"],
       exitCode: 1,
     });
-    expect(evaluator.comparisonReleaseStatus!("injected-test", true, [])).toEqual({
+    expect(evaluator.comparisonReleaseStatus!("injected-test", true, [], true)).toEqual({
       releaseEligible: false,
       passed: false,
       reasons: ["non_live_transport"],
@@ -555,16 +607,31 @@ describe("recognition evaluator adapters", () => {
         "/repo/main",
         "--candidate-source-tree",
         "/repo/worktree",
+        "--expected-candidate-revision",
+        "0123456789abcdef0123456789abcdef01234567",
       ]),
     ).toEqual({
       manifestPath: "/private/manifest.json",
       mode: "compare",
       baselineSourceTree: "/repo/main",
       candidateSourceTree: "/repo/worktree",
+      expectedCandidateRevision: "0123456789abcdef0123456789abcdef01234567",
     });
     expect(() => parseEvalArgs(["--manifest", "/private/manifest.json", "--mode", "compare", "--baseline-source-tree", "/repo/main"])).toThrow(
       "--candidate-source-tree",
     );
+    expect(() =>
+      parseEvalArgs([
+        "--manifest",
+        "/private/manifest.json",
+        "--mode",
+        "compare",
+        "--baseline-source-tree",
+        "/repo/main",
+        "--candidate-source-tree",
+        "/repo/worktree",
+      ]),
+    ).toThrow("--expected-candidate-revision");
   });
 
   test("CLI requires an explicit manifest, mode, and source tree", () => {

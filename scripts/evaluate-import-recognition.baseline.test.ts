@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { mkdir, mkdtemp, readdir, realpath, rm, symlink } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, readFile, realpath, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -7,10 +7,11 @@ import { pathToFileURL } from "node:url";
 const BASE_REVISION = "864c47f98c27bb7bf238e636b34f89dfa3dcc63c";
 
 let baseRoot = "";
+let versionedBaseRoot = "";
 
-async function linkPackageDependencies(packageName: "api" | "shared"): Promise<void> {
+async function linkPackageDependencies(packageName: "api" | "shared", targetRoot = baseRoot): Promise<void> {
   const source = resolve(import.meta.dir, `../packages/${packageName}/node_modules`);
-  const target = resolve(baseRoot, `packages/${packageName}/node_modules`);
+  const target = resolve(targetRoot, `packages/${packageName}/node_modules`);
   await mkdir(target, { recursive: true });
   for (const entry of await readdir(source, { withFileTypes: true })) {
     if (packageName === "api" && entry.name === "@enveo") continue;
@@ -20,18 +21,39 @@ async function linkPackageDependencies(packageName: "api" | "shared"): Promise<v
 
 beforeAll(async () => {
   baseRoot = await mkdtemp(resolve(tmpdir(), "enveo-exact-import-base-"));
-  const archive = Bun.spawn(["git", "archive", BASE_REVISION], { cwd: resolve(import.meta.dir, ".."), stdout: "pipe", stderr: "pipe" });
-  const extract = Bun.spawn(["tar", "-x", "-C", baseRoot], { stdin: archive.stdout, stdout: "ignore", stderr: "pipe" });
+  const archive = Bun.spawn(["git", "archive", BASE_REVISION], { cwd: resolve(import.meta.dir, ".."), stdout: "pipe", stderr: "ignore" });
+  const extract = Bun.spawn(["tar", "-x", "-C", baseRoot], { stdin: archive.stdout, stdout: "ignore", stderr: "ignore" });
   const [archiveExit, extractExit] = await Promise.all([archive.exited, extract.exited]);
   if (archiveExit !== 0 || extractExit !== 0) throw new Error("could not materialize exact baseline revision");
   await linkPackageDependencies("api");
   await linkPackageDependencies("shared");
   await mkdir(resolve(baseRoot, "packages/api/node_modules/@enveo"), { recursive: true });
   await symlink(resolve(baseRoot, "packages/shared"), resolve(baseRoot, "packages/api/node_modules/@enveo/shared"));
+
+  versionedBaseRoot = await mkdtemp(resolve(tmpdir(), "enveo-versioned-import-base-"));
+  await rm(versionedBaseRoot, { recursive: true });
+  const worktree = Bun.spawn(["git", "worktree", "add", "--detach", versionedBaseRoot, BASE_REVISION], {
+    cwd: resolve(import.meta.dir, ".."),
+    stdout: "ignore",
+    stderr: "ignore",
+  });
+  if ((await worktree.exited) !== 0) throw new Error("could not materialize versioned baseline worktree");
+  await linkPackageDependencies("api", versionedBaseRoot);
+  await linkPackageDependencies("shared", versionedBaseRoot);
+  await mkdir(resolve(versionedBaseRoot, "packages/api/node_modules/@enveo"), { recursive: true });
+  await symlink(resolve(versionedBaseRoot, "packages/shared"), resolve(versionedBaseRoot, "packages/api/node_modules/@enveo/shared"));
 });
 
 afterAll(async () => {
   if (baseRoot) await rm(baseRoot, { recursive: true, force: true });
+  if (versionedBaseRoot) {
+    const remove = Bun.spawn(["git", "worktree", "remove", "--force", versionedBaseRoot], {
+      cwd: resolve(import.meta.dir, ".."),
+      stdout: "ignore",
+      stderr: "ignore",
+    });
+    await remove.exited;
+  }
 });
 
 const extracted = {
@@ -136,6 +158,69 @@ const responseChat =
   };
 
 describe("exact legacy production baseline", () => {
+  test("binds only the exact clean accepted baseline revision and module digest", async () => {
+    const evaluator = (await import("./evaluate-import-recognition")) as Record<string, unknown>;
+    const source = (await (evaluator.loadSource as (mode: "baseline", sourceTree: string) => Promise<unknown>)("baseline", versionedBaseRoot)) as {
+      identity: { expectedRevision: string; actualRevision: string; bound: boolean; actualModuleDigest: string; expectedModuleDigest: string };
+    };
+    expect(source.identity).toMatchObject({ expectedRevision: BASE_REVISION, actualRevision: BASE_REVISION, bound: true });
+    expect(source.identity.actualModuleDigest).toBe(source.identity.expectedModuleDigest);
+  });
+
+  test("records accepted module bytes but rejects an unversioned archive for release", async () => {
+    const evaluator = (await import("./evaluate-import-recognition")) as Record<string, unknown>;
+    const source = (await (evaluator.loadSource as (mode: "baseline", sourceTree: string) => Promise<unknown>)("baseline", baseRoot)) as {
+      identity: { expectedRevision: string; actualRevision: string; bound: boolean; actualModuleDigest: string; expectedModuleDigest: string };
+    };
+    expect(source.identity).toMatchObject({
+      expectedRevision: BASE_REVISION,
+      actualRevision: "unversioned",
+      bound: false,
+    });
+    expect(source.identity.actualModuleDigest).toBe(source.identity.expectedModuleDigest);
+  });
+
+  test("rejects an unversioned baseline archive with source drift", async () => {
+    const evaluator = (await import("./evaluate-import-recognition")) as Record<string, unknown>;
+    const path = resolve(baseRoot, "packages/api/src/routes/import-match.ts");
+    const original = await readFile(path);
+    try {
+      await writeFile(path, Buffer.concat([original, Buffer.from("\n// drift\n")]));
+      const source = (await (evaluator.loadSource as (mode: "baseline", sourceTree: string) => Promise<unknown>)("baseline", baseRoot)) as {
+        identity: { bound: boolean; expectedModuleDigest: string; actualModuleDigest: string };
+      };
+      expect(source.identity.bound).toBe(false);
+      expect(source.identity.actualModuleDigest).not.toBe(source.identity.expectedModuleDigest);
+    } finally {
+      await writeFile(path, original);
+    }
+  });
+
+  test("freezes the archived route clock to fixture.today and restores Date", async () => {
+    const evaluator = (await import("./evaluate-import-recognition")) as Record<string, unknown>;
+    const source = await (evaluator.loadSource as (mode: "baseline", sourceTree: string) => Promise<unknown>)("baseline", baseRoot);
+    const OriginalDate = globalThis.Date;
+    const requests: Request[] = [];
+    await (evaluator.runBaselineProductionAdapter as (input: Record<string, unknown>) => Promise<unknown>)({
+      source,
+      fixture: {
+        id: "historical-base",
+        images: ["fixture.png"],
+        locale: "en",
+        today: "2020-01-02",
+        budgetCurrency: "EUR",
+        formFactor: "mobile",
+        overlap: false,
+        context,
+        rows: [],
+      },
+      images: ["data:image/png;base64,AA=="],
+      chat: responseChat(requests),
+    });
+    expect(JSON.stringify(requests[0])).toContain("2020-01-02");
+    expect(globalThis.Date).toBe(OriginalDate);
+  });
+
   test("emits byte-identical cycle requests to the specified base route for blank source references", async () => {
     // Break caught: the evaluator cloned the route's schema without descriptions and
     // treated empty or whitespace-only source_ref values as confident learned matches.
@@ -297,5 +382,32 @@ describe("exact legacy production baseline", () => {
     expect(results.map((result) => result.status)).toEqual(["fulfilled", "fulfilled"]);
     expect(maxActiveFixtures).toBe(1);
     expect(seam.db.select).toBe(originalSelect);
+  });
+
+  test("restores the process clock when the archived route fails", async () => {
+    const evaluator = (await import("./evaluate-import-recognition")) as Record<string, unknown>;
+    const source = await (evaluator.loadSource as (mode: "baseline", sourceTree: string) => Promise<unknown>)("baseline", baseRoot);
+    const OriginalDate = globalThis.Date;
+    await expect(
+      (evaluator.runBaselineProductionAdapter as (input: Record<string, unknown>) => Promise<unknown>)({
+        source,
+        fixture: {
+          id: "failing-base",
+          images: ["fixture.png"],
+          locale: "en",
+          today: "2019-12-31",
+          budgetCurrency: "EUR",
+          formFactor: "mobile",
+          overlap: false,
+          context,
+          rows: [],
+        },
+        images: ["data:image/png;base64,AA=="],
+        chat: async () => {
+          throw new Error("forced route failure");
+        },
+      }),
+    ).rejects.toThrow("import_cycle_one_failed");
+    expect(globalThis.Date).toBe(OriginalDate);
   });
 });
