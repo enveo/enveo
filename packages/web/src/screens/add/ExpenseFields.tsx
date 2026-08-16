@@ -27,6 +27,7 @@ export function ExpenseFields({
   envelopeId,
   env,
   envPreviewText,
+  automaticEnvelopeDefault,
   onOpenEnvSheet,
   onPickEnvelope,
   onExpandEnvGrid,
@@ -69,6 +70,7 @@ export function ExpenseFields({
   envelopeId: string | null;
   env: StateResponse["envelopes"][number] | null | undefined;
   envPreviewText: string;
+  automaticEnvelopeDefault: boolean;
   onOpenEnvSheet: () => void;
   onPickEnvelope: (id: string) => void;
   onExpandEnvGrid: () => void;
@@ -187,6 +189,9 @@ export function ExpenseFields({
             <button onClick={onExpandEnvGrid} style={collapsedRowStyle(C, false)}>
               <span style={{ flex: 1, fontSize: 12.5, color: C.mute }}>{t("Choose an envelope")}</span>
             </button>
+          )}
+          {automaticEnvelopeDefault && (
+            <div style={{ padding: `5px ${P}px 0`, color: C.mute, fontSize: 10.5 }}>{t("Selected automatically from this account")}</div>
           )}
         </>
       )}
@@ -312,7 +317,7 @@ export function ExpenseFields({
               </button>
             )}
           </div>
-          {/* in draft the place travels by NAME to /import/apply (server creates/matches) —
+          {/* in draft the place travels by NAME to local import planning (which creates/matches it) —
               no local.createPlace button; dropdown only when there are suggestions */}
           {placeInput && !placeId && (!isDraft || filteredPlaces.length > 0) && (
             <div
