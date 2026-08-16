@@ -330,6 +330,76 @@ describe("gateImportRecognition", () => {
     expect(gateImportRecognition(expected, baseline, omitted).reasons).toContain("relation_recall_regression");
   });
 
+  test("rejects candidate relation deletion when the legacy-normalized baseline has zero relation capability", () => {
+    // Break caught: legacy normalization always emits relation=null, so paired-only
+    // no-regression let a candidate omit every truth-labelled relation and tie at zero.
+    const expected = [
+      expectedRow({ id: "purchase" }),
+      expectedRow({
+        id: "fx",
+        rowRole: "supporting_detail",
+        safetyClass: "non_ledger",
+        semanticKind: "fx_conversion",
+        relation: { kind: "fx_for", rowId: "purchase" },
+        expectedProposal: null,
+      }),
+    ];
+    const baseline = normalizeBaselineRecognition(
+      "fixture",
+      [
+        manifestRow({ id: "purchase", baselineIndex: 0 }),
+        manifestRow({
+          id: "fx",
+          rowRole: "supporting_detail",
+          safetyClass: "non_ledger",
+          semanticKind: "fx_conversion",
+          relation: { kind: "fx_for", rowId: "purchase" },
+          expectedProposal: null,
+          baselineIndex: null,
+          candidatePosition: { imageIndex: 0, visualOrder: 1 },
+        }),
+      ],
+      [{ date: "2026-08-15", amount: 1299, currency: "EUR", type: "expense", isRefund: false }],
+    );
+    const candidate = [actualRow({ id: "fixture:purchase" }), actualRow({ id: "fixture:fx", semanticKind: "fx_conversion", relation: null, proposal: null })];
+    const prefixedExpected = expected.map((row) => ({
+      ...row,
+      id: `fixture:${row.id}`,
+      relation: row.relation ? { ...row.relation, rowId: `fixture:${row.relation.rowId}` } : null,
+    }));
+
+    const decision = gateImportRecognition(prefixedExpected, baseline, candidate);
+
+    expect(decision.baseline.relationRecall).toEqual({ correct: 0, total: 1, rate: 0 });
+    expect(decision.candidate.relationRecall).toEqual({ correct: 0, total: 1, rate: 0 });
+    expect(decision.passed).toBe(false);
+    expect(decision.reasons).toEqual(expect.arrayContaining(["relation_recall_not_improved_from_zero", "relation_f1_not_improved_from_zero"]));
+  });
+
+  test("rejects a relation F1 regression once the baseline has nonzero relation capability", () => {
+    const expected = [
+      expectedRow(),
+      expectedRow({ id: "fx", relation: { kind: "fx_for", rowId: "purchase" }, expectedProposal: null }),
+      expectedRow({ id: "fee", relation: { kind: "fee_for", rowId: "purchase" }, expectedProposal: null }),
+    ];
+    const baseline = [
+      actualRow(),
+      actualRow({ id: "fx", relation: { kind: "fx_for", rowId: "purchase" }, proposal: null }),
+      actualRow({ id: "fee", relation: null, proposal: null }),
+    ];
+    const candidate = [
+      actualRow(),
+      actualRow({ id: "fx", relation: { kind: "fx_for", rowId: "purchase" }, proposal: null }),
+      actualRow({ id: "fee", relation: { kind: "refund_of", rowId: "purchase" }, proposal: null }),
+    ];
+
+    const decision = gateImportRecognition(expected, baseline, candidate);
+
+    expect(decision.candidate.relationRecall).toEqual(decision.baseline.relationRecall);
+    expect(decision.candidate.relationF1).toBeLessThan(decision.baseline.relationF1!);
+    expect(decision.reasons).toContain("relation_f1_regression");
+  });
+
   test("combined omissions and relabeling cannot game the paired gate", () => {
     const expected = [
       expectedRow(),
@@ -365,6 +435,62 @@ const manifestRow = (overrides: Partial<RecognitionManifestRow> = {}): Recogniti
 });
 
 describe("recognition evaluator adapters", () => {
+  test("candidate result validation fails closed before scoring malformed dynamic output", async () => {
+    // Break caught: validating only metric-consumed fields lets a dynamically loaded
+    // reconciled wire drift while the evaluator still publishes plausible scores.
+    const evaluator = (await import("../evaluate-import-recognition")) as Record<string, unknown>;
+    expect(typeof evaluator.parseCandidateResult).toBe("function");
+    const parseCandidateResult = evaluator.parseCandidateResult as (value: unknown) => unknown;
+
+    expect(() =>
+      parseCandidateResult({
+        rows: [
+          {
+            rowId: "row-a",
+            imageIndex: 0,
+            visualOrder: 0,
+            date: "2026-08-15",
+            amount: 1299,
+            currency: "EUR",
+            direction: "debit",
+            postingStatus: "posted",
+            rowRole: "financial_event",
+            semanticKind: "card_purchase",
+            relation: null,
+            rawTextLines: ["MARKET"],
+            confidence: "high",
+            reviewReasons: [],
+          },
+        ],
+        proposals: [
+          {
+            rowId: "row-a",
+            sourceRows: ["row-a"],
+            disposition: "candidate",
+            date: "2026-08-15",
+            amount: 1299,
+            currency: "EUR",
+            type: "expense",
+            isRefund: false,
+            toAccountId: null,
+            semanticKind: "card_purchase",
+            relation: null,
+            name: "Groceries",
+            tag: "MARKET",
+            rawPlace: "MARKET",
+            envelopeId: null,
+            categoryId: null,
+            placeName: null,
+            reviewReasons: [],
+            selected: true,
+            duplicateStatus: "new",
+            sourceAccountInvalid: "no",
+          },
+        ],
+      }),
+    ).toThrow("candidate production result");
+  });
+
   test("only a real OpenAI comparison can receive the release-success status", async () => {
     const evaluator = (await import("../evaluate-import-recognition")) as unknown as {
       comparisonReleaseStatus?: (
@@ -695,7 +821,7 @@ describe("recognition evaluator adapters", () => {
           {
             accountId: "account-a",
             currency: "EUR",
-            sourceRef: "MARKET",
+            sourceRef: "",
             tag: "MARKET",
             place: "Market",
             name: "Groceries",
@@ -713,6 +839,7 @@ describe("recognition evaluator adapters", () => {
     const parsed = parseRecognitionManifest({ version: 1, fixtures: [fixture] }, false);
     expect(parsed.fixtures[0]!.context).toMatchObject({ accountId: "account-a" });
     expect(parsed.fixtures[0]!.context.historyRecords).toHaveLength(1);
+    expect(parsed.fixtures[0]!.context.historyRecords[0]!.sourceRef).toBe("");
     expect(() => parseRecognitionManifest({ version: 1, fixtures: [{ ...fixture, context: { ...fixture.context, accountId: "missing" } }] }, false)).toThrow(
       "not present in accounts",
     );

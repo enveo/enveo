@@ -25,6 +25,7 @@ beforeAll(async () => {
   const corpusRoot = resolve(root, "corpus");
   await mkdir(resolve(baselineRoot, "packages/shared/src"), { recursive: true });
   await mkdir(resolve(baselineRoot, "packages/api/src/routes"), { recursive: true });
+  await mkdir(resolve(baselineRoot, "packages/api/src/db"), { recursive: true });
   await mkdir(resolve(candidateRoot, "packages/shared/src"), { recursive: true });
   await mkdir(resolve(candidateRoot, "packages/api/src/routes"), { recursive: true });
   await mkdir(resolve(candidateRoot, "packages/web/src/lib/aiProvider"), { recursive: true });
@@ -164,9 +165,82 @@ export function buildImportExtractPrompt(images, _refs, today, locale, currency)
 export const languageName = (locale) => locale;
 export const languageDirectives = (locale) => "Answer in " + locale + ". ";
 export const parseImportExtractResponse = (raw) => JSON.parse(raw);
-`;
+  `;
   await writeFile(resolve(baselineRoot, "packages/shared/src/aiPrompts.ts"), promptModule("transactions"));
-  await writeFile(resolve(baselineRoot, "packages/api/src/routes/import.ts"), "export const baselineProductionImportRoute = true;\n");
+  await writeFile(
+    resolve(baselineRoot, "packages/api/src/db/client.ts"),
+    'export const db = { select() { throw new Error("fixture DB seam was not installed"); } };\n',
+  );
+  await writeFile(
+    resolve(baselineRoot, "packages/api/src/db/schema.ts"),
+    "export const budgets = {}; export const envelopes = {}; export const categories = {}; export const transactions = {}; export const places = {};\n",
+  );
+  await writeFile(
+    resolve(baselineRoot, "packages/api/src/routes/import.ts"),
+    `import { buildImportExtractPrompt, parseImportExtractResponse } from "../../../shared/src/aiPrompts";
+import { db } from "../db/client";
+import * as s from "../db/schema";
+
+const ENRICH_JSON_SCHEMA = {
+  name: "enriched_transactions",
+  strict: true,
+  schema: {
+    type: "object",
+    additionalProperties: false,
+    properties: {
+      transactions: {
+        type: "array",
+        items: {
+          type: "object",
+          additionalProperties: false,
+          properties: {
+            index: { type: "integer", description: "Index of the transaction from the input" },
+            name: { type: "string", description: "Short name in the user's language of WHAT it was — NOT the store name" },
+            envelope: { type: ["string", "null"], description: "Envelope name from the list or null" },
+            category: { type: ["string", "null"], description: "Category name from the list or null" },
+            place: { type: ["string", "null"], description: "Readable place name" },
+          },
+          required: ["index", "name", "envelope", "category", "place"],
+        },
+      },
+    },
+    required: ["transactions"],
+  },
+};
+
+export async function extractImportForBudget({ budgetId, images, locale, chat }) {
+  const [budget] = await db.select({ currency: true }).from(s.budgets).where({ budgetId });
+  const found = parseImportExtractResponse(await chat(buildImportExtractPrompt(images, { envelopes: [], categories: [] }, "2026-08-16", locale, budget?.currency || "EUR")));
+  if (found.length === 0) return [];
+  const [envelopes, categories] = await Promise.all([
+    db.select({ id: true, name: true }).from(s.envelopes).where({ budgetId }),
+    db.select({ id: true, name: true }).from(s.categories).where({ budgetId }),
+  ]);
+  const raw = await chat({
+    messages: [
+      { role: "system", content: "assign bank-statement transactions from production history" },
+      { role: "user", content: JSON.stringify({ transactions: found.map((item, index) => ({ index, date: item.date, amount: item.amount, type: item.type, rawPlace: item.rawPlace, tag: item.tag, patterns: [] })) }) },
+    ],
+    responseFormat: { type: "json_schema", json_schema: ENRICH_JSON_SCHEMA },
+    reasoningEffort: "low",
+  });
+  const enriched = new Map(JSON.parse(raw).transactions.map((item) => [item.index, item]));
+  const envelopeByName = new Map(envelopes.map((item) => [item.name.toLowerCase(), item]));
+  const categoryByName = new Map(categories.map((item) => [item.name.toLowerCase(), item]));
+  return found.map((item, index) => {
+    const assignment = enriched.get(index);
+    return {
+      ...item,
+      name: assignment?.name || item.rawPlace,
+      envelopeId: assignment?.envelope ? envelopeByName.get(assignment.envelope.toLowerCase())?.id || null : null,
+      categoryId: assignment?.category ? categoryByName.get(assignment.category.toLowerCase())?.id || null : null,
+      placeName: assignment?.place || null,
+      toAccountId: null,
+    };
+  });
+}
+`,
+  );
   await writeFile(
     resolve(baselineRoot, "packages/api/src/routes/import-match.ts"),
     `export const rankPatterns = () => [];
@@ -254,6 +328,7 @@ export async function runImportRecognitionPipeline(input) {
       rowRole: item.rowRole,
       semanticKind: item.id === "purchase" ? "unknown" : item.semanticKind,
       relation: null,
+      confidence: "high",
       reviewReasons: item.requiredSafetyReasons,
     }));
   const candidateProposals = (fixtureRows: typeof mobileRows) =>
@@ -261,6 +336,7 @@ export async function runImportRecognitionPipeline(input) {
       const selected = item.safetyClass === "safe_auto";
       return {
         rowId: item.id,
+        sourceRows: [item.id],
         selected,
         disposition:
           item.rowRole === "supporting_detail"
@@ -271,8 +347,17 @@ export async function runImportRecognitionPipeline(input) {
                 ? "declined"
                 : "candidate",
         reviewReasons: item.requiredSafetyReasons,
+        date: item.date,
+        amount: item.amount,
+        currency: item.currency,
         semanticKind: item.semanticKind,
         relation: item.relation,
+        name: `name ${item.id}`,
+        tag: "",
+        rawPlace: item.matchText,
+        placeName: null,
+        duplicateStatus: "new",
+        sourceAccountInvalid: false,
         ...(item.expectedProposal ?? proposal(null)),
       };
     });

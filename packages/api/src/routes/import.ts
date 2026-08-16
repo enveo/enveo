@@ -4,11 +4,9 @@ import {
   type Category,
   type ChatRequest,
   type Envelope,
-  type ImportHistoryQuery,
   type ImportHistoryRecord,
   type ImportRecognitionResult,
   runImportRecognitionPipeline,
-  selectImportHistoryCandidates,
   type Transaction,
 } from "@enveo/shared";
 import { and, eq, inArray } from "drizzle-orm";
@@ -87,11 +85,6 @@ export async function loadImportHistory(budgetId: string, currency: string): Pro
     isRefund: transaction.type === "expense" && transaction.isRefund,
     toAccountId: transaction.type === "transfer" ? transaction.toAccountId : null,
   }));
-}
-
-/** The staged adapter passes explicit selected-account and validated proposal facts to shared retrieval. */
-export async function selectHistoryForImport(input: { budgetId: string; currency: string; query: ImportHistoryQuery }) {
-  return selectImportHistoryCandidates(input.query, await loadImportHistory(input.budgetId, input.currency));
 }
 
 /** `timeoutMs` per cycle: vision (cycle 1) gets AI_VISION_TIMEOUT_MS — multi-screenshot

@@ -245,6 +245,43 @@ describe("screenshot import review view model", () => {
     expect(importReviewDoneStats(review, { added: 0, skipped: 1 })).toEqual({ added: 0, dup: 2 });
   });
 
+  it("promotes a recognition-time new candidate to an exact duplicate from the immediate dry run", () => {
+    // Break caught: the item consumed the late dry-run verdict, but the row kept the
+    // stale recognition status and therefore stayed editable without an explanation.
+    const review = buildImportReviewRows({
+      recognition: recognition([row("late-exact")], [proposal("late-exact", { duplicateStatus: "new" })]),
+      ledger: ledger(),
+      dryRunResults: [dryResult({ status: "exists" })],
+      automaticEnvelopeId: null,
+      budgetCurrency: "EUR",
+    });
+
+    expect(review[0]).toMatchObject({ duplicateStatus: "exists", include: false, editable: false, item: null });
+    expect(reviewBadges(review[0]!).map((badge) => badge.label)).toContain("Already exists");
+    expect(reviewRowControlLabels(review[0]!, 0)).toEqual({ select: null, edit: null });
+    expect(importReviewDoneStats(review, { added: 0, skipped: 0 })).toEqual({ added: 0, dup: 1 });
+  });
+
+  it("promotes a recognition-time new candidate to a probable duplicate from the immediate dry run", () => {
+    // Break caught: a late probable verdict unchecked the nested item but never reached
+    // the row badge or accessibility state that explains why it needs review.
+    const review = buildImportReviewRows({
+      recognition: recognition([row("late-probable")], [proposal("late-probable", { duplicateStatus: "new" })]),
+      ledger: ledger(),
+      dryRunResults: [dryResult({ status: "probable" })],
+      automaticEnvelopeId: null,
+      budgetCurrency: "EUR",
+    });
+
+    expect(review[0]).toMatchObject({ duplicateStatus: "probable", include: false, editable: true });
+    expect(review[0]!.item).toMatchObject({ status: "probable", include: false });
+    expect(reviewBadges(review[0]!).map((badge) => badge.label)).toContain("Probable duplicate");
+    expect(reviewRowControlLabels(review[0]!, 0)).toEqual({
+      select: { message: "Select recognized row {n}", values: { n: 1 } },
+      edit: { message: "Edit item {n}", values: { n: 1 } },
+    });
+  });
+
   it("shows transfer, relation, duplicate, refund, reward, and review-warning badges", () => {
     // Break caught: a generic transaction row would conceal why a proposal needs review.
     const rows = [row("transfer"), row("fx"), row("refund"), row("reward"), row("duplicate")];

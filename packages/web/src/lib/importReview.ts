@@ -116,6 +116,7 @@ function completeCandidateItem(args: {
   recognition: ReconciledImportRecognitionResult;
   ledger: ClientLedger;
   dryResult?: ImportApplyResponse["results"][number];
+  duplicateStatus: ImportDupStatus;
   automaticEnvelopeId: string | null | undefined;
   budgetCurrency: string;
 }): LocalImportReviewItem | null {
@@ -128,26 +129,38 @@ function completeCandidateItem(args: {
     .trim();
   const envelopeNames = new Map(args.ledger.envelopes.map((envelope) => [envelope.id, envelope.name]));
   const categoryNames = new Map(args.ledger.categories.map((category) => [category.id, category.name]));
-  const result: ImportApplyResponse["results"][number] = args.dryResult ?? {
-    date: proposal.date,
-    amount: proposal.amount,
-    type: proposal.type,
-    isRefund: proposal.isRefund,
-    toAccountId: proposal.toAccountId,
-    name: proposal.name,
-    tag: proposal.tag,
-    rawPlace: sourceRef || null,
-    envelopeId: proposal.envelopeId,
-    envelopeName: proposal.envelopeId ? (envelopeNames.get(proposal.envelopeId) ?? null) : null,
-    categoryId: proposal.categoryId,
-    categoryName: proposal.categoryId ? (categoryNames.get(proposal.categoryId) ?? null) : null,
-    placeName: proposal.placeName,
-    currency: proposal.currency ?? undefined,
-    status: proposal.duplicateStatus === "exists" ? "exists" : proposal.duplicateStatus === "probable" ? "probable" : "added",
-  };
+  const status = args.duplicateStatus === "new" ? "added" : args.duplicateStatus;
+  const result: ImportApplyResponse["results"][number] = args.dryResult
+    ? { ...args.dryResult, status }
+    : {
+        date: proposal.date,
+        amount: proposal.amount,
+        type: proposal.type,
+        isRefund: proposal.isRefund,
+        toAccountId: proposal.toAccountId,
+        name: proposal.name,
+        tag: proposal.tag,
+        rawPlace: sourceRef || null,
+        envelopeId: proposal.envelopeId,
+        envelopeName: proposal.envelopeId ? (envelopeNames.get(proposal.envelopeId) ?? null) : null,
+        categoryId: proposal.categoryId,
+        categoryName: proposal.categoryId ? (categoryNames.get(proposal.categoryId) ?? null) : null,
+        placeName: proposal.placeName,
+        currency: proposal.currency ?? undefined,
+        status,
+      };
   const item = importReviewItem({ ...result, rawPlace: sourceRef || null }, args.automaticEnvelopeId, args.budgetCurrency);
   return { ...item, include: proposal.selected && item.include };
 }
+
+const effectiveDuplicateStatus = (
+  recognitionStatus: ImportDupStatus,
+  dryRunStatus: ImportApplyResponse["results"][number]["status"] | undefined,
+): ImportDupStatus => {
+  if (recognitionStatus === "exists" || dryRunStatus === "exists") return "exists";
+  if (recognitionStatus === "probable" || dryRunStatus === "probable") return "probable";
+  return "new";
+};
 
 /** Joins dry-run verdicts back onto recognition without dropping any raw row. */
 export function buildImportReviewRows(args: {
@@ -185,15 +198,17 @@ export function buildImportReviewRows(args: {
     }
     const receivesDryResult =
       proposal.selected && proposal.disposition === "candidate" && proposal.date !== null && proposal.amount !== null && proposal.type !== null;
+    const dryResult = receivesDryResult ? args.dryRunResults[dryIndex++] : undefined;
+    const duplicateStatus = effectiveDuplicateStatus(proposal.duplicateStatus, dryResult?.status);
     const item = completeCandidateItem({
       proposal,
       recognition: args.recognition,
       ledger: args.ledger,
-      dryResult: receivesDryResult ? args.dryRunResults[dryIndex++] : undefined,
+      dryResult,
+      duplicateStatus,
       automaticEnvelopeId: args.automaticEnvelopeId,
       budgetCurrency: args.budgetCurrency,
     });
-    const duplicateStatus = proposal.duplicateStatus;
     const reviewItem = duplicateStatus === "exists" ? null : item;
     return {
       rowId: rawRow.rowId,
