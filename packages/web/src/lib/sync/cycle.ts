@@ -87,6 +87,7 @@ async function doFullResync(): Promise<void> {
     throw new Error("e2ee: no DEK — waiting for unlock"); // cycle aborted; locked-guard blocks the next ones
   }
   replayOutbox();
+  requireDeps().ensureE2eeProviderPreference();
   void persist.persistLedger(store.snapshotForPersist()); // mirror after replay
   requireDeps().notePeersMayNeedUpdate(); // fresh snapshot → other tabs rehydrate from IDB
 }
@@ -247,6 +248,9 @@ async function doCycle(): Promise<boolean> {
       void persist.persistLedger(store.snapshotForPersist());
       requireDeps().notePeersMayNeedUpdate(); // mirror changed → other tabs rehydrate from IDB
     }
+    // Reconciliation may have absorbed a later plain-tier Enveo preference from a peer tab.
+    // The terminal rules op must be in this very push batch, after the absorbed ordering.
+    requireDeps().ensureE2eeProviderPreference();
 
     // ── E2EE path: encrypted push/pull on /sync2 (the outbox stays plaintext) ──
     if (isE2ee) {
@@ -288,6 +292,9 @@ async function doCycle(): Promise<boolean> {
 
       // PULL v2 — ciphertext delta (own pending ops skipped + outbox replay)
       await doPullE2ee(dek, userId);
+      // A stale peer can also have reached the encrypted journal after our earlier rules op.
+      // Normalize after pull; poke coalescing schedules the new terminal op immediately.
+      requireDeps().ensureE2eeProviderPreference();
 
       // CONSUMER of the durable resync obligation — as in v1 (resyncVerified goes by tier, and
       // re-proves the session first: a resync REPLACES the mirror with the session's budget)
@@ -430,6 +437,7 @@ async function handleTierFlip(): Promise<boolean> {
       return true;
     }
     replayOutbox();
+    requireDeps().ensureE2eeProviderPreference();
     void persist.persistLedger(store.snapshotForPersist());
     requireDeps().notePeersMayNeedUpdate();
     clearResyncPending();

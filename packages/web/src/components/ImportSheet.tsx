@@ -11,7 +11,14 @@ import * as e2ee from "../lib/e2ee";
 import { formatMoney, isLight } from "../lib/format";
 import { useT } from "../lib/i18n";
 import { Glyph, Ico } from "../lib/icons";
-import { buildImportReviewRows, type ImportReviewRow, reviewBadges, reviewedImportRowsForApply } from "../lib/importReview";
+import {
+  buildImportReviewRows,
+  type ImportReviewRow,
+  importReviewDoneStats,
+  reviewBadges,
+  reviewedImportRowsForApply,
+  reviewRowControlLabels,
+} from "../lib/importReview";
 import { preferredAccountId, setLastAccountId } from "../lib/lastAccount";
 import { applyLocalImport, planLocalImport, recognitionCandidatesForDryRun } from "../lib/localImport";
 import { store } from "../lib/store";
@@ -219,7 +226,7 @@ export function ImportSheet({ show, onClose, state, onApplied }: { show: boolean
         res = applyLocalImport(planLocalImport({ ledger, globalAccountId: accountId, items: chosen, dryRun: false }));
       }
       setLastAccountId(accountId); // per-device preference (same as on the Add screen)
-      setDoneStats({ added: res.added, dup: items.filter((row) => row.item?.status === "exists").length + res.skipped });
+      setDoneStats(importReviewDoneStats(items, res));
       setPhase("done");
     } catch (e) {
       setError(errMsg(e));
@@ -372,7 +379,7 @@ export function ImportSheet({ show, onClose, state, onApplied }: { show: boolean
               const env = envId ? envById.get(envId) : null;
               const catName = e ? (e.categoryId ? (state.categories.find((c) => c.id === e.categoryId)?.name ?? null) : null) : (it?.categoryName ?? null);
               const refund = e?.isRefund ?? it?.isRefund ?? false;
-              const exists = it?.status === "exists" && !e;
+              const exists = row.duplicateStatus === "exists";
               const itemAccountId = e?.accountId ?? accountId;
               const itemToAccountId = e?.toAccountId ?? it?.toAccountId ?? null;
               const automaticPreview =
@@ -394,35 +401,52 @@ export function ImportSheet({ show, onClose, state, onApplied }: { show: boolean
                   : null;
               const fxMismatch = !!row.currency && row.currency !== currency;
               const badges = reviewBadges(row);
+              const controlLabels = reviewRowControlLabels(row, idx);
+              const ContentTag: "button" | "div" = it ? "button" : "div";
+              const contentControlProps = it
+                ? { type: "button" as const, onClick: () => setEditorIdx(idx), "aria-label": t(controlLabels.edit!.message, controlLabels.edit!.values) }
+                : {};
               return (
                 <div key={row.rowId} style={{ display: "flex", alignItems: "flex-start", gap: 10, padding: "9px 2px", opacity: exists ? 0.55 : 1 }}>
-                  <span
-                    onClick={it ? () => toggle(idx) : undefined}
-                    role="checkbox"
-                    aria-checked={row.include}
-                    aria-disabled={!it || (exists && !e)}
+                  {it && controlLabels.select ? (
+                    <input
+                      type="checkbox"
+                      checked={row.include}
+                      onChange={() => toggle(idx)}
+                      aria-label={t(controlLabels.select.message, controlLabels.select.values)}
+                      style={{ width: 22, height: 22, flexShrink: 0, marginTop: 3, cursor: "pointer", accentColor: TEAL }}
+                    />
+                  ) : (
+                    <span
+                      aria-hidden="true"
+                      style={{
+                        width: 18,
+                        height: 18,
+                        borderRadius: "50%",
+                        flexShrink: 0,
+                        margin: "3px 2px 0",
+                        border: `2px solid ${C.line}`,
+                        opacity: 0.45,
+                      }}
+                    />
+                  )}
+                  <ContentTag
+                    {...contentControlProps}
                     style={{
-                      width: 22,
-                      height: 22,
-                      borderRadius: "50%",
-                      flexShrink: 0,
-                      marginTop: 3,
-                      cursor: !it || exists ? "default" : "pointer",
-                      border: `2px solid ${row.include ? TEAL : C.line}`,
-                      background: row.include ? TEAL : "transparent",
+                      flex: 1,
+                      minWidth: 0,
+                      width: "100%",
+                      padding: 0,
+                      border: "none",
+                      background: "none",
+                      color: "inherit",
+                      font: "inherit",
+                      textAlign: "left",
                       display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      opacity: it ? 1 : 0.45,
+                      alignItems: "flex-start",
+                      gap: 10,
+                      cursor: it ? "pointer" : "default",
                     }}
-                  >
-                    {row.include && <Ico d="M5 13l4 4L19 7" size={12} color="#fff" sw={3} />}
-                  </span>
-                  <div
-                    onClick={it ? () => setEditorIdx(idx) : undefined}
-                    role={it ? "button" : undefined}
-                    aria-label={it ? t("Edit item {n}", { n: idx + 1 }) : undefined}
-                    style={{ flex: 1, minWidth: 0, display: "flex", alignItems: "flex-start", gap: 10, cursor: it ? "pointer" : "default" }}
                   >
                     <span
                       style={{
@@ -512,7 +536,7 @@ export function ImportSheet({ show, onClose, state, onApplied }: { show: boolean
                         {formatMoney(amount, currency, lang)}
                       </span>
                     )}
-                  </div>
+                  </ContentTag>
                 </div>
               );
             })}

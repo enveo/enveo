@@ -37,6 +37,7 @@
 import { accountPreferences, configureAccountPreferencesBroadcast } from "../accountPreferences";
 import { devicePreferences } from "../devicePreferences";
 import * as e2ee from "../e2ee";
+import { ensureE2eeProviderPreference } from "../e2eeProviderInvariant";
 import { clearLocalData } from "../idb";
 import * as persist from "../persist";
 import { store } from "../store";
@@ -115,6 +116,7 @@ async function applyPeerUpdate(): Promise<void> {
   try {
     await store.rehydrateFromIdb();
     replayOutbox();
+    ensureE2eeProviderPreference();
     bumpStatus();
   } finally {
     applyingPeerUpdate = false;

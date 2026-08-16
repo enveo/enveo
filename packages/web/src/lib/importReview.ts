@@ -1,4 +1,4 @@
-import type { ClientLedger, ImportProposal, ImportRecognitionResult, ImportReviewReason, ImportSemanticKind } from "@enveo/shared";
+import type { ClientLedger, ImportDupStatus, ImportProposal, ImportRecognitionResult, ImportReviewReason, ImportSemanticKind } from "@enveo/shared";
 import type { EditedImportItem, ImportApplyItem, ImportApplyResponse } from "./api";
 import { type Message, msg } from "./i18n";
 import { importReviewItem, type LocalImportReviewItem, reviewedImportItemsForApply } from "./localImport";
@@ -11,6 +11,7 @@ export interface ImportReviewRow {
   semanticKind: ImportSemanticKind;
   relation: ImportProposal["relation"];
   reviewReasons: ImportReviewReason[];
+  duplicateStatus: ImportDupStatus;
   sourceRef: string;
   rawTextLines: string[];
   date: string | null;
@@ -47,6 +48,24 @@ export interface ImportReviewBadge {
   tone: "neutral" | "positive" | "warning";
 }
 
+export interface ImportReviewControlLabel {
+  message: Message;
+  values: { n: number };
+}
+
+/** Localizable, row-specific names for the native controls rendered by ImportSheet. */
+export function reviewRowControlLabels(
+  row: ImportReviewRow,
+  index: number,
+): { select: ImportReviewControlLabel | null; edit: ImportReviewControlLabel | null } {
+  if (!row.item || !row.editable || row.duplicateStatus === "exists") return { select: null, edit: null };
+  const values = { n: index + 1 };
+  return {
+    select: { message: msg("Select recognized row {n}"), values },
+    edit: { message: msg("Edit item {n}"), values },
+  };
+}
+
 const dispositionBadge = (disposition: ImportReviewDisposition): ImportReviewBadge | null => {
   switch (disposition) {
     case "pending":
@@ -65,15 +84,15 @@ const dispositionBadge = (disposition: ImportReviewDisposition): ImportReviewBad
 /** Concise, exhaustive display facts. Duplicate labels collapse without hiding reasons. */
 export function reviewBadges(row: ImportReviewRow): ImportReviewBadge[] {
   const badges: ImportReviewBadge[] = [];
-  const disposition = dispositionBadge(row.disposition);
+  const disposition = row.duplicateStatus === "exists" ? null : dispositionBadge(row.disposition);
   if (disposition) badges.push(disposition);
   if (row.relation?.kind === "fx_for" || row.semanticKind === "fx_conversion") badges.push({ label: msg("FX relation"), tone: "warning" });
   if (row.item?.isRefund || row.semanticKind === "merchant_refund" || row.semanticKind === "chargeback") {
     badges.push({ label: msg("Refund"), tone: "positive" });
   }
   if (row.semanticKind === "cashback_or_reward") badges.push({ label: msg("Reward / income"), tone: "positive" });
-  if (row.item?.status === "exists") badges.push({ label: msg("Already exists"), tone: "neutral" });
-  if (row.item?.status === "probable") badges.push({ label: msg("Probable duplicate"), tone: "warning" });
+  if (row.duplicateStatus === "exists") badges.push({ label: msg("Already exists"), tone: "neutral" });
+  if (row.duplicateStatus === "probable") badges.push({ label: msg("Probable duplicate"), tone: "warning" });
   for (const reason of row.reviewReasons) {
     const label = importReviewReasonMessage(reason);
     badges.push({ label, tone: reason === "pending_or_declined" ? "neutral" : "warning" });
@@ -150,6 +169,7 @@ export function buildImportReviewRows(args: {
         semanticKind: rawRow.semanticKind,
         relation: rawRow.relation,
         reviewReasons: ["missing_fact"],
+        duplicateStatus: "new",
         sourceRef,
         rawTextLines: rawRow.rawTextLines,
         date: rawRow.date,
@@ -170,20 +190,24 @@ export function buildImportReviewRows(args: {
       automaticEnvelopeId: args.automaticEnvelopeId,
       budgetCurrency: args.budgetCurrency,
     });
+    const reconciledDuplicateStatus = (proposal as ImportProposal & { duplicateStatus?: ImportDupStatus }).duplicateStatus;
+    const duplicateStatus = reconciledDuplicateStatus ?? (item?.status === "exists" ? "exists" : item?.status === "probable" ? "probable" : "new");
+    const reviewItem = duplicateStatus === "exists" ? null : item;
     return {
       rowId: rawRow.rowId,
       disposition: proposal.disposition,
       semanticKind: proposal.semanticKind,
       relation: proposal.relation,
       reviewReasons: proposal.reviewReasons,
+      duplicateStatus,
       sourceRef,
       rawTextLines: rawRow.rawTextLines,
       date: proposal.date,
       amount: proposal.amount,
       currency: proposal.currency,
-      include: item?.include ?? false,
-      editable: item !== null,
-      item: item ? { ...item, include: item.include } : null,
+      include: reviewItem?.include ?? false,
+      editable: reviewItem !== null,
+      item: reviewItem ? { ...reviewItem, include: reviewItem.include } : null,
     };
   });
 }
@@ -208,4 +232,13 @@ export function reviewedImportRowsForApply(args: {
     candidateIndex++;
   });
   return reviewedImportItemsForApply({ items: candidates, edited: edits, editedAutomaticDefaults: automatic });
+}
+
+/** Truthful completion totals: each extracted exact duplicate is one skipped row, while
+ * apply-time skips cover rows that became duplicates while the review remained open. */
+export function importReviewDoneStats(rows: ImportReviewRow[], result: { added: number; skipped: number }): { added: number; dup: number } {
+  return {
+    added: result.added,
+    dup: rows.filter((row) => row.duplicateStatus === "exists").length + result.skipped,
+  };
 }

@@ -185,7 +185,7 @@ describe("screenshot import proposal validation", () => {
     expect(proposalFor("internal_transfer", "credit")).toMatchObject({
       type: "income",
       reviewReasons: ["unknown_transfer_endpoint"],
-      selected: true,
+      selected: false,
     });
     expect(proposalFor("unknown", "unknown")).toMatchObject({ disposition: "unresolved", selected: false });
   });

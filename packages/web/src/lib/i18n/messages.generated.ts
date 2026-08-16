@@ -605,6 +605,7 @@ export const MESSAGES = [
   "Search transactions…",
   "Search...",
   "Search…",
+  "Select recognized row {n}",
   "Select these",
   "Selected",
   "Selected ({n})",

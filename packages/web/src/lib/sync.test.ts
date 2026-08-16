@@ -26,7 +26,7 @@
  * installs no triggers — the cycle can be driven directly with syncNow().
  */
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import { type ClientLedger, createDefaultAccountPreferences, type SyncOp } from "@enveo/shared";
+import { type ClientLedger, createDefaultAccountPreferences, createDefaultBudgetPreferences, type SyncOp } from "@enveo/shared";
 import { accountPreferences } from "./accountPreferences";
 import { budgetSecretAadContext, decryptPayload, encryptPayload, generateDek, opAadContext } from "./crypto";
 import { cacheDeployment } from "./deviceStoragePolicy";
@@ -1127,6 +1127,42 @@ describe("sync e2ee v2: encryption context discipline", () => {
     // …and under any other epoch/budget/opId it fails (the vectors in crypto.test.ts)
     await expect(decryptPayload(row.ciphertext, dek, opAadContext(BUDGET_V2, 2, op.opId))).rejects.toThrow();
     expect(outbox.size()).toBe(0); // acked
+  });
+
+  it("appends a terminal rules preference after late E2EE pending work before pushing", async () => {
+    await v2Replica();
+    store.replace(
+      {
+        ...emptyLedger(),
+        budgets: [{ id: BUDGET_V2, name: "Budget", currency: "EUR", preferences: createDefaultBudgetPreferences() }],
+      },
+      0,
+      BUDGET_V2,
+    );
+    const preferenceOp = (provider: "rules" | "enveo", opId: string): SyncOp => ({
+      opId,
+      kind: "budget.preferences.update",
+      payload: { id: BUDGET_V2, patch: { aiProvider: provider } },
+    });
+    const earlierRules = preferenceOp("rules", "00000000-0000-4000-8000-000000000101");
+    const latePeerEnveo = preferenceOp("enveo", "00000000-0000-4000-8000-000000000102");
+    for (const op of [earlierRules, latePeerEnveo]) {
+      store.applyLocal(op);
+      outbox.add(op);
+    }
+
+    await syncNow("test");
+
+    const providers = await Promise.all(
+      pushedCipherOps.map(async (row) => {
+        const plaintext = await decryptPayload(row.ciphertext, dek, opAadContext(BUDGET_V2, 1, row.opId));
+        const op = JSON.parse(plaintext) as SyncOp;
+        return op.kind === "budget.preferences.update" ? (op as SyncOp<"budget.preferences.update">).payload.patch.aiProvider : undefined;
+      }),
+    );
+    expect(providers).toEqual(["rules", "enveo", "rules"]);
+    expect(store.getLedger()!.budgets[0]!.preferences.aiProvider).toBe("rules");
+    expect(outbox.size()).toBe(0);
   });
 
   it("pull: a substituted ciphertext (valid rows, swapped outer opIds) applies NOTHING and keeps the cursor", async () => {

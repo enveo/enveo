@@ -6,9 +6,18 @@ import {
   type ImportExtractRow,
   type ImportProposal,
   type ImportRecognitionResult,
+  reconcileImportProposals,
+  validateImportExtraction,
 } from "@enveo/shared";
 import type { EditedImportItem, ImportApplyResponse } from "./api";
-import { buildImportReviewRows, importReviewReasonMessage, reviewBadges, reviewedImportRowsForApply } from "./importReview";
+import {
+  buildImportReviewRows,
+  importReviewDoneStats,
+  importReviewReasonMessage,
+  reviewBadges,
+  reviewedImportRowsForApply,
+  reviewRowControlLabels,
+} from "./importReview";
 import { recognitionCandidatesForDryRun } from "./localImport";
 
 const U = (n: number): string => `00000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
@@ -93,6 +102,33 @@ const dryResult = (over: Partial<ImportApplyResponse["results"][number]> = {}): 
 });
 
 describe("screenshot import review view model", () => {
+  it("keeps validator-mapped internal transfers visible but unchecked when the endpoint is unknown", () => {
+    // Break caught: the shared validator preserved the warning but still selected the
+    // income/expense fallback, so Task 5 truthfully rendered an unsafe checked row.
+    const validated = validateImportExtraction({
+      batch: { rows: [row("unknown-transfer", { direction: "credit", semanticKind: "internal_transfer" })] },
+      budgetCurrency: "EUR",
+    });
+
+    const candidates = recognitionCandidatesForDryRun(validated, ledger());
+    const review = buildImportReviewRows({
+      recognition: validated,
+      ledger: ledger(),
+      dryRunResults: [],
+      automaticEnvelopeId: null,
+      budgetCurrency: "EUR",
+    });
+
+    expect(validated.proposals[0]).toMatchObject({
+      disposition: "candidate",
+      type: "income",
+      selected: false,
+      reviewReasons: ["unknown_transfer_endpoint"],
+    });
+    expect(candidates).toEqual([]);
+    expect(review[0]).toMatchObject({ include: false, editable: true });
+  });
+
   it("keeps every extracted row visible while only safe complete candidates start selected", () => {
     // Break caught: filtering recognition down to transaction-shaped proposals would hide
     // pending, declined, supporting, or unresolved screenshot evidence from review.
@@ -140,6 +176,60 @@ describe("screenshot import review view model", () => {
       { rowId: "relation", disposition: "candidate", include: false, editable: true },
     ]);
     expect(review[6]!.sourceRef).toBe("raw relation\n25.00 EUR");
+    expect(reviewRowControlLabels(review[0]!, 0)).toEqual({
+      select: { message: "Select recognized row {n}", values: { n: 1 } },
+      edit: { message: "Edit item {n}", values: { n: 1 } },
+    });
+    expect(reviewRowControlLabels(review[2]!, 2)).toEqual({ select: null, edit: null });
+  });
+
+  it("keeps a reconciled exact duplicate truthful while leaving it unselectable and noneditable", () => {
+    // Break caught: exact duplicates are reconciled to disposition=declined, but dropping
+    // duplicateStatus made the UI describe them as bank-declined rows and hid the skip verdict.
+    const current = ledger();
+    current.transactions.push({
+      id: U(9),
+      type: "expense",
+      accountId: U(2),
+      toAccountId: null,
+      amount: 2500,
+      date: "2026-08-02",
+      isRefund: false,
+      envelopeId: null,
+      placeId: null,
+      categoryId: null,
+      name: "Existing",
+      note: null,
+      tag: null,
+      sourceRef: "raw exact\n25.00 EUR",
+      allocationFromEnvelopeId: null,
+      allocationToEnvelopeId: null,
+      items: [],
+      createdAt: "2026-08-02T00:00:00.000Z",
+    });
+    const validated = validateImportExtraction({ batch: { rows: [row("exact")] }, budgetCurrency: "EUR" });
+    const proposals = reconcileImportProposals({
+      proposals: validated.proposals,
+      transactions: current.transactions,
+      accounts: current.accounts,
+      envelopes: current.envelopes,
+      categories: current.categories,
+      selectedAccountId: U(2),
+    });
+    const review = buildImportReviewRows({
+      recognition: { rows: validated.rows, proposals },
+      ledger: current,
+      dryRunResults: [],
+      automaticEnvelopeId: null,
+      budgetCurrency: "EUR",
+    });
+
+    expect(proposals[0]).toMatchObject({ duplicateStatus: "exists", disposition: "declined", selected: false });
+    expect(review[0]).toMatchObject({ duplicateStatus: "exists", include: false, editable: false, item: null });
+    expect(reviewBadges(review[0]!).map((badge) => badge.label)).toEqual(["Already exists", "Conflicts with transaction history"]);
+    expect(reviewRowControlLabels(review[0]!, 0)).toEqual({ select: null, edit: null });
+    expect(importReviewDoneStats(review, { added: 0, skipped: 0 })).toEqual({ added: 0, dup: 1 });
+    expect(importReviewDoneStats(review, { added: 0, skipped: 1 })).toEqual({ added: 0, dup: 2 });
   });
 
   it("shows transfer, relation, duplicate, refund, reward, and review-warning badges", () => {
