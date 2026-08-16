@@ -1,5 +1,5 @@
 {
-  // Repository tooling (scripts/*.ts): the test orchestrator and the audit-policy gate.
+  // Repository tooling (scripts/*.ts): gates, evaluators, and the test orchestrator.
   // These files ARE the verification contract, so they are typechecked like product code —
   // `bun run typecheck` runs this config alongside shared/api/web.
   "extends": "./tsconfig.base.json",
