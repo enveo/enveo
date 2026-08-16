@@ -20,10 +20,12 @@ import { Hono } from "hono";
 import postgres from "postgres";
 import { z } from "zod";
 import { type BudgetMeta, BudgetVanished, getBudgetId, requireExistingTier, requireTier, sessionUserId } from "../context";
+import { lockChangesCursorExclusive } from "../db/changesCursorLock";
 import { type DbTransaction, db } from "../db/client";
 import * as s from "../db/schema";
 import { loadClientLedger, mapAccount, mapAllocation, mapBudget, mapCategory, mapEnvelope, mapGroup, mapPlace, mapTransaction, mapTxnItem } from "../repo";
 import {
+  AutomaticEnvelopeViolation,
   applyAccountCreate,
   applyAccountDelete,
   applyAccountUpdate,
@@ -45,6 +47,7 @@ import {
   findForeignLedgerRef,
   NOT_FOUND,
   ScopeViolation,
+  TransactionSemanticViolation,
   wipeBudgetData,
 } from "../sync/apply";
 import { claimOp } from "../sync/idempotency";
@@ -72,13 +75,7 @@ export const syncRoutes = new Hono();
  * on one key. Exported so the lock-order tests probe the SAME key production uses — a test that
  * re-typed the literal would keep probing the old key after a rename and pass VACUOUSLY.
  */
-export const CHANGES_CURSOR_LOCK_TEXT = "enveo:changes";
-
-async function lockChangesCursor(x: Executor): Promise<void> {
-  // ::text on the parameter — an untyped bind would leave `hashtext(unknown)` to resolve, and
-  // the KEY must stay byte-identical to the triggers' `hashtext('enveo:changes')`.
-  await x.execute(dsql`SELECT pg_advisory_xact_lock(hashtext(${CHANGES_CURSOR_LOCK_TEXT}::text)::bigint)`);
-}
+export { CHANGES_CURSOR_LOCK_TEXT } from "../db/changesCursorLock";
 
 /** COALESCE(MAX(seq),0) — change-log cursor; call AFTER `lockChangesCursor`. */
 async function maxSeq(x: Executor): Promise<number> {
@@ -110,7 +107,7 @@ async function withCursorBarrier<T>(c: Parameters<typeof requireTier>[0], work: 
     await getBudgetId(c); // phase 1 — standalone ensure, NEVER under the changes lock
     try {
       return await db.transaction(async (tx) => {
-        await lockChangesCursor(tx); // MUST stay the first statement of this transaction
+        await lockChangesCursorExclusive(tx); // MUST stay the first statement of this transaction
         const meta = await requireExistingTier(c, "plain", tx);
         return work(tx, meta);
       });
@@ -363,14 +360,16 @@ class OpNotFound extends Error {
  */
 function isDomainRejection(e: unknown): boolean {
   if (e instanceof OpNotFound) return true;
+  if (e instanceof AutomaticEnvelopeViolation) return true;
   // cross-budget FK in the op body — permanent refusal, never retriable
   if (e instanceof ScopeViolation) return true;
+  if (e instanceof TransactionSemanticViolation) return true;
   // SQLSTATE class 23 = constraint violation (PK/FK/CHECK/NOT NULL),
   // class 22 = bad data (e.g. invalid UUID/date format)
   return e instanceof postgres.PostgresError && (e.code.startsWith("23") || e.code.startsWith("22"));
 }
 
-async function applyOp(x: Executor, budgetId: string, kind: OpKind, payload: unknown): Promise<void> {
+async function applyOp(x: DbTransaction, budgetId: string, kind: OpKind, payload: unknown): Promise<void> {
   const ensure = (r: unknown) => {
     if (r === NOT_FOUND) throw new OpNotFound();
   };
@@ -539,24 +538,8 @@ async function insertLedger(x: Executor, budgetId: string, ledger: ClientLedgerI
   // foreign UUID would otherwise attach restored rows to ANOTHER budget's
   // entities, bypassing assertBudgetFks through this door.
   if (findForeignLedgerRef(ledger) !== null) throw new ScopeViolation();
-  // FK-safe order: accounts → groups → envelopes → categories → places →
+  // FK-safe order: groups → envelopes → accounts → categories → places →
   // allocations → transactions → split items
-  for (const part of chunk(ledger.accounts, 300)) {
-    await x.insert(s.accounts).values(
-      part.map((a) => ({
-        id: a.id,
-        budgetId,
-        name: a.name,
-        color: a.color,
-        icon: a.icon,
-        type: a.type,
-        onBudget: a.onBudget,
-        initialBalance: a.initialBalance,
-        archived: a.archived,
-        sort: a.sort,
-      })),
-    );
-  }
   for (const part of chunk(ledger.groups, 500)) {
     await x.insert(s.envelopeGroups).values(part.map((g) => ({ id: g.id, budgetId, name: g.name, sort: g.sort })));
   }
@@ -574,6 +557,23 @@ async function insertLedger(x: Executor, budgetId: string, ledger: ClientLedgerI
         isSavings: e.isSavings ?? false,
         sort: e.sort,
         archived: e.archived,
+      })),
+    );
+  }
+  for (const part of chunk(ledger.accounts, 300)) {
+    await x.insert(s.accounts).values(
+      part.map((a) => ({
+        id: a.id,
+        budgetId,
+        name: a.name,
+        color: a.color,
+        icon: a.icon,
+        type: a.type,
+        onBudget: a.onBudget,
+        initialBalance: a.initialBalance,
+        archived: a.archived,
+        sort: a.sort,
+        automaticEnvelopeId: a.automaticEnvelopeId,
       })),
     );
   }
@@ -610,6 +610,8 @@ async function insertLedger(x: Executor, budgetId: string, ledger: ClientLedgerI
         note: t.note,
         tag: t.tag,
         sourceRef: t.sourceRef,
+        allocationFromEnvelopeId: t.allocationFromEnvelopeId,
+        allocationToEnvelopeId: t.allocationToEnvelopeId,
         createdAt: t.createdAt,
       })),
     );
@@ -626,7 +628,7 @@ async function insertLedger(x: Executor, budgetId: string, ledger: ClientLedgerI
  * `/sync/replace` and `/budget/e2ee/disable` (sync2). Call INSIDE a transaction:
  * wipe (FK-safe) → insert the whole ledger → currency from the backup (if carried).
  */
-export async function restoreLedger(x: Executor, budgetId: string, ledger: ClientLedgerInput): Promise<void> {
+export async function restoreLedger(x: DbTransaction, budgetId: string, ledger: ClientLedgerInput): Promise<void> {
   await wipeBudgetData(x, budgetId);
   await insertLedger(x, budgetId, ledger);
   // currency from the backup — only when the backup carries it (old backups lack `budgets`)

@@ -70,24 +70,29 @@ describe("e2ee: encrypting ops and snapshots (v2 authenticated context)", () => 
     expect(back).toEqual(op);
   });
 
-  it("an encrypted transaction op preserves import-learning sourceRef inside ciphertext", async () => {
+  it("an encrypted transaction op preserves import-learning and allocation-flow fields inside ciphertext", async () => {
     const dek = generateDek();
     const op: SyncOp = {
       opId: U1,
       kind: "txn.create",
       payload: {
         id: U2,
-        type: "expense",
+        type: "transfer",
         accountId: U3,
+        toAccountId: U3,
         amount: 1234,
         date: "2026-08-14",
         sourceRef: "RAW BANK DESCRIPTION",
+        allocationFromEnvelopeId: U4,
+        allocationToEnvelopeId: U4,
       },
     };
     const encrypted = await encryptOp(op, dek, { budgetId: BUDGET, epoch: 1 });
     expect(encrypted.ciphertext).not.toContain("RAW BANK DESCRIPTION");
     const [decrypted] = await decryptOps([encrypted], dek, { budgetId: BUDGET, epoch: 1 });
     expect((decrypted?.payload as { sourceRef?: string } | undefined)?.sourceRef).toBe("RAW BANK DESCRIPTION");
+    expect((decrypted?.payload as { allocationFromEnvelopeId?: string } | undefined)?.allocationFromEnvelopeId).toBe(U4);
+    expect((decrypted?.payload as { allocationToEnvelopeId?: string } | undefined)?.allocationToEnvelopeId).toBe(U4);
   });
 
   it("SUBSTITUTION: swapping two valid ciphertexts while keeping their outer opIds fails", async () => {
@@ -115,7 +120,50 @@ describe("e2ee: encrypting ops and snapshots (v2 authenticated context)", () => 
 
   it("encryptSnapshot → decryptSnapshot restores the whole ledger; a wrong DEK throws", async () => {
     const dek = generateDek();
-    const ledger = { ...emptyLedger(), categories: [{ id: U3, name: "Paliwo" }] };
+    const ledger: ClientLedger = {
+      ...emptyLedger(),
+      accounts: [
+        {
+          id: U3,
+          name: "Checking",
+          color: "#fff",
+          icon: "wallet",
+          type: "checking",
+          onBudget: true,
+          initialBalance: 0,
+          archived: false,
+          sort: 0,
+          automaticEnvelopeId: U4,
+        },
+      ],
+      groups: [{ id: U2, name: "Group", sort: 0 }],
+      envelopes: [
+        { id: U4, groupId: U2, name: "Food", color: "#fff", icon: "tag", note: null, monthlyTarget: null, isSavings: false, sort: 0, archived: false },
+      ],
+      transactions: [
+        {
+          id: U1,
+          type: "transfer",
+          accountId: U3,
+          toAccountId: U3,
+          amount: 100,
+          date: "2026-08-14",
+          isRefund: false,
+          envelopeId: null,
+          placeId: null,
+          categoryId: null,
+          name: null,
+          note: null,
+          tag: null,
+          sourceRef: null,
+          allocationFromEnvelopeId: U4,
+          allocationToEnvelopeId: U4,
+          items: [],
+          createdAt: "2026-08-14T00:00:00.000Z",
+        },
+      ],
+      categories: [{ id: U1, name: "Paliwo" }],
+    };
     const sctx = { budgetId: BUDGET, epoch: 1, uptoSeq: 42 };
     const blob = await encryptSnapshot(ledger, dek, sctx);
     expect(blob).not.toContain("Paliwo");

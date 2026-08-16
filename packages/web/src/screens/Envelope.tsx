@@ -260,7 +260,7 @@ export function EnvelopeScreen({
         </button>
       </div>
 
-      <EnvEdit env={edit} groups={stateM.groups} onClose={() => setEdit(null)} />
+      <EnvEdit env={edit} groups={stateM.groups} accounts={stateM.accounts} onClose={() => setEdit(null)} />
     </div>
   );
 }

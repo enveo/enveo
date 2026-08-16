@@ -19,7 +19,7 @@ import { Sheet } from "./chrome";
  * single-partial fallback) — one row per proposed envelope, its `+amount` editable via the
  * shared amount-pad idiom (BudgetSuggestSheet). Confirm re-reads `allocated` FRESH from the
  * replica per envelope (the proposal is a point-in-time snapshot; other edits may have landed
- * since the sheet opened) and writes the ABSOLUTE `local.setAllocation` as `allocatedFresh +
+ * since the sheet opened) and writes the displayed total as `allocatedFresh +
  * add` — never the stale `allocated` captured at open. Writes always target the VIEWED
  * `month`, while the pool (`readyToAssign`) is month-independent — same split as Budget's
  * live-edit header (`tbbLive` precedent).
@@ -86,7 +86,7 @@ export function FillGoalsSheet({ show, state, month, onClose }: { show: boolean;
 
   // Confirm: per proposed row with a final positive add, read `allocated` FRESH from the
   // replica (not the `state` prop, which may already be a render behind the outbox) and write
-  // the absolute total — `local.setAllocation` is a per-month OVERWRITE, not a delta.
+  // the displayed total — setDisplayedAllocation converts it to the manual per-month overwrite.
   const confirm = () => {
     const ledger = store.getLedger();
     const live = ledger ? computeStateResponse(ledger, month) : null;
@@ -99,7 +99,7 @@ export function FillGoalsSheet({ show, state, month, onClose }: { show: boolean;
       if (add <= 0) continue;
       const envFresh = live.envelopes.find((e) => e.id === p.envelopeId);
       if (!envFresh || envFresh.archived) continue; // removed/archived since the proposal was computed
-      local.setAllocation({ envelopeId: p.envelopeId, month, amount: envFresh.allocated + add });
+      local.setDisplayedAllocation({ envelopeId: p.envelopeId, month, amount: envFresh.allocated + add });
     }
     haptic([10, 30, 14]);
     close();

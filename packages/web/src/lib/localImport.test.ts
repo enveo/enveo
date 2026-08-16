@@ -1,18 +1,41 @@
 import { describe, expect, it } from "bun:test";
 import { type ClientLedger, createDefaultBudgetPreferences } from "@enveo/shared";
-import type { ImportApplyItem } from "./api";
-import { applyLocalImport, type LocalImportMutationPort, planLocalImport } from "./localImport";
+import type { EditedImportItem, ImportApplyItem } from "./api";
+import { applyLocalImport, importReviewItem, type LocalImportMutationPort, planLocalImport, reviewedImportItemsForApply } from "./localImport";
 
 const U = (n: number): string => `00000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
 const ledger = (): ClientLedger => ({
   budgets: [{ id: U(1), name: "Budget", currency: "EUR", preferences: createDefaultBudgetPreferences() }],
   accounts: [
-    { id: U(2), name: "Main", color: "#fff", icon: "bank", type: "checking", onBudget: true, initialBalance: 0, archived: false, sort: 0 },
-    { id: U(3), name: "Savings", color: "#fff", icon: "bank", type: "savings", onBudget: true, initialBalance: 0, archived: false, sort: 1 },
+    {
+      id: U(2),
+      name: "Main",
+      color: "#fff",
+      icon: "bank",
+      type: "checking",
+      onBudget: true,
+      initialBalance: 0,
+      archived: false,
+      sort: 0,
+      automaticEnvelopeId: U(5),
+    },
+    {
+      id: U(3),
+      name: "Savings",
+      color: "#fff",
+      icon: "bank",
+      type: "savings",
+      onBudget: true,
+      initialBalance: 0,
+      archived: false,
+      sort: 1,
+      automaticEnvelopeId: U(9),
+    },
   ],
   groups: [{ id: U(4), name: "Living", sort: 0 }],
   envelopes: [
     { id: U(5), groupId: U(4), name: "Food", color: "#fff", icon: "food", note: null, monthlyTarget: null, isSavings: false, sort: 0, archived: false },
+    { id: U(9), groupId: U(4), name: "Travel", color: "#fff", icon: "plane", note: null, monthlyTarget: null, isSavings: false, sort: 1, archived: false },
   ],
   categories: [{ id: U(6), name: "Groceries" }],
   places: [{ id: U(7), name: "Lidl" }],
@@ -33,6 +56,8 @@ const ledger = (): ClientLedger => ({
       note: null,
       tag: "OLD",
       sourceRef: "LIDL RAW",
+      allocationFromEnvelopeId: null,
+      allocationToEnvelopeId: null,
       items: [],
       createdAt: "2026-08-01T00:00:00.000Z",
     },
@@ -49,6 +74,21 @@ const item = (over: Partial<ImportApplyItem> = {}): ImportApplyItem => ({
   envelopeId: U(5),
   categoryId: U(6),
   placeName: "LIDL",
+  ...over,
+});
+
+const editedItem = (over: Partial<EditedImportItem> = {}): EditedImportItem => ({
+  type: "expense",
+  accountId: U(2),
+  toAccountId: null,
+  isRefund: false,
+  amount: 2500,
+  date: "2026-08-02",
+  name: "Shopping",
+  envelopeId: U(5),
+  categoryId: U(6),
+  placeName: "LIDL",
+  note: "",
   ...over,
 });
 
@@ -112,6 +152,7 @@ describe("local E2EE import planning", () => {
     const spy = mutationSpy();
     applyLocalImport(plan, spy.mutations);
     expect(spy.created.places).toEqual([]);
+    expect(spy.created.transactions).toHaveLength(1);
     expect(spy.created.transactions[0]).toMatchObject({
       accountId: U(3),
       isRefund: true,
@@ -136,7 +177,137 @@ describe("local E2EE import planning", () => {
     applyLocalImport(plan, spy.mutations);
     expect(spy.created.categories).toEqual(["Subscriptions"]);
     expect(spy.created.places).toEqual(["Netflix"]);
+    expect(spy.created.transactions).toHaveLength(2);
+    expect(spy.created.transactions[0]).toMatchObject({
+      type: "expense",
+      accountId: U(2),
+      envelopeId: U(5),
+      categoryId: U(20),
+      placeId: U(21),
+    });
     expect(spy.created.transactions[1]).toMatchObject({ type: "transfer", toAccountId: U(3), envelopeId: null, categoryId: null, isRefund: false });
     expect(() => planLocalImport({ ledger: ledger(), globalAccountId: U(2), dryRun: false, items: [item({ envelopeId: U(99) })] })).toThrow("foreign_ref");
+  });
+
+  it("defaults only missing imported expenses from each item's account link", () => {
+    // given: two expenses without an imported envelope use different source accounts
+    const plan = planLocalImport({
+      ledger: ledger(),
+      globalAccountId: U(2),
+      dryRun: false,
+      items: [
+        item({ envelopeId: null }),
+        item({ accountId: U(3), envelopeId: null, rawPlace: "SECOND RAW" }),
+        item({ envelopeId: U(9), rawPlace: "EXPLICIT RAW" }),
+      ],
+    });
+
+    // when: the review/result and write payloads are prepared
+    const plannedEnvelopeIds = plan.transactions.map((transaction) => transaction.payload.envelopeId);
+
+    // then: missing values follow their accounts while an explicit imported envelope wins
+    expect(plan.results.map((result) => result.envelopeId)).toEqual([U(5), U(9), U(9)]);
+    expect(plannedEnvelopeIds).toEqual([U(5), U(9), U(9)]);
+  });
+
+  it("sends each accepted import exactly once through the transaction mutation port without pre-stamping flow", () => {
+    // given: one accepted linked-account income will be stamped by the real local.createTxn boundary
+    const plan = planLocalImport({
+      ledger: ledger(),
+      globalAccountId: U(2),
+      dryRun: false,
+      items: [item({ type: "income", envelopeId: null })],
+    });
+    const spy = mutationSpy();
+
+    // when: the local import is applied
+    applyLocalImport(plan, spy.mutations);
+
+    // then: the port receives one route payload and no competing allocation-flow stamp
+    expect(spy.created.transactions).toHaveLength(1);
+    expect(spy.created.transactions[0]).toMatchObject({ type: "income", accountId: U(2) });
+    expect(spy.created.transactions[0]).not.toHaveProperty("allocationFromEnvelopeId");
+    expect(spy.created.transactions[0]).not.toHaveProperty("allocationToEnvelopeId");
+  });
+
+  it("preserves automatic, explicit-empty, and explicit-ID provenance from editor review through local apply", () => {
+    // given: review has a stale automatic value, an editor-cleared value, and an explicit ID
+    const reviewed = [
+      { ...item({ envelopeId: U(9), envelopeName: "Travel", rawPlace: "AUTO RAW" }), status: "added" as const, include: true, automaticEnvelopeDefault: true },
+      {
+        ...item({ amount: 2600, envelopeId: U(5), envelopeName: "Food", rawPlace: "EMPTY RAW" }),
+        status: "added" as const,
+        include: true,
+        automaticEnvelopeDefault: true,
+      },
+      {
+        ...item({ amount: 2700, envelopeId: U(5), envelopeName: "Food", rawPlace: "EXPLICIT RAW" }),
+        status: "added" as const,
+        include: true,
+        automaticEnvelopeDefault: true,
+      },
+    ];
+    const edited = {
+      1: editedItem({ amount: 2600, envelopeId: null }),
+      2: editedItem({ amount: 2700, envelopeId: U(9) }),
+    };
+    // when: editor results are merged, planned against the current E5 account link, and applied
+    const chosen = reviewedImportItemsForApply({
+      items: reviewed,
+      edited,
+      editedAutomaticDefaults: { 1: false, 2: false },
+    });
+    const plan = planLocalImport({ ledger: ledger(), globalAccountId: U(2), items: chosen, dryRun: false });
+    const spy = mutationSpy();
+    applyLocalImport(plan, spy.mutations);
+
+    // then: automatic follows current E5, explicit empty stays empty, explicit E9 wins, and each writes once
+    expect(plan.transactions.map((transaction) => transaction.payload.envelopeId)).toEqual([U(5), null, U(9)]);
+    expect(spy.created.transactions).toHaveLength(3);
+  });
+
+  it("carries dry-run provenance through review so account changes and relinks are resolved only at apply", () => {
+    const cases: Array<{ input: ImportApplyItem; expected: string | null }> = [
+      { input: item({ envelopeId: null, rawPlace: "AUTO THROUGH REVIEW" }), expected: U(10) },
+      { input: item({ envelopeId: null, automaticEnvelopeDefault: false, rawPlace: "EXPLICIT EMPTY THROUGH REVIEW" }), expected: null },
+      { input: item({ envelopeId: U(9), rawPlace: "EXPLICIT ID THROUGH REVIEW" }), expected: U(9) },
+    ];
+
+    for (const { input, expected } of cases) {
+      // given: dry-run used Main/E5, then review changes the account to Savings
+      const dry = planLocalImport({ ledger: ledger(), globalAccountId: U(2), items: [input], dryRun: true });
+      const review = importReviewItem(dry.results[0]!, U(5));
+      const edited = editedItem({ accountId: U(3), envelopeId: review.envelopeId });
+      const chosen = reviewedImportItemsForApply({
+        items: [review],
+        edited: { 0: edited },
+        editedAutomaticDefaults: { 0: review.automaticEnvelopeDefault },
+      });
+
+      // and: Savings is relinked again while review remains open
+      const live = ledger();
+      live.envelopes.push({
+        id: U(10),
+        groupId: U(4),
+        name: "Current automatic",
+        color: "#fff",
+        icon: "tag",
+        note: null,
+        monthlyTarget: null,
+        isSavings: false,
+        sort: 2,
+        archived: false,
+      });
+      live.accounts[1]!.automaticEnvelopeId = U(10);
+
+      // when: the reviewed item is planned and applied against live state
+      const plan = planLocalImport({ ledger: live, globalAccountId: U(2), items: chosen, dryRun: false });
+      const spy = mutationSpy();
+      applyLocalImport(plan, spy.mutations);
+
+      // then: provenance wins, and this accepted item crosses the mutation boundary exactly once
+      expect((spy.created.transactions[0] as { envelopeId: string | null }).envelopeId).toBe(expected);
+      expect(spy.created.transactions).toHaveLength(1);
+    }
   });
 });

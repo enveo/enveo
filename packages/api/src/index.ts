@@ -23,7 +23,7 @@ import { stateRoutes } from "./routes/state";
 import { syncRoutes } from "./routes/sync";
 import { createSync2Routes } from "./routes/sync2";
 import { txnRoutes } from "./routes/transactions";
-import { ScopeViolation } from "./sync/apply";
+import { AutomaticEnvelopeViolation, ScopeViolation, TransactionSemanticViolation } from "./sync/apply";
 
 /** Loaded exactly once. `null` disables user BYOK only; ordinary budgeting still boots. */
 export const vaultMasterKeyProvider = loadVaultMasterKeyProvider({
@@ -167,6 +167,12 @@ app.onError((err, c) => {
   // push maps it per-op, /sync/replace maps it to its own 400 message)
   if (err instanceof ScopeViolation) {
     return c.json({ error: "foreign_ref" }, 400);
+  }
+  if (err instanceof AutomaticEnvelopeViolation) {
+    return c.json({ error: err.code }, 409);
+  }
+  if (err instanceof TransactionSemanticViolation) {
+    return c.json({ error: err.message }, 400);
   }
   console.error(err);
   return c.json({ error: "internal" }, 500);

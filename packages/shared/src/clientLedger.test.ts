@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { clientLedgerSchema } from "./ops";
+import { clientLedgerSchema, txnPayload } from "./ops";
 import type { ClientLedger } from "./types";
 
 const U = (n: number): string => `00000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
@@ -17,7 +17,20 @@ const emptyLedger: ClientLedger = {
 /** Full, valid ledger with one entity of each kind (to be mutated in tests). */
 function fullLedger(): ClientLedger {
   return {
-    accounts: [{ id: U(1), name: "Konto", color: "#000", icon: "wallet", type: "checking", onBudget: true, initialBalance: -500, archived: false, sort: 0 }],
+    accounts: [
+      {
+        id: U(1),
+        name: "Konto",
+        color: "#000",
+        icon: "wallet",
+        type: "checking",
+        onBudget: true,
+        initialBalance: -500,
+        archived: false,
+        sort: 0,
+        automaticEnvelopeId: null,
+      },
+    ],
     groups: [{ id: U(2), name: "Grupa", sort: 0 }],
     envelopes: [{ id: U(3), groupId: U(2), name: "Jedzenie", color: "#f1dca0", icon: "food", note: null, sort: 0, archived: false }],
     categories: [{ id: U(4), name: "Sklep" }],
@@ -39,6 +52,8 @@ function fullLedger(): ClientLedger {
         note: null,
         tag: null,
         sourceRef: "LIDL POZNAN 123",
+        allocationFromEnvelopeId: null,
+        allocationToEnvelopeId: null,
         items: [
           { id: "item-local:7:0", envelopeId: U(3), categoryId: U(4), amount: 100 },
           { id: "item-local:7:1", envelopeId: U(3), categoryId: null, amount: 200 },
@@ -111,6 +126,64 @@ describe("clientLedgerSchema", () => {
     expect(clientLedgerSchema.parse(old).transactions[0]!.sourceRef).toBeNull();
   });
 
+  test("automatic-envelope links round-trip and legacy backups default them to null", () => {
+    const linked = fullLedger() as unknown as {
+      accounts: Array<Record<string, unknown>>;
+      transactions: Array<Record<string, unknown>>;
+    };
+    linked.accounts[0]!.automaticEnvelopeId = U(3);
+    linked.transactions[0]!.type = "transfer";
+    linked.transactions[0]!.toAccountId = U(1);
+    linked.transactions[0]!.envelopeId = null;
+    linked.transactions[0]!.items = [];
+    linked.transactions[0]!.allocationFromEnvelopeId = U(3);
+    linked.transactions[0]!.allocationToEnvelopeId = U(3);
+
+    const current = clientLedgerSchema.parse(linked);
+    expect(current.accounts[0]!.automaticEnvelopeId).toBe(U(3));
+    expect(current.transactions[0]!.allocationFromEnvelopeId).toBe(U(3));
+    expect(current.transactions[0]!.allocationToEnvelopeId).toBe(U(3));
+
+    const oldLedger = fullLedger() as unknown as {
+      accounts: Array<Record<string, unknown>>;
+      transactions: Array<Record<string, unknown>>;
+    };
+    delete oldLedger.accounts[0]!.automaticEnvelopeId;
+    delete oldLedger.transactions[0]!.allocationFromEnvelopeId;
+    delete oldLedger.transactions[0]!.allocationToEnvelopeId;
+    expect(clientLedgerSchema.parse(oldLedger).accounts[0]!.automaticEnvelopeId).toBeNull();
+    expect(clientLedgerSchema.parse(oldLedger).transactions[0]!.allocationFromEnvelopeId).toBeNull();
+    expect(clientLedgerSchema.parse(oldLedger).transactions[0]!.allocationToEnvelopeId).toBeNull();
+  });
+
+  test("restored transaction entities enforce the same allocation-flow semantics as write payloads", () => {
+    const invalidRows: Array<Partial<ClientLedger["transactions"][number]>> = [
+      { type: "expense", allocationFromEnvelopeId: U(3) },
+      { type: "expense", allocationToEnvelopeId: U(3) },
+      { type: "income", allocationFromEnvelopeId: U(3) },
+      { type: "income", envelopeId: U(3), allocationToEnvelopeId: U(3) },
+      { type: "transfer", toAccountId: null },
+    ];
+
+    for (const patch of invalidRows) {
+      const ledger = fullLedger();
+      ledger.transactions[0] = { ...ledger.transactions[0]!, items: [], ...patch };
+      expect(clientLedgerSchema.safeParse(ledger).success).toBe(false);
+    }
+
+    const validTransfer = fullLedger();
+    validTransfer.transactions[0] = {
+      ...validTransfer.transactions[0]!,
+      type: "transfer",
+      toAccountId: U(1),
+      envelopeId: null,
+      items: [],
+      allocationFromEnvelopeId: U(3),
+      allocationToEnvelopeId: U(3),
+    };
+    expect(clientLedgerSchema.safeParse(validTransfer).success).toBe(true);
+  });
+
   test("a pre-flag envelope without isSavings parses to false, never undefined (flag = only savings signal)", () => {
     const l = fullLedger();
     // fullLedger()'s envelope deliberately omits `isSavings` — exactly what a pre-flag backup looks like.
@@ -134,5 +207,17 @@ describe("clientLedgerSchema", () => {
     const ids = res.success ? res.data.transactions.map((t) => t.id) : [];
     expect(ids.sort()).toEqual([base.id, plannedFalse.id].sort());
     expect(ids).not.toContain(plannedTrue.id);
+  });
+});
+
+describe("txnPayload allocation-flow rules", () => {
+  const base = { type: "transfer" as const, accountId: U(1), toAccountId: U(1), amount: 100, date: "2026-07-04" };
+
+  test("allows transfer flow but rejects it for expenses and invalid income combinations", () => {
+    expect(txnPayload.safeParse({ ...base, allocationFromEnvelopeId: U(3), allocationToEnvelopeId: U(3) }).success).toBe(true);
+    expect(txnPayload.safeParse({ ...base, type: "expense", allocationFromEnvelopeId: U(3) }).success).toBe(false);
+    expect(txnPayload.safeParse({ ...base, type: "expense", allocationToEnvelopeId: U(3) }).success).toBe(false);
+    expect(txnPayload.safeParse({ ...base, type: "income", allocationFromEnvelopeId: U(3) }).success).toBe(false);
+    expect(txnPayload.safeParse({ ...base, type: "income", toAccountId: null, envelopeId: U(3), allocationToEnvelopeId: U(3) }).success).toBe(false);
   });
 });

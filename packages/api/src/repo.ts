@@ -37,6 +37,7 @@ export const mapAccount = (a: typeof s.accounts.$inferSelect): Account => ({
   initialBalance: a.initialBalance,
   archived: a.archived,
   sort: a.sort,
+  automaticEnvelopeId: a.automaticEnvelopeId,
 });
 
 export const mapGroup = (g: typeof s.envelopeGroups.$inferSelect): EnvelopeGroup => ({
@@ -94,6 +95,8 @@ export const mapTransaction = (t: typeof s.transactions.$inferSelect, items: Txn
   note: t.note,
   tag: t.tag,
   sourceRef: t.sourceRef,
+  allocationFromEnvelopeId: t.allocationFromEnvelopeId,
+  allocationToEnvelopeId: t.allocationToEnvelopeId,
   items,
   createdAt: t.createdAt,
 });

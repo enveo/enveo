@@ -1,10 +1,10 @@
 /**
- * Tests of the extended /import/apply (editing an item before adding) — pure,
- * no DB: zod validation (applyInput), insert shape (applyTxnValues),
- * transfer validation (findTransferError) and dedupe (import-dedupe).
+ * Tests of the dry-run-only /import/apply review contract — pure, no DB:
+ * zod validation (applyInput), transfer validation (findTransferError), and
+ * dedupe classification (import-dedupe). Transaction writes live on the client.
  */
 import { describe, expect, it } from "bun:test";
-import { type ApplyItem, applyInput, applyTxnValues, findTransferError } from "./import";
+import { type ApplyItem, applyInput, findTransferError } from "./import";
 import { buildDupIndex, classifyDup } from "./import-dedupe";
 import { budgetAssertionFails } from "./sync";
 
@@ -26,17 +26,9 @@ const baseItem = (over: Partial<ApplyItem> = {}): ApplyItem => ({
 });
 
 describe("import/apply — extended items", () => {
-  it("valid transfer → insert with to_account_id and an empty envelope/category, no refund", () => {
+  it("accepts a valid transfer for dry-run review", () => {
     const it_ = baseItem({ type: "transfer", toAccountId: ACC_B, isRefund: true });
     expect(findTransferError([it_], ACC_A)).toBeNull();
-    const v = applyTxnValues(it_, ACC_A);
-    expect(v.type).toBe("transfer");
-    expect(v.accountId).toBe(ACC_A);
-    expect(v.toAccountId).toBe(ACC_B);
-    expect(v.envelopeId).toBeNull();
-    expect(v.categoryId).toBeNull();
-    expect(v.isRefund).toBe(false);
-    expect(v.sourceRef).toBe("ZEN*ABC"); // source_ref unchanged — the learning loop
   });
 
   it("transfer without toAccountId or to the same account → error with the item index", () => {
@@ -54,17 +46,6 @@ describe("import/apply — extended items", () => {
     expect(findTransferError([baseItem({ type: "transfer", accountId: ACC_B, toAccountId: ACC_B })], ACC_A)).toEqual({ error: "transfer_invalid", index: 0 });
   });
 
-  it("refund: is_refund true only for expense; ignored for income", () => {
-    expect(applyTxnValues(baseItem({ isRefund: true }), ACC_A).isRefund).toBe(true);
-    expect(applyTxnValues(baseItem({ type: "income", isRefund: true }), ACC_A).isRefund).toBe(false);
-  });
-
-  it("per-item account overrides the global one; note from the item", () => {
-    const v = applyTxnValues(baseItem({ accountId: ACC_B, note: "rata 2/12" }), ACC_A);
-    expect(v.accountId).toBe(ACC_B);
-    expect(v.note).toBe("rata 2/12");
-  });
-
   it("dedupe as before: editing the AMOUNT drops out of the strong key (date+amount+source_ref)", () => {
     const idx = buildDupIndex([{ date: "2026-07-10", amount: 8640, sourceRef: "ZEN*ABC" }]);
     // same amount → sure duplicate
@@ -73,7 +54,7 @@ describe("import/apply — extended items", () => {
     expect(classifyDup({ date: "2026-07-10", amount: 9000, rawPlace: "ZEN*ABC" }, idx)).toBe("new");
   });
 
-  it("the old item shape (without the new fields) passes and yields the previous defaults", () => {
+  it("the old item shape (without the new fields) remains valid for dry-run review", () => {
     const body = {
       accountId: ACC_A,
       items: [
@@ -92,16 +73,7 @@ describe("import/apply — extended items", () => {
     };
     const parsed = applyInput.parse(body);
     expect(findTransferError(parsed.items, parsed.accountId)).toBeNull();
-    const v = applyTxnValues(parsed.items[0]!, parsed.accountId);
-    expect(v).toMatchObject({
-      type: "expense",
-      accountId: ACC_A,
-      toAccountId: null,
-      isRefund: false,
-      envelopeId: ENV,
-      note: null,
-      sourceRef: "XYZ*1",
-    });
+    expect(parsed.items[0]).toMatchObject({ type: "expense", envelopeId: ENV, rawPlace: "XYZ*1" });
   });
 });
 

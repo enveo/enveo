@@ -25,6 +25,12 @@ import postgres from "postgres";
 import { runChild } from "../api.test-support";
 import * as s from "../db/schema";
 import { applyPushOp, budgetAssertionFails, legacyChangesWatermark, ownerAssertionFails, pullChanges, pushInput, replaceInput } from "./sync";
+import { SENTINEL as AUTOMATIC_ENVELOPE_SENTINEL, type AutomaticEnvelopeOutput } from "./sync.automatic-envelope.test-child";
+import {
+  SENTINEL as AUTOMATIC_ENVELOPE_CURSOR_ORDER_SENTINEL,
+  type AutomaticEnvelopeCursorOrderOutput,
+} from "./sync.automatic-envelope-cursor-order.test-child";
+import { SENTINEL as AUTOMATIC_ENVELOPE_LOCK_ORDER_SENTINEL, type AutomaticEnvelopeLockOrderOutput } from "./sync.automatic-envelope-lock-order.test-child";
 import { SENTINEL as BARRIER_SENTINEL, type FirstUseBarrierOutput } from "./sync.first-use-barrier.test-child";
 // Constant + type only — this module's app/db imports are lazy (see the file header), so
 // importing it here does NOT pull env/db/client into THIS process.
@@ -194,6 +200,165 @@ const TEST_URL = process.env.TEST_DATABASE_URL ?? "";
 if (TEST_URL && TEST_URL === process.env.DATABASE_URL) {
   throw new Error("TEST_DATABASE_URL must differ from DATABASE_URL — this suite writes to the DB.");
 }
+
+const AUTOMATIC_ENVELOPE_CHILD = new URL("./sync.automatic-envelope.test-child.ts", import.meta.url).pathname;
+const AUTOMATIC_ENVELOPE_CURSOR_ORDER_CHILD = new URL("./sync.automatic-envelope-cursor-order.test-child.ts", import.meta.url).pathname;
+const AUTOMATIC_ENVELOPE_LOCK_ORDER_CHILD = new URL("./sync.automatic-envelope-lock-order.test-child.ts", import.meta.url).pathname;
+
+describe.skipIf(!TEST_URL)("automatic envelope validation (DB-backed, real REST + sync + restore)", () => {
+  let out: AutomaticEnvelopeOutput;
+
+  beforeAll(async () => {
+    out = await runChild<AutomaticEnvelopeOutput>({
+      path: AUTOMATIC_ENVELOPE_CHILD,
+      testUrl: TEST_URL,
+      sentinel: AUTOMATIC_ENVELOPE_SENTINEL,
+      cwd: new URL("../..", import.meta.url).pathname,
+      env: {
+        BETTER_AUTH_URL: "http://127.0.0.1:8097",
+        BETTER_AUTH_SECRET: "automatic-envelope-test-secret-0123456789abcdef",
+        DEPLOYMENT: "cloud",
+        ALLOW_SIGNUPS: "",
+        ALLOWED_ORIGINS: "",
+        WEB_DIST: "",
+        OPENAI_API_KEY: "",
+      },
+    });
+  });
+
+  it("accepts a valid link and keeps missing or cross-budget links on the foreign_ref surface", () => {
+    expect(out.rest.validCreateStatus).toBe(201);
+    expect(out.rest.foreignLink).toEqual({ status: 400, error: "foreign_ref" });
+    expect(out.rest.missingLink).toEqual({ status: 400, error: "foreign_ref" });
+    expect(out.rest.updateForeignLink).toEqual({ status: 400, error: "foreign_ref" });
+    expect(out.rest.updateMissingLink).toEqual({ status: 400, error: "foreign_ref" });
+    expect(out.rest.updateActiveLinkStatus).toBe(200);
+  });
+
+  it("rejects archived and off-budget links with stable REST conflict codes", () => {
+    expect(out.rest.archivedLink).toEqual({ status: 409, error: "automatic_envelope_unavailable" });
+    expect(out.rest.updateArchivedLink).toEqual({ status: 409, error: "automatic_envelope_unavailable" });
+    expect(out.rest.offBudgetLink).toEqual({ status: 409, error: "automatic_envelope_requires_on_budget" });
+  });
+
+  it("validates the final merged account state and accepts clearing the link in the same patch", () => {
+    expect(out.rest.keepLinkOffBudget).toEqual({ status: 409, error: "automatic_envelope_requires_on_budget" });
+    expect(out.rest.failedPatchPreservedState).toBe(true);
+    expect(out.rest.clearLinkOffBudgetStatus).toBe(200);
+  });
+
+  it("blocks archival while linked but lets isSavings change independently", () => {
+    expect(out.rest.archiveLinked).toEqual({ status: 409, error: "automatic_envelope_linked" });
+    expect(out.rest.savingsChangeStatus).toBe(200);
+    expect(out.rest.savingsChanged).toBe(true);
+  });
+
+  it("sync rejects invalid link lifecycle operations atomically and leaves no idempotency claim", () => {
+    expect(out.sync.archivedLinkError).toBe("automatic_envelope_unavailable");
+    expect(out.sync.archivedLinkRowAbsent).toBe(true);
+    expect(out.sync.archivedLinkClaimAbsent).toBe(true);
+    expect(out.sync.archiveLinkedError).toBe("automatic_envelope_linked");
+    expect(out.sync.archiveLinkedPreserved).toBe(true);
+    expect(out.sync.archiveLinkedClaimAbsent).toBe(true);
+  });
+
+  it("historical transaction allocation flow may reference an envelope archived after unlink", () => {
+    expect(out.sync.historicalAllocationStatus).toBe("applied");
+  });
+
+  it("validates the merged stored transaction when a legacy update omits allocation flow", () => {
+    expect(out.transactionUpdate.rest).toEqual({ status: 400, error: "invalid_transaction_flow" });
+    expect(out.transactionUpdate.preservedAfterRest).toBe(true);
+    expect(out.transactionUpdate.syncError).toBe("invalid_transaction_flow");
+    expect(out.transactionUpdate.preservedAfterSync).toBe(true);
+    expect(out.transactionUpdate.syncClaimAbsent).toBe(true);
+  });
+
+  it("retires legacy server write modes while preserving the current dry-run review contract", () => {
+    expect(out.legacyWrites.duplicate).toEqual({ status: 410, error: "client_write_required" });
+    expect(out.legacyWrites.duplicateWroteNothing).toBe(true);
+    expect(out.legacyWrites.importWrite).toEqual({ status: 410, error: "client_write_required" });
+    expect(out.legacyWrites.importWriteWroteNothing).toBe(true);
+    expect(out.legacyWrites.dryRunStatus).toBe(200);
+    expect(out.legacyWrites.dryRunResultStatus).toBe("added");
+    expect(out.legacyWrites.dryRunWroteNothing).toBe(true);
+  });
+
+  it("restore rejects inconsistent links on its established surface and rolls the wipe back", () => {
+    expect(out.restore.invalidTransaction).toEqual({ status: 400, error: "backup_invalid" });
+    expect(out.restore.offBudgetLink).toEqual({ status: 400, error: "foreign_ref" });
+    expect(out.restore.archivedLink).toEqual({ status: 400, error: "foreign_ref" });
+    expect(out.restore.originalAccountSurvived).toBe(true);
+  });
+});
+
+describe.skipIf(!TEST_URL)("automatic envelope lock order (DB-backed, forced interleaving)", () => {
+  let out: AutomaticEnvelopeLockOrderOutput;
+
+  beforeAll(async () => {
+    out = await runChild<AutomaticEnvelopeLockOrderOutput>({
+      path: AUTOMATIC_ENVELOPE_LOCK_ORDER_CHILD,
+      testUrl: TEST_URL,
+      sentinel: AUTOMATIC_ENVELOPE_LOCK_ORDER_SENTINEL,
+      cwd: new URL("../..", import.meta.url).pathname,
+    });
+  }, CHILD_TIMEOUT_MS);
+
+  it("account update and envelope delete both complete after the delete is observed waiting", () => {
+    expect(out.envelopeDelete.waiterObserved).toBe(true);
+    expect(out.envelopeDelete.updateCompleted).toBe(true);
+    expect(out.envelopeDelete.competingCompleted).toBe(true);
+    expect(out.envelopeDelete.updateError).toBeNull();
+    expect(out.envelopeDelete.competingError).toBeNull();
+    expect(out.envelopeDelete.finalStateValid).toBe(true);
+  });
+
+  it("full wipe also waits account-first, then completes with the updater", () => {
+    expect(out.fullWipe.waiterObserved).toBe(true);
+    expect(out.fullWipe.updateCompleted).toBe(true);
+    expect(out.fullWipe.competingCompleted).toBe(true);
+    expect(out.fullWipe.updateError).toBeNull();
+    expect(out.fullWipe.competingError).toBeNull();
+    expect(out.fullWipe.finalStateValid).toBe(true);
+  });
+
+  it("full wipe locks multiple accounts in stable id order before deleting them", () => {
+    expect(out.multiAccountWipe.waiterObserved).toBe(true);
+    expect(out.multiAccountWipe.updateCompleted).toBe(true);
+    expect(out.multiAccountWipe.competingCompleted).toBe(true);
+    expect(out.multiAccountWipe.updateError).toBeNull();
+    expect(out.multiAccountWipe.competingError).toBeNull();
+    expect(out.multiAccountWipe.finalStateValid).toBe(true);
+  });
+});
+
+describe.skipIf(!TEST_URL)("automatic envelope cursor order (DB-backed, forced barrier interleaving)", () => {
+  let out: AutomaticEnvelopeCursorOrderOutput;
+
+  beforeAll(async () => {
+    out = await runChild<AutomaticEnvelopeCursorOrderOutput>({
+      path: AUTOMATIC_ENVELOPE_CURSOR_ORDER_CHILD,
+      testUrl: TEST_URL,
+      sentinel: AUTOMATIC_ENVELOPE_CURSOR_ORDER_SENTINEL,
+      cwd: new URL("../..", import.meta.url).pathname,
+    });
+  }, CHILD_TIMEOUT_MS);
+
+  for (const kind of ["accountCreate", "accountUpdate", "syncAccountUpdate", "envelopeArchive", "envelopeDelete", "groupDelete", "fullWipe"] as const) {
+    it(`${kind} waits on the shared cursor before lifecycle rows and never deadlocks the barrier`, () => {
+      const result = out[kind];
+      expect(result.lifecycleWaitObserved).toBe(true);
+      expect(result.lifecycleWaitedOnCursor).toBe(true);
+      expect(result.barrierWaitedOnLifecycleRow).toBe(false);
+      expect(result.lifecycleCompleted).toBe(true);
+      expect(result.barrierCompleted).toBe(true);
+      expect(result.lifecycleError).toBeNull();
+      expect(result.barrierError).toBeNull();
+      expect(result.deadlockDetected).toBe(false);
+      if (kind === "syncAccountUpdate") expect(result.syncClaimPersisted).toBe(true);
+    });
+  }
+});
 
 const REPLACE_CHILD = new URL("./sync.replace-recurrence.test-child.ts", import.meta.url).pathname;
 

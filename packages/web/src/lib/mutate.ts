@@ -18,14 +18,18 @@ import {
   type BudgetPreferencesPatch,
   budgetPreferencesPatchSchema,
   type Category,
+  type ClientLedger,
+  captureAllocationFlow,
   type Envelope,
   type EnvelopeGroup,
   type EnvelopePayload,
   type GroupPayload,
+  manualAllocationForDisplayedTotal,
   type OpKind,
   type OpPayload,
   opSchemas,
   type Place,
+  resolveAllocationFlow,
   type SyncOp,
   type Transaction,
   type TxnPayload,
@@ -71,15 +75,32 @@ const findByName = <T extends { name: string }>(rows: T[], name: string): T | un
 
 /* ── Transactions ──────────────────────────────────────────────────────── */
 
+function withPreparedAllocationFlow(payload: TxnPayload, flow: Pick<Transaction, "allocationFromEnvelopeId" | "allocationToEnvelopeId">): TxnPayload {
+  // An automatic income credit replaces the legacy direct envelope credit.
+  return { ...payload, ...flow, envelopeId: payload.type === "income" && flow.allocationToEnvelopeId ? null : payload.envelopeId };
+}
+
+/** Captures the account-linked allocation flow for a new local transaction. */
+export function prepareTxnCreate(ledger: ClientLedger, payload: TxnPayload): TxnPayload {
+  return withPreparedAllocationFlow(payload, captureAllocationFlow(ledger.accounts, payload));
+}
+
+/** Preserves a stored flow for an unchanged route or captures the current links after rerouting. */
+export function prepareTxnUpdate(ledger: ClientLedger, id: string, payload: TxnPayload): TxnPayload {
+  const previous = ledger.transactions.find((transaction) => transaction.id === id);
+  if (!previous) throw new Error(`local.updateTxn: transaction ${id} not found`);
+  return withPreparedAllocationFlow(payload, resolveAllocationFlow(ledger.accounts, payload, previous));
+}
+
 function createTxn(payload: TxnPayload): string {
   const id = newId();
   // the client assigns createdAt — a stable list order within a day
-  enqueue("txn.create", { ...payload, id, createdAt: new Date().toISOString() });
+  enqueue("txn.create", { ...prepareTxnCreate(ledger(), payload), id, createdAt: new Date().toISOString() });
   return id;
 }
 
 function updateTxn(id: string, payload: TxnPayload): void {
-  enqueue("txn.update", { ...payload, id });
+  enqueue("txn.update", { ...prepareTxnUpdate(ledger(), id, payload), id });
 }
 
 function deleteTxn(id: string): void {
@@ -107,14 +128,16 @@ export function txnToPayload(t: Transaction): TxnPayload {
     note: t.note,
     tag: t.tag,
     sourceRef: t.sourceRef,
+    allocationFromEnvelopeId: t.allocationFromEnvelopeId,
+    allocationToEnvelopeId: t.allocationToEnvelopeId,
     items: t.items.map((i) => ({ envelopeId: i.envelopeId, categoryId: i.categoryId, amount: i.amount })),
   };
 }
 
 /**
- * A transaction copy built ON THE CLIENT — semantics 1:1 with the old
- * POST /transactions/:id/duplicate: today's date, `tag: null` (the copy doesn't
- * inherit the import key), items without ids.
+ * A transaction copy built ON THE CLIENT: today's date, `tag: null` (the copy
+ * doesn't inherit the import key), items without ids. The retired REST duplicate
+ * route refuses writes so central local preparation always stamps current links.
  *
  * D7: a split "orphaned" by envelope.delete (items no longer sum to the parent
  * amount after the envelope removal) must NOT pass opSchemas["txn.create"]
@@ -123,7 +146,14 @@ export function txnToPayload(t: Transaction): TxnPayload {
  * and the "Duplicate" sheet doesn't jam. A balanced split is copied verbatim.
  */
 export function txnToDuplicatePayload(t: Transaction, today: string): TxnPayload {
-  const base = { ...txnToPayload(t), date: today, tag: null, sourceRef: null };
+  const base = {
+    ...txnToPayload(t),
+    date: today,
+    tag: null,
+    sourceRef: null,
+    allocationFromEnvelopeId: null,
+    allocationToEnvelopeId: null,
+  };
   const itemsSum = t.items.reduce((s, i) => s + i.amount, 0);
   if (t.items.length > 0 && itemsSum === t.amount) {
     // balanced split — verbatim copy (the parent has envelopeId/categoryId null anyway;
@@ -144,8 +174,13 @@ function duplicateTxn(t: Transaction): string {
 
 /* ── Allocations ────────────────────────────────────────────────────────── */
 
-function setAllocation(payload: AllocPayload): void {
-  enqueue("alloc.set", payload);
+/** Converts a user-visible Added total into the manual allocation stored in the ledger. */
+export function prepareDisplayedAllocation(ledger: ClientLedger, payload: AllocPayload): AllocPayload {
+  return { ...payload, amount: manualAllocationForDisplayedTotal(ledger.transactions, payload.envelopeId, payload.month, payload.amount) };
+}
+
+function setDisplayedAllocation(payload: AllocPayload): void {
+  enqueue("alloc.set", prepareDisplayedAllocation(ledger(), payload));
 }
 
 /* ── Accounts / groups / envelopes ─────────────────────────────────────── */
@@ -225,7 +260,7 @@ export const local = {
   updateTxn,
   deleteTxn,
   duplicateTxn,
-  setAllocation,
+  setDisplayedAllocation,
   createAccount,
   updateAccount,
   deleteAccount,

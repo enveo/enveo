@@ -4,12 +4,14 @@ export type Tab = "expense" | "income" | "transfer";
 
 /** Draft mode: import item editor — full AddScreen look, but submit does
  *  NOT save a transaction (zero local.*), it only hands an EditedImportItem
- *  back to ImportSheet (corrections go later through /import/apply). */
+ *  back to ImportSheet (corrections go later through the local import batch). */
 export interface AddDraft {
   item: ImportItem;
   accountId: string;
   initial?: EditedImportItem;
-  onSave: (e: EditedImportItem) => void;
+  /** True when a missing imported expense received the account link in review. */
+  automaticEnvelopeDefault?: boolean;
+  onSave: (e: EditedImportItem, meta: { automaticEnvelopeDefault: boolean }) => void;
   onCancel: () => void;
 }
 

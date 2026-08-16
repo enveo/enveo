@@ -121,6 +121,183 @@ describe("computeBudgetState — scenarios", () => {
     expect(s.envelopes[0]!.spent).toBe(30_00);
     expect(s.envelopes[1]!.spent).toBe(20_00);
   });
+
+  it("a transfer into one linked account adds to its envelope and removes the same amount from Ready to assign", () => {
+    const g = grp();
+    const source = acc({ initialBalance: 1_000_00 });
+    const destination = acc({ initialBalance: 0 });
+    const savings = env(g.id);
+    const ledger: Ledger = {
+      accounts: [source, destination],
+      groups: [g],
+      envelopes: [savings],
+      allocations: [],
+      transactions: [
+        tx({
+          type: "transfer",
+          accountId: source.id,
+          toAccountId: destination.id,
+          amount: 500_00,
+          allocationToEnvelopeId: savings.id,
+        }),
+      ],
+    };
+
+    const state = computeBudgetState(ledger, "2026-06");
+    expect(state.envelopes[0]!.allocated).toBe(500_00);
+    expect(state.envelopes[0]!.available).toBe(500_00);
+    expect(state.toBeBudgeted).toBe(500_00);
+    expect(state.readyToAssign).toBe(500_00);
+    expect(totalOnBudget(state)).toBe(1_000_00);
+  });
+
+  it("a transfer out of one linked account releases its allocation to Ready to assign", () => {
+    const g = grp();
+    const source = acc({ initialBalance: 1_000_00 });
+    const destination = acc({ initialBalance: 0 });
+    const savings = env(g.id);
+    const ledger: Ledger = {
+      accounts: [source, destination],
+      groups: [g],
+      envelopes: [savings],
+      allocations: [alloc(savings.id, "2026-05", 500_00)],
+      transactions: [
+        tx({
+          type: "transfer",
+          accountId: source.id,
+          toAccountId: destination.id,
+          amount: 200_00,
+          allocationFromEnvelopeId: savings.id,
+        }),
+      ],
+    };
+
+    const state = computeBudgetState(ledger, "2026-06");
+    expect(state.envelopes[0]!.allocated).toBe(-200_00);
+    expect(state.envelopes[0]!.available).toBe(300_00);
+    expect(state.toBeBudgeted).toBe(700_00);
+    expect(state.readyToAssign).toBe(700_00);
+  });
+
+  it("income into a linked account increases its envelope without leaving money Ready to assign", () => {
+    const g = grp();
+    const account = acc({ initialBalance: 0 });
+    const savings = env(g.id);
+    const ledger: Ledger = {
+      accounts: [account],
+      groups: [g],
+      envelopes: [savings],
+      allocations: [],
+      transactions: [tx({ type: "income", accountId: account.id, amount: 100_00, allocationToEnvelopeId: savings.id })],
+    };
+
+    const state = computeBudgetState(ledger, "2026-06");
+    expect(state.accounts[0]!.balance).toBe(100_00);
+    expect(state.envelopes[0]!.allocated).toBe(100_00);
+    expect(state.envelopes[0]!.available).toBe(100_00);
+    expect(state.toBeBudgeted).toBe(0);
+    expect(state.readyToAssign).toBe(0);
+    expect(state.monthIncome).toBe(100_00);
+  });
+
+  it("a transfer between different linked envelopes moves allocation without changing Ready to assign", () => {
+    const g = grp();
+    const source = acc({ initialBalance: 1_000_00 });
+    const destination = acc({ initialBalance: 0 });
+    const savings = env(g.id);
+    const travel = env(g.id);
+    const ledger: Ledger = {
+      accounts: [source, destination],
+      groups: [g],
+      envelopes: [savings, travel],
+      allocations: [alloc(savings.id, "2026-05", 500_00)],
+      transactions: [
+        tx({
+          type: "transfer",
+          accountId: source.id,
+          toAccountId: destination.id,
+          amount: 500_00,
+          allocationFromEnvelopeId: savings.id,
+          allocationToEnvelopeId: travel.id,
+        }),
+      ],
+    };
+
+    const state = computeBudgetState(ledger, "2026-06");
+    expect(state.envelopes.map(({ allocated }) => allocated)).toEqual([-500_00, 500_00]);
+    expect(state.envelopes.map(({ available }) => available)).toEqual([0, 500_00]);
+    expect(state.toBeBudgeted).toBe(500_00);
+    expect(state.readyToAssign).toBe(500_00);
+  });
+
+  it("amount edits change the recorded flow magnitude and deletion removes it", () => {
+    const g = grp();
+    const account = acc({ initialBalance: 0 });
+    const savings = env(g.id);
+    const transaction = tx({ type: "income", accountId: account.id, amount: 100_00, allocationToEnvelopeId: savings.id });
+    const ledger: Ledger = {
+      accounts: [account],
+      groups: [g],
+      envelopes: [savings],
+      allocations: [],
+      transactions: [transaction],
+    };
+
+    expect(computeBudgetState(ledger, "2026-06").envelopes[0]!.allocated).toBe(100_00);
+    expect(computeBudgetState({ ...ledger, transactions: [{ ...transaction, amount: 175_00 }] }, "2026-06").envelopes[0]!.allocated).toBe(175_00);
+    expect(computeBudgetState({ ...ledger, transactions: [] }, "2026-06").envelopes[0]!.allocated).toBe(0);
+  });
+
+  it("date edits move the flow to the new month while prior-month flow carries forward", () => {
+    const g = grp();
+    const source = acc({ initialBalance: 500_00 });
+    const destination = acc({ initialBalance: 0 });
+    const savings = env(g.id);
+    const juneTransaction = tx({
+      type: "transfer",
+      accountId: source.id,
+      toAccountId: destination.id,
+      amount: 200_00,
+      date: "2026-06-15",
+      allocationFromEnvelopeId: savings.id,
+    });
+    const ledger: Ledger = {
+      accounts: [source, destination],
+      groups: [g],
+      envelopes: [savings],
+      allocations: [alloc(savings.id, "2026-05", 300_00)],
+      transactions: [juneTransaction],
+    };
+
+    const julyWithCarry = computeBudgetState(ledger, "2026-07");
+    expect(julyWithCarry.envelopes[0]!.carryIn).toBe(100_00);
+    expect(julyWithCarry.envelopes[0]!.allocated).toBe(0);
+
+    const movedLedger = { ...ledger, transactions: [{ ...juneTransaction, date: "2026-07-15" }] };
+    expect(computeBudgetState(movedLedger, "2026-06").envelopes[0]!.available).toBe(300_00);
+    const julyAfterMove = computeBudgetState(movedLedger, "2026-07");
+    expect(julyAfterMove.envelopes[0]!.carryIn).toBe(300_00);
+    expect(julyAfterMove.envelopes[0]!.allocated).toBe(-200_00);
+    expect(julyAfterMove.envelopes[0]!.available).toBe(100_00);
+  });
+
+  it("adds the manual and automatic monthly components into the existing Added value", () => {
+    const g = grp();
+    const account = acc({ initialBalance: 1_000_00 });
+    const savings = env(g.id);
+    const ledger: Ledger = {
+      accounts: [account],
+      groups: [g],
+      envelopes: [savings],
+      allocations: [alloc(savings.id, "2026-06", 300_00)],
+      transactions: [tx({ type: "income", accountId: account.id, amount: 500_00, allocationToEnvelopeId: savings.id })],
+    };
+
+    const state = computeBudgetState(ledger, "2026-06");
+    expect(state.envelopes[0]!.allocated).toBe(800_00);
+    expect(state.envelopes[0]!.available).toBe(800_00);
+    expect(state.toBeBudgeted).toBe(700_00);
+  });
 });
 
 describe("computeBudgetState — readyToAssign (month-independent)", () => {
@@ -153,6 +330,34 @@ describe("computeBudgetState — readyToAssign (month-independent)", () => {
     const june = computeBudgetState(ledger, "2026-06");
     expect(june.toBeBudgeted).toBe(100_00); // month-bounded figure ignores the future allocation
     expect(june.readyToAssign).toBe(70_00); // month-independent figure already accounts for it
+  });
+
+  it("a FUTURE automatic allocation lowers readyToAssign but not the selected month's toBeBudgeted", () => {
+    const g = grp();
+    const source = acc({ initialBalance: 1_000_00 });
+    const destination = acc({ initialBalance: 0 });
+    const savings = env(g.id);
+    const ledger: Ledger = {
+      accounts: [source, destination],
+      groups: [g],
+      envelopes: [savings],
+      allocations: [],
+      transactions: [
+        tx({
+          type: "transfer",
+          accountId: source.id,
+          toAccountId: destination.id,
+          amount: 200_00,
+          date: "2026-08-10",
+          allocationToEnvelopeId: savings.id,
+        }),
+      ],
+    };
+
+    const june = computeBudgetState(ledger, "2026-06");
+    expect(june.envelopes[0]!.allocated).toBe(0);
+    expect(june.toBeBudgeted).toBe(1_000_00);
+    expect(june.readyToAssign).toBe(800_00);
   });
 });
 

@@ -1,9 +1,11 @@
 import { SectionEyebrow } from "../../components/kit";
 import type { StateResponse } from "../../lib/api";
+import type { AutomaticEnvelopeEffectData } from "../../lib/automaticEnvelopeUi";
 import { useMask, useTheme } from "../../lib/contexts";
 import { useT } from "../../lib/i18n";
 import { Glyph } from "../../lib/icons";
 import { P } from "../../lib/theme";
+import { AutomaticEnvelopeEffect } from "./AutomaticEnvelopeEffect";
 import { collapsedRowStyle, gridCardStyle, linkBtnStyle } from "./styles";
 
 /** Destination-account UI of the transfer tab: eyebrow link to the full sheet,
@@ -16,6 +18,7 @@ export function TransferFields({
   toAcc,
   onOpenSheet,
   onPickDest,
+  automaticEffect,
 }: {
   destOpen: boolean;
   destList: StateResponse["accounts"];
@@ -23,6 +26,7 @@ export function TransferFields({
   toAcc: StateResponse["accounts"][number] | undefined;
   onOpenSheet: () => void;
   onPickDest: (id: string) => void;
+  automaticEffect: AutomaticEnvelopeEffectData | null;
 }) {
   const C = useTheme();
   const M = useMask();
@@ -80,6 +84,7 @@ export function TransferFields({
           </span>
         </button>
       )}
+      {automaticEffect && <AutomaticEnvelopeEffect data={automaticEffect} />}
     </>
   );
 }

@@ -1,7 +1,16 @@
 import { computeNetWorthSeries, computeStateResponse } from "@enveo/shared";
-import { type CSSProperties, type ReactNode, useEffect, useMemo, useState } from "react";
+import { type CSSProperties, type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { fmtSignedTrim } from "../lib/amount";
 import { type AccountView, type EnvelopeView, type StateResponse, useLedgerVersion } from "../lib/api";
+import {
+  automaticEnvelopePreview,
+  currentReconciliationAccount,
+  formatAutomaticEnvelopeEffect,
+  type ReconciliationEnvelopeSelection,
+  reconciliationActualValueAfterAccountRefresh,
+  reconciliationEnvelopeAfterAccountRefresh,
+  reconciliationTxnPayload,
+} from "../lib/automaticEnvelopeUi";
 import type { WidgetConfig, WidgetId, WidgetOpts } from "../lib/contexts";
 import { useCurrency, useMask, useSettings, useTheme } from "../lib/contexts";
 import { currentMonth } from "../lib/dates";
@@ -14,6 +23,9 @@ import { matchesSearch, SEARCH_THRESHOLD } from "../lib/search";
 import { store } from "../lib/store";
 import { font, TEAL, type Theme, tint } from "../lib/theme";
 import { sumBalances } from "../lib/uiState";
+import { AutomaticEnvelopeEffect } from "../screens/add/AutomaticEnvelopeEffect";
+import { EnvelopePickerSheet } from "../screens/add/EnvelopePickerSheet";
+import { collapsedRowStyle } from "../screens/add/styles";
 import { AmountPadHost, type AmountPadTarget } from "./AmountPadSheet";
 import { type ScreenId, Sheet } from "./chrome";
 import { CardBox, HighlightedText, PickerSearch, SectionEyebrow, useBand } from "./kit";
@@ -114,7 +126,7 @@ export function QuickActions({ onNav, onQuickAdd, opts }: WidgetProps) {
 }
 
 /* ── Accounts: the Start 2-col grid, foldable to `opts.count` (default 4) ── */
-export function AccountsWidget({ onNav, onOpenTxns, opts }: WidgetProps) {
+export function AccountsWidget({ state, onNav, onOpenTxns, opts }: WidgetProps) {
   const C = useTheme();
   const M = useMask();
   const { t, tp } = useT();
@@ -139,7 +151,11 @@ export function AccountsWidget({ onNav, onOpenTxns, opts }: WidgetProps) {
   const shown = expanded ? accounts : accounts.slice(0, count);
   const accountsTotal = MW(sumBalances(accounts));
   const [selAcc, setSelAcc] = useState<AccountView | null>(null);
-  const [reconcile, setReconcile] = useState<AccountView | null>(null);
+  const [reconcileAccountId, setReconcileAccountId] = useState<string | null>(null);
+  const reconcileAccount = currentReconciliationAccount(accountsNow, reconcileAccountId);
+  const activeEnvelopes = state.envelopes.filter((envelope) => !envelope.archived);
+  const activeGroupIds = new Set(activeEnvelopes.map((envelope) => envelope.groupId));
+  const activeGroups = state.groups.filter((group) => activeGroupIds.has(group.id));
 
   return (
     <div>
@@ -241,7 +257,7 @@ export function AccountsWidget({ onNav, onOpenTxns, opts }: WidgetProps) {
                       () => {
                         const a = selAcc;
                         setSelAcc(null);
-                        setReconcile(a);
+                        setReconcileAccountId(a.id);
                       },
                     ],
                   ] as const
@@ -274,22 +290,47 @@ export function AccountsWidget({ onNav, onOpenTxns, opts }: WidgetProps) {
         }
       </Sheet>
 
-      <ReconcileSheet account={reconcile} onClose={() => setReconcile(null)} />
+      <ReconcileSheet account={reconcileAccount} envelopes={activeEnvelopes} groups={activeGroups} onClose={() => setReconcileAccountId(null)} />
     </div>
   );
 }
 
-/** Account balance reconciliation (moved verbatim from Start.tsx — now owned by AccountsWidget). */
-function ReconcileSheet({ account, onClose }: { account: AccountView | null; onClose: () => void }) {
+/** Account balance reconciliation owned by AccountsWidget. */
+function ReconcileSheet({
+  account,
+  envelopes,
+  groups,
+  onClose,
+}: {
+  account: AccountView | null;
+  envelopes: StateResponse["envelopes"];
+  groups: StateResponse["groups"];
+  onClose: () => void;
+}) {
   const M = useMask();
   const { t, lang } = useT();
   const currency = useCurrency();
   const [val, setVal] = useState("");
   const [pad, setPad] = useState<AmountPadTarget | null>(null);
+  const [envelopeSelection, setEnvelopeSelection] = useState<ReconciliationEnvelopeSelection | null>(null);
+  const [showEnvelopePicker, setShowEnvelopePicker] = useState(false);
+  const actualBalanceSource = useRef<{ id: string; balance: number } | null>(null);
+  const automaticEnvelopeId = account && envelopes.some((envelope) => envelope.id === account.automaticEnvelopeId) ? account.automaticEnvelopeId : null;
   useEffect(() => {
-    if (account) setVal((account.balance / 100).toFixed(2).replace(".", ","));
-  }, [account]);
+    if (!account) {
+      actualBalanceSource.current = null;
+      setEnvelopeSelection(null);
+      return;
+    }
+    const previousBalanceSource = actualBalanceSource.current;
+    actualBalanceSource.current = { id: account.id, balance: account.balance };
+    setVal((current) => reconciliationActualValueAfterAccountRefresh(current, previousBalanceSource, account));
+    setEnvelopeSelection((current) => reconciliationEnvelopeAfterAccountRefresh(current, account.id, automaticEnvelopeId));
+    setShowEnvelopePicker(false);
+  }, [account?.id, account?.balance, automaticEnvelopeId]);
   if (!account) return null;
+  const currentEnvelopeSelection = reconciliationEnvelopeAfterAccountRefresh(envelopeSelection, account.id, automaticEnvelopeId);
+  const envelopeId = currentEnvelopeSelection.envelopeId;
   const openPad = () =>
     setPad({
       label: t("Actual balance (from your bank)"),
@@ -304,17 +345,29 @@ function ReconcileSheet({ account, onClose }: { account: AccountView | null; onC
       onClose();
       return;
     }
-    local.createTxn({
-      type: diff > 0 ? "income" : "expense",
-      accountId: account.id,
-      amount: Math.abs(diff),
-      date: new Date().toISOString().slice(0, 10),
-      envelopeId: null,
-      // the note is transaction DATA — saved in the language active at creation time
-      note: t("Balance adjustment"),
-    });
+    local.createTxn(
+      reconciliationTxnPayload({
+        accountId: account.id,
+        difference: diff,
+        date: new Date().toISOString().slice(0, 10),
+        envelopeId,
+        // the note is transaction DATA — saved in the language active at creation time
+        note: t("Balance adjustment"),
+      }),
+    );
     onClose();
   };
+  const selectedEnvelope = envelopes.find((envelope) => envelope.id === envelopeId);
+  const positivePreview = diff > 0 ? automaticEnvelopePreview({ accounts: [account], envelopes }, { type: "income", accountId: account.id }, diff) : null;
+  const positiveEffect =
+    positivePreview && positivePreview.rows.length > 0
+      ? formatAutomaticEnvelopeEffect(positivePreview, M, {
+          heading: t("Automatic envelope effect"),
+          readyToAssign: t("Ready to assign"),
+          noEnvelopeChange: t("No envelope change"),
+          noChange: t("No change"),
+        })
+      : null;
   return (
     <>
       <Sheet show={!!account} onClose={onClose}>
@@ -361,6 +414,34 @@ function ReconcileSheet({ account, onClose }: { account: AccountView | null; onC
                 })}
               </div>
             )}
+            {diff > 0 && positiveEffect && <AutomaticEnvelopeEffect data={positiveEffect} />}
+            {diff < 0 && (
+              <>
+                <div style={{ fontSize: 10.5, color: C.mute, fontWeight: 600, textTransform: "uppercase", letterSpacing: 0.6, marginBottom: 6 }}>
+                  {t("Envelope for the adjustment")}
+                </div>
+                <button onClick={() => setShowEnvelopePicker(true)} style={{ ...collapsedRowStyle(C, !!selectedEnvelope), margin: "0 0 4px" }}>
+                  {selectedEnvelope && <Glyph name={selectedEnvelope.icon} size={17} color={selectedEnvelope.color} sw={1.8} />}
+                  <span
+                    style={{
+                      flex: 1,
+                      minWidth: 0,
+                      fontSize: 12.5,
+                      fontWeight: selectedEnvelope ? 650 : 500,
+                      color: selectedEnvelope ? C.text : C.mute,
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    {selectedEnvelope?.name ?? t("Choose an envelope")}
+                  </span>
+                </button>
+                {currentEnvelopeSelection.provenance === "automatic" && envelopeId !== null && (
+                  <div style={{ color: C.mute, fontSize: 10.5, marginBottom: 12 }}>{t("Selected automatically from this account")}</div>
+                )}
+              </>
+            )}
             <button
               onClick={submit}
               disabled={real === null || diff === 0}
@@ -382,6 +463,16 @@ function ReconcileSheet({ account, onClose }: { account: AccountView | null; onC
           </>
         )}
       </Sheet>
+      <EnvelopePickerSheet
+        show={showEnvelopePicker}
+        onClose={() => setShowEnvelopePicker(false)}
+        envelopes={envelopes}
+        groups={groups}
+        onSelect={(id) => {
+          setEnvelopeSelection({ ...currentEnvelopeSelection, envelopeId: id, provenance: "explicit" });
+          setShowEnvelopePicker(false);
+        }}
+      />
       {/* Sibling of the Sheet (not a child) — the panel's transform would break the pad's position:fixed. */}
       <AmountPadHost target={pad} onClose={() => setPad(null)} />
     </>
