@@ -505,27 +505,28 @@ export function parseImportExtractResponse(raw: string): ImportExtractBatchWithL
       currency: item.currency.trim().toUpperCase(),
       fxOriginal: item.fxOriginal.trim(),
     }));
-    return {
-      rows: legacy.map((item, index) => ({
-        rowId: `legacy-${index}`,
-        imageIndex: 0,
-        visualOrder: index,
-        rawTextLines: item.rawPlace.split("\n"),
-        date: item.date,
-        amount: item.amount,
-        currency: item.currency,
-        direction: item.type === "income" ? "credit" : "debit",
-        postingStatus: "posted",
-        rowRole: "financial_event",
-        semanticKind: item.type === "refund" ? "merchant_refund" : "unknown",
-        relation: null,
-        confidence: "medium",
-        reviewReasons: item.type === "refund" ? [] : ["unknown_kind"],
-      })),
-      length: legacy.length,
-      map: (callbackfn) =>
-        legacy.map((item) => ({ ...item, type: item.type === "refund" ? ("expense" as const) : item.type, isRefund: item.type === "refund" })).map(callbackfn),
-    } as ImportExtractBatchWithLegacyMap;
+    const result = legacy.map((item) => ({
+      ...item,
+      type: item.type === "refund" ? ("expense" as const) : item.type,
+      isRefund: item.type === "refund",
+    })) as ImportExtractBatchWithLegacyMap;
+    result.rows = legacy.map((item, index) => ({
+      rowId: `legacy-${index}`,
+      imageIndex: 0,
+      visualOrder: index,
+      rawTextLines: item.rawPlace.split("\n"),
+      date: item.date,
+      amount: item.amount,
+      currency: item.currency,
+      direction: item.type === "income" ? "credit" : "debit",
+      postingStatus: "posted",
+      rowRole: "financial_event",
+      semanticKind: item.type === "refund" ? "merchant_refund" : "unknown",
+      relation: null,
+      confidence: "medium",
+      reviewReasons: item.type === "refund" ? [] : ["unknown_kind"],
+    }));
+    return result as ImportExtractBatchWithLegacyMap;
   }
   const parsed = importRawOutput.parse(input);
   const rows = parsed.rows.map((row) => ({
@@ -544,6 +545,7 @@ export function parseImportExtractResponse(raw: string): ImportExtractBatchWithL
       tag: "",
       currency: row.currency,
       fxOriginal: "",
-    }));
-  return { rows, length: legacy.length, map: (callbackfn) => legacy.map(callbackfn) } as ImportExtractBatchWithLegacyMap;
+    })) as ImportExtractBatchWithLegacyMap;
+  legacy.rows = rows;
+  return legacy as ImportExtractBatchWithLegacyMap;
 }
