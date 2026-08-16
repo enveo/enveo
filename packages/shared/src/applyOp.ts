@@ -173,6 +173,9 @@ function deleteEnvelopesEffects(ledger: ClientLedger, envIds: ReadonlySet<string
     ...ledger,
     envelopes: ledger.envelopes.filter((e) => !envIds.has(e.id)),
     allocations: ledger.allocations.filter((a) => !envIds.has(a.envelopeId)),
+    accounts: ledger.accounts.map((account) =>
+      account.automaticEnvelopeId !== null && envIds.has(account.automaticEnvelopeId) ? { ...account, automaticEnvelopeId: null } : account,
+    ),
     transactions: ledger.transactions.map((t) => {
       const clearEnv = t.envelopeId !== null && envIds.has(t.envelopeId);
       const clearAllocationFrom = t.allocationFromEnvelopeId !== null && envIds.has(t.allocationFromEnvelopeId);
