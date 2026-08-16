@@ -7,11 +7,14 @@ import {
   parseRecognitionManifest,
   type RecognitionManifestRow,
 } from "../evaluate-import-recognition";
-import { type ActualImportRecognitionRow, type ExpectedImportRecognitionRow, scoreImportRecognition } from "./importRecognitionMetrics";
+import { type ActualImportRecognitionRow, type ExpectedImportRecognitionRow, gateImportRecognition, scoreImportRecognition } from "./importRecognitionMetrics";
 
 const expectedRow = (overrides: Partial<ExpectedImportRecognitionRow> = {}): ExpectedImportRecognitionRow => ({
   id: "purchase",
-  material: true,
+  rowRole: "financial_event",
+  postingStatus: "posted",
+  safetyClass: "safe_auto",
+  requiredSafetyReasons: [],
   date: "2026-08-15",
   amount: 1299,
   currency: "EUR",
@@ -44,18 +47,19 @@ const actualRow = (overrides: Partial<ActualImportRecognitionRow> = {}): ActualI
     toAccountId: null,
     envelopeId: "groceries",
     categoryId: "daily",
+    reviewReasons: [],
   },
   ...overrides,
 });
 
 describe("scoreImportRecognition", () => {
-  test("row recall counts every labelled visible row, including omitted non-material evidence", () => {
-    const expected = [expectedRow(), expectedRow({ id: "balance", material: false, expectedProposal: null })];
+  test("row recall counts every labelled row while financial recall excludes UI evidence", () => {
+    const expected = [expectedRow(), expectedRow({ id: "balance", rowRole: "ui_metadata", safetyClass: "non_ledger", expectedProposal: null })];
 
     const metrics = scoreImportRecognition(expected, [actualRow()]);
 
     expect(metrics.rowRecall).toEqual({ correct: 1, total: 2, rate: 0.5 });
-    expect(metrics.materialRowRecall).toEqual({ correct: 1, total: 1, rate: 1 });
+    expect(metrics.financialRowRecall).toEqual({ correct: 1, total: 1, rate: 1 });
   });
 
   test("immutable fact accuracy scores amount, date, currency, and direction independently", () => {
@@ -70,7 +74,7 @@ describe("scoreImportRecognition", () => {
     });
   });
 
-  test("missing material rows stay in fact and semantic denominators", () => {
+  test("missing financial rows stay in fact and semantic denominators", () => {
     const metrics = scoreImportRecognition([expectedRow()], []);
 
     expect(metrics.factAccuracy.overall).toEqual({ correct: 0, total: 4, rate: 0 });
@@ -101,7 +105,7 @@ describe("scoreImportRecognition", () => {
 
   test("an unselected unresolved wrong proposal requires review but is not harmful automation", () => {
     const metrics = scoreImportRecognition(
-      [expectedRow()],
+      [expectedRow({ safetyClass: "review_only" })],
       [
         actualRow({
           proposal: {
@@ -118,25 +122,159 @@ describe("scoreImportRecognition", () => {
     expect(metrics.reviewRequired).toBe(1);
   });
 
-  test("materiality prevents harmless presentation evidence from inflating safety counts", () => {
-    const expected = expectedRow({ material: false, expectedProposal: null });
-    const metrics = scoreImportRecognition([expected], [actualRow()]);
+  test("unselected non-ledger evidence is reported separately without entering release review denominators", () => {
+    const expected = expectedRow({ rowRole: "ui_metadata", safetyClass: "non_ledger", expectedProposal: null });
+    const metrics = scoreImportRecognition([expected], [actualRow({ proposal: { ...actualRow().proposal!, selected: false } })]);
 
     expect(metrics.harmfulSelected).toBe(0);
     expect(metrics.factAccuracy.overall).toEqual({ correct: 0, total: 0, rate: null });
-    expect(metrics.semanticKindAccuracy).toEqual({ correct: 0, total: 0, rate: null });
+    expect(metrics.semanticKindAccuracy).toEqual({ correct: 1, total: 1, rate: 1 });
+    expect(metrics.reviewBreakdown.supportingOrUi).toBe(1);
   });
 
   test("an empty corpus exposes zero denominators instead of reporting perfect accuracy", () => {
     const metrics = scoreImportRecognition([], []);
 
     expect(metrics.rowRecall).toEqual({ correct: 0, total: 0, rate: null });
-    expect(metrics.materialRowRecall).toEqual({ correct: 0, total: 0, rate: null });
+    expect(metrics.financialRowRecall).toEqual({ correct: 0, total: 0, rate: null });
     expect(metrics.factAccuracy.overall).toEqual({ correct: 0, total: 0, rate: null });
     expect(metrics.semanticKindAccuracy).toEqual({ correct: 0, total: 0, rate: null });
     expect(metrics.relationPrecision).toEqual({ correct: 0, total: 0, rate: null });
     expect(metrics.harmfulSelected).toBe(0);
     expect(metrics.reviewRequired).toBe(0);
+  });
+
+  test("missing rows, missing proposals, and unexpected outputs have independent counters", () => {
+    const missingRow = scoreImportRecognition([expectedRow()], []);
+    const missingProposal = scoreImportRecognition([expectedRow()], [actualRow({ proposal: null })]);
+    const unexpected = scoreImportRecognition(
+      [],
+      [
+        actualRow({ id: "selected-unexpected" }),
+        actualRow({ id: "review-unexpected", proposal: { ...actualRow().proposal!, selected: false } }),
+        actualRow({ id: "proposal-less-unexpected", proposal: null }),
+      ],
+    );
+
+    expect(missingRow).toMatchObject({ missingRows: 1, missingProposals: 0 });
+    expect(missingProposal).toMatchObject({ missingRows: 0, missingProposals: 1 });
+    expect(unexpected.unexpectedRows).toEqual({ total: 3, selected: 1, unselected: 1, withoutProposal: 1 });
+    expect(unexpected.reviewRequired).toBe(0);
+  });
+});
+
+describe("gateImportRecognition", () => {
+  test("passes only when a baseline harmful selection becomes a required candidate safety review", () => {
+    const expected = [
+      {
+        ...expectedRow(),
+        rowRole: "financial_event",
+        postingStatus: "posted",
+        safetyClass: "unsafe_auto",
+        requiredSafetyReasons: ["possible_transfer"],
+      },
+    ] as unknown as ExpectedImportRecognitionRow[];
+    const baseline = [actualRow({ proposal: { ...actualRow().proposal!, type: "income", selected: true } })];
+    const candidate = [
+      actualRow({
+        proposal: {
+          ...actualRow().proposal!,
+          selected: false,
+          disposition: "unresolved",
+          reviewReasons: ["possible_transfer"],
+        },
+      }),
+    ] as unknown as ActualImportRecognitionRow[];
+
+    const gate = gateImportRecognition(expected, baseline, candidate);
+
+    expect(gate.passed).toBe(true);
+    expect(gate.transitions).toMatchObject({ attributableSafety: 1, unexplainedNewReviews: 0 });
+  });
+
+  test("uses fail-closed no-regression when baseline harmfulSelected is zero", () => {
+    const expected = [
+      {
+        ...expectedRow(),
+        rowRole: "financial_event",
+        postingStatus: "posted",
+        safetyClass: "safe_auto",
+        requiredSafetyReasons: [],
+      },
+    ] as unknown as ExpectedImportRecognitionRow[];
+
+    expect(gateImportRecognition(expected, [actualRow()], [actualRow()]).passed).toBe(true);
+    expect(gateImportRecognition(expected, [actualRow()], [actualRow({ proposal: { ...actualRow().proposal!, type: "income" } })]).reasons).toContain(
+      "harmful_selected_regression_from_zero",
+    );
+  });
+
+  test("an unrelated unexpected unselected row cannot improve safety attribution", () => {
+    const expected = [
+      {
+        ...expectedRow(),
+        rowRole: "financial_event",
+        postingStatus: "posted",
+        safetyClass: "unsafe_auto",
+        requiredSafetyReasons: ["possible_transfer"],
+      },
+    ] as unknown as ExpectedImportRecognitionRow[];
+    const baseline = [actualRow({ proposal: { ...actualRow().proposal!, type: "income" } })];
+    const candidate = [
+      actualRow({ proposal: { ...actualRow().proposal!, selected: false, reviewReasons: ["possible_transfer"] } }),
+      actualRow({ id: "unexpected", proposal: { ...actualRow().proposal!, selected: false, reviewReasons: ["unknown_kind"] } }),
+    ] as unknown as ActualImportRecognitionRow[];
+
+    const gate = gateImportRecognition(expected, baseline, candidate);
+
+    expect(gate.transitions.attributableSafety).toBe(1);
+    expect(gate.candidate.reviewBreakdown.unexpected).toBe(1);
+  });
+
+  test("actual row relabeling cannot hide a harmful selected proposal", () => {
+    const expected = [
+      {
+        ...expectedRow(),
+        rowRole: "financial_event",
+        postingStatus: "posted",
+        safetyClass: "safe_auto",
+        requiredSafetyReasons: [],
+      },
+    ] as unknown as ExpectedImportRecognitionRow[];
+    const relabelled = actualRow({ proposal: { ...actualRow().proposal!, type: "income" } }) as ActualImportRecognitionRow & { rowRole: string };
+    relabelled.rowRole = "ui_metadata";
+
+    expect(scoreImportRecognition(expected, [relabelled]).harmfulSelected).toBe(1);
+  });
+
+  test("a duplicate unselected copy cannot hide a selected unsafe output", () => {
+    const expected = [expectedRow({ safetyClass: "unsafe_auto", requiredSafetyReasons: ["possible_transfer"] })];
+    const baseline = [actualRow({ proposal: { ...actualRow().proposal!, type: "income" } })];
+    const candidate = [
+      actualRow({ proposal: { ...actualRow().proposal!, type: "income" } }),
+      actualRow({ proposal: { ...actualRow().proposal!, selected: false, reviewReasons: ["possible_transfer"] } }),
+    ];
+
+    const gate = gateImportRecognition(expected, baseline, candidate);
+
+    expect(gate.passed).toBe(false);
+    expect(gate.candidate.unexpectedRows).toMatchObject({ total: 1, unselected: 1 });
+    expect(gate.transitions.attributableSafety).toBe(0);
+    expect(gate.transitions.unsafeConstraintFailures).toBe(1);
+  });
+
+  test("gates every immutable fact independently and rejects unexplained new reviews", () => {
+    const safe = expectedRow();
+    expect(gateImportRecognition([safe], [actualRow()], [actualRow({ amount: 1300 })]).reasons).toContain("amount_accuracy_regression");
+
+    const review = expectedRow({ safetyClass: "review_only", requiredSafetyReasons: ["possible_ocr_error"] });
+    const decision = gateImportRecognition(
+      [review],
+      [actualRow()],
+      [actualRow({ proposal: { ...actualRow().proposal!, selected: false, reviewReasons: ["possible_ocr_error"] } })],
+    );
+    expect(decision.transitions.unexplainedNewReviews).toBe(1);
+    expect(decision.reasons).toContain("unexplained_review_transition");
   });
 });
 
@@ -149,6 +287,29 @@ const manifestRow = (overrides: Partial<RecognitionManifestRow> = {}): Recogniti
 });
 
 describe("recognition evaluator adapters", () => {
+  test("paired mode requires distinct explicit baseline and candidate source trees", () => {
+    expect(
+      parseEvalArgs([
+        "--manifest",
+        "/private/manifest.json",
+        "--mode",
+        "compare",
+        "--baseline-source-tree",
+        "/repo/main",
+        "--candidate-source-tree",
+        "/repo/worktree",
+      ]),
+    ).toEqual({
+      manifestPath: "/private/manifest.json",
+      mode: "compare",
+      baselineSourceTree: "/repo/main",
+      candidateSourceTree: "/repo/worktree",
+    });
+    expect(() => parseEvalArgs(["--manifest", "/private/manifest.json", "--mode", "compare", "--baseline-source-tree", "/repo/main"])).toThrow(
+      "--candidate-source-tree",
+    );
+  });
+
   test("CLI requires an explicit manifest, mode, and source tree", () => {
     expect(parseEvalArgs(["--manifest", "/private/manifest.json", "--mode", "baseline", "--source-tree", "/repo/main"])).toEqual({
       manifestPath: "/private/manifest.json",
@@ -193,6 +354,7 @@ describe("recognition evaluator adapters", () => {
         proposal: {
           selected: true,
           disposition: "candidate",
+          reviewReasons: [],
           type: "expense",
           isRefund: true,
           toAccountId: null,
@@ -216,8 +378,11 @@ describe("recognition evaluator adapters", () => {
           amount: 1299,
           currency: "EUR",
           direction: "debit",
+          postingStatus: "pending",
+          rowRole: "financial_event",
           semanticKind: "card_purchase",
           relation: null,
+          reviewReasons: ["pending_or_declined"],
         },
       ],
       proposals: [
@@ -225,6 +390,7 @@ describe("recognition evaluator adapters", () => {
           rowId: "model-chosen-id",
           selected: false,
           disposition: "pending",
+          reviewReasons: ["pending_or_declined"],
           type: "expense",
           isRefund: false,
           toAccountId: null,
@@ -245,6 +411,7 @@ describe("recognition evaluator adapters", () => {
       proposal: {
         selected: false,
         disposition: "pending",
+        reviewReasons: ["pending_or_declined"],
         type: "expense",
         isRefund: false,
         toAccountId: null,
@@ -274,8 +441,11 @@ describe("recognition evaluator adapters", () => {
           amount: 1299,
           currency: "EUR",
           direction: "credit",
+          postingStatus: "posted",
+          rowRole: "financial_event",
           semanticKind: "merchant_refund",
           relation: null,
+          reviewReasons: [],
         },
       ],
       proposals: [],
@@ -292,8 +462,26 @@ describe("recognition evaluator adapters", () => {
     ];
     const actual = normalizeCandidateRecognition("fixture", rows, {
       rows: [
-        { ...actualRow(), rowId: "one", imageIndex: 0, visualOrder: 0, rawTextLines: ["Moneyback"] },
-        { ...actualRow(), rowId: "two", imageIndex: 0, visualOrder: 1, rawTextLines: ["Moneyback"] },
+        {
+          ...actualRow(),
+          rowId: "one",
+          imageIndex: 0,
+          visualOrder: 0,
+          rawTextLines: ["Moneyback"],
+          postingStatus: "posted",
+          rowRole: "financial_event",
+          reviewReasons: [],
+        },
+        {
+          ...actualRow(),
+          rowId: "two",
+          imageIndex: 0,
+          visualOrder: 1,
+          rawTextLines: ["Moneyback"],
+          postingStatus: "posted",
+          rowRole: "financial_event",
+          reviewReasons: [],
+        },
       ],
       proposals: [],
     });
@@ -308,26 +496,182 @@ describe("recognition evaluator adapters", () => {
       locale: "en",
       today: "2026-08-16",
       budgetCurrency: "EUR",
+      formFactor: "mobile",
+      overlap: false,
       rows: [manifestRow()],
     };
 
     expect(() =>
-      parseRecognitionManifest({
-        version: 1,
-        fixtures: [{ ...fixture, rows: [manifestRow({ candidatePosition: { imageIndex: 1, visualOrder: 0 } })] }],
-      }),
+      parseRecognitionManifest(
+        {
+          version: 1,
+          fixtures: [{ ...fixture, rows: [manifestRow({ candidatePosition: { imageIndex: 1, visualOrder: 0 } })] }],
+        },
+        false,
+      ),
     ).toThrow("imageIndex");
     expect(() =>
-      parseRecognitionManifest({
-        version: 1,
-        fixtures: [{ ...fixture, rows: [manifestRow({ relation: { kind: "fx_for", rowId: "missing" } })] }],
-      }),
+      parseRecognitionManifest(
+        {
+          version: 1,
+          fixtures: [
+            {
+              ...fixture,
+              rows: [
+                manifestRow({
+                  relation: { kind: "fx_for", rowId: "missing" },
+                  safetyClass: "unsafe_auto",
+                  requiredSafetyReasons: ["relation_changes_ledger_shape"],
+                }),
+              ],
+            },
+          ],
+        },
+        false,
+      ),
     ).toThrow("relation target");
+    expect(() =>
+      parseRecognitionManifest(
+        {
+          version: 1,
+          fixtures: [{ ...fixture, rows: [manifestRow({ baselineIndex: 1 })] }],
+        },
+        false,
+      ),
+    ).toThrow("baseline indexes");
+  });
+
+  test("manifest validation rejects legacy material labels, invalid facts, and empty fixtures", () => {
+    const fixture = {
+      id: "fixture",
+      images: ["images/fixture.png"],
+      locale: "en",
+      today: "2026-08-16",
+      budgetCurrency: "EUR",
+      formFactor: "mobile",
+      overlap: false,
+      rows: [manifestRow()],
+    };
+
+    expect(() => parseRecognitionManifest({ version: 1, fixtures: [{ ...fixture, rows: [{ ...manifestRow(), material: false }] }] }, false)).toThrow(
+      "unknown fields",
+    );
+    expect(() => parseRecognitionManifest({ version: 1, fixtures: [{ ...fixture, today: "2026-02-30" }] }, false)).toThrow("calendar date");
+    expect(() => parseRecognitionManifest({ version: 1, fixtures: [{ ...fixture, budgetCurrency: "JPY" }] }, false)).toThrow("two-decimal currency");
+    expect(() => parseRecognitionManifest({ version: 1, fixtures: [{ ...fixture, rows: [] }] }, false)).toThrow("must not be empty");
+    expect(() => parseRecognitionManifest({ version: 1, fixtures: [{ ...fixture, rows: [manifestRow({ semanticKind: "invented_kind" })] }] }, false)).toThrow(
+      "semanticKind",
+    );
+    expect(() =>
+      parseRecognitionManifest(
+        { version: 1, fixtures: [{ ...fixture, rows: [manifestRow({ relation: { kind: "invented_relation", rowId: "purchase" } })] }] },
+        false,
+      ),
+    ).toThrow("relation");
+  });
+
+  test("known risky semantic and relation classes cannot be relabelled safe", () => {
+    const fixture = {
+      id: "fixture",
+      images: ["images/fixture.png"],
+      locale: "en",
+      today: "2026-08-16",
+      budgetCurrency: "EUR",
+      formFactor: "mobile",
+      overlap: false,
+      rows: [manifestRow()],
+    };
+
+    expect(() =>
+      parseRecognitionManifest({ version: 1, fixtures: [{ ...fixture, rows: [manifestRow({ semanticKind: "incoming_transfer" })] }] }, false),
+    ).toThrow("possible_transfer");
+    expect(() =>
+      parseRecognitionManifest(
+        {
+          version: 1,
+          fixtures: [
+            {
+              ...fixture,
+              rows: [
+                manifestRow({ relation: { kind: "counterpart_of", rowId: "other" } }),
+                manifestRow({ id: "other", candidatePosition: { imageIndex: 0, visualOrder: 1 }, baselineIndex: 1 }),
+              ],
+            },
+          ],
+        },
+        false,
+      ),
+    ).toThrow("relation_changes_ledger_shape");
+  });
+
+  test("representative coverage is derived from explicit fixture and row classifications", () => {
+    const kinds = [
+      "card_purchase",
+      "salary",
+      "merchant_refund",
+      "cashback_or_reward",
+      "incoming_transfer",
+      "outgoing_transfer",
+      "account_topup",
+      "fx_conversion",
+    ];
+    const rows = kinds.map((semanticKind, index) =>
+      manifestRow({
+        id: `row-${index}`,
+        semanticKind,
+        candidatePosition: { imageIndex: 0, visualOrder: index },
+        baselineIndex: null,
+        ...(semanticKind === "incoming_transfer" || semanticKind === "account_topup"
+          ? { safetyClass: "unsafe_auto" as const, requiredSafetyReasons: ["possible_transfer"] }
+          : {}),
+        ...(semanticKind === "fx_conversion" ? { rowRole: "supporting_detail" as const, safetyClass: "non_ledger" as const, expectedProposal: null } : {}),
+      }),
+    );
+    rows.push(
+      manifestRow({
+        id: "pending",
+        postingStatus: "pending",
+        safetyClass: "review_only",
+        requiredSafetyReasons: ["pending_or_declined"],
+        candidatePosition: { imageIndex: 0, visualOrder: rows.length },
+        baselineIndex: null,
+      }),
+      manifestRow({
+        id: "declined",
+        postingStatus: "declined",
+        safetyClass: "review_only",
+        requiredSafetyReasons: ["pending_or_declined"],
+        candidatePosition: { imageIndex: 0, visualOrder: rows.length + 1 },
+        baselineIndex: null,
+      }),
+    );
+    const mobile = {
+      id: "mobile",
+      images: ["images/mobile.png"],
+      locale: "en",
+      today: "2026-08-16",
+      budgetCurrency: "EUR",
+      formFactor: "mobile",
+      overlap: true,
+      rows,
+    };
+    const desktop = {
+      id: "desktop",
+      images: ["images/desktop.png"],
+      locale: "es",
+      today: "2026-08-16",
+      budgetCurrency: "USD",
+      formFactor: "desktop",
+      overlap: false,
+      rows: [manifestRow({ id: "desktop-purchase", currency: "USD", baselineIndex: null })],
+    };
+
+    expect(parseRecognitionManifest({ version: 1, fixtures: [mobile, desktop] }).fixtures).toHaveLength(2);
     expect(() =>
       parseRecognitionManifest({
         version: 1,
-        fixtures: [{ ...fixture, rows: [manifestRow({ baselineIndex: 1 })] }],
+        fixtures: [{ ...mobile, rows: mobile.rows.filter((row) => row.semanticKind !== "salary") }, desktop],
       }),
-    ).toThrow("baseline indexes");
+    ).toThrow("coverage");
   });
 });
