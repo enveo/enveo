@@ -10,6 +10,7 @@
 import { z } from "zod";
 import type { BudgetSuggestionBasis, ProposedEnvelopeDelta } from "./aiBudget";
 import { computeBudgetState, prevMonth } from "./budget";
+import { IMPORT_RELATION_KINDS, IMPORT_REVIEW_REASONS, IMPORT_SEMANTIC_KINDS, type ImportExtractBatch } from "./importRecognition";
 import type { ClientLedger } from "./types";
 
 /* ── Shared chat request shape (OpenAI chat/completions) ─────────────── */
@@ -349,19 +350,46 @@ export function parseAgentSuggestResponse(raw: string): ProposedEnvelopeDelta[] 
 
 /* ── Import from screenshots (cycle 1: facts from the screenshot) ────── */
 
-const importRawTxn = z.object({
-  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-  amount: z.number().int().positive(),
-  type: z.enum(["expense", "income", "refund"]),
-  rawPlace: z.string(),
-  tag: z.string(),
-  /* ISO-4217 of the returned amount (the account currency, unless the row shows another one). */
-  currency: z.string(),
-  /* Original foreign amount + code (e.g. "5.00 USD") when this row is a converted/settled
-     charge; "" when not applicable. Required by the strict schema — never guessed/omitted. */
-  fxOriginal: z.string(),
+const importRawRelation = z.object({ kind: z.enum(IMPORT_RELATION_KINDS), rowId: z.string().min(1) });
+const importRawRow = z.object({
+  rowId: z.string().min(1),
+  imageIndex: z.number().int().nonnegative(),
+  visualOrder: z.number().int().nonnegative(),
+  rawTextLines: z.array(z.string()),
+  date: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/)
+    .nullable(),
+  amount: z.number().int().positive().nullable(),
+  currency: z.string().nullable(),
+  direction: z.enum(["debit", "credit", "unknown"]),
+  postingStatus: z.enum(["posted", "pending", "declined", "unknown"]),
+  rowRole: z.enum(["financial_event", "supporting_detail", "ui_metadata"]),
+  semanticKind: z.enum(IMPORT_SEMANTIC_KINDS),
+  relation: importRawRelation.nullable(),
+  confidence: z.enum(["low", "medium", "high"]),
+  reviewReasons: z.array(z.enum(IMPORT_REVIEW_REASONS)),
 });
-const importRawOutput = z.object({ transactions: z.array(importRawTxn) });
+const importRawOutput = z.object({ rows: z.array(importRawRow) }).superRefine(({ rows }, ctx) => {
+  const ids = new Set<string>();
+  rows.forEach((row, index) => {
+    if (ids.has(row.rowId)) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["rows", index, "rowId"], message: "rowId must be unique" });
+    ids.add(row.rowId);
+  });
+});
+const legacyImportRawOutput = z.object({
+  transactions: z.array(
+    z.object({
+      date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+      amount: z.number().int().positive(),
+      type: z.enum(["expense", "income", "refund"]),
+      rawPlace: z.string(),
+      tag: z.string(),
+      currency: z.string(),
+      fxOriginal: z.string(),
+    }),
+  ),
+});
 
 export const IMPORT_EXTRACT_JSON_SCHEMA = {
   name: "extracted_transactions",
@@ -370,28 +398,52 @@ export const IMPORT_EXTRACT_JSON_SCHEMA = {
     type: "object",
     additionalProperties: false,
     properties: {
-      transactions: {
+      rows: {
         type: "array",
         items: {
           type: "object",
           additionalProperties: false,
           properties: {
-            date: { type: "string", description: "Transaction date YYYY-MM-DD" },
-            amount: { type: "integer", description: "Amount in integer minor units, always positive" },
-            type: { type: "string", enum: ["expense", "income", "refund"] },
-            rawPlace: { type: "string", description: "Raw payee/store description exactly as shown on the screenshot" },
-            tag: { type: "string", description: "Short normalized merchant tag, e.g. LIDL (UPPERCASE, no address/numbers)" },
-            currency: { type: "string", description: "ISO-4217 code of the returned amount — the account currency unless this row shows a different one" },
-            fxOriginal: {
-              type: "string",
-              description: 'Original foreign-currency amount when this row is a converted/settled charge, e.g. "5.00 USD"; empty string otherwise',
+            rowId: { type: "string" },
+            imageIndex: { type: "integer" },
+            visualOrder: { type: "integer" },
+            rawTextLines: { type: "array", items: { type: "string" } },
+            date: { type: ["string", "null"] },
+            amount: { type: ["integer", "null"] },
+            currency: { type: ["string", "null"] },
+            direction: { type: "string", enum: ["debit", "credit", "unknown"] },
+            postingStatus: { type: "string", enum: ["posted", "pending", "declined", "unknown"] },
+            rowRole: { type: "string", enum: ["financial_event", "supporting_detail", "ui_metadata"] },
+            semanticKind: { type: "string", enum: IMPORT_SEMANTIC_KINDS },
+            relation: {
+              type: ["object", "null"],
+              additionalProperties: false,
+              properties: { kind: { type: "string", enum: IMPORT_RELATION_KINDS }, rowId: { type: "string" } },
+              required: ["kind", "rowId"],
             },
+            confidence: { type: "string", enum: ["low", "medium", "high"] },
+            reviewReasons: { type: "array", items: { type: "string", enum: IMPORT_REVIEW_REASONS } },
           },
-          required: ["date", "amount", "type", "rawPlace", "tag", "currency", "fxOriginal"],
+          required: [
+            "rowId",
+            "imageIndex",
+            "visualOrder",
+            "rawTextLines",
+            "date",
+            "amount",
+            "currency",
+            "direction",
+            "postingStatus",
+            "rowRole",
+            "semanticKind",
+            "relation",
+            "confidence",
+            "reviewReasons",
+          ],
         },
       },
     },
-    required: ["transactions"],
+    required: ["rows"],
   },
 } as const;
 
@@ -405,16 +457,13 @@ export interface ImportPromptRefs {
 
 export function buildImportExtractPrompt(images: string[], _refs: ImportPromptRefs, today: string, locale: AiLocale, currency: string): ChatRequest {
   const sysExtract =
-    "You extract transactions from screenshots (Apple Wallet, bank account history, payment confirmations). " +
+    "You extract facts from screenshots (Apple Wallet, bank account history, payment confirmations), not hypotheses. " +
     `Today is ${today} — resolve relative dates ("today", "yesterday") against this date; when the year is missing, assume the most recent past date. ` +
-    "Return amounts in integer minor units (int, positive); encode the direction in type: 'expense' for charges, 'income' for inflows. " +
-    "rawPlace: copy the payee/store description EXACTLY as it appears on the screenshot (with address, numbers etc.). " +
-    "tag: a short normalized merchant identifier (UPPERCASE, without address and numbers, e.g. LIDL, ORLEN, ZABKA, NETFLIX). " +
-    "Skip balances, summaries, holds and rows that are not transactions. Return each transaction once. " +
-    "A positive amount that is a refund, return or chargeback of a purchase — NOT salary, NOT an incoming transfer — has type 'refund'; a genuine inflow stays 'income'. " +
-    `currency: the ISO-4217 code of the returned amount — the account currency (${currency}) unless this row itself shows a different currency. ` +
-    `When a foreign-currency charge is accompanied by its conversion/settlement row in the account currency (${currency}), return ONE transaction: the amount in ${currency}, rawPlace of the MERCHANT (not the exchange row), and fxOriginal set to the original foreign amount with its code (e.g. "5.00 USD"); do not return the conversion row separately. ` +
-    'When only a foreign amount is visible with no conversion row, return that amount with its own currency — NEVER convert or guess an exchange rate; fxOriginal stays "" unless noted above. ' +
+    "Return one output row for every visually distinct row, in visual order. Use imageIndex plus visualOrder to preserve where it appeared. Preserve each visible line in rawTextLines; trim only surrounding whitespace. " +
+    "Rows that are labels, balances, summaries, or other interface chrome are still visible evidence: mark them ui_metadata. Use financial_event for a money movement and supporting_detail for evidence such as an FX conversion. " +
+    "Use null for unreadable date, amount, or currency; never omit a visible row. Amounts are positive integer minor units. direction, postingStatus, rowRole, semanticKind, confidence, and reviewReasons describe only what is shown. " +
+    `currency is ISO-4217 uppercase when readable; the account currency is ${currency}. NEVER convert or guess an exchange rate. ` +
+    "Express relationships by rowId: retain linked FX evidence as supporting_detail with relation kind fx_for; do not merge or discard it. " +
     languageDirectives(locale) +
     "Return JSON.";
   return {
@@ -432,10 +481,7 @@ export function buildImportExtractPrompt(images: string[], _refs: ImportPromptRe
   };
 }
 
-/** Facts from the screenshot (no assignments — those are added by cycle 2 / the caller).
- *  `type: "refund"` from the model is mapped to the domain truth `{type: "expense", isRefund: true}`
- *  — a refund is an expense reversal, never an "income" (it must return to its envelope, not
- *  land in "ready to assign"). */
+/** Legacy projection retained until the cycle-one consumers adopt ImportExtractBatch. */
 export interface ImportExtractItem {
   date: string;
   amount: number;
@@ -443,24 +489,61 @@ export interface ImportExtractItem {
   isRefund: boolean;
   rawPlace: string;
   tag: string;
-  /** ISO-4217 of `amount` (UPPERCASE). */
   currency: string;
-  /** Original foreign amount + code (e.g. "5.00 USD") when this row is a converted/settled
-   *  charge; "" when not applicable. */
   fxOriginal: string;
 }
 
+type ImportExtractBatchWithLegacyMap = ImportExtractBatch & ImportExtractItem[];
+
 /** Throws on an invalid shape (like `rawOutput.parse` in the route). */
-export function parseImportExtractResponse(raw: string): ImportExtractItem[] {
-  const parsed = importRawOutput.parse(JSON.parse(raw));
-  return parsed.transactions.map((t) => ({
-    date: t.date,
-    amount: t.amount,
-    type: t.type === "refund" ? "expense" : t.type,
-    isRefund: t.type === "refund",
-    rawPlace: t.rawPlace,
-    tag: t.tag.trim().toUpperCase(),
-    currency: t.currency.trim().toUpperCase(),
-    fxOriginal: t.fxOriginal.trim(),
+export function parseImportExtractResponse(raw: string): ImportExtractBatchWithLegacyMap {
+  const input: unknown = JSON.parse(raw);
+  if (typeof input === "object" && input !== null && "transactions" in input && !("rows" in input)) {
+    const legacy = legacyImportRawOutput.parse(input).transactions.map((item, _index) => ({
+      ...item,
+      tag: item.tag.trim().toUpperCase(),
+      currency: item.currency.trim().toUpperCase(),
+      fxOriginal: item.fxOriginal.trim(),
+    }));
+    return {
+      rows: legacy.map((item, index) => ({
+        rowId: `legacy-${index}`,
+        imageIndex: 0,
+        visualOrder: index,
+        rawTextLines: item.rawPlace.split("\n"),
+        date: item.date,
+        amount: item.amount,
+        currency: item.currency,
+        direction: item.type === "income" ? "credit" : "debit",
+        postingStatus: "posted",
+        rowRole: "financial_event",
+        semanticKind: item.type === "refund" ? "merchant_refund" : "unknown",
+        relation: null,
+        confidence: "medium",
+        reviewReasons: item.type === "refund" ? [] : ["unknown_kind"],
+      })),
+      length: legacy.length,
+      map: (callbackfn) =>
+        legacy.map((item) => ({ ...item, type: item.type === "refund" ? ("expense" as const) : item.type, isRefund: item.type === "refund" })).map(callbackfn),
+    } as ImportExtractBatchWithLegacyMap;
+  }
+  const parsed = importRawOutput.parse(input);
+  const rows = parsed.rows.map((row) => ({
+    ...row,
+    rawTextLines: row.rawTextLines.map((line) => line.trim()),
+    currency: row.currency?.trim().toUpperCase() ?? null,
   }));
+  const legacy = rows
+    .filter((row): row is typeof row & { date: string; amount: number; currency: string } => row.date !== null && row.amount !== null && row.currency !== null)
+    .map((row) => ({
+      date: row.date,
+      amount: row.amount,
+      type: row.direction === "credit" ? ("income" as const) : ("expense" as const),
+      isRefund: row.semanticKind === "merchant_refund" || row.semanticKind === "chargeback",
+      rawPlace: row.rawTextLines.join("\n"),
+      tag: "",
+      currency: row.currency,
+      fxOriginal: "",
+    }));
+  return { rows, length: legacy.length, map: (callbackfn) => legacy.map(callbackfn) } as ImportExtractBatchWithLegacyMap;
 }

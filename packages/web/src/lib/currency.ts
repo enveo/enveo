@@ -1,3 +1,7 @@
+import { isSupportedCurrency, type SupportedCurrency } from "@enveo/shared";
+
+export { CURRENCY_DIGITS, SUPPORTED_CURRENCIES, type SupportedCurrency } from "@enveo/shared";
+
 /**
  * Currency: the list the app offers, and browser-locale → currency detection for the
  * onboarding preselect. PURE — no React, no I/O: the locale tags are passed in, so the
@@ -13,106 +17,6 @@
  *
  * No conversion ever happens: the currency is a DISPLAY unit (formatMoney/currencySymbol).
  */
-
-/**
- * CLDR minor-unit digits — PINNED, not read from the runtime's `Intl`.
- *
- * PITFALL (learned the hard way): `Intl` looks like the natural oracle for "is this currency
- * 2-decimal?", but a runtime's ICU can lag CLDR by years, and the answer CHANGES between ICU
- * versions. Bun 1.3 ships ICU 75, which still reports 2 fraction digits for HUF/COP/IDR; ICU 78
- * (Node 24 and every current browser) reports 0 — those three are 0-decimal today. A test that
- * asks the test runner's `Intl` would therefore have green-lit currencies that real browsers
- * render 100× off, and would silently flip red or green on the next toolchain bump.
- *
- * So: the digit count lives HERE, taken from current CLDR, and the tests check the list against
- * this table. Adding a currency means adding its digits here first — and only 2s may be offered.
- * Codes we deliberately do NOT support are listed too, so the exclusion carries its reason.
- */
-export const CURRENCY_DIGITS: Readonly<Record<string, number>> = {
-  AED: 2,
-  ARS: 2,
-  AUD: 2,
-  BGN: 2,
-  BRL: 2,
-  CAD: 2,
-  CHF: 2,
-  CZK: 2,
-  DKK: 2,
-  EUR: 2,
-  GBP: 2,
-  HKD: 2,
-  ILS: 2,
-  INR: 2,
-  MXN: 2,
-  MYR: 2,
-  NOK: 2,
-  NZD: 2,
-  PEN: 2,
-  PHP: 2,
-  PLN: 2,
-  RON: 2,
-  RSD: 2,
-  SAR: 2,
-  SEK: 2,
-  SGD: 2,
-  THB: 2,
-  TRY: 2,
-  UAH: 2,
-  USD: 2,
-  ZAR: 2,
-  // NOT supported — the ledger cannot represent them (see the invariant above)
-  CLP: 0,
-  COP: 0,
-  HUF: 0,
-  IDR: 0,
-  ISK: 0,
-  JPY: 0,
-  KRW: 0,
-  VND: 0, // no minor unit at all
-  BHD: 3,
-  KWD: 3, // 1/1000 of the major unit
-};
-
-/**
- * Currencies offered in onboarding and Settings → Appearance (ISO 4217, all 2-decimal per CURRENCY_DIGITS).
- * ALPHABETICAL — the pickers render this order in a flat <select>, and a code list of this size
- * is only scannable sorted. Membership, not order, is what the tests and the region map depend on.
- */
-export const SUPPORTED_CURRENCIES = [
-  "AED",
-  "ARS",
-  "AUD",
-  "BGN",
-  "BRL",
-  "CAD",
-  "CHF",
-  "CZK",
-  "DKK",
-  "EUR",
-  "GBP",
-  "HKD",
-  "ILS",
-  "INR",
-  "MXN",
-  "MYR",
-  "NOK",
-  "NZD",
-  "PEN",
-  "PHP",
-  "PLN",
-  "RON",
-  "RSD",
-  "SAR",
-  "SEK",
-  "SGD",
-  "THB",
-  "TRY",
-  "UAH",
-  "USD",
-  "ZAR",
-] as const;
-
-export type SupportedCurrency = (typeof SUPPORTED_CURRENCIES)[number];
 
 /** Preselect when the region is unknown or unmapped (mostly outside Europe — see REGION_CURRENCY). */
 export const FALLBACK_CURRENCY: SupportedCurrency = "USD";
@@ -253,14 +157,12 @@ export function browserLocales(): string[] {
   return navigator.language ? [navigator.language] : [];
 }
 
-const isSupported = (c: string): c is SupportedCurrency => (SUPPORTED_CURRENCIES as readonly string[]).includes(c);
-
 /**
  * The currency the onboarding wizard preselects: the browser locale's, UNLESS the budget already
  * carries a deliberately chosen, supported currency (i.e. not an untouched server default) — that
  * one is kept, so re-entering the wizard never silently rewrites the user's own pick.
  */
 export function wizardCurrency(budgetCurrency: string | null | undefined, locales: readonly string[]): string {
-  if (budgetCurrency && isSupported(budgetCurrency) && !UNSET_BUDGET_CURRENCIES.includes(budgetCurrency)) return budgetCurrency;
+  if (budgetCurrency && isSupportedCurrency(budgetCurrency) && !UNSET_BUDGET_CURRENCIES.includes(budgetCurrency)) return budgetCurrency;
   return currencyForLocales(locales);
 }

@@ -217,7 +217,7 @@ describe("buildImportExtractPrompt / parseImportExtractResponse", () => {
   it("builds vision messages with data-URL image parts and a json_schema format", () => {
     const req = buildImportExtractPrompt(["data:image/png;base64,AAA"], refs, "2026-07-07", "pl", "PLN");
     const sys = sysOf(req.messages);
-    expect(sys).toContain("You extract transactions from screenshots");
+    expect(sys).toContain("You extract facts from screenshots");
     expect(sys).toContain("Today is 2026-07-07");
     expect(sys).toContain("Write all text you GENERATE (names, notes, rationales) in Polish.");
     expect(sys).toContain("do not translate data values");
@@ -228,79 +228,50 @@ describe("buildImportExtractPrompt / parseImportExtractResponse", () => {
     expect((req.responseFormat as { type: string; json_schema: { name: string } }).json_schema.name).toBe("extracted_transactions");
   });
 
-  /* Refunds: a Zen-style screenshot shows a refund as a POSITIVE amount — without a
-     dedicated type the extractor could only say "income", which lands the money in
-     "ready to assign" instead of back into the envelope (domain truth: expense + isRefund). */
-  it("system prompt tells the model to use 'refund' for a positive reversal, not 'income'", () => {
+  it("requires one fact row for every visually distinct row and keeps hypotheses out of cycle one", () => {
     const sys = sysOf(buildImportExtractPrompt([], refs, "2026-07-07", "pl", "PLN").messages);
-    expect(sys).toContain("has type 'refund'");
-    expect(sys).toContain("NOT salary, NOT an incoming transfer");
-    expect(sys).toContain("a genuine inflow stays 'income'");
+    expect(sys).toContain("one output row for every visually distinct row");
+    expect(sys).toContain("imageIndex plus visualOrder");
+    expect(sys).toContain("rawTextLines");
+    expect(sys).toContain("ui_metadata");
+    expect(sys).toContain("relationships by rowId");
+    expect(sys).toContain("facts from screenshots");
   });
 
-  /* FX / re-conversion: a foreign-currency charge often appears twice on a screenshot (the
-     original charge + the settlement row) — without guidance the extractor would return BOTH,
-     double-counting. The budget's currency is threaded through so the prompt can name it. */
-  it("system prompt names the budget currency and gives the fx merge + never-convert rules", () => {
+  it("keeps FX evidence as a linked row instead of silently merging it", () => {
     const sys = sysOf(buildImportExtractPrompt([], refs, "2026-07-07", "pl", "PLN").messages);
-    expect(sys).toContain("account currency (PLN)");
-    expect(sys).toContain("return ONE transaction");
-    expect(sys).toContain("rawPlace of the MERCHANT (not the exchange row)");
-    expect(sys).toContain("do not return the conversion row separately");
+    expect(sys).toContain("account currency is PLN");
+    expect(sys).toContain("supporting_detail");
+    expect(sys).toContain("fx_for");
     expect(sys).toContain("NEVER convert or guess an exchange rate");
-
-    const eur = sysOf(buildImportExtractPrompt([], refs, "2026-07-07", "pl", "EUR").messages);
-    expect(eur).toContain("account currency (EUR)");
   });
 
-  it("strict json_schema: type enum gains 'refund'; currency + fxOriginal are required fields", () => {
-    const schema = IMPORT_EXTRACT_JSON_SCHEMA.schema.properties.transactions.items as {
+  it("strict json_schema requires every extraction fact", () => {
+    const schema = IMPORT_EXTRACT_JSON_SCHEMA.schema.properties.rows.items as {
       properties: Record<string, { enum?: string[] }>;
       required: string[];
     };
-    expect(schema.properties.type!.enum).toEqual(["expense", "income", "refund"]);
+    expect(schema.properties.direction!.enum).toEqual(["debit", "credit", "unknown"]);
+    expect(schema.properties.postingStatus!.enum).toEqual(["posted", "pending", "declined", "unknown"]);
+    expect(schema.properties.rowRole!.enum).toEqual(["financial_event", "supporting_detail", "ui_metadata"]);
     expect(schema.properties.currency).toBeDefined();
-    expect(schema.properties.fxOriginal).toBeDefined();
+    expect(schema.properties.relation).toBeDefined();
+    expect(schema.properties.reviewReasons).toBeDefined();
     expect(schema.required).toContain("currency");
-    expect(schema.required).toContain("fxOriginal");
-  });
-
-  it("parses transactions, normalizes the tag to UPPERCASE, and carries currency/fxOriginal", () => {
-    const out = parseImportExtractResponse(
-      '{"transactions":[{"date":"2026-07-01","amount":1299,"type":"expense","rawPlace":"LIDL SP Z OO WARSZAWA","tag":" lidl ","currency":"pln","fxOriginal":""}]}',
-    );
-    expect(out).toEqual([
-      { date: "2026-07-01", amount: 1299, type: "expense", isRefund: false, rawPlace: "LIDL SP Z OO WARSZAWA", tag: "LIDL", currency: "PLN", fxOriginal: "" },
-    ]);
-  });
-
-  it("maps type 'refund' to {type: expense, isRefund: true} — domain truth for a returned purchase", () => {
-    const out = parseImportExtractResponse(
-      '{"transactions":[{"date":"2026-07-02","amount":4999,"type":"refund","rawPlace":"ZALANDO REFUND","tag":"ZALANDO","currency":"PLN","fxOriginal":""}]}',
-    );
-    expect(out).toEqual([
-      { date: "2026-07-02", amount: 4999, type: "expense", isRefund: true, rawPlace: "ZALANDO REFUND", tag: "ZALANDO", currency: "PLN", fxOriginal: "" },
-    ]);
-  });
-
-  it("normalizes currency to UPPERCASE and trims fxOriginal", () => {
-    const out = parseImportExtractResponse(
-      '{"transactions":[{"date":"2026-07-03","amount":2000,"type":"expense","rawPlace":"NETFLIX","tag":"NETFLIX","currency":" usd ","fxOriginal":" 5.00 USD "}]}',
-    );
-    expect(out[0]!.currency).toBe("USD");
-    expect(out[0]!.fxOriginal).toBe("5.00 USD");
+    expect(schema.required).toContain("relation");
+    expect(schema.required).toContain("reviewReasons");
   });
 
   it("throws on a malformed payload (route maps this to 502)", () => {
     expect(() =>
       parseImportExtractResponse(
-        '{"transactions":[{"date":"1 lipca","amount":-5,"type":"expense","rawPlace":"x","tag":"X","currency":"PLN","fxOriginal":""}]}',
+        '{"rows":[{"rowId":"r1","imageIndex":0,"visualOrder":0,"rawTextLines":[],"date":"1 lipca","amount":-5,"currency":"PLN","direction":"debit","postingStatus":"posted","rowRole":"financial_event","semanticKind":"card_purchase","relation":null,"confidence":"high","reviewReasons":[]}]}',
       ),
     ).toThrow();
   });
 
-  it("throws when currency/fxOriginal are missing (strict output guarantees them)", () => {
-    expect(() => parseImportExtractResponse('{"transactions":[{"date":"2026-07-01","amount":1299,"type":"expense","rawPlace":"x","tag":"X"}]}')).toThrow();
+  it("throws when a strict extraction fact is missing", () => {
+    expect(() => parseImportExtractResponse('{"rows":[{"rowId":"r1"}]}')).toThrow();
   });
 });
 
