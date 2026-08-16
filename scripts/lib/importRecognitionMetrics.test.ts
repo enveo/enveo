@@ -635,12 +635,25 @@ describe("recognition evaluator adapters", () => {
   });
 
   test("CLI requires an explicit manifest, mode, and source tree", () => {
-    expect(parseEvalArgs(["--manifest", "/private/manifest.json", "--mode", "baseline", "--source-tree", "/repo/main"])).toEqual({
+    expect(
+      parseEvalArgs([
+        "--manifest",
+        "/private/manifest.json",
+        "--mode",
+        "baseline",
+        "--source-tree",
+        "/repo/main",
+        "--expected-revision",
+        "0123456789abcdef0123456789abcdef01234567",
+      ]),
+    ).toEqual({
       manifestPath: "/private/manifest.json",
       mode: "baseline",
       sourceTree: "/repo/main",
+      expectedRevision: "0123456789abcdef0123456789abcdef01234567",
     });
     expect(() => parseEvalArgs(["--manifest", "/private/manifest.json", "--mode", "candidate"])).toThrow("--source-tree");
+    expect(() => parseEvalArgs(["--manifest", "/private/manifest.json", "--mode", "baseline", "--source-tree", "/repo/main"])).toThrow("--expected-revision");
   });
 
   test("mode rejects the other source contract instead of relabelling one implementation", () => {

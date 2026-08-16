@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
-import { readFile, realpath, stat } from "node:fs/promises";
+import { chmod, lstat, mkdir, mkdtemp, readdir, readFile, readlink, realpath, rm, stat, symlink } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { dirname, extname, isAbsolute, relative, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { SUPPORTED_CURRENCIES } from "../packages/shared/src/currency";
@@ -315,7 +316,7 @@ export function parseCandidateResult(value: unknown, imageCount: number): Candid
 }
 
 export type EvaluationArgs =
-  | { manifestPath: string; mode: "baseline" | "candidate"; sourceTree: string }
+  | { manifestPath: string; mode: "baseline" | "candidate"; sourceTree: string; expectedRevision: string }
   | { manifestPath: string; mode: "compare"; baselineSourceTree: string; candidateSourceTree: string; expectedCandidateRevision: string };
 
 export function parseEvalArgs(argv: readonly string[]): EvaluationArgs {
@@ -324,7 +325,17 @@ export function parseEvalArgs(argv: readonly string[]): EvaluationArgs {
     const flag = argv[index];
     const value = argv[index + 1];
     if (!flag?.startsWith("--") || !value || value.startsWith("--")) throw new Error(`expected a value after ${flag ?? "argument"}`);
-    if (!["--manifest", "--mode", "--source-tree", "--baseline-source-tree", "--candidate-source-tree", "--expected-candidate-revision"].includes(flag)) {
+    if (
+      ![
+        "--manifest",
+        "--mode",
+        "--source-tree",
+        "--baseline-source-tree",
+        "--candidate-source-tree",
+        "--expected-candidate-revision",
+        "--expected-revision",
+      ].includes(flag)
+    ) {
       throw new Error(`unknown option ${flag}`);
     }
     if (values.has(flag)) throw new Error(`duplicate option ${flag}`);
@@ -347,9 +358,12 @@ export function parseEvalArgs(argv: readonly string[]): EvaluationArgs {
   }
   if (mode !== "baseline" && mode !== "candidate") throw new Error("--mode must be baseline, candidate, or compare");
   const sourceTree = values.get("--source-tree");
+  const expectedRevision = values.get("--expected-revision");
   if (!sourceTree) throw new Error("--source-tree is required");
+  if (!expectedRevision || !/^[0-9a-f]{40}$/.test(expectedRevision)) throw new Error("--expected-revision must be an exact 40-character lowercase SHA");
   if (values.has("--baseline-source-tree") || values.has("--candidate-source-tree")) throw new Error("paired source options require compare mode");
-  return { manifestPath, mode, sourceTree };
+  if (values.has("--expected-candidate-revision")) throw new Error("--expected-candidate-revision requires compare mode");
+  return { manifestPath, mode, sourceTree, expectedRevision };
 }
 
 export function classifySourceAdapter(mode: Exclude<EvaluationMode, "compare">, schema: unknown): SourceAdapter {
@@ -960,11 +974,13 @@ interface SourceIdentity {
   bound: boolean;
   adapter: SourceAdapter;
   moduleHashes: Record<string, string>;
+  expectedTree: string;
 }
 
 interface SourcePreflight {
   root: string;
   identity: SourceIdentity;
+  entries: Array<{ mode: string; object: string; path: string }>;
 }
 
 interface LoadedSource {
@@ -986,6 +1002,12 @@ const sha256 = (parts: readonly (string | Uint8Array)[]): string => {
   for (const part of parts) hash.update(part);
   return hash.digest("hex");
 };
+const gitBlobId = (bytes: Uint8Array): string => {
+  const hash = createHash("sha1");
+  hash.update(`blob ${bytes.byteLength}\0`);
+  hash.update(bytes);
+  return hash.digest("hex");
+};
 
 const hashFile = async (path: string): Promise<string> => sha256([await readFile(path)]);
 const BASELINE_REVISION = "864c47f98c27bb7bf238e636b34f89dfa3dcc63c";
@@ -1002,30 +1024,15 @@ const gitText = async (root: string, args: string[]): Promise<string | null> => 
   return (await child.exited) === 0 ? output : null;
 };
 
-const integrityPaths = (mode: "baseline" | "candidate"): string[] =>
-  mode === "baseline"
-    ? [
-        "packages/shared/src",
-        "packages/api/src/routes/import.ts",
-        "packages/api/src/routes/import-match.ts",
-        "packages/api/src/db",
-        "packages/shared/package.json",
-        "packages/api/package.json",
-        "bun.lock",
-      ]
-    : [
-        "packages/shared/src",
-        "packages/api/src",
-        "packages/web/src/lib/aiProvider",
-        "packages/shared/package.json",
-        "packages/api/package.json",
-        "packages/web/package.json",
-        "bun.lock",
-      ];
+const gitBytes = async (root: string, args: string[]): Promise<Uint8Array | null> => {
+  const child = Bun.spawn(["git", "-C", root, ...args], { stdout: "pipe", stderr: "ignore" });
+  const output = new Uint8Array(await new Response(child.stdout).arrayBuffer());
+  return (await child.exited) === 0 ? output : null;
+};
 
 export async function preflightSource(mode: "baseline" | "candidate", sourceTree: string, expectedCandidateRevision?: string): Promise<SourcePreflight> {
   const root = await realpath(resolve(sourceTree));
-  const expectedRevision = mode === "baseline" ? BASELINE_REVISION : (expectedCandidateRevision ?? "unspecified");
+  const expectedRevision = expectedCandidateRevision ?? (mode === "baseline" ? BASELINE_REVISION : "unspecified");
   const topText = await gitText(root, ["rev-parse", "--show-toplevel"]);
   let gitRoot: string | null = null;
   if (topText) {
@@ -1037,33 +1044,49 @@ export async function preflightSource(mode: "baseline" | "candidate", sourceTree
   }
   const revisionText = gitRoot === root ? await gitText(root, ["rev-parse", "HEAD"]) : null;
   const actualRevision = revisionText?.trim().match(/^[0-9a-f]{40}$/)?.[0] ?? "unversioned";
-  const status = gitRoot === root ? await gitText(root, ["status", "--porcelain", "--untracked-files=all"]) : null;
-  const clean = status !== null && status.length === 0;
-  const filters = integrityPaths(mode);
-  const expectedListText = /^[0-9a-f]{40}$/.test(expectedRevision)
-    ? await gitText(root, ["ls-tree", "-r", "--name-only", expectedRevision, "--", ...filters])
-    : null;
-  const expectedFiles = expectedListText?.split("\n").filter(Boolean).sort() ?? [];
+  const expectedTree = (await gitText(root, ["rev-parse", `${expectedRevision}^{tree}`]))?.trim() ?? "unavailable";
+  const objectFormat = (await gitText(root, ["rev-parse", "--show-object-format"]))?.trim();
+  const treeBytes = /^[0-9a-f]{40}$/.test(expectedRevision) ? await gitBytes(root, ["ls-tree", "-rz", expectedRevision]) : null;
+  const entries = treeBytes
+    ? new TextDecoder()
+        .decode(treeBytes)
+        .split("\0")
+        .filter(Boolean)
+        .map((entry) => {
+          const match = /^(\d+) (\w+) ([0-9a-f]+)\t([\s\S]+)$/.exec(entry);
+          return match ? { mode: match[1]!, type: match[2]!, object: match[3]!, path: match[4]! } : null;
+        })
+    : [];
   const moduleHashes: Record<string, string> = {};
   const expectedHashes: Record<string, string> = {};
-  for (const path of expectedFiles) {
+  let modesMatch = entries.length > 0 && entries.every((entry) => entry !== null && entry.type === "blob");
+  for (const entry of entries) {
+    if (entry?.type !== "blob") continue;
+    expectedHashes[entry.path] = sha256([entry.mode, "\0", entry.object]);
     try {
-      moduleHashes[path] = await hashFile(resolve(root, path));
+      const path = resolve(root, entry.path);
+      const info = await lstat(path);
+      let actual: Uint8Array;
+      let actualMode: string;
+      if (entry.mode === "120000") {
+        actual = new TextEncoder().encode(await readlink(path));
+        actualMode = info.isSymbolicLink() ? "120000" : "invalid";
+      } else {
+        actual = new Uint8Array(await readFile(path));
+        actualMode = info.isFile() ? ((info.mode & 0o111) !== 0 ? "100755" : "100644") : "invalid";
+      }
+      modesMatch &&= actualMode === entry.mode;
+      moduleHashes[entry.path] = sha256([actualMode, "\0", gitBlobId(actual)]);
     } catch {
-      // Missing closure members leave the actual digest unequal to the expected tree.
+      modesMatch = false;
     }
-    const contents = await gitText(root, ["show", `${expectedRevision}:${path}`]);
-    if (contents !== null) expectedHashes[path] = sha256([contents]);
   }
+  const extras = gitRoot === root ? await gitBytes(root, ["ls-files", "--others", "--exclude-standard", "-z"]) : null;
+  const noExtras = extras !== null && extras.length === 0;
   const actualModuleDigest = moduleDigest(moduleHashes);
   const expectedModuleDigest = moduleDigest(expectedHashes);
-  const bound =
-    gitRoot === root &&
-    actualRevision === expectedRevision &&
-    clean &&
-    expectedFiles.length > 0 &&
-    Object.keys(moduleHashes).length === expectedFiles.length &&
-    actualModuleDigest === expectedModuleDigest;
+  const clean = modesMatch && noExtras && Object.keys(moduleHashes).length === entries.length && actualModuleDigest === expectedModuleDigest;
+  const bound = gitRoot === root && objectFormat === "sha1" && actualRevision === expectedRevision && clean && expectedTree !== "unavailable";
   return {
     root,
     identity: {
@@ -1075,8 +1098,100 @@ export async function preflightSource(mode: "baseline" | "candidate", sourceTree
       bound,
       adapter: mode === "baseline" ? "legacy-transactions" : "recognition-rows",
       moduleHashes,
+      expectedTree,
     },
+    entries: entries
+      .filter((entry): entry is { mode: string; type: string; object: string; path: string } => entry !== null)
+      .map(({ mode, object, path }) => ({ mode, object, path })),
   };
+}
+
+const linkExternalDependencies = async (sourceRoot: string, snapshotRoot: string, packageName: "api" | "shared" | "web"): Promise<void> => {
+  const source = resolve(sourceRoot, `packages/${packageName}/node_modules`);
+  try {
+    if (!(await stat(source)).isDirectory()) return;
+  } catch {
+    return;
+  }
+  const target = resolve(snapshotRoot, `packages/${packageName}/node_modules`);
+  await mkdir(target, { recursive: true, mode: 0o700 });
+  for (const entry of await readdir(source, { withFileTypes: true })) {
+    if (entry.name === "@enveo") continue;
+    await symlink(await realpath(resolve(source, entry.name)), resolve(target, entry.name));
+  }
+};
+
+const setSnapshotWritable = async (root: string, writable: boolean): Promise<void> => {
+  const visit = async (path: string): Promise<void> => {
+    const info = await lstat(path);
+    if (info.isSymbolicLink()) return;
+    if (info.isDirectory()) {
+      if (writable) await chmod(path, 0o700);
+      for (const entry of await readdir(path)) await visit(resolve(path, entry));
+      if (!writable) await chmod(path, 0o500);
+    } else {
+      await chmod(path, writable ? 0o600 : (info.mode & 0o111) !== 0 ? 0o500 : 0o400);
+    }
+  };
+  await visit(root);
+};
+
+interface SourceSnapshot {
+  root: string;
+  identity: SourceIdentity;
+  cleanup: () => Promise<void>;
+}
+
+export async function materializeSourceSnapshot(preflight: SourcePreflight): Promise<SourceSnapshot> {
+  if (!preflight.identity.bound) throw new Error("source snapshot requires a bound preflight");
+  const root = await mkdtemp(resolve(tmpdir(), "enveo-import-eval-source-"));
+  await chmod(root, 0o700);
+  try {
+    const archive = Bun.spawn(["git", "-C", preflight.root, "archive", preflight.identity.expectedRevision], { stdout: "pipe", stderr: "ignore" });
+    const extract = Bun.spawn(["tar", "-x", "-C", root], { stdin: archive.stdout, stdout: "ignore", stderr: "ignore" });
+    if ((await archive.exited) !== 0 || (await extract.exited) !== 0) throw new Error("source snapshot could not be materialized");
+    for (const packageName of ["api", "shared", "web"] as const) await linkExternalDependencies(preflight.root, root, packageName);
+    for (const consumer of ["api", "shared", "web"] as const) {
+      await mkdir(resolve(root, `packages/${consumer}/node_modules/@enveo`), { recursive: true, mode: 0o700 });
+      for (const workspacePackage of ["api", "shared", "web"] as const) {
+        if (workspacePackage === consumer) continue;
+        await symlink(resolve(root, `packages/${workspacePackage}`), resolve(root, `packages/${consumer}/node_modules/@enveo/${workspacePackage}`));
+      }
+    }
+    await setSnapshotWritable(root, false);
+    const snapshotHashes: Record<string, string> = {};
+    for (const entry of preflight.entries) {
+      const path = resolve(root, entry.path);
+      const info = await lstat(path);
+      const bytes = entry.mode === "120000" ? new TextEncoder().encode(await readlink(path)) : new Uint8Array(await readFile(path));
+      const mode =
+        entry.mode === "120000"
+          ? info.isSymbolicLink()
+            ? "120000"
+            : "invalid"
+          : info.isFile()
+            ? (info.mode & 0o111) !== 0
+              ? "100755"
+              : "100644"
+            : "invalid";
+      snapshotHashes[entry.path] = sha256([mode, "\0", gitBlobId(bytes)]);
+    }
+    if (moduleDigest(snapshotHashes) !== preflight.identity.expectedModuleDigest) throw new Error("source snapshot digest mismatch");
+    return {
+      root,
+      identity: preflight.identity,
+      cleanup: async () => {
+        await setSnapshotWritable(root, true);
+        await rm(root, { recursive: true, force: true });
+      },
+    };
+  } catch (error) {
+    try {
+      await setSnapshotWritable(root, true);
+    } catch {}
+    await rm(root, { recursive: true, force: true });
+    throw error;
+  }
 }
 
 const requireRegularFile = async (path: string, label: string): Promise<void> => {
@@ -1165,9 +1280,7 @@ async function resolveTransport(): Promise<{ kind: TransportKind; chat: ChatTran
   return { kind: "injected-test", chat: module.chat };
 }
 
-export async function loadSource(mode: "baseline" | "candidate", sourceTree: string, expectedCandidateRevision?: string): Promise<LoadedSource> {
-  const preflight = await preflightSource(mode, sourceTree, expectedCandidateRevision);
-  const { root } = preflight;
+async function loadSourceRoot(mode: "baseline" | "candidate", root: string, identity: SourceIdentity): Promise<LoadedSource> {
   const promptsPath = resolve(root, "packages/shared/src/aiPrompts.ts");
   await requireRegularFile(promptsPath, "source aiPrompts module");
   const prompts = (await import(pathToFileURL(promptsPath).href)) as RecognitionSourceModule;
@@ -1205,7 +1318,12 @@ export async function loadSource(mode: "baseline" | "candidate", sourceTree: str
     if (new Set(tables).size !== tables.length) throw new Error("baseline production database schema tables are ambiguous");
     baseline = { route: route as BaselineRouteModule, db: database.db, schema: schema as BaselineSchemaModule };
   }
-  return { root, prompts, baseline, identity: { ...preflight.identity, adapter } };
+  return { root, prompts, baseline, identity: { ...identity, adapter } };
+}
+
+export async function loadSource(mode: "baseline" | "candidate", sourceTree: string, expectedCandidateRevision?: string): Promise<LoadedSource> {
+  const preflight = await preflightSource(mode, sourceTree, expectedCandidateRevision);
+  return loadSourceRoot(mode, preflight.root, preflight.identity);
 }
 
 export async function runHistorySafetyGate(candidateRoot: string): Promise<HistorySafetyIdentity> {
@@ -1612,96 +1730,184 @@ async function runEvaluation(args: EvaluationArgs): Promise<void> {
   const model = process.env.OPENAI_MODEL;
   if (!apiKey?.trim() || !model?.trim()) throw new Error("OPENAI_API_KEY and OPENAI_MODEL are both required; no live evaluation was run");
 
+  const snapshots: SourceSnapshot[] = [];
   let pairedSources: { baseline: LoadedSource; candidate: LoadedSource } | null = null;
-  if (args.mode === "compare") {
-    const baselinePreflight = await preflightSource("baseline", args.baselineSourceTree);
-    const candidatePreflight = await preflightSource("candidate", args.candidateSourceTree, args.expectedCandidateRevision);
-    if (!baselinePreflight.identity.bound || !candidatePreflight.identity.bound) {
-      process.stdout.write(
-        `${JSON.stringify(
-          {
-            mode: "compare",
-            releaseEligible: false,
-            identity: { model, transport: "not_loaded", sources: { baseline: baselinePreflight.identity, candidate: candidatePreflight.identity } },
-            metrics: null,
-            decision: { passed: false, criteriaPassed: false, reasons: ["source_identity_unbound"], transitions: null },
-          },
-          null,
-          2,
-        )}\n`,
-      );
-      process.exitCode = 1;
-      return;
-    }
-    pairedSources = {
-      baseline: await loadSource("baseline", baselinePreflight.root),
-      candidate: await loadSource("candidate", candidatePreflight.root, args.expectedCandidateRevision),
-    };
-  }
-
-  const manifestPath = await realpath(resolve(args.manifestPath));
-  const manifestText = await readFile(manifestPath, "utf8");
-  let manifestValue: unknown;
+  let diagnosticSource: LoadedSource | null = null;
   try {
-    manifestValue = JSON.parse(manifestText);
-  } catch {
-    throw new Error("manifest is not valid JSON");
-  }
-  const manifest = parseRecognitionManifest(manifestValue);
-  const corpus = await loadCorpus(manifestPath, manifestText, manifest);
-  const expected = manifest.fixtures.flatMap(expectedForFixture);
-  const fixtureIds = manifest.fixtures.map((fixture) => fixture.id);
-  const transport = await resolveTransport();
-
-  if (args.mode === "compare") {
-    if (!pairedSources) throw new Error("paired sources were not loaded");
-    const { baseline: baselineSource, candidate: candidateSource } = pairedSources;
-    const historySafety = await runHistorySafetyGate(candidateSource.root);
-    if (!historySafety.passed) {
-      process.stdout.write(
-        `${JSON.stringify(
-          {
-            mode: "compare",
-            releaseEligible: false,
-            identity: {
-              model,
-              transport: transport.kind,
-              corpusDigest: corpus.digest,
-              fixtureIds,
-              sources: { baseline: baselineSource.identity, candidate: candidateSource.identity },
-              historySafety,
+    if (args.mode === "compare") {
+      const baselinePreflight = await preflightSource("baseline", args.baselineSourceTree);
+      const candidatePreflight = await preflightSource("candidate", args.candidateSourceTree, args.expectedCandidateRevision);
+      if (!baselinePreflight.identity.bound || !candidatePreflight.identity.bound) {
+        process.stdout.write(
+          `${JSON.stringify(
+            {
+              mode: "compare",
+              releaseEligible: false,
+              identity: { model, transport: "not_loaded", sources: { baseline: baselinePreflight.identity, candidate: candidatePreflight.identity } },
+              metrics: null,
+              decision: { passed: false, criteriaPassed: false, reasons: ["source_identity_unbound"], transitions: null },
             },
-            metrics: null,
-            decision: { passed: false, criteriaPassed: false, reasons: [...historySafety.reasons, "paired_runs_missing"], transitions: null },
-          },
-          null,
-          2,
-        )}\n`,
-      );
-      process.exitCode = 1;
-      return;
+            null,
+            2,
+          )}\n`,
+        );
+        process.exitCode = 1;
+        return;
+      }
+      const baselineSnapshot = await materializeSourceSnapshot(baselinePreflight);
+      snapshots.push(baselineSnapshot);
+      const candidateSnapshot = await materializeSourceSnapshot(candidatePreflight);
+      snapshots.push(candidateSnapshot);
+      if (
+        process.env.ENVEO_IMPORT_EVAL_TEST_MODE === "1" &&
+        process.env.ENVEO_TEST_RUNNER === "run-tests" &&
+        process.env.ENVEO_IMPORT_EVAL_TEST_MUTATE_PATH &&
+        process.env.ENVEO_IMPORT_EVAL_TEST_MUTATE_CONTENT !== undefined
+      ) {
+        const target = await realpath(process.env.ENVEO_IMPORT_EVAL_TEST_MUTATE_PATH);
+        const fromCandidate = relative(candidatePreflight.root, target);
+        if (fromCandidate.startsWith("..") || isAbsolute(fromCandidate)) throw new Error("test mutation target escapes candidate source");
+        await Bun.write(target, process.env.ENVEO_IMPORT_EVAL_TEST_MUTATE_CONTENT);
+      }
+      pairedSources = {
+        baseline: await loadSourceRoot("baseline", baselineSnapshot.root, baselineSnapshot.identity),
+        candidate: await loadSourceRoot("candidate", candidateSnapshot.root, candidateSnapshot.identity),
+      };
+    } else {
+      const preflight = await preflightSource(args.mode, args.sourceTree, args.expectedRevision);
+      if (!preflight.identity.bound) {
+        process.stdout.write(
+          `${JSON.stringify(
+            {
+              mode: args.mode,
+              releaseEligible: false,
+              identity: { model, transport: "not_loaded", source: preflight.identity },
+              metrics: null,
+              diagnosticOnly: true,
+              decision: { passed: false, reasons: ["source_identity_unbound"] },
+            },
+            null,
+            2,
+          )}\n`,
+        );
+        process.exitCode = 1;
+        return;
+      }
+      const snapshot = await materializeSourceSnapshot(preflight);
+      snapshots.push(snapshot);
+      diagnosticSource = await loadSourceRoot(args.mode, snapshot.root, snapshot.identity);
     }
-    let baselineActual: ActualImportRecognitionRow[];
-    let candidateActual: ActualImportRecognitionRow[];
+
+    const manifestPath = await realpath(resolve(args.manifestPath));
+    const manifestText = await readFile(manifestPath, "utf8");
+    let manifestValue: unknown;
     try {
-      baselineActual = await runSide("baseline", baselineSource, manifest, corpus, transport.chat, apiKey, model);
-      candidateActual = await runSide("candidate", candidateSource, manifest, corpus, transport.chat, apiKey, model);
+      manifestValue = JSON.parse(manifestText);
     } catch {
+      throw new Error("manifest is not valid JSON");
+    }
+    const manifest = parseRecognitionManifest(manifestValue);
+    const corpus = await loadCorpus(manifestPath, manifestText, manifest);
+    const expected = manifest.fixtures.flatMap(expectedForFixture);
+    const fixtureIds = manifest.fixtures.map((fixture) => fixture.id);
+    const transport = await resolveTransport();
+
+    if (args.mode === "compare") {
+      if (!pairedSources) throw new Error("paired sources were not loaded");
+      const { baseline: baselineSource, candidate: candidateSource } = pairedSources;
+      const historySafety = await runHistorySafetyGate(candidateSource.root);
+      if (!historySafety.passed) {
+        process.stdout.write(
+          `${JSON.stringify(
+            {
+              mode: "compare",
+              releaseEligible: false,
+              identity: {
+                model,
+                transport: transport.kind,
+                corpusDigest: corpus.digest,
+                fixtureIds,
+                sources: { baseline: baselineSource.identity, candidate: candidateSource.identity },
+                historySafety,
+              },
+              metrics: null,
+              decision: { passed: false, criteriaPassed: false, reasons: [...historySafety.reasons, "paired_runs_missing"], transitions: null },
+            },
+            null,
+            2,
+          )}\n`,
+        );
+        process.exitCode = 1;
+        return;
+      }
+      let baselineActual: ActualImportRecognitionRow[];
+      let candidateActual: ActualImportRecognitionRow[];
+      try {
+        baselineActual = await runSide("baseline", baselineSource, manifest, corpus, transport.chat, apiKey, model);
+        candidateActual = await runSide("candidate", candidateSource, manifest, corpus, transport.chat, apiKey, model);
+      } catch {
+        process.stdout.write(
+          `${JSON.stringify(
+            {
+              mode: "compare",
+              releaseEligible: false,
+              identity: {
+                model,
+                transport: transport.kind,
+                corpusDigest: corpus.digest,
+                fixtureIds,
+                sources: { baseline: baselineSource.identity, candidate: candidateSource.identity },
+                historySafety,
+              },
+              metrics: null,
+              decision: { passed: false, criteriaPassed: false, reasons: ["paired_runs_missing"], transitions: null },
+            },
+            null,
+            2,
+          )}\n`,
+        );
+        process.exitCode = 1;
+        return;
+      }
+      const decision = gateImportRecognition(expected, baselineActual, candidateActual);
+      const finalBaselineIdentity = await preflightSource("baseline", args.baselineSourceTree);
+      const finalCandidateIdentity = await preflightSource("candidate", args.candidateSourceTree, args.expectedCandidateRevision);
+      const identityBound =
+        baselineSource.identity.bound && candidateSource.identity.bound && finalBaselineIdentity.identity.bound && finalCandidateIdentity.identity.bound;
+      const release = comparisonReleaseStatus(transport.kind, decision.passed, decision.reasons, identityBound);
+      const output = {
+        mode: "compare",
+        releaseEligible: release.releaseEligible,
+        identity: {
+          model,
+          transport: transport.kind,
+          corpusDigest: corpus.digest,
+          fixtureIds,
+          sources: { baseline: baselineSource.identity, candidate: candidateSource.identity },
+          finalSources: { baseline: finalBaselineIdentity.identity, candidate: finalCandidateIdentity.identity },
+          historySafety,
+        },
+        metrics: { baseline: decision.baseline, candidate: decision.candidate },
+        decision: { passed: release.passed, criteriaPassed: decision.passed, reasons: release.reasons, transitions: decision.transitions },
+      };
+      process.stdout.write(`${JSON.stringify(output, null, 2)}\n`);
+      if (release.exitCode !== 0) process.exitCode = release.exitCode;
+      return;
+    }
+
+    if (!diagnosticSource) throw new Error("diagnostic source was not loaded");
+    const source = diagnosticSource;
+    const historySafety = args.mode === "candidate" ? await runHistorySafetyGate(source.root) : null;
+    if (historySafety && !historySafety.passed) {
       process.stdout.write(
         `${JSON.stringify(
           {
-            mode: "compare",
+            mode: args.mode,
             releaseEligible: false,
-            identity: {
-              model,
-              transport: transport.kind,
-              corpusDigest: corpus.digest,
-              fixtureIds,
-              sources: { baseline: baselineSource.identity, candidate: candidateSource.identity },
-              historySafety,
-            },
+            identity: { model, transport: transport.kind, corpusDigest: corpus.digest, fixtureIds, source: source.identity, historySafety },
             metrics: null,
-            decision: { passed: false, criteriaPassed: false, reasons: ["paired_runs_missing"], transitions: null },
+            diagnosticOnly: true,
+            decision: { passed: false, reasons: [...historySafety.reasons, "diagnostic_only"] },
           },
           null,
           2,
@@ -1710,64 +1916,25 @@ async function runEvaluation(args: EvaluationArgs): Promise<void> {
       process.exitCode = 1;
       return;
     }
-    const decision = gateImportRecognition(expected, baselineActual, candidateActual);
-    const identityBound = baselineSource.identity.bound && candidateSource.identity.bound;
-    const release = comparisonReleaseStatus(transport.kind, decision.passed, decision.reasons, identityBound);
-    const output = {
-      mode: "compare",
-      releaseEligible: release.releaseEligible,
-      identity: {
-        model,
-        transport: transport.kind,
-        corpusDigest: corpus.digest,
-        fixtureIds,
-        sources: { baseline: baselineSource.identity, candidate: candidateSource.identity },
-        historySafety,
-      },
-      metrics: { baseline: decision.baseline, candidate: decision.candidate },
-      decision: { passed: release.passed, criteriaPassed: decision.passed, reasons: release.reasons, transitions: decision.transitions },
-    };
-    process.stdout.write(`${JSON.stringify(output, null, 2)}\n`);
-    if (release.exitCode !== 0) process.exitCode = release.exitCode;
-    return;
-  }
-
-  const source = await loadSource(args.mode, args.sourceTree);
-  const historySafety = args.mode === "candidate" ? await runHistorySafetyGate(source.root) : null;
-  if (historySafety && !historySafety.passed) {
+    const actual = await runSide(args.mode, source, manifest, corpus, transport.chat, apiKey, model);
     process.stdout.write(
       `${JSON.stringify(
         {
           mode: args.mode,
           releaseEligible: false,
           identity: { model, transport: transport.kind, corpusDigest: corpus.digest, fixtureIds, source: source.identity, historySafety },
-          metrics: null,
+          metrics: scoreImportRecognition(expected, actual),
           diagnosticOnly: true,
-          decision: { passed: false, reasons: [...historySafety.reasons, "diagnostic_only"] },
+          decision: { passed: false, reasons: ["diagnostic_only"] },
         },
         null,
         2,
       )}\n`,
     );
-    process.exitCode = 1;
-    return;
+    process.exitCode = 2;
+  } finally {
+    for (const snapshot of snapshots.reverse()) await snapshot.cleanup();
   }
-  const actual = await runSide(args.mode, source, manifest, corpus, transport.chat, apiKey, model);
-  process.stdout.write(
-    `${JSON.stringify(
-      {
-        mode: args.mode,
-        releaseEligible: false,
-        identity: { model, transport: transport.kind, corpusDigest: corpus.digest, fixtureIds, source: source.identity, historySafety },
-        metrics: scoreImportRecognition(expected, actual),
-        diagnosticOnly: true,
-        decision: { passed: false, reasons: ["diagnostic_only"] },
-      },
-      null,
-      2,
-    )}\n`,
-  );
-  process.exitCode = 2;
 }
 
 if (import.meta.main) {
