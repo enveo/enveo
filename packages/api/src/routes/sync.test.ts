@@ -25,6 +25,7 @@ import postgres from "postgres";
 import { runChild } from "../api.test-support";
 import * as s from "../db/schema";
 import { applyPushOp, budgetAssertionFails, legacyChangesWatermark, ownerAssertionFails, pullChanges, pushInput, replaceInput } from "./sync";
+import { SENTINEL as AUTOMATIC_ENVELOPE_SENTINEL, type AutomaticEnvelopeOutput } from "./sync.automatic-envelope.test-child";
 import { SENTINEL as BARRIER_SENTINEL, type FirstUseBarrierOutput } from "./sync.first-use-barrier.test-child";
 // Constant + type only — this module's app/db imports are lazy (see the file header), so
 // importing it here does NOT pull env/db/client into THIS process.
@@ -194,6 +195,76 @@ const TEST_URL = process.env.TEST_DATABASE_URL ?? "";
 if (TEST_URL && TEST_URL === process.env.DATABASE_URL) {
   throw new Error("TEST_DATABASE_URL must differ from DATABASE_URL — this suite writes to the DB.");
 }
+
+const AUTOMATIC_ENVELOPE_CHILD = new URL("./sync.automatic-envelope.test-child.ts", import.meta.url).pathname;
+
+describe.skipIf(!TEST_URL)("automatic envelope validation (DB-backed, real REST + sync + restore)", () => {
+  let out: AutomaticEnvelopeOutput;
+
+  beforeAll(async () => {
+    out = await runChild<AutomaticEnvelopeOutput>({
+      path: AUTOMATIC_ENVELOPE_CHILD,
+      testUrl: TEST_URL,
+      sentinel: AUTOMATIC_ENVELOPE_SENTINEL,
+      cwd: new URL("../..", import.meta.url).pathname,
+      env: {
+        BETTER_AUTH_URL: "http://127.0.0.1:8097",
+        BETTER_AUTH_SECRET: "automatic-envelope-test-secret-0123456789abcdef",
+        DEPLOYMENT: "cloud",
+        ALLOW_SIGNUPS: "",
+        ALLOWED_ORIGINS: "",
+        WEB_DIST: "",
+        OPENAI_API_KEY: "",
+      },
+    });
+  });
+
+  it("accepts a valid link and keeps missing or cross-budget links on the foreign_ref surface", () => {
+    expect(out.rest.validCreateStatus).toBe(201);
+    expect(out.rest.foreignLink).toEqual({ status: 400, error: "foreign_ref" });
+    expect(out.rest.missingLink).toEqual({ status: 400, error: "foreign_ref" });
+    expect(out.rest.updateForeignLink).toEqual({ status: 400, error: "foreign_ref" });
+    expect(out.rest.updateMissingLink).toEqual({ status: 400, error: "foreign_ref" });
+    expect(out.rest.updateActiveLinkStatus).toBe(200);
+  });
+
+  it("rejects archived and off-budget links with stable REST conflict codes", () => {
+    expect(out.rest.archivedLink).toEqual({ status: 409, error: "automatic_envelope_unavailable" });
+    expect(out.rest.updateArchivedLink).toEqual({ status: 409, error: "automatic_envelope_unavailable" });
+    expect(out.rest.offBudgetLink).toEqual({ status: 409, error: "automatic_envelope_requires_on_budget" });
+  });
+
+  it("validates the final merged account state and accepts clearing the link in the same patch", () => {
+    expect(out.rest.keepLinkOffBudget).toEqual({ status: 409, error: "automatic_envelope_requires_on_budget" });
+    expect(out.rest.failedPatchPreservedState).toBe(true);
+    expect(out.rest.clearLinkOffBudgetStatus).toBe(200);
+  });
+
+  it("blocks archival while linked but lets isSavings change independently", () => {
+    expect(out.rest.archiveLinked).toEqual({ status: 409, error: "automatic_envelope_linked" });
+    expect(out.rest.savingsChangeStatus).toBe(200);
+    expect(out.rest.savingsChanged).toBe(true);
+  });
+
+  it("sync rejects invalid link lifecycle operations atomically and leaves no idempotency claim", () => {
+    expect(out.sync.archivedLinkError).toBe("automatic_envelope_unavailable");
+    expect(out.sync.archivedLinkRowAbsent).toBe(true);
+    expect(out.sync.archivedLinkClaimAbsent).toBe(true);
+    expect(out.sync.archiveLinkedError).toBe("automatic_envelope_linked");
+    expect(out.sync.archiveLinkedPreserved).toBe(true);
+    expect(out.sync.archiveLinkedClaimAbsent).toBe(true);
+  });
+
+  it("historical transaction allocation flow may reference an envelope archived after unlink", () => {
+    expect(out.sync.historicalAllocationStatus).toBe("applied");
+  });
+
+  it("restore rejects inconsistent links on its established surface and rolls the wipe back", () => {
+    expect(out.restore.offBudgetLink).toEqual({ status: 400, error: "foreign_ref" });
+    expect(out.restore.archivedLink).toEqual({ status: 400, error: "foreign_ref" });
+    expect(out.restore.originalAccountSurvived).toBe(true);
+  });
+});
 
 const REPLACE_CHILD = new URL("./sync.replace-recurrence.test-child.ts", import.meta.url).pathname;
 

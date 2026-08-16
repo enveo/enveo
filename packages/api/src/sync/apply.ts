@@ -44,6 +44,16 @@ export class ScopeViolation extends Error {
   }
 }
 
+export type AutomaticEnvelopeViolationCode = "automatic_envelope_unavailable" | "automatic_envelope_requires_on_budget" | "automatic_envelope_linked";
+
+/** Stable domain refusal for automatic-envelope lifecycle invariants. */
+export class AutomaticEnvelopeViolation extends Error {
+  constructor(readonly code: AutomaticEnvelopeViolationCode) {
+    super(code);
+    this.name = "AutomaticEnvelopeViolation";
+  }
+}
+
 type FkBody = {
   accountId?: string | null;
   toAccountId?: string | null;
@@ -109,11 +119,13 @@ export function findForeignLedgerRef(ledger: ClientLedgerInput): string | null {
   const ids = (rows: { id: string }[]) => new Set(rows.map((r) => r.id));
   const accounts = ids(ledger.accounts);
   const groups = ids(ledger.groups);
-  const envelopes = ids(ledger.envelopes);
+  const envelopes = new Map(ledger.envelopes.map((e) => [e.id, e]));
   const categories = ids(ledger.categories);
   const places = ids(ledger.places);
   for (const a of ledger.accounts) {
-    if (a.automaticEnvelopeId && !envelopes.has(a.automaticEnvelopeId)) return `accounts[${a.id}].automaticEnvelopeId`;
+    if (!a.automaticEnvelopeId) continue;
+    const envelope = envelopes.get(a.automaticEnvelopeId);
+    if (!envelope || !a.onBudget || envelope.archived) return `accounts[${a.id}].automaticEnvelopeId`;
   }
   for (const e of ledger.envelopes) {
     if (!groups.has(e.groupId)) return `envelopes[${e.id}].groupId`;
@@ -262,8 +274,35 @@ export async function applyAllocSet(x: Executor, budgetId: string, body: AllocPa
 
 /* ── Accounts ───────────────────────────────────────────────────────── */
 
+type AutomaticEnvelopeAccountState = {
+  onBudget: boolean;
+  automaticEnvelopeId: string | null;
+};
+
+/**
+ * Locks and validates the linked envelope on the caller's executor. Archival locks the same
+ * envelope row, so a concurrent link and archive cannot both commit an invalid final state.
+ */
+async function validateAutomaticEnvelopeLink(x: Executor, budgetId: string, state: AutomaticEnvelopeAccountState): Promise<void> {
+  if (!state.automaticEnvelopeId) return;
+  const [envelope] = await x
+    .select({ archived: s.envelopes.archived })
+    .from(s.envelopes)
+    .where(and(eq(s.envelopes.id, state.automaticEnvelopeId), eq(s.envelopes.budgetId, budgetId)))
+    .limit(1)
+    .for("update");
+  // Preserve the tenant guard's established missing/cross-budget surface before
+  // evaluating account state, so the target's existence is never disclosed.
+  if (!envelope) throw new ScopeViolation();
+  if (!state.onBudget) throw new AutomaticEnvelopeViolation("automatic_envelope_requires_on_budget");
+  if (envelope.archived) throw new AutomaticEnvelopeViolation("automatic_envelope_unavailable");
+}
+
 export async function applyAccountCreate(x: Executor, budgetId: string, body: AccountPayload & { id?: string }) {
-  await assertBudgetFks(x, budgetId, body);
+  await validateAutomaticEnvelopeLink(x, budgetId, {
+    onBudget: body.onBudget ?? true,
+    automaticEnvelopeId: body.automaticEnvelopeId ?? null,
+  });
   const { id, ...fields } = body;
   const [row] = await x
     .insert(s.accounts)
@@ -273,7 +312,20 @@ export async function applyAccountCreate(x: Executor, budgetId: string, body: Ac
 }
 
 export async function applyAccountUpdate(x: Executor, budgetId: string, body: Partial<AccountPayload> & { id: string }) {
+  // Keep the existing tenant-guard ordering for a patch that names a missing or
+  // cross-budget target, even if the account itself was concurrently removed.
   await assertBudgetFks(x, budgetId, body);
+  const [current] = await x
+    .select({ onBudget: s.accounts.onBudget, automaticEnvelopeId: s.accounts.automaticEnvelopeId })
+    .from(s.accounts)
+    .where(and(eq(s.accounts.id, body.id), eq(s.accounts.budgetId, budgetId)))
+    .limit(1)
+    .for("update");
+  if (!current) return NOT_FOUND;
+  await validateAutomaticEnvelopeLink(x, budgetId, {
+    onBudget: body.onBudget ?? current.onBudget,
+    automaticEnvelopeId: body.automaticEnvelopeId !== undefined ? body.automaticEnvelopeId : current.automaticEnvelopeId,
+  });
   const { id, ...fields } = body;
   const [row] = await x
     .update(s.accounts)
@@ -329,6 +381,23 @@ export async function applyEnvelopeCreate(x: Executor, budgetId: string, body: E
 
 export async function applyEnvelopeUpdate(x: Executor, budgetId: string, body: Partial<EnvelopePayload> & { id: string }) {
   await assertBudgetFks(x, budgetId, { groupId: body.groupId }); // no-op when the patch omits groupId
+  if (body.archived === true) {
+    // Account linking locks this same row first. Whichever transaction wins the
+    // lock establishes the state the loser must validate after it resumes.
+    const [envelope] = await x
+      .select({ id: s.envelopes.id })
+      .from(s.envelopes)
+      .where(and(eq(s.envelopes.id, body.id), eq(s.envelopes.budgetId, budgetId)))
+      .limit(1)
+      .for("update");
+    if (!envelope) return NOT_FOUND;
+    const [linked] = await x
+      .select({ id: s.accounts.id })
+      .from(s.accounts)
+      .where(and(eq(s.accounts.budgetId, budgetId), eq(s.accounts.automaticEnvelopeId, body.id)))
+      .limit(1);
+    if (linked) throw new AutomaticEnvelopeViolation("automatic_envelope_linked");
+  }
   const { id, ...fields } = body;
   const [row] = await x
     .update(s.envelopes)
