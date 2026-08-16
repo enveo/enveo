@@ -429,6 +429,7 @@ describe("applyOp: envelope.*", () => {
   it("delete: removes the envelope + its allocations, SET NULL on references, cuts split items", () => {
     const l: ClientLedger = {
       ...base(),
+      accounts: base().accounts.map((account) => ({ ...account, automaticEnvelopeId: account.id === "A1" ? "E1" : "E2" })),
       allocations: [alloc("E1", "2026-06", 50_00), alloc("E2", "2026-06", 20_00)],
       transactions: [
         {
@@ -451,6 +452,7 @@ describe("applyOp: envelope.*", () => {
     const next = apply(l, "envelope.delete", { id: "E1" });
     expect(next.envelopes.map((e) => e.id)).toEqual(["E2", "E3"]);
     expect(next.allocations.map((a) => a.envelopeId)).toEqual(["E2"]); // allocation cascade
+    expect(next.accounts.map((account) => account.automaticEnvelopeId)).toEqual([null, "E2"]);
     const [t1, t2, t3] = next.transactions;
     expect(t1!.envelopeId).toBeNull(); // SET NULL
     expect(t1!.allocationFromEnvelopeId).toBeNull();
@@ -476,6 +478,7 @@ describe("applyOp: group.*", () => {
   it("delete: envelope.delete effects for all envelopes of the group, then the group", () => {
     const l: ClientLedger = {
       ...base(), // G1: E1,E2; G2: E3
+      accounts: base().accounts.map((account) => ({ ...account, automaticEnvelopeId: account.id === "A1" ? "E1" : "E3" })),
       allocations: [alloc("E1", "2026-06", 50_00), alloc("E3", "2026-06", 30_00)],
       transactions: [
         tx({ id: "T1", accountId: "A1", envelopeId: "E1", amount: 10_00 }),
@@ -494,6 +497,7 @@ describe("applyOp: group.*", () => {
     expect(next.groups.map((g) => g.id)).toEqual(["G2"]);
     expect(next.envelopes.map((e) => e.id)).toEqual(["E3"]);
     expect(next.allocations.map((a) => a.envelopeId)).toEqual(["E3"]);
+    expect(next.accounts.map((account) => account.automaticEnvelopeId)).toEqual([null, "E3"]);
     expect(next.transactions[0]!.envelopeId).toBeNull();
     expect(next.transactions[1]!.items).toEqual([{ id: "i2", envelopeId: "E3", categoryId: null, amount: 20_00 }]);
   });
