@@ -143,6 +143,24 @@ describe("findForeignLedgerRef", () => {
     expect(findForeignLedgerRef(l)).toContain("automaticEnvelopeId");
   });
 
+  it("accepts an on-budget account linked to an active envelope", () => {
+    const l = ledger({ accounts: [{ ...ledger().accounts[0]!, automaticEnvelopeId: U(3) }] });
+    expect(findForeignLedgerRef(l)).toBeNull();
+  });
+
+  it("rejects an off-budget account linked to an envelope as an inconsistent ledger", () => {
+    const l = ledger({ accounts: [{ ...ledger().accounts[0]!, onBudget: false, automaticEnvelopeId: U(3) }] });
+    expect(findForeignLedgerRef(l)).toContain("automaticEnvelopeId");
+  });
+
+  it("rejects an account linked to an archived envelope as an inconsistent ledger", () => {
+    const l = ledger({
+      accounts: [{ ...ledger().accounts[0]!, automaticEnvelopeId: U(3) }],
+      envelopes: [{ ...ledger().envelopes[0]!, archived: true }],
+    });
+    expect(findForeignLedgerRef(l)).toContain("automaticEnvelopeId");
+  });
+
   const foreignTxnCases: Array<[string, Partial<Txn>]> = [
     ["accountId", { accountId: FOREIGN }],
     ["toAccountId", { type: "transfer", envelopeId: null, toAccountId: FOREIGN }],
@@ -173,6 +191,14 @@ describe("findForeignLedgerRef", () => {
   it("does NOT flag allocations (insertLedger drops foreign ones instead)", () => {
     const l = ledger({
       allocations: [{ id: "alloc-local:1", envelopeId: FOREIGN, month: "2026-01", amount: 100 }],
+    });
+    expect(findForeignLedgerRef(l)).toBeNull();
+  });
+
+  it("does not apply active-envelope validation to historical transaction allocation flow", () => {
+    const l = ledger({
+      envelopes: [{ ...ledger().envelopes[0]!, archived: true }],
+      transactions: [txn({ envelopeId: null, allocationFromEnvelopeId: U(3), allocationToEnvelopeId: U(3) })],
     });
     expect(findForeignLedgerRef(l)).toBeNull();
   });

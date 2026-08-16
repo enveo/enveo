@@ -24,6 +24,7 @@ import { type DbTransaction, db } from "../db/client";
 import * as s from "../db/schema";
 import { loadClientLedger, mapAccount, mapAllocation, mapBudget, mapCategory, mapEnvelope, mapGroup, mapPlace, mapTransaction, mapTxnItem } from "../repo";
 import {
+  AutomaticEnvelopeViolation,
   applyAccountCreate,
   applyAccountDelete,
   applyAccountUpdate,
@@ -363,6 +364,7 @@ class OpNotFound extends Error {
  */
 function isDomainRejection(e: unknown): boolean {
   if (e instanceof OpNotFound) return true;
+  if (e instanceof AutomaticEnvelopeViolation) return true;
   // cross-budget FK in the op body — permanent refusal, never retriable
   if (e instanceof ScopeViolation) return true;
   // SQLSTATE class 23 = constraint violation (PK/FK/CHECK/NOT NULL),

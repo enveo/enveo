@@ -27,13 +27,13 @@ export const crudRoutes = new Hono();
 crudRoutes.post("/accounts", async (c) => {
   const budgetId = (await requireTier(c, "plain")).id;
   const body = accountPayload.parse(await c.req.json());
-  const row = await applyAccountCreate(db, budgetId, body);
+  const row = await db.transaction((tx) => applyAccountCreate(tx, budgetId, body));
   return c.json(row, 201);
 });
 crudRoutes.patch("/accounts/:id", async (c) => {
   const budgetId = (await requireTier(c, "plain")).id;
   const body = accountPayload.partial().parse(await c.req.json());
-  const res = await applyAccountUpdate(db, budgetId, { ...body, id: c.req.param("id") });
+  const res = await db.transaction((tx) => applyAccountUpdate(tx, budgetId, { ...body, id: c.req.param("id") }));
   if (res === NOT_FOUND) return c.json({ error: "not found" }, 404);
   return c.json(res);
 });
@@ -75,7 +75,7 @@ crudRoutes.post("/envelopes", async (c) => {
 crudRoutes.patch("/envelopes/:id", async (c) => {
   const budgetId = (await requireTier(c, "plain")).id;
   const body = envelopePayload.partial().parse(await c.req.json());
-  const res = await applyEnvelopeUpdate(db, budgetId, { ...body, id: c.req.param("id") });
+  const res = await db.transaction((tx) => applyEnvelopeUpdate(tx, budgetId, { ...body, id: c.req.param("id") }));
   if (res === NOT_FOUND) return c.json({ error: "not found" }, 404);
   return c.json(res);
 });
