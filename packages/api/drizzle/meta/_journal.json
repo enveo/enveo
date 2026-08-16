@@ -169,6 +169,13 @@
       "when": 1786723200000,
       "tag": "0023_budget_ai_credentials",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1786862291289,
+      "tag": "0024_automatic_envelopes",
+      "breakpoints": true
     }
   ]
 }

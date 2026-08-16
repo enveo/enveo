@@ -32,6 +32,8 @@ const txnBase = z.object({
   note: z.string().nullable().optional(),
   tag: z.string().nullable().optional(),
   sourceRef: z.string().nullable().optional(),
+  allocationFromEnvelopeId: z.string().uuid().nullable().optional(),
+  allocationToEnvelopeId: z.string().uuid().nullable().optional(),
   items: z.array(txnItemPayload).optional(),
   // the client sets it at create (stable list order within a day); REST may omit it
   createdAt: z.string().datetime().optional(),
@@ -46,6 +48,18 @@ const txnRules = (v: z.infer<typeof txnBase>, ctx: z.RefinementCtx) => {
     if (sum !== v.amount) {
       ctx.addIssue({ code: "custom", message: "Σ items ≠ transaction amount", path: ["items"] });
     }
+  }
+  if (v.type === "expense" && v.allocationFromEnvelopeId) {
+    ctx.addIssue({ code: "custom", message: "expenses cannot carry allocationFromEnvelopeId", path: ["allocationFromEnvelopeId"] });
+  }
+  if (v.type === "expense" && v.allocationToEnvelopeId) {
+    ctx.addIssue({ code: "custom", message: "expenses cannot carry allocationToEnvelopeId", path: ["allocationToEnvelopeId"] });
+  }
+  if (v.type === "income" && v.allocationFromEnvelopeId) {
+    ctx.addIssue({ code: "custom", message: "income cannot carry allocationFromEnvelopeId", path: ["allocationFromEnvelopeId"] });
+  }
+  if (v.type === "income" && v.envelopeId && v.allocationToEnvelopeId) {
+    ctx.addIssue({ code: "custom", message: "income cannot carry both envelopeId and allocationToEnvelopeId", path: ["allocationToEnvelopeId"] });
   }
 };
 
@@ -72,6 +86,7 @@ export const accountPayload = z.object({
   initialBalance: z.number().int().optional(),
   archived: z.boolean().optional(),
   sort: z.number().int().optional(),
+  automaticEnvelopeId: z.string().uuid().nullable().optional(),
 });
 export type AccountPayload = z.infer<typeof accountPayload>;
 
@@ -175,6 +190,7 @@ const accountEntity = z.object({
   initialBalance: zMoney,
   archived: z.boolean(),
   sort: z.number().int(),
+  automaticEnvelopeId: zUuid.nullable().default(null),
 });
 const groupEntity = z.object({ id: zUuid, name: z.string(), sort: z.number().int() });
 const envelopeEntity = z.object({
@@ -227,6 +243,8 @@ const transactionEntity = z
     tag: z.string().nullable(),
     // Old backups predate replicated import-learning metadata.
     sourceRef: z.string().nullable().default(null),
+    allocationFromEnvelopeId: zUuid.nullable().default(null),
+    allocationToEnvelopeId: zUuid.nullable().default(null),
     items: z.array(txnItemEntity),
     createdAt: z.string(),
   })

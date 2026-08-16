@@ -60,6 +60,8 @@ describe("applyOp: txn.create", () => {
       note: null,
       tag: null,
       sourceRef: "LIDL 123 WARSZAWA",
+      allocationFromEnvelopeId: null,
+      allocationToEnvelopeId: null,
       items: [],
       createdAt: "2026-06-05T10:00:00.000Z",
     });
@@ -161,6 +163,8 @@ describe("applyOp: txn.update", () => {
       note: null, // full replacement — a field not sent = null
       tag: "LIDL", // tag undefined → kept
       sourceRef: "LIDL 123 WARSZAWA", // sourceRef undefined → kept for correction learning
+      allocationFromEnvelopeId: null,
+      allocationToEnvelopeId: null,
       items: [], // delete+reinsert: payload without items ⇒ empty
       createdAt: "2026-06-01T08:00:00.000Z", // NEVER changed
     });
@@ -198,6 +202,39 @@ describe("applyOp: txn.update", () => {
     expect(upd(undefined)).toBe("LIDL 123 WARSZAWA");
     expect(upd(null)).toBeNull();
     expect(upd("BIEDRONKA RAW")).toBe("BIEDRONKA RAW");
+  });
+
+  it("allocation-flow links preserve when omitted and clear when explicitly null", () => {
+    const baseWithFlow = {
+      ...base(),
+      transactions: [
+        {
+          ...existing(),
+          allocationFromEnvelopeId: "E1",
+          allocationToEnvelopeId: "E2",
+        },
+      ],
+    } as unknown as ClientLedger;
+    const updateWithoutFlowFields = {
+      id: "T1",
+      type: "expense",
+      accountId: "A1",
+      amount: 30_00,
+      date: "2026-06-01",
+      envelopeId: "E1",
+    };
+
+    const preserved = apply(baseWithFlow, "txn.update", updateWithoutFlowFields);
+    expect(preserved.transactions[0]!.allocationFromEnvelopeId).toBe("E1");
+    expect(preserved.transactions[0]!.allocationToEnvelopeId).toBe("E2");
+
+    const cleared = apply(baseWithFlow, "txn.update", {
+      ...updateWithoutFlowFields,
+      allocationFromEnvelopeId: null,
+      allocationToEnvelopeId: null,
+    } as never);
+    expect(cleared.transactions[0]!.allocationFromEnvelopeId).toBeNull();
+    expect(cleared.transactions[0]!.allocationToEnvelopeId).toBeNull();
   });
 
   it("items: delete+reinsert with fresh synthetic ids", () => {
@@ -314,6 +351,7 @@ describe("applyOp: account.*", () => {
       initialBalance: 0,
       archived: false,
       sort: 0,
+      automaticEnvelopeId: null,
     });
   });
 
@@ -341,6 +379,22 @@ describe("applyOp: account.*", () => {
     const next = apply(l, "account.delete", { id: "A1" });
     expect(next.accounts.map((a) => a.id)).toEqual(["A2"]);
     expect(next.transactions.map((t) => t.id)).toEqual(["T3"]); // T1 (from), T2 (to) — whole rows
+  });
+
+  it("delete removes transactions carrying automatic allocation effects with their account", () => {
+    const l = {
+      ...base(),
+      transactions: [
+        {
+          ...tx({ id: "T1", accountId: "A1", envelopeId: "E1", amount: 10_00 }),
+          allocationFromEnvelopeId: "E1",
+          allocationToEnvelopeId: "E2",
+        },
+        tx({ id: "T2", accountId: "A2", envelopeId: "E1", amount: 7_00 }),
+      ],
+    } as unknown as ClientLedger;
+    const next = apply(l, "account.delete", { id: "A1" });
+    expect(next.transactions.map((t) => t.id)).toEqual(["T2"]);
   });
 });
 
@@ -372,12 +426,16 @@ describe("applyOp: envelope.*", () => {
     expect(applyOp(frozen, mkOp("envelope.update", { id: "MISSING", name: "x" }))).toBe(frozen);
   });
 
-  it("delete: removes the envelope + its allocations, SET NULL on transactions, cuts split items", () => {
+  it("delete: removes the envelope + its allocations, SET NULL on references, cuts split items", () => {
     const l: ClientLedger = {
       ...base(),
       allocations: [alloc("E1", "2026-06", 50_00), alloc("E2", "2026-06", 20_00)],
       transactions: [
-        tx({ id: "T1", accountId: "A1", envelopeId: "E1", amount: 10_00 }),
+        {
+          ...tx({ id: "T1", accountId: "A1", envelopeId: "E1", amount: 10_00 }),
+          allocationFromEnvelopeId: "E1",
+          allocationToEnvelopeId: "E1",
+        },
         tx({
           id: "T2",
           accountId: "A1",
@@ -395,6 +453,8 @@ describe("applyOp: envelope.*", () => {
     expect(next.allocations.map((a) => a.envelopeId)).toEqual(["E2"]); // allocation cascade
     const [t1, t2, t3] = next.transactions;
     expect(t1!.envelopeId).toBeNull(); // SET NULL
+    expect(t1!.allocationFromEnvelopeId).toBeNull();
+    expect(t1!.allocationToEnvelopeId).toBeNull();
     expect(t2!.items).toEqual([{ id: "i2", envelopeId: "E2", categoryId: null, amount: 20_00 }]);
     expect(t2!.amount).toBe(50_00); // parent amount unchanged
     expect(t3).toBe(l.transactions[2]!); // untouched — shared reference

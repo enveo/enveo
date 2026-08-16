@@ -34,6 +34,14 @@ describe("collectFkChecks", () => {
       { table: "envelope_groups", id: "G" },
     ]);
   });
+
+  it("checks all automatic-envelope references against envelopes", () => {
+    expect(collectFkChecks({ automaticEnvelopeId: "A", allocationFromEnvelopeId: "F", allocationToEnvelopeId: "T" })).toEqual([
+      { table: "envelopes", id: "A" },
+      { table: "envelopes", id: "F" },
+      { table: "envelopes", id: "T" },
+    ]);
+  });
 });
 
 /* ── findForeignLedgerRef (restore-path scope guard) ────────────────── */
@@ -44,8 +52,30 @@ const FOREIGN = U(666);
 function ledger(over: Partial<ClientLedgerInput> = {}): ClientLedgerInput {
   return {
     accounts: [
-      { id: U(1), name: "a", color: "#fff", icon: "wallet", type: "checking", onBudget: true, initialBalance: 0, archived: false, sort: 0 },
-      { id: U(11), name: "b", color: "#fff", icon: "wallet", type: "savings", onBudget: true, initialBalance: 0, archived: false, sort: 1 },
+      {
+        id: U(1),
+        name: "a",
+        color: "#fff",
+        icon: "wallet",
+        type: "checking",
+        onBudget: true,
+        initialBalance: 0,
+        archived: false,
+        sort: 0,
+        automaticEnvelopeId: null,
+      },
+      {
+        id: U(11),
+        name: "b",
+        color: "#fff",
+        icon: "wallet",
+        type: "savings",
+        onBudget: true,
+        initialBalance: 0,
+        archived: false,
+        sort: 1,
+        automaticEnvelopeId: null,
+      },
     ],
     groups: [{ id: U(2), name: "g", sort: 0 }],
     envelopes: [
@@ -74,6 +104,8 @@ const txn = (over: Partial<Txn> = {}): Txn => ({
   name: null,
   note: null,
   tag: null,
+  allocationFromEnvelopeId: null,
+  allocationToEnvelopeId: null,
   items: [],
   createdAt: "2026-01-02T00:00:00.000Z",
   ...over,
@@ -106,12 +138,19 @@ describe("findForeignLedgerRef", () => {
     expect(findForeignLedgerRef(l)).toContain("groupId");
   });
 
+  it("flags an account whose automatic envelope is not carried by the payload", () => {
+    const l = ledger({ accounts: [{ ...ledger().accounts[0]!, automaticEnvelopeId: FOREIGN }] });
+    expect(findForeignLedgerRef(l)).toContain("automaticEnvelopeId");
+  });
+
   const foreignTxnCases: Array<[string, Partial<Txn>]> = [
     ["accountId", { accountId: FOREIGN }],
     ["toAccountId", { type: "transfer", envelopeId: null, toAccountId: FOREIGN }],
     ["envelopeId", { envelopeId: FOREIGN }],
     ["placeId", { placeId: FOREIGN }],
     ["categoryId", { categoryId: FOREIGN }],
+    ["allocationFromEnvelopeId", { allocationFromEnvelopeId: FOREIGN }],
+    ["allocationToEnvelopeId", { allocationToEnvelopeId: FOREIGN }],
   ];
   for (const [field, over] of foreignTxnCases) {
     it(`flags a transaction with a foreign ${field}`, () => {

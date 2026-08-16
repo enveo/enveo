@@ -23,10 +23,12 @@ const transaction = (overrides: Partial<Transaction> = {}): Transaction => ({
   name: null,
   note: null,
   tag: null,
-  sourceRef: null,
   items: [],
   createdAt: "2026-08-15T10:00:00.000Z",
   ...overrides,
+  sourceRef: overrides.sourceRef ?? null,
+  allocationFromEnvelopeId: overrides.allocationFromEnvelopeId ?? null,
+  allocationToEnvelopeId: overrides.allocationToEnvelopeId ?? null,
 });
 
 const index = createTransactionSearchIndex({

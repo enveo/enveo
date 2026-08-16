@@ -12,6 +12,7 @@ const onAcc = (initial: number): Account => ({
   initialBalance: initial,
   archived: false,
   sort: 0,
+  automaticEnvelopeId: null,
 });
 
 function fixture(): ClientLedger {

@@ -1,5 +1,6 @@
 import { sql } from "drizzle-orm";
 import {
+  type AnyPgColumn,
   bigint,
   bigserial,
   boolean,
@@ -178,8 +179,12 @@ export const accounts = pgTable(
     initialBalance: money("initial_balance").notNull().default(0),
     archived: boolean("archived").notNull().default(false),
     sort: integer("sort").notNull().default(0),
+    automaticEnvelopeId: uuid("automatic_envelope_id").references((): AnyPgColumn => envelopes.id, { onDelete: "set null" }),
   },
-  (t) => ({ byBudget: index("accounts_budget_idx").on(t.budgetId) }),
+  (t) => ({
+    byBudget: index("accounts_budget_idx").on(t.budgetId),
+    byAutomaticEnvelope: index("accounts_automatic_envelope_idx").on(t.automaticEnvelopeId),
+  }),
 );
 
 export const envelopeGroups = pgTable(
@@ -249,6 +254,8 @@ export const transactions = pgTable(
     date: date("date", { mode: "string" }).notNull(),
     isRefund: boolean("is_refund").notNull().default(false),
     envelopeId: uuid("envelope_id").references(() => envelopes.id, { onDelete: "set null" }),
+    allocationFromEnvelopeId: uuid("allocation_from_envelope_id").references(() => envelopes.id, { onDelete: "set null" }),
+    allocationToEnvelopeId: uuid("allocation_to_envelope_id").references(() => envelopes.id, { onDelete: "set null" }),
     placeId: uuid("place_id").references(() => places.id, { onDelete: "set null" }),
     categoryId: uuid("category_id").references(() => categories.id, { onDelete: "set null" }),
     // short transaction name (list title); the note is a separate, longer field
@@ -268,6 +275,8 @@ export const transactions = pgTable(
   (t) => ({
     byBudgetDate: index("txn_budget_date_idx").on(t.budgetId, t.date),
     byEnvelope: index("txn_envelope_idx").on(t.envelopeId),
+    byAllocationFromEnvelope: index("txn_allocation_from_envelope_idx").on(t.allocationFromEnvelopeId),
+    byAllocationToEnvelope: index("txn_allocation_to_envelope_idx").on(t.allocationToEnvelopeId),
     byExternal: index("txn_external_idx").on(t.budgetId, t.externalId),
   }),
 );

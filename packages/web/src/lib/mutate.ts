@@ -107,6 +107,8 @@ export function txnToPayload(t: Transaction): TxnPayload {
     note: t.note,
     tag: t.tag,
     sourceRef: t.sourceRef,
+    allocationFromEnvelopeId: t.allocationFromEnvelopeId,
+    allocationToEnvelopeId: t.allocationToEnvelopeId,
     items: t.items.map((i) => ({ envelopeId: i.envelopeId, categoryId: i.categoryId, amount: i.amount })),
   };
 }

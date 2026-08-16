@@ -48,6 +48,9 @@ type FkBody = {
   accountId?: string | null;
   toAccountId?: string | null;
   envelopeId?: string | null;
+  automaticEnvelopeId?: string | null;
+  allocationFromEnvelopeId?: string | null;
+  allocationToEnvelopeId?: string | null;
   categoryId?: string | null;
   placeId?: string | null;
   /** envelopes' parent group (NOT NULL, ON DELETE CASCADE) */
@@ -62,6 +65,9 @@ export function collectFkChecks(b: FkBody): { table: FkTable; id: string }[] {
   if (b.accountId) out.push({ table: "accounts", id: b.accountId });
   if (b.toAccountId) out.push({ table: "accounts", id: b.toAccountId });
   if (b.envelopeId) out.push({ table: "envelopes", id: b.envelopeId });
+  if (b.automaticEnvelopeId) out.push({ table: "envelopes", id: b.automaticEnvelopeId });
+  if (b.allocationFromEnvelopeId) out.push({ table: "envelopes", id: b.allocationFromEnvelopeId });
+  if (b.allocationToEnvelopeId) out.push({ table: "envelopes", id: b.allocationToEnvelopeId });
   if (b.categoryId) out.push({ table: "categories", id: b.categoryId });
   if (b.placeId) out.push({ table: "places", id: b.placeId });
   if (b.groupId) out.push({ table: "envelope_groups", id: b.groupId });
@@ -106,6 +112,9 @@ export function findForeignLedgerRef(ledger: ClientLedgerInput): string | null {
   const envelopes = ids(ledger.envelopes);
   const categories = ids(ledger.categories);
   const places = ids(ledger.places);
+  for (const a of ledger.accounts) {
+    if (a.automaticEnvelopeId && !envelopes.has(a.automaticEnvelopeId)) return `accounts[${a.id}].automaticEnvelopeId`;
+  }
   for (const e of ledger.envelopes) {
     if (!groups.has(e.groupId)) return `envelopes[${e.id}].groupId`;
   }
@@ -113,6 +122,8 @@ export function findForeignLedgerRef(ledger: ClientLedgerInput): string | null {
     if (!accounts.has(t.accountId)) return `transactions[${t.id}].accountId`;
     if (t.toAccountId && !accounts.has(t.toAccountId)) return `transactions[${t.id}].toAccountId`;
     if (t.envelopeId && !envelopes.has(t.envelopeId)) return `transactions[${t.id}].envelopeId`;
+    if (t.allocationFromEnvelopeId && !envelopes.has(t.allocationFromEnvelopeId)) return `transactions[${t.id}].allocationFromEnvelopeId`;
+    if (t.allocationToEnvelopeId && !envelopes.has(t.allocationToEnvelopeId)) return `transactions[${t.id}].allocationToEnvelopeId`;
     if (t.placeId && !places.has(t.placeId)) return `transactions[${t.id}].placeId`;
     if (t.categoryId && !categories.has(t.categoryId)) return `transactions[${t.id}].categoryId`;
     for (const it of t.items) {
@@ -165,6 +176,8 @@ export async function applyTxnCreate(x: Executor, budgetId: string, body: TxnPay
       note: body.note ?? null,
       tag: body.tag ?? null,
       sourceRef: body.sourceRef ?? null,
+      allocationFromEnvelopeId: body.allocationFromEnvelopeId ?? null,
+      allocationToEnvelopeId: body.allocationToEnvelopeId ?? null,
       ...(body.createdAt ? { createdAt: body.createdAt } : {}),
     })
     .returning();
@@ -205,6 +218,8 @@ export async function applyTxnUpdate(x: Executor, budgetId: string, body: TxnPay
       // tag is preserved when the update does not send it (UI edits don't know import tags)
       ...(body.tag !== undefined ? { tag: body.tag } : {}),
       ...(body.sourceRef !== undefined ? { sourceRef: body.sourceRef } : {}),
+      ...(body.allocationFromEnvelopeId !== undefined ? { allocationFromEnvelopeId: body.allocationFromEnvelopeId } : {}),
+      ...(body.allocationToEnvelopeId !== undefined ? { allocationToEnvelopeId: body.allocationToEnvelopeId } : {}),
     })
     .where(and(eq(s.transactions.id, body.id), eq(s.transactions.budgetId, budgetId)))
     .returning();
@@ -248,6 +263,7 @@ export async function applyAllocSet(x: Executor, budgetId: string, body: AllocPa
 /* ── Accounts ───────────────────────────────────────────────────────── */
 
 export async function applyAccountCreate(x: Executor, budgetId: string, body: AccountPayload & { id?: string }) {
+  await assertBudgetFks(x, budgetId, body);
   const { id, ...fields } = body;
   const [row] = await x
     .insert(s.accounts)
@@ -257,6 +273,7 @@ export async function applyAccountCreate(x: Executor, budgetId: string, body: Ac
 }
 
 export async function applyAccountUpdate(x: Executor, budgetId: string, body: Partial<AccountPayload> & { id: string }) {
+  await assertBudgetFks(x, budgetId, body);
   const { id, ...fields } = body;
   const [row] = await x
     .update(s.accounts)

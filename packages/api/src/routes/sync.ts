@@ -539,24 +539,8 @@ async function insertLedger(x: Executor, budgetId: string, ledger: ClientLedgerI
   // foreign UUID would otherwise attach restored rows to ANOTHER budget's
   // entities, bypassing assertBudgetFks through this door.
   if (findForeignLedgerRef(ledger) !== null) throw new ScopeViolation();
-  // FK-safe order: accounts → groups → envelopes → categories → places →
+  // FK-safe order: groups → envelopes → accounts → categories → places →
   // allocations → transactions → split items
-  for (const part of chunk(ledger.accounts, 300)) {
-    await x.insert(s.accounts).values(
-      part.map((a) => ({
-        id: a.id,
-        budgetId,
-        name: a.name,
-        color: a.color,
-        icon: a.icon,
-        type: a.type,
-        onBudget: a.onBudget,
-        initialBalance: a.initialBalance,
-        archived: a.archived,
-        sort: a.sort,
-      })),
-    );
-  }
   for (const part of chunk(ledger.groups, 500)) {
     await x.insert(s.envelopeGroups).values(part.map((g) => ({ id: g.id, budgetId, name: g.name, sort: g.sort })));
   }
@@ -574,6 +558,23 @@ async function insertLedger(x: Executor, budgetId: string, ledger: ClientLedgerI
         isSavings: e.isSavings ?? false,
         sort: e.sort,
         archived: e.archived,
+      })),
+    );
+  }
+  for (const part of chunk(ledger.accounts, 300)) {
+    await x.insert(s.accounts).values(
+      part.map((a) => ({
+        id: a.id,
+        budgetId,
+        name: a.name,
+        color: a.color,
+        icon: a.icon,
+        type: a.type,
+        onBudget: a.onBudget,
+        initialBalance: a.initialBalance,
+        archived: a.archived,
+        sort: a.sort,
+        automaticEnvelopeId: a.automaticEnvelopeId,
       })),
     );
   }
@@ -610,6 +611,8 @@ async function insertLedger(x: Executor, budgetId: string, ledger: ClientLedgerI
         note: t.note,
         tag: t.tag,
         sourceRef: t.sourceRef,
+        allocationFromEnvelopeId: t.allocationFromEnvelopeId,
+        allocationToEnvelopeId: t.allocationToEnvelopeId,
         createdAt: t.createdAt,
       })),
     );

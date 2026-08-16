@@ -34,6 +34,8 @@ const splitTxn = (): Transaction => ({
   note: "z paragonu",
   tag: "merchant:biedronka",
   sourceRef: "BIEDRONKA 123 POZNAN",
+  allocationFromEnvelopeId: null,
+  allocationToEnvelopeId: null,
   items: [
     { id: "item-a", envelopeId: ENV1, categoryId: null, amount: 2000 },
     { id: "item-b", envelopeId: ENV2, categoryId: CAT1, amount: 3000 },
@@ -58,6 +60,8 @@ describe("txnToPayload (pure mapping)", () => {
       note: "z paragonu",
       tag: "merchant:biedronka",
       sourceRef: "BIEDRONKA 123 POZNAN",
+      allocationFromEnvelopeId: null,
+      allocationToEnvelopeId: null,
       items: [
         { envelopeId: ENV1, categoryId: null, amount: 2000 },
         { envelopeId: ENV2, categoryId: CAT1, amount: 3000 },

@@ -65,11 +65,26 @@ const txn = (over: Partial<Transaction> & Pick<Transaction, "id" | "type" | "amo
   createdAt: "2026-07-01T00:00:00.000Z",
   ...over,
   sourceRef: over.sourceRef ?? null,
+  allocationFromEnvelopeId: over.allocationFromEnvelopeId ?? null,
+  allocationToEnvelopeId: over.allocationToEnvelopeId ?? null,
 });
 
 /** Fixture: an account + 2 envelopes + income and expenses (pattern from e2ee.test.ts). */
 const fixtureLedger = (): ClientLedger => ({
-  accounts: [{ id: "acc1", name: "Konto", color: "#111111", icon: "bank", type: "checking", onBudget: true, initialBalance: 0, archived: false, sort: 0 }],
+  accounts: [
+    {
+      id: "acc1",
+      name: "Konto",
+      color: "#111111",
+      icon: "bank",
+      type: "checking",
+      onBudget: true,
+      initialBalance: 0,
+      archived: false,
+      sort: 0,
+      automaticEnvelopeId: null,
+    },
+  ],
   groups: [{ id: "grp1", name: "Życie", sort: 0 }],
   envelopes: [
     {
