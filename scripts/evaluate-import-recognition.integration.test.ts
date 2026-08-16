@@ -1,15 +1,29 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { access, appendFile, cp, mkdir, mkdtemp, readdir, readFile, realpath, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 
 const evaluator = resolve(import.meta.dir, "evaluate-import-recognition.ts");
+const BASE_REVISION = "864c47f98c27bb7bf238e636b34f89dfa3dcc63c";
 let root = "";
 let manifestPath = "";
 let baselineRoot = "";
 let candidateRoot = "";
 let transportPath = "";
 let candidateRevision = "";
+let exactBaselineRoot = "";
+let sourceImportSentinel = "";
+let transportImportSentinel = "";
+
+async function linkPackageDependencies(packageName: "api" | "shared", targetRoot: string): Promise<void> {
+  const source = resolve(import.meta.dir, `../packages/${packageName}/node_modules`);
+  const target = resolve(targetRoot, `packages/${packageName}/node_modules`);
+  await mkdir(target, { recursive: true });
+  for (const entry of await readdir(source, { withFileTypes: true })) {
+    if (packageName === "api" && entry.name === "@enveo") continue;
+    await symlink(await realpath(resolve(source, entry.name)), resolve(target, entry.name));
+  }
+}
 
 const proposal = (type: "expense" | "income" | "transfer" | null, isRefund = false) => ({
   type,
@@ -253,7 +267,8 @@ export function decideAssignment(raw, _top, model) {
   );
   await writeFile(
     resolve(candidateRoot, "packages/shared/src/aiPrompts.ts"),
-    `${promptModule("rows")}
+    `if (process.env.TEST_SOURCE_IMPORT_SENTINEL) await Bun.write(process.env.TEST_SOURCE_IMPORT_SENTINEL, "imported");
+${promptModule("rows")}
 export async function runImportRecognitionPipeline(input) {
   const extracted = JSON.parse(await input.chat(buildImportExtractPrompt(input.images, { envelopes: [], categories: [] }, input.today, input.locale, input.budgetCurrency)));
   if (input.accountId !== "account-a") {
@@ -369,9 +384,11 @@ export async function runImportRecognitionPipeline(input) {
         date: item.date,
         amount: item.amount,
         currency: item.currency,
-        type: item.id === "outgoing" ? "expense" : item.expectedProposal?.type === "income" ? "income" : "expense",
+        type: item.id === "refund" ? "refund" : item.id === "outgoing" ? "expense" : item.expectedProposal?.type === "income" ? "income" : "expense",
         isRefund: item.expectedProposal?.isRefund ?? false,
         rawPlace: item.matchText,
+        tag: item.id.toUpperCase(),
+        fxOriginal: "",
       }));
   const data = {
     baseline: {
@@ -389,15 +406,16 @@ export async function runImportRecognitionPipeline(input) {
   transportPath = resolve(root, "transport.ts");
   await writeFile(
     transportPath,
-    `const data = ${JSON.stringify(data)};
+    `if (process.env.TEST_TRANSPORT_IMPORT_SENTINEL) await Bun.write(process.env.TEST_TRANSPORT_IMPORT_SENTINEL, "imported");
+const data = ${JSON.stringify(data)};
 export async function chat(input) {
   const serialized = JSON.stringify(input.request);
   const system = String(input.request.messages[0]?.content || "");
-  const enrichment = system.includes("enrich") || system.includes("assign bank-statement");
+  const enrichment = system.includes("enrich") || system.includes("assign bank-statement") || serialized.includes("enriched_transactions");
   if (!enrichment && (!serialized.includes("data:image/png;base64,") || !serialized.includes("json_schema"))) throw new Error("request serialization missing");
   if (process.env.TEST_EVAL_MISSING === input.side && !enrichment) return JSON.stringify({ missing: true });
   if (input.side === "baseline") {
-    if (!enrichment) return JSON.stringify(data.baseline[input.fixtureId]);
+    if (!enrichment) return JSON.stringify({ transactions: data.baseline[input.fixtureId] });
     return JSON.stringify({ transactions: data.baseline[input.fixtureId].map((item, index) => ({
       index,
       name: item.rawPlace,
@@ -416,6 +434,19 @@ export async function chat(input) {
   return JSON.stringify(value);
 }\n`,
   );
+  exactBaselineRoot = resolve(root, "baseline-exact");
+  const worktree = Bun.spawn(["git", "worktree", "add", "--detach", exactBaselineRoot, BASE_REVISION], {
+    cwd: resolve(import.meta.dir, ".."),
+    stdout: "ignore",
+    stderr: "ignore",
+  });
+  if ((await worktree.exited) !== 0) throw new Error("could not materialize exact baseline fixture");
+  await linkPackageDependencies("api", exactBaselineRoot);
+  await linkPackageDependencies("shared", exactBaselineRoot);
+  await mkdir(resolve(exactBaselineRoot, "packages/api/node_modules/@enveo"), { recursive: true });
+  await symlink(resolve(exactBaselineRoot, "packages/shared"), resolve(exactBaselineRoot, "packages/api/node_modules/@enveo/shared"));
+  baselineRoot = exactBaselineRoot;
+
   for (const args of [
     ["init"],
     ["config", "user.email", "evaluation@example.invalid"],
@@ -429,9 +460,19 @@ export async function chat(input) {
   const revision = Bun.spawn(["git", "-C", candidateRoot, "rev-parse", "HEAD"], { stdout: "pipe", stderr: "pipe" });
   candidateRevision = (await new Response(revision.stdout).text()).trim();
   if ((await revision.exited) !== 0 || !/^[0-9a-f]{40}$/.test(candidateRevision)) throw new Error("could not identify candidate fixture");
+  sourceImportSentinel = resolve(root, "source-imported");
+  transportImportSentinel = resolve(root, "transport-imported");
 });
 
 afterAll(async () => {
+  if (exactBaselineRoot) {
+    const remove = Bun.spawn(["git", "worktree", "remove", "--force", exactBaselineRoot], {
+      cwd: resolve(import.meta.dir, ".."),
+      stdout: "ignore",
+      stderr: "ignore",
+    });
+    await remove.exited;
+  }
   if (root) await rm(root, { recursive: true, force: true });
 });
 
@@ -443,6 +484,8 @@ const runGate = async (
   historyUnsafe = false,
   historyImmutableUnsafe = false,
   expectedRevision = candidateRevision,
+  assertNoImports = false,
+  candidateSourceTree = candidateRoot,
 ) => {
   const child = Bun.spawn(
     [
@@ -455,7 +498,7 @@ const runGate = async (
       "--baseline-source-tree",
       baselineRoot,
       "--candidate-source-tree",
-      candidateRoot,
+      candidateSourceTree,
       "--expected-candidate-revision",
       expectedRevision,
     ],
@@ -474,6 +517,8 @@ const runGate = async (
         TEST_HISTORY_FAIL: historyFail ? "1" : "0",
         TEST_HISTORY_UNSAFE: historyUnsafe ? "1" : "0",
         TEST_HISTORY_IMMUTABLE_UNSAFE: historyImmutableUnsafe ? "1" : "0",
+        TEST_SOURCE_IMPORT_SENTINEL: assertNoImports ? sourceImportSentinel : "",
+        TEST_TRANSPORT_IMPORT_SENTINEL: assertNoImports ? transportImportSentinel : "",
       },
     },
   );
@@ -502,6 +547,19 @@ const runDiagnostic = async (mode: "baseline" | "candidate") => {
   return { stdout, stderr, exitCode };
 };
 
+const expectPreflightOnly = async (result: Awaited<ReturnType<typeof runGate>>): Promise<void> => {
+  expect(result.exitCode).toBe(1);
+  expect(result.stderr).toBe("");
+  expect(JSON.parse(result.stdout)).toMatchObject({
+    releaseEligible: false,
+    identity: { transport: "not_loaded" },
+    metrics: null,
+    decision: { passed: false, criteriaPassed: false, reasons: ["source_identity_unbound"], transitions: null },
+  });
+  await expect(access(sourceImportSentinel)).rejects.toThrow();
+  await expect(access(transportImportSentinel)).rejects.toThrow();
+};
+
 describe("paired import recognition CLI", () => {
   test("loads both sides but marks deterministic injected metrics as non-release evidence", async () => {
     const result = await runGate();
@@ -519,17 +577,17 @@ describe("paired import recognition CLI", () => {
       decision: {
         passed: false,
         criteriaPassed: true,
-        reasons: ["source_identity_unbound", "non_live_transport"],
+        reasons: ["non_live_transport"],
         transitions: { attributableSafety: 3, unexplainedNewReviews: 0 },
       },
     });
-    expect(output.identity.sources.baseline.moduleHashes.aiPrompts).toHaveLength(64);
-    expect(output.identity.sources.baseline.moduleHashes.importMatch).toHaveLength(64);
-    expect(output.identity.sources.baseline.moduleHashes.apiAdapter).toHaveLength(64);
-    expect(output.identity.sources.candidate.moduleHashes.importRecognition).toHaveLength(64);
-    expect(output.identity.sources.candidate.moduleHashes.importHistory).toHaveLength(64);
-    expect(output.identity.sources.candidate.moduleHashes.apiAdapter).toHaveLength(64);
-    expect(output.identity.sources.candidate.moduleHashes.e2eeAdapter).toHaveLength(64);
+    expect(output.identity.sources.baseline.moduleHashes["packages/shared/src/aiPrompts.ts"]).toHaveLength(64);
+    expect(output.identity.sources.baseline.moduleHashes["packages/api/src/routes/import-match.ts"]).toHaveLength(64);
+    expect(output.identity.sources.baseline.moduleHashes["packages/api/src/routes/import.ts"]).toHaveLength(64);
+    expect(output.identity.sources.candidate.moduleHashes["packages/shared/src/importRecognition.ts"]).toHaveLength(64);
+    expect(output.identity.sources.candidate.moduleHashes["packages/shared/src/importHistory.ts"]).toHaveLength(64);
+    expect(output.identity.sources.candidate.moduleHashes["packages/api/src/routes/import.ts"]).toHaveLength(64);
+    expect(output.identity.sources.candidate.moduleHashes["packages/web/src/lib/aiProvider/e2eeByok.ts"]).toHaveLength(64);
     expect(output.identity.sources.candidate).toMatchObject({
       expectedRevision: candidateRevision,
       actualRevision: candidateRevision,
@@ -565,12 +623,50 @@ describe("paired import recognition CLI", () => {
 
   test("fails closed when the explicit candidate revision does not match the loaded tree", async () => {
     const expectedRevision = "0123456789abcdef0123456789abcdef01234567";
-    const result = await runGate(false, "", false, "run-tests", false, false, expectedRevision);
+    const result = await runGate(false, "", false, "run-tests", false, false, expectedRevision, true);
 
-    expect(result.exitCode).not.toBe(0);
+    await expectPreflightOnly(result);
     const output = JSON.parse(result.stdout);
     expect(output.identity.sources.candidate).toMatchObject({ expectedRevision, actualRevision: candidateRevision, bound: false });
-    expect(output.decision.reasons).toContain("source_identity_unbound");
+  });
+
+  test("preflight rejects dirty tracked and untracked candidate roots before imports or transport", async () => {
+    const sourcePath = resolve(candidateRoot, "packages/shared/src/importHistory.ts");
+    const original = await readFile(sourcePath);
+    try {
+      await appendFile(sourcePath, "\n// tracked drift\n");
+      await expectPreflightOnly(await runGate(false, "", false, "run-tests", false, false, candidateRevision, true));
+    } finally {
+      await writeFile(sourcePath, original);
+    }
+
+    const untracked = resolve(candidateRoot, "unexpected-source.txt");
+    try {
+      await writeFile(untracked, "untracked");
+      await expectPreflightOnly(await runGate(false, "", false, "run-tests", false, false, candidateRevision, true));
+    } finally {
+      await rm(untracked, { force: true });
+    }
+  });
+
+  test("preflight rejects unversioned and ignored nested source copies with transitive drift", async () => {
+    const unversioned = resolve(root, "candidate-unversioned");
+    await mkdir(unversioned, { recursive: true });
+    await cp(resolve(candidateRoot, "packages"), resolve(unversioned, "packages"), { recursive: true });
+    await expectPreflightOnly(await runGate(false, "", false, "run-tests", false, false, candidateRevision, true, unversioned));
+
+    const nested = resolve(candidateRoot, "ignored-source-copy");
+    await appendFile(resolve(candidateRoot, ".git/info/exclude"), "\nignored-source-copy/\n");
+    try {
+      await mkdir(nested, { recursive: true });
+      await cp(resolve(candidateRoot, "packages"), resolve(nested, "packages"), { recursive: true });
+      await appendFile(resolve(nested, "packages/shared/src/importHistory.ts"), "\n// transitive drift\n");
+      await expectPreflightOnly(await runGate(false, "", false, "run-tests", false, false, candidateRevision, true, nested));
+      const output = JSON.parse((await runGate(false, "", false, "run-tests", false, false, candidateRevision, true, nested)).stdout);
+      expect(output.identity.sources.candidate.bound).toBe(false);
+    } finally {
+      await rm(nested, { recursive: true, force: true });
+    }
   });
 
   test("single-side baseline and candidate diagnostics can never return the release-success exit", async () => {
@@ -607,8 +703,8 @@ describe("paired import recognition CLI", () => {
     const output = JSON.parse(result.stdout);
     expect(output.metrics).toBeNull();
     expect(output.decision).toEqual({ passed: false, criteriaPassed: false, reasons: ["paired_runs_missing"], transitions: null });
-    expect(output.identity.sources.baseline.moduleHashes.aiPrompts).toHaveLength(64);
-    expect(output.identity.sources.candidate.moduleHashes.aiPrompts).toHaveLength(64);
+    expect(output.identity.sources.baseline.moduleHashes["packages/shared/src/aiPrompts.ts"]).toHaveLength(64);
+    expect(output.identity.sources.candidate.moduleHashes["packages/shared/src/aiPrompts.ts"]).toHaveLength(64);
     expect(result.stdout).not.toContain("PRIVATE_VISIBLE_SENTINEL");
     expect(result.stderr).toBe("");
   });
