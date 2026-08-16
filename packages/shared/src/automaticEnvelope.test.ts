@@ -123,6 +123,23 @@ describe("automatic monthly allocation", () => {
     expect(automaticAllocatedForEnvelopeMonth(transactions, "E-save", "2026-08")).toBe(500_00);
   });
 
+  it("subtracts a source allocation in the selected month", () => {
+    const sourceAllocation = tx({ date: "2026-08-12", amount: 200_00, allocationFromEnvelopeId: "E-save" });
+
+    expect(automaticAllocatedForEnvelopeMonth([sourceAllocation], "E-save", "2026-08")).toBe(-200_00);
+  });
+
+  it("keeps a same-envelope allocation neutral", () => {
+    const sameEnvelope = tx({
+      date: "2026-08-12",
+      amount: 200_00,
+      allocationFromEnvelopeId: "E-save",
+      allocationToEnvelopeId: "E-save",
+    });
+
+    expect(automaticAllocatedForEnvelopeMonth([sameEnvelope], "E-save", "2026-08")).toBe(0);
+  });
+
   it("converts a displayed total back to its manual component", () => {
     expect(manualAllocationForDisplayedTotal(transactions, "E-save", "2026-08", 900_00)).toBe(400_00);
   });

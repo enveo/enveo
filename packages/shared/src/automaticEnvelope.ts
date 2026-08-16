@@ -59,15 +59,14 @@ export function transactionAllocationDeltas(
 }
 
 export function automaticAllocatedForEnvelopeMonth(transactions: readonly Transaction[], envelopeId: string, month: string): Money {
-  return transactions.reduce(
-    (total, transaction) =>
-      transaction.date.slice(0, 7) === month
-        ? total +
-          (transaction.allocationToEnvelopeId === envelopeId ? transaction.amount : 0) -
-          (transaction.allocationFromEnvelopeId === envelopeId ? transaction.amount : 0)
-        : total,
-    0,
-  );
+  let total = 0;
+  for (const transaction of transactions) {
+    if (transaction.date.slice(0, 7) !== month) continue;
+    for (const [id, amount] of transactionAllocationDeltas(transaction)) {
+      if (id === envelopeId) total += amount;
+    }
+  }
+  return total;
 }
 
 export function manualAllocationForDisplayedTotal(transactions: readonly Transaction[], envelopeId: string, month: string, displayedTotal: Money): Money {
