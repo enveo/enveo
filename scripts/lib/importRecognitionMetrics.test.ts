@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { resolve } from "node:path";
 import {
   classifySourceAdapter,
   normalizeBaselineRecognition,
@@ -287,6 +288,59 @@ const manifestRow = (overrides: Partial<RecognitionManifestRow> = {}): Recogniti
 });
 
 describe("recognition evaluator adapters", () => {
+  test("only a real OpenAI comparison can receive the release-success status", async () => {
+    const evaluator = (await import("../evaluate-import-recognition")) as unknown as {
+      comparisonReleaseStatus?: (
+        transport: "openai" | "injected-test",
+        criteriaPassed: boolean,
+        reasons: string[],
+      ) => { releaseEligible: boolean; passed: boolean; reasons: string[]; exitCode: number };
+    };
+    expect(typeof evaluator.comparisonReleaseStatus).toBe("function");
+
+    expect(evaluator.comparisonReleaseStatus!("openai", true, [])).toEqual({ releaseEligible: true, passed: true, reasons: [], exitCode: 0 });
+    expect(evaluator.comparisonReleaseStatus!("openai", false, ["unsafe_row_constraint_failed"])).toEqual({
+      releaseEligible: false,
+      passed: false,
+      reasons: ["unsafe_row_constraint_failed"],
+      exitCode: 1,
+    });
+    expect(evaluator.comparisonReleaseStatus!("injected-test", true, [])).toEqual({
+      releaseEligible: false,
+      passed: false,
+      reasons: ["non_live_transport"],
+      exitCode: 2,
+    });
+  });
+
+  test("history safety binds the exact production pipeline and API/E2EE parity tests", async () => {
+    const evaluator = (await import("../evaluate-import-recognition")) as unknown as {
+      runHistorySafetyGate?: (root: string) => Promise<{
+        passed: boolean;
+        reasons: string[];
+        sourceHashes: Record<string, string | null>;
+        testHashes: Record<string, string | null>;
+      }>;
+    };
+    expect(typeof evaluator.runHistorySafetyGate).toBe("function");
+    const identity = await evaluator.runHistorySafetyGate!(resolve(import.meta.dir, "../.."));
+
+    expect(identity.passed).toBe(true);
+    expect(identity.reasons).toEqual([]);
+    expect(identity.sourceHashes).toEqual({
+      sharedPipeline: expect.stringMatching(/^[0-9a-f]{64}$/),
+      sharedHistory: expect.stringMatching(/^[0-9a-f]{64}$/),
+      sharedRecognition: expect.stringMatching(/^[0-9a-f]{64}$/),
+      apiAdapter: expect.stringMatching(/^[0-9a-f]{64}$/),
+      e2eeAdapter: expect.stringMatching(/^[0-9a-f]{64}$/),
+    });
+    expect(identity.testHashes).toEqual({
+      sharedPipeline: expect.stringMatching(/^[0-9a-f]{64}$/),
+      sharedHistory: expect.stringMatching(/^[0-9a-f]{64}$/),
+      apiE2eeParity: expect.stringMatching(/^[0-9a-f]{64}$/),
+    });
+  }, 30_000);
+
   test("paired mode requires distinct explicit baseline and candidate source trees", () => {
     expect(
       parseEvalArgs([
@@ -602,6 +656,93 @@ describe("recognition evaluator adapters", () => {
         false,
       ),
     ).toThrow("relation_changes_ledger_shape");
+  });
+
+  test("transaction semantics cannot be relabelled as supporting or UI evidence", () => {
+    const fixture = {
+      id: "fixture",
+      images: ["images/fixture.png"],
+      locale: "en",
+      today: "2026-08-16",
+      budgetCurrency: "EUR",
+      formFactor: "mobile",
+      overlap: false,
+      rows: [manifestRow()],
+    };
+    const relabelled = manifestRow({
+      semanticKind: "incoming_transfer",
+      rowRole: "supporting_detail",
+      safetyClass: "non_ledger",
+      expectedProposal: null,
+    });
+
+    expect(() => parseRecognitionManifest({ version: 1, fixtures: [{ ...fixture, rows: [relabelled] }] }, false)).toThrow(
+      "transaction semantic kinds must be financial_event",
+    );
+  });
+
+  test("representative coverage cannot be supplied by non-ledger transaction labels", () => {
+    const requiredKinds = [
+      "card_purchase",
+      "salary",
+      "merchant_refund",
+      "cashback_or_reward",
+      "incoming_transfer",
+      "outgoing_transfer",
+      "account_topup",
+      "fx_conversion",
+    ];
+    const nonLedgerRows = requiredKinds.map((semanticKind, index) =>
+      manifestRow({
+        id: `non-ledger-${index}`,
+        semanticKind,
+        rowRole: "supporting_detail",
+        safetyClass: "non_ledger",
+        expectedProposal: null,
+        candidatePosition: { imageIndex: 0, visualOrder: index },
+        baselineIndex: null,
+      }),
+    );
+    nonLedgerRows.push(
+      manifestRow({
+        id: "pending",
+        postingStatus: "pending",
+        safetyClass: "review_only",
+        requiredSafetyReasons: ["pending_or_declined"],
+        candidatePosition: { imageIndex: 0, visualOrder: nonLedgerRows.length },
+        baselineIndex: null,
+      }),
+      manifestRow({
+        id: "declined",
+        postingStatus: "declined",
+        safetyClass: "review_only",
+        requiredSafetyReasons: ["pending_or_declined"],
+        candidatePosition: { imageIndex: 0, visualOrder: nonLedgerRows.length + 1 },
+        baselineIndex: null,
+      }),
+    );
+    const mobile = {
+      id: "mobile",
+      images: ["images/mobile.png"],
+      locale: "en",
+      today: "2026-08-16",
+      budgetCurrency: "EUR",
+      formFactor: "mobile",
+      overlap: true,
+      rows: nonLedgerRows,
+    };
+    const desktop = {
+      id: "desktop",
+      images: ["images/desktop.png"],
+      locale: "es",
+      today: "2026-08-16",
+      budgetCurrency: "USD",
+      formFactor: "desktop",
+      overlap: false,
+      rows: [manifestRow({ id: "desktop", currency: "USD", baselineIndex: null })],
+    };
+
+    expect(() => parseRecognitionManifest({ version: 1, fixtures: [mobile, desktop] })).toThrow("transaction semantic kinds must be financial_event");
   });
 
   test("representative coverage is derived from explicit fixture and row classifications", () => {

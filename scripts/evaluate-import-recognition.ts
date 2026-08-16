@@ -65,18 +65,19 @@ interface CandidateValidationModule {
   validateImportExtraction: (input: { batch: unknown; budgetCurrency: string }) => unknown;
 }
 
-interface ImportHistoryModule {
-  selectImportHistoryCandidates: (
-    query: Record<string, unknown>,
-    records: Array<Record<string, unknown>>,
-  ) => {
-    candidates: Array<Record<string, unknown>>;
-    conflict: boolean;
-  };
+interface ImportPipelineModule {
+  runImportRecognitionPipeline: (input: Record<string, unknown>) => Promise<{
+    rows: Array<Record<string, unknown>>;
+    proposals: Array<Record<string, unknown>>;
+  }>;
 }
 
-interface AssignmentModule {
-  decideAssignment: (rawPlace: string, model: Record<string, string | null> | undefined) => Record<string, string | null>;
+interface ImportHistoryModule {
+  selectImportHistoryCandidates: unknown;
+}
+
+interface ImportRecognitionModule {
+  validateImportExtraction: unknown;
 }
 
 interface BaselineItem {
@@ -286,6 +287,21 @@ const SEMANTIC_KINDS = new Set([
   "cash_deposit",
   "unknown",
 ]);
+const TRANSACTION_SEMANTIC_KINDS = new Set([
+  "card_purchase",
+  "cash_withdrawal",
+  "fee",
+  "interest",
+  "salary",
+  "cashback_or_reward",
+  "merchant_refund",
+  "chargeback",
+  "incoming_transfer",
+  "outgoing_transfer",
+  "account_topup",
+  "internal_transfer",
+  "cash_deposit",
+]);
 const RELATION_KINDS = new Set(["fx_for", "refund_of", "pending_version_of", "fee_for", "duplicate_of", "counterpart_of", "continuation_of"]);
 const REVIEW_REASONS = new Set([
   "missing_fact",
@@ -410,6 +426,15 @@ const parseManifestRow = (value: unknown, field: string): RecognitionManifestRow
   const requiredSafetyReasons = [...new Set(value.requiredSafetyReasons as string[])];
   const semanticKind = requireString(value.semanticKind, `${field}.semanticKind`);
   if (!SEMANTIC_KINDS.has(semanticKind)) throw new Error(`manifest ${field}.semanticKind is invalid`);
+  if (TRANSACTION_SEMANTIC_KINDS.has(semanticKind) && rowRole !== "financial_event") {
+    throw new Error(`manifest ${field} transaction semantic kinds must be financial_event`);
+  }
+  if (rowRole === "supporting_detail" && semanticKind !== "fx_conversion") {
+    throw new Error(`manifest ${field} supporting_detail semantic kind must be fx_conversion`);
+  }
+  if (rowRole === "ui_metadata" && semanticKind !== "unknown") {
+    throw new Error(`manifest ${field} ui_metadata semantic kind must be unknown`);
+  }
   const relation = parseRelation(value.relation, `${field}.relation`);
   const expectedProposal = parseProposalTruth(value.expectedProposal, `${field}.expectedProposal`);
   if (rowRole !== "financial_event" && (safetyClass !== "non_ledger" || expectedProposal !== null || requiredSafetyReasons.length > 0)) {
@@ -463,6 +488,9 @@ const parseManifestRow = (value: unknown, field: string): RecognitionManifestRow
 };
 
 const assertRepresentativeCoverage = (manifest: RecognitionManifest): void => {
+  const financialKinds = new Set(
+    manifest.fixtures.flatMap((fixture) => fixture.rows.filter((row) => row.rowRole === "financial_event").map((row) => row.semanticKind)),
+  );
   const kinds = new Set(manifest.fixtures.flatMap((fixture) => fixture.rows.map((row) => row.semanticKind)));
   const statuses = new Set(manifest.fixtures.flatMap((fixture) => fixture.rows.map((row) => row.postingStatus)));
   const forms = new Set(manifest.fixtures.map((fixture) => fixture.formFactor));
@@ -473,7 +501,7 @@ const assertRepresentativeCoverage = (manifest: RecognitionManifest): void => {
       ...fixture.rows.map((row) => row.currency).filter((code): code is string => code !== null),
     ]),
   );
-  const requiredKinds = [
+  const requiredFinancialKinds = [
     "card_purchase",
     "salary",
     "merchant_refund",
@@ -481,10 +509,10 @@ const assertRepresentativeCoverage = (manifest: RecognitionManifest): void => {
     "incoming_transfer",
     "outgoing_transfer",
     "account_topup",
-    "fx_conversion",
   ];
-  const missing = requiredKinds.filter((kind) => !kinds.has(kind));
+  const missing = requiredFinancialKinds.filter((kind) => !financialKinds.has(kind));
   if (missing.length > 0) throw new Error("manifest corpus coverage is missing required transaction classes");
+  if (!kinds.has("fx_conversion")) throw new Error("manifest corpus coverage requires FX evidence");
   if (!statuses.has("pending") || !statuses.has("declined")) throw new Error("manifest corpus coverage requires pending and declined rows");
   if (!forms.has("mobile") || !forms.has("desktop")) throw new Error("manifest corpus coverage requires mobile and desktop fixtures");
   if (!manifest.fixtures.some((fixture) => fixture.overlap)) throw new Error("manifest corpus coverage requires overlap");
@@ -576,6 +604,21 @@ interface ChatTransportInput {
 }
 
 type ChatTransport = (input: ChatTransportInput) => Promise<string>;
+type TransportKind = "openai" | "injected-test";
+
+export function comparisonReleaseStatus(
+  transport: TransportKind,
+  criteriaPassed: boolean,
+  reasons: string[],
+): { releaseEligible: boolean; passed: boolean; reasons: string[]; exitCode: number } {
+  const releaseEligible = transport === "openai" && criteriaPassed;
+  return {
+    releaseEligible,
+    passed: releaseEligible,
+    reasons: transport === "injected-test" ? [...reasons, "non_live_transport"] : reasons,
+    exitCode: releaseEligible ? 0 : transport === "injected-test" && criteriaPassed ? 2 : 1,
+  };
+}
 
 interface SourceIdentity {
   revision: string;
@@ -674,10 +717,12 @@ async function modelChat({ request, fixtureId, apiKey, model }: ChatTransportInp
   return content;
 }
 
-async function resolveTransport(): Promise<{ kind: "openai" | "injected-test"; chat: ChatTransport }> {
+async function resolveTransport(): Promise<{ kind: TransportKind; chat: ChatTransport }> {
   const injected = process.env.ENVEO_IMPORT_EVAL_TEST_TRANSPORT;
   if (!injected) return { kind: "openai", chat: modelChat };
-  if (process.env.ENVEO_IMPORT_EVAL_TEST_MODE !== "1") throw new Error("injected evaluator transport is test-only");
+  if (process.env.ENVEO_IMPORT_EVAL_TEST_MODE !== "1" || process.env.ENVEO_TEST_RUNNER !== "run-tests") {
+    throw new Error("injected evaluator transport is test-only");
+  }
   let module: { chat?: ChatTransport };
   try {
     const path = await realpath(resolve(injected));
@@ -712,14 +757,18 @@ async function loadSource(mode: "baseline" | "candidate", sourceTree: string): P
   return { root, prompts, validation, identity: { revision: await sourceRevision(root), adapter, moduleHashes } };
 }
 
-async function runHistorySafetyGate(candidateRoot: string): Promise<HistorySafetyIdentity> {
+export async function runHistorySafetyGate(candidateRoot: string): Promise<HistorySafetyIdentity> {
   const sourceFiles = {
-    importHistory: resolve(candidateRoot, "packages/shared/src/importHistory.ts"),
-    importAssignment: resolve(candidateRoot, "packages/api/src/routes/import-match.ts"),
+    sharedPipeline: resolve(candidateRoot, "packages/shared/src/aiPrompts.ts"),
+    sharedHistory: resolve(candidateRoot, "packages/shared/src/importHistory.ts"),
+    sharedRecognition: resolve(candidateRoot, "packages/shared/src/importRecognition.ts"),
+    apiAdapter: resolve(candidateRoot, "packages/api/src/routes/import.ts"),
+    e2eeAdapter: resolve(candidateRoot, "packages/web/src/lib/aiProvider/e2eeByok.ts"),
   };
   const testFiles = {
-    importHistory: resolve(candidateRoot, "packages/shared/src/importHistory.test.ts"),
-    importAssignment: resolve(candidateRoot, "packages/api/src/routes/import-match.test.ts"),
+    sharedPipeline: resolve(candidateRoot, "packages/shared/src/aiPrompts.test.ts"),
+    sharedHistory: resolve(candidateRoot, "packages/shared/src/importHistory.test.ts"),
+    apiE2eeParity: resolve(candidateRoot, "packages/web/src/lib/aiProvider/e2eeByok.test.ts"),
   };
   const optionalHash = async (path: string): Promise<string | null> => {
     try {
@@ -731,87 +780,205 @@ async function runHistorySafetyGate(candidateRoot: string): Promise<HistorySafet
   const identity: HistorySafetyIdentity = {
     passed: false,
     reasons: [],
-    sourceHashes: {
-      importHistory: await optionalHash(sourceFiles.importHistory),
-      importAssignment: await optionalHash(sourceFiles.importAssignment),
-    },
-    testHashes: {
-      importHistory: await optionalHash(testFiles.importHistory),
-      importAssignment: await optionalHash(testFiles.importAssignment),
-    },
+    sourceHashes: Object.fromEntries(await Promise.all(Object.entries(sourceFiles).map(async ([name, path]) => [name, await optionalHash(path)]))),
+    testHashes: Object.fromEntries(await Promise.all(Object.entries(testFiles).map(async ([name, path]) => [name, await optionalHash(path)]))),
   };
   if ([...Object.values(identity.sourceHashes), ...Object.values(identity.testHashes)].some((hash) => hash === null)) {
     identity.reasons.push("history_safety_file_missing");
     return identity;
   }
 
+  let pipeline: ImportPipelineModule;
   let history: ImportHistoryModule;
-  let assignment: AssignmentModule;
+  let recognition: ImportRecognitionModule;
   try {
-    history = (await import(pathToFileURL(sourceFiles.importHistory).href)) as ImportHistoryModule;
-    assignment = (await import(pathToFileURL(sourceFiles.importAssignment).href)) as AssignmentModule;
+    pipeline = (await import(pathToFileURL(sourceFiles.sharedPipeline).href)) as ImportPipelineModule;
+    history = (await import(pathToFileURL(sourceFiles.sharedHistory).href)) as ImportHistoryModule;
+    recognition = (await import(pathToFileURL(sourceFiles.sharedRecognition).href)) as ImportRecognitionModule;
   } catch {
     identity.reasons.push("history_safety_module_load_failed");
     return identity;
   }
-  if (typeof history.selectImportHistoryCandidates !== "function" || typeof assignment.decideAssignment !== "function") {
+  if (
+    typeof pipeline.runImportRecognitionPipeline !== "function" ||
+    typeof history.selectImportHistoryCandidates !== "function" ||
+    typeof recognition.validateImportExtraction !== "function"
+  ) {
     identity.reasons.push("history_safety_production_seam_missing");
     return identity;
   }
-  const visibleProposal = {
-    rawPlace: "BANK FUEL 123",
-    tag: "FUEL",
-    currency: "PLN",
-    type: "expense",
-    isRefund: false,
-    semanticKind: "card_purchase",
-    toAccountId: null,
+
+  const account = {
+    id: "account-a",
+    name: "Checking",
+    color: "#000000",
+    icon: "wallet",
+    type: "checking",
+    onBudget: true,
+    initialBalance: 0,
+    archived: false,
+    sort: 0,
+    automaticEnvelopeId: null,
   };
-  const query = { accountId: "account-a", ownedAccountIds: ["account-a", "account-b"], proposal: visibleProposal };
-  const record = {
-    accountId: "account-a",
+  const envelopes = [
+    {
+      id: "envelope-model",
+      groupId: "group-a",
+      name: "Model envelope",
+      color: "#000000",
+      icon: "tag",
+      note: null,
+      monthlyTarget: null,
+      isSavings: false,
+      sort: 0,
+      archived: false,
+    },
+  ];
+  const categories = [{ id: "category-model", name: "Model category" }];
+  const historyRecord = (overrides: Record<string, unknown> = {}): Record<string, unknown> => ({
+    accountId: account.id,
     currency: "PLN",
     sourceRef: "BANK FUEL 123",
     tag: "FUEL",
-    place: "Fuel station",
-    name: "Fuel",
-    envelope: "Car",
-    category: "Fuel",
+    place: "History place",
+    name: "History name",
+    envelope: "History envelope",
+    category: "History category",
     type: "expense",
     isRefund: false,
     toAccountId: null,
-  };
-  const before = JSON.stringify(query);
-  const exact = history.selectImportHistoryCandidates(query, [record]);
-  const contained = history.selectImportHistoryCandidates({ ...query, proposal: { ...visibleProposal, rawPlace: "BANK FUEL 123 WARSAW" } }, [record]);
-  const fuzzy = history.selectImportHistoryCandidates({ ...query, proposal: { ...visibleProposal, rawPlace: "BNK FUEL 123" } }, [record]);
-  const incompatible = history.selectImportHistoryCandidates(query, [
-    { ...record, type: "income" },
-    { ...record, isRefund: true },
-  ]);
-  const conflict = history.selectImportHistoryCandidates(query, [record, { ...record, envelope: "Other", category: "Other" }]);
-  const modelAssignment = { name: "Visible", place: "Visible", envelope: "Visible", category: "Visible" };
-  const assigned = assignment.decideAssignment("BANK FUEL 123", modelAssignment);
-  const fallback = assignment.decideAssignment("BANK FUEL 123", undefined);
-  const safe =
-    JSON.stringify(query) === before &&
-    exact.candidates.length > 0 &&
-    contained.candidates.length > 0 &&
-    fuzzy.candidates.length > 0 &&
-    incompatible.candidates.length === 0 &&
-    conflict.conflict === true &&
-    conflict.candidates.length > 1 &&
-    JSON.stringify(assigned) === JSON.stringify(modelAssignment) &&
-    fallback.name === "BANK FUEL 123" &&
-    fallback.place === null &&
-    fallback.envelope === null &&
-    fallback.category === null;
+    ...overrides,
+  });
+  const scenarios = [
+    { rawPlace: "BANK FUEL 123", records: [historyRecord()], match: "exact_source_ref", conflict: false },
+    { rawPlace: "BANK FUEL 123 WARSAW", records: [historyRecord()], match: "source_similarity", conflict: false },
+    {
+      rawPlace: "BANK FUEL 123",
+      records: [historyRecord({ sourceRef: null, tag: null, place: "BNK FUEL 123" })],
+      match: "fuzzy_similarity",
+      conflict: false,
+    },
+    {
+      rawPlace: "BANK FUEL 123",
+      records: [historyRecord(), historyRecord({ envelope: "Other history envelope", category: "Other history category" })],
+      match: "exact_source_ref",
+      conflict: true,
+    },
+    {
+      rawPlace: "BANK FUEL 123",
+      records: [historyRecord({ type: "income" }), historyRecord({ isRefund: true })],
+      match: null,
+      conflict: false,
+    },
+  ] as const;
+
+  let safe = true;
+  for (const scenario of scenarios) {
+    let cycle = 0;
+    const captured: { cycleTwoContext?: Record<string, unknown> } = {};
+    const result = await pipeline.runImportRecognitionPipeline({
+      images: ["data:image/png;base64,AA=="],
+      locale: "en",
+      today: "2026-08-16",
+      budgetCurrency: "PLN",
+      accountId: account.id,
+      accounts: [account],
+      envelopes,
+      categories,
+      transactions: [],
+      historyRecords: scenario.records,
+      chat: async (request: { messages?: Array<{ content?: unknown }> }) => {
+        cycle++;
+        if (cycle === 1) {
+          return JSON.stringify({
+            rows: [
+              {
+                rowId: "row-a",
+                imageIndex: 0,
+                visualOrder: 0,
+                rawTextLines: [scenario.rawPlace],
+                date: "2026-08-15",
+                amount: 1234,
+                currency: "PLN",
+                direction: "debit",
+                postingStatus: "posted",
+                rowRole: "financial_event",
+                semanticKind: "card_purchase",
+                relation: null,
+                confidence: "medium",
+                reviewReasons: ["possible_ocr_error"],
+              },
+            ],
+          });
+        }
+        const content = request.messages?.[1]?.content;
+        if (typeof content === "string") {
+          const parsed: unknown = JSON.parse(content);
+          if (ownObject(parsed)) captured.cycleTwoContext = parsed;
+        }
+        return JSON.stringify({
+          rows: [
+            {
+              rowId: "row-a",
+              name: "Model name",
+              place: "Model place",
+              envelopeId: "envelope-model",
+              categoryId: "category-model",
+              semanticKind: "card_purchase",
+              relation: null,
+              reviewReasons: [],
+              type: "income",
+              isRefund: true,
+            },
+          ],
+        });
+      },
+    });
+    const contextRows = Array.isArray(captured.cycleTwoContext?.rows) ? captured.cycleTwoContext.rows : [];
+    const contextRow = ownObject(contextRows[0]) ? contextRows[0] : {};
+    const contextProposal = ownObject(contextRow.proposal) ? contextRow.proposal : {};
+    const candidates = Array.isArray(contextRow.historyCandidates) ? contextRow.historyCandidates : [];
+    const firstCandidate = ownObject(candidates[0]) ? candidates[0] : {};
+    const outputRow = ownObject(result.rows[0]) ? result.rows[0] : {};
+    const proposal = ownObject(result.proposals[0]) ? result.proposals[0] : {};
+    const reviewReasons = Array.isArray(proposal.reviewReasons) ? proposal.reviewReasons : [];
+    safe &&=
+      cycle === 2 &&
+      contextRow.date === "2026-08-15" &&
+      contextRow.amount === 1234 &&
+      contextRow.currency === "PLN" &&
+      contextRow.direction === "debit" &&
+      contextProposal.date === "2026-08-15" &&
+      contextProposal.amount === 1234 &&
+      contextProposal.currency === "PLN" &&
+      contextProposal.type === "expense" &&
+      contextProposal.isRefund === false &&
+      contextRow.historyConflict === scenario.conflict &&
+      candidates.length === (scenario.conflict ? 2 : scenario.match === null ? 0 : 1) &&
+      (scenario.match === null || firstCandidate.match === scenario.match) &&
+      outputRow.date === "2026-08-15" &&
+      outputRow.amount === 1234 &&
+      outputRow.currency === "PLN" &&
+      outputRow.direction === "debit" &&
+      proposal.date === "2026-08-15" &&
+      proposal.amount === 1234 &&
+      proposal.currency === "PLN" &&
+      proposal.type === "expense" &&
+      proposal.isRefund === false &&
+      proposal.envelopeId === "envelope-model" &&
+      proposal.categoryId === "category-model" &&
+      proposal.name === "Model name" &&
+      proposal.placeName === "Model place" &&
+      reviewReasons.includes("possible_ocr_error") &&
+      reviewReasons.includes("fact_correction") &&
+      (!scenario.conflict || (reviewReasons.includes("history_conflict") && reviewReasons.includes("multiple_history_candidates")));
+  }
   if (!safe) {
     identity.reasons.push("history_safety_semantic_check_failed");
     return identity;
   }
 
-  const child = Bun.spawn([process.execPath, "test", testFiles.importHistory, testFiles.importAssignment], {
+  const child = Bun.spawn([process.execPath, "test", ...Object.values(testFiles)], {
     cwd: candidateRoot,
     stdout: "ignore",
     stderr: "ignore",
@@ -906,6 +1073,7 @@ async function runEvaluation(args: EvaluationArgs): Promise<void> {
         `${JSON.stringify(
           {
             mode: "compare",
+            releaseEligible: false,
             identity: {
               model,
               transport: transport.kind,
@@ -915,7 +1083,7 @@ async function runEvaluation(args: EvaluationArgs): Promise<void> {
               historySafety,
             },
             metrics: null,
-            decision: { passed: false, reasons: [...historySafety.reasons, "paired_runs_missing"], transitions: null },
+            decision: { passed: false, criteriaPassed: false, reasons: [...historySafety.reasons, "paired_runs_missing"], transitions: null },
           },
           null,
           2,
@@ -934,6 +1102,7 @@ async function runEvaluation(args: EvaluationArgs): Promise<void> {
         `${JSON.stringify(
           {
             mode: "compare",
+            releaseEligible: false,
             identity: {
               model,
               transport: transport.kind,
@@ -943,7 +1112,7 @@ async function runEvaluation(args: EvaluationArgs): Promise<void> {
               historySafety,
             },
             metrics: null,
-            decision: { passed: false, reasons: ["paired_runs_missing"], transitions: null },
+            decision: { passed: false, criteriaPassed: false, reasons: ["paired_runs_missing"], transitions: null },
           },
           null,
           2,
@@ -953,8 +1122,10 @@ async function runEvaluation(args: EvaluationArgs): Promise<void> {
       return;
     }
     const decision = gateImportRecognition(expected, baselineActual, candidateActual);
+    const release = comparisonReleaseStatus(transport.kind, decision.passed, decision.reasons);
     const output = {
       mode: "compare",
+      releaseEligible: release.releaseEligible,
       identity: {
         model,
         transport: transport.kind,
@@ -964,10 +1135,10 @@ async function runEvaluation(args: EvaluationArgs): Promise<void> {
         historySafety,
       },
       metrics: { baseline: decision.baseline, candidate: decision.candidate },
-      decision: { passed: decision.passed, reasons: decision.reasons, transitions: decision.transitions },
+      decision: { passed: release.passed, criteriaPassed: decision.passed, reasons: release.reasons, transitions: decision.transitions },
     };
     process.stdout.write(`${JSON.stringify(output, null, 2)}\n`);
-    if (!decision.passed) process.exitCode = 1;
+    if (release.exitCode !== 0) process.exitCode = release.exitCode;
     return;
   }
 
@@ -978,9 +1149,11 @@ async function runEvaluation(args: EvaluationArgs): Promise<void> {
       `${JSON.stringify(
         {
           mode: args.mode,
+          releaseEligible: false,
           identity: { model, transport: transport.kind, corpusDigest: corpus.digest, fixtureIds, source: source.identity, historySafety },
           metrics: null,
           diagnosticOnly: true,
+          decision: { passed: false, reasons: [...historySafety.reasons, "diagnostic_only"] },
         },
         null,
         2,
@@ -994,14 +1167,17 @@ async function runEvaluation(args: EvaluationArgs): Promise<void> {
     `${JSON.stringify(
       {
         mode: args.mode,
+        releaseEligible: false,
         identity: { model, transport: transport.kind, corpusDigest: corpus.digest, fixtureIds, source: source.identity, historySafety },
         metrics: scoreImportRecognition(expected, actual),
         diagnosticOnly: true,
+        decision: { passed: false, reasons: ["diagnostic_only"] },
       },
       null,
       2,
     )}\n`,
   );
+  process.exitCode = 2;
 }
 
 if (import.meta.main) {
