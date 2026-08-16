@@ -23,7 +23,7 @@ import { stateRoutes } from "./routes/state";
 import { syncRoutes } from "./routes/sync";
 import { createSync2Routes } from "./routes/sync2";
 import { txnRoutes } from "./routes/transactions";
-import { AutomaticEnvelopeViolation, ScopeViolation } from "./sync/apply";
+import { AutomaticEnvelopeViolation, ScopeViolation, TransactionSemanticViolation } from "./sync/apply";
 
  
 export const vaultMasterKeyProvider = loadVaultMasterKeyProvider({
@@ -170,6 +170,9 @@ app.onError((err, c) => {
   }
   if (err instanceof AutomaticEnvelopeViolation) {
     return c.json({ error: err.code }, 409);
+  }
+  if (err instanceof TransactionSemanticViolation) {
+    return c.json({ error: err.message }, 400);
   }
   console.error(err);
   return c.json({ error: "internal" }, 500);

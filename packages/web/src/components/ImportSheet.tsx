@@ -5,14 +5,14 @@ import { runImportExtract } from "../lib/ai";
 import { importFlow } from "../lib/aiProvider/capabilities";
 import { useAiProvider } from "../lib/aiProvider/useAiProvider";
 import { api, apiErrorMessage, type EditedImportItem, type ImportApplyItem, type ImportApplyResponse, type StateResponse } from "../lib/api";
-import { automaticEnvelopePreview, expenseEnvelopeSelectionForImport, formatAutomaticEnvelopeEffect } from "../lib/automaticEnvelopeUi";
+import { automaticEnvelopePreview, formatAutomaticEnvelopeEffect } from "../lib/automaticEnvelopeUi";
 import { useCurrency, useTheme } from "../lib/contexts";
 import * as e2ee from "../lib/e2ee";
 import { formatMoney, isLight } from "../lib/format";
 import { useT } from "../lib/i18n";
 import { Glyph, Ico } from "../lib/icons";
 import { preferredAccountId, setLastAccountId } from "../lib/lastAccount";
-import { applyLocalImport, type LocalImportReviewItem, planLocalImport, reviewedImportItemsForApply } from "../lib/localImport";
+import { applyLocalImport, importReviewItem, type LocalImportReviewItem, planLocalImport, reviewedImportItemsForApply } from "../lib/localImport";
 import { store } from "../lib/store";
 import { assertOwnReplica } from "../lib/sync";
 import { CORAL, font, TEAL, TRANSFER, tint } from "../lib/theme";
@@ -164,13 +164,7 @@ export function ImportSheet({ show, onClose, state, onApplied }: { show: boolean
       setItems(
         dry.results.map((r) => {
           const automaticEnvelopeId = accounts.find((account) => account.id === accountId)?.automaticEnvelopeId;
-          const selection = expenseEnvelopeSelectionForImport(r.type, r.envelopeId, automaticEnvelopeId);
-          return {
-            ...r,
-            envelopeId: selection.envelopeId,
-            automaticEnvelopeDefault: selection.provenance === "automatic",
-            include: r.status === "added" && !(!!r.currency && r.currency !== currency),
-          };
+          return importReviewItem(r, automaticEnvelopeId, currency);
         }),
       );
       setEdited({});  

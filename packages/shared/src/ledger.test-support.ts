@@ -346,6 +346,8 @@ export function interpret(l: ClientLedger, s: Spec, nextId: () => string): SyncO
         amount: s.amount,
         date: `${s.m}-12`,
         envelopeId: e.id,
+        allocationFromEnvelopeId: null,
+        allocationToEnvelopeId: null,
       });
     }
     case "txnDelete": {

@@ -2,12 +2,14 @@ import { describe, expect, it } from "bun:test";
 import type { AccountView, EnvelopeView } from "@enveo/shared";
 import {
   automaticEnvelopePreview,
+  currentReconciliationAccount,
   expenseEnvelopeAfterAccountChange,
   expenseEnvelopeAfterSplitCancel,
   expenseEnvelopeSelection,
   expenseEnvelopeSelectionForImport,
   explicitExpenseEnvelopeSelection,
   formatAutomaticEnvelopeEffect,
+  reconciliationActualValueAfterAccountRefresh,
   reconciliationEnvelopeAfterAccountRefresh,
   reconciliationTxnPayload,
 } from "./automaticEnvelopeUi";
@@ -255,12 +257,24 @@ describe("automatic envelope effect presentation data", () => {
 });
 
 describe("reconciliation transaction preparation", () => {
+  it("preserves the entered actual balance when only the live account link changes", () => {
+     
+    const opened = { id: "A-savings", balance: 100_00 };
+
+     
+    const refreshed = reconciliationActualValueAfterAccountRefresh("125", opened, { ...opened });
+
+     
+    expect(refreshed).toBe("125");
+  });
+
   it("preserves a user envelope choice when the same account data is presented again", () => {
      
     const chosen = {
       accountId: "A-savings",
       automaticEnvelopeId: "E-savings",
       envelopeId: "E-travel",
+      provenance: "explicit" as const,
     };
 
      
@@ -270,23 +284,54 @@ describe("reconciliation transaction preparation", () => {
     expect(refreshed).toBe(chosen);
   });
 
-  it("starts from the new automatic envelope when the reconciliation account route changes", () => {
+  it("follows a live relink only for the untouched negative-adjustment default", () => {
      
     const chosen = {
       accountId: "A-savings",
       automaticEnvelopeId: "E-savings",
-      envelopeId: "E-travel",
+      envelopeId: "E-savings",
+      provenance: "automatic" as const,
     };
 
      
-    const refreshed = reconciliationEnvelopeAfterAccountRefresh(chosen, "A-travel", "E-travel");
+    const refreshed = reconciliationEnvelopeAfterAccountRefresh(chosen, "A-savings", "E-travel");
 
      
     expect(refreshed).toEqual({
-      accountId: "A-travel",
+      accountId: "A-savings",
       automaticEnvelopeId: "E-travel",
       envelopeId: "E-travel",
+      provenance: "automatic",
     });
+  });
+
+  it("preserves an explicit negative-adjustment choice across a live relink", () => {
+    const chosen = {
+      accountId: "A-savings",
+      automaticEnvelopeId: "E-savings",
+      envelopeId: "E-recorded",
+      provenance: "explicit" as const,
+    };
+
+    expect(reconciliationEnvelopeAfterAccountRefresh(chosen, "A-savings", "E-travel")).toEqual({
+      ...chosen,
+      automaticEnvelopeId: "E-travel",
+    });
+  });
+
+  it("resolves the current account by stored ID so a positive preview follows a relink while open", () => {
+    const openedAccountId = "A-savings";
+    const accountsNow = state.accounts.map((row) => (row.id === openedAccountId ? { ...row, automaticEnvelopeId: "E-travel" } : row));
+
+    const liveAccount = currentReconciliationAccount(accountsNow, openedAccountId);
+    expect(liveAccount?.automaticEnvelopeId).toBe("E-travel");
+    expect(
+      automaticEnvelopePreview(
+        { accounts: liveAccount ? [liveAccount] : [], envelopes: state.envelopes },
+        { type: "income", accountId: openedAccountId },
+        45_00,
+      ).rows,
+    ).toEqual([{ envelopeId: "E-travel", name: "Travel", amount: 45_00 }]);
   });
 
   it("creates a positive difference as ordinary income for central flow stamping", () => {

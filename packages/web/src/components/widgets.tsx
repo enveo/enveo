@@ -1,11 +1,13 @@
 import { computeNetWorthSeries, computeStateResponse } from "@enveo/shared";
-import { type CSSProperties, type ReactNode, useEffect, useMemo, useState } from "react";
+import { type CSSProperties, type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { fmtSignedTrim } from "../lib/amount";
 import { type AccountView, type EnvelopeView, type StateResponse, useLedgerVersion } from "../lib/api";
 import {
   automaticEnvelopePreview,
+  currentReconciliationAccount,
   formatAutomaticEnvelopeEffect,
   type ReconciliationEnvelopeSelection,
+  reconciliationActualValueAfterAccountRefresh,
   reconciliationEnvelopeAfterAccountRefresh,
   reconciliationTxnPayload,
 } from "../lib/automaticEnvelopeUi";
@@ -149,7 +151,8 @@ export function AccountsWidget({ state, onNav, onOpenTxns, opts }: WidgetProps) 
   const shown = expanded ? accounts : accounts.slice(0, count);
   const accountsTotal = MW(sumBalances(accounts));
   const [selAcc, setSelAcc] = useState<AccountView | null>(null);
-  const [reconcile, setReconcile] = useState<AccountView | null>(null);
+  const [reconcileAccountId, setReconcileAccountId] = useState<string | null>(null);
+  const reconcileAccount = currentReconciliationAccount(accountsNow, reconcileAccountId);
   const activeEnvelopes = state.envelopes.filter((envelope) => !envelope.archived);
   const activeGroupIds = new Set(activeEnvelopes.map((envelope) => envelope.groupId));
   const activeGroups = state.groups.filter((group) => activeGroupIds.has(group.id));
@@ -254,7 +257,7 @@ export function AccountsWidget({ state, onNav, onOpenTxns, opts }: WidgetProps) 
                       () => {
                         const a = selAcc;
                         setSelAcc(null);
-                        setReconcile(a);
+                        setReconcileAccountId(a.id);
                       },
                     ],
                   ] as const
@@ -287,7 +290,7 @@ export function AccountsWidget({ state, onNav, onOpenTxns, opts }: WidgetProps) 
         }
       </Sheet>
 
-      <ReconcileSheet account={reconcile} envelopes={activeEnvelopes} groups={activeGroups} onClose={() => setReconcile(null)} />
+      <ReconcileSheet account={reconcileAccount} envelopes={activeEnvelopes} groups={activeGroups} onClose={() => setReconcileAccountId(null)} />
     </div>
   );
 }
@@ -311,13 +314,17 @@ function ReconcileSheet({
   const [pad, setPad] = useState<AmountPadTarget | null>(null);
   const [envelopeSelection, setEnvelopeSelection] = useState<ReconciliationEnvelopeSelection | null>(null);
   const [showEnvelopePicker, setShowEnvelopePicker] = useState(false);
+  const actualBalanceSource = useRef<{ id: string; balance: number } | null>(null);
   const automaticEnvelopeId = account && envelopes.some((envelope) => envelope.id === account.automaticEnvelopeId) ? account.automaticEnvelopeId : null;
   useEffect(() => {
     if (!account) {
+      actualBalanceSource.current = null;
       setEnvelopeSelection(null);
       return;
     }
-    setVal((account.balance / 100).toFixed(2).replace(".", ","));
+    const previousBalanceSource = actualBalanceSource.current;
+    actualBalanceSource.current = { id: account.id, balance: account.balance };
+    setVal((current) => reconciliationActualValueAfterAccountRefresh(current, previousBalanceSource, account));
     setEnvelopeSelection((current) => reconciliationEnvelopeAfterAccountRefresh(current, account.id, automaticEnvelopeId));
     setShowEnvelopePicker(false);
   }, [account?.id, account?.balance, automaticEnvelopeId]);
@@ -430,7 +437,7 @@ function ReconcileSheet({
                     {selectedEnvelope?.name ?? t("Choose an envelope")}
                   </span>
                 </button>
-                {envelopeId !== null && envelopeId === account.automaticEnvelopeId && (
+                {currentEnvelopeSelection.provenance === "automatic" && envelopeId !== null && (
                   <div style={{ color: C.mute, fontSize: 10.5, marginBottom: 12 }}>{t("Selected automatically from this account")}</div>
                 )}
               </>
@@ -462,7 +469,7 @@ function ReconcileSheet({
         envelopes={envelopes}
         groups={groups}
         onSelect={(id) => {
-          setEnvelopeSelection({ ...currentEnvelopeSelection, envelopeId: id });
+          setEnvelopeSelection({ ...currentEnvelopeSelection, envelopeId: id, provenance: "explicit" });
           setShowEnvelopePicker(false);
         }}
       />

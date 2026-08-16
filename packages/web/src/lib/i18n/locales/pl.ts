@@ -131,8 +131,9 @@ export const pl: Dict = {
   "Assign {sum}": "Przydziel {sum}",
   "Assigning {sum} of {available}": "Przydzielasz {sum} z {available}",
   Auto: "Auto",
-  "Automatic envelope": "Koperta automatyczna",
-  "Automatic envelope effect": "Efekt koperty automatycznej",
+  "Automatic envelope": "Automatyczna koperta",
+  "Automatic envelope effect": "Efekt automatycznej koperty",
+  "Automatic: {envelope}": "Automatyczna koperta: {envelope}",
   Available: "Dostępne",
   BUDGET: "BUDŻET",
   Back: "Wróć",
@@ -147,10 +148,10 @@ export const pl: Dict = {
   Balanced: "Zrównoważony",
   "Before archiving this envelope, remove it as the automatic envelope for this account: {accounts}. | Before archiving this envelope, remove it as the automatic envelope for these accounts: {accounts}.":
     {
-      one: "Przed zarchiwizowaniem tej koperty wyłącz „Kopertę automatyczną” na koncie: {accounts}.",
-      few: "Przed zarchiwizowaniem tej koperty wyłącz „Kopertę automatyczną” na kontach: {accounts}.",
-      many: "Przed zarchiwizowaniem tej koperty wyłącz „Kopertę automatyczną” na kontach: {accounts}.",
-      other: "Przed zarchiwizowaniem tej koperty wyłącz „Kopertę automatyczną” na kontach: {accounts}.",
+      one: "Przed zarchiwizowaniem tej koperty wyłącz automatyczną kopertę na koncie: {accounts}.",
+      few: "Przed zarchiwizowaniem tej koperty wyłącz automatyczną kopertę na kontach: {accounts}.",
+      many: "Przed zarchiwizowaniem tej koperty wyłącz automatyczną kopertę na kontach: {accounts}.",
+      other: "Przed zarchiwizowaniem tej koperty wyłącz automatyczną kopertę na kontach: {accounts}.",
     },
   "Before you continue, download a JSON backup and keep it somewhere safe.":
     "Zanim przejdziesz dalej, pobierz kopię zapasową JSON i schowaj ją w bezpiecznym miejscu.",
@@ -322,6 +323,8 @@ export const pl: Dict = {
   "Import from screenshots": "Import ze zrzutów",
   "Imported item": "Pozycja z importu",
   Income: "Przychód",
+  "Income and transfers to this account increase the selected envelope. Transfers from this account decrease it.":
+    "Dochody i przelewy przychodzące na to konto zwiększają wybraną kopertę. Przelewy wychodzące z tego konta ją zmniejszają.",
   Install: "Zainstaluj",
   "Install app": "Zainstaluj aplikację",
   "Invalid pairing code.": "Nieprawidłowy kod parowania.",
@@ -553,6 +556,8 @@ export const pl: Dict = {
   "The envelope “{name}” will disappear from the Budget and Start screens. Its transaction history stays, and available funds remain in the envelope. You can restore it in “Manage envelopes” → Archived.\n\nArchive it?":
     "Koperta „{name}” zniknie z Budżetu i ekranu Start. Historia transakcji zostaje, a dostępne środki pozostają w kopercie. Przywrócisz ją w „Zarządzaj kopertami” → Zarchiwizowane.\n\nArchiwizować?",
   "The first launch requires a connection to the server": "Pierwsze uruchomienie wymaga połączenia z serwerem",
+  "The link works from now on. The current account balance and envelope amount will not change.":
+    "Połączenie działa od teraz. Obecne saldo konta ani kwota w kopercie się nie zmienią.",
   "The local copy of the budget has not loaded yet — nothing was sent. Reload the app and try again.":
     "Lokalna kopia budżetu jeszcze się nie wczytała — nic nie zostało wysłane. Odśwież aplikację i spróbuj ponownie.",
   "The local copy of the budget on this device belongs to a different account than the one you are signed in with. Nothing has been sent to the server and nothing has been deleted.":
@@ -620,8 +625,6 @@ export const pl: Dict = {
     "To pierwsze konto na tym serwerze — po jego utworzeniu rejestracja zostanie zamknięta.",
   "This pairing code belongs to a different budget.": "Ten kod parowania pochodzi z innego budżetu.",
   "This part of the app could not be loaded.": "Nie udało się wczytać tej części aplikacji.",
-  "This starts with future transactions and does not change current balances, transaction history, or Added.":
-    "Działa tylko dla kolejnych transakcji i nie zmienia obecnych sald, historii transakcji ani kwoty „Dodano”.",
   "This will replace all current data. Continue?": "Zastąpi wszystkie obecne dane. Kontynuować?",
   "To be budgeted": "Do rozdysponowania",
   "To be budgeted is ≤ 0 — there is nothing to distribute.": "Do rozdysponowania jest ≤ 0 — nie ma czego rozdzielać.",

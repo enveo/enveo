@@ -19,6 +19,7 @@ export interface ReconciliationEnvelopeSelection {
   accountId: string;
   automaticEnvelopeId: string | null;
   envelopeId: string | null;
+  provenance: "automatic" | "explicit";
 }
 
 export type AutomaticEnvelopeEffectTone = "positive" | "negative" | "neutral";
@@ -63,13 +64,32 @@ export function expenseEnvelopeSelectionForImport(
 }
 
  
+export function currentReconciliationAccount<T extends { id: string }>(accountsNow: readonly T[], accountId: string | null): T | null {
+  return accountId ? (accountsNow.find((account) => account.id === accountId) ?? null) : null;
+}
+
+ 
+export function reconciliationActualValueAfterAccountRefresh(
+  current: string,
+  previous: { id: string; balance: Money } | null,
+  account: { id: string; balance: Money },
+): string {
+  return previous?.id === account.id && previous.balance === account.balance ? current : (account.balance / 100).toFixed(2).replace(".", ",");
+}
+
+ 
 export function reconciliationEnvelopeAfterAccountRefresh(
   current: ReconciliationEnvelopeSelection | null,
   accountId: string,
   automaticEnvelopeId: string | null,
 ): ReconciliationEnvelopeSelection {
-  if (current?.accountId === accountId && current.automaticEnvelopeId === automaticEnvelopeId) return current;
-  return { accountId, automaticEnvelopeId, envelopeId: automaticEnvelopeId };
+  if (!current || current.accountId !== accountId) {
+    return { accountId, automaticEnvelopeId, envelopeId: automaticEnvelopeId, provenance: "automatic" };
+  }
+  if (current.automaticEnvelopeId === automaticEnvelopeId) return current;
+  return current.provenance === "automatic"
+    ? { accountId, automaticEnvelopeId, envelopeId: automaticEnvelopeId, provenance: "automatic" }
+    : { ...current, automaticEnvelopeId };
 }
 
  

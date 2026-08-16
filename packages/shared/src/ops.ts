@@ -39,27 +39,55 @@ const txnBase = z.object({
   createdAt: z.string().datetime().optional(),
 });
 
-const txnRules = (v: z.infer<typeof txnBase>, ctx: z.RefinementCtx) => {
+export type TransactionSemanticInput = {
+  type: "expense" | "income" | "transfer";
+  toAccountId?: string | null;
+  amount: number;
+  envelopeId?: string | null;
+  allocationFromEnvelopeId?: string | null;
+  allocationToEnvelopeId?: string | null;
+  items?: ReadonlyArray<{ amount: number }>;
+};
+
+export type TransactionSemanticIssue = {
+  path: "toAccountId" | "items" | "allocationFromEnvelopeId" | "allocationToEnvelopeId";
+  message: string;
+};
+
+/** One semantic rule for write payloads, restored entities, and merged legacy updates. */
+export function transactionSemanticIssues(v: TransactionSemanticInput): TransactionSemanticIssue[] {
+  const issues: TransactionSemanticIssue[] = [];
   if (v.type === "transfer" && !v.toAccountId) {
-    ctx.addIssue({ code: "custom", message: "transfer requires toAccountId", path: ["toAccountId"] });
+    issues.push({ message: "transfer requires toAccountId", path: "toAccountId" });
   }
   if (v.items && v.items.length > 0) {
     const sum = v.items.reduce((x, i) => x + i.amount, 0);
     if (sum !== v.amount) {
-      ctx.addIssue({ code: "custom", message: "Σ items ≠ transaction amount", path: ["items"] });
+      issues.push({ message: "Σ items ≠ transaction amount", path: "items" });
     }
   }
   if (v.type === "expense" && v.allocationFromEnvelopeId) {
-    ctx.addIssue({ code: "custom", message: "expenses cannot carry allocationFromEnvelopeId", path: ["allocationFromEnvelopeId"] });
+    issues.push({ message: "expenses cannot carry allocationFromEnvelopeId", path: "allocationFromEnvelopeId" });
   }
   if (v.type === "expense" && v.allocationToEnvelopeId) {
-    ctx.addIssue({ code: "custom", message: "expenses cannot carry allocationToEnvelopeId", path: ["allocationToEnvelopeId"] });
+    issues.push({ message: "expenses cannot carry allocationToEnvelopeId", path: "allocationToEnvelopeId" });
   }
   if (v.type === "income" && v.allocationFromEnvelopeId) {
-    ctx.addIssue({ code: "custom", message: "income cannot carry allocationFromEnvelopeId", path: ["allocationFromEnvelopeId"] });
+    issues.push({ message: "income cannot carry allocationFromEnvelopeId", path: "allocationFromEnvelopeId" });
   }
   if (v.type === "income" && v.envelopeId && v.allocationToEnvelopeId) {
-    ctx.addIssue({ code: "custom", message: "income cannot carry both envelopeId and allocationToEnvelopeId", path: ["allocationToEnvelopeId"] });
+    issues.push({ message: "income cannot carry both envelopeId and allocationToEnvelopeId", path: "allocationToEnvelopeId" });
+  }
+  return issues;
+}
+
+export function transactionSemanticsValid(v: TransactionSemanticInput): boolean {
+  return transactionSemanticIssues(v).length === 0;
+}
+
+const txnRules = (v: TransactionSemanticInput, ctx: z.RefinementCtx) => {
+  for (const issue of transactionSemanticIssues(v)) {
+    ctx.addIssue({ code: "custom", message: issue.message, path: [issue.path] });
   }
 };
 
@@ -248,14 +276,7 @@ const transactionEntity = z
     items: z.array(txnItemEntity),
     createdAt: z.string(),
   })
-  .superRefine((t, ctx) => {
-    if (t.items.length > 0) {
-      const sum = t.items.reduce((x, i) => x + i.amount, 0);
-      if (sum !== t.amount) {
-        ctx.addIssue({ code: "custom", message: "Σ items ≠ transaction amount", path: ["items"] });
-      }
-    }
-  });
+  .superRefine(txnRules);
 
 const budgetEntity = z
   .object({ id: zUuid, name: z.string(), currency: z.string(), preferences: z.unknown().optional() })
