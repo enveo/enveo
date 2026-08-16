@@ -12,6 +12,14 @@ let versionedBaseRoot = "";
 const sourceSnapshots: Array<{ cleanup: () => Promise<void> }> = [];
 let loadedBaselinePromise: Promise<unknown> | null = null;
 
+const materializeBaselineFixture = async (repositoryRoot: string, revision: string, target: string): Promise<void> => {
+  const archive = Bun.spawn(["git", "archive", revision], { cwd: repositoryRoot, stdout: "pipe", stderr: "ignore" });
+  const bytes = new Uint8Array(await new Response(archive.stdout).arrayBuffer());
+  if ((await archive.exited) !== 0) throw new Error("could not archive exact baseline revision");
+  const extract = Bun.spawn(["tar", "-x", "-C", target], { stdin: bytes, stdout: "ignore", stderr: "ignore" });
+  if ((await extract.exited) !== 0) throw new Error("could not extract exact baseline revision");
+};
+
 const loadBaselineSnapshot = async (evaluator: Record<string, unknown>): Promise<unknown> => {
   loadedBaselinePromise ??= (async () => {
     const preflight = await (evaluator.preflightSource as (mode: "baseline", root: string) => Promise<unknown>)("baseline", versionedBaseRoot);
@@ -36,10 +44,7 @@ async function linkPackageDependencies(packageName: "api" | "shared", targetRoot
 
 beforeAll(async () => {
   baseRoot = await mkdtemp(resolve(tmpdir(), "enveo-exact-import-base-"));
-  const archive = Bun.spawn(["git", "archive", BASE_REVISION], { cwd: resolve(import.meta.dir, ".."), stdout: "pipe", stderr: "ignore" });
-  const extract = Bun.spawn(["tar", "-x", "-C", baseRoot], { stdin: archive.stdout, stdout: "ignore", stderr: "ignore" });
-  const [archiveExit, extractExit] = await Promise.all([archive.exited, extract.exited]);
-  if (archiveExit !== 0 || extractExit !== 0) throw new Error("could not materialize exact baseline revision");
+  await materializeBaselineFixture(resolve(import.meta.dir, ".."), BASE_REVISION, baseRoot);
   await linkPackageDependencies("api");
   await linkPackageDependencies("shared");
   await mkdir(resolve(baseRoot, "packages/api/node_modules/@enveo"), { recursive: true });
@@ -174,6 +179,16 @@ const responseChat =
   };
 
 describe("exact legacy production baseline", () => {
+  test("buffers repeated baseline fixture archives before extraction", async () => {
+    const targets = await Promise.all(Array.from({ length: 6 }, () => mkdtemp(resolve(tmpdir(), "enveo-buffered-base-regression-"))));
+    try {
+      await Promise.all(targets.map((target) => materializeBaselineFixture(resolve(import.meta.dir, ".."), BASE_REVISION, target)));
+      for (const target of targets) expect(JSON.parse(await readFile(resolve(target, "package.json"), "utf8")).name).toBe("enveo");
+    } finally {
+      await Promise.all(targets.map((target) => rm(target, { recursive: true, force: true })));
+    }
+  });
+
   test("treats a snapshot as an opaque immutable capability and invalidates it on cleanup", async () => {
     const evaluator = await import("./evaluate-import-recognition");
     const preflight = await evaluator.preflightSource("baseline", versionedBaseRoot);
