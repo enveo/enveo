@@ -24,6 +24,7 @@ import {
   type EnvelopeGroup,
   type EnvelopePayload,
   type GroupPayload,
+  manualAllocationForDisplayedTotal,
   type OpKind,
   type OpPayload,
   opSchemas,
@@ -173,8 +174,13 @@ function duplicateTxn(t: Transaction): string {
 
 /* ── Allocations ────────────────────────────────────────────────────────── */
 
-function setAllocation(payload: AllocPayload): void {
-  enqueue("alloc.set", payload);
+/** Converts a user-visible Added total into the manual allocation stored in the ledger. */
+export function prepareDisplayedAllocation(ledger: ClientLedger, payload: AllocPayload): AllocPayload {
+  return { ...payload, amount: manualAllocationForDisplayedTotal(ledger.transactions, payload.envelopeId, payload.month, payload.amount) };
+}
+
+function setDisplayedAllocation(payload: AllocPayload): void {
+  enqueue("alloc.set", prepareDisplayedAllocation(ledger(), payload));
 }
 
 /* ── Accounts / groups / envelopes ─────────────────────────────────────── */
@@ -254,7 +260,7 @@ export const local = {
   updateTxn,
   deleteTxn,
   duplicateTxn,
-  setAllocation,
+  setDisplayedAllocation,
   createAccount,
   updateAccount,
   deleteAccount,

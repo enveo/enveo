@@ -15,7 +15,7 @@ import { Numpad } from "./pickers";
  * ✓ evaluates and validates (negatives only with allowNegative); tapping the backdrop cancels.
  *
  * The component does NOT know the domain — commit only via the caller's `onCommit(minor)`
- * (existing write paths: setAllocation/setItems/setEdited/…).
+ * (existing write paths: setDisplayedAllocation/setItems/setEdited/…).
  */
 /**
  * Target of the open pad — held ONCE per screen/sheet (`useState<AmountPadTarget | null>`).

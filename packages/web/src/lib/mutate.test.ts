@@ -6,7 +6,7 @@
 
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { type ClientLedger, createDefaultBudgetPreferences, type Transaction, type TxnPayload } from "@enveo/shared";
-import { local, prepareTxnCreate, prepareTxnUpdate, txnToDuplicatePayload, txnToPayload } from "./mutate";
+import { local, prepareDisplayedAllocation, prepareTxnCreate, prepareTxnUpdate, txnToDuplicatePayload, txnToPayload } from "./mutate";
 import * as outbox from "./outbox";
 import { store } from "./store";
 import "./sync";
@@ -83,6 +83,12 @@ async function resetMutationSeam(ledger = flowLedger()): Promise<void> {
 function emittedTxn(index: number) {
   const entry = outbox.snapshot()[index];
   if (!entry || entry.op.kind === "alloc.set" || !entry.op.kind.startsWith("txn.")) throw new Error(`expected transaction op ${index}`);
+  return entry.op;
+}
+
+function emittedAllocation(index: number) {
+  const entry = outbox.snapshot()[index];
+  if (entry?.op.kind !== "alloc.set") throw new Error(`expected allocation op ${index}`);
   return entry.op;
 }
 
@@ -217,6 +223,75 @@ describe("transaction mutation preparation", () => {
     expect(
       prepareTxnCreate(flowLedger(), txnPayload({ type: "expense", isRefund: true, allocationFromEnvelopeId: ENV1, allocationToEnvelopeId: ENV2 })),
     ).toMatchObject({ allocationFromEnvelopeId: null, allocationToEnvelopeId: null });
+  });
+});
+
+describe("displayed allocation mutation preparation", () => {
+  it("removes positive automatic flow from the stored manual allocation", () => {
+    const ledger = flowLedger();
+    ledger.transactions.push({
+      ...splitTxn(),
+      id: crypto.randomUUID(),
+      type: "income",
+      accountId: ACC,
+      amount: 500_00,
+      date: "2026-08-14",
+      envelopeId: null,
+      allocationToEnvelopeId: ENV1,
+    });
+
+    expect(prepareDisplayedAllocation(ledger, { envelopeId: ENV1, month: "2026-08", amount: 900_00 })).toEqual({
+      envelopeId: ENV1,
+      month: "2026-08",
+      amount: 400_00,
+    });
+  });
+
+  it("adds negative automatic flow back to the stored manual allocation", () => {
+    const ledger = flowLedger();
+    ledger.transactions.push({
+      ...splitTxn(),
+      id: crypto.randomUUID(),
+      type: "transfer",
+      accountId: ACC,
+      amount: 500_00,
+      date: "2026-08-14",
+      envelopeId: null,
+      allocationFromEnvelopeId: ENV1,
+    });
+
+    expect(prepareDisplayedAllocation(ledger, { envelopeId: ENV1, month: "2026-08", amount: 900_00 })).toEqual({
+      envelopeId: ENV1,
+      month: "2026-08",
+      amount: 1400_00,
+    });
+  });
+
+  it("keeps the displayed amount when the envelope has no automatic flow", () => {
+    expect(prepareDisplayedAllocation(flowLedger(), { envelopeId: ENV1, month: "2026-08", amount: 900_00 })).toEqual({
+      envelopeId: ENV1,
+      month: "2026-08",
+      amount: 900_00,
+    });
+  });
+
+  it("emits the manual amount when setting a displayed allocation", async () => {
+    const ledger = flowLedger();
+    ledger.transactions.push({
+      ...splitTxn(),
+      id: crypto.randomUUID(),
+      type: "income",
+      accountId: ACC,
+      amount: 500_00,
+      date: "2026-08-14",
+      envelopeId: null,
+      allocationToEnvelopeId: ENV1,
+    });
+    await resetMutationSeam(ledger);
+
+    local.setDisplayedAllocation({ envelopeId: ENV1, month: "2026-08", amount: 900_00 });
+
+    expect(emittedAllocation(0).payload).toEqual({ envelopeId: ENV1, month: "2026-08", amount: 400_00 });
   });
 });
 

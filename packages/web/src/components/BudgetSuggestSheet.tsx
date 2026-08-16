@@ -223,7 +223,7 @@ export function BudgetSuggestSheet({ show, state, month, onClose }: { show: bool
       }
     }
     for (const it of chosen) {
-      local.setAllocation({ envelopeId: it.envelopeId, month, amount: it.currentAllocated + deltaOf(it) });
+      local.setDisplayedAllocation({ envelopeId: it.envelopeId, month, amount: it.currentAllocated + deltaOf(it) });
     }
     close();
   };
