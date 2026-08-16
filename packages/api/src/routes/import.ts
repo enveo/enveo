@@ -4,9 +4,12 @@ import {
   buildImportExtractPrompt,
   type ChatRequest,
   type ImportExtractItem,
+  type ImportHistoryQuery,
+  type ImportHistoryRecord,
   languageDirectives,
   languageName,
   parseImportExtractResponse,
+  selectImportHistoryCandidates,
 } from "@enveo/shared";
 import { and, eq, inArray } from "drizzle-orm";
 import { Hono } from "hono";
@@ -19,7 +22,7 @@ import { env } from "../env";
 import { transportFailureJson, UpstreamHttpError } from "../openaiHttp";
 import { assertBudgetFks } from "../sync/apply";
 import { buildDupIndex, classifyDup } from "./import-dedupe";
-import { confidentSourceRef, decideAssignment, type HistGroup, type HistPattern, rankPatterns } from "./import-match";
+import { decideAssignment } from "./import-match";
 import { budgetAssertionFails } from "./sync";
 
 /**
@@ -81,22 +84,12 @@ const ENRICH_JSON_SCHEMA = {
   },
 } as const;
 
-/** Match result for one raw description: patterns (top 5, as AI hints)
- *  plus `confident` — a SURE source_ref hit that allows a deterministic
- *  assignment and skips the AI (null when uncertain). */
-export interface HistMatch {
-  patterns: HistPattern[];
-  confident: HistPattern | null;
-}
-
-/** Historical patterns matched against raw place descriptions.
- *  Match key: source_ref (raw bank description) → place → tag → name;
- *  source_ref is immutable on correction, so it learns from fixes (see
- *  import-match.ts). */
-export async function matchHistory(budgetId: string, rawPlaces: string[]): Promise<Record<string, HistMatch>> {
+/** Loads normalized ledger history without making an assignment decision. */
+export async function loadImportHistory(budgetId: string, currency: string): Promise<ImportHistoryRecord[]> {
   const [txns, envs, cats, plcs] = await Promise.all([
     db
       .select({
+        accountId: s.transactions.accountId,
         name: s.transactions.name,
         envelopeId: s.transactions.envelopeId,
         categoryId: s.transactions.categoryId,
@@ -117,42 +110,24 @@ export async function matchHistory(budgetId: string, rawPlaces: string[]): Promi
   const catName = new Map(cats.map((x) => [x.id, x.name]));
   const plcName = new Map(plcs.map((x) => [x.id, x.name]));
 
-  // group history by (similarity key, assignment pattern); source_ref as the key
-  // when present — the strongest signal, stable across corrections
-  const groups = new Map<string, HistGroup>();
-  for (const t of txns) {
-    /* Transfers are NO LONGER skipped (2026-07-12): history also teaches the TYPE —
-       a "refund→transfer" correction in import editing should train future
-       proposals (deterministically on a confident source_ref). */
-    const sref = t.sourceRef?.trim() || null;
-    const key = sref ?? (t.placeId ? plcName.get(t.placeId) : null) ?? t.tag ?? t.name;
-    if (!key) continue;
-    const pat = `${sref ? "src:" : ""}${key}|${t.name ?? ""}|${t.envelopeId ?? ""}|${t.categoryId ?? ""}|${t.type}|${t.isRefund ? 1 : 0}|${t.toAccountId ?? ""}`;
-    const cur = groups.get(pat);
-    if (cur) cur.count++;
-    else
-      groups.set(pat, {
-        key,
-        fromSourceRef: !!sref,
-        place: t.placeId ? (plcName.get(t.placeId) ?? null) : null,
-        name: t.name,
-        envelope: t.envelopeId ? (envName.get(t.envelopeId) ?? null) : null,
-        category: t.categoryId ? (catName.get(t.categoryId) ?? null) : null,
-        count: 1,
-        type: t.type as "expense" | "income" | "transfer",
-        isRefund: t.type === "expense" && !!t.isRefund,
-        toAccountId: t.type === "transfer" ? (t.toAccountId ?? null) : null,
-      });
-  }
-  const all = [...groups.values()];
+  return txns.map((transaction) => ({
+    accountId: transaction.accountId,
+    currency,
+    sourceRef: transaction.sourceRef,
+    tag: transaction.tag,
+    place: transaction.placeId ? (plcName.get(transaction.placeId) ?? null) : null,
+    name: transaction.name,
+    envelope: transaction.envelopeId ? (envName.get(transaction.envelopeId) ?? null) : null,
+    category: transaction.categoryId ? (catName.get(transaction.categoryId) ?? null) : null,
+    type: transaction.type as ImportHistoryRecord["type"],
+    isRefund: transaction.type === "expense" && transaction.isRefund,
+    toAccountId: transaction.type === "transfer" ? transaction.toAccountId : null,
+  }));
+}
 
-  const out: Record<string, HistMatch> = {};
-  for (const raw of [...new Set(rawPlaces)]) {
-    const patterns = rankPatterns(raw, all);
-    const confident = confidentSourceRef(raw, all);
-    if (patterns.length > 0 || confident) out[raw] = { patterns, confident };
-  }
-  return out;
+/** The staged adapter passes explicit selected-account and validated proposal facts to shared retrieval. */
+export async function selectHistoryForImport(input: { budgetId: string; currency: string; query: ImportHistoryQuery }) {
+  return selectImportHistoryCandidates(input.query, await loadImportHistory(input.budgetId, input.currency));
 }
 
 /** `timeoutMs` per cycle: vision (cycle 1) gets AI_VISION_TIMEOUT_MS — multi-screenshot
@@ -206,19 +181,9 @@ export async function extractImportForBudget(input: { budgetId: string; images: 
       .where(and(eq(s.envelopes.budgetId, budgetId), eq(s.envelopes.archived, false))),
     db.select({ id: s.categories.id, name: s.categories.name }).from(s.categories).where(eq(s.categories.budgetId, budgetId)),
   ]);
-  const history = await matchHistory(
-    budgetId,
-    found.map((t) => t.rawPlace),
-  );
-
   const sysEnrich =
-    "You assign bank-statement transactions EXACTLY in the style the user has assigned them historically. " +
-    "Each transaction has a `patterns` field — how the user booked this place in the past ({place, name, envelope, category, count, fromSourceRef}). " +
-    "OVERRIDING RULE: when a pattern has fromSourceRef=true, use IT (it is a learned correction matched to the raw bank description — " +
-    "the strongest signal, INDEPENDENT of count) and ignore more numerous patterns. Only when none has fromSourceRef=true, pick " +
-    "the most numerous one (highest count) that matches the transaction type. From the chosen pattern COPY VERBATIM all four fields: " +
-    "name, envelope, category, place — even when name looks like an abbreviation (e.g. Vps) and category/place are null. " +
-    `Only when \`patterns\` is empty, propose yourself: name — a short name in ${language} of WHAT it was (e.g. Groceries, Fuel, Cloud fee), never the raw company name with an address; ` +
+    "You enrich bank-statement transactions from the visible transaction facts. " +
+    `Propose: name — a short name in ${language} of WHAT it was (e.g. Groceries, Fuel, Cloud fee), never the raw company name with an address; ` +
     `envelope — one of the envelopes: ${envelopes.map((e) => e.name).join(", ")} — or null; ` +
     `category — one of the categories: ${categories.map((x) => x.name).join(", ")} — or null; ` +
     "place — a readable, short place name (e.g. Lidl, Netflix). Do not change amounts or dates. " +
@@ -226,22 +191,18 @@ export async function extractImportForBudget(input: { budgetId: string; images: 
        contract as every shared prompt — the names it invents land in the user's ledger. */
     languageDirectives(locale) +
     "Return JSON.";
-  // Items with a SURE source_ref hit are assigned DETERMINISTICALLY — we do NOT ask the AI
-  // (a learned correction matched exactly to the raw bank description). The rest → cycle 2 (model).
-  const uncertain = found.map((t, index) => ({ t, index })).filter(({ t }) => !history[t.rawPlace]?.confident);
-  console.log(`import/extract: ${found.length - uncertain.length}/${found.length} confident by source_ref (no AI); ${uncertain.length} to the model`);
+  const pendingEnrichment = found.map((t, index) => ({ t, index }));
 
   let enriched = new Map<number, z.infer<typeof enrichedTxn>>();
-  if (uncertain.length > 0) {
+  if (pendingEnrichment.length > 0) {
     const enrichPayload = {
-      transactions: uncertain.map(({ t, index }) => ({
+      transactions: pendingEnrichment.map(({ t, index }) => ({
         index,
         date: t.date,
         amount: t.amount,
         type: t.type,
         rawPlace: t.rawPlace,
         tag: t.tag,
-        patterns: history[t.rawPlace]?.patterns ?? [],
       })),
     };
     try {
@@ -269,31 +230,15 @@ export async function extractImportForBudget(input: { budgetId: string; images: 
   const envByName = new Map(envelopes.map((e) => [e.name.toLowerCase(), e]));
   const catByName = new Map(categories.map((x) => [x.name.toLowerCase(), x]));
   const items = found.map((t, index) => {
-    const h = history[t.rawPlace];
-    // sure source_ref hit → deterministic (no AI); otherwise the model decides,
-    // and the best pattern fills gaps (hardOverride=false — source_ref is not forced).
-    const pick = h?.confident
-      ? decideAssignment(t.rawPlace, h.confident, undefined)
-      : decideAssignment(t.rawPlace, h?.patterns?.[0], enriched.get(index), false);
+    const pick = decideAssignment(t.rawPlace, enriched.get(index));
     const envMatch = pick.envelope ? envByName.get(pick.envelope.toLowerCase()) : undefined;
     const catMatch = pick.category ? catByName.get(pick.category.toLowerCase()) : undefined;
-    /* TYPE learning: only from CONFIDENT history (source_ref) — the model never
-       decides the type. A transfer is proposed only with a remembered target
-       account; a collision with the source account is caught by apply validation. */
-    const conf = h?.confident;
-    const learnedType = conf && (conf.type !== t.type || conf.isRefund) ? conf.type : null;
-    const proposedType = learnedType && (learnedType !== "transfer" || conf!.toAccountId) ? learnedType : t.type;
     return {
       date: t.date,
       amount: t.amount,
-      type: proposedType,
-      // isRefund: a live positive-amount refund read (t.isRefund) is never suppressed by
-      // history — a genuine refund from an ordinarily-non-refund merchant must not be
-      // reclassified as a normal expense. Only when the live read is false does confident
-      // learned history (source_ref) get to override it (the previous ?? let a
-      // isRefund:false history entry beat a true live read — the bug fixed here).
-      isRefund: proposedType === "expense" ? t.isRefund || (conf?.isRefund ?? false) : false,
-      toAccountId: proposedType === "transfer" ? (conf?.toAccountId ?? null) : null,
+      type: t.type,
+      isRefund: t.isRefund,
+      toAccountId: null,
       name: pick.name,
       tag: t.tag,
       // raw bank description — stored as metadata (source_ref), invisible
