@@ -1166,25 +1166,55 @@ const setSnapshotWritable = async (root: string, writable: boolean): Promise<voi
 };
 
 export interface SourceSnapshot {
-  root: string;
-  identity: SourceIdentity;
-  cleanup: () => Promise<void>;
+  cleanup(this: SourceSnapshot): Promise<void>;
 }
 
-const verifiedSnapshots = new WeakSet<SourceSnapshot>();
+interface SourceSnapshotState {
+  root: string;
+  identity: SourceIdentity;
+  cleanupPromise: Promise<void> | null;
+}
+
+const snapshotStates = new WeakMap<SourceSnapshot, SourceSnapshotState>();
+const cleanedSnapshots = new WeakSet<SourceSnapshot>();
+
+async function cleanupSourceSnapshot(this: SourceSnapshot): Promise<void> {
+  const state = snapshotStates.get(this);
+  if (!state) {
+    if (cleanedSnapshots.has(this)) return;
+    throw new Error("snapshot cleanup requires a verified immutable snapshot");
+  }
+  state.cleanupPromise ??= (async () => {
+    try {
+      await setSnapshotWritable(state.root, true);
+      await rm(state.root, { recursive: true, force: true });
+    } finally {
+      snapshotStates.delete(this);
+      cleanedSnapshots.add(this);
+    }
+  })();
+  await state.cleanupPromise;
+}
 
 export async function materializeSourceSnapshot(preflight: SourcePreflight): Promise<SourceSnapshot> {
   if (!preflight.identity.bound) throw new Error("source snapshot requires a bound preflight");
+  const identity: SourceIdentity = Object.freeze({
+    ...preflight.identity,
+    moduleHashes: Object.freeze({ ...preflight.identity.moduleHashes }),
+  });
+  const entries = preflight.entries.map((entry) => ({ ...entry }));
   const root = await mkdtemp(resolve(tmpdir(), "enveo-import-eval-source-"));
   await chmod(root, 0o700);
   try {
     const archive = Bun.spawn(["git", "-C", preflight.root, "archive", preflight.identity.expectedRevision], { stdout: "pipe", stderr: "ignore" });
-    const extract = Bun.spawn(["tar", "-x", "-C", root], { stdin: archive.stdout, stdout: "ignore", stderr: "ignore" });
-    if ((await archive.exited) !== 0 || (await extract.exited) !== 0) throw new Error("source snapshot could not be materialized");
+    const archiveBytes = new Uint8Array(await new Response(archive.stdout).arrayBuffer());
+    if ((await archive.exited) !== 0) throw new Error("source snapshot could not be materialized");
+    const extract = Bun.spawn(["tar", "-x", "-C", root], { stdin: archiveBytes, stdout: "ignore", stderr: "ignore" });
+    if ((await extract.exited) !== 0) throw new Error("source snapshot could not be materialized");
     await installSnapshotDependencies(root);
     await setSnapshotWritable(root, false);
     const snapshotHashes: Record<string, string> = {};
-    for (const entry of preflight.entries) {
+    for (const entry of entries) {
       const path = resolve(root, entry.path);
       const info = await lstat(path);
       const bytes = entry.mode === "120000" ? new TextEncoder().encode(await readlink(path)) : new Uint8Array(await readFile(path));
@@ -1200,17 +1230,9 @@ export async function materializeSourceSnapshot(preflight: SourcePreflight): Pro
             : "invalid";
       snapshotHashes[entry.path] = sha256([mode, "\0", gitBlobId(bytes)]);
     }
-    if (moduleDigest(snapshotHashes) !== preflight.identity.expectedModuleDigest) throw new Error("source snapshot digest mismatch");
-    const snapshot: SourceSnapshot = {
-      root,
-      identity: preflight.identity,
-      cleanup: async () => {
-        verifiedSnapshots.delete(snapshot);
-        await setSnapshotWritable(root, true);
-        await rm(root, { recursive: true, force: true });
-      },
-    };
-    verifiedSnapshots.add(snapshot);
+    if (moduleDigest(snapshotHashes) !== identity.expectedModuleDigest) throw new Error("source snapshot digest mismatch");
+    const snapshot = Object.freeze({ cleanup: cleanupSourceSnapshot }) as SourceSnapshot;
+    snapshotStates.set(snapshot, { root, identity, cleanupPromise: null });
     return snapshot;
   } catch (error) {
     try {
@@ -1349,8 +1371,9 @@ async function loadSourceRoot(mode: "baseline" | "candidate", root: string, iden
 }
 
 export async function loadSnapshotSource(mode: "baseline" | "candidate", snapshot: SourceSnapshot): Promise<LoadedSource> {
-  if (!verifiedSnapshots.has(snapshot)) throw new Error("source load requires a verified immutable snapshot");
-  return loadSourceRoot(mode, snapshot.root, snapshot.identity);
+  const state = snapshotStates.get(snapshot);
+  if (!state || state.cleanupPromise) throw new Error("source load requires a verified immutable snapshot");
+  return loadSourceRoot(mode, state.root, state.identity);
 }
 
 export async function runHistorySafetyGate(candidateRoot: string): Promise<HistorySafetyIdentity> {

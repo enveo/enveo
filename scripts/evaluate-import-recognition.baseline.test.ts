@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, setDefaultTimeout, test } from "bun:test";
-import { mkdir, mkdtemp, readdir, readFile, realpath, rm, symlink, writeFile } from "node:fs/promises";
+import { access, mkdir, mkdtemp, readdir, readFile, realpath, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -174,6 +174,52 @@ const responseChat =
   };
 
 describe("exact legacy production baseline", () => {
+  test("treats a snapshot as an opaque immutable capability and invalidates it on cleanup", async () => {
+    const evaluator = await import("./evaluate-import-recognition");
+    const preflight = await evaluator.preflightSource("baseline", versionedBaseRoot);
+    const snapshot = await evaluator.materializeSourceSnapshot(preflight);
+    const originalCleanup = snapshot.cleanup.bind(snapshot);
+    const genuine = await evaluator.loadSnapshotSource("baseline", snapshot);
+    const canonicalRoot = genuine.root;
+    const maliciousRoot = await mkdtemp(resolve(tmpdir(), "enveo-forged-import-source-"));
+    const sentinel = resolve(maliciousRoot, "sentinel");
+    await mkdir(resolve(maliciousRoot, "packages/shared/src"), { recursive: true });
+    await writeFile(
+      resolve(maliciousRoot, "packages/shared/src/aiPrompts.ts"),
+      `await Bun.write(${JSON.stringify(sentinel)}, "imported"); throw new Error("forged root imported");\n`,
+    );
+
+    try {
+      expect(Object.isFrozen(snapshot)).toBe(true);
+      expect(() => {
+        (snapshot as unknown as { root: string }).root = maliciousRoot;
+      }).toThrow();
+      expect(() => Object.defineProperty(snapshot, "root", { value: maliciousRoot })).toThrow();
+      expect(() => Object.defineProperty(snapshot, "identity", { value: { bound: true } })).toThrow();
+      expect(() => Object.defineProperty(snapshot, "cleanup", { value: async () => {} })).toThrow();
+      const spread = { ...snapshot } as typeof snapshot;
+      await expect(evaluator.loadSnapshotSource("baseline", spread)).rejects.toThrow("verified immutable snapshot");
+      await expect(spread.cleanup()).rejects.toThrow("verified immutable snapshot");
+      const cloned = Object.create(Object.getPrototypeOf(snapshot), Object.getOwnPropertyDescriptors(snapshot)) as typeof snapshot;
+      await expect(evaluator.loadSnapshotSource("baseline", cloned)).rejects.toThrow("verified immutable snapshot");
+      await expect(cloned.cleanup()).rejects.toThrow("verified immutable snapshot");
+      const proxied = new Proxy(snapshot, {}) as typeof snapshot;
+      await expect(evaluator.loadSnapshotSource("baseline", proxied)).rejects.toThrow("verified immutable snapshot");
+      await expect(proxied.cleanup()).rejects.toThrow("verified immutable snapshot");
+
+      expect((await evaluator.loadSnapshotSource("baseline", snapshot)).root).toBe(canonicalRoot);
+      await expect(access(sentinel)).rejects.toThrow();
+      await snapshot.cleanup();
+      await snapshot.cleanup();
+      await expect(access(canonicalRoot)).rejects.toThrow();
+      await expect(evaluator.loadSnapshotSource("baseline", snapshot)).rejects.toThrow("verified immutable snapshot");
+      expect(await access(maliciousRoot)).toBeNull();
+    } finally {
+      await originalCleanup();
+      await rm(maliciousRoot, { recursive: true, force: true });
+    }
+  });
+
   test("binds only the exact clean accepted baseline revision and module digest", async () => {
     const evaluator = (await import("./evaluate-import-recognition")) as Record<string, unknown>;
     const source = (await loadBaselineSnapshot(evaluator)) as {
