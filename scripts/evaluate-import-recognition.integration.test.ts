@@ -1,9 +1,10 @@
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { afterAll, beforeAll, describe, expect, setDefaultTimeout, test } from "bun:test";
 import { access, appendFile, cp, mkdir, mkdtemp, readdir, readFile, realpath, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 
 const evaluator = resolve(import.meta.dir, "evaluate-import-recognition.ts");
+setDefaultTimeout(120_000);
 const BASE_REVISION = "864c47f98c27bb7bf238e636b34f89dfa3dcc63c";
 let root = "";
 let manifestPath = "";
@@ -14,6 +15,7 @@ let candidateRevision = "";
 let exactBaselineRoot = "";
 let sourceImportSentinel = "";
 let transportImportSentinel = "";
+let corpusReadSentinel = "";
 
 async function linkPackageDependencies(packageName: "api" | "shared", targetRoot: string): Promise<void> {
   const source = resolve(import.meta.dir, `../packages/${packageName}/node_modules`);
@@ -45,6 +47,12 @@ beforeAll(async () => {
   await mkdir(resolve(candidateRoot, "packages/api/src/routes"), { recursive: true });
   await mkdir(resolve(candidateRoot, "packages/web/src/lib/aiProvider"), { recursive: true });
   await mkdir(resolve(corpusRoot, "images"), { recursive: true });
+  for (const file of [".gitignore", "package.json", "bun.lock"]) {
+    await cp(resolve(import.meta.dir, `../${file}`), resolve(candidateRoot, file));
+  }
+  for (const packageName of ["api", "shared", "web"] as const) {
+    await cp(resolve(import.meta.dir, `../packages/${packageName}/package.json`), resolve(candidateRoot, `packages/${packageName}/package.json`));
+  }
 
   const row = (id: string, semanticKind: string, visualOrder: number, overrides: Record<string, unknown> = {}) => ({
     id,
@@ -267,7 +275,9 @@ export function decideAssignment(raw, _top, model) {
   );
   await writeFile(
     resolve(candidateRoot, "packages/shared/src/aiPrompts.ts"),
-    `if (process.env.TEST_SOURCE_IMPORT_SENTINEL) await Bun.write(process.env.TEST_SOURCE_IMPORT_SENTINEL, "imported");
+    `import { z } from "zod";
+z.string().parse("snapshot dependency");
+if (process.env.TEST_SOURCE_IMPORT_SENTINEL) await Bun.write(process.env.TEST_SOURCE_IMPORT_SENTINEL, "imported");
 ${promptModule("rows")}
 export async function runImportRecognitionPipeline(input) {
   const extracted = JSON.parse(await input.chat(buildImportExtractPrompt(input.images, { envelopes: [], categories: [] }, input.today, input.locale, input.budgetCurrency)));
@@ -460,8 +470,10 @@ export async function chat(input) {
   const revision = Bun.spawn(["git", "-C", candidateRoot, "rev-parse", "HEAD"], { stdout: "pipe", stderr: "pipe" });
   candidateRevision = (await new Response(revision.stdout).text()).trim();
   if ((await revision.exited) !== 0 || !/^[0-9a-f]{40}$/.test(candidateRevision)) throw new Error("could not identify candidate fixture");
+  await linkPackageDependencies("shared", candidateRoot);
   sourceImportSentinel = resolve(root, "source-imported");
   transportImportSentinel = resolve(root, "transport-imported");
+  corpusReadSentinel = resolve(root, "corpus-read");
 });
 
 afterAll(async () => {
@@ -521,6 +533,7 @@ const runGate = async (
         TEST_HISTORY_IMMUTABLE_UNSAFE: historyImmutableUnsafe ? "1" : "0",
         TEST_SOURCE_IMPORT_SENTINEL: assertNoImports ? sourceImportSentinel : "",
         TEST_TRANSPORT_IMPORT_SENTINEL: assertNoImports ? transportImportSentinel : "",
+        ENVEO_IMPORT_EVAL_TEST_CORPUS_READ_SENTINEL: assertNoImports ? corpusReadSentinel : "",
         ENVEO_IMPORT_EVAL_TEST_MUTATE_PATH: mutatePath,
         ENVEO_IMPORT_EVAL_TEST_MUTATE_CONTENT: mutateContent,
       },
@@ -552,6 +565,7 @@ const runDiagnostic = async (
         TEST_HISTORY_FAIL: "0",
         TEST_SOURCE_IMPORT_SENTINEL: assertNoImports ? sourceImportSentinel : "",
         TEST_TRANSPORT_IMPORT_SENTINEL: assertNoImports ? transportImportSentinel : "",
+        ENVEO_IMPORT_EVAL_TEST_CORPUS_READ_SENTINEL: assertNoImports ? corpusReadSentinel : "",
       },
     },
   );
@@ -570,9 +584,101 @@ const expectPreflightOnly = async (result: Awaited<ReturnType<typeof runGate>>):
   });
   await expect(access(sourceImportSentinel)).rejects.toThrow();
   await expect(access(transportImportSentinel)).rejects.toThrow();
+  await expect(access(corpusReadSentinel)).rejects.toThrow();
 };
 
 describe("paired import recognition CLI", () => {
+  test("does not expose a helper that can preflight and import a mutable source root", async () => {
+    const module = (await import("./evaluate-import-recognition")) as Record<string, unknown>;
+    expect(module.loadSource).toBeUndefined();
+  });
+
+  test("installs dependencies inside the snapshot instead of loading a replaced original package", async () => {
+    const originalLink = resolve(candidateRoot, "packages/shared/node_modules/zod");
+    const originalTarget = await realpath(originalLink);
+    const malicious = resolve(candidateRoot, "node_modules/malicious-zod");
+    const sentinel = resolve(root, "mutable-original-dependency-loaded");
+    await mkdir(malicious, { recursive: true });
+    await writeFile(resolve(malicious, "package.json"), JSON.stringify({ name: "zod", type: "module", exports: "./index.js" }));
+    await writeFile(resolve(malicious, "index.js"), `await Bun.write(${JSON.stringify(sentinel)}, "loaded"); throw new Error("mutable dependency loaded");\n`);
+    await rm(originalLink);
+    await symlink(malicious, originalLink);
+    try {
+      const result = await runGate(
+        false,
+        "",
+        false,
+        "run-tests",
+        false,
+        false,
+        candidateRevision,
+        false,
+        candidateRoot,
+        resolve(malicious, "index.js"),
+        `await Bun.write(${JSON.stringify(sentinel)}, "loaded after preflight"); throw new Error("mutable dependency loaded after preflight");\n`,
+      );
+      expect(result.stderr).toBe("");
+      expect(result.exitCode).toBe(2);
+      expect(JSON.parse(result.stdout).metrics.candidate.semanticKindAccuracy.rate).toBe(1);
+      await expect(access(sentinel)).rejects.toThrow();
+    } finally {
+      await rm(originalLink);
+      await symlink(originalTarget, originalLink);
+      await rm(malicious, { recursive: true, force: true });
+    }
+  });
+
+  test("rejects a bound source with an invalid lock before corpus or transport loading", async () => {
+    const invalidRoot = resolve(root, "invalid-lock-candidate");
+    await cp(candidateRoot, invalidRoot, { recursive: true, filter: (path) => !path.includes("/.git") && !path.includes("/node_modules") });
+    await writeFile(resolve(invalidRoot, "bun.lock"), "not a bun lockfile\n");
+    for (const args of [
+      ["init"],
+      ["config", "user.email", "evaluation@example.invalid"],
+      ["config", "user.name", "Evaluation Fixture"],
+      ["add", "."],
+      ["commit", "-m", "invalid lock"],
+    ]) {
+      const child = Bun.spawn(["git", "-C", invalidRoot, ...args], { stdout: "ignore", stderr: "ignore" });
+      expect(await child.exited).toBe(0);
+    }
+    const revision = Bun.spawn(["git", "-C", invalidRoot, "rev-parse", "HEAD"], { stdout: "pipe", stderr: "ignore" });
+    const expected = (await new Response(revision.stdout).text()).trim();
+    expect(await revision.exited).toBe(0);
+    const module = await import("./evaluate-import-recognition");
+    const preflight = await module.preflightSource("candidate", invalidRoot, expected);
+    expect(preflight.identity.bound).toBe(true);
+    await expect(module.materializeSourceSnapshot(preflight)).rejects.toThrow("snapshot dependency install failed");
+    const result = await runDiagnostic("candidate", invalidRoot, expected, resolve(root, "unread-corpus.json"), true);
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain("snapshot dependency install failed");
+    await expect(access(transportImportSentinel)).rejects.toThrow();
+    await expect(access(corpusReadSentinel)).rejects.toThrow();
+  });
+
+  test("rejects a tracked symlink whose target escapes the source root", async () => {
+    const symlinkRoot = resolve(root, "escaping-symlink-candidate");
+    await cp(candidateRoot, symlinkRoot, { recursive: true, filter: (path) => !path.includes("/.git") && !path.includes("/node_modules") });
+    await symlink("../outside-source", resolve(symlinkRoot, "escaped"));
+    for (const args of [
+      ["init"],
+      ["config", "user.email", "evaluation@example.invalid"],
+      ["config", "user.name", "Evaluation Fixture"],
+      ["add", "."],
+      ["commit", "-m", "escaping symlink"],
+    ]) {
+      const child = Bun.spawn(["git", "-C", symlinkRoot, ...args], { stdout: "ignore", stderr: "ignore" });
+      expect(await child.exited).toBe(0);
+    }
+    const revision = Bun.spawn(["git", "-C", symlinkRoot, "rev-parse", "HEAD"], { stdout: "pipe", stderr: "ignore" });
+    const expected = (await new Response(revision.stdout).text()).trim();
+    expect(await revision.exited).toBe(0);
+    const result = await runDiagnostic("candidate", symlinkRoot, expected, resolve(root, "unread-symlink-corpus.json"), true);
+    expect(result.exitCode).toBe(1);
+    expect(JSON.parse(result.stdout).identity.source).toMatchObject({ bound: false, clean: false });
+    await expect(access(transportImportSentinel)).rejects.toThrow();
+  });
+
   test("loads both sides but marks deterministic injected metrics as non-release evidence", async () => {
     const result = await runGate();
 
@@ -814,6 +920,7 @@ describe("paired import recognition CLI", () => {
   test("fails the mandatory gate when a candidate pipeline mutates extracted immutable facts", async () => {
     const result = await runGate(false, "", false, "run-tests", false, true);
 
+    expect(result.stderr).toBe("");
     expect(result.exitCode).toBe(1);
     const output = JSON.parse(result.stdout);
     expect(output.metrics).toBeNull();

@@ -1,13 +1,28 @@
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { afterAll, beforeAll, describe, expect, setDefaultTimeout, test } from "bun:test";
 import { mkdir, mkdtemp, readdir, readFile, realpath, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
 const BASE_REVISION = "864c47f98c27bb7bf238e636b34f89dfa3dcc63c";
+setDefaultTimeout(120_000);
 
 let baseRoot = "";
 let versionedBaseRoot = "";
+const sourceSnapshots: Array<{ cleanup: () => Promise<void> }> = [];
+let loadedBaselinePromise: Promise<unknown> | null = null;
+
+const loadBaselineSnapshot = async (evaluator: Record<string, unknown>): Promise<unknown> => {
+  loadedBaselinePromise ??= (async () => {
+    const preflight = await (evaluator.preflightSource as (mode: "baseline", root: string) => Promise<unknown>)("baseline", versionedBaseRoot);
+    const snapshot = (await (evaluator.materializeSourceSnapshot as (preflight: unknown) => Promise<{ cleanup: () => Promise<void> }>)(preflight)) as {
+      cleanup: () => Promise<void>;
+    };
+    sourceSnapshots.push(snapshot);
+    return (evaluator.loadSnapshotSource as (mode: "baseline", snapshot: unknown) => Promise<unknown>)("baseline", snapshot);
+  })();
+  return loadedBaselinePromise;
+};
 
 async function linkPackageDependencies(packageName: "api" | "shared", targetRoot = baseRoot): Promise<void> {
   const source = resolve(import.meta.dir, `../packages/${packageName}/node_modules`);
@@ -45,6 +60,7 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
+  for (const snapshot of sourceSnapshots.reverse()) await snapshot.cleanup();
   if (baseRoot) await rm(baseRoot, { recursive: true, force: true });
   if (versionedBaseRoot) {
     const remove = Bun.spawn(["git", "worktree", "remove", "--force", versionedBaseRoot], {
@@ -160,7 +176,7 @@ const responseChat =
 describe("exact legacy production baseline", () => {
   test("binds only the exact clean accepted baseline revision and module digest", async () => {
     const evaluator = (await import("./evaluate-import-recognition")) as Record<string, unknown>;
-    const source = (await (evaluator.loadSource as (mode: "baseline", sourceTree: string) => Promise<unknown>)("baseline", versionedBaseRoot)) as {
+    const source = (await loadBaselineSnapshot(evaluator)) as {
       identity: { expectedRevision: string; actualRevision: string; bound: boolean; actualModuleDigest: string; expectedModuleDigest: string };
     };
     expect(source.identity).toMatchObject({ expectedRevision: BASE_REVISION, actualRevision: BASE_REVISION, bound: true });
@@ -169,7 +185,7 @@ describe("exact legacy production baseline", () => {
 
   test("records accepted module bytes but rejects an unversioned archive for release", async () => {
     const evaluator = (await import("./evaluate-import-recognition")) as Record<string, unknown>;
-    const source = (await (evaluator.loadSource as (mode: "baseline", sourceTree: string) => Promise<unknown>)("baseline", baseRoot)) as {
+    const source = (await (evaluator.preflightSource as (mode: "baseline", root: string) => Promise<{ identity: unknown }>)("baseline", baseRoot)) as {
       identity: { expectedRevision: string; actualRevision: string; bound: boolean; actualModuleDigest: string; expectedModuleDigest: string };
     };
     expect(source.identity).toMatchObject({
@@ -186,7 +202,7 @@ describe("exact legacy production baseline", () => {
     const original = await readFile(path);
     try {
       await writeFile(path, Buffer.concat([original, Buffer.from("\n// drift\n")]));
-      const source = (await (evaluator.loadSource as (mode: "baseline", sourceTree: string) => Promise<unknown>)("baseline", baseRoot)) as {
+      const source = (await (evaluator.preflightSource as (mode: "baseline", root: string) => Promise<{ identity: unknown }>)("baseline", baseRoot)) as {
         identity: { bound: boolean; expectedModuleDigest: string; actualModuleDigest: string };
       };
       expect(source.identity.bound).toBe(false);
@@ -197,7 +213,7 @@ describe("exact legacy production baseline", () => {
 
   test("freezes the archived route clock to fixture.today and restores Date", async () => {
     const evaluator = (await import("./evaluate-import-recognition")) as Record<string, unknown>;
-    const source = await (evaluator.loadSource as (mode: "baseline", sourceTree: string) => Promise<unknown>)("baseline", baseRoot);
+    const source = await loadBaselineSnapshot(evaluator);
     const OriginalDate = globalThis.Date;
     const requests: Request[] = [];
     await (evaluator.runBaselineProductionAdapter as (input: Record<string, unknown>) => Promise<unknown>)({
@@ -224,12 +240,11 @@ describe("exact legacy production baseline", () => {
     // Break caught: the evaluator cloned the route's schema without descriptions and
     // treated empty or whitespace-only source_ref values as confident learned matches.
     const evaluator = (await import("./evaluate-import-recognition")) as Record<string, unknown>;
-    expect(typeof evaluator.loadSource).toBe("function");
+    expect(typeof evaluator.loadSnapshotSource).toBe("function");
     expect(typeof evaluator.runBaselineProductionAdapter).toBe("function");
-    const loadSource = evaluator.loadSource as (mode: "baseline", sourceTree: string) => Promise<unknown>;
     const runAdapter = evaluator.runBaselineProductionAdapter as (input: Record<string, unknown>) => Promise<unknown>;
 
-    const source = await loadSource("baseline", baseRoot);
+    const source = (await loadBaselineSnapshot(evaluator)) as { root: string };
     const adapterRequests: Request[] = [];
     await runAdapter({
       source,
@@ -248,13 +263,13 @@ describe("exact legacy production baseline", () => {
       chat: responseChat(adapterRequests),
     });
 
-    const route = (await import(pathToFileURL(resolve(baseRoot, "packages/api/src/routes/import.ts")).href)) as {
+    const route = (await import(pathToFileURL(resolve(source.root, "packages/api/src/routes/import.ts")).href)) as {
       extractImportForBudget: (input: Record<string, unknown>) => Promise<unknown>;
     };
-    const dbModule = (await import(pathToFileURL(resolve(baseRoot, "packages/api/src/db/client.ts")).href)) as {
+    const dbModule = (await import(pathToFileURL(resolve(source.root, "packages/api/src/db/client.ts")).href)) as {
       db: { select: (...args: unknown[]) => unknown };
     };
-    const schema = (await import(pathToFileURL(resolve(baseRoot, "packages/api/src/db/schema.ts")).href)) as Record<string, unknown>;
+    const schema = (await import(pathToFileURL(resolve(source.root, "packages/api/src/db/schema.ts")).href)) as Record<string, unknown>;
     const rowsByTable = new Map<unknown, unknown[]>([
       [schema.budgets, [{ currency: "EUR" }]],
       [schema.envelopes, [{ id: "envelope-food", name: "Food", archived: false }]],
@@ -340,9 +355,8 @@ describe("exact legacy production baseline", () => {
     // Break caught: overlapping baseline fixtures could replace the same imported DB
     // object's select method and make one fixture query another fixture's history.
     const evaluator = (await import("./evaluate-import-recognition")) as Record<string, unknown>;
-    const loadSource = evaluator.loadSource as (mode: "baseline", sourceTree: string) => Promise<Record<string, unknown>>;
     const runAdapter = evaluator.runBaselineProductionAdapter as (input: Record<string, unknown>) => Promise<unknown>;
-    const source = await loadSource("baseline", baseRoot);
+    const source = (await loadBaselineSnapshot(evaluator)) as Record<string, unknown>;
     const seam = source.baseline as { db: { select: unknown } };
     const originalSelect = seam.db.select;
     let activeFixtures = 0;
@@ -385,7 +399,7 @@ describe("exact legacy production baseline", () => {
 
   test("restores the process clock when the archived route fails", async () => {
     const evaluator = (await import("./evaluate-import-recognition")) as Record<string, unknown>;
-    const source = await (evaluator.loadSource as (mode: "baseline", sourceTree: string) => Promise<unknown>)("baseline", baseRoot);
+    const source = await loadBaselineSnapshot(evaluator);
     const OriginalDate = globalThis.Date;
     await expect(
       (evaluator.runBaselineProductionAdapter as (input: Record<string, unknown>) => Promise<unknown>)({
