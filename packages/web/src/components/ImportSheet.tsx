@@ -5,14 +5,14 @@ import { runImportExtract } from "../lib/ai";
 import { importFlow } from "../lib/aiProvider/capabilities";
 import { useAiProvider } from "../lib/aiProvider/useAiProvider";
 import { api, apiErrorMessage, type EditedImportItem, type ImportApplyItem, type ImportApplyResponse, type StateResponse } from "../lib/api";
-import { automaticEnvelopePreview, expenseEnvelopeSelectionForImport, formatAutomaticEnvelopeEffect } from "../lib/automaticEnvelopeUi";
+import { automaticEnvelopePreview, formatAutomaticEnvelopeEffect } from "../lib/automaticEnvelopeUi";
 import { useCurrency, useTheme } from "../lib/contexts";
 import * as e2ee from "../lib/e2ee";
 import { formatMoney, isLight } from "../lib/format";
 import { useT } from "../lib/i18n";
 import { Glyph, Ico } from "../lib/icons";
 import { preferredAccountId, setLastAccountId } from "../lib/lastAccount";
-import { applyLocalImport, type LocalImportReviewItem, planLocalImport, reviewedImportItemsForApply } from "../lib/localImport";
+import { applyLocalImport, importReviewItem, type LocalImportReviewItem, planLocalImport, reviewedImportItemsForApply } from "../lib/localImport";
 import { store } from "../lib/store";
 import { assertOwnReplica } from "../lib/sync";
 import { CORAL, font, TEAL, TRANSFER, tint } from "../lib/theme";
@@ -164,13 +164,7 @@ export function ImportSheet({ show, onClose, state, onApplied }: { show: boolean
       setItems(
         dry.results.map((r) => {
           const automaticEnvelopeId = accounts.find((account) => account.id === accountId)?.automaticEnvelopeId;
-          const selection = expenseEnvelopeSelectionForImport(r.type, r.envelopeId, automaticEnvelopeId);
-          return {
-            ...r,
-            envelopeId: selection.envelopeId,
-            automaticEnvelopeDefault: selection.provenance === "automatic",
-            include: r.status === "added" && !(!!r.currency && r.currency !== currency),
-          };
+          return importReviewItem(r, automaticEnvelopeId, currency);
         }),
       );
       setEdited({}); // fresh review = no corrections (edited is keyed by index)
@@ -207,8 +201,8 @@ export function ImportSheet({ show, onClose, state, onApplied }: { show: boolean
       // merge editor corrections: fields from edited[i] override the original (including
       // per-item account); rawPlace ALWAYS from the original — source_ref feeds self-learning
       const chosen: ImportApplyItem[] = reviewedImportItemsForApply({ items, edited, editedAutomaticDefaults });
-      // The review can sit open for minutes: re-prove ownership before either a server write
-      // or attaching local E2EE ops to this replica.
+      // The review can sit open for minutes: re-prove ownership before attaching local ops
+      // that the sync engine will later write for this replica.
       let res = { added: 0, skipped: 0 };
       if (chosen.length > 0) {
         await assertOwnReplica();

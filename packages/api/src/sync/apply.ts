@@ -22,9 +22,11 @@ import {
   type GroupPayload,
   reconcileBudgetPreferences,
   type TxnPayload,
+  transactionSemanticsValid,
 } from "@enveo/shared";
 import { and, eq, inArray } from "drizzle-orm";
-import type { DbExecutor } from "../db/client";
+import { lockChangesCursorShared } from "../db/changesCursorLock";
+import type { DbExecutor, DbTransaction } from "../db/client";
 import * as s from "../db/schema";
 
 /** Legacy alias — the canonical type now lives in db/client.ts (DbExecutor/DbTransaction). */
@@ -51,6 +53,14 @@ export class AutomaticEnvelopeViolation extends Error {
   constructor(readonly code: AutomaticEnvelopeViolationCode) {
     super(code);
     this.name = "AutomaticEnvelopeViolation";
+  }
+}
+
+/** Stable refusal when a sparse update would leave an impossible transaction flow. */
+export class TransactionSemanticViolation extends Error {
+  constructor() {
+    super("invalid_transaction_flow");
+    this.name = "TransactionSemanticViolation";
   }
 }
 
@@ -207,11 +217,37 @@ export async function applyTxnCreate(x: Executor, budgetId: string, body: TxnPay
 }
 
 /** Full field replacement (LWW); items delete+reinsert. `createdAt` is not changed. */
-export async function applyTxnUpdate(x: Executor, budgetId: string, body: TxnPayload & { id: string }) {
+export async function applyTxnUpdate(x: DbTransaction, budgetId: string, body: TxnPayload & { id: string }) {
+  // The effective-row check needs a row lock. Take the shared cursor first so an
+  // exclusive barrier can never hold the cursor while waiting on this transaction.
+  await lockChangesCursorShared(x);
   await assertBudgetFks(x, budgetId, body);
   const items = body.items ?? [];
   for (const i of items) {
     await assertBudgetFks(x, budgetId, { envelopeId: i.envelopeId, categoryId: i.categoryId });
+  }
+  const [current] = await x
+    .select({ allocationFromEnvelopeId: s.transactions.allocationFromEnvelopeId, allocationToEnvelopeId: s.transactions.allocationToEnvelopeId })
+    .from(s.transactions)
+    .where(and(eq(s.transactions.id, body.id), eq(s.transactions.budgetId, budgetId)))
+    .limit(1)
+    .for("update");
+  if (!current) return NOT_FOUND;
+
+  const allocationFromEnvelopeId = body.allocationFromEnvelopeId === undefined ? current.allocationFromEnvelopeId : body.allocationFromEnvelopeId;
+  const allocationToEnvelopeId = body.allocationToEnvelopeId === undefined ? current.allocationToEnvelopeId : body.allocationToEnvelopeId;
+  if (
+    !transactionSemanticsValid({
+      type: body.type,
+      toAccountId: body.type === "transfer" ? (body.toAccountId ?? null) : null,
+      amount: body.amount,
+      envelopeId: body.type === "transfer" || items.length > 0 ? null : (body.envelopeId ?? null),
+      allocationFromEnvelopeId,
+      allocationToEnvelopeId,
+      items,
+    })
+  ) {
+    throw new TransactionSemanticViolation();
   }
   const [row] = await x
     .update(s.transactions)
@@ -230,8 +266,8 @@ export async function applyTxnUpdate(x: Executor, budgetId: string, body: TxnPay
       // tag is preserved when the update does not send it (UI edits don't know import tags)
       ...(body.tag !== undefined ? { tag: body.tag } : {}),
       ...(body.sourceRef !== undefined ? { sourceRef: body.sourceRef } : {}),
-      ...(body.allocationFromEnvelopeId !== undefined ? { allocationFromEnvelopeId: body.allocationFromEnvelopeId } : {}),
-      ...(body.allocationToEnvelopeId !== undefined ? { allocationToEnvelopeId: body.allocationToEnvelopeId } : {}),
+      ...(body.allocationFromEnvelopeId !== undefined ? { allocationFromEnvelopeId } : {}),
+      ...(body.allocationToEnvelopeId !== undefined ? { allocationToEnvelopeId } : {}),
     })
     .where(and(eq(s.transactions.id, body.id), eq(s.transactions.budgetId, budgetId)))
     .returning();
@@ -321,7 +357,8 @@ async function validateAutomaticEnvelopeLink(x: Executor, budgetId: string, stat
   if (envelope.archived) throw new AutomaticEnvelopeViolation("automatic_envelope_unavailable");
 }
 
-export async function applyAccountCreate(x: Executor, budgetId: string, body: AccountPayload & { id?: string }) {
+export async function applyAccountCreate(x: DbTransaction, budgetId: string, body: AccountPayload & { id?: string }) {
+  await lockChangesCursorShared(x);
   await validateAutomaticEnvelopeLink(x, budgetId, {
     onBudget: body.onBudget ?? true,
     automaticEnvelopeId: body.automaticEnvelopeId ?? null,
@@ -334,7 +371,8 @@ export async function applyAccountCreate(x: Executor, budgetId: string, body: Ac
   return row!;
 }
 
-export async function applyAccountUpdate(x: Executor, budgetId: string, body: Partial<AccountPayload> & { id: string }) {
+export async function applyAccountUpdate(x: DbTransaction, budgetId: string, body: Partial<AccountPayload> & { id: string }) {
+  await lockChangesCursorShared(x);
   // Keep the existing tenant-guard ordering for a patch that names a missing or
   // cross-budget target, even if the account itself was concurrently removed.
   await assertBudgetFks(x, budgetId, body);
@@ -383,7 +421,8 @@ export async function applyGroupUpdate(x: Executor, budgetId: string, body: Part
   return row ?? NOT_FOUND;
 }
 
-export async function applyGroupDelete(x: Executor, budgetId: string, id: string): Promise<void> {
+export async function applyGroupDelete(x: DbTransaction, budgetId: string, id: string): Promise<void> {
+  await lockChangesCursorShared(x);
   // Group deletion cascades to envelopes, whose SET NULL actions update linked accounts.
   // Join the same account→envelope order as direct envelope deletion before the cascade.
   const envelopeRows = await x
@@ -413,7 +452,8 @@ export async function applyEnvelopeCreate(x: Executor, budgetId: string, body: E
   return row!;
 }
 
-export async function applyEnvelopeUpdate(x: Executor, budgetId: string, body: Partial<EnvelopePayload> & { id: string }) {
+export async function applyEnvelopeUpdate(x: DbTransaction, budgetId: string, body: Partial<EnvelopePayload> & { id: string }) {
+  await lockChangesCursorShared(x);
   await assertBudgetFks(x, budgetId, { groupId: body.groupId }); // no-op when the patch omits groupId
   if (body.archived === true) {
     await lockAccountsLinkedToEnvelope(x, budgetId, body.id);
@@ -442,7 +482,8 @@ export async function applyEnvelopeUpdate(x: Executor, budgetId: string, body: P
   return row ?? NOT_FOUND;
 }
 
-export async function applyEnvelopeDelete(x: Executor, budgetId: string, id: string): Promise<void> {
+export async function applyEnvelopeDelete(x: DbTransaction, budgetId: string, id: string): Promise<void> {
+  await lockChangesCursorShared(x);
   await lockAccountsLinkedToEnvelope(x, budgetId, id);
   await x.delete(s.envelopes).where(and(eq(s.envelopes.id, id), eq(s.envelopes.budgetId, budgetId)));
 }
@@ -450,7 +491,8 @@ export async function applyEnvelopeDelete(x: Executor, budgetId: string, id: str
 /* ── Budget data wipe ───────────────────────────────────────────────── */
 
 /** Wipes ALL budget data (leaves the budgets row — stable id/currency). */
-export async function wipeBudgetData(x: Executor, budgetId: string): Promise<void> {
+export async function wipeBudgetData(x: DbTransaction, budgetId: string): Promise<void> {
+  await lockChangesCursorShared(x);
   // FK-safe AND lifecycle-lock-safe order (txn_items via cascade): transactions first,
   // then accounts BEFORE envelopes. Lock every account explicitly in the lifecycle
   // protocol's stable order: PostgreSQL does not guarantee a bulk DELETE's row order.

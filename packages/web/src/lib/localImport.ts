@@ -29,6 +29,26 @@ export interface LocalImportMutationPort {
   createTxn(payload: TxnPayload): string;
 }
 
+/** Convert either server or local dry-run output without erasing local provenance. */
+export function importReviewItem(
+  result: ImportApplyResponse["results"][number],
+  automaticEnvelopeId: string | null | undefined,
+  budgetCurrency?: string,
+): LocalImportReviewItem {
+  const selection =
+    result.type === "expense" && result.automaticEnvelopeDefault === true
+      ? { envelopeId: automaticEnvelopeId ?? null, provenance: "automatic" as const }
+      : result.automaticEnvelopeDefault === false
+        ? { envelopeId: result.envelopeId, provenance: "explicit" as const }
+        : expenseEnvelopeSelectionForImport(result.type, result.envelopeId, automaticEnvelopeId);
+  return {
+    ...result,
+    envelopeId: selection.envelopeId,
+    automaticEnvelopeDefault: selection.provenance === "automatic",
+    include: result.status === "added" && !(!!budgetCurrency && !!result.currency && result.currency !== budgetCurrency),
+  };
+}
+
 /** Merge the accepted review rows with editor corrections without losing envelope provenance. */
 export function reviewedImportItemsForApply(args: {
   items: LocalImportReviewItem[];
@@ -89,12 +109,13 @@ export function planLocalImport(args: { ledger: ClientLedger; globalAccountId: s
           ? item.envelopeId
           : (item.envelopeId ?? (namedEnvelope ? envelopeByName.get(namedEnvelope.toLowerCase())?.id : null) ?? null);
     const automaticEnvelopeId = accountById.get(accountId)?.automaticEnvelopeId;
-    const envelopeId =
+    const envelopeSelection =
       item.type === "expense" && item.automaticEnvelopeDefault === true
-        ? (automaticEnvelopeId ?? null)
-        : item.type === "expense" && item.automaticEnvelopeDefault === false
-          ? importedEnvelopeId
-          : expenseEnvelopeSelectionForImport(item.type, importedEnvelopeId, automaticEnvelopeId).envelopeId;
+        ? { envelopeId: automaticEnvelopeId ?? null, provenance: "automatic" as const }
+        : item.automaticEnvelopeDefault === false
+          ? { envelopeId: importedEnvelopeId, provenance: "explicit" as const }
+          : expenseEnvelopeSelectionForImport(item.type, importedEnvelopeId, automaticEnvelopeId);
+    const { envelopeId } = envelopeSelection;
     if (envelopeId && !envelopeIds.has(envelopeId)) throw new Error("foreign_ref");
 
     const namedCategory = cleanName(item.categoryName);
@@ -121,7 +142,12 @@ export function planLocalImport(args: { ledger: ClientLedger; globalAccountId: s
       sourceRef: item.rawPlace?.trim() || null,
       items: [],
     };
-    return { item: { ...item, envelopeId }, payload, placeName: placeId ? null : placeName, categoryName };
+    return {
+      item: { ...item, envelopeId, automaticEnvelopeDefault: envelopeSelection.provenance === "automatic" },
+      payload,
+      placeName: placeId ? null : placeName,
+      categoryName,
+    };
   });
 
   const dupIndex = buildImportDupIndex(ledger.transactions.map((row) => ({ date: row.date, amount: row.amount, sourceRef: row.sourceRef })));

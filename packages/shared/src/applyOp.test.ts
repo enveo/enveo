@@ -204,12 +204,16 @@ describe("applyOp: txn.update", () => {
     expect(upd("BIEDRONKA RAW")).toBe("BIEDRONKA RAW");
   });
 
-  it("allocation-flow links preserve when omitted and clear when explicitly null", () => {
+  it("preserves omitted allocation flow only when the merged transaction remains valid", () => {
     const baseWithFlow = {
       ...base(),
       transactions: [
         {
           ...existing(),
+          type: "transfer",
+          toAccountId: "A2",
+          envelopeId: null,
+          items: [],
           allocationFromEnvelopeId: "E1",
           allocationToEnvelopeId: "E2",
         },
@@ -217,19 +221,31 @@ describe("applyOp: txn.update", () => {
     } as unknown as ClientLedger;
     const updateWithoutFlowFields = {
       id: "T1",
-      type: "expense",
+      type: "transfer",
       accountId: "A1",
+      toAccountId: "A2",
       amount: 30_00,
       date: "2026-06-01",
-      envelopeId: "E1",
     };
 
     const preserved = apply(baseWithFlow, "txn.update", updateWithoutFlowFields);
     expect(preserved.transactions[0]!.allocationFromEnvelopeId).toBe("E1");
     expect(preserved.transactions[0]!.allocationToEnvelopeId).toBe("E2");
 
+    const invalidTypeChange = apply(baseWithFlow, "txn.update", {
+      ...updateWithoutFlowFields,
+      type: "expense",
+      toAccountId: null,
+      envelopeId: "E1",
+    });
+    expect(invalidTypeChange).toBe(baseWithFlow);
+    expect(invalidTypeChange.transactions[0]!.type).toBe("transfer");
+
     const cleared = apply(baseWithFlow, "txn.update", {
       ...updateWithoutFlowFields,
+      type: "expense",
+      toAccountId: null,
+      envelopeId: "E1",
       allocationFromEnvelopeId: null,
       allocationToEnvelopeId: null,
     } as never);

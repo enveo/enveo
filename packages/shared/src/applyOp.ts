@@ -39,7 +39,7 @@
  * computeBudgetState does not read allocation or item ids — canonical ids
  * arrive via pull/snapshot.
  */
-import type { OpPayload, SyncOp } from "./ops";
+import { type OpPayload, type SyncOp, transactionSemanticsValid } from "./ops";
 import { reconcileBudgetPreferences } from "./preferences";
 import type { Account, Allocation, Category, ClientLedger, Envelope, EnvelopeGroup, Place, Transaction, TxnItem } from "./types";
 
@@ -216,9 +216,11 @@ export function applyOp(ledger: ClientLedger, op: SyncOp): ClientLedger {
       const p = op.payload as OpPayload<"txn.update">;
       const idx = ledger.transactions.findIndex((t) => t.id === p.id);
       if (idx < 0) return ledger; // server: rejected → dead-letter + resync
+      const next = txnFromUpdate(ledger.transactions[idx]!, p);
+      if (!transactionSemanticsValid(next)) return ledger;
       return {
         ...ledger,
-        transactions: replaceAt(ledger.transactions, idx, txnFromUpdate(ledger.transactions[idx]!, p)),
+        transactions: replaceAt(ledger.transactions, idx, next),
       };
     }
     case "txn.delete": {

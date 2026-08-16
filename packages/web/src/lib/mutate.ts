@@ -135,9 +135,9 @@ export function txnToPayload(t: Transaction): TxnPayload {
 }
 
 /**
- * A transaction copy built ON THE CLIENT — semantics 1:1 with the old
- * POST /transactions/:id/duplicate: today's date, `tag: null` (the copy doesn't
- * inherit the import key), items without ids.
+ * A transaction copy built ON THE CLIENT: today's date, `tag: null` (the copy
+ * doesn't inherit the import key), items without ids. The retired REST duplicate
+ * route refuses writes so central local preparation always stamps current links.
  *
  * D7: a split "orphaned" by envelope.delete (items no longer sum to the parent
  * amount after the envelope removal) must NOT pass opSchemas["txn.create"]

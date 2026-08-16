@@ -3,7 +3,6 @@ import { useEffect, useMemo, useState } from "react";
 import { AmountPadHost, type AmountPadTarget } from "../components/AmountPadSheet";
 import { Sheet } from "../components/chrome";
 import { IconColorPicker } from "../components/IconColorPicker";
-import { accountIconColor } from "../components/tiles";
 import { fmtSignedTrim } from "../lib/amount";
 import { type StateResponse, useLedgerVersion } from "../lib/api";
 import {
@@ -17,10 +16,11 @@ import { currentMonth } from "../lib/dates";
 import { useDragReorder } from "../lib/dnd";
 import { localizePadExpression, parseAmount } from "../lib/format";
 import { useT } from "../lib/i18n";
-import { Glyph, Ico } from "../lib/icons";
+import { Ico } from "../lib/icons";
 import { local } from "../lib/mutate";
 import { store } from "../lib/store";
 import { ACCOUNT_COLORS, font, P, TEAL } from "../lib/theme";
+import { AccountListRowContent } from "./AccountListRowContent";
 import { EnvelopePickerSheet } from "./add/EnvelopePickerSheet";
 
 export function AccountsScreen({ state, onMenu }: { state: StateResponse; onMenu: () => void }) {
@@ -142,6 +142,7 @@ export function AccountsScreen({ state, onMenu }: { state: StateResponse; onMenu
         {accounts.map((a, i) => {
           const b = dnd.bind(i);
           const linkedEnvelopeName = visibleAutomaticEnvelopeName(a, state.envelopes);
+          const automaticLabel = linkedEnvelopeName ? t("Automatic: {envelope}", { envelope: linkedEnvelopeName }) : null;
           return (
             <div
               key={a.id}
@@ -172,56 +173,7 @@ export function AccountsScreen({ state, onMenu }: { state: StateResponse; onMenu
                 onClick={() => setEdit(a)}
                 style={{ flex: 1, minWidth: 0, display: "flex", alignItems: "center", justifyContent: "space-between", cursor: "pointer" }}
               >
-                <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0 }}>
-                  <div
-                    style={{
-                      width: 44,
-                      height: 44,
-                      borderRadius: 12,
-                      background: a.color,
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      flexShrink: 0,
-                    }}
-                  >
-                    <div
-                      style={{
-                        width: 30,
-                        height: 30,
-                        borderRadius: "50%",
-                        background: "rgba(255,255,255,0.92)",
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                      }}
-                    >
-                      <Glyph name={a.icon} size={16} color={accountIconColor(a.color)} />
-                    </div>
-                  </div>
-                  <div style={{ minWidth: 0 }}>
-                    <div style={{ color: C.text, fontSize: 14.5, fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                      {a.name}
-                    </div>
-                    {linkedEnvelopeName && (
-                      <div style={{ color: C.mute, fontSize: 11.5, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginTop: 2 }}>
-                        {linkedEnvelopeName}
-                      </div>
-                    )}
-                  </div>
-                </div>
-                <span
-                  style={{
-                    fontSize: 15,
-                    fontWeight: 600,
-                    color: a.balance === 0 ? C.mute : C.text,
-                    fontVariantNumeric: "tabular-nums",
-                    flexShrink: 0,
-                    marginLeft: 8,
-                  }}
-                >
-                  {M(a.balance)}
-                </span>
+                <AccountListRowContent account={a} automaticLabel={automaticLabel} balanceText={M(a.balance)} colors={C} />
               </div>
             </div>
           );
@@ -233,37 +185,23 @@ export function AccountsScreen({ state, onMenu }: { state: StateResponse; onMenu
             </div>
             {closed.map((a) => {
               const linkedEnvelopeName = visibleAutomaticEnvelopeName(a, state.envelopes);
+              const automaticLabel = linkedEnvelopeName ? t("Automatic: {envelope}", { envelope: linkedEnvelopeName }) : null;
               return (
                 <div
                   key={a.id}
                   role="button"
                   onClick={() => setEdit(a)}
-                  style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "9px 0", opacity: 0.55, cursor: "pointer" }}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    minWidth: 0,
+                    padding: "9px 0",
+                    opacity: 0.55,
+                    cursor: "pointer",
+                  }}
                 >
-                  <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                    <div
-                      style={{ width: 34, height: 34, borderRadius: 10, background: a.color, display: "flex", alignItems: "center", justifyContent: "center" }}
-                    >
-                      <div
-                        style={{
-                          width: 24,
-                          height: 24,
-                          borderRadius: "50%",
-                          background: "rgba(255,255,255,0.92)",
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "center",
-                        }}
-                      >
-                        <Glyph name={a.icon} size={13} color={accountIconColor(a.color)} />
-                      </div>
-                    </div>
-                    <div>
-                      <div style={{ color: C.soft, fontSize: 13.5 }}>{a.name}</div>
-                      {linkedEnvelopeName && <div style={{ color: C.mute, fontSize: 11.5, marginTop: 2 }}>{linkedEnvelopeName}</div>}
-                    </div>
-                  </div>
-                  <span style={{ fontSize: 13, color: C.mute, fontVariantNumeric: "tabular-nums" }}>{M(a.balance)}</span>
+                  <AccountListRowContent account={a} automaticLabel={automaticLabel} balanceText={M(a.balance)} compact colors={C} />
                 </div>
               );
             })}
@@ -575,7 +513,10 @@ function AutomaticEnvelopeControl({
         </button>
       </div>
       <div style={{ color: C.mute, fontSize: 11.5, lineHeight: 1.45, marginTop: 6 }}>
-        {t("This starts with future transactions and does not change current balances, transaction history, or Added.")}
+        {t("Income and transfers to this account increase the selected envelope. Transfers from this account decrease it.")}
+      </div>
+      <div style={{ color: C.mute, fontSize: 11.5, lineHeight: 1.45, marginTop: 6 }}>
+        {t("The link works from now on. The current account balance and envelope amount will not change.")}
       </div>
       {enabled && envelopeName && (
         <button

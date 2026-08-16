@@ -4,6 +4,8 @@
  * Imports stay lazy so sync.test.ts can import only the output contract safely.
  */
 
+import type { ClientLedgerInput } from "@enveo/shared";
+
 export const SENTINEL = "__SYNC_AUTOMATIC_ENVELOPE__";
 
 type Result = { status: number; error: string | null };
@@ -35,7 +37,24 @@ export type AutomaticEnvelopeOutput = {
     archiveLinkedClaimAbsent: boolean;
     historicalAllocationStatus: string | null;
   };
+  transactionUpdate: {
+    rest: Result;
+    preservedAfterRest: boolean;
+    syncError: string | null;
+    preservedAfterSync: boolean;
+    syncClaimAbsent: boolean;
+  };
+  legacyWrites: {
+    duplicate: Result;
+    duplicateWroteNothing: boolean;
+    importWrite: Result;
+    importWriteWroteNothing: boolean;
+    dryRunStatus: number;
+    dryRunResultStatus: string | null;
+    dryRunWroteNothing: boolean;
+  };
   restore: {
+    invalidTransaction: Result;
     offBudgetLink: Result;
     archivedLink: Result;
     originalAccountSurvived: boolean;
@@ -142,6 +161,105 @@ async function main(): Promise<void> {
   const relink = await jsonRequest(`/api/accounts/${linkedAccount.id}`, "PATCH", { onBudget: true, automaticEnvelopeId: activeEnvelope.id }, cookieA);
   if (relink.status !== 200) throw new Error(`relink failed: ${relink.status} ${await relink.text()}`);
 
+  const secondAccountResponse = await jsonRequest("/api/accounts", "POST", { name: "Transfer target", onBudget: true }, cookieA);
+  const secondAccount = (await bodyOf(secondAccountResponse)) as { id?: string };
+  if (secondAccountResponse.status !== 201 || !secondAccount.id) throw new Error("second account was not created");
+  const transferResponse = await jsonRequest(
+    "/api/transactions",
+    "POST",
+    {
+      type: "transfer",
+      accountId: linkedAccount.id,
+      toAccountId: secondAccount.id,
+      amount: 250,
+      date: "2026-08-16",
+      allocationFromEnvelopeId: activeEnvelope.id,
+      allocationToEnvelopeId: activeEnvelope.id,
+    },
+    cookieA,
+  );
+  const transfer = (await bodyOf(transferResponse)) as { id?: string };
+  if (transferResponse.status !== 201 || !transfer.id) throw new Error("transfer was not created");
+
+  const invalidRestUpdate = await resultOf(
+    await jsonRequest(
+      `/api/transactions/${transfer.id}`,
+      "PATCH",
+      { type: "expense", accountId: linkedAccount.id, amount: 250, date: "2026-08-16", envelopeId: activeEnvelope.id },
+      cookieA,
+    ),
+  );
+  const [afterInvalidRest] = await db
+    .select({
+      type: s.transactions.type,
+      allocationFromEnvelopeId: s.transactions.allocationFromEnvelopeId,
+      allocationToEnvelopeId: s.transactions.allocationToEnvelopeId,
+    })
+    .from(s.transactions)
+    .where(eq(s.transactions.id, transfer.id));
+  const preservedAfterRest =
+    afterInvalidRest?.type === "transfer" &&
+    afterInvalidRest.allocationFromEnvelopeId === activeEnvelope.id &&
+    afterInvalidRest.allocationToEnvelopeId === activeEnvelope.id;
+
+  const invalidUpdateOpId = crypto.randomUUID();
+  const invalidSyncUpdate = await jsonRequest(
+    "/api/sync/push",
+    "POST",
+    {
+      clientId: "automatic-envelope-test",
+      budgetId: groupA.budgetId,
+      ops: [
+        {
+          opId: invalidUpdateOpId,
+          kind: "txn.update",
+          payload: { id: transfer.id, type: "expense", accountId: linkedAccount.id, amount: 250, date: "2026-08-16", envelopeId: activeEnvelope.id },
+        },
+      ],
+    },
+    cookieA,
+  );
+  const invalidSyncBody = (await bodyOf(invalidSyncUpdate)) as { results?: Array<{ error?: string }> };
+  const [afterInvalidSync] = await db
+    .select({
+      type: s.transactions.type,
+      allocationFromEnvelopeId: s.transactions.allocationFromEnvelopeId,
+      allocationToEnvelopeId: s.transactions.allocationToEnvelopeId,
+    })
+    .from(s.transactions)
+    .where(eq(s.transactions.id, transfer.id));
+  const [invalidSyncClaim] = await db.select({ opId: s.syncOps.opId }).from(s.syncOps).where(eq(s.syncOps.opId, invalidUpdateOpId));
+
+  const transactionCount = async () =>
+    Number((await db.select({ count: s.transactions.id }).from(s.transactions).where(eq(s.transactions.budgetId, groupA.budgetId))).length);
+  const beforeDuplicate = await transactionCount();
+  const duplicateResult = await resultOf(await jsonRequest(`/api/transactions/${transfer.id}/duplicate`, "POST", {}, cookieA));
+  const afterDuplicate = await transactionCount();
+  const importBody = {
+    accountId: linkedAccount.id,
+    budgetId: groupA.budgetId,
+    items: [
+      {
+        date: "2026-08-15",
+        amount: 375,
+        type: "expense",
+        name: "Legacy import",
+        tag: "LEGACY",
+        rawPlace: "LEGACY WRITE RAW",
+        envelopeId: activeEnvelope.id,
+        categoryId: null,
+        placeName: null,
+      },
+    ],
+  };
+  const beforeDryRun = await transactionCount();
+  const dryRunResponse = await jsonRequest("/api/import/apply", "POST", { ...importBody, dryRun: true }, cookieA);
+  const dryRunBody = (await bodyOf(dryRunResponse)) as { results?: Array<{ status?: string }> };
+  const afterDryRun = await transactionCount();
+  const beforeImportWrite = await transactionCount();
+  const importWriteResult = await resultOf(await jsonRequest("/api/import/apply", "POST", importBody, cookieA));
+  const afterImportWrite = await transactionCount();
+
   const archiveLinked = await resultOf(await jsonRequest(`/api/envelopes/${activeEnvelope.id}`, "PATCH", { archived: true }, cookieA));
   const savingsChange = await jsonRequest(`/api/envelopes/${activeEnvelope.id}`, "PATCH", { isSavings: true }, cookieA);
   const savingsBody = await bodyOf(savingsChange);
@@ -212,7 +330,7 @@ async function main(): Promise<void> {
   );
   const allocationPushBody = (await bodyOf(allocationPush)) as { results?: Array<{ status?: string; error?: string }> };
 
-  const restoreLedger = (accountOnBudget: boolean, envelopeArchived: boolean) => {
+  const restoreLedger = (accountOnBudget: boolean, envelopeArchived: boolean): ClientLedgerInput => {
     const accountId = crypto.randomUUID();
     const groupId = crypto.randomUUID();
     const envelopeId = crypto.randomUUID();
@@ -252,6 +370,28 @@ async function main(): Promise<void> {
       transactions: [],
     };
   };
+  const invalidTransactionLedger = restoreLedger(true, false);
+  invalidTransactionLedger.transactions.push({
+    id: crypto.randomUUID(),
+    type: "expense",
+    accountId: invalidTransactionLedger.accounts[0]!.id,
+    toAccountId: null,
+    amount: 100,
+    date: "2026-08-16",
+    isRefund: false,
+    envelopeId: invalidTransactionLedger.envelopes[0]!.id,
+    placeId: null,
+    categoryId: null,
+    name: "Invalid restored flow",
+    note: null,
+    tag: null,
+    sourceRef: null,
+    allocationFromEnvelopeId: invalidTransactionLedger.envelopes[0]!.id,
+    allocationToEnvelopeId: null,
+    items: [],
+    createdAt: "2026-08-16T00:00:00.000Z",
+  });
+  const restoreInvalidTransaction = await resultOf(await jsonRequest("/api/sync/replace", "POST", { ledger: invalidTransactionLedger }, cookieA));
   const restoreOffBudget = await resultOf(await jsonRequest("/api/sync/replace", "POST", { ledger: restoreLedger(false, false) }, cookieA));
   const restoreArchived = await resultOf(await jsonRequest("/api/sync/replace", "POST", { ledger: restoreLedger(true, true) }, cookieA));
   const [originalAccount] = await db
@@ -286,7 +426,27 @@ async function main(): Promise<void> {
       archiveLinkedClaimAbsent: !archiveClaim,
       historicalAllocationStatus: allocationPushBody.results?.[0]?.status ?? null,
     },
+    transactionUpdate: {
+      rest: invalidRestUpdate,
+      preservedAfterRest,
+      syncError: invalidSyncBody.results?.[0]?.error ?? null,
+      preservedAfterSync:
+        afterInvalidSync?.type === "transfer" &&
+        afterInvalidSync.allocationFromEnvelopeId === activeEnvelope.id &&
+        afterInvalidSync.allocationToEnvelopeId === activeEnvelope.id,
+      syncClaimAbsent: !invalidSyncClaim,
+    },
+    legacyWrites: {
+      duplicate: duplicateResult,
+      duplicateWroteNothing: beforeDuplicate === afterDuplicate,
+      importWrite: importWriteResult,
+      importWriteWroteNothing: beforeImportWrite === afterImportWrite,
+      dryRunStatus: dryRunResponse.status,
+      dryRunResultStatus: dryRunBody.results?.[0]?.status ?? null,
+      dryRunWroteNothing: beforeDryRun === afterDryRun,
+    },
     restore: {
+      invalidTransaction: restoreInvalidTransaction,
       offBudgetLink: restoreOffBudget,
       archivedLink: restoreArchived,
       originalAccountSurvived: Boolean(originalAccount),

@@ -132,6 +132,10 @@ describe("clientLedgerSchema", () => {
       transactions: Array<Record<string, unknown>>;
     };
     linked.accounts[0]!.automaticEnvelopeId = U(3);
+    linked.transactions[0]!.type = "transfer";
+    linked.transactions[0]!.toAccountId = U(1);
+    linked.transactions[0]!.envelopeId = null;
+    linked.transactions[0]!.items = [];
     linked.transactions[0]!.allocationFromEnvelopeId = U(3);
     linked.transactions[0]!.allocationToEnvelopeId = U(3);
 
@@ -144,9 +148,40 @@ describe("clientLedgerSchema", () => {
       accounts: Array<Record<string, unknown>>;
       transactions: Array<Record<string, unknown>>;
     };
+    delete oldLedger.accounts[0]!.automaticEnvelopeId;
+    delete oldLedger.transactions[0]!.allocationFromEnvelopeId;
+    delete oldLedger.transactions[0]!.allocationToEnvelopeId;
     expect(clientLedgerSchema.parse(oldLedger).accounts[0]!.automaticEnvelopeId).toBeNull();
     expect(clientLedgerSchema.parse(oldLedger).transactions[0]!.allocationFromEnvelopeId).toBeNull();
     expect(clientLedgerSchema.parse(oldLedger).transactions[0]!.allocationToEnvelopeId).toBeNull();
+  });
+
+  test("restored transaction entities enforce the same allocation-flow semantics as write payloads", () => {
+    const invalidRows: Array<Partial<ClientLedger["transactions"][number]>> = [
+      { type: "expense", allocationFromEnvelopeId: U(3) },
+      { type: "expense", allocationToEnvelopeId: U(3) },
+      { type: "income", allocationFromEnvelopeId: U(3) },
+      { type: "income", envelopeId: U(3), allocationToEnvelopeId: U(3) },
+      { type: "transfer", toAccountId: null },
+    ];
+
+    for (const patch of invalidRows) {
+      const ledger = fullLedger();
+      ledger.transactions[0] = { ...ledger.transactions[0]!, items: [], ...patch };
+      expect(clientLedgerSchema.safeParse(ledger).success).toBe(false);
+    }
+
+    const validTransfer = fullLedger();
+    validTransfer.transactions[0] = {
+      ...validTransfer.transactions[0]!,
+      type: "transfer",
+      toAccountId: U(1),
+      envelopeId: null,
+      items: [],
+      allocationFromEnvelopeId: U(3),
+      allocationToEnvelopeId: U(3),
+    };
+    expect(clientLedgerSchema.safeParse(validTransfer).success).toBe(true);
   });
 
   test("a pre-flag envelope without isSavings parses to false, never undefined (flag = only savings signal)", () => {

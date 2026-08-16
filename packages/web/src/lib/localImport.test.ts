@@ -1,7 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import { type ClientLedger, createDefaultBudgetPreferences } from "@enveo/shared";
 import type { EditedImportItem, ImportApplyItem } from "./api";
-import { applyLocalImport, type LocalImportMutationPort, planLocalImport, reviewedImportItemsForApply } from "./localImport";
+import { applyLocalImport, importReviewItem, type LocalImportMutationPort, planLocalImport, reviewedImportItemsForApply } from "./localImport";
 
 const U = (n: number): string => `00000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
 const ledger = (): ClientLedger => ({
@@ -264,5 +264,50 @@ describe("local E2EE import planning", () => {
     // then: automatic follows current E5, explicit empty stays empty, explicit E9 wins, and each writes once
     expect(plan.transactions.map((transaction) => transaction.payload.envelopeId)).toEqual([U(5), null, U(9)]);
     expect(spy.created.transactions).toHaveLength(3);
+  });
+
+  it("carries dry-run provenance through review so account changes and relinks are resolved only at apply", () => {
+    const cases: Array<{ input: ImportApplyItem; expected: string | null }> = [
+      { input: item({ envelopeId: null, rawPlace: "AUTO THROUGH REVIEW" }), expected: U(10) },
+      { input: item({ envelopeId: null, automaticEnvelopeDefault: false, rawPlace: "EXPLICIT EMPTY THROUGH REVIEW" }), expected: null },
+      { input: item({ envelopeId: U(9), rawPlace: "EXPLICIT ID THROUGH REVIEW" }), expected: U(9) },
+    ];
+
+    for (const { input, expected } of cases) {
+      // given: dry-run used Main/E5, then review changes the account to Savings
+      const dry = planLocalImport({ ledger: ledger(), globalAccountId: U(2), items: [input], dryRun: true });
+      const review = importReviewItem(dry.results[0]!, U(5));
+      const edited = editedItem({ accountId: U(3), envelopeId: review.envelopeId });
+      const chosen = reviewedImportItemsForApply({
+        items: [review],
+        edited: { 0: edited },
+        editedAutomaticDefaults: { 0: review.automaticEnvelopeDefault },
+      });
+
+      // and: Savings is relinked again while review remains open
+      const live = ledger();
+      live.envelopes.push({
+        id: U(10),
+        groupId: U(4),
+        name: "Current automatic",
+        color: "#fff",
+        icon: "tag",
+        note: null,
+        monthlyTarget: null,
+        isSavings: false,
+        sort: 2,
+        archived: false,
+      });
+      live.accounts[1]!.automaticEnvelopeId = U(10);
+
+      // when: the reviewed item is planned and applied against live state
+      const plan = planLocalImport({ ledger: live, globalAccountId: U(2), items: chosen, dryRun: false });
+      const spy = mutationSpy();
+      applyLocalImport(plan, spy.mutations);
+
+      // then: provenance wins, and this accepted item crosses the mutation boundary exactly once
+      expect((spy.created.transactions[0] as { envelopeId: string | null }).envelopeId).toBe(expected);
+      expect(spy.created.transactions).toHaveLength(1);
+    }
   });
 });

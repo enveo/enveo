@@ -76,7 +76,7 @@ export interface ImportApplyResponse {
   added: number;
   skipped: number;
   dryRun: boolean;
-  results: Array<ImportItem & { status: "added" | "exists" | "probable" }>;
+  results: Array<ImportItem & { status: "added" | "exists" | "probable"; automaticEnvelopeDefault?: boolean }>;
 }
 
 export interface E2eeCredentialResponse {
