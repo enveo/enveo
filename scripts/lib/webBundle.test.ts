@@ -247,8 +247,24 @@ describe("the real build output", () => {
   it.skipIf(!existsSync(manifestFile))("keeps the lazy surfaces OUT of the initial closure", () => {
     const manifest = parseManifest(readFileSync(manifestFile, "utf8"));
     const closure = initialJsClosure(manifest);
-    for (const lazy of ["src/screens/Reports.tsx", "src/screens/Settings.tsx", "src/components/ImportSheet.tsx", "src/components/BudgetSuggestSheet.tsx"]) {
+    expect(manifest["src/screens/Budget.tsx"]).toBeDefined();
+    for (const lazy of [
+      "src/screens/Budget.tsx",
+      "src/screens/Reports.tsx",
+      "src/screens/Settings.tsx",
+      "src/components/ImportSheet.tsx",
+      "src/components/BudgetSuggestSheet.tsx",
+    ]) {
       expect(closure).not.toContain(lazy);
     }
+  });
+
+  it("keeps Budget and its closed editor behind LazyChunk boundaries", () => {
+    const app = readFileSync(join(REPO_ROOT, "packages", "web", "src", "App.tsx"), "utf8");
+    expect(app).toContain('const BudgetScreen = lazy(() => import("./screens/Budget").then((m) => ({ default: m.BudgetScreen })));');
+    expect(app).toContain('const EnvEdit = lazy(() => import("./screens/Budget").then((m) => ({ default: m.EnvEdit })));');
+    expect(app).not.toContain('import { BudgetScreen, EnvEdit } from "./screens/Budget";');
+    expect(app).toContain('{screen === "budget" && (\n                <LazyChunk onDismiss={() => nav("start")}>');
+    expect(app).toContain('{envEdit && (\n          <LazyChunk variant="overlay" onDismiss={() => setEnvEdit(null)}>');
   });
 });
