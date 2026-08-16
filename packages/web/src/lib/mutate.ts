@@ -18,6 +18,8 @@ import {
   type BudgetPreferencesPatch,
   budgetPreferencesPatchSchema,
   type Category,
+  type ClientLedger,
+  captureAllocationFlow,
   type Envelope,
   type EnvelopeGroup,
   type EnvelopePayload,
@@ -26,6 +28,7 @@ import {
   type OpPayload,
   opSchemas,
   type Place,
+  resolveAllocationFlow,
   type SyncOp,
   type Transaction,
   type TxnPayload,
@@ -71,15 +74,32 @@ const findByName = <T extends { name: string }>(rows: T[], name: string): T | un
 
 /* ── Transactions ──────────────────────────────────────────────────────── */
 
+function withPreparedAllocationFlow(payload: TxnPayload, flow: Pick<Transaction, "allocationFromEnvelopeId" | "allocationToEnvelopeId">): TxnPayload {
+  // An automatic income credit replaces the legacy direct envelope credit.
+  return { ...payload, ...flow, envelopeId: payload.type === "income" && flow.allocationToEnvelopeId ? null : payload.envelopeId };
+}
+
+/** Captures the account-linked allocation flow for a new local transaction. */
+export function prepareTxnCreate(ledger: ClientLedger, payload: TxnPayload): TxnPayload {
+  return withPreparedAllocationFlow(payload, captureAllocationFlow(ledger.accounts, payload));
+}
+
+/** Preserves a stored flow for an unchanged route or captures the current links after rerouting. */
+export function prepareTxnUpdate(ledger: ClientLedger, id: string, payload: TxnPayload): TxnPayload {
+  const previous = ledger.transactions.find((transaction) => transaction.id === id);
+  if (!previous) throw new Error(`local.updateTxn: transaction ${id} not found`);
+  return withPreparedAllocationFlow(payload, resolveAllocationFlow(ledger.accounts, payload, previous));
+}
+
 function createTxn(payload: TxnPayload): string {
   const id = newId();
   // the client assigns createdAt — a stable list order within a day
-  enqueue("txn.create", { ...payload, id, createdAt: new Date().toISOString() });
+  enqueue("txn.create", { ...prepareTxnCreate(ledger(), payload), id, createdAt: new Date().toISOString() });
   return id;
 }
 
 function updateTxn(id: string, payload: TxnPayload): void {
-  enqueue("txn.update", { ...payload, id });
+  enqueue("txn.update", { ...prepareTxnUpdate(ledger(), id, payload), id });
 }
 
 function deleteTxn(id: string): void {
@@ -125,7 +145,14 @@ export function txnToPayload(t: Transaction): TxnPayload {
  * and the "Duplicate" sheet doesn't jam. A balanced split is copied verbatim.
  */
 export function txnToDuplicatePayload(t: Transaction, today: string): TxnPayload {
-  const base = { ...txnToPayload(t), date: today, tag: null, sourceRef: null };
+  const base = {
+    ...txnToPayload(t),
+    date: today,
+    tag: null,
+    sourceRef: null,
+    allocationFromEnvelopeId: null,
+    allocationToEnvelopeId: null,
+  };
   const itemsSum = t.items.reduce((s, i) => s + i.amount, 0);
   if (t.items.length > 0 && itemsSum === t.amount) {
     // balanced split — verbatim copy (the parent has envelopeId/categoryId null anyway;

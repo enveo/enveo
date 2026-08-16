@@ -15,7 +15,6 @@ import { bootOnce, retryBoot } from "./lib/sync";
 import { font, P, TEAL } from "./lib/theme";
 import type { TransactionFilters } from "./lib/transactionSearch";
 import { AddScreen, type Tab as AddTab } from "./screens/Add";
-import { BudgetScreen, EnvEdit } from "./screens/Budget";
 import { LoginScreen } from "./screens/Login";
 import type { ReportTab, ReportView } from "./screens/reports/types";
 import { StartScreen } from "./screens/Start";
@@ -25,20 +24,23 @@ import { StartScreen } from "./screens/Start";
 // EAGER, deliberately: everything the app needs to BOOT and to record a transaction. The local
 // replica boot and sync engine (`bootOnce`/`store`/`useStateQuery`), the auth guard
 // (`LoginScreen` — the screen an unauthenticated boot lands on), the app chrome, `StartScreen`,
-// `BudgetScreen` with its allocation numpad, and `AddScreen` with the whole transaction-entry
-// subtree. Those are the first paint and the app's most-repeated action; a chunk fetch in front
-// of either would trade real latency for bytes we do not need to save.
+// and `AddScreen` with the whole transaction-entry subtree. Those are the first paint and the
+// app's most-repeated action; a chunk fetch in front of either would trade real latency for
+// bytes we do not need to save.
 //
 // LAZY: one chunk per screen the user is never on at boot. Reports (the whole suite with its
 // charts), Settings (backup/restore, E2EE, pairing QR, the AI panel), the once-per-account
 // onboarding wizard, the transaction list, Accounts, the full-screen envelope summary, and the
 // two boot-decision screens — Unlock (E2EE passphrase; a plain-tier budget never renders it)
-// and ForeignReplica (a replica belonging to another account). Every hashed chunk is precached
-// by the service worker, so an installed PWA loads all of them offline.
+// and ForeignReplica (a replica belonging to another account). Budget and its editor are also
+// lazy: the automatic-envelope shared path exceeded the fixed initial-JS ceiling. Every hashed
+// chunk is precached by the service worker, so an installed PWA loads all of them offline.
 //
 // Each mount goes through `LazyChunk`: themed pending state, focused failure boundary.
 const ReportsScreen = lazy(() => import("./screens/Reports").then((m) => ({ default: m.ReportsScreen })));
 const SettingsScreen = lazy(() => import("./screens/Settings").then((m) => ({ default: m.SettingsScreen })));
+const BudgetScreen = lazy(() => import("./screens/Budget").then((m) => ({ default: m.BudgetScreen })));
+const EnvEdit = lazy(() => import("./screens/Budget").then((m) => ({ default: m.EnvEdit })));
 const OnboardingScreen = lazy(() => import("./screens/Onboarding").then((m) => ({ default: m.OnboardingScreen })));
 const TransactionsScreen = lazy(() => import("./screens/Transactions").then((m) => ({ default: m.TransactionsScreen })));
 const AccountsScreen = lazy(() => import("./screens/Accounts").then((m) => ({ default: m.AccountsScreen })));
@@ -318,18 +320,20 @@ export default function App() {
                 />
               )}
               {screen === "budget" && (
-                <BudgetScreen
-                  state={state}
-                  month={month}
-                  onMenu={() => setDrawer(true)}
-                  onPrev={prev}
-                  onNext={next}
-                  onOpenEnvelope={openEnvelope}
-                  initialSuggest={budgetSuggest}
-                  onSuggestConsumed={() => setBudgetSuggest(false)}
-                  initialFillGoals={budgetFillGoals}
-                  onFillGoalsConsumed={() => setBudgetFillGoals(false)}
-                />
+                <LazyChunk onDismiss={() => nav("start")}>
+                  <BudgetScreen
+                    state={state}
+                    month={month}
+                    onMenu={() => setDrawer(true)}
+                    onPrev={prev}
+                    onNext={next}
+                    onOpenEnvelope={openEnvelope}
+                    initialSuggest={budgetSuggest}
+                    onSuggestConsumed={() => setBudgetSuggest(false)}
+                    initialFillGoals={budgetFillGoals}
+                    onFillGoalsConsumed={() => setBudgetFillGoals(false)}
+                  />
+                </LazyChunk>
               )}
               {screen === "transactions" && (
                 <LazyChunk onDismiss={() => nav("start")}>
@@ -407,7 +411,11 @@ export default function App() {
             />
           </LazyChunk>
         )}
-        <EnvEdit env={editEnv} groups={state?.groups ?? []} onClose={() => setEnvEdit(null)} />
+        {envEdit && (
+          <LazyChunk variant="overlay" onDismiss={() => setEnvEdit(null)}>
+            <EnvEdit env={editEnv} groups={state?.groups ?? []} onClose={() => setEnvEdit(null)} />
+          </LazyChunk>
+        )}
         <Drawer open={drawer} onClose={() => setDrawer(false)} onNav={nav} onOpenReports={openReports} onInstall={() => setInstallSheet(true)} />
         {/* not during onboarding: the wizard ends with its own install card (a second ask), the
             BottomNav the banner's offset clears is hidden there, and it must not cover the skeleton */}

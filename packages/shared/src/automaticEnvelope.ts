@@ -1,38 +1,35 @@
 import type { Account, Money, Transaction } from "./types";
 
 export type AllocationFlow = Pick<Transaction, "allocationFromEnvelopeId" | "allocationToEnvelopeId">;
+type AllocationRoute = Pick<Transaction, "type" | "accountId"> & { toAccountId?: string | null };
 
-function linkedEnvelope(accounts: readonly Account[], accountId: string | null): string | null {
+function linkedEnvelope(accounts: readonly Account[], accountId: string | null | undefined): string | null {
   const account = accounts.find((candidate) => candidate.id === accountId);
   return account?.onBudget ? account.automaticEnvelopeId : null;
 }
 
-export function captureAllocationFlow(accounts: readonly Account[], route: Pick<Transaction, "type" | "accountId" | "toAccountId">): AllocationFlow {
+export function captureAllocationFlow(accounts: readonly Account[], route: AllocationRoute): AllocationFlow {
   if (route.type === "expense") return { allocationFromEnvelopeId: null, allocationToEnvelopeId: null };
 
-  if (route.type === "income") {
-    return {
-      allocationFromEnvelopeId: null,
-      allocationToEnvelopeId: linkedEnvelope(accounts, route.accountId),
-    };
-  }
+  const accountEnvelopeId = linkedEnvelope(accounts, route.accountId);
+  if (route.type === "income") return { allocationFromEnvelopeId: null, allocationToEnvelopeId: accountEnvelopeId };
 
   return {
-    allocationFromEnvelopeId: linkedEnvelope(accounts, route.accountId),
+    allocationFromEnvelopeId: accountEnvelopeId,
     allocationToEnvelopeId: linkedEnvelope(accounts, route.toAccountId),
   };
 }
 
 export function resolveAllocationFlow(
   accounts: readonly Account[],
-  next: Pick<Transaction, "type" | "accountId" | "toAccountId">,
+  next: AllocationRoute,
   previous?: Pick<Transaction, "type" | "accountId" | "toAccountId" | "allocationFromEnvelopeId" | "allocationToEnvelopeId"> | null,
 ): AllocationFlow {
   if (
     previous &&
     next.type === previous.type &&
     next.accountId === previous.accountId &&
-    (next.type !== "transfer" || next.toAccountId === previous.toAccountId)
+    (next.type !== "transfer" || (next.toAccountId ?? null) === previous.toAccountId)
   ) {
     return {
       allocationFromEnvelopeId: previous.allocationFromEnvelopeId,
