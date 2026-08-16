@@ -3,6 +3,7 @@ import type { AccountView, EnvelopeView } from "@enveo/shared";
 import {
   automaticEnvelopePreview,
   expenseEnvelopeAfterAccountChange,
+  expenseEnvelopeAfterSplitCancel,
   expenseEnvelopeSelection,
   expenseEnvelopeSelectionForImport,
   explicitExpenseEnvelopeSelection,
@@ -198,6 +199,31 @@ describe("expense envelope selection provenance", () => {
     expect(missingExpense).toEqual({ envelopeId: "E-savings", provenance: "automatic" });
     expect(explicitExpense).toEqual({ envelopeId: "E-travel", provenance: "explicit" });
     expect(income).toEqual({ envelopeId: null, provenance: "explicit" });
+  });
+
+  it("submits the current account default after a split is cancelled", () => {
+    // given: account A's automatic envelope is hidden while a split moves to account B
+    const beforeSplit = expenseEnvelopeSelection("E-savings");
+    const hiddenDuringSplit = expenseEnvelopeAfterAccountChange(beforeSplit, "E-travel", true);
+
+    // when: the user cancels the split and ordinary submit reads the visible selection
+    const afterCancel = expenseEnvelopeAfterSplitCancel(hiddenDuringSplit, "E-travel");
+    const submittedEnvelopeId = afterCancel.envelopeId;
+
+    // then: the ordinary transaction uses account B's default, not account A's stale value
+    expect(submittedEnvelopeId).toBe("E-travel");
+    expect(afterCancel).toEqual({ envelopeId: "E-travel", provenance: "automatic" });
+  });
+
+  it("keeps a true explicit ordinary choice when a split is cancelled", () => {
+    // given: an explicit ordinary choice existed before entering the split editor
+    const explicit = explicitExpenseEnvelopeSelection("E-recorded");
+
+    // when: the split is cancelled after the account link changed
+    const afterCancel = expenseEnvelopeAfterSplitCancel(explicit, "E-travel");
+
+    // then: explicit provenance still protects the user's ordinary choice
+    expect(afterCancel).toBe(explicit);
   });
 });
 

@@ -65,7 +65,13 @@ export interface EditedImportItem {
 }
 /** An item sent to import planning (and the plain dry-run API): the extraction original + OPTIONAL corrections
  *  from the editor (merged in ImportSheet). rawPlace always from the original. */
-export type ImportApplyItem = Omit<ImportItem, "type"> & Partial<EditedImportItem> & { type: "expense" | "income" | "transfer"; force?: boolean };
+export type ImportApplyItem = Omit<ImportItem, "type"> &
+  Partial<EditedImportItem> & {
+    type: "expense" | "income" | "transfer";
+    force?: boolean;
+    /** False distinguishes an explicitly cleared expense envelope from missing/automatic input. */
+    automaticEnvelopeDefault?: boolean;
+  };
 export interface ImportApplyResponse {
   added: number;
   skipped: number;

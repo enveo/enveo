@@ -48,6 +48,11 @@ export function expenseEnvelopeAfterAccountChange(
   return current.provenance === "automatic" && !split ? expenseEnvelopeSelection(automaticEnvelopeId) : current;
 }
 
+/** Leaving a split restores a hidden automatic choice from the current account, while preserving an explicit ordinary choice. */
+export function expenseEnvelopeAfterSplitCancel(current: ExpenseEnvelopeSelection, automaticEnvelopeId: string | null | undefined): ExpenseEnvelopeSelection {
+  return current.provenance === "automatic" ? expenseEnvelopeSelection(automaticEnvelopeId) : current;
+}
+
 /** Imported expenses with no assignment receive the account default in review. */
 export function expenseEnvelopeSelectionForImport(
   type: Transaction["type"],

@@ -1,7 +1,13 @@
 import { buildImportDupIndex, type ClientLedger, classifyImportDup, type TxnPayload } from "@enveo/shared";
-import type { ImportApplyItem, ImportApplyResponse } from "./api";
+import type { EditedImportItem, ImportApplyItem, ImportApplyResponse, ImportItem } from "./api";
 import { expenseEnvelopeSelectionForImport } from "./automaticEnvelopeUi";
 import { local } from "./mutate";
+
+export type LocalImportReviewItem = ImportItem & {
+  status: "added" | "exists" | "probable";
+  include: boolean;
+  automaticEnvelopeDefault: boolean;
+};
 
 interface PlannedTransaction {
   payload: TxnPayload;
@@ -21,6 +27,38 @@ export interface LocalImportMutationPort {
   createCategory(name: string): { id: string };
   createPlace(name: string): { id: string };
   createTxn(payload: TxnPayload): string;
+}
+
+/** Merge the accepted review rows with editor corrections without losing envelope provenance. */
+export function reviewedImportItemsForApply(args: {
+  items: LocalImportReviewItem[];
+  edited: Record<number, EditedImportItem>;
+  editedAutomaticDefaults: Record<number, boolean>;
+}): ImportApplyItem[] {
+  return args.items
+    .map((item, index) => ({ item, edited: args.edited[index], index }))
+    .filter(({ item, edited }) => item.include && (item.status !== "exists" || !!edited))
+    .map(({ item, edited, index }) =>
+      !edited
+        ? item
+        : {
+            ...item,
+            type: edited.type,
+            accountId: edited.accountId,
+            toAccountId: edited.toAccountId,
+            isRefund: edited.isRefund,
+            amount: edited.amount,
+            date: edited.date,
+            name: edited.name,
+            envelopeId: edited.envelopeId,
+            categoryId: edited.categoryId,
+            placeName: edited.placeName,
+            note: edited.note,
+            automaticEnvelopeDefault: args.editedAutomaticDefaults[index] ?? false,
+            force: item.status === "exists", // editing a duplicate is a deliberate add
+            rawPlace: item.rawPlace, // extraction source stays untouched for learning/dedupe
+          },
+    );
 }
 
 const byName = <T extends { name: string }>(rows: T[]): Map<string, T> => new Map(rows.map((row) => [row.name.trim().toLowerCase(), row]));
@@ -45,8 +83,18 @@ export function planLocalImport(args: { ledger: ClientLedger; globalAccountId: s
 
     const namedEnvelope = cleanName(item.envelopeName);
     const importedEnvelopeId =
-      item.type === "transfer" ? null : (item.envelopeId ?? (namedEnvelope ? envelopeByName.get(namedEnvelope.toLowerCase())?.id : null) ?? null);
-    const envelopeId = expenseEnvelopeSelectionForImport(item.type, importedEnvelopeId, accountById.get(accountId)?.automaticEnvelopeId).envelopeId;
+      item.type === "transfer"
+        ? null
+        : item.automaticEnvelopeDefault !== undefined
+          ? item.envelopeId
+          : (item.envelopeId ?? (namedEnvelope ? envelopeByName.get(namedEnvelope.toLowerCase())?.id : null) ?? null);
+    const automaticEnvelopeId = accountById.get(accountId)?.automaticEnvelopeId;
+    const envelopeId =
+      item.type === "expense" && item.automaticEnvelopeDefault === true
+        ? (automaticEnvelopeId ?? null)
+        : item.type === "expense" && item.automaticEnvelopeDefault === false
+          ? importedEnvelopeId
+          : expenseEnvelopeSelectionForImport(item.type, importedEnvelopeId, automaticEnvelopeId).envelopeId;
     if (envelopeId && !envelopeIds.has(envelopeId)) throw new Error("foreign_ref");
 
     const namedCategory = cleanName(item.categoryName);

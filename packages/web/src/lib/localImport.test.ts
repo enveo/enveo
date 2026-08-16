@@ -1,7 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import { type ClientLedger, createDefaultBudgetPreferences } from "@enveo/shared";
-import type { ImportApplyItem } from "./api";
-import { applyLocalImport, type LocalImportMutationPort, planLocalImport } from "./localImport";
+import type { EditedImportItem, ImportApplyItem } from "./api";
+import { applyLocalImport, type LocalImportMutationPort, planLocalImport, reviewedImportItemsForApply } from "./localImport";
 
 const U = (n: number): string => `00000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
 const ledger = (): ClientLedger => ({
@@ -74,6 +74,21 @@ const item = (over: Partial<ImportApplyItem> = {}): ImportApplyItem => ({
   envelopeId: U(5),
   categoryId: U(6),
   placeName: "LIDL",
+  ...over,
+});
+
+const editedItem = (over: Partial<EditedImportItem> = {}): EditedImportItem => ({
+  type: "expense",
+  accountId: U(2),
+  toAccountId: null,
+  isRefund: false,
+  amount: 2500,
+  date: "2026-08-02",
+  name: "Shopping",
+  envelopeId: U(5),
+  categoryId: U(6),
+  placeName: "LIDL",
+  note: "",
   ...over,
 });
 
@@ -213,5 +228,41 @@ describe("local E2EE import planning", () => {
     expect(spy.created.transactions[0]).toMatchObject({ type: "income", accountId: U(2) });
     expect(spy.created.transactions[0]).not.toHaveProperty("allocationFromEnvelopeId");
     expect(spy.created.transactions[0]).not.toHaveProperty("allocationToEnvelopeId");
+  });
+
+  it("preserves automatic, explicit-empty, and explicit-ID provenance from editor review through local apply", () => {
+    // given: review has a stale automatic value, an editor-cleared value, and an explicit ID
+    const reviewed = [
+      { ...item({ envelopeId: U(9), envelopeName: "Travel", rawPlace: "AUTO RAW" }), status: "added" as const, include: true, automaticEnvelopeDefault: true },
+      {
+        ...item({ amount: 2600, envelopeId: U(5), envelopeName: "Food", rawPlace: "EMPTY RAW" }),
+        status: "added" as const,
+        include: true,
+        automaticEnvelopeDefault: true,
+      },
+      {
+        ...item({ amount: 2700, envelopeId: U(5), envelopeName: "Food", rawPlace: "EXPLICIT RAW" }),
+        status: "added" as const,
+        include: true,
+        automaticEnvelopeDefault: true,
+      },
+    ];
+    const edited = {
+      1: editedItem({ amount: 2600, envelopeId: null }),
+      2: editedItem({ amount: 2700, envelopeId: U(9) }),
+    };
+    // when: editor results are merged, planned against the current E5 account link, and applied
+    const chosen = reviewedImportItemsForApply({
+      items: reviewed,
+      edited,
+      editedAutomaticDefaults: { 1: false, 2: false },
+    });
+    const plan = planLocalImport({ ledger: ledger(), globalAccountId: U(2), items: chosen, dryRun: false });
+    const spy = mutationSpy();
+    applyLocalImport(plan, spy.mutations);
+
+    // then: automatic follows current E5, explicit empty stays empty, explicit E9 wins, and each writes once
+    expect(plan.transactions.map((transaction) => transaction.payload.envelopeId)).toEqual([U(5), null, U(9)]);
+    expect(spy.created.transactions).toHaveLength(3);
   });
 });
