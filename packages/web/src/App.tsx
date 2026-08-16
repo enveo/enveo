@@ -413,7 +413,7 @@ export default function App() {
         )}
         {envEdit && (
           <LazyChunk variant="overlay" onDismiss={() => setEnvEdit(null)}>
-            <EnvEdit env={editEnv} groups={state?.groups ?? []} onClose={() => setEnvEdit(null)} />
+            <EnvEdit env={editEnv} groups={state?.groups ?? []} accounts={state?.accounts ?? []} onClose={() => setEnvEdit(null)} />
           </LazyChunk>
         )}
         <Drawer open={drawer} onClose={() => setDrawer(false)} onNav={nav} onOpenReports={openReports} onInstall={() => setInstallSheet(true)} />

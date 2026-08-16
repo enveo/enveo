@@ -7,6 +7,7 @@ import { CardBox, GoalRing, useBand } from "../components/kit";
 import { LazyChunk, useOpenedOnce } from "../components/lazy";
 import { fmtSignedTrim, type PadState, padPreview, padPreviewLive } from "../lib/amount";
 import type { EnvelopeView, StateResponse } from "../lib/api";
+import { linkedAccountNames } from "../lib/automaticEnvelopeAccountUi";
 import { useCurrency, useMask, useSettings, useTheme } from "../lib/contexts";
 import { useDragReorder } from "../lib/dnd";
 import { activeAllocationDecoration } from "../lib/focusPresentation";
@@ -759,7 +760,17 @@ function ManageGroup({ g, list, flat }: { g: StateResponse["groups"][number]; li
 }
 
 /* ── Envelope editing (reused by the full-screen envelope summary) ── */
-export function EnvEdit({ env, groups, onClose }: { env: EnvelopeView | null; groups: StateResponse["groups"]; onClose: () => void }) {
+export function EnvEdit({
+  env,
+  groups,
+  accounts,
+  onClose,
+}: {
+  env: EnvelopeView | null;
+  groups: StateResponse["groups"];
+  accounts: StateResponse["accounts"];
+  onClose: () => void;
+}) {
   const { t, lang } = useT();
   const currency = useCurrency();
   const [name, setName] = useState("");
@@ -769,6 +780,7 @@ export function EnvEdit({ env, groups, onClose }: { env: EnvelopeView | null; gr
   const [archived, setArchived] = useState(false);
   const [saving, setSaving] = useState(false);
   const [target, setTarget] = useState("");
+  const [archiveError, setArchiveError] = useState<string | null>(null);
   const [pad, setPad] = useState<AmountPadTarget | null>(null);
   useEffect(() => {
     if (env) {
@@ -779,6 +791,7 @@ export function EnvEdit({ env, groups, onClose }: { env: EnvelopeView | null; gr
       setArchived(env.archived);
       setSaving(!!env.isSavings);
       setTarget(env.monthlyTarget != null ? (env.monthlyTarget / 100).toFixed(2).replace(".", ",") : "");
+      setArchiveError(null);
     }
   }, [env]);
   if (!env) return null;
@@ -798,6 +811,17 @@ export function EnvEdit({ env, groups, onClose }: { env: EnvelopeView | null; gr
               <span style={{ fontSize: 17, fontWeight: 700, color: C.text }}>{t("Edit envelope")}</span>
               <button
                 onClick={() => {
+                  if (archived) {
+                    const linkedAccounts = linkedAccountNames(accounts, env.id);
+                    if (linkedAccounts.length > 0) {
+                      setArchiveError(
+                        t("Before archiving this envelope, remove it as the automatic envelope for: {accounts}.", {
+                          accounts: linkedAccounts.join(", "),
+                        }),
+                      );
+                      return;
+                    }
+                  }
                   if (archived && !env.archived) {
                     const ok = window.confirm(
                       t(
@@ -918,7 +942,10 @@ export function EnvEdit({ env, groups, onClose }: { env: EnvelopeView | null; gr
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
               <span style={{ fontSize: 14, color: C.text }}>{t("Archive")}</span>
               <button
-                onClick={() => setArchived(!archived)}
+                onClick={() => {
+                  setArchived(!archived);
+                  setArchiveError(null);
+                }}
                 style={{
                   width: 42,
                   height: 24,
@@ -945,6 +972,11 @@ export function EnvEdit({ env, groups, onClose }: { env: EnvelopeView | null; gr
                 />
               </button>
             </div>
+            {archiveError && (
+              <div role="alert" style={{ color: C.neg, fontSize: 12, lineHeight: 1.45, marginTop: 8 }}>
+                {archiveError}
+              </div>
+            )}
           </>
         )}
       </Sheet>

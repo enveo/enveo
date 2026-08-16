@@ -6,6 +6,7 @@
 
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { type ClientLedger, createDefaultBudgetPreferences, type Transaction, type TxnPayload } from "@enveo/shared";
+import { accountFormPayload } from "./automaticEnvelopeAccountUi";
 import { local, prepareDisplayedAllocation, prepareTxnCreate, prepareTxnUpdate, txnToDuplicatePayload, txnToPayload } from "./mutate";
 import * as outbox from "./outbox";
 import { store } from "./store";
@@ -292,6 +293,36 @@ describe("displayed allocation mutation preparation", () => {
     local.setDisplayedAllocation({ envelopeId: ENV1, month: "2026-08", amount: 900_00 });
 
     expect(emittedAllocation(0).payload).toEqual({ envelopeId: ENV1, month: "2026-08", amount: 400_00 });
+  });
+});
+
+describe("local account mutations", () => {
+  it("persists a non-zero starting balance and automatic envelope as one account operation", () => {
+    // given: a new linked account with a non-zero starting balance
+    const before = store.getLedger()!;
+
+    // when: the account form creates it
+    local.createAccount(
+      accountFormPayload({
+        name: "Everyday account",
+        color: "#123456",
+        icon: "bank",
+        onBudget: true,
+        automaticEnvelopeId: ENV1,
+        initialBalance: 12_345,
+        sort: 2,
+      }),
+    );
+
+    // then: only the account operation is queued and ledger money history is untouched
+    const queued = outbox.snapshot();
+    expect(queued).toHaveLength(1);
+    expect(queued[0]!.op).toMatchObject({
+      kind: "account.create",
+      payload: { automaticEnvelopeId: ENV1, initialBalance: 12_345 },
+    });
+    expect(store.getLedger()!.transactions).toEqual(before.transactions);
+    expect(store.getLedger()!.allocations).toEqual(before.allocations);
   });
 });
 
