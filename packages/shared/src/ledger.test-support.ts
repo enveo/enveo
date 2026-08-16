@@ -120,6 +120,10 @@ export function ledgerArb(): fc.Arbitrary<Ledger> {
               toIdx: fc.integer({ min: 0, max: nAcc - 1 }),
               envIdx: fc.integer({ min: 0, max: nEnv - 1 }),
               withEnv: fc.boolean(),
+              withAllocationFrom: fc.boolean(),
+              withAllocationTo: fc.boolean(),
+              allocationFromEnvIdx: fc.integer({ min: 0, max: nEnv - 1 }),
+              allocationToEnvIdx: fc.integer({ min: 0, max: nEnv - 1 }),
               month: fc.constantFrom(...months),
               amount: fc.integer({ min: 1, max: 200_00 }),
             }),
@@ -146,14 +150,18 @@ export function ledgerArb(): fc.Arbitrary<Ledger> {
                 toAccountId: accs[to]!.id,
                 amount: s.amount,
                 date,
+                allocationFromEnvelopeId: s.withAllocationFrom ? envs[s.allocationFromEnvIdx]!.id : null,
+                allocationToEnvelopeId: s.withAllocationTo ? envs[s.allocationToEnvIdx]!.id : null,
               });
             }
             if (s.kind === "income") {
+              const allocationToEnvelopeId = s.withAllocationTo ? envs[s.allocationToEnvIdx]!.id : null;
               return tx({
                 type: "income",
                 accountId: accs[s.accIdx]!.id,
                 amount: s.amount,
-                envelopeId: s.withEnv ? envs[s.envIdx]!.id : null,
+                envelopeId: allocationToEnvelopeId ? null : s.withEnv ? envs[s.envIdx]!.id : null,
+                allocationToEnvelopeId,
                 date,
               });
             }
@@ -204,6 +212,8 @@ export type Spec =
       ti: number;
       ei: number;
       withEnv: boolean;
+      withAllocationFrom: boolean;
+      withAllocationTo: boolean;
       split: boolean;
       m: string;
       amount: number;
@@ -234,6 +244,8 @@ export const specArb: fc.Arbitrary<Spec> = fc.oneof(
     ti: idxArb,
     ei: idxArb,
     withEnv: fc.boolean(),
+    withAllocationFrom: fc.boolean(),
+    withAllocationTo: fc.boolean(),
     split: fc.boolean(),
     m: monthArb,
     amount: amountArb,
@@ -270,6 +282,8 @@ export function interpret(l: ClientLedger, s: Spec, nextId: () => string): SyncO
     case "txnCreate": {
       const a = pick(l.accounts, s.ai);
       if (!a) return null;
+      const allocationFromEnvelopeId = s.withAllocationFrom ? (pick(l.envelopes, s.ei)?.id ?? null) : null;
+      const allocationToEnvelopeId = s.withAllocationTo ? (pick(l.envelopes, s.ei + 1)?.id ?? null) : null;
       const common = {
         id: nextId(),
         accountId: a.id,
@@ -281,11 +295,22 @@ export function interpret(l: ClientLedger, s: Spec, nextId: () => string): SyncO
         if (l.accounts.length < 2) return null;
         const to = pick(l.accounts, s.ti)!;
         const toId = to.id === a.id ? pick(l.accounts, s.ti + 1)!.id : to.id;
-        return mkOp("txn.create", { ...common, type: "transfer", toAccountId: toId });
+        return mkOp("txn.create", {
+          ...common,
+          type: "transfer",
+          toAccountId: toId,
+          allocationFromEnvelopeId,
+          allocationToEnvelopeId,
+        });
       }
       if (s.kind2 === "income") {
         const e = s.withEnv ? pick(l.envelopes, s.ei) : undefined;
-        return mkOp("txn.create", { ...common, type: "income", envelopeId: e?.id ?? null });
+        return mkOp("txn.create", {
+          ...common,
+          type: "income",
+          envelopeId: allocationToEnvelopeId ? null : (e?.id ?? null),
+          allocationToEnvelopeId,
+        });
       }
       const e = pick(l.envelopes, s.ei);
       if (!e) return null; // an expense always has an envelope (domain requirement)

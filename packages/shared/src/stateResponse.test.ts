@@ -70,6 +70,26 @@ describe("computeStateResponse", () => {
     expect(resp.groups).toEqual(l.groups);
   });
 
+  it("flattens manual and transaction-derived allocation into one Added total", () => {
+    const l = fixture();
+    l.transactions.push(
+      tx({
+        id: "T-automatic",
+        type: "income",
+        accountId: "A1",
+        amount: 20_00,
+        date: "2026-06-25",
+        allocationToEnvelopeId: "E1",
+      }),
+    );
+
+    const response = computeStateResponse(l, "2026-06");
+    expect(response.envelopes[0]!.allocated).toBe(70_00);
+    expect(response.envelopes[0]!.available).toBe(57_00);
+    expect(response.toBeBudgeted).toBe(50_00);
+    expect(response.readyToAssign).toBe(50_00);
+  });
+
   it("categories and places pass through unchanged (passthrough)", () => {
     const l = fixture();
     const resp = computeStateResponse(l, "2026-06");

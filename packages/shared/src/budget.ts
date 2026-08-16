@@ -11,7 +11,8 @@
  * as a negative carry-in (envelope "in the red").
  */
 
-import type { Account, BudgetState, EnvelopeState, Ledger, Money, Transaction } from "./types";
+import { transactionAllocationDeltas } from "./automaticEnvelope";
+import type { Account, Allocation, BudgetState, EnvelopeState, Ledger, Money, Transaction } from "./types";
 
 export const monthOf = (date: string): string => date.slice(0, 7);
 
@@ -73,6 +74,31 @@ function onBudgetSet(accounts: Account[]): (id: string) => boolean {
   return (id: string) => set.has(id);
 }
 
+/** Shared pool formula; callers choose month-bounded or all-time collections. */
+function unassignedMoney(
+  accounts: readonly Account[],
+  allocations: readonly Allocation[],
+  transactions: readonly Transaction[],
+  isOnBudget: (accountId: string) => boolean,
+): Money {
+  let total: Money = 0;
+  for (const account of accounts) if (account.onBudget) total += account.initialBalance;
+  for (const allocation of allocations) total -= allocation.amount;
+  for (const transaction of transactions) {
+    for (const [, amount] of transactionAllocationDeltas(transaction)) total -= amount;
+    if (transaction.type === "income" && isOnBudget(transaction.accountId) && !transaction.envelopeId) {
+      total += transaction.amount;
+    }
+    if (transaction.type === "transfer" && transaction.toAccountId) {
+      const fromOn = isOnBudget(transaction.accountId);
+      const toOn = isOnBudget(transaction.toAccountId);
+      if (toOn && !fromOn) total += transaction.amount;
+      if (fromOn && !toOn) total -= transaction.amount;
+    }
+  }
+  return total;
+}
+
 /**
  * Full budget state for the selected month.
  * Includes all transactions dated ≤ end of month.
@@ -101,12 +127,22 @@ export function computeBudgetState(ledger: Ledger, month: string): BudgetState {
   });
 
   // ── envelopes: cumulative and monthly ──────────────────────────────
-  // allocated
-  const allocCum = new Map<string, Money>(); // month' ≤ month
-  const allocThis = new Map<string, Money>(); // month' == month
+  // manually allocated
+  const manualAllocCum = new Map<string, Money>(); // month' ≤ month
+  const manualAllocThis = new Map<string, Money>(); // month' == month
   for (const a of allocations) {
-    if (a.month <= month) allocCum.set(a.envelopeId, (allocCum.get(a.envelopeId) ?? 0) + a.amount);
-    if (a.month === month) allocThis.set(a.envelopeId, (allocThis.get(a.envelopeId) ?? 0) + a.amount);
+    if (a.month <= month) manualAllocCum.set(a.envelopeId, (manualAllocCum.get(a.envelopeId) ?? 0) + a.amount);
+    if (a.month === month) manualAllocThis.set(a.envelopeId, (manualAllocThis.get(a.envelopeId) ?? 0) + a.amount);
+  }
+  // automatically allocated by recorded transaction flow
+  const automaticAllocCum = new Map<string, Money>();
+  const automaticAllocThis = new Map<string, Money>();
+  for (const t of txns) {
+    const isThis = monthOf(t.date) === month;
+    for (const [envId, d] of transactionAllocationDeltas(t)) {
+      automaticAllocCum.set(envId, (automaticAllocCum.get(envId) ?? 0) + d);
+      if (isThis) automaticAllocThis.set(envId, (automaticAllocThis.get(envId) ?? 0) + d);
+    }
   }
   // spent
   const spentCum = new Map<string, Money>();
@@ -120,8 +156,8 @@ export function computeBudgetState(ledger: Ledger, month: string): BudgetState {
   }
 
   const envelopeStates: EnvelopeState[] = envelopes.map((envelope) => {
-    const ac = allocCum.get(envelope.id) ?? 0;
-    const at = allocThis.get(envelope.id) ?? 0;
+    const ac = (manualAllocCum.get(envelope.id) ?? 0) + (automaticAllocCum.get(envelope.id) ?? 0);
+    const at = (manualAllocThis.get(envelope.id) ?? 0) + (automaticAllocThis.get(envelope.id) ?? 0);
     const sc = spentCum.get(envelope.id) ?? 0;
     const st = spentThis.get(envelope.id) ?? 0;
     const available = ac - sc; // cumulative ≤ month (Variant A: no floor at 0)
@@ -130,20 +166,12 @@ export function computeBudgetState(ledger: Ledger, month: string): BudgetState {
   });
 
   // ── to be budgeted (independent formula, see invariant proof) ──────
-  let toBeBudgeted: Money = 0;
-  for (const a of accounts) if (a.onBudget) toBeBudgeted += a.initialBalance;
-  for (const a of allocations) if (a.month <= month) toBeBudgeted -= a.amount;
-  for (const t of txns) {
-    if (t.type === "income" && isOnBudget(t.accountId) && !t.envelopeId) {
-      toBeBudgeted += t.amount;
-    }
-    if (t.type === "transfer" && t.toAccountId) {
-      const fromOn = isOnBudget(t.accountId);
-      const toOn = isOnBudget(t.toAccountId);
-      if (toOn && !fromOn) toBeBudgeted += t.amount; // flows into the budget
-      if (fromOn && !toOn) toBeBudgeted -= t.amount; // flows out of the budget
-    }
-  }
+  const toBeBudgeted = unassignedMoney(
+    accounts,
+    allocations.filter((allocation) => allocation.month <= month),
+    txns,
+    isOnBudget,
+  );
 
   // ── ready to assign (month-INDEPENDENT headline, YNAB-style) ────────
   // Same formula as toBeBudgeted, but with no month bound anywhere: every
@@ -152,20 +180,7 @@ export function computeBudgetState(ledger: Ledger, month: string): BudgetState {
   // money in a FUTURE month lowers this figure today, while toBeBudgeted
   // for the currently selected (earlier) month stays unchanged (it only
   // looks at allocations/txns ≤ that month).
-  let readyToAssign: Money = 0;
-  for (const a of accounts) if (a.onBudget) readyToAssign += a.initialBalance;
-  for (const a of allocations) readyToAssign -= a.amount;
-  for (const t of ledger.transactions) {
-    if (t.type === "income" && isOnBudget(t.accountId) && !t.envelopeId) {
-      readyToAssign += t.amount;
-    }
-    if (t.type === "transfer" && t.toAccountId) {
-      const fromOn = isOnBudget(t.accountId);
-      const toOn = isOnBudget(t.toAccountId);
-      if (toOn && !fromOn) readyToAssign += t.amount; // flows into the budget
-      if (fromOn && !toOn) readyToAssign -= t.amount; // flows out of the budget
-    }
-  }
+  const readyToAssign = unassignedMoney(accounts, allocations, ledger.transactions, isOnBudget);
 
   // ── income/expense bars for the selected month ─────────────────────
   let monthIncome: Money = 0;

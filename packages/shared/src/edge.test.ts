@@ -237,6 +237,33 @@ describe("fullResync: outbox replay idempotency", () => {
       );
   };
 
+  it("replaying a transaction create preserves its recorded allocation flow without duplication", () => {
+    const base = asClientLedger({
+      accounts: [acc({ id: "A1" }), acc({ id: "A2" })],
+      groups: [grp({ id: "G1" })],
+      envelopes: [env("G1", { id: "E1" }), env("G1", { id: "E2" })],
+      allocations: [],
+      transactions: [],
+    });
+    const op = mkOp("txn.create", {
+      id: "T1",
+      type: "transfer",
+      accountId: "A1",
+      toAccountId: "A2",
+      amount: 50_00,
+      date: "2026-06-10",
+      allocationFromEnvelopeId: "E1",
+      allocationToEnvelopeId: "E2",
+    });
+
+    const once = applyOp(base, op);
+    const twice = applyOp(once, op);
+    expect(twice).toEqual(once);
+    expect(twice.transactions).toHaveLength(1);
+    expect(twice.transactions[0]!.allocationFromEnvelopeId).toBe("E1");
+    expect(twice.transactions[0]!.allocationToEnvelopeId).toBe("E2");
+  });
+
   it("replaying the same ops over a state that already reflects them changes nothing and duplicates no rows", () => {
     fc.assert(
       fc.property(ledgerArb(), fc.array(specArb, { maxLength: 30 }), (baseLedger, specs) => {
