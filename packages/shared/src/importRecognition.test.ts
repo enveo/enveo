@@ -75,6 +75,9 @@ describe("screenshot import recognition contract", () => {
     );
 
     expect(batch.rows.map((row) => row.rowId)).toEqual(["r1", "r2", "r3", "r4"]);
+    expect(Array.isArray(batch)).toBe(true);
+    expect(batch[0]!.rawPlace).toBe("180.00 EUR < 776.95 PLN\n1.00 PLN = 0.231677 EUR");
+    expect([...batch].map((item) => item.currency)).toEqual(["PLN", "EUR", "PLN"]);
     expect(batch.rows.map((row) => [row.imageIndex, row.visualOrder])).toEqual([
       [0, 0],
       [0, 1],
