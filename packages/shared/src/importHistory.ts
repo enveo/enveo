@@ -49,13 +49,15 @@ export interface ImportHistorySelection {
 }
 
 const MIN_SIMILARITY = 0.3;
+const MAX_CANDIDATES = 5;
 
 /** Normalizes source text once before all equality and similarity comparisons. */
 export function normalizeImportHistoryText(value: string | null | undefined): string {
   return (value ?? "")
+    .replace(/[Łł]/g, "l")
     .normalize("NFD")
     .replace(/\p{M}/gu, "")
-    .toLocaleLowerCase()
+    .toLowerCase()
     .replace(/[^\p{L}\p{N}]+/gu, " ")
     .replace(/\s+/g, " ")
     .trim();
@@ -105,6 +107,23 @@ const assignmentKey = (candidate: ImportHistoryCandidate): string =>
     .map((value) => String(value ?? ""))
     .join("\u0000");
 
+const evidenceKey = (candidate: ImportHistoryCandidate): string =>
+  [
+    candidate.sourceRef,
+    candidate.tag,
+    candidate.place,
+    candidate.name,
+    candidate.envelope,
+    candidate.category,
+    candidate.type,
+    candidate.isRefund,
+    candidate.toAccountId,
+  ]
+    .map((value) => String(value ?? ""))
+    .join("\u0000");
+
+const compareText = (left: string, right: string): number => (left < right ? -1 : left > right ? 1 : 0);
+
 const matchRank = (match: ImportHistoryMatch): number => {
   switch (match) {
     case "exact_source_ref":
@@ -124,9 +143,9 @@ const matchRank = (match: ImportHistoryMatch): number => {
  */
 export function selectImportHistoryCandidates(query: ImportHistoryQuery, records: readonly ImportHistoryRecord[], limit = 5): ImportHistorySelection {
   const raw = normalizeImportHistoryText(query.proposal.rawPlace);
-  const grouped = new Map<string, { candidate: ImportHistoryCandidate; rank: number; score: number; order: number }>();
+  const grouped = new Map<string, { candidate: ImportHistoryCandidate; rank: number; score: number }>();
 
-  records.forEach((record, order) => {
+  records.forEach((record) => {
     if (!compatibleWithVisibleFacts(query, record)) return;
 
     const source = normalizeImportHistoryText(record.sourceRef);
@@ -165,13 +184,17 @@ export function selectImportHistoryCandidates(query: ImportHistoryQuery, records
     const key = assignmentKey(candidate);
     const existing = grouped.get(key);
     if (!existing) {
-      grouped.set(key, { candidate, rank: matchRank(match), score: Math.max(sourceScore, fuzzyScore), order });
+      grouped.set(key, { candidate, rank: matchRank(match), score: Math.max(sourceScore, fuzzyScore) });
       return;
     }
     existing.candidate.count++;
     const rank = matchRank(match);
     const score = Math.max(sourceScore, fuzzyScore);
-    if (rank > existing.rank || (rank === existing.rank && score > existing.score)) {
+    if (
+      rank > existing.rank ||
+      (rank === existing.rank &&
+        (score > existing.score || (score === existing.score && compareText(evidenceKey(candidate), evidenceKey(existing.candidate)) < 0)))
+    ) {
       const count = existing.candidate.count;
       existing.candidate = candidate;
       existing.candidate.count = count;
@@ -180,9 +203,16 @@ export function selectImportHistoryCandidates(query: ImportHistoryQuery, records
     }
   });
 
-  const ranked = [...grouped.values()]
-    .sort((left, right) => right.rank - left.rank || right.score - left.score || right.candidate.count - left.candidate.count || left.order - right.order)
-    .slice(0, limit)
-    .map(({ candidate }) => candidate);
-  return { candidates: ranked, conflict: ranked.length > 1 };
+  const ranked = [...grouped.values()].sort(
+    (left, right) =>
+      right.rank - left.rank ||
+      right.score - left.score ||
+      right.candidate.count - left.candidate.count ||
+      compareText(assignmentKey(left.candidate), assignmentKey(right.candidate)),
+  );
+  const displayLimit = Number.isFinite(limit) ? Math.max(0, Math.min(Math.trunc(limit), MAX_CANDIDATES)) : MAX_CANDIDATES;
+  return {
+    candidates: ranked.slice(0, displayLimit).map(({ candidate }) => candidate),
+    conflict: ranked.length > 1,
+  };
 }

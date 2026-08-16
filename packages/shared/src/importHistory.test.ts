@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { type ImportHistoryQuery, type ImportHistoryRecord, selectImportHistoryCandidates } from "./importHistory";
+import { type ImportHistoryQuery, type ImportHistoryRecord, normalizeImportHistoryText, selectImportHistoryCandidates } from "./importHistory";
 
 const record = (over: Partial<ImportHistoryRecord> = {}): ImportHistoryRecord => ({
   accountId: "account-a",
@@ -94,6 +94,28 @@ describe("selectImportHistoryCandidates", () => {
     expect(result.candidates).toMatchObject([{ sourceRef: "BANK*FUEL 123", count: 2 }]);
   });
 
+  test("caps an oversized requested limit at five candidates", () => {
+    const records = ["A", "B", "C", "D", "E", "F", "G"].map((envelope) => record({ envelope }));
+
+    const result = selectImportHistoryCandidates(query(), records, 99);
+
+    expect(result.candidates).toHaveLength(5);
+  });
+
+  test("orders equal evidence by semantic assignment fields, not history order", () => {
+    const assignments = [record({ envelope: "A" }), record({ envelope: "B" })];
+
+    expect(selectImportHistoryCandidates(query(), assignments, 1).candidates.map((candidate) => candidate.envelope)).toEqual(["A"]);
+    expect(selectImportHistoryCandidates(query(), [...assignments].reverse(), 1).candidates.map((candidate) => candidate.envelope)).toEqual(["A"]);
+  });
+
+  test("preserves a conflict hidden by the display limit", () => {
+    const result = selectImportHistoryCandidates(query(), [record({ envelope: "A" }), record({ envelope: "B" })], 1);
+
+    expect(result.candidates).toHaveLength(1);
+    expect(result.conflict).toBe(true);
+  });
+
   test("offers an owned transfer target only for matching internal-transfer evidence", () => {
     const transfer = record({ type: "transfer", toAccountId: "account-b" });
     const foreignTarget = record({ type: "transfer", toAccountId: "account-foreign" });
@@ -104,5 +126,11 @@ describe("selectImportHistoryCandidates", () => {
 
     expect(internal.candidates).toMatchObject([{ type: "transfer", toAccountId: "account-b" }]);
     expect(incomingCredit).toEqual({ candidates: [], conflict: false });
+  });
+});
+
+describe("normalizeImportHistoryText", () => {
+  test("folds Polish Ł, composed and decomposed accents, case, punctuation, and whitespace", () => {
+    expect(normalizeImportHistoryText("  ŁÓDŹ — café / CAFE\u0301  ")).toBe("lodz cafe cafe");
   });
 });
