@@ -7,6 +7,7 @@ export * from "./budget";
 export * from "./currency";
 export * from "./goals";
 export * from "./importDedupe";
+export * from "./importHistory";
 export * from "./importRecognition";
 export * from "./ops";
 export * from "./preferences";
