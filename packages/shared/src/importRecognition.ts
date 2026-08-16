@@ -97,6 +97,27 @@ export interface ImportRecognitionResult {
   proposals: ImportProposal[];
 }
 
+export interface ImportEnrichmentRow {
+  rowId: string;
+  name: string;
+  place: string | null;
+  envelopeId: string | null;
+  categoryId: string | null;
+  semanticKind: ImportSemanticKind;
+  relation: ImportRowRelation | null;
+  reviewReasons: ImportReviewReason[];
+  /** Parser-only evidence that the model attempted to rewrite an extraction fact. */
+  factCorrectionAttempt?: boolean;
+}
+
+/** Parsed model annotations plus the current ids that bounded that model call. */
+export interface ImportEnrichmentAnswer {
+  rows: ImportEnrichmentRow[];
+  allowedEnvelopeIds: readonly string[];
+  allowedCategoryIds: readonly string[];
+  allowedAccountIds: readonly string[];
+}
+
 export interface ReconciledImportProposal extends ImportProposal {
   duplicateStatus: ImportDupStatus;
   sourceAccountInvalid: boolean;
@@ -107,6 +128,82 @@ const addReasons = (current: ImportReviewReason[], ...added: ImportReviewReason[
   for (const reason of added) unique.add(reason);
   return [...unique];
 };
+
+/** Cycle two is reserved for rows carrying deterministic uncertainty or review risk. */
+export function needsImportEnrichment(result: ImportRecognitionResult): boolean {
+  return result.proposals.some((proposal) => proposal.reviewReasons.length > 0 || proposal.disposition === "unresolved");
+}
+
+const ENRICHMENT_ROW_KEYS = new Set([
+  "rowId",
+  "name",
+  "place",
+  "envelopeId",
+  "categoryId",
+  "semanticKind",
+  "relation",
+  "reviewReasons",
+  "factCorrectionAttempt",
+]);
+
+/**
+ * Applies model annotations without allowing them to rewrite extraction facts.
+ * Unknown current-entity ids and relation targets are ignored and made visible
+ * as fact_correction review evidence.
+ */
+export function applyImportEnrichment(result: ImportRecognitionResult, answer: ImportEnrichmentAnswer): ImportRecognitionResult {
+  const envelopeIds = new Set(answer.allowedEnvelopeIds);
+  const categoryIds = new Set(answer.allowedCategoryIds);
+  const rowIds = new Set(result.rows.map((row) => row.rowId));
+  const answerRowIds = new Set<string>();
+  const invalidAnswerIdentity = answer.rows.some((row) => {
+    if (!rowIds.has(row.rowId) || answerRowIds.has(row.rowId)) return true;
+    answerRowIds.add(row.rowId);
+    return false;
+  });
+  const annotations = new Map(answer.rows.map((row) => [row.rowId, row]));
+
+  return {
+    rows: result.rows,
+    proposals: result.proposals.map((proposal) => {
+      const annotation = annotations.get(proposal.rowId);
+      if (!annotation) {
+        return invalidAnswerIdentity ? { ...proposal, reviewReasons: addReasons(proposal.reviewReasons, "fact_correction") } : proposal;
+      }
+
+      let factCorrection =
+        invalidAnswerIdentity ||
+        annotation.factCorrectionAttempt === true ||
+        Object.keys(annotation as unknown as Record<string, unknown>).some((key) => !ENRICHMENT_ROW_KEYS.has(key));
+      const envelopeId = annotation.envelopeId === null || envelopeIds.has(annotation.envelopeId) ? annotation.envelopeId : proposal.envelopeId;
+      const categoryId = annotation.categoryId === null || categoryIds.has(annotation.categoryId) ? annotation.categoryId : proposal.categoryId;
+      if (annotation.envelopeId !== null && !envelopeIds.has(annotation.envelopeId)) factCorrection = true;
+      if (annotation.categoryId !== null && !categoryIds.has(annotation.categoryId)) factCorrection = true;
+
+      let relation = annotation.relation;
+      if (relation && (!rowIds.has(relation.rowId) || relation.rowId === proposal.rowId)) {
+        relation = proposal.relation;
+        factCorrection = true;
+      }
+      const relationChanged = JSON.stringify(relation) !== JSON.stringify(proposal.relation);
+      let reviewReasons = addReasons(proposal.reviewReasons, ...annotation.reviewReasons);
+      if (relationChanged) reviewReasons = addReasons(reviewReasons, "relation_changes_ledger_shape");
+      if (factCorrection) reviewReasons = addReasons(reviewReasons, "fact_correction");
+
+      return {
+        ...proposal,
+        name: annotation.name.trim(),
+        placeName: annotation.place?.trim() || null,
+        envelopeId,
+        categoryId,
+        semanticKind: annotation.semanticKind,
+        relation,
+        reviewReasons,
+        selected: relationChanged ? false : proposal.selected,
+      };
+    }),
+  };
+}
 
 const isCalendarDate = (value: string | null): value is string => {
   if (!value || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;

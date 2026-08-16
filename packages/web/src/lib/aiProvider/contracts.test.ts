@@ -29,7 +29,7 @@ describe("AI provider contracts", () => {
       removeCredential: async () => undefined,
       testConnection: async () => undefined,
       complete: async () => "{}",
-      extractImport: async () => ({ items: [] }),
+      extractImport: async () => ({ rows: [], proposals: [] }),
     } satisfies AiProvider;
 
     expect("getCredential" in provider).toBe(false);

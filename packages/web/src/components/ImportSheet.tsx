@@ -63,6 +63,7 @@ export function ImportSheet({ show, onClose, state, onApplied }: { show: boolean
   const [images, setImages] = useState<string[]>([]);
   const [phase, setPhase] = useState<Phase>("pick");
   const [items, setItems] = useState<LocalImportReviewItem[]>([]);
+  const [, setRecognition] = useState<Awaited<ReturnType<typeof runImportExtract>> | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [doneStats, setDoneStats] = useState({ added: 0, dup: 0 });
@@ -102,6 +103,7 @@ export function ImportSheet({ show, onClose, state, onApplied }: { show: boolean
     setImages([]);
     setPhase("pick");
     setItems([]);
+    setRecognition(null);
     setError(null);
     setBusy(false);
     setShowConsent(false);
@@ -142,7 +144,37 @@ export function ImportSheet({ show, onClose, state, onApplied }: { show: boolean
       const tierAtStart = e2ee.getTierMeta();
       if (tierAtStart.tier === "e2ee") await assertOwnReplica();
       // Plain extraction may use Enveo; E2EE Own OpenAI sends images directly to OpenAI.
-      const extracted = await runImportExtract({ images, locale: lang, ledger, provider });
+      const recognition = await runImportExtract({ images, locale: lang, ledger, accountId, provider });
+      setRecognition(recognition);
+      if (recognition.rows.length === 0) {
+        setError(t("No transactions were recognized in the screenshots."));
+        return;
+      }
+      const envelopeNames = new Map(ledger.envelopes.map((envelope) => [envelope.id, envelope.name]));
+      const categoryNames = new Map(ledger.categories.map((category) => [category.id, category.name]));
+      const extracted: ImportApplyItem[] = recognition.proposals.flatMap((proposal) => {
+        if (proposal.disposition !== "candidate" || proposal.date === null || proposal.amount === null || proposal.type === null) {
+          return [];
+        }
+        return [
+          {
+            date: proposal.date,
+            amount: proposal.amount,
+            type: proposal.type,
+            isRefund: proposal.isRefund,
+            toAccountId: proposal.toAccountId,
+            name: proposal.name,
+            tag: proposal.tag,
+            rawPlace: proposal.rawPlace,
+            envelopeId: proposal.envelopeId,
+            envelopeName: proposal.envelopeId ? (envelopeNames.get(proposal.envelopeId) ?? null) : null,
+            categoryId: proposal.categoryId,
+            categoryName: proposal.categoryId ? (categoryNames.get(proposal.categoryId) ?? null) : null,
+            placeName: proposal.placeName,
+            currency: proposal.currency ?? undefined,
+          },
+        ];
+      });
       if (extracted.length === 0) {
         setError(t("No transactions were recognized in the screenshots."));
         return;

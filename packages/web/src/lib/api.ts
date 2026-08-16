@@ -251,12 +251,13 @@ export const api = {
       { budgetId, model, messages: request.messages, responseFormat: request.responseFormat, reasoningEffort: request.reasoningEffort },
       AI_PROXY_CHAT_TIMEOUT_MS,
     ),
-  byokImportExtract: (budgetId: string, model: OpenAiModel, images: string[], locale: AiLocale) =>
-    http<ImportExtractResult>("POST", "/ai/byok/import/extract", { budgetId, model, images, locale }, AI_IMPORT_EXTRACT_TIMEOUT_MS),
+  byokImportExtract: (budgetId: string, model: OpenAiModel, accountId: string, images: string[], locale: AiLocale) =>
+    http<ImportExtractResult>("POST", "/ai/byok/import/extract", { budgetId, model, accountId, images, locale }, AI_IMPORT_EXTRACT_TIMEOUT_MS),
 
   /* `locale` = the UI language (any BCP-47 tag): the model writes its names, notes and
      rationales in it. Not to be confused with demoSeed's pl|en, which picks a SEED DATASET. */
-  importExtract: (images: string[], locale: AiLocale) => http<ImportExtractResult>("POST", "/import/extract", { images, locale }, AI_IMPORT_EXTRACT_TIMEOUT_MS),
+  importExtract: (accountId: string, images: string[], locale: AiLocale) =>
+    http<ImportExtractResult>("POST", "/import/extract", { accountId, images, locale }, AI_IMPORT_EXTRACT_TIMEOUT_MS),
   /* `budgetId` = the same PER-REQUEST tenant assertion as the sync push: the batch creates
      FRESH transactions in whatever budget the session cookie resolves to, and the cookie can
      be swapped in another tab while the import sheet is open. The caller passes the replica's

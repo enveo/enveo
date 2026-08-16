@@ -48,9 +48,9 @@ export type SpendRoutesChildOutput = {
   importDeniedBeforeCycle1: { status: number; error: string | undefined; hasRetryAfterHeader: boolean; upstreamNotCalled: boolean };
   importCycle2Denied: {
     status: number;
-    /** Raw extracted items came back through the graceful fallback. */
+    /** Validated raw proposals came back through the graceful fallback. */
     itemCount: number;
-    firstItemTag: string | undefined;
+    firstRawPlace: string | undefined;
     /** Exactly one upstream call (cycle 1); the denied cycle 2 never fetched. */
     upstreamCalls: number;
     /** Two independent checks, one record (cycle 1 charged, cycle 2 denied). */
@@ -123,7 +123,8 @@ async function main() {
       .values({ email: `spend-routes-${tag}-${crypto.randomUUID()}@test.local` })
       .returning({ id: s.users.id });
     const [b] = await db.insert(s.budgets).values({ userId: u!.id, name: "B" }).returning({ id: s.budgets.id });
-    return { userId: u!.id, budgetId: b!.id };
+    const [a] = await db.insert(s.accounts).values({ budgetId: b!.id, name: "Checking" }).returning({ id: s.accounts.id });
+    return { userId: u!.id, budgetId: b!.id, accountId: a!.id };
   };
   const spentOf = async (userId: string): Promise<bigint> => {
     const rows = await pooled<{ spent: string }[]>`
@@ -229,7 +230,7 @@ async function main() {
   await exhaust(u5.userId);
   const app5 = appFor(u5.userId);
   const before5 = upstreamCalls;
-  const res6 = await post(app5, "/import/extract", { images: ["data:image/png;base64,AAAA"], locale: "en" });
+  const res6 = await post(app5, "/import/extract", { accountId: u5.accountId, images: ["data:image/png;base64,AAAA"], locale: "en" });
   const body6 = (await res6.json()) as { error?: string };
   const importDeniedBeforeCycle1 = {
     status: res6.status,
@@ -246,19 +247,49 @@ async function main() {
   await pooled`update ai_user_monthly_spend set spent_nano_usd = ${(THRESHOLD - 1n).toString()}::bigint
     where user_id = ${u6.userId} and period_key = ${check6.periodKey}`;
   const visionItems = {
-    transactions: [
-      { date: "2026-08-01", amount: 1234, type: "expense", rawPlace: "LIDL SP. Z O.O.", tag: "LIDL", currency: "EUR", fxOriginal: "" },
-      { date: "2026-08-02", amount: 999, type: "income", rawPlace: "EMPLOYER GMBH", tag: "EMPLOYER", currency: "EUR", fxOriginal: "" },
+    rows: [
+      {
+        rowId: "r1",
+        imageIndex: 0,
+        visualOrder: 0,
+        rawTextLines: ["LIDL SP. Z O.O."],
+        date: "2026-08-01",
+        amount: 1234,
+        currency: "EUR",
+        direction: "unknown",
+        postingStatus: "posted",
+        rowRole: "financial_event",
+        semanticKind: "unknown",
+        relation: null,
+        confidence: "medium",
+        reviewReasons: [],
+      },
+      {
+        rowId: "r2",
+        imageIndex: 0,
+        visualOrder: 1,
+        rawTextLines: ["EMPLOYER GMBH"],
+        date: "2026-08-02",
+        amount: 999,
+        currency: "EUR",
+        direction: "credit",
+        postingStatus: "posted",
+        rowRole: "financial_event",
+        semanticKind: "salary",
+        relation: null,
+        confidence: "high",
+        reviewReasons: [],
+      },
     ],
   };
   script = [chatBody(JSON.stringify(visionItems))];
   const before6 = { calls: upstreamCalls, checks: counters.checks, records: counters.records };
-  const res7 = await post(app6, "/import/extract", { images: ["data:image/png;base64,AAAA"], locale: "en" });
-  const body7 = (await res7.json()) as { items?: Array<{ tag?: string }> };
+  const res7 = await post(app6, "/import/extract", { accountId: u6.accountId, images: ["data:image/png;base64,AAAA"], locale: "en" });
+  const body7 = (await res7.json()) as { proposals?: Array<{ rawPlace?: string }> };
   const importCycle2Denied = {
     status: res7.status,
-    itemCount: body7.items?.length ?? -1,
-    firstItemTag: body7.items?.[0]?.tag,
+    itemCount: body7.proposals?.length ?? -1,
+    firstRawPlace: body7.proposals?.[0]?.rawPlace,
     upstreamCalls: upstreamCalls - before6.calls,
     checks: counters.checks - before6.checks,
     records: counters.records - before6.records,

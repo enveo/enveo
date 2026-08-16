@@ -4,6 +4,7 @@ import {
   aiLocaleSchema,
   buildAgentSuggestContext,
   buildAgentSuggestPrompt,
+  buildImportEnrichPrompt,
   buildImportExtractPrompt,
   buildSuggestPrompt,
   type ChatMessage,
@@ -11,10 +12,13 @@ import {
   languageDirectives,
   languageName,
   parseAgentSuggestResponse,
+  parseImportEnrichResponse,
   parseImportExtractResponse,
   parseSuggestResponse,
+  runImportRecognitionPipeline,
   supportsReasoningEffort,
 } from "./aiPrompts";
+import type { ImportHistoryRecord } from "./importHistory";
 import type { ClientLedger } from "./types";
 
 function fixture(): ClientLedger {
@@ -272,6 +276,282 @@ describe("buildImportExtractPrompt / parseImportExtractResponse", () => {
 
   it("throws when a strict extraction fact is missing", () => {
     expect(() => parseImportExtractResponse('{"rows":[{"rowId":"r1"}]}')).toThrow();
+  });
+});
+
+describe("buildImportEnrichPrompt / parseImportEnrichResponse", () => {
+  const recognition = {
+    rows: [
+      {
+        rowId: "r1",
+        imageIndex: 0,
+        visualOrder: 0,
+        rawTextLines: ["LIDL 123"],
+        date: "2026-08-07",
+        amount: 1234,
+        currency: "PLN",
+        direction: "debit" as const,
+        postingStatus: "posted" as const,
+        rowRole: "financial_event" as const,
+        semanticKind: "card_purchase" as const,
+        relation: null,
+        confidence: "medium" as const,
+        reviewReasons: ["history_conflict" as const],
+      },
+    ],
+    proposals: [
+      {
+        rowId: "r1",
+        sourceRows: ["r1"],
+        disposition: "candidate" as const,
+        date: "2026-08-07",
+        amount: 1234,
+        currency: "PLN",
+        type: "expense" as const,
+        isRefund: false,
+        toAccountId: null,
+        semanticKind: "card_purchase" as const,
+        relation: null,
+        name: "",
+        tag: "",
+        rawPlace: "LIDL 123",
+        envelopeId: null,
+        categoryId: null,
+        placeName: null,
+        reviewReasons: ["history_conflict" as const],
+        selected: false,
+      },
+    ],
+  };
+
+  it("sends validated facts, bounded history evidence, and only current entity ids", () => {
+    const req = buildImportEnrichPrompt(
+      {
+        result: recognition,
+        history: [
+          {
+            rowId: "r1",
+            selection: {
+              conflict: true,
+              candidates: [
+                {
+                  sourceRef: "LIDL 123",
+                  tag: "LIDL",
+                  place: "Lidl",
+                  name: "Groceries",
+                  envelope: "Food",
+                  category: "Daily",
+                  type: "expense",
+                  isRefund: false,
+                  toAccountId: null,
+                  count: 2,
+                  match: "exact_source_ref",
+                },
+              ],
+            },
+          },
+        ],
+        envelopes: [{ id: "envelope-1", name: "Food" }],
+        categories: [{ id: "category-1", name: "Daily" }],
+        accounts: [{ id: "account-1", name: "Checking" }],
+      },
+      "pl",
+    );
+    const user = JSON.parse(req.messages[1]!.content as string) as Record<string, unknown>;
+    expect(user).toMatchObject({
+      entities: {
+        envelopes: [{ id: "envelope-1", name: "Food" }],
+        categories: [{ id: "category-1", name: "Daily" }],
+        accounts: [{ id: "account-1", name: "Checking" }],
+      },
+    });
+    expect(JSON.stringify(user)).toContain("LIDL 123");
+    expect(req.reasoningEffort).toBe("low");
+    expect(sysOf(req.messages)).toContain("existing id or null");
+  });
+
+  it("exposes only semantic annotation fields in the strict response schema", () => {
+    const req = buildImportEnrichPrompt({ result: recognition, history: [], envelopes: [], categories: [], accounts: [] }, "en");
+    const schema = (req.responseFormat as any).json_schema.schema.properties.rows.items;
+    expect(Object.keys(schema.properties).sort()).toEqual(
+      ["categoryId", "envelopeId", "name", "place", "relation", "reviewReasons", "rowId", "semanticKind"].sort(),
+    );
+    expect(schema.additionalProperties).toBe(false);
+    expect(schema.properties).not.toHaveProperty("amount");
+    expect(schema.properties).not.toHaveProperty("date");
+    expect(schema.properties).not.toHaveProperty("currency");
+    expect(schema.properties).not.toHaveProperty("direction");
+  });
+
+  it("parses semantic fields while retaining a private marker for attempted fact corrections", () => {
+    const parsed = parseImportEnrichResponse(
+      JSON.stringify({
+        rows: [
+          {
+            rowId: "r1",
+            name: "Groceries",
+            place: "Lidl",
+            envelopeId: "envelope-1",
+            categoryId: null,
+            semanticKind: "card_purchase",
+            relation: null,
+            reviewReasons: [],
+            amount: 1,
+          },
+        ],
+      }),
+      { envelopeIds: ["envelope-1"], categoryIds: [], accountIds: ["account-1"] },
+    );
+    expect(parsed.rows[0]).toMatchObject({ rowId: "r1", name: "Groceries", envelopeId: "envelope-1", factCorrectionAttempt: true });
+    expect(parsed.allowedEnvelopeIds).toEqual(["envelope-1"]);
+  });
+});
+
+describe("runImportRecognitionPipeline", () => {
+  const extracted = (semanticKind: "card_purchase" | "unknown" = "card_purchase") =>
+    JSON.stringify({
+      rows: [
+        {
+          rowId: "r1",
+          imageIndex: 0,
+          visualOrder: 0,
+          rawTextLines: ["LIDL 123"],
+          date: "2026-08-07",
+          amount: 1234,
+          currency: "PLN",
+          direction: semanticKind === "unknown" ? "unknown" : "debit",
+          postingStatus: "posted",
+          rowRole: "financial_event",
+          semanticKind,
+          relation: null,
+          confidence: "medium",
+          reviewReasons: [],
+        },
+      ],
+    });
+  const history = (accountId: string, envelope: string): ImportHistoryRecord => ({
+    accountId,
+    currency: "PLN",
+    sourceRef: "LIDL 123",
+    tag: "LIDL",
+    place: "Lidl",
+    name: "Groceries",
+    envelope,
+    category: null,
+    type: "expense",
+    isRefund: false,
+    toAccountId: null,
+  });
+  const base = {
+    images: ["data:image/png;base64,AA=="],
+    locale: "pl",
+    today: "2026-08-16",
+    budgetCurrency: "PLN",
+    accountId: "account-1",
+    accounts: [
+      {
+        id: "account-1",
+        name: "Checking",
+        color: "#000",
+        icon: "wallet",
+        type: "checking" as const,
+        onBudget: true,
+        initialBalance: 0,
+        archived: false,
+        sort: 0,
+        automaticEnvelopeId: null,
+      },
+      {
+        id: "account-2",
+        name: "Savings",
+        color: "#000",
+        icon: "wallet",
+        type: "savings" as const,
+        onBudget: true,
+        initialBalance: 0,
+        archived: false,
+        sort: 1,
+        automaticEnvelopeId: null,
+      },
+    ],
+    envelopes: [
+      {
+        id: "envelope-1",
+        groupId: "group-1",
+        name: "Food",
+        color: "#000",
+        icon: "tag",
+        note: null,
+        monthlyTarget: null,
+        isSavings: false,
+        sort: 0,
+        archived: false,
+      },
+    ],
+    categories: [],
+    transactions: [],
+    historyRecords: [] as ImportHistoryRecord[],
+  };
+
+  it("skips cycle two for a straightforward posted purchase", async () => {
+    const requests: ChatRequest[] = [];
+    const result = await runImportRecognitionPipeline({
+      ...base,
+      chat: async (request) => {
+        requests.push(request);
+        return extracted();
+      },
+    });
+    expect(requests).toHaveLength(1);
+    expect(result.proposals[0]).toMatchObject({ rowId: "r1", semanticKind: "card_purchase", name: "", selected: true });
+  });
+
+  it("uses only the selected account's compatible history and constrains cycle-two ids", async () => {
+    const requests: ChatRequest[] = [];
+    const result = await runImportRecognitionPipeline({
+      ...base,
+      historyRecords: [history("account-1", "Food"), history("account-1", "Travel"), history("account-2", "Secret")],
+      chat: async (request) => {
+        requests.push(request);
+        if (requests.length === 1) return extracted();
+        const user = request.messages[1]!.content as string;
+        expect(user).toContain("Food");
+        expect(user).toContain("Travel");
+        expect(user).not.toContain("Secret");
+        return JSON.stringify({
+          rows: [
+            {
+              rowId: "r1",
+              name: "Zakupy",
+              place: "Lidl",
+              envelopeId: "envelope-1",
+              categoryId: null,
+              semanticKind: "card_purchase",
+              relation: null,
+              reviewReasons: [],
+            },
+          ],
+        });
+      },
+    });
+    expect(requests).toHaveLength(2);
+    expect(result.proposals[0]).toMatchObject({ name: "Zakupy", envelopeId: "envelope-1" });
+    expect(result.proposals[0]!.reviewReasons).toEqual(expect.arrayContaining(["history_conflict", "multiple_history_candidates"]));
+  });
+
+  it("returns validated raw proposals when cycle two fails", async () => {
+    let calls = 0;
+    const result = await runImportRecognitionPipeline({
+      ...base,
+      chat: async () => {
+        calls++;
+        if (calls === 1) return extracted("unknown");
+        throw new Error("cycle-two-down");
+      },
+    });
+    expect(calls).toBe(2);
+    expect(result.proposals[0]).toMatchObject({ name: "", envelopeId: null, disposition: "unresolved", selected: false });
+    expect(result.proposals[0]!.reviewReasons).toContain("unknown_kind");
   });
 });
 

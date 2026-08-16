@@ -68,6 +68,6 @@ export function createPlainByokProvider(tier: "plain" | "e2ee", budgetId: string
     remove: async (id) => void (await api.byokCredentialDelete(id)),
     test: async (id, selectedModel) => void (await api.byokCredentialTest(id, selectedModel)),
     complete: async (id, selectedModel, request) => (await api.byokChat(id, selectedModel, request)).content,
-    extract: (id, selectedModel, input) => api.byokImportExtract(id, selectedModel, input.images, input.locale),
+    extract: (id, selectedModel, input) => api.byokImportExtract(id, selectedModel, input.accountId, input.images, input.locale),
   });
 }

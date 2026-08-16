@@ -4,13 +4,21 @@
  * dedupe classification (import-dedupe). Transaction writes live on the client.
  */
 import { describe, expect, it } from "bun:test";
-import { type ApplyItem, applyInput, findTransferError } from "./import";
+import { type ApplyItem, applyInput, extractInput, findTransferError } from "./import";
 import { buildDupIndex, classifyDup } from "./import-dedupe";
 import { budgetAssertionFails } from "./sync";
 
 const ACC_A = "11111111-1111-1111-1111-111111111111";
 const ACC_B = "22222222-2222-2222-2222-222222222222";
 const ENV = "33333333-3333-3333-3333-333333333333";
+
+describe("import/extract — selected account", () => {
+  it("requires the selected account id for history selection and reconciliation", () => {
+    const body = { images: ["data:image/png;base64,AA=="], locale: "pl" };
+    expect(extractInput.safeParse(body).success).toBe(false);
+    expect(extractInput.parse({ ...body, accountId: ACC_A }).accountId).toBe(ACC_A);
+  });
+});
 
 const baseItem = (over: Partial<ApplyItem> = {}): ApplyItem => ({
   date: "2026-07-10",

@@ -178,7 +178,7 @@ function providerStub(kind: AiProviderKind, capabilities: readonly AiCapability[
     removeCredential: async () => {},
     testConnection: async () => {},
     complete: async () => "",
-    extractImport: async () => ({ items: [] }),
+    extractImport: async () => ({ rows: [], proposals: [] }),
     ...overrides,
   };
 }
@@ -210,37 +210,34 @@ describe("provider-neutral AI workflows", () => {
     expect(result.warnings).toContain("agent_requires_ai");
   });
 
-  it("screenshot import delegates once to the selected provider", async () => {
+  it("screenshot import delegates the selected account and preserves the full recognition result", async () => {
     const seenLedgers: ClientLedger[] = [];
-    const item = {
-      date: "2026-07-02",
-      amount: 1230,
-      type: "expense" as const,
-      isRefund: false,
-      name: "",
-      tag: "LIDL",
-      rawPlace: "Lidl",
-      envelopeId: null,
-      envelopeName: null,
-      categoryId: null,
-      categoryName: null,
-      placeName: null,
-      currency: "PLN",
-      fxOriginal: "",
+    const seenAccounts: string[] = [];
+    const recognition = {
+      rows: [],
+      proposals: [],
     };
     const provider = providerStub("openai", ["screenshot-import"], {
       extractImport: async (input) => {
         seenLedgers.push(input.ledger);
-        return { items: [item] };
+        seenAccounts.push(input.accountId);
+        return recognition;
       },
     });
     const ledger = fixtureLedger();
-    expect(await runImportExtract({ images: ["data:image/png;base64,x"], locale: "pl", ledger, provider })).toEqual([item]);
+    expect(await runImportExtract({ images: ["data:image/png;base64,x"], locale: "pl", ledger, accountId: "account-1", provider })).toEqual(recognition);
     expect(seenLedgers).toEqual([ledger]);
+    expect(seenAccounts).toEqual(["account-1"]);
   });
 
   it("unsupported screenshot import throws a stable localized code", async () => {
-    const run = runImportExtract({ images: ["data:image/png;base64,x"], locale: "pl", ledger: fixtureLedger(), provider: new RulesProvider() });
+    const run = runImportExtract({
+      images: ["data:image/png;base64,x"],
+      locale: "pl",
+      ledger: fixtureLedger(),
+      accountId: "account-1",
+      provider: new RulesProvider(),
+    });
     await expect(run).rejects.toThrow("ai_consent_required");
     expect(apiErrorMessage(await run.catch((error: unknown) => error))).toBe(
       "AI is not configured. Choose server AI or an existing own key in Settings → Artificial intelligence.",

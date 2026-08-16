@@ -1,15 +1,14 @@
 import {
-  AI_VISION_TIMEOUT_MS,
+  type Account,
   aiLocaleSchema,
-  buildImportExtractPrompt,
+  type Category,
   type ChatRequest,
-  type ImportExtractItem,
+  type Envelope,
   type ImportHistoryQuery,
   type ImportHistoryRecord,
-  languageDirectives,
-  languageName,
-  parseImportExtractResponse,
+  runImportRecognitionPipeline,
   selectImportHistoryCandidates,
+  type Transaction,
 } from "@enveo/shared";
 import { and, eq, inArray } from "drizzle-orm";
 import { Hono } from "hono";
@@ -22,7 +21,6 @@ import { env } from "../env";
 import { transportFailureJson, UpstreamHttpError } from "../openaiHttp";
 import { assertBudgetFks } from "../sync/apply";
 import { buildDupIndex, classifyDup } from "./import-dedupe";
-import { decideAssignment } from "./import-match";
 import { budgetAssertionFails } from "./sync";
 
 /**
@@ -35,7 +33,8 @@ import { budgetAssertionFails } from "./sync";
  */
 export const importRoutes = new Hono();
 
-const extractInput = z.object({
+export const extractInput = z.object({
+  accountId: z.string().uuid(),
   images: z
     .array(z.string().regex(/^data:image\//, "expected an image data-URL"))
     .min(1)
@@ -46,43 +45,6 @@ const extractInput = z.object({
 });
 
 /* ── Cycle 1: vision — only facts from the screenshot; prompt+schema+parsing in shared/aiPrompts ── */
-
-/* ── Cycle 2: enrichment based on the user's historical categorizations ── */
-const enrichedTxn = z.object({
-  index: z.number().int().nonnegative(),
-  name: z.string(),
-  envelope: z.string().nullable(),
-  category: z.string().nullable(),
-  place: z.string().nullable(),
-});
-const enrichedOutput = z.object({ transactions: z.array(enrichedTxn) });
-
-const ENRICH_JSON_SCHEMA = {
-  name: "enriched_transactions",
-  strict: true,
-  schema: {
-    type: "object",
-    additionalProperties: false,
-    properties: {
-      transactions: {
-        type: "array",
-        items: {
-          type: "object",
-          additionalProperties: false,
-          properties: {
-            index: { type: "integer", description: "Index of the transaction from the input" },
-            name: { type: "string", description: "Short name in the user's language of WHAT it was (e.g. Groceries, Fuel, Cloud fee) — NOT the store name" },
-            envelope: { type: ["string", "null"], description: "Envelope name from the list or null" },
-            category: { type: ["string", "null"], description: "Category name from the list or null" },
-            place: { type: ["string", "null"], description: "Readable place name (e.g. Lidl) — an existing one if it matches" },
-          },
-          required: ["index", "name", "envelope", "category", "place"],
-        },
-      },
-    },
-    required: ["transactions"],
-  },
-} as const;
 
 /** Loads normalized ledger history without making an assignment decision. */
 export async function loadImportHistory(budgetId: string, currency: string): Promise<ImportHistoryRecord[]> {
@@ -156,105 +118,43 @@ export class ImportCycleOneFailure extends Error {
 
 /** Shared operator/BYOK import pipeline. Prompt construction and both parsing cycles stay in
  * one place; only the request-scoped model transport differs. */
-export async function extractImportForBudget(input: { budgetId: string; images: string[]; locale: string; chat: ImportModelChat }) {
-  const { budgetId, images, locale, chat } = input;
-  const language = languageName(locale);
+export async function extractImportForBudget(input: { budgetId: string; accountId: string; images: string[]; locale: string; chat: ImportModelChat }) {
+  const { budgetId, accountId, images, locale, chat } = input;
   const today = new Date().toISOString().slice(0, 10);
-  const [budgetRow] = await db.select({ currency: s.budgets.currency }).from(s.budgets).where(eq(s.budgets.id, budgetId));
+  const [[budgetRow], accountRows, envelopeRows, categoryRows, transactionRows] = await Promise.all([
+    db.select({ currency: s.budgets.currency }).from(s.budgets).where(eq(s.budgets.id, budgetId)),
+    db.select().from(s.accounts).where(eq(s.accounts.budgetId, budgetId)),
+    db.select().from(s.envelopes).where(eq(s.envelopes.budgetId, budgetId)),
+    db.select().from(s.categories).where(eq(s.categories.budgetId, budgetId)),
+    db.select().from(s.transactions).where(eq(s.transactions.budgetId, budgetId)),
+  ]);
   const currency = budgetRow?.currency ?? "EUR";
-
-  /* ── cycle 1: facts from the screenshot (prompt+parsing from shared — parity with byok) ── */
-  let found: ImportExtractItem[];
+  const accounts: Account[] = accountRows.map((account) => ({ ...account, type: account.type as Account["type"] }));
+  const envelopes: Envelope[] = envelopeRows;
+  const categories: Category[] = categoryRows;
+  const transactions: Transaction[] = transactionRows.map((transaction) => ({
+    ...transaction,
+    type: transaction.type as Transaction["type"],
+    items: [],
+  }));
+  const historyRecords = await loadImportHistory(budgetId, currency);
   try {
-    const raw = await chat(buildImportExtractPrompt(images, { envelopes: [], categories: [] }, today, locale, currency), AI_VISION_TIMEOUT_MS);
-    found = parseImportExtractResponse(raw);
+    return await runImportRecognitionPipeline({
+      images,
+      locale,
+      today,
+      budgetCurrency: currency,
+      accountId,
+      accounts,
+      envelopes,
+      categories,
+      transactions,
+      historyRecords,
+      chat,
+    });
   } catch (reason) {
     throw new ImportCycleOneFailure(reason);
   }
-  if (found.length === 0) return [];
-
-  /* ── cycle 2: similarity with history + assignments the way the user made them ── */
-  const [envelopes, categories] = await Promise.all([
-    db
-      .select({ id: s.envelopes.id, name: s.envelopes.name })
-      .from(s.envelopes)
-      .where(and(eq(s.envelopes.budgetId, budgetId), eq(s.envelopes.archived, false))),
-    db.select({ id: s.categories.id, name: s.categories.name }).from(s.categories).where(eq(s.categories.budgetId, budgetId)),
-  ]);
-  const sysEnrich =
-    "You enrich bank-statement transactions from the visible transaction facts. " +
-    `Propose: name — a short name in ${language} of WHAT it was (e.g. Groceries, Fuel, Cloud fee), never the raw company name with an address; ` +
-    `envelope — one of the envelopes: ${envelopes.map((e) => e.name).join(", ")} — or null; ` +
-    `category — one of the categories: ${categories.map((x) => x.name).join(", ")} — or null; ` +
-    "place — a readable, short place name (e.g. Lidl, Netflix). Do not change amounts or dates. " +
-    /* Cycle 2 is shared by operator and vaulted-BYOK transport, and carries the SAME language
-       contract as every shared prompt — the names it invents land in the user's ledger. */
-    languageDirectives(locale) +
-    "Return JSON.";
-  const pendingEnrichment = found.map((t, index) => ({ t, index }));
-
-  let enriched = new Map<number, z.infer<typeof enrichedTxn>>();
-  if (pendingEnrichment.length > 0) {
-    const enrichPayload = {
-      transactions: pendingEnrichment.map(({ t, index }) => ({
-        index,
-        date: t.date,
-        amount: t.amount,
-        type: t.type,
-        rawPlace: t.rawPlace,
-        tag: t.tag,
-      })),
-    };
-    try {
-      const raw = await chat({
-        messages: [
-          { role: "system", content: sysEnrich },
-          { role: "user", content: JSON.stringify(enrichPayload) },
-        ],
-        responseFormat: { type: "json_schema", json_schema: ENRICH_JSON_SCHEMA },
-        /* Matching against history patterns = simple comparisons — full default-effort
-             reasoning only slowed the import down (cycle 1/vision STAYS on the default:
-             OCR precision matters there). */
-        reasoningEffort: "low",
-      });
-      // size only — the answer carries the user's transactions; it NEVER goes to the server log
-      console.log(`import/extract cycle 2: ${raw.length} B answer`);
-      enriched = new Map(enrichedOutput.parse(JSON.parse(raw)).transactions.map((t) => [t.index, t]));
-    } catch (e) {
-      // SpendDenied lands here too: cycle 1 exhausted the allowance → skip AI enrichment and
-      // return the already-extracted raw items through this existing graceful fallback.
-      console.warn("import/extract cycle 2 (enrichment) failed — returning raw data:", (e as Error).message);
-    }
-  }
-
-  const envByName = new Map(envelopes.map((e) => [e.name.toLowerCase(), e]));
-  const catByName = new Map(categories.map((x) => [x.name.toLowerCase(), x]));
-  const items = found.map((t, index) => {
-    const pick = decideAssignment(t.rawPlace, enriched.get(index));
-    const envMatch = pick.envelope ? envByName.get(pick.envelope.toLowerCase()) : undefined;
-    const catMatch = pick.category ? catByName.get(pick.category.toLowerCase()) : undefined;
-    return {
-      date: t.date,
-      amount: t.amount,
-      type: t.type,
-      isRefund: t.isRefund,
-      toAccountId: null,
-      name: pick.name,
-      tag: t.tag,
-      // raw bank description — stored as metadata (source_ref), invisible
-      // in the UI; used to match future imports and learn from corrections
-      rawPlace: t.rawPlace,
-      envelopeId: envMatch?.id ?? null,
-      envelopeName: envMatch?.name ?? null,
-      categoryId: catMatch?.id ?? null,
-      categoryName: catMatch?.name ?? null,
-      placeName: pick.place,
-      // presentation-only (not stored): lets the UI warn on a foreign-currency row
-      currency: t.currency,
-      fxOriginal: t.fxOriginal,
-    };
-  });
-  return items;
 }
 
 /* The API answers with stable machine CODES (never prose): the client owns the wording
@@ -262,16 +162,17 @@ export async function extractImportForBudget(input: { budgetId: string; images: 
 importRoutes.post("/import/extract", async (c) => {
   if (!env.OPENAI_API_KEY) return c.json({ error: "ai_unavailable" }, 503);
   const budgetId = (await requireTier(c, "plain")).id;
-  const { images, locale: rawLocale } = extractInput.parse(await c.req.json());
+  const { accountId, images, locale: rawLocale } = extractInput.parse(await c.req.json());
   const userId = sessionUserId(c);
   try {
     const items = await extractImportForBudget({
       budgetId,
+      accountId,
       images,
       locale: rawLocale ?? "en",
       chat: (request, timeoutMs) => openaiJson(request, userId, timeoutMs),
     });
-    return c.json({ items });
+    return c.json(items);
   } catch (error) {
     if (!(error instanceof ImportCycleOneFailure)) throw error;
     const reason = error.reason;

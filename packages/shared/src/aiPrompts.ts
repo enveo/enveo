@@ -9,9 +9,23 @@
  */
 import { z } from "zod";
 import type { BudgetSuggestionBasis, ProposedEnvelopeDelta } from "./aiBudget";
+import { AI_VISION_TIMEOUT_MS } from "./aiTransport";
 import { computeBudgetState, prevMonth } from "./budget";
-import { IMPORT_RELATION_KINDS, IMPORT_REVIEW_REASONS, IMPORT_SEMANTIC_KINDS, type ImportExtractBatch } from "./importRecognition";
-import type { ClientLedger } from "./types";
+import { type ImportHistoryRecord, type ImportHistorySelection, selectImportHistoryCandidates } from "./importHistory";
+import {
+  applyImportEnrichment,
+  IMPORT_RELATION_KINDS,
+  IMPORT_REVIEW_REASONS,
+  IMPORT_SEMANTIC_KINDS,
+  type ImportEnrichmentAnswer,
+  type ImportEnrichmentRow,
+  type ImportExtractBatch,
+  type ImportRecognitionResult,
+  needsImportEnrichment,
+  reconcileImportProposals,
+  validateImportExtraction,
+} from "./importRecognition";
+import type { Account, Category, ClientLedger, Envelope, Transaction } from "./types";
 
 /* ── Shared chat request shape (OpenAI chat/completions) ─────────────── */
 
@@ -377,20 +391,6 @@ const importRawOutput = z.object({ rows: z.array(importRawRow) }).superRefine(({
     ids.add(row.rowId);
   });
 });
-const legacyImportRawOutput = z.object({
-  transactions: z.array(
-    z.object({
-      date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-      amount: z.number().int().positive(),
-      type: z.enum(["expense", "income", "refund"]),
-      rawPlace: z.string(),
-      tag: z.string(),
-      currency: z.string(),
-      fxOriginal: z.string(),
-    }),
-  ),
-});
-
 export const IMPORT_EXTRACT_JSON_SCHEMA = {
   name: "extracted_transactions",
   strict: true,
@@ -481,71 +481,248 @@ export function buildImportExtractPrompt(images: string[], _refs: ImportPromptRe
   };
 }
 
-/** Legacy projection retained until the cycle-one consumers adopt ImportExtractBatch. */
-export interface ImportExtractItem {
-  date: string;
-  amount: number;
-  type: "expense" | "income";
-  isRefund: boolean;
-  rawPlace: string;
-  tag: string;
-  currency: string;
-  fxOriginal: string;
+export interface ImportEnrichPromptInput {
+  result: ImportRecognitionResult;
+  history: Array<{ rowId: string; selection: ImportHistorySelection }>;
+  envelopes: Array<{ id: string; name: string }>;
+  categories: Array<{ id: string; name: string }>;
+  accounts: Array<{ id: string; name: string }>;
 }
 
-type ImportExtractBatchWithLegacyMap = ImportExtractBatch & ImportExtractItem[];
+export interface ImportEnrichmentConstraints {
+  envelopeIds: readonly string[];
+  categoryIds: readonly string[];
+  accountIds: readonly string[];
+}
+
+export const IMPORT_ENRICH_JSON_SCHEMA = {
+  name: "enriched_import_rows",
+  strict: true,
+  schema: {
+    type: "object",
+    additionalProperties: false,
+    properties: {
+      rows: {
+        type: "array",
+        items: {
+          type: "object",
+          additionalProperties: false,
+          properties: {
+            rowId: { type: "string" },
+            name: { type: "string" },
+            place: { type: ["string", "null"] },
+            envelopeId: { type: ["string", "null"] },
+            categoryId: { type: ["string", "null"] },
+            semanticKind: { type: "string", enum: IMPORT_SEMANTIC_KINDS },
+            relation: {
+              type: ["object", "null"],
+              additionalProperties: false,
+              properties: { kind: { type: "string", enum: IMPORT_RELATION_KINDS }, rowId: { type: "string" } },
+              required: ["kind", "rowId"],
+            },
+            reviewReasons: { type: "array", items: { type: "string", enum: IMPORT_REVIEW_REASONS } },
+          },
+          required: ["rowId", "name", "place", "envelopeId", "categoryId", "semanticKind", "relation", "reviewReasons"],
+        },
+      },
+    },
+    required: ["rows"],
+  },
+} as const;
+
+/** Builds cycle two from validated facts and bounded, compatible history evidence. */
+export function buildImportEnrichPrompt(input: ImportEnrichPromptInput, locale: AiLocale): ChatRequest {
+  const proposalById = new Map(input.result.proposals.map((proposal) => [proposal.rowId, proposal]));
+  const historyById = new Map(input.history.map((entry) => [entry.rowId, entry.selection]));
+  const rows = input.result.rows.map((row) => ({
+    ...row,
+    proposal: proposalById.get(row.rowId),
+    historyCandidates: historyById.get(row.rowId)?.candidates.slice(0, 5) ?? [],
+    historyConflict: historyById.get(row.rowId)?.conflict ?? false,
+  }));
+  const system =
+    "You conservatively enrich validated screenshot-import rows using compatible ledger history as evidence, never as fact. " +
+    "Return one annotation per supplied row. Preserve all visible facts: never correct or replace dates, amounts, currencies, directions, posting status, raw text, row identity, transaction type, refund state, or transfer endpoint. " +
+    "For envelopeId and categoryId select a supplied existing id or null; never invent an id. Relations may reference only a supplied rowId. " +
+    "Keep every supplied review reason and add a reason when uncertainty remains. " +
+    languageDirectives(locale) +
+    "Return JSON.";
+  return {
+    messages: [
+      { role: "system", content: system },
+      {
+        role: "user",
+        content: JSON.stringify({
+          rows,
+          entities: { envelopes: input.envelopes, categories: input.categories, accounts: input.accounts },
+        }),
+      },
+    ],
+    responseFormat: { type: "json_schema", json_schema: IMPORT_ENRICH_JSON_SCHEMA },
+    reasoningEffort: "low",
+  };
+}
+
+const enrichAllowedKeys = new Set(["rowId", "name", "place", "envelopeId", "categoryId", "semanticKind", "relation", "reviewReasons"]);
+
+/** Parses annotations while retaining evidence of any attempted fact rewrite. */
+export function parseImportEnrichResponse(
+  raw: string,
+  constraints: ImportEnrichmentConstraints = { envelopeIds: [], categoryIds: [], accountIds: [] },
+): ImportEnrichmentAnswer {
+  const input = JSON.parse(raw) as { rows?: unknown };
+  if (!Array.isArray(input.rows)) throw new Error("invalid import enrichment response");
+  const rows: ImportEnrichmentRow[] = input.rows.map((value) => {
+    if (!value || typeof value !== "object") throw new Error("invalid import enrichment row");
+    const row = value as Record<string, unknown>;
+    const parsed = z
+      .object({
+        rowId: z.string().min(1),
+        name: z.string(),
+        place: z.string().nullable(),
+        envelopeId: z.string().nullable(),
+        categoryId: z.string().nullable(),
+        semanticKind: z.enum(IMPORT_SEMANTIC_KINDS),
+        relation: importRawRelation.nullable(),
+        reviewReasons: z.array(z.enum(IMPORT_REVIEW_REASONS)),
+      })
+      .parse(row);
+    return { ...parsed, factCorrectionAttempt: Object.keys(row).some((key) => !enrichAllowedKeys.has(key)) };
+  });
+  return {
+    rows,
+    allowedEnvelopeIds: [...constraints.envelopeIds],
+    allowedCategoryIds: [...constraints.categoryIds],
+    allowedAccountIds: [...constraints.accountIds],
+  };
+}
+
+export type ImportRecognitionChat = (request: ChatRequest, timeoutMs?: number) => Promise<string>;
+
+export interface ImportRecognitionPipelineInput {
+  images: string[];
+  locale: AiLocale;
+  today: string;
+  budgetCurrency: string;
+  accountId: string;
+  accounts: Account[];
+  envelopes: Envelope[];
+  categories: Category[];
+  transactions: Transaction[];
+  historyRecords: ImportHistoryRecord[];
+  chat: ImportRecognitionChat;
+}
+
+const mergeReviewReasons = (...groups: ReadonlyArray<readonly (typeof IMPORT_REVIEW_REASONS)[number][]>): (typeof IMPORT_REVIEW_REASONS)[number][] => [
+  ...new Set(groups.flat()),
+];
+
+/** Shared extraction → validation → history → optional enrichment pipeline. */
+export async function runImportRecognitionPipeline(input: ImportRecognitionPipelineInput): Promise<ImportRecognitionResult> {
+  const extractionRaw = await input.chat(
+    buildImportExtractPrompt(input.images, { envelopes: [], categories: [] }, input.today, input.locale, input.budgetCurrency),
+    AI_VISION_TIMEOUT_MS,
+  );
+  const batch = parseImportExtractResponse(extractionRaw);
+  let result = validateImportExtraction({ batch, budgetCurrency: input.budgetCurrency });
+  result = {
+    rows: result.rows,
+    proposals: reconcileImportProposals({
+      proposals: result.proposals,
+      transactions: input.transactions,
+      accounts: input.accounts,
+      envelopes: input.envelopes,
+      categories: input.categories,
+      selectedAccountId: input.accountId,
+    }),
+  };
+
+  const ownedAccountIds = input.accounts.filter((account) => !account.archived).map((account) => account.id);
+  const history = result.proposals.map((proposal) => ({
+    rowId: proposal.rowId,
+    selection: selectImportHistoryCandidates({ accountId: input.accountId, ownedAccountIds, proposal }, input.historyRecords),
+  }));
+  result = {
+    rows: result.rows,
+    proposals: result.proposals.map((proposal) => {
+      const selection = history.find((entry) => entry.rowId === proposal.rowId)!.selection;
+      const historyReasons = [
+        ...(selection.conflict ? (["history_conflict"] as const) : []),
+        ...(selection.candidates.length > 1 ? (["multiple_history_candidates"] as const) : []),
+      ];
+      return { ...proposal, reviewReasons: mergeReviewReasons(proposal.reviewReasons, historyReasons) };
+    }),
+  };
+  if (!needsImportEnrichment(result)) return result;
+
+  const activeEnvelopes = input.envelopes.filter((envelope) => !envelope.archived);
+  const currentAccounts = input.accounts.filter((account) => !account.archived);
+  try {
+    const raw = await input.chat(
+      buildImportEnrichPrompt(
+        {
+          result,
+          history,
+          envelopes: activeEnvelopes.map(({ id, name }) => ({ id, name })),
+          categories: input.categories.map(({ id, name }) => ({ id, name })),
+          accounts: currentAccounts.map(({ id, name }) => ({ id, name })),
+        },
+        input.locale,
+      ),
+    );
+    const answer = parseImportEnrichResponse(raw, {
+      envelopeIds: activeEnvelopes.map((envelope) => envelope.id),
+      categoryIds: input.categories.map((category) => category.id),
+      accountIds: currentAccounts.map((account) => account.id),
+    });
+    const merged = applyImportEnrichment(result, answer);
+    const annotations = new Map(merged.proposals.map((proposal) => [proposal.rowId, proposal]));
+    const finalRows = result.rows.map((row) => {
+      const annotation = annotations.get(row.rowId)!;
+      return {
+        ...row,
+        semanticKind: annotation.semanticKind,
+        relation: annotation.relation,
+        reviewReasons: mergeReviewReasons(row.reviewReasons, annotation.reviewReasons),
+      };
+    });
+    const final = validateImportExtraction({ batch: { rows: finalRows }, budgetCurrency: input.budgetCurrency });
+    const enriched = final.proposals.map((proposal) => {
+      const annotation = annotations.get(proposal.rowId)!;
+      return {
+        ...proposal,
+        name: annotation.name,
+        placeName: annotation.placeName,
+        envelopeId: annotation.envelopeId,
+        categoryId: annotation.categoryId,
+        reviewReasons: mergeReviewReasons(proposal.reviewReasons, annotation.reviewReasons),
+        selected: proposal.selected && annotation.selected,
+      };
+    });
+    return {
+      rows: result.rows,
+      proposals: reconcileImportProposals({
+        proposals: enriched,
+        transactions: input.transactions,
+        accounts: input.accounts,
+        envelopes: input.envelopes,
+        categories: input.categories,
+        selectedAccountId: input.accountId,
+      }),
+    };
+  } catch {
+    return result;
+  }
+}
 
 /** Throws on an invalid shape (like `rawOutput.parse` in the route). */
-export function parseImportExtractResponse(raw: string): ImportExtractBatchWithLegacyMap {
+export function parseImportExtractResponse(raw: string): ImportExtractBatch {
   const input: unknown = JSON.parse(raw);
-  if (typeof input === "object" && input !== null && "transactions" in input && !("rows" in input)) {
-    const legacy = legacyImportRawOutput.parse(input).transactions.map((item, _index) => ({
-      ...item,
-      tag: item.tag.trim().toUpperCase(),
-      currency: item.currency.trim().toUpperCase(),
-      fxOriginal: item.fxOriginal.trim(),
-    }));
-    const result = legacy.map((item) => ({
-      ...item,
-      type: item.type === "refund" ? ("expense" as const) : item.type,
-      isRefund: item.type === "refund",
-    })) as ImportExtractBatchWithLegacyMap;
-    result.rows = legacy.map((item, index) => ({
-      rowId: `legacy-${index}`,
-      imageIndex: 0,
-      visualOrder: index,
-      rawTextLines: item.rawPlace.split("\n"),
-      date: item.date,
-      amount: item.amount,
-      currency: item.currency,
-      direction: item.type === "income" ? "credit" : "debit",
-      postingStatus: "posted",
-      rowRole: "financial_event",
-      semanticKind: item.type === "refund" ? "merchant_refund" : "unknown",
-      relation: null,
-      confidence: "medium",
-      reviewReasons: item.type === "refund" ? [] : ["unknown_kind"],
-    }));
-    return result as ImportExtractBatchWithLegacyMap;
-  }
   const parsed = importRawOutput.parse(input);
   const rows = parsed.rows.map((row) => ({
     ...row,
     rawTextLines: row.rawTextLines.map((line) => line.trim()),
     currency: row.currency?.trim().toUpperCase() ?? null,
   }));
-  const legacy = rows
-    .filter((row): row is typeof row & { date: string; amount: number; currency: string } => row.date !== null && row.amount !== null && row.currency !== null)
-    .map((row) => ({
-      date: row.date,
-      amount: row.amount,
-      type: row.direction === "credit" ? ("income" as const) : ("expense" as const),
-      isRefund: row.semanticKind === "merchant_refund" || row.semanticKind === "chargeback",
-      rawPlace: row.rawTextLines.join("\n"),
-      tag: "",
-      currency: row.currency,
-      fxOriginal: "",
-    })) as ImportExtractBatchWithLegacyMap;
-  legacy.rows = rows;
-  return legacy as ImportExtractBatchWithLegacyMap;
+  return { rows };
 }

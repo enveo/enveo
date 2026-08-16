@@ -2,10 +2,13 @@ import { describe, expect, it } from "bun:test";
 import fc from "fast-check";
 import { parseImportExtractResponse } from "./aiPrompts";
 import {
+  applyImportEnrichment,
   type ImportDirection,
+  type ImportEnrichmentAnswer,
   type ImportExtractRow,
   type ImportProposal,
   type ImportSemanticKind,
+  needsImportEnrichment,
   reconcileImportProposals,
   validateImportExtraction,
 } from "./importRecognition";
@@ -161,9 +164,7 @@ describe("screenshot import recognition contract", () => {
     );
 
     expect(batch.rows.map((row) => row.rowId)).toEqual(["r1", "r2", "r3", "r4"]);
-    expect(Array.isArray(batch)).toBe(true);
-    expect(batch[0]!.rawPlace).toBe("180.00 EUR < 776.95 PLN\n1.00 PLN = 0.231677 EUR");
-    expect([...batch].map((item) => item.currency)).toEqual(["PLN", "EUR", "PLN"]);
+    expect(Array.isArray(batch)).toBe(false);
     expect(batch.rows.map((row) => [row.imageIndex, row.visualOrder])).toEqual([
       [0, 0],
       [0, 1],
@@ -271,6 +272,133 @@ describe("screenshot import proposal validation", () => {
       { rowId: "amount", disposition: "unresolved", selected: false, reviewReasons: ["missing_fact"] },
       { rowId: "currency", disposition: "unresolved", selected: false, reviewReasons: ["unsupported_currency"] },
     ]);
+  });
+});
+
+describe("screenshot import enrichment gate", () => {
+  const resultFor = (over: Partial<ImportExtractRow> = {}) => validateImportExtraction({ batch: { rows: [extractRow(over)] }, budgetCurrency: "PLN" });
+
+  it("skips cycle two for straightforward posted purchases and salaries", () => {
+    expect(needsImportEnrichment(resultFor())).toBe(false);
+    expect(needsImportEnrichment(resultFor({ semanticKind: "salary", direction: "credit" }))).toBe(false);
+  });
+
+  it("runs cycle two for uncertainty, history ambiguity, OCR risk, transfer gaps, relations, and invalid facts", () => {
+    const risky = [
+      resultFor({ semanticKind: "unknown", direction: "unknown" }),
+      resultFor({ reviewReasons: ["history_conflict"] }),
+      resultFor({ reviewReasons: ["multiple_history_candidates"] }),
+      resultFor({ reviewReasons: ["possible_ocr_error"] }),
+      resultFor({ semanticKind: "internal_transfer" }),
+      validateImportExtraction({
+        batch: {
+          rows: [extractRow({ rowId: "purchase", relation: { kind: "fee_for", rowId: "fee" } }), extractRow({ rowId: "fee", semanticKind: "fee" })],
+        },
+        budgetCurrency: "PLN",
+      }),
+      resultFor({ amount: null }),
+    ];
+
+    expect(risky.map(needsImportEnrichment)).toEqual([true, true, true, true, true, true, true]);
+  });
+});
+
+describe("screenshot import enrichment merge", () => {
+  const result = () =>
+    validateImportExtraction({
+      batch: { rows: [extractRow({ reviewReasons: ["possible_ocr_error"] })] },
+      budgetCurrency: "PLN",
+    });
+  const answer = (rows: ImportEnrichmentAnswer["rows"]): ImportEnrichmentAnswer => ({
+    rows,
+    allowedEnvelopeIds: ["envelope-1"],
+    allowedCategoryIds: ["category-1"],
+    allowedAccountIds: ["account-1"],
+  });
+
+  it("merges only semantic annotations and known current entity ids", () => {
+    const before = result();
+    const merged = applyImportEnrichment(
+      before,
+      answer([
+        {
+          rowId: "r1",
+          name: "Groceries",
+          place: "Lidl",
+          envelopeId: "envelope-1",
+          categoryId: "category-1",
+          semanticKind: "card_purchase",
+          relation: null,
+          reviewReasons: [],
+        },
+      ]),
+    );
+
+    expect(merged.rows[0]).toMatchObject(before.rows[0]!);
+    expect(merged.proposals[0]).toMatchObject({
+      date: "2026-08-07",
+      amount: 1000,
+      currency: "PLN",
+      rawPlace: "visible row",
+      name: "Groceries",
+      placeName: "Lidl",
+      envelopeId: "envelope-1",
+      categoryId: "category-1",
+      reviewReasons: ["possible_ocr_error"],
+    });
+  });
+
+  it("ignores fact rewrites and unknown ids, then adds fact_correction without removing deterministic reasons", () => {
+    const malicious = {
+      rowId: "r1",
+      name: "Safe label",
+      place: null,
+      envelopeId: "invented-envelope",
+      categoryId: "invented-category",
+      semanticKind: "card_purchase",
+      relation: { kind: "counterpart_of", rowId: "invented-row" },
+      reviewReasons: [],
+      date: "2020-01-01",
+      amount: 1,
+      currency: "USD",
+      direction: "credit",
+      postingStatus: "declined",
+      rawTextLines: ["fabricated"],
+      rawPlace: "fabricated",
+    };
+    const merged = applyImportEnrichment(result(), answer([malicious as ImportEnrichmentAnswer["rows"][number]]));
+
+    expect(merged.rows[0]).toMatchObject(extractRow({ reviewReasons: ["possible_ocr_error"] }));
+    expect(merged.proposals[0]).toMatchObject({
+      date: "2026-08-07",
+      amount: 1000,
+      currency: "PLN",
+      rawPlace: "visible row",
+      envelopeId: null,
+      categoryId: null,
+      relation: null,
+      reviewReasons: ["possible_ocr_error", "fact_correction"],
+    });
+  });
+
+  it("ignores an answer for an unknown row id and surfaces the attempted correction", () => {
+    const merged = applyImportEnrichment(
+      result(),
+      answer([
+        {
+          rowId: "never-supplied",
+          name: "Invented row",
+          place: null,
+          envelopeId: null,
+          categoryId: null,
+          semanticKind: "card_purchase",
+          relation: null,
+          reviewReasons: [],
+        },
+      ]),
+    );
+
+    expect(merged.proposals).toEqual([expect.objectContaining({ rowId: "r1", name: "", reviewReasons: ["possible_ocr_error", "fact_correction"] })]);
   });
 });
 
