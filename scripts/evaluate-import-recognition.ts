@@ -962,6 +962,11 @@ interface SourceIdentity {
   moduleHashes: Record<string, string>;
 }
 
+interface SourcePreflight {
+  root: string;
+  identity: SourceIdentity;
+}
+
 interface LoadedSource {
   root: string;
   prompts: RecognitionSourceModule;
@@ -984,13 +989,6 @@ const sha256 = (parts: readonly (string | Uint8Array)[]): string => {
 
 const hashFile = async (path: string): Promise<string> => sha256([await readFile(path)]);
 const BASELINE_REVISION = "864c47f98c27bb7bf238e636b34f89dfa3dcc63c";
-const BASELINE_MODULE_HASHES: Record<string, string> = {
-  aiPrompts: "1b4c5f37d44e8d1e2cbc0a4a18cfca5428eb03f0a2beae3c0ab55809cdbb17b5",
-  importMatch: "1deb3c59acc50c0a649ce757cb0275fc647497be284a88e5a97ba59a3e90a993",
-  apiAdapter: "16db099e0bf7b6c6e4d3f969e3bad9811d5f2bc5728b84b7f698f7b98ccb787e",
-  dbClient: "611419743359fe79b6d770c8a312984f1ded254d74a7bcff14a9e8d015d6c675",
-  dbSchema: "329ff6fbea5b37a5e00611a8c3973a85a03111fb611c99026cfa41583927e820",
-};
 const moduleDigest = (hashes: Record<string, string>): string =>
   sha256(
     Object.entries(hashes)
@@ -1003,6 +1001,83 @@ const gitText = async (root: string, args: string[]): Promise<string | null> => 
   const output = await new Response(child.stdout).text();
   return (await child.exited) === 0 ? output : null;
 };
+
+const integrityPaths = (mode: "baseline" | "candidate"): string[] =>
+  mode === "baseline"
+    ? [
+        "packages/shared/src",
+        "packages/api/src/routes/import.ts",
+        "packages/api/src/routes/import-match.ts",
+        "packages/api/src/db",
+        "packages/shared/package.json",
+        "packages/api/package.json",
+        "bun.lock",
+      ]
+    : [
+        "packages/shared/src",
+        "packages/api/src",
+        "packages/web/src/lib/aiProvider",
+        "packages/shared/package.json",
+        "packages/api/package.json",
+        "packages/web/package.json",
+        "bun.lock",
+      ];
+
+export async function preflightSource(mode: "baseline" | "candidate", sourceTree: string, expectedCandidateRevision?: string): Promise<SourcePreflight> {
+  const root = await realpath(resolve(sourceTree));
+  const expectedRevision = mode === "baseline" ? BASELINE_REVISION : (expectedCandidateRevision ?? "unspecified");
+  const topText = await gitText(root, ["rev-parse", "--show-toplevel"]);
+  let gitRoot: string | null = null;
+  if (topText) {
+    try {
+      gitRoot = await realpath(topText.trim());
+    } catch {
+      gitRoot = null;
+    }
+  }
+  const revisionText = gitRoot === root ? await gitText(root, ["rev-parse", "HEAD"]) : null;
+  const actualRevision = revisionText?.trim().match(/^[0-9a-f]{40}$/)?.[0] ?? "unversioned";
+  const status = gitRoot === root ? await gitText(root, ["status", "--porcelain", "--untracked-files=all"]) : null;
+  const clean = status !== null && status.length === 0;
+  const filters = integrityPaths(mode);
+  const expectedListText = /^[0-9a-f]{40}$/.test(expectedRevision)
+    ? await gitText(root, ["ls-tree", "-r", "--name-only", expectedRevision, "--", ...filters])
+    : null;
+  const expectedFiles = expectedListText?.split("\n").filter(Boolean).sort() ?? [];
+  const moduleHashes: Record<string, string> = {};
+  const expectedHashes: Record<string, string> = {};
+  for (const path of expectedFiles) {
+    try {
+      moduleHashes[path] = await hashFile(resolve(root, path));
+    } catch {
+      // Missing closure members leave the actual digest unequal to the expected tree.
+    }
+    const contents = await gitText(root, ["show", `${expectedRevision}:${path}`]);
+    if (contents !== null) expectedHashes[path] = sha256([contents]);
+  }
+  const actualModuleDigest = moduleDigest(moduleHashes);
+  const expectedModuleDigest = moduleDigest(expectedHashes);
+  const bound =
+    gitRoot === root &&
+    actualRevision === expectedRevision &&
+    clean &&
+    expectedFiles.length > 0 &&
+    Object.keys(moduleHashes).length === expectedFiles.length &&
+    actualModuleDigest === expectedModuleDigest;
+  return {
+    root,
+    identity: {
+      expectedRevision,
+      actualRevision,
+      expectedModuleDigest,
+      actualModuleDigest,
+      clean,
+      bound,
+      adapter: mode === "baseline" ? "legacy-transactions" : "recognition-rows",
+      moduleHashes,
+    },
+  };
+}
 
 const requireRegularFile = async (path: string, label: string): Promise<void> => {
   try {
@@ -1091,12 +1166,12 @@ async function resolveTransport(): Promise<{ kind: TransportKind; chat: ChatTran
 }
 
 export async function loadSource(mode: "baseline" | "candidate", sourceTree: string, expectedCandidateRevision?: string): Promise<LoadedSource> {
-  const root = await realpath(resolve(sourceTree));
+  const preflight = await preflightSource(mode, sourceTree, expectedCandidateRevision);
+  const { root } = preflight;
   const promptsPath = resolve(root, "packages/shared/src/aiPrompts.ts");
   await requireRegularFile(promptsPath, "source aiPrompts module");
   const prompts = (await import(pathToFileURL(promptsPath).href)) as RecognitionSourceModule;
   const adapter = classifySourceAdapter(mode, prompts.IMPORT_EXTRACT_JSON_SCHEMA);
-  const moduleHashes: Record<string, string> = { aiPrompts: await hashFile(promptsPath) };
   let baseline: BaselineProductionSeam | null = null;
   if (mode === "candidate") {
     if (typeof prompts.runImportRecognitionPipeline !== "function") throw new Error("candidate production recognition pipeline is missing");
@@ -1108,7 +1183,6 @@ export async function loadSource(mode: "baseline" | "candidate", sourceTree: str
     };
     for (const [name, path] of Object.entries(candidateModules)) {
       await requireRegularFile(path, `candidate ${name} module`);
-      moduleHashes[name] = await hashFile(path);
     }
   } else {
     const matchingPath = resolve(root, "packages/api/src/routes/import-match.ts");
@@ -1130,41 +1204,8 @@ export async function loadSource(mode: "baseline" | "candidate", sourceTree: str
     const tables = [schema.budgets, schema.envelopes, schema.categories, schema.transactions, schema.places];
     if (new Set(tables).size !== tables.length) throw new Error("baseline production database schema tables are ambiguous");
     baseline = { route: route as BaselineRouteModule, db: database.db, schema: schema as BaselineSchemaModule };
-    moduleHashes.importMatch = await hashFile(matchingPath);
-    moduleHashes.apiAdapter = await hashFile(routePath);
-    moduleHashes.dbClient = await hashFile(dbPath);
-    moduleHashes.dbSchema = await hashFile(schemaPath);
   }
-  const revisionText = await gitText(root, ["rev-parse", "HEAD"]);
-  const actualRevision = revisionText?.trim().match(/^[0-9a-f]{40}$/)?.[0] ?? "unversioned";
-  const status = await gitText(root, ["status", "--porcelain", "--untracked-files=all"]);
-  const clean = status !== null && status.length === 0;
-  const expectedRevision = mode === "baseline" ? BASELINE_REVISION : (expectedCandidateRevision ?? "unspecified");
-  let expectedHashes = BASELINE_MODULE_HASHES;
-  if (mode === "candidate" && /^[0-9a-f]{40}$/.test(expectedRevision)) {
-    const modulePaths: Record<string, string> = {
-      aiPrompts: "packages/shared/src/aiPrompts.ts",
-      importRecognition: "packages/shared/src/importRecognition.ts",
-      importHistory: "packages/shared/src/importHistory.ts",
-      apiAdapter: "packages/api/src/routes/import.ts",
-      e2eeAdapter: "packages/web/src/lib/aiProvider/e2eeByok.ts",
-    };
-    expectedHashes = {};
-    for (const [name, path] of Object.entries(modulePaths)) {
-      const contents = await gitText(root, ["show", `${expectedRevision}:${path}`]);
-      if (contents !== null) expectedHashes[name] = sha256([contents]);
-    }
-  }
-  const actualModuleDigest = moduleDigest(moduleHashes);
-  const expectedModuleDigest = moduleDigest(expectedHashes);
-  const revisionBound = actualRevision === expectedRevision;
-  const bound = revisionBound && clean && actualModuleDigest === expectedModuleDigest;
-  return {
-    root,
-    prompts,
-    baseline,
-    identity: { expectedRevision, actualRevision, expectedModuleDigest, actualModuleDigest, clean, bound, adapter, moduleHashes },
-  };
+  return { root, prompts, baseline, identity: { ...preflight.identity, adapter } };
 }
 
 export async function runHistorySafetyGate(candidateRoot: string): Promise<HistorySafetyIdentity> {
@@ -1475,6 +1516,7 @@ export async function runBaselineProductionAdapter(input: {
   if (!source.baseline) throw new Error("baseline production route seam is unavailable");
   return serializeBaselineDbSeam(async () => {
     const originalSelect = source.baseline!.db.select;
+    const originalConsoleLog = console.log;
     const OriginalDate = globalThis.Date;
     const fixedNow = OriginalDate.parse(`${fixture.today}T12:00:00.000Z`);
     const FixtureDate = new Proxy(OriginalDate, {
@@ -1499,6 +1541,7 @@ export async function runBaselineProductionAdapter(input: {
     let items: BaselineItem[] | undefined;
     try {
       globalThis.Date = FixtureDate as DateConstructor;
+      console.log = () => {};
       items = await source.baseline!.route.extractImportForBudget({
         budgetId: `evaluation:${fixture.id}`,
         images,
@@ -1510,9 +1553,11 @@ export async function runBaselineProductionAdapter(input: {
       routeFailure = error;
     } finally {
       globalThis.Date = OriginalDate;
+      console.log = originalConsoleLog;
       source.baseline!.db.select = originalSelect;
     }
     if (globalThis.Date !== OriginalDate) throw new Error("baseline production clock seam was not restored");
+    if (console.log !== originalConsoleLog) throw new Error("baseline production log seam was not restored");
     if (source.baseline!.db.select !== originalSelect) throw new Error("baseline production database seam was not restored");
     if (routeFailed) throw routeFailure;
     if (!Array.isArray(items)) throw new Error("baseline production route returned an invalid result");
@@ -1567,6 +1612,33 @@ async function runEvaluation(args: EvaluationArgs): Promise<void> {
   const model = process.env.OPENAI_MODEL;
   if (!apiKey?.trim() || !model?.trim()) throw new Error("OPENAI_API_KEY and OPENAI_MODEL are both required; no live evaluation was run");
 
+  let pairedSources: { baseline: LoadedSource; candidate: LoadedSource } | null = null;
+  if (args.mode === "compare") {
+    const baselinePreflight = await preflightSource("baseline", args.baselineSourceTree);
+    const candidatePreflight = await preflightSource("candidate", args.candidateSourceTree, args.expectedCandidateRevision);
+    if (!baselinePreflight.identity.bound || !candidatePreflight.identity.bound) {
+      process.stdout.write(
+        `${JSON.stringify(
+          {
+            mode: "compare",
+            releaseEligible: false,
+            identity: { model, transport: "not_loaded", sources: { baseline: baselinePreflight.identity, candidate: candidatePreflight.identity } },
+            metrics: null,
+            decision: { passed: false, criteriaPassed: false, reasons: ["source_identity_unbound"], transitions: null },
+          },
+          null,
+          2,
+        )}\n`,
+      );
+      process.exitCode = 1;
+      return;
+    }
+    pairedSources = {
+      baseline: await loadSource("baseline", baselinePreflight.root),
+      candidate: await loadSource("candidate", candidatePreflight.root, args.expectedCandidateRevision),
+    };
+  }
+
   const manifestPath = await realpath(resolve(args.manifestPath));
   const manifestText = await readFile(manifestPath, "utf8");
   let manifestValue: unknown;
@@ -1582,8 +1654,8 @@ async function runEvaluation(args: EvaluationArgs): Promise<void> {
   const transport = await resolveTransport();
 
   if (args.mode === "compare") {
-    const baselineSource = await loadSource("baseline", args.baselineSourceTree);
-    const candidateSource = await loadSource("candidate", args.candidateSourceTree, args.expectedCandidateRevision);
+    if (!pairedSources) throw new Error("paired sources were not loaded");
+    const { baseline: baselineSource, candidate: candidateSource } = pairedSources;
     const historySafety = await runHistorySafetyGate(candidateSource.root);
     if (!historySafety.passed) {
       process.stdout.write(

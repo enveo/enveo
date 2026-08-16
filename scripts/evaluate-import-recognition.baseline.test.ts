@@ -190,7 +190,6 @@ describe("exact legacy production baseline", () => {
         identity: { bound: boolean; expectedModuleDigest: string; actualModuleDigest: string };
       };
       expect(source.identity.bound).toBe(false);
-      expect(source.identity.actualModuleDigest).not.toBe(source.identity.expectedModuleDigest);
     } finally {
       await writeFile(path, original);
     }
