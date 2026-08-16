@@ -131,6 +131,9 @@ export const pl: Dict = {
   "Assign {sum}": "Przydziel {sum}",
   "Assigning {sum} of {available}": "Przydzielasz {sum} z {available}",
   Auto: "Auto",
+  "Automatic envelope": "Automatyczna koperta",
+  "Automatic envelope effect": "Efekt automatycznej koperty",
+  "Automatic: {envelope}": "Automatyczna koperta: {envelope}",
   Available: "Dostępne",
   BUDGET: "BUDŻET",
   Back: "Wróć",
@@ -143,6 +146,13 @@ export const pl: Dict = {
   "Balance matches": "Saldo się zgadza",
   "Balance:": "saldo miesiąca",
   Balanced: "Zrównoważony",
+  "Before archiving this envelope, remove it as the automatic envelope for this account: {accounts}. | Before archiving this envelope, remove it as the automatic envelope for these accounts: {accounts}.":
+    {
+      one: "Przed zarchiwizowaniem tej koperty wyłącz automatyczną kopertę na koncie: {accounts}.",
+      few: "Przed zarchiwizowaniem tej koperty wyłącz automatyczną kopertę na kontach: {accounts}.",
+      many: "Przed zarchiwizowaniem tej koperty wyłącz automatyczną kopertę na kontach: {accounts}.",
+      other: "Przed zarchiwizowaniem tej koperty wyłącz automatyczną kopertę na kontach: {accounts}.",
+    },
   "Before you continue, download a JSON backup and keep it somewhere safe.":
     "Zanim przejdziesz dalej, pobierz kopię zapasową JSON i schowaj ją w bezpiecznym miejscu.",
   Bills: "Rachunki",
@@ -267,6 +277,7 @@ export const pl: Dict = {
   "Envelope budgets": "Budżety kopert",
   "Envelope change": "Zmiana koperty",
   "Envelope deletion": "Usunięcie koperty",
+  "Envelope for the adjustment": "Koperta dla wyrównania",
   "Envelope group change": "Zmiana grupy kopert",
   "Envelope group deletion": "Usunięcie grupy kopert",
   "Envelope name": "Nazwa koperty",
@@ -312,6 +323,8 @@ export const pl: Dict = {
   "Import from screenshots": "Import ze zrzutów",
   "Imported item": "Pozycja z importu",
   Income: "Przychód",
+  "Income and transfers to this account increase the selected envelope. Transfers from this account decrease it.":
+    "Dochody i przelewy przychodzące na to konto zwiększają wybraną kopertę. Przelewy wychodzące z tego konta ją zmniejszają.",
   Install: "Zainstaluj",
   "Install app": "Zainstaluj aplikację",
   "Invalid pairing code.": "Nieprawidłowy kod parowania.",
@@ -370,6 +383,8 @@ export const pl: Dict = {
   No: "Nie",
   "No account yet? Create one": "Nie masz konta? Załóż je",
   "No budget": "Brak budżetu",
+  "No change": "Bez zmian",
+  "No envelope change": "Koperty bez zmian",
   "No envelopes are marked as wealth envelopes. Open an envelope → Edit and turn on “Wealth envelope” (e.g. Bonds, Retirement, Savings), and we will count them here.":
     'Brak kopert oznaczonych jako majątkowe. Otwórz kopertę → Edytuj i włącz „Koperta majątkowa" (np. Obligacje, IKE, Oszczędności), a policzymy je tutaj.',
   "No envelopes with a budget or spending this month.": "Brak kopert z budżetem lub wydatkami w tym miesiącu.",
@@ -428,6 +443,7 @@ export const pl: Dict = {
   RESET: "RESET",
   "Rainy day": "Nieprzewidziane",
   Range: "Zakres",
+  "Ready to assign": "Do rozdysponowania",
   "Re-encrypt and upgrade": "Zaszyfruj na nowo i zaktualizuj",
   "Rebuild data on this device": "Odbuduj dane na tym urządzeniu",
   "Rebuilding…": "Odbudowywanie…",
@@ -464,6 +480,7 @@ export const pl: Dict = {
   "Search…": "Szukaj…",
   Selected: "Wybrane",
   "Selected ({n})": "Wybrane ({n})",
+  "Selected automatically from this account": "Wybrano automatycznie dla tego konta",
   Server: "Serwer",
   "Server sync": "Synchronizacja z serwerem",
   "Server temporarily unreachable — your data is safe, we will retry.": "Serwer chwilowo nieosiągalny — dane są bezpieczne, spróbujemy ponownie.",
@@ -539,6 +556,8 @@ export const pl: Dict = {
   "The envelope “{name}” will disappear from the Budget and Start screens. Its transaction history stays, and available funds remain in the envelope. You can restore it in “Manage envelopes” → Archived.\n\nArchive it?":
     "Koperta „{name}” zniknie z Budżetu i ekranu Start. Historia transakcji zostaje, a dostępne środki pozostają w kopercie. Przywrócisz ją w „Zarządzaj kopertami” → Zarchiwizowane.\n\nArchiwizować?",
   "The first launch requires a connection to the server": "Pierwsze uruchomienie wymaga połączenia z serwerem",
+  "The link works from now on. The current account balance and envelope amount will not change.":
+    "Połączenie działa od teraz. Obecne saldo konta ani kwota w kopercie się nie zmienią.",
   "The local copy of the budget has not loaded yet — nothing was sent. Reload the app and try again.":
     "Lokalna kopia budżetu jeszcze się nie wczytała — nic nie zostało wysłane. Odśwież aplikację i spróbuj ponownie.",
   "The local copy of the budget on this device belongs to a different account than the one you are signed in with. Nothing has been sent to the server and nothing has been deleted.":

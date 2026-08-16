@@ -65,12 +65,18 @@ export interface EditedImportItem {
 }
 
 
-export type ImportApplyItem = Omit<ImportItem, "type"> & Partial<EditedImportItem> & { type: "expense" | "income" | "transfer"; force?: boolean };
+export type ImportApplyItem = Omit<ImportItem, "type"> &
+  Partial<EditedImportItem> & {
+    type: "expense" | "income" | "transfer";
+    force?: boolean;
+     
+    automaticEnvelopeDefault?: boolean;
+  };
 export interface ImportApplyResponse {
   added: number;
   skipped: number;
   dryRun: boolean;
-  results: Array<ImportItem & { status: "added" | "exists" | "probable" }>;
+  results: Array<ImportItem & { status: "added" | "exists" | "probable"; automaticEnvelopeDefault?: boolean }>;
 }
 
 export interface E2eeCredentialResponse {

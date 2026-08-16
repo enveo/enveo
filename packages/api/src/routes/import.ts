@@ -22,14 +22,14 @@ import { buildDupIndex, classifyDup } from "./import-dedupe";
 import { confidentSourceRef, decideAssignment, type HistGroup, type HistPattern, rankPatterns } from "./import-match";
 import { budgetAssertionFails } from "./sync";
 
-/**
- * Expense import from screenshots (Apple Wallet / bank history).
- *
- * Two steps:
- *  1. POST /import/extract — screenshots → OpenAI (structured output) → items for review.
- *  2. POST /import/apply — idempotent write; duplicate = same (amount, day,
- *     envelope, tag). `dryRun: true` only marks statuses, writes nothing.
- */
+
+
+
+
+
+
+
+
 export const importRoutes = new Hono();
 
 const extractInput = z.object({
@@ -388,27 +388,6 @@ export function findTransferError(items: ApplyItem[], globalAccountId: string): 
   return index === -1 ? null : { error: "transfer_invalid", index };
 }
 
-
-
-
-export function applyTxnValues(it: ApplyItem, globalAccountId: string) {
-  const transfer = it.type === "transfer";
-  return {
-    type: it.type,
-    accountId: it.accountId ?? globalAccountId,
-    toAccountId: transfer ? (it.toAccountId ?? null) : null,
-    amount: it.amount,
-    date: it.date,
-    isRefund: it.type === "expense" ? (it.isRefund ?? false) : false,
-    envelopeId: transfer ? null : it.envelopeId,
-    categoryId: transfer ? null : (it.categoryId ?? null),
-    name: it.name || null,
-    note: it.note?.trim() ? it.note : null,
-    tag: it.tag.trim(),
-    sourceRef: it.rawPlace?.trim() || null,
-  };
-}
-
 importRoutes.post("/import/apply", async (c) => {
   const budgetId = (await requireTier(c, "plain")).id;
   const body = applyInput.parse(await c.req.json());
@@ -420,6 +399,7 @@ importRoutes.post("/import/apply", async (c) => {
   if (budgetAssertionFails(body.budgetId, budgetId)) {
     return c.json({ error: "budget_mismatch" }, 409);
   }
+  if (body.dryRun !== true) return c.json({ error: "client_write_required" }, 410);
 
    
   const transferErr = findTransferError(body.items, body.accountId);
@@ -444,20 +424,6 @@ importRoutes.post("/import/apply", async (c) => {
    
   const dupIdx = buildDupIndex(existing);
 
-   
-  const placeRows = await db.select().from(s.places).where(eq(s.places.budgetId, budgetId));
-  const placeByName = new Map(placeRows.map((p) => [p.name.toLowerCase(), p.id]));
-  const resolvePlace = async (nameRaw: string | null | undefined): Promise<string | null> => {
-    const name = nameRaw?.trim();
-    if (!name) return null;
-    const hit = placeByName.get(name.toLowerCase());
-    if (hit) return hit;
-    if (body.dryRun) return null;  
-    const [row] = await db.insert(s.places).values({ budgetId, name }).returning();
-    placeByName.set(name.toLowerCase(), row!.id);
-    return row!.id;
-  };
-
   let added = 0;
   let skipped = 0;
   const results: Array<(typeof body.items)[number] & { status: "added" | "exists" | "probable" }> = [];
@@ -468,22 +434,15 @@ importRoutes.post("/import/apply", async (c) => {
       results.push({ ...it, status: "exists" });
       continue;
     }
-    if (body.dryRun && status === "probable") {
+    if (status === "probable") {
       
 
       results.push({ ...it, status: "probable" });
       continue;
     }
     dupIdx.markSeen({ date: it.date, amount: it.amount, rawPlace: it.rawPlace });  
-    if (!body.dryRun) {
-      await db.insert(s.transactions).values({
-        budgetId,
-        ...applyTxnValues(it, body.accountId),
-        placeId: await resolvePlace(it.placeName),
-      });
-    }
     added++;
     results.push({ ...it, status: "added" });
   }
-  return c.json({ added, skipped, dryRun: !!body.dryRun, results });
+  return c.json({ added, skipped, dryRun: true, results });
 });

@@ -25,6 +25,7 @@ translation of the English.
 | **transfer** | Movement between two of the user's own accounts. Never touches an envelope. | Not a bank "wire/payment to someone else". |
 | **account** | Where money physically sits (a bank account, cash, a card). | The domain account — NOT the user's login account. In sync/auth strings, "account" means the login; keep the two distinguishable if your language allows. |
 | **on-budget / off-budget** | Whether an account's balance participates in the budget maths. | — |
+| **automatic envelope** | An active envelope linked to an on-budget account. Future income and transfers involving that account automatically change the envelope's Added amount. | Not a synonym for "wealth envelope" or savings. Any active envelope can be linked, and several accounts can link to the same envelope. |
 | **wealth envelope** | An envelope flagged as savings/investment; it feeds Net worth and is excluded from spending reports. | — |
 | **reconcile** | Compare the app's account balance with the bank's and book the difference. | The accounting term, if your language has one. |
 | **pairing code** | A one-shot code that carries the encryption key to a new device. | Not a "password" and not a "2FA code". |

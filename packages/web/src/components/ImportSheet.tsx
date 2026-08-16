@@ -4,18 +4,20 @@ import { createPortal } from "react-dom";
 import { runImportExtract } from "../lib/ai";
 import { importFlow } from "../lib/aiProvider/capabilities";
 import { useAiProvider } from "../lib/aiProvider/useAiProvider";
-import { api, apiErrorMessage, type EditedImportItem, type ImportApplyItem, type ImportApplyResponse, type ImportItem, type StateResponse } from "../lib/api";
+import { api, apiErrorMessage, type EditedImportItem, type ImportApplyItem, type ImportApplyResponse, type StateResponse } from "../lib/api";
+import { automaticEnvelopePreview, formatAutomaticEnvelopeEffect } from "../lib/automaticEnvelopeUi";
 import { useCurrency, useTheme } from "../lib/contexts";
 import * as e2ee from "../lib/e2ee";
 import { formatMoney, isLight } from "../lib/format";
 import { useT } from "../lib/i18n";
 import { Glyph, Ico } from "../lib/icons";
 import { preferredAccountId, setLastAccountId } from "../lib/lastAccount";
-import { applyLocalImport, planLocalImport } from "../lib/localImport";
+import { applyLocalImport, importReviewItem, type LocalImportReviewItem, planLocalImport, reviewedImportItemsForApply } from "../lib/localImport";
 import { store } from "../lib/store";
-import { assertOwnReplica, pullNow } from "../lib/sync";
+import { assertOwnReplica } from "../lib/sync";
 import { CORAL, font, TEAL, TRANSFER, tint } from "../lib/theme";
 import { AddScreen } from "../screens/Add";
+import { AutomaticEnvelopeEffect } from "../screens/add/AutomaticEnvelopeEffect";
 import { AiConsentSheet } from "./AiConsentSheet";
 import { Sheet } from "./chrome";
 
@@ -27,8 +29,6 @@ import { Sheet } from "./chrome";
 
 
 type Phase = "pick" | "review" | "done";
-type ReviewItem = ImportItem & { status: "added" | "exists" | "probable"; include: boolean };
-
  
 async function downscale(f: File, maxSide = 1600): Promise<string> {
   const bmp = await createImageBitmap(f);
@@ -61,7 +61,7 @@ export function ImportSheet({ show, onClose, state, onApplied }: { show: boolean
   const [accountId, setAccountId] = useState(() => preferredAccountId(accounts, accounts[0]?.id ?? ""));
   const [images, setImages] = useState<string[]>([]);
   const [phase, setPhase] = useState<Phase>("pick");
-  const [items, setItems] = useState<ReviewItem[]>([]);
+  const [items, setItems] = useState<LocalImportReviewItem[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [doneStats, setDoneStats] = useState({ added: 0, dup: 0 });
@@ -69,6 +69,7 @@ export function ImportSheet({ show, onClose, state, onApplied }: { show: boolean
   const [pendingProcess, setPendingProcess] = useState(false);
    
   const [edited, setEdited] = useState<Record<number, EditedImportItem>>({});
+  const [editedAutomaticDefaults, setEditedAutomaticDefaults] = useState<Record<number, boolean>>({});
   const [editorIdx, setEditorIdx] = useState<number | null>(null);
   const fileRef = useRef<HTMLInputElement | null>(null);
   const editorWasOpen = useRef(false);
@@ -104,6 +105,7 @@ export function ImportSheet({ show, onClose, state, onApplied }: { show: boolean
     setBusy(false);
     setShowConsent(false);
     setEdited({});
+    setEditedAutomaticDefaults({});
     setEditorIdx(null);
     reviewE2eeEpoch.current = null;
   };
@@ -159,8 +161,14 @@ export function ImportSheet({ show, onClose, state, onApplied }: { show: boolean
       }
       // fx rows (currency differs from the budget's) default to UNCHECKED — the user must
       // consciously confirm the amount before it's included (the amber chip explains why).
-      setItems(dry.results.map((r) => ({ ...r, include: r.status === "added" && !(!!r.currency && r.currency !== currency) })));
+      setItems(
+        dry.results.map((r) => {
+          const automaticEnvelopeId = accounts.find((account) => account.id === accountId)?.automaticEnvelopeId;
+          return importReviewItem(r, automaticEnvelopeId, currency);
+        }),
+      );
       setEdited({});  
+      setEditedAutomaticDefaults({});
       setPhase("review");
     } catch (e) {
       setError(errMsg(e));
@@ -192,29 +200,7 @@ export function ImportSheet({ show, onClose, state, onApplied }: { show: boolean
     try {
       
 
-      const chosen: ImportApplyItem[] = items
-        .map((it, i) => ({ it, e: edited[i] }))
-        .filter(({ it, e }) => it.include && (it.status !== "exists" || !!e)) // edited duplicate = deliberate add
-        .map(({ it, e }) =>
-          !e
-            ? it
-            : {
-                ...it,
-                type: e.type,
-                accountId: e.accountId,
-                toAccountId: e.toAccountId,
-                isRefund: e.isRefund,
-                amount: e.amount,
-                date: e.date,
-                name: e.name,
-                envelopeId: e.envelopeId,
-                categoryId: e.categoryId,
-                placeName: e.placeName,
-                note: e.note,
-                force: it.status === "exists", // skip dedupe — the user edited the duplicate deliberately
-                rawPlace: it.rawPlace,  
-              },
-        );
+      const chosen: ImportApplyItem[] = reviewedImportItemsForApply({ items, edited, editedAutomaticDefaults });
       
 
       let res = { added: 0, skipped: 0 };
@@ -225,15 +211,12 @@ export function ImportSheet({ show, onClose, state, onApplied }: { show: boolean
           const current = e2ee.getTierMeta();
           if (current.tier !== "e2ee" || current.epoch !== reviewEpoch) throw new Error("no_encryption_key");
           e2ee.requireValidatedDek(reviewEpoch).fill(0);
-          const ledger = store.getLedger();
-          if (!ledger) throw new Error("no_local_replica");
-          res = applyLocalImport(planLocalImport({ ledger, globalAccountId: accountId, items: chosen, dryRun: false }));
-        } else {
-          res = await api.importApply({ accountId, budgetId: store.getBudgetId() || undefined, items: chosen });
         }
+        const ledger = store.getLedger();
+        if (!ledger) throw new Error("no_local_replica");
+        res = applyLocalImport(planLocalImport({ ledger, globalAccountId: accountId, items: chosen, dryRun: false }));
       }
       setLastAccountId(accountId);  
-      if (reviewE2eeEpoch.current === null) void pullNow();  
       setDoneStats({ added: res.added, dup: items.filter((i) => i.status === "exists").length + res.skipped });
       setPhase("done");
     } catch (e) {
@@ -384,7 +367,19 @@ export function ImportSheet({ show, onClose, state, onApplied }: { show: boolean
               const env = envId ? envById.get(envId) : null;
               const catName = e ? (e.categoryId ? (state.categories.find((c) => c.id === e.categoryId)?.name ?? null) : null) : (it.categoryName ?? null);
               const refund = e?.isRefund ?? it.isRefund ?? false;
-              const exists = it.status === "exists" && !e; // an edited duplicate is treated as a new item
+              const exists = it.status === "exists" && !e;  
+              const itemAccountId = e?.accountId ?? accountId;
+              const itemToAccountId = e?.toAccountId ?? it.toAccountId ?? null;
+              const automaticPreview = automaticEnvelopePreview(state, { type, accountId: itemAccountId, toAccountId: itemToAccountId }, amount);
+              const automaticEffect =
+                (type === "income" || type === "transfer") && amount > 0 && (automaticPreview.rows.length > 0 || automaticPreview.neutral)
+                  ? formatAutomaticEnvelopeEffect(automaticPreview, (value) => formatMoney(value, currency, lang), {
+                      heading: t("Automatic envelope effect"),
+                      readyToAssign: t("Ready to assign"),
+                      noEnvelopeChange: t("No envelope change"),
+                      noChange: t("No change"),
+                    })
+                  : null;
               // FX row: the extracted amount is in a currency other than the budget's — nothing was
               // converted (we never guess a rate), so the user must eyeball it. fxOriginal (when
               // present) is the original foreign charge that WAS converted/settled server-side.
@@ -470,6 +465,7 @@ export function ImportSheet({ show, onClose, state, onApplied }: { show: boolean
                           {t("Recorded in {currency} — check the amount.", { currency: it.currency! })}
                         </div>
                       )}
+                      {automaticEffect && <AutomaticEnvelopeEffect data={automaticEffect} compact />}
                     </div>
                     <span
                       style={{
@@ -496,6 +492,7 @@ export function ImportSheet({ show, onClose, state, onApplied }: { show: boolean
                   setPhase("pick");
                   setItems([]);
                   setEdited({});
+                  setEditedAutomaticDefaults({});
                 }}
                 style={{
                   flex: 1,
@@ -602,8 +599,10 @@ export function ImportSheet({ show, onClose, state, onApplied }: { show: boolean
                 item: items[editorIdx],
                 accountId,
                 initial: edited[editorIdx],
-                onSave: (e) => {
+                automaticEnvelopeDefault: edited[editorIdx] ? (editedAutomaticDefaults[editorIdx] ?? false) : items[editorIdx].automaticEnvelopeDefault,
+                onSave: (e, meta) => {
                   setEdited((prev) => ({ ...prev, [editorIdx]: e }));
+                  setEditedAutomaticDefaults((prev) => ({ ...prev, [editorIdx]: meta.automaticEnvelopeDefault }));
                   setItems((prev) => prev.map((x, k) => (k === editorIdx ? { ...x, include: true } : x)));
                   setEditorIdx(null);
                 },
