@@ -26,6 +26,7 @@ import { runChild } from "../api.test-support";
 import * as s from "../db/schema";
 import { applyPushOp, budgetAssertionFails, legacyChangesWatermark, ownerAssertionFails, pullChanges, pushInput, replaceInput } from "./sync";
 import { SENTINEL as AUTOMATIC_ENVELOPE_SENTINEL, type AutomaticEnvelopeOutput } from "./sync.automatic-envelope.test-child";
+import { SENTINEL as AUTOMATIC_ENVELOPE_LOCK_ORDER_SENTINEL, type AutomaticEnvelopeLockOrderOutput } from "./sync.automatic-envelope-lock-order.test-child";
 import { SENTINEL as BARRIER_SENTINEL, type FirstUseBarrierOutput } from "./sync.first-use-barrier.test-child";
 // Constant + type only — this module's app/db imports are lazy (see the file header), so
 // importing it here does NOT pull env/db/client into THIS process.
@@ -197,6 +198,7 @@ if (TEST_URL && TEST_URL === process.env.DATABASE_URL) {
 }
 
 const AUTOMATIC_ENVELOPE_CHILD = new URL("./sync.automatic-envelope.test-child.ts", import.meta.url).pathname;
+const AUTOMATIC_ENVELOPE_LOCK_ORDER_CHILD = new URL("./sync.automatic-envelope-lock-order.test-child.ts", import.meta.url).pathname;
 
 describe.skipIf(!TEST_URL)("automatic envelope validation (DB-backed, real REST + sync + restore)", () => {
   let out: AutomaticEnvelopeOutput;
@@ -263,6 +265,37 @@ describe.skipIf(!TEST_URL)("automatic envelope validation (DB-backed, real REST 
     expect(out.restore.offBudgetLink).toEqual({ status: 400, error: "foreign_ref" });
     expect(out.restore.archivedLink).toEqual({ status: 400, error: "foreign_ref" });
     expect(out.restore.originalAccountSurvived).toBe(true);
+  });
+});
+
+describe.skipIf(!TEST_URL)("automatic envelope lock order (DB-backed, forced interleaving)", () => {
+  let out: AutomaticEnvelopeLockOrderOutput;
+
+  beforeAll(async () => {
+    out = await runChild<AutomaticEnvelopeLockOrderOutput>({
+      path: AUTOMATIC_ENVELOPE_LOCK_ORDER_CHILD,
+      testUrl: TEST_URL,
+      sentinel: AUTOMATIC_ENVELOPE_LOCK_ORDER_SENTINEL,
+      cwd: new URL("../..", import.meta.url).pathname,
+    });
+  }, CHILD_TIMEOUT_MS);
+
+  it("account update and envelope delete both complete after the delete is observed waiting", () => {
+    expect(out.envelopeDelete.waiterObserved).toBe(true);
+    expect(out.envelopeDelete.updateCompleted).toBe(true);
+    expect(out.envelopeDelete.competingCompleted).toBe(true);
+    expect(out.envelopeDelete.updateError).toBeNull();
+    expect(out.envelopeDelete.competingError).toBeNull();
+    expect(out.envelopeDelete.finalStateValid).toBe(true);
+  });
+
+  it("full wipe also waits account-first, then completes with the updater", () => {
+    expect(out.fullWipe.waiterObserved).toBe(true);
+    expect(out.fullWipe.updateCompleted).toBe(true);
+    expect(out.fullWipe.competingCompleted).toBe(true);
+    expect(out.fullWipe.updateError).toBeNull();
+    expect(out.fullWipe.competingError).toBeNull();
+    expect(out.fullWipe.finalStateValid).toBe(true);
   });
 });
 

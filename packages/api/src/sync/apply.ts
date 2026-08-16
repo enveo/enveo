@@ -23,7 +23,7 @@ import {
   reconcileBudgetPreferences,
   type TxnPayload,
 } from "@enveo/shared";
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import type { DbExecutor } from "../db/client";
 import * as s from "../db/schema";
 
@@ -280,6 +280,29 @@ type AutomaticEnvelopeAccountState = {
 };
 
 /**
+ * Automatic-envelope lifecycle lock order: EXISTING ACCOUNT rows first (stable id order),
+ * ENVELOPE rows second. Account update already follows that order. Archive/delete paths must
+ * join it before touching an envelope because ON DELETE SET NULL updates linked accounts; the
+ * inverse envelope→account order deadlocks with an account update retaining its link.
+ *
+ * Account creation has no existing account row to lock, so it locks only its target envelope
+ * before inserting. It cannot form the inverse cycle because it holds no account row.
+ */
+async function lockAccountsLinkedToEnvelopes(x: Executor, budgetId: string, envelopeIds: string[]): Promise<void> {
+  if (envelopeIds.length === 0) return;
+  await x
+    .select({ id: s.accounts.id })
+    .from(s.accounts)
+    .where(and(eq(s.accounts.budgetId, budgetId), inArray(s.accounts.automaticEnvelopeId, envelopeIds)))
+    .orderBy(s.accounts.id)
+    .for("update");
+}
+
+async function lockAccountsLinkedToEnvelope(x: Executor, budgetId: string, envelopeId: string): Promise<void> {
+  await lockAccountsLinkedToEnvelopes(x, budgetId, [envelopeId]);
+}
+
+/**
  * Locks and validates the linked envelope on the caller's executor. Archival locks the same
  * envelope row, so a concurrent link and archive cannot both commit an invalid final state.
  */
@@ -361,6 +384,17 @@ export async function applyGroupUpdate(x: Executor, budgetId: string, body: Part
 }
 
 export async function applyGroupDelete(x: Executor, budgetId: string, id: string): Promise<void> {
+  // Group deletion cascades to envelopes, whose SET NULL actions update linked accounts.
+  // Join the same account→envelope order as direct envelope deletion before the cascade.
+  const envelopeRows = await x
+    .select({ id: s.envelopes.id })
+    .from(s.envelopes)
+    .where(and(eq(s.envelopes.budgetId, budgetId), eq(s.envelopes.groupId, id)));
+  await lockAccountsLinkedToEnvelopes(
+    x,
+    budgetId,
+    envelopeRows.map((row) => row.id),
+  );
   await x.delete(s.envelopeGroups).where(and(eq(s.envelopeGroups.id, id), eq(s.envelopeGroups.budgetId, budgetId)));
 }
 
@@ -382,8 +416,9 @@ export async function applyEnvelopeCreate(x: Executor, budgetId: string, body: E
 export async function applyEnvelopeUpdate(x: Executor, budgetId: string, body: Partial<EnvelopePayload> & { id: string }) {
   await assertBudgetFks(x, budgetId, { groupId: body.groupId }); // no-op when the patch omits groupId
   if (body.archived === true) {
-    // Account linking locks this same row first. Whichever transaction wins the
-    // lock establishes the state the loser must validate after it resumes.
+    await lockAccountsLinkedToEnvelope(x, budgetId, body.id);
+    // Account linking locks account→envelope too. Whichever transaction wins
+    // establishes the state the loser must validate after it resumes.
     const [envelope] = await x
       .select({ id: s.envelopes.id })
       .from(s.envelopes)
@@ -408,6 +443,7 @@ export async function applyEnvelopeUpdate(x: Executor, budgetId: string, body: P
 }
 
 export async function applyEnvelopeDelete(x: Executor, budgetId: string, id: string): Promise<void> {
+  await lockAccountsLinkedToEnvelope(x, budgetId, id);
   await x.delete(s.envelopes).where(and(eq(s.envelopes.id, id), eq(s.envelopes.budgetId, budgetId)));
 }
 
@@ -415,14 +451,16 @@ export async function applyEnvelopeDelete(x: Executor, budgetId: string, id: str
 
 /** Wipes ALL budget data (leaves the budgets row — stable id/currency). */
 export async function wipeBudgetData(x: Executor, budgetId: string): Promise<void> {
-  // FK-safe order (children before parents; txn_items via cascade).
+  // FK-safe AND lifecycle-lock-safe order (txn_items via cascade): transactions first,
+  // then accounts BEFORE envelopes. The account deletion removes automatic-envelope
+  // references without invoking envelope→account SET NULL work.
   await x.delete(s.transactions).where(eq(s.transactions.budgetId, budgetId));
   await x.delete(s.allocations).where(eq(s.allocations.budgetId, budgetId));
+  await x.delete(s.accounts).where(eq(s.accounts.budgetId, budgetId));
   await x.delete(s.envelopes).where(eq(s.envelopes.budgetId, budgetId));
   await x.delete(s.envelopeGroups).where(eq(s.envelopeGroups.budgetId, budgetId));
   await x.delete(s.categories).where(eq(s.categories.budgetId, budgetId));
   await x.delete(s.places).where(eq(s.places.budgetId, budgetId));
-  await x.delete(s.accounts).where(eq(s.accounts.budgetId, budgetId));
 }
 
 /* ── Categories / places ──────────────────────────────────────────────── */

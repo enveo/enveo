@@ -60,7 +60,7 @@ crudRoutes.patch("/groups/:id", async (c) => {
 });
 crudRoutes.delete("/groups/:id", async (c) => {
   const budgetId = (await requireTier(c, "plain")).id;
-  await applyGroupDelete(db, budgetId, c.req.param("id"));
+  await db.transaction((tx) => applyGroupDelete(tx, budgetId, c.req.param("id")));
   return c.body(null, 204);
 });
 
@@ -81,7 +81,7 @@ crudRoutes.patch("/envelopes/:id", async (c) => {
 });
 crudRoutes.delete("/envelopes/:id", async (c) => {
   const budgetId = (await requireTier(c, "plain")).id;
-  await applyEnvelopeDelete(db, budgetId, c.req.param("id"));
+  await db.transaction((tx) => applyEnvelopeDelete(tx, budgetId, c.req.param("id")));
   return c.body(null, 204);
 });
 
