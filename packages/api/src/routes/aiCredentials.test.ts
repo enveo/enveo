@@ -7,6 +7,7 @@ import {
   credentialTestInput,
   e2eeCredentialDeleteInput,
   e2eeCredentialSaveInput,
+  legacyByokImportInput,
   publicCredentialStatus,
 } from "./aiCredentials";
 
@@ -43,6 +44,7 @@ describe("plain BYOK route contracts", () => {
     );
     expect(byokChatInput.safeParse({ model: "gpt-5.6-luna", messages: [{ role: "user", content: "hello" }] }).success).toBe(false);
     expect(byokChatInput.safeParse({ budgetId, model: "gpt-5.6-luna", messages: [] }).success).toBe(false);
+    expect(legacyByokImportInput.safeParse({ budgetId, model: "gpt-5.6-luna", images: ["data:image/png;base64,AA=="], locale: "pl" }).success).toBe(true);
     expect(byokImportInput.safeParse({ budgetId, accountId, model: "gpt-5.6-luna", images: ["data:image/png;base64,AA=="], locale: "pl" }).success).toBe(true);
     expect(byokImportInput.safeParse({ budgetId, model: "gpt-5.6-luna", images: ["data:image/png;base64,AA=="], locale: "pl" }).success).toBe(false);
     expect(byokImportInput.safeParse({ budgetId, accountId, model: "gpt-5.6-luna", images: ["https://foreign/image.png"], locale: "pl" }).success).toBe(false);

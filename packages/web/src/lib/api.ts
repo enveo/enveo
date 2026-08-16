@@ -15,8 +15,8 @@ import {
   type BudgetSuggestResponse,
   type ChatRequest,
   type ClientLedger,
-  type ImportRecognitionResult,
   type OpenAiModel,
+  type ReconciledImportRecognitionResult,
 } from "@enveo/shared";
 import { getAccountPreferencesRemote, patchAccountPreferencesRemote } from "./accountPreferencesRemote";
 import { timeoutSignal } from "./timeoutSignal";
@@ -24,12 +24,13 @@ import { timeoutSignal } from "./timeoutSignal";
 export type { BudgetSuggestProfile, BudgetSuggestResponse } from "@enveo/shared";
 
 /* Complete ledger-candidate shape used only for duplicate dry-run/apply planning.
- * Extraction itself returns ImportRecognitionResult so evidence-only rows are not erased. */
+ * Recognition itself returns the reconciled result so evidence-only rows and explicit
+ * duplicate/source-account metadata are not erased. */
 export interface ImportItem {
   date: string;
   amount: number;
-  
-
+  /** transfer/isRefund/toAccountId are reviewed recognition candidates. History is
+   *  account-scoped evidence only; it never hard-overrides the visible facts. */
   type: "expense" | "income" | "transfer";
   isRefund?: boolean;
   toAccountId?: string | null;
@@ -253,12 +254,12 @@ export const api = {
       AI_PROXY_CHAT_TIMEOUT_MS,
     ),
   byokImportExtract: (budgetId: string, model: OpenAiModel, accountId: string, images: string[], locale: AiLocale) =>
-    http<ImportRecognitionResult>("POST", "/ai/byok/import/extract", { budgetId, model, accountId, images, locale }, AI_IMPORT_EXTRACT_TIMEOUT_MS),
+    http<ReconciledImportRecognitionResult>("POST", "/ai/byok/import/recognize", { budgetId, model, accountId, images, locale }, AI_IMPORT_EXTRACT_TIMEOUT_MS),
 
   /* `locale` = the UI language (any BCP-47 tag): the model writes its names, notes and
      rationales in it. Not to be confused with demoSeed's pl|en, which picks a SEED DATASET. */
   importExtract: (accountId: string, images: string[], locale: AiLocale) =>
-    http<ImportRecognitionResult>("POST", "/import/extract", { accountId, images, locale }, AI_IMPORT_EXTRACT_TIMEOUT_MS),
+    http<ReconciledImportRecognitionResult>("POST", "/import/recognize", { accountId, images, locale }, AI_IMPORT_EXTRACT_TIMEOUT_MS),
   /* `budgetId` = the same PER-REQUEST tenant assertion as the sync push: the batch creates
      FRESH transactions in whatever budget the session cookie resolves to, and the cookie can
      be swapped in another tab while the import sheet is open. The caller passes the replica's

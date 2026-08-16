@@ -1,4 +1,4 @@
-import type { AiLocale, ChatRequest, ClientLedger, ImportRecognitionResult } from "@enveo/shared";
+import type { AiLocale, ChatRequest, ClientLedger, ReconciledImportRecognitionResult } from "@enveo/shared";
 
 export type AiProviderKind = "rules" | "enveo" | "openai";
 export type AiCapability = "budget-suggestion" | "custom-prompt" | "screenshot-import";
@@ -19,7 +19,7 @@ export interface ImportExtractInput {
   accountId: string;
 }
 
-export type ImportExtractResult = ImportRecognitionResult;
+export type ImportExtractResult = ReconciledImportRecognitionResult;
 
 export interface AiProvider {
   status(): Promise<AiStatus>;

@@ -3,6 +3,7 @@ import { readFile, realpath, stat } from "node:fs/promises";
 import { dirname, extname, isAbsolute, relative, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { SUPPORTED_CURRENCIES } from "../packages/shared/src/currency";
+import { IMPORT_REVIEW_REASONS, type ImportReviewReason, importReviewRequiresExplicitOptIn } from "../packages/shared/src/importRecognition";
 import {
   type ActualImportRecognitionProposal,
   type ActualImportRecognitionRow,
@@ -35,7 +36,29 @@ interface RecognitionManifestFixture {
   budgetCurrency: string;
   formFactor: "mobile" | "desktop";
   overlap: boolean;
+  context: RecognitionManifestContext;
   rows: RecognitionManifestRow[];
+}
+
+interface RecognitionManifestContext {
+  accountId: string;
+  accounts: Array<Record<string, unknown>>;
+  envelopes: Array<Record<string, unknown>>;
+  categories: Array<Record<string, unknown>>;
+  transactions: Array<Record<string, unknown>>;
+  historyRecords: Array<{
+    accountId: string;
+    currency: string;
+    sourceRef: string | null;
+    tag: string | null;
+    place: string | null;
+    name: string | null;
+    envelope: string | null;
+    category: string | null;
+    type: "expense" | "income" | "transfer";
+    isRefund: boolean;
+    toAccountId: string | null;
+  }>;
 }
 
 interface RecognitionManifest {
@@ -58,11 +81,10 @@ interface RecognitionSourceModule {
     locale: string,
     currency: string,
   ) => ChatRequest;
-  parseImportExtractResponse: (raw: string) => unknown;
-}
-
-interface CandidateValidationModule {
-  validateImportExtraction: (input: { batch: unknown; budgetCurrency: string }) => unknown;
+  parseImportExtractResponse: (raw: string, imageCount?: number) => unknown;
+  languageName?: (locale: string) => string;
+  languageDirectives?: (locale: string) => string;
+  runImportRecognitionPipeline?: ImportPipelineModule["runImportRecognitionPipeline"];
 }
 
 interface ImportPipelineModule {
@@ -80,13 +102,45 @@ interface ImportRecognitionModule {
   validateImportExtraction: unknown;
 }
 
+interface BaselineHistPattern {
+  place: string | null;
+  name: string | null;
+  envelope: string | null;
+  category: string | null;
+  count: number;
+  fromSourceRef: boolean;
+  type: "expense" | "income" | "transfer";
+  isRefund: boolean;
+  toAccountId: string | null;
+}
+
+interface BaselineHistGroup extends BaselineHistPattern {
+  key: string;
+}
+
+interface BaselineMatchingModule {
+  rankPatterns: (raw: string, groups: BaselineHistGroup[]) => BaselineHistPattern[];
+  confidentSourceRef: (raw: string, groups: BaselineHistGroup[]) => BaselineHistPattern | null;
+  decideAssignment: (
+    raw: string,
+    top: BaselineHistPattern | undefined,
+    model: Record<string, unknown> | undefined,
+    hardOverride?: boolean,
+  ) => { name: string; place: string | null; envelope: string | null; category: string | null };
+}
+
 interface BaselineItem {
   date: string;
   amount: number;
   currency: string;
-  type: "expense" | "income";
+  type: "expense" | "income" | "transfer";
   isRefund: boolean;
   rawPlace?: string;
+  tag?: string;
+  fxOriginal?: string;
+  toAccountId?: string | null;
+  envelopeId?: string | null;
+  categoryId?: string | null;
 }
 
 interface CandidateRow {
@@ -107,6 +161,8 @@ interface CandidateRow {
 
 interface CandidateProposal extends ActualImportRecognitionProposal {
   rowId: string;
+  semanticKind?: string;
+  relation?: ImportRecognitionRelation | null;
 }
 
 interface CandidateResult {
@@ -201,7 +257,13 @@ export function normalizeBaselineRecognition(
       amount: item.amount,
       currency: item.currency.toUpperCase(),
       direction: item.type === "income" || isRefund ? "credit" : "debit",
-      semanticKind: isRefund ? "merchant_refund" : item.type === "income" ? "incoming_transfer" : "card_purchase",
+      semanticKind: isRefund
+        ? "merchant_refund"
+        : item.type === "income"
+          ? "incoming_transfer"
+          : item.type === "transfer"
+            ? "internal_transfer"
+            : "card_purchase",
       relation: null,
       proposal: {
         selected: true,
@@ -209,9 +271,9 @@ export function normalizeBaselineRecognition(
         reviewReasons: [],
         type: item.type,
         isRefund,
-        toAccountId: null,
-        envelopeId: null,
-        categoryId: null,
+        toAccountId: item.toAccountId ?? null,
+        envelopeId: item.envelopeId ?? null,
+        categoryId: item.categoryId ?? null,
       },
     };
   });
@@ -245,10 +307,14 @@ export function normalizeCandidateRecognition(
       amount: row.amount,
       currency: row.currency?.toUpperCase() ?? null,
       direction: row.direction,
-      semanticKind: row.semanticKind,
-      relation: row.relation
-        ? { kind: row.relation.kind, rowId: normalizedIdByModelId.get(row.relation.rowId) ?? `${fixtureId}:unexpected-relation-target` }
-        : null,
+      semanticKind: proposal?.semanticKind ?? row.semanticKind,
+      relation:
+        (proposal?.relation ?? row.relation)
+          ? {
+              kind: (proposal?.relation ?? row.relation)!.kind,
+              rowId: normalizedIdByModelId.get((proposal?.relation ?? row.relation)!.rowId) ?? `${fixtureId}:unexpected-relation-target`,
+            }
+          : null,
       proposal: proposal
         ? {
             selected: proposal.selected,
@@ -303,22 +369,7 @@ const TRANSACTION_SEMANTIC_KINDS = new Set([
   "cash_deposit",
 ]);
 const RELATION_KINDS = new Set(["fx_for", "refund_of", "pending_version_of", "fee_for", "duplicate_of", "counterpart_of", "continuation_of"]);
-const REVIEW_REASONS = new Set([
-  "missing_fact",
-  "unsupported_currency",
-  "inconsistent_direction",
-  "possible_transfer",
-  "unknown_transfer_endpoint",
-  "possible_ocr_error",
-  "history_conflict",
-  "multiple_history_candidates",
-  "invalid_relation",
-  "impossible_fx",
-  "relation_changes_ledger_shape",
-  "fact_correction",
-  "pending_or_declined",
-  "unknown_kind",
-]);
+const REVIEW_REASONS = new Set<string>(IMPORT_REVIEW_REASONS);
 const SUPPORTED_CURRENCY_SET = new Set<string>(SUPPORTED_CURRENCIES);
 
 const assertOnlyKeys = (value: Record<string, unknown>, allowed: readonly string[], field: string): void => {
@@ -369,6 +420,126 @@ const parseProposalTruth = (value: unknown, field: string): ImportRecognitionPro
     envelopeId: nullableString(value.envelopeId, `${field}.envelopeId`),
     categoryId: nullableString(value.categoryId, `${field}.categoryId`),
   };
+};
+
+const parseManifestContext = (value: unknown, field: string, fixtureId: string): RecognitionManifestContext => {
+  if (value === undefined) {
+    const accountId = `${fixtureId}-account`;
+    return {
+      accountId,
+      accounts: [
+        {
+          id: accountId,
+          name: "Evaluation account",
+          color: "#000000",
+          icon: "wallet",
+          type: "checking",
+          onBudget: true,
+          initialBalance: 0,
+          archived: false,
+          sort: 0,
+          automaticEnvelopeId: null,
+        },
+      ],
+      envelopes: [],
+      categories: [],
+      transactions: [],
+      historyRecords: [],
+    };
+  }
+  if (!ownObject(value)) throw new Error(`manifest ${field} must be an object`);
+  assertOnlyKeys(value, ["accountId", "accounts", "envelopes", "categories", "transactions", "historyRecords"], field);
+  const accountId = requireString(value.accountId, `${field}.accountId`);
+  if (!Array.isArray(value.accounts) || !Array.isArray(value.envelopes) || !Array.isArray(value.categories)) {
+    throw new Error(`manifest ${field} entity lists are invalid`);
+  }
+  if (!Array.isArray(value.transactions) || !Array.isArray(value.historyRecords)) throw new Error(`manifest ${field} history lists are invalid`);
+
+  const accounts = value.accounts.map((entry, index) => {
+    const itemField = `${field}.accounts[${index}]`;
+    if (!ownObject(entry)) throw new Error(`manifest ${itemField} is invalid`);
+    assertOnlyKeys(entry, ["id", "name", "archived"], itemField);
+    return {
+      id: requireString(entry.id, `${itemField}.id`),
+      name: requireString(entry.name, `${itemField}.name`),
+      color: "#000000",
+      icon: "wallet",
+      type: "checking",
+      onBudget: true,
+      initialBalance: 0,
+      archived: entry.archived === undefined ? false : entry.archived,
+      sort: index,
+      automaticEnvelopeId: null,
+    };
+  });
+  if (accounts.some((account) => typeof account.archived !== "boolean")) throw new Error(`manifest ${field}.accounts archived flags are invalid`);
+  if (!accounts.some((account) => account.id === accountId)) throw new Error(`manifest ${field}.accountId is not present in accounts`);
+  if (new Set(accounts.map((account) => account.id)).size !== accounts.length) throw new Error(`manifest ${field}.accounts contains duplicate ids`);
+
+  const envelopes = value.envelopes.map((entry, index) => {
+    const itemField = `${field}.envelopes[${index}]`;
+    if (!ownObject(entry)) throw new Error(`manifest ${itemField} is invalid`);
+    assertOnlyKeys(entry, ["id", "name", "archived"], itemField);
+    const archived = entry.archived === undefined ? false : entry.archived;
+    if (typeof archived !== "boolean") throw new Error(`manifest ${itemField}.archived is invalid`);
+    return {
+      id: requireString(entry.id, `${itemField}.id`),
+      groupId: `${fixtureId}-group`,
+      name: requireString(entry.name, `${itemField}.name`),
+      color: "#000000",
+      icon: "tag",
+      note: null,
+      monthlyTarget: null,
+      isSavings: false,
+      sort: index,
+      archived,
+    };
+  });
+  if (new Set(envelopes.map((envelope) => envelope.id)).size !== envelopes.length) throw new Error(`manifest ${field}.envelopes contains duplicate ids`);
+
+  const categories = value.categories.map((entry, index) => {
+    const itemField = `${field}.categories[${index}]`;
+    if (!ownObject(entry)) throw new Error(`manifest ${itemField} is invalid`);
+    assertOnlyKeys(entry, ["id", "name"], itemField);
+    return { id: requireString(entry.id, `${itemField}.id`), name: requireString(entry.name, `${itemField}.name`) };
+  });
+  if (new Set(categories.map((category) => category.id)).size !== categories.length) throw new Error(`manifest ${field}.categories contains duplicate ids`);
+
+  const transactions = value.transactions.map((entry, index) => {
+    const itemField = `${field}.transactions[${index}]`;
+    if (!ownObject(entry)) throw new Error(`manifest ${itemField} is invalid`);
+    assertOnlyKeys(entry, ["accountId", "date", "amount", "sourceRef"], itemField);
+    const amount = entry.amount;
+    if (!Number.isInteger(amount) || (amount as number) <= 0) throw new Error(`manifest ${itemField}.amount is invalid`);
+    return {
+      accountId: requireString(entry.accountId, `${itemField}.accountId`),
+      date: calendarDate(entry.date, `${itemField}.date`),
+      amount: amount as number,
+      sourceRef: nullableString(entry.sourceRef, `${itemField}.sourceRef`),
+    };
+  });
+
+  const historyRecords = value.historyRecords.map((entry, index) => {
+    const itemField = `${field}.historyRecords[${index}]`;
+    if (!ownObject(entry)) throw new Error(`manifest ${itemField} is invalid`);
+    assertOnlyKeys(entry, ["accountId", "currency", "sourceRef", "tag", "place", "name", "envelope", "category", "type", "isRefund", "toAccountId"], itemField);
+    if (entry.type !== "expense" && entry.type !== "income" && entry.type !== "transfer") throw new Error(`manifest ${itemField}.type is invalid`);
+    if (typeof entry.isRefund !== "boolean") throw new Error(`manifest ${itemField}.isRefund is invalid`);
+    return {
+      accountId: requireString(entry.accountId, `${itemField}.accountId`),
+      currency: currencyCode(entry.currency, `${itemField}.currency`),
+      sourceRef: nullableString(entry.sourceRef, `${itemField}.sourceRef`),
+      tag: nullableString(entry.tag, `${itemField}.tag`),
+      place: nullableString(entry.place, `${itemField}.place`),
+      name: nullableString(entry.name, `${itemField}.name`),
+      envelope: nullableString(entry.envelope, `${itemField}.envelope`),
+      category: nullableString(entry.category, `${itemField}.category`),
+      type: entry.type as "expense" | "income" | "transfer",
+      isRefund: entry.isRefund,
+      toAccountId: nullableString(entry.toAccountId, `${itemField}.toAccountId`),
+    };
+  });
+  return { accountId, accounts, envelopes, categories, transactions, historyRecords };
 };
 
 const parseManifestRow = (value: unknown, field: string): RecognitionManifestRow => {
@@ -424,6 +595,7 @@ const parseManifestRow = (value: unknown, field: string): RecognitionManifestRow
     throw new Error(`manifest ${field}.requiredSafetyReasons is invalid`);
   }
   const requiredSafetyReasons = [...new Set(value.requiredSafetyReasons as string[])];
+  const requiresExplicitOptIn = importReviewRequiresExplicitOptIn({ reviewReasons: requiredSafetyReasons as ImportReviewReason[] });
   const semanticKind = requireString(value.semanticKind, `${field}.semanticKind`);
   if (!SEMANTIC_KINDS.has(semanticKind)) throw new Error(`manifest ${field}.semanticKind is invalid`);
   if (TRANSACTION_SEMANTIC_KINDS.has(semanticKind) && rowRole !== "financial_event") {
@@ -447,11 +619,15 @@ const parseManifestRow = (value: unknown, field: string): RecognitionManifestRow
   if (safetyClass === "unsafe_auto" && requiredSafetyReasons.length === 0) throw new Error(`manifest ${field} unsafe_auto requires a safety reason`);
   if (safetyClass === "safe_auto" && requiredSafetyReasons.length > 0) throw new Error(`manifest ${field} safe_auto cannot require review`);
   if (safetyClass === "review_only" && requiredSafetyReasons.length === 0) throw new Error(`manifest ${field} review_only requires a safety reason`);
+  if (requiresExplicitOptIn && safetyClass === "safe_auto") throw new Error(`manifest ${field} shared review policy requires explicit opt-in`);
   if (
     (postingStatus === "pending" || postingStatus === "declined") &&
     (safetyClass !== "review_only" || !requiredSafetyReasons.includes("pending_or_declined"))
   ) {
     throw new Error(`manifest ${field} pending or declined rows require review_only and pending_or_declined`);
+  }
+  if (postingStatus === "unknown" && (safetyClass !== "review_only" || !requiredSafetyReasons.includes("unknown_posting_status"))) {
+    throw new Error(`manifest ${field} unknown posting status requires review_only and unknown_posting_status`);
   }
   if (
     rowRole === "financial_event" &&
@@ -529,7 +705,7 @@ export function parseRecognitionManifest(value: unknown, requireCoverage = true)
   const fixtures = value.fixtures.map((fixture, fixtureIndex) => {
     const field = `fixtures[${fixtureIndex}]`;
     if (!ownObject(fixture) || !Array.isArray(fixture.images) || !Array.isArray(fixture.rows)) throw new Error(`manifest ${field} is invalid`);
-    assertOnlyKeys(fixture, ["id", "images", "locale", "today", "budgetCurrency", "formFactor", "overlap", "rows"], field);
+    assertOnlyKeys(fixture, ["id", "images", "locale", "today", "budgetCurrency", "formFactor", "overlap", "context", "rows"], field);
     const id = requireString(fixture.id, `${field}.id`);
     if (fixtureIds.has(id)) throw new Error(`manifest has duplicate fixture id at ${field}`);
     fixtureIds.add(id);
@@ -568,6 +744,7 @@ export function parseRecognitionManifest(value: unknown, requireCoverage = true)
       budgetCurrency: currencyCode(fixture.budgetCurrency, `${field}.budgetCurrency`),
       formFactor: formFactor as "mobile" | "desktop",
       overlap: overlap as boolean,
+      context: parseManifestContext(fixture.context, `${field}.context`, id),
       rows,
     };
   });
@@ -629,7 +806,7 @@ interface SourceIdentity {
 interface LoadedSource {
   root: string;
   prompts: RecognitionSourceModule;
-  validation: CandidateValidationModule | null;
+  matching: BaselineMatchingModule | null;
   identity: SourceIdentity;
 }
 
@@ -747,14 +924,35 @@ async function loadSource(mode: "baseline" | "candidate", sourceTree: string): P
   const prompts = (await import(pathToFileURL(promptsPath).href)) as RecognitionSourceModule;
   const adapter = classifySourceAdapter(mode, prompts.IMPORT_EXTRACT_JSON_SCHEMA);
   const moduleHashes: Record<string, string> = { aiPrompts: await hashFile(promptsPath) };
-  let validation: CandidateValidationModule | null = null;
+  let matching: BaselineMatchingModule | null = null;
   if (mode === "candidate") {
-    const validationPath = resolve(root, "packages/shared/src/importRecognition.ts");
-    await requireRegularFile(validationPath, "candidate importRecognition module");
-    validation = (await import(pathToFileURL(validationPath).href)) as CandidateValidationModule;
-    moduleHashes.importRecognition = await hashFile(validationPath);
+    if (typeof prompts.runImportRecognitionPipeline !== "function") throw new Error("candidate production recognition pipeline is missing");
+    const candidateModules = {
+      importRecognition: resolve(root, "packages/shared/src/importRecognition.ts"),
+      importHistory: resolve(root, "packages/shared/src/importHistory.ts"),
+      apiAdapter: resolve(root, "packages/api/src/routes/import.ts"),
+      e2eeAdapter: resolve(root, "packages/web/src/lib/aiProvider/e2eeByok.ts"),
+    };
+    for (const [name, path] of Object.entries(candidateModules)) {
+      await requireRegularFile(path, `candidate ${name} module`);
+      moduleHashes[name] = await hashFile(path);
+    }
+  } else {
+    if (typeof prompts.languageName !== "function" || typeof prompts.languageDirectives !== "function") {
+      throw new Error("baseline production language helpers are missing");
+    }
+    const matchingPath = resolve(root, "packages/api/src/routes/import-match.ts");
+    const routePath = resolve(root, "packages/api/src/routes/import.ts");
+    await requireRegularFile(matchingPath, "baseline import matching module");
+    await requireRegularFile(routePath, "baseline production import route");
+    matching = (await import(pathToFileURL(matchingPath).href)) as BaselineMatchingModule;
+    if (typeof matching.rankPatterns !== "function" || typeof matching.confidentSourceRef !== "function" || typeof matching.decideAssignment !== "function") {
+      throw new Error("baseline production matching seam is missing");
+    }
+    moduleHashes.importMatch = await hashFile(matchingPath);
+    moduleHashes.apiAdapter = await hashFile(routePath);
   }
-  return { root, prompts, validation, identity: { revision: await sourceRevision(root), adapter, moduleHashes } };
+  return { root, prompts, matching, identity: { revision: await sourceRevision(root), adapter, moduleHashes } };
 }
 
 export async function runHistorySafetyGate(candidateRoot: string): Promise<HistorySafetyIdentity> {
@@ -1008,6 +1206,185 @@ const expectedForFixture = (fixture: RecognitionManifestFixture): ExpectedImport
     expectedProposal: row.expectedProposal,
   }));
 
+const BASELINE_ENRICH_JSON_SCHEMA = {
+  name: "enriched_transactions",
+  strict: true,
+  schema: {
+    type: "object",
+    additionalProperties: false,
+    properties: {
+      transactions: {
+        type: "array",
+        items: {
+          type: "object",
+          additionalProperties: false,
+          properties: {
+            index: { type: "integer" },
+            name: { type: "string" },
+            envelope: { type: ["string", "null"] },
+            category: { type: ["string", "null"] },
+            place: { type: ["string", "null"] },
+          },
+          required: ["index", "name", "envelope", "category", "place"],
+        },
+      },
+    },
+    required: ["transactions"],
+  },
+} as const;
+
+const legacyHistoryGroups = (records: RecognitionManifestContext["historyRecords"]): BaselineHistGroup[] => {
+  const groups = new Map<string, BaselineHistGroup>();
+  for (const record of records) {
+    const key = record.sourceRef?.trim() || record.place || record.tag || record.name;
+    if (!key) continue;
+    const id = JSON.stringify([
+      record.sourceRef ? "source" : "fallback",
+      key,
+      record.name,
+      record.envelope,
+      record.category,
+      record.type,
+      record.isRefund,
+      record.toAccountId,
+    ]);
+    const existing = groups.get(id);
+    if (existing) {
+      existing.count++;
+      continue;
+    }
+    groups.set(id, {
+      key,
+      fromSourceRef: record.sourceRef !== null,
+      place: record.place,
+      name: record.name,
+      envelope: record.envelope,
+      category: record.category,
+      count: 1,
+      type: record.type,
+      isRefund: record.type === "expense" && record.isRefund,
+      toAccountId: record.type === "transfer" ? record.toAccountId : null,
+    });
+  }
+  return [...groups.values()];
+};
+
+const parseBaselineEnrichment = (raw: string): Map<number, Record<string, unknown>> => {
+  const parsed: unknown = JSON.parse(raw);
+  if (!ownObject(parsed) || !Array.isArray(parsed.transactions)) throw new Error("invalid legacy enrichment output");
+  const rows = parsed.transactions.map((entry) => {
+    if (
+      !ownObject(entry) ||
+      !Number.isInteger(entry.index) ||
+      (entry.index as number) < 0 ||
+      typeof entry.name !== "string" ||
+      (entry.envelope !== null && typeof entry.envelope !== "string") ||
+      (entry.category !== null && typeof entry.category !== "string") ||
+      (entry.place !== null && typeof entry.place !== "string")
+    ) {
+      throw new Error("invalid legacy enrichment row");
+    }
+    return [entry.index as number, entry] as const;
+  });
+  return new Map(rows);
+};
+
+async function runBaselineProductionAdapter(input: {
+  source: LoadedSource;
+  fixture: RecognitionManifestFixture;
+  images: string[];
+  chat: (request: ChatRequest) => Promise<string>;
+}): Promise<BaselineItem[]> {
+  const { source, fixture, images, chat } = input;
+  if (!source.matching || !source.prompts.languageName || !source.prompts.languageDirectives) throw new Error("baseline production adapter is incomplete");
+  const extractionRaw = await chat(
+    source.prompts.buildImportExtractPrompt(images, { envelopes: [], categories: [] }, fixture.today, fixture.locale, fixture.budgetCurrency),
+  );
+  const parsed = source.prompts.parseImportExtractResponse(extractionRaw);
+  if (!Array.isArray(parsed)) throw new Error("wrong legacy extraction shape");
+  const found = parsed as BaselineItem[];
+  if (found.length === 0) return [];
+
+  const groups = legacyHistoryGroups(fixture.context.historyRecords);
+  const history = new Map(
+    [...new Set(found.map((item) => item.rawPlace ?? ""))].map((rawPlace) => [
+      rawPlace,
+      {
+        patterns: source.matching!.rankPatterns(rawPlace, groups),
+        confident: source.matching!.confidentSourceRef(rawPlace, groups),
+      },
+    ]),
+  );
+  const uncertain = found.map((item, index) => ({ item, index })).filter(({ item }) => !history.get(item.rawPlace ?? "")?.confident);
+  let enriched = new Map<number, Record<string, unknown>>();
+  if (uncertain.length > 0) {
+    const language = source.prompts.languageName(fixture.locale);
+    const system =
+      "You assign bank-statement transactions EXACTLY in the style the user has assigned them historically. " +
+      "Each transaction has a `patterns` field — how the user booked this place in the past ({place, name, envelope, category, count, fromSourceRef}). " +
+      "OVERRIDING RULE: when a pattern has fromSourceRef=true, use IT (it is a learned correction matched to the raw bank description — " +
+      "the strongest signal, INDEPENDENT of count) and ignore more numerous patterns. Only when none has fromSourceRef=true, pick " +
+      "the most numerous one (highest count) that matches the transaction type. From the chosen pattern COPY VERBATIM all four fields: " +
+      "name, envelope, category, place — even when name looks like an abbreviation (e.g. Vps) and category/place are null. " +
+      `Only when \`patterns\` is empty, propose yourself: name — a short name in ${language} of WHAT it was (e.g. Groceries, Fuel, Cloud fee), never the raw company name with an address; ` +
+      `envelope — one of the envelopes: ${fixture.context.envelopes.map((entry) => entry.name).join(", ")} — or null; ` +
+      `category — one of the categories: ${fixture.context.categories.map((entry) => entry.name).join(", ")} — or null; ` +
+      "place — a readable, short place name (e.g. Lidl, Netflix). Do not change amounts or dates. " +
+      source.prompts.languageDirectives(fixture.locale) +
+      "Return JSON.";
+    try {
+      enriched = parseBaselineEnrichment(
+        await chat({
+          messages: [
+            { role: "system", content: system },
+            {
+              role: "user",
+              content: JSON.stringify({
+                transactions: uncertain.map(({ item, index }) => ({
+                  index,
+                  date: item.date,
+                  amount: item.amount,
+                  type: item.type,
+                  rawPlace: item.rawPlace,
+                  tag: item.tag,
+                  patterns: history.get(item.rawPlace ?? "")?.patterns ?? [],
+                })),
+              }),
+            },
+          ],
+          responseFormat: { type: "json_schema", json_schema: BASELINE_ENRICH_JSON_SCHEMA },
+          reasoningEffort: "low",
+        }),
+      );
+    } catch {
+      enriched = new Map();
+    }
+  }
+
+  const envelopeByName = new Map(fixture.context.envelopes.map((entry) => [String(entry.name).toLowerCase(), entry]));
+  const categoryByName = new Map(fixture.context.categories.map((entry) => [String(entry.name).toLowerCase(), entry]));
+  return found.map((item, index) => {
+    const rawPlace = item.rawPlace ?? "";
+    const match = history.get(rawPlace);
+    const confident = match?.confident;
+    const picked = confident
+      ? source.matching!.decideAssignment(rawPlace, confident, undefined)
+      : source.matching!.decideAssignment(rawPlace, match?.patterns[0], enriched.get(index), false);
+    const learnedType = confident && (confident.type !== item.type || confident.isRefund) ? confident.type : null;
+    const proposedType = learnedType && (learnedType !== "transfer" || confident?.toAccountId) ? learnedType : item.type;
+    return {
+      ...item,
+      type: proposedType,
+      isRefund: proposedType === "expense" ? item.isRefund || Boolean(confident?.isRefund) : false,
+      toAccountId: proposedType === "transfer" ? (confident?.toAccountId ?? null) : null,
+      name: picked.name,
+      envelopeId: picked.envelope ? String(envelopeByName.get(picked.envelope.toLowerCase())?.id ?? "") || null : null,
+      categoryId: picked.category ? String(categoryByName.get(picked.category.toLowerCase())?.id ?? "") || null : null,
+      placeName: picked.place,
+    };
+  });
+}
+
 async function runSide(
   mode: "baseline" | "candidate",
   source: LoadedSource,
@@ -1021,22 +1398,27 @@ async function runSide(
   for (const fixture of manifest.fixtures) {
     const images = corpus.images.get(fixture.id);
     if (!images) throw new Error(`fixture ${fixture.id}: loaded images are missing`);
-    const request = source.prompts.buildImportExtractPrompt(images, { envelopes: [], categories: [] }, fixture.today, fixture.locale, fixture.budgetCurrency);
-    let raw: string;
+    const chat = async (request: ChatRequest): Promise<string> => transport({ side: mode, fixtureId: fixture.id, request, apiKey, model });
     try {
-      raw = await transport({ side: mode, fixtureId: fixture.id, request, apiKey, model });
-    } catch {
-      throw new Error(`fixture ${fixture.id}: model transport failed`);
-    }
-    try {
-      const parsed = source.prompts.parseImportExtractResponse(raw);
       if (mode === "baseline") {
-        if (!Array.isArray(parsed)) throw new Error("wrong legacy shape");
-        actual.push(...normalizeBaselineRecognition(fixture.id, fixture.rows, parsed as BaselineItem[]));
+        const result = await runBaselineProductionAdapter({ source, fixture, images, chat });
+        actual.push(...normalizeBaselineRecognition(fixture.id, fixture.rows, result));
       } else {
-        if (!source.validation) throw new Error("missing candidate validation");
-        const result = source.validation.validateImportExtraction({ batch: parsed, budgetCurrency: fixture.budgetCurrency });
-        actual.push(...normalizeCandidateRecognition(fixture.id, fixture.rows, result as CandidateResult));
+        if (!source.prompts.runImportRecognitionPipeline) throw new Error("missing candidate production pipeline");
+        const result = await source.prompts.runImportRecognitionPipeline({
+          images,
+          locale: fixture.locale,
+          today: fixture.today,
+          budgetCurrency: fixture.budgetCurrency,
+          accountId: fixture.context.accountId,
+          accounts: fixture.context.accounts,
+          envelopes: fixture.context.envelopes,
+          categories: fixture.context.categories,
+          transactions: fixture.context.transactions,
+          historyRecords: fixture.context.historyRecords,
+          chat,
+        });
+        actual.push(...normalizeCandidateRecognition(fixture.id, fixture.rows, result as unknown as CandidateResult));
       }
     } catch {
       throw new Error(`fixture ${fixture.id}: model output did not satisfy the ${mode} contract`);

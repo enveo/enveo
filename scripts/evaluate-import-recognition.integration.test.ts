@@ -24,6 +24,7 @@ beforeAll(async () => {
   candidateRoot = resolve(root, "candidate");
   const corpusRoot = resolve(root, "corpus");
   await mkdir(resolve(baselineRoot, "packages/shared/src"), { recursive: true });
+  await mkdir(resolve(baselineRoot, "packages/api/src/routes"), { recursive: true });
   await mkdir(resolve(candidateRoot, "packages/shared/src"), { recursive: true });
   await mkdir(resolve(candidateRoot, "packages/api/src/routes"), { recursive: true });
   await mkdir(resolve(candidateRoot, "packages/web/src/lib/aiProvider"), { recursive: true });
@@ -48,7 +49,7 @@ beforeAll(async () => {
     ...overrides,
   });
   const mobileRows = [
-    row("purchase", "card_purchase", 0),
+    row("purchase", "card_purchase", 0, { expectedProposal: { ...proposal("expense"), envelopeId: "envelope-food", categoryId: "category-daily" } }),
     row("salary", "salary", 1, { direction: "credit", expectedProposal: proposal("income") }),
     row("refund", "merchant_refund", 2, { direction: "credit", expectedProposal: proposal("expense", true) }),
     row("reward", "cashback_or_reward", 3, { direction: "credit", expectedProposal: proposal("income") }),
@@ -102,6 +103,31 @@ beforeAll(async () => {
         budgetCurrency: "EUR",
         formFactor: "mobile",
         overlap: true,
+        context: {
+          accountId: "account-1",
+          accounts: [
+            { id: "account-1", name: "Checking" },
+            { id: "account-2", name: "Savings" },
+          ],
+          envelopes: [{ id: "envelope-food", name: "Food" }],
+          categories: [{ id: "category-daily", name: "Daily" }],
+          transactions: [],
+          historyRecords: [
+            {
+              accountId: "account-2",
+              currency: "EUR",
+              sourceRef: "PRIVATE_HISTORY_SENTINEL",
+              tag: "PRIVATE_TAG_SENTINEL",
+              place: "Private history place",
+              name: "Private history name",
+              envelope: null,
+              category: null,
+              type: "expense",
+              isRefund: false,
+              toAccountId: null,
+            },
+          ],
+        },
         rows: mobileRows,
       },
       {
@@ -112,6 +138,14 @@ beforeAll(async () => {
         budgetCurrency: "USD",
         formFactor: "desktop",
         overlap: false,
+        context: {
+          accountId: "account-1",
+          accounts: [{ id: "account-1", name: "Checking" }],
+          envelopes: [],
+          categories: [],
+          transactions: [],
+          historyRecords: [],
+        },
         rows: desktopRows,
       },
     ],
@@ -127,14 +161,30 @@ export const IMPORT_EXTRACT_JSON_SCHEMA = { schema: { properties: { ${rootProper
 export function buildImportExtractPrompt(images, _refs, today, locale, currency) {
   return { messages: [{ role: "system", content: "PRIVATE_PROMPT_SENTINEL" }, { role: "user", content: [{ type: "text", text: today + locale + currency }, ...images.map((url) => ({ type: "image_url", image_url: { url } }))] }], responseFormat: { type: "json_schema" } };
 }
+export const languageName = (locale) => locale;
+export const languageDirectives = (locale) => "Answer in " + locale + ". ";
 export const parseImportExtractResponse = (raw) => JSON.parse(raw);
 `;
   await writeFile(resolve(baselineRoot, "packages/shared/src/aiPrompts.ts"), promptModule("transactions"));
+  await writeFile(resolve(baselineRoot, "packages/api/src/routes/import.ts"), "export const baselineProductionImportRoute = true;\n");
+  await writeFile(
+    resolve(baselineRoot, "packages/api/src/routes/import-match.ts"),
+    `export const rankPatterns = () => [];
+export const confidentSourceRef = () => null;
+export function decideAssignment(raw, _top, model) {
+  return { name: model?.name || raw, place: model?.place || null, envelope: model?.envelope || null, category: model?.category || null };
+}
+`,
+  );
   await writeFile(
     resolve(candidateRoot, "packages/shared/src/aiPrompts.ts"),
     `${promptModule("rows")}
 export async function runImportRecognitionPipeline(input) {
-  const extracted = JSON.parse(await input.chat({ messages: [{ role: "system", content: "extract" }, { role: "user", content: [] }] }));
+  const extracted = JSON.parse(await input.chat(buildImportExtractPrompt(input.images, { envelopes: [], categories: [] }, input.today, input.locale, input.budgetCurrency)));
+  if (input.accountId !== "account-a") {
+    const enriched = JSON.parse(await input.chat({ messages: [{ role: "system", content: "enrich" }, { role: "user", content: JSON.stringify({ rows: extracted.rows }) }] }));
+    return { rows: extracted.rows, proposals: enriched.proposals };
+  }
   const row = extracted.rows[0];
   const rawPlace = row.rawTextLines.join(" ");
   const unsafe = process.env.TEST_HISTORY_UNSAFE === "1";
@@ -202,8 +252,8 @@ export async function runImportRecognitionPipeline(input) {
       direction: item.direction,
       postingStatus: item.postingStatus,
       rowRole: item.rowRole,
-      semanticKind: item.semanticKind,
-      relation: item.relation,
+      semanticKind: item.id === "purchase" ? "unknown" : item.semanticKind,
+      relation: null,
       reviewReasons: item.requiredSafetyReasons,
     }));
   const candidateProposals = (fixtureRows: typeof mobileRows) =>
@@ -212,16 +262,17 @@ export async function runImportRecognitionPipeline(input) {
       return {
         rowId: item.id,
         selected,
-        disposition: selected
-          ? "candidate"
-          : item.rowRole === "supporting_detail"
+        disposition:
+          item.rowRole === "supporting_detail"
             ? "supporting"
             : item.postingStatus === "pending"
               ? "pending"
               : item.postingStatus === "declined"
                 ? "declined"
-                : "unresolved",
+                : "candidate",
         reviewReasons: item.requiredSafetyReasons,
+        semanticKind: item.semanticKind,
+        relation: item.relation,
         ...(item.expectedProposal ?? proposal(null)),
       };
     });
@@ -242,8 +293,11 @@ export async function runImportRecognitionPipeline(input) {
       "synthetic-desktop": baselineItems(desktopRows as typeof mobileRows),
     },
     candidate: {
-      "synthetic-mobile": { rows: candidateRows(mobileRows), proposals: candidateProposals(mobileRows) },
-      "synthetic-desktop": { rows: candidateRows(desktopRows as typeof mobileRows), proposals: candidateProposals(desktopRows as typeof mobileRows) },
+      "synthetic-mobile": { extraction: { rows: candidateRows(mobileRows) }, enrichment: { proposals: candidateProposals(mobileRows) } },
+      "synthetic-desktop": {
+        extraction: { rows: candidateRows(desktopRows as typeof mobileRows) },
+        enrichment: { proposals: candidateProposals(desktopRows as typeof mobileRows) },
+      },
     },
   };
   transportPath = resolve(root, "transport.ts");
@@ -252,10 +306,22 @@ export async function runImportRecognitionPipeline(input) {
     `const data = ${JSON.stringify(data)};
 export async function chat(input) {
   const serialized = JSON.stringify(input.request);
-  if (!serialized.includes("data:image/png;base64,") || !serialized.includes("json_schema")) throw new Error("request serialization missing");
-  if (process.env.TEST_EVAL_MISSING === input.side) return JSON.stringify({ missing: true });
-  const value = structuredClone(data[input.side][input.fixtureId]);
-  if (process.env.TEST_EVAL_FAIL === "1" && input.side === "candidate" && input.fixtureId === "synthetic-mobile") {
+  const system = String(input.request.messages[0]?.content || "");
+  const enrichment = system.includes("enrich") || system.includes("assign bank-statement");
+  if (!enrichment && (!serialized.includes("data:image/png;base64,") || !serialized.includes("json_schema"))) throw new Error("request serialization missing");
+  if (process.env.TEST_EVAL_MISSING === input.side && !enrichment) return JSON.stringify({ missing: true });
+  if (input.side === "baseline") {
+    if (!enrichment) return JSON.stringify(data.baseline[input.fixtureId]);
+    return JSON.stringify({ transactions: data.baseline[input.fixtureId].map((item, index) => ({
+      index,
+      name: item.rawPlace,
+      envelope: input.fixtureId === "synthetic-mobile" && index === 0 ? "Food" : null,
+      category: input.fixtureId === "synthetic-mobile" && index === 0 ? "Daily" : null,
+      place: null,
+    })) });
+  }
+  const value = structuredClone(enrichment ? data.candidate[input.fixtureId].enrichment : data.candidate[input.fixtureId].extraction);
+  if (process.env.TEST_EVAL_FAIL === "1" && enrichment && input.fixtureId === "synthetic-mobile") {
     for (const proposal of value.proposals.filter((item) => ["incoming", "outgoing", "topup"].includes(item.rowId))) {
       proposal.selected = true;
       proposal.type = "expense";
@@ -349,12 +415,24 @@ describe("paired import recognition CLI", () => {
       },
     });
     expect(output.identity.sources.baseline.moduleHashes.aiPrompts).toHaveLength(64);
+    expect(output.identity.sources.baseline.moduleHashes.importMatch).toHaveLength(64);
+    expect(output.identity.sources.baseline.moduleHashes.apiAdapter).toHaveLength(64);
     expect(output.identity.sources.candidate.moduleHashes.importRecognition).toHaveLength(64);
+    expect(output.identity.sources.candidate.moduleHashes.importHistory).toHaveLength(64);
+    expect(output.identity.sources.candidate.moduleHashes.apiAdapter).toHaveLength(64);
+    expect(output.identity.sources.candidate.moduleHashes.e2eeAdapter).toHaveLength(64);
+    // Cycle one deliberately labels the purchase as unknown, omits the FX relation,
+    // and has no assignments. Only the production pipeline's cycle-two result can pass.
+    expect(output.metrics.candidate.semanticKindAccuracy).toEqual({ correct: 11, total: 11, rate: 1 });
+    expect(output.metrics.candidate.relationRecall).toEqual({ correct: 1, total: 1, rate: 1 });
+    expect(output.metrics.candidate.missingProposals).toBe(0);
+    expect(output.metrics.candidate.harmfulSelected).toBe(0);
     expect(output.identity.corpusDigest).toHaveLength(64);
     expect(output.identity.historySafety.sourceHashes.sharedPipeline).toHaveLength(64);
     expect(output.identity.historySafety.testHashes.sharedPipeline).toHaveLength(64);
     expect(result.stdout).not.toContain("PRIVATE_VISIBLE_SENTINEL");
     expect(result.stdout).not.toContain("PRIVATE_PROMPT_SENTINEL");
+    expect(result.stdout).not.toContain("PRIVATE_HISTORY_SENTINEL");
     expect(result.stdout).not.toContain("sk-test-private-sentinel");
     expect(result.stdout).not.toContain("data:image");
     expect(result.stderr).toBe("");

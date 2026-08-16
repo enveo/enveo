@@ -71,7 +71,6 @@ export function ImportSheet({ show, onClose, state, onApplied }: { show: boolean
   const [images, setImages] = useState<string[]>([]);
   const [phase, setPhase] = useState<Phase>("pick");
   const [items, setItems] = useState<ImportReviewRow[]>([]);
-  const [, setRecognition] = useState<Awaited<ReturnType<typeof runImportExtract>> | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [doneStats, setDoneStats] = useState({ added: 0, dup: 0 });
@@ -111,7 +110,6 @@ export function ImportSheet({ show, onClose, state, onApplied }: { show: boolean
     setImages([]);
     setPhase("pick");
     setItems([]);
-    setRecognition(null);
     setError(null);
     setBusy(false);
     setShowConsent(false);
@@ -153,7 +151,6 @@ export function ImportSheet({ show, onClose, state, onApplied }: { show: boolean
       if (tierAtStart.tier === "e2ee") await assertOwnReplica();
        
       const recognition = await runImportExtract({ images, locale: lang, ledger, accountId, provider });
-      setRecognition(recognition);
       if (recognition.rows.length === 0) {
         setError(t("No transactions were recognized in the screenshots."));
         return;
@@ -208,6 +205,7 @@ export function ImportSheet({ show, onClose, state, onApplied }: { show: boolean
     setError(null);
     try {
       
+
 
       const chosen: ImportApplyItem[] = reviewedImportRowsForApply({ rows: items, edited, editedAutomaticDefaults });
       

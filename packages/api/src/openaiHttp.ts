@@ -11,8 +11,8 @@
  *   UpstreamNetworkError — fetch rejected before any answer       → ai_unreachable (502)
  *   an HTTP Response (any status) is RETURNED — the caller judges it (`upstream` /
  *   `ai_upstream_error` with the real upstream status).
- * `transportFailureJson` is the one mapping both /ai proxies and /import/extract
- * share, so the routes cannot drift apart again.
+ * `transportFailureJson` is the one mapping the /ai proxies plus both legacy and
+ * versioned screenshot-import routes share, so the routes cannot drift apart again.
  *
  * `AbortSignal.timeout` is deliberately NOT used: the same semantics are built from
  * AbortController + setTimeout (`timeoutSignal`) for parity with the web transport,

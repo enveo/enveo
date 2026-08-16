@@ -14,12 +14,12 @@ import {
   type ChatMessage,
   type ChatRequest,
   type ClientLedger,
-  type ImportRecognitionResult,
   type NormalizedBudgetSuggestion,
   normalizeAgentSuggestion,
   normalizeBudgetSuggestion,
   parseAgentSuggestResponse,
   parseSuggestResponse,
+  type ReconciledImportRecognitionResult,
 } from "@enveo/shared";
 import type { AiProvider } from "./aiProvider/contracts";
 
@@ -174,7 +174,7 @@ export async function runImportExtract(args: {
   ledger: ClientLedger;
   accountId: string;
   provider: AiProvider;
-}): Promise<ImportRecognitionResult> {
+}): Promise<ReconciledImportRecognitionResult> {
   const { images, locale, ledger, accountId, provider } = args;
   const status = await provider.status();
   if (!status.capabilities.has("screenshot-import")) throw new AiConsentRequired();
