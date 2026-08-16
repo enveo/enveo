@@ -297,6 +297,15 @@ describe.skipIf(!TEST_URL)("automatic envelope lock order (DB-backed, forced int
     expect(out.fullWipe.competingError).toBeNull();
     expect(out.fullWipe.finalStateValid).toBe(true);
   });
+
+  it("full wipe locks multiple accounts in stable id order before deleting them", () => {
+    expect(out.multiAccountWipe.waiterObserved).toBe(true);
+    expect(out.multiAccountWipe.updateCompleted).toBe(true);
+    expect(out.multiAccountWipe.competingCompleted).toBe(true);
+    expect(out.multiAccountWipe.updateError).toBeNull();
+    expect(out.multiAccountWipe.competingError).toBeNull();
+    expect(out.multiAccountWipe.finalStateValid).toBe(true);
+  });
 });
 
 const REPLACE_CHILD = new URL("./sync.replace-recurrence.test-child.ts", import.meta.url).pathname;
