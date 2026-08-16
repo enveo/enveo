@@ -311,6 +311,10 @@ export function validateImportExtraction(input: { batch: ImportExtractBatch; bud
     let type = mapping.type;
     let reasons = addReasons(row.reviewReasons, ...mapping.reviewReasons);
 
+    // Preserve the direction-based income/expense fallback for a reviewable row, but never
+    // default an internal transfer into the ledger while its other account is unknown.
+    if (mapping.reviewReasons.includes("unknown_transfer_endpoint")) selected = false;
+
     const validFacts =
       isCalendarDate(row.date) && hasPositiveMinorAmount(row.amount) && row.currency !== null && isSupportedCurrency(row.currency) && budgetCurrencySupported;
     if (!validFacts) {

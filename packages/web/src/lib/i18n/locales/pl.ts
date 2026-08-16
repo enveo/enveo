@@ -104,6 +104,7 @@ export const pl: Dict = {
   "Related row is invalid": "Powiązany wiersz jest nieprawidłowy",
   "Related rows could change the ledger": "Powiązane wiersze mogłyby zmienić zapis w budżecie",
   "Review recognized rows": "Sprawdź rozpoznane wiersze",
+  "Select recognized row {n}": "Wybierz rozpoznany wiersz {n}",
   "Reward / income": "Nagroda / przychód",
   "Supporting detail — not a transaction": "Informacja pomocnicza — to nie jest transakcja",
   "Transfer account is unknown": "Nieznane konto przelewu",

@@ -187,6 +187,8 @@ export interface CycleDeps {
   broadcastUpdatedIfPending(): void;
    
   postPokeToPeers(): void;
+  /** After pending work lands on an E2EE mirror, append the privacy-safe terminal provider op. */
+  ensureE2eeProviderPreference(): boolean;
 }
 
 /**
