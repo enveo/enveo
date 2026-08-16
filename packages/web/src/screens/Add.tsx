@@ -8,6 +8,7 @@ import { type StateResponse, useLedgerVersion } from "../lib/api";
 import {
   automaticEnvelopePreview,
   expenseEnvelopeAfterAccountChange,
+  expenseEnvelopeAfterSplitCancel,
   expenseEnvelopeSelection,
   expenseEnvelopeSelectionForImport,
   explicitExpenseEnvelopeSelection,
@@ -307,7 +308,7 @@ export function AddScreen({
           placeName: tab === "expense" ? (placeId ? (state.places.find((p) => p.id === placeId)?.name ?? null) : placeInput.trim() || null) : null,
           note,
         },
-        { automaticEnvelopeDefault: tab === "expense" && expenseEnvelope.provenance === "automatic" && envelopeId !== null },
+        { automaticEnvelopeDefault: tab === "expense" && expenseEnvelope.provenance === "automatic" },
       );
       haptic([10, 30, 14]);
       return;
@@ -458,7 +459,10 @@ export function AddScreen({
             setItems={setItems}
             envelopes={state.envelopes}
             splitTotal={minor}
-            onCancelSplit={() => setSplitMode(false)}
+            onCancelSplit={() => {
+              setExpenseEnvelope((current) => expenseEnvelopeAfterSplitCancel(current, accObj?.automaticEnvelopeId));
+              setSplitMode(false);
+            }}
             onEnterSplit={enterSplit}
             envOpen={envOpen}
             envGridList={envGridList}
@@ -589,7 +593,7 @@ export function AddScreen({
         selectedId={accountId}
         onSelect={(id) => {
           const automaticEnvelopeId = accounts.find((account) => account.id === id)?.automaticEnvelopeId;
-          setExpenseEnvelope((current) => expenseEnvelopeAfterAccountChange(current, automaticEnvelopeId, splitMode || items.length > 0));
+          setExpenseEnvelope((current) => expenseEnvelopeAfterAccountChange(current, automaticEnvelopeId, splitMode));
           setAccountId(id);
           if (toAccountId === id) setToAccountId(accounts.find((x) => x.id !== id)?.id ?? "");
           setShowAcc(false);

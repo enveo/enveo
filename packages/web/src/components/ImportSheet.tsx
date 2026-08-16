@@ -4,7 +4,7 @@ import { createPortal } from "react-dom";
 import { runImportExtract } from "../lib/ai";
 import { importFlow } from "../lib/aiProvider/capabilities";
 import { useAiProvider } from "../lib/aiProvider/useAiProvider";
-import { api, apiErrorMessage, type EditedImportItem, type ImportApplyItem, type ImportApplyResponse, type ImportItem, type StateResponse } from "../lib/api";
+import { api, apiErrorMessage, type EditedImportItem, type ImportApplyItem, type ImportApplyResponse, type StateResponse } from "../lib/api";
 import { automaticEnvelopePreview, expenseEnvelopeSelectionForImport, formatAutomaticEnvelopeEffect } from "../lib/automaticEnvelopeUi";
 import { useCurrency, useTheme } from "../lib/contexts";
 import * as e2ee from "../lib/e2ee";
@@ -12,7 +12,7 @@ import { formatMoney, isLight } from "../lib/format";
 import { useT } from "../lib/i18n";
 import { Glyph, Ico } from "../lib/icons";
 import { preferredAccountId, setLastAccountId } from "../lib/lastAccount";
-import { applyLocalImport, planLocalImport } from "../lib/localImport";
+import { applyLocalImport, type LocalImportReviewItem, planLocalImport, reviewedImportItemsForApply } from "../lib/localImport";
 import { store } from "../lib/store";
 import { assertOwnReplica } from "../lib/sync";
 import { CORAL, font, TEAL, TRANSFER, tint } from "../lib/theme";
@@ -29,8 +29,6 @@ import { Sheet } from "./chrome";
 
 
 type Phase = "pick" | "review" | "done";
-type ReviewItem = ImportItem & { status: "added" | "exists" | "probable"; include: boolean; automaticEnvelopeDefault: boolean };
-
  
 async function downscale(f: File, maxSide = 1600): Promise<string> {
   const bmp = await createImageBitmap(f);
@@ -63,7 +61,7 @@ export function ImportSheet({ show, onClose, state, onApplied }: { show: boolean
   const [accountId, setAccountId] = useState(() => preferredAccountId(accounts, accounts[0]?.id ?? ""));
   const [images, setImages] = useState<string[]>([]);
   const [phase, setPhase] = useState<Phase>("pick");
-  const [items, setItems] = useState<ReviewItem[]>([]);
+  const [items, setItems] = useState<LocalImportReviewItem[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [doneStats, setDoneStats] = useState({ added: 0, dup: 0 });
@@ -170,7 +168,7 @@ export function ImportSheet({ show, onClose, state, onApplied }: { show: boolean
           return {
             ...r,
             envelopeId: selection.envelopeId,
-            automaticEnvelopeDefault: selection.provenance === "automatic" && selection.envelopeId !== null,
+            automaticEnvelopeDefault: selection.provenance === "automatic",
             include: r.status === "added" && !(!!r.currency && r.currency !== currency),
           };
         }),
@@ -208,29 +206,7 @@ export function ImportSheet({ show, onClose, state, onApplied }: { show: boolean
     try {
       
 
-      const chosen: ImportApplyItem[] = items
-        .map((it, i) => ({ it, e: edited[i] }))
-        .filter(({ it, e }) => it.include && (it.status !== "exists" || !!e)) // edited duplicate = deliberate add
-        .map(({ it, e }) =>
-          !e
-            ? it
-            : {
-                ...it,
-                type: e.type,
-                accountId: e.accountId,
-                toAccountId: e.toAccountId,
-                isRefund: e.isRefund,
-                amount: e.amount,
-                date: e.date,
-                name: e.name,
-                envelopeId: e.envelopeId,
-                categoryId: e.categoryId,
-                placeName: e.placeName,
-                note: e.note,
-                force: it.status === "exists", // skip dedupe — the user edited the duplicate deliberately
-                rawPlace: it.rawPlace,  
-              },
-        );
+      const chosen: ImportApplyItem[] = reviewedImportItemsForApply({ items, edited, editedAutomaticDefaults });
       
 
       let res = { added: 0, skipped: 0 };

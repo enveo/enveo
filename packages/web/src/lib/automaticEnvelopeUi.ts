@@ -49,6 +49,11 @@ export function expenseEnvelopeAfterAccountChange(
 }
 
  
+export function expenseEnvelopeAfterSplitCancel(current: ExpenseEnvelopeSelection, automaticEnvelopeId: string | null | undefined): ExpenseEnvelopeSelection {
+  return current.provenance === "automatic" ? expenseEnvelopeSelection(automaticEnvelopeId) : current;
+}
+
+ 
 export function expenseEnvelopeSelectionForImport(
   type: Transaction["type"],
   envelopeId: string | null,
