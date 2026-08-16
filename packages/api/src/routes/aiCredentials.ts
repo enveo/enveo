@@ -46,6 +46,7 @@ export const byokChatInput = z
 export const byokImportInput = z
   .object({
     budgetId,
+    accountId: z.string().uuid(),
     model: z.enum(OPENAI_MODELS),
     images: z
       .array(z.string().regex(/^data:image\//, "expected an image data-URL"))
@@ -217,13 +218,14 @@ export function createAiCredentialRoutes(options: { masterKeys: VaultMasterKeyPr
         repository.withServerCredential(tx, owner, input.budgetId, (credential) =>
           extractImportForBudget({
             budgetId: input.budgetId,
+            accountId: input.accountId,
             images: input.images,
             locale: input.locale ?? "en",
             chat: (request, timeoutMs) => byokChatContent({ apiKey: credential, model: input.model, request, timeoutMs }),
           }),
         ),
       );
-      return c.json({ items });
+      return c.json(items);
     } catch (error) {
       return byokFailure(c, error instanceof ImportCycleOneFailure ? error.reason : error);
     }

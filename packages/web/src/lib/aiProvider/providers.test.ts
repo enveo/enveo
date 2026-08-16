@@ -8,6 +8,7 @@ import { RulesProvider } from "./rules";
 
 const request = { messages: [{ role: "user" as const, content: "hello" }] };
 const input = {
+  accountId: "account-a",
   images: ["data:image/png;base64,AA=="],
   locale: "pl",
   ledger: { budgets: [], accounts: [], groups: [], envelopes: [], categories: [], places: [], transactions: [], allocations: [] },
@@ -32,13 +33,13 @@ describe("AI provider implementations", () => {
       },
       extract: async () => {
         calls.push("extract");
-        return { items: [] };
+        return { rows: [], proposals: [] };
       },
     };
     const plain = new EnveoAiProvider({ tier: "plain", ...dependencies });
     expect((await plain.status()).code).toBe("ready");
     expect(await plain.complete(request)).toBe("operator");
-    expect(await plain.extractImport(input)).toEqual({ items: [] });
+    expect(await plain.extractImport(input)).toEqual({ rows: [], proposals: [] });
     expect(calls).toEqual(["complete", "extract"]);
 
     const e2ee = new EnveoAiProvider({ tier: "e2ee", ...dependencies });
@@ -65,14 +66,14 @@ describe("AI provider implementations", () => {
       },
       extract: async (budgetId, model) => {
         calls.push(["extract", { budgetId, model }]);
-        return { items: [] };
+        return { rows: [], proposals: [] };
       },
     });
     expect((await provider.status()).code).toBe("ready");
     await provider.saveCredential("sk-once");
     await provider.testConnection();
     expect(await provider.complete(request)).toBe("vault");
-    expect(await provider.extractImport(input)).toEqual({ items: [] });
+    expect(await provider.extractImport(input)).toEqual({ rows: [], proposals: [] });
     await provider.removeCredential();
     expect("key" in provider).toBe(false);
     expect(JSON.stringify(provider)).not.toContain("sk-once");

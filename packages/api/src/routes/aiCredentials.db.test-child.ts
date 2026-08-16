@@ -58,6 +58,7 @@ async function main() {
   const userB = users[1]!.id;
   const [budgetA] = await db.insert(s.budgets).values({ userId: userA, name: "A" }).returning({ id: s.budgets.id });
   const [budgetB] = await db.insert(s.budgets).values({ userId: userB, name: "B" }).returning({ id: s.budgets.id });
+  const [accountA] = await db.insert(s.accounts).values({ budgetId: budgetA!.id, name: "Checking" }).returning({ id: s.accounts.id });
   const marker = "sk-SENTINEL_ROUTE_SECRET";
   let sessionUser = userA;
   let probeCalls = 0;
@@ -117,7 +118,7 @@ async function main() {
       sentChosenModel ||= (payload as { model?: string }).model === "gpt-5.6-luna";
       const messages = (payload as { messages?: Array<{ content?: unknown }> }).messages;
       const vision = Array.isArray(messages?.[1]?.content);
-      return Response.json({ choices: [{ message: { content: vision ? '{"transactions":[]}' : "byok-answer" } }], model: "gpt-5.6-luna" });
+      return Response.json({ choices: [{ message: { content: vision ? '{"rows":[]}' : "byok-answer" } }], model: "gpt-5.6-luna" });
     };
     const chatResponse = await app.request("/api/ai/byok/chat", {
       method: "POST",
@@ -128,9 +129,9 @@ async function main() {
     const importResponse = await app.request("/api/ai/byok/import/extract", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ budgetId: budgetA!.id, model: "gpt-5.6-luna", images: ["data:image/png;base64,AA=="], locale: "pl" }),
+      body: JSON.stringify({ budgetId: budgetA!.id, accountId: accountA!.id, model: "gpt-5.6-luna", images: ["data:image/png;base64,AA=="], locale: "pl" }),
     });
-    const importBody = (await importResponse.json()) as { items?: unknown[] };
+    const importBody = (await importResponse.json()) as { rows?: unknown[]; proposals?: unknown[] };
 
     const beforeMismatch = JSON.stringify(stored);
     const probeBeforeMismatch = probeCalls;
@@ -288,7 +289,7 @@ async function main() {
         chatStatus: chatResponse.status,
         chatContent: chatBody.content ?? null,
         importStatus: importResponse.status,
-        importItems: importBody.items?.length ?? -1,
+        importItems: importBody.proposals?.length ?? -1,
         sentVaultKey,
         sentChosenModel,
       },

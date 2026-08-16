@@ -1,5 +1,4 @@
-import type { AiLocale, ChatRequest, ClientLedger } from "@enveo/shared";
-import type { ImportItem } from "../api";
+import type { AiLocale, ChatRequest, ClientLedger, ImportRecognitionResult } from "@enveo/shared";
 
 export type AiProviderKind = "rules" | "enveo" | "openai";
 export type AiCapability = "budget-suggestion" | "custom-prompt" | "screenshot-import";
@@ -17,11 +16,10 @@ export interface ImportExtractInput {
   images: string[];
   locale: AiLocale;
   ledger: ClientLedger;
+  accountId: string;
 }
 
-export interface ImportExtractResult {
-  items: ImportItem[];
-}
+export type ImportExtractResult = ImportRecognitionResult;
 
 export interface AiProvider {
   status(): Promise<AiStatus>;

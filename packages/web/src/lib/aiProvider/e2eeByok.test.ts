@@ -1,12 +1,35 @@
 import { describe, expect, it } from "bun:test";
-import type { ChatRequest, ClientLedger } from "@enveo/shared";
+import { type ChatRequest, type ClientLedger, createDefaultBudgetPreferences, runImportRecognitionPipeline } from "@enveo/shared";
 import { budgetSecretAadContext, encryptPayload, generateDek, snapshotAadContext } from "../crypto";
 import { E2eeByokProvider } from "./e2eeByok";
 
 const BUDGET = "11111111-1111-1111-1111-111111111111";
 const OTHER_BUDGET = "22222222-2222-2222-2222-222222222222";
 const request: ChatRequest = { messages: [{ role: "user", content: "hello" }] };
-const ledger: ClientLedger = { budgets: [], accounts: [], groups: [], envelopes: [], categories: [], places: [], transactions: [], allocations: [] };
+const ACCOUNT = "33333333-3333-3333-3333-333333333333";
+const ledger: ClientLedger = {
+  budgets: [{ id: BUDGET, name: "Budget", currency: "EUR", preferences: createDefaultBudgetPreferences() }],
+  accounts: [
+    {
+      id: ACCOUNT,
+      name: "Checking",
+      color: "#000",
+      icon: "wallet",
+      type: "checking",
+      onBudget: true,
+      initialBalance: 0,
+      archived: false,
+      sort: 0,
+      automaticEnvelopeId: null,
+    },
+  ],
+  groups: [],
+  envelopes: [],
+  categories: [],
+  places: [],
+  transactions: [],
+  allocations: [],
+};
 
 function fixture(
   options: {
@@ -61,9 +84,13 @@ function fixture(
     directChat: async (key, model, req, timeoutMs) => {
       calls.direct.push({ key, model, request: req, timeoutMs });
       if (options.directError) throw new Error(options.directError);
-      return req.messages[1] && Array.isArray(req.messages[1].content)
-        ? '{"transactions":[{"date":"2026-08-01","amount":1234,"type":"expense","rawPlace":"SHOP 1","tag":"SHOP","currency":"EUR","fxOriginal":""}]}'
-        : "direct-answer";
+      if (req.messages[1] && Array.isArray(req.messages[1].content)) {
+        return '{"rows":[{"rowId":"r1","imageIndex":0,"visualOrder":0,"rawTextLines":["SHOP 1"],"date":"2026-08-01","amount":1234,"currency":"EUR","direction":"unknown","postingStatus":"posted","rowRole":"financial_event","semanticKind":"unknown","relation":null,"confidence":"medium","reviewReasons":[]}]}';
+      }
+      if (String(req.messages[0]?.content).includes("conservatively enrich")) {
+        return '{"rows":[{"rowId":"r1","name":"Zakupy","place":"Shop","envelopeId":null,"categoryId":null,"semanticKind":"card_purchase","relation":null,"reviewReasons":[]}]}';
+      }
+      return "direct-answer";
     },
     onTierMismatch: (meta) => calls.mismatch.push(meta),
   });
@@ -107,15 +134,64 @@ describe("E2EE Own OpenAI provider", () => {
     expect(f.calls.remove).toEqual([{ budgetId: BUDGET, epoch: 3 }]);
   });
 
-  it("extracts screenshots directly and returns normalized facts without sending them to Enveo", async () => {
+  it("runs both import cycles directly and returns the full recognition result without sending plaintext to Enveo", async () => {
     const f = fixture();
     await f.provider.saveCredential("sk-vision");
-    const result = await f.provider.extractImport({ images: ["data:image/png;base64,AA=="], locale: "pl", ledger });
-    expect(result.items).toEqual([
-      expect.objectContaining({ date: "2026-08-01", amount: 1234, type: "expense", rawPlace: "SHOP 1", tag: "SHOP", currency: "EUR" }),
-    ]);
-    expect(f.calls.get).toEqual([BUDGET]);
-    expect(f.calls.direct).toHaveLength(1);
+    const originalFetch = globalThis.fetch;
+    const serverImportUrls: string[] = [];
+    globalThis.fetch = ((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("/api/import/")) serverImportUrls.push(url);
+      throw new Error("unexpected_fetch");
+    }) as unknown as typeof fetch;
+    try {
+      const result = await f.provider.extractImport({ images: ["data:image/png;base64,AA=="], locale: "pl", ledger, accountId: ACCOUNT });
+      expect(result.rows).toHaveLength(1);
+      expect(result.proposals).toEqual([expect.objectContaining({ rowId: "r1", date: "2026-08-01", amount: 1234, rawPlace: "SHOP 1", name: "Zakupy" })]);
+      expect(f.calls.get).toEqual([BUDGET]);
+      expect(f.calls.direct).toHaveLength(2);
+      expect(serverImportUrls).toEqual([]);
+      expect(JSON.stringify(f.calls.save)).not.toContain("SHOP 1");
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it("uses the provider budget for prompt/result parity even when another budget row comes first", async () => {
+    const otherBudget = {
+      id: OTHER_BUDGET,
+      name: "Other",
+      currency: "USD",
+      preferences: createDefaultBudgetPreferences(),
+    };
+    const reorderedLedger = { ...ledger, budgets: [otherBudget, ...ledger.budgets] };
+    const expectedRequests: ChatRequest[] = [];
+    const expected = await runImportRecognitionPipeline({
+      images: ["data:image/png;base64,AA=="],
+      locale: "pl",
+      today: new Date().toISOString().slice(0, 10),
+      budgetCurrency: "EUR",
+      accountId: ACCOUNT,
+      accounts: reorderedLedger.accounts,
+      envelopes: reorderedLedger.envelopes,
+      categories: reorderedLedger.categories,
+      transactions: reorderedLedger.transactions,
+      historyRecords: [],
+      chat: async (request) => {
+        expectedRequests.push(request);
+        return Array.isArray(request.messages[1]?.content)
+          ? '{"rows":[{"rowId":"r1","imageIndex":0,"visualOrder":0,"rawTextLines":["SHOP 1"],"date":"2026-08-01","amount":1234,"currency":"EUR","direction":"unknown","postingStatus":"posted","rowRole":"financial_event","semanticKind":"unknown","relation":null,"confidence":"medium","reviewReasons":[]}]}'
+          : '{"rows":[{"rowId":"r1","name":"Zakupy","place":"Shop","envelopeId":null,"categoryId":null,"semanticKind":"card_purchase","relation":null,"reviewReasons":[]}]}';
+      },
+    });
+    const f = fixture();
+    await f.provider.saveCredential("sk-parity");
+    const actual = await f.provider.extractImport({ images: ["data:image/png;base64,AA=="], locale: "pl", ledger: reorderedLedger, accountId: ACCOUNT });
+
+    expect(actual).toEqual(expected);
+    expect(f.calls.direct.map(({ request, timeoutMs }) => ({ request, timeoutMs }))).toEqual(
+      expectedRequests.map((request, index) => ({ request, timeoutMs: index === 0 ? 300_000 : undefined })),
+    );
   });
 
   it("fails closed on malformed, legacy, cross-budget and stale-epoch records", async () => {
