@@ -93,7 +93,7 @@ export function BudgetScreen({
     const minor = padPreview(ed.pad.expr);
     const env = envs.find((x) => x.id === ed.envelopeId);
     if (minor !== null && env && minor !== env.allocated) {
-      local.setAllocation({ envelopeId: ed.envelopeId, month, amount: minor });
+      local.setDisplayedAllocation({ envelopeId: ed.envelopeId, month, amount: minor });
     }
   };
   const startEdit = (env: EnvelopeView, _cell: HTMLElement | null) => {
@@ -381,7 +381,7 @@ export function BudgetScreen({
                 icon: activeEnv.icon,
                 color: activeEnv.color,
                 onCommit: (minor) => {
-                  if (minor !== activeEnv.allocated) local.setAllocation({ envelopeId: activeEnv.id, month, amount: minor });
+                  if (minor !== activeEnv.allocated) local.setDisplayedAllocation({ envelopeId: activeEnv.id, month, amount: minor });
                   setEditing(null);
                 },
                 onCancel: () => setEditing(null),
