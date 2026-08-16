@@ -109,6 +109,12 @@ describe("selectImportHistoryCandidates", () => {
     expect(selectImportHistoryCandidates(query(), [...assignments].reverse(), 1).candidates.map((candidate) => candidate.envelope)).toEqual(["A"]);
   });
 
+  test("keeps the complete representative evidence stable when null and empty source references tie", () => {
+    const evidence = [record({ sourceRef: null }), record({ sourceRef: "" })];
+
+    expect(selectImportHistoryCandidates(query(), evidence)).toEqual(selectImportHistoryCandidates(query(), [...evidence].reverse()));
+  });
+
   test("preserves a conflict hidden by the display limit", () => {
     const result = selectImportHistoryCandidates(query(), [record({ envelope: "A" }), record({ envelope: "B" })], 1);
 

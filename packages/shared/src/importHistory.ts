@@ -102,13 +102,15 @@ const merchantIdentity = (proposal: HistoryProposal, record: ImportHistoryRecord
   return [record.tag, record.place].some((value) => normalizeImportHistoryText(value) === tag);
 };
 
+type CandidateValue = string | boolean | null;
+
+const serializeCandidateTuple = (values: readonly CandidateValue[]): string => JSON.stringify(values);
+
 const assignmentKey = (candidate: ImportHistoryCandidate): string =>
-  [candidate.place, candidate.name, candidate.envelope, candidate.category, candidate.type, candidate.isRefund, candidate.toAccountId]
-    .map((value) => String(value ?? ""))
-    .join("\u0000");
+  serializeCandidateTuple([candidate.place, candidate.name, candidate.envelope, candidate.category, candidate.type, candidate.isRefund, candidate.toAccountId]);
 
 const evidenceKey = (candidate: ImportHistoryCandidate): string =>
-  [
+  serializeCandidateTuple([
     candidate.sourceRef,
     candidate.tag,
     candidate.place,
@@ -118,9 +120,7 @@ const evidenceKey = (candidate: ImportHistoryCandidate): string =>
     candidate.type,
     candidate.isRefund,
     candidate.toAccountId,
-  ]
-    .map((value) => String(value ?? ""))
-    .join("\u0000");
+  ]);
 
 const compareText = (left: string, right: string): number => (left < right ? -1 : left > right ? 1 : 0);
 
