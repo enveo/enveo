@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { chmod, lstat, mkdir, mkdtemp, readdir, readFile, readlink, realpath, rm, stat, symlink } from "node:fs/promises";
+import { chmod, lstat, mkdtemp, readdir, readFile, readlink, realpath, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, extname, isAbsolute, relative, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -1009,6 +1009,20 @@ const gitBlobId = (bytes: Uint8Array): string => {
   return hash.digest("hex");
 };
 
+const pathIsInside = (root: string, path: string): boolean => {
+  const fromRoot = relative(root, path);
+  return fromRoot === "" || (!fromRoot.startsWith("..") && !isAbsolute(fromRoot));
+};
+
+const symlinkTargetIsConfined = async (root: string, path: string): Promise<boolean> => {
+  try {
+    const target = resolve(dirname(path), await readlink(path));
+    return pathIsInside(root, target) && pathIsInside(root, await realpath(path));
+  } catch {
+    return false;
+  }
+};
+
 const hashFile = async (path: string): Promise<string> => sha256([await readFile(path)]);
 const BASELINE_REVISION = "864c47f98c27bb7bf238e636b34f89dfa3dcc63c";
 const moduleDigest = (hashes: Record<string, string>): string =>
@@ -1071,6 +1085,7 @@ export async function preflightSource(mode: "baseline" | "candidate", sourceTree
       if (entry.mode === "120000") {
         actual = new TextEncoder().encode(await readlink(path));
         actualMode = info.isSymbolicLink() ? "120000" : "invalid";
+        modesMatch &&= actualMode === "120000" && (await symlinkTargetIsConfined(root, path));
       } else {
         actual = new Uint8Array(await readFile(path));
         actualMode = info.isFile() ? ((info.mode & 0o111) !== 0 ? "100755" : "100644") : "invalid";
@@ -1106,19 +1121,33 @@ export async function preflightSource(mode: "baseline" | "candidate", sourceTree
   };
 }
 
-const linkExternalDependencies = async (sourceRoot: string, snapshotRoot: string, packageName: "api" | "shared" | "web"): Promise<void> => {
-  const source = resolve(sourceRoot, `packages/${packageName}/node_modules`);
-  try {
-    if (!(await stat(source)).isDirectory()) return;
-  } catch {
-    return;
-  }
-  const target = resolve(snapshotRoot, `packages/${packageName}/node_modules`);
-  await mkdir(target, { recursive: true, mode: 0o700 });
-  for (const entry of await readdir(source, { withFileTypes: true })) {
-    if (entry.name === "@enveo") continue;
-    await symlink(await realpath(resolve(source, entry.name)), resolve(target, entry.name));
-  }
+const assertSnapshotLinksConfined = async (root: string): Promise<void> => {
+  const visit = async (path: string): Promise<void> => {
+    const info = await lstat(path);
+    if (info.isSymbolicLink()) {
+      if (!(await symlinkTargetIsConfined(root, path))) throw new Error("snapshot dependency link escapes source root");
+      let target: string;
+      try {
+        target = await realpath(path);
+      } catch {
+        throw new Error("snapshot dependency link is unresolved");
+      }
+      if (!pathIsInside(root, target)) throw new Error("snapshot dependency link resolves outside source root");
+      return;
+    }
+    if (info.isDirectory()) for (const entry of await readdir(path)) await visit(resolve(path, entry));
+  };
+  await visit(root);
+};
+
+const installSnapshotDependencies = async (root: string): Promise<void> => {
+  const install = Bun.spawn([process.execPath, "install", "--production", "--frozen-lockfile", "--ignore-scripts", "--backend=copyfile", "--cwd", root], {
+    stdout: "ignore",
+    stderr: "ignore",
+    env: { ...process.env, BUN_INSTALL_BACKEND: "copyfile" },
+  });
+  if ((await install.exited) !== 0) throw new Error("snapshot dependency install failed");
+  await assertSnapshotLinksConfined(root);
 };
 
 const setSnapshotWritable = async (root: string, writable: boolean): Promise<void> => {
@@ -1136,11 +1165,13 @@ const setSnapshotWritable = async (root: string, writable: boolean): Promise<voi
   await visit(root);
 };
 
-interface SourceSnapshot {
+export interface SourceSnapshot {
   root: string;
   identity: SourceIdentity;
   cleanup: () => Promise<void>;
 }
+
+const verifiedSnapshots = new WeakSet<SourceSnapshot>();
 
 export async function materializeSourceSnapshot(preflight: SourcePreflight): Promise<SourceSnapshot> {
   if (!preflight.identity.bound) throw new Error("source snapshot requires a bound preflight");
@@ -1150,14 +1181,7 @@ export async function materializeSourceSnapshot(preflight: SourcePreflight): Pro
     const archive = Bun.spawn(["git", "-C", preflight.root, "archive", preflight.identity.expectedRevision], { stdout: "pipe", stderr: "ignore" });
     const extract = Bun.spawn(["tar", "-x", "-C", root], { stdin: archive.stdout, stdout: "ignore", stderr: "ignore" });
     if ((await archive.exited) !== 0 || (await extract.exited) !== 0) throw new Error("source snapshot could not be materialized");
-    for (const packageName of ["api", "shared", "web"] as const) await linkExternalDependencies(preflight.root, root, packageName);
-    for (const consumer of ["api", "shared", "web"] as const) {
-      await mkdir(resolve(root, `packages/${consumer}/node_modules/@enveo`), { recursive: true, mode: 0o700 });
-      for (const workspacePackage of ["api", "shared", "web"] as const) {
-        if (workspacePackage === consumer) continue;
-        await symlink(resolve(root, `packages/${workspacePackage}`), resolve(root, `packages/${consumer}/node_modules/@enveo/${workspacePackage}`));
-      }
-    }
+    await installSnapshotDependencies(root);
     await setSnapshotWritable(root, false);
     const snapshotHashes: Record<string, string> = {};
     for (const entry of preflight.entries) {
@@ -1177,14 +1201,17 @@ export async function materializeSourceSnapshot(preflight: SourcePreflight): Pro
       snapshotHashes[entry.path] = sha256([mode, "\0", gitBlobId(bytes)]);
     }
     if (moduleDigest(snapshotHashes) !== preflight.identity.expectedModuleDigest) throw new Error("source snapshot digest mismatch");
-    return {
+    const snapshot: SourceSnapshot = {
       root,
       identity: preflight.identity,
       cleanup: async () => {
+        verifiedSnapshots.delete(snapshot);
         await setSnapshotWritable(root, true);
         await rm(root, { recursive: true, force: true });
       },
     };
+    verifiedSnapshots.add(snapshot);
+    return snapshot;
   } catch (error) {
     try {
       await setSnapshotWritable(root, true);
@@ -1321,9 +1348,9 @@ async function loadSourceRoot(mode: "baseline" | "candidate", root: string, iden
   return { root, prompts, baseline, identity: { ...identity, adapter } };
 }
 
-export async function loadSource(mode: "baseline" | "candidate", sourceTree: string, expectedCandidateRevision?: string): Promise<LoadedSource> {
-  const preflight = await preflightSource(mode, sourceTree, expectedCandidateRevision);
-  return loadSourceRoot(mode, preflight.root, preflight.identity);
+export async function loadSnapshotSource(mode: "baseline" | "candidate", snapshot: SourceSnapshot): Promise<LoadedSource> {
+  if (!verifiedSnapshots.has(snapshot)) throw new Error("source load requires a verified immutable snapshot");
+  return loadSourceRoot(mode, snapshot.root, snapshot.identity);
 }
 
 export async function runHistorySafetyGate(candidateRoot: string): Promise<HistorySafetyIdentity> {
@@ -1770,8 +1797,8 @@ async function runEvaluation(args: EvaluationArgs): Promise<void> {
         await Bun.write(target, process.env.ENVEO_IMPORT_EVAL_TEST_MUTATE_CONTENT);
       }
       pairedSources = {
-        baseline: await loadSourceRoot("baseline", baselineSnapshot.root, baselineSnapshot.identity),
-        candidate: await loadSourceRoot("candidate", candidateSnapshot.root, candidateSnapshot.identity),
+        baseline: await loadSnapshotSource("baseline", baselineSnapshot),
+        candidate: await loadSnapshotSource("candidate", candidateSnapshot),
       };
     } else {
       const preflight = await preflightSource(args.mode, args.sourceTree, args.expectedRevision);
@@ -1795,9 +1822,16 @@ async function runEvaluation(args: EvaluationArgs): Promise<void> {
       }
       const snapshot = await materializeSourceSnapshot(preflight);
       snapshots.push(snapshot);
-      diagnosticSource = await loadSourceRoot(args.mode, snapshot.root, snapshot.identity);
+      diagnosticSource = await loadSnapshotSource(args.mode, snapshot);
     }
 
+    if (
+      process.env.ENVEO_IMPORT_EVAL_TEST_MODE === "1" &&
+      process.env.ENVEO_TEST_RUNNER === "run-tests" &&
+      process.env.ENVEO_IMPORT_EVAL_TEST_CORPUS_READ_SENTINEL
+    ) {
+      await Bun.write(process.env.ENVEO_IMPORT_EVAL_TEST_CORPUS_READ_SENTINEL, "read");
+    }
     const manifestPath = await realpath(resolve(args.manifestPath));
     const manifestText = await readFile(manifestPath, "utf8");
     let manifestValue: unknown;
