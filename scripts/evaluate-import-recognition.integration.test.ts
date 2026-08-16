@@ -486,6 +486,8 @@ const runGate = async (
   expectedRevision = candidateRevision,
   assertNoImports = false,
   candidateSourceTree = candidateRoot,
+  mutatePath = "",
+  mutateContent = "",
 ) => {
   const child = Bun.spawn(
     [
@@ -519,6 +521,8 @@ const runGate = async (
         TEST_HISTORY_IMMUTABLE_UNSAFE: historyImmutableUnsafe ? "1" : "0",
         TEST_SOURCE_IMPORT_SENTINEL: assertNoImports ? sourceImportSentinel : "",
         TEST_TRANSPORT_IMPORT_SENTINEL: assertNoImports ? transportImportSentinel : "",
+        ENVEO_IMPORT_EVAL_TEST_MUTATE_PATH: mutatePath,
+        ENVEO_IMPORT_EVAL_TEST_MUTATE_CONTENT: mutateContent,
       },
     },
   );
@@ -526,9 +530,15 @@ const runGate = async (
   return { stdout, stderr, exitCode };
 };
 
-const runDiagnostic = async (mode: "baseline" | "candidate") => {
+const runDiagnostic = async (
+  mode: "baseline" | "candidate",
+  sourceTree = mode === "baseline" ? baselineRoot : candidateRoot,
+  expectedRevision = mode === "baseline" ? BASE_REVISION : candidateRevision,
+  selectedManifest = manifestPath,
+  assertNoImports = false,
+) => {
   const child = Bun.spawn(
-    [process.execPath, evaluator, "--manifest", manifestPath, "--mode", mode, "--source-tree", mode === "baseline" ? baselineRoot : candidateRoot],
+    [process.execPath, evaluator, "--manifest", selectedManifest, "--mode", mode, "--source-tree", sourceTree, "--expected-revision", expectedRevision],
     {
       stdout: "pipe",
       stderr: "pipe",
@@ -540,6 +550,8 @@ const runDiagnostic = async (mode: "baseline" | "candidate") => {
         ENVEO_IMPORT_EVAL_TEST_TRANSPORT: transportPath,
         ENVEO_TEST_RUNNER: "run-tests",
         TEST_HISTORY_FAIL: "0",
+        TEST_SOURCE_IMPORT_SENTINEL: assertNoImports ? sourceImportSentinel : "",
+        TEST_TRANSPORT_IMPORT_SENTINEL: assertNoImports ? transportImportSentinel : "",
       },
     },
   );
@@ -649,6 +661,27 @@ describe("paired import recognition CLI", () => {
     }
   });
 
+  test("full-tree bytes reject index-hidden drift in a baseline transitive dependency", async () => {
+    const sourcePath = resolve(baselineRoot, "packages/api/src/context.ts");
+    const original = await readFile(sourcePath, "utf8");
+    const baselineSentinel = resolve(root, "baseline-hidden-drift-imported");
+    const indexFlag = async (flag: "--assume-unchanged" | "--no-assume-unchanged"): Promise<void> => {
+      const child = Bun.spawn(["git", "-C", baselineRoot, "update-index", flag, "packages/api/src/context.ts"], { stdout: "ignore", stderr: "pipe" });
+      if ((await child.exited) !== 0) throw new Error(`could not apply ${flag}`);
+    };
+    await indexFlag("--assume-unchanged");
+    try {
+      await writeFile(sourcePath, `await Bun.write(${JSON.stringify(baselineSentinel)}, "imported");\n${original}`);
+      const result = await runGate(false, "", false, "run-tests", false, false, candidateRevision, true);
+      await expectPreflightOnly(result);
+      expect(JSON.parse(result.stdout).identity.sources.baseline).toMatchObject({ actualRevision: BASE_REVISION, clean: false, bound: false });
+      await expect(access(baselineSentinel)).rejects.toThrow();
+    } finally {
+      await writeFile(sourcePath, original);
+      await indexFlag("--no-assume-unchanged");
+    }
+  });
+
   test("preflight rejects unversioned and ignored nested source copies with transitive drift", async () => {
     const unversioned = resolve(root, "candidate-unversioned");
     await mkdir(unversioned, { recursive: true });
@@ -682,6 +715,50 @@ describe("paired import recognition CLI", () => {
       });
       expect(result.stderr).toBe("");
     }
+  });
+
+  test("unbound diagnostics preflight before source, transport, or private corpus reads", async () => {
+    const missingPrivateManifest = resolve(root, "must-not-read-private-manifest.json");
+    for (const mode of ["baseline", "candidate"] as const) {
+      const source = mode === "baseline" ? baselineRoot : candidateRoot;
+      const revision = "0123456789abcdef0123456789abcdef01234567";
+      const result = await runDiagnostic(mode, source, revision, missingPrivateManifest, true);
+      expect(result.exitCode).toBe(1);
+      expect(result.stderr).toBe("");
+      expect(JSON.parse(result.stdout)).toMatchObject({
+        mode,
+        identity: { transport: "not_loaded", source: { expectedRevision: revision, bound: false } },
+        metrics: null,
+        decision: { passed: false, reasons: ["source_identity_unbound"] },
+      });
+      await expect(access(sourceImportSentinel)).rejects.toThrow();
+      await expect(access(transportImportSentinel)).rejects.toThrow();
+      await expect(access(missingPrivateManifest)).rejects.toThrow();
+    }
+  });
+
+  test("executes the immutable snapshot when the original source mutates after preflight", async () => {
+    const sourcePath = resolve(candidateRoot, "packages/shared/src/aiPrompts.ts");
+    const original = await readFile(sourcePath, "utf8");
+    const mutationSentinel = resolve(root, "original-race-source-imported");
+    const mutated = `await Bun.write(${JSON.stringify(mutationSentinel)}, "imported"); throw new Error("mutable original imported");\n${original}`;
+    const snapshotsBefore = new Set((await readdir(tmpdir())).filter((entry) => entry.startsWith("enveo-import-eval-source-")));
+    try {
+      const result = await runGate(false, "", false, "run-tests", false, false, candidateRevision, false, candidateRoot, sourcePath, mutated);
+      expect(result.exitCode).toBe(2);
+      const output = JSON.parse(result.stdout);
+      expect(output.metrics.candidate.semanticKindAccuracy).toEqual({ correct: 11, total: 11, rate: 1 });
+      expect(output.identity.sources.candidate).toMatchObject({ bound: true, actualRevision: candidateRevision });
+      expect(output.identity.finalSources.candidate.bound).toBe(false);
+      expect(output.decision.reasons).toEqual(["source_identity_unbound", "non_live_transport"]);
+      await expect(access(mutationSentinel)).rejects.toThrow();
+    } finally {
+      await writeFile(sourcePath, original);
+    }
+    const status = Bun.spawn(["git", "-C", candidateRoot, "status", "--porcelain", "--untracked-files=all"], { stdout: "pipe", stderr: "pipe" });
+    expect((await new Response(status.stdout).text()).trim()).toBe("");
+    expect(await status.exited).toBe(0);
+    expect(new Set((await readdir(tmpdir())).filter((entry) => entry.startsWith("enveo-import-eval-source-")))).toEqual(snapshotsBefore);
   });
 
   test("prints a safe failed decision and exits nonzero when paired acceptance fails", async () => {
