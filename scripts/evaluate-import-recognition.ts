@@ -208,13 +208,16 @@ const candidateRelation = (value: unknown, field: string): ImportRecognitionRela
 
 /** Runtime boundary for a pipeline imported from the candidate source tree. Scoring
  * never receives an unchecked dynamic module result. */
-export function parseCandidateResult(value: unknown): CandidateResult {
+export function parseCandidateResult(value: unknown, imageCount: number): CandidateResult {
+  if (!Number.isInteger(imageCount) || imageCount <= 0) return candidateResultError("imageCount");
   if (!ownObject(value) || !Array.isArray(value.rows) || !Array.isArray(value.proposals)) return candidateResultError("root");
   const rows: CandidateRow[] = value.rows.map((entry, index) => {
     const field = `rows[${index}]`;
     if (!ownObject(entry)) return candidateResultError(field);
     if (typeof entry.rowId !== "string" || entry.rowId.length === 0) return candidateResultError(`${field}.rowId`);
-    if (!Number.isInteger(entry.imageIndex) || (entry.imageIndex as number) < 0) return candidateResultError(`${field}.imageIndex`);
+    if (!Number.isInteger(entry.imageIndex) || (entry.imageIndex as number) < 0 || (entry.imageIndex as number) >= imageCount) {
+      return candidateResultError(`${field}.imageIndex`);
+    }
     if (!Number.isInteger(entry.visualOrder) || (entry.visualOrder as number) < 0) return candidateResultError(`${field}.visualOrder`);
     const date = candidateNullableDate(entry.date, `${field}.date`);
     const amount = candidateNullableAmount(entry.amount, `${field}.amount`);
@@ -253,6 +256,9 @@ export function parseCandidateResult(value: unknown): CandidateResult {
     };
   });
   if (new Set(rows.map((row) => row.rowId)).size !== rows.length) return candidateResultError("rows duplicate rowId");
+  if (new Set(rows.map((row) => `${row.imageIndex}:${row.visualOrder}`)).size !== rows.length) {
+    return candidateResultError("rows duplicate visual position");
+  }
   const rowIds = new Set(rows.map((row) => row.rowId));
   for (const [index, row] of rows.entries()) {
     if (row.relation && !rowIds.has(row.relation.rowId)) return candidateResultError(`rows[${index}].relation.rowId`);
@@ -310,7 +316,7 @@ export function parseCandidateResult(value: unknown): CandidateResult {
 
 export type EvaluationArgs =
   | { manifestPath: string; mode: "baseline" | "candidate"; sourceTree: string }
-  | { manifestPath: string; mode: "compare"; baselineSourceTree: string; candidateSourceTree: string };
+  | { manifestPath: string; mode: "compare"; baselineSourceTree: string; candidateSourceTree: string; expectedCandidateRevision: string };
 
 export function parseEvalArgs(argv: readonly string[]): EvaluationArgs {
   const values = new Map<string, string>();
@@ -318,7 +324,7 @@ export function parseEvalArgs(argv: readonly string[]): EvaluationArgs {
     const flag = argv[index];
     const value = argv[index + 1];
     if (!flag?.startsWith("--") || !value || value.startsWith("--")) throw new Error(`expected a value after ${flag ?? "argument"}`);
-    if (!["--manifest", "--mode", "--source-tree", "--baseline-source-tree", "--candidate-source-tree"].includes(flag)) {
+    if (!["--manifest", "--mode", "--source-tree", "--baseline-source-tree", "--candidate-source-tree", "--expected-candidate-revision"].includes(flag)) {
       throw new Error(`unknown option ${flag}`);
     }
     if (values.has(flag)) throw new Error(`duplicate option ${flag}`);
@@ -330,10 +336,14 @@ export function parseEvalArgs(argv: readonly string[]): EvaluationArgs {
   if (mode === "compare") {
     const baselineSourceTree = values.get("--baseline-source-tree");
     const candidateSourceTree = values.get("--candidate-source-tree");
+    const expectedCandidateRevision = values.get("--expected-candidate-revision");
     if (!baselineSourceTree) throw new Error("--baseline-source-tree is required in compare mode");
     if (!candidateSourceTree) throw new Error("--candidate-source-tree is required in compare mode");
+    if (!expectedCandidateRevision || !/^[0-9a-f]{40}$/.test(expectedCandidateRevision)) {
+      throw new Error("--expected-candidate-revision must be an exact 40-character lowercase SHA in compare mode");
+    }
     if (values.has("--source-tree")) throw new Error("--source-tree is not valid in compare mode");
-    return { manifestPath, mode, baselineSourceTree, candidateSourceTree };
+    return { manifestPath, mode, baselineSourceTree, candidateSourceTree, expectedCandidateRevision };
   }
   if (mode !== "baseline" && mode !== "candidate") throw new Error("--mode must be baseline, candidate, or compare");
   const sourceTree = values.get("--source-tree");
@@ -929,18 +939,25 @@ export function comparisonReleaseStatus(
   transport: TransportKind,
   criteriaPassed: boolean,
   reasons: string[],
+  identityBound: boolean,
 ): { releaseEligible: boolean; passed: boolean; reasons: string[]; exitCode: number } {
-  const releaseEligible = transport === "openai" && criteriaPassed;
+  const releaseEligible = transport === "openai" && criteriaPassed && identityBound;
+  const safeReasons = identityBound ? reasons : [...reasons, "source_identity_unbound"];
   return {
     releaseEligible,
     passed: releaseEligible,
-    reasons: transport === "injected-test" ? [...reasons, "non_live_transport"] : reasons,
+    reasons: transport === "injected-test" ? [...safeReasons, "non_live_transport"] : safeReasons,
     exitCode: releaseEligible ? 0 : transport === "injected-test" && criteriaPassed ? 2 : 1,
   };
 }
 
 interface SourceIdentity {
-  revision: string;
+  expectedRevision: string;
+  actualRevision: string;
+  expectedModuleDigest: string;
+  actualModuleDigest: string;
+  clean: boolean;
+  bound: boolean;
   adapter: SourceAdapter;
   moduleHashes: Record<string, string>;
 }
@@ -966,6 +983,26 @@ const sha256 = (parts: readonly (string | Uint8Array)[]): string => {
 };
 
 const hashFile = async (path: string): Promise<string> => sha256([await readFile(path)]);
+const BASELINE_REVISION = "864c47f98c27bb7bf238e636b34f89dfa3dcc63c";
+const BASELINE_MODULE_HASHES: Record<string, string> = {
+  aiPrompts: "1b4c5f37d44e8d1e2cbc0a4a18cfca5428eb03f0a2beae3c0ab55809cdbb17b5",
+  importMatch: "1deb3c59acc50c0a649ce757cb0275fc647497be284a88e5a97ba59a3e90a993",
+  apiAdapter: "16db099e0bf7b6c6e4d3f969e3bad9811d5f2bc5728b84b7f698f7b98ccb787e",
+  dbClient: "611419743359fe79b6d770c8a312984f1ded254d74a7bcff14a9e8d015d6c675",
+  dbSchema: "329ff6fbea5b37a5e00611a8c3973a85a03111fb611c99026cfa41583927e820",
+};
+const moduleDigest = (hashes: Record<string, string>): string =>
+  sha256(
+    Object.entries(hashes)
+      .sort(([left], [right]) => left.localeCompare(right))
+      .flatMap(([name, hash]) => [name, "\0", hash, "\0"]),
+  );
+
+const gitText = async (root: string, args: string[]): Promise<string | null> => {
+  const child = Bun.spawn(["git", "-C", root, ...args], { stdout: "pipe", stderr: "ignore" });
+  const output = await new Response(child.stdout).text();
+  return (await child.exited) === 0 ? output : null;
+};
 
 const requireRegularFile = async (path: string, label: string): Promise<void> => {
   try {
@@ -1053,13 +1090,7 @@ async function resolveTransport(): Promise<{ kind: TransportKind; chat: ChatTran
   return { kind: "injected-test", chat: module.chat };
 }
 
-async function sourceRevision(root: string): Promise<string> {
-  const child = Bun.spawn(["git", "-C", root, "rev-parse", "HEAD"], { stdout: "pipe", stderr: "ignore" });
-  const output = await new Response(child.stdout).text();
-  return (await child.exited) === 0 && /^[0-9a-f]{40}\n?$/.test(output) ? output.trim() : "unversioned";
-}
-
-export async function loadSource(mode: "baseline" | "candidate", sourceTree: string): Promise<LoadedSource> {
+export async function loadSource(mode: "baseline" | "candidate", sourceTree: string, expectedCandidateRevision?: string): Promise<LoadedSource> {
   const root = await realpath(resolve(sourceTree));
   const promptsPath = resolve(root, "packages/shared/src/aiPrompts.ts");
   await requireRegularFile(promptsPath, "source aiPrompts module");
@@ -1104,7 +1135,36 @@ export async function loadSource(mode: "baseline" | "candidate", sourceTree: str
     moduleHashes.dbClient = await hashFile(dbPath);
     moduleHashes.dbSchema = await hashFile(schemaPath);
   }
-  return { root, prompts, baseline, identity: { revision: await sourceRevision(root), adapter, moduleHashes } };
+  const revisionText = await gitText(root, ["rev-parse", "HEAD"]);
+  const actualRevision = revisionText?.trim().match(/^[0-9a-f]{40}$/)?.[0] ?? "unversioned";
+  const status = await gitText(root, ["status", "--porcelain", "--untracked-files=all"]);
+  const clean = status !== null && status.length === 0;
+  const expectedRevision = mode === "baseline" ? BASELINE_REVISION : (expectedCandidateRevision ?? "unspecified");
+  let expectedHashes = BASELINE_MODULE_HASHES;
+  if (mode === "candidate" && /^[0-9a-f]{40}$/.test(expectedRevision)) {
+    const modulePaths: Record<string, string> = {
+      aiPrompts: "packages/shared/src/aiPrompts.ts",
+      importRecognition: "packages/shared/src/importRecognition.ts",
+      importHistory: "packages/shared/src/importHistory.ts",
+      apiAdapter: "packages/api/src/routes/import.ts",
+      e2eeAdapter: "packages/web/src/lib/aiProvider/e2eeByok.ts",
+    };
+    expectedHashes = {};
+    for (const [name, path] of Object.entries(modulePaths)) {
+      const contents = await gitText(root, ["show", `${expectedRevision}:${path}`]);
+      if (contents !== null) expectedHashes[name] = sha256([contents]);
+    }
+  }
+  const actualModuleDigest = moduleDigest(moduleHashes);
+  const expectedModuleDigest = moduleDigest(expectedHashes);
+  const revisionBound = actualRevision === expectedRevision;
+  const bound = revisionBound && clean && actualModuleDigest === expectedModuleDigest;
+  return {
+    root,
+    prompts,
+    baseline,
+    identity: { expectedRevision, actualRevision, expectedModuleDigest, actualModuleDigest, clean, bound, adapter, moduleHashes },
+  };
 }
 
 export async function runHistorySafetyGate(candidateRoot: string): Promise<HistorySafetyIdentity> {
@@ -1415,6 +1475,19 @@ export async function runBaselineProductionAdapter(input: {
   if (!source.baseline) throw new Error("baseline production route seam is unavailable");
   return serializeBaselineDbSeam(async () => {
     const originalSelect = source.baseline!.db.select;
+    const OriginalDate = globalThis.Date;
+    const fixedNow = OriginalDate.parse(`${fixture.today}T12:00:00.000Z`);
+    const FixtureDate = new Proxy(OriginalDate, {
+      apply(target, thisArg, args) {
+        return args.length === 0 ? new OriginalDate(fixedNow).toString() : Reflect.apply(target, thisArg, args);
+      },
+      construct(target, args, newTarget) {
+        return Reflect.construct(target, args.length === 0 ? [fixedNow] : args, newTarget);
+      },
+      get(target, property, receiver) {
+        return property === "now" ? () => fixedNow : Reflect.get(target, property, receiver);
+      },
+    });
     const rowsFor = baselineFixtureRows(source.baseline!, fixture);
     const fixtureSelect = (selection?: unknown): unknown => ({
       from: (table: unknown) => ({ where: async () => structuredClone(rowsFor(table, selection)) }),
@@ -1425,6 +1498,7 @@ export async function runBaselineProductionAdapter(input: {
     let routeFailure: unknown;
     let items: BaselineItem[] | undefined;
     try {
+      globalThis.Date = FixtureDate as DateConstructor;
       items = await source.baseline!.route.extractImportForBudget({
         budgetId: `evaluation:${fixture.id}`,
         images,
@@ -1435,8 +1509,10 @@ export async function runBaselineProductionAdapter(input: {
       routeFailed = true;
       routeFailure = error;
     } finally {
+      globalThis.Date = OriginalDate;
       source.baseline!.db.select = originalSelect;
     }
+    if (globalThis.Date !== OriginalDate) throw new Error("baseline production clock seam was not restored");
     if (source.baseline!.db.select !== originalSelect) throw new Error("baseline production database seam was not restored");
     if (routeFailed) throw routeFailure;
     if (!Array.isArray(items)) throw new Error("baseline production route returned an invalid result");
@@ -1477,7 +1553,7 @@ async function runSide(
           historyRecords: fixture.context.historyRecords,
           chat,
         });
-        actual.push(...normalizeCandidateRecognition(fixture.id, fixture.rows, parseCandidateResult(result)));
+        actual.push(...normalizeCandidateRecognition(fixture.id, fixture.rows, parseCandidateResult(result, images.length)));
       }
     } catch {
       throw new Error(`fixture ${fixture.id}: model output did not satisfy the ${mode} contract`);
@@ -1507,7 +1583,7 @@ async function runEvaluation(args: EvaluationArgs): Promise<void> {
 
   if (args.mode === "compare") {
     const baselineSource = await loadSource("baseline", args.baselineSourceTree);
-    const candidateSource = await loadSource("candidate", args.candidateSourceTree);
+    const candidateSource = await loadSource("candidate", args.candidateSourceTree, args.expectedCandidateRevision);
     const historySafety = await runHistorySafetyGate(candidateSource.root);
     if (!historySafety.passed) {
       process.stdout.write(
@@ -1563,7 +1639,8 @@ async function runEvaluation(args: EvaluationArgs): Promise<void> {
       return;
     }
     const decision = gateImportRecognition(expected, baselineActual, candidateActual);
-    const release = comparisonReleaseStatus(transport.kind, decision.passed, decision.reasons);
+    const identityBound = baselineSource.identity.bound && candidateSource.identity.bound;
+    const release = comparisonReleaseStatus(transport.kind, decision.passed, decision.reasons, identityBound);
     const output = {
       mode: "compare",
       releaseEligible: release.releaseEligible,

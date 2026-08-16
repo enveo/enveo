@@ -9,6 +9,7 @@ let manifestPath = "";
 let baselineRoot = "";
 let candidateRoot = "";
 let transportPath = "";
+let candidateRevision = "";
 
 const proposal = (type: "expense" | "income" | "transfer" | null, isRefund = false) => ({
   type,
@@ -415,13 +416,34 @@ export async function chat(input) {
   return JSON.stringify(value);
 }\n`,
   );
+  for (const args of [
+    ["init"],
+    ["config", "user.email", "evaluation@example.invalid"],
+    ["config", "user.name", "Evaluation Fixture"],
+    ["add", "."],
+    ["commit", "-m", "test: candidate fixture"],
+  ]) {
+    const child = Bun.spawn(["git", "-C", candidateRoot, ...args], { stdout: "ignore", stderr: "pipe" });
+    if ((await child.exited) !== 0) throw new Error(`could not version candidate fixture: ${args[0]}`);
+  }
+  const revision = Bun.spawn(["git", "-C", candidateRoot, "rev-parse", "HEAD"], { stdout: "pipe", stderr: "pipe" });
+  candidateRevision = (await new Response(revision.stdout).text()).trim();
+  if ((await revision.exited) !== 0 || !/^[0-9a-f]{40}$/.test(candidateRevision)) throw new Error("could not identify candidate fixture");
 });
 
 afterAll(async () => {
   if (root) await rm(root, { recursive: true, force: true });
 });
 
-const runGate = async (fail = false, missing = "", historyFail = false, runnerMarker = "run-tests", historyUnsafe = false, historyImmutableUnsafe = false) => {
+const runGate = async (
+  fail = false,
+  missing = "",
+  historyFail = false,
+  runnerMarker = "run-tests",
+  historyUnsafe = false,
+  historyImmutableUnsafe = false,
+  expectedRevision = candidateRevision,
+) => {
   const child = Bun.spawn(
     [
       process.execPath,
@@ -434,6 +456,8 @@ const runGate = async (fail = false, missing = "", historyFail = false, runnerMa
       baselineRoot,
       "--candidate-source-tree",
       candidateRoot,
+      "--expected-candidate-revision",
+      expectedRevision,
     ],
     {
       stdout: "pipe",
@@ -495,7 +519,7 @@ describe("paired import recognition CLI", () => {
       decision: {
         passed: false,
         criteriaPassed: true,
-        reasons: ["non_live_transport"],
+        reasons: ["source_identity_unbound", "non_live_transport"],
         transitions: { attributableSafety: 3, unexplainedNewReviews: 0 },
       },
     });
@@ -506,6 +530,13 @@ describe("paired import recognition CLI", () => {
     expect(output.identity.sources.candidate.moduleHashes.importHistory).toHaveLength(64);
     expect(output.identity.sources.candidate.moduleHashes.apiAdapter).toHaveLength(64);
     expect(output.identity.sources.candidate.moduleHashes.e2eeAdapter).toHaveLength(64);
+    expect(output.identity.sources.candidate).toMatchObject({
+      expectedRevision: candidateRevision,
+      actualRevision: candidateRevision,
+      bound: true,
+    });
+    expect(output.identity.sources.candidate.actualModuleDigest).toHaveLength(64);
+    expect(output.identity.sources.candidate.expectedModuleDigest).toHaveLength(64);
     // Cycle one deliberately labels the purchase as unknown, omits the FX relation,
     // and has no assignments. Only the production pipeline's cycle-two result can pass.
     expect(output.metrics.candidate.semanticKindAccuracy).toEqual({ correct: 11, total: 11, rate: 1 });
@@ -530,6 +561,16 @@ describe("paired import recognition CLI", () => {
     expect(result.stdout).toBe("");
     expect(result.stderr).toContain("injected evaluator transport is test-only");
     expect(result.stderr).not.toContain("PRIVATE_VISIBLE_SENTINEL");
+  });
+
+  test("fails closed when the explicit candidate revision does not match the loaded tree", async () => {
+    const expectedRevision = "0123456789abcdef0123456789abcdef01234567";
+    const result = await runGate(false, "", false, "run-tests", false, false, expectedRevision);
+
+    expect(result.exitCode).not.toBe(0);
+    const output = JSON.parse(result.stdout);
+    expect(output.identity.sources.candidate).toMatchObject({ expectedRevision, actualRevision: candidateRevision, bound: false });
+    expect(output.decision.reasons).toContain("source_identity_unbound");
   });
 
   test("single-side baseline and candidate diagnostics can never return the release-success exit", async () => {

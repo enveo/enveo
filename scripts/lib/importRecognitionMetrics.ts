@@ -286,6 +286,13 @@ export function gateImportRecognition(
      * zero, the normal paired no-regression rule applies. */
     if (baseline.relationRecall.correct === 0) {
       if (candidate.relationRecall.correct === 0) reasons.push("relation_recall_not_improved_from_zero");
+      /* A relation-blind legacy baseline supplies no useful paired denominator.
+       * In that case truth-bearing corpora impose conservative absolute floors:
+       * no invented relation is allowed, at least half of truth relations must be
+       * recovered, and the corresponding F1 must reach two thirds. */
+      if (candidate.relationPrecision.rate !== 1) reasons.push("relation_precision_below_absolute_floor");
+      if ((candidate.relationRecall.rate ?? 0) < 0.5) reasons.push("relation_recall_below_absolute_floor");
+      if ((candidate.relationF1 ?? 0) < 2 / 3) reasons.push("relation_f1_below_absolute_floor");
     } else if (candidate.relationRecall.correct < baseline.relationRecall.correct) {
       reasons.push("relation_recall_regression");
     }
