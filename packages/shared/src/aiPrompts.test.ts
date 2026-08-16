@@ -539,6 +539,47 @@ describe("runImportRecognitionPipeline", () => {
     expect(result.proposals[0]!.reviewReasons).toEqual(expect.arrayContaining(["history_conflict", "multiple_history_candidates"]));
   });
 
+  it("builds byte-identical cycle-two prompts for permutations of set-like ledger context", async () => {
+    const envelope2 = { ...base.envelopes[0]!, id: "envelope-2", name: "Travel", sort: 1 };
+    const categories = [
+      { id: "category-1", name: "Groceries" },
+      { id: "category-2", name: "Restaurants" },
+    ];
+    const histories = [history("account-1", "Food"), history("account-1", "Travel")];
+    const cycleTwoContent = async (reverse: boolean): Promise<string> => {
+      const requests: ChatRequest[] = [];
+      await runImportRecognitionPipeline({
+        ...base,
+        accounts: reverse ? [...base.accounts].reverse() : [...base.accounts],
+        envelopes: reverse ? [envelope2, ...base.envelopes] : [...base.envelopes, envelope2],
+        categories: reverse ? [...categories].reverse() : categories,
+        historyRecords: reverse ? [...histories].reverse() : histories,
+        chat: async (request) => {
+          requests.push(request);
+          if (requests.length === 1) return extracted();
+          return JSON.stringify({
+            rows: [
+              {
+                rowId: "r1",
+                name: "Groceries",
+                place: "Lidl",
+                envelopeId: "envelope-1",
+                categoryId: "category-1",
+                semanticKind: "card_purchase",
+                relation: null,
+                reviewReasons: [],
+              },
+            ],
+          });
+        },
+      });
+      expect(requests).toHaveLength(2);
+      return requests[1]!.messages[1]!.content as string;
+    };
+
+    expect(await cycleTwoContent(false)).toBe(await cycleTwoContent(true));
+  });
+
   it("returns validated raw proposals when cycle two fails", async () => {
     let calls = 0;
     const result = await runImportRecognitionPipeline({

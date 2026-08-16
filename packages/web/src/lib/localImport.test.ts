@@ -1,7 +1,14 @@
 import { describe, expect, it } from "bun:test";
-import { type ClientLedger, createDefaultBudgetPreferences } from "@enveo/shared";
+import { type ClientLedger, createDefaultBudgetPreferences, type ImportRecognitionResult } from "@enveo/shared";
 import type { EditedImportItem, ImportApplyItem } from "./api";
-import { applyLocalImport, importReviewItem, type LocalImportMutationPort, planLocalImport, reviewedImportItemsForApply } from "./localImport";
+import {
+  adaptRecognitionForLegacyReview,
+  applyLocalImport,
+  importReviewItem,
+  type LocalImportMutationPort,
+  planLocalImport,
+  reviewedImportItemsForApply,
+} from "./localImport";
 
 const U = (n: number): string => `00000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
 const ledger = (): ClientLedger => ({
@@ -112,6 +119,59 @@ function mutationSpy() {
 }
 
 describe("local E2EE import planning", () => {
+  it("does not project an unsafe unselected recognition proposal into the legacy review", () => {
+    const recognition: ImportRecognitionResult = {
+      rows: [
+        {
+          rowId: "unsafe-row",
+          imageIndex: 0,
+          visualOrder: 0,
+          rawTextLines: ["CARD PURCHASE", "25.00 EUR"],
+          date: "2026-08-02",
+          amount: 2500,
+          currency: "EUR",
+          direction: "debit",
+          postingStatus: "posted",
+          rowRole: "financial_event",
+          semanticKind: "card_purchase",
+          relation: { kind: "counterpart_of", rowId: "other-row" },
+          confidence: "medium",
+          reviewReasons: ["relation_changes_ledger_shape"],
+        },
+      ],
+      proposals: [
+        {
+          rowId: "unsafe-row",
+          sourceRows: ["unsafe-row"],
+          disposition: "candidate",
+          date: "2026-08-02",
+          amount: 2500,
+          currency: "EUR",
+          type: "expense",
+          isRefund: false,
+          toAccountId: null,
+          semanticKind: "card_purchase",
+          relation: { kind: "counterpart_of", rowId: "other-row" },
+          name: "Card purchase",
+          tag: "",
+          rawPlace: "CARD PURCHASE\n25.00 EUR",
+          envelopeId: U(5),
+          categoryId: U(6),
+          placeName: null,
+          reviewReasons: ["relation_changes_ledger_shape"],
+          selected: false,
+        },
+      ],
+    };
+
+    const adapted = adaptRecognitionForLegacyReview(recognition, ledger());
+    const dry = planLocalImport({ ledger: ledger(), globalAccountId: U(2), items: adapted, dryRun: true });
+    const review = dry.results.map((result) => importReviewItem(result, U(5), "EUR"));
+
+    expect(adapted).toEqual([]);
+    expect(review).toEqual([]);
+  });
+
   it("matches sure/probable/new and strong-deduplicates within a batch", () => {
     const plan = planLocalImport({
       ledger: ledger(),

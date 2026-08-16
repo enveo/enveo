@@ -116,6 +116,44 @@ export class ImportCycleOneFailure extends Error {
   }
 }
 
+export interface ServerImportRecognitionAdapterInput {
+  images: string[];
+  locale: string;
+  today: string;
+  budgetCurrency: string;
+  accountId: string;
+  accountRows: Array<Omit<Account, "type"> & { type: string }>;
+  envelopeRows: Envelope[];
+  categoryRows: Category[];
+  transactionRows: Array<Omit<Transaction, "type" | "items"> & { type: string }>;
+  historyRecords: ImportHistoryRecord[];
+  chat: ImportModelChat;
+}
+
+/** Production server boundary: normalize database row types, then enter the
+ * provider-neutral recognition pipeline used by unlocked E2EE clients too. */
+export function runServerImportRecognitionAdapter(input: ServerImportRecognitionAdapterInput) {
+  const accounts: Account[] = input.accountRows.map((account) => ({ ...account, type: account.type as Account["type"] }));
+  const transactions: Transaction[] = input.transactionRows.map((transaction) => ({
+    ...transaction,
+    type: transaction.type as Transaction["type"],
+    items: [],
+  }));
+  return runImportRecognitionPipeline({
+    images: input.images,
+    locale: input.locale,
+    today: input.today,
+    budgetCurrency: input.budgetCurrency,
+    accountId: input.accountId,
+    accounts,
+    envelopes: input.envelopeRows,
+    categories: input.categoryRows,
+    transactions,
+    historyRecords: input.historyRecords,
+    chat: input.chat,
+  });
+}
+
 /** Shared operator/BYOK import pipeline. Prompt construction and both parsing cycles stay in
  * one place; only the request-scoped model transport differs. */
 export async function extractImportForBudget(input: { budgetId: string; accountId: string; images: string[]; locale: string; chat: ImportModelChat }) {
@@ -129,26 +167,18 @@ export async function extractImportForBudget(input: { budgetId: string; accountI
     db.select().from(s.transactions).where(eq(s.transactions.budgetId, budgetId)),
   ]);
   const currency = budgetRow?.currency ?? "EUR";
-  const accounts: Account[] = accountRows.map((account) => ({ ...account, type: account.type as Account["type"] }));
-  const envelopes: Envelope[] = envelopeRows;
-  const categories: Category[] = categoryRows;
-  const transactions: Transaction[] = transactionRows.map((transaction) => ({
-    ...transaction,
-    type: transaction.type as Transaction["type"],
-    items: [],
-  }));
   const historyRecords = await loadImportHistory(budgetId, currency);
   try {
-    return await runImportRecognitionPipeline({
+    return await runServerImportRecognitionAdapter({
       images,
       locale,
       today,
       budgetCurrency: currency,
       accountId,
-      accounts,
-      envelopes,
-      categories,
-      transactions,
+      accountRows,
+      envelopeRows,
+      categoryRows,
+      transactionRows,
       historyRecords,
       chat,
     });

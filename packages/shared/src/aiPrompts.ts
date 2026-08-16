@@ -530,6 +530,9 @@ export const IMPORT_ENRICH_JSON_SCHEMA = {
   },
 } as const;
 
+const canonicalPromptEntities = (entities: Array<{ id: string; name: string }>): Array<{ id: string; name: string }> =>
+  [...entities].sort((left, right) => (left.id < right.id ? -1 : left.id > right.id ? 1 : 0));
+
 /** Builds cycle two from validated facts and bounded, compatible history evidence. */
 export function buildImportEnrichPrompt(input: ImportEnrichPromptInput, locale: AiLocale): ChatRequest {
   const proposalById = new Map(input.result.proposals.map((proposal) => [proposal.rowId, proposal]));
@@ -554,7 +557,11 @@ export function buildImportEnrichPrompt(input: ImportEnrichPromptInput, locale: 
         role: "user",
         content: JSON.stringify({
           rows,
-          entities: { envelopes: input.envelopes, categories: input.categories, accounts: input.accounts },
+          entities: {
+            envelopes: canonicalPromptEntities(input.envelopes),
+            categories: canonicalPromptEntities(input.categories),
+            accounts: canonicalPromptEntities(input.accounts),
+          },
         }),
       },
     ],

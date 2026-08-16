@@ -1,4 +1,4 @@
-import { buildImportDupIndex, type ClientLedger, classifyImportDup, type TxnPayload } from "@enveo/shared";
+import { buildImportDupIndex, type ClientLedger, classifyImportDup, type ImportRecognitionResult, type TxnPayload } from "@enveo/shared";
 import type { EditedImportItem, ImportApplyItem, ImportApplyResponse, ImportItem } from "./api";
 import { expenseEnvelopeSelectionForImport } from "./automaticEnvelopeUi";
 import { local } from "./mutate";
@@ -27,6 +27,35 @@ export interface LocalImportMutationPort {
   createCategory(name: string): { id: string };
   createPlace(name: string): { id: string };
   createTxn(payload: TxnPayload): string;
+}
+
+/** Temporary Task 4 bridge into the legacy review. Task 5 renders every
+ * recognition disposition; until then, unsafe proposals must not cross into a
+ * review model that would otherwise default them to included. */
+export function adaptRecognitionForLegacyReview(result: ImportRecognitionResult, ledger: ClientLedger): ImportApplyItem[] {
+  const envelopeNames = new Map(ledger.envelopes.map((envelope) => [envelope.id, envelope.name]));
+  const categoryNames = new Map(ledger.categories.map((category) => [category.id, category.name]));
+  return result.proposals.flatMap((proposal) => {
+    if (!proposal.selected || proposal.disposition !== "candidate" || proposal.date === null || proposal.amount === null || proposal.type === null) return [];
+    return [
+      {
+        date: proposal.date,
+        amount: proposal.amount,
+        type: proposal.type,
+        isRefund: proposal.isRefund,
+        toAccountId: proposal.toAccountId,
+        name: proposal.name,
+        tag: proposal.tag,
+        rawPlace: proposal.rawPlace,
+        envelopeId: proposal.envelopeId,
+        envelopeName: proposal.envelopeId ? (envelopeNames.get(proposal.envelopeId) ?? null) : null,
+        categoryId: proposal.categoryId,
+        categoryName: proposal.categoryId ? (categoryNames.get(proposal.categoryId) ?? null) : null,
+        placeName: proposal.placeName,
+        currency: proposal.currency ?? undefined,
+      },
+    ];
+  });
 }
 
 /** Convert either server or local dry-run output without erasing local provenance. */

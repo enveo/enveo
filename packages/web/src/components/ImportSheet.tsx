@@ -12,7 +12,14 @@ import { formatMoney, isLight } from "../lib/format";
 import { useT } from "../lib/i18n";
 import { Glyph, Ico } from "../lib/icons";
 import { preferredAccountId, setLastAccountId } from "../lib/lastAccount";
-import { applyLocalImport, importReviewItem, type LocalImportReviewItem, planLocalImport, reviewedImportItemsForApply } from "../lib/localImport";
+import {
+  adaptRecognitionForLegacyReview,
+  applyLocalImport,
+  importReviewItem,
+  type LocalImportReviewItem,
+  planLocalImport,
+  reviewedImportItemsForApply,
+} from "../lib/localImport";
 import { store } from "../lib/store";
 import { assertOwnReplica } from "../lib/sync";
 import { CORAL, font, TEAL, TRANSFER, tint } from "../lib/theme";
@@ -150,31 +157,7 @@ export function ImportSheet({ show, onClose, state, onApplied }: { show: boolean
         setError(t("No transactions were recognized in the screenshots."));
         return;
       }
-      const envelopeNames = new Map(ledger.envelopes.map((envelope) => [envelope.id, envelope.name]));
-      const categoryNames = new Map(ledger.categories.map((category) => [category.id, category.name]));
-      const extracted: ImportApplyItem[] = recognition.proposals.flatMap((proposal) => {
-        if (proposal.disposition !== "candidate" || proposal.date === null || proposal.amount === null || proposal.type === null) {
-          return [];
-        }
-        return [
-          {
-            date: proposal.date,
-            amount: proposal.amount,
-            type: proposal.type,
-            isRefund: proposal.isRefund,
-            toAccountId: proposal.toAccountId,
-            name: proposal.name,
-            tag: proposal.tag,
-            rawPlace: proposal.rawPlace,
-            envelopeId: proposal.envelopeId,
-            envelopeName: proposal.envelopeId ? (envelopeNames.get(proposal.envelopeId) ?? null) : null,
-            categoryId: proposal.categoryId,
-            categoryName: proposal.categoryId ? (categoryNames.get(proposal.categoryId) ?? null) : null,
-            placeName: proposal.placeName,
-            currency: proposal.currency ?? undefined,
-          },
-        ];
-      });
+      const extracted: ImportApplyItem[] = adaptRecognitionForLegacyReview(recognition, ledger);
       if (extracted.length === 0) {
         setError(t("No transactions were recognized in the screenshots."));
         return;
