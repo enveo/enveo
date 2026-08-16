@@ -183,6 +183,25 @@ describe("local E2EE import planning", () => {
     expect(plan).toMatchObject({ added: 1, skipped: 2, transactions: [] });
   });
 
+  it("rechecks duplicates in review and again against the live ledger immediately before mutation", () => {
+    // given: extraction saw a new row and the first dry run exposes it for review
+    const first = planLocalImport({ ledger: ledger(), globalAccountId: U(2), dryRun: true, items: [item({ rawPlace: "LATE RAW" })] });
+    expect(first.results[0]!.status).toBe("added");
+
+    // and: another write lands while the review sheet remains open
+    const live = ledger();
+    live.transactions.push({ ...live.transactions[0]!, id: U(30), date: "2026-08-02", amount: 2500, sourceRef: "LATE RAW" });
+
+    // when: apply planning is recomputed from the live ledger
+    const final = planLocalImport({ ledger: live, globalAccountId: U(2), dryRun: false, items: [item({ rawPlace: "LATE RAW" })] });
+    const spy = mutationSpy();
+    applyLocalImport(final, spy.mutations);
+
+    // then: the stale review selection cannot create the newly duplicated transaction
+    expect(final).toMatchObject({ added: 0, skipped: 1 });
+    expect(spy.created.transactions).toEqual([]);
+  });
+
   it("a forced edited duplicate is planned as a new transaction", () => {
     const plan = planLocalImport({
       ledger: ledger(),

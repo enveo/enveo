@@ -1,5 +1,7 @@
 import { describe, expect, it } from "bun:test";
-import { createDefaultBudgetPreferences } from "@enveo/shared";
+import { type ClientLedger, createDefaultBudgetPreferences } from "@enveo/shared";
+import { providerOptionsForTier } from "../../screens/settings/Ai";
+import { prepareLedgerForE2eeEnable } from "../../screens/settings/DataSection";
 import { E2eeByokProvider } from "./e2eeByok";
 import { EnveoAiProvider } from "./enveo";
 import { createAiProvider } from "./factory";
@@ -93,5 +95,37 @@ describe("AI provider implementations", () => {
     );
     const unavailable = createAiProvider({ tier: "e2ee", budgetId: "b", unlocked: true, preferences: { ...preferences, aiProvider: "openai" } });
     expect(unavailable).toBeInstanceOf(E2eeByokProvider);
+  });
+
+  it("offers Enveo AI only while the budget is plain", () => {
+    // Break caught: an E2EE settings screen could offer a provider that must send
+    // plaintext through the server and is therefore unavailable by design.
+    expect(providerOptionsForTier("plain")).toEqual(["rules", "enveo", "openai"]);
+    expect(providerOptionsForTier("e2ee")).toEqual(["rules", "openai"]);
+  });
+
+  it("puts the Enveo-to-rules downgrade inside the snapshot used by E2EE enable", () => {
+    // Break caught: flipping the tier before the replicated preference changes leaves
+    // an encrypted budget selected on an impossible server-AI provider.
+    const preferences = { ...createDefaultBudgetPreferences(), aiProvider: "enveo" as const };
+    const ledger: ClientLedger = {
+      budgets: [{ id: "budget-a", name: "Budget", currency: "EUR", preferences }],
+      accounts: [],
+      groups: [],
+      envelopes: [],
+      categories: [],
+      places: [],
+      transactions: [],
+      allocations: [],
+    };
+
+    const prepared = prepareLedgerForE2eeEnable(ledger);
+
+    expect(prepared.budgets[0]!.preferences.aiProvider).toBe("rules");
+    expect(ledger.budgets[0]!.preferences.aiProvider).toBe("enveo");
+    expect(
+      prepareLedgerForE2eeEnable({ ...ledger, budgets: [{ ...ledger.budgets[0]!, preferences: { ...preferences, aiProvider: "openai" } }] }).budgets[0]!
+        .preferences.aiProvider,
+    ).toBe("openai");
   });
 });

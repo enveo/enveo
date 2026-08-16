@@ -11,15 +11,9 @@ import * as e2ee from "../lib/e2ee";
 import { formatMoney, isLight } from "../lib/format";
 import { useT } from "../lib/i18n";
 import { Glyph, Ico } from "../lib/icons";
+import { buildImportReviewRows, type ImportReviewRow, reviewBadges, reviewedImportRowsForApply } from "../lib/importReview";
 import { preferredAccountId, setLastAccountId } from "../lib/lastAccount";
-import {
-  adaptRecognitionForLegacyReview,
-  applyLocalImport,
-  importReviewItem,
-  type LocalImportReviewItem,
-  planLocalImport,
-  reviewedImportItemsForApply,
-} from "../lib/localImport";
+import { applyLocalImport, planLocalImport, recognitionCandidatesForDryRun } from "../lib/localImport";
 import { store } from "../lib/store";
 import { assertOwnReplica } from "../lib/sync";
 import { CORAL, font, TEAL, TRANSFER, tint } from "../lib/theme";
@@ -69,7 +63,7 @@ export function ImportSheet({ show, onClose, state, onApplied }: { show: boolean
   const [accountId, setAccountId] = useState(() => preferredAccountId(accounts, accounts[0]?.id ?? ""));
   const [images, setImages] = useState<string[]>([]);
   const [phase, setPhase] = useState<Phase>("pick");
-  const [items, setItems] = useState<LocalImportReviewItem[]>([]);
+  const [items, setItems] = useState<ImportReviewRow[]>([]);
   const [, setRecognition] = useState<Awaited<ReturnType<typeof runImportExtract>> | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -157,13 +151,11 @@ export function ImportSheet({ show, onClose, state, onApplied }: { show: boolean
         setError(t("No transactions were recognized in the screenshots."));
         return;
       }
-      const extracted: ImportApplyItem[] = adaptRecognitionForLegacyReview(recognition, ledger);
-      if (extracted.length === 0) {
-        setError(t("No transactions were recognized in the screenshots."));
-        return;
-      }
+      const extracted: ImportApplyItem[] = recognitionCandidatesForDryRun(recognition, ledger);
       let dry: Pick<ImportApplyResponse, "results">;
-      if (tierAtStart.tier === "e2ee") {
+      if (extracted.length === 0) {
+        dry = { results: [] };
+      } else if (tierAtStart.tier === "e2ee") {
         const current = e2ee.getTierMeta();
         if (current.tier !== "e2ee" || current.epoch !== tierAtStart.epoch) throw new Error("no_encryption_key");
         e2ee.requireValidatedDek(current.epoch).fill(0);
@@ -175,14 +167,8 @@ export function ImportSheet({ show, onClose, state, onApplied }: { show: boolean
         dry = await api.importApply({ accountId, budgetId: store.getBudgetId() || undefined, items: extracted, dryRun: true });
         reviewE2eeEpoch.current = null;
       }
-      // fx rows (currency differs from the budget's) default to UNCHECKED — the user must
-      // consciously confirm the amount before it's included (the amber chip explains why).
-      setItems(
-        dry.results.map((r) => {
-          const automaticEnvelopeId = accounts.find((account) => account.id === accountId)?.automaticEnvelopeId;
-          return importReviewItem(r, automaticEnvelopeId, currency);
-        }),
-      );
+      const automaticEnvelopeId = accounts.find((account) => account.id === accountId)?.automaticEnvelopeId;
+      setItems(buildImportReviewRows({ recognition, ledger, dryRunResults: dry.results, automaticEnvelopeId, budgetCurrency: currency }));
       setEdited({}); // fresh review = no corrections (edited is keyed by index)
       setEditedAutomaticDefaults({});
       setPhase("review");
@@ -216,7 +202,7 @@ export function ImportSheet({ show, onClose, state, onApplied }: { show: boolean
     try {
       // merge editor corrections: fields from edited[i] override the original (including
       // per-item account); rawPlace ALWAYS from the original — source_ref feeds self-learning
-      const chosen: ImportApplyItem[] = reviewedImportItemsForApply({ items, edited, editedAutomaticDefaults });
+      const chosen: ImportApplyItem[] = reviewedImportRowsForApply({ rows: items, edited, editedAutomaticDefaults });
       // The review can sit open for minutes: re-prove ownership before attaching local ops
       // that the sync engine will later write for this replica.
       let res = { added: 0, skipped: 0 };
@@ -233,7 +219,7 @@ export function ImportSheet({ show, onClose, state, onApplied }: { show: boolean
         res = applyLocalImport(planLocalImport({ ledger, globalAccountId: accountId, items: chosen, dryRun: false }));
       }
       setLastAccountId(accountId); // per-device preference (same as on the Add screen)
-      setDoneStats({ added: res.added, dup: items.filter((i) => i.status === "exists").length + res.skipped });
+      setDoneStats({ added: res.added, dup: items.filter((row) => row.item?.status === "exists").length + res.skipped });
       setPhase("done");
     } catch (e) {
       setError(errMsg(e));
@@ -243,9 +229,11 @@ export function ImportSheet({ show, onClose, state, onApplied }: { show: boolean
   };
 
   const toggle = (idx: number) =>
-    setItems((prev) => prev.map((it, i) => (i === idx && (it.status !== "exists" || !!edited[idx]) ? { ...it, include: !it.include } : it)));
+    setItems((prev) =>
+      prev.map((row, i) => (i === idx && row.item && (row.item.status !== "exists" || !!edited[idx]) ? { ...row, include: !row.include } : row)),
+    );
 
-  const selectedCount = items.filter((it, i) => it.include && (it.status !== "exists" || !!edited[i])).length;
+  const selectedCount = items.filter((row, i) => row.item && row.include && (row.item.status !== "exists" || !!edited[i])).length;
   const label = { fontSize: 10.5, color: C.mute, fontWeight: 600, textTransform: "uppercase" as const, letterSpacing: 0.6, marginBottom: 6 };
 
   return (
@@ -368,27 +356,35 @@ export function ImportSheet({ show, onClose, state, onApplied }: { show: boolean
 
         {phase === "review" && (
           <>
-            <div style={{ fontSize: 17, fontWeight: 700, color: C.text, textAlign: "center", marginBottom: 4 }}>{t("Recognized transactions")}</div>
+            <div style={{ fontSize: 17, fontWeight: 700, color: C.text, textAlign: "center", marginBottom: 4 }}>{t("Review recognized rows")}</div>
             <div style={{ fontSize: 12, color: C.mute, textAlign: "center", marginBottom: 12 }}>
-              {t("Untick what you don't want. Duplicates are skipped — tap one to edit and add it anyway.")}
+              {t("Every recognized row stays visible. Only checked transaction candidates will be added.")}
             </div>
 
-            {items.map((it, idx) => {
-              // the row shows post-edit values (edited[idx]), the original when there are no corrections
-              const e = edited[idx] as EditedImportItem | undefined;
-              const type = e?.type ?? it.type;
-              const amount = e?.amount ?? it.amount;
-              const name = (e ? e.name : it.name) || it.tag;
-              const envId = e ? e.envelopeId : it.envelopeId;
+            {items.map((row, idx) => {
+              const it = row.item;
+              // Candidate rows show post-edit values; evidence-only rows stay faithful to extraction.
+              const e = it ? (edited[idx] as EditedImportItem | undefined) : undefined;
+              const type = e?.type ?? it?.type ?? null;
+              const amount = e?.amount ?? it?.amount ?? row.amount;
+              const name = it ? (e ? e.name : it.name) || it.tag || row.rawTextLines[0] : row.rawTextLines[0] || t("Unrecognized row");
+              const envId = e ? e.envelopeId : it?.envelopeId;
               const env = envId ? envById.get(envId) : null;
-              const catName = e ? (e.categoryId ? (state.categories.find((c) => c.id === e.categoryId)?.name ?? null) : null) : (it.categoryName ?? null);
-              const refund = e?.isRefund ?? it.isRefund ?? false;
-              const exists = it.status === "exists" && !e; // an edited duplicate is treated as a new item
+              const catName = e ? (e.categoryId ? (state.categories.find((c) => c.id === e.categoryId)?.name ?? null) : null) : (it?.categoryName ?? null);
+              const refund = e?.isRefund ?? it?.isRefund ?? false;
+              const exists = it?.status === "exists" && !e;
               const itemAccountId = e?.accountId ?? accountId;
-              const itemToAccountId = e?.toAccountId ?? it.toAccountId ?? null;
-              const automaticPreview = automaticEnvelopePreview(state, { type, accountId: itemAccountId, toAccountId: itemToAccountId }, amount);
+              const itemToAccountId = e?.toAccountId ?? it?.toAccountId ?? null;
+              const automaticPreview =
+                it && type && amount !== null
+                  ? automaticEnvelopePreview(state, { type, accountId: itemAccountId, toAccountId: itemToAccountId }, amount)
+                  : null;
               const automaticEffect =
-                (type === "income" || type === "transfer") && amount > 0 && (automaticPreview.rows.length > 0 || automaticPreview.neutral)
+                automaticPreview &&
+                (type === "income" || type === "transfer") &&
+                amount !== null &&
+                amount > 0 &&
+                (automaticPreview.rows.length > 0 || automaticPreview.neutral)
                   ? formatAutomaticEnvelopeEffect(automaticPreview, (value) => formatMoney(value, currency, lang), {
                       heading: t("Automatic envelope effect"),
                       readyToAssign: t("Ready to assign"),
@@ -396,37 +392,37 @@ export function ImportSheet({ show, onClose, state, onApplied }: { show: boolean
                       noChange: t("No change"),
                     })
                   : null;
-              // FX row: the extracted amount is in a currency other than the budget's — nothing was
-              // converted (we never guess a rate), so the user must eyeball it. fxOriginal (when
-              // present) is the original foreign charge that WAS converted/settled server-side.
-              const fxMismatch = !!it.currency && it.currency !== currency;
+              const fxMismatch = !!row.currency && row.currency !== currency;
+              const badges = reviewBadges(row);
               return (
-                <div key={idx} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 2px", opacity: exists ? 0.45 : 1 }}>
+                <div key={row.rowId} style={{ display: "flex", alignItems: "flex-start", gap: 10, padding: "9px 2px", opacity: exists ? 0.55 : 1 }}>
                   <span
-                    onClick={() => toggle(idx)}
+                    onClick={it ? () => toggle(idx) : undefined}
                     role="checkbox"
-                    aria-checked={it.include}
+                    aria-checked={row.include}
+                    aria-disabled={!it || (exists && !e)}
                     style={{
                       width: 22,
                       height: 22,
                       borderRadius: "50%",
                       flexShrink: 0,
-                      cursor: exists ? "default" : "pointer",
-                      border: `2px solid ${it.include ? TEAL : C.line}`,
-                      background: it.include ? TEAL : "transparent",
+                      marginTop: 3,
+                      cursor: !it || exists ? "default" : "pointer",
+                      border: `2px solid ${row.include ? TEAL : C.line}`,
+                      background: row.include ? TEAL : "transparent",
                       display: "flex",
                       alignItems: "center",
                       justifyContent: "center",
+                      opacity: it ? 1 : 0.45,
                     }}
                   >
-                    {it.include && <Ico d="M5 13l4 4L19 7" size={12} color="#fff" sw={3} />}
+                    {row.include && <Ico d="M5 13l4 4L19 7" size={12} color="#fff" sw={3} />}
                   </span>
-                  {/* tap on content (outside the checkbox) → full-screen item editor */}
                   <div
-                    onClick={() => setEditorIdx(idx)} /* duplicates are editable too — once saved they count as new (force) */
-                    role="button"
-                    aria-label={t("Edit item {n}", { n: idx + 1 })}
-                    style={{ flex: 1, minWidth: 0, display: "flex", alignItems: "center", gap: 10, cursor: "pointer" }}
+                    onClick={it ? () => setEditorIdx(idx) : undefined}
+                    role={it ? "button" : undefined}
+                    aria-label={it ? t("Edit item {n}", { n: idx + 1 }) : undefined}
+                    style={{ flex: 1, minWidth: 0, display: "flex", alignItems: "flex-start", gap: 10, cursor: it ? "pointer" : "default" }}
                   >
                     <span
                       style={{
@@ -450,7 +446,7 @@ export function ImportSheet({ show, onClose, state, onApplied }: { show: boolean
                           </span>
                         )}
                         <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0 }}>{name}</span>
-                        {fxMismatch && (
+                        {fxMismatch && row.currency && (
                           <span
                             style={{
                               flexShrink: 0,
@@ -463,38 +459,59 @@ export function ImportSheet({ show, onClose, state, onApplied }: { show: boolean
                               color: C.warn,
                             }}
                           >
-                            {it.currency}
+                            {row.currency}
                           </span>
                         )}
                       </div>
                       <div style={{ fontSize: 10.5, color: C.mute, marginTop: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                        {e?.date ?? it.date} · {(e ? e.placeName : it.placeName) ?? it.tag}
+                        {(e?.date ?? it?.date ?? row.date) || t("Date unknown")}
+                        {it ? ` · ${(e ? e.placeName : it.placeName) ?? it.tag}` : ""}
                         {env ? ` · ${env.name}` : ""}
                         {catName ? ` · ${catName}` : ""}
-                        {refund ? ` · ${t("refund")}` : ""}
-                        {exists ? ` · ${t("already exists")}` : ""}
-                        {it.status === "probable" && <span style={{ color: C.warn, fontWeight: 600 }}> · {t("probable duplicate")}</span>}
                       </div>
-                      {it.fxOriginal && <div style={{ fontSize: 10, color: C.mute, marginTop: 1 }}>{it.fxOriginal}</div>}
+                      <div style={{ fontSize: 10, color: C.mute, marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                        {row.sourceRef.replace(/\n/g, " · ")}
+                      </div>
+                      {badges.length > 0 && (
+                        <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginTop: 5 }}>
+                          {badges.map((badge) => (
+                            <span
+                              key={badge.label}
+                              style={{
+                                fontSize: 9.5,
+                                fontWeight: 650,
+                                padding: "2px 6px",
+                                borderRadius: 8,
+                                background: badge.tone === "positive" ? tint(C.pos, 0.14) : badge.tone === "warning" ? tint(C.warn, 0.15) : C.inset,
+                                color: badge.tone === "positive" ? C.pos : badge.tone === "warning" ? C.warn : C.soft,
+                              }}
+                            >
+                              {t(badge.label)}
+                            </span>
+                          ))}
+                        </div>
+                      )}
                       {fxMismatch && (
                         <div style={{ fontSize: 10, color: C.warn, marginTop: 1 }}>
-                          {t("Recorded in {currency} — check the amount.", { currency: it.currency! })}
+                          {t("Recorded in {currency} — check the amount.", { currency: row.currency! })}
                         </div>
                       )}
                       {automaticEffect && <AutomaticEnvelopeEffect data={automaticEffect} compact />}
                     </div>
-                    <span
-                      style={{
-                        fontSize: 13.5,
-                        fontWeight: 600,
-                        fontVariantNumeric: "tabular-nums",
-                        color: type === "transfer" ? TRANSFER : type === "income" || refund ? C.pos : C.text,
-                        flexShrink: 0,
-                      }}
-                    >
-                      {type === "transfer" ? "↔ " : type === "income" || refund ? "+" : "-"}
-                      {formatMoney(amount, currency, lang)}
-                    </span>
+                    {amount !== null && type && (
+                      <span
+                        style={{
+                          fontSize: 13.5,
+                          fontWeight: 600,
+                          fontVariantNumeric: "tabular-nums",
+                          color: type === "transfer" ? TRANSFER : type === "income" || refund ? C.pos : C.text,
+                          flexShrink: 0,
+                        }}
+                      >
+                        {type === "transfer" ? "↔ " : type === "income" || refund ? "+" : "-"}
+                        {formatMoney(amount, currency, lang)}
+                      </span>
+                    )}
                   </div>
                 </div>
               );
@@ -590,7 +607,7 @@ export function ImportSheet({ show, onClose, state, onApplied }: { show: boolean
         (IconColorPicker pattern) — the Sheet has a transform, position:fixed inside it breaks. */}
       {show &&
         editorIdx !== null &&
-        items[editorIdx] &&
+        items[editorIdx]?.item &&
         createPortal(
           <div
             style={{
@@ -612,14 +629,13 @@ export function ImportSheet({ show, onClose, state, onApplied }: { show: boolean
               editTxn={null}
               onDone={() => setEditorIdx(null)}
               draft={{
-                item: items[editorIdx],
+                item: items[editorIdx].item,
                 accountId,
                 initial: edited[editorIdx],
-                automaticEnvelopeDefault: edited[editorIdx] ? (editedAutomaticDefaults[editorIdx] ?? false) : items[editorIdx].automaticEnvelopeDefault,
+                automaticEnvelopeDefault: edited[editorIdx] ? (editedAutomaticDefaults[editorIdx] ?? false) : items[editorIdx].item.automaticEnvelopeDefault,
                 onSave: (e, meta) => {
                   setEdited((prev) => ({ ...prev, [editorIdx]: e }));
                   setEditedAutomaticDefaults((prev) => ({ ...prev, [editorIdx]: meta.automaticEnvelopeDefault }));
-                  setItems((prev) => prev.map((x, k) => (k === editorIdx ? { ...x, include: true } : x)));
                   setEditorIdx(null);
                 },
                 onCancel: () => setEditorIdx(null),

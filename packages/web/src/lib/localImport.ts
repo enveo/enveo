@@ -29,14 +29,18 @@ export interface LocalImportMutationPort {
   createTxn(payload: TxnPayload): string;
 }
 
-/** Temporary Task 4 bridge into the legacy review. Task 5 renders every
- * recognition disposition; until then, unsafe proposals must not cross into a
- * review model that would otherwise default them to included. */
-export function adaptRecognitionForLegacyReview(result: ImportRecognitionResult, ledger: ClientLedger): ImportApplyItem[] {
+/** Complete, explicitly selected ledger candidates eligible for duplicate dry-run.
+ * Raw screenshot lines — never model copy — become the persisted sourceRef evidence. */
+export function recognitionCandidatesForDryRun(result: ImportRecognitionResult, ledger: ClientLedger): ImportApplyItem[] {
   const envelopeNames = new Map(ledger.envelopes.map((envelope) => [envelope.id, envelope.name]));
   const categoryNames = new Map(ledger.categories.map((category) => [category.id, category.name]));
+  const rowsById = new Map(result.rows.map((row) => [row.rowId, row]));
   return result.proposals.flatMap((proposal) => {
     if (!proposal.selected || proposal.disposition !== "candidate" || proposal.date === null || proposal.amount === null || proposal.type === null) return [];
+    const sourceRef = proposal.sourceRows
+      .flatMap((rowId) => rowsById.get(rowId)?.rawTextLines ?? [])
+      .join("\n")
+      .trim();
     return [
       {
         date: proposal.date,
@@ -46,7 +50,7 @@ export function adaptRecognitionForLegacyReview(result: ImportRecognitionResult,
         toAccountId: proposal.toAccountId,
         name: proposal.name,
         tag: proposal.tag,
-        rawPlace: proposal.rawPlace,
+        rawPlace: sourceRef || null,
         envelopeId: proposal.envelopeId,
         envelopeName: proposal.envelopeId ? (envelopeNames.get(proposal.envelopeId) ?? null) : null,
         categoryId: proposal.categoryId,
@@ -57,6 +61,9 @@ export function adaptRecognitionForLegacyReview(result: ImportRecognitionResult,
     ];
   });
 }
+
+/** Kept as a compatibility alias while callers migrate to the truthful review model. */
+export const adaptRecognitionForLegacyReview = recognitionCandidatesForDryRun;
 
 /** Convert either server or local dry-run output without erasing local provenance. */
 export function importReviewItem(
