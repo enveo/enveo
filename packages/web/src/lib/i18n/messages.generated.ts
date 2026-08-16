@@ -96,7 +96,7 @@ export const MESSAGES = [
   "Balance matches",
   "Balance:",
   "Balanced",
-  "Before archiving this envelope, remove it as the automatic envelope for: {accounts}.",
+  "Before archiving this envelope, remove it as the automatic envelope for this account: {accounts}. | Before archiving this envelope, remove it as the automatic envelope for these accounts: {accounts}.",
   "Before you continue, download a JSON backup and keep it somewhere safe.",
   "Best quality",
   "Bills",

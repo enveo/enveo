@@ -771,7 +771,7 @@ export function EnvEdit({
   accounts: StateResponse["accounts"];
   onClose: () => void;
 }) {
-  const { t, lang } = useT();
+  const { t, tp, lang } = useT();
   const currency = useCurrency();
   const [name, setName] = useState("");
   const [groupId, setGroupId] = useState("");
@@ -815,9 +815,11 @@ export function EnvEdit({
                     const linkedAccounts = linkedAccountNames(accounts, env.id);
                     if (linkedAccounts.length > 0) {
                       setArchiveError(
-                        t("Before archiving this envelope, remove it as the automatic envelope for: {accounts}.", {
-                          accounts: linkedAccounts.join(", "),
-                        }),
+                        tp(
+                          "Before archiving this envelope, remove it as the automatic envelope for this account: {accounts}. | Before archiving this envelope, remove it as the automatic envelope for these accounts: {accounts}.",
+                          linkedAccounts.length,
+                          { accounts: linkedAccounts.join(", ") },
+                        ),
                       );
                       return;
                     }
