@@ -279,7 +279,24 @@ export function gateImportRecognition(
   ) {
     reasons.push("relation_precision_regression");
   }
-  if (candidate.relationRecall.correct < baseline.relationRecall.correct) reasons.push("relation_recall_regression");
+  if (candidate.relationRecall.total > 0) {
+    /* The legacy adapter cannot express relations, so a paired tie at zero is not
+     * evidence of candidate quality. Relation-bearing truth requires strict
+     * improvement over that zero-capability baseline; once the baseline is above
+     * zero, the normal paired no-regression rule applies. */
+    if (baseline.relationRecall.correct === 0) {
+      if (candidate.relationRecall.correct === 0) reasons.push("relation_recall_not_improved_from_zero");
+    } else if (candidate.relationRecall.correct < baseline.relationRecall.correct) {
+      reasons.push("relation_recall_regression");
+    }
+    const baselineRelationF1 = baseline.relationF1 ?? 0;
+    const candidateRelationF1 = candidate.relationF1 ?? 0;
+    if (baselineRelationF1 === 0) {
+      if (candidateRelationF1 === 0) reasons.push("relation_f1_not_improved_from_zero");
+    } else if (candidateRelationF1 < baselineRelationF1) {
+      reasons.push("relation_f1_regression");
+    }
+  }
   if (baseline.harmfulSelected === 0) {
     if (candidate.harmfulSelected !== 0) reasons.push("harmful_selected_regression_from_zero");
   } else if (candidate.harmfulSelected >= baseline.harmfulSelected) {

@@ -102,33 +102,6 @@ interface ImportRecognitionModule {
   validateImportExtraction: unknown;
 }
 
-interface BaselineHistPattern {
-  place: string | null;
-  name: string | null;
-  envelope: string | null;
-  category: string | null;
-  count: number;
-  fromSourceRef: boolean;
-  type: "expense" | "income" | "transfer";
-  isRefund: boolean;
-  toAccountId: string | null;
-}
-
-interface BaselineHistGroup extends BaselineHistPattern {
-  key: string;
-}
-
-interface BaselineMatchingModule {
-  rankPatterns: (raw: string, groups: BaselineHistGroup[]) => BaselineHistPattern[];
-  confidentSourceRef: (raw: string, groups: BaselineHistGroup[]) => BaselineHistPattern | null;
-  decideAssignment: (
-    raw: string,
-    top: BaselineHistPattern | undefined,
-    model: Record<string, unknown> | undefined,
-    hardOverride?: boolean,
-  ) => { name: string; place: string | null; envelope: string | null; category: string | null };
-}
-
 interface BaselineItem {
   date: string;
   amount: number;
@@ -141,6 +114,35 @@ interface BaselineItem {
   toAccountId?: string | null;
   envelopeId?: string | null;
   categoryId?: string | null;
+}
+
+interface BaselineRouteModule {
+  extractImportForBudget: (input: {
+    budgetId: string;
+    images: string[];
+    locale: string;
+    chat: (request: ChatRequest, timeoutMs?: number) => Promise<string>;
+  }) => Promise<BaselineItem[]>;
+}
+
+interface BaselineDbModule {
+  db: {
+    select: (...args: unknown[]) => unknown;
+  };
+}
+
+interface BaselineSchemaModule {
+  budgets: unknown;
+  envelopes: unknown;
+  categories: unknown;
+  transactions: unknown;
+  places: unknown;
+}
+
+interface BaselineProductionSeam {
+  route: BaselineRouteModule;
+  db: BaselineDbModule["db"];
+  schema: BaselineSchemaModule;
 }
 
 interface CandidateRow {
@@ -171,6 +173,140 @@ interface CandidateResult {
 }
 
 const ownObject = (value: unknown): value is Record<string, unknown> => value !== null && typeof value === "object" && !Array.isArray(value);
+
+const candidateResultError = (field: string): never => {
+  throw new Error(`candidate production result ${field} is invalid`);
+};
+
+const candidateNullableString = (value: unknown, field: string): string | null => {
+  if (value === null) return null;
+  if (typeof value !== "string") return candidateResultError(field);
+  return value;
+};
+
+const candidateNullableDate = (value: unknown, field: string): string | null => {
+  if (value === null) return null;
+  if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return candidateResultError(field);
+  const parsed = new Date(`${value}T00:00:00.000Z`);
+  if (Number.isNaN(parsed.valueOf()) || parsed.toISOString().slice(0, 10) !== value) return candidateResultError(field);
+  return value;
+};
+
+const candidateNullableAmount = (value: unknown, field: string): number | null => {
+  if (value === null) return null;
+  if (!Number.isInteger(value) || (value as number) <= 0) return candidateResultError(field);
+  return value as number;
+};
+
+const candidateRelation = (value: unknown, field: string): ImportRecognitionRelation | null => {
+  if (value === null) return null;
+  if (!ownObject(value) || typeof value.kind !== "string" || !RELATION_KINDS.has(value.kind) || typeof value.rowId !== "string" || value.rowId.length === 0) {
+    return candidateResultError(field);
+  }
+  return { kind: value.kind, rowId: value.rowId };
+};
+
+/** Runtime boundary for a pipeline imported from the candidate source tree. Scoring
+ * never receives an unchecked dynamic module result. */
+export function parseCandidateResult(value: unknown): CandidateResult {
+  if (!ownObject(value) || !Array.isArray(value.rows) || !Array.isArray(value.proposals)) return candidateResultError("root");
+  const rows: CandidateRow[] = value.rows.map((entry, index) => {
+    const field = `rows[${index}]`;
+    if (!ownObject(entry)) return candidateResultError(field);
+    if (typeof entry.rowId !== "string" || entry.rowId.length === 0) return candidateResultError(`${field}.rowId`);
+    if (!Number.isInteger(entry.imageIndex) || (entry.imageIndex as number) < 0) return candidateResultError(`${field}.imageIndex`);
+    if (!Number.isInteger(entry.visualOrder) || (entry.visualOrder as number) < 0) return candidateResultError(`${field}.visualOrder`);
+    const date = candidateNullableDate(entry.date, `${field}.date`);
+    const amount = candidateNullableAmount(entry.amount, `${field}.amount`);
+    if (entry.currency !== null && typeof entry.currency !== "string") return candidateResultError(`${field}.currency`);
+    if (entry.direction !== "debit" && entry.direction !== "credit" && entry.direction !== "unknown") return candidateResultError(`${field}.direction`);
+    if (entry.postingStatus !== "posted" && entry.postingStatus !== "pending" && entry.postingStatus !== "declined" && entry.postingStatus !== "unknown") {
+      return candidateResultError(`${field}.postingStatus`);
+    }
+    if (entry.rowRole !== "financial_event" && entry.rowRole !== "supporting_detail" && entry.rowRole !== "ui_metadata") {
+      return candidateResultError(`${field}.rowRole`);
+    }
+    if (typeof entry.semanticKind !== "string" || !SEMANTIC_KINDS.has(entry.semanticKind)) return candidateResultError(`${field}.semanticKind`);
+    if (!Array.isArray(entry.rawTextLines) || entry.rawTextLines.some((line) => typeof line !== "string")) {
+      return candidateResultError(`${field}.rawTextLines`);
+    }
+    if (entry.confidence !== "low" && entry.confidence !== "medium" && entry.confidence !== "high") {
+      return candidateResultError(`${field}.confidence`);
+    }
+    if (!Array.isArray(entry.reviewReasons) || entry.reviewReasons.some((reason) => typeof reason !== "string" || !REVIEW_REASONS.has(reason))) {
+      return candidateResultError(`${field}.reviewReasons`);
+    }
+    return {
+      rowId: entry.rowId,
+      imageIndex: entry.imageIndex as number,
+      visualOrder: entry.visualOrder as number,
+      date,
+      amount,
+      currency: entry.currency as string | null,
+      direction: entry.direction,
+      postingStatus: entry.postingStatus,
+      rowRole: entry.rowRole,
+      semanticKind: entry.semanticKind,
+      relation: candidateRelation(entry.relation, `${field}.relation`),
+      rawTextLines: entry.rawTextLines as string[],
+      reviewReasons: entry.reviewReasons as string[],
+    };
+  });
+  if (new Set(rows.map((row) => row.rowId)).size !== rows.length) return candidateResultError("rows duplicate rowId");
+  const rowIds = new Set(rows.map((row) => row.rowId));
+  for (const [index, row] of rows.entries()) {
+    if (row.relation && !rowIds.has(row.relation.rowId)) return candidateResultError(`rows[${index}].relation.rowId`);
+  }
+  const proposals: CandidateProposal[] = value.proposals.map((entry, index) => {
+    const field = `proposals[${index}]`;
+    if (!ownObject(entry) || typeof entry.rowId !== "string" || !rowIds.has(entry.rowId)) return candidateResultError(`${field}.rowId`);
+    if (typeof entry.selected !== "boolean") return candidateResultError(`${field}.selected`);
+    if (!["candidate", "supporting", "pending", "declined", "unresolved"].includes(String(entry.disposition))) {
+      return candidateResultError(`${field}.disposition`);
+    }
+    if (!Array.isArray(entry.reviewReasons) || entry.reviewReasons.some((reason) => typeof reason !== "string" || !REVIEW_REASONS.has(reason))) {
+      return candidateResultError(`${field}.reviewReasons`);
+    }
+    if (
+      !Array.isArray(entry.sourceRows) ||
+      entry.sourceRows.length === 0 ||
+      entry.sourceRows.some((rowId) => typeof rowId !== "string" || !rowIds.has(rowId))
+    ) {
+      return candidateResultError(`${field}.sourceRows`);
+    }
+    candidateNullableDate(entry.date, `${field}.date`);
+    candidateNullableAmount(entry.amount, `${field}.amount`);
+    if (entry.currency !== null && typeof entry.currency !== "string") return candidateResultError(`${field}.currency`);
+    if (entry.type !== null && entry.type !== "expense" && entry.type !== "income" && entry.type !== "transfer") return candidateResultError(`${field}.type`);
+    if (typeof entry.isRefund !== "boolean") return candidateResultError(`${field}.isRefund`);
+    if (typeof entry.semanticKind !== "string" || !SEMANTIC_KINDS.has(entry.semanticKind)) return candidateResultError(`${field}.semanticKind`);
+    const relation = candidateRelation(entry.relation, `${field}.relation`);
+    if (relation && !rowIds.has(relation.rowId)) return candidateResultError(`${field}.relation.rowId`);
+    if (typeof entry.name !== "string") return candidateResultError(`${field}.name`);
+    if (typeof entry.tag !== "string") return candidateResultError(`${field}.tag`);
+    if (typeof entry.rawPlace !== "string") return candidateResultError(`${field}.rawPlace`);
+    candidateNullableString(entry.placeName, `${field}.placeName`);
+    if (entry.duplicateStatus !== "new" && entry.duplicateStatus !== "probable" && entry.duplicateStatus !== "exists") {
+      return candidateResultError(`${field}.duplicateStatus`);
+    }
+    if (typeof entry.sourceAccountInvalid !== "boolean") return candidateResultError(`${field}.sourceAccountInvalid`);
+    return {
+      rowId: entry.rowId,
+      selected: entry.selected,
+      disposition: entry.disposition as CandidateProposal["disposition"],
+      reviewReasons: entry.reviewReasons as string[],
+      type: entry.type as CandidateProposal["type"],
+      isRefund: entry.isRefund,
+      toAccountId: candidateNullableString(entry.toAccountId, `${field}.toAccountId`),
+      envelopeId: candidateNullableString(entry.envelopeId, `${field}.envelopeId`),
+      categoryId: candidateNullableString(entry.categoryId, `${field}.categoryId`),
+      semanticKind: entry.semanticKind,
+      relation,
+    };
+  });
+  if (new Set(proposals.map((proposal) => proposal.rowId)).size !== proposals.length) return candidateResultError("proposals duplicate rowId");
+  return { rows, proposals };
+}
 
 export type EvaluationArgs =
   | { manifestPath: string; mode: "baseline" | "candidate"; sourceTree: string }
@@ -396,6 +532,12 @@ const nullableString = (value: unknown, field: string): string | null => {
   return requireString(value, field);
 };
 
+const nullableSourceRef = (value: unknown, field: string): string | null => {
+  if (value === null) return null;
+  if (typeof value !== "string") throw new Error(`manifest ${field} must be a string or null`);
+  return value;
+};
+
 const parseRelation = (value: unknown, field: string): ImportRecognitionRelation | null => {
   if (value === null) return null;
   if (!ownObject(value)) throw new Error(`manifest ${field} must be an object or null`);
@@ -515,7 +657,7 @@ const parseManifestContext = (value: unknown, field: string, fixtureId: string):
       accountId: requireString(entry.accountId, `${itemField}.accountId`),
       date: calendarDate(entry.date, `${itemField}.date`),
       amount: amount as number,
-      sourceRef: nullableString(entry.sourceRef, `${itemField}.sourceRef`),
+      sourceRef: nullableSourceRef(entry.sourceRef, `${itemField}.sourceRef`),
     };
   });
 
@@ -528,7 +670,7 @@ const parseManifestContext = (value: unknown, field: string, fixtureId: string):
     return {
       accountId: requireString(entry.accountId, `${itemField}.accountId`),
       currency: currencyCode(entry.currency, `${itemField}.currency`),
-      sourceRef: nullableString(entry.sourceRef, `${itemField}.sourceRef`),
+      sourceRef: nullableSourceRef(entry.sourceRef, `${itemField}.sourceRef`),
       tag: nullableString(entry.tag, `${itemField}.tag`),
       place: nullableString(entry.place, `${itemField}.place`),
       name: nullableString(entry.name, `${itemField}.name`),
@@ -806,7 +948,7 @@ interface SourceIdentity {
 interface LoadedSource {
   root: string;
   prompts: RecognitionSourceModule;
-  matching: BaselineMatchingModule | null;
+  baseline: BaselineProductionSeam | null;
   identity: SourceIdentity;
 }
 
@@ -917,14 +1059,14 @@ async function sourceRevision(root: string): Promise<string> {
   return (await child.exited) === 0 && /^[0-9a-f]{40}\n?$/.test(output) ? output.trim() : "unversioned";
 }
 
-async function loadSource(mode: "baseline" | "candidate", sourceTree: string): Promise<LoadedSource> {
+export async function loadSource(mode: "baseline" | "candidate", sourceTree: string): Promise<LoadedSource> {
   const root = await realpath(resolve(sourceTree));
   const promptsPath = resolve(root, "packages/shared/src/aiPrompts.ts");
   await requireRegularFile(promptsPath, "source aiPrompts module");
   const prompts = (await import(pathToFileURL(promptsPath).href)) as RecognitionSourceModule;
   const adapter = classifySourceAdapter(mode, prompts.IMPORT_EXTRACT_JSON_SCHEMA);
   const moduleHashes: Record<string, string> = { aiPrompts: await hashFile(promptsPath) };
-  let matching: BaselineMatchingModule | null = null;
+  let baseline: BaselineProductionSeam | null = null;
   if (mode === "candidate") {
     if (typeof prompts.runImportRecognitionPipeline !== "function") throw new Error("candidate production recognition pipeline is missing");
     const candidateModules = {
@@ -938,21 +1080,31 @@ async function loadSource(mode: "baseline" | "candidate", sourceTree: string): P
       moduleHashes[name] = await hashFile(path);
     }
   } else {
-    if (typeof prompts.languageName !== "function" || typeof prompts.languageDirectives !== "function") {
-      throw new Error("baseline production language helpers are missing");
-    }
     const matchingPath = resolve(root, "packages/api/src/routes/import-match.ts");
     const routePath = resolve(root, "packages/api/src/routes/import.ts");
+    const dbPath = resolve(root, "packages/api/src/db/client.ts");
+    const schemaPath = resolve(root, "packages/api/src/db/schema.ts");
     await requireRegularFile(matchingPath, "baseline import matching module");
     await requireRegularFile(routePath, "baseline production import route");
-    matching = (await import(pathToFileURL(matchingPath).href)) as BaselineMatchingModule;
-    if (typeof matching.rankPatterns !== "function" || typeof matching.confidentSourceRef !== "function" || typeof matching.decideAssignment !== "function") {
-      throw new Error("baseline production matching seam is missing");
+    await requireRegularFile(dbPath, "baseline database client module");
+    await requireRegularFile(schemaPath, "baseline database schema module");
+    const route = (await import(pathToFileURL(routePath).href)) as Partial<BaselineRouteModule>;
+    const database = (await import(pathToFileURL(dbPath).href)) as Partial<BaselineDbModule>;
+    const schema = (await import(pathToFileURL(schemaPath).href)) as Partial<BaselineSchemaModule>;
+    if (typeof route.extractImportForBudget !== "function") throw new Error("baseline production import route export is missing");
+    if (!database.db || typeof database.db.select !== "function") throw new Error("baseline production database query seam is missing");
+    if (!schema.budgets || !schema.envelopes || !schema.categories || !schema.transactions || !schema.places) {
+      throw new Error("baseline production database schema seam is missing");
     }
+    const tables = [schema.budgets, schema.envelopes, schema.categories, schema.transactions, schema.places];
+    if (new Set(tables).size !== tables.length) throw new Error("baseline production database schema tables are ambiguous");
+    baseline = { route: route as BaselineRouteModule, db: database.db, schema: schema as BaselineSchemaModule };
     moduleHashes.importMatch = await hashFile(matchingPath);
     moduleHashes.apiAdapter = await hashFile(routePath);
+    moduleHashes.dbClient = await hashFile(dbPath);
+    moduleHashes.dbSchema = await hashFile(schemaPath);
   }
-  return { root, prompts, matching, identity: { revision: await sourceRevision(root), adapter, moduleHashes } };
+  return { root, prompts, baseline, identity: { revision: await sourceRevision(root), adapter, moduleHashes } };
 }
 
 export async function runHistorySafetyGate(candidateRoot: string): Promise<HistorySafetyIdentity> {
@@ -1206,182 +1358,89 @@ const expectedForFixture = (fixture: RecognitionManifestFixture): ExpectedImport
     expectedProposal: row.expectedProposal,
   }));
 
-const BASELINE_ENRICH_JSON_SCHEMA = {
-  name: "enriched_transactions",
-  strict: true,
-  schema: {
-    type: "object",
-    additionalProperties: false,
-    properties: {
-      transactions: {
-        type: "array",
-        items: {
-          type: "object",
-          additionalProperties: false,
-          properties: {
-            index: { type: "integer" },
-            name: { type: "string" },
-            envelope: { type: ["string", "null"] },
-            category: { type: ["string", "null"] },
-            place: { type: ["string", "null"] },
-          },
-          required: ["index", "name", "envelope", "category", "place"],
-        },
-      },
-    },
-    required: ["transactions"],
-  },
-} as const;
+let baselineDbSeamTail = Promise.resolve();
 
-const legacyHistoryGroups = (records: RecognitionManifestContext["historyRecords"]): BaselineHistGroup[] => {
-  const groups = new Map<string, BaselineHistGroup>();
-  for (const record of records) {
-    const key = record.sourceRef?.trim() || record.place || record.tag || record.name;
-    if (!key) continue;
-    const id = JSON.stringify([
-      record.sourceRef ? "source" : "fallback",
-      key,
-      record.name,
-      record.envelope,
-      record.category,
-      record.type,
-      record.isRefund,
-      record.toAccountId,
-    ]);
-    const existing = groups.get(id);
-    if (existing) {
-      existing.count++;
-      continue;
-    }
-    groups.set(id, {
-      key,
-      fromSourceRef: record.sourceRef !== null,
-      place: record.place,
-      name: record.name,
-      envelope: record.envelope,
-      category: record.category,
-      count: 1,
-      type: record.type,
-      isRefund: record.type === "expense" && record.isRefund,
-      toAccountId: record.type === "transfer" ? record.toAccountId : null,
-    });
-  }
-  return [...groups.values()];
-};
-
-const parseBaselineEnrichment = (raw: string): Map<number, Record<string, unknown>> => {
-  const parsed: unknown = JSON.parse(raw);
-  if (!ownObject(parsed) || !Array.isArray(parsed.transactions)) throw new Error("invalid legacy enrichment output");
-  const rows = parsed.transactions.map((entry) => {
-    if (
-      !ownObject(entry) ||
-      !Number.isInteger(entry.index) ||
-      (entry.index as number) < 0 ||
-      typeof entry.name !== "string" ||
-      (entry.envelope !== null && typeof entry.envelope !== "string") ||
-      (entry.category !== null && typeof entry.category !== "string") ||
-      (entry.place !== null && typeof entry.place !== "string")
-    ) {
-      throw new Error("invalid legacy enrichment row");
-    }
-    return [entry.index as number, entry] as const;
+const serializeBaselineDbSeam = async <T>(operation: () => Promise<T>): Promise<T> => {
+  const previous = baselineDbSeamTail;
+  let release = (): void => {};
+  baselineDbSeamTail = new Promise<void>((resolveQueue) => {
+    release = resolveQueue;
   });
-  return new Map(rows);
+  await previous;
+  try {
+    return await operation();
+  } finally {
+    release();
+  }
 };
 
-async function runBaselineProductionAdapter(input: {
+const baselineFixtureRows = (seam: BaselineProductionSeam, fixture: RecognitionManifestFixture): ((table: unknown, selection: unknown) => unknown[]) => {
+  const envelopeIdByName = new Map(fixture.context.envelopes.map((entry) => [String(entry.name), String(entry.id)]));
+  const categoryIdByName = new Map(fixture.context.categories.map((entry) => [String(entry.name), String(entry.id)]));
+  const placeIdByName = new Map<string, string>();
+  for (const record of fixture.context.historyRecords) {
+    if (record.place !== null && !placeIdByName.has(record.place)) placeIdByName.set(record.place, `evaluation-place-${placeIdByName.size}`);
+  }
+  const places = [...placeIdByName].map(([name, id]) => ({ id, name }));
+  const transactions = fixture.context.historyRecords.map((record) => ({
+    name: record.name,
+    envelopeId: record.envelope === null ? null : (envelopeIdByName.get(record.envelope) ?? null),
+    categoryId: record.category === null ? null : (categoryIdByName.get(record.category) ?? null),
+    placeId: record.place === null ? null : (placeIdByName.get(record.place) ?? null),
+    tag: record.tag,
+    sourceRef: record.sourceRef,
+    type: record.type,
+    isRefund: record.isRefund,
+    toAccountId: record.toAccountId,
+  }));
+  return (table, selection) => {
+    if (table === seam.schema.budgets) return [{ currency: fixture.budgetCurrency }];
+    if (table === seam.schema.envelopes) {
+      return selection === undefined ? fixture.context.envelopes : fixture.context.envelopes.filter((entry) => entry.archived !== true);
+    }
+    if (table === seam.schema.categories) return fixture.context.categories;
+    if (table === seam.schema.transactions) return transactions;
+    if (table === seam.schema.places) return places;
+    throw new Error("baseline production route queried an unexpected table");
+  };
+};
+
+export async function runBaselineProductionAdapter(input: {
   source: LoadedSource;
   fixture: RecognitionManifestFixture;
   images: string[];
   chat: (request: ChatRequest) => Promise<string>;
 }): Promise<BaselineItem[]> {
   const { source, fixture, images, chat } = input;
-  if (!source.matching || !source.prompts.languageName || !source.prompts.languageDirectives) throw new Error("baseline production adapter is incomplete");
-  const extractionRaw = await chat(
-    source.prompts.buildImportExtractPrompt(images, { envelopes: [], categories: [] }, fixture.today, fixture.locale, fixture.budgetCurrency),
-  );
-  const parsed = source.prompts.parseImportExtractResponse(extractionRaw);
-  if (!Array.isArray(parsed)) throw new Error("wrong legacy extraction shape");
-  const found = parsed as BaselineItem[];
-  if (found.length === 0) return [];
-
-  const groups = legacyHistoryGroups(fixture.context.historyRecords);
-  const history = new Map(
-    [...new Set(found.map((item) => item.rawPlace ?? ""))].map((rawPlace) => [
-      rawPlace,
-      {
-        patterns: source.matching!.rankPatterns(rawPlace, groups),
-        confident: source.matching!.confidentSourceRef(rawPlace, groups),
-      },
-    ]),
-  );
-  const uncertain = found.map((item, index) => ({ item, index })).filter(({ item }) => !history.get(item.rawPlace ?? "")?.confident);
-  let enriched = new Map<number, Record<string, unknown>>();
-  if (uncertain.length > 0) {
-    const language = source.prompts.languageName(fixture.locale);
-    const system =
-      "You assign bank-statement transactions EXACTLY in the style the user has assigned them historically. " +
-      "Each transaction has a `patterns` field — how the user booked this place in the past ({place, name, envelope, category, count, fromSourceRef}). " +
-      "OVERRIDING RULE: when a pattern has fromSourceRef=true, use IT (it is a learned correction matched to the raw bank description — " +
-      "the strongest signal, INDEPENDENT of count) and ignore more numerous patterns. Only when none has fromSourceRef=true, pick " +
-      "the most numerous one (highest count) that matches the transaction type. From the chosen pattern COPY VERBATIM all four fields: " +
-      "name, envelope, category, place — even when name looks like an abbreviation (e.g. Vps) and category/place are null. " +
-      `Only when \`patterns\` is empty, propose yourself: name — a short name in ${language} of WHAT it was (e.g. Groceries, Fuel, Cloud fee), never the raw company name with an address; ` +
-      `envelope — one of the envelopes: ${fixture.context.envelopes.map((entry) => entry.name).join(", ")} — or null; ` +
-      `category — one of the categories: ${fixture.context.categories.map((entry) => entry.name).join(", ")} — or null; ` +
-      "place — a readable, short place name (e.g. Lidl, Netflix). Do not change amounts or dates. " +
-      source.prompts.languageDirectives(fixture.locale) +
-      "Return JSON.";
+  if (!source.baseline) throw new Error("baseline production route seam is unavailable");
+  return serializeBaselineDbSeam(async () => {
+    const originalSelect = source.baseline!.db.select;
+    const rowsFor = baselineFixtureRows(source.baseline!, fixture);
+    const fixtureSelect = (selection?: unknown): unknown => ({
+      from: (table: unknown) => ({ where: async () => structuredClone(rowsFor(table, selection)) }),
+    });
+    source.baseline!.db.select = fixtureSelect;
+    if (source.baseline!.db.select !== fixtureSelect) throw new Error("baseline production database seam could not be installed");
+    let routeFailed = false;
+    let routeFailure: unknown;
+    let items: BaselineItem[] | undefined;
     try {
-      enriched = parseBaselineEnrichment(
-        await chat({
-          messages: [
-            { role: "system", content: system },
-            {
-              role: "user",
-              content: JSON.stringify({
-                transactions: uncertain.map(({ item, index }) => ({
-                  index,
-                  date: item.date,
-                  amount: item.amount,
-                  type: item.type,
-                  rawPlace: item.rawPlace,
-                  tag: item.tag,
-                  patterns: history.get(item.rawPlace ?? "")?.patterns ?? [],
-                })),
-              }),
-            },
-          ],
-          responseFormat: { type: "json_schema", json_schema: BASELINE_ENRICH_JSON_SCHEMA },
-          reasoningEffort: "low",
-        }),
-      );
-    } catch {
-      enriched = new Map();
+      items = await source.baseline!.route.extractImportForBudget({
+        budgetId: `evaluation:${fixture.id}`,
+        images,
+        locale: fixture.locale,
+        chat,
+      });
+    } catch (error) {
+      routeFailed = true;
+      routeFailure = error;
+    } finally {
+      source.baseline!.db.select = originalSelect;
     }
-  }
-
-  const envelopeByName = new Map(fixture.context.envelopes.map((entry) => [String(entry.name).toLowerCase(), entry]));
-  const categoryByName = new Map(fixture.context.categories.map((entry) => [String(entry.name).toLowerCase(), entry]));
-  return found.map((item, index) => {
-    const rawPlace = item.rawPlace ?? "";
-    const match = history.get(rawPlace);
-    const confident = match?.confident;
-    const picked = confident
-      ? source.matching!.decideAssignment(rawPlace, confident, undefined)
-      : source.matching!.decideAssignment(rawPlace, match?.patterns[0], enriched.get(index), false);
-    const learnedType = confident && (confident.type !== item.type || confident.isRefund) ? confident.type : null;
-    const proposedType = learnedType && (learnedType !== "transfer" || confident?.toAccountId) ? learnedType : item.type;
-    return {
-      ...item,
-      type: proposedType,
-      isRefund: proposedType === "expense" ? item.isRefund || Boolean(confident?.isRefund) : false,
-      toAccountId: proposedType === "transfer" ? (confident?.toAccountId ?? null) : null,
-      name: picked.name,
-      envelopeId: picked.envelope ? String(envelopeByName.get(picked.envelope.toLowerCase())?.id ?? "") || null : null,
-      categoryId: picked.category ? String(categoryByName.get(picked.category.toLowerCase())?.id ?? "") || null : null,
-      placeName: picked.place,
-    };
+    if (source.baseline!.db.select !== originalSelect) throw new Error("baseline production database seam was not restored");
+    if (routeFailed) throw routeFailure;
+    if (!Array.isArray(items)) throw new Error("baseline production route returned an invalid result");
+    return items;
   });
 }
 
@@ -1418,7 +1477,7 @@ async function runSide(
           historyRecords: fixture.context.historyRecords,
           chat,
         });
-        actual.push(...normalizeCandidateRecognition(fixture.id, fixture.rows, result as unknown as CandidateResult));
+        actual.push(...normalizeCandidateRecognition(fixture.id, fixture.rows, parseCandidateResult(result)));
       }
     } catch {
       throw new Error(`fixture ${fixture.id}: model output did not satisfy the ${mode} contract`);
