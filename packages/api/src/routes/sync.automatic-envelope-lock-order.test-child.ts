@@ -24,6 +24,7 @@ type ScenarioOutput = {
 export type AutomaticEnvelopeLockOrderOutput = {
   envelopeDelete: ScenarioOutput;
   fullWipe: ScenarioOutput;
+  multiAccountWipe: ScenarioOutput;
 };
 
 async function main(): Promise<void> {
@@ -135,9 +136,70 @@ async function main(): Promise<void> {
     };
   };
 
+  const runMultiAccountWipeScenario = async (): Promise<ScenarioOutput> => {
+    const [group] = await db.insert(s.envelopeGroups).values({ budgetId, name: "Group multi-account wipe" }).returning({ id: s.envelopeGroups.id });
+    const [envelope] = await db
+      .insert(s.envelopes)
+      .values({ budgetId, groupId: group!.id, name: "Envelope multi-account wipe" })
+      .returning({ id: s.envelopes.id });
+    const [lowerAccountId, higherAccountId] = [crypto.randomUUID(), crypto.randomUUID()].sort();
+    // Deliberately make heap/insertion order the inverse of the lifecycle protocol's UUID order.
+    await db.insert(s.accounts).values({ id: higherAccountId!, budgetId, name: "Higher UUID first", automaticEnvelopeId: envelope!.id });
+    await db.insert(s.accounts).values({ id: lowerAccountId!, budgetId, name: "Lower UUID second", automaticEnvelopeId: envelope!.id });
+
+    let releaseLifecycle!: () => void;
+    const lifecycleGate = new Promise<void>((resolve) => (releaseLifecycle = resolve));
+    let signalLowerAccountLocked!: () => void;
+    const lowerAccountLocked = new Promise<void>((resolve) => (signalLowerAccountLocked = resolve));
+
+    const lifecycle = db
+      .transaction(async (tx) => {
+        await tx.execute(dsql`set local lock_timeout = '10s'`);
+        await tx.select({ id: s.accounts.id }).from(s.accounts).where(eq(s.accounts.id, lowerAccountId!)).for("update");
+        signalLowerAccountLocked();
+        await lifecycleGate;
+        await applyEnvelopeDelete(tx, budgetId, envelope!.id);
+      })
+      .then(
+        () => ({ completed: true, error: null as string | null }),
+        (error) => ({ completed: false, error: errorCode(error) }),
+      );
+    await withTimeout(lowerAccountLocked, 10_000, "multi-account wipe: lower account row lock");
+
+    let signalWipePid!: (pid: number) => void;
+    const wipePid = new Promise<number>((resolve) => (signalWipePid = resolve));
+    const wipe = db
+      .transaction(async (tx) => {
+        await tx.execute(dsql`set local lock_timeout = '10s'`);
+        signalWipePid(await backendPid(tx));
+        await wipeBudgetData(tx, budgetId);
+      })
+      .then(
+        () => ({ completed: true, error: null as string | null }),
+        (error) => ({ completed: false, error: errorCode(error) }),
+      );
+
+    const pid = await withTimeout(wipePid, 10_000, "multi-account wipe: backend pid");
+    const waiterObserved = await waitFor(() => waitingOnLock(pid), { attempts: 400, intervalMs: 25 });
+    releaseLifecycle();
+    const [lifecycleResult, wipeResult] = await withTimeout(Promise.all([lifecycle, wipe]), 20_000, "multi-account wipe: both transactions finishing");
+
+    const accountsAfter = await db.select({ id: s.accounts.id }).from(s.accounts).where(eq(s.accounts.budgetId, budgetId));
+    const [envelopeAfter] = await db.select({ id: s.envelopes.id }).from(s.envelopes).where(eq(s.envelopes.id, envelope!.id));
+    return {
+      waiterObserved,
+      updateCompleted: lifecycleResult.completed,
+      competingCompleted: wipeResult.completed,
+      updateError: lifecycleResult.error,
+      competingError: wipeResult.error,
+      finalStateValid: accountsAfter.length === 0 && envelopeAfter === undefined,
+    };
+  };
+
   const out: AutomaticEnvelopeLockOrderOutput = {
     envelopeDelete: await runScenario("envelope-delete"),
     fullWipe: await runScenario("full-wipe"),
+    multiAccountWipe: await runMultiAccountWipeScenario(),
   };
 
   await observer.end({ timeout: 5 });

@@ -452,10 +452,11 @@ export async function applyEnvelopeDelete(x: Executor, budgetId: string, id: str
 /** Wipes ALL budget data (leaves the budgets row — stable id/currency). */
 export async function wipeBudgetData(x: Executor, budgetId: string): Promise<void> {
   // FK-safe AND lifecycle-lock-safe order (txn_items via cascade): transactions first,
-  // then accounts BEFORE envelopes. The account deletion removes automatic-envelope
-  // references without invoking envelope→account SET NULL work.
+  // then accounts BEFORE envelopes. Lock every account explicitly in the lifecycle
+  // protocol's stable order: PostgreSQL does not guarantee a bulk DELETE's row order.
   await x.delete(s.transactions).where(eq(s.transactions.budgetId, budgetId));
   await x.delete(s.allocations).where(eq(s.allocations.budgetId, budgetId));
+  await x.select({ id: s.accounts.id }).from(s.accounts).where(eq(s.accounts.budgetId, budgetId)).orderBy(s.accounts.id).for("update");
   await x.delete(s.accounts).where(eq(s.accounts.budgetId, budgetId));
   await x.delete(s.envelopes).where(eq(s.envelopes.budgetId, budgetId));
   await x.delete(s.envelopeGroups).where(eq(s.envelopeGroups.budgetId, budgetId));
