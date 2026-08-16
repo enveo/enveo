@@ -21,6 +21,7 @@ export function acc(over: Partial<Account> = {}): Account {
     initialBalance: 0,
     archived: false,
     sort: 0,
+    automaticEnvelopeId: null,
     ...over,
   };
 }
@@ -64,6 +65,8 @@ export function tx(over: Partial<Transaction>): Transaction {
     note: null,
     tag: null,
     sourceRef: null,
+    allocationFromEnvelopeId: null,
+    allocationToEnvelopeId: null,
     items: [],
     createdAt: "2026-06-10T00:00:00Z",
     ...over,

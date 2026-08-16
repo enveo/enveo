@@ -24,6 +24,7 @@ export interface Account {
   initialBalance: Money;
   archived: boolean;
   sort: number;
+  automaticEnvelopeId: string | null;
 }
 
 export interface EnvelopeGroup {
@@ -78,6 +79,8 @@ export interface Transaction {
   note: string | null;  
   tag: string | null; // normalized merchant tag (import idempotency key)
   sourceRef: string | null;  
+  allocationFromEnvelopeId: string | null;
+  allocationToEnvelopeId: string | null;
   items: TxnItem[]; // [] when not a split
   createdAt: string;
 }

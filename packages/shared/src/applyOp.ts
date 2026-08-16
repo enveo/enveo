@@ -81,6 +81,8 @@ function txnFromCreate(p: OpPayload<"txn.create">): Transaction {
     note: p.note ?? null,
     tag: p.tag ?? null,
     sourceRef: p.sourceRef ?? null,
+    allocationFromEnvelopeId: p.allocationFromEnvelopeId ?? null,
+    allocationToEnvelopeId: p.allocationToEnvelopeId ?? null,
     items: buildItems(p.id, p.items),
     createdAt: p.createdAt ?? MISSING_CREATED_AT,
   };
@@ -106,6 +108,8 @@ function txnFromUpdate(prev: Transaction, p: OpPayload<"txn.update">): Transacti
     tag: p.tag !== undefined ? p.tag : prev.tag,
     // Preserve on legacy/UI updates that do not know this import-only field.
     sourceRef: p.sourceRef !== undefined ? p.sourceRef : prev.sourceRef,
+    allocationFromEnvelopeId: p.allocationFromEnvelopeId === undefined ? prev.allocationFromEnvelopeId : p.allocationFromEnvelopeId,
+    allocationToEnvelopeId: p.allocationToEnvelopeId === undefined ? prev.allocationToEnvelopeId : p.allocationToEnvelopeId,
     items: buildItems(prev.id, p.items),
     createdAt: prev.createdAt, // server PATCH does not touch created_at
   };
@@ -133,6 +137,7 @@ function accountFromCreate(p: OpPayload<"account.create">): Account {
     initialBalance: p.initialBalance ?? 0,
     archived: p.archived ?? false,
     sort: p.sort ?? 0,
+    automaticEnvelopeId: p.automaticEnvelopeId ?? null,
   };
 }
 
@@ -161,7 +166,7 @@ function envelopeFromCreate(p: OpPayload<"envelope.create">): Envelope {
 
 /**
  * FK effects of envelope removal (envelope.delete / group.delete):
- * allocations CASCADE, transactions.envelope_id SET NULL, txn_items CASCADE.
+ * allocations CASCADE, envelope references SET NULL, txn_items CASCADE.
  */
 function deleteEnvelopesEffects(ledger: ClientLedger, envIds: ReadonlySet<string>): ClientLedger {
   return {
@@ -170,11 +175,15 @@ function deleteEnvelopesEffects(ledger: ClientLedger, envIds: ReadonlySet<string
     allocations: ledger.allocations.filter((a) => !envIds.has(a.envelopeId)),
     transactions: ledger.transactions.map((t) => {
       const clearEnv = t.envelopeId !== null && envIds.has(t.envelopeId);
+      const clearAllocationFrom = t.allocationFromEnvelopeId !== null && envIds.has(t.allocationFromEnvelopeId);
+      const clearAllocationTo = t.allocationToEnvelopeId !== null && envIds.has(t.allocationToEnvelopeId);
       const dropItems = t.items.some((i) => envIds.has(i.envelopeId));
-      if (!clearEnv && !dropItems) return t;
+      if (!clearEnv && !clearAllocationFrom && !clearAllocationTo && !dropItems) return t;
       return {
         ...t,
         envelopeId: clearEnv ? null : t.envelopeId,
+        allocationFromEnvelopeId: clearAllocationFrom ? null : t.allocationFromEnvelopeId,
+        allocationToEnvelopeId: clearAllocationTo ? null : t.allocationToEnvelopeId,
         items: dropItems ? t.items.filter((i) => !envIds.has(i.envelopeId)) : t.items,
       };
     }),
