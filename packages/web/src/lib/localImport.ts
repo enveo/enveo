@@ -1,4 +1,4 @@
-import { buildImportDupIndex, type ClientLedger, classifyImportDup, type ImportRecognitionResult, type TxnPayload } from "@enveo/shared";
+import { buildImportDupIndex, type ClientLedger, classifyImportDup, type ReconciledImportRecognitionResult, type TxnPayload } from "@enveo/shared";
 import type { EditedImportItem, ImportApplyItem, ImportApplyResponse, ImportItem } from "./api";
 import { expenseEnvelopeSelectionForImport } from "./automaticEnvelopeUi";
 import { local } from "./mutate";
@@ -31,7 +31,7 @@ export interface LocalImportMutationPort {
 
 /** Complete, explicitly selected ledger candidates eligible for duplicate dry-run.
  * Raw screenshot lines — never model copy — become the persisted sourceRef evidence. */
-export function recognitionCandidatesForDryRun(result: ImportRecognitionResult, ledger: ClientLedger): ImportApplyItem[] {
+export function recognitionCandidatesForDryRun(result: ReconciledImportRecognitionResult, ledger: ClientLedger): ImportApplyItem[] {
   const envelopeNames = new Map(ledger.envelopes.map((envelope) => [envelope.id, envelope.name]));
   const categoryNames = new Map(ledger.categories.map((category) => [category.id, category.name]));
   const rowsById = new Map(result.rows.map((row) => [row.rowId, row]));
@@ -61,9 +61,6 @@ export function recognitionCandidatesForDryRun(result: ImportRecognitionResult, 
     ];
   });
 }
-
-/** Kept as a compatibility alias while callers migrate to the truthful review model. */
-export const adaptRecognitionForLegacyReview = recognitionCandidatesForDryRun;
 
 /** Convert either server or local dry-run output without erasing local provenance. */
 export function importReviewItem(
@@ -112,7 +109,7 @@ export function reviewedImportItemsForApply(args: {
             note: edited.note,
             automaticEnvelopeDefault: args.editedAutomaticDefaults[index] ?? false,
             force: item.status === "exists", // editing a duplicate is a deliberate add
-            rawPlace: item.rawPlace, // extraction source stays untouched for learning/dedupe
+            rawPlace: item.rawPlace, // visible source evidence stays untouched for account-scoped history/dedupe
           },
     );
 }
@@ -186,12 +183,23 @@ export function planLocalImport(args: { ledger: ClientLedger; globalAccountId: s
     };
   });
 
-  const dupIndex = buildImportDupIndex(ledger.transactions.map((row) => ({ date: row.date, amount: row.amount, sourceRef: row.sourceRef })));
+  const duplicateIndexes = new Map<string, ReturnType<typeof buildImportDupIndex>>();
+  const duplicateIndexFor = (accountId: string) => {
+    let index = duplicateIndexes.get(accountId);
+    if (!index) {
+      index = buildImportDupIndex(
+        ledger.transactions.filter((row) => row.accountId === accountId).map((row) => ({ date: row.date, amount: row.amount, sourceRef: row.sourceRef })),
+      );
+      duplicateIndexes.set(accountId, index);
+    }
+    return index;
+  };
   const results: ImportApplyResponse["results"] = [];
   const transactions: PlannedTransaction[] = [];
   let added = 0;
   let skipped = 0;
   for (const candidate of normalized) {
+    const dupIndex = duplicateIndexFor(candidate.payload.accountId);
     const status = candidate.item.force
       ? "new"
       : classifyImportDup({ date: candidate.item.date, amount: candidate.item.amount, rawPlace: candidate.item.rawPlace }, dupIndex);

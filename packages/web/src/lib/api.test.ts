@@ -36,6 +36,36 @@ describe("account preferences API client", () => {
   });
 });
 
+describe("screenshot recognition API client", () => {
+  it("uses the versioned operator and vaulted-BYOK recognition routes", async () => {
+    const originalFetch = globalThis.fetch;
+    const requests: Array<{ url: string; body: unknown }> = [];
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      requests.push({ url: String(input), body: JSON.parse(String(init?.body)) });
+      return Response.json({ rows: [], proposals: [] });
+    }) as typeof fetch;
+    try {
+      await api.importExtract("11111111-1111-1111-1111-111111111111", ["data:image/png;base64,AA=="], "pl");
+      await api.byokImportExtract(
+        "22222222-2222-2222-2222-222222222222",
+        "gpt-5.6-luna",
+        "11111111-1111-1111-1111-111111111111",
+        ["data:image/png;base64,AA=="],
+        "pl",
+      );
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+
+    expect(requests.map((request) => request.url)).toEqual(["/api/import/recognize", "/api/ai/byok/import/recognize"]);
+    expect(requests[0]!.body).toMatchObject({ accountId: "11111111-1111-1111-1111-111111111111" });
+    expect(requests[1]!.body).toMatchObject({
+      budgetId: "22222222-2222-2222-2222-222222222222",
+      accountId: "11111111-1111-1111-1111-111111111111",
+    });
+  });
+});
+
 describe("apiErrorMessage", () => {
   // no localStorage in the test env → uiLang() falls back to the browser language (en), and English
   // IS the message: the expected sentence below is literally the key lib/api.ts maps the code to.

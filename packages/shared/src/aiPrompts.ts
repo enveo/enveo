@@ -14,6 +14,7 @@ import { computeBudgetState, prevMonth } from "./budget";
 import { type ImportHistoryRecord, type ImportHistorySelection, selectImportHistoryCandidates } from "./importHistory";
 import {
   applyImportEnrichment,
+  applyImportReviewPolicy,
   IMPORT_RELATION_KINDS,
   IMPORT_REVIEW_REASONS,
   IMPORT_SEMANTIC_KINDS,
@@ -22,6 +23,7 @@ import {
   type ImportExtractBatch,
   type ImportRecognitionResult,
   needsImportEnrichment,
+  type ReconciledImportRecognitionResult,
   reconcileImportProposals,
   validateImportExtraction,
 } from "./importRecognition";
@@ -625,17 +627,17 @@ const mergeReviewReasons = (...groups: ReadonlyArray<readonly (typeof IMPORT_REV
 ];
 
 /** Shared extraction → validation → history → optional enrichment pipeline. */
-export async function runImportRecognitionPipeline(input: ImportRecognitionPipelineInput): Promise<ImportRecognitionResult> {
+export async function runImportRecognitionPipeline(input: ImportRecognitionPipelineInput): Promise<ReconciledImportRecognitionResult> {
   const extractionRaw = await input.chat(
     buildImportExtractPrompt(input.images, { envelopes: [], categories: [] }, input.today, input.locale, input.budgetCurrency),
     AI_VISION_TIMEOUT_MS,
   );
-  const batch = parseImportExtractResponse(extractionRaw);
-  let result = validateImportExtraction({ batch, budgetCurrency: input.budgetCurrency });
-  result = {
-    rows: result.rows,
+  const batch = parseImportExtractResponse(extractionRaw, input.images.length);
+  const validated = validateImportExtraction({ batch, budgetCurrency: input.budgetCurrency });
+  let result: ReconciledImportRecognitionResult = {
+    rows: validated.rows,
     proposals: reconcileImportProposals({
-      proposals: result.proposals,
+      proposals: validated.proposals,
       transactions: input.transactions,
       accounts: input.accounts,
       envelopes: input.envelopes,
@@ -657,7 +659,7 @@ export async function runImportRecognitionPipeline(input: ImportRecognitionPipel
         ...(selection.conflict ? (["history_conflict"] as const) : []),
         ...(selection.candidates.length > 1 ? (["multiple_history_candidates"] as const) : []),
       ];
-      return { ...proposal, reviewReasons: mergeReviewReasons(proposal.reviewReasons, historyReasons) };
+      return applyImportReviewPolicy({ ...proposal, reviewReasons: mergeReviewReasons(proposal.reviewReasons, historyReasons) });
     }),
   };
   if (!needsImportEnrichment(result)) return result;
@@ -723,7 +725,8 @@ export async function runImportRecognitionPipeline(input: ImportRecognitionPipel
 }
 
 /** Throws on an invalid shape (like `rawOutput.parse` in the route). */
-export function parseImportExtractResponse(raw: string): ImportExtractBatch {
+export function parseImportExtractResponse(raw: string, imageCount: number): ImportExtractBatch {
+  if (!Number.isInteger(imageCount) || imageCount < 1 || imageCount > 6) throw new Error("invalid import image count");
   const input: unknown = JSON.parse(raw);
   const parsed = importRawOutput.parse(input);
   const rows = parsed.rows.map((row) => ({
@@ -731,5 +734,10 @@ export function parseImportExtractResponse(raw: string): ImportExtractBatch {
     rawTextLines: row.rawTextLines.map((line) => line.trim()),
     currency: row.currency?.trim().toUpperCase() ?? null,
   }));
-  return { rows };
+  if (rows.some((row) => row.imageIndex >= imageCount)) throw new Error("import row imageIndex is outside the supplied images");
+  const positions = rows.map((row) => `${row.imageIndex}:${row.visualOrder}`);
+  if (new Set(positions).size !== positions.length) throw new Error("duplicate import visual position");
+  return {
+    rows: [...rows].sort((left, right) => left.imageIndex - right.imageIndex || left.visualOrder - right.visualOrder || left.rowId.localeCompare(right.rowId)),
+  };
 }

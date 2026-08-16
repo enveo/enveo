@@ -270,12 +270,13 @@ describe("buildImportExtractPrompt / parseImportExtractResponse", () => {
     expect(() =>
       parseImportExtractResponse(
         '{"rows":[{"rowId":"r1","imageIndex":0,"visualOrder":0,"rawTextLines":[],"date":"1 lipca","amount":-5,"currency":"PLN","direction":"debit","postingStatus":"posted","rowRole":"financial_event","semanticKind":"card_purchase","relation":null,"confidence":"high","reviewReasons":[]}]}',
+        1,
       ),
     ).toThrow();
   });
 
   it("throws when a strict extraction fact is missing", () => {
-    expect(() => parseImportExtractResponse('{"rows":[{"rowId":"r1"}]}')).toThrow();
+    expect(() => parseImportExtractResponse('{"rows":[{"rowId":"r1"}]}', 1)).toThrow();
   });
 });
 
@@ -408,7 +409,10 @@ describe("buildImportEnrichPrompt / parseImportEnrichResponse", () => {
 });
 
 describe("runImportRecognitionPipeline", () => {
-  const extracted = (semanticKind: "card_purchase" | "unknown" = "card_purchase") =>
+  const extracted = (
+    semanticKind: "card_purchase" | "unknown" | "incoming_transfer" | "account_topup" = "card_purchase",
+    postingStatus: "posted" | "unknown" = "posted",
+  ) =>
     JSON.stringify({
       rows: [
         {
@@ -419,8 +423,8 @@ describe("runImportRecognitionPipeline", () => {
           date: "2026-08-07",
           amount: 1234,
           currency: "PLN",
-          direction: semanticKind === "unknown" ? "unknown" : "debit",
-          postingStatus: "posted",
+          direction: semanticKind === "unknown" ? "unknown" : semanticKind === "incoming_transfer" || semanticKind === "account_topup" ? "credit" : "debit",
+          postingStatus,
           rowRole: "financial_event",
           semanticKind,
           relation: null,
@@ -535,8 +539,42 @@ describe("runImportRecognitionPipeline", () => {
       },
     });
     expect(requests).toHaveLength(2);
-    expect(result.proposals[0]).toMatchObject({ name: "Zakupy", envelopeId: "envelope-1" });
+    expect(result.proposals[0]).toMatchObject({ name: "Zakupy", envelopeId: "envelope-1", selected: false });
     expect(result.proposals[0]!.reviewReasons).toEqual(expect.arrayContaining(["history_conflict", "multiple_history_candidates"]));
+  });
+
+  it("keeps cycle-two fact corrections unchecked after final validation and reconciliation", async () => {
+    let calls = 0;
+    const result = await runImportRecognitionPipeline({
+      ...base,
+      chat: async () => {
+        calls++;
+        if (calls === 1) {
+          const value = JSON.parse(extracted()) as { rows: Array<Record<string, unknown>> };
+          value.rows[0]!.reviewReasons = ["possible_ocr_error"];
+          return JSON.stringify(value);
+        }
+        return JSON.stringify({
+          rows: [
+            {
+              rowId: "r1",
+              name: "Groceries",
+              place: null,
+              envelopeId: null,
+              categoryId: null,
+              semanticKind: "card_purchase",
+              relation: null,
+              reviewReasons: [],
+              amount: 1,
+            },
+          ],
+        });
+      },
+    });
+
+    expect(calls).toBe(2);
+    expect(result.proposals[0]).toMatchObject({ type: "expense", selected: false });
+    expect(result.proposals[0]!.reviewReasons).toEqual(expect.arrayContaining(["possible_ocr_error", "fact_correction"]));
   });
 
   it("builds byte-identical cycle-two prompts for permutations of set-like ledger context", async () => {
@@ -593,6 +631,67 @@ describe("runImportRecognitionPipeline", () => {
     expect(calls).toBe(2);
     expect(result.proposals[0]).toMatchObject({ name: "", envelopeId: null, disposition: "unresolved", selected: false });
     expect(result.proposals[0]!.reviewReasons).toContain("unknown_kind");
+  });
+
+  it("keeps an incoming-transfer fallback mapped to income but unchecked when cycle two fails", async () => {
+    let calls = 0;
+    const result = await runImportRecognitionPipeline({
+      ...base,
+      chat: async () => {
+        calls++;
+        if (calls === 1) return extracted("incoming_transfer");
+        throw new Error("cycle-two-down");
+      },
+    });
+
+    expect(calls).toBe(2);
+    expect(result.proposals[0]).toMatchObject({ type: "income", disposition: "candidate", selected: false });
+    expect(result.proposals[0]!.reviewReasons).toContain("possible_transfer");
+  });
+
+  it("keeps an account-top-up fallback mapped to income but unchecked when cycle two fails", async () => {
+    let calls = 0;
+    const result = await runImportRecognitionPipeline({
+      ...base,
+      chat: async () => {
+        calls++;
+        if (calls === 1) return extracted("account_topup");
+        throw new Error("cycle-two-down");
+      },
+    });
+
+    expect(calls).toBe(2);
+    expect(result.proposals[0]).toMatchObject({ type: "income", disposition: "candidate", selected: false });
+    expect(result.proposals[0]!.reviewReasons).toContain("possible_transfer");
+  });
+
+  it("keeps an unknown posting status unchecked after the full pipeline", async () => {
+    let calls = 0;
+    const result = await runImportRecognitionPipeline({
+      ...base,
+      chat: async () => {
+        calls++;
+        if (calls === 1) return extracted("card_purchase", "unknown");
+        return JSON.stringify({
+          rows: [
+            {
+              rowId: "r1",
+              name: "Groceries",
+              place: "Lidl",
+              envelopeId: "envelope-1",
+              categoryId: null,
+              semanticKind: "card_purchase",
+              relation: null,
+              reviewReasons: [],
+            },
+          ],
+        });
+      },
+    });
+
+    expect(calls).toBe(2);
+    expect(result.proposals[0]).toMatchObject({ disposition: "candidate", selected: false });
+    expect(result.proposals[0]!.reviewReasons).toContain("unknown_posting_status");
   });
 });
 

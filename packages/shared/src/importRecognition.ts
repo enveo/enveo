@@ -34,6 +34,7 @@ export const IMPORT_REVIEW_REASONS = [
   "relation_changes_ledger_shape",
   "fact_correction",
   "pending_or_declined",
+  "unknown_posting_status",
   "unknown_kind",
 ] as const;
 
@@ -123,6 +124,24 @@ export interface ReconciledImportProposal extends ImportProposal {
   sourceAccountInvalid: boolean;
 }
 
+/** Final production/wire result after current-ledger reconciliation. */
+export interface ReconciledImportRecognitionResult extends Omit<ImportRecognitionResult, "proposals"> {
+  proposals: ReconciledImportProposal[];
+}
+
+/**
+ * One policy owns automatic selection across every recognition phase. Any
+ * review reason means the proposal needs a human's explicit opt-in; later
+ * enrichment or reconciliation may add evidence but may never re-check it.
+ */
+export function importReviewRequiresExplicitOptIn(proposal: Pick<ImportProposal, "reviewReasons">): boolean {
+  return proposal.reviewReasons.length > 0;
+}
+
+export function applyImportReviewPolicy<T extends ImportProposal>(proposal: T): T {
+  return importReviewRequiresExplicitOptIn(proposal) && proposal.selected ? { ...proposal, selected: false } : proposal;
+}
+
 const addReasons = (current: ImportReviewReason[], ...added: ImportReviewReason[]): ImportReviewReason[] => {
   const unique = new Set<ImportReviewReason>(current);
   for (const reason of added) unique.add(reason);
@@ -168,7 +187,9 @@ export function applyImportEnrichment(result: ImportRecognitionResult, answer: I
     proposals: result.proposals.map((proposal) => {
       const annotation = annotations.get(proposal.rowId);
       if (!annotation) {
-        return invalidAnswerIdentity ? { ...proposal, reviewReasons: addReasons(proposal.reviewReasons, "fact_correction") } : proposal;
+        return invalidAnswerIdentity
+          ? applyImportReviewPolicy({ ...proposal, reviewReasons: addReasons(proposal.reviewReasons, "fact_correction") })
+          : applyImportReviewPolicy(proposal);
       }
 
       let factCorrection =
@@ -190,7 +211,7 @@ export function applyImportEnrichment(result: ImportRecognitionResult, answer: I
       if (relationChanged) reviewReasons = addReasons(reviewReasons, "relation_changes_ledger_shape");
       if (factCorrection) reviewReasons = addReasons(reviewReasons, "fact_correction");
 
-      return {
+      return applyImportReviewPolicy({
         ...proposal,
         name: annotation.name.trim(),
         placeName: annotation.place?.trim() || null,
@@ -200,7 +221,7 @@ export function applyImportEnrichment(result: ImportRecognitionResult, answer: I
         relation,
         reviewReasons,
         selected: relationChanged ? false : proposal.selected,
-      };
+      });
     }),
   };
 }
@@ -357,7 +378,9 @@ export function validateImportExtraction(input: { batch: ImportExtractBatch; bud
       reasons = addReasons(reasons, "inconsistent_direction");
     }
 
-    return proposalFrom(row, { disposition, type, isRefund: mapping.isRefund, reviewReasons: reasons, selected });
+    if (row.postingStatus === "unknown") reasons = addReasons(reasons, "unknown_posting_status");
+
+    return applyImportReviewPolicy(proposalFrom(row, { disposition, type, isRefund: mapping.isRefund, reviewReasons: reasons, selected }));
   });
 
   return { rows: batch.rows, proposals };
@@ -410,6 +433,6 @@ export function reconcileImportProposals(input: {
       selected = false;
     }
 
-    return { ...proposal, envelopeId, categoryId, disposition, selected, reviewReasons, duplicateStatus, sourceAccountInvalid };
+    return applyImportReviewPolicy({ ...proposal, envelopeId, categoryId, disposition, selected, reviewReasons, duplicateStatus, sourceAccountInvalid });
   });
 }

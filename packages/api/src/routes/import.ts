@@ -6,12 +6,13 @@ import {
   type Envelope,
   type ImportHistoryQuery,
   type ImportHistoryRecord,
+  type ImportRecognitionResult,
   runImportRecognitionPipeline,
   selectImportHistoryCandidates,
   type Transaction,
 } from "@enveo/shared";
 import { and, eq, inArray } from "drizzle-orm";
-import { Hono } from "hono";
+import { type Context, Hono } from "hono";
 import { z } from "zod";
 import { aiBudgetExhaustedBody, meteredOperatorChat, operatorChatPayload, SpendDenied } from "../aiSpend/transport";
 import { requireTier, sessionUserId } from "../context";
@@ -26,15 +27,14 @@ import { budgetAssertionFails } from "./sync";
 /**
  * Expense import from screenshots (Apple Wallet / bank history).
  *
- * Two steps:
- *  1. POST /import/extract — screenshots → OpenAI (structured output) → items for review.
+ * Two steps (with /import/extract retained as the compatibility wire):
+ *  1. POST /import/recognize — screenshots → OpenAI (structured output) → evidence and proposals for review.
  *  2. POST /import/apply — dry-run duplicate classification for client review.
  *     Writes were retired: current clients create through their local replica.
  */
 export const importRoutes = new Hono();
 
-export const extractInput = z.object({
-  accountId: z.string().uuid(),
+const importImagesInput = z.object({
   images: z
     .array(z.string().regex(/^data:image\//, "expected an image data-URL"))
     .min(1)
@@ -43,6 +43,8 @@ export const extractInput = z.object({
      the app itself is written in; every current client sends its UI language explicitly. */
   locale: aiLocaleSchema.optional(),
 });
+export const legacyExtractInput = importImagesInput;
+export const recognizeInput = importImagesInput.extend({ accountId: z.string().uuid() });
 
 /* ── Cycle 1: vision — only facts from the screenshot; prompt+schema+parsing in shared/aiPrompts ── */
 
@@ -187,30 +189,128 @@ export async function extractImportForBudget(input: { budgetId: string; accountI
   }
 }
 
+/** Compatibility-window adapter: no account was present on the old wire, so no
+ * ledger/history context is consulted. Only universally safe selected rows are
+ * projected back into the old `{items}` response. */
+export async function extractLegacyImportForBudget(input: { budgetId: string; images: string[]; locale: string; chat: ImportModelChat }) {
+  const [budgetRow] = await db.select({ currency: s.budgets.currency }).from(s.budgets).where(eq(s.budgets.id, input.budgetId));
+  const legacyAccount: Account = {
+    id: "legacy-no-history",
+    name: "Legacy import",
+    color: "#000000",
+    icon: "wallet",
+    type: "checking",
+    onBudget: true,
+    initialBalance: 0,
+    archived: false,
+    sort: 0,
+    automaticEnvelopeId: null,
+  };
+  try {
+    return await runImportRecognitionPipeline({
+      images: input.images,
+      locale: input.locale,
+      today: new Date().toISOString().slice(0, 10),
+      budgetCurrency: budgetRow?.currency ?? "EUR",
+      accountId: legacyAccount.id,
+      accounts: [legacyAccount],
+      envelopes: [],
+      categories: [],
+      transactions: [],
+      historyRecords: [],
+      chat: input.chat,
+    });
+  } catch (reason) {
+    throw new ImportCycleOneFailure(reason);
+  }
+}
+
+export function legacyItemsFromRecognition(result: ImportRecognitionResult) {
+  const rowsById = new Map(result.rows.map((row) => [row.rowId, row]));
+  return result.proposals.flatMap((proposal) => {
+    if (
+      !proposal.selected ||
+      proposal.reviewReasons.length > 0 ||
+      proposal.disposition !== "candidate" ||
+      proposal.date === null ||
+      proposal.amount === null ||
+      proposal.type === null
+    ) {
+      return [];
+    }
+    const sourceRef = proposal.sourceRows
+      .flatMap((rowId) => rowsById.get(rowId)?.rawTextLines ?? [])
+      .join("\n")
+      .trim();
+    return [
+      {
+        date: proposal.date,
+        amount: proposal.amount,
+        type: proposal.type,
+        isRefund: proposal.isRefund,
+        toAccountId: proposal.toAccountId,
+        name: proposal.name,
+        tag: proposal.tag,
+        rawPlace: sourceRef,
+        envelopeId: proposal.envelopeId,
+        envelopeName: null,
+        categoryId: proposal.categoryId,
+        categoryName: null,
+        placeName: proposal.placeName,
+        currency: proposal.currency ?? undefined,
+        fxOriginal: "",
+      },
+    ];
+  });
+}
+
+const importFailureResponse = (c: Context, error: unknown) => {
+  if (!(error instanceof ImportCycleOneFailure)) throw error;
+  const reason = error.reason;
+  if (reason instanceof SpendDenied) return c.json(aiBudgetExhaustedBody(reason.retryAfterSeconds), 429, { "Retry-After": String(reason.retryAfterSeconds) });
+  console.error("import recognition cycle 1 failed:", (reason as Error).message);
+  const failure = transportFailureJson(reason);
+  if (failure) return c.json(failure.body, failure.status);
+  return c.json({ error: "ai_upstream_error", ...(reason instanceof UpstreamHttpError ? { status: reason.status } : {}) }, 502);
+};
+
 /* The API answers with stable machine CODES (never prose): the client owns the wording
    in every locale (web/lib/api.ts → i18n). Structured detail travels in its own field. */
 importRoutes.post("/import/extract", async (c) => {
   if (!env.OPENAI_API_KEY) return c.json({ error: "ai_unavailable" }, 503);
   const budgetId = (await requireTier(c, "plain")).id;
-  const { accountId, images, locale: rawLocale } = extractInput.parse(await c.req.json());
+  const { images, locale: rawLocale } = legacyExtractInput.parse(await c.req.json());
   const userId = sessionUserId(c);
   try {
-    const items = await extractImportForBudget({
+    const result = await extractLegacyImportForBudget({
       budgetId,
-      accountId,
       images,
       locale: rawLocale ?? "en",
       chat: (request, timeoutMs) => openaiJson(request, userId, timeoutMs),
     });
-    return c.json(items);
+    return c.json({ items: legacyItemsFromRecognition(result) });
   } catch (error) {
-    if (!(error instanceof ImportCycleOneFailure)) throw error;
-    const reason = error.reason;
-    if (reason instanceof SpendDenied) return c.json(aiBudgetExhaustedBody(reason.retryAfterSeconds), 429, { "Retry-After": String(reason.retryAfterSeconds) });
-    console.error("import/extract cycle 1 failed:", (reason as Error).message);
-    const failure = transportFailureJson(reason);
-    if (failure) return c.json(failure.body, failure.status);
-    return c.json({ error: "ai_upstream_error", ...(reason instanceof UpstreamHttpError ? { status: reason.status } : {}) }, 502);
+    return importFailureResponse(c, error);
+  }
+});
+
+importRoutes.post("/import/recognize", async (c) => {
+  if (!env.OPENAI_API_KEY) return c.json({ error: "ai_unavailable" }, 503);
+  const budgetId = (await requireTier(c, "plain")).id;
+  const { accountId, images, locale: rawLocale } = recognizeInput.parse(await c.req.json());
+  const userId = sessionUserId(c);
+  try {
+    return c.json(
+      await extractImportForBudget({
+        budgetId,
+        accountId,
+        images,
+        locale: rawLocale ?? "en",
+        chat: (request, timeoutMs) => openaiJson(request, userId, timeoutMs),
+      }),
+    );
+  } catch (error) {
+    return importFailureResponse(c, error);
   }
 });
 
@@ -244,7 +344,7 @@ export const applyInput = z.object({
            "already exists" item in review) — skips classifyDup for this item. */
         force: z.boolean().optional(),
         /* PRESENTATION-ONLY (fx/refund review, ImportSheet): accepted so the round-trip of an
-           item echoed back from /import/extract validates, but never stored — there is no
+           item echoed back from screenshot recognition validates, but never stored — there is no
            `currency`/`fx_original` column on `transactions` (money is always the budget's
            currency; source_ref already carries what we persist about the raw row). */
         currency: z.string().optional(),
@@ -256,6 +356,46 @@ export const applyInput = z.object({
 });
 
 export type ApplyItem = z.infer<typeof applyInput>["items"][number];
+
+export interface ExistingImportEvidence {
+  accountId: string;
+  date: string;
+  amount: number;
+  sourceRef: string | null;
+}
+
+/** Pure account-scoped dry-run classifier shared by the route tests and handler. */
+export function planImportDryRun(input: { globalAccountId: string; items: ApplyItem[]; existing: ExistingImportEvidence[] }) {
+  const duplicateIndexes = new Map<string, ReturnType<typeof buildDupIndex>>();
+  const duplicateIndexFor = (accountId: string) => {
+    let index = duplicateIndexes.get(accountId);
+    if (!index) {
+      index = buildDupIndex(input.existing.filter((row) => row.accountId === accountId).map(({ date, amount, sourceRef }) => ({ date, amount, sourceRef })));
+      duplicateIndexes.set(accountId, index);
+    }
+    return index;
+  };
+  let added = 0;
+  let skipped = 0;
+  const results: Array<ApplyItem & { status: "added" | "exists" | "probable" }> = [];
+  for (const item of input.items) {
+    const duplicateIndex = duplicateIndexFor(item.accountId ?? input.globalAccountId);
+    const status = item.force ? "new" : classifyDup({ date: item.date, amount: item.amount, rawPlace: item.rawPlace }, duplicateIndex);
+    if (status === "exists") {
+      skipped++;
+      results.push({ ...item, status });
+      continue;
+    }
+    if (status === "probable") {
+      results.push({ ...item, status });
+      continue;
+    }
+    duplicateIndex.markSeen({ date: item.date, amount: item.amount, rawPlace: item.rawPlace });
+    added++;
+    results.push({ ...item, status: "added" });
+  }
+  return { added, skipped, dryRun: true as const, results };
+}
 
 /** Transfer validation error in a batch: a transfer without a target account
  *  or with a target account equal to the item's account. Null when all valid. */
@@ -294,31 +434,8 @@ importRoutes.post("/import/apply", async (c) => {
 
   const dates = [...new Set(body.items.map((i) => i.date))];
   const existing = await db
-    .select({ date: s.transactions.date, amount: s.transactions.amount, sourceRef: s.transactions.sourceRef })
+    .select({ accountId: s.transactions.accountId, date: s.transactions.date, amount: s.transactions.amount, sourceRef: s.transactions.sourceRef })
     .from(s.transactions)
     .where(and(eq(s.transactions.budgetId, budgetId), inArray(s.transactions.date, dates)));
-  // duplicate key WITHOUT nondeterministic fields (LLM tag/envelope) — see import-dedupe.ts
-  const dupIdx = buildDupIndex(existing);
-
-  let added = 0;
-  let skipped = 0;
-  const results: Array<(typeof body.items)[number] & { status: "added" | "exists" | "probable" }> = [];
-  for (const it of body.items) {
-    const status = it.force ? "new" : classifyDup({ date: it.date, amount: it.amount, rawPlace: it.rawPlace }, dupIdx);
-    if (status === "exists") {
-      skipped++;
-      results.push({ ...it, status: "exists" });
-      continue;
-    }
-    if (status === "probable") {
-      // only date+amount match (e.g. a manual entry without source_ref) — the
-      // decision belongs to the user: unchecked by default, but selectable
-      results.push({ ...it, status: "probable" });
-      continue;
-    }
-    dupIdx.markSeen({ date: it.date, amount: it.amount, rawPlace: it.rawPlace }); // dedup within the batch (strong key)
-    added++;
-    results.push({ ...it, status: "added" });
-  }
-  return c.json({ added, skipped, dryRun: true, results });
+  return c.json(planImportDryRun({ globalAccountId: body.accountId, items: body.items, existing }));
 });

@@ -33,7 +33,7 @@ import { Sheet } from "./chrome";
 /**
  * Expense import from screenshots (Apple Wallet / bank history).
  * Step 1: pick account + screenshots → extraction via AI dispatch (lib/ai.ts:
- *         server → /import/extract, byok → OpenAI directly; off → consent sheet).
+ *         server → /import/recognize, byok → OpenAI directly; off → consent sheet).
  * Step 2: review recognized items (duplicates marked) → local optimistic operations.
  */
 
@@ -71,7 +71,6 @@ export function ImportSheet({ show, onClose, state, onApplied }: { show: boolean
   const [images, setImages] = useState<string[]>([]);
   const [phase, setPhase] = useState<Phase>("pick");
   const [items, setItems] = useState<ImportReviewRow[]>([]);
-  const [, setRecognition] = useState<Awaited<ReturnType<typeof runImportExtract>> | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [doneStats, setDoneStats] = useState({ added: 0, dup: 0 });
@@ -111,7 +110,6 @@ export function ImportSheet({ show, onClose, state, onApplied }: { show: boolean
     setImages([]);
     setPhase("pick");
     setItems([]);
-    setRecognition(null);
     setError(null);
     setBusy(false);
     setShowConsent(false);
@@ -153,7 +151,6 @@ export function ImportSheet({ show, onClose, state, onApplied }: { show: boolean
       if (tierAtStart.tier === "e2ee") await assertOwnReplica();
       // Plain extraction may use Enveo; E2EE Own OpenAI sends images directly to OpenAI.
       const recognition = await runImportExtract({ images, locale: lang, ledger, accountId, provider });
-      setRecognition(recognition);
       if (recognition.rows.length === 0) {
         setError(t("No transactions were recognized in the screenshots."));
         return;
@@ -208,7 +205,8 @@ export function ImportSheet({ show, onClose, state, onApplied }: { show: boolean
     setError(null);
     try {
       // merge editor corrections: fields from edited[i] override the original (including
-      // per-item account); rawPlace ALWAYS from the original — source_ref feeds self-learning
+      // per-item account); rawPlace ALWAYS comes from the visible evidence so future
+      // recognition can use it as bounded, account-scoped history context
       const chosen: ImportApplyItem[] = reviewedImportRowsForApply({ rows: items, edited, editedAutomaticDefaults });
       // The review can sit open for minutes: re-prove ownership before attaching local ops
       // that the sync engine will later write for this replica.

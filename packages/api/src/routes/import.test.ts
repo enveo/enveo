@@ -4,7 +4,8 @@
  * dedupe classification (import-dedupe). Transaction writes live on the client.
  */
 import { describe, expect, it } from "bun:test";
-import { type ApplyItem, applyInput, extractInput, findTransferError } from "./import";
+import type { ImportProposal } from "@enveo/shared";
+import { type ApplyItem, applyInput, findTransferError, legacyExtractInput, legacyItemsFromRecognition, planImportDryRun, recognizeInput } from "./import";
 import { buildDupIndex, classifyDup } from "./import-dedupe";
 import { budgetAssertionFails } from "./sync";
 
@@ -12,11 +13,59 @@ const ACC_A = "11111111-1111-1111-1111-111111111111";
 const ACC_B = "22222222-2222-2222-2222-222222222222";
 const ENV = "33333333-3333-3333-3333-333333333333";
 
-describe("import/extract — selected account", () => {
-  it("requires the selected account id for history selection and reconciliation", () => {
+describe("screenshot import wire inputs", () => {
+  it("keeps the legacy images/locale request while the versioned recognition input requires an account", () => {
     const body = { images: ["data:image/png;base64,AA=="], locale: "pl" };
-    expect(extractInput.safeParse(body).success).toBe(false);
-    expect(extractInput.parse({ ...body, accountId: ACC_A }).accountId).toBe(ACC_A);
+    expect(legacyExtractInput.parse(body)).toEqual(body);
+    expect(recognizeInput.safeParse(body).success).toBe(false);
+    expect(recognizeInput.parse({ ...body, accountId: ACC_A }).accountId).toBe(ACC_A);
+  });
+
+  it("projects only complete safely selected candidates into the legacy items envelope", () => {
+    const rows = [
+      { rowId: "safe", rawTextLines: ["SAFE RAW"] },
+      { rowId: "risk", rawTextLines: ["RISK RAW"] },
+      { rowId: "missing", rawTextLines: ["MISSING RAW"] },
+    ].map((row, visualOrder) => ({
+      ...row,
+      imageIndex: 0,
+      visualOrder,
+      date: "2026-07-10",
+      amount: 1000,
+      currency: "EUR",
+      direction: "debit" as const,
+      postingStatus: "posted" as const,
+      rowRole: "financial_event" as const,
+      semanticKind: "card_purchase" as const,
+      relation: null,
+      confidence: "high" as const,
+      reviewReasons: [],
+    }));
+    const proposal = (rowId: string, selected: boolean, amount: number | null = 1000): ImportProposal => ({
+      rowId,
+      sourceRows: [rowId],
+      disposition: "candidate" as const,
+      date: "2026-07-10",
+      amount,
+      currency: "EUR",
+      type: "expense" as const,
+      isRefund: false,
+      toAccountId: null,
+      semanticKind: "card_purchase" as const,
+      relation: null,
+      name: "Purchase",
+      tag: "",
+      rawPlace: `${rowId} raw`,
+      envelopeId: null,
+      categoryId: null,
+      placeName: null,
+      reviewReasons: selected ? [] : ["possible_transfer"],
+      selected,
+    });
+
+    expect(legacyItemsFromRecognition({ rows, proposals: [proposal("safe", true), proposal("risk", false), proposal("missing", true, null)] })).toEqual([
+      expect.objectContaining({ date: "2026-07-10", amount: 1000, type: "expense", rawPlace: "SAFE RAW" }),
+    ]);
   });
 });
 
@@ -82,6 +131,39 @@ describe("import/apply — extended items", () => {
     const parsed = applyInput.parse(body);
     expect(findTransferError(parsed.items, parsed.accountId)).toBeNull();
     expect(parsed.items[0]).toMatchObject({ type: "expense", envelopeId: ENV, rawPlace: "XYZ*1" });
+  });
+
+  it("scopes persisted exact and probable evidence to the item's effective account", () => {
+    const result = planImportDryRun({
+      globalAccountId: ACC_A,
+      existing: [
+        { accountId: ACC_A, date: "2026-07-10", amount: 8640, sourceRef: "ZEN*ABC" },
+        { accountId: ACC_A, date: "2026-07-11", amount: 1200, sourceRef: null },
+      ],
+      items: [
+        baseItem(),
+        baseItem({ accountId: ACC_B }),
+        baseItem({ date: "2026-07-11", amount: 1200, rawPlace: "OTHER" }),
+        baseItem({ accountId: ACC_B, date: "2026-07-11", amount: 1200, rawPlace: "OTHER" }),
+      ],
+    });
+
+    expect(result.results.map((item) => item.status)).toEqual(["exists", "added", "probable", "added"]);
+  });
+
+  it("uses separate within-batch evidence for mixed per-item account overrides", () => {
+    const result = planImportDryRun({
+      globalAccountId: ACC_A,
+      existing: [],
+      items: [
+        baseItem({ date: "2026-07-12", rawPlace: "BATCH" }),
+        baseItem({ accountId: ACC_B, date: "2026-07-12", rawPlace: "BATCH" }),
+        baseItem({ date: "2026-07-12", rawPlace: "BATCH" }),
+        baseItem({ accountId: ACC_B, date: "2026-07-12", rawPlace: "BATCH" }),
+      ],
+    });
+
+    expect(result.results.map((item) => item.status)).toEqual(["added", "added", "exists", "exists"]);
   });
 });
 

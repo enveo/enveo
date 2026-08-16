@@ -1,12 +1,12 @@
 import { describe, expect, it } from "bun:test";
-import { type ClientLedger, createDefaultBudgetPreferences, type ImportRecognitionResult } from "@enveo/shared";
+import { type ClientLedger, createDefaultBudgetPreferences, type ReconciledImportRecognitionResult } from "@enveo/shared";
 import type { EditedImportItem, ImportApplyItem } from "./api";
 import {
-  adaptRecognitionForLegacyReview,
   applyLocalImport,
   importReviewItem,
   type LocalImportMutationPort,
   planLocalImport,
+  recognitionCandidatesForDryRun,
   reviewedImportItemsForApply,
 } from "./localImport";
 
@@ -120,7 +120,7 @@ function mutationSpy() {
 
 describe("local E2EE import planning", () => {
   it("does not project an unsafe unselected recognition proposal into the legacy review", () => {
-    const recognition: ImportRecognitionResult = {
+    const recognition: ReconciledImportRecognitionResult = {
       rows: [
         {
           rowId: "unsafe-row",
@@ -160,11 +160,13 @@ describe("local E2EE import planning", () => {
           placeName: null,
           reviewReasons: ["relation_changes_ledger_shape"],
           selected: false,
+          duplicateStatus: "new",
+          sourceAccountInvalid: false,
         },
       ],
     };
 
-    const adapted = adaptRecognitionForLegacyReview(recognition, ledger());
+    const adapted = recognitionCandidatesForDryRun(recognition, ledger());
     const dry = planLocalImport({ ledger: ledger(), globalAccountId: U(2), items: adapted, dryRun: true });
     const review = dry.results.map((result) => importReviewItem(result, U(5), "EUR"));
 
@@ -181,6 +183,41 @@ describe("local E2EE import planning", () => {
     });
     expect(plan.results.map((row) => row.status)).toEqual(["exists", "probable", "added", "exists"]);
     expect(plan).toMatchObject({ added: 1, skipped: 2, transactions: [] });
+  });
+
+  it("scopes exact and probable duplicate evidence to each item's effective source account", () => {
+    const current = ledger();
+    current.transactions.push({ ...current.transactions[0]!, id: U(31), sourceRef: null });
+
+    const plan = planLocalImport({
+      ledger: current,
+      globalAccountId: U(2),
+      dryRun: true,
+      items: [
+        item({ date: "2026-08-01", amount: 1000, rawPlace: "LIDL RAW" }),
+        item({ accountId: U(3), date: "2026-08-01", amount: 1000, rawPlace: "LIDL RAW" }),
+        item({ date: "2026-08-01", amount: 1000, rawPlace: "OTHER" }),
+        item({ accountId: U(3), date: "2026-08-01", amount: 1000, rawPlace: "OTHER" }),
+      ],
+    });
+
+    expect(plan.results.map((result) => result.status)).toEqual(["exists", "added", "probable", "added"]);
+  });
+
+  it("deduplicates within a batch only when effective source accounts match", () => {
+    const plan = planLocalImport({
+      ledger: ledger(),
+      globalAccountId: U(2),
+      dryRun: true,
+      items: [
+        item({ date: "2026-08-03", rawPlace: "BATCH RAW" }),
+        item({ accountId: U(3), date: "2026-08-03", rawPlace: "BATCH RAW" }),
+        item({ date: "2026-08-03", rawPlace: "BATCH RAW" }),
+        item({ accountId: U(3), date: "2026-08-03", rawPlace: "BATCH RAW" }),
+      ],
+    });
+
+    expect(plan.results.map((result) => result.status)).toEqual(["added", "added", "exists", "exists"]);
   });
 
   it("rechecks duplicates in review and again against the live ledger immediately before mutation", () => {

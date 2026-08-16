@@ -57,6 +57,18 @@ export type SpendRoutesChildOutput = {
     checks: number;
     records: number;
   };
+  importCompatibility: {
+    legacyStatus: number;
+    legacyItemCount: number;
+    legacyHasRecognitionFields: boolean;
+    recognitionStatus: number;
+    recognitionRowCount: number;
+    recognitionProposalCount: number;
+    recognitionHasLegacyItems: boolean;
+    upstreamCalls: number;
+    checks: number;
+    records: number;
+  };
   stalledCounter: {
     /** The REAL check stalled on a held ACCESS EXCLUSIVE table lock — the answer still arrived. */
     status: number;
@@ -230,7 +242,7 @@ async function main() {
   await exhaust(u5.userId);
   const app5 = appFor(u5.userId);
   const before5 = upstreamCalls;
-  const res6 = await post(app5, "/import/extract", { accountId: u5.accountId, images: ["data:image/png;base64,AAAA"], locale: "en" });
+  const res6 = await post(app5, "/import/extract", { images: ["data:image/png;base64,AAAA"], locale: "en" });
   const body6 = (await res6.json()) as { error?: string };
   const importDeniedBeforeCycle1 = {
     status: res6.status,
@@ -284,7 +296,7 @@ async function main() {
   };
   script = [chatBody(JSON.stringify(visionItems))];
   const before6 = { calls: upstreamCalls, checks: counters.checks, records: counters.records };
-  const res7 = await post(app6, "/import/extract", { accountId: u6.accountId, images: ["data:image/png;base64,AAAA"], locale: "en" });
+  const res7 = await post(app6, "/import/recognize", { accountId: u6.accountId, images: ["data:image/png;base64,AAAA"], locale: "en" });
   const body7 = (await res7.json()) as { proposals?: Array<{ rawPlace?: string }> };
   const importCycle2Denied = {
     status: res7.status,
@@ -295,7 +307,52 @@ async function main() {
     records: counters.records - before6.records,
   };
 
-  /* ── 7. a STALLED counter (decision 7): the REAL check blocks on a held table lock; the
+  /* ── 7. old and new operator clients coexist: the legacy route keeps its old
+     request/response envelope while recognition exposes the final structured result. ── */
+  const uCompat = await newUser("import-compat");
+  const appCompat = appFor(uCompat.userId);
+  const compatibleVision = {
+    rows: [
+      {
+        rowId: "compat-row",
+        imageIndex: 0,
+        visualOrder: 0,
+        rawTextLines: ["CAFE COMPAT"],
+        date: "2026-08-03",
+        amount: 555,
+        currency: "EUR",
+        direction: "debit",
+        postingStatus: "posted",
+        rowRole: "financial_event",
+        semanticKind: "card_purchase",
+        relation: null,
+        confidence: "high",
+        reviewReasons: [],
+      },
+    ],
+  };
+  script = [chatBody(JSON.stringify(compatibleVision)), chatBody(JSON.stringify(compatibleVision))];
+  const beforeCompat = { calls: upstreamCalls, checks: counters.checks, records: counters.records };
+  const [legacyCompatResponse, recognitionCompatResponse] = await Promise.all([
+    post(appCompat, "/import/extract", { images: ["data:image/png;base64,AAAA"], locale: "en" }),
+    post(appCompat, "/import/recognize", { accountId: uCompat.accountId, images: ["data:image/png;base64,AAAA"], locale: "en" }),
+  ]);
+  const legacyCompatBody = (await legacyCompatResponse.json()) as { items?: unknown[]; rows?: unknown[]; proposals?: unknown[] };
+  const recognitionCompatBody = (await recognitionCompatResponse.json()) as { items?: unknown[]; rows?: unknown[]; proposals?: unknown[] };
+  const importCompatibility: SpendRoutesChildOutput["importCompatibility"] = {
+    legacyStatus: legacyCompatResponse.status,
+    legacyItemCount: legacyCompatBody.items?.length ?? -1,
+    legacyHasRecognitionFields: legacyCompatBody.rows !== undefined || legacyCompatBody.proposals !== undefined,
+    recognitionStatus: recognitionCompatResponse.status,
+    recognitionRowCount: recognitionCompatBody.rows?.length ?? -1,
+    recognitionProposalCount: recognitionCompatBody.proposals?.length ?? -1,
+    recognitionHasLegacyItems: recognitionCompatBody.items !== undefined,
+    upstreamCalls: upstreamCalls - beforeCompat.calls,
+    checks: counters.checks - beforeCompat.checks,
+    records: counters.records - beforeCompat.records,
+  };
+
+  /* ── 8. a STALLED counter (decision 7): the REAL check blocks on a held table lock; the
      bounded deadlines fire, the attempt fails OPEN and the answer arrives anyway ── */
   const u7 = await newUser("stalled");
   const app7 = appFor(u7.userId);
@@ -338,6 +395,7 @@ async function main() {
     suggestDenied,
     importDeniedBeforeCycle1,
     importCycle2Denied,
+    importCompatibility,
     stalledCounter,
   };
   await emitChildResult(SENTINEL, out);

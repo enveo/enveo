@@ -26,8 +26,9 @@
  *  - "poke" (after a local enqueue): the leader syncs right away (doesn't wait for
  *    the interval). Both sides feature-detect; no channel ⇒ tabs converge
  *    via their own pulls (focus/interval).
- * Loop protection: receive handlers do NOT broadcast (applyPeerUpdate
- * posts nothing and persists nothing).
+ * Loop protection: applyPeerUpdate itself does not broadcast. Re-establishing the E2EE
+ * provider invariant may enqueue and persist one terminal preference op; that mutation is
+ * idempotent and follows the normal sync path.
  *
  * This module owns the channel, the leader flag and the pending-"updated" flag; the cycle
  * reaches it only through the deps the facade injects (configureCycle), so the static module
@@ -107,7 +108,8 @@ export async function wipeLocalData(): Promise<void> {
 /**
  * Receiving "updated" from another tab: apply its sync without our own network. Rehydrate
  * the ledger blob from IDB, THEN replay our own outbox (idempotent — doesn't lose
- * THIS tab's optimistic ops). Does NOT broadcast and does NOT persist (no loop).
+ * THIS tab's optimistic ops). Does not broadcast. The E2EE provider invariant may use the
+ * normal local mutation path to enqueue and persist one idempotent terminal preference op.
  */
 async function applyPeerUpdate(): Promise<void> {
   if (applyingPeerUpdate) return; // coalescing — rehydrate reads the freshest blob anyway

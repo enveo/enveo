@@ -97,6 +97,18 @@ describe("scoreImportRecognition", () => {
     expect(scoreImportRecognition([expectedRow()], [actualRow()]).relationPrecision).toEqual({ correct: 0, total: 0, rate: null });
   });
 
+  test("relation recall keeps the truth-derived denominator when the model omits every relation", () => {
+    // Break caught: deleting all candidate relations used to turn precision into a null
+    // denominator, allowing a materially incomplete result to evade the paired gate.
+    const expected = [expectedRow(), expectedRow({ id: "fx", relation: { kind: "fx_for", rowId: "purchase" }, expectedProposal: null })];
+    const actual = [actualRow(), actualRow({ id: "fx", relation: null, proposal: null })];
+
+    const metrics = scoreImportRecognition(expected, actual);
+
+    expect(metrics.relationRecall).toEqual({ correct: 0, total: 1, rate: 0 });
+    expect(metrics.relationF1).toBe(0);
+  });
+
   test("a wrong automatically selected type is harmful", () => {
     const metrics = scoreImportRecognition([expectedRow()], [actualRow({ proposal: { ...actualRow().proposal!, selected: true, type: "income" } })]);
 
@@ -141,6 +153,8 @@ describe("scoreImportRecognition", () => {
     expect(metrics.factAccuracy.overall).toEqual({ correct: 0, total: 0, rate: null });
     expect(metrics.semanticKindAccuracy).toEqual({ correct: 0, total: 0, rate: null });
     expect(metrics.relationPrecision).toEqual({ correct: 0, total: 0, rate: null });
+    expect(metrics.relationRecall).toEqual({ correct: 0, total: 0, rate: null });
+    expect(metrics.relationF1).toBeNull();
     expect(metrics.harmfulSelected).toBe(0);
     expect(metrics.reviewRequired).toBe(0);
   });
@@ -276,6 +290,69 @@ describe("gateImportRecognition", () => {
     );
     expect(decision.transitions.unexplainedNewReviews).toBe(1);
     expect(decision.reasons).toContain("unexplained_review_transition");
+  });
+
+  test("rejects a row-recall regression", () => {
+    const expected = [expectedRow(), expectedRow({ id: "second" })];
+    const baseline = [actualRow(), actualRow({ id: "second" })];
+
+    const decision = gateImportRecognition(expected, baseline, [actualRow()]);
+
+    expect(decision.reasons).toContain("row_recall_regression");
+  });
+
+  test("rejects a financial-row-recall regression", () => {
+    const expected = [expectedRow(), expectedRow({ id: "label", rowRole: "ui_metadata", safetyClass: "non_ledger", expectedProposal: null })];
+    const baseline = [actualRow(), actualRow({ id: "label", proposal: null })];
+    const candidate = [actualRow({ id: "label", proposal: null })];
+
+    const decision = gateImportRecognition(expected, baseline, candidate);
+
+    expect(decision.reasons).toContain("financial_row_recall_regression");
+  });
+
+  test("rejects a semantic-kind accuracy regression even when facts and proposal shape stay correct", () => {
+    const decision = gateImportRecognition([expectedRow()], [actualRow()], [actualRow({ semanticKind: "cashback_or_reward" })]);
+
+    expect(decision.reasons).toContain("semantic_kind_accuracy_regression");
+  });
+
+  test("rejects relation precision and truth-denominator recall regressions independently", () => {
+    const expected = [expectedRow(), expectedRow({ id: "fx", relation: { kind: "fx_for", rowId: "purchase" }, expectedProposal: null })];
+    const baseline = [actualRow(), actualRow({ id: "fx", relation: { kind: "fx_for", rowId: "purchase" }, proposal: null })];
+    const wrongExtra = [
+      actualRow({ relation: { kind: "refund_of", rowId: "fx" } }),
+      actualRow({ id: "fx", relation: { kind: "fx_for", rowId: "purchase" }, proposal: null }),
+    ];
+    const omitted = [actualRow(), actualRow({ id: "fx", relation: null, proposal: null })];
+
+    expect(gateImportRecognition(expected, baseline, wrongExtra).reasons).toContain("relation_precision_regression");
+    expect(gateImportRecognition(expected, baseline, omitted).reasons).toContain("relation_recall_regression");
+  });
+
+  test("combined omissions and relabeling cannot game the paired gate", () => {
+    const expected = [
+      expectedRow(),
+      expectedRow({ id: "refund", semanticKind: "merchant_refund" }),
+      expectedRow({
+        id: "fx",
+        rowRole: "supporting_detail",
+        safetyClass: "non_ledger",
+        expectedProposal: null,
+        relation: { kind: "fx_for", rowId: "purchase" },
+      }),
+    ];
+    const baseline = [
+      actualRow(),
+      actualRow({ id: "refund", semanticKind: "merchant_refund" }),
+      actualRow({ id: "fx", semanticKind: "fx_conversion", relation: { kind: "fx_for", rowId: "purchase" }, proposal: null }),
+    ];
+    const candidate = [actualRow({ semanticKind: "salary" }), actualRow({ id: "refund", semanticKind: "salary" })];
+
+    const decision = gateImportRecognition(expected, baseline, candidate);
+
+    expect(decision.passed).toBe(false);
+    expect(decision.reasons).toEqual(expect.arrayContaining(["row_recall_regression", "semantic_kind_accuracy_regression", "relation_recall_regression"]));
   });
 });
 
@@ -442,6 +519,7 @@ describe("recognition evaluator adapters", () => {
       proposals: [
         {
           rowId: "model-chosen-id",
+          ...({ semanticKind: "fee", relation: { kind: "fee_for", rowId: "model-chosen-id" } } as Record<string, unknown>),
           selected: false,
           disposition: "pending",
           reviewReasons: ["pending_or_declined"],
@@ -460,8 +538,8 @@ describe("recognition evaluator adapters", () => {
       amount: 1299,
       currency: "EUR",
       direction: "debit",
-      semanticKind: "card_purchase",
-      relation: null,
+      semanticKind: "fee",
+      relation: { kind: "fee_for", rowId: "fixture:pending" },
       proposal: {
         selected: false,
         disposition: "pending",
@@ -593,6 +671,51 @@ describe("recognition evaluator adapters", () => {
         false,
       ),
     ).toThrow("baseline indexes");
+  });
+
+  test("manifest context carries deterministic account, ledger, and history inputs", () => {
+    const fixture = {
+      id: "fixture",
+      images: ["images/fixture.png"],
+      locale: "en",
+      today: "2026-08-16",
+      budgetCurrency: "EUR",
+      formFactor: "mobile",
+      overlap: false,
+      context: {
+        accountId: "account-a",
+        accounts: [
+          { id: "account-a", name: "Checking" },
+          { id: "account-b", name: "Savings", archived: true },
+        ],
+        envelopes: [{ id: "envelope-a", name: "Food" }],
+        categories: [{ id: "category-a", name: "Daily" }],
+        transactions: [{ accountId: "account-a", date: "2026-08-15", amount: 1299, sourceRef: "MARKET" }],
+        historyRecords: [
+          {
+            accountId: "account-a",
+            currency: "EUR",
+            sourceRef: "MARKET",
+            tag: "MARKET",
+            place: "Market",
+            name: "Groceries",
+            envelope: "Food",
+            category: "Daily",
+            type: "expense",
+            isRefund: false,
+            toAccountId: null,
+          },
+        ],
+      },
+      rows: [manifestRow()],
+    };
+
+    const parsed = parseRecognitionManifest({ version: 1, fixtures: [fixture] }, false);
+    expect(parsed.fixtures[0]!.context).toMatchObject({ accountId: "account-a" });
+    expect(parsed.fixtures[0]!.context.historyRecords).toHaveLength(1);
+    expect(() => parseRecognitionManifest({ version: 1, fixtures: [{ ...fixture, context: { ...fixture.context, accountId: "missing" } }] }, false)).toThrow(
+      "not present in accounts",
+    );
   });
 
   test("manifest validation rejects legacy material labels, invalid facts, and empty fixtures", () => {

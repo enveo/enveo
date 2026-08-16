@@ -1,4 +1,12 @@
-import type { ClientLedger, ImportDupStatus, ImportProposal, ImportRecognitionResult, ImportReviewReason, ImportSemanticKind } from "@enveo/shared";
+import type {
+  ClientLedger,
+  ImportDupStatus,
+  ImportProposal,
+  ImportReviewReason,
+  ImportSemanticKind,
+  ReconciledImportProposal,
+  ReconciledImportRecognitionResult,
+} from "@enveo/shared";
 import type { EditedImportItem, ImportApplyItem, ImportApplyResponse } from "./api";
 import { type Message, msg } from "./i18n";
 import { importReviewItem, type LocalImportReviewItem, reviewedImportItemsForApply } from "./localImport";
@@ -30,12 +38,13 @@ const REASON_MESSAGES: Record<ImportReviewReason, Message> = {
   unknown_transfer_endpoint: msg("Transfer account is unknown"),
   possible_ocr_error: msg("Possible recognition error"),
   history_conflict: msg("Conflicts with transaction history"),
-  multiple_history_candidates: msg("Probable duplicate"),
+  multiple_history_candidates: msg("Several history matches"),
   invalid_relation: msg("Related row is invalid"),
   impossible_fx: msg("FX amounts do not match"),
   relation_changes_ledger_shape: msg("Related rows could change the ledger"),
   fact_correction: msg("AI suggested changing an extracted fact"),
   pending_or_declined: msg("Pending or declined"),
+  unknown_posting_status: msg("Posting status is unknown"),
   unknown_kind: msg("Unknown transaction type"),
 };
 
@@ -102,15 +111,9 @@ export function reviewBadges(row: ImportReviewRow): ImportReviewBadge[] {
   return [...unique.values()];
 }
 
-const inferredStatus = (proposal: ImportProposal): LocalImportReviewItem["status"] => {
-  if (proposal.reviewReasons.includes("history_conflict")) return "exists";
-  if (proposal.reviewReasons.includes("multiple_history_candidates")) return "probable";
-  return "added";
-};
-
 function completeCandidateItem(args: {
-  proposal: ImportProposal;
-  recognition: ImportRecognitionResult;
+  proposal: ReconciledImportProposal;
+  recognition: ReconciledImportRecognitionResult;
   ledger: ClientLedger;
   dryResult?: ImportApplyResponse["results"][number];
   automaticEnvelopeId: string | null | undefined;
@@ -140,7 +143,7 @@ function completeCandidateItem(args: {
     categoryName: proposal.categoryId ? (categoryNames.get(proposal.categoryId) ?? null) : null,
     placeName: proposal.placeName,
     currency: proposal.currency ?? undefined,
-    status: inferredStatus(proposal),
+    status: proposal.duplicateStatus === "exists" ? "exists" : proposal.duplicateStatus === "probable" ? "probable" : "added",
   };
   const item = importReviewItem({ ...result, rawPlace: sourceRef || null }, args.automaticEnvelopeId, args.budgetCurrency);
   return { ...item, include: proposal.selected && item.include };
@@ -148,7 +151,7 @@ function completeCandidateItem(args: {
 
 /** Joins dry-run verdicts back onto recognition without dropping any raw row. */
 export function buildImportReviewRows(args: {
-  recognition: ImportRecognitionResult;
+  recognition: ReconciledImportRecognitionResult;
   ledger: ClientLedger;
   dryRunResults: ImportApplyResponse["results"];
   automaticEnvelopeId: string | null | undefined;
@@ -190,8 +193,7 @@ export function buildImportReviewRows(args: {
       automaticEnvelopeId: args.automaticEnvelopeId,
       budgetCurrency: args.budgetCurrency,
     });
-    const reconciledDuplicateStatus = (proposal as ImportProposal & { duplicateStatus?: ImportDupStatus }).duplicateStatus;
-    const duplicateStatus = reconciledDuplicateStatus ?? (item?.status === "exists" ? "exists" : item?.status === "probable" ? "probable" : "new");
+    const duplicateStatus = proposal.duplicateStatus;
     const reviewItem = duplicateStatus === "exists" ? null : item;
     return {
       rowId: rawRow.rowId,

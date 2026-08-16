@@ -4,8 +4,8 @@ import {
   createDefaultBudgetPreferences,
   IMPORT_REVIEW_REASONS,
   type ImportExtractRow,
-  type ImportProposal,
-  type ImportRecognitionResult,
+  type ReconciledImportProposal,
+  type ReconciledImportRecognitionResult,
   reconcileImportProposals,
   validateImportExtraction,
 } from "@enveo/shared";
@@ -64,7 +64,7 @@ const row = (rowId: string, over: Partial<ImportExtractRow> = {}): ImportExtract
   ...over,
 });
 
-const proposal = (rowId: string, over: Partial<ImportProposal> = {}): ImportProposal => ({
+const proposal = (rowId: string, over: Partial<ReconciledImportProposal> = {}): ReconciledImportProposal => ({
   rowId,
   sourceRows: [rowId],
   disposition: "candidate",
@@ -84,10 +84,12 @@ const proposal = (rowId: string, over: Partial<ImportProposal> = {}): ImportProp
   placeName: null,
   reviewReasons: [],
   selected: true,
+  duplicateStatus: "new",
+  sourceAccountInvalid: false,
   ...over,
 });
 
-const recognition = (rows: ImportExtractRow[], proposals: ImportProposal[]): ImportRecognitionResult => ({ rows, proposals });
+const recognition = (rows: ImportExtractRow[], proposals: ReconciledImportProposal[]): ReconciledImportRecognitionResult => ({ rows, proposals });
 
 const dryResult = (over: Partial<ImportApplyResponse["results"][number]> = {}): ImportApplyResponse["results"][number] => ({
   date: "2026-08-02",
@@ -110,9 +112,20 @@ describe("screenshot import review view model", () => {
       budgetCurrency: "EUR",
     });
 
-    const candidates = recognitionCandidatesForDryRun(validated, ledger());
+    const reconciled = recognition(
+      validated.rows,
+      reconcileImportProposals({
+        proposals: validated.proposals,
+        transactions: ledger().transactions,
+        accounts: ledger().accounts,
+        envelopes: ledger().envelopes,
+        categories: ledger().categories,
+        selectedAccountId: U(2),
+      }),
+    );
+    const candidates = recognitionCandidatesForDryRun(reconciled, ledger());
     const review = buildImportReviewRows({
-      recognition: validated,
+      recognition: reconciled,
       ledger: ledger(),
       dryRunResults: [],
       automaticEnvelopeId: null,
@@ -240,12 +253,12 @@ describe("screenshot import review view model", () => {
       proposal("fx", { selected: false, relation: { kind: "fx_for", rowId: "transfer" }, reviewReasons: ["relation_changes_ledger_shape"] }),
       proposal("refund", { isRefund: true, semanticKind: "merchant_refund" }),
       proposal("reward", { type: "income", semanticKind: "cashback_or_reward" }),
-      proposal("duplicate"),
+      proposal("duplicate", { duplicateStatus: "probable", selected: false }),
     ]);
     const review = buildImportReviewRows({
       recognition: result,
       ledger: ledger(),
-      dryRunResults: [dryResult(), dryResult(), dryResult({ type: "income" }), dryResult({ status: "probable" })],
+      dryRunResults: [dryResult(), dryResult(), dryResult({ type: "income" })],
       automaticEnvelopeId: null,
       budgetCurrency: "EUR",
     });
@@ -256,6 +269,22 @@ describe("screenshot import review view model", () => {
     expect(reviewBadges(review[3]!).map((badge) => badge.label)).toContain("Reward / income");
     expect(reviewBadges(review[4]!).map((badge) => badge.label)).toContain("Probable duplicate");
     expect(review[4]!.include).toBe(false);
+  });
+
+  it("presents history ambiguity separately and never invents duplicate evidence from it", () => {
+    const result = recognition([row("ambiguous")], [proposal("ambiguous", { selected: false, reviewReasons: ["multiple_history_candidates"] })]);
+
+    const review = buildImportReviewRows({
+      recognition: result,
+      ledger: ledger(),
+      dryRunResults: [],
+      automaticEnvelopeId: null,
+      budgetCurrency: "EUR",
+    });
+
+    expect(review[0]).toMatchObject({ duplicateStatus: "new", include: false });
+    expect(reviewBadges(review[0]!).map((badge) => badge.label)).toContain("Several history matches");
+    expect(reviewBadges(review[0]!).map((badge) => badge.label)).not.toContain("Probable duplicate");
   });
 
   it("allows apply only for explicitly included complete candidate rows", () => {

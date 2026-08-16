@@ -75,4 +75,19 @@ describe.skipIf(!TEST_URL)("spend budget route contracts (DB-backed, child proce
     expect(out.importCycle2Denied.checks).toBe(2); // two independent per-attempt checks
     expect(out.importCycle2Denied.records).toBe(1); // only the successful cycle-1 attempt charged
   });
+
+  it("serves legacy and recognition import wires concurrently with the same metering semantics", () => {
+    expect(out.importCompatibility).toEqual({
+      legacyStatus: 200,
+      legacyItemCount: 1,
+      legacyHasRecognitionFields: false,
+      recognitionStatus: 200,
+      recognitionRowCount: 1,
+      recognitionProposalCount: 1,
+      recognitionHasLegacyItems: false,
+      upstreamCalls: 2,
+      checks: 2,
+      records: 2,
+    });
+  });
 });

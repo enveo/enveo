@@ -161,6 +161,7 @@ describe("screenshot import recognition contract", () => {
           },
         ],
       }),
+      1,
     );
 
     expect(batch.rows.map((row) => row.rowId)).toEqual(["r1", "r2", "r3", "r4"]);
@@ -175,12 +176,25 @@ describe("screenshot import recognition contract", () => {
     expect(batch.rows[0]!.rawTextLines).toEqual(["180.00 EUR < 776.95 PLN", "1.00 PLN = 0.231677 EUR"]);
     expect(batch.rows.map((row) => row.rowId)).toHaveLength(new Set(batch.rows.map((row) => row.rowId)).size);
   });
+
+  it("rejects invalid visual positions and sorts valid rows by their screenshot position", () => {
+    const modelRow = (rowId: string, imageIndex: number, visualOrder: number) => ({
+      ...extractRow({ rowId, imageIndex, visualOrder }),
+    });
+
+    expect(() => parseImportExtractResponse(JSON.stringify({ rows: [modelRow("outside", 2, 0)] }), 2)).toThrow("imageIndex");
+    expect(() => parseImportExtractResponse(JSON.stringify({ rows: [modelRow("one", 0, 1), modelRow("two", 0, 1)] }), 1)).toThrow("visual position");
+
+    const parsed = parseImportExtractResponse(JSON.stringify({ rows: [modelRow("third", 1, 0), modelRow("second", 0, 2), modelRow("first", 0, 1)] }), 2);
+    expect(parsed.rows.map((row) => row.rowId)).toEqual(["first", "second", "third"]);
+  });
 });
 
 describe("screenshot import proposal validation", () => {
   it("maps clear semantic facts to conservative ledger directions", () => {
     expect(proposalFor("cashback_or_reward", "credit")).toMatchObject({ type: "income", selected: true });
-    expect(proposalFor("incoming_transfer", "credit")).toMatchObject({ type: "income", reviewReasons: ["possible_transfer"] });
+    expect(proposalFor("incoming_transfer", "credit")).toMatchObject({ type: "income", selected: false, reviewReasons: ["possible_transfer"] });
+    expect(proposalFor("account_topup", "credit")).toMatchObject({ type: "income", selected: false, reviewReasons: ["possible_transfer"] });
     expect(proposalFor("merchant_refund", "credit")).toMatchObject({ type: "expense", isRefund: true });
     expect(proposalFor("internal_transfer", "credit")).toMatchObject({
       type: "income",
@@ -188,6 +202,13 @@ describe("screenshot import proposal validation", () => {
       selected: false,
     });
     expect(proposalFor("unknown", "unknown")).toMatchObject({ disposition: "unresolved", selected: false });
+  });
+
+  it("requires explicit opt-in for an unknown posting status", () => {
+    const result = validateImportExtraction({ batch: { rows: [extractRow({ postingStatus: "unknown" })] }, budgetCurrency: "PLN" });
+
+    expect(result.proposals[0]).toMatchObject({ type: "expense", disposition: "candidate", selected: false });
+    expect(result.proposals[0]!.reviewReasons).toContain("unknown_posting_status");
   });
 
   it("keeps incomplete, supporting, pending, and declined source facts visible without selecting them", () => {
@@ -378,6 +399,7 @@ describe("screenshot import enrichment merge", () => {
       categoryId: null,
       relation: null,
       reviewReasons: ["possible_ocr_error", "fact_correction"],
+      selected: false,
     });
   });
 

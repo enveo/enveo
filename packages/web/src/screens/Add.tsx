@@ -238,7 +238,7 @@ export function AddScreen({
       setTab(it.type);
       setAmount(padExpr(it.amount));
       setAccountId(draft.accountId);
-      if (it.toAccountId) setToAccountId(it.toAccountId); // transfer learned from history
+      if (it.toAccountId) setToAccountId(it.toAccountId); // reviewed recognition candidate
       setIsRefund(it.type === "expense" && !!it.isRefund);
       const automaticEnvelopeId = accounts.find((account) => account.id === draft.accountId)?.automaticEnvelopeId;
       setExpenseEnvelope(

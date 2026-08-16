@@ -1,3 +1,5 @@
+import { type ImportReviewReason, importReviewRequiresExplicitOptIn } from "../../packages/shared/src/importRecognition";
+
 export type ImportRecognitionDirection = "debit" | "credit" | "unknown";
 export type ImportRecognitionRowRole = "financial_event" | "supporting_detail" | "ui_metadata";
 export type ImportRecognitionPostingStatus = "posted" | "pending" | "declined" | "unknown";
@@ -83,6 +85,10 @@ export interface ImportRecognitionMetrics {
   };
   semanticKindAccuracy: ImportRecognitionRatio;
   relationPrecision: ImportRecognitionRatio;
+  /** Expected relations are the denominator, so omitting every relation scores zero. */
+  relationRecall: ImportRecognitionRatio;
+  /** Null only when neither truth nor output contains a relation. */
+  relationF1: number | null;
   harmfulSelected: number;
   /** Release-relevant reviews only; pending/declined/supporting/UI/unexpected rows are separate. */
   reviewRequired: number;
@@ -135,6 +141,7 @@ const reviewBucket = (truth: ExpectedImportRecognitionRow | undefined, actual: A
 
 const hasRequiredSafetyReview = (truth: ExpectedImportRecognitionRow, actual: ActualImportRecognitionRow | undefined): boolean =>
   truth.safetyClass === "unsafe_auto" &&
+  importReviewRequiresExplicitOptIn({ reviewReasons: truth.requiredSafetyReasons as ImportReviewReason[] }) &&
   actual?.proposal !== null &&
   actual?.proposal !== undefined &&
   !actual.proposal.selected &&
@@ -164,6 +171,7 @@ export function scoreImportRecognition(
   const overallCorrect = factCorrect.amount + factCorrect.date + factCorrect.currency + factCorrect.direction;
 
   const actualRelations = actual.filter((row) => row.relation !== null);
+  const expectedRelations = expected.filter((row) => row.relation !== null);
   const correctRelations = actualRelations.filter((row) => {
     const truth = actualById.get(row.id) === row ? expectedById.get(row.id) : undefined;
     return sameRelation(row.relation, truth?.relation ?? null);
@@ -210,6 +218,11 @@ export function scoreImportRecognition(
     },
     semanticKindAccuracy: ratio(expected.filter((row) => actualById.get(row.id)?.semanticKind === row.semanticKind).length, expected.length),
     relationPrecision: ratio(correctRelations, actualRelations.length),
+    relationRecall: ratio(
+      expectedRelations.filter((row) => sameRelation(actualById.get(row.id)?.relation ?? null, row.relation)).length,
+      expectedRelations.length,
+    ),
+    relationF1: actualRelations.length + expectedRelations.length === 0 ? null : (2 * correctRelations) / (actualRelations.length + expectedRelations.length),
     harmfulSelected,
     reviewRequired: reviewBreakdown.unsafe + reviewBreakdown.otherFinancial,
     reviewBreakdown,
@@ -254,9 +267,19 @@ export function gateImportRecognition(
   }
 
   const reasons: string[] = [];
+  if (candidate.rowRecall.correct < baseline.rowRecall.correct) reasons.push("row_recall_regression");
+  if (candidate.financialRowRecall.correct < baseline.financialRowRecall.correct) reasons.push("financial_row_recall_regression");
   for (const fact of ["amount", "date", "currency", "direction"] as const) {
     if (candidate.factAccuracy[fact].correct < baseline.factAccuracy[fact].correct) reasons.push(`${fact}_accuracy_regression`);
   }
+  if (candidate.semanticKindAccuracy.correct < baseline.semanticKindAccuracy.correct) reasons.push("semantic_kind_accuracy_regression");
+  if (
+    baseline.relationPrecision.rate !== null &&
+    (candidate.relationPrecision.rate === null || candidate.relationPrecision.rate < baseline.relationPrecision.rate)
+  ) {
+    reasons.push("relation_precision_regression");
+  }
+  if (candidate.relationRecall.correct < baseline.relationRecall.correct) reasons.push("relation_recall_regression");
   if (baseline.harmfulSelected === 0) {
     if (candidate.harmfulSelected !== 0) reasons.push("harmful_selected_regression_from_zero");
   } else if (candidate.harmfulSelected >= baseline.harmfulSelected) {
