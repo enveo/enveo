@@ -136,6 +136,7 @@ describe("local E2EE import planning", () => {
     const spy = mutationSpy();
     applyLocalImport(plan, spy.mutations);
     expect(spy.created.places).toEqual([]);
+    expect(spy.created.transactions).toHaveLength(1);
     expect(spy.created.transactions[0]).toMatchObject({
       accountId: U(3),
       isRefund: true,
@@ -160,6 +161,14 @@ describe("local E2EE import planning", () => {
     applyLocalImport(plan, spy.mutations);
     expect(spy.created.categories).toEqual(["Subscriptions"]);
     expect(spy.created.places).toEqual(["Netflix"]);
+    expect(spy.created.transactions).toHaveLength(2);
+    expect(spy.created.transactions[0]).toMatchObject({
+      type: "expense",
+      accountId: U(2),
+      envelopeId: U(5),
+      categoryId: U(20),
+      placeId: U(21),
+    });
     expect(spy.created.transactions[1]).toMatchObject({ type: "transfer", toAccountId: U(3), envelopeId: null, categoryId: null, isRefund: false });
     expect(() => planLocalImport({ ledger: ledger(), globalAccountId: U(2), dryRun: false, items: [item({ envelopeId: U(99) })] })).toThrow("foreign_ref");
   });

@@ -4,11 +4,12 @@
  * drift if a new Transaction field were added later.
  */
 
-import { describe, expect, it } from "bun:test";
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
+import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { type ClientLedger, createDefaultBudgetPreferences, type Transaction, type TxnPayload } from "@enveo/shared";
-import { prepareTxnCreate, prepareTxnUpdate, txnToDuplicatePayload, txnToPayload } from "./mutate";
+import { local, prepareTxnCreate, prepareTxnUpdate, txnToDuplicatePayload, txnToPayload } from "./mutate";
+import * as outbox from "./outbox";
+import { store } from "./store";
+import "./sync";
 
 const ACC = crypto.randomUUID();
 const ENV1 = crypto.randomUUID();
@@ -72,6 +73,21 @@ const txnPayload = (overrides: Partial<TxnPayload> = {}): TxnPayload => ({
   items: [],
   ...overrides,
 });
+
+async function resetMutationSeam(ledger = flowLedger()): Promise<void> {
+  outbox.clearAll();
+  await outbox.flushed();
+  store.replace(ledger, 0, ledger.budgets[0]!.id);
+}
+
+function emittedTxn(index: number) {
+  const entry = outbox.snapshot()[index];
+  if (!entry || entry.op.kind === "alloc.set" || !entry.op.kind.startsWith("txn.")) throw new Error(`expected transaction op ${index}`);
+  return entry.op;
+}
+
+beforeEach(() => resetMutationSeam());
+afterEach(() => resetMutationSeam());
 
 /**
  * A SPLIT expense exercising every field txnToPayload must carry through: a refund,
@@ -204,11 +220,82 @@ describe("transaction mutation preparation", () => {
   });
 });
 
-describe("transaction creation ports", () => {
-  it("routes manual Add and reconciliation creates through local.createTxn", () => {
-    const source = (path: string) => readFileSync(join(import.meta.dir, "..", path), "utf8");
+describe("local transaction mutations", () => {
+  it("emits captured account flows for new income and transfers", () => {
+    local.createTxn(txnPayload());
+    local.createTxn(txnPayload({ type: "transfer", toAccountId: PLACE, envelopeId: null }));
 
-    expect(source("screens/Add.tsx")).toContain("else local.createTxn(payload)");
-    expect(source("components/widgets.tsx")).toContain("local.createTxn({");
+    expect(outbox.snapshot()).toHaveLength(2);
+    expect(emittedTxn(0).payload).toMatchObject({
+      type: "income",
+      accountId: ACC,
+      envelopeId: null,
+      allocationFromEnvelopeId: null,
+      allocationToEnvelopeId: ENV1,
+    });
+    expect(emittedTxn(1).payload).toMatchObject({
+      type: "transfer",
+      accountId: ACC,
+      toAccountId: PLACE,
+      allocationFromEnvelopeId: ENV1,
+      allocationToEnvelopeId: ENV2,
+    });
+  });
+
+  it("emits the recorded flow when an update keeps the route", async () => {
+    const ledger = flowLedger();
+    ledger.transactions.push({ ...splitTxn(), type: "income", accountId: ACC, envelopeId: null, allocationToEnvelopeId: ENV2 });
+    await resetMutationSeam(ledger);
+
+    local.updateTxn(TXN, txnPayload({ amount: 9999, date: "2026-08-15", envelopeId: ENV1 }));
+
+    expect(outbox.snapshot()).toHaveLength(1);
+    expect(emittedTxn(0).payload).toMatchObject({
+      id: TXN,
+      amount: 9999,
+      date: "2026-08-15",
+      envelopeId: null,
+      allocationFromEnvelopeId: null,
+      allocationToEnvelopeId: ENV2,
+    });
+  });
+
+  it("recaptures current links when an update reroutes the transaction", async () => {
+    const ledger = flowLedger();
+    ledger.transactions.push({ ...splitTxn(), type: "income", accountId: ACC, envelopeId: null, allocationToEnvelopeId: ENV2 });
+    await resetMutationSeam(ledger);
+
+    local.updateTxn(TXN, txnPayload({ type: "transfer", accountId: PLACE, toAccountId: ACC, envelopeId: ENV1 }));
+
+    expect(outbox.snapshot()).toHaveLength(1);
+    expect(emittedTxn(0).payload).toMatchObject({
+      id: TXN,
+      type: "transfer",
+      accountId: PLACE,
+      toAccountId: ACC,
+      envelopeId: ENV1,
+      allocationFromEnvelopeId: ENV2,
+      allocationToEnvelopeId: ENV1,
+    });
+  });
+
+  it("duplicates with current captured links instead of the stored flow", () => {
+    const stale = { ...splitTxn(), type: "income" as const, accountId: ACC, envelopeId: null, allocationToEnvelopeId: ENV2 };
+    local.duplicateTxn(stale);
+
+    expect(outbox.snapshot()).toHaveLength(1);
+    expect(emittedTxn(0).payload).toMatchObject({
+      type: "income",
+      accountId: ACC,
+      envelopeId: null,
+      allocationFromEnvelopeId: null,
+      allocationToEnvelopeId: ENV1,
+    });
+  });
+
+  it("throws before enqueueing when an update id is absent from the local ledger", () => {
+    const missingId = crypto.randomUUID();
+    expect(() => local.updateTxn(missingId, txnPayload())).toThrow(`local.updateTxn: transaction ${missingId} not found`);
+    expect(outbox.snapshot()).toEqual([]);
   });
 });
