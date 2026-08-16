@@ -48,7 +48,7 @@ export interface ImportItem {
   fxOriginal?: string;
 }
 /** Import item corrections from the editor (AddScreen in draft mode) — spec §3.
- *  Fields go to /import/apply merged with the original; rawPlace/source_ref
+ *  Fields go to local import planning merged with the original; rawPlace/source_ref
  *  ALWAYS from the original (the self-learning loop). */
 export interface EditedImportItem {
   type: "expense" | "income" | "transfer";
@@ -63,7 +63,7 @@ export interface EditedImportItem {
   placeName: string | null;
   note: string;
 }
-/** An item sent to /import/apply: the extraction original + OPTIONAL corrections
+/** An item sent to import planning (and the plain dry-run API): the extraction original + OPTIONAL corrections
  *  from the editor (merged in ImportSheet). rawPlace always from the original. */
 export type ImportApplyItem = Omit<ImportItem, "type"> & Partial<EditedImportItem> & { type: "expense" | "income" | "transfer"; force?: boolean };
 export interface ImportApplyResponse {

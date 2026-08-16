@@ -17,7 +17,7 @@ const ledger = (): ClientLedger => ({
       initialBalance: 0,
       archived: false,
       sort: 0,
-      automaticEnvelopeId: null,
+      automaticEnvelopeId: U(5),
     },
     {
       id: U(3),
@@ -29,12 +29,13 @@ const ledger = (): ClientLedger => ({
       initialBalance: 0,
       archived: false,
       sort: 1,
-      automaticEnvelopeId: null,
+      automaticEnvelopeId: U(9),
     },
   ],
   groups: [{ id: U(4), name: "Living", sort: 0 }],
   envelopes: [
     { id: U(5), groupId: U(4), name: "Food", color: "#fff", icon: "food", note: null, monthlyTarget: null, isSavings: false, sort: 0, archived: false },
+    { id: U(9), groupId: U(4), name: "Travel", color: "#fff", icon: "plane", note: null, monthlyTarget: null, isSavings: false, sort: 1, archived: false },
   ],
   categories: [{ id: U(6), name: "Groceries" }],
   places: [{ id: U(7), name: "Lidl" }],
@@ -171,5 +172,46 @@ describe("local E2EE import planning", () => {
     });
     expect(spy.created.transactions[1]).toMatchObject({ type: "transfer", toAccountId: U(3), envelopeId: null, categoryId: null, isRefund: false });
     expect(() => planLocalImport({ ledger: ledger(), globalAccountId: U(2), dryRun: false, items: [item({ envelopeId: U(99) })] })).toThrow("foreign_ref");
+  });
+
+  it("defaults only missing imported expenses from each item's account link", () => {
+    // given: two expenses without an imported envelope use different source accounts
+    const plan = planLocalImport({
+      ledger: ledger(),
+      globalAccountId: U(2),
+      dryRun: false,
+      items: [
+        item({ envelopeId: null }),
+        item({ accountId: U(3), envelopeId: null, rawPlace: "SECOND RAW" }),
+        item({ envelopeId: U(9), rawPlace: "EXPLICIT RAW" }),
+      ],
+    });
+
+    // when: the review/result and write payloads are prepared
+    const plannedEnvelopeIds = plan.transactions.map((transaction) => transaction.payload.envelopeId);
+
+    // then: missing values follow their accounts while an explicit imported envelope wins
+    expect(plan.results.map((result) => result.envelopeId)).toEqual([U(5), U(9), U(9)]);
+    expect(plannedEnvelopeIds).toEqual([U(5), U(9), U(9)]);
+  });
+
+  it("sends each accepted import exactly once through the transaction mutation port without pre-stamping flow", () => {
+    // given: one accepted linked-account income will be stamped by the real local.createTxn boundary
+    const plan = planLocalImport({
+      ledger: ledger(),
+      globalAccountId: U(2),
+      dryRun: false,
+      items: [item({ type: "income", envelopeId: null })],
+    });
+    const spy = mutationSpy();
+
+    // when: the local import is applied
+    applyLocalImport(plan, spy.mutations);
+
+    // then: the port receives one route payload and no competing allocation-flow stamp
+    expect(spy.created.transactions).toHaveLength(1);
+    expect(spy.created.transactions[0]).toMatchObject({ type: "income", accountId: U(2) });
+    expect(spy.created.transactions[0]).not.toHaveProperty("allocationFromEnvelopeId");
+    expect(spy.created.transactions[0]).not.toHaveProperty("allocationToEnvelopeId");
   });
 });

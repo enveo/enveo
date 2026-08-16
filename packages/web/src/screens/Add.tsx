@@ -5,6 +5,14 @@ import { LazyChunk, useOpenedOnce } from "../components/lazy";
 import { Numpad } from "../components/pickers";
 import { hasOpenOp, type PadState, padKey } from "../lib/amount";
 import { type StateResponse, useLedgerVersion } from "../lib/api";
+import {
+  automaticEnvelopePreview,
+  expenseEnvelopeAfterAccountChange,
+  expenseEnvelopeSelection,
+  expenseEnvelopeSelectionForImport,
+  explicitExpenseEnvelopeSelection,
+  formatAutomaticEnvelopeEffect,
+} from "../lib/automaticEnvelopeUi";
 import { categoryCountsFor, rankCategories } from "../lib/categoryIndex";
 import { useMask, useTheme } from "../lib/contexts";
 import { currentMonth, formatDateLong, todayISO } from "../lib/dates";
@@ -20,6 +28,7 @@ import { P } from "../lib/theme";
 import { AccountPickerSheet, DestinationAccountSheet } from "./add/AccountPickerSheet";
 import { AddHeader } from "./add/AddHeader";
 import { AmountSection } from "./add/AmountSection";
+import { AutomaticEnvelopeEffect } from "./add/AutomaticEnvelopeEffect";
 import { DateSheet } from "./add/DateSheet";
 import { EnvelopePickerSheet } from "./add/EnvelopePickerSheet";
 import { ExpenseFields } from "./add/ExpenseFields";
@@ -95,10 +104,25 @@ export function AddScreen({
   const [pad, setPad] = useState<PadState>({ expr: "", fresh: true });
   const amount = pad.expr;
   const setAmount = (s: string) => setPad({ expr: s, fresh: true });
-  const [accountId, setAccountId] = useState(() => preferredAccountId(accounts, accounts[1]?.id ?? accounts[0]?.id ?? ""));
+  const preferredInitialAccountId = preferredAccountId(accounts, accounts[1]?.id ?? accounts[0]?.id ?? "");
+  const initialAccountId = editTxn?.accountId ?? draft?.initial?.accountId ?? draft?.accountId ?? preferredInitialAccountId;
+  const [accountId, setAccountId] = useState(initialAccountId);
   const [toAccountId, setToAccountId] = useState(accounts.find((a) => a.id !== accountId)?.id ?? "");
   const [isRefund, setIsRefund] = useState(false);
-  const [envelopeId, setEnvelopeId] = useState<string | null>(null);
+  const [expenseEnvelope, setExpenseEnvelope] = useState(() => {
+    const automaticEnvelopeId = accounts.find((account) => account.id === initialAccountId)?.automaticEnvelopeId;
+    if (editTxn) return expenseEnvelopeSelection(automaticEnvelopeId, { envelopeId: editTxn.envelopeId });
+    if (draft?.initial)
+      return draft.automaticEnvelopeDefault
+        ? expenseEnvelopeSelection(automaticEnvelopeId)
+        : expenseEnvelopeSelection(automaticEnvelopeId, { envelopeId: draft.initial.envelopeId });
+    if (draft)
+      return draft.automaticEnvelopeDefault
+        ? expenseEnvelopeSelection(automaticEnvelopeId)
+        : expenseEnvelopeSelectionForImport(draft.item.type, draft.item.envelopeId, automaticEnvelopeId);
+    return expenseEnvelopeSelection(automaticEnvelopeId);
+  });
+  const envelopeId = expenseEnvelope.envelopeId;
   // KOPERTA/NA KONTO: suggestion grid (true) vs the collapsed single-row summary (false).
   // Expense starts open (nothing to summarize yet); income/transfer start collapsed — a pool
   // default or a pre-picked destination already exists, so the grid is an opt-in "change" step.
@@ -140,7 +164,7 @@ export function AddScreen({
     setAccountId(editTxn.accountId);
     if (editTxn.toAccountId) setToAccountId(editTxn.toAccountId);
     setIsRefund(editTxn.isRefund);
-    setEnvelopeId(editTxn.envelopeId);
+    setExpenseEnvelope(explicitExpenseEnvelopeSelection(editTxn.envelopeId));
     setItems(editTxn.items.map((i) => ({ envelopeId: i.envelopeId, amount: i.amount })));
     setSplitMode(editTxn.items.length > 0);
     setCategoryId(editTxn.categoryId);
@@ -166,7 +190,11 @@ export function AddScreen({
       setAccountId(e.accountId);
       if (e.toAccountId) setToAccountId(e.toAccountId);
       setIsRefund(e.isRefund);
-      setEnvelopeId(e.envelopeId);
+      setExpenseEnvelope(
+        draft.automaticEnvelopeDefault
+          ? expenseEnvelopeSelection(accounts.find((account) => account.id === e.accountId)?.automaticEnvelopeId)
+          : explicitExpenseEnvelopeSelection(e.envelopeId),
+      );
       setCategoryId(e.categoryId);
       setName(e.name);
       setNote(e.note);
@@ -179,7 +207,12 @@ export function AddScreen({
       setAccountId(draft.accountId);
       if (it.toAccountId) setToAccountId(it.toAccountId); // transfer learned from history
       setIsRefund(it.type === "expense" && !!it.isRefund);
-      setEnvelopeId(it.envelopeId);
+      const automaticEnvelopeId = accounts.find((account) => account.id === draft.accountId)?.automaticEnvelopeId;
+      setExpenseEnvelope(
+        draft.automaticEnvelopeDefault
+          ? expenseEnvelopeSelection(automaticEnvelopeId)
+          : expenseEnvelopeSelectionForImport(it.type, it.envelopeId, automaticEnvelopeId),
+      );
       setCategoryId(it.categoryId ?? null);
       setName(it.name);
       prefillPlace(it.placeName ?? null);
@@ -220,8 +253,9 @@ export function AddScreen({
 
   const press = (k: string) => setPad((p) => padKey(p, k === "DEL" ? "⌫" : k));
 
-  const reset = () => {
-    setEnvelopeId(null);
+  const reset = (nextTab: Tab) => {
+    const automaticEnvelopeId = accounts.find((account) => account.id === accountId)?.automaticEnvelopeId;
+    setExpenseEnvelope(nextTab === "expense" && !editTxn && !draft ? expenseEnvelopeSelection(automaticEnvelopeId) : explicitExpenseEnvelopeSelection(null));
     setItems([]);
     setSplitMode(false);
     setCategoryId(null);
@@ -253,25 +287,28 @@ export function AddScreen({
     if (minor <= 0 || noAccount) return;
     if (!draft) setLastAccountId(accountId); // per-device preference
     // Draft mode: build the corrected import item and hand it to the parent — ZERO local.*
-    // (the save goes in bulk through /import/apply with source_ref preserved).
+    // (the accepted review later goes through the local import batch with source_ref preserved).
     if (draft) {
       if (tab === "transfer" && (!toAccountId || toAccountId === accountId)) return;
-      draft.onSave({
-        type: tab,
-        accountId,
-        toAccountId: tab === "transfer" ? toAccountId : null,
-        isRefund: tab === "expense" && isRefund,
-        amount: minor,
-        date,
-        name: name.trim(),
-        // income has no envelope selection (always → To be budgeted); transfer likewise has none.
-        // Place/category are expense-only — switching tab after picking either on an expense must
-        // not silently attach them to an income/transfer.
-        envelopeId: tab === "expense" ? envelopeId : null,
-        categoryId: tab === "expense" ? categoryId : null,
-        placeName: tab === "expense" ? (placeId ? (state.places.find((p) => p.id === placeId)?.name ?? null) : placeInput.trim() || null) : null,
-        note,
-      });
+      draft.onSave(
+        {
+          type: tab,
+          accountId,
+          toAccountId: tab === "transfer" ? toAccountId : null,
+          isRefund: tab === "expense" && isRefund,
+          amount: minor,
+          date,
+          name: name.trim(),
+          // income has no envelope selection (always → To be budgeted); transfer likewise has none.
+          // Place/category are expense-only — switching tab after picking either on an expense must
+          // not silently attach them to an income/transfer.
+          envelopeId: tab === "expense" ? envelopeId : null,
+          categoryId: tab === "expense" ? categoryId : null,
+          placeName: tab === "expense" ? (placeId ? (state.places.find((p) => p.id === placeId)?.name ?? null) : placeInput.trim() || null) : null,
+          note,
+        },
+        { automaticEnvelopeDefault: tab === "expense" && expenseEnvelope.provenance === "automatic" && envelopeId !== null },
+      );
       haptic([10, 30, 14]);
       return;
     }
@@ -335,6 +372,16 @@ export function AddScreen({
   // this transaction (income/refund add, expense subtracts) — reuses the existing Reports idiom.
   const envAfter = (env?.available ?? 0) + (plus ? minor : -minor);
   const envPreviewText = envAfter < 0 ? t("over by {amount}", { amount: M(-envAfter) }) : t("{amount} left", { amount: M(envAfter) });
+  const automaticPreview = automaticEnvelopePreview(state, { type: tab, accountId, toAccountId: tab === "transfer" ? toAccountId : null }, minor, editTxn);
+  const automaticEffect =
+    minor > 0 && (automaticPreview.rows.length > 0 || automaticPreview.neutral)
+      ? formatAutomaticEnvelopeEffect(automaticPreview, M, {
+          heading: t("Automatic envelope effect"),
+          readyToAssign: t("Ready to assign"),
+          noEnvelopeChange: t("No envelope change"),
+          noChange: t("No change"),
+        })
+      : null;
 
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column" }}>
@@ -346,7 +393,7 @@ export function AddScreen({
         onBack={draft ? draft.onCancel : onDone}
         onTabSelect={(tb) => {
           setTab(tb);
-          reset();
+          reset(tb);
           setIsRefund(false);
           setEnvOpen(tb === "expense");
           setDestOpen(false);
@@ -401,6 +448,7 @@ export function AddScreen({
               setToAccountId(id);
               setDestOpen(false);
             }}
+            automaticEffect={automaticEffect}
           />
         ) : tab === "expense" ? (
           <ExpenseFields
@@ -417,9 +465,10 @@ export function AddScreen({
             envelopeId={envelopeId}
             env={env}
             envPreviewText={envPreviewText}
+            automaticEnvelopeDefault={expenseEnvelope.provenance === "automatic" && envelopeId !== null}
             onOpenEnvSheet={() => setShowEnv(true)}
             onPickEnvelope={(id) => {
-              setEnvelopeId(id);
+              setExpenseEnvelope(explicitExpenseEnvelopeSelection(id));
               setEnvOpen(false);
             }}
             onExpandEnvGrid={() => setEnvOpen(true)}
@@ -485,6 +534,8 @@ export function AddScreen({
             }}
             onFieldFocus={() => setNumpad(false)}
           />
+        ) : automaticEffect ? (
+          <AutomaticEnvelopeEffect data={automaticEffect} />
         ) : null}
       </div>
 
@@ -537,6 +588,8 @@ export function AddScreen({
         accounts={accounts}
         selectedId={accountId}
         onSelect={(id) => {
+          const automaticEnvelopeId = accounts.find((account) => account.id === id)?.automaticEnvelopeId;
+          setExpenseEnvelope((current) => expenseEnvelopeAfterAccountChange(current, automaticEnvelopeId, splitMode || items.length > 0));
           setAccountId(id);
           if (toAccountId === id) setToAccountId(accounts.find((x) => x.id !== id)?.id ?? "");
           setShowAcc(false);
@@ -568,7 +621,7 @@ export function AddScreen({
         envelopes={state.envelopes}
         groups={state.groups}
         onSelect={(id) => {
-          setEnvelopeId(id);
+          setExpenseEnvelope(explicitExpenseEnvelopeSelection(id));
           setEnvOpen(false);
           setShowEnv(false);
         }}

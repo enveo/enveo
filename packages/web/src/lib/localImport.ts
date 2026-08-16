@@ -1,5 +1,6 @@
 import { buildImportDupIndex, type ClientLedger, classifyImportDup, type TxnPayload } from "@enveo/shared";
 import type { ImportApplyItem, ImportApplyResponse } from "./api";
+import { expenseEnvelopeSelectionForImport } from "./automaticEnvelopeUi";
 import { local } from "./mutate";
 
 interface PlannedTransaction {
@@ -28,23 +29,24 @@ const cleanName = (value: string | null | undefined): string | null => value?.tr
 /** Validate and classify the complete batch before any optimistic mutation is allowed. */
 export function planLocalImport(args: { ledger: ClientLedger; globalAccountId: string; items: ImportApplyItem[]; dryRun: boolean }): LocalImportPlan {
   const { ledger, globalAccountId, items, dryRun } = args;
-  const accountIds = new Set(ledger.accounts.map((row) => row.id));
+  const accountById = new Map(ledger.accounts.map((row) => [row.id, row]));
   const envelopeIds = new Set(ledger.envelopes.map((row) => row.id));
   const categoryIds = new Set(ledger.categories.map((row) => row.id));
   const envelopeByName = byName(ledger.envelopes);
   const categoryByName = byName(ledger.categories);
   const placeByName = byName(ledger.places);
-  if (!accountIds.has(globalAccountId)) throw new Error("foreign_ref");
+  if (!accountById.has(globalAccountId)) throw new Error("foreign_ref");
 
   const normalized = items.map((item, index) => {
     const accountId = item.accountId ?? globalAccountId;
-    if (!accountIds.has(accountId)) throw new Error("foreign_ref");
+    if (!accountById.has(accountId)) throw new Error("foreign_ref");
     if (item.type === "transfer" && (!item.toAccountId || item.toAccountId === accountId)) throw new Error(`transfer_invalid:${index}`);
-    if (item.toAccountId && !accountIds.has(item.toAccountId)) throw new Error("foreign_ref");
+    if (item.toAccountId && !accountById.has(item.toAccountId)) throw new Error("foreign_ref");
 
     const namedEnvelope = cleanName(item.envelopeName);
-    const envelopeId =
+    const importedEnvelopeId =
       item.type === "transfer" ? null : (item.envelopeId ?? (namedEnvelope ? envelopeByName.get(namedEnvelope.toLowerCase())?.id : null) ?? null);
+    const envelopeId = expenseEnvelopeSelectionForImport(item.type, importedEnvelopeId, accountById.get(accountId)?.automaticEnvelopeId).envelopeId;
     if (envelopeId && !envelopeIds.has(envelopeId)) throw new Error("foreign_ref");
 
     const namedCategory = cleanName(item.categoryName);
@@ -71,7 +73,7 @@ export function planLocalImport(args: { ledger: ClientLedger; globalAccountId: s
       sourceRef: item.rawPlace?.trim() || null,
       items: [],
     };
-    return { item, payload, placeName: placeId ? null : placeName, categoryName };
+    return { item: { ...item, envelopeId }, payload, placeName: placeId ? null : placeName, categoryName };
   });
 
   const dupIndex = buildImportDupIndex(ledger.transactions.map((row) => ({ date: row.date, amount: row.amount, sourceRef: row.sourceRef })));
