@@ -14,6 +14,10 @@ import { Eyebrow, Helper, Row, Seg } from "./ui";
 
 type ActionState = "idle" | "saving" | "testing" | "deleting";
 
+export function providerOptionsForTier(tier: "plain" | "e2ee"): AiProviderKind[] {
+  return tier === "e2ee" ? ["rules", "openai"] : ["rules", "enveo", "openai"];
+}
+
 const STATUS_COPY: Record<"ready" | "not-configured" | "operator-unavailable" | "tier-unavailable" | "locked" | "vault-unavailable", Message> = {
   ready: msg("Ready to use."),
   "not-configured": msg("No OpenAI key is configured."),
@@ -133,11 +137,10 @@ export function AiSection() {
         <Seg
           value={preferences.aiProvider}
           onChange={(id) => selectProvider(id as AiProviderKind)}
-          options={[
-            { id: "rules", label: t("Without AI") },
-            { id: "enveo", label: t("Enveo AI") },
-            { id: "openai", label: t("Own OpenAI") },
-          ]}
+          options={providerOptionsForTier(tier).map((id) => ({
+            id,
+            label: id === "rules" ? t("Without AI") : id === "enveo" ? t("Enveo AI") : t("Own OpenAI"),
+          }))}
         />
       </Row>
       <Helper>{flow}</Helper>
