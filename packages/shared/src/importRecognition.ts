@@ -275,7 +275,11 @@ export function reconcileImportProposals(input: {
   const sourceAccountInvalid = !sourceAccount || sourceAccount.archived;
   const envelopeIds = new Set(input.envelopes.filter((envelope) => !envelope.archived).map((envelope) => envelope.id));
   const categoryIds = new Set(input.categories.map((category) => category.id));
-  const duplicates = buildImportDupIndex(input.transactions.map(({ date, amount, sourceRef }) => ({ date, amount, sourceRef })));
+  const duplicates = buildImportDupIndex(
+    input.transactions
+      .filter((transaction) => transaction.accountId === input.selectedAccountId)
+      .map(({ date, amount, sourceRef }) => ({ date, amount, sourceRef })),
+  );
 
   return input.proposals.map((proposal) => {
     const envelopeId = proposal.envelopeId && envelopeIds.has(proposal.envelopeId) ? proposal.envelopeId : null;
@@ -285,16 +289,18 @@ export function reconcileImportProposals(input: {
     let reviewReasons = proposal.reviewReasons;
     let duplicateStatus: ImportDupStatus = "new";
 
-    if (proposal.disposition === "candidate" && isCalendarDate(proposal.date) && hasPositiveMinorAmount(proposal.amount)) {
+    if (isCalendarDate(proposal.date) && hasPositiveMinorAmount(proposal.amount)) {
       duplicateStatus = classifyImportDup({ date: proposal.date, amount: proposal.amount, rawPlace: proposal.rawPlace }, duplicates);
       if (duplicateStatus === "exists") {
-        disposition = "declined";
-        selected = false;
+        if (proposal.disposition === "candidate") {
+          disposition = "declined";
+          selected = false;
+        }
         reviewReasons = addReasons(reviewReasons, "history_conflict");
       } else if (duplicateStatus === "probable") {
-        selected = false;
+        if (proposal.disposition === "candidate") selected = false;
         reviewReasons = addReasons(reviewReasons, "multiple_history_candidates");
-      } else {
+      } else if (proposal.disposition === "candidate") {
         duplicates.markSeen({ date: proposal.date, amount: proposal.amount, rawPlace: proposal.rawPlace });
       }
     }

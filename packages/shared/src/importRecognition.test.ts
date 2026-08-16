@@ -315,7 +315,28 @@ describe("screenshot import proposal reconciliation", () => {
     expect(archived).toMatchObject({ sourceAccountInvalid: true, disposition: "unresolved", selected: false });
   });
 
-  it("property: reconciliation is byte-identical when repeated against the same ledger", () => {
+  it("keeps exact and probable duplicate evidence when reconciling an already reconciled proposal", () => {
+    const exactInput = input({ transactions: [transaction()] });
+    const probableInput = input({ transactions: [transaction({ sourceRef: null })] });
+    const exact = reconcileImportProposals(exactInput);
+    const probable = reconcileImportProposals(probableInput);
+
+    expect(reconcileImportProposals({ ...exactInput, proposals: exact })).toEqual(exact);
+    expect(reconcileImportProposals({ ...probableInput, proposals: probable })).toEqual(probable);
+  });
+
+  it("does not use a different account's transaction as duplicate evidence", () => {
+    const result = reconcileImportProposals(
+      input({
+        accounts: [account(), account({ id: "other-account" })],
+        transactions: [transaction({ accountId: "other-account" })],
+      }),
+    )[0]!;
+
+    expect(result).toMatchObject({ duplicateStatus: "new", disposition: "candidate", selected: true });
+  });
+
+  it("property: reconciliation is byte-identical when applied sequentially against the same ledger", () => {
     fc.assert(
       fc.property(fc.array(fc.record({ amount: fc.integer({ min: 1, max: 100_000 }), sameSource: fc.boolean() }), { maxLength: 8 }), (existing) => {
         const proposals = [proposal(), { ...proposal(), rowId: "r2", sourceRows: ["r2"], rawPlace: "other visible row" }];
@@ -323,7 +344,8 @@ describe("screenshot import proposal reconciliation", () => {
           transaction({ id: `existing-${index}`, amount: item.amount, sourceRef: item.sameSource ? "visible row" : null }),
         );
         const reconciliationInput = input({ proposals, transactions });
-        expect(reconcileImportProposals(reconciliationInput)).toEqual(reconcileImportProposals(reconciliationInput));
+        const once = reconcileImportProposals(reconciliationInput);
+        expect(reconcileImportProposals({ ...reconciliationInput, proposals: once })).toEqual(once);
       }),
       { numRuns: 100 },
     );
