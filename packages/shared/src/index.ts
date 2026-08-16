@@ -2,6 +2,7 @@ export * from "./aiBudget";
 export * from "./aiPrompts";
 export * from "./aiTransport";
 export * from "./applyOp";
+export * from "./automaticEnvelope";
 export * from "./budget";
 export * from "./goals";
 export * from "./importDedupe";
