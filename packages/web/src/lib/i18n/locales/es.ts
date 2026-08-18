@@ -203,6 +203,7 @@ export const es: Dict = {
   Envelopes: "Sobres",
   "Envelopes have changed since this was generated — generate a new suggestion.":
     "Los sobres han cambiado desde que se generó esto: genera una sugerencia nueva.",
+  "Envelopes stay as they are — you assigned this by hand.": "Los sobres se quedan como están: ya lo asignaste a mano.",
   "Excess {amount}": "Exceso {amount}",
   Expense: "Gasto",
   "Export backup (JSON)": "Exportar copia de seguridad (JSON)",
@@ -266,6 +267,7 @@ export const es: Dict = {
   "Monthly target (optional)": "Objetivo mensual (opcional)",
   More: "Más",
   "More colors": "Más colores",
+  "Move the money between envelopes too": "Mover también el dinero entre sobres",
   "NO AI": "SIN IA",
   Name: "Nombre",
   Net: "Neto",

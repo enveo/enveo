@@ -204,6 +204,7 @@ export const fr: Dict = {
   Envelopes: "Enveloppes",
   "Envelopes have changed since this was generated — generate a new suggestion.":
     "Les enveloppes ont changé depuis la génération — générez une nouvelle suggestion.",
+  "Envelopes stay as they are — you assigned this by hand.": "Les enveloppes restent en l'état — vous l'avez affecté à la main.",
   "Excess {amount}": "Excédent {amount}",
   Expense: "Dépense",
   "Export backup (JSON)": "Exporter la sauvegarde (JSON)",
@@ -267,6 +268,7 @@ export const fr: Dict = {
   "Monthly target (optional)": "Objectif mensuel (facultatif)",
   More: "Plus",
   "More colors": "Plus de couleurs",
+  "Move the money between envelopes too": "Déplacer aussi l'argent entre les enveloppes",
   "NO AI": "SANS IA",
   Name: "Nom",
   Net: "Net",
