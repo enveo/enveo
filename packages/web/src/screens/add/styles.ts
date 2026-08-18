@@ -1,24 +1,7 @@
 import type { CSSProperties } from "react";
 import { font, P, type Theme } from "../../lib/theme";
 
-/* Shared Add-screen surfaces (moved verbatim from the controller; the theme
- * is now an explicit argument instead of a closure). */
-
-/** KOPERTA/NA KONTO suggestion card (2×2 grid). */
-export const gridCardStyle = (C: Theme, selected: boolean): CSSProperties => ({
-  display: "flex",
-  alignItems: "center",
-  gap: 7,
-  background: C.card,
-  textAlign: "left",
-  width: "100%",
-  border: `${selected ? 2 : 1}px solid ${selected ? "var(--accent)" : C.line}`,
-  borderRadius: 11,
-  padding: selected ? "7px 9px" : "8px 10px",
-  cursor: "pointer",
-});
-
-/** The collapsed single-row summary under a section eyebrow. */
+/** Collapsed single-row summary under a section eyebrow (the reconcile widget's envelope row). */
 export const collapsedRowStyle = (C: Theme, accent: boolean): CSSProperties => ({
   display: "flex",
   alignItems: "center",
@@ -33,7 +16,7 @@ export const collapsedRowStyle = (C: Theme, accent: boolean): CSSProperties => (
   cursor: "pointer",
 });
 
-/** The small accent link in a section eyebrow ("All ›" / "Change ›" / "Other ›"). */
+/** The small accent link in a section eyebrow ("Other ›" / "Collapse ›"). */
 export const linkBtnStyle: CSSProperties = {
   background: "none",
   border: "none",

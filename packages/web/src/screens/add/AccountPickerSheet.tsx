@@ -2,14 +2,15 @@ import { useEffect, useState } from "react";
 import { Sheet } from "../../components/chrome";
 import { HighlightedText, PickerSearch } from "../../components/kit";
 import type { StateResponse } from "../../lib/api";
+import { useMask } from "../../lib/contexts";
 import { useT } from "../../lib/i18n";
 import { Glyph } from "../../lib/icons";
 import { matchesSearch, SEARCH_THRESHOLD } from "../../lib/search";
 import { TEAL, tint } from "../../lib/theme";
 
-/** Source-account picker sheet (radio ring + tinted icon rows). Owns only its
- *  search query, reset whenever the sheet opens; selection goes back to the
- *  controller via `onSelect` (which also closes the sheet). */
+/** Source-account picker sheet (radio ring + tinted icon rows + balance). Owns
+ *  only its search query, reset whenever the sheet opens; selection goes back to
+ *  the controller via `onSelect` (which also closes the sheet). */
 export function AccountPickerSheet({
   show,
   onClose,
@@ -24,6 +25,7 @@ export function AccountPickerSheet({
   onSelect: (id: string) => void;
 }) {
   const { t } = useT();
+  const M = useMask();
   const [accQ, setAccQ] = useState("");
   useEffect(() => {
     if (show) setAccQ("");
@@ -84,8 +86,11 @@ export function AccountPickerSheet({
                     >
                       <Glyph name={a.icon} size={16} color={a.color} />
                     </div>
-                    <span style={{ flex: 1, textAlign: "left", fontSize: 14, color: C.text, fontWeight: 500 }}>
+                    <span style={{ flex: 1, minWidth: 0, textAlign: "left", fontSize: 14, color: C.text, fontWeight: 500 }}>
                       <HighlightedText text={a.name} query={accQ} />
+                    </span>
+                    <span style={{ fontSize: 13.5, fontWeight: 700, color: a.balance < 0 ? C.neg : C.text, fontVariantNumeric: "tabular-nums", flexShrink: 0 }}>
+                      {M(a.balance)}
                     </span>
                   </button>
                 ))
@@ -98,7 +103,7 @@ export function AccountPickerSheet({
   );
 }
 
-/** Destination-account picker sheet — same rows without the radio ring; the
+/** Destination-account picker sheet — the same rows as the source sheet; the
  *  source account is excluded via `excludeId` exactly like the inline original. */
 export function DestinationAccountSheet({
   show,
@@ -116,6 +121,7 @@ export function DestinationAccountSheet({
   onSelect: (id: string) => void;
 }) {
   const { t } = useT();
+  const M = useMask();
   const [toQ, setToQ] = useState("");
   useEffect(() => {
     if (show) setToQ("");
@@ -152,6 +158,20 @@ export function DestinationAccountSheet({
                   >
                     <div
                       style={{
+                        width: 22,
+                        height: 22,
+                        borderRadius: "50%",
+                        border: `2px solid ${selectedId === a.id ? TEAL : C.line}`,
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        flexShrink: 0,
+                      }}
+                    >
+                      {selectedId === a.id && <div style={{ width: 11, height: 11, borderRadius: "50%", background: TEAL }} />}
+                    </div>
+                    <div
+                      style={{
                         width: 34,
                         height: 34,
                         borderRadius: 10,
@@ -159,20 +179,16 @@ export function DestinationAccountSheet({
                         display: "flex",
                         alignItems: "center",
                         justifyContent: "center",
+                        flexShrink: 0,
                       }}
                     >
                       <Glyph name={a.icon} size={16} color={a.color} />
                     </div>
-                    <span
-                      style={{
-                        flex: 1,
-                        textAlign: "left",
-                        fontSize: 14,
-                        color: selectedId === a.id ? TEAL : C.text,
-                        fontWeight: selectedId === a.id ? 600 : 500,
-                      }}
-                    >
+                    <span style={{ flex: 1, minWidth: 0, textAlign: "left", fontSize: 14, color: C.text, fontWeight: 500 }}>
                       <HighlightedText text={a.name} query={toQ} />
+                    </span>
+                    <span style={{ fontSize: 13.5, fontWeight: 700, color: a.balance < 0 ? C.neg : C.text, fontVariantNumeric: "tabular-nums", flexShrink: 0 }}>
+                      {M(a.balance)}
                     </span>
                   </button>
                 ))
