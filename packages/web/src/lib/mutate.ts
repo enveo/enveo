@@ -80,27 +80,53 @@ function withPreparedAllocationFlow(payload: TxnPayload, flow: Pick<Transaction,
   return { ...payload, ...flow, envelopeId: payload.type === "income" && flow.allocationToEnvelopeId ? null : payload.envelopeId };
 }
 
+/**
+ * Per-transaction escape hatch for a TRANSFER between accounts with linked envelopes: the
+ * envelope leg is skipped and the transaction stores no flow, so it moves account balances
+ * only (the money was already assigned by hand). The stored NULLs are the same shape an
+ * unlinked account produces, so applyOp, the server and the journal need nothing new —
+ * and `resolveAllocationFlow` keeps them across an edit that does not reroute.
+ */
+export interface TxnFlowOptions {
+  /**
+   * TRI-STATE on purpose. `undefined` (every caller that has no such switch) keeps the historical
+   * behaviour — capture on create, PRESERVE a stored flow on an update that does not reroute.
+   * `true` stores no flow. `false` means the human just re-enabled the leg on a transaction saved
+   * without one, so the current links must be captured — preserving would silently do nothing.
+   */
+  skipAutomaticAllocation?: boolean;
+}
+
+const NO_FLOW = { allocationFromEnvelopeId: null, allocationToEnvelopeId: null } as const;
+
 /** Captures the account-linked allocation flow for a new local transaction. */
-export function prepareTxnCreate(ledger: ClientLedger, payload: TxnPayload): TxnPayload {
-  return withPreparedAllocationFlow(payload, captureAllocationFlow(ledger.accounts, payload));
+export function prepareTxnCreate(ledger: ClientLedger, payload: TxnPayload, options?: TxnFlowOptions): TxnPayload {
+  const flow = options?.skipAutomaticAllocation ? NO_FLOW : captureAllocationFlow(ledger.accounts, payload);
+  return withPreparedAllocationFlow(payload, flow);
 }
 
 /** Preserves a stored flow for an unchanged route or captures the current links after rerouting. */
-export function prepareTxnUpdate(ledger: ClientLedger, id: string, payload: TxnPayload): TxnPayload {
+export function prepareTxnUpdate(ledger: ClientLedger, id: string, payload: TxnPayload, options?: TxnFlowOptions): TxnPayload {
   const previous = ledger.transactions.find((transaction) => transaction.id === id);
   if (!previous) throw new Error(`local.updateTxn: transaction ${id} not found`);
-  return withPreparedAllocationFlow(payload, resolveAllocationFlow(ledger.accounts, payload, previous));
+  const flow =
+    options?.skipAutomaticAllocation === true
+      ? NO_FLOW
+      : options?.skipAutomaticAllocation === false
+        ? captureAllocationFlow(ledger.accounts, payload)
+        : resolveAllocationFlow(ledger.accounts, payload, previous);
+  return withPreparedAllocationFlow(payload, flow);
 }
 
-function createTxn(payload: TxnPayload): string {
+function createTxn(payload: TxnPayload, options?: TxnFlowOptions): string {
   const id = newId();
   // the client assigns createdAt — a stable list order within a day
-  enqueue("txn.create", { ...prepareTxnCreate(ledger(), payload), id, createdAt: new Date().toISOString() });
+  enqueue("txn.create", { ...prepareTxnCreate(ledger(), payload, options), id, createdAt: new Date().toISOString() });
   return id;
 }
 
-function updateTxn(id: string, payload: TxnPayload): void {
-  enqueue("txn.update", { ...prepareTxnUpdate(ledger(), id, payload), id });
+function updateTxn(id: string, payload: TxnPayload, options?: TxnFlowOptions): void {
+  enqueue("txn.update", { ...prepareTxnUpdate(ledger(), id, payload, options), id });
 }
 
 function deleteTxn(id: string): void {

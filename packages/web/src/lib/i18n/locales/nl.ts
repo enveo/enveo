@@ -203,6 +203,7 @@ export const nl: Dict = {
   Envelopes: "Enveloppen",
   "Envelopes have changed since this was generated — generate a new suggestion.":
     "De enveloppen zijn gewijzigd sinds dit werd gegenereerd — genereer een nieuwe suggestie.",
+  "Envelopes stay as they are — you assigned this by hand.": "De enveloppen blijven zoals ze zijn — je hebt dit met de hand toegewezen.",
   "Excess {amount}": "Te veel {amount}",
   Expense: "Uitgave",
   "Export backup (JSON)": "Back-up exporteren (JSON)",
@@ -267,6 +268,7 @@ export const nl: Dict = {
   "Monthly target (optional)": "Maanddoel (optioneel)",
   More: "Meer",
   "More colors": "Meer kleuren",
+  "Move the money between envelopes too": "Verplaats het geld ook tussen enveloppen",
   "NO AI": "GEEN AI",
   Name: "Naam",
   Net: "Netto",

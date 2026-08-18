@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import type { StateResponse } from "../../lib/api";
 import { useMask, useTheme } from "../../lib/contexts";
 import { useT } from "../../lib/i18n";
@@ -56,6 +57,7 @@ export function FlowCard({
   pool,
   note,
   split,
+  automatic,
   amountMinor,
   plus,
   dateLabel,
@@ -71,6 +73,8 @@ export function FlowCard({
   /** Quiet line under the target row (e.g. the automatic-envelope provenance note). */
   note: string | null;
   split: SplitPanel | null;
+  /** The account-linked envelope leg of a transfer: what it will do, and a switch to skip it. */
+  automatic: { label: string; checked: boolean; onToggle: (checked: boolean) => void; body: ReactNode } | null;
   amountMinor: number;
   plus: boolean;
   dateLabel: string;
@@ -137,6 +141,21 @@ export function FlowCard({
         </div>
       )}
       {note && <div style={{ padding: "0 8px 4px 48px", fontSize: 10.5, color: C.mute }}>{note}</div>}
+
+      {automatic && (
+        <div style={{ borderTop: `1px solid ${C.line}`, margin: "4px 8px 0", padding: "8px 0 2px" }}>
+          <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}>
+            <input
+              type="checkbox"
+              checked={automatic.checked}
+              onChange={(e) => automatic.onToggle(e.target.checked)}
+              style={{ accentColor: "var(--accent)", width: 15, height: 15, flexShrink: 0 }}
+            />
+            <span style={{ fontSize: 11.5, fontWeight: 650, color: C.text }}>{automatic.label}</span>
+          </label>
+          {automatic.body}
+        </div>
+      )}
 
       <div style={{ display: "flex", alignItems: "center", gap: 8, borderTop: `1px solid ${C.line}`, marginTop: 4, padding: "9px 8px 3px" }}>
         <button

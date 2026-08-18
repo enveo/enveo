@@ -1,4 +1,4 @@
-import { computeStateResponse, type Transaction, type TxnPayload } from "@enveo/shared";
+import { captureAllocationFlow, computeStateResponse, resolveAllocationFlow, type Transaction, type TxnPayload } from "@enveo/shared";
 import { lazy, useEffect, useMemo, useRef, useState } from "react";
 import { useBand } from "../components/kit";
 import { LazyChunk, useOpenedOnce } from "../components/lazy";
@@ -21,7 +21,7 @@ import { evalExpression } from "../lib/format";
 import { haptic } from "../lib/haptics";
 import { type Message, msg, useT } from "../lib/i18n";
 import { preferredAccountId, setLastAccountId } from "../lib/lastAccount";
-import { local } from "../lib/mutate";
+import { local, type TxnFlowOptions } from "../lib/mutate";
 import { store } from "../lib/store";
 import { rankPlaces } from "../lib/suggest";
 import { P, tint } from "../lib/theme";
@@ -133,6 +133,11 @@ export function AddScreen({
   const [placeInput, setPlaceInput] = useState("");
   const [placeOpen, setPlaceOpen] = useState(false);
   const [note, setNote] = useState("");
+  // Transfer only: the human can skip the account-linked envelope leg for THIS transaction (the
+  // money was already assigned by hand). `touched` separates "left alone" — which must keep the
+  // stored flow verbatim on an edit — from "re-ticked", which has to capture the links again.
+  const [skipAllocation, setSkipAllocation] = useState(false);
+  const [allocationTouched, setAllocationTouched] = useState(false);
   const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [numpad, setNumpad] = useState(true);
 
@@ -164,6 +169,16 @@ export function AddScreen({
     setName(editTxn.name ?? "");
     setNote(editTxn.note ?? "");
     setDate(editTxn.date);
+    // A stored transfer that carries NO flow although its route is linked was saved opted out —
+    // the switch has to open in that state, or re-saving would quietly restore the envelope leg.
+    const linked = captureAllocationFlow(accounts, editTxn);
+    setSkipAllocation(
+      editTxn.type === "transfer" &&
+        (linked.allocationFromEnvelopeId !== null || linked.allocationToEnvelopeId !== null) &&
+        editTxn.allocationFromEnvelopeId === null &&
+        editTxn.allocationToEnvelopeId === null,
+    );
+    setAllocationTouched(false);
   }, [editTxn]);
 
   // Draft-mode prefill: from corrections (initial — returning to the edit) or from a
@@ -279,6 +294,8 @@ export function AddScreen({
     setItems([]);
     setSplitMode(false);
     setActiveSplit(null);
+    setSkipAllocation(false);
+    setAllocationTouched(false);
     setCategoryId(null);
     setCatInput("");
     setCatOpen(false);
@@ -367,8 +384,13 @@ export function AddScreen({
       note: note || null,
       items: usingSplit ? items.map((i) => ({ envelopeId: i.envelopeId, amount: i.amount })) : undefined,
     };
-    if (editTxn) local.updateTxn(editTxn.id, payload);
-    else local.createTxn(payload);
+    // undefined unless the transfer switch is on screen: every other path keeps the historical
+    // capture/preserve behaviour (see TxnFlowOptions).
+    const flowOptions: TxnFlowOptions | undefined = allocationApplies
+      ? { skipAutomaticAllocation: skipAllocation ? true : allocationTouched ? false : undefined }
+      : undefined;
+    if (editTxn) local.updateTxn(editTxn.id, payload, flowOptions);
+    else local.createTxn(payload, flowOptions);
     haptic([10, 30, 14]);
     onDone();
   }
@@ -426,6 +448,13 @@ export function AddScreen({
   const envBefore = availableBefore(env?.id, env?.available ?? 0);
   const envAfter = envBefore + (plus ? minor : -minor);
   const destBalance = balanceBefore(toAcc?.id, toAcc?.balance ?? 0);
+  // Automatic envelopes (account → envelope link) decide where income actually LANDS: the ledger
+  // allocates it into the linked envelope, so it never reaches Ready to assign. Resolved through
+  // the shared rule (edit-aware, on-budget only) instead of reading automaticEnvelopeId here, so
+  // the card can never disagree with what gets written.
+  const allocationFlow = resolveAllocationFlow(accounts, { type: tab, accountId, toAccountId: tab === "transfer" ? toAccountId : null }, editTxn);
+  const incomeEnvelope = tab === "income" && allocationFlow.allocationToEnvelopeId ? envById.get(allocationFlow.allocationToEnvelopeId) : null;
+  const incomeEnvelopeBefore = availableBefore(incomeEnvelope?.id, incomeEnvelope?.available ?? 0);
   const source: FlowEndpoint = {
     role: tab === "income" ? t("To account") : t("From account"),
     name: accObj?.name ?? t("Choose an account"),
@@ -479,11 +508,36 @@ export function AddScreen({
             },
             placeholder: !env,
           }
-        : null;
+        : incomeEnvelope
+          ? {
+              // Not tappable: income has no envelope PICK — the account's link decides.
+              role: t("Goes to"),
+              name: incomeEnvelope.name,
+              color: incomeEnvelope.color,
+              icon: incomeEnvelope.icon,
+              before: incomeEnvelopeBefore,
+              after: incomeEnvelopeBefore + minor,
+              afterColor: C.pos,
+              hint: t("balance after the deposit"),
+              pillTint: tint(incomeEnvelope.color, 0.22),
+            }
+          : null;
 
-  const automaticPreview = automaticEnvelopePreview(state, { type: tab, accountId, toAccountId: tab === "transfer" ? toAccountId : null }, minor, editTxn);
+  // Does the route touch a linked envelope at all? (transfer switch visibility)
+  const linkedRoute = captureAllocationFlow(accounts, { type: tab, accountId, toAccountId: tab === "transfer" ? toAccountId : null });
+  const allocationApplies = tab === "transfer" && (linkedRoute.allocationFromEnvelopeId !== null || linkedRoute.allocationToEnvelopeId !== null);
+  const allocationSkipped = allocationApplies && skipAllocation;
+  /** What the SWITCH promises must be what `prepareTxnUpdate` writes: re-ticking captures today's
+   *  links (previous = null), leaving it alone preserves the stored flow (previous = editTxn). */
+  const previewPrevious = allocationTouched ? null : editTxn;
+  const automaticPreview = automaticEnvelopePreview(
+    state,
+    { type: tab, accountId, toAccountId: tab === "transfer" ? toAccountId : null },
+    minor,
+    previewPrevious,
+  );
   const automaticEffect =
-    minor > 0 && (automaticPreview.rows.length > 0 || automaticPreview.neutral)
+    !allocationSkipped && minor > 0 && (automaticPreview.rows.length > 0 || automaticPreview.neutral)
       ? formatAutomaticEnvelopeEffect(automaticPreview, M, {
           heading: t("Automatic envelope effect"),
           readyToAssign: t("Ready to assign"),
@@ -547,10 +601,31 @@ export function AddScreen({
       <FlowCard
         source={source}
         target={target}
-        pool={tab === "income" ? { role: t("Goes to"), title: t("Ready to assign"), caption: t("you'll split it into envelopes in the budget") } : null}
+        pool={
+          tab === "income" && !incomeEnvelope
+            ? { role: t("Goes to"), title: t("Ready to assign"), caption: t("you'll split it into envelopes in the budget") }
+            : null
+        }
         note={
           tab === "expense" && !splitUi && expenseEnvelope.provenance === "automatic" && envelopeId !== null
             ? t("Selected automatically from this account")
+            : null
+        }
+        automatic={
+          allocationApplies
+            ? {
+                label: t("Move the money between envelopes too"),
+                checked: !skipAllocation,
+                onToggle: (checked) => {
+                  setSkipAllocation(!checked);
+                  setAllocationTouched(true);
+                },
+                body: allocationSkipped ? (
+                  <div style={{ fontSize: 10.5, color: C.soft, padding: "4px 0 2px 23px" }}>{t("Envelopes stay as they are — you assigned this by hand.")}</div>
+                ) : automaticEffect ? (
+                  <AutomaticEnvelopeEffect data={automaticEffect} compact />
+                ) : null,
+              }
             : null
         }
         split={
@@ -675,7 +750,9 @@ export function AddScreen({
             />
           </>
         )}
-        {tab !== "expense" && automaticEffect && <AutomaticEnvelopeEffect data={automaticEffect} />}
+        {/* Income keeps the effect panel here; a transfer shows it INSIDE the card, next to the
+            switch that turns the envelope leg off. */}
+        {tab === "income" && automaticEffect && <AutomaticEnvelopeEffect data={automaticEffect} />}
 
         <TransactionFields
           name={name}
