@@ -14,6 +14,10 @@ describe.skipIf(!TEST_URL)("dictionary upkeep through sync push", () => {
     output = await runChild<SyncDictionariesOutput>({ path: CHILD, testUrl: TEST_URL, sentinel: SENTINEL, cwd: new URL("../..", import.meta.url).pathname });
   }, 120_000);
 
+  test("a merge repoints transactions AND split items, drops the source, and replays as a no-op", () => {
+    expect(output.merge).toEqual({ sourceGone: true, transactionRepointed: true, itemRepointed: true, replayNoop: true, foreignRefused: true });
+  });
+
   test("hiding an entry leaves every transaction that carries it untouched, and replays once", () => {
     expect(output.hide).toEqual({ archived: true, transactionKeptIt: true, replayIdempotent: true });
   });
