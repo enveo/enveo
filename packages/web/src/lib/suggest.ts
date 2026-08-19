@@ -92,3 +92,14 @@ export function rankPlaces(ledger: ClientLedger, envelopeId: string | null, cate
   }
   return [...counts.entries()].sort(([, a], [, b]) => (b.count !== a.count ? b.count - a.count : b.lastDate.localeCompare(a.lastDate))).map(([id]) => id);
 }
+
+/**
+ * The chip row must always show what is currently selected — but `rankPlaces` ranks from
+ * transaction HISTORY scoped to the chosen envelope/category, so a place created a second ago,
+ * or picked from the search without prior use in that scope, is simply not in the ranking.
+ * Without this, picking or creating a place produced NO visible change at all.
+ */
+export function withSelectedFirst<T extends { id: string }>(ranked: T[], selected: T | null | undefined): T[] {
+  if (!selected || ranked.some((candidate) => candidate.id === selected.id)) return ranked;
+  return [selected, ...ranked];
+}
