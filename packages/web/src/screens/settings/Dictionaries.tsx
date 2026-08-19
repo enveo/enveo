@@ -38,6 +38,18 @@ export function dictionaryEntries(ledger: {
   return { categories: rows(ledger.categories, catUses), places: rows(ledger.places, placeUses) };
 }
 
+export type DictionarySort = "name" | "uses";
+
+/**
+ * Upkeep sorting. "uses" ascending FIRST is the default on purpose: this screen exists to prune,
+ * and the rows worth acting on are the ones nothing uses. Name is the tie-break either way, so
+ * the order never wobbles between renders.
+ */
+export function sortDictionary(entries: DictionaryEntry[], sort: DictionarySort, ascending: boolean): DictionaryEntry[] {
+  if (sort === "name") return [...entries].sort((a, b) => a.name.localeCompare(b.name));
+  return [...entries].sort((a, b) => (a.uses !== b.uses ? (ascending ? a.uses - b.uses : b.uses - a.uses) : a.name.localeCompare(b.name)));
+}
+
 /**
  * Dictionary upkeep. Hiding takes an entry out of ENTRY (suggestions, pickers) and nothing else —
  * every transaction that carries it keeps showing it here, in the list and in reports. Deleting is
@@ -51,6 +63,8 @@ export function DictionariesSection() {
   const [tab, setTab] = useState<"categories" | "places">("categories");
   const [query, setQuery] = useState("");
   const [showHidden, setShowHidden] = useState(false);
+  const [sort, setSort] = useState<DictionarySort>("name");
+  const [usesAscending, setUsesAscending] = useState(true);
   const { categories, places } = useMemo(() => {
     const ledger = store.getLedger();
     return ledger ? dictionaryEntries(ledger) : { categories: [], places: [] };
@@ -117,7 +131,11 @@ export function DictionariesSection() {
   // Hundreds of places (the screenshot import mints one per merchant name) make an unfiltered
   // list useless — search first, then narrow to the group the human is actually working on.
   const group = showHidden ? hidden : visible;
-  const matched = group.filter((e) => matchesSearch(e.name, query));
+  const matched = sortDictionary(
+    group.filter((e) => matchesSearch(e.name, query)),
+    sort,
+    usesAscending,
+  );
 
   return (
     <div style={{ paddingTop: 12, paddingBottom: 24 }}>
@@ -170,6 +188,31 @@ export function DictionariesSection() {
             </button>
           ))}
         </div>
+      </div>
+
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 10, marginBottom: 4 }}>
+        <span style={{ fontSize: 11, color: C.mute }}>{t("Sort")}</span>
+        {(["name", "uses"] as const).map((id) => (
+          <button
+            key={id}
+            onClick={() => {
+              if (id === "uses" && sort === "uses") setUsesAscending((v) => !v);
+              setSort(id);
+            }}
+            style={{
+              background: "none",
+              border: "none",
+              padding: "4px 0",
+              fontSize: 11.5,
+              fontWeight: sort === id ? 700 : 500,
+              color: sort === id ? "var(--accent)" : C.soft,
+              fontFamily: font,
+              cursor: "pointer",
+            }}
+          >
+            {id === "name" ? t("Name") : `${t("Uses")} ${usesAscending ? "↑" : "↓"}`}
+          </button>
+        ))}
       </div>
 
       {matched.length === 0 ? (

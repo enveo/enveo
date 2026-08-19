@@ -2,8 +2,11 @@ import { describe, expect, it } from "bun:test";
 import { SETTINGS_CATEGORIES, SETTINGS_HUB_FOOTER_ACTIONS } from "./Settings";
 
 describe("Settings information architecture", () => {
-  it("has exactly four product categories and no Advanced catch-all", () => {
-    expect(SETTINGS_CATEGORIES.map((category) => category.id)).toEqual(["appearance", "ai", "privacy", "data"]);
+  // The count is not the invariant — the SHAPE is: every category names one concrete subject, and
+  // none of them is a junk drawer. "dictionaries" (3.10) earns its place by that rule; a category
+  // called "advanced" never would.
+  it("lists only concrete product categories, with no Advanced catch-all", () => {
+    expect(SETTINGS_CATEGORIES.map((category) => category.id)).toEqual(["appearance", "dictionaries", "ai", "privacy", "data"]);
     expect(SETTINGS_CATEGORIES.some((category) => category.id === ("advanced" as never))).toBe(false);
   });
 

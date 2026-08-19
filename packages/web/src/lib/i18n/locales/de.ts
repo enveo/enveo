@@ -396,6 +396,7 @@ export const de: Dict = {
   "Skip for now": "Vorerst überspringen",
   "Some funds stayed in To be budgeted — envelopes are at their target caps.":
     "Ein Teil der Mittel blieb in „Zu budgetieren“ — die Umschläge haben ihre Zielobergrenze erreicht.",
+  Sort: "Sortieren",
   "Source: {src}": "Quelle: {src}",
   Spending: "Ausgaben",
   "Split across envelopes": "Auf Umschläge aufteilen",
@@ -545,6 +546,7 @@ export const de: Dict = {
     "Hake ab, was du nicht möchtest. Duplikate werden übersprungen — tippe auf eines, um es zu bearbeiten und trotzdem hinzuzufügen.",
   Usage: "Nutzung",
   Use: "Verwenden",
+  Uses: "Verwendungen",
   Utilities: "Nebenkosten",
   Visible: "Sichtbar",
   "WARNING: IndexedDB unavailable — data is kept only in session memory (it will not survive closing the app).":
