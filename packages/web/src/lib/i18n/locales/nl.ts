@@ -637,4 +637,15 @@ export const nl: Dict = {
   "{pct}% of net worth": "{pct}% van het vermogen",
   "{place} — add details": "{place} — details toevoegen",
   "{sym}/mo": "{sym}/mnd",
+  Merge: "Samenvoegen",
+  "Merge into this": "Hierin samenvoegen",
+  "Pick the entry “{name}” should become.": "Kies het item waarin ‘{name}’ moet opgaan.",
+  "Look like the same thing": "Lijken hetzelfde",
+  "Keep “{name}”": "‘{name}’ behouden",
+  "Merging keeps every transaction — they just point at the entry you pick.": "Samenvoegen behoudt elke transactie — ze wijzen daarna naar het gekozen item.",
+  "Merge “{names}” into “{into}”? {n} transaction moves over and only “{into}” stays. | Merge “{names}” into “{into}”? {n} transactions move over and only “{into}” stays.":
+    {
+      one: "‘{names}’ samenvoegen met ‘{into}’? {n} transactie verhuist mee en alleen ‘{into}’ blijft over.",
+      other: "‘{names}’ samenvoegen met ‘{into}’? {n} transacties verhuizen mee en alleen ‘{into}’ blijft over.",
+    },
 };

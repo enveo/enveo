@@ -639,4 +639,16 @@ export const de: Dict = {
   "{pct}% of net worth": "{pct}% des Vermögens",
   "{place} — add details": "{place} — Details ergänzen",
   "{sym}/mo": "{sym}/Mon.",
+  Merge: "Zusammenführen",
+  "Merge into this": "Hierin zusammenführen",
+  "Pick the entry “{name}” should become.": "Wähle den Eintrag, zu dem „{name}“ werden soll.",
+  "Look like the same thing": "Sehen gleich aus",
+  "Keep “{name}”": "„{name}“ behalten",
+  "Merging keeps every transaction — they just point at the entry you pick.":
+    "Zusammenführen behält jede Transaktion — sie zeigen danach auf den gewählten Eintrag.",
+  "Merge “{names}” into “{into}”? {n} transaction moves over and only “{into}” stays. | Merge “{names}” into “{into}”? {n} transactions move over and only “{into}” stays.":
+    {
+      one: "„{names}“ in „{into}“ zusammenführen? {n} Transaktion wird übernommen und nur „{into}“ bleibt.",
+      other: "„{names}“ in „{into}“ zusammenführen? {n} Transaktionen werden übernommen und nur „{into}“ bleibt.",
+    },
 };

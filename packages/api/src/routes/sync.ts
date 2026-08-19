@@ -34,6 +34,7 @@ import {
   applyBudgetUpdate,
   applyCategoryCreate,
   applyCategoryDelete,
+  applyCategoryMerge,
   applyCategoryUpdate,
   applyEnvelopeCreate,
   applyEnvelopeDelete,
@@ -43,6 +44,7 @@ import {
   applyGroupUpdate,
   applyPlaceCreate,
   applyPlaceDelete,
+  applyPlaceMerge,
   applyPlaceUpdate,
   applyTxnCreate,
   applyTxnDelete,
@@ -429,6 +431,16 @@ async function applyOp(x: DbTransaction, budgetId: string, kind: OpKind, payload
     case "place.update":
       ensure(await applyPlaceUpdate(x, budgetId, payload as OpPayload<"place.update">));
       return;
+    case "category.merge": {
+      const p = payload as OpPayload<"category.merge">;
+      await applyCategoryMerge(x, budgetId, p.fromId, p.intoId);
+      return;
+    }
+    case "place.merge": {
+      const p = payload as OpPayload<"place.merge">;
+      await applyPlaceMerge(x, budgetId, p.fromId, p.intoId);
+      return;
+    }
     case "category.delete":
       await applyCategoryDelete(x, budgetId, (payload as OpPayload<"category.delete">).id);
       return;

@@ -639,4 +639,17 @@ export const fr: Dict = {
   "{pct}% of net worth": "{pct} % du patrimoine net",
   "{place} — add details": "{place} — ajoutez des détails",
   "{sym}/mo": "{sym}/mois",
+  Merge: "Fusionner",
+  "Merge into this": "Fusionner ici",
+  "Pick the entry “{name}” should become.": "Choisis l’entrée que « {name} » doit devenir.",
+  "Look like the same thing": "Semblent identiques",
+  "Keep “{name}”": "Garder « {name} »",
+  "Merging keeps every transaction — they just point at the entry you pick.":
+    "La fusion conserve toutes les transactions — elles pointent simplement vers l’entrée choisie.",
+  "Merge “{names}” into “{into}”? {n} transaction moves over and only “{into}” stays. | Merge “{names}” into “{into}”? {n} transactions move over and only “{into}” stays.":
+    {
+      one: "Fusionner « {names} » dans « {into} » ? {n} transaction sera déplacée et seul « {into} » restera.",
+      many: "Fusionner « {names} » dans « {into} » ? {n} transactions seront déplacées et seul « {into} » restera.",
+      other: "Fusionner « {names} » dans « {into} » ? {n} transactions seront déplacées et seul « {into} » restera.",
+    },
 };

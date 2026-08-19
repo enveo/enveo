@@ -891,4 +891,17 @@ export const pl: Dict = {
   "{pct}% of net worth": "{pct}% wartości netto",
   "{place} — add details": "{place} — dopisz szczegóły",
   "{sym}/mo": "{sym}/mies",
+  Merge: "Scal",
+  "Merge into this": "Scal z tym",
+  "Pick the entry “{name}” should become.": "Wybierz wpis, którym ma się stać „{name}”.",
+  "Look like the same thing": "Wyglądają na to samo",
+  "Keep “{name}”": "Zostaw „{name}”",
+  "Merging keeps every transaction — they just point at the entry you pick.": "Scalanie zachowuje wszystkie transakcje — zaczynają wskazywać wybrany wpis.",
+  "Merge “{names}” into “{into}”? {n} transaction moves over and only “{into}” stays. | Merge “{names}” into “{into}”? {n} transactions move over and only “{into}” stays.":
+    {
+      one: "Scalić „{names}” w „{into}”? Przeniesie się {n} transakcja i zostanie tylko „{into}”.",
+      few: "Scalić „{names}” w „{into}”? Przeniosą się {n} transakcje i zostanie tylko „{into}”.",
+      many: "Scalić „{names}” w „{into}”? Przeniesie się {n} transakcji i zostanie tylko „{into}”.",
+      other: "Scalić „{names}” w „{into}”? Przeniesie się {n} transakcji i zostanie tylko „{into}”.",
+    },
 };
