@@ -165,6 +165,17 @@ export const opSchemas = {
   // than letting `on delete set null` strip the value out of someone's transaction.
   "category.update": z.object({ ...withId, name: z.string().min(1).optional(), archived: z.boolean().optional() }),
   "place.update": z.object({ ...withId, name: z.string().min(1).optional(), archived: z.boolean().optional() }),
+  // Merging is ONE op, not a repoint per transaction: the import mints a place per merchant
+  // string, so a single merge can move dozens of rows, and doing that as dozens of `txn.update`
+  // ops would rewrite each transaction's LWW state and invite conflicts on other devices. The
+  // source is repointed and then removed under the same delete rule (degrade to archive if
+  // anything still holds it). Replaying a merge whose source is already gone is a no-op.
+  "category.merge": z
+    .object({ fromId: z.string().uuid(), intoId: z.string().uuid() })
+    .refine((v) => v.fromId !== v.intoId, { message: "cannot merge an entry into itself" }),
+  "place.merge": z
+    .object({ fromId: z.string().uuid(), intoId: z.string().uuid() })
+    .refine((v) => v.fromId !== v.intoId, { message: "cannot merge an entry into itself" }),
   "category.delete": idOnly,
   "place.delete": idOnly,
   // budget metadata (single-row entity) — for now only the display currency

@@ -580,6 +580,47 @@ export async function applyCategoryDelete(x: DbTransaction, budgetId: string, id
   await x.delete(s.categories).where(and(eq(s.categories.id, id), eq(s.categories.budgetId, budgetId)));
 }
 
+/**
+ * Merge = repoint every reference from `from` onto `into`, then remove the source under the same
+ * rule as a delete (archive it if anything still holds it). Both ids must belong to the budget and
+ * still exist; otherwise the op is a NO-OP, which is what makes a replayed merge harmless.
+ *
+ * The repoint is ONE statement per table, not one op per transaction: the changes journal is
+ * trigger-driven, so other devices still pull every touched row, but the transactions' own LWW
+ * state is never rewritten by a `txn.update` racing whatever else is editing them.
+ */
+async function bothBelongToBudget(x: DbTransaction, table: typeof s.places | typeof s.categories, budgetId: string, ids: string[]): Promise<boolean> {
+  const rows = await x
+    .select({ id: table.id })
+    .from(table)
+    .where(and(eq(table.budgetId, budgetId), inArray(table.id, ids)))
+    .for("update");
+  return rows.length === ids.length;
+}
+
+export async function applyPlaceMerge(x: DbTransaction, budgetId: string, fromId: string, intoId: string): Promise<void> {
+  await lockChangesCursorShared(x);
+  if (fromId === intoId || !(await bothBelongToBudget(x, s.places, budgetId, [fromId, intoId]))) return;
+  await x
+    .update(s.transactions)
+    .set({ placeId: intoId })
+    .where(and(eq(s.transactions.budgetId, budgetId), eq(s.transactions.placeId, fromId)));
+  await applyPlaceDelete(x, budgetId, fromId);
+}
+
+export async function applyCategoryMerge(x: DbTransaction, budgetId: string, fromId: string, intoId: string): Promise<void> {
+  await lockChangesCursorShared(x);
+  if (fromId === intoId || !(await bothBelongToBudget(x, s.categories, budgetId, [fromId, intoId]))) return;
+  await x
+    .update(s.transactions)
+    .set({ categoryId: intoId })
+    .where(and(eq(s.transactions.budgetId, budgetId), eq(s.transactions.categoryId, fromId)));
+  // txn_items carries no budget column; a category id belongs to exactly one budget, and the one
+  // here was just proven to be this budget's, so matching on it alone stays in scope.
+  await x.update(s.txnItems).set({ categoryId: intoId }).where(eq(s.txnItems.categoryId, fromId));
+  await applyCategoryDelete(x, budgetId, fromId);
+}
+
 export async function applyPlaceDelete(x: DbTransaction, budgetId: string, id: string): Promise<void> {
   await lockChangesCursorShared(x);
   const [used] = await x

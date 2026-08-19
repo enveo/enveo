@@ -687,3 +687,46 @@ describe("applyOp: invariant §2.3 (property-based)", () => {
     );
   });
 });
+
+describe("applyOp: dictionary merge", () => {
+  it("repoints every reference and drops the source, leaving the transactions otherwise untouched", () => {
+    let l = apply(base(), "place.create", { id: "P1", name: "Zabka" });
+    l = apply(l, "place.create", { id: "P2", name: "ZABKA" });
+    l = apply(l, "txn.create", { id: "T1", type: "expense", accountId: "A1", amount: 1000, date: "2026-08-19", placeId: "P2" });
+    l = apply(l, "txn.create", { id: "T2", type: "expense", accountId: "A1", amount: 2000, date: "2026-08-19", placeId: "P1" });
+
+    l = apply(l, "place.merge", { fromId: "P2", intoId: "P1" });
+
+    expect(l.places.map((p) => p.id)).toEqual(["P1"]);
+    expect(l.transactions.find((t) => t.id === "T1")?.placeId).toBe("P1");
+    expect(l.transactions.find((t) => t.id === "T2")?.placeId).toBe("P1");
+    expect(l.transactions.find((t) => t.id === "T1")?.amount).toBe(1000); // nothing else rewritten
+  });
+
+  it("repoints a category inside SPLIT ITEMS, not just the parent", () => {
+    let l = apply(base(), "category.create", { id: "C1", name: "Kawa" });
+    l = apply(l, "category.create", { id: "C2", name: "kawa" });
+    l = apply(l, "txn.create", {
+      id: "T1",
+      type: "expense",
+      accountId: "A1",
+      amount: 1000,
+      date: "2026-08-19",
+      items: [{ envelopeId: "E1", amount: 1000, categoryId: "C2" }],
+    });
+
+    l = apply(l, "category.merge", { fromId: "C2", intoId: "C1" });
+
+    expect(l.categories.map((c) => c.id)).toEqual(["C1"]);
+    expect(l.transactions.find((t) => t.id === "T1")?.items[0]?.categoryId).toBe("C1");
+  });
+
+  it("is a no-op on replay, and when either side is already gone", () => {
+    let l = apply(base(), "place.create", { id: "P1", name: "Zabka" });
+    l = apply(l, "place.create", { id: "P2", name: "ZABKA" });
+    const merged = apply(l, "place.merge", { fromId: "P2", intoId: "P1" });
+
+    expect(apply(merged, "place.merge", { fromId: "P2", intoId: "P1" })).toEqual(merged);
+    expect(apply(merged, "place.merge", { fromId: "P1", intoId: "P-missing" })).toEqual(merged);
+  });
+});

@@ -285,6 +285,16 @@ function setPlaceArchived(id: string, archived: boolean): void {
   enqueue("place.update", { id, archived });
 }
 
+/** Repoint everything from one entry onto another; the source disappears (or is archived if the
+ *  server finds a straggler reference). ONE op — never a `txn.update` per affected transaction. */
+function mergeCategories(fromId: string, intoId: string): void {
+  enqueue("category.merge", { fromId, intoId });
+}
+
+function mergePlaces(fromId: string, intoId: string): void {
+  enqueue("place.merge", { fromId, intoId });
+}
+
 function deleteCategory(id: string): void {
   enqueue("category.delete", { id });
 }
@@ -324,6 +334,8 @@ export const local = {
   setPlaceArchived,
   deleteCategory,
   deletePlace,
+  mergeCategories,
+  mergePlaces,
   updateBudget,
   updateBudgetPreferences,
 };

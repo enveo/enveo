@@ -3,6 +3,7 @@ import { assertThrowawayDb, emitChildResult } from "../api.test-support";
 export const SENTINEL = "__SYNC_DICTIONARIES_CHILD__";
 
 export interface SyncDictionariesOutput {
+  merge: { sourceGone: boolean; transactionRepointed: boolean; itemRepointed: boolean; replayNoop: boolean; foreignRefused: boolean };
   hide: { archived: boolean; transactionKeptIt: boolean; replayIdempotent: boolean };
   restore: { archived: boolean };
   deleteUnused: { rowGone: boolean };
@@ -35,7 +36,7 @@ async function main() {
     const [envelope] = await db.insert(s.envelopes).values({ budgetId, groupId: group!.id, name: "Food" }).returning({ id: s.envelopes.id });
     const place = async (name: string) => (await db.insert(s.places).values({ budgetId, name }).returning({ id: s.places.id }))[0]!.id;
     const category = async (name: string) => (await db.insert(s.categories).values({ budgetId, name }).returning({ id: s.categories.id }))[0]!.id;
-    const push = (kind: "place.update" | "place.delete" | "category.delete", payload: object) =>
+    const push = (kind: "place.update" | "place.delete" | "category.delete" | "place.merge" | "category.merge", payload: object) =>
       applyPushOp(budgetId, CLIENT, { opId: crypto.randomUUID(), kind, payload });
     const readPlace = async (id: string) =>
       (
@@ -97,7 +98,52 @@ async function main() {
     const afterRacedItem = await readCategory(racedCategory);
     const itemRow = (await db.select().from(s.txnItems).where(eq(s.txnItems.id, item!.id)))[0];
 
+    /* merge: every reference is repointed, the source disappears, a replay changes nothing */
+    const keep = await place("Zabka");
+    const dupe = await place("ZABKA");
+    const [dupeTxn] = await db
+      .insert(s.transactions)
+      .values({ budgetId, type: "expense", accountId: account!.id, amount: 4000, date: "2026-08-19", placeId: dupe })
+      .returning({ id: s.transactions.id });
+    const catKeep = await category("Kawa");
+    const catDupe = await category("kawa");
+    const [mergeSplit] = await db
+      .insert(s.transactions)
+      .values({ budgetId, type: "expense", accountId: account!.id, amount: 5000, date: "2026-08-19" })
+      .returning({ id: s.transactions.id });
+    const [mergeItem] = await db
+      .insert(s.txnItems)
+      .values({ transactionId: mergeSplit!.id, envelopeId: envelope!.id, amount: 5000, categoryId: catDupe })
+      .returning({ id: s.txnItems.id });
+
+    await push("place.merge", { fromId: dupe, intoId: keep });
+    await push("category.merge", { fromId: catDupe, intoId: catKeep });
+    const mergedTxn = (await db.select().from(s.transactions).where(eq(s.transactions.id, dupeTxn!.id)))[0];
+    const mergedItem = (await db.select().from(s.txnItems).where(eq(s.txnItems.id, mergeItem!.id)))[0];
+    const beforeReplay = (await db.select().from(s.places).where(eq(s.places.budgetId, budgetId))).length;
+    await push("place.merge", { fromId: dupe, intoId: keep });
+    const afterReplay = (await db.select().from(s.places).where(eq(s.places.budgetId, budgetId))).length;
+
+    // a foreign source id must move nothing at all
+    const [otherUser] = await db
+      .insert(s.users)
+      .values({ email: `sync-dictionaries-foreign-${crypto.randomUUID()}@test.local` })
+      .returning({ id: s.users.id });
+    const [otherBudget] = await db.insert(s.budgets).values({ userId: otherUser!.id, name: "Other" }).returning({ id: s.budgets.id });
+    const [foreign] = await db.insert(s.places).values({ budgetId: otherBudget!.id, name: "Foreign" }).returning({ id: s.places.id });
+    await push("place.merge", { fromId: foreign!.id, intoId: keep });
+    const foreignStillThere = (await db.select().from(s.places).where(eq(s.places.id, foreign!.id))).length === 1;
+    await db.delete(s.budgets).where(eq(s.budgets.id, otherBudget!.id));
+    await db.delete(s.users).where(eq(s.users.id, otherUser!.id));
+
     const out: SyncDictionariesOutput = {
+      merge: {
+        sourceGone: (await readPlace(dupe)) === undefined,
+        transactionRepointed: mergedTxn?.placeId === keep,
+        itemRepointed: mergedItem?.categoryId === catKeep,
+        replayNoop: beforeReplay === afterReplay,
+        foreignRefused: foreignStillThere,
+      },
       hide: {
         archived: afterHide?.archived === true,
         transactionKeptIt: txnAfterHide?.placeId === used,

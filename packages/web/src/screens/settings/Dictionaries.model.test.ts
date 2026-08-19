@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { type DictionaryEntry, dictionaryEntries, sortDictionary } from "./Dictionaries";
+import { type DictionaryEntry, dictionaryEntries, duplicateGroups, normalizeDictionaryName, sortDictionary } from "./Dictionaries";
 
 const cat = (id: string, name: string, archived = false) => ({ id, name, archived });
 const txn = (over: Partial<{ categoryId: string | null; placeId: string | null; items: { categoryId: string | null }[] }> = {}) => ({
@@ -53,5 +53,32 @@ describe("sortDictionary", () => {
   test("by name ignores the direction toggle", () => {
     const rows = [e("Zabka", 5), e("Auto", 0)];
     expect(sortDictionary(rows, "name", false).map((r) => r.name)).toEqual(["Auto", "Zabka"]);
+  });
+});
+
+describe("duplicateGroups", () => {
+  const e = (name: string, uses: number): DictionaryEntry => ({ id: name, name, archived: false, uses });
+
+  test("collapses case, diacritics and punctuation onto one group", () => {
+    const groups = duplicateGroups([e("Żabka", 3), e("ZABKA", 1), e("zabka.", 7), e("Lidl", 4)]);
+    expect(groups.map((g) => g.map((x) => x.name))).toEqual([["zabka.", "Żabka", "ZABKA"]]);
+  });
+
+  test("the most-used variant leads the group — that is the name the merge keeps", () => {
+    const [group] = duplicateGroups([e("kino", 2), e("Kino", 9)]);
+    expect(group?.[0]?.name).toBe("Kino");
+  });
+
+  test("names that only look similar are NOT grouped — a wrong merge cannot be undone", () => {
+    expect(duplicateGroups([e("Lidl", 1), e("Lidl Express", 1), e("Biedronka", 1)])).toEqual([]);
+  });
+
+  test("an entry alone in its group is not a suggestion", () => {
+    expect(duplicateGroups([e("Auto", 0)])).toEqual([]);
+  });
+
+  test("normalising leaves nothing to key on for punctuation-only names, so they never group", () => {
+    expect(normalizeDictionaryName("—")).toBe("");
+    expect(duplicateGroups([e("—", 1), e("…", 1)])).toEqual([]);
   });
 });

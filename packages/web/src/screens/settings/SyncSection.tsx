@@ -206,6 +206,8 @@ const OP_LABEL: Record<OpKind, Message> = {
   "place.create": msg("New place"),
   "category.update": msg("Category change"),
   "place.update": msg("Place change"),
+  "category.merge": msg("Category merge"),
+  "place.merge": msg("Place merge"),
   "category.delete": msg("Category deletion"),
   "place.delete": msg("Place deletion"),
   "budget.update": msg("Budget currency change"),
