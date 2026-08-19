@@ -33,6 +33,8 @@ import {
   applyBudgetPreferencesUpdate,
   applyBudgetUpdate,
   applyCategoryCreate,
+  applyCategoryDelete,
+  applyCategoryUpdate,
   applyEnvelopeCreate,
   applyEnvelopeDelete,
   applyEnvelopeUpdate,
@@ -40,6 +42,8 @@ import {
   applyGroupDelete,
   applyGroupUpdate,
   applyPlaceCreate,
+  applyPlaceDelete,
+  applyPlaceUpdate,
   applyTxnCreate,
   applyTxnDelete,
   applyTxnUpdate,
@@ -418,6 +422,18 @@ async function applyOp(x: DbTransaction, budgetId: string, kind: OpKind, payload
       return;
     case "place.create":
       await applyPlaceCreate(x, budgetId, payload as OpPayload<"place.create">);
+      return;
+    case "category.update":
+      ensure(await applyCategoryUpdate(x, budgetId, payload as OpPayload<"category.update">));
+      return;
+    case "place.update":
+      ensure(await applyPlaceUpdate(x, budgetId, payload as OpPayload<"place.update">));
+      return;
+    case "category.delete":
+      await applyCategoryDelete(x, budgetId, (payload as OpPayload<"category.delete">).id);
+      return;
+    case "place.delete":
+      await applyPlaceDelete(x, budgetId, (payload as OpPayload<"place.delete">).id);
       return;
     case "budget.update": {
       // scoped to the own budget — a foreign id is a permanent refusal (dead-letter)

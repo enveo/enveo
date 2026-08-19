@@ -158,6 +158,15 @@ export const opSchemas = {
   // plain insert — dedupe by name is done by the CLIENT (local lookup in the mirror)
   "category.create": z.object({ ...withId, name: z.string().min(1) }),
   "place.create": z.object({ ...withId, name: z.string().min(1) }),
+  // Dictionary upkeep. `archived` hides an entry from ENTRY (suggestions, pickers) and nowhere
+  // else — every transaction that already carries it keeps showing it. `name` is accepted so a
+  // later rename needs no new op. DELETE is only ever for an entry nothing references: both sides
+  // check, and a delete that loses the race against a fresh reference DEGRADES TO ARCHIVE rather
+  // than letting `on delete set null` strip the value out of someone's transaction.
+  "category.update": z.object({ ...withId, name: z.string().min(1).optional(), archived: z.boolean().optional() }),
+  "place.update": z.object({ ...withId, name: z.string().min(1).optional(), archived: z.boolean().optional() }),
+  "category.delete": idOnly,
+  "place.delete": idOnly,
   // budget metadata (single-row entity) — for now only the display currency
   "budget.update": z.object({ id: z.string().uuid(), currency: z.string().regex(/^[A-Z]{3}$/) }),
   "budget.preferences.update": z.object({ id: z.string().uuid(), patch: budgetPreferencesPatchSchema }).strict(),
@@ -240,8 +249,8 @@ const envelopeEntity = z.object({
   sort: z.number().int(),
   archived: z.boolean(),
 });
-const categoryEntity = z.object({ id: zUuid, name: z.string() });
-const placeEntity = z.object({ id: zUuid, name: z.string() });
+const categoryEntity = z.object({ id: zUuid, name: z.string(), archived: z.boolean().default(false) });
+const placeEntity = z.object({ id: zUuid, name: z.string(), archived: z.boolean().default(false) });
 const allocationEntity = z.object({
   id: z.string(), // may be synthetic (alloc-local:…) — the server will assign a uuid
   envelopeId: zUuid,

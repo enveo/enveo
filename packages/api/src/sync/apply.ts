@@ -527,3 +527,72 @@ export async function applyPlaceCreate(x: Executor, budgetId: string, body: { id
     .returning();
   return row!;
 }
+
+/* ── Dictionary upkeep (categories, places) ─────────────────────────── */
+
+type DictionaryPatch = { id: string; name?: string; archived?: boolean };
+
+export async function applyCategoryUpdate(x: Executor, budgetId: string, body: DictionaryPatch): Promise<NotFound | undefined> {
+  const patch = { ...(body.name === undefined ? {} : { name: body.name }), ...(body.archived === undefined ? {} : { archived: body.archived }) };
+  if (Object.keys(patch).length === 0) return;
+  const rows = await x
+    .update(s.categories)
+    .set(patch)
+    .where(and(eq(s.categories.id, body.id), eq(s.categories.budgetId, budgetId)))
+    .returning({ id: s.categories.id });
+  return rows.length > 0 ? undefined : NOT_FOUND;
+}
+
+export async function applyPlaceUpdate(x: Executor, budgetId: string, body: DictionaryPatch): Promise<NotFound | undefined> {
+  const patch = { ...(body.name === undefined ? {} : { name: body.name }), ...(body.archived === undefined ? {} : { archived: body.archived }) };
+  if (Object.keys(patch).length === 0) return;
+  const rows = await x
+    .update(s.places)
+    .set(patch)
+    .where(and(eq(s.places.id, body.id), eq(s.places.budgetId, budgetId)))
+    .returning({ id: s.places.id });
+  return rows.length > 0 ? undefined : NOT_FOUND;
+}
+
+/**
+ * A dictionary delete is only ever meant for an entry NOTHING references — the client offers it
+ * exactly then. But the client checked its own replica, and another device may have added a
+ * referencing transaction in the meantime; `category_id`/`place_id` are `on delete set null`, so
+ * deleting here would quietly strip the value out of that transaction. The row is therefore
+ * re-checked under the same transaction and ARCHIVED instead when a reference exists: the human
+ * still gets "gone from entry", and the history survives. `applyOp` mirrors this exact rule.
+ */
+export async function applyCategoryDelete(x: DbTransaction, budgetId: string, id: string): Promise<void> {
+  await lockChangesCursorShared(x);
+  const [used] = await x
+    .select({ id: s.transactions.id })
+    .from(s.transactions)
+    .where(and(eq(s.transactions.budgetId, budgetId), eq(s.transactions.categoryId, id)))
+    .limit(1);
+  const [usedByItem] = used ? [used] : await x.select({ id: s.txnItems.id }).from(s.txnItems).where(eq(s.txnItems.categoryId, id)).limit(1);
+  if (usedByItem) {
+    await x
+      .update(s.categories)
+      .set({ archived: true })
+      .where(and(eq(s.categories.id, id), eq(s.categories.budgetId, budgetId)));
+    return;
+  }
+  await x.delete(s.categories).where(and(eq(s.categories.id, id), eq(s.categories.budgetId, budgetId)));
+}
+
+export async function applyPlaceDelete(x: DbTransaction, budgetId: string, id: string): Promise<void> {
+  await lockChangesCursorShared(x);
+  const [used] = await x
+    .select({ id: s.transactions.id })
+    .from(s.transactions)
+    .where(and(eq(s.transactions.budgetId, budgetId), eq(s.transactions.placeId, id)))
+    .limit(1);
+  if (used) {
+    await x
+      .update(s.places)
+      .set({ archived: true })
+      .where(and(eq(s.places.id, id), eq(s.places.budgetId, budgetId)));
+    return;
+  }
+  await x.delete(s.places).where(and(eq(s.places.id, id), eq(s.places.budgetId, budgetId)));
+}

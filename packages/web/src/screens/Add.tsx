@@ -250,7 +250,10 @@ export function AddScreen({
     const ledger = store.getLedger();
     const forEnv = envelopeId ?? items[0]?.envelopeId ?? null;
     const counts = ledger ? categoryCountsFor(ledger, ledgerVersion, forEnv) : new Map<string, number>();
-    return rankCategories(state.categories, counts);
+    return rankCategories(
+      state.categories.filter((c) => !c.archived),
+      counts,
+    );
   }, [ledgerVersion, envelopeId, items, state.categories]);
   const filteredCats = catInput ? rankedCats.filter((c) => c.name.toLowerCase().includes(catInput.toLowerCase())) : rankedCats;
 
@@ -408,14 +411,22 @@ export function AddScreen({
   // for a personal ledger).
   const ledgerNow = store.getLedger();
   const placeScopeEnv = envelopeId ?? items[0]?.envelopeId ?? null;
+  // Hiding an entry takes it out of ENTRY only: suggestions, search and chips. Everything that
+  // DESCRIBES existing data (transaction rows, reports, an active filter) keeps showing it.
+  const activePlaces = state.places.filter((p) => !p.archived);
   const rankedPlaceObjs = ledgerNow
     ? rankPlaces(ledgerNow, placeScopeEnv, categoryId)
-        .map((id) => state.places.find((p) => p.id === id))
+        .map((id) => activePlaces.find((p) => p.id === id))
         .filter((p): p is NonNullable<typeof p> => !!p)
     : [];
-  const filteredPlaces = placeInput ? state.places.filter((p) => p.name.toLowerCase().includes(placeInput.toLowerCase())) : state.places;
+  const filteredPlaces = placeInput ? activePlaces.filter((p) => p.name.toLowerCase().includes(placeInput.toLowerCase())) : activePlaces;
 
   const catList = withPinned(rankedCats, categoryId, 4);
+  // Dedupe is by NAME, so typing the name of a hidden entry would reuse that row and leave it
+  // hidden. Offer the restore explicitly instead (the create button is already suppressed by the
+  // exact-name check, which deliberately looks at hidden entries too).
+  const hiddenCatMatch = catInput.trim() ? state.categories.find((c) => c.archived && c.name.toLowerCase() === catInput.trim().toLowerCase()) : undefined;
+  const hiddenPlaceMatch = placeInput.trim() ? state.places.find((p) => p.archived && p.name.toLowerCase() === placeInput.trim().toLowerCase()) : undefined;
   // Unlike `rankCategories` (which sorts the FULL list), `rankPlaces` ranks from transaction
   // history, so the selection has to be seeded into the pool or the chip row shows nothing.
   const placeList = withPinned(withSelectedFirst(rankedPlaceObjs, placeId ? state.places.find((p) => p.id === placeId) : null), placeId, 4);
@@ -695,6 +706,14 @@ export function AddScreen({
                 }
                 // Collapsing KEEPS the query: throwing away what was typed made a half-finished
                 // "add my own" look like the app had swallowed it.
+                restoreLabel={hiddenCatMatch ? t("Restore “{name}” · hidden", { name: hiddenCatMatch.name }) : null}
+                onRestore={() => {
+                  if (!hiddenCatMatch) return;
+                  local.setCategoryArchived(hiddenCatMatch.id, false);
+                  setCategoryId(hiddenCatMatch.id);
+                  setCatInput("");
+                  setCatOpen(false);
+                }}
                 onToggleOpen={() => setCatOpen(!catOpen)}
                 onQueryChange={setCatInput}
                 onToggleChip={(id) => setCategoryId(categoryId === id ? null : id)}
@@ -727,6 +746,14 @@ export function AddScreen({
                   ? t("+ Add “{name}”", { name: placeInput.trim() })
                   : null
               }
+              restoreLabel={hiddenPlaceMatch ? t("Restore “{name}” · hidden", { name: hiddenPlaceMatch.name }) : null}
+              onRestore={() => {
+                if (!hiddenPlaceMatch) return;
+                local.setPlaceArchived(hiddenPlaceMatch.id, false);
+                setPlaceId(hiddenPlaceMatch.id);
+                setPlaceInput("");
+                setPlaceOpen(false);
+              }}
               onToggleOpen={() => setPlaceOpen(!placeOpen)}
               onQueryChange={(value) => {
                 setPlaceInput(value);

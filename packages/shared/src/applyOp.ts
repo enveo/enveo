@@ -303,14 +303,44 @@ export function applyOp(ledger: ClientLedger, op: SyncOp): ClientLedger {
     case "category.create": {
       const p = op.payload as OpPayload<"category.create">;
       if (ledger.categories.some((cat) => cat.id === p.id)) return ledger; // existing id — no-op
-      const row: Category = { id: p.id, name: p.name };
+      const row: Category = { id: p.id, name: p.name, archived: false };
       return { ...ledger, categories: [...ledger.categories, row] };
     }
     case "place.create": {
       const p = op.payload as OpPayload<"place.create">;
       if (ledger.places.some((pl) => pl.id === p.id)) return ledger; // existing id — no-op
-      const row: Place = { id: p.id, name: p.name };
+      const row: Place = { id: p.id, name: p.name, archived: false };
       return { ...ledger, places: [...ledger.places, row] };
+    }
+    case "category.update": {
+      const p = op.payload as OpPayload<"category.update">;
+      const idx = ledger.categories.findIndex((cat) => cat.id === p.id);
+      if (idx < 0) return ledger;
+      return { ...ledger, categories: replaceAt(ledger.categories, idx, merge(ledger.categories[idx]!, p)) };
+    }
+    case "place.update": {
+      const p = op.payload as OpPayload<"place.update">;
+      const idx = ledger.places.findIndex((pl) => pl.id === p.id);
+      if (idx < 0) return ledger;
+      return { ...ledger, places: replaceAt(ledger.places, idx, merge(ledger.places[idx]!, p)) };
+    }
+    // Deleting a dictionary entry is allowed ONLY while nothing references it. A replica that
+    // learns of a reference first (another device's transaction) must NOT drop the row — the FK
+    // is `on delete set null`, so the row would take that transaction's value with it. Archive
+    // instead: the same outcome the human wanted (gone from entry), with history intact.
+    case "category.delete": {
+      const p = op.payload as OpPayload<"category.delete">;
+      const used = ledger.transactions.some((t) => t.categoryId === p.id) || ledger.transactions.some((t) => t.items.some((i) => i.categoryId === p.id));
+      return used
+        ? { ...ledger, categories: ledger.categories.map((cat) => (cat.id === p.id ? { ...cat, archived: true } : cat)) }
+        : { ...ledger, categories: ledger.categories.filter((cat) => cat.id !== p.id) };
+    }
+    case "place.delete": {
+      const p = op.payload as OpPayload<"place.delete">;
+      const used = ledger.transactions.some((t) => t.placeId === p.id);
+      return used
+        ? { ...ledger, places: ledger.places.map((pl) => (pl.id === p.id ? { ...pl, archived: true } : pl)) }
+        : { ...ledger, places: ledger.places.filter((pl) => pl.id !== p.id) };
     }
     case "budget.update": {
       const p = op.payload as OpPayload<"budget.update">;
