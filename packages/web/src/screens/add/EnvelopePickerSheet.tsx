@@ -16,12 +16,15 @@ export function EnvelopePickerSheet({
   onClose,
   envelopes,
   groups,
+  title,
   onSelect,
 }: {
   show: boolean;
   onClose: () => void;
   envelopes: StateResponse["envelopes"];
   groups: StateResponse["groups"];
+  /** Overrides the heading — the split editor opens the same sheet to ADD a row. */
+  title?: string;
   onSelect: (id: string) => void;
 }) {
   const M = useMask();
@@ -41,7 +44,7 @@ export function EnvelopePickerSheet({
         return (
           <>
             <div style={{ flexShrink: 0 }}>
-              <div style={{ fontSize: 17, fontWeight: 700, color: C.text, marginBottom: 14, textAlign: "center" }}>{t("Choose an envelope")}</div>
+              <div style={{ fontSize: 17, fontWeight: 700, color: C.text, marginBottom: 14, textAlign: "center" }}>{title ?? t("Choose an envelope")}</div>
               {allEnvelopes.length > SEARCH_THRESHOLD && <PickerSearch value={envQ} onChange={setEnvQ} />}
             </div>
             <div className="gs" style={{ flex: 1, overflowY: "auto", overscrollBehavior: "contain" }}>

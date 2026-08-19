@@ -42,6 +42,13 @@ export function shortDate(iso: string, lang: Lang, withYear = false): string {
   }).format(new Date(`${iso}T00:00:00Z`));
 }
 
+/** Day and month per locale, e.g. "18 sierpnia" / "August 18" — the Add flow card's date row.
+ *  Intl inflects the month for the language (pl genitive), which gluing a `monthNames()` entry
+ *  onto a number would not. */
+export function dayMonth(iso: string, lang: Lang): string {
+  return new Intl.DateTimeFormat(LOCALE_OF[lang], { day: "numeric", month: "long", timeZone: "UTC" }).format(new Date(`${iso}T00:00:00Z`));
+}
+
 /** Full date per locale, e.g. "poniedziałek, 7 lipca 2026" / "Monday, July 7, 2026". */
 export function formatDateLong(iso: string, lang: Lang): string {
   const [y, m, d] = iso.split("-").map(Number) as [number, number, number];

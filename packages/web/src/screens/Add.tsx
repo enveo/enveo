@@ -1,4 +1,4 @@
-import { computeStateResponse, type Transaction, type TxnPayload } from "@enveo/shared";
+import { captureAllocationFlow, computeStateResponse, resolveAllocationFlow, type Transaction, type TxnPayload } from "@enveo/shared";
 import { lazy, useEffect, useMemo, useRef, useState } from "react";
 import { useBand } from "../components/kit";
 import { LazyChunk, useOpenedOnce } from "../components/lazy";
@@ -16,25 +16,25 @@ import {
 } from "../lib/automaticEnvelopeUi";
 import { categoryCountsFor, rankCategories } from "../lib/categoryIndex";
 import { useMask, useTheme } from "../lib/contexts";
-import { currentMonth, formatDateLong, todayISO } from "../lib/dates";
+import { currentMonth, dayMonth, shiftDay, todayISO } from "../lib/dates";
 import { evalExpression } from "../lib/format";
 import { haptic } from "../lib/haptics";
 import { type Message, msg, useT } from "../lib/i18n";
 import { preferredAccountId, setLastAccountId } from "../lib/lastAccount";
-import { local } from "../lib/mutate";
+import { local, type TxnFlowOptions } from "../lib/mutate";
 import { store } from "../lib/store";
-import { rankEnvelopes, rankPlaces } from "../lib/suggest";
-import { P } from "../lib/theme";
+import { rankPlaces } from "../lib/suggest";
+import { P, tint } from "../lib/theme";
 
 import { AccountPickerSheet, DestinationAccountSheet } from "./add/AccountPickerSheet";
 import { AddHeader } from "./add/AddHeader";
 import { AmountSection } from "./add/AmountSection";
 import { AutomaticEnvelopeEffect } from "./add/AutomaticEnvelopeEffect";
+import { ChipPicker } from "./add/ChipPicker";
 import { DateSheet } from "./add/DateSheet";
 import { EnvelopePickerSheet } from "./add/EnvelopePickerSheet";
-import { ExpenseFields } from "./add/ExpenseFields";
+import { FlowCard, type FlowEndpoint } from "./add/FlowCard";
 import { TransactionFields } from "./add/TransactionFields";
-import { TransferFields } from "./add/TransferFields";
 import type { AddDraft, Tab } from "./add/types";
 
 export type { AddDraft, Tab } from "./add/types";
@@ -47,7 +47,7 @@ const ImportSheet = lazy(() => import("../components/ImportSheet").then((m) => (
 
 /** Top `take` of `ranked`, but guaranteed to include `pinnedId` (prepended, bumping the tail)
  *  when it exists in `ranked` and would otherwise fall outside the slice — a selection made via
- *  the full sheet (or inherited from edit/draft prefill) must stay visible if the grid reopens. */
+ *  the full list must stay visible when the chips come back. */
 function withPinned<T extends { id: string }>(ranked: T[], pinnedId: string | null, take: number): T[] {
   const base = ranked.slice(0, take);
   if (pinnedId != null && !base.some((x) => x.id === pinnedId)) {
@@ -57,12 +57,8 @@ function withPinned<T extends { id: string }>(ranked: T[], pinnedId: string | nu
   return base;
 }
 
-/** ISO date `n` days before `iso` (UTC — matches DateSheet's own Yesterday button). */
-function isoDaysBefore(iso: string, n: number): string {
-  const d = new Date(`${iso}T00:00Z`);
-  d.setUTCDate(d.getUTCDate() - n);
-  return d.toISOString().slice(0, 10);
-}
+/** Minor units → the pad's canonical expression ("1234,50"). */
+const padExpr = (minor: number): string => (minor / 100).toFixed(2).replace(".", ",");
 
 export function AddScreen({
   state,
@@ -89,8 +85,8 @@ export function AddScreen({
   const ledgerVersion = useLedgerVersion();
   // Accounts are CURRENT-balance always — never scoped to the viewed month (unlike envelopes).
   // Recomputed from the replica at `currentMonth()` regardless of which month `state` was built
-  // for, so every account display in this screen (source/destination pickers, grids) shows the
-  // same balance as the Start screen and Accounts screen — same pattern as chrome.tsx's Drawer.
+  // for, so every account display in this screen (flow card, pickers) shows the same balance as
+  // the Start screen and Accounts screen — same pattern as chrome.tsx's Drawer.
   const accountsNow = useMemo(() => {
     const l = store.getLedger();
     return l ? computeStateResponse(l, currentMonth()).accounts : [];
@@ -124,32 +120,32 @@ export function AddScreen({
     return expenseEnvelopeSelection(automaticEnvelopeId);
   });
   const envelopeId = expenseEnvelope.envelopeId;
-  // KOPERTA/NA KONTO: suggestion grid (true) vs the collapsed single-row summary (false).
-  // Expense starts open (nothing to summarize yet); income/transfer start collapsed — a pool
-  // default or a pre-picked destination already exists, so the grid is an opt-in "change" step.
-  const [envOpen, setEnvOpen] = useState(true);
-  const [destOpen, setDestOpen] = useState(false);
   const [items, setItems] = useState<Array<{ envelopeId: string; amount: number }>>([]);
+  // Which split row the numpad is editing (null = the hero amount). Its own pad state, so a
+  // row keeps the full expression machine (reductions, ⌫, one comma) the total has.
+  const [activeSplit, setActiveSplit] = useState<number | null>(null);
+  const [splitPad, setSplitPad] = useState<PadState>({ expr: "", fresh: true });
   const [categoryId, setCategoryId] = useState<string | null>(null);
   const [catInput, setCatInput] = useState("");
   const [catOpen, setCatOpen] = useState(false);
   const [name, setName] = useState("");
   const [placeId, setPlaceId] = useState<string | null>(null);
   const [placeInput, setPlaceInput] = useState("");
-  const [showPlace, setShowPlace] = useState(false);
-  // Only true right after the user taps "Type a place…" — the place input's `autoFocus` reads
-  // this instead of firing unconditionally, so entering EDIT for a transaction that already has
-  // a place (which expands the field programmatically below) doesn't steal focus at mount and
-  // leave a permanent :focus-visible ring with no user interaction.
-  const [placeAutoFocus, setPlaceAutoFocus] = useState(false);
+  const [placeOpen, setPlaceOpen] = useState(false);
   const [note, setNote] = useState("");
+  // Transfer only: the human can skip the account-linked envelope leg for THIS transaction (the
+  // money was already assigned by hand). `touched` separates "left alone" — which must keep the
+  // stored flow verbatim on an edit — from "re-ticked", which has to capture the links again.
+  const [skipAllocation, setSkipAllocation] = useState(false);
+  const [allocationTouched, setAllocationTouched] = useState(false);
   const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [numpad, setNumpad] = useState(true);
 
   const [showAcc, setShowAcc] = useState(false);
   const [showTo, setShowTo] = useState(false);
   const [showDate, setShowDate] = useState(false);
-  const [showEnv, setShowEnv] = useState(false);
+  // "target" picks the expense envelope; "split" appends a row to the split.
+  const [showEnv, setShowEnv] = useState<null | "target" | "split">(null);
   const [showImport, setShowImport] = useState(!!initialImport);
   // Latched: the sheet chunk is fetched on the FIRST open and then stays mounted, so closing and
   // reopening keeps its state exactly as it did when the import was statically imported.
@@ -161,7 +157,7 @@ export function AddScreen({
   useEffect(() => {
     if (!editTxn) return;
     setTab(editTxn.type);
-    setAmount((editTxn.amount / 100).toFixed(2).replace(".", ","));
+    setAmount(padExpr(editTxn.amount));
     setAccountId(editTxn.accountId);
     if (editTxn.toAccountId) setToAccountId(editTxn.toAccountId);
     setIsRefund(editTxn.isRefund);
@@ -172,11 +168,17 @@ export function AddScreen({
     setPlaceId(editTxn.placeId);
     setName(editTxn.name ?? "");
     setNote(editTxn.note ?? "");
-    setShowPlace(!!editTxn.placeId); // expand filled fields right away (no icon clicking)
-    setPlaceAutoFocus(false); // programmatic expansion — never steal focus on entering edit
     setDate(editTxn.date);
-    setEnvOpen(false);
-    setDestOpen(false);
+    // A stored transfer that carries NO flow although its route is linked was saved opted out —
+    // the switch has to open in that state, or re-saving would quietly restore the envelope leg.
+    const linked = captureAllocationFlow(accounts, editTxn);
+    setSkipAllocation(
+      editTxn.type === "transfer" &&
+        (linked.allocationFromEnvelopeId !== null || linked.allocationToEnvelopeId !== null) &&
+        editTxn.allocationFromEnvelopeId === null &&
+        editTxn.allocationToEnvelopeId === null,
+    );
+    setAllocationTouched(false);
   }, [editTxn]);
 
   // Draft-mode prefill: from corrections (initial — returning to the edit) or from a
@@ -187,7 +189,7 @@ export function AddScreen({
     const e = draft.initial;
     if (e) {
       setTab(e.type);
-      setAmount((e.amount / 100).toFixed(2).replace(".", ","));
+      setAmount(padExpr(e.amount));
       setAccountId(e.accountId);
       if (e.toAccountId) setToAccountId(e.toAccountId);
       setIsRefund(e.isRefund);
@@ -204,7 +206,7 @@ export function AddScreen({
     } else {
       const it = draft.item;
       setTab(it.type);
-      setAmount((it.amount / 100).toFixed(2).replace(".", ","));
+      setAmount(padExpr(it.amount));
       setAccountId(draft.accountId);
       if (it.toAccountId) setToAccountId(it.toAccountId); // transfer learned from history
       setIsRefund(it.type === "expense" && !!it.isRefund);
@@ -219,19 +221,20 @@ export function AddScreen({
       prefillPlace(it.placeName ?? null);
       setDate(it.date);
     }
-    setEnvOpen(false);
-    setDestOpen(false);
     setNumpad(false);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // A place from import is a NAME (no ID) — if a 1:1 match exists, we attach the ID
-  // (the input shows the selected place without a dropdown); otherwise text goes to placeInput.
+  // (the chip row shows it selected); otherwise the text stays in the search field, from
+  // which draft mode submits it by name.
   function prefillPlace(placeName: string | null) {
     if (!placeName) return;
     const match = state.places.find((p) => p.name.toLowerCase() === placeName.toLowerCase());
     if (match) setPlaceId(match.id);
-    else setPlaceInput(placeName);
-    setShowPlace(true);
+    else {
+      setPlaceInput(placeName);
+      setPlaceOpen(true);
+    }
   }
 
   const plus = tab === "income" || (tab === "expense" && isRefund);
@@ -250,42 +253,92 @@ export function AddScreen({
     return rankCategories(state.categories, counts);
   }, [ledgerVersion, envelopeId, items, state.categories]);
   const filteredCats = catInput ? rankedCats.filter((c) => c.name.toLowerCase().includes(catInput.toLowerCase())) : rankedCats;
-  const filteredPlaces = placeInput ? state.places.filter((p) => p.name.toLowerCase().includes(placeInput.toLowerCase())) : [];
-
-  const press = (k: string) => setPad((p) => padKey(p, k === "DEL" ? "⌫" : k));
-
-  const reset = (nextTab: Tab) => {
-    const automaticEnvelopeId = accounts.find((account) => account.id === accountId)?.automaticEnvelopeId;
-    setExpenseEnvelope(nextTab === "expense" && !editTxn && !draft ? expenseEnvelopeSelection(automaticEnvelopeId) : explicitExpenseEnvelopeSelection(null));
-    setItems([]);
-    setSplitMode(false);
-    setCategoryId(null);
-    setCatInput("");
-    setCatOpen(false);
-  };
 
   const minor = evalExpression(amount) ?? 0;
+  const splitSum = items.reduce((s, i) => s + i.amount, 0);
+  const splitUi = tab === "expense" && splitMode;
+  const editingSplitRow = splitUi && activeSplit !== null;
+  const padExprInFocus = editingSplitRow ? splitPad.expr : amount;
+
+  /** One numpad key — routed to the focused split row, otherwise to the hero amount. */
+  const press = (k: string) => {
+    const key = k === "DEL" ? "⌫" : k;
+    if (editingSplitRow) {
+      const next = padKey(splitPad, key);
+      setSplitPad(next);
+      const value = Math.max(0, evalExpression(next.expr) ?? 0);
+      setItems(items.map((it, i) => (i === activeSplit ? { ...it, amount: value } : it)));
+      return;
+    }
+    setPad((p) => padKey(p, key));
+  };
+  const openHeroPad = () => {
+    setActiveSplit(null);
+    setNumpad(true);
+  };
+  const closePad = () => {
+    setNumpad(false);
+    setActiveSplit(null);
+  };
+
   // scroll the amount field to the end (cursor visible) for a long expression
   const amtRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
     const el = amtRef.current;
     if (el) el.scrollLeft = el.scrollWidth;
   }, [amount]);
-  const splitSum = items.reduce((s, i) => s + i.amount, 0);
-  // entering split: the selected envelope becomes the first item with the whole amount
+
+  const reset = (nextTab: Tab) => {
+    const automaticEnvelopeId = accounts.find((account) => account.id === accountId)?.automaticEnvelopeId;
+    setExpenseEnvelope(nextTab === "expense" && !editTxn && !draft ? expenseEnvelopeSelection(automaticEnvelopeId) : explicitExpenseEnvelopeSelection(null));
+    setItems([]);
+    setSplitMode(false);
+    setActiveSplit(null);
+    setSkipAllocation(false);
+    setAllocationTouched(false);
+    setCategoryId(null);
+    setCatInput("");
+    setCatOpen(false);
+  };
+
+  // entering split: the selected envelope becomes the first row with the whole amount
   const enterSplit = () => {
     if (items.length === 0 && env) setItems([{ envelopeId: env.id, amount: minor }]);
     setSplitMode(true);
+    setActiveSplit(null);
+    setNumpad(false);
   };
+  const focusSplitRow = (index: number) => {
+    setActiveSplit(index);
+    setSplitPad({ expr: padExpr(items[index]?.amount ?? 0), fresh: true });
+    setNumpad(true);
+  };
+  /** "assign the rest ›" — the gap goes to the focused row, or to the last one. */
+  const assignRest = () => {
+    const index = activeSplit ?? items.length - 1;
+    if (index < 0) return;
+    const next = Math.max(0, (items[index]?.amount ?? 0) + (minor - splitSum));
+    setItems(items.map((it, i) => (i === index ? { ...it, amount: next } : it)));
+    if (activeSplit === index) setSplitPad({ expr: padExpr(next), fresh: true });
+  };
+  const removeSplitRow = (index: number) => {
+    setItems(items.filter((_, i) => i !== index));
+    setActiveSplit(null);
+  };
+
   const submitLabel: Message =
     tab === "expense" ? (isRefund ? msg("Add refund") : msg("Add expense")) : tab === "income" ? msg("Add income") : msg("Add transfer");
 
   // empty-state backstop: without an account there is nothing to save a transaction on
   const noAccount = accounts.length === 0;
+  // A split must add up: the rows ARE the transaction, so an unassigned remainder (or an
+  // excess) would silently change the amount that was typed. The CTA names the gap instead.
+  const splitBalanced = !splitUi || (items.length > 0 && splitSum === minor);
+  const canSubmit = minor > 0 && !noAccount && splitBalanced;
 
   // fully synchronous save: local mirror immediately, network in the background (outbox)
   function submit() {
-    if (minor <= 0 || noAccount) return;
+    if (!canSubmit) return;
     if (!draft) setLastAccountId(accountId); // per-device preference
     // Draft mode: build the corrected import item and hand it to the parent — ZERO local.*
     // (the accepted review later goes through the local import batch with source_ref preserved).
@@ -313,7 +366,7 @@ export function AddScreen({
       haptic([10, 30, 14]);
       return;
     }
-    const usingSplit = tab === "expense" && splitMode && items.length > 0;
+    const usingSplit = splitUi && items.length > 0;
     const payload: TxnPayload = {
       type: tab,
       accountId,
@@ -331,51 +384,160 @@ export function AddScreen({
       note: note || null,
       items: usingSplit ? items.map((i) => ({ envelopeId: i.envelopeId, amount: i.amount })) : undefined,
     };
-    if (editTxn) local.updateTxn(editTxn.id, payload);
-    else local.createTxn(payload);
+    // undefined unless the transfer switch is on screen: every other path keeps the historical
+    // capture/preserve behaviour (see TxnFlowOptions).
+    const flowOptions: TxnFlowOptions | undefined = allocationApplies
+      ? { skipAutomaticAllocation: skipAllocation ? true : allocationTouched ? false : undefined }
+      : undefined;
+    if (editTxn) local.updateTxn(editTxn.id, payload, flowOptions);
+    else local.createTxn(payload, flowOptions);
     haptic([10, 30, 14]);
     onDone();
   }
 
-  // Date shown under the amount: Today/Yesterday when applicable, else the long form; a date
-  // other than today renders C.warn so a back-dated entry is visible at a glance (board spec).
+  // Date row in the flow card: Today/Yesterday carry the day+month as a quiet second line,
+  // any other date leads with the day+month and keeps the year beside it.
   const todayIso = todayISO();
   const isToday = date === todayIso;
-  const isYesterday = !isToday && date === isoDaysBefore(todayIso, 1);
-  const dateLabel = isToday ? t("Today") : isYesterday ? t("Yesterday") : formatDateLong(date, lang);
-  const dateColor = isToday ? C.soft : C.warn;
+  const isYesterday = !isToday && date === shiftDay(todayIso, -1);
+  const dayMonthLabel = dayMonth(date, lang);
+  const dateLabel = isToday ? t("Today") : isYesterday ? t("Yesterday") : dayMonthLabel;
+  const dateHint = isToday || isYesterday ? dayMonthLabel : date.slice(0, 4);
 
   // Local suggestion rankings (lib/suggest.ts) — pure, no I/O; recomputed on every render (cheap
-  // for a personal ledger). Envelope ranking also reacts live to the typed amount (amount affinity).
+  // for a personal ledger).
   const ledgerNow = store.getLedger();
-  const rankedEnvObjs = ledgerNow
-    ? rankEnvelopes(ledgerNow, todayIso, minor > 0 ? minor : null)
-        .map((id) => envById.get(id))
-        .filter((e): e is NonNullable<typeof e> => !!e)
-    : [];
   const placeScopeEnv = envelopeId ?? items[0]?.envelopeId ?? null;
   const rankedPlaceObjs = ledgerNow
     ? rankPlaces(ledgerNow, placeScopeEnv, categoryId)
         .map((id) => state.places.find((p) => p.id === id))
         .filter((p): p is NonNullable<typeof p> => !!p)
     : [];
+  const filteredPlaces = placeInput ? state.places.filter((p) => p.name.toLowerCase().includes(placeInput.toLowerCase())) : state.places;
 
-  const envGridList = withPinned(rankedEnvObjs, envelopeId, 4);
   const catList = withPinned(rankedCats, categoryId, 4);
-  const placeList = withPinned(rankedPlaceObjs, placeId, 3);
-  const destList = withPinned(
-    accounts.filter((a) => a.id !== accountId),
-    toAccountId,
-    4,
-  );
+  const placeList = withPinned(rankedPlaceObjs, placeId, 4);
 
-  // Live preview for the collapsed KOPERTA row: what the envelope's "available" becomes after
-  // this transaction (income/refund add, expense subtracts) — reuses the existing Reports idiom.
-  const envAfter = (env?.available ?? 0) + (plus ? minor : -minor);
-  const envPreviewText = envAfter < 0 ? t("over by {amount}", { amount: M(-envAfter) }) : t("{amount} left", { amount: M(envAfter) });
-  const automaticPreview = automaticEnvelopePreview(state, { type: tab, accountId, toAccountId: tab === "transfer" ? toAccountId : null }, minor, editTxn);
+  /* ------------------------------ the flow card ------------------------------ */
+
+  // "Before" must be the world WITHOUT this transaction: while EDITING, the replica already
+  // contains its effect, so `balance − amount` would deduct it a second time (a saved 100
+  // would preview 7900 → 7800). Recomputed from the replica with the edited row filtered out —
+  // exact by construction for splits, transfers and automatic-envelope allocations alike.
+  // Accounts are current-balance, envelopes are scoped to the month `state` was built for.
+  const editBaseline = useMemo(() => {
+    if (!editTxn) return null;
+    const ledger = store.getLedger();
+    if (!ledger) return null;
+    const without = { ...ledger, transactions: ledger.transactions.filter((txn) => txn.id !== editTxn.id) };
+    return {
+      accounts: computeStateResponse(without, currentMonth()).accounts,
+      envelopes: computeStateResponse(without, state.month).envelopes,
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ledgerVersion, editTxn, state.month]);
+  const balanceBefore = (id: string | undefined, live: number) =>
+    editBaseline && id ? (editBaseline.accounts.find((a) => a.id === id)?.balance ?? live) : live;
+  const availableBefore = (id: string | undefined, live: number) =>
+    editBaseline && id ? (editBaseline.envelopes.find((e) => e.id === id)?.available ?? live) : live;
+  /** Envelope list carrying the same "before" availability (split rows read it too). */
+  const previewEnvelopes = editBaseline ? state.envelopes.map((e) => ({ ...e, available: availableBefore(e.id, e.available) })) : state.envelopes;
+
+  const accountBalance = balanceBefore(accountId, accObj?.balance ?? 0);
+  const accountAfter = accountBalance + (tab === "transfer" ? -minor : plus ? minor : -minor);
+  const envBefore = availableBefore(env?.id, env?.available ?? 0);
+  const envAfter = envBefore + (plus ? minor : -minor);
+  const destBalance = balanceBefore(toAcc?.id, toAcc?.balance ?? 0);
+  // Automatic envelopes (account → envelope link) decide where income actually LANDS: the ledger
+  // allocates it into the linked envelope, so it never reaches Ready to assign. Resolved through
+  // the shared rule (edit-aware, on-budget only) instead of reading automaticEnvelopeId here, so
+  // the card can never disagree with what gets written.
+  const allocationFlow = resolveAllocationFlow(accounts, { type: tab, accountId, toAccountId: tab === "transfer" ? toAccountId : null }, editTxn);
+  const incomeEnvelope = tab === "income" && allocationFlow.allocationToEnvelopeId ? envById.get(allocationFlow.allocationToEnvelopeId) : null;
+  const incomeEnvelopeBefore = availableBefore(incomeEnvelope?.id, incomeEnvelope?.available ?? 0);
+  const source: FlowEndpoint = {
+    role: tab === "income" ? t("To account") : t("From account"),
+    name: accObj?.name ?? t("Choose an account"),
+    color: accObj?.color ?? C.mute,
+    icon: accObj?.icon ?? "wallet",
+    before: accountBalance,
+    after: accountAfter,
+    // Neutral "after" amounts are plain text, NOT the accent: the pill sits on an entity-tinted
+    // fill, and on Duet dark the accent measured 3.1:1 against an envelope's own tint (below AA).
+    afterColor: accountAfter < 0 ? C.neg : tab === "income" ? C.pos : C.text,
+    hint: tab === "income" ? t("balance after the deposit") : tab === "expense" && isRefund ? t("balance after the refund") : t("left after this"),
+    pillTint: "var(--accent-18)",
+    onOpen: () => {
+      setShowAcc(true);
+      setNumpad(false);
+    },
+    placeholder: !accObj,
+  };
+  const target: FlowEndpoint | null =
+    tab === "transfer"
+      ? {
+          role: t("To account"),
+          name: toAcc?.name ?? t("Destination account"),
+          color: toAcc?.color ?? C.mute,
+          icon: toAcc?.icon ?? "wallet",
+          before: destBalance,
+          after: destBalance + minor,
+          afterColor: C.pos,
+          hint: t("balance after the deposit"),
+          pillTint: tint(toAcc?.color ?? C.mute, 0.22),
+          onOpen: () => {
+            setShowTo(true);
+            setNumpad(false);
+          },
+          placeholder: !toAcc,
+        }
+      : tab === "expense" && !splitUi
+        ? {
+            role: t("Envelope"),
+            name: env?.name ?? t("Choose an envelope"),
+            color: env?.color ?? C.mute,
+            icon: env?.icon ?? "envelope",
+            before: envBefore,
+            after: envAfter,
+            afterColor: envAfter < 0 ? C.neg : C.text,
+            hint: plus ? t("back in the envelope") : envAfter < 0 ? t("over the envelope") : t("left in the envelope"),
+            pillTint: tint(env?.color ?? C.mute, 0.22),
+            onOpen: () => {
+              setShowEnv("target");
+              setNumpad(false);
+            },
+            placeholder: !env,
+          }
+        : incomeEnvelope
+          ? {
+              // Not tappable: income has no envelope PICK — the account's link decides.
+              role: t("Goes to"),
+              name: incomeEnvelope.name,
+              color: incomeEnvelope.color,
+              icon: incomeEnvelope.icon,
+              before: incomeEnvelopeBefore,
+              after: incomeEnvelopeBefore + minor,
+              afterColor: C.pos,
+              hint: t("balance after the deposit"),
+              pillTint: tint(incomeEnvelope.color, 0.22),
+            }
+          : null;
+
+  // Does the route touch a linked envelope at all? (transfer switch visibility)
+  const linkedRoute = captureAllocationFlow(accounts, { type: tab, accountId, toAccountId: tab === "transfer" ? toAccountId : null });
+  const allocationApplies = tab === "transfer" && (linkedRoute.allocationFromEnvelopeId !== null || linkedRoute.allocationToEnvelopeId !== null);
+  const allocationSkipped = allocationApplies && skipAllocation;
+  /** What the SWITCH promises must be what `prepareTxnUpdate` writes: re-ticking captures today's
+   *  links (previous = null), leaving it alone preserves the stored flow (previous = editTxn). */
+  const previewPrevious = allocationTouched ? null : editTxn;
+  const automaticPreview = automaticEnvelopePreview(
+    state,
+    { type: tab, accountId, toAccountId: tab === "transfer" ? toAccountId : null },
+    minor,
+    previewPrevious,
+  );
   const automaticEffect =
-    minor > 0 && (automaticPreview.rows.length > 0 || automaticPreview.neutral)
+    !allocationSkipped && minor > 0 && (automaticPreview.rows.length > 0 || automaticPreview.neutral)
       ? formatAutomaticEnvelopeEffect(automaticPreview, M, {
           heading: t("Automatic envelope effect"),
           readyToAssign: t("Ready to assign"),
@@ -383,6 +545,17 @@ export function AddScreen({
           noChange: t("No change"),
         })
       : null;
+
+  const namePlaceholder =
+    tab === "income"
+      ? t("e.g. paycheck, invoice")
+      : tab === "transfer"
+        ? t("e.g. transfer to savings")
+        : isRefund
+          ? t("e.g. refund for shoes")
+          : placeId
+            ? t("{place} — add details", { place: state.places.find((p) => p.id === placeId)?.name ?? "" })
+            : t("e.g. weekly groceries");
 
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column" }}>
@@ -396,8 +569,6 @@ export function AddScreen({
           setTab(tb);
           reset(tb);
           setIsRefund(false);
-          setEnvOpen(tb === "expense");
-          setDestOpen(false);
         }}
         onDelete={() => {
           if (!editTxn) return;
@@ -423,124 +594,174 @@ export function AddScreen({
         amount={amount}
         numpadOpen={numpad}
         amtRef={amtRef}
-        accountName={accObj?.name ?? null}
-        dateLabel={dateLabel}
-        dateColor={dateColor}
-        onOpenPad={() => setNumpad(true)}
+        onOpenPad={openHeroPad}
         onToggleRefund={() => setIsRefund((v) => !v)}
-        onOpenAccountSheet={() => setShowAcc(true)}
-        onOpenDateSheet={() => {
+      />
+
+      <FlowCard
+        source={source}
+        target={target}
+        pool={
+          tab === "income" && !incomeEnvelope
+            ? { role: t("Goes to"), title: t("Ready to assign"), caption: t("you'll split it into envelopes in the budget") }
+            : null
+        }
+        note={
+          tab === "expense" && !splitUi && expenseEnvelope.provenance === "automatic" && envelopeId !== null
+            ? t("Selected automatically from this account")
+            : null
+        }
+        automatic={
+          allocationApplies
+            ? {
+                label: t("Move the money between envelopes too"),
+                checked: !skipAllocation,
+                onToggle: (checked) => {
+                  setSkipAllocation(!checked);
+                  setAllocationTouched(true);
+                },
+                body: allocationSkipped ? (
+                  <div style={{ fontSize: 10.5, color: C.soft, padding: "4px 0 2px 23px" }}>{t("Envelopes stay as they are — you assigned this by hand.")}</div>
+                ) : automaticEffect ? (
+                  <AutomaticEnvelopeEffect data={automaticEffect} compact />
+                ) : null,
+              }
+            : null
+        }
+        split={
+          splitUi
+            ? {
+                label: t("Split across envelopes"),
+                items,
+                envelopes: previewEnvelopes,
+                total: minor,
+                plus,
+                activeIndex: activeSplit,
+                onFocusItem: focusSplitRow,
+                onRemoveItem: removeSplitRow,
+                onAddItem: () => {
+                  setShowEnv("split");
+                  setNumpad(false);
+                },
+                onAssignRest: assignRest,
+              }
+            : null
+        }
+        amountMinor={minor}
+        plus={plus}
+        dateLabel={dateLabel}
+        dateHint={dateHint}
+        onOpenDate={() => {
           setShowDate(true);
           setNumpad(false);
         }}
+        splitAction={
+          draft || tab !== "expense"
+            ? null
+            : splitMode
+              ? {
+                  label: t("cancel split"),
+                  onClick: () => {
+                    setExpenseEnvelope((current) => expenseEnvelopeAfterSplitCancel(current, accObj?.automaticEnvelopeId));
+                    setSplitMode(false);
+                    setActiveSplit(null);
+                  },
+                }
+              : { label: `${t("Split across envelopes")} ›`, onClick: enterSplit }
+        }
       />
 
-      <TransactionFields name={name} note={note} onNameChange={setName} onFieldFocus={() => setNumpad(false)} onClearNote={() => setNote("")} />
-
-      <div className="gs" style={{ flex: 1, overflowY: "auto" }} onClick={() => setNumpad(false)}>
-        {tab === "transfer" ? (
-          <TransferFields
-            destOpen={destOpen}
-            destList={destList}
-            toAccountId={toAccountId}
-            toAcc={toAcc}
-            onOpenSheet={() => setShowTo(true)}
-            onPickDest={(id) => {
-              setToAccountId(id);
-              setDestOpen(false);
-            }}
-            automaticEffect={automaticEffect}
-          />
-        ) : tab === "expense" ? (
-          <ExpenseFields
-            splitMode={splitMode}
-            isDraft={!!draft}
-            items={items}
-            setItems={setItems}
-            envelopes={state.envelopes}
-            splitTotal={minor}
-            onCancelSplit={() => {
-              setExpenseEnvelope((current) => expenseEnvelopeAfterSplitCancel(current, accObj?.automaticEnvelopeId));
-              setSplitMode(false);
-            }}
-            onEnterSplit={enterSplit}
-            envOpen={envOpen}
-            envGridList={envGridList}
-            envelopeId={envelopeId}
-            env={env}
-            envPreviewText={envPreviewText}
-            automaticEnvelopeDefault={expenseEnvelope.provenance === "automatic" && envelopeId !== null}
-            onOpenEnvSheet={() => setShowEnv(true)}
-            onPickEnvelope={(id) => {
-              setExpenseEnvelope(explicitExpenseEnvelopeSelection(id));
-              setEnvOpen(false);
-            }}
-            onExpandEnvGrid={() => setEnvOpen(true)}
-            catOpen={catOpen}
-            catList={catList}
-            categoryId={categoryId}
-            catInput={catInput}
-            filteredCats={filteredCats}
-            categories={state.categories}
-            onOpenCat={() => setCatOpen(true)}
-            onToggleCategory={(id) => {
-              setCategoryId(categoryId === id ? null : id);
-              setCatOpen(false);
-            }}
-            onCatInputChange={setCatInput}
-            onPickCategory={(id) => {
-              setCategoryId(id);
-              setCatInput("");
-              setCatOpen(false);
-            }}
-            onCreateCategory={() => {
-              const c = local.createCategory(catInput);
-              setCategoryId(c.id);
-              setCatInput("");
-              setCatOpen(false);
-            }}
-            placeList={placeList}
-            places={state.places}
-            placeId={placeId}
-            placeInput={placeInput}
-            showPlace={showPlace}
-            placeAutoFocus={placeAutoFocus}
-            filteredPlaces={filteredPlaces}
-            onTogglePlaceChip={(id) => {
-              if (placeId === id) setPlaceId(null);
-              else {
+      <div className="gs" style={{ flex: 1, overflowY: "auto" }} onClick={closePad}>
+        {tab === "expense" && (
+          <>
+            {/* A split transaction carries no category (submit sends null for it) — offering the
+                picker there would silently drop the pick. Place SURVIVES a split, so it stays. */}
+            {!splitUi && (
+              <ChipPicker
+                label={t("Category")}
+                chips={catList}
+                matches={filteredCats}
+                selectedId={categoryId}
+                open={catOpen}
+                query={catInput}
+                searchPlaceholder={t("Type or pick a category...")}
+                // category creation = local.createCategory — unavailable in draft (zero local.*)
+                createLabel={
+                  !draft && catInput.trim() && !state.categories.some((c) => c.name.toLowerCase() === catInput.trim().toLowerCase())
+                    ? t("+ Add “{name}”", { name: catInput.trim() })
+                    : null
+                }
+                onToggleOpen={() => {
+                  setCatOpen(!catOpen);
+                  setCatInput("");
+                }}
+                onQueryChange={setCatInput}
+                onToggleChip={(id) => setCategoryId(categoryId === id ? null : id)}
+                onPick={(id) => {
+                  setCategoryId(id);
+                  setCatInput("");
+                  setCatOpen(false);
+                }}
+                onCreate={() => {
+                  const c = local.createCategory(catInput.trim());
+                  setCategoryId(c.id);
+                  setCatInput("");
+                  setCatOpen(false);
+                }}
+                onFieldFocus={closePad}
+              />
+            )}
+            <ChipPicker
+              label={t("Place")}
+              chips={placeList}
+              matches={filteredPlaces}
+              selectedId={placeId}
+              open={placeOpen}
+              query={placeInput}
+              searchPlaceholder={t("Type or pick a place...")}
+              // in draft the place travels by NAME to local import planning (which creates/matches
+              // it), so the typed text is the value there — no local.createPlace button
+              createLabel={
+                !draft && placeInput.trim() && !state.places.some((p) => p.name.toLowerCase() === placeInput.trim().toLowerCase())
+                  ? t("+ Add “{name}”", { name: placeInput.trim() })
+                  : null
+              }
+              onToggleOpen={() => {
+                setPlaceOpen(!placeOpen);
+                setPlaceInput("");
+              }}
+              onQueryChange={(value) => {
+                setPlaceInput(value);
+                setPlaceId(null);
+              }}
+              onToggleChip={(id) => setPlaceId(placeId === id ? null : id)}
+              onPick={(id) => {
                 setPlaceId(id);
                 setPlaceInput("");
-                setShowPlace(false);
-              }
-            }}
-            onTogglePlaceInput={() => {
-              const next = !showPlace;
-              setShowPlace(next);
-              setPlaceAutoFocus(next);
-            }}
-            onPlaceInputChange={(value) => {
-              setPlaceInput(value);
-              setPlaceId(null);
-            }}
-            onClearPlace={() => {
-              setPlaceId(null);
-              setPlaceInput("");
-            }}
-            onPickPlace={(id) => {
-              setPlaceId(id);
-              setPlaceInput("");
-            }}
-            onCreatePlace={() => {
-              const p = local.createPlace(placeInput);
-              setPlaceId(p.id);
-              setPlaceInput("");
-            }}
-            onFieldFocus={() => setNumpad(false)}
-          />
-        ) : automaticEffect ? (
-          <AutomaticEnvelopeEffect data={automaticEffect} />
-        ) : null}
+                setPlaceOpen(false);
+              }}
+              onCreate={() => {
+                const p = local.createPlace(placeInput.trim());
+                setPlaceId(p.id);
+                setPlaceInput("");
+                setPlaceOpen(false);
+              }}
+              onFieldFocus={closePad}
+            />
+          </>
+        )}
+        {/* Income keeps the effect panel here; a transfer shows it INSIDE the card, next to the
+            switch that turns the envelope leg off. */}
+        {tab === "income" && automaticEffect && <AutomaticEnvelopeEffect data={automaticEffect} />}
+
+        <TransactionFields
+          name={name}
+          note={note}
+          placeholder={namePlaceholder}
+          onNameChange={setName}
+          onFieldFocus={closePad}
+          onClearNote={() => setNote("")}
+        />
       </div>
 
       {/* Numpad above the CTA (board order: tgrow → numpad → cta2). Contextual OK like the
@@ -549,10 +770,10 @@ export function AddScreen({
         <Numpad
           onKey={press}
           onOk={() => {
-            if (hasOpenOp(amount)) press("=");
-            else setNumpad(false);
+            if (hasOpenOp(padExprInFocus)) press("=");
+            else closePad();
           }}
-          okGlyph={hasOpenOp(amount) ? "equals" : "check"}
+          okGlyph={hasOpenOp(padExprInFocus) ? "equals" : "check"}
           variant="sheet"
         />
       )}
@@ -565,7 +786,7 @@ export function AddScreen({
         )}
         <button
           onClick={submit}
-          disabled={minor <= 0 || noAccount}
+          disabled={!canSubmit}
           style={{
             display: "block",
             width: "100%",
@@ -579,10 +800,18 @@ export function AddScreen({
             fontSize: 13.5,
             fontWeight: 700,
             cursor: "pointer",
-            opacity: minor > 0 && !noAccount ? 1 : 0.4,
+            opacity: canSubmit ? 1 : 0.4,
           }}
         >
-          {draft ? t("Save item") : editTxn ? t("Save changes") : t(submitLabel)}
+          {splitUi && minor > 0 && splitSum !== minor
+            ? splitSum < minor
+              ? t("Remaining {amount}", { amount: M(minor - splitSum) })
+              : t("Excess {amount}", { amount: M(splitSum - minor) })
+            : draft
+              ? t("Save item")
+              : editTxn
+                ? t("Save changes")
+                : t(submitLabel)}
         </button>
       </div>
 
@@ -607,7 +836,6 @@ export function AddScreen({
         selectedId={toAccountId}
         onSelect={(id) => {
           setToAccountId(id);
-          setDestOpen(false);
           setShowTo(false);
         }}
       />
@@ -620,14 +848,21 @@ export function AddScreen({
         </LazyChunk>
       )}
       <EnvelopePickerSheet
-        show={showEnv}
-        onClose={() => setShowEnv(false)}
+        show={showEnv !== null}
+        onClose={() => setShowEnv(null)}
         envelopes={state.envelopes}
         groups={state.groups}
+        title={showEnv === "split" ? t("Add an envelope to the split") : undefined}
         onSelect={(id) => {
-          setExpenseEnvelope(explicitExpenseEnvelopeSelection(id));
-          setEnvOpen(false);
-          setShowEnv(false);
+          if (showEnv === "split") {
+            setItems([...items, { envelopeId: id, amount: 0 }]);
+            setActiveSplit(items.length);
+            setSplitPad({ expr: "", fresh: true });
+            setNumpad(true);
+          } else {
+            setExpenseEnvelope(explicitExpenseEnvelopeSelection(id));
+          }
+          setShowEnv(null);
         }}
       />
     </div>

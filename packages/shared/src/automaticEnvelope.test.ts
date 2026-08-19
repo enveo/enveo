@@ -16,6 +16,19 @@ describe("captureAllocationFlow", () => {
     acc({ id: "A-off-budget", onBudget: false, automaticEnvelopeId: "E-ignored" }),
   ];
 
+  it("treats a pre-3.8 replica row (no automaticEnvelopeId key) as UNLINKED, not as a link to undefined", () => {
+    // The field arrived in 3.8; account rows written by an older client simply lack it. Raw
+    // `undefined` passed every `!== null` check downstream — the transfer card showed its envelope
+    // switch and the preview claimed "no envelope change" for accounts that have no link at all.
+    const legacy = acc({ id: "A-legacy" });
+    delete (legacy as { automaticEnvelopeId?: string | null }).automaticEnvelopeId;
+    const legacyPair = [legacy, { ...acc({ id: "A-legacy-2" }), automaticEnvelopeId: undefined } as unknown as (typeof accounts)[number]];
+
+    const flow = captureAllocationFlow(legacyPair, tx({ type: "transfer", accountId: "A-legacy", toAccountId: "A-legacy-2" }));
+    expect(flow).toEqual({ allocationFromEnvelopeId: null, allocationToEnvelopeId: null });
+    expect(transactionAllocationDeltas({ amount: 1500, ...flow })).toEqual([]);
+  });
+
   it("captures linked income as a destination allocation", () => {
     expect(captureAllocationFlow(accounts, tx({ type: "income", accountId: "A-save" }))).toEqual({
       allocationFromEnvelopeId: null,
@@ -63,6 +76,17 @@ describe("resolveAllocationFlow", () => {
     acc({ id: "A-destination", automaticEnvelopeId: "E-current-destination" }),
     acc({ id: "A-other", automaticEnvelopeId: "E-current-other" }),
   ];
+
+  it("normalises a pre-3.8 transaction's missing allocation keys to null when the route is unchanged", () => {
+    const legacy = tx({ type: "transfer", accountId: "A-source", toAccountId: "A-destination" });
+    delete (legacy as { allocationFromEnvelopeId?: string | null }).allocationFromEnvelopeId;
+    delete (legacy as { allocationToEnvelopeId?: string | null }).allocationToEnvelopeId;
+
+    expect(resolveAllocationFlow(accounts, { type: "transfer", accountId: "A-source", toAccountId: "A-destination" }, legacy)).toEqual({
+      allocationFromEnvelopeId: null,
+      allocationToEnvelopeId: null,
+    });
+  });
 
   it("preserves recorded history when normalized routing is unchanged", () => {
     const previous = tx({

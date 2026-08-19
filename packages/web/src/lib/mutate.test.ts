@@ -220,6 +220,52 @@ describe("transaction mutation preparation", () => {
     });
   });
 
+  it("skips the envelope leg of a transfer when the user opted out for this transaction", () => {
+    expect(
+      prepareTxnCreate(flowLedger(), txnPayload({ type: "transfer", toAccountId: PLACE, envelopeId: null }), { skipAutomaticAllocation: true }),
+    ).toMatchObject({ allocationFromEnvelopeId: null, allocationToEnvelopeId: null });
+  });
+
+  it("keeps an opted-out transfer opted out when an edit does not reroute it", () => {
+    const ledger = flowLedger();
+    // stored WITHOUT a flow: the accounts are linked, but this transfer skipped the envelope leg
+    ledger.transactions.push({
+      ...splitTxn(),
+      type: "transfer",
+      accountId: ACC,
+      toAccountId: PLACE,
+      envelopeId: null,
+      items: [],
+      allocationFromEnvelopeId: null,
+      allocationToEnvelopeId: null,
+    });
+
+    expect(prepareTxnUpdate(ledger, TXN, txnPayload({ type: "transfer", toAccountId: PLACE, envelopeId: null, amount: 4200 }))).toMatchObject({
+      amount: 4200,
+      allocationFromEnvelopeId: null,
+      allocationToEnvelopeId: null,
+    });
+  });
+
+  it("re-enables the envelope leg on an edit that clears the opt-out", () => {
+    const ledger = flowLedger();
+    ledger.transactions.push({
+      ...splitTxn(),
+      type: "transfer",
+      accountId: ACC,
+      toAccountId: PLACE,
+      envelopeId: null,
+      items: [],
+      allocationFromEnvelopeId: null,
+      allocationToEnvelopeId: null,
+    });
+
+    // explicit false = "the human re-ticked the box": preserving the stored NULLs would be a no-op
+    expect(
+      prepareTxnUpdate(ledger, TXN, txnPayload({ type: "transfer", toAccountId: PLACE, envelopeId: null }), { skipAutomaticAllocation: false }),
+    ).toMatchObject({ allocationFromEnvelopeId: ENV1, allocationToEnvelopeId: ENV2 });
+  });
+
   it("clears flow fields for expenses and refunds", () => {
     expect(
       prepareTxnCreate(flowLedger(), txnPayload({ type: "expense", isRefund: true, allocationFromEnvelopeId: ENV1, allocationToEnvelopeId: ENV2 })),
