@@ -408,7 +408,6 @@ export const nl: Dict = {
   Subscriptions: "Abonnementen",
   Suggest: "Voorstellen",
   "Suggest a distribution": "Een verdeling voorstellen",
-  "Suggested when adding": "Voorgesteld bij toevoegen",
   Summary: "Samenvatting",
   "Sync in progress": "Synchronisatie bezig",
   "Sync now": "Nu synchroniseren",
@@ -545,6 +544,7 @@ export const nl: Dict = {
   Usage: "Gebruik",
   Use: "Gebruiken",
   Utilities: "Nutsvoorzieningen",
+  Visible: "Zichtbaar",
   "WARNING: IndexedDB unavailable — data is kept only in session memory (it will not survive closing the app).":
     "WAARSCHUWING: IndexedDB is niet beschikbaar — de gegevens staan alleen in het sessiegeheugen (ze overleven het sluiten van de app niet).",
   "We will send them once the server is reachable.": "We sturen ze zodra de server bereikbaar is.",
