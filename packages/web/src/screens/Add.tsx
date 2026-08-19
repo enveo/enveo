@@ -23,7 +23,7 @@ import { type Message, msg, useT } from "../lib/i18n";
 import { preferredAccountId, setLastAccountId } from "../lib/lastAccount";
 import { local, type TxnFlowOptions } from "../lib/mutate";
 import { store } from "../lib/store";
-import { rankPlaces } from "../lib/suggest";
+import { rankPlaces, withSelectedFirst } from "../lib/suggest";
 import { P, tint } from "../lib/theme";
 
 import { AccountPickerSheet, DestinationAccountSheet } from "./add/AccountPickerSheet";
@@ -416,7 +416,9 @@ export function AddScreen({
   const filteredPlaces = placeInput ? state.places.filter((p) => p.name.toLowerCase().includes(placeInput.toLowerCase())) : state.places;
 
   const catList = withPinned(rankedCats, categoryId, 4);
-  const placeList = withPinned(rankedPlaceObjs, placeId, 4);
+  // Unlike `rankCategories` (which sorts the FULL list), `rankPlaces` ranks from transaction
+  // history, so the selection has to be seeded into the pool or the chip row shows nothing.
+  const placeList = withPinned(withSelectedFirst(rankedPlaceObjs, placeId ? state.places.find((p) => p.id === placeId) : null), placeId, 4);
 
   /* ------------------------------ the flow card ------------------------------ */
 
@@ -691,10 +693,9 @@ export function AddScreen({
                     ? t("+ Add “{name}”", { name: catInput.trim() })
                     : null
                 }
-                onToggleOpen={() => {
-                  setCatOpen(!catOpen);
-                  setCatInput("");
-                }}
+                // Collapsing KEEPS the query: throwing away what was typed made a half-finished
+                // "add my own" look like the app had swallowed it.
+                onToggleOpen={() => setCatOpen(!catOpen)}
                 onQueryChange={setCatInput}
                 onToggleChip={(id) => setCategoryId(categoryId === id ? null : id)}
                 onPick={(id) => {
@@ -726,10 +727,7 @@ export function AddScreen({
                   ? t("+ Add “{name}”", { name: placeInput.trim() })
                   : null
               }
-              onToggleOpen={() => {
-                setPlaceOpen(!placeOpen);
-                setPlaceInput("");
-              }}
+              onToggleOpen={() => setPlaceOpen(!placeOpen)}
               onQueryChange={(value) => {
                 setPlaceInput(value);
                 setPlaceId(null);

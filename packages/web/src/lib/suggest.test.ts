@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { ClientLedger, Envelope, Transaction } from "@enveo/shared";
-import { rankEnvelopes, rankPlaces } from "./suggest";
+import { rankEnvelopes, rankPlaces, withSelectedFirst } from "./suggest";
 
 const TODAY = "2026-06-30";
 const DAY_MS = 86_400_000;
@@ -138,5 +138,20 @@ describe("rankPlaces", () => {
     const txns = [txn({ placeId: "POld", date: back(TODAY, 50) }), txn({ placeId: "PNew", date: back(TODAY, 5) })];
     const ledger = L([], txns);
     expect(rankPlaces(ledger, null, null)).toEqual(["PNew", "POld"]);
+  });
+});
+
+describe("withSelectedFirst", () => {
+  const p = (id: string) => ({ id, name: id });
+
+  test("prepends a selection the history-based ranking does not contain", () => {
+    // exactly the "created a place, nothing happened" report: rankPlaces only knows places that
+    // already appear in transactions, so a brand-new one would never reach the chip row
+    expect(withSelectedFirst([p("P1"), p("P2")], p("P-new")).map((x) => x.id)).toEqual(["P-new", "P1", "P2"]);
+  });
+
+  test("leaves the ranking untouched when the selection is already ranked, or when there is none", () => {
+    expect(withSelectedFirst([p("P1"), p("P2")], p("P2")).map((x) => x.id)).toEqual(["P1", "P2"]);
+    expect(withSelectedFirst([p("P1")], null).map((x) => x.id)).toEqual(["P1"]);
   });
 });
