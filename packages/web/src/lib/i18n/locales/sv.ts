@@ -403,7 +403,6 @@ export const sv: Dict = {
   Subscriptions: "Prenumerationer",
   Suggest: "Föreslå",
   "Suggest a distribution": "Föreslå en fördelning",
-  "Suggested when adding": "Föreslås vid inmatning",
   Summary: "Sammanfattning",
   "Sync in progress": "Synkronisering pågår",
   "Sync now": "Synkronisera nu",
@@ -537,6 +536,7 @@ export const sv: Dict = {
   Usage: "Användning",
   Use: "Använd",
   Utilities: "El, vatten och sopor",
+  Visible: "Synliga",
   "WARNING: IndexedDB unavailable — data is kept only in session memory (it will not survive closing the app).":
     "VARNING: IndexedDB är inte tillgängligt — data finns bara i sessionsminnet (de överlever inte att appen stängs).",
   "We will send them once the server is reachable.": "Vi skickar dem så snart servern går att nå.",
