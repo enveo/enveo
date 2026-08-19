@@ -638,16 +638,17 @@ export const es: Dict = {
   "{place} — add details": "{place} — añade detalles",
   "{sym}/mo": "{sym}/mes",
   Merge: "Combinar",
-  "Merge into this": "Combinar aquí",
-  "Pick the entry “{name}” should become.": "Elige la entrada en la que debe convertirse «{name}».",
   "Look like the same thing": "Parecen lo mismo",
-  "Keep “{name}”": "Conservar «{name}»",
-  "Merging keeps every transaction — they just point at the entry you pick.":
-    "Combinar conserva todas las transacciones: solo pasan a apuntar a la entrada elegida.",
-  "Merge “{names}” into “{into}”? {n} transaction moves over and only “{into}” stays. | Merge “{names}” into “{into}”? {n} transactions move over and only “{into}” stays.":
+  "Name after merging": "Nombre tras combinar",
+  "Select these": "Seleccionar estas",
+  "Pick at least two entries to merge.": "Selecciona al menos dos entradas para combinar.",
+  "Merging keeps every transaction — they just move to the entry that stays.":
+    "Combinar conserva todas las transacciones: solo pasan a la entrada que se queda.",
+  "{n} selected | {n} selected": { one: "{n} seleccionada", many: "{n} seleccionadas", other: "{n} seleccionadas" },
+  "Merge {n} entry into one named “{name}”? Every transaction it carries moves over. | Merge {n} entries into one named “{name}”? Every transaction they carry moves over.":
     {
-      one: "¿Combinar «{names}» en «{into}»? Se moverá {n} transacción y solo quedará «{into}».",
-      many: "¿Combinar «{names}» en «{into}»? Se moverán {n} transacciones y solo quedará «{into}».",
-      other: "¿Combinar «{names}» en «{into}»? Se moverán {n} transacciones y solo quedará «{into}».",
+      one: "¿Combinar {n} entrada en una llamada «{name}»? Todas sus transacciones se moverán.",
+      many: "¿Combinar {n} entradas en una llamada «{name}»? Todas sus transacciones se moverán.",
+      other: "¿Combinar {n} entradas en una llamada «{name}»? Todas sus transacciones se moverán.",
     },
 };

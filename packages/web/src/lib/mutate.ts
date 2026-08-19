@@ -281,6 +281,14 @@ function setCategoryArchived(id: string, archived: boolean): void {
   enqueue("category.update", { id, archived });
 }
 
+function renameCategory(id: string, name: string): void {
+  enqueue("category.update", { id, name });
+}
+
+function renamePlace(id: string, name: string): void {
+  enqueue("place.update", { id, name });
+}
+
 function setPlaceArchived(id: string, archived: boolean): void {
   enqueue("place.update", { id, archived });
 }
@@ -336,6 +344,8 @@ export const local = {
   deletePlace,
   mergeCategories,
   mergePlaces,
+  renameCategory,
+  renamePlace,
   updateBudget,
   updateBudgetPreferences,
 };
