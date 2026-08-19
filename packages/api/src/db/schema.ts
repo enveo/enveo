@@ -228,6 +228,7 @@ export const categories = pgTable("categories", {
     .notNull()
     .references(() => budgets.id, { onDelete: "cascade" }),
   name: text("name").notNull(),
+  archived: boolean("archived").notNull().default(false),
 });
 
 export const places = pgTable("places", {
@@ -236,6 +237,7 @@ export const places = pgTable("places", {
     .notNull()
     .references(() => budgets.id, { onDelete: "cascade" }),
   name: text("name").notNull(),
+  archived: boolean("archived").notNull().default(false),
 });
 
 export const transactions = pgTable(

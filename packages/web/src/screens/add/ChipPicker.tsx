@@ -25,6 +25,8 @@ export function ChipPicker({
   query,
   searchPlaceholder,
   createLabel,
+  restoreLabel,
+  onRestore,
   onToggleOpen,
   onQueryChange,
   onToggleChip,
@@ -42,6 +44,12 @@ export function ChipPicker({
   searchPlaceholder: string;
    
   createLabel: string | null;
+  
+
+
+
+  restoreLabel: string | null;
+  onRestore: () => void;
   onToggleOpen: () => void;
   onQueryChange: (value: string) => void;
   onToggleChip: (id: string) => void;
@@ -84,7 +92,8 @@ export function ChipPicker({
             onKeyDown={(e) => {
               if (e.key !== "Enter" || !query.trim()) return;
               e.preventDefault();
-              if (createLabel) onCreate();
+              if (restoreLabel) onRestore();
+              else if (createLabel) onCreate();
               else if (matches.length > 0) onPick(matches[0]!.id);
             }}
             placeholder={searchPlaceholder}
@@ -101,7 +110,7 @@ export function ChipPicker({
               marginBottom: 6,
             }}
           />
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginBottom: createLabel ? 6 : 0 }}>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginBottom: createLabel || restoreLabel ? 6 : 0 }}>
             {matches.slice(0, 8).map((o) => (
               <button
                 key={o.id}
@@ -121,6 +130,25 @@ export function ChipPicker({
               </button>
             ))}
           </div>
+          {restoreLabel && (
+            <button
+              onClick={onRestore}
+              style={{
+                padding: "7px 10px",
+                borderRadius: 8,
+                fontSize: 11,
+                background: C.chip,
+                color: C.text,
+                border: `1px solid ${C.line}`,
+                fontFamily: font,
+                cursor: "pointer",
+                width: "100%",
+                textAlign: "left",
+              }}
+            >
+              ↺ {restoreLabel}
+            </button>
+          )}
           {createLabel && (
             <button
               onClick={onCreate}
