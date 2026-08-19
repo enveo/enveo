@@ -66,7 +66,6 @@ export const pl: Dict = {
   "Remaining {amount}": "Zostało {amount}",
   Remove: "Usuń",
   "Restore “{name}” · hidden": "Przywróć „{name}” · ukryte",
-  "Suggested when adding": "Podpowiadane przy dodawaniu",
   "The selected AI provider does not support this feature.": "Wybrany dostawca AI nie obsługuje tej funkcji.",
   "This OpenAI key cannot use the selected model. Choose another model and try again.":
     "Ten klucz OpenAI nie ma dostępu do wybranego modelu. Wybierz inny model i spróbuj ponownie.",
@@ -682,6 +681,7 @@ export const pl: Dict = {
   Usage: "Zajętość",
   Use: "Użyj",
   Utilities: "Media",
+  Visible: "Widoczne",
   "WARNING: IndexedDB unavailable — data is kept only in session memory (it will not survive closing the app).":
     "UWAGA: IndexedDB niedostępne — dane trzymane tylko w pamięci sesji (nie przetrwają zamknięcia apki).",
   "We will send them once the server is reachable.": "Wyślemy je, gdy serwer będzie dostępny.",

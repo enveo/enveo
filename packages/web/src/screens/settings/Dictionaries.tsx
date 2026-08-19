@@ -1,11 +1,13 @@
 import { useMemo, useState } from "react";
+import { PickerSearch } from "../../components/kit";
 import { useLedgerVersion } from "../../lib/api";
 import { useTheme } from "../../lib/contexts";
 import { useT } from "../../lib/i18n";
 import { local } from "../../lib/mutate";
+import { matchesSearch } from "../../lib/search";
 import { store } from "../../lib/store";
 import { font } from "../../lib/theme";
-import { Eyebrow, Helper } from "./ui";
+import { Helper } from "./ui";
 
 /** How many transactions still carry an entry — split items count too (`txn_items.category_id`). */
 export interface DictionaryEntry {
@@ -47,6 +49,8 @@ export function DictionariesSection() {
   const { t, tp } = useT();
   const ledgerVersion = useLedgerVersion();
   const [tab, setTab] = useState<"categories" | "places">("categories");
+  const [query, setQuery] = useState("");
+  const [showHidden, setShowHidden] = useState(false);
   const { categories, places } = useMemo(() => {
     const ledger = store.getLedger();
     return ledger ? dictionaryEntries(ledger) : { categories: [], places: [] };
@@ -110,8 +114,13 @@ export function DictionariesSection() {
     </div>
   );
 
+  // Hundreds of places (the screenshot import mints one per merchant name) make an unfiltered
+  // list useless — search first, then narrow to the group the human is actually working on.
+  const group = showHidden ? hidden : visible;
+  const matched = group.filter((e) => matchesSearch(e.name, query));
+
   return (
-    <div style={{ paddingBottom: 24 }}>
+    <div style={{ paddingTop: 12, paddingBottom: 24 }}>
       <div style={{ display: "flex", background: C.chip, borderRadius: 12, padding: 2, marginBottom: 14 }}>
         {(["categories", "places"] as const).map((id) => (
           <button
@@ -135,17 +144,44 @@ export function DictionariesSection() {
         ))}
       </div>
 
-      <Eyebrow>{t("Suggested when adding")}</Eyebrow>
-      {visible.length === 0 ? <div style={{ fontSize: 12.5, color: C.mute, padding: "8px 0 4px" }}>{t("Nothing here yet.")}</div> : visible.map(row)}
-      <Helper>{t("Hiding an entry only removes it from suggestions. Transactions that use it keep it, here and in reports.")}</Helper>
-
-      {hidden.length > 0 && (
-        <div style={{ marginTop: 22 }}>
-          <Eyebrow>{t("Hidden")}</Eyebrow>
-          {hidden.map(row)}
-          <Helper>{t("An entry nothing uses can be deleted for good.")}</Helper>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <PickerSearch value={query} onChange={setQuery} />
         </div>
+        <div style={{ display: "flex", background: C.chip, borderRadius: 999, padding: 2, flexShrink: 0, marginBottom: 10 }}>
+          {[false, true].map((wantHidden) => (
+            <button
+              key={String(wantHidden)}
+              onClick={() => setShowHidden(wantHidden)}
+              style={{
+                padding: "6px 10px",
+                borderRadius: 999,
+                border: "none",
+                fontSize: 11.5,
+                fontWeight: 650,
+                fontFamily: font,
+                cursor: "pointer",
+                background: showHidden === wantHidden ? C.card : "transparent",
+                color: showHidden === wantHidden ? C.text : C.soft,
+                whiteSpace: "nowrap",
+              }}
+            >
+              {wantHidden ? t("Hidden") : t("Visible")} {wantHidden ? hidden.length : visible.length}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {matched.length === 0 ? (
+        <div style={{ fontSize: 12.5, color: C.mute, padding: "8px 0 4px" }}>{query ? t("No matches") : t("Nothing here yet.")}</div>
+      ) : (
+        matched.map(row)
       )}
+      <Helper>
+        {showHidden
+          ? t("An entry nothing uses can be deleted for good.")
+          : t("Hiding an entry only removes it from suggestions. Transactions that use it keep it, here and in reports.")}
+      </Helper>
     </div>
   );
 }

@@ -407,7 +407,6 @@ export const ptBR: Dict = {
   Subscriptions: "Assinaturas",
   Suggest: "Sugerir",
   "Suggest a distribution": "Sugerir uma distribuição",
-  "Suggested when adding": "Sugerido ao adicionar",
   Summary: "Resumo",
   "Sync in progress": "Sincronização em andamento",
   "Sync now": "Sincronizar agora",
@@ -543,6 +542,7 @@ export const ptBR: Dict = {
   Usage: "Uso",
   Use: "Usar",
   Utilities: "Serviços",
+  Visible: "Vis\u00edveis",
   "WARNING: IndexedDB unavailable — data is kept only in session memory (it will not survive closing the app).":
     "AVISO: IndexedDB indisponível — os dados ficam apenas na memória da sessão (não sobrevivem ao fechamento do app).",
   "We will send them once the server is reachable.": "Vamos enviá-las assim que o servidor estiver acessível.",
