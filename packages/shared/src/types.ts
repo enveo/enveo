@@ -49,11 +49,15 @@ export interface Envelope {
 export interface Category {
   id: string;
   name: string;
+  /** Hidden from entry suggestions and pickers; existing transactions keep it. */
+  archived: boolean;
 }
 
 export interface Place {
   id: string;
   name: string;
+  /** Hidden from entry suggestions and pickers; existing transactions keep it. */
+  archived: boolean;
 }
 
 /** Split transaction item. Σ items = Transaction.amount. */

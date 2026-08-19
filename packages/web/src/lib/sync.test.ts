@@ -1185,7 +1185,7 @@ describe("sync e2ee v2: DEK lifecycle across an epoch change", () => {
     await idbPut("meta", "user-A", "userId");
     session = { user: { id: "user-A" } };
     serverBudget = BUDGET_V2;
-    store.replace({ ...emptyLedger(), categories: [{ id: crypto.randomUUID(), name: "pre-existing" }] }, 3, BUDGET_V2);
+    store.replace({ ...emptyLedger(), categories: [{ id: crypto.randomUUID(), name: "pre-existing", archived: false }] }, 3, BUDGET_V2);
     e2ee.setTierMeta({ tier: "e2ee", epoch });
     e2ee.setDek(oldDek, epoch); // validated for the CURRENT generation
   };

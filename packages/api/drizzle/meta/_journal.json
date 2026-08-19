@@ -176,6 +176,13 @@
       "when": 1786862291289,
       "tag": "0024_automatic_envelopes",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1786948691289,
+      "tag": "0025_dictionary_archive",
+      "breakpoints": true
     }
   ]
 }

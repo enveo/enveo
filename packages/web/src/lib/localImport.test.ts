@@ -37,8 +37,8 @@ const ledger = (): ClientLedger => ({
     { id: U(5), groupId: U(4), name: "Food", color: "#fff", icon: "food", note: null, monthlyTarget: null, isSavings: false, sort: 0, archived: false },
     { id: U(9), groupId: U(4), name: "Travel", color: "#fff", icon: "plane", note: null, monthlyTarget: null, isSavings: false, sort: 1, archived: false },
   ],
-  categories: [{ id: U(6), name: "Groceries" }],
-  places: [{ id: U(7), name: "Lidl" }],
+  categories: [{ id: U(6), name: "Groceries", archived: false }],
+  places: [{ id: U(7), name: "Lidl", archived: false }],
   allocations: [],
   transactions: [
     {

@@ -522,11 +522,57 @@ describe("applyOp: group.*", () => {
 /* ── dictionaries ──────────────────────────────────────────────────── */
 
 describe("applyOp: category/place create", () => {
-  it("appends dictionary rows", () => {
+  it("appends dictionary rows, visible in entry until archived", () => {
     let l = apply(base(), "category.create", { id: "C9", name: "Paliwo" });
     l = apply(l, "place.create", { id: "P9", name: "Orlen" });
-    expect(l.categories[1]).toEqual({ id: "C9", name: "Paliwo" });
-    expect(l.places[1]).toEqual({ id: "P9", name: "Orlen" });
+    expect(l.categories[1]).toEqual({ id: "C9", name: "Paliwo", archived: false });
+    expect(l.places[1]).toEqual({ id: "P9", name: "Orlen", archived: false });
+  });
+});
+
+describe("applyOp: dictionary upkeep", () => {
+  it("archives and restores an entry without touching the transactions that carry it", () => {
+    let l = apply(base(), "place.create", { id: "P9", name: "Orlen" });
+    l = apply(l, "txn.create", { id: "T9", type: "expense", accountId: "A1", amount: 1000, date: "2026-08-19", placeId: "P9" });
+
+    l = apply(l, "place.update", { id: "P9", archived: true });
+    expect(l.places.find((p) => p.id === "P9")).toEqual({ id: "P9", name: "Orlen", archived: true });
+    expect(l.transactions.find((t) => t.id === "T9")?.placeId).toBe("P9");
+
+    l = apply(l, "place.update", { id: "P9", archived: false });
+    expect(l.places.find((p) => p.id === "P9")?.archived).toBe(false);
+  });
+
+  it("deletes an unreferenced entry outright", () => {
+    let l = apply(base(), "place.create", { id: "P9", name: "Literowka" });
+    l = apply(l, "place.delete", { id: "P9" });
+    expect(l.places.some((p) => p.id === "P9")).toBe(false);
+  });
+
+  it("DEGRADES a delete to an archive once something references the entry", () => {
+    // the client offers delete only at zero usages, but another device's transaction can land
+    // first; `place_id` is `on delete set null`, so dropping the row would strip that value
+    let l = apply(base(), "place.create", { id: "P9", name: "Orlen" });
+    l = apply(l, "txn.create", { id: "T9", type: "expense", accountId: "A1", amount: 1000, date: "2026-08-19", placeId: "P9" });
+
+    l = apply(l, "place.delete", { id: "P9" });
+    expect(l.places.find((p) => p.id === "P9")).toEqual({ id: "P9", name: "Orlen", archived: true });
+    expect(l.transactions.find((t) => t.id === "T9")?.placeId).toBe("P9");
+  });
+
+  it("counts a SPLIT ITEM as a reference when deleting a category", () => {
+    let l = apply(base(), "category.create", { id: "C9", name: "Kawa" });
+    l = apply(l, "txn.create", {
+      id: "T9",
+      type: "expense",
+      accountId: "A1",
+      amount: 1000,
+      date: "2026-08-19",
+      items: [{ envelopeId: "E1", amount: 1000, categoryId: "C9" }],
+    });
+
+    l = apply(l, "category.delete", { id: "C9" });
+    expect(l.categories.find((c) => c.id === "C9")).toEqual({ id: "C9", name: "Kawa", archived: true });
   });
 });
 

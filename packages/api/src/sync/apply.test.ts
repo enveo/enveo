@@ -81,8 +81,8 @@ function ledger(over: Partial<ClientLedgerInput> = {}): ClientLedgerInput {
     envelopes: [
       { id: U(3), groupId: U(2), name: "e", color: "#fff", icon: "tag", note: null, monthlyTarget: null, isSavings: false, sort: 0, archived: false },
     ],
-    categories: [{ id: U(4), name: "c" }],
-    places: [{ id: U(5), name: "p" }],
+    categories: [{ id: U(4), name: "c", archived: false }],
+    places: [{ id: U(5), name: "p", archived: false }],
     allocations: [],
     transactions: [],
     ...over,

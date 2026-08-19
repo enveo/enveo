@@ -271,6 +271,28 @@ function createPlace(name: string): Place {
   return ledger().places.find((p) => p.id === id)!;
 }
 
+/* ── Dictionary upkeep ──────────────────────────────────────────────────
+ * `archived` hides an entry from ENTRY only (suggestions, pickers); every
+ * transaction that carries it keeps showing it, here and in reports.
+ * Deleting is offered only at zero usages — and `applyOp`/the server still
+ * degrade it to an archive if a reference appeared in the meantime. */
+
+function setCategoryArchived(id: string, archived: boolean): void {
+  enqueue("category.update", { id, archived });
+}
+
+function setPlaceArchived(id: string, archived: boolean): void {
+  enqueue("place.update", { id, archived });
+}
+
+function deleteCategory(id: string): void {
+  enqueue("category.delete", { id });
+}
+
+function deletePlace(id: string): void {
+  enqueue("place.delete", { id });
+}
+
 /* ── Budget (metadata, e.g. currency) ───────────────────────────────────── */
 
 function updateBudget(id: string, currency: string): void {
@@ -298,6 +320,10 @@ export const local = {
   deleteEnvelope,
   createCategory,
   createPlace,
+  setCategoryArchived,
+  setPlaceArchived,
+  deleteCategory,
+  deletePlace,
   updateBudget,
   updateBudgetPreferences,
 };

@@ -13,12 +13,14 @@ import { APP_VERSION, buildLabel } from "../lib/version";
 import { AiSection } from "./settings/Ai";
 import { AppearanceSection } from "./settings/Appearance";
 import { DataSection, LogoutSection } from "./settings/DataSection";
+import { DictionariesSection } from "./settings/Dictionaries";
 import { PrivacySection } from "./settings/PrivacySection";
 
 /* ── Settings: four scoped categories plus a separate sign-out action ── */
 
 export const SETTINGS_CATEGORIES = [
   { id: "appearance", title: msg("Appearance and dashboard") },
+  { id: "dictionaries", title: msg("Categories and places") },
   { id: "ai", title: msg("Artificial intelligence") },
   { id: "privacy", title: msg("Privacy and encryption") },
   { id: "data", title: msg("Data and synchronization") },
@@ -30,6 +32,7 @@ type SubId = (typeof SETTINGS_CATEGORIES)[number]["id"];
 
 const SUB_TITLE: Record<SubId, Message> = {
   appearance: msg("Appearance and dashboard"),
+  dictionaries: msg("Categories and places"),
   ai: msg("Artificial intelligence"),
   privacy: msg("Privacy and encryption"),
   data: msg("Data and synchronization"),
@@ -113,6 +116,7 @@ export function SettingsScreen({ onNav, onInstall }: { onNav: (s: ScreenId) => v
         <div key={sub} className="fi" style={{ padding: `0 ${P + 2}px` }}>
           {/* fi, not fu: transform on an ancestor breaks position:fixed sheets (e.g. the E2EE wizard) */}
           {sub === "appearance" && <AppearanceSection />}
+          {sub === "dictionaries" && <DictionariesSection />}
           {sub === "ai" && <AiSection />}
           {sub === "privacy" && <PrivacySection />}
           {sub === "data" && <DataSection />}
@@ -134,6 +138,7 @@ function Hub({ onOpen, onInstall }: { onOpen: (s: SubId) => void; onInstall: () 
 
   // category colors (glyph + tint); lighter shades in dark mode
   const catAppearance = isDark ? "#ff8d7d" : "#f0685c";
+  const catDictionaries = isDark ? "#a3c48a" : "#7ca968";
   const catAi = isDark ? "#e0aa58" : "#d99a3f";
   const catPrivacy = isDark ? "#8fa2cc" : "#1d2a47";
   const catData = isDark ? "#6cbf9b" : "#4fa583";
@@ -177,6 +182,20 @@ function Hub({ onOpen, onInstall }: { onOpen: (s: SubId) => void; onInstall: () 
           />
         }
         onClick={() => onOpen("appearance")}
+      />
+      <HubCard
+        tint={tint(catDictionaries, 0.12)}
+        icon={
+          <Glyph color={catDictionaries}>
+            <path d="M4 5.5A1.5 1.5 0 015.5 4H11v16H5.5A1.5 1.5 0 014 18.5z" />
+            <path d="M20 5.5A1.5 1.5 0 0018.5 4H13v16h5.5a1.5 1.5 0 001.5-1.5z" />
+            <path d="M7 8.5h1.5M7 12h1.5M15.5 8.5H17M15.5 12H17" />
+          </Glyph>
+        }
+        title={t("Categories and places")}
+        desc={t("What Enveo suggests while you add a transaction")}
+        status={null}
+        onClick={() => onOpen("dictionaries")}
       />
       <HubCard
         tint={tint(catAi, 0.12)}

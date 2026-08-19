@@ -162,7 +162,7 @@ describe("e2ee: encrypting ops and snapshots (v2 authenticated context)", () => 
           createdAt: "2026-08-14T00:00:00.000Z",
         },
       ],
-      categories: [{ id: U1, name: "Paliwo" }],
+      categories: [{ id: U1, name: "Paliwo", archived: false }],
     };
     const sctx = { budgetId: BUDGET, epoch: 1, uptoSeq: 42 };
     const blob = await encryptSnapshot(ledger, dek, sctx);
@@ -173,7 +173,7 @@ describe("e2ee: encrypting ops and snapshots (v2 authenticated context)", () => 
 
   it("a snapshot paired with another uptoSeq (or budget/epoch) fails — checkpoint-position substitution", async () => {
     const dek = generateDek();
-    const ledger = { ...emptyLedger(), categories: [{ id: U3, name: "Paliwo" }] };
+    const ledger = { ...emptyLedger(), categories: [{ id: U3, name: "Paliwo", archived: false }] };
     const blob = await encryptSnapshot(ledger, dek, { budgetId: BUDGET, epoch: 1, uptoSeq: 42 });
     await expect(decryptSnapshot(blob, dek, { budgetId: BUDGET, epoch: 1, uptoSeq: 0 })).rejects.toThrow();
     await expect(decryptSnapshot(blob, dek, { budgetId: BUDGET, epoch: 2, uptoSeq: 42 })).rejects.toThrow();
