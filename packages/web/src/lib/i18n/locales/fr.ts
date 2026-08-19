@@ -393,6 +393,7 @@ export const fr: Dict = {
   "Skip for now": "Passer pour l'instant",
   "Some funds stayed in To be budgeted — envelopes are at their target caps.":
     "Une partie des fonds est restée dans « À budgétiser » — les enveloppes ont atteint le plafond de leur objectif.",
+  Sort: "Trier",
   "Source: {src}": "Source : {src}",
   Spending: "Dépenses",
   "Split across envelopes": "Ventiler entre les enveloppes",
@@ -542,6 +543,7 @@ export const fr: Dict = {
     "Décochez ce que vous ne voulez pas. Les doublons sont ignorés — touchez-en un pour le modifier et l'ajouter quand même.",
   Usage: "Utilisation",
   Use: "Utiliser",
+  Uses: "Utilisations",
   Utilities: "Charges",
   Visible: "Visibles",
   "WARNING: IndexedDB unavailable — data is kept only in session memory (it will not survive closing the app).":

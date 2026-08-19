@@ -395,6 +395,7 @@ export const cs: Dict = {
   "Signing out…": "Odhlašuji…",
   "Skip for now": "Zatím přeskočit",
   "Some funds stayed in To be budgeted — envelopes are at their target caps.": "Část prostředků zůstala v „K rozdělení“ — obálky dosáhly stropu svého cíle.",
+  Sort: "\u0158adit",
   "Source: {src}": "Zdroj: {src}",
   Spending: "Výdaje",
   "Split across envelopes": "Rozdělit mezi obálky",
@@ -541,6 +542,7 @@ export const cs: Dict = {
     "Odškrtni, co nechceš. Duplicity přeskakujeme — klepnutím na jednu ji upravíš a přidáš i tak.",
   Usage: "Využití",
   Use: "Použít",
+  Uses: "Pou\u017eit\u00ed",
   Utilities: "Energie a služby",
   Visible: "Viditeln\u00e9",
   "WARNING: IndexedDB unavailable — data is kept only in session memory (it will not survive closing the app).":

@@ -393,6 +393,7 @@ export const ptBR: Dict = {
   "Signing out…": "Saindo…",
   "Skip for now": "Pular por enquanto",
   "Some funds stayed in To be budgeted — envelopes are at their target caps.": "Parte dos recursos ficou em “A orçar” — os envelopes chegaram ao teto da meta.",
+  Sort: "Ordenar",
   "Source: {src}": "Origem: {src}",
   Spending: "Gastos",
   "Split across envelopes": "Dividir entre envelopes",
@@ -541,6 +542,7 @@ export const ptBR: Dict = {
     "Desmarque o que não quiser. As duplicadas são ignoradas — toque em uma para editá-la e adicioná-la mesmo assim.",
   Usage: "Uso",
   Use: "Usar",
+  Uses: "Usos",
   Utilities: "Serviços",
   Visible: "Vis\u00edveis",
   "WARNING: IndexedDB unavailable — data is kept only in session memory (it will not survive closing the app).":
