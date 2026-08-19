@@ -409,7 +409,6 @@ export const cs: Dict = {
   Subscriptions: "Předplatné",
   Suggest: "Navrhnout",
   "Suggest a distribution": "Navrhnout rozdělení",
-  "Suggested when adding": "Našeptává se při přidávání",
   Summary: "Souhrn",
   "Sync in progress": "Probíhá synchronizace",
   "Sync now": "Synchronizovat teď",
@@ -543,6 +542,7 @@ export const cs: Dict = {
   Usage: "Využití",
   Use: "Použít",
   Utilities: "Energie a služby",
+  Visible: "Viditeln\u00e9",
   "WARNING: IndexedDB unavailable — data is kept only in session memory (it will not survive closing the app).":
     "VAROVÁNÍ: IndexedDB není dostupná — data zůstávají jen v paměti relace (zavření aplikace nepřežijí).",
   "We will send them once the server is reachable.": "Odešleme je, jakmile bude server dostupný.",

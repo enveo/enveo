@@ -406,7 +406,6 @@ export const es: Dict = {
   Subscriptions: "Suscripciones",
   Suggest: "Sugerir",
   "Suggest a distribution": "Sugerir un reparto",
-  "Suggested when adding": "Se sugiere al añadir",
   Summary: "Resumen",
   "Sync in progress": "Sincronización en curso",
   "Sync now": "Sincronizar ahora",
@@ -544,6 +543,7 @@ export const es: Dict = {
   Usage: "Uso",
   Use: "Usar",
   Utilities: "Suministros",
+  Visible: "Visibles",
   "WARNING: IndexedDB unavailable — data is kept only in session memory (it will not survive closing the app).":
     "AVISO: IndexedDB no está disponible; los datos solo se guardan en la memoria de la sesión (no sobrevivirán al cierre de la aplicación).",
   "We will send them once the server is reachable.": "Los enviaremos cuando el servidor esté disponible.",
