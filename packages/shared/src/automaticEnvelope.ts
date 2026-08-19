@@ -3,9 +3,16 @@ import type { Account, Money, Transaction } from "./types";
 export type AllocationFlow = Pick<Transaction, "allocationFromEnvelopeId" | "allocationToEnvelopeId">;
 type AllocationRoute = Pick<Transaction, "type" | "accountId"> & { toAccountId?: string | null };
 
+/**
+ * NORMALISES TO null ON PURPOSE. `automaticEnvelopeId` arrived in 3.8, so a client replica written
+ * by an older build holds account rows WITHOUT the key at all, and only rows touched since then
+ * carry an explicit null. Returning that raw `undefined` reads as "linked" to every `!== null`
+ * check downstream: the transfer card offered its envelope switch and the preview reported
+ * "no envelope change" (from === to, both undefined) for accounts that have no link whatsoever.
+ */
 function linkedEnvelope(accounts: readonly Account[], accountId: string | null | undefined): string | null {
   const account = accounts.find((candidate) => candidate.id === accountId);
-  return account?.onBudget ? account.automaticEnvelopeId : null;
+  return account?.onBudget ? (account.automaticEnvelopeId ?? null) : null;
 }
 
 export function captureAllocationFlow(accounts: readonly Account[], route: AllocationRoute): AllocationFlow {
@@ -31,9 +38,10 @@ export function resolveAllocationFlow(
     next.accountId === previous.accountId &&
     (next.type !== "transfer" || (next.toAccountId ?? null) === previous.toAccountId)
   ) {
+    // Same normalisation as linkedEnvelope: a transaction stored before 3.8 has no allocation keys.
     return {
-      allocationFromEnvelopeId: previous.allocationFromEnvelopeId,
-      allocationToEnvelopeId: previous.allocationToEnvelopeId,
+      allocationFromEnvelopeId: previous.allocationFromEnvelopeId ?? null,
+      allocationToEnvelopeId: previous.allocationToEnvelopeId ?? null,
     };
   }
 
