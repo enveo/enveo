@@ -78,6 +78,15 @@ export function ChipPicker({
             value={query}
             onChange={(e) => onQueryChange(e.target.value)}
             onFocus={onFieldFocus}
+            
+
+
+            onKeyDown={(e) => {
+              if (e.key !== "Enter" || !query.trim()) return;
+              e.preventDefault();
+              if (createLabel) onCreate();
+              else if (matches.length > 0) onPick(matches[0]!.id);
+            }}
             placeholder={searchPlaceholder}
             style={{
               width: "100%",
