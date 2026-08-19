@@ -78,6 +78,15 @@ export function ChipPicker({
             value={query}
             onChange={(e) => onQueryChange(e.target.value)}
             onFocus={onFieldFocus}
+            // The typed name is only worth something once it is CREATED or PICKED, and the button
+            // that does it can sit below the fold on a long match list. Enter (the phone
+            // keyboard's "go") commits the obvious intent instead of dropping the text.
+            onKeyDown={(e) => {
+              if (e.key !== "Enter" || !query.trim()) return;
+              e.preventDefault();
+              if (createLabel) onCreate();
+              else if (matches.length > 0) onPick(matches[0]!.id);
+            }}
             placeholder={searchPlaceholder}
             style={{
               width: "100%",
