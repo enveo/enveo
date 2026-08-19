@@ -1,23 +1,6 @@
 import type { CSSProperties } from "react";
 import { font, P, type Theme } from "../../lib/theme";
 
-
-
-
- 
-export const gridCardStyle = (C: Theme, selected: boolean): CSSProperties => ({
-  display: "flex",
-  alignItems: "center",
-  gap: 7,
-  background: C.card,
-  textAlign: "left",
-  width: "100%",
-  border: `${selected ? 2 : 1}px solid ${selected ? "var(--accent)" : C.line}`,
-  borderRadius: 11,
-  padding: selected ? "7px 9px" : "8px 10px",
-  cursor: "pointer",
-});
-
  
 export const collapsedRowStyle = (C: Theme, accent: boolean): CSSProperties => ({
   display: "flex",
