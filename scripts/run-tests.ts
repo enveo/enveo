@@ -15,7 +15,17 @@ import { constants } from "node:os";
 import { planTestEnv, type TestMode } from "./lib/testEnv";
 
 /** Everything that must pass before Enveo ships. Shared/API/web-lib domain plus this tooling. */
-export const TEST_PATHS = ["packages/shared", "packages/api", "packages/web/src/lib", "scripts"] as const;
+// `web/src/screens` is here because it was NOT: three suites lived there unrun, and the Settings
+// information-architecture test had gone red without anyone noticing. Every directory holding a
+// test must be listed, or the test is decoration.
+export const TEST_PATHS = [
+  "packages/shared",
+  "packages/api",
+  "packages/web/src/lib",
+  "packages/web/src/components",
+  "packages/web/src/screens",
+  "scripts",
+] as const;
 
 /** Refusal to run (unsafe/incomplete configuration) — deliberately distinct from a test failure. */
 const EXIT_REFUSED = 2;

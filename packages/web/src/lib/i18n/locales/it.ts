@@ -393,6 +393,7 @@ export const it: Dict = {
   "Skip for now": "Salta per ora",
   "Some funds stayed in To be budgeted — envelopes are at their target caps.":
     "Una parte dei fondi è rimasta in «Da assegnare»: le buste hanno raggiunto il tetto del loro obiettivo.",
+  Sort: "Ordina",
   "Source: {src}": "Origine: {src}",
   Spending: "Spese",
   "Split across envelopes": "Dividi tra le buste",
@@ -543,6 +544,7 @@ export const it: Dict = {
     "Deseleziona ciò che non vuoi. I duplicati vengono saltati: toccane uno per modificarlo e aggiungerlo comunque.",
   Usage: "Utilizzo",
   Use: "Usa",
+  Uses: "Utilizzi",
   Utilities: "Utenze",
   Visible: "Visibili",
   "WARNING: IndexedDB unavailable — data is kept only in session memory (it will not survive closing the app).":

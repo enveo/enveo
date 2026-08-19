@@ -394,6 +394,7 @@ export const nl: Dict = {
   "Skip for now": "Nu overslaan",
   "Some funds stayed in To be budgeted — envelopes are at their target caps.":
     "Een deel van het geld bleef in ‘Te budgetteren’ staan — de enveloppen zitten aan het plafond van hun doel.",
+  Sort: "Sorteren",
   "Source: {src}": "Bron: {src}",
   Spending: "Uitgaven",
   "Split across envelopes": "Splitsen over enveloppen",
@@ -543,6 +544,7 @@ export const nl: Dict = {
     "Vink uit wat je niet wilt. Duplicaten worden overgeslagen — tik op een duplicaat om het te bewerken en alsnog toe te voegen.",
   Usage: "Gebruik",
   Use: "Gebruiken",
+  Uses: "Gebruik",
   Utilities: "Nutsvoorzieningen",
   Visible: "Zichtbaar",
   "WARNING: IndexedDB unavailable — data is kept only in session memory (it will not survive closing the app).":
