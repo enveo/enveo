@@ -389,6 +389,7 @@ export const sv: Dict = {
   "Skip for now": "Hoppa över just nu",
   "Some funds stayed in To be budgeted — envelopes are at their target caps.":
     "En del av medlen blev kvar i ”Att budgetera” — kuverten har nått taket för sina mål.",
+  Sort: "Sortera",
   "Source: {src}": "Källa: {src}",
   Spending: "Utgifter",
   "Split across envelopes": "Dela upp mellan kuvert",
@@ -535,6 +536,7 @@ export const sv: Dict = {
     "Bocka av det du inte vill ha. Dubbletter hoppas över — tryck på en för att redigera den och lägga till den ändå.",
   Usage: "Användning",
   Use: "Använd",
+  Uses: "Anv\u00e4ndningar",
   Utilities: "El, vatten och sopor",
   Visible: "Synliga",
   "WARNING: IndexedDB unavailable — data is kept only in session memory (it will not survive closing the app).":
