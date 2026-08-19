@@ -62,9 +62,10 @@ export const mapEnvelope = (e: typeof s.envelopes.$inferSelect): Envelope => ({
 export const mapCategory = (c: typeof s.categories.$inferSelect): Category => ({
   id: c.id,
   name: c.name,
+  archived: c.archived,
 });
 
-export const mapPlace = (p: typeof s.places.$inferSelect): Place => ({ id: p.id, name: p.name });
+export const mapPlace = (p: typeof s.places.$inferSelect): Place => ({ id: p.id, name: p.name, archived: p.archived });
 
 export const mapAllocation = (a: typeof s.allocations.$inferSelect): Allocation => ({
   id: a.id,

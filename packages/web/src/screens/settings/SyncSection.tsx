@@ -204,6 +204,10 @@ const OP_LABEL: Record<OpKind, Message> = {
   "envelope.delete": msg("Envelope deletion"),
   "category.create": msg("New category"),
   "place.create": msg("New place"),
+  "category.update": msg("Category change"),
+  "place.update": msg("Place change"),
+  "category.delete": msg("Category deletion"),
+  "place.delete": msg("Place deletion"),
   "budget.update": msg("Budget currency change"),
   "budget.preferences.update": msg("Budget settings change"),
 };

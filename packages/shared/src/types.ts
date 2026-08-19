@@ -49,11 +49,15 @@ export interface Envelope {
 export interface Category {
   id: string;
   name: string;
+   
+  archived: boolean;
 }
 
 export interface Place {
   id: string;
   name: string;
+   
+  archived: boolean;
 }
 
  
