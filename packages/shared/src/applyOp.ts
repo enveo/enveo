@@ -324,6 +324,32 @@ export function applyOp(ledger: ClientLedger, op: SyncOp): ClientLedger {
       if (idx < 0) return ledger;
       return { ...ledger, places: replaceAt(ledger.places, idx, merge(ledger.places[idx]!, p)) };
     }
+    // Merge = repoint every reference, then drop the source. Both ids must still exist: a replay
+    // over a snapshot that already absorbed the merge finds no source and does nothing, which is
+    // what keeps outbox replay idempotent. The transactions themselves are rewritten in place —
+    // no `txn.update` is emitted, so their LWW state is untouched on every other device.
+    case "category.merge": {
+      const p = op.payload as OpPayload<"category.merge">;
+      if (!ledger.categories.some((c) => c.id === p.fromId) || !ledger.categories.some((c) => c.id === p.intoId)) return ledger;
+      return {
+        ...ledger,
+        categories: ledger.categories.filter((c) => c.id !== p.fromId),
+        transactions: ledger.transactions.map((t) => {
+          const categoryId = t.categoryId === p.fromId ? p.intoId : t.categoryId;
+          const items = t.items.map((i) => (i.categoryId === p.fromId ? { ...i, categoryId: p.intoId } : i));
+          return categoryId === t.categoryId && items.every((i, idx) => i === t.items[idx]) ? t : { ...t, categoryId, items };
+        }),
+      };
+    }
+    case "place.merge": {
+      const p = op.payload as OpPayload<"place.merge">;
+      if (!ledger.places.some((pl) => pl.id === p.fromId) || !ledger.places.some((pl) => pl.id === p.intoId)) return ledger;
+      return {
+        ...ledger,
+        places: ledger.places.filter((pl) => pl.id !== p.fromId),
+        transactions: ledger.transactions.map((t) => (t.placeId === p.fromId ? { ...t, placeId: p.intoId } : t)),
+      };
+    }
     // Deleting a dictionary entry is allowed ONLY while nothing references it. A replica that
     // learns of a reference first (another device's transaction) must NOT drop the row — the FK
     // is `on delete set null`, so the row would take that transaction's value with it. Archive

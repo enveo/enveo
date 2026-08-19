@@ -637,4 +637,17 @@ export const cs: Dict = {
   "{pct}% of net worth": "{pct} % čistého majetku",
   "{place} — add details": "{place} — doplň podrobnosti",
   "{sym}/mo": "{sym}/měs.",
+  Merge: "Sloučit",
+  "Merge into this": "Sloučit do této",
+  "Pick the entry “{name}” should become.": "Vyber položku, kterou se má „{name}“ stát.",
+  "Look like the same thing": "Vypadají jako totéž",
+  "Keep “{name}”": "Ponechat „{name}“",
+  "Merging keeps every transaction — they just point at the entry you pick.": "Sloučení zachová všechny transakce — jen začnou ukazovat na vybranou položku.",
+  "Merge “{names}” into “{into}”? {n} transaction moves over and only “{into}” stays. | Merge “{names}” into “{into}”? {n} transactions move over and only “{into}” stays.":
+    {
+      one: "Sloučit „{names}“ do „{into}“? Přesune se {n} transakce a zůstane jen „{into}“.",
+      few: "Sloučit „{names}“ do „{into}“? Přesunou se {n} transakce a zůstane jen „{into}“.",
+      many: "Sloučit „{names}“ do „{into}“? Přesune se {n} transakce a zůstane jen „{into}“.",
+      other: "Sloučit „{names}“ do „{into}“? Přesune se {n} transakcí a zůstane jen „{into}“.",
+    },
 };
