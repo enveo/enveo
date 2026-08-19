@@ -637,16 +637,16 @@ export const ptBR: Dict = {
   "{place} — add details": "{place} — adicione detalhes",
   "{sym}/mo": "{sym}/mês",
   Merge: "Mesclar",
-  "Merge into this": "Mesclar aqui",
-  "Pick the entry “{name}” should become.": "Escolha a entrada em que “{name}” deve se transformar.",
   "Look like the same thing": "Parecem a mesma coisa",
-  "Keep “{name}”": "Manter “{name}”",
-  "Merging keeps every transaction — they just point at the entry you pick.":
-    "Mesclar preserva todas as transações — elas passam a apontar para a entrada escolhida.",
-  "Merge “{names}” into “{into}”? {n} transaction moves over and only “{into}” stays. | Merge “{names}” into “{into}”? {n} transactions move over and only “{into}” stays.":
+  "Name after merging": "Nome após mesclar",
+  "Select these": "Selecionar estas",
+  "Pick at least two entries to merge.": "Selecione pelo menos duas entradas para mesclar.",
+  "Merging keeps every transaction — they just move to the entry that stays.": "Mesclar preserva todas as transações — elas só passam para a entrada que fica.",
+  "{n} selected | {n} selected": { one: "{n} selecionada", many: "{n} selecionadas", other: "{n} selecionadas" },
+  "Merge {n} entry into one named “{name}”? Every transaction it carries moves over. | Merge {n} entries into one named “{name}”? Every transaction they carry moves over.":
     {
-      one: "Mesclar “{names}” em “{into}”? {n} transação será movida e só “{into}” continua.",
-      many: "Mesclar “{names}” em “{into}”? {n} transações serão movidas e só “{into}” continua.",
-      other: "Mesclar “{names}” em “{into}”? {n} transações serão movidas e só “{into}” continua.",
+      one: "Mesclar {n} entrada em uma chamada “{name}”? Todas as suas transações serão movidas.",
+      many: "Mesclar {n} entradas em uma chamada “{name}”? Todas as suas transações serão movidas.",
+      other: "Mesclar {n} entradas em uma chamada “{name}”? Todas as suas transações serão movidas.",
     },
 };

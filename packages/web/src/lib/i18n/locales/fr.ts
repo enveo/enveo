@@ -640,16 +640,17 @@ export const fr: Dict = {
   "{place} — add details": "{place} — ajoutez des détails",
   "{sym}/mo": "{sym}/mois",
   Merge: "Fusionner",
-  "Merge into this": "Fusionner ici",
-  "Pick the entry “{name}” should become.": "Choisis l’entrée que « {name} » doit devenir.",
   "Look like the same thing": "Semblent identiques",
-  "Keep “{name}”": "Garder « {name} »",
-  "Merging keeps every transaction — they just point at the entry you pick.":
-    "La fusion conserve toutes les transactions — elles pointent simplement vers l’entrée choisie.",
-  "Merge “{names}” into “{into}”? {n} transaction moves over and only “{into}” stays. | Merge “{names}” into “{into}”? {n} transactions move over and only “{into}” stays.":
+  "Name after merging": "Nom après fusion",
+  "Select these": "Sélectionner",
+  "Pick at least two entries to merge.": "Sélectionne au moins deux entrées à fusionner.",
+  "Merging keeps every transaction — they just move to the entry that stays.":
+    "La fusion conserve toutes les transactions — elles passent simplement à l’entrée qui reste.",
+  "{n} selected | {n} selected": { one: "{n} sélectionnée", many: "{n} sélectionnées", other: "{n} sélectionnées" },
+  "Merge {n} entry into one named “{name}”? Every transaction it carries moves over. | Merge {n} entries into one named “{name}”? Every transaction they carry moves over.":
     {
-      one: "Fusionner « {names} » dans « {into} » ? {n} transaction sera déplacée et seul « {into} » restera.",
-      many: "Fusionner « {names} » dans « {into} » ? {n} transactions seront déplacées et seul « {into} » restera.",
-      other: "Fusionner « {names} » dans « {into} » ? {n} transactions seront déplacées et seul « {into} » restera.",
+      one: "Fusionner {n} entrée en une seule nommée « {name} » ? Toutes ses transactions seront déplacées.",
+      many: "Fusionner {n} entrées en une seule nommée « {name} » ? Toutes leurs transactions seront déplacées.",
+      other: "Fusionner {n} entrées en une seule nommée « {name} » ? Toutes leurs transactions seront déplacées.",
     },
 };

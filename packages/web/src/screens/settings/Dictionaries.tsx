@@ -69,6 +69,33 @@ export function duplicateGroups(entries: DictionaryEntry[]): DictionaryEntry[][]
     .sort((a, b) => b.length - a.length || a[0]!.name.localeCompare(b[0]!.name));
 }
 
+export interface MergePlan {
+  /** The row that survives — it keeps its id, so nothing it is referenced by has to change. */
+  survivorId: string;
+  sourceIds: string[];
+  /** Set when the surviving row has to be renamed to the name the human typed. */
+  rename: string | null;
+}
+
+/**
+ * Who survives, who is absorbed, and does the survivor need renaming. The typed name is the
+ * intent, so if it ALREADY names another (visible) entry, that entry becomes the survivor and
+ * nothing is renamed — otherwise the merge would mint a second row with an identical name and
+ * hand the human the same duplicate back. Fewer than two selections is not a merge.
+ */
+export function planMerge(selectedIds: readonly string[], entries: readonly DictionaryEntry[], typedName: string): MergePlan | null {
+  const byId = new Map(entries.map((e) => [e.id, e]));
+  const selected = selectedIds.filter((id) => byId.has(id));
+  if (selected.length < 2) return null;
+  const name = typedName.trim();
+  const sameName = (a: string, b: string) => a.toLowerCase() === b.toLowerCase();
+  const adopted = name ? entries.find((e) => !e.archived && !selected.includes(e.id) && sameName(e.name, name)) : undefined;
+  if (adopted) return { survivorId: adopted.id, sourceIds: [...selected], rename: null };
+  const survivorId = selected[0]!;
+  const survivor = byId.get(survivorId)!;
+  return { survivorId, sourceIds: selected.slice(1), rename: name && !sameName(survivor.name, name) ? name : null };
+}
+
 /**
  * Upkeep sorting. "uses" ascending FIRST is the default on purpose: this screen exists to prune,
  * and the rows worth acting on are the ones nothing uses. Name is the tie-break either way, so
@@ -94,7 +121,10 @@ export function DictionariesSection() {
   const [showHidden, setShowHidden] = useState(false);
   const [sort, setSort] = useState<DictionarySort>("name");
   const [usesAscending, setUsesAscending] = useState(true);
-  const [mergeSource, setMergeSource] = useState<DictionaryEntry | null>(null);
+  // Selection ORDER matters: the first entry ticked seeds the name field and, unless the human
+  // types something else, is the row that survives.
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [mergeName, setMergeName] = useState("");
   const { categories, places } = useMemo(() => {
     const ledger = store.getLedger();
     return ledger ? dictionaryEntries(ledger) : { categories: [], places: [] };
@@ -109,39 +139,62 @@ export function DictionariesSection() {
   const remove = (id: string) => (tab === "categories" ? local.deleteCategory(id) : local.deletePlace(id));
   const merge = (fromId: string, intoId: string) => (tab === "categories" ? local.mergeCategories(fromId, intoId) : local.mergePlaces(fromId, intoId));
 
-  // One op per absorbed entry, and the count in the prompt is what the human is actually agreeing
-  // to: every transaction (and split item) carrying the losing name changes to the surviving one.
-  const confirmMerge = (sources: DictionaryEntry[], into: DictionaryEntry) => {
-    const moved = sources.reduce((n, e) => n + e.uses, 0);
-    const names = sources.map((e) => e.name).join(", ");
+  const rename = (id: string, name: string) => (tab === "categories" ? local.renameCategory(id, name) : local.renamePlace(id, name));
+
+  const clearSelection = () => {
+    setSelectedIds([]);
+    setMergeName("");
+  };
+
+  const toggle = (entry: DictionaryEntry) =>
+    setSelectedIds((ids) => {
+      if (ids.includes(entry.id)) return ids.filter((id) => id !== entry.id);
+      if (ids.length === 0) setMergeName(entry.name);
+      return [...ids, entry.id];
+    });
+
+  const selectGroup = (group: DictionaryEntry[]) => {
+    setSelectedIds(group.map((e) => e.id));
+    setMergeName(group[0]!.name);
+  };
+
+  // One op per absorbed entry, and the count in the prompt is what the human is agreeing to: every
+  // transaction (and split item) carrying an absorbed name changes to the surviving entry.
+  const runMerge = () => {
+    const plan = planMerge(selectedIds, entries, mergeName);
+    if (!plan) return;
+    const name = mergeName.trim() || entries.find((e) => e.id === plan.survivorId)?.name || "";
+    const n = plan.sourceIds.length + 1;
     const ok = window.confirm(
       tp(
-        "Merge “{names}” into “{into}”? {n} transaction moves over and only “{into}” stays. | Merge “{names}” into “{into}”? {n} transactions move over and only “{into}” stays.",
-        moved,
-        { names, into: into.name, n: moved },
+        "Merge {n} entry into one named “{name}”? Every transaction it carries moves over. | Merge {n} entries into one named “{name}”? Every transaction they carry moves over.",
+        n,
+        { n, name },
       ),
     );
     if (!ok) return;
-    for (const source of sources) merge(source.id, into.id);
-    setMergeSource(null);
+    for (const sourceId of plan.sourceIds) merge(sourceId, plan.survivorId);
+    if (plan.rename) rename(plan.survivorId, plan.rename);
+    clearSelection();
   };
 
+  const selecting = selectedIds.length > 0;
   const row = (entry: DictionaryEntry) => {
-    const picking = mergeSource !== null && mergeSource.id !== entry.id;
+    const checked = selectedIds.includes(entry.id);
     return (
       <div
         key={entry.id}
-        onClick={picking ? () => confirmMerge([mergeSource], entry) : undefined}
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: 10,
-          padding: "11px 0",
-          borderBottom: `1px solid ${C.line}`,
-          cursor: picking ? "pointer" : "default",
-          opacity: mergeSource !== null && !picking ? 0.45 : 1,
-        }}
+        onClick={() => toggle(entry)}
+        style={{ display: "flex", alignItems: "center", gap: 10, padding: "11px 0", borderBottom: `1px solid ${C.line}`, cursor: "pointer" }}
       >
+        <input
+          type="checkbox"
+          checked={checked}
+          onChange={() => toggle(entry)}
+          onClick={(e) => e.stopPropagation()}
+          aria-label={entry.name}
+          style={{ width: 18, height: 18, flexShrink: 0, accentColor: "var(--accent)", cursor: "pointer" }}
+        />
         <span style={{ flex: 1, minWidth: 0 }}>
           <span
             style={{
@@ -160,27 +213,12 @@ export function DictionariesSection() {
             {entry.uses === 0 ? t("not used yet") : tp("{n} transaction | {n} transactions", entry.uses, { n: entry.uses })}
           </span>
         </span>
-        {picking && <span style={{ fontSize: 11.5, fontWeight: 650, color: "var(--accent)", flexShrink: 0 }}>{t("Merge into this")}</span>}
-        {mergeSource === null && (
+        {/* While a selection is open the row is a checkbox and nothing else — three tap targets in
+            one narrow row is how a "hide" lands on the entry above the one the human meant. */}
+        {!selecting && entry.uses === 0 && entry.archived && (
           <button
-            onClick={() => setMergeSource(entry)}
-            style={{
-              background: "none",
-              border: "none",
-              color: C.soft,
-              fontSize: 11.5,
-              fontWeight: 600,
-              cursor: "pointer",
-              fontFamily: font,
-              padding: "4px 6px",
-            }}
-          >
-            {t("Merge")}
-          </button>
-        )}
-        {mergeSource === null && entry.uses === 0 && entry.archived && (
-          <button
-            onClick={() => {
+            onClick={(e) => {
+              e.stopPropagation();
               if (window.confirm(t("Delete “{name}” for good? It is not used by any transaction.", { name: entry.name }))) remove(entry.id);
             }}
             style={{
@@ -197,9 +235,12 @@ export function DictionariesSection() {
             {t("Delete")}
           </button>
         )}
-        {mergeSource === null && (
+        {!selecting && (
           <button
-            onClick={() => setArchived(entry.id, !entry.archived)}
+            onClick={(e) => {
+              e.stopPropagation();
+              setArchived(entry.id, !entry.archived);
+            }}
             style={{
               background: entry.archived ? "var(--accent-1a)" : C.chip,
               border: `1px solid ${entry.archived ? "var(--accent)" : C.line}`,
@@ -223,9 +264,9 @@ export function DictionariesSection() {
   // Hundreds of places (the screenshot import mints one per merchant name) make an unfiltered
   // list useless — search first, then narrow to the group the human is actually working on.
   const group = showHidden ? hidden : visible;
-  // Suggestions only in the plain view: while merging, or inside a search, the human is already
+  // Suggestions only in the plain view: mid-selection, or inside a search, the human is already
   // steering, and a second list competing for the same tap is noise.
-  const suggestions = mergeSource === null && !showHidden && !query ? duplicateGroups(visible) : [];
+  const suggestions = !selecting && !showHidden && !query ? duplicateGroups(visible) : [];
   const matched = sortDictionary(
     group.filter((e) => matchesSearch(e.name, query)),
     sort,
@@ -257,26 +298,59 @@ export function DictionariesSection() {
         ))}
       </div>
 
-      {mergeSource !== null && (
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 10,
-            background: "var(--accent-1a)",
-            border: `1px solid var(--accent)`,
-            borderRadius: 12,
-            padding: "10px 12px",
-            marginBottom: 12,
-          }}
-        >
-          <span style={{ flex: 1, minWidth: 0, fontSize: 12, color: C.text }}>{t("Pick the entry “{name}” should become.", { name: mergeSource.name })}</span>
-          <button
-            onClick={() => setMergeSource(null)}
-            style={{ background: "none", border: "none", color: C.soft, fontSize: 11.5, fontWeight: 650, fontFamily: font, cursor: "pointer", flexShrink: 0 }}
-          >
-            {t("Cancel")}
-          </button>
+      {selecting && (
+        <div style={{ background: "var(--accent-1a)", border: "1px solid var(--accent)", borderRadius: 12, padding: "10px 12px", marginBottom: 12 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
+            <span style={{ flex: 1, minWidth: 0, fontSize: 12, fontWeight: 650, color: C.text }}>
+              {tp("{n} selected | {n} selected", selectedIds.length, { n: selectedIds.length })}
+            </span>
+            <button
+              onClick={clearSelection}
+              style={{ background: "none", border: "none", color: C.soft, fontSize: 11.5, fontWeight: 650, fontFamily: font, cursor: "pointer", flexShrink: 0 }}
+            >
+              {t("Clear")}
+            </button>
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            {/* Seeded from the first entry ticked, then it is the human's to edit — the typed name
+                is what the surviving entry ends up called, whichever row that turns out to be. */}
+            <input
+              value={mergeName}
+              onChange={(e) => setMergeName(e.target.value)}
+              placeholder={t("Name after merging")}
+              aria-label={t("Name after merging")}
+              style={{
+                flex: 1,
+                minWidth: 0,
+                background: C.card,
+                border: `1px solid ${C.line}`,
+                borderRadius: 10,
+                padding: "8px 10px",
+                fontSize: 13,
+                color: C.text,
+                fontFamily: font,
+              }}
+            />
+            <button
+              onClick={runMerge}
+              disabled={selectedIds.length < 2 || !mergeName.trim()}
+              style={{
+                background: selectedIds.length < 2 || !mergeName.trim() ? C.chip : "var(--cta)",
+                border: "none",
+                borderRadius: 10,
+                padding: "9px 14px",
+                fontSize: 12.5,
+                fontWeight: 700,
+                color: selectedIds.length < 2 || !mergeName.trim() ? C.mute : "#fff",
+                fontFamily: font,
+                cursor: selectedIds.length < 2 || !mergeName.trim() ? "default" : "pointer",
+                flexShrink: 0,
+              }}
+            >
+              {t("Merge")}
+            </button>
+          </div>
+          {selectedIds.length < 2 && <div style={{ fontSize: 11, color: C.soft, marginTop: 6 }}>{t("Pick at least two entries to merge.")}</div>}
         </div>
       )}
 
@@ -287,7 +361,6 @@ export function DictionariesSection() {
           </div>
           {suggestions.map((entries) => {
             const keep = entries[0]!;
-            const absorbed = entries.slice(1);
             return (
               <div key={keep.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "6px 0" }}>
                 {/* Two lines, then clip: the variants ARE the evidence for the suggestion, and a
@@ -308,7 +381,7 @@ export function DictionariesSection() {
                   {entries.map((e) => e.name).join(" · ")}
                 </span>
                 <button
-                  onClick={() => confirmMerge(absorbed, keep)}
+                  onClick={() => selectGroup(entries)}
                   style={{
                     background: C.card,
                     border: `1px solid ${C.line}`,
@@ -322,7 +395,7 @@ export function DictionariesSection() {
                     flexShrink: 0,
                   }}
                 >
-                  {t("Keep “{name}”", { name: keep.name })}
+                  {t("Select these")}
                 </button>
               </div>
             );
@@ -389,8 +462,8 @@ export function DictionariesSection() {
         matched.map(row)
       )}
       <Helper>
-        {mergeSource !== null
-          ? t("Merging keeps every transaction — they just point at the entry you pick.")
+        {selecting
+          ? t("Merging keeps every transaction — they just move to the entry that stays.")
           : showHidden
             ? t("An entry nothing uses can be deleted for good.")
             : t("Hiding an entry only removes it from suggestions. Transactions that use it keep it, here and in reports.")}
