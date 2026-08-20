@@ -892,16 +892,18 @@ export const pl: Dict = {
   "{place} — add details": "{place} — dopisz szczegóły",
   "{sym}/mo": "{sym}/mies",
   Merge: "Scal",
-  "Merge into this": "Scal z tym",
-  "Pick the entry “{name}” should become.": "Wybierz wpis, którym ma się stać „{name}”.",
   "Look like the same thing": "Wyglądają na to samo",
-  "Keep “{name}”": "Zostaw „{name}”",
-  "Merging keeps every transaction — they just point at the entry you pick.": "Scalanie zachowuje wszystkie transakcje — zaczynają wskazywać wybrany wpis.",
-  "Merge “{names}” into “{into}”? {n} transaction moves over and only “{into}” stays. | Merge “{names}” into “{into}”? {n} transactions move over and only “{into}” stays.":
+  "Name after merging": "Nazwa po scaleniu",
+  "Select these": "Zaznacz te",
+  "Pick at least two entries to merge.": "Zaznacz co najmniej dwa wpisy, żeby je scalić.",
+  "Merging keeps every transaction — they just move to the entry that stays.":
+    "Scalanie zachowuje wszystkie transakcje — przenoszą się tylko do wpisu, który zostaje.",
+  "{n} selected | {n} selected": { one: "zaznaczono {n}", few: "zaznaczono {n}", many: "zaznaczono {n}", other: "zaznaczono {n}" },
+  "Merge {n} entry into one named “{name}”? Every transaction it carries moves over. | Merge {n} entries into one named “{name}”? Every transaction they carry moves over.":
     {
-      one: "Scalić „{names}” w „{into}”? Przeniesie się {n} transakcja i zostanie tylko „{into}”.",
-      few: "Scalić „{names}” w „{into}”? Przeniosą się {n} transakcje i zostanie tylko „{into}”.",
-      many: "Scalić „{names}” w „{into}”? Przeniesie się {n} transakcji i zostanie tylko „{into}”.",
-      other: "Scalić „{names}” w „{into}”? Przeniesie się {n} transakcji i zostanie tylko „{into}”.",
+      one: "Scalić {n} wpis w jeden o nazwie „{name}”? Wszystkie jego transakcje się przeniosą.",
+      few: "Scalić {n} wpisy w jeden o nazwie „{name}”? Wszystkie ich transakcje się przeniosą.",
+      many: "Scalić {n} wpisów w jeden o nazwie „{name}”? Wszystkie ich transakcje się przeniosą.",
+      other: "Scalić {n} wpisów w jeden o nazwie „{name}”? Wszystkie ich transakcje się przeniosą.",
     },
 };

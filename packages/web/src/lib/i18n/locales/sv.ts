@@ -630,14 +630,16 @@ export const sv: Dict = {
   "{place} — add details": "{place} — lägg till detaljer",
   "{sym}/mo": "{sym}/mån",
   Merge: "Slå ihop",
-  "Merge into this": "Slå ihop hit",
-  "Pick the entry “{name}” should become.": "Välj posten som ”{name}” ska bli.",
   "Look like the same thing": "Ser ut att vara samma sak",
-  "Keep “{name}”": "Behåll ”{name}”",
-  "Merging keeps every transaction — they just point at the entry you pick.": "Sammanslagning behåller alla transaktioner — de pekar bara på posten du väljer.",
-  "Merge “{names}” into “{into}”? {n} transaction moves over and only “{into}” stays. | Merge “{names}” into “{into}”? {n} transactions move over and only “{into}” stays.":
+  "Name after merging": "Namn efter sammanslagning",
+  "Select these": "Välj dessa",
+  "Pick at least two entries to merge.": "Välj minst två poster att slå ihop.",
+  "Merging keeps every transaction — they just move to the entry that stays.":
+    "Sammanslagning behåller alla transaktioner — de flyttas bara till posten som blir kvar.",
+  "{n} selected | {n} selected": { one: "{n} vald", other: "{n} valda" },
+  "Merge {n} entry into one named “{name}”? Every transaction it carries moves over. | Merge {n} entries into one named “{name}”? Every transaction they carry moves over.":
     {
-      one: "Slå ihop ”{names}” med ”{into}”? {n} transaktion flyttas över och bara ”{into}” blir kvar.",
-      other: "Slå ihop ”{names}” med ”{into}”? {n} transaktioner flyttas över och bara ”{into}” blir kvar.",
+      one: "Slå ihop {n} post till en med namnet ”{name}”? Alla dess transaktioner flyttas över.",
+      other: "Slå ihop {n} poster till en med namnet ”{name}”? Alla deras transaktioner flyttas över.",
     },
 };

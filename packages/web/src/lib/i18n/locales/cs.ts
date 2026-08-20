@@ -638,16 +638,17 @@ export const cs: Dict = {
   "{place} — add details": "{place} — doplň podrobnosti",
   "{sym}/mo": "{sym}/měs.",
   Merge: "Sloučit",
-  "Merge into this": "Sloučit do této",
-  "Pick the entry “{name}” should become.": "Vyber položku, kterou se má „{name}“ stát.",
   "Look like the same thing": "Vypadají jako totéž",
-  "Keep “{name}”": "Ponechat „{name}“",
-  "Merging keeps every transaction — they just point at the entry you pick.": "Sloučení zachová všechny transakce — jen začnou ukazovat na vybranou položku.",
-  "Merge “{names}” into “{into}”? {n} transaction moves over and only “{into}” stays. | Merge “{names}” into “{into}”? {n} transactions move over and only “{into}” stays.":
+  "Name after merging": "Název po sloučení",
+  "Select these": "Vybrat tyto",
+  "Pick at least two entries to merge.": "Vyber alespoň dvě položky ke sloučení.",
+  "Merging keeps every transaction — they just move to the entry that stays.": "Sloučení zachová všechny transakce — jen se přesunou k položce, která zůstává.",
+  "{n} selected | {n} selected": { one: "vybráno {n}", few: "vybráno {n}", many: "vybráno {n}", other: "vybráno {n}" },
+  "Merge {n} entry into one named “{name}”? Every transaction it carries moves over. | Merge {n} entries into one named “{name}”? Every transaction they carry moves over.":
     {
-      one: "Sloučit „{names}“ do „{into}“? Přesune se {n} transakce a zůstane jen „{into}“.",
-      few: "Sloučit „{names}“ do „{into}“? Přesunou se {n} transakce a zůstane jen „{into}“.",
-      many: "Sloučit „{names}“ do „{into}“? Přesune se {n} transakce a zůstane jen „{into}“.",
-      other: "Sloučit „{names}“ do „{into}“? Přesune se {n} transakcí a zůstane jen „{into}“.",
+      one: "Sloučit {n} položku do jedné s názvem „{name}“? Všechny její transakce se přesunou.",
+      few: "Sloučit {n} položky do jedné s názvem „{name}“? Všechny jejich transakce se přesunou.",
+      many: "Sloučit {n} položky do jedné s názvem „{name}“? Všechny jejich transakce se přesunou.",
+      other: "Sloučit {n} položek do jedné s názvem „{name}“? Všechny jejich transakce se přesunou.",
     },
 };
