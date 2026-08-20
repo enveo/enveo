@@ -571,7 +571,7 @@ export function AddScreen({
             : t("e.g. weekly groceries");
 
   return (
-    <div style={{ flex: 1, display: "flex", flexDirection: "column" }}>
+    <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
       <AddHeader
         tab={tab}
         isEdit={!!editTxn}
@@ -611,80 +611,92 @@ export function AddScreen({
         onToggleRefund={() => setIsRefund((v) => !v)}
       />
 
-      <FlowCard
-        source={source}
-        target={target}
-        pool={
-          tab === "income" && !incomeEnvelope
-            ? { role: t("Goes to"), title: t("Ready to assign"), caption: t("you'll split it into envelopes in the budget") }
-            : null
-        }
-        note={
-          tab === "expense" && !splitUi && expenseEnvelope.provenance === "automatic" && envelopeId !== null
-            ? t("Selected automatically from this account")
-            : null
-        }
-        automatic={
-          allocationApplies
-            ? {
-                label: t("Move the money between envelopes too"),
-                checked: !skipAllocation,
-                onToggle: (checked) => {
-                  setSkipAllocation(!checked);
-                  setAllocationTouched(true);
-                },
-                body: allocationSkipped ? (
-                  <div style={{ fontSize: 10.5, color: C.soft, padding: "4px 0 2px 23px" }}>{t("Envelopes stay as they are — you assigned this by hand.")}</div>
-                ) : automaticEffect ? (
-                  <AutomaticEnvelopeEffect data={automaticEffect} compact />
-                ) : null,
-              }
-            : null
-        }
-        split={
-          splitUi
-            ? {
-                label: t("Split across envelopes"),
-                items,
-                envelopes: previewEnvelopes,
-                total: minor,
-                plus,
-                activeIndex: activeSplit,
-                onFocusItem: focusSplitRow,
-                onRemoveItem: removeSplitRow,
-                onAddItem: () => {
-                  setShowEnv("split");
-                  setNumpad(false);
-                },
-                onAssignRest: assignRest,
-              }
-            : null
-        }
-        amountMinor={minor}
-        plus={plus}
-        dateLabel={dateLabel}
-        dateHint={dateHint}
-        onOpenDate={() => {
-          setShowDate(true);
-          setNumpad(false);
-        }}
-        splitAction={
-          draft || tab !== "expense"
-            ? null
-            : splitMode
-              ? {
-                  label: t("cancel split"),
-                  onClick: () => {
-                    setExpenseEnvelope((current) => expenseEnvelopeAfterSplitCancel(current, accObj?.automaticEnvelopeId));
-                    setSplitMode(false);
-                    setActiveSplit(null);
-                  },
-                }
-              : { label: `${t("Split across envelopes")} ›`, onClick: enterSplit }
-        }
-      />
+      {/* EVERYTHING between the amount and the pad scrolls, the FlowCard included. A split with
+          five envelopes makes that card taller than the screen, and while it sat OUTSIDE this
+          container (unshrinkable, `flex: 0 0 auto`) it pushed the pad and the submit button past
+          the bottom of the `100dvh` shell, where `overflow: hidden` clipped them with nothing left
+          to scroll. The pad and the CTA below stay pinned; the middle gives way. */}
+      <div className="gs" style={{ flex: 1, minHeight: 0, overflowY: "auto" }} onClick={closePad}>
+        {/* The card lives inside the scroller now, so it would inherit its close-the-pad click.
+            Tapping a split row's amount must OPEN the pad, not close it — the card handles its
+            own taps and swallows the rest. */}
+        <div onClick={(e) => e.stopPropagation()}>
+          <FlowCard
+            source={source}
+            target={target}
+            pool={
+              tab === "income" && !incomeEnvelope
+                ? { role: t("Goes to"), title: t("Ready to assign"), caption: t("you'll split it into envelopes in the budget") }
+                : null
+            }
+            note={
+              tab === "expense" && !splitUi && expenseEnvelope.provenance === "automatic" && envelopeId !== null
+                ? t("Selected automatically from this account")
+                : null
+            }
+            automatic={
+              allocationApplies
+                ? {
+                    label: t("Move the money between envelopes too"),
+                    checked: !skipAllocation,
+                    onToggle: (checked) => {
+                      setSkipAllocation(!checked);
+                      setAllocationTouched(true);
+                    },
+                    body: allocationSkipped ? (
+                      <div style={{ fontSize: 10.5, color: C.soft, padding: "4px 0 2px 23px" }}>
+                        {t("Envelopes stay as they are — you assigned this by hand.")}
+                      </div>
+                    ) : automaticEffect ? (
+                      <AutomaticEnvelopeEffect data={automaticEffect} compact />
+                    ) : null,
+                  }
+                : null
+            }
+            split={
+              splitUi
+                ? {
+                    label: t("Split across envelopes"),
+                    items,
+                    envelopes: previewEnvelopes,
+                    total: minor,
+                    plus,
+                    activeIndex: activeSplit,
+                    onFocusItem: focusSplitRow,
+                    onRemoveItem: removeSplitRow,
+                    onAddItem: () => {
+                      setShowEnv("split");
+                      setNumpad(false);
+                    },
+                    onAssignRest: assignRest,
+                  }
+                : null
+            }
+            amountMinor={minor}
+            plus={plus}
+            dateLabel={dateLabel}
+            dateHint={dateHint}
+            onOpenDate={() => {
+              setShowDate(true);
+              setNumpad(false);
+            }}
+            splitAction={
+              draft || tab !== "expense"
+                ? null
+                : splitMode
+                  ? {
+                      label: t("cancel split"),
+                      onClick: () => {
+                        setExpenseEnvelope((current) => expenseEnvelopeAfterSplitCancel(current, accObj?.automaticEnvelopeId));
+                        setSplitMode(false);
+                        setActiveSplit(null);
+                      },
+                    }
+                  : { label: `${t("Split across envelopes")} ›`, onClick: enterSplit }
+            }
+          />
+        </div>
 
-      <div className="gs" style={{ flex: 1, overflowY: "auto" }} onClick={closePad}>
         {tab === "expense" && (
           <>
             {/* A split transaction carries no category (submit sends null for it) — offering the
