@@ -640,15 +640,16 @@ export const de: Dict = {
   "{place} — add details": "{place} — Details ergänzen",
   "{sym}/mo": "{sym}/Mon.",
   Merge: "Zusammenführen",
-  "Merge into this": "Hierin zusammenführen",
-  "Pick the entry “{name}” should become.": "Wähle den Eintrag, zu dem „{name}“ werden soll.",
   "Look like the same thing": "Sehen gleich aus",
-  "Keep “{name}”": "„{name}“ behalten",
-  "Merging keeps every transaction — they just point at the entry you pick.":
-    "Zusammenführen behält jede Transaktion — sie zeigen danach auf den gewählten Eintrag.",
-  "Merge “{names}” into “{into}”? {n} transaction moves over and only “{into}” stays. | Merge “{names}” into “{into}”? {n} transactions move over and only “{into}” stays.":
+  "Name after merging": "Name nach dem Zusammenführen",
+  "Select these": "Diese auswählen",
+  "Pick at least two entries to merge.": "Wähle mindestens zwei Einträge zum Zusammenführen.",
+  "Merging keeps every transaction — they just move to the entry that stays.":
+    "Zusammenführen behält jede Transaktion — sie wandern nur zum Eintrag, der bleibt.",
+  "{n} selected | {n} selected": { one: "{n} ausgewählt", other: "{n} ausgewählt" },
+  "Merge {n} entry into one named “{name}”? Every transaction it carries moves over. | Merge {n} entries into one named “{name}”? Every transaction they carry moves over.":
     {
-      one: "„{names}“ in „{into}“ zusammenführen? {n} Transaktion wird übernommen und nur „{into}“ bleibt.",
-      other: "„{names}“ in „{into}“ zusammenführen? {n} Transaktionen werden übernommen und nur „{into}“ bleibt.",
+      one: "{n} Eintrag zu einem mit dem Namen „{name}“ zusammenführen? Alle Transaktionen wandern mit.",
+      other: "{n} Einträge zu einem mit dem Namen „{name}“ zusammenführen? Alle Transaktionen wandern mit.",
     },
 };

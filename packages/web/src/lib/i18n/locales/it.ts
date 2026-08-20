@@ -641,15 +641,16 @@ export const it: Dict = {
   "{place} — add details": "{place} — aggiungi dettagli",
   "{sym}/mo": "{sym}/mese",
   Merge: "Unisci",
-  "Merge into this": "Unisci qui",
-  "Pick the entry “{name}” should become.": "Scegli la voce in cui deve trasformarsi «{name}».",
   "Look like the same thing": "Sembrano la stessa cosa",
-  "Keep “{name}”": "Mantieni «{name}»",
-  "Merging keeps every transaction — they just point at the entry you pick.": "L’unione conserva tutte le transazioni: passano semplicemente alla voce scelta.",
-  "Merge “{names}” into “{into}”? {n} transaction moves over and only “{into}” stays. | Merge “{names}” into “{into}”? {n} transactions move over and only “{into}” stays.":
+  "Name after merging": "Nome dopo l’unione",
+  "Select these": "Seleziona questi",
+  "Pick at least two entries to merge.": "Seleziona almeno due voci da unire.",
+  "Merging keeps every transaction — they just move to the entry that stays.": "L’unione conserva tutte le transazioni: passano solo alla voce che resta.",
+  "{n} selected | {n} selected": { one: "{n} selezionata", many: "{n} selezionate", other: "{n} selezionate" },
+  "Merge {n} entry into one named “{name}”? Every transaction it carries moves over. | Merge {n} entries into one named “{name}”? Every transaction they carry moves over.":
     {
-      one: "Unire «{names}» in «{into}»? Si sposterà {n} transazione e resterà solo «{into}».",
-      many: "Unire «{names}» in «{into}»? Si sposteranno {n} transazioni e resterà solo «{into}».",
-      other: "Unire «{names}» in «{into}»? Si sposteranno {n} transazioni e resterà solo «{into}».",
+      one: "Unire {n} voce in una chiamata «{name}»? Tutte le sue transazioni si sposteranno.",
+      many: "Unire {n} voci in una chiamata «{name}»? Tutte le loro transazioni si sposteranno.",
+      other: "Unire {n} voci in una chiamata «{name}»? Tutte le loro transazioni si sposteranno.",
     },
 };

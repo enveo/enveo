@@ -638,14 +638,16 @@ export const nl: Dict = {
   "{place} — add details": "{place} — details toevoegen",
   "{sym}/mo": "{sym}/mnd",
   Merge: "Samenvoegen",
-  "Merge into this": "Hierin samenvoegen",
-  "Pick the entry “{name}” should become.": "Kies het item waarin ‘{name}’ moet opgaan.",
   "Look like the same thing": "Lijken hetzelfde",
-  "Keep “{name}”": "‘{name}’ behouden",
-  "Merging keeps every transaction — they just point at the entry you pick.": "Samenvoegen behoudt elke transactie — ze wijzen daarna naar het gekozen item.",
-  "Merge “{names}” into “{into}”? {n} transaction moves over and only “{into}” stays. | Merge “{names}” into “{into}”? {n} transactions move over and only “{into}” stays.":
+  "Name after merging": "Naam na samenvoegen",
+  "Select these": "Deze selecteren",
+  "Pick at least two entries to merge.": "Kies minstens twee items om samen te voegen.",
+  "Merging keeps every transaction — they just move to the entry that stays.":
+    "Samenvoegen behoudt elke transactie — ze verhuizen alleen naar het item dat blijft.",
+  "{n} selected | {n} selected": { one: "{n} geselecteerd", other: "{n} geselecteerd" },
+  "Merge {n} entry into one named “{name}”? Every transaction it carries moves over. | Merge {n} entries into one named “{name}”? Every transaction they carry moves over.":
     {
-      one: "‘{names}’ samenvoegen met ‘{into}’? {n} transactie verhuist mee en alleen ‘{into}’ blijft over.",
-      other: "‘{names}’ samenvoegen met ‘{into}’? {n} transacties verhuizen mee en alleen ‘{into}’ blijft over.",
+      one: "{n} item samenvoegen tot één met de naam ‘{name}’? Al zijn transacties verhuizen mee.",
+      other: "{n} items samenvoegen tot één met de naam ‘{name}’? Al hun transacties verhuizen mee.",
     },
 };
