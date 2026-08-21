@@ -6,10 +6,10 @@
  * unfolded foldable at 1104x992 (icon rail, detail pane WIDER than the primary pane) and a
  * desktop at 1440x860 (labelled rail, narrower detail pane).
  *
- * The HEIGHT clause is not decoration. A phone in landscape is 844x390 and clears the 900px
- * width test on a wider handset; giving it a rail plus two panes inside 390px of height would
- * be unusable. Width alone cannot tell a landscape phone from an unfolded foldable — the
- * foldable has ~992px of height and the phone has ~390px, so height can.
+ * The HEIGHT clause is not decoration. An unfolded foldable in landscape is ~932x430 and clears
+ * the 900px width test; giving it a rail plus two panes inside 430px of height would be unusable.
+ * Width alone cannot tell a landscape foldable from a desktop — the desktop has ~800px+ of height
+ * and the foldable has ~430px, so height can.
  *
  * `viewModeFor` is pure and total: it is the thing under test, and non-finite or negative
  * input degrades to the SAFE direction ("phone", the layout that fits everywhere) rather
@@ -51,8 +51,10 @@ export function viewModeFor(width: number, height: number): ViewMode {
 }
 
 /**
- * Subscribed viewport mode. ONE listener for the whole app, mirroring the dark-mode listener
- * pattern in `lib/contexts.tsx` — never call this per-component in a loop.
+ * Subscribed viewport mode. Each call installs its own `resize` listener and state, so the app
+ * calls this once near the root and distributes the result through React context — do not call
+ * per-component in a loop. A context-backed single subscription pattern (like the dark-mode
+ * listener at `lib/contexts.tsx:166-171`) arrives in a later PR when a second consumer exists.
  *
  * `resize` rather than a pair of `matchMedia` queries: the rule depends on width AND height,
  * so a single event carrying both is simpler and cannot go half-applied. The state setter is

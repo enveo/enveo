@@ -1,7 +1,7 @@
 /**
  * Viewport-derived layout modes (viewMode.ts).
  *
- * The height clause is load-bearing: a landscape phone (844x390) clears the 900px
+ * The height clause is load-bearing: an unfolded foldable (~932x430) clears the 900px
  * width test but cannot host a rail plus two panes, so it must stay "phone".
  */
 import { describe, expect, test } from "bun:test";
