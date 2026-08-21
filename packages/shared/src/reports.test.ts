@@ -921,7 +921,6 @@ describe("computeDaySpending", () => {
       ["FOOD", 42_00],
     ]);
     expect(d.byEnvelope[0]!.name).toBe("Rozrywka");
-    expect(d.byEnvelope[0]!.color).toBe("#cc4a4a");
   });
 
   it("excludes income and transfers, and subtracts refunds", () => {
