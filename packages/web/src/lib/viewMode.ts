@@ -19,7 +19,7 @@ import { useEffect, useState } from "react";
 
 export type ViewMode = "phone" | "fold" | "desktop";
 
-/** The phone content column. Was five separate `maxWidth: 420` literals before this constant. */
+/** The phone content column. Was six separate `maxWidth: 420` literals across five files before this constant. */
 export const PHONE_COL = 420;
 
 /** Width at which the fold layout (icon rail + primary + wide detail pane) becomes possible. */
