@@ -179,7 +179,6 @@ export function computeDailySpending(ledger: ClientLedger, month: string): Daily
 export interface DaySpendingEnvelope {
   envelopeId: string | null;
   name: string;
-  color: string;
   amount: Money;
 }
 
@@ -228,7 +227,6 @@ export function computeDaySpending(ledger: ClientLedger, date: string): DaySpend
       return {
         envelopeId,
         name: envelope?.name ?? NULL_LABEL.envelope,
-        color: envelope?.color ?? "",
         amount,
       };
     })
