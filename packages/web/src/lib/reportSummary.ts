@@ -147,3 +147,51 @@ export function budgetPace(envelope: BudgetEnvelope, progress: number): BudgetPa
   if (usage.rawBudget > 0 && spent > 0 && projected > usage.rawBudget) return { projected, bucket: "risk" };
   return { projected, bucket: "ok" };
 }
+
+export type BudgetStepKind = "over" | "risk" | "near";
+
+export type BudgetStepInput = BudgetEnvelope & { id: string; name: string };
+
+export interface BudgetStep {
+  envelopeId: string;
+  name: string;
+  kind: BudgetStepKind;
+  /** Money to move into the envelope to clear this step, minor units, always > 0. */
+  amount: number;
+}
+
+/** The cushion a near-limit envelope is topped back up to, as a share of its budget. */
+const NEAR_CUSHION = 0.2;
+
+const STEP_ORDER: Record<BudgetStepKind, number> = { over: 0, risk: 1, near: 2 };
+
+/**
+ * The Budgets report's checklist: what to fix, in the order worth fixing it.
+ *
+ * Overspends lead — that money is already gone. Pace risks follow, because they are cheapest
+ * to fix before the month ends. Near-limit top-ups come last. Within a kind the largest amount
+ * leads, so the list opens with the step that moves the most.
+ *
+ * A step is only emitted when it has something to do: `amount > 0`. An envelope already at its
+ * cushion produces no step rather than a no-op button. `ignored` withholds steps the user
+ * dismissed — they are withheld, never deleted, so the caller can still show and restore them.
+ */
+export function budgetSteps(envelopes: BudgetStepInput[], progress: number, ignored?: ReadonlySet<string>): BudgetStep[] {
+  const steps: BudgetStep[] = [];
+  for (const e of envelopes) {
+    if (e.archived) continue;
+    if (!(e.allocated + e.carryIn > 0 || e.spent > 0)) continue;
+    if (ignored?.has(e.id)) continue;
+
+    const usage = budgetUsage(e);
+    const { bucket, projected } = budgetPace(e, progress);
+    if (bucket !== "over" && bucket !== "risk" && bucket !== "near") continue;
+
+    const amount =
+      bucket === "over" ? -usage.left : bucket === "risk" ? projected - usage.rawBudget : Math.max(0, Math.round(usage.rawBudget * NEAR_CUSHION) - usage.left);
+    if (amount <= 0) continue;
+
+    steps.push({ envelopeId: e.id, name: e.name, kind: bucket, amount });
+  }
+  return steps.sort((a, b) => STEP_ORDER[a.kind] - STEP_ORDER[b.kind] || b.amount - a.amount);
+}
