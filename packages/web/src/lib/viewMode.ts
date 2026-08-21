@@ -6,10 +6,10 @@
  * unfolded foldable at 1104x992 (icon rail, detail pane WIDER than the primary pane) and a
  * desktop at 1440x860 (labelled rail, narrower detail pane).
  *
- * The HEIGHT clause is not decoration. An unfolded foldable in landscape is ~932x430 and clears
- * the 900px width test; giving it a rail plus two panes inside 430px of height would be unusable.
- * Width alone cannot tell a landscape foldable from a desktop — the desktop has ~800px+ of height
- * and the foldable has ~430px, so height can.
+ * The HEIGHT clause is not decoration. A large phone in landscape is ~932x430 and clears the 900px
+ * width test; giving it a rail plus two panes inside 430px of height would be unusable. Width alone
+ * cannot tell a landscape phone from an unfolded foldable (at 1104x992 — tall with room for a rail)
+ * — so height can. A smaller phone at 844x390 is caught by the width clause anyway.
  *
  * `viewModeFor` is pure and total: it is the thing under test, and non-finite or negative
  * input degrades to the SAFE direction ("phone", the layout that fits everywhere) rather
