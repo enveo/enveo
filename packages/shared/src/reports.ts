@@ -3,6 +3,7 @@
  * Reuse computeBudgetState (balances) and the spentOf rules (spending).
  */
 import { computeBudgetState, monthOf, prevMonth } from "./budget";
+import { goalProgress } from "./goals";
 import type { ClientLedger, Money, Transaction } from "./types";
 
 export interface NetWorthPoint {
@@ -428,4 +429,50 @@ export function savingsRate(points: CashflowPoint[]): { current: number | null; 
     .filter((p) => p.income > 0)
     .map((p) => p.net / p.income);
   return { current, median: ratios.length > 0 ? median(ratios) : null };
+}
+
+export interface GoalHistoryPoint {
+  month: string; // YYYY-MM
+  allocated: Money; // manual + automatic allocation in that month
+  pct: number; // 0..100, clamped
+  met: boolean; // allocated >= target
+}
+
+export interface GoalHistory {
+  /** The target used for EVERY point. The ledger has no historical monthlyTarget, so past
+   *  months are measured against today's goal — returned as data, not left to a caption, so
+   *  the UI text cannot drift from the arithmetic. Changing a goal rewrites its history. */
+  basis: "current-target";
+  target: Money;
+  points: GoalHistoryPoint[]; // oldest → newest, length = `months`
+}
+
+/**
+ * Per-month funding history for one envelope's monthly goal.
+ *
+ * `allocated` comes from `computeBudgetState`, NOT from summing `ledger.allocations`: the
+ * budget state adds automatic allocations derived from transaction flow (accounts linked to an
+ * envelope, 3.8) to the manual ones, and an envelope funded that way has no `Allocation` rows
+ * at all. Summing the raw table would show a flat zero history beside a correct current month.
+ *
+ * Returns `null` when the envelope is unknown or has no positive target — the same condition
+ * under which `goalProgress` returns `null`, and `goalProgress` is what decides `pct`/`met`
+ * here, so the per-month verdict and the live one can never disagree.
+ */
+export function computeGoalHistory(ledger: ClientLedger, envelopeId: string, month: string, months = 6): GoalHistory | null {
+  const envelope = ledger.envelopes.find((e) => e.id === envelopeId);
+  const target = envelope?.monthlyTarget ?? null;
+  if (!envelope || target === null || target <= 0) return null;
+
+  const window: string[] = [month];
+  for (let i = 0; i < months - 1; i++) window.unshift(prevMonth(window[0]!));
+
+  const points = window.map((m) => {
+    const state = computeBudgetState(ledger, m).envelopes.find((s) => s.envelope.id === envelopeId);
+    const allocated = state?.allocated ?? 0;
+    const progress = goalProgress({ monthlyTarget: target, allocated });
+    return { month: m, allocated, pct: progress?.pct ?? 0, met: progress?.funded ?? false };
+  });
+
+  return { basis: "current-target", target, points };
 }

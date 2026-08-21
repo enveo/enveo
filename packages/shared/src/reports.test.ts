@@ -2,13 +2,15 @@ import { describe, expect, it } from "bun:test";
 import fc from "fast-check";
 import { applyOp } from "./applyOp";
 import { computeBudgetState } from "./budget";
-import { acc, asClientLedger, env, grp, ledgerArb, tx } from "./ledger.test-support";
+import { goalProgress } from "./goals";
+import { acc, alloc, asClientLedger, env, grp, ledgerArb, tx } from "./ledger.test-support";
 import type { SyncOp } from "./ops";
 import {
   type CashflowPoint,
   computeCashflowSeries,
   computeDailySpending,
   computeEnvelopeTrends,
+  computeGoalHistory,
   computeNetWorthSeries,
   computeSpendingByDimension,
   largestExpenses,
@@ -785,5 +787,101 @@ describe("savingsRate", () => {
 
   it("empty series → both null", () => {
     expect(savingsRate([])).toEqual({ current: null, median: null });
+  });
+});
+
+describe("computeGoalHistory", () => {
+  const build = (target: number | null) => {
+    const a = acc({ id: "A", onBudget: true, initialBalance: 10_000_00 });
+    const g = grp();
+    const e = env(g.id, { id: "E", monthlyTarget: target });
+    return { a, g, e };
+  };
+
+  it("returns null when the envelope has no positive target", () => {
+    const { a, g, e } = build(null);
+    const l = asClientLedger({ accounts: [a], groups: [g], envelopes: [e], transactions: [], allocations: [] });
+    expect(computeGoalHistory(l, "E", "2026-07", 3)).toBeNull();
+
+    const zero = env(g.id, { id: "Z", monthlyTarget: 0 });
+    const l2 = asClientLedger({ accounts: [a], groups: [g], envelopes: [zero], transactions: [], allocations: [] });
+    expect(computeGoalHistory(l2, "Z", "2026-07", 3)).toBeNull();
+  });
+
+  it("returns null for an unknown envelope id", () => {
+    const { a, g, e } = build(100_00);
+    const l = asClientLedger({ accounts: [a], groups: [g], envelopes: [e], transactions: [], allocations: [] });
+    expect(computeGoalHistory(l, "MISSING", "2026-07", 3)).toBeNull();
+  });
+
+  it("walks the month window oldest → newest and marks met months", () => {
+    const { a, g, e } = build(100_00);
+    const l = asClientLedger({
+      accounts: [a],
+      groups: [g],
+      envelopes: [e],
+      transactions: [],
+      allocations: [alloc("E", "2026-05", 100_00), alloc("E", "2026-06", 50_00), alloc("E", "2026-07", 120_00)],
+    });
+    const h = computeGoalHistory(l, "E", "2026-07", 3);
+    expect(h).not.toBeNull();
+    expect(h!.basis).toBe("current-target");
+    expect(h!.target).toBe(100_00);
+    expect(h!.points.map((p) => p.month)).toEqual(["2026-05", "2026-06", "2026-07"]);
+    expect(h!.points.map((p) => p.allocated)).toEqual([100_00, 50_00, 120_00]);
+    expect(h!.points.map((p) => p.met)).toEqual([true, false, true]);
+    expect(h!.points[1]!.pct).toBeCloseTo(50, 6);
+  });
+
+  it("clamps pct at 100 and treats a month with no allocation as zero", () => {
+    const { a, g, e } = build(100_00);
+    const l = asClientLedger({
+      accounts: [a],
+      groups: [g],
+      envelopes: [e],
+      transactions: [],
+      allocations: [alloc("E", "2026-07", 300_00)],
+    });
+    const h = computeGoalHistory(l, "E", "2026-07", 2)!;
+    expect(h.points[0]!.allocated).toBe(0);
+    expect(h.points[0]!.pct).toBe(0);
+    expect(h.points[0]!.met).toBe(false);
+    expect(h.points[1]!.pct).toBe(100);
+    expect(h.points[1]!.met).toBe(true);
+  });
+
+  it("counts automatic allocations from transaction flow, not just manual ones", () => {
+    // The 3.8 trap: an account linked to an envelope allocates through transfers, and that
+    // allocation exists ONLY in computeBudgetState — never in ledger.allocations.
+    const onB = acc({ id: "ON", onBudget: true, initialBalance: 0 });
+    const offB = acc({ id: "OFF", onBudget: false, type: "savings", initialBalance: 0 });
+    const g = grp();
+    const e = env(g.id, { id: "E", monthlyTarget: 100_00 });
+    const l = asClientLedger({
+      accounts: [onB, offB],
+      groups: [g],
+      envelopes: [e],
+      transactions: [tx({ type: "transfer", accountId: "ON", toAccountId: "OFF", amount: 100_00, date: "2026-07-05", allocationToEnvelopeId: "E" })],
+      allocations: [],
+    });
+    const h = computeGoalHistory(l, "E", "2026-07", 1)!;
+    expect(h.points[0]!.allocated).toBe(100_00);
+    expect(h.points[0]!.met).toBe(true);
+  });
+
+  it("agrees with goalProgress for the current month", () => {
+    const { a, g, e } = build(80_00);
+    const l = asClientLedger({
+      accounts: [a],
+      groups: [g],
+      envelopes: [e],
+      transactions: [],
+      allocations: [alloc("E", "2026-07", 20_00)],
+    });
+    const h = computeGoalHistory(l, "E", "2026-07", 1)!;
+    const state = computeBudgetState(l, "2026-07").envelopes.find((x) => x.envelope.id === "E")!;
+    const gp = goalProgress({ monthlyTarget: 80_00, allocated: state.allocated })!;
+    expect(h.points[0]!.pct).toBeCloseTo(gp.pct, 6);
+    expect(h.points[0]!.met).toBe(gp.funded);
   });
 });
