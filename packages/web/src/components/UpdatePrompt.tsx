@@ -2,6 +2,7 @@ import { registerSW } from "virtual:pwa-register";
 import { useEffect, useRef, useState } from "react";
 import { useT } from "../lib/i18n";
 import { font, TEAL } from "../lib/theme";
+import { PHONE_COL } from "../lib/viewMode";
 
 /**
  * Registers the service worker in "prompt" mode and shows the "New version
@@ -55,7 +56,7 @@ export function UpdatePrompt() {
           display: "flex",
           alignItems: "center",
           gap: 10,
-          maxWidth: 420,
+          maxWidth: PHONE_COL,
           width: "calc(100% - 24px)",
           background: TEAL,
           color: "#fff",
