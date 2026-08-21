@@ -176,6 +176,67 @@ export function computeDailySpending(ledger: ClientLedger, month: string): Daily
   return [...byDate.entries()].map(([date, total]) => ({ date, total }));
 }
 
+export interface DaySpendingEnvelope {
+  envelopeId: string | null;
+  name: string;
+  color: string;
+  amount: Money;
+}
+
+export interface DaySpending {
+  date: string; // YYYY-MM-DD
+  total: Money;
+  count: number; // contributing expense transactions
+  txns: Transaction[]; // in ledger order
+  byEnvelope: DaySpendingEnvelope[]; // descending by amount
+}
+
+/**
+ * One calendar day, expanded — the Month report's day panel.
+ *
+ * The total is the same number `computeDailySpending` reports for this date, because both
+ * route every transaction through `expenseByDimension`: type "expense" only, refunds negative,
+ * portions assigned to a net-worth envelope excluded, transfers and income ignored. Keeping
+ * that single rule is the point — the calendar cell and the panel that opens under it must
+ * never disagree.
+ *
+ * A transaction counts once in `txns` however many envelopes its items touch; `byEnvelope`
+ * splits the money. An unassigned expense keeps the dimension label the spending report
+ * already uses, rather than inventing a second name for the same thing.
+ */
+export function computeDaySpending(ledger: ClientLedger, date: string): DaySpending {
+  const envGroup = new Map(ledger.envelopes.map((e) => [e.id, e.groupId]));
+  const savings = new Set(ledger.envelopes.filter((e) => e.isSavings).map((e) => e.id));
+  const byEnvelope = new Map<string | null, Money>();
+  const txns: Transaction[] = [];
+  let total = 0;
+
+  for (const t of ledger.transactions) {
+    if (t.date !== date) continue;
+    const parts = expenseByDimension(t, "envelope", envGroup, savings);
+    const amt = parts.reduce((s, [, a]) => s + a, 0);
+    if (parts.length === 0 || amt === 0) continue;
+    txns.push(t);
+    total += amt;
+    for (const [key, a] of parts) byEnvelope.set(key, (byEnvelope.get(key) ?? 0) + a);
+  }
+
+  const rows = [...byEnvelope.entries()]
+    .filter(([, amount]) => amount !== 0)
+    .map(([envelopeId, amount]) => {
+      const envelope = envelopeId === null ? undefined : ledger.envelopes.find((e) => e.id === envelopeId);
+      return {
+        envelopeId,
+        name: envelope?.name ?? NULL_LABEL.envelope,
+        color: envelope?.color ?? "",
+        amount,
+      };
+    })
+    .sort((a, b) => b.amount - a.amount);
+
+  return { date, total, count: txns.length, txns, byEnvelope: rows };
+}
+
 export interface PlaceStat {
   key: string;
   name: string;

@@ -9,6 +9,7 @@ import {
   type CashflowPoint,
   computeCashflowSeries,
   computeDailySpending,
+  computeDaySpending,
   computeEnvelopeTrends,
   computeGoalHistory,
   computeNetWorthSeries,
@@ -883,5 +884,130 @@ describe("computeGoalHistory", () => {
     const gp = goalProgress({ monthlyTarget: 80_00, allocated: state.allocated })!;
     expect(h.points[0]!.pct).toBeCloseTo(gp.pct, 6);
     expect(h.points[0]!.met).toBe(gp.funded);
+  });
+});
+
+describe("computeDaySpending", () => {
+  const setup = () => {
+    const a = acc({ id: "A", onBudget: true, initialBalance: 1_000_00 });
+    const g = grp();
+    const food = env(g.id, { id: "FOOD", name: "Jedzenie", color: "#7ca968" });
+    const fun = env(g.id, { id: "FUN", name: "Rozrywka", color: "#cc4a4a" });
+    const save = env(g.id, { id: "SAVE", name: "Oszczędności", color: "#f3c45f", isSavings: true });
+    return { a, g, food, fun, save };
+  };
+
+  it("totals a day's expenses and groups them by envelope, largest first", () => {
+    const { a, g, food, fun, save } = setup();
+    const l = asClientLedger({
+      accounts: [a],
+      groups: [g],
+      envelopes: [food, fun, save],
+      allocations: [],
+      transactions: [
+        tx({ id: "t1", accountId: "A", amount: 30_00, date: "2026-07-14", envelopeId: "FOOD" }),
+        tx({ id: "t2", accountId: "A", amount: 12_00, date: "2026-07-14", envelopeId: "FOOD" }),
+        tx({ id: "t3", accountId: "A", amount: 80_00, date: "2026-07-14", envelopeId: "FUN" }),
+        tx({ id: "t4", accountId: "A", amount: 99_00, date: "2026-07-15", envelopeId: "FUN" }),
+      ],
+    });
+    const d = computeDaySpending(l, "2026-07-14");
+    expect(d.date).toBe("2026-07-14");
+    expect(d.total).toBe(122_00);
+    expect(d.count).toBe(3);
+    expect(d.txns.map((t) => t.id)).toEqual(["t1", "t2", "t3"]);
+    expect(d.byEnvelope.map((r) => [r.envelopeId, r.amount])).toEqual([
+      ["FUN", 80_00],
+      ["FOOD", 42_00],
+    ]);
+    expect(d.byEnvelope[0]!.name).toBe("Rozrywka");
+    expect(d.byEnvelope[0]!.color).toBe("#cc4a4a");
+  });
+
+  it("excludes income and transfers, and subtracts refunds", () => {
+    const { a, g, food } = setup();
+    const b = acc({ id: "B", onBudget: true, initialBalance: 0 });
+    const l = asClientLedger({
+      accounts: [a, b],
+      groups: [g],
+      envelopes: [food],
+      allocations: [],
+      transactions: [
+        tx({ accountId: "A", amount: 50_00, date: "2026-07-14", envelopeId: "FOOD" }),
+        tx({ accountId: "A", amount: 20_00, date: "2026-07-14", envelopeId: "FOOD", isRefund: true }),
+        tx({ type: "income", accountId: "A", amount: 900_00, date: "2026-07-14" }),
+        tx({ type: "transfer", accountId: "A", toAccountId: "B", amount: 100_00, date: "2026-07-14" }),
+      ],
+    });
+    const d = computeDaySpending(l, "2026-07-14");
+    expect(d.total).toBe(30_00);
+  });
+
+  it("excludes spending assigned to a net-worth envelope", () => {
+    const { a, g, food, save } = setup();
+    const l = asClientLedger({
+      accounts: [a],
+      groups: [g],
+      envelopes: [food, save],
+      allocations: [],
+      transactions: [
+        tx({ accountId: "A", amount: 40_00, date: "2026-07-14", envelopeId: "FOOD" }),
+        tx({ accountId: "A", amount: 500_00, date: "2026-07-14", envelopeId: "SAVE" }),
+      ],
+    });
+    const d = computeDaySpending(l, "2026-07-14");
+    expect(d.total).toBe(40_00);
+    expect(d.byEnvelope.map((r) => r.envelopeId)).toEqual(["FOOD"]);
+  });
+
+  it("splits a transaction across its items", () => {
+    const { a, g, food, fun } = setup();
+    const l = asClientLedger({
+      accounts: [a],
+      groups: [g],
+      envelopes: [food, fun],
+      allocations: [],
+      transactions: [
+        tx({
+          accountId: "A",
+          amount: 100_00,
+          date: "2026-07-14",
+          items: [
+            { id: "i1", envelopeId: "FOOD", amount: 70_00, categoryId: null },
+            { id: "i2", envelopeId: "FUN", amount: 30_00, categoryId: null },
+          ],
+        }),
+      ],
+    });
+    const d = computeDaySpending(l, "2026-07-14");
+    expect(d.total).toBe(100_00);
+    expect(d.byEnvelope.map((r) => [r.envelopeId, r.amount])).toEqual([
+      ["FOOD", 70_00],
+      ["FUN", 30_00],
+    ]);
+  });
+
+  it("an empty day is zero, not a crash", () => {
+    const { a, g, food } = setup();
+    const l = asClientLedger({ accounts: [a], groups: [g], envelopes: [food], allocations: [], transactions: [] });
+    const d = computeDaySpending(l, "2026-07-14");
+    expect(d).toEqual({ date: "2026-07-14", total: 0, count: 0, txns: [], byEnvelope: [] });
+  });
+
+  it("the day total matches computeDailySpending for the same day", () => {
+    const { a, g, food, fun } = setup();
+    const l = asClientLedger({
+      accounts: [a],
+      groups: [g],
+      envelopes: [food, fun],
+      allocations: [],
+      transactions: [
+        tx({ accountId: "A", amount: 30_00, date: "2026-07-14", envelopeId: "FOOD" }),
+        tx({ accountId: "A", amount: 45_00, date: "2026-07-14", envelopeId: "FUN" }),
+        tx({ accountId: "A", amount: 11_00, date: "2026-07-14", envelopeId: "FOOD", isRefund: true }),
+      ],
+    });
+    const fromMonth = computeDailySpending(l, "2026-07").find((p) => p.date === "2026-07-14")!;
+    expect(computeDaySpending(l, "2026-07-14").total).toBe(fromMonth.total);
   });
 });
