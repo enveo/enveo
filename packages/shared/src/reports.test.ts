@@ -941,6 +941,25 @@ describe("computeDaySpending", () => {
     });
     const d = computeDaySpending(l, "2026-07-14");
     expect(d.total).toBe(30_00);
+    expect(d.count).toBe(2); // both the expense and refund are listed in txns
+  });
+
+  it("unassigned expense appears under NULL_LABEL.envelope", () => {
+    const { a, g, food } = setup();
+    const l = asClientLedger({
+      accounts: [a],
+      groups: [g],
+      envelopes: [food],
+      allocations: [],
+      transactions: [tx({ accountId: "A", amount: 40_00, date: "2026-07-14", envelopeId: null })],
+    });
+    const d = computeDaySpending(l, "2026-07-14");
+    expect(d.total).toBe(40_00);
+    expect(d.byEnvelope).toHaveLength(1);
+    expect(d.byEnvelope[0]!.envelopeId).toBeNull();
+    // Value pinned to NULL_LABEL.envelope in reports.ts
+    expect(d.byEnvelope[0]!.name).toBe("Bez koperty");
+    expect(d.byEnvelope[0]!.amount).toBe(40_00);
   });
 
   it("excludes spending assigned to a net-worth envelope", () => {
@@ -981,6 +1000,8 @@ describe("computeDaySpending", () => {
     });
     const d = computeDaySpending(l, "2026-07-14");
     expect(d.total).toBe(100_00);
+    expect(d.count).toBe(1); // one transaction spanning two envelopes
+    expect(d.txns).toHaveLength(1); // appears once, not once per item
     expect(d.byEnvelope.map((r) => [r.envelopeId, r.amount])).toEqual([
       ["FOOD", 70_00],
       ["FUN", 30_00],
