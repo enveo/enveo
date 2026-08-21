@@ -5,7 +5,17 @@
  * Non-positive budgets deliberately have `pct: null`; overspending remains `left < 0`.
  */
 import { describe, expect, test } from "bun:test";
-import { type BudgetUsage, budgetRowPresentation, budgetsOverAmount, budgetsSummary, budgetUsage, compareBudgetUsageRows } from "./reportSummary";
+import {
+  type BudgetPace,
+  type BudgetUsage,
+  budgetPace,
+  budgetRowPresentation,
+  budgetsOverAmount,
+  budgetsSummary,
+  budgetUsage,
+  compareBudgetUsageRows,
+  monthProgress,
+} from "./reportSummary";
 
 const envRow = (over: Partial<{ archived: boolean; allocated: number; carryIn: number; spent: number }> = {}) => ({
   archived: false,
@@ -157,5 +167,85 @@ describe("budgetsOverAmount", () => {
         envRow({ allocated: 1000, spent: 500 }), // ok, not counted
       ]),
     ).toBe(600);
+  });
+});
+
+describe("monthProgress", () => {
+  test("a past month is complete, a future month has not started", () => {
+    expect(monthProgress("2026-06", "2026-07-14")).toBe(1);
+    expect(monthProgress("2026-08", "2026-07-14")).toBe(0);
+  });
+
+  test("the current month is the elapsed fraction, day-inclusive", () => {
+    expect(monthProgress("2026-07", "2026-07-14")).toBeCloseTo(14 / 31, 6);
+    expect(monthProgress("2026-07", "2026-07-01")).toBeCloseTo(1 / 31, 6);
+    expect(monthProgress("2026-07", "2026-07-31")).toBe(1);
+  });
+
+  test("short and leap months use their own length", () => {
+    expect(monthProgress("2026-02", "2026-02-14")).toBeCloseTo(14 / 28, 6);
+    expect(monthProgress("2024-02", "2024-02-14")).toBeCloseTo(14 / 29, 6);
+  });
+});
+
+describe("budgetPace", () => {
+  const row = (over: Partial<{ archived: boolean; allocated: number; carryIn: number; spent: number }> = {}) => ({
+    archived: false,
+    allocated: 0,
+    carryIn: 0,
+    spent: 0,
+    ...over,
+  });
+
+  test("overspent stays over even when the pace looks calm", () => {
+    const p: BudgetPace = budgetPace(row({ allocated: 100_00, spent: 130_00 }), 0.5);
+    expect(p.bucket).toBe("over");
+  });
+
+  test("a zero budget with spending is over, never usedUp — the floored-denominator trap", () => {
+    expect(budgetPace(row({ allocated: 0, spent: 1 }), 0.5).bucket).toBe("over");
+  });
+
+  test("near the limit is preserved from budgetUsage", () => {
+    // 90% spent, money still left → near
+    expect(budgetPace(row({ allocated: 100_00, spent: 90_00 }), 0.5).bucket).toBe("near");
+  });
+
+  test("spent exactly to the limit is usedUp, not near and not over", () => {
+    expect(budgetPace(row({ allocated: 100_00, spent: 100_00 }), 0.5).bucket).toBe("usedUp");
+  });
+
+  test("a calm envelope whose pace overshoots the budget is risk", () => {
+    // 60.00 of a 100.00 budget spent with 40% of the month gone → projected 150.00
+    const p = budgetPace(row({ allocated: 100_00, spent: 60_00 }), 0.4);
+    expect(p.projected).toBe(150_00);
+    expect(p.bucket).toBe("risk");
+  });
+
+  test("a calm envelope whose pace lands inside the budget is ok", () => {
+    const p = budgetPace(row({ allocated: 100_00, spent: 30_00 }), 0.5);
+    expect(p.projected).toBe(60_00);
+    expect(p.bucket).toBe("ok");
+  });
+
+  test("risk cannot fire once the month is over — projection equals reality", () => {
+    const p = budgetPace(row({ allocated: 100_00, spent: 60_00 }), 1);
+    expect(p.projected).toBe(60_00);
+    expect(p.bucket).toBe("ok");
+  });
+
+  test("no spending never projects a risk, and progress 0 does not divide by zero", () => {
+    const p = budgetPace(row({ allocated: 100_00, spent: 0 }), 0);
+    expect(p.projected).toBe(0);
+    expect(p.bucket).toBe("ok");
+  });
+
+  test("an envelope with no budget at all and no spending is ok", () => {
+    expect(budgetPace(row({}), 0.5).bucket).toBe("ok");
+  });
+
+  test("carryIn counts toward the budget", () => {
+    // 40.00 carried in + 60.00 allocated = 100.00 budget; 30.00 spent at half the month
+    expect(budgetPace(row({ allocated: 60_00, carryIn: 40_00, spent: 30_00 }), 0.5).bucket).toBe("ok");
   });
 });
