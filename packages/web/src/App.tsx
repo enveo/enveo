@@ -14,7 +14,7 @@ import { store } from "./lib/store";
 import { bootOnce, retryBoot } from "./lib/sync";
 import { font, P, TEAL } from "./lib/theme";
 import type { TransactionFilters } from "./lib/transactionSearch";
-import { PHONE_COL, useViewMode } from "./lib/viewMode";
+import { PHONE_COL } from "./lib/viewMode";
 import { AddScreen, type Tab as AddTab } from "./screens/Add";
 import { LoginScreen } from "./screens/Login";
 import type { ReportTab, ReportView } from "./screens/reports/types";
@@ -188,13 +188,12 @@ export default function App() {
   };
   const prev = () => setMonth((m) => shiftMonth(m, -1));
   const next = () => setMonth((m) => shiftMonth(m, 1));
-  // The layout mode drives structure (PR 4 onward). Today nothing branches on it yet; it is
-  // read here so the subscription is mounted once, at the root, exactly like the theme's.
-  const mode = useViewMode();
-  // The decorative frame is NOT the layout mode: it only says "the phone column does not fill
-  // this window", which starts far below the fold threshold. Kept at its historical 500px so
-  // this refactor changes no pixels. `mode` is deliberately referenced so the value is live.
-  const framed = mode !== "phone" || (typeof window !== "undefined" && window.innerWidth > PHONE_COL + 80);
+  // The decorative frame around the phone column: it appears once the window is meaningfully
+  // wider than that column (a rounded corner + shadow so the card reads as a deliberate frame,
+  // not a stray narrow window). This is NOT the layout mode — it is kept on its historical
+  // 500px threshold (PHONE_COL + 80) so this refactor changes no pixels; the layout mode
+  // (`useViewMode`) has no consumer yet and lands with the navigation rail in a later PR.
+  const framed = typeof window !== "undefined" && window.innerWidth > PHONE_COL + 80;
   // Desktop backdrop: on narrow (phone) viewports the ~420px column already fills the
   // screen, so this stays transparent — nothing changes there. On wide viewports it's a
   // full-viewport translucent tint layered over the theme background (set on <html> by
