@@ -4,7 +4,30 @@ import { ReportShell } from "../../components/reportKit";
 import { useTheme } from "../../lib/contexts";
 import { monthLabel, monthShortLabel } from "../../lib/dates";
 import { useT } from "../../lib/i18n";
+import type { Theme } from "../../lib/theme";
 import { type Mask, TITLES } from "./types";
+
+/** Header cell base style for the In/Out/Left over table (per-column `textAlign`/`paddingLeft`
+ *  layered on by the caller). */
+const headCellStyle = (C: Theme): React.CSSProperties => ({
+  padding: "9px 0 7px",
+  borderBottom: `1px solid ${C.line}`,
+  fontSize: 9.5,
+  fontWeight: 750,
+  letterSpacing: "0.12em",
+  textTransform: "uppercase",
+  color: C.mute,
+});
+
+/** Body cell base style for the same table (per-column `textAlign`/`paddingLeft`/color/weight
+ *  layered on by the caller). */
+const bodyCellStyle = (C: Theme): React.CSSProperties => ({
+  padding: "8px 0",
+  borderBottom: `1px solid ${C.line}`,
+  fontSize: 12.5,
+  fontVariantNumeric: "tabular-nums",
+  verticalAlign: "baseline",
+});
 
 /**
  * "Cashflow" tab (Gabinet grammar, no dedicated mockup frame — follows A2/A3): band hero = the
@@ -21,12 +44,10 @@ import { type Mask, TITLES } from "./types";
  * No `bandChart`: the body chart (`CashflowColumns`, below) now carries the monthly shape, so a
  * band-level chart would just repeat it — same reasoning `TrendsReport.tsx:14` gives for having
  * none. The band keeps eyebrow/hero/sub only. Body: the Income/Expense/Net stat trio, then the
- * labelled diverging column chart, then the existing per-row bars — each row now labeled with a
- * 2-digit year suffix ("sie ’25") since a 12-mo window almost always crosses a year boundary;
- * applied to EVERY row for consistency, and the label column widened
- * 48→82px to fit it — measured live (agent-browser, PL locale): `monthLabel` uses the FULL
- * Intl "long" month name (Polish has no short form here), and "Październik’25" alone needs 79px
- * (`scrollWidth`), so 64px — the initially-planned width — still clipped into the bar column.
+ * labelled diverging column chart (now `aria-hidden` — its per-column tooltip is unreachable by
+ * keyboard/screen reader), then the In/Out/Left over table (newest month first) that is the
+ * actual accessible source of the monthly split, then the current month's (differently-scoped,
+ * explicitly labelled) savings rate.
  */
 export function CashflowReport({
   cashflow,
@@ -49,15 +70,15 @@ export function CashflowReport({
   const totIncome = cashflow.reduce((s, p) => s + p.income, 0);
   const totExpense = cashflow.reduce((s, p) => s + p.expense, 0);
   const totNet = totIncome - totExpense;
-  const maxAbs = Math.max(...cashflow.map((p) => Math.abs(p.net)), 1);
   // 12-mo AGGREGATE rate — same window as the hero, so hero/sub never disagree in sign.
   const aggRate = totIncome > 0 ? totNet / totIncome : null;
   const aggPct = aggRate !== null ? Math.round(aggRate * 100) : null;
   const srMedian = savingsRate(cashflow).median;
   const srNormPct = srMedian !== null ? Math.round(srMedian * 100) : null;
-  // Month label with a 2-digit year suffix ("sie ’25") — the year is numeric so it needs no i18n
-  // key; captures `lang` from the closure above.
-  const rowLabel = (m: string) => `${monthLabel(m, lang).split(" ")[0]}’${m.slice(2, 4)}`;
+  const currentPct = (() => {
+    const cur = savingsRate(cashflow).current;
+    return cur !== null ? Math.round(cur * 100) : null;
+  })();
   return (
     <ReportShell
       title={t(TITLES.cashflow)}
@@ -99,42 +120,66 @@ export function CashflowReport({
           <CashflowColumns cashflow={cashflow} M={M} />
         </div>
       )}
-      {cashflow.map((p) => {
-        const w = (Math.abs(p.net) / maxAbs) * 50;
-        return (
-          <div key={p.month} style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 7 }}>
-            <span style={{ fontSize: 11, color: C.soft, width: 82, textAlign: "right", flexShrink: 0 }}>{rowLabel(p.month)}</span>
-            <div style={{ flex: 1, position: "relative", height: 12 }}>
-              <div style={{ position: "absolute", left: "50%", top: 0, bottom: 0, width: 1, background: C.line }} />
-              <div
-                style={{
-                  position: "absolute",
-                  top: 2,
-                  height: 8,
-                  borderRadius: 3,
-                  background: p.net >= 0 ? C.pos : C.neg,
-                  left: p.net >= 0 ? "50%" : `${50 - w}%`,
-                  width: `${w}%`,
-                }}
-              />
-            </div>
-            <span
-              style={{
-                fontSize: 11.5,
-                fontWeight: 600,
-                color: p.net >= 0 ? C.pos : C.neg,
-                width: 80,
-                textAlign: "right",
-                flexShrink: 0,
-                fontVariantNumeric: "tabular-nums",
-              }}
-            >
-              {p.net >= 0 ? "+" : "−"}
-              {M(Math.abs(p.net))}
-            </span>
-          </div>
-        );
-      })}
+      {/* Per-month In/Out/Left over table — a real <table>, not a grid of divs: with
+       *  `CashflowColumns` now `aria-hidden` (its per-column tooltip is unreachable by keyboard
+       *  or screen reader), this table is the only accessible source of the monthly income/expense
+       *  split. Plain grid `<div>`s carry no row/column semantics, so a screen reader would read
+       *  twelve rows of bare numbers with no header association; `<th scope="col">` gives every
+       *  amount cell its column name for free. `table-layout: fixed` + an explicit-width first
+       *  `<col>` (44px) with three unset ones reproduces the design's "44px 1fr 1fr 1fr" grid
+       *  columns (unset table columns split remaining space evenly per CSS2.1 17.5.2.1). 44px was
+       *  measured against `monthShortLabel`'s longest form across all ten shipped locales — French
+       *  "mars"/"janv." (12.5px, weight 650) render at ~35/33.5px, comfortably inside 44px with the
+       *  8px column gap as extra margin. */}
+      <div style={{ border: `1px solid ${C.line}`, borderRadius: 12, padding: "2px 12px" }}>
+        <table style={{ width: "100%", borderCollapse: "collapse", tableLayout: "fixed" }}>
+          <colgroup>
+            <col style={{ width: 44 }} />
+            <col />
+            <col />
+            <col />
+          </colgroup>
+          <thead>
+            <tr>
+              <th style={{ ...headCellStyle(C), textAlign: "left" }} scope="col" />
+              <th style={{ ...headCellStyle(C), textAlign: "right", paddingLeft: 8 }} scope="col">
+                {t("In")}
+              </th>
+              <th style={{ ...headCellStyle(C), textAlign: "right", paddingLeft: 8 }} scope="col">
+                {t("Out")}
+              </th>
+              <th style={{ ...headCellStyle(C), textAlign: "right", paddingLeft: 8 }} scope="col">
+                {t("Left over")}
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {[...cashflow].reverse().map((p) => (
+              <tr key={p.month}>
+                <td style={{ ...bodyCellStyle(C), fontWeight: 650, color: C.text }}>{monthShortLabel(p.month, lang)}</td>
+                <td style={{ ...bodyCellStyle(C), textAlign: "right", paddingLeft: 8, color: C.soft }}>{M(p.income)}</td>
+                <td style={{ ...bodyCellStyle(C), textAlign: "right", paddingLeft: 8, color: C.soft }}>{M(p.expense)}</td>
+                <td
+                  style={{
+                    ...bodyCellStyle(C),
+                    textAlign: "right",
+                    paddingLeft: 8,
+                    fontWeight: 700,
+                    color: p.net >= 0 ? C.pos : C.neg,
+                  }}
+                >
+                  {p.net >= 0 ? "+" : "−"}
+                  {M(Math.abs(p.net))}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        <span style={{ display: "block", fontSize: 10, color: C.mute, padding: "7px 0 8px" }}>
+          {t("Left over = income minus spending that month. Last 12 months, newest first.")}
+        </span>
+      </div>
+      {currentPct !== null && <div style={{ fontSize: 12.5, color: C.soft, marginTop: 10 }}>{t("Savings rate this month: {pct}%", { pct: currentPct })}</div>}
     </ReportShell>
   );
 }
@@ -161,7 +206,13 @@ function CashflowColumns({ cashflow, M }: { cashflow: CashflowPoint[]; M: Mask }
   const maxAbs = Math.max(...cashflow.map((p) => Math.abs(p.net)), 1);
   return (
     <div style={{ border: `1px solid ${C.line}`, borderRadius: 12, padding: "11px 12px" }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 3, height: 110 }}>
+      {/* aria-hidden on the columns row only, NOT the outer div: the scale caption below is a
+       *  sibling inside this same bordered box and is real information that must stay reachable.
+       *  The columns themselves carry their income/expense/net breakdown only in a `title`
+       *  tooltip, which is unreachable by keyboard or screen reader — the In/Out/Left over table
+       *  below now publishes the same per-month figures in accessible DOM, so this row becomes a
+       *  purely visual summary of data available elsewhere. */}
+      <div aria-hidden="true" style={{ display: "flex", alignItems: "center", gap: 3, height: 110 }}>
         {cashflow.map((p) => {
           const h = Math.max(3, Math.round((Math.abs(p.net) / maxAbs) * 52));
           return (
