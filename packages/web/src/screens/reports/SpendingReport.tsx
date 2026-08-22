@@ -1,5 +1,5 @@
 import { median, type SpendingDimension } from "@enveo/shared";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useBand } from "../../components/kit";
 import { Bar, DeltaTag, ReportShell, SegBar } from "../../components/reportKit";
 import type { StateResponse } from "../../lib/api";
@@ -25,10 +25,22 @@ const RANGES: Array<{ n: number; label: Message }> = [
 /**
  * "Spending" tab (frame A2): band = period total + delta vs the 3-mo median of expense (range
  * 1 only — longer ranges show the period instead) and a `SegBar` preview of the top-5 rows.
- * Body: dimension chips, a range control, then per-row bars in the row's OWN color — envelope
- * color when `dim==="envelope"`, a stable `ENV_PALETTE` rotation by row index otherwise (other
- * dimensions have no color of their own). Rows beyond the top 10 fold behind a "+ N more"
- * toggle (local `useState` — expands in place, same idiom as the hub's account list).
+ * Body: dimension chips, a range control, an optional "without X, Y · Reset" bar, then per-row
+ * bars in the row's OWN color — envelope color when `dim==="envelope"`, a stable `ENV_PALETTE`
+ * rotation by the row's position in the FULL unfiltered sort order otherwise (other dimensions
+ * have no color of their own). Rows beyond the top 10 fold behind a "+ N more" toggle (local
+ * `useState` — expands in place, same idiom as the hub's account list).
+ *
+ * Per-row exclusion (`✕`/`↩`) is a pure presentation filter over `spending`, kept local rather
+ * than lifted to `Reports.tsx`: it needs no re-fetch and naturally resets when the user leaves
+ * this tab (the parent unmounts this component). It DOES reset on a dimension change, because
+ * the key space changes entirely (an envelope id under `envelope`, a category id under
+ * `category`, …) — a stale exclusion from the old dimension would otherwise silently re-apply
+ * if the user switches back. It stays untouched across a range or month change, where the key
+ * space is unchanged and the exclusion remains meaningful. The band hero/delta and the fold's
+ * "+ N more" amount recompute from the still-included rows; the fold's row COUNT does not (it
+ * counts every hidden row, excluded or not — "how many rows are hidden" is a different question
+ * than "how much of my countable spend is hidden").
  */
 export function SpendingReport({
   spending,
@@ -63,30 +75,51 @@ export function SpendingReport({
   const { t, tp, lang } = useT();
   const { hc } = useBand();
   const [expanded, setExpanded] = useState(false);
+  const [excluded, setExcluded] = useState<ReadonlySet<string | null>>(new Set());
+  const [, setSelectedKey] = useState<string | null>(null); // selection itself is consumed by Task 3's detail card
+  useEffect(() => {
+    setExpanded(false);
+    setExcluded(new Set());
+    setSelectedKey(null);
+  }, [dim]);
 
-  const spTotal = spending.reduce((s, r) => s + r.amount, 0);
-  const spMax = Math.max(...spending.map((r) => r.amount), 1);
+  // Position in the FULL, unfiltered sort order — built once per render, independent of any
+  // filter, so excluding/restoring a row never repaints a DIFFERENT row's color (a filtered
+  // subset's index shifts every time a row ahead of it is excluded).
+  const rowIndexOf = new Map(spending.map((r, i) => [r.key, i]));
+  const envColor = new Map(state.envelopes.map((e) => [e.id, e.color]));
+  const rowColor = (key: string | null): string =>
+    (dim === "envelope" && key && envColor.get(key)) || ENV_PALETTE[(rowIndexOf.get(key) ?? 0) % ENV_PALETTE.length]!;
+
+  const includedRows = spending.filter((r) => !excluded.has(r.key));
+  const spTotal = includedRows.reduce((s, r) => s + r.amount, 0);
+  const spTop = Math.max(...includedRows.map((r) => r.amount), 1); // bar denominator re-baselines to the largest REMAINING row
   // baseline = median of the 3 months BEFORE `month` (cashflow always ends at `month`) — same
-  // idiom as the hub's SpendingMini card, duplicated here rather than extracted.
+  // idiom as the hub's SpendingMini card, duplicated here rather than extracted. Deliberately
+  // exclusion-UNaware: an honest "adjusted vs normal" comparison, not a claim the baseline is
+  // exclusion-adjusted too.
   const baseline3 = median(cashflow.slice(-4, -1).map((p) => p.expense));
   const totalDelta = baseline3 > 0 ? (spTotal - baseline3) / baseline3 : null;
 
-  const envColor = new Map(state.envelopes.map((e) => [e.id, e.color]));
-  const rowColor = (r: { key: string | null }, i: number): string =>
-    (dim === "envelope" && r.key && envColor.get(r.key)) || ENV_PALETTE[i % ENV_PALETTE.length]!;
-
-  const top5 = spending.slice(0, 5);
-  const restAmt = Math.max(0, spTotal - top5.reduce((s, r) => s + r.amount, 0));
+  const included5 = includedRows.slice(0, 5);
+  const restAmt = Math.max(0, spTotal - included5.reduce((s, r) => s + r.amount, 0));
   // on a Duet band the "rest" segment must still read on navy — a low-alpha tint of the header
   // ink; a plain theme falls back to the ordinary track color.
   const restColor = hc(tint(C.headerInk, 0.25), C.line);
   const segments = [
-    ...top5.map((r, i) => ({ weight: Math.max(0, r.amount), color: rowColor(r, i) })),
+    ...included5.map((r) => ({ weight: Math.max(0, r.amount), color: rowColor(r.key) })),
     ...(restAmt > 0 ? [{ weight: restAmt, color: restColor }] : []),
   ];
 
+  const excludedNames = spending.filter((r) => excluded.has(r.key)).map((r) => r.name);
+
+  // SAME array both times — no index/array mismatch between the shown rows and the folded tail
+  // (folding over a filtered array while summing a differently-sized one undercounts the tail
+  // once anything ahead of it is excluded).
   const shown = expanded ? spending : spending.slice(0, 10);
-  const rest = spending.slice(10);
+  const restRows = spending.slice(shown.length);
+  const restCount = restRows.length;
+  const restAmount = restRows.filter((r) => !excluded.has(r.key)).reduce((s, r) => s + r.amount, 0);
 
   return (
     <ReportShell
@@ -167,35 +200,105 @@ export function SpendingReport({
           </button>
         ))}
       </div>
+      {excludedNames.length > 0 && (
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: 8,
+            background: C.bg,
+            border: `1px solid ${C.line}`,
+            borderRadius: 10,
+            padding: "7px 11px",
+            marginBottom: 12,
+          }}
+        >
+          <span style={{ fontSize: 11, color: C.soft, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            {t("Without {names}", { names: excludedNames.join(", ") })}
+          </span>
+          <button
+            onClick={() => setExcluded(new Set())}
+            style={{
+              flexShrink: 0,
+              background: "none",
+              border: "none",
+              padding: 0,
+              fontSize: 11,
+              fontWeight: 650,
+              color: "var(--accent)",
+              cursor: "pointer",
+              fontFamily: "inherit",
+            }}
+          >
+            {t("Reset")}
+          </button>
+        </div>
+      )}
       {spending.length === 0 && <div style={{ fontSize: 12.5, color: C.mute, padding: "8px 0" }}>{t("No spending in this period.")}</div>}
-      {shown.map((r, i) => {
-        const color = rowColor(r, i);
+      {shown.map((r) => {
+        const isExcluded = excluded.has(r.key);
+        const color = rowColor(r.key);
         const baseline = spBaseline.get(r.key) ?? 0;
         const delta = baseline > 0 ? (r.amount - baseline) / baseline : null;
+        const share = !isExcluded && spTotal > 0 ? `${((r.amount / spTotal) * 100).toFixed(1)}%` : null;
+        const barPct = isExcluded ? 0 : (r.amount / spTop) * 100;
         return (
-          <div key={r.key ?? "none"} style={{ marginBottom: 12 }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 8, marginBottom: 3 }}>
-              <span
+          <div key={r.key ?? "none"} style={{ marginBottom: 12, opacity: isExcluded ? 0.45 : 1 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <button
+                onClick={() => !isExcluded && setSelectedKey((k) => (k === r.key ? null : r.key))}
                 style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 7,
-                  fontSize: 13.5,
-                  color: C.text,
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
-                  whiteSpace: "nowrap",
+                  flex: 1,
+                  minWidth: 0,
+                  textAlign: "left",
+                  background: "none",
+                  border: "none",
+                  padding: 0,
+                  cursor: isExcluded ? "default" : "pointer",
+                  fontFamily: "inherit",
                 }}
               >
-                <span aria-hidden style={{ width: 8, height: 8, borderRadius: 3, background: color, flexShrink: 0 }} />
-                {r.name}
-              </span>
-              <span style={{ fontSize: 13, fontWeight: 650, color: C.text, fontVariantNumeric: "tabular-nums", flexShrink: 0, marginLeft: 8 }}>
-                {M(r.amount)} · {Math.round(r.pct * 100)}%
-              </span>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 8, marginBottom: 3 }}>
+                  <span
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 7,
+                      fontSize: 13.5,
+                      color: C.text,
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      whiteSpace: "nowrap",
+                      textDecoration: isExcluded ? "line-through" : "none",
+                    }}
+                  >
+                    <span aria-hidden style={{ width: 8, height: 8, borderRadius: 3, background: color, flexShrink: 0 }} />
+                    {r.name}
+                  </span>
+                  <span style={{ fontSize: 13, fontWeight: 650, color: C.text, fontVariantNumeric: "tabular-nums", flexShrink: 0, marginLeft: 8 }}>
+                    {share ? `${M(r.amount)} · ${share}` : M(r.amount)}
+                  </span>
+                </div>
+                <Bar pct={barPct} color={color} />
+              </button>
+              <button
+                onClick={() =>
+                  setExcluded((prev) => {
+                    const next = new Set(prev);
+                    if (next.has(r.key)) next.delete(r.key);
+                    else next.add(r.key);
+                    return next;
+                  })
+                }
+                title={isExcluded ? t("Include again") : t("Exclude from the total")}
+                aria-label={isExcluded ? t("Include again") : t("Exclude from the total")}
+                style={{ flexShrink: 0, background: "none", border: "none", fontSize: 10.5, color: C.mute, padding: "6px 5px", cursor: "pointer" }}
+              >
+                {isExcluded ? "↩" : "✕"}
+              </button>
             </div>
-            <Bar pct={(r.amount / spMax) * 100} color={color} />
-            {range === 1 && (
+            {range === 1 && !isExcluded && (
               <div style={{ textAlign: "right", marginTop: 2, fontSize: 11, color: C.soft }}>
                 <DeltaTag pct={delta} /> {t("vs 3 mo")}
               </div>
@@ -203,7 +306,7 @@ export function SpendingReport({
           </div>
         );
       })}
-      {!expanded && rest.length > 0 && (
+      {!expanded && restCount > 0 && (
         <button
           onClick={() => setExpanded(true)}
           style={{
@@ -219,7 +322,7 @@ export function SpendingReport({
             fontFamily: "inherit",
           }}
         >
-          {tp("+ {n} more · {amount} | + {n} more · {amount}", rest.length, { amount: M(rest.reduce((s, r) => s + r.amount, 0)) })}
+          {tp("+ {n} more · {amount} | + {n} more · {amount}", restCount, { amount: M(restAmount) })}
         </button>
       )}
     </ReportShell>
