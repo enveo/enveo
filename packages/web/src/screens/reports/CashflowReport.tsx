@@ -5,6 +5,7 @@ import { useTheme } from "../../lib/contexts";
 import { monthLabel } from "../../lib/dates";
 import { useT } from "../../lib/i18n";
 import { tint } from "../../lib/theme";
+import { useElementWidth } from "../../lib/useElementWidth";
 import { type Mask, TITLES } from "./types";
 
 /**
@@ -148,15 +149,17 @@ export function CashflowReport({
  * tiny centered cluster with ~130px of navy margin on each side. The fix is a FULL-width viewBox
  * (~358, matching the band's available width — the same idiom `NetWorthChart`/`Sparkline` already
  * use) with bar geometry recomputed to fill it (`barW = (W − (n−1)·gap) / n`), NOT
- * `preserveAspectRatio="none"` — that would non-uniformly stretch the rounded caps into ellipses. */
+ * `preserveAspectRatio="none"` — that would non-uniformly stretch the rounded caps into ellipses.
+ * A hardcoded `W` only holds at the one viewport it was measured on, though — it re-letterboxes
+ * at any other width — so `W` is now measured from the band's own container instead. */
 function CashflowBandChart({ cashflow }: { cashflow: { month: string; income: number; expense: number; net: number }[] }) {
   const C = useTheme();
   const { hc } = useBand();
-  const W = 358,
-    gap = 6,
+  const gap = 6,
     H = 60,
     base = H / 2,
     maxH = 24;
+  const [boxRef, W] = useElementWidth<HTMLDivElement>(358);
   const n = cashflow.length;
   const barW = (W - Math.max(0, n - 1) * gap) / n;
   const maxAbs = Math.max(...cashflow.map((p) => Math.abs(p.net)), 1);
@@ -164,15 +167,17 @@ function CashflowBandChart({ cashflow }: { cashflow: { month: string; income: nu
   const negColor = hc(C.headerNeg, C.neg);
   const baseColor = hc(tint(C.headerInk, 0.25), C.line);
   return (
-    <svg viewBox={`0 0 ${W} ${H}`} width="100%" height={H} aria-hidden="true" style={{ display: "block", marginTop: 10 }}>
-      <line x1={0} y1={base} x2={W} y2={base} style={{ stroke: baseColor }} strokeWidth={1} />
-      {cashflow.map((p, i) => {
-        const x = i * (barW + gap);
-        if (p.net === 0) return <rect key={p.month} x={x} y={base - 0.5} width={barW} height={1} style={{ fill: baseColor }} />;
-        const h = Math.max(3, Math.round((Math.abs(p.net) / maxAbs) * maxH));
-        const y = p.net > 0 ? base - h : base;
-        return <rect key={p.month} x={x} y={y} width={barW} height={h} rx={2} style={{ fill: p.net > 0 ? posColor : negColor }} />;
-      })}
-    </svg>
+    <div ref={boxRef} style={{ marginTop: 10 }}>
+      <svg viewBox={`0 0 ${W} ${H}`} width="100%" height={H} aria-hidden="true" style={{ display: "block" }}>
+        <line x1={0} y1={base} x2={W} y2={base} style={{ stroke: baseColor }} strokeWidth={1} />
+        {cashflow.map((p, i) => {
+          const x = i * (barW + gap);
+          if (p.net === 0) return <rect key={p.month} x={x} y={base - 0.5} width={barW} height={1} style={{ fill: baseColor }} />;
+          const h = Math.max(3, Math.round((Math.abs(p.net) / maxAbs) * maxH));
+          const y = p.net > 0 ? base - h : base;
+          return <rect key={p.month} x={x} y={y} width={barW} height={h} rx={2} style={{ fill: p.net > 0 ? posColor : negColor }} />;
+        })}
+      </svg>
+    </div>
   );
 }

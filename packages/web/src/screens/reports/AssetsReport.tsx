@@ -5,6 +5,7 @@ import { useTheme } from "../../lib/contexts";
 import { monthLabel } from "../../lib/dates";
 import { useT } from "../../lib/i18n";
 import { TEAL } from "../../lib/theme";
+import { useElementWidth } from "../../lib/useElementWidth";
 import { type Mask, TITLES } from "./types";
 
 /**
@@ -95,6 +96,7 @@ export function AssetsReport({
 function NetWorthChart({ points, mask, onBand }: { points: { month: string; total: number }[]; mask: Mask; onBand?: boolean }) {
   const C = useTheme();
   const { t, lang } = useT();
+  const [boxRef, W] = useElementWidth<HTMLDivElement>(340);
   const n = points.length;
   if (n === 0) return null;
   const totals = points.map((p) => p.total);
@@ -102,8 +104,7 @@ function NetWorthChart({ points, mask, onBand }: { points: { month: string; tota
   const max = Math.max(...totals);
   const range = max - min || 1;
   const flat = max === min;
-  const W = 340,
-    H = 118,
+  const H = 118,
     padX = 6,
     padY = 12;
   const innerW = W - 2 * padX,
@@ -117,8 +118,8 @@ function NetWorthChart({ points, mask, onBand }: { points: { month: string; tota
   const hole = onBand ? C.headerBg : C.bg;
   const caption = onBand ? C.headerMute : C.mute;
   return (
-    <div style={{ marginBottom: 6 }}>
-      <svg viewBox={`0 0 ${W} ${H}`} width="100%" style={{ display: "block", height: "auto" }} role="img" aria-label={t("Net worth over time")}>
+    <div ref={boxRef} style={{ marginBottom: 6 }}>
+      <svg viewBox={`0 0 ${W} ${H}`} width="100%" height={H} style={{ display: "block" }} role="img" aria-label={t("Net worth over time")}>
         {/* fill/stroke via style — var(--accent) does not work in SVG presentation attributes */}
         <path d={area} style={{ fill: stroke }} opacity={0.12} />
         <path d={line} fill="none" style={{ stroke }} strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" vectorEffect="non-scaling-stroke" />

@@ -4,6 +4,8 @@ import { useTheme } from "../lib/contexts";
 import { monthLabel } from "../lib/dates";
 import { useT } from "../lib/i18n";
 import { P, TEAL, type Theme } from "../lib/theme";
+import { useElementWidth } from "../lib/useElementWidth";
+import { Header } from "./chrome";
 import { useBand } from "./kit";
 
 /**
@@ -15,103 +17,85 @@ import { useBand } from "./kit";
  * attributes. Status colors (pos/warn/neg) never carry meaning alone; callers supply the label.
  */
 
-/** Subscreen band: back+title+month-nav row, then eyebrow/hero/sub and an optional chart slot,
- *  all on `C.headerBg` when the theme paints a Duet band (idiom moved verbatim from the inline
- *  block in Reports.tsx). Body `children` render below in a `className="fi rpt-body"` div —
- *  opacity-only animation, never `fu`/transform (a transformed ancestor breaks `position:fixed`
- *  sheets). The body carries its OWN `paddingTop` (14, matching the band's `paddingBottom` above
- *  it) so the band→content gap is consistent whether a subscreen's body starts with a section
- *  eyebrow (Budgets/Month), a hero-ish stat row (Assets/Cashflow/Spending) or bare rows (Goals/
- *  Trends) — previously this div had NO top padding, so only the first two groups' own baked-in
- *  top margins gave any breathing room, and Goals/Trends sat flush under the band (reported bug).
- *  The `rpt-body` class pairs with a global `!important` rule (chrome.tsx's injected stylesheet)
- *  that zeroes whichever element ends up as the body's actual first DOM child — simpler and more
- *  robust than hand-editing every subscreen's first element (Budgets' first section alone varies
- *  by data: Overspent/Near/Within budget each carry a different top margin). */
-export function ReportShell({
-  title,
-  month,
-  onPrev,
-  onNext,
-  onBack,
-  eyebrow,
-  hero,
-  sub,
-  bandChart,
-  children,
-}: {
-  title: string;
+/** Fields every `ReportShell` render needs regardless of variant. */
+type ReportShellCommon = {
   month: string;
   onPrev: () => void;
   onNext: () => void;
-  onBack: () => void;
   eyebrow: string;
   hero: ReactNode;
   sub?: ReactNode;
   bandChart?: ReactNode;
   children: ReactNode;
-}) {
+};
+
+/** Discriminated on `variant` so each caller's shape is checked at compile time — a subscreen
+ *  MUST pass `title`/`onBack` (and cannot pass `onMenu`/`onHeroClick`); a hub caller MUST pass
+ *  `onMenu` (and cannot pass `title`/`onBack`). `variant` defaults to `"subscreen"` (optional
+ *  literal in that member) so all seven existing subscreen call sites are unaffected. Before
+ *  this union, `title`/`onBack` were merely optional on one flat prop type, which would have let
+ *  a future subscreen call site compile while omitting `onBack` — a dead back-chevron button at
+ *  runtime, with nothing catching it (Task 4 fix round 1). */
+type ReportShellProps = ReportShellCommon &
+  (
+    | { variant?: "subscreen"; title: string; onBack: () => void; onMenu?: never; onHeroClick?: never }
+    | { variant: "hub"; onMenu: () => void; onHeroClick?: () => void; title?: never; onBack?: never }
+  );
+
+/** Report band: shared by every subscreen AND the hub (Task 4 — the two previously-forked
+ *  copies of this grammar are now one). Top row is `variant`-dependent (back+title+month-nav
+ *  for a subscreen, the app-chrome `Header` for the hub); everything below — eyebrow/hero/sub,
+ *  the optional `bandChart` slot, `hc()` for on-band ink — is identical between variants and
+ *  moved verbatim from the inline block in Reports.tsx / the hub's hand-rolled copy. The hub
+ *  additionally makes the eyebrow/hero/sub block a full-width button (`onHeroClick`) that opens
+ *  the Assets report — same button reset the hub always used. Body `children` render below in a
+ *  `className="fi rpt-body"` div — opacity-only animation, never `fu`/transform (a transformed
+ *  ancestor breaks `position:fixed` sheets). The body's `paddingTop` matches the band's own
+ *  `paddingBottom` above it (14 for a subscreen, matching that variant's top-row bottom padding
+ *  of 10 plus the eyebrow block's own spacing; 10 for the hub, matching `Header`'s tighter bottom
+ *  padding of 6) so the band→content gap is consistent whichever variant renders — previously a
+ *  subscreen's body div had NO top padding at all, so only some subscreens' own baked-in top
+ *  margins gave any breathing room, and Goals/Trends sat flush under the band (reported bug).
+ *  The `rpt-body` class pairs with a global `!important` rule (chrome.tsx's injected stylesheet)
+ *  that zeroes whichever element ends up as the body's actual first DOM child — simpler and more
+ *  robust than hand-editing every subscreen's first element (Budgets' first section alone varies
+ *  by data: Overspent/Near/Within budget each carry a different top margin). */
+export function ReportShell(props: ReportShellProps) {
+  const { month, onPrev, onNext, eyebrow, hero, sub, bandChart, children } = props;
   const C = useTheme();
   const { band, hc } = useBand();
   const { t, lang } = useT();
+  const heroBlock = (
+    <>
+      <div style={{ fontSize: 10.5, fontWeight: 750, letterSpacing: "0.17em", textTransform: "uppercase", color: hc(C.headerMute, C.mute) }}>{eyebrow}</div>
+      <div style={{ fontSize: 30, fontWeight: 750, color: hc(C.headerInk, C.text), fontVariantNumeric: "tabular-nums" }}>{hero}</div>
+      {sub != null && <div style={{ fontSize: 12, color: hc(C.headerMute, C.soft) }}>{sub}</div>}
+      {bandChart}
+    </>
+  );
   return (
     <>
       <div data-band={band || undefined} style={band ? { background: C.headerBg, paddingBottom: 14 } : { paddingBottom: 14 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 6, padding: `12px ${P}px 10px` }}>
-          <button
-            aria-label={t("Back")}
-            onClick={onBack}
-            style={{
-              flexShrink: 0,
-              width: 30,
-              height: 30,
-              borderRadius: 15,
-              border: "none",
-              background: "transparent",
-              color: hc(C.headerInk, C.text),
-              fontSize: 22,
-              lineHeight: 1,
-              cursor: "pointer",
-              padding: 0,
-              marginLeft: -6,
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-            }}
-          >
-            ‹
-          </button>
-          <span
-            style={{
-              flex: 1,
-              fontSize: 16,
-              fontWeight: 700,
-              color: hc(C.headerInk, C.text),
-              overflow: "hidden",
-              textOverflow: "ellipsis",
-              whiteSpace: "nowrap",
-            }}
-          >
-            {title}
-          </span>
-          <span style={{ display: "flex", alignItems: "center", gap: 0, flexShrink: 0 }}>
-            {/* 30x30 hit target (matches the back button above) around the same 17px glyph — a bare
-               `padding: "2px 7px"` box measured 21x21, under the touch-target floor (see task-14
-               report); aria-label reuses chrome.tsx's existing "Previous/Next month" keys so this
-               control reads the same as the global header's equivalent. */}
+        {props.variant === "hub" ? (
+          <Header month={month} onMenu={props.onMenu} onPrev={onPrev} onNext={onNext} onBand={band} />
+        ) : (
+          <div style={{ display: "flex", alignItems: "center", gap: 6, padding: `12px ${P}px 10px` }}>
             <button
-              aria-label={t("Previous month")}
-              onClick={onPrev}
+              aria-label={t("Back")}
+              onClick={props.onBack}
               style={{
+                flexShrink: 0,
+                width: 30,
+                height: 30,
+                borderRadius: 15,
                 border: "none",
                 background: "transparent",
-                color: hc(C.headerMute, C.soft),
-                fontSize: 17,
+                color: hc(C.headerInk, C.text),
+                fontSize: 22,
                 lineHeight: 1,
                 cursor: "pointer",
                 padding: 0,
-                width: 30,
-                height: 30,
+                marginLeft: -6,
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
@@ -119,42 +103,96 @@ export function ReportShell({
             >
               ‹
             </button>
-            <span style={{ fontSize: 12.5, fontWeight: 600, color: hc(C.headerInk, C.text), minWidth: 58, textAlign: "center" }}>
-              {monthLabel(month, lang).split(" ")[0]}
-            </span>
-            <button
-              aria-label={t("Next month")}
-              onClick={onNext}
+            <span
               style={{
-                border: "none",
-                background: "transparent",
-                color: hc(C.headerMute, C.soft),
-                fontSize: 17,
-                lineHeight: 1,
-                cursor: "pointer",
-                padding: 0,
-                width: 30,
-                height: 30,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
+                flex: 1,
+                fontSize: 16,
+                fontWeight: 700,
+                color: hc(C.headerInk, C.text),
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
               }}
             >
-              ›
-            </button>
-          </span>
-        </div>
-        <div style={{ padding: `0 ${P}px` }}>
-          <div style={{ fontSize: 10.5, fontWeight: 750, letterSpacing: "0.17em", textTransform: "uppercase", color: hc(C.headerMute, C.mute) }}>{eyebrow}</div>
-          <div style={{ fontSize: 30, fontWeight: 750, color: hc(C.headerInk, C.text), fontVariantNumeric: "tabular-nums" }}>{hero}</div>
-          {sub != null && <div style={{ fontSize: 12, color: hc(C.headerMute, C.soft) }}>{sub}</div>}
-          {bandChart}
-        </div>
+              {props.title}
+            </span>
+            <span style={{ display: "flex", alignItems: "center", gap: 0, flexShrink: 0 }}>
+              {/* 30x30 hit target (matches the back button above) around the same 17px glyph — a bare
+                 `padding: "2px 7px"` box measured 21x21, under the touch-target floor (see task-14
+                 report); aria-label reuses chrome.tsx's existing "Previous/Next month" keys so this
+                 control reads the same as the global header's equivalent. */}
+              <button
+                aria-label={t("Previous month")}
+                onClick={onPrev}
+                style={{
+                  border: "none",
+                  background: "transparent",
+                  color: hc(C.headerMute, C.soft),
+                  fontSize: 17,
+                  lineHeight: 1,
+                  cursor: "pointer",
+                  padding: 0,
+                  width: 30,
+                  height: 30,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
+              >
+                ‹
+              </button>
+              <span style={{ fontSize: 12.5, fontWeight: 600, color: hc(C.headerInk, C.text), minWidth: 58, textAlign: "center" }}>
+                {monthLabel(month, lang).split(" ")[0]}
+              </span>
+              <button
+                aria-label={t("Next month")}
+                onClick={onNext}
+                style={{
+                  border: "none",
+                  background: "transparent",
+                  color: hc(C.headerMute, C.soft),
+                  fontSize: 17,
+                  lineHeight: 1,
+                  cursor: "pointer",
+                  padding: 0,
+                  width: 30,
+                  height: 30,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
+              >
+                ›
+              </button>
+            </span>
+          </div>
+        )}
+        {props.variant === "hub" && props.onHeroClick ? (
+          <button
+            onClick={props.onHeroClick}
+            style={{
+              display: "block",
+              width: "100%",
+              background: "none",
+              border: "none",
+              padding: `10px ${P}px 0`,
+              textAlign: "left",
+              cursor: "pointer",
+              fontFamily: "inherit",
+            }}
+          >
+            {heroBlock}
+          </button>
+        ) : (
+          <div style={{ padding: props.variant === "hub" ? `10px ${P}px 0` : `0 ${P}px` }}>{heroBlock}</div>
+        )}
       </div>
       {/* Animation is `fi` ONLY (opacity) — `fu`/transform breaks position:fixed of sheets inside.
          `rpt-body` pairs with the global first-child margin-top reset (chrome.tsx) so this
-         paddingTop is the sole band→content gap across every subscreen. */}
-      <div className="fi rpt-body" style={{ padding: `14px ${P}px 0` }}>
+         paddingTop is the sole band→content gap across every subscreen. The hub keeps its own
+         10px top padding (its grid's existing spacing) rather than the subscreen's 14px — see
+         task-4 report for why that one won. */}
+      <div className="fi rpt-body" style={{ padding: `${props.variant === "hub" ? 10 : 14}px ${P}px 0` }}>
         {children}
       </div>
     </>
@@ -297,7 +335,9 @@ function polylineCoords(series: number[], w: number, h: number, pad: number): (r
 
 /** Bare polyline sparkline over a plain `number[]` — same shape as `Sparkline` but color is a
  *  prop (stroke via `style`, never an attribute) so callers can use it for series other than
- *  net worth (e.g. per-envelope trend rows). */
+ *  net worth (e.g. per-envelope trend rows). Its width is intentionally caller-supplied (`w` prop)
+ *  because it renders inside fixed-width row slots beside text, where the size is a layout decision
+ *  the caller owns; measuring would be incorrect here. */
 export function TrendSpark({ series, color, w = 64, h = 24 }: { series: number[]; color: string; w?: number; h?: number }) {
   const n = series.length;
   if (n < 2) return null;
@@ -326,10 +366,10 @@ export function TrendSpark({ series, color, w = 64, h = 24 }: { series: number[]
  *  (e.g. `hc(C.headerInk, "var(--accent)")`) when painted on a Duet navy band, where TEAL would be
  *  invisible (navy on navy). `dotColor` is opt-in — omitted (the default) draws no last-point dot at all. */
 export function Sparkline({ points, stroke = TEAL, dotColor }: { points: { month: string; total: number }[]; stroke?: string; dotColor?: string }) {
+  const [boxRef, W] = useElementWidth<HTMLDivElement>(320);
   const n = points.length;
   if (n < 2) return null;
-  const W = 320,
-    H = 44,
+  const H = 44,
     pad = 3;
   const coords = polylineCoords(
     points.map((p) => p.total),
@@ -340,9 +380,11 @@ export function Sparkline({ points, stroke = TEAL, dotColor }: { points: { month
   const pts = coords.map(([x, y]) => `${x.toFixed(1)},${y.toFixed(1)}`).join(" ");
   const last = coords[coords.length - 1]!;
   return (
-    <svg viewBox={`0 0 ${W} ${H}`} width="100%" height={44} aria-hidden style={{ display: "block", marginTop: 8 }}>
-      <polyline points={pts} fill="none" style={{ stroke }} strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" vectorEffect="non-scaling-stroke" />
-      {dotColor && <circle cx={last[0]} cy={last[1]} r={3.5} style={{ fill: dotColor }} />}
-    </svg>
+    <div ref={boxRef} style={{ marginTop: 8 }}>
+      <svg viewBox={`0 0 ${W} ${H}`} width="100%" height={44} aria-hidden style={{ display: "block" }}>
+        <polyline points={pts} fill="none" style={{ stroke }} strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" vectorEffect="non-scaling-stroke" />
+        {dotColor && <circle cx={last[0]} cy={last[1]} r={3.5} style={{ fill: dotColor }} />}
+      </svg>
+    </div>
   );
 }
