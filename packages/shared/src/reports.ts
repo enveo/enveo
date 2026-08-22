@@ -419,6 +419,115 @@ export function spendingBaseline(ledger: ClientLedger, month: string, dim: Spend
   return result;
 }
 
+export interface SpendingDetailRow {
+  key: string | null;
+  name: string;
+  amount: Money;
+}
+
+export interface SpendingDetail {
+  /** The OTHER natural dimension: "place" unless `dim` already is "place" (then "envelope"). */
+  subDim: SpendingDimension;
+  /** Total attributed to `key` under `dim` over [fromMonth, toMonth] — IDENTICAL to the matching
+   *  row's `amount` in `computeSpendingByDimension(ledger, fromMonth, toMonth, dim)` (asserted by
+   *  a parity test — same discipline `computeDaySpending` already keeps with
+   *  `computeDailySpending`). */
+  amount: Money;
+  /** Sub-breakdown, sorted desc by amount. ALL rows — the caller slices for "+N more". */
+  rows: SpendingDetailRow[];
+  /** Matching transactions (refund or not — the same set `amount` nets). */
+  txnCount: number;
+  /** Math.round(amount / txnCount). Can be negative in the rare case refunds outweigh spend in
+   *  the window — `amount` is already net, so this stays consistent with it rather than lying
+   *  in the opposite direction. */
+  avgAmount: Money;
+  /** Largest single NON-REFUND contribution magnitude (mirrors `largestExpenses`'s own refund
+   *  exclusion — a refund is not "the largest expense") — 0 when every match was a refund. */
+  largestAmount: Money;
+}
+
+/**
+ * Detail breakdown for ONE row of `computeSpendingByDimension(ledger, fromMonth, toMonth, dim)`:
+ * a secondary grouping by the OTHER natural dimension, plus transaction-level stats — the
+ * Spending report's detail card ("breakdown by place (by envelope when the dimension is already
+ * Place)", "n txns · avg · largest").
+ *
+ * Reuses `expenseByDimension`'s per-transaction contribution rule (refunds negative, savings-
+ * envelope portions excluded), so `amount` here can never drift from the matching row's own total
+ * in `computeSpendingByDimension`.
+ *
+ * Sub-grouping: `place` is transaction-level (one value for the whole transaction, split or not),
+ * so when `dim` is category/envelope/group the sub-breakdown just re-buckets each transaction's
+ * ALREADY-restricted (to `key`) contribution by `t.placeId` — no per-item work needed. `envelope`
+ * is NOT transaction-level for a split (each item can carry its own envelope), so when
+ * `dim === "place"` (subDim "envelope") every non-savings item of a matching transaction is
+ * walked individually.
+ *
+ * A sub-row's name falls back to `NULL_LABEL[subDim]` both for a null key (no place/envelope
+ * assigned) AND for a stale reference (the place/envelope was deleted after the transaction was
+ * recorded) — the same precedent `computeDaySpending` already sets (`envelope?.name ??
+ * NULL_LABEL.envelope`), rather than inventing a second hardcoded "unknown" string.
+ *
+ * Returns `null` when `key` has zero matching transactions in the window (an excluded/zero row,
+ * or a stale selection after a month/range change) — the caller closes the card on `null`.
+ */
+export function computeSpendingDetail(
+  ledger: ClientLedger,
+  fromMonth: string,
+  toMonth: string,
+  dim: SpendingDimension,
+  key: string | null,
+): SpendingDetail | null {
+  const envGroup = new Map(ledger.envelopes.map((e) => [e.id, e.groupId]));
+  const savings = new Set(ledger.envelopes.filter((e) => e.isSavings).map((e) => e.id));
+  const subDim: SpendingDimension = dim === "place" ? "envelope" : "place";
+  const subSums = new Map<string | null, Money>();
+  let amount = 0;
+  let txnCount = 0;
+  let largestAmount = 0;
+
+  for (const t of ledger.transactions) {
+    const m = monthOf(t.date);
+    if (m < fromMonth || m > toMonth) continue;
+    const contribution = expenseByDimension(t, dim, envGroup, savings)
+      .filter(([k]) => k === key)
+      .reduce((s, [, a]) => s + a, 0);
+    if (contribution === 0) continue;
+    amount += contribution;
+    txnCount += 1;
+    if (!t.isRefund) largestAmount = Math.max(largestAmount, Math.abs(contribution));
+
+    if (dim === "place") {
+      if (t.items.length > 0) {
+        const sign = t.isRefund ? -1 : 1;
+        for (const it of t.items) {
+          if (savings.has(it.envelopeId)) continue;
+          subSums.set(it.envelopeId, (subSums.get(it.envelopeId) ?? 0) + sign * it.amount);
+        }
+      } else {
+        subSums.set(t.envelopeId, (subSums.get(t.envelopeId) ?? 0) + contribution);
+      }
+    } else {
+      subSums.set(t.placeId, (subSums.get(t.placeId) ?? 0) + contribution);
+    }
+  }
+
+  if (txnCount === 0) return null;
+
+  const nameOf = (k: string | null): string => {
+    if (subDim === "place") {
+      return (k === null ? undefined : ledger.places.find((p) => p.id === k)?.name) ?? NULL_LABEL.place;
+    }
+    return (k === null ? undefined : ledger.envelopes.find((e) => e.id === k)?.name) ?? NULL_LABEL.envelope;
+  };
+  const rows = [...subSums.entries()]
+    .map(([k, amt]) => ({ key: k, name: nameOf(k), amount: amt }))
+    .filter((r) => r.amount !== 0)
+    .sort((a, b) => b.amount - a.amount);
+
+  return { subDim, amount, rows, txnCount, avgAmount: Math.round(amount / txnCount), largestAmount };
+}
+
 export interface EnvelopeTrend {
   id: string;
   name: string;
