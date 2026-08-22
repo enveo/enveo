@@ -17,6 +17,31 @@ import { useBand } from "./kit";
  * attributes. Status colors (pos/warn/neg) never carry meaning alone; callers supply the label.
  */
 
+/** Fields every `ReportShell` render needs regardless of variant. */
+type ReportShellCommon = {
+  month: string;
+  onPrev: () => void;
+  onNext: () => void;
+  eyebrow: string;
+  hero: ReactNode;
+  sub?: ReactNode;
+  bandChart?: ReactNode;
+  children: ReactNode;
+};
+
+/** Discriminated on `variant` so each caller's shape is checked at compile time — a subscreen
+ *  MUST pass `title`/`onBack` (and cannot pass `onMenu`/`onHeroClick`); a hub caller MUST pass
+ *  `onMenu` (and cannot pass `title`/`onBack`). `variant` defaults to `"subscreen"` (optional
+ *  literal in that member) so all seven existing subscreen call sites are unaffected. Before
+ *  this union, `title`/`onBack` were merely optional on one flat prop type, which would have let
+ *  a future subscreen call site compile while omitting `onBack` — a dead back-chevron button at
+ *  runtime, with nothing catching it (Task 4 fix round 1). */
+type ReportShellProps = ReportShellCommon &
+  (
+    | { variant?: "subscreen"; title: string; onBack: () => void; onMenu?: never; onHeroClick?: never }
+    | { variant: "hub"; onMenu: () => void; onHeroClick?: () => void; title?: never; onBack?: never }
+  );
+
 /** Report band: shared by every subscreen AND the hub (Task 4 — the two previously-forked
  *  copies of this grammar are now one). Top row is `variant`-dependent (back+title+month-nav
  *  for a subscreen, the app-chrome `Header` for the hub); everything below — eyebrow/hero/sub,
@@ -35,35 +60,8 @@ import { useBand } from "./kit";
  *  that zeroes whichever element ends up as the body's actual first DOM child — simpler and more
  *  robust than hand-editing every subscreen's first element (Budgets' first section alone varies
  *  by data: Overspent/Near/Within budget each carry a different top margin). */
-export function ReportShell({
-  variant = "subscreen",
-  title,
-  month,
-  onPrev,
-  onNext,
-  onBack,
-  onMenu,
-  onHeroClick,
-  eyebrow,
-  hero,
-  sub,
-  bandChart,
-  children,
-}: {
-  variant?: "subscreen" | "hub";
-  title?: string;
-  month: string;
-  onPrev: () => void;
-  onNext: () => void;
-  onBack?: () => void;
-  onMenu?: () => void;
-  onHeroClick?: () => void;
-  eyebrow: string;
-  hero: ReactNode;
-  sub?: ReactNode;
-  bandChart?: ReactNode;
-  children: ReactNode;
-}) {
+export function ReportShell(props: ReportShellProps) {
+  const { month, onPrev, onNext, eyebrow, hero, sub, bandChart, children } = props;
   const C = useTheme();
   const { band, hc } = useBand();
   const { t, lang } = useT();
@@ -78,13 +76,13 @@ export function ReportShell({
   return (
     <>
       <div data-band={band || undefined} style={band ? { background: C.headerBg, paddingBottom: 14 } : { paddingBottom: 14 }}>
-        {variant === "hub" ? (
-          <Header month={month} onMenu={onMenu!} onPrev={onPrev} onNext={onNext} onBand={band} />
+        {props.variant === "hub" ? (
+          <Header month={month} onMenu={props.onMenu} onPrev={onPrev} onNext={onNext} onBand={band} />
         ) : (
           <div style={{ display: "flex", alignItems: "center", gap: 6, padding: `12px ${P}px 10px` }}>
             <button
               aria-label={t("Back")}
-              onClick={onBack}
+              onClick={props.onBack}
               style={{
                 flexShrink: 0,
                 width: 30,
@@ -116,7 +114,7 @@ export function ReportShell({
                 whiteSpace: "nowrap",
               }}
             >
-              {title}
+              {props.title}
             </span>
             <span style={{ display: "flex", alignItems: "center", gap: 0, flexShrink: 0 }}>
               {/* 30x30 hit target (matches the back button above) around the same 17px glyph — a bare
@@ -169,15 +167,15 @@ export function ReportShell({
             </span>
           </div>
         )}
-        {onHeroClick ? (
+        {props.variant === "hub" && props.onHeroClick ? (
           <button
-            onClick={onHeroClick}
+            onClick={props.onHeroClick}
             style={{
               display: "block",
               width: "100%",
               background: "none",
               border: "none",
-              padding: variant === "hub" ? `10px ${P}px 0` : `0 ${P}px`,
+              padding: `10px ${P}px 0`,
               textAlign: "left",
               cursor: "pointer",
               fontFamily: "inherit",
@@ -186,7 +184,7 @@ export function ReportShell({
             {heroBlock}
           </button>
         ) : (
-          <div style={{ padding: variant === "hub" ? `10px ${P}px 0` : `0 ${P}px` }}>{heroBlock}</div>
+          <div style={{ padding: props.variant === "hub" ? `10px ${P}px 0` : `0 ${P}px` }}>{heroBlock}</div>
         )}
       </div>
       {/* Animation is `fi` ONLY (opacity) — `fu`/transform breaks position:fixed of sheets inside.
@@ -194,7 +192,7 @@ export function ReportShell({
          paddingTop is the sole band→content gap across every subscreen. The hub keeps its own
          10px top padding (its grid's existing spacing) rather than the subscreen's 14px — see
          task-4 report for why that one won. */}
-      <div className="fi rpt-body" style={{ padding: `${variant === "hub" ? 10 : 14}px ${P}px 0` }}>
+      <div className="fi rpt-body" style={{ padding: `${props.variant === "hub" ? 10 : 14}px ${P}px 0` }}>
         {children}
       </div>
     </>
