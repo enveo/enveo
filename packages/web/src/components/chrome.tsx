@@ -11,6 +11,7 @@ import { isInstallable, useInstall } from "../lib/installPrompt";
 import { store } from "../lib/store";
 import { CORAL, CTA, font, P, type Theme } from "../lib/theme";
 import { APP_VERSION, buildLabel } from "../lib/version";
+import { PHONE_COL } from "../lib/viewMode";
 
 /** Injects animation keyframes (system font — no webfonts). */
 export function StyleInjector() {
@@ -194,7 +195,7 @@ export function Sheet({
           bottom: 0,
           left: 0,
           right: 0,
-          maxWidth: 420,
+          maxWidth: PHONE_COL,
           margin: "0 auto",
           zIndex: 100,
           background: C.sheet,

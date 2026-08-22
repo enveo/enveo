@@ -14,6 +14,7 @@ import { store } from "./lib/store";
 import { bootOnce, retryBoot } from "./lib/sync";
 import { font, P, TEAL } from "./lib/theme";
 import type { TransactionFilters } from "./lib/transactionSearch";
+import { PHONE_COL } from "./lib/viewMode";
 import { AddScreen, type Tab as AddTab } from "./screens/Add";
 import { LoginScreen } from "./screens/Login";
 import type { ReportTab, ReportView } from "./screens/reports/types";
@@ -187,13 +188,18 @@ export default function App() {
   };
   const prev = () => setMonth((m) => shiftMonth(m, -1));
   const next = () => setMonth((m) => shiftMonth(m, 1));
-  const wide = typeof window !== "undefined" && window.innerWidth > 500;
+  // The decorative frame around the phone column: it appears once the window is meaningfully
+  // wider than that column (a rounded corner + shadow so the card reads as a deliberate frame,
+  // not a stray narrow window). This is NOT the layout mode — it is kept on its historical
+  // 500px threshold (PHONE_COL + 80) so this refactor changes no pixels; the layout mode
+  // (`useViewMode`) has no consumer yet and lands with the navigation rail in a later PR.
+  const framed = typeof window !== "undefined" && window.innerWidth > PHONE_COL + 80;
   // Desktop backdrop: on narrow (phone) viewports the ~420px column already fills the
   // screen, so this stays transparent — nothing changes there. On wide viewports it's a
   // full-viewport translucent tint layered over the theme background (set on <html> by
   // ThemeProvider), so the phone-width card reads as a deliberate frame, not a stray
   // narrow window; the existing shadow on the card then separates it from the tint.
-  const backdrop = { minHeight: "100dvh", background: wide ? "rgba(0,0,0,0.06)" : "transparent" } as const;
+  const backdrop = { minHeight: "100dvh", background: framed ? "rgba(0,0,0,0.06)" : "transparent" } as const;
 
   // Accounts are mandatory: server responded 401 → login screen INSTEAD of the app
   // (no BottomNav/badge). Refreshed via the existing mirror-version mechanism
@@ -247,7 +253,7 @@ export default function App() {
       <div style={backdrop}>
         <div
           style={{
-            maxWidth: 420,
+            maxWidth: PHONE_COL,
             margin: "0 auto",
             height: "100dvh",
             background: C.bg,
@@ -255,8 +261,8 @@ export default function App() {
             flexDirection: "column",
             fontFamily: font,
             overflow: "hidden",
-            borderRadius: wide ? 24 : 0,
-            boxShadow: wide ? "0 0 80px rgba(0,0,0,0.4)" : "none",
+            borderRadius: framed ? 24 : 0,
+            boxShadow: framed ? "0 0 80px rgba(0,0,0,0.4)" : "none",
             WebkitFontSmoothing: "antialiased",
             position: "relative",
           }}
@@ -276,7 +282,7 @@ export default function App() {
         onTouchStart={onTouchStart}
         onTouchEnd={onTouchEnd}
         style={{
-          maxWidth: 420,
+          maxWidth: PHONE_COL,
           margin: "0 auto",
           height: "100dvh",
           background: C.bg,
@@ -284,8 +290,8 @@ export default function App() {
           flexDirection: "column",
           fontFamily: font,
           overflow: "hidden",
-          borderRadius: wide ? 24 : 0,
-          boxShadow: wide ? "0 0 80px rgba(0,0,0,0.4)" : "none",
+          borderRadius: framed ? 24 : 0,
+          boxShadow: framed ? "0 0 80px rgba(0,0,0,0.4)" : "none",
           WebkitFontSmoothing: "antialiased",
           position: "relative",
         }}

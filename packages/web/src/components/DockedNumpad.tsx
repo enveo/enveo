@@ -4,6 +4,7 @@ import { isLight } from "../lib/format";
 import { useT } from "../lib/i18n";
 import { Glyph, Ico } from "../lib/icons";
 import { P } from "../lib/theme";
+import { PHONE_COL } from "../lib/viewMode";
 import { Numpad } from "./pickers";
 
 /**
@@ -55,7 +56,7 @@ export function DockedNumpad({ target, state, onState }: { target: DockedNumpadT
   };
 
   return (
-    <div style={{ position: "fixed", left: 0, right: 0, bottom: 0, maxWidth: 420, margin: "0 auto", zIndex: 60, background: C.keybg }}>
+    <div style={{ position: "fixed", left: 0, right: 0, bottom: 0, maxWidth: PHONE_COL, margin: "0 auto", zIndex: 60, background: C.keybg }}>
       {/* Bar: [envelope icon+name · "= X" preview when an expression is open · ✕] */}
       <div style={{ height: 40, display: "flex", alignItems: "center", gap: 8, padding: `0 ${P}px`, borderBottom: `1px solid ${C.line}` }}>
         <div style={{ flex: 1, minWidth: 0, display: "flex", alignItems: "center", gap: 8 }}>

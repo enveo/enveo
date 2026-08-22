@@ -3,6 +3,7 @@
  * Reuse computeBudgetState (balances) and the spentOf rules (spending).
  */
 import { computeBudgetState, monthOf, prevMonth } from "./budget";
+import { goalProgress } from "./goals";
 import type { ClientLedger, Money, Transaction } from "./types";
 
 export interface NetWorthPoint {
@@ -173,6 +174,65 @@ export function computeDailySpending(ledger: ClientLedger, month: string): Daily
     if (amt !== 0) byDate.set(t.date, byDate.get(t.date)! + amt);
   }
   return [...byDate.entries()].map(([date, total]) => ({ date, total }));
+}
+
+export interface DaySpendingEnvelope {
+  envelopeId: string | null;
+  name: string;
+  amount: Money;
+}
+
+export interface DaySpending {
+  date: string; // YYYY-MM-DD
+  total: Money;
+  count: number; // contributing expense transactions
+  txns: Transaction[]; // in ledger order
+  byEnvelope: DaySpendingEnvelope[]; // descending by amount
+}
+
+/**
+ * One calendar day, expanded — the Month report's day panel.
+ *
+ * The total is the same number `computeDailySpending` reports for this date, because both
+ * route every transaction through `expenseByDimension`: type "expense" only, refunds negative,
+ * portions assigned to a net-worth envelope excluded, transfers and income ignored. Keeping
+ * that single rule is the point — the calendar cell and the panel that opens under it must
+ * never disagree.
+ *
+ * A transaction counts once in `txns` however many envelopes its items touch; `byEnvelope`
+ * splits the money. An unassigned expense keeps the dimension label the spending report
+ * already uses, rather than inventing a second name for the same thing.
+ */
+export function computeDaySpending(ledger: ClientLedger, date: string): DaySpending {
+  const envGroup = new Map(ledger.envelopes.map((e) => [e.id, e.groupId]));
+  const savings = new Set(ledger.envelopes.filter((e) => e.isSavings).map((e) => e.id));
+  const byEnvelope = new Map<string | null, Money>();
+  const txns: Transaction[] = [];
+  let total = 0;
+
+  for (const t of ledger.transactions) {
+    if (t.date !== date) continue;
+    const parts = expenseByDimension(t, "envelope", envGroup, savings);
+    const amt = parts.reduce((s, [, a]) => s + a, 0);
+    if (parts.length === 0 || amt === 0) continue;
+    txns.push(t);
+    total += amt;
+    for (const [key, a] of parts) byEnvelope.set(key, (byEnvelope.get(key) ?? 0) + a);
+  }
+
+  const rows = [...byEnvelope.entries()]
+    .filter(([, amount]) => amount !== 0)
+    .map(([envelopeId, amount]) => {
+      const envelope = envelopeId === null ? undefined : ledger.envelopes.find((e) => e.id === envelopeId);
+      return {
+        envelopeId,
+        name: envelope?.name ?? NULL_LABEL.envelope,
+        amount,
+      };
+    })
+    .sort((a, b) => b.amount - a.amount);
+
+  return { date, total, count: txns.length, txns, byEnvelope: rows };
 }
 
 export interface PlaceStat {
@@ -428,4 +488,50 @@ export function savingsRate(points: CashflowPoint[]): { current: number | null; 
     .filter((p) => p.income > 0)
     .map((p) => p.net / p.income);
   return { current, median: ratios.length > 0 ? median(ratios) : null };
+}
+
+export interface GoalHistoryPoint {
+  month: string; // YYYY-MM
+  allocated: Money; // manual + automatic allocation in that month
+  pct: number; // 0..100, clamped
+  met: boolean; // allocated >= target
+}
+
+export interface GoalHistory {
+  /** The target used for EVERY point. The ledger has no historical monthlyTarget, so past
+   *  months are measured against today's goal — returned as data, not left to a caption, so
+   *  the UI text cannot drift from the arithmetic. Changing a goal rewrites its history. */
+  basis: "current-target";
+  target: Money;
+  points: GoalHistoryPoint[]; // oldest → newest, length = `months`
+}
+
+/**
+ * Per-month funding history for one envelope's monthly goal.
+ *
+ * `allocated` comes from `computeBudgetState`, NOT from summing `ledger.allocations`: the
+ * budget state adds automatic allocations derived from transaction flow (accounts linked to an
+ * envelope, 3.8) to the manual ones, and an envelope funded that way has no `Allocation` rows
+ * at all. Summing the raw table would show a flat zero history beside a correct current month.
+ *
+ * Returns `null` when the envelope is unknown or has no positive target — the same condition
+ * under which `goalProgress` returns `null`, and `goalProgress` is what decides `pct`/`met`
+ * here, so the per-month verdict and the live one can never disagree.
+ */
+export function computeGoalHistory(ledger: ClientLedger, envelopeId: string, month: string, months = 6): GoalHistory | null {
+  const envelope = ledger.envelopes.find((e) => e.id === envelopeId);
+  const target = envelope?.monthlyTarget ?? null;
+  if (!envelope || target === null || target <= 0) return null;
+
+  const window: string[] = [month];
+  for (let i = 0; i < months - 1; i++) window.unshift(prevMonth(window[0]!));
+
+  const points = window.map((m) => {
+    const state = computeBudgetState(ledger, m).envelopes.find((s) => s.envelope.id === envelopeId);
+    const allocated = state?.allocated ?? 0;
+    const progress = goalProgress({ monthlyTarget: target, allocated });
+    return { month: m, allocated, pct: progress?.pct ?? 0, met: progress?.funded ?? false };
+  });
+
+  return { basis: "current-target", target, points };
 }
