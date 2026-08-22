@@ -11,6 +11,18 @@ export function monthLabel(month: string, lang: Lang): string {
   return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
+/** Short month name per locale, e.g. "Jul" / "Lip" — no year, for chart axes where a full
+ *  `monthLabel` ("Lipiec 2026"/"July 2026") does not fit (a phone-width row of twelve months).
+ *  Uses `Intl`'s own CLDR abbreviation, not a substring of the long form: CLDR's short-month
+ *  rule is not "first N characters" in every locale, so slicing would be correct by accident
+ *  in some languages and wrong in others — the same reasoning `CURRENCY_DIGITS` and every other
+ *  locale-derived table in this codebase already follows (pin CLDR behavior, never hand-roll it). */
+export function monthShortLabel(month: string, lang: Lang): string {
+  const [y, m] = month.split("-").map(Number) as [number, number];
+  const s = new Intl.DateTimeFormat(LOCALE_OF[lang], { month: "short", timeZone: "UTC" }).format(new Date(Date.UTC(y, m - 1, 1)));
+  return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
 /** Month names per locale (for date pickers). */
 export function monthNames(lang: Lang): string[] {
   const f = new Intl.DateTimeFormat(LOCALE_OF[lang], { month: "long", timeZone: "UTC" });
