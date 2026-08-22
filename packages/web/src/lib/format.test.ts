@@ -91,4 +91,11 @@ describe("compactMoney", () => {
     expect(compactMoney(-2_696_290, "USD", "en")).toContain("27");
     expect(compactMoney(-2_696_290, "USD", "en")).toMatch(/^-|−/);
   });
+
+  test("locales without a short thousands form still round rather than showing spurious precision", () => {
+    // de and it have no CLDR compact form for thousands — compaction is a hint, not a guarantee.
+    const de = compactMoney(2_696_290, "EUR", "de");
+    expect(de).not.toMatch(/26[.,]962/); // must not render the exact amount
+    expect(de).toMatch(/27/);
+  });
 });

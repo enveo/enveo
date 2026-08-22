@@ -33,19 +33,24 @@ export function formatMoney(minor: number, currency: string, lang: Lang, opts?: 
  * Short money for chart axes — "$27K", "27 tys. zł" — where a full `formatMoney` string
  * ("$26,962.90") would not fit and its precision would not help.
  *
- * `notation: "compact"` rather than a hand-rolled "k" suffix: the divisor, the suffix and its
- * placement are all locale-specific (English collapses at 1,000, Polish says "tys.", and some
- * locales group by ten-thousands), and the currency symbol's side is too. Hardcoding "$" + "k",
- * as the design mock does, would be wrong in nine of the ten shipped locales.
+ * `notation: "compact"` with `maximumSignificantDigits: 2` renders amounts to 2 significant
+ * figures. The divisor, the suffix and its placement are all locale-specific (English collapses
+ * at 1,000, Polish says "tys.", French says "k", some locales group by ten-thousands), and the
+ * currency symbol's side is too. Hardcoding "$" + "k", as the design mock does, would be wrong
+ * in nine of the ten shipped locales.
  *
- * `maximumFractionDigits: 1` keeps a small axis label from rounding to a bare "0".
+ * **Caveat: CLDR compact forms are not universal.** German and Italian have no short form for
+ * thousands, so Intl rounds the FULL number to 2 significant figures instead of abbreviating
+ * (e.g. "27.000 €" instead of the absent German equivalent of "27K"). Axis labels may vary
+ * in width: callers must budget layout space for the longest possible label per locale, not
+ * assume a short one.
  */
 export function compactMoney(minor: number, currency: string, lang: Lang): string {
   return new Intl.NumberFormat(LOCALE_OF[lang], {
     style: "currency",
     currency,
     notation: "compact",
-    maximumFractionDigits: 1,
+    maximumSignificantDigits: 2,
   }).format(minor / 100);
 }
 
