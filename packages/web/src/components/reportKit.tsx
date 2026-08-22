@@ -330,7 +330,14 @@ function polylineCoords(series: number[], w: number, h: number, pad: number): (r
   const max = Math.max(...series);
   const range = max - min || 1;
   const flat = max === min;
-  return series.map((v, i) => [pad + (i / (n - 1)) * (w - 2 * pad), flat ? h / 2 : pad + (1 - (v - min) / range) * (h - 2 * pad)] as const);
+  // A sub-pixel container (a panel mid-animation, a flex item mid-reflow) can transiently
+  // measure ~1px wide; with pad=2/3 that made `w - 2*pad` negative, so x ran backwards from
+  // `pad` down to `pad - |negative|` — a reversed, partly negative-x polyline for that one frame.
+  // Clamping the inner width to at least 1 keeps that frame from rendering nonsense; it's
+  // transient and self-corrects on the next ResizeObserver callback, so this is not a fix for the
+  // underlying measurement, only for what gets drawn in between.
+  const innerW = Math.max(1, w - 2 * pad);
+  return series.map((v, i) => [pad + (i / (n - 1)) * innerW, flat ? h / 2 : pad + (1 - (v - min) / range) * (h - 2 * pad)] as const);
 }
 
 /** Bare polyline sparkline over a plain `number[]` — same shape as `Sparkline` but color is a
