@@ -282,7 +282,6 @@ export const nl: Dict = {
   Name: "Naam",
   Net: "Netto",
   "Net worth": "Vermogen",
-  "Net worth over time": "Vermogen door de tijd",
   "New account": "Nieuwe rekening",
   "New category": "Nieuwe categorie",
   "New envelope": "Nieuwe envelop",

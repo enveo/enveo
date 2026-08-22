@@ -389,7 +389,6 @@ export const pl: Dict = {
   Net: "Netto",
   "Net for {month}": "{month} netto",
   "Net worth": "Wartość netto",
-  "Net worth over time": "Wartość netto w czasie",
   "New account": "Nowe konto",
   "New category": "Nowa kategoria",
   "New envelope": "Nowa koperta",

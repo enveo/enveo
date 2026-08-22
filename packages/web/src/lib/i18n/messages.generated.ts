@@ -340,7 +340,6 @@ export const MESSAGES = [
   "Net",
   "Net for {month}",
   "Net worth",
-  "Net worth over time",
   "New account",
   "New category",
   "New envelope",
