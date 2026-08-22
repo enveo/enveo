@@ -1,14 +1,12 @@
 import { type EnvelopeTrend, median, savingsRate } from "@enveo/shared";
 import type { ReactNode } from "react";
-import { Header } from "../../components/chrome";
 import { GoalRing, useBand } from "../../components/kit";
-import { DeltaTag, heatColor, SegBar, Sparkline, TrendSpark } from "../../components/reportKit";
+import { DeltaTag, heatColor, ReportShell, SegBar, Sparkline, TrendSpark } from "../../components/reportKit";
 import type { StateResponse } from "../../lib/api";
 import { useMask, useTheme } from "../../lib/contexts";
 import { goalProgress } from "../../lib/goals";
 import { useT } from "../../lib/i18n";
 import { budgetsOverAmount, budgetsSummary } from "../../lib/reportSummary";
-import { P } from "../../lib/theme";
 import { trendColor } from "./charts";
 import type { Mask, ReportView } from "./types";
 
@@ -49,7 +47,7 @@ export function ReportsHub({
   const C = useTheme();
   const M = useMask();
   const { t } = useT();
-  const { band, hc } = useBand();
+  const { hc } = useBand();
 
   const nwLast = netWorth.at(-1)?.total ?? 0;
   const nwDelta = nwLast - (netWorth.at(-2)?.total ?? nwLast);
@@ -69,26 +67,17 @@ export function ReportsHub({
 
   return (
     <div className="gs" style={{ flex: 1, overflowY: "auto", paddingBottom: 6 }}>
-      <div data-band={band || undefined} style={band ? { background: C.headerBg, paddingBottom: 14 } : { paddingBottom: 14 }}>
-        <Header month={month} onMenu={onMenu} onPrev={onPrev} onNext={onNext} onBand={band} />
-        <button
-          onClick={() => onView("assets")}
-          style={{
-            display: "block",
-            width: "100%",
-            background: "none",
-            border: "none",
-            padding: `10px ${P}px 0`,
-            textAlign: "left",
-            cursor: "pointer",
-            fontFamily: "inherit",
-          }}
-        >
-          <div style={{ fontSize: 10.5, fontWeight: 750, letterSpacing: "0.17em", textTransform: "uppercase", color: hc(C.headerMute, C.mute) }}>
-            {t("Net worth")}
-          </div>
-          <div style={{ fontSize: 30, fontWeight: 750, color: hc(C.headerInk, C.text), fontVariantNumeric: "tabular-nums" }}>{M(nwLast)}</div>
-          <div style={{ fontSize: 12, color: hc(C.headerMute, C.soft) }}>
+      <ReportShell
+        variant="hub"
+        month={month}
+        onPrev={onPrev}
+        onNext={onNext}
+        onMenu={onMenu}
+        onHeroClick={() => onView("assets")}
+        eyebrow={t("Net worth")}
+        hero={M(nwLast)}
+        sub={
+          <>
             {nwDelta !== 0 && (
               <span style={{ color: nwDelta > 0 ? hc(C.headerPos, C.pos) : hc(C.headerNeg, C.neg), fontWeight: 650 }}>
                 {nwDelta > 0 ? "▲ +" : "▼ "}
@@ -96,18 +85,19 @@ export function ReportsHub({
               </span>
             )}{" "}
             {t("m/m")} · {t("details")} ›
-          </div>
-          <Sparkline points={netWorth} stroke={hc(C.headerInk, "var(--accent)")} dotColor={hc(C.headerPos, C.pos)} />
-        </button>
-      </div>
-      <div style={{ padding: `10px ${P}px 0`, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-        <CashflowMini cashflow={cashflow} onView={onView} M={M} />
-        <SpendingMini rows={hubSpending} envColor={envColor} cashflow={cashflow} onView={onView} M={M} />
-        <BudgetsMini envelopes={state.envelopes} onView={onView} M={M} />
-        {goalRows.length > 0 && <GoalsMini pctTotal={pctTotal} missSum={missSum} onView={onView} M={M} />}
-        <MonthMini days={dailySpending} onView={onView} M={M} />
-        <TrendsMini trends={envelopeTrends} onView={onView} />
-      </div>
+          </>
+        }
+        bandChart={<Sparkline points={netWorth} stroke={hc(C.headerInk, "var(--accent)")} dotColor={hc(C.headerPos, C.pos)} />}
+      >
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+          <CashflowMini cashflow={cashflow} onView={onView} M={M} />
+          <SpendingMini rows={hubSpending} envColor={envColor} cashflow={cashflow} onView={onView} M={M} />
+          <BudgetsMini envelopes={state.envelopes} onView={onView} M={M} />
+          {goalRows.length > 0 && <GoalsMini pctTotal={pctTotal} missSum={missSum} onView={onView} M={M} />}
+          <MonthMini days={dailySpending} onView={onView} M={M} />
+          <TrendsMini trends={envelopeTrends} onView={onView} />
+        </div>
+      </ReportShell>
     </div>
   );
 }
