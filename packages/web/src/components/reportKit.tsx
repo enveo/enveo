@@ -4,6 +4,7 @@ import { useTheme } from "../lib/contexts";
 import { monthLabel } from "../lib/dates";
 import { useT } from "../lib/i18n";
 import { P, TEAL, type Theme } from "../lib/theme";
+import { useElementWidth } from "../lib/useElementWidth";
 import { useBand } from "./kit";
 
 /**
@@ -297,7 +298,9 @@ function polylineCoords(series: number[], w: number, h: number, pad: number): (r
 
 /** Bare polyline sparkline over a plain `number[]` — same shape as `Sparkline` but color is a
  *  prop (stroke via `style`, never an attribute) so callers can use it for series other than
- *  net worth (e.g. per-envelope trend rows). */
+ *  net worth (e.g. per-envelope trend rows). Its width is intentionally caller-supplied (`w` prop)
+ *  because it renders inside fixed-width row slots beside text, where the size is a layout decision
+ *  the caller owns; measuring would be incorrect here. */
 export function TrendSpark({ series, color, w = 64, h = 24 }: { series: number[]; color: string; w?: number; h?: number }) {
   const n = series.length;
   if (n < 2) return null;
@@ -326,10 +329,10 @@ export function TrendSpark({ series, color, w = 64, h = 24 }: { series: number[]
  *  (e.g. `hc(C.headerInk, "var(--accent)")`) when painted on a Duet navy band, where TEAL would be
  *  invisible (navy on navy). `dotColor` is opt-in — omitted (the default) draws no last-point dot at all. */
 export function Sparkline({ points, stroke = TEAL, dotColor }: { points: { month: string; total: number }[]; stroke?: string; dotColor?: string }) {
+  const [boxRef, W] = useElementWidth<HTMLDivElement>(320);
   const n = points.length;
   if (n < 2) return null;
-  const W = 320,
-    H = 44,
+  const H = 44,
     pad = 3;
   const coords = polylineCoords(
     points.map((p) => p.total),
@@ -340,9 +343,11 @@ export function Sparkline({ points, stroke = TEAL, dotColor }: { points: { month
   const pts = coords.map(([x, y]) => `${x.toFixed(1)},${y.toFixed(1)}`).join(" ");
   const last = coords[coords.length - 1]!;
   return (
-    <svg viewBox={`0 0 ${W} ${H}`} width="100%" height={44} aria-hidden style={{ display: "block", marginTop: 8 }}>
-      <polyline points={pts} fill="none" style={{ stroke }} strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" vectorEffect="non-scaling-stroke" />
-      {dotColor && <circle cx={last[0]} cy={last[1]} r={3.5} style={{ fill: dotColor }} />}
-    </svg>
+    <div ref={boxRef} style={{ marginTop: 8 }}>
+      <svg viewBox={`0 0 ${W} ${H}`} width="100%" height={44} aria-hidden style={{ display: "block" }}>
+        <polyline points={pts} fill="none" style={{ stroke }} strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" vectorEffect="non-scaling-stroke" />
+        {dotColor && <circle cx={last[0]} cy={last[1]} r={3.5} style={{ fill: dotColor }} />}
+      </svg>
+    </div>
   );
 }
