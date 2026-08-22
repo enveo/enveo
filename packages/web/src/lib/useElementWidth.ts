@@ -14,11 +14,14 @@ import { type RefObject, useEffect, useRef, useState } from "react";
 /**
  * The width a chart should draw at. Pure, and total: a container that has not been measured
  * yet, has collapsed to zero, or reports something non-finite all fall back rather than
- * producing a viewBox that divides by zero or renders nothing.
+ * producing a viewBox that divides by zero or renders nothing. The rounding happens BEFORE
+ * the usability check: the decision "is this usable" must apply to the actual returned value,
+ * not the raw measurement.
  */
 export function chartWidth(measured: number | null, fallback: number): number {
-  if (measured === null || !Number.isFinite(measured) || measured <= 0) return fallback;
-  return Math.round(measured);
+  if (measured === null || !Number.isFinite(measured)) return fallback;
+  const rounded = Math.round(measured);
+  return rounded > 0 ? rounded : fallback;
 }
 
 /**
