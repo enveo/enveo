@@ -94,7 +94,9 @@ export const fr: Dict = {
   "Budget data will be encrypted on your device before it reaches the server. Server-side features will be unavailable.":
     "Les données du budget seront chiffrées sur votre appareil avant d'atteindre le serveur. Les fonctions côté serveur ne seront plus disponibles.",
   Budgets: "Budgets",
+  "By envelope": "Par enveloppe",
   "By history": "D'après l'historique",
+  "By place": "Par lieu",
   "CARRIED OVER": "REPORT",
   Cancel: "Annuler",
   "Cancel editing": "Annuler la modification",
@@ -118,6 +120,7 @@ export const fr: Dict = {
   "Clear & reset": "Vider et réinitialiser",
   "Clear search": "Effacer la recherche",
   Close: "Fermer",
+  "Close details": "Fermer les détails",
   Closed: "Fermés",
   Collapse: "Réduire",
   Color: "Couleur",

@@ -95,7 +95,9 @@ export const es: Dict = {
   "Budget data will be encrypted on your device before it reaches the server. Server-side features will be unavailable.":
     "Los datos del presupuesto se cifrarán en tu dispositivo antes de llegar al servidor. Las funciones del servidor dejarán de estar disponibles.",
   Budgets: "Presupuestos",
+  "By envelope": "Por sobre",
   "By history": "Por historial",
+  "By place": "Por lugar",
   "CARRIED OVER": "ARRASTRADO",
   Cancel: "Cancelar",
   "Cancel editing": "Cancelar edición",
@@ -119,6 +121,7 @@ export const es: Dict = {
   "Clear & reset": "Vaciar y reiniciar",
   "Clear search": "Borrar la búsqueda",
   Close: "Cerrar",
+  "Close details": "Cerrar detalles",
   Closed: "Cerradas",
   Collapse: "Contraer",
   Color: "Color",

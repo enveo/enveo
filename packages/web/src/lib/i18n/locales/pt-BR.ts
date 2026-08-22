@@ -97,7 +97,9 @@ export const ptBR: Dict = {
   "Budget data will be encrypted on your device before it reaches the server. Server-side features will be unavailable.":
     "Os dados do orçamento serão criptografados no seu dispositivo antes de chegar ao servidor. Os recursos do servidor ficarão indisponíveis.",
   Budgets: "Orçamentos",
+  "By envelope": "Pelo envelope",
   "By history": "Pelo histórico",
+  "By place": "Pelo lugar",
   "CARRIED OVER": "SALDO ANTERIOR",
   Cancel: "Cancelar",
   "Cancel editing": "Cancelar a edição",
@@ -121,6 +123,7 @@ export const ptBR: Dict = {
   "Clear & reset": "Limpar e redefinir",
   "Clear search": "Limpar a busca",
   Close: "Fechar",
+  "Close details": "Fechar detalhes",
   Closed: "Fechadas",
   Collapse: "Recolher",
   Color: "Cor",
