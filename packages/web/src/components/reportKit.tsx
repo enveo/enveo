@@ -453,7 +453,7 @@ export function gridTicks(min: number, max: number, format: (v: number) => strin
  */
 export function NetWorthChart({ points, height, onBand }: { points: { month: string; total: number }[]; height: number; onBand?: boolean }) {
   const C = useTheme();
-  const { lang } = useT();
+  const { t, lang } = useT();
   const mask = useCompactMask();
   const [boxRef, W] = useElementWidth<HTMLDivElement>(340);
   const n = points.length;
@@ -488,7 +488,7 @@ export function NetWorthChart({ points, height, onBand }: { points: { month: str
 
   return (
     <div ref={boxRef} style={{ position: "relative" }}>
-      <svg viewBox={`0 0 ${W} ${height}`} width="100%" height={height} aria-hidden style={{ display: "block" }}>
+      <svg viewBox={`0 0 ${W} ${height}`} width="100%" height={height} role="img" aria-label={t("Net worth over time")} style={{ display: "block" }}>
         {levels.map((lvl, i) => (
           <line key={i} x1={0} y1={lvl.y} x2={plotW} y2={lvl.y} style={{ stroke: gridline }} strokeWidth={1} vectorEffect="non-scaling-stroke" />
         ))}
