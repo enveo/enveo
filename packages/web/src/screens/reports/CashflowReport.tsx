@@ -1,11 +1,9 @@
-import { savingsRate } from "@enveo/shared";
+import { type CashflowPoint, savingsRate } from "@enveo/shared";
 import { useBand } from "../../components/kit";
 import { ReportShell } from "../../components/reportKit";
 import { useTheme } from "../../lib/contexts";
-import { monthLabel } from "../../lib/dates";
+import { monthLabel, monthShortLabel } from "../../lib/dates";
 import { useT } from "../../lib/i18n";
-import { tint } from "../../lib/theme";
-import { useElementWidth } from "../../lib/useElementWidth";
 import { type Mask, TITLES } from "./types";
 
 /**
@@ -20,10 +18,12 @@ import { type Mask, TITLES } from "./types";
  * trailing-11-month median for context (`shared/savingsRate().median`, unchanged) — built from ONE
  * message per case rather than concatenated fragments so every locale can reorder the clause.
  *
- * `bandChart` (`CashflowBandChart`, below) repeats the monthly shape as diverging columns on the
- * band itself. Body: the Income/Expense/Net stat trio, then the existing diverging monthly bars —
- * each row now labeled with a 2-digit year suffix ("sie ’25") since a 12-mo window almost always
- * crosses a year boundary; applied to EVERY row for consistency, and the label column widened
+ * No `bandChart`: the body chart (`CashflowColumns`, below) now carries the monthly shape, so a
+ * band-level chart would just repeat it — same reasoning `TrendsReport.tsx:14` gives for having
+ * none. The band keeps eyebrow/hero/sub only. Body: the Income/Expense/Net stat trio, then the
+ * labelled diverging column chart, then the existing per-row bars — each row now labeled with a
+ * 2-digit year suffix ("sie ’25") since a 12-mo window almost always crosses a year boundary;
+ * applied to EVERY row for consistency, and the label column widened
  * 48→82px to fit it — measured live (agent-browser, PL locale): `monthLabel` uses the FULL
  * Intl "long" month name (Polish has no short form here), and "Październik’25" alone needs 79px
  * (`scrollWidth`), so 64px — the initially-planned width — still clipped into the bar column.
@@ -36,7 +36,7 @@ export function CashflowReport({
   onNext,
   onBack,
 }: {
-  cashflow: { month: string; income: number; expense: number; net: number }[];
+  cashflow: CashflowPoint[];
   M: Mask;
   month: string;
   onPrev: () => void;
@@ -79,7 +79,6 @@ export function CashflowReport({
             : t("savings rate {pct}%", { pct: aggPct })
           : undefined
       }
-      bandChart={cashflow.length > 0 ? <CashflowBandChart cashflow={cashflow} /> : undefined}
     >
       <div style={{ display: "flex", gap: 8, marginBottom: 14, marginTop: 4 }}>
         {(
@@ -95,6 +94,11 @@ export function CashflowReport({
           </div>
         ))}
       </div>
+      {cashflow.length > 0 && (
+        <div style={{ marginBottom: 14 }}>
+          <CashflowColumns cashflow={cashflow} M={M} />
+        </div>
+      )}
       {cashflow.map((p) => {
         const w = (Math.abs(p.net) / maxAbs) * 50;
         return (
@@ -135,53 +139,50 @@ export function CashflowReport({
   );
 }
 
-/** Cashflow band chart (Task P1): 12-mo diverging columns painted on the band, same idiom as the
- *  hub's `CashflowMini` chart but taller (height ~60 vs 34) and painted with band-aware tokens so
- *  it stays legible on a Duet navy band as well as a plain theme. A net-ZERO month is not "up" or
- *  "down" — it renders a 1px tick sitting ON the baseline in the muted color rather than a fake
- *  colored bar (a zero-height bar would just look like a rendering bug otherwise).
+/** Cashflow body chart (Task 3c-2): a labelled diverging-column chart replacing the old band
+ *  chart, so the monthly shape now lives IN the body instead of repeated on the band (see the
+ *  module docstring). Twelve `flex: 1` columns split into an up half and a down half around a
+ *  shared 1px baseline, so a positive net grows up and a negative one grows down — same up/down
+ *  idiom as the hub's `CashflowMini`, but a 110px labelled chart rather than a 34px glanceable
+ *  card, so the two are deliberately separate components rather than shared code.
  *
- * v2 fix (design-pass follow-up on the v1 commit): the viewBox used to be sized to the bars' own
- * pixel geometry (barW=6·12 + gap=2·11 ≈ 94 units) rather than the band's actual width. An SVG
- * with `width="100%"` + a FIXED `height` fits its viewBox via the default `preserveAspectRatio=
- * "xMidYMid meet"`, which scales by the SMALLER of the two axis ratios — a ~94-unit-wide viewBox
- * against a ~360px-wide, 56px-tall box binds on the height axis (scale 1) and leaves the bars a
- * tiny centered cluster with ~130px of navy margin on each side. The fix is a FULL-width viewBox
- * (~358, matching the band's available width — the same idiom `NetWorthChart`/`Sparkline` already
- * use) with bar geometry recomputed to fill it (`barW = (W − (n−1)·gap) / n`), NOT
- * `preserveAspectRatio="none"` — that would non-uniformly stretch the rounded caps into ellipses.
- * A hardcoded `W` only holds at the one viewport it was measured on, though — it re-letterboxes
- * at any other width — so `W` is now measured from the band's own container instead. */
-function CashflowBandChart({ cashflow }: { cashflow: { month: string; income: number; expense: number; net: number }[] }) {
+ * A net-ZERO month renders NO bar (the `p.net > 0`/`p.net < 0` guards below) so the baseline shows
+ * through, rather than a zero-height colored bar — `CashflowBandChart` (the component this
+ * replaces) made the same call for the same reason: a zero-height bar reads as a rendering bug.
+ *
+ * Column labels use `monthShortLabel`, the locale-correct `Intl` short form, NOT a 3-character
+ * slice of `monthLabel` — CLDR's short-month rule is not "first N characters" in every locale, so
+ * slicing would be right by accident in some languages and wrong in others. The `title` tooltip
+ * carries the full month name (`monthLabel`) plus income, expense and net, all through `M` so
+ * discreet mode masks them like every other amount on this screen. */
+function CashflowColumns({ cashflow, M }: { cashflow: CashflowPoint[]; M: Mask }) {
   const C = useTheme();
-  const { hc } = useBand();
-  const gap = 6,
-    H = 60,
-    base = H / 2,
-    maxH = 24;
-  const [boxRef, W] = useElementWidth<HTMLDivElement>(358);
-  const n = cashflow.length;
-  // Guards `barW`'s division by `n`: an empty series would otherwise draw Infinity/NaN geometry.
-  // Pre-existing (not introduced by this PR) — the one call site already filters on
-  // `cashflow.length > 0`, but the component shouldn't rely solely on that to stay sane.
-  if (n === 0) return null;
-  const barW = (W - Math.max(0, n - 1) * gap) / n;
+  const { t, lang } = useT();
   const maxAbs = Math.max(...cashflow.map((p) => Math.abs(p.net)), 1);
-  const posColor = hc(C.headerPos, C.pos);
-  const negColor = hc(C.headerNeg, C.neg);
-  const baseColor = hc(tint(C.headerInk, 0.25), C.line);
   return (
-    <div ref={boxRef} style={{ marginTop: 10 }}>
-      <svg viewBox={`0 0 ${W} ${H}`} width="100%" height={H} aria-hidden="true" style={{ display: "block" }}>
-        <line x1={0} y1={base} x2={W} y2={base} style={{ stroke: baseColor }} strokeWidth={1} />
-        {cashflow.map((p, i) => {
-          const x = i * (barW + gap);
-          if (p.net === 0) return <rect key={p.month} x={x} y={base - 0.5} width={barW} height={1} style={{ fill: baseColor }} />;
-          const h = Math.max(3, Math.round((Math.abs(p.net) / maxAbs) * maxH));
-          const y = p.net > 0 ? base - h : base;
-          return <rect key={p.month} x={x} y={y} width={barW} height={h} rx={2} style={{ fill: p.net > 0 ? posColor : negColor }} />;
+    <div style={{ border: `1px solid ${C.line}`, borderRadius: 12, padding: "11px 12px" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 3, height: 110 }}>
+        {cashflow.map((p) => {
+          const h = Math.max(3, Math.round((Math.abs(p.net) / maxAbs) * 52));
+          return (
+            <div
+              key={p.month}
+              style={{ flex: 1, minWidth: 0, height: "100%", display: "flex", flexDirection: "column", alignItems: "stretch" }}
+              title={`${monthLabel(p.month, lang)} · ↑ ${M(p.income)} · ↓ ${M(p.expense)} · ${p.net >= 0 ? "+" : "−"}${M(Math.abs(p.net))}`}
+            >
+              <div style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "flex-end" }}>
+                {p.net > 0 && <div style={{ height: h, borderRadius: "3px 3px 0 0", background: C.pos, margin: "0 2px" }} />}
+              </div>
+              <div style={{ height: 1, background: C.line }} />
+              <div style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "flex-start" }}>
+                {p.net < 0 && <div style={{ height: h, borderRadius: "0 0 3px 3px", background: C.neg, margin: "0 2px" }} />}
+              </div>
+              <div style={{ fontSize: 8.5, color: C.mute, textAlign: "center", paddingTop: 3 }}>{monthShortLabel(p.month, lang)}</div>
+            </div>
+          );
         })}
-      </svg>
+      </div>
+      <div style={{ fontSize: 10, color: C.mute }}>{t("net per month · scale ±{max}", { max: M(maxAbs) })}</div>
     </div>
   );
 }

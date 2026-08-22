@@ -698,6 +698,7 @@ export const MESSAGES = [
   "left in the envelope",
   "m/m",
   "monthly goal: {allocated} / {target} · {pct}%",
+  "net per month · scale ±{max}",
   "new password for all devices",
   "not used yet",
   "not yet",
