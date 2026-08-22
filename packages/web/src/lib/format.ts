@@ -40,12 +40,17 @@ export function formatMoney(minor: number, currency: string, lang: Lang, opts?: 
 
 
 
+
+
+
+
+
 export function compactMoney(minor: number, currency: string, lang: Lang): string {
   return new Intl.NumberFormat(LOCALE_OF[lang], {
     style: "currency",
     currency,
     notation: "compact",
-    maximumFractionDigits: 1,
+    maximumSignificantDigits: 2,
   }).format(minor / 100);
 }
 
