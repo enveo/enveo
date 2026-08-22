@@ -343,17 +343,62 @@ function polylineCoords(series: number[], w: number, h: number, pad: number): (r
 /** Bare polyline sparkline over a plain `number[]` — same shape as `Sparkline` but color is a
  *  prop (stroke via `style`, never an attribute) so callers can use it for series other than
  *  net worth (e.g. per-envelope trend rows). Its width is intentionally caller-supplied (`w` prop)
- *  because it renders inside fixed-width row slots beside text, where the size is a layout decision
- *  the caller owns; measuring would be incorrect here. */
-export function TrendSpark({ series, color, w = 64, h = 24 }: { series: number[]; color: string; w?: number; h?: number }) {
+ *  because it renders inside fixed-width row slots beside text, where the size is a layout
+ *  decision the caller owns; measuring would be incorrect here.
+ *
+ *  `median`/`medianColor` (Task 1, Trends redesign): an optional flat reference line at a given
+ *  data value, drawn UNDER the polyline, spanning the full width edge-to-edge (unlike the
+ *  polyline itself, which is inset by `pad`) so it reads as a background reference rather than
+ *  part of the series. `medianColor` is a caller-supplied color for the SAME reason `color` is —
+ *  this component stays theme-agnostic; the caller already has `useTheme()`. Omitting `median`
+ *  draws no line at all (both existing call sites do this today and must keep doing it). The
+ *  y-position mirrors `polylineCoords`'s own value→y scaling exactly, including its flat-series
+ *  special case (`max === min` maps to `h/2` rather than the general formula), so the median line
+ *  always lines up with where that same value would fall on the polyline itself.
+ *
+ *  `dot` (Task 1): an optional filled circle at the LAST point, using the same `color` as the
+ *  polyline — deliberately ONE color for line+dot rather than a second caller-supplied
+ *  `dotColor`, because every real use of this so far (`trendColor`) already picks one color per
+ *  row for "is this envelope's move good or bad", and a second, independently-thresholded dot
+ *  color would just be a second opinion about the same question. */
+export function TrendSpark({
+  series,
+  color,
+  w = 64,
+  h = 24,
+  median,
+  medianColor,
+  dot = false,
+}: {
+  series: number[];
+  color: string;
+  w?: number;
+  h?: number;
+  median?: number;
+  medianColor?: string;
+  dot?: boolean;
+}) {
   const n = series.length;
   if (n < 2) return null;
   const pad = 2;
-  const pts = polylineCoords(series, w, h, pad)
-    .map(([x, y]) => `${x.toFixed(1)},${y.toFixed(1)}`)
-    .join(" ");
+  const coords = polylineCoords(series, w, h, pad);
+  const pts = coords.map(([x, y]) => `${x.toFixed(1)},${y.toFixed(1)}`).join(" ");
+  const last = coords[coords.length - 1]!;
+  // Same min/max/range/flat handling `polylineCoords` computes internally — duplicated here
+  // (cheap for a 6-element array) rather than changing that function's return shape for every
+  // caller. `flat` must be checked the same way polylineCoords checks it (`max === min`), not
+  // derived from `median` itself, so the median line lands at the same `h/2` the flat polyline
+  // does instead of at `h - pad`.
+  const min = Math.min(...series);
+  const max = Math.max(...series);
+  const range = max - min || 1;
+  const flat = max === min;
+  const medianY = median === undefined ? null : flat ? h / 2 : pad + (1 - (median - min) / range) * (h - 2 * pad);
   return (
     <svg viewBox={`0 0 ${w} ${h}`} width={w} height={h} aria-hidden style={{ display: "block" }}>
+      {medianY !== null && (
+        <line x1={0} y1={medianY} x2={w} y2={medianY} style={{ stroke: medianColor ?? color }} strokeWidth={1} vectorEffect="non-scaling-stroke" />
+      )}
       <polyline
         points={pts}
         fill="none"
@@ -363,6 +408,7 @@ export function TrendSpark({ series, color, w = 64, h = 24 }: { series: number[]
         strokeLinecap="round"
         vectorEffect="non-scaling-stroke"
       />
+      {dot && <circle cx={last[0]} cy={last[1]} r={2.5} style={{ fill: color }} />}
     </svg>
   );
 }
