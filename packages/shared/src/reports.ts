@@ -70,12 +70,19 @@ export interface SpendingRow {
   pct: number;
 }
 
-// Polish product strings returned in rows (UI data — do not translate).
-const NULL_LABEL: Record<SpendingDimension, string> = {
-  category: "Bez kategorii",
-  envelope: "Bez koperty",
-  group: "Bez grupy",
-  place: "Bez miejsca",
+/**
+ * Neutral sentinels for "no X was assigned to this row" — NOT display text. `shared` stays
+ * language-neutral (zero I/O, no UI copy in any language), so these are stable markers a caller
+ * compares against, never strings rendered as-is. The web layer owns the actual translation
+ * (`dimNullLabel` in `components/reportKit.tsx`), which falls back to English via `t()` exactly
+ * like every other message in the app. Exported so both that translation layer and this file's
+ * own tests compare against the one real value instead of hardcoding it twice.
+ */
+export const NULL_LABEL: Record<SpendingDimension, string> = {
+  category: "__no_category__",
+  envelope: "__no_envelope__",
+  group: "__no_group__",
+  place: "__no_place__",
 };
 
 /** Expense transaction contribution to the per-dimension breakdown (parity with spentOf rules). */

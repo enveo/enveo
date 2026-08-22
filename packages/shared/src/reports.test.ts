@@ -16,6 +16,7 @@ import {
   computeSpendingByDimension,
   computeSpendingDetail,
   largestExpenses,
+  NULL_LABEL,
   type SpendingDetail,
   savingsRate,
   spendingBaseline,
@@ -97,7 +98,7 @@ describe("computeSpendingByDimension", () => {
       allocations: [],
       transactions: [tx({ type: "expense", accountId: "A", envelopeId: "E", categoryId: null, amount: 50_00, date: "2026-07-05" })],
     });
-    expect(computeSpendingByDimension(l, "2026-07", "2026-07", "category")[0]!.name).toBe("Bez kategorii");
+    expect(computeSpendingByDimension(l, "2026-07", "2026-07", "category")[0]!.name).toBe(NULL_LABEL.category);
     expect(computeSpendingByDimension(l, "2026-01", "2026-01", "category")).toEqual([]);
   });
 });
@@ -958,8 +959,7 @@ describe("computeDaySpending", () => {
     expect(d.total).toBe(40_00);
     expect(d.byEnvelope).toHaveLength(1);
     expect(d.byEnvelope[0]!.envelopeId).toBeNull();
-    // Value pinned to NULL_LABEL.envelope in reports.ts
-    expect(d.byEnvelope[0]!.name).toBe("Bez koperty");
+    expect(d.byEnvelope[0]!.name).toBe(NULL_LABEL.envelope);
     expect(d.byEnvelope[0]!.amount).toBe(40_00);
   });
 
@@ -1188,6 +1188,6 @@ describe("computeSpendingDetail", () => {
     });
     l.places = [{ id: "P1", name: "Sklep A", archived: false }];
     const detail = computeSpendingDetail(l, "2026-07", "2026-07", "place", "P1");
-    expect(detail?.rows).toEqual([{ key: "E2", name: "Bez koperty", amount: 100_00 }]);
+    expect(detail?.rows).toEqual([{ key: "E2", name: NULL_LABEL.envelope, amount: 100_00 }]);
   });
 });
