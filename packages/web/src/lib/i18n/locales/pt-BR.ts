@@ -283,7 +283,6 @@ export const ptBR: Dict = {
   Name: "Nome",
   Net: "Líquido",
   "Net worth": "Patrimônio líquido",
-  "Net worth over time": "Patrimônio líquido ao longo do tempo",
   "New account": "Nova conta",
   "New category": "Nova categoria",
   "New envelope": "Novo envelope",
