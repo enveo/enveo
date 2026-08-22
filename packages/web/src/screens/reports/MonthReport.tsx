@@ -1,10 +1,11 @@
 import { type DaySpending, savingsRate, type Transaction } from "@enveo/shared";
 import { useBand } from "../../components/kit";
-import { CalendarHeatmap, ReportShell } from "../../components/reportKit";
+import { CalendarHeatmap, DeltaTag, dimNullLabel, ReportShell, SegBar } from "../../components/reportKit";
 import type { StateResponse } from "../../lib/api";
 import { useTheme } from "../../lib/contexts";
-import { monthLabel, shortDate } from "../../lib/dates";
+import { monthLabel, shiftDay, shortDate, weekdayShortDate } from "../../lib/dates";
 import { useT } from "../../lib/i18n";
+import { daysInMonth } from "../../lib/reportSummary";
 import { type Mask, TITLES } from "./types";
 
 /**
@@ -24,6 +25,21 @@ import { type Mask, TITLES } from "./types";
  * "Largest expenses" row's muted secondary text prefers `context` (envelope/category, computed —
  * and de-duplicated against `label` — in shared/reports.ts) and falls back to the transaction's
  * own date only when `context` is null, so the slot is never empty.
+ *
+ * The calendar's day panel (an accordion `CalendarHeatmap` renders under the selected week row,
+ * this component's own body): day-level `‹ ›` nav clamped to the real month length (not a bare
+ * `[1,31]`), the day's total against a comparison to the SAME daily average the caption above
+ * already shows (one real value, never a second differently-divided one), a full `SegBar`
+ * envelope breakdown (the bar and its own caption must describe the same detail — showing only
+ * the dominant envelope while naming three in the caption would disagree with itself), up to four
+ * sign-correct transaction rows (`isRefund` reads "+", never a flat "−" that would misreport a
+ * refund as a purchase), and an "Open in Transactions ›" link. That link opens the Transactions
+ * list on the month already shared between every report screen (`month`/`onOpenTxns` — both
+ * driven by the same `App.tsx` state Transactions itself reads) rather than a specific
+ * transaction: there is no date-range filter in that list today, so pointing this link at one
+ * transaction's edit screen would silently do something other than what it says. Selection
+ * itself (`monthDay`/`dayDetail`) lives in `App.tsx`, not local state here — editing a row
+ * unmounts this whole screen (`screen: "addExpense"`), which would otherwise lose it.
  */
 export function MonthReport({
   state,
@@ -49,7 +65,6 @@ export function MonthReport({
   largest: { id: string; label: string; context: string | null; date: string; amount: number }[];
   // Day panel (accordion under the selected week row) — selection state lives in App.tsx
   // (mirrors `reportsView`) because opening a transaction to edit unmounts this whole screen.
-  // Unused in THIS task: the panel body (Task 3 of this slice) reads them.
   monthDay: string | null;
   onSelectDay: (date: string | null) => void;
   dayDetail: DaySpending | null;
@@ -62,7 +77,7 @@ export function MonthReport({
   onBack: () => void;
 }) {
   const C = useTheme();
-  const { t, lang } = useT();
+  const { t, tp, lang } = useT();
   const { hc } = useBand();
 
   const totIncome = cashflow.at(-1)?.income ?? 0;
@@ -77,6 +92,171 @@ export function MonthReport({
   const peak = days.length > 0 ? days.reduce((best, d) => (d.total > best.total ? d : best)) : undefined;
   const hasSpending = peak !== undefined && peak.total > 0;
   const avg = days.length > 0 ? Math.round(totExpense / days.length) : 0;
+
+  // ── Day panel: navigation clamped to the real month length (a bare [1,31] would try to open a
+  // day 30/31-day months don't have — `daysInMonth` handles Feb correctly, leap or not). Selecting
+  // the already-open day closes it (toggle), matching `CalendarHeatmap`'s own cell-click idiom.
+  const lastDay = `${month}-${String(daysInMonth(month)).padStart(2, "0")}`;
+  const firstDay = `${month}-01`;
+  const clampToMonth = (d: string) => (d < firstDay ? firstDay : d > lastDay ? lastDay : d);
+  const selectDay = (date: string) => onSelectDay(monthDay === date ? null : date);
+  const stepDay = (delta: number) => monthDay && onSelectDay(clampToMonth(shiftDay(monthDay, delta)));
+
+  // Comparison to the SAME daily average the month caption below already shows — never a second,
+  // differently-divided one (a demo-only coincidence in the mockup; here it must be one real
+  // value so the two captions on screen never imply different averages).
+  const dayDeltaPct = dayDetail && avg > 0 ? (dayDetail.total - avg) / avg : null;
+
+  // Full envelope breakdown (not just the dominant one — the bar and its caption must describe
+  // the same detail). `byEnvelope` is already sorted descending by amount (computeDaySpending's
+  // own contract) — never re-sorted here.
+  const envColor = new Map(state.envelopes.map((e) => [e.id, e.color]));
+  const splitSegments = (dayDetail?.byEnvelope ?? []).map((r) => ({
+    weight: Math.max(0, r.amount),
+    color: r.envelopeId ? (envColor.get(r.envelopeId) ?? C.mute) : C.mute,
+  }));
+  const splitCaption = (dayDetail?.byEnvelope ?? [])
+    .slice(0, 3)
+    .map((r) =>
+      t("{name} {pct}%", {
+        name: dimNullLabel(r.name, "envelope", t),
+        pct: dayDetail && dayDetail.total !== 0 ? Math.round((r.amount / dayDetail.total) * 100) : 0,
+      }),
+    )
+    .join(" · ");
+  const splitOverflow = (dayDetail?.byEnvelope.length ?? 0) - 3;
+
+  // Sign-correct rows: `amount` is always a positive magnitude (domain invariant) — a refund's
+  // real contribution is negative, so it reads "+", never a flat "−" that would misreport it as
+  // a purchase. Same for the header total: a refund-heavy day can leave `total` negative (real
+  // money back), which must say so honestly rather than collapsing to "$0.00" alongside the
+  // actually-zero case.
+  const rowSign = (tx: Transaction): { text: string; color: string } =>
+    tx.isRefund ? { text: `+${M(tx.amount)}`, color: C.pos } : { text: `−${M(tx.amount)}`, color: C.text };
+  const totalSign =
+    dayDetail && dayDetail.total > 0
+      ? { text: `−${M(dayDetail.total)}`, color: C.neg }
+      : dayDetail && dayDetail.total < 0
+        ? { text: `+${M(-dayDetail.total)}`, color: C.pos }
+        : { text: M(0), color: C.mute };
+
+  const envById = new Map(state.envelopes.map((e) => [e.id, e]));
+  const txnLabel = (tx: Transaction): string =>
+    tx.name || tx.note || (tx.envelopeId ? envById.get(tx.envelopeId)?.name : undefined) || (tx.items.length ? t("Split transaction") : t("Transaction"));
+
+  const navBtnStyle = {
+    flexShrink: 0,
+    width: 30,
+    height: 30,
+    border: "none",
+    background: "transparent",
+    color: C.soft,
+    fontSize: 17,
+    lineHeight: 1,
+    cursor: "pointer",
+    padding: 0,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+  } as const;
+
+  const panel =
+    monthDay && dayDetail ? (
+      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+          <span style={{ display: "flex", alignItems: "center", gap: 2 }}>
+            <button aria-label={t("Previous day")} onClick={() => stepDay(-1)} style={navBtnStyle}>
+              ‹
+            </button>
+            <span style={{ fontSize: 12.5, fontWeight: 700, color: C.text }}>{weekdayShortDate(monthDay, lang)}</span>
+            <button aria-label={t("Next day")} onClick={() => stepDay(1)} style={navBtnStyle}>
+              ›
+            </button>
+          </span>
+          <span style={{ display: "flex", alignItems: "center", gap: 2 }}>
+            <span style={{ fontSize: 12.5, fontWeight: 750, color: totalSign.color, fontVariantNumeric: "tabular-nums" }}>{totalSign.text}</span>
+            <button aria-label={t("Close")} onClick={() => onSelectDay(null)} style={{ ...navBtnStyle, fontSize: 12 }}>
+              ✕
+            </button>
+          </span>
+        </div>
+
+        {dayDetail.count > 0 ? (
+          <div style={{ fontSize: 9.5, color: C.mute }}>{tp("{n} transaction | {n} transactions", dayDetail.count)}</div>
+        ) : (
+          <div style={{ fontSize: 9.5, color: C.mute }}>{t("No spending this day.")}</div>
+        )}
+
+        {avg > 0 && (
+          <div style={{ fontSize: 9.5, color: C.mute }}>
+            <DeltaTag pct={dayDeltaPct} /> {t("vs the {avg} daily average", { avg: M(avg) })}
+          </div>
+        )}
+
+        {dayDetail.byEnvelope.length > 0 && (
+          <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+            <SegBar segments={splitSegments} height={5} />
+            <div style={{ fontSize: 9.5, color: C.mute }}>
+              {splitCaption}
+              {splitOverflow > 0 && ` · ${tp("+ {n} more | + {n} more", splitOverflow)}`}
+            </div>
+          </div>
+        )}
+
+        {dayDetail.txns.length > 0 && (
+          <>
+            {dayDetail.txns.slice(0, 4).map((tx) => {
+              const s = rowSign(tx);
+              return (
+                <div
+                  key={tx.id}
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => onEditTxn(tx)}
+                  onKeyDown={(e) => {
+                    if (e.target !== e.currentTarget) return;
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      onEditTxn(tx);
+                    }
+                  }}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    gap: 8,
+                    padding: "6px 2px",
+                    minHeight: 30,
+                    fontSize: 11.5,
+                    cursor: "pointer",
+                  }}
+                >
+                  <span style={{ color: C.soft, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{txnLabel(tx)}</span>
+                  <span style={{ fontWeight: 650, color: s.color, fontVariantNumeric: "tabular-nums", flexShrink: 0 }}>{s.text}</span>
+                </div>
+              );
+            })}
+            {dayDetail.txns.length > 4 && <div style={{ fontSize: 9.5, color: C.mute }}>{tp("+ {n} more | + {n} more", dayDetail.txns.length - 4)}</div>}
+            <button
+              onClick={() => onOpenTxns({})}
+              style={{
+                alignSelf: "flex-start",
+                background: "none",
+                border: "none",
+                padding: 0,
+                fontSize: 10.5,
+                fontWeight: 650,
+                color: "var(--accent)",
+                cursor: "pointer",
+                fontFamily: "inherit",
+              }}
+            >
+              {t("Open in Transactions ›")}
+            </button>
+          </>
+        )}
+      </div>
+    ) : undefined;
 
   const eyebrowStyle = { fontSize: 10.5, fontWeight: 750, letterSpacing: "0.16em", textTransform: "uppercase" as const, color: C.mute, margin: "18px 2px 8px" };
   const rowStyle = (last: boolean) => ({
@@ -109,7 +289,7 @@ export function MonthReport({
       }
     >
       <div style={eyebrowStyle}>{t("Day by day")}</div>
-      <CalendarHeatmap days={days} lang={lang} mask={M} />
+      <CalendarHeatmap days={days} lang={lang} mask={M} selected={monthDay} onSelectDay={selectDay} panel={panel} />
       <div style={{ fontSize: 11, color: C.mute, marginTop: 7 }}>
         {hasSpending && peak
           ? t("avg {avg}/day · peak: {date} ({peak})", { avg: M(avg), date: shortDate(peak.date, lang), peak: M(peak.total) })

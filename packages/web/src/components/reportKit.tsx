@@ -1,8 +1,8 @@
-import type { DailySpendingPoint, Money } from "@enveo/shared";
+import { type DailySpendingPoint, type Money, NULL_LABEL, type SpendingDimension } from "@enveo/shared";
 import type { CSSProperties, ReactNode } from "react";
 import { useCompactMask, useTheme } from "../lib/contexts";
 import { monthLabel, monthShortLabel } from "../lib/dates";
-import { useT } from "../lib/i18n";
+import { type Message, useT } from "../lib/i18n";
 import { P, TEAL, type Theme } from "../lib/theme";
 import { useElementWidth } from "../lib/useElementWidth";
 import { Header } from "./chrome";
@@ -238,6 +238,28 @@ export function DeltaTag({ pct, downIsGood = true }: { pct: number | null; downI
   const good = up ? !downIsGood : downIsGood;
   const color = good ? C.pos : C.neg;
   return <span style={{ color, fontVariantNumeric: "tabular-nums" }}>{`${up ? "↑" : "↓"} ${n}%`}</span>;
+}
+
+
+
+
+
+
+
+
+
+export function dimNullLabel(name: string, dim: SpendingDimension, t: (m: Message) => string): string {
+  if (name !== NULL_LABEL[dim]) return name;
+  switch (dim) {
+    case "category":
+      return t("No category");
+    case "envelope":
+      return t("No envelope");
+    case "group":
+      return t("No group");
+    case "place":
+      return t("No place");
+  }
 }
 
 /** Parse a 'YYYY-MM-DD' date into its UTC weekday, Monday = 0 … Sunday = 6 (no timezone drift —
