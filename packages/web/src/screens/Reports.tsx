@@ -4,8 +4,10 @@ import {
   computeEnvelopeTrends,
   computeNetWorthSeries,
   computeSpendingByDimension,
+  computeSpendingDetail,
   largestExpenses,
   prevMonth,
+  type SpendingDetail,
   type SpendingDimension,
   spendingBaseline,
   topPlaces,
@@ -36,6 +38,7 @@ export function ReportsScreen({
   onMenu,
   onPrev,
   onNext,
+  onOpenTxns,
 }: {
   state: StateResponse;
   month: string;
@@ -46,6 +49,7 @@ export function ReportsScreen({
   onMenu: () => void;
   onPrev: () => void;
   onNext: () => void;
+  onOpenTxns: (f: { envId?: string; envIds?: ReadonlySet<string>; catId?: string; placeId?: string }) => void;
 }) {
   const M = useMask();
   const version = useLedgerVersion();
@@ -88,6 +92,16 @@ export function ReportsScreen({
     return l ? spendingBaseline(l, month, dim, 3) : new Map<string | null, number>();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [version, month, dim, view]);
+  // detail-card breakdown for whichever row is currently selected — same [fromMonth, month]×dim
+  // window `spending` itself was computed over, since the card is only ever open while viewing it.
+  const spendDetailFor = useMemo(() => {
+    return (key: string | null): SpendingDetail | null => {
+      if (view !== "spending" || key === null) return null;
+      const l = store.getLedger();
+      return l ? computeSpendingDetail(l, fromMonth, month, dim, key) : null;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [version, fromMonth, month, dim, view]);
   // hub-only series: current month's envelope breakdown, this month's daily totals, 6-mo envelope trends
   const hubSpending = useMemo(() => {
     if (view !== "overview") return [];
@@ -159,6 +173,7 @@ export function ReportsScreen({
           spending={spending}
           cashflow={cashflow}
           spBaseline={spBaseline}
+          spendDetailFor={spendDetailFor}
           state={state}
           dim={dim}
           setDim={setDim}
@@ -169,6 +184,7 @@ export function ReportsScreen({
           onPrev={onPrev}
           onNext={onNext}
           onBack={back}
+          onOpenTxns={onOpenTxns}
         />
       )}
       {view === "budgets" && <BudgetsReport state={state} M={M} onOpenEnvelope={onOpenEnvelope} onPrev={onPrev} onNext={onNext} onBack={back} />}

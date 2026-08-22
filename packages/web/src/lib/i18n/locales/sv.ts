@@ -94,7 +94,9 @@ export const sv: Dict = {
   "Budget data will be encrypted on your device before it reaches the server. Server-side features will be unavailable.":
     "Budgetdata krypteras på din enhet innan de når servern. Serverfunktionerna blir otillgängliga.",
   Budgets: "Budgetar",
+  "By envelope": "Efter kuvert",
   "By history": "Efter historik",
+  "By place": "Efter plats",
   "CARRIED OVER": "ÖVERFÖRT",
   Cancel: "Avbryt",
   "Cancel editing": "Avbryt redigeringen",
@@ -118,6 +120,7 @@ export const sv: Dict = {
   "Clear & reset": "Töm och nollställ",
   "Clear search": "Rensa sökningen",
   Close: "Stäng",
+  "Close details": "Stäng detaljer",
   Closed: "Stängda",
   Collapse: "Fäll ihop",
   Color: "Färg",

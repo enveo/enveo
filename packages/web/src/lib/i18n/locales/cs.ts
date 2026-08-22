@@ -103,7 +103,9 @@ export const cs: Dict = {
   "Budget data will be encrypted on your device before it reaches the server. Server-side features will be unavailable.":
     "Data rozpočtu se zašifrují na tvém zařízení, ještě než dorazí na server. Serverové funkce nebudou dostupné.",
   Budgets: "Rozpočty",
+  "By envelope": "Podle obálky",
   "By history": "Podle historie",
+  "By place": "Podle místa",
   "CARRIED OVER": "PŘEVEDENO",
   Cancel: "Zrušit",
   "Cancel editing": "Zrušit úpravu",
@@ -127,6 +129,7 @@ export const cs: Dict = {
   "Clear & reset": "Vyprázdnit a resetovat",
   "Clear search": "Vymazat hledání",
   Close: "Zavřít",
+  "Close details": "Zavřít detaily",
   Closed: "Zavřené",
   Collapse: "Sbalit",
   Color: "Barva",

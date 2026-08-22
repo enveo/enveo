@@ -1,4 +1,4 @@
-import { median, type SpendingDimension } from "@enveo/shared";
+import { median, type SpendingDetail, type SpendingDimension } from "@enveo/shared";
 import { useEffect, useState } from "react";
 import { useBand } from "../../components/kit";
 import { Bar, DeltaTag, ReportShell, SegBar } from "../../components/reportKit";
@@ -41,11 +41,28 @@ const RANGES: Array<{ n: number; label: Message }> = [
  * "+ N more" amount recompute from the still-included rows; the fold's row COUNT does not (it
  * counts every hidden row, excluded or not — "how many rows are hidden" is a different question
  * than "how much of my countable spend is hidden").
+ *
+ * Clicking an included row opens a detail card right below the fold button: a sub-breakdown by
+ * the OTHER natural dimension (place, or envelope when `dim` is already place), `n txns · avg ·
+ * largest`, and an "Open transactions ›" link (envelope/category/place map directly onto
+ * `TransactionFilters`; a group resolves to its member envelope ids). `selectedKey` is
+ * re-validated against `includedRows` on every render (`effectiveSelectedKey`) so the card closes
+ * itself — with no separate reset code — the moment its row stops being included, whether that's
+ * because month/range navigation moved it out of `spending` entirely or because the user just
+ * excluded it. Because `selectedKey`'s own "nothing selected" sentinel is the same JS `null` that
+ * represents the dimension's "unassigned" bucket, clicking that bucket's row can never actually
+ * select it (the toggle always lands back on `null`) — so its card, and with it the "Open
+ * transactions" link, structurally never renders; opening an unfiltered transaction list off a
+ * "No envelope"/"No place" click would read as a bug, and there is no real "unassigned" predicate
+ * in `TransactionFilters` to back a correct one. The link (like the card's own `▲ % vs 3 mo` line)
+ * only ever renders at `range === 1`, so it never opens something other than the single month the
+ * user just inspected.
  */
 export function SpendingReport({
   spending,
   cashflow,
   spBaseline,
+  spendDetailFor,
   state,
   dim,
   setDim,
@@ -56,10 +73,12 @@ export function SpendingReport({
   onPrev,
   onNext,
   onBack,
+  onOpenTxns,
 }: {
   spending: { key: string | null; name: string; amount: number; pct: number }[];
   cashflow: { month: string; income: number; expense: number; net: number }[];
   spBaseline: Map<string | null, number>;
+  spendDetailFor: (key: string | null) => SpendingDetail | null;
   state: StateResponse;
   dim: SpendingDimension;
   setDim: (d: SpendingDimension) => void;
@@ -70,13 +89,14 @@ export function SpendingReport({
   onPrev: () => void;
   onNext: () => void;
   onBack: () => void;
+  onOpenTxns: (f: { envId?: string; envIds?: ReadonlySet<string>; catId?: string; placeId?: string }) => void;
 }) {
   const C = useTheme();
   const { t, tp, lang } = useT();
   const { hc } = useBand();
   const [expanded, setExpanded] = useState(false);
   const [excluded, setExcluded] = useState<ReadonlySet<string | null>>(new Set());
-  const [, setSelectedKey] = useState<string | null>(null); // selection itself is consumed by Task 3's detail card
+  const [selectedKey, setSelectedKey] = useState<string | null>(null);
   useEffect(() => {
     setExpanded(false);
     setExcluded(new Set());
@@ -120,6 +140,24 @@ export function SpendingReport({
   const restRows = spending.slice(shown.length);
   const restCount = restRows.length;
   const restAmount = restRows.filter((r) => !excluded.has(r.key)).reduce((s, r) => s + r.amount, 0);
+
+  // Re-validated on every render against the still-included rows — closes the card with no
+  // separate reset code, whether the row moved out of `spending` (month/range navigation) or
+  // just got excluded. See the doc comment above for why this can never equal a null (unassigned)
+  // key: that bucket's own row can never actually select itself.
+  const effectiveSelectedKey = selectedKey !== null && includedRows.some((r) => r.key === selectedKey) ? selectedKey : null;
+  const detail = effectiveSelectedKey !== null ? spendDetailFor(effectiveSelectedKey) : null;
+
+  const handleOpenTxns = (key: string) => {
+    if (dim === "envelope") onOpenTxns({ envId: key });
+    else if (dim === "category") onOpenTxns({ catId: key });
+    else if (dim === "place") onOpenTxns({ placeId: key });
+    else {
+      // group — TransactionFilters has no group predicate, so resolve to member envelope ids
+      const ids = new Set(state.envelopes.filter((e) => e.groupId === key).map((e) => e.id));
+      onOpenTxns(ids.size > 0 ? { envIds: ids } : {});
+    }
+  };
 
   return (
     <ReportShell
@@ -238,13 +276,26 @@ export function SpendingReport({
       {spending.length === 0 && <div style={{ fontSize: 12.5, color: C.mute, padding: "8px 0" }}>{t("No spending in this period.")}</div>}
       {shown.map((r) => {
         const isExcluded = excluded.has(r.key);
+        const isSelected = effectiveSelectedKey === r.key;
         const color = rowColor(r.key);
         const baseline = spBaseline.get(r.key) ?? 0;
         const delta = baseline > 0 ? (r.amount - baseline) / baseline : null;
         const share = !isExcluded && spTotal > 0 ? `${((r.amount / spTotal) * 100).toFixed(1)}%` : null;
         const barPct = isExcluded ? 0 : (r.amount / spTop) * 100;
         return (
-          <div key={r.key ?? "none"} style={{ marginBottom: 12, opacity: isExcluded ? 0.45 : 1 }}>
+          <div
+            key={r.key ?? "none"}
+            style={{
+              marginBottom: 12,
+              marginLeft: isSelected ? -8 : 0,
+              marginRight: isSelected ? -8 : 0,
+              padding: isSelected ? "6px 8px" : 0,
+              borderRadius: isSelected ? 10 : 0,
+              border: `1px solid ${isSelected ? "var(--accent)" : "transparent"}`,
+              background: isSelected ? "var(--accent-1a)" : "transparent",
+              opacity: isExcluded ? 0.45 : 1,
+            }}
+          >
             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
               <button
                 onClick={() => !isExcluded && setSelectedKey((k) => (k === r.key ? null : r.key))}
@@ -325,6 +376,98 @@ export function SpendingReport({
           {tp("+ {n} more · {amount} | + {n} more · {amount}", restCount, { amount: M(restAmount) })}
         </button>
       )}
+      {effectiveSelectedKey !== null &&
+        detail &&
+        (() => {
+          // Non-null by construction: this IIFE only runs inside the `effectiveSelectedKey !==
+          // null` branch above, but TS narrowing doesn't cross the closure boundary on its own.
+          const key = effectiveSelectedKey!;
+          const row = spending.find((r) => r.key === key)!;
+          const baseline = spBaseline.get(key) ?? 0;
+          const delta = baseline > 0 ? (detail.amount - baseline) / baseline : null;
+          const subRows = detail.rows.slice(0, 5);
+          const subTop = Math.max(...subRows.map((r) => r.amount), 1);
+          const moreCount = detail.rows.length - subRows.length;
+          const rowC = rowColor(key);
+          return (
+            <div
+              style={{
+                background: C.bg,
+                border: `1px solid ${C.line}`,
+                borderRadius: 12,
+                padding: "11px 12px",
+                display: "flex",
+                flexDirection: "column",
+                gap: 7,
+                marginBottom: 12,
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
+                <span aria-hidden style={{ width: 9, height: 9, borderRadius: 3, background: rowC, flexShrink: 0 }} />
+                <span
+                  style={{
+                    flex: 1,
+                    minWidth: 0,
+                    fontSize: 12.5,
+                    fontWeight: 700,
+                    color: C.text,
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  {row.name}
+                </span>
+                {range === 1 && <DeltaTag pct={delta} />}
+                <button
+                  onClick={() => setSelectedKey(null)}
+                  aria-label={t("Close details")}
+                  title={t("Close details")}
+                  style={{ flexShrink: 0, background: "none", border: "none", padding: "0 2px", fontSize: 11, color: C.mute, cursor: "pointer" }}
+                >
+                  ✕
+                </button>
+              </div>
+              <div style={{ fontSize: 10, fontWeight: 750, letterSpacing: "0.14em", textTransform: "uppercase", color: C.mute }}>
+                {detail.subDim === "place" ? t("By place") : t("By envelope")}
+              </div>
+              {subRows.map((r) => (
+                <div key={r.key ?? "none"} style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", gap: 8, fontSize: 11.5, color: C.text }}>
+                    <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.name}</span>
+                    <b style={{ flexShrink: 0, fontVariantNumeric: "tabular-nums" }}>{M(r.amount)}</b>
+                  </div>
+                  <Bar pct={(r.amount / subTop) * 100} color={rowC} />
+                </div>
+              ))}
+              {moreCount > 0 && <div style={{ fontSize: 10, color: C.mute }}>{tp("+ {n} more | + {n} more", moreCount)}</div>}
+              <div style={{ fontSize: 10, color: C.soft, borderTop: `1px solid ${C.line}`, paddingTop: 6, fontVariantNumeric: "tabular-nums" }}>
+                {tp("{n} transaction · avg {avg} · largest {largest} | {n} transactions · avg {avg} · largest {largest}", detail.txnCount, {
+                  avg: M(detail.avgAmount),
+                  largest: M(detail.largestAmount),
+                })}
+              </div>
+              {range === 1 && (
+                <button
+                  onClick={() => handleOpenTxns(key)}
+                  style={{
+                    alignSelf: "flex-start",
+                    background: "none",
+                    border: "none",
+                    padding: 0,
+                    fontSize: 10.5,
+                    fontWeight: 650,
+                    color: "var(--accent)",
+                    cursor: "pointer",
+                    fontFamily: "inherit",
+                  }}
+                >
+                  {t("Open transactions ›")}
+                </button>
+              )}
+            </div>
+          );
+        })()}
     </ReportShell>
   );
 }
