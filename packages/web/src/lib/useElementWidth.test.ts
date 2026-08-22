@@ -31,4 +31,9 @@ describe("chartWidth", () => {
     expect(chartWidth(803.5, 340)).toBe(804);
     expect(chartWidth(389.2, 340)).toBe(389);
   });
+
+  test("a sub-pixel width falls back — rounding it would produce a zero-width viewBox", () => {
+    expect(chartWidth(0.4, 340)).toBe(340);
+    expect(chartWidth(0.5, 340)).toBe(1);
+  });
 });
