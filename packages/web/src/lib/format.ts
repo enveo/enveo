@@ -29,6 +29,26 @@ export function formatMoney(minor: number, currency: string, lang: Lang, opts?: 
   }).format(minor / 100);
 }
 
+
+
+
+
+
+
+
+
+
+
+
+export function compactMoney(minor: number, currency: string, lang: Lang): string {
+  return new Intl.NumberFormat(LOCALE_OF[lang], {
+    style: "currency",
+    currency,
+    notation: "compact",
+    maximumFractionDigits: 1,
+  }).format(minor / 100);
+}
+
  
 export function currencySymbol(currency: string, lang: Lang): string {
   const parts = new Intl.NumberFormat(LOCALE_OF[lang], { style: "currency", currency }).formatToParts(0);
