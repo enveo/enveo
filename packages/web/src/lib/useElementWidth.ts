@@ -9,7 +9,7 @@
  * the only rule that holds at every size, and `preserveAspectRatio="none"` is NOT the
  * alternative — it stretches round caps into ellipses.
  */
-import { type RefObject, useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 
 /**
  * The width a chart should draw at. Pure, and total: a container that has not been measured
@@ -27,16 +27,22 @@ export function chartWidth(measured: number | null, fallback: number): number {
 /**
  * Measure an element's content-box width, live.
  *
- * Returns the fallback on the first render (before the observer fires) so a chart never paints
- * at zero width, and again whenever the element is absent or collapsed. ResizeObserver rather
- * than a window `resize` listener: a chart's box changes when a panel opens or a column
- * reflows, not only when the window does.
+ * Returns a callback ref (not a `RefObject`) that attaches the observer when the element
+ * mounts, and the current width or fallback. The fallback is used on the first render
+ * (before the observer fires), when the element is absent, or when it has collapsed to
+ * zero or reported a non-finite width.
+ *
+ * ResizeObserver is used rather than a window `resize` listener because a chart's box
+ * can change when a panel opens or a column reflows — not only when the window resizes.
+ *
+ * **Invariant:** the ref attaches to a block-level element whose content box width
+ * equals the chart's rendered `width: 100%` dimension — no horizontal padding or border
+ * between the element and the SVG.
  */
-export function useElementWidth<T extends HTMLElement>(fallback: number): [RefObject<T>, number] {
-  const ref = useRef<T>(null);
+export function useElementWidth<T extends HTMLElement>(fallback: number): [(el: T | null) => void, number] {
+  const [el, setEl] = useState<T | null>(null);
   const [measured, setMeasured] = useState<number | null>(null);
   useEffect(() => {
-    const el = ref.current;
     if (!el || typeof ResizeObserver === "undefined") return;
     const ro = new ResizeObserver((entries) => {
       const entry = entries[0];
@@ -44,6 +50,9 @@ export function useElementWidth<T extends HTMLElement>(fallback: number): [RefOb
     });
     ro.observe(el);
     return () => ro.disconnect();
-  }, []);
-  return [ref, chartWidth(measured, fallback)];
+  }, [el]);
+  useEffect(() => {
+    if (!el) setMeasured(null);
+  }, [el]);
+  return [setEl, chartWidth(measured, fallback)];
 }
