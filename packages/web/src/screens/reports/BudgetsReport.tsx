@@ -404,7 +404,10 @@ export function BudgetsReport({
                 <span style={{ fontSize: 13.5, fontWeight: 700, color: C.text }}>
                   {openSteps.length === 0
                     ? t("Plan closed — every envelope holds")
-                    : tp("{n} of {m} envelope is healthy | {n} of {m} envelopes are healthy", healthyCount, { m: budgetedCount })}
+                    : /* Both plural forms keep the plural noun: the noun agrees with {m}, not {n}, and this
+   branch only renders while open steps exist, so {m} >= 2 always ("1 of 4 envelopes is
+   healthy"). The all-healthy case routes to the "Plan closed" branch above. */
+                      tp("{n} of {m} envelopes is healthy | {n} of {m} envelopes are healthy", healthyCount, { m: budgetedCount })}
                 </span>
                 <span style={{ fontSize: 11, color: C.soft }}>
                   {openSteps.length === 0

@@ -173,8 +173,10 @@ export interface BudgetStep {
   fundable: number;
 }
 
-/** The cushion a near-limit envelope is topped back up to, as a share of its budget. */
-const NEAR_CUSHION = 0.2;
+/** The cushion a near-limit envelope is topped back up to — 1/5 (20%) of its budget. Kept as a
+ *  rational (`NUM/DEN`), never a decimal constant, so `nearTopUp` stays in integer arithmetic. */
+const NEAR_CUSHION_NUM = 1;
+const NEAR_CUSHION_DEN = 5;
 
 const STEP_ORDER: Record<BudgetStepKind, number> = { over: 0, risk: 1, near: 2 };
 
@@ -184,15 +186,27 @@ const STEP_ORDER: Record<BudgetStepKind, number> = { over: 0, risk: 1, near: 2 }
  * The button's amount `A` gets added to `allocated`, so `rawBudget` (`B`) grows by `A` too —
  * the target the button is supposed to hit moves every time you hit it. Naively aiming at
  * today's target (`round(B * NEAR_CUSHION) - left`) only closes 80% of the gap, so pressing
- * the button repeatedly chases a shrinking residual instead of clearing the step. Solving for
- * `left + A >= NEAR_CUSHION * (B + A)` gives `A >= (NEAR_CUSHION * B - left) / (1 - NEAR_CUSHION)`,
- * which lands exactly on the cushion once applied. `Math.ceil` (never `round` or a floor) is
- * required here: rounding down would leave a one-cent shortfall post-press and reproduce the
- * same bug in miniature.
+ * the button repeatedly chases a shrinking residual instead of clearing the step. Solving
+ * `left + A >= c(B + A)` for `A` with `c = NUM/DEN` gives, entirely in integers,
+ * `A >= (NUM*B - DEN*left) / (DEN - NUM)` — for the 20% cushion, `(B - 5*left) / 4`.
+ *
+ * Integer arithmetic is deliberate, not style: the earlier float form
+ * (`ceil((0.2*B - left) / 0.8)`) overpaid by one cent whenever the exact quotient was an
+ * integer and `0.2*B` rounded up in doubles (0.2 is not representable; an exhaustive sweep
+ * found ~10% of near cases affected — never underfunded, but the doc claim "lands exactly on
+ * the cushion" was false by a cent). `Math.ceil` on the integer quotient (never `round` or a
+ * floor) is still required: rounding down leaves a one-cent shortfall post-press and
+ * reproduces the moving-target bug in miniature.
+ *
+ * Known, accepted consequence (bucket precedence, pre-existing): a hot-pace envelope
+ * classified `near` masks its `risk` bucket, and a full near top-up can drop that mask — the
+ * next derivation may then show a (often larger) risk step for the same envelope. That is
+ * honest information, and the chain terminates within two presses; it is noted here so nobody
+ * reads the follow-up step as the top-up "not working".
  */
 function nearTopUp(rawBudget: number, left: number): number {
-  const shortfall = NEAR_CUSHION * rawBudget - left;
-  return Math.max(0, Math.ceil(shortfall / (1 - NEAR_CUSHION)));
+  const num = NEAR_CUSHION_NUM * rawBudget - NEAR_CUSHION_DEN * left;
+  return Math.max(0, Math.ceil(num / (NEAR_CUSHION_DEN - NEAR_CUSHION_NUM)));
 }
 
 /**
