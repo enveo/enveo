@@ -4,7 +4,9 @@
  * `budgetUsage` owns the denominator and threshold rules for both report surfaces.
  * Non-positive budgets deliberately have `pct: null`; overspending remains `left < 0`.
  */
+
 import { describe, expect, test } from "bun:test";
+import type { EnvelopeTrend } from "@enveo/shared";
 import {
   type BudgetPace,
   type BudgetStep,
@@ -18,6 +20,7 @@ import {
   compareBudgetUsageRows,
   daysInMonth,
   monthProgress,
+  trendBannerMover,
 } from "./reportSummary";
 
 const envRow = (over: Partial<{ archived: boolean; allocated: number; carryIn: number; spent: number }> = {}) => ({
@@ -420,5 +423,41 @@ describe("budgetSteps", () => {
     // budget 100.00, spent 80.00 → pct exactly 80 → near; left 20.00 already equals the cushion
     const steps = budgetSteps([stepRow("e", { allocated: 100_00, spent: 80_00 })], 0.5);
     expect(steps).toEqual([]);
+  });
+});
+
+const mk = (over: Partial<EnvelopeTrend> = {}): EnvelopeTrend => ({
+  id: "e",
+  name: "Envelope",
+  color: "#46c4ba",
+  series: [0, 0, 0, 0, 0, 0],
+  last: 0,
+  baseline: 0,
+  deltaPct: null,
+  ...over,
+});
+
+describe("trendBannerMover", () => {
+  test("empty list -> null", () => {
+    expect(trendBannerMover([])).toBeNull();
+  });
+
+  test("returns trends[0] when its move clears the threshold", () => {
+    const trends = [mk({ deltaPct: 0.5 }), mk({ deltaPct: 0.06 })];
+    expect(trendBannerMover(trends)).toBe(trends[0]!);
+  });
+
+  test("a negative move past the threshold still fires — the mockup's own sign-only gate missed this", () => {
+    const trends = [mk({ deltaPct: -0.4 })];
+    expect(trendBannerMover(trends)).toBe(trends[0]!);
+  });
+
+  test("null deltaPct on trends[0] suppresses the banner and does NOT fall through to trends[1]", () => {
+    const trends = [mk({ deltaPct: null }), mk({ deltaPct: 0.9 })];
+    expect(trendBannerMover(trends)).toBeNull();
+  });
+
+  test("below-threshold trends[0] -> null", () => {
+    expect(trendBannerMover([mk({ deltaPct: 0.02 })])).toBeNull();
   });
 });

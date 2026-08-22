@@ -11,7 +11,11 @@
  *   an allocation (allocated+carryIn>0) or spending in the month.
  * - `budgetsOverAmount` — the € total the hub's Budgets mini-card shows under the pills;
  *   Σ(-left) over rows `budgetUsage` puts in "over".
+ * - `trendBannerMover` — the Trends screen's biggest-mover banner target (2026-08-22 Trends
+ *   redesign); see its own docstring below.
  */
+
+import type { EnvelopeTrend } from "@enveo/shared";
 
 export interface BudgetsSummary {
   over: number; // overspent (left < 0)
@@ -245,4 +249,37 @@ export function budgetSteps(envelopes: BudgetStepInput[], progress: number, opti
     steps.push({ envelopeId: e.id, name: e.name, kind: bucket, amount, ignored: options?.ignored?.has(e.id) ?? false, fundable });
   }
   return steps.sort((a, b) => STEP_ORDER[a.kind] - STEP_ORDER[b.kind] || b.amount - a.amount);
+}
+
+/* ── Trends biggest-mover banner (spec 2026-08-22) ──────────────────────────────────────
+ * The Trends report's redesign adds a one-line banner calling out the single biggest move of
+ * the month. `computeEnvelopeTrends` already sorts its result by |last − baseline| desc, so the
+ * banner is just "is trends[0] worth announcing" — no re-sorting, no runner-up fallback.
+ */
+
+/** Minimum |deltaPct| for the Trends screen's biggest-mover banner — deliberately looser than the
+ *  report's own rising/falling HERO threshold (±10%, unrelated and unchanged, still inline in
+ *  TrendsReport.tsx): the hero counts what's significant enough to tally, the banner calls out
+ *  anything worth a one-line mention. Two different jobs, two different numbers on purpose. */
+export const TREND_BANNER_MIN_PCT = 0.05;
+
+/**
+ * The Trends screen's biggest-mover banner target, or null when there is nothing honest to
+ * announce. `trends` is assumed sorted by `|last - baseline|` desc, exactly the contract
+ * `computeEnvelopeTrends` already documents — this reads only `trends[0]`, it does not re-sort
+ * and it never falls through to a runner-up: if the single biggest raw-dollar move has no
+ * baseline to compare against (`deltaPct === null` — a dormant envelope's first spend), the
+ * correct behaviour is silence, not crediting the SECOND-biggest move as if it were the biggest.
+ *
+ * The mockup this redesign is based on (`Wide App Demo v3.dc.html:3576`) gated its equivalent
+ * banner on `trendTop.rise > 5` — signed, not absolute — even though `trendTop` is chosen by
+ * absolute magnitude a few lines above. That silently hides the banner for exactly the case it
+ * exists to announce (the biggest move of the month, when that move is a decrease). This function
+ * gates on magnitude instead, which is the self-consistent reading: see the module docstring in
+ * TrendsReport.tsx for a worked example.
+ */
+export function trendBannerMover(trends: EnvelopeTrend[], minPct = TREND_BANNER_MIN_PCT): EnvelopeTrend | null {
+  const top = trends[0];
+  if (!top || top.deltaPct === null || Math.abs(top.deltaPct) < minPct) return null;
+  return top;
 }

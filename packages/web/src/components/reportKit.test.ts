@@ -7,7 +7,9 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { gridTicks } from "./reportKit";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import { gridTicks, TrendSpark } from "./reportKit";
 
 describe("gridTicks", () => {
   test("three distinct labels draw three ticks, sorted top to bottom", () => {
@@ -45,6 +47,49 @@ describe("gridTicks", () => {
   test("a flat series (min === max) draws a single tick at the shared value", () => {
     const ticks = gridTicks(100, 100, (v) => `$${v}`);
     expect(ticks).toEqual([{ value: 100, label: "$100" }]);
+  });
+});
+
+/**
+ * `TrendSpark`'s median line (Task 1, Trends redesign) — unlike `NetWorthChart` below, this
+ * component reads no hooks/context, so it can be rendered directly via `renderToStaticMarkup`
+ * (same pattern already used elsewhere in this package, e.g. `accountListRowContent.test.ts`)
+ * and its actual `<line y1>` asserted against, rather than duplicating the y-scaling arithmetic
+ * in the test.
+ */
+describe("TrendSpark median line", () => {
+  function medianLineY(series: number[], median: number): string {
+    const html = renderToStaticMarkup(createElement(TrendSpark, { series, color: "#000", median }));
+    const match = html.match(/<line[^>]*\sy1="([^"]+)"/);
+    if (!match) throw new Error(`expected a <line> element in: ${html}`);
+    return match[1]!;
+  }
+
+  test("a median equal to the series max sits at the top pad", () => {
+    // h defaults to 24, pad is the component's internal inset of 2 — top of the drawable area.
+    expect(medianLineY([0, 10], 10)).toBe("2");
+  });
+
+  test("a median equal to the series min sits at the bottom pad", () => {
+    expect(medianLineY([0, 10], 0)).toBe("22");
+  });
+
+  test("a flat series (min === max) puts the median at h/2, matching the polyline's own flat case", () => {
+    expect(medianLineY([5, 5, 5], 5)).toBe("12");
+  });
+
+  test("omitting median draws no line at all, matching both existing call sites' behavior", () => {
+    const html = renderToStaticMarkup(createElement(TrendSpark, { series: [0, 10], color: "#000" }));
+    expect(html).not.toContain("<line");
+  });
+
+  test("the last-point dot is opt-in and uses the polyline's own color", () => {
+    const withDot = renderToStaticMarkup(createElement(TrendSpark, { series: [0, 10], color: "#123456", dot: true }));
+    expect(withDot).toContain("<circle");
+    expect(withDot).toContain("fill:#123456");
+
+    const withoutDot = renderToStaticMarkup(createElement(TrendSpark, { series: [0, 10], color: "#123456" }));
+    expect(withoutDot).not.toContain("<circle");
   });
 });
 
