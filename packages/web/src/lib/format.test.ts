@@ -80,16 +80,23 @@ describe("compactMoney", () => {
     const pl = compactMoney(2_696_290, "PLN", "pl");
     expect(pl).toMatch(/27/);
     expect(pl).not.toContain("$");
+    expect(pl).toContain("zł"); // currency must actually render
   });
 
   test("small amounts stay legible rather than collapsing to 0", () => {
-    expect(compactMoney(4200, "USD", "en")).toContain("42");
+    const small = compactMoney(4200, "USD", "en");
+    expect(small).toContain("42");
+    expect(small).toContain("$"); // currency must render
   });
 
   test("zero and negatives format without throwing", () => {
-    expect(compactMoney(0, "USD", "en")).toContain("0");
-    expect(compactMoney(-2_696_290, "USD", "en")).toContain("27");
-    expect(compactMoney(-2_696_290, "USD", "en")).toMatch(/^-|−/);
+    const zero = compactMoney(0, "USD", "en");
+    expect(zero).toContain("0");
+    expect(zero).toContain("$"); // currency must render
+    const negative = compactMoney(-2_696_290, "USD", "en");
+    expect(negative).toContain("27");
+    expect(negative).toMatch(/^-|−/);
+    expect(negative).toContain("$"); // currency must render
   });
 
   test("locales without a short thousands form still round rather than showing spurious precision", () => {
@@ -97,5 +104,6 @@ describe("compactMoney", () => {
     const de = compactMoney(2_696_290, "EUR", "de");
     expect(de).not.toMatch(/26[.,]962/); // must not render the exact amount
     expect(de).toMatch(/27/);
+    expect(de).toContain("€"); // currency must render
   });
 });
