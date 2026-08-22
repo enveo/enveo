@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { decimalSeparator, fmtTrimLocale, LOCALE_OF, localizePadExpression } from "./format";
+import { compactMoney, decimalSeparator, fmtTrimLocale, LOCALE_OF, localizePadExpression } from "./format";
 import { LOCALES } from "./i18n/registry";
 
 describe("fmtTrimLocale — locale-aware bare number for read-only captions", () => {
@@ -65,5 +65,30 @@ describe("localizePadExpression — display substitution, nothing else", () => {
   test("no grouping separator is ever introduced (editable state stays parseable)", () => {
     expect(localizePadExpression("1234567,89", "en")).toBe("1234567.89");
     expect(localizePadExpression("1234567,89", "pl")).toBe("1234567,89");
+  });
+});
+
+describe("compactMoney", () => {
+  test("thousands collapse, and the currency is the budget's, never a hardcoded symbol", () => {
+    const en = compactMoney(2_696_290, "USD", "en"); // $26,962.90
+    expect(en).toContain("27");
+    expect(en).toContain("$");
+    expect(en).not.toContain("26,962");
+  });
+
+  test("the locale decides grouping and symbol placement, not the code", () => {
+    const pl = compactMoney(2_696_290, "PLN", "pl");
+    expect(pl).toMatch(/27/);
+    expect(pl).not.toContain("$");
+  });
+
+  test("small amounts stay legible rather than collapsing to 0", () => {
+    expect(compactMoney(4200, "USD", "en")).toContain("42");
+  });
+
+  test("zero and negatives format without throwing", () => {
+    expect(compactMoney(0, "USD", "en")).toContain("0");
+    expect(compactMoney(-2_696_290, "USD", "en")).toContain("27");
+    expect(compactMoney(-2_696_290, "USD", "en")).toMatch(/^-|−/);
   });
 });

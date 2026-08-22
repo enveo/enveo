@@ -15,7 +15,7 @@ import { accountPreferences } from "./accountPreferences";
 import { budgetPreferences } from "./budgetPreferences";
 import { browserLocales, currencyForLocales } from "./currency";
 import { type DevicePreferencesPatch, devicePreferences } from "./devicePreferences";
-import { formatMoney } from "./format";
+import { compactMoney, formatMoney } from "./format";
 // the REGISTRY, not lib/i18n: that one reads useSettings() from here — importing it would close the cycle
 import { detectLang, type Lang } from "./i18n/registry";
 import { startupPresentation } from "./startupSplash";
@@ -136,6 +136,15 @@ export function useMask() {
   const { settings } = useSettings();
   const currency = useCurrency();
   return (minor: number) => (settings.discreet ? "••••" : formatMoney(minor, currency, settings.lang));
+}
+
+/** Masks amounts like `useMask`, in the short form chart axes need. Shares the discreet check —
+ *  an axis label or a tooltip that bypassed it would keep displaying the amount discreet mode
+ *  exists to hide. */
+export function useCompactMask() {
+  const { settings } = useSettings();
+  const currency = useCurrency();
+  return (minor: number) => (settings.discreet ? "••••" : compactMoney(minor, currency, settings.lang));
 }
 
 export function AppProviders({ children }: { children: ReactNode }) {
