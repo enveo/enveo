@@ -1,6 +1,7 @@
-import { savingsRate } from "@enveo/shared";
+import { type DaySpending, savingsRate, type Transaction } from "@enveo/shared";
 import { useBand } from "../../components/kit";
 import { CalendarHeatmap, ReportShell } from "../../components/reportKit";
+import type { StateResponse } from "../../lib/api";
 import { useTheme } from "../../lib/contexts";
 import { monthLabel, shortDate } from "../../lib/dates";
 import { useT } from "../../lib/i18n";
@@ -25,20 +26,35 @@ import { type Mask, TITLES } from "./types";
  * own date only when `context` is null, so the slot is never empty.
  */
 export function MonthReport({
+  state,
   cashflow,
   days,
   places,
   largest,
+  monthDay,
+  onSelectDay,
+  dayDetail,
+  onEditTxn,
+  onOpenTxns,
   M,
   month,
   onPrev,
   onNext,
   onBack,
 }: {
+  state: StateResponse;
   cashflow: { month: string; income: number; expense: number; net: number }[];
   days: { date: string; total: number }[];
   places: { key: string; name: string; count: number; total: number }[];
   largest: { id: string; label: string; context: string | null; date: string; amount: number }[];
+  // Day panel (accordion under the selected week row) — selection state lives in App.tsx
+  // (mirrors `reportsView`) because opening a transaction to edit unmounts this whole screen.
+  // Unused in THIS task: the panel body (Task 3 of this slice) reads them.
+  monthDay: string | null;
+  onSelectDay: (date: string | null) => void;
+  dayDetail: DaySpending | null;
+  onEditTxn: (t: Transaction) => void;
+  onOpenTxns: (f: { envId?: string; envIds?: ReadonlySet<string>; catId?: string; placeId?: string }) => void;
   M: Mask;
   month: string;
   onPrev: () => void;
