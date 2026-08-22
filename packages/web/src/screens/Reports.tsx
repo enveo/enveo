@@ -1,15 +1,18 @@
 import {
   computeCashflowSeries,
   computeDailySpending,
+  computeDaySpending,
   computeEnvelopeTrends,
   computeNetWorthSeries,
   computeSpendingByDimension,
   computeSpendingDetail,
+  type DaySpending,
   largestExpenses,
   prevMonth,
   type SpendingDetail,
   type SpendingDimension,
   spendingBaseline,
+  type Transaction,
   topPlaces,
 } from "@enveo/shared";
 import { useMemo, useState } from "react";
@@ -33,8 +36,11 @@ export function ReportsScreen({
   month,
   view,
   onView,
+  monthDay,
+  onSelectDay,
   onOpenEnvelope,
   onFillGoals,
+  onEditTxn,
   onMenu,
   onPrev,
   onNext,
@@ -44,8 +50,11 @@ export function ReportsScreen({
   month: string;
   view: ReportView;
   onView: (v: ReportView) => void;
+  monthDay: string | null;
+  onSelectDay: (date: string | null) => void;
   onOpenEnvelope: (envId: string, month: string) => void;
   onFillGoals: () => void;
+  onEditTxn: (t: Transaction) => void;
   onMenu: () => void;
   onPrev: () => void;
   onNext: () => void;
@@ -138,6 +147,15 @@ export function ReportsScreen({
     return l ? largestExpenses(l, month, 5) : [];
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [version, month, view]);
+  // day panel breakdown for whichever day is currently selected on the Month report; null
+  // whenever there is nothing selected (or the user isn't even viewing "month" — the same
+  // gated-by-`view` idiom every other Month-only memo above already uses).
+  const dayDetail = useMemo((): DaySpending | null => {
+    if (view !== "month" || !monthDay) return null;
+    const l = store.getLedger();
+    return l ? computeDaySpending(l, monthDay) : null;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [version, monthDay, view]);
 
   // ── Hub: global Header + net-worth band hero + a 2-col grid of six mini-cards ──
   if (view === "overview") {
@@ -193,10 +211,16 @@ export function ReportsScreen({
       )}
       {view === "month" && (
         <MonthReport
+          state={state}
           cashflow={cashflow}
           days={dailySpending}
           places={monthPlaces}
           largest={monthLargest}
+          monthDay={monthDay}
+          onSelectDay={onSelectDay}
+          dayDetail={dayDetail}
+          onEditTxn={onEditTxn}
+          onOpenTxns={onOpenTxns}
           M={M}
           month={month}
           onPrev={onPrev}
