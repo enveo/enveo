@@ -179,6 +179,23 @@ const NEAR_CUSHION = 0.2;
 const STEP_ORDER: Record<BudgetStepKind, number> = { over: 0, risk: 1, near: 2 };
 
 /**
+ * The near-limit top-up, solved for the cushion condition AFTER the top-up is applied.
+ *
+ * The button's amount `A` gets added to `allocated`, so `rawBudget` (`B`) grows by `A` too —
+ * the target the button is supposed to hit moves every time you hit it. Naively aiming at
+ * today's target (`round(B * NEAR_CUSHION) - left`) only closes 80% of the gap, so pressing
+ * the button repeatedly chases a shrinking residual instead of clearing the step. Solving for
+ * `left + A >= NEAR_CUSHION * (B + A)` gives `A >= (NEAR_CUSHION * B - left) / (1 - NEAR_CUSHION)`,
+ * which lands exactly on the cushion once applied. `Math.ceil` (never `round` or a floor) is
+ * required here: rounding down would leave a one-cent shortfall post-press and reproduce the
+ * same bug in miniature.
+ */
+function nearTopUp(rawBudget: number, left: number): number {
+  const shortfall = NEAR_CUSHION * rawBudget - left;
+  return Math.max(0, Math.ceil(shortfall / (1 - NEAR_CUSHION)));
+}
+
+/**
  * The Budgets report's checklist: what to fix, in the order worth fixing it.
  *
  * Overspends lead — that money is already gone. Pace risks follow, because they are cheapest
@@ -207,8 +224,7 @@ export function budgetSteps(envelopes: BudgetStepInput[], progress: number, opti
     const { bucket, projected } = budgetPace(e, progress);
     if (bucket !== "over" && bucket !== "risk" && bucket !== "near") continue;
 
-    const amount =
-      bucket === "over" ? -usage.left : bucket === "risk" ? projected - usage.rawBudget : Math.max(0, Math.round(usage.rawBudget * NEAR_CUSHION) - usage.left);
+    const amount = bucket === "over" ? -usage.left : bucket === "risk" ? projected - usage.rawBudget : nearTopUp(usage.rawBudget, usage.left);
     if (amount <= 0) continue;
 
     const fundable = Math.max(0, Math.min(amount, options?.readyToAssign ?? amount));
