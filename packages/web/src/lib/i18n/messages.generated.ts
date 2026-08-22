@@ -770,7 +770,7 @@ export const MESSAGES = [
   "{n} minute ago | {n} minutes ago",
   "{n} months to {month}",
   "{n} near limit",
-  "{n} of {m} envelope is healthy | {n} of {m} envelopes are healthy",
+  "{n} of {m} envelopes is healthy | {n} of {m} envelopes are healthy",
   "{n} over | {n} over",
   "{n} rising · {m} falling",
   "{n} selected | {n} selected",
