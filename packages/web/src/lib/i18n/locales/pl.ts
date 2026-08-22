@@ -15,9 +15,16 @@ export const pl: Dict = {
     other: "+ {n} kopert bez celu — ustawisz go w edycji koperty.",
   },
   // Gender-neutral by construction ("jeszcze {n}" needs no agreement with the referent) — this
-  // fold button serves all 4 Spending dimensions (Category/Envelope/Group/Place), whose Polish
-  // nouns span all 3 grammatical genders ("koperta" f., "miejsce" n., ...), so every CLDR
-  // category below is intentionally the SAME string rather than a declined "kolejna/kolejne/…".
+  // fold button serves both the outer list's dimensions AND the detail card's own sub-breakdown
+  // (place OR envelope), whose Polish nouns span all 3 grammatical genders ("koperta" f.,
+  // "miejsce" n., ...), so every CLDR category below is intentionally the SAME string rather
+  // than a declined "kolejna/kolejne/…".
+  "+ {n} more | + {n} more": {
+    one: "+ jeszcze {n}",
+    few: "+ jeszcze {n}",
+    many: "+ jeszcze {n}",
+    other: "+ jeszcze {n}",
+  },
   "+ {n} more · {amount} | + {n} more · {amount}": {
     one: "+ jeszcze {n} · {amount}",
     few: "+ jeszcze {n} · {amount}",
@@ -47,6 +54,10 @@ export const pl: Dict = {
   "Delete “{name}” for good? It is not used by any transaction.": "Usunąć „{name}” na zawsze? Nie używa go żadna transakcja.",
   "Envelopes stay as they are — you assigned this by hand.": "Koperty zostają bez zmian — rozdysponowałeś to ręcznie.",
   "Excess {amount}": "Nadmiar {amount}",
+  "Exclude from the total": "Wyklucz z sumy",
+  "Include again": "Uwzględnij ponownie",
+  Reset: "Resetuj",
+  "Without {names}": "Bez: {names}",
   "From account": "Z konta",
   "Goes to": "Trafi do",
   Hidden: "Ukryte",
@@ -179,7 +190,9 @@ export const pl: Dict = {
   "Budget data will be encrypted on your device before it reaches the server. Server-side features will be unavailable.":
     "Dane budżetu będą szyfrowane na urządzeniu, zanim trafią na serwer. Funkcje serwerowe będą niedostępne.",
   Budgets: "Budżety",
+  "By envelope": "Według koperty",
   "By history": "Według historii",
+  "By place": "Według miejsca",
   "CARRIED OVER": "Z POPRZEDNIEGO",
   Cancel: "Anuluj",
   "Cancel editing": "Anuluj edycję",
@@ -201,6 +214,7 @@ export const pl: Dict = {
   "Clear & reset": "Czyszczenie i reset",
   "Clear search": "Wyczyść wyszukiwanie",
   Close: "Zamknij",
+  "Close details": "Zamknij szczegóły",
   Closed: "Zamknięte",
   "Community translation — it may be incomplete.": "Tłumaczenie społeczności — może być niekompletne.",
   "Collapsed by default": "Domyślnie zwinięte",
@@ -419,6 +433,7 @@ export const pl: Dict = {
     "Po włączeniu serwer przechowuje wyłącznie szyfrogramy. Kluczem jest hasło, którego serwer NIE zna — bez hasła (albo kodu parowania z innego odblokowanego urządzenia) danych nie da się odzyskać.",
   "One tap and Enveo lives on your home screen — offline, full screen, no browser bar.":
     "Jedno dotknięcie i Enveo ląduje na ekranie początkowym — offline, na pełnym ekranie, bez paska przeglądarki.",
+  "Open transactions ›": "Otwórz transakcje ›",
   "Open {host} in Safari to add it to your home screen — installing only works from Safari on iPhone and iPad.":
     "Otwórz {host} w Safari, aby dodać aplikację do ekranu początkowego — na iPhonie i iPadzie instalacja działa tylko z Safari.",
   "OpenAI rejected the request — check the key and the model, then try again.": "OpenAI odrzuciło zapytanie — sprawdź klucz i model, potem spróbuj ponownie.",
@@ -796,6 +811,12 @@ export const pl: Dict = {
   "{n} over | {n} over": { one: "{n} przekroczona", few: "{n} przekroczone", many: "{n} przekroczonych", other: "{n} przekroczonych" },
   "{n} rising · {m} falling": "{n} w górę · {m} w dół",
   "{n} transaction | {n} transactions": { one: "{n} transakcja", few: "{n} transakcje", many: "{n} transakcji", other: "{n} transakcji" },
+  "{n} transaction · avg {avg} · largest {largest} | {n} transactions · avg {avg} · largest {largest}": {
+    one: "{n} transakcja · śr. {avg} · maks. {largest}",
+    few: "{n} transakcje · śr. {avg} · maks. {largest}",
+    many: "{n} transakcji · śr. {avg} · maks. {largest}",
+    other: "{n} transakcji · śr. {avg} · maks. {largest}",
+  },
   "{count} unsent changes are still on this device. Retry when online, export a backup, or explicitly discard them.":
     "Na tym urządzeniu nadal są niewysłane zmiany ({count}). Połącz się z internetem i ponów, wyeksportuj kopię albo jawnie je odrzuć.",
   "Account preferences": "Ustawienia konta",

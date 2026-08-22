@@ -14,7 +14,9 @@ import {
   computeGoalHistory,
   computeNetWorthSeries,
   computeSpendingByDimension,
+  computeSpendingDetail,
   largestExpenses,
+  type SpendingDetail,
   savingsRate,
   spendingBaseline,
   topPlaces,
@@ -1029,5 +1031,163 @@ describe("computeDaySpending", () => {
     });
     const fromMonth = computeDailySpending(l, "2026-07").find((p) => p.date === "2026-07-14")!;
     expect(computeDaySpending(l, "2026-07-14").total).toBe(fromMonth.total);
+  });
+});
+
+describe("computeSpendingDetail", () => {
+  it("parity: amount matches the row's own total in computeSpendingByDimension", () => {
+    const g = grp();
+    const e1 = env(g.id, { id: "E1", name: "Koperta A" });
+    const e2 = env(g.id, { id: "E2", name: "Koperta B" });
+    const a = acc({ id: "A" });
+    const l = asClientLedger({
+      accounts: [a],
+      groups: [g],
+      envelopes: [e1, e2],
+      allocations: [],
+      transactions: [
+        tx({ type: "expense", accountId: "A", envelopeId: "E1", placeId: "P1", amount: 40_00, date: "2026-07-03" }),
+        tx({ type: "expense", accountId: "A", envelopeId: "E1", placeId: "P2", amount: 60_00, date: "2026-07-10" }),
+        tx({ type: "expense", accountId: "A", envelopeId: "E2", placeId: "P1", amount: 10_00, date: "2026-07-12" }), // different envelope — must not leak into E1's detail
+      ],
+    });
+    l.places = [
+      { id: "P1", name: "Sklep A", archived: false },
+      { id: "P2", name: "Sklep B", archived: false },
+    ];
+    const rows = computeSpendingByDimension(l, "2026-07", "2026-07", "envelope");
+    const detail: SpendingDetail | null = computeSpendingDetail(l, "2026-07", "2026-07", "envelope", "E1");
+    expect(detail?.amount).toBe(rows.find((r) => r.key === "E1")!.amount);
+    expect(detail?.subDim).toBe("place");
+    expect(detail?.rows.map((r) => r.name)).toEqual(["Sklep B", "Sklep A"]);
+    expect(detail?.txnCount).toBe(2);
+    expect(detail?.avgAmount).toBe(50_00);
+    expect(detail?.largestAmount).toBe(60_00);
+  });
+
+  it("dim=place, subDim=envelope: a split visit's items are bucketed by their OWN envelope", () => {
+    const g = grp();
+    const e1 = env(g.id, { id: "E1", name: "Koperta A" });
+    const e2 = env(g.id, { id: "E2", name: "Koperta B" });
+    const a = acc({ id: "A" });
+    const l = asClientLedger({
+      accounts: [a],
+      groups: [g],
+      envelopes: [e1, e2],
+      allocations: [],
+      transactions: [
+        tx({
+          type: "expense",
+          accountId: "A",
+          placeId: "P1",
+          amount: 100_00,
+          date: "2026-07-05",
+          items: [
+            { id: "i1", envelopeId: "E1", categoryId: null, amount: 70_00 },
+            { id: "i2", envelopeId: "E2", categoryId: null, amount: 30_00 },
+          ],
+        }),
+      ],
+    });
+    l.places = [{ id: "P1", name: "Sklep A", archived: false }];
+    const detail = computeSpendingDetail(l, "2026-07", "2026-07", "place", "P1");
+    expect(detail?.subDim).toBe("envelope");
+    expect(detail?.amount).toBe(100_00);
+    expect(detail?.rows).toEqual(
+      expect.arrayContaining([
+        { key: "E1", name: "Koperta A", amount: 70_00 },
+        { key: "E2", name: "Koperta B", amount: 30_00 },
+      ]),
+    );
+  });
+
+  it("dim=category on a split: only the items matching the selected category count", () => {
+    const g = grp();
+    const e = env(g.id, { id: "E1" });
+    const a = acc({ id: "A" });
+    const l = asClientLedger({
+      accounts: [a],
+      groups: [g],
+      envelopes: [e],
+      allocations: [],
+      transactions: [
+        tx({
+          type: "expense",
+          accountId: "A",
+          placeId: "P1",
+          amount: 100_00,
+          date: "2026-07-05",
+          items: [
+            { id: "i1", envelopeId: "E1", categoryId: "C1", amount: 60_00 },
+            { id: "i2", envelopeId: "E1", categoryId: "C2", amount: 40_00 }, // different category — excluded from C1's detail
+          ],
+        }),
+      ],
+    });
+    l.categories = [
+      { id: "C1", name: "Jedzenie", archived: false },
+      { id: "C2", name: "Transport", archived: false },
+    ];
+    l.places = [{ id: "P1", name: "Sklep A", archived: false }];
+    const detail = computeSpendingDetail(l, "2026-07", "2026-07", "category", "C1");
+    expect(detail?.amount).toBe(60_00); // NOT 100_00 — the C2 item does not belong to this row
+    expect(detail?.subDim).toBe("place");
+    expect(detail?.rows).toEqual([{ key: "P1", name: "Sklep A", amount: 60_00 }]);
+  });
+
+  it("largestAmount excludes refunds (mirrors largestExpenses); avg/amount stay netted", () => {
+    const g = grp();
+    const e = env(g.id, { id: "E1" });
+    const a = acc({ id: "A" });
+    const l = asClientLedger({
+      accounts: [a],
+      groups: [g],
+      envelopes: [e],
+      allocations: [],
+      transactions: [
+        tx({ type: "expense", accountId: "A", envelopeId: "E1", amount: 200_00, date: "2026-07-02" }),
+        tx({ type: "expense", accountId: "A", envelopeId: "E1", amount: 150_00, isRefund: true, date: "2026-07-09" }),
+      ],
+    });
+    const detail = computeSpendingDetail(l, "2026-07", "2026-07", "envelope", "E1");
+    expect(detail?.txnCount).toBe(2);
+    expect(detail?.amount).toBe(50_00); // 200 − 150, netted — same rule as computeSpendingByDimension
+    expect(detail?.largestAmount).toBe(200_00); // the refund never competes for "largest"
+  });
+
+  it("returns null when the key has no matching transaction in the window", () => {
+    const g = grp();
+    const e = env(g.id, { id: "E1" });
+    const a = acc({ id: "A" });
+    const l = asClientLedger({ accounts: [a], groups: [g], envelopes: [e], allocations: [], transactions: [] });
+    expect(computeSpendingDetail(l, "2026-07", "2026-07", "envelope", "E1")).toBeNull();
+  });
+
+  it("a stale/deleted reference falls back to the same NULL_LABEL bucket used for 'no value assigned'", () => {
+    // E2 is referenced by a transaction but not present in ledger.envelopes — mirrors
+    // computeDaySpending's own precedent (envelope?.name ?? NULL_LABEL.envelope) rather than
+    // inventing a second hardcoded fallback string for "unknown reference".
+    const g = grp();
+    const e1 = env(g.id, { id: "E1" });
+    const a = acc({ id: "A" });
+    const l = asClientLedger({
+      accounts: [a],
+      groups: [g],
+      envelopes: [e1],
+      allocations: [],
+      transactions: [
+        tx({
+          type: "expense",
+          accountId: "A",
+          placeId: "P1",
+          amount: 100_00,
+          date: "2026-07-05",
+          items: [{ id: "i1", envelopeId: "E2", categoryId: null, amount: 100_00 }],
+        }),
+      ],
+    });
+    l.places = [{ id: "P1", name: "Sklep A", archived: false }];
+    const detail = computeSpendingDetail(l, "2026-07", "2026-07", "place", "P1");
+    expect(detail?.rows).toEqual([{ key: "E2", name: "Bez koperty", amount: 100_00 }]);
   });
 });

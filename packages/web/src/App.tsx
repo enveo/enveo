@@ -154,12 +154,14 @@ export default function App() {
   // enter the transaction list with a preselected filter (envelope OR account) — from an
   // envelope/account tile or sheet. Clean, focused view: set the given filter, clear the
   // other dimension and the search box.
-  const openTxns = (f?: { envId?: string; accId?: string }) => {
+  const openTxns = (f?: { envId?: string; accId?: string; envIds?: ReadonlySet<string>; catId?: string; placeId?: string }) => {
     setTxQuery("");
     setTxFilters({
       ...initialTransactionFilters(),
-      envelopeIds: f?.envId ? new Set([f.envId]) : new Set(),
+      envelopeIds: f?.envIds ? new Set(f.envIds) : f?.envId ? new Set([f.envId]) : new Set(),
       accountIds: f?.accId ? new Set([f.accId]) : new Set(),
+      categoryIds: f?.catId ? new Set([f.catId]) : new Set(),
+      placeIds: f?.placeId ? new Set([f.placeId]) : new Set(),
     });
     setEditTxn(null);
     setEnvView(null);
@@ -374,6 +376,7 @@ export default function App() {
                     onMenu={() => setDrawer(true)}
                     onPrev={prev}
                     onNext={next}
+                    onOpenTxns={openTxns}
                   />
                 </LazyChunk>
               )}
