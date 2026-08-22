@@ -6,6 +6,7 @@ import { useTheme } from "../../lib/contexts";
 import { monthLabel, monthShortLabel } from "../../lib/dates";
 import { useT } from "../../lib/i18n";
 import type { Theme } from "../../lib/theme";
+import { useElementWidth } from "../../lib/useElementWidth";
 import { type Mask, TITLES } from "./types";
 
 /** Header cell base style for the In/Out/Left over table (per-column `textAlign`/`paddingLeft`
@@ -215,39 +216,48 @@ export function CashflowReport({
  * column's stretched width) against one column's real width, deriving how many columns to skip
  * (`labelStep`, extracted pure so the arithmetic is unit-tested — see `CashflowReport.test.ts`).
  * Thinning walks BACKWARD from the newest month (index `n - 1`) so the most recent month is always
- * labelled. Measuring every label's width regardless of current visibility (not just the ones
- * `step` currently shows) means there is no measure→hide→measure feedback loop to converge — the
- * true widest label is known in one pass, so `setStep` only ever needs to run once per real change
- * (data length or language; a language swap can change which short-month form is longest). */
+ * labelled.
+ *
+ * **Re-review fix (staleness)**: the first version keyed its measurement effect on `[n, lang]`,
+ * reasoning that thinning "only needs to run once per real change: data length or language." That
+ * missed a third axis — month navigation (`onPrev`/`onNext`) slides the rolling 12-month window,
+ * changing every label STRING while `n` (always 12) and `lang` stay put, so the effect never
+ * reran after mount and a longer label brought back exactly the overlap this fix targets. It also
+ * measured column width off a plain `useRef` pinned to the index-0 column div; since columns key
+ * on `p.month`, the sliding window puts a different physical node at index 0 as months shift, and
+ * once the originally-observed node unmounted even a viewport resize stopped retriggering
+ * measurement. Fix: column width now comes from `useElementWidth` on the row container (a callback
+ * ref that re-subscribes whenever the node under it changes, so it can't get stuck watching a node
+ * the window has since dropped), and the layout effect below carries NO dependency array — it
+ * re-measures on every render, so there is no dependency list left to go stale. Twelve `Range`
+ * measurements per render is cheap, and `setStep`'s `prev === next` guard still stops the loop
+ * once the value is unchanged. */
 function CashflowColumns({ cashflow, M }: { cashflow: CashflowPoint[]; M: Mask }) {
   const C = useTheme();
   const { t, lang } = useT();
-  const colRef = useRef<HTMLDivElement | null>(null);
+  const GAP = 3;
+  const [rowRef, rowW] = useElementWidth<HTMLDivElement>(0);
   const labelRefs = useRef<(HTMLDivElement | null)[]>([]);
   const [step, setStep] = useState(1);
   const n = cashflow.length;
 
+  // No dependency array on purpose (see the re-review note above): re-derive `step` from the
+  // current `rowW`/labels on every render rather than trying to name every input that can change
+  // it, which is exactly what went stale last time.
   useLayoutEffect(() => {
     if (n === 0) return;
-    const measure = () => {
-      const colW = colRef.current?.getBoundingClientRect().width ?? 0;
-      let widest = 0;
-      for (const el of labelRefs.current) {
-        if (!el) continue;
-        const range = document.createRange();
-        range.selectNodeContents(el);
-        const w = range.getBoundingClientRect().width;
-        if (w > widest) widest = w;
-      }
-      const next = labelStep(widest, colW);
-      setStep((prev) => (prev === next ? prev : next));
-    };
-    measure();
-    if (typeof ResizeObserver === "undefined" || !colRef.current) return;
-    const ro = new ResizeObserver(measure);
-    ro.observe(colRef.current);
-    return () => ro.disconnect();
-  }, [n, lang]);
+    const colW = (rowW - Math.max(0, n - 1) * GAP) / n;
+    let widest = 0;
+    for (const el of labelRefs.current) {
+      if (!el) continue;
+      const range = document.createRange();
+      range.selectNodeContents(el);
+      const w = range.getBoundingClientRect().width;
+      if (w > widest) widest = w;
+    }
+    const next = labelStep(widest, colW);
+    setStep((prev) => (prev === next ? prev : next));
+  });
 
   const maxAbs = Math.max(...cashflow.map((p) => Math.abs(p.net)), 1);
   return (
@@ -258,14 +268,13 @@ function CashflowColumns({ cashflow, M }: { cashflow: CashflowPoint[]; M: Mask }
        *  tooltip, which is unreachable by keyboard or screen reader — the In/Out/Left over table
        *  below now publishes the same per-month figures in accessible DOM, so this row becomes a
        *  purely visual summary of data available elsewhere. */}
-      <div aria-hidden="true" style={{ display: "flex", alignItems: "center", gap: 3, height: 110 }}>
+      <div ref={rowRef} aria-hidden="true" style={{ display: "flex", alignItems: "center", gap: GAP, height: 110 }}>
         {cashflow.map((p, i) => {
           const h = Math.max(3, Math.round((Math.abs(p.net) / maxAbs) * 52));
           const showLabel = (n - 1 - i) % step === 0;
           return (
             <div
               key={p.month}
-              ref={i === 0 ? colRef : undefined}
               style={{ flex: 1, minWidth: 0, height: "100%", display: "flex", flexDirection: "column", alignItems: "stretch" }}
               title={`${monthLabel(p.month, lang)} · ↑ ${M(p.income)} · ↓ ${M(p.expense)} · ${p.net >= 0 ? "+" : "−"}${M(Math.abs(p.net))}`}
             >
