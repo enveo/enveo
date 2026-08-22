@@ -153,8 +153,10 @@ export function SpendingReport({
     else if (dim === "category") onOpenTxns({ catId: key });
     else if (dim === "place") onOpenTxns({ placeId: key });
     else {
-       
-      const ids = new Set(state.envelopes.filter((e) => e.groupId === key).map((e) => e.id));
+      
+
+
+      const ids = new Set(state.envelopes.filter((e) => e.groupId === key && !e.isSavings).map((e) => e.id));
       onOpenTxns(ids.size > 0 ? { envIds: ids } : {});
     }
   };
@@ -298,7 +300,11 @@ export function SpendingReport({
           >
             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
               <button
-                onClick={() => !isExcluded && setSelectedKey((k) => (k === r.key ? null : r.key))}
+                onClick={() => !isExcluded && r.key !== null && setSelectedKey((k) => (k === r.key ? null : r.key))}
+                /* The unassigned (null-key) row deliberately opens no card (see the docstring), so
+                   it must not advertise clickability either — a pointer cursor on a press that
+                   does nothing reads as breakage. */
+                disabled={r.key === null}
                 style={{
                   flex: 1,
                   minWidth: 0,
@@ -306,7 +312,7 @@ export function SpendingReport({
                   background: "none",
                   border: "none",
                   padding: 0,
-                  cursor: isExcluded ? "default" : "pointer",
+                  cursor: isExcluded || r.key === null ? "default" : "pointer",
                   fontFamily: "inherit",
                 }}
               >
@@ -344,7 +350,23 @@ export function SpendingReport({
                 }
                 title={isExcluded ? t("Include again") : t("Exclude from the total")}
                 aria-label={isExcluded ? t("Include again") : t("Exclude from the total")}
-                style={{ flexShrink: 0, background: "none", border: "none", fontSize: 10.5, color: C.mute, padding: "6px 5px", cursor: "pointer" }}
+                
+
+
+                style={{
+                  flexShrink: 0,
+                  width: 30,
+                  height: 30,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  background: "none",
+                  border: "none",
+                  fontSize: 10.5,
+                  color: C.mute,
+                  padding: 0,
+                  cursor: "pointer",
+                }}
               >
                 {isExcluded ? "↩" : "✕"}
               </button>
@@ -423,7 +445,21 @@ export function SpendingReport({
                   onClick={() => setSelectedKey(null)}
                   aria-label={t("Close details")}
                   title={t("Close details")}
-                  style={{ flexShrink: 0, background: "none", border: "none", padding: "0 2px", fontSize: 11, color: C.mute, cursor: "pointer" }}
+                   
+                  style={{
+                    flexShrink: 0,
+                    width: 30,
+                    height: 30,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    background: "none",
+                    border: "none",
+                    padding: 0,
+                    fontSize: 11,
+                    color: C.mute,
+                    cursor: "pointer",
+                  }}
                 >
                   ✕
                 </button>
