@@ -1,4 +1,5 @@
 import { type CashflowPoint, savingsRate } from "@enveo/shared";
+import { useLayoutEffect, useRef, useState } from "react";
 import { useBand } from "../../components/kit";
 import { ReportShell } from "../../components/reportKit";
 import { useTheme } from "../../lib/contexts";
@@ -199,10 +200,55 @@ export function CashflowReport({
  * slice of `monthLabel` — CLDR's short-month rule is not "first N characters" in every locale, so
  * slicing would be right by accident in some languages and wrong in others. The `title` tooltip
  * carries the full month name (`monthLabel`) plus income, expense and net, all through `M` so
- * discreet mode masks them like every other amount on this screen. */
+ * discreet mode masks them like every other amount on this screen.
+ *
+ * **Label thinning (Task 3c fix)**: a browser pass measured French `monthShortLabel` output
+ * ("Sept.", 22.1px at this type size) against a real column width and found it does not fit at
+ * narrow phone widths — at 320px a column is only 19.4px wide, so unthinned labels overlap their
+ * neighbours. A hardcoded threshold can't fix this correctly: it is either too tight (needlessly
+ * thinning wider viewports/shorter locales) or too loose (any constant is one font on one machine).
+ * Instead every label stays in the DOM always (`visibility: hidden`, never omitted) — hidden labels
+ * remain measurable, which is what lets this recover cleanly if the viewport grows back, and every
+ * column keeps identical height so the chart's baseline never shifts as labels drop in/out — and a
+ * layout effect measures the REAL widest label (via `Range`, which reports actual glyph width,
+ * unlike `getBoundingClientRect()` on the label element itself, which would just report the
+ * column's stretched width) against one column's real width, deriving how many columns to skip
+ * (`labelStep`, extracted pure so the arithmetic is unit-tested — see `CashflowReport.test.ts`).
+ * Thinning walks BACKWARD from the newest month (index `n - 1`) so the most recent month is always
+ * labelled. Measuring every label's width regardless of current visibility (not just the ones
+ * `step` currently shows) means there is no measure→hide→measure feedback loop to converge — the
+ * true widest label is known in one pass, so `setStep` only ever needs to run once per real change
+ * (data length or language; a language swap can change which short-month form is longest). */
 function CashflowColumns({ cashflow, M }: { cashflow: CashflowPoint[]; M: Mask }) {
   const C = useTheme();
   const { t, lang } = useT();
+  const colRef = useRef<HTMLDivElement | null>(null);
+  const labelRefs = useRef<(HTMLDivElement | null)[]>([]);
+  const [step, setStep] = useState(1);
+  const n = cashflow.length;
+
+  useLayoutEffect(() => {
+    if (n === 0) return;
+    const measure = () => {
+      const colW = colRef.current?.getBoundingClientRect().width ?? 0;
+      let widest = 0;
+      for (const el of labelRefs.current) {
+        if (!el) continue;
+        const range = document.createRange();
+        range.selectNodeContents(el);
+        const w = range.getBoundingClientRect().width;
+        if (w > widest) widest = w;
+      }
+      const next = labelStep(widest, colW);
+      setStep((prev) => (prev === next ? prev : next));
+    };
+    measure();
+    if (typeof ResizeObserver === "undefined" || !colRef.current) return;
+    const ro = new ResizeObserver(measure);
+    ro.observe(colRef.current);
+    return () => ro.disconnect();
+  }, [n, lang]);
+
   const maxAbs = Math.max(...cashflow.map((p) => Math.abs(p.net)), 1);
   return (
     <div style={{ border: `1px solid ${C.line}`, borderRadius: 12, padding: "11px 12px" }}>
@@ -213,11 +259,13 @@ function CashflowColumns({ cashflow, M }: { cashflow: CashflowPoint[]; M: Mask }
        *  below now publishes the same per-month figures in accessible DOM, so this row becomes a
        *  purely visual summary of data available elsewhere. */}
       <div aria-hidden="true" style={{ display: "flex", alignItems: "center", gap: 3, height: 110 }}>
-        {cashflow.map((p) => {
+        {cashflow.map((p, i) => {
           const h = Math.max(3, Math.round((Math.abs(p.net) / maxAbs) * 52));
+          const showLabel = (n - 1 - i) % step === 0;
           return (
             <div
               key={p.month}
+              ref={i === 0 ? colRef : undefined}
               style={{ flex: 1, minWidth: 0, height: "100%", display: "flex", flexDirection: "column", alignItems: "stretch" }}
               title={`${monthLabel(p.month, lang)} · ↑ ${M(p.income)} · ↓ ${M(p.expense)} · ${p.net >= 0 ? "+" : "−"}${M(Math.abs(p.net))}`}
             >
@@ -228,7 +276,14 @@ function CashflowColumns({ cashflow, M }: { cashflow: CashflowPoint[]; M: Mask }
               <div style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "flex-start" }}>
                 {p.net < 0 && <div style={{ height: h, borderRadius: "0 0 3px 3px", background: C.neg, margin: "0 2px" }} />}
               </div>
-              <div style={{ fontSize: 8.5, color: C.mute, textAlign: "center", paddingTop: 3 }}>{monthShortLabel(p.month, lang)}</div>
+              <div
+                ref={(el) => {
+                  labelRefs.current[i] = el;
+                }}
+                style={{ fontSize: 8.5, color: C.mute, textAlign: "center", paddingTop: 3, visibility: showLabel ? "visible" : "hidden" }}
+              >
+                {monthShortLabel(p.month, lang)}
+              </div>
             </div>
           );
         })}
@@ -236,4 +291,20 @@ function CashflowColumns({ cashflow, M }: { cashflow: CashflowPoint[]; M: Mask }
       <div style={{ fontSize: 10, color: C.mute }}>{t("net per month · scale ±{max}", { max: M(maxAbs) })}</div>
     </div>
   );
+}
+
+/**
+ * How many columns to skip between visible month labels, so the widest rendered label (measured
+ * in the viewer's real font) never sits closer than `+2`px to its neighbour's shown label.
+ *
+ * Pure and total: called from a layout effect with real (possibly not-yet-settled) measurements,
+ * so it must never divide by zero or return a 0 step (which would hide every label, including the
+ * newest month `CashflowColumns` always wants labelled). An unmeasured or collapsed `colW`, or a
+ * not-yet-measured `widest`, falls back to showing every label (`1`) rather than guessing — the
+ * layout effect re-measures and corrects before paint once real numbers are available.
+ */
+export function labelStep(widest: number, colW: number): number {
+  if (!Number.isFinite(colW) || colW <= 0) return 1;
+  if (!Number.isFinite(widest) || widest <= 0) return 1;
+  return Math.max(1, Math.ceil((widest + 2) / colW));
 }
