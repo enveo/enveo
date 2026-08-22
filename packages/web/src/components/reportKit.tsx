@@ -429,10 +429,16 @@ const AXIS_W = 76;
  * Extremes beat mid: candidates are compared in `[max, min, mid]` order, so BOTH the top and the
  * floor line win any collision against the middle one — a mid/extreme collision always drops mid,
  * never an extreme. The series' actual highest and lowest points stay on the axis (the plotted
- * line never dips below its own lowest gridline or rises above its highest), and only the tick
- * with the least information — the interpolated midpoint — is the one ever sacrificed to a
- * label collision. Ticks are then sorted by value descending so draw order (top to bottom) is
- * unchanged regardless of the candidate order used for dedup.
+ * line never dips below its own lowest gridline or rises above its highest), and the tick with
+ * the least information — the interpolated midpoint — is the one sacrificed. Ticks are then
+ * sorted by value descending so draw order (top to bottom) is unchanged regardless of the
+ * candidate order used for dedup.
+ *
+ * The one case that order does NOT cover: if max and min formatted to the same label while mid
+ * formatted to a different one, min would be dropped rather than mid. That needs a `format` that
+ * is not monotonic, since mid lies between the two — `useCompactMask` rounds, so it cannot
+ * produce it, and the flat series (max === min) is already handled by the all-collide branch
+ * above. Stated rather than guarded, so nobody reads the rule above as stronger than it is.
  */
 export function gridTicks(min: number, max: number, format: (v: number) => string): { value: number; label: string }[] {
   const mid = (min + max) / 2;
