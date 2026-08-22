@@ -61,6 +61,13 @@ export function dayMonth(iso: string, lang: Lang): string {
   return new Intl.DateTimeFormat(LOCALE_OF[lang], { day: "numeric", month: "long", timeZone: "UTC" }).format(new Date(`${iso}T00:00:00Z`));
 }
 
+/** Weekday + day + short month, e.g. "Wed, Jul 9" / "śr., 9 lip" — the Month report's day-panel
+ *  header. Shorter than `formatDateLong`'s full form ("Monday, July 7, 2026"); unlike `shortDate`
+ *  (day+month only), this includes the weekday. */
+export function weekdayShortDate(iso: string, lang: Lang): string {
+  return new Intl.DateTimeFormat(LOCALE_OF[lang], { weekday: "short", day: "numeric", month: "short", timeZone: "UTC" }).format(new Date(`${iso}T00:00:00Z`));
+}
+
 /** Full date per locale, e.g. "poniedziałek, 7 lipca 2026" / "Monday, July 7, 2026". */
 export function formatDateLong(iso: string, lang: Lang): string {
   const [y, m, d] = iso.split("-").map(Number) as [number, number, number];

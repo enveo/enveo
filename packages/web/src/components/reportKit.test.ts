@@ -7,9 +7,58 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import type { DailySpendingPoint } from "@enveo/shared";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { gridTicks, TrendSpark } from "./reportKit";
+import { gridTicks, heatWeeks, TrendSpark } from "./reportKit";
+
+/** Builds `count` consecutive `DailySpendingPoint`s starting at `${month}-01` — real calendar
+ *  months, so `heatWeeks`'s offsets below are checkable by hand rather than fixture noise. */
+function daysFor(month: string, count: number): DailySpendingPoint[] {
+  return Array.from({ length: count }, (_, i) => ({ date: `${month}-${String(i + 1).padStart(2, "0")}`, total: i }));
+}
+
+describe("heatWeeks", () => {
+  test("2026-06-01 is a Monday — the first week has zero leading nulls", () => {
+    const weeks = heatWeeks(daysFor("2026-06", 30)); // June 2026 has 30 days
+    expect(weeks.length).toBe(5);
+    expect(weeks[0]!.every((c) => c !== null)).toBe(true);
+    expect(weeks[0]![0]!.date).toBe("2026-06-01");
+    // last week: days 29-30 (2 real cells) padded out with 5 trailing nulls
+    expect(weeks[4]!.slice(0, 2).map((c) => c?.date)).toEqual(["2026-06-29", "2026-06-30"]);
+    expect(weeks[4]!.slice(2)).toEqual([null, null, null, null, null]);
+  });
+
+  test("2026-02-01 is a Sunday — 6 leading nulls, and the last week ends with ONE trailing null (28 + 6 = 34, padded to 35)", () => {
+    const weeks = heatWeeks(daysFor("2026-02", 28)); // 2026 is not a leap year: 28 days
+    expect(weeks.length).toBe(5);
+    expect(weeks[0]!.slice(0, 6)).toEqual([null, null, null, null, null, null]);
+    expect(weeks[0]![6]!.date).toBe("2026-02-01");
+    // last week: days 23-28 (6 real cells) + exactly 1 trailing null, not zero
+    expect(weeks[4]!.slice(0, 6).map((c) => c?.date)).toEqual(["2026-02-23", "2026-02-24", "2026-02-25", "2026-02-26", "2026-02-27", "2026-02-28"]);
+    expect(weeks[4]![6]).toBe(null);
+  });
+
+  test("a leap February (2024-02-01, 29 days) produces one more real cell than 2026's non-leap February, and a different trailing count", () => {
+    const weeks = heatWeeks(daysFor("2024-02", 29));
+    expect(weeks.length).toBe(5);
+    expect(weeks[0]!.slice(0, 3)).toEqual([null, null, null]); // 2024-02-01 is a Thursday → mondayIndex 3 (3 leading nulls)
+    expect(weeks[0]![3]!.date).toBe("2024-02-01");
+    // last week: days 26-29 (4 real cells, one more real day than the 2026 case above) + 3 trailing nulls
+    expect(weeks[4]!.slice(0, 4).map((c) => c?.date)).toEqual(["2024-02-26", "2024-02-27", "2024-02-28", "2024-02-29"]);
+    expect(weeks[4]!.slice(4)).toEqual([null, null, null]);
+  });
+
+  test("every row is exactly 7 slots, in every case above including the first and last", () => {
+    for (const weeks of [heatWeeks(daysFor("2026-06", 30)), heatWeeks(daysFor("2026-02", 28)), heatWeeks(daysFor("2024-02", 29))]) {
+      for (const week of weeks) expect(week.length).toBe(7);
+    }
+  });
+
+  test("empty input produces no rows", () => {
+    expect(heatWeeks([])).toEqual([]);
+  });
+});
 
 describe("gridTicks", () => {
   test("three distinct labels draw three ticks, sorted top to bottom", () => {
