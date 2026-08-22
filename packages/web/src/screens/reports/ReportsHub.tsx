@@ -160,7 +160,12 @@ function CashflowMini({
     H = 34,
     base = H / 2,
     maxH = 15;
-  const [boxRef, W] = useElementWidth<HTMLDivElement>(96);
+  // Fallback is the card's REAL width, not the old hardcoded viewBox: this mini sits in a
+  // two-column hub grid on a ~390px viewport ((362 − 10) / 2 ≈ 176) less MiniCard's 13px side
+  // padding, so ~150. It is only ever shown for the frame(s) before the ResizeObserver reports,
+  // but a fallback that undershoots by a third reintroduces a milder version of the pillarboxing
+  // this component was just fixed for.
+  const [boxRef, W] = useElementWidth<HTMLDivElement>(150);
   const n = cashflow.length;
   // Guards `barW`'s division by `n`: an empty series would otherwise draw Infinity/NaN geometry.
   // Pre-existing (not introduced by this PR) — the same guard as `CashflowBandChart`.
