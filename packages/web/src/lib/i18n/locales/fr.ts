@@ -282,6 +282,7 @@ export const fr: Dict = {
   Name: "Nom",
   Net: "Net",
   "Net worth": "Patrimoine net",
+  "Net worth over time": "Évolution du patrimoine net",
   "New account": "Nouveau compte",
   "New category": "Nouvelle catégorie",
   "New envelope": "Nouvelle enveloppe",

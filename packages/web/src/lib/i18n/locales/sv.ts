@@ -280,6 +280,7 @@ export const sv: Dict = {
   Name: "Namn",
   Net: "Netto",
   "Net worth": "Nettoförmögenhet",
+  "Net worth over time": "Nettoförmögenhet över tid",
   "New account": "Nytt konto",
   "New category": "Ny kategori",
   "New envelope": "Nytt kuvert",

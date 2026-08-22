@@ -281,6 +281,7 @@ export const it: Dict = {
   Name: "Nome",
   Net: "Netto",
   "Net worth": "Patrimonio netto",
+  "Net worth over time": "Andamento del patrimonio netto",
   "New account": "Nuovo conto",
   "New category": "Nuova categoria",
   "New envelope": "Nuova busta",

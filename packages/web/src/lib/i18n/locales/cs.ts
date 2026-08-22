@@ -288,6 +288,7 @@ export const cs: Dict = {
   Name: "Název",
   Net: "Netto",
   "Net worth": "Čistý majetek",
+  "Net worth over time": "Vývoj čistého majetku",
   "New account": "Nový účet",
   "New category": "Nová kategorie",
   "New envelope": "Nová obálka",
