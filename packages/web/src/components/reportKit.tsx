@@ -1,7 +1,7 @@
 import type { DailySpendingPoint } from "@enveo/shared";
 import type { CSSProperties, ReactNode } from "react";
 import { useCompactMask, useTheme } from "../lib/contexts";
-import { monthLabel } from "../lib/dates";
+import { monthLabel, monthShortLabel } from "../lib/dates";
 import { useT } from "../lib/i18n";
 import { P, TEAL, type Theme } from "../lib/theme";
 import { useElementWidth } from "../lib/useElementWidth";
@@ -437,6 +437,11 @@ export function gridTicks(min: number, max: number, format: (v: number) => strin
  * gridline labels and every tooltip — goes through `useCompactMask`, never `compactMoney` directly,
  * so this chart degrades under discreet mode exactly like every other amount in the app.
  *
+ * The month row beneath the plot uses `monthShortLabel` (short, no year) — a browser pass measured
+ * twelve `monthLabel().split(" ")[0]` FULL month names ("September", "Dezember", …) overflowing
+ * their row's `scrollWidth` at every viewport tested, phone included. The per-dot `<title>`
+ * tooltip stays on the full `monthLabel` — it is read on hover, not squeezed into a fixed row.
+ *
  * `useCompactMask`'s 2-significant-digit rounding can make gridline labels collide (see
  * `gridTicks`, below, for the dedup rule this delegates to and why it is pinned by tests) — this
  * is a label-collision fix, not a precision fix: raising `useCompactMask`'s significant digits
@@ -526,7 +531,7 @@ export function NetWorthChart({ points, height, onBand }: { points: { month: str
       ))}
       <div style={{ display: "flex", justifyContent: "space-between", width: plotW, marginTop: 4, fontSize: 10.5, color: caption }}>
         {points.map((p, i) => (
-          <span key={i}>{monthLabel(p.month, lang).split(" ")[0]}</span>
+          <span key={i}>{monthShortLabel(p.month, lang)}</span>
         ))}
       </div>
     </div>
