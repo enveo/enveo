@@ -398,9 +398,22 @@ export function Sparkline({ points, stroke = TEAL, dotColor }: { points: { month
 
 /** Gutter reserved for `NetWorthChart`'s value-axis labels. German and Italian have no CLDR
  *  compact ("K"/"tys."/…) form for thousands, so `useCompactMask` falls back to the rounded FULL
- *  number for them ("27.000 €", ~8 characters) instead of an abbreviation ("$27K") — a narrower
- *  gutter would clip those locales' labels even though English/Polish/etc. fit comfortably. */
-const AXIS_W = 64;
+ *  number for them ("27.000 €") instead of an abbreviation ("$27K") — a narrower gutter would
+ *  clip those locales' labels even though English/Polish/etc. fit comfortably.
+ *
+ *  76 is measured, not guessed, and it is sized for a BOUNDED worst case. Most of the ~31
+ *  supported currencies have no symbol in most locales, so they render as a three-letter CODE;
+ *  pair that with a negative six-figure balance and de/it produce "-999.000 CZK" — 12 characters,
+ *  69px at this font, against the 58px a 64px gutter left. Measured in a browser with de + CZK:
+ *  the labels overflowed their box and the lowest one's text reached 5px into the plot, close
+ *  enough to collide with the final dot. Twelve characters IS the ceiling, because de switches to
+ *  "1,2 Mio. CZK" above 999.999 — so this does not need to grow again for larger portfolios.
+ *
+ *  The gutter and the month row below the plot share the container's width, but their worst cases
+ *  land in DIFFERENT locales and never stack: de/it need the wide gutter while their month
+ *  abbreviations are short, and French (`janv.`, `sept.`) needs the wide month row while its
+ *  amounts compact fine. Both were re-measured at this value in the 362px band. */
+const AXIS_W = 76;
 
 /**
  * Selects which of a series' max/mid/min values get a gridline, deduping by the FORMATTED
