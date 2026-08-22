@@ -1,6 +1,6 @@
 import type { DailySpendingPoint } from "@enveo/shared";
 import type { CSSProperties, ReactNode } from "react";
-import { useTheme } from "../lib/contexts";
+import { useCompactMask, useTheme } from "../lib/contexts";
 import { monthLabel } from "../lib/dates";
 import { useT } from "../lib/i18n";
 import { P, TEAL, type Theme } from "../lib/theme";
@@ -385,6 +385,132 @@ export function Sparkline({ points, stroke = TEAL, dotColor }: { points: { month
         <polyline points={pts} fill="none" style={{ stroke }} strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" vectorEffect="non-scaling-stroke" />
         {dotColor && <circle cx={last[0]} cy={last[1]} r={3.5} style={{ fill: dotColor }} />}
       </svg>
+    </div>
+  );
+}
+
+/** Gutter reserved for `NetWorthChart`'s value-axis labels. German and Italian have no CLDR
+ *  compact ("K"/"tys."/…) form for thousands, so `useCompactMask` falls back to the rounded FULL
+ *  number for them ("27.000 €", ~8 characters) instead of an abbreviation ("$27K") — a narrower
+ *  gutter would clip those locales' labels even though English/Polish/etc. fit comfortably. */
+const AXIS_W = 64;
+
+/**
+ * Net-worth line chart — shared by the Reports hub (band hero, taller `height`) and the Wealth
+ * report (body, shorter `height`), replacing what used to be two forked copies of this same
+ * grammar. Draws three horizontal gridlines at the series' max/mid/min with their value printed
+ * in a right-hand gutter, an area+line beneath/over them, and a dot per point; every dot carries
+ * an SVG `<title>` (hover tooltip) with the exact amount, which is the only place this chart shows
+ * a precise figure — the gutter itself is compact-rounded. Every amount rendered here — all three
+ * gridline labels and every tooltip — goes through `useCompactMask`, never `compactMoney` directly,
+ * so this chart degrades under discreet mode exactly like every other amount in the app.
+ *
+ * `useCompactMask`'s 2-significant-digit rounding can make gridline labels collide: a modest-range
+ * series (e.g. 2,699,999 / 2,715,600 / 2,734,567 minor units) prints "$27K" for all three, and
+ * discreet mode collides all three to "••••" by construction. Three identical labels would read as
+ * a broken axis, not a chart with no variance — so the three candidate labels are compared and only
+ * the distinct ones are drawn, collapsing to the single mid line when all three collide (same move
+ * a flat series already makes below, for the same reason: nothing distinguishes the three heights,
+ * so only one line is honest). This is a label-collision fix, not a precision fix — raising
+ * `useCompactMask`'s significant digits would defeat the point of a compact axis.
+ *
+ * `onBand` swaps the stroke/dot/gridline/caption colors for the Duet on-navy variant (a plain
+ * ternary on the prop, not `useBand()`'s ambient theme check — see the comment at its use below
+ * for why) — `TEAL` (`var(--accent)`) IS the Duet band color there, so it would be invisible
+ * navy-on-navy.
+ *
+ * No unit test: this repo's web tests are `lib`-only and render nothing, so a test here would
+ * assert layout it cannot see. This component is verified visually against a running app in a
+ * later task — do not add a hollow render-only test here to feel covered.
+ *
+ * The `useElementWidth` call sits above the `points.length < 2` early return on purpose: a hook
+ * called after a conditional return is exactly the shape of a bug already shipped once in this
+ * codebase (a late-mounting chart never got measured because the early return ran first).
+ */
+export function NetWorthChart({ points, height, onBand }: { points: { month: string; total: number }[]; height: number; onBand?: boolean }) {
+  const C = useTheme();
+  const { lang } = useT();
+  const mask = useCompactMask();
+  const [boxRef, W] = useElementWidth<HTMLDivElement>(340);
+  const n = points.length;
+  if (n < 2) return null;
+
+  const totals = points.map((p) => p.total);
+  const min = Math.min(...totals);
+  const max = Math.max(...totals);
+  const mid = (min + max) / 2;
+  const span = max - min || 1;
+  const flat = max === min;
+
+  const plotW = Math.max(1, W - AXIS_W);
+  const padX = 6,
+    padT = 12,
+    padB = 10;
+  const innerH = height - padT - padB;
+  const x = (i: number) => padX + (n <= 1 ? (plotW - 2 * padX) / 2 : (i / (n - 1)) * (plotW - 2 * padX));
+  const y = (v: number) => (flat ? padT + innerH / 2 : padT + (1 - (v - min) / span) * innerH);
+
+  // fill/stroke via style — var(--accent) does not resolve in SVG presentation attributes.
+  // `onBand` is a per-instance PROP, not re-derived from `useBand()`'s ambient theme check:
+  // this same component sits both inside the hub's Duet navy band and in the Wealth report's
+  // plain body under the identical theme, so only the caller (which knows where its own
+  // instance is placed) can say whether painting on-band applies here.
+  const stroke = onBand ? C.headerInk : TEAL;
+  const dotPos = onBand ? C.headerPos : C.pos;
+  const gridline = onBand ? C.headerMute : C.line;
+  const caption = onBand ? C.headerMute : C.mute;
+
+  const coords = points.map((p, i) => [x(i), y(p.total)] as const);
+  const line = coords.map(([px, py], i) => `${i === 0 ? "M" : "L"}${px.toFixed(1)} ${py.toFixed(1)}`).join(" ");
+  const area = `${line} L${x(n - 1).toFixed(1)} ${(height - padB).toFixed(1)} L${x(0).toFixed(1)} ${(height - padB).toFixed(1)} Z`;
+
+  // Three candidate gridlines (max/mid/min). Collapse duplicate labels — see doc comment above —
+  // to a single mid line when all three collide, otherwise keep only the first occurrence of
+  // each distinct label (order max, mid, min).
+  const candidates = [
+    { v: max, y: y(max) },
+    { v: mid, y: y(mid) },
+    { v: min, y: y(min) },
+  ].map((c) => ({ ...c, label: mask(c.v) }));
+  const levels =
+    new Set(candidates.map((c) => c.label)).size === 1 ? [candidates[1]!] : candidates.filter((c, i) => candidates.findIndex((o) => o.label === c.label) === i);
+
+  return (
+    <div ref={boxRef} style={{ position: "relative" }}>
+      <svg viewBox={`0 0 ${W} ${height}`} width="100%" height={height} aria-hidden style={{ display: "block" }}>
+        {levels.map((lvl, i) => (
+          <line key={i} x1={0} y1={lvl.y} x2={plotW} y2={lvl.y} style={{ stroke: gridline }} strokeWidth={1} vectorEffect="non-scaling-stroke" />
+        ))}
+        <path d={area} style={{ fill: stroke }} opacity={0.09} />
+        <path d={line} fill="none" style={{ stroke }} strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" vectorEffect="non-scaling-stroke" />
+        {coords.map(([px, py], i) => (
+          <circle key={i} cx={px} cy={py} r={i === n - 1 ? 4 : 2.5} style={{ fill: i === n - 1 ? dotPos : stroke }}>
+            <title>{`${monthLabel(points[i]!.month, lang)} · ${mask(points[i]!.total)}`}</title>
+          </circle>
+        ))}
+      </svg>
+      {levels.map((lvl, i) => (
+        <div
+          key={i}
+          style={{
+            position: "absolute",
+            top: lvl.y - 6,
+            right: 0,
+            width: AXIS_W - 6,
+            fontSize: 10,
+            textAlign: "right",
+            color: caption,
+            fontVariantNumeric: "tabular-nums",
+          }}
+        >
+          {lvl.label}
+        </div>
+      ))}
+      <div style={{ display: "flex", justifyContent: "space-between", width: plotW, marginTop: 4, fontSize: 10.5, color: caption }}>
+        {points.map((p, i) => (
+          <span key={i}>{monthLabel(p.month, lang).split(" ")[0]}</span>
+        ))}
+      </div>
     </div>
   );
 }
