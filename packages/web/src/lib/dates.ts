@@ -61,6 +61,13 @@ export function dayMonth(iso: string, lang: Lang): string {
   return new Intl.DateTimeFormat(LOCALE_OF[lang], { day: "numeric", month: "long", timeZone: "UTC" }).format(new Date(`${iso}T00:00:00Z`));
 }
 
+
+
+
+export function weekdayShortDate(iso: string, lang: Lang): string {
+  return new Intl.DateTimeFormat(LOCALE_OF[lang], { weekday: "short", day: "numeric", month: "short", timeZone: "UTC" }).format(new Date(`${iso}T00:00:00Z`));
+}
+
  
 export function formatDateLong(iso: string, lang: Lang): string {
   const [y, m, d] = iso.split("-").map(Number) as [number, number, number];
