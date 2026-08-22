@@ -58,9 +58,9 @@ export function AssetsReport({
           </>
         ) : undefined
       }
-      bandChart={netWorth.length > 0 ? <NetWorthChart points={netWorth} height={118} onBand={band} /> : undefined}
+      bandChart={netWorth.length > 1 ? <NetWorthChart points={netWorth} height={118} onBand={band} /> : undefined}
     >
-      {netWorth.length > 0 && (
+      {netWorth.length > 1 && (
         <div style={{ fontSize: 10.5, color: C.mute, textAlign: "center", marginBottom: 12, fontVariantNumeric: "tabular-nums" }}>
           {t("range {min}–{max}", { min: M(Math.min(...nwTotals)), max: M(Math.max(...nwTotals)) })}
         </div>

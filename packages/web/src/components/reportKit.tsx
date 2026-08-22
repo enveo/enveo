@@ -409,22 +409,23 @@ const AXIS_W = 64;
  * `useCompactMask`'s real rounding. Two-significant-digit compact rounding can make max/mid/min
  * format to the same string (a modest-range series, or discreet mode's `"••••"` for every value
  * alike); three identical labels would read as a broken axis, not "no variance" — so candidates
- * are compared in draw order (max, mid, min) and only the first occurrence of each distinct label
- * is kept, collapsing to the single mid tick when all three collide (mirroring `NetWorthChart`'s
- * own flat-series line, which is already at mid-height for the same reason: nothing distinguishes
- * the three heights, so only one line is honest).
+ * are deduped first-occurrence-wins, collapsing to the single mid tick when all three collide
+ * (mirroring `NetWorthChart`'s own flat-series line, which is already at mid-height for the same
+ * reason: nothing distinguishes the three heights, so only one line is honest).
  *
- * Order is deliberately max→mid→min, so a min/mid collision keeps mid and drops min (a top and a
- * middle line, nothing near the series floor) while a max/mid collision keeps both extremes and
- * drops mid — that asymmetry is a direct consequence of "first occurrence wins" and is pinned by
- * tests on purpose, not "fixed": changing the draw order is a real change to the axis and should
- * fail a test, not happen silently in a refactor.
+ * Extremes beat mid: candidates are compared in `[max, min, mid]` order, so BOTH the top and the
+ * floor line win any collision against the middle one — a mid/extreme collision always drops mid,
+ * never an extreme. The series' actual highest and lowest points stay on the axis (the plotted
+ * line never dips below its own lowest gridline or rises above its highest), and only the tick
+ * with the least information — the interpolated midpoint — is the one ever sacrificed to a
+ * label collision. Ticks are then sorted by value descending so draw order (top to bottom) is
+ * unchanged regardless of the candidate order used for dedup.
  */
 export function gridTicks(min: number, max: number, format: (v: number) => string): { value: number; label: string }[] {
   const mid = (min + max) / 2;
-  const candidates = [max, mid, min].map((value) => ({ value, label: format(value) }));
-  if (new Set(candidates.map((c) => c.label)).size === 1) return [candidates[1]!];
-  return candidates.filter((c, i) => candidates.findIndex((o) => o.label === c.label) === i);
+  const candidates = [max, min, mid].map((value) => ({ value, label: format(value) }));
+  if (new Set(candidates.map((c) => c.label)).size === 1) return [candidates[2]!];
+  return candidates.filter((c, i) => candidates.findIndex((o) => o.label === c.label) === i).sort((a, b) => b.value - a.value);
 }
 
 /**
@@ -524,6 +525,12 @@ export function NetWorthChart({ points, height, onBand }: { points: { month: str
             textAlign: "right",
             color: caption,
             fontVariantNumeric: "tabular-nums",
+            // A negative or six-digit value in a locale with no CLDR compact form for
+            // thousands (German, Italian — useCompactMask falls back to the rounded full
+            // number there) combined with a code-rendered currency can outrun AXIS_W - 6.
+            // A single line spilling a few px into the light area fill reads better than a
+            // two-line label detached from the gridline it names — keep this nowrap.
+            whiteSpace: "nowrap",
           }}
         >
           {lvl.label}
