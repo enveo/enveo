@@ -7,6 +7,7 @@ import { useMask, useTheme } from "../../lib/contexts";
 import { goalProgress } from "../../lib/goals";
 import { useT } from "../../lib/i18n";
 import { budgetsOverAmount, budgetsSummary } from "../../lib/reportSummary";
+import { useElementWidth } from "../../lib/useElementWidth";
 import { trendColor } from "./charts";
 import type { Mask, ReportView } from "./types";
 
@@ -155,27 +156,33 @@ function CashflowMini({
 }) {
   const C = useTheme();
   const { t } = useT();
-  const barW = 7,
-    gap = 2,
+  const gap = 2,
     H = 34,
     base = H / 2,
     maxH = 15;
-  const W = cashflow.length * barW + Math.max(0, cashflow.length - 1) * gap;
+  const [boxRef, W] = useElementWidth<HTMLDivElement>(96);
+  const n = cashflow.length;
+  // Guards `barW`'s division by `n`: an empty series would otherwise draw Infinity/NaN geometry.
+  // Pre-existing (not introduced by this PR) — the same guard as `CashflowBandChart`.
+  if (n === 0) return null;
+  const barW = (W - Math.max(0, n - 1) * gap) / n;
   const maxAbs = Math.max(...cashflow.map((p) => Math.abs(p.net)), 1);
   const net = cashflow.at(-1)?.net ?? 0;
   const sr = savingsRate(cashflow);
   const pct = sr.current !== null ? Math.round(sr.current * 100) : "–";
   return (
     <MiniCard title={t("Cash flow")} onClick={() => onView("cashflow")}>
-      <svg viewBox={`0 0 ${W} ${H}`} width="100%" height={H} aria-hidden="true" style={{ display: "block" }}>
-        <line x1={0} y1={base} x2={W} y2={base} style={{ stroke: C.line }} strokeWidth={1} />
-        {cashflow.map((p, i) => {
-          const h = Math.max(1, Math.round((Math.abs(p.net) / maxAbs) * maxH));
-          const x = i * (barW + gap);
-          const y = p.net >= 0 ? base - h : base;
-          return <rect key={p.month} x={x} y={y} width={barW} height={h} rx={2} style={{ fill: p.net >= 0 ? C.pos : C.neg }} />;
-        })}
-      </svg>
+      <div ref={boxRef}>
+        <svg viewBox={`0 0 ${W} ${H}`} width="100%" height={H} aria-hidden="true" style={{ display: "block" }}>
+          <line x1={0} y1={base} x2={W} y2={base} style={{ stroke: C.line }} strokeWidth={1} />
+          {cashflow.map((p, i) => {
+            const h = Math.max(1, Math.round((Math.abs(p.net) / maxAbs) * maxH));
+            const x = i * (barW + gap);
+            const y = p.net >= 0 ? base - h : base;
+            return <rect key={p.month} x={x} y={y} width={barW} height={h} rx={2} style={{ fill: p.net >= 0 ? C.pos : C.neg }} />;
+          })}
+        </svg>
+      </div>
       <div style={{ fontSize: 17, fontWeight: 750, color: net >= 0 ? C.pos : C.neg, marginTop: 6, fontVariantNumeric: "tabular-nums" }}>
         {net >= 0 ? "+" : "−"}
         {M(Math.abs(net))}
