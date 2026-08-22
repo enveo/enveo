@@ -112,6 +112,16 @@ export function budgetsOverAmount(envelopes: BudgetEnvelope[]): number {
  * (`pct` is null by construction) and must never be reported as "used up" or "on pace".
  */
 
+/** Number of days in `month` (YYYY-MM), leap-year aware.
+ *  Shared by `monthProgress` below and `uiState.monthRuler` (the Start screen's hero ruler) —
+ *  the arithmetic is the only thing those two have in common. `monthProgress` clamps a VIEWED
+ *  month against today (1 when past, 0 when future) and `monthRuler` only ever describes the
+ *  CURRENT month for the hero ruler; keep those two jobs separate and never fold them into one
+ *  function in the name of finishing this merge. */
+export function daysInMonth(month: string): number {
+  return new Date(Date.UTC(+month.slice(0, 4), +month.slice(5, 7), 0)).getUTCDate();
+}
+
 /** How much of `month` has elapsed as of `today` (YYYY-MM-DD), in (0..1].
  *  A past month is 1, a future month is 0, the current month is day-inclusive so that the
  *  first day of the month already counts as elapsed time and never divides by zero. */
@@ -119,9 +129,8 @@ export function monthProgress(month: string, today: string): number {
   const currentMonth = today.slice(0, 7);
   if (month < currentMonth) return 1;
   if (month > currentMonth) return 0;
-  const daysInMonth = new Date(Date.UTC(+month.slice(0, 4), +month.slice(5, 7), 0)).getUTCDate();
   const day = +today.slice(8, 10);
-  return Math.min(1, day / daysInMonth);
+  return Math.min(1, day / daysInMonth(month));
 }
 
 export type BudgetPaceBucket = "over" | "risk" | "near" | "usedUp" | "ok";
@@ -158,6 +167,10 @@ export interface BudgetStep {
   kind: BudgetStepKind;
   /** Money to move into the envelope to clear this step, minor units, always > 0. */
   amount: number;
+  /** True when the human dismissed this step. Still returned — the report shows it, flagged. */
+  ignored: boolean;
+  /** `amount` capped at the pool, minor units. Equals `amount` when the pool covers it. */
+  fundable: number;
 }
 
 /** The cushion a near-limit envelope is topped back up to, as a share of its budget. */
@@ -173,15 +186,22 @@ const STEP_ORDER: Record<BudgetStepKind, number> = { over: 0, risk: 1, near: 2 }
  * leads, so the list opens with the step that moves the most.
  *
  * A step is only emitted when it has something to do: `amount > 0`. An envelope already at its
- * cushion produces no step rather than a no-op button. `ignored` withholds steps the user
- * dismissed — they are withheld, never deleted, so the caller can still show and restore them.
+ * cushion produces no step rather than a no-op button. `options.ignored` never removes a step
+ * from the result — it flags one the human already dismissed so the report can still show it
+ * (marked, with a restore action) instead of making it vanish; filtering it here would cost every
+ * caller a second pass over the same data to recover what was hidden. Ordering ignores the flag
+ * too — the report groups ignored steps visually, this function does not.
+ *
+ * `options.readyToAssign` is the pool of unbudgeted money: `fundable` caps `amount` at that pool
+ * so a caller never puts a button on screen offering to move more money than exists (the report
+ * shows the amount on the button itself, with no confirmation dialog). Omitting the pool leaves
+ * `fundable` equal to `amount` — today's unlimited behaviour, so existing callers stay valid.
  */
-export function budgetSteps(envelopes: BudgetStepInput[], progress: number, ignored?: ReadonlySet<string>): BudgetStep[] {
+export function budgetSteps(envelopes: BudgetStepInput[], progress: number, options?: { ignored?: ReadonlySet<string>; readyToAssign?: number }): BudgetStep[] {
   const steps: BudgetStep[] = [];
   for (const e of envelopes) {
     if (e.archived) continue;
     if (!(e.allocated + e.carryIn > 0 || e.spent > 0)) continue;
-    if (ignored?.has(e.id)) continue;
 
     const usage = budgetUsage(e);
     const { bucket, projected } = budgetPace(e, progress);
@@ -191,7 +211,8 @@ export function budgetSteps(envelopes: BudgetStepInput[], progress: number, igno
       bucket === "over" ? -usage.left : bucket === "risk" ? projected - usage.rawBudget : Math.max(0, Math.round(usage.rawBudget * NEAR_CUSHION) - usage.left);
     if (amount <= 0) continue;
 
-    steps.push({ envelopeId: e.id, name: e.name, kind: bucket, amount });
+    const fundable = Math.max(0, Math.min(amount, options?.readyToAssign ?? amount));
+    steps.push({ envelopeId: e.id, name: e.name, kind: bucket, amount, ignored: options?.ignored?.has(e.id) ?? false, fundable });
   }
   return steps.sort((a, b) => STEP_ORDER[a.kind] - STEP_ORDER[b.kind] || b.amount - a.amount);
 }

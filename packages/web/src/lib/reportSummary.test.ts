@@ -16,6 +16,7 @@ import {
   budgetsSummary,
   budgetUsage,
   compareBudgetUsageRows,
+  daysInMonth,
   monthProgress,
 } from "./reportSummary";
 
@@ -190,6 +191,14 @@ describe("monthProgress", () => {
   });
 });
 
+describe("daysInMonth", () => {
+  test("gets February right in a leap year and a century non-leap year", () => {
+    expect(daysInMonth("2024-02")).toBe(29); // ordinary leap year (divisible by 4)
+    expect(daysInMonth("1900-02")).toBe(28); // divisible by 100 but not 400 → not a leap year
+    expect(daysInMonth("2000-02")).toBe(29); // divisible by 400 → a leap year after all
+  });
+});
+
 describe("budgetPace", () => {
   const row = (over: Partial<{ archived: boolean; allocated: number; carryIn: number; spent: number }> = {}) => ({
     archived: false,
@@ -323,10 +332,43 @@ describe("budgetSteps", () => {
     expect(budgetSteps([stepRow("untouched", {})], 0.5)).toEqual([]);
   });
 
-  test("ignored envelopes are withheld without affecting the others' order", () => {
+  test("keeps an ignored step, flagged rather than dropped", () => {
     const rows = [stepRow("over", { allocated: 100_00, spent: 120_00 }), stepRow("near", { allocated: 100_00, spent: 90_00 })];
-    const steps: BudgetStep[] = budgetSteps(rows, 0.5, new Set(["over"]));
-    expect(steps.map((s) => s.envelopeId)).toEqual(["near"]);
+    const steps: BudgetStep[] = budgetSteps(rows, 0.5, { ignored: new Set(["over"]) });
+    // still both steps, in the usual order — ignored withholds nothing, it only flags
+    expect(steps.map((s) => s.envelopeId)).toEqual(["over", "near"]);
+    expect(steps.map((s) => s.ignored)).toEqual([true, false]);
+  });
+
+  test("caps fundable at the pool without changing amount", () => {
+    // over by 30.00, but only 10.00 is ready to assign
+    const steps = budgetSteps([stepRow("e", { allocated: 100_00, spent: 130_00 })], 0.5, { readyToAssign: 10_00 });
+    expect(steps[0]!.amount).toBe(30_00);
+    expect(steps[0]!.fundable).toBe(10_00);
+  });
+
+  test("treats an absent pool as unlimited", () => {
+    const steps = budgetSteps([stepRow("e", { allocated: 100_00, spent: 130_00 })], 0.5);
+    expect(steps[0]!.fundable).toBe(steps[0]!.amount);
+  });
+
+  test("never returns a negative fundable when the pool is negative", () => {
+    const steps = budgetSteps([stepRow("e", { allocated: 100_00, spent: 130_00 })], 0.5, { readyToAssign: -500 });
+    expect(steps[0]!.fundable).toBe(0);
+  });
+
+  test("produces no step for a negative carry-in with no activity this month", () => {
+    // allocated 0, carryIn -5000, spent 0 → the filter `allocated + carryIn > 0 || spent > 0`
+    // excludes it. Assert both halves so this fails if the guard is ever deleted: an inactive
+    // envelope with a negative carry-in stays silent, while the SAME envelope with spend this
+    // month is not silent — it clears the guard and produces an "over" step.
+    const inactive = stepRow("e", { allocated: 0, carryIn: -5000, spent: 0 });
+    expect(budgetSteps([inactive], 0.5)).toEqual([]);
+
+    const active = stepRow("e", { allocated: 0, carryIn: -5000, spent: 100 });
+    const steps = budgetSteps([active], 0.5);
+    expect(steps).toHaveLength(1);
+    expect(steps[0]!.kind).toBe("over");
   });
 
   test("a zero-amount top-up is dropped rather than shown as a no-op step", () => {
