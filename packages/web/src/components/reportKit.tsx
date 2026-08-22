@@ -1,7 +1,7 @@
 import type { DailySpendingPoint } from "@enveo/shared";
 import type { CSSProperties, ReactNode } from "react";
-import { useTheme } from "../lib/contexts";
-import { monthLabel } from "../lib/dates";
+import { useCompactMask, useTheme } from "../lib/contexts";
+import { monthLabel, monthShortLabel } from "../lib/dates";
 import { useT } from "../lib/i18n";
 import { P, TEAL, type Theme } from "../lib/theme";
 import { useElementWidth } from "../lib/useElementWidth";
@@ -330,7 +330,14 @@ function polylineCoords(series: number[], w: number, h: number, pad: number): (r
   const max = Math.max(...series);
   const range = max - min || 1;
   const flat = max === min;
-  return series.map((v, i) => [pad + (i / (n - 1)) * (w - 2 * pad), flat ? h / 2 : pad + (1 - (v - min) / range) * (h - 2 * pad)] as const);
+  // A sub-pixel container (a panel mid-animation, a flex item mid-reflow) can transiently
+  // measure ~1px wide; with pad=2/3 that made `w - 2*pad` negative, so x ran backwards from
+  // `pad` down to `pad - |negative|` — a reversed, partly negative-x polyline for that one frame.
+  // Clamping the inner width to at least 1 keeps that frame from rendering nonsense; it's
+  // transient and self-corrects on the next ResizeObserver callback, so this is not a fix for the
+  // underlying measurement, only for what gets drawn in between.
+  const innerW = Math.max(1, w - 2 * pad);
+  return series.map((v, i) => [pad + (i / (n - 1)) * innerW, flat ? h / 2 : pad + (1 - (v - min) / range) * (h - 2 * pad)] as const);
 }
 
 /** Bare polyline sparkline over a plain `number[]` — same shape as `Sparkline` but color is a
@@ -385,6 +392,174 @@ export function Sparkline({ points, stroke = TEAL, dotColor }: { points: { month
         <polyline points={pts} fill="none" style={{ stroke }} strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" vectorEffect="non-scaling-stroke" />
         {dotColor && <circle cx={last[0]} cy={last[1]} r={3.5} style={{ fill: dotColor }} />}
       </svg>
+    </div>
+  );
+}
+
+/** Gutter reserved for `NetWorthChart`'s value-axis labels. German and Italian have no CLDR
+ *  compact ("K"/"tys."/…) form for thousands, so `useCompactMask` falls back to the rounded FULL
+ *  number for them ("27.000 €") instead of an abbreviation ("$27K") — a narrower gutter would
+ *  clip those locales' labels even though English/Polish/etc. fit comfortably.
+ *
+ *  76 is measured, not guessed, and it is sized for a BOUNDED worst case. Most of the ~31
+ *  supported currencies have no symbol in most locales, so they render as a three-letter CODE;
+ *  pair that with a negative six-figure balance and de/it produce "-999.000 CZK" — 12 characters,
+ *  69px at this font, against the 58px a 64px gutter left. Measured in a browser with de + CZK:
+ *  the labels overflowed their box and the lowest one's text reached 5px into the plot, close
+ *  enough to collide with the final dot. Twelve characters IS the ceiling, because de switches to
+ *  "1,2 Mio. CZK" above 999.999 — so this does not need to grow again for larger portfolios.
+ *
+ *  The gutter and the month row below the plot share the container's width, but their worst cases
+ *  land in DIFFERENT locales and never stack: de/it need the wide gutter while their month
+ *  abbreviations are short, and French (`janv.`, `sept.`) needs the wide month row while its
+ *  amounts compact fine. Both were re-measured at this value in the 362px band. */
+const AXIS_W = 76;
+
+/**
+ * Selects which of a series' max/mid/min values get a gridline, deduping by the FORMATTED
+ * label rather than the raw value — the only real logic in `NetWorthChart`, extracted so it can
+ * be unit-tested with synthetic `format` functions (see `reportKit.test.ts`) independent of
+ * `useCompactMask`'s real rounding. Two-significant-digit compact rounding can make max/mid/min
+ * format to the same string (a modest-range series, or discreet mode's `"••••"` for every value
+ * alike); three identical labels would read as a broken axis, not "no variance" — so candidates
+ * are deduped first-occurrence-wins, collapsing to the single mid tick when all three collide
+ * (mirroring `NetWorthChart`'s own flat-series line, which is already at mid-height for the same
+ * reason: nothing distinguishes the three heights, so only one line is honest).
+ *
+ * Extremes beat mid: candidates are compared in `[max, min, mid]` order, so BOTH the top and the
+ * floor line win any collision against the middle one — a mid/extreme collision always drops mid,
+ * never an extreme. The series' actual highest and lowest points stay on the axis (the plotted
+ * line never dips below its own lowest gridline or rises above its highest), and the tick with
+ * the least information — the interpolated midpoint — is the one sacrificed. Ticks are then
+ * sorted by value descending so draw order (top to bottom) is unchanged regardless of the
+ * candidate order used for dedup.
+ *
+ * The one case that order does NOT cover: if max and min formatted to the same label while mid
+ * formatted to a different one, min would be dropped rather than mid. That needs a `format` that
+ * is not monotonic, since mid lies between the two — `useCompactMask` rounds, so it cannot
+ * produce it, and the flat series (max === min) is already handled by the all-collide branch
+ * above. Stated rather than guarded, so nobody reads the rule above as stronger than it is.
+ */
+export function gridTicks(min: number, max: number, format: (v: number) => string): { value: number; label: string }[] {
+  const mid = (min + max) / 2;
+  const candidates = [max, min, mid].map((value) => ({ value, label: format(value) }));
+  if (new Set(candidates.map((c) => c.label)).size === 1) return [candidates[2]!];
+  return candidates.filter((c, i) => candidates.findIndex((o) => o.label === c.label) === i).sort((a, b) => b.value - a.value);
+}
+
+/**
+ * Net-worth line chart — shared by the Reports hub (band hero, taller `height`) and the Wealth
+ * report (body, shorter `height`), replacing what used to be two forked copies of this same
+ * grammar. Draws three horizontal gridlines at the series' max/mid/min with their value printed
+ * in a right-hand gutter, an area+line beneath/over them, and a dot per point; every dot carries
+ * an SVG `<title>` (hover tooltip) with the exact amount, which is the only place this chart shows
+ * a precise figure — the gutter itself is compact-rounded. Every amount rendered here — all three
+ * gridline labels and every tooltip — goes through `useCompactMask`, never `compactMoney` directly,
+ * so this chart degrades under discreet mode exactly like every other amount in the app.
+ *
+ * The month row beneath the plot uses `monthShortLabel` (short, no year) — a browser pass measured
+ * twelve `monthLabel().split(" ")[0]` FULL month names ("September", "Dezember", …) overflowing
+ * their row's `scrollWidth` at every viewport tested, phone included. The per-dot `<title>`
+ * tooltip stays on the full `monthLabel` — it is read on hover, not squeezed into a fixed row.
+ *
+ * `useCompactMask`'s 2-significant-digit rounding can make gridline labels collide (see
+ * `gridTicks`, below, for the dedup rule this delegates to and why it is pinned by tests) — this
+ * is a label-collision fix, not a precision fix: raising `useCompactMask`'s significant digits
+ * would defeat the point of a compact axis.
+ *
+ * `onBand` swaps the stroke/dot/gridline/caption colors for the Duet on-navy variant — a plain
+ * ternary on the prop, mirroring `AssetsReport`'s existing inline chart's signature (real
+ * continuity, not a new idiom) and keeping the on-band decision with the caller rather than
+ * deriving it from `useBand()`'s `hc()` internally. `TEAL` (`var(--accent)`) IS the Duet band
+ * color, so it would be invisible navy-on-navy there.
+ *
+ * No test for the component itself: this repo's web tests are `lib`-only and render nothing, so
+ * a test here would assert layout it cannot see. This component is verified visually against a
+ * running app in a later task — do not add a hollow render-only test here to feel covered. Its
+ * one piece of real (non-rendering) logic, the gridline selection, is extracted as `gridTicks`
+ * above precisely so it CAN be pinned by a real test (`reportKit.test.ts`).
+ *
+ * The `useElementWidth` call sits above the `points.length < 2` early return on purpose: a hook
+ * called after a conditional return is exactly the shape of a bug already shipped once in this
+ * codebase (a late-mounting chart never got measured because the early return ran first).
+ */
+export function NetWorthChart({ points, height, onBand }: { points: { month: string; total: number }[]; height: number; onBand?: boolean }) {
+  const C = useTheme();
+  const { t, lang } = useT();
+  const mask = useCompactMask();
+  const [boxRef, W] = useElementWidth<HTMLDivElement>(340);
+  const n = points.length;
+  if (n < 2) return null;
+
+  const totals = points.map((p) => p.total);
+  const min = Math.min(...totals);
+  const max = Math.max(...totals);
+  const span = max - min || 1;
+  const flat = max === min;
+
+  const plotW = Math.max(1, W - AXIS_W);
+  const padX = 6,
+    padT = 12,
+    padB = 10;
+  const innerH = height - padT - padB;
+  const x = (i: number) => padX + (n <= 1 ? (plotW - 2 * padX) / 2 : (i / (n - 1)) * (plotW - 2 * padX));
+  const y = (v: number) => (flat ? padT + innerH / 2 : padT + (1 - (v - min) / span) * innerH);
+
+  // fill/stroke via style — var(--accent) does not resolve in SVG presentation attributes.
+  // `onBand` is a per-instance PROP (see the doc comment above for why), not `useBand()`'s `hc()`.
+  const stroke = onBand ? C.headerInk : TEAL;
+  const dotPos = onBand ? C.headerPos : C.pos;
+  const gridline = onBand ? C.headerMute : C.line;
+  const caption = onBand ? C.headerMute : C.mute;
+
+  const coords = points.map((p, i) => [x(i), y(p.total)] as const);
+  const line = coords.map(([px, py], i) => `${i === 0 ? "M" : "L"}${px.toFixed(1)} ${py.toFixed(1)}`).join(" ");
+  const area = `${line} L${x(n - 1).toFixed(1)} ${(height - padB).toFixed(1)} L${x(0).toFixed(1)} ${(height - padB).toFixed(1)} Z`;
+
+  const levels = gridTicks(min, max, mask).map((t) => ({ y: y(t.value), label: t.label }));
+
+  return (
+    <div ref={boxRef} style={{ position: "relative" }}>
+      <svg viewBox={`0 0 ${W} ${height}`} width="100%" height={height} role="img" aria-label={t("Net worth over time")} style={{ display: "block" }}>
+        {levels.map((lvl, i) => (
+          <line key={i} x1={0} y1={lvl.y} x2={plotW} y2={lvl.y} style={{ stroke: gridline }} strokeWidth={1} vectorEffect="non-scaling-stroke" />
+        ))}
+        <path d={area} style={{ fill: stroke }} opacity={0.09} />
+        <path d={line} fill="none" style={{ stroke }} strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" vectorEffect="non-scaling-stroke" />
+        {coords.map(([px, py], i) => (
+          <circle key={i} cx={px} cy={py} r={i === n - 1 ? 4 : 2.5} style={{ fill: i === n - 1 ? dotPos : stroke }}>
+            <title>{`${monthLabel(points[i]!.month, lang)} · ${mask(points[i]!.total)}`}</title>
+          </circle>
+        ))}
+      </svg>
+      {levels.map((lvl, i) => (
+        <div
+          key={i}
+          style={{
+            position: "absolute",
+            top: lvl.y - 6,
+            right: 0,
+            width: AXIS_W - 6,
+            fontSize: 10,
+            textAlign: "right",
+            color: caption,
+            fontVariantNumeric: "tabular-nums",
+            // A negative or six-digit value in a locale with no CLDR compact form for
+            // thousands (German, Italian — useCompactMask falls back to the rounded full
+            // number there) combined with a code-rendered currency can outrun AXIS_W - 6.
+            // A single line spilling a few px into the light area fill reads better than a
+            // two-line label detached from the gridline it names — keep this nowrap.
+            whiteSpace: "nowrap",
+          }}
+        >
+          {lvl.label}
+        </div>
+      ))}
+      <div style={{ display: "flex", justifyContent: "space-between", width: plotW, marginTop: 4, fontSize: 10.5, color: caption }}>
+        {points.map((p, i) => (
+          <span key={i}>{monthShortLabel(p.month, lang)}</span>
+        ))}
+      </div>
     </div>
   );
 }

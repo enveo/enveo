@@ -161,6 +161,10 @@ function CashflowBandChart({ cashflow }: { cashflow: { month: string; income: nu
     maxH = 24;
   const [boxRef, W] = useElementWidth<HTMLDivElement>(358);
   const n = cashflow.length;
+  // Guards `barW`'s division by `n`: an empty series would otherwise draw Infinity/NaN geometry.
+  // Pre-existing (not introduced by this PR) — the one call site already filters on
+  // `cashflow.length > 0`, but the component shouldn't rely solely on that to stay sane.
+  if (n === 0) return null;
   const barW = (W - Math.max(0, n - 1) * gap) / n;
   const maxAbs = Math.max(...cashflow.map((p) => Math.abs(p.net)), 1);
   const posColor = hc(C.headerPos, C.pos);

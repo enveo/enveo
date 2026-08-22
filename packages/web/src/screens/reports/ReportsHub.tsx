@@ -1,7 +1,7 @@
 import { type EnvelopeTrend, median, savingsRate } from "@enveo/shared";
 import type { ReactNode } from "react";
 import { GoalRing, useBand } from "../../components/kit";
-import { DeltaTag, heatColor, ReportShell, SegBar, Sparkline, TrendSpark } from "../../components/reportKit";
+import { DeltaTag, heatColor, NetWorthChart, ReportShell, SegBar, TrendSpark } from "../../components/reportKit";
 import type { StateResponse } from "../../lib/api";
 import { useMask, useTheme } from "../../lib/contexts";
 import { goalProgress } from "../../lib/goals";
@@ -47,7 +47,7 @@ export function ReportsHub({
   const C = useTheme();
   const M = useMask();
   const { t } = useT();
-  const { hc } = useBand();
+  const { band, hc } = useBand();
 
   const nwLast = netWorth.at(-1)?.total ?? 0;
   const nwDelta = nwLast - (netWorth.at(-2)?.total ?? nwLast);
@@ -87,7 +87,7 @@ export function ReportsHub({
             {t("m/m")} · {t("details")} ›
           </>
         }
-        bandChart={<Sparkline points={netWorth} stroke={hc(C.headerInk, "var(--accent)")} dotColor={hc(C.headerPos, C.pos)} />}
+        bandChart={<NetWorthChart points={netWorth} height={130} onBand={band} />}
       >
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
           <CashflowMini cashflow={cashflow} onView={onView} M={M} />
