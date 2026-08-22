@@ -5,6 +5,7 @@ import { monthLabel } from "../lib/dates";
 import { useT } from "../lib/i18n";
 import { P, TEAL, type Theme } from "../lib/theme";
 import { useElementWidth } from "../lib/useElementWidth";
+import { Header } from "./chrome";
 import { useBand } from "./kit";
 
 /**
@@ -16,36 +17,47 @@ import { useBand } from "./kit";
  * attributes. Status colors (pos/warn/neg) never carry meaning alone; callers supply the label.
  */
 
-/** Subscreen band: back+title+month-nav row, then eyebrow/hero/sub and an optional chart slot,
- *  all on `C.headerBg` when the theme paints a Duet band (idiom moved verbatim from the inline
- *  block in Reports.tsx). Body `children` render below in a `className="fi rpt-body"` div —
- *  opacity-only animation, never `fu`/transform (a transformed ancestor breaks `position:fixed`
- *  sheets). The body carries its OWN `paddingTop` (14, matching the band's `paddingBottom` above
- *  it) so the band→content gap is consistent whether a subscreen's body starts with a section
- *  eyebrow (Budgets/Month), a hero-ish stat row (Assets/Cashflow/Spending) or bare rows (Goals/
- *  Trends) — previously this div had NO top padding, so only the first two groups' own baked-in
- *  top margins gave any breathing room, and Goals/Trends sat flush under the band (reported bug).
+/** Report band: shared by every subscreen AND the hub (Task 4 — the two previously-forked
+ *  copies of this grammar are now one). Top row is `variant`-dependent (back+title+month-nav
+ *  for a subscreen, the app-chrome `Header` for the hub); everything below — eyebrow/hero/sub,
+ *  the optional `bandChart` slot, `hc()` for on-band ink — is identical between variants and
+ *  moved verbatim from the inline block in Reports.tsx / the hub's hand-rolled copy. The hub
+ *  additionally makes the eyebrow/hero/sub block a full-width button (`onHeroClick`) that opens
+ *  the Assets report — same button reset the hub always used. Body `children` render below in a
+ *  `className="fi rpt-body"` div — opacity-only animation, never `fu`/transform (a transformed
+ *  ancestor breaks `position:fixed` sheets). The body's `paddingTop` matches the band's own
+ *  `paddingBottom` above it (14 for a subscreen, matching that variant's top-row bottom padding
+ *  of 10 plus the eyebrow block's own spacing; 10 for the hub, matching `Header`'s tighter bottom
+ *  padding of 6) so the band→content gap is consistent whichever variant renders — previously a
+ *  subscreen's body div had NO top padding at all, so only some subscreens' own baked-in top
+ *  margins gave any breathing room, and Goals/Trends sat flush under the band (reported bug).
  *  The `rpt-body` class pairs with a global `!important` rule (chrome.tsx's injected stylesheet)
  *  that zeroes whichever element ends up as the body's actual first DOM child — simpler and more
  *  robust than hand-editing every subscreen's first element (Budgets' first section alone varies
  *  by data: Overspent/Near/Within budget each carry a different top margin). */
 export function ReportShell({
+  variant = "subscreen",
   title,
   month,
   onPrev,
   onNext,
   onBack,
+  onMenu,
+  onHeroClick,
   eyebrow,
   hero,
   sub,
   bandChart,
   children,
 }: {
-  title: string;
+  variant?: "subscreen" | "hub";
+  title?: string;
   month: string;
   onPrev: () => void;
   onNext: () => void;
-  onBack: () => void;
+  onBack?: () => void;
+  onMenu?: () => void;
+  onHeroClick?: () => void;
   eyebrow: string;
   hero: ReactNode;
   sub?: ReactNode;
@@ -55,64 +67,37 @@ export function ReportShell({
   const C = useTheme();
   const { band, hc } = useBand();
   const { t, lang } = useT();
+  const heroBlock = (
+    <>
+      <div style={{ fontSize: 10.5, fontWeight: 750, letterSpacing: "0.17em", textTransform: "uppercase", color: hc(C.headerMute, C.mute) }}>{eyebrow}</div>
+      <div style={{ fontSize: 30, fontWeight: 750, color: hc(C.headerInk, C.text), fontVariantNumeric: "tabular-nums" }}>{hero}</div>
+      {sub != null && <div style={{ fontSize: 12, color: hc(C.headerMute, C.soft) }}>{sub}</div>}
+      {bandChart}
+    </>
+  );
   return (
     <>
       <div data-band={band || undefined} style={band ? { background: C.headerBg, paddingBottom: 14 } : { paddingBottom: 14 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 6, padding: `12px ${P}px 10px` }}>
-          <button
-            aria-label={t("Back")}
-            onClick={onBack}
-            style={{
-              flexShrink: 0,
-              width: 30,
-              height: 30,
-              borderRadius: 15,
-              border: "none",
-              background: "transparent",
-              color: hc(C.headerInk, C.text),
-              fontSize: 22,
-              lineHeight: 1,
-              cursor: "pointer",
-              padding: 0,
-              marginLeft: -6,
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-            }}
-          >
-            ‹
-          </button>
-          <span
-            style={{
-              flex: 1,
-              fontSize: 16,
-              fontWeight: 700,
-              color: hc(C.headerInk, C.text),
-              overflow: "hidden",
-              textOverflow: "ellipsis",
-              whiteSpace: "nowrap",
-            }}
-          >
-            {title}
-          </span>
-          <span style={{ display: "flex", alignItems: "center", gap: 0, flexShrink: 0 }}>
-            {/* 30x30 hit target (matches the back button above) around the same 17px glyph — a bare
-               `padding: "2px 7px"` box measured 21x21, under the touch-target floor (see task-14
-               report); aria-label reuses chrome.tsx's existing "Previous/Next month" keys so this
-               control reads the same as the global header's equivalent. */}
+        {variant === "hub" ? (
+          <Header month={month} onMenu={onMenu!} onPrev={onPrev} onNext={onNext} onBand={band} />
+        ) : (
+          <div style={{ display: "flex", alignItems: "center", gap: 6, padding: `12px ${P}px 10px` }}>
             <button
-              aria-label={t("Previous month")}
-              onClick={onPrev}
+              aria-label={t("Back")}
+              onClick={onBack}
               style={{
+                flexShrink: 0,
+                width: 30,
+                height: 30,
+                borderRadius: 15,
                 border: "none",
                 background: "transparent",
-                color: hc(C.headerMute, C.soft),
-                fontSize: 17,
+                color: hc(C.headerInk, C.text),
+                fontSize: 22,
                 lineHeight: 1,
                 cursor: "pointer",
                 padding: 0,
-                width: 30,
-                height: 30,
+                marginLeft: -6,
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
@@ -120,42 +105,96 @@ export function ReportShell({
             >
               ‹
             </button>
-            <span style={{ fontSize: 12.5, fontWeight: 600, color: hc(C.headerInk, C.text), minWidth: 58, textAlign: "center" }}>
-              {monthLabel(month, lang).split(" ")[0]}
-            </span>
-            <button
-              aria-label={t("Next month")}
-              onClick={onNext}
+            <span
               style={{
-                border: "none",
-                background: "transparent",
-                color: hc(C.headerMute, C.soft),
-                fontSize: 17,
-                lineHeight: 1,
-                cursor: "pointer",
-                padding: 0,
-                width: 30,
-                height: 30,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
+                flex: 1,
+                fontSize: 16,
+                fontWeight: 700,
+                color: hc(C.headerInk, C.text),
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
               }}
             >
-              ›
-            </button>
-          </span>
-        </div>
-        <div style={{ padding: `0 ${P}px` }}>
-          <div style={{ fontSize: 10.5, fontWeight: 750, letterSpacing: "0.17em", textTransform: "uppercase", color: hc(C.headerMute, C.mute) }}>{eyebrow}</div>
-          <div style={{ fontSize: 30, fontWeight: 750, color: hc(C.headerInk, C.text), fontVariantNumeric: "tabular-nums" }}>{hero}</div>
-          {sub != null && <div style={{ fontSize: 12, color: hc(C.headerMute, C.soft) }}>{sub}</div>}
-          {bandChart}
-        </div>
+              {title}
+            </span>
+            <span style={{ display: "flex", alignItems: "center", gap: 0, flexShrink: 0 }}>
+              {/* 30x30 hit target (matches the back button above) around the same 17px glyph — a bare
+                 `padding: "2px 7px"` box measured 21x21, under the touch-target floor (see task-14
+                 report); aria-label reuses chrome.tsx's existing "Previous/Next month" keys so this
+                 control reads the same as the global header's equivalent. */}
+              <button
+                aria-label={t("Previous month")}
+                onClick={onPrev}
+                style={{
+                  border: "none",
+                  background: "transparent",
+                  color: hc(C.headerMute, C.soft),
+                  fontSize: 17,
+                  lineHeight: 1,
+                  cursor: "pointer",
+                  padding: 0,
+                  width: 30,
+                  height: 30,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
+              >
+                ‹
+              </button>
+              <span style={{ fontSize: 12.5, fontWeight: 600, color: hc(C.headerInk, C.text), minWidth: 58, textAlign: "center" }}>
+                {monthLabel(month, lang).split(" ")[0]}
+              </span>
+              <button
+                aria-label={t("Next month")}
+                onClick={onNext}
+                style={{
+                  border: "none",
+                  background: "transparent",
+                  color: hc(C.headerMute, C.soft),
+                  fontSize: 17,
+                  lineHeight: 1,
+                  cursor: "pointer",
+                  padding: 0,
+                  width: 30,
+                  height: 30,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
+              >
+                ›
+              </button>
+            </span>
+          </div>
+        )}
+        {onHeroClick ? (
+          <button
+            onClick={onHeroClick}
+            style={{
+              display: "block",
+              width: "100%",
+              background: "none",
+              border: "none",
+              padding: variant === "hub" ? `10px ${P}px 0` : `0 ${P}px`,
+              textAlign: "left",
+              cursor: "pointer",
+              fontFamily: "inherit",
+            }}
+          >
+            {heroBlock}
+          </button>
+        ) : (
+          <div style={{ padding: variant === "hub" ? `10px ${P}px 0` : `0 ${P}px` }}>{heroBlock}</div>
+        )}
       </div>
       {/* Animation is `fi` ONLY (opacity) — `fu`/transform breaks position:fixed of sheets inside.
          `rpt-body` pairs with the global first-child margin-top reset (chrome.tsx) so this
-         paddingTop is the sole band→content gap across every subscreen. */}
-      <div className="fi rpt-body" style={{ padding: `14px ${P}px 0` }}>
+         paddingTop is the sole band→content gap across every subscreen. The hub keeps its own
+         10px top padding (its grid's existing spacing) rather than the subscreen's 14px — see
+         task-4 report for why that one won. */}
+      <div className="fi rpt-body" style={{ padding: `${variant === "hub" ? 10 : 14}px ${P}px 0` }}>
         {children}
       </div>
     </>
