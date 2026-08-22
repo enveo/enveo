@@ -396,6 +396,31 @@ export function Sparkline({ points, stroke = TEAL, dotColor }: { points: { month
 const AXIS_W = 64;
 
 /**
+ * Selects which of a series' max/mid/min values get a gridline, deduping by the FORMATTED
+ * label rather than the raw value — the only real logic in `NetWorthChart`, extracted so it can
+ * be unit-tested with synthetic `format` functions (see `reportKit.test.ts`) independent of
+ * `useCompactMask`'s real rounding. Two-significant-digit compact rounding can make max/mid/min
+ * format to the same string (a modest-range series, or discreet mode's `"••••"` for every value
+ * alike); three identical labels would read as a broken axis, not "no variance" — so candidates
+ * are compared in draw order (max, mid, min) and only the first occurrence of each distinct label
+ * is kept, collapsing to the single mid tick when all three collide (mirroring `NetWorthChart`'s
+ * own flat-series line, which is already at mid-height for the same reason: nothing distinguishes
+ * the three heights, so only one line is honest).
+ *
+ * Order is deliberately max→mid→min, so a min/mid collision keeps mid and drops min (a top and a
+ * middle line, nothing near the series floor) while a max/mid collision keeps both extremes and
+ * drops mid — that asymmetry is a direct consequence of "first occurrence wins" and is pinned by
+ * tests on purpose, not "fixed": changing the draw order is a real change to the axis and should
+ * fail a test, not happen silently in a refactor.
+ */
+export function gridTicks(min: number, max: number, format: (v: number) => string): { value: number; label: string }[] {
+  const mid = (min + max) / 2;
+  const candidates = [max, mid, min].map((value) => ({ value, label: format(value) }));
+  if (new Set(candidates.map((c) => c.label)).size === 1) return [candidates[1]!];
+  return candidates.filter((c, i) => candidates.findIndex((o) => o.label === c.label) === i);
+}
+
+/**
  * Net-worth line chart — shared by the Reports hub (band hero, taller `height`) and the Wealth
  * report (body, shorter `height`), replacing what used to be two forked copies of this same
  * grammar. Draws three horizontal gridlines at the series' max/mid/min with their value printed
@@ -405,23 +430,22 @@ const AXIS_W = 64;
  * gridline labels and every tooltip — goes through `useCompactMask`, never `compactMoney` directly,
  * so this chart degrades under discreet mode exactly like every other amount in the app.
  *
- * `useCompactMask`'s 2-significant-digit rounding can make gridline labels collide: a modest-range
- * series (e.g. 2,699,999 / 2,715,600 / 2,734,567 minor units) prints "$27K" for all three, and
- * discreet mode collides all three to "••••" by construction. Three identical labels would read as
- * a broken axis, not a chart with no variance — so the three candidate labels are compared and only
- * the distinct ones are drawn, collapsing to the single mid line when all three collide (same move
- * a flat series already makes below, for the same reason: nothing distinguishes the three heights,
- * so only one line is honest). This is a label-collision fix, not a precision fix — raising
- * `useCompactMask`'s significant digits would defeat the point of a compact axis.
+ * `useCompactMask`'s 2-significant-digit rounding can make gridline labels collide (see
+ * `gridTicks`, below, for the dedup rule this delegates to and why it is pinned by tests) — this
+ * is a label-collision fix, not a precision fix: raising `useCompactMask`'s significant digits
+ * would defeat the point of a compact axis.
  *
- * `onBand` swaps the stroke/dot/gridline/caption colors for the Duet on-navy variant (a plain
- * ternary on the prop, not `useBand()`'s ambient theme check — see the comment at its use below
- * for why) — `TEAL` (`var(--accent)`) IS the Duet band color there, so it would be invisible
- * navy-on-navy.
+ * `onBand` swaps the stroke/dot/gridline/caption colors for the Duet on-navy variant — a plain
+ * ternary on the prop, mirroring `AssetsReport`'s existing inline chart's signature (real
+ * continuity, not a new idiom) and keeping the on-band decision with the caller rather than
+ * deriving it from `useBand()`'s `hc()` internally. `TEAL` (`var(--accent)`) IS the Duet band
+ * color, so it would be invisible navy-on-navy there.
  *
- * No unit test: this repo's web tests are `lib`-only and render nothing, so a test here would
- * assert layout it cannot see. This component is verified visually against a running app in a
- * later task — do not add a hollow render-only test here to feel covered.
+ * No test for the component itself: this repo's web tests are `lib`-only and render nothing, so
+ * a test here would assert layout it cannot see. This component is verified visually against a
+ * running app in a later task — do not add a hollow render-only test here to feel covered. Its
+ * one piece of real (non-rendering) logic, the gridline selection, is extracted as `gridTicks`
+ * above precisely so it CAN be pinned by a real test (`reportKit.test.ts`).
  *
  * The `useElementWidth` call sits above the `points.length < 2` early return on purpose: a hook
  * called after a conditional return is exactly the shape of a bug already shipped once in this
@@ -438,7 +462,6 @@ export function NetWorthChart({ points, height, onBand }: { points: { month: str
   const totals = points.map((p) => p.total);
   const min = Math.min(...totals);
   const max = Math.max(...totals);
-  const mid = (min + max) / 2;
   const span = max - min || 1;
   const flat = max === min;
 
@@ -451,10 +474,7 @@ export function NetWorthChart({ points, height, onBand }: { points: { month: str
   const y = (v: number) => (flat ? padT + innerH / 2 : padT + (1 - (v - min) / span) * innerH);
 
   // fill/stroke via style — var(--accent) does not resolve in SVG presentation attributes.
-  // `onBand` is a per-instance PROP, not re-derived from `useBand()`'s ambient theme check:
-  // this same component sits both inside the hub's Duet navy band and in the Wealth report's
-  // plain body under the identical theme, so only the caller (which knows where its own
-  // instance is placed) can say whether painting on-band applies here.
+  // `onBand` is a per-instance PROP (see the doc comment above for why), not `useBand()`'s `hc()`.
   const stroke = onBand ? C.headerInk : TEAL;
   const dotPos = onBand ? C.headerPos : C.pos;
   const gridline = onBand ? C.headerMute : C.line;
@@ -464,16 +484,7 @@ export function NetWorthChart({ points, height, onBand }: { points: { month: str
   const line = coords.map(([px, py], i) => `${i === 0 ? "M" : "L"}${px.toFixed(1)} ${py.toFixed(1)}`).join(" ");
   const area = `${line} L${x(n - 1).toFixed(1)} ${(height - padB).toFixed(1)} L${x(0).toFixed(1)} ${(height - padB).toFixed(1)} Z`;
 
-  // Three candidate gridlines (max/mid/min). Collapse duplicate labels — see doc comment above —
-  // to a single mid line when all three collide, otherwise keep only the first occurrence of
-  // each distinct label (order max, mid, min).
-  const candidates = [
-    { v: max, y: y(max) },
-    { v: mid, y: y(mid) },
-    { v: min, y: y(min) },
-  ].map((c) => ({ ...c, label: mask(c.v) }));
-  const levels =
-    new Set(candidates.map((c) => c.label)).size === 1 ? [candidates[1]!] : candidates.filter((c, i) => candidates.findIndex((o) => o.label === c.label) === i);
+  const levels = gridTicks(min, max, mask).map((t) => ({ y: y(t.value), label: t.label }));
 
   return (
     <div ref={boxRef} style={{ position: "relative" }}>
