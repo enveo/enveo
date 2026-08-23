@@ -1,3 +1,4 @@
+import type { Transaction } from "@enveo/shared";
 import { type ReactNode, useEffect, useRef } from "react";
 import type { StateResponse } from "../../lib/api";
 import { useTheme } from "../../lib/contexts";
@@ -216,10 +217,15 @@ type WideShellBag = {
   next: () => void;
   reportsView: ReportView;
   envView: { envelopeId: string; month: string } | null;
-  openTxns: (f?: { envId?: string; accId?: string }) => void;
+  openTxns: (f?: { envId?: string; accId?: string; envIds?: ReadonlySet<string>; catId?: string; placeId?: string }) => void;
   panelClosed: boolean;
   setEnvView: (v: null) => void;
-  setReportsView: (v: "overview") => void;
+  
+
+
+
+
+  setReportsView: (v: ReportView) => void;
   setPanelClosed: (closed: boolean) => void;
   
 
@@ -228,6 +234,14 @@ type WideShellBag = {
   onQuickAdd: (kind: "transfer" | "import" | "suggest") => void;
   onFillGoals: () => void;
   onInstall: () => void;
+  
+
+
+
+  onOpenEnvelope: (envId: string, month: string) => void;
+  onEditTxn: (t: Transaction) => void;
+  monthDay: string | null;
+  onSelectDay: (date: string | null) => void;
 };
 
 /**
@@ -265,6 +279,10 @@ export function WideShell({ bag, rightSlot = null, children }: { bag: WideShellB
     onQuickAdd,
     onFillGoals,
     onInstall,
+    onOpenEnvelope,
+    onEditTxn,
+    monthDay,
+    onSelectDay,
   } = bag;
   const C = useTheme();
   const { t } = useT();
@@ -367,7 +385,21 @@ export function WideShell({ bag, rightSlot = null, children }: { bag: WideShellB
           transition: "transform 260ms cubic-bezier(0.4,0,0.2,1), margin-right 260ms cubic-bezier(0.4,0,0.2,1), opacity 180ms ease",
         }}
       >
-        <PanelHost view={view} onClose={closePanel} onOpenTxns={openTxns} />
+        <PanelHost
+          view={view}
+          onClose={closePanel}
+          onOpenTxns={openTxns}
+          state={state}
+          month={month}
+          monthDay={monthDay}
+          onSelectDay={onSelectDay}
+          onView={setReportsView}
+          onOpenEnvelope={onOpenEnvelope}
+          onFillGoals={onFillGoals}
+          onEditTxn={onEditTxn}
+          onPrev={prev}
+          onNext={next}
+        />
       </div>
     </div>
   );

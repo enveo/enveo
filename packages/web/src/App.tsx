@@ -404,6 +404,12 @@ export default function App() {
             onPrev={prev}
             onNext={next}
             onOpenTxns={openTxns}
+            
+
+
+
+
+            selected={reportsView !== "overview" ? reportsView : undefined}
           />
         </LazyChunk>
       )}
@@ -488,6 +494,14 @@ export default function App() {
             onQuickAdd,
             onFillGoals: openBudgetFillGoals,
             onInstall: () => setInstallSheet(true),
+            // Task 6: the panel's own `ReportsScreen` instance needs the exact same entry points
+            // the primary pane's already uses, so opening an envelope / editing a transaction /
+            // picking a day from a report inside the panel behaves identically to doing it from
+            // the hub in the primary pane — same functions, not a wide-only fork of them.
+            onOpenEnvelope: openEnvelope,
+            onEditTxn: (t) => editTxnFrom(t, "reports"),
+            monthDay,
+            onSelectDay: setMonthDay,
           }}
           rightSlot={wideRightSlot}
         >
