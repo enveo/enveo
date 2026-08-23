@@ -200,7 +200,7 @@ export function applyImportEnrichment(result: ImportRecognitionResult, answer: I
         factCorrection = true;
       }
       const relationChanged = JSON.stringify(relation) !== JSON.stringify(proposal.relation);
-      let reviewReasons = addReasons(proposal.reviewReasons, ...annotation.reviewReasons);
+      let reviewReasons = [...proposal.reviewReasons];
       if (relationChanged) reviewReasons = addReasons(reviewReasons, "relation_changes_ledger_shape");
       if (factCorrection) reviewReasons = addReasons(reviewReasons, "fact_correction");
 
