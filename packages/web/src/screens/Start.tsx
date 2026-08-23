@@ -210,6 +210,7 @@ export function StartScreen({
         .filter((w) => w.enabled && w.id in START_WIDGETS)
         .map((w) => {
           const Widget = START_WIDGETS[w.id];
+          if (!Widget) return null; // narrows Partial<Record<...>> — the `in` filter above already guarantees this at runtime
           return (
             <Widget
               key={w.id}

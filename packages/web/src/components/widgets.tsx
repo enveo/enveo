@@ -630,11 +630,13 @@ export function NetWorthWidget({ month, onNav }: WidgetProps) {
 }
 
 /** Registry: widget id → component, in Start.tsx's render loop (`settings.startWidgets.filter(enabled)`).
- *  The `w.id in START_WIDGETS` guards below and in Start.tsx stay as defense against a corrupted/
- *  future persisted id (settings are untyped JSON at rest) even though this is now a full
- *  `Record<WidgetId, …>` — loadSettings() already drops any id unknown to the CURRENT WidgetId
- *  union on load (see contexts.tsx). */
-export const START_WIDGETS: Record<WidgetId, (p: WidgetProps) => ReactNode> = {
+ *  The `w.id in START_WIDGETS` guards below and in Start.tsx are load-bearing again as of PR5's
+ *  schemaVersion 2: `WidgetId` gained six ids (attention/recent/spending/goals/trends/heatmap)
+ *  whose phone bodies live in a later task's LAZY chunk (§3f — they must not join this eager
+ *  file), so this registry is intentionally `Partial` until that task populates them. Until then
+ *  those ids ship `enabled:false` by default (see `createDefaultStartWidgets`) and the `in` guard
+ *  makes an enabled-anyway persisted row a silent no-render, never a crash. */
+export const START_WIDGETS: Partial<Record<WidgetId, (p: WidgetProps) => ReactNode>> = {
   quickActions: QuickActions,
   accounts: AccountsWidget,
   envelopes: EnvelopesWidget,

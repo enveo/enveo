@@ -34,6 +34,14 @@ const WIDGET_TITLE: Record<WidgetId, Message> = {
   envelopesSavings: msg("Envelopes · Savings"),
   reportCashflow: msg("Report · Cash flow"),
   reportNetWorth: msg("Report · Net worth"),
+  // PR5's schemaVersion 2 widgets — offered here (ship disabled by default, product decision) so an
+  // existing Start stays untouched; their phone bodies land in a later task's lazy chunk.
+  attention: msg("Attention needed"),
+  recent: msg("Recent transactions"),
+  spending: msg("Spending"),
+  goals: msg("Goals"),
+  trends: msg("Trends"),
+  heatmap: msg("Heatmap"),
 };
 
 function envModeLabel(mode: string, groups: StateResponse["groups"], t: (m: Message, p?: Record<string, string | number>) => string): string {
@@ -67,6 +75,18 @@ function widgetSubtitle(w: WidgetConfig, state: StateResponse, t: (m: Message, p
       return t("current month");
     case "reportNetWorth":
       return t("12-month sparkline");
+    case "attention":
+      return t("budget checklist");
+    case "recent":
+      return t("latest transactions");
+    case "spending":
+      return t("this month's total");
+    case "goals":
+      return t("progress toward targets");
+    case "trends":
+      return t("6-month chart");
+    case "heatmap":
+      return t("daily spending calendar");
   }
 }
 
