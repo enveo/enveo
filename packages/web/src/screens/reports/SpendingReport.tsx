@@ -1,7 +1,7 @@
 import { median, type SpendingDetail, type SpendingDimension } from "@enveo/shared";
 import { useEffect, useState } from "react";
 import { useBand } from "../../components/kit";
-import { Bar, DeltaTag, ReportShell, SegBar } from "../../components/reportKit";
+import { Bar, DeltaTag, dimNullLabel, ReportShell, SegBar } from "../../components/reportKit";
 import type { StateResponse } from "../../lib/api";
 import { useTheme } from "../../lib/contexts";
 import { monthLabel } from "../../lib/dates";
@@ -131,7 +131,7 @@ export function SpendingReport({
     ...(restAmt > 0 ? [{ weight: restAmt, color: restColor }] : []),
   ];
 
-  const excludedNames = spending.filter((r) => excluded.has(r.key)).map((r) => r.name);
+  const excludedNames = spending.filter((r) => excluded.has(r.key)).map((r) => dimNullLabel(r.name, dim, t));
 
   // SAME array both times — no index/array mismatch between the shown rows and the folded tail
   // (folding over a filtered array while summing a differently-sized one undercounts the tail
@@ -331,7 +331,7 @@ export function SpendingReport({
                     }}
                   >
                     <span aria-hidden style={{ width: 8, height: 8, borderRadius: 3, background: color, flexShrink: 0 }} />
-                    {r.name}
+                    {dimNullLabel(r.name, dim, t)}
                   </span>
                   <span style={{ fontSize: 13, fontWeight: 650, color: C.text, fontVariantNumeric: "tabular-nums", flexShrink: 0, marginLeft: 8 }}>
                     {share ? `${M(r.amount)} · ${share}` : M(r.amount)}
@@ -438,7 +438,7 @@ export function SpendingReport({
                     whiteSpace: "nowrap",
                   }}
                 >
-                  {row.name}
+                  {dimNullLabel(row.name, dim, t)}
                 </span>
                 {range === 1 && <DeltaTag pct={delta} />}
                 <button
@@ -470,7 +470,9 @@ export function SpendingReport({
               {subRows.map((r) => (
                 <div key={r.key ?? "none"} style={{ display: "flex", flexDirection: "column", gap: 3 }}>
                   <div style={{ display: "flex", justifyContent: "space-between", gap: 8, fontSize: 11.5, color: C.text }}>
-                    <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.name}</span>
+                    <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {dimNullLabel(r.name, detail.subDim, t)}
+                    </span>
                     <b style={{ flexShrink: 0, fontVariantNumeric: "tabular-nums" }}>{M(r.amount)}</b>
                   </div>
                   <Bar pct={(r.amount / subTop) * 100} color={rowC} />

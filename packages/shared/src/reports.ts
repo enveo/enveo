@@ -70,12 +70,19 @@ export interface SpendingRow {
   pct: number;
 }
 
-// Polish product strings returned in rows (UI data — do not translate).
-const NULL_LABEL: Record<SpendingDimension, string> = {
-  category: "Bez kategorii",
-  envelope: "Bez koperty",
-  group: "Bez grupy",
-  place: "Bez miejsca",
+/**
+ * Neutral sentinels for "no X was assigned to this row" — NOT display text. `shared` stays
+ * language-neutral (zero I/O, no UI copy in any language), so these are stable markers a caller
+ * compares against, never strings rendered as-is. The web layer owns the actual translation
+ * (`dimNullLabel` in `components/reportKit.tsx`), which falls back to English via `t()` exactly
+ * like every other message in the app. Exported so both that translation layer and this file's
+ * own tests compare against the one real value instead of hardcoding it twice.
+ */
+export const NULL_LABEL: Record<SpendingDimension, string> = {
+  category: "__no_category__",
+  envelope: "__no_envelope__",
+  group: "__no_group__",
+  place: "__no_place__",
 };
 
 /** Expense transaction contribution to the per-dimension breakdown (parity with spentOf rules). */
@@ -112,11 +119,15 @@ export function computeSpendingByDimension(ledger: ClientLedger, fromMonth: stri
   const envGroup = new Map(ledger.envelopes.map((e) => [e.id, e.groupId]));
   const savings = new Set(ledger.envelopes.filter((e) => e.isSavings).map((e) => e.id));
   const nameOf = (key: string | null): string => {
+    // A dangling id (the referenced row is gone from this replica) falls back to the same
+    // language-neutral sentinel as a null key: the row effectively HAS no resolvable referent,
+    // and the web layer's dimNullLabel translates the sentinel. Shared code carries no
+    // human-language copy in any language (the old fallback here was a hardcoded "Inne").
     if (key === null) return NULL_LABEL[dim];
-    if (dim === "category") return ledger.categories.find((c) => c.id === key)?.name ?? "Inne";
-    if (dim === "place") return ledger.places.find((p) => p.id === key)?.name ?? "Inne";
-    if (dim === "group") return ledger.groups.find((g) => g.id === key)?.name ?? "Inne";
-    return ledger.envelopes.find((e) => e.id === key)?.name ?? "Inne";
+    if (dim === "category") return ledger.categories.find((c) => c.id === key)?.name ?? NULL_LABEL.category;
+    if (dim === "place") return ledger.places.find((p) => p.id === key)?.name ?? NULL_LABEL.place;
+    if (dim === "group") return ledger.groups.find((g) => g.id === key)?.name ?? NULL_LABEL.group;
+    return ledger.envelopes.find((e) => e.id === key)?.name ?? NULL_LABEL.envelope;
   };
   const sums = new Map<string | null, number>();
   for (const t of ledger.transactions) {
@@ -293,7 +304,7 @@ export function topPlaces(ledger: ClientLedger, fromMonth: string, toMonth: stri
   return [...byPlace.entries()]
     .map(([key, b]) => ({
       key,
-      name: ledger.places.find((p) => p.id === key)?.name ?? "Inne",
+      name: ledger.places.find((p) => p.id === key)?.name ?? NULL_LABEL.place, // dangling id — web translates the sentinel
       count: b.count,
       total: b.total,
     }))

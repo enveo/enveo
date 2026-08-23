@@ -916,4 +916,17 @@ export const pl: Dict = {
       many: "Scalić {n} wpisów w jeden o nazwie „{name}”? Wszystkie ich transakcje się przeniosą.",
       other: "Scalić {n} wpisów w jeden o nazwie „{name}”? Wszystkie ich transakcje się przeniosą.",
     },
+  // Month day panel + null-dimension sentinels (2026-08-23). The four "No …" keys REPLACE what
+  // used to be hardcoded Polish NULL_LABEL constants in shared — translated here immediately so
+  // the Polish UI never regresses to English for text it already had in Polish.
+  "No category": "Bez kategorii",
+  "No envelope": "Bez koperty",
+  "No group": "Bez grupy",
+  "No place": "Bez miejsca",
+  "No spending this day.": "Brak wydatków tego dnia.",
+  "Open in Transactions ›": "Otwórz w Transakcjach ›",
+  "Previous day": "Poprzedni dzień",
+  "Next day": "Następny dzień",
+  "vs the {avg} daily average": "wobec średniej dziennej {avg}",
+  "{name} {pct}%": "{name} {pct}%",
 };

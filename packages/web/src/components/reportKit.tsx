@@ -1,8 +1,8 @@
-import type { DailySpendingPoint } from "@enveo/shared";
+import { type DailySpendingPoint, type Money, NULL_LABEL, type SpendingDimension } from "@enveo/shared";
 import type { CSSProperties, ReactNode } from "react";
 import { useCompactMask, useTheme } from "../lib/contexts";
 import { monthLabel, monthShortLabel } from "../lib/dates";
-import { useT } from "../lib/i18n";
+import { type Message, useT } from "../lib/i18n";
 import { P, TEAL, type Theme } from "../lib/theme";
 import { useElementWidth } from "../lib/useElementWidth";
 import { Header } from "./chrome";
@@ -240,6 +240,28 @@ export function DeltaTag({ pct, downIsGood = true }: { pct: number | null; downI
   return <span style={{ color, fontVariantNumeric: "tabular-nums" }}>{`${up ? "↑" : "↓"} ${n}%`}</span>;
 }
 
+/** Translates the neutral "no X assigned" sentinel `computeSpendingByDimension`/
+ *  `computeSpendingDetail`/`computeDaySpending` return for a null (or stale/deleted) reference —
+ *  see `NULL_LABEL` in `shared/reports.ts` — into real UI copy for the given dimension. `shared`
+ *  stays language-neutral on purpose (zero I/O, no hardcoded copy in any language, English
+ *  included — the message-as-key system only translates strings that actually go through `t()`);
+ *  this is the one place every report row consumes to turn that sentinel back into English-or-
+ *  translated text. A real name (anything else) passes through untouched, so callers can apply
+ *  this unconditionally to every row's `name` rather than special-casing the null-key ones. */
+export function dimNullLabel(name: string, dim: SpendingDimension, t: (m: Message) => string): string {
+  if (name !== NULL_LABEL[dim]) return name;
+  switch (dim) {
+    case "category":
+      return t("No category");
+    case "envelope":
+      return t("No envelope");
+    case "group":
+      return t("No group");
+    case "place":
+      return t("No place");
+  }
+}
+
 /** Parse a 'YYYY-MM-DD' date into its UTC weekday, Monday = 0 … Sunday = 6 (no timezone drift —
  *  parsed via `Date.UTC`, never the local-time `Date` constructor). */
 function mondayIndex(iso: string): number {
@@ -277,18 +299,70 @@ export function heatColor(total: number, max: number, C: Theme): string {
   return "var(--accent)";
 }
 
-/** Calendar heatmap of daily totals — Monday-start grid, colored via `heatColor`. `mask` formats
- *  the amount for the per-cell `aria-label`. No `role="img"` on the wrapper — that would collapse
- *  the subtree and make the per-cell labels unreachable to assistive tech; instead a
- *  visually-hidden caption names the month, the decorative weekday header is `aria-hidden`, and
- *  each day cell carries its own `aria-label` (no `tabIndex` — labels are for AT traversal, not
- *  tab stops). */
-export function CalendarHeatmap({ days, lang, mask }: { days: DailySpendingPoint[]; lang: string; mask: (n: number) => string }) {
+/** One padded slot in a `heatWeeks` row — a real day, unlike the `null` padding slots that fill
+ *  out the row before day 1 and after the month's last day. */
+export interface HeatCell {
+  date: string;
+  total: Money;
+}
+
+/** One row per calendar week, Monday-start, `null` for the padding slots before day 1 and after
+ *  the month's last day — so every row is exactly 7 slots regardless of which weekday the 1st
+ *  falls on or how long the month is. Reuses the existing `mondayIndex` (module-private,
+ *  unchanged). Empty input → no rows (`CalendarHeatmap` already early-returns on empty `days`). */
+export function heatWeeks(days: DailySpendingPoint[]): (HeatCell | null)[][] {
+  if (days.length === 0) return [];
+  const offset = mondayIndex(days[0]!.date);
+  const padded: (HeatCell | null)[] = [...Array(offset).fill(null), ...days];
+  while (padded.length % 7 !== 0) padded.push(null);
+  const weeks: (HeatCell | null)[][] = [];
+  for (let i = 0; i < padded.length; i += 7) weeks.push(padded.slice(i, i + 7));
+  return weeks;
+}
+
+/** Calendar heatmap of daily totals — Monday-start week rows (`heatWeeks`), colored via
+ *  `heatColor`. `mask` formats the amount for the per-cell `aria-label`. No `role="img"` on the
+ *  wrapper — that would collapse the subtree and make the per-cell labels unreachable to
+ *  assistive tech; instead a visually-hidden caption names the month, the decorative weekday
+ *  header is `aria-hidden`, and each day cell carries its own `aria-label`.
+ *
+ *  `selected`/`onSelectDay`/`panel` (all optional, so the existing `MonthReport` call site keeps
+ *  compiling unchanged) turn a day cell into a `role="button"` tab stop — same idiom as
+ *  `Transactions.tsx`'s own row (`role="button"`/`tabIndex`/Enter-Space `onKeyDown`, guarded by
+ *  `e.target !== e.currentTarget` so a future focusable child inside the cell would not
+ *  double-fire) — and render `panel` directly under whichever week row contains `selected`, with
+ *  a caret pointing at that column. This component stays presentation-only: it does not know what
+ *  a day's total MEANS beyond a number for the heat ramp, and knows nothing about transactions or
+ *  envelopes — `panel`'s content is entirely the caller's (`MonthReport`).
+ *
+ *  Ink contrast is corrected for EVERY cell (selected or not) by the same top-quartile boundary
+ *  `heatColor` itself uses (`total/max > 0.75` → white), not only the selected one — an unselected
+ *  top-quartile cell paints solid `var(--accent)` and a muted-grey day number would sit at low
+ *  contrast on that fill. Selection stays visually distinct via the ring (`boxShadow`) alone. */
+export function CalendarHeatmap({
+  days,
+  lang,
+  mask,
+  selected,
+  onSelectDay,
+  panel,
+}: {
+  days: DailySpendingPoint[];
+  lang: string;
+  mask: (n: number) => string;
+  /** Currently selected day's ISO date, or `null`/omitted for no selection. */
+  selected?: string | null;
+  /** Present ⇒ every real day cell becomes clickable/focusable. Absent ⇒ cells stay inert, exactly
+   *  today's behavior. */
+  onSelectDay?: (date: string) => void;
+  /** Rendered under whichever week row contains `selected` — caller owns the content entirely. */
+  panel?: ReactNode;
+}) {
   const C = useTheme();
   const { t } = useT();
   if (days.length === 0) return null;
   const max = Math.max(...days.map((d) => d.total), 1);
-  const offset = mondayIndex(days[0]!.date);
+  const weeks = heatWeeks(days);
   const monday = new Date(Date.UTC(2020, 0, 6)); // a known Monday
   const weekdays = Array.from({ length: 7 }, (_, i) => {
     const d = new Date(monday);
@@ -296,23 +370,86 @@ export function CalendarHeatmap({ days, lang, mask }: { days: DailySpendingPoint
     return new Intl.DateTimeFormat(lang, { weekday: "narrow", timeZone: "UTC" }).format(d);
   });
   const monthName = monthLabel(days[0]!.date.slice(0, 7), lang as Parameters<typeof monthLabel>[1]);
+  const GAP = 3; // matches each row's own CSS `gap` below — the caret's `calc()` depends on this constant
   return (
     <div>
       <span style={visuallyHidden}>{t("Daily spending in {month}", { month: monthName })}</span>
-      <div aria-hidden="true" style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 3, marginBottom: 4 }}>
+      <div aria-hidden="true" style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: GAP, marginBottom: 4 }}>
         {weekdays.map((w, i) => (
           <div key={i} style={{ fontSize: 9.5, color: C.mute, textAlign: "center" }}>
             {w}
           </div>
         ))}
       </div>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 3 }}>
-        {Array.from({ length: offset }, (_, i) => (
-          <div key={`pad${i}`} />
-        ))}
-        {days.map((d) => (
-          <div key={d.date} aria-label={`${d.date} · ${mask(d.total)}`} style={{ aspectRatio: 1, borderRadius: 4, background: heatColor(d.total, max, C) }} />
-        ))}
+      <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+        {weeks.map((week, wi) => {
+          const selIdx = selected ? week.findIndex((c) => c?.date === selected) : -1;
+          return (
+            <div key={wi}>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: GAP }}>
+                {week.map((cell, ci) =>
+                  cell ? (
+                    <div
+                      key={cell.date}
+                      role={onSelectDay ? "button" : undefined}
+                      tabIndex={onSelectDay ? 0 : undefined}
+                      onClick={onSelectDay ? () => onSelectDay(cell.date) : undefined}
+                      onKeyDown={
+                        onSelectDay
+                          ? (e) => {
+                              if (e.target !== e.currentTarget) return;
+                              if (e.key === "Enter" || e.key === " ") {
+                                e.preventDefault();
+                                onSelectDay(cell.date);
+                              }
+                            }
+                          : undefined
+                      }
+                      aria-label={`${cell.date} · ${mask(cell.total)}`}
+                      style={{
+                        aspectRatio: 1,
+                        borderRadius: 4,
+                        background: heatColor(cell.total, max, C),
+                        boxShadow: selected === cell.date ? `0 0 0 2px ${cell.total > 0 && cell.total / max > 0.75 ? "#fff" : C.text}` : "none",
+                        cursor: onSelectDay ? "pointer" : "default",
+                        display: "flex",
+                        alignItems: "flex-end",
+                        justifyContent: "flex-end",
+                        padding: 2,
+                        fontSize: 8,
+                        color: cell.total > 0 && cell.total / max > 0.75 ? "#fff" : C.mute,
+                      }}
+                    >
+                      {Number(cell.date.slice(8, 10))}
+                    </div>
+                  ) : (
+                    <div key={`pad${ci}`} aria-hidden="true" />
+                  ),
+                )}
+              </div>
+              {selIdx >= 0 && panel && (
+                <div style={{ position: "relative", marginTop: 10, marginBottom: 5 }}>
+                  <span
+                    aria-hidden="true"
+                    style={{
+                      position: "absolute",
+                      top: -6,
+                      left: `calc((100% - ${6 * GAP}px) / 7 * ${selIdx + 0.5} + ${selIdx * GAP}px)`,
+                      width: 12,
+                      height: 12,
+                      background: C.bg,
+                      borderLeft: `1px solid ${C.line}`,
+                      borderTop: `1px solid ${C.line}`,
+                      transform: "translateX(-50%) rotate(45deg)",
+                      display: "block",
+                    }}
+                  />
+                  <div style={{ background: C.bg, border: `1px solid ${C.line}`, borderRadius: 12, padding: "11px 12px" }}>{panel}</div>
+                </div>
+              )}
+            </div>
+          );
+        })}
       </div>
     </div>
   );
