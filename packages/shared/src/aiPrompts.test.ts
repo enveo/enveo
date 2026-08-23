@@ -261,6 +261,14 @@ describe("buildImportExtractPrompt / parseImportExtractResponse", () => {
     expect(sys).toContain("A visible date divider applies to the transaction entries below it");
   });
 
+  it("distinguishes one ledger movement from secondary numbers inside the same entry", () => {
+    const sys = sysOf(buildImportExtractPrompt([], refs, "2026-07-07", "pl", "PLN").messages);
+
+    expect(sys).toContain("exactly one financial_event for each coherent entry with a primary signed ledger amount");
+    expect(sys).toContain("A reward, refund, top-up, deposit, or transfer entry is still a financial_event");
+    expect(sys).toContain("Set relation to null unless the screenshot visibly establishes the link");
+  });
+
   it("strict json_schema requires every extraction fact", () => {
     const schema = IMPORT_EXTRACT_JSON_SCHEMA.schema.properties.rows.items as {
       properties: Record<string, { enum?: string[] }>;
@@ -563,7 +571,7 @@ describe("runImportRecognitionPipeline", () => {
         calls++;
         if (calls === 1) {
           const value = JSON.parse(extracted()) as { rows: Array<Record<string, unknown>> };
-          value.rows[0]!.reviewReasons = ["possible_ocr_error"];
+          value.rows[0]!.semanticKind = "unknown";
           return JSON.stringify(value);
         }
         return JSON.stringify({
@@ -586,7 +594,7 @@ describe("runImportRecognitionPipeline", () => {
 
     expect(calls).toBe(2);
     expect(result.proposals[0]).toMatchObject({ type: "expense", selected: true });
-    expect(result.proposals[0]!.reviewReasons).toEqual(expect.arrayContaining(["possible_ocr_error", "fact_correction"]));
+    expect(result.proposals[0]!.reviewReasons).toEqual(expect.arrayContaining(["unknown_kind", "fact_correction"]));
   });
 
   it("builds byte-identical cycle-two prompts for permutations of set-like ledger context", async () => {

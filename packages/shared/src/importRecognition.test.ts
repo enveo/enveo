@@ -191,6 +191,56 @@ describe("screenshot import recognition contract", () => {
 });
 
 describe("screenshot import proposal validation", () => {
+  it("derives review reasons from validated evidence instead of model-provided warnings", () => {
+    const result = validateImportExtraction({
+      batch: {
+        rows: [extractRow({ reviewReasons: ["possible_transfer", "pending_or_declined", "possible_ocr_error"] })],
+      },
+      budgetCurrency: "PLN",
+    });
+
+    expect(result.rows[0]!.reviewReasons).toEqual([]);
+    expect(result.proposals[0]).toMatchObject({ selected: true, reviewReasons: [] });
+    expect(needsImportEnrichment(result)).toBe(false);
+  });
+
+  it("keeps only relations supported by both rows' validated facts", () => {
+    const result = validateImportExtraction({
+      batch: {
+        rows: [
+          extractRow({ rowId: "purchase", relation: { kind: "duplicate_of", rowId: "other" } }),
+          extractRow({ rowId: "other", visualOrder: 1, amount: 2000, direction: "credit", semanticKind: "cash_deposit" }),
+          extractRow({
+            rowId: "duplicate",
+            visualOrder: 2,
+            relation: { kind: "duplicate_of", rowId: "purchase" },
+          }),
+          extractRow({
+            rowId: "fx",
+            visualOrder: 3,
+            rowRole: "supporting_detail",
+            semanticKind: "fx_conversion",
+            amount: 400,
+            currency: "EUR",
+            relation: { kind: "fx_for", rowId: "purchase" },
+          }),
+          extractRow({ rowId: "incomplete", visualOrder: 4, amount: null, relation: { kind: "duplicate_of", rowId: "incomplete-target" } }),
+          extractRow({ rowId: "incomplete-target", visualOrder: 5, amount: null }),
+        ],
+      },
+      budgetCurrency: "PLN",
+    });
+
+    expect(result.proposals).toMatchObject([
+      { rowId: "purchase", relation: null, reviewReasons: ["relation_changes_ledger_shape"] },
+      { rowId: "other", relation: null, reviewReasons: [] },
+      { rowId: "duplicate", relation: { kind: "duplicate_of", rowId: "purchase" }, reviewReasons: ["relation_changes_ledger_shape"] },
+      { rowId: "fx", relation: { kind: "fx_for", rowId: "purchase" }, reviewReasons: ["relation_changes_ledger_shape"] },
+      { rowId: "incomplete", relation: null, reviewReasons: ["missing_fact"] },
+      { rowId: "incomplete-target", relation: null, reviewReasons: ["missing_fact"] },
+    ]);
+  });
+
   it("keeps new financial events selected while review warnings stay informational", () => {
     const result = validateImportExtraction({
       batch: {
@@ -203,9 +253,9 @@ describe("screenshot import proposal validation", () => {
       budgetCurrency: "PLN",
     });
     expect(result.proposals).toMatchObject([
-      { rowId: "topup", disposition: "candidate", selected: true, reviewReasons: ["possible_transfer", "relation_changes_ledger_shape"] },
-      { rowId: "uncertain", disposition: "candidate", selected: true, reviewReasons: ["possible_ocr_error"] },
-      { rowId: "related", disposition: "candidate", selected: true, reviewReasons: ["relation_changes_ledger_shape"] },
+      { rowId: "topup", disposition: "candidate", selected: true, reviewReasons: ["possible_transfer"] },
+      { rowId: "uncertain", disposition: "candidate", selected: true, reviewReasons: [] },
+      { rowId: "related", disposition: "candidate", selected: true, relation: null, reviewReasons: [] },
     ]);
   });
 
@@ -299,20 +349,26 @@ describe("screenshot import proposal validation", () => {
     ]);
   });
 
-  it("marks relation-driven ledger-shape changes and impossible FX evidence for review", () => {
+  it("drops an FX relation that is inconsistent with the extracted currencies", () => {
     const result = validateImportExtraction({
       batch: {
         rows: [
-          extractRow({ rowId: "purchase", relation: { kind: "fx_for", rowId: "fx" } }),
-          extractRow({ rowId: "fx", rowRole: "supporting_detail", semanticKind: "fx_conversion", currency: "PLN" }),
+          extractRow({ rowId: "purchase" }),
+          extractRow({
+            rowId: "fx",
+            rowRole: "supporting_detail",
+            semanticKind: "fx_conversion",
+            currency: "PLN",
+            relation: { kind: "fx_for", rowId: "purchase" },
+          }),
         ],
       },
       budgetCurrency: "PLN",
     });
 
     expect(result.proposals).toMatchObject([
-      { rowId: "purchase", selected: true, reviewReasons: ["relation_changes_ledger_shape", "impossible_fx"] },
-      { rowId: "fx", selected: false, reviewReasons: ["relation_changes_ledger_shape", "impossible_fx"] },
+      { rowId: "purchase", selected: true, relation: null, reviewReasons: [] },
+      { rowId: "fx", selected: false, relation: null, reviewReasons: [] },
     ]);
   });
 
@@ -344,30 +400,34 @@ describe("screenshot import enrichment gate", () => {
     expect(needsImportEnrichment(resultFor({ semanticKind: "salary", direction: "credit" }))).toBe(false);
   });
 
-  it("runs cycle two for uncertainty, history ambiguity, OCR risk, transfer gaps, relations, and invalid facts", () => {
+  it("runs cycle two for deterministic uncertainty, history ambiguity, transfer gaps, valid relations, and invalid facts", () => {
+    const withReason = (reason: "history_conflict" | "multiple_history_candidates") => {
+      const result = resultFor();
+      result.proposals[0]!.reviewReasons = [reason];
+      return result;
+    };
     const risky = [
       resultFor({ semanticKind: "unknown", direction: "unknown" }),
-      resultFor({ reviewReasons: ["history_conflict"] }),
-      resultFor({ reviewReasons: ["multiple_history_candidates"] }),
-      resultFor({ reviewReasons: ["possible_ocr_error"] }),
+      withReason("history_conflict"),
+      withReason("multiple_history_candidates"),
       resultFor({ semanticKind: "internal_transfer" }),
       validateImportExtraction({
         batch: {
-          rows: [extractRow({ rowId: "purchase", relation: { kind: "fee_for", rowId: "fee" } }), extractRow({ rowId: "fee", semanticKind: "fee" })],
+          rows: [extractRow({ rowId: "purchase" }), extractRow({ rowId: "fee", semanticKind: "fee", relation: { kind: "fee_for", rowId: "purchase" } })],
         },
         budgetCurrency: "PLN",
       }),
       resultFor({ amount: null }),
     ];
 
-    expect(risky.map(needsImportEnrichment)).toEqual([true, true, true, true, true, true, true]);
+    expect(risky.map(needsImportEnrichment)).toEqual([true, true, true, true, true, true]);
   });
 });
 
 describe("screenshot import enrichment merge", () => {
   const result = () =>
     validateImportExtraction({
-      batch: { rows: [extractRow({ reviewReasons: ["possible_ocr_error"] })] },
+      batch: { rows: [extractRow({ semanticKind: "account_topup", direction: "credit" })] },
       budgetCurrency: "PLN",
     });
   const answer = (rows: ImportEnrichmentAnswer["rows"]): ImportEnrichmentAnswer => ({
@@ -405,7 +465,7 @@ describe("screenshot import enrichment merge", () => {
       placeName: "Lidl",
       envelopeId: "envelope-1",
       categoryId: "category-1",
-      reviewReasons: ["possible_ocr_error"],
+      reviewReasons: ["possible_transfer"],
     });
   });
 
@@ -429,7 +489,7 @@ describe("screenshot import enrichment merge", () => {
     };
     const merged = applyImportEnrichment(result(), answer([malicious as ImportEnrichmentAnswer["rows"][number]]));
 
-    expect(merged.rows[0]).toMatchObject(extractRow({ reviewReasons: ["possible_ocr_error"] }));
+    expect(merged.rows[0]).toMatchObject(extractRow({ semanticKind: "account_topup", direction: "credit" }));
     expect(merged.proposals[0]).toMatchObject({
       date: "2026-08-07",
       amount: 1000,
@@ -438,7 +498,7 @@ describe("screenshot import enrichment merge", () => {
       envelopeId: null,
       categoryId: null,
       relation: null,
-      reviewReasons: ["possible_ocr_error", "fact_correction"],
+      reviewReasons: ["possible_transfer", "fact_correction"],
       selected: true,
     });
   });
@@ -460,7 +520,7 @@ describe("screenshot import enrichment merge", () => {
       ]),
     );
 
-    expect(merged.proposals).toEqual([expect.objectContaining({ rowId: "r1", name: "", reviewReasons: ["possible_ocr_error", "fact_correction"] })]);
+    expect(merged.proposals).toEqual([expect.objectContaining({ rowId: "r1", name: "", reviewReasons: ["possible_transfer", "fact_correction"] })]);
   });
 });
 

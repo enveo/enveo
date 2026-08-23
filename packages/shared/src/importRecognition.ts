@@ -228,6 +228,67 @@ const isCalendarDate = (value: string | null): value is string => {
 
 const hasPositiveMinorAmount = (amount: number | null): amount is number => amount !== null && Number.isInteger(amount) && amount > 0;
 
+const samePostingFacts = (left: ImportExtractRow, right: ImportExtractRow): boolean =>
+  left.date === right.date && left.amount === right.amount && left.currency === right.currency && left.direction === right.direction;
+
+const hasComparablePostingFacts = (row: ImportExtractRow): boolean =>
+  isCalendarDate(row.date) && hasPositiveMinorAmount(row.amount) && row.currency !== null && row.direction !== "unknown";
+
+const isTransferKind = (kind: ImportSemanticKind): boolean =>
+  kind === "incoming_transfer" || kind === "outgoing_transfer" || kind === "account_topup" || kind === "internal_transfer";
+
+/** Model relations are hypotheses. Keep only links whose kind is supported by
+ * the independently extracted facts of both visible rows. */
+const relationSupportedByFacts = (row: ImportExtractRow, target: ImportExtractRow): boolean => {
+  switch (row.relation?.kind) {
+    case "fx_for":
+      return (
+        row.rowRole === "supporting_detail" &&
+        row.semanticKind === "fx_conversion" &&
+        target.rowRole === "financial_event" &&
+        target.semanticKind !== "fx_conversion" &&
+        hasPositiveMinorAmount(row.amount) &&
+        hasPositiveMinorAmount(target.amount) &&
+        row.currency !== null &&
+        target.currency !== null &&
+        row.currency !== target.currency
+      );
+    case "duplicate_of":
+      return hasComparablePostingFacts(row) && hasComparablePostingFacts(target) && samePostingFacts(row, target);
+    case "refund_of":
+      return (
+        (row.semanticKind === "merchant_refund" || row.semanticKind === "chargeback") &&
+        target.rowRole === "financial_event" &&
+        row.currency === target.currency &&
+        row.amount === target.amount &&
+        row.direction === "credit" &&
+        target.direction === "debit"
+      );
+    case "pending_version_of":
+      return (
+        row.postingStatus === "pending" &&
+        target.postingStatus === "posted" &&
+        hasComparablePostingFacts(row) &&
+        hasComparablePostingFacts(target) &&
+        samePostingFacts(row, target)
+      );
+    case "fee_for":
+      return row.semanticKind === "fee" && target.rowRole === "financial_event" && target.semanticKind !== "fee";
+    case "counterpart_of":
+      return (
+        isTransferKind(row.semanticKind) &&
+        isTransferKind(target.semanticKind) &&
+        row.amount === target.amount &&
+        row.currency === target.currency &&
+        ((row.direction === "credit" && target.direction === "debit") || (row.direction === "debit" && target.direction === "credit"))
+      );
+    case "continuation_of":
+      return row.rowRole === "supporting_detail" && target.rowRole !== "ui_metadata";
+    case undefined:
+      return false;
+  }
+};
+
 const mappingFor = (
   semanticKind: ImportSemanticKind,
   direction: ImportDirection,
@@ -293,37 +354,37 @@ const proposalFrom = (row: ImportExtractRow, overrides: Partial<ImportProposal> 
 /** Converts strict extraction facts into conservative, still-reviewable ledger proposals. */
 export function validateImportExtraction(input: { batch: ImportExtractBatch; budgetCurrency: string }): ImportRecognitionResult {
   const { batch, budgetCurrency } = input;
+  const rows = batch.rows.map((row) => ({ ...row, reviewReasons: [] }));
   const rowsById = new Map<string, ImportExtractRow>();
-  for (const row of batch.rows) {
+  for (const row of rows) {
     if (rowsById.has(row.rowId)) throw new Error(`duplicate rowId: ${row.rowId}`);
     rowsById.set(row.rowId, row);
   }
 
   const invalidRelations = new Set<string>();
+  const acceptedRelations = new Map<string, ImportRowRelation>();
   const shapeChangingRelations = new Set<string>();
-  const impossibleFx = new Set<string>();
-  for (const row of batch.rows) {
+  for (const row of rows) {
     if (!row.relation) continue;
     const target = rowsById.get(row.relation.rowId);
     if (!target || target.rowId === row.rowId) {
       invalidRelations.add(row.rowId);
       continue;
     }
+    if (!relationSupportedByFacts(row, target)) continue;
+    acceptedRelations.set(row.rowId, row.relation);
     shapeChangingRelations.add(row.rowId);
     shapeChangingRelations.add(target.rowId);
-    if (row.relation.kind === "fx_for" && (!hasPositiveMinorAmount(row.amount) || !hasPositiveMinorAmount(target.amount) || row.currency === target.currency)) {
-      impossibleFx.add(row.rowId);
-      impossibleFx.add(target.rowId);
-    }
   }
 
   const budgetCurrencySupported = isSupportedCurrency(budgetCurrency);
-  const proposals = batch.rows.map((row) => {
+  const proposals = rows.map((row) => {
     const mapping = mappingFor(row.semanticKind, row.direction);
     let disposition: ImportProposal["disposition"] = "candidate";
     let selected = true;
     let type = mapping.type;
-    let reasons = addReasons(row.reviewReasons, ...mapping.reviewReasons);
+    let reasons = addReasons([], ...mapping.reviewReasons);
+    const relation = acceptedRelations.get(row.rowId) ?? null;
 
     const validFacts =
       isCalendarDate(row.date) && hasPositiveMinorAmount(row.amount) && row.currency !== null && isSupportedCurrency(row.currency) && budgetCurrencySupported;
@@ -342,7 +403,6 @@ export function validateImportExtraction(input: { batch: ImportExtractBatch; bud
     if (shapeChangingRelations.has(row.rowId)) {
       reasons = addReasons(reasons, "relation_changes_ledger_shape");
     }
-    if (impossibleFx.has(row.rowId)) reasons = addReasons(reasons, "impossible_fx");
     if (row.rowRole !== "financial_event") {
       disposition = "supporting";
       selected = false;
@@ -365,10 +425,10 @@ export function validateImportExtraction(input: { batch: ImportExtractBatch; bud
 
     if (row.postingStatus === "unknown") reasons = addReasons(reasons, "unknown_posting_status");
 
-    return proposalFrom(row, { disposition, type, isRefund: mapping.isRefund, reviewReasons: reasons, selected });
+    return proposalFrom(row, { disposition, type, isRefund: mapping.isRefund, relation, reviewReasons: reasons, selected });
   });
 
-  return { rows: batch.rows, proposals };
+  return { rows, proposals };
 }
 
 /** Applies current-ledger evidence without mutating model facts or creating transaction destinations. */
