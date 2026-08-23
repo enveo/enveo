@@ -188,6 +188,14 @@ export function PanelHost({
         );
       case "widgets":
         return <WidgetSettingsPanel widgetId={view.widgetId} state={state} onClose={onClose} />;
+      case "add":
+        // PR6 Task 1 only lands the resolver's `add` kind; the pane's actual body (AddScreen,
+        // reusing its own AddHeader per D5/D4's mockup-inconsistency note) is wired in a later
+        // task, once `App.tsx` mounts `WideShell` while `screen === "addExpense"` at all — today
+        // it never does (App.tsx's wide branch keeps the phone-column takeover for Add), so this
+        // case is unreached in practice. Keeping it here (rather than folding into `assertNever`)
+        // is what keeps this switch exhaustive now that `PanelView` has the kind.
+        return null;
       default:
         return assertNever(view);
     }
