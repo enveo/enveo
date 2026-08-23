@@ -270,7 +270,12 @@ describe("buildImportExtractPrompt / parseImportExtractResponse", () => {
     expect(sys).not.toContain("signed ledger amount");
     expect(sys).toContain("A reward, refund, top-up, deposit, or transfer entry is still a financial_event");
     expect(sys).toContain("Repeated entries remain separate even when their text and amount are identical");
+    expect(sys).toContain("Count the visible primary ledger amounts before answering");
+    expect(sys).toContain("An adjacent FX conversion or rate block stays a separate supporting_detail row");
+    expect(sys).toContain("Classify semanticKind from the visible event wording even when another fact is missing or unsupported");
+    expect(sys).toContain("A word in a merchant name or your own uncertainty is not a pending or declined marker");
     expect(sys).toContain("Use duplicate_of only when the same entry is visibly repeated across overlapping screenshots");
+    expect(sys).toContain("Compare all supplied screenshots for overlap before answering");
     expect(sys).toContain("Use posted for an ordinary completed history entry with no pending or declined marker");
     expect(sys).toContain("Use unknown only when the status itself is unreadable or ambiguous");
     expect(sys).toContain("Set relation to null unless the screenshot visibly establishes the link");

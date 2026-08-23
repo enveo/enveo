@@ -1,3 +1,6 @@
+import { isSupportedCurrency } from "../../packages/shared/src/currency";
+import { type ImportReviewReason, importProposalBlockingReasons } from "../../packages/shared/src/importRecognition";
+
 export type ImportRecognitionDirection = "debit" | "credit" | "unknown";
 export type ImportRecognitionRowRole = "financial_event" | "supporting_detail" | "ui_metadata";
 export type ImportRecognitionPostingStatus = "posted" | "pending" | "declined" | "unknown";
@@ -42,6 +45,8 @@ export interface ActualImportRecognitionProposal extends ImportRecognitionPropos
 
 export interface ActualImportRecognitionRow {
   id: string;
+  rowRole?: ImportRecognitionRowRole;
+  postingStatus?: ImportRecognitionPostingStatus;
   date: string | null;
   amount: number | null;
   currency: string | null;
@@ -159,13 +164,44 @@ const hasRequiredSafetyReview = (truth: ExpectedImportRecognitionRow, actual: Ac
   actual?.proposal !== undefined &&
   requiredReviewReasons(truth).every((reason) => actual.proposal!.reviewReasons.includes(reason));
 
-const truthShouldBeIncluded = (truth: ExpectedImportRecognitionRow): boolean =>
-  truth.rowRole === "financial_event" && truth.postingStatus !== "pending" && truth.postingStatus !== "declined" && truth.expectedDuplicateStatus !== "exists";
+const truthShouldBeIncluded = (truth: ExpectedImportRecognitionRow, actual: ActualImportRecognitionRow | undefined): boolean =>
+  truth.rowRole === "financial_event" &&
+  truth.postingStatus !== "pending" &&
+  truth.postingStatus !== "declined" &&
+  (truth.expectedDuplicateStatus !== "exists" || actual?.proposal?.duplicateStatus !== "exists");
 
-const allowedReviewReasons = (truth: ExpectedImportRecognitionRow): Set<string> => {
+const duplicateStatusMatches = (truth: ImportRecognitionDuplicateStatus, actual: ImportRecognitionDuplicateStatus | undefined): boolean =>
+  actual === truth || (truth === "exists" && actual === "probable");
+
+const semanticDirection = (kind: string): ImportRecognitionDirection | null => {
+  if (["card_purchase", "cash_withdrawal", "fee", "outgoing_transfer"].includes(kind)) return "debit";
+  if (["interest", "salary", "cashback_or_reward", "incoming_transfer", "account_topup", "cash_deposit", "merchant_refund", "chargeback"].includes(kind)) {
+    return "credit";
+  }
+  return null;
+};
+
+const allowedReviewReasons = (truth: ExpectedImportRecognitionRow, actual: ActualImportRecognitionRow): Set<string> => {
   const allowed = new Set(requiredReviewReasons(truth));
-  if (truth.expectedDuplicateStatus === "exists") allowed.add("history_conflict");
-  if (truth.expectedDuplicateStatus === "probable") allowed.add("multiple_history_candidates");
+  const role = actual.rowRole ?? truth.rowRole;
+  const postingStatus = actual.postingStatus ?? truth.postingStatus;
+  if (role === "financial_event") {
+    if (postingStatus === "pending" || postingStatus === "declined") {
+      allowed.add("pending_or_declined");
+    } else {
+      if (actual.date === null || actual.amount === null) allowed.add("missing_fact");
+      if (actual.currency === null || !isSupportedCurrency(actual.currency)) allowed.add("unsupported_currency");
+      const expectedDirection = semanticDirection(actual.semanticKind);
+      if (expectedDirection && actual.direction !== expectedDirection) allowed.add("inconsistent_direction");
+      if (actual.semanticKind === "incoming_transfer" || actual.semanticKind === "account_topup") allowed.add("possible_transfer");
+      if (actual.semanticKind === "internal_transfer") allowed.add("unknown_transfer_endpoint");
+      if (actual.semanticKind === "unknown" || actual.semanticKind === "fx_conversion") allowed.add("unknown_kind");
+      if (postingStatus === "unknown") allowed.add("unknown_posting_status");
+      if (actual.relation) allowed.add("relation_changes_ledger_shape");
+    }
+  }
+  if (truth.expectedDuplicateStatus === "exists" || actual.proposal?.duplicateStatus === "exists") allowed.add("history_conflict");
+  if (truth.expectedDuplicateStatus === "probable" || actual.proposal?.duplicateStatus === "probable") allowed.add("multiple_history_candidates");
   return allowed;
 };
 
@@ -218,19 +254,21 @@ export function scoreImportRecognition(
   for (const truth of expected) {
     const actualRow = actualById.get(truth.id);
     const included = actualRow?.proposal?.selected === true;
-    if (truthShouldBeIncluded(truth)) {
+    if (truthShouldBeIncluded(truth, actualRow)) {
       if (!included) missingFinancial++;
     } else if (included) {
       nonLedgerIncluded++;
     }
-    if (truth.expectedProposal && actualRow?.proposal && !sameProposal(truth.expectedProposal, actualRow.proposal)) interpretationErrors++;
+    const proposalBlocked =
+      actualRow?.proposal && importProposalBlockingReasons({ reviewReasons: actualRow.proposal.reviewReasons as ImportReviewReason[] }).length > 0;
+    if (truth.expectedProposal && actualRow?.proposal && !proposalBlocked && !sameProposal(truth.expectedProposal, actualRow.proposal)) interpretationErrors++;
     const requiredReasons = requiredReviewReasons(truth);
     if (requiredReasons.length > 0) {
       requiredReviews++;
       if (requiredReasons.every((reason) => actualRow?.proposal?.reviewReasons.includes(reason))) reviewedAsRequired++;
     }
     if (actualRow?.proposal) {
-      const allowed = allowedReviewReasons(truth);
+      const allowed = allowedReviewReasons(truth, actualRow);
       unexpectedReviewReasons += actualRow.proposal.reviewReasons.filter((reason) => !allowed.has(reason)).length;
     }
   }
@@ -264,7 +302,7 @@ export function scoreImportRecognition(
     },
     semanticKindAccuracy: ratio(expected.filter((row) => actualById.get(row.id)?.semanticKind === row.semanticKind).length, expected.length),
     duplicateStatusAccuracy: ratio(
-      financial.filter((row) => actualById.get(row.id)?.proposal?.duplicateStatus === row.expectedDuplicateStatus).length,
+      financial.filter((row) => duplicateStatusMatches(row.expectedDuplicateStatus, actualById.get(row.id)?.proposal?.duplicateStatus)).length,
       financial.length,
     ),
     relationPrecision: ratio(correctRelations, actualRelations.length),
