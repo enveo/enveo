@@ -21,6 +21,24 @@ export function routeToUrl(r: Route): string {
   return r.envelopeId ? `${path}?env=${encodeURIComponent(r.envelopeId)}` : path;
 }
 
+/**
+ * Which single History call App's URL-sync pass makes (App.tsx keeps the calls, this keeps the
+ * DECISION pure so the entry-0 contract stays unit-tested):
+ * - "stamp" — routing just became active and entry 0 has never been marked (`history.state` is
+ *   null): mark it `replaceState(false)` at the CURRENT url, without growing the stack. Stamping
+ *   at ACTIVATION rather than at the first change is the whole point — the first in-session
+ *   navigation then PUSHES, so hardware/browser back from the first destination returns to the
+ *   start URL instead of leaving the app (the old code's first change hit `history.state == null`
+ *   and rewrote entry 0's URL to the DESTINATION).
+ * - "replace" — a popstate correction, or a URL change while entry 0 is still unstamped (a
+ *   deep-load canonicalisation, e.g. a stale `?env` dropped on boot): fix the entry in place.
+ * - "push" — every other change is a real new entry.
+ */
+export function historyAction(urlChanged: boolean, entryStamped: boolean, justPopped: boolean): "push" | "replace" | "stamp" | "none" {
+  if (!urlChanged) return entryStamped ? "none" : "stamp";
+  return justPopped || !entryStamped ? "replace" : "push";
+}
+
 export function parseUrl(pathname: string, search: string): Route {
   const [seg1 = "", seg2 = ""] = pathname.split("/").filter(Boolean);
   const screen: ScreenId = seg1 === "add" ? "addExpense" : (REGULAR as readonly string[]).includes(seg1) ? (seg1 as ScreenId) : "start";
