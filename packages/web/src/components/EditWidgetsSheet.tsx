@@ -326,7 +326,11 @@ function AccountsOptions({ w, state, onChange }: { w: WidgetConfig; state: State
   );
 }
 
-function EnvelopesOptions({ w, state, onChange }: { w: WidgetConfig; state: StateResponse; onChange: (o: WidgetOpts) => void }) {
+/** Exported for `PanelHost`'s `widgets` panel body (PR5 Task 6) — the wide board's gear target
+ *  reuses this SAME options UI (one implementation, not a parallel one), dynamically imported
+ *  there exactly like this module already is from `Start.tsx`, so Vite dedupes the two into one
+ *  chunk rather than shipping the body twice. */
+export function EnvelopesOptions({ w, state, onChange }: { w: WidgetConfig; state: StateResponse; onChange: (o: WidgetOpts) => void }) {
   const C = useTheme();
   const { t } = useT();
   const mode = w.opts?.mode ?? "all";
