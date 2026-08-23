@@ -332,7 +332,12 @@ export function WideShell({ bag, rightSlot = null, children }: { bag: WideShellB
   // including report→report switches that the kind alone would miss. Selection is compared
   // across renders (a ref, not an effect dep array) so a mere re-render of the same open
   // selection never touches `panelClosed`.
-  const selection = view.kind === "empty" ? null : view.kind === "envelope" ? envView : view.kind === "widgets" ? view.widgetId : view.view;
+  // `add` (PR6 Task 1) has no selection VALUE of its own to key the reopen rule on — it is
+  // unreached here today (App.tsx never mounts `WideShell` while `screen === "addExpense"`), and
+  // when a later task does wire it in, `resolvePanel` already forces `add` open unconditionally
+  // (D2's push semantics), so there is nothing for this rule to reopen.
+  const selection =
+    view.kind === "empty" || view.kind === "add" ? null : view.kind === "envelope" ? envView : view.kind === "widgets" ? view.widgetId : view.view;
   const prevSelection = useRef(selection);
   useEffect(() => {
     if (selection !== null && selection !== prevSelection.current && panelClosed) setPanelClosed(false);

@@ -63,6 +63,39 @@ const initialTransactionFilters = (): TransactionFilters => ({
   amount: null,
 });
 
+/**
+ * `back()`'s entry-0 fallback chain (PR4), extended by PR6 Task 1 with the two rungs PR4 never
+ * needed: closing the envelope-edit/-actions sheets that can now stack ABOVE the Add pane or the
+ * envelope pane on wide. Pure and exported so `App.backFallback.test.ts` can pin every rung
+ * without mounting the component — `panel.ts`'s `resolvePanel` deliberately does NOT own this
+ * (it lives in the lazy wide chunk; `back()` is eager, and a static import from an eager module
+ * into a lazy chunk module would drag the whole wide chunk into the eager bundle — the exact
+ * "back-door" the wide chunk's own bundle ledger warns about). This is PR4's SAME fallback
+ * switch, not a second reducer: `back()`'s `history.state === true` branch (`history.back()`) is
+ * untouched by this function and is checked before it ever runs.
+ *
+ * Order (topmost wins, matching PR6 plan D2): close `envEdit` → close `envActions` → close the
+ * Add pane (`doneEdit` semantics) → close the envelope pane → Reports subview back to the hub →
+ * any other screen back to `start` → already at `start` with nothing open, do nothing.
+ */
+export type BackFallback = "close-env-edit" | "close-env-actions" | "close-add" | "close-envelope" | "reports-overview" | "to-start" | null;
+
+export function backFallback(s: {
+  screen: ScreenId;
+  envView: { envelopeId: string; month: string } | null;
+  reportsView: ReportView;
+  envEditOpen: boolean;
+  envActionsOpen: boolean;
+}): BackFallback {
+  if (s.envEditOpen) return "close-env-edit";
+  if (s.envActionsOpen) return "close-env-actions";
+  if (s.screen === "addExpense") return "close-add";
+  if (s.envView) return "close-envelope";
+  if (s.screen === "reports" && s.reportsView !== "overview") return "reports-overview";
+  if (s.screen !== "start") return "to-start";
+  return null;
+}
+
 export default function App() {
   const C = useTheme();
   const { t } = useT();
@@ -295,6 +328,13 @@ export default function App() {
   const routingActive = state && !onboarding && !unauthed && !locked && !foreign;
   useEffect(() => {
     const onPop = () => {
+      // PR6 Task 1: `envEdit`/`envActions` are ephemeral sheet-open booleans that never
+      // serialise into the URL (same class as `panelClosed` — chrome, not navigation), so a
+      // browser-back that changes the URL has no way to know they were open. Force-close both,
+      // unconditionally, BEFORE applying the parsed route below — the entry-0 fallback's own
+      // top two rungs, reused here as plain setter calls rather than a second reducer.
+      setEnvEdit(null);
+      setEnvActions(null);
       justPopped.current = true;
       const r = parseUrl(location.pathname, location.search);
       nav(r.screen);
@@ -326,13 +366,34 @@ export default function App() {
     // `history.state` is our own tracking marker: `true` on a real pushed entry (the user has
     // navigated at least twice this session) — traverse it so the swipe gesture, the chevrons
     // and the hardware back key land on the SAME entries. `false`/`null` mean entry 0 (the
-    // deep-loaded page, stamped in place without growing the stack) — legacy fallback below.
-    if (history.state === true) history.back();
-    else if (envView) setEnvView(null);
-    else if (screen === "addExpense") {
-      setEditTxn(null);
-      setScreen(editReturn);
-    } else setScreen("start");
+    // deep-loaded page, stamped in place without growing the stack) — `backFallback` below,
+    // extended by PR6 Task 1 with the envEdit/envActions rungs.
+    if (history.state === true) {
+      history.back();
+      return;
+    }
+    switch (backFallback({ screen, envView, reportsView, envEditOpen: envEdit !== null, envActionsOpen: envActions !== null })) {
+      case "close-env-edit":
+        setEnvEdit(null);
+        break;
+      case "close-env-actions":
+        setEnvActions(null);
+        break;
+      case "close-add":
+        doneEdit();
+        break;
+      case "close-envelope":
+        setEnvView(null);
+        break;
+      case "reports-overview":
+        setReportsView("overview");
+        break;
+      case "to-start":
+        setScreen("start");
+        break;
+      case null:
+        break;
+    }
   };
   const sw = useRef<{ x: number; y: number } | null>(null);
   const onTouchStart = (e: React.TouchEvent) => {
