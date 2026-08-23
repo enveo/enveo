@@ -1,14 +1,30 @@
-import { computeGoalHistory } from "@enveo/shared";
+import { computeGoalHistory, computeStateResponse } from "@enveo/shared";
+import { useEffect, useRef, useState } from "react";
 import { GoalRing, useBand } from "../../components/kit";
-import { Bar, ReportShell } from "../../components/reportKit";
+import { Bar, ReportShell, UndoBar, type UndoToast } from "../../components/reportKit";
 import type { StateResponse } from "../../lib/api";
 import { useTheme } from "../../lib/contexts";
 import { monthLabel, monthShortLabel } from "../../lib/dates";
 import { goalProgress } from "../../lib/goals";
+import { haptic } from "../../lib/haptics";
 import { useT } from "../../lib/i18n";
+import { local } from "../../lib/mutate";
 import { store } from "../../lib/store";
 import { TEAL, tint } from "../../lib/theme";
 import { type Mask, TITLES } from "./types";
+
+/** One in-flight per-card "Fill" the toast can still undo — same shape/rule as
+ *  `BudgetsReport.PendingUndo` (`previousAllocated` captured fresh right before the write, `month`
+ *  pinned to the viewed month at press time so navigating away drops it rather than undoing into
+ *  the wrong month). `message` is built once at push time so the shared `UndoBar` only ever needs
+ *  `{ id, message }`. */
+interface PendingGoalFill extends UndoToast {
+  envelopeId: string;
+  month: string;
+  previousAllocated: number;
+}
+
+const GOAL_UNDO_TIMEOUT_MS = 6000;
 
 /**
  * "Goals" tab (Gabinet grammar, no dedicated mockup frame — follows A2/A3): envelopes with a
@@ -63,6 +79,20 @@ import { type Mask, TITLES } from "./types";
  * the new one in this same commit (the other nine new keys this rebuild introduces are brand-new
  * copy with no prior translation to protect, and ship untranslated per the slice's own ruling — a
  * consolidated pass covers them before the next prod deploy).
+ *
+ * Reports-3f Task 2 (this commit): a per-card "Fill {amount} ›" quick action, mirroring
+ * `BudgetsReport.coverStep`/`undoStep` exactly — immediate write + local undo toast, no
+ * confirmation sheet (the controller ruling rejected a pre-scoped `FillGoalsSheet` for this).
+ * - The amount shown ON the button is capped at the render-scope pool (`state.readyToAssign`,
+ *   same as this file's existing `canFillGoals` gate) so the label never promises more than the
+ *   pool can currently cover, and the button doesn't render at all once `fillable <= 0` — same
+ *   "hidden, not merely disabled" rule as the aggregate action.
+ * - The WRITE itself re-reads both `allocated` and `readyToAssign` fresh off the live ledger at
+ *   press time (`store.getLedger()` → `computeStateResponse`), never the `state`/`gp` closure —
+ *   the same rule `coverStep` already applies to `previousAllocated`, extended here to the pool
+ *   cap too, since a card can sit rendered for a while before it's tapped.
+ * - The undo toast is the shared `UndoBar` (`components/reportKit.tsx`) — this report's second
+ *   consumer, promoted out of `BudgetsReport` in the prior commit on this branch.
  */
 export function GoalsReport({
   state,
@@ -104,157 +134,245 @@ export function GoalsReport({
   // The one guard every per-card computation below depends on (see doc comment). When it trips,
   // the screen shows exactly the same copy as "no goals at all" rather than a half-built list.
   const canRenderCards = ledger !== null && rows.length > 0;
+
+  const [pendingFills, setPendingFills] = useState<PendingGoalFill[]>([]);
+  const fillTimers = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
+  const dismissFill = (id: string) => {
+    const timer = fillTimers.current.get(id);
+    if (timer !== undefined) {
+      clearTimeout(timer);
+      fillTimers.current.delete(id);
+    }
+    setPendingFills((prev) => prev.filter((u) => u.id !== id));
+  };
+  // Same "undo targets a specific month" rule as BudgetsReport: navigating away — including to a
+  // different viewed month — drops every pending undo rather than risk applying it in a month the
+  // user isn't looking at.
+  useEffect(() => {
+    return () => {
+      for (const timer of fillTimers.current.values()) clearTimeout(timer);
+      fillTimers.current.clear();
+      setPendingFills([]);
+    };
+  }, [state.month]);
+
+  // Mirrors `BudgetsReport.coverStep` exactly, extended per the controller ruling: BOTH
+  // `allocated` and `readyToAssign` are re-read fresh off the live ledger at press time, never
+  // the render-scope `state`/`gp` closure — a card can sit rendered a while before it's tapped,
+  // and another write (this same action on a different card, a sync pull) can move the pool in
+  // the meantime. `missing` (target − funded) is passed in from the render that produced this
+  // card; the envelope's own `monthlyTarget` isn't something a fill action itself can change, so
+  // re-deriving it fresh would guard nothing this slice's writes can actually invalidate.
+  const fillOne = (envelopeId: string, envelopeName: string, missing: number) => {
+    const ledger = store.getLedger();
+    const live = ledger ? computeStateResponse(ledger, state.month) : null;
+    if (!live) return;
+    const envFresh = live.envelopes.find((x) => x.id === envelopeId);
+    if (!envFresh || envFresh.archived) return; // vanished/archived since the card rendered
+    const fillable = Math.max(0, Math.min(missing, live.readyToAssign));
+    if (fillable <= 0) return; // defensive — the button is hidden in this case already
+    const previousAllocated = envFresh.allocated;
+    local.setDisplayedAllocation({ envelopeId, month: state.month, amount: previousAllocated + fillable });
+    haptic([10, 30, 14]);
+    const id = crypto.randomUUID();
+    const timer = setTimeout(() => dismissFill(id), GOAL_UNDO_TIMEOUT_MS);
+    fillTimers.current.set(id, timer);
+    const message = t("Filled {amount} in {name}", { amount: M(fillable), name: envelopeName });
+    setPendingFills((prev) => [...prev, { id, message, envelopeId, month: state.month, previousAllocated }]);
+  };
+  const undoFill = (u: PendingGoalFill) => {
+    local.setDisplayedAllocation({ envelopeId: u.envelopeId, month: u.month, amount: u.previousAllocated });
+    haptic(8);
+    dismissFill(u.id);
+  };
+
   return (
-    <ReportShell
-      title={t(TITLES.goals)}
-      month={state.month}
-      onPrev={onPrev}
-      onNext={onNext}
-      onBack={onBack}
-      eyebrow={t("Monthly goals")}
-      hero={`${pctTotal}%`}
-      sub={
-        rows.length === 0 ? undefined : allFunded ? (
-          <span style={{ color: hc(C.headerPos, C.pos) }}>{t("All goals funded ✓")}</span>
-        ) : (
-          t("{amount} to go", { amount: M(missSum) })
-        )
-      }
-    >
-      {!canRenderCards && (
-        <div style={{ fontSize: 12.5, color: C.mute, padding: "8px 0" }}>{t("No envelopes with a goal. Set a monthly target when editing an envelope.")}</div>
-      )}
-      {canRenderCards && (
-        <>
-          <div style={{ fontSize: 10.5, color: C.mute, marginBottom: 10 }}>
-            {t("Past months are judged against today's target — changing a goal rewrites its history.")}
-          </div>
-          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-            {rows.map(({ e, gp }) => {
-              const history = computeGoalHistory(ledger, e.id, state.month, 6);
-              if (!history) return null; // diverged from `state` since this render started — skip, don't crash
-              const fundedAmt = Math.min(Math.max(0, e.allocated), e.monthlyTarget ?? 0);
-              const barColor = gp.funded ? C.pos : TEAL;
-              return (
-                <div
-                  key={e.id}
-                  style={{ border: `1px solid ${C.line}`, borderRadius: 14, padding: "13px 14px", display: "flex", flexDirection: "column", gap: 10 }}
-                >
-                  <button
-                    onClick={() => onOpenEnvelope(e.id, state.month)}
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: 11,
-                      width: "100%",
-                      background: "none",
-                      border: "none",
-                      padding: 0,
-                      cursor: "pointer",
-                      textAlign: "left",
-                      fontFamily: "inherit",
-                    }}
+    <>
+      <ReportShell
+        title={t(TITLES.goals)}
+        month={state.month}
+        onPrev={onPrev}
+        onNext={onNext}
+        onBack={onBack}
+        eyebrow={t("Monthly goals")}
+        hero={`${pctTotal}%`}
+        sub={
+          rows.length === 0 ? undefined : allFunded ? (
+            <span style={{ color: hc(C.headerPos, C.pos) }}>{t("All goals funded ✓")}</span>
+          ) : (
+            t("{amount} to go", { amount: M(missSum) })
+          )
+        }
+      >
+        {!canRenderCards && (
+          <div style={{ fontSize: 12.5, color: C.mute, padding: "8px 0" }}>{t("No envelopes with a goal. Set a monthly target when editing an envelope.")}</div>
+        )}
+        {canRenderCards && (
+          <>
+            <div style={{ fontSize: 10.5, color: C.mute, marginBottom: 10 }}>
+              {t("Past months are judged against today's target — changing a goal rewrites its history.")}
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              {rows.map(({ e, gp }) => {
+                const history = computeGoalHistory(ledger, e.id, state.month, 6);
+                if (!history) return null; // diverged from `state` since this render started — skip, don't crash
+                const fundedAmt = Math.min(Math.max(0, e.allocated), e.monthlyTarget ?? 0);
+                const barColor = gp.funded ? C.pos : TEAL;
+                // Pool-capped display amount only — the WRITE re-reads both sides of this `Math.min`
+                // fresh at press time (see `fillOne`'s own comment). Hidden entirely (not disabled)
+                // once the pool can't cover anything, same as the aggregate `canFillGoals` button.
+                const fillable = Math.max(0, Math.min(gp.missing, state.readyToAssign));
+                return (
+                  <div
+                    key={e.id}
+                    style={{ border: `1px solid ${C.line}`, borderRadius: 14, padding: "13px 14px", display: "flex", flexDirection: "column", gap: 10 }}
                   >
-                    <GoalRing pct={gp.pct} size={40} color={barColor} />
-                    <span style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 1 }}>
-                      <span
+                    {/* The envelope-open button and the Fill action are SIBLINGS sharing one row —
+                     never nested, buttons can't nest — so the open target stays the ring+name+
+                     amount block while Fill gets its own independent hit target beside it. */}
+                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      <button
+                        onClick={() => onOpenEnvelope(e.id, state.month)}
                         style={{
-                          fontSize: 13.5,
-                          fontWeight: 650,
-                          color: C.text,
-                          overflow: "hidden",
-                          textOverflow: "ellipsis",
-                          whiteSpace: "nowrap",
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 11,
+                          flex: 1,
+                          minWidth: 0,
+                          background: "none",
+                          border: "none",
+                          padding: 0,
+                          cursor: "pointer",
+                          textAlign: "left",
+                          fontFamily: "inherit",
                         }}
                       >
-                        {e.name}
-                      </span>
-                      <span style={{ fontSize: 11, color: C.mute, fontVariantNumeric: "tabular-nums" }}>
-                        {t("{funded} of {target}", { funded: M(fundedAmt), target: M(e.monthlyTarget ?? 0) })}
-                      </span>
-                    </span>
-                  </button>
-                  <div title={t("{month} so far: {pct}%", { month: monthLabel(state.month, lang), pct: Math.round(gp.pct) })}>
-                    <Bar pct={gp.pct} color={barColor} />
-                  </div>
-                  <div style={{ display: "flex", gap: 5 }}>
-                    {history.points.map((p, i) => {
-                      const isCurrent = i === history.points.length - 1;
-                      // TEAL is a CSS var (`var(--accent)`), not a hex string — `tint()` only accepts hex
-                      // (BudgetsReport/SpendingReport/ImportSheet all call it with a real Theme hex like
-                      // C.pos/C.warn). The accent tint has to come from the precomputed alpha CSS var
-                      // instead (same family `heatColor` already uses); `--accent-22` (≈0.13 alpha) is the
-                      // closest step to the 0.14 this chip's `met` sibling gets via `tint(C.pos, 0.14)`.
-                      const bg = p.met ? tint(C.pos, 0.14) : isCurrent ? "var(--accent-22)" : C.chip;
-                      const fg = p.met ? C.pos : isCurrent ? TEAL : C.soft;
-                      const border = isCurrent ? TEAL : "transparent";
-                      const label = p.met ? "✓" : `${Math.round(p.pct)}%`;
-                      const title = p.met
-                        ? t("{month} · goal fully funded ✓", { month: monthShortLabel(p.month, lang) })
-                        : isCurrent
-                          ? t("{month} · so far {pct}%", { month: monthShortLabel(p.month, lang), pct: Math.round(p.pct) })
-                          : t("{month} · ended at {pct}% of the goal", { month: monthShortLabel(p.month, lang), pct: Math.round(p.pct) });
-                      return (
-                        <span
-                          key={p.month}
-                          title={title}
+                        <GoalRing pct={gp.pct} size={40} color={barColor} />
+                        <span style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 1 }}>
+                          <span
+                            style={{
+                              fontSize: 13.5,
+                              fontWeight: 650,
+                              color: C.text,
+                              overflow: "hidden",
+                              textOverflow: "ellipsis",
+                              whiteSpace: "nowrap",
+                            }}
+                          >
+                            {e.name}
+                          </span>
+                          <span style={{ fontSize: 11, color: C.mute, fontVariantNumeric: "tabular-nums" }}>
+                            {t("{funded} of {target}", { funded: M(fundedAmt), target: M(e.monthlyTarget ?? 0) })}
+                          </span>
+                        </span>
+                      </button>
+                      {fillable > 0 && (
+                        <button
+                          onClick={() => fillOne(e.id, e.name, gp.missing)}
+                          title={t("Move the missing amount from To be budgeted into this envelope")}
                           style={{
-                            flex: 1,
-                            display: "flex",
-                            flexDirection: "column",
+                            display: "inline-flex",
                             alignItems: "center",
-                            gap: 1,
-                            background: bg,
-                            border: `1px solid ${border}`,
-                            borderRadius: 7,
-                            padding: "4px 0",
+                            flexShrink: 0,
+                            minHeight: 30,
+                            fontSize: 11,
+                            fontWeight: 700,
+                            color: TEAL,
+                            border: `1px solid ${TEAL}`,
+                            borderRadius: 8,
+                            padding: "5px 10px",
+                            background: "none",
+                            cursor: "pointer",
+                            fontFamily: "inherit",
                           }}
                         >
-                          <span style={{ fontSize: 8.5, color: C.mute }}>{monthShortLabel(p.month, lang)}</span>
-                          <span style={{ fontSize: 10.5, fontWeight: 700, color: fg, fontVariantNumeric: "tabular-nums" }}>{label}</span>
-                        </span>
-                      );
-                    })}
+                          {t("Fill {amount} ›", { amount: M(fillable) })}
+                        </button>
+                      )}
+                    </div>
+                    <div title={t("{month} so far: {pct}%", { month: monthLabel(state.month, lang), pct: Math.round(gp.pct) })}>
+                      <Bar pct={gp.pct} color={barColor} />
+                    </div>
+                    <div style={{ display: "flex", gap: 5 }}>
+                      {history.points.map((p, i) => {
+                        const isCurrent = i === history.points.length - 1;
+                        // TEAL is a CSS var (`var(--accent)`), not a hex string — `tint()` only accepts hex
+                        // (BudgetsReport/SpendingReport/ImportSheet all call it with a real Theme hex like
+                        // C.pos/C.warn). The accent tint has to come from the precomputed alpha CSS var
+                        // instead (same family `heatColor` already uses); `--accent-22` (≈0.13 alpha) is the
+                        // closest step to the 0.14 this chip's `met` sibling gets via `tint(C.pos, 0.14)`.
+                        const bg = p.met ? tint(C.pos, 0.14) : isCurrent ? "var(--accent-22)" : C.chip;
+                        const fg = p.met ? C.pos : isCurrent ? TEAL : C.soft;
+                        const border = isCurrent ? TEAL : "transparent";
+                        const label = p.met ? "✓" : `${Math.round(p.pct)}%`;
+                        const title = p.met
+                          ? t("{month} · goal fully funded ✓", { month: monthShortLabel(p.month, lang) })
+                          : isCurrent
+                            ? t("{month} · so far {pct}%", { month: monthShortLabel(p.month, lang), pct: Math.round(p.pct) })
+                            : t("{month} · ended at {pct}% of the goal", { month: monthShortLabel(p.month, lang), pct: Math.round(p.pct) });
+                        return (
+                          <span
+                            key={p.month}
+                            title={title}
+                            style={{
+                              flex: 1,
+                              display: "flex",
+                              flexDirection: "column",
+                              alignItems: "center",
+                              gap: 1,
+                              background: bg,
+                              border: `1px solid ${border}`,
+                              borderRadius: 7,
+                              padding: "4px 0",
+                            }}
+                          >
+                            <span style={{ fontSize: 8.5, color: C.mute }}>{monthShortLabel(p.month, lang)}</span>
+                            <span style={{ fontSize: 10.5, fontWeight: 700, color: fg, fontVariantNumeric: "tabular-nums" }}>{label}</span>
+                          </span>
+                        );
+                      })}
+                    </div>
+                    <span style={{ fontSize: 10, color: C.mute }}>
+                      {t("Met in {n} of 5 months · ✓ = fully funded that month", { n: history.points.slice(0, -1).filter((p) => p.met).length })}
+                    </span>
                   </div>
-                  <span style={{ fontSize: 10, color: C.mute }}>
-                    {t("Met in {n} of 5 months · ✓ = fully funded that month", { n: history.points.slice(0, -1).filter((p) => p.met).length })}
-                  </span>
-                </div>
-              );
-            })}
-          </div>
-          {canFillGoals && (
-            <button
-              onClick={onFillGoals}
-              style={{
-                display: "inline-flex",
-                alignItems: "center",
-                minHeight: 30,
-                marginTop: 2,
-                background: "none",
-                border: "none",
-                padding: "6px 0",
-                font: "inherit",
-                fontSize: 12.5,
-                fontWeight: 600,
-                color: TEAL,
-                cursor: "pointer",
-                textAlign: "left",
-              }}
-            >
-              {t("Fill all goals ›")}
-            </button>
-          )}
-          {noGoalCount > 0 && (
-            <div style={{ fontSize: 11, color: C.mute, padding: "6px 0 4px" }}>
-              {tp(
-                "+ {n} envelope without a goal — set one when editing an envelope. | + {n} envelopes without a goal — set one when editing an envelope.",
-                noGoalCount,
-              )}
+                );
+              })}
             </div>
-          )}
-        </>
-      )}
-    </ReportShell>
+            {canFillGoals && (
+              <button
+                onClick={onFillGoals}
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  minHeight: 30,
+                  marginTop: 2,
+                  background: "none",
+                  border: "none",
+                  padding: "6px 0",
+                  font: "inherit",
+                  fontSize: 12.5,
+                  fontWeight: 600,
+                  color: TEAL,
+                  cursor: "pointer",
+                  textAlign: "left",
+                }}
+              >
+                {t("Fill all goals ›")}
+              </button>
+            )}
+            {noGoalCount > 0 && (
+              <div style={{ fontSize: 11, color: C.mute, padding: "6px 0 4px" }}>
+                {tp(
+                  "+ {n} envelope without a goal — set one when editing an envelope. | + {n} envelopes without a goal — set one when editing an envelope.",
+                  noGoalCount,
+                )}
+              </div>
+            )}
+          </>
+        )}
+      </ReportShell>
+      <UndoBar pending={pendingFills} onUndo={undoFill} onDismiss={dismissFill} />
+    </>
   );
 }
