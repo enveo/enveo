@@ -83,6 +83,14 @@ export default function App() {
   
 
   const [reportsView, setReportsView] = useState<ReportView>("overview");
+  // Month report's selected day, kept in App for the SAME reason as `reportsView`: opening a
+  // transaction from the day panel for edit switches `screen` to "addExpense" and back,
+  // unmounting ReportsScreen (and MonthReport) in between — local state there would be lost.
+  // A full ISO date (not a bare day-of-month integer) so it is unambiguous to clear/compare;
+  // reset below whenever the viewed month changes, since a leftover date from a longer month
+  // could otherwise silently resurface once the user pages back to a month with that many days.
+  const [monthDay, setMonthDay] = useState<string | null>(null);
+  useEffect(() => setMonthDay(null), [month]);
    
   const [envView, setEnvView] = useState<{ envelopeId: string; month: string } | null>(null);
    
@@ -120,7 +128,13 @@ export default function App() {
     }
     setEnvView(null);
     setEditReturn("start");
-    if (s === "reports") setReportsView("overview");
+    if (s === "reports") {
+      
+
+
+      setReportsView("overview");
+      setMonthDay(null);
+    }
     setScreen(s);
   };
   
@@ -371,8 +385,11 @@ export default function App() {
                     month={month}
                     view={reportsView}
                     onView={setReportsView}
+                    monthDay={monthDay}
+                    onSelectDay={setMonthDay}
                     onOpenEnvelope={openEnvelope}
                     onFillGoals={openBudgetFillGoals}
+                    onEditTxn={(t) => editTxnFrom(t, "reports")}
                     onMenu={() => setDrawer(true)}
                     onPrev={prev}
                     onNext={next}
