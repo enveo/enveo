@@ -11,7 +11,12 @@ import { sumBalances, tbbState } from "../../lib/uiState";
 import type { ScreenId } from "../chrome";
 
 /** New this task (pr4-task-5-brief.md) — outside a direct `t()`/`tp()` call (a ternary), so
- *  `msg()` marks both for the extractor per the house i18n convention. */
+ *  `msg()` marks both for the extractor per the house i18n convention.
+ *  Task 9 i18n hygiene (`bun run i18n:ambiguity`): `"Collapse"` is flagged as reused (the other
+ *  call site is `ChipPicker.tsx`'s section toggle) — checked and kept as-is, not renamed to a
+ *  longer form: both sites are the same gender-neutral Polish imperative ("Zwiń", no referent to
+ *  inflect for), and both mean the identical action (collapse an expandable section). `"Show
+ *  all"` is brand-new here and not (yet) reused anywhere, so it isn't a collision candidate. */
 const CHIPS_TOGGLE: Record<"open" | "closed", Message> = { open: msg("Collapse"), closed: msg("Show all") };
 
 /**
