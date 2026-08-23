@@ -159,7 +159,7 @@ export function EnvelopeScreen({
             markup, just wrapped so the fold's 552px pane lays them side by side instead of
             stacked. `undefined` on every other host/mode leaves this a plain block div, so phone
             and the desktop 400px panel render byte-for-byte the original stacked layout. */}
-        <div style={foldTwoCol ? { display: "grid", gridTemplateColumns: "1fr 1fr" } : undefined}>
+        <div style={foldTwoCol ? { display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)" } : undefined}>
           <div>
             {/* monthly breakdown (6 bars) — before categories (2A) */}
             <div style={{ fontSize: 13, fontWeight: 600, color: C.text, margin: `0 ${P}px 10px` }}>{t("Monthly breakdown")}</div>
