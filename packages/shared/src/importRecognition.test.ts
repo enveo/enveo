@@ -390,7 +390,7 @@ describe("screenshot import enrichment merge", () => {
           categoryId: "category-1",
           semanticKind: "card_purchase",
           relation: null,
-          reviewReasons: [],
+          reviewReasons: ["unknown_kind"],
         },
       ]),
     );

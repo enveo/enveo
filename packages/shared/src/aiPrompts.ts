@@ -460,9 +460,15 @@ export function buildImportExtractPrompt(images: string[], _refs: ImportPromptRe
   const sysExtract =
     "You extract facts from screenshots (Apple Wallet, bank account history, payment confirmations), not hypotheses. " +
     `Today is ${today} — resolve relative dates ("today", "yesterday") against this date; when the year is missing, assume the most recent past date. ` +
-    "Return one output row for every visually distinct row, in visual order. Use imageIndex plus visualOrder to preserve where it appeared. Preserve each visible line in rawTextLines; trim only surrounding whitespace. " +
-    "Rows that are labels, balances, summaries, or other interface chrome are still visible evidence: mark them ui_metadata. Use financial_event for a money movement and supporting_detail for evidence such as an FX conversion. " +
-    "Use null for unreadable date, amount, or currency; never omit a visible row. Amounts are positive integer minor units. direction, postingStatus, rowRole, semanticKind, confidence, and reviewReasons describe only what is shown. " +
+    "One output row means one coherent transaction-list entry, date divider, balance/summary, or other distinct text block — not each text line inside an entry. " +
+    "Group its amount, merchant/payee, card suffix, and secondary text into that row's rawTextLines. Do not create separate rows for icons, loyalty/reward points, card suffixes, exchange-rate text, or status text that belongs to the same entry. " +
+    "Return those coherent rows in visual order. Use imageIndex plus visualOrder to preserve where each appeared. Preserve each visible line in rawTextLines; trim only surrounding whitespace. " +
+    "Rows that are labels, date dividers, balances, summaries, or other interface chrome are still visible evidence: mark them ui_metadata. Use financial_event only for a ledger money movement and supporting_detail for evidence such as a linked FX conversion. " +
+    "A visible date divider applies to the transaction entries below it until the next divider; the divider itself remains ui_metadata. " +
+    "For a financial_event, amount and currency come from the primary signed ledger amount printed for that entry. Amounts are positive integer minor units; never use a balance, loyalty/reward points, card suffix, or exchange rate as amount. " +
+    "An explicit + or incoming label means credit; an explicit − or outgoing label means debit. Do not infer direction from semanticKind; use unknown when the direction is not visible. " +
+    "Use cashback_or_reward only for explicit reward/cashback/moneyback text, merchant_refund only for explicit refund/return/chargeback text, and account_topup only for explicit top-up or account-funding text. Use transfer kinds only when transfer wording is visible. " +
+    "Use null for unreadable date, amount, or currency; never invent a fact. postingStatus, rowRole, semanticKind, confidence, and reviewReasons describe only what is shown. Keep reviewReasons empty when the row is clear; add only reasons supported by a specific visible ambiguity. " +
     `currency is ISO-4217 uppercase when readable; the account currency is ${currency}. NEVER convert or guess an exchange rate. ` +
     "Express relationships by rowId: retain linked FX evidence as supporting_detail with relation kind fx_for; do not merge or discard it. " +
     languageDirectives(locale) +
@@ -548,7 +554,7 @@ export function buildImportEnrichPrompt(input: ImportEnrichPromptInput, locale: 
     "You conservatively enrich validated screenshot-import rows using compatible ledger history as evidence, never as fact. " +
     "Return one annotation per supplied row. Preserve all visible facts: never correct or replace dates, amounts, currencies, directions, posting status, raw text, row identity, transaction type, refund state, or transfer endpoint. " +
     "For envelopeId and categoryId select a supplied existing id or null; never invent an id. Relations may reference only a supplied rowId. " +
-    "Keep every supplied review reason and add a reason when uncertainty remains. " +
+    "Return each supplied reviewReasons list unchanged; deterministic validation adds any reason caused by your semantic or relation annotation. " +
     languageDirectives(locale) +
     "Return JSON.";
   return {

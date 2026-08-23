@@ -232,9 +232,11 @@ describe("buildImportExtractPrompt / parseImportExtractResponse", () => {
     expect((req.responseFormat as { type: string; json_schema: { name: string } }).json_schema.name).toBe("extracted_transactions");
   });
 
-  it("requires one fact row for every visually distinct row and keeps hypotheses out of cycle one", () => {
+  it("groups one coherent list entry without splitting its secondary text into invented transactions", () => {
     const sys = sysOf(buildImportExtractPrompt([], refs, "2026-07-07", "pl", "PLN").messages);
-    expect(sys).toContain("one output row for every visually distinct row");
+    expect(sys).toContain("One output row means one coherent transaction-list entry");
+    expect(sys).toContain("Group its amount, merchant/payee, card suffix, and secondary text");
+    expect(sys).toContain("Do not create separate rows for icons, loyalty/reward points");
     expect(sys).toContain("imageIndex plus visualOrder");
     expect(sys).toContain("rawTextLines");
     expect(sys).toContain("ui_metadata");
@@ -247,7 +249,16 @@ describe("buildImportExtractPrompt / parseImportExtractResponse", () => {
     expect(sys).toContain("account currency is PLN");
     expect(sys).toContain("supporting_detail");
     expect(sys).toContain("fx_for");
+    expect(sys).toContain("primary signed ledger amount");
+    expect(sys).toContain("never use a balance, loyalty/reward points, card suffix, or exchange rate as amount");
     expect(sys).toContain("NEVER convert or guess an exchange rate");
+  });
+
+  it("anchors direction and inherited dates in visible evidence instead of semantic guesses", () => {
+    const sys = sysOf(buildImportExtractPrompt([], refs, "2026-07-07", "pl", "PLN").messages);
+    expect(sys).toContain("An explicit + or incoming label means credit; an explicit − or outgoing label means debit");
+    expect(sys).toContain("Do not infer direction from semanticKind");
+    expect(sys).toContain("A visible date divider applies to the transaction entries below it");
   });
 
   it("strict json_schema requires every extraction fact", () => {
@@ -369,6 +380,7 @@ describe("buildImportEnrichPrompt / parseImportEnrichResponse", () => {
     expect(JSON.stringify(user)).toContain("LIDL 123");
     expect(req.reasoningEffort).toBe("low");
     expect(sysOf(req.messages)).toContain("existing id or null");
+    expect(sysOf(req.messages)).toContain("Return each supplied reviewReasons list unchanged");
   });
 
   it("exposes only semantic annotation fields in the strict response schema", () => {
