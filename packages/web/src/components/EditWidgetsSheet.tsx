@@ -9,9 +9,11 @@
  * only once someone taps the edit pencil. Mounted via `lazy()` + `LazyChunk`/`useOpenedOnce`
  * from `Start.tsx`, the same idiom `App.tsx` already uses for `EnvActionsSheet`.
  *
- * Imports FROM `./widgets` (the eager module) for the registry/action-catalogue it needs
- * (`START_WIDGETS`, `QUICK_ACTION_DEFS`, `QUICK_ACTION_ORDER`) — never the other way around, so
- * `widgets.tsx` never pulls this chunk into the eager closure.
+ * Imports FROM `./widgets` (the eager module) for the action-catalogue it needs
+ * (`QUICK_ACTION_DEFS`, `QUICK_ACTION_ORDER`) — never the other way around, so `widgets.tsx` never
+ * pulls this chunk into the eager closure. Row membership is checked against `WIDGET_CATALOG`
+ * (every `WidgetId`, PR5 onward), NOT `START_WIDGETS` (only the six EAGER bodies) — this sheet
+ * lists and toggles all twelve widgets, eager or lazy alike; it never renders a widget BODY itself.
  */
 import { type CSSProperties, useEffect, useState } from "react";
 import type { StateResponse } from "../lib/api";
@@ -25,7 +27,7 @@ import { font, TEAL, type Theme, tint } from "../lib/theme";
 import { WIDGET_CATALOG } from "../lib/widgetCatalog";
 import { Sheet } from "./chrome";
 import { HighlightedText, PickerSearch } from "./kit";
-import { QUICK_ACTION_DEFS, QUICK_ACTION_ORDER, START_WIDGETS } from "./widgets";
+import { QUICK_ACTION_DEFS, QUICK_ACTION_ORDER } from "./widgets";
 
 function envModeLabel(mode: string, groups: StateResponse["groups"], t: (m: Message, p?: Record<string, string | number>) => string): string {
   if (mode === "savings") return t("Savings only");
@@ -472,7 +474,7 @@ export function EditWidgetsSheet({ show, state, onClose }: { show: boolean; stat
           <div style={{ fontSize: 16, fontWeight: 750, color: C.text, textAlign: "center", marginBottom: 2 }}>{t("Edit widgets")}</div>
           <div style={{ fontSize: 11, color: C.mute, textAlign: "center", marginBottom: 12 }}>{t("Drag to reorder")}</div>
           {list.map((w, idx) => {
-            if (!(w.id in START_WIDGETS)) return null; // corrupted/future persisted id — never crash the sheet
+            if (!(w.id in WIDGET_CATALOG)) return null; // corrupted/future persisted id — never crash the sheet
             const b = dnd.bind(idx);
             const title = t(WIDGET_CATALOG[w.id].title);
             return (
