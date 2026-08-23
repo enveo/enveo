@@ -204,9 +204,9 @@ export function PanelHost({
         // a plain static import just references the already-loaded module. `AddHeader`'s own back
         // arrow (rendered inside `AddScreen`) IS this pane's close per D5/D4's mockup-inconsistency
         // note — it calls the SAME `onDoneEdit` the header ✕ above calls (see `WideShell`'s
-        // `closePanel`), so the two paths can't disagree here either. Still unreached in practice
-        // today: `App.tsx`'s wide branch keeps the phone-column takeover for Add until a later
-        // task removes that gate (same "wired, unreached" precedent as Task 1's `add` kind itself).
+        // `closePanel`), so the two paths can't disagree here either. Live since PR6 Task 5
+        // (which removed `App.tsx`'s interim phone-column takeover for `screen === "addExpense"`
+        // on wide): this now renders on every "+ Add" press and every row-edit entry.
         return <AddScreen state={state} editTxn={editTxn} onDone={onDoneEdit} initialTab={addPreset.tab} initialImport={addPreset.importSheet} />;
       default:
         return assertNever(view);

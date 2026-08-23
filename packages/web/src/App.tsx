@@ -5,6 +5,12 @@ import { LazyChunk, useOpenedOnce } from "./components/lazy";
 import { StartupSplash } from "./components/StartupSplash";
 import { SyncBadge } from "./components/SyncBadge";
 import { UpdatePrompt } from "./components/UpdatePrompt";
+// Type-only imports elsewhere in this file already keep `panel.ts` free of runtime weight
+// (see `backFallback`'s own comment below on why it does NOT import from here) — `primaryScreenFor`
+// is the one runtime export this eager module needs (PR6 Task 5): it decides what the wide
+// primary pane shows while the Add takeover is open, and the module it lives in has zero runtime
+// imports of its own, so this adds only the function's own few bytes to the eager chunk.
+import { primaryScreenFor } from "./components/wide/panel";
 import { useStateQuery } from "./lib/api";
 import { useTheme } from "./lib/contexts";
 import { currentMonth, shiftMonth } from "./lib/dates";
@@ -174,6 +180,15 @@ export default function App() {
   }, [empty]);
   const onboarding = empty || wizard;
   const wide = mode !== "phone" && !!state && !onboarding;
+  // The EFFECTIVE screen the primary pane (and everything reading "which screen is this" —
+  // `screenEl` below, the band right-slot, and inside `WideShell`: Rail's active highlight, the
+  // band header's title/month-nav, the fold TBB strip's compact styling, the Start/Settings
+  // content switch, the widget-settings reset effect) should treat as current (PR6 Task 5).
+  // `primaryScreenFor` (panel.ts, Task 1) resolves this: while Add is open (`screen ===
+  // "addExpense"`) it stays whatever screen Add was opened FROM, so the primary pane never
+  // flashes to an "Add" title/content and back to `editReturn` — it just never left. On phone
+  // this is always `screen` unchanged (the full-screen Add takeover there IS the current screen).
+  const primaryScreen = wide ? primaryScreenFor(screen, editReturn) : screen;
 
   // nav = entry from menu/navigation: a fresh Add returns to start;
   // Reports from the menu always start at the card overview (deep link overrides below)
@@ -283,6 +298,19 @@ export default function App() {
     // is our own marker — see `back()` below for what `true` vs `false`/`null` mean.
     if (history.state === true) history.back();
     else setScreen(editReturn);
+  };
+  // Wide-only entry point for the band header's "+ Add" button (PR6 Task 5) — used ONLY by
+  // `WideShell`, never by phone's FAB (`nav("addExpense")`, unchanged there). `nav` resets
+  // `envView`, which would silently discard an open envelope pane every time Add is opened —
+  // breaking D2's push semantics (opening Add over an open envelope pane must NOT clear it, so
+  // closing Add derives back to the envelope for free). This leaves `envView` untouched instead.
+  // Re-clicking "+ Add" while Add is already open (`screen === "addExpense"`) keeps the EXISTING
+  // `editReturn` (it is not a valid return target itself) and just resets to a fresh, blank add.
+  const openAddWide = () => {
+    setEditTxn(null);
+    setAddPreset({});
+    setEditReturn(screen === "addExpense" ? editReturn : screen);
+    setScreen("addExpense");
   };
   const prev = () => setMonth((m) => shiftMonth(m, -1));
   const next = () => setMonth((m) => shiftMonth(m, 1));
@@ -416,11 +444,14 @@ export default function App() {
     if (!drawer && !onboarding && st.x < 28 && dx > 60 && Math.abs(dy) < 45) setDrawer(true);
   };
 
-  // The per-screen switch, built once regardless of layout (wide's primary pane and phone's
-  // content area render the exact same element) — see `wide` below for where it lands.
+  // The per-screen switch, built off `primaryScreen` rather than raw `screen` (PR6 Task 5) — on
+  // phone the two are always identical, so this changes zero phone pixels; on wide, while Add is
+  // open, `primaryScreen` is `editReturn`, so this renders the screen Add returns to (the primary
+  // pane's `children` — see `wide` below) instead of a second `AddScreen` fighting the one the
+  // panel already mounts via `resolvePanel`'s `add` kind.
   const screenEl = state ? (
     <>
-      {screen === "start" && (
+      {primaryScreen === "start" && (
         <StartScreen
           state={state}
           month={month}
@@ -437,7 +468,7 @@ export default function App() {
           onEditWidgets={setEditWidgetsOpen}
         />
       )}
-      {screen === "budget" && (
+      {primaryScreen === "budget" && (
         <LazyChunk onDismiss={() => nav("start")}>
           <BudgetScreen
             state={state}
@@ -455,7 +486,7 @@ export default function App() {
           />
         </LazyChunk>
       )}
-      {screen === "transactions" && (
+      {primaryScreen === "transactions" && (
         <LazyChunk onDismiss={() => nav("start")}>
           <TransactionsScreen
             state={state}
@@ -471,12 +502,12 @@ export default function App() {
           />
         </LazyChunk>
       )}
-      {screen === "accounts" && (
+      {primaryScreen === "accounts" && (
         <LazyChunk onDismiss={() => nav("start")}>
           <AccountsScreen state={state} onMenu={() => setDrawer(true)} />
         </LazyChunk>
       )}
-      {screen === "reports" && (
+      {primaryScreen === "reports" && (
         <LazyChunk onDismiss={() => nav("start")}>
           <ReportsScreen
             state={state}
@@ -501,10 +532,14 @@ export default function App() {
           />
         </LazyChunk>
       )}
-      {screen === "addExpense" && (
+      {/* `primaryScreen` is never "addExpense" while `wide` is true (`editReturn` never holds that
+          value — see `openAddWide`/`editTxnFrom` — so `primaryScreenFor` never resolves back to
+          it); this branch stays reachable for phone, where `primaryScreen === screen` always, and
+          the full-screen takeover below IS the current screen. */}
+      {primaryScreen === "addExpense" && (
         <AddScreen state={state} editTxn={editTxn} onDone={doneEdit} initialTab={addPreset.tab} initialImport={addPreset.importSheet} />
       )}
-      {screen === "settings" && (
+      {primaryScreen === "settings" && (
         <LazyChunk onDismiss={() => nav("start")}>
           <SettingsScreen onBack={back} onInstall={() => setInstallSheet(true)} />
         </LazyChunk>
@@ -542,9 +577,12 @@ export default function App() {
     );
   }
 
-  // Wide: rail + band + panel replace the phone card entirely (the primary pane renders the
-  // SAME `screenEl`) — except on Add, which keeps the phone-column takeover below (interim by
-  // design, PR6's `add` pane replaces it — pr4-task-4-brief.md §4e).
+  // Wide: rail + band + panel replace the phone card entirely, on EVERY screen including Add
+  // (PR6 Task 5 — this used to except `screen === "addExpense"` and fall through to the
+  // phone-column takeover below, "interim by design" per pr4-task-4-brief.md §4e; that branch is
+  // now gone). The primary pane renders `screenEl`, built off `primaryScreen` above, so while Add
+  // is open it keeps showing `editReturn`'s screen — the Add takeover itself lives ONLY in the
+  // panel (`PanelHost`'s `add` kind, resolved from the real `screen` by `resolvePanel`).
   //
   // §13's per-screen band right-slot ("Edit widgets" on Start / "Manage envelopes" on Budget) —
   // restored now that the widget-edit-sheet extraction (pr4-context.md header; the pull-forward
@@ -557,17 +595,17 @@ export default function App() {
   // toggles `WideHome`'s own board edit mode, with the label flipping to "Done" while active —
   // one slot, one computed VALUE, no fork in WideShell's header code.
   const wideRightSlot =
-    screen === "start"
+    primaryScreen === "start"
       ? {
           label: wideBoardEdit ? t("Done") : t("Edit widgets"),
           ariaLabel: wideBoardEdit ? t("Done") : t("Edit widgets"),
           onClick: () => setWideBoardEdit(!wideBoardEdit),
         }
-      : screen === "budget"
+      : primaryScreen === "budget"
         ? { label: t("Manage envelopes"), ariaLabel: t("Manage envelopes"), onClick: () => setManageOpen(true) }
         : null;
 
-  if (wide && screen !== "addExpense") {
+  if (wide) {
     return (
       <>
         {/* The same global injector the phone card and the login backdrop mount — the wide tree
@@ -583,6 +621,7 @@ export default function App() {
             bag={{
               mode,
               screen,
+              primaryScreen,
               nav,
               month,
               prev,
@@ -613,12 +652,16 @@ export default function App() {
               onOpenReport: openReports,
               onOpenMonthDay,
               boardEdit: wideBoardEdit,
-              // PR6 Task 2: the panel's `add` kind (unreached until a later task removes the
-              // `wide && screen !== "addExpense"` gate just below) reads the SAME edit/preset
-              // state and close function `screenEl`'s own `AddScreen` branch already uses.
+              // PR6 Task 2 wired these (then unreached); Task 5 is the "later task" that removed
+              // the `wide && screen !== "addExpense"` gate above, so the panel's `add` kind now
+              // actually renders — reading the SAME edit/preset state and close function
+              // `screenEl`'s own `AddScreen` branch already uses.
               editTxn,
               addPreset,
               onDoneEdit: doneEdit,
+              // PR6 Task 5: the band header's "+ Add" button opens Add through this entry point,
+              // not `nav("addExpense")` — see `openAddWide`'s own comment above for why.
+              onAddWide: openAddWide,
             }}
             rightSlot={wideRightSlot}
           >

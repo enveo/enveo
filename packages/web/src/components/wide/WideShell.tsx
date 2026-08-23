@@ -29,7 +29,10 @@ const SCREEN_TITLE: Record<ScreenId, Message> = {
   transactions: msg("Transactions"),
   accounts: msg("Accounts"),
   reports: msg("Reports"),
-  addExpense: msg("Add"), // unreachable here — wide renders addExpense as the phone takeover (App.tsx)
+  // Unreachable here even now that Add IS a wide pane (PR6 Task 5): `BandHeader` only ever
+  // receives `primaryScreen` (App.tsx), which resolves to `editReturn` while Add is open and so
+  // is never itself "addExpense" (`editReturn` is never set to that value — see `openAddWide`).
+  addExpense: msg("Add"),
   settings: msg("Settings"),
 };
 
@@ -215,7 +218,18 @@ function BandHeader({
  */
 type WideShellBag = {
   mode: Exclude<ViewMode, "phone">;
+  /** The RAW screen — used ONLY by `resolvePanel` below (it needs the literal `"addExpense"` to
+   *  detect the Add pane is open at all). Everything else that asks "which screen is this" reads
+   *  `primaryScreen` instead (PR6 Task 5) — see that field's own comment. */
   screen: ScreenId;
+  /** The EFFECTIVE screen the primary pane — and every piece of chrome that reads "which screen
+   *  is this" (Rail's active highlight, the band header's title/month-nav, the fold TBB strip's
+   *  compact styling, the Start/Settings content switch below, the widget-settings reset effect)
+   *  — should treat as current (PR6 Task 5). Computed once in App via `primaryScreenFor(screen,
+   *  editReturn)` (panel.ts, Task 1): while the Add pane is open this stays whatever screen Add
+   *  was opened FROM, so none of the above ever flashes to an "Add" title/state and back — from
+   *  their point of view, the primary screen never left. */
+  primaryScreen: ScreenId;
   nav: (s: ScreenId) => void;
   month: string;
   prev: () => void;
@@ -256,17 +270,23 @@ type WideShellBag = {
    *  `editWidgets`/`manageOpen` were (Task 3's pattern) — the band right-slot (below) reads and
    *  flips it, `WideHome` only reads it. */
   boardEdit: boolean;
-  /** PR6 Task 2: the panel's `add` kind renders `AddScreen` from App's OWN edit/preset state —
-   *  same fields `screenEl`'s phone-column `AddScreen` already reads (App.tsx). Threading them
-   *  through here is inert until a later task removes the `wide && screen !== "addExpense"` gate
-   *  (App.tsx) that keeps `WideShell` from ever mounting while `screen === "addExpense"` today —
-   *  same "wired, unreached" precedent as Task 1's `add` `PanelView` kind. */
+  /** PR6 Task 2 wired these, Task 5 makes them live: the panel's `add` kind renders `AddScreen`
+   *  from App's OWN edit/preset state — the same fields `screenEl`'s phone-column `AddScreen`
+   *  already reads (App.tsx). Task 5 removed the `wide && screen !== "addExpense"` gate that used
+   *  to keep `WideShell` from ever mounting while `screen === "addExpense"`, so these now flow
+   *  into a real, reachable pane rather than sitting unused. */
   editTxn: Transaction | null;
   addPreset: { tab?: AddTab; importSheet?: boolean };
   /** The `add` pane's ✕/back semantics (App's `doneEdit`) — `closePanel` below calls this for the
    *  `add` kind instead of `setPanelClosed(true)`, since closing Add derives back to whatever
    *  pane was open underneath it (D2) rather than collapsing the panel. */
   onDoneEdit: () => void;
+  /** PR6 Task 5: the band header's "+ Add" button opens Add through THIS entry point, never
+   *  `nav("addExpense")` — `nav` unconditionally clears `envView`, which would silently discard
+   *  an open envelope pane every time Add is opened, breaking D2's push semantics (opening Add
+   *  over an open envelope pane must NOT clear it, so closing Add derives back to the envelope
+   *  for free). Defined in App.tsx as `openAddWide`. */
+  onAddWide: () => void;
 };
 
 /**
@@ -289,6 +309,7 @@ export function WideShell({ bag, rightSlot = null, children }: { bag: WideShellB
   const {
     mode,
     screen,
+    primaryScreen,
     nav,
     month,
     prev,
@@ -314,6 +335,7 @@ export function WideShell({ bag, rightSlot = null, children }: { bag: WideShellB
     editTxn,
     addPreset,
     onDoneEdit,
+    onAddWide,
   } = bag;
   const C = useTheme();
   const { t } = useT();
@@ -326,8 +348,11 @@ export function WideShell({ bag, rightSlot = null, children }: { bag: WideShellB
   // `resolvePanel` is also defensive about this (panel.ts), but this is the actual discipline.
   const [widgetSettings, setWidgetSettings] = useState<WideWidgetId | null>(null);
   useEffect(() => {
-    if (screen !== "start") setWidgetSettings(null);
-  }, [screen]);
+    // `primaryScreen`, not raw `screen` (PR6 Task 5): opening Add over Start with the widgets
+    // panel selected must NOT clear that selection — `primaryScreen` stays "start" throughout
+    // (Add lives in the OTHER pane), so this effect never fires just because Add opened/closed.
+    if (primaryScreen !== "start") setWidgetSettings(null);
+  }, [primaryScreen]);
   const view = resolvePanel({ screen, reportsView, envView, widgetSettings });
   const primaryRef = useRef<HTMLDivElement | null>(null);
   const panelRef = useRef<HTMLDivElement | null>(null);
@@ -360,7 +385,23 @@ export function WideShell({ bag, rightSlot = null, children }: { bag: WideShellB
     return () => ro.disconnect();
   }, [panelClosed]);
 
+  // PR6 Task 5 fix, verified by reproducing the SAME gap on PR4's own `envelope` kind (not
+  // introduced by this task, but never exercisable through it before Add existed to test it
+  // against): `onPanelTransitionEnd` below restores focus to the toggle only when a CSS
+  // transition on THIS pane's transform/margin/opacity actually fires — which only happens when
+  // `panelClosed` flips to `true`. Every kind but `empty` closes by clearing its OWN selection
+  // instead (`setEnvView(null)`, `onDoneEdit()`, …), never touching `panelClosed` at all, so that
+  // handler never ran for them — closing the envelope pane (or, now, Add) via the ✕ button or
+  // Escape while focus sat inside it left focus stranded on `<body>` once the focused element
+  // unmounted. Checked HERE, synchronously, before the state change below — the one place common
+  // to every kind's ✕/Escape close (both call this same function) — so it covers all of them,
+  // not just `add`. The toggle button's OWN direct collapse (`onTogglePanel` in the band header)
+  // bypasses this function for every kind EXCEPT `add` (which routes through here too — see that
+  // prop's own comment) and keeps relying on `onPanelTransitionEnd` for the rest, which still
+  // needs to exist for that path — this doesn't replace it, it plugs the gap that path never had.
   const closePanel = () => {
+    const active = document.activeElement;
+    if (active && panelRef.current?.contains(active)) document.querySelector<HTMLElement>("[data-panel-toggle]")?.focus();
     if (view.kind === "envelope") setEnvView(null);
     else if (view.kind === "report") setReportsView("overview");
     else if (view.kind === "widgets") setWidgetSettings(null);
@@ -377,12 +418,20 @@ export function WideShell({ bag, rightSlot = null, children }: { bag: WideShellB
   // including report→report switches that the kind alone would miss. Selection is compared
   // across renders (a ref, not an effect dep array) so a mere re-render of the same open
   // selection never touches `panelClosed`.
-  // `add` (PR6 Task 1) has no selection VALUE of its own to key the reopen rule on — it is
-  // unreached here today (App.tsx never mounts `WideShell` while `screen === "addExpense"`), and
-  // when a later task does wire it in, `resolvePanel` already forces `add` open unconditionally
-  // (D2's push semantics), so there is nothing for this rule to reopen.
+  // `add` (PR6 Task 5) needs the SAME reopen treatment, or opening Add while the panel happens to
+  // be collapsed would mount the editor invisibly (translated off-screen, per the panel `<div>`'s
+  // own style below) with no way to see it short of the toggle — D2's "wins over every other
+  // input" is a promise about `resolvePanel`'s CONTENT resolution, not about `panelClosed`'s
+  // independent visibility bit, so nothing else in this file was actually reopening it. `screen`
+  // itself doesn't work as the selection value here (it's the same string `"addExpense"` before
+  // AND after a second, fresh "+ Add" press — no reference change to key off), so `addPreset` is
+  // used instead: every entry point into Add (`nav`, `openAddWide`, `editTxnFrom`, `onQuickAdd`'s
+  // transfer/import presets, the popstate handler) sets it to a BRAND NEW object, while nothing
+  // inside `AddScreen` itself (typing, tab switches, sheet opens — all local component state)
+  // ever touches it, so it stays referentially stable across every re-render where Add merely
+  // continues to be open.
   const selection =
-    view.kind === "empty" || view.kind === "add" ? null : view.kind === "envelope" ? envView : view.kind === "widgets" ? view.widgetId : view.view;
+    view.kind === "empty" ? null : view.kind === "add" ? addPreset : view.kind === "envelope" ? envView : view.kind === "widgets" ? view.widgetId : view.view;
   const prevSelection = useRef(selection);
   useEffect(() => {
     if (selection !== null && selection !== prevSelection.current && panelClosed) setPanelClosed(false);
@@ -421,9 +470,15 @@ export function WideShell({ bag, rightSlot = null, children }: { bag: WideShellB
 
   // Focus policy (pr4-context.md §12.5): opening moves focus nowhere (non-modal). Closing, if
   // focus was inside the panel, restores it to the toggle so nothing is left stranded on a
-  // hidden subtree. One `onTransitionEnd` covers every kind — the collapse's three transitions
-  // (transform/margin-right/opacity) each fire this, but only the FIRST one finds focus still
-  // inside the (now-closed) panel; every later firing is a no-op by construction.
+  // hidden subtree. This covers the ONE close path `closePanel` above does NOT (see its own
+  // comment): the band toggle collapsing an OPEN, content-bearing panel of a kind OTHER than
+  // `add` directly (`onTogglePanel`), which flips `panelClosed` without going through
+  // `closePanel` at all — the collapse's three transitions (transform/margin-right/opacity) each
+  // fire this, but only the FIRST one finds focus still inside the (now-closed) panel; every
+  // later firing is a no-op by construction. `closePanel`'s own synchronous check already moved
+  // focus for every OTHER close (the ✕ button, Escape, and now the toggle for `add` specifically),
+  // so by the time this fires for one of those, `document.activeElement` is already the toggle —
+  // outside the panel — making this a harmless no-op there too.
   const onPanelTransitionEnd = (e: React.TransitionEvent<HTMLDivElement>) => {
     if (e.target !== e.currentTarget || !panelClosed) return;
     const active = document.activeElement;
@@ -432,7 +487,7 @@ export function WideShell({ bag, rightSlot = null, children }: { bag: WideShellB
 
   return (
     <div ref={rootRef} style={{ display: "flex", height: "100dvh", background: C.bg, fontFamily: font, overflow: "hidden" }}>
-      <Rail mode={mode} screen={screen} onNav={nav} state={state} onQuickAdd={onQuickAdd} onFillGoals={onFillGoals} onInstall={onInstall} />
+      <Rail mode={mode} screen={primaryScreen} onNav={nav} state={state} onQuickAdd={onQuickAdd} onFillGoals={onFillGoals} onInstall={onInstall} />
       <div ref={primaryRef} data-wide-primary style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", borderRight: `1px solid ${C.line}` }}>
         {/* Mounted inline inside BandHeader (see SyncBadge.tsx) rather than floating over the
             scrollable content below it — dead letters stay visible on wide; the user menu's
@@ -440,18 +495,28 @@ export function WideShell({ bag, rightSlot = null, children }: { bag: WideShellB
             pill (spec lines 198-201) is deliberately NOT implemented — one sync surface, not
             two. */}
         <BandHeader
-          screen={screen}
+          screen={primaryScreen}
           month={month}
           onPrev={prev}
           onNext={next}
-          onAdd={() => nav("addExpense")}
+          onAdd={onAddWide}
           onOpenSync={() => nav("settings")}
           rightSlot={rightSlot}
           panelClosed={panelClosed}
-          onTogglePanel={() => setPanelClosed(!panelClosed)}
+          // PR6 Task 5: while the Add pane is showing, the toggle discards it (`closePanel`'s own
+          // `add` branch — same semantics as phone's back gesture from Add today) instead of
+          // merely collapsing the panel. A bare `setPanelClosed(true)` would hide the editor
+          // without closing it: `screen` would stay `"addExpense"`, so `resolvePanel` keeps
+          // resolving to `add` — nothing else here ever un-sets that, and the reopen-on-fresh-
+          // `addPreset` effect (see `selection` above) has no reason to fire again, so the panel
+          // would simply sit collapsed with a live, hidden, un-discardable edit behind it. Every
+          // OTHER kind keeps the collapse-only behavior (the toggle is deliberately NOT the same
+          // as ✕/Escape for those — see `closePanel`'s own comment for why "collapse but keep the
+          // selection remembered" and "clear the selection" are different actions on purpose).
+          onTogglePanel={() => (view.kind === "add" ? closePanel() : setPanelClosed(!panelClosed))}
         />
-        {mode === "fold" && screen !== "settings" && (
-          <FoldTbbStrip state={state} screen={screen} onQuickAdd={onQuickAdd} onFillGoals={onFillGoals} onNav={nav} />
+        {mode === "fold" && primaryScreen !== "settings" && (
+          <FoldTbbStrip state={state} screen={primaryScreen} onQuickAdd={onQuickAdd} onFillGoals={onFillGoals} onNav={nav} />
         )}
         {/* PR6 Task 2: `InWideShell` now carries `{ host, mode, rects }` instead of PR4's plain
             `true` — scoped to exactly the subtree that renders IN this pane (below the band/
@@ -466,8 +531,11 @@ export function WideShell({ bag, rightSlot = null, children }: { bag: WideShellB
             {/* Task 6: the wide Home board replaces the phone widget stack entirely on Start — the
                 `screenEl` App.tsx built for "start" (a `StartScreen` element) is still constructed
                 as `children` (cheap: it's just a React element description) but never rendered
-                here, so its own phone-only header/EditWidgetsSheet never mount on wide. */}
-            {screen === "start" ? (
+                here, so its own phone-only header/EditWidgetsSheet never mount on wide. Keyed on
+                `primaryScreen` (PR6 Task 5), not raw `screen`: while Add is open over Start, the
+                board must keep rendering underneath it, not be torn down for a raw-`screen`
+                mismatch that would otherwise read "addExpense" here. */}
+            {primaryScreen === "start" ? (
               <WideHome
                 mode={mode}
                 state={state}
@@ -481,7 +549,7 @@ export function WideShell({ bag, rightSlot = null, children }: { bag: WideShellB
                 edit={boardEdit}
                 onWidgetSettings={setWidgetSettings}
               />
-            ) : screen === "settings" ? (
+            ) : primaryScreen === "settings" ? (
               // Centered column on the WRAPPER, not inside Settings.tsx (zero phone deltas —
               // Settings itself renders identically in every mode). v3's two-column Settings is
               // deferred (D-list, PR6 plan); this is the interim "hosted as-is" treatment.
