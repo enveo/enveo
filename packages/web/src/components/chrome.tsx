@@ -1,5 +1,6 @@
 import { computeStateResponse } from "@enveo/shared";
 import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { useLedgerVersion } from "../lib/api";
 import { useSettings, useTheme } from "../lib/contexts";
 import { currentMonth, monthLabel } from "../lib/dates";
@@ -8,6 +9,7 @@ import { LOCALE_OF } from "../lib/format";
 import { useT } from "../lib/i18n";
 import { D_INSTALL, Ico } from "../lib/icons";
 import { isInstallable, useInstall } from "../lib/installPrompt";
+import { useWideHost } from "../lib/shellContext";
 import { store } from "../lib/store";
 import { CORAL, CTA, font, P, type Theme } from "../lib/theme";
 import { APP_VERSION, buildLabel } from "../lib/version";
@@ -122,6 +124,20 @@ export function Sheet({
   const [dragY, setDragY] = useState(0);
   const [dragging, setDragging] = useState(false);
 
+  // PR6 Task 5 fix: a Sheet rendered from panel-hosted content (Add's date/account/envelope
+  // pickers, ImportSheet's own Sheet, its AiConsentSheet — the only PanelHost kind with Sheet
+  // descendants) sits inside WideShell's panel `<div>`, which carries an always-on CSS
+  // `transform` (open/closed slide, `chrome.tsx`'s sibling `WideShell.tsx`) — a non-`none`
+  // transform is a containing block for `position:fixed` (house pitfall, CLAUDE.md), so without
+  // this the backdrop+sheet below would be clipped to the panel's own ~400-550px column instead
+  // of the real viewport. Portal to `document.body`, the SAME mechanism already used for the
+  // ImportSheet full-screen editor and IconColorPicker for the identical reason. Scoped to the
+  // panel host only — primary-pane and phone Sheets have no transformed ancestor and must keep
+  // rendering in place: WideShell's Escape/focus-restore containment checks recognize a portaled
+  // sheet via `data-wide-panel-portal` (see `panelContains` there), which only ever marks this
+  // branch's output.
+  const hostedInPanel = useWideHost()?.host === "panel";
+
   // Reset drag state on every sheet open.
   useEffect(() => {
     if (show) {
@@ -129,6 +145,25 @@ export function Sheet({
       setDragging(false);
     }
   }, [show]);
+
+  // WebKit hit-test kick (same flaw and same fix as ImportSheet.tsx's full-screen editor over
+  // its own Sheet, and WideShell.tsx's own mount-time kick): portaling this sheet ABOVE the
+  // panel's transformed (composited) layer means closing it can leave WebKit's hit-test region
+  // stale on that layer until a repaint. Only the panel-hosted, portaled case introduces this —
+  // primary/phone Sheets never sit above a transformed ancestor.
+  const wasShown = useRef(show);
+  useEffect(() => {
+    const justClosed = hostedInPanel && wasShown.current && !show;
+    wasShown.current = show;
+    if (!justClosed) return;
+    const root = document.getElementById("root");
+    if (!root) return;
+    root.style.opacity = "0.9999";
+    const raf = requestAnimationFrame(() => {
+      root.style.opacity = "";
+    });
+    return () => cancelAnimationFrame(raf);
+  }, [show, hostedInPanel]);
 
   if (!show) return null;
 
@@ -168,7 +203,7 @@ export function Sheet({
     else setDragY(0);
   };
 
-  return (
+  const body = (
     <>
       <div
         className="fi"
@@ -217,6 +252,18 @@ export function Sheet({
       </div>
     </>
   );
+
+  // `display:contents` keeps this wrapper out of layout entirely (both children are already
+  // `position:fixed`) — it exists ONLY to carry `data-wide-panel-portal`, the marker WideShell's
+  // containment checks look for.
+  return hostedInPanel
+    ? createPortal(
+        <div data-wide-panel-portal style={{ display: "contents" }}>
+          {body}
+        </div>,
+        document.body,
+      )
+    : body;
 }
 
 export type ScreenId = "start" | "budget" | "transactions" | "accounts" | "reports" | "addExpense" | "settings";

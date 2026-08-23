@@ -399,9 +399,18 @@ export function WideShell({ bag, rightSlot = null, children }: { bag: WideShellB
   // bypasses this function for every kind EXCEPT `add` (which routes through here too — see that
   // prop's own comment) and keeps relying on `onPanelTransitionEnd` for the rest, which still
   // needs to exist for that path — this doesn't replace it, it plugs the gap that path never had.
+  //
+  // PR6 Task 5 fix: a Sheet opened from panel-hosted content (Add's pickers, ImportSheet's own
+  // Sheet/AiConsentSheet) now portals to `document.body` (chrome.tsx's `Sheet` — the panel's own
+  // transform breaks `position:fixed`), so it is a REACT descendant of the panel but not a DOM
+  // one. Plain `panelRef.current.contains(...)` would treat focus inside it as "outside the
+  // panel" for every check below; `data-wide-panel-portal` (set only on that portal's wrapper)
+  // closes the gap.
+  const panelContains = (el: Element | null): boolean => !!el && (!!panelRef.current?.contains(el) || !!el.closest("[data-wide-panel-portal]"));
+
   const closePanel = () => {
     const active = document.activeElement;
-    if (active && panelRef.current?.contains(active)) document.querySelector<HTMLElement>("[data-panel-toggle]")?.focus();
+    if (panelContains(active)) document.querySelector<HTMLElement>("[data-panel-toggle]")?.focus();
     if (view.kind === "envelope") setEnvView(null);
     else if (view.kind === "report") setReportsView("overview");
     else if (view.kind === "widgets") setWidgetSettings(null);
@@ -458,14 +467,18 @@ export function WideShell({ bag, rightSlot = null, children }: { bag: WideShellB
   // Escape closes the panel when focus is inside it (pr4-context.md §12.5). Re-attached every
   // render (cheap — one listener) so it always closes over the CURRENT `view`/close semantics,
   // without a dependency array to keep in sync by hand.
+  //
+  // Attached on `document`, not `panelRef` (PR6 Task 5 fix): a portaled sheet's native keydown
+  // never bubbles to `panelRef` at all (it's mounted under `document.body`, a DOM sibling, not a
+  // descendant) — `panelContains` is the sole gate now, exactly as it already was in effect for
+  // the in-panel case (native bubbling to `panelRef` only ever fired when focus was already
+  // inside it).
   useEffect(() => {
-    const node = panelRef.current;
-    if (!node) return;
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape" && node.contains(document.activeElement)) closePanel();
+      if (e.key === "Escape" && panelContains(document.activeElement)) closePanel();
     };
-    node.addEventListener("keydown", onKeyDown);
-    return () => node.removeEventListener("keydown", onKeyDown);
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
   });
 
   // Focus policy (pr4-context.md §12.5): opening moves focus nowhere (non-modal). Closing, if
@@ -482,7 +495,7 @@ export function WideShell({ bag, rightSlot = null, children }: { bag: WideShellB
   const onPanelTransitionEnd = (e: React.TransitionEvent<HTMLDivElement>) => {
     if (e.target !== e.currentTarget || !panelClosed) return;
     const active = document.activeElement;
-    if (active && panelRef.current?.contains(active)) document.querySelector<HTMLElement>("[data-panel-toggle]")?.focus();
+    if (panelContains(active)) document.querySelector<HTMLElement>("[data-panel-toggle]")?.focus();
   };
 
   return (
