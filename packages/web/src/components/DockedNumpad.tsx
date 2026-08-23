@@ -3,6 +3,7 @@ import { useMask, useTheme } from "../lib/contexts";
 import { isLight } from "../lib/format";
 import { useT } from "../lib/i18n";
 import { Glyph, Ico } from "../lib/icons";
+import { useWideHost } from "../lib/shellContext";
 import { P } from "../lib/theme";
 import { PHONE_COL } from "../lib/viewMode";
 import { Numpad } from "./pickers";
@@ -36,6 +37,11 @@ export function DockedNumpad({ target, state, onState }: { target: DockedNumpadT
   const C = useTheme();
   const M = useMask();
   const { t } = useT();
+  // Wide anchor (PR6 Task 3): on fold/desktop the pad anchors to the primary pane's MEASURED
+  // rect (WideShell's ResizeObserver, via InWideShell), not the viewport — otherwise it would
+  // span under the rail and the open panel. `null` on phone, same fixed centering as always.
+  const pane = useWideHost();
+  const anchor = pane?.rects.primary ?? null;
   if (!target || !state) return null;
 
   // A⊕B = a full expression: OK shows "=" and reduces instead of committing.
@@ -56,7 +62,15 @@ export function DockedNumpad({ target, state, onState }: { target: DockedNumpadT
   };
 
   return (
-    <div style={{ position: "fixed", left: 0, right: 0, bottom: 0, maxWidth: PHONE_COL, margin: "0 auto", zIndex: 60, background: C.keybg }}>
+    <div
+      style={{
+        position: "fixed",
+        bottom: 0,
+        zIndex: 60,
+        background: C.keybg,
+        ...(anchor ? { left: anchor.left, width: anchor.width } : { left: 0, right: 0, maxWidth: PHONE_COL, margin: "0 auto" }),
+      }}
+    >
       {/* Bar: [envelope icon+name · "= X" preview when an expression is open · ✕] */}
       <div style={{ height: 40, display: "flex", alignItems: "center", gap: 8, padding: `0 ${P}px`, borderBottom: `1px solid ${C.line}` }}>
         <div style={{ flex: 1, minWidth: 0, display: "flex", alignItems: "center", gap: 8 }}>

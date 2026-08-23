@@ -8,7 +8,7 @@ import { Ico } from "../../lib/icons";
 import { InWideShell, type PaneRect } from "../../lib/shellContext";
 import { CTA, font, P } from "../../lib/theme";
 import { useElementWidth } from "../../lib/useElementWidth";
-import type { ViewMode } from "../../lib/viewMode";
+import { PHONE_COL, type ViewMode } from "../../lib/viewMode";
 import type { Tab as AddTab } from "../../screens/Add";
 import type { ReportTab, ReportView } from "../../screens/reports/types";
 import { WideHome } from "../../screens/WideHome";
@@ -481,6 +481,24 @@ export function WideShell({ bag, rightSlot = null, children }: { bag: WideShellB
                 edit={boardEdit}
                 onWidgetSettings={setWidgetSettings}
               />
+            ) : screen === "settings" ? (
+              // Centered column on the WRAPPER, not inside Settings.tsx (zero phone deltas —
+              // Settings itself renders identically in every mode). v3's two-column Settings is
+              // deferred (D-list, PR6 plan); this is the interim "hosted as-is" treatment.
+              <div
+                style={{
+                  flex: 1,
+                  minHeight: 0,
+                  display: "flex",
+                  flexDirection: "column",
+                  overflow: "hidden",
+                  maxWidth: PHONE_COL + 120,
+                  margin: "0 auto",
+                  width: "100%",
+                }}
+              >
+                {children}
+              </div>
             ) : (
               children
             )}
