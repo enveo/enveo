@@ -247,10 +247,16 @@ export default function App() {
   // existing `openReports` deep-link pattern. The same pass also keeps one URL in sync with
   // (screen, reportsView, envelopeId) — popstate self-suppresses because the derived URL then
   // already equals `location` — and drops a deep-linked envelope id that turns out not to exist
-  // (stale link, wrong account) before it reaches the URL.
+  // (stale link, wrong account) before it reaches the URL. `justPopped` marks that a correction
+  // (the drop above) is happening IN REACTION to a popstate rather than a fresh forward
+  // navigation: it must fix the entry we just landed on IN PLACE (replaceState), never push a new
+  // one — otherwise the stale entry stays in the stack and hardware/browser back re-lands on it
+  // forever (deleting the envelope this session, then paging back into it, would loop).
+  const justPopped = useRef(false);
   const routingActive = state && !onboarding && !unauthed && !locked && !foreign;
   useEffect(() => {
     const onPop = () => {
+      justPopped.current = true;
       const r = parseUrl(location.pathname, location.search);
       nav(r.screen);
       setReportsView(r.reportsView);
@@ -262,11 +268,13 @@ export default function App() {
       else {
         const url = routeToUrl({ screen, reportsView, envelopeId: envView?.envelopeId ?? null });
         if (url !== location.pathname + location.search) {
-          // entry 0 (never pushed before) is replaced in place, no stack growth; every later
-          // change is a real pushed entry (see `back()` below for what `true`/`false` mean).
-          if (history.state == null) history.replaceState(false, "", url);
+          // entry 0 (never pushed before), and any popstate correction, is replaced in place, no
+          // stack growth; every other change is a real pushed entry (see `back()` below for what
+          // `true`/`false` mean).
+          if (justPopped.current || history.state == null) history.replaceState(history.state ?? false, "", url);
           else history.pushState(true, "", url);
         }
+        justPopped.current = false; // settled: consume the correction window whether or not this pass touched history
       }
     }
     return () => window.removeEventListener("popstate", onPop);
@@ -368,7 +376,7 @@ export default function App() {
           )}
           {state && !onboarding && envView && (
             <LazyChunk onDismiss={() => setEnvView(null)}>
-              <EnvelopeScreen envelopeId={envView.envelopeId} initialMonth={envView.month} onBack={() => setEnvView(null)} onOpenTxns={openTxns} />
+              <EnvelopeScreen envelopeId={envView.envelopeId} initialMonth={envView.month} onBack={back} onOpenTxns={openTxns} />
             </LazyChunk>
           )}
           {state && !onboarding && !envView && (
@@ -447,7 +455,7 @@ export default function App() {
               )}
               {screen === "settings" && (
                 <LazyChunk onDismiss={() => nav("start")}>
-                  <SettingsScreen onNav={nav} onInstall={() => setInstallSheet(true)} />
+                  <SettingsScreen onBack={back} onInstall={() => setInstallSheet(true)} />
                 </LazyChunk>
               )}
             </>
