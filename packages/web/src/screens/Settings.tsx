@@ -1,5 +1,4 @@
 import { type ReactNode, useEffect, useRef, useState } from "react";
-import type { ScreenId } from "../components/chrome";
 import { useBand } from "../components/kit";
 import { useLedgerVersion, useSyncStatus } from "../lib/api";
 import { useBudgetPreferences, useSettings, useTheme } from "../lib/contexts";
@@ -62,8 +61,12 @@ function Glyph({ color, children }: { color: string; children: ReactNode }) {
  * InstallSheet host (M7): the Drawer entry and the hub card below call the same callback, so
  * at most one dialog can ever exist and the appinstalled transition closes the one host.
  * Explicit props, not a store/context: two entry points, and App already owns the lifetime.
+ *
+ * `onBack` is App's history-aware `back()` — the hub's own chevron must traverse the SAME
+ * history entries as the swipe gesture and the hardware back key, not a raw `nav("start")`
+ * (a direct screen-setter push would leave a stale entry behind for hardware-back to re-land on).
  */
-export function SettingsScreen({ onNav, onInstall }: { onNav: (s: ScreenId) => void; onInstall: () => void }) {
+export function SettingsScreen({ onBack, onInstall }: { onBack: () => void; onInstall: () => void }) {
   const C = useTheme();
   const { t } = useT();
   const { band, hc } = useBand();
@@ -100,7 +103,7 @@ export function SettingsScreen({ onNav, onInstall }: { onNav: (s: ScreenId) => v
       <div data-band={band || undefined} style={band ? { background: C.headerBg, paddingBottom: 2 } : undefined}>
         <div style={{ display: "flex", alignItems: "center", padding: `12px ${P}px`, gap: 10 }}>
           <button
-            onClick={() => (sub !== null ? go(null) : onNav("start"))}
+            onClick={() => (sub !== null ? go(null) : onBack())}
             aria-label={t("Back")}
             style={{ background: "none", border: "none", cursor: "pointer", padding: 4, display: "flex" }}
           >
