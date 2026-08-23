@@ -357,8 +357,13 @@ export default function App() {
           onQuickAdd={onQuickAdd}
           onOpenReport={openReports}
           onOpenMonthDay={(d) => {
-            setMonthDay(d);
+            // openReports("month") calls nav("reports") internally, which resets monthDay to
+            // null (App.tsx:157) then re-asserts reportsView after nav — same last-write-wins
+            // batch as openReports/openBudgetFillGoals. setMonthDay(d) must come AFTER
+            // openReports so it's the LAST write to monthDay in the batch, not the first
+            // (calling it before openReports let nav's reset win and silently dropped the day).
             openReports("month");
+            setMonthDay(d);
           }}
           editWidgets={editWidgetsOpen}
           onEditWidgets={setEditWidgetsOpen}
