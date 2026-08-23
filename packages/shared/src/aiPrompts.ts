@@ -406,11 +406,11 @@ export const IMPORT_EXTRACT_JSON_SCHEMA = {
           additionalProperties: false,
           properties: {
             rowId: { type: "string" },
-            imageIndex: { type: "integer" },
-            visualOrder: { type: "integer" },
+            imageIndex: { type: "integer", minimum: 0 },
+            visualOrder: { type: "integer", minimum: 0 },
             rawTextLines: { type: "array", items: { type: "string" } },
             date: { type: ["string", "null"] },
-            amount: { type: ["integer", "null"] },
+            amount: { type: ["integer", "null"], exclusiveMinimum: 0 },
             currency: { type: ["string", "null"] },
             direction: { type: "string", enum: ["debit", "credit", "unknown"] },
             postingStatus: { type: "string", enum: ["posted", "pending", "declined", "unknown"] },
@@ -464,9 +464,9 @@ export function buildImportExtractPrompt(images: string[], _refs: ImportPromptRe
     "Group its amount, merchant/payee, card suffix, and secondary text into that row's rawTextLines. Do not create separate rows for icons, loyalty/reward points, card suffixes, exchange-rate text, or status text that belongs to the same entry. " +
     "Return those coherent rows in visual order. Use imageIndex plus visualOrder to preserve where each appeared. Preserve each visible line in rawTextLines; trim only surrounding whitespace. " +
     "Rows that are labels, date dividers, balances, summaries, or other interface chrome are still visible evidence: mark them ui_metadata. Use financial_event only for a ledger money movement and supporting_detail for evidence such as a linked FX conversion. " +
-    "Return exactly one financial_event for each coherent entry with a primary signed ledger amount, regardless of whether its meaning is uncertain. A reward, refund, top-up, deposit, or transfer entry is still a financial_event. Numbers in secondary text never create another financial_event. " +
+    "Return exactly one financial_event for each coherent entry with a primary ledger amount, regardless of whether its meaning is uncertain. A reward, refund, top-up, deposit, or transfer entry is still a financial_event. Numbers in secondary text never create another financial_event. " +
     "A visible date divider applies to the transaction entries below it until the next divider; the divider itself remains ui_metadata. " +
-    "For a financial_event, amount and currency come from the primary signed ledger amount printed for that entry. Amounts are positive integer minor units; never use a balance, loyalty/reward points, card suffix, or exchange rate as amount. " +
+    "For a financial_event, amount and currency come from the primary ledger amount printed for that entry; amount is the positive magnitude without its visible sign. Store the visible sign only in direction. Amounts are positive integer minor units; never use a balance, loyalty/reward points, card suffix, or exchange rate as amount. " +
     "An explicit + or incoming label means credit; an explicit − or outgoing label means debit. Do not infer direction from semanticKind; use unknown when the direction is not visible. " +
     "Use cashback_or_reward only for explicit reward/cashback/moneyback text, merchant_refund only for explicit refund/return/chargeback text, and account_topup only for explicit top-up or account-funding text. Use transfer kinds only when transfer wording is visible. " +
     "Use null for unreadable date, amount, or currency; never invent a fact. postingStatus, rowRole, semanticKind, confidence, and reviewReasons describe only what is shown. Keep reviewReasons empty when the row is clear; add only reasons supported by a specific visible ambiguity. " +
