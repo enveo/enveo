@@ -303,6 +303,10 @@ export function UndoBar<T extends UndoToast>({ pending, onUndo, onDismiss }: { p
           }}
         >
           <span style={{ flex: 1, fontSize: 13, fontWeight: 600 }}>{u.message}</span>
+          {
+
+
+}
           <button
             onClick={() => onUndo(u)}
             style={{
@@ -310,7 +314,8 @@ export function UndoBar<T extends UndoToast>({ pending, onUndo, onDismiss }: { p
               background: "#fff",
               color: TEAL,
               borderRadius: 8,
-              padding: "6px 12px",
+              padding: "0 12px",
+              minHeight: 30,
               fontSize: 12.5,
               fontWeight: 700,
               cursor: "pointer",
@@ -321,7 +326,20 @@ export function UndoBar<T extends UndoToast>({ pending, onUndo, onDismiss }: { p
           <button
             onClick={() => onDismiss(u.id)}
             aria-label={t("Close")}
-            style={{ border: "none", background: "transparent", color: "#fff", fontSize: 16, cursor: "pointer", lineHeight: 1, padding: 4 }}
+            style={{
+              border: "none",
+              background: "transparent",
+              color: "#fff",
+              fontSize: 16,
+              cursor: "pointer",
+              lineHeight: 1,
+              padding: 0,
+              width: 30,
+              height: 30,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+            }}
           >
             ×
           </button>
