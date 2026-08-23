@@ -1,5 +1,5 @@
 import { computeNetWorthSeries, computeStateResponse } from "@enveo/shared";
-import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
+import { type LazyExoticComponent, lazy, type ReactNode, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { fmtSignedTrim } from "../lib/amount";
 import { type AccountView, type EnvelopeView, type StateResponse, useLedgerVersion } from "../lib/api";
 import {
@@ -11,7 +11,7 @@ import {
   reconciliationEnvelopeAfterAccountRefresh,
   reconciliationTxnPayload,
 } from "../lib/automaticEnvelopeUi";
-import type { WidgetId, WidgetOpts } from "../lib/contexts";
+import type { WidgetConfig, WidgetId, WidgetOpts } from "../lib/contexts";
 import { useCurrency, useMask, useSettings, useTheme } from "../lib/contexts";
 import { currentMonth } from "../lib/dates";
 import { currencySymbol, localizePadExpression, parseAmount } from "../lib/format";
@@ -21,16 +21,20 @@ import { local } from "../lib/mutate";
 import { store } from "../lib/store";
 import { font, TEAL } from "../lib/theme";
 import { sumBalances } from "../lib/uiState";
+import { WIDGET_CATALOG } from "../lib/widgetCatalog";
 import { AutomaticEnvelopeEffect } from "../screens/add/AutomaticEnvelopeEffect";
 import { EnvelopePickerSheet } from "../screens/add/EnvelopePickerSheet";
 import { collapsedRowStyle } from "../screens/add/styles";
+import type { ReportTab } from "../screens/reports/types";
 import { AmountPadHost, type AmountPadTarget } from "./AmountPadSheet";
 import { type ScreenId, Sheet } from "./chrome";
 import { CardBox, SectionEyebrow, useBand } from "./kit";
+import { LazyChunk } from "./lazy";
 import { Sparkline } from "./reportKit";
 import { AccCell, accountIconColor, EnvRow } from "./tiles";
 
-/** Props every Start-screen widget receives — a component picks the subset it needs. */
+/** Props every Start-screen widget receives — a component picks the subset it needs. All six
+ *  original (eager) widgets ignore the three PR5 additions below, so they stay untouched. */
 export interface WidgetProps {
   state: StateResponse;
   month: string;
@@ -38,6 +42,13 @@ export interface WidgetProps {
   onOpenEnvelope: (envId: string, month: string) => void;
   onOpenTxns: (f?: { envId?: string; accId?: string }) => void;
   onQuickAdd: (kind: "transfer" | "import" | "suggest") => void;
+  /** Deep link into a specific report subscreen (App.openReports). */
+  onOpenReport?: (tab: ReportTab) => void;
+  /** Heatmap day → Month report with that day's panel open (App.setMonthDay + openReports("month")). */
+  onOpenMonthDay?: (date: string) => void;
+  /** True when a wide board tile hosts the widget: the tile owns title+card chrome, so the body
+   *  skips its own SectionEyebrow/CardBox. Default false — phone rendering is pixel-identical. */
+  chromeless?: boolean;
   opts?: WidgetOpts;
 }
 
@@ -502,25 +513,25 @@ function envelopeSections(
 }
 
 /* ── Envelopes: grouped EnvRow lists, scoped by opts.mode ── */
-export function EnvelopesWidget({ state, month, onOpenEnvelope, opts }: WidgetProps) {
+export function EnvelopesWidget({ state, month, onOpenEnvelope, opts, chromeless }: WidgetProps) {
   const M = useMask();
   const { t } = useT();
   const sections = envelopeSections(state, opts?.mode ?? "all", t);
   const MW = (n: number) => maskWhole(M, n);
   return (
     <>
-      {sections.map(({ label, list }) =>
-        list.length === 0 ? null : (
+      {sections.map(({ label, list }) => {
+        if (list.length === 0) return null;
+        const rows = list.map((e, idx) => <EnvRow key={e.id} e={e} onClick={() => onOpenEnvelope(e.id, month)} last={idx === list.length - 1} />);
+        // On a wide-board tile the tile supplies the card chrome; the per-SECTION eyebrow stays
+        // (it is content — a group label with its total — not duplicated widget chrome).
+        return (
           <div key={label}>
             <SectionEyebrow label={label} right={t("total {amount}", { amount: MW(list.reduce((s, e) => s + e.available, 0)) })} />
-            <CardBox>
-              {list.map((e, idx) => (
-                <EnvRow key={e.id} e={e} onClick={() => onOpenEnvelope(e.id, month)} last={idx === list.length - 1} />
-              ))}
-            </CardBox>
+            {chromeless ? rows : <CardBox>{rows}</CardBox>}
           </div>
-        ),
-      )}
+        );
+      })}
     </>
   );
 }
@@ -532,11 +543,30 @@ function EnvelopesSavingsWidget(props: WidgetProps) {
 }
 
 /* ── Report widgets: current-month cashflow numbers, and a 12mo net-worth sparkline ── */
-export function CashflowWidget({ state, onNav }: WidgetProps) {
+export function CashflowWidget({ state, onNav, chromeless }: WidgetProps) {
   const C = useTheme();
   const M = useMask();
   const { t } = useT();
   const net = state.monthIncome - state.monthExpense;
+  const trio = (
+    <div style={{ display: "flex", gap: 8, padding: chromeless ? 0 : "10px 0" }}>
+      {(
+        [
+          [t("Income"), state.monthIncome, C.pos],
+          [t("Expense"), state.monthExpense, C.neg],
+          [t("Net"), net, net >= 0 ? C.pos : C.neg],
+        ] as const
+      ).map(([label, val, col]) => (
+        <div key={label} style={{ flex: 1 }}>
+          <div style={{ fontSize: 10.5, color: C.soft }}>{label}</div>
+          <div style={{ fontSize: 13.5, fontWeight: 700, color: col, fontVariantNumeric: "tabular-nums" }}>{M(val)}</div>
+        </div>
+      ))}
+    </div>
+  );
+  // Wide-board tiles supply their own eyebrow+card chrome; doubling it overflowed the default
+  // w:3,h:1 tile (measured: clientHeight 53 vs scrollHeight 80 on first load).
+  if (chromeless) return trio;
   return (
     <div>
       <SectionEyebrow
@@ -559,27 +589,12 @@ export function CashflowWidget({ state, onNav }: WidgetProps) {
           </button>
         }
       />
-      <CardBox>
-        <div style={{ display: "flex", gap: 8, padding: "10px 0" }}>
-          {(
-            [
-              [t("Income"), state.monthIncome, C.pos],
-              [t("Expense"), state.monthExpense, C.neg],
-              [t("Net"), net, net >= 0 ? C.pos : C.neg],
-            ] as const
-          ).map(([label, val, col]) => (
-            <div key={label} style={{ flex: 1 }}>
-              <div style={{ fontSize: 10.5, color: C.soft }}>{label}</div>
-              <div style={{ fontSize: 13.5, fontWeight: 700, color: col, fontVariantNumeric: "tabular-nums" }}>{M(val)}</div>
-            </div>
-          ))}
-        </div>
-      </CardBox>
+      <CardBox>{trio}</CardBox>
     </div>
   );
 }
 
-export function NetWorthWidget({ month, onNav }: WidgetProps) {
+export function NetWorthWidget({ month, onNav, chromeless }: WidgetProps) {
   const C = useTheme();
   const M = useMask();
   const { t } = useT();
@@ -591,6 +606,23 @@ export function NetWorthWidget({ month, onNav }: WidgetProps) {
   }, [version, month]);
   const nwLast = netWorth.at(-1)?.total ?? 0;
   const nwDelta = nwLast - (netWorth.at(-2)?.total ?? nwLast);
+  const body = (
+    <>
+      <div style={{ display: "flex", alignItems: "baseline", gap: 10 }}>
+        <span style={{ fontSize: 18, fontWeight: 700, color: C.text, fontVariantNumeric: "tabular-nums" }}>{M(nwLast)}</span>
+        {nwDelta !== 0 && (
+          <span style={{ fontSize: 11.5, fontWeight: 600, color: nwDelta > 0 ? C.pos : C.neg, fontVariantNumeric: "tabular-nums" }}>
+            {nwDelta > 0 ? "▲ +" : "▼ "}
+            {M(Math.abs(nwDelta))}
+          </span>
+        )}
+      </div>
+      <Sparkline points={netWorth} />
+    </>
+  );
+  // Same rule as CashflowWidget above: the wide tile brings its own chrome, and the doubled
+  // stack overflowed the default w:1,h:1 tile ~4.5x on first load (measured).
+  if (chromeless) return body;
   return (
     <div>
       <SectionEyebrow
@@ -613,28 +645,19 @@ export function NetWorthWidget({ month, onNav }: WidgetProps) {
           </button>
         }
       />
-      <CardBox style={{ padding: "10px 14px" }}>
-        <div style={{ display: "flex", alignItems: "baseline", gap: 10 }}>
-          <span style={{ fontSize: 18, fontWeight: 700, color: C.text, fontVariantNumeric: "tabular-nums" }}>{M(nwLast)}</span>
-          {nwDelta !== 0 && (
-            <span style={{ fontSize: 11.5, fontWeight: 600, color: nwDelta > 0 ? C.pos : C.neg, fontVariantNumeric: "tabular-nums" }}>
-              {nwDelta > 0 ? "▲ +" : "▼ "}
-              {M(Math.abs(nwDelta))}
-            </span>
-          )}
-        </div>
-        <Sparkline points={netWorth} />
-      </CardBox>
+      <CardBox style={{ padding: "10px 14px" }}>{body}</CardBox>
     </div>
   );
 }
 
-/** Registry: widget id → component, in Start.tsx's render loop (`settings.startWidgets.filter(enabled)`).
- *  The `w.id in START_WIDGETS` guards below and in Start.tsx stay as defense against a corrupted/
- *  future persisted id (settings are untyped JSON at rest) even though this is now a full
- *  `Record<WidgetId, …>` — loadSettings() already drops any id unknown to the CURRENT WidgetId
- *  union on load (see contexts.tsx). */
-export const START_WIDGETS: Record<WidgetId, (p: WidgetProps) => ReactNode> = {
+/** Registry: widget id → component, for the six ORIGINAL widgets whose bodies are cheap enough to
+ *  stay eager (Start renders them at boot). PR5's six report-backed widgets (attention/recent/
+ *  spending/goals/trends/heatmap) live in `./widgetsBoard` instead, behind `LAZY_WIDGETS` below —
+ *  `renderWidget` is the ONE place that picks eager vs. lazy, so no caller needs to know which is
+ *  which. `Partial` (rather than the full `Record<WidgetId, …>`) is what keeps this file eager-safe:
+ *  a `Record` over all twelve ids would force importing the six lazy bodies at the top of this
+ *  module, defeating the whole split. */
+export const START_WIDGETS: Partial<Record<WidgetId, (p: WidgetProps) => ReactNode>> = {
   quickActions: QuickActions,
   accounts: AccountsWidget,
   envelopes: EnvelopesWidget,
@@ -642,3 +665,61 @@ export const START_WIDGETS: Record<WidgetId, (p: WidgetProps) => ReactNode> = {
   reportCashflow: CashflowWidget,
   reportNetWorth: NetWorthWidget,
 };
+
+/** The lazy half of the registry — one `import()` of `./widgetsBoard` per widget id, so Rollup
+ *  emits ONE chunk shared by all six (plus whatever `reportKit`/`reports/charts` code the Reports
+ *  screen's own chunk already carries — see that module's header comment). */
+const AttentionWidget = lazy(() => import("./widgetsBoard").then((m) => ({ default: m.AttentionWidget })));
+const RecentWidget = lazy(() => import("./widgetsBoard").then((m) => ({ default: m.RecentWidget })));
+const SpendingWidget = lazy(() => import("./widgetsBoard").then((m) => ({ default: m.SpendingWidget })));
+const GoalsWidget = lazy(() => import("./widgetsBoard").then((m) => ({ default: m.GoalsWidget })));
+const TrendsWidget = lazy(() => import("./widgetsBoard").then((m) => ({ default: m.TrendsWidget })));
+const HeatmapWidget = lazy(() => import("./widgetsBoard").then((m) => ({ default: m.HeatmapWidget })));
+
+type LazyWidgetId = "attention" | "recent" | "spending" | "goals" | "trends" | "heatmap";
+
+export const LAZY_WIDGETS: Record<LazyWidgetId, LazyExoticComponent<(p: WidgetProps) => ReactNode>> = {
+  attention: AttentionWidget,
+  recent: RecentWidget,
+  spending: SpendingWidget,
+  goals: GoalsWidget,
+  trends: TrendsWidget,
+  heatmap: HeatmapWidget,
+};
+
+/** Same silhouette as a rendered widget (eyebrow + an empty card) so the Start stack doesn't jump
+ *  while the chunk fetches — 64px mirrors a typical single-row widget's height. */
+function WidgetPending({ title }: { title: string }) {
+  return (
+    <div>
+      <SectionEyebrow label={title} />
+      <CardBox style={{ minHeight: 64 }}>{null}</CardBox>
+    </div>
+  );
+}
+
+/** The ONE place Start.tsx (and, later, the wide board) renders a widget by config: eager ids go
+ *  straight through `START_WIDGETS`, everything else through `LAZY_WIDGETS` behind a `LazyChunk`
+ *  (its error boundary keeps a failed fetch from blanking the rest of Start — variant "silent"
+ *  because the inner `Suspense` below already supplies a themed pending state, so the boundary's
+ *  OWN default fallback is never shown; only its failure path matters here). A corrupted/future
+ *  persisted id (settings are untyped JSON at rest) falls through to `null` — never crash Start.
+ *  `t` is passed in rather than called here: `renderWidget` is a plain function invoked during a
+ *  component's render, not a component/hook itself, so the `useT()` call stays at the real call
+ *  site (Start.tsx). */
+export function renderWidget(cfg: WidgetConfig, props: WidgetProps, t: (m: Message, p?: Record<string, string | number>) => string): ReactNode {
+  if (cfg.id in START_WIDGETS) {
+    const W = START_WIDGETS[cfg.id]!;
+    return <W {...props} opts={cfg.opts} />;
+  }
+  const L = LAZY_WIDGETS[cfg.id as LazyWidgetId];
+  if (!L) return null;
+  const title = t(WIDGET_CATALOG[cfg.id].title);
+  return (
+    <LazyChunk variant="silent">
+      <Suspense fallback={<WidgetPending title={title} />}>
+        <L {...props} opts={cfg.opts} />
+      </Suspense>
+    </LazyChunk>
+  );
+}

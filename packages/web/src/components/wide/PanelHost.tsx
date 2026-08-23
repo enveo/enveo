@@ -1,8 +1,10 @@
-import type { Transaction } from "@enveo/shared";
+import type { Transaction, WideWidgetId, WidgetOpts } from "@enveo/shared";
 import { lazy } from "react";
 import type { StateResponse } from "../../lib/api";
-import { useTheme } from "../../lib/contexts";
+import { useBudgetPreferences, useTheme } from "../../lib/contexts";
 import { type Message, msg, useT } from "../../lib/i18n";
+import { font } from "../../lib/theme";
+import { WIDGET_CATALOG } from "../../lib/widgetCatalog";
 import type { ReportView } from "../../screens/reports/types";
 import { TITLES } from "../../screens/reports/types";
 import { LazyChunk } from "../lazy";
@@ -17,12 +19,73 @@ const EnvelopeScreen = lazy(() => import("../../screens/Envelope").then((m) => (
 // there (App forces its `view` to "overview"), this one always shows a specific tab
 // (`resolvePanel` only ever produces the `report` kind for a non-"overview" `reportsView`).
 const ReportsScreen = lazy(() => import("../../screens/Reports").then((m) => ({ default: m.ReportsScreen })));
+// The wide board's gear target (PR5 Task 6) reuses the phone edit sheet's envelope-mode options
+// body verbatim (one options UI, not a second implementation) — dynamically imported, exactly
+// like the two screens above, so the ~500-line `EditWidgetsSheet` module stays out of the wide
+// chunk's static graph; Vite dedupes it with Start.tsx's own `lazy()` import of the same module.
+const EnvelopesOptions = lazy(() => import("../EditWidgetsSheet").then((m) => ({ default: m.EnvelopesOptions })));
 
 const HINT_COPY: Record<"envelope" | "report" | "generic", Message> = {
   envelope: msg("Choose an envelope to see its summary."),
   report: msg("Choose a report to open it here."),
   generic: msg("Nothing is open in this panel yet."),
 };
+
+/**
+ * The `widgets` panel body (pr5-task-6-brief.md §3): the wide board's gear target. Reads/writes
+ * `wideWidgets` directly via `useBudgetPreferences()` — no new props on `PanelHost` itself, the
+ * same way `EnvelopesWidget`/`AccountsWidget` already read the replica straight from context
+ * rather than threading it through every intermediate component. Per F4 there is no scroll
+ * toggle and no options body beyond envelopes' selection mode (the only WIDE_WIDGET_ID the
+ * catalogue marks `configurable`), so `envelopes` is the only id below with an options section.
+ */
+function WidgetSettingsPanel({ widgetId, state, onClose }: { widgetId: WideWidgetId; state: StateResponse; onClose: () => void }) {
+  const C = useTheme();
+  const { t } = useT();
+  const { preferences, update } = useBudgetPreferences();
+  const widget = preferences.wideWidgets.find((w) => w.id === widgetId);
+  // Defensive, not expected: `reconcileBudgetPreferences` always fills every WIDE_WIDGET_IDS
+  // entry, so this only fires if `widgetId` somehow named an id outside that set.
+  if (!widget) return null;
+  const setOpts = (opts: WidgetOpts) =>
+    update({ wideWidgets: preferences.wideWidgets.map((w) => (w.id === widgetId ? { ...w, opts: { ...w.opts, ...opts } } : w)) });
+  const remove = () => {
+    update({ wideWidgets: preferences.wideWidgets.map((w) => (w.id === widgetId ? { ...w, enabled: false } : w)) });
+    onClose();
+  };
+  return (
+    <div style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: 14 }}>
+      <div style={{ fontSize: 15, fontWeight: 700, color: C.text, marginBottom: 4 }}>{t(WIDGET_CATALOG[widgetId].title)}</div>
+      <div style={{ fontSize: 11.5, color: C.mute, marginBottom: 14 }}>
+        {t("Size: {w} × {h} — drag the corner of the tile to resize", { w: String(widget.w), h: String(widget.h) })}
+      </div>
+      {widgetId === "envelopes" && (
+        <LazyChunk variant="silent">
+          <EnvelopesOptions w={widget} state={state} onChange={setOpts} />
+        </LazyChunk>
+      )}
+      <button
+        onClick={remove}
+        style={{
+          width: "100%",
+          marginTop: 16,
+          padding: "10px 0",
+          minHeight: 36,
+          borderRadius: 10,
+          border: `1px solid ${C.neg}`,
+          background: "transparent",
+          color: C.neg,
+          fontSize: 13,
+          fontWeight: 600,
+          cursor: "pointer",
+          fontFamily: font,
+        }}
+      >
+        {t("Remove from the board")}
+      </button>
+    </div>
+  );
+}
 
 /** This panel instance of `ReportsScreen` never renders the hub variant — its `view` is always a
  *  specific tab, never "overview" (see the `ReportsScreen` import comment above) — so `onMenu`
@@ -82,7 +145,7 @@ export function PanelHost({
   const C = useTheme();
   const { t } = useT();
 
-  const label = view.kind === "report" ? t(TITLES[view.view]) : "";
+  const label = view.kind === "report" ? t(TITLES[view.view]) : view.kind === "widgets" ? t("Widget settings") : "";
 
   const body = (() => {
     switch (view.kind) {
@@ -123,6 +186,8 @@ export function PanelHost({
             />
           </LazyChunk>
         );
+      case "widgets":
+        return <WidgetSettingsPanel widgetId={view.widgetId} state={state} onClose={onClose} />;
       default:
         return assertNever(view);
     }
