@@ -1,4 +1,4 @@
-import { lazy, useEffect, useState } from "react";
+import { lazy, useContext, useEffect, useState } from "react";
 import { AmountPadHost, type AmountPadTarget } from "../components/AmountPadSheet";
 import { Header, Sheet } from "../components/chrome";
 import { DockedNumpad } from "../components/DockedNumpad";
@@ -16,6 +16,7 @@ import { goalProgress } from "../lib/goals";
 import { useT } from "../lib/i18n";
 import { Glyph, Ico } from "../lib/icons";
 import { local } from "../lib/mutate";
+import { InWideShell } from "../lib/shellContext";
 import { CORAL, ENV_PALETTE, font, P, TEAL, tint } from "../lib/theme";
 
 // The budget assistant is the second AI surface (§3f). It is the only thing on this screen that
@@ -38,6 +39,8 @@ export function BudgetScreen({
   onSuggestConsumed,
   initialFillGoals,
   onFillGoalsConsumed,
+  manageOpen,
+  onManageOpen,
 }: {
   state: StateResponse;
   month: string;
@@ -56,11 +59,14 @@ export function BudgetScreen({
   initialFillGoals?: boolean;
   /** Consumption ack for `initialFillGoals` — same one-shot mechanism as `onSuggestConsumed`. */
   onFillGoalsConsumed: () => void;
+  /** "Manage envelopes" sheet open state — App-owned so the wide shell's band right-slot (PR4 §13) can trigger it too. */
+  manageOpen: boolean;
+  onManageOpen: (open: boolean) => void;
 }) {
   const C = useTheme();
   const M = useMask();
   const { t } = useT();
-  const [manage, setManage] = useState(false);
+  const inWide = useContext(InWideShell);
   const [suggest, setSuggest] = useState(!!initialSuggest);
   // Latched — see Add.tsx: mount on first open, stay mounted, so state survives close→reopen.
   const suggestOpened = useOpenedOnce(suggest);
@@ -136,7 +142,9 @@ export function BudgetScreen({
   return (
     <div className="gs" style={{ flex: 1, overflowY: "auto", paddingBottom: editing ? 300 : 6 }}>
       <div data-band={band || undefined} style={band ? { background: C.headerBg, paddingBottom: 2 } : undefined}>
-        <Header month={month} onMenu={onMenu} onPrev={onPrev} onNext={onNext} onRight={() => setManage(true)} rightIcon="pencil" onBand={band} />
+        {!inWide && (
+          <Header month={month} onMenu={onMenu} onPrev={onPrev} onNext={onNext} onRight={() => onManageOpen(true)} rightIcon="pencil" onBand={band} />
+        )}
       </div>
       <CardBox style={{ margin: `8px ${P}px 10px`, padding: "10px 14px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
         <div style={{ minWidth: 0 }}>
@@ -213,7 +221,7 @@ export function BudgetScreen({
       {envs.length === 0 && (
         <CardBox style={{ margin: `6px ${P}px 10px`, padding: "12px 14px" }}>
           <button
-            onClick={() => setManage(true)}
+            onClick={() => onManageOpen(true)}
             style={{
               width: "100%",
               padding: "10px 0",
@@ -362,7 +370,7 @@ export function BudgetScreen({
         );
       })}
 
-      <EnvManageSheet show={manage} state={state} onClose={() => setManage(false)} />
+      <EnvManageSheet show={manageOpen} state={state} onClose={() => onManageOpen(false)} />
       {suggestOpened && (
         <LazyChunk variant="overlay" onDismiss={() => setSuggest(false)}>
           <BudgetSuggestSheet show={suggest} state={state} month={month} onClose={() => setSuggest(false)} />

@@ -9,7 +9,7 @@ import { useT } from "../../lib/i18n";
 import { budgetsOverAmount, budgetsSummary } from "../../lib/reportSummary";
 import { useElementWidth } from "../../lib/useElementWidth";
 import { trendColor } from "./charts";
-import type { Mask, ReportView } from "./types";
+import type { Mask, ReportTab, ReportView } from "./types";
 
 const SPENDING_FALLBACK_COLORS = ["#8f84a8", "#aed6ea", "#ccd9b6", "#f0c84f"];
 
@@ -32,6 +32,7 @@ export function ReportsHub({
   onMenu,
   onPrev,
   onNext,
+  selected,
 }: {
   state: StateResponse;
   month: string;
@@ -44,6 +45,12 @@ export function ReportsHub({
   onMenu: () => void;
   onPrev: () => void;
   onNext: () => void;
+  /** Wide only: the report tab currently open in the side panel, so its card can be picked out
+   *  from the grid — the hub itself always stays on screen there (Reports.tsx forces `view`
+   *  to "overview" in the primary pane regardless of what is open beside it), so without this the
+   *  open report would have no visible trace in the hub at all. `undefined` on phone (no panel to
+   *  reflect) and on wide with nothing open yet. */
+  selected?: ReportTab;
 }) {
   const C = useTheme();
   const M = useMask();
@@ -90,13 +97,21 @@ export function ReportsHub({
         }
         bandChart={<NetWorthChart points={netWorth} height={130} onBand={band} />}
       >
+        {/* Fixed 2-up at every width (mockup inconsistency 4, pr4-context.md §0b/§12 — CLOSED,
+            do not relitigate): the mock's fold column drops to a single simplified card per row,
+            but that is a property of ITS stripped-down cards, not of this layout — these minis
+            are fluid (`useElementWidth` throughout) and already read fine well under a phone's
+            own width. At the wide breakpoints this shell actually ships (task 4's `geometry.ts`),
+            the 804px desktop primary gives each card ≈385px and the 484px fold primary ≈229px —
+            both comfortably above the ~190px this grid already renders at on a phone, so nothing
+            here needs the fold's 1-column fallback the mock draws. */}
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-          <CashflowMini cashflow={cashflow} onView={onView} M={M} />
-          <SpendingMini rows={hubSpending} envColor={envColor} cashflow={cashflow} onView={onView} M={M} />
-          <BudgetsMini envelopes={state.envelopes} onView={onView} M={M} />
-          {goalRows.length > 0 && <GoalsMini pctTotal={pctTotal} missSum={missSum} onView={onView} M={M} />}
-          <MonthMini days={dailySpending} onView={onView} M={M} />
-          <TrendsMini trends={envelopeTrends} onView={onView} />
+          <CashflowMini cashflow={cashflow} onView={onView} M={M} selected={selected === "cashflow"} />
+          <SpendingMini rows={hubSpending} envColor={envColor} cashflow={cashflow} onView={onView} M={M} selected={selected === "spending"} />
+          <BudgetsMini envelopes={state.envelopes} onView={onView} M={M} selected={selected === "budgets"} />
+          {goalRows.length > 0 && <GoalsMini pctTotal={pctTotal} missSum={missSum} onView={onView} M={M} selected={selected === "goals"} />}
+          <MonthMini days={dailySpending} onView={onView} M={M} selected={selected === "month"} />
+          <TrendsMini trends={envelopeTrends} onView={onView} selected={selected === "trends"} />
         </div>
       </ReportShell>
     </div>
@@ -113,7 +128,7 @@ export function ReportsHub({
  * taller cards (whose content already filled the row) looked top-aligned by coincidence. Giving
  * the button its own top-aligned flex layout (column, default main-axis `flex-start`) overrides
  * that native centering so every card top-aligns its content, tall or short. */
-function MiniCard({ title, onClick, children }: { title: string; onClick: () => void; children: ReactNode }) {
+function MiniCard({ title, onClick, selected, children }: { title: string; onClick: () => void; selected?: boolean; children: ReactNode }) {
   const C = useTheme();
   return (
     <button
@@ -125,7 +140,11 @@ function MiniCard({ title, onClick, children }: { title: string; onClick: () => 
         justifyContent: "flex-start",
         width: "100%",
         background: C.card,
-        border: "none",
+        // `var(--accent)` does not resolve in an SVG presentation attribute, but this IS a plain
+        // HTML `style` object (not an attribute) — the CSS var resolves here same as any other
+        // inline style. Unselected stays borderless (`selected` is always undefined on phone —
+        // pixel-identical to before this prop existed).
+        border: selected ? "1.5px solid var(--accent)" : "none",
         boxShadow: "0 1px 3px rgba(20,20,28,0.06)",
         borderRadius: 14,
         padding: "12px 13px",
@@ -149,10 +168,12 @@ function CashflowMini({
   cashflow,
   onView,
   M,
+  selected,
 }: {
   cashflow: { month: string; income: number; expense: number; net: number }[];
   onView: (v: ReportView) => void;
   M: Mask;
+  selected?: boolean;
 }) {
   const C = useTheme();
   const { t } = useT();
@@ -176,7 +197,7 @@ function CashflowMini({
   const sr = savingsRate(cashflow);
   const pct = sr.current !== null ? Math.round(sr.current * 100) : "–";
   return (
-    <MiniCard title={t("Cash flow")} onClick={() => onView("cashflow")}>
+    <MiniCard title={t("Cash flow")} onClick={() => onView("cashflow")} selected={selected}>
       <div ref={boxRef}>
         <svg viewBox={`0 0 ${W} ${H}`} width="100%" height={H} aria-hidden="true" style={{ display: "block" }}>
           <line x1={0} y1={base} x2={W} y2={base} style={{ stroke: C.line }} strokeWidth={1} />
@@ -205,12 +226,14 @@ function SpendingMini({
   cashflow,
   onView,
   M,
+  selected,
 }: {
   rows: { key: string | null; name: string; amount: number; pct: number }[];
   envColor: Map<string, string>;
   cashflow: { month: string; income: number; expense: number; net: number }[];
   onView: (v: ReportView) => void;
   M: Mask;
+  selected?: boolean;
 }) {
   const C = useTheme();
   const { t } = useT();
@@ -226,7 +249,7 @@ function SpendingMini({
   const baseline = median(cashflow.slice(-4, -1).map((p) => p.expense));
   const deltaPct = baseline > 0 ? (total - baseline) / baseline : null;
   return (
-    <MiniCard title={t("Spending")} onClick={() => onView("spending")}>
+    <MiniCard title={t("Spending")} onClick={() => onView("spending")} selected={selected}>
       <SegBar segments={segments} />
       <div style={{ fontSize: 17, fontWeight: 750, color: C.text, marginTop: 8, fontVariantNumeric: "tabular-nums" }}>{M(total)}</div>
       <div style={{ fontSize: 11, color: C.mute }}>
@@ -239,7 +262,17 @@ function SpendingMini({
 /** Budgets mini-card: over/near/OK count pills (triage colors on quiet chip backgrounds), plus
  *  the total overspend amount when any envelope is over. Threshold parity with BudgetsReport via
  *  budgetsSummary (Task 9 refines the rule; this card just consumes it). */
-function BudgetsMini({ envelopes, onView, M }: { envelopes: StateResponse["envelopes"]; onView: (v: ReportView) => void; M: Mask }) {
+function BudgetsMini({
+  envelopes,
+  onView,
+  M,
+  selected,
+}: {
+  envelopes: StateResponse["envelopes"];
+  onView: (v: ReportView) => void;
+  M: Mask;
+  selected?: boolean;
+}) {
   const C = useTheme();
   const { t, tp } = useT();
   const bs = budgetsSummary(envelopes);
@@ -257,7 +290,7 @@ function BudgetsMini({ envelopes, onView, M }: { envelopes: StateResponse["envel
     </span>
   );
   return (
-    <MiniCard title={t("Budgets")} onClick={() => onView("budgets")}>
+    <MiniCard title={t("Budgets")} onClick={() => onView("budgets")} selected={selected}>
       <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
         {pill(tp("{n} over | {n} over", bs.over), "var(--danger-14)", C.neg, "over")}
         {pill(t("{n} near limit", { n: bs.near }), C.chip, C.warn, "near")}
@@ -272,12 +305,24 @@ function BudgetsMini({ envelopes, onView, M }: { envelopes: StateResponse["envel
 
 /** Goals mini-card: GoalRing + aggregate funded % + funded/missing line — hidden by the caller
  *  when no envelope has a goal (today's overview behavior, unchanged). */
-function GoalsMini({ pctTotal, missSum, onView, M }: { pctTotal: number; missSum: number; onView: (v: ReportView) => void; M: Mask }) {
+function GoalsMini({
+  pctTotal,
+  missSum,
+  onView,
+  M,
+  selected,
+}: {
+  pctTotal: number;
+  missSum: number;
+  onView: (v: ReportView) => void;
+  M: Mask;
+  selected?: boolean;
+}) {
   const C = useTheme();
   const { t } = useT();
   const funded = missSum === 0;
   return (
-    <MiniCard title={t("Goals")} onClick={() => onView("goals")}>
+    <MiniCard title={t("Goals")} onClick={() => onView("goals")} selected={selected}>
       <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
         <GoalRing pct={pctTotal} size={30} />
         <div>
@@ -292,14 +337,14 @@ function GoalsMini({ pctTotal, missSum, onView, M }: { pctTotal: number; missSum
 /** Month mini-card: a 10-cell intensity strip for the first 10 days of the month (shared
  *  `heatColor` ramp with CalendarHeatmap, scaled against the WHOLE month's max so it reads
  *  consistently with the Task 11 subscreen), plus the month's average daily spend. */
-function MonthMini({ days, onView, M }: { days: { date: string; total: number }[]; onView: (v: ReportView) => void; M: Mask }) {
+function MonthMini({ days, onView, M, selected }: { days: { date: string; total: number }[]; onView: (v: ReportView) => void; M: Mask; selected?: boolean }) {
   const C = useTheme();
   const { t } = useT();
   const first10 = days.slice(0, 10);
   const max = Math.max(...days.map((d) => d.total), 1);
   const avg = days.length > 0 ? Math.round(days.reduce((s, d) => s + d.total, 0) / days.length) : 0;
   return (
-    <MiniCard title={t("Month in a nutshell")} onClick={() => onView("month")}>
+    <MiniCard title={t("Month in a nutshell")} onClick={() => onView("month")} selected={selected}>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(10, 1fr)", gap: 2.5 }}>
         {first10.map((d) => (
           <span key={d.date} style={{ aspectRatio: "1", borderRadius: 3, background: heatColor(d.total, max, C) }} />
@@ -311,28 +356,45 @@ function MonthMini({ days, onView, M }: { days: { date: string; total: number }[
 }
 
 /** Trends mini-card: the top-2 biggest-moving envelopes (already sorted by computeEnvelopeTrends),
- *  a mini TrendSpark (red rising / green falling / muted flat) and an arrow per row. */
-function TrendsMini({ trends, onView }: { trends: EnvelopeTrend[]; onView: (v: ReportView) => void }) {
+ *  a mini TrendSpark (red rising / green falling / muted flat) and an arrow per row.
+ *
+ *  TrendSpark waiver (pr4-context.md §6, recorded): `TrendSpark`'s `w` is normally caller-fixed —
+ *  it draws inside a row shared with text, where measuring the row itself would be wrong (see its
+ *  own doc comment in reportKit.tsx). On a wide pane this card is much wider than a phone's ~150,
+ *  so instead of leaving the spark phone-width-fixed forever, the ref measures an inner row div
+ *  passed as `MiniCard`'s `children` — a normal flex child of the button's `alignItems: "stretch"`
+ *  column, so it already fills the button's own padded content box with no padding math needed
+ *  (`useElementWidth`'s usual "no padding between the ref and the chart" invariant holds as-is).
+ *  The ref must stay on a div INSIDE the button, not one wrapping `MiniCard` itself: a wrapping
+ *  div would become the grid's direct child instead of the button, and a plain block div does not
+ *  propagate the grid's `align-items: stretch` to a child, leaving the visible card short of the
+ *  row height whenever a sibling in the same row is taller. `Math.max(120, …)` keeps a
+ *  collapsed/unmeasured frame from ever drawing narrower than the phone's own historical 150. */
+function TrendsMini({ trends, onView, selected }: { trends: EnvelopeTrend[]; onView: (v: ReportView) => void; selected?: boolean }) {
   const C = useTheme();
   const { t } = useT();
   const top = trends.slice(0, 2);
+  const [rowRef, rowW] = useElementWidth<HTMLDivElement>(150);
+  const sparkW = Math.max(120, rowW);
   return (
-    <MiniCard title={t("Envelope trends")} onClick={() => onView("trends")}>
-      {top.length === 0 && <div style={{ fontSize: 11.5, color: C.mute }}>{t("Not enough data yet.")}</div>}
-      {top.map((tr) => {
-        const color = trendColor(tr, C);
-        const rising = color === C.neg;
-        const falling = color === C.pos;
-        return (
-          <div key={tr.id} style={{ marginBottom: 4 }}>
-            <TrendSpark series={tr.series} color={color} w={150} h={16} />
-            <div style={{ fontSize: 11, color: C.soft, marginTop: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-              {tr.name} {rising && <span style={{ color: C.neg, fontWeight: 650 }}>↑</span>}
-              {falling && <span style={{ color: C.pos, fontWeight: 650 }}>↓</span>}
+    <MiniCard title={t("Envelope trends")} onClick={() => onView("trends")} selected={selected}>
+      <div ref={rowRef}>
+        {top.length === 0 && <div style={{ fontSize: 11.5, color: C.mute }}>{t("Not enough data yet.")}</div>}
+        {top.map((tr) => {
+          const color = trendColor(tr, C);
+          const rising = color === C.neg;
+          const falling = color === C.pos;
+          return (
+            <div key={tr.id} style={{ marginBottom: 4 }}>
+              <TrendSpark series={tr.series} color={color} w={sparkW} h={16} />
+              <div style={{ fontSize: 11, color: C.soft, marginTop: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                {tr.name} {rising && <span style={{ color: C.neg, fontWeight: 650 }}>↑</span>}
+                {falling && <span style={{ color: C.pos, fontWeight: 650 }}>↓</span>}
+              </div>
             </div>
-          </div>
-        );
-      })}
+          );
+        })}
+      </div>
     </MiniCard>
   );
 }

@@ -240,19 +240,11 @@ export function BottomNav({ active, onNav }: { active: ScreenId; onNav: (s: Scre
   const C = useTheme();
   const { t } = useT();
   const tabs: Array<{ id: ScreenId | "add"; label?: string; d?: string }> = [
-    { id: "start", label: t("Home"), d: "M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-4 0h4" },
-    {
-      id: "budget",
-      label: t("Budget"),
-      d: "M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z",
-    },
+    { id: "start", label: t("Home"), d: NAV_ICONS.start },
+    { id: "budget", label: t("Budget"), d: NAV_ICONS.budget },
     { id: "add" },
-    {
-      id: "transactions",
-      label: t("Transactions"),
-      d: "M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2",
-    },
-    { id: "reports", label: t("Reports"), d: "M4 19h16M7 16v-5M12 16V8M17 16v-9" },
+    { id: "transactions", label: t("Transactions"), d: NAV_ICONS.transactions },
+    { id: "reports", label: t("Reports"), d: NAV_ICONS.reports },
   ];
   // data-band: the nav always paints "var(--nav-bg)" as its own background (on Duet that's the
   // navy band, `--accent` itself).
@@ -338,11 +330,26 @@ export function BottomNav({ active, onNav }: { active: ScreenId; onNav: (s: Scre
 /* Drawer glyphs (patterns from the menu-settings-hifi mock) — 1.7 stroke, zero emoji. */
 const D_BANK = "M3 21h18M4 18h16M6 18V9m4 9V9m4 9V9m4 9V9M2 9l10-5 10 5z";
 const D_BARS = "M4 20V10m6 10V4m6 16v-7M2 20h20";
-const D_EYE = "M2.5 12S6 5.6 12 5.6 21.5 12 21.5 12 18 18.4 12 18.4 2.5 12 2.5 12zM12 9.4a2.6 2.6 0 100 5.2 2.6 2.6 0 000-5.2z";
-const D_MOON = "M21 12.8A9 9 0 1111.2 3a7 7 0 009.8 9.8z";
-const D_GEAR =
+export const D_EYE = "M2.5 12S6 5.6 12 5.6 21.5 12 21.5 12 18 18.4 12 18.4 2.5 12 2.5 12zM12 9.4a2.6 2.6 0 100 5.2 2.6 2.6 0 000-5.2z";
+export const D_MOON = "M21 12.8A9 9 0 1111.2 3a7 7 0 009.8 9.8z";
+export const D_GEAR =
   "M12 9a3 3 0 100 6 3 3 0 000-6zM19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 11-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 11-4 0v-.09a1.65 1.65 0 00-1-1.51 1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 11-2.83-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 110-4h.09a1.65 1.65 0 001.51-1 1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 112.83-2.83l.06.06a1.65 1.65 0 001.82.33 1.65 1.65 0 001-1.51V3a2 2 0 114 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 112.83 2.83l-.06.06a1.65 1.65 0 00-.33 1.82 1.65 1.65 0 001.51 1H21a2 2 0 110 4h-.09a1.65 1.65 0 00-1.51 1z";
 const D_CHEV = "M9 5l7 7-7 7";
+
+/** Screen-nav icon paths — ONE copy shared by `BottomNav` above (phone) and the wide shell's
+ *  `Rail` (`components/wide/Rail.tsx`), so the two icon languages can never drift apart (PR4
+ *  task 5). A lookup rather than the plan's literal "array": every caller already knows which
+ *  screen it wants and indexes by id, so a `Record` skips a `.find()` at every call site for
+ *  free. chrome.tsx is already eager (BottomNav needs it on the very first paint), so Rail.tsx
+ *  importing this from the lazy wide chunk adds no bytes to the phone bundle — only the wide
+ *  chunk gains a reference to a string that already shipped. */
+export const NAV_ICONS: Readonly<Record<"start" | "budget" | "transactions" | "reports" | "accounts", string>> = {
+  start: "M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-4 0h4",
+  budget: "M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z",
+  transactions: "M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2",
+  reports: "M4 19h16M7 16v-5M12 16V8M17 16v-9",
+  accounts: D_BANK,
+};
 
 /** Stroked drawer SVG icon — stroke via style (var(--cta) etc. work). */
 function DrawIco({ d, size = 18, color, w = 1.7 }: { d: string; size?: number; color: string; w?: number }) {

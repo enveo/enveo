@@ -9,12 +9,13 @@ import { useStateQuery } from "./lib/api";
 import { useTheme } from "./lib/contexts";
 import { currentMonth, shiftMonth } from "./lib/dates";
 import { useT } from "./lib/i18n";
+import { historyAction, parseUrl, routeToUrl } from "./lib/routing";
 import { startupPresentation } from "./lib/startupSplash";
 import { store } from "./lib/store";
 import { bootOnce, retryBoot } from "./lib/sync";
 import { font, P, TEAL } from "./lib/theme";
 import type { TransactionFilters } from "./lib/transactionSearch";
-import { PHONE_COL } from "./lib/viewMode";
+import { PHONE_COL, useViewMode } from "./lib/viewMode";
 import { AddScreen, type Tab as AddTab } from "./screens/Add";
 import { LoginScreen } from "./screens/Login";
 import type { ReportTab, ReportView } from "./screens/reports/types";
@@ -51,6 +52,7 @@ const ForeignReplicaScreen = lazy(() => import("./screens/ForeignReplica").then(
 const InstallSheet = lazy(() => import("./components/InstallSheet").then((m) => ({ default: m.InstallSheet })));
 const EnvActionsSheet = lazy(() => import("./components/EnvActionsSheet").then((m) => ({ default: m.EnvActionsSheet })));
 const InstallBanner = lazy(() => import("./components/InstallBanner").then((m) => ({ default: m.InstallBanner })));
+const WideShell = lazy(() => import("./components/wide/WideShell").then((m) => ({ default: m.WideShell })));
 
 const initialTransactionFilters = (): TransactionFilters => ({
   accountIds: new Set(),
@@ -63,7 +65,16 @@ const initialTransactionFilters = (): TransactionFilters => ({
 
 export default function App() {
   const C = useTheme();
-  const [screen, setScreen] = useState<ScreenId>("start");
+  const { t } = useT();
+  // Wide vs. phone layout (spec §5–§10) — first consumer of `viewMode.ts`, already eager for
+  // `PHONE_COL` above. `wide` itself is computed below, once `state`/`onboarding` are known.
+  const mode = useViewMode();
+  // Deep-load restore: which screen/report/envelope a fresh page load should land on — read
+  // once (React ignores this argument after the initial render). `parseUrl` always resolves a
+  // full `Route`, so no `start`/`overview` fallback is needed here. `panelClosed` stays out of
+  // the URL (chrome, not navigation — pr4-context.md §12.2).
+  const r0 = parseUrl(location.pathname, location.search);
+  const [screen, setScreen] = useState<ScreenId>(r0.screen);
   const [month, setMonth] = useState(currentMonth());
   const [drawer, setDrawer] = useState(false);
   const [installSheet, setInstallSheet] = useState(false);
@@ -80,9 +91,18 @@ export default function App() {
   // open. Same one-shot lifecycle as `budgetSuggest`: `nav` resets it on every normal entry,
   // `openBudgetFillGoals` sets it AFTER `nav` so it wins within the same batch.
   const [budgetFillGoals, setBudgetFillGoals] = useState(false);
+  // Start's "Edit widgets" and Budget's "Manage envelopes" sheets, lifted from those screens so
+  // the wide shell's band right-slot (pr4-context.md §13) can trigger them too — same sheets,
+  // same pencil buttons, only the state's home moves (Task 3).
+  const [editWidgetsOpen, setEditWidgetsOpen] = useState(false);
+  const [manageOpen, setManageOpen] = useState(false);
+  // Wide shell's right-panel open/closed bit — chrome, not navigation (never in the URL/history,
+  // pr4-context.md §12.2). App-owned so it survives the `screen`/`reportsView` it is read
+  // alongside (WideShell's `resolvePanel`).
+  const [panelClosed, setPanelClosed] = useState(false);
   // Reports view kept in App — entering from the menu opens the card overview,
   // while a deep link (the menu's "Envelope budgets" shortcut) goes straight to the given subscreen
-  const [reportsView, setReportsView] = useState<ReportView>("overview");
+  const [reportsView, setReportsView] = useState<ReportView>(r0.reportsView);
   // Month report's selected day, kept in App for the SAME reason as `reportsView`: opening a
   // transaction from the day panel for edit switches `screen` to "addExpense" and back,
   // unmounting ReportsScreen (and MonthReport) in between — local state there would be lost.
@@ -92,7 +112,7 @@ export default function App() {
   const [monthDay, setMonthDay] = useState<string | null>(null);
   useEffect(() => setMonthDay(null), [month]);
   // full-screen envelope summary (push-nav like transaction editing); back → null
-  const [envView, setEnvView] = useState<{ envelopeId: string; month: string } | null>(null);
+  const [envView, setEnvView] = useState<{ envelopeId: string; month: string } | null>(r0.envelopeId ? { envelopeId: r0.envelopeId, month } : null);
   // screen to return to after saving/cancelling an edit (default start; from the list → list)
   const [editReturn, setEditReturn] = useState<ScreenId>("start");
   // transaction list filters kept high up so they survive an edit and return
@@ -116,6 +136,7 @@ export default function App() {
     if (empty) setWizard(true);
   }, [empty]);
   const onboarding = empty || wizard;
+  const wide = mode !== "phone" && !!state && !onboarding;
 
   // nav = entry from menu/navigation: a fresh Add returns to start;
   // Reports from the menu always start at the card overview (deep link overrides below)
@@ -186,7 +207,16 @@ export default function App() {
   const [envActions, setEnvActions] = useState<{ envelopeId: string; month: string } | null>(null);
   const envActionsMounted = useOpenedOnce(envActions !== null);
   const [envEdit, setEnvEdit] = useState<string | null>(null);
-  const openEnvelope = (envelopeId: string, m: string) => setEnvActions({ envelopeId, month: m });
+  // Phone: the action sheet (Transactions / Summary / Edit — EnvActionsSheet below). Wide: no
+  // sheet — `envView` wins `resolvePanel` on ANY screen (components/wide/panel.ts), so tapping an
+  // envelope opens its summary straight into the panel, like the phone's own push-nav summary.
+  // The sheet's other two actions survive on wide: "Transactions" already exists inside
+  // `EnvelopeScreen` (`onOpenTxns`); "Edit" arrives with PR6's `envForm` pane — interim, edit via
+  // Budget's own row editor, unchanged (pr4-task-7-brief.md).
+  const openEnvelope = (envelopeId: string, m: string) => {
+    if (mode !== "phone") setEnvView({ envelopeId, month: m });
+    else setEnvActions({ envelopeId, month: m });
+  };
   const actionsEnv = envActions ? (state?.envelopes.find((e) => e.id === envActions.envelopeId) ?? null) : null;
   const editEnv = envEdit ? (state?.envelopes.find((e) => e.id === envEdit) ?? null) : null;
   // editing from the list: remember where from, to return there (filters preserved)
@@ -200,7 +230,11 @@ export default function App() {
   };
   const doneEdit = () => {
     setEditTxn(null);
-    setScreen(editReturn);
+    // `history.back()` after a save is correct here: the entry below `/add` is the screen the
+    // edit came from, and `editTxn` is already cleared before popstate runs. `history.state`
+    // is our own marker — see `back()` below for what `true` vs `false`/`null` mean.
+    if (history.state === true) history.back();
+    else setScreen(editReturn);
   };
   const prev = () => setMonth((m) => shiftMonth(m, -1));
   const next = () => setMonth((m) => shiftMonth(m, 1));
@@ -232,10 +266,54 @@ export default function App() {
   // account's budget, so the decision screen takes over: export a backup / remove and continue.
   const foreign = bootStatus === "foreign";
 
+  // History wiring, one effect: popstate applies the parsed route through `nav()` — reusing its
+  // hygiene (clears presets/editTxn/envView), then overrides in the same batch exactly like the
+  // existing `openReports` deep-link pattern. The same pass also keeps one URL in sync with
+  // (screen, reportsView, envelopeId) — popstate self-suppresses because the derived URL then
+  // already equals `location` — and drops a deep-linked envelope id that turns out not to exist
+  // (stale link, wrong account) before it reaches the URL. `justPopped` marks that a correction
+  // (the drop above) is happening IN REACTION to a popstate rather than a fresh forward
+  // navigation: it must fix the entry we just landed on IN PLACE (replaceState), never push a new
+  // one — otherwise the stale entry stays in the stack and hardware/browser back re-lands on it
+  // forever (deleting the envelope this session, then paging back into it, would loop).
+  const justPopped = useRef(false);
+  const routingActive = state && !onboarding && !unauthed && !locked && !foreign;
+  useEffect(() => {
+    const onPop = () => {
+      justPopped.current = true;
+      const r = parseUrl(location.pathname, location.search);
+      nav(r.screen);
+      setReportsView(r.reportsView);
+      if (r.envelopeId) setEnvView({ envelopeId: r.envelopeId, month });
+    };
+    window.addEventListener("popstate", onPop);
+    if (routingActive) {
+      if (envView && !state?.envelopes.some((e) => e.id === envView.envelopeId)) setEnvView(null);
+      else {
+        const url = routeToUrl({ screen, reportsView, envelopeId: envView?.envelopeId ?? null });
+        // Entry 0 is stamped `false` at ACTIVATION ("stamp": in place, at the current url, no
+        // stack growth) so the FIRST navigation already pushes and hardware back from it returns
+        // to the start URL. Popstate corrections and pre-stamp deep-load canonicalisations
+        // replace in place; everything else is a real pushed entry (see `back()` below for what
+        // `true`/`false` mean). The decision itself is `historyAction` (routing.ts), unit-tested.
+        const act = historyAction(url !== location.pathname + location.search, history.state != null, justPopped.current);
+        if (act === "push") history.pushState(true, "", url);
+        else if (act !== "none") history.replaceState(history.state ?? false, "", url);
+        justPopped.current = false; // settled: consume the correction window whether or not this pass touched history
+      }
+    }
+    return () => window.removeEventListener("popstate", onPop);
+  });
+
   // Swipe right = go back (screens with a back arrow — pinned PWA has no Safari gesture).
   const canBack = envView !== null || screen === "addExpense" || screen === "settings";
   const back = () => {
-    if (envView) setEnvView(null);
+    // `history.state` is our own tracking marker: `true` on a real pushed entry (the user has
+    // navigated at least twice this session) — traverse it so the swipe gesture, the chevrons
+    // and the hardware back key land on the SAME entries. `false`/`null` mean entry 0 (the
+    // deep-loaded page, stamped in place without growing the stack) — legacy fallback below.
+    if (history.state === true) history.back();
+    else if (envView) setEnvView(null);
     else if (screen === "addExpense") {
       setEditTxn(null);
       setScreen(editReturn);
@@ -243,16 +321,16 @@ export default function App() {
   };
   const sw = useRef<{ x: number; y: number } | null>(null);
   const onTouchStart = (e: React.TouchEvent) => {
-    const t = e.touches[0]!;
-    sw.current = { x: t.clientX, y: t.clientY };
+    const touch = e.touches[0]!;
+    sw.current = { x: touch.clientX, y: touch.clientY };
   };
   const onTouchEnd = (e: React.TouchEvent) => {
     const st = sw.current;
     sw.current = null;
     if (!st) return;
-    const t = e.changedTouches[0]!;
-    const dx = t.clientX - st.x,
-      dy = t.clientY - st.y;
+    const touch = e.changedTouches[0]!;
+    const dx = touch.clientX - st.x,
+      dy = touch.clientY - st.y;
     if (canBack) {
       // from the left edge (edge-swipe) or a clear horizontal rightward gesture
       if (dx > 60 && Math.abs(dy) < 45 && (st.x < 40 || dx > 110)) back();
@@ -261,6 +339,100 @@ export default function App() {
     // without "back": edge-swipe from the very left edge opens the menu (like a native drawer)
     if (!drawer && !onboarding && st.x < 28 && dx > 60 && Math.abs(dy) < 45) setDrawer(true);
   };
+
+  // The per-screen switch, built once regardless of layout (wide's primary pane and phone's
+  // content area render the exact same element) — see `wide` below for where it lands.
+  const screenEl = state ? (
+    <>
+      {screen === "start" && (
+        <StartScreen
+          state={state}
+          month={month}
+          onOpenTxns={openTxns}
+          onOpenEnvelope={openEnvelope}
+          onMenu={() => setDrawer(true)}
+          onPrev={prev}
+          onNext={next}
+          onNav={nav}
+          onQuickAdd={onQuickAdd}
+          editWidgets={editWidgetsOpen}
+          onEditWidgets={setEditWidgetsOpen}
+        />
+      )}
+      {screen === "budget" && (
+        <LazyChunk onDismiss={() => nav("start")}>
+          <BudgetScreen
+            state={state}
+            month={month}
+            onMenu={() => setDrawer(true)}
+            onPrev={prev}
+            onNext={next}
+            onOpenEnvelope={openEnvelope}
+            initialSuggest={budgetSuggest}
+            onSuggestConsumed={() => setBudgetSuggest(false)}
+            initialFillGoals={budgetFillGoals}
+            onFillGoalsConsumed={() => setBudgetFillGoals(false)}
+            manageOpen={manageOpen}
+            onManageOpen={setManageOpen}
+          />
+        </LazyChunk>
+      )}
+      {screen === "transactions" && (
+        <LazyChunk onDismiss={() => nav("start")}>
+          <TransactionsScreen
+            state={state}
+            month={month}
+            onMenu={() => setDrawer(true)}
+            onPrev={prev}
+            onNext={next}
+            onEditTxn={(t) => editTxnFrom(t, "transactions")}
+            query={txQuery}
+            setQuery={setTxQuery}
+            filters={txFilters}
+            setFilters={setTxFilters}
+          />
+        </LazyChunk>
+      )}
+      {screen === "accounts" && (
+        <LazyChunk onDismiss={() => nav("start")}>
+          <AccountsScreen state={state} onMenu={() => setDrawer(true)} />
+        </LazyChunk>
+      )}
+      {screen === "reports" && (
+        <LazyChunk onDismiss={() => nav("start")}>
+          <ReportsScreen
+            state={state}
+            month={month}
+            view={wide ? "overview" : reportsView}
+            onView={setReportsView}
+            monthDay={monthDay}
+            onSelectDay={setMonthDay}
+            onOpenEnvelope={openEnvelope}
+            onFillGoals={openBudgetFillGoals}
+            onEditTxn={(t) => editTxnFrom(t, "reports")}
+            onMenu={() => setDrawer(true)}
+            onPrev={prev}
+            onNext={next}
+            onOpenTxns={openTxns}
+            // Wide only: `view` above is forced to "overview" so the primary pane always shows
+            // the hub (Task 6) — `selected` recovers what report is REALLY open (in the panel)
+            // purely so the hub can highlight its card; harmless on phone, where the hub only
+            // ever renders when `reportsView` already equals "overview" too (so this stays
+            // `undefined` whenever it could matter there).
+            selected={reportsView !== "overview" ? reportsView : undefined}
+          />
+        </LazyChunk>
+      )}
+      {screen === "addExpense" && (
+        <AddScreen state={state} editTxn={editTxn} onDone={doneEdit} initialTab={addPreset.tab} initialImport={addPreset.importSheet} />
+      )}
+      {screen === "settings" && (
+        <LazyChunk onDismiss={() => nav("start")}>
+          <SettingsScreen onBack={back} onInstall={() => setInstallSheet(true)} />
+        </LazyChunk>
+      )}
+    </>
+  ) : null;
 
   if (startupPresentation(bootStatus) === "splash") return <StartupSplash />;
 
@@ -289,6 +461,90 @@ export default function App() {
           </div>
         </div>
       </div>
+    );
+  }
+
+  // Wide: rail + band + panel replace the phone card entirely (the primary pane renders the
+  // SAME `screenEl`) — except on Add, which keeps the phone-column takeover below (interim by
+  // design, PR6's `add` pane replaces it — pr4-task-4-brief.md §4e).
+  //
+  // §13's per-screen band right-slot ("Edit widgets" on Start / "Manage envelopes" on Budget) —
+  // restored now that the widget-edit-sheet extraction (pr4-context.md header; the pull-forward
+  // of PR5 Task 1) bought back the §3f headroom this needed. Reuses the SAME lifted
+  // editWidgetsOpen/manageOpen state Start/Budget already drive their own pencils from, so
+  // opening from the band and opening from the phone header stay one piece of state each.
+  const wideRightSlot =
+    screen === "start"
+      ? { label: t("Edit widgets"), ariaLabel: t("Edit widgets"), onClick: () => setEditWidgetsOpen(true) }
+      : screen === "budget"
+        ? { label: t("Manage envelopes"), ariaLabel: t("Manage envelopes"), onClick: () => setManageOpen(true) }
+        : null;
+
+  if (wide && screen !== "addExpense") {
+    return (
+      <>
+        {/* The same global injector the phone card and the login backdrop mount — the wide tree
+            returns before either, so without its own instance the wide shell ran on UA defaults:
+            body kept its 8px margin (a page-level scrollbar eating real panel width at the 960px
+            clamp) and every rule the injector owns (:focus-visible ring, the sp/sk/fu keyframes,
+            .rpt-body's first-child reset) was silently off, on wide only. Exactly ONE instance is
+            mounted per render — the three returns are exclusive — and the injector itself is
+            idempotent (#g4 guard), so a login→wide transition never doubles the style element. */}
+        <StyleInjector />
+        <LazyChunk>
+          <WideShell
+            bag={{
+              mode,
+              screen,
+              nav,
+              month,
+              prev,
+              next,
+              reportsView,
+              envView,
+              openTxns,
+              panelClosed,
+              setEnvView,
+              setReportsView,
+              setPanelClosed,
+              // `wide` already implies `!!state` (its own definition above) — TS can't see through
+              // that boolean, so the assertion is the one place this fact needs spelling out.
+              state: state!,
+              onQuickAdd,
+              onFillGoals: openBudgetFillGoals,
+              onInstall: () => setInstallSheet(true),
+              // Task 6: the panel's own `ReportsScreen` instance needs the exact same entry points
+              // the primary pane's already uses, so opening an envelope / editing a transaction /
+              // picking a day from a report inside the panel behaves identically to doing it from
+              // the hub in the primary pane — same functions, not a wide-only fork of them.
+              onOpenEnvelope: openEnvelope,
+              onEditTxn: (t) => editTxnFrom(t, "reports"),
+              monthDay,
+              onSelectDay: setMonthDay,
+            }}
+            rightSlot={wideRightSlot}
+          >
+            {screenEl}
+          </WideShell>
+        </LazyChunk>
+        {/* Task 8's overlay audit: on phone these three render inside the phone card's own tree
+            below (SAME app-owned state — `installSheet`, no separate instance, M7); the wide
+            branch returns above that point, so it had never rendered them at all — Rail's
+            `onInstall` (bag above) and Settings' own install card (inside `screenEl`) could flip
+            `installSheet` to true with nothing to show it. Siblings of `WideShell` here, never
+            nested inside its transformed panel (house rule — a `position:fixed` Sheet/banner
+            under a `transform` ancestor breaks). No BottomNav exists on wide (the rail replaces
+            it), so the banner's clearance drops to the plain safe-area inset. */}
+        <LazyChunk variant="silent">
+          <InstallBanner offsetForNav={false} />
+        </LazyChunk>
+        {installSheetMounted && (
+          <LazyChunk variant="overlay" onDismiss={() => setInstallSheet(false)}>
+            <InstallSheet show={installSheet} onClose={() => setInstallSheet(false)} />
+          </LazyChunk>
+        )}
+        <UpdatePrompt />
+      </>
     );
   }
 
@@ -323,90 +579,10 @@ export default function App() {
           )}
           {state && !onboarding && envView && (
             <LazyChunk onDismiss={() => setEnvView(null)}>
-              <EnvelopeScreen envelopeId={envView.envelopeId} initialMonth={envView.month} onBack={() => setEnvView(null)} onOpenTxns={openTxns} />
+              <EnvelopeScreen envelopeId={envView.envelopeId} initialMonth={envView.month} onBack={back} onOpenTxns={openTxns} />
             </LazyChunk>
           )}
-          {state && !onboarding && !envView && (
-            <>
-              {screen === "start" && (
-                <StartScreen
-                  state={state}
-                  month={month}
-                  onOpenTxns={openTxns}
-                  onOpenEnvelope={openEnvelope}
-                  onMenu={() => setDrawer(true)}
-                  onPrev={prev}
-                  onNext={next}
-                  onNav={nav}
-                  onQuickAdd={onQuickAdd}
-                />
-              )}
-              {screen === "budget" && (
-                <LazyChunk onDismiss={() => nav("start")}>
-                  <BudgetScreen
-                    state={state}
-                    month={month}
-                    onMenu={() => setDrawer(true)}
-                    onPrev={prev}
-                    onNext={next}
-                    onOpenEnvelope={openEnvelope}
-                    initialSuggest={budgetSuggest}
-                    onSuggestConsumed={() => setBudgetSuggest(false)}
-                    initialFillGoals={budgetFillGoals}
-                    onFillGoalsConsumed={() => setBudgetFillGoals(false)}
-                  />
-                </LazyChunk>
-              )}
-              {screen === "transactions" && (
-                <LazyChunk onDismiss={() => nav("start")}>
-                  <TransactionsScreen
-                    state={state}
-                    month={month}
-                    onMenu={() => setDrawer(true)}
-                    onPrev={prev}
-                    onNext={next}
-                    onEditTxn={(t) => editTxnFrom(t, "transactions")}
-                    query={txQuery}
-                    setQuery={setTxQuery}
-                    filters={txFilters}
-                    setFilters={setTxFilters}
-                  />
-                </LazyChunk>
-              )}
-              {screen === "accounts" && (
-                <LazyChunk onDismiss={() => nav("start")}>
-                  <AccountsScreen state={state} onMenu={() => setDrawer(true)} />
-                </LazyChunk>
-              )}
-              {screen === "reports" && (
-                <LazyChunk onDismiss={() => nav("start")}>
-                  <ReportsScreen
-                    state={state}
-                    month={month}
-                    view={reportsView}
-                    onView={setReportsView}
-                    monthDay={monthDay}
-                    onSelectDay={setMonthDay}
-                    onOpenEnvelope={openEnvelope}
-                    onFillGoals={openBudgetFillGoals}
-                    onEditTxn={(t) => editTxnFrom(t, "reports")}
-                    onMenu={() => setDrawer(true)}
-                    onPrev={prev}
-                    onNext={next}
-                    onOpenTxns={openTxns}
-                  />
-                </LazyChunk>
-              )}
-              {screen === "addExpense" && (
-                <AddScreen state={state} editTxn={editTxn} onDone={doneEdit} initialTab={addPreset.tab} initialImport={addPreset.importSheet} />
-              )}
-              {screen === "settings" && (
-                <LazyChunk onDismiss={() => nav("start")}>
-                  <SettingsScreen onNav={nav} onInstall={() => setInstallSheet(true)} />
-                </LazyChunk>
-              )}
-            </>
-          )}
+          {state && !onboarding && !envView && screenEl}
         </div>
         {!["addExpense", "settings"].includes(screen) && !onboarding && !envView && <BottomNav active={screen} onNav={nav} />}
         {/* badge anchors top-right; on Add the header is the type tabs → collision, hide it */}
@@ -447,7 +623,7 @@ export default function App() {
             BottomNav the banner's offset clears is hidden there, and it must not cover the skeleton */}
         {state && !onboarding && (
           <LazyChunk variant="silent">
-            <InstallBanner />
+            <InstallBanner offsetForNav />
           </LazyChunk>
         )}
         {installSheetMounted && (

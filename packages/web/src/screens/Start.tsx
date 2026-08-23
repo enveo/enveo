@@ -1,15 +1,21 @@
-import { useState } from "react";
+import { lazy, useContext } from "react";
 import { Header, type ScreenId } from "../components/chrome";
 import { CardBox, useBand } from "../components/kit";
-import { EditWidgetsSheet, START_WIDGETS } from "../components/widgets";
+import { LazyChunk, useOpenedOnce } from "../components/lazy";
+import { START_WIDGETS } from "../components/widgets";
 import type { StateResponse } from "../lib/api";
 import { useMask, useSettings, useTheme } from "../lib/contexts";
 import { todayISO } from "../lib/dates";
 import { LOCALE_OF } from "../lib/format";
 import { useT } from "../lib/i18n";
 import { Ico } from "../lib/icons";
+import { InWideShell } from "../lib/shellContext";
 import { font, P, TEAL, tint } from "../lib/theme";
 import { monthRuler, tbbState } from "../lib/uiState";
+
+// Lazy: the edit sheet is only needed once the pencil is tapped (§3f) — see the file header
+// comment in EditWidgetsSheet.tsx for why it lives in its own chunk.
+const EditWidgetsSheet = lazy(() => import("../components/EditWidgetsSheet").then((m) => ({ default: m.EditWidgetsSheet })));
 
 export function StartScreen({
   state,
@@ -21,6 +27,8 @@ export function StartScreen({
   onNext,
   onNav,
   onQuickAdd,
+  editWidgets,
+  onEditWidgets,
 }: {
   state: StateResponse;
   month: string;
@@ -32,17 +40,21 @@ export function StartScreen({
   onNav: (s: ScreenId) => void;
   /** "transfer" opens Add pre-set to the Transfer tab; "import" opens Add with the screenshot-import sheet already showing; "suggest" opens Budget with the suggest sheet already showing. */
   onQuickAdd: (kind: "transfer" | "import" | "suggest") => void;
+  /** "Edit widgets" sheet open state — App-owned so the wide shell's band right-slot (PR4 §13) can trigger it too. */
+  editWidgets: boolean;
+  onEditWidgets: (open: boolean) => void;
 }) {
   const C = useTheme();
   const M = useMask();
   const { t, lang } = useT();
   const { settings } = useSettings();
-  const [editWidgets, setEditWidgets] = useState(false);
+  const inWide = useContext(InWideShell);
   // month summary without the fractional part (strips e.g. ",00" / ".00" from the formatted amount), with the discreet mask
   const MW = (minor: number) => M(minor).replace(/[.,]\d\d(?!\d)/, "");
   const hs = tbbState(state.readyToAssign);
   const ruler = monthRuler(todayISO());
   const { band, hc } = useBand();
+  const editSheetMounted = useOpenedOnce(editWidgets);
   const shortDay = new Intl.DateTimeFormat(LOCALE_OF[lang], { day: "numeric", month: "long", timeZone: "UTC" }).format(new Date(`${todayISO()}T00:00:00Z`));
   const IncomeExpense = () => (
     <span style={{ fontSize: 11, color: hc(C.headerMute, C.soft), whiteSpace: "nowrap", fontVariantNumeric: "tabular-nums" }}>
@@ -72,7 +84,9 @@ export function StartScreen({
             : undefined
         }
       >
-        <Header month={month} onMenu={onMenu} onPrev={onPrev} onNext={onNext} onRight={() => setEditWidgets(true)} rightIcon="pencil" onBand={band} />
+        {!inWide && (
+          <Header month={month} onMenu={onMenu} onPrev={onPrev} onNext={onNext} onRight={() => onEditWidgets(true)} rightIcon="pencil" onBand={band} />
+        )}
         <div style={{ padding: `4px ${P + 4}px 0`, textAlign: band ? "center" : "left" }}>
           {hs === "zero" && (
             <div style={{ display: "flex", justifyContent: band ? "center" : "space-between", alignItems: "center", gap: 10 }}>
@@ -210,7 +224,11 @@ export function StartScreen({
           );
         })}
 
-      <EditWidgetsSheet show={editWidgets} state={state} onClose={() => setEditWidgets(false)} />
+      {editSheetMounted && (
+        <LazyChunk variant="overlay" onDismiss={() => onEditWidgets(false)}>
+          <EditWidgetsSheet show={editWidgets} state={state} onClose={() => onEditWidgets(false)} />
+        </LazyChunk>
+      )}
     </div>
   );
 }

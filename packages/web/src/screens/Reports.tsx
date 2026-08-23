@@ -27,7 +27,7 @@ import { MonthReport } from "./reports/MonthReport";
 import { ReportsHub } from "./reports/ReportsHub";
 import { SpendingReport } from "./reports/SpendingReport";
 import { TrendsReport } from "./reports/TrendsReport";
-import type { ReportView } from "./reports/types";
+import type { ReportTab, ReportView } from "./reports/types";
 
 export type { ReportTab, ReportView } from "./reports/types";
 
@@ -45,6 +45,7 @@ export function ReportsScreen({
   onPrev,
   onNext,
   onOpenTxns,
+  selected,
 }: {
   state: StateResponse;
   month: string;
@@ -59,6 +60,10 @@ export function ReportsScreen({
   onPrev: () => void;
   onNext: () => void;
   onOpenTxns: (f: { envId?: string; envIds?: ReadonlySet<string>; catId?: string; placeId?: string }) => void;
+  /** Wide only: the report tab open in the side panel (App forces `view` to "overview" for the
+   *  primary pane so the hub always stays put there — pr4-task-6-brief.md §6) so the hub can
+   *  highlight that card. `undefined` on phone and whenever nothing is open in the panel. */
+  selected?: ReportTab;
 }) {
   const M = useMask();
   const version = useLedgerVersion();
@@ -172,6 +177,7 @@ export function ReportsScreen({
         onMenu={onMenu}
         onPrev={onPrev}
         onNext={onNext}
+        selected={selected}
       />
     );
   }

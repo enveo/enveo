@@ -37,6 +37,10 @@ export function UpdatePrompt() {
   }, []);
 
   if (!need) return null;
+  // Stays viewport-centered on wide too — DELIBERATE (small, rare, self-dismissing; repositioning
+  // it against the primary pane/rail buys nothing until it's actually measured). Owner: PR6 Task 6
+  // (sheet triage sweep) measures this at 1440x900/1104x992 and only repositions it if it visually
+  // collides with the rail or panel (pr4-context.md's Task 8 entry names this deferral verbatim).
   return (
     <div
       style={{

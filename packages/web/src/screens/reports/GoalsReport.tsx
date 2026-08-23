@@ -1,7 +1,7 @@
 import { computeGoalHistory, computeStateResponse } from "@enveo/shared";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { GoalRing, useBand } from "../../components/kit";
-import { Bar, ReportShell, UndoBar, type UndoToast } from "../../components/reportKit";
+import { Bar, ReportShell, UndoBar } from "../../components/reportKit";
 import type { StateResponse } from "../../lib/api";
 import { useTheme } from "../../lib/contexts";
 import { currentMonth, monthLabel, monthShortLabel } from "../../lib/dates";
@@ -16,9 +16,15 @@ import { type Mask, TITLES } from "./types";
 /** One in-flight per-card "Fill" the toast can still undo — same shape/rule as
  *  `BudgetsReport.PendingUndo` (`previousAllocated` captured fresh right before the write, `month`
  *  pinned to the viewed month at press time so navigating away drops it rather than undoing into
- *  the wrong month). `message` is built once at push time so the shared `UndoBar` only ever needs
- *  `{ id, message }`. */
-interface PendingGoalFill extends UndoToast {
+ *  the wrong month). `amount`/`name` are the raw pieces this screen's own toast copy is built
+ *  from — composed into `message` AT RENDER (below), never frozen at push time: same
+ *  discreet-toggle-beside-an-open-report exposure as `BudgetsReport`'s fix (the wide shell's rail
+ *  user menu, unreachable on phone). The shared `UndoBar` still only ever sees `{ id, message }`;
+ *  the mapping happens where this state is handed to it. */
+interface PendingGoalFill {
+  id: string;
+  amount: number;
+  name: string;
   envelopeId: string;
   month: string;
   previousAllocated: number;
@@ -115,6 +121,13 @@ export function GoalsReport({
   const { t, tp, lang } = useT();
   const { hc } = useBand();
   const ledger = store.getLedger();
+  const active = state.envelopes.filter((e) => !e.archived);
+  const rows = active
+    .flatMap((e) => {
+      const gp = goalProgress(e);
+      return gp ? [{ e, gp }] : [];
+    })
+    .sort((a, b) => a.gp.pct - b.gp.pct || a.e.name.localeCompare(b.e.name));
   // One history per goal envelope, computed when the DATA or the viewed month changes — not on
   // every render. Each computeGoalHistory call runs six full-ledger computeBudgetState passes, so
   // recomputing N of them per render (every toast tick, every press) repeated the app's heaviest
@@ -123,6 +136,15 @@ export function GoalsReport({
   // Deps: `state` alone — it is rebuilt (new identity) whenever the ledger or the viewed month
   // changes, so it carries `ledger`/`rows` freshness; `ledger` itself is a mutable store
   // reference with no identity signal of its own. (exhaustive-deps is disabled repo-wide.)
+  //
+  // Pre-existing bug fixed here, found while verifying this task's UndoBar change in the
+  // browser (not part of the wide-shell work otherwise): this `useMemo` used to sit ABOVE
+  // `rows` and close over it anyway — `rows` is a `const`, so referencing it before its own
+  // declaration statement runs is a temporal-dead-zone `ReferenceError`, thrown on every render
+  // that reaches the non-empty-ledger branch (i.e. any real, booted session) regardless of
+  // whether any envelope actually has a goal. No render-scope React test ever mounted this
+  // component, so nothing caught it. Moving the block below `rows`'s declaration is a pure
+  // reorder — same deps, same body, no behavior change once it can actually run.
   const histories = useMemo(() => {
     if (!ledger) return new Map<string, NonNullable<ReturnType<typeof computeGoalHistory>>>();
     const out = new Map<string, NonNullable<ReturnType<typeof computeGoalHistory>>>();
@@ -132,13 +154,6 @@ export function GoalsReport({
     }
     return out;
   }, [state]);
-  const active = state.envelopes.filter((e) => !e.archived);
-  const rows = active
-    .flatMap((e) => {
-      const gp = goalProgress(e);
-      return gp ? [{ e, gp }] : [];
-    })
-    .sort((a, b) => a.gp.pct - b.gp.pct || a.e.name.localeCompare(b.e.name));
   const noGoalCount = active.length - rows.length;
   const fundedSum = rows.reduce((s, { e }) => s + Math.min(Math.max(0, e.allocated), e.monthlyTarget ?? 0), 0);
   const targetSum = rows.reduce((s, { e }) => s + (e.monthlyTarget ?? 0), 0);
@@ -194,8 +209,7 @@ export function GoalsReport({
     const id = crypto.randomUUID();
     const timer = setTimeout(() => dismissFill(id), GOAL_UNDO_TIMEOUT_MS);
     fillTimers.current.set(id, timer);
-    const message = t("Filled {amount} in {name}", { amount: M(fillable), name: envelopeName });
-    setPendingFills((prev) => [...prev, { id, message, envelopeId, month: state.month, previousAllocated }]);
+    setPendingFills((prev) => [...prev, { id, amount: fillable, name: envelopeName, envelopeId, month: state.month, previousAllocated }]);
   };
   const undoFill = (u: PendingGoalFill) => {
     local.setDisplayedAllocation({ envelopeId: u.envelopeId, month: u.month, amount: u.previousAllocated });
@@ -397,7 +411,13 @@ export function GoalsReport({
           </>
         )}
       </ReportShell>
-      <UndoBar pending={pendingFills} onUndo={undoFill} onDismiss={dismissFill} />
+      {/* Composed HERE, not at push time (see `PendingGoalFill`'s docstring) — `M`/`t` re-read on
+          every render so a discreet-mode toggle while this toast is showing re-masks it. */}
+      <UndoBar
+        pending={pendingFills.map((p) => ({ ...p, message: t("Filled {amount} in {name}", { amount: M(p.amount), name: p.name }) }))}
+        onUndo={undoFill}
+        onDismiss={dismissFill}
+      />
     </>
   );
 }
