@@ -1,10 +1,12 @@
 import { type DailySpendingPoint, type Money, NULL_LABEL, type SpendingDimension } from "@enveo/shared";
 import type { CSSProperties, ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { useCompactMask, useTheme } from "../lib/contexts";
 import { monthLabel, monthShortLabel } from "../lib/dates";
 import { type Message, useT } from "../lib/i18n";
-import { P, TEAL, type Theme } from "../lib/theme";
+import { font, P, TEAL, type Theme } from "../lib/theme";
 import { useElementWidth } from "../lib/useElementWidth";
+import { PHONE_COL } from "../lib/viewMode";
 import { Header } from "./chrome";
 import { useBand } from "./kit";
 
@@ -12,9 +14,10 @@ import { useBand } from "./kit";
  * Report component kit — the shared visual language for every report subscreen (Tasks 8–12):
  * a `ReportShell` band header (hero number + optional chart on `C.headerBg` when the theme is
  * Duet), plus small primitives (`Bar`, `SegBar`, `DeltaTag`, `CalendarHeatmap`, `TrendSpark`,
- * `Sparkline`) that read tokens off `useTheme()`/`useBand()` instead of hardcoding colors.
- * Every SVG color goes through `style` — `var(--accent)` etc. do not resolve in presentation
- * attributes. Status colors (pos/warn/neg) never carry meaning alone; callers supply the label.
+ * `Sparkline`, `UndoBar`) that read tokens off `useTheme()`/`useBand()` instead of hardcoding
+ * colors. Every SVG color goes through `style` — `var(--accent)` etc. do not resolve in
+ * presentation attributes. Status colors (pos/warn/neg) never carry meaning alone; callers
+ * supply the label.
  */
 
 /** Fields every `ReportShell` render needs regardless of variant. */
@@ -238,6 +241,95 @@ export function DeltaTag({ pct, downIsGood = true }: { pct: number | null; downI
   const good = up ? !downIsGood : downIsGood;
   const color = good ? C.pos : C.neg;
   return <span style={{ color, fontVariantNumeric: "tabular-nums" }}>{`${up ? "↑" : "↓"} ${n}%`}</span>;
+}
+
+/** One pending action a report screen's undo toast can still reverse — a ready-to-render
+ *  `message` (each screen builds its own whole-phrase copy, e.g. "Covered {amount} in {name}"
+ *  vs. "Filled {amount} in {name}"; this component only renders the string, it never assembles
+ *  one, so a new consumer's wording is never forced through this file) plus whatever the
+ *  caller's own `id` needs to be to dismiss/undo it.
+ *
+ *  Originally screen-local to `BudgetsReport`'s checklist (deliberately, per its own comment,
+ *  until "a second consumer needs one"); promoted here when the Goals report became that second
+ *  consumer. `BudgetsReport` keeps its own richer pending-undo shape (envelope id, month, the
+ *  previous allocation to restore) — only `{ id, message }` is what this component itself needs. */
+export interface UndoToast {
+  id: string;
+  message: string;
+}
+
+/**
+ * Stacking undo toast, rendered via `createPortal(document.body)`: a CSS `transform` on an
+ * ancestor (a screen's `fi` entrance, sheet animations elsewhere) breaks `position: fixed`
+ * descendants (known pitfall) — the portal sidesteps that entirely.
+ *
+ * Stacks rather than replacing or queuing one at a time: firing two undoable actions in quick
+ * succession must not silently lose either captured undo value or risk applying one to the wrong
+ * target, and a queue would delay the second toast behind the first — exactly the fast multi-fire
+ * flow these actions exist to speed up. Newest goes on top; each entry dismisses independently.
+ */
+export function UndoBar<T extends UndoToast>({ pending, onUndo, onDismiss }: { pending: T[]; onUndo: (item: T) => void; onDismiss: (id: string) => void }) {
+  const { t } = useT();
+  if (pending.length === 0) return null;
+  return createPortal(
+    <div
+      style={{
+        position: "fixed",
+        left: 12,
+        right: 12,
+        bottom: "calc(78px + env(safe-area-inset-bottom))",
+        maxWidth: PHONE_COL,
+        margin: "0 auto",
+        zIndex: 80,
+        display: "flex",
+        flexDirection: "column-reverse",
+        gap: 8,
+      }}
+    >
+      {pending.map((u) => (
+        <div
+          key={u.id}
+          role="status"
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 10,
+            background: TEAL,
+            color: "#fff",
+            borderRadius: 12,
+            padding: "10px 12px",
+            boxShadow: "0 6px 20px rgba(0,0,0,0.25)",
+            fontFamily: font,
+          }}
+        >
+          <span style={{ flex: 1, fontSize: 13, fontWeight: 600 }}>{u.message}</span>
+          <button
+            onClick={() => onUndo(u)}
+            style={{
+              border: "none",
+              background: "#fff",
+              color: TEAL,
+              borderRadius: 8,
+              padding: "6px 12px",
+              fontSize: 12.5,
+              fontWeight: 700,
+              cursor: "pointer",
+            }}
+          >
+            {t("Undo")}
+          </button>
+          <button
+            onClick={() => onDismiss(u.id)}
+            aria-label={t("Close")}
+            style={{ border: "none", background: "transparent", color: "#fff", fontSize: 16, cursor: "pointer", lineHeight: 1, padding: 4 }}
+          >
+            ×
+          </button>
+        </div>
+      ))}
+    </div>,
+    document.body,
+  );
 }
 
 /** Translates the neutral "no X assigned" sentinel `computeSpendingByDimension`/

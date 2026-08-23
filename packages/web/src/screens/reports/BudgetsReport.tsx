@@ -1,8 +1,7 @@
 import { computeStateResponse } from "@enveo/shared";
 import { type ReactNode, useEffect, useRef, useState } from "react";
-import { createPortal } from "react-dom";
 import { useBand } from "../../components/kit";
-import { Bar, ReportShell } from "../../components/reportKit";
+import { Bar, ReportShell, UndoBar, type UndoToast } from "../../components/reportKit";
 import type { StateResponse } from "../../lib/api";
 import { useTheme } from "../../lib/contexts";
 import { todayISO } from "../../lib/dates";
@@ -11,107 +10,23 @@ import { useT } from "../../lib/i18n";
 import { local } from "../../lib/mutate";
 import { type BudgetStep, budgetPace, budgetRowPresentation, budgetSteps, budgetUsage, compareBudgetUsageRows, monthProgress } from "../../lib/reportSummary";
 import { store } from "../../lib/store";
-import { font, TEAL, tint } from "../../lib/theme";
-import { PHONE_COL } from "../../lib/viewMode";
+import { TEAL, tint } from "../../lib/theme";
 import { type Mask, TITLES } from "./types";
 
 /** One in-flight "Cover"/"Top up" the checklist can still undo. Captured entirely at press time —
  *  `previousAllocated` is the fresh `allocated` read right before the write, so undo is just
- *  writing that same number back through the same absolute-amount API (no inverse op needed). */
-interface PendingUndo {
-  id: string;
+ *  writing that same number back through the same absolute-amount API (no inverse op needed).
+ *  `message` is this screen's own copy ("Covered …" vs. "Topped up …", by `kind`), built once at
+ *  push time so `UndoBar` — shared with the Goals report, its second consumer — never needs to
+ *  know this checklist's `kind`/`amount`/`envelopeName` shape, only `{ id, message }`. */
+interface PendingUndo extends UndoToast {
   envelopeId: string;
   /** The month the write targeted — always the VIEWED month at press time, never re-derived later. */
   month: string;
-  envelopeName: string;
-  kind: BudgetStep["kind"];
-  /** The amount actually moved (`step.fundable`, already capped at the pool). */
-  amount: number;
   previousAllocated: number;
 }
 
 const UNDO_TIMEOUT_MS = 6000;
-
-/**
- * The checklist's own undo toast — deliberately LOCAL to this screen, not "the app's toast
- * system" (there isn't one yet; see the task-3 brief). Promoting this to a shared component is a
- * separate decision for whenever a second consumer needs one.
- *
- * Rendered via createPortal(document.body): a CSS `transform` on an ancestor (this screen's `fi`
- * entrance, sheet animations elsewhere) breaks `position: fixed` descendants (known pitfall).
- *
- * Stacks rather than replacing or queuing one at a time: covering two steps in quick succession
- * must not silently lose either captured undo value or risk applying one to the wrong envelope,
- * and a queue would delay the second toast behind the first — exactly the multi-click flow this
- * checklist exists to speed up. Newest goes on top; each entry dismisses independently.
- */
-function UndoStack({ pending, onUndo, onDismiss, M }: { pending: PendingUndo[]; onUndo: (u: PendingUndo) => void; onDismiss: (id: string) => void; M: Mask }) {
-  const { t } = useT();
-  if (pending.length === 0) return null;
-  return createPortal(
-    <div
-      style={{
-        position: "fixed",
-        left: 12,
-        right: 12,
-        bottom: "calc(78px + env(safe-area-inset-bottom))",
-        maxWidth: PHONE_COL,
-        margin: "0 auto",
-        zIndex: 80,
-        display: "flex",
-        flexDirection: "column-reverse",
-        gap: 8,
-      }}
-    >
-      {pending.map((u) => (
-        <div
-          key={u.id}
-          role="status"
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 10,
-            background: TEAL,
-            color: "#fff",
-            borderRadius: 12,
-            padding: "10px 12px",
-            boxShadow: "0 6px 20px rgba(0,0,0,0.25)",
-            fontFamily: font,
-          }}
-        >
-          <span style={{ flex: 1, fontSize: 13, fontWeight: 600 }}>
-            {u.kind === "over"
-              ? t("Covered {amount} in {name}", { amount: M(u.amount), name: u.envelopeName })
-              : t("Topped up {amount} in {name}", { amount: M(u.amount), name: u.envelopeName })}
-          </span>
-          <button
-            onClick={() => onUndo(u)}
-            style={{
-              border: "none",
-              background: "#fff",
-              color: TEAL,
-              borderRadius: 8,
-              padding: "6px 12px",
-              fontSize: 12.5,
-              fontWeight: 700,
-              cursor: "pointer",
-            }}
-          >
-            {t("Undo")}
-          </button>
-          <button
-            onClick={() => onDismiss(u.id)}
-            aria-label={t("Close")}
-            style={{ border: "none", background: "transparent", color: "#fff", fontSize: 16, cursor: "pointer", lineHeight: 1, padding: 4 }}
-          >
-            ×
-          </button>
-        </div>
-      ))}
-    </div>,
-    document.body,
-  );
-}
 
 /** One envelope row shared by the checklist's collapsed "healthy" list: name + right-aligned
  *  status (colored per section), then a progress `Bar`. An ignored step's envelope renders here
@@ -267,10 +182,11 @@ export function BudgetsReport({
     const id = crypto.randomUUID();
     const timer = setTimeout(() => dismissUndo(id), UNDO_TIMEOUT_MS);
     undoTimers.current.set(id, timer);
-    setPendingUndos((prev) => [
-      ...prev,
-      { id, envelopeId: step.envelopeId, month: state.month, envelopeName: step.name, kind: step.kind, amount: step.fundable, previousAllocated },
-    ]);
+    const message =
+      step.kind === "over"
+        ? t("Covered {amount} in {name}", { amount: M(step.fundable), name: step.name })
+        : t("Topped up {amount} in {name}", { amount: M(step.fundable), name: step.name });
+    setPendingUndos((prev) => [...prev, { id, message, envelopeId: step.envelopeId, month: state.month, previousAllocated }]);
   };
 
   const undoStep = (u: PendingUndo) => {
@@ -588,7 +504,7 @@ export function BudgetsReport({
           </div>
         )}
       </ReportShell>
-      <UndoStack pending={pendingUndos} onUndo={undoStep} onDismiss={dismissUndo} M={M} />
+      <UndoBar pending={pendingUndos} onUndo={undoStep} onDismiss={dismissUndo} />
     </>
   );
 }
