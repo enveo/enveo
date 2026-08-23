@@ -1,7 +1,7 @@
 import { computeStateResponse } from "@enveo/shared";
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import { useBand } from "../../components/kit";
-import { Bar, ReportShell, UndoBar, type UndoToast } from "../../components/reportKit";
+import { Bar, ReportShell, UndoBar } from "../../components/reportKit";
 import type { StateResponse } from "../../lib/api";
 import { useTheme } from "../../lib/contexts";
 import { todayISO } from "../../lib/dates";
@@ -16,10 +16,18 @@ import { type Mask, TITLES } from "./types";
 /** One in-flight "Cover"/"Top up" the checklist can still undo. Captured entirely at press time —
  *  `previousAllocated` is the fresh `allocated` read right before the write, so undo is just
  *  writing that same number back through the same absolute-amount API (no inverse op needed).
- *  `message` is this screen's own copy ("Covered …" vs. "Topped up …", by `kind`), built once at
- *  push time so `UndoBar` — shared with the Goals report, its second consumer — never needs to
- *  know this checklist's `kind`/`amount`/`envelopeName` shape, only `{ id, message }`. */
-interface PendingUndo extends UndoToast {
+ *  `kind`/`amount`/`name` are the raw pieces this screen's own toast copy ("Covered …" vs.
+ *  "Topped up …") is built from — composed into `message` AT RENDER (below), never frozen at push
+ *  time: the wide shell's rail user menu makes the discreet toggle reachable beside an open report
+ *  (impossible on phone, where the Drawer covers it), so a toast frozen as a string would keep
+ *  showing a raw or stale-masked amount across that toggle. `UndoBar` — shared with the Goals
+ *  report, its second consumer — still only ever sees `{ id, message }`; the mapping happens where
+ *  this state is handed to it. */
+interface PendingUndo {
+  id: string;
+  kind: BudgetStep["kind"];
+  amount: number;
+  name: string;
   envelopeId: string;
   /** The month the write targeted — always the VIEWED month at press time, never re-derived later. */
   month: string;
@@ -182,11 +190,10 @@ export function BudgetsReport({
     const id = crypto.randomUUID();
     const timer = setTimeout(() => dismissUndo(id), UNDO_TIMEOUT_MS);
     undoTimers.current.set(id, timer);
-    const message =
-      step.kind === "over"
-        ? t("Covered {amount} in {name}", { amount: M(step.fundable), name: step.name })
-        : t("Topped up {amount} in {name}", { amount: M(step.fundable), name: step.name });
-    setPendingUndos((prev) => [...prev, { id, message, envelopeId: step.envelopeId, month: state.month, previousAllocated }]);
+    setPendingUndos((prev) => [
+      ...prev,
+      { id, kind: step.kind, amount: step.fundable, name: step.name, envelopeId: step.envelopeId, month: state.month, previousAllocated },
+    ]);
   };
 
   const undoStep = (u: PendingUndo) => {
@@ -504,7 +511,21 @@ export function BudgetsReport({
           </div>
         )}
       </ReportShell>
-      <UndoBar pending={pendingUndos} onUndo={undoStep} onDismiss={dismissUndo} />
+      {/* Composed HERE, not at push time (see `PendingUndo`'s docstring): `M`/`t` are re-read on
+          every render, so a discreet-mode toggle while this toast is showing re-masks (or
+          reveals) it instead of the toast keeping whatever the amount looked like when the
+          button was pressed. */}
+      <UndoBar
+        pending={pendingUndos.map((p) => ({
+          ...p,
+          message:
+            p.kind === "over"
+              ? t("Covered {amount} in {name}", { amount: M(p.amount), name: p.name })
+              : t("Topped up {amount} in {name}", { amount: M(p.amount), name: p.name }),
+        }))}
+        onUndo={undoStep}
+        onDismiss={dismissUndo}
+      />
     </>
   );
 }

@@ -207,7 +207,16 @@ export default function App() {
   const [envActions, setEnvActions] = useState<{ envelopeId: string; month: string } | null>(null);
   const envActionsMounted = useOpenedOnce(envActions !== null);
   const [envEdit, setEnvEdit] = useState<string | null>(null);
-  const openEnvelope = (envelopeId: string, m: string) => setEnvActions({ envelopeId, month: m });
+  // Phone: the action sheet (Transactions / Summary / Edit — EnvActionsSheet below). Wide: no
+  // sheet — `envView` wins `resolvePanel` on ANY screen (components/wide/panel.ts), so tapping an
+  // envelope opens its summary straight into the panel, like the phone's own push-nav summary.
+  // The sheet's other two actions survive on wide: "Transactions" already exists inside
+  // `EnvelopeScreen` (`onOpenTxns`); "Edit" arrives with PR6's `envForm` pane — interim, edit via
+  // Budget's own row editor, unchanged (pr4-task-7-brief.md).
+  const openEnvelope = (envelopeId: string, m: string) => {
+    if (mode !== "phone") setEnvView({ envelopeId, month: m });
+    else setEnvActions({ envelopeId, month: m });
+  };
   const actionsEnv = envActions ? (state?.envelopes.find((e) => e.id === envActions.envelopeId) ?? null) : null;
   const editEnv = envEdit ? (state?.envelopes.find((e) => e.id === envEdit) ?? null) : null;
   // editing from the list: remember where from, to return there (filters preserved)
