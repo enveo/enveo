@@ -61,20 +61,25 @@ function widgetSubtitle(w: WidgetConfig, state: StateResponse, t: (m: Message, p
     case "reportNetWorth":
       return t("12-month sparkline");
     case "attention":
-      return t("budget checklist");
+      return t("Overspends, pace risks and shortfalls");
     case "recent":
       return t("latest transactions");
+    // byte-identical to reportCashflow's own subtitle — same "this month" fact, one translation.
     case "spending":
-      return t("this month's total");
+      return t("current month");
+    // byte-identical to GoalsReport's eyebrow — same report, same key, one translation.
     case "goals":
-      return t("progress toward targets");
+      return t("Monthly goals");
     case "trends":
-      return t("6-month chart");
+      return t("6-month sparklines");
     case "heatmap":
-      return t("daily spending calendar");
+      return t("daily spending heatmap");
   }
 }
 
+/** Twelve rows of these live in a `tall` sheet (§ house rule: touch targets ≥30×30, MEASURED) — the
+ *  pill stays its original 40×22 visual size, but the `<button>` itself grows to a ≥30px-tall hit
+ *  box (flex-centered around the pill) so the extra area is invisible, not just decorative padding. */
 function Toggle({ on, onClick, label }: { on: boolean; onClick: () => void; label: string }) {
   const C = useTheme();
   return (
@@ -83,11 +88,12 @@ function Toggle({ on, onClick, label }: { on: boolean; onClick: () => void; labe
       aria-label={label}
       aria-pressed={on}
       style={{
-        width: 40,
-        height: 22,
-        borderRadius: 12,
-        background: on ? "var(--accent)" : C.line,
-        position: "relative",
+        width: 44,
+        height: 32,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        background: "none",
         border: "none",
         cursor: "pointer",
         flexShrink: 0,
@@ -96,17 +102,28 @@ function Toggle({ on, onClick, label }: { on: boolean; onClick: () => void; labe
     >
       <span
         style={{
-          position: "absolute",
-          top: 2,
-          left: on ? 20 : 2,
-          width: 18,
-          height: 18,
-          borderRadius: "50%",
-          background: "#fff",
-          transition: "left .2s",
-          boxShadow: "0 1px 2px rgba(0,0,0,0.2)",
+          width: 40,
+          height: 22,
+          borderRadius: 12,
+          background: on ? "var(--accent)" : C.line,
+          position: "relative",
+          flexShrink: 0,
         }}
-      />
+      >
+        <span
+          style={{
+            position: "absolute",
+            top: 2,
+            left: on ? 20 : 2,
+            width: 18,
+            height: 18,
+            borderRadius: "50%",
+            background: "#fff",
+            transition: "left .2s",
+            boxShadow: "0 1px 2px rgba(0,0,0,0.2)",
+          }}
+        />
+      </span>
     </button>
   );
 }
@@ -467,72 +484,80 @@ export function EditWidgetsSheet({ show, state, onClose }: { show: boolean; stat
   const setOpts = (id: WidgetId, opts: WidgetOpts) =>
     setSettings({ ...settings, startWidgets: list.map((w) => (w.id === id ? { ...w, opts: { ...w.opts, ...opts } } : w)) });
 
+  // Twelve catalogue rows + their options bodies no longer fit a content-height sheet on a phone
+  // (390×844) — `tall` (fixed 82vh, § Sheet's own doc comment) keeps the sheet from sinking behind
+  // the keyboard the way a content-driven height would, and the list scrolls in its own `.gs` pane.
   return (
-    <Sheet show={show} onClose={onClose}>
+    <Sheet show={show} onClose={onClose} tall>
       {(C) => (
         <>
-          <div style={{ fontSize: 16, fontWeight: 750, color: C.text, textAlign: "center", marginBottom: 2 }}>{t("Edit widgets")}</div>
-          <div style={{ fontSize: 11, color: C.mute, textAlign: "center", marginBottom: 12 }}>{t("Drag to reorder")}</div>
-          {list.map((w, idx) => {
-            if (!(w.id in WIDGET_CATALOG)) return null; // corrupted/future persisted id — never crash the sheet
-            const b = dnd.bind(idx);
-            const title = t(WIDGET_CATALOG[w.id].title);
-            return (
-              <div
-                key={w.id}
-                ref={dnd.itemRef(idx)}
-                style={{
-                  borderBottom: `1px solid ${C.line}`,
-                  background: dnd.dragging === idx ? C.bg : "transparent",
-                  outline: dnd.over === idx && dnd.dragging !== idx ? `2px dashed ${TEAL}` : "none",
-                  outlineOffset: -2,
-                  borderRadius: 8,
-                }}
-              >
-                <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 0" }}>
-                  <span
-                    {...b}
-                    aria-label={t("Drag {name}", { name: title })}
-                    style={{ ...b.style, color: C.mute, fontSize: 15, padding: "4px 2px", display: "flex" }}
-                  >
-                    ≡
-                  </span>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 13.5, fontWeight: 600, color: C.text }}>{title}</div>
-                    {WIDGET_CATALOG[w.id].configurable ? (
-                      <button
-                        onClick={() => setOpenOptions(openOptions === w.id ? null : w.id)}
-                        style={{
-                          background: "none",
-                          border: "none",
-                          padding: 0,
-                          fontSize: 11,
-                          color: C.mute,
-                          cursor: "pointer",
-                          textAlign: "left",
-                          fontFamily: font,
-                        }}
-                      >
-                        {widgetSubtitle(w, state, t)}
-                      </button>
-                    ) : (
-                      <div style={{ fontSize: 11, color: C.mute, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                        {widgetSubtitle(w, state, t)}
-                      </div>
-                    )}
+          <div style={{ flexShrink: 0 }}>
+            <div style={{ fontSize: 16, fontWeight: 750, color: C.text, textAlign: "center", marginBottom: 2 }}>{t("Edit widgets")}</div>
+            <div style={{ fontSize: 11, color: C.mute, textAlign: "center", marginBottom: 12 }}>{t("Drag to reorder")}</div>
+          </div>
+          <div className="gs" style={{ flex: 1, minHeight: 0, overflowY: "auto", overscrollBehavior: "contain" }}>
+            {list.map((w, idx) => {
+              if (!(w.id in WIDGET_CATALOG)) return null; // corrupted/future persisted id — never crash the sheet
+              const b = dnd.bind(idx);
+              const title = t(WIDGET_CATALOG[w.id].title);
+              return (
+                <div
+                  key={w.id}
+                  ref={dnd.itemRef(idx)}
+                  style={{
+                    borderBottom: `1px solid ${C.line}`,
+                    background: dnd.dragging === idx ? C.bg : "transparent",
+                    outline: dnd.over === idx && dnd.dragging !== idx ? `2px dashed ${TEAL}` : "none",
+                    outlineOffset: -2,
+                    borderRadius: 8,
+                  }}
+                >
+                  <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 0" }}>
+                    <span
+                      {...b}
+                      aria-label={t("Drag {name}", { name: title })}
+                      style={{ ...b.style, color: C.mute, fontSize: 15, padding: "4px 2px", display: "flex" }}
+                    >
+                      ≡
+                    </span>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 13.5, fontWeight: 600, color: C.text }}>{title}</div>
+                      {WIDGET_CATALOG[w.id].configurable ? (
+                        <button
+                          onClick={() => setOpenOptions(openOptions === w.id ? null : w.id)}
+                          style={{
+                            background: "none",
+                            border: "none",
+                            padding: 0,
+                            fontSize: 11,
+                            color: C.mute,
+                            cursor: "pointer",
+                            textAlign: "left",
+                            fontFamily: font,
+                          }}
+                        >
+                          {widgetSubtitle(w, state, t)}
+                        </button>
+                      ) : (
+                        <div style={{ fontSize: 11, color: C.mute, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                          {widgetSubtitle(w, state, t)}
+                        </div>
+                      )}
+                    </div>
+                    <Toggle on={w.enabled} onClick={() => toggle(w.id)} label={title} />
                   </div>
-                  <Toggle on={w.enabled} onClick={() => toggle(w.id)} label={title} />
+                  {openOptions === w.id && w.id === "accounts" && <AccountsOptions w={w} state={state} onChange={(o) => setOpts("accounts", o)} />}
+                  {openOptions === w.id && w.id === "envelopes" && <EnvelopesOptions w={w} state={state} onChange={(o) => setOpts("envelopes", o)} />}
+                  {openOptions === w.id && w.id === "quickActions" && <QuickActionsOptions w={w} onChange={(o) => setOpts("quickActions", o)} />}
                 </div>
-                {openOptions === w.id && w.id === "accounts" && <AccountsOptions w={w} state={state} onChange={(o) => setOpts("accounts", o)} />}
-                {openOptions === w.id && w.id === "envelopes" && <EnvelopesOptions w={w} state={state} onChange={(o) => setOpts("envelopes", o)} />}
-                {openOptions === w.id && w.id === "quickActions" && <QuickActionsOptions w={w} onChange={(o) => setOpts("quickActions", o)} />}
-              </div>
-            );
-          })}
+              );
+            })}
+          </div>
           <button
             onClick={onClose}
             style={{
               width: "100%",
+              flexShrink: 0,
               marginTop: 14,
               padding: "12px 0",
               borderRadius: 12,

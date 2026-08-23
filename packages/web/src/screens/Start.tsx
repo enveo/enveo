@@ -12,6 +12,7 @@ import { Ico } from "../lib/icons";
 import { InWideShell } from "../lib/shellContext";
 import { font, P, TEAL, tint } from "../lib/theme";
 import { monthRuler, tbbState } from "../lib/uiState";
+import { WIDGET_CATALOG } from "../lib/widgetCatalog";
 import type { ReportTab } from "./reports/types";
 
 // Lazy: the edit sheet is only needed once the pencil is tapped (§3f) — see the file header
@@ -212,11 +213,12 @@ export function StartScreen({
       )}
 
       {/* Configurable widget stack (settings.startWidgets — device setting, "Edit widgets" sheet below).
-          renderWidget picks eager (START_WIDGETS) vs. lazy (widgetsBoard.tsx) per id and returns
-          `null` for a corrupted/future persisted id (settings are untyped JSON at rest) — never
-          crash Start. */}
+          `w.id in WIDGET_CATALOG` drops a corrupted/future persisted id (settings are untyped JSON
+          at rest) before it ever reaches renderWidget — belt-and-suspenders with that function's own
+          `null` fallback, so Start never crashes on stale data either way. renderWidget itself picks
+          eager (START_WIDGETS) vs. lazy (widgetsBoard.tsx) per id. */}
       {settings.startWidgets
-        .filter((w) => w.enabled)
+        .filter((w) => w.enabled && w.id in WIDGET_CATALOG)
         .map((w) => (
           <Fragment key={w.id}>
             {renderWidget(w, { state, month, onNav, onOpenEnvelope, onOpenTxns, onQuickAdd, onOpenReport, onOpenMonthDay, opts: w.opts }, t)}
