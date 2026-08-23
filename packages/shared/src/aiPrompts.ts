@@ -375,7 +375,7 @@ const importRawRow = z.object({
     .string()
     .regex(/^\d{4}-\d{2}-\d{2}$/)
     .nullable(),
-  amount: z.number().int().positive().nullable(),
+  amount: z.preprocess((value) => (value === 0 ? null : value), z.number().int().positive().nullable()),
   currency: z.string().nullable(),
   direction: z.enum(["debit", "credit", "unknown"]),
   postingStatus: z.enum(["posted", "pending", "declined", "unknown"]),

@@ -328,6 +328,34 @@ describe("buildImportExtractPrompt / parseImportExtractResponse", () => {
       ["next-image", 1, 0],
     ]);
   });
+
+  it("normalizes a zero model amount to an unknown fact instead of rejecting the whole screenshot", () => {
+    const parsed = parseImportExtractResponse(
+      JSON.stringify({
+        rows: [
+          {
+            rowId: "supporting-rate",
+            imageIndex: 0,
+            visualOrder: 0,
+            rawTextLines: ["1.00 PLN = 0.231677 EUR"],
+            date: "2026-08-07",
+            amount: 0,
+            currency: "PLN",
+            direction: "unknown",
+            postingStatus: "posted",
+            rowRole: "supporting_detail",
+            semanticKind: "fx_conversion",
+            relation: null,
+            confidence: "medium",
+            reviewReasons: [],
+          },
+        ],
+      }),
+      1,
+    );
+
+    expect(parsed.rows[0]!.amount).toBeNull();
+  });
 });
 
 describe("buildImportEnrichPrompt / parseImportEnrichResponse", () => {
