@@ -571,6 +571,11 @@ export function Rail({
     <div
       style={{
         width: RAIL_W[mode],
+        
+
+
+
+        boxSizing: "border-box",
         flexShrink: 0,
         display: "flex",
         flexDirection: "column",
