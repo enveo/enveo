@@ -700,4 +700,10 @@ export const cs: Dict = {
   "total {amount} this month": "celkem {amount} tento měsíc",
   "No spending this month.": "Žádné výdaje tento měsíc.",
   "Not enough history yet — trends appear after two months of spending.": "Zatím není dost historie — trendy se zobrazí po dvou měsících výdajů.",
+  // Wide Home board — edit mode (PR5 Task 6)
+  "Add widget": "Přidat widget",
+  "Every widget is already on the grid.": "Všechny widgety jsou už v mřížce.",
+  "Remove from the board": "Odebrat z mřížky",
+  "Size: {w} × {h} — drag the corner of the tile to resize": "Velikost: {w} × {h} — přetažením rohu dlaždice změníte velikost",
+  "Widget settings": "Nastavení widgetu",
 };

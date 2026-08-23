@@ -1,5 +1,5 @@
-import type { Transaction } from "@enveo/shared";
-import { type ReactNode, useEffect, useRef } from "react";
+import type { Transaction, WideWidgetId } from "@enveo/shared";
+import { type ReactNode, useEffect, useRef, useState } from "react";
 import type { StateResponse } from "../../lib/api";
 import { useTheme } from "../../lib/contexts";
 import { monthLabel } from "../../lib/dates";
@@ -9,7 +9,8 @@ import { InWideShell } from "../../lib/shellContext";
 import { CTA, font, P } from "../../lib/theme";
 import { useElementWidth } from "../../lib/useElementWidth";
 import type { ViewMode } from "../../lib/viewMode";
-import type { ReportView } from "../../screens/reports/types";
+import type { ReportTab, ReportView } from "../../screens/reports/types";
+import { WideHome } from "../../screens/WideHome";
 import type { ScreenId } from "../chrome";
 import { SyncBadge } from "../SyncBadge";
 import { FoldTbbStrip } from "./FoldTbbStrip";
@@ -245,6 +246,15 @@ type WideShellBag = {
   onEditTxn: (t: Transaction) => void;
   monthDay: string | null;
   onSelectDay: (date: string | null) => void;
+  /** Task 6: the wide Home board's own callbacks — the SAME functions Start's phone stack already
+   *  uses for its report-backed widgets (`App.openReports`/the `onOpenMonthDay` deep link), so a
+   *  tile behaves identically whether it renders inside `WideHome` or the phone stack. */
+  onOpenReport: (tab: ReportTab) => void;
+  onOpenMonthDay: (date: string) => void;
+  /** Task 6: `WideHome`'s board edit-mode toggle, lifted to `App` the same way Start's/Budget's
+   *  `editWidgets`/`manageOpen` were (Task 3's pattern) — the band right-slot (below) reads and
+   *  flips it, `WideHome` only reads it. */
+  boardEdit: boolean;
 };
 
 /**
@@ -286,17 +296,30 @@ export function WideShell({ bag, rightSlot = null, children }: { bag: WideShellB
     onEditTxn,
     monthDay,
     onSelectDay,
+    onOpenReport,
+    onOpenMonthDay,
+    boardEdit,
   } = bag;
   const C = useTheme();
   const { t } = useT();
   const [rootRef, rootW] = useElementWidth<HTMLDivElement>(mode === "desktop" ? 1440 : 1104);
   const paneW = paneWidthFor(mode, rootW);
-  const view = resolvePanel({ screen, reportsView, envView });
+  // The wide board's gear target (Task 6) — WideShell's OWN local selection, not lifted to App:
+  // nothing outside this component needs it (unlike `envView`/`reportsView`, which the URL/deep-
+  // link machinery also reads). Reset whenever `screen` changes away from "start" so a stale
+  // selection can never resurface the settings panel on an unrelated later visit to Home —
+  // `resolvePanel` is also defensive about this (panel.ts), but this is the actual discipline.
+  const [widgetSettings, setWidgetSettings] = useState<WideWidgetId | null>(null);
+  useEffect(() => {
+    if (screen !== "start") setWidgetSettings(null);
+  }, [screen]);
+  const view = resolvePanel({ screen, reportsView, envView, widgetSettings });
   const panelRef = useRef<HTMLDivElement | null>(null);
 
   const closePanel = () => {
     if (view.kind === "envelope") setEnvView(null);
     else if (view.kind === "report") setReportsView("overview");
+    else if (view.kind === "widgets") setWidgetSettings(null);
     else setPanelClosed(true);
   };
 
@@ -309,7 +332,7 @@ export function WideShell({ bag, rightSlot = null, children }: { bag: WideShellB
   // including report→report switches that the kind alone would miss. Selection is compared
   // across renders (a ref, not an effect dep array) so a mere re-render of the same open
   // selection never touches `panelClosed`.
-  const selection = view.kind === "empty" ? null : view.kind === "envelope" ? envView : view.view;
+  const selection = view.kind === "empty" ? null : view.kind === "envelope" ? envView : view.kind === "widgets" ? view.widgetId : view.view;
   const prevSelection = useRef(selection);
   useEffect(() => {
     if (selection !== null && selection !== prevSelection.current && panelClosed) setPanelClosed(false);
@@ -390,7 +413,29 @@ export function WideShell({ bag, rightSlot = null, children }: { bag: WideShellB
           {mode === "fold" && screen !== "settings" && (
             <FoldTbbStrip state={state} screen={screen} onQuickAdd={onQuickAdd} onFillGoals={onFillGoals} onNav={nav} />
           )}
-          <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column", overflow: "hidden" }}>{children}</div>
+          <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column", overflow: "hidden" }}>
+            {/* Task 6: the wide Home board replaces the phone widget stack entirely on Start — the
+                `screenEl` App.tsx built for "start" (a `StartScreen` element) is still constructed
+                as `children` (cheap: it's just a React element description) but never rendered
+                here, so its own phone-only header/EditWidgetsSheet never mount on wide. */}
+            {screen === "start" ? (
+              <WideHome
+                mode={mode}
+                state={state}
+                month={month}
+                onNav={nav}
+                onOpenEnvelope={onOpenEnvelope}
+                onOpenTxns={openTxns}
+                onQuickAdd={onQuickAdd}
+                onOpenReport={onOpenReport}
+                onOpenMonthDay={onOpenMonthDay}
+                edit={boardEdit}
+                onWidgetSettings={setWidgetSettings}
+              />
+            ) : (
+              children
+            )}
+          </div>
         </div>
         <div
           ref={panelRef}

@@ -682,4 +682,10 @@ export const sv: Dict = {
   "total {amount} this month": "totalt {amount} denna månad",
   "No spending this month.": "Inga utgifter denna månad.",
   "Not enough history yet — trends appear after two months of spending.": "Inte tillräckligt med historik än — trender visas efter två månaders utgifter.",
+  // Wide Home board — edit mode (PR5 Task 6)
+  "Add widget": "Lägg till widget",
+  "Every widget is already on the grid.": "Alla widgetar finns redan i rutnätet.",
+  "Remove from the board": "Ta bort från rutnätet",
+  "Size: {w} × {h} — drag the corner of the tile to resize": "Storlek: {w} × {h} — dra i rutans hörn för att ändra storlek",
+  "Widget settings": "Widgetinställningar",
 };

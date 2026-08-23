@@ -96,6 +96,10 @@ export default function App() {
   // same pencil buttons, only the state's home moves (Task 3).
   const [editWidgetsOpen, setEditWidgetsOpen] = useState(false);
   const [manageOpen, setManageOpen] = useState(false);
+  // WideHome's own board edit-mode toggle (Task 6) — a THIRD controlled boolean pair, same shape
+  // as the two above, lifted here so the wide band's right-slot pencil can flip it (it drives no
+  // phone UI at all; `WideHome` never mounts on phone).
+  const [wideBoardEdit, setWideBoardEdit] = useState(false);
   // Wide shell's right-panel open/closed bit — chrome, not navigation (never in the URL/history,
   // pr4-context.md §12.2). App-owned so it survives the `screen`/`reportsView` it is read
   // alongside (WideShell's `resolvePanel`).
@@ -179,6 +183,17 @@ export default function App() {
   const openReports = (tab: ReportTab) => {
     nav("reports");
     setReportsView(tab);
+  };
+  // Heatmap widget's day click (Start's phone stack AND WideHome's board share this one function —
+  // Task 6 reuses it verbatim rather than re-deriving the same two-write sequence for the wide
+  // board): openReports("month") calls nav("reports") internally, which resets monthDay to null,
+  // then re-asserts reportsView after nav — same last-write-wins batch as openReports/
+  // openBudgetFillGoals. setMonthDay(d) must come AFTER openReports so it's the LAST write to
+  // monthDay in the batch, not the first (calling it before openReports let nav's reset win and
+  // silently dropped the day).
+  const onOpenMonthDay = (d: string) => {
+    openReports("month");
+    setMonthDay(d);
   };
   // Deep link: Goals report's "Fill ›" → a fresh Budget with the fill-by-goals sheet open
   // (same after-`nav` override as `openReports`, so the reset in `nav` doesn't win the batch).
@@ -356,15 +371,7 @@ export default function App() {
           onNav={nav}
           onQuickAdd={onQuickAdd}
           onOpenReport={openReports}
-          onOpenMonthDay={(d) => {
-            // openReports("month") calls nav("reports") internally, which resets monthDay to
-            // null (App.tsx:157) then re-asserts reportsView after nav — same last-write-wins
-            // batch as openReports/openBudgetFillGoals. setMonthDay(d) must come AFTER
-            // openReports so it's the LAST write to monthDay in the batch, not the first
-            // (calling it before openReports let nav's reset win and silently dropped the day).
-            openReports("month");
-            setMonthDay(d);
-          }}
+          onOpenMonthDay={onOpenMonthDay}
           editWidgets={editWidgetsOpen}
           onEditWidgets={setEditWidgetsOpen}
         />
@@ -480,12 +487,21 @@ export default function App() {
   //
   // §13's per-screen band right-slot ("Edit widgets" on Start / "Manage envelopes" on Budget) —
   // restored now that the widget-edit-sheet extraction (pr4-context.md header; the pull-forward
-  // of PR5 Task 1) bought back the §3f headroom this needed. Reuses the SAME lifted
-  // editWidgetsOpen/manageOpen state Start/Budget already drive their own pencils from, so
-  // opening from the band and opening from the phone header stay one piece of state each.
+  // of PR5 Task 1) bought back the §3f headroom this needed. Budget's slot reuses the SAME lifted
+  // manageOpen state Budget's own phone pencil drives, so opening from the band and opening from
+  // the phone header stay one piece of state. Start's slot is the documented PR5 Task 6 handoff
+  // point (plan-pr4-shell.md §13, verbatim in pr5-task-6-brief.md): on wide it no longer opens
+  // the phone `EditWidgetsSheet` (`editWidgetsOpen` stays exclusively the phone pencil's own
+  // state — the sheet never mounts on wide, see WideShell's start-screen branch) but instead
+  // toggles `WideHome`'s own board edit mode, with the label flipping to "Done" while active —
+  // one slot, one computed VALUE, no fork in WideShell's header code.
   const wideRightSlot =
     screen === "start"
-      ? { label: t("Edit widgets"), ariaLabel: t("Edit widgets"), onClick: () => setEditWidgetsOpen(true) }
+      ? {
+          label: wideBoardEdit ? t("Done") : t("Edit widgets"),
+          ariaLabel: wideBoardEdit ? t("Done") : t("Edit widgets"),
+          onClick: () => setWideBoardEdit(!wideBoardEdit),
+        }
       : screen === "budget"
         ? { label: t("Manage envelopes"), ariaLabel: t("Manage envelopes"), onClick: () => setManageOpen(true) }
         : null;
@@ -531,6 +547,11 @@ export default function App() {
               onEditTxn: (t) => editTxnFrom(t, "reports"),
               monthDay,
               onSelectDay: setMonthDay,
+              // Task 6: the wide Home board's own tiles reuse these verbatim — same callbacks the
+              // phone stack's report-backed widgets already use.
+              onOpenReport: openReports,
+              onOpenMonthDay,
+              boardEdit: wideBoardEdit,
             }}
             rightSlot={wideRightSlot}
           >

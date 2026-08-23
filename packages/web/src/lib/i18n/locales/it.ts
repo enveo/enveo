@@ -699,4 +699,10 @@ export const it: Dict = {
   "total {amount} this month": "totale {amount} questo mese",
   "No spending this month.": "Nessuna spesa questo mese.",
   "Not enough history yet — trends appear after two months of spending.": "Non c’è ancora abbastanza storico — le tendenze appaiono dopo due mesi di spese.",
+  // Wide Home board — edit mode (PR5 Task 6)
+  "Add widget": "Aggiungi widget",
+  "Every widget is already on the grid.": "Tutti i widget sono già sulla griglia.",
+  "Remove from the board": "Rimuovi dalla griglia",
+  "Size: {w} × {h} — drag the corner of the tile to resize": "Dimensione: {w} × {h} — trascina l’angolo del riquadro per ridimensionare",
+  "Widget settings": "Impostazioni widget",
 };

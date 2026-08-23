@@ -977,4 +977,10 @@ export const pl: Dict = {
   "Reconcile ›": "Wyrównaj ›",
   "All transactions ›": "Wszystkie transakcje ›",
   "total {amount} this month": "razem {amount} w tym miesiącu",
+  // Wide Home board — edit mode (PR5 Task 6)
+  "Add widget": "Dodaj widget",
+  "Every widget is already on the grid.": "Każdy widget jest już na siatce.",
+  "Remove from the board": "Usuń z siatki",
+  "Size: {w} × {h} — drag the corner of the tile to resize": "Rozmiar: {w} × {h} — przeciągnij róg kafelka, aby zmienić rozmiar",
+  "Widget settings": "Ustawienia widgetu",
 };
