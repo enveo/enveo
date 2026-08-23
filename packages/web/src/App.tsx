@@ -355,6 +355,11 @@ export default function App() {
           onNext={next}
           onNav={nav}
           onQuickAdd={onQuickAdd}
+          onOpenReport={openReports}
+          onOpenMonthDay={(d) => {
+            setMonthDay(d);
+            openReports("month");
+          }}
           editWidgets={editWidgetsOpen}
           onEditWidgets={setEditWidgetsOpen}
         />

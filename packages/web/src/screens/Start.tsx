@@ -1,8 +1,8 @@
-import { lazy, useContext } from "react";
+import { Fragment, lazy, useContext } from "react";
 import { Header, type ScreenId } from "../components/chrome";
 import { CardBox, useBand } from "../components/kit";
 import { LazyChunk, useOpenedOnce } from "../components/lazy";
-import { START_WIDGETS } from "../components/widgets";
+import { renderWidget } from "../components/widgets";
 import type { StateResponse } from "../lib/api";
 import { useMask, useSettings, useTheme } from "../lib/contexts";
 import { todayISO } from "../lib/dates";
@@ -12,6 +12,7 @@ import { Ico } from "../lib/icons";
 import { InWideShell } from "../lib/shellContext";
 import { font, P, TEAL, tint } from "../lib/theme";
 import { monthRuler, tbbState } from "../lib/uiState";
+import type { ReportTab } from "./reports/types";
 
 // Lazy: the edit sheet is only needed once the pencil is tapped (§3f) — see the file header
 // comment in EditWidgetsSheet.tsx for why it lives in its own chunk.
@@ -27,6 +28,8 @@ export function StartScreen({
   onNext,
   onNav,
   onQuickAdd,
+  onOpenReport,
+  onOpenMonthDay,
   editWidgets,
   onEditWidgets,
 }: {
@@ -40,6 +43,10 @@ export function StartScreen({
   onNav: (s: ScreenId) => void;
   /** "transfer" opens Add pre-set to the Transfer tab; "import" opens Add with the screenshot-import sheet already showing; "suggest" opens Budget with the suggest sheet already showing. */
   onQuickAdd: (kind: "transfer" | "import" | "suggest") => void;
+  /** Deep link into a specific report subscreen — the PR5 report-backed widgets' row/footer clicks. */
+  onOpenReport: (tab: ReportTab) => void;
+  /** Heatmap widget's day click → Month report with that day's panel open. */
+  onOpenMonthDay: (date: string) => void;
   /** "Edit widgets" sheet open state — App-owned so the wide shell's band right-slot (PR4 §13) can trigger it too. */
   editWidgets: boolean;
   onEditWidgets: (open: boolean) => void;
@@ -205,25 +212,16 @@ export function StartScreen({
       )}
 
       {/* Configurable widget stack (settings.startWidgets — device setting, "Edit widgets" sheet below).
-          A corrupted/future persisted id (settings are untyped JSON at rest) must never crash Start. */}
+          renderWidget picks eager (START_WIDGETS) vs. lazy (widgetsBoard.tsx) per id and returns
+          `null` for a corrupted/future persisted id (settings are untyped JSON at rest) — never
+          crash Start. */}
       {settings.startWidgets
-        .filter((w) => w.enabled && w.id in START_WIDGETS)
-        .map((w) => {
-          const Widget = START_WIDGETS[w.id];
-          if (!Widget) return null; // narrows Partial<Record<...>> — the `in` filter above already guarantees this at runtime
-          return (
-            <Widget
-              key={w.id}
-              state={state}
-              month={month}
-              onNav={onNav}
-              onOpenEnvelope={onOpenEnvelope}
-              onOpenTxns={onOpenTxns}
-              onQuickAdd={onQuickAdd}
-              opts={w.opts}
-            />
-          );
-        })}
+        .filter((w) => w.enabled)
+        .map((w) => (
+          <Fragment key={w.id}>
+            {renderWidget(w, { state, month, onNav, onOpenEnvelope, onOpenTxns, onQuickAdd, onOpenReport, onOpenMonthDay, opts: w.opts }, t)}
+          </Fragment>
+        ))}
 
       {editSheetMounted && (
         <LazyChunk variant="overlay" onDismiss={() => onEditWidgets(false)}>

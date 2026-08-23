@@ -1,5 +1,5 @@
 import { computeNetWorthSeries, computeStateResponse } from "@enveo/shared";
-import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
+import { type LazyExoticComponent, lazy, type ReactNode, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { fmtSignedTrim } from "../lib/amount";
 import { type AccountView, type EnvelopeView, type StateResponse, useLedgerVersion } from "../lib/api";
 import {
@@ -11,7 +11,7 @@ import {
   reconciliationEnvelopeAfterAccountRefresh,
   reconciliationTxnPayload,
 } from "../lib/automaticEnvelopeUi";
-import type { WidgetId, WidgetOpts } from "../lib/contexts";
+import type { WidgetConfig, WidgetId, WidgetOpts } from "../lib/contexts";
 import { useCurrency, useMask, useSettings, useTheme } from "../lib/contexts";
 import { currentMonth } from "../lib/dates";
 import { currencySymbol, localizePadExpression, parseAmount } from "../lib/format";
@@ -21,16 +21,20 @@ import { local } from "../lib/mutate";
 import { store } from "../lib/store";
 import { font, TEAL } from "../lib/theme";
 import { sumBalances } from "../lib/uiState";
+import { WIDGET_CATALOG } from "../lib/widgetCatalog";
 import { AutomaticEnvelopeEffect } from "../screens/add/AutomaticEnvelopeEffect";
 import { EnvelopePickerSheet } from "../screens/add/EnvelopePickerSheet";
 import { collapsedRowStyle } from "../screens/add/styles";
+import type { ReportTab } from "../screens/reports/types";
 import { AmountPadHost, type AmountPadTarget } from "./AmountPadSheet";
 import { type ScreenId, Sheet } from "./chrome";
 import { CardBox, SectionEyebrow, useBand } from "./kit";
+import { LazyChunk } from "./lazy";
 import { Sparkline } from "./reportKit";
 import { AccCell, accountIconColor, EnvRow } from "./tiles";
 
-/** Props every Start-screen widget receives — a component picks the subset it needs. */
+/** Props every Start-screen widget receives — a component picks the subset it needs. All six
+ *  original (eager) widgets ignore the three PR5 additions below, so they stay untouched. */
 export interface WidgetProps {
   state: StateResponse;
   month: string;
@@ -38,6 +42,13 @@ export interface WidgetProps {
   onOpenEnvelope: (envId: string, month: string) => void;
   onOpenTxns: (f?: { envId?: string; accId?: string }) => void;
   onQuickAdd: (kind: "transfer" | "import" | "suggest") => void;
+  /** Deep link into a specific report subscreen (App.openReports). */
+  onOpenReport?: (tab: ReportTab) => void;
+  /** Heatmap day → Month report with that day's panel open (App.setMonthDay + openReports("month")). */
+  onOpenMonthDay?: (date: string) => void;
+  /** True when a wide board tile hosts the widget: the tile owns title+card chrome, so the body
+   *  skips its own SectionEyebrow/CardBox. Default false — phone rendering is pixel-identical. */
+  chromeless?: boolean;
   opts?: WidgetOpts;
 }
 
@@ -629,13 +640,13 @@ export function NetWorthWidget({ month, onNav }: WidgetProps) {
   );
 }
 
-/** Registry: widget id → component, in Start.tsx's render loop (`settings.startWidgets.filter(enabled)`).
- *  The `w.id in START_WIDGETS` guards below and in Start.tsx are load-bearing again as of PR5's
- *  schemaVersion 2: `WidgetId` gained six ids (attention/recent/spending/goals/trends/heatmap)
- *  whose phone bodies live in a later task's LAZY chunk (§3f — they must not join this eager
- *  file), so this registry is intentionally `Partial` until that task populates them. Until then
- *  those ids ship `enabled:false` by default (see `createDefaultStartWidgets`) and the `in` guard
- *  makes an enabled-anyway persisted row a silent no-render, never a crash. */
+/** Registry: widget id → component, for the six ORIGINAL widgets whose bodies are cheap enough to
+ *  stay eager (Start renders them at boot). PR5's six report-backed widgets (attention/recent/
+ *  spending/goals/trends/heatmap) live in `./widgetsBoard` instead, behind `LAZY_WIDGETS` below —
+ *  `renderWidget` is the ONE place that picks eager vs. lazy, so no caller needs to know which is
+ *  which. `Partial` (rather than the full `Record<WidgetId, …>`) is what keeps this file eager-safe:
+ *  a `Record` over all twelve ids would force importing the six lazy bodies at the top of this
+ *  module, defeating the whole split. */
 export const START_WIDGETS: Partial<Record<WidgetId, (p: WidgetProps) => ReactNode>> = {
   quickActions: QuickActions,
   accounts: AccountsWidget,
@@ -644,3 +655,61 @@ export const START_WIDGETS: Partial<Record<WidgetId, (p: WidgetProps) => ReactNo
   reportCashflow: CashflowWidget,
   reportNetWorth: NetWorthWidget,
 };
+
+/** The lazy half of the registry — one `import()` of `./widgetsBoard` per widget id, so Rollup
+ *  emits ONE chunk shared by all six (plus whatever `reportKit`/`reports/charts` code the Reports
+ *  screen's own chunk already carries — see that module's header comment). */
+const AttentionWidget = lazy(() => import("./widgetsBoard").then((m) => ({ default: m.AttentionWidget })));
+const RecentWidget = lazy(() => import("./widgetsBoard").then((m) => ({ default: m.RecentWidget })));
+const SpendingWidget = lazy(() => import("./widgetsBoard").then((m) => ({ default: m.SpendingWidget })));
+const GoalsWidget = lazy(() => import("./widgetsBoard").then((m) => ({ default: m.GoalsWidget })));
+const TrendsWidget = lazy(() => import("./widgetsBoard").then((m) => ({ default: m.TrendsWidget })));
+const HeatmapWidget = lazy(() => import("./widgetsBoard").then((m) => ({ default: m.HeatmapWidget })));
+
+type LazyWidgetId = "attention" | "recent" | "spending" | "goals" | "trends" | "heatmap";
+
+export const LAZY_WIDGETS: Record<LazyWidgetId, LazyExoticComponent<(p: WidgetProps) => ReactNode>> = {
+  attention: AttentionWidget,
+  recent: RecentWidget,
+  spending: SpendingWidget,
+  goals: GoalsWidget,
+  trends: TrendsWidget,
+  heatmap: HeatmapWidget,
+};
+
+/** Same silhouette as a rendered widget (eyebrow + an empty card) so the Start stack doesn't jump
+ *  while the chunk fetches — 64px mirrors a typical single-row widget's height. */
+function WidgetPending({ title }: { title: string }) {
+  return (
+    <div>
+      <SectionEyebrow label={title} />
+      <CardBox style={{ minHeight: 64 }}>{null}</CardBox>
+    </div>
+  );
+}
+
+/** The ONE place Start.tsx (and, later, the wide board) renders a widget by config: eager ids go
+ *  straight through `START_WIDGETS`, everything else through `LAZY_WIDGETS` behind a `LazyChunk`
+ *  (its error boundary keeps a failed fetch from blanking the rest of Start — variant "silent"
+ *  because the inner `Suspense` below already supplies a themed pending state, so the boundary's
+ *  OWN default fallback is never shown; only its failure path matters here). A corrupted/future
+ *  persisted id (settings are untyped JSON at rest) falls through to `null` — never crash Start.
+ *  `t` is passed in rather than called here: `renderWidget` is a plain function invoked during a
+ *  component's render, not a component/hook itself, so the `useT()` call stays at the real call
+ *  site (Start.tsx). */
+export function renderWidget(cfg: WidgetConfig, props: WidgetProps, t: (m: Message, p?: Record<string, string | number>) => string): ReactNode {
+  if (cfg.id in START_WIDGETS) {
+    const W = START_WIDGETS[cfg.id]!;
+    return <W {...props} opts={cfg.opts} />;
+  }
+  const L = LAZY_WIDGETS[cfg.id as LazyWidgetId];
+  if (!L) return null;
+  const title = t(WIDGET_CATALOG[cfg.id].title);
+  return (
+    <LazyChunk variant="silent">
+      <Suspense fallback={<WidgetPending title={title} />}>
+        <L {...props} opts={cfg.opts} />
+      </Suspense>
+    </LazyChunk>
+  );
+}
