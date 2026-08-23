@@ -539,11 +539,11 @@ describe("runImportRecognitionPipeline", () => {
       },
     });
     expect(requests).toHaveLength(2);
-    expect(result.proposals[0]).toMatchObject({ name: "Zakupy", envelopeId: "envelope-1", selected: false });
+    expect(result.proposals[0]).toMatchObject({ name: "Zakupy", envelopeId: "envelope-1", selected: true });
     expect(result.proposals[0]!.reviewReasons).toEqual(expect.arrayContaining(["history_conflict", "multiple_history_candidates"]));
   });
 
-  it("keeps cycle-two fact corrections unchecked after final validation and reconciliation", async () => {
+  it("keeps cycle-two fact corrections selected and visible after final validation and reconciliation", async () => {
     let calls = 0;
     const result = await runImportRecognitionPipeline({
       ...base,
@@ -573,7 +573,7 @@ describe("runImportRecognitionPipeline", () => {
     });
 
     expect(calls).toBe(2);
-    expect(result.proposals[0]).toMatchObject({ type: "expense", selected: false });
+    expect(result.proposals[0]).toMatchObject({ type: "expense", selected: true });
     expect(result.proposals[0]!.reviewReasons).toEqual(expect.arrayContaining(["possible_ocr_error", "fact_correction"]));
   });
 
@@ -629,11 +629,11 @@ describe("runImportRecognitionPipeline", () => {
       },
     });
     expect(calls).toBe(2);
-    expect(result.proposals[0]).toMatchObject({ name: "", envelopeId: null, disposition: "unresolved", selected: false });
+    expect(result.proposals[0]).toMatchObject({ name: "", envelopeId: null, disposition: "unresolved", selected: true });
     expect(result.proposals[0]!.reviewReasons).toContain("unknown_kind");
   });
 
-  it("keeps an incoming-transfer fallback mapped to income but unchecked when cycle two fails", async () => {
+  it("keeps an incoming-transfer fallback mapped to selected income when cycle two fails", async () => {
     let calls = 0;
     const result = await runImportRecognitionPipeline({
       ...base,
@@ -645,11 +645,11 @@ describe("runImportRecognitionPipeline", () => {
     });
 
     expect(calls).toBe(2);
-    expect(result.proposals[0]).toMatchObject({ type: "income", disposition: "candidate", selected: false });
+    expect(result.proposals[0]).toMatchObject({ type: "income", disposition: "candidate", selected: true });
     expect(result.proposals[0]!.reviewReasons).toContain("possible_transfer");
   });
 
-  it("keeps an account-top-up fallback mapped to income but unchecked when cycle two fails", async () => {
+  it("keeps an account-top-up fallback mapped to selected income when cycle two fails", async () => {
     let calls = 0;
     const result = await runImportRecognitionPipeline({
       ...base,
@@ -661,11 +661,11 @@ describe("runImportRecognitionPipeline", () => {
     });
 
     expect(calls).toBe(2);
-    expect(result.proposals[0]).toMatchObject({ type: "income", disposition: "candidate", selected: false });
+    expect(result.proposals[0]).toMatchObject({ type: "income", disposition: "candidate", selected: true });
     expect(result.proposals[0]!.reviewReasons).toContain("possible_transfer");
   });
 
-  it("keeps an unknown posting status unchecked after the full pipeline", async () => {
+  it("keeps an unknown posting status selected for review after the full pipeline", async () => {
     let calls = 0;
     const result = await runImportRecognitionPipeline({
       ...base,
@@ -690,7 +690,7 @@ describe("runImportRecognitionPipeline", () => {
     });
 
     expect(calls).toBe(2);
-    expect(result.proposals[0]).toMatchObject({ disposition: "candidate", selected: false });
+    expect(result.proposals[0]).toMatchObject({ disposition: "candidate", selected: true });
     expect(result.proposals[0]!.reviewReasons).toContain("unknown_posting_status");
   });
 });

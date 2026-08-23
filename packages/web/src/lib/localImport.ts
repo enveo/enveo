@@ -63,11 +63,7 @@ export function recognitionCandidatesForDryRun(result: ReconciledImportRecogniti
 }
 
 /** Convert either server or local dry-run output without erasing local provenance. */
-export function importReviewItem(
-  result: ImportApplyResponse["results"][number],
-  automaticEnvelopeId: string | null | undefined,
-  budgetCurrency?: string,
-): LocalImportReviewItem {
+export function importReviewItem(result: ImportApplyResponse["results"][number], automaticEnvelopeId: string | null | undefined): LocalImportReviewItem {
   const selection =
     result.type === "expense" && result.automaticEnvelopeDefault === true
       ? { envelopeId: automaticEnvelopeId ?? null, provenance: "automatic" as const }
@@ -78,7 +74,7 @@ export function importReviewItem(
     ...result,
     envelopeId: selection.envelopeId,
     automaticEnvelopeDefault: selection.provenance === "automatic",
-    include: result.status === "added" && !(!!budgetCurrency && !!result.currency && result.currency !== budgetCurrency),
+    include: result.status !== "exists",
   };
 }
 

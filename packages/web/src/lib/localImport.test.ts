@@ -168,7 +168,7 @@ describe("local E2EE import planning", () => {
 
     const adapted = recognitionCandidatesForDryRun(recognition, ledger());
     const dry = planLocalImport({ ledger: ledger(), globalAccountId: U(2), items: adapted, dryRun: true });
-    const review = dry.results.map((result) => importReviewItem(result, U(5), "EUR"));
+    const review = dry.results.map((result) => importReviewItem(result, U(5)));
 
     expect(adapted).toEqual([]);
     expect(review).toEqual([]);

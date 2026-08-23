@@ -129,17 +129,12 @@ export interface ReconciledImportRecognitionResult extends Omit<ImportRecognitio
   proposals: ReconciledImportProposal[];
 }
 
-/**
- * One policy owns automatic selection across every recognition phase. Any
- * review reason means the proposal needs a human's explicit opt-in; later
- * enrichment or reconciliation may add evidence but may never re-check it.
- */
-export function importReviewRequiresExplicitOptIn(proposal: Pick<ImportProposal, "reviewReasons">): boolean {
-  return proposal.reviewReasons.length > 0;
-}
+const BLOCKING_REVIEW_REASONS = new Set<ImportReviewReason>(["missing_fact", "unsupported_currency", "invalid_relation", "unknown_kind"]);
 
-export function applyImportReviewPolicy<T extends ImportProposal>(proposal: T): T {
-  return importReviewRequiresExplicitOptIn(proposal) && proposal.selected ? { ...proposal, selected: false } : proposal;
+/** Review is independent from inclusion. These reasons mean a selected event
+ * cannot become a valid ledger transaction until the user acts. */
+export function importProposalBlockingReasons(proposal: Pick<ImportProposal, "reviewReasons">): ImportReviewReason[] {
+  return proposal.reviewReasons.filter((reason) => BLOCKING_REVIEW_REASONS.has(reason));
 }
 
 const addReasons = (current: ImportReviewReason[], ...added: ImportReviewReason[]): ImportReviewReason[] => {
@@ -187,9 +182,7 @@ export function applyImportEnrichment(result: ImportRecognitionResult, answer: I
     proposals: result.proposals.map((proposal) => {
       const annotation = annotations.get(proposal.rowId);
       if (!annotation) {
-        return invalidAnswerIdentity
-          ? applyImportReviewPolicy({ ...proposal, reviewReasons: addReasons(proposal.reviewReasons, "fact_correction") })
-          : applyImportReviewPolicy(proposal);
+        return invalidAnswerIdentity ? { ...proposal, reviewReasons: addReasons(proposal.reviewReasons, "fact_correction") } : proposal;
       }
 
       let factCorrection =
@@ -211,7 +204,7 @@ export function applyImportEnrichment(result: ImportRecognitionResult, answer: I
       if (relationChanged) reviewReasons = addReasons(reviewReasons, "relation_changes_ledger_shape");
       if (factCorrection) reviewReasons = addReasons(reviewReasons, "fact_correction");
 
-      return applyImportReviewPolicy({
+      return {
         ...proposal,
         name: annotation.name.trim(),
         placeName: annotation.place?.trim() || null,
@@ -220,8 +213,8 @@ export function applyImportEnrichment(result: ImportRecognitionResult, answer: I
         semanticKind: annotation.semanticKind,
         relation,
         reviewReasons,
-        selected: relationChanged ? false : proposal.selected,
-      });
+        selected: proposal.selected,
+      };
     }),
   };
 }
@@ -332,15 +325,10 @@ export function validateImportExtraction(input: { batch: ImportExtractBatch; bud
     let type = mapping.type;
     let reasons = addReasons(row.reviewReasons, ...mapping.reviewReasons);
 
-    // Preserve the direction-based income/expense fallback for a reviewable row, but never
-    // default an internal transfer into the ledger while its other account is unknown.
-    if (mapping.reviewReasons.includes("unknown_transfer_endpoint")) selected = false;
-
     const validFacts =
       isCalendarDate(row.date) && hasPositiveMinorAmount(row.amount) && row.currency !== null && isSupportedCurrency(row.currency) && budgetCurrencySupported;
     if (!validFacts) {
       disposition = "unresolved";
-      selected = false;
       reasons = addReasons(
         reasons,
         row.currency === null || !isSupportedCurrency(row.currency) || !budgetCurrencySupported ? "unsupported_currency" : "missing_fact",
@@ -348,12 +336,10 @@ export function validateImportExtraction(input: { batch: ImportExtractBatch; bud
     }
     if (invalidRelations.has(row.rowId)) {
       disposition = "unresolved";
-      selected = false;
       type = null;
       reasons = addReasons(reasons, "invalid_relation");
     }
     if (shapeChangingRelations.has(row.rowId)) {
-      selected = false;
       reasons = addReasons(reasons, "relation_changes_ledger_shape");
     }
     if (impossibleFx.has(row.rowId)) reasons = addReasons(reasons, "impossible_fx");
@@ -361,26 +347,25 @@ export function validateImportExtraction(input: { batch: ImportExtractBatch; bud
       disposition = "supporting";
       selected = false;
       type = null;
-    } else if (validFacts && row.postingStatus === "pending") {
+    } else if (row.postingStatus === "pending") {
       disposition = "pending";
       selected = false;
       reasons = addReasons(reasons, "pending_or_declined");
-    } else if (validFacts && row.postingStatus === "declined") {
+    } else if (row.postingStatus === "declined") {
       disposition = "declined";
       selected = false;
       reasons = addReasons(reasons, "pending_or_declined");
-    } else if (validFacts && type === null) {
+    } else if (validFacts && mapping.type === null) {
       disposition = "unresolved";
-      selected = false;
+      reasons = addReasons(reasons, "unknown_kind");
     }
     if (mapping.expectedDirection && row.direction !== mapping.expectedDirection) {
-      selected = false;
       reasons = addReasons(reasons, "inconsistent_direction");
     }
 
     if (row.postingStatus === "unknown") reasons = addReasons(reasons, "unknown_posting_status");
 
-    return applyImportReviewPolicy(proposalFrom(row, { disposition, type, isRefund: mapping.isRefund, reviewReasons: reasons, selected }));
+    return proposalFrom(row, { disposition, type, isRefund: mapping.isRefund, reviewReasons: reasons, selected });
   });
 
   return { rows: batch.rows, proposals };
@@ -422,7 +407,6 @@ export function reconcileImportProposals(input: {
         }
         reviewReasons = addReasons(reviewReasons, "history_conflict");
       } else if (duplicateStatus === "probable") {
-        if (proposal.disposition === "candidate") selected = false;
         reviewReasons = addReasons(reviewReasons, "multiple_history_candidates");
       } else if (proposal.disposition === "candidate") {
         duplicates.markSeen({ date: proposal.date, amount: proposal.amount, rawPlace: proposal.rawPlace });
@@ -433,6 +417,6 @@ export function reconcileImportProposals(input: {
       selected = false;
     }
 
-    return applyImportReviewPolicy({ ...proposal, envelopeId, categoryId, disposition, selected, reviewReasons, duplicateStatus, sourceAccountInvalid });
+    return { ...proposal, envelopeId, categoryId, disposition, selected, reviewReasons, duplicateStatus, sourceAccountInvalid };
   });
 }

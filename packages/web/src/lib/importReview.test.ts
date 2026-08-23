@@ -12,6 +12,7 @@ import {
 import type { EditedImportItem, ImportApplyResponse } from "./api";
 import {
   buildImportReviewRows,
+  importReviewBlockingCount,
   importReviewDoneStats,
   importReviewReasonMessage,
   reviewBadges,
@@ -104,9 +105,30 @@ const dryResult = (over: Partial<ImportApplyResponse["results"][number]> = {}): 
 });
 
 describe("screenshot import review view model", () => {
-  it("keeps validator-mapped internal transfers visible but unchecked when the endpoint is unknown", () => {
-    // Break caught: the shared validator preserved the warning but still selected the
-    // income/expense fallback, so Task 5 truthfully rendered an unsafe checked row.
+  it("separates inclusion from review and blocks an incomplete selected financial row", () => {
+    const result = recognition(
+      [row("review", { reviewReasons: ["possible_ocr_error"] }), row("missing", { amount: null })],
+      [
+        proposal("review", { selected: true, reviewReasons: ["possible_ocr_error"] }),
+        proposal("missing", { disposition: "unresolved", amount: null, type: null, selected: true, reviewReasons: ["missing_fact"] }),
+      ],
+    );
+    const review = buildImportReviewRows({
+      recognition: result,
+      ledger: ledger(),
+      dryRunResults: [dryResult()],
+      automaticEnvelopeId: null,
+      budgetCurrency: "EUR",
+    });
+    expect(review[0]).toMatchObject({ include: true, requiresReview: true, blockingIssues: [] });
+    expect(review[1]).toMatchObject({ include: true, requiresReview: true, blockingIssues: ["missing_fact"] });
+    expect(reviewRowControlLabels(review[1]!, 1).select).toEqual({ message: "Select recognized row {n}", values: { n: 2 } });
+    expect(importReviewBlockingCount(review)).toBe(1);
+    review[1]!.include = false;
+    expect(importReviewBlockingCount(review)).toBe(0);
+  });
+
+  it("keeps validator-mapped internal transfers checked while flagging the unknown endpoint", () => {
     const validated = validateImportExtraction({
       batch: { rows: [row("unknown-transfer", { direction: "credit", semanticKind: "internal_transfer" })] },
       budgetCurrency: "EUR",
@@ -135,14 +157,42 @@ describe("screenshot import review view model", () => {
     expect(validated.proposals[0]).toMatchObject({
       disposition: "candidate",
       type: "income",
-      selected: false,
+      selected: true,
       reviewReasons: ["unknown_transfer_endpoint"],
     });
-    expect(candidates).toEqual([]);
-    expect(review[0]).toMatchObject({ include: false, editable: true });
+    expect(candidates).toHaveLength(1);
+    expect(review[0]).toMatchObject({ include: true, requiresReview: true, blockingIssues: [], editable: true });
   });
 
-  it("keeps every extracted row visible while only safe complete candidates start selected", () => {
+  it("shows a selected financial FX row as blocking and lets the user uncheck it", () => {
+    const validated = validateImportExtraction({
+      batch: { rows: [row("financial-fx", { semanticKind: "fx_conversion", rowRole: "financial_event" })] },
+      budgetCurrency: "EUR",
+    });
+    const review = buildImportReviewRows({
+      recognition: recognition(
+        validated.rows,
+        reconcileImportProposals({
+          proposals: validated.proposals,
+          transactions: [],
+          accounts: ledger().accounts,
+          envelopes: [],
+          categories: [],
+          selectedAccountId: U(2),
+        }),
+      ),
+      ledger: ledger(),
+      dryRunResults: [],
+      automaticEnvelopeId: null,
+      budgetCurrency: "EUR",
+    });
+
+    expect(review[0]).toMatchObject({ include: true, item: null, blockingIssues: ["unknown_kind"] });
+    expect(reviewRowControlLabels(review[0]!, 0).select).not.toBeNull();
+    expect(importReviewBlockingCount(review)).toBe(1);
+  });
+
+  it("keeps every extracted row visible while all new financial events start selected", () => {
     // Break caught: filtering recognition down to transaction-shaped proposals would hide
     // pending, declined, supporting, or unresolved screenshot evidence from review.
     const rows = [
@@ -160,10 +210,10 @@ describe("screenshot import review view model", () => {
       proposal("pending", { disposition: "pending", selected: false, reviewReasons: ["pending_or_declined"] }),
       proposal("declined", { disposition: "declined", selected: false, reviewReasons: ["pending_or_declined"] }),
       proposal("support", { disposition: "supporting", type: null, selected: false }),
-      proposal("unresolved", { disposition: "unresolved", amount: null, type: null, selected: false, reviewReasons: ["missing_fact"] }),
+      proposal("unresolved", { disposition: "unresolved", amount: null, type: null, selected: true, reviewReasons: ["missing_fact"] }),
       proposal("relation", {
         relation: { kind: "counterpart_of", rowId: "income" },
-        selected: false,
+        selected: true,
         reviewReasons: ["relation_changes_ledger_shape"],
       }),
     ];
@@ -178,15 +228,15 @@ describe("screenshot import review view model", () => {
       budgetCurrency: "EUR",
     });
 
-    expect(candidates.map((item) => item.rawPlace)).toEqual(["raw reward\n25.00 EUR", "raw income\n25.00 EUR"]);
+    expect(candidates.map((item) => item.rawPlace)).toEqual(["raw reward\n25.00 EUR", "raw income\n25.00 EUR", "raw relation\n25.00 EUR"]);
     expect(review.map(({ rowId, disposition, include, editable }) => ({ rowId, disposition, include, editable }))).toEqual([
       { rowId: "reward", disposition: "candidate", include: true, editable: true },
       { rowId: "income", disposition: "candidate", include: true, editable: true },
       { rowId: "pending", disposition: "pending", include: false, editable: false },
       { rowId: "declined", disposition: "declined", include: false, editable: false },
       { rowId: "support", disposition: "supporting", include: false, editable: false },
-      { rowId: "unresolved", disposition: "unresolved", include: false, editable: false },
-      { rowId: "relation", disposition: "candidate", include: false, editable: true },
+      { rowId: "unresolved", disposition: "unresolved", include: true, editable: false },
+      { rowId: "relation", disposition: "candidate", include: true, editable: true },
     ]);
     expect(review[6]!.sourceRef).toBe("raw relation\n25.00 EUR");
     expect(reviewRowControlLabels(review[0]!, 0)).toEqual({
@@ -273,8 +323,8 @@ describe("screenshot import review view model", () => {
       budgetCurrency: "EUR",
     });
 
-    expect(review[0]).toMatchObject({ duplicateStatus: "probable", include: false, editable: true });
-    expect(review[0]!.item).toMatchObject({ status: "probable", include: false });
+    expect(review[0]).toMatchObject({ duplicateStatus: "probable", include: true, requiresReview: true, editable: true });
+    expect(review[0]!.item).toMatchObject({ status: "probable", include: true });
     expect(reviewBadges(review[0]!).map((badge) => badge.label)).toContain("Probable duplicate");
     expect(reviewRowControlLabels(review[0]!, 0)).toEqual({
       select: { message: "Select recognized row {n}", values: { n: 1 } },
@@ -287,15 +337,15 @@ describe("screenshot import review view model", () => {
     const rows = [row("transfer"), row("fx"), row("refund"), row("reward"), row("duplicate")];
     const result = recognition(rows, [
       proposal("transfer", { reviewReasons: ["possible_transfer", "possible_ocr_error"] }),
-      proposal("fx", { selected: false, relation: { kind: "fx_for", rowId: "transfer" }, reviewReasons: ["relation_changes_ledger_shape"] }),
+      proposal("fx", { selected: true, relation: { kind: "fx_for", rowId: "transfer" }, reviewReasons: ["relation_changes_ledger_shape"] }),
       proposal("refund", { isRefund: true, semanticKind: "merchant_refund" }),
       proposal("reward", { type: "income", semanticKind: "cashback_or_reward" }),
-      proposal("duplicate", { duplicateStatus: "probable", selected: false }),
+      proposal("duplicate", { duplicateStatus: "probable", selected: true }),
     ]);
     const review = buildImportReviewRows({
       recognition: result,
       ledger: ledger(),
-      dryRunResults: [dryResult(), dryResult(), dryResult({ type: "income" })],
+      dryRunResults: [dryResult(), dryResult(), dryResult(), dryResult({ type: "income" }), dryResult({ status: "probable" })],
       automaticEnvelopeId: null,
       budgetCurrency: "EUR",
     });
@@ -305,21 +355,21 @@ describe("screenshot import review view model", () => {
     expect(reviewBadges(review[2]!).map((badge) => badge.label)).toContain("Refund");
     expect(reviewBadges(review[3]!).map((badge) => badge.label)).toContain("Reward / income");
     expect(reviewBadges(review[4]!).map((badge) => badge.label)).toContain("Probable duplicate");
-    expect(review[4]!.include).toBe(false);
+    expect(review[4]!.include).toBe(true);
   });
 
   it("presents history ambiguity separately and never invents duplicate evidence from it", () => {
-    const result = recognition([row("ambiguous")], [proposal("ambiguous", { selected: false, reviewReasons: ["multiple_history_candidates"] })]);
+    const result = recognition([row("ambiguous")], [proposal("ambiguous", { selected: true, reviewReasons: ["multiple_history_candidates"] })]);
 
     const review = buildImportReviewRows({
       recognition: result,
       ledger: ledger(),
-      dryRunResults: [],
+      dryRunResults: [dryResult()],
       automaticEnvelopeId: null,
       budgetCurrency: "EUR",
     });
 
-    expect(review[0]).toMatchObject({ duplicateStatus: "new", include: false });
+    expect(review[0]).toMatchObject({ duplicateStatus: "new", include: true, requiresReview: true });
     expect(reviewBadges(review[0]!).map((badge) => badge.label)).toContain("Several history matches");
     expect(reviewBadges(review[0]!).map((badge) => badge.label)).not.toContain("Probable duplicate");
   });
@@ -342,7 +392,6 @@ describe("screenshot import review view model", () => {
       budgetCurrency: "EUR",
     });
     review[1]!.include = true;
-    review[2]!.include = true;
     const edits: Record<number, EditedImportItem> = {
       1: {
         type: "expense",
@@ -363,6 +412,19 @@ describe("screenshot import review view model", () => {
 
     expect(selected).toHaveLength(1);
     expect(selected[0]).toMatchObject({ name: "candidate", rawPlace: "raw candidate\n25.00 EUR" });
+  });
+
+  it("fails closed if a selected blocking row reaches the final apply boundary", () => {
+    const review = buildImportReviewRows({
+      recognition: recognition([row("currency", { currency: "USD" })], [proposal("currency", { currency: "USD" })]),
+      ledger: ledger(),
+      dryRunResults: [dryResult({ currency: "USD" })],
+      automaticEnvelopeId: null,
+      budgetCurrency: "EUR",
+    });
+
+    expect(review[0]).toMatchObject({ include: true, blockingIssues: ["currency_mismatch"] });
+    expect(() => reviewedImportRowsForApply({ rows: review, edited: {}, editedAutomaticDefaults: {} })).toThrow("import_review_blocked");
   });
 
   it("has concise copy for every shared reason and a safe fallback for a newer reason", () => {

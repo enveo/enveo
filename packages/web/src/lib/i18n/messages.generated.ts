@@ -791,6 +791,7 @@ export const MESSAGES = [
   "Type or pick a place...",
   "Type {word} to confirm:",
   "Unassigned money is sitting in the pool",
+  "Uncheck {n} incomplete transaction before adding. | Uncheck {n} incomplete transactions before adding.",
   "Undo",
   "Unknown transaction type",
   "Unlock",

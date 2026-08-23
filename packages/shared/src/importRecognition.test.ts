@@ -191,27 +191,67 @@ describe("screenshot import recognition contract", () => {
 });
 
 describe("screenshot import proposal validation", () => {
+  it("keeps new financial events selected while review warnings stay informational", () => {
+    const result = validateImportExtraction({
+      batch: {
+        rows: [
+          extractRow({ rowId: "topup", direction: "credit", semanticKind: "account_topup" }),
+          extractRow({ rowId: "uncertain", reviewReasons: ["possible_ocr_error"] }),
+          extractRow({ rowId: "related", relation: { kind: "counterpart_of", rowId: "topup" } }),
+        ],
+      },
+      budgetCurrency: "PLN",
+    });
+    expect(result.proposals).toMatchObject([
+      { rowId: "topup", disposition: "candidate", selected: true, reviewReasons: ["possible_transfer", "relation_changes_ledger_shape"] },
+      { rowId: "uncertain", disposition: "candidate", selected: true, reviewReasons: ["possible_ocr_error"] },
+      { rowId: "related", disposition: "candidate", selected: true, reviewReasons: ["relation_changes_ledger_shape"] },
+    ]);
+  });
+
+  it("selects an incomplete financial event but keeps it unresolved until the user acts", () => {
+    const result = validateImportExtraction({
+      batch: { rows: [extractRow({ rowId: "missing", amount: null })] },
+      budgetCurrency: "PLN",
+    });
+    expect(result.proposals[0]).toMatchObject({ rowId: "missing", disposition: "unresolved", selected: true, reviewReasons: ["missing_fact"] });
+  });
+
   it("maps clear semantic facts to conservative ledger directions", () => {
     expect(proposalFor("cashback_or_reward", "credit")).toMatchObject({ type: "income", selected: true });
-    expect(proposalFor("incoming_transfer", "credit")).toMatchObject({ type: "income", selected: false, reviewReasons: ["possible_transfer"] });
-    expect(proposalFor("account_topup", "credit")).toMatchObject({ type: "income", selected: false, reviewReasons: ["possible_transfer"] });
+    expect(proposalFor("incoming_transfer", "credit")).toMatchObject({ type: "income", selected: true, reviewReasons: ["possible_transfer"] });
+    expect(proposalFor("account_topup", "credit")).toMatchObject({ type: "income", selected: true, reviewReasons: ["possible_transfer"] });
     expect(proposalFor("merchant_refund", "credit")).toMatchObject({ type: "expense", isRefund: true });
     expect(proposalFor("internal_transfer", "credit")).toMatchObject({
       type: "income",
       reviewReasons: ["unknown_transfer_endpoint"],
-      selected: false,
+      selected: true,
     });
-    expect(proposalFor("unknown", "unknown")).toMatchObject({ disposition: "unresolved", selected: false });
+    expect(proposalFor("unknown", "unknown")).toMatchObject({ disposition: "unresolved", selected: true });
   });
 
-  it("requires explicit opt-in for an unknown posting status", () => {
+  it("keeps an unknown posting status selected but marks it for review", () => {
     const result = validateImportExtraction({ batch: { rows: [extractRow({ postingStatus: "unknown" })] }, budgetCurrency: "PLN" });
 
-    expect(result.proposals[0]).toMatchObject({ type: "expense", disposition: "candidate", selected: false });
+    expect(result.proposals[0]).toMatchObject({ type: "expense", disposition: "candidate", selected: true });
     expect(result.proposals[0]!.reviewReasons).toContain("unknown_posting_status");
   });
 
-  it("keeps incomplete, supporting, pending, and declined source facts visible without selecting them", () => {
+  it("keeps a financial FX row selected but blocks it until the user reviews it", () => {
+    const result = validateImportExtraction({
+      batch: { rows: [extractRow({ semanticKind: "fx_conversion", rowRole: "financial_event" })] },
+      budgetCurrency: "PLN",
+    });
+
+    expect(result.proposals[0]).toMatchObject({
+      type: null,
+      disposition: "unresolved",
+      selected: true,
+      reviewReasons: ["unknown_kind"],
+    });
+  });
+
+  it("selects incomplete financial facts while leaving supporting, pending, and declined rows unselected", () => {
     const result = validateImportExtraction({
       batch: {
         rows: [
@@ -227,11 +267,11 @@ describe("screenshot import proposal validation", () => {
 
     expect(result.rows.map((row) => row.rowId)).toEqual(["missing", "support", "pending", "declined", "pending-missing"]);
     expect(result.proposals).toMatchObject([
-      { rowId: "missing", disposition: "unresolved", selected: false, rawPlace: "unreadable amount", reviewReasons: ["missing_fact"] },
+      { rowId: "missing", disposition: "unresolved", selected: true, rawPlace: "unreadable amount", reviewReasons: ["missing_fact"] },
       { rowId: "support", disposition: "supporting", selected: false },
       { rowId: "pending", disposition: "pending", selected: false, reviewReasons: ["pending_or_declined"] },
       { rowId: "declined", disposition: "declined", selected: false, reviewReasons: ["pending_or_declined"] },
-      { rowId: "pending-missing", disposition: "unresolved", selected: false, reviewReasons: ["missing_fact"] },
+      { rowId: "pending-missing", disposition: "pending", selected: false, reviewReasons: ["missing_fact", "pending_or_declined"] },
     ]);
   });
 
@@ -254,8 +294,8 @@ describe("screenshot import proposal validation", () => {
     });
 
     expect(result.proposals).toMatchObject([
-      { rowId: "dangling", disposition: "unresolved", selected: false, reviewReasons: ["invalid_relation"] },
-      { rowId: "self", disposition: "unresolved", selected: false, reviewReasons: ["invalid_relation"] },
+      { rowId: "dangling", disposition: "unresolved", selected: true, reviewReasons: ["invalid_relation"] },
+      { rowId: "self", disposition: "unresolved", selected: true, reviewReasons: ["invalid_relation"] },
     ]);
   });
 
@@ -271,7 +311,7 @@ describe("screenshot import proposal validation", () => {
     });
 
     expect(result.proposals).toMatchObject([
-      { rowId: "purchase", selected: false, reviewReasons: ["relation_changes_ledger_shape", "impossible_fx"] },
+      { rowId: "purchase", selected: true, reviewReasons: ["relation_changes_ledger_shape", "impossible_fx"] },
       { rowId: "fx", selected: false, reviewReasons: ["relation_changes_ledger_shape", "impossible_fx"] },
     ]);
   });
@@ -289,9 +329,9 @@ describe("screenshot import proposal validation", () => {
     });
 
     expect(result.proposals).toMatchObject([
-      { rowId: "date", disposition: "unresolved", selected: false, reviewReasons: ["missing_fact"] },
-      { rowId: "amount", disposition: "unresolved", selected: false, reviewReasons: ["missing_fact"] },
-      { rowId: "currency", disposition: "unresolved", selected: false, reviewReasons: ["unsupported_currency"] },
+      { rowId: "date", disposition: "unresolved", selected: true, reviewReasons: ["missing_fact"] },
+      { rowId: "amount", disposition: "unresolved", selected: true, reviewReasons: ["missing_fact"] },
+      { rowId: "currency", disposition: "unresolved", selected: true, reviewReasons: ["unsupported_currency"] },
     ]);
   });
 });
@@ -399,7 +439,7 @@ describe("screenshot import enrichment merge", () => {
       categoryId: null,
       relation: null,
       reviewReasons: ["possible_ocr_error", "fact_correction"],
-      selected: false,
+      selected: true,
     });
   });
 
@@ -452,7 +492,7 @@ describe("screenshot import proposal reconciliation", () => {
     expect(probable).toMatchObject({
       duplicateStatus: "probable",
       disposition: "candidate",
-      selected: false,
+      selected: true,
       reviewReasons: ["multiple_history_candidates"],
     });
   });

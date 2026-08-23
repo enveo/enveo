@@ -1,9 +1,8 @@
-import { type ImportReviewReason, importReviewRequiresExplicitOptIn } from "../../packages/shared/src/importRecognition";
-
 export type ImportRecognitionDirection = "debit" | "credit" | "unknown";
 export type ImportRecognitionRowRole = "financial_event" | "supporting_detail" | "ui_metadata";
 export type ImportRecognitionPostingStatus = "posted" | "pending" | "declined" | "unknown";
 export type ImportRecognitionSafetyClass = "safe_auto" | "unsafe_auto" | "review_only" | "non_ledger";
+export type ImportRecognitionDuplicateStatus = "new" | "probable" | "exists";
 
 export interface ImportRecognitionRelation {
   kind: string;
@@ -24,6 +23,7 @@ export interface ExpectedImportRecognitionRow {
   postingStatus: ImportRecognitionPostingStatus;
   safetyClass: ImportRecognitionSafetyClass;
   requiredSafetyReasons: string[];
+  expectedDuplicateStatus: ImportRecognitionDuplicateStatus;
   date: string | null;
   amount: number | null;
   currency: string | null;
@@ -37,6 +37,7 @@ export interface ActualImportRecognitionProposal extends ImportRecognitionPropos
   selected: boolean;
   disposition: "candidate" | "supporting" | "pending" | "declined" | "unresolved";
   reviewReasons: string[];
+  duplicateStatus: ImportRecognitionDuplicateStatus;
 }
 
 export interface ActualImportRecognitionRow {
@@ -84,12 +85,19 @@ export interface ImportRecognitionMetrics {
     overall: ImportRecognitionRatio;
   };
   semanticKindAccuracy: ImportRecognitionRatio;
+  duplicateStatusAccuracy: ImportRecognitionRatio;
   relationPrecision: ImportRecognitionRatio;
   /** Expected relations are the denominator, so omitting every relation scores zero. */
   relationRecall: ImportRecognitionRatio;
   /** Null only when neither truth nor output contains a relation. */
   relationF1: number | null;
-  harmfulSelected: number;
+  inclusion: {
+    missingFinancial: number;
+    nonLedgerIncluded: number;
+  };
+  interpretationErrors: number;
+  reviewCoverage: ImportRecognitionRatio;
+  unexpectedReviewReasons: number;
   /** Release-relevant reviews only; pending/declined/supporting/UI/unexpected rows are separate. */
   reviewRequired: number;
   reviewBreakdown: ImportRecognitionReviewBreakdown;
@@ -122,17 +130,10 @@ const sameProposal = (left: ImportRecognitionProposalTruth, right: ImportRecogni
   left.envelopeId === right.envelopeId &&
   left.categoryId === right.categoryId;
 
-const isHarmfulSelection = (truth: ExpectedImportRecognitionRow | undefined, actual: ActualImportRecognitionRow): boolean => {
-  const proposal = actual.proposal;
-  if (!proposal?.selected) return false;
-  if (truth?.safetyClass !== "safe_auto" || !truth.expectedProposal) return true;
-  return !sameProposal(truth.expectedProposal, proposal);
-};
-
 type ReviewBucket = Exclude<keyof ImportRecognitionReviewBreakdown, "total"> | null;
 
 const reviewBucket = (truth: ExpectedImportRecognitionRow | undefined, actual: ActualImportRecognitionRow): ReviewBucket => {
-  if (!actual.proposal || actual.proposal.selected) return null;
+  if (!actual.proposal || actual.proposal.selected || actual.proposal.duplicateStatus === "exists") return null;
   if (!truth) return "unexpected";
   if (truth.postingStatus === "pending" || truth.postingStatus === "declined") return "pendingOrDeclined";
   if (truth.rowRole !== "financial_event") return "supportingOrUi";
@@ -140,12 +141,20 @@ const reviewBucket = (truth: ExpectedImportRecognitionRow | undefined, actual: A
 };
 
 const hasRequiredSafetyReview = (truth: ExpectedImportRecognitionRow, actual: ActualImportRecognitionRow | undefined): boolean =>
-  truth.safetyClass === "unsafe_auto" &&
-  importReviewRequiresExplicitOptIn({ reviewReasons: truth.requiredSafetyReasons as ImportReviewReason[] }) &&
+  truth.requiredSafetyReasons.length > 0 &&
   actual?.proposal !== null &&
   actual?.proposal !== undefined &&
-  !actual.proposal.selected &&
   truth.requiredSafetyReasons.every((reason) => actual.proposal!.reviewReasons.includes(reason));
+
+const truthShouldBeIncluded = (truth: ExpectedImportRecognitionRow): boolean =>
+  truth.rowRole === "financial_event" && truth.postingStatus !== "pending" && truth.postingStatus !== "declined" && truth.expectedDuplicateStatus !== "exists";
+
+const allowedReviewReasons = (truth: ExpectedImportRecognitionRow): Set<string> => {
+  const allowed = new Set(truth.requiredSafetyReasons);
+  if (truth.expectedDuplicateStatus === "exists") allowed.add("history_conflict");
+  if (truth.expectedDuplicateStatus === "probable") allowed.add("multiple_history_candidates");
+  return allowed;
+};
 
 /** Scores fixture-aligned rows. Expected classifications, never model-provided roles, control safety accounting. */
 export function scoreImportRecognition(
@@ -185,8 +194,32 @@ export function scoreImportRecognition(
     total: 0,
   };
   const unexpectedRows: ImportRecognitionUnexpectedRows = { total: 0, selected: 0, unselected: 0, withoutProposal: 0 };
-  let harmfulSelected = 0;
   let missingProposals = 0;
+  let missingFinancial = 0;
+  let nonLedgerIncluded = 0;
+  let interpretationErrors = 0;
+  let reviewedAsRequired = 0;
+  let requiredReviews = 0;
+  let unexpectedReviewReasons = 0;
+
+  for (const truth of expected) {
+    const actualRow = actualById.get(truth.id);
+    const included = actualRow?.proposal?.selected === true;
+    if (truthShouldBeIncluded(truth)) {
+      if (!included) missingFinancial++;
+    } else if (included) {
+      nonLedgerIncluded++;
+    }
+    if (truth.expectedProposal && actualRow?.proposal && !sameProposal(truth.expectedProposal, actualRow.proposal)) interpretationErrors++;
+    if (truth.requiredSafetyReasons.length > 0) {
+      requiredReviews++;
+      if (truth.requiredSafetyReasons.every((reason) => actualRow?.proposal?.reviewReasons.includes(reason))) reviewedAsRequired++;
+    }
+    if (actualRow?.proposal) {
+      const allowed = allowedReviewReasons(truth);
+      unexpectedReviewReasons += actualRow.proposal.reviewReasons.filter((reason) => !allowed.has(reason)).length;
+    }
+  }
 
   for (const row of actual) {
     const truth = actualById.get(row.id) === row ? expectedById.get(row.id) : undefined;
@@ -198,7 +231,6 @@ export function scoreImportRecognition(
     } else if (!row.proposal) {
       missingProposals++;
     }
-    if (isHarmfulSelection(truth, row)) harmfulSelected++;
     const bucket = reviewBucket(truth, row);
     if (bucket) {
       reviewBreakdown[bucket]++;
@@ -217,13 +249,20 @@ export function scoreImportRecognition(
       overall: ratio(overallCorrect, factTotal * 4),
     },
     semanticKindAccuracy: ratio(expected.filter((row) => actualById.get(row.id)?.semanticKind === row.semanticKind).length, expected.length),
+    duplicateStatusAccuracy: ratio(
+      financial.filter((row) => actualById.get(row.id)?.proposal?.duplicateStatus === row.expectedDuplicateStatus).length,
+      financial.length,
+    ),
     relationPrecision: ratio(correctRelations, actualRelations.length),
     relationRecall: ratio(
       expectedRelations.filter((row) => sameRelation(actualById.get(row.id)?.relation ?? null, row.relation)).length,
       expectedRelations.length,
     ),
     relationF1: actualRelations.length + expectedRelations.length === 0 ? null : (2 * correctRelations) / (actualRelations.length + expectedRelations.length),
-    harmfulSelected,
+    inclusion: { missingFinancial, nonLedgerIncluded },
+    interpretationErrors,
+    reviewCoverage: ratio(reviewedAsRequired, requiredReviews),
+    unexpectedReviewReasons,
     reviewRequired: reviewBreakdown.unsafe + reviewBreakdown.otherFinancial,
     reviewBreakdown,
     missingRows: expected.length - matched,
@@ -259,11 +298,11 @@ export function gateImportRecognition(
     const candidateHasRequiredSafetyReview = candidateRows.length === 1 && hasRequiredSafetyReview(truth, candidateRow);
     const baselineReleaseReview = baselineRow ? ["unsafe", "otherFinancial"].includes(reviewBucket(truth, baselineRow) ?? "") : false;
     const candidateReleaseReview = candidateRow ? ["unsafe", "otherFinancial"].includes(reviewBucket(truth, candidateRow) ?? "") : false;
-    const attributable =
-      truth.safetyClass === "unsafe_auto" && baselineRow !== undefined && isHarmfulSelection(truth, baselineRow) && candidateHasRequiredSafetyReview;
+    const baselineHasRequiredSafetyReview = hasRequiredSafetyReview(truth, baselineRow);
+    const attributable = truth.requiredSafetyReasons.length > 0 && !baselineHasRequiredSafetyReview && candidateHasRequiredSafetyReview;
     if (attributable) attributableSafety++;
     if (candidateReleaseReview && !baselineReleaseReview && !attributable) unexplainedNewReviews++;
-    if (truth.safetyClass === "unsafe_auto" && !candidateHasRequiredSafetyReview) unsafeConstraintFailures++;
+    if (truth.requiredSafetyReasons.length > 0 && !candidateHasRequiredSafetyReview) unsafeConstraintFailures++;
   }
 
   const reasons: string[] = [];
@@ -304,13 +343,18 @@ export function gateImportRecognition(
       reasons.push("relation_f1_regression");
     }
   }
-  if (baseline.harmfulSelected === 0) {
-    if (candidate.harmfulSelected !== 0) reasons.push("harmful_selected_regression_from_zero");
-  } else if (candidate.harmfulSelected >= baseline.harmfulSelected) {
-    reasons.push("harmful_selected_not_strictly_lower");
+  if (candidate.inclusion.missingFinancial > 0) reasons.push("financial_event_not_selected");
+  if (candidate.inclusion.nonLedgerIncluded > 0) reasons.push("non_ledger_selected");
+  if (candidate.unexpectedRows.selected > 0) reasons.push("unexpected_row_selected");
+  if (candidate.duplicateStatusAccuracy.total > 0 && candidate.duplicateStatusAccuracy.rate !== 1) reasons.push("duplicate_status_incorrect");
+  if (baseline.interpretationErrors === 0) {
+    if (candidate.interpretationErrors !== 0) reasons.push("interpretation_error_regression_from_zero");
+  } else if (candidate.interpretationErrors >= baseline.interpretationErrors) {
+    reasons.push("interpretation_errors_not_strictly_lower");
   }
-  if (unsafeConstraintFailures > 0) reasons.push("unsafe_row_constraint_failed");
-  if (unexplainedNewReviews > 0) reasons.push("unexplained_review_transition");
+  if (candidate.reviewCoverage.total > 0 && candidate.reviewCoverage.rate !== 1) reasons.push("review_coverage_incomplete");
+  if (candidate.unexpectedReviewReasons > 0) reasons.push("unexpected_review_reason");
+  if (unsafeConstraintFailures > 0) reasons.push("required_review_reason_missing");
 
   return {
     passed: reasons.length === 0,

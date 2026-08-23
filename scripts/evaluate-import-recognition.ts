@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { dirname, extname, isAbsolute, relative, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { SUPPORTED_CURRENCIES } from "../packages/shared/src/currency";
-import { IMPORT_REVIEW_REASONS, type ImportReviewReason, importReviewRequiresExplicitOptIn } from "../packages/shared/src/importRecognition";
+import { IMPORT_REVIEW_REASONS } from "../packages/shared/src/importRecognition";
 import {
   type ActualImportRecognitionProposal,
   type ActualImportRecognitionRow,
@@ -302,6 +302,7 @@ export function parseCandidateResult(value: unknown, imageCount: number): Candid
       selected: entry.selected,
       disposition: entry.disposition as CandidateProposal["disposition"],
       reviewReasons: entry.reviewReasons as string[],
+      duplicateStatus: entry.duplicateStatus,
       type: entry.type as CandidateProposal["type"],
       isRefund: entry.isRefund,
       toAccountId: candidateNullableString(entry.toAccountId, `${field}.toAccountId`),
@@ -427,6 +428,7 @@ export function normalizeBaselineRecognition(
       relation: null,
       proposal: {
         selected: true,
+        duplicateStatus: "new",
         disposition: "candidate",
         reviewReasons: [],
         type: item.type,
@@ -480,6 +482,7 @@ export function normalizeCandidateRecognition(
             selected: proposal.selected,
             disposition: proposal.disposition,
             reviewReasons: proposal.reviewReasons,
+            duplicateStatus: proposal.duplicateStatus,
             type: proposal.type,
             isRefund: proposal.isRefund,
             toAccountId: proposal.toAccountId,
@@ -718,6 +721,7 @@ const parseManifestRow = (value: unknown, field: string): RecognitionManifestRow
       "postingStatus",
       "safetyClass",
       "requiredSafetyReasons",
+      "expectedDuplicateStatus",
       "date",
       "amount",
       "currency",
@@ -761,7 +765,10 @@ const parseManifestRow = (value: unknown, field: string): RecognitionManifestRow
     throw new Error(`manifest ${field}.requiredSafetyReasons is invalid`);
   }
   const requiredSafetyReasons = [...new Set(value.requiredSafetyReasons as string[])];
-  const requiresExplicitOptIn = importReviewRequiresExplicitOptIn({ reviewReasons: requiredSafetyReasons as ImportReviewReason[] });
+  const expectedDuplicateStatus = value.expectedDuplicateStatus ?? "new";
+  if (expectedDuplicateStatus !== "new" && expectedDuplicateStatus !== "probable" && expectedDuplicateStatus !== "exists") {
+    throw new Error(`manifest ${field}.expectedDuplicateStatus is invalid`);
+  }
   const semanticKind = requireString(value.semanticKind, `${field}.semanticKind`);
   if (!SEMANTIC_KINDS.has(semanticKind)) throw new Error(`manifest ${field}.semanticKind is invalid`);
   if (TRANSACTION_SEMANTIC_KINDS.has(semanticKind) && rowRole !== "financial_event") {
@@ -785,7 +792,6 @@ const parseManifestRow = (value: unknown, field: string): RecognitionManifestRow
   if (safetyClass === "unsafe_auto" && requiredSafetyReasons.length === 0) throw new Error(`manifest ${field} unsafe_auto requires a safety reason`);
   if (safetyClass === "safe_auto" && requiredSafetyReasons.length > 0) throw new Error(`manifest ${field} safe_auto cannot require review`);
   if (safetyClass === "review_only" && requiredSafetyReasons.length === 0) throw new Error(`manifest ${field} review_only requires a safety reason`);
-  if (requiresExplicitOptIn && safetyClass === "safe_auto") throw new Error(`manifest ${field} shared review policy requires explicit opt-in`);
   if (
     (postingStatus === "pending" || postingStatus === "declined") &&
     (safetyClass !== "review_only" || !requiredSafetyReasons.includes("pending_or_declined"))
@@ -816,6 +822,7 @@ const parseManifestRow = (value: unknown, field: string): RecognitionManifestRow
     postingStatus,
     safetyClass,
     requiredSafetyReasons,
+    expectedDuplicateStatus,
     date: value.date === null ? null : calendarDate(value.date, `${field}.date`),
     amount: amount as number | null,
     currency: value.currency === null ? null : currencyCode(value.currency, `${field}.currency`),
@@ -835,6 +842,9 @@ const assertRepresentativeCoverage = (manifest: RecognitionManifest): void => {
   );
   const kinds = new Set(manifest.fixtures.flatMap((fixture) => fixture.rows.map((row) => row.semanticKind)));
   const statuses = new Set(manifest.fixtures.flatMap((fixture) => fixture.rows.map((row) => row.postingStatus)));
+  const duplicateStatuses = new Set(
+    manifest.fixtures.flatMap((fixture) => fixture.rows.filter((row) => row.rowRole === "financial_event").map((row) => row.expectedDuplicateStatus)),
+  );
   const forms = new Set(manifest.fixtures.map((fixture) => fixture.formFactor));
   const languages = new Set(manifest.fixtures.map((fixture) => new Intl.Locale(fixture.locale).language));
   const currencies = new Set(
@@ -856,6 +866,9 @@ const assertRepresentativeCoverage = (manifest: RecognitionManifest): void => {
   if (missing.length > 0) throw new Error("manifest corpus coverage is missing required transaction classes");
   if (!kinds.has("fx_conversion")) throw new Error("manifest corpus coverage requires FX evidence");
   if (!statuses.has("pending") || !statuses.has("declined")) throw new Error("manifest corpus coverage requires pending and declined rows");
+  if (!duplicateStatuses.has("probable") || !duplicateStatuses.has("exists")) {
+    throw new Error("manifest corpus duplicate coverage requires probable and exact matches");
+  }
   if (!forms.has("mobile") || !forms.has("desktop")) throw new Error("manifest corpus coverage requires mobile and desktop fixtures");
   if (!manifest.fixtures.some((fixture) => fixture.overlap)) throw new Error("manifest corpus coverage requires overlap");
   if (currencies.size < 2) throw new Error("manifest corpus coverage requires multiple currencies");
@@ -1618,6 +1631,7 @@ const expectedForFixture = (fixture: RecognitionManifestFixture): ExpectedImport
     postingStatus: row.postingStatus,
     safetyClass: row.safetyClass,
     requiredSafetyReasons: row.requiredSafetyReasons,
+    expectedDuplicateStatus: row.expectedDuplicateStatus,
     date: row.date,
     amount: row.amount,
     currency: row.currency,
