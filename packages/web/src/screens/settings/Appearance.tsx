@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { EditWidgetsSheet } from "../../components/widgets";
+import { EditWidgetsSheet } from "../../components/EditWidgetsSheet";
 import { useStateQuery } from "../../lib/api";
 import { useCurrency, useSettings, useTheme } from "../../lib/contexts";
 import { SUPPORTED_CURRENCIES } from "../../lib/currency";
