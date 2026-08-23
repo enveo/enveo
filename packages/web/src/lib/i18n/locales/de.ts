@@ -695,4 +695,5 @@ export const de: Dict = {
   "Remove from the board": "Vom Raster entfernen",
   "Size: {w} × {h} — drag the corner of the tile to resize": "Größe: {w} × {h} — an der Ecke der Kachel ziehen, um die Größe zu ändern",
   "Widget settings": "Widget-Einstellungen",
+  "latest transactions": "letzte Transaktionen",
 };
