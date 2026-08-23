@@ -128,7 +128,13 @@ export default function App() {
     }
     setEnvView(null);
     setEditReturn("start");
-    if (s === "reports") setReportsView("overview");
+    if (s === "reports") {
+      
+
+
+      setReportsView("overview");
+      setMonthDay(null);
+    }
     setScreen(s);
   };
   
