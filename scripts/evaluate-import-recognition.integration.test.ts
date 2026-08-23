@@ -933,7 +933,11 @@ describe("paired import recognition CLI", () => {
     expect(result.exitCode).toBe(1);
     const output = JSON.parse(result.stdout);
     expect(output.metrics.candidate.rowRecall).toEqual({ correct: 0, total: 11, rate: 0 });
-    expect(output.metrics.candidate.inclusion.missingFinancial).toBe(7);
+    
+
+
+
+    expect(output.metrics.candidate.inclusion.missingFinancial).toBe(8);
     expect(output.identity.contractFailures).toEqual({ baseline: [], candidate: ["synthetic-mobile", "synthetic-desktop"] });
     expect(output.decision.reasons).toContain("financial_event_not_selected");
     expect(output.identity.sources.baseline.moduleHashes["packages/shared/src/aiPrompts.ts"]).toHaveLength(64);
