@@ -9,6 +9,7 @@ import { useStateQuery } from "./lib/api";
 import { useTheme } from "./lib/contexts";
 import { currentMonth, shiftMonth } from "./lib/dates";
 import { useT } from "./lib/i18n";
+import { parseUrl, routeToUrl } from "./lib/routing";
 import { startupPresentation } from "./lib/startupSplash";
 import { store } from "./lib/store";
 import { bootOnce, retryBoot } from "./lib/sync";
@@ -63,7 +64,12 @@ const initialTransactionFilters = (): TransactionFilters => ({
 
 export default function App() {
   const C = useTheme();
-  const [screen, setScreen] = useState<ScreenId>("start");
+  // Deep-load restore: which screen/report/envelope a fresh page load should land on — read
+  // once (React ignores this argument after the initial render). `parseUrl` always resolves a
+  // full `Route`, so no `start`/`overview` fallback is needed here. `panelClosed` stays out of
+  // the URL (chrome, not navigation — pr4-context.md §12.2).
+  const r0 = parseUrl(location.pathname, location.search);
+  const [screen, setScreen] = useState<ScreenId>(r0.screen);
   const [month, setMonth] = useState(currentMonth());
   const [drawer, setDrawer] = useState(false);
   const [installSheet, setInstallSheet] = useState(false);
@@ -82,7 +88,7 @@ export default function App() {
   const [budgetFillGoals, setBudgetFillGoals] = useState(false);
   // Reports view kept in App — entering from the menu opens the card overview,
   // while a deep link (the menu's "Envelope budgets" shortcut) goes straight to the given subscreen
-  const [reportsView, setReportsView] = useState<ReportView>("overview");
+  const [reportsView, setReportsView] = useState<ReportView>(r0.reportsView);
   // Month report's selected day, kept in App for the SAME reason as `reportsView`: opening a
   // transaction from the day panel for edit switches `screen` to "addExpense" and back,
   // unmounting ReportsScreen (and MonthReport) in between — local state there would be lost.
@@ -92,7 +98,7 @@ export default function App() {
   const [monthDay, setMonthDay] = useState<string | null>(null);
   useEffect(() => setMonthDay(null), [month]);
   // full-screen envelope summary (push-nav like transaction editing); back → null
-  const [envView, setEnvView] = useState<{ envelopeId: string; month: string } | null>(null);
+  const [envView, setEnvView] = useState<{ envelopeId: string; month: string } | null>(r0.envelopeId ? { envelopeId: r0.envelopeId, month } : null);
   // screen to return to after saving/cancelling an edit (default start; from the list → list)
   const [editReturn, setEditReturn] = useState<ScreenId>("start");
   // transaction list filters kept high up so they survive an edit and return
@@ -200,7 +206,11 @@ export default function App() {
   };
   const doneEdit = () => {
     setEditTxn(null);
-    setScreen(editReturn);
+    // `history.back()` after a save is correct here: the entry below `/add` is the screen the
+    // edit came from, and `editTxn` is already cleared before popstate runs. `history.state`
+    // is our own marker — see `back()` below for what `true` vs `false`/`null` mean.
+    if (history.state === true) history.back();
+    else setScreen(editReturn);
   };
   const prev = () => setMonth((m) => shiftMonth(m, -1));
   const next = () => setMonth((m) => shiftMonth(m, 1));
@@ -232,10 +242,45 @@ export default function App() {
   // account's budget, so the decision screen takes over: export a backup / remove and continue.
   const foreign = bootStatus === "foreign";
 
+  // History wiring, one effect: popstate applies the parsed route through `nav()` — reusing its
+  // hygiene (clears presets/editTxn/envView), then overrides in the same batch exactly like the
+  // existing `openReports` deep-link pattern. The same pass also keeps one URL in sync with
+  // (screen, reportsView, envelopeId) — popstate self-suppresses because the derived URL then
+  // already equals `location` — and drops a deep-linked envelope id that turns out not to exist
+  // (stale link, wrong account) before it reaches the URL.
+  const routingActive = state && !onboarding && !unauthed && !locked && !foreign;
+  useEffect(() => {
+    const onPop = () => {
+      const r = parseUrl(location.pathname, location.search);
+      nav(r.screen);
+      setReportsView(r.reportsView);
+      if (r.envelopeId) setEnvView({ envelopeId: r.envelopeId, month });
+    };
+    window.addEventListener("popstate", onPop);
+    if (routingActive) {
+      if (envView && !state?.envelopes.some((e) => e.id === envView.envelopeId)) setEnvView(null);
+      else {
+        const url = routeToUrl({ screen, reportsView, envelopeId: envView?.envelopeId ?? null });
+        if (url !== location.pathname + location.search) {
+          // entry 0 (never pushed before) is replaced in place, no stack growth; every later
+          // change is a real pushed entry (see `back()` below for what `true`/`false` mean).
+          if (history.state == null) history.replaceState(false, "", url);
+          else history.pushState(true, "", url);
+        }
+      }
+    }
+    return () => window.removeEventListener("popstate", onPop);
+  });
+
   // Swipe right = go back (screens with a back arrow — pinned PWA has no Safari gesture).
   const canBack = envView !== null || screen === "addExpense" || screen === "settings";
   const back = () => {
-    if (envView) setEnvView(null);
+    // `history.state` is our own tracking marker: `true` on a real pushed entry (the user has
+    // navigated at least twice this session) — traverse it so the swipe gesture, the chevrons
+    // and the hardware back key land on the SAME entries. `false`/`null` mean entry 0 (the
+    // deep-loaded page, stamped in place without growing the stack) — legacy fallback below.
+    if (history.state === true) history.back();
+    else if (envView) setEnvView(null);
     else if (screen === "addExpense") {
       setEditTxn(null);
       setScreen(editReturn);
