@@ -520,6 +520,7 @@ export const MESSAGES = [
   "Settings",
   "Share",
   "Short after changes",
+  "Show all",
   "Show the side panel",
   "Show {n} transaction | Show {n} transactions",
   "Sign in",
