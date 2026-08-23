@@ -264,7 +264,7 @@ describe("the real build output", () => {
     expect(app).toContain('const BudgetScreen = lazy(() => import("./screens/Budget").then((m) => ({ default: m.BudgetScreen })));');
     expect(app).toContain('const EnvEdit = lazy(() => import("./screens/Budget").then((m) => ({ default: m.EnvEdit })));');
     expect(app).not.toContain('import { BudgetScreen, EnvEdit } from "./screens/Budget";');
-    expect(app).toContain('{screen === "budget" && (\n                <LazyChunk onDismiss={() => nav("start")}>');
+    expect(app).toContain('{screen === "budget" && (\n        <LazyChunk onDismiss={() => nav("start")}>');
     expect(app).toContain('{envEdit && (\n          <LazyChunk variant="overlay" onDismiss={() => setEnvEdit(null)}>');
   });
 });

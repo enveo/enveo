@@ -1,0 +1,117 @@
+import { lazy } from "react";
+import { useTheme } from "../../lib/contexts";
+import { type Message, msg, useT } from "../../lib/i18n";
+import { TITLES } from "../../screens/reports/types";
+import { LazyChunk } from "../lazy";
+import type { PanelView } from "./panel";
+
+// Same resolved module App.tsx already `lazy()`s for the full-screen phone summary — Vite
+// dedupes a dynamically-imported module by its resolved id, so this does NOT create a second
+// chunk for Envelope; it just adds another entry point into the SAME one.
+const EnvelopeScreen = lazy(() => import("../../screens/Envelope").then((m) => ({ default: m.EnvelopeScreen })));
+
+const HINT_COPY: Record<"envelope" | "report" | "generic", Message> = {
+  envelope: msg("Choose an envelope to see its summary."),
+  report: msg("Choose a report to open it here."),
+  generic: msg("Nothing is open in this panel yet."),
+};
+
+function assertNever(x: never): never {
+  throw new Error(`PanelHost: unhandled panel kind ${JSON.stringify(x)}`);
+}
+
+/**
+ * The panel's body for the CURRENT `PanelView`, behind a slim header (context label + ✕ close,
+ * both ≥30px). This header is real, load-bearing chrome for every kind — including `empty`,
+ * whose ✕ is the only way left to close the panel (pr4-task-4-brief.md §4d) — not a
+ * transcription of the demo's dead `contextTab`/`ctx.back` machinery. PR6 extends it unmodified
+ * for the `add` kind it introduces.
+ *
+ * `onClose` already encodes the CURRENT kind's close semantics (WideShell computes it from the
+ * same `view` this component renders) — the ✕ button and WideShell's Escape handler both call
+ * the identical function, so the two paths can never disagree about what "close" means here.
+ */
+export function PanelHost({
+  view,
+  onClose,
+  onOpenTxns,
+}: {
+  view: PanelView;
+  onClose: () => void;
+  onOpenTxns: (f?: { envId?: string; accId?: string }) => void;
+}) {
+  const C = useTheme();
+  const { t } = useT();
+
+  const label = view.kind === "report" ? t(TITLES[view.view]) : "";
+
+  const body = (() => {
+    switch (view.kind) {
+      case "empty":
+        return (
+          <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", padding: 24, textAlign: "center" }}>
+            <span style={{ color: C.mute, fontSize: 13, lineHeight: 1.5 }}>{t(HINT_COPY[view.hint])}</span>
+          </div>
+        );
+      case "envelope":
+        return (
+          <LazyChunk>
+            <EnvelopeScreen envelopeId={view.envelopeId} initialMonth={view.month} onBack={onClose} onOpenTxns={onOpenTxns} />
+          </LazyChunk>
+        );
+      case "report":
+        // Task 6 wires the real subscreen content; rendering the variant now (behind the same
+        // LazyChunk the other kinds use) keeps the union complete and typechecked from day one.
+        return <LazyChunk>{null}</LazyChunk>;
+      default:
+        return assertNever(view);
+    }
+  })();
+
+  return (
+    <>
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: 8,
+          minHeight: 30,
+          padding: "10px 14px",
+          borderBottom: `1px solid ${C.line}`,
+          flexShrink: 0,
+        }}
+      >
+        <span
+          style={{ flex: 1, minWidth: 0, fontSize: 13.5, fontWeight: 700, color: C.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
+        >
+          {label}
+        </span>
+        <button
+          onClick={onClose}
+          aria-label={t("Close")}
+          style={{
+            width: 30,
+            height: 30,
+            minWidth: 30,
+            minHeight: 30,
+            flexShrink: 0,
+            borderRadius: 8,
+            border: "none",
+            background: "transparent",
+            color: C.soft,
+            fontSize: 16,
+            lineHeight: 1,
+            cursor: "pointer",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+        >
+          ✕
+        </button>
+      </div>
+      {body}
+    </>
+  );
+}

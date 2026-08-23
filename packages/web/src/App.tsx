@@ -15,7 +15,7 @@ import { store } from "./lib/store";
 import { bootOnce, retryBoot } from "./lib/sync";
 import { font, P, TEAL } from "./lib/theme";
 import type { TransactionFilters } from "./lib/transactionSearch";
-import { PHONE_COL } from "./lib/viewMode";
+import { PHONE_COL, useViewMode } from "./lib/viewMode";
 import { AddScreen, type Tab as AddTab } from "./screens/Add";
 import { LoginScreen } from "./screens/Login";
 import type { ReportTab, ReportView } from "./screens/reports/types";
@@ -52,6 +52,7 @@ const ForeignReplicaScreen = lazy(() => import("./screens/ForeignReplica").then(
 const InstallSheet = lazy(() => import("./components/InstallSheet").then((m) => ({ default: m.InstallSheet })));
 const EnvActionsSheet = lazy(() => import("./components/EnvActionsSheet").then((m) => ({ default: m.EnvActionsSheet })));
 const InstallBanner = lazy(() => import("./components/InstallBanner").then((m) => ({ default: m.InstallBanner })));
+const WideShell = lazy(() => import("./components/wide/WideShell").then((m) => ({ default: m.WideShell })));
 
 const initialTransactionFilters = (): TransactionFilters => ({
   accountIds: new Set(),
@@ -64,6 +65,9 @@ const initialTransactionFilters = (): TransactionFilters => ({
 
 export default function App() {
   const C = useTheme();
+  // Wide vs. phone layout (spec §5–§10) — first consumer of `viewMode.ts`, already eager for
+  // `PHONE_COL` above. `wide` itself is computed below, once `state`/`onboarding` are known.
+  const mode = useViewMode();
   // Deep-load restore: which screen/report/envelope a fresh page load should land on — read
   // once (React ignores this argument after the initial render). `parseUrl` always resolves a
   // full `Route`, so no `start`/`overview` fallback is needed here. `panelClosed` stays out of
@@ -91,6 +95,10 @@ export default function App() {
   // same pencil buttons, only the state's home moves (Task 3).
   const [editWidgetsOpen, setEditWidgetsOpen] = useState(false);
   const [manageOpen, setManageOpen] = useState(false);
+  // Wide shell's right-panel open/closed bit — chrome, not navigation (never in the URL/history,
+  // pr4-context.md §12.2). App-owned so it survives the `screen`/`reportsView` it is read
+  // alongside (WideShell's `resolvePanel`).
+  const [panelClosed, setPanelClosed] = useState(false);
   // Reports view kept in App — entering from the menu opens the card overview,
   // while a deep link (the menu's "Envelope budgets" shortcut) goes straight to the given subscreen
   const [reportsView, setReportsView] = useState<ReportView>(r0.reportsView);
@@ -127,6 +135,7 @@ export default function App() {
     if (empty) setWizard(true);
   }, [empty]);
   const onboarding = empty || wizard;
+  const wide = mode !== "phone" && !!state && !onboarding;
 
   // nav = entry from menu/navigation: a fresh Add returns to start;
   // Reports from the menu always start at the card overview (deep link overrides below)
@@ -301,16 +310,16 @@ export default function App() {
   };
   const sw = useRef<{ x: number; y: number } | null>(null);
   const onTouchStart = (e: React.TouchEvent) => {
-    const t = e.touches[0]!;
-    sw.current = { x: t.clientX, y: t.clientY };
+    const touch = e.touches[0]!;
+    sw.current = { x: touch.clientX, y: touch.clientY };
   };
   const onTouchEnd = (e: React.TouchEvent) => {
     const st = sw.current;
     sw.current = null;
     if (!st) return;
-    const t = e.changedTouches[0]!;
-    const dx = t.clientX - st.x,
-      dy = t.clientY - st.y;
+    const touch = e.changedTouches[0]!;
+    const dx = touch.clientX - st.x,
+      dy = touch.clientY - st.y;
     if (canBack) {
       // from the left edge (edge-swipe) or a clear horizontal rightward gesture
       if (dx > 60 && Math.abs(dy) < 45 && (st.x < 40 || dx > 110)) back();
@@ -319,6 +328,94 @@ export default function App() {
     // without "back": edge-swipe from the very left edge opens the menu (like a native drawer)
     if (!drawer && !onboarding && st.x < 28 && dx > 60 && Math.abs(dy) < 45) setDrawer(true);
   };
+
+  // The per-screen switch, built once regardless of layout (wide's primary pane and phone's
+  // content area render the exact same element) — see `wide` below for where it lands.
+  const screenEl = state ? (
+    <>
+      {screen === "start" && (
+        <StartScreen
+          state={state}
+          month={month}
+          onOpenTxns={openTxns}
+          onOpenEnvelope={openEnvelope}
+          onMenu={() => setDrawer(true)}
+          onPrev={prev}
+          onNext={next}
+          onNav={nav}
+          onQuickAdd={onQuickAdd}
+          editWidgets={editWidgetsOpen}
+          onEditWidgets={setEditWidgetsOpen}
+        />
+      )}
+      {screen === "budget" && (
+        <LazyChunk onDismiss={() => nav("start")}>
+          <BudgetScreen
+            state={state}
+            month={month}
+            onMenu={() => setDrawer(true)}
+            onPrev={prev}
+            onNext={next}
+            onOpenEnvelope={openEnvelope}
+            initialSuggest={budgetSuggest}
+            onSuggestConsumed={() => setBudgetSuggest(false)}
+            initialFillGoals={budgetFillGoals}
+            onFillGoalsConsumed={() => setBudgetFillGoals(false)}
+            manageOpen={manageOpen}
+            onManageOpen={setManageOpen}
+          />
+        </LazyChunk>
+      )}
+      {screen === "transactions" && (
+        <LazyChunk onDismiss={() => nav("start")}>
+          <TransactionsScreen
+            state={state}
+            month={month}
+            onMenu={() => setDrawer(true)}
+            onPrev={prev}
+            onNext={next}
+            onEditTxn={(t) => editTxnFrom(t, "transactions")}
+            query={txQuery}
+            setQuery={setTxQuery}
+            filters={txFilters}
+            setFilters={setTxFilters}
+          />
+        </LazyChunk>
+      )}
+      {screen === "accounts" && (
+        <LazyChunk onDismiss={() => nav("start")}>
+          <AccountsScreen state={state} onMenu={() => setDrawer(true)} />
+        </LazyChunk>
+      )}
+      {screen === "reports" && (
+        <LazyChunk onDismiss={() => nav("start")}>
+          <ReportsScreen
+            state={state}
+            month={month}
+            view={wide ? "overview" : reportsView}
+            onView={setReportsView}
+            monthDay={monthDay}
+            onSelectDay={setMonthDay}
+            onOpenEnvelope={openEnvelope}
+            onFillGoals={openBudgetFillGoals}
+            onEditTxn={(t) => editTxnFrom(t, "reports")}
+            onMenu={() => setDrawer(true)}
+            onPrev={prev}
+            onNext={next}
+            onOpenTxns={openTxns}
+          />
+        </LazyChunk>
+      )}
+      {screen === "addExpense" && (
+        <AddScreen state={state} editTxn={editTxn} onDone={doneEdit} initialTab={addPreset.tab} initialImport={addPreset.importSheet} />
+      )}
+      {screen === "settings" && (
+        <LazyChunk onDismiss={() => nav("start")}>
+          <SettingsScreen onBack={back} onInstall={() => setInstallSheet(true)} />
+        </LazyChunk>
+      )}
+    </>
+  ) : null;
 
   if (startupPresentation(bootStatus) === "splash") return <StartupSplash />;
 
@@ -347,6 +444,26 @@ export default function App() {
           </div>
         </div>
       </div>
+    );
+  }
+
+  // Wide: rail + band + panel replace the phone card entirely (the primary pane renders the
+  // SAME `screenEl`) — except on Add, which keeps the phone-column takeover below (interim by
+  // design, PR6's `add` pane replaces it — pr4-task-4-brief.md §4e).
+  //
+  // KNOWN GAP (bundle budget, not forgotten): §13's per-screen band right-slot ("Edit widgets" /
+  // "Manage envelopes") is NOT wired here — `rightSlot` is left at WideShell's `null` default.
+  // Wiring it (t()-translated label/ariaLabel + the existing editWidgetsOpen/manageOpen setters)
+  // measured over the §3f RAW_BYTE_LIMIT even after every other shrink in pr4-context.md §11 was
+  // applied (raw setters instead of wrapper closures, the bag grouping). See the task-4 report
+  // for the exact measured numbers; restore this once PR5's Task 1 extraction lands headroom.
+  if (wide && screen !== "addExpense") {
+    return (
+      <LazyChunk>
+        <WideShell bag={{ mode, screen, nav, month, prev, next, reportsView, envView, openTxns, panelClosed, setEnvView, setReportsView, setPanelClosed }}>
+          {screenEl}
+        </WideShell>
+      </LazyChunk>
     );
   }
 
@@ -384,91 +501,7 @@ export default function App() {
               <EnvelopeScreen envelopeId={envView.envelopeId} initialMonth={envView.month} onBack={back} onOpenTxns={openTxns} />
             </LazyChunk>
           )}
-          {state && !onboarding && !envView && (
-            <>
-              {screen === "start" && (
-                <StartScreen
-                  state={state}
-                  month={month}
-                  onOpenTxns={openTxns}
-                  onOpenEnvelope={openEnvelope}
-                  onMenu={() => setDrawer(true)}
-                  onPrev={prev}
-                  onNext={next}
-                  onNav={nav}
-                  onQuickAdd={onQuickAdd}
-                  editWidgets={editWidgetsOpen}
-                  onEditWidgets={setEditWidgetsOpen}
-                />
-              )}
-              {screen === "budget" && (
-                <LazyChunk onDismiss={() => nav("start")}>
-                  <BudgetScreen
-                    state={state}
-                    month={month}
-                    onMenu={() => setDrawer(true)}
-                    onPrev={prev}
-                    onNext={next}
-                    onOpenEnvelope={openEnvelope}
-                    initialSuggest={budgetSuggest}
-                    onSuggestConsumed={() => setBudgetSuggest(false)}
-                    initialFillGoals={budgetFillGoals}
-                    onFillGoalsConsumed={() => setBudgetFillGoals(false)}
-                    manageOpen={manageOpen}
-                    onManageOpen={setManageOpen}
-                  />
-                </LazyChunk>
-              )}
-              {screen === "transactions" && (
-                <LazyChunk onDismiss={() => nav("start")}>
-                  <TransactionsScreen
-                    state={state}
-                    month={month}
-                    onMenu={() => setDrawer(true)}
-                    onPrev={prev}
-                    onNext={next}
-                    onEditTxn={(t) => editTxnFrom(t, "transactions")}
-                    query={txQuery}
-                    setQuery={setTxQuery}
-                    filters={txFilters}
-                    setFilters={setTxFilters}
-                  />
-                </LazyChunk>
-              )}
-              {screen === "accounts" && (
-                <LazyChunk onDismiss={() => nav("start")}>
-                  <AccountsScreen state={state} onMenu={() => setDrawer(true)} />
-                </LazyChunk>
-              )}
-              {screen === "reports" && (
-                <LazyChunk onDismiss={() => nav("start")}>
-                  <ReportsScreen
-                    state={state}
-                    month={month}
-                    view={reportsView}
-                    onView={setReportsView}
-                    monthDay={monthDay}
-                    onSelectDay={setMonthDay}
-                    onOpenEnvelope={openEnvelope}
-                    onFillGoals={openBudgetFillGoals}
-                    onEditTxn={(t) => editTxnFrom(t, "reports")}
-                    onMenu={() => setDrawer(true)}
-                    onPrev={prev}
-                    onNext={next}
-                    onOpenTxns={openTxns}
-                  />
-                </LazyChunk>
-              )}
-              {screen === "addExpense" && (
-                <AddScreen state={state} editTxn={editTxn} onDone={doneEdit} initialTab={addPreset.tab} initialImport={addPreset.importSheet} />
-              )}
-              {screen === "settings" && (
-                <LazyChunk onDismiss={() => nav("start")}>
-                  <SettingsScreen onBack={back} onInstall={() => setInstallSheet(true)} />
-                </LazyChunk>
-              )}
-            </>
-          )}
+          {state && !onboarding && !envView && screenEl}
         </div>
         {!["addExpense", "settings"].includes(screen) && !onboarding && !envView && <BottomNav active={screen} onNav={nav} />}
         {/* badge anchors top-right; on Add the header is the type tabs → collision, hide it */}
