@@ -361,21 +361,24 @@ function MonthMini({ days, onView, M, selected }: { days: { date: string; total:
  *  TrendSpark waiver (pr4-context.md §6, recorded): `TrendSpark`'s `w` is normally caller-fixed —
  *  it draws inside a row shared with text, where measuring the row itself would be wrong (see its
  *  own doc comment in reportKit.tsx). On a wide pane this card is much wider than a phone's ~150,
- *  so instead of leaving the spark phone-width-fixed forever, the OUTER card is measured (the ref
- *  wraps `MiniCard` itself, not just the spark's row — a deliberate exception to
- *  `useElementWidth`'s usual "no padding between the ref and the chart" invariant) and 24 —
- *  `MiniCard`'s own horizontal padding — is subtracted back off to approximate the row's usable
- *  width. `Math.max(120, …)` keeps a collapsed/unmeasured frame from ever drawing narrower than
- *  the phone's own historical 150 rendered in practice. */
+ *  so instead of leaving the spark phone-width-fixed forever, the ref measures an inner row div
+ *  passed as `MiniCard`'s `children` — a normal flex child of the button's `alignItems: "stretch"`
+ *  column, so it already fills the button's own padded content box with no padding math needed
+ *  (`useElementWidth`'s usual "no padding between the ref and the chart" invariant holds as-is).
+ *  The ref must stay on a div INSIDE the button, not one wrapping `MiniCard` itself: a wrapping
+ *  div would become the grid's direct child instead of the button, and a plain block div does not
+ *  propagate the grid's `align-items: stretch` to a child, leaving the visible card short of the
+ *  row height whenever a sibling in the same row is taller. `Math.max(120, …)` keeps a
+ *  collapsed/unmeasured frame from ever drawing narrower than the phone's own historical 150. */
 function TrendsMini({ trends, onView, selected }: { trends: EnvelopeTrend[]; onView: (v: ReportView) => void; selected?: boolean }) {
   const C = useTheme();
   const { t } = useT();
   const top = trends.slice(0, 2);
-  const [cardRef, cardW] = useElementWidth<HTMLDivElement>(150);
-  const sparkW = Math.max(120, cardW - 24);
+  const [rowRef, rowW] = useElementWidth<HTMLDivElement>(150);
+  const sparkW = Math.max(120, rowW);
   return (
-    <div ref={cardRef}>
-      <MiniCard title={t("Envelope trends")} onClick={() => onView("trends")} selected={selected}>
+    <MiniCard title={t("Envelope trends")} onClick={() => onView("trends")} selected={selected}>
+      <div ref={rowRef}>
         {top.length === 0 && <div style={{ fontSize: 11.5, color: C.mute }}>{t("Not enough data yet.")}</div>}
         {top.map((tr) => {
           const color = trendColor(tr, C);
@@ -391,7 +394,7 @@ function TrendsMini({ trends, onView, selected }: { trends: EnvelopeTrend[]; onV
             </div>
           );
         })}
-      </MiniCard>
-    </div>
+      </div>
+    </MiniCard>
   );
 }
