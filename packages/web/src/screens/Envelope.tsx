@@ -159,7 +159,7 @@ export function EnvelopeScreen({
 
 
 }
-        <div style={foldTwoCol ? { display: "grid", gridTemplateColumns: "1fr 1fr" } : undefined}>
+        <div style={foldTwoCol ? { display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)" } : undefined}>
           <div>
             { }
             <div style={{ fontSize: 13, fontWeight: 600, color: C.text, margin: `0 ${P}px 10px` }}>{t("Monthly breakdown")}</div>
