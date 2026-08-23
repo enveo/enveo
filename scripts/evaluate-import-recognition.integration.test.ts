@@ -933,7 +933,11 @@ describe("paired import recognition CLI", () => {
     expect(result.exitCode).toBe(1);
     const output = JSON.parse(result.stdout);
     expect(output.metrics.candidate.rowRecall).toEqual({ correct: 0, total: 11, rate: 0 });
-    expect(output.metrics.candidate.inclusion.missingFinancial).toBe(7);
+    // With no valid candidate output there is no current-ledger proof that the
+    // exact-labelled desktop row already exists, so all eight posted financial
+    // truths remain missing inclusion. Only a recognized `exists` result may
+    // suppress that row.
+    expect(output.metrics.candidate.inclusion.missingFinancial).toBe(8);
     expect(output.identity.contractFailures).toEqual({ baseline: [], candidate: ["synthetic-mobile", "synthetic-desktop"] });
     expect(output.decision.reasons).toContain("financial_event_not_selected");
     expect(output.identity.sources.baseline.moduleHashes["packages/shared/src/aiPrompts.ts"]).toHaveLength(64);
