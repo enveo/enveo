@@ -67,14 +67,43 @@ describe("resolvePanel", () => {
     expect(first).toEqual(second);
   });
 
-  test("exhaustively covers PR4's three kinds — no fourth kind sneaks in", () => {
+  test("exhaustively covers PR4's three kinds plus PR5's `widgets` — no fifth kind sneaks in", () => {
     const kinds = new Set<PanelView["kind"]>();
     for (const screen of SCREENS) {
       for (const reportsView of REPORT_VIEWS) {
         kinds.add(resolvePanel({ screen, reportsView, envView: null }).kind);
         kinds.add(resolvePanel({ screen, reportsView, envView: ENV }).kind);
+        kinds.add(resolvePanel({ screen, reportsView, envView: null, widgetSettings: "envelopes" }).kind);
       }
     }
-    expect([...kinds].sort()).toEqual(["empty", "envelope", "report"]);
+    expect([...kinds].sort()).toEqual(["empty", "envelope", "report", "widgets"]);
+  });
+
+  describe("PR5's `widgets` kind (the wide board's gear target)", () => {
+    test("Start with a widgetSettings selection (no envelope) resolves to the widgets pane", () => {
+      expect(resolvePanel({ screen: "start", reportsView: "overview", envView: null, widgetSettings: "spending" })).toEqual({
+        kind: "widgets",
+        widgetId: "spending",
+      });
+    });
+
+    test("an open envelope still wins over a pending widgetSettings selection", () => {
+      expect(resolvePanel({ screen: "start", reportsView: "overview", envView: ENV, widgetSettings: "spending" })).toEqual({
+        kind: "envelope",
+        envelopeId: ENV.envelopeId,
+        month: ENV.month,
+      });
+    });
+
+    test("omitting widgetSettings (undefined, the pre-PR5 call shape) behaves exactly like null — Start falls back to the envelope hint", () => {
+      expect(resolvePanel({ screen: "start", reportsView: "overview", envView: null })).toEqual({ kind: "empty", hint: "envelope" });
+    });
+
+    test("a widgetSettings selection is ignored on every screen other than Start — a stale value there never leaks into the panel", () => {
+      for (const screen of ["budget", "transactions", "accounts", "reports", "addExpense", "settings"] as const) {
+        const view = resolvePanel({ screen, reportsView: "overview", envView: null, widgetSettings: "spending" });
+        expect(view.kind).not.toBe("widgets");
+      }
+    });
   });
 });

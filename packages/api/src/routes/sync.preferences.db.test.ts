@@ -33,4 +33,14 @@ describe.skipIf(!TEST_URL)("plain sync budget preferences", () => {
   test("sourceRef survives create, update, pull, snapshot and restore", () => {
     expect(output.sourceRef).toEqual({ createApplied: true, updateApplied: true, snapshotPreserved: true, pullPreserved: true, restorePreserved: true });
   });
+
+  test("a wideWidgets-only patch persists schemaVersion 2 in the stored row and replay is idempotent", () => {
+    expect(output.wideWidgets.pushApplied).toBe(true);
+    expect(output.wideWidgets.rowPersistsV2).toBe(true);
+    expect(output.wideWidgets.replayIdempotent).toBe(true);
+  });
+
+  test("an old-client startWidgets-only patch does not erase wideWidgets on a stored v2 row", () => {
+    expect(output.wideWidgets.oldClientStartWidgetsPatchPreservesWideWidgets).toBe(true);
+  });
 });
