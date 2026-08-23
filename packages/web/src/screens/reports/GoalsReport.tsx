@@ -1,10 +1,10 @@
 import { computeGoalHistory, computeStateResponse } from "@enveo/shared";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { GoalRing, useBand } from "../../components/kit";
 import { Bar, ReportShell, UndoBar, type UndoToast } from "../../components/reportKit";
 import type { StateResponse } from "../../lib/api";
 import { useTheme } from "../../lib/contexts";
-import { monthLabel, monthShortLabel } from "../../lib/dates";
+import { currentMonth, monthLabel, monthShortLabel } from "../../lib/dates";
 import { goalProgress } from "../../lib/goals";
 import { haptic } from "../../lib/haptics";
 import { useT } from "../../lib/i18n";
@@ -115,6 +115,23 @@ export function GoalsReport({
   const { t, tp, lang } = useT();
   const { hc } = useBand();
   const ledger = store.getLedger();
+  // One history per goal envelope, computed when the DATA or the viewed month changes — not on
+  // every render. Each computeGoalHistory call runs six full-ledger computeBudgetState passes, so
+  // recomputing N of them per render (every toast tick, every press) repeated the app's heaviest
+  // derivation dozens of times for identical inputs. Still N x 6 passes on a real change — a
+  // one-sweep-per-month shape would need a new shared helper; noted for a wide-shell perf pass.
+  // Deps: `state` alone — it is rebuilt (new identity) whenever the ledger or the viewed month
+  // changes, so it carries `ledger`/`rows` freshness; `ledger` itself is a mutable store
+  // reference with no identity signal of its own. (exhaustive-deps is disabled repo-wide.)
+  const histories = useMemo(() => {
+    if (!ledger) return new Map<string, NonNullable<ReturnType<typeof computeGoalHistory>>>();
+    const out = new Map<string, NonNullable<ReturnType<typeof computeGoalHistory>>>();
+    for (const { e } of rows) {
+      const h = computeGoalHistory(ledger, e.id, state.month, 6);
+      if (h) out.set(e.id, h);
+    }
+    return out;
+  }, [state]);
   const active = state.envelopes.filter((e) => !e.archived);
   const rows = active
     .flatMap((e) => {
@@ -214,7 +231,7 @@ export function GoalsReport({
             </div>
             <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
               {rows.map(({ e, gp }) => {
-                const history = computeGoalHistory(ledger, e.id, state.month, 6);
+                const history = histories.get(e.id);
                 if (!history) return null; // diverged from `state` since this render started — skip, don't crash
                 const fundedAmt = Math.min(Math.max(0, e.allocated), e.monthlyTarget ?? 0);
                 const barColor = gp.funded ? C.pos : TEAL;
@@ -290,12 +307,20 @@ export function GoalsReport({
                         </button>
                       )}
                     </div>
-                    <div title={t("{month} so far: {pct}%", { month: monthLabel(state.month, lang), pct: Math.round(gp.pct) })}>
+                    <div
+                      title={
+                        state.month === currentMonth()
+                          ? t("{month} so far: {pct}%", { month: monthLabel(state.month, lang), pct: Math.round(gp.pct) })
+                          : t("{month} · ended at {pct}% of the goal", { month: monthLabel(state.month, lang), pct: Math.round(gp.pct) })
+                      }
+                    >
                       <Bar pct={gp.pct} color={barColor} />
                     </div>
                     <div style={{ display: "flex", gap: 5 }}>
                       {history.points.map((p, i) => {
-                        const isCurrent = i === history.points.length - 1;
+                        // "Current" = the LIVE calendar month, not merely the last chip of the
+                        // window: browsing a past month must not caption an ended month "so far".
+                        const isCurrent = i === history.points.length - 1 && p.month === currentMonth();
                         // TEAL is a CSS var (`var(--accent)`), not a hex string — `tint()` only accepts hex
                         // (BudgetsReport/SpendingReport/ImportSheet all call it with a real Theme hex like
                         // C.pos/C.warn). The accent tint has to come from the precomputed alpha CSS var
