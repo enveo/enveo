@@ -1,5 +1,5 @@
 import { computeStateResponse } from "@enveo/shared";
-import { useContext, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { AmountPadHost, type AmountPadTarget } from "../components/AmountPadSheet";
 import { Sheet } from "../components/chrome";
 import { IconColorPicker } from "../components/IconColorPicker";
@@ -18,7 +18,7 @@ import { localizePadExpression, parseAmount } from "../lib/format";
 import { useT } from "../lib/i18n";
 import { Ico } from "../lib/icons";
 import { local } from "../lib/mutate";
-import { InWideShell } from "../lib/shellContext";
+import { useWideHost } from "../lib/shellContext";
 import { store } from "../lib/store";
 import { ACCOUNT_COLORS, font, P, TEAL } from "../lib/theme";
 import { AccountListRowContent } from "./AccountListRowContent";
@@ -28,7 +28,7 @@ export function AccountsScreen({ state, onMenu }: { state: StateResponse; onMenu
   const C = useTheme();
   const M = useMask();
   const { t, lang } = useT();
-  const inWide = useContext(InWideShell);
+  const inWide = useWideHost() !== null;
   // Accounts are CURRENT-balance always (unlike envelopes) — recomputed from the replica at
   // `currentMonth()` regardless of the app's viewed month, same pattern as chrome.tsx's Drawer
   // and widgets.tsx's AccountsWidget.

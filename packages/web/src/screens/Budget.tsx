@@ -1,4 +1,4 @@
-import { lazy, useContext, useEffect, useState } from "react";
+import { lazy, useEffect, useState } from "react";
 import { AmountPadHost, type AmountPadTarget } from "../components/AmountPadSheet";
 import { Header, Sheet } from "../components/chrome";
 import { DockedNumpad } from "../components/DockedNumpad";
@@ -16,7 +16,7 @@ import { goalProgress } from "../lib/goals";
 import { useT } from "../lib/i18n";
 import { Glyph, Ico } from "../lib/icons";
 import { local } from "../lib/mutate";
-import { InWideShell } from "../lib/shellContext";
+import { useWideHost } from "../lib/shellContext";
 import { CORAL, ENV_PALETTE, font, P, TEAL, tint } from "../lib/theme";
 
 // The budget assistant is the second AI surface (§3f). It is the only thing on this screen that
@@ -66,7 +66,7 @@ export function BudgetScreen({
   const C = useTheme();
   const M = useMask();
   const { t } = useT();
-  const inWide = useContext(InWideShell);
+  const inWide = useWideHost() !== null;
   const [suggest, setSuggest] = useState(!!initialSuggest);
   // Latched — see Add.tsx: mount on first open, stay mounted, so state survives close→reopen.
   const suggestOpened = useOpenedOnce(suggest);

@@ -1,4 +1,4 @@
-import { Fragment, lazy, useContext } from "react";
+import { Fragment, lazy } from "react";
 import { Header, type ScreenId } from "../components/chrome";
 import { CardBox, useBand } from "../components/kit";
 import { LazyChunk, useOpenedOnce } from "../components/lazy";
@@ -9,7 +9,7 @@ import { todayISO } from "../lib/dates";
 import { LOCALE_OF } from "../lib/format";
 import { useT } from "../lib/i18n";
 import { Ico } from "../lib/icons";
-import { InWideShell } from "../lib/shellContext";
+import { useWideHost } from "../lib/shellContext";
 import { font, P, TEAL, tint } from "../lib/theme";
 import { monthRuler, tbbState } from "../lib/uiState";
 import { WIDGET_CATALOG } from "../lib/widgetCatalog";
@@ -56,7 +56,7 @@ export function StartScreen({
   const M = useMask();
   const { t, lang } = useT();
   const { settings } = useSettings();
-  const inWide = useContext(InWideShell);
+  const inWide = useWideHost() !== null;
   // month summary without the fractional part (strips e.g. ",00" / ".00" from the formatted amount), with the discreet mask
   const MW = (minor: number) => M(minor).replace(/[.,]\d\d(?!\d)/, "");
   const hs = tbbState(state.readyToAssign);

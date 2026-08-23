@@ -5,6 +5,7 @@ import { useBudgetPreferences, useTheme } from "../../lib/contexts";
 import { type Message, msg, useT } from "../../lib/i18n";
 import { font } from "../../lib/theme";
 import { WIDGET_CATALOG } from "../../lib/widgetCatalog";
+import { AddScreen, type Tab as AddTab } from "../../screens/Add";
 import type { ReportView } from "../../screens/reports/types";
 import { TITLES } from "../../screens/reports/types";
 import { LazyChunk } from "../lazy";
@@ -123,6 +124,9 @@ export function PanelHost({
   onEditTxn,
   onPrev,
   onNext,
+  editTxn,
+  addPreset,
+  onDoneEdit,
 }: {
   view: PanelView;
   onClose: () => void;
@@ -141,6 +145,11 @@ export function PanelHost({
   onEditTxn: (t: Transaction) => void;
   onPrev: () => void;
   onNext: () => void;
+  /** PR6 Task 2: the `add` kind's own props — App's edit/preset state, same as the phone
+   *  column's `AddScreen` already reads (App.tsx's `screenEl`). */
+  editTxn: Transaction | null;
+  addPreset: { tab?: AddTab; importSheet?: boolean };
+  onDoneEdit: () => void;
 }) {
   const C = useTheme();
   const { t } = useT();
@@ -189,13 +198,16 @@ export function PanelHost({
       case "widgets":
         return <WidgetSettingsPanel widgetId={view.widgetId} state={state} onClose={onClose} />;
       case "add":
-        // PR6 Task 1 only lands the resolver's `add` kind; the pane's actual body (AddScreen,
-        // reusing its own AddHeader per D5/D4's mockup-inconsistency note) is wired in a later
-        // task, once `App.tsx` mounts `WideShell` while `screen === "addExpense"` at all — today
-        // it never does (App.tsx's wide branch keeps the phone-column takeover for Add), so this
-        // case is unreached in practice. Keeping it here (rather than folding into `assertNever`)
-        // is what keeps this switch exhaustive now that `PanelView` has the kind.
-        return null;
+        // AddScreen already ships in the EAGER bundle (App.tsx: "AddScreen with the whole
+        // transaction-entry subtree" — the app's most-repeated action), so unlike EnvelopeScreen/
+        // ReportsScreen/EnvelopesOptions above there is no separate chunk to `lazy()`/dedupe here:
+        // a plain static import just references the already-loaded module. `AddHeader`'s own back
+        // arrow (rendered inside `AddScreen`) IS this pane's close per D5/D4's mockup-inconsistency
+        // note — it calls the SAME `onDoneEdit` the header ✕ above calls (see `WideShell`'s
+        // `closePanel`), so the two paths can't disagree here either. Still unreached in practice
+        // today: `App.tsx`'s wide branch keeps the phone-column takeover for Add until a later
+        // task removes that gate (same "wired, unreached" precedent as Task 1's `add` kind itself).
+        return <AddScreen state={state} editTxn={editTxn} onDone={onDoneEdit} initialTab={addPreset.tab} initialImport={addPreset.importSheet} />;
       default:
         return assertNever(view);
     }

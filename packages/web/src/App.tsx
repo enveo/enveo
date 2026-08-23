@@ -613,6 +613,12 @@ export default function App() {
               onOpenReport: openReports,
               onOpenMonthDay,
               boardEdit: wideBoardEdit,
+              // PR6 Task 2: the panel's `add` kind (unreached until a later task removes the
+              // `wide && screen !== "addExpense"` gate just below) reads the SAME edit/preset
+              // state and close function `screenEl`'s own `AddScreen` branch already uses.
+              editTxn,
+              addPreset,
+              onDoneEdit: doneEdit,
             }}
             rightSlot={wideRightSlot}
           >

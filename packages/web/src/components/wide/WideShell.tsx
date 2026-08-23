@@ -5,10 +5,11 @@ import { useTheme } from "../../lib/contexts";
 import { monthLabel } from "../../lib/dates";
 import { type Message, msg, useT } from "../../lib/i18n";
 import { Ico } from "../../lib/icons";
-import { InWideShell } from "../../lib/shellContext";
+import { InWideShell, type PaneRect } from "../../lib/shellContext";
 import { CTA, font, P } from "../../lib/theme";
 import { useElementWidth } from "../../lib/useElementWidth";
 import type { ViewMode } from "../../lib/viewMode";
+import type { Tab as AddTab } from "../../screens/Add";
 import type { ReportTab, ReportView } from "../../screens/reports/types";
 import { WideHome } from "../../screens/WideHome";
 import type { ScreenId } from "../chrome";
@@ -255,6 +256,17 @@ type WideShellBag = {
    *  `editWidgets`/`manageOpen` were (Task 3's pattern) — the band right-slot (below) reads and
    *  flips it, `WideHome` only reads it. */
   boardEdit: boolean;
+  /** PR6 Task 2: the panel's `add` kind renders `AddScreen` from App's OWN edit/preset state —
+   *  same fields `screenEl`'s phone-column `AddScreen` already reads (App.tsx). Threading them
+   *  through here is inert until a later task removes the `wide && screen !== "addExpense"` gate
+   *  (App.tsx) that keeps `WideShell` from ever mounting while `screen === "addExpense"` today —
+   *  same "wired, unreached" precedent as Task 1's `add` `PanelView` kind. */
+  editTxn: Transaction | null;
+  addPreset: { tab?: AddTab; importSheet?: boolean };
+  /** The `add` pane's ✕/back semantics (App's `doneEdit`) — `closePanel` below calls this for the
+   *  `add` kind instead of `setPanelClosed(true)`, since closing Add derives back to whatever
+   *  pane was open underneath it (D2) rather than collapsing the panel. */
+  onDoneEdit: () => void;
 };
 
 /**
@@ -299,6 +311,9 @@ export function WideShell({ bag, rightSlot = null, children }: { bag: WideShellB
     onOpenReport,
     onOpenMonthDay,
     boardEdit,
+    editTxn,
+    addPreset,
+    onDoneEdit,
   } = bag;
   const C = useTheme();
   const { t } = useT();
@@ -314,12 +329,42 @@ export function WideShell({ bag, rightSlot = null, children }: { bag: WideShellB
     if (screen !== "start") setWidgetSettings(null);
   }, [screen]);
   const view = resolvePanel({ screen, reportsView, envView, widgetSettings });
+  const primaryRef = useRef<HTMLDivElement | null>(null);
   const panelRef = useRef<HTMLDivElement | null>(null);
+
+  // PR6 Task 2: both panes' measured geometry, for `InWideShell`'s `WideHostInfo.rects` —
+  // `DockedNumpad`'s wide anchor (Task 3) needs a real viewport-relative rect, not the panel's
+  // OWN CSS `width` (which stays constant even while closed; only `transform`/`margin-right`
+  // animate it out of view — see the panel `<div>` below). `getBoundingClientRect()` is read
+  // directly in the observer callback rather than `ResizeObserverEntry.contentRect` (which is
+  // offset FROM the observed box, not a viewport position). `panelClosed` is an explicit
+  // dependency — and forces `panel: null` per PR4's contract — because the panel node's own box
+  // never resizes on open/close (only its transform/margin do), so no resize entry would ever
+  // fire to null it out otherwise.
+  const [rects, setRects] = useState<{ primary: PaneRect; panel: PaneRect | null }>({ primary: { left: 0, width: 0 }, panel: null });
+  useEffect(() => {
+    const primaryEl = primaryRef.current;
+    const panelEl = panelRef.current;
+    const measure = () => {
+      const p = primaryEl?.getBoundingClientRect();
+      const panelBox = !panelClosed ? panelEl?.getBoundingClientRect() : undefined;
+      setRects({
+        primary: p ? { left: p.left, width: p.width } : { left: 0, width: 0 },
+        panel: panelBox ? { left: panelBox.left, width: panelBox.width } : null,
+      });
+    };
+    measure();
+    const ro = new ResizeObserver(measure);
+    if (primaryEl) ro.observe(primaryEl);
+    if (panelEl) ro.observe(panelEl);
+    return () => ro.disconnect();
+  }, [panelClosed]);
 
   const closePanel = () => {
     if (view.kind === "envelope") setEnvView(null);
     else if (view.kind === "report") setReportsView("overview");
     else if (view.kind === "widgets") setWidgetSettings(null);
+    else if (view.kind === "add") onDoneEdit();
     else setPanelClosed(true);
   };
 
@@ -386,38 +431,37 @@ export function WideShell({ bag, rightSlot = null, children }: { bag: WideShellB
   };
 
   return (
-    // Wraps BOTH the primary pane's `children` AND the panel: `resolvePanel`'s `report`/`envelope`
-    // kinds render a SECOND `ReportsScreen`/`EnvelopeScreen` instance inside `PanelHost` (Task 6),
-    // and on wide a report SUBSCREEN only ever renders there — App forces the primary pane's own
-    // `ReportsScreen` to the "overview" hub. `UndoBar`'s wide-anchor branch (reportKit.tsx) reads
-    // this context from exactly that panel-hosted subscreen, so the provider has to cover the
-    // panel too, not just `children` — scoping it to `children` alone left the toast reading the
-    // phone (centered) branch every time it actually mattered (task-7 fix round 1). No existing
-    // consumer regresses: every other reader (Start/Budget/Transactions/Accounts, `ReportShell`'s
-    // hub-header suppression) only ever renders inside `children`, never inside `PanelHost`.
-    <InWideShell.Provider value={true}>
-      <div ref={rootRef} style={{ display: "flex", height: "100dvh", background: C.bg, fontFamily: font, overflow: "hidden" }}>
-        <Rail mode={mode} screen={screen} onNav={nav} state={state} onQuickAdd={onQuickAdd} onFillGoals={onFillGoals} onInstall={onInstall} />
-        <div data-wide-primary style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", borderRight: `1px solid ${C.line}` }}>
-          {/* Mounted inline inside BandHeader (see SyncBadge.tsx) rather than floating over the
-              scrollable content below it — dead letters stay visible on wide; the user menu's
-              "Sync now" is a convenience, not the alarm channel. The demo's separate band error
-              pill (spec lines 198-201) is deliberately NOT implemented — one sync surface, not
-              two. */}
-          <BandHeader
-            screen={screen}
-            month={month}
-            onPrev={prev}
-            onNext={next}
-            onAdd={() => nav("addExpense")}
-            onOpenSync={() => nav("settings")}
-            rightSlot={rightSlot}
-            panelClosed={panelClosed}
-            onTogglePanel={() => setPanelClosed(!panelClosed)}
-          />
-          {mode === "fold" && screen !== "settings" && (
-            <FoldTbbStrip state={state} screen={screen} onQuickAdd={onQuickAdd} onFillGoals={onFillGoals} onNav={nav} />
-          )}
+    <div ref={rootRef} style={{ display: "flex", height: "100dvh", background: C.bg, fontFamily: font, overflow: "hidden" }}>
+      <Rail mode={mode} screen={screen} onNav={nav} state={state} onQuickAdd={onQuickAdd} onFillGoals={onFillGoals} onInstall={onInstall} />
+      <div ref={primaryRef} data-wide-primary style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", borderRight: `1px solid ${C.line}` }}>
+        {/* Mounted inline inside BandHeader (see SyncBadge.tsx) rather than floating over the
+            scrollable content below it — dead letters stay visible on wide; the user menu's
+            "Sync now" is a convenience, not the alarm channel. The demo's separate band error
+            pill (spec lines 198-201) is deliberately NOT implemented — one sync surface, not
+            two. */}
+        <BandHeader
+          screen={screen}
+          month={month}
+          onPrev={prev}
+          onNext={next}
+          onAdd={() => nav("addExpense")}
+          onOpenSync={() => nav("settings")}
+          rightSlot={rightSlot}
+          panelClosed={panelClosed}
+          onTogglePanel={() => setPanelClosed(!panelClosed)}
+        />
+        {mode === "fold" && screen !== "settings" && (
+          <FoldTbbStrip state={state} screen={screen} onQuickAdd={onQuickAdd} onFillGoals={onFillGoals} onNav={nav} />
+        )}
+        {/* PR6 Task 2: `InWideShell` now carries `{ host, mode, rects }` instead of PR4's plain
+            `true` — scoped to exactly the subtree that renders IN this pane (below the band/
+            strip chrome, which reads nothing from it), so a consumer can tell which pane it's in
+            rather than only "some wide pane". The panel gets its OWN provider below (`host:
+            "panel"`), not this one — `UndoBar`'s wide-anchor branch (reportKit.tsx) reads it from
+            panel-hosted report subscreens, which this provider does not cover; see the panel
+            provider's comment for why that coverage still holds (task-7 fix round 1's finding,
+            preserved by construction: every reader now sits under ONE of the two providers). */}
+        <InWideShell.Provider value={{ host: "primary", mode, rects }}>
           <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column", overflow: "hidden" }}>
             {/* Task 6: the wide Home board replaces the phone widget stack entirely on Start — the
                 `screenEl` App.tsx built for "start" (a `StartScreen` element) is still constructed
@@ -441,27 +485,37 @@ export function WideShell({ bag, rightSlot = null, children }: { bag: WideShellB
               children
             )}
           </div>
-        </div>
-        <div
-          ref={panelRef}
-          data-wide-panel
-          role="complementary"
-          aria-label={t("Details panel")}
-          onTransitionEnd={onPanelTransitionEnd}
-          style={{
-            width: paneW,
-            flex: "none",
-            minWidth: 0,
-            overflow: "hidden",
-            display: "flex",
-            flexDirection: "column",
-            background: C.surface,
-            transform: panelClosed ? "translateX(100%)" : "translateX(0)",
-            marginRight: panelClosed ? -paneW : 0,
-            opacity: panelClosed ? 0 : 1,
-            transition: "transform 260ms cubic-bezier(0.4,0,0.2,1), margin-right 260ms cubic-bezier(0.4,0,0.2,1), opacity 180ms ease",
-          }}
-        >
+        </InWideShell.Provider>
+      </div>
+      <div
+        ref={panelRef}
+        data-wide-panel
+        role="complementary"
+        aria-label={t("Details panel")}
+        onTransitionEnd={onPanelTransitionEnd}
+        style={{
+          width: paneW,
+          flex: "none",
+          minWidth: 0,
+          overflow: "hidden",
+          display: "flex",
+          flexDirection: "column",
+          background: C.surface,
+          transform: panelClosed ? "translateX(100%)" : "translateX(0)",
+          marginRight: panelClosed ? -paneW : 0,
+          opacity: panelClosed ? 0 : 1,
+          transition: "transform 260ms cubic-bezier(0.4,0,0.2,1), margin-right 260ms cubic-bezier(0.4,0,0.2,1), opacity 180ms ease",
+        }}
+      >
+        {/* This pane's own provider (`host: "panel"`): `resolvePanel`'s `report`/`envelope` kinds
+            render a SECOND `ReportsScreen`/`EnvelopeScreen` instance in here (Task 6), and on wide
+            a report SUBSCREEN only ever renders here — App forces the primary pane's own
+            `ReportsScreen` to the "overview" hub, so that instance sits under the OTHER provider
+            above. `UndoBar`'s wide-anchor branch (reportKit.tsx) reads `InWideShell` from exactly
+            this panel-hosted subscreen — scoping a provider to only `children` (this pane's
+            predecessor bug, task-7 fix round 1) left that toast reading the phone (centered)
+            branch every time it actually mattered. */}
+        <InWideShell.Provider value={{ host: "panel", mode, rects }}>
           <PanelHost
             view={view}
             onClose={closePanel}
@@ -476,9 +530,12 @@ export function WideShell({ bag, rightSlot = null, children }: { bag: WideShellB
             onEditTxn={onEditTxn}
             onPrev={prev}
             onNext={next}
+            editTxn={editTxn}
+            addPreset={addPreset}
+            onDoneEdit={onDoneEdit}
           />
-        </div>
+        </InWideShell.Provider>
       </div>
-    </InWideShell.Provider>
+    </div>
   );
 }
