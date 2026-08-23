@@ -613,6 +613,12 @@ export default function App() {
               onOpenReport: openReports,
               onOpenMonthDay,
               boardEdit: wideBoardEdit,
+              
+
+
+              editTxn,
+              addPreset,
+              onDoneEdit: doneEdit,
             }}
             rightSlot={wideRightSlot}
           >
