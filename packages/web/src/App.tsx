@@ -128,7 +128,13 @@ export default function App() {
     }
     setEnvView(null);
     setEditReturn("start");
-    if (s === "reports") setReportsView("overview");
+    if (s === "reports") {
+      // Fresh menu entry = the hub overview, with no resurrected day panel — the same
+      // fresh-entry semantics reportsView gets. (A month CHANGE clears monthDay via its own
+      // effect; this covers re-entering Reports within the same month.)
+      setReportsView("overview");
+      setMonthDay(null);
+    }
     setScreen(s);
   };
   // Start "quick actions": Przelew/Ze zrzutu open a FRESH Add pre-set to a tab or with the

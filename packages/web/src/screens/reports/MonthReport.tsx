@@ -239,8 +239,14 @@ export function MonthReport({
             {dayDetail.txns.length > 4 && <div style={{ fontSize: 9.5, color: C.mute }}>{tp("+ {n} more | + {n} more", dayDetail.txns.length - 4)}</div>}
             <button
               onClick={() => onOpenTxns({})}
+              /* minHeight 30 — the padding-less text button measured ~13px tall, under the 30px
+                 tap floor every other affordance on this screen clears. Kept left-aligned text,
+                 the box grows invisibly. */
               style={{
                 alignSelf: "flex-start",
+                display: "flex",
+                alignItems: "center",
+                minHeight: 30,
                 background: "none",
                 border: "none",
                 padding: 0,
@@ -301,7 +307,7 @@ export function MonthReport({
           <div style={eyebrowStyle}>{t("Most frequent places")}</div>
           {places.map((p, i) => (
             <div key={p.key} style={rowStyle(i === places.length - 1)}>
-              <span style={{ color: C.soft, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.name}</span>
+              <span style={{ color: C.soft, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{dimNullLabel(p.name, "place", t)}</span>
               <span style={{ fontWeight: 650, color: C.text, fontVariantNumeric: "tabular-nums", flexShrink: 0, marginLeft: 8 }}>
                 {t("{count}× · {amount}", { count: p.count, amount: M(p.total) })}
               </span>
