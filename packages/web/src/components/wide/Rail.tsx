@@ -568,7 +568,11 @@ export function Rail({
     { id: "accounts", label: t("Accounts") },
   ];
   return (
+    
+
+
     <div
+      data-wide-rail
       style={{
         width: RAIL_W[mode],
         

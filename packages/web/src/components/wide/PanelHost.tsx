@@ -130,7 +130,10 @@ export function PanelHost({
 
   return (
     <>
+      {
+}
       <div
+        data-wide-panel-header
         style={{
           display: "flex",
           alignItems: "center",
