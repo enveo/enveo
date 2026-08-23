@@ -14,7 +14,6 @@ import { computeBudgetState, prevMonth } from "./budget";
 import { type ImportHistoryRecord, type ImportHistorySelection, selectImportHistoryCandidates } from "./importHistory";
 import {
   applyImportEnrichment,
-  applyImportReviewPolicy,
   IMPORT_RELATION_KINDS,
   IMPORT_REVIEW_REASONS,
   IMPORT_SEMANTIC_KINDS,
@@ -659,7 +658,7 @@ export async function runImportRecognitionPipeline(input: ImportRecognitionPipel
         ...(selection.conflict ? (["history_conflict"] as const) : []),
         ...(selection.candidates.length > 1 ? (["multiple_history_candidates"] as const) : []),
       ];
-      return applyImportReviewPolicy({ ...proposal, reviewReasons: mergeReviewReasons(proposal.reviewReasons, historyReasons) });
+      return { ...proposal, reviewReasons: mergeReviewReasons(proposal.reviewReasons, historyReasons) };
     }),
   };
   if (!needsImportEnrichment(result)) return result;

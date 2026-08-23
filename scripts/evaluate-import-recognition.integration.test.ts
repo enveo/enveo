@@ -60,6 +60,7 @@ beforeAll(async () => {
     postingStatus: "posted",
     safetyClass: "safe_auto",
     requiredSafetyReasons: [],
+    expectedDuplicateStatus: "new",
     date: "2026-08-15",
     amount: 1000 + visualOrder,
     currency: "EUR",
@@ -76,7 +77,11 @@ beforeAll(async () => {
     row("purchase", "card_purchase", 0, { expectedProposal: { ...proposal("expense"), envelopeId: "envelope-food", categoryId: "category-daily" } }),
     row("salary", "salary", 1, { direction: "credit", expectedProposal: proposal("income") }),
     row("refund", "merchant_refund", 2, { direction: "credit", expectedProposal: proposal("expense", true) }),
-    row("reward", "cashback_or_reward", 3, { direction: "credit", expectedProposal: proposal("income") }),
+    row("reward", "cashback_or_reward", 3, {
+      direction: "credit",
+      expectedProposal: proposal("income"),
+      expectedDuplicateStatus: "probable",
+    }),
     row("incoming", "incoming_transfer", 4, {
       direction: "credit",
       safetyClass: "unsafe_auto",
@@ -115,7 +120,7 @@ beforeAll(async () => {
       baselineIndex: null,
     }),
   ];
-  const desktopRows = [row("desktop-purchase", "card_purchase", 0, { currency: "USD" })];
+  const desktopRows = [row("desktop-purchase", "card_purchase", 0, { currency: "USD", expectedDuplicateStatus: "exists" })];
   const manifest = {
     version: 1,
     fixtures: [
@@ -135,7 +140,14 @@ beforeAll(async () => {
           ],
           envelopes: [{ id: "envelope-food", name: "Food" }],
           categories: [{ id: "category-daily", name: "Daily" }],
-          transactions: [],
+          transactions: [
+            {
+              accountId: "account-1",
+              date: "2026-08-15",
+              amount: 1003,
+              sourceRef: "PRIVATE_VISIBLE_SENTINEL_REWARD_SIMILAR",
+            },
+          ],
           historyRecords: [
             {
               accountId: "account-2",
@@ -167,7 +179,14 @@ beforeAll(async () => {
           accounts: [{ id: "account-1", name: "Checking" }],
           envelopes: [],
           categories: [],
-          transactions: [],
+          transactions: [
+            {
+              accountId: "account-1",
+              date: "2026-08-15",
+              amount: 1000,
+              sourceRef: "PRIVATE_VISIBLE_SENTINEL_DESKTOP-PURCHASE",
+            },
+          ],
           historyRecords: [],
         },
         rows: desktopRows,
@@ -359,7 +378,13 @@ export async function runImportRecognitionPipeline(input) {
     }));
   const candidateProposals = (fixtureRows: typeof mobileRows) =>
     fixtureRows.map((item) => {
-      const selected = item.safetyClass === "safe_auto";
+      const selected =
+        item.rowRole === "financial_event" &&
+        item.postingStatus !== "pending" &&
+        item.postingStatus !== "declined" &&
+        item.expectedDuplicateStatus !== "exists";
+      const duplicateReviewReasons =
+        item.expectedDuplicateStatus === "exists" ? ["history_conflict"] : item.expectedDuplicateStatus === "probable" ? ["multiple_history_candidates"] : [];
       return {
         rowId: item.id,
         sourceRows: [item.id],
@@ -372,7 +397,7 @@ export async function runImportRecognitionPipeline(input) {
               : item.postingStatus === "declined"
                 ? "declined"
                 : "candidate",
-        reviewReasons: item.requiredSafetyReasons,
+        reviewReasons: [...item.requiredSafetyReasons, ...duplicateReviewReasons],
         date: item.date,
         amount: item.amount,
         currency: item.currency,
@@ -382,7 +407,7 @@ export async function runImportRecognitionPipeline(input) {
         tag: "",
         rawPlace: item.matchText,
         placeName: null,
-        duplicateStatus: "new",
+        duplicateStatus: item.expectedDuplicateStatus,
         sourceAccountInvalid: false,
         ...(item.expectedProposal ?? proposal(null)),
       };
@@ -682,7 +707,7 @@ describe("paired import recognition CLI", () => {
   test("loads both sides but marks deterministic injected metrics as non-release evidence", async () => {
     const result = await runGate();
 
-    expect(result.exitCode).toBe(2);
+    expect(result.exitCode, result.stderr || result.stdout).toBe(2);
     const output = JSON.parse(result.stdout);
     expect(output).toMatchObject({
       mode: "compare",
@@ -696,7 +721,7 @@ describe("paired import recognition CLI", () => {
         passed: false,
         criteriaPassed: true,
         reasons: ["non_live_transport"],
-        transitions: { attributableSafety: 3, unexplainedNewReviews: 0 },
+        transitions: { attributableSafety: 5, unexplainedNewReviews: 0 },
       },
     });
     expect(output.identity.sources.baseline.moduleHashes["packages/shared/src/aiPrompts.ts"]).toHaveLength(64);
@@ -718,7 +743,9 @@ describe("paired import recognition CLI", () => {
     expect(output.metrics.candidate.semanticKindAccuracy).toEqual({ correct: 11, total: 11, rate: 1 });
     expect(output.metrics.candidate.relationRecall).toEqual({ correct: 1, total: 1, rate: 1 });
     expect(output.metrics.candidate.missingProposals).toBe(0);
-    expect(output.metrics.candidate.harmfulSelected).toBe(0);
+    expect(output.metrics.candidate.inclusion).toEqual({ missingFinancial: 0, nonLedgerIncluded: 0 });
+    expect(output.metrics.candidate.duplicateStatusAccuracy).toEqual({ correct: 10, total: 10, rate: 1 });
+    expect(output.metrics.candidate.reviewCoverage.rate).toBe(1);
     expect(output.identity.corpusDigest).toHaveLength(64);
     expect(output.identity.historySafety.sourceHashes.sharedPipeline).toHaveLength(64);
     expect(output.identity.historySafety.testHashes.sharedPipeline).toHaveLength(64);
@@ -873,8 +900,8 @@ describe("paired import recognition CLI", () => {
     expect(result.exitCode).toBe(1);
     const output = JSON.parse(result.stdout);
     expect(output.decision.passed).toBe(false);
-    expect(output.decision.reasons).toContain("harmful_selected_not_strictly_lower");
-    expect(output.decision.reasons).toContain("unsafe_row_constraint_failed");
+    expect(output.decision.reasons).toContain("interpretation_errors_not_strictly_lower");
+    expect(output.decision.reasons).not.toContain("required_review_reason_missing");
     expect(result.stdout).not.toContain("PRIVATE_VISIBLE_SENTINEL");
     expect(result.stderr).toBe("");
   });

@@ -1,11 +1,12 @@
-import type {
-  ClientLedger,
-  ImportDupStatus,
-  ImportProposal,
-  ImportReviewReason,
-  ImportSemanticKind,
-  ReconciledImportProposal,
-  ReconciledImportRecognitionResult,
+import {
+  type ClientLedger,
+  type ImportDupStatus,
+  type ImportProposal,
+  type ImportReviewReason,
+  type ImportSemanticKind,
+  importProposalBlockingReasons,
+  type ReconciledImportProposal,
+  type ReconciledImportRecognitionResult,
 } from "@enveo/shared";
 import type { EditedImportItem, ImportApplyItem, ImportApplyResponse } from "./api";
 import { type Message, msg } from "./i18n";
@@ -19,6 +20,8 @@ export interface ImportReviewRow {
   semanticKind: ImportSemanticKind;
   relation: ImportProposal["relation"];
   reviewReasons: ImportReviewReason[];
+  requiresReview: boolean;
+  blockingIssues: ImportBlockingIssue[];
   duplicateStatus: ImportDupStatus;
   sourceRef: string;
   rawTextLines: string[];
@@ -28,6 +31,14 @@ export interface ImportReviewRow {
   include: boolean;
   editable: boolean;
   item: LocalImportReviewItem | null;
+}
+
+export type ImportBlockingIssue = ImportReviewReason | "currency_mismatch";
+
+/** Selected rows with incomplete ledger facts block the batch until the user
+ * fixes or deliberately unchecks them. Review-only warnings never block. */
+export function importReviewBlockingCount(rows: readonly ImportReviewRow[]): number {
+  return rows.filter((row) => row.include && row.blockingIssues.length > 0).length;
 }
 
 const REASON_MESSAGES: Record<ImportReviewReason, Message> = {
@@ -67,11 +78,12 @@ export function reviewRowControlLabels(
   row: ImportReviewRow,
   index: number,
 ): { select: ImportReviewControlLabel | null; edit: ImportReviewControlLabel | null } {
-  if (!row.item || !row.editable || row.duplicateStatus === "exists") return { select: null, edit: null };
+  const canSelect = row.item !== null || (row.disposition === "unresolved" && row.blockingIssues.length > 0);
+  if (row.duplicateStatus === "exists" || !canSelect) return { select: null, edit: null };
   const values = { n: index + 1 };
   return {
     select: { message: msg("Select recognized row {n}"), values },
-    edit: { message: msg("Edit item {n}"), values },
+    edit: row.item && row.editable ? { message: msg("Edit item {n}"), values } : null,
   };
 }
 
@@ -118,7 +130,6 @@ function completeCandidateItem(args: {
   dryResult?: ImportApplyResponse["results"][number];
   duplicateStatus: ImportDupStatus;
   automaticEnvelopeId: string | null | undefined;
-  budgetCurrency: string;
 }): LocalImportReviewItem | null {
   const { proposal } = args;
   if (proposal.disposition !== "candidate" || proposal.date === null || proposal.amount === null || proposal.type === null) return null;
@@ -149,7 +160,7 @@ function completeCandidateItem(args: {
         currency: proposal.currency ?? undefined,
         status,
       };
-  const item = importReviewItem({ ...result, rawPlace: sourceRef || null }, args.automaticEnvelopeId, args.budgetCurrency);
+  const item = importReviewItem({ ...result, rawPlace: sourceRef || null }, args.automaticEnvelopeId);
   return { ...item, include: proposal.selected && item.include };
 }
 
@@ -185,6 +196,8 @@ export function buildImportReviewRows(args: {
         semanticKind: rawRow.semanticKind,
         relation: rawRow.relation,
         reviewReasons: ["missing_fact"],
+        requiresReview: true,
+        blockingIssues: ["missing_fact"],
         duplicateStatus: "new",
         sourceRef,
         rawTextLines: rawRow.rawTextLines,
@@ -207,22 +220,25 @@ export function buildImportReviewRows(args: {
       dryResult,
       duplicateStatus,
       automaticEnvelopeId: args.automaticEnvelopeId,
-      budgetCurrency: args.budgetCurrency,
     });
     const reviewItem = duplicateStatus === "exists" ? null : item;
+    const blockingIssues: ImportBlockingIssue[] = importProposalBlockingReasons(proposal);
+    if (proposal.currency && proposal.currency !== args.budgetCurrency) blockingIssues.push("currency_mismatch");
     return {
       rowId: rawRow.rowId,
       disposition: proposal.disposition,
       semanticKind: proposal.semanticKind,
       relation: proposal.relation,
       reviewReasons: proposal.reviewReasons,
+      requiresReview: proposal.reviewReasons.length > 0 || duplicateStatus === "probable" || blockingIssues.length > 0,
+      blockingIssues,
       duplicateStatus,
       sourceRef,
       rawTextLines: rawRow.rawTextLines,
       date: proposal.date,
       amount: proposal.amount,
       currency: proposal.currency,
-      include: reviewItem?.include ?? false,
+      include: duplicateStatus !== "exists" && proposal.selected,
       editable: reviewItem !== null,
       item: reviewItem ? { ...reviewItem, include: reviewItem.include } : null,
     };
@@ -235,6 +251,7 @@ export function reviewedImportRowsForApply(args: {
   edited: Record<number, EditedImportItem>;
   editedAutomaticDefaults: Record<number, boolean>;
 }): ImportApplyItem[] {
+  if (args.rows.some((row) => row.include && row.blockingIssues.length > 0)) throw new Error("import_review_blocked");
   const candidates = args.rows.flatMap((row) => {
     if (row.disposition !== "candidate" || !row.item) return [];
     return [{ ...row.item, include: row.include }];

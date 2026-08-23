@@ -16,6 +16,7 @@ const expectedRow = (overrides: Partial<ExpectedImportRecognitionRow> = {}): Exp
   postingStatus: "posted",
   safetyClass: "safe_auto",
   requiredSafetyReasons: [],
+  expectedDuplicateStatus: "new",
   date: "2026-08-15",
   amount: 1299,
   currency: "EUR",
@@ -49,11 +50,27 @@ const actualRow = (overrides: Partial<ActualImportRecognitionRow> = {}): ActualI
     envelopeId: "groceries",
     categoryId: "daily",
     reviewReasons: [],
+    duplicateStatus: "new",
   },
   ...overrides,
 });
 
 describe("scoreImportRecognition", () => {
+  test("scores inclusion independently from interpretation and review coverage", () => {
+    const expected = [
+      expectedRow({ id: "review", safetyClass: "unsafe_auto", requiredSafetyReasons: ["possible_ocr_error"] }),
+      expectedRow({ id: "support", rowRole: "supporting_detail", safetyClass: "non_ledger", expectedProposal: null }),
+    ];
+    const actual = [
+      actualRow({ id: "review", proposal: { ...actualRow().proposal!, selected: true, type: "income", reviewReasons: ["possible_ocr_error"] } }),
+      actualRow({ id: "support", proposal: { ...actualRow().proposal!, selected: false } }),
+    ];
+    const metrics = scoreImportRecognition(expected, actual);
+    expect(metrics.inclusion).toEqual({ missingFinancial: 0, nonLedgerIncluded: 0 });
+    expect(metrics.interpretationErrors).toBe(1);
+    expect(metrics.reviewCoverage).toEqual({ correct: 1, total: 1, rate: 1 });
+  });
+
   test("row recall counts every labelled row while financial recall excludes UI evidence", () => {
     const expected = [expectedRow(), expectedRow({ id: "balance", rowRole: "ui_metadata", safetyClass: "non_ledger", expectedProposal: null })];
 
@@ -109,14 +126,14 @@ describe("scoreImportRecognition", () => {
     expect(metrics.relationF1).toBe(0);
   });
 
-  test("a wrong automatically selected type is harmful", () => {
+  test("a wrong selected type is an interpretation error without becoming an inclusion error", () => {
     const metrics = scoreImportRecognition([expectedRow()], [actualRow({ proposal: { ...actualRow().proposal!, selected: true, type: "income" } })]);
 
-    expect(metrics.harmfulSelected).toBe(1);
-    expect(metrics.reviewRequired).toBe(0);
+    expect(metrics.interpretationErrors).toBe(1);
+    expect(metrics.inclusion).toEqual({ missingFinancial: 0, nonLedgerIncluded: 0 });
   });
 
-  test("an unselected unresolved wrong proposal requires review but is not harmful automation", () => {
+  test("an unselected financial proposal is an inclusion miss even when its interpretation is wrong", () => {
     const metrics = scoreImportRecognition(
       [expectedRow({ safetyClass: "review_only" })],
       [
@@ -131,15 +148,15 @@ describe("scoreImportRecognition", () => {
       ],
     );
 
-    expect(metrics.harmfulSelected).toBe(0);
-    expect(metrics.reviewRequired).toBe(1);
+    expect(metrics.inclusion.missingFinancial).toBe(1);
+    expect(metrics.interpretationErrors).toBe(1);
   });
 
   test("unselected non-ledger evidence is reported separately without entering release review denominators", () => {
     const expected = expectedRow({ rowRole: "ui_metadata", safetyClass: "non_ledger", expectedProposal: null });
     const metrics = scoreImportRecognition([expected], [actualRow({ proposal: { ...actualRow().proposal!, selected: false } })]);
 
-    expect(metrics.harmfulSelected).toBe(0);
+    expect(metrics.inclusion.nonLedgerIncluded).toBe(0);
     expect(metrics.factAccuracy.overall).toEqual({ correct: 0, total: 0, rate: null });
     expect(metrics.semanticKindAccuracy).toEqual({ correct: 1, total: 1, rate: 1 });
     expect(metrics.reviewBreakdown.supportingOrUi).toBe(1);
@@ -155,7 +172,7 @@ describe("scoreImportRecognition", () => {
     expect(metrics.relationPrecision).toEqual({ correct: 0, total: 0, rate: null });
     expect(metrics.relationRecall).toEqual({ correct: 0, total: 0, rate: null });
     expect(metrics.relationF1).toBeNull();
-    expect(metrics.harmfulSelected).toBe(0);
+    expect(metrics.inclusion).toEqual({ missingFinancial: 0, nonLedgerIncluded: 0 });
     expect(metrics.reviewRequired).toBe(0);
   });
 
@@ -179,7 +196,87 @@ describe("scoreImportRecognition", () => {
 });
 
 describe("gateImportRecognition", () => {
-  test("passes only when a baseline harmful selection becomes a required candidate safety review", () => {
+  test("rejects a selected row that has no labelled screenshot event", () => {
+    const decision = gateImportRecognition(
+      [expectedRow()],
+      [actualRow()],
+      [actualRow(), actualRow({ id: "hallucinated", proposal: { ...actualRow().proposal!, selected: true } })],
+    );
+
+    expect(decision.reasons).toContain("unexpected_row_selected");
+  });
+
+  test("enforces exact and probable duplicate inclusion semantics", () => {
+    const expected = [expectedRow({ id: "exact", expectedDuplicateStatus: "exists" }), expectedRow({ id: "probable", expectedDuplicateStatus: "probable" })];
+    const baseline = [actualRow({ id: "exact" }), actualRow({ id: "probable" })];
+    const correct = [
+      actualRow({ id: "exact", proposal: { ...actualRow().proposal!, selected: false, duplicateStatus: "exists" } }),
+      actualRow({ id: "probable", proposal: { ...actualRow().proposal!, selected: true, duplicateStatus: "probable" } }),
+    ];
+
+    expect(gateImportRecognition(expected, baseline, correct).passed).toBe(true);
+    expect(
+      gateImportRecognition(expected, baseline, [
+        actualRow({ id: "exact", proposal: { ...actualRow().proposal!, selected: true, duplicateStatus: "new" } }),
+        actualRow({ id: "probable", proposal: { ...actualRow().proposal!, selected: false, duplicateStatus: "probable" } }),
+      ]).reasons,
+    ).toEqual(expect.arrayContaining(["non_ledger_selected", "financial_event_not_selected", "duplicate_status_incorrect"]));
+  });
+
+  test("rejects review-reason noise that is not supported by labelled truth", () => {
+    const decision = gateImportRecognition(
+      [expectedRow()],
+      [actualRow()],
+      [actualRow({ proposal: { ...actualRow().proposal!, reviewReasons: ["possible_ocr_error"] } })],
+    );
+
+    expect(decision.reasons).toContain("unexpected_review_reason");
+  });
+
+  test("allows only the deterministic review reason implied by each duplicate status", () => {
+    const expected = [expectedRow({ id: "exact", expectedDuplicateStatus: "exists" }), expectedRow({ id: "probable", expectedDuplicateStatus: "probable" })];
+    const candidate = [
+      actualRow({
+        id: "exact",
+        proposal: { ...actualRow().proposal!, selected: false, duplicateStatus: "exists", reviewReasons: ["history_conflict"] },
+      }),
+      actualRow({
+        id: "probable",
+        proposal: { ...actualRow().proposal!, duplicateStatus: "probable", reviewReasons: ["multiple_history_candidates"] },
+      }),
+    ];
+
+    expect(gateImportRecognition(expected, [actualRow({ id: "exact" }), actualRow({ id: "probable" })], candidate).passed).toBe(true);
+  });
+
+  test("rejects missing financial inclusion and selected non-ledger evidence independently", () => {
+    const expected = [
+      expectedRow(),
+      expectedRow({ id: "ui", rowRole: "ui_metadata", safetyClass: "non_ledger", semanticKind: "unknown", expectedProposal: null }),
+    ];
+    const baseline = [actualRow(), actualRow({ id: "ui", semanticKind: "unknown", proposal: null })];
+    const candidate = [
+      actualRow({ proposal: { ...actualRow().proposal!, selected: false } }),
+      actualRow({ id: "ui", semanticKind: "unknown", proposal: { ...actualRow().proposal!, selected: true } }),
+    ];
+
+    const decision = gateImportRecognition(expected, baseline, candidate);
+
+    expect(decision.reasons).toContain("financial_event_not_selected");
+    expect(decision.reasons).toContain("non_ledger_selected");
+  });
+
+  test("requires complete review coverage without forcing the financial event to be unchecked", () => {
+    const expected = [expectedRow({ safetyClass: "unsafe_auto", requiredSafetyReasons: ["possible_transfer"] })];
+    const baseline = [actualRow({ proposal: { ...actualRow().proposal!, reviewReasons: [] } })];
+    const missingReview = [actualRow({ proposal: { ...actualRow().proposal!, selected: true, reviewReasons: [] } })];
+    const reviewed = [actualRow({ proposal: { ...actualRow().proposal!, selected: true, reviewReasons: ["possible_transfer"] } })];
+
+    expect(gateImportRecognition(expected, baseline, missingReview).reasons).toContain("review_coverage_incomplete");
+    expect(gateImportRecognition(expected, baseline, reviewed).passed).toBe(true);
+  });
+
+  test("keeps a risky financial event selected while requiring its review reason", () => {
     const expected = [
       {
         ...expectedRow(),
@@ -194,8 +291,7 @@ describe("gateImportRecognition", () => {
       actualRow({
         proposal: {
           ...actualRow().proposal!,
-          selected: false,
-          disposition: "unresolved",
+          selected: true,
           reviewReasons: ["possible_transfer"],
         },
       }),
@@ -207,7 +303,7 @@ describe("gateImportRecognition", () => {
     expect(gate.transitions).toMatchObject({ attributableSafety: 1, unexplainedNewReviews: 0 });
   });
 
-  test("uses fail-closed no-regression when baseline harmfulSelected is zero", () => {
+  test("uses fail-closed no-regression for interpretation errors", () => {
     const expected = [
       {
         ...expectedRow(),
@@ -220,7 +316,7 @@ describe("gateImportRecognition", () => {
 
     expect(gateImportRecognition(expected, [actualRow()], [actualRow()]).passed).toBe(true);
     expect(gateImportRecognition(expected, [actualRow()], [actualRow({ proposal: { ...actualRow().proposal!, type: "income" } })]).reasons).toContain(
-      "harmful_selected_regression_from_zero",
+      "interpretation_error_regression_from_zero",
     );
   });
 
@@ -236,7 +332,7 @@ describe("gateImportRecognition", () => {
     ] as unknown as ExpectedImportRecognitionRow[];
     const baseline = [actualRow({ proposal: { ...actualRow().proposal!, type: "income" } })];
     const candidate = [
-      actualRow({ proposal: { ...actualRow().proposal!, selected: false, reviewReasons: ["possible_transfer"] } }),
+      actualRow({ proposal: { ...actualRow().proposal!, selected: true, reviewReasons: ["possible_transfer"] } }),
       actualRow({ id: "unexpected", proposal: { ...actualRow().proposal!, selected: false, reviewReasons: ["unknown_kind"] } }),
     ] as unknown as ActualImportRecognitionRow[];
 
@@ -246,7 +342,7 @@ describe("gateImportRecognition", () => {
     expect(gate.candidate.reviewBreakdown.unexpected).toBe(1);
   });
 
-  test("actual row relabeling cannot hide a harmful selected proposal", () => {
+  test("actual row relabeling cannot hide an interpretation error", () => {
     const expected = [
       {
         ...expectedRow(),
@@ -259,7 +355,7 @@ describe("gateImportRecognition", () => {
     const relabelled = actualRow({ proposal: { ...actualRow().proposal!, type: "income" } }) as ActualImportRecognitionRow & { rowRole: string };
     relabelled.rowRole = "ui_metadata";
 
-    expect(scoreImportRecognition(expected, [relabelled]).harmfulSelected).toBe(1);
+    expect(scoreImportRecognition(expected, [relabelled]).interpretationErrors).toBe(1);
   });
 
   test("a duplicate unselected copy cannot hide a selected unsafe output", () => {
@@ -278,7 +374,7 @@ describe("gateImportRecognition", () => {
     expect(gate.transitions.unsafeConstraintFailures).toBe(1);
   });
 
-  test("gates every immutable fact independently and rejects unexplained new reviews", () => {
+  test("gates every immutable fact independently and accepts a truth-labelled review reason", () => {
     const safe = expectedRow();
     expect(gateImportRecognition([safe], [actualRow()], [actualRow({ amount: 1300 })]).reasons).toContain("amount_accuracy_regression");
 
@@ -286,10 +382,10 @@ describe("gateImportRecognition", () => {
     const decision = gateImportRecognition(
       [review],
       [actualRow()],
-      [actualRow({ proposal: { ...actualRow().proposal!, selected: false, reviewReasons: ["possible_ocr_error"] } })],
+      [actualRow({ proposal: { ...actualRow().proposal!, selected: true, reviewReasons: ["possible_ocr_error"] } })],
     );
-    expect(decision.transitions.unexplainedNewReviews).toBe(1);
-    expect(decision.reasons).toContain("unexplained_review_transition");
+    expect(decision.passed).toBe(true);
+    expect(decision.reasons).not.toContain("unexplained_review_transition");
   });
 
   test("rejects a row-recall regression", () => {
@@ -692,6 +788,7 @@ describe("recognition evaluator adapters", () => {
           selected: true,
           disposition: "candidate",
           reviewReasons: [],
+          duplicateStatus: "new",
           type: "expense",
           isRefund: true,
           toAccountId: null,
@@ -729,6 +826,7 @@ describe("recognition evaluator adapters", () => {
           selected: false,
           disposition: "pending",
           reviewReasons: ["pending_or_declined"],
+          duplicateStatus: "new",
           type: "expense",
           isRefund: false,
           toAccountId: null,
@@ -750,6 +848,7 @@ describe("recognition evaluator adapters", () => {
         selected: false,
         disposition: "pending",
         reviewReasons: ["pending_or_declined"],
+        duplicateStatus: "new",
         type: "expense",
         isRefund: false,
         toAccountId: null,
@@ -1092,6 +1191,7 @@ describe("recognition evaluator adapters", () => {
         semanticKind,
         candidatePosition: { imageIndex: 0, visualOrder: index },
         baselineIndex: null,
+        ...(index === 0 ? { expectedDuplicateStatus: "probable" as const } : {}),
         ...(semanticKind === "incoming_transfer" || semanticKind === "account_topup"
           ? { safetyClass: "unsafe_auto" as const, requiredSafetyReasons: ["possible_transfer"] }
           : {}),
@@ -1134,9 +1234,18 @@ describe("recognition evaluator adapters", () => {
       budgetCurrency: "USD",
       formFactor: "desktop",
       overlap: false,
-      rows: [manifestRow({ id: "desktop-purchase", currency: "USD", baselineIndex: null })],
+      rows: [manifestRow({ id: "desktop-purchase", currency: "USD", baselineIndex: null, expectedDuplicateStatus: "exists" })],
     };
 
+    expect(() =>
+      parseRecognitionManifest({
+        version: 1,
+        fixtures: [mobile, desktop].map((fixture) => ({
+          ...fixture,
+          rows: fixture.rows.map((row) => ({ ...row, expectedDuplicateStatus: "new" })),
+        })),
+      }),
+    ).toThrow("duplicate coverage");
     expect(parseRecognitionManifest({ version: 1, fixtures: [mobile, desktop] }).fixtures).toHaveLength(2);
     expect(() =>
       parseRecognitionManifest({

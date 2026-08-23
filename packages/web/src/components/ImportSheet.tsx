@@ -14,6 +14,7 @@ import { Glyph, Ico } from "../lib/icons";
 import {
   buildImportReviewRows,
   type ImportReviewRow,
+  importReviewBlockingCount,
   importReviewDoneStats,
   reviewBadges,
   reviewedImportRowsForApply,
@@ -234,11 +235,10 @@ export function ImportSheet({ show, onClose, state, onApplied }: { show: boolean
   };
 
   const toggle = (idx: number) =>
-    setItems((prev) =>
-      prev.map((row, i) => (i === idx && row.item && (row.item.status !== "exists" || !!edited[idx]) ? { ...row, include: !row.include } : row)),
-    );
+    setItems((prev) => prev.map((row, i) => (i === idx && row.duplicateStatus !== "exists" ? { ...row, include: !row.include } : row)));
 
   const selectedCount = items.filter((row, i) => row.item && row.include && (row.item.status !== "exists" || !!edited[i])).length;
+  const blockingCount = importReviewBlockingCount(items);
   const label = { fontSize: 10.5, color: C.mute, fontWeight: 600, textTransform: "uppercase" as const, letterSpacing: 0.6, marginBottom: 6 };
 
   return (
@@ -406,7 +406,7 @@ export function ImportSheet({ show, onClose, state, onApplied }: { show: boolean
                 : {};
               return (
                 <div key={row.rowId} style={{ display: "flex", alignItems: "flex-start", gap: 10, padding: "9px 2px", opacity: exists ? 0.55 : 1 }}>
-                  {it && controlLabels.select ? (
+                  {controlLabels.select ? (
                     <input
                       type="checkbox"
                       checked={row.include}
@@ -541,6 +541,12 @@ export function ImportSheet({ show, onClose, state, onApplied }: { show: boolean
 
             {error && <div style={{ fontSize: 12.5, color: CORAL, margin: "10px 0" }}>{error}</div>}
 
+            {blockingCount > 0 && (
+              <div role="alert" style={{ fontSize: 12.5, color: C.warn, margin: "10px 0" }}>
+                {tp("Uncheck {n} incomplete transaction before adding. | Uncheck {n} incomplete transactions before adding.", blockingCount)}
+              </div>
+            )}
+
             <div style={{ display: "flex", gap: 8, marginTop: 14 }}>
               <button
                 onClick={() => {
@@ -565,7 +571,7 @@ export function ImportSheet({ show, onClose, state, onApplied }: { show: boolean
               </button>
               <button
                 onClick={apply}
-                disabled={busy || selectedCount === 0}
+                disabled={busy || selectedCount === 0 || blockingCount > 0}
                 style={{
                   flex: 2,
                   padding: "12px 0",
@@ -576,7 +582,7 @@ export function ImportSheet({ show, onClose, state, onApplied }: { show: boolean
                   fontSize: 13.5,
                   fontWeight: 600,
                   cursor: "pointer",
-                  opacity: busy || selectedCount === 0 ? 0.5 : 1,
+                  opacity: busy || selectedCount === 0 || blockingCount > 0 ? 0.5 : 1,
                 }}
               >
                 {busy ? t("Adding…") : tp("Add {n} transaction | Add {n} transactions", selectedCount)}

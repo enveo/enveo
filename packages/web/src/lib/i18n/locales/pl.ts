@@ -105,6 +105,12 @@ export const pl: Dict = {
   "Related row is invalid": "Powiązany wiersz jest nieprawidłowy",
   "Related rows could change the ledger": "Powiązane wiersze mogłyby zmienić zapis w budżecie",
   "Review recognized rows": "Sprawdź rozpoznane wiersze",
+  "Uncheck {n} incomplete transaction before adding. | Uncheck {n} incomplete transactions before adding.": {
+    one: "Odznacz {n} niekompletną transakcję przed dodaniem.",
+    few: "Odznacz {n} niekompletne transakcje przed dodaniem.",
+    many: "Odznacz {n} niekompletnych transakcji przed dodaniem.",
+    other: "Odznacz {n} niekompletnych transakcji przed dodaniem.",
+  },
   "Several history matches": "Kilka pasujących wpisów w historii",
   "Select recognized row {n}": "Wybierz rozpoznany wiersz {n}",
   "Reward / income": "Nagroda / przychód",
