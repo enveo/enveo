@@ -197,6 +197,7 @@ function BandHeader({
             display: "flex",
             alignItems: "center",
             gap: 6,
+            minWidth: 30,
             minHeight: 30,
             padding: "0 10px",
             borderRadius: 8,
@@ -299,12 +300,13 @@ type WideShellBag = {
  * Entirely behind the `LazyChunk`/`lazy()` boundary App.tsx installs — the phone bundle never
  * pays for anything in this file.
  *
- * `rightSlot` defaults to `null` (band renders without the pencil shortcut) — pr4-context.md
- * §11's §3f eager-JS ceiling has NO headroom left for it in this build (measured: even with
- * `rightSlot` omitted entirely, the closure still exceeds RAW_BYTE_LIMIT — see the task-4 report
- * for the full measured breakdown). App.tsx does not currently pass it. §13's contract and this
- * default stay in place so wiring it back in — once PR5's Task 1 extraction (pr4-context.md
- * header) restores headroom — is a one-line change in App.tsx, not a redesign here.
+ * `rightSlot` defaults to `null` (band renders without the pencil shortcut) so a caller that
+ * has nothing to offer (a future screen with no per-screen edit action) never has to construct
+ * one. App.tsx now DOES pass a computed value on every screen it renders wide (§13's contract:
+ * Start's "Edit widgets" pencil, Budget's "Manage envelopes" pencil, `null` elsewhere) — restored
+ * once the widget-edit-sheet extraction (pr4-context.md header; the pull-forward of PR5 Task 1)
+ * bought back the §3f headroom this needed. This default is what keeps that wiring a one-line
+ * addition at the call site rather than a required prop everywhere.
  */
 export function WideShell({ bag, rightSlot = null, children }: { bag: WideShellBag; rightSlot?: RightSlot; children: ReactNode }) {
   const { mode, screen, nav, month, prev, next, reportsView, envView, openTxns, panelClosed, setEnvView, setReportsView, setPanelClosed } = bag;

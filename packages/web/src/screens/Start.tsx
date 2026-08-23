@@ -1,7 +1,8 @@
-import { useContext } from "react";
+import { lazy, useContext } from "react";
 import { Header, type ScreenId } from "../components/chrome";
 import { CardBox, useBand } from "../components/kit";
-import { EditWidgetsSheet, START_WIDGETS } from "../components/widgets";
+import { LazyChunk, useOpenedOnce } from "../components/lazy";
+import { START_WIDGETS } from "../components/widgets";
 import type { StateResponse } from "../lib/api";
 import { useMask, useSettings, useTheme } from "../lib/contexts";
 import { todayISO } from "../lib/dates";
@@ -11,6 +12,10 @@ import { Ico } from "../lib/icons";
 import { InWideShell } from "../lib/shellContext";
 import { font, P, TEAL, tint } from "../lib/theme";
 import { monthRuler, tbbState } from "../lib/uiState";
+
+// Lazy: the edit sheet is only needed once the pencil is tapped (§3f) — see the file header
+// comment in EditWidgetsSheet.tsx for why it lives in its own chunk.
+const EditWidgetsSheet = lazy(() => import("../components/EditWidgetsSheet").then((m) => ({ default: m.EditWidgetsSheet })));
 
 export function StartScreen({
   state,
@@ -49,6 +54,7 @@ export function StartScreen({
   const hs = tbbState(state.readyToAssign);
   const ruler = monthRuler(todayISO());
   const { band, hc } = useBand();
+  const editSheetMounted = useOpenedOnce(editWidgets);
   const shortDay = new Intl.DateTimeFormat(LOCALE_OF[lang], { day: "numeric", month: "long", timeZone: "UTC" }).format(new Date(`${todayISO()}T00:00:00Z`));
   const IncomeExpense = () => (
     <span style={{ fontSize: 11, color: hc(C.headerMute, C.soft), whiteSpace: "nowrap", fontVariantNumeric: "tabular-nums" }}>
@@ -218,7 +224,11 @@ export function StartScreen({
           );
         })}
 
-      <EditWidgetsSheet show={editWidgets} state={state} onClose={() => onEditWidgets(false)} />
+      {editSheetMounted && (
+        <LazyChunk variant="overlay" onDismiss={() => onEditWidgets(false)}>
+          <EditWidgetsSheet show={editWidgets} state={state} onClose={() => onEditWidgets(false)} />
+        </LazyChunk>
+      )}
     </div>
   );
 }

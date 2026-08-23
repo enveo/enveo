@@ -65,6 +65,7 @@ const initialTransactionFilters = (): TransactionFilters => ({
 
 export default function App() {
   const C = useTheme();
+  const { t } = useT();
   // Wide vs. phone layout (spec §5–§10) — first consumer of `viewMode.ts`, already eager for
   // `PHONE_COL` above. `wide` itself is computed below, once `state`/`onboarding` are known.
   const mode = useViewMode();
@@ -451,16 +452,25 @@ export default function App() {
   // SAME `screenEl`) — except on Add, which keeps the phone-column takeover below (interim by
   // design, PR6's `add` pane replaces it — pr4-task-4-brief.md §4e).
   //
-  // KNOWN GAP (bundle budget, not forgotten): §13's per-screen band right-slot ("Edit widgets" /
-  // "Manage envelopes") is NOT wired here — `rightSlot` is left at WideShell's `null` default.
-  // Wiring it (t()-translated label/ariaLabel + the existing editWidgetsOpen/manageOpen setters)
-  // measured over the §3f RAW_BYTE_LIMIT even after every other shrink in pr4-context.md §11 was
-  // applied (raw setters instead of wrapper closures, the bag grouping). See the task-4 report
-  // for the exact measured numbers; restore this once PR5's Task 1 extraction lands headroom.
+  // §13's per-screen band right-slot ("Edit widgets" on Start / "Manage envelopes" on Budget) —
+  // restored now that the widget-edit-sheet extraction (pr4-context.md header; the pull-forward
+  // of PR5 Task 1) bought back the §3f headroom this needed. Reuses the SAME lifted
+  // editWidgetsOpen/manageOpen state Start/Budget already drive their own pencils from, so
+  // opening from the band and opening from the phone header stay one piece of state each.
+  const wideRightSlot =
+    screen === "start"
+      ? { label: t("Edit widgets"), ariaLabel: t("Edit widgets"), onClick: () => setEditWidgetsOpen(true) }
+      : screen === "budget"
+        ? { label: t("Manage envelopes"), ariaLabel: t("Manage envelopes"), onClick: () => setManageOpen(true) }
+        : null;
+
   if (wide && screen !== "addExpense") {
     return (
       <LazyChunk>
-        <WideShell bag={{ mode, screen, nav, month, prev, next, reportsView, envView, openTxns, panelClosed, setEnvView, setReportsView, setPanelClosed }}>
+        <WideShell
+          bag={{ mode, screen, nav, month, prev, next, reportsView, envView, openTxns, panelClosed, setEnvView, setReportsView, setPanelClosed }}
+          rightSlot={wideRightSlot}
+        >
           {screenEl}
         </WideShell>
       </LazyChunk>
