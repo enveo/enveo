@@ -99,6 +99,7 @@ export interface ImportRecognitionMetrics {
   inclusion: {
     missingFinancial: number;
     nonLedgerIncluded: number;
+    exactDuplicateSelected: number;
   };
   interpretationErrors: number;
   reviewCoverage: ImportRecognitionRatio;
@@ -164,14 +165,10 @@ const hasRequiredSafetyReview = (truth: ExpectedImportRecognitionRow, actual: Ac
   actual?.proposal !== undefined &&
   requiredReviewReasons(truth).every((reason) => actual.proposal!.reviewReasons.includes(reason));
 
-const truthShouldBeIncluded = (truth: ExpectedImportRecognitionRow, actual: ActualImportRecognitionRow | undefined): boolean =>
-  truth.rowRole === "financial_event" &&
-  truth.postingStatus !== "pending" &&
-  truth.postingStatus !== "declined" &&
-  (truth.expectedDuplicateStatus !== "exists" || actual?.proposal?.duplicateStatus !== "exists");
+const truthShouldBeIncluded = (truth: ExpectedImportRecognitionRow): boolean =>
+  truth.rowRole === "financial_event" && truth.postingStatus !== "pending" && truth.postingStatus !== "declined" && truth.expectedDuplicateStatus !== "exists";
 
-const duplicateStatusMatches = (truth: ImportRecognitionDuplicateStatus, actual: ImportRecognitionDuplicateStatus | undefined): boolean =>
-  actual === truth || (truth === "exists" && actual === "probable");
+const duplicateStatusMatches = (truth: ImportRecognitionDuplicateStatus, actual: ImportRecognitionDuplicateStatus | undefined): boolean => actual === truth;
 
 const semanticDirection = (kind: string): ImportRecognitionDirection | null => {
   if (["card_purchase", "cash_withdrawal", "fee", "outgoing_transfer"].includes(kind)) return "debit";
@@ -247,6 +244,7 @@ export function scoreImportRecognition(
   let missingProposals = 0;
   let missingFinancial = 0;
   let nonLedgerIncluded = 0;
+  let exactDuplicateSelected = 0;
   let interpretationErrors = 0;
   let reviewedAsRequired = 0;
   let requiredReviews = 0;
@@ -255,10 +253,11 @@ export function scoreImportRecognition(
   for (const truth of expected) {
     const actualRow = actualById.get(truth.id);
     const included = actualRow?.proposal?.selected === true;
-    if (truthShouldBeIncluded(truth, actualRow)) {
+    if (truthShouldBeIncluded(truth)) {
       if (!included) missingFinancial++;
     } else if (included) {
-      nonLedgerIncluded++;
+      if (truth.rowRole === "financial_event" && truth.expectedDuplicateStatus === "exists") exactDuplicateSelected++;
+      else nonLedgerIncluded++;
     }
     const proposalBlocked =
       actualRow?.proposal && importProposalBlockingReasons({ reviewReasons: actualRow.proposal.reviewReasons as ImportReviewReason[] }).length > 0;
@@ -312,7 +311,7 @@ export function scoreImportRecognition(
       expectedRelations.length,
     ),
     relationF1: actualRelations.length + expectedRelations.length === 0 ? null : (2 * correctRelations) / (actualRelations.length + expectedRelations.length),
-    inclusion: { missingFinancial, nonLedgerIncluded },
+    inclusion: { missingFinancial, nonLedgerIncluded, exactDuplicateSelected },
     interpretationErrors,
     reviewCoverage: ratio(reviewedAsRequired, requiredReviews),
     unexpectedReviewReasons,
@@ -399,6 +398,7 @@ export function gateImportRecognition(
   }
   if (candidate.inclusion.missingFinancial > 0) reasons.push("financial_event_not_selected");
   if (candidate.inclusion.nonLedgerIncluded > 0) reasons.push("non_ledger_selected");
+  if (candidate.inclusion.exactDuplicateSelected > 0) reasons.push("exact_duplicate_selected");
   if (candidate.unexpectedRows.selected > 0) reasons.push("unexpected_row_selected");
   if (candidate.duplicateStatusAccuracy.total > 0 && candidate.duplicateStatusAccuracy.rate !== 1) reasons.push("duplicate_status_incorrect");
   if (baseline.interpretationErrors === 0) {
