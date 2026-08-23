@@ -1747,6 +1747,36 @@ export async function runBaselineProductionAdapter(input: {
   });
 }
 
+interface SideRunResult {
+  actual: ActualImportRecognitionRow[];
+  contractFailures: string[];
+}
+
+class EvaluationTransportFailure extends Error {
+  constructor(readonly reason: unknown) {
+    super("evaluation_transport_failed");
+  }
+}
+
+const errorChain = (error: unknown): unknown[] => {
+  const chain: unknown[] = [];
+  const seen = new Set<unknown>();
+  let current: unknown = error;
+  while (current && !seen.has(current)) {
+    seen.add(current);
+    chain.push(current);
+    if (typeof current !== "object") break;
+    const record = current as Record<string, unknown>;
+    current = record.reason ?? record.cause;
+  }
+  return chain;
+};
+
+const isModelContractFailure = (error: unknown): boolean =>
+  errorChain(error).some(
+    (entry) => entry instanceof SyntaxError || (typeof entry === "object" && entry !== null && (entry as { name?: unknown }).name === "ZodError"),
+  );
+
 async function runSide(
   mode: "baseline" | "candidate",
   source: LoadedSource,
@@ -1755,12 +1785,19 @@ async function runSide(
   transport: ChatTransport,
   apiKey: string,
   model: string,
-): Promise<ActualImportRecognitionRow[]> {
+): Promise<SideRunResult> {
   const actual: ActualImportRecognitionRow[] = [];
+  const contractFailures: string[] = [];
   for (const fixture of manifest.fixtures) {
     const images = corpus.images.get(fixture.id);
     if (!images) throw new Error(`fixture ${fixture.id}: loaded images are missing`);
-    const chat = async (request: ChatRequest): Promise<string> => transport({ side: mode, fixtureId: fixture.id, request, apiKey, model });
+    const chat = async (request: ChatRequest): Promise<string> => {
+      try {
+        return await transport({ side: mode, fixtureId: fixture.id, request, apiKey, model });
+      } catch (error) {
+        throw new EvaluationTransportFailure(error);
+      }
+    };
     try {
       if (mode === "baseline") {
         const result = await runBaselineProductionAdapter({ source, fixture, images, chat });
@@ -1782,11 +1819,18 @@ async function runSide(
         });
         actual.push(...normalizeCandidateRecognition(fixture.id, fixture.rows, parseCandidateResult(result, images.length)));
       }
-    } catch {
+    } catch (error) {
+      if (errorChain(error).some((entry) => entry instanceof EvaluationTransportFailure)) {
+        throw new Error(`fixture ${fixture.id}: ${mode} model transport failed`);
+      }
+      if (isModelContractFailure(error)) {
+        contractFailures.push(fixture.id);
+        continue;
+      }
       throw new Error(`fixture ${fixture.id}: model output did not satisfy the ${mode} contract`);
     }
   }
-  return actual;
+  return { actual, contractFailures };
 }
 
 async function runEvaluation(args: EvaluationArgs): Promise<void> {
@@ -1911,11 +1955,11 @@ async function runEvaluation(args: EvaluationArgs): Promise<void> {
         process.exitCode = 1;
         return;
       }
-      let baselineActual: ActualImportRecognitionRow[];
-      let candidateActual: ActualImportRecognitionRow[];
+      let baselineRun: SideRunResult;
+      let candidateRun: SideRunResult;
       try {
-        baselineActual = await runSide("baseline", baselineSource, manifest, corpus, transport.chat, apiKey, model);
-        candidateActual = await runSide("candidate", candidateSource, manifest, corpus, transport.chat, apiKey, model);
+        baselineRun = await runSide("baseline", baselineSource, manifest, corpus, transport.chat, apiKey, model);
+        candidateRun = await runSide("candidate", candidateSource, manifest, corpus, transport.chat, apiKey, model);
       } catch {
         process.stdout.write(
           `${JSON.stringify(
@@ -1940,7 +1984,7 @@ async function runEvaluation(args: EvaluationArgs): Promise<void> {
         process.exitCode = 1;
         return;
       }
-      const decision = gateImportRecognition(expected, baselineActual, candidateActual);
+      const decision = gateImportRecognition(expected, baselineRun.actual, candidateRun.actual);
       const finalBaselineIdentity = await preflightSource("baseline", args.baselineSourceTree);
       const finalCandidateIdentity = await preflightSource("candidate", args.candidateSourceTree, args.expectedCandidateRevision);
       const identityBound =
@@ -1957,6 +2001,7 @@ async function runEvaluation(args: EvaluationArgs): Promise<void> {
           sources: { baseline: baselineSource.identity, candidate: candidateSource.identity },
           finalSources: { baseline: finalBaselineIdentity.identity, candidate: finalCandidateIdentity.identity },
           historySafety,
+          contractFailures: { baseline: baselineRun.contractFailures, candidate: candidateRun.contractFailures },
         },
         metrics: { baseline: decision.baseline, candidate: decision.candidate },
         decision: { passed: release.passed, criteriaPassed: decision.passed, reasons: release.reasons, transitions: decision.transitions },
@@ -1987,14 +2032,22 @@ async function runEvaluation(args: EvaluationArgs): Promise<void> {
       process.exitCode = 1;
       return;
     }
-    const actual = await runSide(args.mode, source, manifest, corpus, transport.chat, apiKey, model);
+    const run = await runSide(args.mode, source, manifest, corpus, transport.chat, apiKey, model);
     process.stdout.write(
       `${JSON.stringify(
         {
           mode: args.mode,
           releaseEligible: false,
-          identity: { model, transport: transport.kind, corpusDigest: corpus.digest, fixtureIds, source: source.identity, historySafety },
-          metrics: scoreImportRecognition(expected, actual),
+          identity: {
+            model,
+            transport: transport.kind,
+            corpusDigest: corpus.digest,
+            fixtureIds,
+            source: source.identity,
+            historySafety,
+            contractFailures: run.contractFailures,
+          },
+          metrics: scoreImportRecognition(expected, run.actual),
           diagnosticOnly: true,
           decision: { passed: false, reasons: ["diagnostic_only"] },
         },
