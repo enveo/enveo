@@ -263,13 +263,12 @@ describe("gateImportRecognition", () => {
   });
 
   test("rejects review-reason noise that is not supported by labelled truth", () => {
-    const decision = gateImportRecognition(
-      [expectedRow()],
-      [actualRow()],
-      [actualRow({ proposal: { ...actualRow().proposal!, reviewReasons: ["possible_ocr_error"] } })],
-    );
+    const expected = [expectedRow()];
+    const candidate = [actualRow({ proposal: { ...actualRow().proposal!, reviewReasons: ["possible_ocr_error"] } })];
+    const decision = gateImportRecognition(expected, [actualRow()], candidate);
 
     expect(decision.reasons).toContain("unexpected_review_reason");
+    expect(scoreImportRecognition(expected, candidate).unexpectedReviewReasonCounts).toEqual({ possible_ocr_error: 1 });
   });
 
   test("does not call a validator-derived warning noise when the candidate facts require it", () => {

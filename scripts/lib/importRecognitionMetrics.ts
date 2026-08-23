@@ -105,6 +105,8 @@ export interface ImportRecognitionMetrics {
   reviewCoverage: ImportRecognitionRatio;
   unexpectedReviewReasons: number;
    
+  unexpectedReviewReasonCounts: Record<string, number>;
+   
   reviewRequired: number;
   reviewBreakdown: ImportRecognitionReviewBreakdown;
   missingRows: number;
@@ -249,6 +251,7 @@ export function scoreImportRecognition(
   let reviewedAsRequired = 0;
   let requiredReviews = 0;
   let unexpectedReviewReasons = 0;
+  const unexpectedReviewReasonCounts: Record<string, number> = {};
 
   for (const truth of expected) {
     const actualRow = actualById.get(truth.id);
@@ -269,7 +272,11 @@ export function scoreImportRecognition(
     }
     if (actualRow?.proposal) {
       const allowed = allowedReviewReasons(truth, actualRow, relationTargetIds);
-      unexpectedReviewReasons += actualRow.proposal.reviewReasons.filter((reason) => !allowed.has(reason)).length;
+      for (const reason of actualRow.proposal.reviewReasons) {
+        if (allowed.has(reason)) continue;
+        unexpectedReviewReasons++;
+        unexpectedReviewReasonCounts[reason] = (unexpectedReviewReasonCounts[reason] ?? 0) + 1;
+      }
     }
   }
 
@@ -315,6 +322,7 @@ export function scoreImportRecognition(
     interpretationErrors,
     reviewCoverage: ratio(reviewedAsRequired, requiredReviews),
     unexpectedReviewReasons,
+    unexpectedReviewReasonCounts,
     reviewRequired: reviewBreakdown.unsafe + reviewBreakdown.otherFinancial,
     reviewBreakdown,
     missingRows: expected.length - matched,
