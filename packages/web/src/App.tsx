@@ -468,7 +468,27 @@ export default function App() {
     return (
       <LazyChunk>
         <WideShell
-          bag={{ mode, screen, nav, month, prev, next, reportsView, envView, openTxns, panelClosed, setEnvView, setReportsView, setPanelClosed }}
+          bag={{
+            mode,
+            screen,
+            nav,
+            month,
+            prev,
+            next,
+            reportsView,
+            envView,
+            openTxns,
+            panelClosed,
+            setEnvView,
+            setReportsView,
+            setPanelClosed,
+            // `wide` already implies `!!state` (its own definition above) — TS can't see through
+            // that boolean, so the assertion is the one place this fact needs spelling out.
+            state: state!,
+            onQuickAdd,
+            onFillGoals: openBudgetFillGoals,
+            onInstall: () => setInstallSheet(true),
+          }}
           rightSlot={wideRightSlot}
         >
           {screenEl}

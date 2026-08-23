@@ -27,15 +27,17 @@ function reduceMotion(): boolean {
  * - the rest (synced with no queue; also transient error/offline with no queue
  *   and no rejections) → hidden (zero noise, nothing is at risk).
  */
-export function SyncBadge({ onOpenSync }: { onOpenSync: () => void }) {
+export function SyncBadge({ onOpenSync, topOffset = 13 }: { onOpenSync: () => void; topOffset?: number }) {
   const C = useTheme();
   const { t, tp } = useT();
   const { state, pending, deadLetters, ownerUnproven } = useSyncStatus();
 
-  // shared anchoring in the shell corner (above content, below sheet/drawer)
+  // shared anchoring in the shell corner (above content, below sheet/drawer). `topOffset`
+  // defaults to the phone shell's constant; the wide shell (WideShell.tsx) passes 56+13 so the
+  // badge clears the band header instead of sitting under it (PR4 task 5).
   const anchor: React.CSSProperties = {
     position: "absolute",
-    top: "calc(env(safe-area-inset-top) + 13px)",
+    top: `calc(env(safe-area-inset-top) + ${topOffset}px)`,
     right: 48,
     zIndex: 60,
     display: "flex",

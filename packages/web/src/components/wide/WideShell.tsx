@@ -1,17 +1,21 @@
 import { type ReactNode, useEffect, useRef } from "react";
+import type { StateResponse } from "../../lib/api";
 import { useTheme } from "../../lib/contexts";
 import { monthLabel } from "../../lib/dates";
 import { type Message, msg, useT } from "../../lib/i18n";
 import { Ico } from "../../lib/icons";
 import { InWideShell } from "../../lib/shellContext";
-import { CTA, font, P, TEAL } from "../../lib/theme";
+import { CTA, font, P } from "../../lib/theme";
 import { useElementWidth } from "../../lib/useElementWidth";
-import { RAIL_W, type ViewMode } from "../../lib/viewMode";
+import type { ViewMode } from "../../lib/viewMode";
 import type { ReportView } from "../../screens/reports/types";
-import { LogoMark, type ScreenId } from "../chrome";
+import type { ScreenId } from "../chrome";
+import { SyncBadge } from "../SyncBadge";
+import { FoldTbbStrip } from "./FoldTbbStrip";
 import { paneWidthFor } from "./geometry";
 import { PanelHost } from "./PanelHost";
 import { resolvePanel } from "./panel";
+import { Rail } from "./Rail";
 
 /** One right-slot contract (pr4-context.md §13) — computed by App, rendered here verbatim. */
 type RightSlot = { label: string; ariaLabel: string; onClick: () => void } | null;
@@ -26,85 +30,7 @@ const SCREEN_TITLE: Record<ScreenId, Message> = {
   settings: msg("Settings"),
 };
 
-/** Rail nav glyphs — the same paths BottomNav draws on phone, so the icon language matches. */
-const RAIL_D: Record<"start" | "budget" | "transactions" | "reports" | "accounts", string> = {
-  start: "M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-4 0h4",
-  budget: "M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z",
-  transactions: "M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2",
-  reports: "M4 19h16M7 16v-5M12 16V8M17 16v-9",
-  accounts: "M3 21h18M4 18h16M6 18V9m4 9V9m4 9V9m4 9V9M2 9l10-5 10 5z",
-};
-const GEAR_D =
-  "M12 9a3 3 0 100 6 3 3 0 000-6zM19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 11-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 11-4 0v-.09a1.65 1.65 0 00-1-1.51 1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 11-2.83-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 110-4h.09a1.65 1.65 0 001.51-1 1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 112.83-2.83l.06.06a1.65 1.65 0 001.82.33 1.65 1.65 0 001-1.51V3a2 2 0 114 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 112.83 2.83l-.06.06a1.65 1.65 0 00-.33 1.82 1.65 1.65 0 001.51 1H21a2 2 0 110 4h-.09a1.65 1.65 0 00-1.51 1z";
 const PENCIL_D = "M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7M18.5 2.5a2.1 2.1 0 013 3L12 15l-4 1 1-4 9.5-9.5z";
-
-function RailButton({ active, d, label, onClick }: { active: boolean; d: string; label: string; onClick: () => void }) {
-  const C = useTheme();
-  return (
-    <button
-      onClick={onClick}
-      aria-label={label}
-      title={label}
-      aria-current={active ? "page" : undefined}
-      style={{
-        width: 44,
-        height: 44,
-        minWidth: 30,
-        minHeight: 30,
-        flexShrink: 0,
-        borderRadius: 12,
-        border: "none",
-        background: active ? C.inset : "transparent",
-        cursor: "pointer",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-      }}
-    >
-      <Ico d={d} size={20} color={active ? TEAL : C.soft} sw={1.8} />
-    </button>
-  );
-}
-
-/** Logo + 5 screen buttons + a settings gear at the bottom. Icon-only (aria-label/title carry
- *  the full label) at every wide width for now — the desktop-only text label alongside each icon
- *  is Task 5's decided reading (pr4-context.md §12.1); this stays forward-compatible with it. */
-function Rail({ mode, screen, onNav }: { mode: Exclude<ViewMode, "phone">; screen: ScreenId; onNav: (s: ScreenId) => void }) {
-  const C = useTheme();
-  const { t } = useT();
-  const items: ReadonlyArray<{ id: ScreenId; d: string; label: string }> = [
-    { id: "start", d: RAIL_D.start, label: t("Home") },
-    { id: "budget", d: RAIL_D.budget, label: t("Budget") },
-    { id: "transactions", d: RAIL_D.transactions, label: t("Transactions") },
-    { id: "reports", d: RAIL_D.reports, label: t("Reports") },
-    { id: "accounts", d: RAIL_D.accounts, label: t("Accounts") },
-  ];
-  return (
-    <div
-      style={{
-        width: RAIL_W[mode],
-        flexShrink: 0,
-        display: "flex",
-        flexDirection: "column",
-        alignItems: "center",
-        gap: 6,
-        padding: "16px 0",
-        background: C.surface,
-        borderRight: `1px solid ${C.line}`,
-        overflow: "hidden",
-      }}
-    >
-      <div style={{ marginBottom: 10 }}>
-        <LogoMark size={32} />
-      </div>
-      {items.map((it) => (
-        <RailButton key={it.id} active={screen === it.id} d={it.d} label={it.label} onClick={() => onNav(it.id)} />
-      ))}
-      <div style={{ flex: 1 }} />
-      <RailButton active={screen === "settings"} d={GEAR_D} label={t("Settings")} onClick={() => onNav("settings")} />
-    </div>
-  );
-}
 
 /** Hollow-two-column glyph for the panel toggle (the mock's bar redrawn as inline SVG — colors
  *  via `style`, never a presentation attribute, per the house SVG-color rule). */
@@ -290,6 +216,13 @@ type WideShellBag = {
   setEnvView: (v: null) => void;
   setReportsView: (v: "overview") => void;
   setPanelClosed: (closed: boolean) => void;
+  /** Task 5's rail card + fold strip need the same `state` every screen already renders from —
+   *  App only reaches this branch once `state` exists (`wide`'s own definition), so the call
+   *  site passes it with a `!` rather than this type carrying `| undefined` everywhere. */
+  state: StateResponse;
+  onQuickAdd: (kind: "transfer" | "import" | "suggest") => void;
+  onFillGoals: () => void;
+  onInstall: () => void;
 };
 
 /**
@@ -309,7 +242,25 @@ type WideShellBag = {
  * addition at the call site rather than a required prop everywhere.
  */
 export function WideShell({ bag, rightSlot = null, children }: { bag: WideShellBag; rightSlot?: RightSlot; children: ReactNode }) {
-  const { mode, screen, nav, month, prev, next, reportsView, envView, openTxns, panelClosed, setEnvView, setReportsView, setPanelClosed } = bag;
+  const {
+    mode,
+    screen,
+    nav,
+    month,
+    prev,
+    next,
+    reportsView,
+    envView,
+    openTxns,
+    panelClosed,
+    setEnvView,
+    setReportsView,
+    setPanelClosed,
+    state,
+    onQuickAdd,
+    onFillGoals,
+    onInstall,
+  } = bag;
   const C = useTheme();
   const { t } = useT();
   const [rootRef, rootW] = useElementWidth<HTMLDivElement>(mode === "desktop" ? 1440 : 1104);
@@ -366,11 +317,18 @@ export function WideShell({ bag, rightSlot = null, children }: { bag: WideShellB
 
   return (
     <div ref={rootRef} style={{ display: "flex", height: "100dvh", background: C.bg, fontFamily: font, overflow: "hidden" }}>
-      <Rail mode={mode} screen={screen} onNav={nav} />
+      <Rail mode={mode} screen={screen} onNav={nav} state={state} onQuickAdd={onQuickAdd} onFillGoals={onFillGoals} onInstall={onInstall} />
       <div
         data-wide-primary
         style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", borderRight: `1px solid ${C.line}`, position: "relative" }}
       >
+        {/* Re-anchored from the phone shell (App.tsx) into the primary pane it now sits above —
+            `data-wide-primary` is `position:relative`, SyncBadge already renders `position:
+            absolute`, so this is a pure re-parent with a `topOffset` to clear the 56px band
+            (pr4-task-5-brief.md). Dead letters stay visible on wide; the user menu's "Sync now"
+            is a convenience, not the alarm channel. The demo's separate band error pill (spec
+            lines 198-201) is deliberately NOT implemented — one sync surface, not two. */}
+        <SyncBadge onOpenSync={() => nav("settings")} topOffset={56 + 13} />
         <BandHeader
           screen={screen}
           month={month}
@@ -381,7 +339,9 @@ export function WideShell({ bag, rightSlot = null, children }: { bag: WideShellB
           panelClosed={panelClosed}
           onTogglePanel={() => setPanelClosed(!panelClosed)}
         />
-        {/* fold TBB strip mounts here in task 5 */}
+        {mode === "fold" && screen !== "settings" && (
+          <FoldTbbStrip state={state} screen={screen} onQuickAdd={onQuickAdd} onFillGoals={onFillGoals} onNav={nav} />
+        )}
         <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column", overflow: "hidden" }}>
           <InWideShell.Provider value={true}>{children}</InWideShell.Provider>
         </div>

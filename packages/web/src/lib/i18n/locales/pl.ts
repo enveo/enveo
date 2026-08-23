@@ -519,6 +519,7 @@ export const pl: Dict = {
   Settings: "Ustawienia",
   Share: "Udostępnij",
   "Short after changes": "Po zmianach brakuje",
+  "Show all": "Pokaż wszystkie",
   "Show the side panel": "Pokaż panel boczny",
   "Show {n} transaction | Show {n} transactions": {
     one: "Pokaż {n} transakcję",
