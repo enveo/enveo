@@ -1772,9 +1772,15 @@ const errorChain = (error: unknown): unknown[] => {
   return chain;
 };
 
+const MODEL_CONTRACT_ERROR_MESSAGES = new Set(["import row imageIndex is outside the supplied images", "duplicate import visual position"]);
+
 const isModelContractFailure = (error: unknown): boolean =>
   errorChain(error).some(
-    (entry) => entry instanceof SyntaxError || (typeof entry === "object" && entry !== null && (entry as { name?: unknown }).name === "ZodError"),
+    (entry) =>
+      entry instanceof SyntaxError ||
+      (typeof entry === "object" &&
+        entry !== null &&
+        ((entry as { name?: unknown }).name === "ZodError" || MODEL_CONTRACT_ERROR_MESSAGES.has(String((entry as { message?: unknown }).message ?? "")))),
   );
 
 async function runSide(

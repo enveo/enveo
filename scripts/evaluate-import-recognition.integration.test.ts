@@ -300,6 +300,9 @@ if (process.env.TEST_SOURCE_IMPORT_SENTINEL) await Bun.write(process.env.TEST_SO
 ${promptModule("rows")}
 export async function runImportRecognitionPipeline(input) {
   const extracted = JSON.parse(await input.chat(buildImportExtractPrompt(input.images, { envelopes: [], categories: [] }, input.today, input.locale, input.budgetCurrency)));
+  if (extracted.rows.some((row) => row.imageIndex >= input.images.length)) throw new Error("import row imageIndex is outside the supplied images");
+  const positions = extracted.rows.map((row) => row.imageIndex + ":" + row.visualOrder);
+  if (new Set(positions).size !== positions.length) throw new Error("duplicate import visual position");
   if (input.accountId !== "account-a") {
     const enriched = JSON.parse(await input.chat({ messages: [{ role: "system", content: "enrich" }, { role: "user", content: JSON.stringify({ rows: extracted.rows }) }] }));
     return { rows: extracted.rows, proposals: enriched.proposals };
@@ -461,6 +464,11 @@ export async function chat(input) {
     })) });
   }
   const value = structuredClone(enrichment ? data.candidate[input.fixtureId].enrichment : data.candidate[input.fixtureId].extraction);
+  if (process.env.TEST_EVAL_INVALID_POSITION === input.side && !enrichment && value.rows.length > 1) {
+    value.rows[1].visualOrder = value.rows[0].visualOrder;
+  } else if (process.env.TEST_EVAL_INVALID_POSITION === input.side && !enrichment) {
+    value.rows[0].imageIndex = 1;
+  }
   if (process.env.TEST_EVAL_FAIL === "1" && enrichment && input.fixtureId === "synthetic-mobile") {
     for (const proposal of value.proposals.filter((item) => ["incoming", "outgoing", "topup"].includes(item.rowId))) {
       proposal.selected = true;
@@ -527,6 +535,7 @@ const runGate = async (
   mutatePath = "",
   mutateContent = "",
   transportFail = "",
+  invalidPosition = "",
 ) => {
   const child = Bun.spawn(
     [
@@ -556,6 +565,7 @@ const runGate = async (
         TEST_EVAL_FAIL: fail ? "1" : "0",
         TEST_EVAL_MISSING: missing,
         TEST_EVAL_TRANSPORT_FAIL: transportFail,
+        TEST_EVAL_INVALID_POSITION: invalidPosition,
         TEST_HISTORY_FAIL: historyFail ? "1" : "0",
         TEST_HISTORY_UNSAFE: historyUnsafe ? "1" : "0",
         TEST_HISTORY_IMMUTABLE_UNSAFE: historyImmutableUnsafe ? "1" : "0",
@@ -921,6 +931,17 @@ describe("paired import recognition CLI", () => {
     expect(output.identity.sources.baseline.moduleHashes["packages/shared/src/aiPrompts.ts"]).toHaveLength(64);
     expect(output.identity.sources.candidate.moduleHashes["packages/shared/src/aiPrompts.ts"]).toHaveLength(64);
     expect(result.stdout).not.toContain("PRIVATE_VISIBLE_SENTINEL");
+    expect(result.stderr).toBe("");
+  });
+
+  test("scores internally inconsistent model output instead of erasing the paired metrics", async () => {
+    const result = await runGate(false, "", false, "run-tests", false, false, candidateRevision, false, candidateRoot, "", "", "", "candidate");
+
+    expect(result.exitCode).toBe(1);
+    const output = JSON.parse(result.stdout);
+    expect(output.metrics.candidate.rowRecall).toEqual({ correct: 0, total: 11, rate: 0 });
+    expect(output.identity.contractFailures).toEqual({ baseline: [], candidate: ["synthetic-mobile", "synthetic-desktop"] });
+    expect(output.decision.reasons).toContain("financial_event_not_selected");
     expect(result.stderr).toBe("");
   });
 
