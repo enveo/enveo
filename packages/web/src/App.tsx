@@ -482,6 +482,14 @@ export default function App() {
   if (wide && screen !== "addExpense") {
     return (
       <>
+        {/* The same global injector the phone card and the login backdrop mount — the wide tree
+            returns before either, so without its own instance the wide shell ran on UA defaults:
+            body kept its 8px margin (a page-level scrollbar eating real panel width at the 960px
+            clamp) and every rule the injector owns (:focus-visible ring, the sp/sk/fu keyframes,
+            .rpt-body's first-child reset) was silently off, on wide only. Exactly ONE instance is
+            mounted per render — the three returns are exclusive — and the injector itself is
+            idempotent (#g4 guard), so a login→wide transition never doubles the style element. */}
+        <StyleInjector />
         <LazyChunk>
           <WideShell
             bag={{

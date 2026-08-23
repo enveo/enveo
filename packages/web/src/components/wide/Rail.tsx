@@ -571,6 +571,11 @@ export function Rail({
     <div
       style={{
         width: RAIL_W[mode],
+        // `RAIL_W` is the rail's OUTER width — the geometry contract (geometry.ts) sums
+        // rail + flexing primary + `paneWidthFor` to exactly the viewport. Without border-box,
+        // desktop's 10px side padding + 1px border rendered 257px and quietly stole 21px from
+        // the primary pane's `flex:1` share (fold: +1px, border only).
+        boxSizing: "border-box",
         flexShrink: 0,
         display: "flex",
         flexDirection: "column",
