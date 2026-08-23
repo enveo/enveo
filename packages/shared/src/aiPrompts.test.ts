@@ -666,6 +666,82 @@ describe("runImportRecognitionPipeline", () => {
     expect(result.proposals[0]!.reviewReasons).toEqual(expect.arrayContaining(["unknown_kind", "fact_correction"]));
   });
 
+  it("keeps action warnings on the selected financial row instead of its unselected supporting evidence", async () => {
+    let calls = 0;
+    const result = await runImportRecognitionPipeline({
+      ...base,
+      chat: async () => {
+        calls++;
+        if (calls === 1) {
+          return JSON.stringify({
+            rows: [
+              {
+                rowId: "fx",
+                imageIndex: 0,
+                visualOrder: 0,
+                rawTextLines: ["100 EUR", "430 PLN"],
+                date: "2026-08-07",
+                amount: 43000,
+                currency: "PLN",
+                direction: "debit",
+                postingStatus: "posted",
+                rowRole: "supporting_detail",
+                semanticKind: "fx_conversion",
+                relation: null,
+                confidence: "medium",
+                reviewReasons: [],
+              },
+              {
+                rowId: "purchase",
+                imageIndex: 0,
+                visualOrder: 1,
+                rawTextLines: ["100 EUR", "MERCHANT"],
+                date: "2026-08-07",
+                amount: 10000,
+                currency: "EUR",
+                direction: "debit",
+                postingStatus: "posted",
+                rowRole: "financial_event",
+                semanticKind: "unknown",
+                relation: null,
+                confidence: "medium",
+                reviewReasons: [],
+              },
+            ],
+          });
+        }
+        return JSON.stringify({
+          rows: [
+            {
+              rowId: "fx",
+              name: "",
+              place: null,
+              envelopeId: null,
+              categoryId: null,
+              semanticKind: "fx_conversion",
+              relation: { kind: "fx_for", rowId: "purchase" },
+              reviewReasons: ["relation_changes_ledger_shape"],
+            },
+            {
+              rowId: "purchase",
+              name: "Purchase",
+              place: null,
+              envelopeId: null,
+              categoryId: null,
+              semanticKind: "card_purchase",
+              relation: null,
+              reviewReasons: ["relation_changes_ledger_shape"],
+            },
+          ],
+        });
+      },
+    });
+
+    expect(calls).toBe(2);
+    expect(result.proposals.find((proposal) => proposal.rowId === "fx")).toMatchObject({ selected: false, reviewReasons: [] });
+    expect(result.proposals.find((proposal) => proposal.rowId === "purchase")?.reviewReasons).toContain("relation_changes_ledger_shape");
+  });
+
   it("builds byte-identical cycle-two prompts for permutations of set-like ledger context", async () => {
     const envelope2 = { ...base.envelopes[0]!, id: "envelope-2", name: "Travel", sort: 1 };
     const categories = [

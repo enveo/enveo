@@ -14,6 +14,13 @@ describe("shared import duplicate classification", () => {
     expect(classifyImportDup({ date: "2026-07-08", amount: 20000, rawPlace: "OTHER" }, index)).toBe("new");
   });
 
+  it("recognizes an existing source reference when the current OCR row preserves it as one complete line", () => {
+    const existing = buildImportDupIndex([{ date: "2026-07-09", amount: 9600, sourceRef: "UM HALINOW" }]);
+
+    expect(classifyImportDup({ date: "2026-07-09", amount: 9600, rawPlace: "96.00 PLN\nUM HALINOW\nCARD 1234" }, existing)).toBe("exists");
+    expect(classifyImportDup({ date: "2026-07-09", amount: 9600, rawPlace: "UM HALINOW MARKET" }, existing)).toBe("probable");
+  });
+
   it("deduplicates a repeated raw row inside one batch without blocking equal-value rows from different places", () => {
     const empty = buildImportDupIndex([]);
     empty.markSeen({ date: "2026-07-01", amount: 5000, rawPlace: "LIDL 123" });

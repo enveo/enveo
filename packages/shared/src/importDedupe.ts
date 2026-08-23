@@ -14,6 +14,11 @@ export interface ImportCandidate {
 }
 
 const norm = (value: string | null | undefined): string => (value ?? "").trim().toLowerCase();
+const candidateRefs = (value: string | null | undefined): string[] => {
+  const whole = norm(value);
+  if (!whole) return [];
+  return [...new Set([whole, ...whole.split(/\r?\n/).map(norm).filter(Boolean)])];
+};
 const strongKey = (date: string, amount: number, ref: string): string => `${date}|${amount}|${ref}`;
 const weakKey = (date: string, amount: number): string => `${date}|${amount}`;
 
@@ -43,8 +48,7 @@ export function buildImportDupIndex(rows: ExistingImportRow[]): ImportDupIndex {
 }
 
 export function classifyImportDup(item: ImportCandidate, index: ImportDupIndex): ImportDupStatus {
-  const ref = norm(item.rawPlace);
-  if (ref && index.strong.has(strongKey(item.date, item.amount, ref))) return "exists";
+  if (candidateRefs(item.rawPlace).some((ref) => index.strong.has(strongKey(item.date, item.amount, ref)))) return "exists";
   if (index.weak.has(weakKey(item.date, item.amount))) return "probable";
   return "new";
 }
