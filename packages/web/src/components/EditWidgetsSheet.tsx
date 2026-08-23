@@ -22,27 +22,10 @@ import { type Message, msg, useT } from "../lib/i18n";
 import { Glyph, Ico } from "../lib/icons";
 import { matchesSearch, SEARCH_THRESHOLD } from "../lib/search";
 import { font, TEAL, type Theme, tint } from "../lib/theme";
+import { WIDGET_CATALOG } from "../lib/widgetCatalog";
 import { Sheet } from "./chrome";
 import { HighlightedText, PickerSearch } from "./kit";
 import { QUICK_ACTION_DEFS, QUICK_ACTION_ORDER, START_WIDGETS } from "./widgets";
-
-/* ── "Edit widgets" sheet: reorder (drag handle), enable toggles, per-widget options ── */
-const WIDGET_TITLE: Record<WidgetId, Message> = {
-  quickActions: msg("Quick actions"),
-  accounts: msg("Accounts"),
-  envelopes: msg("Envelopes"),
-  envelopesSavings: msg("Envelopes · Savings"),
-  reportCashflow: msg("Report · Cash flow"),
-  reportNetWorth: msg("Report · Net worth"),
-  // PR5's schemaVersion 2 widgets — offered here (ship disabled by default, product decision) so an
-  // existing Start stays untouched; their phone bodies land in a later task's lazy chunk.
-  attention: msg("Attention needed"),
-  recent: msg("Recent transactions"),
-  spending: msg("Spending"),
-  goals: msg("Goals"),
-  trends: msg("Trends"),
-  heatmap: msg("Heatmap"),
-};
 
 function envModeLabel(mode: string, groups: StateResponse["groups"], t: (m: Message, p?: Record<string, string | number>) => string): string {
   if (mode === "savings") return t("Savings only");
@@ -481,7 +464,6 @@ export function EditWidgetsSheet({ show, state, onClose }: { show: boolean; stat
   const toggle = (id: WidgetId) => setSettings({ ...settings, startWidgets: list.map((w) => (w.id === id ? { ...w, enabled: !w.enabled } : w)) });
   const setOpts = (id: WidgetId, opts: WidgetOpts) =>
     setSettings({ ...settings, startWidgets: list.map((w) => (w.id === id ? { ...w, opts: { ...w.opts, ...opts } } : w)) });
-  const configurable = (id: WidgetId) => id === "accounts" || id === "envelopes" || id === "quickActions";
 
   return (
     <Sheet show={show} onClose={onClose}>
@@ -492,7 +474,7 @@ export function EditWidgetsSheet({ show, state, onClose }: { show: boolean; stat
           {list.map((w, idx) => {
             if (!(w.id in START_WIDGETS)) return null; // corrupted/future persisted id — never crash the sheet
             const b = dnd.bind(idx);
-            const title = t(WIDGET_TITLE[w.id]);
+            const title = t(WIDGET_CATALOG[w.id].title);
             return (
               <div
                 key={w.id}
@@ -515,7 +497,7 @@ export function EditWidgetsSheet({ show, state, onClose }: { show: boolean; stat
                   </span>
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontSize: 13.5, fontWeight: 600, color: C.text }}>{title}</div>
-                    {configurable(w.id) ? (
+                    {WIDGET_CATALOG[w.id].configurable ? (
                       <button
                         onClick={() => setOpenOptions(openOptions === w.id ? null : w.id)}
                         style={{
