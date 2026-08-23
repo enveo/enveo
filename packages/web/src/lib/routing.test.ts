@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import type { ScreenId } from "../components/chrome";
 import type { ReportView } from "../screens/reports/types";
-import { parseUrl, type Route, routeToUrl } from "./routing";
+import { historyAction, parseUrl, type Route, routeToUrl } from "./routing";
 
 const SCREENS: readonly ScreenId[] = ["start", "budget", "transactions", "accounts", "reports", "settings", "addExpense"];
 const REPORT_VIEWS: readonly ReportView[] = ["overview", "assets", "cashflow", "spending", "budgets", "goals", "month", "trends"];
@@ -115,6 +115,38 @@ describe("parseUrl", () => {
       reportsView: "overview",
       envelopeId: ENV_ID,
     });
+  });
+});
+
+describe("historyAction (entry-0 contract at the codec/glue seam)", () => {
+  test("activation on a deep load stamps entry 0 in place — url unchanged, entry unstamped", () => {
+    expect(historyAction(false, false, false)).toBe("stamp");
+  });
+
+  test("the FIRST navigation after activation PUSHES — never replaces the start entry", () => {
+    // The regression this pins: stamping at the first CHANGE instead of at activation hit
+    // `history.state == null` here and rewrote entry 0's URL to the DESTINATION, so hardware
+    // back from the first in-session navigation exited the app.
+    expect(historyAction(true, true, false)).toBe("push");
+  });
+
+  test("a settled pass (stamped, url in sync) touches nothing", () => {
+    expect(historyAction(false, true, false)).toBe("none");
+  });
+
+  test("a URL change before entry 0 is stamped replaces in place (deep-load canonicalisation)", () => {
+    // e.g. a stale ?env dropped on boot, or /reports/nonsense normalising to /reports — the
+    // start entry is corrected, not duplicated.
+    expect(historyAction(true, false, false)).toBe("replace");
+  });
+
+  test("a popstate correction replaces the entry just landed on, never pushes", () => {
+    expect(historyAction(true, true, true)).toBe("replace");
+  });
+
+  test("popstate back onto the stamped entry 0 with the url already in sync is a no-op", () => {
+    // entry 0 carries `false` — stamped (non-null), just not a pushed entry.
+    expect(historyAction(false, true, true)).toBe("none");
   });
 });
 

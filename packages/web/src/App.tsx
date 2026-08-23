@@ -9,7 +9,7 @@ import { useStateQuery } from "./lib/api";
 import { useTheme } from "./lib/contexts";
 import { currentMonth, shiftMonth } from "./lib/dates";
 import { useT } from "./lib/i18n";
-import { parseUrl, routeToUrl } from "./lib/routing";
+import { historyAction, parseUrl, routeToUrl } from "./lib/routing";
 import { startupPresentation } from "./lib/startupSplash";
 import { store } from "./lib/store";
 import { bootOnce, retryBoot } from "./lib/sync";
@@ -291,13 +291,14 @@ export default function App() {
       if (envView && !state?.envelopes.some((e) => e.id === envView.envelopeId)) setEnvView(null);
       else {
         const url = routeToUrl({ screen, reportsView, envelopeId: envView?.envelopeId ?? null });
-        if (url !== location.pathname + location.search) {
-          // entry 0 (never pushed before), and any popstate correction, is replaced in place, no
-          // stack growth; every other change is a real pushed entry (see `back()` below for what
-          // `true`/`false` mean).
-          if (justPopped.current || history.state == null) history.replaceState(history.state ?? false, "", url);
-          else history.pushState(true, "", url);
-        }
+        // Entry 0 is stamped `false` at ACTIVATION ("stamp": in place, at the current url, no
+        // stack growth) so the FIRST navigation already pushes and hardware back from it returns
+        // to the start URL. Popstate corrections and pre-stamp deep-load canonicalisations
+        // replace in place; everything else is a real pushed entry (see `back()` below for what
+        // `true`/`false` mean). The decision itself is `historyAction` (routing.ts), unit-tested.
+        const act = historyAction(url !== location.pathname + location.search, history.state != null, justPopped.current);
+        if (act === "push") history.pushState(true, "", url);
+        else if (act !== "none") history.replaceState(history.state ?? false, "", url);
         justPopped.current = false; // settled: consume the correction window whether or not this pass touched history
       }
     }

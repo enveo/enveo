@@ -297,6 +297,22 @@ export function WideShell({ bag, rightSlot = null, children }: { bag: WideShellB
     else setPanelClosed(true);
   };
 
+  // Explicitly opening content re-opens a collapsed panel — the demo's own rule (v3:3597,
+  // `openReport` forces the pane open); the band toggle stays the ONLY control that closes
+  // chrome. Keyed on the selection VALUE, not just `view.kind`: rail nav can never fire it
+  // (`nav()` resets both selection axes, so its resolved view is `empty` — rule 2438, closed
+  // survives navigation), while a hub card, an envelope tap (App builds a fresh `envView`
+  // object per tap) and a history restore into `?env`/`/reports/{tab}` all change the value —
+  // including report→report switches that the kind alone would miss. Selection is compared
+  // across renders (a ref, not an effect dep array) so a mere re-render of the same open
+  // selection never touches `panelClosed`.
+  const selection = view.kind === "empty" ? null : view.kind === "envelope" ? envView : view.view;
+  const prevSelection = useRef(selection);
+  useEffect(() => {
+    if (selection !== null && selection !== prevSelection.current && panelClosed) setPanelClosed(false);
+    prevSelection.current = selection;
+  });
+
   // WebKit/iOS: WideShell freshly mounts right after the wide "Add" phone-column takeover
   // unmounts a full-screen fixed overlay (DockedNumpad/pickers, portalled to <body>) that sat
   // ABOVE this panel — a composited (transformed) layer. WebKit can drop that layer's
