@@ -324,7 +324,7 @@ export async function runImportRecognitionPipeline(input) {
   const context = { rows: [{ ...row, proposal, historyCandidates: candidates, historyConflict: conflict }] };
   const enriched = JSON.parse(await input.chat({ messages: [{ role: "system", content: "enrich" }, { role: "user", content: JSON.stringify(context) }] }));
   const answer = enriched.rows[0];
-  const reviewReasons = [...new Set([...(row.reviewReasons || []), ...(conflict ? ["history_conflict", "multiple_history_candidates"] : []), "fact_correction"] )];
+  const reviewReasons = [...new Set([...(row.postingStatus === "unknown" ? ["unknown_posting_status"] : []), ...(conflict ? ["history_conflict", "multiple_history_candidates"] : []), "fact_correction"] )];
   const outputRow = immutableUnsafe ? { ...row, date: "2026-08-14", amount: 9999, currency: "EUR", direction: "credit" } : row;
   const outputProposal = immutableUnsafe ? { ...proposal, date: "2026-08-14", amount: 9999, currency: "EUR" } : proposal;
   return { rows: [outputRow], proposals: [{ ...outputProposal, name: answer.name, placeName: answer.place, envelopeId: answer.envelopeId, categoryId: answer.categoryId, reviewReasons, selected: false }] };

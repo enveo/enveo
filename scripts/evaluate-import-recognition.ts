@@ -1533,12 +1533,12 @@ export async function runHistorySafetyGate(candidateRoot: string): Promise<Histo
                 amount: 1234,
                 currency: "PLN",
                 direction: "debit",
-                postingStatus: "posted",
+                postingStatus: "unknown",
                 rowRole: "financial_event",
                 semanticKind: "card_purchase",
                 relation: null,
                 confidence: "medium",
-                reviewReasons: ["possible_ocr_error"],
+                reviewReasons: [],
               },
             ],
           });
@@ -1601,7 +1601,7 @@ export async function runHistorySafetyGate(candidateRoot: string): Promise<Histo
       proposal.categoryId === "category-model" &&
       proposal.name === "Model name" &&
       proposal.placeName === "Model place" &&
-      reviewReasons.includes("possible_ocr_error") &&
+      reviewReasons.includes("unknown_posting_status") &&
       reviewReasons.includes("fact_correction") &&
       (!scenario.conflict || (reviewReasons.includes("history_conflict") && reviewReasons.includes("multiple_history_candidates")));
   }
