@@ -267,7 +267,10 @@ export function createDefaultStartWidgets(): WidgetConfig[] {
 /** Default wide Home board — ported verbatim from the approved design mock's array (app widget ids). */
 export function createDefaultWideWidgets(): WideWidgetConfig[] {
   return [
-    { id: "reportNetWorth", enabled: true, w: 1, h: 1 },
+    // w:2/h:2, not the mock's 1x1: the body (amount + 12-mo sparkline) measures ~94x189px, and a
+    // 1x1 tile shows 38px of it behind a scrollbar — a scrolling sparkline is not a widget.
+    // Measured clean at 2x2 (382x196 content box) on the 1440px board.
+    { id: "reportNetWorth", enabled: true, w: 2, h: 2 },
     { id: "reportCashflow", enabled: true, w: 3, h: 1 },
     { id: "envelopes", enabled: true, w: 2, h: 2, opts: { mode: "all" } },
     { id: "recent", enabled: true, w: 2, h: 4 },

@@ -706,4 +706,5 @@ export const fr: Dict = {
   "Remove from the board": "Retirer de la grille",
   "Size: {w} × {h} — drag the corner of the tile to resize": "Taille : {w} × {h} — faites glisser le coin de la tuile pour redimensionner",
   "Widget settings": "Paramètres du widget",
+  "latest transactions": "dernières transactions",
 };

@@ -705,4 +705,5 @@ export const it: Dict = {
   "Remove from the board": "Rimuovi dalla griglia",
   "Size: {w} × {h} — drag the corner of the tile to resize": "Dimensione: {w} × {h} — trascina l’angolo del riquadro per ridimensionare",
   "Widget settings": "Impostazioni widget",
+  "latest transactions": "ultime transazioni",
 };

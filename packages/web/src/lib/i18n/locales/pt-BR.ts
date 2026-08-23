@@ -702,4 +702,5 @@ export const ptBR: Dict = {
   "Remove from the board": "Remover da grade",
   "Size: {w} × {h} — drag the corner of the tile to resize": "Tamanho: {w} × {h} — arraste o canto do bloco para redimensionar",
   "Widget settings": "Configurações do widget",
+  "latest transactions": "últimas transações",
 };

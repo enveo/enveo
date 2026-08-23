@@ -704,4 +704,5 @@ export const es: Dict = {
   "Remove from the board": "Quitar de la cuadrícula",
   "Size: {w} × {h} — drag the corner of the tile to resize": "Tamaño: {w} × {h} — arrastra la esquina de la ficha para cambiar el tamaño",
   "Widget settings": "Ajustes del widget",
+  "latest transactions": "últimas transacciones",
 };

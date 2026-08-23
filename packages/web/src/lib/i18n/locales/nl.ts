@@ -696,4 +696,5 @@ export const nl: Dict = {
   "Remove from the board": "Verwijderen van het raster",
   "Size: {w} × {h} — drag the corner of the tile to resize": "Grootte: {w} × {h} — sleep de hoek van de tegel om de grootte te wijzigen",
   "Widget settings": "Widgetinstellingen",
+  "latest transactions": "laatste transacties",
 };

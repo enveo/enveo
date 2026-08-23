@@ -688,4 +688,5 @@ export const sv: Dict = {
   "Remove from the board": "Ta bort från rutnätet",
   "Size: {w} × {h} — drag the corner of the tile to resize": "Storlek: {w} × {h} — dra i rutans hörn för att ändra storlek",
   "Widget settings": "Widgetinställningar",
+  "latest transactions": "senaste transaktioner",
 };

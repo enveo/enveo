@@ -706,4 +706,5 @@ export const cs: Dict = {
   "Remove from the board": "Odebrat z mřížky",
   "Size: {w} × {h} — drag the corner of the tile to resize": "Velikost: {w} × {h} — přetažením rohu dlaždice změníte velikost",
   "Widget settings": "Nastavení widgetu",
+  "latest transactions": "poslední transakce",
 };

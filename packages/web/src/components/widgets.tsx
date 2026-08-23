@@ -513,25 +513,25 @@ function envelopeSections(
 }
 
 /* ── Envelopes: grouped EnvRow lists, scoped by opts.mode ── */
-export function EnvelopesWidget({ state, month, onOpenEnvelope, opts }: WidgetProps) {
+export function EnvelopesWidget({ state, month, onOpenEnvelope, opts, chromeless }: WidgetProps) {
   const M = useMask();
   const { t } = useT();
   const sections = envelopeSections(state, opts?.mode ?? "all", t);
   const MW = (n: number) => maskWhole(M, n);
   return (
     <>
-      {sections.map(({ label, list }) =>
-        list.length === 0 ? null : (
+      {sections.map(({ label, list }) => {
+        if (list.length === 0) return null;
+        const rows = list.map((e, idx) => <EnvRow key={e.id} e={e} onClick={() => onOpenEnvelope(e.id, month)} last={idx === list.length - 1} />);
+        // On a wide-board tile the tile supplies the card chrome; the per-SECTION eyebrow stays
+        // (it is content — a group label with its total — not duplicated widget chrome).
+        return (
           <div key={label}>
             <SectionEyebrow label={label} right={t("total {amount}", { amount: MW(list.reduce((s, e) => s + e.available, 0)) })} />
-            <CardBox>
-              {list.map((e, idx) => (
-                <EnvRow key={e.id} e={e} onClick={() => onOpenEnvelope(e.id, month)} last={idx === list.length - 1} />
-              ))}
-            </CardBox>
+            {chromeless ? rows : <CardBox>{rows}</CardBox>}
           </div>
-        ),
-      )}
+        );
+      })}
     </>
   );
 }
@@ -543,11 +543,30 @@ function EnvelopesSavingsWidget(props: WidgetProps) {
 }
 
 /* ── Report widgets: current-month cashflow numbers, and a 12mo net-worth sparkline ── */
-export function CashflowWidget({ state, onNav }: WidgetProps) {
+export function CashflowWidget({ state, onNav, chromeless }: WidgetProps) {
   const C = useTheme();
   const M = useMask();
   const { t } = useT();
   const net = state.monthIncome - state.monthExpense;
+  const trio = (
+    <div style={{ display: "flex", gap: 8, padding: chromeless ? 0 : "10px 0" }}>
+      {(
+        [
+          [t("Income"), state.monthIncome, C.pos],
+          [t("Expense"), state.monthExpense, C.neg],
+          [t("Net"), net, net >= 0 ? C.pos : C.neg],
+        ] as const
+      ).map(([label, val, col]) => (
+        <div key={label} style={{ flex: 1 }}>
+          <div style={{ fontSize: 10.5, color: C.soft }}>{label}</div>
+          <div style={{ fontSize: 13.5, fontWeight: 700, color: col, fontVariantNumeric: "tabular-nums" }}>{M(val)}</div>
+        </div>
+      ))}
+    </div>
+  );
+  // Wide-board tiles supply their own eyebrow+card chrome; doubling it overflowed the default
+  // w:3,h:1 tile (measured: clientHeight 53 vs scrollHeight 80 on first load).
+  if (chromeless) return trio;
   return (
     <div>
       <SectionEyebrow
@@ -570,27 +589,12 @@ export function CashflowWidget({ state, onNav }: WidgetProps) {
           </button>
         }
       />
-      <CardBox>
-        <div style={{ display: "flex", gap: 8, padding: "10px 0" }}>
-          {(
-            [
-              [t("Income"), state.monthIncome, C.pos],
-              [t("Expense"), state.monthExpense, C.neg],
-              [t("Net"), net, net >= 0 ? C.pos : C.neg],
-            ] as const
-          ).map(([label, val, col]) => (
-            <div key={label} style={{ flex: 1 }}>
-              <div style={{ fontSize: 10.5, color: C.soft }}>{label}</div>
-              <div style={{ fontSize: 13.5, fontWeight: 700, color: col, fontVariantNumeric: "tabular-nums" }}>{M(val)}</div>
-            </div>
-          ))}
-        </div>
-      </CardBox>
+      <CardBox>{trio}</CardBox>
     </div>
   );
 }
 
-export function NetWorthWidget({ month, onNav }: WidgetProps) {
+export function NetWorthWidget({ month, onNav, chromeless }: WidgetProps) {
   const C = useTheme();
   const M = useMask();
   const { t } = useT();
@@ -602,6 +606,23 @@ export function NetWorthWidget({ month, onNav }: WidgetProps) {
   }, [version, month]);
   const nwLast = netWorth.at(-1)?.total ?? 0;
   const nwDelta = nwLast - (netWorth.at(-2)?.total ?? nwLast);
+  const body = (
+    <>
+      <div style={{ display: "flex", alignItems: "baseline", gap: 10 }}>
+        <span style={{ fontSize: 18, fontWeight: 700, color: C.text, fontVariantNumeric: "tabular-nums" }}>{M(nwLast)}</span>
+        {nwDelta !== 0 && (
+          <span style={{ fontSize: 11.5, fontWeight: 600, color: nwDelta > 0 ? C.pos : C.neg, fontVariantNumeric: "tabular-nums" }}>
+            {nwDelta > 0 ? "▲ +" : "▼ "}
+            {M(Math.abs(nwDelta))}
+          </span>
+        )}
+      </div>
+      <Sparkline points={netWorth} />
+    </>
+  );
+  // Same rule as CashflowWidget above: the wide tile brings its own chrome, and the doubled
+  // stack overflowed the default w:1,h:1 tile ~4.5x on first load (measured).
+  if (chromeless) return body;
   return (
     <div>
       <SectionEyebrow
@@ -624,18 +645,7 @@ export function NetWorthWidget({ month, onNav }: WidgetProps) {
           </button>
         }
       />
-      <CardBox style={{ padding: "10px 14px" }}>
-        <div style={{ display: "flex", alignItems: "baseline", gap: 10 }}>
-          <span style={{ fontSize: 18, fontWeight: 700, color: C.text, fontVariantNumeric: "tabular-nums" }}>{M(nwLast)}</span>
-          {nwDelta !== 0 && (
-            <span style={{ fontSize: 11.5, fontWeight: 600, color: nwDelta > 0 ? C.pos : C.neg, fontVariantNumeric: "tabular-nums" }}>
-              {nwDelta > 0 ? "▲ +" : "▼ "}
-              {M(Math.abs(nwDelta))}
-            </span>
-          )}
-        </div>
-        <Sparkline points={netWorth} />
-      </CardBox>
+      <CardBox style={{ padding: "10px 14px" }}>{body}</CardBox>
     </div>
   );
 }
