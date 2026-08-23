@@ -1772,7 +1772,7 @@ const errorChain = (error: unknown): unknown[] => {
   return chain;
 };
 
-const MODEL_CONTRACT_ERROR_MESSAGES = new Set(["import row imageIndex is outside the supplied images", "duplicate import visual position"]);
+const MODEL_CONTRACT_ERROR_MESSAGES = new Set(["import row imageIndex is outside the supplied images"]);
 
 const isModelContractFailure = (error: unknown): boolean =>
   errorChain(error).some(

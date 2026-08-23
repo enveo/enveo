@@ -741,9 +741,18 @@ export function parseImportExtractResponse(raw: string, imageCount: number): Imp
     currency: row.currency?.trim().toUpperCase() ?? null,
   }));
   if (rows.some((row) => row.imageIndex >= imageCount)) throw new Error("import row imageIndex is outside the supplied images");
-  const positions = rows.map((row) => `${row.imageIndex}:${row.visualOrder}`);
-  if (new Set(positions).size !== positions.length) throw new Error("duplicate import visual position");
+  const ordered = rows
+    .map((row, inputOrder) => ({ row, inputOrder }))
+    .sort((left, right) => left.row.imageIndex - right.row.imageIndex || left.row.visualOrder - right.row.visualOrder || left.inputOrder - right.inputOrder);
+  let previousImageIndex = -1;
+  let nextVisualOrder = 0;
   return {
-    rows: [...rows].sort((left, right) => left.imageIndex - right.imageIndex || left.visualOrder - right.visualOrder || left.rowId.localeCompare(right.rowId)),
+    rows: ordered.map(({ row }) => {
+      if (row.imageIndex !== previousImageIndex) {
+        previousImageIndex = row.imageIndex;
+        nextVisualOrder = 0;
+      }
+      return { ...row, visualOrder: nextVisualOrder++ };
+    }),
   };
 }
