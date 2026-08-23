@@ -448,7 +448,8 @@ export async function chat(input) {
   const system = String(input.request.messages[0]?.content || "");
   const enrichment = system.includes("enrich") || system.includes("assign bank-statement") || serialized.includes("enriched_transactions");
   if (!enrichment && (!serialized.includes("data:image/png;base64,") || !serialized.includes("json_schema"))) throw new Error("request serialization missing");
-  if (process.env.TEST_EVAL_MISSING === input.side && !enrichment) return JSON.stringify({ missing: true });
+  if (process.env.TEST_EVAL_TRANSPORT_FAIL === input.side && !enrichment) throw new Error("simulated transport outage");
+  if (process.env.TEST_EVAL_MISSING === input.side && !enrichment) return "{";
   if (input.side === "baseline") {
     if (!enrichment) return JSON.stringify({ transactions: data.baseline[input.fixtureId] });
     return JSON.stringify({ transactions: data.baseline[input.fixtureId].map((item, index) => ({
@@ -525,6 +526,7 @@ const runGate = async (
   candidateSourceTree = candidateRoot,
   mutatePath = "",
   mutateContent = "",
+  transportFail = "",
 ) => {
   const child = Bun.spawn(
     [
@@ -553,6 +555,7 @@ const runGate = async (
         ENVEO_TEST_RUNNER: runnerMarker,
         TEST_EVAL_FAIL: fail ? "1" : "0",
         TEST_EVAL_MISSING: missing,
+        TEST_EVAL_TRANSPORT_FAIL: transportFail,
         TEST_HISTORY_FAIL: historyFail ? "1" : "0",
         TEST_HISTORY_UNSAFE: historyUnsafe ? "1" : "0",
         TEST_HISTORY_IMMUTABLE_UNSAFE: historyImmutableUnsafe ? "1" : "0",
@@ -906,16 +909,28 @@ describe("paired import recognition CLI", () => {
     expect(result.stderr).toBe("");
   });
 
-  test("fails nonzero with a safe identity and explicit decision when either paired run is missing", async () => {
+  test("scores malformed model output as missing recognition instead of erasing the paired metrics", async () => {
     const result = await runGate(false, "candidate");
+
+    expect(result.exitCode).toBe(1);
+    const output = JSON.parse(result.stdout);
+    expect(output.metrics.candidate.rowRecall).toEqual({ correct: 0, total: 11, rate: 0 });
+    expect(output.metrics.candidate.inclusion.missingFinancial).toBe(7);
+    expect(output.identity.contractFailures).toEqual({ baseline: [], candidate: ["synthetic-mobile", "synthetic-desktop"] });
+    expect(output.decision.reasons).toContain("financial_event_not_selected");
+    expect(output.identity.sources.baseline.moduleHashes["packages/shared/src/aiPrompts.ts"]).toHaveLength(64);
+    expect(output.identity.sources.candidate.moduleHashes["packages/shared/src/aiPrompts.ts"]).toHaveLength(64);
+    expect(result.stdout).not.toContain("PRIVATE_VISIBLE_SENTINEL");
+    expect(result.stderr).toBe("");
+  });
+
+  test("still fails closed without metrics when the model transport fails", async () => {
+    const result = await runGate(false, "", false, "run-tests", false, false, candidateRevision, false, candidateRoot, "", "", "candidate");
 
     expect(result.exitCode).toBe(1);
     const output = JSON.parse(result.stdout);
     expect(output.metrics).toBeNull();
     expect(output.decision).toEqual({ passed: false, criteriaPassed: false, reasons: ["paired_runs_missing"], transitions: null });
-    expect(output.identity.sources.baseline.moduleHashes["packages/shared/src/aiPrompts.ts"]).toHaveLength(64);
-    expect(output.identity.sources.candidate.moduleHashes["packages/shared/src/aiPrompts.ts"]).toHaveLength(64);
-    expect(result.stdout).not.toContain("PRIVATE_VISIBLE_SENTINEL");
     expect(result.stderr).toBe("");
   });
 
