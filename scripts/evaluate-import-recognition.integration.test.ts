@@ -301,8 +301,16 @@ ${promptModule("rows")}
 export async function runImportRecognitionPipeline(input) {
   const extracted = JSON.parse(await input.chat(buildImportExtractPrompt(input.images, { envelopes: [], categories: [] }, input.today, input.locale, input.budgetCurrency)));
   if (extracted.rows.some((row) => row.imageIndex >= input.images.length)) throw new Error("import row imageIndex is outside the supplied images");
-  const positions = extracted.rows.map((row) => row.imageIndex + ":" + row.visualOrder);
-  if (new Set(positions).size !== positions.length) throw new Error("duplicate import visual position");
+  const ordered = extracted.rows.map((row, inputOrder) => ({ row, inputOrder })).sort((left, right) => left.row.imageIndex - right.row.imageIndex || left.row.visualOrder - right.row.visualOrder || left.inputOrder - right.inputOrder);
+  let previousImageIndex = -1;
+  let nextVisualOrder = 0;
+  extracted.rows = ordered.map(({ row }) => {
+    if (row.imageIndex !== previousImageIndex) {
+      previousImageIndex = row.imageIndex;
+      nextVisualOrder = 0;
+    }
+    return { ...row, visualOrder: nextVisualOrder++ };
+  });
   if (input.accountId !== "account-a") {
     const enriched = JSON.parse(await input.chat({ messages: [{ role: "system", content: "enrich" }, { role: "user", content: JSON.stringify({ rows: extracted.rows }) }] }));
     return { rows: extracted.rows, proposals: enriched.proposals };
@@ -464,9 +472,9 @@ export async function chat(input) {
     })) });
   }
   const value = structuredClone(enrichment ? data.candidate[input.fixtureId].enrichment : data.candidate[input.fixtureId].extraction);
-  if (process.env.TEST_EVAL_INVALID_POSITION === input.side && !enrichment && value.rows.length > 1) {
+  if (process.env.TEST_EVAL_INVALID_POSITION === input.side + ":duplicate" && !enrichment && value.rows.length > 1) {
     value.rows[1].visualOrder = value.rows[0].visualOrder;
-  } else if (process.env.TEST_EVAL_INVALID_POSITION === input.side && !enrichment) {
+  } else if (process.env.TEST_EVAL_INVALID_POSITION === input.side + ":image-index" && !enrichment) {
     value.rows[0].imageIndex = 1;
   }
   if (process.env.TEST_EVAL_FAIL === "1" && enrichment && input.fixtureId === "synthetic-mobile") {
@@ -934,8 +942,19 @@ describe("paired import recognition CLI", () => {
     expect(result.stderr).toBe("");
   });
 
-  test("scores internally inconsistent model output instead of erasing the paired metrics", async () => {
-    const result = await runGate(false, "", false, "run-tests", false, false, candidateRevision, false, candidateRoot, "", "", "", "candidate");
+  test("canonicalizes duplicate model positions without erasing the paired metrics", async () => {
+    const result = await runGate(false, "", false, "run-tests", false, false, candidateRevision, false, candidateRoot, "", "", "", "candidate:duplicate");
+
+    expect(result.exitCode).toBe(2);
+    const output = JSON.parse(result.stdout);
+    expect(output.metrics.candidate.rowRecall).toEqual({ correct: 11, total: 11, rate: 1 });
+    expect(output.identity.contractFailures).toEqual({ baseline: [], candidate: [] });
+    expect(output.decision.reasons).toEqual(["non_live_transport"]);
+    expect(result.stderr).toBe("");
+  });
+
+  test("scores an out-of-range model image index as a contract failure", async () => {
+    const result = await runGate(false, "", false, "run-tests", false, false, candidateRevision, false, candidateRoot, "", "", "", "candidate:image-index");
 
     expect(result.exitCode).toBe(1);
     const output = JSON.parse(result.stdout);

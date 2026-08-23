@@ -177,13 +177,18 @@ describe("screenshot import recognition contract", () => {
     expect(batch.rows.map((row) => row.rowId)).toHaveLength(new Set(batch.rows.map((row) => row.rowId)).size);
   });
 
-  it("rejects invalid visual positions and sorts valid rows by their screenshot position", () => {
+  it("rejects invalid image indexes and canonicalizes rows by their screenshot position", () => {
     const modelRow = (rowId: string, imageIndex: number, visualOrder: number) => ({
       ...extractRow({ rowId, imageIndex, visualOrder }),
     });
 
     expect(() => parseImportExtractResponse(JSON.stringify({ rows: [modelRow("outside", 2, 0)] }), 2)).toThrow("imageIndex");
-    expect(() => parseImportExtractResponse(JSON.stringify({ rows: [modelRow("one", 0, 1), modelRow("two", 0, 1)] }), 1)).toThrow("visual position");
+
+    const duplicatePositions = parseImportExtractResponse(JSON.stringify({ rows: [modelRow("one", 0, 1), modelRow("two", 0, 1)] }), 1);
+    expect(duplicatePositions.rows.map((row) => [row.rowId, row.visualOrder])).toEqual([
+      ["one", 0],
+      ["two", 1],
+    ]);
 
     const parsed = parseImportExtractResponse(JSON.stringify({ rows: [modelRow("third", 1, 0), modelRow("second", 0, 2), modelRow("first", 0, 1)] }), 2);
     expect(parsed.rows.map((row) => row.rowId)).toEqual(["first", "second", "third"]);

@@ -297,6 +297,37 @@ describe("buildImportExtractPrompt / parseImportExtractResponse", () => {
   it("throws when a strict extraction fact is missing", () => {
     expect(() => parseImportExtractResponse('{"rows":[{"rowId":"r1"}]}', 1)).toThrow();
   });
+
+  it("canonicalizes duplicate visual positions using the model row order as a stable tie-breaker", () => {
+    const row = (rowId: string, imageIndex: number, visualOrder: number) => ({
+      rowId,
+      imageIndex,
+      visualOrder,
+      rawTextLines: [rowId],
+      date: "2026-08-07",
+      amount: 1234,
+      currency: "PLN",
+      direction: "debit",
+      postingStatus: "posted",
+      rowRole: "financial_event",
+      semanticKind: "card_purchase",
+      relation: null,
+      confidence: "high",
+      reviewReasons: [],
+    });
+
+    const parsed = parseImportExtractResponse(
+      JSON.stringify({ rows: [row("second", 0, 5), row("first", 0, 0), row("third", 0, 5), row("next-image", 1, 8)] }),
+      2,
+    );
+
+    expect(parsed.rows.map(({ rowId, imageIndex, visualOrder }) => [rowId, imageIndex, visualOrder])).toEqual([
+      ["first", 0, 0],
+      ["second", 0, 1],
+      ["third", 0, 2],
+      ["next-image", 1, 0],
+    ]);
+  });
 });
 
 describe("buildImportEnrichPrompt / parseImportEnrichResponse", () => {
