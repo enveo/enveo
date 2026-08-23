@@ -232,6 +232,13 @@ describe("buildImportExtractPrompt / parseImportExtractResponse", () => {
     expect((req.responseFormat as { type: string; json_schema: { name: string } }).json_schema.name).toBe("extracted_transactions");
   });
 
+  it("binds the structured-output image index to the supplied screenshot count", () => {
+    const req = buildImportExtractPrompt(["data:image/png;base64,AAA", "data:image/png;base64,BBB"], refs, "2026-07-07", "pl", "PLN");
+    const imageIndex = (req.responseFormat as any).json_schema.schema.properties.rows.items.properties.imageIndex;
+
+    expect(imageIndex).toEqual({ type: "integer", minimum: 0, maximum: 1 });
+  });
+
   it("groups one coherent list entry without splitting its secondary text into invented transactions", () => {
     const sys = sysOf(buildImportExtractPrompt([], refs, "2026-07-07", "pl", "PLN").messages);
     expect(sys).toContain("One output row means one coherent transaction-list entry");

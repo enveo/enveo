@@ -456,6 +456,36 @@ export interface ImportPromptRefs {
   categories: Array<{ id: string; name: string }>;
 }
 
+const importExtractResponseFormat = (imageCount: number): Record<string, unknown> => {
+  const rows = IMPORT_EXTRACT_JSON_SCHEMA.schema.properties.rows;
+  const items = rows.items;
+  return {
+    type: "json_schema",
+    json_schema: {
+      ...IMPORT_EXTRACT_JSON_SCHEMA,
+      schema: {
+        ...IMPORT_EXTRACT_JSON_SCHEMA.schema,
+        properties: {
+          ...IMPORT_EXTRACT_JSON_SCHEMA.schema.properties,
+          rows: {
+            ...rows,
+            items: {
+              ...items,
+              properties: {
+                ...items.properties,
+                imageIndex: {
+                  ...items.properties.imageIndex,
+                  ...(imageCount > 0 ? { maximum: imageCount - 1 } : {}),
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+  };
+};
+
 export function buildImportExtractPrompt(images: string[], _refs: ImportPromptRefs, today: string, locale: AiLocale, currency: string): ChatRequest {
   const sysExtract =
     "You extract facts from screenshots (Apple Wallet, bank account history, payment confirmations), not hypotheses. " +
@@ -485,7 +515,7 @@ export function buildImportExtractPrompt(images: string[], _refs: ImportPromptRe
         ],
       },
     ],
-    responseFormat: { type: "json_schema", json_schema: IMPORT_EXTRACT_JSON_SCHEMA },
+    responseFormat: importExtractResponseFormat(images.length),
   };
 }
 
