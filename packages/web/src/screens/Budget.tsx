@@ -130,8 +130,12 @@ export function BudgetScreen({
     setEditing({
       envelopeId: env.id,
       pad: { expr: fmtSignedTrim(env.allocated), fresh: true },
-      // fmtTrim, NEVER fmtTrimLocale — the documented parseAmount round-trip pair (lib/format.ts).
-      ...(desktopInput ? { input: fmtTrim(env.allocated) } : {}),
+      // fmtSignedTrim, NEVER fmtTrim: a bare fmtTrim discards the sign (fmt() does Math.abs
+      // internally), so a negative allocation would silently commit as its positive magnitude on
+      // an untouched blur/Enter. fmtSignedTrim is the same documented parseAmount round-trip pair
+      // (lib/format.ts) WITH the sign re-attached — the same helper used two lines above for
+      // pad.expr. NEVER fmtTrimLocale either, which parseAmount cannot re-read.
+      ...(desktopInput ? { input: fmtSignedTrim(env.allocated) } : {}),
     });
   };
   // Scroll ONLY after render (double rAF): a synchronous scrollIntoView in the click
@@ -480,9 +484,10 @@ function AllocCell({
   }
   if (editing?.input !== undefined) {
     // Desktop allocation editing (spec decision D5): a real <input inputMode="decimal">, prefilled
-    // by the caller with fmtTrim (the documented parseAmount round-trip pair — NEVER
-    // fmtTrimLocale, which parseAmount cannot re-read; see lib/format.ts). Enter blurs (one commit
-    // path, below); Escape discards. Invalid input keeps the red state exactly like the pad's `err`.
+    // by the caller with fmtSignedTrim (the documented parseAmount round-trip pair, sign included —
+    // NEVER a bare fmtTrim, which discards the sign, and NEVER fmtTrimLocale, which parseAmount
+    // cannot re-read; see lib/format.ts). Enter blurs (one commit path, below); Escape discards.
+    // Invalid input keeps the red state exactly like the pad's `err`.
     return (
       <input
         // biome-ignore lint/a11y/noAutofocus: reached only via an explicit user action (click, or Tab focus on the resting readOnly input below) — never a programmatic mount
@@ -494,6 +499,10 @@ function AllocCell({
         aria-label={t("Allocated: {name}", { name: e.name })}
         aria-invalid={editing.err || undefined}
         onChange={(ev) => onDesktopChange(ev.target.value)}
+        // A click inside the already-focused input (repositioning the cursor, fixing a digit)
+        // must not bubble to the row's onClick={() => onOpenEnvelope(...)} — same guard the
+        // pad-active div (below) and the resting cell already carry for the same reason.
+        onClick={(ev) => ev.stopPropagation()}
         onKeyDown={(ev) => {
           if (ev.key === "Enter") ev.currentTarget.blur();
           else if (ev.key === "Escape") {
