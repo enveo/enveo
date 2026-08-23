@@ -1,5 +1,5 @@
 import type { Transaction } from "@enveo/shared";
-import { useMemo, useState } from "react";
+import { useContext, useMemo, useState } from "react";
 import { Header } from "../components/chrome";
 import { CardBox, SectionEyebrow, useBand } from "../components/kit";
 import type { StateResponse } from "../lib/api";
@@ -8,6 +8,7 @@ import { dayHeading } from "../lib/dates";
 import { INPUT_FOCUS_CLASS } from "../lib/focusPresentation";
 import { useT } from "../lib/i18n";
 import { Glyph, Ico } from "../lib/icons";
+import { InWideShell } from "../lib/shellContext";
 import { font, P, TEAL, TRANSFER, tint } from "../lib/theme";
 import {
   createTransactionSearchIndex,
@@ -46,6 +47,7 @@ export function TransactionsScreen({
   const { band, hc } = useBand();
   const M = useMask();
   const { t, tp, lang } = useT();
+  const inWide = useContext(InWideShell);
   const [pickFilter, setPickFilter] = useState(false);
 
   const envById = useMemo(() => new Map(state.envelopes.map((e) => [e.id, e])), [state.envelopes]);
@@ -171,7 +173,7 @@ export function TransactionsScreen({
     <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
       <div className="gs" style={{ flex: 1, overflowY: "auto", paddingBottom: 6 }}>
         <div data-band={band || undefined} style={band ? { background: C.headerBg, paddingBottom: 4 } : undefined}>
-          <Header month={month} onMenu={onMenu} onPrev={onPrev} onNext={onNext} onBand={band} />
+          {!inWide && <Header month={month} onMenu={onMenu} onPrev={onPrev} onNext={onNext} onBand={band} />}
           <div
             className={INPUT_FOCUS_CLASS}
             style={{

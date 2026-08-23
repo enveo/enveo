@@ -88,6 +88,11 @@ export default function App() {
   const [budgetFillGoals, setBudgetFillGoals] = useState(false);
   
 
+
+  const [editWidgetsOpen, setEditWidgetsOpen] = useState(false);
+  const [manageOpen, setManageOpen] = useState(false);
+  
+
   const [reportsView, setReportsView] = useState<ReportView>(r0.reportsView);
   // Month report's selected day, kept in App for the SAME reason as `reportsView`: opening a
   // transaction from the day panel for edit switches `screen` to "addExpense" and back,
@@ -392,6 +397,8 @@ export default function App() {
                   onNext={next}
                   onNav={nav}
                   onQuickAdd={onQuickAdd}
+                  editWidgets={editWidgetsOpen}
+                  onEditWidgets={setEditWidgetsOpen}
                 />
               )}
               {screen === "budget" && (
@@ -407,6 +414,8 @@ export default function App() {
                     onSuggestConsumed={() => setBudgetSuggest(false)}
                     initialFillGoals={budgetFillGoals}
                     onFillGoalsConsumed={() => setBudgetFillGoals(false)}
+                    manageOpen={manageOpen}
+                    onManageOpen={setManageOpen}
                   />
                 </LazyChunk>
               )}

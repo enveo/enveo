@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useContext } from "react";
 import { Header, type ScreenId } from "../components/chrome";
 import { CardBox, useBand } from "../components/kit";
 import { EditWidgetsSheet, START_WIDGETS } from "../components/widgets";
@@ -8,6 +8,7 @@ import { todayISO } from "../lib/dates";
 import { LOCALE_OF } from "../lib/format";
 import { useT } from "../lib/i18n";
 import { Ico } from "../lib/icons";
+import { InWideShell } from "../lib/shellContext";
 import { font, P, TEAL, tint } from "../lib/theme";
 import { monthRuler, tbbState } from "../lib/uiState";
 
@@ -21,6 +22,8 @@ export function StartScreen({
   onNext,
   onNav,
   onQuickAdd,
+  editWidgets,
+  onEditWidgets,
 }: {
   state: StateResponse;
   month: string;
@@ -32,12 +35,15 @@ export function StartScreen({
   onNav: (s: ScreenId) => void;
    
   onQuickAdd: (kind: "transfer" | "import" | "suggest") => void;
+   
+  editWidgets: boolean;
+  onEditWidgets: (open: boolean) => void;
 }) {
   const C = useTheme();
   const M = useMask();
   const { t, lang } = useT();
   const { settings } = useSettings();
-  const [editWidgets, setEditWidgets] = useState(false);
+  const inWide = useContext(InWideShell);
    
   const MW = (minor: number) => M(minor).replace(/[.,]\d\d(?!\d)/, "");
   const hs = tbbState(state.readyToAssign);
@@ -72,7 +78,9 @@ export function StartScreen({
             : undefined
         }
       >
-        <Header month={month} onMenu={onMenu} onPrev={onPrev} onNext={onNext} onRight={() => setEditWidgets(true)} rightIcon="pencil" onBand={band} />
+        {!inWide && (
+          <Header month={month} onMenu={onMenu} onPrev={onPrev} onNext={onNext} onRight={() => onEditWidgets(true)} rightIcon="pencil" onBand={band} />
+        )}
         <div style={{ padding: `4px ${P + 4}px 0`, textAlign: band ? "center" : "left" }}>
           {hs === "zero" && (
             <div style={{ display: "flex", justifyContent: band ? "center" : "space-between", alignItems: "center", gap: 10 }}>
@@ -210,7 +218,7 @@ export function StartScreen({
           );
         })}
 
-      <EditWidgetsSheet show={editWidgets} state={state} onClose={() => setEditWidgets(false)} />
+      <EditWidgetsSheet show={editWidgets} state={state} onClose={() => onEditWidgets(false)} />
     </div>
   );
 }
