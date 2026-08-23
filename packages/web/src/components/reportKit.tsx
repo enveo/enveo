@@ -270,24 +270,46 @@ export interface UndoToast {
  * succession must not silently lose either captured undo value or risk applying one to the wrong
  * target, and a queue would delay the second toast behind the first — exactly the fast multi-fire
  * flow these actions exist to speed up. Newest goes on top; each entry dismisses independently.
+ *
+ * Anchoring reads `InWideShell` because this renders from panel-hosted reports, not just the
+ * phone screen (pr4-task-7-brief.md §UndoBar wide anchoring): the phone geometry below —
+ * `left/right:12` + `maxWidth: PHONE_COL` + `margin: 0 auto` — centers on the VIEWPORT, which on
+ * wide is the primary pane while the action that raised the toast happened in the PANEL; `bottom:
+ * 78px` is BottomNav clearance, which doesn't exist on wide either. On wide the toast instead
+ * hugs the bottom-right corner, sized to the panel rather than the phone column.
  */
 export function UndoBar<T extends UndoToast>({ pending, onUndo, onDismiss }: { pending: T[]; onUndo: (item: T) => void; onDismiss: (id: string) => void }) {
   const { t } = useT();
+  const inWide = useContext(InWideShell);
   if (pending.length === 0) return null;
   return createPortal(
     <div
-      style={{
-        position: "fixed",
-        left: 12,
-        right: 12,
-        bottom: "calc(78px + env(safe-area-inset-bottom))",
-        maxWidth: PHONE_COL,
-        margin: "0 auto",
-        zIndex: 80,
-        display: "flex",
-        flexDirection: "column-reverse",
-        gap: 8,
-      }}
+      style={
+        inWide
+          ? {
+              position: "fixed",
+              left: "auto",
+              right: 24,
+              bottom: 24,
+              width: `min(${PHONE_COL}px, 40vw)`,
+              zIndex: 80,
+              display: "flex",
+              flexDirection: "column-reverse",
+              gap: 8,
+            }
+          : {
+              position: "fixed",
+              left: 12,
+              right: 12,
+              bottom: "calc(78px + env(safe-area-inset-bottom))",
+              maxWidth: PHONE_COL,
+              margin: "0 auto",
+              zIndex: 80,
+              display: "flex",
+              flexDirection: "column-reverse",
+              gap: 8,
+            }
+      }
     >
       {pending.map((u) => (
         <div

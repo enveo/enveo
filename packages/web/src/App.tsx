@@ -207,7 +207,16 @@ export default function App() {
   const [envActions, setEnvActions] = useState<{ envelopeId: string; month: string } | null>(null);
   const envActionsMounted = useOpenedOnce(envActions !== null);
   const [envEdit, setEnvEdit] = useState<string | null>(null);
-  const openEnvelope = (envelopeId: string, m: string) => setEnvActions({ envelopeId, month: m });
+  
+
+
+
+
+
+  const openEnvelope = (envelopeId: string, m: string) => {
+    if (mode !== "phone") setEnvView({ envelopeId, month: m });
+    else setEnvActions({ envelopeId, month: m });
+  };
   const actionsEnv = envActions ? (state?.envelopes.find((e) => e.id === envActions.envelopeId) ?? null) : null;
   const editEnv = envEdit ? (state?.envelopes.find((e) => e.id === envEdit) ?? null) : null;
   // editing from the list: remember where from, to return there (filters preserved)

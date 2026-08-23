@@ -339,68 +339,77 @@ export function WideShell({ bag, rightSlot = null, children }: { bag: WideShellB
   };
 
   return (
-    <div ref={rootRef} style={{ display: "flex", height: "100dvh", background: C.bg, fontFamily: font, overflow: "hidden" }}>
-      <Rail mode={mode} screen={screen} onNav={nav} state={state} onQuickAdd={onQuickAdd} onFillGoals={onFillGoals} onInstall={onInstall} />
-      <div data-wide-primary style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", borderRight: `1px solid ${C.line}` }}>
-        {/* Mounted inline inside BandHeader (see SyncBadge.tsx) rather than floating over the
-            scrollable content below it — dead letters stay visible on wide; the user menu's
-            "Sync now" is a convenience, not the alarm channel. The demo's separate band error
-            pill (spec lines 198-201) is deliberately NOT implemented — one sync surface, not
-            two. */}
-        <BandHeader
-          screen={screen}
-          month={month}
-          onPrev={prev}
-          onNext={next}
-          onAdd={() => nav("addExpense")}
-          onOpenSync={() => nav("settings")}
-          rightSlot={rightSlot}
-          panelClosed={panelClosed}
-          onTogglePanel={() => setPanelClosed(!panelClosed)}
-        />
-        {mode === "fold" && screen !== "settings" && (
-          <FoldTbbStrip state={state} screen={screen} onQuickAdd={onQuickAdd} onFillGoals={onFillGoals} onNav={nav} />
-        )}
-        <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column", overflow: "hidden" }}>
-          <InWideShell.Provider value={true}>{children}</InWideShell.Provider>
+    // Wraps BOTH the primary pane's `children` AND the panel: `resolvePanel`'s `report`/`envelope`
+    // kinds render a SECOND `ReportsScreen`/`EnvelopeScreen` instance inside `PanelHost` (Task 6),
+    // and on wide a report SUBSCREEN only ever renders there — App forces the primary pane's own
+    // `ReportsScreen` to the "overview" hub. `UndoBar`'s wide-anchor branch (reportKit.tsx) reads
+    // this context from exactly that panel-hosted subscreen, so the provider has to cover the
+    // panel too, not just `children` — scoping it to `children` alone left the toast reading the
+    // phone (centered) branch every time it actually mattered (task-7 fix round 1). No existing
+    // consumer regresses: every other reader (Start/Budget/Transactions/Accounts, `ReportShell`'s
+    // hub-header suppression) only ever renders inside `children`, never inside `PanelHost`.
+    <InWideShell.Provider value={true}>
+      <div ref={rootRef} style={{ display: "flex", height: "100dvh", background: C.bg, fontFamily: font, overflow: "hidden" }}>
+        <Rail mode={mode} screen={screen} onNav={nav} state={state} onQuickAdd={onQuickAdd} onFillGoals={onFillGoals} onInstall={onInstall} />
+        <div data-wide-primary style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", borderRight: `1px solid ${C.line}` }}>
+          {/* Mounted inline inside BandHeader (see SyncBadge.tsx) rather than floating over the
+              scrollable content below it — dead letters stay visible on wide; the user menu's
+              "Sync now" is a convenience, not the alarm channel. The demo's separate band error
+              pill (spec lines 198-201) is deliberately NOT implemented — one sync surface, not
+              two. */}
+          <BandHeader
+            screen={screen}
+            month={month}
+            onPrev={prev}
+            onNext={next}
+            onAdd={() => nav("addExpense")}
+            onOpenSync={() => nav("settings")}
+            rightSlot={rightSlot}
+            panelClosed={panelClosed}
+            onTogglePanel={() => setPanelClosed(!panelClosed)}
+          />
+          {mode === "fold" && screen !== "settings" && (
+            <FoldTbbStrip state={state} screen={screen} onQuickAdd={onQuickAdd} onFillGoals={onFillGoals} onNav={nav} />
+          )}
+          <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column", overflow: "hidden" }}>{children}</div>
+        </div>
+        <div
+          ref={panelRef}
+          data-wide-panel
+          role="complementary"
+          aria-label={t("Details panel")}
+          onTransitionEnd={onPanelTransitionEnd}
+          style={{
+            width: paneW,
+            flex: "none",
+            minWidth: 0,
+            overflow: "hidden",
+            display: "flex",
+            flexDirection: "column",
+            background: C.surface,
+            transform: panelClosed ? "translateX(100%)" : "translateX(0)",
+            marginRight: panelClosed ? -paneW : 0,
+            opacity: panelClosed ? 0 : 1,
+            transition: "transform 260ms cubic-bezier(0.4,0,0.2,1), margin-right 260ms cubic-bezier(0.4,0,0.2,1), opacity 180ms ease",
+          }}
+        >
+          <PanelHost
+            view={view}
+            onClose={closePanel}
+            onOpenTxns={openTxns}
+            state={state}
+            month={month}
+            monthDay={monthDay}
+            onSelectDay={onSelectDay}
+            onView={setReportsView}
+            onOpenEnvelope={onOpenEnvelope}
+            onFillGoals={onFillGoals}
+            onEditTxn={onEditTxn}
+            onPrev={prev}
+            onNext={next}
+          />
         </div>
       </div>
-      <div
-        ref={panelRef}
-        data-wide-panel
-        role="complementary"
-        aria-label={t("Details panel")}
-        onTransitionEnd={onPanelTransitionEnd}
-        style={{
-          width: paneW,
-          flex: "none",
-          minWidth: 0,
-          overflow: "hidden",
-          display: "flex",
-          flexDirection: "column",
-          background: C.surface,
-          transform: panelClosed ? "translateX(100%)" : "translateX(0)",
-          marginRight: panelClosed ? -paneW : 0,
-          opacity: panelClosed ? 0 : 1,
-          transition: "transform 260ms cubic-bezier(0.4,0,0.2,1), margin-right 260ms cubic-bezier(0.4,0,0.2,1), opacity 180ms ease",
-        }}
-      >
-        <PanelHost
-          view={view}
-          onClose={closePanel}
-          onOpenTxns={openTxns}
-          state={state}
-          month={month}
-          monthDay={monthDay}
-          onSelectDay={onSelectDay}
-          onView={setReportsView}
-          onOpenEnvelope={onOpenEnvelope}
-          onFillGoals={onFillGoals}
-          onEditTxn={onEditTxn}
-          onPrev={prev}
-          onNext={next}
-        />
-      </div>
-    </div>
+    </InWideShell.Provider>
   );
 }
