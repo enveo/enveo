@@ -579,7 +579,6 @@ export const nl: Dict = {
     "Je gegevens worden ontsleuteld en in leesbare vorm op de server opgeslagen (zoals vóór het inschakelen). Zorg dat je een actuele back-up hebt.",
   "Your envelopes": "Je enveloppen",
   "Your first account": "Je eerste rekening",
-  "already exists": "bestaat al",
   "assign the rest": "de rest toewijzen",
   "available after: {amount}": "daarna beschikbaar: {amount}",
   "back in the envelope": "terug in de envelop",

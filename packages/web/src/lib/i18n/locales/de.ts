@@ -582,7 +582,6 @@ export const de: Dict = {
     "Deine Daten werden entschlüsselt und im Klartext auf dem Server gespeichert (wie vor der Aktivierung). Stelle sicher, dass du eine aktuelle Sicherung hast.",
   "Your envelopes": "Deine Umschläge",
   "Your first account": "Dein erstes Konto",
-  "already exists": "existiert bereits",
   "assign the rest": "Rest zuweisen",
   "available after: {amount}": "verfügbar danach: {amount}",
   "back in the envelope": "zurück in den Umschlag",

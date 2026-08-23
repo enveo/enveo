@@ -577,7 +577,6 @@ export const cs: Dict = {
     "Tvá data se dešifrují a uloží na server v čitelné podobě (jako před zapnutím). Ověř si, že máš aktuální zálohu.",
   "Your envelopes": "Tvé obálky",
   "Your first account": "Tvůj první účet",
-  "already exists": "už existuje",
   "assign the rest": "přiřadit zbytek",
   "available after: {amount}": "poté k dispozici: {amount}",
   "back in the envelope": "vrátí se do obálky",
