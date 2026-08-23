@@ -146,6 +146,21 @@ describe("scoreImportRecognition", () => {
     expect(metrics.inclusion).toEqual({ missingFinancial: 0, nonLedgerIncluded: 0 });
   });
 
+  test("a blocking unknown-kind proposal is review work, not an applied interpretation error", () => {
+    const metrics = scoreImportRecognition(
+      [expectedRow()],
+      [
+        actualRow({
+          semanticKind: "unknown",
+          proposal: { ...actualRow().proposal!, type: null, disposition: "unresolved", reviewReasons: ["unknown_kind"] },
+        }),
+      ],
+    );
+
+    expect(metrics.interpretationErrors).toBe(0);
+    expect(metrics.inclusion.missingFinancial).toBe(0);
+  });
+
   test("an unselected financial proposal is an inclusion miss even when its interpretation is wrong", () => {
     const metrics = scoreImportRecognition(
       [expectedRow({ safetyClass: "review_only" })],
@@ -233,7 +248,16 @@ describe("gateImportRecognition", () => {
         actualRow({ id: "exact", proposal: { ...actualRow().proposal!, selected: true, duplicateStatus: "new" } }),
         actualRow({ id: "probable", proposal: { ...actualRow().proposal!, selected: false, duplicateStatus: "probable" } }),
       ]).reasons,
-    ).toEqual(expect.arrayContaining(["non_ledger_selected", "financial_event_not_selected", "duplicate_status_incorrect"]));
+    ).toEqual(expect.arrayContaining(["financial_event_not_selected", "duplicate_status_incorrect"]));
+
+    const conservativeExact = [
+      actualRow({
+        id: "exact",
+        proposal: { ...actualRow().proposal!, selected: true, duplicateStatus: "probable", reviewReasons: ["multiple_history_candidates"] },
+      }),
+      correct[1]!,
+    ];
+    expect(gateImportRecognition(expected, baseline, conservativeExact).passed).toBe(true);
   });
 
   test("rejects review-reason noise that is not supported by labelled truth", () => {
@@ -244,6 +268,23 @@ describe("gateImportRecognition", () => {
     );
 
     expect(decision.reasons).toContain("unexpected_review_reason");
+  });
+
+  test("does not call a validator-derived warning noise when the candidate facts require it", () => {
+    const metrics = scoreImportRecognition(
+      [expectedRow({ semanticKind: "outgoing_transfer", direction: "debit" })],
+      [
+        actualRow({
+          direction: "credit",
+          semanticKind: "outgoing_transfer",
+          rowRole: "financial_event",
+          postingStatus: "posted",
+          proposal: { ...actualRow().proposal!, reviewReasons: ["inconsistent_direction"] },
+        }),
+      ],
+    );
+
+    expect(metrics.unexpectedReviewReasons).toBe(0);
   });
 
   test("allows only the deterministic review reason implied by each duplicate status", () => {
@@ -791,6 +832,8 @@ describe("recognition evaluator adapters", () => {
     expect(actual).toEqual([
       {
         id: "fixture:refund",
+        rowRole: "financial_event",
+        postingStatus: "posted",
         date: "2026-08-15",
         amount: 1299,
         currency: "EUR",
@@ -851,6 +894,8 @@ describe("recognition evaluator adapters", () => {
 
     expect(actual[0]).toEqual({
       id: "fixture:pending",
+      rowRole: "financial_event",
+      postingStatus: "pending",
       date: "2026-08-15",
       amount: 1299,
       currency: "EUR",
@@ -991,6 +1036,87 @@ describe("recognition evaluator adapters", () => {
     });
 
     expect(actual.map((row) => row.id)).toEqual(["fixture:unexpected-candidate-0", "fixture:purchase"]);
+  });
+
+  test("a financial row cannot steal a supporting anchor when its own private text was grouped into that row", () => {
+    const rows = [
+      manifestRow({ id: "purchase", matchText: "CLOUD PURCHASE", candidatePosition: { imageIndex: 0, visualOrder: 1 } }),
+      manifestRow({
+        id: "fx",
+        matchText: "FX RATE",
+        candidatePosition: { imageIndex: 0, visualOrder: 2 },
+        rowRole: "supporting_detail",
+        semanticKind: "fx_conversion",
+        safetyClass: "non_ledger",
+        expectedProposal: null,
+      }),
+    ];
+    const actual = normalizeCandidateRecognition("fixture", rows, {
+      rows: [
+        {
+          ...actualRow(),
+          rowId: "grouped-purchase",
+          imageIndex: 0,
+          visualOrder: 2,
+          rawTextLines: ["FX RATE", "CLOUD"],
+          postingStatus: "posted",
+          rowRole: "financial_event",
+          semanticKind: "card_purchase",
+          reviewReasons: [],
+        },
+      ],
+      proposals: [],
+    });
+
+    expect(actual[0]?.id).toBe("fixture:purchase");
+  });
+
+  test("an unanchored repeated financial row aligns to the only remaining same-kind truth", () => {
+    const rows = [
+      manifestRow({ id: "reward-one", matchText: "8 REWARD", semanticKind: "cashback_or_reward", candidatePosition: { imageIndex: 0, visualOrder: 1 } }),
+      manifestRow({ id: "reward-two", matchText: "90 REWARD", semanticKind: "cashback_or_reward", candidatePosition: { imageIndex: 0, visualOrder: 2 } }),
+      manifestRow({ id: "reward-three", matchText: "8 REWARD", semanticKind: "cashback_or_reward", candidatePosition: { imageIndex: 0, visualOrder: 3 } }),
+    ];
+    const actual = normalizeCandidateRecognition("fixture", rows, {
+      rows: [
+        {
+          ...actualRow(),
+          rowId: "one",
+          imageIndex: 0,
+          visualOrder: 1,
+          rawTextLines: ["8 REWARD"],
+          postingStatus: "posted",
+          rowRole: "financial_event",
+          semanticKind: "cashback_or_reward",
+          reviewReasons: [],
+        },
+        {
+          ...actualRow(),
+          rowId: "three",
+          imageIndex: 0,
+          visualOrder: 2,
+          rawTextLines: ["8 REWARD"],
+          postingStatus: "posted",
+          rowRole: "financial_event",
+          semanticKind: "cashback_or_reward",
+          reviewReasons: [],
+        },
+        {
+          ...actualRow(),
+          rowId: "unanchored-two",
+          imageIndex: 0,
+          visualOrder: 3,
+          rawTextLines: ["REWARD"],
+          postingStatus: "posted",
+          rowRole: "financial_event",
+          semanticKind: "cashback_or_reward",
+          reviewReasons: [],
+        },
+      ],
+      proposals: [],
+    });
+
+    expect(actual.map((row) => row.id)).toEqual(["fixture:reward-one", "fixture:reward-three", "fixture:reward-two"]);
   });
 
   test("manifest validation rejects unresolvable positions, relations, and baseline gaps", () => {

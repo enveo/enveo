@@ -432,6 +432,8 @@ export function normalizeBaselineRecognition(
     const isRefund = item.type === "expense" && item.isRefund;
     return {
       id: alignedId(fixtureId, truth, `unexpected-baseline-${index}`),
+      rowRole: "financial_event",
+      postingStatus: "posted",
       date: item.date,
       amount: item.amount,
       currency: item.currency.toUpperCase(),
@@ -499,12 +501,26 @@ export function normalizeCandidateRecognition(
         group.truths.filter((truth) => truth.rowRole === role),
       );
     }
-    assignInOrder([...remainingActual], [...remainingTruth]);
   }
   for (const row of result.rows) {
     if (truthByModelId.has(row.rowId)) continue;
     const truth = expectedByPosition.get(`${row.imageIndex}:${row.visualOrder}`);
-    if (truth && !claimed.has(truth)) {
+    if (truth && truth.rowRole === row.rowRole && !claimed.has(truth)) {
+      truthByModelId.set(row.rowId, truth);
+      claimed.add(truth);
+    }
+  }
+  const remainingActual = result.rows.filter((row) => !truthByModelId.has(row.rowId));
+  const remainingTruth = expected.filter((truth) => !claimed.has(truth));
+  const semanticKeyFor = (row: CandidateRow): string => `${row.rowRole}:${proposalByRowId.get(row.rowId)?.semanticKind ?? row.semanticKind}`;
+  for (const key of new Set(remainingActual.map(semanticKeyFor))) {
+    const actualRows = remainingActual.filter((row) => !truthByModelId.has(row.rowId) && semanticKeyFor(row) === key).sort(byVisiblePosition);
+    const truths = remainingTruth
+      .filter((truth) => !claimed.has(truth) && `${truth.rowRole}:${truth.semanticKind}` === key)
+      .sort((left, right) => byVisiblePosition(left.candidatePosition, right.candidatePosition));
+    for (let index = 0; index < Math.min(actualRows.length, truths.length); index++) {
+      const row = actualRows[index]!;
+      const truth = truths[index]!;
       truthByModelId.set(row.rowId, truth);
       claimed.add(truth);
     }
@@ -520,6 +536,8 @@ export function normalizeCandidateRecognition(
     const proposal = proposalByRowId.get(row.rowId);
     return {
       id: alignedId(fixtureId, truth, `unexpected-candidate-${index}`),
+      rowRole: row.rowRole,
+      postingStatus: row.postingStatus,
       date: row.date,
       amount: row.amount,
       currency: row.currency?.toUpperCase() ?? null,
