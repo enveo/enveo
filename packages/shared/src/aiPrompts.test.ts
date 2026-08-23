@@ -278,6 +278,8 @@ describe("buildImportExtractPrompt / parseImportExtractResponse", () => {
     expect(sys).toContain("Compare all supplied screenshots for overlap before answering");
     expect(sys).toContain("Use posted for an ordinary completed history entry with no pending or declined marker");
     expect(sys).toContain("Use unknown only when the status itself is unreadable or ambiguous");
+    expect(sys).toContain("A clock, hourglass, spinner, or explicit pending word attached to an entry is a pending marker");
+    expect(sys).toContain("When any digit of the primary amount is obscured, clipped, or unreadable, use amount null");
     expect(sys).toContain("Set relation to null unless the screenshot visibly establishes the link");
   });
 

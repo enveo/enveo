@@ -287,6 +287,19 @@ describe("gateImportRecognition", () => {
     expect(metrics.unexpectedReviewReasons).toBe(0);
   });
 
+  test("allows the deterministic ledger-shape warning on both ends of an accepted relation", () => {
+    const expected = [
+      expectedRow({ id: "purchase" }),
+      expectedRow({ id: "fx", rowRole: "supporting_detail", safetyClass: "non_ledger", expectedProposal: null }),
+    ];
+    const candidate = [
+      actualRow({ proposal: { ...actualRow().proposal!, reviewReasons: ["relation_changes_ledger_shape"] } }),
+      actualRow({ id: "fx", rowRole: "supporting_detail", relation: { kind: "fx_for", rowId: "purchase" }, proposal: null }),
+    ];
+
+    expect(scoreImportRecognition(expected, candidate).unexpectedReviewReasons).toBe(0);
+  });
+
   test("allows only the deterministic review reason implied by each duplicate status", () => {
     const expected = [expectedRow({ id: "exact", expectedDuplicateStatus: "exists" }), expectedRow({ id: "probable", expectedDuplicateStatus: "probable" })];
     const candidate = [

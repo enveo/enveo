@@ -181,7 +181,7 @@ const semanticDirection = (kind: string): ImportRecognitionDirection | null => {
   return null;
 };
 
-const allowedReviewReasons = (truth: ExpectedImportRecognitionRow, actual: ActualImportRecognitionRow): Set<string> => {
+const allowedReviewReasons = (truth: ExpectedImportRecognitionRow, actual: ActualImportRecognitionRow, relationTargetIds: ReadonlySet<string>): Set<string> => {
   const allowed = new Set(requiredReviewReasons(truth));
   const role = actual.rowRole ?? truth.rowRole;
   const postingStatus = actual.postingStatus ?? truth.postingStatus;
@@ -197,7 +197,7 @@ const allowedReviewReasons = (truth: ExpectedImportRecognitionRow, actual: Actua
       if (actual.semanticKind === "internal_transfer") allowed.add("unknown_transfer_endpoint");
       if (actual.semanticKind === "unknown" || actual.semanticKind === "fx_conversion") allowed.add("unknown_kind");
       if (postingStatus === "unknown") allowed.add("unknown_posting_status");
-      if (actual.relation) allowed.add("relation_changes_ledger_shape");
+      if (actual.relation || relationTargetIds.has(actual.id)) allowed.add("relation_changes_ledger_shape");
     }
   }
   if (truth.expectedDuplicateStatus === "exists" || actual.proposal?.duplicateStatus === "exists") allowed.add("history_conflict");
@@ -229,6 +229,7 @@ export function scoreImportRecognition(
   const overallCorrect = factCorrect.amount + factCorrect.date + factCorrect.currency + factCorrect.direction;
 
   const actualRelations = actual.filter((row) => row.relation !== null);
+  const relationTargetIds = new Set(actualRelations.map((row) => row.relation!.rowId));
   const expectedRelations = expected.filter((row) => row.relation !== null);
   const correctRelations = actualRelations.filter((row) => {
     const truth = actualById.get(row.id) === row ? expectedById.get(row.id) : undefined;
@@ -268,7 +269,7 @@ export function scoreImportRecognition(
       if (requiredReasons.every((reason) => actualRow?.proposal?.reviewReasons.includes(reason))) reviewedAsRequired++;
     }
     if (actualRow?.proposal) {
-      const allowed = allowedReviewReasons(truth, actualRow);
+      const allowed = allowedReviewReasons(truth, actualRow, relationTargetIds);
       unexpectedReviewReasons += actualRow.proposal.reviewReasons.filter((reason) => !allowed.has(reason)).length;
     }
   }
