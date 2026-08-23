@@ -338,6 +338,12 @@ function MenuRow({ label, onClick }: { label: string; onClick: () => void }) {
  * User block + upward-opening menu. A plain absolutely-positioned card INSIDE the rail — the
  * rail carries no CSS `transform`, so `position:fixed`/`absolute` here needs no portal (if any
  * ancestor ever gains one, this must move to `createPortal(document.body)` — house rule).
+ * The same reasoning covers a SECOND hazard the transform rule doesn't name: an ancestor's
+ * `overflow:hidden` clips a `position:absolute` descendant exactly like a transform-created
+ * containing block does. The Rail root below carries no such clip (fixed at 68/236px per
+ * `RAIL_W`, but deliberately `overflow: visible`) precisely so this menu — 236px wide on the
+ * 68px fold rail — is never cut down to a sliver; if the root ever needs `overflow:hidden`
+ * again (e.g. to clip something else), this menu must move to a portal at that point too.
  * The quick tiles are the Drawer's discreet/dark/settings trio VERBATIM: same keys, same
  * `aria-pressed`, same setters, same glyphs (`D_EYE`/`D_MOON`/`D_GEAR`, now exported from
  * chrome.tsx so this costs the phone bundle nothing new).
@@ -573,7 +579,12 @@ export function Rail({
         padding: mode === "desktop" ? "16px 10px" : "16px 0",
         background: C.surface,
         borderRight: `1px solid ${C.line}`,
-        overflow: "hidden",
+        // NOT overflow:hidden — see the UserBlock comment above: an overflow-clipping ancestor
+        // cuts an absolutely-positioned descendant exactly like a transform-created containing
+        // block would, and this root is one (the 236px menu vs. a 68px fold rail). Task 4's
+        // original icon-only skeleton carried this style with nothing that needed clipping;
+        // task 5 built the real menu on top of it unchanged, which is what clipped it.
+        overflow: "visible",
       }}
     >
       <div style={{ display: "flex", alignItems: "center", gap: 10, padding: mode === "desktop" ? "0 4px 8px" : "0 0 4px", marginBottom: 4 }}>

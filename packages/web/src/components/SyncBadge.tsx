@@ -8,9 +8,21 @@ function reduceMotion(): boolean {
 }
 
 /**
- * Sync indicator — mounted ONCE in the shell (App.tsx), positioned absolutely
- * in the top-right corner, left of the header kebab. A single accessory
- * (the Chanel rule): one glyph + an optional counter.
+ * Sync indicator. A single accessory (the Chanel rule): one glyph + an optional counter.
+ *
+ * Two mount sites, two anchoring modes:
+ * - Phone (`inline` false, the default; App.tsx) — mounted ONCE in the shell, positioned
+ *   absolutely in the top-right corner, left of the header kebab, floating OVER content.
+ * - Wide (`inline` true; WideShell.tsx's `BandHeader`) — a genuine flex CHILD of the band
+ *   header row, sized by its own content like any other header control. This deliberately
+ *   gives up floating-overlay positioning: an earlier version anchored it `position:absolute`
+ *   over the whole primary pane with a hardcoded `topOffset` meant to clear only the band
+ *   header, but every wide screen renders its OWN top-of-content row right below that header
+ *   (Budget's "To be budgeted" card, the fold TBB strip, …) — a fixed offset can never track
+ *   that per-screen, per-mode height, and it overlapped those rows' own right-aligned buttons
+ *   (confirmed: the "Suggest a distribution" button on both desktop Budget and fold). Living
+ *   in the header's flex flow instead means it can never overlap anything below the header,
+ *   by construction, on any screen, in either wide mode — no offset math to keep in sync.
  *
  * Local-first semantics: an unreachable server is NOT an error when work is
  * safely queued — red is reserved EXCLUSIVELY for dead letters
@@ -25,26 +37,26 @@ function reduceMotion(): boolean {
  *   REGARDLESS of state (offline / error / not-yet-pushed): changes are waiting
  *   and are safe,
  * - the rest (synced with no queue; also transient error/offline with no queue
- *   and no rejections) → hidden (zero noise, nothing is at risk).
+ *   and no rejections) → hidden (zero noise, nothing is at risk — and, inline, zero WIDTH,
+ *   since a `null` return from a flex child reserves no space).
  */
-export function SyncBadge({ onOpenSync, topOffset = 13 }: { onOpenSync: () => void; topOffset?: number }) {
+export function SyncBadge({ onOpenSync, inline = false }: { onOpenSync: () => void; inline?: boolean }) {
   const C = useTheme();
   const { t, tp } = useT();
   const { state, pending, deadLetters, ownerUnproven } = useSyncStatus();
 
-  // shared anchoring in the shell corner (above content, below sheet/drawer). `topOffset`
-  // defaults to the phone shell's constant; the wide shell (WideShell.tsx) passes 56+13 so the
-  // badge clears the band header instead of sitting under it (PR4 task 5).
-  const anchor: React.CSSProperties = {
-    position: "absolute",
-    top: `calc(env(safe-area-inset-top) + ${topOffset}px)`,
-    right: 48,
-    zIndex: 60,
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    height: 20,
-  };
+  const anchor: React.CSSProperties = inline
+    ? { display: "flex", alignItems: "center", justifyContent: "center", height: 20, flexShrink: 0 }
+    : {
+        position: "absolute",
+        top: "calc(env(safe-area-inset-top) + 13px)",
+        right: 48,
+        zIndex: 60,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        height: 20,
+      };
 
   // Red EXCLUSIVELY for dead letters: the server REJECTED something → a user
   // decision is needed. An unreachable server (error/offline) with safely

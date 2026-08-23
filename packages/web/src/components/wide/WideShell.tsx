@@ -49,6 +49,7 @@ function BandHeader({
   onPrev,
   onNext,
   onAdd,
+  onOpenSync,
   rightSlot,
   panelClosed,
   onTogglePanel,
@@ -58,6 +59,7 @@ function BandHeader({
   onPrev: () => void;
   onNext: () => void;
   onAdd: () => void;
+  onOpenSync: () => void;
   rightSlot: RightSlot;
   panelClosed: boolean;
   onTogglePanel: () => void;
@@ -115,6 +117,9 @@ function BandHeader({
         </div>
       )}
       <div style={{ flex: 1 }} />
+      {/* A genuine flex child of the band header, never an overlay above content — see the
+          SyncBadge.tsx file header for why `topOffset`-over-the-primary-pane was replaced. */}
+      <SyncBadge inline onOpenSync={onOpenSync} />
       {rightSlot && (
         <button
           onClick={rightSlot.onClick}
@@ -318,23 +323,19 @@ export function WideShell({ bag, rightSlot = null, children }: { bag: WideShellB
   return (
     <div ref={rootRef} style={{ display: "flex", height: "100dvh", background: C.bg, fontFamily: font, overflow: "hidden" }}>
       <Rail mode={mode} screen={screen} onNav={nav} state={state} onQuickAdd={onQuickAdd} onFillGoals={onFillGoals} onInstall={onInstall} />
-      <div
-        data-wide-primary
-        style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", borderRight: `1px solid ${C.line}`, position: "relative" }}
-      >
-        {/* Re-anchored from the phone shell (App.tsx) into the primary pane it now sits above —
-            `data-wide-primary` is `position:relative`, SyncBadge already renders `position:
-            absolute`, so this is a pure re-parent with a `topOffset` to clear the 56px band
-            (pr4-task-5-brief.md). Dead letters stay visible on wide; the user menu's "Sync now"
-            is a convenience, not the alarm channel. The demo's separate band error pill (spec
-            lines 198-201) is deliberately NOT implemented — one sync surface, not two. */}
-        <SyncBadge onOpenSync={() => nav("settings")} topOffset={56 + 13} />
+      <div data-wide-primary style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", borderRight: `1px solid ${C.line}` }}>
+        {/* Mounted inline inside BandHeader (see SyncBadge.tsx) rather than floating over the
+            scrollable content below it — dead letters stay visible on wide; the user menu's
+            "Sync now" is a convenience, not the alarm channel. The demo's separate band error
+            pill (spec lines 198-201) is deliberately NOT implemented — one sync surface, not
+            two. */}
         <BandHeader
           screen={screen}
           month={month}
           onPrev={prev}
           onNext={next}
           onAdd={() => nav("addExpense")}
+          onOpenSync={() => nav("settings")}
           rightSlot={rightSlot}
           panelClosed={panelClosed}
           onTogglePanel={() => setPanelClosed(!panelClosed)}
