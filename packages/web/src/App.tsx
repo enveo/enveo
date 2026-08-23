@@ -481,42 +481,61 @@ export default function App() {
 
   if (wide && screen !== "addExpense") {
     return (
-      <LazyChunk>
-        <WideShell
-          bag={{
-            mode,
-            screen,
-            nav,
-            month,
-            prev,
-            next,
-            reportsView,
-            envView,
-            openTxns,
-            panelClosed,
-            setEnvView,
-            setReportsView,
-            setPanelClosed,
-            // `wide` already implies `!!state` (its own definition above) — TS can't see through
-            // that boolean, so the assertion is the one place this fact needs spelling out.
-            state: state!,
-            onQuickAdd,
-            onFillGoals: openBudgetFillGoals,
-            onInstall: () => setInstallSheet(true),
-            // Task 6: the panel's own `ReportsScreen` instance needs the exact same entry points
-            // the primary pane's already uses, so opening an envelope / editing a transaction /
-            // picking a day from a report inside the panel behaves identically to doing it from
-            // the hub in the primary pane — same functions, not a wide-only fork of them.
-            onOpenEnvelope: openEnvelope,
-            onEditTxn: (t) => editTxnFrom(t, "reports"),
-            monthDay,
-            onSelectDay: setMonthDay,
-          }}
-          rightSlot={wideRightSlot}
-        >
-          {screenEl}
-        </WideShell>
-      </LazyChunk>
+      <>
+        <LazyChunk>
+          <WideShell
+            bag={{
+              mode,
+              screen,
+              nav,
+              month,
+              prev,
+              next,
+              reportsView,
+              envView,
+              openTxns,
+              panelClosed,
+              setEnvView,
+              setReportsView,
+              setPanelClosed,
+              // `wide` already implies `!!state` (its own definition above) — TS can't see through
+              // that boolean, so the assertion is the one place this fact needs spelling out.
+              state: state!,
+              onQuickAdd,
+              onFillGoals: openBudgetFillGoals,
+              onInstall: () => setInstallSheet(true),
+              // Task 6: the panel's own `ReportsScreen` instance needs the exact same entry points
+              // the primary pane's already uses, so opening an envelope / editing a transaction /
+              // picking a day from a report inside the panel behaves identically to doing it from
+              // the hub in the primary pane — same functions, not a wide-only fork of them.
+              onOpenEnvelope: openEnvelope,
+              onEditTxn: (t) => editTxnFrom(t, "reports"),
+              monthDay,
+              onSelectDay: setMonthDay,
+            }}
+            rightSlot={wideRightSlot}
+          >
+            {screenEl}
+          </WideShell>
+        </LazyChunk>
+        {/* Task 8's overlay audit: on phone these three render inside the phone card's own tree
+            below (SAME app-owned state — `installSheet`, no separate instance, M7); the wide
+            branch returns above that point, so it had never rendered them at all — Rail's
+            `onInstall` (bag above) and Settings' own install card (inside `screenEl`) could flip
+            `installSheet` to true with nothing to show it. Siblings of `WideShell` here, never
+            nested inside its transformed panel (house rule — a `position:fixed` Sheet/banner
+            under a `transform` ancestor breaks). No BottomNav exists on wide (the rail replaces
+            it), so the banner's clearance drops to the plain safe-area inset. */}
+        <LazyChunk variant="silent">
+          <InstallBanner offsetForNav={false} />
+        </LazyChunk>
+        {installSheetMounted && (
+          <LazyChunk variant="overlay" onDismiss={() => setInstallSheet(false)}>
+            <InstallSheet show={installSheet} onClose={() => setInstallSheet(false)} />
+          </LazyChunk>
+        )}
+        <UpdatePrompt />
+      </>
     );
   }
 
@@ -595,7 +614,7 @@ export default function App() {
             BottomNav the banner's offset clears is hidden there, and it must not cover the skeleton */}
         {state && !onboarding && (
           <LazyChunk variant="silent">
-            <InstallBanner />
+            <InstallBanner offsetForNav />
           </LazyChunk>
         )}
         {installSheetMounted && (

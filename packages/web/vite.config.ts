@@ -52,7 +52,13 @@ export default defineConfig({
         theme_color: "#1d2a47",
         background_color: "#1d2a47",
         display: "standalone",
-        orientation: "portrait",
+        // "any" (was "portrait"): the wide fold/desktop layout (spec §5-§10) is reachable on an
+        // installed PWA only once this flips — a portrait-locked manifest would force a phone
+        // layout on an unfolded foldable regardless of its actual aspect ratio. Landscape
+        // handsets still fall back to the phone layout on their own merits (`useViewMode`'s
+        // `MIN_WIDE_HEIGHT` clause, viewMode.test.ts), so this is not "landscape phones now get
+        // the rail" — width AND height both have to clear the wide thresholds.
+        orientation: "any",
         start_url: "/",
         scope: "/",
         icons: [

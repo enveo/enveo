@@ -45,8 +45,15 @@ function installOffered(): boolean {
   }
 }
 
-/** One-time bottom prompt to install, both platforms. Dismissible; never returns once closed. */
-export function InstallBanner() {
+/**
+ * One-time bottom prompt to install, both platforms. Dismissible; never returns once closed.
+ *
+ * `offsetForNav`: phone clears the BottomNav sitting under it (`calc(78px + safe-area)`); wide
+ * has no BottomNav (the rail replaces it), so the banner only needs to clear the safe area
+ * (`calc(24px + safe-area)`). The call site is the one place that knows which chrome is on
+ * screen (App.tsx's phone vs. wide branches) — this component stays chrome-agnostic otherwise.
+ */
+export function InstallBanner({ offsetForNav }: { offsetForNav: boolean }) {
   const C = useTheme();
   const { t } = useT();
   const { state } = useInstall();
@@ -82,7 +89,7 @@ export function InstallBanner() {
         position: "fixed",
         left: 12,
         right: 12,
-        bottom: "calc(78px + env(safe-area-inset-bottom))",
+        bottom: offsetForNav ? "calc(78px + env(safe-area-inset-bottom))" : "calc(24px + env(safe-area-inset-bottom))",
         maxWidth: 396,
         margin: "0 auto",
         zIndex: 80,
