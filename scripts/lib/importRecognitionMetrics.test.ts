@@ -66,7 +66,7 @@ describe("scoreImportRecognition", () => {
       actualRow({ id: "support", proposal: { ...actualRow().proposal!, selected: false } }),
     ];
     const metrics = scoreImportRecognition(expected, actual);
-    expect(metrics.inclusion).toEqual({ missingFinancial: 0, nonLedgerIncluded: 0 });
+    expect(metrics.inclusion).toEqual({ missingFinancial: 0, nonLedgerIncluded: 0, exactDuplicateSelected: 0 });
     expect(metrics.interpretationErrors).toBe(1);
     expect(metrics.reviewCoverage).toEqual({ correct: 1, total: 1, rate: 1 });
   });
@@ -143,7 +143,7 @@ describe("scoreImportRecognition", () => {
     const metrics = scoreImportRecognition([expectedRow()], [actualRow({ proposal: { ...actualRow().proposal!, selected: true, type: "income" } })]);
 
     expect(metrics.interpretationErrors).toBe(1);
-    expect(metrics.inclusion).toEqual({ missingFinancial: 0, nonLedgerIncluded: 0 });
+    expect(metrics.inclusion).toEqual({ missingFinancial: 0, nonLedgerIncluded: 0, exactDuplicateSelected: 0 });
   });
 
   test("a blocking unknown-kind proposal is review work, not an applied interpretation error", () => {
@@ -200,7 +200,7 @@ describe("scoreImportRecognition", () => {
     expect(metrics.relationPrecision).toEqual({ correct: 0, total: 0, rate: null });
     expect(metrics.relationRecall).toEqual({ correct: 0, total: 0, rate: null });
     expect(metrics.relationF1).toBeNull();
-    expect(metrics.inclusion).toEqual({ missingFinancial: 0, nonLedgerIncluded: 0 });
+    expect(metrics.inclusion).toEqual({ missingFinancial: 0, nonLedgerIncluded: 0, exactDuplicateSelected: 0 });
     expect(metrics.reviewRequired).toBe(0);
   });
 
@@ -257,7 +257,9 @@ describe("gateImportRecognition", () => {
       }),
       correct[1]!,
     ];
-    expect(gateImportRecognition(expected, baseline, conservativeExact).passed).toBe(true);
+    expect(gateImportRecognition(expected, baseline, conservativeExact).reasons).toEqual(
+      expect.arrayContaining(["exact_duplicate_selected", "duplicate_status_incorrect"]),
+    );
   });
 
   test("rejects review-reason noise that is not supported by labelled truth", () => {

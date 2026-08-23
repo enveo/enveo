@@ -18,6 +18,14 @@ import {
   scoreImportRecognition,
 } from "./lib/importRecognitionMetrics";
 
+/**
+ * Trust boundary: this evaluator is correctness evidence for reviewed source.
+ * Immutable snapshots prevent revision drift, while the metric gate resists
+ * output-strategy gaming; neither boundary sandboxes arbitrary hostile code in
+ * the evaluated revision. An automated release authority must run this tool and
+ * its scorer from a protected trusted ref against the bound candidate snapshot.
+ */
+
 export type EvaluationMode = "baseline" | "candidate" | "compare";
 export type SourceAdapter = "legacy-transactions" | "recognition-rows";
 
