@@ -578,7 +578,6 @@ export const ptBR: Dict = {
     "Seus dados serão descriptografados e guardados no servidor em texto claro (como antes de ativar). Confira se você tem um backup atual.",
   "Your envelopes": "Seus envelopes",
   "Your first account": "Sua primeira conta",
-  "already exists": "já existe",
   "assign the rest": "atribuir o restante",
   "available after: {amount}": "disponível depois: {amount}",
   "back in the envelope": "volta para o envelope",

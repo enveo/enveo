@@ -181,9 +181,9 @@ describe("E2EE Own OpenAI provider", () => {
       archived: false,
     };
     const secondEnvelope = { ...envelope, id: "77777777-7777-4777-8777-777777777777", name: "Travel", sort: 1 };
-    const category = { id: "88888888-8888-4888-8888-888888888888", name: "Groceries" };
-    const secondCategory = { id: "99999999-9999-4999-8999-999999999999", name: "Restaurants" };
-    const place = { id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", name: "Shop" };
+    const category = { id: "88888888-8888-4888-8888-888888888888", name: "Groceries", archived: false };
+    const secondCategory = { id: "99999999-9999-4999-8999-999999999999", name: "Restaurants", archived: false };
+    const place = { id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", name: "Shop", archived: false };
     const historicalTransaction = {
       id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
       type: "expense" as const,

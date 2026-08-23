@@ -571,7 +571,6 @@ export const sv: Dict = {
     "Dina data dekrypteras och lagras på servern i klartext (som före aktiveringen). Se till att du har en aktuell säkerhetskopia.",
   "Your envelopes": "Dina kuvert",
   "Your first account": "Ditt första konto",
-  "already exists": "finns redan",
   "assign the rest": "fördela resten",
   "available after: {amount}": "tillgängligt efteråt: {amount}",
   "back in the envelope": "tillbaka i kuvertet",

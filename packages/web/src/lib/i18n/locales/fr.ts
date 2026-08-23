@@ -579,7 +579,6 @@ export const fr: Dict = {
     "Vos données seront déchiffrées et stockées en clair sur le serveur (comme avant l'activation). Assurez-vous d'avoir une sauvegarde à jour.",
   "Your envelopes": "Vos enveloppes",
   "Your first account": "Votre premier compte",
-  "already exists": "existe déjà",
   "assign the rest": "affecter le reste",
   "available after: {amount}": "disponible ensuite : {amount}",
   "back in the envelope": "revient dans l'enveloppe",

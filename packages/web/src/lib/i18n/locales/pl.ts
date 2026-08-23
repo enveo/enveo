@@ -816,7 +816,6 @@ export const pl: Dict = {
   "Your envelopes": "Twoje koperty",
   "Your first account": "Twoje pierwsze konto",
   "all shown ›": "widoczne wszystkie ›",
-  "already exists": "już istnieje",
   "assign the rest": "przypisz resztę",
   "available after: {amount}": "dostępne po: {amount}",
   "avg {amount}/day": "śr. {amount}/dzień",
