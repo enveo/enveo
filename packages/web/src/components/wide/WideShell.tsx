@@ -69,7 +69,10 @@ function BandHeader({
   const { t, lang } = useT();
   const toggleLabel = panelClosed ? t("Show the side panel") : t("Hide the side panel");
   return (
+    // data-wide-band: stable test hook (same idiom as data-wide-primary/-panel below) — the
+    // verification playbook's touch-target sweep selects `[data-wide-band] button`.
     <div
+      data-wide-band
       style={{
         display: "flex",
         alignItems: "center",

@@ -130,7 +130,10 @@ export function PanelHost({
 
   return (
     <>
+      {/* data-wide-panel-header: stable test hook (data-wide-rail/-band idiom) — the
+          verification playbook's touch-target sweep selects `[data-wide-panel-header] button`. */}
       <div
+        data-wide-panel-header
         style={{
           display: "flex",
           alignItems: "center",

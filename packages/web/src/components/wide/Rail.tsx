@@ -568,7 +568,11 @@ export function Rail({
     { id: "accounts", label: t("Accounts") },
   ];
   return (
+    // data-wide-rail: stable test hook — the verification playbook's geometry read and
+    // touch-target sweep select on it (data-wide-primary/-panel/-band idiom), and PR6's plan
+    // already references it by name.
     <div
+      data-wide-rail
       style={{
         width: RAIL_W[mode],
         // `RAIL_W` is the rail's OUTER width — the geometry contract (geometry.ts) sums
