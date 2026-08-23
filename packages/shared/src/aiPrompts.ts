@@ -702,15 +702,19 @@ export async function runImportRecognitionPipeline(input: ImportRecognitionPipel
       };
     });
     const final = validateImportExtraction({ batch: { rows: finalRows }, budgetCurrency: input.budgetCurrency });
+    const finalRowById = new Map(finalRows.map((row) => [row.rowId, row]));
     const enriched = final.proposals.map((proposal) => {
       const annotation = annotations.get(proposal.rowId)!;
+      const row = finalRowById.get(proposal.rowId)!;
+      const actionableAnnotationReasons =
+        row.rowRole === "financial_event" && row.postingStatus !== "pending" && row.postingStatus !== "declined" ? annotation.reviewReasons : [];
       return {
         ...proposal,
         name: annotation.name,
         placeName: annotation.placeName,
         envelopeId: annotation.envelopeId,
         categoryId: annotation.categoryId,
-        reviewReasons: mergeReviewReasons(proposal.reviewReasons, annotation.reviewReasons),
+        reviewReasons: mergeReviewReasons(proposal.reviewReasons, actionableAnnotationReasons),
         selected: proposal.selected && annotation.selected,
       };
     });

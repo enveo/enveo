@@ -403,6 +403,24 @@ const matchExpectedRow = (text: string | undefined, expected: readonly Recogniti
   return matches[0];
 };
 
+const candidateAnchor = (
+  text: string | undefined,
+  expected: readonly RecognitionManifestRow[],
+): { key: string; rows: RecognitionManifestRow[] } | undefined => {
+  const haystack = normalizedMatchText(text ?? "");
+  if (!haystack) return undefined;
+  const matches = expected
+    .map((row) => ({ row, key: normalizedMatchText(row.matchText) }))
+    .filter(({ key }) => key.length > 0 && haystack.includes(key))
+    .sort((left, right) => right.key.length - left.key.length || left.row.id.localeCompare(right.row.id));
+  const key = matches[0]?.key;
+  if (!key) return undefined;
+  return { key, rows: expected.filter((row) => normalizedMatchText(row.matchText) === key) };
+};
+
+const byVisiblePosition = <T extends { imageIndex: number; visualOrder: number }>(left: T, right: T): number =>
+  left.imageIndex - right.imageIndex || left.visualOrder - right.visualOrder;
+
 export function normalizeBaselineRecognition(
   fixtureId: string,
   expected: readonly RecognitionManifestRow[],
@@ -449,27 +467,39 @@ export function normalizeCandidateRecognition(
   const expectedByPosition = new Map(expected.map((row) => [`${row.candidatePosition.imageIndex}:${row.candidatePosition.visualOrder}`, row]));
   const proposalByRowId = new Map(result.proposals.map((proposal) => [proposal.rowId, proposal]));
   const truthByModelId = new Map<string, RecognitionManifestRow>();
-  const anchorCandidates = new Map<RecognitionManifestRow, Array<{ row: CandidateRow; index: number }>>();
-  for (const [index, row] of result.rows.entries()) {
-    const truth = matchExpectedRow(row.rawTextLines?.join("\n"), expected);
-    if (!truth) continue;
-    const candidates = anchorCandidates.get(truth) ?? [];
-    candidates.push({ row, index });
-    anchorCandidates.set(truth, candidates);
+  const anchorGroups = new Map<string, { truths: RecognitionManifestRow[]; actual: CandidateRow[] }>();
+  for (const row of result.rows) {
+    const anchor = candidateAnchor(row.rawTextLines?.join("\n"), expected);
+    if (!anchor) continue;
+    const group = anchorGroups.get(anchor.key) ?? { truths: anchor.rows, actual: [] };
+    group.actual.push(row);
+    anchorGroups.set(anchor.key, group);
   }
   const claimed = new Set<RecognitionManifestRow>();
-  for (const [truth, candidates] of anchorCandidates) {
-    const winner = candidates.sort((left, right) => {
-      const leftRole = left.row.rowRole === truth.rowRole ? 1 : 0;
-      const rightRole = right.row.rowRole === truth.rowRole ? 1 : 0;
-      if (leftRole !== rightRole) return rightRole - leftRole;
-      const leftPosition = left.row.imageIndex === truth.candidatePosition.imageIndex && left.row.visualOrder === truth.candidatePosition.visualOrder ? 1 : 0;
-      const rightPosition =
-        right.row.imageIndex === truth.candidatePosition.imageIndex && right.row.visualOrder === truth.candidatePosition.visualOrder ? 1 : 0;
-      return rightPosition - leftPosition || left.index - right.index;
-    })[0]!;
-    truthByModelId.set(winner.row.rowId, truth);
-    claimed.add(truth);
+  for (const group of anchorGroups.values()) {
+    const remainingActual = new Set(group.actual);
+    const remainingTruth = new Set(group.truths);
+    const assignInOrder = (actualRows: CandidateRow[], truths: RecognitionManifestRow[]): void => {
+      const orderedActual = actualRows.filter((row) => remainingActual.has(row)).sort(byVisiblePosition);
+      const orderedTruth = truths
+        .filter((truth) => remainingTruth.has(truth))
+        .sort((left, right) => byVisiblePosition(left.candidatePosition, right.candidatePosition));
+      for (let index = 0; index < Math.min(orderedActual.length, orderedTruth.length); index++) {
+        const row = orderedActual[index]!;
+        const truth = orderedTruth[index]!;
+        truthByModelId.set(row.rowId, truth);
+        claimed.add(truth);
+        remainingActual.delete(row);
+        remainingTruth.delete(truth);
+      }
+    };
+    for (const role of ["financial_event", "supporting_detail", "ui_metadata"] as const) {
+      assignInOrder(
+        group.actual.filter((row) => row.rowRole === role),
+        group.truths.filter((truth) => truth.rowRole === role),
+      );
+    }
+    assignInOrder([...remainingActual], [...remainingTruth]);
   }
   for (const row of result.rows) {
     if (truthByModelId.has(row.rowId)) continue;

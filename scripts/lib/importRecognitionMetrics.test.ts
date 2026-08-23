@@ -939,6 +939,28 @@ describe("recognition evaluator adapters", () => {
     expect(actual.map((row) => row.id)).toEqual(["fixture:reward-one", "fixture:reward-two"]);
   });
 
+  test("duplicate private anchors remain one-to-one when omitted evidence shifts every visible position", () => {
+    const rows = [
+      manifestRow({ id: "reward-one", matchText: "MONEYBACK", candidatePosition: { imageIndex: 0, visualOrder: 1 } }),
+      manifestRow({ id: "reward-two", matchText: "MONEYBACK", candidatePosition: { imageIndex: 0, visualOrder: 2 } }),
+      manifestRow({ id: "reward-three", matchText: "MONEYBACK", candidatePosition: { imageIndex: 0, visualOrder: 3 } }),
+    ];
+    const modelRows = [0, 1, 2].map((visualOrder) => ({
+      ...actualRow(),
+      rowId: `model-${visualOrder}`,
+      imageIndex: 0,
+      visualOrder,
+      rawTextLines: ["Moneyback"],
+      postingStatus: "posted" as const,
+      rowRole: "financial_event" as const,
+      reviewReasons: [],
+    }));
+
+    const actual = normalizeCandidateRecognition("fixture", rows, { rows: modelRows, proposals: [] });
+
+    expect(actual.map((row) => row.id)).toEqual(["fixture:reward-one", "fixture:reward-two", "fixture:reward-three"]);
+  });
+
   test("an extra UI fragment cannot steal a financial row's private anchor", () => {
     const rows = [manifestRow({ id: "purchase", matchText: "METRO TEST", candidatePosition: { imageIndex: 0, visualOrder: 0 } })];
     const actual = normalizeCandidateRecognition("fixture", rows, {
