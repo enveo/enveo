@@ -140,17 +140,30 @@ const reviewBucket = (truth: ExpectedImportRecognitionRow | undefined, actual: A
   return truth.safetyClass === "unsafe_auto" ? "unsafe" : "otherFinancial";
 };
 
+const requiredReviewReasons = (truth: ExpectedImportRecognitionRow): string[] => {
+  if (truth.rowRole !== "financial_event") return [];
+  if (truth.postingStatus === "pending" || truth.postingStatus === "declined") return ["pending_or_declined"];
+  const required = new Set(truth.requiredSafetyReasons);
+  if (truth.date === null || truth.amount === null) required.add("missing_fact");
+  if (truth.currency === null) required.add("unsupported_currency");
+  if (truth.semanticKind === "incoming_transfer" || truth.semanticKind === "account_topup") required.add("possible_transfer");
+  if (truth.semanticKind === "internal_transfer") required.add("unknown_transfer_endpoint");
+  if (truth.semanticKind === "unknown" || truth.semanticKind === "fx_conversion") required.add("unknown_kind");
+  if (truth.postingStatus === "unknown") required.add("unknown_posting_status");
+  return [...required];
+};
+
 const hasRequiredSafetyReview = (truth: ExpectedImportRecognitionRow, actual: ActualImportRecognitionRow | undefined): boolean =>
-  truth.requiredSafetyReasons.length > 0 &&
+  requiredReviewReasons(truth).length > 0 &&
   actual?.proposal !== null &&
   actual?.proposal !== undefined &&
-  truth.requiredSafetyReasons.every((reason) => actual.proposal!.reviewReasons.includes(reason));
+  requiredReviewReasons(truth).every((reason) => actual.proposal!.reviewReasons.includes(reason));
 
 const truthShouldBeIncluded = (truth: ExpectedImportRecognitionRow): boolean =>
   truth.rowRole === "financial_event" && truth.postingStatus !== "pending" && truth.postingStatus !== "declined" && truth.expectedDuplicateStatus !== "exists";
 
 const allowedReviewReasons = (truth: ExpectedImportRecognitionRow): Set<string> => {
-  const allowed = new Set(truth.requiredSafetyReasons);
+  const allowed = new Set(requiredReviewReasons(truth));
   if (truth.expectedDuplicateStatus === "exists") allowed.add("history_conflict");
   if (truth.expectedDuplicateStatus === "probable") allowed.add("multiple_history_candidates");
   return allowed;
@@ -211,9 +224,10 @@ export function scoreImportRecognition(
       nonLedgerIncluded++;
     }
     if (truth.expectedProposal && actualRow?.proposal && !sameProposal(truth.expectedProposal, actualRow.proposal)) interpretationErrors++;
-    if (truth.requiredSafetyReasons.length > 0) {
+    const requiredReasons = requiredReviewReasons(truth);
+    if (requiredReasons.length > 0) {
       requiredReviews++;
-      if (truth.requiredSafetyReasons.every((reason) => actualRow?.proposal?.reviewReasons.includes(reason))) reviewedAsRequired++;
+      if (requiredReasons.every((reason) => actualRow?.proposal?.reviewReasons.includes(reason))) reviewedAsRequired++;
     }
     if (actualRow?.proposal) {
       const allowed = allowedReviewReasons(truth);
@@ -292,6 +306,7 @@ export function gateImportRecognition(
   let unsafeConstraintFailures = 0;
 
   for (const truth of expected) {
+    const requiredReasons = requiredReviewReasons(truth);
     const baselineRow = baselineById.get(truth.id);
     const candidateRow = candidateById.get(truth.id);
     const candidateRows = candidateActual.filter((row) => row.id === truth.id);
@@ -299,10 +314,10 @@ export function gateImportRecognition(
     const baselineReleaseReview = baselineRow ? ["unsafe", "otherFinancial"].includes(reviewBucket(truth, baselineRow) ?? "") : false;
     const candidateReleaseReview = candidateRow ? ["unsafe", "otherFinancial"].includes(reviewBucket(truth, candidateRow) ?? "") : false;
     const baselineHasRequiredSafetyReview = hasRequiredSafetyReview(truth, baselineRow);
-    const attributable = truth.requiredSafetyReasons.length > 0 && !baselineHasRequiredSafetyReview && candidateHasRequiredSafetyReview;
+    const attributable = requiredReasons.length > 0 && !baselineHasRequiredSafetyReview && candidateHasRequiredSafetyReview;
     if (attributable) attributableSafety++;
     if (candidateReleaseReview && !baselineReleaseReview && !attributable) unexplainedNewReviews++;
-    if (truth.requiredSafetyReasons.length > 0 && !candidateHasRequiredSafetyReview) unsafeConstraintFailures++;
+    if (requiredReasons.length > 0 && !candidateHasRequiredSafetyReview) unsafeConstraintFailures++;
   }
 
   const reasons: string[] = [];

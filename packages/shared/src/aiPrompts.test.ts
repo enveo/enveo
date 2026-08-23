@@ -269,6 +269,10 @@ describe("buildImportExtractPrompt / parseImportExtractResponse", () => {
     expect(sys).toContain("Store the visible sign only in direction");
     expect(sys).not.toContain("signed ledger amount");
     expect(sys).toContain("A reward, refund, top-up, deposit, or transfer entry is still a financial_event");
+    expect(sys).toContain("Repeated entries remain separate even when their text and amount are identical");
+    expect(sys).toContain("Use duplicate_of only when the same entry is visibly repeated across overlapping screenshots");
+    expect(sys).toContain("Use posted for an ordinary completed history entry with no pending or declined marker");
+    expect(sys).toContain("Use unknown only when the status itself is unreadable or ambiguous");
     expect(sys).toContain("Set relation to null unless the screenshot visibly establishes the link");
   });
 

@@ -71,6 +71,19 @@ describe("scoreImportRecognition", () => {
     expect(metrics.reviewCoverage).toEqual({ correct: 1, total: 1, rate: 1 });
   });
 
+  test("derives mandatory missing-fact review from financial truth instead of optional manifest prose", () => {
+    const expected = expectedRow({ date: null, requiredSafetyReasons: [] });
+    const actual = actualRow({
+      date: null,
+      proposal: { ...actualRow().proposal!, disposition: "unresolved", reviewReasons: ["missing_fact"] },
+    });
+
+    const metrics = scoreImportRecognition([expected], [actual]);
+
+    expect(metrics.reviewCoverage).toEqual({ correct: 1, total: 1, rate: 1 });
+    expect(metrics.unexpectedReviewReasons).toBe(0);
+  });
+
   test("row recall counts every labelled row while financial recall excludes UI evidence", () => {
     const expected = [expectedRow(), expectedRow({ id: "balance", rowRole: "ui_metadata", safetyClass: "non_ledger", expectedProposal: null })];
 
@@ -924,6 +937,38 @@ describe("recognition evaluator adapters", () => {
     });
 
     expect(actual.map((row) => row.id)).toEqual(["fixture:reward-one", "fixture:reward-two"]);
+  });
+
+  test("an extra UI fragment cannot steal a financial row's private anchor", () => {
+    const rows = [manifestRow({ id: "purchase", matchText: "METRO TEST", candidatePosition: { imageIndex: 0, visualOrder: 0 } })];
+    const actual = normalizeCandidateRecognition("fixture", rows, {
+      rows: [
+        {
+          ...actualRow(),
+          rowId: "fragment",
+          imageIndex: 0,
+          visualOrder: 0,
+          rawTextLines: ["METRO TEST"],
+          postingStatus: "unknown",
+          rowRole: "ui_metadata",
+          semanticKind: "unknown",
+          reviewReasons: [],
+        },
+        {
+          ...actualRow(),
+          rowId: "transaction",
+          imageIndex: 0,
+          visualOrder: 1,
+          rawTextLines: ["METRO TEST", "12.99 EUR"],
+          postingStatus: "posted",
+          rowRole: "financial_event",
+          reviewReasons: [],
+        },
+      ],
+      proposals: [],
+    });
+
+    expect(actual.map((row) => row.id)).toEqual(["fixture:unexpected-candidate-0", "fixture:purchase"]);
   });
 
   test("manifest validation rejects unresolvable positions, relations, and baseline gaps", () => {

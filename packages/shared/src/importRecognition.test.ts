@@ -240,7 +240,7 @@ describe("screenshot import proposal validation", () => {
       { rowId: "purchase", relation: null, reviewReasons: ["relation_changes_ledger_shape"] },
       { rowId: "other", relation: null, reviewReasons: [] },
       { rowId: "duplicate", relation: { kind: "duplicate_of", rowId: "purchase" }, reviewReasons: ["relation_changes_ledger_shape"] },
-      { rowId: "fx", relation: { kind: "fx_for", rowId: "purchase" }, reviewReasons: ["relation_changes_ledger_shape"] },
+      { rowId: "fx", relation: { kind: "fx_for", rowId: "purchase" }, reviewReasons: [] },
       { rowId: "incomplete", relation: null, reviewReasons: ["missing_fact"] },
       { rowId: "incomplete-target", relation: null, reviewReasons: ["missing_fact"] },
     ]);
@@ -323,10 +323,10 @@ describe("screenshot import proposal validation", () => {
     expect(result.rows.map((row) => row.rowId)).toEqual(["missing", "support", "pending", "declined", "pending-missing"]);
     expect(result.proposals).toMatchObject([
       { rowId: "missing", disposition: "unresolved", selected: true, rawPlace: "unreadable amount", reviewReasons: ["missing_fact"] },
-      { rowId: "support", disposition: "supporting", selected: false },
+      { rowId: "support", disposition: "supporting", selected: false, reviewReasons: [] },
       { rowId: "pending", disposition: "pending", selected: false, reviewReasons: ["pending_or_declined"] },
       { rowId: "declined", disposition: "declined", selected: false, reviewReasons: ["pending_or_declined"] },
-      { rowId: "pending-missing", disposition: "pending", selected: false, reviewReasons: ["missing_fact", "pending_or_declined"] },
+      { rowId: "pending-missing", disposition: "pending", selected: false, reviewReasons: ["pending_or_declined"] },
     ]);
   });
 

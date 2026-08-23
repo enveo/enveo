@@ -380,11 +380,25 @@ export function validateImportExtraction(input: { batch: ImportExtractBatch; bud
   const budgetCurrencySupported = isSupportedCurrency(budgetCurrency);
   const proposals = rows.map((row) => {
     const mapping = mappingFor(row.semanticKind, row.direction);
+    const relation = acceptedRelations.get(row.rowId) ?? null;
+
+    if (row.rowRole !== "financial_event") {
+      return proposalFrom(row, { disposition: "supporting", type: null, relation, reviewReasons: [], selected: false });
+    }
+    if (row.postingStatus === "pending" || row.postingStatus === "declined") {
+      return proposalFrom(row, {
+        disposition: row.postingStatus,
+        type: mapping.type,
+        isRefund: mapping.isRefund,
+        relation,
+        reviewReasons: ["pending_or_declined"],
+        selected: false,
+      });
+    }
+
     let disposition: ImportProposal["disposition"] = "candidate";
-    let selected = true;
     let type = mapping.type;
     let reasons = addReasons([], ...mapping.reviewReasons);
-    const relation = acceptedRelations.get(row.rowId) ?? null;
 
     const validFacts =
       isCalendarDate(row.date) && hasPositiveMinorAmount(row.amount) && row.currency !== null && isSupportedCurrency(row.currency) && budgetCurrencySupported;
@@ -403,19 +417,7 @@ export function validateImportExtraction(input: { batch: ImportExtractBatch; bud
     if (shapeChangingRelations.has(row.rowId)) {
       reasons = addReasons(reasons, "relation_changes_ledger_shape");
     }
-    if (row.rowRole !== "financial_event") {
-      disposition = "supporting";
-      selected = false;
-      type = null;
-    } else if (row.postingStatus === "pending") {
-      disposition = "pending";
-      selected = false;
-      reasons = addReasons(reasons, "pending_or_declined");
-    } else if (row.postingStatus === "declined") {
-      disposition = "declined";
-      selected = false;
-      reasons = addReasons(reasons, "pending_or_declined");
-    } else if (validFacts && mapping.type === null) {
+    if (validFacts && mapping.type === null) {
       disposition = "unresolved";
       reasons = addReasons(reasons, "unknown_kind");
     }
@@ -425,7 +427,7 @@ export function validateImportExtraction(input: { batch: ImportExtractBatch; bud
 
     if (row.postingStatus === "unknown") reasons = addReasons(reasons, "unknown_posting_status");
 
-    return proposalFrom(row, { disposition, type, isRefund: mapping.isRefund, relation, reviewReasons: reasons, selected });
+    return proposalFrom(row, { disposition, type, isRefund: mapping.isRefund, relation, reviewReasons: reasons, selected: true });
   });
 
   return { rows, proposals };

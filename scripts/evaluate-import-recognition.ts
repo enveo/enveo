@@ -448,12 +448,37 @@ export function normalizeCandidateRecognition(
 ): ActualImportRecognitionRow[] {
   const expectedByPosition = new Map(expected.map((row) => [`${row.candidatePosition.imageIndex}:${row.candidatePosition.visualOrder}`, row]));
   const proposalByRowId = new Map(result.proposals.map((proposal) => [proposal.rowId, proposal]));
-  const truthByModelId = new Map(
-    result.rows.map((row) => [
-      row.rowId,
-      matchExpectedRow(row.rawTextLines?.join("\n"), expected) ?? expectedByPosition.get(`${row.imageIndex}:${row.visualOrder}`),
-    ]),
-  );
+  const truthByModelId = new Map<string, RecognitionManifestRow>();
+  const anchorCandidates = new Map<RecognitionManifestRow, Array<{ row: CandidateRow; index: number }>>();
+  for (const [index, row] of result.rows.entries()) {
+    const truth = matchExpectedRow(row.rawTextLines?.join("\n"), expected);
+    if (!truth) continue;
+    const candidates = anchorCandidates.get(truth) ?? [];
+    candidates.push({ row, index });
+    anchorCandidates.set(truth, candidates);
+  }
+  const claimed = new Set<RecognitionManifestRow>();
+  for (const [truth, candidates] of anchorCandidates) {
+    const winner = candidates.sort((left, right) => {
+      const leftRole = left.row.rowRole === truth.rowRole ? 1 : 0;
+      const rightRole = right.row.rowRole === truth.rowRole ? 1 : 0;
+      if (leftRole !== rightRole) return rightRole - leftRole;
+      const leftPosition = left.row.imageIndex === truth.candidatePosition.imageIndex && left.row.visualOrder === truth.candidatePosition.visualOrder ? 1 : 0;
+      const rightPosition =
+        right.row.imageIndex === truth.candidatePosition.imageIndex && right.row.visualOrder === truth.candidatePosition.visualOrder ? 1 : 0;
+      return rightPosition - leftPosition || left.index - right.index;
+    })[0]!;
+    truthByModelId.set(winner.row.rowId, truth);
+    claimed.add(truth);
+  }
+  for (const row of result.rows) {
+    if (truthByModelId.has(row.rowId)) continue;
+    const truth = expectedByPosition.get(`${row.imageIndex}:${row.visualOrder}`);
+    if (truth && !claimed.has(truth)) {
+      truthByModelId.set(row.rowId, truth);
+      claimed.add(truth);
+    }
+  }
   const normalizedIdByModelId = new Map(
     result.rows.map((row, index) => {
       const truth = truthByModelId.get(row.rowId);
