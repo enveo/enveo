@@ -249,7 +249,7 @@ describe("buildImportExtractPrompt / parseImportExtractResponse", () => {
     expect(sys).toContain("account currency is PLN");
     expect(sys).toContain("supporting_detail");
     expect(sys).toContain("fx_for");
-    expect(sys).toContain("primary signed ledger amount");
+    expect(sys).toContain("primary ledger amount");
     expect(sys).toContain("never use a balance, loyalty/reward points, card suffix, or exchange rate as amount");
     expect(sys).toContain("NEVER convert or guess an exchange rate");
   });
@@ -264,7 +264,10 @@ describe("buildImportExtractPrompt / parseImportExtractResponse", () => {
   it("distinguishes one ledger movement from secondary numbers inside the same entry", () => {
     const sys = sysOf(buildImportExtractPrompt([], refs, "2026-07-07", "pl", "PLN").messages);
 
-    expect(sys).toContain("exactly one financial_event for each coherent entry with a primary signed ledger amount");
+    expect(sys).toContain("exactly one financial_event for each coherent entry with a primary ledger amount");
+    expect(sys).toContain("amount is the positive magnitude without its visible sign");
+    expect(sys).toContain("Store the visible sign only in direction");
+    expect(sys).not.toContain("signed ledger amount");
     expect(sys).toContain("A reward, refund, top-up, deposit, or transfer entry is still a financial_event");
     expect(sys).toContain("Set relation to null unless the screenshot visibly establishes the link");
   });
@@ -280,6 +283,9 @@ describe("buildImportExtractPrompt / parseImportExtractResponse", () => {
     expect(schema.properties.currency).toBeDefined();
     expect(schema.properties.relation).toBeDefined();
     expect(schema.properties.reviewReasons).toBeDefined();
+    expect(schema.properties.imageIndex).toMatchObject({ type: "integer", minimum: 0 });
+    expect(schema.properties.visualOrder).toMatchObject({ type: "integer", minimum: 0 });
+    expect(schema.properties.amount).toMatchObject({ type: ["integer", "null"], exclusiveMinimum: 0 });
     expect(schema.required).toContain("currency");
     expect(schema.required).toContain("relation");
     expect(schema.required).toContain("reviewReasons");
