@@ -1,9 +1,11 @@
 import { type DailySpendingPoint, type Money, NULL_LABEL, type SpendingDimension } from "@enveo/shared";
 import type { CSSProperties, ReactNode } from "react";
+import { useContext } from "react";
 import { createPortal } from "react-dom";
 import { useCompactMask, useTheme } from "../lib/contexts";
 import { monthLabel, monthShortLabel } from "../lib/dates";
 import { type Message, useT } from "../lib/i18n";
+import { InWideShell } from "../lib/shellContext";
 import { font, P, TEAL, type Theme } from "../lib/theme";
 import { useElementWidth } from "../lib/useElementWidth";
 import { PHONE_COL } from "../lib/viewMode";
@@ -68,6 +70,7 @@ export function ReportShell(props: ReportShellProps) {
   const C = useTheme();
   const { band, hc } = useBand();
   const { t, lang } = useT();
+  const inWide = useContext(InWideShell);
   const heroBlock = (
     <>
       <div style={{ fontSize: 10.5, fontWeight: 750, letterSpacing: "0.17em", textTransform: "uppercase", color: hc(C.headerMute, C.mute) }}>{eyebrow}</div>
@@ -80,7 +83,7 @@ export function ReportShell(props: ReportShellProps) {
     <>
       <div data-band={band || undefined} style={band ? { background: C.headerBg, paddingBottom: 14 } : { paddingBottom: 14 }}>
         {props.variant === "hub" ? (
-          <Header month={month} onMenu={props.onMenu} onPrev={onPrev} onNext={onNext} onBand={band} />
+          !inWide && <Header month={month} onMenu={props.onMenu} onPrev={onPrev} onNext={onNext} onBand={band} />
         ) : (
           <div style={{ display: "flex", alignItems: "center", gap: 6, padding: `12px ${P}px 10px` }}>
             <button

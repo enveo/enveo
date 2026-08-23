@@ -1,5 +1,5 @@
 import { computeStateResponse } from "@enveo/shared";
-import { useEffect, useMemo, useState } from "react";
+import { useContext, useEffect, useMemo, useState } from "react";
 import { AmountPadHost, type AmountPadTarget } from "../components/AmountPadSheet";
 import { Sheet } from "../components/chrome";
 import { IconColorPicker } from "../components/IconColorPicker";
@@ -18,6 +18,7 @@ import { localizePadExpression, parseAmount } from "../lib/format";
 import { useT } from "../lib/i18n";
 import { Ico } from "../lib/icons";
 import { local } from "../lib/mutate";
+import { InWideShell } from "../lib/shellContext";
 import { store } from "../lib/store";
 import { ACCOUNT_COLORS, font, P, TEAL } from "../lib/theme";
 import { AccountListRowContent } from "./AccountListRowContent";
@@ -27,6 +28,7 @@ export function AccountsScreen({ state, onMenu }: { state: StateResponse; onMenu
   const C = useTheme();
   const M = useMask();
   const { t, lang } = useT();
+  const inWide = useContext(InWideShell);
   // Accounts are CURRENT-balance always (unlike envelopes) — recomputed from the replica at
   // `currentMonth()` regardless of the app's viewed month, same pattern as chrome.tsx's Drawer
   // and widgets.tsx's AccountsWidget.
@@ -110,9 +112,13 @@ export function AccountsScreen({ state, onMenu }: { state: StateResponse; onMenu
   return (
     <div className="gs" style={{ flex: 1, overflowY: "auto", paddingBottom: 6 }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: `12px ${P}px 4px` }}>
-        <button onClick={onMenu} aria-label={t("Menu")} style={{ background: "none", border: "none", cursor: "pointer", padding: 4, display: "flex" }}>
-          <Ico d="M4 6h16M4 12h16M4 18h16" size={20} />
-        </button>
+        {inWide ? (
+          <span style={{ width: 28, height: 28 }} aria-hidden="true" />
+        ) : (
+          <button onClick={onMenu} aria-label={t("Menu")} style={{ background: "none", border: "none", cursor: "pointer", padding: 4, display: "flex" }}>
+            <Ico d="M4 6h16M4 12h16M4 18h16" size={20} />
+          </button>
+        )}
         <div style={{ textAlign: "center" }}>
           <div style={{ fontSize: 18.5, fontWeight: 600, color: C.text }}>{t("Accounts")}</div>
           <div style={{ fontSize: 12, color: C.soft, marginTop: 1 }}>

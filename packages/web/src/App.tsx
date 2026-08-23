@@ -86,6 +86,11 @@ export default function App() {
   // open. Same one-shot lifecycle as `budgetSuggest`: `nav` resets it on every normal entry,
   // `openBudgetFillGoals` sets it AFTER `nav` so it wins within the same batch.
   const [budgetFillGoals, setBudgetFillGoals] = useState(false);
+  // Start's "Edit widgets" and Budget's "Manage envelopes" sheets, lifted from those screens so
+  // the wide shell's band right-slot (pr4-context.md §13) can trigger them too — same sheets,
+  // same pencil buttons, only the state's home moves (Task 3).
+  const [editWidgetsOpen, setEditWidgetsOpen] = useState(false);
+  const [manageOpen, setManageOpen] = useState(false);
   // Reports view kept in App — entering from the menu opens the card overview,
   // while a deep link (the menu's "Envelope budgets" shortcut) goes straight to the given subscreen
   const [reportsView, setReportsView] = useState<ReportView>(r0.reportsView);
@@ -392,6 +397,8 @@ export default function App() {
                   onNext={next}
                   onNav={nav}
                   onQuickAdd={onQuickAdd}
+                  editWidgets={editWidgetsOpen}
+                  onEditWidgets={setEditWidgetsOpen}
                 />
               )}
               {screen === "budget" && (
@@ -407,6 +414,8 @@ export default function App() {
                     onSuggestConsumed={() => setBudgetSuggest(false)}
                     initialFillGoals={budgetFillGoals}
                     onFillGoalsConsumed={() => setBudgetFillGoals(false)}
+                    manageOpen={manageOpen}
+                    onManageOpen={setManageOpen}
                   />
                 </LazyChunk>
               )}
