@@ -1,4 +1,4 @@
-import { type ChatRequest, type ImportJobErrorCode, type ImportRecognitionResult, stripImportRecognitionReconciliation } from "@enveo/shared";
+import { type ChatRequest, ImportEnrichmentMalformedError, type ImportJobErrorCode, type ImportRecognitionResult } from "@enveo/shared";
 import { eq } from "drizzle-orm";
 import { ZodError } from "zod";
 import { CredentialBudgetMismatch, CredentialNotConfigured, type CredentialRepository, CredentialVaultUnavailable } from "../aiCredentials/repository";
@@ -9,7 +9,7 @@ import type { DB } from "../db/client";
 import * as schema from "../db/schema";
 import { UpstreamHttpError, UpstreamNetworkError, UpstreamTimeoutError } from "../openaiHttp";
 import { loadImportHistory, runServerImportRecognitionAdapter } from "../routes/import";
-import type { ClaimedImportJob, ImportJobRepository } from "./repository";
+import { type ClaimedImportJob, IMPORT_JOB_LEASE_MS, type ImportJobRepository } from "./repository";
 
 const RETRY_BACKOFF_MS = [30_000, 120_000] as const;
 
@@ -55,6 +55,12 @@ class ImportJobLeaseExpired extends Error {
   }
 }
 
+class ImportJobInputExpired extends Error {
+  constructor() {
+    super("expired_import_job_input");
+  }
+}
+
 class ImportJobCancelled extends Error {
   constructor() {
     super("import_job_cancelled");
@@ -79,13 +85,16 @@ const retryOrPermanent = (errorCode: ImportJobErrorCode, attempt: number, now: D
 };
 
 const unwrapFailure = (error: unknown): unknown =>
-  error && typeof error === "object" && "reason" in error && (error as { reason?: unknown }).reason !== undefined
-    ? (error as { reason: unknown }).reason
-    : error;
+  error instanceof ImportEnrichmentMalformedError
+    ? error
+    : error && typeof error === "object" && "reason" in error && (error as { reason?: unknown }).reason !== undefined
+      ? (error as { reason: unknown }).reason
+      : error;
 
 export function classifyImportJobFailure(error: unknown, attempt: number, now = new Date()): ImportJobFailureDisposition {
   const reason = unwrapFailure(error);
   if (reason instanceof ImportJobLeaseExpired) return { kind: "lease_expired", errorCode: "expired" };
+  if (reason instanceof ImportJobInputExpired) return { kind: "permanent", errorCode: "expired" };
   if (reason instanceof SpendDenied) {
     if (attempt >= 3) return { kind: "permanent", errorCode: "ai_budget_exhausted" };
     return { kind: "retry", errorCode: "ai_budget_exhausted", retryAt: new Date(now.getTime() + reason.retryAfterSeconds * 1_000) };
@@ -104,7 +113,13 @@ export function classifyImportJobFailure(error: unknown, attempt: number, now = 
   }
   if (reason instanceof UpstreamTimeoutError) return retryOrPermanent("ai_timeout", attempt, now);
   if (reason instanceof UpstreamNetworkError) return retryOrPermanent("network", attempt, now);
-  if (reason instanceof ImportJobMalformedResponse || reason instanceof ByokInvalidBodyError || reason instanceof SyntaxError || reason instanceof ZodError) {
+  if (
+    reason instanceof ImportJobMalformedResponse ||
+    reason instanceof ImportEnrichmentMalformedError ||
+    reason instanceof ByokInvalidBodyError ||
+    reason instanceof SyntaxError ||
+    reason instanceof ZodError
+  ) {
     return retryOrPermanent("malformed_model_response", attempt, now);
   }
   return retryOrPermanent("network", attempt, now);
@@ -123,15 +138,54 @@ type ProcessorRepository = {
 
 export interface ImportRecognitionRunInput {
   checkpoint: ImportRecognitionResult | null;
+  beforeUpstream: () => Promise<void>;
   afterUpstream: () => Promise<void>;
   saveExtraction: (result: ImportRecognitionResult) => Promise<void>;
   advancePhase: (phase: "enriching" | "reconciling") => Promise<void>;
+  saveResult: (result: ImportRecognitionResult) => Promise<void>;
 }
 
 export interface ImportJobProcessorDeps {
   repository: ProcessorRepository;
   recognize: (input: ImportRecognitionRunInput) => Promise<ImportRecognitionResult>;
   now?: () => Date;
+  heartbeatIntervalMs?: number;
+}
+
+function startLeaseRenewal(job: ClaimedImportJob, deps: ImportJobProcessorDeps, now: () => Date) {
+  const intervalMs = Math.max(1, deps.heartbeatIntervalMs ?? Math.floor(IMPORT_JOB_LEASE_MS / 3));
+  let stopped = false;
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  let inFlight: Promise<void> | null = null;
+  let failure: unknown = null;
+
+  const schedule = () => {
+    timer = setTimeout(() => {
+      timer = null;
+      inFlight = (async () => {
+        try {
+          if (!(await deps.repository.heartbeat(job.id, job.leaseToken, now()))) throw new ImportJobLeaseExpired();
+        } catch (error) {
+          failure = error;
+        } finally {
+          inFlight = null;
+          if (!stopped && failure === null) schedule();
+        }
+      })();
+    }, intervalMs);
+  };
+  schedule();
+
+  return {
+    assertHealthy() {
+      if (failure !== null) throw failure;
+    },
+    async stop() {
+      stopped = true;
+      if (timer !== null) clearTimeout(timer);
+      await inFlight;
+    },
+  };
 }
 
 async function persistCancellation(job: ClaimedImportJob, repository: ProcessorRepository): Promise<never> {
@@ -141,8 +195,11 @@ async function persistCancellation(job: ClaimedImportJob, repository: ProcessorR
 
 export async function processClaimedImportJob(job: ClaimedImportJob, deps: ImportJobProcessorDeps): Promise<ImportJobProcessOutcome> {
   const now = deps.now ?? (() => new Date());
+  let leaseRenewal: ReturnType<typeof startLeaseRenewal> | null = null;
   const fence = async () => {
+    leaseRenewal?.assertHealthy();
     if (!(await deps.repository.heartbeat(job.id, job.leaseToken, now()))) throw new ImportJobLeaseExpired();
+    leaseRenewal?.assertHealthy();
     const current = await deps.repository.getForUser(job.userId, job.id);
     if (!current) throw new ImportJobBudgetMismatch();
     if (current.status === "cancelled" || current.cancelRequested) await persistCancellation(job, deps.repository);
@@ -160,15 +217,18 @@ export async function processClaimedImportJob(job: ClaimedImportJob, deps: Impor
     if (job.cancelRequested) await persistCancellation(job, deps.repository);
     if (job.tier !== "plain") throw new ImportJobTierMismatch();
     if (!job.accountId) throw new ImportJobAccountUnavailable();
-    if (!job.extraction && job.images.length === 0) throw new ImportJobLeaseExpired();
+    if (!job.extraction && job.images.length === 0) throw new ImportJobInputExpired();
 
-    const result = await deps.recognize({
+    leaseRenewal = startLeaseRenewal(job, deps, now);
+
+    await deps.recognize({
       checkpoint: job.extraction,
+      beforeUpstream: fence,
       afterUpstream: fence,
       saveExtraction: (extraction) => checkpoint(() => deps.repository.saveExtractionAndDeleteImages(job.id, job.leaseToken, extraction, now())),
       advancePhase: (phase) => checkpoint(() => deps.repository.advancePhase(job.id, job.leaseToken, phase, now())),
+      saveResult: (result) => checkpoint(() => deps.repository.saveReadyResult(job.id, job.leaseToken, result, now())),
     });
-    await checkpoint(() => deps.repository.saveReadyResult(job.id, job.leaseToken, result, now()));
     return { kind: "ready" };
   } catch (error) {
     if (error instanceof ImportJobCancelled) return { kind: "cancelled" };
@@ -186,6 +246,8 @@ export async function processClaimedImportJob(job: ClaimedImportJob, deps: Impor
     }
     const saved = await deps.repository.failPermanently(job.id, job.leaseToken, disposition.errorCode, now());
     return saved ? { kind: "failed", errorCode: disposition.errorCode } : { kind: "lease_expired", errorCode: "expired" };
+  } finally {
+    await leaseRenewal?.stop();
   }
 }
 
@@ -247,12 +309,15 @@ export function createDatabaseImportRecognition(job: ClaimedImportJob, deps: Pro
       historyRecords,
       chat: createImportJobChat(job, deps),
       checkpoint: run.checkpoint ?? undefined,
+      cycleTwoFailureMode: "strict",
       lifecycle: {
+        beforeUpstream: run.beforeUpstream,
         afterUpstream: run.afterUpstream,
         saveExtraction: run.saveExtraction,
         advancePhase: run.advancePhase,
+        saveResult: run.saveResult,
       },
     });
-    return stripImportRecognitionReconciliation(result);
+    return result;
   };
 }

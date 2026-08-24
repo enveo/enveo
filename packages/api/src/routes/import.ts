@@ -124,10 +124,13 @@ export interface ServerImportRecognitionAdapterInput {
   historyRecords: ImportHistoryRecord[];
   chat: ImportModelChat;
   checkpoint?: ImportRecognitionResult;
+  cycleTwoFailureMode?: "fallback" | "strict";
   lifecycle?: {
+    beforeUpstream?: () => Promise<void>;
     afterUpstream?: () => Promise<void>;
     saveExtraction?: (result: ImportRecognitionResult) => Promise<void>;
     advancePhase?: (phase: "enriching" | "reconciling") => Promise<void>;
+    saveResult?: (result: ImportRecognitionResult) => Promise<void>;
   };
 }
 
@@ -153,6 +156,7 @@ export function runServerImportRecognitionAdapter(input: ServerImportRecognition
     historyRecords: input.historyRecords,
     chat: input.chat,
     checkpoint: input.checkpoint,
+    cycleTwoFailureMode: input.cycleTwoFailureMode,
     lifecycle: input.lifecycle,
   });
 }

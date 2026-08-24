@@ -37,6 +37,8 @@ describe.skipIf(!TEST_URL)("import job repository", () => {
       expiredLeaseReclaimedOnce: true,
       staleTokenRejected: true,
       currentTokenAccepted: true,
+      exhaustedLeaseTerminalized: true,
+      fourthClaimRejected: true,
     });
   });
 

@@ -92,6 +92,63 @@ describe("database import job worker", () => {
     expect(cleanups).toBe(1);
   });
 
+  test("recovers from a transient boot-cleanup error without overlapping or busy-spinning", async () => {
+    let cleanups = 0;
+    let claims = 0;
+    const worker = startImportJobWorker({
+      workerId: "worker-cleanup-recovery",
+      idleMs: 20,
+      cleanupIntervalMs: 60_000,
+      repository: {
+        cleanupExpired: async () => {
+          cleanups++;
+          if (cleanups === 1) throw new Error("database temporarily unavailable");
+          return { imagesDeleted: 0, detailsCleared: 0, jobsDeleted: 0 };
+        },
+        claimNext: async () => {
+          claims++;
+          return null;
+        },
+      },
+      processJob: async () => {},
+    });
+
+    await eventually(() => cleanups >= 2);
+    await worker.stop();
+
+    expect(cleanups).toBe(2);
+    expect(claims).toBeGreaterThanOrEqual(1);
+  });
+
+  test("recovers from a transient claim error after an idle delay", async () => {
+    let claims = 0;
+    let processed = 0;
+    const startedAt = Date.now();
+    const worker = startImportJobWorker({
+      workerId: "worker-claim-recovery",
+      idleMs: 20,
+      cleanupIntervalMs: 60_000,
+      repository: {
+        cleanupExpired: async () => ({ imagesDeleted: 0, detailsCleared: 0, jobsDeleted: 0 }),
+        claimNext: async () => {
+          claims++;
+          if (claims === 1) throw new Error("database temporarily unavailable");
+          if (claims === 2) return { id: "recovered" } as never;
+          return null;
+        },
+      },
+      processJob: async () => {
+        processed++;
+      },
+    });
+
+    await eventually(() => processed === 1);
+    await worker.stop();
+
+    expect(claims).toBeGreaterThanOrEqual(2);
+    expect(Date.now() - startedAt).toBeGreaterThanOrEqual(15);
+  });
+
   test("graceful stop finishes an already claimed job before returning", async () => {
     let claimed = false;
     let started = false;

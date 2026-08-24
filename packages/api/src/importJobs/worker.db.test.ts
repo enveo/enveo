@@ -29,4 +29,12 @@ describe.skipIf(!TEST_URL)("database-backed import worker", () => {
   test("successful extraction removes every stored screenshot before later phases", () => {
     expect(output.images).toEqual({ concurrentJobImages: 0, restartedJobImages: 0 });
   });
+
+  test("three crashed leases terminally expire without a fourth provider call", () => {
+    expect(output.exhausted).toEqual({ providerCalls: 3, fourthClaimRejected: true, attempts: 3, status: "failed", errorCode: "expired" });
+  });
+
+  test("retention-cleaned retry input terminally expires before provider dispatch", () => {
+    expect(output.missingInput).toEqual({ providerCalls: 0, status: "failed", errorCode: "expired", retryAt: null });
+  });
 });

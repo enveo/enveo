@@ -23,6 +23,8 @@ export interface ImportJobRepositoryOutput {
     expiredLeaseReclaimedOnce: boolean;
     staleTokenRejected: boolean;
     currentTokenAccepted: boolean;
+    exhaustedLeaseTerminalized: boolean;
+    fourthClaimRejected: boolean;
   };
   checkpoint: {
     extractionSaved: boolean;
@@ -172,6 +174,26 @@ async function main() {
     const currentTokenAccepted = await repository.heartbeat(expiringId, currentLease.leaseToken, at("2026-08-24T12:30:02.000Z"));
     await repository.failPermanently(expiringId, currentLease.leaseToken, "ai_timeout", at("2026-08-24T12:30:03.000Z"));
 
+    const exhaustedId = crypto.randomUUID();
+    await repository.create(createInput(exhaustedId), at("2026-08-24T12:40:00.000Z"));
+    const exhaustedAttempt1 = await repository.claimNext("worker-crash-1", at("2026-08-24T12:41:00.000Z"));
+    const exhaustedAttempt2 = await repository.claimNext("worker-crash-2", at("2026-08-24T12:47:00.000Z"));
+    const exhaustedAttempt3 = await repository.claimNext("worker-crash-3", at("2026-08-24T12:53:00.000Z"));
+    const exhaustedAttempt4 = await repository.claimNext("worker-must-not-run", at("2026-08-24T12:59:00.000Z"));
+    const [exhaustedRow] = await isolated<{ status: string; attempt: number; errorCode: string | null; imageCount: number }[]>`
+      select status, attempt, error_code as "errorCode",
+             (select count(*)::int from import_job_images where job_id = ${exhaustedId}) as "imageCount"
+        from import_jobs where id = ${exhaustedId}`;
+    const exhaustedLeaseTerminalized =
+      exhaustedAttempt1?.attempt === 1 &&
+      exhaustedAttempt2?.attempt === 2 &&
+      exhaustedAttempt3?.attempt === 3 &&
+      exhaustedRow?.status === "failed" &&
+      exhaustedRow.attempt === 3 &&
+      exhaustedRow.errorCode === "expired" &&
+      exhaustedRow.imageCount === 0;
+    const fourthClaimRejected = exhaustedAttempt4 === null;
+
     const checkpointId = crypto.randomUUID();
     await repository.create(createInput(checkpointId), at("2026-08-24T13:00:00.000Z"));
     const checkpointLease = await repository.claimNext("worker-checkpoint", at("2026-08-24T13:01:00.000Z"));
@@ -289,7 +311,14 @@ async function main() {
         foreignUserCannotRead: (await repository.getForUser(foreignUserId, createdId)) === null,
         listScopedAndSafe,
       },
-      leasing: { concurrentClaimsDistinct, expiredLeaseReclaimedOnce, staleTokenRejected, currentTokenAccepted },
+      leasing: {
+        concurrentClaimsDistinct,
+        expiredLeaseReclaimedOnce,
+        staleTokenRejected,
+        currentTokenAccepted,
+        exhaustedLeaseTerminalized,
+        fourthClaimRejected,
+      },
       checkpoint: {
         extractionSaved: extractionSaved && checkpointRow?.extraction !== null,
         invalidExtractionRejected,

@@ -12,7 +12,7 @@ import {
   importJobResultSchema,
   importJobStatusSchema,
 } from "@enveo/shared";
-import { and, asc, desc, eq, gt, inArray, isNotNull, isNull, lte, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gt, gte, inArray, isNotNull, isNull, lt, lte, or, sql } from "drizzle-orm";
 import type { DB } from "../db/client";
 import { importJobImages, importJobs } from "../db/schema";
 
@@ -268,6 +268,7 @@ export function createImportJobRepository(database: DB) {
             eq(importJobs.userId, userId),
             eq(importJobs.id, id),
             eq(importJobs.status, "failed"),
+            lt(importJobs.attempt, 3),
             or(isNotNull(importJobs.extraction), sql`exists (select 1 from ${importJobImages} where ${importJobImages.jobId} = ${importJobs.id})`),
           ),
         )
@@ -277,14 +278,50 @@ export function createImportJobRepository(database: DB) {
 
     async claimNext(workerId: string, now = new Date()): Promise<ClaimedImportJob | null> {
       return database.transaction(async (tx) => {
+        const cancelled = await tx
+          .update(importJobs)
+          .set({
+            status: "cancelled",
+            resumePhase: null,
+            errorCode: null,
+            retryAt: null,
+            extraction: null,
+            result: null,
+            leaseOwner: null,
+            leaseToken: null,
+            leaseExpiresAt: null,
+            updatedAt: now,
+          })
+          .where(and(eq(importJobs.status, "running"), eq(importJobs.cancelRequested, true), lte(importJobs.leaseExpiresAt, now)))
+          .returning({ id: importJobs.id });
+        const exhausted = await tx
+          .update(importJobs)
+          .set({
+            status: "failed",
+            resumePhase: null,
+            errorCode: "expired",
+            retryAt: null,
+            leaseOwner: null,
+            leaseToken: null,
+            leaseExpiresAt: null,
+            updatedAt: now,
+          })
+          .where(and(eq(importJobs.status, "running"), eq(importJobs.cancelRequested, false), gte(importJobs.attempt, 3), lte(importJobs.leaseExpiresAt, now)))
+          .returning({ id: importJobs.id });
+        const terminalIds = [...cancelled, ...exhausted].map((row) => row.id);
+        if (terminalIds.length > 0) await tx.delete(importJobImages).where(inArray(importJobImages.jobId, terminalIds));
+
         const [candidate] = await tx
           .select()
           .from(importJobs)
           .where(
-            or(
-              eq(importJobs.status, "queued"),
-              and(eq(importJobs.status, "failed"), eq(importJobs.phase, "retry_scheduled"), lte(importJobs.retryAt, now)),
-              and(eq(importJobs.status, "running"), lte(importJobs.leaseExpiresAt, now)),
+            and(
+              lt(importJobs.attempt, 3),
+              or(
+                eq(importJobs.status, "queued"),
+                and(eq(importJobs.status, "failed"), eq(importJobs.phase, "retry_scheduled"), lte(importJobs.retryAt, now)),
+                and(eq(importJobs.status, "running"), lte(importJobs.leaseExpiresAt, now)),
+              ),
             ),
           )
           .orderBy(asc(importJobs.createdAt), asc(importJobs.id))
