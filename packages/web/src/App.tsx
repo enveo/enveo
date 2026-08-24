@@ -59,6 +59,9 @@ const InstallSheet = lazy(() => import("./components/InstallSheet").then((m) => 
 const EnvActionsSheet = lazy(() => import("./components/EnvActionsSheet").then((m) => ({ default: m.EnvActionsSheet })));
 const InstallBanner = lazy(() => import("./components/InstallBanner").then((m) => ({ default: m.InstallBanner })));
 const WideShell = lazy(() => import("./components/wide/WideShell").then((m) => ({ default: m.WideShell })));
+// Wide boot shell (PR7 Task 1) — mount A only; the phone boot path (below) never imports this,
+// so it never fetches the chunk (proved in this task's verification notes).
+const BootShellWide = lazy(() => import("./components/BootShellWide"));
 
 const initialTransactionFilters = (): TransactionFilters => ({
   accountIds: new Set(),
@@ -616,6 +619,20 @@ export default function App() {
   if (startupPresentation(bootStatus) === "splash") return <StartupSplash />;
 
   if (unauthed || locked || foreign) {
+    const bootView = unauthed ? "login" : foreign ? "foreign" : "unlock";
+    const bootInner = unauthed ? <LoginScreen /> : <LazyChunk>{foreign ? <ForeignReplicaScreen /> : <UnlockScreen />}</LazyChunk>;
+    // Wide (fold/desktop): the boot shell replaces the phone card entirely — brand column +
+    // content region, both inside their OWN lazy chunk (PR7 Task 1). The phone branch below is
+    // untouched byte-for-byte, so a phone boot never fetches BootShellWide's chunk.
+    if (mode !== "phone") {
+      return (
+        <LazyChunk>
+          <BootShellWide mode={mode} view={bootView}>
+            {bootInner}
+          </BootShellWide>
+        </LazyChunk>
+      );
+    }
     return (
       <div style={backdrop}>
         <div
@@ -635,9 +652,7 @@ export default function App() {
           }}
         >
           <StyleInjector />
-          <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", paddingTop: "env(safe-area-inset-top)" }}>
-            {unauthed ? <LoginScreen /> : <LazyChunk>{foreign ? <ForeignReplicaScreen /> : <UnlockScreen />}</LazyChunk>}
-          </div>
+          <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", paddingTop: "env(safe-area-inset-top)" }}>{bootInner}</div>
         </div>
       </div>
     );
