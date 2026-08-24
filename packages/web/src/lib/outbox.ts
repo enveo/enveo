@@ -333,6 +333,8 @@ export function toDeadLetter(entry: OutboxEntry, error: string): void {
 
 export const size = (): number => entries.length;
 
+export const isDurable = (): boolean => !persist.isDurableBroken();
+
 export const getDeadLetters = (): readonly DeadLetter[] => deadLetters;
 
 /** Copy of the queue in order — for replay at boot and fullResync. */

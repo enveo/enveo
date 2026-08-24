@@ -54,6 +54,43 @@ afterEach(() => {
 });
 
 describe("plain import upload drafts", () => {
+  it("persists exact apply identities and counts without storing recognized result data", async () => {
+    await importJobStorage.putApplyProgress(SCOPE, JOB_ID, {
+      appliedRowIds: ["row-one", "row-two", "row-one"],
+      skippedRowIds: ["row-three"],
+    });
+
+    expect(await importJobStorage.getApplyProgress(SCOPE, JOB_ID)).toEqual({
+      appliedRowIds: ["row-one", "row-two"],
+      appliedCount: 2,
+      skippedRowIds: ["row-three"],
+      skippedCount: 1,
+    });
+    expect(JSON.stringify(await idbGet("meta", JSON.stringify(["import-apply-progress", 2, OWNER_ID, BUDGET_ID, JOB_ID])))).not.toContain("Private result");
+  });
+
+  it("atomically keeps one prepared transaction identity and merges progress across tabs", async () => {
+    // given: two tabs prepare and then account for different rows at the same time
+    const prepared = await Promise.all([
+      importJobStorage.prepareApplyRow(SCOPE, JOB_ID, "row-one", "transaction-from-tab-one"),
+      importJobStorage.prepareApplyRow(SCOPE, JOB_ID, "row-one", "transaction-from-tab-two"),
+    ]);
+
+    await Promise.all([
+      importJobStorage.mergeApplyProgress(SCOPE, JOB_ID, { appliedRowIds: ["row-one"] }),
+      importJobStorage.mergeApplyProgress(SCOPE, JOB_ID, { skippedRowIds: ["row-two"] }),
+    ]);
+
+    // then: both tabs use the same mutation id and neither durable identity is lost
+    expect(new Set(prepared).size).toBe(1);
+    expect(await importJobStorage.getApplyProgress(SCOPE, JOB_ID)).toEqual({
+      appliedRowIds: ["row-one"],
+      appliedCount: 1,
+      skippedRowIds: ["row-two"],
+      skippedCount: 1,
+    });
+  });
+
   it("persists the canonical request and keeps the same idempotent draft on retry", async () => {
     const createdAt = new Date("2026-08-24T10:00:00.000Z");
     const first = await importJobStorage.createDraft(SCOPE, draftInput(), createdAt);

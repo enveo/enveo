@@ -11,6 +11,7 @@ const ACCOUNT = "33333333-3333-3333-3333-333333333333";
 const ID = "11111111-1111-1111-1111-111111111111";
 const OTHER_BUDGET = "44444444-4444-4444-4444-444444444444";
 const OTHER_ID = "55555555-5555-5555-5555-555555555555";
+const TXN_ID = "66666666-6666-4666-8666-666666666666";
 const IMAGE = "data:image/png;base64,AA==";
 
 function ledger(provider: "rules" | "enveo" | "openai" = "openai", model = "gpt-5.6-luna", budgetId = BUDGET): ClientLedger {
@@ -153,7 +154,7 @@ afterEach(() => {
 });
 
 describe("import job manager", () => {
-  it("retains partial apply identities across review remounts and clears them only after completion", async () => {
+  it("retains exact applied and skipped identities across a manager reload and clears them only after completion", async () => {
     // given: a ready job remains owned by the active manager scope
     const state = new FakeState();
     state.status = "ready";
@@ -174,16 +175,46 @@ describe("import job manager", () => {
     // when: two interrupted attempts report an overlapping applied row
     await manager.recordApplied(ID, ["row-one"]);
     await manager.recordApplied(ID, ["row-one", "row-two"]);
+    await manager.recordSkipped(ID, ["row-three"]);
 
-    // then: a remounted review receives stable distinct identities/counts
-    expect(await manager.appliedProgress(ID)).toEqual({ appliedRowIds: ["row-one", "row-two"], appliedCount: 2 });
-    expect(await importJobStorage.getAppliedCount({ ownerId: "user-a", budgetId: BUDGET }, ID)).toBe(2);
+    // then: a newly constructed manager receives stable distinct identities/counts from storage
+    manager.stop();
+    const restarted = new ImportJobManager({
+      state,
+      ownerId: async () => "user-a",
+      tierMeta: () => ({ tier: "plain", epoch: 0 }),
+      ...(() => {
+        const adapters = ports([]);
+        return { createPlain: adapters.plain, createE2ee: adapters.e2ee };
+      })(),
+      randomId: () => ID,
+      visible: () => true,
+    });
+    restarted.start();
+    await restarted.create({ accountId: ACCOUNT, locale: "en-US", images: [IMAGE] });
+    expect(await restarted.appliedProgress(ID)).toEqual({
+      appliedRowIds: ["row-one", "row-two"],
+      appliedCount: 2,
+      skippedRowIds: ["row-three"],
+      skippedCount: 1,
+    });
+    expect(await importJobStorage.getApplyProgress({ ownerId: "user-a", budgetId: BUDGET }, ID)).toEqual({
+      appliedRowIds: ["row-one", "row-two"],
+      appliedCount: 2,
+      skippedRowIds: ["row-three"],
+      skippedCount: 1,
+    });
 
     // and: successful completion ends the recovery record
-    await manager.complete(ID, { appliedCount: 2, skippedCount: 0 });
-    expect(await manager.appliedProgress(ID)).toEqual({ appliedRowIds: [], appliedCount: 0 });
-    expect(await importJobStorage.getAppliedCount({ ownerId: "user-a", budgetId: BUDGET }, ID)).toBe(0);
-    manager.stop();
+    await restarted.complete(ID, { appliedCount: 2, skippedCount: 1 });
+    expect(await restarted.appliedProgress(ID)).toEqual({ appliedRowIds: [], appliedCount: 0, skippedRowIds: [], skippedCount: 0 });
+    expect(await importJobStorage.getApplyProgress({ ownerId: "user-a", budgetId: BUDGET }, ID)).toEqual({
+      appliedRowIds: [],
+      appliedCount: 0,
+      skippedRowIds: [],
+      skippedCount: 0,
+    });
+    restarted.stop();
   });
 
   it("routes completion counts to the job's owning plain or encrypted adapter", async () => {
@@ -213,6 +244,64 @@ describe("import job manager", () => {
       expect(calls).not.toContain(`${tier === "plain" ? "e2ee" : "plain"}.complete`);
       manager.stop();
     }
+  });
+
+  it("recovers the transaction/progress interruption boundary by durable transaction identity", async () => {
+    // given: a blank-source row receives a durable transaction id before local mutation
+    const state = new FakeState();
+    state.status = "ready";
+    const ids = [ID, TXN_ID];
+    const adapters = ports([]);
+    const manager = new ImportJobManager({
+      state,
+      ownerId: async () => "user-a",
+      tierMeta: () => ({ tier: "plain", epoch: 0 }),
+      createPlain: adapters.plain,
+      createE2ee: adapters.e2ee,
+      randomId: () => ids.shift()!,
+      visible: () => true,
+    });
+    manager.start();
+    await manager.create({ accountId: ACCOUNT, locale: "en-US", images: [IMAGE] });
+    expect(await manager.prepareAppliedRow(ID, "blank-row")).toBe(TXN_ID);
+
+    // when: the transaction becomes durable but the final applied-progress write is interrupted
+    state.currentLedger!.transactions.push({
+      id: TXN_ID,
+      type: "expense",
+      accountId: ACCOUNT,
+      toAccountId: null,
+      amount: 1200,
+      date: "2026-08-24",
+      isRefund: false,
+      envelopeId: null,
+      placeId: null,
+      categoryId: null,
+      name: "Blank source",
+      note: null,
+      tag: null,
+      sourceRef: null,
+      allocationFromEnvelopeId: null,
+      allocationToEnvelopeId: null,
+      items: [],
+      createdAt: "2026-08-24T10:00:00.000Z",
+    });
+    manager.stop();
+    const restarted = new ImportJobManager({
+      state,
+      ownerId: async () => "user-a",
+      tierMeta: () => ({ tier: "plain", epoch: 0 }),
+      createPlain: adapters.plain,
+      createE2ee: adapters.e2ee,
+      randomId: () => ID,
+      visible: () => true,
+    });
+    restarted.start();
+    await restarted.create({ accountId: ACCOUNT, locale: "en-US", images: [IMAGE] });
+
+    // then: reload promotes the prepared row to applied without source_ref evidence
+    expect(await restarted.appliedProgress(ID)).toMatchObject({ appliedRowIds: ["blank-row"], appliedCount: 1 });
+    restarted.stop();
   });
 
   it("starts once but does not derive a scope or resume jobs until replica boot is ready", async () => {

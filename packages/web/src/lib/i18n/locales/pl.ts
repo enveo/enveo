@@ -85,6 +85,7 @@ export const pl: Dict = {
   "The server credential vault is not configured. Ask the server operator to enable it.":
     "Sejf kluczy na serwerze nie jest skonfigurowany. Poproś operatora serwera o jego włączenie.",
   AVAILABLE: "DOSTĘPNE",
+  "Already added by this import": "Już dodano w tym imporcie",
   "Already exists": "Już istnieje",
   "Conflicts with transaction history": "Sprzeczne z historią transakcji",
   "Date unknown": "Nieznana data",

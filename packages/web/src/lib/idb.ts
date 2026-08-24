@@ -153,6 +153,19 @@ class IdbBackend implements StorageBackend {
     return requestToPromise(tx.objectStore(store).getAll());
   }
 
+  async mutateMeta(key: IDBValidKey, update: (current: unknown) => unknown): Promise<unknown> {
+    const db = await this.open();
+    if (!db) return this.fallback.mutateMeta(key, update);
+    const tx = db.transaction("meta", "readwrite");
+    const done = txDone(tx);
+    const store = tx.objectStore("meta");
+    const current = await requestToPromise(store.get(key));
+    const next = update(current);
+    store.put(next, key);
+    await done;
+    return structuredClone(next);
+  }
+
   async put(store: StoreName, value: unknown, key?: IDBValidKey): Promise<void> {
     const db = await this.open();
     if (!db) return this.fallback.put(store, value, key);
@@ -419,6 +432,11 @@ export async function idbGet<T>(store: StoreName, key: IDBValidKey): Promise<T |
 
 export async function idbGetAll<T>(store: StoreName): Promise<T[]> {
   return (await activeBackend().getAll(store)) as T[];
+}
+
+/** Atomic read-modify-write for one metadata value, including across browser tabs. */
+export async function idbMutateMeta<T>(key: IDBValidKey, update: (current: unknown) => T): Promise<T> {
+  return (await activeBackend().mutateMeta(key, update)) as T;
 }
 
 /** put — `key` required for "meta" (out-of-line keys), omitted for keyPath stores. */

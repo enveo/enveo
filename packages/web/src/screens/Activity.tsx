@@ -1,13 +1,12 @@
 import type { StateResponse } from "@enveo/shared";
 import { useCallback, useEffect, useState } from "react";
-import { ImportActivityBadge } from "../components/ImportActivityBadge";
 import { ImportProgress, importProgressPresentation } from "../components/ImportProgress";
 import { ImportSheet } from "../components/ImportSheet";
 import { useTheme } from "../lib/contexts";
 import { type Message, msg, useT } from "../lib/i18n";
 import { Ico } from "../lib/icons";
 import { importJobManager } from "../lib/importJobs/manager";
-import type { ImportActivityItem } from "../lib/importJobs/store";
+import { type ImportActivityItem, importActivityAttention, isScheduledImportRetry } from "../lib/importJobs/store";
 import { CORAL, P, TEAL } from "../lib/theme";
 
 export interface ImportActivitySections {
@@ -31,9 +30,9 @@ export function activitySections(items: readonly ImportActivityItem[], now = new
   }
   const visible = [...newest.values()].sort((left, right) => right.updatedAt.localeCompare(left.updatedAt) || right.id.localeCompare(left.id));
   return {
-    active: visible.filter((item) => item.status === "queued" || item.status === "running"),
+    active: visible.filter((item) => item.status === "queued" || item.status === "running" || isScheduledImportRetry(item)),
     ready: visible.filter((item) => item.status === "ready"),
-    failed: visible.filter((item) => item.status === "failed"),
+    failed: visible.filter((item) => importActivityAttention(item) === "failed"),
     completed: visible.filter((item) => item.status === "completed" && Date.parse(item.expiresAt) > now.getTime()),
   };
 }
@@ -62,9 +61,9 @@ export function ActivityScreen({ state, onMenu }: { state: StateResponse; onMenu
   }, []);
 
   useEffect(() => {
+    const unsubscribe = importJobManager.subscribe(() => setItems(importJobManager.activityItems()));
     void refresh();
-    const timer = setInterval(() => void refresh(), 2_000);
-    return () => clearInterval(timer);
+    return unsubscribe;
   }, [refresh]);
 
   const sections = activitySections(items);
@@ -80,53 +79,61 @@ export function ActivityScreen({ state, onMenu }: { state: StateResponse; onMenu
       <section style={{ marginTop: 18 }}>
         <h2 style={{ margin: "0 0 8px", fontSize: 12, textTransform: "uppercase", letterSpacing: 0.7, color: C.mute }}>{t(title)}</h2>
         <div style={{ display: "flex", flexDirection: "column", gap: 9 }}>
-          {jobs.map((job) => (
-            <article key={job.id} style={{ background: C.card, border: `1px solid ${C.line}`, borderRadius: 14, padding: "12px 13px" }}>
-              <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "flex-start" }}>
-                <div>
-                  <div style={{ color: C.text, fontSize: 14, fontWeight: 700 }}>
-                    {t(job.tier === "e2ee" ? msg("Local encrypted import") : msg("Screenshot import"))}
+          {jobs.map((job) => {
+            const scheduledRetry = isScheduledImportRetry(job);
+            return (
+              <article key={job.id} style={{ background: C.card, border: `1px solid ${C.line}`, borderRadius: 14, padding: "12px 13px" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "flex-start" }}>
+                  <div>
+                    <div style={{ color: C.text, fontSize: 14, fontWeight: 700 }}>
+                      {t(job.tier === "e2ee" ? msg("Local encrypted import") : msg("Screenshot import"))}
+                    </div>
+                    <div style={{ color: C.mute, fontSize: 10.5, marginTop: 2 }}>{date(job.updatedAt)}</div>
                   </div>
-                  <div style={{ color: C.mute, fontSize: 10.5, marginTop: 2 }}>{date(job.updatedAt)}</div>
+                  {job.status === "ready" && <span style={{ color: TEAL, fontSize: 11, fontWeight: 700 }}>{t("Ready to review")}</span>}
+                  {job.status === "failed" && !scheduledRetry && <span style={{ color: CORAL, fontSize: 11, fontWeight: 700 }}>{t("Needs attention")}</span>}
                 </div>
-                {job.status === "ready" && <span style={{ color: TEAL, fontSize: 11, fontWeight: 700 }}>{t("Ready to review")}</span>}
-                {job.status === "failed" && <span style={{ color: CORAL, fontSize: 11, fontWeight: 700 }}>{t("Needs attention")}</span>}
-              </div>
-              {job.status === "completed" && (
-                <div style={{ color: C.soft, fontSize: 12, marginTop: 7 }}>
-                  {t("Added: {added} · Skipped: {skipped}", { added: job.appliedCount, skipped: job.skippedCount })}
-                </div>
-              )}
-              {job.status === "ready" && (
-                <button type="button" onClick={() => setSelectedJobId(job.id)} style={primaryButton}>
-                  {t("Review import")}
-                </button>
-              )}
-              {job.status === "failed" && (
-                <>
-                  <div role="alert" style={{ color: CORAL, fontSize: 12, lineHeight: 1.4, marginTop: 8 }}>
-                    {t(importProgressPresentation(job).message)}
+                {job.status === "completed" && (
+                  <div style={{ color: C.soft, fontSize: 12, marginTop: 7 }}>
+                    {t("Added: {added} · Skipped: {skipped}", { added: job.appliedCount, skipped: job.skippedCount })}
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => void importJobManager.retry(job.id).then(refresh)}
-                    style={{ ...primaryButton, background: C.bg, color: C.text, border: `1px solid ${C.line}` }}
-                  >
-                    {t("Retry import")}
+                )}
+                {job.status === "ready" && (
+                  <button type="button" onClick={() => setSelectedJobId(job.id)} style={primaryButton}>
+                    {t("Review import")}
                   </button>
-                </>
-              )}
-              {(job.status === "completed" || job.status === "failed") && (
-                <button type="button" onClick={() => void dismiss(job)} style={{ ...linkButton, color: C.mute }}>
-                  {t(activityDismissMessage(job))}
-                </button>
-              )}
-              {(job.status === "queued" || job.status === "running") && (
-                <ImportProgress item={job} showBackground={false} onBackground={() => {}} onCancel={() => void importJobManager.cancel(job.id).then(refresh)} />
-              )}
-              <div style={{ color: C.mute, fontSize: 10.5, marginTop: 7 }}>{t("Expires {date}", { date: date(job.expiresAt) })}</div>
-            </article>
-          ))}
+                )}
+                {job.status === "failed" && !scheduledRetry && (
+                  <>
+                    <div role="alert" style={{ color: CORAL, fontSize: 12, lineHeight: 1.4, marginTop: 8 }}>
+                      {t(importProgressPresentation(job).message)}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => void importJobManager.retry(job.id).then(refresh)}
+                      style={{ ...primaryButton, background: C.bg, color: C.text, border: `1px solid ${C.line}` }}
+                    >
+                      {t("Retry import")}
+                    </button>
+                  </>
+                )}
+                {(job.status === "completed" || (job.status === "failed" && !scheduledRetry)) && (
+                  <button type="button" onClick={() => void dismiss(job)} style={{ ...linkButton, color: C.mute }}>
+                    {t(activityDismissMessage(job))}
+                  </button>
+                )}
+                {(job.status === "queued" || job.status === "running" || scheduledRetry) && (
+                  <ImportProgress
+                    item={job}
+                    showBackground={false}
+                    onBackground={() => {}}
+                    onCancel={() => void importJobManager.cancel(job.id).then(refresh)}
+                  />
+                )}
+                <div style={{ color: C.mute, fontSize: 10.5, marginTop: 7 }}>{t("Expires {date}", { date: date(job.expiresAt) })}</div>
+              </article>
+            );
+          })}
         </div>
       </section>
     );
@@ -167,10 +174,6 @@ export function ActivityScreen({ state, onMenu }: { state: StateResponse; onMenu
       )}
     </div>
   );
-}
-
-export default function ActivityEntry(props: { onOpen: () => void } | { state: StateResponse; onMenu: () => void }) {
-  return "onOpen" in props ? <ImportActivityBadge onOpen={props.onOpen} /> : <ActivityScreen state={props.state} onMenu={props.onMenu} />;
 }
 
 const iconButton = { background: "none", border: "none", cursor: "pointer", padding: 4, display: "flex" } as const;

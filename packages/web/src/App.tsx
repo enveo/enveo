@@ -3,7 +3,6 @@ import { lazy, useEffect, useMemo, useRef, useState, useSyncExternalStore } from
 import { BottomNav, Drawer, type ScreenId, StyleInjector } from "./components/chrome";
 import { LazyChunk, useOpenedOnce } from "./components/lazy";
 import { StartupSplash } from "./components/StartupSplash";
-import { SyncBadge } from "./components/SyncBadge";
 import { UpdatePrompt } from "./components/UpdatePrompt";
 // Type-only imports elsewhere in this file already keep the REST of `panel.ts` free of runtime
 // weight (see `backFallback`'s own comment below on why it does NOT import from here) —
@@ -63,7 +62,9 @@ const EnvEdit = lazy(() => import("./screens/Budget").then((m) => ({ default: m.
 const OnboardingScreen = lazy(() => import("./screens/Onboarding").then((m) => ({ default: m.OnboardingScreen })));
 const TransactionsScreen = lazy(() => import("./screens/Transactions").then((m) => ({ default: m.TransactionsScreen })));
 const AccountsScreen = lazy(() => import("./screens/Accounts").then((m) => ({ default: m.AccountsScreen })));
-const Activity = lazy(() => import("./screens/Activity"));
+const ActivityScreen = lazy(() => import("./screens/Activity").then((m) => ({ default: m.ActivityScreen })));
+const ImportActivityBadge = lazy(() => import("./components/ImportActivityBadge").then((m) => ({ default: m.ImportActivityBadge })));
+const SyncBadge = lazy(() => import("./components/SyncBadge").then((m) => ({ default: m.SyncBadge })));
 const EnvelopeScreen = lazy(() => import("./screens/Envelope").then((m) => ({ default: m.EnvelopeScreen })));
 const UnlockScreen = lazy(() => import("./screens/Unlock").then((m) => ({ default: m.UnlockScreen })));
 const ForeignReplicaScreen = lazy(() => import("./screens/ForeignReplica").then((m) => ({ default: m.ForeignReplicaScreen })));
@@ -755,7 +756,7 @@ export default function App() {
       )}
       {primaryScreen === "activity" && (
         <LazyChunk onDismiss={() => nav("start")}>
-          <Activity state={state} onMenu={() => setDrawer(true)} />
+          <ActivityScreen state={state} onMenu={() => setDrawer(true)} />
         </LazyChunk>
       )}
       {primaryScreen === "reports" && (
@@ -1086,9 +1087,11 @@ export default function App() {
         {/* badge anchors top-right; on Add the header is the type tabs → collision, hide it */}
         {screen !== "addExpense" && (
           <>
-            <SyncBadge onOpenSync={() => nav("settings")} />
             <LazyChunk variant="silent">
-              <Activity onOpen={() => nav("activity")} />
+              <SyncBadge onOpenSync={() => nav("settings")} />
+            </LazyChunk>
+            <LazyChunk variant="silent">
+              <ImportActivityBadge onOpen={() => nav("activity")} />
             </LazyChunk>
           </>
         )}

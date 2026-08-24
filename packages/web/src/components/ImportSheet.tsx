@@ -11,6 +11,7 @@ import { formatMoney, isLight } from "../lib/format";
 import { useT } from "../lib/i18n";
 import { Glyph, Ico } from "../lib/icons";
 import { storageMode } from "../lib/idb";
+import type { ImportApplyProgress } from "../lib/importJobStorage";
 import { importJobManager } from "../lib/importJobs/manager";
 import type { ImportActivityItem } from "../lib/importJobs/store";
 import {
@@ -29,6 +30,7 @@ import {
   recognitionCandidatesForDryRun,
   reconcileImportJobResult,
 } from "../lib/localImport";
+import * as outbox from "../lib/outbox";
 import { store } from "../lib/store";
 import { assertOwnReplica } from "../lib/sync";
 import { CORAL, font, TEAL, TRANSFER, tint } from "../lib/theme";
@@ -97,7 +99,7 @@ export function ImportSheet({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [doneStats, setDoneStats] = useState({ added: 0, dup: 0 });
-  const [partialStats, setPartialStats] = useState<{ appliedRowIds: string[]; appliedCount: number } | null>(null);
+  const [partialStats, setPartialStats] = useState<ImportApplyProgress | null>(null);
   const [sourceAccountUnavailable, setSourceAccountUnavailable] = useState(false);
   const [showConsent, setShowConsent] = useState(false);
   const [pendingProcess, setPendingProcess] = useState(false);
@@ -128,36 +130,42 @@ export function ImportSheet({
     const readyRevision = `${job.id}:${job.updatedAt}`;
     if (openedReadyRevision.current === readyRevision) return;
     openedReadyRevision.current = readyRevision;
-    const ledger = store.getLedger();
-    if (!ledger) {
-      setError(t("The local replica is not ready."));
-      return;
-    }
-    const recognition = reconcileImportJobResult({ result: job.result, ledger, accountId: job.accountId });
-    const sourceAccount = ledger.accounts.find((account) => account.id === job.accountId);
-    const accountInvalid = !sourceAccount || sourceAccount.archived;
-    const candidates = recognitionCandidatesForDryRun(recognition, ledger);
-    const dry = accountInvalid ? { results: [] } : planLocalImport({ ledger, globalAccountId: job.accountId, items: candidates, dryRun: true });
-    const automaticEnvelopeId = ledger.accounts.find((account) => account.id === job.accountId)?.automaticEnvelopeId;
-    setAccountId(job.accountId);
-    setItems(
-      buildImportReviewRows({
-        recognition,
-        ledger,
-        dryRunResults: dry.results,
-        automaticEnvelopeId,
-        budgetCurrency: ledger.budgets[0]?.currency ?? currency,
-      }),
-    );
-    setEdited({});
-    setEditedAutomaticDefaults({});
     const generation = viewGeneration.current;
-    void importJobManager.appliedProgress(job.id).then((recoveredProgress) => {
-      if (generation === viewGeneration.current) setPartialStats(recoveredProgress.appliedCount > 0 ? recoveredProgress : null);
+    void (async () => {
+      const recoveredProgress = await importJobManager.appliedProgress(job.id);
+      if (generation !== viewGeneration.current) return;
+      const ledger = store.getLedger();
+      if (!ledger) {
+        setError(t("The local replica is not ready."));
+        return;
+      }
+      const recognition = reconcileImportJobResult({ result: job.result!, ledger, accountId: job.accountId! });
+      const sourceAccount = ledger.accounts.find((account) => account.id === job.accountId);
+      const accountInvalid = !sourceAccount || sourceAccount.archived;
+      const candidates = recognitionCandidatesForDryRun(recognition, ledger);
+      const dry = accountInvalid ? { results: [] } : planLocalImport({ ledger, globalAccountId: job.accountId!, items: candidates, dryRun: true });
+      const automaticEnvelopeId = ledger.accounts.find((account) => account.id === job.accountId)?.automaticEnvelopeId;
+      setAccountId(job.accountId!);
+      setItems(
+        buildImportReviewRows({
+          recognition,
+          ledger,
+          dryRunResults: dry.results,
+          automaticEnvelopeId,
+          budgetCurrency: ledger.budgets[0]?.currency ?? currency,
+          appliedRowIds: recoveredProgress.appliedRowIds,
+          skippedRowIds: recoveredProgress.skippedRowIds,
+        }),
+      );
+      setEdited({});
+      setEditedAutomaticDefaults({});
+      setPartialStats(recoveredProgress.appliedCount > 0 || recoveredProgress.skippedCount > 0 ? recoveredProgress : null);
+      setSourceAccountUnavailable(accountInvalid);
+      reviewE2eeEpoch.current = job.source === "e2ee" ? job.epoch : null;
+      setPhase("review");
+    })().catch(() => {
+      if (generation === viewGeneration.current) setError(t("The local replica is not ready."));
     });
-    setSourceAccountUnavailable(accountInvalid);
-    reviewE2eeEpoch.current = job.source === "e2ee" ? job.epoch : null;
-    setPhase("review");
   }, [currency, job, show, t]);
 
   // iOS/WebKit: the full-screen item editor is a position:fixed portal on <body>
@@ -275,6 +283,7 @@ export function ImportSheet({
       }
       const ledger = store.getLedger();
       if (!ledger) throw new Error("no_local_replica");
+      const previouslyApplied = await importJobManager.appliedProgress(job.id);
       const recognition = reconcileImportJobResult({ result: job.result, ledger, accountId: job.accountId });
       const sourceAccount = ledger.accounts.find((account) => account.id === job.accountId);
       const accountInvalid = !sourceAccount || sourceAccount.archived;
@@ -288,6 +297,8 @@ export function ImportSheet({
         dryRunResults: dry.results,
         automaticEnvelopeId,
         budgetCurrency: ledger.budgets[0]?.currency ?? currency,
+        appliedRowIds: previouslyApplied.appliedRowIds,
+        skippedRowIds: previouslyApplied.skippedRowIds,
       }).map((row) => ({ ...row, include: row.duplicateStatus === "exists" ? false : (previousById.get(row.rowId)?.include ?? row.include) }));
       const currentEdited = { ...edited };
       let invalidatedEdit = false;
@@ -324,24 +335,44 @@ export function ImportSheet({
       setSourceAccountUnavailable(accountInvalid);
       if (accountInvalid || importReviewBlockingCount(currentRows, currentEdited) > 0) return;
       const chosen: ImportApplyItem[] = reviewedImportRowsForApply({ rows: currentRows, edited: currentEdited, editedAutomaticDefaults });
+      const chosenRowIds = new Set(chosen.flatMap((item) => (item.importRowId ? [item.importRowId] : [])));
+      const proposalRowIds = [...new Set(job.result.proposals.map((proposal) => proposal.rowId))];
+      await importJobManager.recordSkipped(
+        job.id,
+        proposalRowIds.filter((rowId) => !chosenRowIds.has(rowId) && !previouslyApplied.appliedRowIds.includes(rowId)),
+      );
       const plan = planLocalImport({ ledger, globalAccountId: job.accountId, items: chosen, dryRun: false });
-      const progress = applyLocalImportRecoverably(plan);
-      const previouslyApplied = await importJobManager.appliedProgress(job.id);
-      const appliedCount = job.appliedCount + previouslyApplied.appliedCount + progress.appliedCount;
+      await applyLocalImportRecoverably(plan, undefined, {
+        prepare: (rowId) => importJobManager.prepareAppliedRow(job.id, rowId),
+        applied: async (rowId) => {
+          await outbox.flushed();
+          if (!outbox.isDurable()) throw new Error("local_persistence_failed");
+          await importJobManager.recordApplied(job.id, [rowId]);
+        },
+      });
+      const completedProgress = await importJobManager.appliedProgress(job.id);
+      const accountedRowIds = new Set([...completedProgress.appliedRowIds, ...completedProgress.skippedRowIds]);
+      if (proposalRowIds.some((rowId) => !accountedRowIds.has(rowId))) throw new Error("import_apply_incomplete");
+      const appliedCount = Math.max(job.appliedCount, proposalRowIds.filter((rowId) => completedProgress.appliedRowIds.includes(rowId)).length);
       const skippedCount = Math.max(job.skippedCount, job.proposalCount - appliedCount);
       try {
         await importJobManager.complete(job.id, { appliedCount, skippedCount });
       } catch (completionError) {
-        throw new PartialImportApplyError(completionError, progress);
+        throw new PartialImportApplyError(completionError, {
+          appliedRowIds: completedProgress.appliedRowIds,
+          appliedCount: completedProgress.appliedCount,
+          skippedCount: completedProgress.skippedCount,
+        });
       }
       setLastAccountId(job.accountId); // per-device preference (same as on the Add screen)
       setDoneStats({ added: appliedCount, dup: skippedCount });
       setPhase("done");
     } catch (e) {
       if (e instanceof PartialImportApplyError) {
-        if (job) await importJobManager.recordApplied(job.id, e.progress.appliedRowIds);
-        const recoveredProgress = job ? await importJobManager.appliedProgress(job.id) : { appliedRowIds: [], appliedCount: 0 };
-        setPartialStats(recoveredProgress.appliedCount > 0 ? recoveredProgress : null);
+        const recoveredProgress = job
+          ? await importJobManager.appliedProgress(job.id)
+          : { appliedRowIds: [], appliedCount: 0, skippedRowIds: [], skippedCount: 0 };
+        setPartialStats(recoveredProgress.appliedCount > 0 || recoveredProgress.skippedCount > 0 ? recoveredProgress : null);
         const ledger = store.getLedger();
         if (ledger && job?.result && job.accountId) {
           const recognition = reconcileImportJobResult({ result: job.result, ledger, accountId: job.accountId });
@@ -364,6 +395,8 @@ export function ImportSheet({
               dryRunResults: dry.results,
               automaticEnvelopeId,
               budgetCurrency: ledger.budgets[0]?.currency ?? currency,
+              appliedRowIds: recoveredProgress.appliedRowIds,
+              skippedRowIds: recoveredProgress.skippedRowIds,
             }).map((row) => ({ ...row, include: row.duplicateStatus === "exists" ? false : (previousById.get(row.rowId)?.include ?? row.include) })),
           );
           setSourceAccountUnavailable(accountInvalid);
@@ -508,7 +541,7 @@ export function ImportSheet({
 
         {phase === "progress" &&
           (job ? (
-            job.status === "failed" ? (
+            job.status === "failed" && job.phase !== "retry_scheduled" ? (
               <div style={{ textAlign: "center", padding: "12px 0" }}>
                 <div role="alert" style={{ color: CORAL, fontSize: 13, lineHeight: 1.45 }}>
                   {t("The import needs attention. Retry it here or continue from Activity.")}
@@ -719,9 +752,15 @@ export function ImportSheet({
 
             {error && <div style={{ fontSize: 12.5, color: CORAL, margin: "10px 0" }}>{error}</div>}
 
-            {partialStats && partialStats.appliedCount > 0 && (
+            {partialStats && (partialStats.appliedCount > 0 || partialStats.skippedCount > 0) && (
               <div role="status" style={{ fontSize: 12.5, color: C.warn, margin: "10px 0" }}>
-                {t("Some rows were already added before the interruption. They now appear as existing and will not be added twice.")}
+                {t("Added: {added} · Skipped: {skipped}", { added: partialStats.appliedCount, skipped: partialStats.skippedCount })}
+                {partialStats.appliedCount > 0 && (
+                  <>
+                    <br />
+                    {t("Some rows were already added before the interruption. They now appear as existing and will not be added twice.")}
+                  </>
+                )}
               </div>
             )}
 

@@ -23,6 +23,7 @@ export interface ImportReviewRow {
   requiresReview: boolean;
   blockingIssues: ImportBlockingIssue[];
   duplicateStatus: ImportDupStatus;
+  alreadyApplied: boolean;
   sourceRef: string;
   rawTextLines: string[];
   date: string | null;
@@ -115,7 +116,8 @@ export function reviewBadges(row: ImportReviewRow): ImportReviewBadge[] {
     badges.push({ label: msg("Refund"), tone: "positive" });
   }
   if (row.semanticKind === "cashback_or_reward") badges.push({ label: msg("Reward / income"), tone: "positive" });
-  if (row.duplicateStatus === "exists") badges.push({ label: msg("Already exists"), tone: "neutral" });
+  if (row.alreadyApplied) badges.push({ label: msg("Already added by this import"), tone: "neutral" });
+  else if (row.duplicateStatus === "exists") badges.push({ label: msg("Already exists"), tone: "neutral" });
   if (row.duplicateStatus === "probable") badges.push({ label: msg("Probable duplicate"), tone: "warning" });
   if (row.blockingIssues.includes("assignment_unavailable")) badges.push({ label: msg("Saved assignment is unavailable"), tone: "warning" });
   for (const reason of row.reviewReasons) {
@@ -184,11 +186,16 @@ export function buildImportReviewRows(args: {
   dryRunResults: ImportApplyResponse["results"];
   automaticEnvelopeId: string | null | undefined;
   budgetCurrency: string;
+  appliedRowIds?: readonly string[];
+  skippedRowIds?: readonly string[];
 }): ImportReviewRow[] {
   const proposals = new Map(args.recognition.proposals.map((proposal) => [proposal.rowId, proposal]));
+  const appliedRowIds = new Set(args.appliedRowIds ?? []);
+  const skippedRowIds = new Set(args.skippedRowIds ?? []);
   let dryIndex = 0;
   return args.recognition.rows.map((rawRow) => {
     const proposal = proposals.get(rawRow.rowId);
+    const alreadyApplied = appliedRowIds.has(rawRow.rowId);
     const sourceRef = (proposal?.sourceRows ?? [rawRow.rowId])
       .flatMap((rowId) => args.recognition.rows.find((row) => row.rowId === rowId)?.rawTextLines ?? [])
       .join("\n")
@@ -202,7 +209,8 @@ export function buildImportReviewRows(args: {
         reviewReasons: ["missing_fact"],
         requiresReview: true,
         blockingIssues: ["missing_fact"],
-        duplicateStatus: "new",
+        duplicateStatus: alreadyApplied ? "exists" : "new",
+        alreadyApplied,
         sourceRef,
         rawTextLines: rawRow.rawTextLines,
         date: rawRow.date,
@@ -216,7 +224,7 @@ export function buildImportReviewRows(args: {
     const receivesDryResult =
       proposal.selected && proposal.disposition === "candidate" && proposal.date !== null && proposal.amount !== null && proposal.type !== null;
     const dryResult = receivesDryResult ? args.dryRunResults[dryIndex++] : undefined;
-    const duplicateStatus = effectiveDuplicateStatus(proposal.duplicateStatus, dryResult?.status);
+    const duplicateStatus = alreadyApplied ? "exists" : effectiveDuplicateStatus(proposal.duplicateStatus, dryResult?.status);
     const item = completeCandidateItem({
       proposal,
       recognition: args.recognition,
@@ -238,12 +246,13 @@ export function buildImportReviewRows(args: {
       requiresReview: proposal.reviewReasons.length > 0 || duplicateStatus === "probable" || blockingIssues.length > 0,
       blockingIssues,
       duplicateStatus,
+      alreadyApplied,
       sourceRef,
       rawTextLines: rawRow.rawTextLines,
       date: proposal.date,
       amount: proposal.amount,
       currency: proposal.currency,
-      include: duplicateStatus !== "exists" && (reviewItem !== null || proposal.selected),
+      include: duplicateStatus !== "exists" && !skippedRowIds.has(rawRow.rowId) && (reviewItem !== null || proposal.selected),
       editable: reviewItem !== null,
       item: reviewItem ? { ...reviewItem, include: reviewItem.include } : null,
     };

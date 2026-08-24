@@ -225,6 +225,37 @@ describe("plain durable import adapter", () => {
     expect(phases.at(-1)).toBe("ready");
   });
 
+  it("hydrates server activity once on start without polling again while idle", async () => {
+    let listCalls = 0;
+    let tick: (() => void) | undefined;
+    const activity = createImportActivityStore();
+    const adapter = new PlainImportJobAdapter({
+      scope: SCOPE,
+      activity,
+      remote: remote({
+        list: async () => {
+          listCalls++;
+          return [detail({ status: "completed", phase: "completed" })];
+        },
+      }),
+      visible: () => true,
+      scheduleInterval: (callback) => {
+        tick = callback;
+        return 1 as unknown as ReturnType<typeof setInterval>;
+      },
+      clearScheduledInterval: () => {},
+    });
+
+    adapter.start();
+    for (let attempt = 0; attempt < 50 && listCalls < 1; attempt++) await new Promise((resolve) => setTimeout(resolve, 0));
+    tick?.();
+    await Promise.resolve();
+
+    expect(listCalls).toBe(1);
+    expect(activity.get(ID)?.status).toBe("completed");
+    adapter.stop();
+  });
+
   it("does not cancel server work when the last observer unsubscribes", async () => {
     const api = remote();
     const adapter = new PlainImportJobAdapter({ scope: SCOPE, activity: createImportActivityStore(), remote: api });
@@ -251,6 +282,16 @@ describe("plain durable import adapter", () => {
     await refresh;
 
     expect(activity.list()).toEqual([]);
+  });
+
+  it("evicts a stale server item that is absent from the authoritative refresh", async () => {
+    const activity = createImportActivityStore();
+    activity.upsert(importActivityFromServer(detail({ id: ID, status: "completed", phase: "completed" })));
+    const adapter = new PlainImportJobAdapter({ scope: SCOPE, activity, remote: remote({ list: async () => [] }) });
+
+    await adapter.refresh(true);
+
+    expect(activity.get(ID)).toBeUndefined();
   });
 
   it("does not republish a delayed upload after its scope capability is revoked", async () => {

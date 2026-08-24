@@ -23,6 +23,16 @@ export interface ImportActivityItem extends ImportJobProgress {
 
 export type ImportActivityListener = (item: ImportActivityItem | undefined) => void;
 
+export function isScheduledImportRetry(item: ImportActivityItem): boolean {
+  return item.status === "failed" && item.phase === "retry_scheduled" && item.retryAt !== null;
+}
+
+export function importActivityAttention(item: ImportActivityItem): "ready" | "failed" | null {
+  if (item.status === "ready") return "ready";
+  if (item.status === "failed" && !isScheduledImportRetry(item)) return "failed";
+  return null;
+}
+
 /** Revocable authority for one authenticated owner/budget/tier activation. */
 export interface ImportJobScopeCapability {
   isCurrent(): boolean;
@@ -102,6 +112,7 @@ export interface ImportActivityStore {
   list(): ImportActivityItem[];
   observe(id: string, listener: ImportActivityListener): () => void;
   subscribe(listener: () => void): () => void;
+  getVersion(): number;
   clear(): void;
 }
 
@@ -109,7 +120,9 @@ export function createImportActivityStore(): ImportActivityStore {
   const items = new Map<string, ImportActivityItem>();
   const observers = new Map<string, Set<ImportActivityListener>>();
   const listeners = new Set<() => void>();
+  let version = 0;
   const notify = (id: string) => {
+    version++;
     const item = items.get(id);
     for (const listener of observers.get(id) ?? []) listener(item);
     for (const listener of listeners) listener();
@@ -140,6 +153,7 @@ export function createImportActivityStore(): ImportActivityStore {
       listeners.add(listener);
       return () => listeners.delete(listener);
     },
+    getVersion: () => version,
     clear() {
       const ids = [...items.keys()];
       items.clear();

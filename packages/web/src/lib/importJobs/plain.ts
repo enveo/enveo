@@ -41,7 +41,11 @@ function isDefinitiveNotFound(error: unknown): boolean {
 }
 
 function shouldPoll(item: ImportActivityItem, budgetId: string): boolean {
-  return item.budgetId === budgetId && (item.source === "plain-draft" || (item.source === "plain" && ["queued", "running", "ready"].includes(item.status)));
+  return (
+    item.budgetId === budgetId &&
+    (item.source === "plain-draft" ||
+      (item.source === "plain" && (["queued", "running", "ready"].includes(item.status) || (item.status === "failed" && item.phase === "retry_scheduled"))))
+  );
 }
 
 class StalePlainImportAdapter extends Error {
@@ -95,7 +99,7 @@ export class PlainImportJobAdapter {
     this.windowTarget?.addEventListener("online", this.refreshWhenVisible);
     this.windowTarget?.addEventListener("focus", this.refreshWhenVisible);
     this.documentTarget?.addEventListener("visibilitychange", this.refreshWhenVisible);
-    this.refreshWhenVisible();
+    if (this.visible()) void this.refresh(true).catch(() => {});
   }
 
   stop(): void {
@@ -232,6 +236,10 @@ export class PlainImportJobAdapter {
         } else {
           this.publish(importActivityFromServer(summary));
         }
+      }
+      const serverIds = new Set(jobs.map((job) => job.id));
+      for (const item of this.options.activity.list()) {
+        if (item.budgetId === this.options.scope.budgetId && item.source === "plain" && !serverIds.has(item.id)) this.options.activity.remove(item.id);
       }
     })();
     this.refreshPromise = refresh.finally(() => {

@@ -214,7 +214,7 @@ describe("local E2EE import planning", () => {
     expect(deletedAccount.proposals.every((proposal) => proposal.sourceAccountInvalid && !proposal.selected)).toBe(true);
   });
 
-  it("reports partial row identities and makes retry skip the transaction already written", () => {
+  it("records each successful row before attempting the next mutation", async () => {
     // given: two selected rows are planned, while the mutation port fails on the second write
     const firstItem = item({ importRowId: "row-one", rawPlace: "ROW ONE" });
     const secondItem = item({ importRowId: "row-two", date: "2026-08-03", amount: 2600, rawPlace: "ROW TWO" });
@@ -232,10 +232,12 @@ describe("local E2EE import planning", () => {
       },
     };
 
+    const durableRows: string[] = [];
+
     // when: applying stops after the first durable local mutation
     let partial: PartialImportApplyError | null = null;
     try {
-      applyLocalImportRecoverably(firstPlan, mutations);
+      await applyLocalImportRecoverably(firstPlan, mutations, { applied: async (rowId) => void durableRows.push(rowId) });
     } catch (error) {
       if (error instanceof PartialImportApplyError) partial = error;
       else throw error;
@@ -243,6 +245,7 @@ describe("local E2EE import planning", () => {
 
     // then: the ready job can report exactly what crossed the mutation boundary
     expect(partial?.progress).toEqual({ appliedRowIds: ["row-one"], appliedCount: 1, skippedCount: 0 });
+    expect(durableRows).toEqual(["row-one"]);
     expect(created).toHaveLength(1);
 
     // and: current-ledger retry sees that write as exact and writes only the remaining row
@@ -256,11 +259,35 @@ describe("local E2EE import planning", () => {
     });
     const retry = planLocalImport({ ledger: live, globalAccountId: U(2), items: [firstItem, secondItem], dryRun: false });
     const retrySpy = mutationSpy();
-    const completed = applyLocalImportRecoverably(retry, retrySpy.mutations);
+    const completed = await applyLocalImportRecoverably(retry, retrySpy.mutations);
 
     expect(retry.results.map((result) => result.status)).toEqual(["exists", "added"]);
     expect(retrySpy.created.transactions).toHaveLength(1);
     expect(completed).toEqual({ appliedRowIds: ["row-two"], appliedCount: 1, skippedCount: 1 });
+  });
+
+  it("stops before the next transaction when durable row progress is interrupted", async () => {
+    // given: two blank-source rows cannot be recovered through source_ref duplicate matching
+    const plan = planLocalImport({
+      ledger: ledger(),
+      globalAccountId: U(2),
+      items: [item({ importRowId: "blank-one", rawPlace: null }), item({ importRowId: "blank-two", rawPlace: null, date: "2026-08-03", amount: 2600 })],
+      dryRun: false,
+    });
+    const spy = mutationSpy();
+
+    // when: persisting the identity after the first local write is interrupted
+    let partial: PartialImportApplyError | null = null;
+    try {
+      await applyLocalImportRecoverably(plan, spy.mutations, { applied: async () => Promise.reject(new Error("progress_write_interrupted")) });
+    } catch (error) {
+      if (error instanceof PartialImportApplyError) partial = error;
+      else throw error;
+    }
+
+    // then: the successful identity is exposed and no second transaction can cross the boundary
+    expect(partial?.progress.appliedRowIds).toEqual(["blank-one"]);
+    expect(spy.created.transactions).toHaveLength(1);
   });
 
   it("does not project an unsafe unselected recognition proposal into the legacy review", () => {

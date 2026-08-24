@@ -1,28 +1,19 @@
-import { useEffect, useState } from "react";
+import { useSyncExternalStore } from "react";
 import { useTheme } from "../lib/contexts";
 import { useT } from "../lib/i18n";
 import { importJobManager } from "../lib/importJobs/manager";
+import { importActivityAttention } from "../lib/importJobs/store";
 import { CORAL, TEAL } from "../lib/theme";
 
 export function ImportActivityBadge({ onOpen }: { onOpen: () => void }) {
   const C = useTheme();
   const { tp } = useT();
-  const [counts, setCounts] = useState({ ready: 0, failed: 0 });
-  useEffect(() => {
-    let active = true;
-    const refresh = async () => {
-      const items = await importJobManager.list();
-      if (active) {
-        setCounts({ ready: items.filter((item) => item.status === "ready").length, failed: items.filter((item) => item.status === "failed").length });
-      }
-    };
-    void refresh().catch(() => {});
-    const timer = setInterval(() => void refresh().catch(() => {}), 2_000);
-    return () => {
-      active = false;
-      clearInterval(timer);
-    };
-  }, []);
+  useSyncExternalStore(importJobManager.subscribe, importJobManager.activityVersion);
+  const items = importJobManager.activityItems();
+  const counts = {
+    ready: items.filter((item) => importActivityAttention(item) === "ready").length,
+    failed: items.filter((item) => importActivityAttention(item) === "failed").length,
+  };
   const count = counts.ready + counts.failed;
   if (count === 0) return null;
   const label = tp("{n} import needs attention — open Activity | {n} imports need attention — open Activity", count);

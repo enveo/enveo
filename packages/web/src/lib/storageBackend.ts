@@ -48,6 +48,8 @@ export interface ImportDraftStateMutation extends ImportRecordScope {
 export interface StorageBackend {
   get(store: StoreName, key: IDBValidKey): Promise<unknown>;
   getAll(store: StoreName): Promise<unknown[]>;
+  /** Atomically replace one out-of-line metadata value from its current value. */
+  mutateMeta(key: IDBValidKey, update: (current: unknown) => unknown): Promise<unknown>;
   /** put — `key` required for "meta" (out-of-line keys), omitted for keyPath stores. */
   put(store: StoreName, value: unknown, key?: IDBValidKey): Promise<void>;
   /** Multiple puts in ONE transaction (atomic: all or nothing). */
@@ -108,6 +110,12 @@ export class MemoryBackend implements StorageBackend {
   }
   getAll(store: StoreName): Promise<unknown[]> {
     return Promise.resolve([...this.mem(store).values()].map((value) => this.clone(value)));
+  }
+  mutateMeta(key: IDBValidKey, update: (current: unknown) => unknown): Promise<unknown> {
+    const current = this.mem("meta").get(key);
+    const next = this.clone(update(current === undefined ? undefined : this.clone(current)));
+    this.mem("meta").set(key, next);
+    return Promise.resolve(this.clone(next));
   }
   put(store: StoreName, value: unknown, key?: IDBValidKey): Promise<void> {
     const copy = this.clone(value);

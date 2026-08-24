@@ -356,6 +356,43 @@ describe("screenshot import review view model", () => {
     expect(importReviewDoneStats(review, { added: 0, skipped: 1 })).toEqual({ added: 0, dup: 2 });
   });
 
+  it("treats a durably applied row as already added even without duplicate evidence", () => {
+    // given: the first row crossed the local mutation boundary before a reload, but the
+    // screenshot carried no raw text and therefore produced no source_ref ledger evidence
+    const review = buildImportReviewRows({
+      recognition: recognition([row("blank", { rawTextLines: [] })], [proposal("blank")]),
+      ledger: ledger(),
+      dryRunResults: [dryResult({ rawPlace: null, status: "added" })],
+      automaticEnvelopeId: null,
+      budgetCurrency: "EUR",
+      appliedRowIds: ["blank"],
+    });
+
+    // when/then: the durable row identity, rather than source text, makes it non-actionable
+    expect(review[0]).toMatchObject({ rowId: "blank", alreadyApplied: true, duplicateStatus: "exists", include: false, editable: false, item: null });
+    expect(reviewBadges(review[0]!).map((badge) => badge.label)).toContain("Already added by this import");
+    expect(reviewRowControlLabels(review[0]!, 0)).toEqual({ select: null, edit: null });
+  });
+
+  it("restores an explicitly skipped row as unchecked while keeping it actionable", () => {
+    // given: the user unchecked a candidate before a reload
+    const review = buildImportReviewRows({
+      recognition: recognition([row("skipped")], [proposal("skipped")]),
+      ledger: ledger(),
+      dryRunResults: [dryResult()],
+      automaticEnvelopeId: null,
+      budgetCurrency: "EUR",
+      skippedRowIds: ["skipped"],
+    });
+
+    // then: reconciliation preserves that decision but still permits changing it
+    expect(review[0]).toMatchObject({ rowId: "skipped", alreadyApplied: false, duplicateStatus: "new", include: false, editable: true });
+    expect(reviewRowControlLabels(review[0]!, 0)).toEqual({
+      select: { message: "Select recognized row {n}", values: { n: 1 } },
+      edit: { message: "Edit item {n}", values: { n: 1 } },
+    });
+  });
+
   it("promotes a recognition-time new candidate to an exact duplicate from the immediate dry run", () => {
     // Break caught: the item consumed the late dry-run verdict, but the row kept the
     // stale recognition status and therefore stayed editable without an explanation.

@@ -37,6 +37,7 @@ export interface LocalImportMutationPort {
   createCategory(name: string): { id: string };
   createPlace(name: string): { id: string };
   createTxn(payload: TxnPayload): string;
+  createTxnWithId?(id: string, payload: TxnPayload): string;
 }
 
 export type CurrentImportProposal = ReconciledImportProposal & { assignmentUnavailable: boolean };
@@ -292,19 +293,31 @@ export class PartialImportApplyError extends Error {
   }
 }
 
-/** Applies one planned transaction at a time and exposes only writes that crossed
- * the local mutation boundary. A retry replans against the live ledger, so those
- * identities become exact duplicates and are never written twice. */
-export function applyLocalImportRecoverably(plan: LocalImportPlan, mutations: LocalImportMutationPort = local): LocalImportApplyProgress {
+/** Applies one planned transaction at a time and durably records its row identity before
+ * another transaction may cross the local mutation boundary. */
+export async function applyLocalImportRecoverably(
+  plan: LocalImportPlan,
+  mutations: LocalImportMutationPort = local,
+  durability: {
+    prepare?(rowId: string): Promise<string | undefined>;
+    applied(rowId: string): Promise<void>;
+  } = { applied: async () => {} },
+): Promise<LocalImportApplyProgress> {
   const progress: LocalImportApplyProgress = { appliedRowIds: [], appliedCount: 0, skippedCount: plan.skipped };
   if (plan.dryRun) return progress;
   for (const transaction of plan.transactions) {
     try {
+      const transactionId = await durability.prepare?.(transaction.rowId);
       const categoryId = transaction.categoryName ? mutations.createCategory(transaction.categoryName).id : transaction.payload.categoryId;
       const placeId = transaction.placeName ? mutations.createPlace(transaction.placeName).id : transaction.payload.placeId;
-      mutations.createTxn({ ...transaction.payload, categoryId, placeId });
+      const payload = { ...transaction.payload, categoryId, placeId };
+      if (transactionId) {
+        if (!mutations.createTxnWithId) throw new Error("import_transaction_identity_unsupported");
+        mutations.createTxnWithId(transactionId, payload);
+      } else mutations.createTxn(payload);
       progress.appliedRowIds.push(transaction.rowId);
       progress.appliedCount++;
+      await durability.applied(transaction.rowId);
     } catch (error) {
       throw new PartialImportApplyError(error, progress);
     }
