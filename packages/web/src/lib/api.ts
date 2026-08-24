@@ -17,6 +17,8 @@ import {
   type ClientLedger,
   type ImportJobDetail,
   type ImportJobSummary,
+  importJobDetailSchema,
+  importJobSummarySchema,
   type OpenAiModel,
   type ReconciledImportRecognitionResult,
 } from "@enveo/shared";
@@ -222,6 +224,10 @@ async function http<T>(method: string, path: string, body?: unknown, timeoutMs?:
   return (await res.json()) as T;
 }
 
+const importJobSummaryListSchema = importJobSummarySchema.array();
+const importJobDetailHttp = (method: string, path: string, body?: unknown): Promise<ImportJobDetail> =>
+  http<unknown>(method, path, body).then((value) => importJobDetailSchema.parse(value));
+
 /**
  * Domain writes NO LONGER go through REST — see `lib/mutate.ts` (local.*):
  * local mirror + outbox + background push. Only online-only operations
@@ -272,13 +278,13 @@ export const api = {
 
   importJobs: {
     create: (input: { id: string; budgetId: string; accountId: string; locale: AiLocale; images: string[] }) =>
-      http<ImportJobDetail>("POST", "/import/jobs", input),
-    list: () => http<ImportJobSummary[]>("GET", "/import/jobs"),
-    get: (id: string) => http<ImportJobDetail>("GET", `/import/jobs/${encodeURIComponent(id)}`),
-    cancel: (id: string, budgetId: string) => http<ImportJobDetail>("POST", `/import/jobs/${encodeURIComponent(id)}/cancel`, { budgetId }),
-    retry: (id: string, budgetId: string) => http<ImportJobDetail>("POST", `/import/jobs/${encodeURIComponent(id)}/retry`, { budgetId }),
+      importJobDetailHttp("POST", "/import/jobs", input),
+    list: (): Promise<ImportJobSummary[]> => http<unknown>("GET", "/import/jobs").then((value) => importJobSummaryListSchema.parse(value)),
+    get: (id: string) => importJobDetailHttp("GET", `/import/jobs/${encodeURIComponent(id)}`),
+    cancel: (id: string, budgetId: string) => importJobDetailHttp("POST", `/import/jobs/${encodeURIComponent(id)}/cancel`, { budgetId }),
+    retry: (id: string, budgetId: string) => importJobDetailHttp("POST", `/import/jobs/${encodeURIComponent(id)}/retry`, { budgetId }),
     complete: (id: string, input: { budgetId: string; appliedCount: number; skippedCount: number }) =>
-      http<ImportJobDetail>("POST", `/import/jobs/${encodeURIComponent(id)}/complete`, input),
+      importJobDetailHttp("POST", `/import/jobs/${encodeURIComponent(id)}/complete`, input),
   },
 
   budgetSuggest: (b: { month: string; profile: BudgetSuggestProfile; customPrompt?: string; ledger?: ClientLedger; locale: AiLocale; useAi?: boolean }) =>

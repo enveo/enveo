@@ -1,4 +1,4 @@
-import { aiLocaleSchema, type BudgetPreferences, reconcileBudgetPreferences } from "@enveo/shared";
+import { aiLocaleSchema, type BudgetPreferences, importJobDetailSchema, importJobSummarySchema, reconcileBudgetPreferences } from "@enveo/shared";
 import { and, eq } from "drizzle-orm";
 import type { Context } from "hono";
 import { Hono } from "hono";
@@ -47,6 +47,25 @@ function userId(c: RouteContext): string | null {
 
 function idParam(c: RouteContext): string {
   return z.string().uuid().parse(c.req.param("id"));
+}
+
+class InvalidImportJobPublicResponse extends Error {
+  constructor() {
+    super("invalid_import_job_public_response");
+    this.name = "InvalidImportJobPublicResponse";
+  }
+}
+
+function publicDetail(value: unknown) {
+  const parsed = importJobDetailSchema.safeParse(value);
+  if (!parsed.success) throw new InvalidImportJobPublicResponse();
+  return parsed.data;
+}
+
+function publicList(value: unknown) {
+  const parsed = importJobSummarySchema.array().safeParse(value);
+  if (!parsed.success) throw new InvalidImportJobPublicResponse();
+  return parsed.data;
 }
 
 export function createImportJobRoutes(options: ImportJobRouteOptions = {}) {
@@ -114,8 +133,9 @@ export function createImportJobRoutes(options: ImportJobRouteOptions = {}) {
         epoch: authorization.meta.epoch,
         images,
       });
+      const publicJob = publicDetail(result.job);
       if (result.created) wake();
-      return c.json(result.job, 202);
+      return c.json(publicJob, 202);
     } catch (error) {
       if (error instanceof ImportJobConflict) return c.json({ error: error.code }, 409);
       throw error;
@@ -125,14 +145,14 @@ export function createImportJobRoutes(options: ImportJobRouteOptions = {}) {
   routes.get("/import/jobs", async (c) => {
     const owner = userId(c);
     if (!owner) return c.json({ error: "unauthorized" }, 401);
-    return c.json(await repository.listForUser(owner));
+    return c.json(publicList(await repository.listForUser(owner)));
   });
 
   routes.get("/import/jobs/:id", async (c) => {
     const owner = userId(c);
     if (!owner) return c.json({ error: "unauthorized" }, 401);
     const result = await repository.getForUser(owner, idParam(c));
-    return result ? c.json(result) : c.json({ error: "not_found" }, 404);
+    return result ? c.json(publicDetail(result)) : c.json({ error: "not_found" }, 404);
   });
 
   routes.post("/import/jobs/:id/cancel", async (c) => {
@@ -140,7 +160,7 @@ export function createImportJobRoutes(options: ImportJobRouteOptions = {}) {
     const authorization = await authorizeMutation(c, body.budgetId);
     if ("response" in authorization) return authorization.response;
     const result = await repository.requestCancel(authorization.owner, idParam(c));
-    return result ? c.json(result) : c.json({ error: "not_found" }, 404);
+    return result ? c.json(publicDetail(result)) : c.json({ error: "not_found" }, 404);
   });
 
   routes.post("/import/jobs/:id/retry", async (c) => {
@@ -149,8 +169,9 @@ export function createImportJobRoutes(options: ImportJobRouteOptions = {}) {
     if ("response" in authorization) return authorization.response;
     const result = await repository.retry(authorization.owner, idParam(c));
     if (!result) return c.json({ error: "invalid_import_job_state" }, 409);
+    const publicJob = publicDetail(result);
     wake();
-    return c.json(result);
+    return c.json(publicJob);
   });
 
   routes.post("/import/jobs/:id/complete", async (c) => {
@@ -162,7 +183,7 @@ export function createImportJobRoutes(options: ImportJobRouteOptions = {}) {
     if (!current) return c.json({ error: "not_found" }, 404);
     if (current.status !== "ready") return c.json({ error: "invalid_import_job_state" }, 409);
     const result = await repository.markCompleted(authorization.owner, id, body.appliedCount, body.skippedCount);
-    return result ? c.json(result) : c.json({ error: "invalid_import_job_state" }, 409);
+    return result ? c.json(publicDetail(result)) : c.json({ error: "invalid_import_job_state" }, 409);
   });
 
   return routes;

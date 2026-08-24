@@ -16,6 +16,49 @@ import { pl } from "./i18n/locales/pl";
 /** How lib/sync.ts and lib/api.ts surface a failed request: "<status> <body>". */
 const httpError = (status: number, body: unknown) => new Error(`${status} ${JSON.stringify(body)}`);
 
+const IMPORT_JOB = {
+  id: "11111111-1111-4111-8111-111111111111",
+  budgetId: "22222222-2222-4222-8222-222222222222",
+  accountId: "33333333-3333-4333-8333-333333333333",
+  provider: { provider: "enveo", model: "gpt-5.6-luna" },
+  tier: "plain",
+  status: "queued",
+  phase: "queued",
+  resumePhase: null,
+  cancelRequested: false,
+  attempt: 0,
+  errorCode: null,
+  retryAt: null,
+  createdAt: "2026-08-24T12:00:00.000Z",
+  updatedAt: "2026-08-24T12:00:00.000Z",
+  expiresAt: "2026-08-31T12:00:00.000Z",
+  proposalCount: 0,
+  locale: "pl-PL",
+  epoch: 0,
+  result: null,
+  appliedCount: 0,
+  skippedCount: 0,
+} as const;
+
+const IMPORT_JOB_SUMMARY = {
+  id: IMPORT_JOB.id,
+  budgetId: IMPORT_JOB.budgetId,
+  accountId: IMPORT_JOB.accountId,
+  provider: IMPORT_JOB.provider,
+  tier: IMPORT_JOB.tier,
+  status: IMPORT_JOB.status,
+  phase: IMPORT_JOB.phase,
+  resumePhase: IMPORT_JOB.resumePhase,
+  cancelRequested: IMPORT_JOB.cancelRequested,
+  attempt: IMPORT_JOB.attempt,
+  errorCode: IMPORT_JOB.errorCode,
+  retryAt: IMPORT_JOB.retryAt,
+  createdAt: IMPORT_JOB.createdAt,
+  updatedAt: IMPORT_JOB.updatedAt,
+  expiresAt: IMPORT_JOB.expiresAt,
+  proposalCount: IMPORT_JOB.proposalCount,
+} as const;
+
 describe("account preferences API client", () => {
   it("sends the verified user assertion with a strict field patch", async () => {
     const originalFetch = globalThis.fetch;
@@ -71,12 +114,13 @@ describe("durable import job API client", () => {
     const originalFetch = globalThis.fetch;
     const requests: Array<{ url: string; method: string; body?: unknown }> = [];
     globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
       requests.push({
-        url: String(input),
+        url,
         method: init?.method ?? "GET",
         ...(init?.body ? { body: JSON.parse(String(init.body)) } : {}),
       });
-      return Response.json([]);
+      return Response.json(url === "/api/import/jobs" && (init?.method ?? "GET") === "GET" ? [IMPORT_JOB_SUMMARY] : IMPORT_JOB);
     }) as typeof fetch;
     const id = "11111111-1111-4111-8111-111111111111";
     const budgetId = "22222222-2222-4222-8222-222222222222";
@@ -101,6 +145,17 @@ describe("durable import job API client", () => {
       ["POST", `/api/import/jobs/${id}/complete`],
     ]);
     expect(requests.slice(3).map((request) => request.body)).toEqual([{ budgetId }, { budgetId }, { budgetId, appliedCount: 2, skippedCount: 1 }]);
+  });
+
+  it("rejects a wire detail whose lifecycle fields contradict each other", async () => {
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = (async (_input: RequestInfo | URL, _init?: RequestInit) =>
+      Response.json({ ...IMPORT_JOB, status: "ready", phase: "ready", result: null })) as typeof fetch;
+    try {
+      await expect(api.importJobs.get(IMPORT_JOB.id)).rejects.toThrow();
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
   });
 });
 

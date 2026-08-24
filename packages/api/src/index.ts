@@ -88,13 +88,9 @@ app.use(
   }),
 );
 
-app.use(
-  "/api/*",
-  bodyLimit({
-    maxSize: IMPORT_JOB_REQUEST_BODY_LIMIT_BYTES,
-    onError: (c) => c.json({ error: "too_large" }, 413),
-  }),
-);
+const generalBodyLimit = bodyLimit({ maxSize: 16 * 1024 * 1024, onError: (c) => c.json({ error: "too_large" }, 413) });
+const importJobBodyLimit = bodyLimit({ maxSize: IMPORT_JOB_REQUEST_BODY_LIMIT_BYTES, onError: (c) => c.json({ error: "too_large" }, 413) });
+app.use("/api/*", (c, next) => (c.req.method === "POST" && c.req.path === "/api/import/jobs" ? importJobBodyLimit : generalBodyLimit)(c, next));
 
 // Origin-guard (CSRF): rejects mutations from a FOREIGN Origin. Same-origin is
 // always safe — the app is served and queried from the same host (whatever the
