@@ -296,6 +296,11 @@ export default function App() {
     // `history.back()` after a save is correct here: the entry below `/add` is the screen the
     // edit came from, and `editTxn` is already cleared before popstate runs. `history.state`
     // is our own marker — see `back()` below for what `true` vs `false`/`null` mean.
+    // That "entry below /add" premise is GUARANTEED by routeToUrl keeping the add pane's URL a
+    // constant "/add" (never `?env`): two consecutive /add entries then cannot exist, so this
+    // back() can never land on a sibling /add and leave the filled form (and its enabled submit
+    // button) silently in place — the reproduced wide-panel duplicate-submit incident
+    // (routing.ts has the full mechanism).
     if (history.state === true) history.back();
     else setScreen(editReturn);
   };

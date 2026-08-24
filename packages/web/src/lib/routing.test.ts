@@ -19,6 +19,10 @@ describe("routeToUrl / parseUrl round-trip", () => {
       // it away on parse, so only assert the round-trip where it can actually survive.
       if (screen !== "reports" && reportsView !== "overview") continue;
       for (const envelopeId of [null, ENV_ID]) {
+        // The add pane never serialises ?env (its URL is the constant "/add" — see routeToUrl's
+        // duplicate-submit comment), so addExpense+envelopeId deliberately does NOT round-trip;
+        // its one-way mapping is pinned in the dedicated tests below instead.
+        if (screen === "addExpense" && envelopeId) continue;
         const route: Route = { screen, reportsView, envelopeId };
         test(`${screen} / ${reportsView} / env=${envelopeId ?? "none"}`, () => {
           expect(parse(routeToUrl(route))).toEqual(route);
@@ -43,6 +47,20 @@ describe("routeToUrl", () => {
 
   test("addExpense maps to the /add slug", () => {
     expect(routeToUrl({ screen: "addExpense", reportsView: "overview", envelopeId: null })).toBe("/add");
+  });
+
+  test("addExpense NEVER serialises ?env — the add pane's URL is a constant /add", () => {
+    // Regression pin for the wide-panel duplicate-submit incident: an envelope row clicked while
+    // the Add pane was open (invisible — add outranks envelope in resolvePanel) pushed a second
+    // /add entry ("/add?env=…"), so doneEdit's history.back() after a save landed on the sibling
+    // /add instead of the origin screen: the mounted AddScreen kept its filled form and enabled
+    // submit button, and the second click wrote a duplicate transaction. A constant /add URL
+    // makes the mid-add envView change a "none" for historyAction — no second entry can exist.
+    expect(routeToUrl({ screen: "addExpense", reportsView: "overview", envelopeId: ENV_ID })).toBe("/add");
+  });
+
+  test("a deep-linked /add?env still PARSES (old links), it is just never produced any more", () => {
+    expect(parseUrl("/add", `?env=${ENV_ID}`)).toEqual({ screen: "addExpense", reportsView: "overview", envelopeId: ENV_ID });
   });
 
   test("a non-reports screen never gets a reports subpath even if reportsView is set", () => {
