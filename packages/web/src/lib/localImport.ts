@@ -1,4 +1,13 @@
-import { buildImportDupIndex, type ClientLedger, classifyImportDup, type ReconciledImportRecognitionResult, type TxnPayload } from "@enveo/shared";
+import {
+  buildImportDupIndex,
+  type ClientLedger,
+  classifyImportDup,
+  type ImportRecognitionResult,
+  type ReconciledImportProposal,
+  type ReconciledImportRecognitionResult,
+  reconcileImportProposals,
+  type TxnPayload,
+} from "@enveo/shared";
 import type { EditedImportItem, ImportApplyItem, ImportApplyResponse, ImportItem } from "./api";
 import { expenseEnvelopeSelectionForImport } from "./automaticEnvelopeUi";
 import { local } from "./mutate";
@@ -10,6 +19,7 @@ export type LocalImportReviewItem = ImportItem & {
 };
 
 interface PlannedTransaction {
+  rowId: string;
   payload: TxnPayload;
   placeName: string | null;
   categoryName: string | null;
@@ -27,6 +37,38 @@ export interface LocalImportMutationPort {
   createCategory(name: string): { id: string };
   createPlace(name: string): { id: string };
   createTxn(payload: TxnPayload): string;
+}
+
+export type CurrentImportProposal = ReconciledImportProposal & { assignmentUnavailable: boolean };
+export type CurrentImportRecognitionResult = Omit<ReconciledImportRecognitionResult, "proposals"> & { proposals: CurrentImportProposal[] };
+
+/** Reconcile durable raw proposals against the ledger that exists now. The local
+ * assignment marker survives repeated reconciliation without entering job storage/wire data. */
+export function reconcileImportJobResult(args: {
+  result: ImportRecognitionResult | CurrentImportRecognitionResult;
+  ledger: ClientLedger;
+  accountId: string;
+}): CurrentImportRecognitionResult {
+  const activeEnvelopes = args.ledger.envelopes.filter((envelope) => !envelope.archived);
+  const activeCategories = args.ledger.categories.filter((category) => !category.archived);
+  const proposals = reconcileImportProposals({
+    proposals: args.result.proposals,
+    transactions: args.ledger.transactions,
+    accounts: args.ledger.accounts,
+    envelopes: activeEnvelopes,
+    categories: activeCategories,
+    selectedAccountId: args.accountId,
+  }).map((proposal, index) => {
+    const previous = args.result.proposals[index] as ImportRecognitionResult["proposals"][number] & { assignmentUnavailable?: boolean };
+    return {
+      ...proposal,
+      assignmentUnavailable:
+        previous.assignmentUnavailable === true ||
+        (previous.envelopeId !== null && proposal.envelopeId === null) ||
+        (previous.categoryId !== null && proposal.categoryId === null),
+    };
+  });
+  return { rows: args.result.rows, proposals };
 }
 
 /** Complete, explicitly selected ledger candidates eligible for duplicate dry-run.
@@ -209,7 +251,14 @@ export function planLocalImport(args: { ledger: ClientLedger; globalAccountId: s
       continue;
     }
     dupIndex.markSeen({ date: candidate.item.date, amount: candidate.item.amount, rawPlace: candidate.item.rawPlace });
-    if (!dryRun) transactions.push({ payload: candidate.payload, placeName: candidate.placeName, categoryName: candidate.categoryName });
+    if (!dryRun) {
+      transactions.push({
+        rowId: candidate.item.importRowId ?? candidate.item.rawPlace?.trim() ?? `${candidate.item.date}:${candidate.item.amount}`,
+        payload: candidate.payload,
+        placeName: candidate.placeName,
+        categoryName: candidate.categoryName,
+      });
+    }
     added++;
     results.push({ ...candidate.item, status: "added" });
   }
@@ -225,4 +274,40 @@ export function applyLocalImport(plan: LocalImportPlan, mutations: LocalImportMu
     }
   }
   return { added: plan.added, skipped: plan.skipped };
+}
+
+export interface LocalImportApplyProgress {
+  appliedRowIds: string[];
+  appliedCount: number;
+  skippedCount: number;
+}
+
+export class PartialImportApplyError extends Error {
+  constructor(
+    cause: unknown,
+    readonly progress: LocalImportApplyProgress,
+  ) {
+    super(cause instanceof Error ? cause.message : "import_apply_failed", { cause });
+    this.name = "PartialImportApplyError";
+  }
+}
+
+/** Applies one planned transaction at a time and exposes only writes that crossed
+ * the local mutation boundary. A retry replans against the live ledger, so those
+ * identities become exact duplicates and are never written twice. */
+export function applyLocalImportRecoverably(plan: LocalImportPlan, mutations: LocalImportMutationPort = local): LocalImportApplyProgress {
+  const progress: LocalImportApplyProgress = { appliedRowIds: [], appliedCount: 0, skippedCount: plan.skipped };
+  if (plan.dryRun) return progress;
+  for (const transaction of plan.transactions) {
+    try {
+      const categoryId = transaction.categoryName ? mutations.createCategory(transaction.categoryName).id : transaction.payload.categoryId;
+      const placeId = transaction.placeName ? mutations.createPlace(transaction.placeName).id : transaction.payload.placeId;
+      mutations.createTxn({ ...transaction.payload, categoryId, placeId });
+      progress.appliedRowIds.push(transaction.rowId);
+      progress.appliedCount++;
+    } catch (error) {
+      throw new PartialImportApplyError(error, progress);
+    }
+  }
+  return progress;
 }

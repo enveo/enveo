@@ -74,6 +74,8 @@ export interface EditedImportItem {
 export type ImportApplyItem = Omit<ImportItem, "type"> &
   Partial<EditedImportItem> & {
     type: "expense" | "income" | "transfer";
+    /** Stable Stage-A proposal identity used only by recoverable local job apply. */
+    importRowId?: string;
     force?: boolean;
     /** False distinguishes an explicitly cleared expense envelope from missing/automatic input. */
     automaticEnvelopeDefault?: boolean;

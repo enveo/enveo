@@ -33,12 +33,15 @@ export interface ImportReviewRow {
   item: LocalImportReviewItem | null;
 }
 
-export type ImportBlockingIssue = ImportReviewReason | "currency_mismatch";
+export type ImportBlockingIssue = ImportReviewReason | "currency_mismatch" | "assignment_unavailable";
 
 /** Every selected review row needs an explicit edit acknowledgement. Rows with
  * incomplete ledger facts remain blocked after editing and must be unchecked. */
 export function importReviewBlockingCount(rows: readonly ImportReviewRow[], edited: Readonly<Record<number, EditedImportItem>>): number {
-  return rows.filter((row, index) => row.include && (row.blockingIssues.length > 0 || (row.requiresReview && !edited[index]))).length;
+  return rows.filter((row, index) => {
+    const hasUnresolvableIssue = row.blockingIssues.some((issue) => issue !== "assignment_unavailable");
+    return row.include && (hasUnresolvableIssue || (row.requiresReview && !edited[index]));
+  }).length;
 }
 
 const REASON_MESSAGES: Record<ImportReviewReason, Message> = {
@@ -114,6 +117,7 @@ export function reviewBadges(row: ImportReviewRow): ImportReviewBadge[] {
   if (row.semanticKind === "cashback_or_reward") badges.push({ label: msg("Reward / income"), tone: "positive" });
   if (row.duplicateStatus === "exists") badges.push({ label: msg("Already exists"), tone: "neutral" });
   if (row.duplicateStatus === "probable") badges.push({ label: msg("Probable duplicate"), tone: "warning" });
+  if (row.blockingIssues.includes("assignment_unavailable")) badges.push({ label: msg("Saved assignment is unavailable"), tone: "warning" });
   for (const reason of row.reviewReasons) {
     const label = importReviewReasonMessage(reason);
     badges.push({ label, tone: reason === "pending_or_declined" ? "neutral" : "warning" });
@@ -223,6 +227,7 @@ export function buildImportReviewRows(args: {
     });
     const reviewItem = duplicateStatus === "exists" ? null : item;
     const blockingIssues: ImportBlockingIssue[] = importProposalBlockingReasons(proposal);
+    if ((proposal as ReconciledImportProposal & { assignmentUnavailable?: boolean }).assignmentUnavailable) blockingIssues.push("assignment_unavailable");
     if (proposal.currency && proposal.currency !== args.budgetCurrency) blockingIssues.push("currency_mismatch");
     return {
       rowId: rawRow.rowId,
@@ -238,7 +243,7 @@ export function buildImportReviewRows(args: {
       date: proposal.date,
       amount: proposal.amount,
       currency: proposal.currency,
-      include: duplicateStatus !== "exists" && proposal.selected,
+      include: duplicateStatus !== "exists" && (reviewItem !== null || proposal.selected),
       editable: reviewItem !== null,
       item: reviewItem ? { ...reviewItem, include: reviewItem.include } : null,
     };
@@ -254,7 +259,7 @@ export function reviewedImportRowsForApply(args: {
   if (importReviewBlockingCount(args.rows, args.edited) > 0) throw new Error("import_review_blocked");
   const candidates = args.rows.flatMap((row) => {
     if (row.disposition !== "candidate" || !row.item) return [];
-    return [{ ...row.item, include: row.include }];
+    return [{ ...row.item, importRowId: row.rowId, include: row.include }];
   });
   const edits: Record<number, EditedImportItem> = {};
   const automatic: Record<number, boolean> = {};

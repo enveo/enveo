@@ -53,6 +53,7 @@ const SCREEN_TITLE: Record<ScreenId, Message> = {
   budget: msg("Budget"),
   transactions: msg("Transactions"),
   accounts: msg("Accounts"),
+  activity: msg("Activity"),
   reports: msg("Reports"),
   // Unreachable here even now that Add IS a wide pane (PR6 Task 5): `BandHeader` only ever
   // receives `primaryScreen` (App.tsx), which resolves to `editReturn` while Add is open and so

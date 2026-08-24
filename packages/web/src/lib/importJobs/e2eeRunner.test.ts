@@ -107,6 +107,29 @@ afterEach(() => {
 });
 
 describe("device-local E2EE import runner", () => {
+  it("completes locally with counts and removes encrypted detail without any server boundary", async () => {
+    // given: Own OpenAI recognition produced a ready device-local result
+    const { runner, activity } = setup();
+    await runner.create(createInput());
+    await runner.resume();
+    expect(await importJobStorage.getJob(SCOPE, ID)).toMatchObject({ status: "ready", resultCiphertext: expect.stringMatching(/^v2\./) });
+
+    // when: every reviewed row has been applied or explicitly skipped
+    await runner.complete(ID, { appliedCount: 1, skippedCount: 2 });
+
+    // then: only the encrypted local record changes and retained activity contains counts, not result detail
+    expect(await importJobStorage.getJob(SCOPE, ID)).toMatchObject({
+      status: "completed",
+      phase: "completed",
+      resultCiphertext: null,
+      checkpointCiphertext: null,
+      inputCiphertext: null,
+      appliedCount: 1,
+      skippedCount: 2,
+    });
+    expect(activity.get(ID)).toMatchObject({ status: "completed", result: null, appliedCount: 1, skippedCount: 2 });
+  });
+
   it("recovers a stale running job through waiting_for_device and resumes from its encrypted extraction checkpoint", async () => {
     let unblockFirst: (() => void) | undefined;
     const firstStopped = new Promise<void>((resolve) => {

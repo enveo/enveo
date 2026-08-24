@@ -1,11 +1,13 @@
 import type { AiLocale, ImportJobDetail, ImportJobProgress, ImportJobProviderSnapshot } from "@enveo/shared";
 import {
+  idbDelete,
   idbDeleteExpiredImportDrafts,
   idbDeleteImportDraftIfMatches,
   idbDeleteImportJobIfScope,
   idbGet,
   idbGetAll,
   idbMutateImportDraftState,
+  idbPut,
   idbPutImportDraftIfAbsentOrSame,
   idbPutImportJobForScope,
   idbPutImportJobIfRevision,
@@ -43,7 +45,7 @@ export interface StoredE2eeImportJob extends ImportJobProgress {
   locale: AiLocale;
   tier: "e2ee";
   epoch: number;
-  inputCiphertext: string;
+  inputCiphertext: string | null;
   checkpointCiphertext: string | null;
   resultCiphertext: string | null;
   /** Optimistic phase-write fence for duplicate browser runners. */
@@ -67,6 +69,10 @@ const listeners = new Map<string, Set<() => void>>();
 
 function scopeKey(scope: ImportJobStorageScope): string {
   return JSON.stringify([scope.ownerId, scope.budgetId]);
+}
+
+function applyProgressKey(scope: ImportJobStorageScope, id: string): string {
+  return JSON.stringify(["import-apply-progress", 1, scope.ownerId, scope.budgetId, id]);
 }
 
 function inScope(value: { ownerId: string; budgetId: string }, scope: ImportJobStorageScope): boolean {
@@ -152,7 +158,7 @@ function persistedJob(job: StoredE2eeImportJob): StoredE2eeImportJob {
     attempt: job.attempt,
     errorCode: job.errorCode,
     retryAt: job.retryAt,
-    inputCiphertext: ciphertext(job.inputCiphertext)!,
+    inputCiphertext: ciphertext(job.inputCiphertext),
     checkpointCiphertext: ciphertext(job.checkpointCiphertext),
     resultCiphertext: ciphertext(job.resultCiphertext),
     checkpointRevision: job.checkpointRevision,
@@ -170,6 +176,23 @@ function newestFirst<T extends { id: string; updatedAt: string }>(rows: T[]): T[
 }
 
 export const importJobStorage = {
+  async getAppliedCount(scope: ImportJobStorageScope, id: string): Promise<number> {
+    assertValidScope(scope);
+    const value = await idbGet<number>("meta", applyProgressKey(scope, id));
+    return Number.isSafeInteger(value) && (value ?? -1) >= 0 ? (value ?? 0) : 0;
+  },
+
+  async putAppliedCount(scope: ImportJobStorageScope, id: string, count: number): Promise<void> {
+    assertValidScope(scope);
+    if (!Number.isSafeInteger(count) || count < 0) throw new Error("invalid_import_apply_progress");
+    await idbPut("meta", count, applyProgressKey(scope, id));
+  },
+
+  async deleteAppliedCount(scope: ImportJobStorageScope, id: string): Promise<void> {
+    assertValidScope(scope);
+    await idbDelete("meta", applyProgressKey(scope, id));
+  },
+
   subscribe(scope: ImportJobStorageScope, listener: () => void): () => void {
     assertValidScope(scope);
     const key = scopeKey(scope);

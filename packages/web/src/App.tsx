@@ -63,6 +63,7 @@ const EnvEdit = lazy(() => import("./screens/Budget").then((m) => ({ default: m.
 const OnboardingScreen = lazy(() => import("./screens/Onboarding").then((m) => ({ default: m.OnboardingScreen })));
 const TransactionsScreen = lazy(() => import("./screens/Transactions").then((m) => ({ default: m.TransactionsScreen })));
 const AccountsScreen = lazy(() => import("./screens/Accounts").then((m) => ({ default: m.AccountsScreen })));
+const Activity = lazy(() => import("./screens/Activity"));
 const EnvelopeScreen = lazy(() => import("./screens/Envelope").then((m) => ({ default: m.EnvelopeScreen })));
 const UnlockScreen = lazy(() => import("./screens/Unlock").then((m) => ({ default: m.UnlockScreen })));
 const ForeignReplicaScreen = lazy(() => import("./screens/ForeignReplica").then((m) => ({ default: m.ForeignReplicaScreen })));
@@ -752,6 +753,11 @@ export default function App() {
           />
         </LazyChunk>
       )}
+      {primaryScreen === "activity" && (
+        <LazyChunk onDismiss={() => nav("start")}>
+          <Activity state={state} onMenu={() => setDrawer(true)} />
+        </LazyChunk>
+      )}
       {primaryScreen === "reports" && (
         <LazyChunk onDismiss={() => nav("start")}>
           <ReportsScreen
@@ -1078,7 +1084,14 @@ export default function App() {
         </div>
         {!["addExpense", "settings"].includes(screen) && !onboarding && !envView && <BottomNav active={screen} onNav={nav} />}
         {/* badge anchors top-right; on Add the header is the type tabs → collision, hide it */}
-        {screen !== "addExpense" && <SyncBadge onOpenSync={() => nav("settings")} />}
+        {screen !== "addExpense" && (
+          <>
+            <SyncBadge onOpenSync={() => nav("settings")} />
+            <LazyChunk variant="silent">
+              <Activity onOpen={() => nav("activity")} />
+            </LazyChunk>
+          </>
+        )}
         {envActionsMounted && (
           <LazyChunk variant="overlay" onDismiss={() => setEnvActions(null)}>
             <EnvActionsSheet

@@ -4,7 +4,7 @@ import { IDBFactory } from "fake-indexeddb";
 import { __resetStorageForTests } from "../idb";
 import { type ImportJobStorageScope, importJobStorage } from "../importJobStorage";
 import { type PlainImportCreateInput, PlainImportJobAdapter, type PlainImportJobRemote } from "./plain";
-import { createImportActivityStore } from "./store";
+import { createImportActivityStore, type ImportActivityItem, importActivityFromServer } from "./store";
 
 const ID = "11111111-1111-1111-1111-111111111111";
 const BUDGET = "22222222-2222-2222-2222-222222222222";
@@ -58,6 +58,7 @@ function remote(overrides: Partial<PlainImportJobRemote> = {}): PlainImportJobRe
       return detail({ status: "cancelled", cancelRequested: true });
     },
     retry: async () => detail(),
+    complete: async (_id, input) => detail({ status: "completed", phase: "completed", appliedCount: input.appliedCount, skippedCount: input.skippedCount }),
     ...overrides,
     cancellations,
   };
@@ -80,6 +81,39 @@ afterEach(() => {
 });
 
 describe("plain durable import adapter", () => {
+  it("completes only through the tenant-asserted remote boundary and publishes the minimal summary", async () => {
+    // given: a ready plain job and a remote completion boundary
+    const calls: Array<{ id: string; budgetId: string; appliedCount: number; skippedCount: number }> = [];
+    const api = remote({
+      complete: async (id, input) => {
+        calls.push({ id, ...input });
+        return detail({
+          status: "completed",
+          phase: "completed",
+          result: null,
+          proposalCount: 2,
+          appliedCount: input.appliedCount,
+          skippedCount: input.skippedCount,
+        });
+      },
+    });
+    const activity = createImportActivityStore();
+    activity.upsert(
+      // use the real create mapping before the server transitions the job
+      {
+        ...importActivityFromServer(detail({ status: "ready", phase: "ready", result: { rows: [], proposals: [] }, proposalCount: 2 })),
+      },
+    );
+    const adapter = new PlainImportJobAdapter({ scope: SCOPE, activity, remote: api });
+
+    // when: the reviewed rows have all been applied or skipped locally
+    await adapter.complete(ID, { appliedCount: 1, skippedCount: 1 });
+
+    // then: counts cross the server boundary with the manager-owned budget assertion, never result data
+    expect(calls).toEqual([{ id: ID, budgetId: BUDGET, appliedCount: 1, skippedCount: 1 }]);
+    expect(activity.get(ID)).toMatchObject({ status: "completed", result: null, appliedCount: 1, skippedCount: 1 });
+  });
+
   it("persists the upload draft before the first server request and removes it only after acknowledgement", async () => {
     let draftAtRequest = false;
     const api = remote({
@@ -94,6 +128,28 @@ describe("plain durable import adapter", () => {
 
     expect(draftAtRequest).toBe(true);
     expect(await importJobStorage.getDraft(SCOPE, ID)).toBeUndefined();
+  });
+
+  it("exposes the durable uploading item before the server acknowledges creation", async () => {
+    // given: the create request remains in flight after its local draft is durable
+    const response = deferred<ImportJobDetail>();
+    const adapter = new PlainImportJobAdapter({
+      scope: SCOPE,
+      activity: createImportActivityStore(),
+      remote: remote({ create: () => response.promise }),
+    });
+    const observed: ImportActivityItem[] = [];
+
+    // when: foreground creation supplies the manager-owned observer
+    const creation = adapter.create(input(), (created) => observed.push(created));
+    while (observed.length === 0 && !(await importJobStorage.getDraft(SCOPE, ID))) await Promise.resolve();
+
+    // then: the sheet can attach/background/cancel without owning the pending request
+    expect(observed).toHaveLength(1);
+    expect(observed[0]).toMatchObject({ id: ID, source: "plain-draft", status: "queued", phase: "uploading" });
+
+    response.resolve(detail());
+    await creation;
   });
 
   it("retries the identical id and images after a lost acknowledgement", async () => {
@@ -160,7 +216,7 @@ describe("plain durable import adapter", () => {
     visible = true;
     await adapter.refresh();
     tick?.();
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    for (let attempt = 0; attempt < 50 && listCalls < 2; attempt++) await new Promise((resolve) => setTimeout(resolve, 0));
 
     unsubscribe();
     adapter.stop();

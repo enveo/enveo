@@ -12,7 +12,7 @@ export type Route = { screen: ScreenId; reportsView: ReportView; envelopeId: str
 
 // Most screens are their own slug; only these two are irregular (bundle-budget shrink,
 // pr4-context.md §11 — one small exceptions table beats two full hand-written ones).
-const REGULAR: readonly ScreenId[] = ["budget", "transactions", "accounts", "reports", "settings"];
+const REGULAR: readonly ScreenId[] = ["budget", "transactions", "accounts", "reports", "activity", "settings"];
 const TABS: readonly ReportTab[] = ["assets", "cashflow", "spending", "budgets", "goals", "month", "trends"];
 
 export function routeToUrl(r: Route): string {

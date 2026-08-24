@@ -107,6 +107,7 @@ function ports(calls: string[]) {
     refresh: async () => void calls.push("plain.refresh"),
     cancel: async () => void calls.push("plain.cancel"),
     retry: async () => void calls.push("plain.retry"),
+    complete: async () => void calls.push("plain.complete"),
     dismiss: () => calls.push("plain.dismiss"),
   });
   const e2ee = (_scope: ImportJobStorageScope, activity: ImportActivityStore): ImportJobManagerE2eePort => ({
@@ -121,6 +122,7 @@ function ports(calls: string[]) {
     list: async () => [],
     cancel: async () => void calls.push("e2ee.cancel"),
     retry: async () => void calls.push("e2ee.retry"),
+    complete: async () => void calls.push("e2ee.complete"),
     dismiss: async () => void calls.push("e2ee.dismiss"),
   });
   return { plain, e2ee };
@@ -151,6 +153,68 @@ afterEach(() => {
 });
 
 describe("import job manager", () => {
+  it("retains partial apply identities across review remounts and clears them only after completion", async () => {
+    // given: a ready job remains owned by the active manager scope
+    const state = new FakeState();
+    state.status = "ready";
+    const manager = new ImportJobManager({
+      state,
+      ownerId: async () => "user-a",
+      tierMeta: () => ({ tier: "plain", epoch: 0 }),
+      ...(() => {
+        const adapters = ports([]);
+        return { createPlain: adapters.plain, createE2ee: adapters.e2ee };
+      })(),
+      randomId: () => ID,
+      visible: () => true,
+    });
+    manager.start();
+    await manager.create({ accountId: ACCOUNT, locale: "en-US", images: [IMAGE] });
+
+    // when: two interrupted attempts report an overlapping applied row
+    await manager.recordApplied(ID, ["row-one"]);
+    await manager.recordApplied(ID, ["row-one", "row-two"]);
+
+    // then: a remounted review receives stable distinct identities/counts
+    expect(await manager.appliedProgress(ID)).toEqual({ appliedRowIds: ["row-one", "row-two"], appliedCount: 2 });
+    expect(await importJobStorage.getAppliedCount({ ownerId: "user-a", budgetId: BUDGET }, ID)).toBe(2);
+
+    // and: successful completion ends the recovery record
+    await manager.complete(ID, { appliedCount: 2, skippedCount: 0 });
+    expect(await manager.appliedProgress(ID)).toEqual({ appliedRowIds: [], appliedCount: 0 });
+    expect(await importJobStorage.getAppliedCount({ ownerId: "user-a", budgetId: BUDGET }, ID)).toBe(0);
+    manager.stop();
+  });
+
+  it("routes completion counts to the job's owning plain or encrypted adapter", async () => {
+    // given: the active replica has one job in the merged activity view
+    for (const tier of ["plain", "e2ee"] as const) {
+      const state = new FakeState();
+      state.status = "ready";
+      const calls: string[] = [];
+      const adapters = ports(calls);
+      const manager = new ImportJobManager({
+        state,
+        ownerId: async () => "user-a",
+        tierMeta: () => ({ tier, epoch: tier === "e2ee" ? 3 : 0 }),
+        createPlain: adapters.plain,
+        createE2ee: adapters.e2ee,
+        randomId: () => ID,
+        visible: () => true,
+      });
+      manager.start();
+      await manager.create({ accountId: ACCOUNT, locale: "en-US", images: [IMAGE] });
+
+      // when: the UI accounts for every selected or skipped proposal
+      await manager.complete(ID, { appliedCount: 1, skippedCount: 2 });
+
+      // then: only the adapter that owns the job receives completion
+      expect(calls).toContain(`${tier}.complete`);
+      expect(calls).not.toContain(`${tier === "plain" ? "e2ee" : "plain"}.complete`);
+      manager.stop();
+    }
+  });
+
   it("starts once but does not derive a scope or resume jobs until replica boot is ready", async () => {
     const state = new FakeState();
     const calls: string[] = [];
@@ -362,6 +426,7 @@ describe("import job manager", () => {
           refresh: async () => {},
           cancel: async () => {},
           retry: async () => {},
+          complete: async () => {},
           dismiss: () => {},
         };
       },
@@ -444,6 +509,7 @@ describe("import job manager", () => {
           refresh: async () => {},
           cancel: async () => {},
           retry: async () => {},
+          complete: async () => {},
           dismiss: () => {},
         };
       },

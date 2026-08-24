@@ -315,7 +315,6 @@ export const ptBR: Dict = {
   "No local copy will be saved. This browser session ends when you close the app.":
     "Nenhuma cópia local será salva. Esta sessão do navegador termina quando você fecha o aplicativo.",
   "No spending in this period.": "Nenhum gasto neste período.",
-  "No transactions were recognized in the screenshots.": "Nenhuma transação foi reconhecida nas capturas de tela.",
   "No transactions.": "Nenhuma transação.",
   "Not available with your OpenAI key.": "Indisponível com a sua chave da OpenAI.",
   "Not sending": "Sem envio",

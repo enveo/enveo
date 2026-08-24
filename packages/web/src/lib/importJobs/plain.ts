@@ -16,6 +16,7 @@ export interface PlainImportJobRemote {
   get(id: string): Promise<ImportJobDetail>;
   cancel(id: string, budgetId: string): Promise<ImportJobDetail>;
   retry(id: string, budgetId: string): Promise<ImportJobDetail>;
+  complete(id: string, input: { budgetId: string; appliedCount: number; skippedCount: number }): Promise<ImportJobDetail>;
 }
 
 export interface PlainImportJobAdapterOptions {
@@ -169,7 +170,7 @@ export class PlainImportJobAdapter {
     return item;
   }
 
-  async create(input: PlainImportCreateInput): Promise<ImportActivityItem> {
+  async create(input: PlainImportCreateInput, onCreated?: (item: ImportActivityItem) => void): Promise<ImportActivityItem> {
     if (!this.isCurrent()) throw new StalePlainImportAdapter();
     const draft = await importJobStorage.createDraft(this.options.scope, {
       ...input,
@@ -179,7 +180,9 @@ export class PlainImportJobAdapter {
     });
     if (!this.isCurrent()) return importActivityFromDraft(draft);
     this.dismissed.delete(draft.id);
-    this.publish(importActivityFromDraft(draft));
+    const created = importActivityFromDraft(draft);
+    this.publish(created);
+    onCreated?.(created);
     return this.upload(draft);
   }
 
@@ -293,6 +296,12 @@ export class PlainImportJobAdapter {
     }
     const job = await this.remote.retry(id, this.options.scope.budgetId);
     this.publish(importActivityFromServer(job));
+  }
+
+  async complete(id: string, counts: { appliedCount: number; skippedCount: number }): Promise<void> {
+    if (!this.isCurrent()) return;
+    const job = await this.remote.complete(id, { budgetId: this.options.scope.budgetId, ...counts });
+    if (this.isCurrent()) this.publish(importActivityFromServer(job));
   }
 
   dismiss(id: string): void {

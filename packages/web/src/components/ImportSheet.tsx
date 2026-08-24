@@ -1,27 +1,34 @@
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { runImportExtract } from "../lib/ai";
 import { importFlow } from "../lib/aiProvider/capabilities";
 import { useAiProvider } from "../lib/aiProvider/useAiProvider";
-import { api, apiErrorMessage, type EditedImportItem, type ImportApplyItem, type ImportApplyResponse, type StateResponse } from "../lib/api";
+import { apiErrorMessage, type EditedImportItem, type ImportApplyItem, type StateResponse } from "../lib/api";
 import { automaticEnvelopePreview, formatAutomaticEnvelopeEffect } from "../lib/automaticEnvelopeUi";
 import { useCurrency, useTheme } from "../lib/contexts";
 import * as e2ee from "../lib/e2ee";
 import { formatMoney, isLight } from "../lib/format";
 import { useT } from "../lib/i18n";
 import { Glyph, Ico } from "../lib/icons";
+import { storageMode } from "../lib/idb";
+import { importJobManager } from "../lib/importJobs/manager";
+import type { ImportActivityItem } from "../lib/importJobs/store";
 import {
   buildImportReviewRows,
   type ImportReviewRow,
   importReviewBlockingCount,
-  importReviewDoneStats,
   reviewBadges,
   reviewedImportRowsForApply,
   reviewRowControlLabels,
 } from "../lib/importReview";
 import { preferredAccountId, setLastAccountId } from "../lib/lastAccount";
-import { applyLocalImport, planLocalImport, recognitionCandidatesForDryRun } from "../lib/localImport";
+import {
+  applyLocalImportRecoverably,
+  PartialImportApplyError,
+  planLocalImport,
+  recognitionCandidatesForDryRun,
+  reconcileImportJobResult,
+} from "../lib/localImport";
 import { store } from "../lib/store";
 import { assertOwnReplica } from "../lib/sync";
 import { CORAL, font, TEAL, TRANSFER, tint } from "../lib/theme";
@@ -30,6 +37,7 @@ import { AddScreen } from "../screens/Add";
 import { AutomaticEnvelopeEffect } from "../screens/add/AutomaticEnvelopeEffect";
 import { AiConsentSheet } from "./AiConsentSheet";
 import { Sheet } from "./chrome";
+import { ImportProgress, runImportProgressAction, sharedDeviceImportWarning } from "./ImportProgress";
 
 /**
  * Expense import from screenshots (Apple Wallet / bank history).
@@ -38,7 +46,7 @@ import { Sheet } from "./chrome";
  * Step 2: review recognized items (duplicates marked) → local optimistic operations.
  */
 
-type Phase = "pick" | "review" | "done";
+type Phase = "pick" | "progress" | "review" | "done";
 /** Downscales an image (longer side ≤ maxSide) and converts to a JPEG data-URL. */
 async function downscale(f: File, maxSide = 1600): Promise<string> {
   const bmp = await createImageBitmap(f);
@@ -54,7 +62,19 @@ async function downscale(f: File, maxSide = 1600): Promise<string> {
 
 const errMsg = apiErrorMessage;
 
-export function ImportSheet({ show, onClose, state, onApplied }: { show: boolean; onClose: () => void; state: StateResponse; onApplied?: () => void }) {
+export function ImportSheet({
+  show,
+  onClose,
+  state,
+  onApplied,
+  initialJobId,
+}: {
+  show: boolean;
+  onClose: () => void;
+  state: StateResponse;
+  onApplied?: () => void;
+  initialJobId?: string;
+}) {
   const C = useTheme();
   const { t, tp, lang } = useT();
   const currency = useCurrency();
@@ -71,10 +91,14 @@ export function ImportSheet({ show, onClose, state, onApplied }: { show: boolean
   const [accountId, setAccountId] = useState(() => preferredAccountId(accounts, accounts[0]?.id ?? ""));
   const [images, setImages] = useState<string[]>([]);
   const [phase, setPhase] = useState<Phase>("pick");
+  const [jobId, setJobId] = useState<string | null>(initialJobId ?? null);
+  const [job, setJob] = useState<ImportActivityItem | undefined>();
   const [items, setItems] = useState<ImportReviewRow[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [doneStats, setDoneStats] = useState({ added: 0, dup: 0 });
+  const [partialStats, setPartialStats] = useState<{ appliedRowIds: string[]; appliedCount: number } | null>(null);
+  const [sourceAccountUnavailable, setSourceAccountUnavailable] = useState(false);
   const [showConsent, setShowConsent] = useState(false);
   const [pendingProcess, setPendingProcess] = useState(false);
   // corrections from the full-screen editor (AddScreen in draft mode), keyed by item index
@@ -84,6 +108,57 @@ export function ImportSheet({ show, onClose, state, onApplied }: { show: boolean
   const fileRef = useRef<HTMLInputElement | null>(null);
   const editorWasOpen = useRef(false);
   const reviewE2eeEpoch = useRef<number | null>(null);
+  const openedReadyRevision = useRef<string | null>(null);
+  const viewGeneration = useRef(0);
+
+  useEffect(() => {
+    if (!show || !initialJobId) return;
+    setJobId(initialJobId);
+    setPhase("progress");
+    void importJobManager.list().then((listed) => setJob(listed.find((candidate) => candidate.id === initialJobId)));
+  }, [initialJobId, show]);
+
+  useEffect(() => {
+    if (!show || !jobId) return;
+    return importJobManager.observe(jobId, setJob);
+  }, [jobId, show]);
+
+  useEffect(() => {
+    if (!show || !job || job.status !== "ready" || !job.result || !job.accountId) return;
+    const readyRevision = `${job.id}:${job.updatedAt}`;
+    if (openedReadyRevision.current === readyRevision) return;
+    openedReadyRevision.current = readyRevision;
+    const ledger = store.getLedger();
+    if (!ledger) {
+      setError(t("The local replica is not ready."));
+      return;
+    }
+    const recognition = reconcileImportJobResult({ result: job.result, ledger, accountId: job.accountId });
+    const sourceAccount = ledger.accounts.find((account) => account.id === job.accountId);
+    const accountInvalid = !sourceAccount || sourceAccount.archived;
+    const candidates = recognitionCandidatesForDryRun(recognition, ledger);
+    const dry = accountInvalid ? { results: [] } : planLocalImport({ ledger, globalAccountId: job.accountId, items: candidates, dryRun: true });
+    const automaticEnvelopeId = ledger.accounts.find((account) => account.id === job.accountId)?.automaticEnvelopeId;
+    setAccountId(job.accountId);
+    setItems(
+      buildImportReviewRows({
+        recognition,
+        ledger,
+        dryRunResults: dry.results,
+        automaticEnvelopeId,
+        budgetCurrency: ledger.budgets[0]?.currency ?? currency,
+      }),
+    );
+    setEdited({});
+    setEditedAutomaticDefaults({});
+    const generation = viewGeneration.current;
+    void importJobManager.appliedProgress(job.id).then((recoveredProgress) => {
+      if (generation === viewGeneration.current) setPartialStats(recoveredProgress.appliedCount > 0 ? recoveredProgress : null);
+    });
+    setSourceAccountUnavailable(accountInvalid);
+    reviewE2eeEpoch.current = job.source === "e2ee" ? job.epoch : null;
+    setPhase("review");
+  }, [currency, job, show, t]);
 
   // iOS/WebKit: the full-screen item editor is a position:fixed portal on <body>
   // (sibling of #root). After it UNMOUNTS, the review panel — itself position:fixed
@@ -108,16 +183,22 @@ export function ImportSheet({ show, onClose, state, onApplied }: { show: boolean
   }, [editorIdx]);
 
   const reset = () => {
+    viewGeneration.current++;
     setImages([]);
     setPhase("pick");
+    setJobId(null);
+    setJob(undefined);
     setItems([]);
     setError(null);
     setBusy(false);
     setShowConsent(false);
     setEdited({});
     setEditedAutomaticDefaults({});
+    setPartialStats(null);
+    setSourceAccountUnavailable(false);
     setEditorIdx(null);
     reviewE2eeEpoch.current = null;
+    openedReadyRevision.current = null;
   };
   const close = () => {
     const applied = phase === "done" && doneStats.added > 0;
@@ -142,45 +223,22 @@ export function ImportSheet({ show, onClose, state, onApplied }: { show: boolean
   const doProcess = async () => {
     setBusy(true);
     setError(null);
+    const generation = viewGeneration.current;
     try {
-      const ledger = store.getLedger();
-      if (!ledger) {
-        setError(t("The local replica is not ready."));
-        return;
-      }
-      const tierAtStart = e2ee.getTierMeta();
-      if (tierAtStart.tier === "e2ee") await assertOwnReplica();
-      // Plain extraction may use Enveo; E2EE Own OpenAI sends images directly to OpenAI.
-      const recognition = await runImportExtract({ images, locale: lang, ledger, accountId, provider });
-      if (recognition.rows.length === 0) {
-        setError(t("No transactions were recognized in the screenshots."));
-        return;
-      }
-      const extracted: ImportApplyItem[] = recognitionCandidatesForDryRun(recognition, ledger);
-      let dry: Pick<ImportApplyResponse, "results">;
-      if (extracted.length === 0) {
-        dry = { results: [] };
-      } else if (tierAtStart.tier === "e2ee") {
-        const current = e2ee.getTierMeta();
-        if (current.tier !== "e2ee" || current.epoch !== tierAtStart.epoch) throw new Error("no_encryption_key");
-        e2ee.requireValidatedDek(current.epoch).fill(0);
-        dry = planLocalImport({ ledger, globalAccountId: accountId, items: extracted, dryRun: true });
-        reviewE2eeEpoch.current = current.epoch;
-      } else {
-        // The API verdict feeds the user's decision, so name the verified replica budget.
-        await assertOwnReplica();
-        dry = await api.importApply({ accountId, budgetId: store.getBudgetId() || undefined, items: extracted, dryRun: true });
-        reviewE2eeEpoch.current = null;
-      }
-      const automaticEnvelopeId = accounts.find((account) => account.id === accountId)?.automaticEnvelopeId;
-      setItems(buildImportReviewRows({ recognition, ledger, dryRunResults: dry.results, automaticEnvelopeId, budgetCurrency: currency }));
-      setEdited({}); // fresh review = no corrections (edited is keyed by index)
-      setEditedAutomaticDefaults({});
-      setPhase("review");
+      const created = await importJobManager.create({ accountId, locale: lang, images }, (published) => {
+        if (!published || generation !== viewGeneration.current) return;
+        setJob(published);
+        setJobId(published.id);
+        setPhase("progress");
+      });
+      if (generation !== viewGeneration.current) return;
+      setJob(created);
+      setJobId(created.id);
+      setPhase("progress");
     } catch (e) {
-      setError(errMsg(e));
+      if (generation === viewGeneration.current) setError(errMsg(e));
     } finally {
-      setBusy(false);
+      if (generation === viewGeneration.current) setBusy(false);
     }
   };
 
@@ -205,30 +263,113 @@ export function ImportSheet({ show, onClose, state, onApplied }: { show: boolean
     setBusy(true);
     setError(null);
     try {
-      // merge editor corrections: fields from edited[i] override the original (including
-      // per-item account); rawPlace ALWAYS comes from the visible evidence so future
-      // recognition can use it as bounded, account-scoped history context
-      const chosen: ImportApplyItem[] = reviewedImportRowsForApply({ rows: items, edited, editedAutomaticDefaults });
-      // The review can sit open for minutes: re-prove ownership before attaching local ops
-      // that the sync engine will later write for this replica.
-      let res = { added: 0, skipped: 0 };
-      if (chosen.length > 0) {
-        await assertOwnReplica();
-        const reviewEpoch = reviewE2eeEpoch.current;
-        if (reviewEpoch !== null) {
-          const current = e2ee.getTierMeta();
-          if (current.tier !== "e2ee" || current.epoch !== reviewEpoch) throw new Error("no_encryption_key");
-          e2ee.requireValidatedDek(reviewEpoch).fill(0);
-        }
-        const ledger = store.getLedger();
-        if (!ledger) throw new Error("no_local_replica");
-        res = applyLocalImport(planLocalImport({ ledger, globalAccountId: accountId, items: chosen, dryRun: false }));
+      if (job?.status !== "ready" || !job.result || !job.accountId) throw new Error("invalid_import_job_state");
+      // The review can sit open for minutes: re-prove ownership, reconcile the raw Stage-A
+      // result again, then attach only current-ledger local operations to the outbox.
+      await assertOwnReplica();
+      const reviewEpoch = reviewE2eeEpoch.current;
+      if (reviewEpoch !== null) {
+        const current = e2ee.getTierMeta();
+        if (current.tier !== "e2ee" || current.epoch !== reviewEpoch) throw new Error("no_encryption_key");
+        e2ee.requireValidatedDek(reviewEpoch).fill(0);
       }
-      setLastAccountId(accountId); // per-device preference (same as on the Add screen)
-      setDoneStats(importReviewDoneStats(items, res));
+      const ledger = store.getLedger();
+      if (!ledger) throw new Error("no_local_replica");
+      const recognition = reconcileImportJobResult({ result: job.result, ledger, accountId: job.accountId });
+      const sourceAccount = ledger.accounts.find((account) => account.id === job.accountId);
+      const accountInvalid = !sourceAccount || sourceAccount.archived;
+      const candidates = recognitionCandidatesForDryRun(recognition, ledger);
+      const dry = accountInvalid ? { results: [] } : planLocalImport({ ledger, globalAccountId: job.accountId, items: candidates, dryRun: true });
+      const automaticEnvelopeId = ledger.accounts.find((account) => account.id === job.accountId)?.automaticEnvelopeId;
+      const previousById = new Map(items.map((row) => [row.rowId, row]));
+      const currentRows = buildImportReviewRows({
+        recognition,
+        ledger,
+        dryRunResults: dry.results,
+        automaticEnvelopeId,
+        budgetCurrency: ledger.budgets[0]?.currency ?? currency,
+      }).map((row) => ({ ...row, include: row.duplicateStatus === "exists" ? false : (previousById.get(row.rowId)?.include ?? row.include) }));
+      const currentEdited = { ...edited };
+      let invalidatedEdit = false;
+      const activeAccountIds = new Set(ledger.accounts.filter((account) => !account.archived).map((account) => account.id));
+      const activeEnvelopeIds = new Set(ledger.envelopes.filter((envelope) => !envelope.archived).map((envelope) => envelope.id));
+      const activeCategoryIds = new Set(ledger.categories.filter((category) => !category.archived).map((category) => category.id));
+      currentRows.forEach((row, index) => {
+        const edit = currentEdited[index];
+        if (!edit) return;
+        const accountUnavailable = !activeAccountIds.has(edit.accountId);
+        const transferAccountUnavailable = edit.toAccountId !== null && !activeAccountIds.has(edit.toAccountId);
+        const envelopeUnavailable = edit.envelopeId !== null && !activeEnvelopeIds.has(edit.envelopeId);
+        const categoryUnavailable = edit.categoryId !== null && !activeCategoryIds.has(edit.categoryId);
+        if (accountUnavailable || transferAccountUnavailable || envelopeUnavailable || categoryUnavailable) {
+          delete currentEdited[index];
+          invalidatedEdit = true;
+          currentRows[index] = {
+            ...row,
+            requiresReview: true,
+            blockingIssues: [...new Set([...row.blockingIssues, "assignment_unavailable" as const])],
+            item: row.item
+              ? {
+                  ...row.item,
+                  toAccountId: transferAccountUnavailable ? null : row.item.toAccountId,
+                  envelopeId: envelopeUnavailable ? null : row.item.envelopeId,
+                  categoryId: categoryUnavailable ? null : row.item.categoryId,
+                }
+              : null,
+          };
+        }
+      });
+      if (invalidatedEdit) setEdited(currentEdited);
+      setItems(currentRows);
+      setSourceAccountUnavailable(accountInvalid);
+      if (accountInvalid || importReviewBlockingCount(currentRows, currentEdited) > 0) return;
+      const chosen: ImportApplyItem[] = reviewedImportRowsForApply({ rows: currentRows, edited: currentEdited, editedAutomaticDefaults });
+      const plan = planLocalImport({ ledger, globalAccountId: job.accountId, items: chosen, dryRun: false });
+      const progress = applyLocalImportRecoverably(plan);
+      const previouslyApplied = await importJobManager.appliedProgress(job.id);
+      const appliedCount = job.appliedCount + previouslyApplied.appliedCount + progress.appliedCount;
+      const skippedCount = Math.max(job.skippedCount, job.proposalCount - appliedCount);
+      try {
+        await importJobManager.complete(job.id, { appliedCount, skippedCount });
+      } catch (completionError) {
+        throw new PartialImportApplyError(completionError, progress);
+      }
+      setLastAccountId(job.accountId); // per-device preference (same as on the Add screen)
+      setDoneStats({ added: appliedCount, dup: skippedCount });
       setPhase("done");
     } catch (e) {
-      setError(errMsg(e));
+      if (e instanceof PartialImportApplyError) {
+        if (job) await importJobManager.recordApplied(job.id, e.progress.appliedRowIds);
+        const recoveredProgress = job ? await importJobManager.appliedProgress(job.id) : { appliedRowIds: [], appliedCount: 0 };
+        setPartialStats(recoveredProgress.appliedCount > 0 ? recoveredProgress : null);
+        const ledger = store.getLedger();
+        if (ledger && job?.result && job.accountId) {
+          const recognition = reconcileImportJobResult({ result: job.result, ledger, accountId: job.accountId });
+          const sourceAccount = ledger.accounts.find((account) => account.id === job.accountId);
+          const accountInvalid = !sourceAccount || sourceAccount.archived;
+          const dry = accountInvalid
+            ? { results: [] }
+            : planLocalImport({
+                ledger,
+                globalAccountId: job.accountId,
+                items: recognitionCandidatesForDryRun(recognition, ledger),
+                dryRun: true,
+              });
+          const automaticEnvelopeId = ledger.accounts.find((account) => account.id === job.accountId)?.automaticEnvelopeId;
+          const previousById = new Map(items.map((row) => [row.rowId, row]));
+          setItems(
+            buildImportReviewRows({
+              recognition,
+              ledger,
+              dryRunResults: dry.results,
+              automaticEnvelopeId,
+              budgetCurrency: ledger.budgets[0]?.currency ?? currency,
+            }).map((row) => ({ ...row, include: row.duplicateStatus === "exists" ? false : (previousById.get(row.rowId)?.include ?? row.include) })),
+          );
+          setSourceAccountUnavailable(accountInvalid);
+        }
+      }
+      setError(e instanceof PartialImportApplyError ? t("Adding was interrupted. Review the remaining rows and try again.") : errMsg(e));
     } finally {
       setBusy(false);
     }
@@ -239,6 +380,7 @@ export function ImportSheet({ show, onClose, state, onApplied }: { show: boolean
 
   const selectedCount = items.filter((row, i) => row.item && row.include && (row.item.status !== "exists" || !!edited[i])).length;
   const blockingCount = importReviewBlockingCount(items, edited);
+  const deviceWarning = sharedDeviceImportWarning(e2ee.getTierMeta().tier, storageMode());
   const label = { fontSize: 10.5, color: C.mute, fontWeight: 600, textTransform: "uppercase" as const, letterSpacing: 0.6, marginBottom: 6 };
 
   return (
@@ -337,6 +479,11 @@ export function ImportSheet({ show, onClose, state, onApplied }: { show: boolean
             <input ref={fileRef} type="file" accept="image/*" multiple onChange={(e) => addFiles(e.target.files)} style={{ display: "none" }} />
 
             {error && <div style={{ fontSize: 12.5, color: CORAL, marginBottom: 10 }}>{error}</div>}
+            {deviceWarning && (
+              <div role="note" style={{ fontSize: 12, lineHeight: 1.4, color: C.warn, marginBottom: 10 }}>
+                {t(deviceWarning)}
+              </div>
+            )}
 
             <button
               onClick={process}
@@ -358,6 +505,37 @@ export function ImportSheet({ show, onClose, state, onApplied }: { show: boolean
             </button>
           </>
         )}
+
+        {phase === "progress" &&
+          (job ? (
+            job.status === "failed" ? (
+              <div style={{ textAlign: "center", padding: "12px 0" }}>
+                <div role="alert" style={{ color: CORAL, fontSize: 13, lineHeight: 1.45 }}>
+                  {t("The import needs attention. Retry it here or continue from Activity.")}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => void importJobManager.retry(job.id)}
+                  style={{ width: "100%", marginTop: 14, padding: "12px", borderRadius: 12, border: "none", background: TEAL, color: "#fff", fontWeight: 700 }}
+                >
+                  {t("Retry import")}
+                </button>
+                <button type="button" onClick={close} style={{ width: "100%", marginTop: 8, padding: 8, border: "none", background: "none", color: C.mute }}>
+                  {t("Continue in Activity")}
+                </button>
+              </div>
+            ) : (
+              <ImportProgress
+                item={job}
+                onBackground={() => void runImportProgressAction("background", { jobId: job.id, close, cancel: (id) => importJobManager.cancel(id) })}
+                onCancel={() => void runImportProgressAction("cancel", { jobId: job.id, close, cancel: (id) => importJobManager.cancel(id) })}
+              />
+            )
+          ) : (
+            <div role="status" style={{ textAlign: "center", color: C.mute, padding: "28px 0" }}>
+              {t("Creating import…")}
+            </div>
+          ))}
 
         {phase === "review" && (
           <>
@@ -541,6 +719,18 @@ export function ImportSheet({ show, onClose, state, onApplied }: { show: boolean
 
             {error && <div style={{ fontSize: 12.5, color: CORAL, margin: "10px 0" }}>{error}</div>}
 
+            {partialStats && partialStats.appliedCount > 0 && (
+              <div role="status" style={{ fontSize: 12.5, color: C.warn, margin: "10px 0" }}>
+                {t("Some rows were already added before the interruption. They now appear as existing and will not be added twice.")}
+              </div>
+            )}
+
+            {sourceAccountUnavailable && (
+              <div role="alert" style={{ fontSize: 12.5, color: CORAL, margin: "10px 0" }}>
+                {t("The source account was deleted or archived. This import cannot be applied.")}
+              </div>
+            )}
+
             {blockingCount > 0 && (
               <div role="alert" style={{ fontSize: 12.5, color: C.warn, margin: "10px 0" }}>
                 {tp("Review or uncheck {n} transaction before adding. | Review or uncheck {n} transactions before adding.", blockingCount)}
@@ -549,12 +739,7 @@ export function ImportSheet({ show, onClose, state, onApplied }: { show: boolean
 
             <div style={{ display: "flex", gap: 8, marginTop: 14 }}>
               <button
-                onClick={() => {
-                  setPhase("pick");
-                  setItems([]);
-                  setEdited({});
-                  setEditedAutomaticDefaults({});
-                }}
+                onClick={close}
                 style={{
                   flex: 1,
                   padding: "12px 0",
@@ -567,11 +752,11 @@ export function ImportSheet({ show, onClose, state, onApplied }: { show: boolean
                   cursor: "pointer",
                 }}
               >
-                {t("Back")}
+                {t("Review later")}
               </button>
               <button
                 onClick={apply}
-                disabled={busy || selectedCount === 0 || blockingCount > 0}
+                disabled={busy || blockingCount > 0 || sourceAccountUnavailable}
                 style={{
                   flex: 2,
                   padding: "12px 0",
@@ -582,10 +767,10 @@ export function ImportSheet({ show, onClose, state, onApplied }: { show: boolean
                   fontSize: 13.5,
                   fontWeight: 600,
                   cursor: "pointer",
-                  opacity: busy || selectedCount === 0 || blockingCount > 0 ? 0.5 : 1,
+                  opacity: busy || blockingCount > 0 || sourceAccountUnavailable ? 0.5 : 1,
                 }}
               >
-                {busy ? t("Adding…") : tp("Add {n} transaction | Add {n} transactions", selectedCount)}
+                {busy ? t("Adding…") : selectedCount === 0 ? t("Complete without adding") : tp("Add {n} transaction | Add {n} transactions", selectedCount)}
               </button>
             </div>
           </>

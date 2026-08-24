@@ -1,12 +1,22 @@
 import { describe, expect, it } from "bun:test";
-import { type ClientLedger, createDefaultBudgetPreferences, type ReconciledImportRecognitionResult } from "@enveo/shared";
+import {
+  type ClientLedger,
+  createDefaultBudgetPreferences,
+  type ImportExtractRow,
+  type ImportProposal,
+  type ImportRecognitionResult,
+  type ReconciledImportRecognitionResult,
+} from "@enveo/shared";
 import type { EditedImportItem, ImportApplyItem } from "./api";
 import {
   applyLocalImport,
+  applyLocalImportRecoverably,
   importReviewItem,
   type LocalImportMutationPort,
+  PartialImportApplyError,
   planLocalImport,
   recognitionCandidatesForDryRun,
+  reconcileImportJobResult,
   reviewedImportItemsForApply,
 } from "./localImport";
 
@@ -99,6 +109,52 @@ const editedItem = (over: Partial<EditedImportItem> = {}): EditedImportItem => (
   ...over,
 });
 
+const recognitionRow = (rowId: string, over: Partial<ImportExtractRow> = {}): ImportExtractRow => ({
+  rowId,
+  imageIndex: 0,
+  visualOrder: 0,
+  rawTextLines: [`RAW ${rowId}`],
+  date: "2026-08-02",
+  amount: 2500,
+  currency: "EUR",
+  direction: "debit",
+  postingStatus: "posted",
+  rowRole: "financial_event",
+  semanticKind: "card_purchase",
+  relation: null,
+  confidence: "high",
+  reviewReasons: [],
+  ...over,
+});
+
+const recognitionProposal = (rowId: string, over: Partial<ImportProposal> = {}): ImportProposal => ({
+  rowId,
+  sourceRows: [rowId],
+  disposition: "candidate",
+  date: "2026-08-02",
+  amount: 2500,
+  currency: "EUR",
+  type: "expense",
+  isRefund: false,
+  toAccountId: null,
+  semanticKind: "card_purchase",
+  relation: null,
+  name: rowId,
+  tag: "",
+  rawPlace: `RAW ${rowId}`,
+  envelopeId: U(5),
+  categoryId: U(6),
+  placeName: null,
+  reviewReasons: [],
+  selected: true,
+  ...over,
+});
+
+const recognitionResult = (...proposals: ImportProposal[]): ImportRecognitionResult => ({
+  rows: proposals.map((proposal) => recognitionRow(proposal.rowId, { date: proposal.date, amount: proposal.amount, rawTextLines: [proposal.rawPlace] })),
+  proposals,
+});
+
 function mutationSpy() {
   const created = { categories: [] as string[], places: [] as string[], transactions: [] as unknown[] };
   const mutations: LocalImportMutationPort = {
@@ -119,6 +175,94 @@ function mutationSpy() {
 }
 
 describe("local E2EE import planning", () => {
+  it("reconciles a ready job against current duplicates, accounts, and active assignments idempotently", () => {
+    // given: recognition was ready before the ledger gained duplicate evidence and lost assignments
+    const current = ledger();
+    current.transactions.push(
+      { ...current.transactions[0]!, id: U(30), date: "2026-08-02", amount: 2500, sourceRef: "RAW exact" },
+      { ...current.transactions[0]!, id: U(31), date: "2026-08-03", amount: 2600, sourceRef: null },
+    );
+    current.envelopes[0]!.archived = true;
+    current.categories[0]!.archived = true;
+    const ready = recognitionResult(
+      recognitionProposal("exact"),
+      recognitionProposal("probable", { date: "2026-08-03", amount: 2600, rawPlace: "RAW probable" }),
+      recognitionProposal("assignment", { date: "2026-08-04", amount: 2700, rawPlace: "RAW assignment" }),
+    );
+
+    // when: the ready result is opened against the current ledger, then reconciled again
+    const once = reconcileImportJobResult({ result: ready, ledger: current, accountId: U(2) });
+    const twice = reconcileImportJobResult({ result: once, ledger: current, accountId: U(2) });
+
+    // then: current evidence wins, unsafe assignments are explicit, and replay is stable
+    expect(once.proposals[0]).toMatchObject({ duplicateStatus: "exists", disposition: "declined", selected: false });
+    expect(once.proposals[1]).toMatchObject({
+      duplicateStatus: "probable",
+      selected: true,
+      reviewReasons: ["multiple_history_candidates"],
+    });
+    expect(once.proposals[2]).toMatchObject({
+      envelopeId: null,
+      categoryId: null,
+      assignmentUnavailable: true,
+      selected: true,
+    });
+    expect(twice).toEqual(once);
+
+    // and: deleting or archiving the selected source account blocks every proposal
+    const deletedAccount = reconcileImportJobResult({ result: ready, ledger: { ...current, accounts: [] }, accountId: U(2) });
+    expect(deletedAccount.proposals.every((proposal) => proposal.sourceAccountInvalid && !proposal.selected)).toBe(true);
+  });
+
+  it("reports partial row identities and makes retry skip the transaction already written", () => {
+    // given: two selected rows are planned, while the mutation port fails on the second write
+    const firstItem = item({ importRowId: "row-one", rawPlace: "ROW ONE" });
+    const secondItem = item({ importRowId: "row-two", date: "2026-08-03", amount: 2600, rawPlace: "ROW TWO" });
+    const firstPlan = planLocalImport({ ledger: ledger(), globalAccountId: U(2), items: [firstItem, secondItem], dryRun: false });
+    let writes = 0;
+    const created: Array<{ id: string; payload: Parameters<LocalImportMutationPort["createTxn"]>[0] }> = [];
+    const mutations: LocalImportMutationPort = {
+      createCategory: () => ({ id: U(20) }),
+      createPlace: () => ({ id: U(21) }),
+      createTxn: (payload) => {
+        writes++;
+        if (writes === 2) throw new Error("disk_full");
+        created.push({ id: U(30), payload });
+        return U(30);
+      },
+    };
+
+    // when: applying stops after the first durable local mutation
+    let partial: PartialImportApplyError | null = null;
+    try {
+      applyLocalImportRecoverably(firstPlan, mutations);
+    } catch (error) {
+      if (error instanceof PartialImportApplyError) partial = error;
+      else throw error;
+    }
+
+    // then: the ready job can report exactly what crossed the mutation boundary
+    expect(partial?.progress).toEqual({ appliedRowIds: ["row-one"], appliedCount: 1, skippedCount: 0 });
+    expect(created).toHaveLength(1);
+
+    // and: current-ledger retry sees that write as exact and writes only the remaining row
+    const live = ledger();
+    live.transactions.push({
+      ...live.transactions[0]!,
+      id: created[0]!.id,
+      date: created[0]!.payload.date,
+      amount: created[0]!.payload.amount,
+      sourceRef: created[0]!.payload.sourceRef ?? null,
+    });
+    const retry = planLocalImport({ ledger: live, globalAccountId: U(2), items: [firstItem, secondItem], dryRun: false });
+    const retrySpy = mutationSpy();
+    const completed = applyLocalImportRecoverably(retry, retrySpy.mutations);
+
+    expect(retry.results.map((result) => result.status)).toEqual(["exists", "added"]);
+    expect(retrySpy.created.transactions).toHaveLength(1);
+    expect(completed).toEqual({ appliedRowIds: ["row-two"], appliedCount: 1, skippedCount: 1 });
+  });
+
   it("does not project an unsafe unselected recognition proposal into the legacy review", () => {
     const recognition: ReconciledImportRecognitionResult = {
       rows: [

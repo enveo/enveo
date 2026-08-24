@@ -262,6 +262,51 @@ describe("screenshot import review view model", () => {
     expect(reviewRowControlLabels(review[2]!, 2)).toEqual({ select: null, edit: null });
   });
 
+  it("defaults every non-exact candidate to included even when an old proposal selection was false", () => {
+    // given: a durable Stage-A candidate carries a creation-time selection that is no longer authoritative
+    const result = recognition([row("new")], [proposal("new", { selected: false, duplicateStatus: "new" })]);
+
+    // when: the current-ledger review is opened
+    const review = buildImportReviewRows({
+      recognition: result,
+      ledger: ledger(),
+      dryRunResults: [],
+      automaticEnvelopeId: null,
+      budgetCurrency: "EUR",
+    });
+
+    // then: inclusion is a fresh user decision and the complete row starts checked
+    expect(review[0]).toMatchObject({ duplicateStatus: "new", include: true, editable: true });
+  });
+
+  it("requires action for an unavailable saved assignment and accepts edit confirmation or uncheck", () => {
+    // given: the current ledger cleared an assignment that existed when recognition finished
+    const result = recognition(
+      [row("assignment")],
+      [
+        {
+          ...proposal("assignment"),
+          assignmentUnavailable: true,
+        } as ReconciledImportProposal,
+      ],
+    );
+    const review = buildImportReviewRows({
+      recognition: result,
+      ledger: ledger(),
+      dryRunResults: [dryResult()],
+      automaticEnvelopeId: null,
+      budgetCurrency: "EUR",
+    });
+
+    // then: selection is independent of correctness, and one explicit action clears the gate
+    expect(review[0]).toMatchObject({ include: true, requiresReview: true, blockingIssues: ["assignment_unavailable"] });
+    expect(reviewBadges(review[0]!).map(({ label }) => label)).toContain("Saved assignment is unavailable");
+    expect(importReviewBlockingCount(review, {})).toBe(1);
+    expect(importReviewBlockingCount(review, { 0: editedItem() })).toBe(0);
+    review[0]!.include = false;
+    expect(importReviewBlockingCount(review, {})).toBe(0);
+  });
+
   it("keeps a reconciled exact duplicate truthful while leaving it unselectable and noneditable", () => {
     // Break caught: exact duplicates are reconciled to disposition=declined, but dropping
     // duplicateStatus made the UI describe them as bank-declined rows and hid the skip verdict.
