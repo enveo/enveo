@@ -10,12 +10,12 @@
  * All writes go through the existing local-first path (mirror + outbox).
  * On completion we call onDone — App removes the wizard and shows Start.
  */
-import { type ReactNode, useEffect, useState } from "react";
+import { lazy, type ReactNode, useEffect, useState } from "react";
 import { AmountPadHost, type AmountPadTarget } from "../components/AmountPadSheet";
-import BootShellWide from "../components/BootShellWide";
 import { LogoMark } from "../components/chrome";
 import { markInstallOffered } from "../components/InstallBanner";
 import { InstallBody } from "../components/InstallBody";
+import { LazyChunk } from "../components/lazy";
 import { fmtSignedTrim } from "../lib/amount";
 import { api, apiErrorMessage } from "../lib/api";
 import { useSettings, useTheme } from "../lib/contexts";
@@ -29,6 +29,17 @@ import { store } from "../lib/store";
 import { assertOwnReplica, fullResync } from "../lib/sync";
 import { ACCOUNT_COLORS, CORAL, font, P, TEAL } from "../lib/theme";
 import { useViewMode } from "../lib/viewMode";
+
+// Lazy, not a static default import: this module is ALREADY reached only through App's own
+// `lazy(() => import("./screens/Onboarding"))`, but a STATIC import from inside a dynamic entry
+// is still fetched as part of THAT SAME chunk group — the dynamic-import boundary is what defers
+// bytes, not "being inside a lazily-loaded module". A static `BootShellWide` here shipped its
+// chunk (~2KB gzip) to every phone onboarding too, even though `wide` (below) gates it out of
+// ever rendering there. Wrapping in `lazy()` again, exactly like App.tsx's own `BootShellWide`
+// (used for Login/Unlock/ForeignReplica), makes its chunk load only when the `wide` branch below
+// actually mounts it. Verified against the build manifest: Onboarding's own chunk no longer
+// lists BootShellWide.tsx as a static import.
+const BootShellWide = lazy(() => import("../components/BootShellWide"));
 
 /** Checklist row: a template item (name=Message, color/icon from TEMPLATE) or a custom envelope (custom, styled via customEnvelopeStyle). */
 type TplRow = { name?: Message; custom?: string; isSavings?: boolean; checked: boolean; color: string; icon: string };
@@ -280,9 +291,10 @@ export function OnboardingScreen({ onDone }: { onDone: () => void }) {
   // Wide (fold/desktop): the wizard hosts itself inside the boot shell (PR7 Task 3) — it is a
   // boot state, not an app screen, so it leaves App's rail/BottomNav/SyncBadge/InstallBanner
   // entirely behind (App.tsx renders this component unwrapped, before any of those mount — see
-  // App.tsx's own comment at that branch). Static import is legal here: this whole module is
-  // ALREADY lazy (App.tsx's `OnboardingScreen = lazy(...)`), so Vite emits BootShellWide as a
-  // shared chunk reachable only through dynamic imports — nothing eager grows.
+  // App.tsx's own comment at that branch). `BootShellWide` above is its own `lazy()` (not a
+  // static import): being inside a lazily-loaded module does NOT stop a plain static import from
+  // shipping in the SAME chunk group, only a nested dynamic import does that — see its own
+  // comment.
   const mode = useViewMode();
   const wide = mode !== "phone";
   // ONE step/install tree for both hosts (do not fork it per mode): the step wrappers' own
@@ -641,14 +653,16 @@ export function OnboardingScreen({ onDone }: { onDone: () => void }) {
     );
 
   return (
-    <BootShellWide
-      mode={mode}
-      view={showInstall ? "install" : "wizard"}
-      wizardStep={step}
-      formMax={step === 2 && !showInstall ? (mode === "desktop" ? 820 : 1000) : undefined}
-    >
-      <div className="gs">{body}</div>
-      <AmountPadHost target={pad} onClose={() => setPad(null)} />
-    </BootShellWide>
+    <LazyChunk>
+      <BootShellWide
+        mode={mode}
+        view={showInstall ? "install" : "wizard"}
+        wizardStep={step}
+        formMax={step === 2 && !showInstall ? (mode === "desktop" ? 820 : 1000) : undefined}
+      >
+        <div className="gs">{body}</div>
+        <AmountPadHost target={pad} onClose={() => setPad(null)} />
+      </BootShellWide>
+    </LazyChunk>
   );
 }
