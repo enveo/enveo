@@ -15,6 +15,10 @@ const queryClient = new QueryClient({
 });
 
 initInstallPrompt(); // capture beforeinstallprompt as early as possible
+// Install once at the composition root. The manager observes boot status and refuses to
+// derive an owner/budget storage scope or resume work until the replica is ready. Keep the
+// durable Stage A pipeline outside the initial render closure.
+void import("./lib/importJobs/manager").then(({ importJobManager }) => importJobManager.start());
 
 const render = () =>
   createRoot(document.getElementById("root")!).render(
