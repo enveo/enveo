@@ -95,7 +95,7 @@ const inputStyle = (line: string, bg: string, text: string): React.CSSProperties
 export function OnboardingScreen({ onDone }: { onDone: () => void }) {
   const C = useTheme();
   const { settings, setSettings } = useSettings();
-  const { t, lang } = useT();
+  const { t, tp, lang } = useT();
   const [step, setStep] = useState<0 | 1 | 2>(0);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -195,6 +195,8 @@ export function OnboardingScreen({ onDone }: { onDone: () => void }) {
   };
 
   const anyChecked = rows.some((g) => g.some((r) => r.checked));
+  // Wide-only sticky-row status text (Task 4) — total checked count across every group.
+  const picked = rows.reduce((n, g) => n + g.filter((r) => r.checked).length, 0);
 
   const createEnvelopes = () => {
     TEMPLATE.forEach((tpl, gi) => {
@@ -231,9 +233,13 @@ export function OnboardingScreen({ onDone }: { onDone: () => void }) {
   const body = showInstall ? (
     <div style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "center", gap: 18 }}>
       <div style={{ textAlign: "center" }}>
-        <div style={{ fontSize: 20, fontWeight: 800, color: C.text, marginBottom: 6 }}>{t("Add Enveo to your phone")}</div>
+        <div style={{ fontSize: 20, fontWeight: 800, color: C.text, marginBottom: 6 }}>
+          {wide ? t("Add Enveo to this device") : t("Add Enveo to your phone")}
+        </div>
         <div style={{ fontSize: 13.5, color: C.soft, lineHeight: 1.5 }}>
-          {t("One tap and Enveo lives on your home screen — offline, full screen, no browser bar.")}
+          {wide
+            ? t("One click and Enveo runs in its own window — offline, full screen, no browser bar.")
+            : t("One tap and Enveo lives on your home screen — offline, full screen, no browser bar.")}
         </div>
       </div>
       <InstallBody onDone={doneWithInstall} />
@@ -406,103 +412,160 @@ export function OnboardingScreen({ onDone }: { onDone: () => void }) {
             {t("Pick the envelopes you want to start with — you can change them or add new ones anytime.")}
           </div>
 
-          {TEMPLATE.map((tpl, gi) => (
-            <div key={tpl.group} style={{ marginBottom: 18 }}>
-              <div style={{ fontSize: 10.5, fontWeight: 600, color: C.mute, textTransform: "uppercase", letterSpacing: 0.6, marginBottom: 6 }}>
-                {t(tpl.group)}
-              </div>
-              <div style={{ background: C.bg, borderRadius: 11, border: `1px solid ${C.line}`, padding: "2px 12px" }}>
-                {rows[gi]!.map((r, ri) => (
-                  <button
-                    key={r.custom ?? r.name}
-                    onClick={() => toggleRow(gi, ri)}
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: 10,
-                      width: "100%",
-                      padding: "11px 0",
-                      background: "none",
-                      border: "none",
-                      borderBottom: `1px solid ${C.line}`,
-                      cursor: "pointer",
-                      textAlign: "left",
-                    }}
-                  >
-                    <span
-                      aria-hidden="true"
+          {/* Wide (fold/desktop): the groups tile into a 2/3-column grid instead of stacking —
+                  minmax(0, 1fr) is load-bearing (a track with an implicit auto minimum would grow
+                  to fit a long custom-envelope name instead of letting it ellipsize inside the
+                  cell). Phone keeps single-column stacking. Group blocks themselves are byte-
+                  identical between modes (M13) — only this outer wrapper forks. */}
+          <div
+            style={
+              wide ? { display: "grid", gridTemplateColumns: `repeat(${mode === "desktop" ? 3 : 2}, minmax(0, 1fr))`, gap: 12, alignItems: "start" } : undefined
+            }
+          >
+            {TEMPLATE.map((tpl, gi) => (
+              <div key={tpl.group} style={{ marginBottom: 18 }}>
+                <div style={{ fontSize: 10.5, fontWeight: 600, color: C.mute, textTransform: "uppercase", letterSpacing: 0.6, marginBottom: 6 }}>
+                  {t(tpl.group)}
+                </div>
+                <div style={{ background: C.bg, borderRadius: 11, border: `1px solid ${C.line}`, padding: "2px 12px" }}>
+                  {rows[gi]!.map((r, ri) => (
+                    <button
+                      key={r.custom ?? r.name}
+                      onClick={() => toggleRow(gi, ri)}
                       style={{
-                        width: 20,
-                        height: 20,
-                        borderRadius: 6,
-                        flexShrink: 0,
                         display: "flex",
                         alignItems: "center",
-                        justifyContent: "center",
-                        background: r.checked ? TEAL : "transparent",
-                        border: r.checked ? "none" : `1.5px solid ${C.line}`,
+                        gap: 10,
+                        width: "100%",
+                        padding: "11px 0",
+                        background: "none",
+                        border: "none",
+                        borderBottom: `1px solid ${C.line}`,
+                        cursor: "pointer",
+                        textAlign: "left",
                       }}
                     >
-                      {r.checked && (
-                        <svg
-                          width="12"
-                          height="12"
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          stroke="#fff"
-                          strokeWidth="3.2"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
+                      <span
+                        aria-hidden="true"
+                        style={{
+                          width: 20,
+                          height: 20,
+                          borderRadius: 6,
+                          flexShrink: 0,
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          background: r.checked ? TEAL : "transparent",
+                          border: r.checked ? "none" : `1.5px solid ${C.line}`,
+                        }}
+                      >
+                        {r.checked && (
+                          <svg
+                            width="12"
+                            height="12"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="#fff"
+                            strokeWidth="3.2"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                          >
+                            <path d="M4.5 12.5l5 5 10-11" />
+                          </svg>
+                        )}
+                      </span>
+                      {/* flex:1/minWidth:0 + nowrap/ellipsis: a narrowed grid column (or a very
+                              long custom name on phone) truncates the name instead of overflowing
+                              the card — the wealth chip after it never gets pushed off. */}
+                      <span
+                        style={{
+                          flex: 1,
+                          minWidth: 0,
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                          whiteSpace: "nowrap",
+                          fontSize: 13.5,
+                          color: C.text,
+                          fontWeight: 500,
+                        }}
+                      >
+                        {r.custom ?? t(r.name!)}
+                      </span>
+                      {wide && r.isSavings && (
+                        <span
+                          style={{
+                            fontSize: 9.5,
+                            fontWeight: 750,
+                            letterSpacing: "0.1em",
+                            textTransform: "uppercase",
+                            color: TEAL,
+                            flexShrink: 0,
+                          }}
                         >
-                          <path d="M4.5 12.5l5 5 10-11" />
-                        </svg>
+                          {t("Wealth")}
+                        </span>
                       )}
-                    </span>
-                    <span style={{ fontSize: 13.5, color: C.text, fontWeight: 500 }}>{r.custom ?? t(r.name!)}</span>
-                  </button>
-                ))}
-                <div style={{ display: "flex", gap: 8, padding: "9px 0" }}>
-                  <input
-                    value={drafts[gi]}
-                    onChange={(e) => setDrafts((prev) => prev.map((d, i) => (i === gi ? e.target.value : d)))}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") addCustom(gi);
-                    }}
-                    placeholder={t("Custom envelope…")}
-                    style={{ ...inputStyle(C.line, C.bg, C.text), padding: "8px 10px", fontSize: 13 }}
-                  />
-                  <button
-                    onClick={() => addCustom(gi)}
-                    disabled={!drafts[gi]?.trim()}
-                    aria-label={t("Add a custom envelope")}
-                    style={{
-                      flexShrink: 0,
-                      width: 38,
-                      borderRadius: 10,
-                      border: `1px solid ${C.line}`,
-                      background: C.bg,
-                      color: C.text,
-                      fontSize: 18,
-                      fontWeight: 600,
-                      cursor: "pointer",
-                      opacity: drafts[gi]?.trim() ? 1 : 0.5,
-                      fontFamily: font,
-                    }}
-                  >
-                    +
-                  </button>
+                    </button>
+                  ))}
+                  <div style={{ display: "flex", gap: 8, padding: "9px 0" }}>
+                    <input
+                      value={drafts[gi]}
+                      onChange={(e) => setDrafts((prev) => prev.map((d, i) => (i === gi ? e.target.value : d)))}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") addCustom(gi);
+                      }}
+                      placeholder={t("Custom envelope…")}
+                      style={{ ...inputStyle(C.line, C.bg, C.text), padding: "8px 10px", fontSize: 13 }}
+                    />
+                    <button
+                      onClick={() => addCustom(gi)}
+                      disabled={!drafts[gi]?.trim()}
+                      aria-label={t("Add a custom envelope")}
+                      style={{
+                        flexShrink: 0,
+                        width: 38,
+                        borderRadius: 10,
+                        border: `1px solid ${C.line}`,
+                        background: C.bg,
+                        color: C.text,
+                        fontSize: 18,
+                        fontWeight: 600,
+                        cursor: "pointer",
+                        opacity: drafts[gi]?.trim() ? 1 : 0.5,
+                        fontFamily: font,
+                      }}
+                    >
+                      +
+                    </button>
+                  </div>
                 </div>
               </div>
-            </div>
-          ))}
+            ))}
+          </div>
 
           {/* sticky (not fixed): stays pinned to the .gs scrollport's bottom edge while the
                   checklist scrolls, so the CTA is reachable without scrolling all the way down —
-                  desktop viewports (1280x800) can otherwise clip it below the fold (B3). bottom:-32
-                  compensates the .gs container's 32px bottom padding; the background hides list rows
-                  scrolling underneath. */}
-          <div style={{ position: "sticky", bottom: -32, padding: "10px 0 4px", background: C.bg }}>
-            <BigButton label={t("Create envelopes")} onClick={createEnvelopes} disabled={!anyChecked} variant="teal" />
+                  desktop viewports (1280x800) can otherwise clip it below the fold (B3). On phone
+                  bottom:-32 compensates the .gs container's own 32px bottom padding; on wide the
+                  scrollport is the shell's content region (no such padding baked into .gs there),
+                  so the offset is 0. The background hides list rows scrolling underneath. */}
+          <div style={{ position: "sticky", bottom: wide ? 0 : -32, padding: "10px 0 4px", background: C.bg, display: "flex", alignItems: "center", gap: 12 }}>
+            {wide && (
+              <span style={{ flex: 1, fontSize: 12, color: C.soft }}>
+                {picked === 0 ? (
+                  t("Pick at least one envelope.")
+                ) : (
+                  <>
+                    {tp("{n} envelope selected | {n} envelopes selected", picked)}
+                    {" · "}
+                    {currency}
+                  </>
+                )}
+              </span>
+            )}
+            <div style={{ flex: wide ? "none" : 1, minWidth: wide ? 220 : undefined, width: wide ? undefined : "100%" }}>
+              <BigButton label={t("Create envelopes")} onClick={createEnvelopes} disabled={!anyChecked} variant="teal" />
+            </div>
           </div>
         </div>
       )}
