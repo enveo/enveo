@@ -11,6 +11,7 @@ import { auth, hasCredentialedUser } from "./auth";
 import { authMetaBody } from "./authPolicy";
 import { TierMismatch } from "./context";
 import { assertAuthEnv, assertDbEnv, env } from "./env";
+import { IMPORT_JOB_REQUEST_BODY_LIMIT_BYTES } from "./importJobs/images";
 import { isSameHostOrigin, staticAllowedOrigins } from "./origins";
 import { createAiCredentialRoutes } from "./routes/aiCredentials";
 import { budgetSuggestRoutes } from "./routes/budgetSuggest";
@@ -18,6 +19,7 @@ import { crudRoutes } from "./routes/crud";
 import { demoRoutes } from "./routes/demo";
 import { extraRoutes } from "./routes/extras";
 import { importRoutes } from "./routes/import";
+import { createImportJobRoutes } from "./routes/importJobs";
 import { preferencesRoutes } from "./routes/preferences";
 import { stateRoutes } from "./routes/state";
 import { syncRoutes } from "./routes/sync";
@@ -89,7 +91,7 @@ app.use(
 app.use(
   "/api/*",
   bodyLimit({
-    maxSize: 16 * 1024 * 1024,
+    maxSize: IMPORT_JOB_REQUEST_BODY_LIMIT_BYTES,
     onError: (c) => c.json({ error: "too_large" }, 413),
   }),
 );
@@ -145,6 +147,7 @@ api.route("/", crudRoutes);
 api.route("/", txnRoutes);
 api.route("/", extraRoutes);
 api.route("/", importRoutes);
+api.route("/", createImportJobRoutes());
 api.route("/", preferencesRoutes);
 api.route("/", syncRoutes);
 api.route("/", createSync2Routes({ masterKeys: vaultMasterKeyProvider }));

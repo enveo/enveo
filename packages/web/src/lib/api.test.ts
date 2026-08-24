@@ -66,6 +66,44 @@ describe("screenshot recognition API client", () => {
   });
 });
 
+describe("durable import job API client", () => {
+  it("uses the job collection and tenant-asserted mutation routes", async () => {
+    const originalFetch = globalThis.fetch;
+    const requests: Array<{ url: string; method: string; body?: unknown }> = [];
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      requests.push({
+        url: String(input),
+        method: init?.method ?? "GET",
+        ...(init?.body ? { body: JSON.parse(String(init.body)) } : {}),
+      });
+      return Response.json([]);
+    }) as typeof fetch;
+    const id = "11111111-1111-4111-8111-111111111111";
+    const budgetId = "22222222-2222-4222-8222-222222222222";
+    const accountId = "33333333-3333-4333-8333-333333333333";
+    try {
+      await api.importJobs.create({ id, budgetId, accountId, locale: "pl-PL", images: ["data:image/png;base64,iVBORw0KGgo="] });
+      await api.importJobs.list();
+      await api.importJobs.get(id);
+      await api.importJobs.cancel(id, budgetId);
+      await api.importJobs.retry(id, budgetId);
+      await api.importJobs.complete(id, { budgetId, appliedCount: 2, skippedCount: 1 });
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+
+    expect(requests.map(({ url, method }) => [method, url])).toEqual([
+      ["POST", "/api/import/jobs"],
+      ["GET", "/api/import/jobs"],
+      ["GET", `/api/import/jobs/${id}`],
+      ["POST", `/api/import/jobs/${id}/cancel`],
+      ["POST", `/api/import/jobs/${id}/retry`],
+      ["POST", `/api/import/jobs/${id}/complete`],
+    ]);
+    expect(requests.slice(3).map((request) => request.body)).toEqual([{ budgetId }, { budgetId }, { budgetId, appliedCount: 2, skippedCount: 1 }]);
+  });
+});
+
 describe("apiErrorMessage", () => {
   // no localStorage in the test env → uiLang() falls back to the browser language (en), and English
   // IS the message: the expected sentence below is literally the key lib/api.ts maps the code to.
