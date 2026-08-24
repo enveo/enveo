@@ -270,6 +270,80 @@ describe("plain durable import adapter", () => {
     expect(activity.get(ID)).toBeUndefined();
   });
 
+  it("cancels by deterministic id when another adapter acknowledges between get and the cancel marker", async () => {
+    const response = deferred<ImportJobDetail>();
+    const cancellationStarted = deferred<void>();
+    const releaseCancellation = deferred<void>();
+    const originalRequestCancellation = importJobStorage.requestDraftCancellation;
+    importJobStorage.requestDraftCancellation = async (...args) => {
+      cancellationStarted.resolve();
+      await releaseCancellation.promise;
+      return originalRequestCancellation(...args);
+    };
+    const uploader = new PlainImportJobAdapter({
+      scope: SCOPE,
+      activity: createImportActivityStore(),
+      remote: remote({ create: () => response.promise }),
+    });
+    const api = remote({ list: async () => [detail({ status: "cancelled", cancelRequested: true })] });
+    const activity = createImportActivityStore();
+    const canceller = new PlainImportJobAdapter({ scope: SCOPE, activity, remote: api });
+
+    try {
+      const creation = uploader.create(input());
+      while (!(await importJobStorage.getDraft(SCOPE, ID))?.uploadAttemptedAt) await Promise.resolve();
+      const cancellation = canceller.cancel(ID);
+      await cancellationStarted.promise;
+      response.resolve(detail());
+      await creation;
+      releaseCancellation.resolve();
+      await cancellation;
+      await canceller.refresh(true);
+    } finally {
+      importJobStorage.requestDraftCancellation = originalRequestCancellation;
+    }
+
+    expect(api.cancellations).toEqual([ID]);
+    expect(activity.get(ID)).toBeUndefined();
+  });
+
+  it("treats a definitive 404 as safely cancelled after another adapter deletes the draft", async () => {
+    const cancellationStarted = deferred<void>();
+    const releaseCancellation = deferred<void>();
+    const originalRequestCancellation = importJobStorage.requestDraftCancellation;
+    importJobStorage.requestDraftCancellation = async (...args) => {
+      cancellationStarted.resolve();
+      await releaseCancellation.promise;
+      return originalRequestCancellation(...args);
+    };
+    const draft = await importJobStorage.createDraft(SCOPE, { ...input(), ownerId: SCOPE.ownerId, budgetId: SCOPE.budgetId });
+    let cancelAttempts = 0;
+    const activity = createImportActivityStore();
+    const adapter = new PlainImportJobAdapter({
+      scope: SCOPE,
+      activity,
+      remote: remote({
+        cancel: async () => {
+          cancelAttempts++;
+          throw new Error('404 {"error":"not_found"}');
+        },
+      }),
+    });
+
+    try {
+      const cancellation = adapter.cancel(ID);
+      await cancellationStarted.promise;
+      await importJobStorage.deleteDraft(SCOPE, ID, draft.requestHash);
+      releaseCancellation.resolve();
+      await cancellation;
+    } finally {
+      importJobStorage.requestDraftCancellation = originalRequestCancellation;
+    }
+
+    expect(cancelAttempts).toBe(1);
+    expect(activity.get(ID)).toBeUndefined();
+  });
+
   it("reconciles a lost create response from a durable cancel tombstone after restart", async () => {
     const requests: string[][] = [];
     const first = new PlainImportJobAdapter({
