@@ -21,7 +21,14 @@
  * merely after request.onsuccess.
  */
 import { getDeviceStoragePolicy } from "./deviceStoragePolicy";
-import { MemoryBackend, type StorageBackend, type StoreName } from "./storageBackend";
+import {
+  type ImportDraftDeleteMatch,
+  type ImportDraftPutResult,
+  type ImportRecordScope,
+  MemoryBackend,
+  type StorageBackend,
+  type StoreName,
+} from "./storageBackend";
 
 export type { StoreName } from "./storageBackend";
 
@@ -165,18 +172,110 @@ class IdbBackend implements StorageBackend {
   async putImportJobIfRevision(value: unknown, expectedRevision: number): Promise<boolean> {
     const db = await this.open();
     if (!db) return this.fallback.putImportJobIfRevision(value, expectedRevision);
-    const record = value as { id: IDBValidKey };
+    const record = value as { id: IDBValidKey; ownerId: string; budgetId: string };
     const tx = db.transaction("importJobs", "readwrite");
     const done = txDone(tx);
     const store = tx.objectStore("importJobs");
-    const current = (await requestToPromise(store.get(record.id))) as { checkpointRevision?: unknown } | undefined;
-    if (current?.checkpointRevision !== expectedRevision) {
+    const current = (await requestToPromise(store.get(record.id))) as Record<string, unknown> | undefined;
+    if (current?.checkpointRevision !== expectedRevision || current.ownerId !== record.ownerId || current.budgetId !== record.budgetId) {
       await done;
       return false;
     }
     store.put(value);
     await done;
     return true;
+  }
+
+  async putImportJobForScope(value: unknown, scope: ImportRecordScope): Promise<boolean> {
+    const db = await this.open();
+    if (!db) return this.fallback.putImportJobForScope(value, scope);
+    const record = value as { id: IDBValidKey; ownerId: string; budgetId: string };
+    if (record.ownerId !== scope.ownerId || record.budgetId !== scope.budgetId) return false;
+    const tx = db.transaction("importJobs", "readwrite");
+    const done = txDone(tx);
+    const store = tx.objectStore("importJobs");
+    const current = (await requestToPromise(store.get(record.id))) as Record<string, unknown> | undefined;
+    if (current && (current.ownerId !== scope.ownerId || current.budgetId !== scope.budgetId)) {
+      await done;
+      return false;
+    }
+    store.put(value);
+    await done;
+    return true;
+  }
+
+  async putImportDraftIfAbsentOrSame(value: unknown): Promise<ImportDraftPutResult> {
+    const db = await this.open();
+    if (!db) return this.fallback.putImportDraftIfAbsentOrSame(value);
+    const record = value as { id: IDBValidKey; ownerId: string; budgetId: string; requestHash: string };
+    const tx = db.transaction("importDrafts", "readwrite");
+    const done = txDone(tx);
+    const store = tx.objectStore("importDrafts");
+    const current = (await requestToPromise(store.get(record.id))) as Record<string, unknown> | undefined;
+    if (current) {
+      await done;
+      return current.requestHash === record.requestHash && current.ownerId === record.ownerId && current.budgetId === record.budgetId
+        ? { kind: "existing", value: structuredClone(current) }
+        : { kind: "conflict" };
+    }
+    store.put(value);
+    await done;
+    return { kind: "created", value: structuredClone(value) };
+  }
+
+  async deleteImportDraftIfMatches(expected: ImportDraftDeleteMatch): Promise<boolean> {
+    const db = await this.open();
+    if (!db) return this.fallback.deleteImportDraftIfMatches(expected);
+    const tx = db.transaction("importDrafts", "readwrite");
+    const done = txDone(tx);
+    const store = tx.objectStore("importDrafts");
+    const current = (await requestToPromise(store.get(expected.id))) as Record<string, unknown> | undefined;
+    if (
+      !current ||
+      current.ownerId !== expected.ownerId ||
+      current.budgetId !== expected.budgetId ||
+      (expected.accountId !== undefined && current.accountId !== expected.accountId) ||
+      (expected.locale !== undefined && current.locale !== expected.locale) ||
+      current.requestHash !== expected.requestHash
+    ) {
+      await done;
+      return false;
+    }
+    store.delete(expected.id);
+    await done;
+    return true;
+  }
+
+  async deleteImportJobIfScope(id: IDBValidKey, scope: ImportRecordScope): Promise<boolean> {
+    const db = await this.open();
+    if (!db) return this.fallback.deleteImportJobIfScope(id, scope);
+    const tx = db.transaction("importJobs", "readwrite");
+    const done = txDone(tx);
+    const store = tx.objectStore("importJobs");
+    const current = (await requestToPromise(store.get(id))) as Record<string, unknown> | undefined;
+    if (!current || current.ownerId !== scope.ownerId || current.budgetId !== scope.budgetId) {
+      await done;
+      return false;
+    }
+    store.delete(id);
+    await done;
+    return true;
+  }
+
+  async deleteExpiredImportDrafts(scope: ImportRecordScope, expiresAt: number): Promise<number> {
+    const db = await this.open();
+    if (!db) return this.fallback.deleteExpiredImportDrafts(scope, expiresAt);
+    const tx = db.transaction("importDrafts", "readwrite");
+    const done = txDone(tx);
+    const store = tx.objectStore("importDrafts");
+    const drafts = (await requestToPromise(store.getAll())) as Array<Record<string, unknown>>;
+    const expired = drafts.filter(
+      (draft) =>
+        draft.ownerId === scope.ownerId && draft.budgetId === scope.budgetId && typeof draft.expiresAt === "string" && Date.parse(draft.expiresAt) <= expiresAt,
+    );
+    for (const draft of expired) store.delete(draft.id as IDBValidKey);
+    await done;
+    return expired.length;
   }
 
   async add(store: StoreName, value: unknown): Promise<IDBValidKey> {
@@ -308,6 +407,29 @@ export function idbPutMany(store: StoreName, entries: Array<{ value: unknown; ke
 /** Atomic stale-writer fence for the device-local E2EE import runner. */
 export function idbPutImportJobIfRevision(value: unknown, expectedRevision: number): Promise<boolean> {
   return activeBackend().putImportJobIfRevision(value, expectedRevision);
+}
+
+/** Scope-preserving create/replace for device-local E2EE import jobs. */
+export function idbPutImportJobForScope(value: unknown, scope: ImportRecordScope): Promise<boolean> {
+  return activeBackend().putImportJobForScope(value, scope);
+}
+
+/** Atomic draft create/idempotency boundary across tabs. */
+export function idbPutImportDraftIfAbsentOrSame(value: unknown): Promise<ImportDraftPutResult> {
+  return activeBackend().putImportDraftIfAbsentOrSame(value);
+}
+
+/** Atomic compare-delete for request completion/cancellation. */
+export function idbDeleteImportDraftIfMatches(expected: ImportDraftDeleteMatch): Promise<boolean> {
+  return activeBackend().deleteImportDraftIfMatches(expected);
+}
+
+export function idbDeleteImportJobIfScope(id: IDBValidKey, scope: ImportRecordScope): Promise<boolean> {
+  return activeBackend().deleteImportJobIfScope(id, scope);
+}
+
+export function idbDeleteExpiredImportDrafts(scope: ImportRecordScope, expiresAt: number): Promise<number> {
+  return activeBackend().deleteExpiredImportDrafts(scope, expiresAt);
 }
 
 /** add — for the outbox (autoIncrement); returns the assigned key (localSeq). */

@@ -24,6 +24,20 @@ export const KEY_PATH: Record<StoreName, string | null> = {
   importDrafts: "id",
 };
 
+export type ImportDraftPutResult = { kind: "created" | "existing"; value: unknown } | { kind: "conflict" };
+export interface ImportDraftDeleteMatch {
+  id: IDBValidKey;
+  ownerId: string;
+  budgetId: string;
+  accountId?: string;
+  locale?: string;
+  requestHash: string;
+}
+export interface ImportRecordScope {
+  ownerId: string;
+  budgetId: string;
+}
+
 export interface StorageBackend {
   get(store: StoreName, key: IDBValidKey): Promise<unknown>;
   getAll(store: StoreName): Promise<unknown[]>;
@@ -33,6 +47,14 @@ export interface StorageBackend {
   putMany(store: StoreName, entries: Array<{ value: unknown; key?: IDBValidKey }>): Promise<void>;
   /** Replace one import job only while its durable checkpoint revision still matches. */
   putImportJobIfRevision(value: unknown, expectedRevision: number): Promise<boolean>;
+  /** Create/replace a job only when an existing same-id record belongs to this scope. */
+  putImportJobForScope(value: unknown, scope: ImportRecordScope): Promise<boolean>;
+  /** Atomically insert a draft, return the identical existing request, or reject an id collision. */
+  putImportDraftIfAbsentOrSame(value: unknown): Promise<ImportDraftPutResult>;
+  /** Delete only the exact draft identity that a request or acknowledgement refers to. */
+  deleteImportDraftIfMatches(expected: ImportDraftDeleteMatch): Promise<boolean>;
+  deleteImportJobIfScope(id: IDBValidKey, scope: ImportRecordScope): Promise<boolean>;
+  deleteExpiredImportDrafts(scope: ImportRecordScope, expiresAt: number): Promise<number>;
   /** add — for the outbox (autoIncrement); returns the assigned key (localSeq). */
   add(store: StoreName, value: unknown): Promise<IDBValidKey>;
   /**
@@ -67,37 +89,107 @@ export class MemoryBackend implements StorageBackend {
     return (k as IDBValidKey | undefined) ?? ++this.autoKey;
   }
 
+  private clone<T>(value: T): T {
+    return structuredClone(value);
+  }
+
   get(store: StoreName, key: IDBValidKey): Promise<unknown> {
-    return Promise.resolve(this.mem(store).get(key));
+    const value = this.mem(store).get(key);
+    return Promise.resolve(value === undefined ? undefined : this.clone(value));
   }
   getAll(store: StoreName): Promise<unknown[]> {
-    return Promise.resolve([...this.mem(store).values()]);
+    return Promise.resolve([...this.mem(store).values()].map((value) => this.clone(value)));
   }
   put(store: StoreName, value: unknown, key?: IDBValidKey): Promise<void> {
-    this.mem(store).set(this.keyOf(store, value, key), value);
+    const copy = this.clone(value);
+    this.mem(store).set(this.keyOf(store, copy, key), copy);
     return Promise.resolve();
   }
   putMany(store: StoreName, entries: Array<{ value: unknown; key?: IDBValidKey }>): Promise<void> {
-    for (const e of entries) this.mem(store).set(this.keyOf(store, e.value, e.key), e.value);
+    const copies = entries.map((entry) => ({ value: this.clone(entry.value), key: entry.key }));
+    for (const entry of copies) this.mem(store).set(this.keyOf(store, entry.value, entry.key), entry.value);
     return Promise.resolve();
   }
   putImportJobIfRevision(value: unknown, expectedRevision: number): Promise<boolean> {
-    const record = value as { id: IDBValidKey; checkpointRevision: number };
-    const current = this.mem("importJobs").get(record.id) as { checkpointRevision?: unknown } | undefined;
-    if (current?.checkpointRevision !== expectedRevision) return Promise.resolve(false);
-    this.mem("importJobs").set(record.id, value);
+    const record = value as { id: IDBValidKey; ownerId: string; budgetId: string; checkpointRevision: number };
+    const current = this.mem("importJobs").get(record.id) as Record<string, unknown> | undefined;
+    if (current?.checkpointRevision !== expectedRevision || current.ownerId !== record.ownerId || current.budgetId !== record.budgetId) {
+      return Promise.resolve(false);
+    }
+    this.mem("importJobs").set(record.id, this.clone(value));
     return Promise.resolve(true);
   }
+  putImportJobForScope(value: unknown, scope: ImportRecordScope): Promise<boolean> {
+    const record = value as { id: IDBValidKey; ownerId: string; budgetId: string };
+    if (record.ownerId !== scope.ownerId || record.budgetId !== scope.budgetId) return Promise.resolve(false);
+    const current = this.mem("importJobs").get(record.id) as Record<string, unknown> | undefined;
+    if (current && (current.ownerId !== scope.ownerId || current.budgetId !== scope.budgetId)) return Promise.resolve(false);
+    this.mem("importJobs").set(record.id, this.clone(value));
+    return Promise.resolve(true);
+  }
+  putImportDraftIfAbsentOrSame(value: unknown): Promise<ImportDraftPutResult> {
+    const record = value as { id: IDBValidKey; ownerId: string; budgetId: string; requestHash: string };
+    const current = this.mem("importDrafts").get(record.id) as Record<string, unknown> | undefined;
+    if (current) {
+      return Promise.resolve(
+        current.requestHash === record.requestHash && current.ownerId === record.ownerId && current.budgetId === record.budgetId
+          ? { kind: "existing", value: this.clone(current) }
+          : { kind: "conflict" },
+      );
+    }
+    const stored = this.clone(value);
+    this.mem("importDrafts").set(record.id, stored);
+    return Promise.resolve({ kind: "created", value: this.clone(stored) });
+  }
+  deleteImportDraftIfMatches(expected: ImportDraftDeleteMatch): Promise<boolean> {
+    const current = this.mem("importDrafts").get(expected.id) as Record<string, unknown> | undefined;
+    if (
+      !current ||
+      current.ownerId !== expected.ownerId ||
+      current.budgetId !== expected.budgetId ||
+      (expected.accountId !== undefined && current.accountId !== expected.accountId) ||
+      (expected.locale !== undefined && current.locale !== expected.locale) ||
+      current.requestHash !== expected.requestHash
+    ) {
+      return Promise.resolve(false);
+    }
+    this.mem("importDrafts").delete(expected.id);
+    return Promise.resolve(true);
+  }
+  deleteImportJobIfScope(id: IDBValidKey, scope: ImportRecordScope): Promise<boolean> {
+    const current = this.mem("importJobs").get(id) as Record<string, unknown> | undefined;
+    if (!current || current.ownerId !== scope.ownerId || current.budgetId !== scope.budgetId) return Promise.resolve(false);
+    this.mem("importJobs").delete(id);
+    return Promise.resolve(true);
+  }
+  deleteExpiredImportDrafts(scope: ImportRecordScope, expiresAt: number): Promise<number> {
+    let deleted = 0;
+    for (const [id, value] of this.mem("importDrafts")) {
+      const draft = value as Record<string, unknown>;
+      if (
+        draft.ownerId === scope.ownerId &&
+        draft.budgetId === scope.budgetId &&
+        typeof draft.expiresAt === "string" &&
+        Date.parse(draft.expiresAt) <= expiresAt
+      ) {
+        this.mem("importDrafts").delete(id);
+        deleted++;
+      }
+    }
+    return Promise.resolve(deleted);
+  }
   add(store: StoreName, value: unknown): Promise<IDBValidKey> {
+    const copy = this.clone(value);
     const key = ++this.autoKey;
     const kp = KEY_PATH[store];
-    const v = kp ? { ...(value as Record<string, unknown>), [kp]: key } : value;
+    const v = kp ? { ...(copy as Record<string, unknown>), [kp]: key } : copy;
     this.mem(store).set(key, v);
     return Promise.resolve(key);
   }
   moveToDeadLetter(seq: number | null, deadLetter: unknown): Promise<void> {
+    const copy = this.clone(deadLetter);
     if (seq !== null) this.mem("outbox").delete(seq);
-    this.mem("deadletter").set(this.keyOf("deadletter", deadLetter), deadLetter);
+    this.mem("deadletter").set(this.keyOf("deadletter", copy), copy);
     return Promise.resolve();
   }
   delete(store: StoreName, key: IDBValidKey): Promise<void> {
