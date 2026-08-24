@@ -984,4 +984,108 @@ export const pl: Dict = {
   "Remove from the board": "Usuń z siatki",
   "Size: {w} × {h} — drag the corner of the tile to resize": "Rozmiar: {w} × {h} — przeciągnij róg kafelka, aby zmienić rozmiar",
   "Widget settings": "Ustawienia widgetu",
+
+  // --- wide-onboarding epic (PR7 task 5, consolidated pass) ---
+  "A local copy means the app opens instantly and keeps working on a plane.":
+    "Lokalna kopia oznacza, że aplikacja otwiera się natychmiast i działa dalej nawet w samolocie.",
+  "A negative balance is fine — that is how a credit card starts.": "Ujemne saldo to nic złego — tak zaczyna np. karta kredytowa.",
+  "A pairing code moves the key from an unlocked device — paste only, no QR scanning.":
+    "Kod parowania przenosi klucz z odblokowanego urządzenia — tylko wklejenie, bez skanowania QR.",
+  "A user id can change when a self-hosted server is rebuilt — same e-mail, new account.":
+    "Identyfikator użytkownika może się zmienić po ponownym zbudowaniu samodzielnie hostowanego serwera — ten sam e-mail, nowe konto.",
+  "AI through Enveo's key stays off while encryption is on — your own OpenAI key still works, straight from this device.":
+    "AI przez klucz Enveo pozostaje wyłączona, dopóki włączone jest szyfrowanie — Twój własny klucz OpenAI nadal działa, prosto z tego urządzenia.",
+  "Add Enveo to this device": "Dodaj Enveo do tego urządzenia",
+  "Cover the overspend in {name}": "Pokryj przekroczenie w {name}",
+  "Cover {amount}": "Pokryj {amount}",
+  "Covered {amount} in {name}": "Pokryto {amount} w {name}",
+  "Dismiss this step for now": "Pomiń ten krok na razie",
+  "Enveo keeps a full local copy of the budget, so it works offline and syncs when you are back. Accounts are mandatory — the copy has to belong to somebody.":
+    "Enveo przechowuje pełną lokalną kopię budżetu, dzięki czemu działa offline i synchronizuje się, gdy wrócisz do sieci. Konta są obowiązkowe — kopia musi do kogoś należeć.",
+  "Every write to the server is already blocked. Nothing has been deleted, because the decision is yours: the copy on this device may be the last one that exists.":
+    "Każdy zapis na serwer jest już zablokowany. Nic nie zostało usunięte, bo decyzja należy do Ciebie — kopia na tym urządzeniu może być ostatnią, jaka istnieje.",
+  "Export first: the JSON backup is written offline, without the server.": "Najpierw eksport: kopia zapasowa JSON jest zapisywana offline, bez serwera.",
+  "Fill {amount} ›": "Wypełnij {amount} ›",
+  "Filled {amount} in {name}": "Wypełniono {amount} w {name}",
+  Ignore: "Pomiń",
+  In: "Przychód",
+  "Language and currency": "Język i waluta",
+  "Language, one account, a set of envelopes. Everything can be renamed, moved or archived later — nothing here is permanent.":
+    "Język, jedno konto, zestaw kopert. Wszystko można później przemianować, przenieść albo zarchiwizować — nic tu nie jest ostateczne.",
+  "Left over": "Zostaje",
+  "Left over = income minus spending that month. Last 12 months, newest first.":
+    "Zostaje = przychody minus wydatki w danym miesiącu. Ostatnie 12 miesięcy, od najnowszego.",
+  "Met in {n} of 5 months · ✓ = fully funded that month": "Osiągnięto w {n} z 5 miesięcy · ✓ = ten miesiąc w pełni sfinansowany",
+  "Move the missing amount from To be budgeted into this envelope": "Przenieś brakującą kwotę z Do rozdysponowania do tej koperty",
+  "Nothing to fix right now ✓": "Teraz nie ma nic do naprawienia ✓",
+  "One click and Enveo runs in its own window — offline, full screen, no browser bar.":
+    "Jedno kliknięcie i Enveo działa we własnym oknie — offline, na pełnym ekranie, bez paska przeglądarki.",
+  "Only {fundable} of {amount} available in To be budgeted": "W Do rozdysponowania dostępne jest tylko {fundable} z {amount}",
+  Out: "Wydatek",
+  "Past months are judged against today's target — changing a goal rewrites its history.":
+    "Minione miesiące są oceniane względem dzisiejszego celu — zmiana celu przepisuje jego historię.",
+  "Pick at least one envelope.": "Wybierz co najmniej jedną kopertę.",
+  "Plan closed — every envelope holds": "Plan zamknięty — każda koperta się trzyma",
+  "Removing the local copy is the only destructive action here.": "Usunięcie lokalnej kopii to jedyne nieodwracalne działanie w tym miejscu.",
+  "Savings rate this month: {pct}%": "Stopa oszczędności w tym miesiącu: {pct}%",
+  "Self-hosted or cloud — the same build, the same data model.": "Własny serwer czy chmura — ten sam build, ten sam model danych.",
+  "Sign-in is per device: a shared computer can stay session-only.":
+    "Logowanie działa per urządzenie — współdzielony komputer może zostać tylko na czas sesji.",
+  "The data is encrypted on the device before it reaches the server. Only the encryption password — or a pairing code from a device that is already unlocked — can open it here.":
+    "Dane są szyfrowane na urządzeniu, zanim trafią na serwer. Otworzyć je tutaj może tylko hasło szyfrowania — albo kod parowania z urządzenia, które jest już odblokowane.",
+  "The flat line in each spark marks that envelope's median.": "Pozioma linia na każdym mini wykresie oznacza medianę tej koperty.",
+  "The server stores ciphertext and never sees the password.": "Serwer przechowuje wyłącznie zaszyfrowane dane i nigdy nie widzi hasła.",
+  "This budget is end-to-end encrypted.": "Ten budżet jest szyfrowany end-to-end.",
+  "This device holds someone else's budget.": "To urządzenie zawiera budżet innej osoby.",
+  "This step was ignored — click to bring it back": "Ten krok został pominięty — kliknij, aby go przywrócić",
+  "Three steps and the budget is yours.": "Trzy kroki i budżet jest Twój.",
+  "Top up {amount}": "Uzupełnij {amount}",
+  "Top up {name} — almost at the limit": "Uzupełnij {name} — blisko limitu",
+  "Top up {name} — its pace will bust the budget": "Uzupełnij {name} — tym tempem przekroczy budżet",
+  "Topped up {amount} in {name}": "Uzupełniono {amount} w {name}",
+  Undo: "Cofnij",
+  "Your budget is ready.": "Twój budżet jest gotowy.",
+  "Your budget is tied to your account.": "Twój budżet jest powiązany z Twoim kontem.",
+  "at this pace ≈ {projected} against a {budget} budget": "tym tempem ≈ {projected} wobec budżetu {budget}",
+  "ignored ↩": "pominięto ↩",
+  "net per month · scale ±{max}": "netto na miesiąc · skala ±{max}",
+  "{amount} from To be budgeted ({pool} available)": "{amount} z Do rozdysponowania ({pool} dostępne)",
+  "{funded} of {target}": "{funded} z {target}",
+  "{left} left · {pct}% of the budget spent": "zostaje {left} · wydano {pct}% budżetu",
+  "{month} so far: {pct}%": "{month} dotychczas: {pct}%",
+  "{month} · ended at {pct}% of the goal": "{month} · zakończony na {pct}% celu",
+  "{month} · goal fully funded ✓": "{month} · cel w pełni sfinansowany ✓",
+  "{month} · so far {pct}%": "{month} · dotychczas {pct}%",
+  "{name} moved the most this month — {amount} vs median": "{name} zmieniła się najbardziej w tym miesiącu — {amount} vs mediana",
+  "{now} · median {median}": "{now} · mediana {median}",
+  "{n} envelope selected | {n} envelopes selected": {
+    one: "{n} koperta zaznaczona",
+    few: "{n} koperty zaznaczone",
+    many: "{n} kopert zaznaczonych",
+    other: "{n} kopert zaznaczonych",
+  },
+  "{n} healthy envelope | {n} healthy envelopes": {
+    one: "{n} koperta w porządku",
+    few: "{n} koperty w porządku",
+    many: "{n} kopert w porządku",
+    other: "{n} kopert w porządku",
+  },
+  "{n} healthy envelope · {ignored} ignored | {n} healthy envelopes · {ignored} ignored": {
+    one: "{n} koperta w porządku · {ignored} pominięte",
+    few: "{n} koperty w porządku · {ignored} pominięte",
+    many: "{n} kopert w porządku · {ignored} pominięte",
+    other: "{n} kopert w porządku · {ignored} pominięte",
+  },
+  "{n} of {m} envelopes is healthy | {n} of {m} envelopes are healthy": {
+    one: "{n} z {m} kopert jest w porządku",
+    few: "{n} z {m} kopert są w porządku",
+    many: "{n} z {m} kopert jest w porządku",
+    other: "{n} z {m} kopert jest w porządku",
+  },
+  "{n} step to a closed plan · {pct}% of the month gone | {n} steps to a closed plan · {pct}% of the month gone": {
+    one: "{n} krok do zamkniętego planu · {pct}% miesiąca za nami",
+    few: "{n} kroki do zamkniętego planu · {pct}% miesiąca za nami",
+    many: "{n} kroków do zamkniętego planu · {pct}% miesiąca za nami",
+    other: "{n} kroków do zamkniętego planu · {pct}% miesiąca za nami",
+  },
 };
