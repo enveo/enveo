@@ -1,20 +1,16 @@
 import { computeStateResponse } from "@enveo/shared";
 import { useEffect, useMemo, useState } from "react";
+import { AccountEditSheet, AutomaticEnvelopeControl } from "../components/AccountEditSheet";
+import { AmountField } from "../components/AmountField";
 import { AmountPadHost, type AmountPadTarget } from "../components/AmountPadSheet";
-import { Sheet } from "../components/chrome";
+import { Surface } from "../components/chrome";
 import { IconColorPicker } from "../components/IconColorPicker";
-import { fmtSignedTrim } from "../lib/amount";
 import { type StateResponse, useLedgerVersion } from "../lib/api";
-import {
-  accountFormPayload,
-  canConfigureAutomaticEnvelope,
-  selectableAutomaticEnvelopes,
-  visibleAutomaticEnvelopeName,
-} from "../lib/automaticEnvelopeAccountUi";
+import { accountFormPayload, selectableAutomaticEnvelopes, visibleAutomaticEnvelopeName } from "../lib/automaticEnvelopeAccountUi";
 import { useMask, useTheme } from "../lib/contexts";
 import { currentMonth } from "../lib/dates";
 import { useDragReorder } from "../lib/dnd";
-import { localizePadExpression, parseAmount } from "../lib/format";
+import { parseAmount } from "../lib/format";
 import { useT } from "../lib/i18n";
 import { Ico } from "../lib/icons";
 import { local } from "../lib/mutate";
@@ -24,10 +20,25 @@ import { ACCOUNT_COLORS, font, P, TEAL } from "../lib/theme";
 import { AccountListRowContent } from "./AccountListRowContent";
 import { EnvelopePickerSheet } from "./add/EnvelopePickerSheet";
 
-export function AccountsScreen({ state, onMenu }: { state: StateResponse; onMenu: () => void }) {
+export function AccountsScreen({
+  state,
+  onMenu,
+  onOpenAccount,
+  selectedAccountId = null,
+}: {
+  state: StateResponse;
+  onMenu: () => void;
+  /** PR6b Task 3: wide-only — a row opens the account pane instead of the edit sheet when both
+   *  this and `inWide` (below) hold. Phone never passes it (`inWide` is always false there), so
+   *  phone behaviour stays byte-identical. */
+  onOpenAccount?: (id: string) => void;
+  /** PR6b Task 3: the currently-selected account (App's `acctView`), for the row highlight below.
+   *  Always `null` on phone. */
+  selectedAccountId?: string | null;
+}) {
   const C = useTheme();
   const M = useMask();
-  const { t, lang } = useT();
+  const { t } = useT();
   const inWide = useWideHost() !== null;
   // Accounts are CURRENT-balance always (unlike envelopes) — recomputed from the replica at
   // `currentMonth()` regardless of the app's viewed month, same pattern as chrome.tsx's Drawer
@@ -43,13 +54,21 @@ export function AccountsScreen({ state, onMenu }: { state: StateResponse; onMenu
   const total = accounts.reduce((s, a) => s + a.balance, 0);
   const [add, setAdd] = useState(false);
   const [edit, setEdit] = useState<StateResponse["accounts"][number] | null>(null);
+  // PR6b Task 3: on wide, a row opens the account pane instead of the edit sheet; phone (and any
+  // wide state that hasn't wired `onOpenAccount` yet) keeps today's row-tap-opens-edit behaviour.
+  const openRow = (a: StateResponse["accounts"][number]) => (inWide && onOpenAccount ? onOpenAccount(a.id) : setEdit(a));
   const [nm, setNm] = useState("");
   const [bl, setBl] = useState("");
+  // Hoisted out of `AmountField` (its `externalPad` escape hatch) so `AmountPadHost` (below) can
+  // render as a SIBLING of the "New account" `<Surface>` — nesting the pad inside the Surface body
+  // would put its Sheet inside the (phone) outer Sheet's always-transformed content div, breaking
+  // the pad's position:fixed backdrop+numpad (the ancestor-transform pitfall; ReconcileSheet.tsx
+  // is the reference shape, and AmountField.test.ts fails the suite on a regression).
+  const [blPad, setBlPad] = useState<AmountPadTarget | null>(null);
   const [nmColor, setNmColor] = useState<string>(ACCOUNT_COLORS[0]!);
   const [nmIcon, setNmIcon] = useState("wallet");
   const [automaticEnvelopeId, setAutomaticEnvelopeId] = useState<string | null>(null);
   const [automaticPicker, setAutomaticPicker] = useState(false);
-  const [pad, setPad] = useState<AmountPadTarget | null>(null);
   const selectableEnvelopes = selectableAutomaticEnvelopes(state.envelopes);
   const automaticEnvelopeName = selectableEnvelopes.find((envelope) => envelope.id === automaticEnvelopeId)?.name ?? null;
   useEffect(() => {
@@ -67,6 +86,9 @@ export function AccountsScreen({ state, onMenu }: { state: StateResponse; onMenu
   };
   const closeAdd = () => {
     setAutomaticPicker(false);
+    // The hoisted pad outlives the Surface's own unmount-on-close (unlike the field-internal
+    // default) — close it with the sheet or it would float over the bare accounts list.
+    setBlPad(null);
     setAdd(false);
   };
 
@@ -81,14 +103,6 @@ export function AccountsScreen({ state, onMenu }: { state: StateResponse; onMenu
     for (const c of ch) local.updateAccount(c.id, { sort: c.sort });
   };
   const dnd = useDragReorder(commitMove);
-
-  const openBalancePad = () =>
-    setPad({
-      label: t("Starting balance"),
-      initial: parseAmount(bl) ?? 0,
-      allowNegative: true, // account balance may be negative (e.g. a credit card)
-      onCommit: (minor) => setBl(fmtSignedTrim(minor)),
-    });
 
   const submit = () => {
     if (!nm.trim()) return;
@@ -154,6 +168,10 @@ export function AccountsScreen({ state, onMenu }: { state: StateResponse; onMenu
               key={a.id}
               ref={dnd.itemRef(i)}
               className="fu"
+              // PR6b Task 3: the selected-row highlight wins over the drag-dragging background —
+              // the two never coincide in practice (dragging clears any wide selection concern),
+              // but selection reads first for clarity.
+              aria-current={selectedAccountId === a.id || undefined}
               style={{
                 animationDelay: `${i * 22}ms`,
                 display: "flex",
@@ -161,7 +179,7 @@ export function AccountsScreen({ state, onMenu }: { state: StateResponse; onMenu
                 gap: 2,
                 padding: "11px 0",
                 borderBottom: i < accounts.length - 1 ? `1px solid ${C.line}` : "none",
-                background: dnd.dragging === i ? C.bg : "transparent",
+                background: selectedAccountId === a.id ? C.inset : dnd.dragging === i ? C.bg : "transparent",
                 outline: dnd.over === i && dnd.dragging !== i ? `2px dashed ${TEAL}` : "none",
                 outlineOffset: -2,
                 borderRadius: 8,
@@ -176,7 +194,7 @@ export function AccountsScreen({ state, onMenu }: { state: StateResponse; onMenu
               </span>
               <div
                 role="button"
-                onClick={() => setEdit(a)}
+                onClick={() => openRow(a)}
                 style={{ flex: 1, minWidth: 0, display: "flex", alignItems: "center", justifyContent: "space-between", cursor: "pointer" }}
               >
                 <AccountListRowContent account={a} automaticLabel={automaticLabel} balanceText={M(a.balance)} colors={C} />
@@ -196,13 +214,15 @@ export function AccountsScreen({ state, onMenu }: { state: StateResponse; onMenu
                 <div
                   key={a.id}
                   role="button"
-                  onClick={() => setEdit(a)}
+                  onClick={() => openRow(a)}
+                  aria-current={selectedAccountId === a.id || undefined}
                   style={{
                     display: "flex",
                     alignItems: "center",
                     justifyContent: "space-between",
                     minWidth: 0,
                     padding: "9px 0",
+                    background: selectedAccountId === a.id ? C.inset : "transparent",
                     opacity: 0.55,
                     cursor: "pointer",
                   }}
@@ -215,7 +235,7 @@ export function AccountsScreen({ state, onMenu }: { state: StateResponse; onMenu
         )}
       </div>
 
-      <Sheet show={add} onClose={closeAdd}>
+      <Surface show={add} onClose={closeAdd}>
         {(C) => (
           <>
             <div style={{ fontSize: 17, fontWeight: 700, color: C.text, marginBottom: 14 }}>{t("New account")}</div>
@@ -236,27 +256,16 @@ export function AccountsScreen({ state, onMenu }: { state: StateResponse; onMenu
                 marginBottom: 8,
               }}
             />
-            <input
-              // `bl` stays CANONICAL (fmtSignedTrim in, parseAmount out) — display only is localized.
-              value={localizePadExpression(bl, lang)}
-              readOnly
-              onClick={openBalancePad}
-              onFocus={openBalancePad}
-              placeholder={t("Starting balance (0)")}
-              style={{
-                width: "100%",
-                padding: "10px 12px",
-                borderRadius: 9,
-                border: `1px solid ${C.line}`,
-                background: C.bg,
-                color: C.text,
-                fontSize: 14,
-                fontFamily: font,
-                boxSizing: "border-box",
-                marginBottom: 14,
-                cursor: "pointer",
-              }}
-            />
+            <div style={{ marginBottom: 14 }}>
+              <AmountField
+                value={bl}
+                onCommit={setBl}
+                label={t("Starting balance")}
+                placeholder={t("Starting balance (0)")}
+                allowNegative
+                externalPad={[blPad, setBlPad]}
+              />
+            </div>
             <IconColorPicker palette={ACCOUNT_COLORS} color={nmColor} icon={nmIcon} onColor={setNmColor} onIcon={setNmIcon} />
             <AutomaticEnvelopeControl
               enabled={automaticEnvelopeId !== null}
@@ -283,7 +292,13 @@ export function AccountsScreen({ state, onMenu }: { state: StateResponse; onMenu
             </button>
           </>
         )}
-      </Sheet>
+      </Surface>
+
+      {/* Sibling of the "New account" Surface (not a child) — the panel's transform would break
+          the pad's position:fixed on wide, and on phone the outer Sheet's own always-on transform
+          would do the same to a pad nested inside it (ReconcileSheet.tsx is the reference shape;
+          see `AmountField`'s `externalPad` docblock). */}
+      <AmountPadHost target={blPad} onClose={() => setBlPad(null)} />
 
       <EnvelopePickerSheet
         show={add && automaticPicker}
@@ -295,261 +310,7 @@ export function AccountsScreen({ state, onMenu }: { state: StateResponse; onMenu
           setAutomaticPicker(false);
         }}
       />
-      <AccountEdit account={edit} envelopes={state.envelopes} groups={state.groups} onClose={() => setEdit(null)} />
-      {/* Sibling of the "New account" sheet (not a child) — the panel's transform would break the pad's position:fixed. */}
-      <AmountPadHost target={pad} onClose={() => setPad(null)} />
-    </div>
-  );
-}
-
-/** Account editing: name + color/icon + automatic envelope + archiving. */
-function AccountEdit({
-  account,
-  envelopes,
-  groups,
-  onClose,
-}: {
-  account: StateResponse["accounts"][number] | null;
-  envelopes: StateResponse["envelopes"];
-  groups: StateResponse["groups"];
-  onClose: () => void;
-}) {
-  const { t } = useT();
-  const [name, setName] = useState("");
-  const [color, setColor] = useState<string>(ACCOUNT_COLORS[0]!);
-  const [icon, setIcon] = useState("wallet");
-  const [archived, setArchived] = useState(false);
-  const [automaticEnvelopeId, setAutomaticEnvelopeId] = useState<string | null>(null);
-  const [automaticPicker, setAutomaticPicker] = useState(false);
-  useEffect(() => {
-    if (account) {
-      setName(account.name);
-      setColor(account.color);
-      setIcon(account.icon);
-      setArchived(account.archived);
-      setAutomaticEnvelopeId(
-        selectableAutomaticEnvelopes(envelopes).some((envelope) => envelope.id === account.automaticEnvelopeId) ? account.automaticEnvelopeId : null,
-      );
-      setAutomaticPicker(false);
-    }
-  }, [account]);
-  useEffect(() => {
-    if (automaticEnvelopeId && !selectableAutomaticEnvelopes(envelopes).some((envelope) => envelope.id === automaticEnvelopeId)) {
-      setAutomaticEnvelopeId(null);
-    }
-  }, [automaticEnvelopeId, envelopes]);
-  if (!account) return null;
-  const automaticEnvelopeName = selectableAutomaticEnvelopes(envelopes).find((envelope) => envelope.id === automaticEnvelopeId)?.name ?? null;
-  const close = () => {
-    setAutomaticPicker(false);
-    onClose();
-  };
-  const save = () => {
-    const nm = name.trim();
-    if (!nm) return;
-    if (archived && !account.archived) {
-      const ok = window.confirm(
-        t(
-          "The account “{name}” will disappear from the Start screen and lists (you will find it under “Closed” on the Accounts screen). Its transactions and balance still count in the budget and reports.\n\nArchive it?",
-          { name: nm },
-        ),
-      );
-      if (!ok) return;
-    }
-    local.updateAccount(
-      account.id,
-      accountFormPayload({
-        name: nm,
-        color,
-        icon,
-        onBudget: account.onBudget,
-        automaticEnvelopeId,
-        archived,
-      }),
-    );
-    close();
-  };
-  return (
-    <>
-      <Sheet show={!!account} onClose={close}>
-        {(C) => (
-          <>
-            <div style={{ fontSize: 17, fontWeight: 700, color: C.text, marginBottom: 14 }}>{t("Edit account")}</div>
-            <div style={{ fontSize: 10.5, color: C.mute, fontWeight: 600, marginBottom: 4, textTransform: "uppercase", letterSpacing: 0.6 }}>
-              {t("Account name")}
-            </div>
-            <input
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              style={{
-                width: "100%",
-                padding: "8px 0",
-                border: "none",
-                borderBottom: `1px solid ${C.line}`,
-                background: "none",
-                color: C.text,
-                fontSize: 15,
-                fontFamily: font,
-                marginBottom: 18,
-                boxSizing: "border-box",
-              }}
-            />
-            <IconColorPicker palette={ACCOUNT_COLORS} color={color} icon={icon} onColor={setColor} onIcon={setIcon} />
-            {canConfigureAutomaticEnvelope(account) && (
-              <AutomaticEnvelopeControl
-                enabled={automaticEnvelopeId !== null}
-                envelopeName={automaticEnvelopeName}
-                onToggle={() => (automaticEnvelopeId ? setAutomaticEnvelopeId(null) : setAutomaticPicker(true))}
-                onPick={() => setAutomaticPicker(true)}
-              />
-            )}
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 18 }}>
-              <span style={{ fontSize: 14, color: C.text }}>{t("Archived account")}</span>
-              <button
-                onClick={() => setArchived(!archived)}
-                style={{
-                  width: 42,
-                  height: 24,
-                  borderRadius: 12,
-                  background: archived ? TEAL : C.line,
-                  position: "relative",
-                  border: "none",
-                  cursor: "pointer",
-                  transition: "background .2s",
-                }}
-              >
-                <div
-                  style={{
-                    width: 20,
-                    height: 20,
-                    borderRadius: "50%",
-                    background: "#fff",
-                    position: "absolute",
-                    top: 2,
-                    left: archived ? 20 : 2,
-                    transition: "left .2s",
-                    boxShadow: "0 1px 2px rgba(0,0,0,0.2)",
-                  }}
-                />
-              </button>
-            </div>
-            <button
-              onClick={save}
-              disabled={!name.trim()}
-              style={{
-                width: "100%",
-                padding: 12,
-                borderRadius: 11,
-                border: "none",
-                background: TEAL,
-                color: "#fff",
-                fontSize: 13.5,
-                fontWeight: 600,
-                cursor: "pointer",
-                opacity: name.trim() ? 1 : 0.4,
-              }}
-            >
-              {t("Save")}
-            </button>
-          </>
-        )}
-      </Sheet>
-      <EnvelopePickerSheet
-        show={automaticPicker}
-        onClose={() => setAutomaticPicker(false)}
-        envelopes={envelopes}
-        groups={groups}
-        onSelect={(id) => {
-          setAutomaticEnvelopeId(id);
-          setAutomaticPicker(false);
-        }}
-      />
-    </>
-  );
-}
-
-function AutomaticEnvelopeControl({
-  enabled,
-  envelopeName,
-  onToggle,
-  onPick,
-}: {
-  enabled: boolean;
-  envelopeName: string | null;
-  onToggle: () => void;
-  onPick: () => void;
-}) {
-  const C = useTheme();
-  const { t } = useT();
-  return (
-    <div style={{ marginBottom: 18 }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
-        <span style={{ fontSize: 14, color: C.text }}>{t("Automatic envelope")}</span>
-        <button
-          type="button"
-          role="switch"
-          aria-checked={enabled}
-          aria-label={t("Automatic envelope")}
-          onClick={onToggle}
-          style={{
-            width: 42,
-            height: 24,
-            borderRadius: 12,
-            background: enabled ? TEAL : C.line,
-            position: "relative",
-            border: "none",
-            cursor: "pointer",
-            transition: "background .2s",
-            flexShrink: 0,
-          }}
-        >
-          <span
-            style={{
-              width: 20,
-              height: 20,
-              borderRadius: "50%",
-              background: "#fff",
-              position: "absolute",
-              top: 2,
-              left: enabled ? 20 : 2,
-              transition: "left .2s",
-              boxShadow: "0 1px 2px rgba(0,0,0,0.2)",
-            }}
-          />
-        </button>
-      </div>
-      <div style={{ color: C.mute, fontSize: 11.5, lineHeight: 1.45, marginTop: 6 }}>
-        {t("Income and transfers to this account increase the selected envelope. Transfers from this account decrease it.")}
-      </div>
-      <div style={{ color: C.mute, fontSize: 11.5, lineHeight: 1.45, marginTop: 6 }}>
-        {t("The link works from now on. The current account balance and envelope amount will not change.")}
-      </div>
-      {enabled && envelopeName && (
-        <button
-          type="button"
-          onClick={onPick}
-          style={{
-            width: "100%",
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center",
-            gap: 8,
-            marginTop: 10,
-            padding: "9px 10px",
-            borderRadius: 9,
-            border: `1px solid ${C.line}`,
-            background: C.bg,
-            color: C.text,
-            fontSize: 13,
-            fontFamily: font,
-            cursor: "pointer",
-            textAlign: "left",
-          }}
-        >
-          <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{envelopeName}</span>
-          <Ico d="M9 18l6-6-6-6" size={15} color={C.mute} />
-        </button>
-      )}
+      <AccountEditSheet account={edit} envelopes={state.envelopes} groups={state.groups} onClose={() => setEdit(null)} />
     </div>
   );
 }

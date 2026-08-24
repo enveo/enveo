@@ -9,6 +9,7 @@ import { AddScreen, type Tab as AddTab } from "../../screens/Add";
 import type { ReportView } from "../../screens/reports/types";
 import { TITLES } from "../../screens/reports/types";
 import { LazyChunk } from "../lazy";
+import { AccountPanel } from "./AccountPanel";
 import type { PanelView } from "./panel";
 
 // Same resolved module App.tsx already `lazy()`s for the full-screen phone summary — Vite
@@ -26,9 +27,13 @@ const ReportsScreen = lazy(() => import("../../screens/Reports").then((m) => ({ 
 // chunk's static graph; Vite dedupes it with Start.tsx's own `lazy()` import of the same module.
 const EnvelopesOptions = lazy(() => import("../EditWidgetsSheet").then((m) => ({ default: m.EnvelopesOptions })));
 
-const HINT_COPY: Record<"envelope" | "report" | "generic", Message> = {
+const HINT_COPY: Record<"envelope" | "report" | "account" | "generic", Message> = {
   envelope: msg("Choose an envelope to see its summary."),
   report: msg("Choose a report to open it here."),
+  // PR6b Task 3 — the account hint (panel.ts's `empty` variant gains this arm the moment the
+  // `account` PanelView kind exists, since `HINT_COPY[view.hint]` below must stay total over the
+  // whole hint union). The real account pane body (`AccountPanel`) is Task 4's scope.
+  account: msg("Choose an account to see its details."),
   generic: msg("Nothing is open in this panel yet."),
 };
 
@@ -122,6 +127,7 @@ export function PanelHost({
   onOpenEnvelope,
   onFillGoals,
   onEditTxn,
+  onEditAccountTxn,
   onPrev,
   onNext,
   editTxn,
@@ -143,6 +149,9 @@ export function PanelHost({
   onOpenEnvelope: (envId: string, month: string) => void;
   onFillGoals: () => void;
   onEditTxn: (t: Transaction) => void;
+  /** PR6b Task 4: the `account` kind's OWN edit entry point — deliberately not `onEditTxn` above
+   *  (see the bag's own comment, WideShell.tsx). */
+  onEditAccountTxn: (t: Transaction) => void;
   onPrev: () => void;
   onNext: () => void;
   /** PR6 Task 2: the `add` kind's own props — App's edit/preset state, same as the phone
@@ -154,7 +163,17 @@ export function PanelHost({
   const C = useTheme();
   const { t } = useT();
 
-  const label = view.kind === "report" ? t(TITLES[view.view]) : view.kind === "widgets" ? t("Widget settings") : "";
+  const label =
+    view.kind === "report"
+      ? t(TITLES[view.view])
+      : view.kind === "widgets"
+        ? t("Widget settings")
+        : view.kind === "account"
+          ? // Name only — this reads the VIEWED-month `state.accounts`, which is fine for a
+            // field that never varies by month; the balance itself (AccountPanel's own concern)
+            // must never come from here (the 3.6.2 rule).
+            (state.accounts.find((a) => a.id === view.accountId)?.name ?? "")
+          : "";
 
   const body = (() => {
     switch (view.kind) {
@@ -197,6 +216,13 @@ export function PanelHost({
         );
       case "widgets":
         return <WidgetSettingsPanel widgetId={view.widgetId} state={state} onClose={onClose} />;
+      case "account":
+        // PR6b Task 4: the real `acct` pane body — balance card, actions, recent activity
+        // (AccountPanel.tsx). `HINT_COPY.account` above stays the NO-selection copy; AccountPanel
+        // reuses the same string for the separate "account vanished" case (its own file header).
+        return (
+          <AccountPanel accountId={view.accountId} envelopes={state.envelopes} groups={state.groups} onOpenTxns={onOpenTxns} onEditTxn={onEditAccountTxn} />
+        );
       case "add":
         // AddScreen already ships in the EAGER bundle (App.tsx: "AddScreen with the whole
         // transaction-entry subtree" — the app's most-repeated action), so unlike EnvelopeScreen/

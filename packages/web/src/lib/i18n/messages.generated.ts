@@ -135,6 +135,7 @@ export const MESSAGES = [
   "Choose a color",
   "Choose a report to open it here.",
   "Choose an account",
+  "Choose an account to see its details.",
   "Choose an envelope",
   "Choose an envelope to see its summary.",
   "Choose an icon",

@@ -156,6 +156,39 @@ export default function App() {
   useEffect(() => setMonthDay(null), [month]);
   // full-screen envelope summary (push-nav like transaction editing); back → null
   const [envView, setEnvView] = useState<{ envelopeId: string; month: string } | null>(r0.envelopeId ? { envelopeId: r0.envelopeId, month } : null);
+  // Wide-only account pane selection (PR6b) — envView's pattern, minus the URL: phone has no
+  // account-detail view, so there is no route to serialise (D2; widgetSettings precedent). A
+  // FRESH object per open — WideShell's reopen effect compares selections by reference (the
+  // addPreset rule, panel.ts/WideShell.tsx).
+  const [acctView, setAcctView] = useState<{ accountId: string } | null>(null);
+  // Task 4: editing a transaction from the account pane's recent list takes the SAME
+  // screen="addExpense" push-nav detour envelope/report edits use (`editTxnFrom` below), and
+  // `doneEdit`'s `history.back()` unwind fires the SAME `onPop` popstate handler that resets
+  // `acctView` on every pop. Unlike `envView`/`reportsView`, `acctView` is deliberately NOT in
+  // the URL (D2), so `onPop` has nothing to restore it FROM; this ref is the memory instead —
+  // stashed immediately before the edit (`editAccountTxn` below) and read by `onPop` for the
+  // ONE pop it was stashed for. Reproduced live before this ref existed: the primary pane
+  // flashed to Reports (the shared onEditTxn's editReturn) and the account pane reverted to its
+  // empty hint after Save.
+  //
+  // The edit can also be ABANDONED without ever reaching that pop: WideShell keeps a fully
+  // interactive Rail while Add covers the panel (`onNav={nav}`, not gated on
+  // `screen === "addExpense"`), so any other Rail item calls `nav()` directly; a rail quick
+  // action goes through `onQuickAdd`; `doneEdit` falls back to a plain `setScreen(editReturn)`
+  // when there is no history entry to pop; WideShell's panel-✕ funnels into `doneEdit` too. None
+  // of those fire a popstate, and patching each caller would leave the NEXT one stale. The effect
+  // below is the single choke point instead: the stash only lives while the edit it was taken for
+  // is on screen. Every abandonment moves `screen` off "addExpense" and the effect discards the
+  // stash right after that commit; the one legitimate consumer (`onPop`'s capture) runs
+  // synchronously inside the popstate handler, before effects, so consumption always wins by
+  // construction — and a later, unrelated pop landing on "accounts" finds nothing to resurrect.
+  // (A quick action swapping the open edit for a fresh Add keeps `screen === "addExpense"` and
+  // deliberately keeps the stash: `acctView` itself never changed, so the eventual unwind
+  // restores the same pane the whole detour started from — continuity, not staleness.)
+  const acctViewBeforeEditRef = useRef<{ accountId: string } | null>(null);
+  useEffect(() => {
+    if (screen !== "addExpense") acctViewBeforeEditRef.current = null;
+  }, [screen]);
   // screen to return to after saving/cancelling an edit (default start; from the list → list)
   const [editReturn, setEditReturn] = useState<ScreenId>("start");
   // transaction list filters kept high up so they survive an edit and return
@@ -200,6 +233,11 @@ export default function App() {
       setBudgetFillGoals(false);
     }
     setEnvView(null);
+    setAcctView(null);
+    // NO `acctViewBeforeEditRef` rung here — abandoning an account-pane edit is handled by the
+    // ref's own screen-change effect (the single choke point; see its comment above), which also
+    // covers the exits that never come through `nav()` at all (`doneEdit`'s no-history fallback,
+    // `onQuickAdd`).
     setEditReturn("start");
     if (s === "reports") {
       // Fresh menu entry = the hub overview, with no resurrected day panel — the same
@@ -249,6 +287,14 @@ export default function App() {
     nav("budget");
     setBudgetFillGoals(true);
   };
+  // Wide-only opener for the account pane (PR6b) — rail rows AND Accounts rows both call this.
+  // nav-then-set is the same batch pattern as `openReports`/`openBudgetFillGoals` above: `nav`
+  // clears `acctView` (its own reset rung), and this write comes after, so it's the LAST write to
+  // `acctView` in the batch and wins over nav's own reset.
+  const openAccount = (id: string) => {
+    nav("accounts");
+    setAcctView({ accountId: id });
+  };
   // enter the transaction list with a preselected filter (envelope OR account) — from an
   // envelope/account tile or sheet. Clean, focused view: set the given filter, clear the
   // other dimension and the search box.
@@ -290,6 +336,13 @@ export default function App() {
     setEditReturn(from);
     setAddPreset({});
     setScreen("addExpense");
+  };
+  // Wide-only: the account pane's recent-list row → edit (PanelHost's `account` kind). Its OWN
+  // `editTxnFrom` binding ("accounts", not the panel report instance's "reports") — see
+  // `acctViewBeforeEditRef`'s comment above for why this can't just reuse that shared callback.
+  const editAccountTxn = (t: Transaction) => {
+    acctViewBeforeEditRef.current = acctView;
+    editTxnFrom(t, "accounts");
   };
   const doneEdit = () => {
     setEditTxn(null);
@@ -370,9 +423,17 @@ export default function App() {
       setEnvActions(null);
       justPopped.current = true;
       const r = parseUrl(location.pathname, location.search);
+      // Task 4: the ONE legitimate consumer of the account-pane restore stash (see the ref's
+      // comment). This runs synchronously inside the popstate handler — before the ref's
+      // screen-change effect can discard the stash for this same transition — so a pop landing on
+      // "accounts" with something stashed restores the pane, and every other pop lets the effect
+      // clear it. A later, unrelated pop finds nothing: any earlier abandonment already moved
+      // `screen` off "addExpense" and emptied the stash.
+      const acctRestore = r.screen === "accounts" ? acctViewBeforeEditRef.current : null;
       nav(r.screen);
       setReportsView(r.reportsView);
       if (r.envelopeId) setEnvView({ envelopeId: r.envelopeId, month });
+      if (acctRestore) setAcctView(acctRestore);
     };
     window.addEventListener("popstate", onPop);
     if (routingActive) {
@@ -509,7 +570,7 @@ export default function App() {
       )}
       {primaryScreen === "accounts" && (
         <LazyChunk onDismiss={() => nav("start")}>
-          <AccountsScreen state={state} onMenu={() => setDrawer(true)} />
+          <AccountsScreen state={state} onMenu={() => setDrawer(true)} onOpenAccount={openAccount} selectedAccountId={acctView?.accountId ?? null} />
         </LazyChunk>
       )}
       {primaryScreen === "reports" && (
@@ -633,9 +694,11 @@ export default function App() {
               next,
               reportsView,
               envView,
+              acctView,
               openTxns,
               panelClosed,
               setEnvView,
+              setAcctView,
               setReportsView,
               setPanelClosed,
               // `wide` already implies `!!state` (its own definition above) — TS can't see through
@@ -667,6 +730,11 @@ export default function App() {
               // PR6 Task 5: the band header's "+ Add" button opens Add through this entry point,
               // not `nav("addExpense")` — see `openAddWide`'s own comment above for why.
               onAddWide: openAddWide,
+              // PR6b Task 3: Rail's account rows deep-link straight into the account pane.
+              onOpenAccount: openAccount,
+              // PR6b Task 4: the account pane's own recent-list edit entry point — NOT the
+              // report-panel instance's `onEditTxn` above (see `editAccountTxn`'s comment).
+              onEditAccountTxn: editAccountTxn,
             }}
             rightSlot={wideRightSlot}
           >

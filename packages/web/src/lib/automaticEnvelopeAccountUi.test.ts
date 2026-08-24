@@ -68,6 +68,22 @@ describe("automatic-envelope account configuration", () => {
     expect(visibleAutomaticEnvelopeName(restored, envelopes)).toBe("Travel");
   });
 
+  it("reads an account row written before 3.8 (no automaticEnvelopeId key at all) as unlinked", () => {
+    // given: a legacy account row from before automaticEnvelopeId existed — no key at all, not
+    // even an explicit null (the ?? null boundary pitfall, shared/automaticEnvelope.ts's docblock;
+    // this is that same fixture, pinned on the WEB boundary every Accounts consumer goes through)
+    const legacy = { name: "Old", onBudget: true, archived: false, automaticEnvelopeId: null } as {
+      name: string;
+      onBudget: boolean;
+      archived: boolean;
+      automaticEnvelopeId: string | null;
+    };
+    delete (legacy as { automaticEnvelopeId?: string | null }).automaticEnvelopeId;
+
+    // when/then: the falsy check treats the missing key exactly like an explicit null
+    expect(visibleAutomaticEnvelopeName(legacy, [{ id: "e1", name: "Fuel", archived: false, isSavings: false }])).toBeNull();
+  });
+
   it("does not show a stale label for a missing or archived linked envelope", () => {
     // given: a link whose target is absent or no longer active
     const linked = account("checking", "Checking", "missing");

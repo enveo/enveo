@@ -13,16 +13,17 @@ import type { ScreenId } from "../chrome";
  * unchanged. PR4 ships three kinds (`empty | envelope | report`); PR5 adds `widgets` (the wide
  * Home board's gear target — `widgetSettings` is `WideShell`'s own local selection, not lifted to
  * App, since nothing outside the wide shell needs it); PR6 Task 1 adds `add` (the Add/edit-
- * transaction takeover pane — see below); the remaining v3 panes (`txn`/`acct`/the form sheets)
- * stay commissioned as PR6b, per the epic's reconciliation. Every `switch` a caller writes over
- * `.kind` must stay EXHAUSTIVE (a `never` check) so a future kind is a compile error at every
- * consumer, not a silently-unhandled case.
+ * transaction takeover pane — see below); PR6b Task 3 adds `account` (the v3 `acct` pane — see
+ * below); the `txn` pane and per-surface popovers remain open items, per the epic's
+ * reconciliation. Every `switch` a caller writes over `.kind` must stay EXHAUSTIVE (a `never`
+ * check) so a future kind is a compile error at every consumer, not a silently-unhandled case.
  */
 export type PanelView =
-  | { kind: "empty"; hint: "envelope" | "report" | "generic" }
+  | { kind: "empty"; hint: "envelope" | "report" | "account" | "generic" }
   | { kind: "envelope"; envelopeId: string; month: string }
   | { kind: "report"; view: ReportTab }
   | { kind: "widgets"; widgetId: WideWidgetId }
+  | { kind: "account"; accountId: string } // PR6b — the v3 `acct` pane
   | { kind: "add" };
 
 /**
@@ -40,20 +41,25 @@ export type PanelView =
  * `widgetSettings` only ever resolves to the `widgets` kind on the `start` screen — `WideShell`
  * clears its local state whenever `screen` changes away from `start`, but this function stays
  * total and defensive about that discipline rather than trusting it (a stale non-null value on
- * any other screen is simply ignored here, never surfaced).
+ * any other screen is simply ignored here, never surfaced). `acctView` (PR6b Task 3) is the same
+ * discipline for the `accounts` screen — App owns it (D2: no phone-parity route exists for it,
+ * unlike `envView`), and a stale value elsewhere is likewise ignored here.
  */
 export function resolvePanel(a: {
   screen: ScreenId;
   reportsView: ReportView;
   envView: { envelopeId: string; month: string } | null;
   widgetSettings?: WideWidgetId | null;
+  acctView?: { accountId: string } | null;
 }): PanelView {
   if (a.screen === "addExpense") return { kind: "add" };
   if (a.envView) return { kind: "envelope", envelopeId: a.envView.envelopeId, month: a.envView.month };
   if (a.screen === "reports") return a.reportsView === "overview" ? { kind: "empty", hint: "report" } : { kind: "report", view: a.reportsView };
   if (a.screen === "start" && a.widgetSettings) return { kind: "widgets", widgetId: a.widgetSettings };
+  if (a.screen === "accounts" && a.acctView) return { kind: "account", accountId: a.acctView.accountId };
+  if (a.screen === "accounts") return { kind: "empty", hint: "account" };
   if (a.screen === "start" || a.screen === "budget") return { kind: "empty", hint: "envelope" };
-  return { kind: "empty", hint: "generic" }; // transactions/accounts/settings until PR6b's <Surface>
+  return { kind: "empty", hint: "generic" }; // transactions/settings — no panel selection of their own (their sheets ride <Surface>, not this resolver)
 }
 
 /**

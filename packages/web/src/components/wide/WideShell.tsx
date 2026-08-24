@@ -1,11 +1,11 @@
 import type { Transaction, WideWidgetId } from "@enveo/shared";
-import { type ReactNode, useEffect, useRef, useState } from "react";
+import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import type { StateResponse } from "../../lib/api";
 import { useTheme } from "../../lib/contexts";
 import { monthLabel } from "../../lib/dates";
 import { type Message, msg, useT } from "../../lib/i18n";
 import { Ico } from "../../lib/icons";
-import { InWideShell, type PaneRect } from "../../lib/shellContext";
+import { InWideShell, type PaneRect, type PaneSurfaceHost } from "../../lib/shellContext";
 import { CTA, font, P } from "../../lib/theme";
 import { useElementWidth } from "../../lib/useElementWidth";
 import { PHONE_COL, type ViewMode } from "../../lib/viewMode";
@@ -261,9 +261,17 @@ type WideShellBag = {
   next: () => void;
   reportsView: ReportView;
   envView: { envelopeId: string; month: string } | null;
+  /** PR6b Task 3: the account-pane selection (D2) — App-owned, like `envView` (unlike
+   *  `widgetSettings`, which is WideShell-local): its openers (`AccountsScreen` rows, `Rail`
+   *  rows) both render OUTSIDE this component, so WideShell-local state would need a context
+   *  channel anyway. NOT URL-serialised (no phone-parity route exists for it). */
+  acctView: { accountId: string } | null;
   openTxns: (f?: { envId?: string; accId?: string; envIds?: ReadonlySet<string>; catId?: string; placeId?: string }) => void;
   panelClosed: boolean;
   setEnvView: (v: null) => void;
+  /** Raw setter — the same `setEnvView`-decides-when pattern this bag already documents;
+   *  `closePanel` below is the only caller. */
+  setAcctView: (v: null) => void;
   /** Widened from Task 4's `(v: "overview") => void` (the only call `closePanel` below made):
    *  Task 6's panel report variant needs App's REAL `reportsView` setter, so a second
    *  `ReportsScreen` inside the panel can resolve its own back chevron the same way `closePanel`
@@ -312,6 +320,15 @@ type WideShellBag = {
    *  over an open envelope pane must NOT clear it, so closing Add derives back to the envelope
    *  for free). Defined in App.tsx as `openAddWide`. */
   onAddWide: () => void;
+  /** PR6b Task 3: `Rail`'s account rows deep-link straight into the account pane (a cross-screen
+   *  jump — the rail hides on the Accounts screen itself) — same nav-then-select batch as
+   *  `openAccount` (App.tsx), threaded through to `Rail` below. */
+  onOpenAccount: (id: string) => void;
+  /** PR6b Task 4: the account pane's OWN recent-list edit entry point — deliberately separate
+   *  from `onEditTxn` above (that one's `editReturn` is hardcoded "reports" for the panel's
+   *  report-subview instance; reusing it here reopened Reports behind the edit takeover and lost
+   *  `acctView` on save — reproduced live, App.tsx's `editAccountTxn`/`acctViewBeforeEditRef`). */
+  onEditAccountTxn: (t: Transaction) => void;
 };
 
 /**
@@ -337,13 +354,15 @@ type WideShellBag = {
  * | Surface                                                          | Host today | Wide behaviour this PR | Eventual home |
  * |-------------------------------------------------------------------|------------|------------------------|---------------|
  * | EnvActionsSheet                                                    | Sheet      | phone-only (PR4 §7 fork) | stays phone-only |
- * | EnvEdit / EnvManageSheet (Budget)                                  | Sheet      | sheet                  | `envForm`/`manageGroups` panes (PR6b) |
- * | BudgetSuggestSheet / FillGoalsSheet                                | Sheet      | sheet                  | `suggest`/`fillGoals` panes (PR6b) |
+ * | EnvEdit / EnvManageSheet (Budget)                                  | Sheet      | pane surface (PR6b)    | — |
+ * | BudgetSuggestSheet / FillGoalsSheet                                | Sheet      | pane surface (PR6b)    | — |
  * | AmountPadSheet / DateSheet / AccountPickerSheet / EnvelopePickerSheet (Add) | Sheet | sheet (portals past this panel's transform — see `chrome.tsx`'s `Sheet`) | popovers on desktop (PR6b) |
  * | TransactionFilterSheet                                             | Sheet      | sheet                  | possibly inline filters on wide |
  * | ImportSheet                                                        | portal, full-screen | unchanged    | unchanged |
  * | IconColorPicker                                                    | portal     | unchanged              | unchanged |
- * | AiConsentSheet / InstallSheet / DataSection sheets / EditWidgetsSheet / Accounts sheets | Sheet | sheet | EditWidgetsSheet → PR5's `widgets` pane; Accounts sheets → PR6b |
+ * | AccountEditSheet (`AccountEdit`, row edits + "New account")     | Sheet      | pane surface (PR6b)    | — |
+ * | ReconcileSheet (`AccountsWidget`'s per-account sheet + `AccountPanel`'s Reconcile action) | Sheet (phone-only reach — no wide UI could open it before PR6b) | pane surface (PR6b) | — |
+ * | AiConsentSheet / InstallSheet / DataSection sheets / EditWidgetsSheet | Sheet | sheet          | EditWidgetsSheet → PR5's `widgets` pane |
  * | `UpdatePrompt`                                                     | fixed, viewport-centered on phone | anchored to the primary pane's measured rect on wide (this file, below) — MEASURED to collide with this panel at 1104x992 before the fix | — (closed) |
  *
  * Verified live (throwaway stack, 1440x900 + 1104x992): every Sheet opened from panel-hosted
@@ -365,9 +384,11 @@ export function WideShell({ bag, rightSlot = null, children }: { bag: WideShellB
     next,
     reportsView,
     envView,
+    acctView,
     openTxns,
     panelClosed,
     setEnvView,
+    setAcctView,
     setReportsView,
     setPanelClosed,
     state,
@@ -385,6 +406,8 @@ export function WideShell({ bag, rightSlot = null, children }: { bag: WideShellB
     addPreset,
     onDoneEdit,
     onAddWide,
+    onOpenAccount,
+    onEditAccountTxn,
   } = bag;
   const C = useTheme();
   const { t } = useT();
@@ -402,7 +425,7 @@ export function WideShell({ bag, rightSlot = null, children }: { bag: WideShellB
     // (Add lives in the OTHER pane), so this effect never fires just because Add opened/closed.
     if (primaryScreen !== "start") setWidgetSettings(null);
   }, [primaryScreen]);
-  const view = resolvePanel({ screen, reportsView, envView, widgetSettings });
+  const view = resolvePanel({ screen, reportsView, envView, widgetSettings, acctView });
   const primaryRef = useRef<HTMLDivElement | null>(null);
   const panelRef = useRef<HTMLDivElement | null>(null);
 
@@ -434,6 +457,30 @@ export function WideShell({ bag, rightSlot = null, children }: { bag: WideShellB
     return () => ro.disconnect();
   }, [panelClosed]);
 
+  // PR6b Task 1: the pane-surface host — a portal TARGET inside the panel column plus a
+  // registration stack, so `Surface` (chrome.tsx) can render a `Sheet`-signature body as a panel
+  // overlay instead. `surfaceNode` is set by the ref callback on the surfaces `<div>` below (null
+  // for the very first frame). `surfaceStack` is a plain array of `{close}` handles — the top of
+  // the stack is what Escape/the band toggle close; `register` reopens a collapsed panel (the
+  // surface analogue of the selection-reopen effect below) since a surface must never mount
+  // invisibly (the `add` kind's own lesson, `selection` below).
+  const [surfaceNode, setSurfaceNode] = useState<HTMLElement | null>(null);
+  const [surfaceStack, setSurfaceStack] = useState<ReadonlyArray<{ close: () => void }>>([]);
+  const surfaceHost = useMemo<PaneSurfaceHost>(
+    () => ({
+      node: surfaceNode,
+      register: (s) => {
+        setSurfaceStack((st) => [...st, s]);
+        setPanelClosed(false);
+        return () => setSurfaceStack((st) => st.filter((x) => x !== s));
+      },
+    }),
+    // deliberately NOT `rects` (`surfaceHost` would otherwise recompute, and re-register nothing —
+    // but every consumer's `useEffect(() => host.register(...), [host])` would then re-fire —
+    // on every resize).
+    [surfaceNode],
+  );
+
   // PR6 Task 5 fix, verified by reproducing the SAME gap on PR4's own `envelope` kind (not
   // introduced by this task, but never exercisable through it before Add existed to test it
   // against): `onPanelTransitionEnd` below restores focus to the toggle only when a CSS
@@ -460,9 +507,20 @@ export function WideShell({ bag, rightSlot = null, children }: { bag: WideShellB
   const closePanel = () => {
     const active = document.activeElement;
     if (panelContains(active)) document.querySelector<HTMLElement>("[data-panel-toggle]")?.focus();
+    // PR6b: an open surface is a strictly-above overlay (D1) — closing "the panel" while one is
+    // open must close only the TOPMOST surface, revealing whatever `resolvePanel` derives
+    // underneath, unchanged. No marker needed for the focus check above: a surface lives inside
+    // `panelRef`'s own DOM subtree (unlike a portaled `Sheet`), so `panelContains` already covers
+    // it natively.
+    const topSurface = surfaceStack.at(-1);
+    if (topSurface) {
+      topSurface.close();
+      return;
+    }
     if (view.kind === "envelope") setEnvView(null);
     else if (view.kind === "report") setReportsView("overview");
     else if (view.kind === "widgets") setWidgetSettings(null);
+    else if (view.kind === "account") setAcctView(null);
     else if (view.kind === "add") onDoneEdit();
     else setPanelClosed(true);
   };
@@ -488,8 +546,24 @@ export function WideShell({ bag, rightSlot = null, children }: { bag: WideShellB
   // inside `AddScreen` itself (typing, tab switches, sheet opens — all local component state)
   // ever touches it, so it stays referentially stable across every re-render where Add merely
   // continues to be open.
+  // `account` (PR6b Task 3) needs the SAME by-reference reopen treatment as `envelope`/`add`, for
+  // the same reason: App's `openAccount` builds a FRESH `{ accountId }` object per tap (D2), so
+  // re-selecting the same already-open account still reopens a manually-collapsed panel. This is
+  // why the branch below reads `acctView` (the App-owned selection object) rather than
+  // `view.accountId` (a plain string — re-selecting the same account would then compare equal and
+  // never retrigger the effect, exactly the lesson `addPreset` already taught for `screen`).
   const selection =
-    view.kind === "empty" ? null : view.kind === "add" ? addPreset : view.kind === "envelope" ? envView : view.kind === "widgets" ? view.widgetId : view.view;
+    view.kind === "empty"
+      ? null
+      : view.kind === "add"
+        ? addPreset
+        : view.kind === "envelope"
+          ? envView
+          : view.kind === "widgets"
+            ? view.widgetId
+            : view.kind === "account"
+              ? acctView
+              : view.view;
   const prevSelection = useRef(selection);
   useEffect(() => {
     if (selection !== null && selection !== prevSelection.current && panelClosed) setPanelClosed(false);
@@ -549,7 +623,16 @@ export function WideShell({ bag, rightSlot = null, children }: { bag: WideShellB
 
   return (
     <div ref={rootRef} style={{ display: "flex", height: "100dvh", background: C.bg, fontFamily: font, overflow: "hidden" }}>
-      <Rail mode={mode} screen={primaryScreen} onNav={nav} state={state} onQuickAdd={onQuickAdd} onFillGoals={onFillGoals} onInstall={onInstall} />
+      <Rail
+        mode={mode}
+        screen={primaryScreen}
+        onNav={nav}
+        state={state}
+        onQuickAdd={onQuickAdd}
+        onFillGoals={onFillGoals}
+        onInstall={onInstall}
+        onOpenAccount={onOpenAccount}
+      />
       <div ref={primaryRef} data-wide-primary style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", borderRight: `1px solid ${C.line}` }}>
         {/* Mounted inline inside BandHeader (see SyncBadge.tsx) rather than floating over the
             scrollable content below it — dead letters stay visible on wide; the user menu's
@@ -575,7 +658,11 @@ export function WideShell({ bag, rightSlot = null, children }: { bag: WideShellB
           // OTHER kind keeps the collapse-only behavior (the toggle is deliberately NOT the same
           // as ✕/Escape for those — see `closePanel`'s own comment for why "collapse but keep the
           // selection remembered" and "clear the selection" are different actions on purpose).
-          onTogglePanel={() => (view.kind === "add" ? closePanel() : setPanelClosed(!panelClosed))}
+          // PR6b: an open surface extends the SAME reasoning — collapsing the panel out from under
+          // a live surface (a form, reconcile) would hide it with no way back short of reopening
+          // and re-navigating; `closePanel` already closes only the topmost surface (its own first
+          // rung), so route the toggle there too whenever one is open.
+          onTogglePanel={() => (surfaceStack.length > 0 || view.kind === "add" ? closePanel() : setPanelClosed(!panelClosed))}
           // Narrow primary = fold with the panel OPEN (~483px left of a 1104 viewport). Desktop's
           // panel-open primary (~800px at 1440) fits the full labels; so does fold with the
           // panel collapsed.
@@ -592,7 +679,7 @@ export function WideShell({ bag, rightSlot = null, children }: { bag: WideShellB
             panel-hosted report subscreens, which this provider does not cover; see the panel
             provider's comment for why that coverage still holds (task-7 fix round 1's finding,
             preserved by construction: every reader now sits under ONE of the two providers). */}
-        <InWideShell.Provider value={{ host: "primary", mode, rects }}>
+        <InWideShell.Provider value={{ host: "primary", mode, rects, surfaces: surfaceHost }}>
           {/* Rendered here, not as App.tsx's own sibling of `<WideShell>` (App.tsx still owns the
               PHONE instance) — a `useWideHost()`-gated branch (Task 6) needs to sit inside this
               exact provider to read `rects.primary` and anchor clear of the rail/panel; see that
@@ -659,6 +746,9 @@ export function WideShell({ bag, rightSlot = null, children }: { bag: WideShellB
           display: "flex",
           flexDirection: "column",
           background: C.surface,
+          // relative: the anchor for the surfaces overlay `<div>` below (`position: absolute;
+          // inset: 0`) — PR6b.
+          position: "relative",
           transform: panelClosed ? "translateX(100%)" : "translateX(0)",
           marginRight: panelClosed ? -paneW : 0,
           opacity: panelClosed ? 0 : 1,
@@ -673,7 +763,7 @@ export function WideShell({ bag, rightSlot = null, children }: { bag: WideShellB
             this panel-hosted subscreen — scoping a provider to only `children` (this pane's
             predecessor bug, task-7 fix round 1) left that toast reading the phone (centered)
             branch every time it actually mattered. */}
-        <InWideShell.Provider value={{ host: "panel", mode, rects }}>
+        <InWideShell.Provider value={{ host: "panel", mode, rects, surfaces: surfaceHost }}>
           <PanelHost
             view={view}
             onClose={closePanel}
@@ -686,6 +776,7 @@ export function WideShell({ bag, rightSlot = null, children }: { bag: WideShellB
             onOpenEnvelope={onOpenEnvelope}
             onFillGoals={onFillGoals}
             onEditTxn={onEditTxn}
+            onEditAccountTxn={onEditAccountTxn}
             onPrev={prev}
             onNext={next}
             editTxn={editTxn}
@@ -693,6 +784,16 @@ export function WideShell({ bag, rightSlot = null, children }: { bag: WideShellB
             onDoneEdit={onDoneEdit}
           />
         </InWideShell.Provider>
+        {/* PR6b Task 1: the pane-surface portal target — an open `Surface` (chrome.tsx) renders
+            here, absolutely covering `PanelHost`'s derived content above (D1's "strictly-above
+            overlay stack"). `display: none` while empty so it never intercepts pointer events
+            over `PanelHost` (an empty `position: absolute; inset: 0` div would otherwise sit on
+            top of every click). */}
+        <div
+          ref={setSurfaceNode}
+          data-wide-panel-surfaces
+          style={{ position: "absolute", inset: 0, zIndex: 5, display: surfaceStack.length ? "block" : "none" }}
+        />
       </div>
     </div>
   );

@@ -51,8 +51,8 @@ describe("resolvePanel", () => {
     }
   });
 
-  test("every other screen (no envelope) resolves to the generic hint, regardless of reportsView — txn/acct/settings stay PR6b scope; addExpense is covered separately below (it now resolves to `add`)", () => {
-    for (const screen of ["transactions", "accounts", "settings"] as const) {
+  test("every other screen (no envelope) resolves to the generic hint, regardless of reportsView — txn/settings stay PR6b scope; addExpense is covered separately below (it now resolves to `add`); accounts is covered by its own describe block (PR6b Task 3 — it now resolves to the `account` hint)", () => {
+    for (const screen of ["transactions", "settings"] as const) {
       for (const reportsView of REPORT_VIEWS) {
         expect(resolvePanel({ screen, reportsView, envView: null })).toEqual({ kind: "empty", hint: "generic" });
       }
@@ -133,6 +133,45 @@ describe("resolvePanel", () => {
 
     test("add wins over a pending widgetSettings selection too (defensive — addExpense never coincides with widgetSettings in practice)", () => {
       expect(resolvePanel({ screen: "addExpense", reportsView: "overview", envView: null, widgetSettings: "spending" })).toEqual({ kind: "add" });
+    });
+  });
+
+  describe("PR6b's `account` kind (the v3 `acct` pane, Task 3)", () => {
+    const ACCT = { accountId: "acc-1" };
+
+    test("accounts with a selection resolves to the account pane", () => {
+      for (const reportsView of REPORT_VIEWS) {
+        expect(resolvePanel({ screen: "accounts", reportsView, envView: null, acctView: ACCT })).toEqual({ kind: "account", accountId: ACCT.accountId });
+      }
+    });
+
+    test("accounts with no selection resolves to the account hint", () => {
+      for (const reportsView of REPORT_VIEWS) {
+        expect(resolvePanel({ screen: "accounts", reportsView, envView: null, acctView: null })).toEqual({ kind: "empty", hint: "account" });
+      }
+    });
+
+    test("omitting acctView (undefined) behaves exactly like null", () => {
+      expect(resolvePanel({ screen: "accounts", reportsView: "overview", envView: null })).toEqual({ kind: "empty", hint: "account" });
+    });
+
+    test("an open envelope still wins over a selected account (priority pin — envelope beats account, same as it beats widgets)", () => {
+      expect(resolvePanel({ screen: "accounts", reportsView: "overview", envView: ENV, acctView: ACCT })).toEqual({
+        kind: "envelope",
+        envelopeId: ENV.envelopeId,
+        month: ENV.month,
+      });
+    });
+
+    test("add wins over a selected account too", () => {
+      expect(resolvePanel({ screen: "addExpense", reportsView: "overview", envView: null, acctView: ACCT })).toEqual({ kind: "add" });
+    });
+
+    test("a selected account is ignored on every screen other than accounts — a stale value there never leaks into the panel", () => {
+      for (const screen of ["start", "budget", "transactions", "reports", "addExpense", "settings"] as const) {
+        const view = resolvePanel({ screen, reportsView: "overview", envView: null, acctView: ACCT });
+        expect(view.kind).not.toBe("account");
+      }
     });
   });
 });
