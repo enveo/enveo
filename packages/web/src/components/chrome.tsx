@@ -1,5 +1,5 @@
 import { computeStateResponse } from "@enveo/shared";
-import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
+import { lazy, type ReactNode, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useLedgerVersion } from "../lib/api";
 import { useSettings, useTheme } from "../lib/contexts";
@@ -14,6 +14,11 @@ import { store } from "../lib/store";
 import { CORAL, CTA, font, P, type Theme } from "../lib/theme";
 import { APP_VERSION, buildLabel } from "../lib/version";
 import { PHONE_COL } from "../lib/viewMode";
+
+// Lazy — the pane-surface presentation lives in the wide chunk; phone (and any un-hosted mount)
+// never requests it, since `Surface` below only reaches this branch when `useWideHost()?.surfaces`
+// is set (WideShell-only).
+const PaneSurface = lazy(() => import("./wide/PaneSurface").then((m) => ({ default: m.PaneSurface })));
 
 /** Injects animation keyframes (system font — no webfonts). */
 export function StyleInjector() {
@@ -101,23 +106,21 @@ export function Header({
   );
 }
 
-/** Bottom sheet — follows the theme (dark in dark mode). Content may be a render prop `(C) => …`.
- *  `tall`: opt-in FIXED height (instead of content-driven) for sheets whose content can shrink
- *  drastically (a filtered search list) — without it, a filtered-down list collapses the sheet's
- *  height and, anchored at `bottom:0`, the whole thing can sink behind an open mobile keyboard. */
-export function Sheet({
-  show,
-  onClose,
-  lockSwipe = false,
-  tall = false,
-  children,
-}: {
+/** `Sheet`'s (and `Surface`'s — below) exact contract, extracted so both share one type instead
+ *  of two copies that could drift. No behaviour change. */
+export type SheetProps = {
   show: boolean;
   onClose: () => void;
   lockSwipe?: boolean;
   tall?: boolean;
   children: ReactNode | ((C: Theme) => ReactNode);
-}) {
+};
+
+/** Bottom sheet — follows the theme (dark in dark mode). Content may be a render prop `(C) => …`.
+ *  `tall`: opt-in FIXED height (instead of content-driven) for sheets whose content can shrink
+ *  drastically (a filtered search list) — without it, a filtered-down list collapses the sheet's
+ *  height and, anchored at `bottom:0`, the whole thing can sink behind an open mobile keyboard. */
+export function Sheet({ show, onClose, lockSwipe = false, tall = false, children }: SheetProps) {
   const C = useTheme();
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const drag = useRef<{ y0: number; scroll0: number; dy: number; active: boolean } | null>(null);
@@ -264,6 +267,29 @@ export function Sheet({
         document.body,
       )
     : body;
+}
+
+/** `Sheet`'s exact contract (`SheetProps`, above), pane-hosted on wide (spec §2's `<Surface>`,
+ *  landed against PR6's pane model — PR6b): no surface host in context → this IS `Sheet`, byte-
+ *  identical, so phone (and any un-hosted mount) pays nothing new. With a host present (inside the
+ *  wide shell), the same children render as an overlay stacked over the right panel's derived
+ *  content instead — lazy, so the presentation code lives in the wide chunk.
+ *
+ *  `tall`/`lockSwipe` are phone-`Sheet`-only concerns (content-driven vs. fixed height, swipe-to-
+ *  dismiss) — a pane surface is a fixed column with its own scrollbar and no swipe gesture, so
+ *  they are accepted (callers keep one prop shape for both branches) and silently ignored on the
+ *  pane branch rather than threaded through as dead props. */
+export function Surface(props: SheetProps) {
+  const surfaces = useWideHost()?.surfaces ?? null;
+  if (!surfaces) return <Sheet {...props} />;
+  if (!props.show) return null;
+  return (
+    <Suspense fallback={null}>
+      <PaneSurface host={surfaces} onClose={props.onClose}>
+        {props.children}
+      </PaneSurface>
+    </Suspense>
+  );
 }
 
 export type ScreenId = "start" | "budget" | "transactions" | "accounts" | "reports" | "addExpense" | "settings";

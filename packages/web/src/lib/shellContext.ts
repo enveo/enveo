@@ -9,6 +9,17 @@ import type { ViewMode } from "./viewMode";
  *  viewport, so it never spans the rail or an open panel. */
 export type PaneRect = { left: number; width: number };
 
+/** Pane-surface host (PR6b): lets an opted-in `Sheet` render as a panel overlay instead of a
+ *  phone-style bottom sheet. Provided only by `WideShell`, absent on phone and in any tree
+ *  outside the wide shell (both `InWideShell.Provider` values below set this — a surface can be
+ *  opened from a component hosted in EITHER pane). */
+export type PaneSurfaceHost = {
+  /** Portal target inside the panel column (null for the first frame, until WideShell's ref fires). */
+  node: HTMLElement | null;
+  /** Register an OPEN surface. Registering reopens a collapsed panel; the return value unregisters. */
+  register: (s: { close: () => void }) => () => void;
+};
+
 /**
  * PR4 shipped this context as a plain `boolean` ("am I inside the wide shell"), read by five
  * call sites. PR6 Task 2 upgrades its VALUE to a small object — which pane the CURRENT subtree
@@ -23,6 +34,10 @@ export type WideHostInfo = {
   mode: Exclude<ViewMode, "phone">;
   /** Measured via ResizeObserver in WideShell; panel is null whenever PR4's panelClosed is true. */
   rects: { primary: PaneRect; panel: PaneRect | null };
+  /** PR6b — optional so every existing `PaneRect`-only consumer never changes. Present on both
+   *  the primary and panel providers (a pane-hosted owner like a future account pane can open a
+   *  surface too), absent only until `WideShell` itself provides it. */
+  surfaces?: PaneSurfaceHost;
 };
 
 export const InWideShell = createContext<WideHostInfo | null>(null);
