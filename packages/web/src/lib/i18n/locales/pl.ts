@@ -50,6 +50,7 @@ export const pl: Dict = {
   "Categories and places": "Kategorie i miejsca",
   "Category change": "Zmiana kategorii",
   "Category deletion": "Usunięcie kategorii",
+  "Category merge": "Scalenie kategorii",
   Collapse: "Zwiń",
   "Delete “{name}” for good? It is not used by any transaction.": "Usunąć „{name}” na zawsze? Nie używa go żadna transakcja.",
   "Envelopes stay as they are — you assigned this by hand.": "Koperty zostają bez zmian — rozdysponowałeś to ręcznie.",
@@ -68,6 +69,7 @@ export const pl: Dict = {
   "Nothing here yet.": "Jeszcze nic tu nie ma.",
   "Place change": "Zmiana miejsca",
   "Place deletion": "Usunięcie miejsca",
+  "Place merge": "Scalenie miejsca",
   "Remaining {amount}": "Zostało {amount}",
   Remove: "Usuń",
   "Restore “{name}” · hidden": "Przywróć „{name}” · ukryte",
@@ -213,6 +215,10 @@ export const pl: Dict = {
   "Choose an envelope": "Wybierz kopertę",
   "Choose an envelope to see its summary.": "Wybierz kopertę, aby zobaczyć jej podsumowanie.",
   "Choose an icon": "Wybierz ikonę",
+  // "Cisza" ("silence/quiet" in Polish) and "Duet" (below) are the color themes' BRAND names
+  // (THEME_LABEL in Appearance.tsx) — deliberately Polish-flavoured product names, not English
+  // words, so they stay the same string in every locale rather than being translated.
+  Cisza: "Cisza",
   Clear: "Wyczyść",
   "Clear & reset": "Czyszczenie i reset",
   "Clear search": "Wyczyść wyszukiwanie",
@@ -282,6 +288,7 @@ export const pl: Dict = {
     "Pobiera wszystkie dane jako plik. Zachowaj kopię zapasową przed operacjami destrukcyjnymi.",
   "Drag to reorder": "Przeciągnij, aby zmienić kolejność",
   "Drag {name}": "Przeciągnij {name}",
+  Duet: "Duet",
   Duplicate: "Duplikuj",
   "Duplicates skipped: {n}": "Duplikaty pominięte: {n}",
   E2EE: "E2EE",
@@ -308,6 +315,7 @@ export const pl: Dict = {
   "Envelope budgeting: assign your income to envelopes and always know how much you can still spend.":
     "Budżet metodą kopert: rozdzielasz dochody do kopert i zawsze wiesz, ile możesz jeszcze wydać.",
   "Envelope budgets": "Budżety kopert",
+  "Envelope budgets — some envelopes are over budget": "Budżety kopert — niektóre koperty są ponad budżet",
   "Envelope change": "Zmiana koperty",
   "Envelope deletion": "Usunięcie koperty",
   "Envelope for the adjustment": "Koperta dla wyrównania",
@@ -337,6 +345,8 @@ export const pl: Dict = {
   "Generating…": "Generuję…",
   Goals: "Cele",
   Good: "Dobre",
+  "Google sign-in keeps you signed in until you sign out — remember to sign out when you finish.":
+    "Logowanie przez Google utrzymuje sesję, dopóki się nie wylogujesz — pamiętaj, żeby się wylogować po zakończeniu.",
   Groceries: "Spożywcze",
   Group: "Grupa",
   "Group: {name}": "Grupa: {name}",
@@ -364,6 +374,7 @@ export const pl: Dict = {
   "Invalid pairing code.": "Nieprawidłowy kod parowania.",
   Investor: "Inwestorski",
   "Item total: {sum} / {total}": "Suma pozycji: {sum} / {total}",
+  "Keep me signed in and save a local copy so Enveo works without internet.": "Zapamiętaj mnie i zapisz lokalną kopię, żeby Enveo działało offline.",
   Language: "Język",
   "Largest expenses": "Największe wydatki",
   "Last 12 months": "Ostatnie 12 miesięcy",
@@ -423,6 +434,8 @@ export const pl: Dict = {
   "No envelopes with a budget or spending this month.": "Brak kopert z budżetem lub wydatkami w tym miesiącu.",
   "No envelopes with a goal. Set a monthly target when editing an envelope.": "Brak kopert z celem. Ustaw cel miesięczny w edycji koperty.",
   "No funds to distribute": "Brak środków do rozdzielenia",
+  "No local copy will be saved. This browser session ends when you close the app.":
+    "Lokalna kopia nie zostanie zapisana. Sesja w przeglądarce kończy się wraz z zamknięciem aplikacji.",
   "No matches": "Brak wyników",
   "No spending in this period.": "Brak wydatków w tym okresie.",
   "No spending this month.": "Brak wydatków w tym miesiącu.",
@@ -478,6 +491,8 @@ export const pl: Dict = {
   Range: "Zakres",
   "Ready to assign": "Do rozdysponowania",
   "Re-encrypt and upgrade": "Zaszyfruj na nowo i zaktualizuj",
+  "Re-enter your OpenAI API key": "Wpisz ponownie swój klucz API OpenAI",
+  "Re-enter your OpenAI API key so it can move into the encrypted budget.": "Wpisz ponownie swój klucz API OpenAI, aby przenieść go do zaszyfrowanego budżetu.",
   "Rebuild data on this device": "Odbuduj dane na tym urządzeniu",
   "Rebuilding…": "Odbudowywanie…",
   "Recent activity": "Ostatnia aktywność",
@@ -519,6 +534,8 @@ export const pl: Dict = {
   "Server sync": "Synchronizacja z serwerem",
   "Server temporarily unreachable — your data is safe, we will retry.": "Serwer chwilowo nieosiągalny — dane są bezpieczne, spróbujemy ponownie.",
   "Session expired": "Sesja wygasła",
+  "Session storage — the budget lives only in this tab's memory and leaves no local copy after it closes.":
+    "Pamięć sesji — budżet działa wyłącznie w pamięci tej karty i nie zostawia lokalnej kopii po jej zamknięciu.",
   Settings: "Ustawienia",
   Share: "Udostępnij",
   "Short after changes": "Po zmianach brakuje",
@@ -569,6 +586,8 @@ export const pl: Dict = {
     "Do modelu AI (OpenAI) zostaną wysłane: zrzuty ekranu oraz nazwy Twoich kopert i kategorii.",
   "The AI service took too long to answer — nothing was changed. Try again in a moment.":
     "Usługa AI odpowiadała zbyt długo — nic nie zostało zmienione. Spróbuj ponownie za chwilę.",
+  "The OpenAI key changed on another device. Refresh its status and try again.":
+    "Klucz OpenAI zmienił się na innym urządzeniu. Odśwież jego status i spróbuj ponownie.",
   "The account “{name}” will disappear from the Start screen and lists (you will find it under “Closed” on the Accounts screen). Its transactions and balance still count in the budget and reports.\n\nArchive it?":
     'Konto „{name}" zniknie z ekranu Start i list (znajdziesz je w „Zamknięte" na ekranie Konta). Transakcje i saldo nadal liczą się w budżecie i raportach.\n\nArchiwizować?',
   "The agent proposed no distribution — refine your prompt.": "Agent nie zaproponował podziału — doprecyzuj prompt.",
@@ -600,6 +619,8 @@ export const pl: Dict = {
     "Lokalna kopia budżetu na tym urządzeniu należy do innego konta niż to, na które jesteś zalogowany. Nic nie zostało wysłane na serwer i nic nie zostało usunięte.",
   "The local copy — including any unsent changes — will be permanently removed from this device. If this is the only copy of that budget, download a backup first.":
     "Lokalna kopia (razem z niewysłanymi zmianami) zostanie trwale usunięta z tego urządzenia. Jeśli to jedyna kopia tego budżetu, najpierw pobierz kopię zapasową.",
+  "The local copy — including any unsent changes — will be permanently removed from this device. Your account's data on the server is not affected.":
+    "Lokalna kopia (razem z niewysłanymi zmianami) zostanie trwale usunięta z tego urządzenia. Dane Twojego konta na serwerze pozostają bez zmian.",
   "The local replica is not ready.": "Replika nie jest gotowa.",
   "The password must be at least 8 characters.": "Hasło musi mieć co najmniej 8 znaków.",
   "The pending-change queue cannot be read safely, so Enveo left the local copy untouched.":
@@ -652,6 +673,7 @@ export const pl: Dict = {
     "Nie udało się potwierdzić, że lokalna kopia na tym urządzeniu należy do zalogowanego konta — nic nie zostało zmienione.",
   "This device's local copy could not be confirmed to belong to the signed-in account — nothing was sent to the server. Settings → Sync explains what happened and what you can do.":
     "Nie udało się potwierdzić, że lokalna kopia na tym urządzeniu należy do zalogowanego konta — nic nie zostało wysłane na serwer. Szczegóły i możliwe kroki znajdziesz w Ustawieniach → Synchronizacja.",
+  "This is my private device": "To moje prywatne urządzenie",
   "This is not a backup of this app — choose a file exported from this application.": "To nie jest kopia Enveo — wybierz plik wyeksportowany z tej aplikacji.",
   "This is not a valid JSON file.": "To nie jest poprawny plik JSON.",
   "This is not a valid backup file — nothing was loaded.": "To nie jest poprawny plik kopii — nic nie zostało wczytane.",
@@ -984,4 +1006,108 @@ export const pl: Dict = {
   "Remove from the board": "Usuń z siatki",
   "Size: {w} × {h} — drag the corner of the tile to resize": "Rozmiar: {w} × {h} — przeciągnij róg kafelka, aby zmienić rozmiar",
   "Widget settings": "Ustawienia widgetu",
+
+  // --- wide-onboarding epic (PR7 task 5, consolidated pass) ---
+  "A local copy means the app opens instantly and keeps working on a plane.":
+    "Lokalna kopia oznacza, że aplikacja otwiera się natychmiast i działa dalej nawet w samolocie.",
+  "A negative balance is fine — that is how a credit card starts.": "Ujemne saldo to nic złego — tak zaczyna np. karta kredytowa.",
+  "A pairing code moves the key from an unlocked device — paste only, no QR scanning.":
+    "Kod parowania przenosi klucz z odblokowanego urządzenia — tylko wklejenie, bez skanowania QR.",
+  "A user id can change when a self-hosted server is rebuilt — same e-mail, new account.":
+    "Identyfikator użytkownika może się zmienić po ponownym zbudowaniu samodzielnie hostowanego serwera — ten sam e-mail, nowe konto.",
+  "AI through Enveo's key stays off while encryption is on — your own OpenAI key still works, straight from this device.":
+    "AI przez klucz Enveo pozostaje wyłączona, dopóki włączone jest szyfrowanie — Twój własny klucz OpenAI nadal działa, prosto z tego urządzenia.",
+  "Add Enveo to this device": "Dodaj Enveo do tego urządzenia",
+  "Cover the overspend in {name}": "Pokryj przekroczenie w {name}",
+  "Cover {amount}": "Pokryj {amount}",
+  "Covered {amount} in {name}": "Pokryto {amount} w {name}",
+  "Dismiss this step for now": "Pomiń ten krok na razie",
+  "Enveo keeps a full local copy of the budget, so it works offline and syncs when you are back. Accounts are mandatory — the copy has to belong to somebody.":
+    "Enveo przechowuje pełną lokalną kopię budżetu, dzięki czemu działa offline i synchronizuje się, gdy wrócisz do sieci. Konta są obowiązkowe — kopia musi do kogoś należeć.",
+  "Every write to the server is already blocked. Nothing has been deleted, because the decision is yours: the copy on this device may be the last one that exists.":
+    "Każdy zapis na serwer jest już zablokowany. Nic nie zostało usunięte, bo decyzja należy do Ciebie — kopia na tym urządzeniu może być ostatnią, jaka istnieje.",
+  "Export first: the JSON backup is written offline, without the server.": "Najpierw eksport: kopia zapasowa JSON jest zapisywana offline, bez serwera.",
+  "Fill {amount} ›": "Wypełnij {amount} ›",
+  "Filled {amount} in {name}": "Wypełniono {amount} w {name}",
+  Ignore: "Pomiń",
+  In: "Przychód",
+  "Language and currency": "Język i waluta",
+  "Language, one account, a set of envelopes. Everything can be renamed, moved or archived later — nothing here is permanent.":
+    "Język, jedno konto, zestaw kopert. Wszystko można później przemianować, przenieść albo zarchiwizować — nic tu nie jest ostateczne.",
+  "Left over": "Zostaje",
+  "Left over = income minus spending that month. Last 12 months, newest first.":
+    "Zostaje = przychody minus wydatki w danym miesiącu. Ostatnie 12 miesięcy, od najnowszego.",
+  "Met in {n} of 5 months · ✓ = fully funded that month": "Osiągnięto w {n} z 5 miesięcy · ✓ = ten miesiąc w pełni sfinansowany",
+  "Move the missing amount from To be budgeted into this envelope": "Przenieś brakującą kwotę z Do rozdysponowania do tej koperty",
+  "Nothing to fix right now ✓": "Teraz nie ma nic do naprawienia ✓",
+  "One click and Enveo runs in its own window — offline, full screen, no browser bar.":
+    "Jedno kliknięcie i Enveo działa we własnym oknie — offline, na pełnym ekranie, bez paska przeglądarki.",
+  "Only {fundable} of {amount} available in To be budgeted": "W Do rozdysponowania dostępne jest tylko {fundable} z {amount}",
+  Out: "Wydatek",
+  "Past months are judged against today's target — changing a goal rewrites its history.":
+    "Minione miesiące są oceniane względem dzisiejszego celu — zmiana celu przepisuje jego historię.",
+  "Pick at least one envelope.": "Wybierz co najmniej jedną kopertę.",
+  "Plan closed — every envelope holds": "Plan zamknięty — każda koperta się trzyma",
+  "Removing the local copy is the only destructive action here.": "Usunięcie lokalnej kopii to jedyne nieodwracalne działanie w tym miejscu.",
+  "Savings rate this month: {pct}%": "Stopa oszczędności w tym miesiącu: {pct}%",
+  "Self-hosted or cloud — the same build, the same data model.": "Własny serwer czy chmura — ten sam build, ten sam model danych.",
+  "Sign-in is per device: a shared computer can stay session-only.":
+    "Logowanie działa per urządzenie — współdzielony komputer może zostać tylko na czas sesji.",
+  "The data is encrypted on the device before it reaches the server. Only the encryption password — or a pairing code from a device that is already unlocked — can open it here.":
+    "Dane są szyfrowane na urządzeniu, zanim trafią na serwer. Otworzyć je tutaj może tylko hasło szyfrowania — albo kod parowania z urządzenia, które jest już odblokowane.",
+  "The flat line in each spark marks that envelope's median.": "Pozioma linia na każdym mini wykresie oznacza medianę tej koperty.",
+  "The server stores ciphertext and never sees the password.": "Serwer przechowuje wyłącznie zaszyfrowane dane i nigdy nie widzi hasła.",
+  "This budget is end-to-end encrypted.": "Ten budżet jest szyfrowany end-to-end.",
+  "This device holds someone else's budget.": "To urządzenie zawiera budżet innej osoby.",
+  "This step was ignored — click to bring it back": "Ten krok został pominięty — kliknij, aby go przywrócić",
+  "Three steps and the budget is yours.": "Trzy kroki i budżet jest Twój.",
+  "Top up {amount}": "Uzupełnij {amount}",
+  "Top up {name} — almost at the limit": "Uzupełnij {name} — blisko limitu",
+  "Top up {name} — its pace will bust the budget": "Uzupełnij {name} — tym tempem przekroczy budżet",
+  "Topped up {amount} in {name}": "Uzupełniono {amount} w {name}",
+  Undo: "Cofnij",
+  "Your budget is ready.": "Twój budżet jest gotowy.",
+  "Your budget is tied to your account.": "Twój budżet jest powiązany z Twoim kontem.",
+  "at this pace ≈ {projected} against a {budget} budget": "tym tempem ≈ {projected} wobec budżetu {budget}",
+  "ignored ↩": "pominięto ↩",
+  "net per month · scale ±{max}": "netto na miesiąc · skala ±{max}",
+  "{amount} from To be budgeted ({pool} available)": "{amount} z Do rozdysponowania ({pool} dostępne)",
+  "{funded} of {target}": "{funded} z {target}",
+  "{left} left · {pct}% of the budget spent": "zostaje {left} · wydano {pct}% budżetu",
+  "{month} so far: {pct}%": "{month} dotychczas: {pct}%",
+  "{month} · ended at {pct}% of the goal": "{month} · zakończony na {pct}% celu",
+  "{month} · goal fully funded ✓": "{month} · cel w pełni sfinansowany ✓",
+  "{month} · so far {pct}%": "{month} · dotychczas {pct}%",
+  "{name} moved the most this month — {amount} vs median": "{name} zmieniła się najbardziej w tym miesiącu — {amount} vs mediana",
+  "{now} · median {median}": "{now} · mediana {median}",
+  "{n} envelope selected | {n} envelopes selected": {
+    one: "{n} koperta zaznaczona",
+    few: "{n} koperty zaznaczone",
+    many: "{n} kopert zaznaczonych",
+    other: "{n} kopert zaznaczonych",
+  },
+  "{n} healthy envelope | {n} healthy envelopes": {
+    one: "{n} koperta w porządku",
+    few: "{n} koperty w porządku",
+    many: "{n} kopert w porządku",
+    other: "{n} kopert w porządku",
+  },
+  "{n} healthy envelope · {ignored} ignored | {n} healthy envelopes · {ignored} ignored": {
+    one: "{n} koperta w porządku · {ignored} pominięte",
+    few: "{n} koperty w porządku · {ignored} pominięte",
+    many: "{n} kopert w porządku · {ignored} pominięte",
+    other: "{n} kopert w porządku · {ignored} pominięte",
+  },
+  "{n} of {m} envelopes is healthy | {n} of {m} envelopes are healthy": {
+    one: "{n} z {m} kopert jest w porządku",
+    few: "{n} z {m} kopert są w porządku",
+    many: "{n} z {m} kopert jest w porządku",
+    other: "{n} z {m} kopert jest w porządku",
+  },
+  "{n} step to a closed plan · {pct}% of the month gone | {n} steps to a closed plan · {pct}% of the month gone": {
+    one: "{n} krok do zamkniętego planu · {pct}% miesiąca za nami",
+    few: "{n} kroki do zamkniętego planu · {pct}% miesiąca za nami",
+    many: "{n} kroków do zamkniętego planu · {pct}% miesiąca za nami",
+    other: "{n} kroków do zamkniętego planu · {pct}% miesiąca za nami",
+  },
 };

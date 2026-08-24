@@ -59,6 +59,9 @@ const InstallSheet = lazy(() => import("./components/InstallSheet").then((m) => 
 const EnvActionsSheet = lazy(() => import("./components/EnvActionsSheet").then((m) => ({ default: m.EnvActionsSheet })));
 const InstallBanner = lazy(() => import("./components/InstallBanner").then((m) => ({ default: m.InstallBanner })));
 const WideShell = lazy(() => import("./components/wide/WideShell").then((m) => ({ default: m.WideShell })));
+// Wide boot shell (PR7 Task 1) — mount A only; the phone boot path (below) never imports this,
+// so it never fetches the chunk (proved in this task's verification notes).
+const BootShellWide = lazy(() => import("./components/BootShellWide"));
 
 const initialTransactionFilters = (): TransactionFilters => ({
   accountIds: new Set(),
@@ -616,6 +619,20 @@ export default function App() {
   if (startupPresentation(bootStatus) === "splash") return <StartupSplash />;
 
   if (unauthed || locked || foreign) {
+    const bootView = unauthed ? "login" : foreign ? "foreign" : "unlock";
+    const bootInner = unauthed ? <LoginScreen /> : <LazyChunk>{foreign ? <ForeignReplicaScreen /> : <UnlockScreen />}</LazyChunk>;
+    // Wide (fold/desktop): the boot shell replaces the phone card entirely — brand column +
+    // content region, both inside their OWN lazy chunk (PR7 Task 1). The phone branch below is
+    // untouched byte-for-byte, so a phone boot never fetches BootShellWide's chunk.
+    if (mode !== "phone") {
+      return (
+        <LazyChunk>
+          <BootShellWide mode={mode} view={bootView}>
+            {bootInner}
+          </BootShellWide>
+        </LazyChunk>
+      );
+    }
     return (
       <div style={backdrop}>
         <div
@@ -635,11 +652,28 @@ export default function App() {
           }}
         >
           <StyleInjector />
-          <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", paddingTop: "env(safe-area-inset-top)" }}>
-            {unauthed ? <LoginScreen /> : <LazyChunk>{foreign ? <ForeignReplicaScreen /> : <UnlockScreen />}</LazyChunk>}
-          </div>
+          <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", paddingTop: "env(safe-area-inset-top)" }}>{bootInner}</div>
         </div>
       </div>
+    );
+  }
+
+  // Wide (fold/desktop) onboarding (PR7 Task 3): the wizard is a BOOT state, not an app screen —
+  // it leaves the WideShell/rail entirely (no rail, no BottomNav, no SyncBadge, no InstallBanner),
+  // the same way mount A above already leaves it for Login/Unlock/ForeignReplica. `wide` (below)
+  // is deliberately false while `onboarding` is true (its own definition), so this must be its own
+  // early return BEFORE the `if (wide)` branch — otherwise wide+onboarding would fall through to
+  // the phone-card return at the bottom of this component and render the narrow card on a
+  // fold/desktop viewport. `OnboardingScreen` hosts itself inside `BootShellWide` (statically
+  // imported there — Task 3's own comment), so nothing but the lazy chunk boundary is needed here;
+  // the phone branch inside the final return (`state && onboarding`, further down) stays untouched
+  // byte-for-byte, and is only ever reached once `mode === "phone"` is already guaranteed by this
+  // early return not having fired.
+  if (state && onboarding && mode !== "phone") {
+    return (
+      <LazyChunk>
+        <OnboardingScreen onDone={() => setWizard(false)} />
+      </LazyChunk>
     );
   }
 

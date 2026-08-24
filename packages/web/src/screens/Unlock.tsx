@@ -8,6 +8,7 @@ import { useT } from "../lib/i18n";
 import { store } from "../lib/store";
 import { broadcastKeysChanged, retryBoot } from "../lib/sync";
 import { CORAL, font, TEAL } from "../lib/theme";
+import { useViewMode } from "../lib/viewMode";
 import { E2eeUpgradePanel } from "./settings/E2eeUpgradePanel";
 
 /**
@@ -109,6 +110,9 @@ async function acceptDek(dek: Uint8Array, snap: Snap2, expectedBudgetId: string,
 export function UnlockScreen() {
   const C = useTheme();
   const { t } = useT();
+  // Layout only — same reasoning as LoginScreen (D1, pr7-context.md): the brand column already
+  // carries the logo/title on fold/desktop, and this screen fills the shell's 440px form column.
+  const wide = useViewMode() !== "phone";
   // The sync engine records the server's format BEFORE routing here (cipherVersion meta is
   // durable), so a legacy budget opens straight on the upgrade state — never "wrong password".
   const [mode, setMode] = useState<"pass" | "pair" | "upgrade">(e2ee.getCipherVersion() === 1 ? "upgrade" : "pass");
@@ -235,17 +239,28 @@ export function UnlockScreen() {
 
   return (
     <div
-      style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 14, padding: 32, textAlign: "center" }}
+      style={{
+        flex: 1,
+        display: "flex",
+        flexDirection: "column",
+        alignItems: wide ? "stretch" : "center",
+        justifyContent: "center",
+        gap: 14,
+        padding: 32,
+        textAlign: wide ? "left" : "center",
+      }}
     >
-      <div style={{ marginBottom: 4 }}>
-        <LogoMark size={64} />
-      </div>
-      <div style={{ fontSize: 18, fontWeight: 700, color: C.text }}>
+      {!wide && (
+        <div style={{ marginBottom: 4 }}>
+          <LogoMark size={64} />
+        </div>
+      )}
+      <div style={{ fontSize: wide ? 22 : 18, fontWeight: 700, color: C.text }}>
         {mode === "upgrade" ? t("This budget needs an encryption upgrade") : t("This budget is encrypted")}
       </div>
 
       {mode === "upgrade" ? (
-        <div style={{ width: "100%", maxWidth: 340 }}>
+        <div style={{ width: "100%", maxWidth: wide ? "100%" : 340 }}>
           {(() => {
             const ledger = store.getLedger();
             const hasData = !!ledger && ledger.accounts.length + ledger.envelopes.length + ledger.transactions.length + ledger.categories.length > 0;
@@ -299,7 +314,7 @@ export function UnlockScreen() {
             e.preventDefault();
             if (!busy && pass.length > 0) void doPassword();
           }}
-          style={{ display: "flex", flexDirection: "column", gap: 12, width: "100%", maxWidth: 300 }}
+          style={{ display: "flex", flexDirection: "column", gap: 12, width: "100%", maxWidth: wide ? "100%" : 300 }}
         >
           <div style={{ fontSize: 13, color: C.soft, lineHeight: 1.6 }}>
             {t("This budget's data is end-to-end encrypted. Enter the encryption password to unlock it on this device.")}
@@ -335,7 +350,7 @@ export function UnlockScreen() {
             e.preventDefault();
             if (!busy && code.trim().length > 0) void doPair();
           }}
-          style={{ display: "flex", flexDirection: "column", gap: 12, width: "100%", maxWidth: 300 }}
+          style={{ display: "flex", flexDirection: "column", gap: 12, width: "100%", maxWidth: wide ? "100%" : 300 }}
         >
           <div style={{ fontSize: 13, color: C.soft, lineHeight: 1.6 }}>
             {t("Paste the pairing code shown on another unlocked device (Settings → Pairing code).")}
@@ -370,7 +385,7 @@ export function UnlockScreen() {
         </form>
       )}
 
-      {error && <div style={{ fontSize: 12, color: CORAL, lineHeight: 1.5, maxWidth: 280 }}>{error}</div>}
+      {error && <div style={{ fontSize: 12, color: CORAL, lineHeight: 1.5, maxWidth: wide ? "100%" : 280 }}>{error}</div>}
     </div>
   );
 }

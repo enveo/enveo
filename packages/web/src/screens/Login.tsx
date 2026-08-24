@@ -6,6 +6,7 @@ import { useTheme } from "../lib/contexts";
 import { cacheDeployment, setDeviceStoragePolicy } from "../lib/deviceStoragePolicy";
 import { useT } from "../lib/i18n";
 import { CORAL, font, TEAL } from "../lib/theme";
+import { useViewMode } from "../lib/viewMode";
 
 /**
  * Login screen — shown when the backend responded 401 (BootStatus "unauthed").
@@ -18,6 +19,11 @@ import { CORAL, font, TEAL } from "../lib/theme";
 export function LoginScreen() {
   const C = useTheme();
   const { t } = useT();
+  // Layout only: the brand column (BootShellWide, App.tsx mount A) already carries the logo and
+  // title on fold/desktop — this screen just stops duplicating them and fills the shell's 440px
+  // form column instead of centering in its own narrow one. Boot surfaces render one at a time,
+  // so this screen's own listener is harmless (D1, pr7-context.md).
+  const wide = useViewMode() !== "phone";
   const [meta, setMeta] = useState<AuthMeta | null>(null);
   const [mode, setMode] = useState<"signin" | "signup">("signin");
   const [email, setEmail] = useState("");
@@ -97,7 +103,9 @@ export function LoginScreen() {
     fontFamily: font,
   };
   const linkStyle: React.CSSProperties = {
-    padding: 0,
+    // 0-padding measured ~15-16px tall — sub-floor in every mode. Deliberate exception to phone
+    // pixel-identity in both modes (Q2, pr7-task-2-brief.md): 8px of spacing, no visual redesign.
+    padding: "8px 4px",
     border: "none",
     background: "transparent",
     color: C.soft,
@@ -112,13 +120,24 @@ export function LoginScreen() {
 
   return (
     <div
-      style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 14, padding: 32, textAlign: "center" }}
+      style={{
+        flex: 1,
+        display: "flex",
+        flexDirection: "column",
+        alignItems: wide ? "stretch" : "center",
+        justifyContent: "center",
+        gap: 14,
+        padding: 32,
+        textAlign: wide ? "left" : "center",
+      }}
     >
-      <div style={{ marginBottom: 4 }}>
-        <LogoMark size={64} />
-      </div>
-      <div style={{ fontSize: 18, fontWeight: 700, color: C.text }}>{title}</div>
-      <div style={{ fontSize: 13, color: C.soft, lineHeight: 1.6, maxWidth: 280 }}>
+      {!wide && (
+        <div style={{ marginBottom: 4 }}>
+          <LogoMark size={64} />
+        </div>
+      )}
+      <div style={{ fontSize: wide ? 22 : 18, fontWeight: 700, color: C.text }}>{title}</div>
+      <div style={{ fontSize: 13, color: C.soft, lineHeight: 1.6, maxWidth: wide ? "100%" : 280 }}>
         {firstRun
           ? t("This is the first account on this server — once it exists, registration closes.")
           : t("Your budget is tied to your account. Sign in to continue.")}
@@ -129,7 +148,7 @@ export function LoginScreen() {
           e.preventDefault();
           if (canSubmit) void submit();
         }}
-        style={{ width: "100%", maxWidth: 280, display: "flex", flexDirection: "column", gap: 10, textAlign: "left" }}
+        style={{ width: "100%", maxWidth: wide ? "100%" : 280, display: "flex", flexDirection: "column", gap: 10, textAlign: "left" }}
       >
         <input
           type="email"
@@ -216,12 +235,12 @@ export function LoginScreen() {
         </button>
       )}
       {meta?.providers.google === true && !persistent && (
-        <div style={{ fontSize: 11.5, color: C.soft, lineHeight: 1.5, maxWidth: 280 }}>
+        <div style={{ fontSize: 11.5, color: C.soft, lineHeight: 1.5, maxWidth: wide ? "100%" : 280 }}>
           {t("Google sign-in keeps you signed in until you sign out — remember to sign out when you finish.")}
         </div>
       )}
 
-      {error && <div style={{ fontSize: 12, color: CORAL, lineHeight: 1.5, maxWidth: 280 }}>{error}</div>}
+      {error && <div style={{ fontSize: 12, color: CORAL, lineHeight: 1.5, maxWidth: wide ? "100%" : 280 }}>{error}</div>}
     </div>
   );
 }

@@ -232,6 +232,8 @@ export const es: Dict = {
   Goals: "Objetivos",
   "Goes to": "Va a",
   Good: "Buena",
+  "Google sign-in keeps you signed in until you sign out — remember to sign out when you finish.":
+    "Iniciar sesión con Google te mantiene conectado hasta que cierres sesión — recuerda cerrarla cuando termines.",
   Groceries: "Supermercado",
   Group: "Grupo",
   Health: "Salud",
@@ -258,6 +260,8 @@ export const es: Dict = {
   "Invalid pairing code.": "Código de vinculación no válido.",
   Investor: "Inversor",
   "Item total: {sum} / {total}": "Total de las líneas: {sum} / {total}",
+  "Keep me signed in and save a local copy so Enveo works without internet.":
+    "Mantén la sesión iniciada y guarda una copia local para que Enveo funcione sin conexión.",
   Language: "Idioma",
   "Last launch": "Último inicio",
   "Last sync: {rel}.": "Última sincronización: {rel}.",
@@ -306,6 +310,8 @@ export const es: Dict = {
   "No envelopes with a budget or spending this month.": "No hay sobres con presupuesto o gasto este mes.",
   "No envelopes with a goal. Set a monthly target when editing an envelope.": "No hay sobres con objetivo. Fija un objetivo mensual al editar un sobre.",
   "No funds to distribute": "No hay fondos que repartir",
+  "No local copy will be saved. This browser session ends when you close the app.":
+    "No se guardará ninguna copia local. Esta sesión del navegador termina cuando cierras la aplicación.",
   "No spending in this period.": "No hay gastos en este periodo.",
   "No transactions were recognized in the screenshots.": "No se ha reconocido ninguna transacción en las capturas.",
   "No transactions.": "No hay transacciones.",
@@ -460,6 +466,8 @@ export const es: Dict = {
     "La copia local del presupuesto de este dispositivo pertenece a una cuenta distinta de aquella con la que has iniciado sesión. No se ha enviado nada al servidor y no se ha eliminado nada.",
   "The local copy — including any unsent changes — will be permanently removed from this device. If this is the only copy of that budget, download a backup first.":
     "La copia local, incluidos los cambios sin enviar, se eliminará definitivamente de este dispositivo. Si es la única copia de ese presupuesto, descarga antes una copia de seguridad.",
+  "The local copy — including any unsent changes — will be permanently removed from this device. Your account's data on the server is not affected.":
+    "La copia local — incluidos los cambios sin enviar — se eliminará definitivamente de este dispositivo. Los datos de tu cuenta en el servidor no se ven afectados.",
   "The local replica is not ready.": "La réplica local no está lista.",
   "The password must be at least 8 characters.": "La contraseña debe tener al menos 8 caracteres.",
   "The proposal exceeds “To be budgeted” — uncheck or reduce items.": "La propuesta supera «Por presupuestar»: desmarca o reduce líneas.",
@@ -506,6 +514,7 @@ export const es: Dict = {
   "This device's local copy cannot be linked to this account": "La copia local de este dispositivo no se puede vincular a esta cuenta",
   "This device's local copy could not be confirmed to belong to the signed-in account — nothing was sent to the server. Settings → Sync explains what happened and what you can do.":
     "No se ha podido confirmar que la copia local de este dispositivo pertenezca a la cuenta con la sesión iniciada: no se ha enviado nada al servidor. Ajustes → Sincronización explica qué ha pasado y qué puedes hacer.",
+  "This is my private device": "Este es mi dispositivo privado",
   "This is not a backup of this app — choose a file exported from this application.":
     "Esto no es una copia de seguridad de esta aplicación: elige un archivo exportado desde ella.",
   "This is not a valid JSON file.": "Este no es un archivo JSON válido.",
@@ -705,4 +714,126 @@ export const es: Dict = {
   "Size: {w} × {h} — drag the corner of the tile to resize": "Tamaño: {w} × {h} — arrastra la esquina de la ficha para cambiar el tamaño",
   "Widget settings": "Ajustes del widget",
   "latest transactions": "últimas transacciones",
+
+  // --- wide-onboarding epic (PR7 task 5, consolidated pass) ---
+  "+ {n} more | + {n} more": { one: "+ {n} más", many: "+ {n} más", other: "+ {n} más" },
+  "A local copy means the app opens instantly and keeps working on a plane.":
+    "Una copia local significa que la app se abre al instante y sigue funcionando incluso en un avión.",
+  "A negative balance is fine — that is how a credit card starts.": "Un saldo negativo no pasa nada — así empieza, por ejemplo, una tarjeta de crédito.",
+  "A pairing code moves the key from an unlocked device — paste only, no QR scanning.":
+    "Un código de vinculación traslada la clave desde un dispositivo desbloqueado — solo se pega, sin escanear ningún QR.",
+  "A user id can change when a self-hosted server is rebuilt — same e-mail, new account.":
+    "El id. de usuario puede cambiar cuando se reconstruye un servidor autoalojado — mismo correo, cuenta nueva.",
+  "AI through Enveo's key stays off while encryption is on — your own OpenAI key still works, straight from this device.":
+    "La IA con la clave de Enveo permanece desactivada mientras el cifrado está activo — tu propia clave de OpenAI sigue funcionando, directamente desde este dispositivo.",
+  "Add Enveo to this device": "Añade Enveo a este dispositivo",
+  "Choose a report to open it here.": "Elige un informe para abrirlo aquí.",
+  "Choose an account to see its details.": "Elige una cuenta para ver sus detalles.",
+  "Choose an envelope to see its summary.": "Elige un sobre para ver su resumen.",
+  "Cover the overspend in {name}": "Cubrir el sobregasto en {name}",
+  "Cover {amount}": "Cubrir {amount}",
+  "Covered {amount} in {name}": "Cubierto {amount} en {name}",
+  "Details panel": "Panel de detalles",
+  "Dismiss this step for now": "Descartar este paso por ahora",
+  "Enveo keeps a full local copy of the budget, so it works offline and syncs when you are back. Accounts are mandatory — the copy has to belong to somebody.":
+    "Enveo mantiene una copia local completa del presupuesto, así funciona sin conexión y se sincroniza cuando vuelves. Las cuentas son obligatorias — la copia tiene que pertenecer a alguien.",
+  "Every write to the server is already blocked. Nothing has been deleted, because the decision is yours: the copy on this device may be the last one that exists.":
+    "Cada escritura en el servidor ya está bloqueada. No se ha borrado nada, porque la decisión es tuya — la copia de este dispositivo puede ser la última que exista.",
+  "Export first: the JSON backup is written offline, without the server.":
+    "Exporta primero: la copia de seguridad JSON se escribe sin conexión, sin el servidor.",
+  "Fill all goals ›": "Completar todos los objetivos ›",
+  "Fill {amount} ›": "Completar {amount} ›",
+  "Filled {amount} in {name}": "Completado {amount} en {name}",
+  "Hide the side panel": "Ocultar el panel lateral",
+  Ignore: "Ignorar",
+  In: "Entradas",
+  "Language and currency": "Idioma y moneda",
+  "Language, one account, a set of envelopes. Everything can be renamed, moved or archived later — nothing here is permanent.":
+    "Idioma, una cuenta, un conjunto de sobres. Todo se puede renombrar, mover o archivar más tarde — nada aquí es definitivo.",
+  "Left over": "Sobrante",
+  "Left over = income minus spending that month. Last 12 months, newest first.":
+    "Sobrante = ingresos menos gastos de ese mes. Últimos 12 meses, del más reciente al más antiguo.",
+  "Met in {n} of 5 months · ✓ = fully funded that month": "Cumplido en {n} de 5 meses · ✓ = ese mes se financió por completo",
+  "Move the missing amount from To be budgeted into this envelope": "Mover el importe que falta de Por presupuestar a este sobre",
+  "Next day": "Día siguiente",
+  "No category": "Sin categoría",
+  "No envelope": "Sin sobre",
+  "No group": "Sin grupo",
+  "No place": "Sin lugar",
+  "No spending this day.": "Sin gastos este día.",
+  "Nothing is open in this panel yet.": "Todavía no hay nada abierto en este panel.",
+  "Nothing to fix right now ✓": "Ahora mismo no hay nada que arreglar ✓",
+  "One click and Enveo runs in its own window — offline, full screen, no browser bar.":
+    "Un clic y Enveo se abre en su propia ventana — sin conexión, a pantalla completa, sin la barra del navegador.",
+  "Only {fundable} of {amount} available in To be budgeted": "Solo hay {fundable} de {amount} disponibles en Por presupuestar",
+  "Open in Transactions ›": "Abrir en Transacciones ›",
+  "Open transactions ›": "Abrir transacciones ›",
+  Out: "Salidas",
+  "Past months are judged against today's target — changing a goal rewrites its history.":
+    "Los meses pasados se evalúan con el objetivo de hoy — cambiar un objetivo reescribe su historial.",
+  "Pick at least one envelope.": "Elige al menos un sobre.",
+  "Plan closed — every envelope holds": "Plan cerrado — todos los sobres aguantan",
+  "Previous day": "Día anterior",
+  "Removing the local copy is the only destructive action here.": "Eliminar la copia local es la única acción destructiva aquí.",
+  "Savings rate this month: {pct}%": "Tasa de ahorro este mes: {pct} %",
+  "Self-hosted or cloud — the same build, the same data model.": "Autoalojado o en la nube — la misma compilación, el mismo modelo de datos.",
+  "Show all": "Mostrar todo",
+  "Show the side panel": "Mostrar el panel lateral",
+  "Sign-in is per device: a shared computer can stay session-only.":
+    "El inicio de sesión es por dispositivo — un ordenador compartido puede quedarse solo con la sesión.",
+  "The data is encrypted on the device before it reaches the server. Only the encryption password — or a pairing code from a device that is already unlocked — can open it here.":
+    "Los datos se cifran en el dispositivo antes de llegar al servidor. Solo la contraseña de cifrado — o un código de vinculación de un dispositivo ya desbloqueado — puede abrirlos aquí.",
+  "The flat line in each spark marks that envelope's median.": "La línea plana de cada minigráfico marca la mediana de ese sobre.",
+  "The server stores ciphertext and never sees the password.": "El servidor guarda solo texto cifrado y nunca ve la contraseña.",
+  "This budget is end-to-end encrypted.": "Este presupuesto está cifrado de extremo a extremo.",
+  "This device holds someone else's budget.": "Este dispositivo tiene el presupuesto de otra persona.",
+  "This step was ignored — click to bring it back": "Este paso se ignoró — toca para recuperarlo",
+  "Three steps and the budget is yours.": "Tres pasos y el presupuesto es tuyo.",
+  "Top up {amount}": "Añadir {amount}",
+  "Top up {name} — almost at the limit": "Añadir fondos a {name} — casi en el límite",
+  "Top up {name} — its pace will bust the budget": "Añadir fondos a {name} — a este ritmo se pasará del presupuesto",
+  "Topped up {amount} in {name}": "Añadido {amount} en {name}",
+  Undo: "Deshacer",
+  "Your budget is ready.": "Tu presupuesto está listo.",
+  "Your budget is tied to your account.": "Tu presupuesto está vinculado a tu cuenta.",
+  "at this pace ≈ {projected} against a {budget} budget": "a este ritmo ≈ {projected} frente a un presupuesto de {budget}",
+  "ignored ↩": "ignorado ↩",
+  "net per month · scale ±{max}": "neto por mes · escala ±{max}",
+  "vs the {avg} daily average": "vs el promedio diario de {avg}",
+  "{amount} from To be budgeted ({pool} available)": "{amount} de Por presupuestar ({pool} disponible)",
+  "{funded} of {target}": "{funded} de {target}",
+  "{left} left · {pct}% of the budget spent": "quedan {left} · {pct} % del presupuesto gastado",
+  "{month} so far: {pct}%": "{month} hasta ahora: {pct} %",
+  "{month} · ended at {pct}% of the goal": "{month} · terminó en el {pct} % del objetivo",
+  "{month} · goal fully funded ✓": "{month} · objetivo financiado por completo ✓",
+  "{month} · so far {pct}%": "{month} · hasta ahora {pct} %",
+  "{name} moved the most this month — {amount} vs median": "{name} fue el que más se movió este mes — {amount} frente a la mediana",
+  "{name} {pct}%": "{name} {pct} %",
+  "{now} · median {median}": "{now} · mediana {median}",
+  "{n} envelope selected | {n} envelopes selected": {
+    one: "{n} sobre seleccionado",
+    many: "{n} sobres seleccionados",
+    other: "{n} sobres seleccionados",
+  },
+  "{n} healthy envelope | {n} healthy envelopes": { one: "{n} sobre sin problemas", many: "{n} sobres sin problemas", other: "{n} sobres sin problemas" },
+  "{n} healthy envelope · {ignored} ignored | {n} healthy envelopes · {ignored} ignored": {
+    one: "{n} sobre sin problemas · {ignored} ignorados",
+    many: "{n} sobres sin problemas · {ignored} ignorados",
+    other: "{n} sobres sin problemas · {ignored} ignorados",
+  },
+  "{n} of {m} envelopes is healthy | {n} of {m} envelopes are healthy": {
+    one: "{n} de {m} sobres está sin problemas",
+    many: "{n} de {m} sobres están sin problemas",
+    other: "{n} de {m} sobres están sin problemas",
+  },
+  "{n} step to a closed plan · {pct}% of the month gone | {n} steps to a closed plan · {pct}% of the month gone": {
+    one: "{n} paso para cerrar el plan · {pct} % del mes pasado",
+    many: "{n} pasos para cerrar el plan · {pct} % del mes pasado",
+    other: "{n} pasos para cerrar el plan · {pct} % del mes pasado",
+  },
+  "{n} transaction · avg {avg} · largest {largest} | {n} transactions · avg {avg} · largest {largest}": {
+    one: "{n} transacción · prom. {avg} · mayor {largest}",
+    many: "{n} transacciones · prom. {avg} · mayor {largest}",
+    other: "{n} transacciones · prom. {avg} · mayor {largest}",
+  },
 };
