@@ -1,10 +1,20 @@
 import type { AiLocale, ImportJobDetail, ImportJobProgress, ImportJobProviderSnapshot } from "@enveo/shared";
-import { idbDelete, idbGet, idbGetAll, idbPut, idbPutImportJobIfRevision } from "./idb";
+import {
+  idbDeleteExpiredImportDrafts,
+  idbDeleteImportDraftIfMatches,
+  idbDeleteImportJobIfScope,
+  idbGet,
+  idbGetAll,
+  idbPutImportDraftIfAbsentOrSame,
+  idbPutImportJobForScope,
+  idbPutImportJobIfRevision,
+} from "./idb";
 
 export const IMPORT_DRAFT_TTL_MS = 24 * 60 * 60 * 1000;
 
 export interface PlainImportUploadDraftInput {
   id: string;
+  ownerId: string;
   budgetId: string;
   accountId: string;
   locale: AiLocale;
@@ -21,6 +31,7 @@ export interface PlainImportUploadDraft extends PlainImportUploadDraftInput {
 
 export interface StoredE2eeImportJob extends ImportJobProgress {
   id: string;
+  ownerId: string;
   budgetId: string;
   accountId: string;
   provider: ImportJobProviderSnapshot & { provider: "openai" };
@@ -41,10 +52,33 @@ export interface StoredE2eeImportJob extends ImportJobProgress {
 
 export type PlainImportDraftAcknowledgement = Pick<ImportJobDetail, "id" | "budgetId" | "accountId" | "locale" | "tier">;
 
-const listeners = new Set<() => void>();
+export interface ImportJobStorageScope {
+  /** Authenticated replica owner (user id), never a ledger/bank account id. */
+  ownerId: string;
+  budgetId: string;
+}
 
-function notify(): void {
-  for (const listener of listeners) listener();
+const listeners = new Map<string, Set<() => void>>();
+
+function scopeKey(scope: ImportJobStorageScope): string {
+  return JSON.stringify([scope.ownerId, scope.budgetId]);
+}
+
+function inScope(value: { ownerId: string; budgetId: string }, scope: ImportJobStorageScope): boolean {
+  return value.ownerId === scope.ownerId && value.budgetId === scope.budgetId;
+}
+
+function assertValidScope(scope: ImportJobStorageScope): void {
+  if (!scope.ownerId || !scope.budgetId) throw new Error("invalid_import_storage_scope");
+}
+
+function assertScope(value: { ownerId: string; budgetId: string }, scope: ImportJobStorageScope): void {
+  assertValidScope(scope);
+  if (!inScope(value, scope)) throw new Error("import_storage_scope_mismatch");
+}
+
+function notify(scope: ImportJobStorageScope): void {
+  for (const listener of listeners.get(scopeKey(scope)) ?? []) listener();
 }
 
 const textEncoder = new TextEncoder();
@@ -65,6 +99,7 @@ function copyDraft(input: PlainImportUploadDraftInput, hash: string, now: Date):
   const createdAt = now.toISOString();
   return {
     id: input.id,
+    ownerId: input.ownerId,
     budgetId: input.budgetId,
     accountId: input.accountId,
     locale: input.locale,
@@ -87,6 +122,7 @@ function persistedJob(job: StoredE2eeImportJob): StoredE2eeImportJob {
   if (job.tier !== "e2ee" || job.provider.provider !== "openai") throw new Error("invalid_import_job");
   return {
     id: job.id,
+    ownerId: job.ownerId,
     budgetId: job.budgetId,
     accountId: job.accountId,
     provider: { provider: "openai", model: job.provider.model },
@@ -118,85 +154,106 @@ function newestFirst<T extends { id: string; updatedAt: string }>(rows: T[]): T[
 }
 
 export const importJobStorage = {
-  subscribe(listener: () => void): () => void {
-    listeners.add(listener);
-    return () => listeners.delete(listener);
+  subscribe(scope: ImportJobStorageScope, listener: () => void): () => void {
+    assertValidScope(scope);
+    const key = scopeKey(scope);
+    const scoped = listeners.get(key) ?? new Set<() => void>();
+    scoped.add(listener);
+    listeners.set(key, scoped);
+    return () => {
+      scoped.delete(listener);
+      if (scoped.size === 0) listeners.delete(key);
+    };
   },
 
-  getJob(id: string): Promise<StoredE2eeImportJob | undefined> {
-    return idbGet("importJobs", id);
+  async getJob(scope: ImportJobStorageScope, id: string): Promise<StoredE2eeImportJob | undefined> {
+    assertValidScope(scope);
+    const job = await idbGet<StoredE2eeImportJob>("importJobs", id);
+    return job && inScope(job, scope) ? job : undefined;
   },
 
-  async listJobs(): Promise<StoredE2eeImportJob[]> {
-    return newestFirst(await idbGetAll("importJobs"));
+  async listJobs(scope: ImportJobStorageScope): Promise<StoredE2eeImportJob[]> {
+    assertValidScope(scope);
+    return newestFirst((await idbGetAll<StoredE2eeImportJob>("importJobs")).filter((job) => inScope(job, scope)));
   },
 
-  async putJob(job: StoredE2eeImportJob): Promise<void> {
-    await idbPut("importJobs", persistedJob(job));
-    notify();
+  async putJob(scope: ImportJobStorageScope, job: StoredE2eeImportJob): Promise<void> {
+    assertScope(job, scope);
+    if (!(await idbPutImportJobForScope(persistedJob(job), scope))) throw new Error("import_job_scope_conflict");
+    notify(scope);
   },
 
-  async putJobIfRevision(job: StoredE2eeImportJob, expectedRevision: number): Promise<boolean> {
+  async putJobIfRevision(scope: ImportJobStorageScope, job: StoredE2eeImportJob, expectedRevision: number): Promise<boolean> {
+    assertScope(job, scope);
     if (!Number.isSafeInteger(expectedRevision) || expectedRevision < 0 || job.checkpointRevision !== expectedRevision + 1) {
       throw new Error("invalid_import_job_revision");
     }
     const stored = await idbPutImportJobIfRevision(persistedJob(job), expectedRevision);
-    if (stored) notify();
+    if (stored) notify(scope);
     return stored;
   },
 
-  async deleteJob(id: string): Promise<void> {
-    await idbDelete("importJobs", id);
-    notify();
+  async deleteJob(scope: ImportJobStorageScope, id: string): Promise<boolean> {
+    assertValidScope(scope);
+    const deleted = await idbDeleteImportJobIfScope(id, scope);
+    if (deleted) notify(scope);
+    return deleted;
   },
 
-  getDraft(id: string): Promise<PlainImportUploadDraft | undefined> {
-    return idbGet("importDrafts", id);
+  async getDraft(scope: ImportJobStorageScope, id: string): Promise<PlainImportUploadDraft | undefined> {
+    assertValidScope(scope);
+    const draft = await idbGet<PlainImportUploadDraft>("importDrafts", id);
+    return draft && inScope(draft, scope) ? draft : undefined;
   },
 
-  async listDrafts(): Promise<PlainImportUploadDraft[]> {
-    return newestFirst(await idbGetAll("importDrafts"));
+  async listDrafts(scope: ImportJobStorageScope): Promise<PlainImportUploadDraft[]> {
+    assertValidScope(scope);
+    return newestFirst((await idbGetAll<PlainImportUploadDraft>("importDrafts")).filter((draft) => inScope(draft, scope)));
   },
 
-  async createDraft(input: PlainImportUploadDraftInput, now = new Date()): Promise<PlainImportUploadDraft> {
-    const hash = await requestHash(input);
-    const existing = await idbGet<PlainImportUploadDraft>("importDrafts", input.id);
-    if (existing) {
-      if (existing.requestHash !== hash) throw new Error("import_draft_conflict");
-      return existing;
-    }
-    const draft = copyDraft(input, hash, now);
-    await idbPut("importDrafts", draft);
-    notify();
-    return draft;
+  async createDraft(scope: ImportJobStorageScope, input: PlainImportUploadDraftInput, now = new Date()): Promise<PlainImportUploadDraft> {
+    assertScope(input, scope);
+    const captured = { ...input, images: [...input.images] };
+    const hash = await requestHash(captured);
+    const draft = copyDraft(captured, hash, now);
+    const result = await idbPutImportDraftIfAbsentOrSame(draft);
+    if (result.kind === "conflict") throw new Error("import_draft_conflict");
+    if (result.kind === "created") notify(scope);
+    return result.value as PlainImportUploadDraft;
   },
 
-  async deleteDraft(id: string): Promise<void> {
-    await idbDelete("importDrafts", id);
-    notify();
+  async deleteDraft(scope: ImportJobStorageScope, id: string, expectedRequestHash: string): Promise<boolean> {
+    assertValidScope(scope);
+    const deleted = await idbDeleteImportDraftIfMatches({ ...scope, id, requestHash: expectedRequestHash });
+    if (deleted) notify(scope);
+    return deleted;
   },
 
-  async acknowledgeDraft(acknowledgement: PlainImportDraftAcknowledgement): Promise<boolean> {
-    const draft = await idbGet<PlainImportUploadDraft>("importDrafts", acknowledgement.id);
+  async acknowledgeDraft(scope: ImportJobStorageScope, expectedRequestHash: string, acknowledgement: PlainImportDraftAcknowledgement): Promise<boolean> {
+    assertValidScope(scope);
     if (
-      !draft ||
       acknowledgement.tier !== "plain" ||
-      acknowledgement.budgetId !== draft.budgetId ||
-      acknowledgement.accountId !== draft.accountId ||
-      acknowledgement.locale !== draft.locale
+      acknowledgement.budgetId !== scope.budgetId ||
+      acknowledgement.accountId === null ||
+      acknowledgement.locale === null
     ) {
       return false;
     }
-    await idbDelete("importDrafts", draft.id);
-    notify();
-    return true;
+    const deleted = await idbDeleteImportDraftIfMatches({
+      ...scope,
+      id: acknowledgement.id,
+      accountId: acknowledgement.accountId,
+      locale: acknowledgement.locale,
+      requestHash: expectedRequestHash,
+    });
+    if (deleted) notify(scope);
+    return deleted;
   },
 
-  async pruneExpiredDrafts(now = new Date()): Promise<number> {
-    const drafts = await idbGetAll<PlainImportUploadDraft>("importDrafts");
-    const expired = drafts.filter((draft) => Date.parse(draft.expiresAt) <= now.getTime());
-    for (const draft of expired) await idbDelete("importDrafts", draft.id);
-    if (expired.length > 0) notify();
-    return expired.length;
+  async pruneExpiredDrafts(scope: ImportJobStorageScope, now = new Date()): Promise<number> {
+    assertValidScope(scope);
+    const deleted = await idbDeleteExpiredImportDrafts(scope, now.getTime());
+    if (deleted > 0) notify(scope);
+    return deleted;
   },
 };
