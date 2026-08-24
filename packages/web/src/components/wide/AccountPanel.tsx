@@ -56,7 +56,11 @@ export function AccountPanel({
   // Recent activity: last 5 transactions touching this account, across every month — the LIVE
   // ledger, not the viewed month's `state.transactions` (that goes empty on day 1 for an older
   // account; the widgetsBoard `RecentWidget` pattern and its stated reason, reused verbatim below
-  // rather than re-derived).
+  // rather than re-derived). "Touching" is two-sided, same as `transactionSearch.ts`'s account
+  // filter and this pane's own "Transactions" button (`onOpenTxns` → the shared matcher): a
+  // transfer's `accountId` is only the SOURCE, so a transfer landing here as the DESTINATION
+  // (`toAccountId`) must still show up, or an account funded mainly by transfers-in renders an
+  // incomplete list while its own "Transactions" button correctly shows the same rows.
   const accById = useMemo(() => {
     const ledger = store.getLedger();
     return new Map((ledger?.accounts ?? []).map((a) => [a.id, a]));
@@ -67,7 +71,7 @@ export function AccountPanel({
     const ledger = store.getLedger();
     if (!ledger) return [];
     return ledger.transactions
-      .filter((tx) => tx.accountId === accountId)
+      .filter((tx) => tx.accountId === accountId || tx.toAccountId === accountId)
       .sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : a.createdAt < b.createdAt ? 1 : -1))
       .slice(0, 5);
     // eslint-disable-next-line react-hooks/exhaustive-deps
