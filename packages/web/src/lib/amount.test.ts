@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { applyAmountKey, hasOpenOp, type PadState, padKey, padPreview, padPreviewLive } from "./amount";
-import { evalExpression } from "./format";
+import { applyAmountKey, fmtSignedTrim, hasOpenOp, type PadState, padKey, padPreview, padPreviewLive } from "./amount";
+import { evalExpression, fmtTrim, parseAmount } from "./format";
 
 describe("applyAmountKey", () => {
   test("leading zero disappears", () => {
@@ -308,5 +308,32 @@ describe("padPreviewLive — preview despite a hanging operator (the Available c
   test("÷: (d) a trailing ÷ computes the computable part, same as + − ×", () => {
     expect(padPreviewLive("40÷")).toBe(4000);
     expect(padPreviewLive("40÷4")).toBe(1000);
+  });
+});
+
+describe("desktop allocation input prefill (Budget.tsx AllocCell, PR6 Task 3b)", () => {
+  // The desktop <input>'s prefill contract: startEdit fills it with fmtSignedTrim(env.allocated)
+  // and commit re-reads it with parseAmount — so the round-trip must return the EXACT current
+  // allocation, sign included. Two consequences this pins:
+  //  - "negative prefill keeps its sign": a bare fmtTrim (fmt() takes Math.abs) would prefill a
+  //    -50,00 allocation as "50", and an untouched blur would then silently flip the sign — the
+  //    reviewed data-corruption finding.
+  //  - "an untouched blur writes nothing": persistAllocation only writes when the parsed value
+  //    differs from the fresh env.allocated, so an exact round-trip IS the no-op guarantee.
+  // Enter-commits / Escape-reverts are DOM wiring (verified in the running app — no DOM test
+  // rig in this suite); the parsing contract they both feed is what lives here.
+  const roundTrip = (minor: number) => parseAmount(fmtSignedTrim(minor));
+
+  test("negative prefill keeps its sign through the parseAmount round-trip", () => {
+    expect(fmtSignedTrim(-5000)).toBe("-50");
+    expect(roundTrip(-5000)).toBe(-5000);
+    // the unsigned helper is exactly the bug this guards against:
+    expect(parseAmount(fmtTrim(-5000))).toBe(5000);
+  });
+
+  test("round-trip is exact across signs, cents and thousand-space grouping", () => {
+    for (const minor of [0, 1, -1, 99, -99, 100, -100, 1250, -1250, 5000, -5000, 123456, -123456, 100000000, -100000000, 123456789, -123456789]) {
+      expect(roundTrip(minor)).toBe(minor);
+    }
   });
 });
