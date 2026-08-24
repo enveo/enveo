@@ -360,7 +360,8 @@ type WideShellBag = {
  * | TransactionFilterSheet                                             | Sheet      | sheet                  | possibly inline filters on wide |
  * | ImportSheet                                                        | portal, full-screen | unchanged    | unchanged |
  * | IconColorPicker                                                    | portal     | unchanged              | unchanged |
- * | AiConsentSheet / InstallSheet / DataSection sheets / EditWidgetsSheet / Accounts sheets | Sheet | sheet | EditWidgetsSheet → PR5's `widgets` pane; Accounts sheets → PR6b |
+ * | AccountEditSheet (`AccountEdit`, row edits + "New account")     | Sheet      | pane surface (PR6b)    | — |
+ * | AiConsentSheet / InstallSheet / DataSection sheets / EditWidgetsSheet | Sheet | sheet          | EditWidgetsSheet → PR5's `widgets` pane |
  * | `UpdatePrompt`                                                     | fixed, viewport-centered on phone | anchored to the primary pane's measured rect on wide (this file, below) — MEASURED to collide with this panel at 1104x992 before the fix | — (closed) |
  *
  * Verified live (throwaway stack, 1440x900 + 1104x992): every Sheet opened from panel-hosted
