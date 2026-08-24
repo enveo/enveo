@@ -156,6 +156,11 @@ export default function App() {
   useEffect(() => setMonthDay(null), [month]);
   // full-screen envelope summary (push-nav like transaction editing); back → null
   const [envView, setEnvView] = useState<{ envelopeId: string; month: string } | null>(r0.envelopeId ? { envelopeId: r0.envelopeId, month } : null);
+  // Wide-only account pane selection (PR6b) — envView's pattern, minus the URL: phone has no
+  // account-detail view, so there is no route to serialise (D2; widgetSettings precedent). A
+  // FRESH object per open — WideShell's reopen effect compares selections by reference (the
+  // addPreset rule, panel.ts/WideShell.tsx).
+  const [acctView, setAcctView] = useState<{ accountId: string } | null>(null);
   // screen to return to after saving/cancelling an edit (default start; from the list → list)
   const [editReturn, setEditReturn] = useState<ScreenId>("start");
   // transaction list filters kept high up so they survive an edit and return
@@ -200,6 +205,7 @@ export default function App() {
       setBudgetFillGoals(false);
     }
     setEnvView(null);
+    setAcctView(null);
     setEditReturn("start");
     if (s === "reports") {
       // Fresh menu entry = the hub overview, with no resurrected day panel — the same
@@ -248,6 +254,14 @@ export default function App() {
   const openBudgetFillGoals = () => {
     nav("budget");
     setBudgetFillGoals(true);
+  };
+  // Wide-only opener for the account pane (PR6b) — rail rows AND Accounts rows both call this.
+  // nav-then-set is the same batch pattern as `openReports`/`openBudgetFillGoals` above: `nav`
+  // clears `acctView` (its own reset rung), and this write comes after, so it's the LAST write to
+  // `acctView` in the batch and wins over nav's own reset.
+  const openAccount = (id: string) => {
+    nav("accounts");
+    setAcctView({ accountId: id });
   };
   // enter the transaction list with a preselected filter (envelope OR account) — from an
   // envelope/account tile or sheet. Clean, focused view: set the given filter, clear the
@@ -509,7 +523,7 @@ export default function App() {
       )}
       {primaryScreen === "accounts" && (
         <LazyChunk onDismiss={() => nav("start")}>
-          <AccountsScreen state={state} onMenu={() => setDrawer(true)} />
+          <AccountsScreen state={state} onMenu={() => setDrawer(true)} onOpenAccount={openAccount} selectedAccountId={acctView?.accountId ?? null} />
         </LazyChunk>
       )}
       {primaryScreen === "reports" && (
@@ -633,9 +647,11 @@ export default function App() {
               next,
               reportsView,
               envView,
+              acctView,
               openTxns,
               panelClosed,
               setEnvView,
+              setAcctView,
               setReportsView,
               setPanelClosed,
               // `wide` already implies `!!state` (its own definition above) — TS can't see through
@@ -667,6 +683,8 @@ export default function App() {
               // PR6 Task 5: the band header's "+ Add" button opens Add through this entry point,
               // not `nav("addExpense")` — see `openAddWide`'s own comment above for why.
               onAddWide: openAddWide,
+              // PR6b Task 3: Rail's account rows deep-link straight into the account pane.
+              onOpenAccount: openAccount,
             }}
             rightSlot={wideRightSlot}
           >

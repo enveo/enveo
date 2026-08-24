@@ -261,9 +261,17 @@ type WideShellBag = {
   next: () => void;
   reportsView: ReportView;
   envView: { envelopeId: string; month: string } | null;
+  /** PR6b Task 3: the account-pane selection (D2) — App-owned, like `envView` (unlike
+   *  `widgetSettings`, which is WideShell-local): its openers (`AccountsScreen` rows, `Rail`
+   *  rows) both render OUTSIDE this component, so WideShell-local state would need a context
+   *  channel anyway. NOT URL-serialised (no phone-parity route exists for it). */
+  acctView: { accountId: string } | null;
   openTxns: (f?: { envId?: string; accId?: string; envIds?: ReadonlySet<string>; catId?: string; placeId?: string }) => void;
   panelClosed: boolean;
   setEnvView: (v: null) => void;
+  /** Raw setter — the same `setEnvView`-decides-when pattern this bag already documents;
+   *  `closePanel` below is the only caller. */
+  setAcctView: (v: null) => void;
   /** Widened from Task 4's `(v: "overview") => void` (the only call `closePanel` below made):
    *  Task 6's panel report variant needs App's REAL `reportsView` setter, so a second
    *  `ReportsScreen` inside the panel can resolve its own back chevron the same way `closePanel`
@@ -312,6 +320,10 @@ type WideShellBag = {
    *  over an open envelope pane must NOT clear it, so closing Add derives back to the envelope
    *  for free). Defined in App.tsx as `openAddWide`. */
   onAddWide: () => void;
+  /** PR6b Task 3: `Rail`'s account rows deep-link straight into the account pane (a cross-screen
+   *  jump — the rail hides on the Accounts screen itself) — same nav-then-select batch as
+   *  `openAccount` (App.tsx), threaded through to `Rail` below. */
+  onOpenAccount: (id: string) => void;
 };
 
 /**
@@ -365,9 +377,11 @@ export function WideShell({ bag, rightSlot = null, children }: { bag: WideShellB
     next,
     reportsView,
     envView,
+    acctView,
     openTxns,
     panelClosed,
     setEnvView,
+    setAcctView,
     setReportsView,
     setPanelClosed,
     state,
@@ -385,6 +399,7 @@ export function WideShell({ bag, rightSlot = null, children }: { bag: WideShellB
     addPreset,
     onDoneEdit,
     onAddWide,
+    onOpenAccount,
   } = bag;
   const C = useTheme();
   const { t } = useT();
@@ -402,7 +417,7 @@ export function WideShell({ bag, rightSlot = null, children }: { bag: WideShellB
     // (Add lives in the OTHER pane), so this effect never fires just because Add opened/closed.
     if (primaryScreen !== "start") setWidgetSettings(null);
   }, [primaryScreen]);
-  const view = resolvePanel({ screen, reportsView, envView, widgetSettings });
+  const view = resolvePanel({ screen, reportsView, envView, widgetSettings, acctView });
   const primaryRef = useRef<HTMLDivElement | null>(null);
   const panelRef = useRef<HTMLDivElement | null>(null);
 
@@ -497,6 +512,7 @@ export function WideShell({ bag, rightSlot = null, children }: { bag: WideShellB
     if (view.kind === "envelope") setEnvView(null);
     else if (view.kind === "report") setReportsView("overview");
     else if (view.kind === "widgets") setWidgetSettings(null);
+    else if (view.kind === "account") setAcctView(null);
     else if (view.kind === "add") onDoneEdit();
     else setPanelClosed(true);
   };
@@ -522,8 +538,24 @@ export function WideShell({ bag, rightSlot = null, children }: { bag: WideShellB
   // inside `AddScreen` itself (typing, tab switches, sheet opens — all local component state)
   // ever touches it, so it stays referentially stable across every re-render where Add merely
   // continues to be open.
+  // `account` (PR6b Task 3) needs the SAME by-reference reopen treatment as `envelope`/`add`, for
+  // the same reason: App's `openAccount` builds a FRESH `{ accountId }` object per tap (D2), so
+  // re-selecting the same already-open account still reopens a manually-collapsed panel. This is
+  // why the branch below reads `acctView` (the App-owned selection object) rather than
+  // `view.accountId` (a plain string — re-selecting the same account would then compare equal and
+  // never retrigger the effect, exactly the lesson `addPreset` already taught for `screen`).
   const selection =
-    view.kind === "empty" ? null : view.kind === "add" ? addPreset : view.kind === "envelope" ? envView : view.kind === "widgets" ? view.widgetId : view.view;
+    view.kind === "empty"
+      ? null
+      : view.kind === "add"
+        ? addPreset
+        : view.kind === "envelope"
+          ? envView
+          : view.kind === "widgets"
+            ? view.widgetId
+            : view.kind === "account"
+              ? acctView
+              : view.view;
   const prevSelection = useRef(selection);
   useEffect(() => {
     if (selection !== null && selection !== prevSelection.current && panelClosed) setPanelClosed(false);
@@ -583,7 +615,16 @@ export function WideShell({ bag, rightSlot = null, children }: { bag: WideShellB
 
   return (
     <div ref={rootRef} style={{ display: "flex", height: "100dvh", background: C.bg, fontFamily: font, overflow: "hidden" }}>
-      <Rail mode={mode} screen={primaryScreen} onNav={nav} state={state} onQuickAdd={onQuickAdd} onFillGoals={onFillGoals} onInstall={onInstall} />
+      <Rail
+        mode={mode}
+        screen={primaryScreen}
+        onNav={nav}
+        state={state}
+        onQuickAdd={onQuickAdd}
+        onFillGoals={onFillGoals}
+        onInstall={onInstall}
+        onOpenAccount={onOpenAccount}
+      />
       <div ref={primaryRef} data-wide-primary style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", borderRight: `1px solid ${C.line}` }}>
         {/* Mounted inline inside BandHeader (see SyncBadge.tsx) rather than floating over the
             scrollable content below it — dead letters stay visible on wide; the user menu's

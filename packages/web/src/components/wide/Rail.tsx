@@ -136,12 +136,16 @@ function TbbCard({
   onQuickAdd,
   onFillGoals,
   onNav,
+  onOpenAccount,
 }: {
   state: StateResponse;
   screen: ScreenId;
   onQuickAdd: (kind: "transfer" | "import" | "suggest") => void;
   onFillGoals: () => void;
   onNav: (s: ScreenId) => void;
+  /** PR6b Task 3: each account row deep-links straight into the account pane (nav + select in one
+   *  batch) — the summary row and the collapsed-section header below keep `onNav("accounts")`. */
+  onOpenAccount: (id: string) => void;
 }) {
   const C = useTheme();
   const M = useMask();
@@ -247,7 +251,7 @@ function TbbCard({
               {accountsGlobal.map((a) => (
                 <button
                   key={a.id}
-                  onClick={() => onNav("accounts")}
+                  onClick={() => onOpenAccount(a.id)}
                   style={{
                     display: "flex",
                     alignItems: "center",
@@ -549,6 +553,7 @@ export function Rail({
   onQuickAdd,
   onFillGoals,
   onInstall,
+  onOpenAccount,
 }: {
   mode: WideMode;
   screen: ScreenId;
@@ -557,6 +562,8 @@ export function Rail({
   onQuickAdd: (kind: "transfer" | "import" | "suggest") => void;
   onFillGoals: () => void;
   onInstall: () => void;
+  /** PR6b Task 3: threaded straight to `TbbCard`'s account rows — see that prop's own comment. */
+  onOpenAccount: (id: string) => void;
 }) {
   const C = useTheme();
   const { t } = useT();
@@ -608,7 +615,9 @@ export function Rail({
         ),
       )}
       <div style={{ flex: 1, minHeight: 8 }} />
-      {mode === "desktop" && <TbbCard state={state} screen={screen} onQuickAdd={onQuickAdd} onFillGoals={onFillGoals} onNav={onNav} />}
+      {mode === "desktop" && (
+        <TbbCard state={state} screen={screen} onQuickAdd={onQuickAdd} onFillGoals={onFillGoals} onNav={onNav} onOpenAccount={onOpenAccount} />
+      )}
       <UserBlock mode={mode} screen={screen} onNav={onNav} onInstall={onInstall} />
     </div>
   );

@@ -24,7 +24,22 @@ import { ACCOUNT_COLORS, font, P, TEAL } from "../lib/theme";
 import { AccountListRowContent } from "./AccountListRowContent";
 import { EnvelopePickerSheet } from "./add/EnvelopePickerSheet";
 
-export function AccountsScreen({ state, onMenu }: { state: StateResponse; onMenu: () => void }) {
+export function AccountsScreen({
+  state,
+  onMenu,
+  onOpenAccount,
+  selectedAccountId = null,
+}: {
+  state: StateResponse;
+  onMenu: () => void;
+  /** PR6b Task 3: wide-only — a row opens the account pane instead of the edit sheet when both
+   *  this and `inWide` (below) hold. Phone never passes it (`inWide` is always false there), so
+   *  phone behaviour stays byte-identical. */
+  onOpenAccount?: (id: string) => void;
+  /** PR6b Task 3: the currently-selected account (App's `acctView`), for the row highlight below.
+   *  Always `null` on phone. */
+  selectedAccountId?: string | null;
+}) {
   const C = useTheme();
   const M = useMask();
   const { t, lang } = useT();
@@ -43,6 +58,9 @@ export function AccountsScreen({ state, onMenu }: { state: StateResponse; onMenu
   const total = accounts.reduce((s, a) => s + a.balance, 0);
   const [add, setAdd] = useState(false);
   const [edit, setEdit] = useState<StateResponse["accounts"][number] | null>(null);
+  // PR6b Task 3: on wide, a row opens the account pane instead of the edit sheet; phone (and any
+  // wide state that hasn't wired `onOpenAccount` yet) keeps today's row-tap-opens-edit behaviour.
+  const openRow = (a: StateResponse["accounts"][number]) => (inWide && onOpenAccount ? onOpenAccount(a.id) : setEdit(a));
   const [nm, setNm] = useState("");
   const [bl, setBl] = useState("");
   const [nmColor, setNmColor] = useState<string>(ACCOUNT_COLORS[0]!);
@@ -154,6 +172,10 @@ export function AccountsScreen({ state, onMenu }: { state: StateResponse; onMenu
               key={a.id}
               ref={dnd.itemRef(i)}
               className="fu"
+              // PR6b Task 3: the selected-row highlight wins over the drag-dragging background —
+              // the two never coincide in practice (dragging clears any wide selection concern),
+              // but selection reads first for clarity.
+              aria-current={selectedAccountId === a.id || undefined}
               style={{
                 animationDelay: `${i * 22}ms`,
                 display: "flex",
@@ -161,7 +183,7 @@ export function AccountsScreen({ state, onMenu }: { state: StateResponse; onMenu
                 gap: 2,
                 padding: "11px 0",
                 borderBottom: i < accounts.length - 1 ? `1px solid ${C.line}` : "none",
-                background: dnd.dragging === i ? C.bg : "transparent",
+                background: selectedAccountId === a.id ? C.inset : dnd.dragging === i ? C.bg : "transparent",
                 outline: dnd.over === i && dnd.dragging !== i ? `2px dashed ${TEAL}` : "none",
                 outlineOffset: -2,
                 borderRadius: 8,
@@ -176,7 +198,7 @@ export function AccountsScreen({ state, onMenu }: { state: StateResponse; onMenu
               </span>
               <div
                 role="button"
-                onClick={() => setEdit(a)}
+                onClick={() => openRow(a)}
                 style={{ flex: 1, minWidth: 0, display: "flex", alignItems: "center", justifyContent: "space-between", cursor: "pointer" }}
               >
                 <AccountListRowContent account={a} automaticLabel={automaticLabel} balanceText={M(a.balance)} colors={C} />
@@ -196,13 +218,15 @@ export function AccountsScreen({ state, onMenu }: { state: StateResponse; onMenu
                 <div
                   key={a.id}
                   role="button"
-                  onClick={() => setEdit(a)}
+                  onClick={() => openRow(a)}
+                  aria-current={selectedAccountId === a.id || undefined}
                   style={{
                     display: "flex",
                     alignItems: "center",
                     justifyContent: "space-between",
                     minWidth: 0,
                     padding: "9px 0",
+                    background: selectedAccountId === a.id ? C.inset : "transparent",
                     opacity: 0.55,
                     cursor: "pointer",
                   }}
