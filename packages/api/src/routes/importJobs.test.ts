@@ -39,6 +39,29 @@ function job(overrides: Partial<ImportJobDetail> = {}): ImportJobDetail {
   };
 }
 
+function summary(overrides: Partial<ImportJobSummary> = {}): ImportJobSummary {
+  const detail = job();
+  return {
+    id: detail.id,
+    budgetId: detail.budgetId,
+    accountId: detail.accountId,
+    provider: detail.provider,
+    tier: detail.tier,
+    status: detail.status,
+    phase: detail.phase,
+    resumePhase: detail.resumePhase,
+    cancelRequested: detail.cancelRequested,
+    attempt: detail.attempt,
+    errorCode: detail.errorCode,
+    retryAt: detail.retryAt,
+    createdAt: detail.createdAt,
+    updatedAt: detail.updatedAt,
+    expiresAt: detail.expiresAt,
+    proposalCount: detail.proposalCount,
+    ...overrides,
+  };
+}
+
 function createBody(overrides: Record<string, unknown> = {}) {
   return { id: JOB_ID, budgetId: BUDGET_A, accountId: ACCOUNT_A, locale: "pl-PL", images: [PNG_URL], ...overrides };
 }
@@ -65,7 +88,7 @@ function harness(
     },
     listForUser: async (userId) => {
       calls.users.push(userId);
-      return [job()] as ImportJobSummary[];
+      return [summary()];
     },
     getForUser: async (userId) => {
       calls.users.push(userId);
@@ -108,6 +131,7 @@ function harness(
       accountBelongsToBudget: async () => overrides.accountAllowed ?? true,
     }),
   );
+  app.onError((_error, c) => c.json({ error: "internal" }, 500));
   return { app, calls };
 }
 
@@ -204,5 +228,32 @@ describe("plain durable import job routes", () => {
     expect(notReady.calls.completes).toBe(0);
     expect(accepted.status).toBe(200);
     expect(ready.calls.completes).toBe(1);
+  });
+
+  it("rejects malformed public output from every response-producing endpoint", async () => {
+    const malformed = (overrides: Partial<ImportJobDetail> = {}) => ({ ...job(overrides), requestHash: "must-not-leak" }) as ImportJobDetail;
+    const create = harness({ repository: { create: async () => ({ created: true, job: malformed() }) } });
+    const list = harness({ repository: { listForUser: async () => [{ ...summary(), requestHash: "must-not-leak" } as ImportJobSummary] } });
+    const get = harness({ repository: { getForUser: async () => malformed() } });
+    const cancel = harness({ repository: { requestCancel: async () => malformed({ status: "cancelled", cancelRequested: true }) } });
+    const retry = harness({ repository: { retry: async () => malformed() } });
+    const complete = harness({
+      repository: {
+        getForUser: async () => job({ status: "ready", phase: "ready", result: { rows: [], proposals: [] } }),
+        markCompleted: async () => malformed({ status: "completed", phase: "completed" }),
+      },
+    });
+
+    const responses = await Promise.all([
+      post(create.app, "/api/import/jobs", createBody()),
+      list.app.request("/api/import/jobs"),
+      get.app.request(`/api/import/jobs/${JOB_ID}`),
+      post(cancel.app, `/api/import/jobs/${JOB_ID}/cancel`, mutationBody()),
+      post(retry.app, `/api/import/jobs/${JOB_ID}/retry`, mutationBody()),
+      post(complete.app, `/api/import/jobs/${JOB_ID}/complete`, mutationBody({ appliedCount: 1, skippedCount: 0 })),
+    ]);
+
+    expect(responses.map((response) => response.status)).toEqual([500, 500, 500, 500, 500, 500]);
+    expect(await Promise.all(responses.map((response) => response.json()))).toEqual(Array.from({ length: 6 }, () => ({ error: "internal" })));
   });
 });
