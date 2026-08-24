@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { readFileSync } from "node:fs";
 import { ImportEnrichmentMalformedError, type ImportJobErrorCode, type ImportRecognitionResult } from "@enveo/shared";
 import { ByokInvalidBodyError, ByokUpstreamError } from "../aiCredentials/transport";
 import { SpendDenied } from "../aiSpend/transport";
@@ -256,6 +257,13 @@ describe("plain import job processor", () => {
 });
 
 describe("plain import provider dispatch", () => {
+  test("selects the explicit durable shared-pipeline ordering instead of changing the default", () => {
+    const source = readFileSync(new URL("./processor.ts", import.meta.url), "utf8");
+
+    expect(source).toContain('pipelineMode: "durable"');
+    expect(source).toContain('cycleTwoFailureMode: "strict"');
+  });
+
   test("routes Enveo AI through the metered operator transport with the captured user and model", async () => {
     const calls: unknown[] = [];
     const chat = createImportJobChat(claimedJob(), {

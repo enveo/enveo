@@ -614,11 +614,76 @@ describe("runImportRecognitionPipeline", () => {
     expect(result.proposals[0]).toMatchObject({ rowId: "r1", semanticKind: "card_purchase", name: "", selected: true });
   });
 
+  it("preserves default reconcile-before-enrichment ordering for an otherwise straightforward exact duplicate", async () => {
+    const requests: ChatRequest[] = [];
+    const duplicate: Transaction = {
+      id: "default-duplicate",
+      type: "expense",
+      accountId: "account-1",
+      toAccountId: null,
+      amount: 1234,
+      date: "2026-08-07",
+      isRefund: false,
+      envelopeId: null,
+      placeId: null,
+      categoryId: null,
+      name: "Existing",
+      note: null,
+      tag: null,
+      sourceRef: "LIDL 123",
+      allocationFromEnvelopeId: null,
+      allocationToEnvelopeId: null,
+      items: [],
+      createdAt: "2026-08-07T00:00:00.000Z",
+    };
+    const result = await runImportRecognitionPipeline({
+      ...base,
+      transactions: [duplicate],
+      chat: async (request) => {
+        requests.push(request);
+        if (requests.length === 1) return extracted();
+        return JSON.stringify({
+          rows: [
+            {
+              rowId: "r1",
+              name: "Duplicate enrichment",
+              place: "Lidl",
+              envelopeId: null,
+              categoryId: null,
+              semanticKind: "card_purchase",
+              relation: null,
+              reviewReasons: [],
+            },
+          ],
+        });
+      },
+    });
+
+    expect(requests).toHaveLength(2);
+    const enrichmentInput = JSON.parse(requests[1]!.messages[1]!.content as string) as {
+      rows: Array<{ proposal: Record<string, unknown> }>;
+    };
+    expect(enrichmentInput.rows[0]?.proposal).toMatchObject({
+      duplicateStatus: "exists",
+      disposition: "declined",
+      selected: false,
+      reviewReasons: ["history_conflict"],
+    });
+    expect(result.proposals[0]).toMatchObject({
+      name: "Duplicate enrichment",
+      duplicateStatus: "exists",
+      disposition: "declined",
+      selected: false,
+      reviewReasons: ["history_conflict"],
+    });
+  });
+
   it("checkpoints cycle one and resumes without screenshots or another extraction request", async () => {
     const phases: string[] = [];
     let checkpoint: ImportRecognitionResult | undefined;
     await runImportRecognitionPipeline({
       ...base,
+      pipelineMode: "durable",
       chat: async () => extracted(),
       lifecycle: {
         afterUpstream: async () => phases.push("upstream"),
@@ -637,6 +702,7 @@ describe("runImportRecognitionPipeline", () => {
       ...base,
       images: [],
       checkpoint,
+      pipelineMode: "durable",
       chat: async () => {
         throw new Error("resume_must_not_extract_again");
       },
@@ -673,6 +739,7 @@ describe("runImportRecognitionPipeline", () => {
 
     const returned = await runImportRecognitionPipeline({
       ...base,
+      pipelineMode: "durable",
       transactions: [duplicate],
       historyRecords: [history("account-1", "Food"), history("account-1", "Travel")],
       chat: async () => {
@@ -721,10 +788,53 @@ describe("runImportRecognitionPipeline", () => {
     expect(returned.proposals[0]).toMatchObject({ duplicateStatus: "exists", disposition: "declined", selected: false });
   });
 
+  it("keeps a durable exact duplicate as pre-reconcile Stage A while returning current reconciliation", async () => {
+    const duplicate: Transaction = {
+      id: "durable-duplicate",
+      type: "expense",
+      accountId: "account-1",
+      toAccountId: null,
+      amount: 1234,
+      date: "2026-08-07",
+      isRefund: false,
+      envelopeId: null,
+      placeId: null,
+      categoryId: null,
+      name: "Existing",
+      note: null,
+      tag: null,
+      sourceRef: "LIDL 123",
+      allocationFromEnvelopeId: null,
+      allocationToEnvelopeId: null,
+      items: [],
+      createdAt: "2026-08-07T00:00:00.000Z",
+    };
+    let calls = 0;
+    let durableResult: ImportRecognitionResult | undefined;
+    const returned = await runImportRecognitionPipeline({
+      ...base,
+      pipelineMode: "durable",
+      cycleTwoFailureMode: "strict",
+      transactions: [duplicate],
+      chat: async () => {
+        calls++;
+        if (calls > 1) throw new Error("durable duplicate should not enrich from live reconciliation");
+        return extracted();
+      },
+      lifecycle: { saveResult: async (value) => (durableResult = value) },
+    });
+
+    expect(calls).toBe(1);
+    expect(durableResult?.proposals[0]).toMatchObject({ disposition: "candidate", selected: true, reviewReasons: [] });
+    expect(Object.hasOwn(durableResult?.proposals[0] ?? {}, "duplicateStatus")).toBe(false);
+    expect(returned.proposals[0]).toMatchObject({ duplicateStatus: "exists", disposition: "declined", selected: false });
+  });
+
   it("reconciles a resumed raw checkpoint against the changed ledger instead of creation-time proposal state", async () => {
     let rawCheckpoint: ImportRecognitionResult | undefined;
     await runImportRecognitionPipeline({
       ...base,
+      pipelineMode: "durable",
       chat: async () => extracted(),
       lifecycle: { saveExtraction: async (value) => (rawCheckpoint = value) },
     });
@@ -743,6 +853,7 @@ describe("runImportRecognitionPipeline", () => {
       ...base,
       images: [],
       checkpoint: contaminatedCheckpoint,
+      pipelineMode: "durable",
       transactions: [],
       chat: async () => {
         throw new Error("resume_must_not_extract_or_enrich");
@@ -762,6 +873,7 @@ describe("runImportRecognitionPipeline", () => {
     let rawCheckpoint: ImportRecognitionResult | undefined;
     await runImportRecognitionPipeline({
       ...base,
+      pipelineMode: "durable",
       chat: async () => extracted("card_purchase", "unknown"),
       lifecycle: { saveExtraction: async (value) => (rawCheckpoint = value) },
     });
@@ -772,6 +884,7 @@ describe("runImportRecognitionPipeline", () => {
       ...base,
       images: [],
       checkpoint: rawCheckpoint,
+      pipelineMode: "durable",
       historyRecords: [history("account-1", "Food"), history("account-1", "Travel")],
       chat: async (request) => {
         enrichmentPrompt = request.messages[1]!.content as string;
@@ -805,6 +918,7 @@ describe("runImportRecognitionPipeline", () => {
     let calls = 0;
     const run = runImportRecognitionPipeline({
       ...base,
+      pipelineMode: "durable",
       cycleTwoFailureMode: "strict",
       chat: async () => {
         calls++;

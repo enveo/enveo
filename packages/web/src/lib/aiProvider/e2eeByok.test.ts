@@ -160,6 +160,76 @@ describe("E2EE Own OpenAI provider", () => {
     }
   });
 
+  it("keeps exact-duplicate cycle-two requests byte-identical to the default server pipeline", async () => {
+    const duplicate = {
+      id: "44444444-4444-4444-8444-444444444444",
+      type: "expense" as const,
+      accountId: ACCOUNT,
+      toAccountId: null,
+      amount: 1234,
+      date: "2026-08-01",
+      isRefund: false,
+      envelopeId: null,
+      placeId: null,
+      categoryId: null,
+      name: "Existing shop",
+      note: null,
+      tag: null,
+      sourceRef: "SHOP 1",
+      allocationFromEnvelopeId: null,
+      allocationToEnvelopeId: null,
+      items: [],
+      createdAt: "2026-08-01T00:00:00.000Z",
+    };
+    const duplicateLedger: ClientLedger = { ...ledger, transactions: [duplicate] };
+    const historyRecords: ImportHistoryRecord[] = [
+      {
+        accountId: ACCOUNT,
+        currency: "EUR",
+        sourceRef: "SHOP 1",
+        tag: null,
+        place: null,
+        name: "Existing shop",
+        envelope: null,
+        category: null,
+        type: "expense",
+        isRefund: false,
+        toAccountId: null,
+      },
+    ];
+    const respond = (modelRequest: ChatRequest): string =>
+      Array.isArray(modelRequest.messages[1]?.content)
+        ? '{"rows":[{"rowId":"r1","imageIndex":0,"visualOrder":0,"rawTextLines":["SHOP 1"],"date":"2026-08-01","amount":1234,"currency":"EUR","direction":"debit","postingStatus":"posted","rowRole":"financial_event","semanticKind":"card_purchase","relation":null,"confidence":"high","reviewReasons":[]}]}'
+        : '{"rows":[{"rowId":"r1","name":"Duplicate shop","place":"Shop","envelopeId":null,"categoryId":null,"semanticKind":"card_purchase","relation":null,"reviewReasons":[]}]}';
+    const serverRequests: Array<{ request: ChatRequest; timeoutMs: number | undefined }> = [];
+    const expected = await runServerImportRecognitionAdapter({
+      images: ["data:image/png;base64,AA=="],
+      locale: "pl",
+      today: new Date().toISOString().slice(0, 10),
+      budgetCurrency: "EUR",
+      accountId: ACCOUNT,
+      accountRows: duplicateLedger.accounts,
+      envelopeRows: duplicateLedger.envelopes,
+      categoryRows: duplicateLedger.categories,
+      transactionRows: duplicateLedger.transactions,
+      historyRecords,
+      chat: async (modelRequest, timeoutMs) => {
+        serverRequests.push({ request: modelRequest, timeoutMs });
+        return respond(modelRequest);
+      },
+    });
+    const f = fixture({ respond });
+    await f.provider.saveCredential("sk-duplicate-parity");
+
+    const actual = await f.provider.extractImport({ images: ["data:image/png;base64,AA=="], locale: "pl", ledger: duplicateLedger, accountId: ACCOUNT });
+
+    expect(serverRequests).toHaveLength(2);
+    expect(f.calls.direct).toHaveLength(2);
+    expect(f.calls.direct.map(({ request, timeoutMs }) => ({ request, timeoutMs }))).toEqual(serverRequests);
+    expect(actual).toEqual(expected);
+    expect(actual.proposals[0]).toMatchObject({ duplicateStatus: "exists", disposition: "declined", selected: false, name: "Duplicate shop" });
+  });
+
   it("matches the production server adapter for permuted versions of the same logical ledger", async () => {
     const otherBudget = {
       id: OTHER_BUDGET,

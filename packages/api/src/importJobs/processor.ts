@@ -309,6 +309,7 @@ export function createDatabaseImportRecognition(job: ClaimedImportJob, deps: Pro
       historyRecords,
       chat: createImportJobChat(job, deps),
       checkpoint: run.checkpoint ?? undefined,
+      pipelineMode: "durable",
       cycleTwoFailureMode: "strict",
       lifecycle: {
         beforeUpstream: run.beforeUpstream,
