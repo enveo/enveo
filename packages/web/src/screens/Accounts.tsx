@@ -2,6 +2,7 @@ import { computeStateResponse } from "@enveo/shared";
 import { useEffect, useMemo, useState } from "react";
 import { AccountEditSheet, AutomaticEnvelopeControl } from "../components/AccountEditSheet";
 import { AmountField } from "../components/AmountField";
+import { AmountPadHost, type AmountPadTarget } from "../components/AmountPadSheet";
 import { Surface } from "../components/chrome";
 import { IconColorPicker } from "../components/IconColorPicker";
 import { type StateResponse, useLedgerVersion } from "../lib/api";
@@ -58,6 +59,12 @@ export function AccountsScreen({
   const openRow = (a: StateResponse["accounts"][number]) => (inWide && onOpenAccount ? onOpenAccount(a.id) : setEdit(a));
   const [nm, setNm] = useState("");
   const [bl, setBl] = useState("");
+  // Hoisted out of `AmountField` (its `externalPad` escape hatch) so `AmountPadHost` (below) can
+  // render as a SIBLING of the "New account" `<Surface>` — nesting the pad inside the Surface body
+  // would put its Sheet inside the (phone) outer Sheet's always-transformed content div, breaking
+  // the pad's position:fixed backdrop+numpad (the ancestor-transform pitfall; ReconcileSheet.tsx
+  // is the reference shape, and AmountField.test.ts fails the suite on a regression).
+  const [blPad, setBlPad] = useState<AmountPadTarget | null>(null);
   const [nmColor, setNmColor] = useState<string>(ACCOUNT_COLORS[0]!);
   const [nmIcon, setNmIcon] = useState("wallet");
   const [automaticEnvelopeId, setAutomaticEnvelopeId] = useState<string | null>(null);
@@ -79,6 +86,9 @@ export function AccountsScreen({
   };
   const closeAdd = () => {
     setAutomaticPicker(false);
+    // The hoisted pad outlives the Surface's own unmount-on-close (unlike the field-internal
+    // default) — close it with the sheet or it would float over the bare accounts list.
+    setBlPad(null);
     setAdd(false);
   };
 
@@ -247,7 +257,14 @@ export function AccountsScreen({
               }}
             />
             <div style={{ marginBottom: 14 }}>
-              <AmountField value={bl} onCommit={setBl} label={t("Starting balance")} placeholder={t("Starting balance (0)")} allowNegative />
+              <AmountField
+                value={bl}
+                onCommit={setBl}
+                label={t("Starting balance")}
+                placeholder={t("Starting balance (0)")}
+                allowNegative
+                externalPad={[blPad, setBlPad]}
+              />
             </div>
             <IconColorPicker palette={ACCOUNT_COLORS} color={nmColor} icon={nmIcon} onColor={setNmColor} onIcon={setNmIcon} />
             <AutomaticEnvelopeControl
@@ -276,6 +293,12 @@ export function AccountsScreen({
           </>
         )}
       </Surface>
+
+      {/* Sibling of the "New account" Surface (not a child) — the panel's transform would break
+          the pad's position:fixed on wide, and on phone the outer Sheet's own always-on transform
+          would do the same to a pad nested inside it (ReconcileSheet.tsx is the reference shape;
+          see `AmountField`'s `externalPad` docblock). */}
+      <AmountPadHost target={blPad} onClose={() => setBlPad(null)} />
 
       <EnvelopePickerSheet
         show={add && automaticPicker}

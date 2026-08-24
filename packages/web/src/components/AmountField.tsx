@@ -32,9 +32,13 @@ import { AmountPadHost, type AmountPadTarget } from "./AmountPadSheet";
  * re-provides `host:"panel"` to nested `Sheet`s (Task 1); phone surfaces have no such signal.
  * Every other `AmountPadHost` caller in the app (FillGoalsSheet, BudgetSuggestSheet, Budget.tsx,
  * Onboarding.tsx) avoids this by keeping the pad a SIBLING of its enclosing Surface/Sheet, never a
- * descendant — `externalPad` lets a Surface-hosted caller (ReconcileSheet) do the same: hoist the
- * pad TARGET into its own state and render `AmountPadHost` itself, as a sibling of its `Surface`.
- * Omitted (every other caller, unchanged), the field keeps today's fully self-contained pad.
+ * descendant — `externalPad` lets the Surface-hosted callers (ReconcileSheet, Accounts.tsx's
+ * "Starting balance") do the same: hoist the pad TARGET into their own state and render
+ * `AmountPadHost` themselves, as a sibling of their `Surface`. Omitted (every other caller,
+ * unchanged), the field keeps today's fully self-contained pad. THE RULE, pinned by
+ * `AmountField.test.ts`'s source scan: an `<AmountField>` rendered inside a `<Surface>`/`<Sheet>`
+ * body MUST pass `externalPad` (and host the pad as a sibling), and a raw `<AmountPadHost>` must
+ * never sit inside one.
  */
 export function AmountField({
   value,

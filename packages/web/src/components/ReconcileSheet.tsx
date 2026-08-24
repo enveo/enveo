@@ -35,10 +35,11 @@ import { Surface } from "./chrome";
  * starting balance) — it owns the pad-vs-real-input fork, but NOT the pad's hosting here: this
  * module keeps its own local `pad` state (via `AmountField`'s `externalPad` escape hatch, review
  * fix) and renders `AmountPadHost` itself as a SIBLING of `<Surface>`, per the brief. Nesting the
- * pad inside the Surface's own body — as the field's self-contained default does, and as
- * Accounts.tsx's "Starting balance" still does — puts the pad's `Sheet` inside the (phone) outer
- * Sheet's always-transformed content div, breaking its `position:fixed` backdrop+numpad against
- * that small sheet instead of the viewport (the ancestor-transform pitfall, CLAUDE.md); the
+ * pad inside the Surface's own body — as the field's self-contained default would — puts the
+ * pad's `Sheet` inside the (phone) outer Sheet's always-transformed content div, breaking its
+ * `position:fixed` backdrop+numpad against that small sheet instead of the viewport (the
+ * ancestor-transform pitfall, CLAUDE.md; Accounts.tsx's "Starting balance" hoists the same way,
+ * and `AmountField.test.ts`'s source scan fails the suite on any regression); the
  * currency-symbol span next to the old raw `<input>` is still gone with the move to `AmountField`
  * (no currency glyph on Accounts.tsx's field either). `real`/`diff` and everything downstream (the
  * difference line, the automatic-envelope preview, the envelope row) still derive from the SAME
