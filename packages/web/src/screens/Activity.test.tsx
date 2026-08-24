@@ -154,4 +154,14 @@ describe("durable import foreground and Activity view models", () => {
     );
     expect(sharedDeviceImportWarning("plain", "memory-session")).toBeNull();
   });
+
+  it("uses readable theme tokens for Activity status copy and actions", () => {
+    const source = readFileSync(join(import.meta.dir, "Activity.tsx"), "utf8");
+
+    expect(source).not.toContain("color: C.mute");
+    expect((source.match(/color: C\.soft/g) ?? []).length).toBeGreaterThanOrEqual(7);
+    expect(source).not.toContain("color: TEAL");
+    expect(source).not.toContain("background: TEAL");
+    expect(source).toContain("background: C.text, color: C.card");
+  });
 });

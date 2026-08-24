@@ -7,7 +7,7 @@ import { type Message, msg, useT } from "../lib/i18n";
 import { Ico } from "../lib/icons";
 import { importJobManager } from "../lib/importJobs/manager";
 import { type ImportActivityItem, importActivityAttention, isScheduledImportRetry } from "../lib/importJobs/store";
-import { CORAL, P, TEAL } from "../lib/theme";
+import { CORAL, P } from "../lib/theme";
 
 export interface ImportActivitySections {
   active: ImportActivityItem[];
@@ -77,7 +77,7 @@ export function ActivityScreen({ state, onMenu }: { state: StateResponse; onMenu
   const list = (title: Message, jobs: ImportActivityItem[]) =>
     jobs.length > 0 && (
       <section style={{ marginTop: 18 }}>
-        <h2 style={{ margin: "0 0 8px", fontSize: 12, textTransform: "uppercase", letterSpacing: 0.7, color: C.mute }}>{t(title)}</h2>
+        <h2 style={{ margin: "0 0 8px", fontSize: 12, textTransform: "uppercase", letterSpacing: 0.7, color: C.soft }}>{t(title)}</h2>
         <div style={{ display: "flex", flexDirection: "column", gap: 9 }}>
           {jobs.map((job) => {
             const scheduledRetry = isScheduledImportRetry(job);
@@ -88,9 +88,9 @@ export function ActivityScreen({ state, onMenu }: { state: StateResponse; onMenu
                     <div style={{ color: C.text, fontSize: 14, fontWeight: 700 }}>
                       {t(job.tier === "e2ee" ? msg("Local encrypted import") : msg("Screenshot import"))}
                     </div>
-                    <div style={{ color: C.mute, fontSize: 10.5, marginTop: 2 }}>{date(job.updatedAt)}</div>
+                    <div style={{ color: C.soft, fontSize: 10.5, marginTop: 2 }}>{date(job.updatedAt)}</div>
                   </div>
-                  {job.status === "ready" && <span style={{ color: TEAL, fontSize: 11, fontWeight: 700 }}>{t("Ready to review")}</span>}
+                  {job.status === "ready" && <span style={{ color: C.pos, fontSize: 11, fontWeight: 700 }}>{t("Ready to review")}</span>}
                   {job.status === "failed" && !scheduledRetry && <span style={{ color: CORAL, fontSize: 11, fontWeight: 700 }}>{t("Needs attention")}</span>}
                 </div>
                 {job.status === "completed" && (
@@ -99,7 +99,7 @@ export function ActivityScreen({ state, onMenu }: { state: StateResponse; onMenu
                   </div>
                 )}
                 {job.status === "ready" && (
-                  <button type="button" onClick={() => setSelectedJobId(job.id)} style={primaryButton}>
+                  <button type="button" onClick={() => setSelectedJobId(job.id)} style={{ ...primaryButton, background: C.text, color: C.card }}>
                     {t("Review import")}
                   </button>
                 )}
@@ -118,7 +118,7 @@ export function ActivityScreen({ state, onMenu }: { state: StateResponse; onMenu
                   </>
                 )}
                 {(job.status === "completed" || (job.status === "failed" && !scheduledRetry)) && (
-                  <button type="button" onClick={() => void dismiss(job)} style={{ ...linkButton, color: C.mute }}>
+                  <button type="button" onClick={() => void dismiss(job)} style={{ ...linkButton, color: C.soft }}>
                     {t(activityDismissMessage(job))}
                   </button>
                 )}
@@ -130,7 +130,7 @@ export function ActivityScreen({ state, onMenu }: { state: StateResponse; onMenu
                     onCancel={() => void importJobManager.cancel(job.id).then(refresh)}
                   />
                 )}
-                <div style={{ color: C.mute, fontSize: 10.5, marginTop: 7 }}>{t("Expires {date}", { date: date(job.expiresAt) })}</div>
+                <div style={{ color: C.soft, fontSize: 10.5, marginTop: 7 }}>{t("Expires {date}", { date: date(job.expiresAt) })}</div>
               </article>
             );
           })}
@@ -147,7 +147,7 @@ export function ActivityScreen({ state, onMenu }: { state: StateResponse; onMenu
         <h1 style={{ margin: 0, color: C.text, fontSize: 18, fontWeight: 750 }}>{t("Activity")}</h1>
       </header>
       <main style={{ padding: `0 ${P}px` }}>
-        <p style={{ margin: "2px 0 0", color: C.mute, fontSize: 12.5, lineHeight: 1.45 }}>
+        <p style={{ margin: "2px 0 0", color: C.soft, fontSize: 12.5, lineHeight: 1.45 }}>
           {t("Imports continue independently of this screen. Encrypted imports run only on this device.")}
         </p>
         {error && (
@@ -155,7 +155,7 @@ export function ActivityScreen({ state, onMenu }: { state: StateResponse; onMenu
             {t("Activity could not be refreshed. Try again.")}
           </div>
         )}
-        {empty && !error && <div style={{ color: C.mute, fontSize: 13, textAlign: "center", padding: "52px 12px" }}>{t("No import activity yet.")}</div>}
+        {empty && !error && <div style={{ color: C.soft, fontSize: 13, textAlign: "center", padding: "52px 12px" }}>{t("No import activity yet.")}</div>}
         {list(msg("Ready"), sections.ready)}
         {list(msg("In progress"), sections.active)}
         {list(msg("Needs attention"), sections.failed)}
@@ -183,8 +183,6 @@ const primaryButton = {
   padding: "10px 8px",
   borderRadius: 10,
   border: "none",
-  background: TEAL,
-  color: "#fff",
   fontWeight: 700,
   cursor: "pointer",
 } as const;

@@ -130,6 +130,59 @@ describe("device-local E2EE import runner", () => {
     expect(activity.get(ID)).toMatchObject({ status: "completed", result: null, appliedCount: 1, skippedCount: 2 });
   });
 
+  it("deletes encrypted screenshots as soon as extraction is durably checkpointed", async () => {
+    const fixture = setup({
+      provider: () =>
+        provider(async (input) => {
+          await input.lifecycle.saveExtraction?.(EXTRACTION);
+        }),
+    });
+    await fixture.runner.create(createInput());
+
+    await fixture.runner.resume();
+
+    expect(await importJobStorage.getJob(SCOPE, ID)).toMatchObject({
+      phase: "validating",
+      inputCiphertext: null,
+      checkpointCiphertext: expect.stringMatching(/^v2\./),
+    });
+  });
+
+  it("deletes every encrypted payload immediately when cancellation becomes durable", async () => {
+    const fixture = setup();
+    await fixture.runner.create(createInput());
+
+    await fixture.runner.cancel(ID);
+
+    expect(await importJobStorage.getJob(SCOPE, ID)).toMatchObject({
+      status: "cancelled",
+      inputCiphertext: null,
+      checkpointCiphertext: null,
+      resultCiphertext: null,
+    });
+  });
+
+  it("deletes every encrypted payload immediately after a permanent provider failure", async () => {
+    const fixture = setup({
+      provider: () =>
+        provider(async () => {
+          throw new Error("ai_key_invalid");
+        }),
+    });
+    await fixture.runner.create(createInput());
+
+    await fixture.runner.resume();
+
+    expect(await importJobStorage.getJob(SCOPE, ID)).toMatchObject({
+      status: "failed",
+      errorCode: "ai_key_invalid",
+      retryAt: null,
+      inputCiphertext: null,
+      checkpointCiphertext: null,
+      resultCiphertext: null,
+    });
+  });
+
   it("recovers a stale running job through waiting_for_device and resumes from its encrypted extraction checkpoint", async () => {
     let unblockFirst: (() => void) | undefined;
     const firstStopped = new Promise<void>((resolve) => {
@@ -243,6 +296,64 @@ describe("device-local E2EE import runner", () => {
     await fixture.runner.resume();
     expect(await importJobStorage.getJob(SCOPE, ID)).toMatchObject({ status: "failed", attempt: 3, errorCode: "ai_timeout", retryAt: null });
     expect(providerRuns).toBe(3);
+  });
+
+  it("retains retryable encrypted input before 24 hours and expires it at the exact boundary", async () => {
+    const startedAt = Date.parse("2026-08-24T10:00:00.000Z");
+    let currentTime = new Date(startedAt);
+    let providerRuns = 0;
+    const fixture = setup({
+      now: () => currentTime,
+      provider: () =>
+        provider(async () => {
+          providerRuns++;
+          throw new Error("ai_timeout");
+        }),
+    });
+    await fixture.runner.create(createInput());
+    await fixture.runner.resume();
+
+    currentTime = new Date(startedAt + 24 * 60 * 60 * 1000 - 1);
+    await fixture.runner.list();
+    expect(await importJobStorage.getJob(SCOPE, ID)).toMatchObject({ inputCiphertext: expect.stringMatching(/^v2\./) });
+
+    currentTime = new Date(startedAt + 24 * 60 * 60 * 1000);
+    await fixture.runner.list();
+    expect(await importJobStorage.getJob(SCOPE, ID)).toMatchObject({
+      status: "failed",
+      errorCode: "expired",
+      retryAt: null,
+      inputCiphertext: null,
+      checkpointCiphertext: null,
+      resultCiphertext: null,
+    });
+    expect(providerRuns).toBe(1);
+  });
+
+  it("keeps a retryable extraction checkpoint after 24 hours because screenshots were already deleted", async () => {
+    const startedAt = Date.parse("2026-08-24T10:00:00.000Z");
+    let currentTime = new Date(startedAt);
+    const fixture = setup({
+      now: () => currentTime,
+      provider: () =>
+        provider(async (input) => {
+          await input.lifecycle.saveExtraction?.(EXTRACTION);
+          throw new Error("ai_timeout");
+        }),
+    });
+    await fixture.runner.create(createInput());
+    await fixture.runner.resume();
+
+    currentTime = new Date(startedAt + 24 * 60 * 60 * 1000);
+    await fixture.runner.list();
+
+    expect(await importJobStorage.getJob(SCOPE, ID)).toMatchObject({
+      status: "failed",
+      errorCode: "ai_timeout",
+      retryAt: "2026-08-24T10:00:30.000Z",
+      inputCiphertext: null,
+      checkpointCiphertext: expect.stringMatching(/^v2\./),
+    });
   });
 
   it("expires ciphertext and apply progress before provider resume and evicts absent activity in every tab", async () => {

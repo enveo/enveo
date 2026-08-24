@@ -18,6 +18,7 @@ import { isLeaderTab } from "../sync/multitab";
 import { type ImportActivityItem, type ImportActivityStore, type ImportJobScopeCapability, importActivityFromE2ee } from "./store";
 
 const IMPORT_JOB_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
+const RETRY_INPUT_RETENTION_MS = 24 * 60 * 60 * 1000;
 const RETRY_BACKOFF_MS = [30_000, 120_000] as const;
 
 type DurableLifecycle = NonNullable<ImportRecognitionPipelineInput["lifecycle"]>;
@@ -182,6 +183,25 @@ export class E2eeImportJobRunner {
       if (!this.expired(job)) continue;
       await this.expire(job);
     }
+    for (const job of await importJobStorage.listJobs(this.options.scope)) {
+      const updatedAt = Date.parse(job.updatedAt);
+      if (
+        job.status !== "failed" ||
+        job.retryAt === null ||
+        job.inputCiphertext === null ||
+        !Number.isFinite(updatedAt) ||
+        updatedAt + RETRY_INPUT_RETENTION_MS > this.now().getTime()
+      )
+        continue;
+      await this.write(job, {
+        phase: "extracting",
+        errorCode: "expired",
+        retryAt: null,
+        inputCiphertext: null,
+        checkpointCiphertext: null,
+        resultCiphertext: null,
+      });
+    }
     this.assertCurrent();
     const current = (await importJobStorage.listJobs(this.options.scope)).filter((job) => !this.expired(job));
     this.assertCurrent();
@@ -231,7 +251,11 @@ export class E2eeImportJobRunner {
 
   private async fail(current: StoredE2eeImportJob, errorCode: ImportJobErrorCode): Promise<void> {
     if (current.status !== "queued" && current.status !== "running") return;
-    await this.transition(current, { type: "failed", errorCode, retryAt: null, at: this.timestamp() });
+    await this.transition(
+      current,
+      { type: "failed", errorCode, retryAt: null, at: this.timestamp() },
+      { inputCiphertext: null, checkpointCiphertext: null, resultCiphertext: null },
+    );
   }
 
   private async recordFailure(current: StoredE2eeImportJob, error: unknown): Promise<void> {
@@ -399,7 +423,7 @@ export class E2eeImportJobRunner {
             await this.fence(job);
             const checkpointCiphertext = await this.encrypt(JSON.stringify(result), key, importJobAadContext(job.budgetId, job.epoch, job.id, "checkpoint"));
             this.assertCurrent();
-            job = await this.transition(job, { type: "phase", phase: "validating", at: this.timestamp() }, { checkpointCiphertext });
+            job = await this.transition(job, { type: "phase", phase: "validating", at: this.timestamp() }, { inputCiphertext: null, checkpointCiphertext });
           },
           advancePhase: async (phase) => {
             await this.fence(job);
@@ -523,8 +547,9 @@ export class E2eeImportJobRunner {
     if (!this.isCurrent()) return;
     if (!job || job.status === "cancelled" || job.status === "completed") return;
     try {
-      job = await this.transition(job, { type: "cancel", at: this.timestamp() });
-      if (job.status === "running") await this.transition(job, { type: "cancelled", at: this.timestamp() });
+      const cleared = { inputCiphertext: null, checkpointCiphertext: null, resultCiphertext: null };
+      job = await this.transition(job, { type: "cancel", at: this.timestamp() }, cleared);
+      if (job.status === "running") await this.transition(job, { type: "cancelled", at: this.timestamp() }, cleared);
     } catch (error) {
       if (!(error instanceof StaleImportJobRunner)) throw error;
     }
