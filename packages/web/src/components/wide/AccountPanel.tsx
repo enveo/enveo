@@ -61,6 +61,17 @@ export function AccountPanel({
   const [edit, setEdit] = useState(false);
   const [reconcile, setReconcile] = useState(false);
 
+  // Reconcile gets ACTIVE envelopes/groups only — exactly `AccountsWidget`'s filter (widgets.tsx),
+  // the sheet's other caller: with raw lists, an ARCHIVED linked envelope would still validate as
+  // the automatic adjustment target and the picker would offer archived envelopes. `AccountEditSheet`
+  // keeps the raw lists on purpose — same as `Accounts.tsx`'s phone call sites — because it filters
+  // through `selectableAutomaticEnvelopes` itself.
+  const activeEnvelopes = useMemo(() => envelopes.filter((envelope) => !envelope.archived), [envelopes]);
+  const activeGroups = useMemo(() => {
+    const activeGroupIds = new Set(activeEnvelopes.map((envelope) => envelope.groupId));
+    return groups.filter((group) => activeGroupIds.has(group.id));
+  }, [activeEnvelopes, groups]);
+
   // Recent activity: last 5 transactions touching this account, across every month — the LIVE
   // ledger, not the viewed month's `state.transactions` (that goes empty on day 1 for an older
   // account; the widgetsBoard `RecentWidget` pattern and its stated reason, reused verbatim below
@@ -210,7 +221,7 @@ export function AccountPanel({
         })
       )}
       <AccountEditSheet account={edit ? account : null} envelopes={envelopes} groups={groups} onClose={() => setEdit(false)} />
-      <ReconcileSheet account={reconcile ? account : null} envelopes={envelopes} groups={groups} onClose={() => setReconcile(false)} />
+      <ReconcileSheet account={reconcile ? account : null} envelopes={activeEnvelopes} groups={activeGroups} onClose={() => setReconcile(false)} />
     </div>
   );
 }

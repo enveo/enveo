@@ -173,13 +173,22 @@ export default function App() {
   //
   // The edit can also be ABANDONED without ever reaching that pop: WideShell keeps a fully
   // interactive Rail while Add covers the panel (`onNav={nav}`, not gated on
-  // `screen === "addExpense"`), so clicking any other Rail item calls `nav()` directly, which
-  // discards the open Add form without a `history.back()`/`onPop` ever firing. `nav()` is
-  // therefore the SAME fresh-entry rung for this ref as it already is for `acctView` itself
-  // (below) — it clears the stash on every call, so only the exact pop `editAccountTxn` stashed
-  // for can ever consume it, and a later, unrelated pop that lands on "accounts" (nothing
-  // stashed, or a stash some other `nav()` already discarded) never resurrects a stale account.
+  // `screen === "addExpense"`), so any other Rail item calls `nav()` directly; a rail quick
+  // action goes through `onQuickAdd`; `doneEdit` falls back to a plain `setScreen(editReturn)`
+  // when there is no history entry to pop; WideShell's panel-✕ funnels into `doneEdit` too. None
+  // of those fire a popstate, and patching each caller would leave the NEXT one stale. The effect
+  // below is the single choke point instead: the stash only lives while the edit it was taken for
+  // is on screen. Every abandonment moves `screen` off "addExpense" and the effect discards the
+  // stash right after that commit; the one legitimate consumer (`onPop`'s capture) runs
+  // synchronously inside the popstate handler, before effects, so consumption always wins by
+  // construction — and a later, unrelated pop landing on "accounts" finds nothing to resurrect.
+  // (A quick action swapping the open edit for a fresh Add keeps `screen === "addExpense"` and
+  // deliberately keeps the stash: `acctView` itself never changed, so the eventual unwind
+  // restores the same pane the whole detour started from — continuity, not staleness.)
   const acctViewBeforeEditRef = useRef<{ accountId: string } | null>(null);
+  useEffect(() => {
+    if (screen !== "addExpense") acctViewBeforeEditRef.current = null;
+  }, [screen]);
   // screen to return to after saving/cancelling an edit (default start; from the list → list)
   const [editReturn, setEditReturn] = useState<ScreenId>("start");
   // transaction list filters kept high up so they survive an edit and return
@@ -225,12 +234,10 @@ export default function App() {
     }
     setEnvView(null);
     setAcctView(null);
-    // Abandons any pending account-pane-edit restore (see the ref's own comment above): `nav()`
-    // is called both for a genuine fresh entry AND by `onPop` itself on every pop, so `onPop`
-    // reads the ref BEFORE calling `nav()` for the one pop that is allowed to consume it — every
-    // other caller here (Rail, Drawer, BottomNav, `openAccount`, `openTxns`'s siblings) means the
-    // edit was abandoned, and the stash must not outlive it.
-    acctViewBeforeEditRef.current = null;
+    // NO `acctViewBeforeEditRef` rung here — abandoning an account-pane edit is handled by the
+    // ref's own screen-change effect (the single choke point; see its comment above), which also
+    // covers the exits that never come through `nav()` at all (`doneEdit`'s no-history fallback,
+    // `onQuickAdd`).
     setEditReturn("start");
     if (s === "reports") {
       // Fresh menu entry = the hub overview, with no resurrected day panel — the same
@@ -416,12 +423,12 @@ export default function App() {
       setEnvActions(null);
       justPopped.current = true;
       const r = parseUrl(location.pathname, location.search);
-      // Task 4: read the account-pane restore stash BEFORE `nav()` below — `nav()` clears it as
-      // part of its own fresh-entry reset (see the ref's and `nav`'s comments), and `nav(r.screen)`
-      // on the very next line is itself such a call. This capture is the one exception: it fires
-      // for every pop, but only a pop landing on "accounts" with something actually stashed acts
-      // on it, so a later, unrelated pop (nothing stashed, or a stash some other `nav()` already
-      // discarded) never resurrects a stale account.
+      // Task 4: the ONE legitimate consumer of the account-pane restore stash (see the ref's
+      // comment). This runs synchronously inside the popstate handler — before the ref's
+      // screen-change effect can discard the stash for this same transition — so a pop landing on
+      // "accounts" with something stashed restores the pane, and every other pop lets the effect
+      // clear it. A later, unrelated pop finds nothing: any earlier abandonment already moved
+      // `screen` off "addExpense" and emptied the stash.
       const acctRestore = r.screen === "accounts" ? acctViewBeforeEditRef.current : null;
       nav(r.screen);
       setReportsView(r.reportsView);
