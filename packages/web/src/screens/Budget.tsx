@@ -1,6 +1,6 @@
 import { lazy, useEffect, useRef, useState } from "react";
 import { AmountPadHost, type AmountPadTarget } from "../components/AmountPadSheet";
-import { Header, Sheet } from "../components/chrome";
+import { Header, Surface } from "../components/chrome";
 import { DockedNumpad } from "../components/DockedNumpad";
 import { IconColorPicker } from "../components/IconColorPicker";
 import { CardBox, GoalRing, useBand } from "../components/kit";
@@ -616,7 +616,7 @@ function EnvManageSheet({ show, state, onClose }: { show: boolean; state: StateR
   const archived = state.envelopes.filter((e) => e.archived).sort((a, b) => a.sort - b.sort);
 
   return (
-    <Sheet show={show} onClose={onClose}>
+    <Surface show={show} onClose={onClose}>
       {(C) => (
         <>
           <div style={{ fontSize: 17, fontWeight: 700, color: C.text, marginBottom: 4, textAlign: "center" }}>{t("Manage envelopes")}</div>
@@ -716,7 +716,7 @@ function EnvManageSheet({ show, state, onClose }: { show: boolean; state: StateR
           </div>
         </>
       )}
-    </Sheet>
+    </Surface>
   );
 }
 
@@ -929,7 +929,7 @@ export function EnvEdit({
     });
   return (
     <>
-      <Sheet show={!!env} onClose={onClose}>
+      <Surface show={!!env} onClose={onClose}>
         {(C) => (
           <>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 18 }}>
@@ -1106,8 +1106,9 @@ export function EnvEdit({
             )}
           </>
         )}
-      </Sheet>
-      {/* Sibling of the Sheet (not a child) — the panel's transform would break the pad's position:fixed. */}
+      </Surface>
+      {/* Sibling of the Surface (not a child) — on phone this is a Sheet, and the panel's transform
+          would break the pad's position:fixed on wide either way. */}
       <AmountPadHost target={pad} onClose={() => setPad(null)} />
     </>
   );
