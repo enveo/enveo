@@ -124,6 +124,7 @@ export interface ServerImportRecognitionAdapterInput {
   historyRecords: ImportHistoryRecord[];
   chat: ImportModelChat;
   checkpoint?: ImportRecognitionResult;
+  pipelineMode?: "default" | "durable";
   cycleTwoFailureMode?: "fallback" | "strict";
   lifecycle?: {
     beforeUpstream?: () => Promise<void>;
@@ -156,6 +157,7 @@ export function runServerImportRecognitionAdapter(input: ServerImportRecognition
     historyRecords: input.historyRecords,
     chat: input.chat,
     checkpoint: input.checkpoint,
+    pipelineMode: input.pipelineMode,
     cycleTwoFailureMode: input.cycleTwoFailureMode,
     lifecycle: input.lifecycle,
   });

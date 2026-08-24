@@ -667,6 +667,9 @@ export interface ImportRecognitionPipelineInput {
   checkpoint?: ImportRecognitionResult;
   
 
+  pipelineMode?: "default" | "durable";
+  
+
   cycleTwoFailureMode?: "fallback" | "strict";
   lifecycle?: {
     beforeUpstream?: () => Promise<void>;
@@ -684,6 +687,7 @@ const mergeReviewReasons = (...groups: ReadonlyArray<readonly (typeof IMPORT_REV
 
  
 export async function runImportRecognitionPipeline(input: ImportRecognitionPipelineInput): Promise<ReconciledImportRecognitionResult> {
+  const durable = input.pipelineMode === "durable";
   const reconcile = (result: ImportRecognitionResult): ReconciledImportRecognitionResult => ({
     rows: result.rows,
     proposals: reconcileImportProposals({
@@ -710,8 +714,12 @@ export async function runImportRecognitionPipeline(input: ImportRecognitionPipel
     await input.lifecycle?.afterUpstream?.();
     const batch = parseImportExtractResponse(extractionRaw, input.images.length);
     result = validateImportExtraction({ batch, budgetCurrency: input.budgetCurrency });
-    await input.lifecycle?.saveExtraction?.(result);
+    if (durable) await input.lifecycle?.saveExtraction?.(result);
   }
+
+  // This is the pre-Task-4 ordering for every existing caller. Reconciliation annotations
+  // intentionally participate in history selection, needsImportEnrichment, and cycle two.
+  if (!durable) result = reconcile(result);
 
   const ownedAccountIds = input.accounts.filter((account) => !account.archived).map((account) => account.id);
   const history = result.proposals.map((proposal) => ({
@@ -731,8 +739,11 @@ export async function runImportRecognitionPipeline(input: ImportRecognitionPipel
   };
   if (!needsImportEnrichment(result)) {
     await input.lifecycle?.advancePhase?.("reconciling");
-    await input.lifecycle?.saveResult?.(result);
-    return reconcile(result);
+    if (durable) {
+      await input.lifecycle?.saveResult?.(result);
+      return reconcile(result);
+    }
+    return result as ReconciledImportRecognitionResult;
   }
 
   const activeEnvelopes = input.envelopes.filter((envelope) => !envelope.archived);
@@ -756,8 +767,11 @@ export async function runImportRecognitionPipeline(input: ImportRecognitionPipel
   } catch (error) {
     if (input.cycleTwoFailureMode === "strict") throw error;
     await input.lifecycle?.advancePhase?.("reconciling");
-    await input.lifecycle?.saveResult?.(result);
-    return reconcile(result);
+    if (durable) {
+      await input.lifecycle?.saveResult?.(result);
+      return reconcile(result);
+    }
+    return result as ReconciledImportRecognitionResult;
   }
   await input.lifecycle?.afterUpstream?.();
   let finalResult = result;
@@ -804,7 +818,7 @@ export async function runImportRecognitionPipeline(input: ImportRecognitionPipel
     finalResult = result;
   }
   await input.lifecycle?.advancePhase?.("reconciling");
-  await input.lifecycle?.saveResult?.(finalResult);
+  if (durable) await input.lifecycle?.saveResult?.(finalResult);
   return reconcile(finalResult);
 }
 
