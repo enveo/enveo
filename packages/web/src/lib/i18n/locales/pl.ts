@@ -50,6 +50,7 @@ export const pl: Dict = {
   "Categories and places": "Kategorie i miejsca",
   "Category change": "Zmiana kategorii",
   "Category deletion": "Usunięcie kategorii",
+  "Category merge": "Scalenie kategorii",
   Collapse: "Zwiń",
   "Delete “{name}” for good? It is not used by any transaction.": "Usunąć „{name}” na zawsze? Nie używa go żadna transakcja.",
   "Envelopes stay as they are — you assigned this by hand.": "Koperty zostają bez zmian — rozdysponowałeś to ręcznie.",
@@ -68,6 +69,7 @@ export const pl: Dict = {
   "Nothing here yet.": "Jeszcze nic tu nie ma.",
   "Place change": "Zmiana miejsca",
   "Place deletion": "Usunięcie miejsca",
+  "Place merge": "Scalenie miejsca",
   "Remaining {amount}": "Zostało {amount}",
   Remove: "Usuń",
   "Restore “{name}” · hidden": "Przywróć „{name}” · ukryte",
@@ -213,6 +215,10 @@ export const pl: Dict = {
   "Choose an envelope": "Wybierz kopertę",
   "Choose an envelope to see its summary.": "Wybierz kopertę, aby zobaczyć jej podsumowanie.",
   "Choose an icon": "Wybierz ikonę",
+  // "Cisza" ("silence/quiet" in Polish) and "Duet" (below) are the color themes' BRAND names
+  // (THEME_LABEL in Appearance.tsx) — deliberately Polish-flavoured product names, not English
+  // words, so they stay the same string in every locale rather than being translated.
+  Cisza: "Cisza",
   Clear: "Wyczyść",
   "Clear & reset": "Czyszczenie i reset",
   "Clear search": "Wyczyść wyszukiwanie",
@@ -282,6 +288,7 @@ export const pl: Dict = {
     "Pobiera wszystkie dane jako plik. Zachowaj kopię zapasową przed operacjami destrukcyjnymi.",
   "Drag to reorder": "Przeciągnij, aby zmienić kolejność",
   "Drag {name}": "Przeciągnij {name}",
+  Duet: "Duet",
   Duplicate: "Duplikuj",
   "Duplicates skipped: {n}": "Duplikaty pominięte: {n}",
   E2EE: "E2EE",
@@ -308,6 +315,7 @@ export const pl: Dict = {
   "Envelope budgeting: assign your income to envelopes and always know how much you can still spend.":
     "Budżet metodą kopert: rozdzielasz dochody do kopert i zawsze wiesz, ile możesz jeszcze wydać.",
   "Envelope budgets": "Budżety kopert",
+  "Envelope budgets — some envelopes are over budget": "Budżety kopert — niektóre koperty są ponad budżet",
   "Envelope change": "Zmiana koperty",
   "Envelope deletion": "Usunięcie koperty",
   "Envelope for the adjustment": "Koperta dla wyrównania",
@@ -337,6 +345,8 @@ export const pl: Dict = {
   "Generating…": "Generuję…",
   Goals: "Cele",
   Good: "Dobre",
+  "Google sign-in keeps you signed in until you sign out — remember to sign out when you finish.":
+    "Logowanie przez Google utrzymuje sesję, dopóki się nie wylogujesz — pamiętaj, żeby się wylogować po zakończeniu.",
   Groceries: "Spożywcze",
   Group: "Grupa",
   "Group: {name}": "Grupa: {name}",
@@ -364,6 +374,7 @@ export const pl: Dict = {
   "Invalid pairing code.": "Nieprawidłowy kod parowania.",
   Investor: "Inwestorski",
   "Item total: {sum} / {total}": "Suma pozycji: {sum} / {total}",
+  "Keep me signed in and save a local copy so Enveo works without internet.": "Zapamiętaj mnie i zapisz lokalną kopię, żeby Enveo działało offline.",
   Language: "Język",
   "Largest expenses": "Największe wydatki",
   "Last 12 months": "Ostatnie 12 miesięcy",
@@ -423,6 +434,8 @@ export const pl: Dict = {
   "No envelopes with a budget or spending this month.": "Brak kopert z budżetem lub wydatkami w tym miesiącu.",
   "No envelopes with a goal. Set a monthly target when editing an envelope.": "Brak kopert z celem. Ustaw cel miesięczny w edycji koperty.",
   "No funds to distribute": "Brak środków do rozdzielenia",
+  "No local copy will be saved. This browser session ends when you close the app.":
+    "Lokalna kopia nie zostanie zapisana. Sesja w przeglądarce kończy się wraz z zamknięciem aplikacji.",
   "No matches": "Brak wyników",
   "No spending in this period.": "Brak wydatków w tym okresie.",
   "No spending this month.": "Brak wydatków w tym miesiącu.",
@@ -478,6 +491,8 @@ export const pl: Dict = {
   Range: "Zakres",
   "Ready to assign": "Do rozdysponowania",
   "Re-encrypt and upgrade": "Zaszyfruj na nowo i zaktualizuj",
+  "Re-enter your OpenAI API key": "Wpisz ponownie swój klucz API OpenAI",
+  "Re-enter your OpenAI API key so it can move into the encrypted budget.": "Wpisz ponownie swój klucz API OpenAI, aby przenieść go do zaszyfrowanego budżetu.",
   "Rebuild data on this device": "Odbuduj dane na tym urządzeniu",
   "Rebuilding…": "Odbudowywanie…",
   "Recent activity": "Ostatnia aktywność",
@@ -519,6 +534,8 @@ export const pl: Dict = {
   "Server sync": "Synchronizacja z serwerem",
   "Server temporarily unreachable — your data is safe, we will retry.": "Serwer chwilowo nieosiągalny — dane są bezpieczne, spróbujemy ponownie.",
   "Session expired": "Sesja wygasła",
+  "Session storage — the budget lives only in this tab's memory and leaves no local copy after it closes.":
+    "Pamięć sesji — budżet działa wyłącznie w pamięci tej karty i nie zostawia lokalnej kopii po jej zamknięciu.",
   Settings: "Ustawienia",
   Share: "Udostępnij",
   "Short after changes": "Po zmianach brakuje",
@@ -569,6 +586,8 @@ export const pl: Dict = {
     "Do modelu AI (OpenAI) zostaną wysłane: zrzuty ekranu oraz nazwy Twoich kopert i kategorii.",
   "The AI service took too long to answer — nothing was changed. Try again in a moment.":
     "Usługa AI odpowiadała zbyt długo — nic nie zostało zmienione. Spróbuj ponownie za chwilę.",
+  "The OpenAI key changed on another device. Refresh its status and try again.":
+    "Klucz OpenAI zmienił się na innym urządzeniu. Odśwież jego status i spróbuj ponownie.",
   "The account “{name}” will disappear from the Start screen and lists (you will find it under “Closed” on the Accounts screen). Its transactions and balance still count in the budget and reports.\n\nArchive it?":
     'Konto „{name}" zniknie z ekranu Start i list (znajdziesz je w „Zamknięte" na ekranie Konta). Transakcje i saldo nadal liczą się w budżecie i raportach.\n\nArchiwizować?',
   "The agent proposed no distribution — refine your prompt.": "Agent nie zaproponował podziału — doprecyzuj prompt.",
@@ -600,6 +619,8 @@ export const pl: Dict = {
     "Lokalna kopia budżetu na tym urządzeniu należy do innego konta niż to, na które jesteś zalogowany. Nic nie zostało wysłane na serwer i nic nie zostało usunięte.",
   "The local copy — including any unsent changes — will be permanently removed from this device. If this is the only copy of that budget, download a backup first.":
     "Lokalna kopia (razem z niewysłanymi zmianami) zostanie trwale usunięta z tego urządzenia. Jeśli to jedyna kopia tego budżetu, najpierw pobierz kopię zapasową.",
+  "The local copy — including any unsent changes — will be permanently removed from this device. Your account's data on the server is not affected.":
+    "Lokalna kopia (razem z niewysłanymi zmianami) zostanie trwale usunięta z tego urządzenia. Dane Twojego konta na serwerze pozostają bez zmian.",
   "The local replica is not ready.": "Replika nie jest gotowa.",
   "The password must be at least 8 characters.": "Hasło musi mieć co najmniej 8 znaków.",
   "The pending-change queue cannot be read safely, so Enveo left the local copy untouched.":
@@ -652,6 +673,7 @@ export const pl: Dict = {
     "Nie udało się potwierdzić, że lokalna kopia na tym urządzeniu należy do zalogowanego konta — nic nie zostało zmienione.",
   "This device's local copy could not be confirmed to belong to the signed-in account — nothing was sent to the server. Settings → Sync explains what happened and what you can do.":
     "Nie udało się potwierdzić, że lokalna kopia na tym urządzeniu należy do zalogowanego konta — nic nie zostało wysłane na serwer. Szczegóły i możliwe kroki znajdziesz w Ustawieniach → Synchronizacja.",
+  "This is my private device": "To moje prywatne urządzenie",
   "This is not a backup of this app — choose a file exported from this application.": "To nie jest kopia Enveo — wybierz plik wyeksportowany z tej aplikacji.",
   "This is not a valid JSON file.": "To nie jest poprawny plik JSON.",
   "This is not a valid backup file — nothing was loaded.": "To nie jest poprawny plik kopii — nic nie zostało wczytane.",
