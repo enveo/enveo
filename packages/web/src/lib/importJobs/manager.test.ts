@@ -14,6 +14,7 @@ const OTHER_BUDGET = "44444444-4444-4444-4444-444444444444";
 const OTHER_ID = "55555555-5555-5555-5555-555555555555";
 const TXN_ID = "66666666-6666-4666-8666-666666666666";
 const IMAGE = "data:image/png;base64,AA==";
+const originalNavigator = Object.getOwnPropertyDescriptor(globalThis, "navigator");
 
 function ledger(provider: "rules" | "enveo" | "openai" = "openai", model = "gpt-5.6-luna", budgetId = BUDGET): ClientLedger {
   return {
@@ -145,6 +146,10 @@ async function flushMicrotasks(count = 12): Promise<void> {
 beforeEach(() => {
   (globalThis as Record<string, unknown>).indexedDB = new IDBFactory();
   (globalThis as Record<string, unknown>).localStorage = { getItem: () => "persistent" };
+  Object.defineProperty(globalThis, "navigator", {
+    configurable: true,
+    value: { locks: { request: async (_name: string, _options: unknown, callback: () => Promise<unknown>) => callback() } },
+  });
   __resetStorageForTests();
   persist.__resetPersistForTests();
 });
@@ -152,6 +157,8 @@ beforeEach(() => {
 afterEach(() => {
   delete (globalThis as Record<string, unknown>).indexedDB;
   delete (globalThis as Record<string, unknown>).localStorage;
+  if (originalNavigator) Object.defineProperty(globalThis, "navigator", originalNavigator);
+  else delete (globalThis as Record<string, unknown>).navigator;
   __resetStorageForTests();
   persist.__resetPersistForTests();
 });
@@ -454,6 +461,146 @@ describe("import job manager", () => {
       placeCreates: 1,
       transactionCreates: 1,
       outboxWrites: 1,
+    });
+    first.stop();
+    second.stop();
+  });
+
+  it("fails closed without Web Locks before any local mutation", async () => {
+    // given: a browser that cannot provide an origin-wide crash-releasing lock
+    Object.defineProperty(globalThis, "navigator", { configurable: true, value: {} });
+    const state = new FakeState();
+    state.status = "ready";
+    const adapters = ports([]);
+    const manager = new ImportJobManager({
+      state,
+      ownerId: async () => "user-a",
+      tierMeta: () => ({ tier: "plain", epoch: 0 }),
+      createPlain: adapters.plain,
+      createE2ee: adapters.e2ee,
+      randomId: () => ID,
+      deriveRowToken: async () => "opaque-row",
+      durableTransactionProof: async () => "durable",
+      visible: () => true,
+    });
+    manager.start();
+    await manager.create({ accountId: ACCOUNT, locale: "en-US", images: [IMAGE] });
+    let mutations = 0;
+
+    // when: apply is requested
+    const apply = manager.applyRow(ID, "merchant-like row", async () => {
+      mutations++;
+    });
+
+    // then: no lease, ledger, or outbox mutation is attempted unsafely
+    await expect(apply).rejects.toThrow("import_web_locks_unavailable");
+    expect(mutations).toBe(0);
+    expect(await manager.appliedProgress(ID, ["merchant-like row"])).toMatchObject({ appliedCount: 0 });
+    manager.stop();
+  });
+
+  it("scopes the Web Lock to owner, budget, job, and opaque row token", async () => {
+    const state = new FakeState();
+    state.status = "ready";
+    const adapters = ports([]);
+    let lockName = "";
+    const manager = new ImportJobManager({
+      state,
+      ownerId: async () => "user-a",
+      tierMeta: () => ({ tier: "plain", epoch: 0 }),
+      createPlain: adapters.plain,
+      createE2ee: adapters.e2ee,
+      randomId: () => ID,
+      deriveRowToken: async () => "opaque-row-token",
+      durableTransactionProof: async () => "durable",
+      withApplyLock: async (name, callback) => {
+        lockName = name;
+        return callback();
+      },
+      visible: () => true,
+    });
+    manager.start();
+    await manager.create({ accountId: ACCOUNT, locale: "en-US", images: [IMAGE] });
+
+    await manager.applyRow(ID, "Coffee Shop Warsaw 12.34 EUR", async () => {});
+
+    expect(lockName).toBe(JSON.stringify(["enveo-import-apply", 1, "user-a", BUDGET, ID, "opaque-row-token"]));
+    expect(lockName).not.toContain("Coffee Shop");
+    manager.stop();
+  });
+
+  it("fences a stale callback after another tab reclaims and durably writes the row", async () => {
+    // given: tab A owns both locks, then is suspended long enough for a simulated crash release
+    const state = new FakeState();
+    state.status = "ready";
+    const adapters = ports([]);
+    const resumeA = deferred<void>();
+    const aEnteredMutation = deferred<void>();
+    let now = 0;
+    let durable = false;
+    let mutations = 0;
+    let categoryCreates = 0;
+    let placeCreates = 0;
+    let transactionCreates = 0;
+    let outboxWrites = 0;
+    const deadletters = 0;
+    const simulatedCrashReleasedLock = async <T>(_name: string, callback: () => Promise<T>): Promise<T> => callback();
+    const makeManager = (owner: string) =>
+      new ImportJobManager({
+        state,
+        ownerId: async () => "user-a",
+        tierMeta: () => ({ tier: "plain", epoch: 0 }),
+        createPlain: adapters.plain,
+        createE2ee: adapters.e2ee,
+        randomId: () => TXN_ID,
+        applyOwnerId: () => owner,
+        deriveRowToken: async () => "opaque-row",
+        durableTransactionProof: async () => (deadletters > 0 ? "rejected" : durable ? "durable" : "absent"),
+        withApplyLock: simulatedCrashReleasedLock,
+        nowMs: () => now,
+        scheduleApplyLeaseInterval: () => undefined as unknown as ReturnType<typeof setInterval>,
+        clearApplyLeaseInterval: () => {},
+        visible: () => true,
+      });
+    const first = makeManager("tab-a");
+    const second = makeManager("tab-b");
+    first.start();
+    second.start();
+    await first.create({ accountId: ACCOUNT, locale: "en-US", images: [IMAGE] });
+    await second.create({ accountId: ACCOUNT, locale: "en-US", images: [IMAGE] });
+    const writeOnce = () => {
+      mutations++;
+      categoryCreates++;
+      placeCreates++;
+      transactionCreates++;
+      outboxWrites++;
+      durable = true;
+    };
+    const firstApply = first.applyRow(ID, "row-one", async (_transactionId, assertCurrent) => {
+      aEnteredMutation.resolve();
+      await resumeA.promise;
+      await assertCurrent();
+      writeOnce();
+    });
+    await aEnteredMutation.promise;
+
+    // when: the browser releases A's Web Lock on crash, B reclaims the expired durable lease and writes
+    now = 31_000;
+    await second.applyRow(ID, "row-one", async (_transactionId, assertCurrent) => {
+      await assertCurrent();
+      writeOnce();
+    });
+    resumeA.resolve();
+
+    // then: a controlled stale continuation is fenced before any callback-owned local write
+    await expect(firstApply).rejects.toThrow("import_row_lease_lost");
+    expect({ mutations, categoryCreates, placeCreates, transactionCreates, outboxWrites, deadletters }).toEqual({
+      mutations: 1,
+      categoryCreates: 1,
+      placeCreates: 1,
+      transactionCreates: 1,
+      outboxWrites: 1,
+      deadletters: 0,
     });
     first.stop();
     second.stop();

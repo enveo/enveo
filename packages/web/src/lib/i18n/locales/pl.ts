@@ -1282,6 +1282,8 @@ export const pl: Dict = {
   "Activity could not be refreshed. Try again.": "Nie udało się odświeżyć aktywności. Spróbuj ponownie.",
   "Added: {added} · Skipped: {skipped}": "Dodano: {added} · Pominięto: {skipped}",
   "Adding was interrupted. Review the remaining rows and try again.": "Dodawanie zostało przerwane. Sprawdź pozostałe wiersze i spróbuj ponownie.",
+  "This browser cannot safely coordinate import changes across tabs. Keep this review open and try again in a supported browser.":
+    "Ta przeglądarka nie może bezpiecznie koordynować zmian importu między kartami. Pozostaw ten przegląd otwarty i spróbuj ponownie w obsługiwanej przeglądarce.",
   "Adding transactions…": "Dodawanie transakcji…",
   "Cancel import": "Anuluj import",
   "Checking recognized data…": "Sprawdzanie rozpoznanych danych…",
