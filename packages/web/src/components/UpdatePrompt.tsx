@@ -1,6 +1,7 @@
 import { registerSW } from "virtual:pwa-register";
 import { useEffect, useRef, useState } from "react";
 import { useT } from "../lib/i18n";
+import { useWideHost } from "../lib/shellContext";
 import { font, TEAL } from "../lib/theme";
 import { PHONE_COL } from "../lib/viewMode";
 
@@ -14,6 +15,15 @@ export function UpdatePrompt() {
   const { t } = useT();
   const [need, setNeed] = useState(false);
   const updateRef = useRef<((reload?: boolean) => Promise<void>) | null>(null);
+  // Wide anchor (PR6 Task 6 — sheet triage sweep measured this): mirrors DockedNumpad's own
+  // anchor (Task 3). `null` on phone (no provider) and on desktop (WideShell only renders this
+  // instance from the PRIMARY pane, so `useWideHost()` is never null there while mounted) —
+  // kept `?? null` defensive rather than assumed, matching DockedNumpad's own style. Anchoring
+  // to `rects.primary` (not a static rail-width constant) is what makes this correct whether the
+  // panel is open or closed: WideShell's own ResizeObserver already grows `rects.primary` to
+  // fill the reclaimed space when the panel collapses, so this needs no separate branch for that.
+  const pane = useWideHost();
+  const anchor = pane?.rects.primary ?? null;
 
   useEffect(() => {
     const updateSW = registerSW({
@@ -37,21 +47,23 @@ export function UpdatePrompt() {
   }, []);
 
   if (!need) return null;
-  // Stays viewport-centered on wide too — DELIBERATE (small, rare, self-dismissing; repositioning
-  // it against the primary pane/rail buys nothing until it's actually measured). Owner: PR6 Task 6
-  // (sheet triage sweep) measures this at 1440x900/1104x992 and only repositions it if it visually
-  // collides with the rail or panel (pr4-context.md's Task 8 entry names this deferral verbatim).
+  // Measured (PR6 Task 6 — sheet triage sweep): at 1440x900 (desktop) a viewport-centered banner
+  // never reaches the rail or panel, so that geometry is untouched. At 1104x992 (fold) with the
+  // panel open, centering across the FULL viewport put the banner ~220px into the panel's own
+  // column (panel starts at x=552 there; the pill's right edge reached ~774) — a real collision,
+  // not a hypothetical one. Anchoring to the primary pane's measured rect (`anchor` above) fixes
+  // both sizes at once and costs nothing on phone (`anchor` is `null` there, same fixed centering
+  // as before).
   return (
     <div
       style={{
         position: "fixed",
         top: "calc(env(safe-area-inset-top) + 8px)",
-        left: 0,
-        right: 0,
         zIndex: 130,
         display: "flex",
         justifyContent: "center",
         pointerEvents: "none",
+        ...(anchor ? { left: anchor.left, width: anchor.width } : { left: 0, right: 0 }),
       }}
     >
       <div

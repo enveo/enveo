@@ -668,14 +668,18 @@ export default function App() {
             {screenEl}
           </WideShell>
         </LazyChunk>
-        {/* Task 8's overlay audit: on phone these three render inside the phone card's own tree
+        {/* Task 8's overlay audit: on phone these two render inside the phone card's own tree
             below (SAME app-owned state — `installSheet`, no separate instance, M7); the wide
             branch returns above that point, so it had never rendered them at all — Rail's
             `onInstall` (bag above) and Settings' own install card (inside `screenEl`) could flip
             `installSheet` to true with nothing to show it. Siblings of `WideShell` here, never
             nested inside its transformed panel (house rule — a `position:fixed` Sheet/banner
             under a `transform` ancestor breaks). No BottomNav exists on wide (the rail replaces
-            it), so the banner's clearance drops to the plain safe-area inset. */}
+            it), so the banner's clearance drops to the plain safe-area inset. `UpdatePrompt` is
+            NOT a third sibling here any more (PR6 Task 6): its wide instance now renders from
+            inside `WideShell`'s primary-pane provider, where `useWideHost()` can anchor it clear
+            of the rail/panel — see that component's own comment. The phone instance below is
+            unaffected. */}
         <LazyChunk variant="silent">
           <InstallBanner offsetForNav={false} />
         </LazyChunk>
@@ -684,7 +688,6 @@ export default function App() {
             <InstallSheet show={installSheet} onClose={() => setInstallSheet(false)} />
           </LazyChunk>
         )}
-        <UpdatePrompt />
       </>
     );
   }
