@@ -206,8 +206,10 @@ export default function App() {
   const locked = bootStatus === "locked";
 
   // The local replica belongs to ANOTHER account (owner stamp ≠ session — BootStatus "foreign").
-  // Every server write is already refused; the app must NOT show (or silently destroy) that
-  // account's budget, so the decision screen takes over: export a backup / remove and continue.
+  // Every server write is already refused and the app must NOT show that account's budget, so
+  // the decision screen takes over: export a backup / remove and continue. On cloud this status
+  // is normally never set — the guard silently discards the replica instead (enterForeignReplica)
+  // and only its failure path lands here.
   const foreign = bootStatus === "foreign";
 
   // Swipe right = go back (screens with a back arrow — pinned PWA has no Safari gesture).

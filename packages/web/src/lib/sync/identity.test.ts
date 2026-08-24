@@ -97,25 +97,44 @@ describe("sync/identity: foreign replica on CLOUD", () => {
   });
 
   it("cloud → discards the replica instead of rendering ForeignReplicaScreen", () => {
+    prevDeps = configureIdentity(null);
     stubLocalStorage();
     cacheDeployment("cloud");
     let discards = 0;
-    prevDeps = configureIdentity({
+    configureIdentity({
       discardForeignReplica: async () => {
         discards++;
       },
     });
     enterForeignReplica();
     expect(discards).toBe(1);
-    expect(store.getBootStatus()).not.toBe("foreign");
+    expect(store.getBootStatus()).toBe("ready"); // unchanged — the wipe reloads, no screen flips
     expect(isIdentityBlocked()).toBe(true); // no write may race the wipe before the reload
   });
 
+  it("cloud + a FAILING wipe → falls back to the screen instead of an eternal splash", async () => {
+    prevDeps = configureIdentity(null);
+    stubLocalStorage();
+    cacheDeployment("cloud");
+    configureIdentity({
+      discardForeignReplica: async () => {
+        throw new Error("idb gone");
+      },
+    });
+    enterForeignReplica();
+    await Promise.resolve(); // let the rejection reach the catch
+    await Promise.resolve();
+    expect(store.getBootStatus()).toBe("foreign"); // recoverable screen (cloud hides the export)
+    expect(getSyncStatus().state).toBe("error");
+    expect(isIdentityBlocked()).toBe(true);
+  });
+
   it("selfhost → keeps the human decision (ForeignReplicaScreen)", () => {
+    prevDeps = configureIdentity(null);
     stubLocalStorage();
     cacheDeployment("selfhost");
     let discards = 0;
-    prevDeps = configureIdentity({
+    configureIdentity({
       discardForeignReplica: async () => {
         discards++;
       },
@@ -126,9 +145,10 @@ describe("sync/identity: foreign replica on CLOUD", () => {
   });
 
   it("unknown deployment (nothing cached) → fail-safe: the screen, nothing destroyed", () => {
+    prevDeps = configureIdentity(null);
     stubLocalStorage(); // no deployment key → getCachedDeployment() falls back to "selfhost"
     let discards = 0;
-    prevDeps = configureIdentity({
+    configureIdentity({
       discardForeignReplica: async () => {
         discards++;
       },
@@ -139,9 +159,9 @@ describe("sync/identity: foreign replica on CLOUD", () => {
   });
 
   it("cloud with no composed discard dep → fail-safe: the screen", () => {
+    prevDeps = configureIdentity(null); // the facade has not composed the module
     stubLocalStorage();
     cacheDeployment("cloud");
-    prevDeps = configureIdentity(null); // the facade has not composed the module
     enterForeignReplica();
     expect(store.getBootStatus()).toBe("foreign");
   });

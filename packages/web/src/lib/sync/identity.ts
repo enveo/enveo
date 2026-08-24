@@ -59,10 +59,12 @@
  * positive. Unproven therefore refuses every server write and waits (a later cycle re-proves; a
  * stamped replica in the same situation is handled non-destructively by the resync path).
  *
- * NEITHER verdict destroys anything unattended. "Foreign" blocks every write and stops there
- * (BootStatus "foreign" → ForeignReplicaScreen), because the replica may be the last copy of that
- * budget and because a user id does not survive a server rebuild — see enterForeignReplica. The
- * asymmetry the guard keeps is: an unproven owner ⇒ refuse every server write, destroy nothing.
+ * On SELFHOST neither verdict destroys anything unattended: "foreign" blocks every write and
+ * stops there (BootStatus "foreign" → ForeignReplicaScreen), because the replica may be the last
+ * copy of that budget and because a user id does not survive a server rebuild — see
+ * enterForeignReplica, which also documents the ONE exception: a PROVEN foreign stamp on CLOUD
+ * is discarded silently. The asymmetry the guard keeps everywhere is: an unproven owner ⇒
+ * refuse every server write, destroy nothing.
  */
 
 import { accountPreferences } from "../accountPreferences";
@@ -86,7 +88,7 @@ export function decideIdentity(sessionUserId: string | null, stamped: string | u
 
 /** Session user id ALREADY verified against this replica (null ⇒ verify from scratch). */
 let identityVerifiedFor: string | null = null;
-let identityBlocked = false; // foreign replica → no network write until the human decides
+let identityBlocked = false; // foreign replica → no network write (human decision on selfhost, wipe+reload on cloud)
 
 /** Injected by the facade at composition time (identity cannot import sync.ts back). */
 let identityDeps: IdentityDeps | null = null;
@@ -103,7 +105,7 @@ export function invalidateIdentityVerdict(): void {
   identityVerifiedFor = null;
 }
 
-/** Foreign replica detected — no cycle may touch the network until the human decides. */
+/** Foreign replica detected — no cycle may touch the network until it is resolved (human on selfhost, wipe+reload on cloud). */
 export function isIdentityBlocked(): boolean {
   return identityBlocked;
 }
@@ -164,10 +166,18 @@ export function enterForeignReplica(): void {
   // path is hidden anyway — so the previous account's data (queued ops included — a session that
   // ended without sign-out forfeits them; deliberate product decision) is removed and the page
   // reloads into the session account's clean boot. Fail-safe both ways: an unknown deployment
-  // reads as "selfhost" (getCachedDeployment), and an uncomposed module keeps the screen.
+  // reads as "selfhost" (getCachedDeployment), and an uncomposed module keeps the screen. The
+  // cache is written at Login from /api/auth/meta — the same sign-in that makes a replica
+  // foreign refreshes it, so a stale value needs an operator-side DEPLOYMENT flip to linger.
   if (getCachedDeployment() === "cloud" && identityDeps) {
     console.warn("sync: the local replica belongs to a different account — removing it (cloud)");
-    void identityDeps.discardForeignReplica();
+    // A failed wipe (IDB evicted, private mode) must not strand the app on an eternal splash:
+    // fall back to the screen, which is recoverable (and hides the export on cloud). Retrying
+    // the wipe by reloading would loop on a persistent IDB failure.
+    identityDeps.discardForeignReplica().catch(() => {
+      store.setBootStatus("foreign");
+      setState("error");
+    });
     return;
   }
   console.warn("sync: the local replica belongs to a different account — every server write is refused");
@@ -328,9 +338,10 @@ export async function ensureIdentity(): Promise<string | null> {
     const stamped = await idbGet<string>("meta", "userId").catch(() => undefined);
     const verdict = decideIdentity(sessionUserId, stamped);
     if (verdict === "unauthed") throw unauthorized(); // defensive (sessionUserId is set)
-    // The stamp names another account: refuse every write and let the HUMAN decide what happens
-    // to the data (enterForeignReplica destroys nothing — a stamp mismatch is not proof that the
-    // data is expendable, only that it must not be written into THIS account's budget).
+    // The stamp names another account: refuse every write; enterForeignReplica then either hands
+    // the decision to the HUMAN (selfhost — a stamp mismatch is not proof that the data is
+    // expendable, only that it must not be written into THIS account's budget) or, on cloud,
+    // discards the previous account's local data and reloads.
     if (verdict === "foreign") {
       enterForeignReplica();
       return null;
