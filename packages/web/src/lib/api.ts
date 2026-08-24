@@ -15,6 +15,8 @@ import {
   type BudgetSuggestResponse,
   type ChatRequest,
   type ClientLedger,
+  type ImportJobDetail,
+  type ImportJobSummary,
   type OpenAiModel,
   type ReconciledImportRecognitionResult,
 } from "@enveo/shared";
@@ -267,6 +269,17 @@ export const api = {
      nothing written). */
   importApply: (b: { accountId: string; budgetId?: string; items: ImportApplyItem[]; dryRun?: boolean }) =>
     http<ImportApplyResponse>("POST", "/import/apply", b),
+
+  importJobs: {
+    create: (input: { id: string; budgetId: string; accountId: string; locale: AiLocale; images: string[] }) =>
+      http<ImportJobDetail>("POST", "/import/jobs", input),
+    list: () => http<ImportJobSummary[]>("GET", "/import/jobs"),
+    get: (id: string) => http<ImportJobDetail>("GET", `/import/jobs/${encodeURIComponent(id)}`),
+    cancel: (id: string, budgetId: string) => http<ImportJobDetail>("POST", `/import/jobs/${encodeURIComponent(id)}/cancel`, { budgetId }),
+    retry: (id: string, budgetId: string) => http<ImportJobDetail>("POST", `/import/jobs/${encodeURIComponent(id)}/retry`, { budgetId }),
+    complete: (id: string, input: { budgetId: string; appliedCount: number; skippedCount: number }) =>
+      http<ImportJobDetail>("POST", `/import/jobs/${encodeURIComponent(id)}/complete`, input),
+  },
 
   budgetSuggest: (b: { month: string; profile: BudgetSuggestProfile; customPrompt?: string; ledger?: ClientLedger; locale: AiLocale; useAi?: boolean }) =>
     http<BudgetSuggestResponse>("POST", "/budget/suggest", b),
