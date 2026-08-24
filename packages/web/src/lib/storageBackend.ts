@@ -32,10 +32,17 @@ export interface ImportDraftDeleteMatch {
   accountId?: string;
   locale?: string;
   requestHash: string;
+  requireCancelRequestedAtNull?: boolean;
 }
 export interface ImportRecordScope {
   ownerId: string;
   budgetId: string;
+}
+export interface ImportDraftStateMutation extends ImportRecordScope {
+  id: IDBValidKey;
+  requestHash: string;
+  field: "uploadAttemptedAt" | "cancelRequestedAt";
+  at: string;
 }
 
 export interface StorageBackend {
@@ -51,6 +58,8 @@ export interface StorageBackend {
   putImportJobForScope(value: unknown, scope: ImportRecordScope): Promise<boolean>;
   /** Atomically insert a draft, return the identical existing request, or reject an id collision. */
   putImportDraftIfAbsentOrSame(value: unknown): Promise<ImportDraftPutResult>;
+  /** Atomically mark the exact draft request as attempted or cancelled. */
+  mutateImportDraftState(mutation: ImportDraftStateMutation): Promise<unknown | undefined>;
   /** Delete only the exact draft identity that a request or acknowledgement refers to. */
   deleteImportDraftIfMatches(expected: ImportDraftDeleteMatch): Promise<boolean>;
   deleteImportJobIfScope(id: IDBValidKey, scope: ImportRecordScope): Promise<boolean>;
@@ -141,6 +150,19 @@ export class MemoryBackend implements StorageBackend {
     this.mem("importDrafts").set(record.id, stored);
     return Promise.resolve({ kind: "created", value: this.clone(stored) });
   }
+  mutateImportDraftState(mutation: ImportDraftStateMutation): Promise<unknown | undefined> {
+    const current = this.mem("importDrafts").get(mutation.id) as Record<string, unknown> | undefined;
+    if (!current || current.ownerId !== mutation.ownerId || current.budgetId !== mutation.budgetId || current.requestHash !== mutation.requestHash) {
+      return Promise.resolve(undefined);
+    }
+    const next = {
+      ...current,
+      [mutation.field]: current[mutation.field] ?? mutation.at,
+      updatedAt: mutation.at,
+    };
+    this.mem("importDrafts").set(mutation.id, this.clone(next));
+    return Promise.resolve(this.clone(next));
+  }
   deleteImportDraftIfMatches(expected: ImportDraftDeleteMatch): Promise<boolean> {
     const current = this.mem("importDrafts").get(expected.id) as Record<string, unknown> | undefined;
     if (
@@ -149,6 +171,7 @@ export class MemoryBackend implements StorageBackend {
       current.budgetId !== expected.budgetId ||
       (expected.accountId !== undefined && current.accountId !== expected.accountId) ||
       (expected.locale !== undefined && current.locale !== expected.locale) ||
+      (expected.requireCancelRequestedAtNull === true && current.cancelRequestedAt != null) ||
       current.requestHash !== expected.requestHash
     ) {
       return Promise.resolve(false);
@@ -169,6 +192,7 @@ export class MemoryBackend implements StorageBackend {
       if (
         draft.ownerId === scope.ownerId &&
         draft.budgetId === scope.budgetId &&
+        draft.cancelRequestedAt == null &&
         typeof draft.expiresAt === "string" &&
         Date.parse(draft.expiresAt) <= expiresAt
       ) {

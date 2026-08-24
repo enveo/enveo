@@ -1,12 +1,18 @@
 import type { AiLocale, ClientLedger, OpenAiModel } from "@enveo/shared";
 import * as e2ee from "../e2ee";
 import { idbGet } from "../idb";
-import type { ImportJobStorageScope } from "../importJobStorage";
+import { type ImportJobStorageScope, importJobStorage } from "../importJobStorage";
 import { type BootStatus, store } from "../store";
 import { verifiedIdentityUserId } from "../sync/identity";
 import { type E2eeImportJobCreateInput, E2eeImportJobRunner } from "./e2eeRunner";
 import { type PlainImportCreateInput, PlainImportJobAdapter } from "./plain";
-import { createImportActivityStore, type ImportActivityItem, type ImportActivityListener, type ImportActivityStore } from "./store";
+import {
+  createImportActivityStore,
+  type ImportActivityItem,
+  type ImportActivityListener,
+  type ImportActivityStore,
+  type ImportJobScopeCapability,
+} from "./store";
 
 export interface ImportJobManagerState {
   getBootStatus(): BootStatus;
@@ -19,13 +25,14 @@ export interface ImportJobManagerPlainPort {
   start(): void;
   stop(): void;
   create(input: PlainImportCreateInput): Promise<ImportActivityItem>;
-  refresh(): Promise<void>;
+  refresh(force?: boolean): Promise<void>;
   cancel(id: string): Promise<void>;
   retry(id: string): Promise<void>;
   dismiss(id: string): void;
 }
 
 export interface ImportJobManagerE2eePort {
+  stop(): void;
   create(input: E2eeImportJobCreateInput): Promise<ImportActivityItem>;
   resume(): Promise<void>;
   list(): Promise<ImportActivityItem[]>;
@@ -44,8 +51,8 @@ export interface ImportJobManagerOptions {
   state?: ImportJobManagerState;
   ownerId?: () => Promise<string | null>;
   tierMeta?: () => { tier: "plain" | "e2ee"; epoch: number };
-  createPlain?: (scope: ImportJobStorageScope, activity: ImportActivityStore) => ImportJobManagerPlainPort;
-  createE2ee?: (scope: ImportJobStorageScope, activity: ImportActivityStore) => ImportJobManagerE2eePort;
+  createPlain?: (scope: ImportJobStorageScope, activity: ImportActivityStore, capability: ImportJobScopeCapability) => ImportJobManagerPlainPort;
+  createE2ee?: (scope: ImportJobStorageScope, activity: ImportActivityStore, capability: ImportJobScopeCapability) => ImportJobManagerE2eePort;
   randomId?: () => string;
   visible?: () => boolean;
   windowTarget?: Pick<EventTarget, "addEventListener" | "removeEventListener">;
@@ -56,8 +63,16 @@ export interface ImportJobManagerOptions {
 
 const E2EE_WAKE_INTERVAL_MS = 2_000;
 
-function sameScope(left: ImportJobStorageScope | null, right: ImportJobStorageScope): boolean {
-  return left?.ownerId === right.ownerId && left.budgetId === right.budgetId;
+interface ActivationSnapshot {
+  fingerprint: string;
+  budgetId: string;
+  tier: "plain" | "e2ee";
+  epoch: number;
+}
+
+interface ActivationResult {
+  active: boolean;
+  generation: number;
 }
 
 export class ImportJobManager {
@@ -79,7 +94,9 @@ export class ImportJobManager {
   private started = false;
   private stateUnsubscribe: (() => void) | null = null;
   private wakeTimer: ReturnType<typeof setInterval> | null = null;
-  private activation: Promise<boolean> | null = null;
+  private activation: Promise<ActivationResult> | null = null;
+  private generation = 0;
+  private fingerprint: string | null = null;
 
   constructor(options: ImportJobManagerOptions = {}) {
     this.state = options.state ?? store;
@@ -94,16 +111,17 @@ export class ImportJobManager {
     this.tierMeta = options.tierMeta ?? e2ee.getTierMeta;
     this.createPlain =
       options.createPlain ??
-      ((scope, activity) =>
+      ((scope, activity, capability) =>
         new PlainImportJobAdapter({
           scope,
           activity,
+          capability,
           // The manager owns foreground wake listeners; the adapter still owns its visible
           // polling timer and keeps server execution independent from observation.
           windowTarget: null,
           documentTarget: null,
         }));
-    this.createE2ee = options.createE2ee ?? ((scope, activity) => new E2eeImportJobRunner({ scope, activity }));
+    this.createE2ee = options.createE2ee ?? ((scope, activity, capability) => new E2eeImportJobRunner({ scope, activity, capability }));
     this.randomId = options.randomId ?? (() => crypto.randomUUID());
     this.visible = options.visible ?? (() => typeof document === "undefined" || document.visibilityState === "visible");
     this.windowTarget = options.windowTarget ?? (typeof window === "undefined" ? undefined : window);
@@ -114,29 +132,70 @@ export class ImportJobManager {
 
   private deactivate(clear: boolean): void {
     this.plain?.stop();
+    this.local?.stop();
     this.plain = null;
     this.local = null;
     this.scope = null;
     if (clear) this.activity.clear();
   }
 
-  private activate(): Promise<boolean> {
-    if (this.activation) return this.activation;
-    const work = (async () => {
-      if (!this.started || this.state.getBootStatus() !== "ready") return false;
-      const budgetId = this.state.getBudgetId();
-      if (!budgetId || !this.state.getLedger()) return false;
-      const ownerId = await this.ownerId();
-      if (!ownerId || this.state.getBootStatus() !== "ready" || this.state.getBudgetId() !== budgetId) return false;
-      const nextScope = { ownerId, budgetId };
-      if (sameScope(this.scope, nextScope) && this.plain && this.local) return true;
+  private snapshot(): ActivationSnapshot | null {
+    if (this.state.getBootStatus() !== "ready") return null;
+    const budgetId = this.state.getBudgetId();
+    if (!budgetId || !this.state.getLedger()) return null;
+    const meta = this.tierMeta();
+    return {
+      budgetId,
+      tier: meta.tier,
+      epoch: meta.epoch,
+      fingerprint: JSON.stringify(["ready", budgetId, meta.tier, meta.epoch]),
+    };
+  }
 
-      this.deactivate(true);
+  private isActivationCurrent(generation: number, snapshot: ActivationSnapshot): boolean {
+    return this.started && this.generation === generation && this.snapshot()?.fingerprint === snapshot.fingerprint;
+  }
+
+  private activateOnce(): Promise<ActivationResult> {
+    if (this.activation) return this.activation;
+    const generation = this.generation;
+    const work = (async () => {
+      const snapshot = this.snapshot();
+      if (!this.started || !snapshot || snapshot.fingerprint !== this.fingerprint) return { active: false, generation };
+      const ownerId = await this.ownerId();
+      if (!ownerId || !this.isActivationCurrent(generation, snapshot)) return { active: false, generation };
+      const nextScope = { ownerId, budgetId: snapshot.budgetId };
+      if (this.scope?.ownerId === ownerId && this.scope.budgetId === snapshot.budgetId && (this.plain || this.local)) {
+        return { active: true, generation };
+      }
+
+      const capability: ImportJobScopeCapability = {
+        isCurrent: () => this.isActivationCurrent(generation, snapshot) && this.scope?.ownerId === ownerId && this.scope.budgetId === snapshot.budgetId,
+      };
       this.scope = nextScope;
-      this.plain = this.createPlain(nextScope, this.activity);
-      this.local = this.createE2ee(nextScope, this.activity);
-      this.plain.start();
-      return true;
+      if (snapshot.tier === "plain") {
+        if (!this.isActivationCurrent(generation, snapshot)) return { active: false, generation };
+        this.plain = this.createPlain(nextScope, this.activity, capability);
+        if (!this.isActivationCurrent(generation, snapshot)) {
+          this.plain.stop();
+          this.plain = null;
+          this.scope = null;
+          return { active: false, generation };
+        }
+        this.plain.start();
+      } else {
+        // Plaintext screenshot payloads cannot become E2EE input. Remove them without
+        // constructing the network adapter, so a tier flip can never upload them.
+        const drafts = await importJobStorage.listDrafts(nextScope);
+        if (!this.isActivationCurrent(generation, snapshot)) return { active: false, generation };
+        for (const draft of drafts) {
+          if (!this.isActivationCurrent(generation, snapshot)) return { active: false, generation };
+          await importJobStorage.deleteDraft(nextScope, draft.id, draft.requestHash);
+        }
+        if (!this.isActivationCurrent(generation, snapshot)) return { active: false, generation };
+        this.local = this.createE2ee(nextScope, this.activity, capability);
+      }
+      return { active: true, generation };
     })();
     this.activation = work.finally(() => {
       this.activation = null;
@@ -144,10 +203,28 @@ export class ImportJobManager {
     return this.activation;
   }
 
+  private async activate(): Promise<boolean> {
+    this.reconcileConfiguration();
+    let result = await this.activateOnce();
+    while (!result.active && this.started && result.generation !== this.generation && this.snapshot()?.fingerprint === this.fingerprint) {
+      result = await this.activateOnce();
+    }
+    return result.active;
+  }
+
+  private reconcileConfiguration(): { active: boolean; changed: boolean } {
+    const snapshot = this.snapshot();
+    const nextFingerprint = snapshot?.fingerprint ?? `inactive:${this.state.getBootStatus()}`;
+    if (nextFingerprint === this.fingerprint) return { active: snapshot !== null, changed: false };
+    this.fingerprint = nextFingerprint;
+    this.generation++;
+    this.deactivate(true);
+    return { active: snapshot !== null, changed: true };
+  }
+
   private readonly handleState = () => {
-    const status = this.state.getBootStatus();
-    if (status === "ready") void this.resume().catch(() => {});
-    else this.deactivate(true);
+    const configuration = this.reconcileConfiguration();
+    if (configuration.active && configuration.changed) void this.resume().catch(() => {});
   };
 
   private readonly wake = () => {
@@ -177,6 +254,8 @@ export class ImportJobManager {
   stop(): void {
     if (!this.started) return;
     this.started = false;
+    this.generation++;
+    this.fingerprint = null;
     this.stateUnsubscribe?.();
     this.stateUnsubscribe = null;
     this.windowTarget?.removeEventListener("online", this.wake);
@@ -184,28 +263,32 @@ export class ImportJobManager {
     this.documentTarget?.removeEventListener("visibilitychange", this.wake);
     if (this.wakeTimer !== null) this.clearScheduledInterval(this.wakeTimer);
     this.wakeTimer = null;
-    this.deactivate(false);
+    this.deactivate(true);
   }
 
   async resume(): Promise<void> {
-    if (!(await this.activate()) || !this.plain || !this.local) return;
-    const work: Promise<unknown>[] = [this.local.resume()];
-    if (this.visible()) work.push(this.plain.refresh());
-    await Promise.all(work);
+    if (!(await this.activate())) return;
+    const generation = this.generation;
+    if (this.local) await this.local.resume();
+    else if (this.visible() && this.plain) await this.plain.refresh(false);
+    if (generation !== this.generation) return;
   }
 
   async create(input: ImportJobManagerCreateInput): Promise<ImportActivityItem> {
-    if (!(await this.activate()) || !this.plain || !this.local || !this.scope) throw new Error("import_manager_not_ready");
+    if (!(await this.activate()) || !this.scope) throw new Error("import_manager_not_ready");
+    const generation = this.generation;
     const currentLedger = this.state.getLedger();
     const budget = currentLedger?.budgets.find((candidate) => candidate.id === this.scope?.budgetId);
     if (!budget) throw new Error("budget_mismatch");
     const id = this.randomId();
     const meta = this.tierMeta();
     if (meta.tier === "plain") {
-      if (budget.preferences.aiProvider === "rules") throw new Error("ai_capability_unsupported");
-      return this.plain.create({ id, accountId: input.accountId, locale: input.locale, images: [...input.images] });
+      if (!this.plain || budget.preferences.aiProvider === "rules") throw new Error("ai_capability_unsupported");
+      const created = await this.plain.create({ id, accountId: input.accountId, locale: input.locale, images: [...input.images] });
+      if (generation !== this.generation) throw new Error("stale_import_job_manager");
+      return created;
     }
-    if (budget.preferences.aiProvider !== "openai") throw new Error("ai_capability_unsupported");
+    if (!this.local || budget.preferences.aiProvider !== "openai") throw new Error("ai_capability_unsupported");
     const created = await this.local.create({
       id,
       accountId: input.accountId,
@@ -213,6 +296,7 @@ export class ImportJobManager {
       images: [...input.images],
       provider: { provider: "openai", model: budget.preferences.openaiModel as OpenAiModel },
     });
+    if (generation !== this.generation) throw new Error("stale_import_job_manager");
     void this.local.resume().catch(() => {});
     return created;
   }
@@ -222,19 +306,20 @@ export class ImportJobManager {
   }
 
   async list(): Promise<ImportActivityItem[]> {
-    await this.resume();
-    await this.local?.list();
+    if (!(await this.activate())) return [];
+    if (this.local) await this.local.list();
+    else if (this.visible()) await this.plain?.refresh(true);
     return this.activity.list();
   }
 
   private async item(id: string): Promise<ImportActivityItem | undefined> {
     const known = this.activity.get(id);
     if (known) return known;
-    if (!(await this.activate()) || !this.plain || !this.local) return undefined;
-    await this.local.list();
+    if (!(await this.activate())) return undefined;
+    await this.local?.list();
     const local = this.activity.get(id);
     if (local) return local;
-    if (this.visible()) await this.plain.refresh();
+    if (this.visible()) await this.plain?.refresh(true);
     return this.activity.get(id);
   }
 

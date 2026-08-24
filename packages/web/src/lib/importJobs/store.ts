@@ -23,6 +23,11 @@ export interface ImportActivityItem extends ImportJobProgress {
 
 export type ImportActivityListener = (item: ImportActivityItem | undefined) => void;
 
+/** Revocable authority for one authenticated owner/budget/tier activation. */
+export interface ImportJobScopeCapability {
+  isCurrent(): boolean;
+}
+
 export function importActivityFromDraft(draft: PlainImportUploadDraft): ImportActivityItem {
   return {
     id: draft.id,

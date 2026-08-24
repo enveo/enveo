@@ -24,6 +24,7 @@ import { getDeviceStoragePolicy } from "./deviceStoragePolicy";
 import {
   type ImportDraftDeleteMatch,
   type ImportDraftPutResult,
+  type ImportDraftStateMutation,
   type ImportRecordScope,
   MemoryBackend,
   type StorageBackend,
@@ -223,6 +224,27 @@ class IdbBackend implements StorageBackend {
     return { kind: "created", value: structuredClone(value) };
   }
 
+  async mutateImportDraftState(mutation: ImportDraftStateMutation): Promise<unknown | undefined> {
+    const db = await this.open();
+    if (!db) return this.fallback.mutateImportDraftState(mutation);
+    const tx = db.transaction("importDrafts", "readwrite");
+    const done = txDone(tx);
+    const store = tx.objectStore("importDrafts");
+    const current = (await requestToPromise(store.get(mutation.id))) as Record<string, unknown> | undefined;
+    if (!current || current.ownerId !== mutation.ownerId || current.budgetId !== mutation.budgetId || current.requestHash !== mutation.requestHash) {
+      await done;
+      return undefined;
+    }
+    const next = {
+      ...current,
+      [mutation.field]: current[mutation.field] ?? mutation.at,
+      updatedAt: mutation.at,
+    };
+    store.put(next);
+    await done;
+    return structuredClone(next);
+  }
+
   async deleteImportDraftIfMatches(expected: ImportDraftDeleteMatch): Promise<boolean> {
     const db = await this.open();
     if (!db) return this.fallback.deleteImportDraftIfMatches(expected);
@@ -236,6 +258,7 @@ class IdbBackend implements StorageBackend {
       current.budgetId !== expected.budgetId ||
       (expected.accountId !== undefined && current.accountId !== expected.accountId) ||
       (expected.locale !== undefined && current.locale !== expected.locale) ||
+      (expected.requireCancelRequestedAtNull === true && current.cancelRequestedAt != null) ||
       current.requestHash !== expected.requestHash
     ) {
       await done;
@@ -271,7 +294,11 @@ class IdbBackend implements StorageBackend {
     const drafts = (await requestToPromise(store.getAll())) as Array<Record<string, unknown>>;
     const expired = drafts.filter(
       (draft) =>
-        draft.ownerId === scope.ownerId && draft.budgetId === scope.budgetId && typeof draft.expiresAt === "string" && Date.parse(draft.expiresAt) <= expiresAt,
+        draft.ownerId === scope.ownerId &&
+        draft.budgetId === scope.budgetId &&
+        draft.cancelRequestedAt == null &&
+        typeof draft.expiresAt === "string" &&
+        Date.parse(draft.expiresAt) <= expiresAt,
     );
     for (const draft of expired) store.delete(draft.id as IDBValidKey);
     await done;
@@ -417,6 +444,11 @@ export function idbPutImportJobForScope(value: unknown, scope: ImportRecordScope
 /** Atomic draft create/idempotency boundary across tabs. */
 export function idbPutImportDraftIfAbsentOrSame(value: unknown): Promise<ImportDraftPutResult> {
   return activeBackend().putImportDraftIfAbsentOrSame(value);
+}
+
+/** Atomic exact-request upload/cancellation state mutation. */
+export function idbMutateImportDraftState(mutation: ImportDraftStateMutation): Promise<unknown | undefined> {
+  return activeBackend().mutateImportDraftState(mutation);
 }
 
 /** Atomic compare-delete for request completion/cancellation. */

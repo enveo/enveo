@@ -12,6 +12,14 @@ const ACCOUNT = "33333333-3333-3333-3333-333333333333";
 const SCOPE = { ownerId: "user-a", budgetId: BUDGET } satisfies ImportJobStorageScope;
 const IMAGE = "data:image/png;base64,AA==";
 
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((done) => {
+    resolve = done;
+  });
+  return { promise, resolve };
+}
+
 function detail(overrides: Partial<ImportJobDetail> = {}): ImportJobDetail {
   return {
     id: ID,
@@ -170,5 +178,127 @@ describe("plain durable import adapter", () => {
     await Promise.resolve();
 
     expect(api.cancellations).toEqual([]);
+  });
+
+  it("does not publish a delayed refresh after the adapter is stopped", async () => {
+    const response = deferred<ImportJobSummary[]>();
+    const activity = createImportActivityStore();
+    const adapter = new PlainImportJobAdapter({
+      scope: SCOPE,
+      activity,
+      remote: remote({ list: () => response.promise }),
+    });
+
+    const refresh = adapter.refresh(true);
+    adapter.stop();
+    response.resolve([detail()]);
+    await refresh;
+
+    expect(activity.list()).toEqual([]);
+  });
+
+  it("does not republish a delayed upload after its scope capability is revoked", async () => {
+    const response = deferred<ImportJobDetail>();
+    let current = true;
+    const activity = createImportActivityStore();
+    const adapter = new PlainImportJobAdapter({
+      scope: SCOPE,
+      activity,
+      capability: { isCurrent: () => current },
+      remote: remote({ create: () => response.promise }),
+    });
+
+    const creation = adapter.create(input());
+    while (!(await importJobStorage.getDraft(SCOPE, ID))) await Promise.resolve();
+    current = false;
+    activity.clear();
+    response.resolve(detail());
+    await creation;
+
+    expect(activity.list()).toEqual([]);
+  });
+
+  it("persists cancellation across a delayed 202, cancels the accepted job, and never republishes it", async () => {
+    const response = deferred<ImportJobDetail>();
+    const api = remote({
+      create: () => response.promise,
+      list: async () => [detail({ status: "cancelled", cancelRequested: true })],
+    });
+    const activity = createImportActivityStore();
+    const adapter = new PlainImportJobAdapter({ scope: SCOPE, activity, remote: api });
+
+    const creation = adapter.create(input());
+    while (!(await importJobStorage.getDraft(SCOPE, ID))) await Promise.resolve();
+    const cancellation = adapter.cancel(ID);
+    response.resolve(detail());
+    await Promise.allSettled([creation, cancellation]);
+    await adapter.refresh(true);
+
+    expect(api.cancellations).toEqual([ID]);
+    expect(await importJobStorage.getDraft(SCOPE, ID)).toBeUndefined();
+    expect(activity.get(ID)).toBeUndefined();
+  });
+
+  it("cancels the accepted server job when acknowledgement wins the cancellation-marker race", async () => {
+    const response = deferred<ImportJobDetail>();
+    const cancellationStarted = deferred<void>();
+    const releaseCancellation = deferred<void>();
+    const originalRequestCancellation = importJobStorage.requestDraftCancellation;
+    importJobStorage.requestDraftCancellation = async (...args) => {
+      cancellationStarted.resolve();
+      await releaseCancellation.promise;
+      return originalRequestCancellation(...args);
+    };
+    const api = remote({ create: () => response.promise });
+    const activity = createImportActivityStore();
+    const adapter = new PlainImportJobAdapter({ scope: SCOPE, activity, remote: api });
+
+    try {
+      const creation = adapter.create(input());
+      while (!(await importJobStorage.getDraft(SCOPE, ID))?.uploadAttemptedAt) await Promise.resolve();
+      const cancellation = adapter.cancel(ID);
+      await cancellationStarted.promise;
+      response.resolve(detail());
+      await creation;
+      releaseCancellation.resolve();
+      await cancellation;
+    } finally {
+      importJobStorage.requestDraftCancellation = originalRequestCancellation;
+    }
+
+    expect(api.cancellations).toEqual([ID]);
+    expect(activity.get(ID)).toBeUndefined();
+  });
+
+  it("reconciles a lost create response from a durable cancel tombstone after restart", async () => {
+    const requests: string[][] = [];
+    const first = new PlainImportJobAdapter({
+      scope: SCOPE,
+      activity: createImportActivityStore(),
+      remote: remote({
+        create: async (request) => {
+          requests.push([...request.images]);
+          throw new Error("ai_unreachable");
+        },
+      }),
+    });
+    await expect(first.create(input())).rejects.toThrow("ai_unreachable");
+    const draft = await importJobStorage.getDraft(SCOPE, ID);
+    expect(draft?.uploadAttemptedAt).not.toBeNull();
+    await importJobStorage.requestDraftCancellation(SCOPE, ID, draft!.requestHash);
+    first.stop();
+
+    const api = remote({
+      create: async (request) => {
+        requests.push([...request.images]);
+        return detail();
+      },
+    });
+    const restarted = new PlainImportJobAdapter({ scope: SCOPE, activity: createImportActivityStore(), remote: api });
+    await restarted.resumeDrafts();
+
+    expect(requests).toEqual([[IMAGE], [IMAGE]]);
+    expect(api.cancellations).toEqual([ID]);
+    expect(await importJobStorage.getDraft(SCOPE, ID)).toBeUndefined();
   });
 });

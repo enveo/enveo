@@ -42,6 +42,8 @@ describe("merged import activity store", () => {
         locale: "en-US",
         images: ["data:image/png;base64,AA=="],
         requestHash: "hash",
+        uploadAttemptedAt: null,
+        cancelRequestedAt: null,
         createdAt: "2026-08-24T10:00:00.000Z",
         updatedAt: "2026-08-24T10:00:00.000Z",
         expiresAt: "2026-08-25T10:00:00.000Z",

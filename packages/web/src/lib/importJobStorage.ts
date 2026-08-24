@@ -5,6 +5,7 @@ import {
   idbDeleteImportJobIfScope,
   idbGet,
   idbGetAll,
+  idbMutateImportDraftState,
   idbPutImportDraftIfAbsentOrSame,
   idbPutImportJobForScope,
   idbPutImportJobIfRevision,
@@ -24,6 +25,10 @@ export interface PlainImportUploadDraftInput {
 
 export interface PlainImportUploadDraft extends PlainImportUploadDraftInput {
   requestHash: string;
+  /** Set before the first create request, so a later cancellation can reconcile an ambiguous acknowledgement. */
+  uploadAttemptedAt: string | null;
+  /** Durable cancel tombstone retained until a possibly accepted create has been cancelled. */
+  cancelRequestedAt: string | null;
   createdAt: string;
   updatedAt: string;
   expiresAt: string;
@@ -105,9 +110,20 @@ function copyDraft(input: PlainImportUploadDraftInput, hash: string, now: Date):
     locale: input.locale,
     images: [...input.images],
     requestHash: hash,
+    uploadAttemptedAt: null,
+    cancelRequestedAt: null,
     createdAt,
     updatedAt: createdAt,
     expiresAt: new Date(now.getTime() + IMPORT_DRAFT_TTL_MS).toISOString(),
+  };
+}
+
+function normalizedDraft(draft: PlainImportUploadDraft): PlainImportUploadDraft {
+  return {
+    ...draft,
+    images: [...draft.images],
+    uploadAttemptedAt: typeof draft.uploadAttemptedAt === "string" ? draft.uploadAttemptedAt : null,
+    cancelRequestedAt: typeof draft.cancelRequestedAt === "string" ? draft.cancelRequestedAt : null,
   };
 }
 
@@ -203,12 +219,12 @@ export const importJobStorage = {
   async getDraft(scope: ImportJobStorageScope, id: string): Promise<PlainImportUploadDraft | undefined> {
     assertValidScope(scope);
     const draft = await idbGet<PlainImportUploadDraft>("importDrafts", id);
-    return draft && inScope(draft, scope) ? draft : undefined;
+    return draft && inScope(draft, scope) ? normalizedDraft(draft) : undefined;
   },
 
   async listDrafts(scope: ImportJobStorageScope): Promise<PlainImportUploadDraft[]> {
     assertValidScope(scope);
-    return newestFirst((await idbGetAll<PlainImportUploadDraft>("importDrafts")).filter((draft) => inScope(draft, scope)));
+    return newestFirst((await idbGetAll<PlainImportUploadDraft>("importDrafts")).filter((draft) => inScope(draft, scope)).map(normalizedDraft));
   },
 
   async createDraft(scope: ImportJobStorageScope, input: PlainImportUploadDraftInput, now = new Date()): Promise<PlainImportUploadDraft> {
@@ -219,7 +235,45 @@ export const importJobStorage = {
     const result = await idbPutImportDraftIfAbsentOrSame(draft);
     if (result.kind === "conflict") throw new Error("import_draft_conflict");
     if (result.kind === "created") notify(scope);
-    return result.value as PlainImportUploadDraft;
+    return normalizedDraft(result.value as PlainImportUploadDraft);
+  },
+
+  async markDraftUploadAttempt(
+    scope: ImportJobStorageScope,
+    id: string,
+    expectedRequestHash: string,
+    now = new Date(),
+  ): Promise<PlainImportUploadDraft | undefined> {
+    assertValidScope(scope);
+    const result = await idbMutateImportDraftState({
+      ...scope,
+      id,
+      requestHash: expectedRequestHash,
+      field: "uploadAttemptedAt",
+      at: now.toISOString(),
+    });
+    if (!result) return undefined;
+    notify(scope);
+    return normalizedDraft(result as PlainImportUploadDraft);
+  },
+
+  async requestDraftCancellation(
+    scope: ImportJobStorageScope,
+    id: string,
+    expectedRequestHash: string,
+    now = new Date(),
+  ): Promise<PlainImportUploadDraft | undefined> {
+    assertValidScope(scope);
+    const result = await idbMutateImportDraftState({
+      ...scope,
+      id,
+      requestHash: expectedRequestHash,
+      field: "cancelRequestedAt",
+      at: now.toISOString(),
+    });
+    if (!result) return undefined;
+    notify(scope);
+    return normalizedDraft(result as PlainImportUploadDraft);
   },
 
   async deleteDraft(scope: ImportJobStorageScope, id: string, expectedRequestHash: string): Promise<boolean> {
@@ -245,6 +299,7 @@ export const importJobStorage = {
       accountId: acknowledgement.accountId,
       locale: acknowledgement.locale,
       requestHash: expectedRequestHash,
+      requireCancelRequestedAtNull: true,
     });
     if (deleted) notify(scope);
     return deleted;

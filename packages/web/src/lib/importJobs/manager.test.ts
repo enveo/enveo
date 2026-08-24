@@ -1,18 +1,23 @@
-import { describe, expect, it } from "bun:test";
+import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { type ClientLedger, createDefaultBudgetPreferences } from "@enveo/shared";
-import type { ImportJobStorageScope } from "../importJobStorage";
+import { IDBFactory } from "fake-indexeddb";
+import { __resetStorageForTests } from "../idb";
+import { type ImportJobStorageScope, importJobStorage } from "../importJobStorage";
 import { ImportJobManager, type ImportJobManagerE2eePort, type ImportJobManagerPlainPort, type ImportJobManagerState } from "./manager";
-import type { ImportActivityItem, ImportActivityStore } from "./store";
+import type { ImportActivityItem, ImportActivityStore, ImportJobScopeCapability } from "./store";
 
 const BUDGET = "22222222-2222-2222-2222-222222222222";
 const ACCOUNT = "33333333-3333-3333-3333-333333333333";
 const ID = "11111111-1111-1111-1111-111111111111";
+const OTHER_BUDGET = "44444444-4444-4444-4444-444444444444";
+const OTHER_ID = "55555555-5555-5555-5555-555555555555";
+const IMAGE = "data:image/png;base64,AA==";
 
-function ledger(provider: "rules" | "enveo" | "openai" = "openai", model = "gpt-5.6-luna"): ClientLedger {
+function ledger(provider: "rules" | "enveo" | "openai" = "openai", model = "gpt-5.6-luna", budgetId = BUDGET): ClientLedger {
   return {
     budgets: [
       {
-        id: BUDGET,
+        id: budgetId,
         name: "Budget",
         currency: "EUR",
         preferences: { ...createDefaultBudgetPreferences(), aiProvider: provider, openaiModel: model as "gpt-5.6-luna" },
@@ -82,12 +87,15 @@ class FakeState implements ImportJobManagerState {
   };
   set(status: typeof this.status) {
     this.status = status;
+    this.notify();
+  }
+  notify() {
     for (const listener of this.listeners) listener();
   }
 }
 
 function ports(calls: string[]) {
-  const plain = (_scope: ImportJobStorageScope, activity: ImportActivityStore): ImportJobManagerPlainPort => ({
+  const plain = (_scope: ImportJobStorageScope, activity: ImportActivityStore, _capability?: ImportJobScopeCapability): ImportJobManagerPlainPort => ({
     start: () => calls.push("plain.start"),
     stop: () => calls.push("plain.stop"),
     create: async () => {
@@ -102,6 +110,7 @@ function ports(calls: string[]) {
     dismiss: () => calls.push("plain.dismiss"),
   });
   const e2ee = (_scope: ImportJobStorageScope, activity: ImportActivityStore): ImportJobManagerE2eePort => ({
+    stop: () => calls.push("e2ee.stop"),
     create: async () => {
       calls.push("e2ee.create");
       const value = item("e2ee");
@@ -116,6 +125,30 @@ function ports(calls: string[]) {
   });
   return { plain, e2ee };
 }
+
+function deferred<T>() {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  const promise = new Promise<T>((done) => {
+    resolve = done;
+  });
+  return { promise, resolve };
+}
+
+async function flushMicrotasks(count = 12): Promise<void> {
+  for (let index = 0; index < count; index++) await Promise.resolve();
+}
+
+beforeEach(() => {
+  (globalThis as Record<string, unknown>).indexedDB = new IDBFactory();
+  (globalThis as Record<string, unknown>).localStorage = { getItem: () => "persistent" };
+  __resetStorageForTests();
+});
+
+afterEach(() => {
+  delete (globalThis as Record<string, unknown>).indexedDB;
+  delete (globalThis as Record<string, unknown>).localStorage;
+  __resetStorageForTests();
+});
 
 describe("import job manager", () => {
   it("starts once but does not derive a scope or resume jobs until replica boot is ready", async () => {
@@ -147,7 +180,7 @@ describe("import job manager", () => {
     await manager.resume();
 
     expect(ownerReads).toBeGreaterThan(0);
-    expect(calls.filter((call) => call === "plain.start")).toEqual(["plain.start"]);
+    expect(calls).not.toContain("plain.start");
     expect(calls).toContain("e2ee.resume");
     manager.stop();
   });
@@ -247,8 +280,192 @@ describe("import job manager", () => {
     await Promise.resolve();
 
     expect(state.listeners.size).toBe(0);
-    expect(calls).toContain("plain.stop");
+    expect(calls).toContain("e2ee.stop");
     expect(calls).toContain("timer.clear");
     expect(calls.filter((call) => call === "e2ee.resume")).toHaveLength(resumesBeforeStop);
+  });
+
+  it("does not refresh an idle plain import queue for an ordinary ledger bump", async () => {
+    const state = new FakeState();
+    state.status = "ready";
+    const calls: string[] = [];
+    const adapters = ports(calls);
+    const manager = new ImportJobManager({
+      state,
+      ownerId: async () => "user-a",
+      tierMeta: () => ({ tier: "plain", epoch: 0 }),
+      createPlain: adapters.plain,
+      createE2ee: adapters.e2ee,
+      visible: () => true,
+    });
+    manager.start();
+    await manager.resume();
+    const refreshes = calls.filter((call) => call === "plain.refresh").length;
+
+    state.currentLedger = { ...state.currentLedger!, transactions: [] };
+    state.notify();
+    await flushMicrotasks();
+
+    expect(calls.filter((call) => call === "plain.refresh")).toHaveLength(refreshes);
+    manager.stop();
+  });
+
+  it("deletes an incompatible plain draft without constructing a plain adapter or uploading images", async () => {
+    await importJobStorage.createDraft(
+      { ownerId: "user-a", budgetId: BUDGET },
+      { id: ID, ownerId: "user-a", budgetId: BUDGET, accountId: ACCOUNT, locale: "en-US", images: [IMAGE] },
+    );
+    const state = new FakeState();
+    state.status = "ready";
+    let plainFactories = 0;
+    const calls: string[] = [];
+    const adapters = ports(calls);
+    const manager = new ImportJobManager({
+      state,
+      ownerId: async () => "user-a",
+      tierMeta: () => ({ tier: "e2ee", epoch: 3 }),
+      createPlain: (...args) => {
+        plainFactories++;
+        return adapters.plain(...args);
+      },
+      createE2ee: adapters.e2ee,
+      visible: () => true,
+    });
+
+    manager.start();
+    await manager.resume();
+
+    expect(plainFactories).toBe(0);
+    expect(await importJobStorage.getDraft({ ownerId: "user-a", budgetId: BUDGET }, ID)).toBeUndefined();
+    manager.stop();
+  });
+
+  it("revokes scope A before a delayed adapter completion can publish into scope B", async () => {
+    const state = new FakeState();
+    state.status = "ready";
+    const scopes: string[] = [];
+    const capabilities = new Map<string, ImportJobScopeCapability | undefined>();
+    let sharedActivity: ImportActivityStore | undefined;
+    const seen: Array<string | undefined> = [];
+    const manager = new ImportJobManager({
+      state,
+      ownerId: async () => "user-a",
+      tierMeta: () => ({ tier: "plain", epoch: 0 }),
+      createPlain: (scope, activity, capability?: ImportJobScopeCapability) => {
+        scopes.push(scope.budgetId);
+        capabilities.set(scope.budgetId, capability);
+        sharedActivity = activity;
+        return {
+          start: () => {},
+          stop: () => {},
+          create: async () => item("plain"),
+          refresh: async () => {},
+          cancel: async () => {},
+          retry: async () => {},
+          dismiss: () => {},
+        };
+      },
+      createE2ee: () => {
+        throw new Error("unexpected_e2ee_factory");
+      },
+      visible: () => true,
+    });
+    manager.observe(OTHER_ID, (value) => seen.push(value?.budgetId));
+    manager.start();
+    await manager.resume();
+
+    state.budgetId = OTHER_BUDGET;
+    state.currentLedger = ledger("openai", "gpt-5.6-luna", OTHER_BUDGET);
+    state.notify();
+    await manager.resume();
+    if (capabilities.get(BUDGET)?.isCurrent() ?? true) {
+      sharedActivity?.upsert({ ...item("plain"), id: OTHER_ID, budgetId: BUDGET });
+    }
+
+    expect(scopes).toContain(OTHER_BUDGET);
+    expect(seen).toEqual([undefined]);
+    manager.stop();
+  });
+
+  it("does not construct an adapter when stopped during deferred owner resolution", async () => {
+    const state = new FakeState();
+    state.status = "ready";
+    const owner = deferred<string | null>();
+    let ownerStarted = false;
+    let factories = 0;
+    let clearedTimers = 0;
+    const manager = new ImportJobManager({
+      state,
+      ownerId: () => {
+        ownerStarted = true;
+        return owner.promise;
+      },
+      tierMeta: () => ({ tier: "plain", epoch: 0 }),
+      createPlain: () => {
+        factories++;
+        throw new Error("stale_factory");
+      },
+      createE2ee: () => {
+        factories++;
+        throw new Error("stale_factory");
+      },
+      scheduleInterval: () => 1 as unknown as ReturnType<typeof setInterval>,
+      clearScheduledInterval: () => clearedTimers++,
+    });
+    manager.start();
+    await flushMicrotasks();
+    expect(ownerStarted).toBe(true);
+
+    manager.stop();
+    owner.resolve("user-a");
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(factories).toBe(0);
+    expect(clearedTimers).toBe(1);
+  });
+
+  it("restarts activation for the new scope when the budget changes during owner resolution", async () => {
+    const state = new FakeState();
+    state.status = "ready";
+    const owners = [deferred<string | null>(), deferred<string | null>()];
+    let reads = 0;
+    const scopes: string[] = [];
+    const manager = new ImportJobManager({
+      state,
+      ownerId: () => owners[reads++]!.promise,
+      tierMeta: () => ({ tier: "plain", epoch: 0 }),
+      createPlain: (scope) => {
+        scopes.push(scope.budgetId);
+        return {
+          start: () => {},
+          stop: () => {},
+          create: async () => item("plain"),
+          refresh: async () => {},
+          cancel: async () => {},
+          retry: async () => {},
+          dismiss: () => {},
+        };
+      },
+      createE2ee: () => {
+        throw new Error("unexpected_e2ee_factory");
+      },
+      visible: () => true,
+    });
+    manager.start();
+    await flushMicrotasks();
+    expect(reads).toBe(1);
+
+    state.budgetId = OTHER_BUDGET;
+    state.currentLedger = ledger("openai", "gpt-5.6-luna", OTHER_BUDGET);
+    state.notify();
+    owners[0]!.resolve("user-a");
+    await flushMicrotasks();
+    owners[1]!.resolve("user-a");
+    await flushMicrotasks();
+
+    expect(reads).toBe(2);
+    expect(scopes).toEqual([OTHER_BUDGET]);
+    manager.stop();
   });
 });
