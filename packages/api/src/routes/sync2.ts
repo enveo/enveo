@@ -22,7 +22,7 @@
  * no legacy body left that could legitimately omit them.
  */
 import { clientLedgerSchema, E2EE_DISABLE_CONFIRM } from "@enveo/shared";
-import { and, sql as dsql, eq, gt } from "drizzle-orm";
+import { and, sql as dsql, eq, gt, inArray } from "drizzle-orm";
 import { Hono } from "hono";
 import { z } from "zod";
 import type { VaultMasterKeyProvider } from "../aiCredentials/keyProvider";
@@ -396,6 +396,39 @@ export function createSync2Routes(options: { masterKeys: VaultMasterKeyProvider 
           target: s.e2eeSnapshots.budgetId,
           set: { uptoSeq: 0, blob: body.snapshotBlob, updatedAt: dsql`now()` },
         });
+      const revokedJobs = await tx
+        .update(s.importJobs)
+        .set({
+          status: "cancelled",
+          cancelRequested: true,
+          resumePhase: null,
+          extraction: null,
+          result: null,
+          proposalCount: 0,
+          errorCode: null,
+          retryAt: null,
+          leaseOwner: null,
+          leaseToken: null,
+          leaseExpiresAt: null,
+          updatedAt: dsql`now()`,
+        })
+        .where(
+          and(
+            eq(s.importJobs.budgetId, meta.id),
+            eq(s.importJobs.userId, body.userId),
+            eq(s.importJobs.tier, "plain"),
+            inArray(s.importJobs.status, ["queued", "running", "ready", "failed"]),
+          ),
+        )
+        .returning({ id: s.importJobs.id });
+      if (revokedJobs.length > 0) {
+        await tx.delete(s.importJobImages).where(
+          inArray(
+            s.importJobImages.jobId,
+            revokedJobs.map((job) => job.id),
+          ),
+        );
+      }
       if (body.credentialAction.kind === "server-vault-to-e2ee") {
         await tx
           .update(s.budgetAiCredentials)

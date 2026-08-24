@@ -130,6 +130,21 @@ describe("device-local E2EE import runner", () => {
     expect(activity.get(ID)).toMatchObject({ status: "completed", result: null, appliedCount: 1, skippedCount: 2 });
   });
 
+  it("starts seven-day retention when a delayed result becomes ready", async () => {
+    let currentTime = new Date("2026-08-20T10:00:00.000Z");
+    const fixture = setup({ now: () => currentTime });
+    await fixture.runner.create(createInput());
+    currentTime = new Date("2026-08-24T10:00:00.000Z");
+
+    await fixture.runner.resume();
+
+    expect(await importJobStorage.getJob(SCOPE, ID)).toMatchObject({
+      status: "ready",
+      updatedAt: "2026-08-24T10:00:00.000Z",
+      expiresAt: "2026-08-31T10:00:00.000Z",
+    });
+  });
+
   it("deletes encrypted screenshots as soon as extraction is durably checkpointed", async () => {
     const fixture = setup({
       provider: () =>
@@ -176,6 +191,27 @@ describe("device-local E2EE import runner", () => {
     expect(await importJobStorage.getJob(SCOPE, ID)).toMatchObject({
       status: "failed",
       errorCode: "ai_key_invalid",
+      retryAt: null,
+      inputCiphertext: null,
+      checkpointCiphertext: null,
+      resultCiphertext: null,
+    });
+  });
+
+  it("treats an explicit budget mismatch as permanent and deletes ciphertext", async () => {
+    const fixture = setup({
+      provider: () =>
+        provider(async () => {
+          throw new Error("budget_mismatch");
+        }),
+    });
+    await fixture.runner.create(createInput());
+
+    await fixture.runner.resume();
+
+    expect(await importJobStorage.getJob(SCOPE, ID)).toMatchObject({
+      status: "failed",
+      errorCode: "budget_mismatch",
       retryAt: null,
       inputCiphertext: null,
       checkpointCiphertext: null,

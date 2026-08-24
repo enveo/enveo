@@ -80,7 +80,7 @@ function harness(
     wake?: () => void;
   } = {},
 ) {
-  const calls = { creates: [] as CreateImportJobInput[], users: [] as string[], completes: 0 };
+  const calls = { creates: [] as CreateImportJobInput[], users: [] as string[], mutationBudgets: [] as string[], completes: 0 };
   const repository: ImportJobRouteRepository = {
     create: async (input) => {
       calls.creates.push(input);
@@ -94,16 +94,24 @@ function harness(
       calls.users.push(userId);
       return job();
     },
-    requestCancel: async (userId) => {
+    getForBudget: async (userId, budgetId) => {
       calls.users.push(userId);
-      return job({ status: "cancelled", cancelRequested: true });
-    },
-    retry: async (userId) => {
-      calls.users.push(userId);
+      calls.mutationBudgets.push(budgetId);
       return job();
     },
-    markCompleted: async (userId, _id, appliedCount, skippedCount) => {
+    requestCancel: async (userId, budgetId) => {
       calls.users.push(userId);
+      calls.mutationBudgets.push(budgetId);
+      return job({ status: "cancelled", cancelRequested: true });
+    },
+    retry: async (userId, budgetId) => {
+      calls.users.push(userId);
+      calls.mutationBudgets.push(budgetId);
+      return job();
+    },
+    markCompleted: async (userId, budgetId, _id, appliedCount, skippedCount) => {
+      calls.users.push(userId);
+      calls.mutationBudgets.push(budgetId);
       calls.completes += 1;
       return job({ status: "completed", phase: "completed", appliedCount, skippedCount });
     },
@@ -215,11 +223,12 @@ describe("plain durable import job routes", () => {
 
     expect(responses.map((response) => response.status)).toEqual([200, 200, 200, 200]);
     expect(calls.users).toEqual([USER_B, USER_B, USER_B, USER_B]);
+    expect(calls.mutationBudgets).toEqual([BUDGET_A, BUDGET_A]);
   });
 
   it("completes only a ready owned job under the current budget assertion", async () => {
-    const notReady = harness({ repository: { getForUser: async () => job({ status: "failed", phase: "extracting", errorCode: "ai_timeout" }) } });
-    const ready = harness({ repository: { getForUser: async () => job({ status: "ready", phase: "ready", result: { rows: [], proposals: [] } }) } });
+    const notReady = harness({ repository: { getForBudget: async () => job({ status: "failed", phase: "extracting", errorCode: "ai_timeout" }) } });
+    const ready = harness({ repository: { getForBudget: async () => job({ status: "ready", phase: "ready", result: { rows: [], proposals: [] } }) } });
 
     const rejected = await post(notReady.app, `/api/import/jobs/${JOB_ID}/complete`, mutationBody({ appliedCount: 2, skippedCount: 1 }));
     const accepted = await post(ready.app, `/api/import/jobs/${JOB_ID}/complete`, mutationBody({ appliedCount: 2, skippedCount: 1 }));
@@ -228,6 +237,7 @@ describe("plain durable import job routes", () => {
     expect(notReady.calls.completes).toBe(0);
     expect(accepted.status).toBe(200);
     expect(ready.calls.completes).toBe(1);
+    expect(ready.calls.mutationBudgets).toEqual([BUDGET_A]);
   });
 
   it("rejects malformed public output from every response-producing endpoint", async () => {
@@ -239,7 +249,7 @@ describe("plain durable import job routes", () => {
     const retry = harness({ repository: { retry: async () => malformed() } });
     const complete = harness({
       repository: {
-        getForUser: async () => job({ status: "ready", phase: "ready", result: { rows: [], proposals: [] } }),
+        getForBudget: async () => job({ status: "ready", phase: "ready", result: { rows: [], proposals: [] } }),
         markCompleted: async () => malformed({ status: "completed", phase: "completed" }),
       },
     });

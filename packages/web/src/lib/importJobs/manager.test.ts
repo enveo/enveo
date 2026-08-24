@@ -261,6 +261,39 @@ describe("import job manager", () => {
     }
   });
 
+  it("does not dispatch a mutation after its awaited lookup loses scope authority", async () => {
+    const state = new FakeState();
+    state.status = "ready";
+    const lookup = deferred<void>();
+    const calls: string[] = [];
+    const manager = new ImportJobManager({
+      state,
+      ownerId: async () => "user-a",
+      tierMeta: () => ({ tier: "e2ee", epoch: 3 }),
+      createPlain: ports(calls).plain,
+      createE2ee: (_scope, activity) => ({
+        ...ports(calls).e2ee(_scope, activity),
+        list: async () => {
+          await lookup.promise;
+          activity.upsert(item("e2ee"));
+          return activity.list();
+        },
+      }),
+      visible: () => true,
+    });
+    manager.start();
+    await manager.resume();
+    const cancellation = manager.cancel(ID);
+    state.budgetId = OTHER_BUDGET;
+    state.currentLedger = ledger("openai", "gpt-5.6-luna", OTHER_BUDGET);
+    lookup.resolve();
+
+    await cancellation;
+
+    expect(calls).not.toContain("e2ee.cancel");
+    manager.stop();
+  });
+
   it("recovers the transaction/progress interruption boundary by durable transaction identity", async () => {
     // given: a blank-source row receives a durable transaction id before local mutation
     const state = new FakeState();

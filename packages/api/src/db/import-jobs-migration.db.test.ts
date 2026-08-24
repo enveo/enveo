@@ -34,6 +34,8 @@ describe.skipIf(!TEST_URL)("import jobs migration", () => {
       invalidPhaseRejected: true,
       invalidProviderRejected: true,
       invalidTierRejected: true,
+      negativeEpochRejected: true,
+      negativeCountersRejected: true,
     });
   });
 

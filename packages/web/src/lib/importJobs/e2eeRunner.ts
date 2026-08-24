@@ -74,6 +74,7 @@ function failureCode(error: unknown): ImportJobErrorCode {
   if (code === "ai_key_invalid" || code === "credential_not_configured") return "ai_key_invalid";
   if (code === "ai_model_unavailable") return "ai_model_unavailable";
   if (code === "account_unavailable") return "account_unavailable";
+  if (code === "budget_mismatch") return "budget_mismatch";
   if (code === "tier_mismatch") return "tier_mismatch";
   if (code.includes("invalid import enrichment") || code.includes("invalid import") || error instanceof SyntaxError) return "malformed_model_response";
   return "network";
@@ -85,7 +86,7 @@ function isOfflineFailure(error: unknown): boolean {
 
 function isPermanentFailure(error: unknown): boolean {
   const code = error instanceof Error ? error.message : "";
-  return ["ai_key_invalid", "credential_not_configured", "ai_model_unavailable", "account_unavailable", "tier_mismatch"].includes(code);
+  return ["ai_key_invalid", "credential_not_configured", "ai_model_unavailable", "account_unavailable", "budget_mismatch", "tier_mismatch"].includes(code);
 }
 
 function activePhase(job: StoredE2eeImportJob): "extracting" | "validating" | "enriching" | "reconciling" {
@@ -436,7 +437,11 @@ export class E2eeImportJobRunner {
             job = await this.transition(
               job,
               { type: "result_ready", at: this.timestamp() },
-              { resultCiphertext, proposalCount: result.proposals.length },
+              {
+                resultCiphertext,
+                proposalCount: result.proposals.length,
+                expiresAt: new Date(this.now().getTime() + IMPORT_JOB_RETENTION_MS).toISOString(),
+              },
               result,
             );
           },

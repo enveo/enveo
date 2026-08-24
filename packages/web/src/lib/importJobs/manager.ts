@@ -518,29 +518,47 @@ export class ImportJobManager {
     return this.activity.get(id);
   }
 
-  async cancel(id: string): Promise<void> {
-    const current = await this.item(id);
-    if (!current) return;
+  private async mutationItem(id: string): Promise<{ item: ImportActivityItem; scope: ImportJobStorageScope; generation: number } | null> {
+    if (!(await this.activate()) || !this.scope) return null;
+    const generation = this.generation;
     const scope = this.scope;
-    if (current.source === "e2ee") await this.local?.cancel(id);
+    const snapshot = this.snapshot();
+    if (!snapshot || snapshot.budgetId !== scope.budgetId) return null;
+    const item = await this.item(id);
+    if (
+      !item ||
+      !this.isActivationCurrent(generation, snapshot) ||
+      this.scope !== scope ||
+      item.budgetId !== scope.budgetId ||
+      item.source === "plain-draft" ||
+      (item.source === "e2ee") !== (this.local !== null)
+    ) {
+      return null;
+    }
+    return { item, scope, generation };
+  }
+
+  async cancel(id: string): Promise<void> {
+    const target = await this.mutationItem(id);
+    if (!target) return;
+    if (target.item.source === "e2ee") await this.local?.cancel(id);
     else await this.plain?.cancel(id);
-    await this.clearApplied(id, scope);
+    if (target.generation === this.generation && target.scope === this.scope) await this.clearApplied(id, target.scope);
   }
 
   async retry(id: string): Promise<void> {
-    const current = await this.item(id);
-    if (!current) return;
-    if (current.source === "e2ee") await this.local?.retry(id);
+    const target = await this.mutationItem(id);
+    if (!target) return;
+    if (target.item.source === "e2ee") await this.local?.retry(id);
     else await this.plain?.retry(id);
   }
 
   async complete(id: string, counts: { appliedCount: number; skippedCount: number }): Promise<void> {
-    const current = await this.item(id);
-    if (!current) return;
-    const scope = this.scope;
-    if (current.source === "e2ee") await this.local?.complete(id, counts);
+    const target = await this.mutationItem(id);
+    if (!target) return;
+    if (target.item.source === "e2ee") await this.local?.complete(id, counts);
     else await this.plain?.complete(id, counts);
-    await this.clearApplied(id, scope);
+    if (target.generation === this.generation && target.scope === this.scope) await this.clearApplied(id, target.scope);
   }
 
   async dismiss(id: string): Promise<void> {

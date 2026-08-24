@@ -14,7 +14,7 @@ import {
 } from "@enveo/shared";
 import { and, asc, desc, eq, gt, gte, inArray, isNotNull, isNull, lt, lte, or, sql } from "drizzle-orm";
 import type { DB } from "../db/client";
-import { importJobImages, importJobs } from "../db/schema";
+import { accounts, budgets, importJobImages, importJobs } from "../db/schema";
 
 export const IMPORT_JOB_LEASE_MS = 5 * 60 * 1000;
 export const IMPORT_JOB_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
@@ -212,12 +212,20 @@ export function createImportJobRepository(database: DB) {
       return row ? detailFromRow(row) : null;
     },
 
-    async requestCancel(userId: string, id: string, now = new Date()): Promise<ImportJobDetail | null> {
+    async getForBudget(userId: string, budgetId: string, id: string): Promise<ImportJobDetail | null> {
+      const [row] = await database
+        .select()
+        .from(importJobs)
+        .where(and(eq(importJobs.userId, userId), eq(importJobs.budgetId, budgetId), eq(importJobs.id, id)));
+      return row ? detailFromRow(row) : null;
+    },
+
+    async requestCancel(userId: string, budgetId: string, id: string, now = new Date()): Promise<ImportJobDetail | null> {
       return database.transaction(async (tx) => {
         const [current] = await tx
           .select()
           .from(importJobs)
-          .where(and(eq(importJobs.userId, userId), eq(importJobs.id, id)))
+          .where(and(eq(importJobs.userId, userId), eq(importJobs.budgetId, budgetId), eq(importJobs.id, id)))
           .for("update");
         if (!current) return null;
         if (current.status === "completed" || current.status === "cancelled") return detailFromRow(current);
@@ -241,14 +249,14 @@ export function createImportJobRepository(database: DB) {
                   updatedAt: now,
                 },
           )
-          .where(eq(importJobs.id, id))
+          .where(and(eq(importJobs.userId, userId), eq(importJobs.budgetId, budgetId), eq(importJobs.id, id)))
           .returning();
         if (!running) await tx.delete(importJobImages).where(eq(importJobImages.jobId, id));
         return updated ? detailFromRow(updated) : null;
       });
     },
 
-    async retry(userId: string, id: string, now = new Date()): Promise<ImportJobDetail | null> {
+    async retry(userId: string, budgetId: string, id: string, now = new Date()): Promise<ImportJobDetail | null> {
       const [updated] = await database
         .update(importJobs)
         .set({
@@ -266,6 +274,7 @@ export function createImportJobRepository(database: DB) {
         .where(
           and(
             eq(importJobs.userId, userId),
+            eq(importJobs.budgetId, budgetId),
             eq(importJobs.id, id),
             eq(importJobs.status, "failed"),
             lt(importJobs.attempt, 3),
@@ -383,6 +392,30 @@ export function createImportJobRepository(database: DB) {
       return updated.length === 1;
     },
 
+    async validateClaimContext(job: Pick<ClaimedImportJob, "id" | "userId" | "budgetId" | "accountId" | "tier" | "epoch" | "leaseToken">, now = new Date()) {
+      if (job.tier !== "plain" || !job.accountId) return false;
+      const rows = await database
+        .select({ id: importJobs.id })
+        .from(importJobs)
+        .innerJoin(
+          budgets,
+          and(eq(budgets.id, importJobs.budgetId), eq(budgets.userId, importJobs.userId), eq(budgets.tier, "plain"), eq(budgets.epoch, importJobs.epoch)),
+        )
+        .innerJoin(accounts, and(eq(accounts.id, importJobs.accountId), eq(accounts.budgetId, importJobs.budgetId), eq(accounts.archived, false)))
+        .where(
+          and(
+            activeLease(job.id, job.leaseToken, now),
+            eq(importJobs.userId, job.userId),
+            eq(importJobs.budgetId, job.budgetId),
+            eq(importJobs.accountId, job.accountId),
+            eq(importJobs.tier, job.tier),
+            eq(importJobs.epoch, job.epoch),
+          ),
+        )
+        .limit(1);
+      return rows.length === 1;
+    },
+
     async advancePhase(id: string, leaseToken: string, phase: "enriching" | "reconciling", now = new Date()): Promise<boolean> {
       const allowedFrom = phase === "enriching" ? ["validating", "enriching"] : ["validating", "enriching", "reconciling"];
       const updated = await database
@@ -429,6 +462,7 @@ export function createImportJobRepository(database: DB) {
           leaseToken: null,
           leaseExpiresAt: null,
           updatedAt: now,
+          expiresAt: new Date(now.getTime() + IMPORT_JOB_RETENTION_MS),
         })
         .where(and(activeLease(id, leaseToken, now), eq(importJobs.cancelRequested, false), eq(importJobs.phase, "reconciling")))
         .returning({ id: importJobs.id });
@@ -501,7 +535,14 @@ export function createImportJobRepository(database: DB) {
       });
     },
 
-    async markCompleted(userId: string, id: string, appliedCount: number, skippedCount: number, now = new Date()): Promise<ImportJobDetail | null> {
+    async markCompleted(
+      userId: string,
+      budgetId: string,
+      id: string,
+      appliedCount: number,
+      skippedCount: number,
+      now = new Date(),
+    ): Promise<ImportJobDetail | null> {
       const [updated] = await database
         .update(importJobs)
         .set({
@@ -514,7 +555,15 @@ export function createImportJobRepository(database: DB) {
           skippedCount,
           updatedAt: now,
         })
-        .where(and(eq(importJobs.userId, userId), eq(importJobs.id, id), eq(importJobs.status, "ready"), eq(importJobs.cancelRequested, false)))
+        .where(
+          and(
+            eq(importJobs.userId, userId),
+            eq(importJobs.budgetId, budgetId),
+            eq(importJobs.id, id),
+            eq(importJobs.status, "ready"),
+            eq(importJobs.cancelRequested, false),
+          ),
+        )
         .returning();
       return updated ? detailFromRow(updated) : null;
     },

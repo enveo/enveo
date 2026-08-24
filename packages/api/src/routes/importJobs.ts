@@ -14,7 +14,10 @@ import { budgetAssertionFails } from "./sync";
 type Variables = { userId?: string };
 type RouteContext = Context<{ Variables: Variables }>;
 
-export type ImportJobRouteRepository = Pick<ImportJobRepository, "create" | "listForUser" | "getForUser" | "requestCancel" | "retry" | "markCompleted">;
+export type ImportJobRouteRepository = Pick<
+  ImportJobRepository,
+  "create" | "listForUser" | "getForUser" | "getForBudget" | "requestCancel" | "retry" | "markCompleted"
+>;
 
 export interface ImportJobRouteOptions {
   database?: DB;
@@ -159,7 +162,7 @@ export function createImportJobRoutes(options: ImportJobRouteOptions = {}) {
     const body = importJobMutationInput.parse(await c.req.json());
     const authorization = await authorizeMutation(c, body.budgetId);
     if ("response" in authorization) return authorization.response;
-    const result = await repository.requestCancel(authorization.owner, idParam(c));
+    const result = await repository.requestCancel(authorization.owner, body.budgetId, idParam(c));
     return result ? c.json(publicDetail(result)) : c.json({ error: "not_found" }, 404);
   });
 
@@ -167,7 +170,7 @@ export function createImportJobRoutes(options: ImportJobRouteOptions = {}) {
     const body = importJobMutationInput.parse(await c.req.json());
     const authorization = await authorizeMutation(c, body.budgetId);
     if ("response" in authorization) return authorization.response;
-    const result = await repository.retry(authorization.owner, idParam(c));
+    const result = await repository.retry(authorization.owner, body.budgetId, idParam(c));
     if (!result) return c.json({ error: "invalid_import_job_state" }, 409);
     const publicJob = publicDetail(result);
     wake();
@@ -179,10 +182,10 @@ export function createImportJobRoutes(options: ImportJobRouteOptions = {}) {
     const authorization = await authorizeMutation(c, body.budgetId);
     if ("response" in authorization) return authorization.response;
     const id = idParam(c);
-    const current = await repository.getForUser(authorization.owner, id);
+    const current = await repository.getForBudget(authorization.owner, body.budgetId, id);
     if (!current) return c.json({ error: "not_found" }, 404);
     if (current.status !== "ready") return c.json({ error: "invalid_import_job_state" }, 409);
-    const result = await repository.markCompleted(authorization.owner, id, body.appliedCount, body.skippedCount);
+    const result = await repository.markCompleted(authorization.owner, body.budgetId, id, body.appliedCount, body.skippedCount);
     return result ? c.json(publicDetail(result)) : c.json({ error: "invalid_import_job_state" }, 409);
   });
 

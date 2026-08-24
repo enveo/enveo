@@ -39,6 +39,8 @@ describe.skipIf(!TEST_URL)("import job repository", () => {
       currentTokenAccepted: true,
       exhaustedLeaseTerminalized: true,
       fourthClaimRejected: true,
+      contextValidated: true,
+      archivedAccountRejected: true,
     });
   });
 
@@ -52,6 +54,7 @@ describe.skipIf(!TEST_URL)("import job repository", () => {
       wrongLeaseChangedNothing: true,
       phaseAdvanced: true,
       resultReady: true,
+      readyExpiryAnchored: true,
     });
   });
 
@@ -71,6 +74,7 @@ describe.skipIf(!TEST_URL)("import job repository", () => {
       retryQueued: true,
       permanentFailureDeletedImages: true,
       completedCountsSaved: true,
+      crossBudgetMutationsRejected: true,
     });
   });
 

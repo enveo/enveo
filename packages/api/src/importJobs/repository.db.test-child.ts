@@ -25,6 +25,8 @@ export interface ImportJobRepositoryOutput {
     currentTokenAccepted: boolean;
     exhaustedLeaseTerminalized: boolean;
     fourthClaimRejected: boolean;
+    contextValidated: boolean;
+    archivedAccountRejected: boolean;
   };
   checkpoint: {
     extractionSaved: boolean;
@@ -35,6 +37,7 @@ export interface ImportJobRepositoryOutput {
     wrongLeaseChangedNothing: boolean;
     phaseAdvanced: boolean;
     resultReady: boolean;
+    readyExpiryAnchored: boolean;
   };
   cancellationRace: {
     cancellationRequested: boolean;
@@ -48,6 +51,7 @@ export interface ImportJobRepositoryOutput {
     retryQueued: boolean;
     permanentFailureDeletedImages: boolean;
     completedCountsSaved: boolean;
+    crossBudgetMutationsRejected: boolean;
   };
   cleanup: {
     retryImagesDeleted: boolean;
@@ -143,7 +147,7 @@ async function main() {
     const ownerList = await repository.listForUser(userId);
     const foreignList = await repository.listForUser(foreignUserId);
     const listScopedAndSafe = ownerList.some((job) => job.id === createdId) && foreignList.length === 0 && !Object.hasOwn(ownerList[0] ?? {}, "result");
-    await repository.requestCancel(userId, createdId, at("2026-08-24T12:03:00.000Z"));
+    await repository.requestCancel(userId, budgetId, createdId, at("2026-08-24T12:03:00.000Z"));
 
     const claimIds = [crypto.randomUUID(), crypto.randomUUID()];
     for (const id of claimIds) await repository.create(createInput(id), at("2026-08-24T12:10:00.000Z"));
@@ -153,8 +157,8 @@ async function main() {
     ]);
     const concurrentClaimsDistinct = Boolean(claimA && claimB && claimA.id !== claimB.id);
     if (!claimA || !claimB) throw new Error("expected two concurrent claims");
-    await repository.requestCancel(userId, claimA.id, at("2026-08-24T12:12:00.000Z"));
-    await repository.requestCancel(userId, claimB.id, at("2026-08-24T12:12:00.000Z"));
+    await repository.requestCancel(userId, budgetId, claimA.id, at("2026-08-24T12:12:00.000Z"));
+    await repository.requestCancel(userId, budgetId, claimB.id, at("2026-08-24T12:12:00.000Z"));
     await repository.finishCancellation(claimA.id, claimA.leaseToken, at("2026-08-24T12:13:00.000Z"));
     await repository.finishCancellation(claimB.id, claimB.leaseToken, at("2026-08-24T12:13:00.000Z"));
 
@@ -195,7 +199,7 @@ async function main() {
     const fourthClaimRejected = exhaustedAttempt4 === null;
 
     const checkpointId = crypto.randomUUID();
-    await repository.create(createInput(checkpointId), at("2026-08-24T13:00:00.000Z"));
+    await repository.create(createInput(checkpointId), at("2026-08-20T13:00:00.000Z"));
     const checkpointLease = await repository.claimNext("worker-checkpoint", at("2026-08-24T13:01:00.000Z"));
     if (!checkpointLease || checkpointLease.id !== checkpointId) throw new Error("expected checkpoint job claim");
     const wrongLeaseChangedNothing = !(await repository.saveExtractionAndDeleteImages(
@@ -235,13 +239,14 @@ async function main() {
       (await repository.advancePhase(checkpointId, checkpointLease.leaseToken, "enriching", at("2026-08-24T13:03:30.000Z"))) &&
       (await repository.advancePhase(checkpointId, checkpointLease.leaseToken, "reconciling", at("2026-08-24T13:03:45.000Z")));
     const resultReady = await repository.saveReadyResult(checkpointId, checkpointLease.leaseToken, emptyResult, at("2026-08-24T13:04:00.000Z"));
+    const [readyExpiry] = await isolated<{ expiresAt: Date }[]>`select expires_at as "expiresAt" from import_jobs where id = ${checkpointId}`;
 
     const cancelId = crypto.randomUUID();
     await repository.create(createInput(cancelId), at("2026-08-24T14:00:00.000Z"));
     const cancelLease = await repository.claimNext("worker-cancel", at("2026-08-24T14:01:00.000Z"));
     if (!cancelLease || cancelLease.id !== cancelId) throw new Error("expected cancellation job claim");
     await isolated.unsafe("update import_jobs set extraction = $1::jsonb, result = $1::jsonb where id = $2", [JSON.stringify(emptyResult), cancelId]);
-    const cancelRequested = await repository.requestCancel(userId, cancelId, at("2026-08-24T14:02:00.000Z"));
+    const cancelRequested = await repository.requestCancel(userId, budgetId, cancelId, at("2026-08-24T14:02:00.000Z"));
     const cancelledExtractionRejected = !(await repository.saveExtractionAndDeleteImages(
       cancelId,
       cancelLease.leaseToken,
@@ -266,8 +271,8 @@ async function main() {
       at("2026-08-24T16:00:00.000Z"),
       at("2026-08-24T15:02:00.000Z"),
     );
-    const retried = await repository.retry(userId, retryId, at("2026-08-24T15:03:00.000Z"));
-    await repository.requestCancel(userId, retryId, at("2026-08-24T15:04:00.000Z"));
+    const retried = await repository.retry(userId, budgetId, retryId, at("2026-08-24T15:03:00.000Z"));
+    await repository.requestCancel(userId, budgetId, retryId, at("2026-08-24T15:04:00.000Z"));
 
     const permanentId = crypto.randomUUID();
     await repository.create(createInput(permanentId), at("2026-08-24T16:00:00.000Z"));
@@ -283,8 +288,22 @@ async function main() {
     await repository.saveExtractionAndDeleteImages(completedId, completedLease.leaseToken, emptyResult, at("2026-08-24T17:02:00.000Z"));
     await repository.advancePhase(completedId, completedLease.leaseToken, "reconciling", at("2026-08-24T17:02:30.000Z"));
     await repository.saveReadyResult(completedId, completedLease.leaseToken, emptyResult, at("2026-08-24T17:03:00.000Z"));
-    const completed = await repository.markCompleted(userId, completedId, 3, 1, at("2026-08-24T17:04:00.000Z"));
+    const secondBudgetId = crypto.randomUUID();
+    await isolated`insert into budgets (id, user_id, name, currency) values (${secondBudgetId}, ${userId}, 'Other', 'EUR')`;
+    const wrongCancel = await repository.requestCancel(userId, secondBudgetId, completedId, at("2026-08-24T17:03:10.000Z"));
+    const wrongRetry = await repository.retry(userId, secondBudgetId, completedId, at("2026-08-24T17:03:20.000Z"));
+    const wrongComplete = await repository.markCompleted(userId, secondBudgetId, completedId, 9, 9, at("2026-08-24T17:03:30.000Z"));
+    const completed = await repository.markCompleted(userId, budgetId, completedId, 3, 1, at("2026-08-24T17:04:00.000Z"));
     await isolated.unsafe("update import_jobs set extraction = $1::jsonb, result = $1::jsonb where id = $2", [JSON.stringify(emptyResult), completedId]);
+
+    const contextId = crypto.randomUUID();
+    await repository.create(createInput(contextId), at("2026-08-24T17:10:00.000Z"));
+    const contextLease = await repository.claimNext("worker-context", at("2026-08-24T17:11:00.000Z"));
+    if (!contextLease || contextLease.id !== contextId) throw new Error("expected context job claim");
+    const contextValidated = await repository.validateClaimContext(contextLease, at("2026-08-24T17:11:01.000Z"));
+    await isolated`update accounts set archived = true where id = ${accountId}`;
+    const archivedAccountRejected = !(await repository.validateClaimContext(contextLease, at("2026-08-24T17:11:02.000Z")));
+    await repository.failPermanently(contextId, contextLease.leaseToken, "account_unavailable", at("2026-08-24T17:11:03.000Z"));
 
     const cleanupRetryId = crypto.randomUUID();
     await repository.create(createInput(cleanupRetryId), at("2026-08-20T10:00:00.000Z"));
@@ -318,6 +337,8 @@ async function main() {
         currentTokenAccepted,
         exhaustedLeaseTerminalized,
         fourthClaimRejected,
+        contextValidated,
+        archivedAccountRejected,
       },
       checkpoint: {
         extractionSaved: extractionSaved && checkpointRow?.extraction !== null,
@@ -328,6 +349,7 @@ async function main() {
         wrongLeaseChangedNothing,
         phaseAdvanced,
         resultReady,
+        readyExpiryAnchored: readyExpiry ? new Date(readyExpiry.expiresAt).toISOString() === "2026-08-31T13:04:00.000Z" : false,
       },
       cancellationRace: {
         cancellationRequested: cancelRequested?.status === "running" && cancelRequested.cancelRequested,
@@ -346,6 +368,7 @@ async function main() {
         retryQueued: retried?.status === "queued",
         permanentFailureDeletedImages: permanentImages?.count === 0,
         completedCountsSaved: completed?.status === "completed" && completed.appliedCount === 3 && completed.skippedCount === 1,
+        crossBudgetMutationsRejected: wrongCancel === null && wrongRetry === null && wrongComplete === null,
       },
       cleanup: {
         retryImagesDeleted: afterCleanup?.retryImages === 0,

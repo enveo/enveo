@@ -127,6 +127,7 @@ export function classifyImportJobFailure(error: unknown, attempt: number, now = 
 
 type ProcessorRepository = {
   heartbeat: ImportJobRepository["heartbeat"];
+  validateClaimContext: ImportJobRepository["validateClaimContext"];
   getForUser: (userId: string, id: string) => Promise<{ status?: string; cancelRequested: boolean } | null>;
   saveExtractionAndDeleteImages: ImportJobRepository["saveExtractionAndDeleteImages"];
   advancePhase: ImportJobRepository["advancePhase"];
@@ -200,6 +201,7 @@ export async function processClaimedImportJob(job: ClaimedImportJob, deps: Impor
     leaseRenewal?.assertHealthy();
     if (!(await deps.repository.heartbeat(job.id, job.leaseToken, now()))) throw new ImportJobLeaseExpired();
     leaseRenewal?.assertHealthy();
+    if (!(await deps.repository.validateClaimContext(job, now()))) throw new ImportJobLeaseExpired();
     const current = await deps.repository.getForUser(job.userId, job.id);
     if (!current) throw new ImportJobBudgetMismatch();
     if (current.status === "cancelled" || current.cancelRequested) await persistCancellation(job, deps.repository);

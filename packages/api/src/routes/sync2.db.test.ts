@@ -50,6 +50,7 @@ describe.skipIf(!TEST_URL)("sync2 e2ee v2 (DB-backed)", () => {
     expect(out.enableSnapshotUptoSeq).toBe(0);
     expect(out.enablePlaintextWiped).toBe(true); // ciphertext first, plaintext wiped only after
     expect(out.enablePreferencesCleared).toBe(true);
+    expect(out.enableImportRevocation).toEqual({ cancelled: 4, detailsCleared: 4, leasesCleared: 4, errorsCleared: 4, imagesDeleted: 0 });
   });
 
   it("normal v2 push/pull work and round-trip the journal rows", () => {
