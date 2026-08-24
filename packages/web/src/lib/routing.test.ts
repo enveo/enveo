@@ -19,6 +19,10 @@ describe("routeToUrl / parseUrl round-trip", () => {
 
       if (screen !== "reports" && reportsView !== "overview") continue;
       for (const envelopeId of [null, ENV_ID]) {
+        // The add pane never serialises ?env (its URL is the constant "/add" — see routeToUrl's
+        // duplicate-submit comment), so addExpense+envelopeId deliberately does NOT round-trip;
+        // its one-way mapping is pinned in the dedicated tests below instead.
+        if (screen === "addExpense" && envelopeId) continue;
         const route: Route = { screen, reportsView, envelopeId };
         test(`${screen} / ${reportsView} / env=${envelopeId ?? "none"}`, () => {
           expect(parse(routeToUrl(route))).toEqual(route);
@@ -43,6 +47,20 @@ describe("routeToUrl", () => {
 
   test("addExpense maps to the /add slug", () => {
     expect(routeToUrl({ screen: "addExpense", reportsView: "overview", envelopeId: null })).toBe("/add");
+  });
+
+  test("addExpense NEVER serialises ?env — the add pane's URL is a constant /add", () => {
+    
+
+
+
+
+
+    expect(routeToUrl({ screen: "addExpense", reportsView: "overview", envelopeId: ENV_ID })).toBe("/add");
+  });
+
+  test("a deep-linked /add?env still PARSES (old links), it is just never produced any more", () => {
+    expect(parseUrl("/add", `?env=${ENV_ID}`)).toEqual({ screen: "addExpense", reportsView: "overview", envelopeId: ENV_ID });
   });
 
   test("a non-reports screen never gets a reports subpath even if reportsView is set", () => {

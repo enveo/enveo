@@ -18,7 +18,18 @@ const TABS: readonly ReportTab[] = ["assets", "cashflow", "spending", "budgets",
 export function routeToUrl(r: Route): string {
   const slug = ({ start: "", addExpense: "add" } as Partial<Record<ScreenId, string>>)[r.screen] ?? r.screen;
   const path = r.screen === "reports" && r.reportsView !== "overview" ? `/reports/${r.reportsView}` : `/${slug}`;
-  return r.envelopeId ? `${path}?env=${encodeURIComponent(r.envelopeId)}` : path;
+  // The Add pane's URL is the CONSTANT "/add" — `?env` is never serialised while it is open.
+  // `doneEdit`'s history.back() contract ("the entry below /add is the screen the edit came
+  // from", App.tsx) holds only if two consecutive /add entries can never exist — but `envView`
+  // CAN change while the Add pane is open (clicking an envelope row in the wide primary; the
+  // change is INVISIBLE because the add kind outranks envelope in resolvePanel), and serialising
+  // it pushed a second /add entry: submitting then history.back()'d onto the sibling /add,
+  // popstate's nav("addExpense") left the mounted AddScreen (and its filled form) untouched, and
+  // the still-enabled submit button wrote a DUPLICATE transaction on the next click (reproduced
+  // live, 2026-08-24). Keeping the URL constant makes that push a "none" — the class dies at the
+  // source. A deep /add reload landing on a fresh Add with no envelope pane behind it is the
+  // already-accepted behaviour (reconciliation ruling: "/add reload lands on a fresh Add").
+  return r.envelopeId && r.screen !== "addExpense" ? `${path}?env=${encodeURIComponent(r.envelopeId)}` : path;
 }
 
 /**
