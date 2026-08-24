@@ -44,6 +44,9 @@ function processorFixture(options: { cancelledAfterUpstream?: boolean; enrichmen
   const events: string[] = [];
   let cancelRequested = false;
   const repository = {
+    validateClaimContext: async () => {
+      return true;
+    },
     heartbeat: async (_id: string, _lease: string, _now: Date) => {
       events.push("heartbeat");
       return true;
@@ -137,6 +140,27 @@ describe("plain import job processor", () => {
     expect(outcome).toEqual({ kind: "cancelled" });
     expect(fixture.events).toContain("cancelled");
     expect(fixture.events).not.toContain("extraction-stored");
+    expect(fixture.events).not.toContain("ready");
+  });
+
+  test("stops between model cycles when the budget tier ceremony revokes the claim", async () => {
+    const fixture = processorFixture();
+    let checks = 0;
+    fixture.repository.validateClaimContext = async () => ++checks < 3;
+    const recognize = async (input: Parameters<typeof fixture.recognize>[0]) => {
+      await input.beforeUpstream();
+      fixture.events.push("cycle-one");
+      await input.afterUpstream();
+      await input.beforeUpstream();
+      fixture.events.push("cycle-two");
+      return EMPTY_RESULT;
+    };
+
+    const outcome = await processClaimedImportJob(claimedJob(), { ...fixture, recognize, now: () => NOW });
+
+    expect(outcome).toEqual({ kind: "lease_expired", errorCode: "expired" });
+    expect(fixture.events).toContain("cycle-one");
+    expect(fixture.events).not.toContain("cycle-two");
     expect(fixture.events).not.toContain("ready");
   });
 

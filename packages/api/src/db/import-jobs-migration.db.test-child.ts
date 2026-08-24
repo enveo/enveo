@@ -17,6 +17,8 @@ export interface ImportJobsMigrationOutput {
     invalidPhaseRejected: boolean;
     invalidProviderRejected: boolean;
     invalidTierRejected: boolean;
+    negativeEpochRejected: boolean;
+    negativeCountersRejected: boolean;
   };
   readyWithImagesRejected: boolean;
   changeTriggerCount: number;
@@ -133,6 +135,10 @@ async function main() {
     const invalidPhaseRejected = await rejected(() => isolated!`update import_jobs set phase = 'halfway' where id = ${constrainedJobId}`);
     const invalidProviderRejected = await rejected(() => isolated!`update import_jobs set provider = 'rules' where id = ${constrainedJobId}`);
     const invalidTierRejected = await rejected(() => isolated!`update import_jobs set tier = 'server' where id = ${constrainedJobId}`);
+    const negativeEpochRejected = await rejected(() => isolated!`update import_jobs set epoch = -1 where id = ${constrainedJobId}`);
+    const negativeCountersRejected = await rejected(
+      () => isolated!`update import_jobs set attempt = -1, proposal_count = -1, applied_count = -1, skipped_count = -1 where id = ${constrainedJobId}`,
+    );
     const readyWithImagesRejected = await rejected(() => isolated!`update import_jobs set status = 'ready', phase = 'ready' where id = ${constrainedJobId}`);
     const [triggerCount] = await isolated<{ count: number }[]>`
       select count(*)::int as count
@@ -154,6 +160,8 @@ async function main() {
         invalidPhaseRejected,
         invalidProviderRejected,
         invalidTierRejected,
+        negativeEpochRejected,
+        negativeCountersRejected,
       },
       readyWithImagesRejected,
       changeTriggerCount: triggerCount?.count ?? -1,
