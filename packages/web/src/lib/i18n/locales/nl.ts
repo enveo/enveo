@@ -232,6 +232,8 @@ export const nl: Dict = {
   Goals: "Doelen",
   "Goes to": "Gaat naar",
   Good: "Goed",
+  "Google sign-in keeps you signed in until you sign out — remember to sign out when you finish.":
+    "Aanmelden met Google houdt je aangemeld totdat je uitlogt — vergeet niet uit te loggen als je klaar bent.",
   Groceries: "Boodschappen",
   Group: "Groep",
   Health: "Gezondheid",
@@ -258,6 +260,7 @@ export const nl: Dict = {
   "Invalid pairing code.": "Ongeldige koppelcode.",
   Investor: "Belegger",
   "Item total: {sum} / {total}": "Totaal van de regels: {sum} / {total}",
+  "Keep me signed in and save a local copy so Enveo works without internet.": "Blijf aangemeld en sla een lokale kopie op, zodat Enveo ook offline werkt.",
   Language: "Taal",
   "Last launch": "Laatste start",
   "Last sync: {rel}.": "Laatste synchronisatie: {rel}.",
@@ -308,6 +311,8 @@ export const nl: Dict = {
   "No envelopes with a goal. Set a monthly target when editing an envelope.":
     "Geen enveloppen met een doel. Stel een maanddoel in bij het bewerken van een envelop.",
   "No funds to distribute": "Geen middelen om te verdelen",
+  "No local copy will be saved. This browser session ends when you close the app.":
+    "Er wordt geen lokale kopie opgeslagen. Deze browsersessie eindigt zodra je de app sluit.",
   "No spending in this period.": "Geen uitgaven in deze periode.",
   "No transactions were recognized in the screenshots.": "In de schermafbeeldingen zijn geen transacties herkend.",
   "No transactions.": "Geen transacties.",
@@ -462,6 +467,8 @@ export const nl: Dict = {
     "De lokale kopie van het budget op dit apparaat hoort bij een ander account dan dat waarmee je bent aangemeld. Er is niets naar de server gestuurd en er is niets verwijderd.",
   "The local copy — including any unsent changes — will be permanently removed from this device. If this is the only copy of that budget, download a backup first.":
     "De lokale kopie — inclusief niet-verstuurde wijzigingen — wordt definitief van dit apparaat verwijderd. Als dit de enige kopie van dat budget is, download dan eerst een back-up.",
+  "The local copy — including any unsent changes — will be permanently removed from this device. Your account's data on the server is not affected.":
+    "De lokale kopie — inclusief niet-verstuurde wijzigingen — wordt definitief van dit apparaat verwijderd. De gegevens van je account op de server blijven ongewijzigd.",
   "The local replica is not ready.": "De lokale replica is niet gereed.",
   "The password must be at least 8 characters.": "Het wachtwoord moet minstens 8 tekens lang zijn.",
   "The proposal exceeds “To be budgeted” — uncheck or reduce items.": "Het voorstel overschrijdt ‘Te budgetteren’ — vink regels uit of verlaag ze.",
@@ -507,6 +514,7 @@ export const nl: Dict = {
   "This device's local copy cannot be linked to this account": "De lokale kopie van dit apparaat kan niet aan dit account worden gekoppeld",
   "This device's local copy could not be confirmed to belong to the signed-in account — nothing was sent to the server. Settings → Sync explains what happened and what you can do.":
     "Er kon niet worden bevestigd dat de lokale kopie van dit apparaat bij het aangemelde account hoort — er is niets naar de server gestuurd. Instellingen → Synchronisatie legt uit wat er is gebeurd en wat je kunt doen.",
+  "This is my private device": "Dit is mijn persoonlijke apparaat",
   "This is not a backup of this app — choose a file exported from this application.":
     "Dit is geen back-up van deze app — kies een bestand dat uit deze applicatie is geëxporteerd.",
   "This is not a valid JSON file.": "Dit is geen geldig JSON-bestand.",
