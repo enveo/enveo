@@ -773,6 +773,7 @@ export const MESSAGES = [
   "There is nothing to export yet — wait for the app to finish loading.",
   "This OpenAI key cannot use the selected model. Choose another model and try again.",
   "This browser blocked access to storage. Allow site storage before signing in.",
+  "This browser cannot safely coordinate import changes across tabs. Keep this review open and try again in a supported browser.",
   "This budget is encrypted",
   "This budget is encrypted with an older format that new versions of the app no longer read. Upgrading re-encrypts it with a fresh key built from the data on THIS device: pick a new encryption password (it may be the same one), and the server's copy is replaced in one step.",
   "This budget is end-to-end encrypted.",

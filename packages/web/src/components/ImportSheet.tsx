@@ -12,6 +12,7 @@ import { useT } from "../lib/i18n";
 import { Glyph, Ico } from "../lib/icons";
 import { storageMode } from "../lib/idb";
 import type { ImportApplyProgress } from "../lib/importJobStorage";
+import { importApplyErrorMessage } from "../lib/importJobs/applyError";
 import { importJobManager } from "../lib/importJobs/manager";
 import type { ImportActivityItem } from "../lib/importJobs/store";
 import {
@@ -61,8 +62,6 @@ async function downscale(f: File, maxSide = 1600): Promise<string> {
   canvas.getContext("2d")!.drawImage(bmp, 0, 0, w, h);
   return canvas.toDataURL("image/jpeg", 0.85);
 }
-
-const errMsg = apiErrorMessage;
 
 export function ImportSheet({
   show,
@@ -247,7 +246,7 @@ export function ImportSheet({
       setJobId(created.id);
       setPhase("progress");
     } catch (e) {
-      if (generation === viewGeneration.current) setError(errMsg(e));
+      if (generation === viewGeneration.current) setError(apiErrorMessage(e));
     } finally {
       if (generation === viewGeneration.current) setBusy(false);
     }
@@ -347,7 +346,8 @@ export function ImportSheet({
       const plan = planLocalImport({ ledger, globalAccountId: job.accountId, items: chosen, dryRun: false });
       await applyLocalImportRecoverably(plan, undefined, {
         apply: (rowId, mutation) =>
-          importJobManager.applyRow(job.id, rowId, async (transactionId) => {
+          importJobManager.applyRow(job.id, rowId, async (transactionId, assertCurrent) => {
+            await assertCurrent();
             mutation(transactionId);
             await outbox.flushed();
             if (!outbox.isDurable()) throw new Error("local_persistence_failed");
@@ -405,7 +405,7 @@ export function ImportSheet({
           setSourceAccountUnavailable(accountInvalid);
         }
       }
-      setError(e instanceof PartialImportApplyError ? t("Adding was interrupted. Review the remaining rows and try again.") : errMsg(e));
+      setError(e instanceof PartialImportApplyError ? t("Adding was interrupted. Review the remaining rows and try again.") : importApplyErrorMessage(e, t));
     } finally {
       setBusy(false);
     }

@@ -50,6 +50,19 @@ export interface ImportJobManagerCreateInput {
   images: string[];
 }
 
+type ApplyLockAssertion = () => Promise<void>;
+type WithApplyLock = <T>(name: string, callback: () => Promise<T>) => Promise<T>;
+
+interface BrowserLockManager {
+  request<T>(name: string, options: { mode: "exclusive" }, callback: () => Promise<T>): Promise<T>;
+}
+
+const withBrowserApplyLock: WithApplyLock = async (name, callback) => {
+  const locks = (globalThis.navigator as (Navigator & { locks?: BrowserLockManager }) | undefined)?.locks;
+  if (!locks) throw new Error("import_web_locks_unavailable");
+  return locks.request(name, { mode: "exclusive" }, callback);
+};
+
 export interface ImportJobManagerOptions {
   state?: ImportJobManagerState;
   ownerId?: () => Promise<string | null>;
@@ -68,6 +81,7 @@ export interface ImportJobManagerOptions {
   nowMs?: () => number;
   scheduleApplyLeaseInterval?: (callback: () => void, delay: number) => ReturnType<typeof setInterval>;
   clearApplyLeaseInterval?: (timer: ReturnType<typeof setInterval>) => void;
+  withApplyLock?: WithApplyLock;
 }
 
 const E2EE_WAKE_INTERVAL_MS = 2_000;
@@ -104,6 +118,7 @@ export class ImportJobManager {
   private readonly nowMs: () => number;
   private readonly scheduleApplyLeaseInterval: NonNullable<ImportJobManagerOptions["scheduleApplyLeaseInterval"]>;
   private readonly clearApplyLeaseInterval: NonNullable<ImportJobManagerOptions["clearApplyLeaseInterval"]>;
+  private readonly withApplyLock: WithApplyLock;
   private readonly activity = createImportActivityStore();
   private readonly progressWrites = new Map<string, Promise<void>>();
   private scope: ImportJobStorageScope | null = null;
@@ -163,6 +178,7 @@ export class ImportJobManager {
     this.nowMs = options.nowMs ?? Date.now;
     this.scheduleApplyLeaseInterval = options.scheduleApplyLeaseInterval ?? ((callback, delay) => setInterval(callback, delay));
     this.clearApplyLeaseInterval = options.clearApplyLeaseInterval ?? ((timer) => clearInterval(timer));
+    this.withApplyLock = options.withApplyLock ?? withBrowserApplyLock;
   }
 
   private deactivate(clear: boolean): void {
@@ -383,68 +399,74 @@ export class ImportJobManager {
     }
   }
 
-  async applyRow(id: string, rowId: string, mutation: (transactionId: string) => Promise<void> | void): Promise<void> {
+  async applyRow(id: string, rowId: string, mutation: (transactionId: string, assertCurrent: ApplyLockAssertion) => Promise<void> | void): Promise<void> {
     const scope = this.scope;
     if (!scope || !this.activity.get(id)) throw new Error("import_manager_not_ready");
     const rowToken = (await this.rowTokens(id, [rowId])).get(rowId);
     if (!rowToken) throw new Error("invalid_import_row_token");
-    const existing = await importJobStorage.getApplyProgressRecord(scope, id);
-    const prepared = existing.preparedRows.find((candidate) => candidate.rowToken === rowToken);
-    if (prepared) {
-      const proof = await this.durableTransactionProof(scope, prepared.transactionId);
-      if (proof === "durable") {
-        await importJobStorage.promoteDurableApplyRow(scope, id, rowToken, prepared.transactionId);
-        return;
+    const lockName = JSON.stringify(["enveo-import-apply", 1, scope.ownerId, scope.budgetId, id, rowToken]);
+    await this.withApplyLock(lockName, async () => {
+      const existing = await importJobStorage.getApplyProgressRecord(scope, id);
+      const prepared = existing.preparedRows.find((candidate) => candidate.rowToken === rowToken);
+      if (prepared) {
+        const proof = await this.durableTransactionProof(scope, prepared.transactionId);
+        if (proof === "durable") {
+          await importJobStorage.promoteDurableApplyRow(scope, id, rowToken, prepared.transactionId);
+          return;
+        }
       }
-    }
-    const ownerToken = this.applyOwnerId;
-    const claimedAt = this.nowMs();
-    const claim = await importJobStorage.claimApplyRow(scope, id, {
-      rowToken,
-      transactionId: this.randomId(),
-      ownerToken,
-      now: claimedAt,
-      leaseUntil: claimedAt + APPLY_LEASE_MS,
-    });
-    if (claim.kind === "applied") return;
-    if (claim.kind === "busy") throw new Error("import_row_busy");
-    let leaseLost = false;
-    const renew = async (): Promise<boolean> => {
-      if (leaseLost) return false;
-      const now = this.nowMs();
-      const renewed = await importJobStorage.renewApplyRow(scope, id, {
+      const ownerToken = this.applyOwnerId;
+      const claimedAt = this.nowMs();
+      const claim = await importJobStorage.claimApplyRow(scope, id, {
         rowToken,
+        transactionId: this.randomId(),
         ownerToken,
-        fence: claim.fence,
-        now,
-        leaseUntil: now + APPLY_LEASE_MS,
+        now: claimedAt,
+        leaseUntil: claimedAt + APPLY_LEASE_MS,
       });
-      if (!renewed) leaseLost = true;
-      return renewed;
-    };
-    const timer = this.scheduleApplyLeaseInterval(() => {
-      void renew().catch(() => {
-        leaseLost = true;
-      });
-    }, APPLY_LEASE_RENEW_MS);
-    try {
-      if (!(await renew())) throw new Error("import_row_lease_lost");
-      await mutation(claim.transactionId);
-      if (!(await renew())) throw new Error("import_row_lease_lost");
-      const proof = await this.durableTransactionProof(scope, claim.transactionId);
-      if (!(await renew())) throw new Error("import_row_lease_lost");
-      if (proof !== "durable") throw new Error("local_persistence_failed");
-      if (!(await importJobStorage.completeApplyRow(scope, id, { rowToken, ownerToken, fence: claim.fence }))) {
-        throw new Error("import_row_lease_lost");
+      if (claim.kind === "applied") return;
+      if (claim.kind === "busy") throw new Error("import_row_busy");
+      let leaseLost = false;
+      const renew = async (): Promise<boolean> => {
+        if (leaseLost) return false;
+        const now = this.nowMs();
+        const renewed = await importJobStorage.renewApplyRow(scope, id, {
+          rowToken,
+          ownerToken,
+          fence: claim.fence,
+          now,
+          leaseUntil: now + APPLY_LEASE_MS,
+        });
+        if (!renewed) leaseLost = true;
+        return renewed;
+      };
+      const assertCurrent = async (): Promise<void> => {
+        if (!(await renew())) throw new Error("import_row_lease_lost");
+      };
+      const timer = this.scheduleApplyLeaseInterval(() => {
+        void renew().catch(() => {
+          leaseLost = true;
+        });
+      }, APPLY_LEASE_RENEW_MS);
+      try {
+        await assertCurrent();
+        await mutation(claim.transactionId, assertCurrent);
+        await assertCurrent();
+        const proof = await this.durableTransactionProof(scope, claim.transactionId);
+        await assertCurrent();
+        if (proof !== "durable") throw new Error("local_persistence_failed");
+        if (!(await importJobStorage.completeApplyRow(scope, id, { rowToken, ownerToken, fence: claim.fence }))) {
+          throw new Error("import_row_lease_lost");
+        }
+      } catch (error) {
+        const proof = await this.durableTransactionProof(scope, claim.transactionId).catch(() => "absent" as const);
+        if (proof === "durable") await importJobStorage.promoteDurableApplyRow(scope, id, rowToken, claim.transactionId);
+        else await importJobStorage.releaseApplyRow(scope, id, { rowToken, ownerToken, fence: claim.fence });
+        throw error;
+      } finally {
+        this.clearApplyLeaseInterval(timer);
       }
-    } catch (error) {
-      const proof = await this.durableTransactionProof(scope, claim.transactionId).catch(() => "absent" as const);
-      if (proof === "durable") await importJobStorage.promoteDurableApplyRow(scope, id, rowToken, claim.transactionId);
-      else await importJobStorage.releaseApplyRow(scope, id, { rowToken, ownerToken, fence: claim.fence });
-      throw error;
-    } finally {
-      this.clearApplyLeaseInterval(timer);
-    }
+    });
   }
 
   async appliedProgress(id: string, rowIds: readonly string[] = []): Promise<ImportApplyProgress> {
