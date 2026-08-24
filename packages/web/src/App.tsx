@@ -658,6 +658,25 @@ export default function App() {
     );
   }
 
+  // Wide (fold/desktop) onboarding (PR7 Task 3): the wizard is a BOOT state, not an app screen —
+  // it leaves the WideShell/rail entirely (no rail, no BottomNav, no SyncBadge, no InstallBanner),
+  // the same way mount A above already leaves it for Login/Unlock/ForeignReplica. `wide` (below)
+  // is deliberately false while `onboarding` is true (its own definition), so this must be its own
+  // early return BEFORE the `if (wide)` branch — otherwise wide+onboarding would fall through to
+  // the phone-card return at the bottom of this component and render the narrow card on a
+  // fold/desktop viewport. `OnboardingScreen` hosts itself inside `BootShellWide` (statically
+  // imported there — Task 3's own comment), so nothing but the lazy chunk boundary is needed here;
+  // the phone branch inside the final return (`state && onboarding`, further down) stays untouched
+  // byte-for-byte, and is only ever reached once `mode === "phone"` is already guaranteed by this
+  // early return not having fired.
+  if (state && onboarding && mode !== "phone") {
+    return (
+      <LazyChunk>
+        <OnboardingScreen onDone={() => setWizard(false)} />
+      </LazyChunk>
+    );
+  }
+
   // Wide: rail + band + panel replace the phone card entirely, on EVERY screen including Add
   // (PR6 Task 5 — this used to except `screen === "addExpense"` and fall through to the
   // phone-column takeover below, "interim by design" per pr4-task-4-brief.md §4e; that branch is

@@ -12,6 +12,7 @@
  */
 import { type ReactNode, useEffect, useState } from "react";
 import { AmountPadHost, type AmountPadTarget } from "../components/AmountPadSheet";
+import BootShellWide from "../components/BootShellWide";
 import { LogoMark } from "../components/chrome";
 import { markInstallOffered } from "../components/InstallBanner";
 import { InstallBody } from "../components/InstallBody";
@@ -27,6 +28,7 @@ import { customEnvelopeStyle, TEMPLATE } from "../lib/onboardingTemplate";
 import { store } from "../lib/store";
 import { assertOwnReplica, fullResync } from "../lib/sync";
 import { ACCOUNT_COLORS, CORAL, font, P, TEAL } from "../lib/theme";
+import { useViewMode } from "../lib/viewMode";
 
 /** Checklist row: a template item (name=Message, color/icon from TEMPLATE) or a custom envelope (custom, styled via customEnvelopeStyle). */
 type TplRow = { name?: Message; custom?: string; isSavings?: boolean; checked: boolean; color: string; icon: string };
@@ -213,22 +215,173 @@ export function OnboardingScreen({ onDone }: { onDone: () => void }) {
     finish(); // empty-budget condition cleared → App renders Start (or the install card first)
   };
 
-  return (
-    <div className="gs" style={{ flex: 1, overflowY: "auto", padding: `24px ${P + 4}px 32px`, display: "flex", flexDirection: "column" }}>
-      {showInstall ? (
-        <div style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "center", gap: 18 }}>
-          <div style={{ textAlign: "center" }}>
-            <div style={{ fontSize: 20, fontWeight: 800, color: C.text, marginBottom: 6 }}>{t("Add Enveo to your phone")}</div>
-            <div style={{ fontSize: 13.5, color: C.soft, lineHeight: 1.5 }}>
-              {t("One tap and Enveo lives on your home screen — offline, full screen, no browser bar.")}
+  // Wide (fold/desktop): the wizard hosts itself inside the boot shell (PR7 Task 3) — it is a
+  // boot state, not an app screen, so it leaves App's rail/BottomNav/SyncBadge/InstallBanner
+  // entirely behind (App.tsx renders this component unwrapped, before any of those mount — see
+  // App.tsx's own comment at that branch). Static import is legal here: this whole module is
+  // ALREADY lazy (App.tsx's `OnboardingScreen = lazy(...)`), so Vite emits BootShellWide as a
+  // shared chunk reachable only through dynamic imports — nothing eager grows.
+  const mode = useViewMode();
+  const wide = mode !== "phone";
+  // ONE step/install tree for both hosts (do not fork it per mode): the step wrappers' own
+  // `flex: 1; justifyContent: "center"` are no-ops inside BootShellWide's auto-height content
+  // column (flex-grow against an auto-sized parent does nothing there), and the shell centres
+  // its column with `margin: auto` instead — so the exact same JSX reads correctly in the
+  // phone's own flex-1/overflow scroller below and in the shell's content region.
+  const body = showInstall ? (
+    <div style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "center", gap: 18 }}>
+      <div style={{ textAlign: "center" }}>
+        <div style={{ fontSize: 20, fontWeight: 800, color: C.text, marginBottom: 6 }}>{t("Add Enveo to your phone")}</div>
+        <div style={{ fontSize: 13.5, color: C.soft, lineHeight: 1.5 }}>
+          {t("One tap and Enveo lives on your home screen — offline, full screen, no browser bar.")}
+        </div>
+      </div>
+      <InstallBody onDone={doneWithInstall} />
+      <button
+        onClick={doneWithInstall}
+        style={{
+          width: "100%",
+          marginTop: 4,
+          padding: "11px 0",
+          borderRadius: 11,
+          border: "none",
+          background: "transparent",
+          color: C.soft,
+          fontSize: 13,
+          fontWeight: 600,
+          cursor: "pointer",
+          fontFamily: font,
+        }}
+      >
+        {t("Skip for now")}
+      </button>
+    </div>
+  ) : (
+    <>
+      {/* ── Step 0: welcome + language/currency + path choice ── */}
+      {step === 0 && (
+        <div style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "center" }}>
+          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", textAlign: "center", marginBottom: 26 }}>
+            <div style={{ marginBottom: 16 }}>
+              <LogoMark size={74} />
+            </div>
+            <div style={{ fontSize: 21, fontWeight: 700, color: C.text, marginBottom: 8 }}>{t("Welcome to Enveo")}</div>
+            <div style={{ fontSize: 13, color: C.soft, lineHeight: 1.6, maxWidth: 300 }}>
+              {t("Envelope budgeting: assign your income to envelopes and always know how much you can still spend.")}
             </div>
           </div>
-          <InstallBody onDone={doneWithInstall} />
+
+          <Row label={t("Language")}>
+            {/* From the registry, like Settings: detectLang() can preselect ANY locale, so a two-option
+                    control would open the wizard with nothing selected for a German or Czech browser. */}
+            <select
+              value={settings.lang}
+              /* the locale chunk is fetched BEFORE the switch — otherwise the wizard stays English until a reload */
+              onChange={(e) => {
+                const id = e.target.value as Lang;
+                void loadLocale(id).then(() => setSettings({ ...settings, lang: id }));
+              }}
+              style={{
+                padding: "7px 10px",
+                borderRadius: 9,
+                border: `1px solid ${C.line}`,
+                background: C.bg,
+                color: C.text,
+                fontSize: 12.5,
+                fontWeight: 600,
+                fontFamily: font,
+              }}
+            >
+              {LOCALES.map((l) => (
+                <option key={l.code} value={l.code}>
+                  {l.endonym}
+                </option>
+              ))}
+            </select>
+          </Row>
+          <Row label={t("Currency")}>
+            <select
+              value={currency}
+              onChange={(e) => setCurrency(e.target.value)}
+              style={{
+                padding: "7px 10px",
+                borderRadius: 9,
+                border: `1px solid ${C.line}`,
+                background: C.bg,
+                color: C.text,
+                fontSize: 12.5,
+                fontWeight: 600,
+                fontFamily: font,
+              }}
+            >
+              {SUPPORTED_CURRENCIES.map((c) => (
+                <option key={c} value={c}>
+                  {c}
+                </option>
+              ))}
+            </select>
+          </Row>
+
+          <div style={{ height: 26 }} />
+          <BigButton
+            label={t("Start with an empty budget")}
+            onClick={() => {
+              commitCurrency();
+              setStep(1);
+            }}
+            disabled={busy}
+            variant="teal"
+          />
+          <div style={{ height: 10 }} />
+          <BigButton label={busy ? t("Loading sample data…") : t("Try it with sample data")} onClick={() => void tryDemo()} disabled={busy} variant="outline" />
+          {error && <div style={{ fontSize: 12, color: CORAL, marginTop: 10, lineHeight: 1.5 }}>{error}</div>}
+        </div>
+      )}
+
+      {/* ── Step 1: first account ── */}
+      {step === 1 && (
+        <div style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "center" }}>
+          <div style={{ fontSize: 19, fontWeight: 700, color: C.text, marginBottom: 8 }}>{t("Your first account")}</div>
+          <div style={{ fontSize: 12.5, color: C.soft, lineHeight: 1.6, marginBottom: 22 }}>
+            {t("Add the account you spend from. The balance can be approximate — it is easy to adjust later.")}
+          </div>
+
+          <div style={{ fontSize: 11, color: C.mute, fontWeight: 600, marginBottom: 6 }}>{t("Account name")}</div>
+          <input
+            value={accName}
+            onChange={(e) => setAccName(e.target.value)}
+            placeholder={t("e.g. Checking")}
+            style={{ ...inputStyle(C.line, C.bg, C.text), marginBottom: 14 }}
+          />
+
+          <div style={{ fontSize: 11, color: C.mute, fontWeight: 600, marginBottom: 6 }}>{`${t("Starting balance")} (${currency})`}</div>
+          <input
+            // `accBal` stays CANONICAL (fmtSignedTrim in, parseAmount out) — display only is
+            // localized, placeholder included ("0.00" in en, "0,00" in pl).
+            value={localizePadExpression(accBal, lang)}
+            readOnly
+            onClick={openBalancePad}
+            onFocus={openBalancePad}
+            placeholder={localizePadExpression("0,00", lang)}
+            style={{ ...inputStyle(C.line, C.bg, C.text), marginBottom: 22, cursor: "pointer" }}
+          />
+          {/* Wide-only (M13 sibling ruling): the mock draws this caption in both modes, but a
+                  wizard step this short never needed reassurance on a 420px phone screen — phone
+                  pixels stay untouched (spec §Goal: phone identity wins on an unflagged mock
+                  addition). negative marginTop folds the caption up against the input's own
+                  marginBottom:22 instead of stacking a second gap under it. */}
+          {wide && (
+            <div style={{ fontSize: 11.5, color: C.mute, lineHeight: 1.5, marginTop: -14, marginBottom: 22 }}>
+              {t("A negative balance is fine — that is how a credit card starts.")}
+            </div>
+          )}
+
+          <BigButton label={t("Add account")} onClick={createAccount} disabled={!accName.trim()} variant="teal" />
           <button
-            onClick={doneWithInstall}
+            onClick={() => setStep(0)}
             style={{
               width: "100%",
-              marginTop: 4,
+              marginTop: 12,
               padding: "11px 0",
               borderRadius: 11,
               border: "none",
@@ -240,258 +393,139 @@ export function OnboardingScreen({ onDone }: { onDone: () => void }) {
               fontFamily: font,
             }}
           >
-            {t("Skip for now")}
+            {t("Back")}
           </button>
         </div>
-      ) : (
-        <>
-          {/* ── Step 0: welcome + language/currency + path choice ── */}
-          {step === 0 && (
-            <div style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "center" }}>
-              <div style={{ display: "flex", flexDirection: "column", alignItems: "center", textAlign: "center", marginBottom: 26 }}>
-                <div style={{ marginBottom: 16 }}>
-                  <LogoMark size={74} />
-                </div>
-                <div style={{ fontSize: 21, fontWeight: 700, color: C.text, marginBottom: 8 }}>{t("Welcome to Enveo")}</div>
-                <div style={{ fontSize: 13, color: C.soft, lineHeight: 1.6, maxWidth: 300 }}>
-                  {t("Envelope budgeting: assign your income to envelopes and always know how much you can still spend.")}
-                </div>
+      )}
+
+      {/* ── Step 2: envelope template (checklist + custom per group) ── */}
+      {step === 2 && (
+        <div>
+          <div style={{ fontSize: 19, fontWeight: 700, color: C.text, marginBottom: 8, marginTop: 6 }}>{t("Your envelopes")}</div>
+          <div style={{ fontSize: 12.5, color: C.soft, lineHeight: 1.6, marginBottom: 18 }}>
+            {t("Pick the envelopes you want to start with — you can change them or add new ones anytime.")}
+          </div>
+
+          {TEMPLATE.map((tpl, gi) => (
+            <div key={tpl.group} style={{ marginBottom: 18 }}>
+              <div style={{ fontSize: 10.5, fontWeight: 600, color: C.mute, textTransform: "uppercase", letterSpacing: 0.6, marginBottom: 6 }}>
+                {t(tpl.group)}
               </div>
-
-              <Row label={t("Language")}>
-                {/* From the registry, like Settings: detectLang() can preselect ANY locale, so a two-option
-                    control would open the wizard with nothing selected for a German or Czech browser. */}
-                <select
-                  value={settings.lang}
-                  /* the locale chunk is fetched BEFORE the switch — otherwise the wizard stays English until a reload */
-                  onChange={(e) => {
-                    const id = e.target.value as Lang;
-                    void loadLocale(id).then(() => setSettings({ ...settings, lang: id }));
-                  }}
-                  style={{
-                    padding: "7px 10px",
-                    borderRadius: 9,
-                    border: `1px solid ${C.line}`,
-                    background: C.bg,
-                    color: C.text,
-                    fontSize: 12.5,
-                    fontWeight: 600,
-                    fontFamily: font,
-                  }}
-                >
-                  {LOCALES.map((l) => (
-                    <option key={l.code} value={l.code}>
-                      {l.endonym}
-                    </option>
-                  ))}
-                </select>
-              </Row>
-              <Row label={t("Currency")}>
-                <select
-                  value={currency}
-                  onChange={(e) => setCurrency(e.target.value)}
-                  style={{
-                    padding: "7px 10px",
-                    borderRadius: 9,
-                    border: `1px solid ${C.line}`,
-                    background: C.bg,
-                    color: C.text,
-                    fontSize: 12.5,
-                    fontWeight: 600,
-                    fontFamily: font,
-                  }}
-                >
-                  {SUPPORTED_CURRENCIES.map((c) => (
-                    <option key={c} value={c}>
-                      {c}
-                    </option>
-                  ))}
-                </select>
-              </Row>
-
-              <div style={{ height: 26 }} />
-              <BigButton
-                label={t("Start with an empty budget")}
-                onClick={() => {
-                  commitCurrency();
-                  setStep(1);
-                }}
-                disabled={busy}
-                variant="teal"
-              />
-              <div style={{ height: 10 }} />
-              <BigButton
-                label={busy ? t("Loading sample data…") : t("Try it with sample data")}
-                onClick={() => void tryDemo()}
-                disabled={busy}
-                variant="outline"
-              />
-              {error && <div style={{ fontSize: 12, color: CORAL, marginTop: 10, lineHeight: 1.5 }}>{error}</div>}
-            </div>
-          )}
-
-          {/* ── Step 1: first account ── */}
-          {step === 1 && (
-            <div style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "center" }}>
-              <div style={{ fontSize: 19, fontWeight: 700, color: C.text, marginBottom: 8 }}>{t("Your first account")}</div>
-              <div style={{ fontSize: 12.5, color: C.soft, lineHeight: 1.6, marginBottom: 22 }}>
-                {t("Add the account you spend from. The balance can be approximate — it is easy to adjust later.")}
-              </div>
-
-              <div style={{ fontSize: 11, color: C.mute, fontWeight: 600, marginBottom: 6 }}>{t("Account name")}</div>
-              <input
-                value={accName}
-                onChange={(e) => setAccName(e.target.value)}
-                placeholder={t("e.g. Checking")}
-                style={{ ...inputStyle(C.line, C.bg, C.text), marginBottom: 14 }}
-              />
-
-              <div style={{ fontSize: 11, color: C.mute, fontWeight: 600, marginBottom: 6 }}>{`${t("Starting balance")} (${currency})`}</div>
-              <input
-                // `accBal` stays CANONICAL (fmtSignedTrim in, parseAmount out) — display only is
-                // localized, placeholder included ("0.00" in en, "0,00" in pl).
-                value={localizePadExpression(accBal, lang)}
-                readOnly
-                onClick={openBalancePad}
-                onFocus={openBalancePad}
-                placeholder={localizePadExpression("0,00", lang)}
-                style={{ ...inputStyle(C.line, C.bg, C.text), marginBottom: 22, cursor: "pointer" }}
-              />
-
-              <BigButton label={t("Add account")} onClick={createAccount} disabled={!accName.trim()} variant="teal" />
-              <button
-                onClick={() => setStep(0)}
-                style={{
-                  width: "100%",
-                  marginTop: 12,
-                  padding: "11px 0",
-                  borderRadius: 11,
-                  border: "none",
-                  background: "transparent",
-                  color: C.soft,
-                  fontSize: 13,
-                  fontWeight: 600,
-                  cursor: "pointer",
-                  fontFamily: font,
-                }}
-              >
-                {t("Back")}
-              </button>
-            </div>
-          )}
-
-          {/* ── Step 2: envelope template (checklist + custom per group) ── */}
-          {step === 2 && (
-            <div>
-              <div style={{ fontSize: 19, fontWeight: 700, color: C.text, marginBottom: 8, marginTop: 6 }}>{t("Your envelopes")}</div>
-              <div style={{ fontSize: 12.5, color: C.soft, lineHeight: 1.6, marginBottom: 18 }}>
-                {t("Pick the envelopes you want to start with — you can change them or add new ones anytime.")}
-              </div>
-
-              {TEMPLATE.map((tpl, gi) => (
-                <div key={tpl.group} style={{ marginBottom: 18 }}>
-                  <div style={{ fontSize: 10.5, fontWeight: 600, color: C.mute, textTransform: "uppercase", letterSpacing: 0.6, marginBottom: 6 }}>
-                    {t(tpl.group)}
-                  </div>
-                  <div style={{ background: C.bg, borderRadius: 11, border: `1px solid ${C.line}`, padding: "2px 12px" }}>
-                    {rows[gi]!.map((r, ri) => (
-                      <button
-                        key={r.custom ?? r.name}
-                        onClick={() => toggleRow(gi, ri)}
-                        style={{
-                          display: "flex",
-                          alignItems: "center",
-                          gap: 10,
-                          width: "100%",
-                          padding: "11px 0",
-                          background: "none",
-                          border: "none",
-                          borderBottom: `1px solid ${C.line}`,
-                          cursor: "pointer",
-                          textAlign: "left",
-                        }}
-                      >
-                        <span
-                          aria-hidden="true"
-                          style={{
-                            width: 20,
-                            height: 20,
-                            borderRadius: 6,
-                            flexShrink: 0,
-                            display: "flex",
-                            alignItems: "center",
-                            justifyContent: "center",
-                            background: r.checked ? TEAL : "transparent",
-                            border: r.checked ? "none" : `1.5px solid ${C.line}`,
-                          }}
+              <div style={{ background: C.bg, borderRadius: 11, border: `1px solid ${C.line}`, padding: "2px 12px" }}>
+                {rows[gi]!.map((r, ri) => (
+                  <button
+                    key={r.custom ?? r.name}
+                    onClick={() => toggleRow(gi, ri)}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 10,
+                      width: "100%",
+                      padding: "11px 0",
+                      background: "none",
+                      border: "none",
+                      borderBottom: `1px solid ${C.line}`,
+                      cursor: "pointer",
+                      textAlign: "left",
+                    }}
+                  >
+                    <span
+                      aria-hidden="true"
+                      style={{
+                        width: 20,
+                        height: 20,
+                        borderRadius: 6,
+                        flexShrink: 0,
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        background: r.checked ? TEAL : "transparent",
+                        border: r.checked ? "none" : `1.5px solid ${C.line}`,
+                      }}
+                    >
+                      {r.checked && (
+                        <svg
+                          width="12"
+                          height="12"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="#fff"
+                          strokeWidth="3.2"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
                         >
-                          {r.checked && (
-                            <svg
-                              width="12"
-                              height="12"
-                              viewBox="0 0 24 24"
-                              fill="none"
-                              stroke="#fff"
-                              strokeWidth="3.2"
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                            >
-                              <path d="M4.5 12.5l5 5 10-11" />
-                            </svg>
-                          )}
-                        </span>
-                        <span style={{ fontSize: 13.5, color: C.text, fontWeight: 500 }}>{r.custom ?? t(r.name!)}</span>
-                      </button>
-                    ))}
-                    <div style={{ display: "flex", gap: 8, padding: "9px 0" }}>
-                      <input
-                        value={drafts[gi]}
-                        onChange={(e) => setDrafts((prev) => prev.map((d, i) => (i === gi ? e.target.value : d)))}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter") addCustom(gi);
-                        }}
-                        placeholder={t("Custom envelope…")}
-                        style={{ ...inputStyle(C.line, C.bg, C.text), padding: "8px 10px", fontSize: 13 }}
-                      />
-                      <button
-                        onClick={() => addCustom(gi)}
-                        disabled={!drafts[gi]?.trim()}
-                        aria-label={t("Add a custom envelope")}
-                        style={{
-                          flexShrink: 0,
-                          width: 38,
-                          borderRadius: 10,
-                          border: `1px solid ${C.line}`,
-                          background: C.bg,
-                          color: C.text,
-                          fontSize: 18,
-                          fontWeight: 600,
-                          cursor: "pointer",
-                          opacity: drafts[gi]?.trim() ? 1 : 0.5,
-                          fontFamily: font,
-                        }}
-                      >
-                        +
-                      </button>
-                    </div>
-                  </div>
+                          <path d="M4.5 12.5l5 5 10-11" />
+                        </svg>
+                      )}
+                    </span>
+                    <span style={{ fontSize: 13.5, color: C.text, fontWeight: 500 }}>{r.custom ?? t(r.name!)}</span>
+                  </button>
+                ))}
+                <div style={{ display: "flex", gap: 8, padding: "9px 0" }}>
+                  <input
+                    value={drafts[gi]}
+                    onChange={(e) => setDrafts((prev) => prev.map((d, i) => (i === gi ? e.target.value : d)))}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") addCustom(gi);
+                    }}
+                    placeholder={t("Custom envelope…")}
+                    style={{ ...inputStyle(C.line, C.bg, C.text), padding: "8px 10px", fontSize: 13 }}
+                  />
+                  <button
+                    onClick={() => addCustom(gi)}
+                    disabled={!drafts[gi]?.trim()}
+                    aria-label={t("Add a custom envelope")}
+                    style={{
+                      flexShrink: 0,
+                      width: 38,
+                      borderRadius: 10,
+                      border: `1px solid ${C.line}`,
+                      background: C.bg,
+                      color: C.text,
+                      fontSize: 18,
+                      fontWeight: 600,
+                      cursor: "pointer",
+                      opacity: drafts[gi]?.trim() ? 1 : 0.5,
+                      fontFamily: font,
+                    }}
+                  >
+                    +
+                  </button>
                 </div>
-              ))}
+              </div>
+            </div>
+          ))}
 
-              {/* sticky (not fixed): stays pinned to the .gs scrollport's bottom edge while the
+          {/* sticky (not fixed): stays pinned to the .gs scrollport's bottom edge while the
                   checklist scrolls, so the CTA is reachable without scrolling all the way down —
                   desktop viewports (1280x800) can otherwise clip it below the fold (B3). bottom:-32
                   compensates the .gs container's 32px bottom padding; the background hides list rows
                   scrolling underneath. */}
-              <div style={{ position: "sticky", bottom: -32, padding: "10px 0 4px", background: C.bg }}>
-                <BigButton label={t("Create envelopes")} onClick={createEnvelopes} disabled={!anyChecked} variant="teal" />
-              </div>
-            </div>
-          )}
-        </>
+          <div style={{ position: "sticky", bottom: -32, padding: "10px 0 4px", background: C.bg }}>
+            <BigButton label={t("Create envelopes")} onClick={createEnvelopes} disabled={!anyChecked} variant="teal" />
+          </div>
+        </div>
       )}
+    </>
+  );
 
+  if (!wide)
+    return (
+      <div className="gs" style={{ flex: 1, overflowY: "auto", padding: `24px ${P + 4}px 32px`, display: "flex", flexDirection: "column" }}>
+        {body}
+        <AmountPadHost target={pad} onClose={() => setPad(null)} />
+      </div>
+    );
+
+  return (
+    <BootShellWide
+      mode={mode}
+      view={showInstall ? "install" : "wizard"}
+      wizardStep={step}
+      formMax={step === 2 && !showInstall ? (mode === "desktop" ? 820 : 1000) : undefined}
+    >
+      <div className="gs">{body}</div>
       <AmountPadHost target={pad} onClose={() => setPad(null)} />
-    </div>
+    </BootShellWide>
   );
 }

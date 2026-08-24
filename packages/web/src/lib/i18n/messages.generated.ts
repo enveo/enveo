@@ -20,6 +20,7 @@ export const MESSAGES = [
   "A key is stored as zero-knowledge ciphertext. Enveo cannot display or decrypt it; saving below replaces it atomically.",
   "A key is stored in the server vault. Enveo cannot display it; saving below replaces it atomically.",
   "A local copy means the app opens instantly and keeps working on a plane.",
+  "A negative balance is fine — that is how a credit card starts.",
   "A pairing code moves the key from an unlocked device — paste only, no QR scanning.",
   "A previous upgrade attempt was interrupted before it could finish. Resume it to complete the upgrade with the password you chose then — a new password cannot be set until this attempt finishes or is discarded.",
   "A profile with this name already exists.",
