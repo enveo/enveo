@@ -361,6 +361,7 @@ type WideShellBag = {
  * | ImportSheet                                                        | portal, full-screen | unchanged    | unchanged |
  * | IconColorPicker                                                    | portal     | unchanged              | unchanged |
  * | AccountEditSheet (`AccountEdit`, row edits + "New account")     | Sheet      | pane surface (PR6b)    | — |
+ * | ReconcileSheet (`AccountsWidget`'s per-account sheet + `AccountPanel`'s Reconcile action) | Sheet (phone-only reach — no wide UI could open it before PR6b) | pane surface (PR6b) | — |
  * | AiConsentSheet / InstallSheet / DataSection sheets / EditWidgetsSheet | Sheet | sheet          | EditWidgetsSheet → PR5's `widgets` pane |
  * | `UpdatePrompt`                                                     | fixed, viewport-centered on phone | anchored to the primary pane's measured rect on wide (this file, below) — MEASURED to collide with this panel at 1104x992 before the fix | — (closed) |
  *
