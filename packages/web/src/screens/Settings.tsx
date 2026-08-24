@@ -117,7 +117,10 @@ export function SettingsScreen({ onBack, onInstall }: { onBack: () => void; onIn
         <Hub onOpen={go} onInstall={onInstall} />
       ) : (
         <div key={sub} className="fi" style={{ padding: `0 ${P + 2}px` }}>
-          {/* fi, not fu: transform on an ancestor breaks position:fixed sheets (e.g. the E2EE wizard) */}
+          {/* fi, not fu: transform on an ancestor breaks position:fixed sheets (e.g. the E2EE
+              wizard) — and `.fi` itself must keep NO fill-forwards (see its own comment in
+              chrome.tsx's StyleInjector), or the animation leaves this wrapper a stacking context
+              forever, which traps such a Sheet just the same. */}
           {sub === "appearance" && <AppearanceSection />}
           {sub === "dictionaries" && <DictionariesSection />}
           {sub === "ai" && <AiSection />}
