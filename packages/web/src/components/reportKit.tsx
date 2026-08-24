@@ -5,7 +5,7 @@ import { createPortal } from "react-dom";
 import { useCompactMask, useTheme } from "../lib/contexts";
 import { monthLabel, monthShortLabel } from "../lib/dates";
 import { type Message, useT } from "../lib/i18n";
-import { InWideShell } from "../lib/shellContext";
+import { InWideShell, useWideHost } from "../lib/shellContext";
 import { font, P, TEAL, type Theme } from "../lib/theme";
 import { useElementWidth } from "../lib/useElementWidth";
 import { PHONE_COL } from "../lib/viewMode";
@@ -70,7 +70,7 @@ export function ReportShell(props: ReportShellProps) {
   const C = useTheme();
   const { band, hc } = useBand();
   const { t, lang } = useT();
-  const inWide = useContext(InWideShell);
+  const inWide = useWideHost() !== null;
   const heroBlock = (
     <>
       <div style={{ fontSize: 10.5, fontWeight: 750, letterSpacing: "0.17em", textTransform: "uppercase", color: hc(C.headerMute, C.mute) }}>{eyebrow}</div>

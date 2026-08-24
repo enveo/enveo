@@ -5,6 +5,7 @@ import { useBudgetPreferences, useTheme } from "../../lib/contexts";
 import { type Message, msg, useT } from "../../lib/i18n";
 import { font } from "../../lib/theme";
 import { WIDGET_CATALOG } from "../../lib/widgetCatalog";
+import { AddScreen, type Tab as AddTab } from "../../screens/Add";
 import type { ReportView } from "../../screens/reports/types";
 import { TITLES } from "../../screens/reports/types";
 import { LazyChunk } from "../lazy";
@@ -123,6 +124,9 @@ export function PanelHost({
   onEditTxn,
   onPrev,
   onNext,
+  editTxn,
+  addPreset,
+  onDoneEdit,
 }: {
   view: PanelView;
   onClose: () => void;
@@ -141,6 +145,11 @@ export function PanelHost({
   onEditTxn: (t: Transaction) => void;
   onPrev: () => void;
   onNext: () => void;
+  
+
+  editTxn: Transaction | null;
+  addPreset: { tab?: AddTab; importSheet?: boolean };
+  onDoneEdit: () => void;
 }) {
   const C = useTheme();
   const { t } = useT();
@@ -188,6 +197,17 @@ export function PanelHost({
         );
       case "widgets":
         return <WidgetSettingsPanel widgetId={view.widgetId} state={state} onClose={onClose} />;
+      case "add":
+        
+
+
+
+
+
+
+
+
+        return <AddScreen state={state} editTxn={editTxn} onDone={onDoneEdit} initialTab={addPreset.tab} initialImport={addPreset.importSheet} />;
       default:
         return assertNever(view);
     }

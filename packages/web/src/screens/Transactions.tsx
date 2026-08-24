@@ -1,5 +1,5 @@
 import type { Transaction } from "@enveo/shared";
-import { useContext, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { Header } from "../components/chrome";
 import { CardBox, SectionEyebrow, useBand } from "../components/kit";
 import type { StateResponse } from "../lib/api";
@@ -8,7 +8,7 @@ import { dayHeading } from "../lib/dates";
 import { INPUT_FOCUS_CLASS } from "../lib/focusPresentation";
 import { useT } from "../lib/i18n";
 import { Glyph, Ico } from "../lib/icons";
-import { InWideShell } from "../lib/shellContext";
+import { useWideHost } from "../lib/shellContext";
 import { font, P, TEAL, TRANSFER, tint } from "../lib/theme";
 import {
   createTransactionSearchIndex,
@@ -47,7 +47,7 @@ export function TransactionsScreen({
   const { band, hc } = useBand();
   const M = useMask();
   const { t, tp, lang } = useT();
-  const inWide = useContext(InWideShell);
+  const inWide = useWideHost() !== null;
   const [pickFilter, setPickFilter] = useState(false);
 
   const envById = useMemo(() => new Map(state.envelopes.map((e) => [e.id, e])), [state.envelopes]);
