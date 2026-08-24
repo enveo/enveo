@@ -29,6 +29,7 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { type ClientLedger, createDefaultAccountPreferences, type SyncOp } from "@enveo/shared";
 import { accountPreferences } from "./accountPreferences";
 import { budgetSecretAadContext, decryptPayload, encryptPayload, generateDek, opAadContext } from "./crypto";
+import { cacheDeployment } from "./deviceStoragePolicy";
 import * as e2ee from "./e2ee";
 import { clearLocalData, idbGet, idbPut } from "./idb";
 import * as outbox from "./outbox";
@@ -393,7 +394,35 @@ describe("sync cycle: session guard before the push", () => {
     expect(store.getBootStatus()).toBe("ready");
   });
 
-  it("only the human's explicit choice destroys a foreign replica", async () => {
+  it("CLOUD: a foreign replica is silently discarded and the page reloads — pins the facade composition", async () => {
+    // The guard reads the deployment from localStorage (getCachedDeployment); the stub is
+    // removed by the shared afterEach. This test exercises the REAL composed wipe
+    // (configureIdentity in sync.ts → discardLocalReplica), not an injected fake.
+    const values = new Map<string, string>();
+    (globalThis as { localStorage?: unknown }).localStorage = {
+      getItem: (k: string) => values.get(k) ?? null,
+      setItem: (k: string, v: string) => values.set(k, String(v)),
+      removeItem: (k: string) => values.delete(k),
+    };
+    cacheDeployment("cloud");
+    await idbPut("meta", "user-A", "userId"); // the replica belongs to user A
+    outbox.add(catOp()); // …with an unsent op — forfeited by design on cloud
+    session = { user: { id: "user-B" } };
+
+    await syncNow("test");
+    // enterForeignReplica fires the wipe without awaiting it — wait for the reload it ends in.
+    for (let i = 0; i < 100 && reloads === 0; i++) await new Promise((r) => setTimeout(r, 5));
+
+    expect(called("/api/sync/push")).toBe(false); // nothing of A's reaches B's budget
+    expect(called("/api/sync/replace")).toBe(false);
+    expect(store.getBootStatus()).not.toBe("foreign"); // no ForeignReplicaScreen on cloud
+    expect(reloads).toBe(1); // the wipe ends in a reload into B's clean boot
+    expect(await idbGet("meta", "ledger")).toBeUndefined(); // A's replica is gone
+    expect(await idbGet("meta", "userId")).toBeUndefined(); // …and so is the owner stamp
+    expect(outbox.size()).toBe(0); // …and A's queued op
+  });
+
+  it("SELFHOST: only the human's explicit choice destroys a foreign replica", async () => {
     await idbPut("meta", "user-A", "userId");
     outbox.add(catOp());
     session = { user: { id: "user-B" } };

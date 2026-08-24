@@ -164,7 +164,7 @@ async function doCycle(): Promise<boolean> {
   // E2ee tier without a key → the UI sits on the Unlock screen; no network until unlocked
   // (setDek + retryBoot will lift "locked" and resume a normal boot + cycle).
   if (store.getBootStatus() === "locked") return true;
-  // Foreign replica detected in an earlier cycle — no write until the human decides its fate
+  // Foreign replica detected in an earlier cycle — no write until it is resolved (selfhost: the human; cloud: the wipe reloads)
   if (isIdentityBlocked()) return true;
   let isE2ee = e2ee.getTierMeta().tier === "e2ee";
   // before bootstrap — nothing to do (a fresh e2ee replica may not know its budgetId yet)
