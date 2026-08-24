@@ -3,7 +3,7 @@ import type { ScreenId } from "../components/chrome";
 import type { ReportView } from "../screens/reports/types";
 import { historyAction, parseUrl, type Route, routeToUrl } from "./routing";
 
-const SCREENS: readonly ScreenId[] = ["start", "budget", "transactions", "accounts", "reports", "settings", "addExpense"];
+const SCREENS: readonly ScreenId[] = ["start", "budget", "transactions", "accounts", "reports", "activity", "settings", "addExpense"];
 const REPORT_VIEWS: readonly ReportView[] = ["overview", "assets", "cashflow", "spending", "budgets", "goals", "month", "trends"];
 const ENV_ID = "3f2504e0-4f89-11d3-9a0c-0305e82c3301";
 

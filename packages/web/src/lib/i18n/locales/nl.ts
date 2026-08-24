@@ -314,7 +314,6 @@ export const nl: Dict = {
   "No local copy will be saved. This browser session ends when you close the app.":
     "Er wordt geen lokale kopie opgeslagen. Deze browsersessie eindigt zodra je de app sluit.",
   "No spending in this period.": "Geen uitgaven in deze periode.",
-  "No transactions were recognized in the screenshots.": "In de schermafbeeldingen zijn geen transacties herkend.",
   "No transactions.": "Geen transacties.",
   "Not available with your OpenAI key.": "Niet beschikbaar met je OpenAI-sleutel.",
   "Not sending": "Wordt niet verstuurd",

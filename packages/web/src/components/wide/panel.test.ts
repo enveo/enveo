@@ -31,7 +31,7 @@ const FB: PanelFallbacks = { firstEnvelopeId: "env-fb", firstAccountId: "acc-fb"
 // The genuinely-empty-dataset table (every fallback id null) — `empty` must still survive here.
 const EMPTY_FB: PanelFallbacks = { firstEnvelopeId: null, firstAccountId: null, firstTxnId: null, month: "2026-08" };
 
-const SCREENS: readonly ScreenId[] = ["start", "budget", "transactions", "accounts", "reports", "addExpense", "settings"];
+const SCREENS: readonly ScreenId[] = ["start", "budget", "transactions", "accounts", "reports", "activity", "addExpense", "settings"];
 
 
 

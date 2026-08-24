@@ -24,10 +24,11 @@ export interface ImportJobManagerState {
 export interface ImportJobManagerPlainPort {
   start(): void;
   stop(): void;
-  create(input: PlainImportCreateInput): Promise<ImportActivityItem>;
+  create(input: PlainImportCreateInput, onCreated?: ImportActivityListener): Promise<ImportActivityItem>;
   refresh(force?: boolean): Promise<void>;
   cancel(id: string): Promise<void>;
   retry(id: string): Promise<void>;
+  complete(id: string, counts: { appliedCount: number; skippedCount: number }): Promise<void>;
   dismiss(id: string): void;
 }
 
@@ -38,6 +39,7 @@ export interface ImportJobManagerE2eePort {
   list(): Promise<ImportActivityItem[]>;
   cancel(id: string): Promise<void>;
   retry(id: string): Promise<void>;
+  complete(id: string, counts: { appliedCount: number; skippedCount: number }): Promise<void>;
   dismiss(id: string): Promise<void>;
 }
 
@@ -88,6 +90,8 @@ export class ImportJobManager {
   private readonly scheduleInterval: NonNullable<ImportJobManagerOptions["scheduleInterval"]>;
   private readonly clearScheduledInterval: NonNullable<ImportJobManagerOptions["clearScheduledInterval"]>;
   private readonly activity = createImportActivityStore();
+  private readonly appliedRows = new Map<string, Set<string>>();
+  private readonly appliedCounts = new Map<string, number>();
   private scope: ImportJobStorageScope | null = null;
   private plain: ImportJobManagerPlainPort | null = null;
   private local: ImportJobManagerE2eePort | null = null;
@@ -136,7 +140,11 @@ export class ImportJobManager {
     this.plain = null;
     this.local = null;
     this.scope = null;
-    if (clear) this.activity.clear();
+    if (clear) {
+      this.activity.clear();
+      this.appliedRows.clear();
+      this.appliedCounts.clear();
+    }
   }
 
   private snapshot(): ActivationSnapshot | null {
@@ -274,7 +282,7 @@ export class ImportJobManager {
     if (generation !== this.generation) return;
   }
 
-  async create(input: ImportJobManagerCreateInput): Promise<ImportActivityItem> {
+  async create(input: ImportJobManagerCreateInput, onCreated?: ImportActivityListener): Promise<ImportActivityItem> {
     if (!(await this.activate()) || !this.scope) throw new Error("import_manager_not_ready");
     const generation = this.generation;
     const currentLedger = this.state.getLedger();
@@ -284,7 +292,7 @@ export class ImportJobManager {
     const meta = this.tierMeta();
     if (meta.tier === "plain") {
       if (!this.plain || budget.preferences.aiProvider === "rules") throw new Error("ai_capability_unsupported");
-      const created = await this.plain.create({ id, accountId: input.accountId, locale: input.locale, images: [...input.images] });
+      const created = await this.plain.create({ id, accountId: input.accountId, locale: input.locale, images: [...input.images] }, onCreated);
       if (generation !== this.generation) throw new Error("stale_import_job_manager");
       return created;
     }
@@ -297,12 +305,45 @@ export class ImportJobManager {
       provider: { provider: "openai", model: budget.preferences.openaiModel as OpenAiModel },
     });
     if (generation !== this.generation) throw new Error("stale_import_job_manager");
+    onCreated?.(created);
     void this.local.resume().catch(() => {});
     return created;
   }
 
   observe(id: string, listener: ImportActivityListener): () => void {
     return this.activity.observe(id, listener);
+  }
+
+  async recordApplied(id: string, rowIds: readonly string[]): Promise<void> {
+    const scope = this.scope;
+    if (!scope || !this.activity.get(id)) return;
+    const applied = this.appliedRows.get(id) ?? new Set<string>();
+    let added = 0;
+    for (const rowId of rowIds) {
+      if (!applied.has(rowId)) added++;
+      applied.add(rowId);
+    }
+    const previousCount = this.appliedCounts.get(id) ?? (await importJobStorage.getAppliedCount(scope, id));
+    const appliedCount = previousCount + added;
+    await importJobStorage.putAppliedCount(scope, id, appliedCount);
+    if (this.scope?.ownerId !== scope.ownerId || this.scope.budgetId !== scope.budgetId) return;
+    this.appliedRows.set(id, applied);
+    this.appliedCounts.set(id, appliedCount);
+  }
+
+  async appliedProgress(id: string): Promise<{ appliedRowIds: string[]; appliedCount: number }> {
+    const scope = this.scope;
+    if (!scope) return { appliedRowIds: [], appliedCount: 0 };
+    const appliedRowIds = [...(this.appliedRows.get(id) ?? [])];
+    const appliedCount = this.appliedCounts.get(id) ?? (await importJobStorage.getAppliedCount(scope, id));
+    if (this.scope?.ownerId === scope.ownerId && this.scope.budgetId === scope.budgetId) this.appliedCounts.set(id, appliedCount);
+    return { appliedRowIds, appliedCount };
+  }
+
+  private async clearApplied(id: string, scope: ImportJobStorageScope | null): Promise<void> {
+    this.appliedRows.delete(id);
+    this.appliedCounts.delete(id);
+    if (scope) await importJobStorage.deleteAppliedCount(scope, id);
   }
 
   async list(): Promise<ImportActivityItem[]> {
@@ -326,8 +367,10 @@ export class ImportJobManager {
   async cancel(id: string): Promise<void> {
     const current = await this.item(id);
     if (!current) return;
+    const scope = this.scope;
     if (current.source === "e2ee") await this.local?.cancel(id);
     else await this.plain?.cancel(id);
+    await this.clearApplied(id, scope);
   }
 
   async retry(id: string): Promise<void> {
@@ -337,11 +380,22 @@ export class ImportJobManager {
     else await this.plain?.retry(id);
   }
 
+  async complete(id: string, counts: { appliedCount: number; skippedCount: number }): Promise<void> {
+    const current = await this.item(id);
+    if (!current) return;
+    const scope = this.scope;
+    if (current.source === "e2ee") await this.local?.complete(id, counts);
+    else await this.plain?.complete(id, counts);
+    await this.clearApplied(id, scope);
+  }
+
   async dismiss(id: string): Promise<void> {
     const current = await this.item(id);
     if (!current) return;
+    const scope = this.scope;
     if (current.source === "e2ee") await this.local?.dismiss(id);
     else this.plain?.dismiss(id);
+    await this.clearApplied(id, scope);
   }
 }
 

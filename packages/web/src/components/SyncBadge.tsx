@@ -50,7 +50,7 @@ export function SyncBadge({ onOpenSync, inline = false }: { onOpenSync: () => vo
     : {
         position: "absolute",
         top: "calc(env(safe-area-inset-top) + 13px)",
-        right: 48,
+        right: 76,
         zIndex: 60,
         display: "flex",
         alignItems: "center",

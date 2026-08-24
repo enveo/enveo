@@ -313,7 +313,6 @@ export const es: Dict = {
   "No local copy will be saved. This browser session ends when you close the app.":
     "No se guardará ninguna copia local. Esta sesión del navegador termina cuando cierras la aplicación.",
   "No spending in this period.": "No hay gastos en este periodo.",
-  "No transactions were recognized in the screenshots.": "No se ha reconocido ninguna transacción en las capturas.",
   "No transactions.": "No hay transacciones.",
   "Not available with your OpenAI key.": "No disponible con tu clave de OpenAI.",
   "Not sending": "No se envía",

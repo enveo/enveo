@@ -319,7 +319,6 @@ export const cs: Dict = {
   "No local copy will be saved. This browser session ends when you close the app.":
     "Žádná lokální kopie se neuloží. Tahle relace v prohlížeči skončí, jakmile aplikaci zavřeš.",
   "No spending in this period.": "V tomto období žádné výdaje.",
-  "No transactions were recognized in the screenshots.": "Ve snímcích obrazovky nebyly rozpoznány žádné transakce.",
   "No transactions.": "Žádné transakce.",
   "Not available with your OpenAI key.": "Není dostupný s tvým klíčem OpenAI.",
   "Not sending": "Neodesílá se",

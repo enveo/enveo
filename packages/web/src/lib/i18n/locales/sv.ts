@@ -311,7 +311,6 @@ export const sv: Dict = {
   "No local copy will be saved. This browser session ends when you close the app.":
     "Ingen lokal kopia sparas. Den här webbläsarsessionen avslutas när du stänger appen.",
   "No spending in this period.": "Inga utgifter under den här perioden.",
-  "No transactions were recognized in the screenshots.": "Inga transaktioner kändes igen i skärmbilderna.",
   "No transactions.": "Inga transaktioner.",
   "Not available with your OpenAI key.": "Inte tillgänglig med din OpenAI-nyckel.",
   "Not sending": "Skickar inte",

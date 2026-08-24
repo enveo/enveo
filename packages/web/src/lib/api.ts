@@ -74,6 +74,8 @@ export interface EditedImportItem {
 export type ImportApplyItem = Omit<ImportItem, "type"> &
   Partial<EditedImportItem> & {
     type: "expense" | "income" | "transfer";
+     
+    importRowId?: string;
     force?: boolean;
      
     automaticEnvelopeDefault?: boolean;

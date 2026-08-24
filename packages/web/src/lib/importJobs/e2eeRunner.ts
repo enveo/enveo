@@ -353,6 +353,7 @@ export class E2eeImportJobRunner {
           );
           this.assertCurrent();
         } else {
+          if (!job.inputCiphertext) throw new Error("invalid_import_input");
           images = parseInput(await this.decrypt(job.inputCiphertext, key, importJobAadContext(job.budgetId, job.epoch, job.id, "input"))).images;
           this.assertCurrent();
         }
@@ -503,6 +504,30 @@ export class E2eeImportJobRunner {
     try {
       await this.transition(job, { type: "retry", at: this.timestamp() });
       await this.resume();
+    } catch (error) {
+      if (!(error instanceof StaleImportJobRunner)) throw error;
+    }
+  }
+
+  async complete(id: string, counts: { appliedCount: number; skippedCount: number }): Promise<void> {
+    if (!this.isCurrent()) return;
+    let job = await importJobStorage.getJob(this.options.scope, id);
+    if (!this.isCurrent() || job?.status !== "ready") return;
+    try {
+      if (job.phase === "ready") job = await this.transition(job, { type: "begin_apply", at: this.timestamp() });
+      if (job.phase !== "applying") return;
+      await this.transition(
+        job,
+        { type: "completed", at: this.timestamp() },
+        {
+          inputCiphertext: null,
+          checkpointCiphertext: null,
+          resultCiphertext: null,
+          appliedCount: counts.appliedCount,
+          skippedCount: counts.skippedCount,
+        },
+        null,
+      );
     } catch (error) {
       if (!(error instanceof StaleImportJobRunner)) throw error;
     }

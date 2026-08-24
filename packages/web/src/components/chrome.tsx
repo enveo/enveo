@@ -336,7 +336,7 @@ export function Surface(props: SheetProps) {
   );
 }
 
-export type ScreenId = "start" | "budget" | "transactions" | "accounts" | "reports" | "addExpense" | "settings";
+export type ScreenId = "start" | "budget" | "transactions" | "accounts" | "reports" | "activity" | "addExpense" | "settings";
 
 
 
@@ -642,6 +642,15 @@ export function Drawer({
             () => {
               onClose();
               onNav("accounts");
+            },
+            chevron,
+          )}
+          {shortcut(
+            D_BARS,
+            t("Activity"),
+            () => {
+              onClose();
+              onNav("activity");
             },
             chevron,
           )}
