@@ -12,15 +12,19 @@
 import { describe, expect, test } from "bun:test";
 import type { ReportTab, ReportView } from "../../screens/reports/types";
 import type { ScreenId } from "../chrome";
-import { type PanelView, resolvePanel } from "./panel";
+import { type PanelView, primaryScreenFor, resolvePanel } from "./panel";
 
 const ENV = { envelopeId: "env-1", month: "2026-08" };
 const SCREENS: readonly ScreenId[] = ["start", "budget", "transactions", "accounts", "reports", "addExpense", "settings"];
+// Every screen EXCEPT `addExpense` — PR6 Task 1's `add` kind wins over an open envelope there
+// (rule below), so `addExpense` is excluded from the plain "envelope wins" loop and covered by
+// its own describe block instead.
+const NON_ADD_SCREENS: readonly ScreenId[] = SCREENS.filter((s) => s !== "addExpense");
 const REPORT_VIEWS: readonly ReportView[] = ["overview", "assets", "cashflow", "spending", "budgets", "goals", "month", "trends"];
 
 describe("resolvePanel", () => {
-  test("an open envelope wins on every screen and every reportsView (rule 2)", () => {
-    for (const screen of SCREENS) {
+  test("an open envelope wins on every screen except addExpense, and every reportsView (rule 2)", () => {
+    for (const screen of NON_ADD_SCREENS) {
       for (const reportsView of REPORT_VIEWS) {
         const view = resolvePanel({ screen, reportsView, envView: ENV });
         expect(view).toEqual({ kind: "envelope", envelopeId: ENV.envelopeId, month: ENV.month });
@@ -47,8 +51,8 @@ describe("resolvePanel", () => {
     }
   });
 
-  test("every other screen (no envelope) resolves to the generic hint, regardless of reportsView — PR4 scope, txn/acct/settings land in PR6", () => {
-    for (const screen of ["transactions", "accounts", "settings", "addExpense"] as const) {
+  test("every other screen (no envelope) resolves to the generic hint, regardless of reportsView — txn/acct/settings stay PR6b scope; addExpense is covered separately below (it now resolves to `add`)", () => {
+    for (const screen of ["transactions", "accounts", "settings"] as const) {
       for (const reportsView of REPORT_VIEWS) {
         expect(resolvePanel({ screen, reportsView, envView: null })).toEqual({ kind: "empty", hint: "generic" });
       }
@@ -67,7 +71,7 @@ describe("resolvePanel", () => {
     expect(first).toEqual(second);
   });
 
-  test("exhaustively covers PR4's three kinds plus PR5's `widgets` — no fifth kind sneaks in", () => {
+  test("exhaustively covers PR4's three kinds, PR5's `widgets` and PR6's `add` — no sixth kind sneaks in", () => {
     const kinds = new Set<PanelView["kind"]>();
     for (const screen of SCREENS) {
       for (const reportsView of REPORT_VIEWS) {
@@ -76,7 +80,7 @@ describe("resolvePanel", () => {
         kinds.add(resolvePanel({ screen, reportsView, envView: null, widgetSettings: "envelopes" }).kind);
       }
     }
-    expect([...kinds].sort()).toEqual(["empty", "envelope", "report", "widgets"]);
+    expect([...kinds].sort()).toEqual(["add", "empty", "envelope", "report", "widgets"]);
   });
 
   describe("PR5's `widgets` kind (the wide board's gear target)", () => {
@@ -105,5 +109,46 @@ describe("resolvePanel", () => {
         expect(view.kind).not.toBe("widgets");
       }
     });
+  });
+
+  describe("PR6's `add` kind (the Add/edit-transaction takeover pane) — D2's push semantics", () => {
+    test("addExpense (no envelope, no report subview) resolves to the add pane, regardless of reportsView", () => {
+      for (const reportsView of REPORT_VIEWS) {
+        expect(resolvePanel({ screen: "addExpense", reportsView, envView: null })).toEqual({ kind: "add" });
+      }
+    });
+
+    test("add wins over an open envelope — an open Add pane is not cleared by envView, so closing it derivationally restores the envelope", () => {
+      for (const reportsView of REPORT_VIEWS) {
+        expect(resolvePanel({ screen: "addExpense", reportsView, envView: ENV })).toEqual({ kind: "add" });
+      }
+    });
+
+    test("add wins over an open report subview", () => {
+      const tabs: readonly ReportTab[] = ["assets", "cashflow", "spending", "budgets", "goals", "month", "trends"];
+      for (const view of tabs) {
+        expect(resolvePanel({ screen: "addExpense", reportsView: view, envView: null })).toEqual({ kind: "add" });
+      }
+    });
+
+    test("add wins over a pending widgetSettings selection too (defensive — addExpense never coincides with widgetSettings in practice)", () => {
+      expect(resolvePanel({ screen: "addExpense", reportsView: "overview", envView: null, widgetSettings: "spending" })).toEqual({ kind: "add" });
+    });
+  });
+});
+
+describe("primaryScreenFor", () => {
+  test("returns editReturn while the screen is addExpense — the primary pane keeps showing the screen Add returns to, never the Add takeover itself", () => {
+    for (const editReturn of SCREENS) {
+      expect(primaryScreenFor("addExpense", editReturn)).toBe(editReturn);
+    }
+  });
+
+  test("returns the screen unchanged for every other screen, regardless of editReturn", () => {
+    for (const screen of NON_ADD_SCREENS) {
+      for (const editReturn of SCREENS) {
+        expect(primaryScreenFor(screen, editReturn)).toBe(screen);
+      }
+    }
   });
 });

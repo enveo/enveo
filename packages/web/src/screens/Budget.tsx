@@ -1,4 +1,4 @@
-import { lazy, useContext, useEffect, useState } from "react";
+import { lazy, useEffect, useRef, useState } from "react";
 import { AmountPadHost, type AmountPadTarget } from "../components/AmountPadSheet";
 import { Header, Sheet } from "../components/chrome";
 import { DockedNumpad } from "../components/DockedNumpad";
@@ -16,7 +16,7 @@ import { goalProgress } from "../lib/goals";
 import { useT } from "../lib/i18n";
 import { Glyph, Ico } from "../lib/icons";
 import { local } from "../lib/mutate";
-import { InWideShell } from "../lib/shellContext";
+import { useWideHost } from "../lib/shellContext";
 import { CORAL, ENV_PALETTE, font, P, TEAL, tint } from "../lib/theme";
 
 // The budget assistant is the second AI surface (§3f). It is the only thing on this screen that
@@ -66,7 +66,12 @@ export function BudgetScreen({
   const C = useTheme();
   const M = useMask();
   const { t } = useT();
-  const inWide = useContext(InWideShell);
+  const wideHost = useWideHost();
+  const inWide = wideHost !== null;
+  // Desktop allocation editing (Task 3b, spec decision D5): a real <input> replaces the pad-driven
+  // cell; DockedNumpad stays for fold/phone. `mode` is read fresh on every render (no memoization
+  // needed — a resize crossing fold↔desktop mid-edit just changes which branch the NEXT render takes).
+  const desktopInput = wideHost?.mode === "desktop";
   const [suggest, setSuggest] = useState(!!initialSuggest);
   // Latched — see Add.tsx: mount on first open, stay mounted, so state survives close→reopen.
   const suggestOpened = useOpenedOnce(suggest);
@@ -87,26 +92,51 @@ export function BudgetScreen({
   // it already computed for its own display).
   const canFillGoals = state.readyToAssign > 0 && state.envelopes.some((e) => !e.archived && (goalProgress(e)?.missing ?? 0) > 0);
   // IN-PLACE allocation editing (docked-numpad spec): one active cell per screen;
-  // `err` = ✓ on an uncomputable/negative result, cleared on the next keypress.
-  const [editing, setEditing] = useState<{ envelopeId: string; pad: PadState; err?: boolean } | null>(null);
+  // `err` = ✓ on an uncomputable/negative result, cleared on the next keypress. `input`, set only
+  // on desktop (Task 3b), carries the real <input>'s raw typed text; `pad` stays populated in every
+  // mode (its `expr` is simply unused while `input !== undefined`) so the state shape is uniform.
+  const [editing, setEditing] = useState<{ envelopeId: string; pad: PadState; err?: boolean; input?: string } | null>(null);
 
   const groups = [...state.groups].sort((a, b) => a.sort - b.sort);
   const envs = state.envelopes.filter((e) => !e.archived);
   const COLS = "1fr 94px 108px";
 
+  // The ONE write path both the docked numpad's ✓ and the desktop input's Enter/blur use.
+  const persistAllocation = (envelopeId: string, minor: number) => {
+    const env = envs.find((x) => x.id === envelopeId);
+    if (env && minor !== env.allocated) local.setDisplayedAllocation({ envelopeId, month, amount: minor });
+  };
   // Commit-or-cancel of the current edit (tap on another envelope): computable → save
   // (negative allowed — moving money back OUT of an envelope is a valid allocation), otherwise discard.
-  const commitEditing = (ed: { envelopeId: string; pad: PadState }) => {
-    const minor = padPreview(ed.pad.expr);
-    const env = envs.find((x) => x.id === ed.envelopeId);
-    if (minor !== null && env && minor !== env.allocated) {
-      local.setDisplayedAllocation({ envelopeId: ed.envelopeId, month, amount: minor });
+  const commitEditing = (ed: { envelopeId: string; pad: PadState; input?: string }) => {
+    const minor = ed.input !== undefined ? parseAmount(ed.input) : padPreview(ed.pad.expr);
+    if (minor !== null) persistAllocation(ed.envelopeId, minor);
+  };
+  // Desktop input's Enter/blur commit (Task 3b): same persistAllocation write as the pad's ✓, but an
+  // unparsable value flags `err` and keeps the cell open instead of silently discarding — the same
+  // contract as DockedNumpad's `target.onInvalid`.
+  const commitDesktopInput = (envelopeId: string, raw: string) => {
+    const minor = parseAmount(raw);
+    if (minor === null) {
+      setEditing((ed) => (ed && ed.envelopeId === envelopeId ? { ...ed, err: true } : ed));
+      return;
     }
+    persistAllocation(envelopeId, minor);
+    setEditing(null);
   };
   const startEdit = (env: EnvelopeView, _cell: HTMLElement | null) => {
     if (editing?.envelopeId === env.id) return;
     if (editing) commitEditing(editing);
-    setEditing({ envelopeId: env.id, pad: { expr: fmtSignedTrim(env.allocated), fresh: true } });
+    setEditing({
+      envelopeId: env.id,
+      pad: { expr: fmtSignedTrim(env.allocated), fresh: true },
+      // fmtSignedTrim, NEVER fmtTrim: a bare fmtTrim discards the sign (fmt() does Math.abs
+      // internally), so a negative allocation would silently commit as its positive magnitude on
+      // an untouched blur/Enter. fmtSignedTrim is the same documented parseAmount round-trip pair
+      // (lib/format.ts) WITH the sign re-attached — the same helper used two lines above for
+      // pad.expr. NEVER fmtTrimLocale either, which parseAmount cannot re-read.
+      ...(desktopInput ? { input: fmtSignedTrim(env.allocated) } : {}),
+    });
   };
   // Scroll ONLY after render (double rAF): a synchronous scrollIntoView in the click
   // handler ran before paddingBottom and the pad appeared — bottom envelopes stayed
@@ -131,8 +161,9 @@ export function BudgetScreen({
   }, [editing?.pad.expr]);
   const activeEnv = editing ? envs.find((x) => x.id === editing.envelopeId) : undefined;
   // padPreviewLive: a trailing operator ("705+") evaluates like "705" — the chip/TBB
-  // don't blank out (or strike through) mid-entry; null only for an empty expression.
-  const activePreview = editing ? padPreviewLive(editing.pad.expr) : null;
+  // don't blank out (or strike through) mid-entry; null only for an empty expression. The desktop
+  // input has no expression syntax, so its "live" preview is simply parseAmount of the typed text.
+  const activePreview = editing ? (editing.input !== undefined ? parseAmount(editing.input) : padPreviewLive(editing.pad.expr)) : null;
   // Live "To be budgeted" header: with a computable preview, subtract the allocation delta.
   // Based on readyToAssign (month-independent headline), not the month-bounded toBeBudgeted,
   // so editing an allocation moves the same number the user sees on Start.
@@ -140,7 +171,10 @@ export function BudgetScreen({
   const { band, hc } = useBand();
 
   return (
-    <div className="gs" style={{ flex: 1, overflowY: "auto", paddingBottom: editing ? 300 : 6 }}>
+    // The 300px reserve is DockedNumpad's own footprint (bar + keypad) — desktop never renders
+    // it (Task 3b: allocation editing there is an inline <input>, no docked pad), so it must not
+    // reserve the space or the list would show a large empty gap while editing.
+    <div className="gs" style={{ flex: 1, overflowY: "auto", paddingBottom: editing && !desktopInput ? 300 : 6 }}>
       <div data-band={band || undefined} style={band ? { background: C.headerBg, paddingBottom: 2 } : undefined}>
         {!inWide && (
           <Header month={month} onMenu={onMenu} onPrev={onPrev} onNext={onNext} onRight={() => onManageOpen(true)} rightIcon="pencil" onBand={band} />
@@ -345,7 +379,14 @@ export function BudgetScreen({
                       </div>
                     </div>
                     <div style={{ position: "relative" }}>
-                      <AllocCell e={e} editing={active ? { expr: active.pad.expr, err: active.err } : null} onStart={(el) => startEdit(e, el)} />
+                      <AllocCell
+                        e={e}
+                        editing={active ? { expr: active.pad.expr, err: active.err, input: active.input } : null}
+                        onStart={(el) => startEdit(e, el)}
+                        onDesktopChange={(value) => setEditing((ed) => (ed && ed.envelopeId === e.id ? { ...ed, input: value, err: false } : ed))}
+                        onDesktopCommit={() => commitDesktopInput(e.id, active?.input ?? "")}
+                        onDesktopCancel={() => setEditing(null)}
+                      />
                     </div>
                     <div style={{ textAlign: "right" }}>
                       <span
@@ -381,16 +422,18 @@ export function BudgetScreen({
           <FillGoalsSheet show={fillGoals} state={state} month={month} onClose={() => setFillGoals(false)} />
         </LazyChunk>
       )}
-      {/* Docked numpad instead of a sheet (no backdrop — the list stays visible). */}
+      {/* Docked numpad instead of a sheet (no backdrop — the list stays visible). Desktop (Task 3b)
+          keeps `target` null: allocation editing there goes through AllocCell's real <input>
+          instead, never this pad. */}
       <DockedNumpad
         target={
-          editing && activeEnv
+          editing && activeEnv && !desktopInput
             ? {
                 label: activeEnv.name,
                 icon: activeEnv.icon,
                 color: activeEnv.color,
                 onCommit: (minor) => {
-                  if (minor !== activeEnv.allocated) local.setDisplayedAllocation({ envelopeId: activeEnv.id, month, amount: minor });
+                  persistAllocation(activeEnv.id, minor);
                   setEditing(null);
                 },
                 onCancel: () => setEditing(null),
@@ -406,15 +449,89 @@ export function BudgetScreen({
   );
 }
 
-/* ── Editable ALLOCATED column (tap = docked numpad, in-place editing) ── */
-function AllocCell({ e, editing, onStart }: { e: EnvelopeView; editing: { expr: string; err?: boolean } | null; onStart: (cell: HTMLElement | null) => void }) {
+/* ── Editable ALLOCATED column (tap = docked numpad on fold/phone, a real <input> on desktop —
+   Task 3b; `editing.input !== undefined` picks the branch) ── */
+function AllocCell({
+  e,
+  editing,
+  onStart,
+  onDesktopChange,
+  onDesktopCommit,
+  onDesktopCancel,
+}: {
+  e: EnvelopeView;
+  editing: { expr: string; err?: boolean; input?: string } | null;
+  onStart: (cell: HTMLElement | null) => void;
+  /** Desktop input only — every keystroke. */
+  onDesktopChange: (value: string) => void;
+  /** Desktop input only — Enter/blur; parses via `parseAmount`, flags `err` and stays open on failure. */
+  onDesktopCommit: () => void;
+  /** Desktop input only — Escape; discards the typed text, no write. */
+  onDesktopCancel: () => void;
+}) {
   const C = useTheme();
   const { settings } = useSettings();
   const { t, lang } = useT();
   const currency = useCurrency();
   const box = { background: C.chip, borderRadius: 7, padding: "4px 9px" } as const;
+  // Guards a same-tick `blur` a React-driven unmount can raise: Escape calls `onDesktopCancel`
+  // (→ setEditing(null)), and a focused element removed from the DOM fires blur/focusout as it
+  // detaches — which would otherwise reach `onDesktopCommit` and write the very value Escape
+  // just discarded. Set synchronously in the Escape handler, read once in onBlur, then cleared.
+  const cancelingRef = useRef(false);
   if (settings.discreet) {
     return <div style={{ ...box, textAlign: "right" as const, fontSize: 13, color: C.text }}>•••• {currencySymbol(currency, lang)}</div>;
+  }
+  if (editing?.input !== undefined) {
+    // Desktop allocation editing (spec decision D5): a real <input inputMode="decimal">, prefilled
+    // by the caller with fmtSignedTrim (the documented parseAmount round-trip pair, sign included —
+    // NEVER a bare fmtTrim, which discards the sign, and NEVER fmtTrimLocale, which parseAmount
+    // cannot re-read; see lib/format.ts). Enter blurs (one commit path, below); Escape discards.
+    // Invalid input keeps the red state exactly like the pad's `err`.
+    return (
+      <input
+        // biome-ignore lint/a11y/noAutofocus: reached only via an explicit user action (click, or Tab focus on the resting readOnly input below) — never a programmatic mount
+        autoFocus
+        inputMode="decimal"
+        data-alloc-input="1"
+        data-pad-cell="1"
+        value={editing.input}
+        aria-label={t("Allocated: {name}", { name: e.name })}
+        aria-invalid={editing.err || undefined}
+        onChange={(ev) => onDesktopChange(ev.target.value)}
+        // A click inside the already-focused input (repositioning the cursor, fixing a digit)
+        // must not bubble to the row's onClick={() => onOpenEnvelope(...)} — same guard the
+        // pad-active div (below) and the resting cell already carry for the same reason.
+        onClick={(ev) => ev.stopPropagation()}
+        onKeyDown={(ev) => {
+          if (ev.key === "Enter") ev.currentTarget.blur();
+          else if (ev.key === "Escape") {
+            cancelingRef.current = true;
+            onDesktopCancel();
+          }
+        }}
+        onBlur={() => {
+          if (cancelingRef.current) {
+            cancelingRef.current = false;
+            return;
+          }
+          onDesktopCommit();
+        }}
+        style={{
+          ...box,
+          width: "100%",
+          minWidth: 0,
+          boxSizing: "border-box",
+          textAlign: "right" as const,
+          fontSize: 13,
+          fontFamily: font,
+          color: editing.err ? "var(--danger)" : C.text,
+          fontVariantNumeric: "tabular-nums",
+          border: `1px solid ${editing.err ? "var(--danger)" : "var(--input-underline)"}`,
+          outline: "none",
+        }}
+      />
+    );
   }
   if (editing) {
     // Active cell: the padKey expression in place of the input; err = ✓ on a bad result.

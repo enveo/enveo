@@ -5,14 +5,16 @@ import { useTheme } from "../../lib/contexts";
 import { monthLabel } from "../../lib/dates";
 import { type Message, msg, useT } from "../../lib/i18n";
 import { Ico } from "../../lib/icons";
-import { InWideShell } from "../../lib/shellContext";
+import { InWideShell, type PaneRect } from "../../lib/shellContext";
 import { CTA, font, P } from "../../lib/theme";
 import { useElementWidth } from "../../lib/useElementWidth";
-import type { ViewMode } from "../../lib/viewMode";
+import { PHONE_COL, type ViewMode } from "../../lib/viewMode";
+import type { Tab as AddTab } from "../../screens/Add";
 import type { ReportTab, ReportView } from "../../screens/reports/types";
 import { WideHome } from "../../screens/WideHome";
 import type { ScreenId } from "../chrome";
 import { SyncBadge } from "../SyncBadge";
+import { UpdatePrompt } from "../UpdatePrompt";
 import { FoldTbbStrip } from "./FoldTbbStrip";
 import { paneWidthFor } from "./geometry";
 import { PanelHost } from "./PanelHost";
@@ -28,7 +30,10 @@ const SCREEN_TITLE: Record<ScreenId, Message> = {
   transactions: msg("Transactions"),
   accounts: msg("Accounts"),
   reports: msg("Reports"),
-  addExpense: msg("Add"), // unreachable here — wide renders addExpense as the phone takeover (App.tsx)
+  // Unreachable here even now that Add IS a wide pane (PR6 Task 5): `BandHeader` only ever
+  // receives `primaryScreen` (App.tsx), which resolves to `editReturn` while Add is open and so
+  // is never itself "addExpense" (`editReturn` is never set to that value — see `openAddWide`).
+  addExpense: msg("Add"),
   settings: msg("Settings"),
 };
 
@@ -55,6 +60,7 @@ function BandHeader({
   rightSlot,
   panelClosed,
   onTogglePanel,
+  compact,
 }: {
   screen: ScreenId;
   month: string;
@@ -65,6 +71,11 @@ function BandHeader({
   rightSlot: RightSlot;
   panelClosed: boolean;
   onTogglePanel: () => void;
+  /** Narrow primary (fold with the panel open): the rightSlot drops its text label (icon-only,
+   *  aria-label/title keep the accessible name). Measured need: Budget's full toolbar is ~616px
+   *  wide while the fold's panel-open primary offers ~483px — the +Add and panel-toggle buttons
+   *  landed UNDER the panel's own header, unclickable (elementFromPoint returned the panel). */
+  compact: boolean;
 }) {
   const C = useTheme();
   const { t, lang } = useT();
@@ -72,12 +83,17 @@ function BandHeader({
   return (
     // data-wide-band: stable test hook (same idiom as data-wide-primary/-panel below) — the
     // verification playbook's touch-target sweep selects `[data-wide-band] button`.
+    // flexWrap is the reachability BACKSTOP `compact` alone cannot give: label widths are
+    // locale-dependent (pl "Zarządzaj kopertami", de month names), so any single-row budget can
+    // be exceeded — wrapping keeps every control inside the pane instead of pushing the trailing
+    // buttons under the neighbouring panel's header.
     <div
       data-wide-band
       style={{
         display: "flex",
         alignItems: "center",
-        gap: 16,
+        flexWrap: "wrap",
+        gap: "6px 16px",
         padding: `14px ${P}px`,
         borderBottom: `1px solid ${C.line}`,
         flexShrink: 0,
@@ -121,79 +137,92 @@ function BandHeader({
           </button>
         </div>
       )}
-      <div style={{ flex: 1 }} />
-      {/* A genuine flex child of the band header, never an overlay above content — see the
-          SyncBadge.tsx file header for why `topOffset`-over-the-primary-pane was replaced. */}
-      <SyncBadge inline onOpenSync={onOpenSync} />
-      {rightSlot && (
+      {/* One action CLUSTER, not loose siblings behind a flex:1 spacer: with flexWrap above, a
+          spacer would strand whichever trailing buttons wrapped on a left-aligned second row —
+          the cluster wraps as a unit and marginLeft:auto keeps it right-aligned on its own row. */}
+      <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 16 }}>
+        {/* A genuine flex child of the band header, never an overlay above content — see the
+            SyncBadge.tsx file header for why `topOffset`-over-the-primary-pane was replaced. */}
+        <SyncBadge inline onOpenSync={onOpenSync} />
+        {rightSlot && (
+          <button
+            onClick={rightSlot.onClick}
+            aria-label={rightSlot.ariaLabel}
+            title={compact ? rightSlot.label : undefined}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 6,
+              minWidth: 30,
+              minHeight: 30,
+              padding: "0 10px",
+              borderRadius: 8,
+              border: "none",
+              background: "transparent",
+              color: C.soft,
+              cursor: "pointer",
+              flexShrink: 0,
+              justifyContent: "center",
+            }}
+          >
+            <Ico d={PENCIL_D} size={15} color={C.soft} />
+            {!compact && <span style={{ fontSize: 13, fontWeight: 600 }}>{rightSlot.label}</span>}
+          </button>
+        )}
         <button
-          onClick={rightSlot.onClick}
-          aria-label={rightSlot.ariaLabel}
+          onClick={onAdd}
+          // Compact drops the CTA's text too (icon-only ＋): the pl/de labels alone push the
+          // fold's panel-open row past its ~451px content box — the aria-label/title keep the
+          // accessible name, wrapping stays the backstop for transient extra content (SyncBadge).
+          aria-label={compact ? t("Add") : undefined}
+          title={compact ? t("Add") : undefined}
           style={{
             display: "flex",
             alignItems: "center",
+            justifyContent: "center",
             gap: 6,
             minWidth: 30,
             minHeight: 30,
-            padding: "0 10px",
+            padding: compact ? "0 10px" : "0 14px",
             borderRadius: 8,
             border: "none",
-            background: "transparent",
-            color: C.soft,
+            background: CTA,
+            color: "#fff",
+            fontWeight: 700,
+            fontSize: 13,
             cursor: "pointer",
             flexShrink: 0,
           }}
         >
-          <Ico d={PENCIL_D} size={15} color={C.soft} />
-          <span style={{ fontSize: 13, fontWeight: 600 }}>{rightSlot.label}</span>
+          <span aria-hidden style={{ fontSize: 15, lineHeight: 1 }}>
+            ＋
+          </span>
+          {!compact && t("Add")}
         </button>
-      )}
-      <button
-        onClick={onAdd}
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: 6,
-          minHeight: 30,
-          padding: "0 14px",
-          borderRadius: 8,
-          border: "none",
-          background: CTA,
-          color: "#fff",
-          fontWeight: 700,
-          fontSize: 13,
-          cursor: "pointer",
-          flexShrink: 0,
-        }}
-      >
-        <span aria-hidden style={{ fontSize: 15, lineHeight: 1 }}>
-          ＋
-        </span>
-        {t("Add")}
-      </button>
-      <button
-        data-panel-toggle
-        aria-expanded={!panelClosed}
-        aria-label={toggleLabel}
-        title={toggleLabel}
-        onClick={onTogglePanel}
-        style={{
-          width: 30,
-          height: 30,
-          minWidth: 30,
-          minHeight: 30,
-          flexShrink: 0,
-          borderRadius: 8,
-          border: "none",
-          background: panelClosed ? "transparent" : C.inset,
-          cursor: "pointer",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-        }}
-      >
-        <PanelToggleGlyph color={C.soft} />
-      </button>
+        <button
+          data-panel-toggle
+          aria-expanded={!panelClosed}
+          aria-label={toggleLabel}
+          title={toggleLabel}
+          onClick={onTogglePanel}
+          style={{
+            width: 30,
+            height: 30,
+            minWidth: 30,
+            minHeight: 30,
+            flexShrink: 0,
+            borderRadius: 8,
+            border: "none",
+            background: panelClosed ? "transparent" : C.inset,
+            cursor: "pointer",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+        >
+          <PanelToggleGlyph color={C.soft} />
+        </button>
+      </div>
     </div>
   );
 }
@@ -214,7 +243,18 @@ function BandHeader({
  */
 type WideShellBag = {
   mode: Exclude<ViewMode, "phone">;
+  /** The RAW screen — used ONLY by `resolvePanel` below (it needs the literal `"addExpense"` to
+   *  detect the Add pane is open at all). Everything else that asks "which screen is this" reads
+   *  `primaryScreen` instead (PR6 Task 5) — see that field's own comment. */
   screen: ScreenId;
+  /** The EFFECTIVE screen the primary pane — and every piece of chrome that reads "which screen
+   *  is this" (Rail's active highlight, the band header's title/month-nav, the fold TBB strip's
+   *  compact styling, the Start/Settings content switch below, the widget-settings reset effect)
+   *  — should treat as current (PR6 Task 5). Computed once in App via `primaryScreenFor(screen,
+   *  editReturn)` (panel.ts, Task 1): while the Add pane is open this stays whatever screen Add
+   *  was opened FROM, so none of the above ever flashes to an "Add" title/state and back — from
+   *  their point of view, the primary screen never left. */
+  primaryScreen: ScreenId;
   nav: (s: ScreenId) => void;
   month: string;
   prev: () => void;
@@ -255,6 +295,23 @@ type WideShellBag = {
    *  `editWidgets`/`manageOpen` were (Task 3's pattern) — the band right-slot (below) reads and
    *  flips it, `WideHome` only reads it. */
   boardEdit: boolean;
+  /** PR6 Task 2 wired these, Task 5 makes them live: the panel's `add` kind renders `AddScreen`
+   *  from App's OWN edit/preset state — the same fields `screenEl`'s phone-column `AddScreen`
+   *  already reads (App.tsx). Task 5 removed the `wide && screen !== "addExpense"` gate that used
+   *  to keep `WideShell` from ever mounting while `screen === "addExpense"`, so these now flow
+   *  into a real, reachable pane rather than sitting unused. */
+  editTxn: Transaction | null;
+  addPreset: { tab?: AddTab; importSheet?: boolean };
+  /** The `add` pane's ✕/back semantics (App's `doneEdit`) — `closePanel` below calls this for the
+   *  `add` kind instead of `setPanelClosed(true)`, since closing Add derives back to whatever
+   *  pane was open underneath it (D2) rather than collapsing the panel. */
+  onDoneEdit: () => void;
+  /** PR6 Task 5: the band header's "+ Add" button opens Add through THIS entry point, never
+   *  `nav("addExpense")` — `nav` unconditionally clears `envView`, which would silently discard
+   *  an open envelope pane every time Add is opened, breaking D2's push semantics (opening Add
+   *  over an open envelope pane must NOT clear it, so closing Add derives back to the envelope
+   *  for free). Defined in App.tsx as `openAddWide`. */
+  onAddWide: () => void;
 };
 
 /**
@@ -272,11 +329,36 @@ type WideShellBag = {
  * once the widget-edit-sheet extraction (pr4-context.md header; the pull-forward of PR5 Task 1)
  * bought back the §3f headroom this needed. This default is what keeps that wiring a one-line
  * addition at the call site rather than a required prop everywhere.
+ *
+ * PR6 Task 6 — sheet triage sweep (D4: every current `Sheet`/portal overlay keeps TODAY's
+ * presentation in every mode THIS PR, over the shell as a centered modal strip with a full-shell
+ * backdrop; v3's converted panes are commissioned as PR6b, not this file):
+ *
+ * | Surface                                                          | Host today | Wide behaviour this PR | Eventual home |
+ * |-------------------------------------------------------------------|------------|------------------------|---------------|
+ * | EnvActionsSheet                                                    | Sheet      | phone-only (PR4 §7 fork) | stays phone-only |
+ * | EnvEdit / EnvManageSheet (Budget)                                  | Sheet      | sheet                  | `envForm`/`manageGroups` panes (PR6b) |
+ * | BudgetSuggestSheet / FillGoalsSheet                                | Sheet      | sheet                  | `suggest`/`fillGoals` panes (PR6b) |
+ * | AmountPadSheet / DateSheet / AccountPickerSheet / EnvelopePickerSheet (Add) | Sheet | sheet (portals past this panel's transform — see `chrome.tsx`'s `Sheet`) | popovers on desktop (PR6b) |
+ * | TransactionFilterSheet                                             | Sheet      | sheet                  | possibly inline filters on wide |
+ * | ImportSheet                                                        | portal, full-screen | unchanged    | unchanged |
+ * | IconColorPicker                                                    | portal     | unchanged              | unchanged |
+ * | AiConsentSheet / InstallSheet / DataSection sheets / EditWidgetsSheet / Accounts sheets | Sheet | sheet | EditWidgetsSheet → PR5's `widgets` pane; Accounts sheets → PR6b |
+ * | `UpdatePrompt`                                                     | fixed, viewport-centered on phone | anchored to the primary pane's measured rect on wide (this file, below) — MEASURED to collide with this panel at 1104x992 before the fix | — (closed) |
+ *
+ * Verified live (throwaway stack, 1440x900 + 1104x992): every Sheet opened from panel-hosted
+ * content (Add's pickers) portals to `document.body` and stays viewport-centered with a
+ * full-shell backdrop even mid-transition (probed at the exact first frame of this panel's own
+ * open animation — `transform`/`opacity` still at their closed starting values); Sheets opened
+ * from the primary pane were never at risk (no transformed ancestor) and are unaffected. Escape
+ * while focus sits inside the Add pane closes it and returns focus to `[data-panel-toggle]`
+ * (PR4's stranded-focus fix, landed in Task 5, re-verified here for both panel-hosted cases).
  */
 export function WideShell({ bag, rightSlot = null, children }: { bag: WideShellBag; rightSlot?: RightSlot; children: ReactNode }) {
   const {
     mode,
     screen,
+    primaryScreen,
     nav,
     month,
     prev,
@@ -299,6 +381,10 @@ export function WideShell({ bag, rightSlot = null, children }: { bag: WideShellB
     onOpenReport,
     onOpenMonthDay,
     boardEdit,
+    editTxn,
+    addPreset,
+    onDoneEdit,
+    onAddWide,
   } = bag;
   const C = useTheme();
   const { t } = useT();
@@ -311,15 +397,73 @@ export function WideShell({ bag, rightSlot = null, children }: { bag: WideShellB
   // `resolvePanel` is also defensive about this (panel.ts), but this is the actual discipline.
   const [widgetSettings, setWidgetSettings] = useState<WideWidgetId | null>(null);
   useEffect(() => {
-    if (screen !== "start") setWidgetSettings(null);
-  }, [screen]);
+    // `primaryScreen`, not raw `screen` (PR6 Task 5): opening Add over Start with the widgets
+    // panel selected must NOT clear that selection — `primaryScreen` stays "start" throughout
+    // (Add lives in the OTHER pane), so this effect never fires just because Add opened/closed.
+    if (primaryScreen !== "start") setWidgetSettings(null);
+  }, [primaryScreen]);
   const view = resolvePanel({ screen, reportsView, envView, widgetSettings });
+  const primaryRef = useRef<HTMLDivElement | null>(null);
   const panelRef = useRef<HTMLDivElement | null>(null);
 
+  // PR6 Task 2: both panes' measured geometry, for `InWideShell`'s `WideHostInfo.rects` —
+  // `DockedNumpad`'s wide anchor (Task 3) needs a real viewport-relative rect, not the panel's
+  // OWN CSS `width` (which stays constant even while closed; only `transform`/`margin-right`
+  // animate it out of view — see the panel `<div>` below). `getBoundingClientRect()` is read
+  // directly in the observer callback rather than `ResizeObserverEntry.contentRect` (which is
+  // offset FROM the observed box, not a viewport position). `panelClosed` is an explicit
+  // dependency — and forces `panel: null` per PR4's contract — because the panel node's own box
+  // never resizes on open/close (only its transform/margin do), so no resize entry would ever
+  // fire to null it out otherwise.
+  const [rects, setRects] = useState<{ primary: PaneRect; panel: PaneRect | null }>({ primary: { left: 0, width: 0 }, panel: null });
+  useEffect(() => {
+    const primaryEl = primaryRef.current;
+    const panelEl = panelRef.current;
+    const measure = () => {
+      const p = primaryEl?.getBoundingClientRect();
+      const panelBox = !panelClosed ? panelEl?.getBoundingClientRect() : undefined;
+      setRects({
+        primary: p ? { left: p.left, width: p.width } : { left: 0, width: 0 },
+        panel: panelBox ? { left: panelBox.left, width: panelBox.width } : null,
+      });
+    };
+    measure();
+    const ro = new ResizeObserver(measure);
+    if (primaryEl) ro.observe(primaryEl);
+    if (panelEl) ro.observe(panelEl);
+    return () => ro.disconnect();
+  }, [panelClosed]);
+
+  // PR6 Task 5 fix, verified by reproducing the SAME gap on PR4's own `envelope` kind (not
+  // introduced by this task, but never exercisable through it before Add existed to test it
+  // against): `onPanelTransitionEnd` below restores focus to the toggle only when a CSS
+  // transition on THIS pane's transform/margin/opacity actually fires — which only happens when
+  // `panelClosed` flips to `true`. Every kind but `empty` closes by clearing its OWN selection
+  // instead (`setEnvView(null)`, `onDoneEdit()`, …), never touching `panelClosed` at all, so that
+  // handler never ran for them — closing the envelope pane (or, now, Add) via the ✕ button or
+  // Escape while focus sat inside it left focus stranded on `<body>` once the focused element
+  // unmounted. Checked HERE, synchronously, before the state change below — the one place common
+  // to every kind's ✕/Escape close (both call this same function) — so it covers all of them,
+  // not just `add`. The toggle button's OWN direct collapse (`onTogglePanel` in the band header)
+  // bypasses this function for every kind EXCEPT `add` (which routes through here too — see that
+  // prop's own comment) and keeps relying on `onPanelTransitionEnd` for the rest, which still
+  // needs to exist for that path — this doesn't replace it, it plugs the gap that path never had.
+  //
+  // PR6 Task 5 fix: a Sheet opened from panel-hosted content (Add's pickers, ImportSheet's own
+  // Sheet/AiConsentSheet) now portals to `document.body` (chrome.tsx's `Sheet` — the panel's own
+  // transform breaks `position:fixed`), so it is a REACT descendant of the panel but not a DOM
+  // one. Plain `panelRef.current.contains(...)` would treat focus inside it as "outside the
+  // panel" for every check below; `data-wide-panel-portal` (set only on that portal's wrapper)
+  // closes the gap.
+  const panelContains = (el: Element | null): boolean => !!el && (!!panelRef.current?.contains(el) || !!el.closest("[data-wide-panel-portal]"));
+
   const closePanel = () => {
+    const active = document.activeElement;
+    if (panelContains(active)) document.querySelector<HTMLElement>("[data-panel-toggle]")?.focus();
     if (view.kind === "envelope") setEnvView(null);
     else if (view.kind === "report") setReportsView("overview");
     else if (view.kind === "widgets") setWidgetSettings(null);
+    else if (view.kind === "add") onDoneEdit();
     else setPanelClosed(true);
   };
 
@@ -332,7 +476,20 @@ export function WideShell({ bag, rightSlot = null, children }: { bag: WideShellB
   // including report→report switches that the kind alone would miss. Selection is compared
   // across renders (a ref, not an effect dep array) so a mere re-render of the same open
   // selection never touches `panelClosed`.
-  const selection = view.kind === "empty" ? null : view.kind === "envelope" ? envView : view.kind === "widgets" ? view.widgetId : view.view;
+  // `add` (PR6 Task 5) needs the SAME reopen treatment, or opening Add while the panel happens to
+  // be collapsed would mount the editor invisibly (translated off-screen, per the panel `<div>`'s
+  // own style below) with no way to see it short of the toggle — D2's "wins over every other
+  // input" is a promise about `resolvePanel`'s CONTENT resolution, not about `panelClosed`'s
+  // independent visibility bit, so nothing else in this file was actually reopening it. `screen`
+  // itself doesn't work as the selection value here (it's the same string `"addExpense"` before
+  // AND after a second, fresh "+ Add" press — no reference change to key off), so `addPreset` is
+  // used instead: every entry point into Add (`nav`, `openAddWide`, `editTxnFrom`, `onQuickAdd`'s
+  // transfer/import presets, the popstate handler) sets it to a BRAND NEW object, while nothing
+  // inside `AddScreen` itself (typing, tab switches, sheet opens — all local component state)
+  // ever touches it, so it stays referentially stable across every re-render where Add merely
+  // continues to be open.
+  const selection =
+    view.kind === "empty" ? null : view.kind === "add" ? addPreset : view.kind === "envelope" ? envView : view.kind === "widgets" ? view.widgetId : view.view;
   const prevSelection = useRef(selection);
   useEffect(() => {
     if (selection !== null && selection !== prevSelection.current && panelClosed) setPanelClosed(false);
@@ -359,66 +516,98 @@ export function WideShell({ bag, rightSlot = null, children }: { bag: WideShellB
   // Escape closes the panel when focus is inside it (pr4-context.md §12.5). Re-attached every
   // render (cheap — one listener) so it always closes over the CURRENT `view`/close semantics,
   // without a dependency array to keep in sync by hand.
+  //
+  // Attached on `document`, not `panelRef` (PR6 Task 5 fix): a portaled sheet's native keydown
+  // never bubbles to `panelRef` at all (it's mounted under `document.body`, a DOM sibling, not a
+  // descendant) — `panelContains` is the sole gate now, exactly as it already was in effect for
+  // the in-panel case (native bubbling to `panelRef` only ever fired when focus was already
+  // inside it).
   useEffect(() => {
-    const node = panelRef.current;
-    if (!node) return;
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape" && node.contains(document.activeElement)) closePanel();
+      if (e.key === "Escape" && panelContains(document.activeElement)) closePanel();
     };
-    node.addEventListener("keydown", onKeyDown);
-    return () => node.removeEventListener("keydown", onKeyDown);
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
   });
 
   // Focus policy (pr4-context.md §12.5): opening moves focus nowhere (non-modal). Closing, if
   // focus was inside the panel, restores it to the toggle so nothing is left stranded on a
-  // hidden subtree. One `onTransitionEnd` covers every kind — the collapse's three transitions
-  // (transform/margin-right/opacity) each fire this, but only the FIRST one finds focus still
-  // inside the (now-closed) panel; every later firing is a no-op by construction.
+  // hidden subtree. This covers the ONE close path `closePanel` above does NOT (see its own
+  // comment): the band toggle collapsing an OPEN, content-bearing panel of a kind OTHER than
+  // `add` directly (`onTogglePanel`), which flips `panelClosed` without going through
+  // `closePanel` at all — the collapse's three transitions (transform/margin-right/opacity) each
+  // fire this, but only the FIRST one finds focus still inside the (now-closed) panel; every
+  // later firing is a no-op by construction. `closePanel`'s own synchronous check already moved
+  // focus for every OTHER close (the ✕ button, Escape, and now the toggle for `add` specifically),
+  // so by the time this fires for one of those, `document.activeElement` is already the toggle —
+  // outside the panel — making this a harmless no-op there too.
   const onPanelTransitionEnd = (e: React.TransitionEvent<HTMLDivElement>) => {
     if (e.target !== e.currentTarget || !panelClosed) return;
     const active = document.activeElement;
-    if (active && panelRef.current?.contains(active)) document.querySelector<HTMLElement>("[data-panel-toggle]")?.focus();
+    if (panelContains(active)) document.querySelector<HTMLElement>("[data-panel-toggle]")?.focus();
   };
 
   return (
-    // Wraps BOTH the primary pane's `children` AND the panel: `resolvePanel`'s `report`/`envelope`
-    // kinds render a SECOND `ReportsScreen`/`EnvelopeScreen` instance inside `PanelHost` (Task 6),
-    // and on wide a report SUBSCREEN only ever renders there — App forces the primary pane's own
-    // `ReportsScreen` to the "overview" hub. `UndoBar`'s wide-anchor branch (reportKit.tsx) reads
-    // this context from exactly that panel-hosted subscreen, so the provider has to cover the
-    // panel too, not just `children` — scoping it to `children` alone left the toast reading the
-    // phone (centered) branch every time it actually mattered (task-7 fix round 1). No existing
-    // consumer regresses: every other reader (Start/Budget/Transactions/Accounts, `ReportShell`'s
-    // hub-header suppression) only ever renders inside `children`, never inside `PanelHost`.
-    <InWideShell.Provider value={true}>
-      <div ref={rootRef} style={{ display: "flex", height: "100dvh", background: C.bg, fontFamily: font, overflow: "hidden" }}>
-        <Rail mode={mode} screen={screen} onNav={nav} state={state} onQuickAdd={onQuickAdd} onFillGoals={onFillGoals} onInstall={onInstall} />
-        <div data-wide-primary style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", borderRight: `1px solid ${C.line}` }}>
-          {/* Mounted inline inside BandHeader (see SyncBadge.tsx) rather than floating over the
-              scrollable content below it — dead letters stay visible on wide; the user menu's
-              "Sync now" is a convenience, not the alarm channel. The demo's separate band error
-              pill (spec lines 198-201) is deliberately NOT implemented — one sync surface, not
-              two. */}
-          <BandHeader
-            screen={screen}
-            month={month}
-            onPrev={prev}
-            onNext={next}
-            onAdd={() => nav("addExpense")}
-            onOpenSync={() => nav("settings")}
-            rightSlot={rightSlot}
-            panelClosed={panelClosed}
-            onTogglePanel={() => setPanelClosed(!panelClosed)}
-          />
-          {mode === "fold" && screen !== "settings" && (
-            <FoldTbbStrip state={state} screen={screen} onQuickAdd={onQuickAdd} onFillGoals={onFillGoals} onNav={nav} />
-          )}
+    <div ref={rootRef} style={{ display: "flex", height: "100dvh", background: C.bg, fontFamily: font, overflow: "hidden" }}>
+      <Rail mode={mode} screen={primaryScreen} onNav={nav} state={state} onQuickAdd={onQuickAdd} onFillGoals={onFillGoals} onInstall={onInstall} />
+      <div ref={primaryRef} data-wide-primary style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", borderRight: `1px solid ${C.line}` }}>
+        {/* Mounted inline inside BandHeader (see SyncBadge.tsx) rather than floating over the
+            scrollable content below it — dead letters stay visible on wide; the user menu's
+            "Sync now" is a convenience, not the alarm channel. The demo's separate band error
+            pill (spec lines 198-201) is deliberately NOT implemented — one sync surface, not
+            two. */}
+        <BandHeader
+          screen={primaryScreen}
+          month={month}
+          onPrev={prev}
+          onNext={next}
+          onAdd={onAddWide}
+          onOpenSync={() => nav("settings")}
+          rightSlot={rightSlot}
+          panelClosed={panelClosed}
+          // PR6 Task 5: while the Add pane is showing, the toggle discards it (`closePanel`'s own
+          // `add` branch — same semantics as phone's back gesture from Add today) instead of
+          // merely collapsing the panel. A bare `setPanelClosed(true)` would hide the editor
+          // without closing it: `screen` would stay `"addExpense"`, so `resolvePanel` keeps
+          // resolving to `add` — nothing else here ever un-sets that, and the reopen-on-fresh-
+          // `addPreset` effect (see `selection` above) has no reason to fire again, so the panel
+          // would simply sit collapsed with a live, hidden, un-discardable edit behind it. Every
+          // OTHER kind keeps the collapse-only behavior (the toggle is deliberately NOT the same
+          // as ✕/Escape for those — see `closePanel`'s own comment for why "collapse but keep the
+          // selection remembered" and "clear the selection" are different actions on purpose).
+          onTogglePanel={() => (view.kind === "add" ? closePanel() : setPanelClosed(!panelClosed))}
+          // Narrow primary = fold with the panel OPEN (~483px left of a 1104 viewport). Desktop's
+          // panel-open primary (~800px at 1440) fits the full labels; so does fold with the
+          // panel collapsed.
+          compact={mode === "fold" && !panelClosed}
+        />
+        {mode === "fold" && primaryScreen !== "settings" && (
+          <FoldTbbStrip state={state} screen={primaryScreen} onQuickAdd={onQuickAdd} onFillGoals={onFillGoals} onNav={nav} />
+        )}
+        {/* PR6 Task 2: `InWideShell` now carries `{ host, mode, rects }` instead of PR4's plain
+            `true` — scoped to exactly the subtree that renders IN this pane (below the band/
+            strip chrome, which reads nothing from it), so a consumer can tell which pane it's in
+            rather than only "some wide pane". The panel gets its OWN provider below (`host:
+            "panel"`), not this one — `UndoBar`'s wide-anchor branch (reportKit.tsx) reads it from
+            panel-hosted report subscreens, which this provider does not cover; see the panel
+            provider's comment for why that coverage still holds (task-7 fix round 1's finding,
+            preserved by construction: every reader now sits under ONE of the two providers). */}
+        <InWideShell.Provider value={{ host: "primary", mode, rects }}>
+          {/* Rendered here, not as App.tsx's own sibling of `<WideShell>` (App.tsx still owns the
+              PHONE instance) — a `useWideHost()`-gated branch (Task 6) needs to sit inside this
+              exact provider to read `rects.primary` and anchor clear of the rail/panel; see that
+              component's own comment for the measured collision this replaces. Self-contained
+              (no props), so moving where it mounts is the only change this required. */}
+          <UpdatePrompt />
           <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column", overflow: "hidden" }}>
             {/* Task 6: the wide Home board replaces the phone widget stack entirely on Start — the
                 `screenEl` App.tsx built for "start" (a `StartScreen` element) is still constructed
                 as `children` (cheap: it's just a React element description) but never rendered
-                here, so its own phone-only header/EditWidgetsSheet never mount on wide. */}
-            {screen === "start" ? (
+                here, so its own phone-only header/EditWidgetsSheet never mount on wide. Keyed on
+                `primaryScreen` (PR6 Task 5), not raw `screen`: while Add is open over Start, the
+                board must keep rendering underneath it, not be torn down for a raw-`screen`
+                mismatch that would otherwise read "addExpense" here. */}
+            {primaryScreen === "start" ? (
               <WideHome
                 mode={mode}
                 state={state}
@@ -432,31 +621,59 @@ export function WideShell({ bag, rightSlot = null, children }: { bag: WideShellB
                 edit={boardEdit}
                 onWidgetSettings={setWidgetSettings}
               />
+            ) : primaryScreen === "settings" ? (
+              // Centered column on the WRAPPER, not inside Settings.tsx (zero phone deltas —
+              // Settings itself renders identically in every mode). v3's two-column Settings is
+              // deferred (D-list, PR6 plan); this is the interim "hosted as-is" treatment.
+              <div
+                style={{
+                  flex: 1,
+                  minHeight: 0,
+                  display: "flex",
+                  flexDirection: "column",
+                  overflow: "hidden",
+                  maxWidth: PHONE_COL + 120,
+                  margin: "0 auto",
+                  width: "100%",
+                }}
+              >
+                {children}
+              </div>
             ) : (
               children
             )}
           </div>
-        </div>
-        <div
-          ref={panelRef}
-          data-wide-panel
-          role="complementary"
-          aria-label={t("Details panel")}
-          onTransitionEnd={onPanelTransitionEnd}
-          style={{
-            width: paneW,
-            flex: "none",
-            minWidth: 0,
-            overflow: "hidden",
-            display: "flex",
-            flexDirection: "column",
-            background: C.surface,
-            transform: panelClosed ? "translateX(100%)" : "translateX(0)",
-            marginRight: panelClosed ? -paneW : 0,
-            opacity: panelClosed ? 0 : 1,
-            transition: "transform 260ms cubic-bezier(0.4,0,0.2,1), margin-right 260ms cubic-bezier(0.4,0,0.2,1), opacity 180ms ease",
-          }}
-        >
+        </InWideShell.Provider>
+      </div>
+      <div
+        ref={panelRef}
+        data-wide-panel
+        role="complementary"
+        aria-label={t("Details panel")}
+        onTransitionEnd={onPanelTransitionEnd}
+        style={{
+          width: paneW,
+          flex: "none",
+          minWidth: 0,
+          overflow: "hidden",
+          display: "flex",
+          flexDirection: "column",
+          background: C.surface,
+          transform: panelClosed ? "translateX(100%)" : "translateX(0)",
+          marginRight: panelClosed ? -paneW : 0,
+          opacity: panelClosed ? 0 : 1,
+          transition: "transform 260ms cubic-bezier(0.4,0,0.2,1), margin-right 260ms cubic-bezier(0.4,0,0.2,1), opacity 180ms ease",
+        }}
+      >
+        {/* This pane's own provider (`host: "panel"`): `resolvePanel`'s `report`/`envelope` kinds
+            render a SECOND `ReportsScreen`/`EnvelopeScreen` instance in here (Task 6), and on wide
+            a report SUBSCREEN only ever renders here — App forces the primary pane's own
+            `ReportsScreen` to the "overview" hub, so that instance sits under the OTHER provider
+            above. `UndoBar`'s wide-anchor branch (reportKit.tsx) reads `InWideShell` from exactly
+            this panel-hosted subscreen — scoping a provider to only `children` (this pane's
+            predecessor bug, task-7 fix round 1) left that toast reading the phone (centered)
+            branch every time it actually mattered. */}
+        <InWideShell.Provider value={{ host: "panel", mode, rects }}>
           <PanelHost
             view={view}
             onClose={closePanel}
@@ -471,9 +688,12 @@ export function WideShell({ bag, rightSlot = null, children }: { bag: WideShellB
             onEditTxn={onEditTxn}
             onPrev={prev}
             onNext={next}
+            editTxn={editTxn}
+            addPreset={addPreset}
+            onDoneEdit={onDoneEdit}
           />
-        </div>
+        </InWideShell.Provider>
       </div>
-    </InWideShell.Provider>
+    </div>
   );
 }
