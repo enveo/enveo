@@ -60,6 +60,7 @@ function BandHeader({
   rightSlot,
   panelClosed,
   onTogglePanel,
+  compact,
 }: {
   screen: ScreenId;
   month: string;
@@ -70,19 +71,29 @@ function BandHeader({
   rightSlot: RightSlot;
   panelClosed: boolean;
   onTogglePanel: () => void;
+  
+
+
+
+  compact: boolean;
 }) {
   const C = useTheme();
   const { t, lang } = useT();
   const toggleLabel = panelClosed ? t("Show the side panel") : t("Hide the side panel");
   return (
-    
-
+    // data-wide-band: stable test hook (same idiom as data-wide-primary/-panel below) — the
+    // verification playbook's touch-target sweep selects `[data-wide-band] button`.
+    // flexWrap is the reachability BACKSTOP `compact` alone cannot give: label widths are
+    // locale-dependent (pl "Zarządzaj kopertami", de month names), so any single-row budget can
+    // be exceeded — wrapping keeps every control inside the pane instead of pushing the trailing
+    // buttons under the neighbouring panel's header.
     <div
       data-wide-band
       style={{
         display: "flex",
         alignItems: "center",
-        gap: 16,
+        flexWrap: "wrap",
+        gap: "6px 16px",
         padding: `14px ${P}px`,
         borderBottom: `1px solid ${C.line}`,
         flexShrink: 0,
@@ -126,79 +137,92 @@ function BandHeader({
           </button>
         </div>
       )}
-      <div style={{ flex: 1 }} />
-      {/* A genuine flex child of the band header, never an overlay above content — see the
-          SyncBadge.tsx file header for why `topOffset`-over-the-primary-pane was replaced. */}
-      <SyncBadge inline onOpenSync={onOpenSync} />
-      {rightSlot && (
+      {/* One action CLUSTER, not loose siblings behind a flex:1 spacer: with flexWrap above, a
+          spacer would strand whichever trailing buttons wrapped on a left-aligned second row —
+          the cluster wraps as a unit and marginLeft:auto keeps it right-aligned on its own row. */}
+      <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 16 }}>
+        {/* A genuine flex child of the band header, never an overlay above content — see the
+            SyncBadge.tsx file header for why `topOffset`-over-the-primary-pane was replaced. */}
+        <SyncBadge inline onOpenSync={onOpenSync} />
+        {rightSlot && (
+          <button
+            onClick={rightSlot.onClick}
+            aria-label={rightSlot.ariaLabel}
+            title={compact ? rightSlot.label : undefined}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 6,
+              minWidth: 30,
+              minHeight: 30,
+              padding: "0 10px",
+              borderRadius: 8,
+              border: "none",
+              background: "transparent",
+              color: C.soft,
+              cursor: "pointer",
+              flexShrink: 0,
+              justifyContent: "center",
+            }}
+          >
+            <Ico d={PENCIL_D} size={15} color={C.soft} />
+            {!compact && <span style={{ fontSize: 13, fontWeight: 600 }}>{rightSlot.label}</span>}
+          </button>
+        )}
         <button
-          onClick={rightSlot.onClick}
-          aria-label={rightSlot.ariaLabel}
+          onClick={onAdd}
+          
+
+
+          aria-label={compact ? t("Add") : undefined}
+          title={compact ? t("Add") : undefined}
           style={{
             display: "flex",
             alignItems: "center",
+            justifyContent: "center",
             gap: 6,
             minWidth: 30,
             minHeight: 30,
-            padding: "0 10px",
+            padding: compact ? "0 10px" : "0 14px",
             borderRadius: 8,
             border: "none",
-            background: "transparent",
-            color: C.soft,
+            background: CTA,
+            color: "#fff",
+            fontWeight: 700,
+            fontSize: 13,
             cursor: "pointer",
             flexShrink: 0,
           }}
         >
-          <Ico d={PENCIL_D} size={15} color={C.soft} />
-          <span style={{ fontSize: 13, fontWeight: 600 }}>{rightSlot.label}</span>
+          <span aria-hidden style={{ fontSize: 15, lineHeight: 1 }}>
+            ＋
+          </span>
+          {!compact && t("Add")}
         </button>
-      )}
-      <button
-        onClick={onAdd}
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: 6,
-          minHeight: 30,
-          padding: "0 14px",
-          borderRadius: 8,
-          border: "none",
-          background: CTA,
-          color: "#fff",
-          fontWeight: 700,
-          fontSize: 13,
-          cursor: "pointer",
-          flexShrink: 0,
-        }}
-      >
-        <span aria-hidden style={{ fontSize: 15, lineHeight: 1 }}>
-          ＋
-        </span>
-        {t("Add")}
-      </button>
-      <button
-        data-panel-toggle
-        aria-expanded={!panelClosed}
-        aria-label={toggleLabel}
-        title={toggleLabel}
-        onClick={onTogglePanel}
-        style={{
-          width: 30,
-          height: 30,
-          minWidth: 30,
-          minHeight: 30,
-          flexShrink: 0,
-          borderRadius: 8,
-          border: "none",
-          background: panelClosed ? "transparent" : C.inset,
-          cursor: "pointer",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-        }}
-      >
-        <PanelToggleGlyph color={C.soft} />
-      </button>
+        <button
+          data-panel-toggle
+          aria-expanded={!panelClosed}
+          aria-label={toggleLabel}
+          title={toggleLabel}
+          onClick={onTogglePanel}
+          style={{
+            width: 30,
+            height: 30,
+            minWidth: 30,
+            minHeight: 30,
+            flexShrink: 0,
+            borderRadius: 8,
+            border: "none",
+            background: panelClosed ? "transparent" : C.inset,
+            cursor: "pointer",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+        >
+          <PanelToggleGlyph color={C.soft} />
+        </button>
+      </div>
     </div>
   );
 }
@@ -552,6 +576,10 @@ export function WideShell({ bag, rightSlot = null, children }: { bag: WideShellB
           // as ✕/Escape for those — see `closePanel`'s own comment for why "collapse but keep the
           // selection remembered" and "clear the selection" are different actions on purpose).
           onTogglePanel={() => (view.kind === "add" ? closePanel() : setPanelClosed(!panelClosed))}
+          
+
+
+          compact={mode === "fold" && !panelClosed}
         />
         {mode === "fold" && primaryScreen !== "settings" && (
           <FoldTbbStrip state={state} screen={primaryScreen} onQuickAdd={onQuickAdd} onFillGoals={onFillGoals} onNav={nav} />
