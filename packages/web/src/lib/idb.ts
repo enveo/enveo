@@ -22,6 +22,7 @@
  */
 import { getDeviceStoragePolicy } from "./deviceStoragePolicy";
 import {
+  evaluateImportTransactionProof,
   type ImportDraftDeleteMatch,
   type ImportDraftPutResult,
   type ImportDraftStateMutation,
@@ -166,6 +167,23 @@ class IdbBackend implements StorageBackend {
     return structuredClone(next);
   }
 
+  async importTransactionProof(scope: ImportRecordScope, transactionId: string): Promise<"durable" | "rejected" | "absent"> {
+    const db = await this.open();
+    if (!db) return this.fallback.importTransactionProof(scope, transactionId);
+    const tx = db.transaction(["meta", "outbox", "deadletter"], "readonly");
+    const done = txDone(tx);
+    const meta = tx.objectStore("meta");
+    const [ownerId, budgetId, ledger, outboxRows, deadletterRows] = await Promise.all([
+      requestToPromise(meta.get("userId")),
+      requestToPromise(meta.get("budgetId")),
+      requestToPromise(meta.get("ledger")),
+      requestToPromise(tx.objectStore("outbox").getAll()),
+      requestToPromise(tx.objectStore("deadletter").getAll()),
+    ]);
+    await done;
+    return evaluateImportTransactionProof(scope, transactionId, ownerId, budgetId, ledger, outboxRows, deadletterRows);
+  }
+
   async put(store: StoreName, value: unknown, key?: IDBValidKey): Promise<void> {
     const db = await this.open();
     if (!db) return this.fallback.put(store, value, key);
@@ -294,6 +312,24 @@ class IdbBackend implements StorageBackend {
       return false;
     }
     store.delete(id);
+    await done;
+    return true;
+  }
+
+  async deleteImportJobWithMetaIfScope(id: IDBValidKey, scope: ImportRecordScope, metaKeys: IDBValidKey[], permitted: () => boolean): Promise<boolean> {
+    const db = await this.open();
+    if (!db) return this.fallback.deleteImportJobWithMetaIfScope(id, scope, metaKeys, permitted);
+    const tx = db.transaction(["importJobs", "meta"], "readwrite");
+    const done = txDone(tx);
+    const jobs = tx.objectStore("importJobs");
+    const current = (await requestToPromise(jobs.get(id))) as Record<string, unknown> | undefined;
+    if (!permitted() || !current || current.ownerId !== scope.ownerId || current.budgetId !== scope.budgetId) {
+      await done;
+      return false;
+    }
+    jobs.delete(id);
+    const meta = tx.objectStore("meta");
+    for (const key of metaKeys) meta.delete(key);
     await done;
     return true;
   }
@@ -439,6 +475,10 @@ export async function idbMutateMeta<T>(key: IDBValidKey, update: (current: unkno
   return (await activeBackend().mutateMeta(key, update)) as T;
 }
 
+export function idbImportTransactionProof(scope: ImportRecordScope, transactionId: string): Promise<"durable" | "rejected" | "absent"> {
+  return activeBackend().importTransactionProof(scope, transactionId);
+}
+
 /** put — `key` required for "meta" (out-of-line keys), omitted for keyPath stores. */
 export function idbPut(store: StoreName, value: unknown, key?: IDBValidKey): Promise<void> {
   return activeBackend().put(store, value, key);
@@ -476,6 +516,15 @@ export function idbDeleteImportDraftIfMatches(expected: ImportDraftDeleteMatch):
 
 export function idbDeleteImportJobIfScope(id: IDBValidKey, scope: ImportRecordScope): Promise<boolean> {
   return activeBackend().deleteImportJobIfScope(id, scope);
+}
+
+export function idbDeleteImportJobWithMetaIfScope(
+  id: IDBValidKey,
+  scope: ImportRecordScope,
+  metaKeys: IDBValidKey[],
+  permitted: () => boolean,
+): Promise<boolean> {
+  return activeBackend().deleteImportJobWithMetaIfScope(id, scope, metaKeys, permitted);
 }
 
 export function idbDeleteExpiredImportDrafts(scope: ImportRecordScope, expiresAt: number): Promise<number> {

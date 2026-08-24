@@ -245,6 +245,50 @@ describe("device-local E2EE import runner", () => {
     expect(providerRuns).toBe(3);
   });
 
+  it("expires ciphertext and apply progress before provider resume and evicts absent activity in every tab", async () => {
+    // given: two tabs have observed the same local encrypted job and its apply metadata
+    let currentTime = new Date("2026-08-24T10:00:00.000Z");
+    let providerRuns = 0;
+    const first = setup({
+      now: () => currentTime,
+      provider: () =>
+        provider(async () => {
+          providerRuns++;
+        }),
+    });
+    await first.runner.create(createInput());
+    const peer = setup({ key: first.key, now: () => currentTime, canRun: () => false });
+    await peer.runner.list();
+    await importJobStorage.putApplyProgress(SCOPE, ID, { appliedRowIds: ["h1.opaque-row"], skippedRowIds: [] });
+    expect(first.activity.get(ID)).toBeDefined();
+    expect(peer.activity.get(ID)).toBeDefined();
+
+    // when: retention expires and each tab reconciles its view with durable storage
+    currentTime = new Date("2026-08-31T10:00:00.000Z");
+    await first.runner.resume();
+    await peer.runner.list();
+
+    // then: expiry wins before decrypt/provider and removes every local recovery artifact
+    expect(providerRuns).toBe(0);
+    expect(await importJobStorage.getJob(SCOPE, ID)).toBeUndefined();
+    expect(await importJobStorage.getApplyProgress(SCOPE, ID)).toEqual({ appliedRowIds: [], appliedCount: 0, skippedRowIds: [], skippedCount: 0 });
+    expect(first.activity.get(ID)).toBeUndefined();
+    expect(peer.activity.get(ID)).toBeUndefined();
+  });
+
+  it("does not let a revoked runner delete an expired job", async () => {
+    let current = true;
+    let currentTime = new Date("2026-08-24T10:00:00.000Z");
+    const fixture = setup({ capability: { isCurrent: () => current }, now: () => currentTime });
+    await fixture.runner.create(createInput());
+
+    current = false;
+    currentTime = new Date("2026-08-31T10:00:00.000Z");
+    await fixture.runner.resume();
+
+    expect(await importJobStorage.getJob(SCOPE, ID)).toBeDefined();
+  });
+
   it("blocks a stale generation before decrypting input or contacting a provider", async () => {
     let epoch = 3;
     let decryptions = 0;

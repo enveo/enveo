@@ -3,7 +3,7 @@ import { lazy, useEffect, useMemo, useRef, useState, useSyncExternalStore } from
 import { BottomNav, Drawer, type ScreenId, StyleInjector } from "./components/chrome";
 import { LazyChunk, useOpenedOnce } from "./components/lazy";
 import { StartupSplash } from "./components/StartupSplash";
-import { UpdatePrompt } from "./components/UpdatePrompt";
+import { SyncBadge } from "./components/SyncBadge";
 // Type-only imports elsewhere in this file already keep the REST of `panel.ts` free of runtime
 // weight (see `backFallback`'s own comment below on why it does NOT import from here) —
 // `primaryScreenFor` (PR6 Task 5: decides what the wide primary pane shows while the Add takeover
@@ -24,6 +24,7 @@ import { type BudgetSheetEvent, type BudgetSheetState, budgetSheetAfter } from "
 import { useMask, useTheme } from "./lib/contexts";
 import { currentMonth, shiftMonth } from "./lib/dates";
 import { useT } from "./lib/i18n";
+import { importManagerBootstrap } from "./lib/importJobs/bootstrap";
 import { historyAction, parseUrl, routeToUrl } from "./lib/routing";
 import { startupPresentation } from "./lib/startupSplash";
 import { store } from "./lib/store";
@@ -63,8 +64,7 @@ const OnboardingScreen = lazy(() => import("./screens/Onboarding").then((m) => (
 const TransactionsScreen = lazy(() => import("./screens/Transactions").then((m) => ({ default: m.TransactionsScreen })));
 const AccountsScreen = lazy(() => import("./screens/Accounts").then((m) => ({ default: m.AccountsScreen })));
 const ActivityScreen = lazy(() => import("./screens/Activity").then((m) => ({ default: m.ActivityScreen })));
-const ImportActivityBadge = lazy(() => import("./components/ImportActivityBadge").then((m) => ({ default: m.ImportActivityBadge })));
-const SyncBadge = lazy(() => import("./components/SyncBadge").then((m) => ({ default: m.SyncBadge })));
+const OptionalStatusChrome = lazy(() => import("./components/OptionalStatusChrome").then((m) => ({ default: m.OptionalStatusChrome })));
 const EnvelopeScreen = lazy(() => import("./screens/Envelope").then((m) => ({ default: m.EnvelopeScreen })));
 const UnlockScreen = lazy(() => import("./screens/Unlock").then((m) => ({ default: m.UnlockScreen })));
 const ForeignReplicaScreen = lazy(() => import("./screens/ForeignReplica").then((m) => ({ default: m.ForeignReplicaScreen })));
@@ -233,6 +233,7 @@ export default function App() {
   const [txFilters, setTxFilters] = useState<TransactionFilters>(initialTransactionFilters);
   const { data: state, isLoading, isError } = useStateQuery(month);
   const bootStatus = useSyncExternalStore(store.subscribe, store.getBootStatus);
+  const importManagerStatus = useSyncExternalStore(importManagerBootstrap.subscribe, importManagerBootstrap.getSnapshot);
 
   // local replica boot: hydrate from IDB → (empty ⇒ snapshot) → pull deltas
   useEffect(() => {
@@ -1085,15 +1086,26 @@ export default function App() {
         </div>
         {!["addExpense", "settings"].includes(screen) && !onboarding && !envView && <BottomNav active={screen} onNav={nav} />}
         {/* badge anchors top-right; on Add the header is the type tabs → collision, hide it */}
-        {screen !== "addExpense" && (
-          <>
-            <LazyChunk variant="silent">
-              <SyncBadge onOpenSync={() => nav("settings")} />
-            </LazyChunk>
-            <LazyChunk variant="silent">
-              <ImportActivityBadge onOpen={() => nav("activity")} />
-            </LazyChunk>
-          </>
+        {screen !== "addExpense" && <SyncBadge onOpenSync={() => nav("settings")} />}
+        {importManagerStatus === "error" && (
+          <div role="status" style={{ position: "absolute", top: "calc(env(safe-area-inset-top) + 13px)", right: 104, zIndex: 62 }}>
+            <button
+              type="button"
+              onClick={() => void importManagerBootstrap.start()}
+              aria-label={t("Activity could not be refreshed. Try again.")}
+              style={{
+                width: 20,
+                height: 20,
+                borderRadius: 999,
+                border: 0,
+                background: "var(--danger)",
+                color: "#fff",
+                cursor: "pointer",
+              }}
+            >
+              !
+            </button>
+          </div>
         )}
         {envActionsMounted && (
           <LazyChunk variant="overlay" onDismiss={() => setEnvActions(null)}>
@@ -1139,7 +1151,9 @@ export default function App() {
             <InstallSheet show={installSheet} onClose={() => setInstallSheet(false)} />
           </LazyChunk>
         )}
-        <UpdatePrompt />
+        <LazyChunk variant="silent">
+          <OptionalStatusChrome showBadges={screen !== "addExpense"} onOpenActivity={() => nav("activity")} />
+        </LazyChunk>
       </div>
     </div>
   );

@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { IDBFactory } from "fake-indexeddb";
 import { decryptPayload, encryptPayload, generateDek, importJobAadContext } from "./crypto";
-import { __resetStorageForTests, idbGet, idbPut, storageMode } from "./idb";
+import { __resetStorageForTests, idbAdd, idbGet, idbPut, storageMode } from "./idb";
 import {
   IMPORT_DRAFT_TTL_MS,
   type ImportJobStorageScope,
@@ -66,29 +66,141 @@ describe("plain import upload drafts", () => {
       skippedRowIds: ["row-three"],
       skippedCount: 1,
     });
-    expect(JSON.stringify(await idbGet("meta", JSON.stringify(["import-apply-progress", 2, OWNER_ID, BUDGET_ID, JOB_ID])))).not.toContain("Private result");
+    expect(JSON.stringify(await idbGet("meta", JSON.stringify(["import-apply-progress", 3, OWNER_ID, BUDGET_ID, JOB_ID])))).not.toContain("Private result");
   });
 
   it("atomically keeps one prepared transaction identity and merges progress across tabs", async () => {
     // given: two tabs prepare and then account for different rows at the same time
-    const prepared = await Promise.all([
-      importJobStorage.prepareApplyRow(SCOPE, JOB_ID, "row-one", "transaction-from-tab-one"),
-      importJobStorage.prepareApplyRow(SCOPE, JOB_ID, "row-one", "transaction-from-tab-two"),
+    const claims = await Promise.all([
+      importJobStorage.claimApplyRow(SCOPE, JOB_ID, {
+        rowToken: "opaque-row-one",
+        transactionId: "transaction-from-tab-one",
+        ownerToken: "tab-one",
+        now: 100,
+        leaseUntil: 200,
+      }),
+      importJobStorage.claimApplyRow(SCOPE, JOB_ID, {
+        rowToken: "opaque-row-one",
+        transactionId: "transaction-from-tab-two",
+        ownerToken: "tab-two",
+        now: 100,
+        leaseUntil: 200,
+      }),
     ]);
 
     await Promise.all([
-      importJobStorage.mergeApplyProgress(SCOPE, JOB_ID, { appliedRowIds: ["row-one"] }),
-      importJobStorage.mergeApplyProgress(SCOPE, JOB_ID, { skippedRowIds: ["row-two"] }),
+      importJobStorage.mergeApplyProgress(SCOPE, JOB_ID, { appliedRowIds: ["opaque-row-one"] }),
+      importJobStorage.mergeApplyProgress(SCOPE, JOB_ID, { skippedRowIds: ["opaque-row-two"] }),
     ]);
 
     // then: both tabs use the same mutation id and neither durable identity is lost
-    expect(new Set(prepared).size).toBe(1);
+    expect(claims.filter((claim) => claim.kind === "claimed")).toHaveLength(1);
+    expect(claims.filter((claim) => claim.kind === "busy")).toHaveLength(1);
     expect(await importJobStorage.getApplyProgress(SCOPE, JOB_ID)).toEqual({
-      appliedRowIds: ["row-one"],
+      appliedRowIds: ["opaque-row-one"],
       appliedCount: 1,
-      skippedRowIds: ["row-two"],
+      skippedRowIds: ["opaque-row-two"],
       skippedCount: 1,
     });
+  });
+
+  it("fences one row owner, renews it, and reclaims the lease only after expiry", async () => {
+    // given: two tabs race for one opaque apply identity
+    const first = await importJobStorage.claimApplyRow(SCOPE, JOB_ID, {
+      rowToken: "h1.opaque-row",
+      transactionId: "transaction-from-tab-one",
+      ownerToken: "tab-one",
+      now: 100,
+      leaseUntil: 200,
+    });
+    const blocked = await importJobStorage.claimApplyRow(SCOPE, JOB_ID, {
+      rowToken: "h1.opaque-row",
+      transactionId: "transaction-from-tab-two",
+      ownerToken: "tab-two",
+      now: 150,
+      leaseUntil: 250,
+    });
+    const sameOwnerBlocked = await importJobStorage.claimApplyRow(SCOPE, JOB_ID, {
+      rowToken: "h1.opaque-row",
+      transactionId: "must-not-replace-stable-transaction",
+      ownerToken: "tab-one",
+      now: 151,
+      leaseUntil: 251,
+    });
+
+    // when: only the current owner renews, then another tab returns after expiry
+    const wrongOwnerRenewed = await importJobStorage.renewApplyRow(SCOPE, JOB_ID, {
+      rowToken: "h1.opaque-row",
+      ownerToken: "tab-two",
+      fence: first.kind === "claimed" ? first.fence : -1,
+      now: 175,
+      leaseUntil: 275,
+    });
+    const reclaimed = await importJobStorage.claimApplyRow(SCOPE, JOB_ID, {
+      rowToken: "h1.opaque-row",
+      transactionId: "must-not-replace-stable-transaction",
+      ownerToken: "tab-two",
+      now: 201,
+      leaseUntil: 301,
+    });
+
+    // then: the transaction id is stable and the monotonically increasing fence rejects tab one
+    expect(first).toEqual({ kind: "claimed", transactionId: "transaction-from-tab-one", fence: 1 });
+    expect(blocked).toEqual({ kind: "busy" });
+    expect(sameOwnerBlocked).toEqual({ kind: "busy" });
+    expect(wrongOwnerRenewed).toBe(false);
+    expect(reclaimed).toEqual({ kind: "claimed", transactionId: "transaction-from-tab-one", fence: 2 });
+    expect(
+      await importJobStorage.completeApplyRow(SCOPE, JOB_ID, {
+        rowToken: "h1.opaque-row",
+        ownerToken: "tab-one",
+        fence: 1,
+      }),
+    ).toBe(false);
+    expect(
+      await importJobStorage.completeApplyRow(SCOPE, JOB_ID, {
+        rowToken: "h1.opaque-row",
+        ownerToken: "tab-two",
+        fence: 2,
+      }),
+    ).toBe(true);
+  });
+
+  it("proves a transaction only from persistent replica state and lets deadletter rejection win", async () => {
+    // given: the durable replica belongs to this scope but contains no transaction or outbox receipt
+    await idbPut("meta", OWNER_ID, "userId");
+    await idbPut("meta", BUDGET_ID, "budgetId");
+    await idbPut("meta", { transactions: [] }, "ledger");
+    const operation = {
+      opId: "77777777-7777-4777-8777-777777777777",
+      kind: "txn.create",
+      payload: { id: "88888888-8888-4888-8888-888888888888" },
+    };
+
+    // then: optimistic memory alone cannot prove the prepared row
+    expect(await importJobStorage.durableTransactionProof(SCOPE, operation.payload.id)).toBe("absent");
+
+    // when: the exact create reaches the durable outbox, it becomes crash-recoverable
+    await idbAdd("outbox", { op: operation });
+    expect(await importJobStorage.durableTransactionProof(SCOPE, operation.payload.id)).toBe("durable");
+
+    // and: a durable server rejection always overrides a stale mirror/outbox trace
+    await idbPut("deadletter", { opId: operation.opId, op: operation, error: "rejected", at: new Date(0).toISOString() });
+    expect(await importJobStorage.durableTransactionProof(SCOPE, operation.payload.id)).toBe("rejected");
+  });
+
+  it("promotes crash recovery only for the exact prepared transaction identity", async () => {
+    await importJobStorage.claimApplyRow(SCOPE, JOB_ID, {
+      rowToken: "h1.opaque-row",
+      transactionId: "stable-transaction",
+      ownerToken: "crashed-tab",
+      now: 100,
+      leaseUntil: 200,
+    });
+
+    expect(await importJobStorage.promoteDurableApplyRow(SCOPE, JOB_ID, "h1.opaque-row", "other-transaction")).toBe(false);
+    expect(await importJobStorage.promoteDurableApplyRow(SCOPE, JOB_ID, "h1.opaque-row", "stable-transaction")).toBe(true);
+    expect(await importJobStorage.getApplyProgress(SCOPE, JOB_ID)).toMatchObject({ appliedRowIds: ["h1.opaque-row"], appliedCount: 1 });
   });
 
   it("persists the canonical request and keeps the same idempotent draft on retry", async () => {

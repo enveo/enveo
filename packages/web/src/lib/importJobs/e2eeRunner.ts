@@ -162,6 +162,36 @@ export class E2eeImportJobRunner {
     return current.tier === "e2ee" && current.epoch === job.epoch && job.budgetId === this.options.scope.budgetId;
   }
 
+  private expired(job: StoredE2eeImportJob): boolean {
+    const expiresAt = Date.parse(job.expiresAt);
+    return !Number.isFinite(expiresAt) || expiresAt <= this.now().getTime();
+  }
+
+  private async expire(job: StoredE2eeImportJob): Promise<void> {
+    this.assertCurrent();
+    const deleted = await importJobStorage.deleteJobWithProgress(this.options.scope, job.id, () => this.isCurrent());
+    this.assertCurrent();
+    if (deleted) this.options.activity.remove(job.id);
+  }
+
+  private async currentJobs(): Promise<StoredE2eeImportJob[]> {
+    this.assertCurrent();
+    const stored = await importJobStorage.listJobs(this.options.scope);
+    this.assertCurrent();
+    for (const job of stored) {
+      if (!this.expired(job)) continue;
+      await this.expire(job);
+    }
+    this.assertCurrent();
+    const current = (await importJobStorage.listJobs(this.options.scope)).filter((job) => !this.expired(job));
+    this.assertCurrent();
+    const ids = new Set(current.map((job) => job.id));
+    for (const item of this.options.activity.list()) {
+      if (item.source === "e2ee" && !ids.has(item.id)) this.options.activity.remove(item.id);
+    }
+    return current;
+  }
+
   private async write(
     current: StoredE2eeImportJob,
     change: Partial<StoredE2eeImportJob>,
@@ -305,6 +335,10 @@ export class E2eeImportJobRunner {
 
   private async run(job: StoredE2eeImportJob): Promise<void> {
     if (!this.isCurrent()) return;
+    if (this.expired(job)) {
+      await this.expire(job);
+      return;
+    }
     if (job.status === "queued") {
       try {
         job = await this.transition(job, { type: "claimed", at: this.timestamp() });
@@ -419,7 +453,7 @@ export class E2eeImportJobRunner {
     if (!this.isCurrent()) return Promise.resolve();
     if (this.resumePromise) return this.resumePromise;
     const work = (async () => {
-      let jobs = await importJobStorage.listJobs(this.options.scope);
+      let jobs = await this.currentJobs();
       this.assertCurrent();
       for (const job of jobs) {
         this.assertCurrent();
@@ -431,7 +465,7 @@ export class E2eeImportJobRunner {
       if (!this.canRun()) return;
       await this.recoverInterrupted();
       this.assertCurrent();
-      jobs = await importJobStorage.listJobs(this.options.scope);
+      jobs = await this.currentJobs();
       this.assertCurrent();
       for (let job of jobs) {
         this.assertCurrent();
@@ -458,7 +492,7 @@ export class E2eeImportJobRunner {
   async list(): Promise<ImportActivityItem[]> {
     if (!this.isCurrent()) return [];
     const items: ImportActivityItem[] = [];
-    for (const job of await importJobStorage.listJobs(this.options.scope)) {
+    for (const job of await this.currentJobs()) {
       if (!this.isCurrent()) return items;
       let result: ImportRecognitionResult | null = null;
       if (job.resultCiphertext && this.generationMatches(job)) {
@@ -535,7 +569,7 @@ export class E2eeImportJobRunner {
 
   async dismiss(id: string): Promise<void> {
     if (!this.isCurrent()) return;
-    if (await importJobStorage.deleteJob(this.options.scope, id)) {
+    if (await importJobStorage.deleteJobWithProgress(this.options.scope, id, () => this.isCurrent())) {
       if (this.isCurrent()) this.options.activity.remove(id);
     }
   }

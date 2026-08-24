@@ -8,6 +8,7 @@ import { createRoot } from "react-dom/client";
 import App from "./App";
 import { AppProviders } from "./lib/contexts";
 import { loadLocale, uiLang } from "./lib/i18n";
+import { startImportJobManager } from "./lib/importJobs/bootstrap";
 import { initInstallPrompt } from "./lib/installPrompt";
 
 const queryClient = new QueryClient({
@@ -15,10 +16,9 @@ const queryClient = new QueryClient({
 });
 
 initInstallPrompt(); // capture beforeinstallprompt as early as possible
-// Install once at the composition root. The manager observes boot status and refuses to
-// derive an owner/budget storage scope or resume work until the replica is ready. Keep the
-// durable Stage A pipeline outside the initial render closure.
-void import("./lib/importJobs/manager").then(({ importJobManager }) => importJobManager.start());
+// Install once at the composition root. The tiny eager bootstrap publishes failures to the
+// shell, while the durable Stage A pipeline stays outside the initial render closure.
+void startImportJobManager();
 
 const render = () =>
   createRoot(document.getElementById("root")!).render(

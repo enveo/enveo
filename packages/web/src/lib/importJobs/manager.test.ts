@@ -1,8 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { type ClientLedger, createDefaultBudgetPreferences } from "@enveo/shared";
 import { IDBFactory } from "fake-indexeddb";
-import { __resetStorageForTests } from "../idb";
+import { __resetStorageForTests, idbGet, idbPut } from "../idb";
 import { type ImportJobStorageScope, importJobStorage } from "../importJobStorage";
+import * as persist from "../persist";
 import { ImportJobManager, type ImportJobManagerE2eePort, type ImportJobManagerPlainPort, type ImportJobManagerState } from "./manager";
 import type { ImportActivityItem, ImportActivityStore, ImportJobScopeCapability } from "./store";
 
@@ -145,12 +146,14 @@ beforeEach(() => {
   (globalThis as Record<string, unknown>).indexedDB = new IDBFactory();
   (globalThis as Record<string, unknown>).localStorage = { getItem: () => "persistent" };
   __resetStorageForTests();
+  persist.__resetPersistForTests();
 });
 
 afterEach(() => {
   delete (globalThis as Record<string, unknown>).indexedDB;
   delete (globalThis as Record<string, unknown>).localStorage;
   __resetStorageForTests();
+  persist.__resetPersistForTests();
 });
 
 describe("import job manager", () => {
@@ -167,14 +170,16 @@ describe("import job manager", () => {
         return { createPlain: adapters.plain, createE2ee: adapters.e2ee };
       })(),
       randomId: () => ID,
+      durableTransactionProof: async () => "durable",
       visible: () => true,
     });
     manager.start();
     await manager.create({ accountId: ACCOUNT, locale: "en-US", images: [IMAGE] });
 
     // when: two interrupted attempts report an overlapping applied row
-    await manager.recordApplied(ID, ["row-one"]);
-    await manager.recordApplied(ID, ["row-one", "row-two"]);
+    await manager.applyRow(ID, "row-one", async () => {});
+    await manager.applyRow(ID, "row-one", async () => {});
+    await manager.applyRow(ID, "row-two", async () => {});
     await manager.recordSkipped(ID, ["row-three"]);
 
     // then: a newly constructed manager receives stable distinct identities/counts from storage
@@ -188,26 +193,29 @@ describe("import job manager", () => {
         return { createPlain: adapters.plain, createE2ee: adapters.e2ee };
       })(),
       randomId: () => ID,
+      durableTransactionProof: async () => "durable",
       visible: () => true,
     });
     restarted.start();
     await restarted.create({ accountId: ACCOUNT, locale: "en-US", images: [IMAGE] });
-    expect(await restarted.appliedProgress(ID)).toEqual({
+    expect(await restarted.appliedProgress(ID, ["row-one", "row-two", "row-three"])).toEqual({
       appliedRowIds: ["row-one", "row-two"],
       appliedCount: 2,
       skippedRowIds: ["row-three"],
       skippedCount: 1,
     });
-    expect(await importJobStorage.getApplyProgress({ ownerId: "user-a", budgetId: BUDGET }, ID)).toEqual({
-      appliedRowIds: ["row-one", "row-two"],
-      appliedCount: 2,
-      skippedRowIds: ["row-three"],
-      skippedCount: 1,
-    });
+    const raw = JSON.stringify(await idbGet("meta", JSON.stringify(["import-apply-progress", 3, "user-a", BUDGET, ID])));
+    expect(raw).not.toContain("row-one");
+    expect(raw).not.toContain("row-three");
 
     // and: successful completion ends the recovery record
     await restarted.complete(ID, { appliedCount: 2, skippedCount: 1 });
-    expect(await restarted.appliedProgress(ID)).toEqual({ appliedRowIds: [], appliedCount: 0, skippedRowIds: [], skippedCount: 0 });
+    expect(await restarted.appliedProgress(ID, ["row-one", "row-two", "row-three"])).toEqual({
+      appliedRowIds: [],
+      appliedCount: 0,
+      skippedRowIds: [],
+      skippedCount: 0,
+    });
     expect(await importJobStorage.getApplyProgress({ ownerId: "user-a", budgetId: BUDGET }, ID)).toEqual({
       appliedRowIds: [],
       appliedCount: 0,
@@ -263,7 +271,13 @@ describe("import job manager", () => {
     });
     manager.start();
     await manager.create({ accountId: ACCOUNT, locale: "en-US", images: [IMAGE] });
-    expect(await manager.prepareAppliedRow(ID, "blank-row")).toBe(TXN_ID);
+    await importJobStorage.claimApplyRow({ ownerId: "user-a", budgetId: BUDGET }, ID, {
+      rowToken: "opaque-blank-row",
+      transactionId: TXN_ID,
+      ownerToken: "crashed-tab",
+      now: 0,
+      leaseUntil: 1,
+    });
 
     // when: the transaction becomes durable but the final applied-progress write is interrupted
     state.currentLedger!.transactions.push({
@@ -286,6 +300,9 @@ describe("import job manager", () => {
       items: [],
       createdAt: "2026-08-24T10:00:00.000Z",
     });
+    await idbPut("meta", "user-a", "userId");
+    await idbPut("meta", BUDGET, "budgetId");
+    await idbPut("meta", state.currentLedger, "ledger");
     manager.stop();
     const restarted = new ImportJobManager({
       state,
@@ -294,14 +311,182 @@ describe("import job manager", () => {
       createPlain: adapters.plain,
       createE2ee: adapters.e2ee,
       randomId: () => ID,
+      deriveRowToken: async () => "opaque-blank-row",
       visible: () => true,
     });
     restarted.start();
     await restarted.create({ accountId: ACCOUNT, locale: "en-US", images: [IMAGE] });
 
     // then: reload promotes the prepared row to applied without source_ref evidence
-    expect(await restarted.appliedProgress(ID)).toMatchObject({ appliedRowIds: ["blank-row"], appliedCount: 1 });
+    expect(await restarted.appliedProgress(ID, ["blank-row"])).toMatchObject({ appliedRowIds: ["blank-row"], appliedCount: 1 });
     restarted.stop();
+  });
+
+  it("does not promote an optimistic transaction when outbox persistence failed after claim metadata succeeded", async () => {
+    // given: claim metadata is durable, but the local outbox/ledger write has no persistent proof
+    const state = new FakeState();
+    state.status = "ready";
+    const adapters = ports([]);
+    const ids = [ID, TXN_ID];
+    const manager = new ImportJobManager({
+      state,
+      ownerId: async () => "user-a",
+      tierMeta: () => ({ tier: "plain", epoch: 0 }),
+      createPlain: adapters.plain,
+      createE2ee: adapters.e2ee,
+      randomId: () => ids.shift()!,
+      applyOwnerId: () => "tab-one",
+      deriveRowToken: async () => "opaque-row",
+      visible: () => true,
+    });
+    manager.start();
+    await manager.create({ accountId: ACCOUNT, locale: "en-US", images: [IMAGE] });
+    await idbPut("meta", "user-a", "userId");
+    await idbPut("meta", BUDGET, "budgetId");
+    await idbPut("meta", { ...state.currentLedger, transactions: [] }, "ledger");
+
+    // when: the optimistic store accepted the transaction but its persistence boundary failed
+    await expect(
+      manager.applyRow(ID, "Coffee Shop 12.34 EUR", async (transactionId) => {
+        state.currentLedger!.transactions.push({
+          id: transactionId,
+          type: "expense",
+          accountId: ACCOUNT,
+          toAccountId: null,
+          amount: 1234,
+          date: "2026-08-24",
+          isRefund: false,
+          envelopeId: null,
+          placeId: null,
+          categoryId: null,
+          name: "Coffee Shop",
+          note: null,
+          tag: null,
+          sourceRef: null,
+          allocationFromEnvelopeId: null,
+          allocationToEnvelopeId: null,
+          items: [],
+          createdAt: "2026-08-24T10:00:00.000Z",
+        });
+        const warn = console.warn;
+        console.warn = () => {};
+        try {
+          await persist.addOutbox({ cannotBeCloned: () => {} });
+          await persist.flushed();
+        } finally {
+          console.warn = warn;
+        }
+      }),
+    ).rejects.toThrow("local_persistence_failed");
+    expect(persist.isDurableBroken()).toBe(true);
+
+    // then: durable metadata remains recoverable but the row is still actionable
+    expect(await manager.appliedProgress(ID, ["Coffee Shop 12.34 EUR"])).toEqual({
+      appliedRowIds: [],
+      appliedCount: 0,
+      skippedRowIds: [],
+      skippedCount: 0,
+    });
+    manager.stop();
+  });
+
+  it("allows only one tab to cross the category, place, transaction, and outbox boundary", async () => {
+    // given: two active managers share the same durable job and one tab holds the row lease
+    const state = new FakeState();
+    state.status = "ready";
+    const adapters = ports([]);
+    const releaseFirst = deferred<void>();
+    let mutationBoundaries = 0;
+    let categoryCreates = 0;
+    let placeCreates = 0;
+    let transactionCreates = 0;
+    let outboxWrites = 0;
+    let transactionDurable = false;
+    const makeManager = (owner: string) =>
+      new ImportJobManager({
+        state,
+        ownerId: async () => "user-a",
+        tierMeta: () => ({ tier: "plain", epoch: 0 }),
+        createPlain: adapters.plain,
+        createE2ee: adapters.e2ee,
+        randomId: () => (mutationBoundaries === 0 ? ID : TXN_ID),
+        applyOwnerId: () => owner,
+        deriveRowToken: async () => "opaque-row",
+        durableTransactionProof: async () => (transactionDurable ? "durable" : "absent"),
+        visible: () => true,
+      });
+    const first = makeManager("tab-one");
+    const second = makeManager("tab-two");
+    first.start();
+    second.start();
+    await first.create({ accountId: ACCOUNT, locale: "en-US", images: [IMAGE] });
+    await second.create({ accountId: ACCOUNT, locale: "en-US", images: [IMAGE] });
+
+    // when: tab two attempts the same row while tab one is inside the async durability boundary
+    const firstApply = first.applyRow(ID, "row-one", async () => {
+      mutationBoundaries++;
+      categoryCreates++;
+      placeCreates++;
+      transactionCreates++;
+      outboxWrites++;
+      await releaseFirst.promise;
+      transactionDurable = true;
+    });
+    for (let attempt = 0; attempt < 50 && mutationBoundaries === 0; attempt++) {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    }
+    expect(mutationBoundaries).toBe(1);
+    const secondApply = second.applyRow(ID, "row-one", async () => {
+      mutationBoundaries++;
+      categoryCreates++;
+      placeCreates++;
+      transactionCreates++;
+      outboxWrites++;
+    });
+
+    // then: the durable owner/fence blocks the second callback entirely
+    await expect(secondApply).rejects.toThrow("import_row_busy");
+    releaseFirst.resolve();
+    await firstApply;
+    expect({ mutationBoundaries, categoryCreates, placeCreates, transactionCreates, outboxWrites }).toEqual({
+      mutationBoundaries: 1,
+      categoryCreates: 1,
+      placeCreates: 1,
+      transactionCreates: 1,
+      outboxWrites: 1,
+    });
+    first.stop();
+    second.stop();
+  });
+
+  it("persists only an opaque token for an E2EE merchant-like model row id", async () => {
+    // given: an unlocked E2EE job and a row id that itself contains private merchant text
+    const state = new FakeState();
+    state.status = "ready";
+    const adapters = ports([]);
+    const sensitive = "Coffee Shop Warsaw 2026-08-24 12.34 EUR";
+    const manager = new ImportJobManager({
+      state,
+      ownerId: async () => "user-a",
+      tierMeta: () => ({ tier: "e2ee", epoch: 3 }),
+      createPlain: adapters.plain,
+      createE2ee: adapters.e2ee,
+      randomId: () => ID,
+      deriveRowToken: async () => "h1.opaque-e2ee-token",
+      visible: () => true,
+    });
+    manager.start();
+    await manager.create({ accountId: ACCOUNT, locale: "en-US", images: [IMAGE] });
+
+    // when: the user explicitly skips that row
+    await manager.recordSkipped(ID, [sensitive]);
+
+    // then: public progress maps back to the row, while persisted metadata never contains it
+    expect(await manager.appliedProgress(ID, [sensitive])).toMatchObject({ skippedRowIds: [sensitive], skippedCount: 1 });
+    const raw = await idbGet("meta", JSON.stringify(["import-apply-progress", 3, "user-a", BUDGET, ID]));
+    expect(JSON.stringify(raw)).not.toContain(sensitive);
+    expect(JSON.stringify(raw)).toContain("h1.opaque-e2ee-token");
+    manager.stop();
   });
 
   it("starts once but does not derive a scope or resume jobs until replica boot is ready", async () => {

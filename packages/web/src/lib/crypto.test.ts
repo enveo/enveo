@@ -25,8 +25,10 @@ import {
   encryptPayload,
   generateDek,
   generateSalt,
+  importApplyRowToken,
   importJobAadContext,
   opAadContext,
+  plainImportApplyRowToken,
   snapshotAadContext,
   unwrapDek,
   wrapDek,
@@ -102,6 +104,35 @@ describe("v2 import-job ciphertext", () => {
     await expect(decryptPayload(ciphertext, dek, importJobAadContext(BUDGET_A, 4, JOB_2, "input"))).rejects.toThrow();
     await expect(decryptPayload(ciphertext, dek, importJobAadContext(BUDGET_A, 4, JOB_1, "checkpoint"))).rejects.toThrow();
     await expect(decryptPayload(ciphertext, dek, importJobAadContext(BUDGET_A, 4, JOB_1, "result"))).rejects.toThrow();
+  });
+});
+
+describe("E2EE import apply row identity", () => {
+  it("derives an opaque domain-separated token without exposing model row text", async () => {
+    // given: a model row id contains merchant-like private text
+    const dek = generateDek();
+    const sensitiveRowId = "Coffee Shop Warsaw 2026-08-24 12.34 EUR";
+
+    // when: the client derives the durable apply identity in the crypto boundary
+    const token = await importApplyRowToken(dek, BUDGET_A, 4, JOB_1, sensitiveRowId);
+
+    // then: it is stable only for the same E2EE job context and hides the source text
+    expect(token).toBe(await importApplyRowToken(dek, BUDGET_A, 4, JOB_1, sensitiveRowId));
+    expect(token).not.toContain(sensitiveRowId);
+    expect(token).not.toBe(await importApplyRowToken(dek, BUDGET_A, 4, JOB_2, sensitiveRowId));
+    expect(token).not.toBe(await importApplyRowToken(dek, BUDGET_A, 4, JOB_1, `${sensitiveRowId}!`));
+    await expect(importApplyRowToken(dek, BUDGET_A, 4, JOB_1, "")).rejects.toThrow("bad_import_row_context");
+  });
+});
+
+describe("plain import apply row identity", () => {
+  it("uses a job-scoped opaque digest instead of persisting model row text", async () => {
+    const sensitiveRowId = "Coffee Shop Warsaw 2026-08-24 12.34 EUR";
+    const token = await plainImportApplyRowToken(BUDGET_A, JOB_1, sensitiveRowId);
+
+    expect(token).toBe(await plainImportApplyRowToken(BUDGET_A, JOB_1, sensitiveRowId));
+    expect(token).not.toContain(sensitiveRowId);
+    expect(token).not.toBe(await plainImportApplyRowToken(BUDGET_A, JOB_2, sensitiveRowId));
   });
 });
 

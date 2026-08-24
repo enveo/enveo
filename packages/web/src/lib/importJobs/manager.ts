@@ -1,4 +1,5 @@
 import type { AiLocale, ClientLedger, OpenAiModel } from "@enveo/shared";
+import { importApplyRowToken, plainImportApplyRowToken } from "../crypto";
 import * as e2ee from "../e2ee";
 import { idbGet } from "../idb";
 import { type ImportApplyProgress, type ImportJobStorageScope, importJobStorage } from "../importJobStorage";
@@ -61,9 +62,17 @@ export interface ImportJobManagerOptions {
   documentTarget?: Pick<EventTarget, "addEventListener" | "removeEventListener">;
   scheduleInterval?: (callback: () => void, delay: number) => ReturnType<typeof setInterval>;
   clearScheduledInterval?: (timer: ReturnType<typeof setInterval>) => void;
+  applyOwnerId?: () => string;
+  deriveRowToken?: (item: ImportActivityItem, rowId: string) => Promise<string>;
+  durableTransactionProof?: (scope: ImportJobStorageScope, transactionId: string) => Promise<"durable" | "rejected" | "absent">;
+  nowMs?: () => number;
+  scheduleApplyLeaseInterval?: (callback: () => void, delay: number) => ReturnType<typeof setInterval>;
+  clearApplyLeaseInterval?: (timer: ReturnType<typeof setInterval>) => void;
 }
 
 const E2EE_WAKE_INTERVAL_MS = 2_000;
+const APPLY_LEASE_MS = 30_000;
+const APPLY_LEASE_RENEW_MS = 10_000;
 
 interface ActivationSnapshot {
   fingerprint: string;
@@ -89,6 +98,12 @@ export class ImportJobManager {
   private readonly documentTarget: ImportJobManagerOptions["documentTarget"];
   private readonly scheduleInterval: NonNullable<ImportJobManagerOptions["scheduleInterval"]>;
   private readonly clearScheduledInterval: NonNullable<ImportJobManagerOptions["clearScheduledInterval"]>;
+  private readonly applyOwnerId: string;
+  private readonly deriveRowToken: NonNullable<ImportJobManagerOptions["deriveRowToken"]>;
+  private readonly durableTransactionProof: NonNullable<ImportJobManagerOptions["durableTransactionProof"]>;
+  private readonly nowMs: () => number;
+  private readonly scheduleApplyLeaseInterval: NonNullable<ImportJobManagerOptions["scheduleApplyLeaseInterval"]>;
+  private readonly clearApplyLeaseInterval: NonNullable<ImportJobManagerOptions["clearApplyLeaseInterval"]>;
   private readonly activity = createImportActivityStore();
   private readonly progressWrites = new Map<string, Promise<void>>();
   private scope: ImportJobStorageScope | null = null;
@@ -131,6 +146,23 @@ export class ImportJobManager {
     this.documentTarget = options.documentTarget ?? (typeof document === "undefined" ? undefined : document);
     this.scheduleInterval = options.scheduleInterval ?? ((callback, delay) => setInterval(callback, delay));
     this.clearScheduledInterval = options.clearScheduledInterval ?? ((timer) => clearInterval(timer));
+    this.applyOwnerId = (options.applyOwnerId ?? (() => crypto.randomUUID()))();
+    this.deriveRowToken =
+      options.deriveRowToken ??
+      (async (item, rowId) => {
+        if (item.tier === "plain") return plainImportApplyRowToken(item.budgetId, item.id, rowId);
+        const key = e2ee.requireValidatedDek(item.epoch);
+        try {
+          return await importApplyRowToken(key, item.budgetId, item.epoch, item.id, rowId);
+        } finally {
+          key.fill(0);
+        }
+      });
+    this.durableTransactionProof =
+      options.durableTransactionProof ?? ((scope, transactionId) => importJobStorage.durableTransactionProof(scope, transactionId));
+    this.nowMs = options.nowMs ?? Date.now;
+    this.scheduleApplyLeaseInterval = options.scheduleApplyLeaseInterval ?? ((callback, delay) => setInterval(callback, delay));
+    this.clearApplyLeaseInterval = options.clearApplyLeaseInterval ?? ((timer) => clearInterval(timer));
   }
 
   private deactivate(clear: boolean): void {
@@ -312,11 +344,25 @@ export class ImportJobManager {
     return this.activity.observe(id, listener);
   }
 
-  private async recordProgress(id: string, kind: "applied" | "skipped", rowIds: readonly string[]): Promise<void> {
+  private async rowTokens(id: string, rowIds: readonly string[]): Promise<Map<string, string>> {
+    const current = this.activity.get(id);
+    if (!current) throw new Error("import_manager_not_ready");
+    const pairs = await Promise.all(
+      [...new Set(rowIds)].map(async (rowId) => {
+        const token = await this.deriveRowToken(current, rowId);
+        if (!token || token === rowId) throw new Error("invalid_import_row_token");
+        return [rowId, token] as const;
+      }),
+    );
+    return new Map(pairs);
+  }
+
+  async recordSkipped(id: string, rowIds: readonly string[]): Promise<void> {
     const scope = this.scope;
     if (!scope || !this.activity.get(id)) return;
+    const tokens = [...(await this.rowTokens(id, rowIds)).values()];
     await this.withProgressLock(id, async () => {
-      await importJobStorage.mergeApplyProgress(scope, id, kind === "applied" ? { appliedRowIds: rowIds } : { skippedRowIds: rowIds });
+      await importJobStorage.mergeApplyProgress(scope, id, { skippedRowIds: tokens });
     });
   }
 
@@ -337,38 +383,86 @@ export class ImportJobManager {
     }
   }
 
-  async prepareAppliedRow(id: string, rowId: string): Promise<string> {
+  async applyRow(id: string, rowId: string, mutation: (transactionId: string) => Promise<void> | void): Promise<void> {
     const scope = this.scope;
     if (!scope || !this.activity.get(id)) throw new Error("import_manager_not_ready");
-    return this.withProgressLock(id, async () => {
-      const transactionId = this.randomId();
-      return importJobStorage.prepareApplyRow(scope, id, rowId, transactionId);
+    const rowToken = (await this.rowTokens(id, [rowId])).get(rowId);
+    if (!rowToken) throw new Error("invalid_import_row_token");
+    const existing = await importJobStorage.getApplyProgressRecord(scope, id);
+    const prepared = existing.preparedRows.find((candidate) => candidate.rowToken === rowToken);
+    if (prepared) {
+      const proof = await this.durableTransactionProof(scope, prepared.transactionId);
+      if (proof === "durable") {
+        await importJobStorage.promoteDurableApplyRow(scope, id, rowToken, prepared.transactionId);
+        return;
+      }
+    }
+    const ownerToken = this.applyOwnerId;
+    const claimedAt = this.nowMs();
+    const claim = await importJobStorage.claimApplyRow(scope, id, {
+      rowToken,
+      transactionId: this.randomId(),
+      ownerToken,
+      now: claimedAt,
+      leaseUntil: claimedAt + APPLY_LEASE_MS,
     });
+    if (claim.kind === "applied") return;
+    if (claim.kind === "busy") throw new Error("import_row_busy");
+    let leaseLost = false;
+    const renew = async (): Promise<boolean> => {
+      if (leaseLost) return false;
+      const now = this.nowMs();
+      const renewed = await importJobStorage.renewApplyRow(scope, id, {
+        rowToken,
+        ownerToken,
+        fence: claim.fence,
+        now,
+        leaseUntil: now + APPLY_LEASE_MS,
+      });
+      if (!renewed) leaseLost = true;
+      return renewed;
+    };
+    const timer = this.scheduleApplyLeaseInterval(() => {
+      void renew().catch(() => {
+        leaseLost = true;
+      });
+    }, APPLY_LEASE_RENEW_MS);
+    try {
+      if (!(await renew())) throw new Error("import_row_lease_lost");
+      await mutation(claim.transactionId);
+      if (!(await renew())) throw new Error("import_row_lease_lost");
+      const proof = await this.durableTransactionProof(scope, claim.transactionId);
+      if (!(await renew())) throw new Error("import_row_lease_lost");
+      if (proof !== "durable") throw new Error("local_persistence_failed");
+      if (!(await importJobStorage.completeApplyRow(scope, id, { rowToken, ownerToken, fence: claim.fence }))) {
+        throw new Error("import_row_lease_lost");
+      }
+    } catch (error) {
+      const proof = await this.durableTransactionProof(scope, claim.transactionId).catch(() => "absent" as const);
+      if (proof === "durable") await importJobStorage.promoteDurableApplyRow(scope, id, rowToken, claim.transactionId);
+      else await importJobStorage.releaseApplyRow(scope, id, { rowToken, ownerToken, fence: claim.fence });
+      throw error;
+    } finally {
+      this.clearApplyLeaseInterval(timer);
+    }
   }
 
-  recordApplied(id: string, rowIds: readonly string[]): Promise<void> {
-    return this.recordProgress(id, "applied", rowIds);
-  }
-
-  recordSkipped(id: string, rowIds: readonly string[]): Promise<void> {
-    return this.recordProgress(id, "skipped", rowIds);
-  }
-
-  async appliedProgress(id: string): Promise<ImportApplyProgress> {
+  async appliedProgress(id: string, rowIds: readonly string[] = []): Promise<ImportApplyProgress> {
     const scope = this.scope;
     if (!scope) return { appliedRowIds: [], appliedCount: 0, skippedRowIds: [], skippedCount: 0 };
+    const tokensByRow = await this.rowTokens(id, rowIds);
     return this.withProgressLock(id, async () => {
-      const progress = await importJobStorage.getApplyProgressRecord(scope, id);
-      const transactionIds = new Set(this.state.getLedger()?.transactions.map((transaction) => transaction.id) ?? []);
-      const recovered = progress.preparedRows.filter((prepared) => transactionIds.has(prepared.transactionId));
-      if (recovered.length === 0) {
-        const { preparedRows: _, ...visible } = progress;
-        return visible;
+      let progress = await importJobStorage.getApplyProgressRecord(scope, id);
+      for (const prepared of progress.preparedRows) {
+        if ((await this.durableTransactionProof(scope, prepared.transactionId)) !== "durable") continue;
+        await importJobStorage.promoteDurableApplyRow(scope, id, prepared.rowToken, prepared.transactionId);
       }
-      const appliedRowIds = [...new Set([...progress.appliedRowIds, ...recovered.map((prepared) => prepared.rowId)])];
-      const merged = await importJobStorage.mergeApplyProgress(scope, id, { appliedRowIds });
-      const { preparedRows: _, ...visible } = merged;
-      return visible;
+      progress = await importJobStorage.getApplyProgressRecord(scope, id);
+      const appliedTokens = new Set(progress.appliedRowIds);
+      const skippedTokens = new Set(progress.skippedRowIds);
+      const appliedRowIds = [...tokensByRow].flatMap(([rowId, token]) => (appliedTokens.has(token) ? [rowId] : []));
+      const skippedRowIds = [...tokensByRow].flatMap(([rowId, token]) => (skippedTokens.has(token) ? [rowId] : []));
+      return { appliedRowIds, appliedCount: appliedRowIds.length, skippedRowIds, skippedCount: skippedRowIds.length };
     });
   }
 

@@ -237,7 +237,12 @@ describe("local E2EE import planning", () => {
     // when: applying stops after the first durable local mutation
     let partial: PartialImportApplyError | null = null;
     try {
-      await applyLocalImportRecoverably(firstPlan, mutations, { applied: async (rowId) => void durableRows.push(rowId) });
+      await applyLocalImportRecoverably(firstPlan, mutations, {
+        apply: async (rowId, mutation) => {
+          mutation(undefined);
+          durableRows.push(rowId);
+        },
+      });
     } catch (error) {
       if (error instanceof PartialImportApplyError) partial = error;
       else throw error;
@@ -279,7 +284,12 @@ describe("local E2EE import planning", () => {
     // when: persisting the identity after the first local write is interrupted
     let partial: PartialImportApplyError | null = null;
     try {
-      await applyLocalImportRecoverably(plan, spy.mutations, { applied: async () => Promise.reject(new Error("progress_write_interrupted")) });
+      await applyLocalImportRecoverably(plan, spy.mutations, {
+        apply: async (_rowId, mutation) => {
+          mutation(undefined);
+          throw new Error("progress_write_interrupted");
+        },
+      });
     } catch (error) {
       if (error instanceof PartialImportApplyError) partial = error;
       else throw error;

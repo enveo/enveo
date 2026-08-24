@@ -50,6 +50,8 @@ export interface StorageBackend {
   getAll(store: StoreName): Promise<unknown[]>;
   /** Atomically replace one out-of-line metadata value from its current value. */
   mutateMeta(key: IDBValidKey, update: (current: unknown) => unknown): Promise<unknown>;
+  /** Persistent proof for one imported transaction, read consistently across replica/outbox/deadletter. */
+  importTransactionProof(scope: ImportRecordScope, transactionId: string): Promise<"durable" | "rejected" | "absent">;
   /** put — `key` required for "meta" (out-of-line keys), omitted for keyPath stores. */
   put(store: StoreName, value: unknown, key?: IDBValidKey): Promise<void>;
   /** Multiple puts in ONE transaction (atomic: all or nothing). */
@@ -65,6 +67,8 @@ export interface StorageBackend {
   /** Delete only the exact draft identity that a request or acknowledgement refers to. */
   deleteImportDraftIfMatches(expected: ImportDraftDeleteMatch): Promise<boolean>;
   deleteImportJobIfScope(id: IDBValidKey, scope: ImportRecordScope): Promise<boolean>;
+  /** Atomically delete an owned local E2EE job and its scoped apply metadata when capability still permits it. */
+  deleteImportJobWithMetaIfScope(id: IDBValidKey, scope: ImportRecordScope, metaKeys: IDBValidKey[], permitted: () => boolean): Promise<boolean>;
   deleteExpiredImportDrafts(scope: ImportRecordScope, expiresAt: number): Promise<number>;
   /** add — for the outbox (autoIncrement); returns the assigned key (localSeq). */
   add(store: StoreName, value: unknown): Promise<IDBValidKey>;
@@ -116,6 +120,19 @@ export class MemoryBackend implements StorageBackend {
     const next = this.clone(update(current === undefined ? undefined : this.clone(current)));
     this.mem("meta").set(key, next);
     return Promise.resolve(this.clone(next));
+  }
+  importTransactionProof(scope: ImportRecordScope, transactionId: string): Promise<"durable" | "rejected" | "absent"> {
+    return Promise.resolve(
+      evaluateImportTransactionProof(
+        scope,
+        transactionId,
+        this.mem("meta").get("userId"),
+        this.mem("meta").get("budgetId"),
+        this.mem("meta").get("ledger"),
+        [...this.mem("outbox").values()],
+        [...this.mem("deadletter").values()],
+      ),
+    );
   }
   put(store: StoreName, value: unknown, key?: IDBValidKey): Promise<void> {
     const copy = this.clone(value);
@@ -193,6 +210,13 @@ export class MemoryBackend implements StorageBackend {
     this.mem("importJobs").delete(id);
     return Promise.resolve(true);
   }
+  deleteImportJobWithMetaIfScope(id: IDBValidKey, scope: ImportRecordScope, metaKeys: IDBValidKey[], permitted: () => boolean): Promise<boolean> {
+    const current = this.mem("importJobs").get(id) as Record<string, unknown> | undefined;
+    if (!permitted() || !current || current.ownerId !== scope.ownerId || current.budgetId !== scope.budgetId) return Promise.resolve(false);
+    this.mem("importJobs").delete(id);
+    for (const key of metaKeys) this.mem("meta").delete(key);
+    return Promise.resolve(true);
+  }
   deleteExpiredImportDrafts(scope: ImportRecordScope, expiresAt: number): Promise<number> {
     let deleted = 0;
     for (const [id, value] of this.mem("importDrafts")) {
@@ -237,4 +261,29 @@ export class MemoryBackend implements StorageBackend {
     this.autoKey = 0;
     return Promise.resolve();
   }
+}
+
+export function evaluateImportTransactionProof(
+  scope: ImportRecordScope,
+  transactionId: string,
+  ownerId: unknown,
+  budgetId: unknown,
+  ledger: unknown,
+  outboxRows: unknown[],
+  deadletterRows: unknown[],
+): "durable" | "rejected" | "absent" {
+  if (ownerId !== scope.ownerId || budgetId !== scope.budgetId) return "absent";
+  const isCreate = (value: unknown): boolean => {
+    if (!value || typeof value !== "object") return false;
+    const operation = (value as { op?: unknown }).op;
+    if (!operation || typeof operation !== "object") return false;
+    const record = operation as { kind?: unknown; payload?: unknown };
+    return record.kind === "txn.create" && !!record.payload && typeof record.payload === "object" && (record.payload as { id?: unknown }).id === transactionId;
+  };
+  if (deadletterRows.some(isCreate)) return "rejected";
+  if (outboxRows.some(isCreate)) return "durable";
+  const transactions = ledger && typeof ledger === "object" ? (ledger as { transactions?: unknown }).transactions : undefined;
+  return Array.isArray(transactions) && transactions.some((transaction) => transaction && typeof transaction === "object" && transaction.id === transactionId)
+    ? "durable"
+    : "absent";
 }
