@@ -70,6 +70,8 @@ export interface ImportJobCleanupCounts {
   jobsDeleted: number;
 }
 
+export type ImportJobClaimContext = "valid" | "lease_lost" | "cancel_requested" | "cancelled" | "tier_mismatch" | "budget_mismatch" | "account_unavailable";
+
 export class ImportJobConflict extends Error {
   readonly code = "import_job_conflict" as const;
 
@@ -392,28 +394,59 @@ export function createImportJobRepository(database: DB) {
       return updated.length === 1;
     },
 
-    async validateClaimContext(job: Pick<ClaimedImportJob, "id" | "userId" | "budgetId" | "accountId" | "tier" | "epoch" | "leaseToken">, now = new Date()) {
-      if (job.tier !== "plain" || !job.accountId) return false;
-      const rows = await database
-        .select({ id: importJobs.id })
+    async validateClaimContext(
+      job: Pick<ClaimedImportJob, "id" | "userId" | "budgetId" | "accountId" | "tier" | "epoch" | "leaseToken">,
+      now = new Date(),
+    ): Promise<ImportJobClaimContext> {
+      const [current] = await database
+        .select({
+          userId: importJobs.userId,
+          budgetId: importJobs.budgetId,
+          accountId: importJobs.accountId,
+          tier: importJobs.tier,
+          epoch: importJobs.epoch,
+          status: importJobs.status,
+          cancelRequested: importJobs.cancelRequested,
+          leaseToken: importJobs.leaseToken,
+          leaseExpiresAt: importJobs.leaseExpiresAt,
+          budgetUserId: budgets.userId,
+          budgetTier: budgets.tier,
+          budgetEpoch: budgets.epoch,
+          liveAccountId: accounts.id,
+          accountBudgetId: accounts.budgetId,
+          accountArchived: accounts.archived,
+        })
         .from(importJobs)
-        .innerJoin(
-          budgets,
-          and(eq(budgets.id, importJobs.budgetId), eq(budgets.userId, importJobs.userId), eq(budgets.tier, "plain"), eq(budgets.epoch, importJobs.epoch)),
-        )
-        .innerJoin(accounts, and(eq(accounts.id, importJobs.accountId), eq(accounts.budgetId, importJobs.budgetId), eq(accounts.archived, false)))
-        .where(
-          and(
-            activeLease(job.id, job.leaseToken, now),
-            eq(importJobs.userId, job.userId),
-            eq(importJobs.budgetId, job.budgetId),
-            eq(importJobs.accountId, job.accountId),
-            eq(importJobs.tier, job.tier),
-            eq(importJobs.epoch, job.epoch),
-          ),
-        )
+        .leftJoin(budgets, eq(budgets.id, importJobs.budgetId))
+        .leftJoin(accounts, eq(accounts.id, importJobs.accountId))
+        .where(eq(importJobs.id, job.id))
         .limit(1);
-      return rows.length === 1;
+      if (!current) return "lease_lost";
+      if (current.status === "cancelled") return "cancelled";
+      if (current.cancelRequested) return "cancel_requested";
+      if (current.status !== "running" || current.leaseToken !== job.leaseToken || current.leaseExpiresAt === null || current.leaseExpiresAt <= now) {
+        return "lease_lost";
+      }
+      if (current.userId !== job.userId || current.budgetId !== job.budgetId || current.budgetUserId !== job.userId) return "budget_mismatch";
+      if (
+        job.tier !== "plain" ||
+        current.tier !== job.tier ||
+        current.epoch !== job.epoch ||
+        current.budgetTier !== "plain" ||
+        current.budgetEpoch !== job.epoch
+      ) {
+        return "tier_mismatch";
+      }
+      if (
+        !job.accountId ||
+        current.accountId !== job.accountId ||
+        current.liveAccountId !== job.accountId ||
+        current.accountBudgetId !== job.budgetId ||
+        current.accountArchived !== false
+      ) {
+        return "account_unavailable";
+      }
+      return "valid";
     },
 
     async advancePhase(id: string, leaseToken: string, phase: "enriching" | "reconciling", now = new Date()): Promise<boolean> {
@@ -498,6 +531,9 @@ export function createImportJobRepository(database: DB) {
             resumePhase: null,
             errorCode: importJobErrorCodeSchema.parse(errorCode),
             retryAt: null,
+            extraction: null,
+            result: null,
+            proposalCount: 0,
             leaseOwner: null,
             leaseToken: null,
             leaseExpiresAt: null,

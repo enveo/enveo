@@ -37,4 +37,16 @@ describe.skipIf(!TEST_URL)("database-backed import worker", () => {
   test("retention-cleaned retry input terminally expires before provider dispatch", () => {
     expect(output.missingInput).toEqual({ providerCalls: 0, status: "failed", errorCode: "expired", retryAt: null });
   });
+
+  test("account archival during an upstream boundary fails permanently without reclaim or another call", () => {
+    expect(output.accountInvalidation).toEqual({
+      providerCalls: 1,
+      outcome: "failed",
+      status: "failed",
+      errorCode: "account_unavailable",
+      images: 0,
+      detailsCleared: true,
+      reclaimed: false,
+    });
+  });
 });
