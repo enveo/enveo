@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { type ChatRequest, type ClientLedger, createDefaultBudgetPreferences, type ImportHistoryRecord } from "@enveo/shared";
+import { type ChatRequest, type ClientLedger, createDefaultBudgetPreferences, type ImportHistoryRecord, type ImportRecognitionResult } from "@enveo/shared";
 import { runServerImportRecognitionAdapter } from "../../../../api/src/routes/import";
 import { budgetSecretAadContext, encryptPayload, generateDek, snapshotAadContext } from "../crypto";
 import { E2eeByokProvider } from "./e2eeByok";
@@ -158,6 +158,50 @@ describe("E2EE Own OpenAI provider", () => {
     } finally {
       globalThis.fetch = originalFetch;
     }
+  });
+
+  it("runs the durable strict pipeline from a saved extraction without repeating cycle one", async () => {
+    const f = fixture();
+    await f.provider.saveCredential("sk-resume");
+    const phases: string[] = [];
+    const saved: ImportRecognitionResult[] = [];
+
+    await f.provider.runDurableImport({
+      images: [],
+      locale: "pl",
+      ledger,
+      accountId: ACCOUNT,
+      checkpoint: {
+        rows: [
+          {
+            rowId: "r1",
+            imageIndex: 0,
+            visualOrder: 0,
+            rawTextLines: ["SHOP 1"],
+            date: "2026-08-01",
+            amount: 1234,
+            currency: "EUR",
+            direction: "unknown",
+            postingStatus: "posted",
+            rowRole: "financial_event",
+            semanticKind: "unknown",
+            relation: null,
+            confidence: "medium",
+            reviewReasons: [],
+          },
+        ],
+        proposals: [],
+      },
+      lifecycle: {
+        advancePhase: async (phase) => void phases.push(phase),
+        saveResult: async (result) => void saved.push(result),
+      },
+    });
+
+    expect(f.calls.direct).toHaveLength(1);
+    expect(f.calls.direct[0]?.request.messages[1]?.content).not.toBeArray();
+    expect(phases).toEqual(["enriching", "reconciling"]);
+    expect(saved).toHaveLength(1);
   });
 
   it("keeps exact-duplicate cycle-two requests byte-identical to the default server pipeline", async () => {

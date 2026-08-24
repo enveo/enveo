@@ -14,7 +14,11 @@ const queryClient = new QueryClient({
   defaultOptions: { queries: { staleTime: 5_000, refetchOnWindowFocus: false } },
 });
 
-initInstallPrompt();  
+initInstallPrompt(); 
+
+
+
+void import("./lib/importJobs/manager").then(({ importJobManager }) => importJobManager.start());
 
 const render = () =>
   createRoot(document.getElementById("root")!).render(

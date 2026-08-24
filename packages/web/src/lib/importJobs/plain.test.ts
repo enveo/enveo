@@ -1,0 +1,174 @@
+import { afterEach, beforeEach, describe, expect, it } from "bun:test";
+import type { ImportJobDetail, ImportJobSummary } from "@enveo/shared";
+import { IDBFactory } from "fake-indexeddb";
+import { __resetStorageForTests } from "../idb";
+import { type ImportJobStorageScope, importJobStorage } from "../importJobStorage";
+import { type PlainImportCreateInput, PlainImportJobAdapter, type PlainImportJobRemote } from "./plain";
+import { createImportActivityStore } from "./store";
+
+const ID = "11111111-1111-1111-1111-111111111111";
+const BUDGET = "22222222-2222-2222-2222-222222222222";
+const ACCOUNT = "33333333-3333-3333-3333-333333333333";
+const SCOPE = { ownerId: "user-a", budgetId: BUDGET } satisfies ImportJobStorageScope;
+const IMAGE = "data:image/png;base64,AA==";
+
+function detail(overrides: Partial<ImportJobDetail> = {}): ImportJobDetail {
+  return {
+    id: ID,
+    budgetId: BUDGET,
+    accountId: ACCOUNT,
+    provider: { provider: "enveo", model: "gpt-5.6-luna" },
+    locale: "en-US",
+    tier: "plain",
+    epoch: 0,
+    status: "queued",
+    phase: "queued",
+    resumePhase: null,
+    cancelRequested: false,
+    attempt: 0,
+    errorCode: null,
+    retryAt: null,
+    result: null,
+    proposalCount: 0,
+    appliedCount: 0,
+    skippedCount: 0,
+    createdAt: "2026-08-24T10:00:00.000Z",
+    updatedAt: "2026-08-24T10:00:00.000Z",
+    expiresAt: "2026-08-31T10:00:00.000Z",
+    ...overrides,
+  };
+}
+
+function remote(overrides: Partial<PlainImportJobRemote> = {}): PlainImportJobRemote & { cancellations: string[] } {
+  const cancellations: string[] = [];
+  return {
+    create: async () => detail(),
+    list: async () => [],
+    get: async () => detail(),
+    cancel: async (id) => {
+      cancellations.push(id);
+      return detail({ status: "cancelled", cancelRequested: true });
+    },
+    retry: async () => detail(),
+    ...overrides,
+    cancellations,
+  };
+}
+
+function input(): PlainImportCreateInput {
+  return { id: ID, accountId: ACCOUNT, locale: "en-US", images: [IMAGE] };
+}
+
+beforeEach(() => {
+  (globalThis as Record<string, unknown>).indexedDB = new IDBFactory();
+  (globalThis as Record<string, unknown>).localStorage = { getItem: () => "persistent" };
+  __resetStorageForTests();
+});
+
+afterEach(() => {
+  delete (globalThis as Record<string, unknown>).indexedDB;
+  delete (globalThis as Record<string, unknown>).localStorage;
+  __resetStorageForTests();
+});
+
+describe("plain durable import adapter", () => {
+  it("persists the upload draft before the first server request and removes it only after acknowledgement", async () => {
+    let draftAtRequest = false;
+    const api = remote({
+      create: async () => {
+        draftAtRequest = Boolean(await importJobStorage.getDraft(SCOPE, ID));
+        return detail();
+      },
+    });
+    const adapter = new PlainImportJobAdapter({ scope: SCOPE, activity: createImportActivityStore(), remote: api });
+
+    await adapter.create(input());
+
+    expect(draftAtRequest).toBe(true);
+    expect(await importJobStorage.getDraft(SCOPE, ID)).toBeUndefined();
+  });
+
+  it("retries the identical id and images after a lost acknowledgement", async () => {
+    const requests: Array<{ id: string; images: string[] }> = [];
+    let attempt = 0;
+    const api = remote({
+      create: async (request) => {
+        requests.push({ id: request.id, images: [...request.images] });
+        attempt++;
+        if (attempt === 1) throw new Error("ai_unreachable");
+        return detail();
+      },
+    });
+    const adapter = new PlainImportJobAdapter({ scope: SCOPE, activity: createImportActivityStore(), remote: api });
+
+    await expect(adapter.create(input())).rejects.toThrow("ai_unreachable");
+    expect(await importJobStorage.getDraft(SCOPE, ID)).toBeDefined();
+    await adapter.resumeDrafts();
+
+    expect(requests).toEqual([
+      { id: ID, images: [IMAGE] },
+      { id: ID, images: [IMAGE] },
+    ]);
+    expect(await importJobStorage.getDraft(SCOPE, ID)).toBeUndefined();
+  });
+
+  it("polls active jobs only while visible and publishes a ready detail to an open observer", async () => {
+    let visible = false;
+    let tick: (() => void) | undefined;
+    let listCalls = 0;
+    let getCalls = 0;
+    const queued = detail();
+    const ready = detail({ status: "ready", phase: "ready", result: { rows: [], proposals: [] }, updatedAt: "2026-08-24T10:01:00.000Z" });
+    const api = remote({
+      list: async (): Promise<ImportJobSummary[]> => {
+        listCalls++;
+        return [listCalls > 1 ? ready : queued];
+      },
+      get: async () => {
+        getCalls++;
+        return ready;
+      },
+    });
+    const activity = createImportActivityStore();
+    const adapter = new PlainImportJobAdapter({
+      scope: SCOPE,
+      activity,
+      remote: api,
+      visible: () => visible,
+      scheduleInterval: (callback) => {
+        tick = callback;
+        return 1 as unknown as ReturnType<typeof setInterval>;
+      },
+      clearScheduledInterval: () => {},
+    });
+    const phases: string[] = [];
+    const unsubscribe = adapter.observe(ID, (item) => phases.push(item?.phase ?? "missing"));
+    adapter.start();
+
+    tick?.();
+    await Promise.resolve();
+    expect(listCalls).toBe(0);
+
+    visible = true;
+    await adapter.refresh();
+    tick?.();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    unsubscribe();
+    adapter.stop();
+    expect(listCalls).toBe(2);
+    expect(getCalls).toBe(1);
+    expect(phases.at(-1)).toBe("ready");
+  });
+
+  it("does not cancel server work when the last observer unsubscribes", async () => {
+    const api = remote();
+    const adapter = new PlainImportJobAdapter({ scope: SCOPE, activity: createImportActivityStore(), remote: api });
+    const unsubscribe = adapter.observe(ID, () => {});
+
+    unsubscribe();
+    await Promise.resolve();
+
+    expect(api.cancellations).toEqual([]);
+  });
+});
