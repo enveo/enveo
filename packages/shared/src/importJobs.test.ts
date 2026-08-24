@@ -229,6 +229,16 @@ describe("durable screenshot import wire contract", () => {
     expect(importJobDetailSchema.parse(detail)).toEqual(detail);
   });
 
+  it("validates epoch according to the budget tier", () => {
+    const freshPlain = { ...detailFor(progress("queued", "queued")), tier: "plain" as const, epoch: 0 };
+    const encrypted = { ...detailFor(progress("queued", "queued")), tier: "e2ee" as const, epoch: 1 };
+
+    expect(importJobDetailSchema.parse(freshPlain)).toEqual(freshPlain);
+    expect(importJobDetailSchema.parse(encrypted)).toEqual(encrypted);
+    expect(() => importJobDetailSchema.parse({ ...freshPlain, epoch: -1 })).toThrow();
+    expect(() => importJobDetailSchema.parse({ ...encrypted, epoch: 0 })).toThrow();
+  });
+
   it("rejects impossible status and phase combinations", () => {
     const base = {
       id: "018f7c89-4d76-7b8a-9a3e-4d6bf4a99811",

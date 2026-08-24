@@ -162,7 +162,7 @@ const importJobDetailBaseSchema = z
   .object({
     ...importJobSummaryShape,
     locale: z.string().trim().min(2),
-    epoch: z.number().int().positive(),
+    epoch: z.number().int().nonnegative(),
     result: importJobResultSchema.nullable(),
     appliedCount: z.number().int().nonnegative(),
     skippedCount: z.number().int().nonnegative(),
@@ -182,6 +182,8 @@ export const importJobDetailSchema: z.ZodType<ImportJobDetail> = importJobDetail
   const invalid = (message: string) => context.addIssue({ code: z.ZodIssueCode.custom, message });
   const hasError = detail.errorCode !== null;
   const hasRetry = detail.retryAt !== null;
+
+  if (detail.tier === "e2ee" && detail.epoch === 0) invalid("e2ee import jobs require a positive epoch");
 
   switch (detail.status) {
     case "queued":
