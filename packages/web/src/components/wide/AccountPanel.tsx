@@ -8,6 +8,7 @@ import { useT } from "../../lib/i18n";
 import { store } from "../../lib/store";
 import { font, TEAL, TRANSFER } from "../../lib/theme";
 import { AccountEditSheet } from "../AccountEditSheet";
+import { ReconcileSheet } from "../ReconcileSheet";
 
 /**
  * PR6b Task 4 — the account detail pane body (v3's `acct` pane): balance card → actions grid →
@@ -22,9 +23,11 @@ import { AccountEditSheet } from "../AccountEditSheet";
  * `Accounts.tsx`'s row-edit and "New account" call sites) as a `Surface` over this pane — saving/
  * archiving goes through the existing `local.updateAccount` path and this pane re-derives from
  * the replica on the next tick, so an archived account simply keeps rendering here with the
- * Closed chip. Reconcile is still STUBBED on purpose: `ReconcileSheet` still lives in eager
- * `widgets.tsx` (Task 6) — the button and its local open-boolean are wired now so that task only
- * adds a render, not new plumbing.
+ * Closed chip. Reconcile renders `ReconcileSheet` (Task 6's extraction out of eager `widgets.tsx`,
+ * shared verbatim with the phone Start `AccountsWidget`'s per-account action sheet) as a `Surface`
+ * over this pane, given the SAME global `account` this file already computes — so "Balance in the
+ * app" is current whatever month the shell views, the exact rule this pane exists to make
+ * reachable on wide.
  */
 export function AccountPanel({
   accountId,
@@ -53,10 +56,10 @@ export function AccountPanel({
   }, [version]);
   const account = accountsNow.find((a) => a.id === accountId) ?? null;
 
-  // Edit: Task 5 wires the surface below. Reconcile: Task 6 still owns the render; only the
-  // opener exists here.
+  // Edit / Reconcile: each a local open-boolean gating its own `Surface` below, same shape as
+  // `Accounts.tsx`'s own row-edit state.
   const [edit, setEdit] = useState(false);
-  const [, setReconcile] = useState(false);
+  const [reconcile, setReconcile] = useState(false);
 
   // Recent activity: last 5 transactions touching this account, across every month — the LIVE
   // ledger, not the viewed month's `state.transactions` (that goes empty on day 1 for an older
@@ -207,6 +210,7 @@ export function AccountPanel({
         })
       )}
       <AccountEditSheet account={edit ? account : null} envelopes={envelopes} groups={groups} onClose={() => setEdit(false)} />
+      <ReconcileSheet account={reconcile ? account : null} envelopes={envelopes} groups={groups} onClose={() => setReconcile(false)} />
     </div>
   );
 }
