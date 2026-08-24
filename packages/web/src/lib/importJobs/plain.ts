@@ -35,6 +35,10 @@ export type PlainImportCreateInput = Pick<PlainImportUploadDraftInput, "id" | "a
 
 const POLL_INTERVAL_MS = 2_000;
 
+function isDefinitiveNotFound(error: unknown): boolean {
+  return error instanceof Error && /^404(?:\s|$)/.test(error.message);
+}
+
 function shouldPoll(item: ImportActivityItem, budgetId: string): boolean {
   return item.budgetId === budgetId && (item.source === "plain-draft" || (item.source === "plain" && ["queued", "running", "ready"].includes(item.status)));
 }
@@ -242,16 +246,22 @@ export class PlainImportJobAdapter {
       const cancelled = await importJobStorage.requestDraftCancellation(this.options.scope, id, draft.requestHash);
       if (!this.isCurrent()) return;
       if (!cancelled) {
-        // The acknowledgement transaction won the race after getDraft(). Its
-        // in-memory create result still gives us a deterministic server id to cancel.
-        let accepted: ImportActivityItem | undefined;
-        try {
-          accepted = await inFlight;
-        } catch {
-          return;
+        // Another adapter may have acknowledged and deleted the draft after
+        // getDraft(). Wait for our own create, when present, so a premature 404
+        // cannot race a later acceptance, then reconcile the deterministic id.
+        if (inFlight) {
+          try {
+            await inFlight;
+          } catch {
+            // A different adapter may still have received the accepted response.
+          }
         }
-        if (!this.isCurrent() || accepted?.source !== "plain") return;
-        await this.remote.cancel(accepted.id, this.options.scope.budgetId);
+        if (!this.isCurrent()) return;
+        try {
+          await this.remote.cancel(id, this.options.scope.budgetId);
+        } catch (error) {
+          if (!isDefinitiveNotFound(error)) throw error;
+        }
         if (this.isCurrent()) this.options.activity.remove(id);
         return;
       }
