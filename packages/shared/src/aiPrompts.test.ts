@@ -19,6 +19,7 @@ import {
   supportsReasoningEffort,
 } from "./aiPrompts";
 import type { ImportHistoryRecord } from "./importHistory";
+import type { ImportRecognitionResult } from "./importRecognition";
 import type { ClientLedger } from "./types";
 
 function fixture(): ClientLedger {
@@ -611,6 +612,39 @@ describe("runImportRecognitionPipeline", () => {
     });
     expect(requests).toHaveLength(1);
     expect(result.proposals[0]).toMatchObject({ rowId: "r1", semanticKind: "card_purchase", name: "", selected: true });
+  });
+
+  it("checkpoints cycle one and resumes without screenshots or another extraction request", async () => {
+    const phases: string[] = [];
+    let checkpoint: ImportRecognitionResult | undefined;
+    await runImportRecognitionPipeline({
+      ...base,
+      chat: async () => extracted(),
+      lifecycle: {
+        afterUpstream: async () => phases.push("upstream"),
+        saveExtraction: async (result) => {
+          checkpoint = result;
+          phases.push("checkpoint");
+        },
+        advancePhase: async (phase) => phases.push(phase),
+      },
+    });
+    expect(phases).toEqual(["upstream", "checkpoint", "reconciling"]);
+    if (!checkpoint) throw new Error("expected durable extraction checkpoint");
+
+    const resumedPhases: string[] = [];
+    const resumed = await runImportRecognitionPipeline({
+      ...base,
+      images: [],
+      checkpoint,
+      chat: async () => {
+        throw new Error("resume_must_not_extract_again");
+      },
+      lifecycle: { advancePhase: async (phase) => resumedPhases.push(phase) },
+    });
+
+    expect(resumedPhases).toEqual(["reconciling"]);
+    expect(resumed.proposals[0]).toMatchObject({ rowId: "r1", selected: true });
   });
 
   it("uses only the selected account's compatible history and constrains cycle-two ids", async () => {

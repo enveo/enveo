@@ -15,6 +15,7 @@ describe("AI credential repository surface", () => {
       "replaceE2eeCredential",
       "replaceServerCredential",
       "withServerCredential",
+      "withServerCredentialForWorker",
     ]);
     expect("getCredential" in repository).toBe(false);
   });

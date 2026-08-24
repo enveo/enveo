@@ -48,6 +48,7 @@ describe.skipIf(!TEST_URL)("import job repository", () => {
       readyBeforeExtractionRejected: true,
       repeatedExtractionRejected: true,
       wrongLeaseChangedNothing: true,
+      phaseAdvanced: true,
       resultReady: true,
     });
   });

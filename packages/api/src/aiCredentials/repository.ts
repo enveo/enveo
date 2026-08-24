@@ -1,6 +1,6 @@
 import { and, sql as dsql, eq } from "drizzle-orm";
 import { TierMismatch } from "../context";
-import type { DbTransaction } from "../db/client";
+import type { DB, DbTransaction } from "../db/client";
 import { budgetAiCredentials, budgets } from "../db/schema";
 import type { VaultMasterKeyProvider } from "./keyProvider";
 import { openCredential, type SealedCredential, sealCredential } from "./vaultCrypto";
@@ -103,6 +103,32 @@ function sealedFromRow(row: {
 }
 
 export function createCredentialRepository(masterKeys: VaultMasterKeyProvider | null) {
+  const openServerCredential = async (tx: DbTransaction, owner: CredentialOwner, budgetId: string) => {
+    if (!masterKeys) throw new CredentialVaultUnavailable();
+    await lockPlainBudget(tx, owner, budgetId);
+    const [row] = await tx.select().from(budgetAiCredentials).where(eq(budgetAiCredentials.budgetId, budgetId));
+    if (row?.storageKind !== "server_vault") throw new CredentialNotConfigured();
+    const opened = openCredential(sealedFromRow(row), { provider: "openai", userId: owner.userId, budgetId, recordVersion: row.recordVersion }, masterKeys);
+    try {
+      if (opened.rewrappedDek) {
+        await tx
+          .update(budgetAiCredentials)
+          .set({ ...opened.rewrappedDek, updatedAt: dsql`now()` })
+          .where(
+            and(
+              eq(budgetAiCredentials.budgetId, budgetId),
+              eq(budgetAiCredentials.recordVersion, row.recordVersion),
+              eq(budgetAiCredentials.storageKind, "server_vault"),
+            ),
+          );
+      }
+      return opened;
+    } catch (error) {
+      opened.plaintext = "";
+      throw error;
+    }
+  };
+
   return {
     async credentialStatus(tx: DbTransaction, owner: CredentialOwner, budgetId: string): Promise<CredentialStatus> {
       await lockPlainBudget(tx, owner, budgetId);
@@ -213,23 +239,18 @@ export function createCredentialRepository(masterKeys: VaultMasterKeyProvider | 
     },
 
     async withServerCredential<T>(tx: DbTransaction, owner: CredentialOwner, budgetId: string, use: (credential: string) => Promise<T>): Promise<T> {
-      if (!masterKeys) throw new CredentialVaultUnavailable();
-      await lockPlainBudget(tx, owner, budgetId);
-      const [row] = await tx.select().from(budgetAiCredentials).where(eq(budgetAiCredentials.budgetId, budgetId));
-      if (row?.storageKind !== "server_vault") throw new CredentialNotConfigured();
-      const opened = openCredential(sealedFromRow(row), { provider: "openai", userId: owner.userId, budgetId, recordVersion: row.recordVersion }, masterKeys);
-      if (opened.rewrappedDek) {
-        await tx
-          .update(budgetAiCredentials)
-          .set({ ...opened.rewrappedDek, updatedAt: dsql`now()` })
-          .where(
-            and(
-              eq(budgetAiCredentials.budgetId, budgetId),
-              eq(budgetAiCredentials.recordVersion, row.recordVersion),
-              eq(budgetAiCredentials.storageKind, "server_vault"),
-            ),
-          );
+      const opened = await openServerCredential(tx, owner, budgetId);
+      try {
+        return await use(opened.plaintext);
+      } finally {
+        opened.plaintext = "";
       }
+    },
+
+    /** Open and opportunistically rewrap under a short transaction; the slow model request
+     * runs after the row lock and transaction have both been released. */
+    async withServerCredentialForWorker<T>(database: DB, owner: CredentialOwner, budgetId: string, use: (credential: string) => Promise<T>): Promise<T> {
+      const opened = await database.transaction((tx) => openServerCredential(tx, owner, budgetId));
       try {
         return await use(opened.plaintext);
       } finally {

@@ -656,54 +656,98 @@ export interface ImportRecognitionPipelineInput {
   transactions: Transaction[];
   historyRecords: ImportHistoryRecord[];
   chat: ImportRecognitionChat;
+  /** Durable runners may resume after cycle one without retaining screenshots. */
+  checkpoint?: ImportRecognitionResult;
+  lifecycle?: {
+    afterUpstream?: () => Promise<void>;
+    saveExtraction?: (result: ImportRecognitionResult) => Promise<void>;
+    advancePhase?: (phase: "enriching" | "reconciling") => Promise<void>;
+  };
 }
 
 const mergeReviewReasons = (...groups: ReadonlyArray<readonly (typeof IMPORT_REVIEW_REASONS)[number][]>): (typeof IMPORT_REVIEW_REASONS)[number][] => [
   ...new Set(groups.flat()),
 ];
 
+/** Durable jobs store provider-neutral Stage A proposals; duplicate/account annotations are
+ * recomputed against the live ledger whenever the checkpoint is resumed or reviewed. */
+export function stripImportRecognitionReconciliation(result: ReconciledImportRecognitionResult): ImportRecognitionResult {
+  return {
+    rows: result.rows,
+    proposals: result.proposals.map(({ duplicateStatus: _duplicateStatus, sourceAccountInvalid: _sourceAccountInvalid, ...proposal }) => proposal),
+  };
+}
+
 /** Shared extraction → validation → history → optional enrichment pipeline. */
 export async function runImportRecognitionPipeline(input: ImportRecognitionPipelineInput): Promise<ReconciledImportRecognitionResult> {
-  const extractionRaw = await input.chat(
-    buildImportExtractPrompt(input.images, { envelopes: [], categories: [] }, input.today, input.locale, input.budgetCurrency),
-    AI_VISION_TIMEOUT_MS,
-  );
-  const batch = parseImportExtractResponse(extractionRaw, input.images.length);
-  const validated = validateImportExtraction({ batch, budgetCurrency: input.budgetCurrency });
-  let result: ReconciledImportRecognitionResult = {
-    rows: validated.rows,
-    proposals: reconcileImportProposals({
-      proposals: validated.proposals,
-      transactions: input.transactions,
-      accounts: input.accounts,
-      envelopes: input.envelopes,
-      categories: input.categories,
-      selectedAccountId: input.accountId,
-    }),
-  };
+  let result: ReconciledImportRecognitionResult;
+  if (input.checkpoint) {
+    result = {
+      rows: input.checkpoint.rows,
+      proposals: reconcileImportProposals({
+        proposals: input.checkpoint.proposals,
+        transactions: input.transactions,
+        accounts: input.accounts,
+        envelopes: input.envelopes,
+        categories: input.categories,
+        selectedAccountId: input.accountId,
+      }),
+    };
+  } else {
+    const extractionRaw = await input.chat(
+      buildImportExtractPrompt(input.images, { envelopes: [], categories: [] }, input.today, input.locale, input.budgetCurrency),
+      AI_VISION_TIMEOUT_MS,
+    );
+    await input.lifecycle?.afterUpstream?.();
+    const batch = parseImportExtractResponse(extractionRaw, input.images.length);
+    const validated = validateImportExtraction({ batch, budgetCurrency: input.budgetCurrency });
+    result = {
+      rows: validated.rows,
+      proposals: reconcileImportProposals({
+        proposals: validated.proposals,
+        transactions: input.transactions,
+        accounts: input.accounts,
+        envelopes: input.envelopes,
+        categories: input.categories,
+        selectedAccountId: input.accountId,
+      }),
+    };
+
+    const ownedAccountIds = input.accounts.filter((account) => !account.archived).map((account) => account.id);
+    const history = result.proposals.map((proposal) => ({
+      rowId: proposal.rowId,
+      selection: selectImportHistoryCandidates({ accountId: input.accountId, ownedAccountIds, proposal }, input.historyRecords),
+    }));
+    result = {
+      rows: result.rows,
+      proposals: result.proposals.map((proposal) => {
+        const selection = history.find((entry) => entry.rowId === proposal.rowId)!.selection;
+        const historyReasons = [
+          ...(selection.conflict ? (["history_conflict"] as const) : []),
+          ...(selection.candidates.length > 1 ? (["multiple_history_candidates"] as const) : []),
+        ];
+        return { ...proposal, reviewReasons: mergeReviewReasons(proposal.reviewReasons, historyReasons) };
+      }),
+    };
+    await input.lifecycle?.saveExtraction?.(stripImportRecognitionReconciliation(result));
+  }
 
   const ownedAccountIds = input.accounts.filter((account) => !account.archived).map((account) => account.id);
   const history = result.proposals.map((proposal) => ({
     rowId: proposal.rowId,
     selection: selectImportHistoryCandidates({ accountId: input.accountId, ownedAccountIds, proposal }, input.historyRecords),
   }));
-  result = {
-    rows: result.rows,
-    proposals: result.proposals.map((proposal) => {
-      const selection = history.find((entry) => entry.rowId === proposal.rowId)!.selection;
-      const historyReasons = [
-        ...(selection.conflict ? (["history_conflict"] as const) : []),
-        ...(selection.candidates.length > 1 ? (["multiple_history_candidates"] as const) : []),
-      ];
-      return { ...proposal, reviewReasons: mergeReviewReasons(proposal.reviewReasons, historyReasons) };
-    }),
-  };
-  if (!needsImportEnrichment(result)) return result;
+  if (!needsImportEnrichment(result)) {
+    await input.lifecycle?.advancePhase?.("reconciling");
+    return result;
+  }
 
   const activeEnvelopes = input.envelopes.filter((envelope) => !envelope.archived);
   const currentAccounts = input.accounts.filter((account) => !account.archived);
+  await input.lifecycle?.advancePhase?.("enriching");
+  let raw: string;
   try {
-    const raw = await input.chat(
+    raw = await input.chat(
       buildImportEnrichPrompt(
         {
           result,
@@ -715,6 +759,13 @@ export async function runImportRecognitionPipeline(input: ImportRecognitionPipel
         input.locale,
       ),
     );
+  } catch {
+    await input.lifecycle?.advancePhase?.("reconciling");
+    return result;
+  }
+  await input.lifecycle?.afterUpstream?.();
+  let finalResult = result;
+  try {
     const answer = parseImportEnrichResponse(raw, {
       envelopeIds: activeEnvelopes.map((envelope) => envelope.id),
       categoryIds: input.categories.map((category) => category.id),
@@ -748,7 +799,7 @@ export async function runImportRecognitionPipeline(input: ImportRecognitionPipel
         selected: proposal.selected && annotation.selected,
       };
     });
-    return {
+    finalResult = {
       rows: result.rows,
       proposals: reconcileImportProposals({
         proposals: enriched,
@@ -760,8 +811,10 @@ export async function runImportRecognitionPipeline(input: ImportRecognitionPipel
       }),
     };
   } catch {
-    return result;
+    finalResult = result;
   }
+  await input.lifecycle?.advancePhase?.("reconciling");
+  return finalResult;
 }
 
 /** Throws on an invalid shape (like `rawOutput.parse` in the route). */

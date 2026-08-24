@@ -14,7 +14,7 @@ import { type Context, Hono } from "hono";
 import { z } from "zod";
 import { aiBudgetExhaustedBody, meteredOperatorChat, operatorChatPayload, SpendDenied } from "../aiSpend/transport";
 import { requireTier, sessionUserId } from "../context";
-import { db } from "../db/client";
+import { type DB, db } from "../db/client";
 import * as s from "../db/schema";
 import { env } from "../env";
 import { transportFailureJson, UpstreamHttpError } from "../openaiHttp";
@@ -47,9 +47,9 @@ export const recognizeInput = importImagesInput.extend({ accountId: z.string().u
 /* ── Cycle 1: vision — only facts from the screenshot; prompt+schema+parsing in shared/aiPrompts ── */
 
 /** Loads normalized ledger history without making an assignment decision. */
-export async function loadImportHistory(budgetId: string, currency: string): Promise<ImportHistoryRecord[]> {
+export async function loadImportHistory(budgetId: string, currency: string, database: DB = db): Promise<ImportHistoryRecord[]> {
   const [txns, envs, cats, plcs] = await Promise.all([
-    db
+    database
       .select({
         accountId: s.transactions.accountId,
         name: s.transactions.name,
@@ -64,9 +64,9 @@ export async function loadImportHistory(budgetId: string, currency: string): Pro
       })
       .from(s.transactions)
       .where(eq(s.transactions.budgetId, budgetId)),
-    db.select().from(s.envelopes).where(eq(s.envelopes.budgetId, budgetId)),
-    db.select().from(s.categories).where(eq(s.categories.budgetId, budgetId)),
-    db.select().from(s.places).where(eq(s.places.budgetId, budgetId)),
+    database.select().from(s.envelopes).where(eq(s.envelopes.budgetId, budgetId)),
+    database.select().from(s.categories).where(eq(s.categories.budgetId, budgetId)),
+    database.select().from(s.places).where(eq(s.places.budgetId, budgetId)),
   ]);
   const envName = new Map(envs.map((e) => [e.id, e.name]));
   const catName = new Map(cats.map((x) => [x.id, x.name]));
@@ -123,6 +123,12 @@ export interface ServerImportRecognitionAdapterInput {
   transactionRows: Array<Omit<Transaction, "type" | "items"> & { type: string }>;
   historyRecords: ImportHistoryRecord[];
   chat: ImportModelChat;
+  checkpoint?: ImportRecognitionResult;
+  lifecycle?: {
+    afterUpstream?: () => Promise<void>;
+    saveExtraction?: (result: ImportRecognitionResult) => Promise<void>;
+    advancePhase?: (phase: "enriching" | "reconciling") => Promise<void>;
+  };
 }
 
 /** Production server boundary: normalize database row types, then enter the
@@ -146,6 +152,8 @@ export function runServerImportRecognitionAdapter(input: ServerImportRecognition
     transactions,
     historyRecords: input.historyRecords,
     chat: input.chat,
+    checkpoint: input.checkpoint,
+    lifecycle: input.lifecycle,
   });
 }
 
