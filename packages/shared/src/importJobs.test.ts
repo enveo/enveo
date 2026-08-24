@@ -1,9 +1,18 @@
 import { describe, expect, it } from "bun:test";
-import { advanceImportJob, IMPORT_JOB_PHASES, type ImportJobProgress, importJobDetailSchema, importJobPhaseSchema, isTerminalImportJob } from "./importJobs";
+import {
+  advanceImportJob,
+  IMPORT_JOB_PHASES,
+  type ImportJobEvent,
+  type ImportJobProgress,
+  importJobDetailSchema,
+  importJobPhaseSchema,
+  isTerminalImportJob,
+} from "./importJobs";
 
 const progress = (status: ImportJobProgress["status"], phase: ImportJobProgress["phase"]): ImportJobProgress => ({
   status,
   phase,
+  resumePhase: null,
   cancelRequested: false,
   attempt: status === "queued" ? 0 : 1,
   errorCode: null,
@@ -38,7 +47,38 @@ describe("durable screenshot import lifecycle", () => {
     });
 
     // then: it remains resumable instead of becoming failed
-    expect(offline).toMatchObject({ status: "running", phase: "waiting_for_network", errorCode: null });
+    expect(offline).toMatchObject({ status: "running", phase: "waiting_for_network", resumePhase: "extracting", errorCode: null });
+  });
+
+  it("remembers processing progress while waiting and rejects a backwards resume", () => {
+    // given: reconciliation paused because the device is offline
+    const reconciling = progress("running", "reconciling");
+    const waiting = advanceImportJob(reconciling, {
+      type: "wait",
+      phase: "waiting_for_network",
+      at: "2026-08-24T12:00:01.000Z",
+    });
+
+    // when: the worker resumes after connectivity returns
+    const resumed = advanceImportJob(waiting, { type: "resume", at: "2026-08-24T12:00:02.000Z" });
+
+    // then: it resumes reconciliation and cannot go back to extraction
+    expect(resumed).toMatchObject({ status: "running", phase: "reconciling" });
+    expect(() =>
+      advanceImportJob(waiting, {
+        type: "phase",
+        phase: "extracting",
+        at: "2026-08-24T12:00:02.000Z",
+      } as ImportJobEvent),
+    ).toThrow("invalid_import_job_transition");
+  });
+
+  it("rejects invalid event timestamps before persisting them as updatedAt", () => {
+    // given: a queue entry awaiting a claim
+    const queued = progress("queued", "queued");
+
+    // when/then: an invalid wire timestamp cannot become its persisted update timestamp
+    expect(() => advanceImportJob(queued, { type: "claimed", at: "not-a-timestamp" })).toThrow("invalid_import_job_transition");
   });
 
   it("records cancellation intent until a running upstream call can be discarded", () => {
@@ -97,6 +137,7 @@ describe("durable screenshot import wire contract", () => {
       epoch: 1,
       status: "ready" as const,
       phase: "ready" as const,
+      resumePhase: null,
       cancelRequested: false,
       attempt: 1,
       errorCode: null,
@@ -111,6 +152,87 @@ describe("durable screenshot import wire contract", () => {
     };
 
     expect(importJobDetailSchema.parse(detail)).toEqual(detail);
+  });
+
+  it("accepts the Stage A recognition result before reconciliation adds ledger state", () => {
+    const detail = {
+      id: "018f7c89-4d76-7b8a-9a3e-4d6bf4a99811",
+      budgetId: "budget-1",
+      accountId: "account-1",
+      locale: "pl-PL",
+      provider: { provider: "enveo" as const, model: "gpt-test" },
+      tier: "plain" as const,
+      epoch: 1,
+      status: "ready" as const,
+      phase: "ready" as const,
+      resumePhase: null,
+      cancelRequested: false,
+      attempt: 1,
+      errorCode: null,
+      retryAt: null,
+      result: {
+        rows: [],
+        proposals: [
+          {
+            rowId: "row-1",
+            sourceRows: ["row-1"],
+            disposition: "candidate" as const,
+            date: "2026-08-24",
+            amount: 123,
+            currency: "PLN",
+            type: "expense" as const,
+            isRefund: false,
+            toAccountId: null,
+            semanticKind: "card_purchase" as const,
+            relation: null,
+            name: "Shop",
+            tag: "",
+            rawPlace: "Shop",
+            envelopeId: null,
+            categoryId: null,
+            placeName: null,
+            reviewReasons: [],
+            selected: true,
+          },
+        ],
+      },
+      proposalCount: 1,
+      appliedCount: 0,
+      skippedCount: 0,
+      createdAt: "2026-08-24T12:00:00.000Z",
+      updatedAt: "2026-08-24T12:00:01.000Z",
+      expiresAt: "2026-08-31T12:00:00.000Z",
+    };
+
+    expect(importJobDetailSchema.parse(detail)).toEqual(detail);
+  });
+
+  it("rejects impossible status and phase combinations", () => {
+    const base = {
+      id: "018f7c89-4d76-7b8a-9a3e-4d6bf4a99811",
+      budgetId: "budget-1",
+      accountId: "account-1",
+      locale: "pl-PL",
+      provider: { provider: "enveo", model: "gpt-test" },
+      tier: "plain",
+      epoch: 1,
+      resumePhase: null,
+      cancelRequested: false,
+      attempt: 1,
+      errorCode: null,
+      retryAt: null,
+      result: null,
+      proposalCount: 0,
+      appliedCount: 0,
+      skippedCount: 0,
+      createdAt: "2026-08-24T12:00:00.000Z",
+      updatedAt: "2026-08-24T12:00:01.000Z",
+      expiresAt: "2026-08-31T12:00:00.000Z",
+    };
+
+    expect(() => importJobDetailSchema.parse({ ...base, status: "completed", phase: "queued" })).toThrow();
+    expect(() => importJobDetailSchema.parse({ ...base, status: "ready", phase: "extracting" })).toThrow();
+    expect(() => importJobDetailSchema.parse({ ...base, status: "failed", phase: "retry_scheduled" })).toThrow();
   });
 
   it("rejects malformed public job details", () => {
