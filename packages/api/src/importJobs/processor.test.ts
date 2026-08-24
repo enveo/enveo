@@ -15,7 +15,7 @@ import {
   ImportJobTierMismatch,
   processClaimedImportJob,
 } from "./processor";
-import type { ClaimedImportJob } from "./repository";
+import type { ClaimedImportJob, ImportJobClaimContext } from "./repository";
 
 const NOW = new Date("2026-08-24T12:00:00.000Z");
 const EMPTY_RESULT: ImportRecognitionResult = { rows: [], proposals: [] };
@@ -44,9 +44,7 @@ function processorFixture(options: { cancelledAfterUpstream?: boolean; enrichmen
   const events: string[] = [];
   let cancelRequested = false;
   const repository = {
-    validateClaimContext: async () => {
-      return true;
-    },
+    validateClaimContext: async (): Promise<ImportJobClaimContext> => (cancelRequested ? "cancel_requested" : "valid"),
     heartbeat: async (_id: string, _lease: string, _now: Date) => {
       events.push("heartbeat");
       return true;
@@ -146,7 +144,7 @@ describe("plain import job processor", () => {
   test("stops between model cycles when the budget tier ceremony revokes the claim", async () => {
     const fixture = processorFixture();
     let checks = 0;
-    fixture.repository.validateClaimContext = async () => ++checks < 3;
+    fixture.repository.validateClaimContext = async () => (++checks < 3 ? "valid" : "tier_mismatch");
     const recognize = async (input: Parameters<typeof fixture.recognize>[0]) => {
       await input.beforeUpstream();
       fixture.events.push("cycle-one");

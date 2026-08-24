@@ -199,12 +199,16 @@ export async function processClaimedImportJob(job: ClaimedImportJob, deps: Impor
   let leaseRenewal: ReturnType<typeof startLeaseRenewal> | null = null;
   const fence = async () => {
     leaseRenewal?.assertHealthy();
-    if (!(await deps.repository.heartbeat(job.id, job.leaseToken, now()))) throw new ImportJobLeaseExpired();
+    const renewed = await deps.repository.heartbeat(job.id, job.leaseToken, now());
     leaseRenewal?.assertHealthy();
-    if (!(await deps.repository.validateClaimContext(job, now()))) throw new ImportJobLeaseExpired();
-    const current = await deps.repository.getForUser(job.userId, job.id);
-    if (!current) throw new ImportJobBudgetMismatch();
-    if (current.status === "cancelled" || current.cancelRequested) await persistCancellation(job, deps.repository);
+    const context = await deps.repository.validateClaimContext(job, now());
+    if (!renewed && context === "valid") throw new ImportJobLeaseExpired();
+    if (context === "lease_lost") throw new ImportJobLeaseExpired();
+    if (context === "cancelled") throw new ImportJobCancelled();
+    if (context === "cancel_requested") await persistCancellation(job, deps.repository);
+    if (context === "budget_mismatch") throw new ImportJobBudgetMismatch();
+    if (context === "tier_mismatch") throw new ImportJobTierMismatch();
+    if (context === "account_unavailable") throw new ImportJobAccountUnavailable();
   };
   const checkpoint = async (write: () => Promise<boolean>) => {
     await fence();
@@ -234,6 +238,10 @@ export async function processClaimedImportJob(job: ClaimedImportJob, deps: Impor
     return { kind: "ready" };
   } catch (error) {
     if (error instanceof ImportJobCancelled) return { kind: "cancelled" };
+    if (error instanceof ImportJobAccountUnavailable) {
+      const saved = await deps.repository.failPermanently(job.id, job.leaseToken, "account_unavailable", now());
+      return saved ? { kind: "failed", errorCode: "account_unavailable" } : { kind: "lease_expired", errorCode: "expired" };
+    }
     const disposition = classifyImportJobFailure(error, job.attempt, now());
     if (disposition.kind === "lease_expired") return disposition;
     try {

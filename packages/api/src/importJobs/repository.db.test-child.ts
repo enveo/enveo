@@ -25,8 +25,6 @@ export interface ImportJobRepositoryOutput {
     currentTokenAccepted: boolean;
     exhaustedLeaseTerminalized: boolean;
     fourthClaimRejected: boolean;
-    contextValidated: boolean;
-    archivedAccountRejected: boolean;
   };
   checkpoint: {
     extractionSaved: boolean;
@@ -296,15 +294,6 @@ async function main() {
     const completed = await repository.markCompleted(userId, budgetId, completedId, 3, 1, at("2026-08-24T17:04:00.000Z"));
     await isolated.unsafe("update import_jobs set extraction = $1::jsonb, result = $1::jsonb where id = $2", [JSON.stringify(emptyResult), completedId]);
 
-    const contextId = crypto.randomUUID();
-    await repository.create(createInput(contextId), at("2026-08-24T17:10:00.000Z"));
-    const contextLease = await repository.claimNext("worker-context", at("2026-08-24T17:11:00.000Z"));
-    if (!contextLease || contextLease.id !== contextId) throw new Error("expected context job claim");
-    const contextValidated = await repository.validateClaimContext(contextLease, at("2026-08-24T17:11:01.000Z"));
-    await isolated`update accounts set archived = true where id = ${accountId}`;
-    const archivedAccountRejected = !(await repository.validateClaimContext(contextLease, at("2026-08-24T17:11:02.000Z")));
-    await repository.failPermanently(contextId, contextLease.leaseToken, "account_unavailable", at("2026-08-24T17:11:03.000Z"));
-
     const cleanupRetryId = crypto.randomUUID();
     await repository.create(createInput(cleanupRetryId), at("2026-08-20T10:00:00.000Z"));
     const cleanupRetryLease = await repository.claimNext("worker-cleanup", at("2026-08-20T10:01:00.000Z"));
@@ -337,8 +326,6 @@ async function main() {
         currentTokenAccepted,
         exhaustedLeaseTerminalized,
         fourthClaimRejected,
-        contextValidated,
-        archivedAccountRejected,
       },
       checkpoint: {
         extractionSaved: extractionSaved && checkpointRow?.extraction !== null,

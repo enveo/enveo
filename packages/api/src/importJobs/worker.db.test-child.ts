@@ -1,4 +1,5 @@
 import { readdirSync, readFileSync } from "node:fs";
+import { eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/postgres-js";
 import type postgres from "postgres";
 import { assertThrowawayDb, emitChildResult } from "../api.test-support";
@@ -15,6 +16,15 @@ export interface ImportJobWorkerDbOutput {
   images: { concurrentJobImages: number; restartedJobImages: number };
   exhausted: { providerCalls: number; fourthClaimRejected: boolean; attempts: number | null; status: string | null; errorCode: string | null };
   missingInput: { providerCalls: number; status: string | null; errorCode: string | null; retryAt: Date | null };
+  accountInvalidation: {
+    providerCalls: number;
+    outcome: string;
+    status: string | null;
+    errorCode: string | null;
+    images: number;
+    detailsCleared: boolean;
+    reclaimed: boolean;
+  };
 }
 
 const EMPTY_RESULT = { rows: [], proposals: [] };
@@ -203,6 +213,46 @@ async function main() {
     const [missingInputRow] = await isolated<{ status: string; errorCode: string | null; retryAt: Date | null }[]>`
       select status, error_code as "errorCode", retry_at as "retryAt" from import_jobs where id = ${missingInputId}`;
 
+    const [invalidatedAccount] = await database
+      .insert(schema.accounts)
+      .values({ budgetId: budget!.id, name: "Archived while processing" })
+      .returning({ id: schema.accounts.id });
+    const invalidatedId = crypto.randomUUID();
+    await repository.create({ ...createInput(invalidatedId), accountId: invalidatedAccount!.id }, new Date("2026-08-24T16:00:00.000Z"));
+    const invalidatedClaim = await repository.claimNext("worker-account-invalidated", new Date("2026-08-24T16:01:00.000Z"));
+    if (!invalidatedClaim || invalidatedClaim.id !== invalidatedId) throw new Error("expected account-invalidated claim");
+    let invalidatedProviderCalls = 0;
+    const invalidatedOutcome = await processClaimedImportJob(invalidatedClaim, {
+      repository,
+      recognize: async (run) => {
+        await run.beforeUpstream();
+        invalidatedProviderCalls++;
+        await database
+          .update(schema.importJobs)
+          .set({ extraction: EMPTY_RESULT, result: EMPTY_RESULT, proposalCount: 1 })
+          .where(eq(schema.importJobs.id, invalidatedId));
+        await database.update(schema.accounts).set({ archived: true }).where(eq(schema.accounts.id, invalidatedAccount!.id));
+        await run.afterUpstream();
+        invalidatedProviderCalls++;
+        await run.saveResult(EMPTY_RESULT);
+        return EMPTY_RESULT;
+      },
+      now: () => new Date("2026-08-24T16:02:00.000Z"),
+    });
+    const [invalidatedRow] = await isolated<
+      {
+        status: string;
+        errorCode: string | null;
+        extraction: unknown;
+        result: unknown;
+        images: number;
+      }[]
+    >`
+      select status, error_code as "errorCode", extraction, result,
+             (select count(*)::int from import_job_images where job_id = ${invalidatedId}) as images
+        from import_jobs where id = ${invalidatedId}`;
+    const invalidatedReclaim = await repository.claimNext("worker-must-not-reclaim-invalid-account", new Date("2026-08-24T16:20:00.000Z"));
+
     emitChildResult(SENTINEL, {
       concurrency: {
         processors: processors.length,
@@ -225,6 +275,15 @@ async function main() {
         status: missingInputRow?.status ?? null,
         errorCode: missingInputRow?.errorCode ?? null,
         retryAt: missingInputRow?.retryAt ?? null,
+      },
+      accountInvalidation: {
+        providerCalls: invalidatedProviderCalls,
+        outcome: invalidatedOutcome.kind,
+        status: invalidatedRow?.status ?? null,
+        errorCode: invalidatedRow?.errorCode ?? null,
+        images: invalidatedRow?.images ?? -1,
+        detailsCleared: invalidatedRow?.extraction === null && invalidatedRow.result === null,
+        reclaimed: invalidatedReclaim?.id === invalidatedId,
       },
     } satisfies ImportJobWorkerDbOutput);
   } finally {

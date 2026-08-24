@@ -39,8 +39,6 @@ describe.skipIf(!TEST_URL)("import job repository", () => {
       currentTokenAccepted: true,
       exhaustedLeaseTerminalized: true,
       fourthClaimRejected: true,
-      contextValidated: true,
-      archivedAccountRejected: true,
     });
   });
 
