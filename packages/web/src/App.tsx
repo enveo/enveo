@@ -164,13 +164,21 @@ export default function App() {
   // Task 4: editing a transaction from the account pane's recent list takes the SAME
   // screen="addExpense" push-nav detour envelope/report edits use (`editTxnFrom` below), and
   // `doneEdit`'s `history.back()` unwind fires the SAME `onPop` popstate handler that resets
-  // `acctView` on every pop (its own fresh-entry contract, matching `nav`'s). Unlike
-  // `envView`/`reportsView`, `acctView` is deliberately NOT in the URL (D2), so `onPop` has
-  // nothing to restore it FROM; this ref is the memory instead — stashed immediately before the
-  // edit (`editAccountTxn` below) and consumed exactly ONCE by `onPop`, the same shape as the
-  // URL-sourced restores just below it there, minus the URL. Reproduced live before this ref
-  // existed: the primary pane flashed to Reports (the shared onEditTxn's editReturn) and the
-  // account pane reverted to its empty hint after Save.
+  // `acctView` on every pop. Unlike `envView`/`reportsView`, `acctView` is deliberately NOT in
+  // the URL (D2), so `onPop` has nothing to restore it FROM; this ref is the memory instead —
+  // stashed immediately before the edit (`editAccountTxn` below) and read by `onPop` for the
+  // ONE pop it was stashed for. Reproduced live before this ref existed: the primary pane
+  // flashed to Reports (the shared onEditTxn's editReturn) and the account pane reverted to its
+  // empty hint after Save.
+  //
+  // The edit can also be ABANDONED without ever reaching that pop: WideShell keeps a fully
+  // interactive Rail while Add covers the panel (`onNav={nav}`, not gated on
+  // `screen === "addExpense"`), so clicking any other Rail item calls `nav()` directly, which
+  // discards the open Add form without a `history.back()`/`onPop` ever firing. `nav()` is
+  // therefore the SAME fresh-entry rung for this ref as it already is for `acctView` itself
+  // (below) — it clears the stash on every call, so only the exact pop `editAccountTxn` stashed
+  // for can ever consume it, and a later, unrelated pop that lands on "accounts" (nothing
+  // stashed, or a stash some other `nav()` already discarded) never resurrects a stale account.
   const acctViewBeforeEditRef = useRef<{ accountId: string } | null>(null);
   // screen to return to after saving/cancelling an edit (default start; from the list → list)
   const [editReturn, setEditReturn] = useState<ScreenId>("start");
@@ -217,6 +225,12 @@ export default function App() {
     }
     setEnvView(null);
     setAcctView(null);
+    // Abandons any pending account-pane-edit restore (see the ref's own comment above): `nav()`
+    // is called both for a genuine fresh entry AND by `onPop` itself on every pop, so `onPop`
+    // reads the ref BEFORE calling `nav()` for the one pop that is allowed to consume it — every
+    // other caller here (Rail, Drawer, BottomNav, `openAccount`, `openTxns`'s siblings) means the
+    // edit was abandoned, and the stash must not outlive it.
+    acctViewBeforeEditRef.current = null;
     setEditReturn("start");
     if (s === "reports") {
       // Fresh menu entry = the hub overview, with no resurrected day panel — the same
@@ -402,16 +416,17 @@ export default function App() {
       setEnvActions(null);
       justPopped.current = true;
       const r = parseUrl(location.pathname, location.search);
+      // Task 4: read the account-pane restore stash BEFORE `nav()` below — `nav()` clears it as
+      // part of its own fresh-entry reset (see the ref's and `nav`'s comments), and `nav(r.screen)`
+      // on the very next line is itself such a call. This capture is the one exception: it fires
+      // for every pop, but only a pop landing on "accounts" with something actually stashed acts
+      // on it, so a later, unrelated pop (nothing stashed, or a stash some other `nav()` already
+      // discarded) never resurrects a stale account.
+      const acctRestore = r.screen === "accounts" ? acctViewBeforeEditRef.current : null;
       nav(r.screen);
       setReportsView(r.reportsView);
       if (r.envelopeId) setEnvView({ envelopeId: r.envelopeId, month });
-      // Task 4: restore the account pane the SAME one-shot way as envelopeId above, minus the
-      // URL (acctViewBeforeEditRef's comment) — consumed exactly once so a later, unrelated pop
-      // landing on "accounts" (plain browser back, nothing remembered) never resurrects it.
-      if (r.screen === "accounts" && acctViewBeforeEditRef.current) {
-        setAcctView(acctViewBeforeEditRef.current);
-        acctViewBeforeEditRef.current = null;
-      }
+      if (acctRestore) setAcctView(acctRestore);
     };
     window.addEventListener("popstate", onPop);
     if (routingActive) {
