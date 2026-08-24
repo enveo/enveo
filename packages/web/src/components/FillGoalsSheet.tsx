@@ -10,7 +10,7 @@ import { local } from "../lib/mutate";
 import { store } from "../lib/store";
 import { CTA, font, TEAL } from "../lib/theme";
 import { AmountPadHost, type AmountPadTarget } from "./AmountPadSheet";
-import { Sheet } from "./chrome";
+import { Surface } from "./chrome";
 
 /**
  * "Fill by goals" preview (spec 2026-07-31): on open, proposes how to spend the current
@@ -107,7 +107,7 @@ export function FillGoalsSheet({ show, state, month, onClose }: { show: boolean;
 
   return (
     <>
-      <Sheet show={show} onClose={close}>
+      <Surface show={show} onClose={close}>
         {(C) => (
           <>
             <div style={{ fontSize: 17, fontWeight: 700, color: C.text, marginBottom: 14 }}>{t("Fill by goals")}</div>
@@ -223,8 +223,9 @@ export function FillGoalsSheet({ show, state, month, onClose }: { show: boolean;
             </div>
           </>
         )}
-      </Sheet>
-      {/* Sibling of the Sheet (not a child) — the panel's transform would break the pad's position:fixed. */}
+      </Surface>
+      {/* Sibling of the Surface (not a child) — on phone this is a Sheet, and the panel's transform
+          would break the pad's position:fixed on wide either way. */}
       <AmountPadHost target={pad} onClose={() => setPad(null)} />
     </>
   );

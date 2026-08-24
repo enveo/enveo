@@ -337,8 +337,8 @@ type WideShellBag = {
  * | Surface                                                          | Host today | Wide behaviour this PR | Eventual home |
  * |-------------------------------------------------------------------|------------|------------------------|---------------|
  * | EnvActionsSheet                                                    | Sheet      | phone-only (PR4 §7 fork) | stays phone-only |
- * | EnvEdit / EnvManageSheet (Budget)                                  | Sheet      | sheet                  | `envForm`/`manageGroups` panes (PR6b) |
- * | BudgetSuggestSheet / FillGoalsSheet                                | Sheet      | sheet                  | `suggest`/`fillGoals` panes (PR6b) |
+ * | EnvEdit / EnvManageSheet (Budget)                                  | Sheet      | pane surface (PR6b)    | — |
+ * | BudgetSuggestSheet / FillGoalsSheet                                | Sheet      | pane surface (PR6b)    | — |
  * | AmountPadSheet / DateSheet / AccountPickerSheet / EnvelopePickerSheet (Add) | Sheet | sheet (portals past this panel's transform — see `chrome.tsx`'s `Sheet`) | popovers on desktop (PR6b) |
  * | TransactionFilterSheet                                             | Sheet      | sheet                  | possibly inline filters on wide |
  * | ImportSheet                                                        | portal, full-screen | unchanged    | unchanged |
