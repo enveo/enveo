@@ -35,10 +35,10 @@ export interface ImportReviewRow {
 
 export type ImportBlockingIssue = ImportReviewReason | "currency_mismatch";
 
-/** Selected rows with incomplete ledger facts block the batch until the user
- * fixes or deliberately unchecks them. Review-only warnings never block. */
-export function importReviewBlockingCount(rows: readonly ImportReviewRow[]): number {
-  return rows.filter((row) => row.include && row.blockingIssues.length > 0).length;
+/** Every selected review row needs an explicit edit acknowledgement. Rows with
+ * incomplete ledger facts remain blocked after editing and must be unchecked. */
+export function importReviewBlockingCount(rows: readonly ImportReviewRow[], edited: Readonly<Record<number, EditedImportItem>>): number {
+  return rows.filter((row, index) => row.include && (row.blockingIssues.length > 0 || (row.requiresReview && !edited[index]))).length;
 }
 
 const REASON_MESSAGES: Record<ImportReviewReason, Message> = {
@@ -251,7 +251,7 @@ export function reviewedImportRowsForApply(args: {
   edited: Record<number, EditedImportItem>;
   editedAutomaticDefaults: Record<number, boolean>;
 }): ImportApplyItem[] {
-  if (args.rows.some((row) => row.include && row.blockingIssues.length > 0)) throw new Error("import_review_blocked");
+  if (importReviewBlockingCount(args.rows, args.edited) > 0) throw new Error("import_review_blocked");
   const candidates = args.rows.flatMap((row) => {
     if (row.disposition !== "candidate" || !row.item) return [];
     return [{ ...row.item, include: row.include }];

@@ -104,6 +104,21 @@ const dryResult = (over: Partial<ImportApplyResponse["results"][number]> = {}): 
   ...over,
 });
 
+const editedItem = (over: Partial<EditedImportItem> = {}): EditedImportItem => ({
+  type: "expense",
+  accountId: U(2),
+  toAccountId: null,
+  isRefund: false,
+  amount: 2500,
+  date: "2026-08-02",
+  name: "confirmed candidate",
+  envelopeId: null,
+  categoryId: null,
+  placeName: null,
+  note: "",
+  ...over,
+});
+
 describe("screenshot import review view model", () => {
   it("separates inclusion from review and blocks an incomplete selected financial row", () => {
     const result = recognition(
@@ -123,9 +138,10 @@ describe("screenshot import review view model", () => {
     expect(review[0]).toMatchObject({ include: true, requiresReview: true, blockingIssues: [] });
     expect(review[1]).toMatchObject({ include: true, requiresReview: true, blockingIssues: ["missing_fact"] });
     expect(reviewRowControlLabels(review[1]!, 1).select).toEqual({ message: "Select recognized row {n}", values: { n: 2 } });
-    expect(importReviewBlockingCount(review)).toBe(1);
+    expect(importReviewBlockingCount(review, {})).toBe(2);
+    expect(importReviewBlockingCount(review, { 0: editedItem() })).toBe(1);
     review[1]!.include = false;
-    expect(importReviewBlockingCount(review)).toBe(0);
+    expect(importReviewBlockingCount(review, { 0: editedItem() })).toBe(0);
   });
 
   it("keeps validator-mapped internal transfers checked while flagging the unknown endpoint", () => {
@@ -189,7 +205,7 @@ describe("screenshot import review view model", () => {
 
     expect(review[0]).toMatchObject({ include: true, item: null, blockingIssues: ["unknown_kind"] });
     expect(reviewRowControlLabels(review[0]!, 0).select).not.toBeNull();
-    expect(importReviewBlockingCount(review)).toBe(1);
+    expect(importReviewBlockingCount(review, {})).toBe(1);
   });
 
   it("keeps every extracted row visible while all new financial events start selected", () => {
@@ -425,6 +441,29 @@ describe("screenshot import review view model", () => {
 
     expect(review[0]).toMatchObject({ include: true, blockingIssues: ["currency_mismatch"] });
     expect(() => reviewedImportRowsForApply({ rows: review, edited: {}, editedAutomaticDefaults: {} })).toThrow("import_review_blocked");
+  });
+
+  it("requires an explicit edit before applying a selected row marked for review", () => {
+    // Break caught: a checked warning row could be applied without the user ever
+    // opening and confirming its transaction details.
+    const review = buildImportReviewRows({
+      recognition: recognition([row("warning", { reviewReasons: ["possible_ocr_error"] })], [proposal("warning", { reviewReasons: ["possible_ocr_error"] })]),
+      ledger: ledger(),
+      dryRunResults: [dryResult()],
+      automaticEnvelopeId: null,
+      budgetCurrency: "EUR",
+    });
+    const edit = editedItem({ name: "confirmed warning" });
+
+    expect(importReviewBlockingCount(review, {})).toBe(1);
+    expect(() => reviewedImportRowsForApply({ rows: review, edited: {}, editedAutomaticDefaults: {} })).toThrow("import_review_blocked");
+
+    expect(importReviewBlockingCount(review, { 0: edit })).toBe(0);
+    expect(reviewedImportRowsForApply({ rows: review, edited: { 0: edit }, editedAutomaticDefaults: {} })).toHaveLength(1);
+
+    review[0]!.include = false;
+    expect(importReviewBlockingCount(review, {})).toBe(0);
+    expect(reviewedImportRowsForApply({ rows: review, edited: {}, editedAutomaticDefaults: {} })).toEqual([]);
   });
 
   it("has concise copy for every shared reason and a safe fallback for a newer reason", () => {

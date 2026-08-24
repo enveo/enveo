@@ -238,7 +238,7 @@ export function ImportSheet({ show, onClose, state, onApplied }: { show: boolean
     setItems((prev) => prev.map((row, i) => (i === idx && row.duplicateStatus !== "exists" ? { ...row, include: !row.include } : row)));
 
   const selectedCount = items.filter((row, i) => row.item && row.include && (row.item.status !== "exists" || !!edited[i])).length;
-  const blockingCount = importReviewBlockingCount(items);
+  const blockingCount = importReviewBlockingCount(items, edited);
   const label = { fontSize: 10.5, color: C.mute, fontWeight: 600, textTransform: "uppercase" as const, letterSpacing: 0.6, marginBottom: 6 };
 
   return (
@@ -543,7 +543,7 @@ export function ImportSheet({ show, onClose, state, onApplied }: { show: boolean
 
             {blockingCount > 0 && (
               <div role="alert" style={{ fontSize: 12.5, color: C.warn, margin: "10px 0" }}>
-                {tp("Uncheck {n} incomplete transaction before adding. | Uncheck {n} incomplete transactions before adding.", blockingCount)}
+                {tp("Review or uncheck {n} transaction before adding. | Review or uncheck {n} transactions before adding.", blockingCount)}
               </div>
             )}
 
