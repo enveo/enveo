@@ -146,12 +146,6 @@ export interface SyncStatus {
 
 export type IdentityVerdict = "unauthed" | "foreign" | "ok";
 
-
-
-
-
-
-
 /**
  * Dependency the IDENTITY layer needs from the facade (workflow §3c-3): the full local-data
  * wipe lives in sync.ts (it composes outbox, e2ee, persist and multitab), which identity
@@ -165,6 +159,12 @@ export interface IdentityDeps {
    */
   discardForeignReplica(): Promise<void>;
 }
+
+
+
+
+
+
 
 export interface TransportDeps {
    

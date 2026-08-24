@@ -77,13 +77,13 @@ export { discardPendingE2eeUpgrade, hasPendingE2eeUpgrade, upgradeServerE2eeV2 }
 // explicit, idempotent installation (sync/status.ts), done at composition time
 installOutboxStatusListener();
 
-/**
- * The human chose "remove this data and continue" — on ForeignReplicaScreen (the replica is
- * stamped by another account) or in the unverified-replica notice (its owner cannot be proved).
- * This is the ONLY path that destroys such a replica, and it destroys it whole (mirror + outbox +
- * DEK + owner stamp), then reloads so the boot bootstraps the signed-in account's data.
- *
- */
+
+
+
+
+
+
+
 export async function discardLocalReplica(): Promise<void> {
   await clearLocalAccountData();
   if (typeof location !== "undefined") location.reload();
