@@ -161,6 +161,17 @@ export default function App() {
   // FRESH object per open — WideShell's reopen effect compares selections by reference (the
   // addPreset rule, panel.ts/WideShell.tsx).
   const [acctView, setAcctView] = useState<{ accountId: string } | null>(null);
+  // Task 4: editing a transaction from the account pane's recent list takes the SAME
+  // screen="addExpense" push-nav detour envelope/report edits use (`editTxnFrom` below), and
+  // `doneEdit`'s `history.back()` unwind fires the SAME `onPop` popstate handler that resets
+  // `acctView` on every pop (its own fresh-entry contract, matching `nav`'s). Unlike
+  // `envView`/`reportsView`, `acctView` is deliberately NOT in the URL (D2), so `onPop` has
+  // nothing to restore it FROM; this ref is the memory instead — stashed immediately before the
+  // edit (`editAccountTxn` below) and consumed exactly ONCE by `onPop`, the same shape as the
+  // URL-sourced restores just below it there, minus the URL. Reproduced live before this ref
+  // existed: the primary pane flashed to Reports (the shared onEditTxn's editReturn) and the
+  // account pane reverted to its empty hint after Save.
+  const acctViewBeforeEditRef = useRef<{ accountId: string } | null>(null);
   // screen to return to after saving/cancelling an edit (default start; from the list → list)
   const [editReturn, setEditReturn] = useState<ScreenId>("start");
   // transaction list filters kept high up so they survive an edit and return
@@ -305,6 +316,13 @@ export default function App() {
     setAddPreset({});
     setScreen("addExpense");
   };
+  // Wide-only: the account pane's recent-list row → edit (PanelHost's `account` kind). Its OWN
+  // `editTxnFrom` binding ("accounts", not the panel report instance's "reports") — see
+  // `acctViewBeforeEditRef`'s comment above for why this can't just reuse that shared callback.
+  const editAccountTxn = (t: Transaction) => {
+    acctViewBeforeEditRef.current = acctView;
+    editTxnFrom(t, "accounts");
+  };
   const doneEdit = () => {
     setEditTxn(null);
     // `history.back()` after a save is correct here: the entry below `/add` is the screen the
@@ -387,6 +405,13 @@ export default function App() {
       nav(r.screen);
       setReportsView(r.reportsView);
       if (r.envelopeId) setEnvView({ envelopeId: r.envelopeId, month });
+      // Task 4: restore the account pane the SAME one-shot way as envelopeId above, minus the
+      // URL (acctViewBeforeEditRef's comment) — consumed exactly once so a later, unrelated pop
+      // landing on "accounts" (plain browser back, nothing remembered) never resurrects it.
+      if (r.screen === "accounts" && acctViewBeforeEditRef.current) {
+        setAcctView(acctViewBeforeEditRef.current);
+        acctViewBeforeEditRef.current = null;
+      }
     };
     window.addEventListener("popstate", onPop);
     if (routingActive) {
@@ -685,6 +710,9 @@ export default function App() {
               onAddWide: openAddWide,
               // PR6b Task 3: Rail's account rows deep-link straight into the account pane.
               onOpenAccount: openAccount,
+              // PR6b Task 4: the account pane's own recent-list edit entry point — NOT the
+              // report-panel instance's `onEditTxn` above (see `editAccountTxn`'s comment).
+              onEditAccountTxn: editAccountTxn,
             }}
             rightSlot={wideRightSlot}
           >

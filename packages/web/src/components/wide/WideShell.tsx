@@ -324,6 +324,11 @@ type WideShellBag = {
    *  jump — the rail hides on the Accounts screen itself) — same nav-then-select batch as
    *  `openAccount` (App.tsx), threaded through to `Rail` below. */
   onOpenAccount: (id: string) => void;
+  /** PR6b Task 4: the account pane's OWN recent-list edit entry point — deliberately separate
+   *  from `onEditTxn` above (that one's `editReturn` is hardcoded "reports" for the panel's
+   *  report-subview instance; reusing it here reopened Reports behind the edit takeover and lost
+   *  `acctView` on save — reproduced live, App.tsx's `editAccountTxn`/`acctViewBeforeEditRef`). */
+  onEditAccountTxn: (t: Transaction) => void;
 };
 
 /**
@@ -400,6 +405,7 @@ export function WideShell({ bag, rightSlot = null, children }: { bag: WideShellB
     onDoneEdit,
     onAddWide,
     onOpenAccount,
+    onEditAccountTxn,
   } = bag;
   const C = useTheme();
   const { t } = useT();
@@ -768,6 +774,7 @@ export function WideShell({ bag, rightSlot = null, children }: { bag: WideShellB
             onOpenEnvelope={onOpenEnvelope}
             onFillGoals={onFillGoals}
             onEditTxn={onEditTxn}
+            onEditAccountTxn={onEditAccountTxn}
             onPrev={prev}
             onNext={next}
             editTxn={editTxn}
