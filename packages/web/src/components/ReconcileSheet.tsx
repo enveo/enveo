@@ -18,6 +18,7 @@ import { AutomaticEnvelopeEffect } from "../screens/add/AutomaticEnvelopeEffect"
 import { EnvelopePickerSheet } from "../screens/add/EnvelopePickerSheet";
 import { collapsedRowStyle } from "../screens/add/styles";
 import { AmountField } from "./AmountField";
+import { AmountPadHost, type AmountPadTarget } from "./AmountPadSheet";
 import { Surface } from "./chrome";
 
 /**
@@ -31,16 +32,20 @@ import { Surface } from "./chrome";
  * `Sheet` → `Surface` is the only hosting change: on phone (and any un-hosted mount) `Surface` IS
  * `Sheet`, byte-identical. The "Actual balance (from your bank)" field is Task 5's `AmountField`
  * (the CONTROLLER RULING scopes the desktop-input fork to exactly this field and acctForm's
- * starting balance) — it already owns the pad-vs-real-input fork AND the pad's own
- * `AmountPadHost`, so this module never imports that directly; this module's own local `pad`
- * state and the currency-symbol span next to the old raw `<input>` are gone with it, matching
- * Accounts.tsx's "Starting balance" use of the same shared field (no currency glyph there
- * either). `real`/`diff` and everything downstream (the difference line, the automatic-envelope
- * preview, the envelope row) still derive from the SAME canonical `fmtSignedTrim` string via
- * `parseAmount` — no new math, integer minor units end to end; only the widget rendering the
- * string changed, so the padKey scars (⌫ deletes exactly one char, `−` starts a negative only on
- * an empty/"0" line) stay exactly as pinned in `amount.test.ts` on fold/phone, and desktop gets a
- * real `<input>` instead.
+ * starting balance) — it owns the pad-vs-real-input fork, but NOT the pad's hosting here: this
+ * module keeps its own local `pad` state (via `AmountField`'s `externalPad` escape hatch, review
+ * fix) and renders `AmountPadHost` itself as a SIBLING of `<Surface>`, per the brief. Nesting the
+ * pad inside the Surface's own body — as the field's self-contained default does, and as
+ * Accounts.tsx's "Starting balance" still does — puts the pad's `Sheet` inside the (phone) outer
+ * Sheet's always-transformed content div, breaking its `position:fixed` backdrop+numpad against
+ * that small sheet instead of the viewport (the ancestor-transform pitfall, CLAUDE.md); the
+ * currency-symbol span next to the old raw `<input>` is still gone with the move to `AmountField`
+ * (no currency glyph on Accounts.tsx's field either). `real`/`diff` and everything downstream (the
+ * difference line, the automatic-envelope preview, the envelope row) still derive from the SAME
+ * canonical `fmtSignedTrim` string via `parseAmount` — no new math, integer minor units end to
+ * end; only the widget rendering the string changed, so the padKey scars (⌫ deletes exactly one
+ * char, `−` starts a negative only on an empty/"0" line) stay exactly as pinned in `amount.test.ts`
+ * on fold/phone, and desktop gets a real `<input>` instead.
  *
  * Callers pass a GLOBAL `AccountView` (from `computeStateResponse(ledger, currentMonth())`) —
  * `AccountsWidget` already does; `AccountPanel`'s Reconcile action does too — so "Balance in the
@@ -63,6 +68,9 @@ export function ReconcileSheet({
   const [val, setVal] = useState("");
   const [envelopeSelection, setEnvelopeSelection] = useState<ReconciliationEnvelopeSelection | null>(null);
   const [showEnvelopePicker, setShowEnvelopePicker] = useState(false);
+  // Hoisted so `AmountPadHost` (below) can render as a SIBLING of `<Surface>` — see this module's
+  // and `AmountField`'s docblocks (`externalPad`).
+  const [pad, setPad] = useState<AmountPadTarget | null>(null);
   const actualBalanceSource = useRef<{ id: string; balance: number } | null>(null);
   const automaticEnvelopeId = account && envelopes.some((envelope) => envelope.id === account.automaticEnvelopeId) ? account.automaticEnvelopeId : null;
   useEffect(() => {
@@ -125,7 +133,7 @@ export function ReconcileSheet({
               {t("Actual balance (from your bank)")}
             </div>
             <div style={{ marginBottom: 12 }}>
-              <AmountField value={val} onCommit={setVal} label={t("Actual balance (from your bank)")} allowNegative />
+              <AmountField value={val} onCommit={setVal} label={t("Actual balance (from your bank)")} allowNegative externalPad={[pad, setPad]} />
             </div>
             {real !== null && diff !== 0 && (
               <div style={{ fontSize: 12.5, marginBottom: 12, color: diff > 0 ? C.pos : C.neg }}>
@@ -185,6 +193,10 @@ export function ReconcileSheet({
           </>
         )}
       </Surface>
+      {/* Sibling of the Surface (not a child) — the panel's transform would break the pad's
+          position:fixed on wide, and on phone the outer Sheet's own always-on transform would do
+          the same to a pad nested inside it (see `AmountField`'s `externalPad` docblock). */}
+      <AmountPadHost target={pad} onClose={() => setPad(null)} />
       <EnvelopePickerSheet
         show={showEnvelopePicker}
         onClose={() => setShowEnvelopePicker(false)}

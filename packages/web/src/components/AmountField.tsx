@@ -20,6 +20,21 @@ import { AmountPadHost, type AmountPadTarget } from "./AmountPadSheet";
  * field costs the caller nothing beyond swapping its own input markup for this component. An
  * empty string is a valid value (unset — every caller already treats `parseAmount("") ?? 0` as
  * the empty-balance default; this field preserves that instead of forcing a "0" prefill).
+ *
+ * `externalPad` (PR6b Task 6 fix, review finding): an opt-in escape hatch for callers that render
+ * this field INSIDE a `Surface`'s own body. The self-contained default (below) nests the pad's
+ * `AmountPadHost` — and therefore its `Sheet` — as a CHILD of the field, which is a child of the
+ * Surface. On phone (and any un-hosted mount) `Surface` IS `Sheet`, whose content div carries an
+ * always-on `transform` (chrome.tsx) — a non-`none` transform is a containing block for
+ * `position:fixed` descendants regardless of its value, so the nested pad's fixed backdrop+numpad
+ * get sized/positioned against that small sheet instead of the viewport (the exact ancestor-
+ * transform pitfall, CLAUDE.md). Wide panel surfaces dodge this only because `PaneSurface`
+ * re-provides `host:"panel"` to nested `Sheet`s (Task 1); phone surfaces have no such signal.
+ * Every other `AmountPadHost` caller in the app (FillGoalsSheet, BudgetSuggestSheet, Budget.tsx,
+ * Onboarding.tsx) avoids this by keeping the pad a SIBLING of its enclosing Surface/Sheet, never a
+ * descendant — `externalPad` lets a Surface-hosted caller (ReconcileSheet) do the same: hoist the
+ * pad TARGET into its own state and render `AmountPadHost` itself, as a sibling of its `Surface`.
+ * Omitted (every other caller, unchanged), the field keeps today's fully self-contained pad.
  */
 export function AmountField({
   value,
@@ -27,6 +42,7 @@ export function AmountField({
   label,
   placeholder,
   allowNegative = false,
+  externalPad,
 }: {
   /** Canonical `fmtSignedTrim` text — "" is a valid, unset value. */
   value: string;
@@ -38,11 +54,14 @@ export function AmountField({
   placeholder?: string;
   /** Account balances (credit cards) may be negative; most other amounts may not. */
   allowNegative?: boolean;
+  /** See the docblock above — omit for the default self-contained pad. */
+  externalPad?: readonly [AmountPadTarget | null, (target: AmountPadTarget | null) => void];
 }) {
   const C = useTheme();
   const { lang } = useT();
   const desktop = useWideHost()?.mode === "desktop";
-  const [pad, setPad] = useState<AmountPadTarget | null>(null);
+  const [internalPad, setInternalPad] = useState<AmountPadTarget | null>(null);
+  const [pad, setPad] = externalPad ?? [internalPad, setInternalPad];
   const [input, setInput] = useState(value);
   const [err, setErr] = useState(false);
   // Guards a same-tick `blur` a value-revert can raise from reaching `onBlur`'s commit path —
@@ -144,7 +163,9 @@ export function AmountField({
           cursor: "pointer",
         }}
       />
-      <AmountPadHost target={pad} onClose={() => setPad(null)} />
+      {/* `externalPad` callers render this themselves, as a sibling of their own Surface/Sheet —
+          see the docblock above. */}
+      {!externalPad && <AmountPadHost target={pad} onClose={() => setPad(null)} />}
     </>
   );
 }
