@@ -45,15 +45,25 @@ describe.skipIf(!TEST_URL)("import job repository", () => {
       extractionSaved: true,
       invalidExtractionRejected: true,
       imagesDeleted: true,
+      readyBeforeExtractionRejected: true,
+      repeatedExtractionRejected: true,
       wrongLeaseChangedNothing: true,
       resultReady: true,
     });
   });
 
+  test("lets cancellation fence worker checkpoints while preserving cleanup authority", () => {
+    expect(output.cancellationRace).toEqual({
+      cancellationRequested: true,
+      extractionRejected: true,
+      readyRejected: true,
+      sameLeaseFinished: true,
+      cancelledStateCleared: true,
+    });
+  });
+
   test("persists cancellation, retry, failure, and completion transitions", () => {
     expect(output.transitions).toEqual({
-      runningCancellationRequested: true,
-      cancellationFinished: true,
       retryScheduled: true,
       retryQueued: true,
       permanentFailureDeletedImages: true,
