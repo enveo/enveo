@@ -1,6 +1,8 @@
 /// <reference types="bun" />
 
 import { describe, expect, it } from "bun:test";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { importProgressPresentation, runImportProgressAction, sharedDeviceImportWarning } from "../components/ImportProgress";
 import type { ImportActivityItem } from "../lib/importJobs/store";
 import { activityAttentionCount, activityDismissMessage, activitySections } from "./Activity";
@@ -91,6 +93,32 @@ describe("durable import foreground and Activity view models", () => {
     expect(sections.failed.map((job) => job.id)).toEqual(["failed"]);
     expect(sections.completed.map((job) => job.id)).toEqual(["completed"]);
     expect(activityAttentionCount(sections)).toBe(2);
+  });
+
+  it("presents a scheduled retry as automatic progress instead of user attention", () => {
+    const retrying = item("failed", {
+      id: "retrying",
+      phase: "retry_scheduled",
+      retryAt: "2026-08-24T10:05:00.000Z",
+      errorCode: "network",
+    });
+
+    const sections = activitySections([retrying]);
+
+    expect(sections.active.map((job) => job.id)).toEqual(["retrying"]);
+    expect(sections.failed).toEqual([]);
+    expect(activityAttentionCount(sections)).toBe(0);
+    expect(importProgressPresentation(retrying)).toMatchObject({ kind: "progress", message: "A retry is scheduled…", canCancel: true });
+  });
+
+  it("keeps the global badge in its own lazy entry without importing the Activity screen", () => {
+    const app = readFileSync(join(import.meta.dir, "..", "App.tsx"), "utf8");
+    const badge = readFileSync(join(import.meta.dir, "..", "components", "ImportActivityBadge.tsx"), "utf8");
+
+    expect(app).toContain('lazy(() => import("./components/ImportActivityBadge")');
+    expect(app).not.toContain("<Activity onOpen=");
+    expect(badge).not.toContain("importJobManager.list()");
+    expect(badge).not.toContain("setInterval(");
   });
 
   it("labels plain dismissal as session-only and explains local E2EE shared-device privacy", () => {

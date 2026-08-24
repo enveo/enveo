@@ -1,7 +1,7 @@
 import type { AiLocale, ClientLedger, OpenAiModel } from "@enveo/shared";
 import * as e2ee from "../e2ee";
 import { idbGet } from "../idb";
-import { type ImportJobStorageScope, importJobStorage } from "../importJobStorage";
+import { type ImportApplyProgress, type ImportJobStorageScope, importJobStorage } from "../importJobStorage";
 import { type BootStatus, store } from "../store";
 import { verifiedIdentityUserId } from "../sync/identity";
 import { type E2eeImportJobCreateInput, E2eeImportJobRunner } from "./e2eeRunner";
@@ -90,8 +90,7 @@ export class ImportJobManager {
   private readonly scheduleInterval: NonNullable<ImportJobManagerOptions["scheduleInterval"]>;
   private readonly clearScheduledInterval: NonNullable<ImportJobManagerOptions["clearScheduledInterval"]>;
   private readonly activity = createImportActivityStore();
-  private readonly appliedRows = new Map<string, Set<string>>();
-  private readonly appliedCounts = new Map<string, number>();
+  private readonly progressWrites = new Map<string, Promise<void>>();
   private scope: ImportJobStorageScope | null = null;
   private plain: ImportJobManagerPlainPort | null = null;
   private local: ImportJobManagerE2eePort | null = null;
@@ -142,8 +141,7 @@ export class ImportJobManager {
     this.scope = null;
     if (clear) {
       this.activity.clear();
-      this.appliedRows.clear();
-      this.appliedCounts.clear();
+      this.progressWrites.clear();
     }
   }
 
@@ -314,36 +312,70 @@ export class ImportJobManager {
     return this.activity.observe(id, listener);
   }
 
-  async recordApplied(id: string, rowIds: readonly string[]): Promise<void> {
+  private async recordProgress(id: string, kind: "applied" | "skipped", rowIds: readonly string[]): Promise<void> {
     const scope = this.scope;
     if (!scope || !this.activity.get(id)) return;
-    const applied = this.appliedRows.get(id) ?? new Set<string>();
-    let added = 0;
-    for (const rowId of rowIds) {
-      if (!applied.has(rowId)) added++;
-      applied.add(rowId);
-    }
-    const previousCount = this.appliedCounts.get(id) ?? (await importJobStorage.getAppliedCount(scope, id));
-    const appliedCount = previousCount + added;
-    await importJobStorage.putAppliedCount(scope, id, appliedCount);
-    if (this.scope?.ownerId !== scope.ownerId || this.scope.budgetId !== scope.budgetId) return;
-    this.appliedRows.set(id, applied);
-    this.appliedCounts.set(id, appliedCount);
+    await this.withProgressLock(id, async () => {
+      await importJobStorage.mergeApplyProgress(scope, id, kind === "applied" ? { appliedRowIds: rowIds } : { skippedRowIds: rowIds });
+    });
   }
 
-  async appliedProgress(id: string): Promise<{ appliedRowIds: string[]; appliedCount: number }> {
+  private async withProgressLock<T>(id: string, task: () => Promise<T>): Promise<T> {
+    const previous = this.progressWrites.get(id) ?? Promise.resolve();
+    let result!: T;
+    const write = previous
+      .catch(() => {})
+      .then(async () => {
+        result = await task();
+      });
+    this.progressWrites.set(id, write);
+    try {
+      await write;
+      return result;
+    } finally {
+      if (this.progressWrites.get(id) === write) this.progressWrites.delete(id);
+    }
+  }
+
+  async prepareAppliedRow(id: string, rowId: string): Promise<string> {
     const scope = this.scope;
-    if (!scope) return { appliedRowIds: [], appliedCount: 0 };
-    const appliedRowIds = [...(this.appliedRows.get(id) ?? [])];
-    const appliedCount = this.appliedCounts.get(id) ?? (await importJobStorage.getAppliedCount(scope, id));
-    if (this.scope?.ownerId === scope.ownerId && this.scope.budgetId === scope.budgetId) this.appliedCounts.set(id, appliedCount);
-    return { appliedRowIds, appliedCount };
+    if (!scope || !this.activity.get(id)) throw new Error("import_manager_not_ready");
+    return this.withProgressLock(id, async () => {
+      const transactionId = this.randomId();
+      return importJobStorage.prepareApplyRow(scope, id, rowId, transactionId);
+    });
+  }
+
+  recordApplied(id: string, rowIds: readonly string[]): Promise<void> {
+    return this.recordProgress(id, "applied", rowIds);
+  }
+
+  recordSkipped(id: string, rowIds: readonly string[]): Promise<void> {
+    return this.recordProgress(id, "skipped", rowIds);
+  }
+
+  async appliedProgress(id: string): Promise<ImportApplyProgress> {
+    const scope = this.scope;
+    if (!scope) return { appliedRowIds: [], appliedCount: 0, skippedRowIds: [], skippedCount: 0 };
+    return this.withProgressLock(id, async () => {
+      const progress = await importJobStorage.getApplyProgressRecord(scope, id);
+      const transactionIds = new Set(this.state.getLedger()?.transactions.map((transaction) => transaction.id) ?? []);
+      const recovered = progress.preparedRows.filter((prepared) => transactionIds.has(prepared.transactionId));
+      if (recovered.length === 0) {
+        const { preparedRows: _, ...visible } = progress;
+        return visible;
+      }
+      const appliedRowIds = [...new Set([...progress.appliedRowIds, ...recovered.map((prepared) => prepared.rowId)])];
+      const merged = await importJobStorage.mergeApplyProgress(scope, id, { appliedRowIds });
+      const { preparedRows: _, ...visible } = merged;
+      return visible;
+    });
   }
 
   private async clearApplied(id: string, scope: ImportJobStorageScope | null): Promise<void> {
-    this.appliedRows.delete(id);
-    this.appliedCounts.delete(id);
-    if (scope) await importJobStorage.deleteAppliedCount(scope, id);
+    await this.progressWrites.get(id)?.catch(() => {});
+    this.progressWrites.delete(id);
+    if (scope) await importJobStorage.deleteApplyProgress(scope, id);
   }
 
   async list(): Promise<ImportActivityItem[]> {
@@ -352,6 +384,12 @@ export class ImportJobManager {
     else if (this.visible()) await this.plain?.refresh(true);
     return this.activity.list();
   }
+
+  subscribe = (listener: () => void): (() => void) => this.activity.subscribe(listener);
+
+  activityVersion = (): number => this.activity.getVersion();
+
+  activityItems = (): ImportActivityItem[] => this.activity.list();
 
   private async item(id: string): Promise<ImportActivityItem | undefined> {
     const known = this.activity.get(id);

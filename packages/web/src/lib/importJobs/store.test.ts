@@ -67,4 +67,16 @@ describe("merged import activity store", () => {
 
     expect(phases).toEqual(["queued", "ready"]);
   });
+
+  it("exposes a stable subscription version for lightweight external-store consumers", () => {
+    const activity = createImportActivityStore();
+    const before = activity.getVersion();
+
+    activity.upsert(importActivityFromServer(serverJob()));
+    const afterUpsert = activity.getVersion();
+    activity.remove(ID);
+
+    expect(afterUpsert).toBe(before + 1);
+    expect(activity.getVersion()).toBe(afterUpsert + 1);
+  });
 });

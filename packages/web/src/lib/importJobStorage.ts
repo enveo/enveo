@@ -7,6 +7,7 @@ import {
   idbGet,
   idbGetAll,
   idbMutateImportDraftState,
+  idbMutateMeta,
   idbPut,
   idbPutImportDraftIfAbsentOrSame,
   idbPutImportJobForScope,
@@ -65,6 +66,22 @@ export interface ImportJobStorageScope {
   budgetId: string;
 }
 
+export interface ImportApplyProgress {
+  appliedRowIds: string[];
+  appliedCount: number;
+  skippedRowIds: string[];
+  skippedCount: number;
+}
+
+export interface ImportPreparedRow {
+  rowId: string;
+  transactionId: string;
+}
+
+export interface StoredImportApplyProgress extends ImportApplyProgress {
+  preparedRows: ImportPreparedRow[];
+}
+
 const listeners = new Map<string, Set<() => void>>();
 
 function scopeKey(scope: ImportJobStorageScope): string {
@@ -72,7 +89,42 @@ function scopeKey(scope: ImportJobStorageScope): string {
 }
 
 function applyProgressKey(scope: ImportJobStorageScope, id: string): string {
+  return JSON.stringify(["import-apply-progress", 2, scope.ownerId, scope.budgetId, id]);
+}
+
+function legacyApplyProgressKey(scope: ImportJobStorageScope, id: string): string {
   return JSON.stringify(["import-apply-progress", 1, scope.ownerId, scope.budgetId, id]);
+}
+
+const emptyApplyProgress = (): ImportApplyProgress => ({ appliedRowIds: [], appliedCount: 0, skippedRowIds: [], skippedCount: 0 });
+
+function distinctRowIds(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return [...new Set(value.filter((rowId): rowId is string => typeof rowId === "string" && rowId.length > 0))];
+}
+
+function normalizedApplyProgress(value: unknown): StoredImportApplyProgress {
+  if (!value || typeof value !== "object") return { ...emptyApplyProgress(), preparedRows: [] };
+  const record = value as { appliedRowIds?: unknown; skippedRowIds?: unknown; preparedRows?: unknown };
+  const appliedRowIds = distinctRowIds(record.appliedRowIds);
+  const skippedRowIds = distinctRowIds(record.skippedRowIds).filter((rowId) => !appliedRowIds.includes(rowId));
+  const preparedRows = Array.isArray(record.preparedRows)
+    ? [
+        ...new Map(
+          record.preparedRows.flatMap((entry) => {
+            if (!entry || typeof entry !== "object") return [];
+            const prepared = entry as { rowId?: unknown; transactionId?: unknown };
+            return typeof prepared.rowId === "string" &&
+              prepared.rowId.length > 0 &&
+              typeof prepared.transactionId === "string" &&
+              prepared.transactionId.length > 0
+              ? [[prepared.rowId, { rowId: prepared.rowId, transactionId: prepared.transactionId }] as const]
+              : [];
+          }),
+        ).values(),
+      ].filter((entry) => !appliedRowIds.includes(entry.rowId) && !skippedRowIds.includes(entry.rowId))
+    : [];
+  return { appliedRowIds, appliedCount: appliedRowIds.length, skippedRowIds, skippedCount: skippedRowIds.length, preparedRows };
 }
 
 function inScope(value: { ownerId: string; budgetId: string }, scope: ImportJobStorageScope): boolean {
@@ -176,21 +228,79 @@ function newestFirst<T extends { id: string; updatedAt: string }>(rows: T[]): T[
 }
 
 export const importJobStorage = {
-  async getAppliedCount(scope: ImportJobStorageScope, id: string): Promise<number> {
+  async getApplyProgress(scope: ImportJobStorageScope, id: string): Promise<ImportApplyProgress> {
     assertValidScope(scope);
-    const value = await idbGet<number>("meta", applyProgressKey(scope, id));
-    return Number.isSafeInteger(value) && (value ?? -1) >= 0 ? (value ?? 0) : 0;
+    const { preparedRows: _, ...progress } = normalizedApplyProgress(await idbGet<unknown>("meta", applyProgressKey(scope, id)));
+    return progress;
   },
 
-  async putAppliedCount(scope: ImportJobStorageScope, id: string, count: number): Promise<void> {
+  async getApplyProgressRecord(scope: ImportJobStorageScope, id: string): Promise<StoredImportApplyProgress> {
     assertValidScope(scope);
-    if (!Number.isSafeInteger(count) || count < 0) throw new Error("invalid_import_apply_progress");
-    await idbPut("meta", count, applyProgressKey(scope, id));
+    return normalizedApplyProgress(await idbGet<unknown>("meta", applyProgressKey(scope, id)));
   },
 
-  async deleteAppliedCount(scope: ImportJobStorageScope, id: string): Promise<void> {
+  async putApplyProgress(
+    scope: ImportJobStorageScope,
+    id: string,
+    progress: Pick<ImportApplyProgress, "appliedRowIds" | "skippedRowIds"> & { preparedRows?: readonly ImportPreparedRow[] },
+  ): Promise<void> {
+    assertValidScope(scope);
+    const normalized = normalizedApplyProgress(progress);
+    await idbPut("meta", normalized, applyProgressKey(scope, id));
+  },
+
+  async prepareApplyRow(scope: ImportJobStorageScope, id: string, rowId: string, transactionId: string): Promise<string> {
+    assertValidScope(scope);
+    if (!rowId || !transactionId) throw new Error("invalid_import_apply_identity");
+    const progress = normalizedApplyProgress(
+      await idbMutateMeta(applyProgressKey(scope, id), (current) => {
+        const normalized = normalizedApplyProgress(current);
+        if (normalized.appliedRowIds.includes(rowId)) return normalized;
+        const existing = normalized.preparedRows.find((prepared) => prepared.rowId === rowId);
+        if (existing) return normalized;
+        return normalizedApplyProgress({
+          appliedRowIds: normalized.appliedRowIds,
+          skippedRowIds: normalized.skippedRowIds.filter((skippedRowId) => skippedRowId !== rowId),
+          preparedRows: [...normalized.preparedRows, { rowId, transactionId }],
+        });
+      }),
+    );
+    if (progress.appliedRowIds.includes(rowId)) throw new Error("import_row_already_applied");
+    return progress.preparedRows.find((prepared) => prepared.rowId === rowId)?.transactionId ?? transactionId;
+  },
+
+  async mergeApplyProgress(
+    scope: ImportJobStorageScope,
+    id: string,
+    update: { appliedRowIds?: readonly string[]; skippedRowIds?: readonly string[] },
+  ): Promise<StoredImportApplyProgress> {
+    assertValidScope(scope);
+    return normalizedApplyProgress(
+      await idbMutateMeta(applyProgressKey(scope, id), (current) => {
+        const normalized = normalizedApplyProgress(current);
+        const applied = new Set(normalized.appliedRowIds);
+        const skipped = new Set(normalized.skippedRowIds);
+        for (const rowId of distinctRowIds(update.appliedRowIds)) {
+          skipped.delete(rowId);
+          applied.add(rowId);
+        }
+        for (const rowId of distinctRowIds(update.skippedRowIds)) {
+          if (!applied.has(rowId)) skipped.add(rowId);
+        }
+        const accounted = new Set([...applied, ...skipped]);
+        return normalizedApplyProgress({
+          appliedRowIds: [...applied],
+          skippedRowIds: [...skipped],
+          preparedRows: normalized.preparedRows.filter((prepared) => !accounted.has(prepared.rowId)),
+        });
+      }),
+    );
+  },
+
+  async deleteApplyProgress(scope: ImportJobStorageScope, id: string): Promise<void> {
     assertValidScope(scope);
     await idbDelete("meta", applyProgressKey(scope, id));
+    await idbDelete("meta", legacyApplyProgressKey(scope, id));
   },
 
   subscribe(scope: ImportJobStorageScope, listener: () => void): () => void {

@@ -2,7 +2,7 @@ import type { ImportJobErrorCode, ImportJobPhase } from "@enveo/shared";
 import { useTheme } from "../lib/contexts";
 import { type Message, msg, useT } from "../lib/i18n";
 import type { StorageMode } from "../lib/idb";
-import type { ImportActivityItem } from "../lib/importJobs/store";
+import { type ImportActivityItem, isScheduledImportRetry } from "../lib/importJobs/store";
 import { CORAL, TEAL } from "../lib/theme";
 
 const PHASE_MESSAGES: Record<ImportJobPhase, Message> = {
@@ -45,7 +45,7 @@ export interface ImportProgressPresentation {
 export function importProgressPresentation(item: ImportActivityItem): ImportProgressPresentation {
   if (item.status === "ready") return { kind: "review", message: PHASE_MESSAGES.ready, canContinueInBackground: false, canCancel: false };
   if (item.status === "completed") return { kind: "completed", message: PHASE_MESSAGES.completed, canContinueInBackground: false, canCancel: false };
-  if (item.status === "failed") {
+  if (item.status === "failed" && !isScheduledImportRetry(item)) {
     return {
       kind: "failed",
       message: item.errorCode ? ERROR_MESSAGES[item.errorCode] : msg("The import failed. You can retry it from Activity."),
@@ -85,48 +85,54 @@ export function ImportProgress({
   const { t } = useT();
   const presentation = importProgressPresentation(item);
   return (
-    <div role="status" aria-live="polite" style={{ textAlign: "center", padding: "16px 0 4px" }}>
-      <span
-        aria-hidden="true"
-        style={{
-          display: "inline-block",
-          width: 16,
-          height: 16,
-          borderRadius: "50%",
-          border: `2px solid ${C.line}`,
-          borderTopColor: TEAL,
-          animation: "sp .7s linear infinite",
-        }}
-      />
-      <div style={{ marginTop: 12, color: C.text, fontSize: 16, fontWeight: 700 }}>{t(presentation.message)}</div>
-      <div style={{ marginTop: 5, color: C.mute, fontSize: 12 }}>{t("You can leave this view. The import will stay in Activity.")}</div>
-      <div style={{ display: "flex", gap: 8, marginTop: 18 }}>
-        <button
-          type="button"
-          onClick={onCancel}
+    <div style={{ textAlign: "center", padding: "16px 0 4px" }}>
+      <div role="status" aria-live="polite">
+        <span
+          aria-hidden="true"
           style={{
-            flex: 1,
-            padding: "11px 8px",
-            borderRadius: 12,
-            border: `1px solid ${C.line}`,
-            background: C.bg,
-            color: CORAL,
-            fontWeight: 650,
-            cursor: "pointer",
+            display: "inline-block",
+            width: 16,
+            height: 16,
+            borderRadius: "50%",
+            border: `2px solid ${C.line}`,
+            borderTopColor: TEAL,
+            animation: "sp .7s linear infinite",
           }}
-        >
-          {t("Cancel import")}
-        </button>
-        {showBackground && (
-          <button
-            type="button"
-            onClick={onBackground}
-            style={{ flex: 1.5, padding: "11px 8px", borderRadius: 12, border: "none", background: TEAL, color: "#fff", fontWeight: 650, cursor: "pointer" }}
-          >
-            {t("Continue in background")}
-          </button>
-        )}
+        />
+        <div style={{ marginTop: 12, color: C.text, fontSize: 16, fontWeight: 700 }}>{t(presentation.message)}</div>
+        <div style={{ marginTop: 5, color: C.mute, fontSize: 12 }}>{t("You can leave this view. The import will stay in Activity.")}</div>
       </div>
+      {(presentation.canCancel || (showBackground && presentation.canContinueInBackground)) && (
+        <div style={{ display: "flex", gap: 8, marginTop: 18 }}>
+          {presentation.canCancel && (
+            <button
+              type="button"
+              onClick={onCancel}
+              style={{
+                flex: 1,
+                padding: "11px 8px",
+                borderRadius: 12,
+                border: `1px solid ${C.line}`,
+                background: C.bg,
+                color: CORAL,
+                fontWeight: 650,
+                cursor: "pointer",
+              }}
+            >
+              {t("Cancel import")}
+            </button>
+          )}
+          {showBackground && presentation.canContinueInBackground && (
+            <button
+              type="button"
+              onClick={onBackground}
+              style={{ flex: 1.5, padding: "11px 8px", borderRadius: 12, border: "none", background: TEAL, color: "#fff", fontWeight: 650, cursor: "pointer" }}
+            >
+              {t("Continue in background")}
+            </button>
+          )}
+        </div>
+      )}
     </div>
   );
 }
