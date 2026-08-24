@@ -12,7 +12,8 @@ import { useViewMode } from "../lib/viewMode";
 /**
  * BootStatus "foreign" — the replica on this device carries an owner stamp naming a DIFFERENT
  * account than the one signed in (see the multi-tenant guard in sync.ts). Every server write is
- * already blocked; this screen exists because the remaining decision is NOT the app's to make:
+ * already blocked; this screen exists because on SELFHOST the remaining decision is NOT the
+ * app's to make:
  *
  *  - the local replica may be the LAST copy of that budget (for example after offline edits or a
  *    server rebuild),
@@ -23,8 +24,12 @@ import { useViewMode } from "../lib/viewMode";
  * So: export first (the button downloads the whole ledger as JSON, offline, no network), and only
  * an explicit "remove and continue" destroys anything.
  *
- * On CLOUD deployments the export button is hidden — the server holds the data durably, and the
- * offline export would hand the previous user's ledger to whoever sits at a shared computer.
+ * On CLOUD deployments this screen is normally never reached: a foreign replica is silently
+ * discarded by the guard itself (enterForeignReplica — the server is the durable copy there,
+ * and surfacing "another account's data is on this machine" to whoever sits at a shared
+ * computer is exposure, not protection). The cloud branch below is defense in depth for the
+ * states that can still land here (e.g. the deployment cache appearing mid-session): it hides
+ * the export, so the previous user's ledger is never handed out.
  */
 export function ForeignReplicaScreen() {
   const C = useTheme();

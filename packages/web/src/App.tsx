@@ -399,8 +399,10 @@ export default function App() {
   const locked = bootStatus === "locked";
 
   // The local replica belongs to ANOTHER account (owner stamp ≠ session — BootStatus "foreign").
-  // Every server write is already refused; the app must NOT show (or silently destroy) that
-  // account's budget, so the decision screen takes over: export a backup / remove and continue.
+  // Every server write is already refused and the app must NOT show that account's budget, so
+  // the decision screen takes over: export a backup / remove and continue. On cloud this status
+  // is normally never set — the guard silently discards the replica instead (enterForeignReplica)
+  // and only its failure path lands here.
   const foreign = bootStatus === "foreign";
 
   // History wiring, one effect: popstate applies the parsed route through `nav()` — reusing its
