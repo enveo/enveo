@@ -652,9 +652,12 @@ function EnvManageSheet({ show, state, onClose }: { show: boolean; state: StateR
                   </span>
                   <button
                     onClick={() => local.updateEnvelope(e.id, { archived: false })}
+                    // minHeight 30: the same touch-target floor as the buttons above — the sweep
+                    // never measured this one only because its dataset had no archived envelopes.
                     style={{
                       flexShrink: 0,
                       padding: "6px 12px",
+                      minHeight: 30,
                       borderRadius: 8,
                       border: `1px solid var(--accent-55)`,
                       background: "var(--accent-1a)",
@@ -778,7 +781,21 @@ function ManageGroup({ g, list, flat }: { g: StateResponse["groups"][number]; li
               if (window.confirm(t("Delete the empty group “{name}”?", { name: g.name }))) local.deleteGroup(g.id);
             }}
             aria-label={t("Delete group")}
-            style={{ background: "none", border: "none", cursor: "pointer", padding: 4, display: "flex" }}
+            // Same explicit 30×30 box as the per-envelope delete below (was 23×23 — the sweep
+            // just never saw it: it renders only for an EMPTY group).
+            style={{
+              background: "none",
+              border: "none",
+              cursor: "pointer",
+              padding: 0,
+              width: 30,
+              height: 30,
+              minWidth: 30,
+              minHeight: 30,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+            }}
           >
             <Ico d="M3 6h18M8 6V4h8v2m-9 0v14a1 1 0 001 1h8a1 1 0 001-1V6" size={15} color={CORAL} />
           </button>
@@ -834,7 +851,21 @@ function ManageGroup({ g, list, flat }: { g: StateResponse["groups"][number]; li
                   local.deleteEnvelope(e.id);
               }}
               aria-label={t("Delete {name}", { name: e.name })}
-              style={{ background: "none", border: "none", cursor: "pointer", padding: 6, display: "flex" }}
+              // Explicit 30×30 box (the wide-chrome touch-target floor — PanelHost's ✕ pattern):
+              // padding alone left this at 27×27 in the pane-surface sweep.
+              style={{
+                background: "none",
+                border: "none",
+                cursor: "pointer",
+                padding: 0,
+                width: 30,
+                height: 30,
+                minWidth: 30,
+                minHeight: 30,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+              }}
             >
               <Ico d="M3 6h18M8 6V4h8v2m-9 0v14a1 1 0 001 1h8a1 1 0 001-1V6" size={15} color={CORAL} />
             </button>
@@ -864,7 +895,18 @@ function ManageGroup({ g, list, flat }: { g: StateResponse["groups"][number]; li
           />
           <button
             onClick={addEnvelope}
-            style={{ padding: "7px 12px", borderRadius: 8, border: "none", background: TEAL, color: "#fff", fontSize: 12, fontWeight: 600, cursor: "pointer" }}
+            // minHeight 30: same floor as "+ Add envelope" (this confirm renders in its place).
+            style={{
+              padding: "7px 12px",
+              minHeight: 30,
+              borderRadius: 8,
+              border: "none",
+              background: TEAL,
+              color: "#fff",
+              fontSize: 12,
+              fontWeight: 600,
+              cursor: "pointer",
+            }}
           >
             {t("Add")}
           </button>
@@ -875,7 +917,18 @@ function ManageGroup({ g, list, flat }: { g: StateResponse["groups"][number]; li
             setAdding(true);
             setAddName("");
           }}
-          style={{ marginTop: 8, padding: "6px 0", background: "none", border: "none", color: TEAL, fontSize: 11, fontWeight: 600, cursor: "pointer" }}
+          // minHeight 30 = the touch-target floor (the text link measured 25 tall in the sweep).
+          style={{
+            marginTop: 8,
+            padding: "6px 0",
+            minHeight: 30,
+            background: "none",
+            border: "none",
+            color: TEAL,
+            fontSize: 11,
+            fontWeight: 600,
+            cursor: "pointer",
+          }}
         >
           {t("+ Add envelope")}
         </button>

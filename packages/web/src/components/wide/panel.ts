@@ -59,7 +59,7 @@ export function resolvePanel(a: {
   if (a.screen === "accounts" && a.acctView) return { kind: "account", accountId: a.acctView.accountId };
   if (a.screen === "accounts") return { kind: "empty", hint: "account" };
   if (a.screen === "start" || a.screen === "budget") return { kind: "empty", hint: "envelope" };
-  return { kind: "empty", hint: "generic" }; // transactions/settings until PR6b's <Surface>
+  return { kind: "empty", hint: "generic" }; // transactions/settings — no panel selection of their own (their sheets ride <Surface>, not this resolver)
 }
 
 /**
