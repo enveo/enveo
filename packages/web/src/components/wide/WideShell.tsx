@@ -14,6 +14,7 @@ import type { ReportTab, ReportView } from "../../screens/reports/types";
 import { WideHome } from "../../screens/WideHome";
 import type { ScreenId } from "../chrome";
 import { SyncBadge } from "../SyncBadge";
+import { UpdatePrompt } from "../UpdatePrompt";
 import { FoldTbbStrip } from "./FoldTbbStrip";
 import { paneWidthFor } from "./geometry";
 import { PanelHost } from "./PanelHost";
@@ -304,6 +305,30 @@ type WideShellBag = {
  * once the widget-edit-sheet extraction (pr4-context.md header; the pull-forward of PR5 Task 1)
  * bought back the §3f headroom this needed. This default is what keeps that wiring a one-line
  * addition at the call site rather than a required prop everywhere.
+ *
+ * PR6 Task 6 — sheet triage sweep (D4: every current `Sheet`/portal overlay keeps TODAY's
+ * presentation in every mode THIS PR, over the shell as a centered modal strip with a full-shell
+ * backdrop; v3's converted panes are commissioned as PR6b, not this file):
+ *
+ * | Surface                                                          | Host today | Wide behaviour this PR | Eventual home |
+ * |-------------------------------------------------------------------|------------|------------------------|---------------|
+ * | EnvActionsSheet                                                    | Sheet      | phone-only (PR4 §7 fork) | stays phone-only |
+ * | EnvEdit / EnvManageSheet (Budget)                                  | Sheet      | sheet                  | `envForm`/`manageGroups` panes (PR6b) |
+ * | BudgetSuggestSheet / FillGoalsSheet                                | Sheet      | sheet                  | `suggest`/`fillGoals` panes (PR6b) |
+ * | AmountPadSheet / DateSheet / AccountPickerSheet / EnvelopePickerSheet (Add) | Sheet | sheet (portals past this panel's transform — see `chrome.tsx`'s `Sheet`) | popovers on desktop (PR6b) |
+ * | TransactionFilterSheet                                             | Sheet      | sheet                  | possibly inline filters on wide |
+ * | ImportSheet                                                        | portal, full-screen | unchanged    | unchanged |
+ * | IconColorPicker                                                    | portal     | unchanged              | unchanged |
+ * | AiConsentSheet / InstallSheet / DataSection sheets / EditWidgetsSheet / Accounts sheets | Sheet | sheet | EditWidgetsSheet → PR5's `widgets` pane; Accounts sheets → PR6b |
+ * | `UpdatePrompt`                                                     | fixed, viewport-centered on phone | anchored to the primary pane's measured rect on wide (this file, below) — MEASURED to collide with this panel at 1104x992 before the fix | — (closed) |
+ *
+ * Verified live (throwaway stack, 1440x900 + 1104x992): every Sheet opened from panel-hosted
+ * content (Add's pickers) portals to `document.body` and stays viewport-centered with a
+ * full-shell backdrop even mid-transition (probed at the exact first frame of this panel's own
+ * open animation — `transform`/`opacity` still at their closed starting values); Sheets opened
+ * from the primary pane were never at risk (no transformed ancestor) and are unaffected. Escape
+ * while focus sits inside the Add pane closes it and returns focus to `[data-panel-toggle]`
+ * (PR4's stranded-focus fix, landed in Task 5, re-verified here for both panel-hosted cases).
  */
 export function WideShell({ bag, rightSlot = null, children }: { bag: WideShellBag; rightSlot?: RightSlot; children: ReactNode }) {
   const {
@@ -540,6 +565,12 @@ export function WideShell({ bag, rightSlot = null, children }: { bag: WideShellB
             provider's comment for why that coverage still holds (task-7 fix round 1's finding,
             preserved by construction: every reader now sits under ONE of the two providers). */}
         <InWideShell.Provider value={{ host: "primary", mode, rects }}>
+          {/* Rendered here, not as App.tsx's own sibling of `<WideShell>` (App.tsx still owns the
+              PHONE instance) — a `useWideHost()`-gated branch (Task 6) needs to sit inside this
+              exact provider to read `rects.primary` and anchor clear of the rail/panel; see that
+              component's own comment for the measured collision this replaces. Self-contained
+              (no props), so moving where it mounts is the only change this required. */}
+          <UpdatePrompt />
           <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column", overflow: "hidden" }}>
             {/* Task 6: the wide Home board replaces the phone widget stack entirely on Start — the
                 `screenEl` App.tsx built for "start" (a `StartScreen` element) is still constructed
