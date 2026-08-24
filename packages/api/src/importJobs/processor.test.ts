@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import type { ImportJobErrorCode, ImportRecognitionResult } from "@enveo/shared";
-import { ByokUpstreamError } from "../aiCredentials/transport";
+import { ImportEnrichmentMalformedError, type ImportJobErrorCode, type ImportRecognitionResult } from "@enveo/shared";
+import { ByokInvalidBodyError, ByokUpstreamError } from "../aiCredentials/transport";
 import { SpendDenied } from "../aiSpend/transport";
 import { UpstreamNetworkError, UpstreamTimeoutError } from "../openaiHttp";
 import {
@@ -43,7 +43,7 @@ function processorFixture(options: { cancelledAfterUpstream?: boolean; enrichmen
   const events: string[] = [];
   let cancelRequested = false;
   const repository = {
-    heartbeat: async () => {
+    heartbeat: async (_id: string, _lease: string, _now: Date) => {
       events.push("heartbeat");
       return true;
     },
@@ -77,12 +77,15 @@ function processorFixture(options: { cancelledAfterUpstream?: boolean; enrichmen
   };
   const recognize = async (input: {
     checkpoint: ImportRecognitionResult | null;
+    beforeUpstream: () => Promise<void>;
     afterUpstream: () => Promise<void>;
     saveExtraction: (result: ImportRecognitionResult) => Promise<void>;
     advancePhase: (phase: "enriching" | "reconciling") => Promise<void>;
+    saveResult: (result: ImportRecognitionResult) => Promise<void>;
   }) => {
     if (options.recognitionError) throw options.recognitionError;
     expect(input.checkpoint).toBeNull();
+    await input.beforeUpstream();
     events.push("extracting");
     if (options.cancelledAfterUpstream) cancelRequested = true;
     await input.afterUpstream();
@@ -90,6 +93,7 @@ function processorFixture(options: { cancelledAfterUpstream?: boolean; enrichmen
     events.push("validating");
     if (options.enrichment) await input.advancePhase("enriching");
     await input.advancePhase("reconciling");
+    await input.saveResult(EMPTY_RESULT);
     return EMPTY_RESULT;
   };
   return { events, repository, recognize };
@@ -143,6 +147,7 @@ describe("plain import job processor", () => {
       expect(input.checkpoint).toEqual(EMPTY_RESULT);
       events.push("resumed-without-images");
       await input.advancePhase("reconciling");
+      await input.saveResult(EMPTY_RESULT);
       return EMPTY_RESULT;
     };
 
@@ -160,6 +165,93 @@ describe("plain import job processor", () => {
 
     expect(outcome).toEqual({ kind: "lease_expired", errorCode: "expired" });
     expect(fixture.events).not.toContain("ready");
+  });
+
+  test("terminally expires a live claim whose retained input has already been cleaned", async () => {
+    const fixture = processorFixture();
+
+    const outcome = await processClaimedImportJob(claimedJob({ images: [], extraction: null }), { ...fixture, now: () => NOW });
+
+    expect(outcome).toEqual({ kind: "failed", errorCode: "expired" });
+    expect(fixture.events).toContain("failed:expired");
+  });
+
+  test("renews the lease before and during a slow upstream call so another worker cannot duplicate the provider request", async () => {
+    let current = new Date("2026-08-24T12:00:00.000Z");
+    let leaseExpiresAt = new Date("2026-08-24T12:05:00.000Z");
+    let providerCalls = 0;
+    let secondWorkerCouldClaim = true;
+    const fixture = processorFixture();
+    fixture.repository.heartbeat = async (_id: string, _lease: string, heartbeatAt: Date) => {
+      if (heartbeatAt >= leaseExpiresAt) return false;
+      leaseExpiresAt = new Date(heartbeatAt.getTime() + 5 * 60 * 1_000);
+      return true;
+    };
+    const recognize = async (input: Parameters<typeof fixture.recognize>[0]) => {
+      await input.beforeUpstream();
+      providerCalls++;
+      current = new Date("2026-08-24T12:04:00.000Z");
+      await Bun.sleep(20);
+      current = new Date("2026-08-24T12:06:00.000Z");
+      secondWorkerCouldClaim = current >= leaseExpiresAt;
+      await input.afterUpstream();
+      await input.saveExtraction(EMPTY_RESULT);
+      await input.advancePhase("reconciling");
+      await input.saveResult(EMPTY_RESULT);
+      return EMPTY_RESULT;
+    };
+
+    const outcome = await processClaimedImportJob(claimedJob(), {
+      ...fixture,
+      recognize,
+      now: () => current,
+      heartbeatIntervalMs: 5,
+    });
+
+    expect(outcome).toEqual({ kind: "ready" });
+    expect(providerCalls).toBe(1);
+    expect(secondWorkerCouldClaim).toBe(false);
+  });
+
+  test("discards a slow upstream answer when periodic renewal discovers that the lease was lost", async () => {
+    const fixture = processorFixture();
+    let heartbeats = 0;
+    fixture.repository.heartbeat = async () => ++heartbeats === 1;
+    const recognize = async (input: Parameters<typeof fixture.recognize>[0]) => {
+      await input.beforeUpstream();
+      await Bun.sleep(20);
+      await input.afterUpstream();
+      await input.saveExtraction(EMPTY_RESULT);
+      return EMPTY_RESULT;
+    };
+
+    const outcome = await processClaimedImportJob(claimedJob(), {
+      ...fixture,
+      recognize,
+      now: () => NOW,
+      heartbeatIntervalMs: 5,
+    });
+
+    expect(outcome).toEqual({ kind: "lease_expired", errorCode: "expired" });
+    expect(fixture.events).not.toContain("extraction-stored");
+    expect(fixture.events).not.toContain("ready");
+  });
+
+  test.each([
+    [new UpstreamNetworkError(new Error("offline")), { kind: "retry", errorCode: "network" }],
+    [new UpstreamTimeoutError(1_000), { kind: "retry", errorCode: "ai_timeout" }],
+    [new ByokUpstreamError(429), { kind: "retry", errorCode: "network" }],
+    [new SpendDenied(77), { kind: "retry", errorCode: "ai_budget_exhausted" }],
+    [new ImportJobInvalidKey(), { kind: "failed", errorCode: "ai_key_invalid" }],
+    [new ImportJobModelUnavailable(), { kind: "failed", errorCode: "ai_model_unavailable" }],
+    [new ByokInvalidBodyError(), { kind: "retry", errorCode: "malformed_model_response" }],
+    [new ImportEnrichmentMalformedError(new Error("bad rows")), { kind: "retry", errorCode: "malformed_model_response" }],
+  ] as const)("persists the worker disposition when strict recognition propagates %s", async (error, expected) => {
+    const fixture = processorFixture({ recognitionError: error });
+
+    const outcome = await processClaimedImportJob(claimedJob(), { ...fixture, now: () => NOW });
+
+    expect(outcome).toMatchObject(expected);
   });
 });
 

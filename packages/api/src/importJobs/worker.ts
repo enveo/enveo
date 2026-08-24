@@ -34,11 +34,24 @@ export function startImportJobWorker(deps: ImportJobWorkerDeps): { wake(): void;
     while (!stopping) {
       const currentMs = now().getTime();
       if (currentMs >= nextCleanupAt) {
-        await deps.repository.cleanupExpired(now());
-        nextCleanupAt = currentMs + cleanupIntervalMs;
+        try {
+          await deps.repository.cleanupExpired(now());
+          nextCleanupAt = currentMs + cleanupIntervalMs;
+        } catch {
+          console.error("import-job worker: retention cleanup failed");
+          if (!stopping) await wait();
+          continue;
+        }
         if (stopping) break;
       }
-      const job = await deps.repository.claimNext(deps.workerId, now());
+      let job: ClaimedImportJob | null;
+      try {
+        job = await deps.repository.claimNext(deps.workerId, now());
+      } catch {
+        console.error("import-job worker: claim failed");
+        if (!stopping) await wait();
+        continue;
+      }
       if (job) {
         try {
           await deps.processJob(job);

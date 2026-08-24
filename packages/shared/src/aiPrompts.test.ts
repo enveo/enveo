@@ -20,7 +20,7 @@ import {
 } from "./aiPrompts";
 import type { ImportHistoryRecord } from "./importHistory";
 import type { ImportRecognitionResult } from "./importRecognition";
-import type { ClientLedger } from "./types";
+import type { ClientLedger, Transaction } from "./types";
 
 function fixture(): ClientLedger {
   return {
@@ -645,6 +645,180 @@ describe("runImportRecognitionPipeline", () => {
 
     expect(resumedPhases).toEqual(["reconciling"]);
     expect(resumed.proposals[0]).toMatchObject({ rowId: "r1", selected: true });
+  });
+
+  it("stores validated extraction before history and stores enriched Stage A before live-ledger reconciliation", async () => {
+    const saved: { extraction?: ImportRecognitionResult; result?: ImportRecognitionResult } = {};
+    let calls = 0;
+    const duplicate: Transaction = {
+      id: "transaction-1",
+      type: "expense",
+      accountId: "account-1",
+      toAccountId: null,
+      amount: 1234,
+      date: "2026-08-07",
+      isRefund: false,
+      envelopeId: null,
+      placeId: null,
+      categoryId: null,
+      name: "Existing",
+      note: null,
+      tag: null,
+      sourceRef: "LIDL 123",
+      allocationFromEnvelopeId: null,
+      allocationToEnvelopeId: null,
+      items: [],
+      createdAt: "2026-08-07T00:00:00.000Z",
+    };
+
+    const returned = await runImportRecognitionPipeline({
+      ...base,
+      transactions: [duplicate],
+      historyRecords: [history("account-1", "Food"), history("account-1", "Travel")],
+      chat: async () => {
+        calls++;
+        if (calls === 1) return extracted("unknown");
+        return JSON.stringify({
+          rows: [
+            {
+              rowId: "r1",
+              name: "Fresh enrichment",
+              place: "Lidl",
+              envelopeId: "envelope-1",
+              categoryId: null,
+              semanticKind: "card_purchase",
+              relation: null,
+              reviewReasons: [],
+            },
+          ],
+        });
+      },
+      lifecycle: {
+        saveExtraction: async (value) => {
+          saved.extraction = value;
+        },
+        saveResult: async (value) => {
+          saved.result = value;
+        },
+      },
+    });
+
+    expect(saved.extraction?.proposals[0]).toMatchObject({
+      name: "",
+      envelopeId: null,
+      disposition: "unresolved",
+      selected: true,
+      reviewReasons: ["unknown_kind"],
+    });
+    expect(saved.extraction?.proposals[0]?.reviewReasons).not.toContain("history_conflict");
+    expect(saved.result?.proposals[0]).toMatchObject({
+      name: "Fresh enrichment",
+      envelopeId: "envelope-1",
+      disposition: "candidate",
+      selected: true,
+    });
+    expect(Object.hasOwn(saved.result?.proposals[0] ?? {}, "duplicateStatus")).toBe(false);
+    expect(returned.proposals[0]).toMatchObject({ duplicateStatus: "exists", disposition: "declined", selected: false });
+  });
+
+  it("reconciles a resumed raw checkpoint against the changed ledger instead of creation-time proposal state", async () => {
+    let rawCheckpoint: ImportRecognitionResult | undefined;
+    await runImportRecognitionPipeline({
+      ...base,
+      chat: async () => extracted(),
+      lifecycle: { saveExtraction: async (value) => (rawCheckpoint = value) },
+    });
+    if (!rawCheckpoint) throw new Error("expected raw checkpoint");
+    const contaminatedCheckpoint: ImportRecognitionResult = {
+      ...rawCheckpoint,
+      proposals: rawCheckpoint.proposals.map((proposal) => ({
+        ...proposal,
+        disposition: "declined",
+        selected: false,
+        envelopeId: "creation-time-envelope",
+        reviewReasons: [...proposal.reviewReasons, "history_conflict"],
+      })),
+    };
+    const resumed = await runImportRecognitionPipeline({
+      ...base,
+      images: [],
+      checkpoint: contaminatedCheckpoint,
+      transactions: [],
+      chat: async () => {
+        throw new Error("resume_must_not_extract_or_enrich");
+      },
+    });
+
+    expect(resumed.proposals[0]).toMatchObject({
+      envelopeId: null,
+      duplicateStatus: "new",
+      disposition: "candidate",
+      selected: true,
+    });
+    expect(resumed.proposals[0]?.reviewReasons).not.toContain("history_conflict");
+  });
+
+  it("recomputes history and enrichment from current records when a raw checkpoint resumes", async () => {
+    let rawCheckpoint: ImportRecognitionResult | undefined;
+    await runImportRecognitionPipeline({
+      ...base,
+      chat: async () => extracted("card_purchase", "unknown"),
+      lifecycle: { saveExtraction: async (value) => (rawCheckpoint = value) },
+    });
+    if (!rawCheckpoint) throw new Error("expected raw checkpoint");
+
+    let enrichmentPrompt = "";
+    const resumed = await runImportRecognitionPipeline({
+      ...base,
+      images: [],
+      checkpoint: rawCheckpoint,
+      historyRecords: [history("account-1", "Food"), history("account-1", "Travel")],
+      chat: async (request) => {
+        enrichmentPrompt = request.messages[1]!.content as string;
+        return JSON.stringify({
+          rows: [
+            {
+              rowId: "r1",
+              name: "From current history",
+              place: "Lidl",
+              envelopeId: null,
+              categoryId: null,
+              semanticKind: "card_purchase",
+              relation: null,
+              reviewReasons: [],
+            },
+          ],
+        });
+      },
+    });
+
+    expect(enrichmentPrompt).toContain("Food");
+    expect(enrichmentPrompt).toContain("Travel");
+    expect(resumed.proposals[0]?.name).toBe("From current history");
+    expect(resumed.proposals[0]?.reviewReasons).toEqual(expect.arrayContaining(["history_conflict", "multiple_history_candidates"]));
+  });
+
+  it.each([
+    ["upstream", new Error("cycle-two-network")],
+    ["malformed", null],
+  ] as const)("propagates %s cycle-two failures in durable strict mode", async (_kind, upstreamError) => {
+    let calls = 0;
+    const run = runImportRecognitionPipeline({
+      ...base,
+      cycleTwoFailureMode: "strict",
+      chat: async () => {
+        calls++;
+        if (calls === 1) return extracted("unknown");
+        if (upstreamError) throw upstreamError;
+        return '{"rows":null}';
+      },
+    });
+
+    if (upstreamError) {
+      await expect(run).rejects.toThrow("cycle-two-network");
+    } else {
+      await expect(run).rejects.toMatchObject({ name: "ImportEnrichmentMalformedError" });
+    }
   });
 
   it("uses only the selected account's compatible history and constrains cycle-two ids", async () => {

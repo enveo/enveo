@@ -644,6 +644,13 @@ export function parseImportEnrichResponse(
 
 export type ImportRecognitionChat = (request: ChatRequest, timeoutMs?: number) => Promise<string>;
 
+export class ImportEnrichmentMalformedError extends Error {
+  constructor(readonly reason: unknown) {
+    super("invalid import enrichment response");
+    this.name = "ImportEnrichmentMalformedError";
+  }
+}
+
 export interface ImportRecognitionPipelineInput {
   images: string[];
   locale: AiLocale;
@@ -658,10 +665,16 @@ export interface ImportRecognitionPipelineInput {
   chat: ImportRecognitionChat;
   /** Durable runners may resume after cycle one without retaining screenshots. */
   checkpoint?: ImportRecognitionResult;
+  /** Interactive callers retain the historical cycle-two fallback. Durable workers need
+   * typed failures so Postgres retry policy, rather than an in-memory fallback, decides. */
+  cycleTwoFailureMode?: "fallback" | "strict";
   lifecycle?: {
+    beforeUpstream?: () => Promise<void>;
     afterUpstream?: () => Promise<void>;
     saveExtraction?: (result: ImportRecognitionResult) => Promise<void>;
     advancePhase?: (phase: "enriching" | "reconciling") => Promise<void>;
+    /** Durable Stage A output, before current-ledger duplicate/account reconciliation. */
+    saveResult?: (result: ImportRecognitionResult) => Promise<void>;
   };
 }
 
@@ -669,67 +682,35 @@ const mergeReviewReasons = (...groups: ReadonlyArray<readonly (typeof IMPORT_REV
   ...new Set(groups.flat()),
 ];
 
-/** Durable jobs store provider-neutral Stage A proposals; duplicate/account annotations are
- * recomputed against the live ledger whenever the checkpoint is resumed or reviewed. */
-export function stripImportRecognitionReconciliation(result: ReconciledImportRecognitionResult): ImportRecognitionResult {
-  return {
-    rows: result.rows,
-    proposals: result.proposals.map(({ duplicateStatus: _duplicateStatus, sourceAccountInvalid: _sourceAccountInvalid, ...proposal }) => proposal),
-  };
-}
-
 /** Shared extraction → validation → history → optional enrichment pipeline. */
 export async function runImportRecognitionPipeline(input: ImportRecognitionPipelineInput): Promise<ReconciledImportRecognitionResult> {
-  let result: ReconciledImportRecognitionResult;
+  const reconcile = (result: ImportRecognitionResult): ReconciledImportRecognitionResult => ({
+    rows: result.rows,
+    proposals: reconcileImportProposals({
+      proposals: result.proposals,
+      transactions: input.transactions,
+      accounts: input.accounts,
+      envelopes: input.envelopes,
+      categories: input.categories,
+      selectedAccountId: input.accountId,
+    }),
+  });
+
+  let result: ImportRecognitionResult;
   if (input.checkpoint) {
-    result = {
-      rows: input.checkpoint.rows,
-      proposals: reconcileImportProposals({
-        proposals: input.checkpoint.proposals,
-        transactions: input.transactions,
-        accounts: input.accounts,
-        envelopes: input.envelopes,
-        categories: input.categories,
-        selectedAccountId: input.accountId,
-      }),
-    };
+    // Rows are the durable source of truth. Re-validation deliberately discards proposal
+    // mutations produced by creation-time history or ledger reconciliation.
+    result = validateImportExtraction({ batch: { rows: input.checkpoint.rows }, budgetCurrency: input.budgetCurrency });
   } else {
+    await input.lifecycle?.beforeUpstream?.();
     const extractionRaw = await input.chat(
       buildImportExtractPrompt(input.images, { envelopes: [], categories: [] }, input.today, input.locale, input.budgetCurrency),
       AI_VISION_TIMEOUT_MS,
     );
     await input.lifecycle?.afterUpstream?.();
     const batch = parseImportExtractResponse(extractionRaw, input.images.length);
-    const validated = validateImportExtraction({ batch, budgetCurrency: input.budgetCurrency });
-    result = {
-      rows: validated.rows,
-      proposals: reconcileImportProposals({
-        proposals: validated.proposals,
-        transactions: input.transactions,
-        accounts: input.accounts,
-        envelopes: input.envelopes,
-        categories: input.categories,
-        selectedAccountId: input.accountId,
-      }),
-    };
-
-    const ownedAccountIds = input.accounts.filter((account) => !account.archived).map((account) => account.id);
-    const history = result.proposals.map((proposal) => ({
-      rowId: proposal.rowId,
-      selection: selectImportHistoryCandidates({ accountId: input.accountId, ownedAccountIds, proposal }, input.historyRecords),
-    }));
-    result = {
-      rows: result.rows,
-      proposals: result.proposals.map((proposal) => {
-        const selection = history.find((entry) => entry.rowId === proposal.rowId)!.selection;
-        const historyReasons = [
-          ...(selection.conflict ? (["history_conflict"] as const) : []),
-          ...(selection.candidates.length > 1 ? (["multiple_history_candidates"] as const) : []),
-        ];
-        return { ...proposal, reviewReasons: mergeReviewReasons(proposal.reviewReasons, historyReasons) };
-      }),
-    };
-    await input.lifecycle?.saveExtraction?.(stripImportRecognitionReconciliation(result));
+    result = validateImportExtraction({ batch, budgetCurrency: input.budgetCurrency });
+    await input.lifecycle?.saveExtraction?.(result);
   }
 
   const ownedAccountIds = input.accounts.filter((account) => !account.archived).map((account) => account.id);
@@ -737,15 +718,28 @@ export async function runImportRecognitionPipeline(input: ImportRecognitionPipel
     rowId: proposal.rowId,
     selection: selectImportHistoryCandidates({ accountId: input.accountId, ownedAccountIds, proposal }, input.historyRecords),
   }));
+  result = {
+    rows: result.rows,
+    proposals: result.proposals.map((proposal) => {
+      const selection = history.find((entry) => entry.rowId === proposal.rowId)!.selection;
+      const historyReasons = [
+        ...(selection.conflict ? (["history_conflict"] as const) : []),
+        ...(selection.candidates.length > 1 ? (["multiple_history_candidates"] as const) : []),
+      ];
+      return { ...proposal, reviewReasons: mergeReviewReasons(proposal.reviewReasons, historyReasons) };
+    }),
+  };
   if (!needsImportEnrichment(result)) {
     await input.lifecycle?.advancePhase?.("reconciling");
-    return result;
+    await input.lifecycle?.saveResult?.(result);
+    return reconcile(result);
   }
 
   const activeEnvelopes = input.envelopes.filter((envelope) => !envelope.archived);
   const currentAccounts = input.accounts.filter((account) => !account.archived);
   await input.lifecycle?.advancePhase?.("enriching");
   let raw: string;
+  await input.lifecycle?.beforeUpstream?.();
   try {
     raw = await input.chat(
       buildImportEnrichPrompt(
@@ -759,9 +753,11 @@ export async function runImportRecognitionPipeline(input: ImportRecognitionPipel
         input.locale,
       ),
     );
-  } catch {
+  } catch (error) {
+    if (input.cycleTwoFailureMode === "strict") throw error;
     await input.lifecycle?.advancePhase?.("reconciling");
-    return result;
+    await input.lifecycle?.saveResult?.(result);
+    return reconcile(result);
   }
   await input.lifecycle?.afterUpstream?.();
   let finalResult = result;
@@ -801,20 +797,15 @@ export async function runImportRecognitionPipeline(input: ImportRecognitionPipel
     });
     finalResult = {
       rows: result.rows,
-      proposals: reconcileImportProposals({
-        proposals: enriched,
-        transactions: input.transactions,
-        accounts: input.accounts,
-        envelopes: input.envelopes,
-        categories: input.categories,
-        selectedAccountId: input.accountId,
-      }),
+      proposals: enriched,
     };
-  } catch {
+  } catch (error) {
+    if (input.cycleTwoFailureMode === "strict") throw new ImportEnrichmentMalformedError(error);
     finalResult = result;
   }
   await input.lifecycle?.advancePhase?.("reconciling");
-  return finalResult;
+  await input.lifecycle?.saveResult?.(finalResult);
+  return reconcile(finalResult);
 }
 
 /** Throws on an invalid shape (like `rawOutput.parse` in the route). */

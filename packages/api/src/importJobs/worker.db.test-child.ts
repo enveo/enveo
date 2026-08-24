@@ -3,6 +3,7 @@ import { drizzle } from "drizzle-orm/postgres-js";
 import type postgres from "postgres";
 import { assertThrowawayDb, emitChildResult } from "../api.test-support";
 import * as schema from "../db/schema";
+import { processClaimedImportJob } from "./processor";
 import { createImportJobRepository } from "./repository";
 import { startImportJobWorker } from "./worker";
 
@@ -12,6 +13,8 @@ export interface ImportJobWorkerDbOutput {
   concurrency: { processors: number; status: string | null; attempts: number | null; ledgerRowsBefore: number; ledgerRowsAfter: number };
   restart: { crashClaimed: boolean; reclaimed: boolean; resumedWithoutImages: boolean; attempts: number | null; status: string | null };
   images: { concurrentJobImages: number; restartedJobImages: number };
+  exhausted: { providerCalls: number; fourthClaimRejected: boolean; attempts: number | null; status: string | null; errorCode: string | null };
+  missingInput: { providerCalls: number; status: string | null; errorCode: string | null; retryAt: Date | null };
 }
 
 const EMPTY_RESULT = { rows: [], proposals: [] };
@@ -162,6 +165,44 @@ async function main() {
     await restarted.stop();
     const [restartImages] = await isolated<{ count: number }[]>`select count(*)::int as count from import_job_images where job_id = ${restartId}`;
 
+    const exhaustedId = crypto.randomUUID();
+    await repository.create(createInput(exhaustedId), new Date("2026-08-24T14:00:00.000Z"));
+    let exhaustedProviderCalls = 0;
+    const crashTimes = [new Date("2026-08-24T14:01:00.000Z"), new Date("2026-08-24T14:07:00.000Z"), new Date("2026-08-24T14:13:00.000Z")];
+    for (let index = 0; index < crashTimes.length; index++) {
+      const claim = await repository.claimNext(`worker-crash-${index + 1}`, crashTimes[index]);
+      if (claim?.id === exhaustedId) exhaustedProviderCalls++;
+    }
+    const fourthClaim = await repository.claimNext("worker-fourth", new Date("2026-08-24T14:19:00.000Z"));
+    const [exhaustedRow] = await isolated<{ status: string; attempt: number; errorCode: string | null }[]>`
+      select status, attempt, error_code as "errorCode" from import_jobs where id = ${exhaustedId}`;
+
+    const missingInputId = crypto.randomUUID();
+    await repository.create(createInput(missingInputId), new Date("2026-08-20T15:00:00.000Z"));
+    const retainedClaim = await repository.claimNext("worker-retryable", new Date("2026-08-20T15:01:00.000Z"));
+    if (!retainedClaim || retainedClaim.id !== missingInputId) throw new Error("expected retained input claim");
+    await repository.scheduleRetry(
+      missingInputId,
+      retainedClaim.leaseToken,
+      "ai_budget_exhausted",
+      new Date("2026-08-24T15:00:00.000Z"),
+      new Date("2026-08-20T15:02:00.000Z"),
+    );
+    await repository.cleanupExpired(new Date("2026-08-24T14:59:00.000Z"));
+    const missingInputClaim = await repository.claimNext("worker-after-retention", new Date("2026-08-24T15:00:00.000Z"));
+    if (!missingInputClaim || missingInputClaim.id !== missingInputId) throw new Error("expected missing-input claim");
+    let missingInputProviderCalls = 0;
+    await processClaimedImportJob(missingInputClaim, {
+      repository,
+      recognize: async () => {
+        missingInputProviderCalls++;
+        return EMPTY_RESULT;
+      },
+      now: () => new Date("2026-08-24T15:00:10.000Z"),
+    });
+    const [missingInputRow] = await isolated<{ status: string; errorCode: string | null; retryAt: Date | null }[]>`
+      select status, error_code as "errorCode", retry_at as "retryAt" from import_jobs where id = ${missingInputId}`;
+
     emitChildResult(SENTINEL, {
       concurrency: {
         processors: processors.length,
@@ -172,6 +213,19 @@ async function main() {
       },
       restart: { crashClaimed, reclaimed, resumedWithoutImages, attempts: restartRow.attempt, status: restartRow.status },
       images: { concurrentJobImages: concurrentImages?.count ?? -1, restartedJobImages: restartImages?.count ?? -1 },
+      exhausted: {
+        providerCalls: exhaustedProviderCalls,
+        fourthClaimRejected: fourthClaim === null,
+        attempts: exhaustedRow?.attempt ?? null,
+        status: exhaustedRow?.status ?? null,
+        errorCode: exhaustedRow?.errorCode ?? null,
+      },
+      missingInput: {
+        providerCalls: missingInputProviderCalls,
+        status: missingInputRow?.status ?? null,
+        errorCode: missingInputRow?.errorCode ?? null,
+        retryAt: missingInputRow?.retryAt ?? null,
+      },
     } satisfies ImportJobWorkerDbOutput);
   } finally {
     if (isolated) await isolated.end({ timeout: 5 });
