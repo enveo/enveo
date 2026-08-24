@@ -171,9 +171,12 @@ const importJobDetailBaseSchema = z
 
 const ACTIVE_PHASES = ["extracting", "validating", "enriching", "reconciling"] as const;
 const WAITING_PHASES = ["waiting_for_network", "waiting_for_device", "waiting_for_unlock"] as const;
+const QUEUED_PHASES = ["preparing", "uploading", "queued"] as const;
 
 const isActivePhase = (phase: ImportJobPhase): phase is ImportJobActivePhase => ACTIVE_PHASES.includes(phase as ImportJobActivePhase);
 const isWaitingPhase = (phase: ImportJobPhase): boolean => WAITING_PHASES.includes(phase as (typeof WAITING_PHASES)[number]);
+const isFailedPhase = (phase: ImportJobPhase): boolean =>
+  QUEUED_PHASES.includes(phase as (typeof QUEUED_PHASES)[number]) || isActivePhase(phase) || isWaitingPhase(phase) || phase === "retry_scheduled";
 
 export const importJobDetailSchema: z.ZodType<ImportJobDetail> = importJobDetailBaseSchema.superRefine((detail, context) => {
   const invalid = (message: string) => context.addIssue({ code: z.ZodIssueCode.custom, message });
@@ -182,7 +185,7 @@ export const importJobDetailSchema: z.ZodType<ImportJobDetail> = importJobDetail
 
   switch (detail.status) {
     case "queued":
-      if (!["preparing", "uploading", "queued"].includes(detail.phase)) invalid("queued import jobs must use a queued phase");
+      if (!QUEUED_PHASES.includes(detail.phase as (typeof QUEUED_PHASES)[number])) invalid("queued import jobs must use a queued phase");
       if (detail.resumePhase !== null || detail.cancelRequested || hasError || hasRetry) invalid("queued import jobs cannot carry active work state");
       break;
     case "running":
@@ -192,19 +195,29 @@ export const importJobDetailSchema: z.ZodType<ImportJobDetail> = importJobDetail
       if (hasError || hasRetry) invalid("running import jobs cannot carry a failure");
       break;
     case "ready":
-      if (detail.phase !== "ready" || detail.resumePhase !== null || detail.cancelRequested || hasError || hasRetry || detail.result === null) {
+      if (
+        !["ready", "applying"].includes(detail.phase) ||
+        detail.resumePhase !== null ||
+        detail.cancelRequested ||
+        hasError ||
+        hasRetry ||
+        detail.result === null
+      ) {
         invalid("ready import jobs must have a reviewable result");
       }
       break;
     case "completed":
-      if (detail.phase !== "completed" || detail.resumePhase !== null || hasError || hasRetry) invalid("completed import jobs must use the completed phase");
+      if (detail.phase !== "completed" || detail.resumePhase !== null || detail.cancelRequested || hasError || hasRetry)
+        invalid("completed import jobs must use the completed phase");
       break;
     case "failed":
-      if (!hasError || detail.resumePhase !== null) invalid("failed import jobs must include an error without resumable work state");
+      if (!isFailedPhase(detail.phase) || !hasError || detail.resumePhase !== null || detail.cancelRequested)
+        invalid("failed import jobs must include an error without resumable work state");
       if (hasRetry !== (detail.phase === "retry_scheduled")) invalid("retry scheduling must match the failed phase");
       break;
     case "cancelled":
-      if (detail.resumePhase !== null || !detail.cancelRequested || hasError || hasRetry) invalid("cancelled import jobs must record cancellation only");
+      if (detail.phase === "completed" || detail.resumePhase !== null || !detail.cancelRequested || hasError || hasRetry)
+        invalid("cancelled import jobs must record cancellation only");
       break;
   }
 });
@@ -266,7 +279,7 @@ export function advanceImportJob(current: ImportJobProgress, event: ImportJobEve
       if (current.status !== "ready" || current.phase !== "applying") return invalidTransition();
       return next({ status: "completed", phase: "completed" });
     case "failed":
-      if (current.status !== "queued" && current.status !== "running") return invalidTransition();
+      if ((current.status !== "queued" && current.status !== "running") || current.cancelRequested) return invalidTransition();
       return next({
         status: "failed",
         phase: event.retryAt ? "retry_scheduled" : current.phase,
@@ -279,7 +292,7 @@ export function advanceImportJob(current: ImportJobProgress, event: ImportJobEve
       return next({ status: "queued", phase: "queued", resumePhase: null, errorCode: null, retryAt: null });
     case "cancel":
       if (current.status === "running") return next({ cancelRequested: true });
-      return next({ status: "cancelled", cancelRequested: true });
+      return next({ status: "cancelled", resumePhase: null, cancelRequested: true, errorCode: null, retryAt: null });
     case "cancelled":
       if (current.status !== "running" || !current.cancelRequested) return invalidTransition();
       return next({ status: "cancelled", resumePhase: null });

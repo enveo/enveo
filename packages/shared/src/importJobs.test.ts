@@ -20,6 +20,28 @@ const progress = (status: ImportJobProgress["status"], phase: ImportJobProgress[
   updatedAt: "2026-08-24T12:00:00.000Z",
 });
 
+const detailFor = (
+  state: ImportJobProgress,
+  result = state.status === "ready" || state.status === "completed" || state.phase === "ready" || state.phase === "applying"
+    ? { rows: [], proposals: [] }
+    : null,
+) => ({
+  id: "018f7c89-4d76-7b8a-9a3e-4d6bf4a99811",
+  budgetId: "budget-1",
+  accountId: "account-1",
+  locale: "pl-PL",
+  provider: { provider: "enveo" as const, model: "gpt-test" },
+  tier: "plain" as const,
+  epoch: 1,
+  ...state,
+  result,
+  proposalCount: 0,
+  appliedCount: 0,
+  skippedCount: 0,
+  createdAt: "2026-08-24T12:00:00.000Z",
+  expiresAt: "2026-08-31T12:00:00.000Z",
+});
+
 describe("durable screenshot import lifecycle", () => {
   it("moves a queued import through processing to a reviewable result", () => {
     // given: a durably queued screenshot import
@@ -233,6 +255,79 @@ describe("durable screenshot import wire contract", () => {
     expect(() => importJobDetailSchema.parse({ ...base, status: "completed", phase: "queued" })).toThrow();
     expect(() => importJobDetailSchema.parse({ ...base, status: "ready", phase: "extracting" })).toThrow();
     expect(() => importJobDetailSchema.parse({ ...base, status: "failed", phase: "retry_scheduled" })).toThrow();
+  });
+
+  it("accepts every meaningful state produced by the lifecycle guard", () => {
+    const queued = progress("queued", "queued");
+    const running = advanceImportJob(queued, { type: "claimed", at: "2026-08-24T12:00:01.000Z" });
+    const validating = advanceImportJob(running, { type: "phase", phase: "validating", at: "2026-08-24T12:00:02.000Z" });
+    const enriching = advanceImportJob(validating, { type: "phase", phase: "enriching", at: "2026-08-24T12:00:03.000Z" });
+    const reconciling = advanceImportJob(enriching, { type: "phase", phase: "reconciling", at: "2026-08-24T12:00:04.000Z" });
+    const waiting = advanceImportJob(reconciling, { type: "wait", phase: "waiting_for_network", at: "2026-08-24T12:00:05.000Z" });
+    const resumed = advanceImportJob(waiting, { type: "resume", at: "2026-08-24T12:00:06.000Z" });
+    const ready = advanceImportJob(resumed, { type: "result_ready", at: "2026-08-24T12:00:07.000Z" });
+    const applying = advanceImportJob(ready, { type: "begin_apply", at: "2026-08-24T12:00:08.000Z" });
+    const completed = advanceImportJob(applying, { type: "completed", at: "2026-08-24T12:00:09.000Z" });
+    const failed = advanceImportJob(running, { type: "failed", errorCode: "network", retryAt: null, at: "2026-08-24T12:00:08.000Z" });
+    const retryScheduled = advanceImportJob(running, {
+      type: "failed",
+      errorCode: "network",
+      retryAt: "2026-08-24T12:05:00.000Z",
+      at: "2026-08-24T12:00:08.000Z",
+    });
+    const retried = advanceImportJob(retryScheduled, { type: "retry", at: "2026-08-24T12:00:09.000Z" });
+    const cancelRequested = advanceImportJob(running, { type: "cancel", at: "2026-08-24T12:00:10.000Z" });
+    const cancelledRunning = advanceImportJob(cancelRequested, { type: "cancelled", at: "2026-08-24T12:00:11.000Z" });
+    const cancelledQueued = advanceImportJob(queued, { type: "cancel", at: "2026-08-24T12:00:12.000Z" });
+    const cancelledApplying = advanceImportJob(applying, { type: "cancel", at: "2026-08-24T12:00:13.000Z" });
+    const cancelledFailed = advanceImportJob(failed, { type: "cancel", at: "2026-08-24T12:00:14.000Z" });
+    const cancelledRetryScheduled = advanceImportJob(retryScheduled, { type: "cancel", at: "2026-08-24T12:00:15.000Z" });
+
+    for (const [name, state] of [
+      ["queued", queued],
+      ["running", running],
+      ["validating", validating],
+      ["enriching", enriching],
+      ["reconciling", reconciling],
+      ["waiting", waiting],
+      ["resumed", resumed],
+      ["ready", ready],
+      ["applying", applying],
+      ["completed", completed],
+      ["failed", failed],
+      ["retry scheduled", retryScheduled],
+      ["retried", retried],
+      ["cancel requested", cancelRequested],
+      ["cancelled running", cancelledRunning],
+      ["cancelled queued", cancelledQueued],
+      ["cancelled applying", cancelledApplying],
+      ["cancelled failed", cancelledFailed],
+      ["cancelled retry scheduled", cancelledRetryScheduled],
+    ] as const) {
+      expect(importJobDetailSchema.safeParse(detailFor(state)).success, name).toBe(true);
+    }
+  });
+
+  it("rejects impossible lifecycle state combinations", () => {
+    const failed = advanceImportJob(progress("running", "extracting"), {
+      type: "failed",
+      errorCode: "network",
+      retryAt: null,
+      at: "2026-08-24T12:00:01.000Z",
+    });
+    const cases = [
+      { name: "completed cancellation", state: { ...progress("completed", "completed"), cancelRequested: true } },
+      { name: "failed cancellation", state: { ...failed, cancelRequested: true } },
+      { name: "failed ready phase", state: { ...failed, phase: "ready" as const } },
+      { name: "failed applying phase", state: { ...failed, phase: "applying" as const } },
+      { name: "failed completed phase", state: { ...failed, phase: "completed" as const } },
+      { name: "failed without error", state: { ...failed, errorCode: null } },
+      { name: "retry phase without retry timestamp", state: { ...failed, phase: "retry_scheduled" as const } },
+    ];
+
+    for (const { name, state } of cases) {
+      expect(importJobDetailSchema.safeParse(detailFor(state)).success, name).toBe(false);
+    }
   });
 
   it("rejects malformed public job details", () => {
