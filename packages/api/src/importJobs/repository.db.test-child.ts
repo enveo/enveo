@@ -28,12 +28,19 @@ export interface ImportJobRepositoryOutput {
     extractionSaved: boolean;
     invalidExtractionRejected: boolean;
     imagesDeleted: boolean;
+    readyBeforeExtractionRejected: boolean;
+    repeatedExtractionRejected: boolean;
     wrongLeaseChangedNothing: boolean;
     resultReady: boolean;
   };
+  cancellationRace: {
+    cancellationRequested: boolean;
+    extractionRejected: boolean;
+    readyRejected: boolean;
+    sameLeaseFinished: boolean;
+    cancelledStateCleared: boolean;
+  };
   transitions: {
-    runningCancellationRequested: boolean;
-    cancellationFinished: boolean;
     retryScheduled: boolean;
     retryQueued: boolean;
     permanentFailureDeletedImages: boolean;
@@ -180,12 +187,24 @@ async function main() {
     } catch {
       invalidExtractionRejected = true;
     }
+    const readyBeforeExtractionRejected = !(await repository.saveReadyResult(
+      checkpointId,
+      checkpointLease.leaseToken,
+      emptyResult,
+      at("2026-08-24T13:02:45.000Z"),
+    ));
     const extractionSaved = await repository.saveExtractionAndDeleteImages(
       checkpointId,
       checkpointLease.leaseToken,
       emptyResult,
       at("2026-08-24T13:03:00.000Z"),
     );
+    const repeatedExtractionRejected = !(await repository.saveExtractionAndDeleteImages(
+      checkpointId,
+      checkpointLease.leaseToken,
+      emptyResult,
+      at("2026-08-24T13:03:15.000Z"),
+    ));
     const [checkpointRow] = await isolated<{ extraction: unknown; imageCount: number }[]>`
       select extraction, (select count(*)::int from import_job_images where job_id = ${checkpointId}) as "imageCount"
         from import_jobs where id = ${checkpointId}`;
@@ -195,8 +214,20 @@ async function main() {
     await repository.create(createInput(cancelId), at("2026-08-24T14:00:00.000Z"));
     const cancelLease = await repository.claimNext("worker-cancel", at("2026-08-24T14:01:00.000Z"));
     if (!cancelLease || cancelLease.id !== cancelId) throw new Error("expected cancellation job claim");
+    await isolated.unsafe("update import_jobs set extraction = $1::jsonb, result = $1::jsonb where id = $2", [JSON.stringify(emptyResult), cancelId]);
     const cancelRequested = await repository.requestCancel(userId, cancelId, at("2026-08-24T14:02:00.000Z"));
+    const cancelledExtractionRejected = !(await repository.saveExtractionAndDeleteImages(
+      cancelId,
+      cancelLease.leaseToken,
+      emptyResult,
+      at("2026-08-24T14:02:10.000Z"),
+    ));
+    const cancelledReadyRejected = !(await repository.saveReadyResult(cancelId, cancelLease.leaseToken, emptyResult, at("2026-08-24T14:02:20.000Z")));
     const cancellationFinished = await repository.finishCancellation(cancelId, cancelLease.leaseToken, at("2026-08-24T14:03:00.000Z"));
+    const [afterCancellation] = await isolated<{ status: string; extraction: unknown; result: unknown; leaseToken: string | null; imageCount: number }[]>`
+      select status, extraction, result, lease_token as "leaseToken",
+             (select count(*)::int from import_job_images where job_id = ${cancelId}) as "imageCount"
+        from import_jobs where id = ${cancelId}`;
 
     const retryId = crypto.randomUUID();
     await repository.create(createInput(retryId), at("2026-08-24T15:00:00.000Z"));
@@ -258,12 +289,24 @@ async function main() {
         extractionSaved: extractionSaved && checkpointRow?.extraction !== null,
         invalidExtractionRejected,
         imagesDeleted: checkpointRow?.imageCount === 0,
+        readyBeforeExtractionRejected,
+        repeatedExtractionRejected,
         wrongLeaseChangedNothing,
         resultReady,
       },
+      cancellationRace: {
+        cancellationRequested: cancelRequested?.status === "running" && cancelRequested.cancelRequested,
+        extractionRejected: cancelledExtractionRejected,
+        readyRejected: cancelledReadyRejected,
+        sameLeaseFinished: cancellationFinished,
+        cancelledStateCleared:
+          afterCancellation?.status === "cancelled" &&
+          afterCancellation.extraction === null &&
+          afterCancellation.result === null &&
+          afterCancellation.leaseToken === null &&
+          afterCancellation.imageCount === 0,
+      },
       transitions: {
-        runningCancellationRequested: cancelRequested?.status === "running" && cancelRequested.cancelRequested,
-        cancellationFinished,
         retryScheduled,
         retryQueued: retried?.status === "queued",
         permanentFailureDeletedImages: permanentImages?.count === 0,

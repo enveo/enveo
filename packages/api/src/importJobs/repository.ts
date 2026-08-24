@@ -350,7 +350,7 @@ export function createImportJobRepository(database: DB) {
         const updated = await tx
           .update(importJobs)
           .set({ extraction: normalized, phase: "validating", resumePhase: null, updatedAt: now })
-          .where(activeLease(id, leaseToken, now))
+          .where(and(activeLease(id, leaseToken, now), eq(importJobs.cancelRequested, false), eq(importJobs.phase, "extracting")))
           .returning({ id: importJobs.id });
         if (updated.length !== 1) return false;
         await tx.delete(importJobImages).where(eq(importJobImages.jobId, id));
@@ -375,7 +375,7 @@ export function createImportJobRepository(database: DB) {
           leaseExpiresAt: null,
           updatedAt: now,
         })
-        .where(activeLease(id, leaseToken, now))
+        .where(and(activeLease(id, leaseToken, now), eq(importJobs.cancelRequested, false), eq(importJobs.phase, "validating")))
         .returning({ id: importJobs.id });
       return updated.length === 1;
     },
