@@ -156,6 +156,11 @@ export default function App() {
   useEffect(() => setMonthDay(null), [month]);
    
   const [envView, setEnvView] = useState<{ envelopeId: string; month: string } | null>(r0.envelopeId ? { envelopeId: r0.envelopeId, month } : null);
+  
+
+
+
+  const [acctView, setAcctView] = useState<{ accountId: string } | null>(null);
    
   const [editReturn, setEditReturn] = useState<ScreenId>("start");
    
@@ -200,6 +205,7 @@ export default function App() {
       setBudgetFillGoals(false);
     }
     setEnvView(null);
+    setAcctView(null);
     setEditReturn("start");
     if (s === "reports") {
       
@@ -248,6 +254,14 @@ export default function App() {
   const openBudgetFillGoals = () => {
     nav("budget");
     setBudgetFillGoals(true);
+  };
+  
+
+
+
+  const openAccount = (id: string) => {
+    nav("accounts");
+    setAcctView({ accountId: id });
   };
   
 
@@ -509,7 +523,7 @@ export default function App() {
       )}
       {primaryScreen === "accounts" && (
         <LazyChunk onDismiss={() => nav("start")}>
-          <AccountsScreen state={state} onMenu={() => setDrawer(true)} />
+          <AccountsScreen state={state} onMenu={() => setDrawer(true)} onOpenAccount={openAccount} selectedAccountId={acctView?.accountId ?? null} />
         </LazyChunk>
       )}
       {primaryScreen === "reports" && (
@@ -633,9 +647,11 @@ export default function App() {
               next,
               reportsView,
               envView,
+              acctView,
               openTxns,
               panelClosed,
               setEnvView,
+              setAcctView,
               setReportsView,
               setPanelClosed,
               
@@ -667,6 +683,8 @@ export default function App() {
               // PR6 Task 5: the band header's "+ Add" button opens Add through this entry point,
               // not `nav("addExpense")` — see `openAddWide`'s own comment above for why.
               onAddWide: openAddWide,
+               
+              onOpenAccount: openAccount,
             }}
             rightSlot={wideRightSlot}
           >

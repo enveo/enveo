@@ -26,9 +26,13 @@ const ReportsScreen = lazy(() => import("../../screens/Reports").then((m) => ({ 
 // chunk's static graph; Vite dedupes it with Start.tsx's own `lazy()` import of the same module.
 const EnvelopesOptions = lazy(() => import("../EditWidgetsSheet").then((m) => ({ default: m.EnvelopesOptions })));
 
-const HINT_COPY: Record<"envelope" | "report" | "generic", Message> = {
+const HINT_COPY: Record<"envelope" | "report" | "account" | "generic", Message> = {
   envelope: msg("Choose an envelope to see its summary."),
   report: msg("Choose a report to open it here."),
+  // PR6b Task 3 — the account hint (panel.ts's `empty` variant gains this arm the moment the
+  // `account` PanelView kind exists, since `HINT_COPY[view.hint]` below must stay total over the
+  // whole hint union). The real account pane body (`AccountPanel`) is Task 4's scope.
+  account: msg("Choose an account to see its details."),
   generic: msg("Nothing is open in this panel yet."),
 };
 
@@ -197,6 +201,12 @@ export function PanelHost({
         );
       case "widgets":
         return <WidgetSettingsPanel widgetId={view.widgetId} state={state} onClose={onClose} />;
+      case "account":
+        
+
+
+
+        return null;
       case "add":
         
 

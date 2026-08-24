@@ -209,6 +209,7 @@ export const pl: Dict = {
   "Choose a color": "Wybierz kolor",
   "Choose a report to open it here.": "Wybierz raport, aby otworzyć go tutaj.",
   "Choose an account": "Wybierz konto",
+  "Choose an account to see its details.": "Wybierz konto, aby zobaczyć jego szczegóły.",
   "Choose an envelope": "Wybierz kopertę",
   "Choose an envelope to see its summary.": "Wybierz kopertę, aby zobaczyć jej podsumowanie.",
   "Choose an icon": "Wybierz ikonę",
