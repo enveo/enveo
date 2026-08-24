@@ -92,13 +92,58 @@ const inputStyle = (line: string, bg: string, text: string): React.CSSProperties
   fontFamily: font,
 });
 
+/**
+ * Mid-flow wizard input, held OUTSIDE React state on purpose. Crossing the phone/wide viewport
+ * boundary while the wizard is open (FOLD_MIN, App.tsx's live resize listener) remounts this whole
+ * component — App renders it at two structurally different JSX positions (an early return for
+ * wide, nested lower down for phone; see App.tsx's own comment on the wide branch), so React
+ * discards the subtree and every plain `useState` here would reset. A module-level singleton is an
+ * acceptable place to park that state PRECISELY because onboarding is a once-per-account flow: the
+ * worst case of a leak would be one abandoned wizard's fields bleeding into the next one in the
+ * same tab, which `clearOnboardingDraft` below prevents by wiping it the moment the wizard actually
+ * finishes. Lifting this into App (as a second option) was rejected as a bigger surface for the
+ * same guarantee — it would spread wizard-shaped plumbing into a component that otherwise knows
+ * nothing about onboarding's internals, to survive a remount App itself causes.
+ *
+ * `currency`/`rows`/`drafts` start `null` (not yet computed) so the component's own lazy
+ * initializers can fall back to their real defaults (browser-locale currency, the full template)
+ * on the very first mount of a fresh wizard.
+ */
+type OnboardingDraft = {
+  step: 0 | 1 | 2;
+  accName: string;
+  accBal: string;
+  currency: string | null;
+  rows: TplRow[][] | null;
+  drafts: string[] | null;
+};
+export const onboardingDraft: OnboardingDraft = { step: 0, accName: "", accBal: "", currency: null, rows: null, drafts: null };
+
+/** Reset for the NEXT onboarding run (a fresh account) — call only once the current wizard has
+ * genuinely finished (completion or the install step's skip/done), never on a mode-flip remount. */
+export function clearOnboardingDraft() {
+  onboardingDraft.step = 0;
+  onboardingDraft.accName = "";
+  onboardingDraft.accBal = "";
+  onboardingDraft.currency = null;
+  onboardingDraft.rows = null;
+  onboardingDraft.drafts = null;
+}
+
 export function OnboardingScreen({ onDone }: { onDone: () => void }) {
   const C = useTheme();
   const { settings, setSettings } = useSettings();
   const { t, tp, lang } = useT();
-  const [step, setStep] = useState<0 | 1 | 2>(0);
+  const [step, setStep] = useState<0 | 1 | 2>(onboardingDraft.step);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // The wizard is genuinely finished here (not a mode-flip remount) — the module-level draft is
+  // cleared so the NEXT onboarding run (a fresh account) starts clean instead of resuming this one.
+  const completeWizard = () => {
+    clearOnboardingDraft();
+    onDone();
+  };
 
   // Once the budget exists, offer the install step only where it is actually possible;
   // otherwise leave straight away — the card must never block completion.
@@ -108,14 +153,14 @@ export function OnboardingScreen({ onDone }: { onDone: () => void }) {
   // on Start seconds later, asking the same thing again.
   const doneWithInstall = () => {
     markInstallOffered();
-    onDone();
+    completeWizard();
   };
   const finish = () => {
     // tryDemo is async (awaits demoSeed + fullResync) — a beforeinstallprompt/appinstalled
     // event can land mid-flight, so read the LIVE store state (non-hook getter), not the
     // value the hook closed over at click time.
     if (isInstallable(getInstallState())) setShowInstall(true);
-    else onDone();
+    else completeWizard();
   };
   // M5: `appinstalled` while the card is open (e.g. Chrome's omnibox install) — the offer
   // succeeded; InstallBody would render null under the heading. Finish exactly like the
@@ -128,7 +173,9 @@ export function OnboardingScreen({ onDone }: { onDone: () => void }) {
   // step 0 — currency. PRESELECTED from the browser locale (the budget row still carries the bare
   // server default at this point); the pick lives in local state and is written to the ledger when
   // the user leaves step 0, so the amounts in steps 1-2 already format in the chosen currency.
-  const [currency, setCurrency] = useState<string>(() => wizardCurrency(store.getLedger()?.budgets?.[0]?.currency, browserLocales()));
+  const [currency, setCurrency] = useState<string>(
+    () => onboardingDraft.currency ?? wizardCurrency(store.getLedger()?.budgets?.[0]?.currency, browserLocales()),
+  );
 
   /** The wizard ALWAYS sets the currency — commit the pick (a no-op when it already matches). */
   const commitCurrency = () => {
@@ -137,8 +184,8 @@ export function OnboardingScreen({ onDone }: { onDone: () => void }) {
   };
 
   // step 1 — first account
-  const [accName, setAccName] = useState("");
-  const [accBal, setAccBal] = useState("");
+  const [accName, setAccName] = useState(onboardingDraft.accName);
+  const [accBal, setAccBal] = useState(onboardingDraft.accBal);
   const [pad, setPad] = useState<AmountPadTarget | null>(null);
 
   const openBalancePad = () =>
@@ -150,10 +197,23 @@ export function OnboardingScreen({ onDone }: { onDone: () => void }) {
     });
 
   // step 2 — template checklist (everything checked by default) + custom entries per group
-  const [rows, setRows] = useState<TplRow[][]>(() =>
-    TEMPLATE.map((g) => g.envelopes.map((e) => ({ name: e.name, color: e.color, icon: e.icon, ...(e.isSavings ? { isSavings: true } : {}), checked: true }))),
+  const [rows, setRows] = useState<TplRow[][]>(
+    () =>
+      onboardingDraft.rows ??
+      TEMPLATE.map((g) => g.envelopes.map((e) => ({ name: e.name, color: e.color, icon: e.icon, ...(e.isSavings ? { isSavings: true } : {}), checked: true }))),
   );
-  const [drafts, setDrafts] = useState<string[]>(() => TEMPLATE.map(() => ""));
+  const [drafts, setDrafts] = useState<string[]>(() => onboardingDraft.drafts ?? TEMPLATE.map(() => ""));
+
+  // Mirror into the module-level draft (see its own comment) on every change, so a mode-flip
+  // remount resumes exactly where the user left off instead of restarting the wizard.
+  useEffect(() => {
+    onboardingDraft.step = step;
+    onboardingDraft.accName = accName;
+    onboardingDraft.accBal = accBal;
+    onboardingDraft.currency = currency;
+    onboardingDraft.rows = rows;
+    onboardingDraft.drafts = drafts;
+  }, [step, accName, accBal, currency, rows, drafts]);
 
   const tryDemo = async () => {
     setBusy(true);
