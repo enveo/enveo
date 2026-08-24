@@ -31,6 +31,7 @@ export interface ImportJobRepositoryOutput {
     readyBeforeExtractionRejected: boolean;
     repeatedExtractionRejected: boolean;
     wrongLeaseChangedNothing: boolean;
+    phaseAdvanced: boolean;
     resultReady: boolean;
   };
   cancellationRace: {
@@ -208,6 +209,9 @@ async function main() {
     const [checkpointRow] = await isolated<{ extraction: unknown; imageCount: number }[]>`
       select extraction, (select count(*)::int from import_job_images where job_id = ${checkpointId}) as "imageCount"
         from import_jobs where id = ${checkpointId}`;
+    const phaseAdvanced =
+      (await repository.advancePhase(checkpointId, checkpointLease.leaseToken, "enriching", at("2026-08-24T13:03:30.000Z"))) &&
+      (await repository.advancePhase(checkpointId, checkpointLease.leaseToken, "reconciling", at("2026-08-24T13:03:45.000Z")));
     const resultReady = await repository.saveReadyResult(checkpointId, checkpointLease.leaseToken, emptyResult, at("2026-08-24T13:04:00.000Z"));
 
     const cancelId = crypto.randomUUID();
@@ -255,6 +259,7 @@ async function main() {
     const completedLease = await repository.claimNext("worker-complete", at("2026-08-24T17:01:00.000Z"));
     if (!completedLease || completedLease.id !== completedId) throw new Error("expected completed job claim");
     await repository.saveExtractionAndDeleteImages(completedId, completedLease.leaseToken, emptyResult, at("2026-08-24T17:02:00.000Z"));
+    await repository.advancePhase(completedId, completedLease.leaseToken, "reconciling", at("2026-08-24T17:02:30.000Z"));
     await repository.saveReadyResult(completedId, completedLease.leaseToken, emptyResult, at("2026-08-24T17:03:00.000Z"));
     const completed = await repository.markCompleted(userId, completedId, 3, 1, at("2026-08-24T17:04:00.000Z"));
     await isolated.unsafe("update import_jobs set extraction = $1::jsonb, result = $1::jsonb where id = $2", [JSON.stringify(emptyResult), completedId]);
@@ -292,6 +297,7 @@ async function main() {
         readyBeforeExtractionRejected,
         repeatedExtractionRejected,
         wrongLeaseChangedNothing,
+        phaseAdvanced,
         resultReady,
       },
       cancellationRace: {

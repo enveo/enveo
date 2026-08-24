@@ -294,14 +294,16 @@ export function createImportJobRepository(database: DB) {
 
         const leaseToken = crypto.randomUUID();
         const leaseExpiresAt = new Date(now.getTime() + IMPORT_JOB_LEASE_MS);
-        const reclaimedRunning = candidate.status === "running";
-        const phase = reclaimedRunning ? candidate.phase : candidate.extraction === null ? "extracting" : "validating";
+        // Extraction is the only durable processing checkpoint. A reclaimed lease therefore
+        // resumes from that boundary instead of trusting a later phase whose work may not have
+        // completed before the previous process disappeared.
+        const phase = candidate.extraction === null ? "extracting" : "validating";
         const [claimed] = await tx
           .update(importJobs)
           .set({
             status: "running",
             phase,
-            resumePhase: reclaimedRunning ? candidate.resumePhase : null,
+            resumePhase: null,
             attempt: candidate.attempt + 1,
             errorCode: null,
             retryAt: null,
@@ -344,12 +346,28 @@ export function createImportJobRepository(database: DB) {
       return updated.length === 1;
     },
 
+    async advancePhase(id: string, leaseToken: string, phase: "enriching" | "reconciling", now = new Date()): Promise<boolean> {
+      const allowedFrom = phase === "enriching" ? ["validating", "enriching"] : ["validating", "enriching", "reconciling"];
+      const updated = await database
+        .update(importJobs)
+        .set({ phase, leaseExpiresAt: new Date(now.getTime() + IMPORT_JOB_LEASE_MS), updatedAt: now })
+        .where(and(activeLease(id, leaseToken, now), eq(importJobs.cancelRequested, false), inArray(importJobs.phase, allowedFrom)))
+        .returning({ id: importJobs.id });
+      return updated.length === 1;
+    },
+
     async saveExtractionAndDeleteImages(id: string, leaseToken: string, extraction: ImportRecognitionResult, now = new Date()): Promise<boolean> {
       const normalized = importJobResultSchema.parse(extraction);
       return database.transaction(async (tx) => {
         const updated = await tx
           .update(importJobs)
-          .set({ extraction: normalized, phase: "validating", resumePhase: null, updatedAt: now })
+          .set({
+            extraction: normalized,
+            phase: "validating",
+            resumePhase: null,
+            leaseExpiresAt: new Date(now.getTime() + IMPORT_JOB_LEASE_MS),
+            updatedAt: now,
+          })
           .where(and(activeLease(id, leaseToken, now), eq(importJobs.cancelRequested, false), eq(importJobs.phase, "extracting")))
           .returning({ id: importJobs.id });
         if (updated.length !== 1) return false;
@@ -375,7 +393,7 @@ export function createImportJobRepository(database: DB) {
           leaseExpiresAt: null,
           updatedAt: now,
         })
-        .where(and(activeLease(id, leaseToken, now), eq(importJobs.cancelRequested, false), eq(importJobs.phase, "validating")))
+        .where(and(activeLease(id, leaseToken, now), eq(importJobs.cancelRequested, false), eq(importJobs.phase, "reconciling")))
         .returning({ id: importJobs.id });
       return updated.length === 1;
     },
