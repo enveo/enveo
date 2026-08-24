@@ -13,13 +13,15 @@
  * of "Clear local data" — so the facade delegates without translation.
  */
 
-export type StoreName = "meta" | "outbox" | "deadletter";
+export type StoreName = "meta" | "outbox" | "deadletter" | "importJobs" | "importDrafts";
 
 /** keyPath per store (null = out-of-line keys). */
 export const KEY_PATH: Record<StoreName, string | null> = {
   meta: null,
   outbox: "localSeq",
   deadletter: "opId",
+  importJobs: "id",
+  importDrafts: "id",
 };
 
 export interface StorageBackend {
@@ -29,6 +31,8 @@ export interface StorageBackend {
   put(store: StoreName, value: unknown, key?: IDBValidKey): Promise<void>;
   /** Multiple puts in ONE transaction (atomic: all or nothing). */
   putMany(store: StoreName, entries: Array<{ value: unknown; key?: IDBValidKey }>): Promise<void>;
+  /** Replace one import job only while its durable checkpoint revision still matches. */
+  putImportJobIfRevision(value: unknown, expectedRevision: number): Promise<boolean>;
   /** add — for the outbox (autoIncrement); returns the assigned key (localSeq). */
   add(store: StoreName, value: unknown): Promise<IDBValidKey>;
   /**
@@ -76,6 +80,13 @@ export class MemoryBackend implements StorageBackend {
   putMany(store: StoreName, entries: Array<{ value: unknown; key?: IDBValidKey }>): Promise<void> {
     for (const e of entries) this.mem(store).set(this.keyOf(store, e.value, e.key), e.value);
     return Promise.resolve();
+  }
+  putImportJobIfRevision(value: unknown, expectedRevision: number): Promise<boolean> {
+    const record = value as { id: IDBValidKey; checkpointRevision: number };
+    const current = this.mem("importJobs").get(record.id) as { checkpointRevision?: unknown } | undefined;
+    if (current?.checkpointRevision !== expectedRevision) return Promise.resolve(false);
+    this.mem("importJobs").set(record.id, value);
+    return Promise.resolve(true);
   }
   add(store: StoreName, value: unknown): Promise<IDBValidKey> {
     const key = ++this.autoKey;

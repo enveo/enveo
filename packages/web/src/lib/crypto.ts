@@ -6,7 +6,8 @@
  * Ciphertext format v2: "v2." + b64(nonce ∥ ct ∥ GCM tag), with MANDATORY AES-GCM
  * `additionalData` — the UTF-8 bytes of the exact JSON.stringify of one fixed-position
  * tuple (E2eeAadContext below). The AAD binds each ciphertext to its authenticated
- * context (operation identity / checkpoint position / key-envelope generation), so a
+ * context (operation identity / checkpoint position / key-envelope generation / import
+ * job artifact), so a
  * malicious or compromised storage server cannot pair a valid ciphertext with another
  * op's clear opId, another budget/epoch, or a false checkpoint uptoSeq — decryption
  * fails instead of silently applying the wrong data.
@@ -59,7 +60,7 @@ export async function deriveKek(passphrase: string, salt: Uint8Array, p: Omit<Kd
 /* ── v2 authenticated context (AAD) ──────────────────────────────────── */
 
 /**
- * The four fixed-position AAD tuples of ciphertext format v2. Position, not property
+ * The fixed-position AAD tuples of ciphertext format v2. Position, not property
  * names, carries meaning — the encoded AAD is the exact JSON.stringify of one of these,
  * never object-property iteration, string concatenation or locale-dependent formatting.
  */
@@ -67,7 +68,8 @@ export type E2eeAadContext =
   | readonly ["enveo-e2ee", 2, "op", string /* budgetId */, number /* epoch */, string /* opId */]
   | readonly ["enveo-e2ee", 2, "snapshot", string /* budgetId */, number /* epoch */, number /* uptoSeq */]
   | readonly ["enveo-e2ee", 2, "dek-wrap", string /* budgetId */, number /* epoch */]
-  | readonly ["enveo-e2ee", 2, "budget-secret", string /* budgetId */, number /* epoch */, "openai"];
+  | readonly ["enveo-e2ee", 2, "budget-secret", string /* budgetId */, number /* epoch */, "openai"]
+  | readonly ["enveo-e2ee", 2, "import-job", string /* budgetId */, number /* epoch */, string /* jobId */, "input" | "checkpoint" | "result"];
 
 /** Canonical lowercase textual UUID — validated, never normalized silently. */
 const CANONICAL_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
@@ -105,6 +107,13 @@ export function dekWrapAadContext(budgetId: string, epoch: number): E2eeAadConte
 export function budgetSecretAadContext(budgetId: string, epoch: number, kind: "openai"): E2eeAadContext {
   if (kind !== "openai") throw new Error("bad_aad_context");
   return ["enveo-e2ee", 2, "budget-secret", requireUuid(budgetId), requireCounter(epoch), kind] as const;
+}
+
+/** Import-job AAD: every durable local artifact is domain-separated and bound to the
+ *  budget key generation and client-generated job identity. */
+export function importJobAadContext(budgetId: string, epoch: number, jobId: string, part: "input" | "checkpoint" | "result"): E2eeAadContext {
+  if (part !== "input" && part !== "checkpoint" && part !== "result") throw new Error("bad_aad_context");
+  return ["enveo-e2ee", 2, "import-job", requireUuid(budgetId), requireCounter(epoch), requireUuid(jobId), part] as const;
 }
 
 const enc = new TextEncoder();

@@ -2,7 +2,7 @@
  * E2EE crypto core — ciphertext format v2 (AES-256-GCM with MANDATORY additionalData).
  *
  * The AAD is the UTF-8 bytes of the exact JSON.stringify of one fixed-position tuple
- * (op / snapshot / dek-wrap — see E2eeAadContext in crypto.ts). Moving an otherwise valid
+ * (op / snapshot / dek-wrap / budget-secret / import-job — see E2eeAadContext in crypto.ts). Moving an otherwise valid
  * ciphertext to a different operation, budget, epoch or checkpoint position MUST make
  * authentication fail. There is deliberately NO v1 read fallback: normal decrypt/unwrap
  * reject "v1." with the stable code `legacy_ciphertext` (the mandatory upgrade ceremony is
@@ -25,6 +25,7 @@ import {
   encryptPayload,
   generateDek,
   generateSalt,
+  importJobAadContext,
   opAadContext,
   snapshotAadContext,
   unwrapDek,
@@ -35,6 +36,8 @@ const BUDGET_A = "11111111-1111-1111-1111-111111111111";
 const BUDGET_B = "22222222-2222-2222-2222-222222222222";
 const OP_1 = "33333333-3333-3333-3333-333333333333";
 const OP_2 = "44444444-4444-4444-4444-444444444444";
+const JOB_1 = "55555555-5555-5555-5555-555555555555";
+const JOB_2 = "66666666-6666-6666-6666-666666666666";
 
 /** A LEGACY v1 ciphertext ("v1." + b64(nonce ∥ ct), NO AAD) — produced only here: the
  *  production code has no v1 write path left, and the vector needs a real legacy value. */
@@ -56,6 +59,7 @@ describe("v2 AAD tuple builders", () => {
     expect(JSON.stringify(snapshotAadContext(BUDGET_A, 3, 42))).toBe(`["enveo-e2ee",2,"snapshot","${BUDGET_A}",3,42]`);
     expect(JSON.stringify(dekWrapAadContext(BUDGET_A, 3))).toBe(`["enveo-e2ee",2,"dek-wrap","${BUDGET_A}",3]`);
     expect(JSON.stringify(budgetSecretAadContext(BUDGET_A, 3, "openai"))).toBe(`["enveo-e2ee",2,"budget-secret","${BUDGET_A}",3,"openai"]`);
+    expect(JSON.stringify(importJobAadContext(BUDGET_A, 3, JOB_1, "input"))).toBe(`["enveo-e2ee",2,"import-job","${BUDGET_A}",3,"${JOB_1}","input"]`);
   });
 
   it("reject a non-canonical or malformed budget/op UUID (validate, never normalize silently)", () => {
@@ -67,6 +71,7 @@ describe("v2 AAD tuple builders", () => {
     expect(() => snapshotAadContext("xx", 1, 0)).toThrow("bad_aad_context");
     expect(() => dekWrapAadContext(`${BUDGET_A} `, 1)).toThrow("bad_aad_context");
     expect(() => budgetSecretAadContext("not-a-uuid", 1, "openai")).toThrow("bad_aad_context");
+    expect(() => importJobAadContext(BUDGET_A, 1, "not-a-uuid", "input")).toThrow("bad_aad_context");
   });
 
   it("reject a negative, fractional or unsafe epoch/uptoSeq", () => {
@@ -78,6 +83,25 @@ describe("v2 AAD tuple builders", () => {
     expect(() => dekWrapAadContext(BUDGET_A, Number.NaN)).toThrow("bad_aad_context");
     expect(() => budgetSecretAadContext(BUDGET_A, -1, "openai")).toThrow("bad_aad_context");
     expect(() => budgetSecretAadContext(BUDGET_A, 1, "other" as never)).toThrow("bad_aad_context");
+    expect(() => importJobAadContext(BUDGET_A, -1, JOB_1, "input")).toThrow("bad_aad_context");
+    expect(() => importJobAadContext(BUDGET_A, 1, JOB_1, "other" as never)).toThrow("bad_aad_context");
+  });
+});
+
+describe("v2 import-job ciphertext", () => {
+  it("authenticates the budget, epoch, job id, and payload part", async () => {
+    const dek = generateDek();
+    const plaintext = "data:image/png;base64,cHJpdmF0ZS1pbWFnZQ==";
+    const ciphertext = await encryptPayload(plaintext, dek, importJobAadContext(BUDGET_A, 4, JOB_1, "input"));
+
+    expect(ciphertext.startsWith("v2.")).toBe(true);
+    expect(ciphertext).not.toContain(plaintext);
+    expect(await decryptPayload(ciphertext, dek, importJobAadContext(BUDGET_A, 4, JOB_1, "input"))).toBe(plaintext);
+    await expect(decryptPayload(ciphertext, dek, importJobAadContext(BUDGET_B, 4, JOB_1, "input"))).rejects.toThrow();
+    await expect(decryptPayload(ciphertext, dek, importJobAadContext(BUDGET_A, 5, JOB_1, "input"))).rejects.toThrow();
+    await expect(decryptPayload(ciphertext, dek, importJobAadContext(BUDGET_A, 4, JOB_2, "input"))).rejects.toThrow();
+    await expect(decryptPayload(ciphertext, dek, importJobAadContext(BUDGET_A, 4, JOB_1, "checkpoint"))).rejects.toThrow();
+    await expect(decryptPayload(ciphertext, dek, importJobAadContext(BUDGET_A, 4, JOB_1, "result"))).rejects.toThrow();
   });
 });
 
