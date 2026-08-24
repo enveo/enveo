@@ -1,5 +1,5 @@
 import { computeStateResponse } from "@enveo/shared";
-import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
+import { lazy, type ReactNode, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useLedgerVersion } from "../lib/api";
 import { useSettings, useTheme } from "../lib/contexts";
@@ -14,6 +14,11 @@ import { store } from "../lib/store";
 import { CORAL, CTA, font, P, type Theme } from "../lib/theme";
 import { APP_VERSION, buildLabel } from "../lib/version";
 import { PHONE_COL } from "../lib/viewMode";
+
+// Lazy — the pane-surface presentation lives in the wide chunk; phone (and any un-hosted mount)
+// never requests it, since `Surface` below only reaches this branch when `useWideHost()?.surfaces`
+// is set (WideShell-only).
+const PaneSurface = lazy(() => import("./wide/PaneSurface").then((m) => ({ default: m.PaneSurface })));
 
  
 export function StyleInjector() {
@@ -103,21 +108,19 @@ export function Header({
 
 
 
-
-
-export function Sheet({
-  show,
-  onClose,
-  lockSwipe = false,
-  tall = false,
-  children,
-}: {
+export type SheetProps = {
   show: boolean;
   onClose: () => void;
   lockSwipe?: boolean;
   tall?: boolean;
   children: ReactNode | ((C: Theme) => ReactNode);
-}) {
+};
+
+
+
+
+
+export function Sheet({ show, onClose, lockSwipe = false, tall = false, children }: SheetProps) {
   const C = useTheme();
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const drag = useRef<{ y0: number; scroll0: number; dy: number; active: boolean } | null>(null);
@@ -264,6 +267,29 @@ export function Sheet({
         document.body,
       )
     : body;
+}
+
+
+
+
+
+
+
+
+
+
+
+export function Surface(props: SheetProps) {
+  const surfaces = useWideHost()?.surfaces ?? null;
+  if (!surfaces) return <Sheet {...props} />;
+  if (!props.show) return null;
+  return (
+    <Suspense fallback={null}>
+      <PaneSurface host={surfaces} onClose={props.onClose}>
+        {props.children}
+      </PaneSurface>
+    </Suspense>
+  );
 }
 
 export type ScreenId = "start" | "budget" | "transactions" | "accounts" | "reports" | "addExpense" | "settings";
