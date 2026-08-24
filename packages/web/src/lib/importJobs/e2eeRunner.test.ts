@@ -14,6 +14,14 @@ const SCOPE = { ownerId: "user-a", budgetId: BUDGET } satisfies ImportJobStorage
 const IMAGE = "data:image/png;base64,cHJpdmF0ZS1zY3JlZW5zaG90";
 const EXTRACTION: ImportRecognitionResult = { rows: [], proposals: [] };
 
+function deferred<T>() {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  const promise = new Promise<T>((done) => {
+    resolve = done;
+  });
+  return { promise, resolve };
+}
+
 const ledger = (): ClientLedger => ({
   budgets: [{ id: BUDGET, name: "Budget", currency: "EUR", preferences: { ...createDefaultBudgetPreferences(), aiProvider: "openai" } }],
   accounts: [
@@ -323,5 +331,62 @@ describe("device-local E2EE import runner", () => {
     expect(providerRuns).toBe(2);
     expect(await importJobStorage.getJob(SCOPE, ID)).toEqual(winner);
     expect(winner).toMatchObject({ status: "ready", phase: "ready" });
+  });
+
+  it("does not persist or publish provider completion after the runner is stopped", async () => {
+    const release = deferred<void>();
+    const providerStarted = deferred<void>();
+    const fixture = setup({
+      provider: () =>
+        provider(async (input) => {
+          providerStarted.resolve();
+          await release.promise;
+          await input.lifecycle.saveResult?.(EXTRACTION);
+        }),
+    });
+    await fixture.runner.create(createInput());
+    const run = fixture.runner.resume();
+    await providerStarted.promise;
+
+    const stop = (fixture.runner as E2eeImportJobRunner & { stop?: () => void }).stop;
+    if (!stop) {
+      release.resolve();
+      await run;
+      expect(stop).toBeFunction();
+      return;
+    }
+    stop.call(fixture.runner);
+    fixture.activity.clear();
+    release.resolve();
+    await run;
+
+    expect(fixture.activity.list()).toEqual([]);
+    expect(await importJobStorage.getJob(SCOPE, ID)).toMatchObject({ status: "running", phase: "extracting" });
+  });
+
+  it("does not persist or publish provider completion after its manager scope is revoked", async () => {
+    const release = deferred<void>();
+    const providerStarted = deferred<void>();
+    let current = true;
+    const fixture = setup({
+      capability: { isCurrent: () => current },
+      provider: () =>
+        provider(async (input) => {
+          providerStarted.resolve();
+          await release.promise;
+          await input.lifecycle.saveResult?.(EXTRACTION);
+        }),
+    });
+    await fixture.runner.create(createInput());
+    const run = fixture.runner.resume();
+    await providerStarted.promise;
+
+    current = false;
+    fixture.activity.clear();
+    release.resolve();
+    await run;
+
+    expect(fixture.activity.list()).toEqual([]);
+    expect(await importJobStorage.getJob(SCOPE, ID)).toMatchObject({ status: "running", phase: "extracting" });
   });
 });

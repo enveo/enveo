@@ -75,6 +75,41 @@ describe("plain import upload drafts", () => {
     expect(first.requestHash).toBe("508d645bd4499667ec003bce1605f129a0781baf64889e7011edefdd4a715607");
   });
 
+  it("atomically records upload attempts and durable cancellation without changing request identity", async () => {
+    const draft = await importJobStorage.createDraft(SCOPE, draftInput(), new Date("2026-08-24T10:00:00.000Z"));
+
+    const attempted = await importJobStorage.markDraftUploadAttempt(SCOPE, JOB_ID, draft.requestHash, new Date("2026-08-24T10:01:00.000Z"));
+    const cancelled = await importJobStorage.requestDraftCancellation(SCOPE, JOB_ID, draft.requestHash, new Date("2026-08-24T10:02:00.000Z"));
+
+    expect(attempted).toMatchObject({ requestHash: draft.requestHash, uploadAttemptedAt: "2026-08-24T10:01:00.000Z", cancelRequestedAt: null });
+    expect(cancelled).toMatchObject({
+      requestHash: draft.requestHash,
+      images: [IMAGE],
+      uploadAttemptedAt: "2026-08-24T10:01:00.000Z",
+      cancelRequestedAt: "2026-08-24T10:02:00.000Z",
+    });
+    expect(await importJobStorage.markDraftUploadAttempt(OTHER_OWNER_SCOPE, JOB_ID, draft.requestHash)).toBeUndefined();
+  });
+
+  it("uses the same upload-attempt and cancel tombstone protocol in shared-device memory", async () => {
+    const factory = new IDBFactory();
+    (globalThis as Record<string, unknown>).indexedDB = factory;
+    stubLocalStorage("session");
+    __resetStorageForTests();
+    const draft = await importJobStorage.createDraft(SCOPE, draftInput());
+
+    await importJobStorage.markDraftUploadAttempt(SCOPE, JOB_ID, draft.requestHash);
+    await importJobStorage.requestDraftCancellation(SCOPE, JOB_ID, draft.requestHash);
+
+    expect(await importJobStorage.getDraft(SCOPE, JOB_ID)).toMatchObject({
+      uploadAttemptedAt: expect.any(String),
+      cancelRequestedAt: expect.any(String),
+      images: [IMAGE],
+    });
+    expect(storageMode()).toBe("memory-session");
+    expect(await factory.databases()).toEqual([]);
+  });
+
   it("refuses to replace a client job id with a conflicting canonical request", async () => {
     await importJobStorage.createDraft(SCOPE, draftInput(), new Date("2026-08-24T10:00:00.000Z"));
 

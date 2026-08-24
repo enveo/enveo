@@ -15,7 +15,7 @@ import * as e2ee from "../e2ee";
 import { type ImportJobStorageScope, importJobStorage, type StoredE2eeImportJob } from "../importJobStorage";
 import { store } from "../store";
 import { isLeaderTab } from "../sync/multitab";
-import { type ImportActivityItem, type ImportActivityStore, importActivityFromE2ee } from "./store";
+import { type ImportActivityItem, type ImportActivityStore, type ImportJobScopeCapability, importActivityFromE2ee } from "./store";
 
 const IMPORT_JOB_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
 const RETRY_BACKOFF_MS = [30_000, 120_000] as const;
@@ -37,6 +37,7 @@ export interface E2eeImportJobCreateInput {
 export interface E2eeImportJobRunnerOptions {
   scope: ImportJobStorageScope;
   activity: ImportActivityStore;
+  capability?: ImportJobScopeCapability;
   ledger?: () => ClientLedger | null;
   tierMeta?: () => { tier: "plain" | "e2ee"; epoch: number };
   requireDek?: (epoch: number) => Uint8Array;
@@ -114,6 +115,7 @@ export class E2eeImportJobRunner {
   private readonly now: () => Date;
   private recoveryDone = false;
   private resumePromise: Promise<void> | null = null;
+  private stopped = false;
 
   constructor(private readonly options: E2eeImportJobRunnerOptions) {
     this.ledger = options.ledger ?? store.getLedger;
@@ -142,7 +144,20 @@ export class E2eeImportJobRunner {
     return this.now().toISOString();
   }
 
+  private isCurrent(): boolean {
+    return !this.stopped && (this.options.capability?.isCurrent() ?? true);
+  }
+
+  private assertCurrent(): void {
+    if (!this.isCurrent()) throw new StaleImportJobRunner();
+  }
+
+  stop(): void {
+    this.stopped = true;
+  }
+
   private generationMatches(job: StoredE2eeImportJob): boolean {
+    if (!this.isCurrent()) return false;
     const current = this.tierMeta();
     return current.tier === "e2ee" && current.epoch === job.epoch && job.budgetId === this.options.scope.budgetId;
   }
@@ -152,6 +167,7 @@ export class E2eeImportJobRunner {
     change: Partial<StoredE2eeImportJob>,
     result: ImportRecognitionResult | null = null,
   ): Promise<StoredE2eeImportJob> {
+    this.assertCurrent();
     const next = {
       ...current,
       ...change,
@@ -159,6 +175,7 @@ export class E2eeImportJobRunner {
       updatedAt: change.updatedAt ?? this.timestamp(),
     } satisfies StoredE2eeImportJob;
     if (!(await importJobStorage.putJobIfRevision(this.options.scope, next, current.checkpointRevision))) throw new StaleImportJobRunner();
+    this.assertCurrent();
     this.options.activity.upsert(importActivityFromE2ee(next, result));
     return next;
   }
@@ -199,6 +216,7 @@ export class E2eeImportJobRunner {
   }
 
   async create(input: E2eeImportJobCreateInput): Promise<ImportActivityItem> {
+    this.assertCurrent();
     const meta = this.tierMeta();
     if (meta.tier !== "e2ee" || meta.epoch < 1) throw new Error("tier_mismatch");
     if (input.provider.provider !== "openai" || !isOpenAiModel(input.provider.model)) throw new Error("ai_capability_unsupported");
@@ -215,6 +233,7 @@ export class E2eeImportJobRunner {
         key,
         importJobAadContext(this.options.scope.budgetId, meta.epoch, input.id, "input"),
       );
+      this.assertCurrent();
     } finally {
       key.fill(0);
     }
@@ -247,16 +266,20 @@ export class E2eeImportJobRunner {
       updatedAt: timestamp,
       expiresAt: new Date(now.getTime() + IMPORT_JOB_RETENTION_MS).toISOString(),
     } satisfies StoredE2eeImportJob;
+    this.assertCurrent();
     await importJobStorage.putJob(this.options.scope, job);
+    this.assertCurrent();
     const item = importActivityFromE2ee(job);
     this.options.activity.upsert(item);
     return item;
   }
 
   private async recoverInterrupted(): Promise<void> {
+    this.assertCurrent();
     if (this.recoveryDone) return;
     this.recoveryDone = true;
     for (const job of await importJobStorage.listJobs(this.options.scope)) {
+      this.assertCurrent();
       if (job.status !== "running") continue;
       try {
         if (["waiting_for_network", "waiting_for_device", "waiting_for_unlock"].includes(job.phase)) {
@@ -271,7 +294,9 @@ export class E2eeImportJobRunner {
   }
 
   private async fence(current: StoredE2eeImportJob): Promise<void> {
+    this.assertCurrent();
     const durable = await importJobStorage.getJob(this.options.scope, current.id);
+    this.assertCurrent();
     if (!durable || durable.checkpointRevision !== current.checkpointRevision || durable.cancelRequested || durable.status === "cancelled") {
       throw new StaleImportJobRunner();
     }
@@ -279,6 +304,7 @@ export class E2eeImportJobRunner {
   }
 
   private async run(job: StoredE2eeImportJob): Promise<void> {
+    if (!this.isCurrent()) return;
     if (job.status === "queued") {
       try {
         job = await this.transition(job, { type: "claimed", at: this.timestamp() });
@@ -325,8 +351,10 @@ export class E2eeImportJobRunner {
           checkpoint = importJobResultSchema.parse(
             JSON.parse(await this.decrypt(job.checkpointCiphertext, key, importJobAadContext(job.budgetId, job.epoch, job.id, "checkpoint"))),
           );
+          this.assertCurrent();
         } else {
           images = parseInput(await this.decrypt(job.inputCiphertext, key, importJobAadContext(job.budgetId, job.epoch, job.id, "input"))).images;
+          this.assertCurrent();
         }
 
         const lifecycle: DurableLifecycle = {
@@ -335,6 +363,7 @@ export class E2eeImportJobRunner {
           saveExtraction: async (result) => {
             await this.fence(job);
             const checkpointCiphertext = await this.encrypt(JSON.stringify(result), key, importJobAadContext(job.budgetId, job.epoch, job.id, "checkpoint"));
+            this.assertCurrent();
             job = await this.transition(job, { type: "phase", phase: "validating", at: this.timestamp() }, { checkpointCiphertext });
           },
           advancePhase: async (phase) => {
@@ -344,6 +373,7 @@ export class E2eeImportJobRunner {
           saveResult: async (result) => {
             await this.fence(job);
             const resultCiphertext = await this.encrypt(JSON.stringify(result), key, importJobAadContext(job.budgetId, job.epoch, job.id, "result"));
+            this.assertCurrent();
             job = await this.transition(
               job,
               { type: "result_ready", at: this.timestamp() },
@@ -352,7 +382,10 @@ export class E2eeImportJobRunner {
             );
           },
         };
-        await this.provider(job.provider).runDurableImport({
+        this.assertCurrent();
+        const executionProvider = this.provider(job.provider);
+        this.assertCurrent();
+        await executionProvider.runDurableImport({
           images,
           locale: job.locale,
           ledger: currentLedger,
@@ -360,12 +393,15 @@ export class E2eeImportJobRunner {
           checkpoint,
           lifecycle,
         });
+        this.assertCurrent();
       } finally {
         key.fill(0);
       }
     } catch (error) {
       if (error instanceof StaleImportJobRunner) return;
+      if (!this.isCurrent()) return;
       const current = await importJobStorage.getJob(this.options.scope, job.id);
+      if (!this.isCurrent()) return;
       if (current?.status !== "running") return;
       try {
         if (error instanceof ImportJobGenerationChanged || !this.generationMatches(current)) await this.fail(current, "tier_mismatch");
@@ -379,17 +415,25 @@ export class E2eeImportJobRunner {
   }
 
   resume(): Promise<void> {
+    if (!this.isCurrent()) return Promise.resolve();
     if (this.resumePromise) return this.resumePromise;
     const work = (async () => {
       let jobs = await importJobStorage.listJobs(this.options.scope);
-      for (const job of jobs) this.options.activity.upsert(importActivityFromE2ee(job));
+      this.assertCurrent();
+      for (const job of jobs) {
+        this.assertCurrent();
+        this.options.activity.upsert(importActivityFromE2ee(job));
+      }
       // A tab that can see the shared replica but does not own the execution lock must
       // remain observational. Even stale-running recovery is an execution mutation:
       // performing it here would fence the active leader out through revision CAS.
       if (!this.canRun()) return;
       await this.recoverInterrupted();
+      this.assertCurrent();
       jobs = await importJobStorage.listJobs(this.options.scope);
+      this.assertCurrent();
       for (let job of jobs) {
+        this.assertCurrent();
         this.options.activity.upsert(importActivityFromE2ee(job));
         if (job.status === "failed" && job.retryAt !== null && job.retryAt <= this.timestamp()) {
           try {
@@ -401,7 +445,9 @@ export class E2eeImportJobRunner {
         }
         if (job.status === "queued" || job.status === "running") await this.run(job);
       }
-    })();
+    })().catch((error) => {
+      if (!(error instanceof StaleImportJobRunner)) throw error;
+    });
     this.resumePromise = work.finally(() => {
       this.resumePromise = null;
     });
@@ -409,8 +455,10 @@ export class E2eeImportJobRunner {
   }
 
   async list(): Promise<ImportActivityItem[]> {
+    if (!this.isCurrent()) return [];
     const items: ImportActivityItem[] = [];
     for (const job of await importJobStorage.listJobs(this.options.scope)) {
+      if (!this.isCurrent()) return items;
       let result: ImportRecognitionResult | null = null;
       if (job.resultCiphertext && this.generationMatches(job)) {
         try {
@@ -419,6 +467,7 @@ export class E2eeImportJobRunner {
             result = importJobResultSchema.parse(
               JSON.parse(await this.decrypt(job.resultCiphertext, key, importJobAadContext(job.budgetId, job.epoch, job.id, "result"))),
             );
+            this.assertCurrent();
           } finally {
             key.fill(0);
           }
@@ -428,13 +477,15 @@ export class E2eeImportJobRunner {
       }
       const item = importActivityFromE2ee(job, result);
       items.push(item);
-      this.options.activity.upsert(item);
+      if (this.isCurrent()) this.options.activity.upsert(item);
     }
     return items;
   }
 
   async cancel(id: string): Promise<void> {
+    if (!this.isCurrent()) return;
     let job = await importJobStorage.getJob(this.options.scope, id);
+    if (!this.isCurrent()) return;
     if (!job || job.status === "cancelled" || job.status === "completed") return;
     try {
       job = await this.transition(job, { type: "cancel", at: this.timestamp() });
@@ -445,7 +496,9 @@ export class E2eeImportJobRunner {
   }
 
   async retry(id: string): Promise<void> {
+    if (!this.isCurrent()) return;
     const job = await importJobStorage.getJob(this.options.scope, id);
+    if (!this.isCurrent()) return;
     if (job?.status !== "failed") return;
     try {
       await this.transition(job, { type: "retry", at: this.timestamp() });
@@ -456,6 +509,9 @@ export class E2eeImportJobRunner {
   }
 
   async dismiss(id: string): Promise<void> {
-    if (await importJobStorage.deleteJob(this.options.scope, id)) this.options.activity.remove(id);
+    if (!this.isCurrent()) return;
+    if (await importJobStorage.deleteJob(this.options.scope, id)) {
+      if (this.isCurrent()) this.options.activity.remove(id);
+    }
   }
 }
