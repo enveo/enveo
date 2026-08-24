@@ -233,6 +233,8 @@ export const ptBR: Dict = {
   Goals: "Metas",
   "Goes to": "Vai para",
   Good: "Boa",
+  "Google sign-in keeps you signed in until you sign out — remember to sign out when you finish.":
+    "O login com o Google mantém você conectado até que você saia — lembre-se de sair quando terminar.",
   Groceries: "Mercado",
   Group: "Grupo",
   Health: "Saúde",
@@ -259,6 +261,8 @@ export const ptBR: Dict = {
   "Invalid pairing code.": "Código de pareamento inválido.",
   Investor: "Investidor",
   "Item total: {sum} / {total}": "Total dos itens: {sum} / {total}",
+  "Keep me signed in and save a local copy so Enveo works without internet.":
+    "Mantenha-me conectado e salve uma cópia local para o Enveo funcionar sem internet.",
   Language: "Idioma",
   "Last launch": "Último início",
   "Last sync: {rel}.": "Última sincronização: {rel}.",
@@ -308,6 +312,8 @@ export const ptBR: Dict = {
   "No envelopes with a budget or spending this month.": "Nenhum envelope com orçamento ou gasto neste mês.",
   "No envelopes with a goal. Set a monthly target when editing an envelope.": "Nenhum envelope com meta. Defina uma meta mensal ao editar um envelope.",
   "No funds to distribute": "Não há recursos para distribuir",
+  "No local copy will be saved. This browser session ends when you close the app.":
+    "Nenhuma cópia local será salva. Esta sessão do navegador termina quando você fecha o aplicativo.",
   "No spending in this period.": "Nenhum gasto neste período.",
   "No transactions were recognized in the screenshots.": "Nenhuma transação foi reconhecida nas capturas de tela.",
   "No transactions.": "Nenhuma transação.",
@@ -460,6 +466,8 @@ export const ptBR: Dict = {
     "A cópia local do orçamento neste dispositivo pertence a uma conta diferente daquela com que você entrou. Nada foi enviado ao servidor e nada foi excluído.",
   "The local copy — including any unsent changes — will be permanently removed from this device. If this is the only copy of that budget, download a backup first.":
     "A cópia local — inclusive as mudanças não enviadas — será removida definitivamente deste dispositivo. Se esta for a única cópia desse orçamento, baixe um backup antes.",
+  "The local copy — including any unsent changes — will be permanently removed from this device. Your account's data on the server is not affected.":
+    "A cópia local — inclusive as mudanças não enviadas — será removida definitivamente deste dispositivo. Os dados da sua conta no servidor não são afetados.",
   "The local replica is not ready.": "A réplica local não está pronta.",
   "The password must be at least 8 characters.": "A senha precisa ter pelo menos 8 caracteres.",
   "The proposal exceeds “To be budgeted” — uncheck or reduce items.": "A proposta ultrapassa “A orçar” — desmarque ou reduza itens.",
@@ -505,6 +513,7 @@ export const ptBR: Dict = {
   "This device's local copy cannot be linked to this account": "A cópia local deste dispositivo não pode ser vinculada a esta conta",
   "This device's local copy could not be confirmed to belong to the signed-in account — nothing was sent to the server. Settings → Sync explains what happened and what you can do.":
     "Não foi possível confirmar que a cópia local deste dispositivo pertence à conta conectada — nada foi enviado ao servidor. Configurações → Sincronização explica o que aconteceu e o que você pode fazer.",
+  "This is my private device": "Este é o meu dispositivo particular",
   "This is not a backup of this app — choose a file exported from this application.":
     "Isto não é um backup deste app — escolha um arquivo exportado desta aplicação.",
   "This is not a valid JSON file.": "Este não é um arquivo JSON válido.",

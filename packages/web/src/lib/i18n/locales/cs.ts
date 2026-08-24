@@ -239,6 +239,8 @@ export const cs: Dict = {
   Goals: "Cíle",
   "Goes to": "Půjde do",
   Good: "Dobré",
+  "Google sign-in keeps you signed in until you sign out — remember to sign out when you finish.":
+    "Přihlášení přes Google tě drží přihlášeného, dokud se neodhlásíš — nezapomeň se po skončení odhlásit.",
   Groceries: "Potraviny",
   Group: "Skupina",
   Health: "Zdraví",
@@ -265,6 +267,7 @@ export const cs: Dict = {
   "Invalid pairing code.": "Neplatný párovací kód.",
   Investor: "Investor",
   "Item total: {sum} / {total}": "Součet položek: {sum} / {total}",
+  "Keep me signed in and save a local copy so Enveo works without internet.": "Zůstaň přihlášený a ulož si lokální kopii, aby Enveo fungovalo i offline.",
   Language: "Jazyk",
   "Last launch": "Poslední spuštění",
   "Last sync: {rel}.": "Poslední synchronizace: {rel}.",
@@ -313,6 +316,8 @@ export const cs: Dict = {
   "No envelopes with a budget or spending this month.": "Žádné obálky s rozpočtem nebo výdaji v tomto měsíci.",
   "No envelopes with a goal. Set a monthly target when editing an envelope.": "Žádné obálky s cílem. Měsíční cíl nastav při úpravě obálky.",
   "No funds to distribute": "Nejsou žádné prostředky k rozdělení",
+  "No local copy will be saved. This browser session ends when you close the app.":
+    "Žádná lokální kopie se neuloží. Tahle relace v prohlížeči skončí, jakmile aplikaci zavřeš.",
   "No spending in this period.": "V tomto období žádné výdaje.",
   "No transactions were recognized in the screenshots.": "Ve snímcích obrazovky nebyly rozpoznány žádné transakce.",
   "No transactions.": "Žádné transakce.",
@@ -460,6 +465,8 @@ export const cs: Dict = {
     "Lokální kopie rozpočtu na tomto zařízení patří jinému účtu, než kterým ses přihlásil. Na server se nic neodeslalo a nic se nesmazalo.",
   "The local copy — including any unsent changes — will be permanently removed from this device. If this is the only copy of that budget, download a backup first.":
     "Lokální kopie — včetně neodeslaných změn — se z tohoto zařízení trvale odstraní. Pokud je to jediná kopie toho rozpočtu, nejdřív si stáhni zálohu.",
+  "The local copy — including any unsent changes — will be permanently removed from this device. Your account's data on the server is not affected.":
+    "Lokální kopie — včetně neodeslaných změn — se z tohoto zařízení trvale odstraní. Údaje tvého účtu na serveru zůstanou beze změny.",
   "The local replica is not ready.": "Lokální replika není připravená.",
   "The password must be at least 8 characters.": "Heslo musí mít aspoň 8 znaků.",
   "The proposal exceeds “To be budgeted” — uncheck or reduce items.": "Návrh překračuje „K rozdělení“ — odškrtni nebo sniž položky.",
@@ -506,6 +513,7 @@ export const cs: Dict = {
   "This device's local copy cannot be linked to this account": "Lokální kopii tohoto zařízení nelze propojit s tímto účtem",
   "This device's local copy could not be confirmed to belong to the signed-in account — nothing was sent to the server. Settings → Sync explains what happened and what you can do.":
     "Nepodařilo se potvrdit, že lokální kopie tohoto zařízení patří přihlášenému účtu — na server se nic neodeslalo. Nastavení → Synchronizace vysvětlí, co se stalo a co s tím.",
+  "This is my private device": "Tohle je moje soukromé zařízení",
   "This is not a backup of this app — choose a file exported from this application.":
     "Tohle není záloha této aplikace — vyber soubor vyexportovaný z této aplikace.",
   "This is not a valid JSON file.": "Tohle není platný soubor JSON.",

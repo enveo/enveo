@@ -231,6 +231,8 @@ export const sv: Dict = {
   Goals: "Mål",
   "Goes to": "Går till",
   Good: "Bra",
+  "Google sign-in keeps you signed in until you sign out — remember to sign out when you finish.":
+    "Google-inloggning håller dig inloggad tills du loggar ut — kom ihåg att logga ut när du är klar.",
   Groceries: "Matvaror",
   Group: "Grupp",
   Health: "Hälsa",
@@ -257,6 +259,7 @@ export const sv: Dict = {
   "Invalid pairing code.": "Ogiltig parkopplingskod.",
   Investor: "Investerare",
   "Item total: {sum} / {total}": "Summa rader: {sum} / {total}",
+  "Keep me signed in and save a local copy so Enveo works without internet.": "Håll mig inloggad och spara en lokal kopia så att Enveo fungerar utan internet.",
   Language: "Språk",
   "Last launch": "Senaste start",
   "Last sync: {rel}.": "Senaste synkronisering: {rel}.",
@@ -305,6 +308,8 @@ export const sv: Dict = {
   "No envelopes with a budget or spending this month.": "Inga kuvert med budget eller utgifter den här månaden.",
   "No envelopes with a goal. Set a monthly target when editing an envelope.": "Inga kuvert med mål. Sätt ett månadsmål när du redigerar ett kuvert.",
   "No funds to distribute": "Inga medel att fördela",
+  "No local copy will be saved. This browser session ends when you close the app.":
+    "Ingen lokal kopia sparas. Den här webbläsarsessionen avslutas när du stänger appen.",
   "No spending in this period.": "Inga utgifter under den här perioden.",
   "No transactions were recognized in the screenshots.": "Inga transaktioner kändes igen i skärmbilderna.",
   "No transactions.": "Inga transaktioner.",
@@ -455,6 +460,8 @@ export const sv: Dict = {
     "Den lokala kopian av budgeten på den här enheten tillhör ett annat konto än det du är inloggad med. Ingenting har skickats till servern och ingenting har tagits bort.",
   "The local copy — including any unsent changes — will be permanently removed from this device. If this is the only copy of that budget, download a backup first.":
     "Den lokala kopian — inklusive ändringar som inte skickats — tas bort permanent från den här enheten. Om det är den enda kopian av den budgeten bör du ladda ned en säkerhetskopia först.",
+  "The local copy — including any unsent changes — will be permanently removed from this device. Your account's data on the server is not affected.":
+    "Den lokala kopian — inklusive ändringar som inte skickats — tas bort permanent från den här enheten. Ditt kontos uppgifter på servern påverkas inte.",
   "The local replica is not ready.": "Den lokala repliken är inte redo.",
   "The password must be at least 8 characters.": "Lösenordet måste vara minst 8 tecken.",
   "The proposal exceeds “To be budgeted” — uncheck or reduce items.": "Förslaget överstiger ”Att budgetera” — bocka av eller minska poster.",
@@ -499,6 +506,7 @@ export const sv: Dict = {
   "This device's local copy cannot be linked to this account": "Den lokala kopian på den här enheten kan inte kopplas till det här kontot",
   "This device's local copy could not be confirmed to belong to the signed-in account — nothing was sent to the server. Settings → Sync explains what happened and what you can do.":
     "Det gick inte att bekräfta att den här enhetens lokala kopia tillhör det inloggade kontot — ingenting skickades till servern. Inställningar → Synkronisering förklarar vad som hände och vad du kan göra.",
+  "This is my private device": "Det här är min privata enhet",
   "This is not a backup of this app — choose a file exported from this application.":
     "Det här är ingen säkerhetskopia från den här appen — välj en fil som exporterats från den här applikationen.",
   "This is not a valid JSON file.": "Det här är ingen giltig JSON-fil.",
