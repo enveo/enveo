@@ -55,7 +55,7 @@ import * as persist from "./persist";
 import { store } from "./store";
 import { INTERVAL_MS } from "./sync/contracts";
 import { configureCycle, getLastSyncReason, resetBackoff, syncNow } from "./sync/cycle";
-import { assertOwnReplica, enterUnauthed } from "./sync/identity";
+import { assertOwnReplica, configureIdentity, enterUnauthed } from "./sync/identity";
 import { broadcastUpdatedIfPending, installMultiTab, isLeaderTab, notePeersMayNeedUpdate, postMsg } from "./sync/multitab";
 import { isReplacePending, isResyncPending } from "./sync/obligations";
 import { getSyncStatus, installOutboxStatusListener } from "./sync/status";
@@ -158,6 +158,10 @@ configureCycle({
   broadcastUpdatedIfPending,
   postPokeToPeers: () => postMsg("poke"),
 });
+
+// The identity layer's cloud path (silent discard of a foreign replica) needs the full
+// local-data wipe, which is composed HERE — identity sits below the facade in the module graph.
+configureIdentity({ discardForeignReplica: discardLocalReplica });
 
 installTriggers();
 

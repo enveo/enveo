@@ -152,6 +152,20 @@ export type IdentityVerdict = "unauthed" | "foreign" | "ok";
  * sit ABOVE transport in the module graph, so they are injected by the facade at composition
  * time instead of imported (which would be a cycle).
  */
+/**
+ * Dependency the IDENTITY layer needs from the facade (workflow §3c-3): the full local-data
+ * wipe lives in sync.ts (it composes outbox, e2ee, persist and multitab), which identity
+ * cannot import back — so the facade injects it at composition time.
+ */
+export interface IdentityDeps {
+  /**
+   * CLOUD only: silently remove the previous account's replica (mirror + outbox + DEK +
+   * owner stamp) and reload into the session account's clean boot — instead of rendering
+   * ForeignReplicaScreen. See enterForeignReplica for why selfhost keeps the human decision.
+   */
+  discardForeignReplica(): Promise<void>;
+}
+
 export interface TransportDeps {
   /** Route the app to the Login screen (identity.enterUnauthed) — every 401 goes through it. */
   enterUnauthed(): void;

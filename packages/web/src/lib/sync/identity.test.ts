@@ -6,8 +6,17 @@
  * facade, where the fake server lives.
  */
 import { afterEach, describe, expect, it } from "bun:test";
+import { cacheDeployment } from "../deviceStoragePolicy";
 import { store } from "../store";
-import { __resetIdentity, decideIdentity, enterForeignReplica, enterLoginPreservingReplica, enterUnauthed, isIdentityBlocked } from "./identity";
+import {
+  __resetIdentity,
+  configureIdentity,
+  decideIdentity,
+  enterForeignReplica,
+  enterLoginPreservingReplica,
+  enterUnauthed,
+  isIdentityBlocked,
+} from "./identity";
 import { getSyncStatus } from "./status";
 
 afterEach(() => {
@@ -62,5 +71,78 @@ describe("sync/identity: verdict state transitions", () => {
     enterForeignReplica();
     __resetIdentity();
     expect(isIdentityBlocked()).toBe(false);
+  });
+});
+
+/* ── Cloud: a foreign replica is silently discarded, never rendered ─────── */
+
+describe("sync/identity: foreign replica on CLOUD", () => {
+  // These tests own localStorage (the deployment cache) and the composed identity deps;
+  // both are restored so the rest of the process (facade suites share this module) is
+  // untouched.
+  let prevDeps: ReturnType<typeof configureIdentity>;
+
+  function stubLocalStorage() {
+    const values = new Map<string, string>();
+    (globalThis as Record<string, unknown>).localStorage = {
+      getItem: (key: string) => values.get(key) ?? null,
+      setItem: (key: string, value: string) => values.set(key, String(value)),
+      removeItem: (key: string) => values.delete(key),
+    };
+  }
+
+  afterEach(() => {
+    delete (globalThis as Record<string, unknown>).localStorage;
+    configureIdentity(prevDeps);
+  });
+
+  it("cloud → discards the replica instead of rendering ForeignReplicaScreen", () => {
+    stubLocalStorage();
+    cacheDeployment("cloud");
+    let discards = 0;
+    prevDeps = configureIdentity({
+      discardForeignReplica: async () => {
+        discards++;
+      },
+    });
+    enterForeignReplica();
+    expect(discards).toBe(1);
+    expect(store.getBootStatus()).not.toBe("foreign");
+    expect(isIdentityBlocked()).toBe(true); // no write may race the wipe before the reload
+  });
+
+  it("selfhost → keeps the human decision (ForeignReplicaScreen)", () => {
+    stubLocalStorage();
+    cacheDeployment("selfhost");
+    let discards = 0;
+    prevDeps = configureIdentity({
+      discardForeignReplica: async () => {
+        discards++;
+      },
+    });
+    enterForeignReplica();
+    expect(discards).toBe(0);
+    expect(store.getBootStatus()).toBe("foreign");
+  });
+
+  it("unknown deployment (nothing cached) → fail-safe: the screen, nothing destroyed", () => {
+    stubLocalStorage(); // no deployment key → getCachedDeployment() falls back to "selfhost"
+    let discards = 0;
+    prevDeps = configureIdentity({
+      discardForeignReplica: async () => {
+        discards++;
+      },
+    });
+    enterForeignReplica();
+    expect(discards).toBe(0);
+    expect(store.getBootStatus()).toBe("foreign");
+  });
+
+  it("cloud with no composed discard dep → fail-safe: the screen", () => {
+    stubLocalStorage();
+    cacheDeployment("cloud");
+    prevDeps = configureIdentity(null); // the facade has not composed the module
+    enterForeignReplica();
+    expect(store.getBootStatus()).toBe("foreign");
   });
 });

@@ -29,10 +29,11 @@
  * one stamped next to the replica (IDB meta "userId"):
  *  - no session   → UnauthorizedError → Login (this is ALSO the re-auth path: an expired
  *                   cookie now reaches the login screen instead of a muted badge),
- *  - other user   → FOREIGN replica: refuse every server write and hand the decision to the
- *                   HUMAN (BootStatus "foreign" → ForeignReplicaScreen: export a backup, or
- *                   remove the data and continue). NOTHING is destroyed unattended — see
- *                   enterForeignReplica,
+ *  - other user   → FOREIGN replica: refuse every server write. On SELFHOST the decision is
+ *                   the HUMAN's (BootStatus "foreign" → ForeignReplicaScreen: export a backup,
+ *                   or remove the data and continue) and nothing is destroyed unattended; on
+ *                   CLOUD the previous account's local data is silently discarded and the page
+ *                   reloads into the session account's boot — see enterForeignReplica,
  *  - same user    → stamp it (idempotent) and let the cycle run.
  *
  * The session is re-read from the server on EVERY cycle (one cheap same-origin GET; only a
@@ -66,11 +67,12 @@
 
 import { accountPreferences } from "../accountPreferences";
 import { fetchSessionUserId } from "../auth";
+import { getCachedDeployment } from "../deviceStoragePolicy";
 import * as e2ee from "../e2ee";
 import { idbGet } from "../idb";
 import * as persist from "../persist";
 import { store } from "../store";
-import { type IdentityVerdict, TierMismatchError } from "./contracts";
+import { type IdentityDeps, type IdentityVerdict, TierMismatchError } from "./contracts";
 import { e2eeReplicaBudgetId } from "./replica";
 import { setOwnerUnproven, setState } from "./status";
 import { fetchServerBudgetId, fetchServerE2eeIdentity, sessionBudgetIsEmpty, unauthorized } from "./transport";
@@ -85,6 +87,16 @@ export function decideIdentity(sessionUserId: string | null, stamped: string | u
 /** Session user id ALREADY verified against this replica (null ⇒ verify from scratch). */
 let identityVerifiedFor: string | null = null;
 let identityBlocked = false; // foreign replica → no network write until the human decides
+
+/** Injected by the facade at composition time (identity cannot import sync.ts back). */
+let identityDeps: IdentityDeps | null = null;
+
+/** Compose the identity layer's facade-owned dependency; returns the previous value so tests can restore it. */
+export function configureIdentity(deps: IdentityDeps | null): IdentityDeps | null {
+  const prev = identityDeps;
+  identityDeps = deps;
+  return prev;
+}
 
 /** Forget the cached verdict — the next check verifies the session from scratch. */
 export function invalidateIdentityVerdict(): void {
@@ -124,12 +136,13 @@ export function enterUnauthed(): void {
 
 /**
  * The replica's owner stamp names a DIFFERENT account than the session: block every server
- * write (nothing of the previous owner's may reach this account's budget) and hand the decision
- * to the HUMAN — BootStatus "foreign" renders ForeignReplicaScreen (export a backup / remove the
- * data and continue).
+ * write (nothing of the previous owner's may reach this account's budget). What happens to the
+ * data depends on the deployment — CLOUD discards it silently (see the branch below), SELFHOST
+ * hands the decision to the HUMAN: BootStatus "foreign" renders ForeignReplicaScreen (export a
+ * backup / remove the data and continue).
  *
- * It does NOT wipe, and that asymmetry is deliberate — the exact opposite of what the first cut
- * of this guard did:
+ * SELFHOST does NOT wipe, and that asymmetry is deliberate — the exact opposite of what the
+ * first cut of this guard did:
  *  - the replica can be the LAST copy of that budget; the outbox may hold ops the server has
  *    never seen, and a rebuilt server may know nothing about the device copy.
  *  - a user id is not stable across a server rebuild. A self-hoster who loses the Postgres
@@ -141,9 +154,22 @@ export function enterUnauthed(): void {
  * not add safety, only loss.
  */
 export function enterForeignReplica(): void {
-  identityBlocked = true; // no cycle may touch the network until the human decides
+  identityBlocked = true; // no cycle may touch the network until the human decides (or the wipe reloads)
   accountPreferences.dehydrate(); // the signed-in account is not the cache owner
   setOwnerUnproven(false); // a PROVEN foreign stamp supersedes "unproven" (ForeignReplicaScreen)
+  // CLOUD: silently discard instead. Every argument for the human decision above is a SELFHOST
+  // argument — there the operator IS the user, a rebuilt server rotates user ids and the replica
+  // can be the last copy. On cloud the server is the durable copy of every account's budget
+  // (operator backups), a user-id rotation is the operator's incident to repair, and the export
+  // path is hidden anyway — so the previous account's data (queued ops included — a session that
+  // ended without sign-out forfeits them; deliberate product decision) is removed and the page
+  // reloads into the session account's clean boot. Fail-safe both ways: an unknown deployment
+  // reads as "selfhost" (getCachedDeployment), and an uncomposed module keeps the screen.
+  if (getCachedDeployment() === "cloud" && identityDeps) {
+    console.warn("sync: the local replica belongs to a different account — removing it (cloud)");
+    void identityDeps.discardForeignReplica();
+    return;
+  }
   console.warn("sync: the local replica belongs to a different account — every server write is refused");
   store.setBootStatus("foreign"); // ForeignReplicaScreen: [Export backup] / [Remove and continue]
   setState("error"); // honest: sync is not happening (no retry loop of its own)
