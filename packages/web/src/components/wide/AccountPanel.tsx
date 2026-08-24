@@ -7,6 +7,7 @@ import { currentMonth, shortDate } from "../../lib/dates";
 import { useT } from "../../lib/i18n";
 import { store } from "../../lib/store";
 import { font, TEAL, TRANSFER } from "../../lib/theme";
+import { AccountEditSheet } from "../AccountEditSheet";
 
 /**
  * PR6b Task 4 — the account detail pane body (v3's `acct` pane): balance card → actions grid →
@@ -17,20 +18,23 @@ import { font, TEAL, TRANSFER } from "../../lib/theme";
  * The balance is GLOBAL, always: `computeStateResponse(store.getLedger(), currentMonth())` —
  * NEVER the viewed month's `state.accounts` — the exact Drawer/Rail/AccountsWidget rule (Rail.tsx
  * `TbbCard`, widgets.tsx `AccountsWidget`) this pane exists to make reachable on wide (the 3.6.2
- * incident's screen). Edit/Reconcile are STUBBED here on purpose: `AccountEdit` isn't extracted
- * yet (Task 5) and `ReconcileSheet` still lives in eager `widgets.tsx` (Task 6) — the buttons and
- * their local open-booleans are wired now so those tasks only add a render, not new plumbing.
+ * incident's screen). Edit renders `AccountEditSheet` (Task 5's extraction, shared verbatim with
+ * `Accounts.tsx`'s row-edit and "New account" call sites) as a `Surface` over this pane — saving/
+ * archiving goes through the existing `local.updateAccount` path and this pane re-derives from
+ * the replica on the next tick, so an archived account simply keeps rendering here with the
+ * Closed chip. Reconcile is still STUBBED on purpose: `ReconcileSheet` still lives in eager
+ * `widgets.tsx` (Task 6) — the button and its local open-boolean are wired now so that task only
+ * adds a render, not new plumbing.
  */
 export function AccountPanel({
   accountId,
   envelopes,
+  groups,
   onOpenTxns,
   onEditTxn,
 }: {
   accountId: string;
   envelopes: StateResponse["envelopes"];
-  /** Unused until Task 5 (the automatic-envelope picker) — accepted now so `PanelHost`'s call
-   *  site doesn't change shape again when that surface lands. */
   groups: StateResponse["groups"];
   onOpenTxns: (f?: { envId?: string; accId?: string }) => void;
   onEditTxn: (t: Transaction) => void;
@@ -49,8 +53,9 @@ export function AccountPanel({
   }, [version]);
   const account = accountsNow.find((a) => a.id === accountId) ?? null;
 
-  // Edit/Reconcile: Task 5/6 render a `Surface` off these; only the openers exist here.
-  const [, setEdit] = useState(false);
+  // Edit: Task 5 wires the surface below. Reconcile: Task 6 still owns the render; only the
+  // opener exists here.
+  const [edit, setEdit] = useState(false);
   const [, setReconcile] = useState(false);
 
   // Recent activity: last 5 transactions touching this account, across every month — the LIVE
@@ -201,6 +206,7 @@ export function AccountPanel({
           );
         })
       )}
+      <AccountEditSheet account={edit ? account : null} envelopes={envelopes} groups={groups} onClose={() => setEdit(false)} />
     </div>
   );
 }
