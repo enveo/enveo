@@ -36,6 +36,12 @@ let durableBroken = false;
 
 export const isDurableBroken = (): boolean => durableBroken;
 
+/** Unit-test isolation after deliberately exercising the fail-closed persistence path. */
+export function __resetPersistForTests(): void {
+  chain = Promise.resolve();
+  durableBroken = false;
+}
+
 function markBroken(e: unknown): void {
   if (durableBroken) return;
   durableBroken = true;

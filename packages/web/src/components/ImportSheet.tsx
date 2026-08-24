@@ -132,7 +132,10 @@ export function ImportSheet({
     openedReadyRevision.current = readyRevision;
     const generation = viewGeneration.current;
     void (async () => {
-      const recoveredProgress = await importJobManager.appliedProgress(job.id);
+      const recoveredProgress = await importJobManager.appliedProgress(
+        job.id,
+        job.result!.proposals.map((proposal) => proposal.rowId),
+      );
       if (generation !== viewGeneration.current) return;
       const ledger = store.getLedger();
       if (!ledger) {
@@ -283,7 +286,8 @@ export function ImportSheet({
       }
       const ledger = store.getLedger();
       if (!ledger) throw new Error("no_local_replica");
-      const previouslyApplied = await importJobManager.appliedProgress(job.id);
+      const proposalRowIds = [...new Set(job.result.proposals.map((proposal) => proposal.rowId))];
+      const previouslyApplied = await importJobManager.appliedProgress(job.id, proposalRowIds);
       const recognition = reconcileImportJobResult({ result: job.result, ledger, accountId: job.accountId });
       const sourceAccount = ledger.accounts.find((account) => account.id === job.accountId);
       const accountInvalid = !sourceAccount || sourceAccount.archived;
@@ -336,21 +340,20 @@ export function ImportSheet({
       if (accountInvalid || importReviewBlockingCount(currentRows, currentEdited) > 0) return;
       const chosen: ImportApplyItem[] = reviewedImportRowsForApply({ rows: currentRows, edited: currentEdited, editedAutomaticDefaults });
       const chosenRowIds = new Set(chosen.flatMap((item) => (item.importRowId ? [item.importRowId] : [])));
-      const proposalRowIds = [...new Set(job.result.proposals.map((proposal) => proposal.rowId))];
       await importJobManager.recordSkipped(
         job.id,
         proposalRowIds.filter((rowId) => !chosenRowIds.has(rowId) && !previouslyApplied.appliedRowIds.includes(rowId)),
       );
       const plan = planLocalImport({ ledger, globalAccountId: job.accountId, items: chosen, dryRun: false });
       await applyLocalImportRecoverably(plan, undefined, {
-        prepare: (rowId) => importJobManager.prepareAppliedRow(job.id, rowId),
-        applied: async (rowId) => {
-          await outbox.flushed();
-          if (!outbox.isDurable()) throw new Error("local_persistence_failed");
-          await importJobManager.recordApplied(job.id, [rowId]);
-        },
+        apply: (rowId, mutation) =>
+          importJobManager.applyRow(job.id, rowId, async (transactionId) => {
+            mutation(transactionId);
+            await outbox.flushed();
+            if (!outbox.isDurable()) throw new Error("local_persistence_failed");
+          }),
       });
-      const completedProgress = await importJobManager.appliedProgress(job.id);
+      const completedProgress = await importJobManager.appliedProgress(job.id, proposalRowIds);
       const accountedRowIds = new Set([...completedProgress.appliedRowIds, ...completedProgress.skippedRowIds]);
       if (proposalRowIds.some((rowId) => !accountedRowIds.has(rowId))) throw new Error("import_apply_incomplete");
       const appliedCount = Math.max(job.appliedCount, proposalRowIds.filter((rowId) => completedProgress.appliedRowIds.includes(rowId)).length);
@@ -370,7 +373,7 @@ export function ImportSheet({
     } catch (e) {
       if (e instanceof PartialImportApplyError) {
         const recoveredProgress = job
-          ? await importJobManager.appliedProgress(job.id)
+          ? await importJobManager.appliedProgress(job.id, job.result?.proposals.map((proposal) => proposal.rowId) ?? [])
           : { appliedRowIds: [], appliedCount: 0, skippedRowIds: [], skippedCount: 0 };
         setPartialStats(recoveredProgress.appliedCount > 0 || recoveredProgress.skippedCount > 0 ? recoveredProgress : null);
         const ledger = store.getLedger();

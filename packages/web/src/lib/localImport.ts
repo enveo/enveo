@@ -299,25 +299,24 @@ export async function applyLocalImportRecoverably(
   plan: LocalImportPlan,
   mutations: LocalImportMutationPort = local,
   durability: {
-    prepare?(rowId: string): Promise<string | undefined>;
-    applied(rowId: string): Promise<void>;
-  } = { applied: async () => {} },
+    apply(rowId: string, mutation: (transactionId: string | undefined) => void): Promise<void>;
+  } = { apply: async (_rowId, mutation) => mutation(undefined) },
 ): Promise<LocalImportApplyProgress> {
   const progress: LocalImportApplyProgress = { appliedRowIds: [], appliedCount: 0, skippedCount: plan.skipped };
   if (plan.dryRun) return progress;
   for (const transaction of plan.transactions) {
     try {
-      const transactionId = await durability.prepare?.(transaction.rowId);
-      const categoryId = transaction.categoryName ? mutations.createCategory(transaction.categoryName).id : transaction.payload.categoryId;
-      const placeId = transaction.placeName ? mutations.createPlace(transaction.placeName).id : transaction.payload.placeId;
-      const payload = { ...transaction.payload, categoryId, placeId };
-      if (transactionId) {
-        if (!mutations.createTxnWithId) throw new Error("import_transaction_identity_unsupported");
-        mutations.createTxnWithId(transactionId, payload);
-      } else mutations.createTxn(payload);
-      progress.appliedRowIds.push(transaction.rowId);
-      progress.appliedCount++;
-      await durability.applied(transaction.rowId);
+      await durability.apply(transaction.rowId, (transactionId) => {
+        const categoryId = transaction.categoryName ? mutations.createCategory(transaction.categoryName).id : transaction.payload.categoryId;
+        const placeId = transaction.placeName ? mutations.createPlace(transaction.placeName).id : transaction.payload.placeId;
+        const payload = { ...transaction.payload, categoryId, placeId };
+        if (transactionId) {
+          if (!mutations.createTxnWithId) throw new Error("import_transaction_identity_unsupported");
+          mutations.createTxnWithId(transactionId, payload);
+        } else mutations.createTxn(payload);
+        progress.appliedRowIds.push(transaction.rowId);
+        progress.appliedCount++;
+      });
     } catch (error) {
       throw new PartialImportApplyError(error, progress);
     }

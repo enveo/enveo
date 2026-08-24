@@ -8,6 +8,7 @@ import { createRoot } from "react-dom/client";
 import App from "./App";
 import { AppProviders } from "./lib/contexts";
 import { loadLocale, uiLang } from "./lib/i18n";
+import { startImportJobManager } from "./lib/importJobs/bootstrap";
 import { initInstallPrompt } from "./lib/installPrompt";
 
 const queryClient = new QueryClient({
@@ -17,8 +18,7 @@ const queryClient = new QueryClient({
 initInstallPrompt(); 
 
 
-
-void import("./lib/importJobs/manager").then(({ importJobManager }) => importJobManager.start());
+void startImportJobManager();
 
 const render = () =>
   createRoot(document.getElementById("root")!).render(

@@ -114,11 +114,36 @@ describe("durable import foreground and Activity view models", () => {
   it("keeps the global badge in its own lazy entry without importing the Activity screen", () => {
     const app = readFileSync(join(import.meta.dir, "..", "App.tsx"), "utf8");
     const badge = readFileSync(join(import.meta.dir, "..", "components", "ImportActivityBadge.tsx"), "utf8");
+    const optionalChrome = readFileSync(join(import.meta.dir, "..", "components", "OptionalStatusChrome.tsx"), "utf8");
 
-    expect(app).toContain('lazy(() => import("./components/ImportActivityBadge")');
+    expect(app).toContain('lazy(() => import("./components/OptionalStatusChrome")');
     expect(app).not.toContain("<Activity onOpen=");
+    expect(optionalChrome).toContain('from "./ImportActivityBadge"');
+    expect(optionalChrome).not.toContain('from "../screens/Activity"');
+    expect(optionalChrome).not.toContain('from "./ImportSheet"');
     expect(badge).not.toContain("importJobManager.list()");
     expect(badge).not.toContain("setInterval(");
+  });
+
+  it("keeps rejected sync writes eager and makes import-manager bootstrap failure retryable", () => {
+    const app = readFileSync(join(import.meta.dir, "..", "App.tsx"), "utf8");
+    const main = readFileSync(join(import.meta.dir, "..", "main.tsx"), "utf8");
+    const syncBadge = readFileSync(join(import.meta.dir, "..", "components", "SyncBadge.tsx"), "utf8");
+    const optionalChrome = readFileSync(join(import.meta.dir, "..", "components", "OptionalStatusChrome.tsx"), "utf8");
+
+    expect(app).toContain('import { SyncBadge } from "./components/SyncBadge"');
+    expect(app).not.toContain('lazy(() => import("./components/SyncBadge")');
+    expect(app).not.toContain('<LazyChunk variant="silent">\n              <SyncBadge');
+    expect(app).toContain('lazy(() => import("./components/OptionalStatusChrome")');
+    expect(syncBadge).toContain("if (deadLetters > 0)");
+    expect(syncBadge).toContain('state === "unauthed"');
+    expect(syncBadge).toContain("ownerUnproven");
+    expect(syncBadge).not.toContain("lazy(");
+    expect(optionalChrome).toContain('from "./UpdatePrompt"');
+    expect(app).toContain("importManagerBootstrap.getSnapshot");
+    expect(app).toContain('aria-label={t("Activity could not be refreshed. Try again.")}');
+    expect(main).toContain("startImportJobManager()");
+    expect(main).not.toContain('import("./lib/importJobs/manager").then');
   });
 
   it("labels plain dismissal as session-only and explains local E2EE shared-device privacy", () => {

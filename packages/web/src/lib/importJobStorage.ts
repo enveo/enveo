@@ -4,8 +4,10 @@ import {
   idbDeleteExpiredImportDrafts,
   idbDeleteImportDraftIfMatches,
   idbDeleteImportJobIfScope,
+  idbDeleteImportJobWithMetaIfScope,
   idbGet,
   idbGetAll,
+  idbImportTransactionProof,
   idbMutateImportDraftState,
   idbMutateMeta,
   idbPut,
@@ -74,8 +76,11 @@ export interface ImportApplyProgress {
 }
 
 export interface ImportPreparedRow {
-  rowId: string;
+  rowToken: string;
   transactionId: string;
+  leaseOwner: string | null;
+  leaseUntil: number;
+  fence: number;
 }
 
 export interface StoredImportApplyProgress extends ImportApplyProgress {
@@ -89,10 +94,14 @@ function scopeKey(scope: ImportJobStorageScope): string {
 }
 
 function applyProgressKey(scope: ImportJobStorageScope, id: string): string {
-  return JSON.stringify(["import-apply-progress", 2, scope.ownerId, scope.budgetId, id]);
+  return JSON.stringify(["import-apply-progress", 3, scope.ownerId, scope.budgetId, id]);
 }
 
 function legacyApplyProgressKey(scope: ImportJobStorageScope, id: string): string {
+  return JSON.stringify(["import-apply-progress", 2, scope.ownerId, scope.budgetId, id]);
+}
+
+function oldestApplyProgressKey(scope: ImportJobStorageScope, id: string): string {
   return JSON.stringify(["import-apply-progress", 1, scope.ownerId, scope.budgetId, id]);
 }
 
@@ -113,16 +122,39 @@ function normalizedApplyProgress(value: unknown): StoredImportApplyProgress {
         ...new Map(
           record.preparedRows.flatMap((entry) => {
             if (!entry || typeof entry !== "object") return [];
-            const prepared = entry as { rowId?: unknown; transactionId?: unknown };
-            return typeof prepared.rowId === "string" &&
-              prepared.rowId.length > 0 &&
+            const prepared = entry as {
+              rowToken?: unknown;
+              transactionId?: unknown;
+              leaseOwner?: unknown;
+              leaseUntil?: unknown;
+              fence?: unknown;
+            };
+            return typeof prepared.rowToken === "string" &&
+              prepared.rowToken.length > 0 &&
               typeof prepared.transactionId === "string" &&
-              prepared.transactionId.length > 0
-              ? [[prepared.rowId, { rowId: prepared.rowId, transactionId: prepared.transactionId }] as const]
+              prepared.transactionId.length > 0 &&
+              (prepared.leaseOwner === null || typeof prepared.leaseOwner === "string") &&
+              typeof prepared.leaseUntil === "number" &&
+              Number.isFinite(prepared.leaseUntil) &&
+              typeof prepared.fence === "number" &&
+              Number.isSafeInteger(prepared.fence) &&
+              prepared.fence > 0
+              ? [
+                  [
+                    prepared.rowToken,
+                    {
+                      rowToken: prepared.rowToken,
+                      transactionId: prepared.transactionId,
+                      leaseOwner: prepared.leaseOwner,
+                      leaseUntil: prepared.leaseUntil,
+                      fence: prepared.fence,
+                    },
+                  ] as const,
+                ]
               : [];
           }),
         ).values(),
-      ].filter((entry) => !appliedRowIds.includes(entry.rowId) && !skippedRowIds.includes(entry.rowId))
+      ].filter((entry) => !appliedRowIds.includes(entry.rowToken) && !skippedRowIds.includes(entry.rowToken))
     : [];
   return { appliedRowIds, appliedCount: appliedRowIds.length, skippedRowIds, skippedCount: skippedRowIds.length, preparedRows };
 }
@@ -228,6 +260,12 @@ function newestFirst<T extends { id: string; updatedAt: string }>(rows: T[]): T[
 }
 
 export const importJobStorage = {
+  durableTransactionProof(scope: ImportJobStorageScope, transactionId: string): Promise<"durable" | "rejected" | "absent"> {
+    assertValidScope(scope);
+    if (!transactionId) return Promise.resolve("absent");
+    return idbImportTransactionProof(scope, transactionId);
+  },
+
   async getApplyProgress(scope: ImportJobStorageScope, id: string): Promise<ImportApplyProgress> {
     assertValidScope(scope);
     const { preparedRows: _, ...progress } = normalizedApplyProgress(await idbGet<unknown>("meta", applyProgressKey(scope, id)));
@@ -249,24 +287,131 @@ export const importJobStorage = {
     await idbPut("meta", normalized, applyProgressKey(scope, id));
   },
 
-  async prepareApplyRow(scope: ImportJobStorageScope, id: string, rowId: string, transactionId: string): Promise<string> {
+  async claimApplyRow(
+    scope: ImportJobStorageScope,
+    id: string,
+    claim: { rowToken: string; transactionId: string; ownerToken: string; now: number; leaseUntil: number },
+  ): Promise<{ kind: "claimed"; transactionId: string; fence: number } | { kind: "busy" } | { kind: "applied" }> {
     assertValidScope(scope);
-    if (!rowId || !transactionId) throw new Error("invalid_import_apply_identity");
-    const progress = normalizedApplyProgress(
-      await idbMutateMeta(applyProgressKey(scope, id), (current) => {
-        const normalized = normalizedApplyProgress(current);
-        if (normalized.appliedRowIds.includes(rowId)) return normalized;
-        const existing = normalized.preparedRows.find((prepared) => prepared.rowId === rowId);
-        if (existing) return normalized;
-        return normalizedApplyProgress({
-          appliedRowIds: normalized.appliedRowIds,
-          skippedRowIds: normalized.skippedRowIds.filter((skippedRowId) => skippedRowId !== rowId),
-          preparedRows: [...normalized.preparedRows, { rowId, transactionId }],
-        });
-      }),
-    );
-    if (progress.appliedRowIds.includes(rowId)) throw new Error("import_row_already_applied");
-    return progress.preparedRows.find((prepared) => prepared.rowId === rowId)?.transactionId ?? transactionId;
+    if (
+      !claim.rowToken ||
+      !claim.transactionId ||
+      !claim.ownerToken ||
+      !Number.isFinite(claim.now) ||
+      !Number.isFinite(claim.leaseUntil) ||
+      claim.leaseUntil <= claim.now
+    ) {
+      throw new Error("invalid_import_apply_claim");
+    }
+    let result: { kind: "claimed"; transactionId: string; fence: number } | { kind: "busy" } | { kind: "applied" } = { kind: "busy" };
+    await idbMutateMeta(applyProgressKey(scope, id), (current) => {
+      const normalized = normalizedApplyProgress(current);
+      if (normalized.appliedRowIds.includes(claim.rowToken)) {
+        result = { kind: "applied" };
+        return normalized;
+      }
+      const existing = normalized.preparedRows.find((prepared) => prepared.rowToken === claim.rowToken);
+      if (existing && existing.leaseUntil > claim.now) {
+        result = { kind: "busy" };
+        return normalized;
+      }
+      const prepared = {
+        rowToken: claim.rowToken,
+        transactionId: existing?.transactionId ?? claim.transactionId,
+        leaseOwner: claim.ownerToken,
+        leaseUntil: claim.leaseUntil,
+        fence: (existing?.fence ?? 0) + 1,
+      } satisfies ImportPreparedRow;
+      result = { kind: "claimed", transactionId: prepared.transactionId, fence: prepared.fence };
+      return normalizedApplyProgress({
+        appliedRowIds: normalized.appliedRowIds,
+        skippedRowIds: normalized.skippedRowIds.filter((rowToken) => rowToken !== claim.rowToken),
+        preparedRows: [...normalized.preparedRows.filter((candidate) => candidate.rowToken !== claim.rowToken), prepared],
+      });
+    });
+    return result;
+  },
+
+  async renewApplyRow(
+    scope: ImportJobStorageScope,
+    id: string,
+    renewal: { rowToken: string; ownerToken: string; fence: number; now: number; leaseUntil: number },
+  ): Promise<boolean> {
+    assertValidScope(scope);
+    let renewed = false;
+    await idbMutateMeta(applyProgressKey(scope, id), (current) => {
+      const normalized = normalizedApplyProgress(current);
+      const existing = normalized.preparedRows.find((prepared) => prepared.rowToken === renewal.rowToken);
+      if (
+        !existing ||
+        existing.leaseOwner !== renewal.ownerToken ||
+        existing.fence !== renewal.fence ||
+        existing.leaseUntil <= renewal.now ||
+        renewal.leaseUntil <= renewal.now
+      ) {
+        return normalized;
+      }
+      renewed = true;
+      return normalizedApplyProgress({
+        ...normalized,
+        preparedRows: normalized.preparedRows.map((prepared) =>
+          prepared.rowToken === renewal.rowToken ? { ...prepared, leaseUntil: renewal.leaseUntil } : prepared,
+        ),
+      });
+    });
+    return renewed;
+  },
+
+  async completeApplyRow(scope: ImportJobStorageScope, id: string, completion: { rowToken: string; ownerToken: string; fence: number }): Promise<boolean> {
+    assertValidScope(scope);
+    let completed = false;
+    await idbMutateMeta(applyProgressKey(scope, id), (current) => {
+      const normalized = normalizedApplyProgress(current);
+      const existing = normalized.preparedRows.find((prepared) => prepared.rowToken === completion.rowToken);
+      if (!existing || existing.leaseOwner !== completion.ownerToken || existing.fence !== completion.fence) return normalized;
+      completed = true;
+      return normalizedApplyProgress({
+        appliedRowIds: [...normalized.appliedRowIds, completion.rowToken],
+        skippedRowIds: normalized.skippedRowIds.filter((rowToken) => rowToken !== completion.rowToken),
+        preparedRows: normalized.preparedRows.filter((prepared) => prepared.rowToken !== completion.rowToken),
+      });
+    });
+    return completed;
+  },
+
+  async promoteDurableApplyRow(scope: ImportJobStorageScope, id: string, rowToken: string, transactionId: string): Promise<boolean> {
+    assertValidScope(scope);
+    let promoted = false;
+    await idbMutateMeta(applyProgressKey(scope, id), (current) => {
+      const normalized = normalizedApplyProgress(current);
+      const existing = normalized.preparedRows.find((prepared) => prepared.rowToken === rowToken && prepared.transactionId === transactionId);
+      if (!existing) return normalized;
+      promoted = true;
+      return normalizedApplyProgress({
+        appliedRowIds: [...normalized.appliedRowIds, rowToken],
+        skippedRowIds: normalized.skippedRowIds.filter((candidate) => candidate !== rowToken),
+        preparedRows: normalized.preparedRows.filter((prepared) => prepared !== existing),
+      });
+    });
+    return promoted;
+  },
+
+  async releaseApplyRow(scope: ImportJobStorageScope, id: string, release: { rowToken: string; ownerToken: string; fence: number }): Promise<boolean> {
+    assertValidScope(scope);
+    let released = false;
+    await idbMutateMeta(applyProgressKey(scope, id), (current) => {
+      const normalized = normalizedApplyProgress(current);
+      const existing = normalized.preparedRows.find((prepared) => prepared.rowToken === release.rowToken);
+      if (!existing || existing.leaseOwner !== release.ownerToken || existing.fence !== release.fence) return normalized;
+      released = true;
+      return normalizedApplyProgress({
+        ...normalized,
+        preparedRows: normalized.preparedRows.map((prepared) =>
+          prepared.rowToken === release.rowToken ? { ...prepared, leaseOwner: null, leaseUntil: 0 } : prepared,
+        ),
+      });
+    });
+    return released;
   },
 
   async mergeApplyProgress(
@@ -291,7 +436,7 @@ export const importJobStorage = {
         return normalizedApplyProgress({
           appliedRowIds: [...applied],
           skippedRowIds: [...skipped],
-          preparedRows: normalized.preparedRows.filter((prepared) => !accounted.has(prepared.rowId)),
+          preparedRows: normalized.preparedRows.filter((prepared) => !accounted.has(prepared.rowToken)),
         });
       }),
     );
@@ -301,6 +446,7 @@ export const importJobStorage = {
     assertValidScope(scope);
     await idbDelete("meta", applyProgressKey(scope, id));
     await idbDelete("meta", legacyApplyProgressKey(scope, id));
+    await idbDelete("meta", oldestApplyProgressKey(scope, id));
   },
 
   subscribe(scope: ImportJobStorageScope, listener: () => void): () => void {
@@ -345,6 +491,18 @@ export const importJobStorage = {
   async deleteJob(scope: ImportJobStorageScope, id: string): Promise<boolean> {
     assertValidScope(scope);
     const deleted = await idbDeleteImportJobIfScope(id, scope);
+    if (deleted) notify(scope);
+    return deleted;
+  },
+
+  async deleteJobWithProgress(scope: ImportJobStorageScope, id: string, permitted: () => boolean = () => true): Promise<boolean> {
+    assertValidScope(scope);
+    const deleted = await idbDeleteImportJobWithMetaIfScope(
+      id,
+      scope,
+      [applyProgressKey(scope, id), legacyApplyProgressKey(scope, id), oldestApplyProgressKey(scope, id)],
+      permitted,
+    );
     if (deleted) notify(scope);
     return deleted;
   },
