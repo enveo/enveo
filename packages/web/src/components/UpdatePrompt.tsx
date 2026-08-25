@@ -90,8 +90,11 @@ export function checkForUpdate(): void {
  * is therefore the version of the build CURRENTLY RUNNING (about to be replaced) — the same
  * constant the rail's user-menu footer and persistent sync row already surface as "the version
  * string" elsewhere in this file's own component (`Rail.tsx`'s `UserBlock`) — not a claim about
- * the incoming build. Read as "you're on v{version}; refreshing takes a second", not "v{version}
- * is now available", it is accurate either way.
+ * the incoming build. The rail's sub-line (`RailUpdateCard`, design-parity wave A re-review)
+ * therefore reads "Currently v{version} · refreshing takes a second…" — the word "Currently"
+ * is load-bearing: an earlier draft attached this number to "New version ready" with no
+ * qualifier, which announced the OLD build as if it were the one about to arrive. Do not drop
+ * "Currently" (or an equivalent) when touching this copy.
  */
 export function useAppUpdate(): { needRefresh: boolean; version: string; refresh: (reload?: boolean) => void; dismiss: () => void } {
   useEffect(() => {

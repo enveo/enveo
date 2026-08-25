@@ -388,7 +388,9 @@ function RailUpdateCard({ version, onRefresh, onDismiss }: { version: string; on
           ×
         </button>
       </div>
-      <span style={{ fontSize: 11, lineHeight: 1.4, color: C.railMute }}>{t("v{version} · refreshing takes a second, nothing is lost.", { version })}</span>
+      <span style={{ fontSize: 11, lineHeight: 1.4, color: C.railMute }}>
+        {t("Currently v{version} · refreshing takes a second, nothing is lost.", { version })}
+      </span>
       <button
         onClick={onRefresh}
         style={{
