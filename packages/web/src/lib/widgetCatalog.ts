@@ -43,12 +43,16 @@ export const WIDGET_CATALOG: Record<WidgetId, WidgetCatalogEntry> = {
   accounts: entry("accounts", msg("Accounts")),
   envelopes: entry("envelopes", msg("Envelopes")),
   envelopesSavings: entry("envelopesSavings", msg("Envelopes · Savings")),
-  reportCashflow: entry("reportCashflow", msg("Report · Cash flow")),
-  reportNetWorth: entry("reportNetWorth", msg("Report · Net worth")),
+  // Design's WIDGET_TITLE map drops the "Report · " prefix on the wide board (v3.dc.html:3583) —
+  // the phone widgets' own SectionEyebrow keeps "Report · Cash flow"/"Report · Net worth" as a
+  // separate, unrelated string (components/widgets.tsx), so this rename is catalog-only.
+  reportCashflow: entry("reportCashflow", msg("Cash flow · 12 months")),
+  reportNetWorth: entry("reportNetWorth", msg("Net worth")),
   attention: entry("attention", msg("Needs attention")),
   recent: entry("recent", msg("Recent activity")),
-  // Reused verbatim from screens/reports/types.ts' TITLES — same report, same key, one translation.
-  spending: entry("spending", msg("Spending")),
+  // Design's WIDGET_TITLE map (v3.dc.html:3583) — a wide board card header, not the Reports hub's
+  // own "Spending" tile title (screens/reports/types.ts TITLES), which stays a separate key.
+  spending: entry("spending", msg("Spending · by envelope")),
   goals: entry("goals", msg("Goals")),
   trends: entry("trends", msg("Envelope trends")),
   heatmap: entry("heatmap", msg("When you spend")),
