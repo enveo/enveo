@@ -60,14 +60,20 @@ export function FoldTbbStrip({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [version]);
 
+  // Design parity fix-review (mirrors Rail.tsx's TbbCard, demo 220-221): Suggest is a FILLED ink
+  // pill (background `T.text`, text `T.card` — the surrounding CARD's own background, so it
+  // inverts correctly whatever the theme), NOT an accent-tinted outline. Fill-by-goals stays the
+  // plain `line`-outline it already was — this strip sits on the ordinary content surface
+  // (`T.card`), not the rail, so unlike Rail.tsx's TbbCard it never needs the rail-specific
+  // `railRuler`/`railBorder` tokens.
   const pill = (primary: boolean): React.CSSProperties => ({
     minHeight: 30,
     padding: "0 13px",
     textAlign: "center",
     borderRadius: 999,
-    border: primary ? "1.5px solid var(--cta)" : `1px solid ${C.line}`,
-    background: "transparent",
-    color: primary ? "var(--cta)" : C.soft,
+    border: primary ? `1.5px solid ${C.text}` : `1px solid ${C.line}`,
+    background: primary ? C.text : "transparent",
+    color: primary ? C.card : C.soft,
     fontSize: 11.5,
     fontWeight: primary ? 700 : 650,
     cursor: "pointer",

@@ -330,6 +330,25 @@ describe("rail chrome tokens (design parity wave A, task A2)", () => {
     }
   });
 
+  test("railRuler/railBorder: Cisza gets the design's literal numbers (both modes); Duet gets its own near-invisible navy-rail numbers (fix-review)", () => {
+    for (const th of ["teal", "koral", "atrament"] as const) {
+      expect(themeTokens(th, false).palette.railRuler).toBe("#e2e0d8");
+      expect(themeTokens(th, false).palette.railBorder).toBe("#ece9e2");
+      expect(themeTokens(th, true).palette.railRuler).toBe("#4b515b");
+      expect(themeTokens(th, true).palette.railBorder).toBe("#4b515b");
+    }
+    for (const isDark of [false, true]) {
+      const { palette } = themeTokens("duet", isDark);
+      expect(palette.railRuler).toBe("rgba(255,255,255,0.16)");
+      expect(palette.railBorder).toBe("transparent");
+      // NOT `line` — `line`'s opaque Duet cream (#e8e0cc) is calibrated for Duet's cream content
+      // surfaces and rendered a visible tan track/dividers on the near-navy rail card (the bug
+      // this pair exists to fix).
+      expect(palette.railRuler).not.toBe(palette.line);
+      expect(palette.railBorder).not.toBe(palette.line);
+    }
+  });
+
   test("bandMute mirrors headerMute (same on-header muted tone) for every theme × mode", () => {
     for (const th of ["teal", "koral", "atrament", "duet"] as const) {
       for (const isDark of [false, true]) {

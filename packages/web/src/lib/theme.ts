@@ -74,6 +74,19 @@ export interface Theme {
    */
   railOn: string;
   railMute: string;
+  /**
+   * Decorative hairlines drawn ON the rail/TbbCard surface — the ruler track, the account-list
+   * section dividers, and the Fill-by-goals pill border (`railRuler`, design's `T.railRuler`) —
+   * and the TbbCard's OWN thin outer separators (`railBorder`, design's `T.railBorder`). Distinct
+   * from `line` for the same reason `railOn`/`railMute` are distinct from `soft`/`mute`: `line`'s
+   * Duet value (`#e8e0cc`, opaque warm cream) is calibrated for Duet's CREAM content surfaces, not
+   * its navy rail — reusing it there rendered a visible tan progress-bar track and tan divider
+   * lines on the near-navy `railCard` (design parity wave A, task A2 fix-review). Cisza's values
+   * equal the design's literal Cisza numbers (close to, but not simply aliased to, `line`); Duet's
+   * are the design's own near-invisible navy-rail numbers.
+   */
+  railRuler: string;
+  railBorder: string;
 }
 
 export const light: Theme = {
@@ -110,6 +123,10 @@ export const light: Theme = {
   bandMute: "#a6a59c",
   railOn: "#6f6e67",
   railMute: "#a6a59c",
+  // Design's literal Cisza numbers (Wide App Demo v3.dc.html §CISZA) — railBorder happens to
+  // equal `line` exactly; railRuler is one step darker/warmer than `line`, still subtle.
+  railRuler: "#e2e0d8",
+  railBorder: "#ece9e2",
 };
 export const dark: Theme = {
   bg: "#3b414b",
@@ -153,6 +170,10 @@ export const dark: Theme = {
   bandMute: "#7f868f",
   railOn: "#a8aeb6",
   railMute: "#7f868f",
+  // No plain-dark rail exists in the design source (same gap as `railBg`/`railCard` above) — reuse
+  // the existing hairline rather than inventing a new hex.
+  railRuler: "#4b515b",
+  railBorder: "#4b515b",
 };
 
 export const ENV_PALETTE = ["#f3c45f", "#7ca968", "#cc4a4a", "#3a3a52", "#4a5a5e", "#8f84a8", "#f1dca0", "#ccd9b6", "#f0c84f", "#aed6ea", "#f0a8c4", "#a8dce0"];
@@ -337,6 +358,11 @@ export const THEMES: Record<AccentTheme, ThemeDef> = {
       bandMute: "#8fa2cc",
       railOn: "#c9d2e4",
       railMute: "#8fa2cc",
+      // Design's literal DUET numbers (fix-review): near-invisible on the navy rail/translucent
+      // card — `line`'s opaque `#e8e0cc` (calibrated for Duet's CREAM content surfaces) rendered a
+      // visible tan ruler track and tan dividers here before these existed.
+      railRuler: "rgba(255,255,255,0.16)",
+      railBorder: "transparent",
     },
     overridesDark: {
       bg: "#131b2e",
@@ -366,6 +392,8 @@ export const THEMES: Record<AccentTheme, ThemeDef> = {
       bandMute: "#8fa2cc",
       railOn: "#c9d2e4",
       railMute: "#8fa2cc",
+      railRuler: "rgba(255,255,255,0.16)",
+      railBorder: "transparent",
     },
   },
 };

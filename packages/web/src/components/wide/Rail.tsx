@@ -185,13 +185,15 @@ function TbbCard({
 
   // Design parity wave A, task A2 (demo 110-111): Suggest is a FILLED ink pill (background =
   // `headerInk`, text = the rail's OWN background, so it inverts correctly on Duet's navy rail);
-  // Fill-by-goals stays the plain outline it already was.
+  // Fill-by-goals stays the plain outline it already was — its border is `railRuler` (design's
+  // `T.railRuler`, demo 111), not the content-surface `line` (fix-review: `line`'s opaque Duet
+  // cream rendered a visible tan outline on the near-navy rail card).
   const pill = (primary: boolean): React.CSSProperties => ({
     flex: 1,
     minHeight: 30,
     textAlign: "center",
     borderRadius: 999,
-    border: primary ? `1.5px solid ${C.headerInk}` : `1px solid ${C.line}`,
+    border: primary ? `1.5px solid ${C.headerInk}` : `1px solid ${C.railRuler}`,
     background: primary ? C.headerInk : "transparent",
     color: primary ? C.railBg : C.railOn,
     fontSize: 11.5,
@@ -222,7 +224,10 @@ function TbbCard({
         <span>↑ {M(state.monthIncome)}</span>
         <span>↓ {M(state.monthExpense)}</span>
       </span>
-      <span style={{ height: 3, borderRadius: 2, background: C.line, position: "relative", display: "block", marginTop: 7 }}>
+      {/* Track is `railRuler` (design's `T.railRuler`, demo 105) — fix-review: was `line`, whose
+          opaque Duet cream rendered a visible tan track on the near-navy rail card; the fill was
+          already correctly `railMute` before this fix. */}
+      <span style={{ height: 3, borderRadius: 2, background: C.railRuler, position: "relative", display: "block", marginTop: 7 }}>
         <span style={{ position: "absolute", left: 0, top: 0, bottom: 0, width: `${ruler.pct}%`, borderRadius: 2, background: C.railMute, display: "block" }} />
       </span>
       <span style={{ fontSize: 10, color: C.railMute, marginTop: 5 }}>{t("{date} · {pct}% of month", { date: shortDay, pct: String(ruler.pct) })}</span>
@@ -250,7 +255,9 @@ function TbbCard({
               marginTop: 12,
               paddingTop: 10,
               border: "none",
-              borderTop: `1px solid ${C.line}`,
+              // `railRuler` (design's `T.railRuler`, demo 114) — fix-review, see the pill/ruler
+              // comments above for why `line` was wrong here.
+              borderTop: `1px solid ${C.railRuler}`,
               background: "none",
               cursor: "pointer",
               fontFamily: font,
@@ -312,7 +319,9 @@ function TbbCard({
               marginTop: 4,
               paddingTop: 8,
               border: "none",
-              borderTop: `1px solid ${C.line}`,
+              // `railBorder` (design's `T.railBorder`, demo 129) — fix-review, see the pill/ruler
+              // comments above.
+              borderTop: `1px solid ${C.railBorder}`,
               background: "none",
               cursor: "pointer",
               fontFamily: font,
