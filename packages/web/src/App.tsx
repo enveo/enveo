@@ -5,12 +5,16 @@ import { LazyChunk, useOpenedOnce } from "./components/lazy";
 import { StartupSplash } from "./components/StartupSplash";
 import { SyncBadge } from "./components/SyncBadge";
 import { UpdatePrompt } from "./components/UpdatePrompt";
-// Type-only imports elsewhere in this file already keep `panel.ts` free of runtime weight
-// (see `backFallback`'s own comment below on why it does NOT import from here) — `primaryScreenFor`
-// is the one runtime export this eager module needs (PR6 Task 5): it decides what the wide
-// primary pane shows while the Add takeover is open, and the module it lives in has zero runtime
-// imports of its own, so this adds only the function's own few bytes to the eager chunk.
-import { primaryScreenFor } from "./components/wide/panel";
+// Type-only imports elsewhere in this file already keep the REST of `panel.ts` free of runtime
+// weight (see `backFallback`'s own comment below on why it does NOT import from here) —
+// `primaryScreenFor` (PR6 Task 5: decides what the wide primary pane shows while the Add takeover
+// is open) and `panelFallbacks` (Task 1, waveA-t1-brief.md: the panel's never-empty "first item"
+// per screen — computed here, once, and threaded into `WideShell`'s bag for `resolvePanel`) are
+// the only two runtime exports this eager module needs; `panel.ts` itself has zero runtime imports
+// of its own, so this only adds the two functions' own bytes to the eager chunk (measured in this
+// task's own verification notes — `resolvePanel`, the module's third runtime export, is NOT
+// referenced from here and stays tree-shaken out of the eager chunk).
+import { panelFallbacks, primaryScreenFor } from "./components/wide/panel";
 import { useStateQuery } from "./lib/api";
 import { useTheme } from "./lib/contexts";
 import { currentMonth, shiftMonth } from "./lib/dates";
@@ -236,7 +240,11 @@ export default function App() {
       setBudgetFillGoals(false);
     }
     setEnvView(null);
-    setAcctView(null);
+    // Task 1 (owner rule 5): the account context PERSISTS across a visit to Settings — every
+    // other nav target still resets it fresh, exactly like `envView` above (Settings is the ONE
+    // documented exception; `resolvePanel`'s `account` kind reads `acctView` on `settings` too —
+    // see panel.ts's own comment on this rung).
+    if (s !== "settings") setAcctView(null);
     // NO `acctViewBeforeEditRef` rung here — abandoning an account-pane edit is handled by the
     // ref's own screen-change effect (the single choke point; see its comment above), which also
     // covers the exits that never come through `nav()` at all (`doneEdit`'s no-history fallback,
@@ -515,6 +523,17 @@ export default function App() {
     if (!drawer && !onboarding && st.x < 28 && dx > 60 && Math.abs(dy) < 45) setDrawer(true);
   };
 
+  // Task 1 (owner rule 1, waveA-t1-brief.md): the panel's never-empty "first item" per screen —
+  // computed ONCE here (state is truthy in both render paths that read it below) and (a) threaded
+  // into `WideShell`'s bag for `resolvePanel`, (b) used for the Accounts row highlight just below
+  // — one derivation, two documented consumers, never re-derived per consumer. `firstTxnId` is
+  // deliberately given the RAW (unfiltered) `state.transactions` rather than `txQuery`/
+  // `txFilters`-filtered results: no `resolvePanel` branch reads it yet (transactions keeps
+  // `empty`/`generic` until C3 lands the `txn` kind — panel.ts's own comment), and wiring the real
+  // `matchesTransactionQuery`/`matchesTransactionFilters` pipeline into this EAGER module for a
+  // value nothing consumes would spend this build's very tight §3f headroom for nothing; C3 is
+  // where that filtering — and `firstTxnId`'s real consumer — actually lands.
+  const fallbacks = state ? panelFallbacks(state, month, state.transactions) : null;
   // The per-screen switch, built off `primaryScreen` rather than raw `screen` (PR6 Task 5) — on
   // phone the two are always identical, so this changes zero phone pixels; on wide, while Add is
   // open, `primaryScreen` is `editReturn`, so this renders the screen Add returns to (the primary
@@ -575,7 +594,17 @@ export default function App() {
       )}
       {primaryScreen === "accounts" && (
         <LazyChunk onDismiss={() => nav("start")}>
-          <AccountsScreen state={state} onMenu={() => setDrawer(true)} onOpenAccount={openAccount} selectedAccountId={acctView?.accountId ?? null} />
+          <AccountsScreen
+            state={state}
+            onMenu={() => setDrawer(true)}
+            onOpenAccount={openAccount}
+            // Task 1: on wide, the panel ALWAYS shows an account now (the fallback, absent an
+            // explicit pick — `resolvePanel`'s `account` kind) — the list highlight must track the
+            // same EFFECTIVE id or the row that matches the panel's content would show as
+            // unselected. Phone has no side panel to stay in sync with (`acctView` never sets
+            // there), so this stays `null` off wide, unchanged.
+            selectedAccountId={wide ? (acctView?.accountId ?? fallbacks?.firstAccountId ?? null) : null}
+          />
         </LazyChunk>
       )}
       {primaryScreen === "reports" && (
@@ -731,6 +760,10 @@ export default function App() {
               reportsView,
               envView,
               acctView,
+              // Task 1: `wide` already implies `!!state` (see `fallbacks`'s own definition above),
+              // so this is never actually null on this path — same non-null-assertion precedent as
+              // `state: state!` just below.
+              panelFallbacks: fallbacks!,
               openTxns,
               panelClosed,
               setEnvView,

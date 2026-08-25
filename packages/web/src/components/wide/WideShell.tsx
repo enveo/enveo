@@ -18,7 +18,7 @@ import { UpdatePrompt } from "../UpdatePrompt";
 import { FoldTbbStrip } from "./FoldTbbStrip";
 import { paneWidthFor } from "./geometry";
 import { PanelHost } from "./PanelHost";
-import { resolvePanel } from "./panel";
+import { type PanelFallbacks, resolvePanel } from "./panel";
 import { Rail } from "./Rail";
 
 /** One right-slot contract (pr4-context.md §13) — computed by App, rendered here verbatim. */
@@ -266,6 +266,10 @@ type WideShellBag = {
    *  rows) both render OUTSIDE this component, so WideShell-local state would need a context
    *  channel anyway. NOT URL-serialised (no phone-parity route exists for it). */
   acctView: { accountId: string } | null;
+  /** Task 1 (owner rule 1, `waveA-t1-brief.md`): the panel's contextual "first item" per screen —
+   *  computed ONCE by App (it owns `state`/`month`/the transaction query+filters `firstTxnId`
+   *  would need) and threaded straight into `resolvePanel` below, never recomputed here. */
+  panelFallbacks: PanelFallbacks;
   openTxns: (f?: { envId?: string; accId?: string; envIds?: ReadonlySet<string>; catId?: string; placeId?: string }) => void;
   panelClosed: boolean;
   setEnvView: (v: null) => void;
@@ -385,6 +389,7 @@ export function WideShell({ bag, rightSlot = null, children }: { bag: WideShellB
     reportsView,
     envView,
     acctView,
+    panelFallbacks,
     openTxns,
     panelClosed,
     setEnvView,
@@ -425,7 +430,7 @@ export function WideShell({ bag, rightSlot = null, children }: { bag: WideShellB
     // (Add lives in the OTHER pane), so this effect never fires just because Add opened/closed.
     if (primaryScreen !== "start") setWidgetSettings(null);
   }, [primaryScreen]);
-  const view = resolvePanel({ screen, reportsView, envView, widgetSettings, acctView });
+  const view = resolvePanel({ screen, reportsView, envView, widgetSettings, acctView }, panelFallbacks);
   const primaryRef = useRef<HTMLDivElement | null>(null);
   const panelRef = useRef<HTMLDivElement | null>(null);
 
@@ -517,11 +522,24 @@ export function WideShell({ bag, rightSlot = null, children }: { bag: WideShellB
       topSurface.close();
       return;
     }
-    if (view.kind === "envelope") setEnvView(null);
-    else if (view.kind === "report") setReportsView("overview");
-    else if (view.kind === "widgets") setWidgetSettings(null);
-    else if (view.kind === "account") setAcctView(null);
-    else if (view.kind === "add") onDoneEdit();
+    // Task 1 (owner rule 1): `envelope`/`report`/`account` now resolve to real content even with
+    // no explicit selection (`source: "fallback"` — panel.ts's `resolvePanel`). Clearing a
+    // selection that was never made is a no-op (the fallback would just resolve again, unchanged)
+    // — so a fallback's ✕/Escape COLLAPSES the panel instead, exactly like the plain `else` branch
+    // below always has for `empty`. A real `source: "selection"` keeps clearing, which — since the
+    // fallback now backs it up — pops to the contextual fallback shown underneath rather than to a
+    // blank placeholder.
+    if (view.kind === "envelope") {
+      if (view.source === "selection") setEnvView(null);
+      else setPanelClosed(true);
+    } else if (view.kind === "report") {
+      if (view.source === "selection") setReportsView("overview");
+      else setPanelClosed(true);
+    } else if (view.kind === "widgets") setWidgetSettings(null);
+    else if (view.kind === "account") {
+      if (view.source === "selection") setAcctView(null);
+      else setPanelClosed(true);
+    } else if (view.kind === "add") onDoneEdit();
     else setPanelClosed(true);
   };
 
@@ -552,6 +570,12 @@ export function WideShell({ bag, rightSlot = null, children }: { bag: WideShellB
   // why the branch below reads `acctView` (the App-owned selection object) rather than
   // `view.accountId` (a plain string — re-selecting the same account would then compare equal and
   // never retrigger the effect, exactly the lesson `addPreset` already taught for `screen`).
+  // Task 1: `report`'s `view.view` is now "spending" even on the FALLBACK (Reports hub, no
+  // subview chosen) — reading it directly here would make a plain hub visit look like a real
+  // selection and defeat the reopen guard below (`selection !== null`). `view.source` already
+  // distinguishes the two cases (panel.ts) — `envelope`/`account` don't need the same treatment
+  // since their underlying `envView`/`acctView` are already null exactly when `source` is
+  // "fallback" (resolvePanel only falls back when the App-owned selection was absent).
   const selection =
     view.kind === "empty"
       ? null
@@ -563,7 +587,9 @@ export function WideShell({ bag, rightSlot = null, children }: { bag: WideShellB
             ? view.widgetId
             : view.kind === "account"
               ? acctView
-              : view.view;
+              : view.source === "selection"
+                ? view.view
+                : null;
   const prevSelection = useRef(selection);
   useEffect(() => {
     if (selection !== null && selection !== prevSelection.current && panelClosed) setPanelClosed(false);
