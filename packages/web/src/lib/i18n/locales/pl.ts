@@ -974,7 +974,7 @@ export const pl: Dict = {
   "Previous day": "Poprzedni dzień",
   "Next day": "Następny dzień",
   "vs the {avg} daily average": "wobec średniej dziennej {avg}",
-  "v{version} · refreshing takes a second, nothing is lost.": "v{version} · odświeżenie zajmie chwilę, nic nie zostanie utracone.",
+  "Currently v{version} · refreshing takes a second, nothing is lost.": "Obecnie v{version} · odświeżenie zajmie chwilę, nic nie zostanie utracone.",
   "{name} {pct}%": "{name} {pct}%",
   // PR5 Home widgets (attention/recent/spending/goals/trends/heatmap) + their EditWidgetsSheet
   // subtitles — brand-new copy, no prior translation to carry over.
