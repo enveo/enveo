@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { type AccentTheme, CORAL, CTA, dark, light, TEAL, themeTokens, tint } from "./theme";
+import { type AccentTheme, CORAL, CTA, dark, light, TEAL, THEMES, themeTokens, tint } from "./theme";
 
 /** Alpha suffixes from the concatenation audit — forms `X+"xx"` (14/18/1a/22) and `${X}xx` (40/44/55/66). */
 const ALPHA_SUFFIXES = ["14", "18", "1a", "22", "40", "44", "55", "66"] as const;
@@ -74,14 +74,27 @@ describe("koral (the app default)", () => {
     expect(vars["--danger"]).toBe("#ef4b58");
     expect(vars["--cta"]).toBe("#ff8d7d");
   });
-  // koral has no `overrides`/`overridesDark`, but its rail alphas still diverge from the base
-  // `light`/`dark` objects (task A2: railActive/accentSoft/selBg track koral's OWN accent, not
-  // teal's default) — everything else stays exactly the base palette.
-  test("palette without overrides = standard light/dark except accent-tracked rail alphas", () => {
+  // koral has no `overrides`/`overridesDark`, but its rail alphas — and now `logo` (design parity
+  // wave A close, item 2) — still diverge from the base `light`/`dark` objects (task A2:
+  // railActive/accentSoft/selBg/logo track koral's OWN accent, not teal's default) — everything
+  // else stays exactly the base palette.
+  test("palette without overrides = standard light/dark except accent-tracked rail alphas (+ logo)", () => {
     const { vars: lv, palette: lp } = themeTokens("koral", false);
-    expect(lp).toEqual({ ...light, railActive: tint(lv["--accent"]!, 0.18), accentSoft: tint(lv["--accent"]!, 0.12), selBg: tint(lv["--accent"]!, 0.1) });
+    expect(lp).toEqual({
+      ...light,
+      railActive: tint(lv["--accent"]!, 0.18),
+      accentSoft: tint(lv["--accent"]!, 0.12),
+      selBg: tint(lv["--accent"]!, 0.1),
+      logo: lv["--accent"]!,
+    });
     const { vars: dv, palette: dp } = themeTokens("koral", true);
-    expect(dp).toEqual({ ...dark, railActive: tint(dv["--accent"]!, 0.18), accentSoft: tint(dv["--accent"]!, 0.12), selBg: tint(dv["--accent"]!, 0.1) });
+    expect(dp).toEqual({
+      ...dark,
+      railActive: tint(dv["--accent"]!, 0.18),
+      accentSoft: tint(dv["--accent"]!, 0.12),
+      selBg: tint(dv["--accent"]!, 0.1),
+      logo: dv["--accent"]!,
+    });
   });
 });
 
@@ -356,6 +369,35 @@ describe("rail chrome tokens (design parity wave A, task A2)", () => {
         expect(palette.bandMute).toBe(palette.headerMute);
       }
     }
+  });
+
+  test("logo: tracks the active accent for the Cisza family, a static coral for Duet (design parity wave A close, item 2)", () => {
+    for (const th of ["teal", "koral", "atrament"] as const) {
+      expect(themeTokens(th, false).palette.logo).toBe(THEMES[th].accent);
+      expect(themeTokens(th, true).palette.logo).toBe(THEMES[th].accentDark);
+    }
+    for (const isDark of [false, true]) {
+      expect(themeTokens("duet", isDark).palette.logo).toBe("#ff8d7d");
+    }
+  });
+
+  test("bandLine2: the design's literal panel-toggle-closed hairline, per theme × mode (design parity wave A close, item 7)", () => {
+    for (const th of ["teal", "koral", "atrament"] as const) {
+      expect(themeTokens(th, false).palette.bandLine2).toBe("#d8d5cc");
+      expect(themeTokens(th, true).palette.bandLine2).toBe("#4b515b");
+    }
+    for (const isDark of [false, true]) {
+      expect(themeTokens("duet", isDark).palette.bandLine2).toBe("rgba(237,239,245,0.28)");
+    }
+  });
+
+  test("negBandInk: Duet's own lighter red ink, distinct from headerNeg (design parity wave A close, item 4)", () => {
+    for (const isDark of [false, true]) {
+      const { palette } = themeTokens("duet", isDark);
+      expect(palette.negBandInk).toBe("#ffc7bf");
+      expect(palette.negBandInk).not.toBe(palette.headerNeg);
+    }
+    expect(themeTokens("teal", false).palette.negBandInk).toBe("#d14b3e");
   });
 });
 

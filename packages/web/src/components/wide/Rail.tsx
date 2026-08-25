@@ -14,7 +14,7 @@ import { store } from "../../lib/store";
 import type { SyncStatus } from "../../lib/sync";
 import { syncNow } from "../../lib/sync";
 import type { Theme } from "../../lib/theme";
-import { CORAL, font, TEAL } from "../../lib/theme";
+import { font, TEAL, tint } from "../../lib/theme";
 import { monthRuler, sumBalances, tbbState } from "../../lib/uiState";
 import { APP_VERSION, buildLabel } from "../../lib/version";
 import { RAIL_W, type ViewMode } from "../../lib/viewMode";
@@ -326,9 +326,15 @@ function TbbCard({
               marginTop: 4,
               paddingTop: 8,
               border: "none",
-              // `railBorder` (design's `T.railBorder`, demo 129) — fix-review, see the pill/ruler
-              // comments above.
-              borderTop: `1px solid ${C.railBorder}`,
+              // `railRuler` (design's `T.railRuler`, demo 129) — NOT `railBorder`: demo 129 is the
+              // 'view all accounts' row (matched by its own `acctCountLine` content below), the
+              // SAME token as the 'Accounts' header divider two rows up; `railBorder` is a
+              // different, unrelated divider (demo 135, outside this card, above the user block —
+              // see `UserBlock`'s own top border below). Design parity wave A close, item 1: an
+              // earlier fix-review pass mis-cited demo 129 as `railBorder` and applied the wrong
+              // token, leaving this divider transparent on Duet while its sibling above read
+              // `railRuler` correctly.
+              borderTop: `1px solid ${C.railRuler}`,
               background: "none",
               cursor: "pointer",
               fontFamily: font,
@@ -478,13 +484,18 @@ function syncBrief(status: SyncStatus, C: Theme, t: TFn): { dot: string; label: 
 }
 
 /**
- * Full sync-status card (design v3:145-157): dot + label (+ a right-aligned queue count when
- * something is waiting) + a short description + one action button. Reads the SAME
- * `useSyncStatus()` the header's `SyncBadge` reads — one sync source of truth, no second poll.
- * `onNav`+`onClose` let the action route to Settings for the two states a blind retry cannot fix
- * (a rejected op needs a human "Discard" decision there; an unproven replica needs the recheck
- * flow there) — SyncBadge's own `onOpenSync` already treats "unauthed" the same way, so this
- * reuses that exact convention rather than inventing a fourth outcome.
+ * Full sync-status card (design v3:145-157): dot + label + a short description + one action
+ * button. Reads the SAME `useSyncStatus()` the header's `SyncBadge` reads — one sync source of
+ * truth, no second poll. `onNav`+`onClose` let the action route to Settings for the two states a
+ * blind retry cannot fix (a rejected op needs a human "Discard" decision there; an unproven
+ * replica needs the recheck flow there) — SyncBadge's own `onOpenSync` already treats "unauthed"
+ * the same way, so this reuses that exact convention rather than inventing a fourth outcome.
+ *
+ * Design parity wave A close, item 5: the design's `sync.queueLine`/`queueDisplay` (a
+ * right-aligned "{n} changes waiting" count in this same header row) is deliberately NOT
+ * implemented — this card's `detail` text below already carries the identical pending-change
+ * count in prose for every state that has one (offline, idle-with-pending), so a second, terser
+ * copy of the same number in the header would only duplicate it, not add information.
  */
 function SyncCard({ onNav, onClose }: { onNav: (s: ScreenId) => void; onClose: () => void }) {
   const C = useTheme();
@@ -494,8 +505,12 @@ function SyncCard({ onNav, onClose }: { onNav: (s: ScreenId) => void; onClose: (
   const { dot, label } = syncBrief(status, C, t);
   // Design parity fix (v3:145, `sync.border2`): the card's OUTLINE turns danger-toned in lockstep
   // with the dot for the two states that need a human decision (a rejected op, or a hard sync
-  // error) — the SAME precedence the dot above already uses, so the border never disagrees with it.
-  const cardBorder = deadLetters > 0 || state === "error" ? CORAL : C.line;
+  // error) — the SAME precedence the dot above already uses, so the border never disagrees with
+  // it. `tint(C.neg, 0.32)` (design's `negLine`, e.g. Cisza `rgba(209,75,62,0.32)`) — NOT the
+  // global `CORAL` constant, which is a single brand-danger swatch identical across every accent
+  // theme and so drifted from the dot's own `C.neg` (design parity wave A close, item 5: the
+  // border and the dot rendered two visibly different reds).
+  const cardBorder = deadLetters > 0 || state === "error" ? tint(C.neg, 0.32) : C.line;
 
   let detail = t("Last sync: {rel}.", { rel: relSync(lastSyncAt, lang) });
   let action: "sync" | "review" = "sync";
@@ -647,6 +662,10 @@ function UserBlock({ mode, screen, onNav, onInstall }: { mode: WideMode; screen:
   const initial = (displayName.trim()[0] ?? "?").toUpperCase();
   const closeMenu = () => setMenuOpen(false);
   const { dot: syncDot, label: syncLabel } = syncBrief(syncStatus, C, t);
+  // Design parity wave A close, item 4 (v3:3135-3137): the persistent row's own error treatment —
+  // SAME precedence `syncBrief`'s dot already uses (dead letters, then a hard sync error), so the
+  // row's background/ink never disagree with the dot sitting right next to them.
+  const isSyncError = syncStatus.deadLetters > 0 || syncStatus.state === "error";
 
   const quicks: Array<{ key: string; active: boolean; label: string; d: string; onClick: () => void }> = [
     {
@@ -676,7 +695,18 @@ function UserBlock({ mode, screen, onNav, onInstall }: { mode: WideMode; screen:
   ];
 
   return (
-    <div style={{ width: "100%", flexShrink: 0, marginTop: 10, paddingTop: 10, borderTop: `1px solid ${C.line}`, position: "relative" }}>
+    <div
+      style={{
+        width: "100%",
+        flexShrink: 0,
+        marginTop: 10,
+        paddingTop: 10,
+        // `railBorder` (design's `T.railBorder`, demo 135 — the divider above the user block,
+        // outside the TbbCard) — design parity wave A close, item 1.
+        borderTop: `1px solid ${C.railBorder}`,
+        position: "relative",
+      }}
+    >
       {menuOpen && (
         <>
           {/* click-away backdrop — plain fixed div (same idiom as Sheet/Drawer's own backdrop),
@@ -808,8 +838,10 @@ function UserBlock({ mode, screen, onNav, onInstall }: { mode: WideMode; screen:
             height: 26,
             flexShrink: 0,
             borderRadius: "50%",
-            background: "var(--cta)",
-            color: "#fff",
+            // `logo`/`railBg` (design's `T.logo`/`T.railBg`, demo 172) — NOT the CTA coral, which
+            // showed regardless of the user's actual accent (design parity wave A close, item 2).
+            background: C.logo,
+            color: C.railBg,
             fontSize: 11,
             fontWeight: 750,
             display: "flex",
@@ -848,13 +880,31 @@ function UserBlock({ mode, screen, onNav, onInstall }: { mode: WideMode; screen:
             minHeight: 30,
             marginTop: 4,
             padding: "0 9px",
+            borderRadius: 8,
             border: "none",
-            background: "none",
+            // Design parity wave A close, item 4 (v3:3136): a flat literal, not per-theme — the
+            // design keeps this exact tint regardless of Cisza/Duet (unlike the ink just below,
+            // which IS per-theme), so it stays a bare constant rather than a new token.
+            background: isSyncError ? "rgba(209,75,62,0.16)" : "none",
             cursor: "pointer",
           }}
         >
           <span aria-hidden style={{ width: 5, height: 5, borderRadius: "50%", background: syncDot, flexShrink: 0 }} />
-          <span style={{ flexShrink: 0, fontSize: 9.5, fontWeight: 650, letterSpacing: "0.02em", color: C.headerInk, fontFamily: font }}>{syncLabel}</span>
+          {/* Design parity wave A close, item 4 (v3:3137, `T.negBandInk`): the label's ink flips to
+              the theme's own error-ink for this row (Duet's is deliberately lighter than
+              `headerInk`/`headerNeg` — see the token's own doc comment). */}
+          <span
+            style={{
+              flexShrink: 0,
+              fontSize: 9.5,
+              fontWeight: 650,
+              letterSpacing: "0.02em",
+              color: isSyncError ? C.negBandInk : C.headerInk,
+              fontFamily: font,
+            }}
+          >
+            {syncLabel}
+          </span>
           <span
             style={{
               flex: 1,
@@ -954,7 +1004,9 @@ export function Rail({
         // existing `C.surface`. Painting `C.railBg` there too would go navy under Duet while
         // those icon colors stay Cisza-calibrated — invisible-icon regression, not a fold gap.
         background: mode === "desktop" ? C.railBg : C.surface,
-        borderRight: `1px solid ${C.line}`,
+        // `railBorder` (design's `T.railBorder`, demo 87 — the rail's OWN outer separator, not
+        // the content surface's `line`) — design parity wave A close, item 1.
+        borderRight: `1px solid ${C.railBorder}`,
         // NOT overflow:hidden — see the UserBlock comment above: an overflow-clipping ancestor
         // cuts an absolutely-positioned descendant exactly like a transform-created containing
         // block would, and this root is one (the 236px menu vs. a 68px fold rail). Task 4's
@@ -973,7 +1025,10 @@ export function Rail({
         }}
       >
         <LogoMark size={mode === "desktop" ? 28 : 32} />
-        {mode === "desktop" && <span style={{ fontSize: 15, fontWeight: 700, color: C.text }}>Enveo</span>}
+        {/* `headerInk` (design's `T.railTitle`, demo 90) — NOT `text`, which is calibrated for
+            Cisza's cream content surfaces and read as near-illegible dark text on Duet's navy
+            rail (design parity wave A close, item 3; same reasoning as `NavRow`'s `fg` above). */}
+        {mode === "desktop" && <span style={{ fontSize: 15, fontWeight: 700, color: C.headerInk }}>Enveo</span>}
       </div>
       {/* Design parity wave A, task A2 (demo 92): the nav rows form their OWN column, 3px apart
           on desktop — a distinct gap from the 10px separating the rail's top-level sections. */}

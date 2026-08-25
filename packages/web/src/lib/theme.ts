@@ -87,6 +87,31 @@ export interface Theme {
    */
   railRuler: string;
   railBorder: string;
+  /**
+   * The user-block avatar circle's background (design's `T.logo`, demo 172 — also the small
+   * square logo mark at demo 89, but that one is `LogoMark`'s own fixed brand asset here, not a
+   * themed fill, so this token's only real consumer is the avatar). Cisza-family: tracks the
+   * ACTIVE accent, same as `railActive`/`accentSoft` (`themeTokens()` overwrites this for every
+   * non-Duet theme); Duet: the same static coral already used for `nav.ind`/`ctaDark`, not its
+   * literal navy accent (design parity wave A close, item 2 — avatar was `var(--cta)` before,
+   * always coral regardless of theme).
+   */
+  logo: string;
+  /**
+   * A second, fainter band hairline (design's `T.bandLine2`) — used by the wide panel toggle's
+   * CLOSED-state border (demo 4161, `panelBtnBorder`), transparent while open. Distinct from
+   * `bandLine`/`line`: the design gives it its own, subtler value even in Cisza, and Duet's is a
+   * translucent white rather than the opaque cream `bandLine` uses on Duet's cream content
+   * surfaces (design parity wave A close, item 7).
+   */
+  bandLine2: string;
+  /**
+   * Negative-state TEXT color for the persistent rail sync row's error ink (design's
+   * `T.negBandInk`, demo derivation 3137) — distinct from `neg`/`headerNeg`: Duet's literal design
+   * value (`#ffc7bf`) is a lighter tint than `headerNeg`'s `#f28b7d`, calibrated specifically for
+   * this row rather than reused from the header (design parity wave A close, item 4).
+   */
+  negBandInk: string;
 }
 
 export const light: Theme = {
@@ -127,6 +152,11 @@ export const light: Theme = {
   // equal `line` exactly; railRuler is one step darker/warmer than `line`, still subtle.
   railRuler: "#e2e0d8",
   railBorder: "#ece9e2",
+  // Default accent is Sage (fresh settings) — themeTokens() overwrites this for every OTHER
+  // Cisza-family accent (koral/atrament); dead here otherwise, same convention as railActive above.
+  logo: "#4fa583",
+  bandLine2: "#d8d5cc",
+  negBandInk: "#d14b3e",
 };
 export const dark: Theme = {
   bg: "#3b414b",
@@ -174,6 +204,15 @@ export const dark: Theme = {
   // the existing hairline rather than inventing a new hex.
   railRuler: "#4b515b",
   railBorder: "#4b515b",
+  // Sage's dark accent (fresh settings' default) — themeTokens() overwrites this for every OTHER
+  // Cisza-family accent, same convention as railActive's own dark placeholder above.
+  logo: "#77c4a2",
+  // No plain-dark rail exists in the design source — reuse the existing hairline, same convention
+  // as railRuler/railBorder above.
+  bandLine2: "#4b515b",
+  // No plain-dark Cisza literal exists in the design source — reuse the general dark negative
+  // color already audited for legibility on this mode's card/surface tones.
+  negBandInk: "#f5a297",
 };
 
 export const ENV_PALETTE = ["#f3c45f", "#7ca968", "#cc4a4a", "#3a3a52", "#4a5a5e", "#8f84a8", "#f1dca0", "#ccd9b6", "#f0c84f", "#aed6ea", "#f0a8c4", "#a8dce0"];
@@ -363,6 +402,13 @@ export const THEMES: Record<AccentTheme, ThemeDef> = {
       // visible tan ruler track and tan dividers here before these existed.
       railRuler: "rgba(255,255,255,0.16)",
       railBorder: "transparent",
+      // Design's literal DUET numbers (parity wave A close, items 2/7/4): the avatar's coral
+      // (matches `logo`/`nav.ind` elsewhere), the panel toggle's translucent-white closed border,
+      // and the sync row's error ink (lighter than `headerNeg` on purpose — calibrated for this
+      // specific row).
+      logo: "#ff8d7d",
+      bandLine2: "rgba(237,239,245,0.28)",
+      negBandInk: "#ffc7bf",
     },
     overridesDark: {
       bg: "#131b2e",
@@ -394,6 +440,11 @@ export const THEMES: Record<AccentTheme, ThemeDef> = {
       railMute: "#8fa2cc",
       railRuler: "rgba(255,255,255,0.16)",
       railBorder: "transparent",
+      // Same single DUET definition covers both modes (design source has no separate dark
+      // variant) — same convention as railRuler/railBorder just above.
+      logo: "#ff8d7d",
+      bandLine2: "rgba(237,239,245,0.28)",
+      negBandInk: "#ffc7bf",
     },
   },
 };
@@ -437,7 +488,7 @@ export function themeTokens(t: AccentTheme, isDark: boolean): { vars: Record<str
   // atrament) — Duet already supplied its own values via `overrides`/`overridesDark` above (its
   // rail highlight is the established coral tone, not its literal navy accent).
   if (t !== "duet") {
-    palette = { ...palette, railActive: tint(accent, 0.18), accentSoft: tint(accent, 0.12), selBg: tint(accent, 0.1) };
+    palette = { ...palette, railActive: tint(accent, 0.18), accentSoft: tint(accent, 0.12), selBg: tint(accent, 0.1), logo: accent };
   }
   // Nav defaults = EXACTLY today's BottomNav (bg C.bg, active C.text,
   // indicator = accent, inactive C.mute) — a teal regression guard.
