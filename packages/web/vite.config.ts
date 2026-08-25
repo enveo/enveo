@@ -1,4 +1,5 @@
 import { execSync } from "node:child_process";
+import { readFileSync } from "node:fs";
 import react from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
 import { VitePWA } from "vite-plugin-pwa";
@@ -40,6 +41,20 @@ export default defineConfig({
   },
   plugins: [
     react(),
+    
+
+
+
+
+    {
+      name: "enveo-emit-version-json",
+      generateBundle() {
+        const src = readFileSync("src/lib/version.ts", "utf8");
+        const m = /APP_VERSION = "([^"]+)"/.exec(src);
+        if (!m) throw new Error("APP_VERSION not found in src/lib/version.ts");
+        this.emitFile({ type: "asset", fileName: "version.json", source: JSON.stringify({ version: m[1] }) });
+      },
+    },
     VitePWA({
       registerType: "prompt",
       injectRegister: null,
@@ -68,6 +83,8 @@ export default defineConfig({
         ],
       },
       workbox: {
+        // version.json must ALWAYS come from the network (see the emit plugin above).
+        globIgnores: ["**/version.json"],
         
 
 

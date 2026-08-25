@@ -840,6 +840,7 @@ export const MESSAGES = [
   "vs 3-mo median ({amount})",
   "vs median",
   "vs the {avg} daily average",
+  "v{version} · refreshing takes a second, nothing is lost.",
   "yesterday",
   "you'll split it into envelopes in the budget",
   "{amount} from To be budgeted ({pool} available)",
