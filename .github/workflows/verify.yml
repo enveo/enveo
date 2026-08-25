@@ -64,6 +64,9 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ inputs.ref }}
+          # Recognition evaluation executes an immutable accepted baseline by exact commit.
+          # A shallow checkout makes that safety gate fail before it can inspect either side.
+          fetch-depth: 0
 
       # AGENTS.md is the byte-identical public mirror of CLAUDE.md (agent-standard filename);
       # they have drifted before — this is the guard.
