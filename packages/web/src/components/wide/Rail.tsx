@@ -14,7 +14,7 @@ import { store } from "../../lib/store";
 import type { SyncStatus } from "../../lib/sync";
 import { syncNow } from "../../lib/sync";
 import type { Theme } from "../../lib/theme";
-import { font, TEAL } from "../../lib/theme";
+import { CORAL, font, TEAL } from "../../lib/theme";
 import { monthRuler, sumBalances, tbbState } from "../../lib/uiState";
 import { APP_VERSION, buildLabel } from "../../lib/version";
 import { RAIL_W, type ViewMode } from "../../lib/viewMode";
@@ -428,6 +428,10 @@ function SyncCard({ onNav, onClose }: { onNav: (s: ScreenId) => void; onClose: (
   const status = useSyncStatus();
   const { state, pending, deadLetters, lastSyncAt, ownerUnproven } = status;
   const { dot, label } = syncBrief(status, C, t);
+  // Design parity fix (v3:145, `sync.border2`): the card's OUTLINE turns danger-toned in lockstep
+  // with the dot for the two states that need a human decision (a rejected op, or a hard sync
+  // error) — the SAME precedence the dot above already uses, so the border never disagrees with it.
+  const cardBorder = deadLetters > 0 || state === "error" ? CORAL : C.line;
 
   let detail = t("Last sync: {rel}.", { rel: relSync(lastSyncAt, lang) });
   let action: "sync" | "review" = "sync";
@@ -464,7 +468,9 @@ function SyncCard({ onNav, onClose }: { onNav: (s: ScreenId) => void; onClose: (
   };
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 7, padding: "9px 10px", borderRadius: 10, background: C.bg, border: `1px solid ${C.line}` }}>
+    <div
+      style={{ display: "flex", flexDirection: "column", gap: 7, padding: "9px 10px", borderRadius: 10, background: C.bg, border: `1px solid ${cardBorder}` }}
+    >
       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
         <span aria-hidden style={{ width: 7, height: 7, borderRadius: "50%", background: dot, flexShrink: 0 }} />
         <span style={{ fontSize: 12, fontWeight: 700, color: C.text }}>{label}</span>
@@ -680,7 +686,11 @@ function UserBlock({ mode, screen, onNav, onInstall }: { mode: WideMode; screen:
                 fontVariantNumeric: "tabular-nums",
               }}
             >
-              <span>{`v${APP_VERSION}${buildLabel() ? ` · ${buildLabel()}` : ""}`}</span>
+              {/* Design parity fix (v3:165, derivation 4189): the popover footer's own field is the
+                  literal `appVersion` — brand + bare version, NEVER the build stamp. The combined
+                  "v{version} · build …" string belongs to the persistent rail row below (v3:181,
+                  derivation 4354) — the two were swapped in the first pass of this task. */}
+              <span>{`Enveo v${APP_VERSION}`}</span>
               <button
                 onClick={() => {
                   closeMenu();
@@ -793,7 +803,11 @@ function UserBlock({ mode, screen, onNav, onInstall }: { mode: WideMode; screen:
               whiteSpace: "nowrap",
             }}
           >
-            {buildLabel() || `v${APP_VERSION}`}
+            {/* Design parity fix (v3:181, derivation 4354): `buildLine` is version-ALWAYS-prefixed
+                ("v3.8.0 · build 2026-08-16 13:34") — this is the one row the owner needs to read
+                his build off without opening anything, so it must never degrade to the build stamp
+                ALONE (which drops the version the instant a build stamp exists — the normal case). */}
+            {`v${APP_VERSION}${buildLabel() ? ` · ${buildLabel()}` : ""}`}
           </span>
         </button>
       )}
