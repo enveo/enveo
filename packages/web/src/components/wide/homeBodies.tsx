@@ -91,7 +91,16 @@ export function EnvelopePillGrid({ state, month, mode, onOpenEnvelope }: Envelop
                 border: "none",
                 borderRadius: 9,
                 padding: "7px 9px",
-                minHeight: 0,
+                // House >=30x30 touch-target floor (measured, not asserted): the design's own
+                // box (padding 7px 9px around 11px text) renders 27px tall — 3px short. `fold`
+                // is an unfolded foldable (viewMode.ts), a touch surface, so this pill needs the
+                // floor even though the design source has no explicit height here. box-sizing
+                // border-box + minHeight makes 30 the TOTAL box height without touching the
+                // design's padding/font-size/colors/radius — the only visible delta is ~1.5px of
+                // extra vertical whitespace, centered by the flex `alignItems: "center"` already
+                // on this button.
+                boxSizing: "border-box",
+                minHeight: 30,
                 cursor: "pointer",
                 textAlign: "left",
                 fontFamily: "inherit",
