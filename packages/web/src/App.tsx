@@ -1,18 +1,27 @@
-import type { Transaction } from "@enveo/shared";
-import { lazy, useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { computeStateResponse, type Transaction } from "@enveo/shared";
+import { lazy, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { BottomNav, Drawer, type ScreenId, StyleInjector } from "./components/chrome";
 import { LazyChunk, useOpenedOnce } from "./components/lazy";
 import { StartupSplash } from "./components/StartupSplash";
 import { SyncBadge } from "./components/SyncBadge";
 import { UpdatePrompt } from "./components/UpdatePrompt";
-// Type-only imports elsewhere in this file already keep `panel.ts` free of runtime weight
-// (see `backFallback`'s own comment below on why it does NOT import from here) — `primaryScreenFor`
-// is the one runtime export this eager module needs (PR6 Task 5): it decides what the wide
-// primary pane shows while the Add takeover is open, and the module it lives in has zero runtime
-// imports of its own, so this adds only the function's own few bytes to the eager chunk.
-import { primaryScreenFor } from "./components/wide/panel";
-import { useStateQuery } from "./lib/api";
-import { useTheme } from "./lib/contexts";
+// Type-only imports elsewhere in this file already keep the REST of `panel.ts` free of runtime
+// weight (see `backFallback`'s own comment below on why it does NOT import from here) —
+// `primaryScreenFor` (PR6 Task 5: decides what the wide primary pane shows while the Add takeover
+// is open) and `panelFallbacks` (Task 1, waveA-t1-brief.md: the panel's never-empty "first item"
+// per screen — computed here, once, and threaded into `WideShell`'s bag for `resolvePanel`) are
+// the only two runtime exports this eager module needs; `panel.ts` itself has zero runtime imports
+// of its own, so this only adds the two functions' own bytes to the eager chunk (measured in this
+// task's own verification notes — `resolvePanel`, the module's third runtime export, is NOT
+// referenced from here and stays tree-shaken out of the eager chunk).
+import { panelFallbacks, primaryScreenFor } from "./components/wide/panel";
+
+
+
+
+import type { RightSlot } from "./components/wide/WideShell";
+import { useLedgerVersion, useStateQuery } from "./lib/api";
+import { useMask, useTheme } from "./lib/contexts";
 import { currentMonth, shiftMonth } from "./lib/dates";
 import { useT } from "./lib/i18n";
 import { historyAction, parseUrl, routeToUrl } from "./lib/routing";
@@ -21,6 +30,7 @@ import { store } from "./lib/store";
 import { bootOnce, retryBoot } from "./lib/sync";
 import { font, P, TEAL } from "./lib/theme";
 import type { TransactionFilters } from "./lib/transactionSearch";
+import { APP_VERSION, buildLabel } from "./lib/version";
 import { PHONE_COL, useViewMode } from "./lib/viewMode";
 import { AddScreen, type Tab as AddTab } from "./screens/Add";
 import { LoginScreen } from "./screens/Login";
@@ -108,6 +118,9 @@ export function backFallback(s: {
 export default function App() {
   const C = useTheme();
   const { t } = useT();
+  // Task A5's Accounts band caption ("Balance {amount}") — discreet mode must mask it exactly
+  // like every other on-screen amount (house rule).
+  const M = useMask();
   
 
   const mode = useViewMode();
@@ -225,6 +238,21 @@ export default function App() {
   // flashes to an "Add" title/content and back to `editReturn` — it just never left. On phone
   // this is always `screen` unchanged (the full-screen Add takeover there IS the current screen).
   const primaryScreen = wide ? primaryScreenFor(screen, editReturn) : screen;
+  // Accounts/Reports band captions ("Balance {amount}" / "Net worth {amount}", waveA-t5-brief.md
+  // + design parity wave A close, item 9) — the SAME GLOBAL total backs both (design's own
+  // `netTotal`, demo 4174/4351: one value, read from two spots), computed at `currentMonth()`,
+  // never the viewed `month` (house rule; the same computation Accounts.tsx's own header total
+  // already uses, non-archived accounts only). Gated to the two screens that show it so phone
+  // (and every other wide screen) never pays for the extra recompute.
+  const ledgerVersion = useLedgerVersion();
+  const globalNetTotal = useMemo(() => {
+    if (!wide || (primaryScreen !== "accounts" && primaryScreen !== "reports")) return 0;
+    const l = store.getLedger();
+    if (!l) return 0;
+    return computeStateResponse(l, currentMonth())
+      .accounts.filter((a) => !a.archived)
+      .reduce((s, a) => s + a.balance, 0);
+  }, [ledgerVersion, wide, primaryScreen]);
 
   
 
@@ -236,7 +264,11 @@ export default function App() {
       setBudgetFillGoals(false);
     }
     setEnvView(null);
-    setAcctView(null);
+    
+
+
+
+    if (s !== "settings") setAcctView(null);
     // NO `acctViewBeforeEditRef` rung here — abandoning an account-pane edit is handled by the
     // ref's own screen-change effect (the single choke point; see its comment above), which also
     // covers the exits that never come through `nav()` at all (`doneEdit`'s no-history fallback,
@@ -515,6 +547,20 @@ export default function App() {
     if (!drawer && !onboarding && st.x < 28 && dx > 60 && Math.abs(dy) < 45) setDrawer(true);
   };
 
+  // Task 1 (owner rule 1, waveA-t1-brief.md): the panel's never-empty "first item" per screen —
+  // computed ONCE here (state is truthy in both render paths that read it below) and (a) threaded
+  // into `WideShell`'s bag for `resolvePanel`, (b) used for the Accounts row highlight just below
+  // — one derivation, two documented consumers, never re-derived per consumer. `firstTxnId` is
+  // deliberately given the RAW (unfiltered) `state.transactions` rather than `txQuery`/
+  // `txFilters`-filtered results: no `resolvePanel` branch reads it yet (transactions keeps
+  // `empty`/`generic` until C3 lands the `txn` kind — panel.ts's own comment), and wiring the real
+  // `matchesTransactionQuery`/`matchesTransactionFilters` pipeline into this EAGER module for a
+  // value nothing consumes would spend this build's very tight §3f headroom for nothing; C3 is
+  // where that filtering — and `firstTxnId`'s real consumer — actually lands.
+  // Design parity wave A close, item 10: gated on `wide` — its only consumers are wide-only
+  // (`WideShell`'s bag, the Accounts row highlight just below, itself already `wide`-gated) — so a
+  // phone render no longer pays for this sort+filter every time, only to discard the result.
+  const fallbacks = wide && state ? panelFallbacks(state, month, state.transactions) : null;
   
 
 
@@ -575,7 +621,17 @@ export default function App() {
       )}
       {primaryScreen === "accounts" && (
         <LazyChunk onDismiss={() => nav("start")}>
-          <AccountsScreen state={state} onMenu={() => setDrawer(true)} onOpenAccount={openAccount} selectedAccountId={acctView?.accountId ?? null} />
+          <AccountsScreen
+            state={state}
+            onMenu={() => setDrawer(true)}
+            onOpenAccount={openAccount}
+            // Task 1: on wide, the panel ALWAYS shows an account now (the fallback, absent an
+            // explicit pick — `resolvePanel`'s `account` kind) — the list highlight must track the
+            // same EFFECTIVE id or the row that matches the panel's content would show as
+            // unselected. Phone has no side panel to stay in sync with (`acctView` never sets
+            // there), so this stays `null` off wide, unchanged.
+            selectedAccountId={wide ? (acctView?.accountId ?? fallbacks?.firstAccountId ?? null) : null}
+          />
         </LazyChunk>
       )}
       {primaryScreen === "reports" && (
@@ -696,16 +752,31 @@ export default function App() {
   // state — the sheet never mounts on wide, see WideShell's start-screen branch) but instead
   // toggles `WideHome`'s own board edit mode, with the label flipping to "Done" while active —
   // one slot, one computed VALUE, no fork in WideShell's header code.
-  const wideRightSlot =
+  //
+  // Design-parity wave A, task A5 (waveA-t5-brief.md; design v3:4351's `headerRight`): widened to
+  // the two-`kind` `RightSlot` union — Start/Budget stay clickable ("action"), Accounts/Reports/
+  // Settings are inert captions (Reports added in wave A close, item 9 — Transactions' own "{n}
+  // shown" caption lives in `WideShell.tsx` instead, since it needs `lib/transactionSearch`'s
+  // filtering helpers, which this EAGER module must not pull in — see that file's own comment).
+  // Settings' version/build string follows the SAME untranslated convention Settings.tsx/Rail.tsx
+  // already use for it (a technical build stamp, not a phrase) — not wrapped in `t()`.
+  const wideRightSlot: RightSlot =
     primaryScreen === "start"
       ? {
+          kind: "action",
           label: wideBoardEdit ? t("Done") : t("Edit widgets"),
           ariaLabel: wideBoardEdit ? t("Done") : t("Edit widgets"),
           onClick: () => setWideBoardEdit(!wideBoardEdit),
         }
       : primaryScreen === "budget"
-        ? { label: t("Manage envelopes"), ariaLabel: t("Manage envelopes"), onClick: () => setManageOpen(true) }
-        : null;
+        ? { kind: "action", label: t("Manage envelopes"), ariaLabel: t("Manage envelopes"), onClick: () => setManageOpen(true) }
+        : primaryScreen === "accounts"
+          ? { kind: "caption", text: t("Balance {amount}", { amount: M(globalNetTotal) }) }
+          : primaryScreen === "reports"
+            ? { kind: "caption", text: t("Net worth {amount}", { amount: M(globalNetTotal) }) }
+            : primaryScreen === "settings"
+              ? { kind: "caption", text: `Enveo v${APP_VERSION}${buildLabel() ? ` · ${buildLabel()}` : ""}` }
+              : null;
 
   if (wide) {
     return (
@@ -731,6 +802,10 @@ export default function App() {
               reportsView,
               envView,
               acctView,
+              // Task 1: `wide` already implies `!!state` (see `fallbacks`'s own definition above),
+              // so this is never actually null on this path — same non-null-assertion precedent as
+              // `state: state!` just below.
+              panelFallbacks: fallbacks!,
               openTxns,
               panelClosed,
               setEnvView,
@@ -740,6 +815,12 @@ export default function App() {
               
 
               state: state!,
+              
+
+
+
+              txQuery,
+              txFilters,
               onQuickAdd,
               onFillGoals: openBudgetFillGoals,
               onInstall: () => setInstallSheet(true),
