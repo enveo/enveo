@@ -238,13 +238,15 @@ export default function App() {
   // flashes to an "Add" title/content and back to `editReturn` — it just never left. On phone
   // this is always `screen` unchanged (the full-screen Add takeover there IS the current screen).
   const primaryScreen = wide ? primaryScreenFor(screen, editReturn) : screen;
-  // Accounts band caption ("Balance {amount}", waveA-t5-brief.md) — account balances are GLOBAL
-  // (currentMonth()), never the viewed `month` (house rule; the same computation Accounts.tsx's
-  // own header total already uses, non-archived accounts only). Gated to the one screen that
-  // shows it so phone (and every other wide screen) never pays for the extra recompute.
+  // Accounts/Reports band captions ("Balance {amount}" / "Net worth {amount}", waveA-t5-brief.md
+  // + design parity wave A close, item 9) — the SAME GLOBAL total backs both (design's own
+  // `netTotal`, demo 4174/4351: one value, read from two spots), computed at `currentMonth()`,
+  // never the viewed `month` (house rule; the same computation Accounts.tsx's own header total
+  // already uses, non-archived accounts only). Gated to the two screens that show it so phone
+  // (and every other wide screen) never pays for the extra recompute.
   const ledgerVersion = useLedgerVersion();
-  const accountsNetTotal = useMemo(() => {
-    if (!wide || primaryScreen !== "accounts") return 0;
+  const globalNetTotal = useMemo(() => {
+    if (!wide || (primaryScreen !== "accounts" && primaryScreen !== "reports")) return 0;
     const l = store.getLedger();
     if (!l) return 0;
     return computeStateResponse(l, currentMonth())
@@ -555,7 +557,10 @@ export default function App() {
   // `matchesTransactionQuery`/`matchesTransactionFilters` pipeline into this EAGER module for a
   // value nothing consumes would spend this build's very tight §3f headroom for nothing; C3 is
   // where that filtering — and `firstTxnId`'s real consumer — actually lands.
-  const fallbacks = state ? panelFallbacks(state, month, state.transactions) : null;
+  // Design parity wave A close, item 10: gated on `wide` — its only consumers are wide-only
+  // (`WideShell`'s bag, the Accounts row highlight just below, itself already `wide`-gated) — so a
+  // phone render no longer pays for this sort+filter every time, only to discard the result.
+  const fallbacks = wide && state ? panelFallbacks(state, month, state.transactions) : null;
   
 
 
@@ -749,10 +754,12 @@ export default function App() {
   // one slot, one computed VALUE, no fork in WideShell's header code.
   //
   // Design-parity wave A, task A5 (waveA-t5-brief.md; design v3:4351's `headerRight`): widened to
-  // the two-`kind` `RightSlot` union — Start/Budget stay clickable ("action"), Accounts/Settings
-  // are inert captions. Settings' version/build string follows the SAME untranslated convention
-  // Settings.tsx/Rail.tsx already use for it (a technical build stamp, not a phrase) — not
-  // wrapped in `t()`.
+  // the two-`kind` `RightSlot` union — Start/Budget stay clickable ("action"), Accounts/Reports/
+  // Settings are inert captions (Reports added in wave A close, item 9 — Transactions' own "{n}
+  // shown" caption lives in `WideShell.tsx` instead, since it needs `lib/transactionSearch`'s
+  // filtering helpers, which this EAGER module must not pull in — see that file's own comment).
+  // Settings' version/build string follows the SAME untranslated convention Settings.tsx/Rail.tsx
+  // already use for it (a technical build stamp, not a phrase) — not wrapped in `t()`.
   const wideRightSlot: RightSlot =
     primaryScreen === "start"
       ? {
@@ -764,10 +771,12 @@ export default function App() {
       : primaryScreen === "budget"
         ? { kind: "action", label: t("Manage envelopes"), ariaLabel: t("Manage envelopes"), onClick: () => setManageOpen(true) }
         : primaryScreen === "accounts"
-          ? { kind: "caption", text: t("Balance {amount}", { amount: M(accountsNetTotal) }) }
-          : primaryScreen === "settings"
-            ? { kind: "caption", text: `Enveo v${APP_VERSION}${buildLabel() ? ` · ${buildLabel()}` : ""}` }
-            : null;
+          ? { kind: "caption", text: t("Balance {amount}", { amount: M(globalNetTotal) }) }
+          : primaryScreen === "reports"
+            ? { kind: "caption", text: t("Net worth {amount}", { amount: M(globalNetTotal) }) }
+            : primaryScreen === "settings"
+              ? { kind: "caption", text: `Enveo v${APP_VERSION}${buildLabel() ? ` · ${buildLabel()}` : ""}` }
+              : null;
 
   if (wide) {
     return (
@@ -806,6 +815,12 @@ export default function App() {
               
 
               state: state!,
+              
+
+
+
+              txQuery,
+              txFilters,
               onQuickAdd,
               onFillGoals: openBudgetFillGoals,
               onInstall: () => setInstallSheet(true),
