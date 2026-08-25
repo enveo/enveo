@@ -39,6 +39,11 @@ const inImage = (image: string, script: string): string => run(["docker", "run",
  */
 const bunInImage = (image: string, source: string): string => run(["docker", "run", "--rm", "--network=none", "--entrypoint", "bun", image, "-e", source]);
 
+/** Parse actual module references without mistaking comments or string contents for code. */
+export function scanModuleSpecifiers(source: string, loader: "ts" | "tsx"): string[] {
+  return new Bun.Transpiler({ loader }).scanImports(source).map(({ path }) => path);
+}
+
 /**
  * Every file under /app starting with the ELF magic (`\x7fELF`). Symlinks are not followed —
  * the isolated store is a symlink forest and each real file is visited exactly once through its
@@ -84,6 +89,7 @@ console.log(found.join("\\n"));
 const IMPORT_SWEEP = `
 const { readdirSync, readFileSync } = require("node:fs");
 const { dirname } = require("node:path");
+const scanModuleSpecifiers = ${scanModuleSpecifiers.toString()};
 const roots = ["/app/packages/api/src", "/app/packages/shared/src"];
 const files = [];
 const walk = (dir) => {
@@ -101,10 +107,8 @@ for (const root of roots) walk(root);
 const problems = [];
 for (const file of files) {
   const source = readFileSync(file, "utf8");
-  const specifiers = new Set();
-  for (const m of source.matchAll(/(?:^|[\\s;])(?:import|export)[^'"\\n]*?from\\s*['"]([^'"]+)['"]/g)) specifiers.add(m[1]);
-  for (const m of source.matchAll(/(?:^|[\\s;])import\\s*['"]([^'"]+)['"]/g)) specifiers.add(m[1]);
-  for (const m of source.matchAll(/\\brequire\\s*\\(\\s*['"]([^'"]+)['"]\\s*\\)/g)) specifiers.add(m[1]);
+  const loader = file.endsWith(".tsx") ? "tsx" : "ts";
+  const specifiers = new Set(scanModuleSpecifiers(source, loader));
   for (const specifier of specifiers) {
     if (specifier.startsWith("node:") || specifier.startsWith("bun:")) continue;
     try { Bun.resolveSync(specifier, dirname(file)); }
