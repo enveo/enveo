@@ -856,6 +856,7 @@ export const MESSAGES = [
   "{date} · {pct}% of month",
   "{funded} of {target}",
   "{left} left · {pct}% of the budget spent",
+  "{mode} · total {amount}",
   "{month} so far: {pct}%",
   "{month} · ended at {pct}% of the goal",
   "{month} · goal fully funded ✓",

@@ -29,6 +29,7 @@
 import type { StateResponse, WideWidgetConfig, WideWidgetId } from "@enveo/shared";
 import { useRef, useState } from "react";
 import type { ScreenId } from "../components/chrome";
+import { EnvelopePillGrid } from "../components/wide/homeBodies";
 import { renderWidget, type WidgetProps } from "../components/widgets";
 import { useBudgetPreferences, useTheme } from "../lib/contexts";
 import { useDragReorder } from "../lib/dnd";
@@ -326,7 +327,19 @@ export function WideHome({
                 )}
               </div>
               <div style={{ flex: 1, minHeight: 0, overflowY: "auto", display: "flex", flexDirection: "column", gap: 8 }}>
-                {renderWidget({ id: w.id, enabled: true, opts: w.opts }, { ...widgetProps, chromeless: true, tile: { w: spanW, h: w.h } }, t)}
+                {w.id === "envelopes" || w.id === "envelopesSavings" ? (
+                  // Wide-only design grammar (B3): a compact pill grid, not the phone `EnvRow` list
+                  // `renderWidget` would otherwise reach for — `envelopesSavings` always forces
+                  // "savings", same as the phone `EnvelopesSavingsWidget` wrapper (widgets.tsx).
+                  <EnvelopePillGrid
+                    state={state}
+                    month={month}
+                    mode={w.id === "envelopesSavings" ? "savings" : (w.opts?.mode ?? "all")}
+                    onOpenEnvelope={onOpenEnvelope}
+                  />
+                ) : (
+                  renderWidget({ id: w.id, enabled: true, opts: w.opts }, { ...widgetProps, chromeless: true, tile: { w: spanW, h: w.h } }, t)
+                )}
               </div>
               {edit && (
                 <button
