@@ -43,6 +43,37 @@ export interface Theme {
   headerMute: string;
   headerPos: string;
   headerNeg: string;
+  /**
+   * Wide-layout rail chrome (design parity wave A, task A2 — `Wide App Demo v3.dc.html`
+   * §CISZA/DUET). The rail's own background sits one layer apart from the app's content `bg`,
+   * with `railCard` (the "To be budgeted" card) as the surface that floats forward on top of it
+   * — spatial layering ("content < rail < card"), not a literal lightness ordering.
+   */
+  railBg: string;
+  railCard: string;
+  /**
+   * Selected-nav-row highlight and the two general-purpose accent alphas used across the wide
+   * chrome (12%/10%) — `themeTokens()` recomputes these from the CURRENT accent via `tint()` for
+   * the Cisza-family themes (teal/koral/atrament), since they must track whichever accent the
+   * user picked. Duet overrides them with its own already-established highlight (the coral tone
+   * that already drives `nav.ind`/`logo`), not its literal navy accent — see `THEMES.duet`.
+   */
+  railActive: string;
+  accentSoft: string;
+  selBg: string;
+  /** A muted tone for text sitting on `band`/the header surface — same value as `headerMute`
+   *  today, exposed under the design's own name for direct use by rail/band components. */
+  bandMute: string;
+  /**
+   * Readable TEXT color for the rail's inactive/secondary content (design's `railOn`) and its
+   * more muted labels/captions (`railMute`) — distinct from `text`/`soft`/`mute`, which are
+   * calibrated for the plain content background, NOT Duet's navy rail (neither is Duet-overridden
+   * today, so reusing them here would render illegible dark text on navy — caught live during
+   * task A2 verification: the rail's inactive nav labels were unreadable in Duet before these
+   * existed). Cisza's values equal `soft`/`mute` exactly; Duet's are its own lighter blue-greys.
+   */
+  railOn: string;
+  railMute: string;
 }
 
 export const light: Theme = {
@@ -68,6 +99,17 @@ export const light: Theme = {
   headerMute: "#a6a59c",
   headerPos: "#3e7d5c",
   headerNeg: "#d14b3e",
+  railBg: "#efeee9",
+  railCard: "#ffffff",
+  // Default accent is Sage #4fa583 (fresh settings) — themeTokens() overwrites these three for
+  // every OTHER Cisza-family accent (koral/atrament); dead here otherwise, kept correct in case
+  // this base object is ever read directly.
+  railActive: "rgba(79,165,131,0.18)",
+  accentSoft: "rgba(79,165,131,0.12)",
+  selBg: "rgba(79,165,131,0.1)",
+  bandMute: "#a6a59c",
+  railOn: "#6f6e67",
+  railMute: "#a6a59c",
 };
 export const dark: Theme = {
   bg: "#3b414b",
@@ -98,6 +140,19 @@ export const dark: Theme = {
   headerMute: "#7f868f",
   headerPos: "#7fc9a2",
   headerNeg: "#f5a297",
+  // Reuse the existing recessed/elevated pair (band < bg < card, dark convention: lighter =
+  // raised) — no plain-dark rail exists in the design source (it only shows Cisza + Duet), so
+  // this keeps the rail visually distinct from `bg` without inventing a new hex.
+  railBg: "#343a44",
+  railCard: "#404650",
+  // Sage's dark accent #77c4a2 (fresh settings' default) — themeTokens() overwrites these three
+  // for every OTHER Cisza-family accent (koral/atrament); dead here otherwise.
+  railActive: "rgba(119,196,162,0.18)",
+  accentSoft: "rgba(119,196,162,0.12)",
+  selBg: "rgba(119,196,162,0.1)",
+  bandMute: "#7f868f",
+  railOn: "#a8aeb6",
+  railMute: "#7f868f",
 };
 
 export const ENV_PALETTE = ["#f3c45f", "#7ca968", "#cc4a4a", "#3a3a52", "#4a5a5e", "#8f84a8", "#f1dca0", "#ccd9b6", "#f0c84f", "#aed6ea", "#f0a8c4", "#a8dce0"];
@@ -269,6 +324,19 @@ export const THEMES: Record<AccentTheme, ThemeDef> = {
       keybg: "#e9e0cb",
       inset: "#efe8d8",
       band: "#ece5d3",
+      // Duet's rail is always navy (matches `nav`/`navDark` above, both "#1d2a47" — Duet's chrome
+      // never lightens for "light mode"). railActive/accentSoft/selBg are the design's own DUET
+      // numbers verbatim: the highlight is the established coral tone (matches `logo`/`nav.ind`,
+      // NOT Duet's literal navy accent), and its accent alphas are tinted off that same navy
+      // rather than the generic accent@0.18/0.12/0.10 formula — see `Wide App Demo v3.dc.html`.
+      railBg: "#1d2a47",
+      railCard: "rgba(255,255,255,0.07)",
+      railActive: "rgba(255,141,125,0.22)",
+      accentSoft: "rgba(29,42,71,0.1)",
+      selBg: "rgba(29,42,71,0.07)",
+      bandMute: "#8fa2cc",
+      railOn: "#c9d2e4",
+      railMute: "#8fa2cc",
     },
     overridesDark: {
       bg: "#131b2e",
@@ -288,6 +356,16 @@ export const THEMES: Record<AccentTheme, ThemeDef> = {
       keybg: "#131b2e",
       inset: "#243356",
       band: "#1a2440",
+      // Same navy rail as the light-duet override above — the design's single DUET definition
+      // covers both, matching `nav`/`navDark` already being identical for this theme.
+      railBg: "#1d2a47",
+      railCard: "rgba(255,255,255,0.07)",
+      railActive: "rgba(255,141,125,0.22)",
+      accentSoft: "rgba(29,42,71,0.1)",
+      selBg: "rgba(29,42,71,0.07)",
+      bandMute: "#8fa2cc",
+      railOn: "#c9d2e4",
+      railMute: "#8fa2cc",
     },
   },
 };
@@ -323,10 +401,16 @@ export function themeTokens(t: AccentTheme, isDark: boolean): { vars: Record<str
   const def = THEMES[t];
   const base = isDark ? dark : light;
   const overrides = isDark ? def.overridesDark : def.overrides;
-  const palette: Theme = overrides ? { ...base, ...overrides } : base;
+  let palette: Theme = overrides ? { ...base, ...overrides } : base;
   const accent = isDark ? def.accentDark : def.accent;
   const danger = isDark ? def.dangerDark : def.danger;
   const cta = (isDark ? def.ctaDark : def.cta) ?? accent;
+  // Rail/wide-chrome alphas track the ACTIVE accent for the Cisza-family themes (teal/koral/
+  // atrament) — Duet already supplied its own values via `overrides`/`overridesDark` above (its
+  // rail highlight is the established coral tone, not its literal navy accent).
+  if (t !== "duet") {
+    palette = { ...palette, railActive: tint(accent, 0.18), accentSoft: tint(accent, 0.12), selBg: tint(accent, 0.1) };
+  }
   // Nav defaults = EXACTLY today's BottomNav (bg C.bg, active C.text,
   // indicator = accent, inactive C.mute) — a teal regression guard.
   const nav = (isDark ? def.navDark : def.nav) ?? { bg: palette.bg, on: palette.text, mute: palette.mute, ind: accent };

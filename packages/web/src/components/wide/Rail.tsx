@@ -81,10 +81,23 @@ function RailButton({ active, d, label, onClick }: { active: boolean; d: string;
   );
 }
 
-/** Desktop: icon + full label, full-width row (pr4-context.md §12.1's decided reading — icon
- *  language shared with `RailButton`/`BottomNav` via `NAV_ICONS`). */
+/**
+ * Desktop: icon + full label, full-width row (pr4-context.md §12.1's decided reading — icon
+ * language shared with `RailButton`/`BottomNav` via `NAV_ICONS`).
+ *
+ * Design parity wave A, task A2 (demo 94, 2439-2440): the selected row is `railActive`
+ * (accent@18%) with INK text/icon (`headerInk` — equals `C.text` on every Cisza theme, but the
+ * only token that also reads correctly on Duet's navy rail) — NOT an accent-tinted background
+ * with accent-colored text.
+ */
 function NavRow({ active, d, label, onClick }: { active: boolean; d: string; label: string; onClick: () => void }) {
   const C = useTheme();
+  // demo 2439-2440: `fg: active ? T.railTitle : T.railOn` — ONE color for icon+label either way.
+  // `headerInk` equals `C.text` on every Cisza theme but is the only token that ALSO reads
+  // correctly on Duet's navy rail; `railOn` is its inactive-tier counterpart (added alongside it
+  // — `C.text`/`C.soft` are NOT Duet-overridden and rendered illegible dark text on the navy rail,
+  // caught live during verification).
+  const fg = active ? C.headerInk : C.railOn;
   return (
     <button
       onClick={onClick}
@@ -98,18 +111,18 @@ function NavRow({ active, d, label, onClick }: { active: boolean; d: string; lab
         padding: "0 14px",
         borderRadius: 11,
         border: "none",
-        background: active ? "var(--cta-18)" : "transparent",
+        background: active ? C.railActive : "transparent",
         cursor: "pointer",
         textAlign: "left",
         fontFamily: font,
       }}
     >
-      <Ico d={d} size={19} color={active ? TEAL : C.soft} sw={1.8} />
+      <Ico d={d} size={19} color={fg} sw={1.8} />
       <span
         style={{
           fontSize: 13.5,
           fontWeight: active ? 700 : 600,
-          color: active ? TEAL : C.text,
+          color: fg,
           overflow: "hidden",
           textOverflow: "ellipsis",
           whiteSpace: "nowrap",
@@ -170,14 +183,17 @@ function TbbCard({
   // (mockup's `railAcctsSection`, pr4-task-5-brief.md).
   const showAccounts = screen !== "accounts";
 
+  // Design parity wave A, task A2 (demo 110-111): Suggest is a FILLED ink pill (background =
+  // `headerInk`, text = the rail's OWN background, so it inverts correctly on Duet's navy rail);
+  // Fill-by-goals stays the plain outline it already was.
   const pill = (primary: boolean): React.CSSProperties => ({
     flex: 1,
     minHeight: 30,
     textAlign: "center",
     borderRadius: 999,
-    border: primary ? "1.5px solid var(--cta)" : `1px solid ${C.line}`,
-    background: "transparent",
-    color: primary ? "var(--cta)" : C.soft,
+    border: primary ? `1.5px solid ${C.headerInk}` : `1px solid ${C.line}`,
+    background: primary ? C.headerInk : "transparent",
+    color: primary ? C.railBg : C.railOn,
     fontSize: 11.5,
     fontWeight: primary ? 700 : 650,
     cursor: "pointer",
@@ -189,28 +205,27 @@ function TbbCard({
       style={{
         display: "flex",
         flexDirection: "column",
-        margin: "8px 4px 4px",
         padding: "12px 12px 10px",
         borderRadius: 14,
-        background: C.inset,
+        background: C.railCard,
       }}
     >
-      <span style={{ fontSize: 10, fontWeight: 750, letterSpacing: "0.16em", textTransform: "uppercase", color: C.mute }}>{t("To be budgeted")}</span>
+      <span style={{ fontSize: 10, fontWeight: 750, letterSpacing: "0.16em", textTransform: "uppercase", color: C.railMute }}>{t("To be budgeted")}</span>
       <span style={{ fontSize: 22, fontWeight: 800, letterSpacing: "-0.015em", color: tbbColor, fontVariantNumeric: "tabular-nums", marginTop: 3 }}>
         {M(state.readyToAssign)}
       </span>
-      <span style={{ display: "flex", justifyContent: "space-between", gap: 8, fontSize: 11, color: C.soft, fontVariantNumeric: "tabular-nums", marginTop: 5 }}>
-        <span>
-          <span style={{ color: C.pos }}>↑</span> {M(state.monthIncome)}
-        </span>
-        <span>
-          <span style={{ color: C.neg }}>↓</span> {M(state.monthExpense)}
-        </span>
+      {/* Design parity wave A, task A2 (demo 101-104): one neutral tone for the whole line — no
+          red/green on these arrows (that reading lives on the ledger, not this summary). */}
+      <span
+        style={{ display: "flex", justifyContent: "space-between", gap: 8, fontSize: 11, color: C.railOn, fontVariantNumeric: "tabular-nums", marginTop: 5 }}
+      >
+        <span>↑ {M(state.monthIncome)}</span>
+        <span>↓ {M(state.monthExpense)}</span>
       </span>
       <span style={{ height: 3, borderRadius: 2, background: C.line, position: "relative", display: "block", marginTop: 7 }}>
-        <span style={{ position: "absolute", left: 0, top: 0, bottom: 0, width: `${ruler.pct}%`, borderRadius: 2, background: C.mute, display: "block" }} />
+        <span style={{ position: "absolute", left: 0, top: 0, bottom: 0, width: `${ruler.pct}%`, borderRadius: 2, background: C.railMute, display: "block" }} />
       </span>
-      <span style={{ fontSize: 10, color: C.mute, marginTop: 5 }}>{t("{date} · {pct}% of month", { date: shortDay, pct: String(ruler.pct) })}</span>
+      <span style={{ fontSize: 10, color: C.railMute, marginTop: 5 }}>{t("{date} · {pct}% of month", { date: shortDay, pct: String(ruler.pct) })}</span>
       <div style={{ display: "flex", gap: 6, marginTop: 10 }}>
         <button onClick={() => onQuickAdd("suggest")} aria-label={t("Suggest a distribution")} style={pill(true)}>
           {"✨ "}
@@ -232,8 +247,8 @@ function TbbCard({
               gap: 8,
               width: "100%",
               minHeight: 30,
-              marginTop: 10,
-              paddingTop: 9,
+              marginTop: 12,
+              paddingTop: 10,
               border: "none",
               borderTop: `1px solid ${C.line}`,
               background: "none",
@@ -241,8 +256,8 @@ function TbbCard({
               fontFamily: font,
             }}
           >
-            <span style={{ fontSize: 10, fontWeight: 750, letterSpacing: "0.16em", textTransform: "uppercase", color: C.mute }}>{t("Accounts")}</span>
-            <span aria-hidden style={{ fontSize: 10, color: C.mute }}>
+            <span style={{ fontSize: 10, fontWeight: 750, letterSpacing: "0.16em", textTransform: "uppercase", color: C.railMute }}>{t("Accounts")}</span>
+            <span aria-hidden style={{ fontSize: 10, color: C.railMute }}>
               {acctsOpen ? "▴" : "▾"}
             </span>
           </button>
@@ -257,7 +272,7 @@ function TbbCard({
                     alignItems: "center",
                     gap: 8,
                     minHeight: 30,
-                    padding: "4px 6px",
+                    padding: "5px 6px",
                     borderRadius: 8,
                     border: "none",
                     background: "none",
@@ -266,11 +281,19 @@ function TbbCard({
                     textAlign: "left",
                   }}
                 >
-                  <span style={{ width: 12, height: 12, borderRadius: "50%", background: a.color, flexShrink: 0 }} />
-                  <span style={{ flex: 1, minWidth: 0, fontSize: 12.5, color: C.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  <span style={{ width: 14, height: 14, borderRadius: "50%", background: a.color, flexShrink: 0 }} />
+                  <span style={{ flex: 1, minWidth: 0, fontSize: 12.5, color: C.railOn, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                     {a.name}
                   </span>
-                  <span style={{ flexShrink: 0, fontWeight: 650, fontSize: 12.5, color: a.balance < 0 ? C.neg : C.text, fontVariantNumeric: "tabular-nums" }}>
+                  <span
+                    style={{
+                      flexShrink: 0,
+                      fontWeight: 650,
+                      fontSize: 12.5,
+                      color: a.balance < 0 ? C.neg : a.balance === 0 ? C.railMute : C.railOn,
+                      fontVariantNumeric: "tabular-nums",
+                    }}
+                  >
                     {M(a.balance)}
                   </span>
                 </button>
@@ -295,13 +318,14 @@ function TbbCard({
               fontFamily: font,
             }}
           >
-            <span style={{ fontSize: 11.5, color: C.soft, fontVariantNumeric: "tabular-nums" }}>
+            {/* Design parity wave A, task A2 (demo 129): the whole summary row reads `railMute`. */}
+            <span style={{ fontSize: 11.5, color: C.railMute, fontVariantNumeric: "tabular-nums" }}>
               {tp("{n} account · total {amount} | {n} accounts · total {amount}", accountsGlobal.length, {
                 n: String(accountsGlobal.length),
                 amount: M(sumBalances(accountsGlobal)),
               })}
             </span>
-            <span aria-hidden style={{ fontSize: 12, color: C.mute }}>
+            <span aria-hidden style={{ fontSize: 12, color: C.railMute }}>
               ›
             </span>
           </button>
@@ -591,9 +615,17 @@ export function Rail({
         display: "flex",
         flexDirection: "column",
         alignItems: mode === "desktop" ? "stretch" : "center",
-        gap: 6,
-        padding: mode === "desktop" ? "16px 10px" : "16px 0",
-        background: C.surface,
+        // Design parity wave A, task A2 (demo 87): the rail's five top-level sections (logo,
+        // nav group, spacer, TBB card, user block) are spaced by ONE gap of 10px on desktop —
+        // fold keeps its existing 6px (its own layout gate is a later, separate audit pass).
+        gap: mode === "desktop" ? 10 : 6,
+        padding: mode === "desktop" ? "16px 12px" : "16px 0",
+        // Desktop only: fold's icon-only rail (`RailButton`) still colors its active/inactive
+        // icons off `TEAL`/`C.soft` (task 4's original skeleton, unchanged here — fold's own
+        // layout gate is a later, separate audit pass), which read correctly against the
+        // existing `C.surface`. Painting `C.railBg` there too would go navy under Duet while
+        // those icon colors stay Cisza-calibrated — invisible-icon regression, not a fold gap.
+        background: mode === "desktop" ? C.railBg : C.surface,
         borderRight: `1px solid ${C.line}`,
         // NOT overflow:hidden — see the UserBlock comment above: an overflow-clipping ancestor
         // cuts an absolutely-positioned descendant exactly like a transform-created containing
@@ -603,17 +635,37 @@ export function Rail({
         overflow: "visible",
       }}
     >
-      <div style={{ display: "flex", alignItems: "center", gap: 10, padding: mode === "desktop" ? "0 4px 8px" : "0 0 4px", marginBottom: 4 }}>
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 10,
+          padding: mode === "desktop" ? "0 4px 4px" : "0 0 4px",
+          marginBottom: mode === "desktop" ? 0 : 4,
+        }}
+      >
         <LogoMark size={mode === "desktop" ? 28 : 32} />
         {mode === "desktop" && <span style={{ fontSize: 15, fontWeight: 700, color: C.text }}>Enveo</span>}
       </div>
-      {items.map((it) =>
-        mode === "desktop" ? (
-          <NavRow key={it.id} active={screen === it.id} d={NAV_ICONS[it.id]} label={it.label} onClick={() => onNav(it.id)} />
-        ) : (
-          <RailButton key={it.id} active={screen === it.id} d={NAV_ICONS[it.id]} label={it.label} onClick={() => onNav(it.id)} />
-        ),
-      )}
+      {/* Design parity wave A, task A2 (demo 92): the nav rows form their OWN column, 3px apart
+          on desktop — a distinct gap from the 10px separating the rail's top-level sections. */}
+      <div
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          gap: mode === "desktop" ? 3 : 6,
+          alignItems: mode === "desktop" ? "stretch" : "center",
+          width: "100%",
+        }}
+      >
+        {items.map((it) =>
+          mode === "desktop" ? (
+            <NavRow key={it.id} active={screen === it.id} d={NAV_ICONS[it.id]} label={it.label} onClick={() => onNav(it.id)} />
+          ) : (
+            <RailButton key={it.id} active={screen === it.id} d={NAV_ICONS[it.id]} label={it.label} onClick={() => onNav(it.id)} />
+          ),
+        )}
+      </div>
       <div style={{ flex: 1, minHeight: 8 }} />
       {mode === "desktop" && (
         <TbbCard state={state} screen={screen} onQuickAdd={onQuickAdd} onFillGoals={onFillGoals} onNav={onNav} onOpenAccount={onOpenAccount} />
