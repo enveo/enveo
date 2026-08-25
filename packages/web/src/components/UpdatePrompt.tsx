@@ -3,7 +3,6 @@ import { useEffect, useSyncExternalStore } from "react";
 import { useT } from "../lib/i18n";
 import { useWideHost } from "../lib/shellContext";
 import { font, TEAL } from "../lib/theme";
-import { APP_VERSION } from "../lib/version";
 import { PHONE_COL } from "../lib/viewMode";
 
 /**
@@ -83,27 +82,24 @@ export function checkForUpdate(): void {
  * banner) and the rail's update card (`Rail.tsx`, desktop) both call this instead of each running
  * their own `registerSW()`.
  *
- * `version`: there is no manifest or endpoint anywhere in this app that exposes the WAITING
- * service worker's version pre-activation — update detection is deliberately byte-based (new
- * asset hashes), not version-number based (see the PWA-versioning pitfall in AGENTS.md), so the
- * new build's semver is not knowable client-side before the reload actually happens. `APP_VERSION`
- * is therefore the version of the build CURRENTLY RUNNING (about to be replaced) — the same
- * constant the rail's user-menu footer and persistent sync row already surface as "the version
- * string" elsewhere in this file's own component (`Rail.tsx`'s `UserBlock`) — not a claim about
- * the incoming build. The rail's sub-line (`RailUpdateCard`, design-parity wave A re-review)
- * therefore reads "Currently v{version} · refreshing takes a second…" — the word "Currently"
- * is load-bearing: an earlier draft attached this number to "New version ready" with no
- * qualifier, which announced the OLD build as if it were the one about to arrive. Do not drop
- * "Currently" (or an equivalent) when touching this copy.
+ * Deliberately exposes NO version string (design parity wave A close, item 8). There is no
+ * manifest or endpoint anywhere in this app that exposes the WAITING service worker's version
+ * pre-activation — update detection is deliberately byte-based (new asset hashes), not
+ * version-number based (see the PWA-versioning pitfall in AGENTS.md), so the new build's semver is
+ * not knowable client-side before the reload actually happens. An earlier draft returned
+ * `APP_VERSION` here — the version of the build CURRENTLY RUNNING, about to be replaced — for the
+ * rail's update card to show; a first fix qualified it ("Currently v{version} · …") rather than
+ * dropping it, which still put a version number on a card announcing a "New version ready". The
+ * honest fix removes the field entirely: nothing here can name the incoming build, so nothing
+ * should be offered that invites showing one.
  */
-export function useAppUpdate(): { needRefresh: boolean; version: string; refresh: (reload?: boolean) => void; dismiss: () => void } {
+export function useAppUpdate(): { needRefresh: boolean; refresh: (reload?: boolean) => void; dismiss: () => void } {
   useEffect(() => {
     ensureRegistered();
   }, []);
   const needRefresh = useSyncExternalStore(subscribe, getNeedSnapshot);
   return {
     needRefresh,
-    version: APP_VERSION,
     refresh: (reload = true) => void refreshFn?.(reload),
     dismiss: () => {
       need = false;

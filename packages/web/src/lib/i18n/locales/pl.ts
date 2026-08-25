@@ -417,6 +417,7 @@ export const pl: Dict = {
   Net: "Netto",
   "Net for {month}": "{month} netto",
   "Net worth": "Wartość netto",
+  "Net worth {amount}": "Wartość netto {amount}",
   "Net worth over time": "Wartość netto w czasie",
   "New account": "Nowe konto",
   "New category": "Nowa kategoria",
@@ -858,6 +859,12 @@ export const pl: Dict = {
   "{n} over | {n} over": { one: "{n} przekroczona", few: "{n} przekroczone", many: "{n} przekroczonych", other: "{n} przekroczonych" },
   "{n} rising · {m} falling": "{n} w górę · {m} w dół",
   "{n} transaction | {n} transactions": { one: "{n} transakcja", few: "{n} transakcje", many: "{n} transakcji", other: "{n} transakcji" },
+  "{n} transaction shown | {n} transactions shown": {
+    one: "Pokazano {n} transakcję",
+    few: "Pokazano {n} transakcje",
+    many: "Pokazano {n} transakcji",
+    other: "Pokazano {n} transakcji",
+  },
   "{n} transaction · avg {avg} · largest {largest} | {n} transactions · avg {avg} · largest {largest}": {
     one: "{n} transakcja · śr. {avg} · maks. {largest}",
     few: "{n} transakcje · śr. {avg} · maks. {largest}",
@@ -975,7 +982,7 @@ export const pl: Dict = {
   "Previous day": "Poprzedni dzień",
   "Next day": "Następny dzień",
   "vs the {avg} daily average": "wobec średniej dziennej {avg}",
-  "Currently v{version} · refreshing takes a second, nothing is lost.": "Obecnie v{version} · odświeżenie zajmie chwilę, nic nie zostanie utracone.",
+  "Refreshing takes a second, nothing is lost.": "Odświeżenie zajmie chwilę, nic nie zostanie utracone.",
   "{name} {pct}%": "{name} {pct}%",
   // PR5 Home widgets (attention/recent/spending/goals/trends/heatmap) + their EditWidgetsSheet
   // subtitles — brand-new copy, no prior translation to carry over.

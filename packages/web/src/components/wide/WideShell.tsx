@@ -7,6 +7,11 @@ import { type Message, msg, useT } from "../../lib/i18n";
 import { Ico } from "../../lib/icons";
 import { InWideShell, type PaneRect, type PaneSurfaceHost } from "../../lib/shellContext";
 import { CTA, font, TEAL } from "../../lib/theme";
+// Design parity wave A close, item 9: the Transactions band caption ("{n} shown") needs the SAME
+// filtering `TransactionsScreen` already does — imported HERE (the lazy wide chunk), never from
+// App.tsx (eager): App.tsx's own comment on the bag fields below explains why pulling this module
+// into the eager bundle would spend the §3f headroom this wave has almost none of left.
+import { createTransactionSearchIndex, matchesTransactionFilters, matchesTransactionQuery, type TransactionFilters } from "../../lib/transactionSearch";
 import { useElementWidth } from "../../lib/useElementWidth";
 import { PHONE_COL, type ViewMode } from "../../lib/viewMode";
 import type { Tab as AddTab } from "../../screens/Add";
@@ -371,6 +376,12 @@ type WideShellBag = {
    *  report-subview instance; reusing it here reopened Reports behind the edit takeover and lost
    *  `acctView` on save — reproduced live, App.tsx's `editAccountTxn`/`acctViewBeforeEditRef`). */
   onEditAccountTxn: (t: Transaction) => void;
+  /** Design parity wave A close, item 9: the Transactions band caption's own inputs — App's lifted
+   *  `txQuery`/`txFilters` state, the SAME values `TransactionsScreen` filters its list with (see
+   *  that component's own props). Threaded as plain data (zero eager-bundle cost); the filtering
+   *  itself happens below, inside this lazy chunk. */
+  txQuery: string;
+  txFilters: TransactionFilters;
 };
 
 /**
@@ -451,9 +462,21 @@ export function WideShell({ bag, rightSlot = null, children }: { bag: WideShellB
     onAddWide,
     onOpenAccount,
     onEditAccountTxn,
+    txQuery,
+    txFilters,
   } = bag;
   const C = useTheme();
-  const { t } = useT();
+  const { t, tp } = useT();
+  // Design parity wave A close, item 9 (design v3:4351's `headerRight`, the "shown" branch): the
+  // SAME query+filter pipeline `TransactionsScreen` uses for its own list, gated to the one screen
+  // that needs it (mirrors App.tsx's `globalNetTotal` gate for Accounts/Reports).
+  const transactionsShownCount = useMemo(() => {
+    if (primaryScreen !== "transactions") return 0;
+    const index = createTransactionSearchIndex({ accounts: state.accounts, envelopes: state.envelopes, categories: state.categories, places: state.places });
+    return state.transactions.filter((tx) => matchesTransactionQuery(tx, txQuery, index) && matchesTransactionFilters(tx, txFilters)).length;
+  }, [primaryScreen, state.accounts, state.envelopes, state.categories, state.places, state.transactions, txQuery, txFilters]);
+  const rightSlotEffective: RightSlot =
+    primaryScreen === "transactions" ? { kind: "caption", text: tp("{n} transaction shown | {n} transactions shown", transactionsShownCount) } : rightSlot;
   const [rootRef, rootW] = useElementWidth<HTMLDivElement>(mode === "desktop" ? 1440 : 1104);
   const paneW = paneWidthFor(mode, rootW);
   // The wide board's gear target (Task 6) — WideShell's OWN local selection, not lifted to App:
@@ -710,7 +733,7 @@ export function WideShell({ bag, rightSlot = null, children }: { bag: WideShellB
           onNext={next}
           onAdd={onAddWide}
           onOpenSync={() => nav("settings")}
-          rightSlot={rightSlot}
+          rightSlot={rightSlotEffective}
           panelClosed={panelClosed}
           // PR6 Task 5: while the Add pane is showing, the toggle discards it (`closePanel`'s own
           // `add` branch — same semantics as phone's back gesture from Add today) instead of
