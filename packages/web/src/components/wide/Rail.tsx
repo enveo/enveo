@@ -19,7 +19,7 @@ import { monthRuler, sumBalances, tbbState } from "../../lib/uiState";
 import { APP_VERSION, buildLabel } from "../../lib/version";
 import { RAIL_W, type ViewMode } from "../../lib/viewMode";
 import { D_EYE, D_GEAR, D_MOON, LogoMark, NAV_ICONS, type ScreenId } from "../chrome";
-import { checkForUpdate } from "../UpdatePrompt";
+import { checkForUpdate, useAppUpdate } from "../UpdatePrompt";
 
 type WideMode = Exclude<ViewMode, "phone">;
 
@@ -347,6 +347,68 @@ function TbbCard({
           </button>
         </>
       )}
+    </div>
+  );
+}
+
+/**
+ * Update notification, desktop only (design-parity wave A, task A4; owner-requirements.md #3,
+ * screenshot-backed): a card in the rail between the TBB card and the user block, shown only
+ * while a waiting service worker has been detected — not a floating toast, not primary-pane
+ * anchored (that treatment stays on fold via `UpdatePrompt`'s own anchored banner; `Rail`'s
+ * caller only mounts this when `mode === "desktop"`). Styled on the same `railCard` grammar as
+ * `TbbCard` above it (14px radius, white/`railCard` surface).
+ */
+function RailUpdateCard({ version, onRefresh, onDismiss }: { version: string; onRefresh: () => void; onDismiss: () => void }) {
+  const C = useTheme();
+  const { t } = useT();
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 6, padding: "10px 12px", borderRadius: 14, background: C.railCard }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
+        <span aria-hidden style={{ width: 7, height: 7, borderRadius: "50%", background: "var(--cta)", flexShrink: 0 }} />
+        <span style={{ flex: 1, minWidth: 0, fontSize: 12.5, fontWeight: 700, color: C.railOn }}>{t("New version ready")}</span>
+        <button
+          onClick={onDismiss}
+          aria-label={t("Close")}
+          style={{
+            flexShrink: 0,
+            minWidth: 30,
+            minHeight: 30,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            border: "none",
+            background: "transparent",
+            color: C.railMute,
+            fontSize: 16,
+            lineHeight: 1,
+            cursor: "pointer",
+          }}
+        >
+          ×
+        </button>
+      </div>
+      <span style={{ fontSize: 11, lineHeight: 1.4, color: C.railMute }}>{t("v{version} · refreshing takes a second, nothing is lost.", { version })}</span>
+      <button
+        onClick={onRefresh}
+        style={{
+          alignSelf: "flex-start",
+          minHeight: 30,
+          padding: "0 11px",
+          display: "flex",
+          alignItems: "center",
+          borderRadius: 8,
+          border: `1px solid ${TEAL}`,
+          background: "transparent",
+          color: TEAL,
+          fontSize: 11.5,
+          fontWeight: 700,
+          cursor: "pointer",
+          fontFamily: font,
+        }}
+      >
+        {t("Refresh now")}
+      </button>
     </div>
   );
 }
@@ -850,6 +912,11 @@ export function Rail({
 }) {
   const C = useTheme();
   const { t } = useT();
+  // Design-parity wave A, task A4: the ONE shared update-state consumer (`UpdatePrompt.tsx`) —
+  // called unconditionally (rules of hooks; `mode` can change under this same component across
+  // a fold↔desktop resize) but only rendered below when `mode === "desktop"`; fold keeps its
+  // existing anchored `<UpdatePrompt/>` banner (mounted by `WideShell`), not this card.
+  const { needRefresh, version, refresh, dismiss } = useAppUpdate();
   const items: ReadonlyArray<{ id: NavScreen; label: string }> = [
     { id: "start", label: t("Home") },
     { id: "budget", label: t("Budget") },
@@ -929,6 +996,7 @@ export function Rail({
       {mode === "desktop" && (
         <TbbCard state={state} screen={screen} onQuickAdd={onQuickAdd} onFillGoals={onFillGoals} onNav={onNav} onOpenAccount={onOpenAccount} />
       )}
+      {mode === "desktop" && needRefresh && <RailUpdateCard version={version} onRefresh={() => refresh(true)} onDismiss={dismiss} />}
       <UserBlock mode={mode} screen={screen} onNav={onNav} onInstall={onInstall} />
     </div>
   );

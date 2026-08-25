@@ -425,6 +425,7 @@ export const pl: Dict = {
   "New place": "Nowe miejsce",
   "New transaction": "Nowa transakcja",
   "New version available": "Nowa wersja dostępna",
+  "New version ready": "Nowa wersja gotowa",
   Next: "Dalej",
   "Narrow transactions by specific fields": "Zawęź transakcje według konkretnych pól",
   "Next month": "Następny miesiąc",
@@ -508,6 +509,7 @@ export const pl: Dict = {
   "Reconcile account": "Wyrównaj konto",
   "Recorded in {currency} — check the amount.": "Zapisano w {currency} — sprawdź kwotę.",
   Refresh: "Odśwież",
+  "Refresh now": "Odśwież teraz",
   Refund: "Zwrot",
   "Registration is closed on this server.": "Rejestracja jest wyłączona na tym serwerze.",
   "Remove screenshot {n}": "Usuń zrzut {n}",
@@ -972,6 +974,7 @@ export const pl: Dict = {
   "Previous day": "Poprzedni dzień",
   "Next day": "Następny dzień",
   "vs the {avg} daily average": "wobec średniej dziennej {avg}",
+  "v{version} · refreshing takes a second, nothing is lost.": "v{version} · odświeżenie zajmie chwilę, nic nie zostanie utracone.",
   "{name} {pct}%": "{name} {pct}%",
   // PR5 Home widgets (attention/recent/spending/goals/trends/heatmap) + their EditWidgetsSheet
   // subtitles — brand-new copy, no prior translation to carry over.
