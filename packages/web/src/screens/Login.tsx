@@ -171,7 +171,7 @@ export function LoginScreen() {
           style={inputStyle}
         />
         <label style={{ display: "flex", alignItems: "flex-start", gap: 8, fontSize: 12.5, color: C.soft, lineHeight: 1.5, cursor: "pointer" }}>
-          <input type="checkbox" checked={persistent} onChange={(e) => setPersistent(e.target.checked)} style={{ marginTop: 2, accentColor: TEAL }} />
+          <input type="checkbox" checked={persistent} onChange={(e) => setPersistent(e.target.checked)} style={{ marginTop: 2 }} />
           <span>
             <strong style={{ display: "block", color: C.text }}>{t("This is my private device")}</strong>
             {t("Keep me signed in and save a local copy so Enveo works without internet.")}
