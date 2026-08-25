@@ -367,7 +367,7 @@ type WideShellBag = {
  * | AccountEditSheet (`AccountEdit`, row edits + "New account")     | Sheet      | pane surface (PR6b)    | — |
  * | ReconcileSheet (`AccountsWidget`'s per-account sheet + `AccountPanel`'s Reconcile action) | Sheet (phone-only reach — no wide UI could open it before PR6b) | pane surface (PR6b) | — |
  * | AiConsentSheet / InstallSheet / DataSection sheets / EditWidgetsSheet | Sheet | sheet          | EditWidgetsSheet → PR5's `widgets` pane |
- * | `UpdatePrompt`                                                     | fixed, viewport-centered on phone | anchored to the primary pane's measured rect on wide (this file, below) — MEASURED to collide with this panel at 1104x992 before the fix | — (closed) |
+ * | `UpdatePrompt`                                                     | fixed, viewport-centered on phone | fold: anchored to the primary pane's measured rect (this file, below) — MEASURED to collide with this panel at 1104x992 before the fix; desktop: replaced by the rail's own update card (design-parity wave A, task A4) | — (closed) |
  *
  * Verified live (throwaway stack, 1440x900 + 1104x992): every Sheet opened from panel-hosted
  * content (Add's pickers) portals to `document.body` and stays viewport-centered with a
@@ -710,8 +710,12 @@ export function WideShell({ bag, rightSlot = null, children }: { bag: WideShellB
               PHONE instance) — a `useWideHost()`-gated branch (Task 6) needs to sit inside this
               exact provider to read `rects.primary` and anchor clear of the rail/panel; see that
               component's own comment for the measured collision this replaces. Self-contained
-              (no props), so moving where it mounts is the only change this required. */}
-          <UpdatePrompt />
+              (no props), so moving where it mounts is the only change this required.
+              Design-parity wave A, task A4: desktop moved this surface into the rail's own update
+              card (`Rail.tsx`, owner-requirements.md #3 — a rail card, not a primary-pane-anchored
+              banner); fold has no rail card section (its own layout gate is a later, separate
+              audit pass per wave-context.md), so fold keeps this exact anchored banner. */}
+          {mode !== "desktop" && <UpdatePrompt />}
           <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column", overflow: "hidden" }}>
             {/* Task 6: the wide Home board replaces the phone widget stack entirely on Start — the
                 `screenEl` App.tsx built for "start" (a `StartScreen` element) is still constructed

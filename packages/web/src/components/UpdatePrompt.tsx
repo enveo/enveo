@@ -1,44 +1,126 @@
 import { registerSW } from "virtual:pwa-register";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useSyncExternalStore } from "react";
 import { useT } from "../lib/i18n";
 import { useWideHost } from "../lib/shellContext";
 import { font, TEAL } from "../lib/theme";
+import { APP_VERSION } from "../lib/version";
 import { PHONE_COL } from "../lib/viewMode";
 
 /**
- * The one live `ServiceWorkerRegistration` — set once by whichever `UpdatePrompt` instance is
- * mounted (App.tsx on phone, WideShell.tsx on wide; the render tree only ever mounts one at a
- * time). `checkForUpdate` below reads it rather than calling `registerSW()` again: a second
- * registration call would be a second, redundant SW registration, not a second "check now" — the
- * design-parity wave A rail popover's "Check for updates" (v3:164-166) needs the latter.
+ * Module-level SW-registration singleton (design-parity wave A, task A4 — extracted out of the
+ * `UpdatePrompt` component so the rail's update card, `Rail.tsx`, can read the SAME
+ * needRefresh/refresh state without a second `registerSW()` call). Everything below `need`/
+ * `listeners` is plain mutable module state + a tiny pub-sub, not React state: two independent
+ * consumers (phone/fold's `<UpdatePrompt/>` and desktop's rail card) may mount `useAppUpdate()`
+ * at once during the fold↔desktop breakpoint transition, and both must observe one shared
+ * "an update is waiting" flag rather than each running its own `registerSW()`.
  */
 let liveRegistration: ServiceWorkerRegistration | null = null;
+let registered = false;
+let need = false;
+let refreshFn: ((reload?: boolean) => Promise<void>) | null = null;
+const listeners = new Set<() => void>();
+
+function notify(): void {
+  for (const l of listeners) l();
+}
+
+/**
+ * Registers the service worker in "prompt" mode (idempotent — a second call from a second
+ * `useAppUpdate()` mount is a harmless no-op) and flips the shared `need` flag when a new SW is
+ * waiting (onNeedRefresh). Actively polls for updates (60 s interval + focus/visibilitychange),
+ * because a standalone PWA can hang open with no navigation.
+ */
+function ensureRegistered(): void {
+  if (registered) return;
+  registered = true;
+  refreshFn = registerSW({
+    immediate: true,
+    onNeedRefresh() {
+      need = true;
+      notify();
+    },
+    onRegisteredSW(_swUrl, r) {
+      if (!r) return;
+      liveRegistration = r;
+      const check = () => {
+        void r.update();
+      };
+      setInterval(check, 60_000);
+      window.addEventListener("focus", check);
+      document.addEventListener("visibilitychange", () => {
+        if (document.visibilityState === "visible") check();
+      });
+    },
+  });
+}
+
+function subscribe(onChange: () => void): () => void {
+  listeners.add(onChange);
+  return () => listeners.delete(onChange);
+}
+
+function getNeedSnapshot(): boolean {
+  return need;
+}
 
 /**
  * Manual "check for updates" entry point (rail user-menu footer, design v3:166). This IS the
  * byte-based check — `registration.update()` re-fetches `sw.js` and diffs it byte-for-byte, no
  * version comparison (see the PWA-versioning pitfall in AGENTS.md) — so there is no "you are on
  * the latest build" answer to give back; if a newer worker turns up, the existing
- * `onNeedRefresh` flow (below) is what surfaces it. Calling this before any `UpdatePrompt` has
- * mounted (not reachable in practice — one mounts at the shell's top level, same lifetime as the
- * rail that calls this) is a harmless no-op.
+ * `onNeedRefresh` flow (above) is what surfaces it. Calling this before any `useAppUpdate()`
+ * consumer has mounted (not reachable in practice — one mounts at the shell's top level, same
+ * lifetime as the rail that calls this) is a harmless no-op.
  */
 export function checkForUpdate(): void {
   void liveRegistration?.update();
 }
 
 /**
- * Registers the service worker in "prompt" mode and shows the "New version
- * available" banner when a new SW is waiting (onNeedRefresh). Actively polls for
- * updates (60 s interval + focus/visibilitychange), because a standalone PWA can
- * hang open with no navigation. "Refresh" = updateSW(true) → skipWaiting + reload.
+ * Shared update state (design-parity wave A, task A4). `needRefresh`/`refresh`/`dismiss` are the
+ * ONE consumer surface for "is an update waiting" — `UpdatePrompt` (phone, and fold's anchored
+ * banner) and the rail's update card (`Rail.tsx`, desktop) both call this instead of each running
+ * their own `registerSW()`.
+ *
+ * `version`: there is no manifest or endpoint anywhere in this app that exposes the WAITING
+ * service worker's version pre-activation — update detection is deliberately byte-based (new
+ * asset hashes), not version-number based (see the PWA-versioning pitfall in AGENTS.md), so the
+ * new build's semver is not knowable client-side before the reload actually happens. `APP_VERSION`
+ * is therefore the version of the build CURRENTLY RUNNING (about to be replaced) — the same
+ * constant the rail's user-menu footer and persistent sync row already surface as "the version
+ * string" elsewhere in this file's own component (`Rail.tsx`'s `UserBlock`) — not a claim about
+ * the incoming build. Read as "you're on v{version}; refreshing takes a second", not "v{version}
+ * is now available", it is accurate either way.
+ */
+export function useAppUpdate(): { needRefresh: boolean; version: string; refresh: (reload?: boolean) => void; dismiss: () => void } {
+  useEffect(() => {
+    ensureRegistered();
+  }, []);
+  const needRefresh = useSyncExternalStore(subscribe, getNeedSnapshot);
+  return {
+    needRefresh,
+    version: APP_VERSION,
+    refresh: (reload = true) => void refreshFn?.(reload),
+    dismiss: () => {
+      need = false;
+      notify();
+    },
+  };
+}
+
+/**
+ * Phone (and fold) presentation: a fixed, viewport/pane-anchored banner shown while an update is
+ * waiting. Desktop no longer mounts this — design-parity wave A, task A4 moved the desktop
+ * surface into the rail (`Rail.tsx`'s update card, between the TBB card and the user block,
+ * owner-requirements.md #3); this component's OWN presentation is otherwise unchanged so phone
+ * behaviour stays byte-identical.
  */
 export function UpdatePrompt() {
   const { t } = useT();
-  const [need, setNeed] = useState(false);
-  const updateRef = useRef<((reload?: boolean) => Promise<void>) | null>(null);
+  const { needRefresh, refresh, dismiss } = useAppUpdate();
   // Wide anchor (PR6 Task 6 — sheet triage sweep measured this): mirrors DockedNumpad's own
-  // anchor (Task 3). `null` on phone (no provider) and on desktop (WideShell only renders this
+  // anchor (Task 3). `null` on phone (no provider) and on fold (WideShell only renders this
   // instance from the PRIMARY pane, so `useWideHost()` is never null there while mounted) —
   // kept `?? null` defensive rather than assumed, matching DockedNumpad's own style. Anchoring
   // to `rects.primary` (not a static rail-width constant) is what makes this correct whether the
@@ -47,29 +129,7 @@ export function UpdatePrompt() {
   const pane = useWideHost();
   const anchor = pane?.rects.primary ?? null;
 
-  useEffect(() => {
-    const updateSW = registerSW({
-      immediate: true,
-      onNeedRefresh() {
-        setNeed(true);
-      },
-      onRegisteredSW(_swUrl, r) {
-        if (!r) return;
-        liveRegistration = r;
-        const check = () => {
-          void r.update();
-        };
-        setInterval(check, 60_000);
-        window.addEventListener("focus", check);
-        document.addEventListener("visibilitychange", () => {
-          if (document.visibilityState === "visible") check();
-        });
-      },
-    });
-    updateRef.current = updateSW;
-  }, []);
-
-  if (!need) return null;
+  if (!needRefresh) return null;
   // Measured (PR6 Task 6 — sheet triage sweep): at 1440x900 (desktop) a viewport-centered banner
   // never reaches the rail or panel, so that geometry is untouched. At 1104x992 (fold) with the
   // panel open, centering across the FULL viewport put the banner ~220px into the panel's own
@@ -107,13 +167,13 @@ export function UpdatePrompt() {
       >
         <span style={{ flex: 1, fontSize: 13, fontWeight: 600 }}>{t("New version available")}</span>
         <button
-          onClick={() => void updateRef.current?.(true)}
+          onClick={() => refresh(true)}
           style={{ border: "none", background: "#fff", color: TEAL, borderRadius: 8, padding: "6px 12px", fontSize: 12.5, fontWeight: 700, cursor: "pointer" }}
         >
           {t("Refresh")}
         </button>
         <button
-          onClick={() => setNeed(false)}
+          onClick={dismiss}
           aria-label={t("Close")}
           style={{ border: "none", background: "transparent", color: "#fff", fontSize: 16, cursor: "pointer", lineHeight: 1, padding: 4 }}
         >
