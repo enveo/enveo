@@ -1053,6 +1053,11 @@ export const pl: Dict = {
     "Każdy zapis na serwer jest już zablokowany. Nic nie zostało usunięte, bo decyzja należy do Ciebie — kopia na tym urządzeniu może być ostatnią, jaka istnieje.",
   "Export first: the JSON backup is written offline, without the server.": "Najpierw eksport: kopia zapasowa JSON jest zapisywana offline, bez serwera.",
   "Fill {amount} ›": "Wypełnij {amount} ›",
+  // Wide Home board's Goals tile per-row button (v3.dc.html:3769) — the home board's OWN
+  // fillLabel has no trailing arrow, unlike the Goals report's identically-worded-but-arrowed
+  // "Fill {amount} ›" key above (v3.dc.html:3430); kept as a separate key so the two controls
+  // can diverge exactly as the design does.
+  "Fill {amount}": "Wypełnij {amount}",
   // Wide Home board's Goals tile footer (waveB-t4-brief.md, B4) — terser than "Fill all goals ›"
   // (GoalsReport's own button), matching the design's compact "{verdict} · Fill all ›" caption.
   "Fill all ›": "Wypełnij wszystko ›",

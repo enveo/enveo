@@ -220,11 +220,11 @@ export function RecentWidget({ onOpenTxns, onNav, chromeless }: WidgetProps) {
     const env = tx.envelopeId ? envById.get(tx.envelopeId) : null;
     return tx.name || tx.note || env?.name || (tx.items.length ? t("Split transaction") : t("Transaction"));
   };
-  // v3.dc.html:440 — the wide row leads with a 9×9 category-color dot; a transfer carries no
-  // envelope, so it borrows the same neutral TRANSFER color its amount already uses, and an
-  // envelope-less expense/income falls back to `C.mute` rather than rendering blank.
+  // v3.dc.html:440/3738 — the dot is colored PURELY by envelope, type-agnostic: `t.env &&
+  // envById[t.env] ? envById[t.env].color : T.mute`. A transfer never carries an envelopeId, so it
+  // falls through to the same neutral `C.mute` as any other envelope-less row — no special-cased
+  // transfer color here (that belongs to the amount's `signed()`, which already uses TRANSFER).
   const dotColor = (tx: Transaction): string => {
-    if (tx.type === "transfer") return TRANSFER;
     const env = tx.envelopeId ? envById.get(tx.envelopeId) : null;
     return env?.color ?? C.mute;
   };
@@ -410,6 +410,16 @@ export function GoalsWidget({ state, month, onOpenReport, onFillGoals, chromeles
                     minWidth: 0,
                     display: "flex",
                     flexDirection: "column",
+                    justifyContent: "center",
+                    // House >=30x30 touch-target floor (measured, not asserted): the ring beside
+                    // this button is a SIBLING (not nested, unlike GoalsReport.tsx's equivalent
+                    // open-envelope button), so the row's 32px height came from the ring alone and
+                    // this button's own box — sized only by its two short text lines — measured
+                    // 26px. box-sizing:border-box + minHeight makes 30 the TOTAL box height without
+                    // touching the design's font sizes, colors or gap; the row itself stays 32px
+                    // tall (the ring already drives that), so this adds no visible height anywhere.
+                    boxSizing: "border-box",
+                    minHeight: 30,
                     background: "none",
                     border: "none",
                     padding: 0,
@@ -446,7 +456,10 @@ export function GoalsWidget({ state, month, onOpenReport, onFillGoals, chromeles
                         fontFamily: "inherit",
                       }}
                     >
-                      {t("Fill {amount} ›", { amount: M(fillable) })}
+                      {/* v3.dc.html:3769 — the home tile's OWN fillLabel is "Fill " + fmt(missing),
+                          no trailing arrow; the arrow belongs only to the Goals REPORT's per-card
+                          button (v3.dc.html:3430), a different key GoalsReport.tsx already owns. */}
+                      {t("Fill {amount}", { amount: M(fillable) })}
                     </button>
                   )}
                 </span>
@@ -462,7 +475,17 @@ export function GoalsWidget({ state, month, onOpenReport, onFillGoals, chromeles
                   type="button"
                   onClick={onFillGoals}
                   style={{
-                    display: "inline",
+                    // House >=30x30 touch-target floor (measured, not asserted): this footer link
+                    // is a real write affordance (fills every under-funded goal at once), same
+                    // semantic action as GoalsReport.tsx's standalone "Fill all goals ›" button,
+                    // which already carries this same minHeight for the same reason. `display:
+                    // inline` ignores height entirely, so this needs inline-flex to make the
+                    // minHeight take effect while still flowing inline after "{verdict} · ".
+                    display: "inline-flex",
+                    alignItems: "center",
+                    verticalAlign: "middle",
+                    boxSizing: "border-box",
+                    minHeight: 30,
                     background: "none",
                     border: "none",
                     padding: 0,

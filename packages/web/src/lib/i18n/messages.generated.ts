@@ -287,6 +287,7 @@ export const MESSAGES = [
   "Fill all goals ›",
   "Fill all ›",
   "Fill by goals",
+  "Fill {amount}",
   "Fill {amount} ›",
   "Fill ›",
   "Filled {amount} in {name}",
