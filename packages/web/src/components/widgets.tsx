@@ -37,6 +37,10 @@ export interface WidgetProps {
   onOpenReport?: (tab: ReportTab) => void;
    
   onOpenMonthDay?: (date: string) => void;
+  /** Opens the multi-envelope "Fill by goals" sheet (App.openBudgetFillGoals) — the Goals widget's
+   *  footer "Fill all ›" link, wide-only (waveB-t4-brief.md, B4); undefined on phone, where the
+   *  Goals widget body never renders that control at all. */
+  onFillGoals?: () => void;
   
 
   chromeless?: boolean;

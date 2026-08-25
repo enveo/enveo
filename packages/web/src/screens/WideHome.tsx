@@ -54,6 +54,9 @@ export interface WideHomeProps {
   edit: boolean;
    
   onWidgetSettings: (id: WideWidgetId) => void;
+  
+
+  onFillGoals: () => void;
 }
 
 
@@ -154,6 +157,7 @@ export function WideHome({
   onOpenMonthDay,
   edit,
   onWidgetSettings,
+  onFillGoals,
 }: WideHomeProps) {
   const C = useTheme();
   const { t } = useT();
@@ -221,7 +225,17 @@ export function WideHome({
     window.addEventListener("pointerup", up);
   };
 
-  const widgetProps: Omit<WidgetProps, "opts" | "chromeless"> = { state, month, onNav, onOpenEnvelope, onOpenTxns, onQuickAdd, onOpenReport, onOpenMonthDay };
+  const widgetProps: Omit<WidgetProps, "opts" | "chromeless"> = {
+    state,
+    month,
+    onNav,
+    onOpenEnvelope,
+    onOpenTxns,
+    onQuickAdd,
+    onOpenReport,
+    onOpenMonthDay,
+    onFillGoals,
+  };
 
   return (
     <div className="gs" style={{ flex: 1, overflowY: "auto", padding: 14 }}>

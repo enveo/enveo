@@ -1024,6 +1024,8 @@ export const pl: Dict = {
   "All transactions ›": "Wszystkie transakcje ›",
   "total {amount} this month": "razem {amount} w tym miesiącu",
    
+  "total {amount} this month · click a row for detail": "razem {amount} w tym miesiącu · kliknij wiersz, aby zobaczyć szczegóły",
+   
   "Add widget": "Dodaj widget",
   "Every widget is already on the grid.": "Każdy widget jest już na siatce.",
   "Remove from the board": "Usuń z siatki",
@@ -1051,6 +1053,9 @@ export const pl: Dict = {
     "Każdy zapis na serwer jest już zablokowany. Nic nie zostało usunięte, bo decyzja należy do Ciebie — kopia na tym urządzeniu może być ostatnią, jaka istnieje.",
   "Export first: the JSON backup is written offline, without the server.": "Najpierw eksport: kopia zapasowa JSON jest zapisywana offline, bez serwera.",
   "Fill {amount} ›": "Wypełnij {amount} ›",
+  
+
+  "Fill all ›": "Wypełnij wszystko ›",
   "Filled {amount} in {name}": "Wypełniono {amount} w {name}",
   Ignore: "Pomiń",
   In: "Przychód",
