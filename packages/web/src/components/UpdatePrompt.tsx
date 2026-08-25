@@ -6,6 +6,28 @@ import { font, TEAL } from "../lib/theme";
 import { PHONE_COL } from "../lib/viewMode";
 
 /**
+ * The one live `ServiceWorkerRegistration` — set once by whichever `UpdatePrompt` instance is
+ * mounted (App.tsx on phone, WideShell.tsx on wide; the render tree only ever mounts one at a
+ * time). `checkForUpdate` below reads it rather than calling `registerSW()` again: a second
+ * registration call would be a second, redundant SW registration, not a second "check now" — the
+ * design-parity wave A rail popover's "Check for updates" (v3:164-166) needs the latter.
+ */
+let liveRegistration: ServiceWorkerRegistration | null = null;
+
+/**
+ * Manual "check for updates" entry point (rail user-menu footer, design v3:166). This IS the
+ * byte-based check — `registration.update()` re-fetches `sw.js` and diffs it byte-for-byte, no
+ * version comparison (see the PWA-versioning pitfall in AGENTS.md) — so there is no "you are on
+ * the latest build" answer to give back; if a newer worker turns up, the existing
+ * `onNeedRefresh` flow (below) is what surfaces it. Calling this before any `UpdatePrompt` has
+ * mounted (not reachable in practice — one mounts at the shell's top level, same lifetime as the
+ * rail that calls this) is a harmless no-op.
+ */
+export function checkForUpdate(): void {
+  void liveRegistration?.update();
+}
+
+/**
  * Registers the service worker in "prompt" mode and shows the "New version
  * available" banner when a new SW is waiting (onNeedRefresh). Actively polls for
  * updates (60 s interval + focus/visibilitychange), because a standalone PWA can
@@ -33,6 +55,7 @@ export function UpdatePrompt() {
       },
       onRegisteredSW(_swUrl, r) {
         if (!r) return;
+        liveRegistration = r;
         const check = () => {
           void r.update();
         };

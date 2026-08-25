@@ -1,21 +1,25 @@
 import { computeStateResponse } from "@enveo/shared";
 import { useEffect, useMemo, useState } from "react";
 import type { StateResponse } from "../../lib/api";
-import { useLedgerVersion } from "../../lib/api";
+import { apiErrorMessage, useLedgerVersion, useSyncStatus } from "../../lib/api";
 import { authClient } from "../../lib/auth";
 import { useMask, useSettings, useTheme } from "../../lib/contexts";
-import { currentMonth, todayISO } from "../../lib/dates";
+import { currentMonth, relSync, todayISO } from "../../lib/dates";
 import { LOCALE_OF } from "../../lib/format";
 import { useT } from "../../lib/i18n";
 import { Ico } from "../../lib/icons";
 import { isInstallable, useInstall } from "../../lib/installPrompt";
+import { completeExplicitSignOut, ExplicitSignOutPendingError } from "../../lib/signOut";
 import { store } from "../../lib/store";
+import type { SyncStatus } from "../../lib/sync";
 import { syncNow } from "../../lib/sync";
+import type { Theme } from "../../lib/theme";
 import { font, TEAL } from "../../lib/theme";
 import { monthRuler, sumBalances, tbbState } from "../../lib/uiState";
 import { APP_VERSION, buildLabel } from "../../lib/version";
 import { RAIL_W, type ViewMode } from "../../lib/viewMode";
 import { D_EYE, D_GEAR, D_MOON, LogoMark, NAV_ICONS, type ScreenId } from "../chrome";
+import { checkForUpdate } from "../UpdatePrompt";
 
 type WideMode = Exclude<ViewMode, "phone">;
 
@@ -25,30 +29,33 @@ type WideMode = Exclude<ViewMode, "phone">;
 type NavScreen = "start" | "budget" | "transactions" | "reports" | "accounts";
 
 /**
- * The signed-in user's email — read once from `lib/auth.ts`, the ONE session source of truth,
- * rather than threading it down from App (nothing else in the wide chunk needs a session
- * subscription yet). `null` while unresolved or genuinely absent; a mount that unmounts before
- * the fetch settles is guarded by `alive` the same way `hasSession()` guards its own read.
+ * The signed-in user's name + email — read once from `lib/auth.ts`, the ONE session source of
+ * truth, rather than threading it down from App (nothing else in the wide chunk needs a session
+ * subscription yet). Both `null` while unresolved or genuinely absent; a mount that unmounts
+ * before the fetch settles is guarded by `alive` the same way `hasSession()` guards its own read.
+ * `name` defaults to the email's local part at sign-up (`lib/auth.ts` `signUpEmail`), so it is
+ * never empty for an account created after that default landed — still guarded here in case an
+ * older/imported account row has a blank one.
  */
-function useSessionEmail(): string | null {
-  const [email, setEmail] = useState<string | null>(null);
+function useSessionUser(): { name: string | null; email: string | null } {
+  const [user, setUser] = useState<{ name: string | null; email: string | null }>({ name: null, email: null });
   useEffect(() => {
     let alive = true;
     void authClient
       .getSession()
       .then((s) => {
         if (!alive) return;
-        const e = (s as { data?: { user?: { email?: string } } })?.data?.user?.email;
-        setEmail(e ?? null);
+        const u = (s as { data?: { user?: { name?: string; email?: string } } })?.data?.user;
+        setUser({ name: u?.name?.trim() || null, email: u?.email ?? null });
       })
       .catch(() => {
-        if (alive) setEmail(null);
+        if (alive) setUser({ name: null, email: null });
       });
     return () => {
       alive = false;
     };
   }, []);
-  return email;
+  return user;
 }
 
 /** Fold: 44×44 icon-only square (existing task-4 shape). Active background is the theme's CTA
@@ -344,30 +351,188 @@ function TbbCard({
   );
 }
 
-function MenuRow({ label, onClick }: { label: string; onClick: () => void }) {
+/**
+ * A `userMenu` list row (design v3:158-163): label left, an optional muted `hint` right
+ * (design's `m.hint`, e.g. "clears local copy" on Log out) — `justify-content: space-between`,
+ * not two independent spans, so the hint stays pinned to the row's own right edge regardless of
+ * label length. `color` overrides the label's tone (design's `m.color`, e.g. `T.neg` for Log out).
+ */
+function MenuRow({ label, hint, color, disabled, onClick }: { label: string; hint?: string; color?: string; disabled?: boolean; onClick: () => void }) {
   const C = useTheme();
   return (
     <button
       onClick={onClick}
+      disabled={disabled}
       style={{
         display: "flex",
         alignItems: "center",
+        justifyContent: "space-between",
+        gap: 10,
         width: "100%",
         minHeight: 30,
-        padding: "6px 9px",
+        padding: "8px 9px",
         borderRadius: 8,
         border: "none",
         background: "transparent",
-        color: C.text,
+        color: color ?? C.text,
         fontSize: 12.5,
         fontWeight: 650,
-        cursor: "pointer",
+        cursor: disabled ? "default" : "pointer",
+        opacity: disabled ? 0.6 : 1,
         textAlign: "left",
         fontFamily: font,
+        whiteSpace: "nowrap",
       }}
     >
-      {label}
+      <span>{label}</span>
+      {hint && (
+        <span aria-hidden style={{ fontSize: 11, color: C.mute, whiteSpace: "nowrap" }}>
+          {hint}
+        </span>
+      )}
     </button>
+  );
+}
+
+type TFn = ReturnType<typeof useT>["t"];
+
+/**
+ * Dot + short label, shared by the persistent rail sync row (design v3:178-182) AND the
+ * popover's `SyncCard` header (v3:145-149) — the SAME precedence `SyncBadge`
+ * (`components/SyncBadge.tsx`) uses for its own dot (dead letters, then the sticky
+ * `ownerUnproven`, then `SyncState`), so all three surfaces never disagree about which state
+ * the user is looking at.
+ */
+function syncBrief(status: SyncStatus, C: Theme, t: TFn): { dot: string; label: string } {
+  if (status.deadLetters > 0) return { dot: C.neg, label: t("Sync failed") };
+  if (status.state === "unauthed") return { dot: C.mute, label: t("Session expired") };
+  if (status.ownerUnproven) return { dot: C.mute, label: t("Not sending") };
+  if (status.state === "syncing") return { dot: "var(--cta)", label: t("Syncing…") };
+  if (status.state === "offline") return { dot: C.mute, label: t("Offline") };
+  if (status.state === "error") return { dot: C.neg, label: t("Sync failed") };
+  return { dot: C.pos, label: t("Synced") };
+}
+
+/**
+ * Full sync-status card (design v3:145-157): dot + label (+ a right-aligned queue count when
+ * something is waiting) + a short description + one action button. Reads the SAME
+ * `useSyncStatus()` the header's `SyncBadge` reads — one sync source of truth, no second poll.
+ * `onNav`+`onClose` let the action route to Settings for the two states a blind retry cannot fix
+ * (a rejected op needs a human "Discard" decision there; an unproven replica needs the recheck
+ * flow there) — SyncBadge's own `onOpenSync` already treats "unauthed" the same way, so this
+ * reuses that exact convention rather than inventing a fourth outcome.
+ */
+function SyncCard({ onNav, onClose }: { onNav: (s: ScreenId) => void; onClose: () => void }) {
+  const C = useTheme();
+  const { t, tp, lang } = useT();
+  const status = useSyncStatus();
+  const { state, pending, deadLetters, lastSyncAt, ownerUnproven } = status;
+  const { dot, label } = syncBrief(status, C, t);
+
+  let detail = t("Last sync: {rel}.", { rel: relSync(lastSyncAt, lang) });
+  let action: "sync" | "review" = "sync";
+
+  if (deadLetters > 0) {
+    // Reuses SyncBadge's exact aria-label copy (already carries "— tap to open settings",
+    // which now literally describes the button below) rather than adding a near-duplicate key.
+    detail = tp("The server rejected {n} change — tap to open settings | The server rejected {n} changes — tap to open settings", deadLetters);
+    action = "review";
+  } else if (state === "unauthed") {
+    detail = t("Local changes stay safe until you sign in again.");
+    action = "review";
+  } else if (ownerUnproven) {
+    detail = t("This device's data has not been matched to your account — nothing is being sent to the server. Tap to open settings");
+    action = "review";
+  } else if (state === "syncing") {
+    detail = t("Sending local changes. The app stays usable while it runs.");
+  } else if (state === "offline") {
+    detail =
+      pending > 0
+        ? `${tp("{n} change is waiting to be sent | {n} changes are waiting to be sent", pending)}. ${t("We will send them once the server is reachable.")}`
+        : t("No connection — changes are queued and will send automatically.");
+  } else if (state === "error") {
+    detail = t("Server temporarily unreachable — your data is safe, we will retry.");
+  } else if (pending > 0) {
+    detail = `${detail} ${tp("{n} change is waiting to be sent | {n} changes are waiting to be sent", pending)}.`;
+  }
+
+  const busy = state === "syncing";
+  const doAction = () => {
+    onClose();
+    if (action === "review") onNav("settings");
+    else void syncNow("manual");
+  };
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 7, padding: "9px 10px", borderRadius: 10, background: C.bg, border: `1px solid ${C.line}` }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        <span aria-hidden style={{ width: 7, height: 7, borderRadius: "50%", background: dot, flexShrink: 0 }} />
+        <span style={{ fontSize: 12, fontWeight: 700, color: C.text }}>{label}</span>
+      </div>
+      <span style={{ fontSize: 11, lineHeight: 1.45, color: C.soft }}>{detail}</span>
+      <button
+        onClick={doAction}
+        disabled={busy}
+        style={{
+          alignSelf: "flex-start",
+          minHeight: 30,
+          display: "flex",
+          alignItems: "center",
+          fontSize: 11,
+          fontWeight: 700,
+          color: action === "review" ? "#fff" : TEAL,
+          background: action === "review" ? "var(--cta)" : "transparent",
+          border: action === "review" ? "none" : `1px solid ${TEAL}`,
+          borderRadius: 8,
+          padding: "0 11px",
+          cursor: busy ? "default" : "pointer",
+          opacity: busy ? 0.7 : 1,
+          fontFamily: font,
+        }}
+      >
+        {action === "review" ? t("Open Settings") : t("Sync now")}
+      </button>
+    </div>
+  );
+}
+
+/**
+ * The popover's "Log out" row. Reuses the EXACT explicit-sign-out routine Settings uses
+ * (`lib/signOut.ts` — pending-write recovery, replica/DEK cleanup, the multi-tenant guard) rather
+ * than re-implementing it: `completeExplicitSignOut`/`ExplicitSignOutPendingError` already ARE
+ * the shared lib entry (`screens/settings/DataSection.tsx`'s `LogoutSection` calls the same two).
+ * Unsent changes need a human decision (retry/export/discard) that already has a full surface in
+ * Settings → Data & sync — rather than rebuilding that recovery UI inside a 212px popover, this
+ * routes there and lets the human choose (the confirm dialog above is IDENTICAL copy either way,
+ * so nothing about the decision itself changes, only where the recovery choices are presented).
+ */
+function LogoutMenuRow({ onNav, onClose }: { onNav: (s: ScreenId) => void; onClose: () => void }) {
+  const C = useTheme();
+  const { t } = useT();
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const doLogout = () => {
+    if (!window.confirm(t("Sign out and remove this account's local data from this device? Your data already on the server will stay there."))) return;
+    setBusy(true);
+    setError(null);
+    void completeExplicitSignOut("retry").catch((e: unknown) => {
+      if (e instanceof ExplicitSignOutPendingError) {
+        onClose();
+        onNav("settings");
+        return;
+      }
+      setError(apiErrorMessage(e));
+      setBusy(false);
+    });
+    // On success `completeExplicitSignOut` reloads the page itself — nothing to do here.
+  };
+
+  return (
+    <>
+      <MenuRow label={t("Sign out")} hint={t("clears local copy")} color={C.neg} onClick={doLogout} disabled={busy} />
+      {error && <div style={{ fontSize: 10.5, color: C.neg, padding: "0 9px", lineHeight: 1.4 }}>{error}</div>}
+    </>
   );
 }
 
@@ -378,23 +543,40 @@ function MenuRow({ label, onClick }: { label: string; onClick: () => void }) {
  * The same reasoning covers a SECOND hazard the transform rule doesn't name: an ancestor's
  * `overflow:hidden` clips a `position:absolute` descendant exactly like a transform-created
  * containing block does. The Rail root below carries no such clip (fixed at 68/236px per
- * `RAIL_W`, but deliberately `overflow: visible`) precisely so this menu — 236px wide on the
+ * `RAIL_W`, but deliberately `overflow: visible`) precisely so this menu — 232px wide even on the
  * 68px fold rail — is never cut down to a sliver; if the root ever needs `overflow:hidden`
  * again (e.g. to clip something else), this menu must move to a portal at that point too.
  * The quick tiles are the Drawer's discreet/dark/settings trio VERBATIM: same keys, same
  * `aria-pressed`, same setters, same glyphs (`D_EYE`/`D_MOON`/`D_GEAR`, now exported from
- * chrome.tsx so this costs the phone bundle nothing new).
+ * chrome.tsx so this costs the phone bundle nothing new) — now with the design's visible text
+ * label under each icon (v3:138-143) and its on/off coloring (`accentSoft`/accent border+fg vs.
+ * plain `bg`/`line`/`soft`, v3:4269-4276), not the app's own `--cta-18`/`inset` treatment used
+ * elsewhere in the rail: these tiles read status (on/off), not selection, and the design keys
+ * that reading to the SAME accent family the rest of the rail already uses for accent state.
+ *
+ * Design parity wave A, task A3 (gaps-rail-band.md #1, owner-requirements.md — every "Wybierz…"-
+ * style placeholder is a defect, and a missing "Log out" is the same class of defect): the
+ * identity row grows a display-name line + trailing gear glyph, a persistent sync line sits
+ * below it (desktop only, v3:178-182), and the popover gains the full sync-status card
+ * (`SyncCard`), the real "Log out" (`LogoutMenuRow`, reusing Settings' own sign-out routine —
+ * see that component's header comment) and a "Check for updates" link next to the version line
+ * (v3:164-166) — `checkForUpdate` reads the SAME live `ServiceWorkerRegistration` `UpdatePrompt`
+ * already keeps (one registration, no second `registerSW()` call).
  */
 function UserBlock({ mode, screen, onNav, onInstall }: { mode: WideMode; screen: ScreenId; onNav: (s: ScreenId) => void; onInstall: () => void }) {
   const C = useTheme();
   const { t } = useT();
   const { settings, setSettings } = useSettings();
   const { state: installState } = useInstall();
-  const email = useSessionEmail();
+  const { name, email } = useSessionUser();
+  const syncStatus = useSyncStatus();
   const [menuOpen, setMenuOpen] = useState(false);
   const darkOn = settings.themeMode === "dark";
   const canInstall = isInstallable(installState);
-  const initial = (email?.trim()?.[0] ?? "?").toUpperCase();
+  const displayName = name ?? email ?? t("Account");
+  const initial = (displayName.trim()[0] ?? "?").toUpperCase();
+  const closeMenu = () => setMenuOpen(false);
+  const { dot: syncDot, label: syncLabel } = syncBrief(syncStatus, C, t);
 
   const quicks: Array<{ key: string; active: boolean; label: string; d: string; onClick: () => void }> = [
     {
@@ -429,14 +611,14 @@ function UserBlock({ mode, screen, onNav, onInstall }: { mode: WideMode; screen:
         <>
           {/* click-away backdrop — plain fixed div (same idiom as Sheet/Drawer's own backdrop),
               no portal needed since the rail carries no CSS transform (see file header comment) */}
-          <div onClick={() => setMenuOpen(false)} style={{ position: "fixed", inset: 0, zIndex: 15 }} />
+          <div onClick={closeMenu} style={{ position: "fixed", inset: 0, zIndex: 15 }} />
           <div
             role="menu"
             style={{
               position: "absolute",
               bottom: "calc(100% + 6px)",
               left: 0,
-              width: mode === "desktop" ? 212 : 236,
+              width: mode === "desktop" ? 212 : 232,
               display: "flex",
               flexDirection: "column",
               gap: 8,
@@ -458,51 +640,69 @@ function UserBlock({ mode, screen, onNav, onInstall }: { mode: WideMode; screen:
                   style={{
                     flex: 1,
                     minHeight: 44,
-                    borderRadius: 10,
-                    border: "none",
-                    cursor: "pointer",
-                    background: q.active ? "var(--cta-18)" : C.inset,
-                    outline: q.active ? "1.5px solid var(--cta)" : "none",
                     display: "flex",
+                    flexDirection: "column",
                     alignItems: "center",
-                    justifyContent: "center",
+                    gap: 4,
+                    padding: "9px 4px",
+                    borderRadius: 10,
+                    background: q.active ? C.accentSoft : C.bg,
+                    border: `1px solid ${q.active ? TEAL : C.line}`,
+                    cursor: "pointer",
                   }}
                 >
-                  <Ico d={q.d} size={17} color={q.active ? "var(--cta)" : C.soft} sw={1.7} />
+                  <Ico d={q.d} size={15} color={q.active ? TEAL : C.soft} sw={1.7} />
+                  <span style={{ fontSize: 10, color: C.mute, fontFamily: font }}>{q.label}</span>
                 </button>
               ))}
             </div>
-            <MenuRow
-              label={t("Sync now")}
-              onClick={() => {
-                setMenuOpen(false);
-                void syncNow("manual");
-              }}
-            />
+            <SyncCard onNav={onNav} onClose={closeMenu} />
             {canInstall && (
               <MenuRow
                 label={t("Install app")}
                 onClick={() => {
-                  setMenuOpen(false);
+                  closeMenu();
                   onInstall();
                 }}
               />
             )}
+            <LogoutMenuRow onNav={onNav} onClose={closeMenu} />
             <div
               style={{
                 display: "flex",
-                flexDirection: "column",
-                gap: 2,
+                alignItems: "center",
+                justifyContent: "space-between",
+                gap: 8,
                 paddingTop: 8,
                 borderTop: `1px solid ${C.line}`,
-                fontSize: 10,
+                fontSize: 10.5,
                 color: C.mute,
                 fontVariantNumeric: "tabular-nums",
-                lineHeight: 1.5,
               }}
             >
-              <span>{`v${APP_VERSION}`}</span>
-              {buildLabel() ? <span style={{ opacity: 0.85 }}>{buildLabel()}</span> : null}
+              <span>{`v${APP_VERSION}${buildLabel() ? ` · ${buildLabel()}` : ""}`}</span>
+              <button
+                onClick={() => {
+                  closeMenu();
+                  checkForUpdate();
+                }}
+                style={{
+                  flexShrink: 0,
+                  minHeight: 30,
+                  display: "flex",
+                  alignItems: "center",
+                  border: "none",
+                  background: "none",
+                  padding: "0 2px",
+                  color: TEAL,
+                  fontSize: 10.5,
+                  fontWeight: 650,
+                  cursor: "pointer",
+                  fontFamily: font,
+                }}
+              >
+                {t("Check for updates")}
+              </button>
             </div>
           </div>
         </>
@@ -511,7 +711,8 @@ function UserBlock({ mode, screen, onNav, onInstall }: { mode: WideMode; screen:
         onClick={() => setMenuOpen((v) => !v)}
         aria-haspopup="menu"
         aria-expanded={menuOpen}
-        aria-label={mode === "fold" ? t("Menu") : undefined}
+        title={mode === "desktop" ? t("Account, settings and sign out") : undefined}
+        aria-label={mode === "fold" ? t("Account, settings and sign out") : undefined}
         style={{
           display: "flex",
           alignItems: "center",
@@ -519,11 +720,11 @@ function UserBlock({ mode, screen, onNav, onInstall }: { mode: WideMode; screen:
           gap: 9,
           width: "100%",
           minHeight: 40,
-          padding: mode === "desktop" ? "6px 8px" : "6px 0",
+          padding: mode === "desktop" ? "8px 9px" : "9px 0",
           borderRadius: 11,
           border: "none",
           cursor: "pointer",
-          background: menuOpen ? C.inset : "transparent",
+          background: menuOpen ? C.railActive : "transparent",
           fontFamily: font,
         }}
       >
@@ -545,22 +746,57 @@ function UserBlock({ mode, screen, onNav, onInstall }: { mode: WideMode; screen:
           {initial}
         </span>
         {mode === "desktop" && (
+          <>
+            <span style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", textAlign: "left" }}>
+              <span style={{ fontSize: 12.5, fontWeight: 650, color: C.headerInk, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                {displayName}
+              </span>
+              {email && <span style={{ fontSize: 10.5, color: C.railMute, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{email}</span>}
+            </span>
+            <span aria-hidden style={{ fontSize: 12, color: C.railMute, flexShrink: 0 }}>
+              ⚙
+            </span>
+          </>
+        )}
+      </button>
+      {/* Persistent sync line (design v3:178-182) — always visible on desktop, never inside the
+          popover: the one status a user should see without opening anything. Clicking it opens
+          the SAME popover (design's `sync.onToggle` is literally `onToggleUserMenu`). */}
+      {mode === "desktop" && (
+        <button
+          onClick={() => setMenuOpen((v) => !v)}
+          title={t("Account, settings and sign out")}
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 6,
+            width: "100%",
+            minHeight: 30,
+            marginTop: 4,
+            padding: "0 9px",
+            border: "none",
+            background: "none",
+            cursor: "pointer",
+          }}
+        >
+          <span aria-hidden style={{ width: 5, height: 5, borderRadius: "50%", background: syncDot, flexShrink: 0 }} />
+          <span style={{ flexShrink: 0, fontSize: 9.5, fontWeight: 650, letterSpacing: "0.02em", color: C.headerInk, fontFamily: font }}>{syncLabel}</span>
           <span
             style={{
               flex: 1,
               minWidth: 0,
-              fontSize: 10.5,
-              color: C.mute,
-              textAlign: "left",
+              textAlign: "right",
+              fontSize: 9.5,
+              color: C.railMute,
               overflow: "hidden",
               textOverflow: "ellipsis",
               whiteSpace: "nowrap",
             }}
           >
-            {email ?? ""}
+            {buildLabel() || `v${APP_VERSION}`}
           </span>
-        )}
-      </button>
+        </button>
+      )}
     </div>
   );
 }
