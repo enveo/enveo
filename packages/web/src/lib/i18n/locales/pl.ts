@@ -170,6 +170,7 @@ export const pl: Dict = {
   "Backup downloaded.": "Pobrano kopię danych.",
   "Backup loaded — data has been replaced.": "Wczytano kopię — dane zostały zastąpione.",
   Balance: "Saldo",
+  "Balance {amount}": "Saldo {amount}",
   "Balance adjustment": "Wyrównanie salda",
   "Balance in the app": "Saldo w aplikacji",
   "Balance matches": "Saldo się zgadza",
