@@ -284,7 +284,7 @@ export function WideHome({
                 )}
               </div>
               <div style={{ flex: 1, minHeight: 0, overflowY: "auto", display: "flex", flexDirection: "column", gap: 8 }}>
-                {renderWidget({ id: w.id, enabled: true, opts: w.opts }, { ...widgetProps, chromeless: true }, t)}
+                {renderWidget({ id: w.id, enabled: true, opts: w.opts }, { ...widgetProps, chromeless: true, tile: { w: spanW, h: w.h } }, t)}
               </div>
               {edit && (
                 <button
