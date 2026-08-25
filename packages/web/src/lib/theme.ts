@@ -344,6 +344,10 @@ export function themeTokens(t: AccentTheme, isDark: boolean): { vars: Record<str
     "--nav-ind": nav.ind,
     "--focus-ring": focusRing,
     "--input-underline": accent,
+    // Surface + hairline as CSS vars so the injected stylesheet can style native controls
+    // (checkboxes) theme-aware — inline styles cannot reach ::before/:checked pseudo-states.
+    "--card": palette.card,
+    "--line": palette.line,
   };
   for (const s of ALPHA_SUFFIXES) {
     vars[`--accent-${s}`] = hexAlpha(accent, s);
