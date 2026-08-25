@@ -1029,6 +1029,7 @@ export const pl: Dict = {
   "Add widget": "Dodaj widget",
   "Every widget is already on the grid.": "Każdy widget jest już na siatce.",
   "Remove from the board": "Usuń z siatki",
+  "Reset layout": "Resetuj układ",
   "Size: {w} × {h} — drag the corner of the tile to resize": "Rozmiar: {w} × {h} — przeciągnij róg kafelka, aby zmienić rozmiar",
   "Widget settings": "Ustawienia widgetu",
 

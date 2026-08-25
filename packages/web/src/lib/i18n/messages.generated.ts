@@ -533,6 +533,7 @@ export const MESSAGES = [
   "Reports",
   "Requires AI (server mode or your own key).",
   "Reset",
+  "Reset layout",
   "Restore",
   "Restore “{name}” · hidden",
   "Resume upgrade",
