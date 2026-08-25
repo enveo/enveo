@@ -1131,4 +1131,5 @@ export const pl: Dict = {
     many: "{n} kroków do zamkniętego planu · {pct}% miesiąca za nami",
     other: "{n} kroków do zamkniętego planu · {pct}% miesiąca za nami",
   },
+  "v{version} · refreshing takes a second, nothing is lost.": "v{version} · odświeżenie zajmuje chwilę, nic nie przepada.",
 };

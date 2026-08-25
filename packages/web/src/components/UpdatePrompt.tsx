@@ -3,6 +3,7 @@ import { useEffect, useSyncExternalStore } from "react";
 import { useT } from "../lib/i18n";
 import { useWideHost } from "../lib/shellContext";
 import { font, TEAL } from "../lib/theme";
+import { APP_VERSION } from "../lib/version";
 import { PHONE_COL } from "../lib/viewMode";
 
 /**
@@ -82,24 +83,42 @@ export function checkForUpdate(): void {
  * banner) and the rail's update card (`Rail.tsx`, desktop) both call this instead of each running
  * their own `registerSW()`.
  *
- * Deliberately exposes NO version string (design parity wave A close, item 8). There is no
- * manifest or endpoint anywhere in this app that exposes the WAITING service worker's version
- * pre-activation — update detection is deliberately byte-based (new asset hashes), not
- * version-number based (see the PWA-versioning pitfall in AGENTS.md), so the new build's semver is
- * not knowable client-side before the reload actually happens. An earlier draft returned
- * `APP_VERSION` here — the version of the build CURRENTLY RUNNING, about to be replaced — for the
- * rail's update card to show; a first fix qualified it ("Currently v{version} · …") rather than
- * dropping it, which still put a version number on a card announcing a "New version ready". The
- * honest fix removes the field entirely: nothing here can name the incoming build, so nothing
- * should be offered that invites showing one.
+ * `incomingVersion` is the DEPLOYED build's semver, fetched from `/version.json` (emitted by the
+ * build, excluded from the SW precache, requested with `cache: "no-store"`) the moment an update
+ * is detected — the server is already handing out the new build by then, so the file names the
+ * INCOMING version even though SW update detection itself stays byte-based (the PWA-versioning
+ * pitfall in AGENTS.md is about detection, not display). Null until fetched, and forced null when
+ * the fetched version equals the RUNNING build's (a byte-only change, or a proxy served a stale
+ * copy) — a "New version ready" card must never name the version it is replacing. An earlier
+ * round shipped exactly that bug twice, which is why this guard is explicit.
  */
-export function useAppUpdate(): { needRefresh: boolean; refresh: (reload?: boolean) => void; dismiss: () => void } {
+let incoming: string | null = null;
+function fetchIncomingVersion(): void {
+  fetch("/version.json", { cache: "no-store" })
+    .then((r) => (r.ok ? r.json() : null))
+    .then((j: { version?: string } | null) => {
+      const v = j?.version;
+      incoming = typeof v === "string" && v !== APP_VERSION ? v : null;
+      notify();
+    })
+    .catch(() => {
+      incoming = null;
+    });
+}
+const getIncomingSnapshot = () => incoming;
+
+export function useAppUpdate(): { needRefresh: boolean; incomingVersion: string | null; refresh: (reload?: boolean) => void; dismiss: () => void } {
   useEffect(() => {
     ensureRegistered();
   }, []);
   const needRefresh = useSyncExternalStore(subscribe, getNeedSnapshot);
+  const incomingVersion = useSyncExternalStore(subscribe, getIncomingSnapshot);
+  useEffect(() => {
+    if (needRefresh) fetchIncomingVersion();
+  }, [needRefresh]);
   return {
     needRefresh,
+    incomingVersion,
     refresh: (reload = true) => void refreshFn?.(reload),
     dismiss: () => {
       need = false;

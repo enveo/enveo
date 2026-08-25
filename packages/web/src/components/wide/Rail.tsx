@@ -365,17 +365,13 @@ function TbbCard({
  * caller only mounts this when `mode === "desktop"`). Styled on the same `railCard` grammar as
  * `TbbCard` above it (14px radius, white/`railCard` surface).
  *
- * Design parity wave A close, item 8: the sub-line carries NO version number. `UpdatePrompt.tsx`'s
- * `useAppUpdate()` no longer exposes one either (see that file's own comment) — the only version
- * ever knowable client-side here is the CURRENTLY RUNNING build's, and a "New version ready" card
- * that showed it read as though the old build were the incoming one (an earlier draft's "Currently
- * v{version} · …" wording only half-fixed this: still a version number on the update card, just
- * with a qualifier). Since the incoming build's version cannot be known before the reload actually
- * happens (update detection is byte-based, not version-based — the PWA-versioning pitfall in
- * AGENTS.md), the honest fix omits the number entirely rather than showing a number that is wrong
- * for the reading a user would naturally give it.
+ * Owner rule 3 wants the AVAILABLE version on this card, and `useAppUpdate().incomingVersion` now
+ * delivers it (fetched from the deployed server's /version.json at detection time — see
+ * UpdatePrompt.tsx). When it is null (offline, byte-only change, or the fetch raced a proxy) the
+ * sub-line falls back to the versionless copy — never the RUNNING build's number, which two
+ * earlier drafts showed and which reads as though the old build were the incoming one.
  */
-function RailUpdateCard({ onRefresh, onDismiss }: { onRefresh: () => void; onDismiss: () => void }) {
+function RailUpdateCard({ incomingVersion, onRefresh, onDismiss }: { incomingVersion: string | null; onRefresh: () => void; onDismiss: () => void }) {
   const C = useTheme();
   const { t } = useT();
   return (
@@ -404,7 +400,11 @@ function RailUpdateCard({ onRefresh, onDismiss }: { onRefresh: () => void; onDis
           ×
         </button>
       </div>
-      <span style={{ fontSize: 11, lineHeight: 1.4, color: C.railMute }}>{t("Refreshing takes a second, nothing is lost.")}</span>
+      <span style={{ fontSize: 11, lineHeight: 1.4, color: C.railMute }}>
+        {incomingVersion !== null
+          ? t("v{version} · refreshing takes a second, nothing is lost.", { version: incomingVersion })
+          : t("Refreshing takes a second, nothing is lost.")}
+      </span>
       <button
         onClick={onRefresh}
         style={{
@@ -985,7 +985,7 @@ export function Rail({
   // called unconditionally (rules of hooks; `mode` can change under this same component across
   // a fold↔desktop resize) but only rendered below when `mode === "desktop"`; fold keeps its
   // existing anchored `<UpdatePrompt/>` banner (mounted by `WideShell`), not this card.
-  const { needRefresh, refresh, dismiss } = useAppUpdate();
+  const { needRefresh, incomingVersion, refresh, dismiss } = useAppUpdate();
   const items: ReadonlyArray<{ id: NavScreen; label: string }> = [
     { id: "start", label: t("Home") },
     { id: "budget", label: t("Budget") },
@@ -1070,7 +1070,7 @@ export function Rail({
       {mode === "desktop" && (
         <TbbCard state={state} screen={screen} onQuickAdd={onQuickAdd} onFillGoals={onFillGoals} onNav={onNav} onOpenAccount={onOpenAccount} />
       )}
-      {mode === "desktop" && needRefresh && <RailUpdateCard onRefresh={() => refresh(true)} onDismiss={dismiss} />}
+      {mode === "desktop" && needRefresh && <RailUpdateCard incomingVersion={incomingVersion} onRefresh={() => refresh(true)} onDismiss={dismiss} />}
       <UserBlock mode={mode} screen={screen} onNav={onNav} onInstall={onInstall} />
     </div>
   );

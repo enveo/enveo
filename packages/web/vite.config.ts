@@ -1,4 +1,5 @@
 import { execSync } from "node:child_process";
+import { readFileSync } from "node:fs";
 import react from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
 import { VitePWA } from "vite-plugin-pwa";
@@ -40,6 +41,20 @@ export default defineConfig({
   },
   plugins: [
     react(),
+    // Emits dist/version.json = the BUILT bundle's APP_VERSION. The deployed server hands out the
+    // NEW build's file while a stale client still runs the old one, which is what lets the rail's
+    // update card name the incoming version (owner rule 3) despite byte-based SW update detection.
+    // Read by UpdatePrompt with cache:"no-store" and excluded from the SW precache below — a
+    // precached copy would be the OLD version by definition.
+    {
+      name: "enveo-emit-version-json",
+      generateBundle() {
+        const src = readFileSync("src/lib/version.ts", "utf8");
+        const m = /APP_VERSION = "([^"]+)"/.exec(src);
+        if (!m) throw new Error("APP_VERSION not found in src/lib/version.ts");
+        this.emitFile({ type: "asset", fileName: "version.json", source: JSON.stringify({ version: m[1] }) });
+      },
+    },
     VitePWA({
       registerType: "prompt",
       injectRegister: null,
@@ -68,6 +83,8 @@ export default defineConfig({
         ],
       },
       workbox: {
+        // version.json must ALWAYS come from the network (see the emit plugin above).
+        globIgnores: ["**/version.json"],
         // App start (navigation) ALWAYS network-first — after a deploy the client gets
         // a shell consistent with current assets instead of a stale precached index.html
         // that pointed at already-removed (re-hashed) chunks and hung the PWA.
