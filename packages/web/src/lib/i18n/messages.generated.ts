@@ -105,6 +105,7 @@ export const MESSAGES = [
   "Balance adjustment",
   "Balance in the app",
   "Balance matches",
+  "Balance {amount}",
   "Balance:",
   "Balanced",
   "Before archiving this envelope, remove it as the automatic envelope for this account: {accounts}. | Before archiving this envelope, remove it as the automatic envelope for these accounts: {accounts}.",

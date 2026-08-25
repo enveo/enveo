@@ -6,7 +6,7 @@ import { monthLabel } from "../../lib/dates";
 import { type Message, msg, useT } from "../../lib/i18n";
 import { Ico } from "../../lib/icons";
 import { InWideShell, type PaneRect, type PaneSurfaceHost } from "../../lib/shellContext";
-import { CTA, font, P } from "../../lib/theme";
+import { CTA, font, TEAL } from "../../lib/theme";
 import { useElementWidth } from "../../lib/useElementWidth";
 import { PHONE_COL, type ViewMode } from "../../lib/viewMode";
 import type { Tab as AddTab } from "../../screens/Add";
@@ -21,8 +21,20 @@ import { PanelHost } from "./PanelHost";
 import { type PanelFallbacks, resolvePanel } from "./panel";
 import { Rail } from "./Rail";
 
-/** One right-slot contract (pr4-context.md §13) — computed by App, rendered here verbatim. */
-type RightSlot = { label: string; ariaLabel: string; onClick: () => void } | null;
+/**
+ * One right-slot contract (pr4-context.md §13) — computed by App, rendered here verbatim.
+ *
+ * Design-parity wave A, task A5 (waveA-t5-brief.md; design v3:202,4351): widened from a single
+ * always-clickable shape to two kinds. The design's `headerRight` is ONE plain caption span for
+ * every screen — Home/Budget happen to make theirs clickable (`headerRightCursor` is "pointer"
+ * only for those two), Accounts/Settings/Reports are inert text. `"action"` keeps today's
+ * pencil-button behaviour (still a real ≥30×30-hit button — house touch-target rule — just
+ * caption-weight now, see `BandHeader` below); `"caption"` is plain non-interactive text (no
+ * button semantics needed: nothing to click, so no touch-target obligation either).
+ */
+type RightSlot = { kind: "action"; label: string; ariaLabel: string; onClick: () => void } | { kind: "caption"; text: string } | null;
+
+export type { RightSlot };
 
 const SCREEN_TITLE: Record<ScreenId, Message> = {
   start: msg("Home"),
@@ -93,15 +105,21 @@ function BandHeader({
         display: "flex",
         alignItems: "center",
         flexWrap: "wrap",
+        // Row-gap only ever shows up ONCE the wrap backstop above actually wraps to a second
+        // row — a single-row band (the design's own, and every desktop width) renders with true
+        // zero vertical padding (design v3:188 `padding: 0 16px` — no vertical term at all), and
+        // `minHeight` below alone gives it its 56px. Column-gap (16) is the design's own `gap:14`
+        // rounded up to match the 16px horizontal padding it sits beside.
         gap: "6px 16px",
-        padding: `14px ${P}px`,
+        padding: "0 16px",
+        minHeight: 56,
         borderBottom: `1px solid ${C.line}`,
         flexShrink: 0,
       }}
     >
-      <span style={{ fontSize: 18, fontWeight: 700, color: C.text, flexShrink: 0 }}>{t(SCREEN_TITLE[screen])}</span>
+      <span style={{ fontSize: 17, fontWeight: 600, color: C.text, flexShrink: 0 }}>{t(SCREEN_TITLE[screen])}</span>
       {screen !== "settings" && (
-        <div style={{ display: "flex", alignItems: "center", gap: 2, flexShrink: 0 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 11, flexShrink: 0 }}>
           <button
             onClick={onPrev}
             aria-label={t("Previous month")}
@@ -116,7 +134,7 @@ function BandHeader({
               justifyContent: "center",
             }}
           >
-            <Ico d="M15 19l-7-7 7-7" size={16} color={C.soft} />
+            <Ico d="M15 19l-7-7 7-7" size={16} color={C.bandMute} />
           </button>
           <span style={{ fontSize: 13.5, fontWeight: 600, color: C.text, minWidth: 100, textAlign: "center" }}>{monthLabel(month, lang)}</span>
           <button
@@ -133,7 +151,7 @@ function BandHeader({
               justifyContent: "center",
             }}
           >
-            <Ico d="M9 5l7 7-7 7" size={16} color={C.soft} />
+            <Ico d="M9 5l7 7-7 7" size={16} color={C.bandMute} />
           </button>
         </div>
       )}
@@ -144,7 +162,12 @@ function BandHeader({
         {/* A genuine flex child of the band header, never an overlay above content — see the
             SyncBadge.tsx file header for why `topOffset`-over-the-primary-pane was replaced. */}
         <SyncBadge inline onOpenSync={onOpenSync} />
-        {rightSlot && (
+        {rightSlot?.kind === "action" && (
+          // Design v3:202 — `headerRight` is a bare caption everywhere (11.5px, bandMute, no
+          // border/box); Home/Budget merely happen to make theirs clickable. Still a REAL button
+          // with a ≥30px hit area (house touch-target rule) — the caption weight comes from
+          // dropping the radius/background/13px-bold text this used to carry, not from losing
+          // button semantics.
           <button
             onClick={rightSlot.onClick}
             aria-label={rightSlot.ariaLabel}
@@ -155,19 +178,24 @@ function BandHeader({
               gap: 6,
               minWidth: 30,
               minHeight: 30,
-              padding: "0 10px",
-              borderRadius: 8,
+              padding: "0 6px",
+              borderRadius: 0,
               border: "none",
-              background: "transparent",
-              color: C.soft,
+              background: "none",
+              color: C.bandMute,
               cursor: "pointer",
               flexShrink: 0,
               justifyContent: "center",
             }}
           >
-            <Ico d={PENCIL_D} size={15} color={C.soft} />
-            {!compact && <span style={{ fontSize: 13, fontWeight: 600 }}>{rightSlot.label}</span>}
+            <Ico d={PENCIL_D} size={13} color={C.bandMute} />
+            {!compact && <span style={{ fontSize: 11.5 }}>{rightSlot.label}</span>}
           </button>
+        )}
+        {rightSlot?.kind === "caption" && (
+          // Accounts ("Balance {amount}") / Settings ("Enveo v… · build …") — inert text, no
+          // button semantics and so no touch-target obligation (nothing here is clickable).
+          <span style={{ fontSize: 11.5, color: C.bandMute, flexShrink: 0, whiteSpace: "nowrap" }}>{rightSlot.text}</span>
         )}
         <button
           onClick={onAdd}
@@ -213,14 +241,18 @@ function BandHeader({
             flexShrink: 0,
             borderRadius: 8,
             border: "none",
-            background: panelClosed ? "transparent" : C.inset,
+            // Design v3:4155 (`panelBtnBg`) — the open state is `T.accentSoft`, not the app's
+            // generic `inset` tint (Task A2's rail/panel token).
+            background: panelClosed ? "transparent" : C.accentSoft,
             cursor: "pointer",
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
           }}
         >
-          <PanelToggleGlyph color={C.soft} />
+          {/* Design v3:4157 (`panelBtnFg`) — the glyph tracks the same open/closed split as the
+              button's own background just above. */}
+          <PanelToggleGlyph color={panelClosed ? C.soft : TEAL} />
         </button>
       </div>
     </div>

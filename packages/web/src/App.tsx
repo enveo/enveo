@@ -1,5 +1,5 @@
-import type { Transaction } from "@enveo/shared";
-import { lazy, useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { computeStateResponse, type Transaction } from "@enveo/shared";
+import { lazy, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { BottomNav, Drawer, type ScreenId, StyleInjector } from "./components/chrome";
 import { LazyChunk, useOpenedOnce } from "./components/lazy";
 import { StartupSplash } from "./components/StartupSplash";
@@ -15,8 +15,13 @@ import { UpdatePrompt } from "./components/UpdatePrompt";
 // task's own verification notes — `resolvePanel`, the module's third runtime export, is NOT
 // referenced from here and stays tree-shaken out of the eager chunk).
 import { panelFallbacks, primaryScreenFor } from "./components/wide/panel";
-import { useStateQuery } from "./lib/api";
-import { useTheme } from "./lib/contexts";
+// Type-only — `WideShell` itself is behind `lazy()` below, so this costs nothing in the eager
+// chunk (erased at compile time); it's what keeps `wideRightSlot`'s object literals (below)
+// checked against the SAME discriminated union `BandHeader` renders, instead of two shapes that
+// happen to line up by eye.
+import type { RightSlot } from "./components/wide/WideShell";
+import { useLedgerVersion, useStateQuery } from "./lib/api";
+import { useMask, useTheme } from "./lib/contexts";
 import { currentMonth, shiftMonth } from "./lib/dates";
 import { useT } from "./lib/i18n";
 import { historyAction, parseUrl, routeToUrl } from "./lib/routing";
@@ -25,6 +30,7 @@ import { store } from "./lib/store";
 import { bootOnce, retryBoot } from "./lib/sync";
 import { font, P, TEAL } from "./lib/theme";
 import type { TransactionFilters } from "./lib/transactionSearch";
+import { APP_VERSION, buildLabel } from "./lib/version";
 import { PHONE_COL, useViewMode } from "./lib/viewMode";
 import { AddScreen, type Tab as AddTab } from "./screens/Add";
 import { LoginScreen } from "./screens/Login";
@@ -112,6 +118,9 @@ export function backFallback(s: {
 export default function App() {
   const C = useTheme();
   const { t } = useT();
+  // Task A5's Accounts band caption ("Balance {amount}") — discreet mode must mask it exactly
+  // like every other on-screen amount (house rule).
+  const M = useMask();
   // Wide vs. phone layout (spec §5–§10) — first consumer of `viewMode.ts`, already eager for
   // `PHONE_COL` above. `wide` itself is computed below, once `state`/`onboarding` are known.
   const mode = useViewMode();
@@ -229,6 +238,19 @@ export default function App() {
   // flashes to an "Add" title/content and back to `editReturn` — it just never left. On phone
   // this is always `screen` unchanged (the full-screen Add takeover there IS the current screen).
   const primaryScreen = wide ? primaryScreenFor(screen, editReturn) : screen;
+  // Accounts band caption ("Balance {amount}", waveA-t5-brief.md) — account balances are GLOBAL
+  // (currentMonth()), never the viewed `month` (house rule; the same computation Accounts.tsx's
+  // own header total already uses, non-archived accounts only). Gated to the one screen that
+  // shows it so phone (and every other wide screen) never pays for the extra recompute.
+  const ledgerVersion = useLedgerVersion();
+  const accountsNetTotal = useMemo(() => {
+    if (!wide || primaryScreen !== "accounts") return 0;
+    const l = store.getLedger();
+    if (!l) return 0;
+    return computeStateResponse(l, currentMonth())
+      .accounts.filter((a) => !a.archived)
+      .reduce((s, a) => s + a.balance, 0);
+  }, [ledgerVersion, wide, primaryScreen]);
 
   // nav = entry from menu/navigation: a fresh Add returns to start;
   // Reports from the menu always start at the card overview (deep link overrides below)
@@ -725,16 +747,27 @@ export default function App() {
   // state — the sheet never mounts on wide, see WideShell's start-screen branch) but instead
   // toggles `WideHome`'s own board edit mode, with the label flipping to "Done" while active —
   // one slot, one computed VALUE, no fork in WideShell's header code.
-  const wideRightSlot =
+  //
+  // Design-parity wave A, task A5 (waveA-t5-brief.md; design v3:4351's `headerRight`): widened to
+  // the two-`kind` `RightSlot` union — Start/Budget stay clickable ("action"), Accounts/Settings
+  // are inert captions. Settings' version/build string follows the SAME untranslated convention
+  // Settings.tsx/Rail.tsx already use for it (a technical build stamp, not a phrase) — not
+  // wrapped in `t()`.
+  const wideRightSlot: RightSlot =
     primaryScreen === "start"
       ? {
+          kind: "action",
           label: wideBoardEdit ? t("Done") : t("Edit widgets"),
           ariaLabel: wideBoardEdit ? t("Done") : t("Edit widgets"),
           onClick: () => setWideBoardEdit(!wideBoardEdit),
         }
       : primaryScreen === "budget"
-        ? { label: t("Manage envelopes"), ariaLabel: t("Manage envelopes"), onClick: () => setManageOpen(true) }
-        : null;
+        ? { kind: "action", label: t("Manage envelopes"), ariaLabel: t("Manage envelopes"), onClick: () => setManageOpen(true) }
+        : primaryScreen === "accounts"
+          ? { kind: "caption", text: t("Balance {amount}", { amount: M(accountsNetTotal) }) }
+          : primaryScreen === "settings"
+            ? { kind: "caption", text: `Enveo v${APP_VERSION}${buildLabel() ? ` · ${buildLabel()}` : ""}` }
+            : null;
 
   if (wide) {
     return (
