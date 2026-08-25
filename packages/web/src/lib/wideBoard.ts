@@ -1,4 +1,4 @@
-import type { WideWidgetConfig, WideWidgetId } from "@enveo/shared";
+import { createDefaultWideWidgets, type WideWidgetConfig, type WideWidgetId } from "@enveo/shared";
 
 /**
  * Pure helpers behind the wide Home board's edit mode (`screens/WideHome.tsx`) — kept separate
@@ -37,6 +37,18 @@ export function applyResize(widgets: WideWidgetConfig[], id: WideWidgetId, w: nu
  *  re-added from the "Add widget" ghost tile). */
 export function toggleEnabled(widgets: WideWidgetConfig[], id: WideWidgetId, enabled: boolean): WideWidgetConfig[] {
   return widgets.map((widget) => (widget.id === id ? { ...widget, enabled } : widget));
+}
+
+/**
+ * Edit mode's "Reset layout" escape hatch. A stored `wideWidgets` board outlives every change to
+ * the shipped defaults — `reconcileWideWidgets` deliberately keeps whatever the user has (only
+ * APPENDING ids it has never seen), so without this no existing budget could ever adopt a
+ * redesigned default row map (waveB-t1-brief.md's "fresh budget (or after layout reset)" premise).
+ * Commits the CANONICAL default board as exactly ONE `update({ wideWidgets })` op — the same
+ * commit grammar as every other edit-mode gesture; `update` is `useBudgetPreferences().update`.
+ */
+export function commitResetLayout(update: (patch: { wideWidgets: WideWidgetConfig[] }) => void): void {
+  update({ wideWidgets: createDefaultWideWidgets() });
 }
 
 /**
