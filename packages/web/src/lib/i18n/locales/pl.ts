@@ -1097,6 +1097,7 @@ export const pl: Dict = {
   "{amount} from To be budgeted ({pool} available)": "{amount} z Do rozdysponowania ({pool} dostępne)",
   "{funded} of {target}": "{funded} z {target}",
   "{left} left · {pct}% of the budget spent": "zostaje {left} · wydano {pct}% budżetu",
+  "{mode} · total {amount}": "{mode} · razem {amount}",
   "{month} so far: {pct}%": "{month} dotychczas: {pct}%",
   "{month} · ended at {pct}% of the goal": "{month} · zakończony na {pct}% celu",
   "{month} · goal fully funded ✓": "{month} · cel w pełni sfinansowany ✓",
