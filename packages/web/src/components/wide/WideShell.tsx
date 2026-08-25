@@ -238,9 +238,15 @@ function BandHeader({
             height: 30,
             minWidth: 30,
             minHeight: 30,
+            // The border below adds to the box unless sized under it — keeps the touch target at
+            // exactly 30×30 (house rule) whichever state is showing, not 32×32 while closed.
+            boxSizing: "border-box",
             flexShrink: 0,
             borderRadius: 8,
-            border: "none",
+            
+
+
+            border: `1px solid ${panelClosed ? C.bandLine2 : "transparent"}`,
             // Design v3:4155 (`panelBtnBg`) — the open state is `T.accentSoft`, not the app's
             // generic `inset` tint (Task A2's rail/panel token).
             background: panelClosed ? "transparent" : C.accentSoft,
