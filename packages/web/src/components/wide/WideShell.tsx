@@ -6,7 +6,12 @@ import { monthLabel } from "../../lib/dates";
 import { type Message, msg, useT } from "../../lib/i18n";
 import { Ico } from "../../lib/icons";
 import { InWideShell, type PaneRect, type PaneSurfaceHost } from "../../lib/shellContext";
-import { CTA, font, P } from "../../lib/theme";
+import { CTA, font, TEAL } from "../../lib/theme";
+// Design parity wave A close, item 9: the Transactions band caption ("{n} shown") needs the SAME
+// filtering `TransactionsScreen` already does — imported HERE (the lazy wide chunk), never from
+// App.tsx (eager): App.tsx's own comment on the bag fields below explains why pulling this module
+// into the eager bundle would spend the §3f headroom this wave has almost none of left.
+import { createTransactionSearchIndex, matchesTransactionFilters, matchesTransactionQuery, type TransactionFilters } from "../../lib/transactionSearch";
 import { useElementWidth } from "../../lib/useElementWidth";
 import { PHONE_COL, type ViewMode } from "../../lib/viewMode";
 import type { Tab as AddTab } from "../../screens/Add";
@@ -18,11 +23,23 @@ import { UpdatePrompt } from "../UpdatePrompt";
 import { FoldTbbStrip } from "./FoldTbbStrip";
 import { paneWidthFor } from "./geometry";
 import { PanelHost } from "./PanelHost";
-import { resolvePanel } from "./panel";
+import { type PanelFallbacks, resolvePanel } from "./panel";
 import { Rail } from "./Rail";
 
-/** One right-slot contract (pr4-context.md §13) — computed by App, rendered here verbatim. */
-type RightSlot = { label: string; ariaLabel: string; onClick: () => void } | null;
+/**
+ * One right-slot contract (pr4-context.md §13) — computed by App, rendered here verbatim.
+ *
+ * Design-parity wave A, task A5 (waveA-t5-brief.md; design v3:202,4351): widened from a single
+ * always-clickable shape to two kinds. The design's `headerRight` is ONE plain caption span for
+ * every screen — Home/Budget happen to make theirs clickable (`headerRightCursor` is "pointer"
+ * only for those two), Accounts/Settings/Reports are inert text. `"action"` keeps today's
+ * pencil-button behaviour (still a real ≥30×30-hit button — house touch-target rule — just
+ * caption-weight now, see `BandHeader` below); `"caption"` is plain non-interactive text (no
+ * button semantics needed: nothing to click, so no touch-target obligation either).
+ */
+type RightSlot = { kind: "action"; label: string; ariaLabel: string; onClick: () => void } | { kind: "caption"; text: string } | null;
+
+export type { RightSlot };
 
 const SCREEN_TITLE: Record<ScreenId, Message> = {
   start: msg("Home"),
@@ -93,15 +110,21 @@ function BandHeader({
         display: "flex",
         alignItems: "center",
         flexWrap: "wrap",
+        // Row-gap only ever shows up ONCE the wrap backstop above actually wraps to a second
+        // row — a single-row band (the design's own, and every desktop width) renders with true
+        // zero vertical padding (design v3:188 `padding: 0 16px` — no vertical term at all), and
+        // `minHeight` below alone gives it its 56px. Column-gap (16) is the design's own `gap:14`
+        // rounded up to match the 16px horizontal padding it sits beside.
         gap: "6px 16px",
-        padding: `14px ${P}px`,
+        padding: "0 16px",
+        minHeight: 56,
         borderBottom: `1px solid ${C.line}`,
         flexShrink: 0,
       }}
     >
-      <span style={{ fontSize: 18, fontWeight: 700, color: C.text, flexShrink: 0 }}>{t(SCREEN_TITLE[screen])}</span>
+      <span style={{ fontSize: 17, fontWeight: 600, color: C.text, flexShrink: 0 }}>{t(SCREEN_TITLE[screen])}</span>
       {screen !== "settings" && (
-        <div style={{ display: "flex", alignItems: "center", gap: 2, flexShrink: 0 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 11, flexShrink: 0 }}>
           <button
             onClick={onPrev}
             aria-label={t("Previous month")}
@@ -116,7 +139,7 @@ function BandHeader({
               justifyContent: "center",
             }}
           >
-            <Ico d="M15 19l-7-7 7-7" size={16} color={C.soft} />
+            <Ico d="M15 19l-7-7 7-7" size={16} color={C.bandMute} />
           </button>
           <span style={{ fontSize: 13.5, fontWeight: 600, color: C.text, minWidth: 100, textAlign: "center" }}>{monthLabel(month, lang)}</span>
           <button
@@ -133,7 +156,7 @@ function BandHeader({
               justifyContent: "center",
             }}
           >
-            <Ico d="M9 5l7 7-7 7" size={16} color={C.soft} />
+            <Ico d="M9 5l7 7-7 7" size={16} color={C.bandMute} />
           </button>
         </div>
       )}
@@ -144,7 +167,12 @@ function BandHeader({
         {/* A genuine flex child of the band header, never an overlay above content — see the
             SyncBadge.tsx file header for why `topOffset`-over-the-primary-pane was replaced. */}
         <SyncBadge inline onOpenSync={onOpenSync} />
-        {rightSlot && (
+        {rightSlot?.kind === "action" && (
+          // Design v3:202 — `headerRight` is a bare caption everywhere (11.5px, bandMute, no
+          // border/box); Home/Budget merely happen to make theirs clickable. Still a REAL button
+          // with a ≥30px hit area (house touch-target rule) — the caption weight comes from
+          // dropping the radius/background/13px-bold text this used to carry, not from losing
+          // button semantics.
           <button
             onClick={rightSlot.onClick}
             aria-label={rightSlot.ariaLabel}
@@ -155,19 +183,24 @@ function BandHeader({
               gap: 6,
               minWidth: 30,
               minHeight: 30,
-              padding: "0 10px",
-              borderRadius: 8,
+              padding: "0 6px",
+              borderRadius: 0,
               border: "none",
-              background: "transparent",
-              color: C.soft,
+              background: "none",
+              color: C.bandMute,
               cursor: "pointer",
               flexShrink: 0,
               justifyContent: "center",
             }}
           >
-            <Ico d={PENCIL_D} size={15} color={C.soft} />
-            {!compact && <span style={{ fontSize: 13, fontWeight: 600 }}>{rightSlot.label}</span>}
+            <Ico d={PENCIL_D} size={13} color={C.bandMute} />
+            {!compact && <span style={{ fontSize: 11.5 }}>{rightSlot.label}</span>}
           </button>
+        )}
+        {rightSlot?.kind === "caption" && (
+          // Accounts ("Balance {amount}") / Settings ("Enveo v… · build …") — inert text, no
+          // button semantics and so no touch-target obligation (nothing here is clickable).
+          <span style={{ fontSize: 11.5, color: C.bandMute, flexShrink: 0, whiteSpace: "nowrap" }}>{rightSlot.text}</span>
         )}
         <button
           onClick={onAdd}
@@ -210,17 +243,27 @@ function BandHeader({
             height: 30,
             minWidth: 30,
             minHeight: 30,
+            // The border below adds to the box unless sized under it — keeps the touch target at
+            // exactly 30×30 (house rule) whichever state is showing, not 32×32 while closed.
+            boxSizing: "border-box",
             flexShrink: 0,
             borderRadius: 8,
-            border: "none",
-            background: panelClosed ? "transparent" : C.inset,
+            // Design parity wave A close, item 7 (v3:4161, `panelBtnBorder`): CLOSED gets a
+            // visible hairline (`T.bandLine2`, a fainter tone than `line`/`bandLine`), OPEN stays
+            // transparent — this button previously had no border in either state.
+            border: `1px solid ${panelClosed ? C.bandLine2 : "transparent"}`,
+            // Design v3:4155 (`panelBtnBg`) — the open state is `T.accentSoft`, not the app's
+            // generic `inset` tint (Task A2's rail/panel token).
+            background: panelClosed ? "transparent" : C.accentSoft,
             cursor: "pointer",
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
           }}
         >
-          <PanelToggleGlyph color={C.soft} />
+          {/* Design v3:4157 (`panelBtnFg`) — the glyph tracks the same open/closed split as the
+              button's own background just above. */}
+          <PanelToggleGlyph color={panelClosed ? C.soft : TEAL} />
         </button>
       </div>
     </div>
@@ -266,6 +309,10 @@ type WideShellBag = {
    *  rows) both render OUTSIDE this component, so WideShell-local state would need a context
    *  channel anyway. NOT URL-serialised (no phone-parity route exists for it). */
   acctView: { accountId: string } | null;
+  /** Task 1 (owner rule 1, `waveA-t1-brief.md`): the panel's contextual "first item" per screen —
+   *  computed ONCE by App (it owns `state`/`month`/the transaction query+filters `firstTxnId`
+   *  would need) and threaded straight into `resolvePanel` below, never recomputed here. */
+  panelFallbacks: PanelFallbacks;
   openTxns: (f?: { envId?: string; accId?: string; envIds?: ReadonlySet<string>; catId?: string; placeId?: string }) => void;
   panelClosed: boolean;
   setEnvView: (v: null) => void;
@@ -329,6 +376,12 @@ type WideShellBag = {
    *  report-subview instance; reusing it here reopened Reports behind the edit takeover and lost
    *  `acctView` on save — reproduced live, App.tsx's `editAccountTxn`/`acctViewBeforeEditRef`). */
   onEditAccountTxn: (t: Transaction) => void;
+  /** Design parity wave A close, item 9: the Transactions band caption's own inputs — App's lifted
+   *  `txQuery`/`txFilters` state, the SAME values `TransactionsScreen` filters its list with (see
+   *  that component's own props). Threaded as plain data (zero eager-bundle cost); the filtering
+   *  itself happens below, inside this lazy chunk. */
+  txQuery: string;
+  txFilters: TransactionFilters;
 };
 
 /**
@@ -363,7 +416,7 @@ type WideShellBag = {
  * | AccountEditSheet (`AccountEdit`, row edits + "New account")     | Sheet      | pane surface (PR6b)    | — |
  * | ReconcileSheet (`AccountsWidget`'s per-account sheet + `AccountPanel`'s Reconcile action) | Sheet (phone-only reach — no wide UI could open it before PR6b) | pane surface (PR6b) | — |
  * | AiConsentSheet / InstallSheet / DataSection sheets / EditWidgetsSheet | Sheet | sheet          | EditWidgetsSheet → PR5's `widgets` pane |
- * | `UpdatePrompt`                                                     | fixed, viewport-centered on phone | anchored to the primary pane's measured rect on wide (this file, below) — MEASURED to collide with this panel at 1104x992 before the fix | — (closed) |
+ * | `UpdatePrompt`                                                     | fixed, viewport-centered on phone | fold: anchored to the primary pane's measured rect (this file, below) — MEASURED to collide with this panel at 1104x992 before the fix; desktop: replaced by the rail's own update card (design-parity wave A, task A4) | — (closed) |
  *
  * Verified live (throwaway stack, 1440x900 + 1104x992): every Sheet opened from panel-hosted
  * content (Add's pickers) portals to `document.body` and stays viewport-centered with a
@@ -385,6 +438,7 @@ export function WideShell({ bag, rightSlot = null, children }: { bag: WideShellB
     reportsView,
     envView,
     acctView,
+    panelFallbacks,
     openTxns,
     panelClosed,
     setEnvView,
@@ -408,9 +462,21 @@ export function WideShell({ bag, rightSlot = null, children }: { bag: WideShellB
     onAddWide,
     onOpenAccount,
     onEditAccountTxn,
+    txQuery,
+    txFilters,
   } = bag;
   const C = useTheme();
-  const { t } = useT();
+  const { t, tp } = useT();
+  // Design parity wave A close, item 9 (design v3:4351's `headerRight`, the "shown" branch): the
+  // SAME query+filter pipeline `TransactionsScreen` uses for its own list, gated to the one screen
+  // that needs it (mirrors App.tsx's `globalNetTotal` gate for Accounts/Reports).
+  const transactionsShownCount = useMemo(() => {
+    if (primaryScreen !== "transactions") return 0;
+    const index = createTransactionSearchIndex({ accounts: state.accounts, envelopes: state.envelopes, categories: state.categories, places: state.places });
+    return state.transactions.filter((tx) => matchesTransactionQuery(tx, txQuery, index) && matchesTransactionFilters(tx, txFilters)).length;
+  }, [primaryScreen, state.accounts, state.envelopes, state.categories, state.places, state.transactions, txQuery, txFilters]);
+  const rightSlotEffective: RightSlot =
+    primaryScreen === "transactions" ? { kind: "caption", text: tp("{n} transaction shown | {n} transactions shown", transactionsShownCount) } : rightSlot;
   const [rootRef, rootW] = useElementWidth<HTMLDivElement>(mode === "desktop" ? 1440 : 1104);
   const paneW = paneWidthFor(mode, rootW);
   // The wide board's gear target (Task 6) — WideShell's OWN local selection, not lifted to App:
@@ -425,7 +491,7 @@ export function WideShell({ bag, rightSlot = null, children }: { bag: WideShellB
     // (Add lives in the OTHER pane), so this effect never fires just because Add opened/closed.
     if (primaryScreen !== "start") setWidgetSettings(null);
   }, [primaryScreen]);
-  const view = resolvePanel({ screen, reportsView, envView, widgetSettings, acctView });
+  const view = resolvePanel({ screen, reportsView, envView, widgetSettings, acctView }, panelFallbacks);
   const primaryRef = useRef<HTMLDivElement | null>(null);
   const panelRef = useRef<HTMLDivElement | null>(null);
 
@@ -517,11 +583,24 @@ export function WideShell({ bag, rightSlot = null, children }: { bag: WideShellB
       topSurface.close();
       return;
     }
-    if (view.kind === "envelope") setEnvView(null);
-    else if (view.kind === "report") setReportsView("overview");
-    else if (view.kind === "widgets") setWidgetSettings(null);
-    else if (view.kind === "account") setAcctView(null);
-    else if (view.kind === "add") onDoneEdit();
+    // Task 1 (owner rule 1): `envelope`/`report`/`account` now resolve to real content even with
+    // no explicit selection (`source: "fallback"` — panel.ts's `resolvePanel`). Clearing a
+    // selection that was never made is a no-op (the fallback would just resolve again, unchanged)
+    // — so a fallback's ✕/Escape COLLAPSES the panel instead, exactly like the plain `else` branch
+    // below always has for `empty`. A real `source: "selection"` keeps clearing, which — since the
+    // fallback now backs it up — pops to the contextual fallback shown underneath rather than to a
+    // blank placeholder.
+    if (view.kind === "envelope") {
+      if (view.source === "selection") setEnvView(null);
+      else setPanelClosed(true);
+    } else if (view.kind === "report") {
+      if (view.source === "selection") setReportsView("overview");
+      else setPanelClosed(true);
+    } else if (view.kind === "widgets") setWidgetSettings(null);
+    else if (view.kind === "account") {
+      if (view.source === "selection") setAcctView(null);
+      else setPanelClosed(true);
+    } else if (view.kind === "add") onDoneEdit();
     else setPanelClosed(true);
   };
 
@@ -552,6 +631,12 @@ export function WideShell({ bag, rightSlot = null, children }: { bag: WideShellB
   // why the branch below reads `acctView` (the App-owned selection object) rather than
   // `view.accountId` (a plain string — re-selecting the same account would then compare equal and
   // never retrigger the effect, exactly the lesson `addPreset` already taught for `screen`).
+  // Task 1: `report`'s `view.view` is now "spending" even on the FALLBACK (Reports hub, no
+  // subview chosen) — reading it directly here would make a plain hub visit look like a real
+  // selection and defeat the reopen guard below (`selection !== null`). `view.source` already
+  // distinguishes the two cases (panel.ts) — `envelope`/`account` don't need the same treatment
+  // since their underlying `envView`/`acctView` are already null exactly when `source` is
+  // "fallback" (resolvePanel only falls back when the App-owned selection was absent).
   const selection =
     view.kind === "empty"
       ? null
@@ -563,7 +648,9 @@ export function WideShell({ bag, rightSlot = null, children }: { bag: WideShellB
             ? view.widgetId
             : view.kind === "account"
               ? acctView
-              : view.view;
+              : view.source === "selection"
+                ? view.view
+                : null;
   const prevSelection = useRef(selection);
   useEffect(() => {
     if (selection !== null && selection !== prevSelection.current && panelClosed) setPanelClosed(false);
@@ -646,7 +733,7 @@ export function WideShell({ bag, rightSlot = null, children }: { bag: WideShellB
           onNext={next}
           onAdd={onAddWide}
           onOpenSync={() => nav("settings")}
-          rightSlot={rightSlot}
+          rightSlot={rightSlotEffective}
           panelClosed={panelClosed}
           // PR6 Task 5: while the Add pane is showing, the toggle discards it (`closePanel`'s own
           // `add` branch — same semantics as phone's back gesture from Add today) instead of
@@ -684,8 +771,12 @@ export function WideShell({ bag, rightSlot = null, children }: { bag: WideShellB
               PHONE instance) — a `useWideHost()`-gated branch (Task 6) needs to sit inside this
               exact provider to read `rects.primary` and anchor clear of the rail/panel; see that
               component's own comment for the measured collision this replaces. Self-contained
-              (no props), so moving where it mounts is the only change this required. */}
-          <UpdatePrompt />
+              (no props), so moving where it mounts is the only change this required.
+              Design-parity wave A, task A4: desktop moved this surface into the rail's own update
+              card (`Rail.tsx`, owner-requirements.md #3 — a rail card, not a primary-pane-anchored
+              banner); fold has no rail card section (its own layout gate is a later, separate
+              audit pass per wave-context.md), so fold keeps this exact anchored banner. */}
+          {mode !== "desktop" && <UpdatePrompt />}
           <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column", overflow: "hidden" }}>
             {/* Task 6: the wide Home board replaces the phone widget stack entirely on Start — the
                 `screenEl` App.tsx built for "start" (a `StartScreen` element) is still constructed
