@@ -1023,6 +1023,8 @@ export const pl: Dict = {
   "Reconcile ›": "Wyrównaj ›",
   "All transactions ›": "Wszystkie transakcje ›",
   "total {amount} this month": "razem {amount} w tym miesiącu",
+  // Wide Home board (waveB-t4-brief.md, B4): the same tiles' compact wide-only footers.
+  "total {amount} this month · click a row for detail": "razem {amount} w tym miesiącu · kliknij wiersz, aby zobaczyć szczegóły",
   // Wide Home board — edit mode (PR5 Task 6)
   "Add widget": "Dodaj widget",
   "Every widget is already on the grid.": "Każdy widget jest już na siatce.",
@@ -1051,6 +1053,9 @@ export const pl: Dict = {
     "Każdy zapis na serwer jest już zablokowany. Nic nie zostało usunięte, bo decyzja należy do Ciebie — kopia na tym urządzeniu może być ostatnią, jaka istnieje.",
   "Export first: the JSON backup is written offline, without the server.": "Najpierw eksport: kopia zapasowa JSON jest zapisywana offline, bez serwera.",
   "Fill {amount} ›": "Wypełnij {amount} ›",
+  // Wide Home board's Goals tile footer (waveB-t4-brief.md, B4) — terser than "Fill all goals ›"
+  // (GoalsReport's own button), matching the design's compact "{verdict} · Fill all ›" caption.
+  "Fill all ›": "Wypełnij wszystko ›",
   "Filled {amount} in {name}": "Wypełniono {amount} w {name}",
   Ignore: "Pomiń",
   In: "Przychód",

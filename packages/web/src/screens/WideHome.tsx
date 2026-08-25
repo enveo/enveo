@@ -54,6 +54,9 @@ export interface WideHomeProps {
   edit: boolean;
   /** Gear target on a `configurable` tile → `WideShell`'s panel (its own local selection). */
   onWidgetSettings: (id: WideWidgetId) => void;
+  /** Threaded straight into the Goals tile body (`WidgetProps.onFillGoals`) — the same handler
+   *  `WideShell` already gives Rail/FoldTbbStrip, opening the multi-envelope Fill-by-goals sheet. */
+  onFillGoals: () => void;
 }
 
 /** Card-header click destination (design's `WIDGET_OPEN` map, v3.dc.html:3598-3603): the seven
@@ -154,6 +157,7 @@ export function WideHome({
   onOpenMonthDay,
   edit,
   onWidgetSettings,
+  onFillGoals,
 }: WideHomeProps) {
   const C = useTheme();
   const { t } = useT();
@@ -221,7 +225,17 @@ export function WideHome({
     window.addEventListener("pointerup", up);
   };
 
-  const widgetProps: Omit<WidgetProps, "opts" | "chromeless"> = { state, month, onNav, onOpenEnvelope, onOpenTxns, onQuickAdd, onOpenReport, onOpenMonthDay };
+  const widgetProps: Omit<WidgetProps, "opts" | "chromeless"> = {
+    state,
+    month,
+    onNav,
+    onOpenEnvelope,
+    onOpenTxns,
+    onQuickAdd,
+    onOpenReport,
+    onOpenMonthDay,
+    onFillGoals,
+  };
 
   return (
     <div className="gs" style={{ flex: 1, overflowY: "auto", padding: 14 }}>

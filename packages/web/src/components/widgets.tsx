@@ -37,6 +37,10 @@ export interface WidgetProps {
   onOpenReport?: (tab: ReportTab) => void;
   /** Heatmap day → Month report with that day's panel open (App.setMonthDay + openReports("month")). */
   onOpenMonthDay?: (date: string) => void;
+  /** Opens the multi-envelope "Fill by goals" sheet (App.openBudgetFillGoals) — the Goals widget's
+   *  footer "Fill all ›" link, wide-only (waveB-t4-brief.md, B4); undefined on phone, where the
+   *  Goals widget body never renders that control at all. */
+  onFillGoals?: () => void;
   /** True when a wide board tile hosts the widget: the tile owns title+card chrome, so the body
    *  skips its own SectionEyebrow/CardBox. Default false — phone rendering is pixel-identical. */
   chromeless?: boolean;
