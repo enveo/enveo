@@ -1055,6 +1055,11 @@ export const pl: Dict = {
   "Fill {amount} ›": "Wypełnij {amount} ›",
   
 
+
+
+  "Fill {amount}": "Wypełnij {amount}",
+  
+
   "Fill all ›": "Wypełnij wszystko ›",
   "Filled {amount} in {name}": "Wypełniono {amount} w {name}",
   Ignore: "Pomiń",
