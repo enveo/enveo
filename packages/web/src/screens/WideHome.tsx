@@ -57,6 +57,21 @@ export interface WideHomeProps {
 
 
 
+
+
+
+const WIDGET_REPORT_TAB: Partial<Record<WideWidgetId, ReportTab>> = {
+  attention: "budgets",
+  spending: "spending",
+  reportCashflow: "cashflow",
+  reportNetWorth: "assets",
+  goals: "goals",
+  trends: "trends",
+  heatmap: "month",
+};
+
+
+
 const ROW_H = 104;
 
 /** Round-glyph chrome buttons (gear/remove/drag handle): 30×30 hit box, small centered glyph —
@@ -87,7 +102,7 @@ function AddTile({ candidates, onAdd, cols }: { candidates: WideWidgetConfig[]; 
         gridRow: "span 1",
         border: `1.5px dashed ${C.line}`,
         borderRadius: 14,
-        padding: "10px 12px",
+        padding: "12px 14px",
         display: "flex",
         flexDirection: "column",
         gap: 6,
@@ -159,6 +174,19 @@ export function WideHome({
 
   const onToggle = (id: WideWidgetId, enabled: boolean) => update({ wideWidgets: toggleEnabled(board, id, enabled) });
 
+  const openWidget = (id: WideWidgetId) => {
+    if (id === "recent") {
+      onOpenTxns();
+      return;
+    }
+    if (id === "envelopes" || id === "envelopesSavings") {
+      onNav("budget");
+      return;
+    }
+    const tab = WIDGET_REPORT_TAB[id];
+    if (tab) onOpenReport(tab);
+  };
+
   /** Pointer-based corner resize (mock :3627-3641 ported to pointer events, commit-on-up). `w0`
    *  is the CURRENTLY RENDERED (clamped) span, not the raw stored one — the mock's own `wOf`
    *  already clamps before the gesture starts, so dragging a desktop-authored wide tile on the
@@ -220,7 +248,7 @@ export function WideHome({
                 background: C.card,
                 border: edit ? "1.5px dashed var(--accent)" : `1px solid ${C.line}`,
                 borderRadius: 14,
-                padding: "10px 12px",
+                padding: "12px 14px",
                 display: "flex",
                 flexDirection: "column",
                 gap: 6,
@@ -251,22 +279,36 @@ export function WideHome({
                     ≡
                   </span>
                 )}
-                <span
+                <button
+                  type="button"
+                  
+
+                  onClick={edit ? undefined : () => openWidget(w.id)}
                   style={{
                     flex: 1,
                     minWidth: 0,
+                    minHeight: 30,
+                    display: "flex",
+                    alignItems: "center",
+                    textAlign: "left",
+                    padding: 0,
+                    margin: 0,
+                    border: "none",
+                    background: "none",
+                    fontFamily: font,
                     fontSize: 10,
                     fontWeight: 750,
-                    letterSpacing: "0.14em",
+                    letterSpacing: "0.16em",
                     textTransform: "uppercase",
                     color: C.mute,
                     overflow: "hidden",
                     textOverflow: "ellipsis",
                     whiteSpace: "nowrap",
+                    cursor: edit ? "default" : "pointer",
                   }}
                 >
-                  {title}
-                </span>
+                  {title} ›
+                </button>
                 {edit && (
                   <div style={{ display: "flex", alignItems: "center", gap: 0, flexShrink: 0 }}>
                     <span style={{ fontSize: 9, fontWeight: 700, color: C.mute, fontVariantNumeric: "tabular-nums", marginRight: 2 }}>
