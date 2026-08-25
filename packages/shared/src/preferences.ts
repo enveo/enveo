@@ -267,10 +267,10 @@ export function createDefaultStartWidgets(): WidgetConfig[] {
 /** Default wide Home board — ported verbatim from the approved design mock's array (app widget ids). */
 export function createDefaultWideWidgets(): WideWidgetConfig[] {
   return [
-    // w:2/h:2, not the mock's 1x1: the body (amount + 12-mo sparkline) measures ~94x189px, and a
-    // 1x1 tile shows 38px of it behind a scrollbar — a scrolling sparkline is not a widget.
-    // Measured clean at 2x2 (382x196 content box) on the 1440px board.
-    { id: "reportNetWorth", enabled: true, w: 2, h: 2 },
+    // 1x1, matching the mock's `startWidgets[0]` (netWorth, w:1,h:1) exactly — it sits beside
+    // cashflow (w:3,h:1) to fill row 1. The body has a dedicated 1x1 stat-tile rendering (value +
+    // one delta caption, no sparkline; `widgets.tsx`'s `NetWorthWidget`) so nothing scrolls/clips.
+    { id: "reportNetWorth", enabled: true, w: 1, h: 1 },
     { id: "reportCashflow", enabled: true, w: 3, h: 1 },
     { id: "envelopes", enabled: true, w: 2, h: 2, opts: { mode: "all" } },
     { id: "recent", enabled: true, w: 2, h: 4 },
