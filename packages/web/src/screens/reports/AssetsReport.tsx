@@ -1,5 +1,4 @@
-import { useBand } from "../../components/kit";
-import { Bar, NetWorthChart, ReportShell } from "../../components/reportKit";
+import { Bar, NetWorthChart, ReportShell, useReportBand } from "../../components/reportKit";
 import type { StateResponse } from "../../lib/api";
 import { useTheme } from "../../lib/contexts";
 import { useT } from "../../lib/i18n";
@@ -33,7 +32,7 @@ export function AssetsReport({
 }) {
   const C = useTheme();
   const { t } = useT();
-  const { band } = useBand();
+  const { band } = useReportBand();
   const nwLast = netWorth.at(-1)?.total ?? 0;
   const nwDelta = nwLast - (netWorth.at(-2)?.total ?? nwLast);
   const savings = state.envelopes.filter((e) => !e.archived && e.isSavings);

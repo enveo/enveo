@@ -1,7 +1,6 @@
 import { computeStateResponse } from "@enveo/shared";
 import { type ReactNode, useEffect, useRef, useState } from "react";
-import { useBand } from "../../components/kit";
-import { Bar, ReportShell, UndoBar } from "../../components/reportKit";
+import { Bar, ReportShell, UndoBar, useReportBand } from "../../components/reportKit";
 import type { StateResponse } from "../../lib/api";
 import { useTheme } from "../../lib/contexts";
 import { todayISO } from "../../lib/dates";
@@ -145,7 +144,7 @@ export function BudgetsReport({
 }) {
   const C = useTheme();
   const { t, tp, lang } = useT();
-  const { hc } = useBand();
+  const { hc } = useReportBand();
   const [ignored, setIgnored] = useState<Set<string>>(new Set());
   const [expanded, setExpanded] = useState(false);
   const [pendingUndos, setPendingUndos] = useState<PendingUndo[]>([]);

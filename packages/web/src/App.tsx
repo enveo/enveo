@@ -722,8 +722,14 @@ export default function App() {
             // the hub (Task 6) — `selected` recovers what report is REALLY open (in the panel)
             // purely so the hub can highlight its card; harmless on phone, where the hub only
             // ever renders when `reportsView` already equals "overview" too (so this stays
-            // `undefined` whenever it could matter there).
-            selected={reportsView !== "overview" ? reportsView : undefined}
+            // `undefined` whenever it could matter there). Design parity wave D task 1: when
+            // `reportsView` itself is still "overview", the panel does NOT show nothing — on wide
+            // `resolvePanel` (panel.ts) falls back to the SAME "spending" tab v3:2213 defaults to
+            // (`{ kind: "report", view: "spending", source: "fallback" }`) — so the hub must
+            // reflect THAT card as open too, or the open report would have no visible trace in the
+            // hub the moment nothing has been explicitly picked yet (the exact gap this task
+            // fixes). Phone has no panel to reconcile with, so this stays `undefined` there.
+            selected={wide ? (reportsView !== "overview" ? reportsView : "spending") : undefined}
           />
         </LazyChunk>
       )}

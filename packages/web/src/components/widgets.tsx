@@ -15,7 +15,7 @@ import type { ReportTab } from "../screens/reports/types";
 import { type ScreenId, Sheet } from "./chrome";
 import { CardBox, SectionEyebrow, useBand } from "./kit";
 import { LazyChunk, useOpenedOnce } from "./lazy";
-import { Sparkline } from "./reportKit";
+import { Sparkline } from "./sparkline";
 import { AccCell, accountIconColor, EnvRow } from "./tiles";
 
 // Lazy — PR6b Task 6: the whole reconcile body (~180 dense lines, ReconcileSheet.tsx) leaves the

@@ -7,6 +7,7 @@ import { useMask, useTheme } from "../../lib/contexts";
 import { goalProgress } from "../../lib/goals";
 import { useT } from "../../lib/i18n";
 import { budgetsOverAmount, budgetsSummary } from "../../lib/reportSummary";
+import { useWideHost } from "../../lib/shellContext";
 import { useElementWidth } from "../../lib/useElementWidth";
 import { trendColor } from "./charts";
 import type { Mask, ReportTab, ReportView } from "./types";
@@ -127,9 +128,16 @@ export function ReportsHub({
  * browser's own form-control rendering still applies — so short cards centered their title while
  * taller cards (whose content already filled the row) looked top-aligned by coincidence. Giving
  * the button its own top-aligned flex layout (column, default main-axis `flex-start`) overrides
- * that native centering so every card top-aligns its content, tall or short. */
+ * that native centering so every card top-aligns its content, tall or short.
+ *
+ * Border/shadow (design parity wave D task 1): the design gives every card a 1px border (`T.line`
+ * quiet, `T.accent` for the open report) and elevates its shadow on selection (measured off the
+ * source of truth, `reportCards`'s own `border`/`shadow` derivation) — gated to WIDE only so
+ * phone's cards stay pixel-identical to before this prop existed (`selected` is always `undefined`
+ * there, same as always). */
 function MiniCard({ title, onClick, selected, children }: { title: string; onClick: () => void; selected?: boolean; children: ReactNode }) {
   const C = useTheme();
+  const inWide = useWideHost() !== null;
   return (
     <button
       onClick={onClick}
@@ -142,10 +150,9 @@ function MiniCard({ title, onClick, selected, children }: { title: string; onCli
         background: C.card,
         // `var(--accent)` does not resolve in an SVG presentation attribute, but this IS a plain
         // HTML `style` object (not an attribute) — the CSS var resolves here same as any other
-        // inline style. Unselected stays borderless (`selected` is always undefined on phone —
-        // pixel-identical to before this prop existed).
-        border: selected ? "1.5px solid var(--accent)" : "none",
-        boxShadow: "0 1px 3px rgba(20,20,28,0.06)",
+        // inline style.
+        border: inWide ? `1px solid ${selected ? "var(--accent)" : C.line}` : selected ? "1.5px solid var(--accent)" : "none",
+        boxShadow: inWide && selected ? "0 2px 8px rgba(20,20,28,0.10)" : "0 1px 3px rgba(20,20,28,0.06)",
         borderRadius: 14,
         padding: "12px 13px",
         cursor: "pointer",

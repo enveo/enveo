@@ -60,9 +60,12 @@ export function ReportsScreen({
   onPrev: () => void;
   onNext: () => void;
   onOpenTxns: (f: { envId?: string; envIds?: ReadonlySet<string>; catId?: string; placeId?: string }) => void;
-  /** Wide only: the report tab open in the side panel (App forces `view` to "overview" for the
-   *  primary pane so the hub always stays put there — pr4-task-6-brief.md §6) so the hub can
-   *  highlight that card. `undefined` on phone and whenever nothing is open in the panel. */
+  /** Wide only: the EFFECTIVE report tab open in the side panel — App's own selection, or the
+   *  same "spending" fallback `resolvePanel` (panel.ts) defaults to once nothing has been picked
+   *  yet — so the hub can highlight that card (App forces `view` to "overview" for the primary
+   *  pane so the hub always stays put there — pr4-task-6-brief.md §6; design parity wave D task 1
+   *  fixed the fallback case, which previously left the hub with no highlight at all while the
+   *  panel already showed Spending). `undefined` on phone, which has no panel to reconcile with. */
   selected?: ReportTab;
 }) {
   const M = useMask();
