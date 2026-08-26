@@ -127,7 +127,7 @@ export function TxnPanel({
   const fieldRowStyle = { display: "flex", alignItems: "center", justifyContent: "space-between", padding: "11px 13px", fontSize: 13 };
 
   return (
-    <div className="gs" style={{ flex: 1, overflowY: "auto", padding: 14, display: "flex", flexDirection: "column", gap: 13 }}>
+    <div className="gs" style={{ flex: 1, overflowY: "auto", padding: "14px 16px", display: "flex", flexDirection: "column", gap: 13 }}>
       {/* kind → amount hero → payee → date · category */}
       <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
         <span style={{ fontSize: 10, fontWeight: 750, letterSpacing: "0.17em", textTransform: "uppercase", color: C.mute }}>{kindLabel}</span>
