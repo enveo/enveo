@@ -165,6 +165,7 @@ export const pl: Dict = {
   Auto: "Auto",
   "Automatic envelope": "Automatyczna koperta",
   "Automatic envelope effect": "Efekt automatycznej koperty",
+  "Automatic envelope: {name}": "Automatyczna koperta: {name}",
   "Automatic: {envelope}": "Automatyczna koperta: {envelope}",
   Available: "Dostępne",
   BUDGET: "BUDŻET",
@@ -518,6 +519,7 @@ export const pl: Dict = {
   "Rebuild data on this device": "Odbuduj dane na tym urządzeniu",
   "Rebuilding…": "Odbudowywanie…",
   "Recent activity": "Ostatnia aktywność",
+  "Recent in {name}": "Ostatnie w {name}",
   "Recognized transactions": "Rozpoznane transakcje",
   "Recognizing…": "Rozpoznawanie…",
   Reconcile: "Wyrównaj",
@@ -913,6 +915,12 @@ export const pl: Dict = {
     few: "Pokazano {n} transakcje",
     many: "Pokazano {n} transakcji",
     other: "Pokazano {n} transakcji",
+  },
+  "{n} transaction this month | {n} transactions this month": {
+    one: "{n} transakcja w tym miesiącu",
+    few: "{n} transakcje w tym miesiącu",
+    many: "{n} transakcji w tym miesiącu",
+    other: "{n} transakcji w tym miesiącu",
   },
   "{n} transaction · avg {avg} · largest {largest} | {n} transactions · avg {avg} · largest {largest}": {
     one: "{n} transakcja · śr. {avg} · maks. {largest}",
