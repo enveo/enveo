@@ -106,6 +106,15 @@ export function WideFilterPanel({ filters, setFilters, matchCount, envelopes, ac
       // block anyway on the very keypress this guard exists to ignore. `e.target` still points at
       // the field the Escape actually originated from, immune to that side effect.
       if ((e.target as Element | null)?.closest("[data-wide-panel]")) return;
+      // Portaled sheets ESCAPE that DOM containment (house rule: fixed overlays render via
+      // `createPortal(document.body)`): a picker Sheet opened from panel-hosted content (Add's
+      // date/account/envelope pickers) lives under `document.body` inside the
+      // `data-wide-panel-portal` wrapper `Sheet` stamps for exactly this class of check
+      // (chrome.tsx — the SAME marker WideShell's `panelContains` honours; no parallel registry).
+      // Checked by PRESENCE, not via `e.target`: with focus resting on `<body>` (a tap on a
+      // non-focusable sheet element) the target-based test would miss the open sheet too. While
+      // any such overlay is up, Escape belongs to IT — this panel stays open.
+      if (document.querySelector("[data-wide-panel-portal]")) return;
       onClose();
     };
     window.addEventListener("keydown", onKeyDown);
@@ -295,7 +304,11 @@ export function WideFilterPanel({ filters, setFilters, matchCount, envelopes, ac
       }}
     >
       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-        <span style={filterLabelStyle}>{t("Filter")}</span>
+        {/* NOT the shared "Filter" key: its pl is the imperative "Filtruj" (the phone filter
+            BUTTON's label), wrong as this panel's noun eyebrow. "Filters" is the toggle's own
+            noun key — already translated as a noun in every locale (pl "Filtry"), where a
+            bespoke near-duplicate key would ship translated in pl alone. */}
+        <span style={filterLabelStyle}>{t("Filters")}</span>
         {chips.length === 0 && <span style={{ fontSize: 11.5, color: C.mute }}>{t("Narrow transactions by specific fields")}</span>}
         <div style={{ flex: 1 }} />
         <span style={{ fontSize: 11, color: C.soft, fontVariantNumeric: "tabular-nums" }}>

@@ -332,13 +332,16 @@ export function BudgetScreen({
                     style={{
                       display: "grid",
                       gridTemplateColumns: COLS,
-                      // Edge-to-edge selection bleed (v3:270): row padding matches the CardBox's own
-                      // 12px horizontal padding, and the equal-and-opposite negative margin lets the
-                      // row's background reach the card's edges while leaving the CONTENT at the same
-                      // horizontal position as an unselected row (the padding/margin cancel out) —
-                      // applied to every row, not just the selected one, so nothing shifts on select.
-                      padding: "6px 12px",
-                      margin: "0 -12px",
+                      // Edge-to-edge selection bleed (v3:270), WIDE ONLY — gated like the group
+                      // header's padding fork above: row padding matches the CardBox's own 12px
+                      // horizontal padding, and the equal-and-opposite negative margin lets the
+                      // row's background reach the card's edges while leaving the CONTENT at the
+                      // same horizontal position as an unselected row (the padding/margin cancel
+                      // out) — applied to every wide row, not just the selected one, so nothing
+                      // shifts on select. Phone keeps its exact pre-wave `6px 0` geometry
+                      // (dividers inset by the card's own 12px padding).
+                      padding: inWide ? "6px 12px" : "6px 0",
+                      margin: inWide ? "0 -12px" : undefined,
                       gap: 8,
                       boxSizing: "border-box",
                       cursor: "pointer",
@@ -414,11 +417,17 @@ export function BudgetScreen({
                           </span>
                         )}
                       </div>
-                      {/* Always rendered (v3:277 — `openMark` is "" when not selected), so the flex
-                          gap never shifts the row's content width on select/deselect. */}
-                      <span style={{ fontSize: 12, color: "var(--accent)", flexShrink: 0 }} aria-hidden="true">
-                        {selected ? "▸" : ""}
-                      </span>
+                      {/* Wide-only (v3:277 — the selected-row treatment is a wide-only design
+                          concept, C1 brief): gated on `inWide` like Transactions.tsx's identical
+                          mark, so a phone row never gains an empty flex item + 9px gap it never
+                          had pre-wave. On wide it stays always-rendered (`openMark` is "" when not
+                          selected) so the flex gap never shifts the row's content width on
+                          select/deselect. */}
+                      {inWide && (
+                        <span style={{ fontSize: 12, color: "var(--accent)", flexShrink: 0 }} aria-hidden="true">
+                          {selected ? "▸" : ""}
+                        </span>
+                      )}
                     </div>
                     <div style={{ position: "relative" }}>
                       <AllocCell

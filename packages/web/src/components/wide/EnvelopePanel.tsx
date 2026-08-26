@@ -294,7 +294,9 @@ export function EnvelopePanel({
             minHeight: 30,
             cursor: "pointer",
             fontSize: 11.5,
-            fontWeight: 600,
+            
+
+            fontWeight: 650,
             color: TEAL,
             background: "transparent",
             border: "none",
