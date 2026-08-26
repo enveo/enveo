@@ -524,6 +524,7 @@ export const pl: Dict = {
   "Registration is closed on this server.": "Rejestracja jest wyłączona na tym serwerze.",
   "Remove screenshot {n}": "Usuń zrzut {n}",
   "Remove this data and continue": "Usuń te dane i kontynuuj",
+  "Remove this filter": "Usuń ten filtr",
   "Removing…": "Usuwanie…",
   "Retry sending changes": "Ponów wysyłanie zmian",
   "Repeat password": "Powtórz hasło",
@@ -874,6 +875,12 @@ export const pl: Dict = {
   "{n} near limit": "{n} blisko limitu",
   "{n} over | {n} over": { one: "{n} przekroczona", few: "{n} przekroczone", many: "{n} przekroczonych", other: "{n} przekroczonych" },
   "{n} rising · {m} falling": "{n} w górę · {m} w dół",
+  "{n} transaction matches | {n} transactions match": {
+    one: "{n} transakcja pasuje",
+    few: "{n} transakcje pasują",
+    many: "{n} transakcji pasuje",
+    other: "{n} transakcji pasuje",
+  },
   "{n} transaction | {n} transactions": { one: "{n} transakcja", few: "{n} transakcje", many: "{n} transakcji", other: "{n} transakcji" },
   "{n} transaction shown | {n} transactions shown": {
     one: "Pokazano {n} transakcję",
