@@ -151,24 +151,50 @@ export function AccountEditSheet({
                 />
               </button>
             </div>
-            <button
-              onClick={save}
-              disabled={!name.trim()}
-              style={{
-                width: "100%",
-                padding: 12,
-                borderRadius: 11,
-                border: "none",
-                background: TEAL,
-                color: "#fff",
-                fontSize: 13.5,
-                fontWeight: 600,
-                cursor: "pointer",
-                opacity: name.trim() ? 1 : 0.4,
-              }}
-            >
-              {t("Save")}
-            </button>
+            {/* Cancel/Save row (waveE-t2-brief.md, v3:1951-1954): Cancel discards without writing
+                — it calls the SAME `close` the Surface's own ✕ already uses, so re-opening the
+                sheet on the same account re-populates `name`/etc. from the (unmodified) account
+                via the effect above, exactly like closing via ✕ already did. */}
+            <div style={{ display: "flex", gap: 10 }}>
+              <button
+                onClick={close}
+                style={{
+                  flex: "none",
+                  textAlign: "center",
+                  padding: "12px 18px",
+                  borderRadius: 12,
+                  border: `1px solid ${C.line}`,
+                  background: "none",
+                  color: C.soft,
+                  fontSize: 13,
+                  fontWeight: 600,
+                  fontFamily: font,
+                  cursor: "pointer",
+                }}
+              >
+                {t("Cancel")}
+              </button>
+              <button
+                onClick={save}
+                disabled={!name.trim()}
+                style={{
+                  flex: 1,
+                  textAlign: "center",
+                  padding: "12px 0",
+                  borderRadius: 12,
+                  border: "none",
+                  background: TEAL,
+                  color: "#fff",
+                  fontSize: 13,
+                  fontWeight: 700,
+                  fontFamily: font,
+                  cursor: "pointer",
+                  opacity: name.trim() ? 1 : 0.4,
+                }}
+              >
+                {t("Save")}
+              </button>
+            </div>
           </>
         )}
       </Surface>

@@ -5,16 +5,22 @@ import { visibleAutomaticEnvelopeName } from "../../lib/automaticEnvelopeAccount
 import { useMask, useTheme } from "../../lib/contexts";
 import { currentMonth, shortDate } from "../../lib/dates";
 import { useT } from "../../lib/i18n";
+import { Glyph } from "../../lib/icons";
 import { store } from "../../lib/store";
 import { font, TEAL, TRANSFER } from "../../lib/theme";
 import { AccountEditSheet } from "../AccountEditSheet";
 import { ReconcileSheet } from "../ReconcileSheet";
+import { accountIconColor } from "../tiles";
 
 /**
- * PR6b Task 4 — the account detail pane body (v3's `acct` pane): balance card → actions grid →
- * recent activity. Hosted exclusively by `PanelHost`'s `account` kind, which only ever renders on
- * wide (pr6b-context.md D2) — unlike `EnvelopeScreen` (also mounted full-screen on phone), this
- * component never forks on `useWideHost()`; it is a panel body by construction, always.
+ * PR6b Task 4 — the account detail pane body (v3's `acct` pane): icon+name row → bordered balance
+ * box → actions grid → recent activity (waveE-t2-brief.md restructured the top two sections onto
+ * the design's exact markup, v3:2001-2018 — the icon+name row and the balance box are plain BODY
+ * content, never a second name/✕ band: `PanelHost`'s slim header above this pane stays the ONLY
+ * chrome, owner rule 2). Hosted exclusively by `PanelHost`'s `account` kind, which only ever
+ * renders on wide (pr6b-context.md D2) — unlike `EnvelopeScreen` (also mounted full-screen on
+ * phone), this component never forks on `useWideHost()`; it is a panel body by construction,
+ * always.
  *
  * The balance is GLOBAL, always: `computeStateResponse(store.getLedger(), currentMonth())` —
  * NEVER the viewed month's `state.accounts` — the exact Drawer/Rail/AccountsWidget rule (Rail.tsx
@@ -44,7 +50,7 @@ export function AccountPanel({
 }) {
   const C = useTheme();
   const M = useMask();
-  const { t, lang } = useT();
+  const { t, tp, lang } = useT();
   const version = useLedgerVersion();
 
   // GLOBAL balance, always (see file header) — recomputed at `currentMonth()` on every ledger
@@ -72,29 +78,37 @@ export function AccountPanel({
     return groups.filter((group) => activeGroupIds.has(group.id));
   }, [activeEnvelopes, groups]);
 
-  // Recent activity: last 5 transactions touching this account, across every month — the LIVE
-  // ledger, not the viewed month's `state.transactions` (that goes empty on day 1 for an older
-  // account; the widgetsBoard `RecentWidget` pattern and its stated reason, reused verbatim below
-  // rather than re-derived). "Touching" is two-sided, same as `transactionSearch.ts`'s account
-  // filter and this pane's own "Transactions" button (`onOpenTxns` → the shared matcher): a
-  // transfer's `accountId` is only the SOURCE, so a transfer landing here as the DESTINATION
-  // (`toAccountId`) must still show up, or an account funded mainly by transfers-in renders an
-  // incomplete list while its own "Transactions" button correctly shows the same rows.
+  // Transactions touching this account, across every month — the LIVE ledger, not the viewed
+  // month's `state.transactions` (that goes empty on day 1 for an older account; the widgetsBoard
+  // `RecentWidget` pattern and its stated reason, reused verbatim below rather than re-derived).
+  // "Touching" is two-sided, same as `transactionSearch.ts`'s account filter and this pane's own
+  // "Transactions" button (`onOpenTxns` → the shared matcher): a transfer's `accountId` is only
+  // the SOURCE, so a transfer landing here as the DESTINATION (`toAccountId`) must still show up,
+  // or an account funded mainly by transfers-in renders an incomplete list while its own
+  // "Transactions" button correctly shows the same rows. `recent` (the last 5, for the list below)
+  // and `txnCountThisMonth` (the balance box's caption) both derive from this ONE sorted array.
   const accById = useMemo(() => {
     const ledger = store.getLedger();
     return new Map((ledger?.accounts ?? []).map((a) => [a.id, a]));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [version]);
   const envById = useMemo(() => new Map(envelopes.map((e) => [e.id, e])), [envelopes]);
-  const recent = useMemo(() => {
+  const touching = useMemo(() => {
     const ledger = store.getLedger();
     if (!ledger) return [];
     return ledger.transactions
       .filter((tx) => tx.accountId === accountId || tx.toAccountId === accountId)
-      .sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : a.createdAt < b.createdAt ? 1 : -1))
-      .slice(0, 5);
+      .sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : a.createdAt < b.createdAt ? 1 : -1));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [version, accountId]);
+  const recent = useMemo(() => touching.slice(0, 5), [touching]);
+  // Balance-box caption (waveE-t2-brief.md, v3:2832): transactions touching this account in the
+  // REAL current calendar month (`currentMonth()`) — matching the box's own GLOBAL balance above
+  // it (the 3.6.2 law), NEVER the app's viewed `state.month` (unlike the Accounts card grid's own
+  // "{n} transactions · {month}" sub-line, which self-documents its viewed-month scope in its own
+  // text — this caption's bare "this month" instead reads as "right now", the same tense as the
+  // balance figure it sits directly under).
+  const txnCountThisMonth = useMemo(() => touching.filter((tx) => tx.date.slice(0, 7) === currentMonth()).length, [touching]);
 
   // Vanished account (deleted in another tab / by sync): render the hint body, never crash — the
   // `EnvelopeScreen` no-data rule, verbatim. `closePanel`/✕ still work; a fresh `nav()` clears the
@@ -147,31 +161,65 @@ export function AccountPanel({
 
   return (
     <div className="gs" style={{ flex: 1, overflowY: "auto", padding: 14 }}>
-      {/* balance card */}
-      <div style={{ marginBottom: 18 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-          <span style={{ fontSize: 26, fontWeight: 800, color: account.balance < 0 ? C.neg : C.text, fontVariantNumeric: "tabular-nums" }}>
-            {M(account.balance)}
+      {/* icon + name row (waveE-t2-brief.md, v3:2003-2005) — plain body content, NOT a second
+          name/✕ band: PanelHost's slim header above this pane is the only chrome (owner rule 2). */}
+      <div style={{ display: "flex", alignItems: "center", gap: 11, marginBottom: 13, flexWrap: "wrap" }}>
+        <span
+          style={{
+            width: 32,
+            height: 32,
+            borderRadius: 9,
+            background: account.color,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            flexShrink: 0,
+          }}
+        >
+          <span
+            style={{
+              width: 22,
+              height: 22,
+              borderRadius: "50%",
+              background: "rgba(255,255,255,0.92)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
+            <Glyph name={account.icon} size={12} color={accountIconColor(account.color)} />
           </span>
-          {account.archived && (
-            <span
-              style={{
-                fontSize: 10.5,
-                fontWeight: 650,
-                color: C.mute,
-                background: C.inset,
-                borderRadius: 999,
-                padding: "3px 9px",
-                textTransform: "uppercase",
-                letterSpacing: 0.4,
-              }}
-            >
-              {t("Closed")}
-            </span>
-          )}
+        </span>
+        <span style={{ fontSize: 16.5, fontWeight: 700, color: C.text }}>{account.name}</span>
+        {account.archived && (
+          <span
+            style={{
+              fontSize: 10.5,
+              fontWeight: 650,
+              color: C.mute,
+              background: C.inset,
+              borderRadius: 999,
+              padding: "3px 9px",
+              textTransform: "uppercase",
+              letterSpacing: 0.4,
+            }}
+          >
+            {t("Closed")}
+          </span>
+        )}
+      </div>
+
+      {/* balance box (v3:2007-2012): bordered, "Balance" eyebrow, the GLOBAL current-balance
+          figure, a real-current-month transaction-count caption, and an accent automatic-envelope
+          line when one is set. */}
+      <div style={{ border: `1px solid ${C.line}`, borderRadius: 14, padding: "14px 16px", marginBottom: 22 }}>
+        <div style={{ fontSize: 9.5, letterSpacing: 0.6, textTransform: "uppercase", color: C.mute, marginBottom: 4 }}>{t("Balance")}</div>
+        <div style={{ fontSize: 26, fontWeight: 800, color: account.balance < 0 ? C.neg : C.text, fontVariantNumeric: "tabular-nums" }}>
+          {M(account.balance)}
         </div>
+        <div style={{ fontSize: 11.5, color: C.soft, marginTop: 4 }}>{tp("{n} transaction this month | {n} transactions this month", txnCountThisMonth)}</div>
         {automaticName && (
-          <div style={{ marginTop: 6, fontSize: 12, fontWeight: 600, color: TEAL }}>{t("Automatic: {envelope}", { envelope: automaticName })}</div>
+          <div style={{ fontSize: 11.5, fontWeight: 650, color: TEAL, marginTop: 4 }}>{t("Automatic envelope: {name}", { name: automaticName })}</div>
         )}
       </div>
 
@@ -188,8 +236,8 @@ export function AccountPanel({
         </button>
       </div>
 
-      {/* recent activity */}
-      <div style={{ fontSize: 13, fontWeight: 600, color: C.text, marginBottom: 8 }}>{t("Recent activity")}</div>
+      {/* recent activity (v3:2018: "Recent in {{ acct.name }}") */}
+      <div style={{ fontSize: 13, fontWeight: 600, color: C.text, marginBottom: 8 }}>{t("Recent in {name}", { name: account.name })}</div>
       {recent.length === 0 ? (
         <div style={{ fontSize: 12, color: C.mute }}>{t("No transactions.")}</div>
       ) : (
