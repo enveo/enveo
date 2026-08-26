@@ -418,11 +418,15 @@ export function TransactionsScreen({
                         {subOf(tx)}
                       </div>
                     </div>
-                    {/* Always rendered (v3:389's own `openMark` is "" when not selected), so the
-                        row's flex gap never shifts its content width on select/deselect. */}
-                    <span style={{ fontSize: 12, color: "var(--accent)", flexShrink: 0 }} aria-hidden="true">
-                      {selected ? "▸" : ""}
-                    </span>
+                    {/* Wide-only (v3:389's `openMark`, computed only when `paneOpen` — design's
+                        wide-table context): gated on `inWide` like every other wide-only fork in
+                        this file, so phone's flex `gap` never grows a 3rd gap it never had, which
+                        would otherwise narrow the description column's ellipsis budget. */}
+                    {inWide && (
+                      <span style={{ fontSize: 12, color: "var(--accent)", flexShrink: 0 }} aria-hidden="true">
+                        {selected ? "▸" : ""}
+                      </span>
+                    )}
                     <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", flexShrink: 0 }}>
                       <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
                         <span style={{ fontSize: 13.5, fontWeight: 700, lineHeight: 1.25, fontVariantNumeric: "tabular-nums", color: s.color }}>{s.text}</span>
