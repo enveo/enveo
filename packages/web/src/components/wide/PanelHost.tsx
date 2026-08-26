@@ -10,20 +10,19 @@ import type { ReportView } from "../../screens/reports/types";
 import { TITLES } from "../../screens/reports/types";
 import { LazyChunk } from "../lazy";
 import { AccountPanel } from "./AccountPanel";
+import { EnvelopePanel } from "./EnvelopePanel";
 import type { PanelView } from "./panel";
 
-// Same resolved module App.tsx already `lazy()`s for the full-screen phone summary — Vite
-// dedupes a dynamically-imported module by its resolved id, so this does NOT create a second
-// chunk for Envelope; it just adds another entry point into the SAME one.
-const EnvelopeScreen = lazy(() => import("../../screens/Envelope").then((m) => ({ default: m.EnvelopeScreen })));
-// Same dedupe as above, this time for Reports (Task 6): the panel's report variant renders a
-// SECOND `ReportsScreen` instance beside the primary pane's — the primary always shows the hub
-// there (App forces its `view` to "overview"), this one always shows a specific tab
+// Vite dedupes a dynamically-imported module by its resolved id: App.tsx already `lazy()`s
+// `screens/Reports` for the phone full-screen stack, so this does NOT create a second chunk for
+// Reports — it just adds another entry point into the SAME one. The panel's report variant
+// renders a SECOND `ReportsScreen` instance beside the primary pane's — the primary always shows
+// the hub there (App forces its `view` to "overview"), this one always shows a specific tab
 // (`resolvePanel` only ever produces the `report` kind for a non-"overview" `reportsView`).
 const ReportsScreen = lazy(() => import("../../screens/Reports").then((m) => ({ default: m.ReportsScreen })));
 // The wide board's gear target (PR5 Task 6) reuses the phone edit sheet's envelope-mode options
 // body verbatim (one options UI, not a second implementation) — dynamically imported, exactly
-// like the two screens above, so the ~500-line `EditWidgetsSheet` module stays out of the wide
+// like `ReportsScreen` above, so the ~500-line `EditWidgetsSheet` module stays out of the wide
 // chunk's static graph; Vite dedupes it with Start.tsx's own `lazy()` import of the same module.
 const EnvelopesOptions = lazy(() => import("../EditWidgetsSheet").then((m) => ({ default: m.EnvelopesOptions })));
 
@@ -128,6 +127,7 @@ export function PanelHost({
   onFillGoals,
   onEditTxn,
   onEditAccountTxn,
+  onEditEnvelopeTxn,
   onPrev,
   onNext,
   editTxn,
@@ -152,6 +152,13 @@ export function PanelHost({
   /** PR6b Task 4: the `account` kind's OWN edit entry point — deliberately not `onEditTxn` above
    *  (see the bag's own comment, WideShell.tsx). */
   onEditAccountTxn: (t: Transaction) => void;
+  /** Design parity wave C task 2: the `envelope` kind's OWN edit entry point — same reason
+   *  `onEditAccountTxn` above exists separately from `onEditTxn` (that one's `editReturn` is
+   *  hardcoded "reports" for the panel's report-subview instance). Unlike the account pane this
+   *  needs no restore-stash: `envView` already round-trips through the URL (`routeToUrl`'s
+   *  `?env=`), so `doneEdit`'s `history.back()` naturally restores both the originating screen
+   *  and the envelope pane via `onPop` (App.tsx's `editEnvelopeTxn` comment has the full case). */
+  onEditEnvelopeTxn: (t: Transaction) => void;
   onPrev: () => void;
   onNext: () => void;
   /** PR6 Task 2: the `add` kind's own props — App's edit/preset state, same as the phone
@@ -173,7 +180,9 @@ export function PanelHost({
             // field that never varies by month; the balance itself (AccountPanel's own concern)
             // must never come from here (the 3.6.2 rule).
             (state.accounts.find((a) => a.id === view.accountId)?.name ?? "")
-          : "";
+          : view.kind === "envelope"
+            ? (state.envelopes.find((e) => e.id === view.envelopeId)?.name ?? "")
+            : "";
 
   const body = (() => {
     switch (view.kind) {
@@ -184,10 +193,20 @@ export function PanelHost({
           </div>
         );
       case "envelope":
+        // Design parity wave C task 2: the real panel body (trio card, breakdowns, "Transactions
+        // in X" list — EnvelopePanel.tsx), not the phone `EnvelopeScreen` full-screen takeover.
+        // `EnvelopePanel` is a wide-only component (never mounted on phone, unlike
+        // `EnvelopeScreen`), so — like `AccountPanel` above — it is a plain static import: it
+        // already lives inside this lazy-chunk-only module, there is nothing to dedupe it with.
         return (
-          <LazyChunk>
-            <EnvelopeScreen envelopeId={view.envelopeId} initialMonth={view.month} onBack={onClose} onOpenTxns={onOpenTxns} />
-          </LazyChunk>
+          <EnvelopePanel
+            envelopeId={view.envelopeId}
+            month={view.month}
+            groups={state.groups}
+            accounts={state.accounts}
+            onOpenTxns={onOpenTxns}
+            onEditTxn={onEditEnvelopeTxn}
+          />
         );
       case "report":
         // The subscreen's own back chevron calls `onView("overview")` — same as the ✕ below, it

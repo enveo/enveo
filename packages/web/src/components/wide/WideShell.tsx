@@ -376,6 +376,12 @@ type WideShellBag = {
    *  report-subview instance; reusing it here reopened Reports behind the edit takeover and lost
    *  `acctView` on save — reproduced live, App.tsx's `editAccountTxn`/`acctViewBeforeEditRef`). */
   onEditAccountTxn: (t: Transaction) => void;
+  /** Design parity wave C task 2: the envelope pane's OWN recent-list edit entry point — same
+   *  reason as `onEditAccountTxn` above (the shared `onEditTxn`'s hardcoded "reports" return
+   *  screen would be wrong here too), but this one does NOT need a restore-ref: `envView`
+   *  round-trips through the URL, so `doneEdit`'s `history.back()` restores both the originating
+   *  screen and the envelope pane on its own (App.tsx's `editEnvelopeTxn` has the full case). */
+  onEditEnvelopeTxn: (t: Transaction) => void;
   /** Design parity wave A close, item 9: the Transactions band caption's own inputs — App's lifted
    *  `txQuery`/`txFilters` state, the SAME values `TransactionsScreen` filters its list with (see
    *  that component's own props). Threaded as plain data (zero eager-bundle cost); the filtering
@@ -462,6 +468,7 @@ export function WideShell({ bag, rightSlot = null, children }: { bag: WideShellB
     onAddWide,
     onOpenAccount,
     onEditAccountTxn,
+    onEditEnvelopeTxn,
     txQuery,
     txFilters,
   } = bag;
@@ -869,6 +876,7 @@ export function WideShell({ bag, rightSlot = null, children }: { bag: WideShellB
             onFillGoals={onFillGoals}
             onEditTxn={onEditTxn}
             onEditAccountTxn={onEditAccountTxn}
+            onEditEnvelopeTxn={onEditEnvelopeTxn}
             onPrev={prev}
             onNext={next}
             editTxn={editTxn}

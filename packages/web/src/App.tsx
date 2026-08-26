@@ -379,6 +379,18 @@ export default function App() {
     acctViewBeforeEditRef.current = acctView;
     editTxnFrom(t, "accounts");
   };
+  // Wide-only: the envelope pane's recent-list row → edit (PanelHost's `envelope` kind, design
+  // parity wave C task 2). Its OWN `editTxnFrom` binding, like `editAccountTxn` above — the
+  // shared `onEditTxn`'s hardcoded "reports" return screen would flash the primary pane to
+  // Reports here too. UNLIKE `editAccountTxn`, no restore-ref is needed: `envView` already
+  // round-trips through the URL (`routeToUrl`'s `?env=`), so `doneEdit`'s `history.back()` lands
+  // on the entry pushed just before this edit — whichever of "start"/"budget" (the only two
+  // screens `resolvePanel` ever shows the envelope pane on, per `envView` above) the user was
+  // actually on — and `onPop` restores `envView` from that entry's URL for free. `editReturn` is
+  // set to the CURRENT `screen` (not a fixed constant, since this pane is reachable from EITHER
+  // screen) purely so `primaryScreenFor` renders the right one behind the Add takeover while it
+  // is open; it plays no role in the eventual restore.
+  const editEnvelopeTxn = (t: Transaction) => editTxnFrom(t, screen);
   const doneEdit = () => {
     setEditTxn(null);
     // `history.back()` after a save is correct here: the entry below `/add` is the screen the
@@ -861,6 +873,9 @@ export default function App() {
               // PR6b Task 4: the account pane's own recent-list edit entry point — NOT the
               // report-panel instance's `onEditTxn` above (see `editAccountTxn`'s comment).
               onEditAccountTxn: editAccountTxn,
+              // Design parity wave C task 2: the envelope pane's own recent-list edit entry
+              // point — see `editEnvelopeTxn`'s own comment above.
+              onEditEnvelopeTxn: editEnvelopeTxn,
             }}
             rightSlot={wideRightSlot}
           >

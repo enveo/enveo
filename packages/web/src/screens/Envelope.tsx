@@ -11,9 +11,13 @@ import { store } from "../lib/store";
 import { font, P, TEAL } from "../lib/theme";
 import { EnvEdit } from "./Budget";
 
-const PERIODS = [1, 3, 6, 12] as const;
-type Period = (typeof PERIODS)[number];
-const PERIOD_KEY = { 1: msg("1 mo"), 3: msg("3 mo"), 6: msg("6 mo"), 12: msg("1 yr") } as const;
+// Exported so the wide panel body (`components/wide/EnvelopePanel.tsx`, design parity wave C task
+// 2) reuses the SAME category-window constants and labels rather than a second, silently-drifting
+// copy — the brief's "extract the trio/breakdown data helpers" instruction, applied to the one
+// piece of this screen's UI (not domain math) another consumer needs verbatim.
+export const PERIODS = [1, 3, 6, 12] as const;
+export type Period = (typeof PERIODS)[number];
+export const PERIOD_KEY = { 1: msg("1 mo"), 3: msg("3 mo"), 6: msg("6 mo"), 12: msg("1 yr") } as const;
 
 /**
  * Full-screen envelope summary (replaces the old summary sheet).
