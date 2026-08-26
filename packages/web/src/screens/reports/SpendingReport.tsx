@@ -1,7 +1,6 @@
 import { median, type SpendingDetail, type SpendingDimension } from "@enveo/shared";
 import { useEffect, useState } from "react";
-import { useBand } from "../../components/kit";
-import { Bar, DeltaTag, dimNullLabel, ReportShell, SegBar } from "../../components/reportKit";
+import { Bar, DeltaTag, dimNullLabel, ReportShell, SegBar, useReportBand } from "../../components/reportKit";
 import type { StateResponse } from "../../lib/api";
 import { useTheme } from "../../lib/contexts";
 import { monthLabel } from "../../lib/dates";
@@ -93,7 +92,7 @@ export function SpendingReport({
 }) {
   const C = useTheme();
   const { t, tp, lang } = useT();
-  const { hc } = useBand();
+  const { hc } = useReportBand();
   const [expanded, setExpanded] = useState(false);
   const [excluded, setExcluded] = useState<ReadonlySet<string | null>>(new Set());
   const [selectedKey, setSelectedKey] = useState<string | null>(null);

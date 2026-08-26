@@ -4,22 +4,29 @@ import { useContext } from "react";
 import { createPortal } from "react-dom";
 import { useCompactMask, useTheme } from "../lib/contexts";
 import { monthLabel, monthShortLabel } from "../lib/dates";
-import { type Message, useT } from "../lib/i18n";
+import { type Lang, type Message, useT } from "../lib/i18n";
 import { InWideShell, useWideHost } from "../lib/shellContext";
 import { font, P, TEAL, type Theme } from "../lib/theme";
 import { useElementWidth } from "../lib/useElementWidth";
 import { PHONE_COL } from "../lib/viewMode";
 import { Header } from "./chrome";
 import { useBand } from "./kit";
+import { polylineCoords } from "./sparkline";
 
 /**
  * Report component kit — the shared visual language for every report subscreen (Tasks 8–12):
  * a `ReportShell` band header (hero number + optional chart on `C.headerBg` when the theme is
  * Duet), plus small primitives (`Bar`, `SegBar`, `DeltaTag`, `CalendarHeatmap`, `TrendSpark`,
- * `Sparkline`, `UndoBar`) that read tokens off `useTheme()`/`useBand()` instead of hardcoding
- * colors. Every SVG color goes through `style` — `var(--accent)` etc. do not resolve in
- * presentation attributes. Status colors (pos/warn/neg) never carry meaning alone; callers
- * supply the label.
+ * `UndoBar`) that read tokens off `useTheme()`/`useBand()` instead of hardcoding colors. Every
+ * SVG color goes through `style` — `var(--accent)` etc. do not resolve in presentation
+ * attributes. Status colors (pos/warn/neg) never carry meaning alone; callers supply the label.
+ *
+ * `Sparkline` (the one export a truly EAGER caller needs — `components/widgets.tsx`'s Net-worth
+ * widget) moved out to its own `./sparkline` module (design parity wave D task 1): this whole
+ * file is reachable ONLY through the lazy `Reports` chunk otherwise, and importing one named
+ * export from a single-file module does not stop Rollup from duplicating the WHOLE compiled
+ * module into an eager chunk that reaches it — see that module's own header comment for the
+ * measured evidence. `TrendSpark` below still shares `polylineCoords`' math, imported from there.
  */
 
 /** Fields every `ReportShell` render needs regardless of variant. */
@@ -47,6 +54,26 @@ type ReportShellProps = ReportShellCommon &
     | { variant: "hub"; onMenu: () => void; onHeroClick?: () => void; title?: never; onBack?: never }
   );
 
+/** "last {n} months · {start}–{end}" — the date span a net-worth series covers (design parity
+ *  wave D task 2, `v3:3195`'s `nwChart.range`, e.g. "last 12 months · Aug 2025 – Jul 2026").
+ *  Shared by the reports hub hero and the Wealth report's own caption so the two never drift —
+ *  each glues this onto its OTHER half (the hub's own delta/pct line; the Wealth report's
+ *  existing "range {min}–{max}" line) with a decorative middle dot, the same already-translated-
+ *  pieces idiom `ReportShell`'s own `{title} · {monthLabel}` panel eyebrow already uses just
+ *  below. `computeNetWorthSeries` always back-fills to exactly the requested window (even before
+ *  the ledger existed), so `n` is effectively always the caller's fixed window size in practice —
+ *  `tp()` still carries the plural correctly for whatever a caller actually passes. */
+export function netWorthRangeLabel(
+  netWorth: { month: string; total: number }[],
+  lang: Lang,
+  tp: (message: Message, n: number, params?: Record<string, string | number>) => string,
+): string | null {
+  if (netWorth.length === 0) return null;
+  const start = monthShortLabel(netWorth[0]!.month, lang, true);
+  const end = monthShortLabel(netWorth.at(-1)!.month, lang, true);
+  return tp("last {n} month · {range} | last {n} months · {range}", netWorth.length, { range: `${start} – ${end}` });
+}
+
 /** Report band: shared by every subscreen AND the hub (Task 4 — the two previously-forked
  *  copies of this grammar are now one). Top row is `variant`-dependent (back+title+month-nav
  *  for a subscreen, the app-chrome `Header` for the hub); everything below — eyebrow/hero/sub,
@@ -70,12 +97,80 @@ export function ReportShell(props: ReportShellProps) {
   const C = useTheme();
   const { band, hc } = useBand();
   const { t, lang } = useT();
-  const inWide = useWideHost() !== null;
-  const heroBlock = (
+  const wideHost = useWideHost();
+  const inWide = wideHost !== null;
+
+  // Design parity wave D task 1 (owner rule 2): inside a WIDE PANEL, `PanelHost`'s own slim
+  // header (label + ✕, already rendered one level up) is the ONLY chrome above this content — no
+  // back chevron, no panel-local month-nav, no second band. The subscreen's own bespoke `eyebrow`
+  // (e.g. "Total spending") is replaced here by the shared "{title} · {month}" grammar — that
+  // string stays composed from already-translated pieces (`props.title` is `t(TITLES[view])` at
+  // every call site; `monthLabel` is Intl-formatted) rather than a new message key, since there is
+  // no English wording here to translate, only two values and a decorative middle dot (the same
+  // idiom `netWorthRangeLabel` below and its two callers use to glue their own two already-
+  // translated halves together). The seven per-report
+  // `eyebrow` strings stay exactly as they are for PHONE, rendered by the branch below — nothing
+  // is orphaned. Month navigation on wide is the band's global nav only: both `ReportsScreen`
+  // instances (primary hub + this panel subscreen) already share App's one `month`/`onPrev`/
+  // `onNext` axis, so there was never a second axis for a local nav to drift from — only the
+  // now-removed CONTROL was local, not the data. `hero`/`sub` render as given by the caller
+  // (still each report's own content) — this branch only replaces the OUTER band chrome.
+  if (props.variant !== "hub" && wideHost?.host === "panel") {
+    return (
+      <>
+        <div style={{ padding: "14px 16px 0", display: "flex", flexDirection: "column", gap: 13 }}>
+          {/* Design source (v3:1367-1370): the eyebrow/hero/sub trio is its OWN `gap:2px` div that
+             closes right after `sub` — the report-specific visual (SegBar, the net-worth chart,
+             the budget-health ring…) is a SIBLING inside this outer `gap:13px` column, not a
+             fourth item packed into the trio's tight 2px rhythm (review finding: bandChart was
+             landing 2px under `sub` instead of the design's ~13px breathing room). */}
+          <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+            <div style={{ fontSize: 10, fontWeight: 750, letterSpacing: "0.17em", textTransform: "uppercase", color: C.mute }}>
+              {props.title} · {monthLabel(month, lang)}
+            </div>
+            <div style={{ fontSize: 30, fontWeight: 750, color: C.text, fontVariantNumeric: "tabular-nums" }}>{hero}</div>
+            {sub != null && <div style={{ fontSize: 12, color: C.soft }}>{sub}</div>}
+          </div>
+          {bandChart}
+        </div>
+        {/* Same `rpt-body`/`fi` idiom as the phone branch below — opacity-only, and paired with
+           the global first-child margin-top reset (chrome.tsx) so every subscreen's own top
+           element (which varies: Budgets' first section differs by data) still lands flush. */}
+        <div className="fi rpt-body" style={{ padding: "13px 16px 0" }}>
+          {children}
+        </div>
+      </>
+    );
+  }
+
+  const eyebrowEl = (
+    <div style={{ fontSize: 10.5, fontWeight: 750, letterSpacing: "0.17em", textTransform: "uppercase", color: hc(C.headerMute, C.mute) }}>{eyebrow}</div>
+  );
+  const heroEl = <div style={{ fontSize: 30, fontWeight: 750, color: hc(C.headerInk, C.text), fontVariantNumeric: "tabular-nums" }}>{hero}</div>;
+  const subEl = sub != null ? <div style={{ fontSize: 12, color: hc(C.headerMute, C.soft) }}>{sub}</div> : null;
+
+  // Design parity wave D task 2 (v3:624-655): at the wide DESKTOP bucket only (`L.heroDir:"row"`
+  // — fold and phone keep the plain stacked column below, `L.heroDir:"column"`), the hub's own
+  // hero splits into a fixed `216px` info column (eyebrow/value/sub, `gap:16px` from the chart)
+  // and the chart filling the rest — never the hub's own hand-rolled markup duplicated a second
+  // time, just this one shared branch, gated to the ONE variant (`hub`) and ONE bucket (`desktop`)
+  // that need it; every other caller (every subscreen, hub-on-fold, hub-on-phone) renders the
+  // exact same flat fragment as before this task, byte-for-byte.
+  const hubDesktopRow = props.variant === "hub" && wideHost?.mode === "desktop";
+  const heroBlock = hubDesktopRow ? (
+    <div style={{ display: "flex", flexDirection: "row", gap: 16 }}>
+      <div style={{ flex: "none", width: 216, display: "flex", flexDirection: "column", gap: 3 }}>
+        {eyebrowEl}
+        {heroEl}
+        {subEl}
+      </div>
+      <div style={{ flex: 1, minWidth: 0 }}>{bandChart}</div>
+    </div>
+  ) : (
     <>
-      <div style={{ fontSize: 10.5, fontWeight: 750, letterSpacing: "0.17em", textTransform: "uppercase", color: hc(C.headerMute, C.mute) }}>{eyebrow}</div>
-      <div style={{ fontSize: 30, fontWeight: 750, color: hc(C.headerInk, C.text), fontVariantNumeric: "tabular-nums" }}>{hero}</div>
-      {sub != null && <div style={{ fontSize: 12, color: hc(C.headerMute, C.soft) }}>{sub}</div>}
+      {eyebrowEl}
+      {heroEl}
+      {subEl}
       {bandChart}
     </>
   );
@@ -203,6 +298,30 @@ export function ReportShell(props: ReportShellProps) {
       </div>
     </>
   );
+}
+
+/**
+ * `useBand()` (kit.tsx), scoped to a report SUBSCREEN's own band-dependent colors (design parity
+ * wave D task 1). Every one of the six subscreen `*Report.tsx` files bakes its hero/sub/pill
+ * colors into a ReactNode BEFORE handing it to `ReportShell` as a prop — `ReportShell` cannot
+ * correct a color already baked into an element it did not create, so each of those six needs its
+ * OWN band-vs-plain verdict rather than the generic one. Identical shape to `useBand()`; `band` is
+ * forced `false` while this subscreen renders inside a WIDE PANEL (same `host === "panel"` check
+ * `ReportShell` makes above), because that branch paints no colored strip for an on-band color to
+ * sit on. `useBand()` itself stays theme-only, correctly — the actual GLOBAL header band these
+ * same screens' primary-pane siblings (Start/Budget/Transactions/Settings) still paint on wide is
+ * a different, still-real band this hook has no business touching.
+ *
+ * Confirmed as a real regression, not a theoretical one: measured live on Duet LIGHT after the
+ * subscreen top-row/band removal above — `BudgetsReport`'s overspend hero used `headerNeg`
+ * (`#f28b7d`, calibrated for Duet's navy `headerBg`) and rendered as near-invisible light coral on
+ * the panel's plain cream `card` background once the colored strip was gone.
+ */
+export function useReportBand(): { band: boolean; hc: (onBand: string, plain: string) => string } {
+  const { band } = useBand();
+  const inPanel = useWideHost()?.host === "panel";
+  const effectiveBand = band && !inPanel;
+  return { band: effectiveBand, hc: (onBand, plain) => (effectiveBand ? onBand : plain) };
 }
 
 /** Single-value progress bar: track `C.line`, fill clamped 0–100%, fully rounded (radius h/2). */
@@ -590,28 +709,6 @@ export function CalendarHeatmap({
   );
 }
 
-/** Shared normalized-polyline math for `TrendSpark`/`Sparkline`: x evenly spaced across `w`
- *  (`pad` inset each side), y linearly scaled between the series' own min/max onto `h` (a
- *  perfectly flat series draws a level line at `h/2` rather than dividing by a zero range).
- *  Returns RAW (unrounded) coords — callers needing a `points` string apply `.toFixed(1)`
- *  themselves at render time (Sparkline's last-point dot deliberately uses the raw value, not
- *  the rounded one, matching its pre-extraction behavior). Assumes `series.length >= 2`. */
-function polylineCoords(series: number[], w: number, h: number, pad: number): (readonly [number, number])[] {
-  const n = series.length;
-  const min = Math.min(...series);
-  const max = Math.max(...series);
-  const range = max - min || 1;
-  const flat = max === min;
-  // A sub-pixel container (a panel mid-animation, a flex item mid-reflow) can transiently
-  // measure ~1px wide; with pad=2/3 that made `w - 2*pad` negative, so x ran backwards from
-  // `pad` down to `pad - |negative|` — a reversed, partly negative-x polyline for that one frame.
-  // Clamping the inner width to at least 1 keeps that frame from rendering nonsense; it's
-  // transient and self-corrects on the next ResizeObserver callback, so this is not a fix for the
-  // underlying measurement, only for what gets drawn in between.
-  const innerW = Math.max(1, w - 2 * pad);
-  return series.map((v, i) => [pad + (i / (n - 1)) * innerW, flat ? h / 2 : pad + (1 - (v - min) / range) * (h - 2 * pad)] as const);
-}
-
 /** Bare polyline sparkline over a plain `number[]` — same shape as `Sparkline` but color is a
  *  prop (stroke via `style`, never an attribute) so callers can use it for series other than
  *  net worth (e.g. per-envelope trend rows). Its width is intentionally caller-supplied (`w` prop)
@@ -682,35 +779,6 @@ export function TrendSpark({
       />
       {dot && <circle cx={last[0]} cy={last[1]} r={2.5} style={{ fill: color }} />}
     </svg>
-  );
-}
-
-/** Net-worth mini-sparkline on the card (polyline without fill; stroke via style — var(--accent) does not work in SVG attributes).
- *  Exported for the Start-screen Net worth widget (components/widgets.tsx) — same visual, no duplication.
- *  `stroke` defaults to TEAL (today's behavior, unchanged for existing callers); pass an on-band color
- *  (e.g. `hc(C.headerInk, "var(--accent)")`) when painted on a Duet navy band, where TEAL would be
- *  invisible (navy on navy). `dotColor` is opt-in — omitted (the default) draws no last-point dot at all. */
-export function Sparkline({ points, stroke = TEAL, dotColor }: { points: { month: string; total: number }[]; stroke?: string; dotColor?: string }) {
-  const [boxRef, W] = useElementWidth<HTMLDivElement>(320);
-  const n = points.length;
-  if (n < 2) return null;
-  const H = 44,
-    pad = 3;
-  const coords = polylineCoords(
-    points.map((p) => p.total),
-    W,
-    H,
-    pad,
-  );
-  const pts = coords.map(([x, y]) => `${x.toFixed(1)},${y.toFixed(1)}`).join(" ");
-  const last = coords[coords.length - 1]!;
-  return (
-    <div ref={boxRef} style={{ marginTop: 8 }}>
-      <svg viewBox={`0 0 ${W} ${H}`} width="100%" height={44} aria-hidden style={{ display: "block" }}>
-        <polyline points={pts} fill="none" style={{ stroke }} strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" vectorEffect="non-scaling-stroke" />
-        {dotColor && <circle cx={last[0]} cy={last[1]} r={3.5} style={{ fill: dotColor }} />}
-      </svg>
-    </div>
   );
 }
 

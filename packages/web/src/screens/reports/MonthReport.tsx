@@ -1,6 +1,5 @@
 import { type DaySpending, savingsRate, type Transaction } from "@enveo/shared";
-import { useBand } from "../../components/kit";
-import { CalendarHeatmap, DeltaTag, dimNullLabel, ReportShell, SegBar } from "../../components/reportKit";
+import { CalendarHeatmap, DeltaTag, dimNullLabel, ReportShell, SegBar, useReportBand } from "../../components/reportKit";
 import type { StateResponse } from "../../lib/api";
 import { useTheme } from "../../lib/contexts";
 import { monthLabel, shiftDay, shortDate, weekdayShortDate } from "../../lib/dates";
@@ -78,7 +77,7 @@ export function MonthReport({
 }) {
   const C = useTheme();
   const { t, tp, lang } = useT();
-  const { hc } = useBand();
+  const { hc } = useReportBand();
 
   const totIncome = cashflow.at(-1)?.income ?? 0;
   const totExpense = cashflow.at(-1)?.expense ?? 0;

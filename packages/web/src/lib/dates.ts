@@ -16,10 +16,15 @@ export function monthLabel(month: string, lang: Lang): string {
  *  Uses `Intl`'s own CLDR abbreviation, not a substring of the long form: CLDR's short-month
  *  rule is not "first N characters" in every locale, so slicing would be correct by accident
  *  in some languages and wrong in others — the same reasoning `CURRENCY_DIGITS` and every other
- *  locale-derived table in this codebase already follows (pin CLDR behavior, never hand-roll it). */
-export function monthShortLabel(month: string, lang: Lang): string {
+ *  locale-derived table in this codebase already follows (pin CLDR behavior, never hand-roll it).
+ *  `withYear` adds the year (e.g. "Aug 2025") — the net-worth range caption's endpoints (design
+ *  parity wave D task 2, `v3:3195`'s `nwChart.range`) need it; the chart axis row below the plot
+ *  never does (same convention as `shortDate`'s own `withYear` flag). */
+export function monthShortLabel(month: string, lang: Lang, withYear = false): string {
   const [y, m] = month.split("-").map(Number) as [number, number];
-  const s = new Intl.DateTimeFormat(LOCALE_OF[lang], { month: "short", timeZone: "UTC" }).format(new Date(Date.UTC(y, m - 1, 1)));
+  const s = new Intl.DateTimeFormat(LOCALE_OF[lang], { month: "short", ...(withYear ? { year: "numeric" } : {}), timeZone: "UTC" }).format(
+    new Date(Date.UTC(y, m - 1, 1)),
+  );
   return s.charAt(0).toUpperCase() + s.slice(1);
 }
 

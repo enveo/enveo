@@ -1,17 +1,36 @@
 import { type EnvelopeTrend, median, savingsRate } from "@enveo/shared";
 import type { ReactNode } from "react";
 import { GoalRing, useBand } from "../../components/kit";
-import { DeltaTag, heatColor, NetWorthChart, ReportShell, SegBar, TrendSpark } from "../../components/reportKit";
+import { DeltaTag, heatColor, NetWorthChart, netWorthRangeLabel, ReportShell, SegBar, TrendSpark } from "../../components/reportKit";
 import type { StateResponse } from "../../lib/api";
 import { useMask, useTheme } from "../../lib/contexts";
 import { goalProgress } from "../../lib/goals";
 import { useT } from "../../lib/i18n";
 import { budgetsOverAmount, budgetsSummary } from "../../lib/reportSummary";
+import { useWideHost } from "../../lib/shellContext";
 import { useElementWidth } from "../../lib/useElementWidth";
+import { splitAround } from "../settings/ui";
 import { trendColor } from "./charts";
 import type { Mask, ReportTab, ReportView } from "./types";
 
 const SPENDING_FALLBACK_COLORS = ["#8f84a8", "#aed6ea", "#ccd9b6", "#f0c84f"];
+
+/** Stands in for the delta text while splitting the translated m/m sentence — see `splitAround`'s
+ *  own doc comment (screens/settings/ui.tsx) for why every consumer keeps its own local mark
+ *  rather than sharing one constant. */
+const DELTA_MARK = "\u0000";
+
+/** m/m percentage for the hub hero's delta line (design `v3:3195`'s `nwChart.pct`, e.g. "+9.7%")
+ *  — signed, one decimal, against the PRIOR point (division-by-zero guarded to 1, matching the
+ *  design's own `|| 1` fallback). `null` when there are fewer than two points to compare (the
+ *  same guard `nwDelta` above already relies on to read as 0 in that case). */
+export function netWorthDeltaPct(netWorth: { month: string; total: number }[]): string | null {
+  if (netWorth.length < 2) return null;
+  const last = netWorth.at(-1)!.total;
+  const prev = netWorth.at(-2)!.total;
+  const pct = ((last - prev) / (prev || 1)) * 100;
+  return `${pct >= 0 ? "+" : ""}${pct.toFixed(1)}%`;
+}
 
 /**
  * Reports hub (frame A1, "Gabinet" direction): the global Header, then a tappable net-worth
@@ -19,6 +38,12 @@ const SPENDING_FALLBACK_COLORS = ["#8f84a8", "#aed6ea", "#ccd9b6", "#f0c84f"];
  * when the theme paints a Duet band, plain otherwise, exactly like every other screen's header),
  * then a 2-column grid of six mini-cards, one per subscreen, each showing just its essence.
  * Every card is a `<button>` → `onView(id)`.
+ *
+ * WIDE only (design parity wave D task 2, v3:624-655): the delta line also carries the m/m
+ * PERCENTAGE ("▲ +€X · +9.7% m/m", previously silently dropped), plus a "last N months · start–
+ * end" range caption and a "wealth details ›" accent CTA — both new lines `ReportShell` didn't
+ * have room for before. `ReportShell` itself puts the whole hero in a `flex-direction:row` with
+ * a fixed 216px info column at the `desktop` bucket (fold stays column, same as phone below).
  */
 export function ReportsHub({
   state,
@@ -54,11 +79,30 @@ export function ReportsHub({
 }) {
   const C = useTheme();
   const M = useMask();
-  const { t } = useT();
+  const { t, tp, lang } = useT();
   const { band, hc } = useBand();
+  const inWide = useWideHost() !== null;
 
   const nwLast = netWorth.at(-1)?.total ?? 0;
   const nwDelta = nwLast - (netWorth.at(-2)?.total ?? nwLast);
+  const deltaColor = nwDelta > 0 ? hc(C.headerPos, C.pos) : hc(C.headerNeg, C.neg);
+  // Design parity wave D task 2 (v3:624-655): the delta/pct/m/m line is composed as ONE whole
+  // i18n message ("{delta} · {pct} m/m") rather than the phone-era fragments this used to glue
+  // together outside any t() call — that older code silently DROPPED the percentage entirely
+  // (nothing ever computed it) and left the "·" between "m/m" and "details" instead of between
+  // the delta and the pct (gaps-reports.md #1). Gated to WIDE only: PHONE keeps rendering the
+  // exact pre-existing (bugged) composition below unchanged, so its screenshots stay byte-
+  // identical — a future ticket can decide whether phone should adopt this fix too. The bold,
+  // sign-colored delta substring is pulled back out of the translated sentence via the same
+  // NUL-sentinel `splitAround` idiom `ConfirmWordHint`/`InstallBody` already use, so a locale is
+  // free to reorder "pct m/m" around the delta without breaking the styling.
+  const pctText = inWide ? netWorthDeltaPct(netWorth) : null;
+  const [deltaBefore, deltaAfter] =
+    inWide && nwDelta !== 0 && pctText !== null ? splitAround(t("{delta} · {pct} m/m", { delta: DELTA_MARK, pct: pctText }), DELTA_MARK) : ["", ""];
+  const deltaText = (nwDelta > 0 ? "▲ +" : "▼ ") + M(Math.abs(nwDelta));
+  // "last {n} months · Aug 2025 – Jul 2026" (design `nwChart.range`) — new content, so it stays
+  // wide-only for the same phone-parity reason as the delta/pct fix above.
+  const rangeLabel = inWide ? netWorthRangeLabel(netWorth, lang, tp) : null;
   const envColor = new Map(state.envelopes.map((e) => [e.id, e.color]));
 
   // goals: same math as GoalsReport (card hidden entirely when zero envelopes have a goal)
@@ -85,15 +129,38 @@ export function ReportsHub({
         eyebrow={t("Net worth")}
         hero={M(nwLast)}
         sub={
-          <>
-            {nwDelta !== 0 && (
-              <span style={{ color: nwDelta > 0 ? hc(C.headerPos, C.pos) : hc(C.headerNeg, C.neg), fontWeight: 650 }}>
-                {nwDelta > 0 ? "▲ +" : "▼ "}
-                {M(Math.abs(nwDelta))}
+          inWide ? (
+            <>
+              {nwDelta !== 0 && pctText !== null && (
+                <div style={{ fontVariantNumeric: "tabular-nums" }}>
+                  {deltaBefore}
+                  <b style={{ color: deltaColor, fontWeight: 700 }}>{deltaText}</b>
+                  {deltaAfter}
+                </div>
+              )}
+              {rangeLabel != null && <div style={{ fontSize: 10.5, color: hc(C.headerMute, C.mute) }}>{rangeLabel}</div>}
+              {/* "wealth details ›" — its OWN accent CTA line (design line 630: 11.5px/650,
+                 `margin-top:4px`), not the old bare "· details ›" glued onto the delta line.
+                 `display:"block"` on the `<span>` gives the design's `margin-top` real effect
+                 (a plain inline element ignores vertical margin) while keeping the tag itself a
+                 `<span>` as the design markup has it. Accent swaps to `headerInk` on a Duet band
+                 the same way `Sparkline`'s own doc comment prescribes — Duet's light-mode accent
+                 IS its band color, so a bare `var(--accent)` here would be invisible ink-on-ink. */}
+              <span style={{ display: "block", marginTop: 4, fontSize: 11.5, fontWeight: 650, color: hc(C.headerInk, "var(--accent)") }}>
+                {t("wealth details ›")}
               </span>
-            )}{" "}
-            {t("m/m")} · {t("details")} ›
-          </>
+            </>
+          ) : (
+            <>
+              {nwDelta !== 0 && (
+                <span style={{ color: deltaColor, fontWeight: 650 }}>
+                  {nwDelta > 0 ? "▲ +" : "▼ "}
+                  {M(Math.abs(nwDelta))}
+                </span>
+              )}{" "}
+              {t("m/m")} · {t("details")} ›
+            </>
+          )
         }
         bandChart={<NetWorthChart points={netWorth} height={130} onBand={band} />}
       >
@@ -127,9 +194,16 @@ export function ReportsHub({
  * browser's own form-control rendering still applies — so short cards centered their title while
  * taller cards (whose content already filled the row) looked top-aligned by coincidence. Giving
  * the button its own top-aligned flex layout (column, default main-axis `flex-start`) overrides
- * that native centering so every card top-aligns its content, tall or short. */
+ * that native centering so every card top-aligns its content, tall or short.
+ *
+ * Border/shadow (design parity wave D task 1): the design gives every card a 1px border (`T.line`
+ * quiet, `T.accent` for the open report) and elevates its shadow on selection (measured off the
+ * source of truth, `reportCards`'s own `border`/`shadow` derivation) — gated to WIDE only so
+ * phone's cards stay pixel-identical to before this prop existed (`selected` is always `undefined`
+ * there, same as always). */
 function MiniCard({ title, onClick, selected, children }: { title: string; onClick: () => void; selected?: boolean; children: ReactNode }) {
   const C = useTheme();
+  const inWide = useWideHost() !== null;
   return (
     <button
       onClick={onClick}
@@ -142,10 +216,9 @@ function MiniCard({ title, onClick, selected, children }: { title: string; onCli
         background: C.card,
         // `var(--accent)` does not resolve in an SVG presentation attribute, but this IS a plain
         // HTML `style` object (not an attribute) — the CSS var resolves here same as any other
-        // inline style. Unselected stays borderless (`selected` is always undefined on phone —
-        // pixel-identical to before this prop existed).
-        border: selected ? "1.5px solid var(--accent)" : "none",
-        boxShadow: "0 1px 3px rgba(20,20,28,0.06)",
+        // inline style.
+        border: inWide ? `1px solid ${selected ? "var(--accent)" : C.line}` : selected ? "1.5px solid var(--accent)" : "none",
+        boxShadow: inWide && selected ? "0 2px 8px rgba(20,20,28,0.10)" : "0 1px 3px rgba(20,20,28,0.06)",
         borderRadius: 14,
         padding: "12px 13px",
         cursor: "pointer",
@@ -259,9 +332,10 @@ function SpendingMini({
   );
 }
 
-/** Budgets mini-card: over/near/OK count pills (triage colors on quiet chip backgrounds), plus
- *  the total overspend amount when any envelope is over. Threshold parity with BudgetsReport via
- *  budgetsSummary (Task 9 refines the rule; this card just consumes it). */
+/** Budgets mini-card: one plain value line — "{n} over · {n} near" — matching every other hub
+ *  card's 17px/750 treatment (design v3:3842 drops the app's former three triage pills, including
+ *  the third "OK" segment entirely). Threshold parity with BudgetsReport via budgetsSummary (Task 9
+ *  refines the rule; this card just consumes it). */
 function BudgetsMini({
   envelopes,
   onView,
@@ -279,22 +353,12 @@ function BudgetsMini({
   // Same classifier as budgetsSummary (classifyBudget: over = left < 0, on the RAW unfloored
   // budget) — NOT an inline `pct > 100` check, which misses the zero-budget boundary (raw
   // budget <= 0 + any spend → pct lands at exactly 100, left already negative; adb4c43 fixed
-  // this for the pill counters, budgetsOverAmount mirrors the same rule for the € amount).
+  // this for the counters, budgetsOverAmount mirrors the same rule for the € amount).
   const overAmt = budgetsOverAmount(envelopes);
-  const pill = (label: string, bg: string, color: string, key: string) => (
-    <span
-      key={key}
-      style={{ display: "inline-flex", alignItems: "center", fontSize: 11.5, fontWeight: 650, borderRadius: 9, padding: "4px 9px", background: bg, color }}
-    >
-      {label}
-    </span>
-  );
   return (
     <MiniCard title={t("Budgets")} onClick={() => onView("budgets")} selected={selected}>
-      <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
-        {pill(tp("{n} over | {n} over", bs.over), "var(--danger-14)", C.neg, "over")}
-        {pill(t("{n} near limit", { n: bs.near }), C.chip, C.warn, "near")}
-        {pill(t("{n} OK", { n: bs.ok }), C.chip, C.pos, "ok")}
+      <div style={{ fontSize: 17, fontWeight: 750, color: C.text, fontVariantNumeric: "tabular-nums" }}>
+        {tp("{n} over · {near} near | {n} over · {near} near", bs.over, { near: bs.near })}
       </div>
       {overAmt > 0 && (
         <div style={{ fontSize: 11, color: C.neg, marginTop: 8, fontVariantNumeric: "tabular-nums" }}>{t("{amount} over budget", { amount: M(overAmt) })}</div>

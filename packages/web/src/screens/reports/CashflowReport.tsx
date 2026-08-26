@@ -1,7 +1,6 @@
 import { type CashflowPoint, savingsRate } from "@enveo/shared";
 import { useLayoutEffect, useRef, useState } from "react";
-import { useBand } from "../../components/kit";
-import { ReportShell } from "../../components/reportKit";
+import { ReportShell, useReportBand } from "../../components/reportKit";
 import { useTheme } from "../../lib/contexts";
 import { monthLabel, monthShortLabel } from "../../lib/dates";
 import { useT } from "../../lib/i18n";
@@ -68,7 +67,7 @@ export function CashflowReport({
 }) {
   const C = useTheme();
   const { t, lang } = useT();
-  const { hc } = useBand();
+  const { hc } = useReportBand();
   const totIncome = cashflow.reduce((s, p) => s + p.income, 0);
   const totExpense = cashflow.reduce((s, p) => s + p.expense, 0);
   const totNet = totIncome - totExpense;

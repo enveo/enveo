@@ -10,7 +10,8 @@ import { join } from "node:path";
 import type { DailySpendingPoint } from "@enveo/shared";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { gridTicks, heatWeeks, TrendSpark } from "./reportKit";
+import { type Lang, loadLocale, type Message, translatePlural } from "../lib/i18n";
+import { gridTicks, heatWeeks, netWorthRangeLabel, TrendSpark } from "./reportKit";
 
 /** Builds `count` consecutive `DailySpendingPoint`s starting at `${month}-01` — real calendar
  *  months, so `heatWeeks`'s offsets below are checkable by hand rather than fixture noise. */
@@ -96,6 +97,47 @@ describe("gridTicks", () => {
   test("a flat series (min === max) draws a single tick at the shared value", () => {
     const ticks = gridTicks(100, 100, (v) => `$${v}`);
     expect(ticks).toEqual([{ value: 100, label: "$100" }]);
+  });
+});
+
+/**
+ * `netWorthRangeLabel` (design parity wave D task 2) — the "last {n} months · {start}–{end}"
+ * caption shared by the reports hub hero and the Wealth report. `tp()` is exercised via the
+ * real `translatePlural` (same pattern as `i18n.test.ts`: `await loadLocale("pl")` then call it
+ * directly) so this pins the actual CLDR one/few/many/other boundary for pl, not a stub.
+ */
+describe("netWorthRangeLabel", () => {
+  /** `n` consecutive months of net worth starting at `startMonth` — only `.month` matters. */
+  function points(n: number, startMonth: string): { month: string; total: number }[] {
+    const [y, m] = startMonth.split("-").map(Number) as [number, number];
+    return Array.from({ length: n }, (_, i) => {
+      const idx = m - 1 + i;
+      return { month: `${y + Math.floor(idx / 12)}-${String((idx % 12) + 1).padStart(2, "0")}`, total: 0 };
+    });
+  }
+  function tpFor(lang: Lang) {
+    return (message: Message, n: number, params?: Record<string, string | number>) => translatePlural(lang, message, n, params);
+  }
+
+  test("empty series returns null — nothing to range over", () => {
+    expect(netWorthRangeLabel([], "en", tpFor("en"))).toBeNull();
+  });
+
+  test("a single point: english singular 'month', start and end are the same month", () => {
+    expect(netWorthRangeLabel(points(1, "2025-08"), "en", tpFor("en"))).toBe("last 1 month · Aug 2025 – Aug 2025");
+  });
+
+  test("12 points spanning Aug 2025 – Jul 2026, the design's own worked example (v3:3195)", () => {
+    expect(netWorthRangeLabel(points(12, "2025-08"), "en", tpFor("en"))).toBe("last 12 months · Aug 2025 – Jul 2026");
+  });
+
+  test("pl one/few/many/other boundary: n=1 -> one, n=2 -> few, n=5 -> many, n=12 -> many", async () => {
+    await loadLocale("pl");
+    const tp = tpFor("pl");
+    expect(netWorthRangeLabel(points(1, "2025-08"), "pl", tp)).toBe("ostatni 1 miesiąc · Sie 2025 – Sie 2025");
+    expect(netWorthRangeLabel(points(2, "2025-08"), "pl", tp)).toBe("ostatnie 2 miesiące · Sie 2025 – Wrz 2025");
+    expect(netWorthRangeLabel(points(5, "2025-08"), "pl", tp)).toBe("ostatnie 5 miesięcy · Sie 2025 – Gru 2025");
+    expect(netWorthRangeLabel(points(12, "2025-08"), "pl", tp)).toBe("ostatnie 12 miesięcy · Sie 2025 – Lip 2026");
   });
 });
 
