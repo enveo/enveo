@@ -584,6 +584,7 @@ export const pl: Dict = {
     "Wylogować się i usunąć lokalne dane tego konta z urządzenia? Dane zapisane na serwerze pozostaną bez zmian.",
   "Signs you out and removes this account's local copy, encryption keys, and credentials from the device.":
     "Wylogowuje i usuwa z urządzenia lokalną kopię tego konta, klucze szyfrowania oraz dane uwierzytelniające.",
+  "Signed in as {email}": "Zalogowano jako {email}",
   "Signing out…": "Wylogowywanie…",
   "Skip for now": "Pomiń na razie",
   "Some funds stayed in To be budgeted — envelopes are at their target caps.": "Część środków została w Do rozdysponowania — koperty na pułapie celów.",
