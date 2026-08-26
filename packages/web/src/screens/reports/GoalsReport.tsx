@@ -1,7 +1,7 @@
 import { computeGoalHistory, computeStateResponse } from "@enveo/shared";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { GoalRing, useBand } from "../../components/kit";
-import { Bar, ReportShell, UndoBar } from "../../components/reportKit";
+import { GoalRing } from "../../components/kit";
+import { Bar, ReportShell, UndoBar, useReportBand } from "../../components/reportKit";
 import type { StateResponse } from "../../lib/api";
 import { useTheme } from "../../lib/contexts";
 import { currentMonth, monthLabel, monthShortLabel } from "../../lib/dates";
@@ -119,7 +119,7 @@ export function GoalsReport({
 }) {
   const C = useTheme();
   const { t, tp, lang } = useT();
-  const { hc } = useBand();
+  const { hc } = useReportBand();
   const ledger = store.getLedger();
   const active = state.envelopes.filter((e) => !e.archived);
   const rows = active

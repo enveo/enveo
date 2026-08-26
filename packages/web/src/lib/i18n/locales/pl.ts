@@ -808,6 +808,12 @@ export const pl: Dict = {
   "income {income} · spending {expense}": "przychody {income} · wydatki {expense}",
   "income {income} · spending {expense} · savings rate {pct}%": "przychody {income} · wydatki {expense} · stopa oszczędności {pct}%",
   "just now": "przed chwilą",
+  "last {n} month · {range} | last {n} months · {range}": {
+    one: "ostatni {n} miesiąc · {range}",
+    few: "ostatnie {n} miesiące · {range}",
+    many: "ostatnie {n} miesięcy · {range}",
+    other: "ostatnie {n} miesięcy · {range}",
+  },
   "latest transactions": "ostatnie transakcje",
   "left after this": "zostaje po operacji",
   "left in the envelope": "zostaje w kopercie",
@@ -845,6 +851,7 @@ export const pl: Dict = {
   "vs 3 mo": "vs 3 mies.",
   "vs 3-mo median ({amount})": "vs mediana 3 mies. ({amount})",
   "vs median": "vs mediana",
+  "wealth details ›": "szczegóły majątku ›",
   yesterday: "wczoraj",
   "you'll split it into envelopes in the budget": "rozdzielisz na koperty w budżecie",
   "{amount} from the previous month": "{amount} z poprzedniego miesiąca",
@@ -854,6 +861,7 @@ export const pl: Dict = {
   "{amount} to go": "brakuje {amount}",
   "{count}× · {amount}": "{count}× · {amount}",
   "{date} · {pct}% of month": "{date} · {pct}% miesiąca",
+  "{delta} · {pct} m/m": "{delta} · {pct} m/m",
   "{n} OK": "{n} OK",
   "{n} account · total {amount} | {n} accounts · total {amount}": {
     one: "{n} konto · razem {amount}",
@@ -873,6 +881,12 @@ export const pl: Dict = {
   "{n} minute ago | {n} minutes ago": { one: "{n} min temu", few: "{n} min temu", many: "{n} min temu", other: "{n} min temu" },
   "{n} months to {month}": "ostatnie {n} mies. · {month}",
   "{n} near limit": "{n} blisko limitu",
+  "{n} over · {near} near | {n} over · {near} near": {
+    one: "{n} przekroczona · {near} blisko limitu",
+    few: "{n} przekroczone · {near} blisko limitu",
+    many: "{n} przekroczonych · {near} blisko limitu",
+    other: "{n} przekroczonych · {near} blisko limitu",
+  },
   "{n} over | {n} over": { one: "{n} przekroczona", few: "{n} przekroczone", many: "{n} przekroczonych", other: "{n} przekroczonych" },
   "{n} rising · {m} falling": "{n} w górę · {m} w dół",
   "{n} transaction matches | {n} transactions match": {
