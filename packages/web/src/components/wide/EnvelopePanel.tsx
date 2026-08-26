@@ -175,6 +175,12 @@ export function EnvelopePanel({
             borderRadius: 8,
             padding: "6px 11px",
             fontFamily: font,
+            // House >=30x30 touch-target floor (measured, not asserted): the design's own box
+            // (padding 6px 11px around 11.5px text, v3:1016) renders ~28px tall — under 30px.
+            // box-sizing border-box + minHeight makes 30 the TOTAL box height without touching
+            // the design's visible padding/font-size/border.
+            boxSizing: "border-box",
+            minHeight: 30,
           }}
         >
           {t("Edit")}
@@ -274,7 +280,27 @@ export function EnvelopePanel({
         <span style={{ fontSize: 13, fontWeight: 600, color: C.text }}>{t("Transactions in {name}", { name: env.name })}</span>
         <button
           onClick={() => onOpenTxns({ envId: envelopeId })}
-          style={{ cursor: "pointer", fontSize: 11.5, fontWeight: 650, color: TEAL, background: "transparent", border: "none", padding: 0, fontFamily: font }}
+          // minHeight 30 — the padding-less text button (v3:1076, 11.5px/600) measures well under
+          // the 30px tap floor every other affordance on this panel clears; flex + alignItems
+          // centers the text in the taller box without touching the design's visible size/weight.
+          // alignSelf "center" opts THIS item out of the row's `alignItems: "baseline"` (measured:
+          // without it, growing this button to 30px drags the shared line-box baseline down with
+          // it and shifts the "Transactions in {name}" heading ~7px lower) — the heading keeps its
+          // original position; only the row's own height grows to fit the taller tap target.
+          style={{
+            alignSelf: "center",
+            display: "flex",
+            alignItems: "center",
+            minHeight: 30,
+            cursor: "pointer",
+            fontSize: 11.5,
+            fontWeight: 600,
+            color: TEAL,
+            background: "transparent",
+            border: "none",
+            padding: 0,
+            fontFamily: font,
+          }}
         >
           {t("Open in list ›")}
         </button>
