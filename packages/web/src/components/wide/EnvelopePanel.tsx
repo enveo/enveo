@@ -294,9 +294,7 @@ export function EnvelopePanel({
             minHeight: 30,
             cursor: "pointer",
             fontSize: 11.5,
-            // 650 per the wave-C re-review (the weight every sibling accent link in the design
-            // carries — "All transactions ›" v3:449, "Check for updates" v3:166).
-            fontWeight: 650,
+            fontWeight: 600,
             color: TEAL,
             background: "transparent",
             border: "none",
