@@ -1,7 +1,8 @@
 import type { Transaction } from "@enveo/shared";
-import { useMemo, useState } from "react";
+import { lazy, useMemo, useState } from "react";
 import { Header } from "../components/chrome";
 import { CardBox, SectionEyebrow, useBand } from "../components/kit";
+import { LazyChunk } from "../components/lazy";
 import type { StateResponse } from "../lib/api";
 import { useMask, useTheme } from "../lib/contexts";
 import { dayHeading } from "../lib/dates";
@@ -18,6 +19,11 @@ import {
   transactionFilterReferences,
 } from "../lib/transactionSearch";
 import { activeFilterCount, TransactionFilterSheet } from "./transactions/TransactionFilterSheet";
+
+// Design parity wave C task 5 (§0.8): `Transactions.tsx` is itself one shared chunk between
+// phone and wide (`App.tsx`'s own `lazy()`), so the wide-only 6-column filter body gets its OWN
+// nested lazy boundary — a phone user who opens Transactions never fetches it.
+const WideFilterPanel = lazy(() => import("./transactions/WideFilterPanel").then((m) => ({ default: m.WideFilterPanel })));
 
 export function TransactionsScreen({
   state,
@@ -309,7 +315,16 @@ export function TransactionsScreen({
                 margin: `2px ${P}px 0`,
                 background: C.card,
                 border: `1px solid ${C.line}`,
-                borderRadius: 12,
+                borderTopLeftRadius: 12,
+                borderTopRightRadius: 12,
+                // Design parity wave C task 5 (v3:296's `searchRadiusBL/BR`/`searchBottomBorder`):
+                // open state welds this row to the panel below into one inverted-L surface — the
+                // bottom border disappears and the bottom corners square off so the panel's own
+                // `border-top:none` continues the SAME box with no seam, matching wave C task 4's
+                // rounded-corners precedent applied dynamically here instead of statically.
+                borderBottomLeftRadius: pickFilter ? 0 : 12,
+                borderBottomRightRadius: pickFilter ? 0 : 12,
+                borderBottom: pickFilter ? "none" : `1px solid ${C.line}`,
                 boxShadow: "none",
               }}
             >
@@ -336,9 +351,12 @@ export function TransactionsScreen({
                 )}
               </div>
               <div style={{ width: 1, background: C.line, flexShrink: 0 }} />
-              {/* The caret flips with the sheet's own open state until C5 replaces the modal sheet
-                  with an inline panel (v3:4310's `filtersOpen`-driven caret) — same `pickFilter`
-                  boolean the sheet below already reads. */}
+              {/* Design parity wave C task 5: on wide, this toggle opens/closes the inline panel
+                  below (`pickFilter`, plain state — owner rule 3, not the pane machine). The
+                  caret and this button's own accent top-rule (v3:4308's `filterBtnTopRule`) read
+                  the SAME boolean the panel's mount condition below does. `border-top` is 3px in
+                  BOTH states (transparent when closed) so the reserved space never shifts this
+                  bar's height when the accent line appears — only its color changes. */}
               <button
                 onClick={() => setPickFilter((v) => !v)}
                 aria-expanded={pickFilter}
@@ -350,6 +368,7 @@ export function TransactionsScreen({
                   padding: "6px 13px 8px",
                   background: "transparent",
                   border: "none",
+                  borderTop: `3px solid ${pickFilter ? "var(--accent)" : "transparent"}`,
                   cursor: "pointer",
                   fontFamily: font,
                 }}
@@ -378,6 +397,30 @@ export function TransactionsScreen({
                 <span style={{ fontSize: 10, color: pickFilter || filterCount > 0 ? TEAL : C.soft }}>{pickFilter ? "▴" : "▾"}</span>
               </button>
             </div>
+
+            {/* Design parity wave C task 5 (v3:310-364): the inline body — pushes the list down,
+                never dims/overlays anything (no backdrop, no portal; a plain sibling in normal
+                flow). Conditionally MOUNTED (not just hidden) so a phone user, and a wide user who
+                never opens Filters, never fetch this chunk; `WideFilterPanel`'s own local amount
+                text re-derives from `filters.amount` fresh on every mount, so nothing is lost by
+                unmounting on close beyond an in-progress invalid (unapplied) amount edit. */}
+            {pickFilter && (
+              <div style={{ margin: `0 ${P}px` }}>
+                <LazyChunk>
+                  <WideFilterPanel
+                    filters={filters}
+                    setFilters={setFilters}
+                    matchCount={txns.length}
+                    envelopes={envelopes}
+                    accounts={accounts}
+                    categories={categories}
+                    places={places}
+                    onClose={() => setPickFilter(false)}
+                  />
+                </LazyChunk>
+              </div>
+            )}
+
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", padding: `8px ${P}px 6px`, fontSize: 11, color: C.soft }}>
               <span>
                 {tp("{shown} of {total} transactions | {shown} of {total} transactions", txns.length, {
@@ -396,7 +439,11 @@ export function TransactionsScreen({
           </>
         )}
 
-        {filterChips.length > 0 && (
+        {/* Design parity wave C task 5: on wide these chips move INSIDE the inline panel
+            (`WideFilterPanel` above, v3:319-327) and show only while it is open — this standalone
+            row is phone-only now, unaffected by C5 (owner rule 2's phone-chrome-in-a-panel avoided
+            the other way here: a panel-adjacent affordance never leaks onto phone either). */}
+        {filterChips.length > 0 && !inWide && (
           <div className="gs" style={{ display: "flex", alignItems: "center", gap: 7, padding: `0 ${P}px 8px`, overflowX: "auto" }}>
             <span style={{ fontSize: 13.5, color: C.text, flexShrink: 0 }}>{t("Filter:")}</span>
             {filterChips.map((chip) => (
@@ -591,20 +638,26 @@ export function TransactionsScreen({
         })}
       </div>
 
-      <TransactionFilterSheet
-        show={pickFilter}
-        onClose={() => setPickFilter(false)}
-        filters={filters}
-        onApply={setFilters}
-        transactions={state.transactions}
-        query={query}
-        searchIndex={searchIndex}
-        accounts={accounts}
-        envelopes={envelopes}
-        categories={categories}
-        places={places}
-        formatMoney={M}
-      />
+      {/* Design parity wave C task 5: wide replaces this modal with the inline `WideFilterPanel`
+          above and never mounts the phone sheet at all (not just `show={false}` — `pickFilter`
+          is the SAME boolean the inline panel's mount condition reads, and this sheet must never
+          answer to it once wide is active). Phone is untouched: this is exactly the pre-C5 render. */}
+      {!inWide && (
+        <TransactionFilterSheet
+          show={pickFilter}
+          onClose={() => setPickFilter(false)}
+          filters={filters}
+          onApply={setFilters}
+          transactions={state.transactions}
+          query={query}
+          searchIndex={searchIndex}
+          accounts={accounts}
+          envelopes={envelopes}
+          categories={categories}
+          places={places}
+          formatMoney={M}
+        />
+      )}
     </div>
   );
 }
