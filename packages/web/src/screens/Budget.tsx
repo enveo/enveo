@@ -306,7 +306,7 @@ export function BudgetScreen({
                 {M(gA)} · {M(gV)}
               </span>
             </div>
-            <CardBox style={{ padding: "0 12px", marginBottom: 6 }}>
+            <CardBox style={{ padding: "0 12px", marginBottom: 6, overflow: "hidden" }}>
               {items.map((e, ei) => {
                 // Live edit context: the active envelope's Available text shows the value AFTER the change;
                 // strikethrough only when there is no value (empty expression after ⌫).
@@ -319,7 +319,10 @@ export function BudgetScreen({
                 // Design parity wave C1 (gap 5): the row currently open in the panel — the SAME
                 // `selectedEnvelopeId` App derives for `resolvePanel` (owner rule 3), never a second
                 // "what's open" check. Four-part treatment below mirrors v3:2464-2470 exactly:
-                // bold+accent name, "▸" mark, edge-to-edge `selBg`, suppressed divider.
+                // bold+accent name, "▸" mark, edge-to-edge `selBg`, suppressed divider. The row itself
+                // stays square (v3:270 has no border-radius on the row) — an edge row's corners are
+                // rounded by the CardBox's own `overflow: hidden` clipping the card's 14px radius
+                // (v3:266), not by a radius on the row.
                 const selected = selectedEnvelopeId === e.id;
                 return (
                   <div
@@ -341,7 +344,6 @@ export function BudgetScreen({
                       cursor: "pointer",
                       alignItems: "center",
                       background: selected ? C.selBg : "transparent",
-                      borderRadius: selected ? 8 : 0,
                       borderBottom: ei === items.length - 1 || selected ? "none" : `1px solid ${C.line}`,
                     }}
                   >
