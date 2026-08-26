@@ -7,6 +7,7 @@ import { useMask, useTheme } from "../../lib/contexts";
 import { goalProgress } from "../../lib/goals";
 import { useT } from "../../lib/i18n";
 import { budgetsOverAmount, budgetsSummary } from "../../lib/reportSummary";
+import { useWideHost } from "../../lib/shellContext";
 import { useElementWidth } from "../../lib/useElementWidth";
 import { trendColor } from "./charts";
 import type { Mask, ReportTab, ReportView } from "./types";
@@ -128,8 +129,15 @@ export function ReportsHub({
 
 
 
+
+
+
+
+
+
 function MiniCard({ title, onClick, selected, children }: { title: string; onClick: () => void; selected?: boolean; children: ReactNode }) {
   const C = useTheme();
+  const inWide = useWideHost() !== null;
   return (
     <button
       onClick={onClick}
@@ -142,10 +150,9 @@ function MiniCard({ title, onClick, selected, children }: { title: string; onCli
         background: C.card,
         // `var(--accent)` does not resolve in an SVG presentation attribute, but this IS a plain
         // HTML `style` object (not an attribute) — the CSS var resolves here same as any other
-        // inline style. Unselected stays borderless (`selected` is always undefined on phone —
-        // pixel-identical to before this prop existed).
-        border: selected ? "1.5px solid var(--accent)" : "none",
-        boxShadow: "0 1px 3px rgba(20,20,28,0.06)",
+        // inline style.
+        border: inWide ? `1px solid ${selected ? "var(--accent)" : C.line}` : selected ? "1.5px solid var(--accent)" : "none",
+        boxShadow: inWide && selected ? "0 2px 8px rgba(20,20,28,0.10)" : "0 1px 3px rgba(20,20,28,0.06)",
         borderRadius: 14,
         padding: "12px 13px",
         cursor: "pointer",
