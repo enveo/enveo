@@ -21,7 +21,7 @@ import { evalExpression } from "../lib/format";
 import { haptic } from "../lib/haptics";
 import { type Message, msg, useT } from "../lib/i18n";
 import { preferredAccountId, setLastAccountId } from "../lib/lastAccount";
-import { local, type TxnFlowOptions } from "../lib/mutate";
+import { local, type TxnFlowOptions, txnToDuplicatePayload } from "../lib/mutate";
 import { store } from "../lib/store";
 import { rankPlaces, withSelectedFirst } from "../lib/suggest";
 import { P, tint } from "../lib/theme";
@@ -67,6 +67,7 @@ export function AddScreen({
   draft,
   initialTab,
   initialImport,
+  duplicateFrom,
 }: {
   state: StateResponse;
   onDone: () => void;
@@ -77,6 +78,12 @@ export function AddScreen({
   initialTab?: Tab;
   /** Quick-action preset: opens the screenshot-import sheet immediately on mount. */
   initialImport?: boolean;
+  /** Design parity wave C task 3, owner rule 2 (the wide txn panel's Duplicate pill): seeds the
+   *  form as a NEW transaction — `editTxn` stays null, so this is a create, never an update — from
+   *  an existing one, via the SAME transform `local.duplicateTxn`'s phone-only instant copy uses
+   *  (`txnToDuplicatePayload`: today's date, no tag/sourceRef, allocation ids cleared, orphaned-
+   *  split handling) instead of writing to the ledger directly. */
+  duplicateFrom?: Transaction | null;
 }) {
   const C = useTheme();
   const M = useMask();
@@ -180,6 +187,27 @@ export function AddScreen({
     );
     setAllocationTouched(false);
   }, [editTxn]);
+
+  // Duplicate prefill (design parity wave C task 3, owner rule 2): `editTxn` stays null throughout
+  // (App.tsx's `duplicateTxnFromPanel`), so submit()'s existing `editTxn ? update : create` branch
+  // already does the right thing on an explicit Save — this effect only ever seeds the FORM.
+  useEffect(() => {
+    if (!duplicateFrom) return;
+    const p = txnToDuplicatePayload(duplicateFrom, todayISO());
+    setTab(p.type);
+    setAmount(padExpr(p.amount));
+    setAccountId(p.accountId);
+    if (p.toAccountId) setToAccountId(p.toAccountId);
+    setIsRefund(p.isRefund ?? false);
+    setExpenseEnvelope(explicitExpenseEnvelopeSelection(p.envelopeId ?? null));
+    setItems((p.items ?? []).map((i) => ({ envelopeId: i.envelopeId, amount: i.amount })));
+    setSplitMode(!!p.items?.length);
+    setCategoryId(p.categoryId ?? null);
+    setPlaceId(p.placeId ?? null);
+    setName(p.name ?? "");
+    setNote(p.note ?? "");
+    setDate(p.date);
+  }, [duplicateFrom]);
 
   // Draft-mode prefill: from corrections (initial — returning to the edit) or from a
   // recognized import item. ONLY on mount — the draft object is often created inline

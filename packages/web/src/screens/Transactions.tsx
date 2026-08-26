@@ -30,6 +30,8 @@ export function TransactionsScreen({
   setQuery,
   filters,
   setFilters,
+  selectedTxnId,
+  onSelectTxn,
 }: {
   state: StateResponse;
   month: string;
@@ -42,6 +44,15 @@ export function TransactionsScreen({
   setQuery: (q: string) => void;
   filters: TransactionFilters;
   setFilters: (filters: TransactionFilters) => void;
+  /** Design parity wave C task 3 (owner rule 2): on wide, a row click SELECTS the txn panel's
+   *  content instead of opening the editor — `null`/absent on phone (`inWide` below gates the
+   *  actual fork), matching the `AccountsScreen`/`BudgetScreen` `selected*Id` precedent. An
+   *  explicit pick from App's `txnView`; `undefined`/`null` here means "nothing explicitly
+   *  selected" and this component falls back to its OWN first FILTERED row (`txns[0]` below) —
+   *  the one place that can, since App's own fallback table is deliberately unfiltered
+   *  (panel.ts's own comment). */
+  selectedTxnId?: string | null;
+  onSelectTxn?: (id: string) => void;
 }) {
   const C = useTheme();
   const { band, hc } = useBand();
@@ -103,6 +114,13 @@ export function TransactionsScreen({
   const txns = state.transactions.filter(
     (transaction) => matchesTransactionQuery(transaction, query, searchIndex) && matchesTransactionFilters(transaction, filters),
   );
+
+  // Design parity wave C task 3 (txn gap 9): the row the panel is showing — an explicit pick, else
+  // THIS list's own first entry (the never-empty fallback, computed here rather than trusted from
+  // App since only this component owns the filtered/ordered `txns` the panel must agree with).
+  // `null` off wide (`selectedTxnId`/`onSelectTxn` are never wired there) so phone never highlights
+  // a row it has no panel to show it in.
+  const effectiveSelectedId = inWide ? (selectedTxnId ?? txns[0]?.id ?? null) : null;
 
   // grouping by date (descending order preserved)
   const groups: Array<{ date: string; items: Transaction[] }> = [];
@@ -298,22 +316,31 @@ export function TransactionsScreen({
         {groups.map((group) => (
           <div key={group.date}>
             <SectionEyebrow label={dayHeading(group.date, lang, t)} />
-            <CardBox style={{ marginBottom: 8, padding: "2px 12px" }}>
+            {/* Design parity wave C task 3 (gap 9): `overflow:hidden` clips a selected edge row's
+                edge-to-edge `selBg` bleed to the card's own 14px radius — the exact Budget.tsx
+                fix (design parity wave C task 1) applied to this list too. */}
+            <CardBox style={{ marginBottom: 8, padding: "2px 12px", overflow: "hidden" }}>
               {group.items.map((tx, i) => {
                 const col = colorOf(tx);
                 const s = signed(tx);
                 const acc = accById.get(tx.accountId);
+                // Design parity wave C task 3 (owner rule 1's list/panel sync, txn gap 9): the
+                // SAME id `effectiveSelectedId` above resolves to — never a second "what's open"
+                // check (owner rule 3), and always `false` off wide (`effectiveSelectedId` is
+                // `null` there).
+                const selected = effectiveSelectedId === tx.id;
                 return (
                   <div
                     key={tx.id}
                     role="button"
                     tabIndex={0}
-                    onClick={() => onEditTxn(tx)}
+                    onClick={() => (inWide ? onSelectTxn?.(tx.id) : onEditTxn(tx))}
                     onKeyDown={(e) => {
                       if (e.target !== e.currentTarget) return;
                       if (e.key === "Enter" || e.key === " ") {
                         e.preventDefault();
-                        onEditTxn(tx);
+                        if (inWide) onSelectTxn?.(tx.id);
+                        else onEditTxn(tx);
                       }
                     }}
                     className="fu"
@@ -321,13 +348,22 @@ export function TransactionsScreen({
                       animationDelay: `${i * 20}ms`,
                       display: "flex",
                       alignItems: "center",
-                      padding: "6px 0",
+                      // Edge-to-edge selection bleed (Budget.tsx's identical technique, design
+                      // parity wave C task 1): row padding matches the CardBox's own 12px
+                      // horizontal padding, and the equal-and-opposite negative margin lets the
+                      // row's background reach the card's edges while leaving the CONTENT at the
+                      // same horizontal position as before — applied to every row, not just the
+                      // selected one, so nothing shifts on select (and nothing moves on phone,
+                      // where `selected` is always false).
+                      padding: "6px 12px",
+                      margin: "0 -12px",
+                      boxSizing: "border-box",
                       gap: 10,
                       cursor: "pointer",
                       width: "100%",
-                      background: "none",
+                      background: selected ? C.selBg : "transparent",
                       border: "none",
-                      borderBottom: i === group.items.length - 1 ? "none" : `1px solid ${C.line}`,
+                      borderBottom: i === group.items.length - 1 || selected ? "none" : `1px solid ${C.line}`,
                       textAlign: "left",
                     }}
                   >
@@ -357,9 +393,9 @@ export function TransactionsScreen({
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div
                         style={{
-                          color: C.text,
+                          color: selected ? "var(--accent)" : C.text,
                           fontSize: 13.5,
-                          fontWeight: 550,
+                          fontWeight: selected ? 650 : 550,
                           lineHeight: 1.25,
                           overflow: "hidden",
                           textOverflow: "ellipsis",
@@ -382,6 +418,11 @@ export function TransactionsScreen({
                         {subOf(tx)}
                       </div>
                     </div>
+                    {/* Always rendered (v3:389's own `openMark` is "" when not selected), so the
+                        row's flex gap never shifts its content width on select/deselect. */}
+                    <span style={{ fontSize: 12, color: "var(--accent)", flexShrink: 0 }} aria-hidden="true">
+                      {selected ? "▸" : ""}
+                    </span>
                     <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", flexShrink: 0 }}>
                       <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
                         <span style={{ fontSize: 13.5, fontWeight: 700, lineHeight: 1.25, fontVariantNumeric: "tabular-nums", color: s.color }}>{s.text}</span>

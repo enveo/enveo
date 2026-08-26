@@ -138,7 +138,11 @@ export default function App() {
   // Start "quick actions" widget preset for a FRESH Add — read once at mount (AddScreen fully
   // unmounts/remounts with `screen`, so this never leaks into an unrelated later Add). Reset
   // by `nav` on every normal entry (FAB, menu) so it only ever applies to the quick action itself.
-  const [addPreset, setAddPreset] = useState<{ tab?: AddTab; importSheet?: boolean }>({});
+  // `duplicateFrom` (design parity wave C task 3, owner rule 2): the wide txn panel's Duplicate
+  // action seeds a FRESH create form from an existing transaction — never a direct ledger write —
+  // riding this SAME one-shot preset bag `tab`/`importSheet` already use (`duplicateTxnFromPanel`
+  // below sets it, `PanelHost` threads it to `AddScreen`'s own `duplicateFrom` prop).
+  const [addPreset, setAddPreset] = useState<{ tab?: AddTab; importSheet?: boolean; duplicateFrom?: Transaction }>({});
   // Start "Zasugeruj" quick action — a fresh Budget screen with the suggest sheet already open.
   // Reset by `nav` on every normal entry, same lifecycle as `addPreset`.
   const [budgetSuggest, setBudgetSuggest] = useState(false);
@@ -207,6 +211,14 @@ export default function App() {
   }, [screen]);
   // screen to return to after saving/cancelling an edit (default start; from the list → list)
   const [editReturn, setEditReturn] = useState<ScreenId>("start");
+  // Wide-only txn-panel selection (design parity wave C task 3) — `acctView`'s pattern (a FRESH
+  // `{ txnId }` object per row tap, for the by-reference reopen effect in WideShell.tsx), but with
+  // a lighter reset story: unlike `acctView`, `nav()` below never touches this — its only reset
+  // path is WideShell's own vanish effect (a month/search/filter change, or a delete, dropping the
+  // id out of the CURRENT filtered list), so an edit-and-return round trip through the Add pane
+  // needs no restore-ref the way `acctViewBeforeEditRef` gives `acctView` above: this is simply
+  // never cleared by anything on that path, so it survives it for free.
+  const [txnView, setTxnView] = useState<{ txnId: string } | null>(null);
   // transaction list filters kept high up so they survive an edit and return
   const [txQuery, setTxQuery] = useState("");
   const [txFilters, setTxFilters] = useState<TransactionFilters>(initialTransactionFilters);
@@ -391,6 +403,25 @@ export default function App() {
   // screen) purely so `primaryScreenFor` renders the right one behind the Add takeover while it
   // is open; it plays no role in the eventual restore.
   const editEnvelopeTxn = (t: Transaction) => editTxnFrom(t, screen);
+  // The Transactions list's OWN row → edit — used both by the primary pane's list (phone AND wide
+  // share this one binding, unchanged from before) and, as of design parity wave C task 3, the
+  // wide txn panel's Edit pill: the panel only ever shows a transaction while the primary pane is
+  // ALSO showing the Transactions list, so both call sites want the exact same `editReturn`.
+  const editTxnFromList = (t: Transaction) => editTxnFrom(t, "transactions");
+  // Wide-only: the txn panel's Duplicate pill (design parity wave C task 3, owner rule 2) — opens
+  // the Add pane PREFILLED as a new transaction cloned from `t`, never a direct ledger write.
+  // `editTxn` stays null (unlike `editTxnFrom` above), so submit's existing `editTxn ? update :
+  // create` branch already does the right thing on an explicit Save; `addPreset.duplicateFrom`
+  // carries the source row through to `AddScreen`'s own prefill effect (Add.tsx). No restore-ref
+  // is needed for the SAME reason `txnView` itself needs none (its own comment above): this
+  // doesn't touch `txnView` at all, so the panel keeps showing the ORIGINAL row throughout —
+  // correct, since duplicating leaves it unmodified.
+  const duplicateTxnFromPanel = (t: Transaction) => {
+    setEditTxn(null);
+    setEditReturn("transactions");
+    setAddPreset({ duplicateFrom: t });
+    setScreen("addExpense");
+  };
   const doneEdit = () => {
     setEditTxn(null);
     // `history.back()` after a save is correct here: the entry below `/add` is the screen the
@@ -560,18 +591,20 @@ export default function App() {
   };
 
   // Task 1 (owner rule 1, waveA-t1-brief.md): the panel's never-empty "first item" per screen —
-  // computed ONCE here (state is truthy in both render paths that read it below) and (a) threaded
-  // into `WideShell`'s bag for `resolvePanel`, (b) used for the Accounts row highlight just below
-  // — one derivation, two documented consumers, never re-derived per consumer. `firstTxnId` is
+  // computed ONCE here (state is truthy in both render paths that read it below) for the Accounts
+  // row highlight just below and Budget's `selectedEnvelopeId` further down. `firstTxnId` is
   // deliberately given the RAW (unfiltered) `state.transactions` rather than `txQuery`/
-  // `txFilters`-filtered results: no `resolvePanel` branch reads it yet (transactions keeps
-  // `empty`/`generic` until C3 lands the `txn` kind — panel.ts's own comment), and wiring the real
-  // `matchesTransactionQuery`/`matchesTransactionFilters` pipeline into this EAGER module for a
-  // value nothing consumes would spend this build's very tight §3f headroom for nothing; C3 is
-  // where that filtering — and `firstTxnId`'s real consumer — actually lands.
-  // Design parity wave A close, item 10: gated on `wide` — its only consumers are wide-only
-  // (`WideShell`'s bag, the Accounts row highlight just below, itself already `wide`-gated) — so a
-  // phone render no longer pays for this sort+filter every time, only to discard the result.
+  // `txFilters`-filtered results: neither of THIS variable's own two consumers reads that field at
+  // all, and wiring the real `matchesTransactionQuery`/`matchesTransactionFilters` pipeline into
+  // this EAGER module for a value nothing here consumes would spend this build's very tight §3f
+  // headroom for nothing. Design parity wave C task 3 gave the `txn` kind its own, PROPERLY
+  // filtered call to this same function instead — inside `WideShell` (already in the lazy wide
+  // chunk, already importing that pipeline for the band's "{n} shown" caption) — rather than
+  // widen this one; this `fallbacks` value is therefore no longer threaded into `WideShell`'s bag
+  // at all (panel.ts's own comment has the full reasoning).
+  // Design parity wave A close, item 10: gated on `wide` — its only consumers are wide-only (the
+  // Accounts row highlight just below, Budget's `selectedEnvelopeId`, both already `wide`-gated) —
+  // so a phone render no longer pays for this sort+filter every time, only to discard the result.
   const fallbacks = wide && state ? panelFallbacks(state, month, state.transactions) : null;
   // Design parity wave C1 (gap 5): the Budget table's own selected-row treatment reads the SAME
   // envelope the panel is showing — never a second "what's selected" channel (owner rule 3, "one
@@ -632,11 +665,18 @@ export default function App() {
             onMenu={() => setDrawer(true)}
             onPrev={prev}
             onNext={next}
-            onEditTxn={(t) => editTxnFrom(t, "transactions")}
+            onEditTxn={editTxnFromList}
             query={txQuery}
             setQuery={setTxQuery}
             filters={txFilters}
             setFilters={setTxFilters}
+            // Design parity wave C task 3 (owner rule 1's list/panel sync, gap 9): on wide a row
+            // click SELECTS (never edits) — the effective id (an explicit pick, else the SAME
+            // filtered-list fallback the panel itself falls back to) drives the row highlight.
+            // `null` off wide, unchanged (phone has no panel to stay in sync with, the
+            // `AccountsScreen`/`BudgetScreen` precedent above).
+            selectedTxnId={wide ? (txnView?.txnId ?? null) : null}
+            onSelectTxn={(id) => setTxnView({ txnId: id })}
           />
         </LazyChunk>
       )}
@@ -685,7 +725,14 @@ export default function App() {
           it); this branch stays reachable for phone, where `primaryScreen === screen` always, and
           the full-screen takeover below IS the current screen. */}
       {primaryScreen === "addExpense" && (
-        <AddScreen state={state} editTxn={editTxn} onDone={doneEdit} initialTab={addPreset.tab} initialImport={addPreset.importSheet} />
+        <AddScreen
+          state={state}
+          editTxn={editTxn}
+          onDone={doneEdit}
+          initialTab={addPreset.tab}
+          initialImport={addPreset.importSheet}
+          duplicateFrom={addPreset.duplicateFrom}
+        />
       )}
       {primaryScreen === "settings" && (
         <LazyChunk onDismiss={() => nav("start")}>
@@ -823,10 +870,6 @@ export default function App() {
               reportsView,
               envView,
               acctView,
-              // Task 1: `wide` already implies `!!state` (see `fallbacks`'s own definition above),
-              // so this is never actually null on this path — same non-null-assertion precedent as
-              // `state: state!` just below.
-              panelFallbacks: fallbacks!,
               openTxns,
               panelClosed,
               setEnvView,
@@ -876,6 +919,13 @@ export default function App() {
               // Design parity wave C task 2: the envelope pane's own recent-list edit entry
               // point — see `editEnvelopeTxn`'s own comment above.
               onEditEnvelopeTxn: editEnvelopeTxn,
+              // Design parity wave C task 3: the txn panel's own selection + its Edit/Duplicate
+              // entry points — see each field's own comment above (`txnView`, `editTxnFromList`,
+              // `duplicateTxnFromPanel`).
+              txnView,
+              setTxnView,
+              onEditTxnPanel: editTxnFromList,
+              onDuplicateTxnPanel: duplicateTxnFromPanel,
             }}
             rightSlot={wideRightSlot}
           >

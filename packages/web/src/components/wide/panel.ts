@@ -14,18 +14,19 @@ import type { ScreenId } from "../chrome";
  * Home board's gear target — `widgetSettings` is `WideShell`'s own local selection, not lifted to
  * App, since nothing outside the wide shell needs it); PR6 Task 1 adds `add` (the Add/edit-
  * transaction takeover pane — see below); PR6b Task 3 adds `account` (the v3 `acct` pane — see
- * below); the `txn` pane and per-surface popovers remain open items, per the epic's
+ * below); design parity wave C task 3 adds `txn` (the v3 `txn` pane, transactions' own read-only
+ * detail card — see below); per-surface popovers remain the one open item, per the epic's
  * reconciliation. Every `switch` a caller writes over `.kind` must stay EXHAUSTIVE (a `never`
  * check) so a future kind is a compile error at every consumer, not a silently-unhandled case.
  *
  * Design parity Wave A Task 1 (owner rule 1, `waveA-t1-brief.md`): the panel is NEVER EMPTY when
- * data exists to show — `envelope`/`report`/`account` each gain a `source: "selection" |
+ * data exists to show — `envelope`/`report`/`account`/`txn` each gain a `source: "selection" |
  * "fallback"` tag distinguishing "the user actually picked this" from "resolvePanel picked this
  * for you because nothing was picked yet" (the demo's own `envById[st.selEnv] || ENVS[3]` /
- * `acctById[st.selAcct] || ACCTS[0]` / `selReport: "spending"` defaults, v3:2622/2827/2213). The
- * `empty` kind now survives ONLY for a genuinely empty dataset (no non-archived envelopes/accounts
- * to fall back to) or for a screen that owns no panel selection at all (transactions — the `txn`
- * kind is C3's scope; settings falls through to `account` below, never here). `source` is what
+ * `acctById[st.selAcct] || ACCTS[0]` / `st.txns.filter(t=>t.id===st.selTxn)[0] || st.txns[0]`
+ * defaults, v3:2622/2827/2846). The `empty` kind now survives ONLY for a genuinely empty dataset
+ * (no non-archived envelopes/accounts, or no transaction the CURRENT month/search/filter admits,
+ * to fall back to) — settings falls through to `account` below, never here. `source` is what
  * `WideShell`'s `closePanel` reads to decide "clear the selection" (pops to the fallback
  * underneath — a no-op-looking but real UX distinction) vs. "collapse the panel" (clearing a
  * fallback that was never a real selection would be a no-op loop).
@@ -36,7 +37,8 @@ export type PanelView =
   | { kind: "report"; view: ReportTab; source: "selection" | "fallback" }
   | { kind: "widgets"; widgetId: WideWidgetId }
   | { kind: "account"; accountId: string; source: "selection" | "fallback" } // PR6b — the v3 `acct` pane
-  | { kind: "add" };
+  | { kind: "add" }
+  | { kind: "txn"; txnId: string; source: "selection" | "fallback" }; // wave C task 3 — the v3 `txn` pane
 
 /**
  * The panel's contextual "first item" per screen (Task 1) — the REAL app's translation of the
@@ -46,9 +48,15 @@ export type PanelView =
  * Archived envelopes/accounts are never a fallback target (an archived item cannot be the "first"
  * thing a fresh visit shows). `firstTxnId` takes an already-FILTERED transaction list as input
  * (App owns `txQuery`/`txFilters` — this function does no filtering of its own, per Transactions's
- * own query/filter pipeline) rather than computing it — kept in the return shape now so C3's `txn`
- * kind has a stable field to read, even though no `resolvePanel` branch consumes it yet
- * (transactions stays `empty`/`generic` until then).
+ * own query/filter pipeline) rather than computing it. Its real caller (wave C task 3) is
+ * `WideShell`, not App: `App.tsx`'s own eager call to this function (feeding the OTHER two fields,
+ * and the phone Drawer/Budget-row-highlight consumers that need them) deliberately keeps passing
+ * the RAW, unfiltered `state.transactions` — wiring the real `matchesTransactionQuery`/
+ * `matchesTransactionFilters` pipeline into that eager module for a field only the lazy panel
+ * needs would spend eager-bundle bytes for nothing (App.tsx's own comment has the measured
+ * reasoning). `WideShell` (already inside the lazy wide chunk, already importing that pipeline for
+ * the band's "{n} shown" caption) calls this function a second time with the properly filtered
+ * list before handing the result to `resolvePanel` below.
  */
 export interface PanelFallbacks {
   firstEnvelopeId: string | null;
@@ -89,11 +97,13 @@ export function panelFallbacks(
  *
  * An open envelope wins on any OTHER screen — it is push-nav, like the phone's full-screen
  * summary (an envelope opened from Reports still shows the envelope). Reports without a selected
- * subview, Start/Budget without an open envelope, and Accounts/Settings without a selected
- * account fall back to `fb` (Task 1, owner rule 1) instead of the old `empty` placeholder — real
- * content, tagged `source: "fallback"`, per this file's own `PanelFallbacks` doc above. `empty`
- * now survives ONLY when the fallback itself has nothing to offer (an empty envelope/account
- * dataset) or on a screen with no panel selection axis at all (transactions — C3's scope).
+ * subview, Start/Budget without an open envelope, Accounts/Settings without a selected account,
+ * and — as of design parity wave C task 3 — Transactions without a selected transaction, all fall
+ * back to `fb` (Task 1, owner rule 1) instead of the old `empty` placeholder — real content,
+ * tagged `source: "fallback"`, per this file's own `PanelFallbacks` doc above. `empty` now
+ * survives ONLY when the fallback itself has nothing to offer (an empty envelope/account dataset,
+ * or no transaction the current month/search/filter admits) — every screen now has SOME fallback
+ * axis, so there is no longer a screen that bottoms out at `empty` merely for owning none.
  *
  * `widgetSettings` only ever resolves to the `widgets` kind on the `start` screen — `WideShell`
  * clears its local state whenever `screen` changes away from `start`, but this function stays
@@ -103,6 +113,10 @@ export function panelFallbacks(
  * unlike `envView`), and a stale value elsewhere is likewise ignored here — EXCEPT on `settings`
  * (Task 1, owner rule 5): the account context deliberately PERSISTS there, so `settings` reads
  * `acctView` too (App's `nav` stops resetting it on entry to settings specifically — see App.tsx).
+ * `txnView` (wave C task 3) is the same discipline again, scoped to `transactions` only — a stale
+ * value on any other screen is ignored here too (`WideShell`'s bag-field comment has the full
+ * reset story: unlike `acctView`, App never clears `txnView` on plain navigation at all — its only
+ * reset path is a vanish effect this function has no part in).
  */
 export function resolvePanel(
   a: {
@@ -111,6 +125,7 @@ export function resolvePanel(
     envView: { envelopeId: string; month: string } | null;
     widgetSettings?: WideWidgetId | null;
     acctView?: { accountId: string } | null;
+    txnView?: { txnId: string } | null;
   },
   fb: PanelFallbacks,
 ): PanelView {
@@ -130,7 +145,11 @@ export function resolvePanel(
   if (a.screen === "start" || a.screen === "budget") {
     return fb.firstEnvelopeId ? { kind: "envelope", envelopeId: fb.firstEnvelopeId, month: fb.month, source: "fallback" } : { kind: "empty", hint: "envelope" };
   }
-  return { kind: "empty", hint: "generic" }; // transactions — no panel selection of its own yet (the `txn` kind is C3's scope)
+  if (a.screen === "transactions") {
+    if (a.txnView) return { kind: "txn", txnId: a.txnView.txnId, source: "selection" };
+    return fb.firstTxnId ? { kind: "txn", txnId: fb.firstTxnId, source: "fallback" } : { kind: "empty", hint: "generic" };
+  }
+  return { kind: "empty", hint: "generic" }; // defensive: every real ScreenId is handled above
 }
 
 /**
