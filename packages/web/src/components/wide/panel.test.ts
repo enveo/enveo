@@ -23,6 +23,7 @@ import { type PanelFallbacks, type PanelView, panelFallbacks, primaryScreenFor, 
 
 const ENV = { envelopeId: "env-1", month: "2026-08" };
 const ACCT = { accountId: "acc-1" };
+const TXN = { txnId: "txn-1" };
 // Fallback table with real ids on every axis — most tests use this so a "no explicit selection"
 // call still resolves to CONTENT (the whole point of Task 1), distinguishable from ENV/ACCT above
 // by id so a test can tell selection-content from fallback-content apart at a glance.
@@ -105,9 +106,15 @@ describe("resolvePanel", () => {
     }
   });
 
-  test("transactions (no envelope) resolves to the generic hint, regardless of reportsView — the `txn` kind is C3's scope", () => {
+  test("Transactions (no envelope, no txnView) falls back to the first transaction, regardless of reportsView (design parity wave C task 3)", () => {
     for (const reportsView of REPORT_VIEWS) {
-      expect(resolvePanel({ screen: "transactions", reportsView, envView: null }, FB)).toEqual({ kind: "empty", hint: "generic" });
+      expect(resolvePanel({ screen: "transactions", reportsView, envView: null }, FB)).toEqual({ kind: "txn", txnId: FB.firstTxnId!, source: "fallback" });
+    }
+  });
+
+  test("Transactions resolves to the empty generic hint ONLY when the fallback dataset is genuinely empty", () => {
+    for (const reportsView of REPORT_VIEWS) {
+      expect(resolvePanel({ screen: "transactions", reportsView, envView: null }, EMPTY_FB)).toEqual({ kind: "empty", hint: "generic" });
     }
   });
 
@@ -132,10 +139,10 @@ describe("resolvePanel", () => {
         kinds.add(resolvePanel({ screen, reportsView, envView: null, widgetSettings: "envelopes" }, FB).kind);
       }
     }
-    // "empty" still appears (transactions has no fallback axis of its own); "account" now appears
-    // too (Accounts/Settings fall back to it without an explicit acctView) — the Task 1 delta from
-    // this same test's pre-Task-1 five-kind set.
-    expect([...kinds].sort()).toEqual(["account", "add", "empty", "envelope", "report", "widgets"]);
+    // With every fallback id populated (FB), "empty" no longer appears in this loop at all —
+    // Accounts/Settings fall back to "account" (Task 1) and Transactions now falls back to "txn"
+    // (design parity wave C task 3), the last screen that used to bottom out at "empty" here.
+    expect([...kinds].sort()).toEqual(["account", "add", "envelope", "report", "txn", "widgets"]);
   });
 
   describe("PR5's `widgets` kind (the wide board's gear target)", () => {
@@ -233,6 +240,46 @@ describe("resolvePanel", () => {
       for (const screen of ["start", "budget", "transactions", "reports", "addExpense"] as const) {
         const view = resolvePanel({ screen, reportsView: "overview", envView: null, acctView: ACCT }, FB);
         expect(view.kind).not.toBe("account");
+      }
+    });
+  });
+
+  describe("design parity wave C task 3's `txn` kind (the v3 `txn` pane)", () => {
+    test("transactions with a selection resolves to the txn pane, as a real selection", () => {
+      for (const reportsView of REPORT_VIEWS) {
+        expect(resolvePanel({ screen: "transactions", reportsView, envView: null, txnView: TXN }, FB)).toEqual({
+          kind: "txn",
+          txnId: TXN.txnId,
+          source: "selection",
+        });
+      }
+    });
+
+    test("omitting txnView (undefined) behaves exactly like null — Transactions falls back to the first transaction", () => {
+      expect(resolvePanel({ screen: "transactions", reportsView: "overview", envView: null }, FB)).toEqual({
+        kind: "txn",
+        txnId: FB.firstTxnId!,
+        source: "fallback",
+      });
+    });
+
+    test("an open envelope still wins over a selected txn (priority pin — envelope beats txn, same as it beats account/widgets)", () => {
+      expect(resolvePanel({ screen: "transactions", reportsView: "overview", envView: ENV, txnView: TXN }, FB)).toEqual({
+        kind: "envelope",
+        envelopeId: ENV.envelopeId,
+        month: ENV.month,
+        source: "selection",
+      });
+    });
+
+    test("add wins over a selected txn too", () => {
+      expect(resolvePanel({ screen: "addExpense", reportsView: "overview", envView: null, txnView: TXN }, FB)).toEqual({ kind: "add" });
+    });
+
+    test("a selected txn is ignored on every screen other than transactions — a stale value there never leaks into the panel", () => {
+      for (const screen of ["start", "budget", "accounts", "reports", "addExpense", "settings"] as const) {
+        const view = resolvePanel({ screen, reportsView: "overview", envView: null, txnView: TXN }, FB);
+        expect(view.kind).not.toBe("txn");
       }
     });
   });

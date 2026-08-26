@@ -23,7 +23,13 @@ import { UpdatePrompt } from "../UpdatePrompt";
 import { FoldTbbStrip } from "./FoldTbbStrip";
 import { paneWidthFor } from "./geometry";
 import { PanelHost } from "./PanelHost";
-import { type PanelFallbacks, resolvePanel } from "./panel";
+// Design parity wave C task 3: `panelFallbacks` (the FUNCTION) is imported here under an alias —
+// the bag's own `panelFallbacks` field (a plain VALUE, App's eager, unfiltered computation) is
+// destructured under its own name below, and this component needs BOTH: the bag's value still
+// backs the envelope/account fallbacks (those two have nothing to do with transaction filters),
+// while the txn kind needs this function called AGAIN with the properly filtered transaction list
+// this lazy chunk already builds (see `fallbacksForPanel` below).
+import { panelFallbacks as computePanelFallbacks, resolvePanel } from "./panel";
 import { Rail } from "./Rail";
 
 /**
@@ -309,10 +315,13 @@ type WideShellBag = {
    *  rows) both render OUTSIDE this component, so WideShell-local state would need a context
    *  channel anyway. NOT URL-serialised (no phone-parity route exists for it). */
   acctView: { accountId: string } | null;
-  /** Task 1 (owner rule 1, `waveA-t1-brief.md`): the panel's contextual "first item" per screen —
-   *  computed ONCE by App (it owns `state`/`month`/the transaction query+filters `firstTxnId`
-   *  would need) and threaded straight into `resolvePanel` below, never recomputed here. */
-  panelFallbacks: PanelFallbacks;
+  // Task 1's `panelFallbacks` bag field (App's eager, unfiltered `firstEnvelopeId`/`firstAccountId`/
+  // `firstTxnId` table) is GONE as of design parity wave C task 3 — the txn kind needs the FILTERED
+  // ordering (panel.ts's own comment), so this component now calls `panelFallbacks` (the function,
+  // aliased `computePanelFallbacks` below) itself with the real inputs; App still computes its own
+  // copy for the two consumers that render outside this shell (`AccountsScreen`'s row highlight,
+  // Budget's `selectedEnvelopeId` — both fine with the unfiltered table, since neither depends on
+  // transaction filtering at all) but no longer threads it through here.
   openTxns: (f?: { envId?: string; accId?: string; envIds?: ReadonlySet<string>; catId?: string; placeId?: string }) => void;
   panelClosed: boolean;
   setEnvView: (v: null) => void;
@@ -376,12 +385,44 @@ type WideShellBag = {
    *  report-subview instance; reusing it here reopened Reports behind the edit takeover and lost
    *  `acctView` on save — reproduced live, App.tsx's `editAccountTxn`/`acctViewBeforeEditRef`). */
   onEditAccountTxn: (t: Transaction) => void;
+  /** Design parity wave C task 2: the envelope pane's OWN recent-list edit entry point — same
+   *  reason as `onEditAccountTxn` above (the shared `onEditTxn`'s hardcoded "reports" return
+   *  screen would be wrong here too), but this one does NOT need a restore-ref: `envView`
+   *  round-trips through the URL, so `doneEdit`'s `history.back()` restores both the originating
+   *  screen and the envelope pane on its own (App.tsx's `editEnvelopeTxn` has the full case). */
+  onEditEnvelopeTxn: (t: Transaction) => void;
   /** Design parity wave A close, item 9: the Transactions band caption's own inputs — App's lifted
    *  `txQuery`/`txFilters` state, the SAME values `TransactionsScreen` filters its list with (see
    *  that component's own props). Threaded as plain data (zero eager-bundle cost); the filtering
    *  itself happens below, inside this lazy chunk. */
   txQuery: string;
   txFilters: TransactionFilters;
+  /** Design parity wave C task 3: the `txn` pane's own selection (D2) — App-owned, `acctView`'s
+   *  exact pattern (a FRESH `{ txnId }` object per row tap, for the by-reference reopen effect
+   *  below; not URL-serialised, no phone route exists for it). Unlike `acctView`, `nav()` never
+   *  resets this on ordinary navigation — its only reset path is the vanish effect below (this
+   *  component owns the filter pipeline that can tell "still in the current filtered list" from
+   *  "dropped by a month/search/filter change"), so an edit-and-return round trip through the Add
+   *  pane needs no restore-ref the way `acctViewBeforeEditRef` gives `acctView` (App.tsx never
+   *  touches `txnView` on that path at all, so it simply survives it). */
+  txnView: { txnId: string } | null;
+  /** Raw setter — the same `setEnvView`/`setAcctView`-decides-when pattern this bag already
+   *  documents; `closePanel` and the vanish effect below are the only callers. Selecting a row is a
+   *  *different* App entry point (`Transactions.tsx`'s own `onSelectTxn` prop, wired directly at
+   *  the primary-pane call site — the row lives in the PRIMARY pane, not this shell's bag). */
+  setTxnView: (v: null) => void;
+  /** Design parity wave C task 3: the txn detail card's OWN Edit entry point. Not a NEW `editReturn`
+   *  shape — the SAME `(t) => editTxnFrom(t, "transactions")` binding `TransactionsScreen`'s own
+   *  primary-pane row click already uses (App.tsx's `editTxnFromList`), reused verbatim rather than
+   *  the shared `onEditTxn` above (whose `editReturn` is hardcoded "reports" for the panel's report
+   *  subview and would flash the primary pane there instead). */
+  onEditTxnPanel: (t: Transaction) => void;
+  /** Design parity wave C task 3, owner rule 2: Duplicate opens the Add pane PREFILLED as a new
+   *  transaction cloned from this row — no direct ledger write (App.tsx's `duplicateTxnFromPanel`,
+   *  `addPreset.duplicateFrom`'s own preset-mechanics rung, `txnToDuplicatePayload`'s exact
+   *  today's-date/no-tag/no-sourceRef/cleared-allocation transform). `editTxn` stays null
+   *  throughout, so submit's existing create path is what an explicit Save actually runs. */
+  onDuplicateTxnPanel: (t: Transaction) => void;
 };
 
 /**
@@ -438,7 +479,6 @@ export function WideShell({ bag, rightSlot = null, children }: { bag: WideShellB
     reportsView,
     envView,
     acctView,
-    panelFallbacks,
     openTxns,
     panelClosed,
     setEnvView,
@@ -462,21 +502,29 @@ export function WideShell({ bag, rightSlot = null, children }: { bag: WideShellB
     onAddWide,
     onOpenAccount,
     onEditAccountTxn,
+    onEditEnvelopeTxn,
     txQuery,
     txFilters,
+    txnView,
+    setTxnView,
+    onEditTxnPanel,
+    onDuplicateTxnPanel,
   } = bag;
   const C = useTheme();
   const { t, tp } = useT();
   // Design parity wave A close, item 9 (design v3:4351's `headerRight`, the "shown" branch): the
   // SAME query+filter pipeline `TransactionsScreen` uses for its own list, gated to the one screen
-  // that needs it (mirrors App.tsx's `globalNetTotal` gate for Accounts/Reports).
-  const transactionsShownCount = useMemo(() => {
-    if (primaryScreen !== "transactions") return 0;
+  // that needs it (mirrors App.tsx's `globalNetTotal` gate for Accounts/Reports). Design parity
+  // wave C task 3 widens this from a bare count to the filtered ARRAY itself — the txn kind's
+  // fallback (below) and its vanish effect both need "the same filtered ordering the list
+  // renders", not just its length, and this is the one place that pipeline already runs.
+  const filteredTransactions = useMemo<StateResponse["transactions"]>(() => {
+    if (primaryScreen !== "transactions") return [];
     const index = createTransactionSearchIndex({ accounts: state.accounts, envelopes: state.envelopes, categories: state.categories, places: state.places });
-    return state.transactions.filter((tx) => matchesTransactionQuery(tx, txQuery, index) && matchesTransactionFilters(tx, txFilters)).length;
+    return state.transactions.filter((tx) => matchesTransactionQuery(tx, txQuery, index) && matchesTransactionFilters(tx, txFilters));
   }, [primaryScreen, state.accounts, state.envelopes, state.categories, state.places, state.transactions, txQuery, txFilters]);
   const rightSlotEffective: RightSlot =
-    primaryScreen === "transactions" ? { kind: "caption", text: tp("{n} transaction shown | {n} transactions shown", transactionsShownCount) } : rightSlot;
+    primaryScreen === "transactions" ? { kind: "caption", text: tp("{n} transaction shown | {n} transactions shown", filteredTransactions.length) } : rightSlot;
   const [rootRef, rootW] = useElementWidth<HTMLDivElement>(mode === "desktop" ? 1440 : 1104);
   const paneW = paneWidthFor(mode, rootW);
   // The wide board's gear target (Task 6) — WideShell's OWN local selection, not lifted to App:
@@ -491,7 +539,16 @@ export function WideShell({ bag, rightSlot = null, children }: { bag: WideShellB
     // (Add lives in the OTHER pane), so this effect never fires just because Add opened/closed.
     if (primaryScreen !== "start") setWidgetSettings(null);
   }, [primaryScreen]);
-  const view = resolvePanel({ screen, reportsView, envView, widgetSettings, acctView }, panelFallbacks);
+  // Design parity wave C task 3: the txn kind's OWN fallback table — `panelFallbacks` (the bag
+  // field, computed eagerly by App from the UNFILTERED ledger) stays correct for its other two
+  // fields, but `firstTxnId` needs "the same filtered ordering the list renders" (the brief's own
+  // words); this lazy chunk already builds that list above, so it is the one place that can call
+  // the pure derivation again with the right input rather than patching the bag's own value.
+  const fallbacksForPanel = useMemo(
+    () => computePanelFallbacks({ envelopes: state.envelopes, groups: state.groups, accounts: state.accounts }, month, filteredTransactions),
+    [state.envelopes, state.groups, state.accounts, month, filteredTransactions],
+  );
+  const view = resolvePanel({ screen, reportsView, envView, widgetSettings, acctView, txnView }, fallbacksForPanel);
   const primaryRef = useRef<HTMLDivElement | null>(null);
   const panelRef = useRef<HTMLDivElement | null>(null);
 
@@ -601,7 +658,14 @@ export function WideShell({ bag, rightSlot = null, children }: { bag: WideShellB
       if (view.source === "selection") setAcctView(null);
       else setPanelClosed(true);
     } else if (view.kind === "add") onDoneEdit();
-    else setPanelClosed(true);
+    else if (view.kind === "txn") {
+      // Design parity wave C task 3: the SAME fallback-vs-selection split as `envelope`/`account`
+      // above — a real pick (a row tap) pops to the fallback shown underneath; the fallback itself
+      // has nothing to clear (`txnView` is already null when `source` is "fallback" — resolvePanel
+      // only falls back when it was absent), so ✕/Escape there just collapses the panel.
+      if (view.source === "selection") setTxnView(null);
+      else setPanelClosed(true);
+    } else setPanelClosed(true);
   };
 
   // Explicitly opening content re-opens a collapsed panel — the demo's own rule (v3:3597,
@@ -648,14 +712,29 @@ export function WideShell({ bag, rightSlot = null, children }: { bag: WideShellB
             ? view.widgetId
             : view.kind === "account"
               ? acctView
-              : view.source === "selection"
-                ? view.view
-                : null;
+              : view.kind === "txn"
+                ? txnView
+                : view.source === "selection"
+                  ? view.view
+                  : null;
   const prevSelection = useRef(selection);
   useEffect(() => {
     if (selection !== null && selection !== prevSelection.current && panelClosed) setPanelClosed(false);
     prevSelection.current = selection;
   });
+
+  // Design parity wave C task 3: `txnView`'s ONLY reset path (its own bag-field comment) — a
+  // month change, a search/filter change, or a delete can each drop the selected transaction out
+  // of the CURRENT filtered list without ever touching `txnView` itself (App.tsx never resets it
+  // on plain navigation, unlike `envView`/`acctView` — see that comment for why no restore-ref is
+  // needed for the edit round trip). Once dropped, `resolvePanel` should fall back to the real
+  // first item rather than keep asserting a stale "selection" for an id nothing renders any more.
+  // Gated on `primaryScreen` (matching `filteredTransactions` above, which is `[]` off-screen) so
+  // leaving the Transactions screen and coming back never clears a selection that was never
+  // actually invalidated — this effect only judges a selection while it can see the real list.
+  useEffect(() => {
+    if (primaryScreen === "transactions" && txnView && !filteredTransactions.some((tx) => tx.id === txnView.txnId)) setTxnView(null);
+  }, [primaryScreen, txnView, filteredTransactions, setTxnView]);
 
   // WebKit/iOS: WideShell freshly mounts right after the wide "Add" phone-column takeover
   // unmounts a full-screen fixed overlay (DockedNumpad/pickers, portalled to <body>) that sat
@@ -869,6 +948,9 @@ export function WideShell({ bag, rightSlot = null, children }: { bag: WideShellB
             onFillGoals={onFillGoals}
             onEditTxn={onEditTxn}
             onEditAccountTxn={onEditAccountTxn}
+            onEditEnvelopeTxn={onEditEnvelopeTxn}
+            onEditTxnPanel={onEditTxnPanel}
+            onDuplicateTxnPanel={onDuplicateTxnPanel}
             onPrev={prev}
             onNext={next}
             editTxn={editTxn}

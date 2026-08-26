@@ -1,7 +1,8 @@
 import type { Transaction } from "@enveo/shared";
-import { useMemo, useState } from "react";
+import { lazy, useMemo, useState } from "react";
 import { Header } from "../components/chrome";
 import { CardBox, SectionEyebrow, useBand } from "../components/kit";
+import { LazyChunk } from "../components/lazy";
 import type { StateResponse } from "../lib/api";
 import { useMask, useTheme } from "../lib/contexts";
 import { dayHeading } from "../lib/dates";
@@ -19,6 +20,11 @@ import {
 } from "../lib/transactionSearch";
 import { activeFilterCount, TransactionFilterSheet } from "./transactions/TransactionFilterSheet";
 
+// Design parity wave C task 5 (§0.8): `Transactions.tsx` is itself one shared chunk between
+// phone and wide (`App.tsx`'s own `lazy()`), so the wide-only 6-column filter body gets its OWN
+// nested lazy boundary — a phone user who opens Transactions never fetches it.
+const WideFilterPanel = lazy(() => import("./transactions/WideFilterPanel").then((m) => ({ default: m.WideFilterPanel })));
+
 export function TransactionsScreen({
   state,
   month,
@@ -30,6 +36,8 @@ export function TransactionsScreen({
   setQuery,
   filters,
   setFilters,
+  selectedTxnId,
+  onSelectTxn,
 }: {
   state: StateResponse;
   month: string;
@@ -42,6 +50,17 @@ export function TransactionsScreen({
   setQuery: (q: string) => void;
   filters: TransactionFilters;
   setFilters: (filters: TransactionFilters) => void;
+  /** Design parity wave C task 3 (owner rule 2): on wide, a row click SELECTS the txn panel's
+   *  content instead of opening the editor — matching the `AccountsScreen`/`BudgetScreen`
+   *  `selected*Id` precedent. Three-state, because App owns "is the panel showing this list's txn
+   *  pane" while only THIS component owns the filtered fallback row: a string is App's explicit
+   *  `txnView` pick; `undefined` means "panel showing the txn pane, nothing explicitly picked" and
+   *  this component falls back to its OWN first FILTERED row (`txns[0]` below — the one place that
+   *  can, since App's own fallback table is deliberately unfiltered, panel.ts's own comment);
+   *  `null` means "no panel is showing a row of this list" (collapsed panel, envelope pane over
+   *  it, Add takeover, or phone) — NO highlight, fallback included. */
+  selectedTxnId?: string | null;
+  onSelectTxn?: (id: string) => void;
 }) {
   const C = useTheme();
   const { band, hc } = useBand();
@@ -103,6 +122,14 @@ export function TransactionsScreen({
   const txns = state.transactions.filter(
     (transaction) => matchesTransactionQuery(transaction, query, searchIndex) && matchesTransactionFilters(transaction, filters),
   );
+
+  // Design parity wave C task 3 (txn gap 9): the row the panel is showing — an explicit pick, else
+  // THIS list's own first entry (the never-empty fallback, computed here rather than trusted from
+  // App since only this component owns the filtered/ordered `txns` the panel must agree with).
+  // `null` off wide so phone never highlights a row it has no panel to show it in, and `null` when
+  // App says NO panel is showing this list's txn pane (`selectedTxnId === null` — collapsed panel
+  // etc., see the prop's contract above): the fallback must not paint a highlight no panel backs.
+  const effectiveSelectedId = inWide && selectedTxnId !== null ? (selectedTxnId ?? txns[0]?.id ?? null) : null;
 
   // grouping by date (descending order preserved)
   const groups: Array<{ date: string; items: Transaction[] }> = [];
@@ -174,97 +201,255 @@ export function TransactionsScreen({
       <div className="gs" style={{ flex: 1, overflowY: "auto", paddingBottom: 6 }}>
         <div data-band={band || undefined} style={band ? { background: C.headerBg, paddingBottom: 4 } : undefined}>
           {!inWide && <Header month={month} onMenu={onMenu} onPrev={onPrev} onNext={onNext} onBand={band} />}
-          <div
-            className={INPUT_FOCUS_CLASS}
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 8,
-              margin: `2px ${P}px 6px`,
-              padding: "8px 12px",
-              background: hc(tint(C.headerInk, 0.13), C.card),
-              borderRadius: 12,
-              boxShadow: band ? "none" : "0 1px 2px rgba(20,20,28,0.05)",
-            }}
-          >
-            <Ico d="M11 19a8 8 0 100-16 8 8 0 000 16zM21 21l-4.3-4.3" size={17} color={hc(C.headerMute, C.mute)} sw={1.8} />
-            <input
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder={t("Search...")}
-              style={{ flex: 1, minWidth: 0, background: "none", border: "none", fontSize: 14.5, color: hc(C.headerInk, C.text), fontFamily: font }}
-            />
-            {query && (
-              <button
-                onClick={() => setQuery("")}
-                aria-label={t("Clear search")}
-                style={{ background: "none", border: "none", cursor: "pointer", padding: 2, display: "flex" }}
-              >
-                <Ico d="M6 6l12 12M18 6L6 18" size={14} color={hc(C.headerMute, C.mute)} sw={2} />
-              </button>
-            )}
-            <button
-              onClick={() => setPickFilter(true)}
-              aria-label={t("Filter")}
-              style={{ position: "relative", background: "none", border: "none", cursor: "pointer", padding: 2, display: "flex" }}
-            >
-              <Ico
-                d="M4 4h16l-6.3 7.4V19l-3.4-2v-5.6L4 4zM17.5 14.5v6M14.5 17.5h6"
-                size={18}
-                color={filterCount ? hc("var(--cta)", TEAL) : hc(C.headerMute, C.mute)}
-                sw={1.8}
-              />
-              {filterCount > 0 && (
-                <span
-                  style={{
-                    position: "absolute",
-                    top: -5,
-                    right: -7,
-                    minWidth: 15,
-                    height: 15,
-                    padding: "0 3px",
-                    borderRadius: 8,
-                    boxSizing: "border-box",
-                    background: "var(--cta)",
-                    color: "#fff",
-                    fontSize: 9,
-                    fontWeight: 800,
-                    lineHeight: "15px",
-                    textAlign: "center",
-                  }}
-                >
-                  {filterCount}
-                </span>
-              )}
-            </button>
-          </div>
-          <div
-            style={{
-              display: "flex",
-              justifyContent: "flex-end",
-              alignItems: "baseline",
-              gap: 6,
-              padding: `0 ${P + 4}px 8px`,
-              fontSize: 11,
-              color: hc(C.headerMute, C.soft),
-            }}
-          >
-            {t("Balance:")}
-            <span
+          {!inWide && (
+            <div
+              className={INPUT_FOCUS_CLASS}
               style={{
-                fontSize: 12,
-                fontWeight: 700,
-                fontVariantNumeric: "tabular-nums",
-                color: balance < 0 ? hc(C.headerNeg, C.neg) : balance > 0 ? hc(C.headerPos, C.pos) : hc(C.headerInk, C.text),
+                display: "flex",
+                alignItems: "center",
+                gap: 8,
+                margin: `2px ${P}px 6px`,
+                padding: "8px 12px",
+                background: hc(tint(C.headerInk, 0.13), C.card),
+                borderRadius: 12,
+                boxShadow: band ? "none" : "0 1px 2px rgba(20,20,28,0.05)",
               }}
             >
-              {balance < 0 ? "-" : balance > 0 ? "+" : ""}
-              {M(Math.abs(balance))}
-            </span>
-          </div>
+              <Ico d="M11 19a8 8 0 100-16 8 8 0 000 16zM21 21l-4.3-4.3" size={17} color={hc(C.headerMute, C.mute)} sw={1.8} />
+              <input
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder={t("Search...")}
+                style={{ flex: 1, minWidth: 0, background: "none", border: "none", fontSize: 14.5, color: hc(C.headerInk, C.text), fontFamily: font }}
+              />
+              {query && (
+                <button
+                  onClick={() => setQuery("")}
+                  aria-label={t("Clear search")}
+                  style={{ background: "none", border: "none", cursor: "pointer", padding: 2, display: "flex" }}
+                >
+                  <Ico d="M6 6l12 12M18 6L6 18" size={14} color={hc(C.headerMute, C.mute)} sw={2} />
+                </button>
+              )}
+              <button
+                onClick={() => setPickFilter(true)}
+                aria-label={t("Filter")}
+                style={{ position: "relative", background: "none", border: "none", cursor: "pointer", padding: 2, display: "flex" }}
+              >
+                <Ico
+                  d="M4 4h16l-6.3 7.4V19l-3.4-2v-5.6L4 4zM17.5 14.5v6M14.5 17.5h6"
+                  size={18}
+                  color={filterCount ? hc("var(--cta)", TEAL) : hc(C.headerMute, C.mute)}
+                  sw={1.8}
+                />
+                {filterCount > 0 && (
+                  <span
+                    style={{
+                      position: "absolute",
+                      top: -5,
+                      right: -7,
+                      minWidth: 15,
+                      height: 15,
+                      padding: "0 3px",
+                      borderRadius: 8,
+                      boxSizing: "border-box",
+                      background: "var(--cta)",
+                      color: "#fff",
+                      fontSize: 9,
+                      fontWeight: 800,
+                      lineHeight: "15px",
+                      textAlign: "center",
+                    }}
+                  >
+                    {filterCount}
+                  </span>
+                )}
+              </button>
+            </div>
+          )}
+          {!inWide && (
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "flex-end",
+                alignItems: "baseline",
+                gap: 6,
+                padding: `0 ${P + 4}px 8px`,
+                fontSize: 11,
+                color: hc(C.headerMute, C.soft),
+              }}
+            >
+              {t("Balance:")}
+              <span
+                style={{
+                  fontSize: 12,
+                  fontWeight: 700,
+                  fontVariantNumeric: "tabular-nums",
+                  color: balance < 0 ? hc(C.headerNeg, C.neg) : balance > 0 ? hc(C.headerPos, C.pos) : hc(C.headerInk, C.text),
+                }}
+              >
+                {balance < 0 ? "-" : balance > 0 ? "+" : ""}
+                {M(Math.abs(balance))}
+              </span>
+            </div>
+          )}
         </div>
 
-        {filterChips.length > 0 && (
+        {/* Design parity wave C task 4 (txn gaps 4-7, v3:296-308): search + Filters merge into ONE
+            bordered card — a SIBLING of the `data-band` wrapper above, not a child of it. Duet's
+            `band` is a per-SCREEN theme flag, not a per-viewport one — it stays true on wide too —
+            so nesting this inside that wrapper let its `C.headerBg` navy show through underneath
+            the (transparent) count/Balance row below the card, with plain `C.soft`/`C.pos`/`C.neg`
+            text sized for the CREAM Duet surface sitting on that navy instead (caught live on a
+            Duet-light throwaway probe, not eyeballed from the design, which has no band concept at
+            all). Plain `C.card`/`C.line` tokens throughout — not the phone `hc()` on-band variants
+            above — matching the `TxnPanel`/`EnvelopePanel` (C2/C3) precedent that wide content
+            ignores `hc()` entirely. `alignItems: "stretch"` (v3:296) is load-bearing, not
+            decorative: it is what gives the borderless Filters button the search half's own ~32px
+            height for free, clearing the house's 30px touch floor without a manual override (see
+            7a73272's minHeight fix for the alternative). */}
+        {inWide && (
+          <>
+            <div
+              className={INPUT_FOCUS_CLASS}
+              style={{
+                display: "flex",
+                alignItems: "stretch",
+                margin: `2px ${P}px 0`,
+                background: C.card,
+                border: `1px solid ${C.line}`,
+                borderTopLeftRadius: 12,
+                borderTopRightRadius: 12,
+                // Design parity wave C task 5 (v3:296's `searchRadiusBL/BR`/`searchBottomBorder`):
+                // open state welds this row to the panel below into one inverted-L surface — the
+                // bottom border disappears and the bottom corners square off so the panel's own
+                // `border-top:none` continues the SAME box with no seam, matching wave C task 4's
+                // rounded-corners precedent applied dynamically here instead of statically.
+                borderBottomLeftRadius: pickFilter ? 0 : 12,
+                borderBottomRightRadius: pickFilter ? 0 : 12,
+                borderBottom: pickFilter ? "none" : `1px solid ${C.line}`,
+                boxShadow: "none",
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "center", gap: 9, flex: 1, minWidth: 0, padding: "8px 12px" }}>
+                <Ico d="M11 19a8 8 0 100-16 8 8 0 000 16zM21 21l-4.3-4.3" size={13} color={C.mute} sw={1.8} />
+                <input
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                  // Wide gets its OWN placeholder key (v3:299) rather than reusing phone's
+                  // "Search..." — the two texts differ, and sharing the key would orphan
+                  // whichever wording lost, since editing a message's English text is what
+                  // changes its i18n key.
+                  placeholder={t("Search transactions…")}
+                  style={{ flex: 1, minWidth: 0, background: "none", border: "none", fontSize: 14, color: C.text, fontFamily: font }}
+                />
+                {query && (
+                  <button
+                    onClick={() => setQuery("")}
+                    aria-label={t("Clear search")}
+                    style={{ background: "none", border: "none", cursor: "pointer", padding: 2, display: "flex" }}
+                  >
+                    <Ico d="M6 6l12 12M18 6L6 18" size={13} color={C.mute} sw={2} />
+                  </button>
+                )}
+              </div>
+              <div style={{ width: 1, background: C.line, flexShrink: 0 }} />
+              {/* Design parity wave C task 5: on wide, this toggle opens/closes the inline panel
+                  below (`pickFilter`, plain state — owner rule 3, not the pane machine). The
+                  caret and this button's own accent top-rule (v3:4308's `filterBtnTopRule`) read
+                  the SAME boolean the panel's mount condition below does. `border-top` is 3px in
+                  BOTH states (transparent when closed) so the reserved space never shifts this
+                  bar's height when the accent line appears — only its color changes. */}
+              <button
+                onClick={() => setPickFilter((v) => !v)}
+                aria-expanded={pickFilter}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 7,
+                  flexShrink: 0,
+                  padding: "6px 13px 8px",
+                  background: "transparent",
+                  border: "none",
+                  borderTop: `3px solid ${pickFilter ? "var(--accent)" : "transparent"}`,
+                  // v3:303: the 3px accent top-rule follows the card's rounded top-right corner
+                  // (12px outer radius − 1px border) instead of poking a square end through it.
+                  borderTopRightRadius: 11,
+                  cursor: "pointer",
+                  fontFamily: font,
+                }}
+              >
+                <span style={{ fontSize: 12.5, fontWeight: 650, color: pickFilter || filterCount > 0 ? TEAL : C.soft }}>{t("Filters")}</span>
+                {filterCount > 0 && (
+                  <span
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      boxSizing: "border-box",
+                      minWidth: 17,
+                      height: 17,
+                      padding: "0 5px",
+                      borderRadius: 999,
+                      background: TEAL,
+                      color: "#fff",
+                      fontSize: 10.5,
+                      fontWeight: 750,
+                    }}
+                  >
+                    {filterCount}
+                  </span>
+                )}
+                <span style={{ fontSize: 10, color: pickFilter || filterCount > 0 ? TEAL : C.soft }}>{pickFilter ? "▴" : "▾"}</span>
+              </button>
+            </div>
+
+            {/* Design parity wave C task 5 (v3:310-364): the inline body — pushes the list down,
+                never dims/overlays anything (no backdrop, no portal; a plain sibling in normal
+                flow). Conditionally MOUNTED (not just hidden) so a phone user, and a wide user who
+                never opens Filters, never fetch this chunk; `WideFilterPanel`'s own local amount
+                text re-derives from `filters.amount` fresh on every mount, so nothing is lost by
+                unmounting on close beyond an in-progress invalid (unapplied) amount edit. */}
+            {pickFilter && (
+              <div style={{ margin: `0 ${P}px` }}>
+                <LazyChunk>
+                  <WideFilterPanel
+                    filters={filters}
+                    setFilters={setFilters}
+                    matchCount={txns.length}
+                    envelopes={envelopes}
+                    accounts={accounts}
+                    categories={categories}
+                    places={places}
+                    onClose={() => setPickFilter(false)}
+                  />
+                </LazyChunk>
+              </div>
+            )}
+
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", padding: `8px ${P}px 6px`, fontSize: 11, color: C.soft }}>
+              <span>
+                {tp("{shown} of {total} transactions | {shown} of {total} transactions", txns.length, {
+                  shown: txns.length,
+                  total: state.transactions.length,
+                })}
+              </span>
+              <span>
+                {t("Balance:")}{" "}
+                <b style={{ fontSize: 12, fontWeight: 700, fontVariantNumeric: "tabular-nums", color: balance < 0 ? C.neg : balance > 0 ? C.pos : C.text }}>
+                  {balance < 0 ? "-" : balance > 0 ? "+" : ""}
+                  {M(Math.abs(balance))}
+                </b>
+              </span>
+            </div>
+          </>
+        )}
+
+        {/* Design parity wave C task 5: on wide these chips move INSIDE the inline panel
+            (`WideFilterPanel` above, v3:319-327) and show only while it is open — this standalone
+            row is phone-only now, unaffected by C5 (owner rule 2's phone-chrome-in-a-panel avoided
+            the other way here: a panel-adjacent affordance never leaks onto phone either). */}
+        {filterChips.length > 0 && !inWide && (
           <div className="gs" style={{ display: "flex", alignItems: "center", gap: 7, padding: `0 ${P}px 8px`, overflowX: "auto" }}>
             <span style={{ fontSize: 13.5, color: C.text, flexShrink: 0 }}>{t("Filter:")}</span>
             {filterChips.map((chip) => (
@@ -295,121 +480,193 @@ export function TransactionsScreen({
 
         {groups.length === 0 && <div style={{ textAlign: "center", color: C.mute, fontSize: 13.5, padding: "56px 0" }}>{t("No transactions.")}</div>}
 
-        {groups.map((group) => (
-          <div key={group.date}>
-            <SectionEyebrow label={dayHeading(group.date, lang, t)} />
-            <CardBox style={{ marginBottom: 8, padding: "2px 12px" }}>
-              {group.items.map((tx, i) => {
-                const col = colorOf(tx);
-                const s = signed(tx);
-                const acc = accById.get(tx.accountId);
-                return (
-                  <div
-                    key={tx.id}
-                    role="button"
-                    tabIndex={0}
-                    onClick={() => onEditTxn(tx)}
-                    onKeyDown={(e) => {
-                      if (e.target !== e.currentTarget) return;
-                      if (e.key === "Enter" || e.key === " ") {
-                        e.preventDefault();
-                        onEditTxn(tx);
-                      }
-                    }}
-                    className="fu"
-                    style={{
-                      animationDelay: `${i * 20}ms`,
-                      display: "flex",
-                      alignItems: "center",
-                      padding: "6px 0",
-                      gap: 10,
-                      cursor: "pointer",
-                      width: "100%",
-                      background: "none",
-                      border: "none",
-                      borderBottom: i === group.items.length - 1 ? "none" : `1px solid ${C.line}`,
-                      textAlign: "left",
-                    }}
-                  >
+        {groups.map((group) => {
+          // Design parity wave C task 4 (txn gap 10, v3:2556-2563): per-day ↑in/↓out, wide only —
+          // computed from `group.items` with the SAME income-or-refund/expense split as the
+          // `balance` reduce above (not the design's own simplified `t.type === "income"`/`!t.type`,
+          // which has no `isRefund` concept in its synthetic data model — real code wins on
+          // mechanics). Left at 0/0 on phone (never read there), which also makes `right` below
+          // `undefined` for free.
+          let inSum = 0;
+          let outSum = 0;
+          if (inWide) {
+            for (const tx of group.items) {
+              if (tx.type === "transfer") continue;
+              if (tx.type === "income" || tx.isRefund) inSum += tx.amount;
+              else outSum += tx.amount;
+            }
+          }
+          return (
+            <div key={group.date}>
+              <SectionEyebrow
+                label={dayHeading(group.date, lang, t)}
+                right={
+                  inSum > 0 || outSum > 0 ? (
+                    // Overrides SectionEyebrow's own 11px/600 default (v3:373-379 has neither on
+                    // this wrapper) — the design's own `T.pos`/`T.neg` split only colors the two
+                    // inner spans, so the container's weight/size need an explicit reset here.
+                    // `white-space: nowrap` (v3:375) keeps the two figures on one line; the
+                    // separator below is two U+00A0 (design's `&nbsp;&nbsp;`, v3:377), NOT two
+                    // regular spaces — those would collapse to one under normal whitespace handling.
+                    <span style={{ fontSize: 10.5, fontWeight: 400, whiteSpace: "nowrap" }}>
+                      {inSum > 0 && <span style={{ color: C.pos }}>{`↑ ${M(inSum)}`}</span>}
+                      {inSum > 0 && outSum > 0 && "  "}
+                      {outSum > 0 && <span style={{ color: C.neg }}>{`↓ ${M(outSum)}`}</span>}
+                    </span>
+                  ) : undefined
+                }
+              />
+              {/* Design parity wave C task 3 (gap 9): `overflow:hidden` clips a selected edge row's
+                edge-to-edge `selBg` bleed to the card's own 14px radius — the exact Budget.tsx
+                fix (design parity wave C task 1) applied to this list too. */}
+              <CardBox style={{ marginBottom: 8, padding: "2px 12px", overflow: "hidden" }}>
+                {group.items.map((tx, i) => {
+                  const col = colorOf(tx);
+                  const s = signed(tx);
+                  const acc = accById.get(tx.accountId);
+                  // Design parity wave C task 3 (owner rule 1's list/panel sync, txn gap 9): the
+                  // SAME id `effectiveSelectedId` above resolves to — never a second "what's open"
+                  // check (owner rule 3), and always `false` off wide (`effectiveSelectedId` is
+                  // `null` there).
+                  const selected = effectiveSelectedId === tx.id;
+                  return (
                     <div
+                      key={tx.id}
+                      role="button"
+                      tabIndex={0}
+                      onClick={() => (inWide ? onSelectTxn?.(tx.id) : onEditTxn(tx))}
+                      onKeyDown={(e) => {
+                        if (e.target !== e.currentTarget) return;
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.preventDefault();
+                          if (inWide) onSelectTxn?.(tx.id);
+                          else onEditTxn(tx);
+                        }
+                      }}
+                      className="fu"
                       style={{
-                        width: 28,
-                        height: 28,
-                        borderRadius: 8,
-                        flexShrink: 0,
-                        background: tint(col, 0.16),
+                        animationDelay: `${i * 20}ms`,
                         display: "flex",
                         alignItems: "center",
-                        justifyContent: "center",
+                        // Edge-to-edge selection bleed (Budget.tsx's identical technique, design
+                        // parity wave C task 1), WIDE ONLY: row padding matches the CardBox's own
+                        // 12px horizontal padding, and the equal-and-opposite negative margin lets
+                        // the row's background reach the card's edges while leaving the CONTENT at
+                        // the same horizontal position as before — applied to every wide row, not
+                        // just the selected one, so nothing shifts on select. No `width` (the
+                        // design row, v3:383, has none): a `width:100%` here over-constrains the
+                        // box (margin-right gets ignored) and the bleed stops 24px short of the
+                        // card's right edge — block-level `width:auto` resolves BOTH negative
+                        // margins. Phone keeps its exact pre-wave `6px 0` geometry (dividers inset
+                        // by the card's own 12px padding).
+                        padding: inWide ? "6px 12px" : "6px 0",
+                        margin: inWide ? "0 -12px" : undefined,
+                        boxSizing: "border-box",
+                        gap: 10,
+                        cursor: "pointer",
+                        background: selected ? C.selBg : "transparent",
+                        border: "none",
+                        borderBottom: i === group.items.length - 1 || selected ? "none" : `1px solid ${C.line}`,
+                        textAlign: "left",
                       }}
                     >
-                      {tx.type === "transfer" ? (
-                        <Ico d="M7 16V4m0 0L3 8m4-4l4 4M17 8v12m0 0l4-4m-4 4l-4-4" size={14} color={col} sw={2} />
-                      ) : (
-                        <Glyph
-                          name={tx.type === "income" ? "moneybag" : tx.envelopeId ? (envById.get(tx.envelopeId)?.icon ?? "tag") : "tag"}
-                          size={14}
-                          color={col}
-                          sw={1.7}
-                        />
+                      <div
+                        style={{
+                          width: 28,
+                          height: 28,
+                          borderRadius: 8,
+                          flexShrink: 0,
+                          background: tint(col, 0.16),
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                        }}
+                      >
+                        {tx.type === "transfer" ? (
+                          <Ico d="M7 16V4m0 0L3 8m4-4l4 4M17 8v12m0 0l4-4m-4 4l-4-4" size={14} color={col} sw={2} />
+                        ) : (
+                          <Glyph
+                            name={tx.type === "income" ? "moneybag" : tx.envelopeId ? (envById.get(tx.envelopeId)?.icon ?? "tag") : "tag"}
+                            size={14}
+                            color={col}
+                            sw={1.7}
+                          />
+                        )}
+                      </div>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div
+                          style={{
+                            color: selected ? "var(--accent)" : C.text,
+                            fontSize: 13.5,
+                            fontWeight: selected ? 650 : 550,
+                            lineHeight: 1.25,
+                            overflow: "hidden",
+                            textOverflow: "ellipsis",
+                            whiteSpace: "nowrap",
+                          }}
+                        >
+                          {descOf(tx)}
+                        </div>
+                        <div
+                          style={{
+                            color: C.soft,
+                            fontSize: 10.5,
+                            lineHeight: 1.25,
+                            marginTop: 1,
+                            overflow: "hidden",
+                            textOverflow: "ellipsis",
+                            whiteSpace: "nowrap",
+                          }}
+                        >
+                          {subOf(tx)}
+                        </div>
+                      </div>
+                      {/* Wide-only (v3:389's `openMark`, computed only when `paneOpen` — design's
+                        wide-table context): gated on `inWide` like every other wide-only fork in
+                        this file, so phone's flex `gap` never grows a 3rd gap it never had, which
+                        would otherwise narrow the description column's ellipsis budget. */}
+                      {inWide && (
+                        <span style={{ fontSize: 12, color: "var(--accent)", flexShrink: 0 }} aria-hidden="true">
+                          {selected ? "▸" : ""}
+                        </span>
                       )}
-                    </div>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div
-                        style={{
-                          color: C.text,
-                          fontSize: 13.5,
-                          fontWeight: 550,
-                          lineHeight: 1.25,
-                          overflow: "hidden",
-                          textOverflow: "ellipsis",
-                          whiteSpace: "nowrap",
-                        }}
-                      >
-                        {descOf(tx)}
-                      </div>
-                      <div
-                        style={{
-                          color: C.soft,
-                          fontSize: 10.5,
-                          lineHeight: 1.25,
-                          marginTop: 1,
-                          overflow: "hidden",
-                          textOverflow: "ellipsis",
-                          whiteSpace: "nowrap",
-                        }}
-                      >
-                        {subOf(tx)}
+                      <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", flexShrink: 0 }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
+                          <span style={{ fontSize: 13.5, fontWeight: 700, lineHeight: 1.25, fontVariantNumeric: "tabular-nums", color: s.color }}>
+                            {s.text}
+                          </span>
+                        </div>
+                        {tx.type !== "transfer" && acc && <div style={{ color: C.mute, fontSize: 9.5, lineHeight: 1.25, marginTop: 1 }}>{acc.name}</div>}
                       </div>
                     </div>
-                    <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", flexShrink: 0 }}>
-                      <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
-                        <span style={{ fontSize: 13.5, fontWeight: 700, lineHeight: 1.25, fontVariantNumeric: "tabular-nums", color: s.color }}>{s.text}</span>
-                      </div>
-                      {tx.type !== "transfer" && acc && <div style={{ color: C.mute, fontSize: 9.5, lineHeight: 1.25, marginTop: 1 }}>{acc.name}</div>}
-                    </div>
-                  </div>
-                );
-              })}
-            </CardBox>
-          </div>
-        ))}
+                  );
+                })}
+              </CardBox>
+            </div>
+          );
+        })}
       </div>
 
-      <TransactionFilterSheet
-        show={pickFilter}
-        onClose={() => setPickFilter(false)}
-        filters={filters}
-        onApply={setFilters}
-        transactions={state.transactions}
-        query={query}
-        searchIndex={searchIndex}
-        accounts={accounts}
-        envelopes={envelopes}
-        categories={categories}
-        places={places}
-        formatMoney={M}
-      />
+      {/* Design parity wave C task 5: wide replaces this modal with the inline `WideFilterPanel`
+          above and never mounts the phone sheet at all (not just `show={false}` — `pickFilter`
+          is the SAME boolean the inline panel's mount condition reads, and this sheet must never
+          answer to it once wide is active). Phone is untouched: this is exactly the pre-C5 render. */}
+      {!inWide && (
+        <TransactionFilterSheet
+          show={pickFilter}
+          onClose={() => setPickFilter(false)}
+          filters={filters}
+          onApply={setFilters}
+          transactions={state.transactions}
+          query={query}
+          searchIndex={searchIndex}
+          accounts={accounts}
+          envelopes={envelopes}
+          categories={categories}
+          places={places}
+          formatMoney={M}
+        />
+      )}
     </div>
   );
 }
