@@ -24,7 +24,7 @@ const DELTA_MARK = "\u0000";
  *  — signed, one decimal, against the PRIOR point (division-by-zero guarded to 1, matching the
  *  design's own `|| 1` fallback). `null` when there are fewer than two points to compare (the
  *  same guard `nwDelta` above already relies on to read as 0 in that case). */
-function netWorthDeltaPct(netWorth: { month: string; total: number }[]): string | null {
+export function netWorthDeltaPct(netWorth: { month: string; total: number }[]): string | null {
   if (netWorth.length < 2) return null;
   const last = netWorth.at(-1)!.total;
   const prev = netWorth.at(-2)!.total;
