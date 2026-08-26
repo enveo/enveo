@@ -452,7 +452,10 @@ export function TransactionsScreen({
                     // Overrides SectionEyebrow's own 11px/600 default (v3:373-379 has neither on
                     // this wrapper) — the design's own `T.pos`/`T.neg` split only colors the two
                     // inner spans, so the container's weight/size need an explicit reset here.
-                    <span style={{ fontSize: 10.5, fontWeight: 400 }}>
+                    // `white-space: nowrap` (v3:375) keeps the two figures on one line; the
+                    // separator below is two U+00A0 (design's `&nbsp;&nbsp;`, v3:377), NOT two
+                    // regular spaces — those would collapse to one under normal whitespace handling.
+                    <span style={{ fontSize: 10.5, fontWeight: 400, whiteSpace: "nowrap" }}>
                       {inSum > 0 && <span style={{ color: C.pos }}>{`↑ ${M(inSum)}`}</span>}
                       {inSum > 0 && outSum > 0 && "  "}
                       {outSum > 0 && <span style={{ color: C.neg }}>{`↓ ${M(outSum)}`}</span>}
