@@ -1,9 +1,11 @@
-import { Bar, NetWorthChart, ReportShell, useReportBand } from "../../components/reportKit";
+import { Bar, NetWorthChart, netWorthRangeLabel, ReportShell, useReportBand } from "../../components/reportKit";
 import type { StateResponse } from "../../lib/api";
 import { useTheme } from "../../lib/contexts";
 import { useT } from "../../lib/i18n";
+import { useWideHost } from "../../lib/shellContext";
 import { TEAL } from "../../lib/theme";
 import { type Mask, TITLES } from "./types";
+
 
 
 
@@ -31,8 +33,9 @@ export function AssetsReport({
   onBack: () => void;
 }) {
   const C = useTheme();
-  const { t } = useT();
+  const { t, tp, lang } = useT();
   const { band } = useReportBand();
+  const inWide = useWideHost() !== null;
   const nwLast = netWorth.at(-1)?.total ?? 0;
   const nwDelta = nwLast - (netWorth.at(-2)?.total ?? nwLast);
   const savings = state.envelopes.filter((e) => !e.archived && e.isSavings);
@@ -61,6 +64,14 @@ export function AssetsReport({
     >
       {netWorth.length > 1 && (
         <div style={{ fontSize: 10.5, color: C.mute, textAlign: "center", marginBottom: 12, fontVariantNumeric: "tabular-nums" }}>
+          {
+
+
+
+
+
+}
+          {inWide && <>{netWorthRangeLabel(netWorth, lang, tp)} · </>}
           {t("range {min}–{max}", { min: M(Math.min(...nwTotals)), max: M(Math.max(...nwTotals)) })}
         </div>
       )}

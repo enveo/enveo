@@ -4,7 +4,7 @@ import { useContext } from "react";
 import { createPortal } from "react-dom";
 import { useCompactMask, useTheme } from "../lib/contexts";
 import { monthLabel, monthShortLabel } from "../lib/dates";
-import { type Message, useT } from "../lib/i18n";
+import { type Lang, type Message, useT } from "../lib/i18n";
 import { InWideShell, useWideHost } from "../lib/shellContext";
 import { font, P, TEAL, type Theme } from "../lib/theme";
 import { useElementWidth } from "../lib/useElementWidth";
@@ -54,6 +54,26 @@ type ReportShellProps = ReportShellCommon &
     | { variant: "hub"; onMenu: () => void; onHeroClick?: () => void; title?: never; onBack?: never }
   );
 
+/** "last {n} months · {start}–{end}" — the date span a net-worth series covers (design parity
+ *  wave D task 2, `v3:3195`'s `nwChart.range`, e.g. "last 12 months · Aug 2025 – Jul 2026").
+ *  Shared by the reports hub hero and the Wealth report's own caption so the two never drift —
+ *  each glues this onto its OTHER half (the hub's own delta/pct line; the Wealth report's
+ *  existing "range {min}–{max}" line) with a decorative middle dot, the same already-translated-
+ *  pieces idiom `ReportShell`'s own `{title} · {monthLabel}` panel eyebrow already uses just
+ *  below. `computeNetWorthSeries` always back-fills to exactly the requested window (even before
+ *  the ledger existed), so `n` is effectively always the caller's fixed window size in practice —
+ *  `tp()` still carries the plural correctly for whatever a caller actually passes. */
+export function netWorthRangeLabel(
+  netWorth: { month: string; total: number }[],
+  lang: Lang,
+  tp: (message: Message, n: number, params?: Record<string, string | number>) => string,
+): string | null {
+  if (netWorth.length === 0) return null;
+  const start = monthShortLabel(netWorth[0]!.month, lang, true);
+  const end = monthShortLabel(netWorth.at(-1)!.month, lang, true);
+  return tp("last {n} month · {range} | last {n} months · {range}", netWorth.length, { range: `${start} – ${end}` });
+}
+
 /** Report band: shared by every subscreen AND the hub (Task 4 — the two previously-forked
  *  copies of this grammar are now one). Top row is `variant`-dependent (back+title+month-nav
  *  for a subscreen, the app-chrome `Header` for the hub); everything below — eyebrow/hero/sub,
@@ -87,7 +107,8 @@ export function ReportShell(props: ReportShellProps) {
   // string stays composed from already-translated pieces (`props.title` is `t(TITLES[view])` at
   // every call site; `monthLabel` is Intl-formatted) rather than a new message key, since there is
   // no English wording here to translate, only two values and a decorative middle dot (the same
-  // idiom `ReportsHub`'s own `{t("m/m")} · {t("details")} ›` already uses). The seven per-report
+  // idiom `netWorthRangeLabel` below and its two callers use to glue their own two already-
+  // translated halves together). The seven per-report
   // `eyebrow` strings stay exactly as they are for PHONE, rendered by the branch below — nothing
   // is orphaned. Month navigation on wide is the band's global nav only: both `ReportsScreen`
   // instances (primary hub + this panel subscreen) already share App's one `month`/`onPrev`/
@@ -122,11 +143,34 @@ export function ReportShell(props: ReportShellProps) {
     );
   }
 
-  const heroBlock = (
+  const eyebrowEl = (
+    <div style={{ fontSize: 10.5, fontWeight: 750, letterSpacing: "0.17em", textTransform: "uppercase", color: hc(C.headerMute, C.mute) }}>{eyebrow}</div>
+  );
+  const heroEl = <div style={{ fontSize: 30, fontWeight: 750, color: hc(C.headerInk, C.text), fontVariantNumeric: "tabular-nums" }}>{hero}</div>;
+  const subEl = sub != null ? <div style={{ fontSize: 12, color: hc(C.headerMute, C.soft) }}>{sub}</div> : null;
+
+  // Design parity wave D task 2 (v3:624-655): at the wide DESKTOP bucket only (`L.heroDir:"row"`
+  // — fold and phone keep the plain stacked column below, `L.heroDir:"column"`), the hub's own
+  // hero splits into a fixed `216px` info column (eyebrow/value/sub, `gap:16px` from the chart)
+  // and the chart filling the rest — never the hub's own hand-rolled markup duplicated a second
+  // time, just this one shared branch, gated to the ONE variant (`hub`) and ONE bucket (`desktop`)
+  // that need it; every other caller (every subscreen, hub-on-fold, hub-on-phone) renders the
+  // exact same flat fragment as before this task, byte-for-byte.
+  const hubDesktopRow = props.variant === "hub" && wideHost?.mode === "desktop";
+  const heroBlock = hubDesktopRow ? (
+    <div style={{ display: "flex", flexDirection: "row", gap: 16 }}>
+      <div style={{ flex: "none", width: 216, display: "flex", flexDirection: "column", gap: 3 }}>
+        {eyebrowEl}
+        {heroEl}
+        {subEl}
+      </div>
+      <div style={{ flex: 1, minWidth: 0 }}>{bandChart}</div>
+    </div>
+  ) : (
     <>
-      <div style={{ fontSize: 10.5, fontWeight: 750, letterSpacing: "0.17em", textTransform: "uppercase", color: hc(C.headerMute, C.mute) }}>{eyebrow}</div>
-      <div style={{ fontSize: 30, fontWeight: 750, color: hc(C.headerInk, C.text), fontVariantNumeric: "tabular-nums" }}>{hero}</div>
-      {sub != null && <div style={{ fontSize: 12, color: hc(C.headerMute, C.soft) }}>{sub}</div>}
+      {eyebrowEl}
+      {heroEl}
+      {subEl}
       {bandChart}
     </>
   );

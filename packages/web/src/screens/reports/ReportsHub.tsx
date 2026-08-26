@@ -1,7 +1,7 @@
 import { type EnvelopeTrend, median, savingsRate } from "@enveo/shared";
 import type { ReactNode } from "react";
 import { GoalRing, useBand } from "../../components/kit";
-import { DeltaTag, heatColor, NetWorthChart, ReportShell, SegBar, TrendSpark } from "../../components/reportKit";
+import { DeltaTag, heatColor, NetWorthChart, netWorthRangeLabel, ReportShell, SegBar, TrendSpark } from "../../components/reportKit";
 import type { StateResponse } from "../../lib/api";
 import { useMask, useTheme } from "../../lib/contexts";
 import { goalProgress } from "../../lib/goals";
@@ -9,10 +9,28 @@ import { useT } from "../../lib/i18n";
 import { budgetsOverAmount, budgetsSummary } from "../../lib/reportSummary";
 import { useWideHost } from "../../lib/shellContext";
 import { useElementWidth } from "../../lib/useElementWidth";
+import { splitAround } from "../settings/ui";
 import { trendColor } from "./charts";
 import type { Mask, ReportTab, ReportView } from "./types";
 
 const SPENDING_FALLBACK_COLORS = ["#8f84a8", "#aed6ea", "#ccd9b6", "#f0c84f"];
+
+/** Stands in for the delta text while splitting the translated m/m sentence — see `splitAround`'s
+ *  own doc comment (screens/settings/ui.tsx) for why every consumer keeps its own local mark
+ *  rather than sharing one constant. */
+const DELTA_MARK = "\u0000";
+
+
+
+
+
+function netWorthDeltaPct(netWorth: { month: string; total: number }[]): string | null {
+  if (netWorth.length < 2) return null;
+  const last = netWorth.at(-1)!.total;
+  const prev = netWorth.at(-2)!.total;
+  const pct = ((last - prev) / (prev || 1)) * 100;
+  return `${pct >= 0 ? "+" : ""}${pct.toFixed(1)}%`;
+}
 
 /**
  * Reports hub (frame A1, "Gabinet" direction): the global Header, then a tappable net-worth
@@ -20,6 +38,12 @@ const SPENDING_FALLBACK_COLORS = ["#8f84a8", "#aed6ea", "#ccd9b6", "#f0c84f"];
  * when the theme paints a Duet band, plain otherwise, exactly like every other screen's header),
  * then a 2-column grid of six mini-cards, one per subscreen, each showing just its essence.
  * Every card is a `<button>` → `onView(id)`.
+ *
+ * WIDE only (design parity wave D task 2, v3:624-655): the delta line also carries the m/m
+ * PERCENTAGE ("▲ +€X · +9.7% m/m", previously silently dropped), plus a "last N months · start–
+ * end" range caption and a "wealth details ›" accent CTA — both new lines `ReportShell` didn't
+ * have room for before. `ReportShell` itself puts the whole hero in a `flex-direction:row` with
+ * a fixed 216px info column at the `desktop` bucket (fold stays column, same as phone below).
  */
 export function ReportsHub({
   state,
@@ -55,11 +79,30 @@ export function ReportsHub({
 }) {
   const C = useTheme();
   const M = useMask();
-  const { t } = useT();
+  const { t, tp, lang } = useT();
   const { band, hc } = useBand();
+  const inWide = useWideHost() !== null;
 
   const nwLast = netWorth.at(-1)?.total ?? 0;
   const nwDelta = nwLast - (netWorth.at(-2)?.total ?? nwLast);
+  const deltaColor = nwDelta > 0 ? hc(C.headerPos, C.pos) : hc(C.headerNeg, C.neg);
+  
+
+
+
+
+
+
+
+
+
+  const pctText = inWide ? netWorthDeltaPct(netWorth) : null;
+  const [deltaBefore, deltaAfter] =
+    inWide && nwDelta !== 0 && pctText !== null ? splitAround(t("{delta} · {pct} m/m", { delta: DELTA_MARK, pct: pctText }), DELTA_MARK) : ["", ""];
+  const deltaText = (nwDelta > 0 ? "▲ +" : "▼ ") + M(Math.abs(nwDelta));
+  
+
+  const rangeLabel = inWide ? netWorthRangeLabel(netWorth, lang, tp) : null;
   const envColor = new Map(state.envelopes.map((e) => [e.id, e.color]));
 
    
@@ -86,15 +129,38 @@ export function ReportsHub({
         eyebrow={t("Net worth")}
         hero={M(nwLast)}
         sub={
-          <>
-            {nwDelta !== 0 && (
-              <span style={{ color: nwDelta > 0 ? hc(C.headerPos, C.pos) : hc(C.headerNeg, C.neg), fontWeight: 650 }}>
-                {nwDelta > 0 ? "▲ +" : "▼ "}
-                {M(Math.abs(nwDelta))}
+          inWide ? (
+            <>
+              {nwDelta !== 0 && pctText !== null && (
+                <div style={{ fontVariantNumeric: "tabular-nums" }}>
+                  {deltaBefore}
+                  <b style={{ color: deltaColor, fontWeight: 700 }}>{deltaText}</b>
+                  {deltaAfter}
+                </div>
+              )}
+              {rangeLabel != null && <div style={{ fontSize: 10.5, color: hc(C.headerMute, C.mute) }}>{rangeLabel}</div>}
+              {/* "wealth details ›" — its OWN accent CTA line (design line 630: 11.5px/650,
+                 `margin-top:4px`), not the old bare "· details ›" glued onto the delta line.
+                 `display:"block"` on the `<span>` gives the design's `margin-top` real effect
+                 (a plain inline element ignores vertical margin) while keeping the tag itself a
+                 `<span>` as the design markup has it. Accent swaps to `headerInk` on a Duet band
+                 the same way `Sparkline`'s own doc comment prescribes — Duet's light-mode accent
+                 IS its band color, so a bare `var(--accent)` here would be invisible ink-on-ink. */}
+              <span style={{ display: "block", marginTop: 4, fontSize: 11.5, fontWeight: 650, color: hc(C.headerInk, "var(--accent)") }}>
+                {t("wealth details ›")}
               </span>
-            )}{" "}
-            {t("m/m")} · {t("details")} ›
-          </>
+            </>
+          ) : (
+            <>
+              {nwDelta !== 0 && (
+                <span style={{ color: deltaColor, fontWeight: 650 }}>
+                  {nwDelta > 0 ? "▲ +" : "▼ "}
+                  {M(Math.abs(nwDelta))}
+                </span>
+              )}{" "}
+              {t("m/m")} · {t("details")} ›
+            </>
+          )
         }
         bandChart={<NetWorthChart points={netWorth} height={130} onBand={band} />}
       >
