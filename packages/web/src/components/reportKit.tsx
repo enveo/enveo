@@ -97,12 +97,19 @@ export function ReportShell(props: ReportShellProps) {
   if (props.variant !== "hub" && wideHost?.host === "panel") {
     return (
       <>
-        <div style={{ padding: "14px 16px 0", display: "flex", flexDirection: "column", gap: 2 }}>
-          <div style={{ fontSize: 10, fontWeight: 750, letterSpacing: "0.17em", textTransform: "uppercase", color: C.mute }}>
-            {props.title} · {monthLabel(month, lang)}
+        <div style={{ padding: "14px 16px 0", display: "flex", flexDirection: "column", gap: 13 }}>
+          {/* Design source (v3:1367-1370): the eyebrow/hero/sub trio is its OWN `gap:2px` div that
+             closes right after `sub` — the report-specific visual (SegBar, the net-worth chart,
+             the budget-health ring…) is a SIBLING inside this outer `gap:13px` column, not a
+             fourth item packed into the trio's tight 2px rhythm (review finding: bandChart was
+             landing 2px under `sub` instead of the design's ~13px breathing room). */}
+          <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+            <div style={{ fontSize: 10, fontWeight: 750, letterSpacing: "0.17em", textTransform: "uppercase", color: C.mute }}>
+              {props.title} · {monthLabel(month, lang)}
+            </div>
+            <div style={{ fontSize: 30, fontWeight: 750, color: C.text, fontVariantNumeric: "tabular-nums" }}>{hero}</div>
+            {sub != null && <div style={{ fontSize: 12, color: C.soft }}>{sub}</div>}
           </div>
-          <div style={{ fontSize: 30, fontWeight: 750, color: C.text, fontVariantNumeric: "tabular-nums" }}>{hero}</div>
-          {sub != null && <div style={{ fontSize: 12, color: C.soft }}>{sub}</div>}
           {bandChart}
         </div>
         {/* Same `rpt-body`/`fi` idiom as the phone branch below — opacity-only, and paired with

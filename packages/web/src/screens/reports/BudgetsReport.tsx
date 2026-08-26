@@ -8,6 +8,7 @@ import { haptic } from "../../lib/haptics";
 import { useT } from "../../lib/i18n";
 import { local } from "../../lib/mutate";
 import { type BudgetStep, budgetPace, budgetRowPresentation, budgetSteps, budgetUsage, compareBudgetUsageRows, monthProgress } from "../../lib/reportSummary";
+import { useWideHost } from "../../lib/shellContext";
 import { store } from "../../lib/store";
 import { TEAL, tint } from "../../lib/theme";
 import { type Mask, TITLES } from "./types";
@@ -145,6 +146,9 @@ export function BudgetsReport({
   const C = useTheme();
   const { t, tp, lang } = useT();
   const { hc } = useReportBand();
+  // This screen is a subscreen — always phone OR the wide PANEL, never the wide primary pane (that
+  // slot is `ReportsHub`'s alone) — so `!== null` here means exactly "inside the wide panel".
+  const inWide = useWideHost() !== null;
   const [ignored, setIgnored] = useState<Set<string>>(new Set());
   const [expanded, setExpanded] = useState(false);
   const [pendingUndos, setPendingUndos] = useState<PendingUndo[]>([]);
@@ -277,7 +281,12 @@ export function BudgetsReport({
         sub={overRows.length > 0 ? t("in {n} of {total} envelopes", { n: overRows.length, total: rows.length }) : undefined}
         bandChart={
           rows.length > 0 ? (
-            <div style={{ display: "flex", gap: 6, marginTop: 12, flexWrap: "wrap" }}>
+            // Phone/hub `heroBlock` has no flex `gap` of its own between eyebrow/hero/sub and this
+            // row, so it still needs its own 12px top margin there; the wide PANEL branch now
+            // supplies that same ~13px via the outer column's `gap` (reportKit.tsx), and stacking
+            // both would double the design's breathing room to 25px — so this margin is wide-only
+            // zeroed (review fix: was masking the panel's real 2px-gap bug by coincidence).
+            <div style={{ display: "flex", gap: 6, marginTop: inWide ? 0 : 12, flexWrap: "wrap" }}>
               {pill(tp("{n} over | {n} over", overRows.length), hc(C.headerNeg, C.neg), "over")}
               {/* no dedicated on-band amber token exists (headerWarn) — C.warn already reads fine on the navy band */}
               {pill(t("{n} near limit", { n: nearRows.length }), C.warn, "near")}
