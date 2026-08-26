@@ -6,7 +6,7 @@
  */
 import { describe, expect, test } from "bun:test";
 import { budgetPreferencesPatchSchema, createDefaultWideWidgets, type WideWidgetConfig } from "@enveo/shared";
-import { applyResize, clampRow, clampSpan, reorderEnabled, toggleEnabled } from "./wideBoard";
+import { applyResize, clampRow, clampSpan, commitResetLayout, reorderEnabled, toggleEnabled } from "./wideBoard";
 
 describe("clampSpan", () => {
   test("a desktop-authored w:3 clamps to the fold's 2 columns at render", () => {
@@ -120,5 +120,36 @@ describe("reorderEnabled", () => {
     const defaults = createDefaultWideWidgets();
     const next = reorderEnabled(defaults, 3, 0);
     expect(budgetPreferencesPatchSchema.safeParse({ wideWidgets: next }).success).toBe(true);
+  });
+});
+
+describe("commitResetLayout (the edit-mode 'Reset layout' escape hatch)", () => {
+  test("commits exactly ONE patch, and its value is exactly the canonical default board", () => {
+    const calls: { wideWidgets: WideWidgetConfig[] }[] = [];
+    commitResetLayout((patch) => calls.push(patch));
+    expect(calls).toHaveLength(1);
+    expect(calls[0]!.wideWidgets).toEqual(createDefaultWideWidgets());
+  });
+
+  test("nothing of the previous board survives: the committed value is defaults regardless of any stored shape", () => {
+    // The whole point of the hatch: a board stored BEFORE a defaults change (old spans, old
+    // order, extra disabled entries) never re-adopts the new row map via reconciliation, so the
+    // committed patch must be a function of NOTHING — same result no matter what is on screen.
+    const first: { wideWidgets: WideWidgetConfig[] }[] = [];
+    const second: { wideWidgets: WideWidgetConfig[] }[] = [];
+    commitResetLayout((patch) => first.push(patch));
+    commitResetLayout((patch) => second.push(patch));
+    expect(first[0]!.wideWidgets).toEqual(second[0]!.wideWidgets);
+    // fresh arrays each call — a shared mutable singleton would let one board's later edits
+    // corrupt what the next reset commits
+    expect(first[0]!.wideWidgets).not.toBe(second[0]!.wideWidgets);
+  });
+
+  test("the committed patch is accepted by the shared preferences patch schema", () => {
+    let committed: unknown;
+    commitResetLayout((patch) => {
+      committed = patch;
+    });
+    expect(budgetPreferencesPatchSchema.safeParse(committed).success).toBe(true);
   });
 });

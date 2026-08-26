@@ -24,15 +24,17 @@ import { type CSSProperties, type ReactNode, useMemo } from "react";
 import { useLedgerVersion } from "../lib/api";
 import { useMask, useTheme } from "../lib/contexts";
 import { currentMonth, shortDate, todayISO } from "../lib/dates";
+import { haptic } from "../lib/haptics";
 import { type AttentionRow, attentionRows } from "../lib/homeAttention";
 import { useT } from "../lib/i18n";
 import { Ico } from "../lib/icons";
+import { local } from "../lib/mutate";
 import { monthProgress } from "../lib/reportSummary";
 import { store } from "../lib/store";
 import { font, TEAL, type Theme, TRANSFER } from "../lib/theme";
 import { useElementWidth } from "../lib/useElementWidth";
 import { trendColor } from "../screens/reports/charts";
-import { CardBox, SectionEyebrow } from "./kit";
+import { CardBox, GoalRing, SectionEyebrow } from "./kit";
 import { Bar, CalendarHeatmap, dimNullLabel, SegBar, TrendSpark } from "./reportKit";
 import type { WidgetProps } from "./widgets";
 
@@ -154,8 +156,20 @@ export function AttentionWidget({ state, month, onNav, onOpenReport, onQuickAdd,
                 {label(row)}
               </span>
               <span style={{ textAlign: "right", flexShrink: 0 }}>
-                <span style={{ display: "block", fontSize: 12.5, fontWeight: 700, color: v.color, fontVariantNumeric: "tabular-nums" }}>{v.text}</span>
-                <span style={{ display: "block", fontSize: 10, color: TEAL, fontWeight: 650 }}>{action(row)}</span>
+                {/* v3.dc.html:428 — wide value is 13.5/750, a touch bigger than the phone row's
+                    12.5/700; gated on `chromeless` so the phone widget stays byte-identical. */}
+                <span
+                  style={{
+                    display: "block",
+                    fontSize: chromeless ? 13.5 : 12.5,
+                    fontWeight: chromeless ? 750 : 700,
+                    color: v.color,
+                    fontVariantNumeric: "tabular-nums",
+                  }}
+                >
+                  {v.text}
+                </span>
+                <span style={{ display: "block", fontSize: chromeless ? 10.5 : 10, color: TEAL, fontWeight: 650 }}>{action(row)}</span>
               </span>
             </button>
           );
@@ -206,6 +220,14 @@ export function RecentWidget({ onOpenTxns, onNav, chromeless }: WidgetProps) {
     const env = tx.envelopeId ? envById.get(tx.envelopeId) : null;
     return tx.name || tx.note || env?.name || (tx.items.length ? t("Split transaction") : t("Transaction"));
   };
+  // v3.dc.html:440/3738 — the dot is colored PURELY by envelope, type-agnostic: `t.env &&
+  // envById[t.env] ? envById[t.env].color : T.mute`. A transfer never carries an envelopeId, so it
+  // falls through to the same neutral `C.mute` as any other envelope-less row — no special-cased
+  // transfer color here (that belongs to the amount's `signed()`, which already uses TRANSFER).
+  const dotColor = (tx: Transaction): string => {
+    const env = tx.envelopeId ? envById.get(tx.envelopeId) : null;
+    return env?.color ?? C.mute;
+  };
 
   return (
     <WidgetShell title={t("Recent activity")} chromeless={chromeless}>
@@ -214,11 +236,15 @@ export function RecentWidget({ onOpenTxns, onNav, chromeless }: WidgetProps) {
       ) : (
         rows.map((tx, i) => {
           const s = signed(tx);
+          // v3.dc.html:439 — wide rows are gap-separated (no per-row divider) at 7px padding;
+          // the phone row keeps its existing 8px-padded, border-bottomed list untouched.
+          const rowStyle = chromeless ? { ...rowBtnStyle(C, true), padding: "7px 0" } : rowBtnStyle(C, i === rows.length - 1);
           return (
-            <button key={tx.id} onClick={() => onOpenTxns()} style={rowBtnStyle(C, i === rows.length - 1)}>
+            <button key={tx.id} onClick={() => onOpenTxns()} style={rowStyle}>
+              {chromeless && <span style={{ width: 9, height: 9, borderRadius: 3, background: dotColor(tx), display: "block", flexShrink: 0 }} />}
               <span style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 1 }}>
                 <span style={{ fontSize: 12.5, color: C.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{descOf(tx)}</span>
-                <span style={{ fontSize: 10.5, color: C.mute }}>{shortDate(tx.date, lang)}</span>
+                <span style={{ fontSize: chromeless ? 10 : 10.5, color: C.mute }}>{shortDate(tx.date, lang)}</span>
               </span>
               <span style={{ fontSize: 12.5, fontWeight: 700, color: s.color, fontVariantNumeric: "tabular-nums", flexShrink: 0 }}>{s.text}</span>
             </button>
@@ -226,18 +252,22 @@ export function RecentWidget({ onOpenTxns, onNav, chromeless }: WidgetProps) {
         })
       )}
       <button
-        onClick={() => onNav("transactions")}
+        // v3.dc.html:449 — the wide footer deep-links through the wide panel machine
+        // (`onOpenTxns`, same as every row above), top-bordered and left-aligned rather than the
+        // phone's centered, borderless button; `onNav("transactions")` stays the phone behavior.
+        onClick={chromeless ? () => onOpenTxns() : () => onNav("transactions")}
         style={{
           display: "block",
           width: "100%",
-          padding: "8px 0 4px",
+          padding: chromeless ? "7px 0 0" : "8px 0 4px",
           background: "none",
           border: "none",
+          borderTop: chromeless ? `1px solid ${C.line}` : "none",
           fontSize: 11,
-          fontWeight: 600,
+          fontWeight: chromeless ? 650 : 600,
           color: TEAL,
           cursor: "pointer",
-          textAlign: "center",
+          textAlign: chromeless ? "left" : "center",
           fontFamily: font,
         }}
       >
@@ -284,33 +314,49 @@ export function SpendingWidget({ state, month, onOpenReport, chromeless }: Widge
               <span style={{ fontSize: 12, fontWeight: 650, color: C.text, fontVariantNumeric: "tabular-nums", flexShrink: 0 }}>{M(r.amount)}</span>
             </button>
           ))}
-          <button
-            onClick={() => onOpenReport?.("spending")}
-            style={{
-              display: "block",
-              width: "100%",
-              padding: "8px 0 4px",
-              background: "none",
-              border: "none",
-              fontSize: 11,
-              fontWeight: 600,
-              color: C.mute,
-              cursor: "pointer",
-              textAlign: "center",
-              fontFamily: font,
-            }}
-          >
-            {t("total {amount} this month", { amount: M(total) })}
-          </button>
+          {/* v3.dc.html:466 — the wide caption is a plain, non-interactive line (its own text says
+              "click a row for detail" — the rows are the click target, not this line), at the
+              design's 10.5px; the phone footer stays the existing clickable button, unchanged. */}
+          {chromeless ? (
+            <span style={{ fontSize: 10.5, color: C.mute, fontVariantNumeric: "tabular-nums" }}>
+              {t("total {amount} this month · click a row for detail", { amount: M(total) })}
+            </span>
+          ) : (
+            <button
+              onClick={() => onOpenReport?.("spending")}
+              style={{
+                display: "block",
+                width: "100%",
+                padding: "8px 0 4px",
+                background: "none",
+                border: "none",
+                fontSize: 11,
+                fontWeight: 600,
+                color: C.mute,
+                cursor: "pointer",
+                textAlign: "center",
+                fontFamily: font,
+              }}
+            >
+              {t("total {amount} this month", { amount: M(total) })}
+            </button>
+          )}
         </>
       )}
     </WidgetShell>
   );
 }
 
-/* ── Goals: monthly-target progress, same goalProgress math as the Goals report; the "Fill"
- * affordance is a LINK to that report (F7 — no tile-level write) ── */
-export function GoalsWidget({ state, onOpenReport, chromeless }: WidgetProps) {
+/* ── Goals: monthly-target progress, same goalProgress math as the Goals report. The phone body's
+ * "Fill" affordance is a LINK to that report (F7 — no tile-level write); the wide body (v3.dc.html
+ * :502-527, waveB-t4-brief.md B4) is this file's one deliberate F7 exception — a per-row "Fill"
+ * that writes directly, using the exact same `local.setDisplayedAllocation` op (re-read the live
+ * ledger, cap to the pool, hide once unfillable) that GoalsReport.tsx's own per-card `fillOne` and
+ * FillGoalsSheet's multi-envelope `confirm` already use for one envelope — not a third, divergent
+ * write path. No undo toast here (unlike the full report): the compact tile has no room for one
+ * and the design shows none; the write is still capped/re-read fresh so a stale close can't
+ * over-allocate. ── */
+export function GoalsWidget({ state, month, onOpenReport, onFillGoals, chromeless }: WidgetProps) {
   const C = useTheme();
   const M = useMask();
   const { t } = useT();
@@ -322,10 +368,139 @@ export function GoalsWidget({ state, onOpenReport, chromeless }: WidgetProps) {
     })
     .sort((a, b) => a.gp.pct - b.gp.pct || a.e.name.localeCompare(b.e.name));
 
+  // Mirrors GoalsReport.tsx's `fillOne` exactly, minus the undo bookkeeping: both `allocated` and
+  // `readyToAssign` are re-read fresh off the live ledger at press time (never the render-scope
+  // `state`/`gp` closure), because a tile can sit rendered a while before it's tapped.
+  const fillOne = (envelopeId: string, missing: number) => {
+    const ledger = store.getLedger();
+    const live = ledger ? computeStateResponse(ledger, month) : null;
+    if (!live) return;
+    const envFresh = live.envelopes.find((x) => x.id === envelopeId);
+    if (!envFresh || envFresh.archived) return; // vanished/archived since this render started
+    const fillable = Math.max(0, Math.min(missing, live.readyToAssign));
+    if (fillable <= 0) return; // the button is hidden in this case already — defensive only
+    local.setDisplayedAllocation({ envelopeId, month, amount: envFresh.allocated + fillable });
+    haptic([10, 30, 14]);
+  };
+
+  const missSum = rows.reduce((s, { gp }) => s + gp.missing, 0);
+  const allFunded = rows.length > 0 && missSum === 0;
+  // Same entry-visibility predicate as GoalsReport.tsx/Budget's "Fill by goals" button: a pool to
+  // place AND at least one goal still short.
+  const canFillGoals = state.readyToAssign > 0 && missSum > 0;
+
   return (
     <WidgetShell title={t("Goals")} chromeless={chromeless}>
       {rows.length === 0 ? (
         <div style={{ padding: "10px 2px", fontSize: 12, color: C.mute }}>{t("No envelopes with a goal. Set a monthly target when editing an envelope.")}</div>
+      ) : chromeless ? (
+        <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
+          {rows.map(({ e, gp }) => {
+            const ringColor = gp.funded ? C.pos : TEAL;
+            const fundedAmt = Math.min(Math.max(0, e.allocated), e.monthlyTarget ?? 0);
+            const fillable = Math.max(0, Math.min(gp.missing, state.readyToAssign));
+            return (
+              <div key={e.id} style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <GoalRing pct={gp.pct} size={32} color={ringColor} />
+                <button
+                  type="button"
+                  onClick={() => onOpenReport?.("goals")}
+                  style={{
+                    flex: 1,
+                    minWidth: 0,
+                    display: "flex",
+                    flexDirection: "column",
+                    justifyContent: "center",
+                    // House >=30x30 touch-target floor (measured, not asserted): the ring beside
+                    // this button is a SIBLING (not nested, unlike GoalsReport.tsx's equivalent
+                    // open-envelope button), so the row's 32px height came from the ring alone and
+                    // this button's own box — sized only by its two short text lines — measured
+                    // 26px. box-sizing:border-box + minHeight makes 30 the TOTAL box height without
+                    // touching the design's font sizes, colors or gap; the row itself stays 32px
+                    // tall (the ring already drives that), so this adds no visible height anywhere.
+                    boxSizing: "border-box",
+                    minHeight: 30,
+                    background: "none",
+                    border: "none",
+                    padding: 0,
+                    textAlign: "left",
+                    cursor: "pointer",
+                    fontFamily: "inherit",
+                  }}
+                >
+                  <span style={{ fontSize: 12.5, color: C.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{e.name}</span>
+                  <span style={{ fontSize: 10, color: C.mute, fontVariantNumeric: "tabular-nums" }}>
+                    {t("{funded} of {target}", { funded: M(fundedAmt), target: M(e.monthlyTarget ?? 0) })}
+                  </span>
+                </button>
+                <span style={{ flexShrink: 0, display: "flex", alignItems: "center", gap: 7 }}>
+                  <span style={{ fontSize: 12, fontWeight: 700, color: C.text, fontVariantNumeric: "tabular-nums" }}>{Math.round(gp.pct)}%</span>
+                  {fillable > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => fillOne(e.id, gp.missing)}
+                      title={t("Move the missing amount from To be budgeted into this envelope")}
+                      style={{
+                        flexShrink: 0,
+                        minHeight: 30,
+                        display: "inline-flex",
+                        alignItems: "center",
+                        fontSize: 10,
+                        fontWeight: 700,
+                        color: TEAL,
+                        border: `1px solid ${TEAL}`,
+                        borderRadius: 7,
+                        padding: "3px 8px",
+                        background: "none",
+                        cursor: "pointer",
+                        fontFamily: "inherit",
+                      }}
+                    >
+                      {/* v3.dc.html:3769 — the home tile's OWN fillLabel is "Fill " + fmt(missing),
+                          no trailing arrow; the arrow belongs only to the Goals REPORT's per-card
+                          button (v3.dc.html:3430), a different key GoalsReport.tsx already owns. */}
+                      {t("Fill {amount}", { amount: M(fillable) })}
+                    </button>
+                  )}
+                </span>
+              </div>
+            );
+          })}
+          <span style={{ fontSize: 11, color: C.soft }}>
+            {allFunded ? t("All goals funded ✓") : t("{amount} to go", { amount: M(missSum) })}
+            {canFillGoals && onFillGoals && (
+              <>
+                {" · "}
+                <button
+                  type="button"
+                  onClick={onFillGoals}
+                  style={{
+                    // House >=30x30 touch-target floor (measured, not asserted): this footer link
+                    // is a real write affordance (fills every under-funded goal at once), same
+                    // semantic action as GoalsReport.tsx's standalone "Fill all goals ›" button,
+                    // which already carries this same minHeight for the same reason. `display:
+                    // inline` ignores height entirely, so this needs inline-flex to make the
+                    // minHeight take effect while still flowing inline after "{verdict} · ".
+                    display: "inline-flex",
+                    alignItems: "center",
+                    verticalAlign: "middle",
+                    boxSizing: "border-box",
+                    minHeight: 30,
+                    background: "none",
+                    border: "none",
+                    padding: 0,
+                    font: "inherit",
+                    fontWeight: 700,
+                    color: TEAL,
+                    cursor: "pointer",
+                  }}
+                >
+                  {t("Fill all ›")}
+                </button>
+              </>
+            )}
+          </span>
+        </div>
       ) : (
         rows.map(({ e, gp }, i) => (
           <button key={e.id} onClick={() => onOpenReport?.("goals")} style={rowBtnStyle(C, i === rows.length - 1)}>

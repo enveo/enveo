@@ -37,9 +37,19 @@ export interface WidgetProps {
   onOpenReport?: (tab: ReportTab) => void;
   /** Heatmap day → Month report with that day's panel open (App.setMonthDay + openReports("month")). */
   onOpenMonthDay?: (date: string) => void;
+  /** Opens the multi-envelope "Fill by goals" sheet (App.openBudgetFillGoals) — the Goals widget's
+   *  footer "Fill all ›" link, wide-only (waveB-t4-brief.md, B4); undefined on phone, where the
+   *  Goals widget body never renders that control at all. */
+  onFillGoals?: () => void;
   /** True when a wide board tile hosts the widget: the tile owns title+card chrome, so the body
    *  skips its own SectionEyebrow/CardBox. Default false — phone rendering is pixel-identical. */
   chromeless?: boolean;
+  /** The wide board tile's own (already-clamped) span — `WideHome` only; undefined on phone, so a
+   *  body that doesn't read it renders exactly as before. Lets a body pick a compact rendering when
+   *  sized down (e.g. `NetWorthWidget`'s 1×1 stat-tile variant, matching the design's `scroll:false`
+   *  tiles: at h=1 the design itself clips the sparkline via `overflow-y:hidden` rather than
+   *  shrinking it, so the compact body renders no chart at all instead of a clipped one). */
+  tile?: { w: number; h: number };
   opts?: WidgetOpts;
 }
 
@@ -408,7 +418,7 @@ export function CashflowWidget({ state, onNav, chromeless }: WidgetProps) {
   );
 }
 
-export function NetWorthWidget({ month, onNav, chromeless }: WidgetProps) {
+export function NetWorthWidget({ month, onNav, chromeless, tile }: WidgetProps) {
   const C = useTheme();
   const M = useMask();
   const { t } = useT();
@@ -420,7 +430,21 @@ export function NetWorthWidget({ month, onNav, chromeless }: WidgetProps) {
   }, [version, month]);
   const nwLast = netWorth.at(-1)?.total ?? 0;
   const nwDelta = nwLast - (netWorth.at(-2)?.total ?? nwLast);
-  const body = (
+  // Design's 1x1 stat tile (v3:531-533, `startWidgets`' `{w:1,h:1,scroll:false}`): value + one
+  // delta caption, no sparkline — the design doesn't gate the chart on size at all, it relies on
+  // `scroll:false` → `overflow-y:hidden` to clip it at a row height too short to show it, so a
+  // real 1x1 tile never actually displays a chart. Render that outcome directly instead of
+  // mounting a chart just to clip it. `h>=2` is unaffected (today's value+delta+sparkline body).
+  const compact = tile?.h === 1;
+  const body = compact ? (
+    <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+      <span style={{ fontSize: 17, fontWeight: 750, color: C.text, fontVariantNumeric: "tabular-nums" }}>{M(nwLast)}</span>
+      <span style={{ fontSize: 10.5, fontWeight: 650, color: nwDelta >= 0 ? C.pos : C.neg, fontVariantNumeric: "tabular-nums" }}>
+        {nwDelta >= 0 ? "▲ +" : "▼ "}
+        {M(Math.abs(nwDelta))} {t("m/m")}
+      </span>
+    </div>
+  ) : (
     <>
       <div style={{ display: "flex", alignItems: "baseline", gap: 10 }}>
         <span style={{ fontSize: 18, fontWeight: 700, color: C.text, fontVariantNumeric: "tabular-nums" }}>{M(nwLast)}</span>
@@ -434,8 +458,7 @@ export function NetWorthWidget({ month, onNav, chromeless }: WidgetProps) {
       <Sparkline points={netWorth} />
     </>
   );
-  // Same rule as CashflowWidget above: the wide tile brings its own chrome, and the doubled
-  // stack overflowed the default w:1,h:1 tile ~4.5x on first load (measured).
+  // Same rule as CashflowWidget above: the wide tile brings its own chrome.
   if (chromeless) return body;
   return (
     <div>
