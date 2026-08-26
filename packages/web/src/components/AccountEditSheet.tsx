@@ -5,7 +5,7 @@ import { useTheme } from "../lib/contexts";
 import { useT } from "../lib/i18n";
 import { Ico } from "../lib/icons";
 import { local } from "../lib/mutate";
-import { ACCOUNT_COLORS, font, TEAL } from "../lib/theme";
+import { ACCOUNT_COLORS, CTA, font, TEAL } from "../lib/theme";
 import { EnvelopePickerSheet } from "../screens/add/EnvelopePickerSheet";
 import { Surface } from "./chrome";
 import { IconColorPicker } from "./IconColorPicker";
@@ -183,7 +183,7 @@ export function AccountEditSheet({
                   padding: "12px 0",
                   borderRadius: 12,
                   border: "none",
-                  background: TEAL,
+                  background: CTA,
                   color: "#fff",
                   fontSize: 13,
                   fontWeight: 700,
