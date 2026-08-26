@@ -358,7 +358,7 @@ function BudgetsMini({
   return (
     <MiniCard title={t("Budgets")} onClick={() => onView("budgets")} selected={selected}>
       <div style={{ fontSize: 17, fontWeight: 750, color: C.text, fontVariantNumeric: "tabular-nums" }}>
-        {tp("{n} over | {n} over", bs.over)} · {tp("{n} near | {n} near", bs.near)}
+        {tp("{n} over · {near} near | {n} over · {near} near", bs.over, { near: bs.near })}
       </div>
       {overAmt > 0 && (
         <div style={{ fontSize: 11, color: C.neg, marginTop: 8, fontVariantNumeric: "tabular-nums" }}>{t("{amount} over budget", { amount: M(overAmt) })}</div>
