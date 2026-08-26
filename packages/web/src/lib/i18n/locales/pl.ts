@@ -48,6 +48,7 @@ export const pl: Dict = {
   "Add an envelope to the split": "Dodaj kopertę do podziału",
   "An entry nothing uses can be deleted for good.": "Wpis, którego nic nie używa, można usunąć na zawsze.",
   "Categories and places": "Kategorie i miejsca",
+  Dictionaries: "Słowniki",
   "Category change": "Zmiana kategorii",
   "Category deletion": "Usunięcie kategorii",
   "Category merge": "Scalenie kategorii",
@@ -934,11 +935,13 @@ export const pl: Dict = {
   "Account preferences": "Ustawienia konta",
   "AI is not configured. Choose server AI or an existing own key in Settings → Artificial intelligence.":
     "AI nie jest skonfigurowane. Wybierz AI serwera albo istniejący własny klucz w Ustawieniach → Sztuczna inteligencja.",
+  Appearance: "Wygląd",
   "Appearance and dashboard": "Wygląd i dashboard",
   "Budget preferences": "Ustawienia budżetu",
   "Choose their order, visibility, and options.": "Wybierz kolejność, widoczność i opcje.",
   "Currency and dashboard widgets follow this budget on every device.":
     "Waluta i widgety dashboardu są synchronizowane z tym budżetem na wszystkich urządzeniach.",
+  "Data & sync": "Dane i sync",
   "Data and synchronization": "Dane i synchronizacja",
   "Diagnostics and on-device storage": "Diagnostyka i pamięć urządzenia",
   "Discreet mode stays only on this device.": "Tryb dyskretny pozostaje tylko na tym urządzeniu.",

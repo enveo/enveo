@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useSyncStatus } from "../../lib/api";
 import { useBudgetPreferences, useTheme } from "../../lib/contexts";
 import { relSync } from "../../lib/dates";
-import { type Lang, msg, useT } from "../../lib/i18n";
+import { type Lang, type Message, msg, useT } from "../../lib/i18n";
 import { font, TEAL, tint } from "../../lib/theme";
 import { APP_VERSION, buildLabel } from "../../lib/version";
 import type { ViewMode } from "../../lib/viewMode";
@@ -19,6 +19,20 @@ type WideMode = Exclude<ViewMode, "phone">;
  *  Account identity + sign-out card the phone hub never shows as its own row (it renders
  *  `LogoutSection` inline at the bottom of the hub instead — `screens/Settings.tsx`'s `Hub`). */
 type WideSection = SubId | "account";
+
+/** Fold's short nav labels (v3:4200: `label: isFold ? g[4] : g[1]`) — the paired half of fold's
+ *  column-direction row layout (below): a 142px column leaves ~106px of text room (142 - 16px
+ *  outer padding - 20px button padding), which the long category titles ("Categories and places",
+ *  "Artificial intelligence", "Privacy and encryption") clearly exceed. "Account" is omitted: its
+ *  design short label (v3:4197, `g[4]` = "Account") is byte-identical to its long one, so the plain
+ *  `t("Account")` below already matches both widths. */
+const FOLD_LABEL: Record<SubId, Message> = {
+  appearance: msg("Appearance"),
+  dictionaries: msg("Dictionaries"),
+  ai: msg("AI"),
+  privacy: msg("Privacy"),
+  data: msg("Data & sync"),
+};
 
 /**
  * Persistent two-column Settings (design parity wave E task 3, owner rule 5, v3:675-744): a
@@ -54,7 +68,8 @@ export function WideSettings({ mode }: { mode: WideMode }) {
   const rows: Array<{ id: WideSection; label: string; sub: string; badge: string | null }> = [
     ...SETTINGS_CATEGORIES.map((c) => ({
       id: c.id,
-      label: t(c.title),
+      // v3:4200 — fold swaps to the short label (`FOLD_LABEL`); desktop keeps the full title.
+      label: isFold ? t(FOLD_LABEL[c.id]) : t(c.title),
       sub: t(c.desc),
       // v3:4196/4198 — only AI and Data & sync carry a badge; Appearance shows none (no dot).
       badge: c.id === "ai" ? aiBadge : c.id === "data" ? dataBadge : null,
