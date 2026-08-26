@@ -51,14 +51,17 @@ export function activeFilterCount(filters: TransactionFilters): number {
   );
 }
 
-function selectionSummary(selected: ReadonlySet<string>, options: readonly Named[], anyLabel: string): string {
+// Exported for `WideFilterPanel.tsx` (design parity wave C task 5): the wide inline panel shows
+// the SAME "Not filtered" / "{first} +{n-1}" summary per column and per chip as this sheet's
+// "main" list — one summary function, not a re-derived copy that could drift from the sheet's.
+export function selectionSummary(selected: ReadonlySet<string>, options: readonly Named[], anyLabel: string): string {
   if (selected.size === 0) return anyLabel;
   const picked = options.filter((option) => selected.has(option.id));
   const first = picked[0]?.name ?? anyLabel;
   return picked.length > 1 ? `${first} +${picked.length - 1}` : first;
 }
 
-function amountSummary(filters: TransactionFilters, formatMoney: (minor: number) => string, anyLabel: string): string {
+export function amountSummary(filters: TransactionFilters, formatMoney: (minor: number) => string, anyLabel: string): string {
   if (!filters.amount) return anyLabel;
   if (filters.amount.mode === "exact") return formatMoney(filters.amount.minor);
   const from = filters.amount.minMinor === null ? "…" : formatMoney(filters.amount.minMinor);
