@@ -591,6 +591,7 @@ export const MESSAGES = [
   "Sign out and remove this account's local data from this device? Your data already on the server will stay there.",
   "Sign out and use another account",
   "Sign-in is per device: a shared computer can stay session-only.",
+  "Signed in as {email}",
   "Signing out…",
   "Signs you out and removes this account's local copy, encryption keys, and credentials from the device.",
   "Size: {w} × {h} — drag the corner of the tile to resize",

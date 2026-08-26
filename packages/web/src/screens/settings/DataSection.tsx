@@ -73,9 +73,14 @@ export function LogoutSection() {
   return <LogoutRow />;
 }
 
-/** Explicit sign-out is identical for cloud and self-hosted deployments. */
-function LogoutRow() {
-  const { t } = useT();
+/**
+ * The explicit-sign-out state machine — shared by the phone row (`LogoutRow` below) and the wide
+ * Settings Account section's bordered card (design parity wave E task 3,
+ * `components/wide/WideSettings.tsx`): presentation differs per surface, the underlying handler
+ * (`completeExplicitSignOut`/`ExplicitSignOutPendingError`, `lib/signOut.ts` — the SAME one the
+ * rail popover's `LogoutMenuRow` already calls, design parity wave A task A3) does not.
+ */
+export function useLogoutFlow() {
   const [session, setSession] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -83,7 +88,6 @@ function LogoutRow() {
   useEffect(() => {
     void hasSession().then(setSession);
   }, []);
-  if (!session) return null;
 
   const finish = async (decision: "retry" | "export" | "discard") => {
     setBusy(true);
@@ -100,6 +104,15 @@ function LogoutRow() {
       setBusy(false);
     }
   };
+
+  return { session, busy, error, pending, finish };
+}
+
+/** Explicit sign-out is identical for cloud and self-hosted deployments. */
+function LogoutRow() {
+  const { t } = useT();
+  const { session, busy, error, pending, finish } = useLogoutFlow();
+  if (!session) return null;
 
   const doLogout = () => {
     if (!window.confirm(t("Sign out and remove this account's local data from this device? Your data already on the server will stay there."))) return;

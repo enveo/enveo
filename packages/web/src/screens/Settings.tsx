@@ -18,16 +18,21 @@ import { PrivacySection } from "./settings/PrivacySection";
 /* ── Settings: four scoped categories plus a separate sign-out action ── */
 
 export const SETTINGS_CATEGORIES = [
-  { id: "appearance", title: msg("Appearance and dashboard") },
-  { id: "dictionaries", title: msg("Categories and places") },
-  { id: "ai", title: msg("Artificial intelligence") },
-  { id: "privacy", title: msg("Privacy and encryption") },
-  { id: "data", title: msg("Data and synchronization") },
+  // `desc` (design parity wave E task 3): the SAME sentence each `HubCard` below already shows —
+  // exported alongside `title` so `WideSettings`'s left-nav sub-line can read it too, one message
+  // per category rather than a second, near-duplicate string that would drift from this one.
+  { id: "appearance", title: msg("Appearance and dashboard"), desc: msg("Theme, language, currency, privacy display, and widgets") },
+  { id: "dictionaries", title: msg("Categories and places"), desc: msg("What Enveo suggests while you add a transaction") },
+  { id: "ai", title: msg("Artificial intelligence"), desc: msg("Provider, model, and secure credential status") },
+  { id: "privacy", title: msg("Privacy and encryption"), desc: msg("End-to-end encryption, password, and device pairing") },
+  { id: "data", title: msg("Data and synchronization"), desc: msg("Sync, backup, repair, diagnostics, and reset") },
 ] as const;
 
 export const SETTINGS_HUB_FOOTER_ACTIONS = ["signOut"] as const;
 
-type SubId = (typeof SETTINGS_CATEGORIES)[number]["id"];
+/** Exported (design parity wave E task 3): `WideSettings` needs the same category-id union for
+ *  its own local section state (it adds one more, non-drill-in "account" section on top). */
+export type SubId = (typeof SETTINGS_CATEGORIES)[number]["id"];
 
 const SUB_TITLE: Record<SubId, Message> = {
   appearance: msg("Appearance and dashboard"),
@@ -151,6 +156,9 @@ function Hub({ onOpen, onInstall }: { onOpen: (s: SubId) => void; onInstall: () 
   // one color per category is the hub's visual language — install gets its OWN token
   // (violet), not a reuse of the Data navy (M10)
   const catInstall = isDark ? "#a89bdd" : "#6f5bb5";
+  // One category → one description, read off `SETTINGS_CATEGORIES` (design parity wave E task 3
+  // exported it there) rather than a second literal copied at each `HubCard` call below.
+  const categoryDesc = (id: SubId) => t(SETTINGS_CATEGORIES.find((c) => c.id === id)!.desc);
 
   return (
     <div className="fi" style={{ padding: "2px 14px", display: "flex", flexDirection: "column", gap: 9 }}>
@@ -180,7 +188,7 @@ function Hub({ onOpen, onInstall }: { onOpen: (s: SubId) => void; onInstall: () 
           </Glyph>
         }
         title={t("Appearance and dashboard")}
-        desc={t("Theme, language, currency, privacy display, and widgets")}
+        desc={categoryDesc("appearance")}
         status={
           <span
             aria-hidden
@@ -199,7 +207,7 @@ function Hub({ onOpen, onInstall }: { onOpen: (s: SubId) => void; onInstall: () 
           </Glyph>
         }
         title={t("Categories and places")}
-        desc={t("What Enveo suggests while you add a transaction")}
+        desc={categoryDesc("dictionaries")}
         status={null}
         onClick={() => onOpen("dictionaries")}
       />
@@ -212,7 +220,7 @@ function Hub({ onOpen, onInstall }: { onOpen: (s: SubId) => void; onInstall: () 
           </Glyph>
         }
         title={t("Artificial intelligence")}
-        desc={t("Provider, model, and secure credential status")}
+        desc={categoryDesc("ai")}
         status={<AiBadge />}
         onClick={() => onOpen("ai")}
       />
@@ -225,7 +233,7 @@ function Hub({ onOpen, onInstall }: { onOpen: (s: SubId) => void; onInstall: () 
           </Glyph>
         }
         title={t("Privacy and encryption")}
-        desc={t("End-to-end encryption, password, and device pairing")}
+        desc={categoryDesc("privacy")}
         status={<E2eeBadge color={catPrivacy} />}
         onClick={() => onOpen("privacy")}
       />
@@ -238,7 +246,7 @@ function Hub({ onOpen, onInstall }: { onOpen: (s: SubId) => void; onInstall: () 
           </Glyph>
         }
         title={t("Data and synchronization")}
-        desc={t("Sync, backup, repair, diagnostics, and reset")}
+        desc={categoryDesc("data")}
         status={<SyncStatusBadge okColor={catData} />}
         onClick={() => onOpen("data")}
       />

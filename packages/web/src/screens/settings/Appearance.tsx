@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { type ReactNode, useState } from "react";
 import { EditWidgetsSheet } from "../../components/EditWidgetsSheet";
 import { useStateQuery } from "../../lib/api";
 import { useCurrency, useSettings, useTheme } from "../../lib/contexts";
@@ -76,6 +76,29 @@ function ThemeTiles() {
 /** Selectable currencies (ISO 4217) — display only, no amount conversion. Shared with onboarding. */
 const CURRENCIES = SUPPORTED_CURRENCIES;
 
+/**
+ * A native `<select>` styled as the design's pill — "{value} ⌄" (v3:716-723) — on BOTH phone and
+ * wide (`WideSettings` renders this SAME component; design parity wave E task 3's own direction:
+ * "keep the native `<select>` semantics but style it as the design pill"). `appearance: none`
+ * (+ vendor prefixes for older WebKit) hides the OS chrome; the ⌄ is a decorative overlay
+ * (`pointerEvents: none`) so every click still lands on the real `<select>` underneath it —
+ * keyboard nav, screen readers and `onChange` are all untouched.
+ */
+function PillSelect({ children }: { children: ReactNode }) {
+  const C = useTheme();
+  return (
+    <span style={{ position: "relative", display: "inline-flex" }}>
+      {children}
+      <span
+        aria-hidden
+        style={{ position: "absolute", right: 12, top: "50%", transform: "translateY(-50%)", pointerEvents: "none", fontSize: 10, color: C.text }}
+      >
+        ⌄
+      </span>
+    </span>
+  );
+}
+
 /** Appearance: color themes, light/dark mode, language, currency, discreet mode. */
 export function AppearanceSection() {
   const C = useTheme();
@@ -86,15 +109,24 @@ export function AppearanceSection() {
   const { data: currentState } = useStateQuery(todayISO().slice(0, 7));
   // guard: without a booted replica / a budgets entity there is nothing to update
   const budgetId = store.getLedger()?.budgets?.[0]?.id;
+  // Design parity wave E task 3 (v3:716-723): radius 9 and the border/background/font-size were
+  // already correct — padding grows to 7px 30px (room for the `PillSelect` ⌄ overlay) 7px 14px,
+  // weight to 650, and the native chrome is hidden (`appearance: none` + prefixes) since the
+  // control now draws its own ⌄.
   const selectStyle = {
-    padding: "7px 10px",
+    appearance: "none",
+    WebkitAppearance: "none",
+    MozAppearance: "none",
+    padding: "7px 30px 7px 14px",
+    minHeight: 30,
     borderRadius: 9,
     border: `1px solid ${C.line}`,
     background: C.bg,
     color: C.text,
     fontSize: 12.5,
-    fontWeight: 600,
+    fontWeight: 650,
     fontFamily: font,
+    cursor: "pointer",
   } as const;
   const community = LOCALES.find((l) => l.code === settings.lang)?.community;
 
@@ -115,22 +147,24 @@ export function AppearanceSection() {
         />
       </Row>
       <Row label={t("Language")}>
-        {/* Rendered FROM the registry: adding a locale must never mean remembering to edit a picker. */}
-        <select
-          value={settings.lang}
-          /* the locale chunk is fetched BEFORE the switch — otherwise the UI flashes English */
-          onChange={(e) => {
-            const id = e.target.value as Lang;
-            void loadLocale(id).then(() => setSettings({ ...settings, lang: id }));
-          }}
-          style={selectStyle}
-        >
-          {LOCALES.map((l) => (
-            <option key={l.code} value={l.code}>
-              {l.endonym}
-            </option>
-          ))}
-        </select>
+        <PillSelect>
+          {/* Rendered FROM the registry: adding a locale must never mean remembering to edit a picker. */}
+          <select
+            value={settings.lang}
+            /* the locale chunk is fetched BEFORE the switch — otherwise the UI flashes English */
+            onChange={(e) => {
+              const id = e.target.value as Lang;
+              void loadLocale(id).then(() => setSettings({ ...settings, lang: id }));
+            }}
+            style={selectStyle}
+          >
+            {LOCALES.map((l) => (
+              <option key={l.code} value={l.code}>
+                {l.endonym}
+              </option>
+            ))}
+          </select>
+        </PillSelect>
       </Row>
       {community && (
         <Helper>
@@ -145,20 +179,25 @@ export function AppearanceSection() {
         <Helper>{t("Currency and dashboard widgets follow this budget on every device.")}</Helper>
       </div>
       <Row label={t("Currency")}>
-        <select
-          value={currency}
-          disabled={!budgetId}
-          onChange={(e) => {
-            if (budgetId) local.updateBudget(budgetId, e.target.value);
-          }}
-          style={selectStyle}
-        >
-          {CURRENCIES.map((c) => (
-            <option key={c} value={c}>
-              {c}
-            </option>
-          ))}
-        </select>
+        <PillSelect>
+          <select
+            value={currency}
+            disabled={!budgetId}
+            onChange={(e) => {
+              if (budgetId) local.updateBudget(budgetId, e.target.value);
+            }}
+            // `selectStyle`'s own `cursor: "pointer"` is an inline style — it would otherwise beat
+            // the UA stylesheet's `:disabled` cursor, showing a clickable pointer over a control
+            // that (absent a budget) cannot actually be changed.
+            style={{ ...selectStyle, cursor: budgetId ? "pointer" : "default" }}
+          >
+            {CURRENCIES.map((c) => (
+              <option key={c} value={c}>
+                {c}
+              </option>
+            ))}
+          </select>
+        </PillSelect>
       </Row>
       <ActionGroup>
         <ActionRow
