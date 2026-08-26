@@ -1,4 +1,4 @@
-import { computeStateResponse } from "@enveo/shared";
+import { computeStateResponse, type Transaction } from "@enveo/shared";
 import { useEffect, useMemo, useState } from "react";
 import { AccountEditSheet, AutomaticEnvelopeControl } from "../components/AccountEditSheet";
 import { AmountField } from "../components/AmountField";
@@ -13,7 +13,7 @@ import { useMask, useTheme } from "../lib/contexts";
 import { currentMonth, monthLabel } from "../lib/dates";
 import { useDragReorder } from "../lib/dnd";
 import { parseAmount } from "../lib/format";
-import { useT } from "../lib/i18n";
+import { type Message, useT } from "../lib/i18n";
 import { Glyph, Ico } from "../lib/icons";
 import { local } from "../lib/mutate";
 import { useWideHost } from "../lib/shellContext";
@@ -21,6 +21,32 @@ import { store } from "../lib/store";
 import { ACCOUNT_COLORS, CTA, font, P, TEAL } from "../lib/theme";
 import { AccountListRowContent } from "./AccountListRowContent";
 import { EnvelopePickerSheet } from "./add/EnvelopePickerSheet";
+
+/** Wide Accounts hero card debt-share caption (design parity wave E task 1, v3:2701-2706): below
+ *  1% would round to a flat "0%" beside a non-zero Owed figure, so this says "under 1%" instead.
+ *  The design's OWN zero-debt case reads the bare word "none" (v3:2703's `pct < 1` guard only
+ *  fires once `debtTotal !== 0`) — deliberately literal "0%" here instead: numerically identical,
+ *  and it keeps the caption's ONE placeholder a locale-neutral number+percent in every branch
+ *  except the deliberate "under 1%" rounding note, rather than smuggling a second bare English
+ *  word through as translatable data. `t` is needed only for that one branch. Extracted (out of
+ *  the review that found this three-way rounding/threshold branch shipping with zero coverage)
+ *  so the 0%/under-1%/rounded/100%-clamp boundaries are pinned by `Accounts.test.ts`, matching
+ *  the `netWorthDeltaPct`/`netWorthRangeLabel` precedent this same epic already set. */
+export function accountDebtShareText(cashTotal: number, debtTotal: number, t: (m: Message) => string): string {
+  const debtPct = cashTotal > 0 && debtTotal !== 0 ? (Math.abs(debtTotal) / cashTotal) * 100 : null;
+  return debtPct === null ? "0%" : debtPct < 1 ? t("under 1%") : `${Math.min(100, Math.round(debtPct))}%`;
+}
+
+/** Wide Accounts card sub-line transaction count (design parity wave E task 1): "touches this
+ *  account" is two-sided — a transfer's `toAccountId` counts too, the SAME rule
+ *  `AccountPanel.tsx`'s own recent-activity list documents — against the caller's transaction
+ *  list (the VIEWED month, same as every other per-month stat on `state`), never the global
+ *  replica (that's the balance's job, computed separately from `accountsNow`). Extracted for the
+ *  same reason as `accountDebtShareText` above: a two-sided membership test is exactly the kind
+ *  of thing that silently flips direction under refactor without a pinned test. */
+export function accountTransactionCount(transactions: Pick<Transaction, "accountId" | "toAccountId">[], accountId: string): number {
+  return transactions.filter((tr) => tr.accountId === accountId || tr.toAccountId === accountId).length;
+}
 
 export function AccountsScreen({
   state,
@@ -41,7 +67,12 @@ export function AccountsScreen({
   const C = useTheme();
   const M = useMask();
   const { t, tp, lang } = useT();
-  const inWide = useWideHost() !== null;
+  const wideHost = useWideHost();
+  const inWide = wideHost !== null;
+  // Design tokens fork by device on the fold branch (v3:2411 `acctCols:"1fr"` vs v3:2415's
+  // `acctCols:"1fr 1fr"` on desktop) — `fold`'s primary pane is far narrower than desktop's
+  // (viewMode.ts's `PANE_W.fold` vs `.desktop`), so a fixed 2-up grid would crush each card.
+  const acctCols = wideHost?.mode === "fold" ? "1fr" : "1fr 1fr";
   // Accounts are CURRENT-balance always (unlike envelopes) — recomputed from the replica at
   // `currentMonth()` regardless of the app's viewed month, same pattern as chrome.tsx's Drawer
   // and widgets.tsx's AccountsWidget.
@@ -63,19 +94,10 @@ export function AccountsScreen({
   // debt-only ledger renders an empty (all-`C.line`) bar, which is correct: there is no cash to
   // segment, and the caption below already says so via `debtShareText`.
   const segments = accounts.filter((a) => a.balance > 0).map((a) => ({ weight: a.balance, color: a.color }));
-  // Below 1% would round to a flat "0%" beside a non-zero Owed figure — say "under 1%" instead
-  // (design behavior, v3:2702-2706). The design's OWN zero-debt case reads the bare word "none"
-  // (v3:2703's `pct < 1` guard only fires once `debtTotal !== 0`) — deliberately literal "0%"
-  // here instead: numerically identical, and it keeps the outer caption's ONE placeholder a
-  // locale-neutral number+percent in every branch except the deliberate "under 1%" rounding
-  // note, rather than smuggling a second bare English word through as translatable data.
-  const debtPct = cashTotal > 0 && debtTotal !== 0 ? (Math.abs(debtTotal) / cashTotal) * 100 : null;
-  const debtShareText = debtPct === null ? "0%" : debtPct < 1 ? t("under 1%") : `${Math.min(100, Math.round(debtPct))}%`;
-  // Sub-line transaction count: "touches this account" is two-sided (a transfer's `toAccountId`
-  // counts too), the SAME rule `AccountPanel.tsx`'s own recent-activity list documents — against
-  // `state.transactions` (the VIEWED month, same as every other per-month stat on this state),
-  // never the global replica (that's the balance's job, computed separately above).
-  const accountTxnCount = (a: { id: string }) => state.transactions.filter((tr) => tr.accountId === a.id || tr.toAccountId === a.id).length;
+  const debtShareText = accountDebtShareText(cashTotal, debtTotal, t);
+  // Sub-line transaction count against `state.transactions` (the VIEWED month, same as every
+  // other per-month stat on this state) — see `accountTransactionCount`'s own doc comment.
+  const accountTxnCount = (a: { id: string }) => accountTransactionCount(state.transactions, a.id);
   const [add, setAdd] = useState(false);
   const [edit, setEdit] = useState<StateResponse["accounts"][number] | null>(null);
   // PR6b Task 3: on wide, a row opens the account pane instead of the edit sheet; phone (and any
@@ -216,7 +238,7 @@ export function AccountsScreen({
             </button>
           </div>
 
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+          <div style={{ display: "grid", gridTemplateColumns: acctCols, gap: 10 }}>
             {accounts.map((a) => {
               const linkedEnvelopeName = visibleAutomaticEnvelopeName(a, state.envelopes);
               const sub = linkedEnvelopeName
@@ -293,7 +315,25 @@ export function AccountsScreen({
                         e.stopPropagation();
                         setEdit(a);
                       }}
-                      style={{ cursor: "pointer", fontSize: 11, color: TEAL, fontWeight: 600 }}
+                      style={{
+                        cursor: "pointer",
+                        fontSize: 11,
+                        color: TEAL,
+                        fontWeight: 600,
+                        // House >=30x30 touch-target floor (measured, not asserted): the design's
+                        // own span (v3:975) has no padding at all — a bare 11px glyph, well under
+                        // 30 on both axes. box-sizing:border-box + min-height/min-width makes
+                        // 30x30 the TOTAL invisible box without touching the visible font/color;
+                        // `justifyContent:"flex-end"` keeps the visible text glued to the same
+                        // right edge the parent's `alignItems:"flex-end"` already places it at, so
+                        // the extra width grows only to the LEFT, invisibly.
+                        boxSizing: "border-box",
+                        display: "inline-flex",
+                        alignItems: "center",
+                        justifyContent: "flex-end",
+                        minHeight: 30,
+                        minWidth: 30,
+                      }}
                     >
                       {t("Edit")}
                     </span>
@@ -354,6 +394,16 @@ export function AccountsScreen({
                         borderRadius: 8,
                         padding: "5px 11px",
                         flexShrink: 0,
+                        // House >=30x30 touch-target floor (measured, not asserted): the design's
+                        // own pill (v3:995) has no explicit height — padding 5px + an 11.5px line
+                        // renders ~26px tall, 4px short (width already clears 30 from the padding
+                        // + "Restore" text alone). box-sizing:border-box + min-height makes 30 the
+                        // TOTAL box height without touching the visible padding/font/color/radius.
+                        boxSizing: "border-box",
+                        display: "inline-flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        minHeight: 30,
                       }}
                     >
                       {t("Restore")}
