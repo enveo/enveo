@@ -12,6 +12,7 @@ import { LazyChunk } from "../lazy";
 import { AccountPanel } from "./AccountPanel";
 import { EnvelopePanel } from "./EnvelopePanel";
 import type { PanelView } from "./panel";
+import { TxnPanel } from "./TxnPanel";
 
 // Vite dedupes a dynamically-imported module by its resolved id: App.tsx already `lazy()`s
 // `screens/Reports` for the phone full-screen stack, so this does NOT create a second chunk for
@@ -128,6 +129,8 @@ export function PanelHost({
   onEditTxn,
   onEditAccountTxn,
   onEditEnvelopeTxn,
+  onEditTxnPanel,
+  onDuplicateTxnPanel,
   onPrev,
   onNext,
   editTxn,
@@ -159,12 +162,20 @@ export function PanelHost({
 
 
   onEditEnvelopeTxn: (t: Transaction) => void;
+  /** Design parity wave C task 3: the `txn` kind's OWN Edit entry point — the SAME
+   *  `editTxnFrom(t, "transactions")` binding `TransactionsScreen`'s own primary-pane row click
+   *  already uses (App.tsx's `editTxnFromList`), not the shared `onEditTxn` above (hardcoded
+   *  "reports" for the panel's report-subview instance). */
+  onEditTxnPanel: (t: Transaction) => void;
+  
+
+  onDuplicateTxnPanel: (t: Transaction) => void;
   onPrev: () => void;
   onNext: () => void;
   
 
   editTxn: Transaction | null;
-  addPreset: { tab?: AddTab; importSheet?: boolean };
+  addPreset: { tab?: AddTab; importSheet?: boolean; duplicateFrom?: Transaction };
   onDoneEdit: () => void;
 }) {
   const C = useTheme();
@@ -182,7 +193,21 @@ export function PanelHost({
             (state.accounts.find((a) => a.id === view.accountId)?.name ?? "")
           : view.kind === "envelope"
             ? (state.envelopes.find((e) => e.id === view.envelopeId)?.name ?? "")
-            : "";
+            : view.kind === "txn"
+              ? 
+
+
+
+
+
+
+                (() => {
+                  const tx = state.transactions.find((x) => x.id === view.txnId);
+                  if (!tx) return "";
+                  const txEnv = tx.envelopeId ? state.envelopes.find((e) => e.id === tx.envelopeId) : null;
+                  return tx.name || tx.note || txEnv?.name || (tx.items.length ? t("Split transaction") : t("Transaction"));
+                })()
+              : "";
 
   const body = (() => {
     switch (view.kind) {
@@ -243,16 +268,47 @@ export function PanelHost({
           <AccountPanel accountId={view.accountId} envelopes={state.envelopes} groups={state.groups} onOpenTxns={onOpenTxns} onEditTxn={onEditAccountTxn} />
         );
       case "add":
-        
-
-
-
-
-
-
-
-
-        return <AddScreen state={state} editTxn={editTxn} onDone={onDoneEdit} initialTab={addPreset.tab} initialImport={addPreset.importSheet} />;
+        // AddScreen already ships in the EAGER bundle (App.tsx: "AddScreen with the whole
+        // transaction-entry subtree" — the app's most-repeated action), so unlike EnvelopeScreen/
+        // ReportsScreen/EnvelopesOptions above there is no separate chunk to `lazy()`/dedupe here:
+        // a plain static import just references the already-loaded module. `AddHeader`'s own back
+        // arrow (rendered inside `AddScreen`) IS this pane's close per D5/D4's mockup-inconsistency
+        // note — it calls the SAME `onDoneEdit` the header ✕ above calls (see `WideShell`'s
+        // `closePanel`), so the two paths can't disagree here either. Live since PR6 Task 5
+        // (which removed `App.tsx`'s interim phone-column takeover for `screen === "addExpense"`
+        // on wide): this now renders on every "+ Add" press and every row-edit entry. `duplicateFrom`
+        // (design parity wave C task 3) rides the SAME preset bag `initialTab`/`initialImport`
+        // already do — one more one-shot mount-time seed, not a new state channel.
+        return (
+          <AddScreen
+            state={state}
+            editTxn={editTxn}
+            onDone={onDoneEdit}
+            initialTab={addPreset.tab}
+            initialImport={addPreset.importSheet}
+            duplicateFrom={addPreset.duplicateFrom}
+          />
+        );
+      case "txn":
+        // Design parity wave C task 3: the real read-only detail card (TxnPanel.tsx) — kind label
+        // → amount hero → payee → date · category → bordered Envelope/Account/Note field group →
+        // two stat lines → Edit/Duplicate/Delete pills + inline delete-confirm. `HINT_COPY.generic`
+        // above stays the no-selection copy for a genuinely empty transaction list; TxnPanel's own
+        // file header covers the separate "vanished" case defensively. `key`: TxnPanel's own local
+        // delete-confirm state must NOT survive a switch to a DIFFERENT transaction — deleting the
+        // open one falls the panel back to another `id` in the same render position, and without a
+        // key React would keep the same instance (and its `confirmDelete=true`) alive underneath it.
+        return (
+          <TxnPanel
+            key={view.txnId}
+            txnId={view.txnId}
+            state={state}
+            month={month}
+            onOpenEnvelope={onOpenEnvelope}
+            onEditTxn={onEditTxnPanel}
+            onDuplicateTxn={onDuplicateTxnPanel}
+          />
+        );
       default:
         return assertNever(view);
     }

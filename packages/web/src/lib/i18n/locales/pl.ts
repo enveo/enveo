@@ -53,6 +53,7 @@ export const pl: Dict = {
   "Category merge": "Scalenie kategorii",
   Collapse: "Zwiń",
   "Delete “{name}” for good? It is not used by any transaction.": "Usunąć „{name}” na zawsze? Nie używa go żadna transakcja.",
+  "Delete “{name}”?": "Usunąć „{name}”?",
   "Envelopes stay as they are — you assigned this by hand.": "Koperty zostają bez zmian — rozdysponowałeś to ręcznie.",
   "Excess {amount}": "Nadmiar {amount}",
   "Exclude from the total": "Wyklucz z sumy",
@@ -83,6 +84,7 @@ export const pl: Dict = {
     "Sejf kluczy na serwerze nie jest skonfigurowany. Poproś operatora serwera o jego włączenie.",
   AVAILABLE: "DOSTĘPNE",
   Account: "Konto",
+  "Account balance": "Saldo konta",
   "About {n}× the cost of the cheapest tier.": "Około {n}× ceny najtańszego wariantu.",
   "Account change": "Zmiana konta",
   "Account deletion": "Usunięcie konta",
@@ -317,6 +319,7 @@ export const pl: Dict = {
   "Encryption password (min. 10 characters)": "Hasło szyfrowania (min. 10 znaków)",
   Envelope: "Koperta",
   "Envelope allocation": "Przydział do koperty",
+  "Envelope available after this": "Dostępne w kopercie po tej transakcji",
   "Envelope budgeting: assign your income to envelopes and always know how much you can still spend.":
     "Budżet metodą kopert: rozdzielasz dochody do kopert i zawsze wiesz, ile możesz jeszcze wydać.",
   "Envelope budgets": "Budżety kopert",
@@ -446,6 +449,7 @@ export const pl: Dict = {
     "Lokalna kopia nie zostanie zapisana. Sesja w przeglądarce kończy się wraz z zamknięciem aplikacji.",
   "No connection — changes are queued and will send automatically.": "Brak połączenia — zmiany czekają w kolejce i wyślą się automatycznie.",
   "No matches": "Brak wyników",
+  "No note": "Brak notatki",
   "No spending in this period.": "Brak wydatków w tym okresie.",
   "No spending this month.": "Brak wydatków w tym miesiącu.",
   "No transactions were recognized in the screenshots.": "Nie rozpoznano żadnych transakcji na zrzutach.",
@@ -456,6 +460,7 @@ export const pl: Dict = {
   "Not enough history yet — trends appear after two months of spending.": "Za mało historii — trendy pojawiają się po dwóch miesiącach wydatków.",
   "Not sending": "Nie wysyłam",
   "Not syncing with your account": "Brak synchronizacji z kontem",
+  Note: "Notatka",
   "Nothing is open in this panel yet.": "Ten panel jest jeszcze pusty.",
   Off: "Wył.",
   Offline: "Offline",
@@ -575,6 +580,7 @@ export const pl: Dict = {
   "Source: {src}": "Źródło: {src}",
   Spending: "Wydatki",
   "Spending · by envelope": "Wydatki · według koperty",
+  "Spent in {envelope} this month": "Wydatki w kopercie „{envelope}” w tym miesiącu",
   "Split across envelopes": "Podział na koperty",
   "Split transaction": "Podzielona",
   "Start from scratch": "Zacznij od nowa",
@@ -604,9 +610,12 @@ export const pl: Dict = {
     "Usługa AI odpowiadała zbyt długo — nic nie zostało zmienione. Spróbuj ponownie za chwilę.",
   "The OpenAI key changed on another device. Refresh its status and try again.":
     "Klucz OpenAI zmienił się na innym urządzeniu. Odśwież jego status i spróbuj ponownie.",
+  "The account balance is restored. This cannot be undone.": "Saldo konta zostaje przywrócone. Tej operacji nie można cofnąć.",
   "The account “{name}” will disappear from the Start screen and lists (you will find it under “Closed” on the Accounts screen). Its transactions and balance still count in the budget and reports.\n\nArchive it?":
     'Konto „{name}" zniknie z ekranu Start i list (znajdziesz je w „Zamknięte" na ekranie Konta). Transakcje i saldo nadal liczą się w budżecie i raportach.\n\nArchiwizować?',
   "The agent proposed no distribution — refine your prompt.": "Agent nie zaproponował podziału — doprecyzuj prompt.",
+  "The amount goes back to {envelope} and the account balance is restored. This cannot be undone.":
+    "Kwota wraca do koperty „{envelope}”, a saldo konta zostaje przywrócone. Tej operacji nie można cofnąć.",
   "The app talks to OpenAI directly from this browser using your own key — bypassing the server.":
     "Aplikacja łączy się z OpenAI bezpośrednio z tej przeglądarki, używając Twojego klucza — z pominięciem serwera.",
   "The backup is corrupted and was not loaded: {detail}": "Kopia jest uszkodzona i nie została wczytana: {detail}",
