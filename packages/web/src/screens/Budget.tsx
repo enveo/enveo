@@ -41,6 +41,7 @@ export function BudgetScreen({
   onFillGoalsConsumed,
   manageOpen,
   onManageOpen,
+  selectedEnvelopeId,
 }: {
   state: StateResponse;
   month: string;
@@ -62,6 +63,12 @@ export function BudgetScreen({
   /** "Manage envelopes" sheet open state — App-owned so the wide shell's band right-slot (PR4 §13) can trigger it too. */
   manageOpen: boolean;
   onManageOpen: (open: boolean) => void;
+  /** Design parity wave C1 (gap 5): the envelope App's `resolvePanel` is currently showing in the
+   *  wide panel (explicit selection or the never-empty fallback) — `null` on phone, and on wide
+   *  whenever the panel isn't actually showing one of THIS screen's rows (panel closed, or an Add
+   *  takeover has stolen it). Drives the table's selected-row treatment only; never a second
+   *  navigation source (owner rule 3) — App derives it from the same state `resolvePanel` reads. */
+  selectedEnvelopeId: string | null;
 }) {
   const C = useTheme();
   const M = useMask();
@@ -180,66 +187,75 @@ export function BudgetScreen({
           <Header month={month} onMenu={onMenu} onPrev={onPrev} onNext={onNext} onRight={() => onManageOpen(true)} rightIcon="pencil" onBand={band} />
         )}
       </div>
-      <CardBox style={{ margin: `8px ${P}px 10px`, padding: "10px 14px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
-        <div style={{ minWidth: 0 }}>
-          <div style={{ fontSize: 10.5, color: C.soft }}>{t("To be budgeted:")}</div>
-          {tbbLive === 0 ? (
-            <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 15, fontWeight: 750, color: C.pos, whiteSpace: "nowrap" }}>
-              <Ico d="M5 13l4 4L19 7" size={15} color={C.pos} sw={2.4} />
-              {t("All money assigned")}
-            </div>
-          ) : (
-            <div
-              style={{
-                fontSize: 20,
-                fontWeight: 800,
-                letterSpacing: "-0.015em",
-                fontVariantNumeric: "tabular-nums",
-                color: tbbLive < 0 ? C.neg : hc("var(--cta)", C.pos),
-              }}
-            >
-              {M(tbbLive)}
-            </div>
-          )}
-          {canFillGoals && (
-            <button
-              onClick={() => setFillGoals(true)}
-              style={{
-                marginTop: 2,
-                padding: 0,
-                background: "none",
-                border: "none",
-                color: hc("var(--cta)", TEAL),
-                fontSize: 11,
-                fontWeight: 600,
-                cursor: "pointer",
-                fontFamily: font,
-              }}
-            >
-              {t("Fill by goals")}
-            </button>
-          )}
-        </div>
-        <button
-          onClick={() => setSuggest(true)}
-          aria-label={t("Suggest a distribution")}
-          style={{
-            flexShrink: 0,
-            padding: "6px 13px",
-            borderRadius: 999,
-            border: `1.5px solid ${hc("var(--cta)", "var(--accent)")}`,
-            background: "transparent",
-            color: hc("var(--cta)", TEAL),
-            fontSize: 11.5,
-            fontWeight: 700,
-            cursor: "pointer",
-            fontFamily: font,
-          }}
-        >
-          {"✨ "}
-          {t("Suggest")}
-        </button>
-      </CardBox>
+      {/* Design parity wave C1 (gap 4): this card is the design's fold/phone-only `statsCardDisplay`
+          (v3:4143, `isFold && screen !== "settings"`) — on desktop the rail's own TBB card (Rail.tsx)
+          is the SINGLE source, so rendering this one too was a straight duplicate that pushed the
+          whole table down ~100px for the same number shown twice. `wideHost?.mode !== "desktop"` is
+          `true` on phone (no host) and fold, `false` on desktop — not rendered at all there (not just
+          hidden), so desktop's primary pane starts at the table header, no stray "To be budgeted:"
+          text left in the DOM for a probe to trip over. */}
+      {wideHost?.mode !== "desktop" && (
+        <CardBox style={{ margin: `8px ${P}px 10px`, padding: "10px 14px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+          <div style={{ minWidth: 0 }}>
+            <div style={{ fontSize: 10.5, color: C.soft }}>{t("To be budgeted:")}</div>
+            {tbbLive === 0 ? (
+              <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 15, fontWeight: 750, color: C.pos, whiteSpace: "nowrap" }}>
+                <Ico d="M5 13l4 4L19 7" size={15} color={C.pos} sw={2.4} />
+                {t("All money assigned")}
+              </div>
+            ) : (
+              <div
+                style={{
+                  fontSize: 20,
+                  fontWeight: 800,
+                  letterSpacing: "-0.015em",
+                  fontVariantNumeric: "tabular-nums",
+                  color: tbbLive < 0 ? C.neg : hc("var(--cta)", C.pos),
+                }}
+              >
+                {M(tbbLive)}
+              </div>
+            )}
+            {canFillGoals && (
+              <button
+                onClick={() => setFillGoals(true)}
+                style={{
+                  marginTop: 2,
+                  padding: 0,
+                  background: "none",
+                  border: "none",
+                  color: hc("var(--cta)", TEAL),
+                  fontSize: 11,
+                  fontWeight: 600,
+                  cursor: "pointer",
+                  fontFamily: font,
+                }}
+              >
+                {t("Fill by goals")}
+              </button>
+            )}
+          </div>
+          <button
+            onClick={() => setSuggest(true)}
+            aria-label={t("Suggest a distribution")}
+            style={{
+              flexShrink: 0,
+              padding: "6px 13px",
+              borderRadius: 999,
+              border: `1.5px solid ${hc("var(--cta)", "var(--accent)")}`,
+              background: "transparent",
+              color: hc("var(--cta)", TEAL),
+              fontSize: 11.5,
+              fontWeight: 700,
+              cursor: "pointer",
+              fontFamily: font,
+            }}
+          >
+            {"✨ "}
+            {t("Suggest")}
+          </button>
+        </CardBox>
+      )}
 
       <div style={{ display: "grid", gridTemplateColumns: COLS, padding: `0 ${P}px 6px`, gap: 8, alignItems: "start" }}>
         <span style={{ fontSize: 10.5, color: C.mute, fontWeight: 600, letterSpacing: 1, textTransform: "uppercase" }}>{t("Envelope")}</span>
@@ -281,7 +297,10 @@ export function BudgetScreen({
         const gV = items.reduce((s, e) => s + e.available, 0);
         return (
           <div key={g.id} className="fu" style={{ animationDelay: `${gi * 40}ms`, marginBottom: 2 }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", padding: "7px 18px 4px" }}>
+            {/* Design parity wave C1 (gap 9): design's group header padding is `5px 10px 3px`
+                (v3:264) at every wide width (fold and desktop share this row — it isn't gated on
+                `desktopInput`); phone keeps its own denser-but-larger padding unchanged. */}
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", padding: inWide ? "5px 10px 3px" : "7px 18px 4px" }}>
               <span style={{ fontSize: 12, fontWeight: 750, color: C.text }}>{g.name}</span>
               <span style={{ fontSize: 10, color: C.soft, fontVariantNumeric: "tabular-nums" }}>
                 {M(gA)} · {M(gV)}
@@ -297,6 +316,11 @@ export function BudgetScreen({
                 const neg = avail < 0;
                 const zero = avail === 0;
                 const gp = goalProgress(e);
+                // Design parity wave C1 (gap 5): the row currently open in the panel — the SAME
+                // `selectedEnvelopeId` App derives for `resolvePanel` (owner rule 3), never a second
+                // "what's open" check. Four-part treatment below mirrors v3:2464-2470 exactly:
+                // bold+accent name, "▸" mark, edge-to-edge `selBg`, suppressed divider.
+                const selected = selectedEnvelopeId === e.id;
                 return (
                   <div
                     key={e.id}
@@ -305,13 +329,20 @@ export function BudgetScreen({
                     style={{
                       display: "grid",
                       gridTemplateColumns: COLS,
-                      padding: "6px 0",
+                      // Edge-to-edge selection bleed (v3:270): row padding matches the CardBox's own
+                      // 12px horizontal padding, and the equal-and-opposite negative margin lets the
+                      // row's background reach the card's edges while leaving the CONTENT at the same
+                      // horizontal position as an unselected row (the padding/margin cancel out) —
+                      // applied to every row, not just the selected one, so nothing shifts on select.
+                      padding: "6px 12px",
+                      margin: "0 -12px",
                       gap: 8,
-                      width: "100%",
                       boxSizing: "border-box",
                       cursor: "pointer",
                       alignItems: "center",
-                      borderBottom: ei === items.length - 1 ? "none" : `1px solid ${C.line}`,
+                      background: selected ? C.selBg : "transparent",
+                      borderRadius: selected ? 8 : 0,
+                      borderBottom: ei === items.length - 1 || selected ? "none" : `1px solid ${C.line}`,
                     }}
                   >
                     <div style={{ display: "flex", alignItems: "center", gap: 9, minWidth: 0 }}>
@@ -340,7 +371,11 @@ export function BudgetScreen({
                           style={{
                             display: "block",
                             fontSize: 14.5,
-                            color: C.text,
+                            fontWeight: selected ? 650 : 400,
+                            // `Theme` has no `accent` field (it's a CSS var, set per light/dark mode
+                            // from `ThemeDef.accent`/`accentDark` — see theme.ts); every other accent
+                            // reference in this file goes through the same `var(--accent)` string.
+                            color: selected ? "var(--accent)" : C.text,
                             overflow: "hidden",
                             textOverflow: "ellipsis",
                             whiteSpace: "nowrap",
@@ -377,6 +412,11 @@ export function BudgetScreen({
                           </span>
                         )}
                       </div>
+                      {/* Always rendered (v3:277 — `openMark` is "" when not selected), so the flex
+                          gap never shifts the row's content width on select/deselect. */}
+                      <span style={{ fontSize: 12, color: "var(--accent)", flexShrink: 0 }} aria-hidden="true">
+                        {selected ? "▸" : ""}
+                      </span>
                     </div>
                     <div style={{ position: "relative" }}>
                       <AllocCell
@@ -410,6 +450,14 @@ export function BudgetScreen({
           </div>
         );
       })}
+
+      {/* Design parity wave C1 (gap 6): the design's persistent affordance hint under the envelope
+          list (v3:289) — documents the Allocated cell's arithmetic-entry behaviour for the whole
+          table. Wide-only (`inWide`, both fold and desktop — the design doesn't gate this on device
+          mode either): phone's docked numpad already surfaces its own ✓/✕ affordance inline. */}
+      {inWide && (
+        <div style={{ padding: `0 ${P}px 10px`, fontSize: 11, color: C.mute }}>{t("Type in an Allocated cell — + − × ÷ work, ⏎ saves, Esc cancels")}</div>
+      )}
 
       <EnvManageSheet show={manageOpen} state={state} onClose={() => onManageOpen(false)} />
       {suggestOpened && (

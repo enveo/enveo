@@ -561,6 +561,14 @@ export default function App() {
   // (`WideShell`'s bag, the Accounts row highlight just below, itself already `wide`-gated) — so a
   // phone render no longer pays for this sort+filter every time, only to discard the result.
   const fallbacks = wide && state ? panelFallbacks(state, month, state.transactions) : null;
+  // Design parity wave C1 (gap 5): the Budget table's own selected-row treatment reads the SAME
+  // envelope the panel is showing — never a second "what's selected" channel (owner rule 3, "one
+  // pane machine"). Mirrors `resolvePanel`'s own envelope resolution for the budget/start screens
+  // (explicit `envView`, else the never-empty fallback), gated to when the panel can actually be
+  // showing it (`wide`, panel open, and the real `screen` — not `primaryScreen`, so an open Add
+  // takeover, which steals the panel via `resolvePanel`'s `add` kind, clears the highlight too).
+  const budgetSelectedEnvelopeId =
+    wide && !panelClosed && (screen === "budget" || screen === "start") ? (envView?.envelopeId ?? fallbacks?.firstEnvelopeId ?? null) : null;
   // The per-screen switch, built off `primaryScreen` rather than raw `screen` (PR6 Task 5) — on
   // phone the two are always identical, so this changes zero phone pixels; on wide, while Add is
   // open, `primaryScreen` is `editReturn`, so this renders the screen Add returns to (the primary
@@ -600,6 +608,7 @@ export default function App() {
             onFillGoalsConsumed={() => setBudgetFillGoals(false)}
             manageOpen={manageOpen}
             onManageOpen={setManageOpen}
+            selectedEnvelopeId={budgetSelectedEnvelopeId}
           />
         </LazyChunk>
       )}
