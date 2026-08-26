@@ -520,7 +520,9 @@ export const pl: Dict = {
   "Rebuild data on this device": "Odbuduj dane na tym urządzeniu",
   "Rebuilding…": "Odbudowywanie…",
   "Recent activity": "Ostatnia aktywność",
-  "Recent in {name}": "Ostatnie w {name}",
+  
+
+  "Recent in {name}": "Ostatnie: {name}",
   "Recognized transactions": "Rozpoznane transakcje",
   "Recognizing…": "Rozpoznawanie…",
   Reconcile: "Wyrównaj",
