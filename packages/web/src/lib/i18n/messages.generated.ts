@@ -296,6 +296,7 @@ export const MESSAGES = [
   "Filled {amount} in {name}",
   "Filter",
   "Filter:",
+  "Filters",
   "Finance & shopping",
   "Food & drink",
   "From",
@@ -556,6 +557,7 @@ export const MESSAGES = [
   "Saving…",
   "Screenshot {n}",
   "Screenshots ({n}/6)",
+  "Search transactions…",
   "Search...",
   "Search…",
   "Select these",
@@ -908,6 +910,7 @@ export const MESSAGES = [
   "{n} transaction · avg {avg} · largest {largest} | {n} transactions · avg {avg} · largest {largest}",
   "{pct}% of net worth",
   "{place} — add details",
+  "{shown} of {total} transactions | {shown} of {total} transactions",
   "{sym}/mo"
 ] as const;
 export type Message = (typeof MESSAGES)[number];

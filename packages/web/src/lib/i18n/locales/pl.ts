@@ -345,6 +345,7 @@ export const pl: Dict = {
   "Fill by goals": "Wypełnij wg celów",
   Filter: "Filtruj",
   "Filter:": "Filtr:",
+  Filters: "Filtry",
   "Finance & shopping": "Finanse i zakupy",
   "Food & drink": "Jedzenie",
   "From screenshot": "Ze zrzutu",
@@ -543,6 +544,7 @@ export const pl: Dict = {
   "Screenshot {n}": "Zrzut {n}",
   "Screenshots ({n}/6)": "Zrzuty ekranu ({n}/6)",
   "Search...": "Szukaj: nazwa, miejsce, kwota…",
+  "Search transactions…": "Szukaj transakcji…",
   "Search…": "Szukaj…",
   Selected: "Wybrane",
   "Selected ({n})": "Wybrane ({n})",
@@ -1151,6 +1153,15 @@ export const pl: Dict = {
     few: "{n} z {m} kopert są w porządku",
     many: "{n} z {m} kopert jest w porządku",
     other: "{n} z {m} kopert jest w porządku",
+  },
+  // "transakcji" is the genitive of "transakcja" in BOTH singular and plural — invariant across
+  // every CLDR category, so all four forms carry the same text (like "{n} of {m} envelopes"
+  // above, whose noun is likewise invariant regardless of which count drives the category).
+  "{shown} of {total} transactions | {shown} of {total} transactions": {
+    one: "{shown} z {total} transakcji",
+    few: "{shown} z {total} transakcji",
+    many: "{shown} z {total} transakcji",
+    other: "{shown} z {total} transakcji",
   },
   "{n} step to a closed plan · {pct}% of the month gone | {n} steps to a closed plan · {pct}% of the month gone": {
     one: "{n} krok do zamkniętego planu · {pct}% miesiąca za nami",
