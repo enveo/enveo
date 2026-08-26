@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useMask, useTheme } from "../../lib/contexts";
 import { useT } from "../../lib/i18n";
+import { useWideHost } from "../../lib/shellContext";
 import { font, TEAL } from "../../lib/theme";
 import {
   emptyTransactionFilters,
@@ -9,7 +10,7 @@ import {
   type TransactionFilters,
   type TransactionKind,
 } from "../../lib/transactionSearch";
-import { amountSummary, selectionSummary } from "./TransactionFilterSheet";
+import { activeFilterCount, amountSummary, selectionSummary } from "./TransactionFilterSheet";
 
 type Named = { id: string; name: string; color?: string };
 
@@ -18,8 +19,11 @@ type Named = { id: string; name: string; color?: string };
  * appears directly under the search bar on wide, welding the two into one bordered card
  * (`Transactions.tsx` owns the corner/border welding — this component is only the body). Lazy
  * from `Transactions.tsx` (§0.8): that screen module is shared by phone and wide alike (one
- * chunk, `App.tsx`'s own `lazy()`), so the 6-column grid + amount UI lives in its OWN chunk,
- * fetched only the first time a wide user opens Filters — a phone user never requests it.
+ * chunk, `App.tsx`'s own `lazy()`), so the column grid + amount UI lives in its OWN chunk, fetched
+ * only the first time a wide user opens Filters — a phone user never requests it. The grid itself
+ * is 2-column on fold / 6-column on desktop (v3:2408 vs v3:2415, `filterCols`/`filterOptMax`
+ * below) — this component mounts on both breakpoints, so it reads `useWideHost()?.mode` itself
+ * rather than hardcoding the desktop numbers.
  *
  * Reuses `TransactionFilters`/`activeFilterCount`'s model and the option lists `Transactions.tsx`
  * already builds (archived-but-referenced envelopes/accounts included) — NOT
@@ -67,6 +71,13 @@ export function WideFilterPanel({ filters, setFilters, matchCount, envelopes, ac
   const C = useTheme();
   const M = useMask();
   const { t, tp } = useT();
+  // Design values fork on breakpoint (v3:2408 fold vs v3:2415 desktop) — this panel mounts on
+  // BOTH (`Transactions.tsx`'s `inWide` gate is `useWideHost() !== null`, true for fold too), so
+  // the 6-column/148px desktop numbers must not be hardcoded for fold's narrower 484px primary
+  // pane. Same `wideHost?.mode === "fold"` idiom as Budget.tsx/Envelope.tsx/EnvelopePanel.tsx.
+  const isFold = useWideHost()?.mode === "fold";
+  const filterCols = isFold ? "repeat(2, minmax(0, 1fr))" : "repeat(6, minmax(0, 1fr))";
+  const filterOptMax = isFold ? 116 : 148;
 
   const [amtMode, setAmtMode] = useState<"exact" | "range">(filters.amount?.mode ?? "exact");
   const [exactText, setExactText] = useState(() => (filters.amount?.mode === "exact" ? String(filters.amount.minor / 100).replace(".", ",") : ""));
@@ -79,7 +90,23 @@ export function WideFilterPanel({ filters, setFilters, matchCount, envelopes, ac
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
+      if (e.key !== "Escape") return;
+      // Scoped like `WideShell`'s own Escape handler (`panelContains`, WideShell.tsx:628): this
+      // body is primary-pane furniture, so an Escape meant for an edit happening in the UNRELATED
+      // right panel (e.g. a plain note field with no `stopPropagation` of its own — only the
+      // desktop `AmountField` variant does that) must not also collapse this block. `[data-wide-
+      // panel]` is the same stable test hook WideShell already stamps on that column.
+      //
+      // Checked on `e.target` (fixed at dispatch), NOT `document.activeElement` (measured live —
+      // browser-verified this matters): `window`'s listener runs AFTER `document`'s in native
+      // bubble order, and WideShell's OWN Escape handler synchronously moves focus OUT of the
+      // panel to `[data-panel-toggle]` (its documented focus-restore, WideShell.tsx:632) before
+      // this handler ever runs. Reading `document.activeElement` here would then always see the
+      // toggle button in the PRIMARY pane and wrongly conclude "not in the panel", collapsing this
+      // block anyway on the very keypress this guard exists to ignore. `e.target` still points at
+      // the field the Escape actually originated from, immune to that side effect.
+      if ((e.target as Element | null)?.closest("[data-wide-panel]")) return;
+      onClose();
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
@@ -232,10 +259,13 @@ export function WideFilterPanel({ filters, setFilters, matchCount, envelopes, ac
     });
   if (filters.amount) chips.push({ key: "amount", label: t("Amount"), value: amountSummary(filters, M, notFiltered), onRemove: clearAmount });
 
-  const filterCount =
-    [filters.kinds, filters.placeIds, filters.categoryIds, filters.envelopeIds, filters.accountIds].filter((s) => s.size > 0).length + (filters.amount ? 1 : 0);
+  const filterCount = activeFilterCount(filters);
 
   const eyebrowStyle = { fontSize: 9.5, fontWeight: 750, letterSpacing: "0.14em", textTransform: "uppercase" as const, color: C.mute };
+  // The top-left "Filter" super-label is visibly bigger/more spaced than the column headers below
+  // it (v3:312 vs v3:332/347: 10.5px/0.16em there, 9.5px/0.14em here) — a deliberate design
+  // distinction, not the same eyebrow reused twice.
+  const filterLabelStyle = { ...eyebrowStyle, fontSize: 10.5, letterSpacing: "0.16em" };
   const summaryLineStyle = { fontSize: 10.5, color: C.soft, overflow: "hidden" as const, textOverflow: "ellipsis" as const, whiteSpace: "nowrap" as const };
   const amountInputStyle = {
     width: "100%",
@@ -265,7 +295,7 @@ export function WideFilterPanel({ filters, setFilters, matchCount, envelopes, ac
       }}
     >
       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-        <span style={eyebrowStyle}>{t("Filter")}</span>
+        <span style={filterLabelStyle}>{t("Filter")}</span>
         {chips.length === 0 && <span style={{ fontSize: 11.5, color: C.mute }}>{t("Narrow transactions by specific fields")}</span>}
         <div style={{ flex: 1 }} />
         <span style={{ fontSize: 11, color: C.soft, fontVariantNumeric: "tabular-nums" }}>
@@ -303,7 +333,21 @@ export function WideFilterPanel({ filters, setFilters, matchCount, envelopes, ac
               <button
                 onClick={chip.onRemove}
                 aria-label={t("Remove this filter")}
-                style={{ background: "none", border: "none", padding: 0, cursor: "pointer", color: C.mute, fontSize: 11, fontFamily: font }}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  flexShrink: 0,
+                  minWidth: 30,
+                  minHeight: 30,
+                  background: "none",
+                  border: "none",
+                  padding: 0,
+                  cursor: "pointer",
+                  color: C.mute,
+                  fontSize: 11,
+                  fontFamily: font,
+                }}
               >
                 ✕
               </button>
@@ -312,12 +356,12 @@ export function WideFilterPanel({ filters, setFilters, matchCount, envelopes, ac
         </div>
       )}
 
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(6, minmax(0, 1fr))", gap: 10, borderTop: `1px solid ${C.line}`, paddingTop: 9 }}>
+      <div style={{ display: "grid", gridTemplateColumns: filterCols, gap: 10, borderTop: `1px solid ${C.line}`, paddingTop: 9 }}>
         {columns.map((col) => (
           <div key={col.key} style={{ minWidth: 0, display: "flex", flexDirection: "column", gap: 5 }}>
             <span style={eyebrowStyle}>{col.title}</span>
             <span style={summaryLineStyle}>{col.summary}</span>
-            <div style={{ display: "flex", flexDirection: "column", gap: 1, maxHeight: 148, overflowY: "auto" }}>
+            <div style={{ display: "flex", flexDirection: "column", gap: 1, maxHeight: filterOptMax, overflowY: "auto" }}>
               {col.options.map((option) => (
                 <button
                   key={option.id}
