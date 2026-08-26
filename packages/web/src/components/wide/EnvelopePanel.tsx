@@ -280,7 +280,7 @@ export function EnvelopePanel({
         <span style={{ fontSize: 13, fontWeight: 600, color: C.text }}>{t("Transactions in {name}", { name: env.name })}</span>
         <button
           onClick={() => onOpenTxns({ envId: envelopeId })}
-          // minHeight 30 — the padding-less text button (v3:1076, 11.5px/600) measures well under
+          // minHeight 30 — the padding-less text button (v3:1076, 11.5px) measures well under
           // the 30px tap floor every other affordance on this panel clears; flex + alignItems
           // centers the text in the taller box without touching the design's visible size/weight.
           // alignSelf "center" opts THIS item out of the row's `alignItems: "baseline"` (measured:
@@ -294,7 +294,9 @@ export function EnvelopePanel({
             minHeight: 30,
             cursor: "pointer",
             fontSize: 11.5,
-            fontWeight: 600,
+            // 650 per the wave-C re-review (the weight every sibling accent link in the design
+            // carries — "All transactions ›" v3:449, "Check for updates" v3:166).
+            fontWeight: 650,
             color: TEAL,
             background: "transparent",
             border: "none",

@@ -673,9 +673,16 @@ export default function App() {
             // Design parity wave C task 3 (owner rule 1's list/panel sync, gap 9): on wide a row
             // click SELECTS (never edits) — the effective id (an explicit pick, else the SAME
             // filtered-list fallback the panel itself falls back to) drives the row highlight.
-            // `null` off wide, unchanged (phone has no panel to stay in sync with, the
-            // `AccountsScreen`/`BudgetScreen` precedent above).
-            selectedTxnId={wide ? (txnView?.txnId ?? null) : null}
+            // Gated exactly like `budgetSelectedEnvelopeId` above (one source of truth, no new
+            // state): only while the panel is open AND `resolvePanel` is actually showing the txn
+            // pane — the real `screen` (an Add takeover flips it off "transactions") and `!envView`
+            // (which wins `resolvePanel` on ANY screen) mirror that resolution. Outside the gate
+            // the prop is `null` ("no highlight at all", the prop's contract — a collapsed panel
+            // must not leave an accent/▸/selBg row no panel is showing); inside it, an absent
+            // explicit pick flows through as `undefined` so TransactionsScreen applies its own
+            // filtered first-row fallback. `null` off wide, unchanged (phone has no panel to stay
+            // in sync with, the `AccountsScreen`/`BudgetScreen` precedent above).
+            selectedTxnId={wide && !panelClosed && screen === "transactions" && !envView ? txnView?.txnId : null}
             onSelectTxn={(id) => setTxnView({ txnId: id })}
           />
         </LazyChunk>

@@ -51,12 +51,14 @@ export function TransactionsScreen({
   filters: TransactionFilters;
   setFilters: (filters: TransactionFilters) => void;
   /** Design parity wave C task 3 (owner rule 2): on wide, a row click SELECTS the txn panel's
-   *  content instead of opening the editor — `null`/absent on phone (`inWide` below gates the
-   *  actual fork), matching the `AccountsScreen`/`BudgetScreen` `selected*Id` precedent. An
-   *  explicit pick from App's `txnView`; `undefined`/`null` here means "nothing explicitly
-   *  selected" and this component falls back to its OWN first FILTERED row (`txns[0]` below) —
-   *  the one place that can, since App's own fallback table is deliberately unfiltered
-   *  (panel.ts's own comment). */
+   *  content instead of opening the editor — matching the `AccountsScreen`/`BudgetScreen`
+   *  `selected*Id` precedent. Three-state, because App owns "is the panel showing this list's txn
+   *  pane" while only THIS component owns the filtered fallback row: a string is App's explicit
+   *  `txnView` pick; `undefined` means "panel showing the txn pane, nothing explicitly picked" and
+   *  this component falls back to its OWN first FILTERED row (`txns[0]` below — the one place that
+   *  can, since App's own fallback table is deliberately unfiltered, panel.ts's own comment);
+   *  `null` means "no panel is showing a row of this list" (collapsed panel, envelope pane over
+   *  it, Add takeover, or phone) — NO highlight, fallback included. */
   selectedTxnId?: string | null;
   onSelectTxn?: (id: string) => void;
 }) {
@@ -124,9 +126,10 @@ export function TransactionsScreen({
   // Design parity wave C task 3 (txn gap 9): the row the panel is showing — an explicit pick, else
   // THIS list's own first entry (the never-empty fallback, computed here rather than trusted from
   // App since only this component owns the filtered/ordered `txns` the panel must agree with).
-  // `null` off wide (`selectedTxnId`/`onSelectTxn` are never wired there) so phone never highlights
-  // a row it has no panel to show it in.
-  const effectiveSelectedId = inWide ? (selectedTxnId ?? txns[0]?.id ?? null) : null;
+  // `null` off wide so phone never highlights a row it has no panel to show it in, and `null` when
+  // App says NO panel is showing this list's txn pane (`selectedTxnId === null` — collapsed panel
+  // etc., see the prop's contract above): the fallback must not paint a highlight no panel backs.
+  const effectiveSelectedId = inWide && selectedTxnId !== null ? (selectedTxnId ?? txns[0]?.id ?? null) : null;
 
   // grouping by date (descending order preserved)
   const groups: Array<{ date: string; items: Transaction[] }> = [];
@@ -369,6 +372,9 @@ export function TransactionsScreen({
                   background: "transparent",
                   border: "none",
                   borderTop: `3px solid ${pickFilter ? "var(--accent)" : "transparent"}`,
+                  // v3:303: the 3px accent top-rule follows the card's rounded top-right corner
+                  // (12px outer radius − 1px border) instead of poking a square end through it.
+                  borderTopRightRadius: 11,
                   cursor: "pointer",
                   fontFamily: font,
                 }}
@@ -543,18 +549,21 @@ export function TransactionsScreen({
                         display: "flex",
                         alignItems: "center",
                         // Edge-to-edge selection bleed (Budget.tsx's identical technique, design
-                        // parity wave C task 1): row padding matches the CardBox's own 12px
-                        // horizontal padding, and the equal-and-opposite negative margin lets the
-                        // row's background reach the card's edges while leaving the CONTENT at the
-                        // same horizontal position as before — applied to every row, not just the
-                        // selected one, so nothing shifts on select (and nothing moves on phone,
-                        // where `selected` is always false).
-                        padding: "6px 12px",
-                        margin: "0 -12px",
+                        // parity wave C task 1), WIDE ONLY: row padding matches the CardBox's own
+                        // 12px horizontal padding, and the equal-and-opposite negative margin lets
+                        // the row's background reach the card's edges while leaving the CONTENT at
+                        // the same horizontal position as before — applied to every wide row, not
+                        // just the selected one, so nothing shifts on select. No `width` (the
+                        // design row, v3:383, has none): a `width:100%` here over-constrains the
+                        // box (margin-right gets ignored) and the bleed stops 24px short of the
+                        // card's right edge — block-level `width:auto` resolves BOTH negative
+                        // margins. Phone keeps its exact pre-wave `6px 0` geometry (dividers inset
+                        // by the card's own 12px padding).
+                        padding: inWide ? "6px 12px" : "6px 0",
+                        margin: inWide ? "0 -12px" : undefined,
                         boxSizing: "border-box",
                         gap: 10,
                         cursor: "pointer",
-                        width: "100%",
                         background: selected ? C.selBg : "transparent",
                         border: "none",
                         borderBottom: i === group.items.length - 1 || selected ? "none" : `1px solid ${C.line}`,
