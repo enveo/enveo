@@ -203,6 +203,9 @@ export const pl: Dict = {
   "CARRIED OVER": "Z POPRZEDNIEGO",
   Cancel: "Anuluj",
   "Cancel editing": "Anuluj edycję",
+  "Card debt is {debtShare} of what you hold · balances are always current, whatever month you view":
+    "Dług na karcie to {debtShare} tego, co posiadasz · salda są zawsze aktualne, niezależnie od przeglądanego miesiąca",
+  Cash: "Gotówka",
   "Cash flow": "Cashflow",
   "Cash flow · 12 months": "Cashflow · 12 miesięcy",
   Category: "Kategoria",
@@ -470,6 +473,7 @@ export const pl: Dict = {
   "One tap and Enveo lives on your home screen — offline, full screen, no browser bar.":
     "Jedno dotknięcie i Enveo ląduje na ekranie początkowym — offline, na pełnym ekranie, bez paska przeglądarki.",
   "Open Settings": "Otwórz ustawienia",
+  "Open accounts": "Otwarte konta",
   "Open transactions ›": "Otwórz transakcje ›",
   "Open {host} in Safari to add it to your home screen — installing only works from Safari on iPhone and iPad.":
     "Otwórz {host} w Safari, aby dodać aplikację do ekranu początkowego — na iPhonie i iPadzie instalacja działa tylko z Safari.",
@@ -481,6 +485,7 @@ export const pl: Dict = {
   "Other colors": "Pozostałe",
   "Over budget": "Ponad budżet",
   "Over-assigned": "Przekroczono pulę",
+  Owed: "Dług",
   "Own key": "Własny klucz",
   "Pairing code": "Kod parowania",
   "Pairing code unavailable — no key on this device.": "Kod parowania niedostępny — brak klucza na tym urządzeniu.",
@@ -845,6 +850,7 @@ export const pl: Dict = {
   "the whole local copy as a file — no network needed": "cała lokalna kopia do pliku — bez sieci",
   today: "dzisiaj",
   "total {amount}": "razem {amount}",
+  "under 1%": "poniżej 1%",
   unknown: "nieznana",
   "unlock the budget on a new device without the password": "odblokuj budżet na nowym urządzeniu bez hasła",
   "used up": "wykorzystana",
@@ -896,6 +902,12 @@ export const pl: Dict = {
     other: "{n} transakcji pasuje",
   },
   "{n} transaction | {n} transactions": { one: "{n} transakcja", few: "{n} transakcje", many: "{n} transakcji", other: "{n} transakcji" },
+  "{n} transaction · {month} | {n} transactions · {month}": {
+    one: "{n} transakcja · {month}",
+    few: "{n} transakcje · {month}",
+    many: "{n} transakcji · {month}",
+    other: "{n} transakcji · {month}",
+  },
   "{n} transaction shown | {n} transactions shown": {
     one: "Pokazano {n} transakcję",
     few: "Pokazano {n} transakcje",
