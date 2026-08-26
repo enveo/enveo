@@ -24,7 +24,7 @@ const DELTA_MARK = "\u0000";
 
 
 
-function netWorthDeltaPct(netWorth: { month: string; total: number }[]): string | null {
+export function netWorthDeltaPct(netWorth: { month: string; total: number }[]): string | null {
   if (netWorth.length < 2) return null;
   const last = netWorth.at(-1)!.total;
   const prev = netWorth.at(-2)!.total;
