@@ -335,6 +335,7 @@ function SpendingMini({
 
 
 
+
 function BudgetsMini({
   envelopes,
   onView,
@@ -352,22 +353,12 @@ function BudgetsMini({
   // Same classifier as budgetsSummary (classifyBudget: over = left < 0, on the RAW unfloored
   // budget) — NOT an inline `pct > 100` check, which misses the zero-budget boundary (raw
   // budget <= 0 + any spend → pct lands at exactly 100, left already negative; adb4c43 fixed
-  // this for the pill counters, budgetsOverAmount mirrors the same rule for the € amount).
+  // this for the counters, budgetsOverAmount mirrors the same rule for the € amount).
   const overAmt = budgetsOverAmount(envelopes);
-  const pill = (label: string, bg: string, color: string, key: string) => (
-    <span
-      key={key}
-      style={{ display: "inline-flex", alignItems: "center", fontSize: 11.5, fontWeight: 650, borderRadius: 9, padding: "4px 9px", background: bg, color }}
-    >
-      {label}
-    </span>
-  );
   return (
     <MiniCard title={t("Budgets")} onClick={() => onView("budgets")} selected={selected}>
-      <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
-        {pill(tp("{n} over | {n} over", bs.over), "var(--danger-14)", C.neg, "over")}
-        {pill(t("{n} near limit", { n: bs.near }), C.chip, C.warn, "near")}
-        {pill(t("{n} OK", { n: bs.ok }), C.chip, C.pos, "ok")}
+      <div style={{ fontSize: 17, fontWeight: 750, color: C.text, fontVariantNumeric: "tabular-nums" }}>
+        {tp("{n} over | {n} over", bs.over)} · {tp("{n} near | {n} near", bs.near)}
       </div>
       {overAmt > 0 && (
         <div style={{ fontSize: 11, color: C.neg, marginTop: 8, fontVariantNumeric: "tabular-nums" }}>{t("{amount} over budget", { amount: M(overAmt) })}</div>
