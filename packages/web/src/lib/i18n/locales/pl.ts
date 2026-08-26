@@ -721,6 +721,7 @@ export const pl: Dict = {
   Transport: "Transport",
   "Try again": "Spróbuj ponownie",
   "Try it with sample data": "Wypróbuj z danymi przykładowymi",
+  "Type in an Allocated cell — + − × ÷ work, ⏎ saves, Esc cancels": "Wpisz w komórce „Przydzielono” — działają + − × ÷, ⏎ zapisuje, Esc anuluje",
   "Type or pick a category...": "Wpisz lub wybierz kategorię...",
   "Type or pick a place...": "Wpisz lub wybierz miejsce...",
   "Type {word} to confirm:": "Wpisz {word}, aby potwierdzić:",
