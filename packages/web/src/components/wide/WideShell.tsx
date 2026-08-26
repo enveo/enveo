@@ -798,6 +798,7 @@ export function WideShell({ bag, rightSlot = null, children }: { bag: WideShellB
                 onOpenMonthDay={onOpenMonthDay}
                 edit={boardEdit}
                 onWidgetSettings={setWidgetSettings}
+                onFillGoals={onFillGoals}
               />
             ) : primaryScreen === "settings" ? (
               // Centered column on the WRAPPER, not inside Settings.tsx (zero phone deltas —

@@ -29,12 +29,13 @@
 import type { StateResponse, WideWidgetConfig, WideWidgetId } from "@enveo/shared";
 import { useRef, useState } from "react";
 import type { ScreenId } from "../components/chrome";
+import { EnvelopePillGrid } from "../components/wide/homeBodies";
 import { renderWidget, type WidgetProps } from "../components/widgets";
 import { useBudgetPreferences, useTheme } from "../lib/contexts";
 import { useDragReorder } from "../lib/dnd";
 import { useT } from "../lib/i18n";
 import { font } from "../lib/theme";
-import { applyResize, clampRow, clampSpan, reorderEnabled, toggleEnabled } from "../lib/wideBoard";
+import { applyResize, clampRow, clampSpan, commitResetLayout, reorderEnabled, toggleEnabled } from "../lib/wideBoard";
 import { WIDGET_CATALOG } from "../lib/widgetCatalog";
 import type { ReportTab } from "./reports/types";
 
@@ -53,19 +54,57 @@ export interface WideHomeProps {
   edit: boolean;
    
   onWidgetSettings: (id: WideWidgetId) => void;
+  
+
+  onFillGoals: () => void;
 }
+
+
+
+
+
+
+const WIDGET_REPORT_TAB: Partial<Record<WideWidgetId, ReportTab>> = {
+  attention: "budgets",
+  spending: "spending",
+  reportCashflow: "cashflow",
+  reportNetWorth: "assets",
+  goals: "goals",
+  trends: "trends",
+  heatmap: "month",
+};
 
 
 
 const ROW_H = 104;
 
+
+
+
+
+
+
+
+
+
+const HEADER_HIT_MARGIN = "-8.5px 0";
+
+/** Tile bodies that CLIP instead of scrolling — the design's per-widget `scroll:false` value
+ *  (v3:2235-2236: `netWorth` and `cashflow`, both fixed stat blocks), rendered exactly as its
+ *  `contentOverflow` does (v3:3661: `w.scroll === false ? "hidden" : "auto"`). A stat block never
+ *  legitimately scrolls, so a native scrollbar there is always a layout bug showing through;
+ *  every other tile keeps the design's default "auto". */
+const CLIPPED_TILE_BODIES: ReadonlySet<WideWidgetId> = new Set(["reportNetWorth", "reportCashflow"]);
+
 /** Round-glyph chrome buttons (gear/remove/drag handle): 30×30 hit box, small centered glyph —
- *  the house ≥30×30 rule, measured in Step 5, not just asserted here. */
+ *  the house ≥30×30 rule, measured in Step 5, not just asserted here. Layout height is ~13px
+ *  (`HEADER_HIT_MARGIN`) so edit-mode chrome doesn't re-inflate the header row it sits in. */
 const chromeBtn = (color: string): React.CSSProperties => ({
   width: 30,
   height: 30,
   minWidth: 30,
   minHeight: 30,
+  margin: HEADER_HIT_MARGIN,
   display: "flex",
   alignItems: "center",
   justifyContent: "center",
@@ -87,7 +126,7 @@ function AddTile({ candidates, onAdd, cols }: { candidates: WideWidgetConfig[]; 
         gridRow: "span 1",
         border: `1.5px dashed ${C.line}`,
         borderRadius: 14,
-        padding: "10px 12px",
+        padding: "12px 14px",
         display: "flex",
         flexDirection: "column",
         gap: 6,
@@ -138,6 +177,7 @@ export function WideHome({
   onOpenMonthDay,
   edit,
   onWidgetSettings,
+  onFillGoals,
 }: WideHomeProps) {
   const C = useTheme();
   const { t } = useT();
@@ -158,6 +198,19 @@ export function WideHome({
   const dnd = useDragReorder(commitMove);
 
   const onToggle = (id: WideWidgetId, enabled: boolean) => update({ wideWidgets: toggleEnabled(board, id, enabled) });
+
+  const openWidget = (id: WideWidgetId) => {
+    if (id === "recent") {
+      onOpenTxns();
+      return;
+    }
+    if (id === "envelopes" || id === "envelopesSavings") {
+      onNav("budget");
+      return;
+    }
+    const tab = WIDGET_REPORT_TAB[id];
+    if (tab) onOpenReport(tab);
+  };
 
   /** Pointer-based corner resize (mock :3627-3641 ported to pointer events, commit-on-up). `w0`
    *  is the CURRENTLY RENDERED (clamped) span, not the raw stored one — the mock's own `wOf`
@@ -192,7 +245,17 @@ export function WideHome({
     window.addEventListener("pointerup", up);
   };
 
-  const widgetProps: Omit<WidgetProps, "opts" | "chromeless"> = { state, month, onNav, onOpenEnvelope, onOpenTxns, onQuickAdd, onOpenReport, onOpenMonthDay };
+  const widgetProps: Omit<WidgetProps, "opts" | "chromeless"> = {
+    state,
+    month,
+    onNav,
+    onOpenEnvelope,
+    onOpenTxns,
+    onQuickAdd,
+    onOpenReport,
+    onOpenMonthDay,
+    onFillGoals,
+  };
 
   return (
     <div className="gs" style={{ flex: 1, overflowY: "auto", padding: 14 }}>
@@ -220,10 +283,12 @@ export function WideHome({
                 background: C.card,
                 border: edit ? "1.5px dashed var(--accent)" : `1px solid ${C.line}`,
                 borderRadius: 14,
-                padding: "10px 12px",
+                padding: "12px 14px",
                 display: "flex",
                 flexDirection: "column",
-                gap: 6,
+                
+
+                gap: 9,
                 overflow: "hidden",
                 minHeight: 0,
                 outline: dnd.over === idx && dnd.dragging !== idx ? "2px dashed var(--accent)" : "none",
@@ -240,6 +305,7 @@ export function WideHome({
                       ...b.style,
                       width: 30,
                       height: 30,
+                      margin: HEADER_HIT_MARGIN,
                       display: "flex",
                       alignItems: "center",
                       justifyContent: "center",
@@ -251,22 +317,36 @@ export function WideHome({
                     ≡
                   </span>
                 )}
-                <span
+                <button
+                  type="button"
+                  
+
+                  onClick={edit ? undefined : () => openWidget(w.id)}
                   style={{
                     flex: 1,
                     minWidth: 0,
+                    minHeight: 30,
+                    display: "flex",
+                    alignItems: "center",
+                    textAlign: "left",
+                    padding: 0,
+                    margin: HEADER_HIT_MARGIN,
+                    border: "none",
+                    background: "none",
+                    fontFamily: font,
                     fontSize: 10,
                     fontWeight: 750,
-                    letterSpacing: "0.14em",
+                    letterSpacing: "0.16em",
                     textTransform: "uppercase",
                     color: C.mute,
                     overflow: "hidden",
                     textOverflow: "ellipsis",
                     whiteSpace: "nowrap",
+                    cursor: edit ? "default" : "pointer",
                   }}
                 >
-                  {title}
-                </span>
+                  {title} ›
+                </button>
                 {edit && (
                   <div style={{ display: "flex", alignItems: "center", gap: 0, flexShrink: 0 }}>
                     <span style={{ fontSize: 9, fontWeight: 700, color: C.mute, fontVariantNumeric: "tabular-nums", marginRight: 2 }}>
@@ -283,8 +363,29 @@ export function WideHome({
                   </div>
                 )}
               </div>
-              <div style={{ flex: 1, minHeight: 0, overflowY: "auto", display: "flex", flexDirection: "column", gap: 8 }}>
-                {renderWidget({ id: w.id, enabled: true, opts: w.opts }, { ...widgetProps, chromeless: true }, t)}
+              <div
+                style={{
+                  flex: 1,
+                  minHeight: 0,
+                  overflowY: CLIPPED_TILE_BODIES.has(w.id) ? "hidden" : "auto",
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: 8,
+                }}
+              >
+                {w.id === "envelopes" || w.id === "envelopesSavings" ? (
+                  // Wide-only design grammar (B3): a compact pill grid, not the phone `EnvRow` list
+                  // `renderWidget` would otherwise reach for — `envelopesSavings` always forces
+                  // "savings", same as the phone `EnvelopesSavingsWidget` wrapper (widgets.tsx).
+                  <EnvelopePillGrid
+                    state={state}
+                    month={month}
+                    mode={w.id === "envelopesSavings" ? "savings" : (w.opts?.mode ?? "all")}
+                    onOpenEnvelope={onOpenEnvelope}
+                  />
+                ) : (
+                  renderWidget({ id: w.id, enabled: true, opts: w.opts }, { ...widgetProps, chromeless: true, tile: { w: spanW, h: w.h } }, t)
+                )}
               </div>
               {edit && (
                 <button
@@ -316,6 +417,31 @@ export function WideHome({
         })}
         {edit && <AddTile candidates={disabledRows} onAdd={(id) => onToggle(id, true)} cols={cols} />}
       </div>
+      {edit && (
+        // The only way an EXISTING board (whose stored layout reconciliation deliberately keeps)
+        // can adopt the shipped default row map — see `commitResetLayout`. Edit-mode only, under
+        // the grid next to the Add tile it complements; ≥30×30 hit target (house rule, measured).
+        <div style={{ display: "flex", justifyContent: "center", padding: "14px 0 2px" }}>
+          <button
+            onClick={() => commitResetLayout(update)}
+            style={{
+              minWidth: 30,
+              minHeight: 30,
+              padding: "6px 16px",
+              borderRadius: 10,
+              border: `1.5px dashed ${C.line}`,
+              background: "none",
+              color: C.mute,
+              fontSize: 12,
+              fontWeight: 650,
+              fontFamily: font,
+              cursor: "pointer",
+            }}
+          >
+            {t("Reset layout")}
+          </button>
+        </div>
+      )}
     </div>
   );
 }

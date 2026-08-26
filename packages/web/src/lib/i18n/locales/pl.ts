@@ -201,6 +201,7 @@ export const pl: Dict = {
   Cancel: "Anuluj",
   "Cancel editing": "Anuluj edycję",
   "Cash flow": "Cashflow",
+  "Cash flow · 12 months": "Cashflow · 12 miesięcy",
   Category: "Kategoria",
   Categories: "Kategorie",
   Change: "Zmień",
@@ -572,6 +573,7 @@ export const pl: Dict = {
   "Some funds stayed in To be budgeted — envelopes are at their target caps.": "Część środków została w Do rozdysponowania — koperty na pułapie celów.",
   "Source: {src}": "Źródło: {src}",
   Spending: "Wydatki",
+  "Spending · by envelope": "Wydatki · według koperty",
   "Split across envelopes": "Podział na koperty",
   "Split transaction": "Podzielona",
   "Start from scratch": "Zacznij od nowa",
@@ -1022,9 +1024,12 @@ export const pl: Dict = {
   "All transactions ›": "Wszystkie transakcje ›",
   "total {amount} this month": "razem {amount} w tym miesiącu",
    
+  "total {amount} this month · click a row for detail": "razem {amount} w tym miesiącu · kliknij wiersz, aby zobaczyć szczegóły",
+   
   "Add widget": "Dodaj widget",
   "Every widget is already on the grid.": "Każdy widget jest już na siatce.",
   "Remove from the board": "Usuń z siatki",
+  "Reset layout": "Resetuj układ",
   "Size: {w} × {h} — drag the corner of the tile to resize": "Rozmiar: {w} × {h} — przeciągnij róg kafelka, aby zmienić rozmiar",
   "Widget settings": "Ustawienia widgetu",
 
@@ -1049,6 +1054,14 @@ export const pl: Dict = {
     "Każdy zapis na serwer jest już zablokowany. Nic nie zostało usunięte, bo decyzja należy do Ciebie — kopia na tym urządzeniu może być ostatnią, jaka istnieje.",
   "Export first: the JSON backup is written offline, without the server.": "Najpierw eksport: kopia zapasowa JSON jest zapisywana offline, bez serwera.",
   "Fill {amount} ›": "Wypełnij {amount} ›",
+  
+
+
+
+  "Fill {amount}": "Wypełnij {amount}",
+  
+
+  "Fill all ›": "Wypełnij wszystko ›",
   "Filled {amount} in {name}": "Wypełniono {amount} w {name}",
   Ignore: "Pomiń",
   In: "Przychód",
@@ -1095,6 +1108,7 @@ export const pl: Dict = {
   "{amount} from To be budgeted ({pool} available)": "{amount} z Do rozdysponowania ({pool} dostępne)",
   "{funded} of {target}": "{funded} z {target}",
   "{left} left · {pct}% of the budget spent": "zostaje {left} · wydano {pct}% budżetu",
+  "{mode} · total {amount}": "{mode} · razem {amount}",
   "{month} so far: {pct}%": "{month} dotychczas: {pct}%",
   "{month} · ended at {pct}% of the goal": "{month} · zakończony na {pct}% celu",
   "{month} · goal fully funded ✓": "{month} · cel w pełni sfinansowany ✓",
