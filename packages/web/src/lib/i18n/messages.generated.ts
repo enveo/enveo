@@ -904,6 +904,7 @@ export const MESSAGES = [
   "{n} minute ago | {n} minutes ago",
   "{n} months to {month}",
   "{n} near limit",
+  "{n} near | {n} near",
   "{n} of {m} envelopes is healthy | {n} of {m} envelopes are healthy",
   "{n} over | {n} over",
   "{n} rising · {m} falling",

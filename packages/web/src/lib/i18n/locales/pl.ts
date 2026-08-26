@@ -881,6 +881,7 @@ export const pl: Dict = {
   "{n} minute ago | {n} minutes ago": { one: "{n} min temu", few: "{n} min temu", many: "{n} min temu", other: "{n} min temu" },
   "{n} months to {month}": "ostatnie {n} mies. · {month}",
   "{n} near limit": "{n} blisko limitu",
+  "{n} near | {n} near": { one: "{n} blisko limitu", few: "{n} blisko limitu", many: "{n} blisko limitu", other: "{n} blisko limitu" },
   "{n} over | {n} over": { one: "{n} przekroczona", few: "{n} przekroczone", many: "{n} przekroczonych", other: "{n} przekroczonych" },
   "{n} rising · {m} falling": "{n} w górę · {m} w dół",
   "{n} transaction matches | {n} transactions match": {
