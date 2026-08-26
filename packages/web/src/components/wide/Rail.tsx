@@ -36,8 +36,11 @@ type NavScreen = "start" | "budget" | "transactions" | "reports" | "accounts";
  * `name` defaults to the email's local part at sign-up (`lib/auth.ts` `signUpEmail`), so it is
  * never empty for an account created after that default landed — still guarded here in case an
  * older/imported account row has a blank one.
+ *
+ * Exported (design parity wave E task 3): `WideSettings`'s Account section reads the SAME
+ * identity — one session subscription for both the rail's user block and Settings, not two.
  */
-function useSessionUser(): { name: string | null; email: string | null } {
+export function useSessionUser(): { name: string | null; email: string | null } {
   const [user, setUser] = useState<{ name: string | null; email: string | null }>({ name: null, email: null });
   useEffect(() => {
     let alive = true;

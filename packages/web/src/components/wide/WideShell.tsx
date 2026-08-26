@@ -13,7 +13,7 @@ import { CTA, font, TEAL } from "../../lib/theme";
 // into the eager bundle would spend the §3f headroom this wave has almost none of left.
 import { createTransactionSearchIndex, matchesTransactionFilters, matchesTransactionQuery, type TransactionFilters } from "../../lib/transactionSearch";
 import { useElementWidth } from "../../lib/useElementWidth";
-import { PHONE_COL, type ViewMode } from "../../lib/viewMode";
+import type { ViewMode } from "../../lib/viewMode";
 import type { Tab as AddTab } from "../../screens/Add";
 import type { ReportTab, ReportView } from "../../screens/reports/types";
 import { WideHome } from "../../screens/WideHome";
@@ -31,6 +31,7 @@ import { PanelHost } from "./PanelHost";
 // this lazy chunk already builds (see `fallbacksForPanel` below).
 import { panelFallbacks as computePanelFallbacks, resolvePanel } from "./panel";
 import { Rail } from "./Rail";
+import { WideSettings } from "./WideSettings";
 
 /**
  * One right-slot contract (pr4-context.md §13) — computed by App, rendered here verbatim.
@@ -880,23 +881,13 @@ export function WideShell({ bag, rightSlot = null, children }: { bag: WideShellB
                 onFillGoals={onFillGoals}
               />
             ) : primaryScreen === "settings" ? (
-              // Centered column on the WRAPPER, not inside Settings.tsx (zero phone deltas —
-              // Settings itself renders identically in every mode). v3's two-column Settings is
-              // deferred (D-list, PR6 plan); this is the interim "hosted as-is" treatment.
-              <div
-                style={{
-                  flex: 1,
-                  minHeight: 0,
-                  display: "flex",
-                  flexDirection: "column",
-                  overflow: "hidden",
-                  maxWidth: PHONE_COL + 120,
-                  margin: "0 auto",
-                  width: "100%",
-                }}
-              >
-                {children}
-              </div>
+              // Design parity wave E task 3: the design's persistent two-column Settings
+              // (v3:675-744) replaces the interim centered-column wrapper. `children` (App.tsx's
+              // phone `SettingsScreen`) is still CONSTRUCTED above — cheap, a React element
+              // description — but never rendered here, the same treatment `WideHome` already gives
+              // the phone Start stack just above: its hub/header/drill-in chrome never mounts on
+              // wide.
+              <WideSettings mode={mode} />
             ) : (
               children
             )}

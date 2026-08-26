@@ -48,6 +48,7 @@ export const pl: Dict = {
   "Add an envelope to the split": "Dodaj kopertę do podziału",
   "An entry nothing uses can be deleted for good.": "Wpis, którego nic nie używa, można usunąć na zawsze.",
   "Categories and places": "Kategorie i miejsca",
+  Dictionaries: "Słowniki",
   "Category change": "Zmiana kategorii",
   "Category deletion": "Usunięcie kategorii",
   "Category merge": "Scalenie kategorii",
@@ -165,6 +166,7 @@ export const pl: Dict = {
   Auto: "Auto",
   "Automatic envelope": "Automatyczna koperta",
   "Automatic envelope effect": "Efekt automatycznej koperty",
+  "Automatic envelope: {name}": "Automatyczna koperta: {name}",
   "Automatic: {envelope}": "Automatyczna koperta: {envelope}",
   Available: "Dostępne",
   BUDGET: "BUDŻET",
@@ -203,6 +205,9 @@ export const pl: Dict = {
   "CARRIED OVER": "Z POPRZEDNIEGO",
   Cancel: "Anuluj",
   "Cancel editing": "Anuluj edycję",
+  "Card debt is {debtShare} of what you hold · balances are always current, whatever month you view":
+    "Dług na karcie to {debtShare} tego, co posiadasz · salda są zawsze aktualne, niezależnie od przeglądanego miesiąca",
+  Cash: "Gotówka",
   "Cash flow": "Cashflow",
   "Cash flow · 12 months": "Cashflow · 12 miesięcy",
   Category: "Kategoria",
@@ -470,6 +475,7 @@ export const pl: Dict = {
   "One tap and Enveo lives on your home screen — offline, full screen, no browser bar.":
     "Jedno dotknięcie i Enveo ląduje na ekranie początkowym — offline, na pełnym ekranie, bez paska przeglądarki.",
   "Open Settings": "Otwórz ustawienia",
+  "Open accounts": "Otwarte konta",
   "Open transactions ›": "Otwórz transakcje ›",
   "Open {host} in Safari to add it to your home screen — installing only works from Safari on iPhone and iPad.":
     "Otwórz {host} w Safari, aby dodać aplikację do ekranu początkowego — na iPhonie i iPadzie instalacja działa tylko z Safari.",
@@ -481,6 +487,7 @@ export const pl: Dict = {
   "Other colors": "Pozostałe",
   "Over budget": "Ponad budżet",
   "Over-assigned": "Przekroczono pulę",
+  Owed: "Dług",
   "Own key": "Własny klucz",
   "Pairing code": "Kod parowania",
   "Pairing code unavailable — no key on this device.": "Kod parowania niedostępny — brak klucza na tym urządzeniu.",
@@ -513,6 +520,9 @@ export const pl: Dict = {
   "Rebuild data on this device": "Odbuduj dane na tym urządzeniu",
   "Rebuilding…": "Odbudowywanie…",
   "Recent activity": "Ostatnia aktywność",
+  // The account name interpolates in the nominative — a colon avoids the
+  // locative "w" would demand ("Ostatnie w Gotówka" is ungrammatical).
+  "Recent in {name}": "Ostatnie: {name}",
   "Recognized transactions": "Rozpoznane transakcje",
   "Recognizing…": "Rozpoznawanie…",
   Reconcile: "Wyrównaj",
@@ -577,6 +587,7 @@ export const pl: Dict = {
     "Wylogować się i usunąć lokalne dane tego konta z urządzenia? Dane zapisane na serwerze pozostaną bez zmian.",
   "Signs you out and removes this account's local copy, encryption keys, and credentials from the device.":
     "Wylogowuje i usuwa z urządzenia lokalną kopię tego konta, klucze szyfrowania oraz dane uwierzytelniające.",
+  "Signed in as {email}": "Zalogowano jako {email}",
   "Signing out…": "Wylogowywanie…",
   "Skip for now": "Pomiń na razie",
   "Some funds stayed in To be budgeted — envelopes are at their target caps.": "Część środków została w Do rozdysponowania — koperty na pułapie celów.",
@@ -845,6 +856,7 @@ export const pl: Dict = {
   "the whole local copy as a file — no network needed": "cała lokalna kopia do pliku — bez sieci",
   today: "dzisiaj",
   "total {amount}": "razem {amount}",
+  "under 1%": "poniżej 1%",
   unknown: "nieznana",
   "unlock the budget on a new device without the password": "odblokuj budżet na nowym urządzeniu bez hasła",
   "used up": "wykorzystana",
@@ -896,11 +908,23 @@ export const pl: Dict = {
     other: "{n} transakcji pasuje",
   },
   "{n} transaction | {n} transactions": { one: "{n} transakcja", few: "{n} transakcje", many: "{n} transakcji", other: "{n} transakcji" },
+  "{n} transaction · {month} | {n} transactions · {month}": {
+    one: "{n} transakcja · {month}",
+    few: "{n} transakcje · {month}",
+    many: "{n} transakcji · {month}",
+    other: "{n} transakcji · {month}",
+  },
   "{n} transaction shown | {n} transactions shown": {
     one: "Pokazano {n} transakcję",
     few: "Pokazano {n} transakcje",
     many: "Pokazano {n} transakcji",
     other: "Pokazano {n} transakcji",
+  },
+  "{n} transaction this month | {n} transactions this month": {
+    one: "{n} transakcja w tym miesiącu",
+    few: "{n} transakcje w tym miesiącu",
+    many: "{n} transakcji w tym miesiącu",
+    other: "{n} transakcji w tym miesiącu",
   },
   "{n} transaction · avg {avg} · largest {largest} | {n} transactions · avg {avg} · largest {largest}": {
     one: "{n} transakcja · śr. {avg} · maks. {largest}",
@@ -913,11 +937,13 @@ export const pl: Dict = {
   "Account preferences": "Ustawienia konta",
   "AI is not configured. Choose server AI or an existing own key in Settings → Artificial intelligence.":
     "AI nie jest skonfigurowane. Wybierz AI serwera albo istniejący własny klucz w Ustawieniach → Sztuczna inteligencja.",
+  Appearance: "Wygląd",
   "Appearance and dashboard": "Wygląd i dashboard",
   "Budget preferences": "Ustawienia budżetu",
   "Choose their order, visibility, and options.": "Wybierz kolejność, widoczność i opcje.",
   "Currency and dashboard widgets follow this budget on every device.":
     "Waluta i widgety dashboardu są synchronizowane z tym budżetem na wszystkich urządzeniach.",
+  "Data & sync": "Dane i sync",
   "Data and synchronization": "Dane i synchronizacja",
   "Diagnostics and on-device storage": "Diagnostyka i pamięć urządzenia",
   "Discreet mode stays only on this device.": "Tryb dyskretny pozostaje tylko na tym urządzeniu.",
