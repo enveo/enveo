@@ -63,13 +63,23 @@ const SCREEN_TITLE: Record<ScreenId, Message> = {
 
 const PENCIL_D = "M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7M18.5 2.5a2.1 2.1 0 013 3L12 15l-4 1 1-4 9.5-9.5z";
 
-/** Hollow-two-column glyph for the panel toggle (the mock's bar redrawn as inline SVG — colors
- *  via `style`, never a presentation attribute, per the house SVG-color rule). */
-function PanelToggleGlyph({ color }: { color: string }) {
+/**
+ * The design's own panel-toggle glyph (owner ruling, parity owner round 1 item 4; v3:205-206 +
+ * derivations 4155-4161): an 18×14 rounded outline (1.5px stroke, 4px OUTER radius — the border
+ * is inside the box, so the stroke centerline sits at 0.75 with rx 3.25) holding a FILLED
+ * right-hand column whose width tracks the panel state — 3px closed, 7px open (`panelBtnBarW`).
+ * The bar hugs the frame's inner right edge (content box x ≤ 16.5, y 1.5–12.5) and inherits the
+ * frame's rounding on its outer corners (inner radius = 4 − 1.5 border = 2.5), exactly what the
+ * design's `overflow: hidden` clip produced. Replaces the previous hollow-two-column reading
+ * (a centered divider line), which the owner flagged as not matching the design. Colors via
+ * `style`, never a presentation attribute, per the house SVG-color rule.
+ */
+function PanelToggleGlyph({ color, closed }: { color: string; closed: boolean }) {
+  const barLeft = closed ? 13.5 : 9.5;
   return (
     <svg width="18" height="14" viewBox="0 0 18 14" fill="none" aria-hidden="true">
-      <rect x="1" y="1" width="16" height="12" rx="2.5" style={{ stroke: color }} strokeWidth="1.4" />
-      <line x1="11.5" y1="1" x2="11.5" y2="13" style={{ stroke: color }} strokeWidth="1.4" />
+      <rect x="0.75" y="0.75" width="16.5" height="12.5" rx="3.25" style={{ stroke: color }} strokeWidth="1.5" />
+      <path d={`M${barLeft} 1.5 H14 Q16.5 1.5 16.5 4 V10 Q16.5 12.5 14 12.5 H${barLeft} Z`} style={{ fill: color }} />
     </svg>
   );
 }
@@ -270,7 +280,7 @@ function BandHeader({
         >
           {/* Design v3:4157 (`panelBtnFg`) — the glyph tracks the same open/closed split as the
               button's own background just above. */}
-          <PanelToggleGlyph color={panelClosed ? C.soft : TEAL} />
+          <PanelToggleGlyph color={panelClosed ? C.soft : TEAL} closed={panelClosed} />
         </button>
       </div>
     </div>

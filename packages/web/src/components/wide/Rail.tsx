@@ -92,21 +92,24 @@ function RailButton({ active, d, label, onClick }: { active: boolean; d: string;
 }
 
 /**
- * Desktop: icon + full label, full-width row (pr4-context.md §12.1's decided reading — icon
- * language shared with `RailButton`/`BottomNav` via `NAV_ICONS`).
+ * Desktop: label-ONLY, full-width row. Owner ruling (owner-requirements.md, parity owner round 1
+ * item 3): no icons in the left menu — the design's own nav row (demo 94) is a bare label, and the
+ * empty icon gutter goes with it, so the label sits at the design's exact 11px inset. Typography
+ * and box match demo 94 + the desktop `L` tokens (2413-2415): padding 9px 11px, 13.5px, radius 11,
+ * weight 650 active / 400 inactive (demo 2441). `NAV_ICONS` stays in use — fold's `RailButton`
+ * above is icon-only and keeps the shared icon language with the phone's `BottomNav`.
  *
  * Design parity wave A, task A2 (demo 94, 2439-2440): the selected row is `railActive`
- * (accent@18%) with INK text/icon (`headerInk` — equals `C.text` on every Cisza theme, but the
+ * (accent@18%) with INK text (`headerInk` — equals `C.text` on every Cisza theme, but the
  * only token that also reads correctly on Duet's navy rail) — NOT an accent-tinted background
  * with accent-colored text.
  */
-function NavRow({ active, d, label, onClick }: { active: boolean; d: string; label: string; onClick: () => void }) {
+function NavRow({ active, label, onClick }: { active: boolean; label: string; onClick: () => void }) {
   const C = useTheme();
-  // demo 2439-2440: `fg: active ? T.railTitle : T.railOn` — ONE color for icon+label either way.
-  // `headerInk` equals `C.text` on every Cisza theme but is the only token that ALSO reads
-  // correctly on Duet's navy rail; `railOn` is its inactive-tier counterpart (added alongside it
-  // — `C.text`/`C.soft` are NOT Duet-overridden and rendered illegible dark text on the navy rail,
-  // caught live during verification).
+  // demo 2439-2440: `fg: active ? T.railTitle : T.railOn`. `headerInk` equals `C.text` on every
+  // Cisza theme but is the only token that ALSO reads correctly on Duet's navy rail; `railOn` is
+  // its inactive-tier counterpart (added alongside it — `C.text`/`C.soft` are NOT Duet-overridden
+  // and rendered illegible dark text on the navy rail, caught live during verification).
   const fg = active ? C.headerInk : C.railOn;
   return (
     <button
@@ -115,10 +118,10 @@ function NavRow({ active, d, label, onClick }: { active: boolean; d: string; lab
       style={{
         display: "flex",
         alignItems: "center",
-        gap: 12,
         width: "100%",
-        minHeight: 40,
-        padding: "0 14px",
+        // House ≥30px floor — the design's own row (9+9 padding around ~16px text) is ~34px.
+        minHeight: 30,
+        padding: "9px 11px",
         borderRadius: 11,
         border: "none",
         background: active ? C.railActive : "transparent",
@@ -127,11 +130,10 @@ function NavRow({ active, d, label, onClick }: { active: boolean; d: string; lab
         fontFamily: font,
       }}
     >
-      <Ico d={d} size={19} color={fg} sw={1.8} />
       <span
         style={{
           fontSize: 13.5,
-          fontWeight: active ? 700 : 600,
+          fontWeight: active ? 650 : 400,
           color: fg,
           overflow: "hidden",
           textOverflow: "ellipsis",
@@ -213,10 +215,21 @@ function TbbCard({
   });
 
   return (
+    // Owner ruling (parity owner round 1 item 1) + the design's own height distribution (demo 98):
+    // this card is the rail's FLEXIBLE element — `flex: 0 1 auto` + `minHeight: 0` + hidden
+    // overflow let it take exactly the height its content needs (the spacer above absorbs any
+    // surplus, so the card sits pinned against the update card/user block below) and SHRINK when
+    // the rail runs out of room, at which point the accounts list inside (the card's only
+    // `minHeight: 0` child — every text row keeps its natural min-content height) is what gives
+    // way and scrolls. The old fixed `maxHeight: 168` on the list is gone: it scrolled a 6-account
+    // list even on a 900px-tall window with the rail below it empty.
     <div
       style={{
         display: "flex",
         flexDirection: "column",
+        flex: "0 1 auto",
+        minHeight: 0,
+        overflow: "hidden",
         padding: "12px 12px 10px",
         borderRadius: 14,
         background: C.railCard,
@@ -279,7 +292,11 @@ function TbbCard({
             </span>
           </button>
           {acctsOpen && accountsGlobal.length > 0 && (
-            <div style={{ display: "flex", flexDirection: "column", gap: 1, marginTop: 5, maxHeight: 168, overflowY: "auto" }}>
+            // `flex: 1 1 auto` + `minHeight: 0` (design demo 118): at natural card height this is
+            // inert (no surplus inside the card to grow into); under shrink pressure it is the one
+            // child that compresses, and `overflowY: auto` only then produces a scrollbar — which
+            // `gsh` (chrome.tsx) keeps invisible until the pointer hovers the list (item 2).
+            <div className="gsh" style={{ display: "flex", flexDirection: "column", gap: 1, marginTop: 5, flex: "1 1 auto", minHeight: 0, overflowY: "auto" }}>
               {accountsGlobal.map((a) => (
                 <button
                   key={a.id}
@@ -378,7 +395,9 @@ function RailUpdateCard({ incomingVersion, onRefresh, onDismiss }: { incomingVer
   const C = useTheme();
   const { t } = useT();
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 6, padding: "10px 12px", borderRadius: 14, background: C.railCard }}>
+    // flexShrink 0: the flexible element of the rail column is the TbbCard above (item 1) — a
+    // squeezed rail must never compress the update CTA.
+    <div style={{ display: "flex", flexDirection: "column", flexShrink: 0, gap: 6, padding: "10px 12px", borderRadius: 14, background: C.railCard }}>
       <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
         <span aria-hidden style={{ width: 7, height: 7, borderRadius: "50%", background: "var(--cta)", flexShrink: 0 }} />
         <span style={{ flex: 1, minWidth: 0, fontSize: 12.5, fontWeight: 700, color: C.railOn }}>{t("New version ready")}</span>
@@ -1063,7 +1082,7 @@ export function Rail({
       >
         {items.map((it) =>
           mode === "desktop" ? (
-            <NavRow key={it.id} active={screen === it.id} d={NAV_ICONS[it.id]} label={it.label} onClick={() => onNav(it.id)} />
+            <NavRow key={it.id} active={screen === it.id} label={it.label} onClick={() => onNav(it.id)} />
           ) : (
             <RailButton key={it.id} active={screen === it.id} d={NAV_ICONS[it.id]} label={it.label} onClick={() => onNav(it.id)} />
           ),
