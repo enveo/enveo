@@ -73,10 +73,14 @@ const GOAL_UNDO_TIMEOUT_MS = 6000;
  * (`reports.test.ts`: "agrees with goalProgress for the current month"), so the current chip is
  * never a second, potentially-divergent computation of the same number.
  *
- * Ring/track colour is the funded-status convention already shipped here (`C.pos` once funded,
- * `TEAL`/accent otherwise) — not the design mockup's per-envelope identity colour. That's a
- * deliberate call for this codebase (`BudgetRow`'s bars are status-colored too; envelope colour is
- * reserved for small identity swatches), confirmed by the controller for this slice.
+ * Ring/track colour is PER-GOAL, the envelope's own identity colour (`e.color`), matching the
+ * design mockup exactly (v3.dc.html:3411/1574 `gh.color`, used for both the ring and the track
+ * fill). Owner round 3 item 18 REVERSES the wave-B "report convention" this comment used to
+ * document — a funded-status scheme (`C.pos` once funded, `TEAL`/accent otherwise), on the theory
+ * that `BudgetRow`'s bars are status-colored too and envelope colour should stay reserved for
+ * small identity swatches. That call is overridden by direct owner order for Goals specifically;
+ * it is not relitigated for any other report by this change. Fill affordances/labels (the "Fill
+ * {amount} ›" button, its TEAL border) are unchanged — only the ring/track colour moved.
  *
  * The aggregate "fill everything" action moves out of the band `sub` and into the body, after the
  * card list and before the no-goal footer, per the design's own placement — and its copy changes
@@ -248,7 +252,9 @@ export function GoalsReport({
                 const history = histories.get(e.id);
                 if (!history) return null; // diverged from `state` since this render started — skip, don't crash
                 const fundedAmt = Math.min(Math.max(0, e.allocated), e.monthlyTarget ?? 0);
-                const barColor = gp.funded ? C.pos : TEAL;
+                // Owner round 3 item 18 — per-goal identity colour, not funded status; see this
+                // file's header comment for the reversal this replaces.
+                const barColor = e.color;
                 // Pool-capped display amount only — the WRITE re-reads both sides of this `Math.min`
                 // fresh at press time (see `fillOne`'s own comment). Hidden entirely (not disabled)
                 // once the pool can't cover anything, same as the aggregate `canFillGoals` button.

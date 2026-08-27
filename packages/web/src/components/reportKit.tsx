@@ -725,27 +725,41 @@ export function CalendarHeatmap({
  *  special case (`max === min` maps to `h/2` rather than the general formula), so the median line
  *  always lines up with where that same value would fall on the polyline itself.
  *
- *  `dot` (Task 1): an optional filled circle at the LAST point, using the same `color` as the
- *  polyline — deliberately ONE color for line+dot rather than a second caller-supplied
- *  `dotColor`, because every real use of this so far (`trendColor`) already picks one color per
- *  row for "is this envelope's move good or bad", and a second, independently-thresholded dot
- *  color would just be a second opinion about the same question. */
+ *  `dot` (Task 1): an optional filled circle at the LAST point. `dotColor` defaults to `color`,
+ *  which keeps every existing caller (`TrendsReport`/`ReportsHub`, both still painting line+dot
+ *  the same single `trendColor()` verdict) pixel-identical. Owner round 3 item 17 REVERSED this
+ *  doc's earlier "one color for line+dot, a second dot color is just a second opinion" stance for
+ *  the wide trends board tile specifically: the design (v3.dc.html:546-560) strokes the polyline
+ *  in the ENVELOPE's own identity color (`EnvelopeTrend.color`) and reserves the sign-based
+ *  verdict color for the dot alone — two different questions ("whose line is this" vs. "is this
+ *  move good or bad"), not one asked twice, so a caller-supplied `dotColor` is exactly right
+ *  there. `strokeWidth`/`medianStrokeWidth`/`dotRadius` are similarly additive — their defaults
+ *  are this component's own pre-existing literals, so every caller that doesn't pass them stays
+ *  byte-for-byte unchanged; the wide trends tile passes the design's own (larger) sizes. */
 export function TrendSpark({
   series,
   color,
+  dotColor,
   w = 64,
   h = 24,
   median,
   medianColor,
   dot = false,
+  strokeWidth = 1.5,
+  medianStrokeWidth = 1,
+  dotRadius = 2.5,
 }: {
   series: number[];
   color: string;
+  dotColor?: string;
   w?: number;
   h?: number;
   median?: number;
   medianColor?: string;
   dot?: boolean;
+  strokeWidth?: number;
+  medianStrokeWidth?: number;
+  dotRadius?: number;
 }) {
   const n = series.length;
   if (n < 2) return null;
@@ -766,18 +780,26 @@ export function TrendSpark({
   return (
     <svg viewBox={`0 0 ${w} ${h}`} width={w} height={h} aria-hidden style={{ display: "block" }}>
       {medianY !== null && (
-        <line x1={0} y1={medianY} x2={w} y2={medianY} style={{ stroke: medianColor ?? color }} strokeWidth={1} vectorEffect="non-scaling-stroke" />
+        <line
+          x1={0}
+          y1={medianY}
+          x2={w}
+          y2={medianY}
+          style={{ stroke: medianColor ?? color }}
+          strokeWidth={medianStrokeWidth}
+          vectorEffect="non-scaling-stroke"
+        />
       )}
       <polyline
         points={pts}
         fill="none"
         style={{ stroke: color }}
-        strokeWidth={1.5}
+        strokeWidth={strokeWidth}
         strokeLinejoin="round"
         strokeLinecap="round"
         vectorEffect="non-scaling-stroke"
       />
-      {dot && <circle cx={last[0]} cy={last[1]} r={2.5} style={{ fill: color }} />}
+      {dot && <circle cx={last[0]} cy={last[1]} r={dotRadius} style={{ fill: dotColor ?? color }} />}
     </svg>
   );
 }
