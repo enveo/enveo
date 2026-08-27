@@ -946,11 +946,11 @@ export const pl: Dict = {
   "Data & sync": "Dane i sync",
   "Data and synchronization": "Dane i synchronizacja",
   "Diagnostics and on-device storage": "Diagnostyka i pamięć urządzenia",
-  "Discreet mode stays only on this device.": "Tryb dyskretny pozostaje tylko na tym urządzeniu.",
   "Edit dashboard widgets": "Edytuj widgety dashboardu",
   "End-to-end encryption, password, and device pairing": "Szyfrowanie end-to-end, hasło i parowanie urządzeń",
   "Encryption settings apply to this budget and follow it across devices.":
     "Ustawienia szyfrowania dotyczą tego budżetu i są synchronizowane między urządzeniami.",
+  "Hides amounts; stays on this device only.": "Ukrywa kwoty — działa tylko na tym urządzeniu.",
   "On a new device, enter the encryption password once to unlock both the budget and its encrypted Own OpenAI key. Enveo cannot recover either if you lose the password, every unlocked device, all pairing codes and your backups.":
     "Na nowym urządzeniu podaj raz hasło szyfrowania, aby odblokować budżet i zaszyfrowany klucz Własnego OpenAI. Enveo nie odzyska żadnego z nich, jeśli utracisz hasło, wszystkie odblokowane urządzenia, kody parowania i kopie zapasowe.",
   "Own OpenAI credential": "Własny klucz OpenAI",
