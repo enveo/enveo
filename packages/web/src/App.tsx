@@ -338,8 +338,24 @@ export default function App() {
 
 
 
+
+
   const openAccount = (id: string) => {
     nav("accounts");
+    setAcctView({ accountId: id });
+  };
+  // Wide-only: the RAIL's own account row (owner round 3 item 20) — SELECT, don't navigate. Unlike
+  // `openAccount` above, this never touches `screen`/`nav()` at all: the rail is reachable from
+  // every screen except Accounts itself (Rail.tsx's `showAccounts`), and clicking a row there must
+  // highlight it in the rail and open the account panel on the right WITHOUT leaving whatever
+  // screen the user is already on (the Accounts nav row stays the only way to the Accounts
+  // screen). `resolvePanel` (panel.ts) now reads `acctView` on every screen for exactly this
+  // reason. `envView` is cleared explicitly — it is checked BEFORE `acctView` in `resolvePanel`
+  // (the same precedent that already lets an open envelope beat a selected account/widgets/txn),
+  // so a stale envelope pane from an earlier action on this same screen would otherwise keep
+  // winning over the account the user just clicked.
+  const selectRailAccount = (id: string) => {
+    setEnvView(null);
     setAcctView({ accountId: id });
   };
   
@@ -363,15 +379,23 @@ export default function App() {
   const [envActions, setEnvActions] = useState<{ envelopeId: string; month: string } | null>(null);
   const envActionsMounted = useOpenedOnce(envActions !== null);
   const [envEdit, setEnvEdit] = useState<string | null>(null);
-  
-
-
-
-
-
+  // Phone: the action sheet (Transactions / Summary / Edit — EnvActionsSheet below). Wide: no
+  // sheet — `envView` wins `resolvePanel` on ANY screen (components/wide/panel.ts), so tapping an
+  // envelope opens its summary straight into the panel, like the phone's own push-nav summary.
+  // The sheet's other two actions survive on wide: "Transactions" already exists inside
+  // `EnvelopeScreen` (`onOpenTxns`); "Edit" arrives with PR6's `envForm` pane — interim, edit via
+  // Budget's own row editor, unchanged (pr4-task-7-brief.md).
+  // `setAcctView(null)` here (owner round 3 review fix) restores the invariant `resolvePanel`'s
+  // own doc comment already claims — "every setter that establishes one clears the other": every
+  // envelope tile lives on a screen the rail is ALSO reachable from, so a stale account pick from
+  // an earlier rail click must not survive tapping an envelope, or the `!acctView` guards on
+  // `budgetSelectedEnvelopeId`/the reports hub's `selected` prop below stay stuck reading a
+  // selection the panel itself has already moved past.
   const openEnvelope = (envelopeId: string, m: string) => {
-    if (mode !== "phone") setEnvView({ envelopeId, month: m });
-    else setEnvActions({ envelopeId, month: m });
+    if (mode !== "phone") {
+      setEnvView({ envelopeId, month: m });
+      setAcctView(null);
+    } else setEnvActions({ envelopeId, month: m });
   };
   const actionsEnv = envActions ? (state?.envelopes.find((e) => e.id === envActions.envelopeId) ?? null) : null;
   const editEnv = envEdit ? (state?.envelopes.find((e) => e.id === envEdit) ?? null) : null;
@@ -612,8 +636,12 @@ export default function App() {
   // (explicit `envView`, else the never-empty fallback), gated to when the panel can actually be
   // showing it (`wide`, panel open, and the real `screen` — not `primaryScreen`, so an open Add
   // takeover, which steals the panel via `resolvePanel`'s `add` kind, clears the highlight too).
+  // `!acctView` (owner round 3 item 20): a rail account selection now wins `resolvePanel` on ANY
+  // screen, including Budget — without this the table kept highlighting its own fallback row while
+  // the panel showed an unrelated account, the exact list/panel desync gap 9 already fixed for
+  // envelope vs. everything-else; caught live (throwaway stack) selecting a rail account from Budget.
   const budgetSelectedEnvelopeId =
-    wide && !panelClosed && (screen === "budget" || screen === "start") ? (envView?.envelopeId ?? fallbacks?.firstEnvelopeId ?? null) : null;
+    wide && !panelClosed && (screen === "budget" || screen === "start") && !acctView ? (envView?.envelopeId ?? fallbacks?.firstEnvelopeId ?? null) : null;
   
 
 
@@ -681,9 +709,23 @@ export default function App() {
             // must not leave an accent/▸/selBg row no panel is showing); inside it, an absent
             // explicit pick flows through as `undefined` so TransactionsScreen applies its own
             // filtered first-row fallback. `null` off wide, unchanged (phone has no panel to stay
-            // in sync with, the `AccountsScreen`/`BudgetScreen` precedent above).
-            selectedTxnId={wide && !panelClosed && screen === "transactions" && !envView ? txnView?.txnId : null}
-            onSelectTxn={(id) => setTxnView({ txnId: id })}
+            // in sync with, the `AccountsScreen`/`BudgetScreen` precedent above). `!acctView` (owner
+            // round 3 item 20) is the same addition `budgetSelectedEnvelopeId` needed above — a rail
+            // account pick now wins `resolvePanel` on the Transactions screen too, so without this
+            // the list kept a fallback row highlighted while the panel showed an unrelated account.
+            selectedTxnId={wide && !panelClosed && screen === "transactions" && !envView && !acctView ? txnView?.txnId : null}
+            // `setAcctView(null)` here (owner round 3 review fix): `resolvePanel` checks `acctView`
+            // BEFORE the `transactions`/`txnView` rung (panel.ts), so a rail account pick made
+            // earlier on this same screen would otherwise permanently outrank every later row
+            // click — the panel stays stuck on the stale account and `selectedTxnId` above stays
+            // `null` (its own `!acctView` guard), no visible effect until the user leaves and
+            // returns. A transaction row click is exactly as explicit a selection as the rail's —
+            // it must win the same way `selectRailAccount`/`openEnvelope` clear the OTHER axis when
+            // establishing theirs.
+            onSelectTxn={(id) => {
+              setAcctView(null);
+              setTxnView({ txnId: id });
+            }}
           />
         </LazyChunk>
       )}
@@ -708,7 +750,18 @@ export default function App() {
             state={state}
             month={month}
             view={wide ? "overview" : reportsView}
-            onView={setReportsView}
+            
+
+
+
+
+
+
+
+            onView={(v) => {
+              setReportsView(v);
+              setAcctView(null);
+            }}
             monthDay={monthDay}
             onSelectDay={setMonthDay}
             onOpenEnvelope={openEnvelope}
@@ -729,7 +782,15 @@ export default function App() {
             // reflect THAT card as open too, or the open report would have no visible trace in the
             // hub the moment nothing has been explicitly picked yet (the exact gap this task
             // fixes). Phone has no panel to reconcile with, so this stays `undefined` there.
-            selected={wide ? (reportsView !== "overview" ? reportsView : "spending") : undefined}
+            // `!acctView` (owner round 3 item 20): a rail account pick now wins `resolvePanel` on
+            // the Reports screen too — without this the hub kept a report card looking "open" while
+            // the panel actually showed an unrelated account (caught live: selecting a rail account
+            // from Reports, then tapping a hub card, moved the hub's highlight while the panel
+            // stayed WRONGLY on the account — a real bug, not the "same desync, already handled"
+            // read an earlier pass gave this comment; `onView` above now clears `acctView` on every
+            // tap for exactly this reason, the SAME fix `openEnvelope`/`selectRailAccount` already
+            // apply for Budget's `selectedEnvelopeId`/Transactions' `selectedTxnId`).
+            selected={wide && !acctView ? (reportsView !== "overview" ? reportsView : "spending") : undefined}
           />
         </LazyChunk>
       )}
@@ -924,8 +985,10 @@ export default function App() {
               // PR6 Task 5: the band header's "+ Add" button opens Add through this entry point,
               // not `nav("addExpense")` — see `openAddWide`'s own comment above for why.
               onAddWide: openAddWide,
-               
-              onOpenAccount: openAccount,
+              // Owner round 3 item 20: Rail's own account rows SELECT (never navigate) — see
+              // `selectRailAccount`'s own comment above for why this is a different function from
+              // `openAccount` (which `AccountsScreen`'s own rows still use, below).
+              onSelectAccount: selectRailAccount,
               // PR6b Task 4: the account pane's own recent-list edit entry point — NOT the
               // report-panel instance's `onEditTxn` above (see `editAccountTxn`'s comment).
               onEditAccountTxn: editAccountTxn,
