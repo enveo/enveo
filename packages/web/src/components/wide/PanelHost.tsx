@@ -60,7 +60,7 @@ function WidgetSettingsPanel({ widgetId, state, onClose }: { widgetId: WideWidge
     onClose();
   };
   return (
-    <div style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: 14 }}>
+    <div className="gsh" style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: 14 }}>
       <div style={{ fontSize: 15, fontWeight: 700, color: C.text, marginBottom: 4 }}>{t(WIDGET_CATALOG[widgetId].title)}</div>
       <div style={{ fontSize: 11.5, color: C.mute, marginBottom: 14 }}>
         {t("Size: {w} × {h} — drag the corner of the tile to resize", { w: String(widget.w), h: String(widget.h) })}
