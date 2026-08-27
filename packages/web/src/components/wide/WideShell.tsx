@@ -896,7 +896,15 @@ export function WideShell({ bag, rightSlot = null, children }: { bag: WideShellB
                 onOpenReport={onOpenReport}
                 onOpenMonthDay={onOpenMonthDay}
                 edit={boardEdit}
-                onWidgetSettings={setWidgetSettings}
+                // `setAcctView(null)` here (owner round 3 review fix, same class as App.tsx's
+                // `openEnvelope`/`onSelectTxn`/reports `onView`): the widget gear is exactly as
+                // explicit a pick as those, but `resolvePanel` (panel.ts) still checks `acctView`
+                // BEFORE the `widgets` rung, so a stale rail account selection from earlier on
+                // Home would otherwise outrank it and the panel would stay stuck on the account.
+                onWidgetSettings={(id) => {
+                  setWidgetSettings(id);
+                  setAcctView(null);
+                }}
                 onFillGoals={onFillGoals}
               />
             ) : primaryScreen === "settings" ? (
