@@ -177,6 +177,14 @@ describe("resolvePanel", () => {
         expect(view.kind).not.toBe("widgets");
       }
     });
+
+    test("owner round 3 item 20: a selected account still wins over a pending widgetSettings selection, same priority pin as envelope above", () => {
+      expect(resolvePanel({ screen: "start", reportsView: "overview", envView: null, widgetSettings: "spending", acctView: ACCT }, FB)).toEqual({
+        kind: "account",
+        accountId: ACCT.accountId,
+        source: "selection",
+      });
+    });
   });
 
   describe("PR6's `add` kind (the Add/edit-transaction takeover pane) — D2's push semantics", () => {
@@ -204,7 +212,7 @@ describe("resolvePanel", () => {
     });
   });
 
-  describe("PR6b's `account` kind (the v3 `acct` pane, Task 3) — extended by Task 1 with the fallback + Settings rungs", () => {
+  describe("PR6b's `account` kind (the v3 `acct` pane, Task 3) — extended by Task 1 with the fallback + Settings rungs, and by owner round 3 item 20 to win on every screen", () => {
     test("accounts with a selection resolves to the account pane, as a real selection", () => {
       for (const reportsView of REPORT_VIEWS) {
         expect(resolvePanel({ screen: "accounts", reportsView, envView: null, acctView: ACCT }, FB)).toEqual({
@@ -236,10 +244,15 @@ describe("resolvePanel", () => {
       expect(resolvePanel({ screen: "addExpense", reportsView: "overview", envView: null, acctView: ACCT }, FB)).toEqual({ kind: "add" });
     });
 
-    test("a selected account is ignored on every screen other than accounts and settings — a stale value there never leaks into the panel", () => {
-      for (const screen of ["start", "budget", "transactions", "reports", "addExpense"] as const) {
-        const view = resolvePanel({ screen, reportsView: "overview", envView: null, acctView: ACCT }, FB);
-        expect(view.kind).not.toBe("account");
+    test("owner round 3 item 20: a selected account wins on every screen except addExpense — the rail's own row click no longer navigates, so the pane must follow it wherever the user already is", () => {
+      for (const screen of ["start", "budget", "transactions", "reports"] as const) {
+        for (const reportsView of REPORT_VIEWS) {
+          expect(resolvePanel({ screen, reportsView, envView: null, acctView: ACCT }, FB)).toEqual({
+            kind: "account",
+            accountId: ACCT.accountId,
+            source: "selection",
+          });
+        }
       }
     });
   });
