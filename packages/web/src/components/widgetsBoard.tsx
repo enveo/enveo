@@ -633,17 +633,27 @@ export function GoalsWidget({ state, month, onOpenReport, onFillGoals, chromeles
  * above — a small FIXED-size sparkline (44×20, not measured) stroked in the ENVELOPE's own color
  * (`tr.color`) with a sign-verdict-colored dot (`trendColor`) and a right-aligned signed amount in
  * that same verdict color, no per-row divider. The phone body (chromeless falsy) is untouched:
- * measured-width spark, single `trendColor()` for line+dot+amount, bordered rows. ── */
+ * measured-width spark, single `trendColor()` for line+dot+amount, bordered rows.
+ *
+ * v3.dc.html:558-559's trailing `home.trendsHero` caption ("{n} rising · {m} falling") is counted
+ * over the FULL trend list (`trendRows`, before its `.slice(0,3..8)` for display) — never just the
+ * rows the tile happens to show — so `allTrends` stays unsliced for this count and only `trends`
+ * (top 5) feeds the rows. Reuses TrendsReport.tsx's own `"{n} rising · {m} falling"` key and its
+ * ±10% `deltaPct` threshold (a null `deltaPct` — no positive baseline — counts as neither) rather
+ * than inventing a second copy of the same rising/falling classification. ── */
 export function TrendsWidget({ month, onOpenReport, chromeless }: WidgetProps) {
   const C = useTheme();
   const M = useMask();
   const { t } = useT();
   const version = useLedgerVersion();
-  const trends = useMemo(() => {
+  const allTrends = useMemo(() => {
     const ledger = store.getLedger();
-    return ledger ? computeEnvelopeTrends(ledger, month, 6).slice(0, 5) : [];
+    return ledger ? computeEnvelopeTrends(ledger, month, 6) : [];
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [version, month]);
+  const trends = allTrends.slice(0, 5);
+  const rising = allTrends.filter((tr) => tr.deltaPct !== null && tr.deltaPct > 0.1).length;
+  const falling = allTrends.filter((tr) => tr.deltaPct !== null && tr.deltaPct < -0.1).length;
   const [rowsRef, rowsW] = useElementWidth<HTMLDivElement>(150);
   const sparkW = Math.max(64, rowsW);
 
@@ -681,6 +691,8 @@ export function TrendsWidget({ month, onOpenReport, chromeless }: WidgetProps) {
               </button>
             );
           })}
+          {/* v3.dc.html:559 — plain, non-interactive, always shown once there's any trend data. */}
+          <span style={{ fontSize: 10.5, color: C.mute, paddingTop: 4 }}>{t("{n} rising · {m} falling", { n: rising, m: falling })}</span>
         </div>
       ) : (
         <div ref={rowsRef}>
