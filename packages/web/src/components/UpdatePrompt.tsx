@@ -1,8 +1,9 @@
 import { registerSW } from "virtual:pwa-register";
 import { useEffect, useSyncExternalStore } from "react";
+import { useTheme } from "../lib/contexts";
 import { useT } from "../lib/i18n";
 import { useWideHost } from "../lib/shellContext";
-import { font, TEAL } from "../lib/theme";
+import { CTA, font } from "../lib/theme";
 import { APP_VERSION } from "../lib/version";
 import { PHONE_COL } from "../lib/viewMode";
 
@@ -131,11 +132,21 @@ export function useAppUpdate(): { needRefresh: boolean; incomingVersion: string 
  * Phone (and fold) presentation: a fixed, viewport/pane-anchored banner shown while an update is
  * waiting. Desktop no longer mounts this — design-parity wave A, task A4 moved the desktop
  * surface into the rail (`Rail.tsx`'s update card, between the TBB card and the user block,
- * owner-requirements.md #3); this component's OWN presentation is otherwise unchanged so phone
- * behaviour stays byte-identical.
+ * owner-requirements.md #3).
+ *
+ * Styling (owner round 4, item 23): the app's own card grammar — `C.card` surface, 1px `C.line`
+ * border, `C.text` title, a filled-CTA "Refresh" button and a muted × — NOT a saturated
+ * theme-colored fill. The previous `background: TEAL` banner painted `var(--accent)` edge to
+ * edge, which resolved to lavender/navy on Duet and a loud green on Cisza; the owner rejected
+ * all four. Card tokens keep the banner legible on every theme (Duet dark's navy `card` keeps
+ * its audited light `text` ink), the small CTA dot + filled CTA button carry the "update
+ * waiting" signal the fill used to, and CTA is the one theme-stable accent (coral in every
+ * theme, same `background: CTA, color: #fff` grammar as the app's primary sheet buttons).
+ * Behaviour (refresh/dismiss, anchoring) is untouched; the rail's own update card is separate.
  */
 export function UpdatePrompt() {
   const { t } = useT();
+  const C = useTheme();
   const { needRefresh, refresh, dismiss } = useAppUpdate();
   // Wide anchor (PR6 Task 6 — sheet triage sweep measured this): mirrors DockedNumpad's own
   // anchor (Task 3). `null` on phone (no provider) and on fold (WideShell only renders this
@@ -172,28 +183,59 @@ export function UpdatePrompt() {
           pointerEvents: "auto",
           display: "flex",
           alignItems: "center",
-          gap: 10,
+          gap: 8,
+          // border-box, or the padding + 1px border ride ON TOP of `calc(100% - 24px)` (no global
+          // box-sizing reset exists): measured content-box at 390px the card grew to 388px at
+          // x=1 — visually edge-to-edge, the exact full-bleed look item 23 removes.
+          boxSizing: "border-box",
           maxWidth: PHONE_COL,
           width: "calc(100% - 24px)",
-          background: TEAL,
-          color: "#fff",
-          borderRadius: 12,
-          padding: "10px 12px",
-          boxShadow: "0 6px 20px rgba(0,0,0,0.25)",
+          background: C.card,
+          border: `1px solid ${C.line}`,
+          borderRadius: 14,
+          padding: "8px 8px 8px 12px",
+          boxShadow: "0 8px 30px rgba(0,0,0,0.18)",
           fontFamily: font,
         }}
       >
-        <span style={{ flex: 1, fontSize: 13, fontWeight: 600 }}>{t("New version available")}</span>
+        <span aria-hidden style={{ width: 7, height: 7, borderRadius: "50%", background: CTA, flexShrink: 0 }} />
+        <span style={{ flex: 1, minWidth: 0, fontSize: 13, fontWeight: 600, color: C.text }}>{t("New version available")}</span>
         <button
           onClick={() => refresh(true)}
-          style={{ border: "none", background: "#fff", color: TEAL, borderRadius: 8, padding: "6px 12px", fontSize: 12.5, fontWeight: 700, cursor: "pointer" }}
+          style={{
+            flexShrink: 0,
+            border: "none",
+            background: CTA,
+            color: "#fff",
+            borderRadius: 9,
+            padding: "0 12px",
+            minHeight: 30,
+            fontSize: 12.5,
+            fontWeight: 700,
+            cursor: "pointer",
+            fontFamily: font,
+          }}
         >
           {t("Refresh")}
         </button>
         <button
           onClick={dismiss}
           aria-label={t("Close")}
-          style={{ border: "none", background: "transparent", color: "#fff", fontSize: 16, cursor: "pointer", lineHeight: 1, padding: 4 }}
+          style={{
+            flexShrink: 0,
+            minWidth: 30,
+            minHeight: 30,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            border: "none",
+            background: "transparent",
+            color: C.mute,
+            fontSize: 16,
+            cursor: "pointer",
+            lineHeight: 1,
+            padding: 0,
+          }}
         >
           ×
         </button>
