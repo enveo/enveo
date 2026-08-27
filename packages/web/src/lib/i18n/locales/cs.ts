@@ -711,8 +711,6 @@ export const cs: Dict = {
   // Wide Home board — edit mode (PR5 Task 6)
   "Add widget": "Přidat widget",
   "Every widget is already on the grid.": "Všechny widgety jsou už v mřížce.",
-  "Remove from the board": "Odebrat z mřížky",
-  "Size: {w} × {h} — drag the corner of the tile to resize": "Velikost: {w} × {h} — přetažením rohu dlaždice změníte velikost",
   "Widget settings": "Nastavení widgetu",
   "latest transactions": "poslední transakce",
 

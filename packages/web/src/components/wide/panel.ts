@@ -108,15 +108,24 @@ export function panelFallbacks(
  * `widgetSettings` only ever resolves to the `widgets` kind on the `start` screen — `WideShell`
  * clears its local state whenever `screen` changes away from `start`, but this function stays
  * total and defensive about that discipline rather than trusting it (a stale non-null value on
- * any other screen is simply ignored here, never surfaced). `acctView` (PR6b Task 3) is the same
- * discipline for the `accounts` screen — App owns it (D2: no phone-parity route exists for it,
- * unlike `envView`), and a stale value elsewhere is likewise ignored here — EXCEPT on `settings`
- * (Task 1, owner rule 5): the account context deliberately PERSISTS there, so `settings` reads
- * `acctView` too (App's `nav` stops resetting it on entry to settings specifically — see App.tsx).
- * `txnView` (wave C task 3) is the same discipline again, scoped to `transactions` only — a stale
- * value on any other screen is ignored here too (`WideShell`'s bag-field comment has the full
- * reset story: unlike `acctView`, App never clears `txnView` on plain navigation at all — its only
- * reset path is a vanish effect this function has no part in).
+ * any other screen is simply ignored here, never surfaced). `txnView` (wave C task 3) is the same
+ * discipline, scoped to `transactions` only — a stale value on any other screen is ignored here
+ * too (`WideShell`'s bag-field comment has the full reset story: unlike `acctView` below, App
+ * never clears `txnView` on plain navigation at all — its only reset path is a vanish effect this
+ * function has no part in).
+ *
+ * `acctView` (PR6b Task 3) used to follow that SAME screen-scoped discipline — but owner round 3
+ * item 20 retires it: the rail's own account row no longer navigates at all (App.tsx's
+ * `selectRailAccount` sets `acctView` and clears `envView`, nothing else), so the pane must follow
+ * that selection on WHATEVER screen the user already is — the exact push-nav precedent `envView`
+ * above already set (an envelope opened from Reports still shows the envelope). Checked right
+ * after `envView` for the same reason envView is checked before `reports`/`widgetSettings`/`txn`
+ * below: the most recently made explicit selection wins. In practice at most one of
+ * `envView`/`acctView` is ever non-null at a time (every setter that establishes one clears the
+ * other — App.tsx), so this ordering is a tie-break for a caller that violated that discipline,
+ * not a real everyday branch. `AccountsScreen`'s own rows and Settings (owner rule 5) still reach
+ * this exact same rung — nothing distinguishes "the rail picked this" from "the Accounts list
+ * picked this" once `acctView` is set, which is correct: both are real user selections.
  */
 export function resolvePanel(
   a: {
@@ -131,14 +140,14 @@ export function resolvePanel(
 ): PanelView {
   if (a.screen === "addExpense") return { kind: "add" };
   if (a.envView) return { kind: "envelope", envelopeId: a.envView.envelopeId, month: a.envView.month, source: "selection" };
+  // Owner round 3 item 20: an explicit account pick wins on ANY screen now — see this function's
+  // own doc comment above for why this moved up from the accounts/settings-only rung it used to be.
+  if (a.acctView) return { kind: "account", accountId: a.acctView.accountId, source: "selection" };
   if (a.screen === "reports") {
     if (a.reportsView !== "overview") return { kind: "report", view: a.reportsView, source: "selection" };
     return { kind: "report", view: "spending", source: "fallback" }; // v3:2213's own `selReport` default
   }
   if (a.screen === "start" && a.widgetSettings) return { kind: "widgets", widgetId: a.widgetSettings };
-  if ((a.screen === "accounts" || a.screen === "settings") && a.acctView) {
-    return { kind: "account", accountId: a.acctView.accountId, source: "selection" };
-  }
   if (a.screen === "accounts" || a.screen === "settings") {
     return fb.firstAccountId ? { kind: "account", accountId: fb.firstAccountId, source: "fallback" } : { kind: "empty", hint: "account" };
   }

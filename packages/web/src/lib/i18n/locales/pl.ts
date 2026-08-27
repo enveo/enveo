@@ -1092,10 +1092,17 @@ export const pl: Dict = {
   "total {amount} this month · click a row for detail": "razem {amount} w tym miesiącu · kliknij wiersz, aby zobaczyć szczegóły",
   // Wide Home board — edit mode (PR5 Task 6)
   "Add widget": "Dodaj widget",
+  // Gear panel (owner round 3 item 14): "Scroll inside the tile" toggle helper, ON state.
+  "Content scrolls when it does not fit the tile.": "Treść przewija się, gdy nie mieści się w kafelku.",
   "Every widget is already on the grid.": "Każdy widget jest już na siatce.",
-  "Remove from the board": "Usuń z siatki",
+  // Gear panel helper, OFF state.
+  "Overflowing content is clipped at the tile edge.": "Treść wykraczająca poza kafelek zostaje przycięta.",
+  "Remove from the grid": "Usuń z siatki",
   "Reset layout": "Resetuj układ",
-  "Size: {w} × {h} — drag the corner of the tile to resize": "Rozmiar: {w} × {h} — przeciągnij róg kafelka, aby zmienić rozmiar",
+  "Scroll inside the tile": "Przewijaj wewnątrz kafelka",
+  Scrolling: "Przewijanie",
+  "Size on the grid": "Rozmiar na siatce",
+  "Size: {w} × {h} — drag the ◢ corner on the tile to resize": "Rozmiar: {w} × {h} — przeciągnij róg ◢ kafelka, aby zmienić rozmiar",
   "Widget settings": "Ustawienia widgetu",
 
   // --- wide-onboarding epic (PR7 task 5, consolidated pass) ---
@@ -1220,4 +1227,8 @@ export const pl: Dict = {
     other: "{n} kroków do zamkniętego planu · {pct}% miesiąca za nami",
   },
   "v{version} · refreshing takes a second, nothing is lost.": "v{version} · odświeżenie zajmuje chwilę, nic nie przepada.",
+
+  // Owner round 3 item 13 — the rail's persistent "Synced vX · build …" line's own hover tooltip.
+  "A newer build is ready — refresh to update": "Dostępna jest nowsza wersja — odśwież, aby zaktualizować",
+  "Enveo v{version} — a newer build is ready, refresh to update": "Enveo v{version} — dostępna jest nowsza wersja, odśwież, aby zaktualizować",
 };

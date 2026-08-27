@@ -701,8 +701,6 @@ export const nl: Dict = {
   // Wide Home board — edit mode (PR5 Task 6)
   "Add widget": "Widget toevoegen",
   "Every widget is already on the grid.": "Elke widget staat al op het raster.",
-  "Remove from the board": "Verwijderen van het raster",
-  "Size: {w} × {h} — drag the corner of the tile to resize": "Grootte: {w} × {h} — sleep de hoek van de tegel om de grootte te wijzigen",
   "Widget settings": "Widgetinstellingen",
   "latest transactions": "laatste transacties",
 

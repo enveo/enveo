@@ -19,7 +19,16 @@
  * board tile that owns its own title+card chrome (Task 6) — default `false`/absent renders exactly
  * the phone chrome below, so Start's own rendering is unaffected by this file existing.
  */
-import { computeDailySpending, computeEnvelopeTrends, computeSpendingByDimension, computeStateResponse, goalProgress, type Transaction } from "@enveo/shared";
+import {
+  computeDailySpending,
+  computeEnvelopeTrends,
+  computeSpendingByDimension,
+  computeStateResponse,
+  goalProgress,
+  largestExpenses,
+  type Transaction,
+  topPlaces,
+} from "@enveo/shared";
 import { type CSSProperties, type ReactNode, useMemo } from "react";
 import { useLedgerVersion } from "../lib/api";
 import { useMask, useTheme } from "../lib/contexts";
@@ -35,7 +44,7 @@ import { font, TEAL, type Theme, TRANSFER } from "../lib/theme";
 import { useElementWidth } from "../lib/useElementWidth";
 import { trendColor } from "../screens/reports/charts";
 import { CardBox, GoalRing, SectionEyebrow } from "./kit";
-import { Bar, CalendarHeatmap, dimNullLabel, SegBar, TrendSpark } from "./reportKit";
+import { Bar, CalendarHeatmap, dimNullLabel, heatColor, heatWeeks, SegBar, TrendSpark } from "./reportKit";
 import type { WidgetProps } from "./widgets";
 
 /** Wraps a widget body's rows in the phone SectionEyebrow+CardBox chrome, unless a wide board tile
@@ -203,6 +212,11 @@ export function RecentWidget({ onOpenTxns, onNav, chromeless }: WidgetProps) {
     return new Map((ledger?.accounts ?? []).map((a) => [a.id, a]));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [version]);
+  const catById = useMemo(() => {
+    const ledger = store.getLedger();
+    return new Map((ledger?.categories ?? []).map((c) => [c.id, c]));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [version]);
 
   // Same sign/description rules as Transactions.tsx's own row (colorOf/signed/descOf) — a
   // deliberately smaller copy (no place/category sub-line) for the compact tile.
@@ -220,13 +234,41 @@ export function RecentWidget({ onOpenTxns, onNav, chromeless }: WidgetProps) {
     const env = tx.envelopeId ? envById.get(tx.envelopeId) : null;
     return tx.name || tx.note || env?.name || (tx.items.length ? t("Split transaction") : t("Transaction"));
   };
-  // v3.dc.html:440/3738 — the dot is colored PURELY by envelope, type-agnostic: `t.env &&
-  // envById[t.env] ? envById[t.env].color : T.mute`. A transfer never carries an envelopeId, so it
-  // falls through to the same neutral `C.mute` as any other envelope-less row — no special-cased
-  // transfer color here (that belongs to the amount's `signed()`, which already uses TRANSFER).
-  const dotColor = (tx: Transaction): string => {
-    const env = tx.envelopeId ? envById.get(tx.envelopeId) : null;
-    return env?.color ?? C.mute;
+  // v3.dc.html:440/3738's grammar is `t.env && envById[t.env] ? envById[t.env].color : T.mute` —
+  // in the design's flat mock data a transfer row can carry an `env` directly (its own synthetic
+  // "Checking → Savings" example, v3:2079, sets `env: "emrg"`). The real domain never puts an
+  // envelopeId on an income/transfer transaction (Add.tsx: "income has no envelope selection …
+  // transfer likewise has none") — what the design is modelling there is money landing in an
+  // envelope-LINKED account, captured on the real transaction as `allocationToEnvelopeId`/
+  // `allocationFromEnvelopeId` (`captureAllocationFlow`, shared/automaticEnvelope.ts). Resolving
+  // through that link is the faithful real-domain equivalent of the design's literal `t.env`, not
+  // a new rule — an unlinked transfer/income still falls through to the same neutral `C.mute` as
+  // before. Shared with `metaLabel` below (owner round 3 item 15) so the dot and the meta text
+  // never disagree about which envelope a row belongs to.
+  const resolvedEnvelope = (tx: Transaction) => {
+    if (tx.envelopeId) return envById.get(tx.envelopeId) ?? null;
+    if (tx.type === "income") return tx.allocationToEnvelopeId ? (envById.get(tx.allocationToEnvelopeId) ?? null) : null;
+    if (tx.type === "transfer") {
+      const linkedId = tx.allocationToEnvelopeId || tx.allocationFromEnvelopeId;
+      return linkedId ? (envById.get(linkedId) ?? null) : null;
+    }
+    return null;
+  };
+  const dotColor = (tx: Transaction): string => resolvedEnvelope(tx)?.color ?? C.mute;
+  // Owner round 3 item 15 — the wide meta line names the category/envelope, not just the date
+  // (his crop: "July 14 · Groceries"; income falls back to a literal "July 13 · Income", transfer
+  // to "July 13 · Emergency Fund" once a linked account resolves an envelope — v3.dc.html:3737's
+  // `t.env && envById[t.env] ? envById[t.env].name : t.cat`). `t("Income")`/`t("Transfer")`/
+  // `t("No category")`/`t("Split transaction")` are all pre-existing keys (TxnPanel.tsx/
+  // reportKit.tsx) — no new i18n strings for this row. Phone's meta stays date-only, untouched.
+  const metaLabel = (tx: Transaction): string => {
+    const env = resolvedEnvelope(tx);
+    if (env) return env.name;
+    const cat = tx.categoryId ? catById.get(tx.categoryId) : null;
+    if (cat) return cat.name;
+    if (tx.type === "income") return t("Income");
+    if (tx.type === "transfer") return t("Transfer");
+    return tx.items.length ? t("Split transaction") : t("No category");
   };
 
   return (
@@ -239,12 +281,26 @@ export function RecentWidget({ onOpenTxns, onNav, chromeless }: WidgetProps) {
           // v3.dc.html:439 — wide rows are gap-separated (no per-row divider) at 7px padding;
           // the phone row keeps its existing 8px-padded, border-bottomed list untouched.
           const rowStyle = chromeless ? { ...rowBtnStyle(C, true), padding: "7px 0" } : rowBtnStyle(C, i === rows.length - 1);
+          const headline = descOf(tx);
+          // Owner round 3 item 15 wants the meta line to name the category/envelope, but
+          // descOf() ITSELF falls back to that same envelope/"Split transaction" label whenever
+          // a transaction has no payee name and no note (Add.tsx stores a blank payee as
+          // `name: null`, so this is a reachable state, not a hypothetical one). Repeating the
+          // identical string on both lines ("Groceries" / "Jul 14 · Groceries") would tell the
+          // user nothing the headline didn't already say — the design never hits this because
+          // its mock payees are always distinct from the envelope/category name — so the wide
+          // meta line drops the label and falls back to date-only (the phone's existing grammar)
+          // whenever the two would collide.
+          const meta = metaLabel(tx);
+          const metaText = chromeless && meta !== headline ? `${shortDate(tx.date, lang)} · ${meta}` : shortDate(tx.date, lang);
           return (
             <button key={tx.id} onClick={() => onOpenTxns()} style={rowStyle}>
               {chromeless && <span style={{ width: 9, height: 9, borderRadius: 3, background: dotColor(tx), display: "block", flexShrink: 0 }} />}
               <span style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 1 }}>
-                <span style={{ fontSize: 12.5, color: C.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{descOf(tx)}</span>
-                <span style={{ fontSize: chromeless ? 10 : 10.5, color: C.mute }}>{shortDate(tx.date, lang)}</span>
+                <span style={{ fontSize: 12.5, color: C.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{headline}</span>
+                <span style={{ fontSize: chromeless ? 10 : 10.5, color: C.mute, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  {metaText}
+                </span>
               </span>
               <span style={{ fontSize: 12.5, fontWeight: 700, color: s.color, fontVariantNumeric: "tabular-nums", flexShrink: 0 }}>{s.text}</span>
             </button>
@@ -293,11 +349,74 @@ export function SpendingWidget({ state, month, onOpenReport, chromeless }: Widge
   const top = rows.slice(0, 5);
   const total = rows.reduce((sum, r) => sum + r.amount, 0);
   const topAmount = Math.max(...top.map((r) => r.amount), 1);
+  // v3.dc.html:460's `share` is this row's percentage of the FULL month total (every envelope,
+  // `homeSpendSum`) — not of the top-5 slice and not of `topAmount` (the bar's own denominator).
+  // Same "" guard as the design when there's nothing to divide by (unreachable here in practice:
+  // the empty-rows case is handled above this branch, so `total` is always > 0 once we get here).
+  const shareOf = (amount: number): string => (total > 0 ? `${Math.round((amount / total) * 100)}%` : "");
 
   return (
     <WidgetShell title={t("Spending")} chromeless={chromeless}>
       {rows.length === 0 ? (
         <div style={{ padding: "10px 2px", fontSize: 12, color: C.mute }}>{t("No spending this month.")}</div>
+      ) : chromeless ? (
+        // Owner round 3 item 16 — the design's compact grammar (v3.dc.html:451-464), not the
+        // phone's bordered/padded row list: rows are spaced by the tile body's own 8px flex gap
+        // (WideHome's `gsh` container) rather than a per-row border+padding, each row is a tight
+        // name/share%/amount line (`gap:3`) over a slim 4px bar (design: `hint-size="100%,4px"`),
+        // and the segmented header bar matches the design's 9px (`hint-size="100%,9px"`) instead
+        // of the phone's default 8px. This is the actual height drop behind "ładniej i bardziej
+        // kompaktowo" — not just a font tweak.
+        //
+        // Row content is ~22px tall — under the house's usual ≥30×30 glyph-button floor — but
+        // unlike an isolated icon control (chromeBtn/fillOne) this row sits in the tile's own 8px
+        // flex gap (WideHome's `gsh` container) with a sibling above and below on EVERY side, so
+        // the floor is met with the padding+negative-margin hit-slop technique instead of a plain
+        // `minHeight` bump: 4px of padding top/bottom grows the button's own border box to
+        // 22+8=30px, and an equal negative margin pulls it back so the MARGIN box — what the flex
+        // column actually spaces siblings by — still measures 22px, unchanged. Padding and margin
+        // cancel exactly, so the rendered text/bar sit at the identical pixel position as before;
+        // only the invisible hit area grows, spilling 4px into the gap on each side (two adjacent
+        // rows' expanded boxes meet exactly at the middle of their shared gap, so a click anywhere
+        // in it always lands on one row or the other, never nothing). This keeps the design's
+        // literal compact height — the whole point of "ładniej i bardziej kompaktowo" — while
+        // still clearing the 30px floor, rather than trading one off against the other.
+        <>
+          <SegBar segments={top.map((r) => ({ weight: Math.max(0, r.amount), color: rowColor(r.key) }))} height={9} />
+          {top.map((r) => (
+            <button
+              key={r.key ?? "none"}
+              onClick={() => onOpenReport?.("spending")}
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                gap: 3,
+                width: "100%",
+                padding: "4px 0",
+                margin: "-4px 0",
+                background: "none",
+                border: "none",
+                cursor: "pointer",
+                textAlign: "left",
+                fontFamily: "inherit",
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "baseline", gap: 8, fontSize: 12.5, color: C.text }}>
+                <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  {dimNullLabel(r.name, "envelope", t)}
+                </span>
+                <span style={{ fontSize: 10.5, color: C.mute, flexShrink: 0 }}>{shareOf(r.amount)}</span>
+                <span style={{ fontWeight: 650, fontVariantNumeric: "tabular-nums", flexShrink: 0 }}>{M(r.amount)}</span>
+              </div>
+              <Bar pct={(r.amount / topAmount) * 100} color={rowColor(r.key)} height={4} />
+            </button>
+          ))}
+          {/* v3.dc.html:466 — a plain, non-interactive caption (its own text says "click a row for
+              detail" — the rows are the click target, not this line). */}
+          <span style={{ fontSize: 10.5, color: C.mute, fontVariantNumeric: "tabular-nums" }}>
+            {t("total {amount} this month · click a row for detail", { amount: M(total) })}
+          </span>
+        </>
       ) : (
         <>
           <div style={{ padding: "8px 0 6px" }}>
@@ -314,33 +433,24 @@ export function SpendingWidget({ state, month, onOpenReport, chromeless }: Widge
               <span style={{ fontSize: 12, fontWeight: 650, color: C.text, fontVariantNumeric: "tabular-nums", flexShrink: 0 }}>{M(r.amount)}</span>
             </button>
           ))}
-          {/* v3.dc.html:466 — the wide caption is a plain, non-interactive line (its own text says
-              "click a row for detail" — the rows are the click target, not this line), at the
-              design's 10.5px; the phone footer stays the existing clickable button, unchanged. */}
-          {chromeless ? (
-            <span style={{ fontSize: 10.5, color: C.mute, fontVariantNumeric: "tabular-nums" }}>
-              {t("total {amount} this month · click a row for detail", { amount: M(total) })}
-            </span>
-          ) : (
-            <button
-              onClick={() => onOpenReport?.("spending")}
-              style={{
-                display: "block",
-                width: "100%",
-                padding: "8px 0 4px",
-                background: "none",
-                border: "none",
-                fontSize: 11,
-                fontWeight: 600,
-                color: C.mute,
-                cursor: "pointer",
-                textAlign: "center",
-                fontFamily: font,
-              }}
-            >
-              {t("total {amount} this month", { amount: M(total) })}
-            </button>
-          )}
+          <button
+            onClick={() => onOpenReport?.("spending")}
+            style={{
+              display: "block",
+              width: "100%",
+              padding: "8px 0 4px",
+              background: "none",
+              border: "none",
+              fontSize: 11,
+              fontWeight: 600,
+              color: C.mute,
+              cursor: "pointer",
+              textAlign: "center",
+              fontFamily: font,
+            }}
+          >
+            {t("total {amount} this month", { amount: M(total) })}
+          </button>
         </>
       )}
     </WidgetShell>
@@ -396,7 +506,11 @@ export function GoalsWidget({ state, month, onOpenReport, onFillGoals, chromeles
       ) : chromeless ? (
         <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
           {rows.map(({ e, gp }) => {
-            const ringColor = gp.funded ? C.pos : TEAL;
+            // Owner round 3 item 18: the ring is colored PER GOAL from the envelope's own
+            // identity color (v3.dc.html:506's `g.color`), not the funded-status convention this
+            // used to share with GoalsReport.tsx (`C.pos` once funded, `TEAL` otherwise) — see
+            // that file's own comment for the fuller reversal rationale.
+            const ringColor = e.color;
             const fundedAmt = Math.min(Math.max(0, e.allocated), e.monthlyTarget ?? 0);
             const fillable = Math.max(0, Math.min(gp.missing, state.readyToAssign));
             return (
@@ -521,17 +635,34 @@ export function GoalsWidget({ state, month, onOpenReport, onFillGoals, chromeles
 
 /* ── Trends: the top-5 movers over 6 months, same computeEnvelopeTrends/trendColor as the Trends
  * report. TrendSpark's width is MEASURED (the caller-supplied-width waiver — never the fixed 64/72
- * probe the report row uses), so a wide tile draws a proportionally wider chart. ── */
+ * probe the report row uses), so a wide tile draws a proportionally wider chart.
+ *
+ * Owner round 3 item 17: the WIDE board tile (`chromeless`) forks to its own row grammar, matching
+ * the design's home-board trends widget (v3.dc.html:546-560) rather than the phone/report grammar
+ * above — a small FIXED-size sparkline (44×20, not measured) stroked in the ENVELOPE's own color
+ * (`tr.color`) with a sign-verdict-colored dot (`trendColor`) and a right-aligned signed amount in
+ * that same verdict color, no per-row divider. The phone body (chromeless falsy) is untouched:
+ * measured-width spark, single `trendColor()` for line+dot+amount, bordered rows.
+ *
+ * v3.dc.html:558-559's trailing `home.trendsHero` caption ("{n} rising · {m} falling") is counted
+ * over the FULL trend list (`trendRows`, before its `.slice(0,3..8)` for display) — never just the
+ * rows the tile happens to show — so `allTrends` stays unsliced for this count and only `trends`
+ * (top 5) feeds the rows. Reuses TrendsReport.tsx's own `"{n} rising · {m} falling"` key and its
+ * ±10% `deltaPct` threshold (a null `deltaPct` — no positive baseline — counts as neither) rather
+ * than inventing a second copy of the same rising/falling classification. ── */
 export function TrendsWidget({ month, onOpenReport, chromeless }: WidgetProps) {
   const C = useTheme();
   const M = useMask();
   const { t } = useT();
   const version = useLedgerVersion();
-  const trends = useMemo(() => {
+  const allTrends = useMemo(() => {
     const ledger = store.getLedger();
-    return ledger ? computeEnvelopeTrends(ledger, month, 6).slice(0, 5) : [];
+    return ledger ? computeEnvelopeTrends(ledger, month, 6) : [];
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [version, month]);
+  const trends = allTrends.slice(0, 5);
+  const rising = allTrends.filter((tr) => tr.deltaPct !== null && tr.deltaPct > 0.1).length;
+  const falling = allTrends.filter((tr) => tr.deltaPct !== null && tr.deltaPct < -0.1).length;
   const [rowsRef, rowsW] = useElementWidth<HTMLDivElement>(150);
   const sparkW = Math.max(64, rowsW);
 
@@ -539,6 +670,39 @@ export function TrendsWidget({ month, onOpenReport, chromeless }: WidgetProps) {
     <WidgetShell title={t("Envelope trends")} chromeless={chromeless}>
       {trends.length === 0 ? (
         <div style={{ padding: "10px 2px", fontSize: 12, color: C.mute }}>{t("Not enough history yet — trends appear after two months of spending.")}</div>
+      ) : chromeless ? (
+        <div style={{ display: "flex", flexDirection: "column" }}>
+          {trends.map((tr) => {
+            const signColor = trendColor(tr, C);
+            const delta = tr.last - tr.baseline;
+            return (
+              <button key={tr.id} onClick={() => onOpenReport?.("trends")} style={{ ...rowBtnStyle(C, true), padding: "5px 0" }}>
+                <TrendSpark
+                  series={tr.series}
+                  color={tr.color}
+                  dotColor={signColor}
+                  median={tr.baseline}
+                  medianColor={C.line}
+                  dot
+                  w={44}
+                  h={20}
+                  strokeWidth={2.5}
+                  medianStrokeWidth={1.5}
+                  dotRadius={3}
+                />
+                <span style={{ flex: 1, minWidth: 0, fontSize: 12, color: C.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  {tr.name}
+                </span>
+                <span style={{ flexShrink: 0, fontSize: 11, fontWeight: 750, color: signColor, fontVariantNumeric: "tabular-nums" }}>
+                  {delta >= 0 ? "+" : "−"}
+                  {M(Math.abs(delta))}
+                </span>
+              </button>
+            );
+          })}
+          {/* v3.dc.html:559 — plain, non-interactive, always shown once there's any trend data. */}
+          <span style={{ fontSize: 10.5, color: C.mute, paddingTop: 4 }}>{t("{n} rising · {m} falling", { n: rising, m: falling })}</span>
+        </div>
       ) : (
         <div ref={rowsRef}>
           {trends.map((tr, i) => {
@@ -580,8 +744,38 @@ export function TrendsWidget({ month, onOpenReport, chromeless }: WidgetProps) {
 }
 
 /* ── Heatmap: daily spending calendar, same computeDailySpending/CalendarHeatmap as the Month
- * report — day click deep-links to the Month report with that day's panel already open. ── */
-export function HeatmapWidget({ month, onOpenMonthDay, chromeless }: WidgetProps) {
+ * report — day click deep-links to the Month report with that day's panel already open.
+ *
+ * Owner round 3 item 19: the WIDE board tile (`chromeless`) forks to the design's compact
+ * home-board grammar (v3.dc.html:556-587) instead of the phone/report `CalendarHeatmap` below —
+ * small fixed-height cells (17px tall, 4px gap/radius, no per-cell day number) built from the
+ * SAME `heatWeeks`/`heatColor` primitives `CalendarHeatmap` itself uses (so the color ramp never
+ * drifts from the phone widget or the Month report), an avg/peak caption reusing MonthReport's
+ * own string verbatim ("avg {avg}/day · peak: {date} ({peak})" — `date` via `shortDate`, the
+ * app's nominative short-date formatter, same one the wide Recent-activity row already uses), and
+ * the design's two companion lists SCALED BY TILE WIDTH exactly like its own `sizeOf` (v3.dc.html
+ * :3588-3590, :3792-3797): S (`tile.w<=1`) shows neither list at all, M (`w===2`) shows only
+ * "Most frequent places" (top 3, `topPlaces` — shared/reports.ts, the same visit-count-led
+ * function MonthReport's own places table calls, so rank/count/sum here never disagrees with the
+ * Month report), and L (`w>=3`) widens that to the top 5 AND adds a second "Largest expenses"
+ * table (`largestExpenses`, shared/reports.ts — the same amount-led function MonthReport's own
+ * report-level table calls, top 3), matching the design's `heatPlaces`/`heatPlacesDisplay`/
+ * `heatLargest`/`heatLargestDisplay`. `tile` is always supplied alongside `chromeless` today
+ * (WideHome.tsx) — the `?? 2` fallback below only matters if that contract ever changes, and picks
+ * the M bucket (the catalog's own default size for this widget, shared/preferences.ts). Both
+ * tables are OMITTED entirely (not rendered empty) when there is nothing to show, the same rule
+ * MonthReport's own header comment documents, and neither table's rows are click targets — same
+ * as MonthReport's own equivalent rows, which are informational only. Row styling matches the
+ * design's HOME-BOARD grammar specifically (name inherits the row's own text color, meta muted, no
+ * bold) — a deliberately different arrangement from MonthReport's own already-shipped report-level
+ * tables (soft name, bold text meta): the design gives the home tile and the full report two
+ * different ROW treatments for the SAME underlying lists (v3.dc.html:571-586 vs 1614-1619), not two
+ * different sets of lists — both lists exist at the tile level too, just gated by size. The
+ * "{count}× · {amount}", "Most frequent places" and "Largest expenses" strings are pre-existing
+ * i18n keys (MonthReport.tsx) — zero new translations. The phone body (chromeless falsy) is
+ * untouched — plain `CalendarHeatmap`, no caption, no tables. ── */
+export function HeatmapWidget({ month, onOpenMonthDay, chromeless, tile }: WidgetProps) {
+  const C = useTheme();
   const M = useMask();
   const { t, lang } = useT();
   const version = useLedgerVersion();
@@ -590,6 +784,121 @@ export function HeatmapWidget({ month, onOpenMonthDay, chromeless }: WidgetProps
     return ledger ? computeDailySpending(ledger, month) : [];
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [version, month]);
+  const heatW = tile?.w ?? 2;
+  const heatSize: "S" | "M" | "L" = heatW >= 3 ? "L" : heatW === 2 ? "M" : "S";
+  const placesLimit = heatSize === "S" ? 0 : heatSize === "L" ? 5 : 3;
+  const places = useMemo(() => {
+    const ledger = store.getLedger();
+    return ledger && placesLimit > 0 ? topPlaces(ledger, month, month, placesLimit) : [];
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [version, month, placesLimit]);
+  const largest = useMemo(() => {
+    const ledger = store.getLedger();
+    return ledger && heatSize === "L" ? largestExpenses(ledger, month, 3) : [];
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [version, month, heatSize]);
+
+  if (chromeless) {
+    const max = Math.max(...days.map((d) => d.total), 1);
+    const totalExpense = days.reduce((s, d) => s + d.total, 0);
+    // Same "reduce with no seed needs a non-empty array" guard MonthReport.tsx's own peak/avg
+    // computation uses (comment there); `totalExpense` here equals `computeCashflowSeries`'s
+    // monthly `expense` for the same month (both route every expense through the identical
+    // type/refund-sign/savings-exclusion rule — MonthReport.tsx's own header comment), so this
+    // is not a fresh, differently-scoped average.
+    const peak = days.length > 0 ? days.reduce((best, d) => (d.total > best.total ? d : best)) : undefined;
+    const hasSpending = peak !== undefined && peak.total > 0;
+    const avg = days.length > 0 ? Math.round(totalExpense / days.length) : 0;
+    const cells = heatWeeks(days).flat();
+    return (
+      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+        {/* Cells paint 17px tall (the design's literal compact size, v3.dc.html:562-565) — a
+         *  7-column calendar sized up to the house's usual ≥30×30 floor would no longer read as a
+         *  compact monthly grid, the whole point of this task (owner round 3 item 19: "small
+         *  cells"). Unlike the Spending tile's rows (item 16), which sit in a single-axis flex
+         *  column with an 8px gap and fully cancel padding against an equal negative margin to
+         *  reach 30px without ever overlapping a neighbor, this grid has a neighbor on ALL FOUR
+         *  sides sharing a 4px gap in BOTH directions — the identical technique only has 2px of
+         *  slack per side before two cells' invisible hit areas would overlap (meeting exactly at
+         *  the middle of the shared gap, same rule as item 16, just scaled to this grid's smaller
+         *  gap). That caps the safe, non-overlapping hit box at 21×21 (17 + 2 + 2): real growth
+         *  over the bare 17px swatch, but a KNOWING, DOCUMENTED shortfall against the 30×30 floor —
+         *  not a claimed match to item 16's fully-compensated outcome. The outer `<div>` below
+         *  carries the padding/negative-margin (transparent — it never grows the VISIBLE swatch)
+         *  plus the click/role/aria wiring; the inner `<div>` is the literal 17px colored cell,
+         *  sized and positioned exactly as before. A mis-tap can still open an adjacent DAY, but
+         *  every day's own panel lands inside the SAME Month report the tile deep-links to, and
+         *  the wide cursor/keyboard user gets a per-cell `aria-label` naming the exact date. */}
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 4 }}>
+          {cells.map((cell, i) =>
+            cell ? (
+              <div
+                key={cell.date}
+                role={onOpenMonthDay ? "button" : undefined}
+                tabIndex={onOpenMonthDay ? 0 : undefined}
+                onClick={onOpenMonthDay ? () => onOpenMonthDay(cell.date) : undefined}
+                onKeyDown={
+                  onOpenMonthDay
+                    ? (e) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.preventDefault();
+                          onOpenMonthDay(cell.date);
+                        }
+                      }
+                    : undefined
+                }
+                aria-label={`${cell.date} · ${M(cell.total)}`}
+                style={{ padding: 2, margin: -2, cursor: onOpenMonthDay ? "pointer" : "default" }}
+              >
+                <div style={{ height: 17, borderRadius: 4, background: heatColor(cell.total, max, C) }} />
+              </div>
+            ) : (
+              <div key={`pad${i}`} aria-hidden="true" style={{ height: 17 }} />
+            ),
+          )}
+        </div>
+        <span style={{ fontSize: 10.5, color: C.mute }}>
+          {hasSpending && peak
+            ? t("avg {avg}/day · peak: {date} ({peak})", { avg: M(avg), date: shortDate(peak.date, lang), peak: M(peak.total) })
+            : t("No spending this month.")}
+        </span>
+        {places.length > 0 && (
+          <div style={{ display: "flex", flexDirection: "column", borderTop: `1px solid ${C.line}`, paddingTop: 7 }}>
+            <span style={{ fontSize: 9.5, fontWeight: 750, letterSpacing: "0.14em", textTransform: "uppercase", color: C.mute, paddingBottom: 3 }}>
+              {t("Most frequent places")}
+            </span>
+            {places.map((p) => (
+              <div key={p.key} style={{ display: "flex", justifyContent: "space-between", gap: 8, fontSize: 11.5, color: C.text, padding: "3px 0" }}>
+                <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{dimNullLabel(p.name, "place", t)}</span>
+                <span style={{ flexShrink: 0, color: C.soft, fontVariantNumeric: "tabular-nums" }}>
+                  {t("{count}× · {amount}", { count: p.count, amount: M(p.total) })}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
+        {/* Owner round 3 item 19 / v3.dc.html:580-586 — the L-only "Largest expenses" table the
+         *  design's home tile adds alongside "Most frequent places" (both gated by `heatSize`
+         *  above). Rows are informational only (no onClick) — same as MonthReport.tsx's own
+         *  equivalent rows — so no touch-target floor applies here. */}
+        {largest.length > 0 && (
+          <div style={{ display: "flex", flexDirection: "column", borderTop: `1px solid ${C.line}`, paddingTop: 7 }}>
+            <span style={{ fontSize: 9.5, fontWeight: 750, letterSpacing: "0.14em", textTransform: "uppercase", color: C.mute, paddingBottom: 3 }}>
+              {t("Largest expenses")}
+            </span>
+            {largest.map((e) => (
+              <div key={e.id} style={{ display: "flex", justifyContent: "space-between", gap: 8, fontSize: 11.5, color: C.text, padding: "3px 0" }}>
+                <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  {e.label} <span style={{ color: C.mute, fontSize: 10 }}>· {e.context ?? shortDate(e.date, lang)}</span>
+                </span>
+                <span style={{ flexShrink: 0, fontWeight: 650, fontVariantNumeric: "tabular-nums" }}>{M(e.amount)}</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  }
 
   return (
     <WidgetShell title={t("When you spend")} chromeless={chromeless}>

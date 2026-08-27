@@ -708,8 +708,6 @@ export const ptBR: Dict = {
   // Wide Home board — edit mode (PR5 Task 6)
   "Add widget": "Adicionar widget",
   "Every widget is already on the grid.": "Todos os widgets já estão na grade.",
-  "Remove from the board": "Remover da grade",
-  "Size: {w} × {h} — drag the corner of the tile to resize": "Tamanho: {w} × {h} — arraste o canto do bloco para redimensionar",
   "Widget settings": "Configurações do widget",
   "latest transactions": "últimas transações",
 

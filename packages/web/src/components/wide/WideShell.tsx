@@ -387,10 +387,10 @@ type WideShellBag = {
    *  over an open envelope pane must NOT clear it, so closing Add derives back to the envelope
    *  for free). Defined in App.tsx as `openAddWide`. */
   onAddWide: () => void;
-  /** PR6b Task 3: `Rail`'s account rows deep-link straight into the account pane (a cross-screen
-   *  jump — the rail hides on the Accounts screen itself) — same nav-then-select batch as
-   *  `openAccount` (App.tsx), threaded through to `Rail` below. */
-  onOpenAccount: (id: string) => void;
+  /** Owner round 3 item 20: `Rail`'s account rows SELECT + open the account panel WITHOUT
+   *  navigating (App.tsx's `selectRailAccount`) — replaces PR6b Task 3's nav-then-select
+   *  `openAccount` binding, which stays wired to `AccountsScreen`'s own rows only (App.tsx). */
+  onSelectAccount: (id: string) => void;
   /** PR6b Task 4: the account pane's OWN recent-list edit entry point — deliberately separate
    *  from `onEditTxn` above (that one's `editReturn` is hardcoded "reports" for the panel's
    *  report-subview instance; reusing it here reopened Reports behind the edit takeover and lost
@@ -511,7 +511,7 @@ export function WideShell({ bag, rightSlot = null, children }: { bag: WideShellB
     addPreset,
     onDoneEdit,
     onAddWide,
-    onOpenAccount,
+    onSelectAccount,
     onEditAccountTxn,
     onEditEnvelopeTxn,
     txQuery,
@@ -808,7 +808,16 @@ export function WideShell({ bag, rightSlot = null, children }: { bag: WideShellB
         onQuickAdd={onQuickAdd}
         onFillGoals={onFillGoals}
         onInstall={onInstall}
-        onOpenAccount={onOpenAccount}
+        onSelectAccount={onSelectAccount}
+        // Owner round 3 item 20: the rail's own row highlight follows the RESOLVED panel content,
+        // not `acctView` directly — `view.kind === "account"` is true whether that came from an
+        // explicit rail pick, an Accounts-screen row, or the accounts/settings fallback (no
+        // explicit pick at all), and the design highlights the row in every one of those cases
+        // alike (`accountRows`' own `on = st.selAcct === a.id && paneNow === "acct"`, v3:2661) —
+        // never while some OTHER kind (envelope/report/txn/widgets/add) currently owns the panel.
+        // `!panelClosed` matches the same collapsed-panel-has-no-highlight rule Transactions'
+        // `selectedTxnId` already applies below — a collapsed panel shows nothing selected.
+        selectedAccountId={!panelClosed && view.kind === "account" ? view.accountId : null}
       />
       <div ref={primaryRef} data-wide-primary style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", borderRight: `1px solid ${C.line}` }}>
         {/* Mounted inline inside BandHeader (see SyncBadge.tsx) rather than floating over the
@@ -887,7 +896,15 @@ export function WideShell({ bag, rightSlot = null, children }: { bag: WideShellB
                 onOpenReport={onOpenReport}
                 onOpenMonthDay={onOpenMonthDay}
                 edit={boardEdit}
-                onWidgetSettings={setWidgetSettings}
+                // `setAcctView(null)` here (owner round 3 review fix, same class as App.tsx's
+                // `openEnvelope`/`onSelectTxn`/reports `onView`): the widget gear is exactly as
+                // explicit a pick as those, but `resolvePanel` (panel.ts) still checks `acctView`
+                // BEFORE the `widgets` rung, so a stale rail account selection from earlier on
+                // Home would otherwise outrank it and the panel would stay stuck on the account.
+                onWidgetSettings={(id) => {
+                  setWidgetSettings(id);
+                  setAcctView(null);
+                }}
                 onFillGoals={onFillGoals}
               />
             ) : primaryScreen === "settings" ? (
