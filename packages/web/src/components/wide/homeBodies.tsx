@@ -77,7 +77,10 @@ export function EnvelopePillGrid({ state, month, mode, onOpenEnvelope }: Envelop
     <div style={{ display: "flex", flexDirection: "column", gap: 7, flex: 1, minHeight: 0 }}>
       {/* gsh (chrome.tsx): hover-reveal scrollbar — also retires the parked wave-B minor (a
           classic always-on scrollbar gutter ate grid width and narrowed every pill). */}
-      <div className="gsh" style={{ flex: 1, minHeight: 0, overflowY: "auto", display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6, alignContent: "start" }}>
+      <div
+        className="gsh"
+        style={{ flex: 1, minHeight: 0, overflowY: "auto", display: "grid", gridTemplateColumns: "minmax(0,1fr) minmax(0,1fr)", gap: 6, alignContent: "start" }}
+      >
         {list.map((e) => {
           const availColor = e.available < 0 ? C.neg : e.available === 0 ? C.mute : C.text;
           return (
