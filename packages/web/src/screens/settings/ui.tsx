@@ -11,7 +11,7 @@ import { CORAL, font, TEAL } from "../../lib/theme";
 
 export function Eyebrow({ children }: { children: ReactNode }) {
   const C = useTheme();
-  return <div style={{ fontSize: 9.5, fontWeight: 750, color: C.mute, textTransform: "uppercase", letterSpacing: "0.16em", marginBottom: 8 }}>{children}</div>;
+  return <div style={{ fontSize: 10.5, fontWeight: 600, color: C.mute, textTransform: "uppercase", letterSpacing: 0.6, marginBottom: 8 }}>{children}</div>;
 }
 
 export function Row({ label, children }: { label: ReactNode; children: ReactNode }) {
