@@ -161,16 +161,24 @@ function TbbCard({
   onQuickAdd,
   onFillGoals,
   onNav,
-  onOpenAccount,
+  onSelectAccount,
+  selectedAccountId,
 }: {
   state: StateResponse;
   screen: ScreenId;
   onQuickAdd: (kind: "transfer" | "import" | "suggest") => void;
   onFillGoals: () => void;
   onNav: (s: ScreenId) => void;
-  /** PR6b Task 3: each account row deep-links straight into the account pane (nav + select in one
-   *  batch) — the summary row and the collapsed-section header below keep `onNav("accounts")`. */
-  onOpenAccount: (id: string) => void;
+  /** Owner round 3 item 20: each row SELECTS + opens the account panel on the right, staying on
+   *  whatever screen the rail lives on — it never navigates (App.tsx's `selectRailAccount`). The
+   *  summary row and the collapsed-section header below keep `onNav("accounts")`, unchanged: THAT
+   *  is still the one path to the Accounts screen itself. */
+  onSelectAccount: (id: string) => void;
+  /** The account the panel is CURRENTLY showing (WideShell's resolved `view`, not raw `acctView` —
+   *  see that prop's own call-site comment) — drives the row's `railActive` highlight, the same
+   *  design token `NavRow` above uses for the active nav row (design's `accountRows[].bg`, v3:2664:
+   *  `on ? T.railActive : "transparent"`). `null` while the panel shows anything else. */
+  selectedAccountId: string | null;
 }) {
   const C = useTheme();
   const M = useMask();
@@ -297,41 +305,48 @@ function TbbCard({
             // child that compresses, and `overflowY: auto` only then produces a scrollbar — which
             // `gsh` (chrome.tsx) keeps invisible until the pointer hovers the list (item 2).
             <div className="gsh" style={{ display: "flex", flexDirection: "column", gap: 1, marginTop: 5, flex: "1 1 auto", minHeight: 0, overflowY: "auto" }}>
-              {accountsGlobal.map((a) => (
-                <button
-                  key={a.id}
-                  onClick={() => onOpenAccount(a.id)}
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 8,
-                    minHeight: 30,
-                    padding: "5px 6px",
-                    borderRadius: 8,
-                    border: "none",
-                    background: "none",
-                    cursor: "pointer",
-                    fontFamily: font,
-                    textAlign: "left",
-                  }}
-                >
-                  <span style={{ width: 14, height: 14, borderRadius: "50%", background: a.color, flexShrink: 0 }} />
-                  <span style={{ flex: 1, minWidth: 0, fontSize: 12.5, color: C.railOn, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                    {a.name}
-                  </span>
-                  <span
+              {accountsGlobal.map((a) => {
+                // Owner round 3 item 20: SELECT + open the account panel, staying on this screen —
+                // see `onSelectAccount`'s own prop comment for why this is no longer `onOpenAccount`.
+                const active = selectedAccountId === a.id;
+                return (
+                  <button
+                    key={a.id}
+                    onClick={() => onSelectAccount(a.id)}
+                    aria-current={active ? "true" : undefined}
                     style={{
-                      flexShrink: 0,
-                      fontWeight: 650,
-                      fontSize: 12.5,
-                      color: a.balance < 0 ? C.neg : a.balance === 0 ? C.railMute : C.railOn,
-                      fontVariantNumeric: "tabular-nums",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 8,
+                      minHeight: 30,
+                      padding: "5px 6px",
+                      borderRadius: 8,
+                      border: "none",
+                      // design's `accountRows[].bg` (v3:2664: `on ? T.railActive : "transparent"`).
+                      background: active ? C.railActive : "none",
+                      cursor: "pointer",
+                      fontFamily: font,
+                      textAlign: "left",
                     }}
                   >
-                    {M(a.balance)}
-                  </span>
-                </button>
-              ))}
+                    <span style={{ width: 14, height: 14, borderRadius: "50%", background: a.color, flexShrink: 0 }} />
+                    <span style={{ flex: 1, minWidth: 0, fontSize: 12.5, color: C.railOn, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {a.name}
+                    </span>
+                    <span
+                      style={{
+                        flexShrink: 0,
+                        fontWeight: 650,
+                        fontSize: 12.5,
+                        color: a.balance < 0 ? C.neg : a.balance === 0 ? C.railMute : C.railOn,
+                        fontVariantNumeric: "tabular-nums",
+                      }}
+                    >
+                      {M(a.balance)}
+                    </span>
+                  </button>
+                );
+              })}
             </div>
           )}
           <button
@@ -692,6 +707,23 @@ function UserBlock({ mode, screen, onNav, onInstall }: { mode: WideMode; screen:
   const initial = (displayName.trim()[0] ?? "?").toUpperCase();
   const closeMenu = () => setMenuOpen(false);
   const { dot: syncDot, label: syncLabel } = syncBrief(syncStatus, C, t);
+  // Owner round 3 item 13: the persistent "Synced vX · build …" line's own hover tooltip — a
+  // SECOND `useAppUpdate()` mount, harmless per that hook's own doc comment (one shared flag, any
+  // number of consumers; `Rail`'s top-level `needRefresh`/`incomingVersion` read is for the
+  // DIFFERENT rail update card, not this row). While an update is waiting, the tooltip names the
+  // INCOMING version when the wave-A channel has resolved it yet (`/version.json`, `incomingVersion`
+  // — null until fetched, or if it raced a stale proxy); otherwise it falls back to the versionless
+  // phrasing, the same two-branch idiom `RailUpdateCard`'s own sub-line already uses. With no
+  // update waiting, the tooltip repeats the row's own text (version + full build stamp) under an
+  // "Enveo v…" lead-in — the SAME bare, untranslated brand+version idiom the user-menu footer
+  // already uses (`Enveo v${APP_VERSION}` above, no `t()`: a proper noun + a version number is not
+  // a sentence to translate, and `buildLabel()`'s own "build …"/sha text is technical, not prose).
+  const { needRefresh: buildUpdateWaiting, incomingVersion: buildIncomingVersion } = useAppUpdate();
+  const buildLineTitle = buildUpdateWaiting
+    ? buildIncomingVersion !== null
+      ? t("Enveo v{version} — a newer build is ready, refresh to update", { version: buildIncomingVersion })
+      : t("A newer build is ready — refresh to update")
+    : `Enveo v${APP_VERSION}${buildLabel() ? ` · ${buildLabel()}` : ""}`;
   // Design parity wave A close, item 4 (v3:3135-3137): the persistent row's own error treatment —
   // SAME precedence `syncBrief`'s dot already uses (dead letters, then a hard sync error), so the
   // row's background/ink never disagree with the dot sitting right next to them.
@@ -945,6 +977,13 @@ function UserBlock({ mode, screen, onNav, onInstall }: { mode: WideMode; screen:
             {syncLabel}
           </span>
           <span
+            // Owner round 3 item 13: a native title on this exact span (design v3:181's own
+            // `buildTitle`) — the innermost `title` an element carries is what the browser shows
+            // while the pointer sits directly over it, so this wins over the outer button's own
+            // "Account, settings and sign out" tooltip without needing a custom tooltip component
+            // (the app's established idiom — 35 other call sites already use a bare `title` prop,
+            // no reusable Tooltip primitive exists).
+            title={buildLineTitle}
             style={{
               flex: 1,
               minWidth: 0,
@@ -989,7 +1028,8 @@ export function Rail({
   onQuickAdd,
   onFillGoals,
   onInstall,
-  onOpenAccount,
+  onSelectAccount,
+  selectedAccountId,
 }: {
   mode: WideMode;
   screen: ScreenId;
@@ -998,8 +1038,11 @@ export function Rail({
   onQuickAdd: (kind: "transfer" | "import" | "suggest") => void;
   onFillGoals: () => void;
   onInstall: () => void;
-  /** PR6b Task 3: threaded straight to `TbbCard`'s account rows — see that prop's own comment. */
-  onOpenAccount: (id: string) => void;
+  /** Owner round 3 item 20: threaded straight to `TbbCard`'s account rows — see that prop's own
+   *  comment. */
+  onSelectAccount: (id: string) => void;
+  /** Threaded straight to `TbbCard`'s account rows — see that prop's own comment. */
+  selectedAccountId: string | null;
 }) {
   const C = useTheme();
   const { t } = useT();
@@ -1090,7 +1133,15 @@ export function Rail({
       </div>
       <div style={{ flex: 1, minHeight: 8 }} />
       {mode === "desktop" && (
-        <TbbCard state={state} screen={screen} onQuickAdd={onQuickAdd} onFillGoals={onFillGoals} onNav={onNav} onOpenAccount={onOpenAccount} />
+        <TbbCard
+          state={state}
+          screen={screen}
+          onQuickAdd={onQuickAdd}
+          onFillGoals={onFillGoals}
+          onNav={onNav}
+          onSelectAccount={onSelectAccount}
+          selectedAccountId={selectedAccountId}
+        />
       )}
       {mode === "desktop" && needRefresh && <RailUpdateCard incomingVersion={incomingVersion} onRefresh={() => refresh(true)} onDismiss={dismiss} />}
       <UserBlock mode={mode} screen={screen} onNav={onNav} onInstall={onInstall} />

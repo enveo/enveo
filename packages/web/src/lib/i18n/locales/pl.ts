@@ -1227,4 +1227,8 @@ export const pl: Dict = {
     other: "{n} kroków do zamkniętego planu · {pct}% miesiąca za nami",
   },
   "v{version} · refreshing takes a second, nothing is lost.": "v{version} · odświeżenie zajmuje chwilę, nic nie przepada.",
+
+  // Owner round 3 item 13 — the rail's persistent "Synced vX · build …" line's own hover tooltip.
+  "A newer build is ready — refresh to update": "Dostępna jest nowsza wersja — odśwież, aby zaktualizować",
+  "Enveo v{version} — a newer build is ready, refresh to update": "Enveo v{version} — dostępna jest nowsza wersja, odśwież, aby zaktualizować",
 };
