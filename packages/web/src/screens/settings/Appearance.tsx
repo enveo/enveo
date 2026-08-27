@@ -27,7 +27,12 @@ const THEME_LABEL: Record<"teal" | "duet", Message> = {
   duet: msg("Duet"),
 };
 
-/** Color theme picker tiles: a mini surface preview (bg + accent dot, duet's dot is its CTA coral), name, accent border on the selected one. */
+/**
+ * Color theme picker tiles (v3:697-706 `skinTiles`): the CARD is white/`C.card` on both swatches —
+ * the theme only shows through the small preview strip (bg + accent dot, duet's dot is its CTA
+ * coral) and the label underneath, never as a tint on the whole card. Selection is an accent
+ * border plus a matching 1px ring, not a filled background (owner ruling round 1, item 11).
+ */
 function ThemeTiles() {
   const C = useTheme();
   const { settings, setSettings } = useSettings();
@@ -35,7 +40,7 @@ function ThemeTiles() {
   const isDark =
     settings.themeMode === "auto" ? typeof window !== "undefined" && window.matchMedia("(prefers-color-scheme: dark)").matches : settings.themeMode === "dark";
   return (
-    <div style={{ display: "flex", gap: 8, padding: "14px 0", borderBottom: `1px solid ${C.line}` }}>
+    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, padding: "14px 0", borderBottom: `1px solid ${C.line}` }}>
       {THEME_IDS.map((id) => {
         const tk = themeTokens(id, isDark);
         const accent = tk.vars["--accent"];
@@ -50,27 +55,45 @@ function ThemeTiles() {
             onClick={() => setSettings({ ...settings, accentTheme: id })}
             aria-pressed={active}
             style={{
-              flex: 1,
               display: "flex",
               flexDirection: "column",
-              alignItems: "center",
-              gap: 6,
-              padding: "10px 4px",
-              borderRadius: 10,
+              gap: 8,
+              padding: 10,
+              borderRadius: 12,
               cursor: "pointer",
-              background: C.bg,
-              border: `2px solid ${active ? accent : C.line}`,
+              background: C.card,
+              border: `1.5px solid ${active ? accent : C.line}`,
+              boxShadow: active ? `0 0 0 1px ${accent}` : "none",
             }}
           >
-            <div style={{ position: "relative", width: "100%", height: 26, borderRadius: 7, background: previewBg, border: `1px solid ${C.line}` }}>
-              <div style={{ position: "absolute", right: 4, bottom: 4, width: 8, height: 8, borderRadius: "50%", background: dot }} />
+            <div
+              style={{
+                height: 44,
+                borderRadius: 8,
+                background: previewBg,
+                border: `1px solid ${C.line}`,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "flex-end",
+                padding: "0 9px",
+              }}
+            >
+              <div style={{ width: 9, height: 9, borderRadius: "50%", background: dot }} />
             </div>
-            <span style={{ fontSize: 11, fontWeight: 600, color: active ? C.text : C.soft }}>{t(THEME_LABEL[id])}</span>
+            <span style={{ textAlign: "center", fontSize: 12, fontWeight: 650, color: C.text }}>{t(THEME_LABEL[id])}</span>
           </button>
         );
       })}
     </div>
   );
+}
+
+/** Section-level description under an Appearance eyebrow (v3:696/814/830: 12px, `T.soft`,
+ *  line-height 1.5) — distinct from `Helper`'s smaller 11px/`mute` field-caption role, which the
+ *  design uses for captions nested under a single row (e.g. the discreet-mode sub-line below). */
+function SectionDesc({ children }: { children: ReactNode }) {
+  const C = useTheme();
+  return <div style={{ fontSize: 12, color: C.soft, lineHeight: 1.5, marginTop: 8 }}>{children}</div>;
 }
 
 /** Selectable currencies (ISO 4217) — display only, no amount conversion. Shared with onboarding. */
@@ -133,7 +156,7 @@ export function AppearanceSection() {
   return (
     <div style={{ marginTop: 4 }}>
       <Eyebrow>{t("Account preferences")}</Eyebrow>
-      <Helper>{t("Theme and language follow your account on every device.")}</Helper>
+      <SectionDesc>{t("Theme and language follow your account on every device.")}</SectionDesc>
       <ThemeTiles />
       <Row label={t("Theme")}>
         <Seg
@@ -176,7 +199,7 @@ export function AppearanceSection() {
       )}
       <div style={{ marginTop: 18 }}>
         <Eyebrow>{t("Budget preferences")}</Eyebrow>
-        <Helper>{t("Currency and dashboard widgets follow this budget on every device.")}</Helper>
+        <SectionDesc>{t("Currency and dashboard widgets follow this budget on every device.")}</SectionDesc>
       </div>
       <Row label={t("Currency")}>
         <PillSelect>
@@ -210,9 +233,17 @@ export function AppearanceSection() {
       </ActionGroup>
       <div style={{ marginTop: 18 }}>
         <Eyebrow>{t("This device")}</Eyebrow>
-        <Helper>{t("Discreet mode stays only on this device.")}</Helper>
       </div>
-      <Row label={t("Discreet mode")}>
+      {/* The design nests this row's caption under its own label (v3:735-738) rather than as a
+       *  separate section-level line above it — the only Appearance row with a per-row sub-caption. */}
+      <Row
+        label={
+          <span style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+            <span>{t("Discreet mode")}</span>
+            <span style={{ fontSize: 11, fontWeight: 400, color: C.mute }}>{t("Hides amounts; stays on this device only.")}</span>
+          </span>
+        }
+      >
         <button
           onClick={() => setSettings({ ...settings, discreet: !settings.discreet })}
           style={{
