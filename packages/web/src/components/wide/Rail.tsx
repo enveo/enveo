@@ -211,6 +211,11 @@ function TbbCard({
   const pill = (primary: boolean): React.CSSProperties => ({
     flex: 1,
     minHeight: 30,
+    
+
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
     textAlign: "center",
     borderRadius: 999,
     border: primary ? `1.5px solid ${C.headerInk}` : `1px solid ${C.railRuler}`,
@@ -376,7 +381,18 @@ function TbbCard({
             }}
           >
             { }
-            <span style={{ fontSize: 11.5, color: C.railMute, fontVariantNumeric: "tabular-nums" }}>
+            { }
+            <span
+              style={{
+                fontSize: 11.5,
+                color: C.railMute,
+                fontVariantNumeric: "tabular-nums",
+                minWidth: 0,
+                whiteSpace: "nowrap",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+              }}
+            >
               {tp("{n} account · total {amount} | {n} accounts · total {amount}", accountsGlobal.length, {
                 n: String(accountsGlobal.length),
                 amount: M(sumBalances(accountsGlobal)),
