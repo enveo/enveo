@@ -340,8 +340,10 @@ export function Bar({ pct, color, height = 8 }: { pct: number; color: string; he
 export function SegBar({ segments, height = 8 }: { segments: Array<{ weight: number; color: string }>; height?: number }) {
   const C = useTheme();
   const visible = segments.filter((s) => s.weight > 0);
+  // flexShrink 0: `overflow: hidden` gives this box an automatic minimum of 0, so inside a
+  // height-constrained flex column (wide Spending tile) it silently collapses to 0px.
   return (
-    <div style={{ display: "flex", gap: 2, height, borderRadius: height / 2, overflow: "hidden", background: C.line }}>
+    <div style={{ display: "flex", gap: 2, height, flexShrink: 0, borderRadius: height / 2, overflow: "hidden", background: C.line }}>
       {visible.map((s, i) => (
         <span key={i} style={{ flex: s.weight, minWidth: 2, background: s.color }} />
       ))}

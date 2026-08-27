@@ -211,6 +211,11 @@ function TbbCard({
   const pill = (primary: boolean): React.CSSProperties => ({
     flex: 1,
     minHeight: 30,
+    // Owner item 22: a native button only centers its label vertically while its height is
+    // content-based — under `minHeight` the text sits high/low. Flex centering holds either way.
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
     textAlign: "center",
     borderRadius: 999,
     border: primary ? `1.5px solid ${C.headerInk}` : `1px solid ${C.railRuler}`,
@@ -376,7 +381,18 @@ function TbbCard({
             }}
           >
             {/* Design parity wave A, task A2 (demo 129): the whole summary row reads `railMute`. */}
-            <span style={{ fontSize: 11.5, color: C.railMute, fontVariantNumeric: "tabular-nums" }}>
+            {/* Owner item 21: ONE line like the design — ellipsize rather than wrap. */}
+            <span
+              style={{
+                fontSize: 11.5,
+                color: C.railMute,
+                fontVariantNumeric: "tabular-nums",
+                minWidth: 0,
+                whiteSpace: "nowrap",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+              }}
+            >
               {tp("{n} account · total {amount} | {n} accounts · total {amount}", accountsGlobal.length, {
                 n: String(accountsGlobal.length),
                 amount: M(sumBalances(accountsGlobal)),
