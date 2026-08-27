@@ -7,9 +7,10 @@ import { SUPPORTED_CURRENCIES } from "../../lib/currency";
 import { todayISO } from "../../lib/dates";
 import { type Lang, LOCALES, loadLocale, type Message, msg, useT } from "../../lib/i18n";
 import { local } from "../../lib/mutate";
+import { useWideHost } from "../../lib/shellContext";
 import { store } from "../../lib/store";
 import { font, TEAL, themeTokens } from "../../lib/theme";
-import { Helper, Row, Seg } from "./ui";
+import { ActionGroup, ActionRow, Helper, Row, Seg } from "./ui";
 
 /** Where a translator reports a bad string. Community locales are labelled, not hidden — honest, and
  *  it is the only route a reader of a wrong sentence has back to us. */
@@ -106,18 +107,27 @@ function ThemeTiles() {
  * below keeps updating it — `contexts.tsx`'s `splitSettingsPatch` routes there automatically, so
  * those controls need no override-awareness of their own; this component only owns the freeze
  * (all devices → this device) and clear (this device → all devices) transitions.
+ *
+ * Phone (owner round 4, item 25): the pill `fill`s its container — outside a `Row` the `Seg`
+ * stretches to the content column while its buttons stay content-sized, which at 390px left a
+ * ~55px dead pill track after "To urządzenie". Evenly split halves read as a deliberate
+ * full-width scope switcher and keep both Polish labels inside their half. Wide keeps the
+ * design-matched content-sized pills (the owner's phone-only ruling; item 12's override logic
+ * is untouched either way).
  */
 function ThemeScope() {
   const { t } = useT();
   const { settings } = useSettings();
   const { preferences: account } = useAccountPreferences();
   const { preferences: device, update: updateDevice } = useDevicePreferences();
+  const phone = useWideHost() === null;
   const overridden = device.themeModeOverride !== null || device.accentThemeOverride !== null;
   const modeLabel = (mode: ThemeMode) => (mode === "light" ? t("Light") : mode === "dark" ? t("Dark") : t("Auto"));
 
   return (
     <div style={{ marginBottom: 12 }}>
       <Seg<"account" | "device">
+        fill={phone}
         value={overridden ? "device" : "account"}
         onChange={(scope) => {
           if (scope === "device") {
@@ -162,7 +172,13 @@ function AppearanceEyebrow({ children }: { children: ReactNode }) {
  *  Settings section (DataTools/DataSection/SyncSection/E2eeUpgradePanel) still renders with the
  *  hub's radius-14 shadow card and 14px/700 `--cta` labels. Owner round 1 item 11 scopes the
  *  value-for-value design match to Appearance only, so those sections must not be reskinned from
- *  here. Same pattern as `AppearanceEyebrow` above vs. the shared `Eyebrow` (5351e8b). */
+ *  here. Same pattern as `AppearanceEyebrow` above vs. the shared `Eyebrow` (5351e8b).
+ *
+ *  WIDE-ONLY since owner round 4, item 24: the design-matched values that item 11 mandated for
+ *  the wide pane read wrong inside the 390px phone drill-in (a lone bordered card with an
+ *  accent-colored 13px label, unlike every other phone Settings row) — the phone branch of
+ *  `AppearanceSection` renders the shared `ActionGroup`/`ActionRow` idiom instead, exactly the
+ *  pre-d0a6b9e phone rendering. The two rulings fork on host, not on a restyle of either. */
 function AppearanceCardRow({ label, desc, onClick, disabled }: { label: string; desc: string; onClick: () => void; disabled?: boolean }) {
   const C = useTheme();
   return (
@@ -228,6 +244,11 @@ export function AppearanceSection() {
   const { settings, setSettings } = useSettings();
   const { t } = useT();
   const currency = useCurrency();
+  // Owner round 4, item 24: the widgets entry keeps the design-matched `AppearanceCardRow` on
+  // wide (owner round 1 item 11) but renders the phone Settings idiom — the shared
+  // radius-14/`--cta` `ActionGroup`/`ActionRow` card — inside the 390px drill-in, where the
+  // bordered accent-label variant read as foreign next to every other phone Settings row.
+  const wide = useWideHost() !== null;
   const [widgetsOpen, setWidgetsOpen] = useState(false);
   const { data: currentState } = useStateQuery(todayISO().slice(0, 7));
   // guard: without a booted replica / a budgets entity there is nothing to update
@@ -323,12 +344,24 @@ export function AppearanceSection() {
           </select>
         </PillSelect>
       </Row>
-      <AppearanceCardRow
-        label={t("Edit dashboard widgets")}
-        desc={t("Choose their order, visibility, and options.")}
-        onClick={() => setWidgetsOpen(true)}
-        disabled={!currentState}
-      />
+      {wide ? (
+        <AppearanceCardRow
+          label={t("Edit dashboard widgets")}
+          desc={t("Choose their order, visibility, and options.")}
+          onClick={() => setWidgetsOpen(true)}
+          disabled={!currentState}
+        />
+      ) : (
+        <ActionGroup>
+          <ActionRow
+            label={t("Edit dashboard widgets")}
+            desc={t("Choose their order, visibility, and options.")}
+            onClick={() => setWidgetsOpen(true)}
+            disabled={!currentState}
+            chevron
+          />
+        </ActionGroup>
+      )}
       <div style={{ marginTop: 18 }}>
         <AppearanceEyebrow>{t("This device")}</AppearanceEyebrow>
       </div>
