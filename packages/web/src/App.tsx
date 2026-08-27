@@ -385,9 +385,17 @@ export default function App() {
   // The sheet's other two actions survive on wide: "Transactions" already exists inside
   // `EnvelopeScreen` (`onOpenTxns`); "Edit" arrives with PR6's `envForm` pane — interim, edit via
   // Budget's own row editor, unchanged (pr4-task-7-brief.md).
+  // `setAcctView(null)` here (owner round 3 review fix) restores the invariant `resolvePanel`'s
+  // own doc comment already claims — "every setter that establishes one clears the other": every
+  // envelope tile lives on a screen the rail is ALSO reachable from, so a stale account pick from
+  // an earlier rail click must not survive tapping an envelope, or the `!acctView` guards on
+  // `budgetSelectedEnvelopeId`/the reports hub's `selected` prop below stay stuck reading a
+  // selection the panel itself has already moved past.
   const openEnvelope = (envelopeId: string, m: string) => {
-    if (mode !== "phone") setEnvView({ envelopeId, month: m });
-    else setEnvActions({ envelopeId, month: m });
+    if (mode !== "phone") {
+      setEnvView({ envelopeId, month: m });
+      setAcctView(null);
+    } else setEnvActions({ envelopeId, month: m });
   };
   const actionsEnv = envActions ? (state?.envelopes.find((e) => e.id === envActions.envelopeId) ?? null) : null;
   const editEnv = envEdit ? (state?.envelopes.find((e) => e.id === envEdit) ?? null) : null;
@@ -706,7 +714,18 @@ export default function App() {
             // account pick now wins `resolvePanel` on the Transactions screen too, so without this
             // the list kept a fallback row highlighted while the panel showed an unrelated account.
             selectedTxnId={wide && !panelClosed && screen === "transactions" && !envView && !acctView ? txnView?.txnId : null}
-            onSelectTxn={(id) => setTxnView({ txnId: id })}
+            // `setAcctView(null)` here (owner round 3 review fix): `resolvePanel` checks `acctView`
+            // BEFORE the `transactions`/`txnView` rung (panel.ts), so a rail account pick made
+            // earlier on this same screen would otherwise permanently outrank every later row
+            // click — the panel stays stuck on the stale account and `selectedTxnId` above stays
+            // `null` (its own `!acctView` guard), no visible effect until the user leaves and
+            // returns. A transaction row click is exactly as explicit a selection as the rail's —
+            // it must win the same way `selectRailAccount`/`openEnvelope` clear the OTHER axis when
+            // establishing theirs.
+            onSelectTxn={(id) => {
+              setAcctView(null);
+              setTxnView({ txnId: id });
+            }}
           />
         </LazyChunk>
       )}
@@ -731,7 +750,18 @@ export default function App() {
             state={state}
             month={month}
             view={wide ? "overview" : reportsView}
-            onView={setReportsView}
+            // `setAcctView(null)` here (owner round 3 review fix): every `onView` call is a real,
+            // explicit user pick (a hub card tap, or the phone subview's own "back to hub" —
+            // ReportsHub.tsx's own doc comment: "Every card is a `<button>` → `onView(id)`"), the
+            // exact same class of selection `openEnvelope`/`selectRailAccount` already clear the
+            // OTHER axis for. Without this, `resolvePanel` (panel.ts) keeps checking `acctView`
+            // BEFORE the `reports` rung, so a stale rail account pick outranks the tab the user
+            // just tapped — see the (now corrected) comment on `selected` below for what this
+            // looked like live before the fix.
+            onView={(v) => {
+              setReportsView(v);
+              setAcctView(null);
+            }}
             monthDay={monthDay}
             onSelectDay={setMonthDay}
             onOpenEnvelope={openEnvelope}
@@ -755,9 +785,11 @@ export default function App() {
             // `!acctView` (owner round 3 item 20): a rail account pick now wins `resolvePanel` on
             // the Reports screen too — without this the hub kept a report card looking "open" while
             // the panel actually showed an unrelated account (caught live: selecting a rail account
-            // from Reports, then changing `reportsView`, moved the hub's highlight while the panel
-            // stayed correctly on the account — the SAME list/panel desync gap 9 already fixes for
-            // Budget's `selectedEnvelopeId`/Transactions' `selectedTxnId` above).
+            // from Reports, then tapping a hub card, moved the hub's highlight while the panel
+            // stayed WRONGLY on the account — a real bug, not the "same desync, already handled"
+            // read an earlier pass gave this comment; `onView` above now clears `acctView` on every
+            // tap for exactly this reason, the SAME fix `openEnvelope`/`selectRailAccount` already
+            // apply for Budget's `selectedEnvelopeId`/Transactions' `selectedTxnId`).
             selected={wide && !acctView ? (reportsView !== "overview" ? reportsView : "spending") : undefined}
           />
         </LazyChunk>
