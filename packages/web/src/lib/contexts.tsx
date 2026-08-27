@@ -46,38 +46,18 @@ export interface Settings {
   startWidgets: WidgetConfig[];
 }
 
-/** Which of the two overridable fields is currently shadowed by a per-device override — i.e.
- *  whether `devicePreferences.themeModeOverride`/`accentThemeOverride` is non-null right now.
- *  `splitSettingsPatch` needs this to decide WHERE a change goes: a change made while overridden
- *  must keep updating the override (or it would silently vanish, since the effective value is
- *  `override ?? account` and the override would keep winning) — this is what lets the SAME
- *  `setSettings` call site work for both the Appearance pane's own controls and the header's
- *  quick dark-mode toggle without either needing to know about overrides itself. */
-export interface DeviceOverrideActive {
-  themeMode: boolean;
-  accentTheme: boolean;
-}
-
 export function splitSettingsPatch(
   previous: Settings,
   next: Settings,
-  deviceOverrides: DeviceOverrideActive,
 ): {
   account: AccountPreferencesPatch;
   budget: BudgetPreferencesPatch;
   device: DevicePreferencesPatch;
 } {
   const account: AccountPreferencesPatch = {};
-  const device: DevicePreferencesPatch = {};
   if (next.lang !== previous.lang) account.lang = next.lang;
-  if (next.themeMode !== previous.themeMode) {
-    if (deviceOverrides.themeMode) device.themeModeOverride = next.themeMode;
-    else account.themeMode = next.themeMode;
-  }
-  if (next.accentTheme !== previous.accentTheme) {
-    if (deviceOverrides.accentTheme) device.accentThemeOverride = next.accentTheme;
-    else account.accentTheme = next.accentTheme;
-  }
+  if (next.themeMode !== previous.themeMode) account.themeMode = next.themeMode;
+  if (next.accentTheme !== previous.accentTheme) account.accentTheme = next.accentTheme;
 
   const budget: BudgetPreferencesPatch = {};
   if (next.aiMode !== previous.aiMode) budget.aiProvider = next.aiMode === "server" ? "enveo" : next.aiMode === "byok" ? "openai" : "rules";
@@ -85,19 +65,9 @@ export function splitSettingsPatch(
   if (next.customProfiles !== previous.customProfiles) budget.customProfiles = next.customProfiles;
   if (next.startWidgets !== previous.startWidgets) budget.startWidgets = next.startWidgets;
 
+  const device: DevicePreferencesPatch = {};
   if (next.discreet !== previous.discreet) device.discreet = next.discreet;
   return { account, budget, device };
-}
-
-/** The one place `themeMode`/`accentTheme` are resolved from account + device — every consumer of
- *  `useSettings()` sees the already-resolved value, so a wide-rail card, a report axis or the
- *  header's dark-mode toggle need no override-awareness of their own. */
-export function effectiveThemeMode(account: ThemeMode, deviceOverride: ThemeMode | null): ThemeMode {
-  return deviceOverride ?? account;
-}
-
-export function effectiveAccentTheme(account: AccentTheme, deviceOverride: AccentTheme | null): AccentTheme {
-  return deviceOverride ?? account;
 }
 
 /** Order mirrors the "Edit widgets" sheet and the board mockup; reportNetWorth ships OFF
@@ -190,8 +160,8 @@ export function AppProviders({ children }: { children: ReactNode }) {
 
   const settings: Settings = useMemo(
     () => ({
-      themeMode: effectiveThemeMode(account.themeMode, device.themeModeOverride),
-      accentTheme: effectiveAccentTheme(account.accentTheme, device.accentThemeOverride),
+      themeMode: account.themeMode,
+      accentTheme: account.accentTheme,
       lang: account.lang,
       discreet: device.discreet,
       aiMode: budget.aiProvider === "enveo" ? "server" : budget.aiProvider === "openai" ? "byok" : "off",
@@ -210,10 +180,7 @@ export function AppProviders({ children }: { children: ReactNode }) {
   }, []);
 
   const setSettings = (s: Settings) => {
-    const patch = splitSettingsPatch(settings, s, {
-      themeMode: device.themeModeOverride !== null,
-      accentTheme: device.accentThemeOverride !== null,
-    });
+    const patch = splitSettingsPatch(settings, s);
     if (Object.keys(patch.account).length > 0) updateAccount(patch.account);
     if (Object.keys(patch.budget).length > 0) updateBudget(patch.budget);
     if (Object.keys(patch.device).length > 0) updateDevice(patch.device);

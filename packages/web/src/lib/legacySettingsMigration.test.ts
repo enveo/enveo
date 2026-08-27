@@ -1,6 +1,5 @@
 import { describe, expect, it } from "bun:test";
 import { type AccountPreferences, type BudgetPreferences, createDefaultAccountPreferences, createDefaultBudgetPreferences } from "@enveo/shared";
-import type { DevicePreferences } from "./devicePreferences";
 import { type LegacyMigrationAck, type LegacySettingsMigrationDeps, runLegacySettingsMigration } from "./legacySettingsMigration";
 import type { LegacySettings, LegacySettingsRecord } from "./settingsPersist";
 
@@ -11,7 +10,7 @@ function fixture(legacy: LegacySettings | null) {
   let ack: LegacyMigrationAck = { schemaVersion: 1 };
   let account = createDefaultAccountPreferences();
   let budget = createDefaultBudgetPreferences();
-  let device: DevicePreferences = { schemaVersion: 1, discreet: false, themeModeOverride: null, accentThemeOverride: null };
+  let device = { schemaVersion: 1 as const, discreet: false };
   let accountRevision = 0;
   let accountDirty = false;
   let budgetPending = false;
