@@ -136,6 +136,26 @@ describe("schemaVersion 2 — wideWidgets migration", () => {
     expect(out.wideWidgets.find((widget) => widget.id === "recent")).toEqual(createDefaultWideWidgets().find((widget) => widget.id === "recent"));
   });
 
+  test("`scroll` is additive-optional: a widget row with no `scroll` key at all still reconciles, and gains no injected default", () => {
+    const stored = { id: "reportCashflow", enabled: true, w: 3, h: 1 } as Record<string, unknown>;
+    expect("scroll" in stored).toBe(false); // pinned per the house rule: absent, not `undefined`-valued
+    const out = reconcileBudgetPreferences({ wideWidgets: [stored] });
+    const cashflow = out.wideWidgets.find((widget) => widget.id === "reportCashflow")!;
+    expect(cashflow).toEqual({ id: "reportCashflow", enabled: true, w: 3, h: 1 });
+    expect("scroll" in cashflow).toBe(false);
+  });
+
+  test("`scroll` survives reconciliation when the client sets it explicitly, for every wide widget id", () => {
+    const out = reconcileBudgetPreferences({
+      wideWidgets: [
+        { id: "reportNetWorth", enabled: true, w: 1, h: 1, scroll: true },
+        { id: "recent", enabled: true, w: 2, h: 4, scroll: false },
+      ],
+    });
+    expect(out.wideWidgets.find((widget) => widget.id === "reportNetWorth")!.scroll).toBe(true);
+    expect(out.wideWidgets.find((widget) => widget.id === "recent")!.scroll).toBe(false);
+  });
+
   test("reconcile is idempotent", () => {
     const once = reconcileBudgetPreferences({ aiProvider: "openai", wideWidgets: [{ id: "goals", enabled: false, w: 1, h: 1 }] });
     expect(reconcileBudgetPreferences(once)).toEqual(once);

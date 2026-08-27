@@ -6,7 +6,7 @@
  */
 import { describe, expect, test } from "bun:test";
 import { budgetPreferencesPatchSchema, createDefaultWideWidgets, type WideWidgetConfig } from "@enveo/shared";
-import { applyResize, clampRow, clampSpan, commitResetLayout, reorderEnabled, toggleEnabled } from "./wideBoard";
+import { applyResize, clampRow, clampSpan, commitResetLayout, reorderEnabled, resolveWidgetScroll, toggleEnabled } from "./wideBoard";
 
 describe("clampSpan", () => {
   test("a desktop-authored w:3 clamps to the fold's 2 columns at render", () => {
@@ -120,6 +120,27 @@ describe("reorderEnabled", () => {
     const defaults = createDefaultWideWidgets();
     const next = reorderEnabled(defaults, 3, 0);
     expect(budgetPreferencesPatchSchema.safeParse({ wideWidgets: next }).success).toBe(true);
+  });
+});
+
+describe("resolveWidgetScroll (the gear panel's 'Scroll inside the tile' toggle default)", () => {
+  test("an absent `scroll` key resolves per the design's own default: net worth and cashflow clip, everything else scrolls", () => {
+    expect(resolveWidgetScroll({ id: "reportNetWorth" })).toBe(false);
+    expect(resolveWidgetScroll({ id: "reportCashflow" })).toBe(false);
+    for (const id of ["envelopes", "envelopesSavings", "attention", "recent", "spending", "goals", "trends", "heatmap"] as const) {
+      expect(resolveWidgetScroll({ id })).toBe(true);
+    }
+  });
+
+  test("delete-the-key: a fixture with `scroll` deleted (not `undefined`-valued) resolves the same as never-had-one", () => {
+    const widget: { id: "reportCashflow"; scroll?: boolean } = { id: "reportCashflow", scroll: true };
+    delete widget.scroll;
+    expect(resolveWidgetScroll(widget)).toBe(false);
+  });
+
+  test("an explicit value always wins over the id default, either direction", () => {
+    expect(resolveWidgetScroll({ id: "reportNetWorth", scroll: true })).toBe(true);
+    expect(resolveWidgetScroll({ id: "recent", scroll: false })).toBe(false);
   });
 });
 
