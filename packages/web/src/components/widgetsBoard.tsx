@@ -19,7 +19,15 @@
  * board tile that owns its own title+card chrome (Task 6) — default `false`/absent renders exactly
  * the phone chrome below, so Start's own rendering is unaffected by this file existing.
  */
-import { computeDailySpending, computeEnvelopeTrends, computeSpendingByDimension, computeStateResponse, goalProgress, type Transaction } from "@enveo/shared";
+import {
+  computeDailySpending,
+  computeEnvelopeTrends,
+  computeSpendingByDimension,
+  computeStateResponse,
+  goalProgress,
+  type Transaction,
+  topPlaces,
+} from "@enveo/shared";
 import { type CSSProperties, type ReactNode, useMemo } from "react";
 import { useLedgerVersion } from "../lib/api";
 import { useMask, useTheme } from "../lib/contexts";
@@ -35,7 +43,7 @@ import { font, TEAL, type Theme, TRANSFER } from "../lib/theme";
 import { useElementWidth } from "../lib/useElementWidth";
 import { trendColor } from "../screens/reports/charts";
 import { CardBox, GoalRing, SectionEyebrow } from "./kit";
-import { Bar, CalendarHeatmap, dimNullLabel, SegBar, TrendSpark } from "./reportKit";
+import { Bar, CalendarHeatmap, dimNullLabel, heatColor, heatWeeks, SegBar, TrendSpark } from "./reportKit";
 import type { WidgetProps } from "./widgets";
 
 /** Wraps a widget body's rows in the phone SectionEyebrow+CardBox chrome, unless a wide board tile
@@ -735,8 +743,29 @@ export function TrendsWidget({ month, onOpenReport, chromeless }: WidgetProps) {
 }
 
 /* ── Heatmap: daily spending calendar, same computeDailySpending/CalendarHeatmap as the Month
- * report — day click deep-links to the Month report with that day's panel already open. ── */
+ * report — day click deep-links to the Month report with that day's panel already open.
+ *
+ * Owner round 3 item 19: the WIDE board tile (`chromeless`) forks to the design's compact
+ * home-board grammar (v3.dc.html:556-579) instead of the phone/report `CalendarHeatmap` below —
+ * small fixed-height cells (17px tall, 4px gap/radius, no per-cell day number) built from the
+ * SAME `heatWeeks`/`heatColor` primitives `CalendarHeatmap` itself uses (so the color ramp never
+ * drifts from the phone widget or the Month report), an avg/peak caption reusing MonthReport's
+ * own string verbatim ("avg {avg}/day · peak: {date} ({peak})" — `date` via `shortDate`, the
+ * app's nominative short-date formatter, same one the wide Recent-activity row already uses), and
+ * a "Most frequent places" table below built from `topPlaces` (shared/reports.ts — the same
+ * visit-count-led function MonthReport's own places table calls, so a place's rank/count/sum here
+ * never disagrees with the Month report), top 3 by visit count. Row styling matches the design's
+ * HOME-BOARD grammar specifically (name inherits the row's own text color, meta muted, no bold) —
+ * a deliberately different arrangement from MonthReport's own already-shipped report-level table
+ * (soft name, bold text meta), because the design gives the home tile and the full report two
+ * different row treatments (v3.dc.html:571-579 vs 1614-1619) and this task only touches the tile.
+ * The "{count}× · {amount}" and "Most frequent places" strings are pre-existing i18n keys
+ * (MonthReport.tsx) — zero new translations. The places section is omitted entirely (not
+ * rendered empty) when there is nothing to show, the same rule MonthReport's own header comment
+ * documents. The phone body (chromeless falsy) is untouched — plain `CalendarHeatmap`, no
+ * caption, no places table. ── */
 export function HeatmapWidget({ month, onOpenMonthDay, chromeless }: WidgetProps) {
+  const C = useTheme();
   const M = useMask();
   const { t, lang } = useT();
   const version = useLedgerVersion();
@@ -745,6 +774,83 @@ export function HeatmapWidget({ month, onOpenMonthDay, chromeless }: WidgetProps
     return ledger ? computeDailySpending(ledger, month) : [];
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [version, month]);
+  const places = useMemo(() => {
+    const ledger = store.getLedger();
+    return ledger ? topPlaces(ledger, month, month, 3) : [];
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [version, month]);
+
+  if (chromeless) {
+    const max = Math.max(...days.map((d) => d.total), 1);
+    const totalExpense = days.reduce((s, d) => s + d.total, 0);
+    // Same "reduce with no seed needs a non-empty array" guard MonthReport.tsx's own peak/avg
+    // computation uses (comment there); `totalExpense` here equals `computeCashflowSeries`'s
+    // monthly `expense` for the same month (both route every expense through the identical
+    // type/refund-sign/savings-exclusion rule — MonthReport.tsx's own header comment), so this
+    // is not a fresh, differently-scoped average.
+    const peak = days.length > 0 ? days.reduce((best, d) => (d.total > best.total ? d : best)) : undefined;
+    const hasSpending = peak !== undefined && peak.total > 0;
+    const avg = days.length > 0 ? Math.round(totalExpense / days.length) : 0;
+    const cells = heatWeeks(days).flat();
+    return (
+      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+        {/* Cells are 17px tall (the design's literal compact size) — under the house's usual
+         *  ≥30×30 glyph-button floor, the same deliberate tradeoff the Spending tile's row hit
+         *  box already documents above (item 16): a 7-column calendar sized up to the floor would
+         *  no longer read as a compact monthly grid, the whole point of this task. A mis-tap opens
+         *  an adjacent DAY (unlike Spending's identical-destination rows), but every day's own
+         *  panel still lands inside the SAME Month report the tile deep-links to, and the wide
+         *  cursor/keyboard user gets a per-cell `aria-label` naming the exact date — matching the
+         *  design's literal density wins over inflating the grid. */}
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 4 }}>
+          {cells.map((cell, i) =>
+            cell ? (
+              <div
+                key={cell.date}
+                role={onOpenMonthDay ? "button" : undefined}
+                tabIndex={onOpenMonthDay ? 0 : undefined}
+                onClick={onOpenMonthDay ? () => onOpenMonthDay(cell.date) : undefined}
+                onKeyDown={
+                  onOpenMonthDay
+                    ? (e) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.preventDefault();
+                          onOpenMonthDay(cell.date);
+                        }
+                      }
+                    : undefined
+                }
+                aria-label={`${cell.date} · ${M(cell.total)}`}
+                style={{ height: 17, borderRadius: 4, background: heatColor(cell.total, max, C), cursor: onOpenMonthDay ? "pointer" : "default" }}
+              />
+            ) : (
+              <div key={`pad${i}`} aria-hidden="true" style={{ height: 17 }} />
+            ),
+          )}
+        </div>
+        <span style={{ fontSize: 10.5, color: C.mute }}>
+          {hasSpending && peak
+            ? t("avg {avg}/day · peak: {date} ({peak})", { avg: M(avg), date: shortDate(peak.date, lang), peak: M(peak.total) })
+            : t("No spending this month.")}
+        </span>
+        {places.length > 0 && (
+          <div style={{ display: "flex", flexDirection: "column", borderTop: `1px solid ${C.line}`, paddingTop: 7 }}>
+            <span style={{ fontSize: 9.5, fontWeight: 750, letterSpacing: "0.14em", textTransform: "uppercase", color: C.mute, paddingBottom: 3 }}>
+              {t("Most frequent places")}
+            </span>
+            {places.map((p) => (
+              <div key={p.key} style={{ display: "flex", justifyContent: "space-between", gap: 8, fontSize: 11.5, color: C.text, padding: "3px 0" }}>
+                <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{dimNullLabel(p.name, "place", t)}</span>
+                <span style={{ flexShrink: 0, color: C.soft, fontVariantNumeric: "tabular-nums" }}>
+                  {t("{count}× · {amount}", { count: p.count, amount: M(p.total) })}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  }
 
   return (
     <WidgetShell title={t("When you spend")} chromeless={chromeless}>
