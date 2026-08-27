@@ -25,6 +25,7 @@ import {
   computeSpendingByDimension,
   computeStateResponse,
   goalProgress,
+  largestExpenses,
   type Transaction,
   topPlaces,
 } from "@enveo/shared";
@@ -746,25 +747,34 @@ export function TrendsWidget({ month, onOpenReport, chromeless }: WidgetProps) {
  * report — day click deep-links to the Month report with that day's panel already open.
  *
  * Owner round 3 item 19: the WIDE board tile (`chromeless`) forks to the design's compact
- * home-board grammar (v3.dc.html:556-579) instead of the phone/report `CalendarHeatmap` below —
+ * home-board grammar (v3.dc.html:556-587) instead of the phone/report `CalendarHeatmap` below —
  * small fixed-height cells (17px tall, 4px gap/radius, no per-cell day number) built from the
  * SAME `heatWeeks`/`heatColor` primitives `CalendarHeatmap` itself uses (so the color ramp never
  * drifts from the phone widget or the Month report), an avg/peak caption reusing MonthReport's
  * own string verbatim ("avg {avg}/day · peak: {date} ({peak})" — `date` via `shortDate`, the
  * app's nominative short-date formatter, same one the wide Recent-activity row already uses), and
- * a "Most frequent places" table below built from `topPlaces` (shared/reports.ts — the same
- * visit-count-led function MonthReport's own places table calls, so a place's rank/count/sum here
- * never disagrees with the Month report), top 3 by visit count. Row styling matches the design's
- * HOME-BOARD grammar specifically (name inherits the row's own text color, meta muted, no bold) —
- * a deliberately different arrangement from MonthReport's own already-shipped report-level table
- * (soft name, bold text meta), because the design gives the home tile and the full report two
- * different row treatments (v3.dc.html:571-579 vs 1614-1619) and this task only touches the tile.
- * The "{count}× · {amount}" and "Most frequent places" strings are pre-existing i18n keys
- * (MonthReport.tsx) — zero new translations. The places section is omitted entirely (not
- * rendered empty) when there is nothing to show, the same rule MonthReport's own header comment
- * documents. The phone body (chromeless falsy) is untouched — plain `CalendarHeatmap`, no
- * caption, no places table. ── */
-export function HeatmapWidget({ month, onOpenMonthDay, chromeless }: WidgetProps) {
+ * the design's two companion lists SCALED BY TILE WIDTH exactly like its own `sizeOf` (v3.dc.html
+ * :3588-3590, :3792-3797): S (`tile.w<=1`) shows neither list at all, M (`w===2`) shows only
+ * "Most frequent places" (top 3, `topPlaces` — shared/reports.ts, the same visit-count-led
+ * function MonthReport's own places table calls, so rank/count/sum here never disagrees with the
+ * Month report), and L (`w>=3`) widens that to the top 5 AND adds a second "Largest expenses"
+ * table (`largestExpenses`, shared/reports.ts — the same amount-led function MonthReport's own
+ * report-level table calls, top 3), matching the design's `heatPlaces`/`heatPlacesDisplay`/
+ * `heatLargest`/`heatLargestDisplay`. `tile` is always supplied alongside `chromeless` today
+ * (WideHome.tsx) — the `?? 2` fallback below only matters if that contract ever changes, and picks
+ * the M bucket (the catalog's own default size for this widget, shared/preferences.ts). Both
+ * tables are OMITTED entirely (not rendered empty) when there is nothing to show, the same rule
+ * MonthReport's own header comment documents, and neither table's rows are click targets — same
+ * as MonthReport's own equivalent rows, which are informational only. Row styling matches the
+ * design's HOME-BOARD grammar specifically (name inherits the row's own text color, meta muted, no
+ * bold) — a deliberately different arrangement from MonthReport's own already-shipped report-level
+ * tables (soft name, bold text meta): the design gives the home tile and the full report two
+ * different ROW treatments for the SAME underlying lists (v3.dc.html:571-586 vs 1614-1619), not two
+ * different sets of lists — both lists exist at the tile level too, just gated by size. The
+ * "{count}× · {amount}", "Most frequent places" and "Largest expenses" strings are pre-existing
+ * i18n keys (MonthReport.tsx) — zero new translations. The phone body (chromeless falsy) is
+ * untouched — plain `CalendarHeatmap`, no caption, no tables. ── */
+export function HeatmapWidget({ month, onOpenMonthDay, chromeless, tile }: WidgetProps) {
   const C = useTheme();
   const M = useMask();
   const { t, lang } = useT();
@@ -774,11 +784,19 @@ export function HeatmapWidget({ month, onOpenMonthDay, chromeless }: WidgetProps
     return ledger ? computeDailySpending(ledger, month) : [];
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [version, month]);
+  const heatW = tile?.w ?? 2;
+  const heatSize: "S" | "M" | "L" = heatW >= 3 ? "L" : heatW === 2 ? "M" : "S";
+  const placesLimit = heatSize === "S" ? 0 : heatSize === "L" ? 5 : 3;
   const places = useMemo(() => {
     const ledger = store.getLedger();
-    return ledger ? topPlaces(ledger, month, month, 3) : [];
+    return ledger && placesLimit > 0 ? topPlaces(ledger, month, month, placesLimit) : [];
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [version, month]);
+  }, [version, month, placesLimit]);
+  const largest = useMemo(() => {
+    const ledger = store.getLedger();
+    return ledger && heatSize === "L" ? largestExpenses(ledger, month, 3) : [];
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [version, month, heatSize]);
 
   if (chromeless) {
     const max = Math.max(...days.map((d) => d.total), 1);
@@ -794,14 +812,23 @@ export function HeatmapWidget({ month, onOpenMonthDay, chromeless }: WidgetProps
     const cells = heatWeeks(days).flat();
     return (
       <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-        {/* Cells are 17px tall (the design's literal compact size) — under the house's usual
-         *  ≥30×30 glyph-button floor, the same deliberate tradeoff the Spending tile's row hit
-         *  box already documents above (item 16): a 7-column calendar sized up to the floor would
-         *  no longer read as a compact monthly grid, the whole point of this task. A mis-tap opens
-         *  an adjacent DAY (unlike Spending's identical-destination rows), but every day's own
-         *  panel still lands inside the SAME Month report the tile deep-links to, and the wide
-         *  cursor/keyboard user gets a per-cell `aria-label` naming the exact date — matching the
-         *  design's literal density wins over inflating the grid. */}
+        {/* Cells paint 17px tall (the design's literal compact size, v3.dc.html:562-565) — a
+         *  7-column calendar sized up to the house's usual ≥30×30 floor would no longer read as a
+         *  compact monthly grid, the whole point of this task (owner round 3 item 19: "small
+         *  cells"). Unlike the Spending tile's rows (item 16), which sit in a single-axis flex
+         *  column with an 8px gap and fully cancel padding against an equal negative margin to
+         *  reach 30px without ever overlapping a neighbor, this grid has a neighbor on ALL FOUR
+         *  sides sharing a 4px gap in BOTH directions — the identical technique only has 2px of
+         *  slack per side before two cells' invisible hit areas would overlap (meeting exactly at
+         *  the middle of the shared gap, same rule as item 16, just scaled to this grid's smaller
+         *  gap). That caps the safe, non-overlapping hit box at 21×21 (17 + 2 + 2): real growth
+         *  over the bare 17px swatch, but a KNOWING, DOCUMENTED shortfall against the 30×30 floor —
+         *  not a claimed match to item 16's fully-compensated outcome. The outer `<div>` below
+         *  carries the padding/negative-margin (transparent — it never grows the VISIBLE swatch)
+         *  plus the click/role/aria wiring; the inner `<div>` is the literal 17px colored cell,
+         *  sized and positioned exactly as before. A mis-tap can still open an adjacent DAY, but
+         *  every day's own panel lands inside the SAME Month report the tile deep-links to, and
+         *  the wide cursor/keyboard user gets a per-cell `aria-label` naming the exact date. */}
         <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 4 }}>
           {cells.map((cell, i) =>
             cell ? (
@@ -821,8 +848,10 @@ export function HeatmapWidget({ month, onOpenMonthDay, chromeless }: WidgetProps
                     : undefined
                 }
                 aria-label={`${cell.date} · ${M(cell.total)}`}
-                style={{ height: 17, borderRadius: 4, background: heatColor(cell.total, max, C), cursor: onOpenMonthDay ? "pointer" : "default" }}
-              />
+                style={{ padding: 2, margin: -2, cursor: onOpenMonthDay ? "pointer" : "default" }}
+              >
+                <div style={{ height: 17, borderRadius: 4, background: heatColor(cell.total, max, C) }} />
+              </div>
             ) : (
               <div key={`pad${i}`} aria-hidden="true" style={{ height: 17 }} />
             ),
@@ -844,6 +873,25 @@ export function HeatmapWidget({ month, onOpenMonthDay, chromeless }: WidgetProps
                 <span style={{ flexShrink: 0, color: C.soft, fontVariantNumeric: "tabular-nums" }}>
                   {t("{count}× · {amount}", { count: p.count, amount: M(p.total) })}
                 </span>
+              </div>
+            ))}
+          </div>
+        )}
+        {/* Owner round 3 item 19 / v3.dc.html:580-586 — the L-only "Largest expenses" table the
+         *  design's home tile adds alongside "Most frequent places" (both gated by `heatSize`
+         *  above). Rows are informational only (no onClick) — same as MonthReport.tsx's own
+         *  equivalent rows — so no touch-target floor applies here. */}
+        {largest.length > 0 && (
+          <div style={{ display: "flex", flexDirection: "column", borderTop: `1px solid ${C.line}`, paddingTop: 7 }}>
+            <span style={{ fontSize: 9.5, fontWeight: 750, letterSpacing: "0.14em", textTransform: "uppercase", color: C.mute, paddingBottom: 3 }}>
+              {t("Largest expenses")}
+            </span>
+            {largest.map((e) => (
+              <div key={e.id} style={{ display: "flex", justifyContent: "space-between", gap: 8, fontSize: 11.5, color: C.text, padding: "3px 0" }}>
+                <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  {e.label} <span style={{ color: C.mute, fontSize: 10 }}>· {e.context ?? shortDate(e.date, lang)}</span>
+                </span>
+                <span style={{ flexShrink: 0, fontWeight: 650, fontVariantNumeric: "tabular-nums" }}>{M(e.amount)}</span>
               </div>
             ))}
           </div>
