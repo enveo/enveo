@@ -272,13 +272,25 @@ export function RecentWidget({ onOpenTxns, onNav, chromeless }: WidgetProps) {
           // v3.dc.html:439 — wide rows are gap-separated (no per-row divider) at 7px padding;
           // the phone row keeps its existing 8px-padded, border-bottomed list untouched.
           const rowStyle = chromeless ? { ...rowBtnStyle(C, true), padding: "7px 0" } : rowBtnStyle(C, i === rows.length - 1);
+          const headline = descOf(tx);
+          // Owner round 3 item 15 wants the meta line to name the category/envelope, but
+          // descOf() ITSELF falls back to that same envelope/"Split transaction" label whenever
+          // a transaction has no payee name and no note (Add.tsx stores a blank payee as
+          // `name: null`, so this is a reachable state, not a hypothetical one). Repeating the
+          // identical string on both lines ("Groceries" / "Jul 14 · Groceries") would tell the
+          // user nothing the headline didn't already say — the design never hits this because
+          // its mock payees are always distinct from the envelope/category name — so the wide
+          // meta line drops the label and falls back to date-only (the phone's existing grammar)
+          // whenever the two would collide.
+          const meta = metaLabel(tx);
+          const metaText = chromeless && meta !== headline ? `${shortDate(tx.date, lang)} · ${meta}` : shortDate(tx.date, lang);
           return (
             <button key={tx.id} onClick={() => onOpenTxns()} style={rowStyle}>
               {chromeless && <span style={{ width: 9, height: 9, borderRadius: 3, background: dotColor(tx), display: "block", flexShrink: 0 }} />}
               <span style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 1 }}>
-                <span style={{ fontSize: 12.5, color: C.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{descOf(tx)}</span>
+                <span style={{ fontSize: 12.5, color: C.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{headline}</span>
                 <span style={{ fontSize: chromeless ? 10 : 10.5, color: C.mute, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                  {chromeless ? `${shortDate(tx.date, lang)} · ${metaLabel(tx)}` : shortDate(tx.date, lang)}
+                  {metaText}
                 </span>
               </span>
               <span style={{ fontSize: 12.5, fontWeight: 700, color: s.color, fontVariantNumeric: "tabular-nums", flexShrink: 0 }}>{s.text}</span>
@@ -347,12 +359,19 @@ export function SpendingWidget({ state, month, onOpenReport, chromeless }: Widge
         // of the phone's default 8px. This is the actual height drop behind "ładniej i bardziej
         // kompaktowo" — not just a font tweak.
         //
-        // Row hit box is ~22px, under the house's usual ≥30×30 glyph-button floor (chromeBtn/
-        // fillOne in this file) — that floor targets an isolated ICON control with room around it
-        // to overdraw into; here it would eat the very 8px gap this tile is built to have, and
-        // every row fires the identical `onOpenReport("spending")` action, so a near-miss between
-        // two rows lands on the same destination rather than the wrong one. Matching the design's
-        // literal compact height (the whole point of this task) wins over inflating it.
+        // Row content is ~22px tall — under the house's usual ≥30×30 glyph-button floor — but
+        // unlike an isolated icon control (chromeBtn/fillOne) this row sits in the tile's own 8px
+        // flex gap (WideHome's `gsh` container) with a sibling above and below on EVERY side, so
+        // the floor is met with the padding+negative-margin hit-slop technique instead of a plain
+        // `minHeight` bump: 4px of padding top/bottom grows the button's own border box to
+        // 22+8=30px, and an equal negative margin pulls it back so the MARGIN box — what the flex
+        // column actually spaces siblings by — still measures 22px, unchanged. Padding and margin
+        // cancel exactly, so the rendered text/bar sit at the identical pixel position as before;
+        // only the invisible hit area grows, spilling 4px into the gap on each side (two adjacent
+        // rows' expanded boxes meet exactly at the middle of their shared gap, so a click anywhere
+        // in it always lands on one row or the other, never nothing). This keeps the design's
+        // literal compact height — the whole point of "ładniej i bardziej kompaktowo" — while
+        // still clearing the 30px floor, rather than trading one off against the other.
         <>
           <SegBar segments={top.map((r) => ({ weight: Math.max(0, r.amount), color: rowColor(r.key) }))} height={9} />
           {top.map((r) => (
@@ -364,7 +383,8 @@ export function SpendingWidget({ state, month, onOpenReport, chromeless }: Widge
                 flexDirection: "column",
                 gap: 3,
                 width: "100%",
-                padding: 0,
+                padding: "4px 0",
+                margin: "-4px 0",
                 background: "none",
                 border: "none",
                 cursor: "pointer",
