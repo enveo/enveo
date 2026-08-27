@@ -497,7 +497,11 @@ export function GoalsWidget({ state, month, onOpenReport, onFillGoals, chromeles
       ) : chromeless ? (
         <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
           {rows.map(({ e, gp }) => {
-            const ringColor = gp.funded ? C.pos : TEAL;
+            // Owner round 3 item 18: the ring is colored PER GOAL from the envelope's own
+            // identity color (v3.dc.html:506's `g.color`), not the funded-status convention this
+            // used to share with GoalsReport.tsx (`C.pos` once funded, `TEAL` otherwise) — see
+            // that file's own comment for the fuller reversal rationale.
+            const ringColor = e.color;
             const fundedAmt = Math.min(Math.max(0, e.allocated), e.monthlyTarget ?? 0);
             const fillable = Math.max(0, Math.min(gp.missing, state.readyToAssign));
             return (
@@ -622,7 +626,14 @@ export function GoalsWidget({ state, month, onOpenReport, onFillGoals, chromeles
 
 /* ── Trends: the top-5 movers over 6 months, same computeEnvelopeTrends/trendColor as the Trends
  * report. TrendSpark's width is MEASURED (the caller-supplied-width waiver — never the fixed 64/72
- * probe the report row uses), so a wide tile draws a proportionally wider chart. ── */
+ * probe the report row uses), so a wide tile draws a proportionally wider chart.
+ *
+ * Owner round 3 item 17: the WIDE board tile (`chromeless`) forks to its own row grammar, matching
+ * the design's home-board trends widget (v3.dc.html:546-560) rather than the phone/report grammar
+ * above — a small FIXED-size sparkline (44×20, not measured) stroked in the ENVELOPE's own color
+ * (`tr.color`) with a sign-verdict-colored dot (`trendColor`) and a right-aligned signed amount in
+ * that same verdict color, no per-row divider. The phone body (chromeless falsy) is untouched:
+ * measured-width spark, single `trendColor()` for line+dot+amount, bordered rows. ── */
 export function TrendsWidget({ month, onOpenReport, chromeless }: WidgetProps) {
   const C = useTheme();
   const M = useMask();
@@ -640,6 +651,37 @@ export function TrendsWidget({ month, onOpenReport, chromeless }: WidgetProps) {
     <WidgetShell title={t("Envelope trends")} chromeless={chromeless}>
       {trends.length === 0 ? (
         <div style={{ padding: "10px 2px", fontSize: 12, color: C.mute }}>{t("Not enough history yet — trends appear after two months of spending.")}</div>
+      ) : chromeless ? (
+        <div style={{ display: "flex", flexDirection: "column" }}>
+          {trends.map((tr) => {
+            const signColor = trendColor(tr, C);
+            const delta = tr.last - tr.baseline;
+            return (
+              <button key={tr.id} onClick={() => onOpenReport?.("trends")} style={{ ...rowBtnStyle(C, true), padding: "5px 0" }}>
+                <TrendSpark
+                  series={tr.series}
+                  color={tr.color}
+                  dotColor={signColor}
+                  median={tr.baseline}
+                  medianColor={C.line}
+                  dot
+                  w={44}
+                  h={20}
+                  strokeWidth={2.5}
+                  medianStrokeWidth={1.5}
+                  dotRadius={3}
+                />
+                <span style={{ flex: 1, minWidth: 0, fontSize: 12, color: C.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  {tr.name}
+                </span>
+                <span style={{ flexShrink: 0, fontSize: 11, fontWeight: 750, color: signColor, fontVariantNumeric: "tabular-nums" }}>
+                  {delta >= 0 ? "+" : "−"}
+                  {M(Math.abs(delta))}
+                </span>
+              </button>
+            );
+          })}
+        </div>
       ) : (
         <div ref={rowsRef}>
           {trends.map((tr, i) => {
