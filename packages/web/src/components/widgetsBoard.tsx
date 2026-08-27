@@ -203,6 +203,11 @@ export function RecentWidget({ onOpenTxns, onNav, chromeless }: WidgetProps) {
     return new Map((ledger?.accounts ?? []).map((a) => [a.id, a]));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [version]);
+  const catById = useMemo(() => {
+    const ledger = store.getLedger();
+    return new Map((ledger?.categories ?? []).map((c) => [c.id, c]));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [version]);
 
   // Same sign/description rules as Transactions.tsx's own row (colorOf/signed/descOf) — a
   // deliberately smaller copy (no place/category sub-line) for the compact tile.
@@ -220,13 +225,41 @@ export function RecentWidget({ onOpenTxns, onNav, chromeless }: WidgetProps) {
     const env = tx.envelopeId ? envById.get(tx.envelopeId) : null;
     return tx.name || tx.note || env?.name || (tx.items.length ? t("Split transaction") : t("Transaction"));
   };
-  // v3.dc.html:440/3738 — the dot is colored PURELY by envelope, type-agnostic: `t.env &&
-  // envById[t.env] ? envById[t.env].color : T.mute`. A transfer never carries an envelopeId, so it
-  // falls through to the same neutral `C.mute` as any other envelope-less row — no special-cased
-  // transfer color here (that belongs to the amount's `signed()`, which already uses TRANSFER).
-  const dotColor = (tx: Transaction): string => {
-    const env = tx.envelopeId ? envById.get(tx.envelopeId) : null;
-    return env?.color ?? C.mute;
+  // v3.dc.html:440/3738's grammar is `t.env && envById[t.env] ? envById[t.env].color : T.mute` —
+  // in the design's flat mock data a transfer row can carry an `env` directly (its own synthetic
+  // "Checking → Savings" example, v3:2079, sets `env: "emrg"`). The real domain never puts an
+  // envelopeId on an income/transfer transaction (Add.tsx: "income has no envelope selection …
+  // transfer likewise has none") — what the design is modelling there is money landing in an
+  // envelope-LINKED account, captured on the real transaction as `allocationToEnvelopeId`/
+  // `allocationFromEnvelopeId` (`captureAllocationFlow`, shared/automaticEnvelope.ts). Resolving
+  // through that link is the faithful real-domain equivalent of the design's literal `t.env`, not
+  // a new rule — an unlinked transfer/income still falls through to the same neutral `C.mute` as
+  // before. Shared with `metaLabel` below (owner round 3 item 15) so the dot and the meta text
+  // never disagree about which envelope a row belongs to.
+  const resolvedEnvelope = (tx: Transaction) => {
+    if (tx.envelopeId) return envById.get(tx.envelopeId) ?? null;
+    if (tx.type === "income") return tx.allocationToEnvelopeId ? (envById.get(tx.allocationToEnvelopeId) ?? null) : null;
+    if (tx.type === "transfer") {
+      const linkedId = tx.allocationToEnvelopeId || tx.allocationFromEnvelopeId;
+      return linkedId ? (envById.get(linkedId) ?? null) : null;
+    }
+    return null;
+  };
+  const dotColor = (tx: Transaction): string => resolvedEnvelope(tx)?.color ?? C.mute;
+  // Owner round 3 item 15 — the wide meta line names the category/envelope, not just the date
+  // (his crop: "July 14 · Groceries"; income falls back to a literal "July 13 · Income", transfer
+  // to "July 13 · Emergency Fund" once a linked account resolves an envelope — v3.dc.html:3737's
+  // `t.env && envById[t.env] ? envById[t.env].name : t.cat`). `t("Income")`/`t("Transfer")`/
+  // `t("No category")`/`t("Split transaction")` are all pre-existing keys (TxnPanel.tsx/
+  // reportKit.tsx) — no new i18n strings for this row. Phone's meta stays date-only, untouched.
+  const metaLabel = (tx: Transaction): string => {
+    const env = resolvedEnvelope(tx);
+    if (env) return env.name;
+    const cat = tx.categoryId ? catById.get(tx.categoryId) : null;
+    if (cat) return cat.name;
+    if (tx.type === "income") return t("Income");
+    if (tx.type === "transfer") return t("Transfer");
+    return tx.items.length ? t("Split transaction") : t("No category");
   };
 
   return (
@@ -244,7 +277,9 @@ export function RecentWidget({ onOpenTxns, onNav, chromeless }: WidgetProps) {
               {chromeless && <span style={{ width: 9, height: 9, borderRadius: 3, background: dotColor(tx), display: "block", flexShrink: 0 }} />}
               <span style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 1 }}>
                 <span style={{ fontSize: 12.5, color: C.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{descOf(tx)}</span>
-                <span style={{ fontSize: chromeless ? 10 : 10.5, color: C.mute }}>{shortDate(tx.date, lang)}</span>
+                <span style={{ fontSize: chromeless ? 10 : 10.5, color: C.mute, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  {chromeless ? `${shortDate(tx.date, lang)} · ${metaLabel(tx)}` : shortDate(tx.date, lang)}
+                </span>
               </span>
               <span style={{ fontSize: 12.5, fontWeight: 700, color: s.color, fontVariantNumeric: "tabular-nums", flexShrink: 0 }}>{s.text}</span>
             </button>
@@ -293,11 +328,66 @@ export function SpendingWidget({ state, month, onOpenReport, chromeless }: Widge
   const top = rows.slice(0, 5);
   const total = rows.reduce((sum, r) => sum + r.amount, 0);
   const topAmount = Math.max(...top.map((r) => r.amount), 1);
+  // v3.dc.html:460's `share` is this row's percentage of the FULL month total (every envelope,
+  // `homeSpendSum`) — not of the top-5 slice and not of `topAmount` (the bar's own denominator).
+  // Same "" guard as the design when there's nothing to divide by (unreachable here in practice:
+  // the empty-rows case is handled above this branch, so `total` is always > 0 once we get here).
+  const shareOf = (amount: number): string => (total > 0 ? `${Math.round((amount / total) * 100)}%` : "");
 
   return (
     <WidgetShell title={t("Spending")} chromeless={chromeless}>
       {rows.length === 0 ? (
         <div style={{ padding: "10px 2px", fontSize: 12, color: C.mute }}>{t("No spending this month.")}</div>
+      ) : chromeless ? (
+        // Owner round 3 item 16 — the design's compact grammar (v3.dc.html:451-464), not the
+        // phone's bordered/padded row list: rows are spaced by the tile body's own 8px flex gap
+        // (WideHome's `gsh` container) rather than a per-row border+padding, each row is a tight
+        // name/share%/amount line (`gap:3`) over a slim 4px bar (design: `hint-size="100%,4px"`),
+        // and the segmented header bar matches the design's 9px (`hint-size="100%,9px"`) instead
+        // of the phone's default 8px. This is the actual height drop behind "ładniej i bardziej
+        // kompaktowo" — not just a font tweak.
+        //
+        // Row hit box is ~22px, under the house's usual ≥30×30 glyph-button floor (chromeBtn/
+        // fillOne in this file) — that floor targets an isolated ICON control with room around it
+        // to overdraw into; here it would eat the very 8px gap this tile is built to have, and
+        // every row fires the identical `onOpenReport("spending")` action, so a near-miss between
+        // two rows lands on the same destination rather than the wrong one. Matching the design's
+        // literal compact height (the whole point of this task) wins over inflating it.
+        <>
+          <SegBar segments={top.map((r) => ({ weight: Math.max(0, r.amount), color: rowColor(r.key) }))} height={9} />
+          {top.map((r) => (
+            <button
+              key={r.key ?? "none"}
+              onClick={() => onOpenReport?.("spending")}
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                gap: 3,
+                width: "100%",
+                padding: 0,
+                background: "none",
+                border: "none",
+                cursor: "pointer",
+                textAlign: "left",
+                fontFamily: "inherit",
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "baseline", gap: 8, fontSize: 12.5, color: C.text }}>
+                <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  {dimNullLabel(r.name, "envelope", t)}
+                </span>
+                <span style={{ fontSize: 10.5, color: C.mute, flexShrink: 0 }}>{shareOf(r.amount)}</span>
+                <span style={{ fontWeight: 650, fontVariantNumeric: "tabular-nums", flexShrink: 0 }}>{M(r.amount)}</span>
+              </div>
+              <Bar pct={(r.amount / topAmount) * 100} color={rowColor(r.key)} height={4} />
+            </button>
+          ))}
+          {/* v3.dc.html:466 — a plain, non-interactive caption (its own text says "click a row for
+              detail" — the rows are the click target, not this line). */}
+          <span style={{ fontSize: 10.5, color: C.mute, fontVariantNumeric: "tabular-nums" }}>
+            {t("total {amount} this month · click a row for detail", { amount: M(total) })}
+          </span>
+        </>
       ) : (
         <>
           <div style={{ padding: "8px 0 6px" }}>
@@ -314,33 +404,24 @@ export function SpendingWidget({ state, month, onOpenReport, chromeless }: Widge
               <span style={{ fontSize: 12, fontWeight: 650, color: C.text, fontVariantNumeric: "tabular-nums", flexShrink: 0 }}>{M(r.amount)}</span>
             </button>
           ))}
-          {/* v3.dc.html:466 — the wide caption is a plain, non-interactive line (its own text says
-              "click a row for detail" — the rows are the click target, not this line), at the
-              design's 10.5px; the phone footer stays the existing clickable button, unchanged. */}
-          {chromeless ? (
-            <span style={{ fontSize: 10.5, color: C.mute, fontVariantNumeric: "tabular-nums" }}>
-              {t("total {amount} this month · click a row for detail", { amount: M(total) })}
-            </span>
-          ) : (
-            <button
-              onClick={() => onOpenReport?.("spending")}
-              style={{
-                display: "block",
-                width: "100%",
-                padding: "8px 0 4px",
-                background: "none",
-                border: "none",
-                fontSize: 11,
-                fontWeight: 600,
-                color: C.mute,
-                cursor: "pointer",
-                textAlign: "center",
-                fontFamily: font,
-              }}
-            >
-              {t("total {amount} this month", { amount: M(total) })}
-            </button>
-          )}
+          <button
+            onClick={() => onOpenReport?.("spending")}
+            style={{
+              display: "block",
+              width: "100%",
+              padding: "8px 0 4px",
+              background: "none",
+              border: "none",
+              fontSize: 11,
+              fontWeight: 600,
+              color: C.mute,
+              cursor: "pointer",
+              textAlign: "center",
+              fontFamily: font,
+            }}
+          >
+            {t("total {amount} this month", { amount: M(total) })}
+          </button>
         </>
       )}
     </WidgetShell>
