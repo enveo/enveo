@@ -934,9 +934,11 @@ export const pl: Dict = {
   },
   "{count} unsent changes are still on this device. Retry when online, export a backup, or explicitly discard them.":
     "Na tym urządzeniu nadal są niewysłane zmiany ({count}). Połącz się z internetem i ponów, wyeksportuj kopię albo jawnie je odrzuć.",
+  "Account default: {value}": "Domyślnie na koncie: {value}",
   "Account preferences": "Ustawienia konta",
   "AI is not configured. Choose server AI or an existing own key in Settings → Artificial intelligence.":
     "AI nie jest skonfigurowane. Wybierz AI serwera albo istniejący własny klucz w Ustawieniach → Sztuczna inteligencja.",
+  "All devices": "Wszystkie urządzenia",
   Appearance: "Wygląd",
   "Appearance and dashboard": "Wygląd i dashboard",
   "Budget preferences": "Ustawienia budżetu",
@@ -951,6 +953,8 @@ export const pl: Dict = {
   "Encryption settings apply to this budget and follow it across devices.":
     "Ustawienia szyfrowania dotyczą tego budżetu i są synchronizowane między urządzeniami.",
   "Hides amounts; stays on this device only.": "Ukrywa kwoty — działa tylko na tym urządzeniu.",
+  "Language always follows your account. Theme follows your account too, unless you override it for this device below.":
+    "Język zawsze jest synchronizowany z kontem. Motyw również, chyba że ustawisz nadpisanie dla tego urządzenia poniżej.",
   "On a new device, enter the encryption password once to unlock both the budget and its encrypted Own OpenAI key. Enveo cannot recover either if you lose the password, every unlocked device, all pairing codes and your backups.":
     "Na nowym urządzeniu podaj raz hasło szyfrowania, aby odblokować budżet i zaszyfrowany klucz Własnego OpenAI. Enveo nie odzyska żadnego z nich, jeśli utracisz hasło, wszystkie odblokowane urządzenia, kody parowania i kopie zapasowe.",
   "Own OpenAI credential": "Własny klucz OpenAI",
@@ -962,7 +966,6 @@ export const pl: Dict = {
   "The server has no OpenAI key configured — server mode is unavailable. Use an existing own key or keep AI on rules.":
     "Serwer nie ma skonfigurowanego klucza OpenAI — tryb serwerowy jest niedostępny. Użyj istniejącego własnego klucza albo pozostań przy regułach.",
   "The AI provider and model follow this budget on every device.": "Dostawca AI i model są synchronizowane z tym budżetem na wszystkich urządzeniach.",
-  "Theme and language follow your account on every device.": "Motyw i język są synchronizowane z kontem na wszystkich urządzeniach.",
   "Theme, language, currency, privacy display, and widgets": "Motyw, język, waluta, dyskretny widok i widgety",
   "This device": "To urządzenie",
   "Use the existing own key": "Użyj istniejącego własnego klucza",

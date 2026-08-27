@@ -1,7 +1,8 @@
+import type { ThemeMode } from "@enveo/shared";
 import { type ReactNode, useState } from "react";
 import { EditWidgetsSheet } from "../../components/EditWidgetsSheet";
 import { useStateQuery } from "../../lib/api";
-import { useCurrency, useSettings, useTheme } from "../../lib/contexts";
+import { useAccountPreferences, useCurrency, useDevicePreferences, useSettings, useTheme } from "../../lib/contexts";
 import { SUPPORTED_CURRENCIES } from "../../lib/currency";
 import { todayISO } from "../../lib/dates";
 import { type Lang, LOCALES, loadLocale, type Message, msg, useT } from "../../lib/i18n";
@@ -88,6 +89,55 @@ function ThemeTiles() {
   );
 }
 
+/**
+ * Scope control for the theme swatches + Light/Dark/Auto segment above and below it: "All devices"
+ * writes straight to the account preference; "This device" freezes the CURRENT effective values
+ * into a per-device override so this device can diverge without touching what every other device
+ * sees (per-device theme override, 2026-08-27). There is no design mockup for this control — it
+ * follows the section's own pill idiom (`Seg`, the same treatment as the Theme mode segment below)
+ * per the owner's direction, kept inline with the theme controls it governs rather than moved under
+ * "This device" below: the two color/mode pickers and their scope stay in one visual group instead
+ * of the reader having to correlate two separate sections to find out where a click will land.
+ *
+ * The pill's own selected value is fully DERIVED from whether an override is currently set (never a
+ * separate "chosen but not applied" state) — so it can never show "This device" while actually
+ * following the account, or vice versa ("default state reflects reality", owner round 1 item 7's
+ * sibling rule for this control). Once an override exists, clicking a swatch or the mode segment
+ * below keeps updating it — `contexts.tsx`'s `splitSettingsPatch` routes there automatically, so
+ * those controls need no override-awareness of their own; this component only owns the freeze
+ * (all devices → this device) and clear (this device → all devices) transitions.
+ */
+function ThemeScope() {
+  const { t } = useT();
+  const { settings } = useSettings();
+  const { preferences: account } = useAccountPreferences();
+  const { preferences: device, update: updateDevice } = useDevicePreferences();
+  const overridden = device.themeModeOverride !== null || device.accentThemeOverride !== null;
+  const modeLabel = (mode: ThemeMode) => (mode === "light" ? t("Light") : mode === "dark" ? t("Dark") : t("Auto"));
+
+  return (
+    <div style={{ marginBottom: 12 }}>
+      <Seg<"account" | "device">
+        value={overridden ? "device" : "account"}
+        onChange={(scope) => {
+          if (scope === "device") {
+            // Freeze the current effective values so the pill's derived state flips immediately —
+            // an empty override would still read as "All devices" and contradict the pill just clicked.
+            if (!overridden) void updateDevice({ themeModeOverride: settings.themeMode, accentThemeOverride: settings.accentTheme });
+          } else {
+            void updateDevice({ themeModeOverride: null, accentThemeOverride: null });
+          }
+        }}
+        options={[
+          { id: "account", label: t("All devices") },
+          { id: "device", label: t("This device") },
+        ]}
+      />
+      {overridden && <Helper>{t("Account default: {value}", { value: `${t(THEME_LABEL[account.accentTheme])} · ${modeLabel(account.themeMode)}` })}</Helper>}
+    </div>
+  );
+}
+
 /** Section-level description under an Appearance eyebrow (v3:696/814/830: 12px, `T.soft`,
  *  line-height 1.5) — distinct from `Helper`'s smaller 11px/`mute` field-caption role, which the
  *  design uses for captions nested under a single row (e.g. the discreet-mode sub-line below). */
@@ -166,7 +216,8 @@ export function AppearanceSection() {
   return (
     <div style={{ marginTop: 4 }}>
       <AppearanceEyebrow>{t("Account preferences")}</AppearanceEyebrow>
-      <SectionDesc>{t("Theme and language follow your account on every device.")}</SectionDesc>
+      <SectionDesc>{t("Language always follows your account. Theme follows your account too, unless you override it for this device below.")}</SectionDesc>
+      <ThemeScope />
       <ThemeTiles />
       <Row label={t("Theme")}>
         <Seg
