@@ -14,11 +14,11 @@ export function Eyebrow({ children }: { children: ReactNode }) {
   return <div style={{ fontSize: 10.5, fontWeight: 600, color: C.mute, textTransform: "uppercase", letterSpacing: 0.6, marginBottom: 8 }}>{children}</div>;
 }
 
-export function Row({ label, children }: { label: string; children: ReactNode }) {
+export function Row({ label, children }: { label: ReactNode; children: ReactNode }) {
   const C = useTheme();
   return (
     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "14px 0", borderBottom: `1px solid ${C.line}` }}>
-      <span style={{ fontSize: 13.5, color: C.text, fontWeight: 500 }}>{label}</span>
+      <span style={{ fontSize: 13, color: C.text, fontWeight: 500 }}>{label}</span>
       {children}
     </div>
   );
@@ -96,24 +96,28 @@ export function Collapsible({ title, children }: { title: string; children: Reac
   );
 }
 
-/** Segmented control (Theme / Language) — one active button from the list. */
+/** Segmented control (Theme / Language) — one active button from the list. The active pill is
+ *  the design's dark ink fill (`C.text`/`C.card`, v3:709-713 `modeBtns`), NOT the accent color —
+ *  the same treatment the design gives the AI provider segment (v3:4236-4239 `aiBtns`), so this
+ *  is one correct value for every `Seg` consumer, not an Appearance-only override. */
 export function Seg<T extends string>({ value, options, onChange }: { value: T; options: Array<{ id: T; label: string }>; onChange: (id: T) => void }) {
   const C = useTheme();
   return (
-    <div style={{ display: "flex", background: C.bg, borderRadius: 9, padding: 2, border: `1px solid ${C.line}` }}>
+    <div style={{ display: "flex", gap: 3, background: C.bg, borderRadius: 10, padding: 3, border: `1px solid ${C.line}` }}>
       {options.map((o) => (
         <button
           key={o.id}
           onClick={() => onChange(o.id)}
           style={{
-            padding: "6px 12px",
+            padding: "6px 14px",
+            minHeight: 30,
             borderRadius: 7,
             border: "none",
-            fontSize: 11.5,
-            fontWeight: 600,
+            fontSize: 12,
+            fontWeight: 650,
             cursor: "pointer",
-            background: value === o.id ? TEAL : "transparent",
-            color: value === o.id ? "#fff" : C.soft,
+            background: value === o.id ? C.text : "transparent",
+            color: value === o.id ? C.card : C.soft,
             whiteSpace: "nowrap",
           }}
         >
