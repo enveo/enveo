@@ -9,7 +9,7 @@ import { type Lang, LOCALES, loadLocale, type Message, msg, useT } from "../../l
 import { local } from "../../lib/mutate";
 import { store } from "../../lib/store";
 import { font, TEAL, themeTokens } from "../../lib/theme";
-import { ActionGroup, ActionRow, Helper, Row, Seg } from "./ui";
+import { Helper, Row, Seg } from "./ui";
 
 /** Where a translator reports a bad string. Community locales are labelled, not hidden — honest, and
  *  it is the only route a reader of a wrong sentence has back to us. */
@@ -156,6 +156,46 @@ function AppearanceEyebrow({ children }: { children: ReactNode }) {
   return <div style={{ fontSize: 9.5, fontWeight: 750, color: C.mute, textTransform: "uppercase", letterSpacing: "0.16em", marginBottom: 8 }}>{children}</div>;
 }
 
+/** Appearance-pane card row (v3:726-733: card bg, 1px `T.line` border, radius 12, padding
+ *  11px 13px, no shadow; label 13px/650 `T.accent`, sub 11px `T.mute`, `›` chevron 12px `T.mute`)
+ *  — a LOCAL variant, not a restyle of the shared `ActionGroup`/`ActionRow`, which every other
+ *  Settings section (DataTools/DataSection/SyncSection/E2eeUpgradePanel) still renders with the
+ *  hub's radius-14 shadow card and 14px/700 `--cta` labels. Owner round 1 item 11 scopes the
+ *  value-for-value design match to Appearance only, so those sections must not be reskinned from
+ *  here. Same pattern as `AppearanceEyebrow` above vs. the shared `Eyebrow` (5351e8b). */
+function AppearanceCardRow({ label, desc, onClick, disabled }: { label: string; desc: string; onClick: () => void; disabled?: boolean }) {
+  const C = useTheme();
+  return (
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      style={{
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "space-between",
+        gap: 12,
+        width: "100%",
+        background: C.card,
+        border: `1px solid ${C.line}`,
+        borderRadius: 12,
+        padding: "11px 13px",
+        textAlign: "left",
+        fontFamily: font,
+        cursor: disabled ? "default" : "pointer",
+        opacity: disabled ? 0.5 : 1,
+      }}
+    >
+      <span style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 0 }}>
+        <span style={{ fontSize: 13, fontWeight: 650, color: TEAL }}>{label}</span>
+        <span style={{ fontSize: 11, color: C.mute }}>{desc}</span>
+      </span>
+      <span aria-hidden style={{ fontSize: 12, color: C.mute, flexShrink: 0 }}>
+        ›
+      </span>
+    </button>
+  );
+}
+
 /** Selectable currencies (ISO 4217) — display only, no amount conversion. Shared with onboarding. */
 const CURRENCIES = SUPPORTED_CURRENCIES;
 
@@ -283,15 +323,12 @@ export function AppearanceSection() {
           </select>
         </PillSelect>
       </Row>
-      <ActionGroup>
-        <ActionRow
-          label={t("Edit dashboard widgets")}
-          desc={t("Choose their order, visibility, and options.")}
-          onClick={() => setWidgetsOpen(true)}
-          disabled={!currentState}
-          chevron
-        />
-      </ActionGroup>
+      <AppearanceCardRow
+        label={t("Edit dashboard widgets")}
+        desc={t("Choose their order, visibility, and options.")}
+        onClick={() => setWidgetsOpen(true)}
+        disabled={!currentState}
+      />
       <div style={{ marginTop: 18 }}>
         <AppearanceEyebrow>{t("This device")}</AppearanceEyebrow>
       </div>
