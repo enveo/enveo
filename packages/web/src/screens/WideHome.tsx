@@ -364,6 +364,9 @@ export function WideHome({
                 )}
               </div>
               <div
+                
+
+                className="gsh"
                 style={{
                   flex: 1,
                   minHeight: 0,
