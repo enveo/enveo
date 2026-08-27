@@ -82,6 +82,8 @@ export function WideSettings({ mode }: { mode: WideMode }) {
     <div style={{ flex: 1, minHeight: 0, display: "flex", overflow: "hidden" }}>
       <div
         data-wide-settings-nav
+        // gsh (chrome.tsx): hover-reveal scrollbar (owner ruling, parity owner round 1 item 2).
+        className="gsh"
         style={{
           width: isFold ? 142 : 218,
           // border-box (the same fix `Rail.tsx`'s own `RAIL_W` needed, its own comment): without
@@ -166,7 +168,7 @@ export function WideSettings({ mode }: { mode: WideMode }) {
           );
         })}
       </div>
-      <div style={{ flex: 1, minWidth: 0, overflowY: "auto", padding: isFold ? "12px 12px 20px" : "16px 18px 22px" }}>
+      <div className="gsh" style={{ flex: 1, minWidth: 0, overflowY: "auto", padding: isFold ? "12px 12px 20px" : "16px 18px 22px" }}>
         <div style={{ maxWidth: 620, display: "flex", flexDirection: "column", gap: 14 }}>
           <span style={{ fontSize: 16, fontWeight: 700, color: C.text }}>{active.label}</span>
           {section === "appearance" && <AppearanceSection />}

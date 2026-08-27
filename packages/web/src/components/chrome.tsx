@@ -20,6 +20,33 @@ import { PHONE_COL } from "../lib/viewMode";
 // is set (WideShell-only).
 const PaneSurface = lazy(() => import("./wide/PaneSurface").then((m) => ({ default: m.PaneSurface })));
 
+/**
+ * Hover-reveal scrollbars for WIDE scroll surfaces (owner ruling, parity owner round 1 item 2;
+ * design v3.dc.html:21-28): no visible scrollbar at rest, a slim hairline thumb while the pointer
+ * hovers the scroll container. One shared mechanism, two entry points:
+ * - `.gsh` — the opt-in class for wide-only containers (rail accounts, board tile bodies, the
+ *   envelope pill grid, panel bodies, WideSettings' two panes);
+ * - the `[data-wide-primary] .gs` / `[data-wide-panel] .gs` scopes — they sweep up every `.gs`
+ *   list a PHONE screen brings along when it is hosted in a wide pane (Transactions, Budget,
+ *   report subscreens…), so phone markup stays untouched and phone behavior (`.gs` = scrollbar
+ *   fully hidden) is byte-identical: those data attributes exist only under `WideShell`.
+ * Chrome/Firefox take the standard `scrollbar-width`/`scrollbar-color` path (per spec, a non-auto
+ * value there disables `::-webkit-scrollbar` styling); Safari takes the webkit rules. Content is
+ * never `display:none` — scrolling (wheel/drag/touch) keeps working, only the indicator hides.
+ * The thumb is a fixed neutral gray readable on every theme surface (the design's own literal,
+ * rgba(43,42,39,…), is light-Cisza ink and would vanish on the dark themes).
+ */
+const GSH = (suffix: string) => [".gsh", "[data-wide-primary] .gs", "[data-wide-panel] .gs"].map((s) => s + suffix).join(",");
+const HOVER_SCROLLBAR_CSS =
+  `${GSH("")}{scrollbar-width:thin;scrollbar-color:transparent transparent}` +
+  `${GSH(":hover")}{scrollbar-color:rgba(128,127,122,.45) transparent}` +
+  `${GSH("::-webkit-scrollbar")}{width:4px;height:4px}` +
+  `${GSH("::-webkit-scrollbar-track")}{background:transparent}` +
+  `${GSH("::-webkit-scrollbar-thumb")}{background:transparent;border-radius:999px}` +
+  `${GSH(":hover::-webkit-scrollbar-thumb")}{background:rgba(128,127,122,.45)}` +
+  `${GSH("::-webkit-scrollbar-thumb:hover")}{background:rgba(128,127,122,.7)}` +
+  `${GSH("::-webkit-scrollbar-corner")}{background:transparent}`;
+
 /** Injects animation keyframes (system font — no webfonts). */
 export function StyleInjector() {
   useEffect(() => {
@@ -59,7 +86,7 @@ export function StyleInjector() {
     // rests at opacity:1 by then (Sheet's backdrop keeps its own dynamic drag-fade `style.opacity`
     // authored value, which is what takes over once the animation lets go), so this changes no
     // visible frame, only what happens after the fade finishes.
-    s.textContent = `*{-webkit-tap-highlight-color:transparent}@keyframes fu{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}@keyframes su{from{transform:translateY(100%)}to{transform:translateY(0)}}@keyframes sl{from{transform:translateX(-100%)}to{transform:translateX(0)}}@keyframes fi{from{opacity:0}to{opacity:1}}@keyframes sp{to{transform:rotate(360deg)}}@keyframes wg{from{transform:rotate(-.5deg)}to{transform:rotate(.5deg)}}@keyframes sk{0%,100%{opacity:.5}50%{opacity:.9}}.fu{animation:fu .4s ease-out both}.fi{animation:fi .25s ease-out}.sk{animation:sk 1.2s ease-in-out infinite}.gs::-webkit-scrollbar{width:0;height:0}body{margin:0}@media(hover:hover){button:not(:disabled):hover{filter:brightness(.96)}}:focus-visible{outline:2px solid var(--focus-ring);outline-offset:2px}${INPUT_FOCUS_CSS}${NAME_UNDERLINE_FOCUS_CSS}${CHECKBOX_CSS}.rpt-body>:first-child{margin-top:0 !important}`;
+    s.textContent = `*{-webkit-tap-highlight-color:transparent}@keyframes fu{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}@keyframes su{from{transform:translateY(100%)}to{transform:translateY(0)}}@keyframes sl{from{transform:translateX(-100%)}to{transform:translateX(0)}}@keyframes fi{from{opacity:0}to{opacity:1}}@keyframes sp{to{transform:rotate(360deg)}}@keyframes wg{from{transform:rotate(-.5deg)}to{transform:rotate(.5deg)}}@keyframes sk{0%,100%{opacity:.5}50%{opacity:.9}}.fu{animation:fu .4s ease-out both}.fi{animation:fi .25s ease-out}.sk{animation:sk 1.2s ease-in-out infinite}.gs::-webkit-scrollbar{width:0;height:0}${HOVER_SCROLLBAR_CSS}body{margin:0}@media(hover:hover){button:not(:disabled):hover{filter:brightness(.96)}}:focus-visible{outline:2px solid var(--focus-ring);outline-offset:2px}${INPUT_FOCUS_CSS}${NAME_UNDERLINE_FOCUS_CSS}${CHECKBOX_CSS}.rpt-body>:first-child{margin-top:0 !important}`;
     document.head.appendChild(s);
   }, []);
   return null;

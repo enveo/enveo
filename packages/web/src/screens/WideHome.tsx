@@ -364,6 +364,9 @@ export function WideHome({
                 )}
               </div>
               <div
+                // gsh (chrome.tsx): tile-body scrollbars stay invisible until hovered — owner
+                // ruling, parity owner round 1 item 2.
+                className="gsh"
                 style={{
                   flex: 1,
                   minHeight: 0,
