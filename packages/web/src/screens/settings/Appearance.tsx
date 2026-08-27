@@ -8,7 +8,7 @@ import { type Lang, LOCALES, loadLocale, type Message, msg, useT } from "../../l
 import { local } from "../../lib/mutate";
 import { store } from "../../lib/store";
 import { font, TEAL, themeTokens } from "../../lib/theme";
-import { ActionGroup, ActionRow, Eyebrow, Helper, Row, Seg } from "./ui";
+import { ActionGroup, ActionRow, Helper, Row, Seg } from "./ui";
 
 /** Where a translator reports a bad string. Community locales are labelled, not hidden — honest, and
  *  it is the only route a reader of a wrong sentence has back to us. */
@@ -96,6 +96,16 @@ function SectionDesc({ children }: { children: ReactNode }) {
   return <div style={{ fontSize: 12, color: C.soft, lineHeight: 1.5, marginTop: 8 }}>{children}</div>;
 }
 
+/** Appearance-pane section eyebrow (v3:695/720/733: 9.5px/750/0.16em) — a LOCAL override, not a
+ *  restyle of the shared `Eyebrow`. `Eyebrow` is used by every other Settings section (Ai/DataTools/
+ *  DataSection/SyncSection) on both phone and wide; this pane's owner-mandated redesign (round 1,
+ *  item 11) covers only Appearance, so it must not silently reskin those other sections' headers,
+ *  which have no such ruling yet. Same pattern as `SectionDesc` above vs. `Helper`. */
+function AppearanceEyebrow({ children }: { children: ReactNode }) {
+  const C = useTheme();
+  return <div style={{ fontSize: 9.5, fontWeight: 750, color: C.mute, textTransform: "uppercase", letterSpacing: "0.16em", marginBottom: 8 }}>{children}</div>;
+}
+
 /** Selectable currencies (ISO 4217) — display only, no amount conversion. Shared with onboarding. */
 const CURRENCIES = SUPPORTED_CURRENCIES;
 
@@ -155,7 +165,7 @@ export function AppearanceSection() {
 
   return (
     <div style={{ marginTop: 4 }}>
-      <Eyebrow>{t("Account preferences")}</Eyebrow>
+      <AppearanceEyebrow>{t("Account preferences")}</AppearanceEyebrow>
       <SectionDesc>{t("Theme and language follow your account on every device.")}</SectionDesc>
       <ThemeTiles />
       <Row label={t("Theme")}>
@@ -198,7 +208,7 @@ export function AppearanceSection() {
         </Helper>
       )}
       <div style={{ marginTop: 18 }}>
-        <Eyebrow>{t("Budget preferences")}</Eyebrow>
+        <AppearanceEyebrow>{t("Budget preferences")}</AppearanceEyebrow>
         <SectionDesc>{t("Currency and dashboard widgets follow this budget on every device.")}</SectionDesc>
       </div>
       <Row label={t("Currency")}>
@@ -232,7 +242,7 @@ export function AppearanceSection() {
         />
       </ActionGroup>
       <div style={{ marginTop: 18 }}>
-        <Eyebrow>{t("This device")}</Eyebrow>
+        <AppearanceEyebrow>{t("This device")}</AppearanceEyebrow>
       </div>
       {/* The design nests this row's caption under its own label (v3:735-738) rather than as a
        *  separate section-level line above it — the only Appearance row with a per-row sub-caption. */}
