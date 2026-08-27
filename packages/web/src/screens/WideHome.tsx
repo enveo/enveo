@@ -35,7 +35,7 @@ import { useBudgetPreferences, useTheme } from "../lib/contexts";
 import { useDragReorder } from "../lib/dnd";
 import { useT } from "../lib/i18n";
 import { font } from "../lib/theme";
-import { applyResize, clampRow, clampSpan, commitResetLayout, reorderEnabled, toggleEnabled } from "../lib/wideBoard";
+import { applyResize, clampRow, clampSpan, commitResetLayout, reorderEnabled, resolveWidgetScroll, toggleEnabled } from "../lib/wideBoard";
 import { WIDGET_CATALOG } from "../lib/widgetCatalog";
 import type { ReportTab } from "./reports/types";
 
@@ -88,13 +88,6 @@ const ROW_H = 104;
  * inside the card: 8.5px up into the 12px card padding, 8.5px down into the 9px header→body gap.
  */
 const HEADER_HIT_MARGIN = "-8.5px 0";
-
-/** Tile bodies that CLIP instead of scrolling — the design's per-widget `scroll:false` value
- *  (v3:2235-2236: `netWorth` and `cashflow`, both fixed stat blocks), rendered exactly as its
- *  `contentOverflow` does (v3:3661: `w.scroll === false ? "hidden" : "auto"`). A stat block never
- *  legitimately scrolls, so a native scrollbar there is always a layout bug showing through;
- *  every other tile keeps the design's default "auto". */
-const CLIPPED_TILE_BODIES: ReadonlySet<WideWidgetId> = new Set(["reportNetWorth", "reportCashflow"]);
 
 /** Round-glyph chrome buttons (gear/remove/drag handle): 30×30 hit box, small centered glyph —
  *  the house ≥30×30 rule, measured in Step 5, not just asserted here. Layout height is ~13px
@@ -269,7 +262,6 @@ export function WideHome({
       >
         {enabledRows.map((w, idx) => {
           const b = dnd.bind(idx);
-          const configurable = WIDGET_CATALOG[w.id].configurable;
           const title = t(WIDGET_CATALOG[w.id].title);
           const spanW = clampSpan(w.w, cols);
           return (
@@ -352,12 +344,15 @@ export function WideHome({
                     <span style={{ fontSize: 9, fontWeight: 700, color: C.mute, fontVariantNumeric: "tabular-nums", marginRight: 2 }}>
                       {spanW}×{w.h}
                     </span>
-                    {configurable && (
-                      <button onClick={() => onWidgetSettings(w.id)} aria-label={t("Widget settings")} style={chromeBtn(C.soft)}>
-                        ⚙
-                      </button>
-                    )}
-                    <button onClick={() => onToggle(w.id, false)} aria-label={t("Remove from the board")} style={chromeBtn(C.neg)}>
+                    {/* The gear panel offers Size + Scrolling for every wide widget now (owner round
+                        3 item 14) — the design's own `HAS_SETTINGS` map is `true` for every id
+                        (v3.dc.html:3606), so unlike the phone catalogue's `configurable` flag
+                        (quickActions/accounts/envelopes only, a DIFFERENT "has an options body"
+                        concept) this is never gated per widget. */}
+                    <button onClick={() => onWidgetSettings(w.id)} aria-label={t("Widget settings")} style={chromeBtn(C.soft)}>
+                      ⚙
+                    </button>
+                    <button onClick={() => onToggle(w.id, false)} aria-label={t("Remove from the grid")} style={chromeBtn(C.neg)}>
                       ✕
                     </button>
                   </div>
@@ -365,12 +360,15 @@ export function WideHome({
               </div>
               <div
                 // gsh (chrome.tsx): tile-body scrollbars stay invisible until hovered — owner
-                // ruling, parity owner round 1 item 2.
+                // ruling, parity owner round 1 item 2. `resolveWidgetScroll` is the gear panel's
+                // "Scroll inside the tile" toggle (owner round 3 item 14) resolved to an effective
+                // boolean — false clips (a stat/chart block never legitimately scrolls, so a
+                // native scrollbar there is always a layout bug showing through).
                 className="gsh"
                 style={{
                   flex: 1,
                   minHeight: 0,
-                  overflowY: CLIPPED_TILE_BODIES.has(w.id) ? "hidden" : "auto",
+                  overflowY: resolveWidgetScroll(w) ? "auto" : "hidden",
                   display: "flex",
                   flexDirection: "column",
                   gap: 8,
@@ -393,7 +391,7 @@ export function WideHome({
               {edit && (
                 <button
                   onPointerDown={beginResize(w.id, spanW, w.h)}
-                  aria-label={t("Size: {w} × {h} — drag the corner of the tile to resize", { w: String(spanW), h: String(w.h) })}
+                  aria-label={t("Size: {w} × {h} — drag the ◢ corner on the tile to resize", { w: String(spanW), h: String(w.h) })}
                   style={{
                     position: "absolute",
                     right: 0,

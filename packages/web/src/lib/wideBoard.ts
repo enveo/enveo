@@ -67,3 +67,21 @@ export function reorderEnabled(widgets: WideWidgetConfig[], from: number, to: nu
   order.splice(to, 0, moved!);
   return [...order, ...disabled];
 }
+
+/** Widget ids that CLIP instead of scrolling when `scroll` is absent — the design's own
+ *  per-widget default (`startWidgets`, v3.dc.html:2235-2236): `netWorth` and `cashflow` both ship
+ *  an explicit `scroll:false` (fixed stat/chart blocks that never legitimately scroll), every
+ *  other widget omits the field and the design reads that as `true`. */
+const SCROLL_CLIPPED_BY_DEFAULT: ReadonlySet<WideWidgetId> = new Set(["reportNetWorth", "reportCashflow"]);
+
+/**
+ * Resolves the wide tile gear panel's "Scroll inside the tile" toggle (owner round 3 item 14) to
+ * an effective boolean — the ONE place the `scroll` field's absent-value default lives, so a
+ * pre-existing replica row with no `scroll` key at all (every board stored before this field
+ * existed) keeps rendering exactly as it did before the field was added: `WideHome`'s tile body
+ * used to hardcode this same {reportNetWorth, reportCashflow} set directly (`CLIPPED_TILE_BODIES`)
+ * before the toggle existed, so an absent key must resolve to that identical outcome.
+ */
+export function resolveWidgetScroll(widget: Pick<WideWidgetConfig, "id" | "scroll">): boolean {
+  return widget.scroll ?? !SCROLL_CLIPPED_BY_DEFAULT.has(widget.id);
+}

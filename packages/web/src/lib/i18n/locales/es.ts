@@ -710,8 +710,6 @@ export const es: Dict = {
   // Wide Home board — edit mode (PR5 Task 6)
   "Add widget": "Añadir widget",
   "Every widget is already on the grid.": "Todos los widgets ya están en la cuadrícula.",
-  "Remove from the board": "Quitar de la cuadrícula",
-  "Size: {w} × {h} — drag the corner of the tile to resize": "Tamaño: {w} × {h} — arrastra la esquina de la ficha para cambiar el tamaño",
   "Widget settings": "Ajustes del widget",
   "latest transactions": "últimas transacciones",
 

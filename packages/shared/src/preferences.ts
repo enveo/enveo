@@ -69,6 +69,16 @@ export interface WideWidgetConfig {
   w: number;
   /** Tile span in 92px board rows, 1..8. */
   h: number;
+  /**
+   * ADDITIVE OPTIONAL (the F4 cut restored, owner round 3 item 14): whether the tile body scrolls
+   * when its content overflows, vs. clipping at the tile edge. Absent — the entire installed base,
+   * since this field never existed before — resolves per-widget-id to the design's own default
+   * (`resolveWidgetScroll`, web/lib/wideBoard.ts): false for the two fixed stat/chart tiles
+   * (net worth, cashflow — the design's own `startWidgets` ship them `scroll:false`), true for
+   * everything else. Never bake a default in HERE: "absent" must stay a real, distinguishable
+   * state so an old replica row with no key at all keeps resolving correctly forever.
+   */
+  scroll?: boolean;
   opts?: WidgetOpts;
 }
 
@@ -186,7 +196,7 @@ const widgetStackSchema = z.array(widgetConfigSchema).refine((widgets) => unique
 
 /* ── Wide board (schemaVersion 2) ─────────────────────────────────────── */
 
-const wideFrame = { enabled: z.boolean(), w: z.number().int().min(1).max(4), h: z.number().int().min(1).max(8) };
+const wideFrame = { enabled: z.boolean(), w: z.number().int().min(1).max(4), h: z.number().int().min(1).max(8), scroll: z.boolean().optional() };
 
 const optionlessWide = <T extends WideWidgetId>(id: T) => z.object({ id: z.literal(id), ...wideFrame }).strict();
 
