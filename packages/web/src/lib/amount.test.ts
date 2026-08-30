@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { applyAmountKey, fmtSignedTrim, hasOpenOp, type PadState, padKey, padPreview, padPreviewLive } from "./amount";
-import { evalExpression, fmtTrim, parseAmount } from "./format";
+import { applyAmountKey, fmtSignedTrim, hasOpenOp, keyboardPadKey, type PadState, padKey, padPreview, padPreviewLive } from "./amount";
+import { evalExpression, evalExpressionLive, fmtTrim, parseAmount } from "./format";
 
 describe("applyAmountKey", () => {
   test("leading zero disappears", () => {
@@ -311,10 +311,11 @@ describe("padPreviewLive — preview despite a hanging operator (the Available c
   });
 });
 
-describe("desktop allocation input prefill (Budget.tsx AllocCell, PR6 Task 3b)", () => {
+describe("desktop allocation input prefill (Budget.tsx AllocCell, PR6 Task 3b + item 27)", () => {
   // The desktop <input>'s prefill contract: startEdit fills it with fmtSignedTrim(env.allocated)
-  // and commit re-reads it with parseAmount — so the round-trip must return the EXACT current
-  // allocation, sign included. Two consequences this pins:
+  // and commit re-reads it — since item 27 through `evalExpression` (which falls back to
+  // parseAmount for a plain number, so both are pinned) — and the round-trip must return the
+  // EXACT current allocation, sign included. Two consequences this pins:
   //  - "negative prefill keeps its sign": a bare fmtTrim (fmt() takes Math.abs) would prefill a
   //    -50,00 allocation as "50", and an untouched blur would then silently flip the sign — the
   //    reviewed data-corruption finding.
@@ -322,18 +323,186 @@ describe("desktop allocation input prefill (Budget.tsx AllocCell, PR6 Task 3b)",
   //    differs from the fresh env.allocated, so an exact round-trip IS the no-op guarantee.
   // Enter-commits / Escape-reverts are DOM wiring (verified in the running app — no DOM test
   // rig in this suite); the parsing contract they both feed is what lives here.
-  const roundTrip = (minor: number) => parseAmount(fmtSignedTrim(minor));
+  const roundTrip = (minor: number) => evalExpression(fmtSignedTrim(minor));
 
-  test("negative prefill keeps its sign through the parseAmount round-trip", () => {
+  test("negative prefill keeps its sign through the commit round-trip", () => {
     expect(fmtSignedTrim(-5000)).toBe("-50");
     expect(roundTrip(-5000)).toBe(-5000);
+    expect(parseAmount(fmtSignedTrim(-5000))).toBe(-5000); // the eval fallback parser agrees
     // the unsigned helper is exactly the bug this guards against:
-    expect(parseAmount(fmtTrim(-5000))).toBe(5000);
+    expect(evalExpression(fmtTrim(-5000))).toBe(5000);
   });
 
   test("round-trip is exact across signs, cents and thousand-space grouping", () => {
     for (const minor of [0, 1, -1, 99, -99, 100, -100, 1250, -1250, 5000, -5000, 123456, -123456, 100000000, -100000000, 123456789, -123456789]) {
       expect(roundTrip(minor)).toBe(minor);
+      expect(parseAmount(fmtSignedTrim(minor))).toBe(minor);
     }
+  });
+});
+
+describe("keyboardPadKey — physical-keyboard key → canonical pad key (owner round 5 item 26)", () => {
+  test("digits map to themselves", () => {
+    for (const d of ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9"]) expect(keyboardPadKey(d)).toBe(d);
+  });
+
+  test('both "," and "." map to the canonical comma, regardless of the pad glyph', () => {
+    expect(keyboardPadKey(",")).toBe(",");
+    expect(keyboardPadKey(".")).toBe(",");
+  });
+
+  test("Backspace maps to the pad's ⌫", () => {
+    expect(keyboardPadKey("Backspace")).toBe("⌫");
+  });
+
+  test("ASCII operators map to the pad's − × ÷ (Unicode forms accepted too)", () => {
+    expect(keyboardPadKey("+")).toBe("+");
+    expect(keyboardPadKey("-")).toBe("−");
+    expect(keyboardPadKey("−")).toBe("−");
+    expect(keyboardPadKey("*")).toBe("×");
+    expect(keyboardPadKey("×")).toBe("×");
+    expect(keyboardPadKey("/")).toBe("÷");
+    expect(keyboardPadKey("÷")).toBe("÷");
+  });
+
+  test("actions and everything else are NOT pad keys (null — the caller decides)", () => {
+    for (const k of ["Enter", "Escape", "=", " ", "a", "e", "x", "F1", "ArrowLeft", "Tab", "Delete", "12", "00"]) {
+      expect(keyboardPadKey(k)).toBe(null);
+    }
+  });
+});
+
+describe("keyboard-driven padKey sequences (the Add pane's wide keyboard, item 26)", () => {
+  // The document keydown handler does exactly this: map with keyboardPadKey, feed padKey —
+  // ONE state machine with the on-screen pad, so the pad's whole matrix applies verbatim.
+  // These sequences replay the HISTORICAL TRAPS with keyboard-shaped input on top.
+  const type = (state: PadState, keys: string[]): PadState =>
+    keys.reduce((s, key) => {
+      const k = keyboardPadKey(key);
+      return k === null ? s : padKey(s, k);
+    }, state);
+
+  test("plain amount end-to-end: 12.50 → 12,50 → 1250 minor", () => {
+    const s = type({ expr: "", fresh: true }, ["1", "2", ".", "5", "0"]);
+    expect(s.expr).toBe("12,50");
+    expect(padPreview(s.expr)).toBe(1250);
+  });
+
+  test("TRAP 15000 → − → 5000: ASCII '-' on a fresh value is RELATIVE mode, not a wipe", () => {
+    let s: PadState = { expr: "15000", fresh: true };
+    s = type(s, ["-", "5", "0", "0", "0"]);
+    expect(s.expr).toBe("15000−5000"); // NOT "-5000"
+    // ⏎ with an open A⊕B reduces first (the confirm's hasOpenOp branch) — the "=" pad key:
+    expect(hasOpenOp(s.expr)).toBe(true);
+    s = padKey(s, "=");
+    expect(s.expr).toBe("10 000"); // fmtSignedTrim's thousand-space grouping — the pad's reduced format
+    expect(padPreview(s.expr)).toBe(1000000);
+  });
+
+  test("TRAP ⌫ on fresh: Backspace deletes exactly ONE character, never restarts from empty", () => {
+    let s: PadState = { expr: "150", fresh: true };
+    s = type(s, ["Backspace"]);
+    expect(s).toEqual({ expr: "15", fresh: false });
+    s = type(s, ["Backspace", "Backspace", "Backspace"]);
+    expect(s.expr).toBe(""); // and no further than empty
+  });
+
+  test("TRAP leading zeros: typed 047.30 normalizes per segment, never an octal-shaped literal", () => {
+    const s = type({ expr: "", fresh: true }, ["0", "4", "7", ".", "3", "0"]);
+    expect(s.expr).toBe("47,30");
+    expect(padPreview(s.expr)).toBe(4730);
+  });
+
+  test("keyboard '*' and '/' drive the pad's × and ÷", () => {
+    const mult = type({ expr: "", fresh: true }, ["1", "0", "*", "3"]);
+    expect(mult.expr).toBe("10×3");
+    expect(padPreview(mult.expr)).toBe(3000);
+    const div = type({ expr: "", fresh: true }, ["1", "0", "/", "4"]);
+    expect(div.expr).toBe("10÷4");
+    expect(padPreview(div.expr)).toBe(250);
+  });
+
+  test("non-amount keys leave the state untouched (the handler ignores them)", () => {
+    const s = type({ expr: "47,3", fresh: false }, ["a", "ArrowLeft", "Tab", " ", "Escape"]);
+    expect(s).toEqual({ expr: "47,3", fresh: false });
+  });
+
+  test("keyboard comma follows the pad's one-comma / two-decimals rules", () => {
+    const s = type({ expr: "", fresh: true }, ["5", ".", "5", ",", "5", "5"]);
+    expect(s.expr).toBe("5,55"); // second separator ignored, 3rd decimal ignored
+  });
+});
+
+describe("desktop Allocated cell arithmetic (owner round 5 item 27 — commit via evalExpression)", () => {
+  test("the C1 hint's promised grammar: + − × ÷ (ASCII and glyph forms) evaluate on save", () => {
+    expect(evalExpression("500+1")).toBe(50100);
+    expect(evalExpression("10×3")).toBe(3000);
+    expect(evalExpression("10*3")).toBe(3000);
+    expect(evalExpression("5−2")).toBe(300);
+    expect(evalExpression("5-2")).toBe(300);
+    expect(evalExpression("10÷4")).toBe(250);
+    expect(evalExpression("10/4")).toBe(250);
+  });
+
+  test("decimal comma AND dot operands, mixed in one expression", () => {
+    expect(evalExpression("1,5+2.5")).toBe(400);
+    expect(evalExpression("12.50")).toBe(1250);
+    expect(evalExpression("0,5*4")).toBe(200);
+  });
+
+  test("garbage → null → no write (the cell flags err and keeps editing)", () => {
+    expect(evalExpression("abc")).toBe(null);
+    expect(evalExpression("500+")).toBe(null); // unfinished operation is uncommittable
+    expect(evalExpression("+")).toBe(null);
+    expect(evalExpression("1.234,56")).toBe(null); // Intl grouping never enters inputs
+    expect(evalExpression("")).toBe(null);
+    expect(evalExpression("   ")).toBe(null);
+  });
+
+  test("property: every well-formed operand/operator combination evaluates to INTEGER minor units", () => {
+    // Deterministic sweep in place of fast-check (a shared-package-only dependency): the full
+    // cross product of representative operands (integers, comma/dot decimals, zero, 0-leading)
+    // and all four operators, plus three-term chains — evalExpression must return an integer
+    // (minor units are integers by construction: Math.round) or null, never a float.
+    const operands = ["0", "1", "7", "047", "12,5", "3.25", "1000", "0,01", "999,99"];
+    const ops = ["+", "-", "*", "/", "×", "÷", "−"];
+    for (const a of operands) {
+      for (const op of ops) {
+        for (const b of operands) {
+          const v = evalExpression(`${a}${op}${b}`);
+          if (v !== null) expect(Number.isInteger(v)).toBe(true);
+          // null is legal only for division by zero here — every operand is a valid number
+          if (v === null) expect((op === "/" || op === "÷") && evalExpression(b) === 0).toBe(true);
+        }
+      }
+    }
+    for (const a of operands) {
+      for (const b of operands) {
+        const v = evalExpression(`${a}+${b}*2`);
+        expect(v).not.toBe(null);
+        expect(Number.isInteger(v as number)).toBe(true);
+      }
+    }
+  });
+});
+
+describe("evalExpressionLive — the desktop cell's hanging-operator preview (item 27)", () => {
+  test("a hanging operator previews the computable part (padPreviewLive's rule for free text)", () => {
+    expect(evalExpressionLive("500+")).toBe(50000);
+    expect(evalExpressionLive("500+1")).toBe(50100);
+    expect(evalExpressionLive("10*")).toBe(1000);
+    expect(evalExpressionLive("10/")).toBe(1000);
+    expect(evalExpressionLive("40÷")).toBe(4000);
+  });
+
+  test("null for empty / bare-sign / garbage input", () => {
+    expect(evalExpressionLive("")).toBe(null);
+    expect(evalExpressionLive("-")).toBe(null);
+    expect(evalExpressionLive("abc")).toBe(null);
+  });
+
+  test("a finished expression previews its full value (identical to the commit path)", () => {
+    expect(evalExpressionLive("1,5+2.5")).toBe(evalExpression("1,5+2.5"));
+    expect(evalExpressionLive("-50")).toBe(-5000);
   });
 });

@@ -134,6 +134,27 @@ export function padKey(state: PadState, k: string, opts?: PadKeyOpts): PadState 
   return { expr: applyAmountKey(state.expr, k), fresh: false };
 }
 
+/**
+ * Physical-keyboard key (`KeyboardEvent.key`) → the canonical pad key `padKey` consumes;
+ * `null` = not an amount key (the caller leaves the event alone). Owner round 5 item 26:
+ * desktop amount entry routes through the SAME `padKey` state machine as the on-screen pad —
+ * this is a pure key MAP, never a second parser. Both "," and "." map to the canonical comma
+ * regardless of the glyph the pad shows for the UI language; the ASCII operators map to the
+ * pad's − × ÷ (their Unicode forms are accepted too, for completeness). Enter/Escape/"=" are
+ * deliberately NOT mapped here — they are actions (confirm/cancel/reduce), not pad keys, and
+ * each caller wires them to its own existing confirm/cancel path.
+ */
+export function keyboardPadKey(key: string): string | null {
+  if (/^[0-9]$/.test(key)) return key;
+  if (key === "," || key === ".") return ",";
+  if (key === "Backspace") return "⌫";
+  if (key === "+") return "+";
+  if (key === "-" || key === "−") return "−";
+  if (key === "*" || key === "×") return "×";
+  if (key === "/" || key === "÷") return "÷";
+  return null;
+}
+
 /** The expression result in minor units; null when the operation is open (trailing operator) or unparsable. */
 export function padPreview(expr: string): number | null {
   if (!expr) return null;
