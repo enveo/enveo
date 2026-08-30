@@ -11,7 +11,7 @@ import { linkedAccountNames } from "../lib/automaticEnvelopeAccountUi";
 import { useCurrency, useMask, useSettings, useTheme } from "../lib/contexts";
 import { useDragReorder } from "../lib/dnd";
 import { activeAllocationDecoration } from "../lib/focusPresentation";
-import { currencySymbol, fmtTrim, isLight, localizePadExpression, parseAmount } from "../lib/format";
+import { currencySymbol, evalExpression, evalExpressionLive, fmtTrim, isLight, localizePadExpression, parseAmount } from "../lib/format";
 import { goalProgress } from "../lib/goals";
 import { useT } from "../lib/i18n";
 import { Glyph, Ico } from "../lib/icons";
@@ -116,16 +116,29 @@ export function BudgetScreen({
   // Commit-or-cancel of the current edit (tap on another envelope): computable → save
   // (negative allowed — moving money back OUT of an envelope is a valid allocation), otherwise discard.
   const commitEditing = (ed: { envelopeId: string; pad: PadState; input?: string }) => {
-    const minor = ed.input !== undefined ? parseAmount(ed.input) : padPreview(ed.pad.expr);
+    const minor = ed.input !== undefined ? evalExpression(ed.input) : padPreview(ed.pad.expr);
     if (minor !== null) persistAllocation(ed.envelopeId, minor);
   };
-  // Desktop input's Enter/blur commit (Task 3b): same persistAllocation write as the pad's ✓, but an
-  // unparsable value flags `err` and keeps the cell open instead of silently discarding — the same
-  // contract as DockedNumpad's `target.onInvalid`.
+  // Desktop input's Enter/blur commit (Task 3b; owner round 5 item 27): same persistAllocation
+  // write as the pad's ✓, but the typed text is EVALUATED first — `evalExpression` (the CSP-safe
+  // `evalArith` behind the pad) makes the C1 hint's "+ − × ÷ work, ⏎ saves" literally true for
+  // "500+1"-style entry, and falls back to `parseAmount` itself for a plain number, so the
+  // fmtSignedTrim prefill round-trip is unchanged (comma decimal + space grouping — never Intl
+  // grouping). An uncomputable/unfinished value flags `err` and keeps the cell open instead of
+  // silently discarding — the same contract as DockedNumpad's `target.onInvalid`.
   const commitDesktopInput = (envelopeId: string, raw: string) => {
-    const minor = parseAmount(raw);
+    const minor = evalExpression(raw);
     if (minor === null) {
       setEditing((ed) => (ed && ed.envelopeId === envelopeId ? { ...ed, err: true } : ed));
+      // ⏎ commits by BLURRING (the one commit path), so an invalid value has just dropped
+      // keyboard focus while the cell stays open in its err state — "keep editing" must include
+      // the keyboard: put focus back so the next keystroke can fix the expression and Esc still
+      // cancels (verified live: without this, Esc after an invalid ⏎ was dead until a re-click).
+      // rAF because refocusing synchronously inside the blur dispatch is unreliable; when the
+      // blur came from clicking ANOTHER cell, that cell's own autoFocus input has replaced this
+      // one by the next frame, so the selector finds the new input (already focused — no-op) or
+      // nothing. Never runs on plain Escape: that path clears `editing` before any commit.
+      requestAnimationFrame(() => document.querySelector<HTMLElement>("[data-alloc-input]")?.focus());
       return;
     }
     persistAllocation(envelopeId, minor);
@@ -169,8 +182,9 @@ export function BudgetScreen({
   const activeEnv = editing ? envs.find((x) => x.id === editing.envelopeId) : undefined;
   // padPreviewLive: a trailing operator ("705+") evaluates like "705" — the chip/TBB
   // don't blank out (or strike through) mid-entry; null only for an empty expression. The desktop
-  // input has no expression syntax, so its "live" preview is simply parseAmount of the typed text.
-  const activePreview = editing ? (editing.input !== undefined ? parseAmount(editing.input) : padPreviewLive(editing.pad.expr)) : null;
+  // input carries the same expression grammar since item 27, so its "live" preview is
+  // evalExpressionLive — the free-text twin of padPreviewLive (same hanging-operator rule).
+  const activePreview = editing ? (editing.input !== undefined ? evalExpressionLive(editing.input) : padPreviewLive(editing.pad.expr)) : null;
   // Live "To be budgeted" header: with a computable preview, subtract the allocation delta.
   // Based on readyToAssign (month-independent headline), not the month-bounded toBeBudgeted,
   // so editing an allocation moves the same number the user sees on Start.
@@ -523,7 +537,8 @@ function AllocCell({
   onStart: (cell: HTMLElement | null) => void;
   /** Desktop input only — every keystroke. */
   onDesktopChange: (value: string) => void;
-  /** Desktop input only — Enter/blur; parses via `parseAmount`, flags `err` and stays open on failure. */
+  /** Desktop input only — Enter/blur; evaluates via `evalExpression` (item 27: "500+1" works),
+   *  flags `err` and stays open on failure. */
   onDesktopCommit: () => void;
   /** Desktop input only — Escape; discards the typed text, no write. */
   onDesktopCancel: () => void;
@@ -538,15 +553,26 @@ function AllocCell({
   // detaches — which would otherwise reach `onDesktopCommit` and write the very value Escape
   // just discarded. Set synchronously in the Escape handler, read once in onBlur, then cleared.
   const cancelingRef = useRef(false);
+  // The latch is meant for that ONE same-tick window — but the unmount blur it waits for does
+  // not reliably fire (observed live, item 27 verification: Chrome 150 removed the focused
+  // input without any blur), so an Escape-canceled edit could leave `true` behind and silently
+  // swallow the NEXT edit's first blur-commit (⏎ looked dead: no write, no err, focus lost).
+  // Reset it whenever a desktop edit session STARTS, so a stale latch never outlives the
+  // session it guarded. Keyed on the session flag, not the keystroke-changing `editing.input`.
+  const desktopEditing = editing?.input !== undefined;
+  useEffect(() => {
+    if (desktopEditing) cancelingRef.current = false;
+  }, [desktopEditing]);
   if (settings.discreet) {
     return <div style={{ ...box, textAlign: "right" as const, fontSize: 13, color: C.text }}>•••• {currencySymbol(currency, lang)}</div>;
   }
   if (editing?.input !== undefined) {
     // Desktop allocation editing (spec decision D5): a real <input inputMode="decimal">, prefilled
     // by the caller with fmtSignedTrim (the documented parseAmount round-trip pair, sign included —
-    // NEVER a bare fmtTrim, which discards the sign, and NEVER fmtTrimLocale, which parseAmount
-    // cannot re-read; see lib/format.ts). Enter blurs (one commit path, below); Escape discards.
-    // Invalid input keeps the red state exactly like the pad's `err`.
+    // NEVER a bare fmtTrim, which discards the sign, and NEVER fmtTrimLocale, which the commit
+    // evaluator cannot re-read; see lib/format.ts). The commit evaluates arithmetic too (item 27:
+    // evalExpression — "500+1" ⏎ writes 501,00). Enter blurs (one commit path, below); Escape
+    // discards. Invalid input keeps the red state exactly like the pad's `err`.
     return (
       <input
         // biome-ignore lint/a11y/noAutofocus: reached only via an explicit user action (click, or Tab focus on the resting readOnly input below) — never a programmatic mount
