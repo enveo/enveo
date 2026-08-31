@@ -32,6 +32,7 @@ import {
   reconcileImportJobResult,
 } from "../lib/localImport";
 import * as outbox from "../lib/outbox";
+import { useWideHost } from "../lib/shellContext";
 import { store } from "../lib/store";
 import { assertOwnReplica } from "../lib/sync";
 import { CORAL, font, TEAL, TRANSFER, tint } from "../lib/theme";
@@ -78,6 +79,7 @@ export function ImportSheet({
 }) {
   const C = useTheme();
   const { t, tp, lang } = useT();
+  const wideHost = useWideHost();
   const currency = useCurrency();
   const provider = useAiProvider();
   const { data: providerStatus } = useQuery({
@@ -421,7 +423,7 @@ export function ImportSheet({
 
   return (
     <>
-      <Sheet show={show} onClose={close}>
+      <Sheet show={show} onClose={close} wideDialog>
         {phase === "pick" && (
           <>
             <div style={{ fontSize: 17, fontWeight: 700, color: C.text, textAlign: "center", marginBottom: 4 }}>{t("Import from screenshots")}</div>
@@ -865,17 +867,20 @@ export function ImportSheet({
         items[editorIdx]?.item &&
         createPortal(
           <div
+            data-import-editor-mode={wideHost?.mode ?? "phone"}
             style={{
               position: "fixed",
-              inset: 0,
+              inset: wideHost ? 24 : 0,
               zIndex: 200,
               background: C.bg,
-              maxWidth: PHONE_COL,
+              maxWidth: wideHost ? 720 : PHONE_COL,
               margin: "0 auto",
+              borderRadius: wideHost ? 22 : 0,
+              boxShadow: wideHost ? "0 18px 60px rgba(0,0,0,0.35)" : undefined,
               display: "flex",
               flexDirection: "column",
               overflow: "hidden",
-              paddingTop: "env(safe-area-inset-top)",
+              paddingTop: wideHost ? 0 : "env(safe-area-inset-top)",
               fontFamily: font,
             }}
           >

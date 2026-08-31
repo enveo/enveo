@@ -7,6 +7,7 @@ import { type Message, msg, useT } from "../lib/i18n";
 import { Ico } from "../lib/icons";
 import { importJobManager } from "../lib/importJobs/manager";
 import { type ImportActivityItem, importActivityAttention, isScheduledImportRetry } from "../lib/importJobs/store";
+import { useWideHost } from "../lib/shellContext";
 import { CORAL, P } from "../lib/theme";
 
 export interface ImportActivitySections {
@@ -48,6 +49,7 @@ export function activityDismissMessage(item: ImportActivityItem): Message {
 export function ActivityScreen({ state, onMenu }: { state: StateResponse; onMenu: () => void }) {
   const C = useTheme();
   const { t, lang } = useT();
+  const wideHost = useWideHost();
   const [items, setItems] = useState<ImportActivityItem[]>([]);
   const [selectedJobId, setSelectedJobId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -78,7 +80,13 @@ export function ActivityScreen({ state, onMenu }: { state: StateResponse; onMenu
     jobs.length > 0 && (
       <section style={{ marginTop: 18 }}>
         <h2 style={{ margin: "0 0 8px", fontSize: 12, textTransform: "uppercase", letterSpacing: 0.7, color: C.soft }}>{t(title)}</h2>
-        <div style={{ display: "flex", flexDirection: "column", gap: 9 }}>
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: wideHost ? "repeat(auto-fit, minmax(min(100%, 300px), 1fr))" : "1fr",
+            gap: 9,
+          }}
+        >
           {jobs.map((job) => {
             const scheduledRetry = isScheduledImportRetry(job);
             return (
@@ -140,13 +148,18 @@ export function ActivityScreen({ state, onMenu }: { state: StateResponse; onMenu
 
   return (
     <div className="gs" style={{ flex: 1, overflowY: "auto", paddingBottom: 14 }}>
-      <header style={{ display: "flex", alignItems: "center", gap: 10, padding: `12px ${P}px` }}>
-        <button type="button" onClick={onMenu} aria-label={t("Menu")} style={iconButton}>
-          <Ico d="M4 6h16M4 12h16M4 18h16" size={21} color={C.text} sw={2} />
-        </button>
-        <h1 style={{ margin: 0, color: C.text, fontSize: 18, fontWeight: 750 }}>{t("Activity")}</h1>
-      </header>
-      <main style={{ padding: `0 ${P}px` }}>
+      {!wideHost && (
+        <header style={{ display: "flex", alignItems: "center", gap: 10, padding: `12px ${P}px` }}>
+          <button type="button" onClick={onMenu} aria-label={t("Menu")} style={iconButton}>
+            <Ico d="M4 6h16M4 12h16M4 18h16" size={21} color={C.text} sw={2} />
+          </button>
+          <h1 style={{ margin: 0, color: C.text, fontSize: 18, fontWeight: 750 }}>{t("Activity")}</h1>
+        </header>
+      )}
+      <main
+        data-activity-content
+        style={{ width: "100%", boxSizing: "border-box", maxWidth: wideHost ? 920 : undefined, margin: "0 auto", padding: `${wideHost ? 18 : 0}px ${P}px` }}
+      >
         <p style={{ margin: "2px 0 0", color: C.soft, fontSize: 12.5, lineHeight: 1.45 }}>
           {t("Imports continue independently of this screen. Encrypted imports run only on this device.")}
         </p>
