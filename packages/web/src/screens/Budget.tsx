@@ -96,7 +96,9 @@ export function BudgetScreen({
 
   const groups = [...state.groups].sort((a, b) => a.sort - b.sort);
   const envs = state.envelopes.filter((e) => !e.archived);
-  const COLS = "1fr 94px 108px";
+  
+
+  const COLS = "1fr 104px 108px";
 
    
   const persistAllocation = (envelopeId: string, minor: number) => {
