@@ -21,6 +21,7 @@ import { panelFallbacks, primaryScreenFor } from "./components/wide/panel";
 
 import type { RightSlot } from "./components/wide/WideShell";
 import { useLedgerVersion, useStateQuery } from "./lib/api";
+import { type BudgetSheetEvent, type BudgetSheetState, budgetSheetAfter } from "./lib/budgetSheet";
 import { useMask, useTheme } from "./lib/contexts";
 import { currentMonth, shiftMonth } from "./lib/dates";
 import { useT } from "./lib/i18n";
@@ -143,13 +144,19 @@ export default function App() {
   // riding this SAME one-shot preset bag `tab`/`importSheet` already use (`duplicateTxnFromPanel`
   // below sets it, `PanelHost` threads it to `AddScreen`'s own `duplicateFrom` prop).
   const [addPreset, setAddPreset] = useState<{ tab?: AddTab; importSheet?: boolean; duplicateFrom?: Transaction }>({});
-  
-
-  const [budgetSuggest, setBudgetSuggest] = useState(false);
-  
-
-
-  const [budgetFillGoals, setBudgetFillGoals] = useState(false);
+  // Which of the Budget screen's two allocation sheets is open (owner round 8 item 32) — ONE
+  // App-owned value, moved here from `BudgetScreen`'s own local state and replacing the pair of
+  // one-shot deep-link booleans that used to carry "Zasugeruj"/"Wypełnij wg celów" into it. Those
+  // were consumed at MOUNT, so every entry point pressed while Budget was ALREADY mounted (any
+  // rail or fold-strip pill clicked from the Budget screen — and on wide from the Add pane too,
+  // since `primaryScreenFor` keeps the primary pane on `editReturn`) flipped a prop nothing read:
+  // the sheet never opened and the flag stayed armed for the next real mount, which then opened a
+  // sheet nobody asked for, both at once when both flags were stuck. Lifting it is the same move
+  // `editWidgetsOpen`/`manageOpen`/`wideBoardEdit` above already made for the sheets the wide
+  // chrome has to drive from outside their screen. Every transition goes through
+  // `budgetSheetAfter` (lib/budgetSheet.ts) — the single place the sequences are pinned.
+  const [budgetSheet, setBudgetSheet] = useState<BudgetSheetState>(null);
+  const onBudgetSheet = (event: BudgetSheetEvent) => setBudgetSheet((s) => budgetSheetAfter(s, event));
   
 
 
@@ -271,10 +278,12 @@ export default function App() {
   const nav = (s: ScreenId) => {
     if (s !== "addExpense") setEditTxn(null);
     if (s === "addExpense") setAddPreset({});
-    if (s === "budget") {
-      setBudgetSuggest(false);
-      setBudgetFillGoals(false);
-    }
+    // EVERY nav target, not just "budget": the open sheet now outlives the Budget screen's mount
+    // (it lives here), so leaving Budget has to say out loud what unmounting used to do for free —
+    // otherwise coming back would resurrect the sheet the user navigated away from. The deep links
+    // that navigate FIRST (`openBudgetFillGoals`, `onQuickAdd("suggest")`) re-open after this call,
+    // so their write is the last one in the batch and still wins.
+    onBudgetSheet({ kind: "leave" });
     setEnvView(null);
     
 
@@ -300,7 +309,7 @@ export default function App() {
 
   const onQuickAdd = (kind: "transfer" | "import" | "suggest") => {
     if (kind === "suggest") {
-      setBudgetSuggest(true);
+      onBudgetSheet({ kind: "open", sheet: "suggest" });
       setScreen("budget");
       return;
     }
@@ -330,9 +339,10 @@ export default function App() {
   };
   
 
+
   const openBudgetFillGoals = () => {
     nav("budget");
-    setBudgetFillGoals(true);
+    onBudgetSheet({ kind: "open", sheet: "fillGoals" });
   };
   
 
@@ -675,10 +685,8 @@ export default function App() {
             onPrev={prev}
             onNext={next}
             onOpenEnvelope={openEnvelope}
-            initialSuggest={budgetSuggest}
-            onSuggestConsumed={() => setBudgetSuggest(false)}
-            initialFillGoals={budgetFillGoals}
-            onFillGoalsConsumed={() => setBudgetFillGoals(false)}
+            sheet={budgetSheet}
+            onSheet={onBudgetSheet}
             manageOpen={manageOpen}
             onManageOpen={setManageOpen}
             selectedEnvelopeId={budgetSelectedEnvelopeId}
