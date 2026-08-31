@@ -156,7 +156,7 @@ function AddTile({ candidates, onOpenPicker }: { candidates: number; onOpenPicke
   if (exhausted) {
     return (
       <div data-wide-add-tile="exhausted" style={shared}>
-        <span style={{ fontSize: 11.5, lineHeight: 1.45 }}>{t("Every widget is already on the grid.")}</span>
+        <span style={{ fontSize: 11, lineHeight: 1.45 }}>{t("Every widget is already on the grid.")}</span>
       </div>
     );
   }
