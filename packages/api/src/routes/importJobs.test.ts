@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import type { ImportJobDetail, ImportJobSummary } from "@enveo/shared";
+import { createDefaultBudgetPreferences, type ImportJobDetail, type ImportJobSummary } from "@enveo/shared";
 import { Hono } from "hono";
 import { type CreateImportJobInput, ImportJobConflict } from "../importJobs/repository";
 import { createImportJobRoutes, type ImportJobRouteRepository } from "./importJobs";
@@ -130,7 +130,7 @@ function harness(
       wake: overrides.wake,
       resolvePlainBudget: async () => ({ id: overrides.resolvedBudgetId ?? BUDGET_A, tier: "plain", epoch: 0, cipherVersion: 2 }),
       readPreferences: async () => ({
-        schemaVersion: 1,
+        ...createDefaultBudgetPreferences(),
         aiProvider: overrides.provider ?? "enveo",
         openaiModel: "gpt-5.6-sol",
         customProfiles: [],

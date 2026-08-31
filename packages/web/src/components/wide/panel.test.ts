@@ -140,10 +140,10 @@ describe("resolvePanel", () => {
         kinds.add(resolvePanel({ screen, reportsView, envView: null, widgetPicker: true }, FB).kind);
       }
     }
-    // With every fallback id populated (FB), "empty" no longer appears in this loop at all —
-    // Accounts/Settings fall back to "account" (Task 1) and Transactions now falls back to "txn"
-    // (design parity wave C task 3), the last screen that used to bottom out at "empty" here.
-    expect([...kinds].sort()).toEqual(["account", "add", "envelope", "report", "txn", "widgetPicker", "widgets"]);
+    // With every fallback id populated (FB), Activity is the only screen that deliberately has no
+    // side-panel content and therefore reaches the existing "empty" kind. Accounts/Settings fall
+    // back to "account" and Transactions falls back to "txn".
+    expect([...kinds].sort()).toEqual(["account", "add", "empty", "envelope", "report", "txn", "widgetPicker", "widgets"]);
   });
 
   describe("PR5's `widgets` kind (the wide board's gear target)", () => {

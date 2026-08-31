@@ -15,10 +15,6 @@ import {
   type BudgetSuggestResponse,
   type ChatRequest,
   type ClientLedger,
-  type ImportJobDetail,
-  type ImportJobSummary,
-  importJobDetailSchema,
-  importJobSummarySchema,
   type OpenAiModel,
   type ReconciledImportRecognitionResult,
 } from "@enveo/shared";
@@ -201,7 +197,7 @@ export function apiErrorBody(e: unknown): { error?: string; tier?: "plain" | "e2
  *  outwaits the server's own budget (see @enveo/shared/aiTransport), with the failure
  *  classified onto the same codes the AI transports use (ai_timeout / ai_offline /
  *  ai_unreachable). Without it the behavior is byte-identical to the old http(). */
-async function http<T>(method: string, path: string, body?: unknown, timeoutMs?: number): Promise<T> {
+export async function http<T>(method: string, path: string, body?: unknown, timeoutMs?: number): Promise<T> {
   const t = timeoutMs === undefined ? undefined : timeoutSignal(timeoutMs);
   let res: Response;
   try {
@@ -225,10 +221,6 @@ async function http<T>(method: string, path: string, body?: unknown, timeoutMs?:
   if (res.status === 204) return undefined as T;
   return (await res.json()) as T;
 }
-
-const importJobSummaryListSchema = importJobSummarySchema.array();
-const importJobDetailHttp = (method: string, path: string, body?: unknown): Promise<ImportJobDetail> =>
-  http<unknown>(method, path, body).then((value) => importJobDetailSchema.parse(value));
 
 /**
  * Domain writes NO LONGER go through REST — see `lib/mutate.ts` (local.*):
@@ -280,13 +272,13 @@ export const api = {
 
   importJobs: {
     create: (input: { id: string; budgetId: string; accountId: string; locale: AiLocale; images: string[] }) =>
-      importJobDetailHttp("POST", "/import/jobs", input),
-    list: (): Promise<ImportJobSummary[]> => http<unknown>("GET", "/import/jobs").then((value) => importJobSummaryListSchema.parse(value)),
-    get: (id: string) => importJobDetailHttp("GET", `/import/jobs/${encodeURIComponent(id)}`),
-    cancel: (id: string, budgetId: string) => importJobDetailHttp("POST", `/import/jobs/${encodeURIComponent(id)}/cancel`, { budgetId }),
-    retry: (id: string, budgetId: string) => importJobDetailHttp("POST", `/import/jobs/${encodeURIComponent(id)}/retry`, { budgetId }),
+      import("./importJobs/api").then(({ importJobsApi }) => importJobsApi.create(input)),
+    list: () => import("./importJobs/api").then(({ importJobsApi }) => importJobsApi.list()),
+    get: (id: string) => import("./importJobs/api").then(({ importJobsApi }) => importJobsApi.get(id)),
+    cancel: (id: string, budgetId: string) => import("./importJobs/api").then(({ importJobsApi }) => importJobsApi.cancel(id, budgetId)),
+    retry: (id: string, budgetId: string) => import("./importJobs/api").then(({ importJobsApi }) => importJobsApi.retry(id, budgetId)),
     complete: (id: string, input: { budgetId: string; appliedCount: number; skippedCount: number }) =>
-      importJobDetailHttp("POST", `/import/jobs/${encodeURIComponent(id)}/complete`, input),
+      import("./importJobs/api").then(({ importJobsApi }) => importJobsApi.complete(id, input)),
   },
 
   budgetSuggest: (b: { month: string; profile: BudgetSuggestProfile; customPrompt?: string; ledger?: ClientLedger; locale: AiLocale; useAi?: boolean }) =>
