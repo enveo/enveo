@@ -347,7 +347,10 @@ export const pl: Dict = {
   "Export backup and sign out": "Eksportuj kopię i wyloguj się",
   "Failed to load the image.": "Nie udało się wczytać obrazka.",
   "Fill all goals ›": "Wypełnij wszystkie cele ›",
-  "Fill by goals": "Wypełnij wg celów",
+  
+
+
+  "Fill by goals": "Zasil cele",
   Filter: "Filtruj",
   "Filter:": "Filtr:",
   Filters: "Filtry",
