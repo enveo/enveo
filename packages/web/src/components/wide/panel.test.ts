@@ -130,19 +130,20 @@ describe("resolvePanel", () => {
     expect(first).toEqual(second);
   });
 
-  test("exhaustively covers every kind — no seventh kind sneaks in", () => {
+  test("exhaustively covers every kind — no eighth kind sneaks in", () => {
     const kinds = new Set<PanelView["kind"]>();
     for (const screen of SCREENS) {
       for (const reportsView of REPORT_VIEWS) {
         kinds.add(resolvePanel({ screen, reportsView, envView: null }, FB).kind);
         kinds.add(resolvePanel({ screen, reportsView, envView: ENV }, FB).kind);
         kinds.add(resolvePanel({ screen, reportsView, envView: null, widgetSettings: "envelopes" }, FB).kind);
+        kinds.add(resolvePanel({ screen, reportsView, envView: null, widgetPicker: true }, FB).kind);
       }
     }
     // With every fallback id populated (FB), "empty" no longer appears in this loop at all —
     // Accounts/Settings fall back to "account" (Task 1) and Transactions now falls back to "txn"
     // (design parity wave C task 3), the last screen that used to bottom out at "empty" here.
-    expect([...kinds].sort()).toEqual(["account", "add", "envelope", "report", "txn", "widgets"]);
+    expect([...kinds].sort()).toEqual(["account", "add", "envelope", "report", "txn", "widgetPicker", "widgets"]);
   });
 
   describe("PR5's `widgets` kind (the wide board's gear target)", () => {
@@ -183,6 +184,39 @@ describe("resolvePanel", () => {
         kind: "account",
         accountId: ACCT.accountId,
         source: "selection",
+      });
+    });
+  });
+
+  describe("owner round 6 item 28's `widgetPicker` kind (the board's + tile target)", () => {
+    test("Start with the picker open (no envelope) resolves to the widgetPicker pane", () => {
+      expect(resolvePanel({ screen: "start", reportsView: "overview", envView: null, widgetPicker: true }, FB)).toEqual({ kind: "widgetPicker" });
+    });
+
+    test("omitting widgetPicker (undefined) behaves exactly like false — Start falls back to the first envelope", () => {
+      expect(resolvePanel({ screen: "start", reportsView: "overview", envView: null, widgetPicker: false }, FB)).toEqual({
+        kind: "envelope",
+        envelopeId: FB.firstEnvelopeId!,
+        month: FB.month,
+        source: "fallback",
+      });
+    });
+
+    test("the picker is ignored on every screen other than Start — a stale flag there never leaks into the panel", () => {
+      for (const screen of ["budget", "transactions", "accounts", "reports", "addExpense", "settings"] as const) {
+        expect(resolvePanel({ screen, reportsView: "overview", envView: null, widgetPicker: true }, FB).kind).not.toBe("widgetPicker");
+      }
+    });
+
+    test("an open envelope, a selected account and the Add pane each still win over an open picker (same priority pins as the gear's `widgets` kind)", () => {
+      expect(resolvePanel({ screen: "start", reportsView: "overview", envView: ENV, widgetPicker: true }, FB).kind).toBe("envelope");
+      expect(resolvePanel({ screen: "start", reportsView: "overview", envView: null, acctView: ACCT, widgetPicker: true }, FB).kind).toBe("account");
+      expect(resolvePanel({ screen: "addExpense", reportsView: "overview", envView: null, widgetPicker: true }, FB).kind).toBe("add");
+    });
+
+    test("tie-break only: with BOTH board surfaces somehow set, the picker wins — WideShell's openers clear each other, so this never happens in practice", () => {
+      expect(resolvePanel({ screen: "start", reportsView: "overview", envView: null, widgetPicker: true, widgetSettings: "spending" }, FB)).toEqual({
+        kind: "widgetPicker",
       });
     });
   });

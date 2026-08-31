@@ -36,6 +36,11 @@ export type PanelView =
   | { kind: "envelope"; envelopeId: string; month: string; source: "selection" | "fallback" }
   | { kind: "report"; view: ReportTab; source: "selection" | "fallback" }
   | { kind: "widgets"; widgetId: WideWidgetId }
+  // Owner round 6 item 28: the board's "+" tile target — the picker of widgets NOT yet on the
+  // board. Carries no payload: the candidate list is derived from `preferences.wideWidgets` by the
+  // body that renders it (PanelHost's `WidgetPickerPanel`), exactly like the `widgets` kind reads
+  // the tile's own config from there rather than being handed a copy.
+  | { kind: "widgetPicker" }
   | { kind: "account"; accountId: string; source: "selection" | "fallback" } // PR6b — the v3 `acct` pane
   | { kind: "add" }
   | { kind: "txn"; txnId: string; source: "selection" | "fallback" }; // wave C task 3 — the v3 `txn` pane
@@ -108,7 +113,9 @@ export function panelFallbacks(
  * `widgetSettings` only ever resolves to the `widgets` kind on the `start` screen — `WideShell`
  * clears its local state whenever `screen` changes away from `start`, but this function stays
  * total and defensive about that discipline rather than trusting it (a stale non-null value on
- * any other screen is simply ignored here, never surfaced). `txnView` (wave C task 3) is the same
+ * any other screen is simply ignored here, never surfaced). `widgetPicker` (owner round 6 item 28)
+ * is the same story, one rung above it: both are the board's own edit-mode surfaces, and the board
+ * only exists on `start`. `txnView` (wave C task 3) is the same
  * discipline, scoped to `transactions` only — a stale value on any other screen is ignored here
  * too (`WideShell`'s bag-field comment has the full reset story: unlike `acctView` below, App
  * never clears `txnView` on plain navigation at all — its only reset path is a vanish effect this
@@ -133,6 +140,12 @@ export function resolvePanel(
     reportsView: ReportView;
     envView: { envelopeId: string; month: string } | null;
     widgetSettings?: WideWidgetId | null;
+    /** Owner round 6 item 28 — the board's add-widget picker, `WideShell`-local exactly like
+     *  `widgetSettings` above (nothing outside the wide shell needs it) and scoped to `start` the
+     *  same way. At most one of the two is ever set: each opener clears the other (`WideShell`),
+     *  so the ordering below is a tie-break for a caller that broke that discipline, not a real
+     *  everyday branch — the same language `envView`/`acctView` already use. */
+    widgetPicker?: boolean;
     acctView?: { accountId: string } | null;
     txnView?: { txnId: string } | null;
   },
@@ -147,6 +160,7 @@ export function resolvePanel(
     if (a.reportsView !== "overview") return { kind: "report", view: a.reportsView, source: "selection" };
     return { kind: "report", view: "spending", source: "fallback" }; // v3:2213's own `selReport` default
   }
+  if (a.screen === "start" && a.widgetPicker) return { kind: "widgetPicker" };
   if (a.screen === "start" && a.widgetSettings) return { kind: "widgets", widgetId: a.widgetSettings };
   if (a.screen === "accounts" || a.screen === "settings") {
     return fb.firstAccountId ? { kind: "account", accountId: fb.firstAccountId, source: "fallback" } : { kind: "empty", hint: "account" };

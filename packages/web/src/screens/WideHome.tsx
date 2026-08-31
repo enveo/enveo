@@ -54,6 +54,11 @@ export interface WideHomeProps {
   edit: boolean;
   /** Gear target on a `configurable` tile → `WideShell`'s panel (its own local selection). */
   onWidgetSettings: (id: WideWidgetId) => void;
+  /** Owner round 6 item 28: the edit-mode "+" tile → `WideShell`'s panel picker. The board itself
+   *  never renders the candidate list any more (see `AddTile`); the PLACEMENT still happens through
+   *  the same `toggleEnabled`/`update({ wideWidgets })` path every other edit gesture uses, just
+   *  from the picker body (PanelHost) instead of from this cell. */
+  onAddWidget: () => void;
   /** Threaded straight into the Goals tile body (`WidgetProps.onFillGoals`) — the same handler
    *  `WideShell` already gives Rail/FoldTbbStrip, opening the multi-envelope Fill-by-goals sheet. */
   onFillGoals: () => void;
@@ -109,52 +114,67 @@ const chromeBtn = (color: string): React.CSSProperties => ({
   flexShrink: 0,
 });
 
-function AddTile({ candidates, onAdd, cols }: { candidates: WideWidgetConfig[]; onAdd: (id: WideWidgetId) => void; cols: number }) {
+/**
+ * The board's trailing EDIT-MODE cell: the design's own ghost tile (v3.dc.html:614-621 — `span 1`
+ * column × `span 2` rows, 1.5px dashed `T.line`, radius 14, centered, muted, its label the design's
+ * literal "＋ Add widget" copy at 13px/650).
+ *
+ * What this deliberately does NOT port is the design's own `homeAddOpen` behaviour, which expanded
+ * that same tile into an internally-scrolling list of widget names INSIDE the cell (v3:3670-3676).
+ * Owner round 6 item 28 rejects that outright ("tragiczne"): a picker squeezed into one 1×2 grid
+ * cell can show ~2 rows of a ten-widget catalogue. The affordance stays exactly the design's; the
+ * choosing moves to the right panel (`PanelView` kind `widgetPicker`), which is where every other
+ * board-editing surface already lives (the gear's `widgets` kind) — ONE pane machine, one more kind.
+ *
+ * EXHAUSTED STATE (requirement (d), decided from the design): the design keeps the tile mounted and
+ * answers with its own copy, "Every widget is already on the grid." — so this tile stays visible
+ * with that text and simply stops being a button (no picker to open, nothing to place). Hiding it
+ * would also drop the "Reset layout" rhythm's last grid cell and make the board silently change
+ * shape at the exact moment the user is arranging it.
+ */
+function AddTile({ candidates, onOpenPicker }: { candidates: number; onOpenPicker: () => void }) {
   const C = useTheme();
   const { t } = useT();
+  const exhausted = candidates === 0;
+  const shared: React.CSSProperties = {
+    gridColumn: "span 1",
+    gridRow: "span 2",
+    border: `1.5px dashed ${C.line}`,
+    borderRadius: 14,
+    padding: "12px 14px",
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    color: C.mute,
+    overflow: "hidden",
+    minHeight: 0,
+    textAlign: "center",
+    fontFamily: font,
+  };
+  if (exhausted) {
+    return (
+      <div data-wide-add-tile="exhausted" style={shared}>
+        <span style={{ fontSize: 11, lineHeight: 1.45 }}>{t("Every widget is already on the grid.")}</span>
+      </div>
+    );
+  }
   return (
-    <div
-      style={{
-        gridColumn: `span ${Math.min(cols, 2)}`,
-        gridRow: "span 1",
-        border: `1.5px dashed ${C.line}`,
-        borderRadius: 14,
-        padding: "12px 14px",
-        display: "flex",
-        flexDirection: "column",
-        gap: 6,
-        overflow: "hidden",
-        minHeight: 0,
-      }}
+    <button
+      data-wide-add-tile="plus"
+      type="button"
+      onClick={onOpenPicker}
+      aria-label={t("Add widget")}
+      style={{ ...shared, background: "none", cursor: "pointer" }}
     >
-      <div style={{ fontSize: 10, fontWeight: 750, letterSpacing: "0.14em", textTransform: "uppercase", color: C.mute, flexShrink: 0 }}>{t("Add widget")}</div>
-      {candidates.length === 0 ? (
-        <div style={{ fontSize: 11.5, color: C.mute }}>{t("Every widget is already on the grid.")}</div>
-      ) : (
-        <div className="gs" style={{ display: "flex", flexDirection: "column", gap: 2, overflowY: "auto", minHeight: 0 }}>
-          {candidates.map((w) => (
-            <button
-              key={w.id}
-              onClick={() => onAdd(w.id)}
-              style={{
-                minHeight: 30,
-                textAlign: "left",
-                padding: "4px 8px",
-                borderRadius: 8,
-                border: "none",
-                background: "none",
-                cursor: "pointer",
-                fontSize: 12.5,
-                color: C.text,
-                fontFamily: font,
-              }}
-            >
-              {t(WIDGET_CATALOG[w.id].title)}
-            </button>
-          ))}
-        </div>
-      )}
-    </div>
+      {/* ONE inline run at 13px/650, exactly like the design (v3.dc.html:610 renders the single
+          `addTile.label` string defined at :3671 — glyph and words on the same line at the same
+          size). The glyph stays outside `t()`: it is decoration, not a phrase, so every locale
+          keeps its own "Add widget" wording — and the button's `aria-label` is that phrase alone,
+          so a screen reader never announces the fullwidth plus. */}
+      <span style={{ fontSize: 13, fontWeight: 650 }}>＋ {t("Add widget")}</span>
+    </button>
   );
 }
 
@@ -170,6 +190,7 @@ export function WideHome({
   onOpenMonthDay,
   edit,
   onWidgetSettings,
+  onAddWidget,
   onFillGoals,
 }: WideHomeProps) {
   const C = useTheme();
@@ -416,7 +437,7 @@ export function WideHome({
             </div>
           );
         })}
-        {edit && <AddTile candidates={disabledRows} onAdd={(id) => onToggle(id, true)} cols={cols} />}
+        {edit && <AddTile candidates={disabledRows.length} onOpenPicker={onAddWidget} />}
       </div>
       {edit && (
         // The only way an EXISTING board (whose stored layout reconciliation deliberately keeps)
