@@ -946,8 +946,16 @@ function UserBlock({ mode, screen, onNav, onInstall }: { mode: WideMode; screen:
               </span>
               {email && <span style={{ fontSize: 10.5, color: C.railMute, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{email}</span>}
             </span>
-            <span aria-hidden style={{ fontSize: 12, color: C.railMute, flexShrink: 0 }}>
-              ⚙
+            {/* Owner round 8 item 31: the SAME gear the popover's own "settings" tile draws
+                (`D_GEAR` through `Ico`, in the `quicks` row above), not a second rendering of it.
+                This slot used to hold a bare "⚙" text glyph — the design's own markup for it
+                (v3:175), but the app resolves every drawer/menu glyph to a 1.7-stroke path
+                instead (chrome.tsx: "zero emoji"), so the two gears the user sees one click apart
+                were a font-rendered character and a stroked icon. One source now; only the size
+                differs (13 here against the tile's 15, matching the 12px text slot it replaced).
+                The wrapper keeps `aria-hidden` + `flexShrink` off the shared icon component. */}
+            <span aria-hidden style={{ display: "flex", flexShrink: 0 }}>
+              <Ico d={D_GEAR} size={13} color={C.railMute} sw={1.7} />
             </span>
           </>
         )}
