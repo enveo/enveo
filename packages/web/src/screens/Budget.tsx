@@ -8,6 +8,7 @@ import { LazyChunk, useOpenedOnce } from "../components/lazy";
 import { fmtSignedTrim, type PadState, padPreview, padPreviewLive } from "../lib/amount";
 import type { EnvelopeView, StateResponse } from "../lib/api";
 import { linkedAccountNames } from "../lib/automaticEnvelopeAccountUi";
+import type { BudgetSheetEvent, BudgetSheetState } from "../lib/budgetSheet";
 import { useCurrency, useMask, useSettings, useTheme } from "../lib/contexts";
 import { useDragReorder } from "../lib/dnd";
 import { activeAllocationDecoration } from "../lib/focusPresentation";
@@ -35,10 +36,8 @@ export function BudgetScreen({
   onPrev,
   onNext,
   onOpenEnvelope,
-  initialSuggest,
-  onSuggestConsumed,
-  initialFillGoals,
-  onFillGoalsConsumed,
+  sheet,
+  onSheet,
   manageOpen,
   onManageOpen,
   selectedEnvelopeId,
@@ -49,17 +48,15 @@ export function BudgetScreen({
   onPrev: () => void;
   onNext: () => void;
   onOpenEnvelope: (envId: string, month: string) => void;
-  /** Start "Suggest" quick action — opens the suggest sheet immediately (like Add's `initialImport`). */
-  initialSuggest?: boolean;
-  /** Consumption ack for `initialSuggest`, called once on mount (see the effect below) — App
-   *  clears its flag the instant this screen consumes it, so a LATER remount (this screen
-   *  unmounts/remounts on any `envView` toggle — e.g. envelope Summary → back — WITHOUT going
-   *  through `nav()`) never sees a stale `true` and reopens the sheet unprompted. */
-  onSuggestConsumed: () => void;
-  /** Goals-report "Fill ›" deep link — opens the fill-by-goals sheet immediately (same mechanics as `initialSuggest`). */
-  initialFillGoals?: boolean;
-  /** Consumption ack for `initialFillGoals` — same one-shot mechanism as `onSuggestConsumed`. */
-  onFillGoalsConsumed: () => void;
+  /** Which allocation sheet is open — App-owned (owner round 8 item 32), for the same reason
+   *  `manageOpen` below is: entry points OUTSIDE this screen (the wide rail's and fold strip's
+   *  "✨ Suggest"/"Fill by goals" pills, Start's quick actions, the Goals report's "Fill ›") have
+   *  to open them, and they stay pressable while this screen is already mounted. As local state
+   *  behind one-shot deep-link flags those presses reached nothing — see lib/budgetSheet.ts. */
+  sheet: BudgetSheetState;
+  /** Every open/close on this screen — its own two buttons included — goes through the shared
+   *  transition function so no path can reintroduce a second way to move this state. */
+  onSheet: (event: BudgetSheetEvent) => void;
   /** "Manage envelopes" sheet open state — App-owned so the wide shell's band right-slot (PR4 §13) can trigger it too. */
   manageOpen: boolean;
   onManageOpen: (open: boolean) => void;
@@ -79,20 +76,16 @@ export function BudgetScreen({
   // cell; DockedNumpad stays for fold/phone. `mode` is read fresh on every render (no memoization
   // needed — a resize crossing fold↔desktop mid-edit just changes which branch the NEXT render takes).
   const desktopInput = wideHost?.mode === "desktop";
-  const [suggest, setSuggest] = useState(!!initialSuggest);
+  // Derived, not mirrored: App holds the open sheet, so a pill pressed while this screen is
+  // already mounted lands as a prop change and opens the sheet on the very next render. Nothing
+  // here has to notice a "new" intent, which is precisely what the mount-consumed flags could not
+  // do (owner round 8 item 32).
+  const suggest = sheet === "suggest";
+  const fillGoals = sheet === "fillGoals";
   // Latched — see Add.tsx: mount on first open, stay mounted, so state survives close→reopen.
   const suggestOpened = useOpenedOnce(suggest);
-  const [fillGoals, setFillGoals] = useState(!!initialFillGoals);
   const fillGoalsOpened = useOpenedOnce(fillGoals);
-  // Consume the deep-link flags right at mount, not on close — this component can remount
-  // (envelope Summary → back) without ever going through App's `nav()`, which is the only other
-  // place these flags get cleared. Consuming here means only the FIRST mount after App sets a
-  // flag ever opens its sheet; any later remount sees the flag already `false`.
-  useEffect(() => {
-    if (initialSuggest) onSuggestConsumed();
-    if (initialFillGoals) onFillGoalsConsumed();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  const closeSheet = () => onSheet({ kind: "close" });
   // Entry visibility: money to place AND at least one active envelope still short of its goal.
   // Same predicate as the Goals report's "Fill ›" entry point (Reports.tsx, `canFillGoals`) —
   // kept in sync by inspection, not by shared code (the report's version folds in `missSum`
@@ -232,7 +225,7 @@ export function BudgetScreen({
             )}
             {canFillGoals && (
               <button
-                onClick={() => setFillGoals(true)}
+                onClick={() => onSheet({ kind: "open", sheet: "fillGoals" })}
                 style={{
                   marginTop: 2,
                   padding: 0,
@@ -250,7 +243,7 @@ export function BudgetScreen({
             )}
           </div>
           <button
-            onClick={() => setSuggest(true)}
+            onClick={() => onSheet({ kind: "open", sheet: "suggest" })}
             aria-label={t("Suggest a distribution")}
             style={{
               flexShrink: 0,
@@ -486,13 +479,13 @@ export function BudgetScreen({
 
       <EnvManageSheet show={manageOpen} state={state} onClose={() => onManageOpen(false)} />
       {suggestOpened && (
-        <LazyChunk variant="overlay" onDismiss={() => setSuggest(false)}>
-          <BudgetSuggestSheet show={suggest} state={state} month={month} onClose={() => setSuggest(false)} />
+        <LazyChunk variant="overlay" onDismiss={closeSheet}>
+          <BudgetSuggestSheet show={suggest} state={state} month={month} onClose={closeSheet} />
         </LazyChunk>
       )}
       {fillGoalsOpened && (
-        <LazyChunk variant="overlay" onDismiss={() => setFillGoals(false)}>
-          <FillGoalsSheet show={fillGoals} state={state} month={month} onClose={() => setFillGoals(false)} />
+        <LazyChunk variant="overlay" onDismiss={closeSheet}>
+          <FillGoalsSheet show={fillGoals} state={state} month={month} onClose={closeSheet} />
         </LazyChunk>
       )}
       {/* Docked numpad instead of a sheet (no backdrop — the list stays visible). Desktop (Task 3b)
