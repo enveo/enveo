@@ -96,7 +96,9 @@ export function BudgetScreen({
 
   const groups = [...state.groups].sort((a, b) => a.sort - b.sort);
   const envs = state.envelopes.filter((e) => !e.archived);
-  const COLS = "1fr 94px 108px";
+  // 104px is the design's own Allocated track (v3:256). 94px predates it and clipped the Polish
+  // header label "PRZYDZIELONO" (103.4px of ink in a 94px box, measured).
+  const COLS = "1fr 104px 108px";
 
   // The ONE write path both the docked numpad's ✓ and the desktop input's Enter/blur use.
   const persistAllocation = (envelopeId: string, minor: number) => {
