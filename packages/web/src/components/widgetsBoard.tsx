@@ -217,6 +217,11 @@ export function RecentWidget({ onOpenTxns, onNav, chromeless }: WidgetProps) {
     return new Map((ledger?.categories ?? []).map((c) => [c.id, c]));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [version]);
+  const placeById = useMemo(() => {
+    const ledger = store.getLedger();
+    return new Map((ledger?.places ?? []).map((p) => [p.id, p]));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [version]);
 
   // Same sign/description rules as Transactions.tsx's own row (colorOf/signed/descOf) — a
   // deliberately smaller copy (no place/category sub-line) for the compact tile.
@@ -291,8 +296,15 @@ export function RecentWidget({ onOpenTxns, onNav, chromeless }: WidgetProps) {
           // its mock payees are always distinct from the envelope/category name — so the wide
           // meta line drops the label and falls back to date-only (the phone's existing grammar)
           // whenever the two would collide.
+          // Owner round 7 item 30: the wide row has the width for place AND category, so the meta
+          // line carries every part that says something new — the place is dropped when it already
+          // IS the headline (descOf falls back to the place name), same collision rule as `meta`.
           const meta = metaLabel(tx);
-          const metaText = chromeless && meta !== headline ? `${shortDate(tx.date, lang)} · ${meta}` : shortDate(tx.date, lang);
+          const place = tx.placeId ? (placeById.get(tx.placeId)?.name ?? null) : null;
+          const metaParts = chromeless
+            ? [shortDate(tx.date, lang), place !== headline ? place : null, meta !== headline ? meta : null]
+            : [shortDate(tx.date, lang)];
+          const metaText = metaParts.filter(Boolean).join(" · ");
           return (
             <button key={tx.id} onClick={() => onOpenTxns()} style={rowStyle}>
               {chromeless && <span style={{ width: 9, height: 9, borderRadius: 3, background: dotColor(tx), display: "block", flexShrink: 0 }} />}

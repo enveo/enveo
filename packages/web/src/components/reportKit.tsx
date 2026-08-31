@@ -831,9 +831,9 @@ export function signedDelta(M: (minor: number) => string, delta: number): string
  * "·" or before "median" — never inside a number; `text-wrap: balance` picks the "·" over the
  * orphan-number break ("1087,10 € ·" / "mediana 420,00 €" rather than "… · mediana" / "420,00 €"),
  * and degrades to plain wrapping where it is unsupported. This costs a line only where a line was
- * genuinely needed: measured at the widths that ship today, every English row stays one line in
- * both hosts, and in the report (368px panel, ~366px phone) only Polish's longest row takes a
- * second one — where it was silently truncated before.
+ * genuinely needed — measured, any four-figure amount takes the second line (English as much as
+ * Polish; at 390px roughly half the report's rows do), and the row grows to 61px there instead of
+ * truncating the way it silently did before.
  */
 export function TrendRow({ tr, M, onClick, last = false }: { tr: EnvelopeTrend; M: (minor: number) => string; onClick: () => void; last?: boolean }) {
   const C = useTheme();
