@@ -157,6 +157,8 @@ export type SheetProps = {
   onClose: () => void;
   lockSwipe?: boolean;
   tall?: boolean;
+  /** A centered, viewport-safe modal on fold/desktop; remains the native bottom sheet on phone. */
+  wideDialog?: boolean;
   children: ReactNode | ((C: Theme) => ReactNode);
 };
 
@@ -164,7 +166,7 @@ export type SheetProps = {
  *  `tall`: opt-in FIXED height (instead of content-driven) for sheets whose content can shrink
  *  drastically (a filtered search list) — without it, a filtered-down list collapses the sheet's
  *  height and, anchored at `bottom:0`, the whole thing can sink behind an open mobile keyboard. */
-export function Sheet({ show, onClose, lockSwipe = false, tall = false, children }: SheetProps) {
+export function Sheet({ show, onClose, lockSwipe = false, tall = false, wideDialog = false, children }: SheetProps) {
   const C = useTheme();
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const drag = useRef<{ y0: number; scroll0: number; dy: number; active: boolean } | null>(null);
@@ -183,7 +185,9 @@ export function Sheet({ show, onClose, lockSwipe = false, tall = false, children
   // rendering in place: WideShell's Escape/focus-restore containment checks recognize a portaled
   // sheet via `data-wide-panel-portal` (see `panelContains` there), which only ever marks this
   // branch's output.
-  const hostedInPanel = useWideHost()?.host === "panel";
+  const wideHost = useWideHost();
+  const hostedInPanel = wideHost?.host === "panel";
+  const dialog = wideDialog && wideHost !== null;
 
   // Reset drag state on every sheet open.
   useEffect(() => {
@@ -225,7 +229,7 @@ export function Sheet({ show, onClose, lockSwipe = false, tall = false, children
   // lockSwipe: sheets whose body owns vertical drag (ScrollPicker wheels in DateSheet) opt out of
   // swipe-to-dismiss, otherwise spinning a wheel closes the sheet. They still close via backdrop/buttons.
   const onTouchStart = (e: React.TouchEvent) => {
-    if (lockSwipe) return;
+    if (dialog || lockSwipe) return;
     drag.current = { y0: e.touches[0]!.clientY, scroll0: currentScrollTop(), dy: 0, active: false };
   };
   const onTouchMove = (e: React.TouchEvent) => {
@@ -266,6 +270,7 @@ export function Sheet({ show, onClose, lockSwipe = false, tall = false, children
         }}
       />
       <div
+        data-sheet-layout={dialog ? "dialog" : "bottom"}
         ref={scrollRef}
         className="gs"
         onTouchStart={onTouchStart}
@@ -274,24 +279,38 @@ export function Sheet({ show, onClose, lockSwipe = false, tall = false, children
         onTouchCancel={endDrag}
         style={{
           position: "fixed",
-          bottom: 0,
+          boxSizing: "border-box",
           left: 0,
           right: 0,
-          maxWidth: PHONE_COL,
           margin: "0 auto",
           zIndex: 100,
           background: C.sheet,
-          borderRadius: "22px 22px 0 0",
           padding: "18px 20px calc(28px + env(safe-area-inset-bottom))",
-          animation: "su .3s cubic-bezier(.4,0,.2,1)",
           boxShadow: "0 -8px 30px rgba(0,0,0,0.35)",
-          ...(tall
-            ? { height: "82vh", display: "flex", flexDirection: "column" as const, overflowY: "hidden" as const }
-            : { maxHeight: "82vh", overflowY: "auto" as const }),
           overscrollBehavior: "contain",
-          touchAction: "pan-y",
-          transform: `translateY(${dragY}px)`,
-          transition: dragging ? "none" : "transform .25s cubic-bezier(.4,0,.2,1)",
+          ...(dialog
+            ? {
+                top: "max(24px, env(safe-area-inset-top))",
+                bottom: "max(24px, env(safe-area-inset-bottom))",
+                width: "calc(100% - 48px)",
+                maxWidth: 760,
+                borderRadius: 22,
+                overflowY: "auto" as const,
+                animation: "fi .2s ease-out",
+                touchAction: "auto",
+              }
+            : {
+                bottom: 0,
+                maxWidth: PHONE_COL,
+                borderRadius: "22px 22px 0 0",
+                animation: "su .3s cubic-bezier(.4,0,.2,1)",
+                ...(tall
+                  ? { height: "82vh", display: "flex", flexDirection: "column" as const, overflowY: "hidden" as const }
+                  : { maxHeight: "82vh", overflowY: "auto" as const }),
+                touchAction: "pan-y",
+                transform: `translateY(${dragY}px)`,
+                transition: dragging ? "none" : "transform .25s cubic-bezier(.4,0,.2,1)",
+              }),
         }}
       >
         <div style={{ width: 40, height: 5, borderRadius: 3, background: C.line, margin: "0 auto 14px", cursor: "grab" }} />
