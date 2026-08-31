@@ -1,4 +1,4 @@
-import { type DailySpendingPoint, type Money, NULL_LABEL, type SpendingDimension } from "@enveo/shared";
+import { type DailySpendingPoint, type EnvelopeTrend, type Money, NULL_LABEL, type SpendingDimension } from "@enveo/shared";
 import type { CSSProperties, ReactNode } from "react";
 import { useContext } from "react";
 import { createPortal } from "react-dom";
@@ -9,6 +9,7 @@ import { InWideShell, useWideHost } from "../lib/shellContext";
 import { font, P, TEAL, type Theme } from "../lib/theme";
 import { useElementWidth } from "../lib/useElementWidth";
 import { PHONE_COL } from "../lib/viewMode";
+import { trendColor } from "../screens/reports/charts";
 import { Header } from "./chrome";
 import { useBand } from "./kit";
 import { polylineCoords } from "./sparkline";
@@ -727,41 +728,29 @@ export function CalendarHeatmap({
  *  special case (`max === min` maps to `h/2` rather than the general formula), so the median line
  *  always lines up with where that same value would fall on the polyline itself.
  *
- *  `dot` (Task 1): an optional filled circle at the LAST point. `dotColor` defaults to `color`,
- *  which keeps every existing caller (`TrendsReport`/`ReportsHub`, both still painting line+dot
- *  the same single `trendColor()` verdict) pixel-identical. Owner round 3 item 17 REVERSED this
- *  doc's earlier "one color for line+dot, a second dot color is just a second opinion" stance for
- *  the wide trends board tile specifically: the design (v3.dc.html:546-560) strokes the polyline
- *  in the ENVELOPE's own identity color (`EnvelopeTrend.color`) and reserves the sign-based
- *  verdict color for the dot alone — two different questions ("whose line is this" vs. "is this
- *  move good or bad"), not one asked twice, so a caller-supplied `dotColor` is exactly right
- *  there. `strokeWidth`/`medianStrokeWidth`/`dotRadius` are similarly additive — their defaults
- *  are this component's own pre-existing literals, so every caller that doesn't pass them stays
- *  byte-for-byte unchanged; the wide trends tile passes the design's own (larger) sizes. */
+ *  `dot` (Task 1): an optional filled circle at the LAST point, in the polyline's own `color` —
+ *  every caller paints line and dot with the same single `trendColor()` verdict. A separate
+ *  `dotColor` (plus caller-tunable `strokeWidth`/`medianStrokeWidth`/`dotRadius`) existed briefly
+ *  for owner round 3 item 17's wide trends tile, which stroked the line in the ENVELOPE's colour
+ *  and reserved the verdict colour for the dot; owner round 7 item 29 superseded that grammar
+ *  (the tile now renders `TrendRow`, the report's own row), leaving those four props with no
+ *  caller at all, so they are gone rather than kept as an API nobody exercises. */
 export function TrendSpark({
   series,
   color,
-  dotColor,
   w = 64,
   h = 24,
   median,
   medianColor,
   dot = false,
-  strokeWidth = 1.5,
-  medianStrokeWidth = 1,
-  dotRadius = 2.5,
 }: {
   series: number[];
   color: string;
-  dotColor?: string;
   w?: number;
   h?: number;
   median?: number;
   medianColor?: string;
   dot?: boolean;
-  strokeWidth?: number;
-  medianStrokeWidth?: number;
-  dotRadius?: number;
 }) {
   const n = series.length;
   if (n < 2) return null;
@@ -782,27 +771,112 @@ export function TrendSpark({
   return (
     <svg viewBox={`0 0 ${w} ${h}`} width={w} height={h} aria-hidden style={{ display: "block" }}>
       {medianY !== null && (
-        <line
-          x1={0}
-          y1={medianY}
-          x2={w}
-          y2={medianY}
-          style={{ stroke: medianColor ?? color }}
-          strokeWidth={medianStrokeWidth}
-          vectorEffect="non-scaling-stroke"
-        />
+        <line x1={0} y1={medianY} x2={w} y2={medianY} style={{ stroke: medianColor ?? color }} strokeWidth={1} vectorEffect="non-scaling-stroke" />
       )}
       <polyline
         points={pts}
         fill="none"
         style={{ stroke: color }}
-        strokeWidth={strokeWidth}
+        strokeWidth={1.5}
         strokeLinejoin="round"
         strokeLinecap="round"
         vectorEffect="non-scaling-stroke"
       />
-      {dot && <circle cx={last[0]} cy={last[1]} r={dotRadius} style={{ fill: dotColor ?? color }} />}
+      {dot && <circle cx={last[0]} cy={last[1]} r={2.5} style={{ fill: color }} />}
     </svg>
+  );
+}
+
+/** `"+$12.40"` / `"−$12.40"` — a signed money delta through the caller's discreet-mode mask.
+ *  Shared by `TrendRow` and the Trends report's biggest-mover banner so the two never disagree on
+ *  the minus glyph (U+2212, not a hyphen) or on masking the magnitude. */
+export function signedDelta(M: (minor: number) => string, delta: number): string {
+  return `${delta >= 0 ? "+" : "−"}${M(Math.abs(delta))}`;
+}
+
+/**
+ * One "Envelope trends" row, in the Trends REPORT's grammar — extracted out of `TrendsReport`
+ * (owner round 7 item 29, his side-by-side of the wide home tile against the report) so the report
+ * subscreen and the wide board tile render the SAME component and can never drift again.
+ *
+ * Layout, left to right: the envelope's own colour dot + its name over a `"{now} · median
+ * {median}"` sub-line, the 6-month `TrendSpark` with its median reference line, then a right
+ * column pairing the signed delta (`last − baseline`) with `DeltaTag` + "vs median".
+ *
+ * NO derivation happens here. `last`/`baseline`/`deltaPct`/`series`/`color` all come from shared
+ * `computeEnvelopeTrends`; the sign verdict is `trendColor` (the same one `ReportsHub`'s mini uses,
+ * so stroke and arrow always agree); the arrow glyph, its ↑/↓/→ threshold and its good/bad colour
+ * rule are `DeltaTag`'s, spending-semantics (`downIsGood`) included. This component only lays them
+ * out. `M` is the host's mask, so discreet mode covers every amount here — the sub-line's two
+ * figures as well as the delta.
+ *
+ * `tr.last`/`tr.baseline` are never null, so both left-hand lines always render, including a
+ * dormant envelope whose median is 0 ("… · median $0.00" is honest information, not an error).
+ * When `deltaPct` is null there is nothing to compare the delta against, so only the second
+ * right-hand line drops out — never the whole row.
+ *
+ * `onClick` differs by host on purpose: the report opens the envelope, the board tile deep-links
+ * into the report. `last` drops the trailing hairline so a list ends flush.
+ *
+ * THE NAME ELLIPSIZES, THE SUB-LINE WRAPS — deliberately opposite rules, because one is a label and
+ * the other is two amounts. An envelope name is unbounded and its dot already carries identity, so
+ * clipping it costs nothing; the sub-line is short but WIDE (in Polish, "1087,10 € · mediana 420,00
+ * €" measures 159px), and truncating it eats the median digit by digit until the figure the owner
+ * asked for is gone entirely — measured on the wide board's DEFAULT 2×2 trends tile at 1440 with
+ * the panel open, where the name column is 120–143px: four of five Polish rows rendered "· mediana
+ * 4…" or lost the median outright. No amount of shaving the row's furniture buys that back (dot 8 +
+ * three 10px gaps + a 72px spark + a ~110px right column is 190px of the 336px the tile has), so
+ * the sub-line is allowed a second line instead. Amounts stay atomic while wrapping because Intl
+ * puts a NO-BREAK space before the currency symbol, so a break can only land on the message's own
+ * "·" or before "median" — never inside a number; `text-wrap: balance` picks the "·" over the
+ * orphan-number break ("1087,10 € ·" / "mediana 420,00 €" rather than "… · mediana" / "420,00 €"),
+ * and degrades to plain wrapping where it is unsupported. This costs a line only where a line was
+ * genuinely needed — measured, any four-figure amount takes the second line (English as much as
+ * Polish; at 390px roughly half the report's rows do), and the row grows to 61px there instead of
+ * truncating the way it silently did before.
+ */
+export function TrendRow({ tr, M, onClick, last = false }: { tr: EnvelopeTrend; M: (minor: number) => string; onClick: () => void; last?: boolean }) {
+  const C = useTheme();
+  const { t } = useT();
+  const color = trendColor(tr, C);
+  return (
+    <button
+      onClick={onClick}
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: 10,
+        width: "100%",
+        padding: "10px 0",
+        background: "none",
+        border: "none",
+        borderBottom: last ? "none" : `1px solid ${C.line}`,
+        cursor: "pointer",
+        textAlign: "left",
+        fontFamily: "inherit",
+      }}
+    >
+      <span aria-hidden style={{ width: 8, height: 8, borderRadius: 3, background: tr.color, flexShrink: 0 }} />
+      <span style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 1 }}>
+        <span style={{ fontSize: 13, color: C.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{tr.name}</span>
+        <span style={{ fontSize: 10.5, color: C.mute, fontVariantNumeric: "tabular-nums", textWrap: "balance" }}>
+          {t("{now} · median {median}", { now: M(tr.last), median: M(tr.baseline) })}
+        </span>
+      </span>
+      <span style={{ flexShrink: 0 }}>
+        <TrendSpark series={tr.series} color={color} median={tr.baseline} medianColor={C.line} dot w={72} h={26} />
+      </span>
+      <span style={{ textAlign: "right", flexShrink: 0 }}>
+        <span style={{ display: "block", fontSize: 13, fontWeight: 700, color, fontVariantNumeric: "tabular-nums" }}>
+          {signedDelta(M, tr.last - tr.baseline)}
+        </span>
+        {tr.deltaPct !== null && (
+          <span style={{ display: "block", fontSize: 10.5, color: C.soft }}>
+            <DeltaTag pct={tr.deltaPct} /> {t("vs median")}
+          </span>
+        )}
+      </span>
+    </button>
   );
 }
 

@@ -44,7 +44,7 @@ import { font, TEAL, type Theme, TRANSFER } from "../lib/theme";
 import { useElementWidth } from "../lib/useElementWidth";
 import { trendColor } from "../screens/reports/charts";
 import { CardBox, GoalRing, SectionEyebrow } from "./kit";
-import { Bar, CalendarHeatmap, dimNullLabel, heatColor, heatWeeks, SegBar, TrendSpark } from "./reportKit";
+import { Bar, CalendarHeatmap, dimNullLabel, heatColor, heatWeeks, SegBar, TrendRow, TrendSpark } from "./reportKit";
 import type { WidgetProps } from "./widgets";
 
 /** Wraps a widget body's rows in the phone SectionEyebrow+CardBox chrome, unless a wide board tile
@@ -217,6 +217,11 @@ export function RecentWidget({ onOpenTxns, onNav, chromeless }: WidgetProps) {
     return new Map((ledger?.categories ?? []).map((c) => [c.id, c]));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [version]);
+  const placeById = useMemo(() => {
+    const ledger = store.getLedger();
+    return new Map((ledger?.places ?? []).map((p) => [p.id, p]));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [version]);
 
   // Same sign/description rules as Transactions.tsx's own row (colorOf/signed/descOf) — a
   // deliberately smaller copy (no place/category sub-line) for the compact tile.
@@ -291,8 +296,15 @@ export function RecentWidget({ onOpenTxns, onNav, chromeless }: WidgetProps) {
           // its mock payees are always distinct from the envelope/category name — so the wide
           // meta line drops the label and falls back to date-only (the phone's existing grammar)
           // whenever the two would collide.
+          // Owner round 7 item 30: the wide row has the width for place AND category, so the meta
+          // line carries every part that says something new — the place is dropped when it already
+          // IS the headline (descOf falls back to the place name), same collision rule as `meta`.
           const meta = metaLabel(tx);
-          const metaText = chromeless && meta !== headline ? `${shortDate(tx.date, lang)} · ${meta}` : shortDate(tx.date, lang);
+          const place = tx.placeId ? (placeById.get(tx.placeId)?.name ?? null) : null;
+          const metaParts = chromeless
+            ? [shortDate(tx.date, lang), place !== headline ? place : null, meta !== headline ? meta : null]
+            : [shortDate(tx.date, lang)];
+          const metaText = metaParts.filter(Boolean).join(" · ");
           return (
             <button key={tx.id} onClick={() => onOpenTxns()} style={rowStyle}>
               {chromeless && <span style={{ width: 9, height: 9, borderRadius: 3, background: dotColor(tx), display: "block", flexShrink: 0 }} />}
@@ -633,21 +645,49 @@ export function GoalsWidget({ state, month, onOpenReport, onFillGoals, chromeles
   );
 }
 
-/* ── Trends: the top-5 movers over 6 months, same computeEnvelopeTrends/trendColor as the Trends
- * report. TrendSpark's width is MEASURED (the caller-supplied-width waiver — never the fixed 64/72
- * probe the report row uses), so a wide tile draws a proportionally wider chart.
+/** How many movers each host lists — they differ because the ROW does.
  *
- * Owner round 3 item 17: the WIDE board tile (`chromeless`) forks to its own row grammar, matching
- * the design's home-board trends widget (v3.dc.html:546-560) rather than the phone/report grammar
- * above — a small FIXED-size sparkline (44×20, not measured) stroked in the ENVELOPE's own color
- * (`tr.color`) with a sign-verdict-colored dot (`trendColor`) and a right-aligned signed amount in
- * that same verdict color, no per-row divider. The phone body (chromeless falsy) is untouched:
- * measured-width spark, single `trendColor()` for line+dot+amount, bordered rows.
+ *  The phone body keeps its own compact grammar and its five, unchanged. The wide tile renders the
+ *  REPORT's row (owner round 7 item 29), which measures 49px — 20px of padding, the 8px dot beside
+ *  a 15px name over a 12px "{now} · median {median}" sub-line, and the hairline — and 61px wherever
+ *  that sub-line takes a SECOND line, which at the default tile's 127px text column happens to any
+ *  four-figure amount, in English as much as in Polish. Five of those plus the caption is ~272px of
+ *  content; the mock's 2-high tile has 150px of body, so the tile opened already scrolled past two
+ *  of the five movers it promised.
+ *
+ *  THREE is the design's own count for this widget (v3.dc.html:548, `hint-placeholder-count="3"`),
+ *  and `createDefaultWideWidgets` now starts this tile 3 high so the three always fit (measured:
+ *  198px of content in a 252px body at 1440 with the panel open, English and Polish, all four
+ *  themes). A board SAVED before that — the height is the user's to keep — still shows three rows
+ *  and scrolls a little; resizing the tile or "Reset layout" ends that, and five rows would have
+ *  scrolled four times as far. Nothing is lost by the shorter list either: the caption below counts
+ *  the FULL set of movers, not the rows drawn, and any row opens the Trends report, which lists
+ *  every one of them. */
+const WIDE_TREND_ROWS = 3;
+const PHONE_TREND_ROWS = 5;
+
+/* ── Trends: the biggest movers over 6 months (`WIDE_TREND_ROWS`/`PHONE_TREND_ROWS` of them), same
+ * computeEnvelopeTrends/trendColor as the Trends report. TrendSpark's width is MEASURED (the
+ * caller-supplied-width waiver — never the fixed 64/72 probe the report row uses), so a wide tile
+ * draws a proportionally wider chart.
+ *
+ * Owner round 7 item 29 (his side-by-side of this tile against the Trends report preview) makes
+ * the WIDE board tile (`chromeless`) render the REPORT's own row, `TrendRow` from reportKit: colour
+ * dot + name over a "{now} · median {median}" sub-line, the spark in the middle, the signed delta
+ * over "{arrow} {pct}% vs median" on the right. It is the same component the Trends subscreen
+ * renders, not a lookalike, so the two cannot drift — and every figure in it (avg/median/pct, the
+ * arrow glyph and its colour rule) stays where it already was, in `computeEnvelopeTrends`/
+ * `trendColor`/`DeltaTag`. That supersedes round 3 item 17's compact design-html grammar (a 44×20
+ * spark in the envelope's colour + a bare signed amount), which this branch rendered before.
+ * The phone body (chromeless falsy) is untouched: measured-width spark, name+amount on one line,
+ * chart underneath.
  *
  * v3.dc.html:558-559's trailing `home.trendsHero` caption ("{n} rising · {m} falling") is counted
  * over the FULL trend list (`trendRows`, before its `.slice(0,3..8)` for display) — never just the
  * rows the tile happens to show — so `allTrends` stays unsliced for this count and only `trends`
- * (top 5) feeds the rows. Reuses TrendsReport.tsx's own `"{n} rising · {m} falling"` key and its
+ * (the sliced head) feeds the rows. That is also what makes the tile's shorter list honest: the
+ * caption still says how many envelopes are moving, whichever three are drawn. Reuses
+ * TrendsReport.tsx's own `"{n} rising · {m} falling"` key and its
  * ±10% `deltaPct` threshold (a null `deltaPct` — no positive baseline — counts as neither) rather
  * than inventing a second copy of the same rising/falling classification. ── */
 export function TrendsWidget({ month, onOpenReport, chromeless }: WidgetProps) {
@@ -660,7 +700,7 @@ export function TrendsWidget({ month, onOpenReport, chromeless }: WidgetProps) {
     return ledger ? computeEnvelopeTrends(ledger, month, 6) : [];
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [version, month]);
-  const trends = allTrends.slice(0, 5);
+  const trends = allTrends.slice(0, chromeless ? WIDE_TREND_ROWS : PHONE_TREND_ROWS);
   const rising = allTrends.filter((tr) => tr.deltaPct !== null && tr.deltaPct > 0.1).length;
   const falling = allTrends.filter((tr) => tr.deltaPct !== null && tr.deltaPct < -0.1).length;
   const [rowsRef, rowsW] = useElementWidth<HTMLDivElement>(150);
@@ -672,34 +712,9 @@ export function TrendsWidget({ month, onOpenReport, chromeless }: WidgetProps) {
         <div style={{ padding: "10px 2px", fontSize: 12, color: C.mute }}>{t("Not enough history yet — trends appear after two months of spending.")}</div>
       ) : chromeless ? (
         <div style={{ display: "flex", flexDirection: "column" }}>
-          {trends.map((tr) => {
-            const signColor = trendColor(tr, C);
-            const delta = tr.last - tr.baseline;
-            return (
-              <button key={tr.id} onClick={() => onOpenReport?.("trends")} style={{ ...rowBtnStyle(C, true), padding: "5px 0" }}>
-                <TrendSpark
-                  series={tr.series}
-                  color={tr.color}
-                  dotColor={signColor}
-                  median={tr.baseline}
-                  medianColor={C.line}
-                  dot
-                  w={44}
-                  h={20}
-                  strokeWidth={2.5}
-                  medianStrokeWidth={1.5}
-                  dotRadius={3}
-                />
-                <span style={{ flex: 1, minWidth: 0, fontSize: 12, color: C.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                  {tr.name}
-                </span>
-                <span style={{ flexShrink: 0, fontSize: 11, fontWeight: 750, color: signColor, fontVariantNumeric: "tabular-nums" }}>
-                  {delta >= 0 ? "+" : "−"}
-                  {M(Math.abs(delta))}
-                </span>
-              </button>
-            );
-          })}
+          {trends.map((tr, i) => (
+            <TrendRow key={tr.id} tr={tr} M={M} last={i === trends.length - 1} onClick={() => onOpenReport?.("trends")} />
+          ))}
           {/* v3.dc.html:559 — plain, non-interactive, always shown once there's any trend data. */}
           <span style={{ fontSize: 10.5, color: C.mute, paddingTop: 4 }}>{t("{n} rising · {m} falling", { n: rising, m: falling })}</span>
         </div>
