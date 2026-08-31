@@ -35,6 +35,13 @@ describe("WIDGET_CATALOG", () => {
     }
   });
 
+  it("carries a picker description for exactly the wide-capable ids (owner round 6 item 28 — no bare title can reach the add-widget picker)", () => {
+    for (const id of WIDGET_IDS) {
+      const hasDescription = typeof WIDGET_CATALOG[id].description === "string" && WIDGET_CATALOG[id].description !== WIDGET_CATALOG[id].title;
+      expect(hasDescription).toBe(WIDGET_CATALOG[id].wide);
+    }
+  });
+
   it("every default wide board id satisfies isWideWidget", () => {
     for (const widget of createDefaultWideWidgets()) {
       expect(isWideWidget(widget.id)).toBe(true);
