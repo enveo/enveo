@@ -1,3 +1,4 @@
+import type { ImportRecognitionResult } from "@enveo/shared";
 import { sql } from "drizzle-orm";
 import {
   type AnyPgColumn,
@@ -5,6 +6,7 @@ import {
   bigserial,
   boolean,
   check,
+  customType,
   date,
   index,
   integer,
@@ -21,6 +23,9 @@ import {
 
 /** Amounts in MINOR UNITS / grosz (BIGINT, mode number — safe for a household budget). */
 const money = (name: string) => bigint(name, { mode: "number" });
+const bytea = customType<{ data: Uint8Array; driverData: Uint8Array }>({
+  dataType: () => "bytea",
+});
 
 export const txnTypeEnum = pgEnum("txn_type", ["expense", "income", "transfer"]);
 
@@ -184,6 +189,102 @@ export const accounts = pgTable(
   (t) => ({
     byBudget: index("accounts_budget_idx").on(t.budgetId),
     byAutomaticEnvelope: index("accounts_automatic_envelope_idx").on(t.automaticEnvelopeId),
+  }),
+);
+
+/** Durable screenshot-import work. This is operational state, not a ledger replica entity:
+ * it deliberately has no `changes` trigger and public reads must project away the request,
+ * lease, extraction checkpoint, and uploaded image data. */
+export const importJobs = pgTable(
+  "import_jobs",
+  {
+    id: uuid("id").primaryKey(),
+    clientId: text("client_id").notNull(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    budgetId: uuid("budget_id")
+      .notNull()
+      .references(() => budgets.id, { onDelete: "cascade" }),
+    accountId: uuid("account_id").references(() => accounts.id, { onDelete: "set null" }),
+    provider: text("provider").notNull(),
+    model: text("model").notNull(),
+    locale: text("locale").notNull(),
+    tier: text("tier").notNull(),
+    epoch: integer("epoch").notNull(),
+    requestHash: text("request_hash").notNull(),
+    status: text("status").notNull().default("queued"),
+    phase: text("phase").notNull().default("queued"),
+    resumePhase: text("resume_phase"),
+    attempt: integer("attempt").notNull().default(0),
+    cancelRequested: boolean("cancel_requested").notNull().default(false),
+    leaseOwner: text("lease_owner"),
+    leaseToken: uuid("lease_token"),
+    leaseExpiresAt: timestamp("lease_expires_at", { withTimezone: true, mode: "date" }),
+    extraction: jsonb("extraction").$type<ImportRecognitionResult>(),
+    result: jsonb("result").$type<ImportRecognitionResult>(),
+    proposalCount: integer("proposal_count").notNull().default(0),
+    errorCode: text("error_code"),
+    retryAt: timestamp("retry_at", { withTimezone: true, mode: "date" }),
+    appliedCount: integer("applied_count").notNull().default(0),
+    skippedCount: integer("skipped_count").notNull().default(0),
+    createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" }).notNull().defaultNow(),
+    expiresAt: timestamp("expires_at", { withTimezone: true, mode: "date" }).notNull(),
+  },
+  (t) => ({
+    byUserUpdated: index("import_jobs_user_updated_idx").on(t.userId, t.updatedAt.desc()),
+    byClaim: index("import_jobs_claim_idx").on(t.status, t.retryAt, t.leaseExpiresAt),
+    clientNonempty: check("import_jobs_client_nonempty", sql`char_length(${t.clientId}) > 0`),
+    modelNonempty: check("import_jobs_model_nonempty", sql`char_length(${t.model}) > 0`),
+    localeNonempty: check("import_jobs_locale_nonempty", sql`char_length(${t.locale}) > 0`),
+    requestHashValid: check("import_jobs_request_hash_valid", sql`${t.requestHash} ~ '^[0-9a-f]{64}$'`),
+    providerValid: check("import_jobs_provider_valid", sql`${t.provider} IN ('enveo', 'openai')`),
+    tierValid: check("import_jobs_tier_valid", sql`${t.tier} IN ('plain', 'e2ee')`),
+    statusValid: check("import_jobs_status_valid", sql`${t.status} IN ('queued', 'running', 'ready', 'completed', 'failed', 'cancelled')`),
+    phaseValid: check(
+      "import_jobs_phase_valid",
+      sql`${t.phase} IN ('preparing', 'uploading', 'queued', 'extracting', 'validating', 'enriching', 'reconciling', 'ready', 'applying', 'completed', 'waiting_for_network', 'waiting_for_device', 'waiting_for_unlock', 'retry_scheduled')`,
+    ),
+    resumePhaseValid: check(
+      "import_jobs_resume_phase_valid",
+      sql`${t.resumePhase} IS NULL OR ${t.resumePhase} IN ('extracting', 'validating', 'enriching', 'reconciling')`,
+    ),
+    errorCodeValid: check(
+      "import_jobs_error_code_valid",
+      sql`${t.errorCode} IS NULL OR ${t.errorCode} IN ('network', 'ai_timeout', 'ai_budget_exhausted', 'ai_key_invalid', 'ai_model_unavailable', 'malformed_model_response', 'budget_mismatch', 'tier_mismatch', 'account_unavailable', 'expired')`,
+    ),
+    countersNonnegative: check(
+      "import_jobs_counters_nonnegative",
+      sql`${t.epoch} >= 0 AND ${t.attempt} >= 0 AND ${t.proposalCount} >= 0 AND ${t.appliedCount} >= 0 AND ${t.skippedCount} >= 0`,
+    ),
+    leaseShapeValid: check(
+      "import_jobs_lease_shape_valid",
+      sql`(${t.leaseOwner} IS NULL AND ${t.leaseToken} IS NULL AND ${t.leaseExpiresAt} IS NULL) OR (${t.leaseOwner} IS NOT NULL AND char_length(${t.leaseOwner}) > 0 AND ${t.leaseToken} IS NOT NULL AND ${t.leaseExpiresAt} IS NOT NULL)`,
+    ),
+    expiryValid: check("import_jobs_expiry_valid", sql`${t.expiresAt} > ${t.createdAt}`),
+  }),
+);
+
+/** Uploaded screenshots are retained only while processing can still need them. Bytes never
+ * leave the worker-facing claim path and are deleted atomically with the extraction checkpoint. */
+export const importJobImages = pgTable(
+  "import_job_images",
+  {
+    jobId: uuid("job_id")
+      .notNull()
+      .references(() => importJobs.id, { onDelete: "cascade" }),
+    position: integer("position").notNull(),
+    mimeType: text("mime_type").notNull(),
+    sha256: text("sha256").notNull(),
+    byteLength: integer("byte_length").notNull(),
+    content: bytea("content").notNull(),
+  },
+  (t) => ({
+    pk: primaryKey({ columns: [t.jobId, t.position] }),
+    positionNonnegative: check("import_job_images_position_nonnegative", sql`${t.position} >= 0`),
+    sha256Valid: check("import_job_images_sha256_valid", sql`${t.sha256} ~ '^[0-9a-f]{64}$'`),
+    byteLengthValid: check("import_job_images_byte_length_valid", sql`${t.byteLength} > 0 AND octet_length(${t.content}) = ${t.byteLength}`),
   }),
 );
 

@@ -16,6 +16,49 @@ import { pl } from "./i18n/locales/pl";
 /** How lib/sync.ts and lib/api.ts surface a failed request: "<status> <body>". */
 const httpError = (status: number, body: unknown) => new Error(`${status} ${JSON.stringify(body)}`);
 
+const IMPORT_JOB = {
+  id: "11111111-1111-4111-8111-111111111111",
+  budgetId: "22222222-2222-4222-8222-222222222222",
+  accountId: "33333333-3333-4333-8333-333333333333",
+  provider: { provider: "enveo", model: "gpt-5.6-luna" },
+  tier: "plain",
+  status: "queued",
+  phase: "queued",
+  resumePhase: null,
+  cancelRequested: false,
+  attempt: 0,
+  errorCode: null,
+  retryAt: null,
+  createdAt: "2026-08-24T12:00:00.000Z",
+  updatedAt: "2026-08-24T12:00:00.000Z",
+  expiresAt: "2026-08-31T12:00:00.000Z",
+  proposalCount: 0,
+  locale: "pl-PL",
+  epoch: 0,
+  result: null,
+  appliedCount: 0,
+  skippedCount: 0,
+} as const;
+
+const IMPORT_JOB_SUMMARY = {
+  id: IMPORT_JOB.id,
+  budgetId: IMPORT_JOB.budgetId,
+  accountId: IMPORT_JOB.accountId,
+  provider: IMPORT_JOB.provider,
+  tier: IMPORT_JOB.tier,
+  status: IMPORT_JOB.status,
+  phase: IMPORT_JOB.phase,
+  resumePhase: IMPORT_JOB.resumePhase,
+  cancelRequested: IMPORT_JOB.cancelRequested,
+  attempt: IMPORT_JOB.attempt,
+  errorCode: IMPORT_JOB.errorCode,
+  retryAt: IMPORT_JOB.retryAt,
+  createdAt: IMPORT_JOB.createdAt,
+  updatedAt: IMPORT_JOB.updatedAt,
+  expiresAt: IMPORT_JOB.expiresAt,
+  proposalCount: IMPORT_JOB.proposalCount,
+} as const;
+
 describe("account preferences API client", () => {
   it("sends the verified user assertion with a strict field patch", async () => {
     const originalFetch = globalThis.fetch;
@@ -33,6 +76,86 @@ describe("account preferences API client", () => {
     expect(request?.url).toBe("/api/preferences/account");
     expect(request?.init?.method).toBe("PATCH");
     expect(JSON.parse(String(request?.init?.body))).toEqual({ userId: "user-a", patch: { lang: "pl" } });
+  });
+});
+
+describe("screenshot recognition API client", () => {
+  it("uses the versioned operator and vaulted-BYOK recognition routes", async () => {
+    const originalFetch = globalThis.fetch;
+    const requests: Array<{ url: string; body: unknown }> = [];
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      requests.push({ url: String(input), body: JSON.parse(String(init?.body)) });
+      return Response.json({ rows: [], proposals: [] });
+    }) as typeof fetch;
+    try {
+      await api.importExtract("11111111-1111-1111-1111-111111111111", ["data:image/png;base64,AA=="], "pl");
+      await api.byokImportExtract(
+        "22222222-2222-2222-2222-222222222222",
+        "gpt-5.6-luna",
+        "11111111-1111-1111-1111-111111111111",
+        ["data:image/png;base64,AA=="],
+        "pl",
+      );
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+
+    expect(requests.map((request) => request.url)).toEqual(["/api/import/recognize", "/api/ai/byok/import/recognize"]);
+    expect(requests[0]!.body).toMatchObject({ accountId: "11111111-1111-1111-1111-111111111111" });
+    expect(requests[1]!.body).toMatchObject({
+      budgetId: "22222222-2222-2222-2222-222222222222",
+      accountId: "11111111-1111-1111-1111-111111111111",
+    });
+  });
+});
+
+describe("durable import job API client", () => {
+  it("uses the job collection and tenant-asserted mutation routes", async () => {
+    const originalFetch = globalThis.fetch;
+    const requests: Array<{ url: string; method: string; body?: unknown }> = [];
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      requests.push({
+        url,
+        method: init?.method ?? "GET",
+        ...(init?.body ? { body: JSON.parse(String(init.body)) } : {}),
+      });
+      return Response.json(url === "/api/import/jobs" && (init?.method ?? "GET") === "GET" ? [IMPORT_JOB_SUMMARY] : IMPORT_JOB);
+    }) as typeof fetch;
+    const id = "11111111-1111-4111-8111-111111111111";
+    const budgetId = "22222222-2222-4222-8222-222222222222";
+    const accountId = "33333333-3333-4333-8333-333333333333";
+    try {
+      await api.importJobs.create({ id, budgetId, accountId, locale: "pl-PL", images: ["data:image/png;base64,iVBORw0KGgo="] });
+      await api.importJobs.list();
+      await api.importJobs.get(id);
+      await api.importJobs.cancel(id, budgetId);
+      await api.importJobs.retry(id, budgetId);
+      await api.importJobs.complete(id, { budgetId, appliedCount: 2, skippedCount: 1 });
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+
+    expect(requests.map(({ url, method }) => [method, url])).toEqual([
+      ["POST", "/api/import/jobs"],
+      ["GET", "/api/import/jobs"],
+      ["GET", `/api/import/jobs/${id}`],
+      ["POST", `/api/import/jobs/${id}/cancel`],
+      ["POST", `/api/import/jobs/${id}/retry`],
+      ["POST", `/api/import/jobs/${id}/complete`],
+    ]);
+    expect(requests.slice(3).map((request) => request.body)).toEqual([{ budgetId }, { budgetId }, { budgetId, appliedCount: 2, skippedCount: 1 }]);
+  });
+
+  it("rejects a wire detail whose lifecycle fields contradict each other", async () => {
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = (async (_input: RequestInfo | URL, _init?: RequestInit) =>
+      Response.json({ ...IMPORT_JOB, status: "ready", phase: "ready", result: null })) as typeof fetch;
+    try {
+      await expect(api.importJobs.get(IMPORT_JOB.id)).rejects.toThrow();
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
   });
 });
 

@@ -1,5 +1,12 @@
-import { describe, expect, it } from "bun:test";
+import { afterEach, describe, expect, it } from "bun:test";
+import { IDBFactory } from "fake-indexeddb";
+import { __resetStorageForTests, clearLocalData, idbGetAll, idbPut } from "./idb";
 import { completeExplicitSignOut, ExplicitSignOutPendingError, prepareExplicitSignOut, type SignOutDeps } from "./signOut";
+
+afterEach(() => {
+  delete (globalThis as Record<string, unknown>).indexedDB;
+  __resetStorageForTests();
+});
 
 function fixture(overrides: Partial<SignOutDeps> = {}) {
   const calls: string[] = [];
@@ -131,5 +138,18 @@ describe("explicit sign-out", () => {
 
     await expect(completeExplicitSignOut("discard", f.deps)).rejects.toThrow("clear_failed");
     expect(f.calls).not.toContain("reloadOrLogin");
+  });
+
+  it("removes durable import jobs and unacknowledged drafts with the signed-out account", async () => {
+    (globalThis as Record<string, unknown>).indexedDB = new IDBFactory();
+    __resetStorageForTests();
+    await idbPut("importJobs", { id: "11111111-1111-1111-1111-111111111111", ciphertext: "v2.job" });
+    await idbPut("importDrafts", { id: "22222222-2222-2222-2222-222222222222", requestHash: "draft" });
+    const f = fixture({ clearLocalAccountData: clearLocalData });
+
+    await completeExplicitSignOut("discard", f.deps);
+
+    expect(await idbGetAll("importJobs")).toEqual([]);
+    expect(await idbGetAll("importDrafts")).toEqual([]);
   });
 });

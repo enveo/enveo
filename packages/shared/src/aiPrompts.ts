@@ -9,8 +9,24 @@
  */
 import { z } from "zod";
 import type { BudgetSuggestionBasis, ProposedEnvelopeDelta } from "./aiBudget";
+import { AI_VISION_TIMEOUT_MS } from "./aiTransport";
 import { computeBudgetState, prevMonth } from "./budget";
-import type { ClientLedger } from "./types";
+import { type ImportHistoryRecord, type ImportHistorySelection, selectImportHistoryCandidates } from "./importHistory";
+import {
+  applyImportEnrichment,
+  IMPORT_RELATION_KINDS,
+  IMPORT_REVIEW_REASONS,
+  IMPORT_SEMANTIC_KINDS,
+  type ImportEnrichmentAnswer,
+  type ImportEnrichmentRow,
+  type ImportExtractBatch,
+  type ImportRecognitionResult,
+  needsImportEnrichment,
+  type ReconciledImportRecognitionResult,
+  reconcileImportProposals,
+  validateImportExtraction,
+} from "./importRecognition";
+import type { Account, Category, ClientLedger, Envelope, Transaction } from "./types";
 
 /* ── Shared chat request shape (OpenAI chat/completions) ─────────────── */
 
@@ -349,20 +365,33 @@ export function parseAgentSuggestResponse(raw: string): ProposedEnvelopeDelta[] 
 
 /* ── Import from screenshots (cycle 1: facts from the screenshot) ────── */
 
-const importRawTxn = z.object({
-  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-  amount: z.number().int().positive(),
-  type: z.enum(["expense", "income", "refund"]),
-  rawPlace: z.string(),
-  tag: z.string(),
-  /* ISO-4217 of the returned amount (the account currency, unless the row shows another one). */
-  currency: z.string(),
-  /* Original foreign amount + code (e.g. "5.00 USD") when this row is a converted/settled
-     charge; "" when not applicable. Required by the strict schema — never guessed/omitted. */
-  fxOriginal: z.string(),
+const importRawRelation = z.object({ kind: z.enum(IMPORT_RELATION_KINDS), rowId: z.string().min(1) });
+const importRawRow = z.object({
+  rowId: z.string().min(1),
+  imageIndex: z.number().int().nonnegative(),
+  visualOrder: z.number().int().nonnegative(),
+  rawTextLines: z.array(z.string()),
+  date: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/)
+    .nullable(),
+  amount: z.preprocess((value) => (value === 0 ? null : value), z.number().int().positive().nullable()),
+  currency: z.string().nullable(),
+  direction: z.enum(["debit", "credit", "unknown"]),
+  postingStatus: z.enum(["posted", "pending", "declined", "unknown"]),
+  rowRole: z.enum(["financial_event", "supporting_detail", "ui_metadata"]),
+  semanticKind: z.enum(IMPORT_SEMANTIC_KINDS),
+  relation: importRawRelation.nullable(),
+  confidence: z.enum(["low", "medium", "high"]),
+  reviewReasons: z.array(z.enum(IMPORT_REVIEW_REASONS)),
 });
-const importRawOutput = z.object({ transactions: z.array(importRawTxn) });
-
+const importRawOutput = z.object({ rows: z.array(importRawRow) }).superRefine(({ rows }, ctx) => {
+  const ids = new Set<string>();
+  rows.forEach((row, index) => {
+    if (ids.has(row.rowId)) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["rows", index, "rowId"], message: "rowId must be unique" });
+    ids.add(row.rowId);
+  });
+});
 export const IMPORT_EXTRACT_JSON_SCHEMA = {
   name: "extracted_transactions",
   strict: true,
@@ -370,28 +399,52 @@ export const IMPORT_EXTRACT_JSON_SCHEMA = {
     type: "object",
     additionalProperties: false,
     properties: {
-      transactions: {
+      rows: {
         type: "array",
         items: {
           type: "object",
           additionalProperties: false,
           properties: {
-            date: { type: "string", description: "Transaction date YYYY-MM-DD" },
-            amount: { type: "integer", description: "Amount in integer minor units, always positive" },
-            type: { type: "string", enum: ["expense", "income", "refund"] },
-            rawPlace: { type: "string", description: "Raw payee/store description exactly as shown on the screenshot" },
-            tag: { type: "string", description: "Short normalized merchant tag, e.g. LIDL (UPPERCASE, no address/numbers)" },
-            currency: { type: "string", description: "ISO-4217 code of the returned amount — the account currency unless this row shows a different one" },
-            fxOriginal: {
-              type: "string",
-              description: 'Original foreign-currency amount when this row is a converted/settled charge, e.g. "5.00 USD"; empty string otherwise',
+            rowId: { type: "string" },
+            imageIndex: { type: "integer", minimum: 0 },
+            visualOrder: { type: "integer", minimum: 0 },
+            rawTextLines: { type: "array", items: { type: "string" } },
+            date: { type: ["string", "null"] },
+            amount: { type: ["integer", "null"], exclusiveMinimum: 0 },
+            currency: { type: ["string", "null"] },
+            direction: { type: "string", enum: ["debit", "credit", "unknown"] },
+            postingStatus: { type: "string", enum: ["posted", "pending", "declined", "unknown"] },
+            rowRole: { type: "string", enum: ["financial_event", "supporting_detail", "ui_metadata"] },
+            semanticKind: { type: "string", enum: IMPORT_SEMANTIC_KINDS },
+            relation: {
+              type: ["object", "null"],
+              additionalProperties: false,
+              properties: { kind: { type: "string", enum: IMPORT_RELATION_KINDS }, rowId: { type: "string" } },
+              required: ["kind", "rowId"],
             },
+            confidence: { type: "string", enum: ["low", "medium", "high"] },
+            reviewReasons: { type: "array", items: { type: "string", enum: IMPORT_REVIEW_REASONS } },
           },
-          required: ["date", "amount", "type", "rawPlace", "tag", "currency", "fxOriginal"],
+          required: [
+            "rowId",
+            "imageIndex",
+            "visualOrder",
+            "rawTextLines",
+            "date",
+            "amount",
+            "currency",
+            "direction",
+            "postingStatus",
+            "rowRole",
+            "semanticKind",
+            "relation",
+            "confidence",
+            "reviewReasons",
+          ],
         },
       },
     },
-    required: ["transactions"],
+    required: ["rows"],
   },
 } as const;
 
@@ -403,18 +456,52 @@ export interface ImportPromptRefs {
   categories: Array<{ id: string; name: string }>;
 }
 
+const importExtractResponseFormat = (imageCount: number): Record<string, unknown> => {
+  const rows = IMPORT_EXTRACT_JSON_SCHEMA.schema.properties.rows;
+  const items = rows.items;
+  return {
+    type: "json_schema",
+    json_schema: {
+      ...IMPORT_EXTRACT_JSON_SCHEMA,
+      schema: {
+        ...IMPORT_EXTRACT_JSON_SCHEMA.schema,
+        properties: {
+          ...IMPORT_EXTRACT_JSON_SCHEMA.schema.properties,
+          rows: {
+            ...rows,
+            items: {
+              ...items,
+              properties: {
+                ...items.properties,
+                imageIndex: {
+                  ...items.properties.imageIndex,
+                  ...(imageCount > 0 ? { maximum: imageCount - 1 } : {}),
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+  };
+};
+
 export function buildImportExtractPrompt(images: string[], _refs: ImportPromptRefs, today: string, locale: AiLocale, currency: string): ChatRequest {
   const sysExtract =
-    "You extract transactions from screenshots (Apple Wallet, bank account history, payment confirmations). " +
+    "You extract facts from screenshots (Apple Wallet, bank account history, payment confirmations), not hypotheses. " +
     `Today is ${today} — resolve relative dates ("today", "yesterday") against this date; when the year is missing, assume the most recent past date. ` +
-    "Return amounts in integer minor units (int, positive); encode the direction in type: 'expense' for charges, 'income' for inflows. " +
-    "rawPlace: copy the payee/store description EXACTLY as it appears on the screenshot (with address, numbers etc.). " +
-    "tag: a short normalized merchant identifier (UPPERCASE, without address and numbers, e.g. LIDL, ORLEN, ZABKA, NETFLIX). " +
-    "Skip balances, summaries, holds and rows that are not transactions. Return each transaction once. " +
-    "A positive amount that is a refund, return or chargeback of a purchase — NOT salary, NOT an incoming transfer — has type 'refund'; a genuine inflow stays 'income'. " +
-    `currency: the ISO-4217 code of the returned amount — the account currency (${currency}) unless this row itself shows a different currency. ` +
-    `When a foreign-currency charge is accompanied by its conversion/settlement row in the account currency (${currency}), return ONE transaction: the amount in ${currency}, rawPlace of the MERCHANT (not the exchange row), and fxOriginal set to the original foreign amount with its code (e.g. "5.00 USD"); do not return the conversion row separately. ` +
-    'When only a foreign amount is visible with no conversion row, return that amount with its own currency — NEVER convert or guess an exchange rate; fxOriginal stays "" unless noted above. ' +
+    "One output row means one coherent transaction-list entry, date divider, balance/summary, or other distinct text block — not each text line inside an entry. " +
+    "Group its amount, merchant/payee, card suffix, and secondary text into that row's rawTextLines. Do not create separate rows for icons, loyalty/reward points, card suffixes, exchange-rate text, or status text that belongs to the same entry. " +
+    "Return those coherent rows in visual order. Use imageIndex plus visualOrder to preserve where each appeared. Preserve each visible line in rawTextLines; trim only surrounding whitespace. " +
+    "Rows that are labels, date dividers, balances, summaries, or other interface chrome are still visible evidence: mark them ui_metadata. Use financial_event only for a ledger money movement and supporting_detail for evidence such as a linked FX conversion. " +
+    "Return exactly one financial_event for each coherent entry with a primary ledger amount, regardless of whether its meaning is uncertain. Count the visible primary ledger amounts before answering, then verify that each has its own financial_event row. A reward, refund, top-up, deposit, or transfer entry is still a financial_event. Repeated entries remain separate even when their text and amount are identical; never deduplicate entries within one screenshot. Numbers in secondary text never create another financial_event. " +
+    "A visible date divider applies to the transaction entries below it until the next divider; the divider itself remains ui_metadata. " +
+    "For a financial_event, amount and currency come from the primary ledger amount printed for that entry; amount is the positive magnitude without its visible sign. Store the visible sign only in direction. Amounts are positive integer minor units; never use a balance, loyalty/reward points, card suffix, or exchange rate as amount. " +
+    "An explicit + or incoming label means credit; an explicit − or outgoing label means debit. Do not infer direction from semanticKind; use unknown when the direction is not visible. " +
+    "Classify semanticKind from the visible event wording even when another fact is missing or unsupported. Use cashback_or_reward only for explicit reward/cashback/moneyback text, merchant_refund only for explicit refund/return/chargeback text, and account_topup only for explicit top-up or account-funding text. Use transfer kinds only when transfer wording is visible. " +
+    "Use null for unreadable date, amount, or currency; never invent a fact. When any digit of the primary amount is obscured, clipped, or unreadable, use amount null rather than completing or guessing it. Use pending or declined only when a visible status marker belongs to that exact entry. A clock, hourglass, spinner, or explicit pending word attached to an entry is a pending marker. A word in a merchant name or your own uncertainty is not a pending or declined marker. Use posted for an ordinary completed history entry with no pending or declined marker. Use unknown only when the status itself is unreadable or ambiguous. postingStatus, rowRole, semanticKind, confidence, and reviewReasons describe only what is shown. Keep reviewReasons empty when the row is clear; add only reasons supported by a specific visible ambiguity. " +
+    `currency is ISO-4217 uppercase when readable; the account currency is ${currency}. NEVER convert or guess an exchange rate. ` +
+    "Express relationships by rowId: retain linked FX evidence as supporting_detail with relation kind fx_for; do not merge or discard it. An adjacent FX conversion or rate block stays a separate supporting_detail row even when it is visually attached to the purchase. Compare all supplied screenshots for overlap before answering. Keep each visibly repeated entry as its own row and link the later occurrence with duplicate_of; never silently drop it. Use duplicate_of only when the same entry is visibly repeated across overlapping screenshots. Set relation to null unless the screenshot visibly establishes the link between those exact rows. " +
     languageDirectives(locale) +
     "Return JSON.";
   return {
@@ -428,39 +515,336 @@ export function buildImportExtractPrompt(images: string[], _refs: ImportPromptRe
         ],
       },
     ],
-    responseFormat: { type: "json_schema", json_schema: IMPORT_EXTRACT_JSON_SCHEMA },
+    responseFormat: importExtractResponseFormat(images.length),
   };
 }
 
-/** Facts from the screenshot (no assignments — those are added by cycle 2 / the caller).
- *  `type: "refund"` from the model is mapped to the domain truth `{type: "expense", isRefund: true}`
- *  — a refund is an expense reversal, never an "income" (it must return to its envelope, not
- *  land in "ready to assign"). */
-export interface ImportExtractItem {
-  date: string;
-  amount: number;
-  type: "expense" | "income";
-  isRefund: boolean;
-  rawPlace: string;
-  tag: string;
-  /** ISO-4217 of `amount` (UPPERCASE). */
-  currency: string;
-  /** Original foreign amount + code (e.g. "5.00 USD") when this row is a converted/settled
-   *  charge; "" when not applicable. */
-  fxOriginal: string;
+export interface ImportEnrichPromptInput {
+  result: ImportRecognitionResult;
+  history: Array<{ rowId: string; selection: ImportHistorySelection }>;
+  envelopes: Array<{ id: string; name: string }>;
+  categories: Array<{ id: string; name: string }>;
+  accounts: Array<{ id: string; name: string }>;
+}
+
+export interface ImportEnrichmentConstraints {
+  envelopeIds: readonly string[];
+  categoryIds: readonly string[];
+  accountIds: readonly string[];
+}
+
+export const IMPORT_ENRICH_JSON_SCHEMA = {
+  name: "enriched_import_rows",
+  strict: true,
+  schema: {
+    type: "object",
+    additionalProperties: false,
+    properties: {
+      rows: {
+        type: "array",
+        items: {
+          type: "object",
+          additionalProperties: false,
+          properties: {
+            rowId: { type: "string" },
+            name: { type: "string" },
+            place: { type: ["string", "null"] },
+            envelopeId: { type: ["string", "null"] },
+            categoryId: { type: ["string", "null"] },
+            semanticKind: { type: "string", enum: IMPORT_SEMANTIC_KINDS },
+            relation: {
+              type: ["object", "null"],
+              additionalProperties: false,
+              properties: { kind: { type: "string", enum: IMPORT_RELATION_KINDS }, rowId: { type: "string" } },
+              required: ["kind", "rowId"],
+            },
+            reviewReasons: { type: "array", items: { type: "string", enum: IMPORT_REVIEW_REASONS } },
+          },
+          required: ["rowId", "name", "place", "envelopeId", "categoryId", "semanticKind", "relation", "reviewReasons"],
+        },
+      },
+    },
+    required: ["rows"],
+  },
+} as const;
+
+const canonicalPromptEntities = (entities: Array<{ id: string; name: string }>): Array<{ id: string; name: string }> =>
+  [...entities].sort((left, right) => (left.id < right.id ? -1 : left.id > right.id ? 1 : 0));
+
+/** Builds cycle two from validated facts and bounded, compatible history evidence. */
+export function buildImportEnrichPrompt(input: ImportEnrichPromptInput, locale: AiLocale): ChatRequest {
+  const proposalById = new Map(input.result.proposals.map((proposal) => [proposal.rowId, proposal]));
+  const historyById = new Map(input.history.map((entry) => [entry.rowId, entry.selection]));
+  const rows = input.result.rows.map((row) => ({
+    ...row,
+    proposal: proposalById.get(row.rowId),
+    historyCandidates: historyById.get(row.rowId)?.candidates.slice(0, 5) ?? [],
+    historyConflict: historyById.get(row.rowId)?.conflict ?? false,
+  }));
+  const system =
+    "You conservatively enrich validated screenshot-import rows using compatible ledger history as evidence, never as fact. " +
+    "Return one annotation per supplied row. Preserve all visible facts: never correct or replace dates, amounts, currencies, directions, posting status, raw text, row identity, transaction type, refund state, or transfer endpoint. " +
+    "For envelopeId and categoryId select a supplied existing id or null; never invent an id. Relations may reference only a supplied rowId. " +
+    "Return each supplied reviewReasons list unchanged; deterministic validation adds any reason caused by your semantic or relation annotation. " +
+    languageDirectives(locale) +
+    "Return JSON.";
+  return {
+    messages: [
+      { role: "system", content: system },
+      {
+        role: "user",
+        content: JSON.stringify({
+          rows,
+          entities: {
+            envelopes: canonicalPromptEntities(input.envelopes),
+            categories: canonicalPromptEntities(input.categories),
+            accounts: canonicalPromptEntities(input.accounts),
+          },
+        }),
+      },
+    ],
+    responseFormat: { type: "json_schema", json_schema: IMPORT_ENRICH_JSON_SCHEMA },
+    reasoningEffort: "low",
+  };
+}
+
+const enrichAllowedKeys = new Set(["rowId", "name", "place", "envelopeId", "categoryId", "semanticKind", "relation", "reviewReasons"]);
+
+/** Parses annotations while retaining evidence of any attempted fact rewrite. */
+export function parseImportEnrichResponse(
+  raw: string,
+  constraints: ImportEnrichmentConstraints = { envelopeIds: [], categoryIds: [], accountIds: [] },
+): ImportEnrichmentAnswer {
+  const input = JSON.parse(raw) as { rows?: unknown };
+  if (!Array.isArray(input.rows)) throw new Error("invalid import enrichment response");
+  const rows: ImportEnrichmentRow[] = input.rows.map((value) => {
+    if (!value || typeof value !== "object") throw new Error("invalid import enrichment row");
+    const row = value as Record<string, unknown>;
+    const parsed = z
+      .object({
+        rowId: z.string().min(1),
+        name: z.string(),
+        place: z.string().nullable(),
+        envelopeId: z.string().nullable(),
+        categoryId: z.string().nullable(),
+        semanticKind: z.enum(IMPORT_SEMANTIC_KINDS),
+        relation: importRawRelation.nullable(),
+        reviewReasons: z.array(z.enum(IMPORT_REVIEW_REASONS)),
+      })
+      .parse(row);
+    return { ...parsed, factCorrectionAttempt: Object.keys(row).some((key) => !enrichAllowedKeys.has(key)) };
+  });
+  return {
+    rows,
+    allowedEnvelopeIds: [...constraints.envelopeIds],
+    allowedCategoryIds: [...constraints.categoryIds],
+    allowedAccountIds: [...constraints.accountIds],
+  };
+}
+
+export type ImportRecognitionChat = (request: ChatRequest, timeoutMs?: number) => Promise<string>;
+
+export class ImportEnrichmentMalformedError extends Error {
+  constructor(readonly reason: unknown) {
+    super("invalid import enrichment response");
+    this.name = "ImportEnrichmentMalformedError";
+  }
+}
+
+export interface ImportRecognitionPipelineInput {
+  images: string[];
+  locale: AiLocale;
+  today: string;
+  budgetCurrency: string;
+  accountId: string;
+  accounts: Account[];
+  envelopes: Envelope[];
+  categories: Category[];
+  transactions: Transaction[];
+  historyRecords: ImportHistoryRecord[];
+  chat: ImportRecognitionChat;
+  /** Durable runners may resume after cycle one without retaining screenshots. */
+  checkpoint?: ImportRecognitionResult;
+  /** Default preserves the established reconcile-before-enrichment Stage A behavior.
+   * Durable jobs opt into checkpoint-safe pre-reconciliation persistence. */
+  pipelineMode?: "default" | "durable";
+  /** Interactive callers retain the historical cycle-two fallback. Durable workers need
+   * typed failures so Postgres retry policy, rather than an in-memory fallback, decides. */
+  cycleTwoFailureMode?: "fallback" | "strict";
+  lifecycle?: {
+    beforeUpstream?: () => Promise<void>;
+    afterUpstream?: () => Promise<void>;
+    saveExtraction?: (result: ImportRecognitionResult) => Promise<void>;
+    advancePhase?: (phase: "enriching" | "reconciling") => Promise<void>;
+    /** Durable Stage A output, before current-ledger duplicate/account reconciliation. */
+    saveResult?: (result: ImportRecognitionResult) => Promise<void>;
+  };
+}
+
+const mergeReviewReasons = (...groups: ReadonlyArray<readonly (typeof IMPORT_REVIEW_REASONS)[number][]>): (typeof IMPORT_REVIEW_REASONS)[number][] => [
+  ...new Set(groups.flat()),
+];
+
+/** Shared extraction → validation → history → optional enrichment pipeline. */
+export async function runImportRecognitionPipeline(input: ImportRecognitionPipelineInput): Promise<ReconciledImportRecognitionResult> {
+  const durable = input.pipelineMode === "durable";
+  const reconcile = (result: ImportRecognitionResult): ReconciledImportRecognitionResult => ({
+    rows: result.rows,
+    proposals: reconcileImportProposals({
+      proposals: result.proposals,
+      transactions: input.transactions,
+      accounts: input.accounts,
+      envelopes: input.envelopes,
+      categories: input.categories,
+      selectedAccountId: input.accountId,
+    }),
+  });
+
+  let result: ImportRecognitionResult;
+  if (input.checkpoint) {
+    // Rows are the durable source of truth. Re-validation deliberately discards proposal
+    // mutations produced by creation-time history or ledger reconciliation.
+    result = validateImportExtraction({ batch: { rows: input.checkpoint.rows }, budgetCurrency: input.budgetCurrency });
+  } else {
+    await input.lifecycle?.beforeUpstream?.();
+    const extractionRaw = await input.chat(
+      buildImportExtractPrompt(input.images, { envelopes: [], categories: [] }, input.today, input.locale, input.budgetCurrency),
+      AI_VISION_TIMEOUT_MS,
+    );
+    await input.lifecycle?.afterUpstream?.();
+    const batch = parseImportExtractResponse(extractionRaw, input.images.length);
+    result = validateImportExtraction({ batch, budgetCurrency: input.budgetCurrency });
+    if (durable) await input.lifecycle?.saveExtraction?.(result);
+  }
+
+  // This is the pre-Task-4 ordering for every existing caller. Reconciliation annotations
+  // intentionally participate in history selection, needsImportEnrichment, and cycle two.
+  if (!durable) result = reconcile(result);
+
+  const ownedAccountIds = input.accounts.filter((account) => !account.archived).map((account) => account.id);
+  const history = result.proposals.map((proposal) => ({
+    rowId: proposal.rowId,
+    selection: selectImportHistoryCandidates({ accountId: input.accountId, ownedAccountIds, proposal }, input.historyRecords),
+  }));
+  result = {
+    rows: result.rows,
+    proposals: result.proposals.map((proposal) => {
+      const selection = history.find((entry) => entry.rowId === proposal.rowId)!.selection;
+      const historyReasons = [
+        ...(selection.conflict ? (["history_conflict"] as const) : []),
+        ...(selection.candidates.length > 1 ? (["multiple_history_candidates"] as const) : []),
+      ];
+      return { ...proposal, reviewReasons: mergeReviewReasons(proposal.reviewReasons, historyReasons) };
+    }),
+  };
+  if (!needsImportEnrichment(result)) {
+    await input.lifecycle?.advancePhase?.("reconciling");
+    if (durable) {
+      await input.lifecycle?.saveResult?.(result);
+      return reconcile(result);
+    }
+    return result as ReconciledImportRecognitionResult;
+  }
+
+  const activeEnvelopes = input.envelopes.filter((envelope) => !envelope.archived);
+  const currentAccounts = input.accounts.filter((account) => !account.archived);
+  await input.lifecycle?.advancePhase?.("enriching");
+  let raw: string;
+  await input.lifecycle?.beforeUpstream?.();
+  try {
+    raw = await input.chat(
+      buildImportEnrichPrompt(
+        {
+          result,
+          history,
+          envelopes: activeEnvelopes.map(({ id, name }) => ({ id, name })),
+          categories: input.categories.map(({ id, name }) => ({ id, name })),
+          accounts: currentAccounts.map(({ id, name }) => ({ id, name })),
+        },
+        input.locale,
+      ),
+    );
+  } catch (error) {
+    if (input.cycleTwoFailureMode === "strict") throw error;
+    await input.lifecycle?.advancePhase?.("reconciling");
+    if (durable) {
+      await input.lifecycle?.saveResult?.(result);
+      return reconcile(result);
+    }
+    return result as ReconciledImportRecognitionResult;
+  }
+  await input.lifecycle?.afterUpstream?.();
+  let finalResult = result;
+  try {
+    const answer = parseImportEnrichResponse(raw, {
+      envelopeIds: activeEnvelopes.map((envelope) => envelope.id),
+      categoryIds: input.categories.map((category) => category.id),
+      accountIds: currentAccounts.map((account) => account.id),
+    });
+    const merged = applyImportEnrichment(result, answer);
+    const annotations = new Map(merged.proposals.map((proposal) => [proposal.rowId, proposal]));
+    const finalRows = result.rows.map((row) => {
+      const annotation = annotations.get(row.rowId)!;
+      return {
+        ...row,
+        semanticKind: annotation.semanticKind,
+        relation: annotation.relation,
+        reviewReasons: mergeReviewReasons(row.reviewReasons, annotation.reviewReasons),
+      };
+    });
+    const final = validateImportExtraction({ batch: { rows: finalRows }, budgetCurrency: input.budgetCurrency });
+    const finalRowById = new Map(finalRows.map((row) => [row.rowId, row]));
+    const enriched = final.proposals.map((proposal) => {
+      const annotation = annotations.get(proposal.rowId)!;
+      const row = finalRowById.get(proposal.rowId)!;
+      const actionableAnnotationReasons =
+        row.rowRole === "financial_event" && row.postingStatus !== "pending" && row.postingStatus !== "declined" ? annotation.reviewReasons : [];
+      return {
+        ...proposal,
+        name: annotation.name,
+        placeName: annotation.placeName,
+        envelopeId: annotation.envelopeId,
+        categoryId: annotation.categoryId,
+        reviewReasons: mergeReviewReasons(proposal.reviewReasons, actionableAnnotationReasons),
+        selected: proposal.selected && annotation.selected,
+      };
+    });
+    finalResult = {
+      rows: result.rows,
+      proposals: enriched,
+    };
+  } catch (error) {
+    if (input.cycleTwoFailureMode === "strict") throw new ImportEnrichmentMalformedError(error);
+    finalResult = result;
+  }
+  await input.lifecycle?.advancePhase?.("reconciling");
+  if (durable) await input.lifecycle?.saveResult?.(finalResult);
+  return reconcile(finalResult);
 }
 
 /** Throws on an invalid shape (like `rawOutput.parse` in the route). */
-export function parseImportExtractResponse(raw: string): ImportExtractItem[] {
-  const parsed = importRawOutput.parse(JSON.parse(raw));
-  return parsed.transactions.map((t) => ({
-    date: t.date,
-    amount: t.amount,
-    type: t.type === "refund" ? "expense" : t.type,
-    isRefund: t.type === "refund",
-    rawPlace: t.rawPlace,
-    tag: t.tag.trim().toUpperCase(),
-    currency: t.currency.trim().toUpperCase(),
-    fxOriginal: t.fxOriginal.trim(),
+export function parseImportExtractResponse(raw: string, imageCount: number): ImportExtractBatch {
+  if (!Number.isInteger(imageCount) || imageCount < 1 || imageCount > 6) throw new Error("invalid import image count");
+  const input: unknown = JSON.parse(raw);
+  const parsed = importRawOutput.parse(input);
+  const rows = parsed.rows.map((row) => ({
+    ...row,
+    rawTextLines: row.rawTextLines.map((line) => line.trim()),
+    currency: row.currency?.trim().toUpperCase() ?? null,
   }));
+  if (rows.some((row) => row.imageIndex >= imageCount)) throw new Error("import row imageIndex is outside the supplied images");
+  const ordered = rows
+    .map((row, inputOrder) => ({ row, inputOrder }))
+    .sort((left, right) => left.row.imageIndex - right.row.imageIndex || left.row.visualOrder - right.row.visualOrder || left.inputOrder - right.inputOrder);
+  let previousImageIndex = -1;
+  let nextVisualOrder = 0;
+  return {
+    rows: ordered.map(({ row }) => {
+      if (row.imageIndex !== previousImageIndex) {
+        previousImageIndex = row.imageIndex;
+        nextVisualOrder = 0;
+      }
+      return { ...row, visualOrder: nextVisualOrder++ };
+    }),
+  };
 }

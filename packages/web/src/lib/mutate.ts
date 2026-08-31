@@ -118,11 +118,14 @@ export function prepareTxnUpdate(ledger: ClientLedger, id: string, payload: TxnP
   return withPreparedAllocationFlow(payload, flow);
 }
 
-function createTxn(payload: TxnPayload, options?: TxnFlowOptions): string {
-  const id = newId();
+function createTxnWithId(id: string, payload: TxnPayload, options?: TxnFlowOptions): string {
   // the client assigns createdAt — a stable list order within a day
   enqueue("txn.create", { ...prepareTxnCreate(ledger(), payload, options), id, createdAt: new Date().toISOString() });
   return id;
+}
+
+function createTxn(payload: TxnPayload, options?: TxnFlowOptions): string {
+  return createTxnWithId(newId(), payload, options);
 }
 
 function updateTxn(id: string, payload: TxnPayload, options?: TxnFlowOptions): void {
@@ -323,6 +326,7 @@ function updateBudgetPreferences(id: string, patch: BudgetPreferencesPatch): voi
 
 export const local = {
   createTxn,
+  createTxnWithId,
   updateTxn,
   deleteTxn,
   duplicateTxn,

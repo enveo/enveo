@@ -1,0 +1,991 @@
+import { afterEach, beforeEach, describe, expect, it } from "bun:test";
+import { type ClientLedger, createDefaultBudgetPreferences } from "@enveo/shared";
+import { IDBFactory } from "fake-indexeddb";
+import { __resetStorageForTests, idbGet, idbPut } from "../idb";
+import { type ImportJobStorageScope, importJobStorage } from "../importJobStorage";
+import * as persist from "../persist";
+import { ImportJobManager, type ImportJobManagerE2eePort, type ImportJobManagerPlainPort, type ImportJobManagerState } from "./manager";
+import type { ImportActivityItem, ImportActivityStore, ImportJobScopeCapability } from "./store";
+
+const BUDGET = "22222222-2222-2222-2222-222222222222";
+const ACCOUNT = "33333333-3333-3333-3333-333333333333";
+const ID = "11111111-1111-1111-1111-111111111111";
+const OTHER_BUDGET = "44444444-4444-4444-4444-444444444444";
+const OTHER_ID = "55555555-5555-5555-5555-555555555555";
+const TXN_ID = "66666666-6666-4666-8666-666666666666";
+const IMAGE = "data:image/png;base64,AA==";
+const originalNavigator = Object.getOwnPropertyDescriptor(globalThis, "navigator");
+
+function ledger(provider: "rules" | "enveo" | "openai" = "openai", model = "gpt-5.6-luna", budgetId = BUDGET): ClientLedger {
+  return {
+    budgets: [
+      {
+        id: budgetId,
+        name: "Budget",
+        currency: "EUR",
+        preferences: { ...createDefaultBudgetPreferences(), aiProvider: provider, openaiModel: model as "gpt-5.6-luna" },
+      },
+    ],
+    accounts: [
+      {
+        id: ACCOUNT,
+        name: "Checking",
+        color: "#000000",
+        icon: "wallet",
+        type: "checking",
+        onBudget: true,
+        initialBalance: 0,
+        archived: false,
+        sort: 0,
+        automaticEnvelopeId: null,
+      },
+    ],
+    groups: [],
+    envelopes: [],
+    categories: [],
+    places: [],
+    transactions: [],
+    allocations: [],
+  };
+}
+
+function item(source: "plain" | "e2ee" = "plain"): ImportActivityItem {
+  return {
+    id: ID,
+    budgetId: BUDGET,
+    accountId: ACCOUNT,
+    provider: { provider: "openai", model: "gpt-5.6-luna" },
+    locale: "en-US",
+    tier: source === "e2ee" ? "e2ee" : "plain",
+    epoch: source === "e2ee" ? 3 : 0,
+    source,
+    status: "queued",
+    phase: "queued",
+    resumePhase: null,
+    cancelRequested: false,
+    attempt: 0,
+    errorCode: null,
+    retryAt: null,
+    result: null,
+    proposalCount: 0,
+    appliedCount: 0,
+    skippedCount: 0,
+    createdAt: "2026-08-24T10:00:00.000Z",
+    updatedAt: "2026-08-24T10:00:00.000Z",
+    expiresAt: "2026-08-31T10:00:00.000Z",
+  };
+}
+
+class FakeState implements ImportJobManagerState {
+  status: ReturnType<ImportJobManagerState["getBootStatus"]> = "booting";
+  budgetId: string | null = BUDGET;
+  currentLedger: ClientLedger | null = ledger();
+  listeners = new Set<() => void>();
+  getBootStatus = () => this.status;
+  getBudgetId = () => this.budgetId;
+  getLedger = () => this.currentLedger;
+  subscribe = (listener: () => void) => {
+    this.listeners.add(listener);
+    return () => this.listeners.delete(listener);
+  };
+  set(status: typeof this.status) {
+    this.status = status;
+    this.notify();
+  }
+  notify() {
+    for (const listener of this.listeners) listener();
+  }
+}
+
+function ports(calls: string[]) {
+  const plain = (_scope: ImportJobStorageScope, activity: ImportActivityStore, _capability?: ImportJobScopeCapability): ImportJobManagerPlainPort => ({
+    start: () => calls.push("plain.start"),
+    stop: () => calls.push("plain.stop"),
+    create: async () => {
+      calls.push("plain.create");
+      const value = item("plain");
+      activity.upsert(value);
+      return value;
+    },
+    refresh: async () => void calls.push("plain.refresh"),
+    cancel: async () => void calls.push("plain.cancel"),
+    retry: async () => void calls.push("plain.retry"),
+    complete: async () => void calls.push("plain.complete"),
+    dismiss: () => calls.push("plain.dismiss"),
+  });
+  const e2ee = (_scope: ImportJobStorageScope, activity: ImportActivityStore): ImportJobManagerE2eePort => ({
+    stop: () => calls.push("e2ee.stop"),
+    create: async () => {
+      calls.push("e2ee.create");
+      const value = item("e2ee");
+      activity.upsert(value);
+      return value;
+    },
+    resume: async () => void calls.push("e2ee.resume"),
+    list: async () => [],
+    cancel: async () => void calls.push("e2ee.cancel"),
+    retry: async () => void calls.push("e2ee.retry"),
+    complete: async () => void calls.push("e2ee.complete"),
+    dismiss: async () => void calls.push("e2ee.dismiss"),
+  });
+  return { plain, e2ee };
+}
+
+function deferred<T>() {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  const promise = new Promise<T>((done) => {
+    resolve = done;
+  });
+  return { promise, resolve };
+}
+
+async function flushMicrotasks(count = 12): Promise<void> {
+  for (let index = 0; index < count; index++) await Promise.resolve();
+}
+
+beforeEach(() => {
+  (globalThis as Record<string, unknown>).indexedDB = new IDBFactory();
+  (globalThis as Record<string, unknown>).localStorage = { getItem: () => "persistent" };
+  Object.defineProperty(globalThis, "navigator", {
+    configurable: true,
+    value: { locks: { request: async (_name: string, _options: unknown, callback: () => Promise<unknown>) => callback() } },
+  });
+  __resetStorageForTests();
+  persist.__resetPersistForTests();
+});
+
+afterEach(() => {
+  delete (globalThis as Record<string, unknown>).indexedDB;
+  delete (globalThis as Record<string, unknown>).localStorage;
+  if (originalNavigator) Object.defineProperty(globalThis, "navigator", originalNavigator);
+  else delete (globalThis as Record<string, unknown>).navigator;
+  __resetStorageForTests();
+  persist.__resetPersistForTests();
+});
+
+describe("import job manager", () => {
+  it("retains exact applied and skipped identities across a manager reload and clears them only after completion", async () => {
+    // given: a ready job remains owned by the active manager scope
+    const state = new FakeState();
+    state.status = "ready";
+    const manager = new ImportJobManager({
+      state,
+      ownerId: async () => "user-a",
+      tierMeta: () => ({ tier: "plain", epoch: 0 }),
+      ...(() => {
+        const adapters = ports([]);
+        return { createPlain: adapters.plain, createE2ee: adapters.e2ee };
+      })(),
+      randomId: () => ID,
+      durableTransactionProof: async () => "durable",
+      visible: () => true,
+    });
+    manager.start();
+    await manager.create({ accountId: ACCOUNT, locale: "en-US", images: [IMAGE] });
+
+    // when: two interrupted attempts report an overlapping applied row
+    await manager.applyRow(ID, "row-one", async () => {});
+    await manager.applyRow(ID, "row-one", async () => {});
+    await manager.applyRow(ID, "row-two", async () => {});
+    await manager.recordSkipped(ID, ["row-three"]);
+
+    // then: a newly constructed manager receives stable distinct identities/counts from storage
+    manager.stop();
+    const restarted = new ImportJobManager({
+      state,
+      ownerId: async () => "user-a",
+      tierMeta: () => ({ tier: "plain", epoch: 0 }),
+      ...(() => {
+        const adapters = ports([]);
+        return { createPlain: adapters.plain, createE2ee: adapters.e2ee };
+      })(),
+      randomId: () => ID,
+      durableTransactionProof: async () => "durable",
+      visible: () => true,
+    });
+    restarted.start();
+    await restarted.create({ accountId: ACCOUNT, locale: "en-US", images: [IMAGE] });
+    expect(await restarted.appliedProgress(ID, ["row-one", "row-two", "row-three"])).toEqual({
+      appliedRowIds: ["row-one", "row-two"],
+      appliedCount: 2,
+      skippedRowIds: ["row-three"],
+      skippedCount: 1,
+    });
+    const raw = JSON.stringify(await idbGet("meta", JSON.stringify(["import-apply-progress", 3, "user-a", BUDGET, ID])));
+    expect(raw).not.toContain("row-one");
+    expect(raw).not.toContain("row-three");
+
+    // and: successful completion ends the recovery record
+    await restarted.complete(ID, { appliedCount: 2, skippedCount: 1 });
+    expect(await restarted.appliedProgress(ID, ["row-one", "row-two", "row-three"])).toEqual({
+      appliedRowIds: [],
+      appliedCount: 0,
+      skippedRowIds: [],
+      skippedCount: 0,
+    });
+    expect(await importJobStorage.getApplyProgress({ ownerId: "user-a", budgetId: BUDGET }, ID)).toEqual({
+      appliedRowIds: [],
+      appliedCount: 0,
+      skippedRowIds: [],
+      skippedCount: 0,
+    });
+    restarted.stop();
+  });
+
+  it("routes completion counts to the job's owning plain or encrypted adapter", async () => {
+    // given: the active replica has one job in the merged activity view
+    for (const tier of ["plain", "e2ee"] as const) {
+      const state = new FakeState();
+      state.status = "ready";
+      const calls: string[] = [];
+      const adapters = ports(calls);
+      const manager = new ImportJobManager({
+        state,
+        ownerId: async () => "user-a",
+        tierMeta: () => ({ tier, epoch: tier === "e2ee" ? 3 : 0 }),
+        createPlain: adapters.plain,
+        createE2ee: adapters.e2ee,
+        randomId: () => ID,
+        visible: () => true,
+      });
+      manager.start();
+      await manager.create({ accountId: ACCOUNT, locale: "en-US", images: [IMAGE] });
+
+      // when: the UI accounts for every selected or skipped proposal
+      await manager.complete(ID, { appliedCount: 1, skippedCount: 2 });
+
+      // then: only the adapter that owns the job receives completion
+      expect(calls).toContain(`${tier}.complete`);
+      expect(calls).not.toContain(`${tier === "plain" ? "e2ee" : "plain"}.complete`);
+      manager.stop();
+    }
+  });
+
+  it("does not dispatch a mutation after its awaited lookup loses scope authority", async () => {
+    const state = new FakeState();
+    state.status = "ready";
+    const lookup = deferred<void>();
+    const calls: string[] = [];
+    const manager = new ImportJobManager({
+      state,
+      ownerId: async () => "user-a",
+      tierMeta: () => ({ tier: "e2ee", epoch: 3 }),
+      createPlain: ports(calls).plain,
+      createE2ee: (_scope, activity) => ({
+        ...ports(calls).e2ee(_scope, activity),
+        list: async () => {
+          await lookup.promise;
+          activity.upsert(item("e2ee"));
+          return activity.list();
+        },
+      }),
+      visible: () => true,
+    });
+    manager.start();
+    await manager.resume();
+    const cancellation = manager.cancel(ID);
+    state.budgetId = OTHER_BUDGET;
+    state.currentLedger = ledger("openai", "gpt-5.6-luna", OTHER_BUDGET);
+    lookup.resolve();
+
+    await cancellation;
+
+    expect(calls).not.toContain("e2ee.cancel");
+    manager.stop();
+  });
+
+  it("recovers the transaction/progress interruption boundary by durable transaction identity", async () => {
+    // given: a blank-source row receives a durable transaction id before local mutation
+    const state = new FakeState();
+    state.status = "ready";
+    const ids = [ID, TXN_ID];
+    const adapters = ports([]);
+    const manager = new ImportJobManager({
+      state,
+      ownerId: async () => "user-a",
+      tierMeta: () => ({ tier: "plain", epoch: 0 }),
+      createPlain: adapters.plain,
+      createE2ee: adapters.e2ee,
+      randomId: () => ids.shift()!,
+      visible: () => true,
+    });
+    manager.start();
+    await manager.create({ accountId: ACCOUNT, locale: "en-US", images: [IMAGE] });
+    await importJobStorage.claimApplyRow({ ownerId: "user-a", budgetId: BUDGET }, ID, {
+      rowToken: "opaque-blank-row",
+      transactionId: TXN_ID,
+      ownerToken: "crashed-tab",
+      now: 0,
+      leaseUntil: 1,
+    });
+
+    // when: the transaction becomes durable but the final applied-progress write is interrupted
+    state.currentLedger!.transactions.push({
+      id: TXN_ID,
+      type: "expense",
+      accountId: ACCOUNT,
+      toAccountId: null,
+      amount: 1200,
+      date: "2026-08-24",
+      isRefund: false,
+      envelopeId: null,
+      placeId: null,
+      categoryId: null,
+      name: "Blank source",
+      note: null,
+      tag: null,
+      sourceRef: null,
+      allocationFromEnvelopeId: null,
+      allocationToEnvelopeId: null,
+      items: [],
+      createdAt: "2026-08-24T10:00:00.000Z",
+    });
+    await idbPut("meta", "user-a", "userId");
+    await idbPut("meta", BUDGET, "budgetId");
+    await idbPut("meta", state.currentLedger, "ledger");
+    manager.stop();
+    const restarted = new ImportJobManager({
+      state,
+      ownerId: async () => "user-a",
+      tierMeta: () => ({ tier: "plain", epoch: 0 }),
+      createPlain: adapters.plain,
+      createE2ee: adapters.e2ee,
+      randomId: () => ID,
+      deriveRowToken: async () => "opaque-blank-row",
+      visible: () => true,
+    });
+    restarted.start();
+    await restarted.create({ accountId: ACCOUNT, locale: "en-US", images: [IMAGE] });
+
+    // then: reload promotes the prepared row to applied without source_ref evidence
+    expect(await restarted.appliedProgress(ID, ["blank-row"])).toMatchObject({ appliedRowIds: ["blank-row"], appliedCount: 1 });
+    restarted.stop();
+  });
+
+  it("does not promote an optimistic transaction when outbox persistence failed after claim metadata succeeded", async () => {
+    // given: claim metadata is durable, but the local outbox/ledger write has no persistent proof
+    const state = new FakeState();
+    state.status = "ready";
+    const adapters = ports([]);
+    const ids = [ID, TXN_ID];
+    const manager = new ImportJobManager({
+      state,
+      ownerId: async () => "user-a",
+      tierMeta: () => ({ tier: "plain", epoch: 0 }),
+      createPlain: adapters.plain,
+      createE2ee: adapters.e2ee,
+      randomId: () => ids.shift()!,
+      applyOwnerId: () => "tab-one",
+      deriveRowToken: async () => "opaque-row",
+      visible: () => true,
+    });
+    manager.start();
+    await manager.create({ accountId: ACCOUNT, locale: "en-US", images: [IMAGE] });
+    await idbPut("meta", "user-a", "userId");
+    await idbPut("meta", BUDGET, "budgetId");
+    await idbPut("meta", { ...state.currentLedger, transactions: [] }, "ledger");
+
+    // when: the optimistic store accepted the transaction but its persistence boundary failed
+    await expect(
+      manager.applyRow(ID, "Coffee Shop 12.34 EUR", async (transactionId) => {
+        state.currentLedger!.transactions.push({
+          id: transactionId,
+          type: "expense",
+          accountId: ACCOUNT,
+          toAccountId: null,
+          amount: 1234,
+          date: "2026-08-24",
+          isRefund: false,
+          envelopeId: null,
+          placeId: null,
+          categoryId: null,
+          name: "Coffee Shop",
+          note: null,
+          tag: null,
+          sourceRef: null,
+          allocationFromEnvelopeId: null,
+          allocationToEnvelopeId: null,
+          items: [],
+          createdAt: "2026-08-24T10:00:00.000Z",
+        });
+        const warn = console.warn;
+        console.warn = () => {};
+        try {
+          await persist.addOutbox({ cannotBeCloned: () => {} });
+          await persist.flushed();
+        } finally {
+          console.warn = warn;
+        }
+      }),
+    ).rejects.toThrow("local_persistence_failed");
+    expect(persist.isDurableBroken()).toBe(true);
+
+    // then: durable metadata remains recoverable but the row is still actionable
+    expect(await manager.appliedProgress(ID, ["Coffee Shop 12.34 EUR"])).toEqual({
+      appliedRowIds: [],
+      appliedCount: 0,
+      skippedRowIds: [],
+      skippedCount: 0,
+    });
+    manager.stop();
+  });
+
+  it("allows only one tab to cross the category, place, transaction, and outbox boundary", async () => {
+    // given: two active managers share the same durable job and one tab holds the row lease
+    const state = new FakeState();
+    state.status = "ready";
+    const adapters = ports([]);
+    const releaseFirst = deferred<void>();
+    let mutationBoundaries = 0;
+    let categoryCreates = 0;
+    let placeCreates = 0;
+    let transactionCreates = 0;
+    let outboxWrites = 0;
+    let transactionDurable = false;
+    const makeManager = (owner: string) =>
+      new ImportJobManager({
+        state,
+        ownerId: async () => "user-a",
+        tierMeta: () => ({ tier: "plain", epoch: 0 }),
+        createPlain: adapters.plain,
+        createE2ee: adapters.e2ee,
+        randomId: () => (mutationBoundaries === 0 ? ID : TXN_ID),
+        applyOwnerId: () => owner,
+        deriveRowToken: async () => "opaque-row",
+        durableTransactionProof: async () => (transactionDurable ? "durable" : "absent"),
+        visible: () => true,
+      });
+    const first = makeManager("tab-one");
+    const second = makeManager("tab-two");
+    first.start();
+    second.start();
+    await first.create({ accountId: ACCOUNT, locale: "en-US", images: [IMAGE] });
+    await second.create({ accountId: ACCOUNT, locale: "en-US", images: [IMAGE] });
+
+    // when: tab two attempts the same row while tab one is inside the async durability boundary
+    const firstApply = first.applyRow(ID, "row-one", async () => {
+      mutationBoundaries++;
+      categoryCreates++;
+      placeCreates++;
+      transactionCreates++;
+      outboxWrites++;
+      await releaseFirst.promise;
+      transactionDurable = true;
+    });
+    for (let attempt = 0; attempt < 50 && mutationBoundaries === 0; attempt++) {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    }
+    expect(mutationBoundaries).toBe(1);
+    const secondApply = second.applyRow(ID, "row-one", async () => {
+      mutationBoundaries++;
+      categoryCreates++;
+      placeCreates++;
+      transactionCreates++;
+      outboxWrites++;
+    });
+
+    // then: the durable owner/fence blocks the second callback entirely
+    await expect(secondApply).rejects.toThrow("import_row_busy");
+    releaseFirst.resolve();
+    await firstApply;
+    expect({ mutationBoundaries, categoryCreates, placeCreates, transactionCreates, outboxWrites }).toEqual({
+      mutationBoundaries: 1,
+      categoryCreates: 1,
+      placeCreates: 1,
+      transactionCreates: 1,
+      outboxWrites: 1,
+    });
+    first.stop();
+    second.stop();
+  });
+
+  it("fails closed without Web Locks before any local mutation", async () => {
+    // given: a browser that cannot provide an origin-wide crash-releasing lock
+    Object.defineProperty(globalThis, "navigator", { configurable: true, value: {} });
+    const state = new FakeState();
+    state.status = "ready";
+    const adapters = ports([]);
+    const manager = new ImportJobManager({
+      state,
+      ownerId: async () => "user-a",
+      tierMeta: () => ({ tier: "plain", epoch: 0 }),
+      createPlain: adapters.plain,
+      createE2ee: adapters.e2ee,
+      randomId: () => ID,
+      deriveRowToken: async () => "opaque-row",
+      durableTransactionProof: async () => "durable",
+      visible: () => true,
+    });
+    manager.start();
+    await manager.create({ accountId: ACCOUNT, locale: "en-US", images: [IMAGE] });
+    let mutations = 0;
+
+    // when: apply is requested
+    const apply = manager.applyRow(ID, "merchant-like row", async () => {
+      mutations++;
+    });
+
+    // then: no lease, ledger, or outbox mutation is attempted unsafely
+    await expect(apply).rejects.toThrow("import_web_locks_unavailable");
+    expect(mutations).toBe(0);
+    expect(await manager.appliedProgress(ID, ["merchant-like row"])).toMatchObject({ appliedCount: 0 });
+    manager.stop();
+  });
+
+  it("scopes the Web Lock to owner, budget, job, and opaque row token", async () => {
+    const state = new FakeState();
+    state.status = "ready";
+    const adapters = ports([]);
+    let lockName = "";
+    const manager = new ImportJobManager({
+      state,
+      ownerId: async () => "user-a",
+      tierMeta: () => ({ tier: "plain", epoch: 0 }),
+      createPlain: adapters.plain,
+      createE2ee: adapters.e2ee,
+      randomId: () => ID,
+      deriveRowToken: async () => "opaque-row-token",
+      durableTransactionProof: async () => "durable",
+      withApplyLock: async (name, callback) => {
+        lockName = name;
+        return callback();
+      },
+      visible: () => true,
+    });
+    manager.start();
+    await manager.create({ accountId: ACCOUNT, locale: "en-US", images: [IMAGE] });
+
+    await manager.applyRow(ID, "Coffee Shop Warsaw 12.34 EUR", async () => {});
+
+    expect(lockName).toBe(JSON.stringify(["enveo-import-apply", 1, "user-a", BUDGET, ID, "opaque-row-token"]));
+    expect(lockName).not.toContain("Coffee Shop");
+    manager.stop();
+  });
+
+  it("fences a stale callback after another tab reclaims and durably writes the row", async () => {
+    // given: tab A owns both locks, then is suspended long enough for a simulated crash release
+    const state = new FakeState();
+    state.status = "ready";
+    const adapters = ports([]);
+    const resumeA = deferred<void>();
+    const aEnteredMutation = deferred<void>();
+    let now = 0;
+    let durable = false;
+    let mutations = 0;
+    let categoryCreates = 0;
+    let placeCreates = 0;
+    let transactionCreates = 0;
+    let outboxWrites = 0;
+    const deadletters = 0;
+    const simulatedCrashReleasedLock = async <T>(_name: string, callback: () => Promise<T>): Promise<T> => callback();
+    const makeManager = (owner: string) =>
+      new ImportJobManager({
+        state,
+        ownerId: async () => "user-a",
+        tierMeta: () => ({ tier: "plain", epoch: 0 }),
+        createPlain: adapters.plain,
+        createE2ee: adapters.e2ee,
+        randomId: () => TXN_ID,
+        applyOwnerId: () => owner,
+        deriveRowToken: async () => "opaque-row",
+        durableTransactionProof: async () => (deadletters > 0 ? "rejected" : durable ? "durable" : "absent"),
+        withApplyLock: simulatedCrashReleasedLock,
+        nowMs: () => now,
+        scheduleApplyLeaseInterval: () => undefined as unknown as ReturnType<typeof setInterval>,
+        clearApplyLeaseInterval: () => {},
+        visible: () => true,
+      });
+    const first = makeManager("tab-a");
+    const second = makeManager("tab-b");
+    first.start();
+    second.start();
+    await first.create({ accountId: ACCOUNT, locale: "en-US", images: [IMAGE] });
+    await second.create({ accountId: ACCOUNT, locale: "en-US", images: [IMAGE] });
+    const writeOnce = () => {
+      mutations++;
+      categoryCreates++;
+      placeCreates++;
+      transactionCreates++;
+      outboxWrites++;
+      durable = true;
+    };
+    const firstApply = first.applyRow(ID, "row-one", async (_transactionId, assertCurrent) => {
+      aEnteredMutation.resolve();
+      await resumeA.promise;
+      await assertCurrent();
+      writeOnce();
+    });
+    await aEnteredMutation.promise;
+
+    // when: the browser releases A's Web Lock on crash, B reclaims the expired durable lease and writes
+    now = 31_000;
+    await second.applyRow(ID, "row-one", async (_transactionId, assertCurrent) => {
+      await assertCurrent();
+      writeOnce();
+    });
+    resumeA.resolve();
+
+    // then: a controlled stale continuation is fenced before any callback-owned local write
+    await expect(firstApply).rejects.toThrow("import_row_lease_lost");
+    expect({ mutations, categoryCreates, placeCreates, transactionCreates, outboxWrites, deadletters }).toEqual({
+      mutations: 1,
+      categoryCreates: 1,
+      placeCreates: 1,
+      transactionCreates: 1,
+      outboxWrites: 1,
+      deadletters: 0,
+    });
+    first.stop();
+    second.stop();
+  });
+
+  it("persists only an opaque token for an E2EE merchant-like model row id", async () => {
+    // given: an unlocked E2EE job and a row id that itself contains private merchant text
+    const state = new FakeState();
+    state.status = "ready";
+    const adapters = ports([]);
+    const sensitive = "Coffee Shop Warsaw 2026-08-24 12.34 EUR";
+    const manager = new ImportJobManager({
+      state,
+      ownerId: async () => "user-a",
+      tierMeta: () => ({ tier: "e2ee", epoch: 3 }),
+      createPlain: adapters.plain,
+      createE2ee: adapters.e2ee,
+      randomId: () => ID,
+      deriveRowToken: async () => "h1.opaque-e2ee-token",
+      visible: () => true,
+    });
+    manager.start();
+    await manager.create({ accountId: ACCOUNT, locale: "en-US", images: [IMAGE] });
+
+    // when: the user explicitly skips that row
+    await manager.recordSkipped(ID, [sensitive]);
+
+    // then: public progress maps back to the row, while persisted metadata never contains it
+    expect(await manager.appliedProgress(ID, [sensitive])).toMatchObject({ skippedRowIds: [sensitive], skippedCount: 1 });
+    const raw = await idbGet("meta", JSON.stringify(["import-apply-progress", 3, "user-a", BUDGET, ID]));
+    expect(JSON.stringify(raw)).not.toContain(sensitive);
+    expect(JSON.stringify(raw)).toContain("h1.opaque-e2ee-token");
+    manager.stop();
+  });
+
+  it("starts once but does not derive a scope or resume jobs until replica boot is ready", async () => {
+    const state = new FakeState();
+    const calls: string[] = [];
+    const adapters = ports(calls);
+    let ownerReads = 0;
+    const manager = new ImportJobManager({
+      state,
+      ownerId: async () => {
+        ownerReads++;
+        return "user-a";
+      },
+      tierMeta: () => ({ tier: "e2ee", epoch: 3 }),
+      createPlain: adapters.plain,
+      createE2ee: adapters.e2ee,
+      visible: () => true,
+      scheduleInterval: () => 1 as unknown as ReturnType<typeof setInterval>,
+      clearScheduledInterval: () => {},
+    });
+
+    manager.start();
+    manager.start();
+    await manager.resume();
+    expect(ownerReads).toBe(0);
+    expect(calls).toEqual([]);
+
+    state.set("ready");
+    await manager.resume();
+
+    expect(ownerReads).toBeGreaterThan(0);
+    expect(calls).not.toContain("plain.start");
+    expect(calls).toContain("e2ee.resume");
+    manager.stop();
+  });
+
+  it("routes creation by current tier and snapshots the E2EE Own OpenAI model", async () => {
+    const state = new FakeState();
+    state.status = "ready";
+    const calls: string[] = [];
+    const adapters = ports(calls);
+    let capturedModel = "";
+    const manager = new ImportJobManager({
+      state,
+      ownerId: async () => "user-a",
+      tierMeta: () => ({ tier: "e2ee", epoch: 3 }),
+      createPlain: adapters.plain,
+      createE2ee: (scope, activity) => ({
+        ...adapters.e2ee(scope, activity),
+        create: async (input) => {
+          capturedModel = input.provider.model;
+          return item("e2ee");
+        },
+      }),
+      randomId: () => ID,
+      visible: () => true,
+    });
+    manager.start();
+
+    await manager.create({ accountId: ACCOUNT, locale: "en-US", images: ["data:image/png;base64,AA=="] });
+
+    expect(capturedModel).toBe("gpt-5.6-luna");
+    expect(calls).not.toContain("plain.create");
+    manager.stop();
+  });
+
+  it("periodically wakes local execution without polling an idle server queue", async () => {
+    const state = new FakeState();
+    state.status = "ready";
+    const calls: string[] = [];
+    const adapters = ports(calls);
+    let interval: (() => void) | undefined;
+    const manager = new ImportJobManager({
+      state,
+      ownerId: async () => "user-a",
+      tierMeta: () => ({ tier: "e2ee", epoch: 3 }),
+      createPlain: adapters.plain,
+      createE2ee: adapters.e2ee,
+      visible: () => true,
+      scheduleInterval: (callback) => {
+        interval = callback;
+        return 1 as unknown as ReturnType<typeof setInterval>;
+      },
+      clearScheduledInterval: () => {},
+    });
+    manager.start();
+    await manager.resume();
+    const plainRefreshes = calls.filter((call) => call === "plain.refresh").length;
+    const localResumes = calls.filter((call) => call === "e2ee.resume").length;
+
+    interval?.();
+    while (calls.filter((call) => call === "e2ee.resume").length === localResumes) await Promise.resolve();
+
+    expect(calls.filter((call) => call === "plain.refresh")).toHaveLength(plainRefreshes);
+    manager.stop();
+  });
+
+  it("cleans up state, browser, and polling listeners on stop", async () => {
+    const state = new FakeState();
+    state.status = "ready";
+    const calls: string[] = [];
+    const adapters = ports(calls);
+    const windowTarget = new EventTarget();
+    const documentTarget = new EventTarget();
+    let interval: (() => void) | undefined;
+    const manager = new ImportJobManager({
+      state,
+      ownerId: async () => "user-a",
+      tierMeta: () => ({ tier: "e2ee", epoch: 3 }),
+      createPlain: adapters.plain,
+      createE2ee: adapters.e2ee,
+      visible: () => true,
+      windowTarget,
+      documentTarget,
+      scheduleInterval: (callback) => {
+        interval = callback;
+        return 1 as unknown as ReturnType<typeof setInterval>;
+      },
+      clearScheduledInterval: () => void calls.push("timer.clear"),
+    });
+    manager.start();
+    await manager.resume();
+    const resumesBeforeStop = calls.filter((call) => call === "e2ee.resume").length;
+
+    manager.stop();
+    windowTarget.dispatchEvent(new Event("online"));
+    documentTarget.dispatchEvent(new Event("visibilitychange"));
+    interval?.();
+    await Promise.resolve();
+
+    expect(state.listeners.size).toBe(0);
+    expect(calls).toContain("e2ee.stop");
+    expect(calls).toContain("timer.clear");
+    expect(calls.filter((call) => call === "e2ee.resume")).toHaveLength(resumesBeforeStop);
+  });
+
+  it("does not refresh an idle plain import queue for an ordinary ledger bump", async () => {
+    const state = new FakeState();
+    state.status = "ready";
+    const calls: string[] = [];
+    const adapters = ports(calls);
+    const manager = new ImportJobManager({
+      state,
+      ownerId: async () => "user-a",
+      tierMeta: () => ({ tier: "plain", epoch: 0 }),
+      createPlain: adapters.plain,
+      createE2ee: adapters.e2ee,
+      visible: () => true,
+    });
+    manager.start();
+    await manager.resume();
+    const refreshes = calls.filter((call) => call === "plain.refresh").length;
+
+    state.currentLedger = { ...state.currentLedger!, transactions: [] };
+    state.notify();
+    await flushMicrotasks();
+
+    expect(calls.filter((call) => call === "plain.refresh")).toHaveLength(refreshes);
+    manager.stop();
+  });
+
+  it("deletes an incompatible plain draft without constructing a plain adapter or uploading images", async () => {
+    await importJobStorage.createDraft(
+      { ownerId: "user-a", budgetId: BUDGET },
+      { id: ID, ownerId: "user-a", budgetId: BUDGET, accountId: ACCOUNT, locale: "en-US", images: [IMAGE] },
+    );
+    const state = new FakeState();
+    state.status = "ready";
+    let plainFactories = 0;
+    const calls: string[] = [];
+    const adapters = ports(calls);
+    const manager = new ImportJobManager({
+      state,
+      ownerId: async () => "user-a",
+      tierMeta: () => ({ tier: "e2ee", epoch: 3 }),
+      createPlain: (...args) => {
+        plainFactories++;
+        return adapters.plain(...args);
+      },
+      createE2ee: adapters.e2ee,
+      visible: () => true,
+    });
+
+    manager.start();
+    await manager.resume();
+
+    expect(plainFactories).toBe(0);
+    expect(await importJobStorage.getDraft({ ownerId: "user-a", budgetId: BUDGET }, ID)).toBeUndefined();
+    manager.stop();
+  });
+
+  it("revokes scope A before a delayed adapter completion can publish into scope B", async () => {
+    const state = new FakeState();
+    state.status = "ready";
+    const scopes: string[] = [];
+    const capabilities = new Map<string, ImportJobScopeCapability | undefined>();
+    let sharedActivity: ImportActivityStore | undefined;
+    const seen: Array<string | undefined> = [];
+    const manager = new ImportJobManager({
+      state,
+      ownerId: async () => "user-a",
+      tierMeta: () => ({ tier: "plain", epoch: 0 }),
+      createPlain: (scope, activity, capability?: ImportJobScopeCapability) => {
+        scopes.push(scope.budgetId);
+        capabilities.set(scope.budgetId, capability);
+        sharedActivity = activity;
+        return {
+          start: () => {},
+          stop: () => {},
+          create: async () => item("plain"),
+          refresh: async () => {},
+          cancel: async () => {},
+          retry: async () => {},
+          complete: async () => {},
+          dismiss: () => {},
+        };
+      },
+      createE2ee: () => {
+        throw new Error("unexpected_e2ee_factory");
+      },
+      visible: () => true,
+    });
+    manager.observe(OTHER_ID, (value) => seen.push(value?.budgetId));
+    manager.start();
+    await manager.resume();
+
+    state.budgetId = OTHER_BUDGET;
+    state.currentLedger = ledger("openai", "gpt-5.6-luna", OTHER_BUDGET);
+    state.notify();
+    await manager.resume();
+    if (capabilities.get(BUDGET)?.isCurrent() ?? true) {
+      sharedActivity?.upsert({ ...item("plain"), id: OTHER_ID, budgetId: BUDGET });
+    }
+
+    expect(scopes).toContain(OTHER_BUDGET);
+    expect(seen).toEqual([undefined]);
+    manager.stop();
+  });
+
+  it("does not construct an adapter when stopped during deferred owner resolution", async () => {
+    const state = new FakeState();
+    state.status = "ready";
+    const owner = deferred<string | null>();
+    let ownerStarted = false;
+    let factories = 0;
+    let clearedTimers = 0;
+    const manager = new ImportJobManager({
+      state,
+      ownerId: () => {
+        ownerStarted = true;
+        return owner.promise;
+      },
+      tierMeta: () => ({ tier: "plain", epoch: 0 }),
+      createPlain: () => {
+        factories++;
+        throw new Error("stale_factory");
+      },
+      createE2ee: () => {
+        factories++;
+        throw new Error("stale_factory");
+      },
+      scheduleInterval: () => 1 as unknown as ReturnType<typeof setInterval>,
+      clearScheduledInterval: () => clearedTimers++,
+    });
+    manager.start();
+    await flushMicrotasks();
+    expect(ownerStarted).toBe(true);
+
+    manager.stop();
+    owner.resolve("user-a");
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(factories).toBe(0);
+    expect(clearedTimers).toBe(1);
+  });
+
+  it("restarts activation for the new scope when the budget changes during owner resolution", async () => {
+    const state = new FakeState();
+    state.status = "ready";
+    const owners = [deferred<string | null>(), deferred<string | null>()];
+    let reads = 0;
+    const scopes: string[] = [];
+    const manager = new ImportJobManager({
+      state,
+      ownerId: () => owners[reads++]!.promise,
+      tierMeta: () => ({ tier: "plain", epoch: 0 }),
+      createPlain: (scope) => {
+        scopes.push(scope.budgetId);
+        return {
+          start: () => {},
+          stop: () => {},
+          create: async () => item("plain"),
+          refresh: async () => {},
+          cancel: async () => {},
+          retry: async () => {},
+          complete: async () => {},
+          dismiss: () => {},
+        };
+      },
+      createE2ee: () => {
+        throw new Error("unexpected_e2ee_factory");
+      },
+      visible: () => true,
+    });
+    manager.start();
+    await flushMicrotasks();
+    expect(reads).toBe(1);
+
+    state.budgetId = OTHER_BUDGET;
+    state.currentLedger = ledger("openai", "gpt-5.6-luna", OTHER_BUDGET);
+    state.notify();
+    owners[0]!.resolve("user-a");
+    await flushMicrotasks();
+    owners[1]!.resolve("user-a");
+    await flushMicrotasks();
+
+    expect(reads).toBe(2);
+    expect(scopes).toEqual([OTHER_BUDGET]);
+    manager.stop();
+  });
+});

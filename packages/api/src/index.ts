@@ -6,11 +6,17 @@ import { cors } from "hono/cors";
 import { secureHeaders } from "hono/secure-headers";
 import { ZodError } from "zod";
 import { loadVaultMasterKeyProvider } from "./aiCredentials/keyProvider";
+import { createCredentialRepository } from "./aiCredentials/repository";
 import { assertAiSpendEnv } from "./aiSpend/transport";
 import { auth, hasCredentialedUser } from "./auth";
 import { authMetaBody } from "./authPolicy";
 import { TierMismatch } from "./context";
+import { db } from "./db/client";
 import { assertAuthEnv, assertDbEnv, env } from "./env";
+import { IMPORT_JOB_REQUEST_BODY_LIMIT_BYTES } from "./importJobs/images";
+import { createDatabaseImportRecognition, processClaimedImportJob } from "./importJobs/processor";
+import { createImportJobRepository } from "./importJobs/repository";
+import { startImportJobWorker } from "./importJobs/worker";
 import { isSameHostOrigin, staticAllowedOrigins } from "./origins";
 import { createAiCredentialRoutes } from "./routes/aiCredentials";
 import { budgetSuggestRoutes } from "./routes/budgetSuggest";
@@ -18,6 +24,7 @@ import { crudRoutes } from "./routes/crud";
 import { demoRoutes } from "./routes/demo";
 import { extraRoutes } from "./routes/extras";
 import { importRoutes } from "./routes/import";
+import { createImportJobRoutes } from "./routes/importJobs";
 import { preferencesRoutes } from "./routes/preferences";
 import { stateRoutes } from "./routes/state";
 import { syncRoutes } from "./routes/sync";
@@ -32,6 +39,9 @@ export const vaultMasterKeyProvider = loadVaultMasterKeyProvider({
   devKeyRingJson: env.ENVEO_DEV_AI_VAULT_KEY_RING_JSON,
 });
 
+const importJobRepository = createImportJobRepository(db);
+let importJobWorker: ReturnType<typeof startImportJobWorker> | null = null;
+
 // Fail fast on real boot (entrypoint run — dev, Docker CMD): accounts are
 // mandatory (BETTER_AUTH_SECRET), and production needs explicit database config.
 // Guarded by import.meta.main so the test suite can import the app without a
@@ -42,6 +52,24 @@ if (import.meta.main) {
   // Cloud spend budget (backlog §1): an unpriced OPENAI_MODEL override cannot silently spend
   // at Luna's prices, and the safety-identifier secret must be dedicated (never the auth secret).
   assertAiSpendEnv();
+  const credentials = createCredentialRepository(vaultMasterKeyProvider);
+  importJobWorker = startImportJobWorker({
+    workerId: `api-${process.pid}-${crypto.randomUUID()}`,
+    repository: importJobRepository,
+    processJob: (job) =>
+      processClaimedImportJob(job, {
+        repository: importJobRepository,
+        recognize: createDatabaseImportRecognition(job, { database: db, credentials }),
+      }),
+  });
+  let shuttingDown = false;
+  const stopImportWorker = () => {
+    if (shuttingDown) return;
+    shuttingDown = true;
+    void importJobWorker?.stop().finally(() => process.exit(0));
+  };
+  process.once("SIGTERM", stopImportWorker);
+  process.once("SIGINT", stopImportWorker);
 }
 
 const app = new Hono<{ Variables: { userId?: string } }>();
@@ -86,13 +114,9 @@ app.use(
   }),
 );
 
-app.use(
-  "/api/*",
-  bodyLimit({
-    maxSize: 16 * 1024 * 1024,
-    onError: (c) => c.json({ error: "too_large" }, 413),
-  }),
-);
+const generalBodyLimit = bodyLimit({ maxSize: 16 * 1024 * 1024, onError: (c) => c.json({ error: "too_large" }, 413) });
+const importJobBodyLimit = bodyLimit({ maxSize: IMPORT_JOB_REQUEST_BODY_LIMIT_BYTES, onError: (c) => c.json({ error: "too_large" }, 413) });
+app.use("/api/*", (c, next) => (c.req.method === "POST" && c.req.path === "/api/import/jobs" ? importJobBodyLimit : generalBodyLimit)(c, next));
 
 // Origin-guard (CSRF): rejects mutations from a FOREIGN Origin. Same-origin is
 // always safe — the app is served and queried from the same host (whatever the
@@ -145,6 +169,7 @@ api.route("/", crudRoutes);
 api.route("/", txnRoutes);
 api.route("/", extraRoutes);
 api.route("/", importRoutes);
+api.route("/", createImportJobRoutes({ repository: importJobRepository, wake: () => importJobWorker?.wake() }));
 api.route("/", preferencesRoutes);
 api.route("/", syncRoutes);
 api.route("/", createSync2Routes({ masterKeys: vaultMasterKeyProvider }));

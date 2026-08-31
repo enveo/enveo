@@ -1,4 +1,13 @@
-import { buildImportDupIndex, type ClientLedger, classifyImportDup, type TxnPayload } from "@enveo/shared";
+import {
+  buildImportDupIndex,
+  type ClientLedger,
+  classifyImportDup,
+  type ImportRecognitionResult,
+  type ReconciledImportProposal,
+  type ReconciledImportRecognitionResult,
+  reconcileImportProposals,
+  type TxnPayload,
+} from "@enveo/shared";
 import type { EditedImportItem, ImportApplyItem, ImportApplyResponse, ImportItem } from "./api";
 import { expenseEnvelopeSelectionForImport } from "./automaticEnvelopeUi";
 import { local } from "./mutate";
@@ -10,6 +19,7 @@ export type LocalImportReviewItem = ImportItem & {
 };
 
 interface PlannedTransaction {
+  rowId: string;
   payload: TxnPayload;
   placeName: string | null;
   categoryName: string | null;
@@ -27,14 +37,76 @@ export interface LocalImportMutationPort {
   createCategory(name: string): { id: string };
   createPlace(name: string): { id: string };
   createTxn(payload: TxnPayload): string;
+  createTxnWithId?(id: string, payload: TxnPayload): string;
+}
+
+export type CurrentImportProposal = ReconciledImportProposal & { assignmentUnavailable: boolean };
+export type CurrentImportRecognitionResult = Omit<ReconciledImportRecognitionResult, "proposals"> & { proposals: CurrentImportProposal[] };
+
+/** Reconcile durable raw proposals against the ledger that exists now. The local
+ * assignment marker survives repeated reconciliation without entering job storage/wire data. */
+export function reconcileImportJobResult(args: {
+  result: ImportRecognitionResult | CurrentImportRecognitionResult;
+  ledger: ClientLedger;
+  accountId: string;
+}): CurrentImportRecognitionResult {
+  const activeEnvelopes = args.ledger.envelopes.filter((envelope) => !envelope.archived);
+  const activeCategories = args.ledger.categories.filter((category) => !category.archived);
+  const proposals = reconcileImportProposals({
+    proposals: args.result.proposals,
+    transactions: args.ledger.transactions,
+    accounts: args.ledger.accounts,
+    envelopes: activeEnvelopes,
+    categories: activeCategories,
+    selectedAccountId: args.accountId,
+  }).map((proposal, index) => {
+    const previous = args.result.proposals[index] as ImportRecognitionResult["proposals"][number] & { assignmentUnavailable?: boolean };
+    return {
+      ...proposal,
+      assignmentUnavailable:
+        previous.assignmentUnavailable === true ||
+        (previous.envelopeId !== null && proposal.envelopeId === null) ||
+        (previous.categoryId !== null && proposal.categoryId === null),
+    };
+  });
+  return { rows: args.result.rows, proposals };
+}
+
+/** Complete, explicitly selected ledger candidates eligible for duplicate dry-run.
+ * Raw screenshot lines — never model copy — become the persisted sourceRef evidence. */
+export function recognitionCandidatesForDryRun(result: ReconciledImportRecognitionResult, ledger: ClientLedger): ImportApplyItem[] {
+  const envelopeNames = new Map(ledger.envelopes.map((envelope) => [envelope.id, envelope.name]));
+  const categoryNames = new Map(ledger.categories.map((category) => [category.id, category.name]));
+  const rowsById = new Map(result.rows.map((row) => [row.rowId, row]));
+  return result.proposals.flatMap((proposal) => {
+    if (!proposal.selected || proposal.disposition !== "candidate" || proposal.date === null || proposal.amount === null || proposal.type === null) return [];
+    const sourceRef = proposal.sourceRows
+      .flatMap((rowId) => rowsById.get(rowId)?.rawTextLines ?? [])
+      .join("\n")
+      .trim();
+    return [
+      {
+        date: proposal.date,
+        amount: proposal.amount,
+        type: proposal.type,
+        isRefund: proposal.isRefund,
+        toAccountId: proposal.toAccountId,
+        name: proposal.name,
+        tag: proposal.tag,
+        rawPlace: sourceRef || null,
+        envelopeId: proposal.envelopeId,
+        envelopeName: proposal.envelopeId ? (envelopeNames.get(proposal.envelopeId) ?? null) : null,
+        categoryId: proposal.categoryId,
+        categoryName: proposal.categoryId ? (categoryNames.get(proposal.categoryId) ?? null) : null,
+        placeName: proposal.placeName,
+        currency: proposal.currency ?? undefined,
+      },
+    ];
+  });
 }
 
 /** Convert either server or local dry-run output without erasing local provenance. */
-export function importReviewItem(
-  result: ImportApplyResponse["results"][number],
-  automaticEnvelopeId: string | null | undefined,
-  budgetCurrency?: string,
-): LocalImportReviewItem {
+export function importReviewItem(result: ImportApplyResponse["results"][number], automaticEnvelopeId: string | null | undefined): LocalImportReviewItem {
   const selection =
     result.type === "expense" && result.automaticEnvelopeDefault === true
       ? { envelopeId: automaticEnvelopeId ?? null, provenance: "automatic" as const }
@@ -45,7 +117,7 @@ export function importReviewItem(
     ...result,
     envelopeId: selection.envelopeId,
     automaticEnvelopeDefault: selection.provenance === "automatic",
-    include: result.status === "added" && !(!!budgetCurrency && !!result.currency && result.currency !== budgetCurrency),
+    include: result.status !== "exists",
   };
 }
 
@@ -76,7 +148,7 @@ export function reviewedImportItemsForApply(args: {
             note: edited.note,
             automaticEnvelopeDefault: args.editedAutomaticDefaults[index] ?? false,
             force: item.status === "exists", // editing a duplicate is a deliberate add
-            rawPlace: item.rawPlace, // extraction source stays untouched for learning/dedupe
+            rawPlace: item.rawPlace, // visible source evidence stays untouched for account-scoped history/dedupe
           },
     );
 }
@@ -150,12 +222,23 @@ export function planLocalImport(args: { ledger: ClientLedger; globalAccountId: s
     };
   });
 
-  const dupIndex = buildImportDupIndex(ledger.transactions.map((row) => ({ date: row.date, amount: row.amount, sourceRef: row.sourceRef })));
+  const duplicateIndexes = new Map<string, ReturnType<typeof buildImportDupIndex>>();
+  const duplicateIndexFor = (accountId: string) => {
+    let index = duplicateIndexes.get(accountId);
+    if (!index) {
+      index = buildImportDupIndex(
+        ledger.transactions.filter((row) => row.accountId === accountId).map((row) => ({ date: row.date, amount: row.amount, sourceRef: row.sourceRef })),
+      );
+      duplicateIndexes.set(accountId, index);
+    }
+    return index;
+  };
   const results: ImportApplyResponse["results"] = [];
   const transactions: PlannedTransaction[] = [];
   let added = 0;
   let skipped = 0;
   for (const candidate of normalized) {
+    const dupIndex = duplicateIndexFor(candidate.payload.accountId);
     const status = candidate.item.force
       ? "new"
       : classifyImportDup({ date: candidate.item.date, amount: candidate.item.amount, rawPlace: candidate.item.rawPlace }, dupIndex);
@@ -169,7 +252,14 @@ export function planLocalImport(args: { ledger: ClientLedger; globalAccountId: s
       continue;
     }
     dupIndex.markSeen({ date: candidate.item.date, amount: candidate.item.amount, rawPlace: candidate.item.rawPlace });
-    if (!dryRun) transactions.push({ payload: candidate.payload, placeName: candidate.placeName, categoryName: candidate.categoryName });
+    if (!dryRun) {
+      transactions.push({
+        rowId: candidate.item.importRowId ?? candidate.item.rawPlace?.trim() ?? `${candidate.item.date}:${candidate.item.amount}`,
+        payload: candidate.payload,
+        placeName: candidate.placeName,
+        categoryName: candidate.categoryName,
+      });
+    }
     added++;
     results.push({ ...candidate.item, status: "added" });
   }
@@ -185,4 +275,51 @@ export function applyLocalImport(plan: LocalImportPlan, mutations: LocalImportMu
     }
   }
   return { added: plan.added, skipped: plan.skipped };
+}
+
+export interface LocalImportApplyProgress {
+  appliedRowIds: string[];
+  appliedCount: number;
+  skippedCount: number;
+}
+
+export class PartialImportApplyError extends Error {
+  constructor(
+    cause: unknown,
+    readonly progress: LocalImportApplyProgress,
+  ) {
+    super(cause instanceof Error ? cause.message : "import_apply_failed", { cause });
+    this.name = "PartialImportApplyError";
+  }
+}
+
+/** Applies one planned transaction at a time and durably records its row identity before
+ * another transaction may cross the local mutation boundary. */
+export async function applyLocalImportRecoverably(
+  plan: LocalImportPlan,
+  mutations: LocalImportMutationPort = local,
+  durability: {
+    apply(rowId: string, mutation: (transactionId: string | undefined) => void): Promise<void>;
+  } = { apply: async (_rowId, mutation) => mutation(undefined) },
+): Promise<LocalImportApplyProgress> {
+  const progress: LocalImportApplyProgress = { appliedRowIds: [], appliedCount: 0, skippedCount: plan.skipped };
+  if (plan.dryRun) return progress;
+  for (const transaction of plan.transactions) {
+    try {
+      await durability.apply(transaction.rowId, (transactionId) => {
+        const categoryId = transaction.categoryName ? mutations.createCategory(transaction.categoryName).id : transaction.payload.categoryId;
+        const placeId = transaction.placeName ? mutations.createPlace(transaction.placeName).id : transaction.payload.placeId;
+        const payload = { ...transaction.payload, categoryId, placeId };
+        if (transactionId) {
+          if (!mutations.createTxnWithId) throw new Error("import_transaction_identity_unsupported");
+          mutations.createTxnWithId(transactionId, payload);
+        } else mutations.createTxn(payload);
+        progress.appliedRowIds.push(transaction.rowId);
+        progress.appliedCount++;
+      });
+    } catch (error) {
+      throw new PartialImportApplyError(error, progress);
+    }
+  }
+  return progress;
 }

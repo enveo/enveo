@@ -1,11 +1,13 @@
 /**
  * Public storage facade — a minimal promise API over the ACTIVE StorageBackend.
  *
- * DB "enveo" v1 (IdbBackend):
+ * DB "enveo" v2 (IdbBackend):
  * - "meta"       — out-of-line keys: "ledger" (the whole ClientLedger as one
  *                  blob), "cursor", "clientId", "budgetId", "lastSyncAt", "userId"
  * - "outbox"     — keyPath "localSeq" autoIncrement
  * - "deadletter" — keyPath "opId"
+ * - "importJobs" — keyPath "id" (device-local E2EE job metadata + ciphertext)
+ * - "importDrafts" — keyPath "id" (plain upload recovery until server acknowledgement)
  *
  * Backend selection happens ONCE per page load, lazily, before the first
  * operation (activeBackend).
@@ -19,12 +21,21 @@
  * merely after request.onsuccess.
  */
 import { getDeviceStoragePolicy } from "./deviceStoragePolicy";
-import { MemoryBackend, type StorageBackend, type StoreName } from "./storageBackend";
+import {
+  evaluateImportTransactionProof,
+  type ImportDraftDeleteMatch,
+  type ImportDraftPutResult,
+  type ImportDraftStateMutation,
+  type ImportRecordScope,
+  MemoryBackend,
+  type StorageBackend,
+  type StoreName,
+} from "./storageBackend";
 
 export type { StoreName } from "./storageBackend";
 
 const DB_NAME = "enveo";
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 /** Old database name (pre-rebranding) — concatenated at runtime so a
  *  de-branding grep and the minified bundle don't contain the former brand. */
 const LEGACY_DB_NAME = ["4gros", "ze"].join("");
@@ -57,6 +68,12 @@ function openRaw(): Promise<IDBDatabase> {
       }
       if (!db.objectStoreNames.contains("deadletter")) {
         db.createObjectStore("deadletter", { keyPath: "opId" });
+      }
+      if (!db.objectStoreNames.contains("importJobs")) {
+        db.createObjectStore("importJobs", { keyPath: "id" });
+      }
+      if (!db.objectStoreNames.contains("importDrafts")) {
+        db.createObjectStore("importDrafts", { keyPath: "id" });
       }
     };
     req.onsuccess = () => resolve(req.result);
@@ -137,6 +154,36 @@ class IdbBackend implements StorageBackend {
     return requestToPromise(tx.objectStore(store).getAll());
   }
 
+  async mutateMeta(key: IDBValidKey, update: (current: unknown) => unknown): Promise<unknown> {
+    const db = await this.open();
+    if (!db) return this.fallback.mutateMeta(key, update);
+    const tx = db.transaction("meta", "readwrite");
+    const done = txDone(tx);
+    const store = tx.objectStore("meta");
+    const current = await requestToPromise(store.get(key));
+    const next = update(current);
+    store.put(next, key);
+    await done;
+    return structuredClone(next);
+  }
+
+  async importTransactionProof(scope: ImportRecordScope, transactionId: string): Promise<"durable" | "rejected" | "absent"> {
+    const db = await this.open();
+    if (!db) return this.fallback.importTransactionProof(scope, transactionId);
+    const tx = db.transaction(["meta", "outbox", "deadletter"], "readonly");
+    const done = txDone(tx);
+    const meta = tx.objectStore("meta");
+    const [ownerId, budgetId, ledger, outboxRows, deadletterRows] = await Promise.all([
+      requestToPromise(meta.get("userId")),
+      requestToPromise(meta.get("budgetId")),
+      requestToPromise(meta.get("ledger")),
+      requestToPromise(tx.objectStore("outbox").getAll()),
+      requestToPromise(tx.objectStore("deadletter").getAll()),
+    ]);
+    await done;
+    return evaluateImportTransactionProof(scope, transactionId, ownerId, budgetId, ledger, outboxRows, deadletterRows);
+  }
+
   async put(store: StoreName, value: unknown, key?: IDBValidKey): Promise<void> {
     const db = await this.open();
     if (!db) return this.fallback.put(store, value, key);
@@ -152,6 +199,159 @@ class IdbBackend implements StorageBackend {
     const os = tx.objectStore(store);
     for (const e of entries) os.put(e.value, e.key);
     await txDone(tx);
+  }
+
+  async putImportJobIfRevision(value: unknown, expectedRevision: number): Promise<boolean> {
+    const db = await this.open();
+    if (!db) return this.fallback.putImportJobIfRevision(value, expectedRevision);
+    const record = value as { id: IDBValidKey; ownerId: string; budgetId: string };
+    const tx = db.transaction("importJobs", "readwrite");
+    const done = txDone(tx);
+    const store = tx.objectStore("importJobs");
+    const current = (await requestToPromise(store.get(record.id))) as Record<string, unknown> | undefined;
+    if (current?.checkpointRevision !== expectedRevision || current.ownerId !== record.ownerId || current.budgetId !== record.budgetId) {
+      await done;
+      return false;
+    }
+    store.put(value);
+    await done;
+    return true;
+  }
+
+  async putImportJobForScope(value: unknown, scope: ImportRecordScope): Promise<boolean> {
+    const db = await this.open();
+    if (!db) return this.fallback.putImportJobForScope(value, scope);
+    const record = value as { id: IDBValidKey; ownerId: string; budgetId: string };
+    if (record.ownerId !== scope.ownerId || record.budgetId !== scope.budgetId) return false;
+    const tx = db.transaction("importJobs", "readwrite");
+    const done = txDone(tx);
+    const store = tx.objectStore("importJobs");
+    const current = (await requestToPromise(store.get(record.id))) as Record<string, unknown> | undefined;
+    if (current && (current.ownerId !== scope.ownerId || current.budgetId !== scope.budgetId)) {
+      await done;
+      return false;
+    }
+    store.put(value);
+    await done;
+    return true;
+  }
+
+  async putImportDraftIfAbsentOrSame(value: unknown): Promise<ImportDraftPutResult> {
+    const db = await this.open();
+    if (!db) return this.fallback.putImportDraftIfAbsentOrSame(value);
+    const record = value as { id: IDBValidKey; ownerId: string; budgetId: string; requestHash: string };
+    const tx = db.transaction("importDrafts", "readwrite");
+    const done = txDone(tx);
+    const store = tx.objectStore("importDrafts");
+    const current = (await requestToPromise(store.get(record.id))) as Record<string, unknown> | undefined;
+    if (current) {
+      await done;
+      return current.requestHash === record.requestHash && current.ownerId === record.ownerId && current.budgetId === record.budgetId
+        ? { kind: "existing", value: structuredClone(current) }
+        : { kind: "conflict" };
+    }
+    store.put(value);
+    await done;
+    return { kind: "created", value: structuredClone(value) };
+  }
+
+  async mutateImportDraftState(mutation: ImportDraftStateMutation): Promise<unknown | undefined> {
+    const db = await this.open();
+    if (!db) return this.fallback.mutateImportDraftState(mutation);
+    const tx = db.transaction("importDrafts", "readwrite");
+    const done = txDone(tx);
+    const store = tx.objectStore("importDrafts");
+    const current = (await requestToPromise(store.get(mutation.id))) as Record<string, unknown> | undefined;
+    if (!current || current.ownerId !== mutation.ownerId || current.budgetId !== mutation.budgetId || current.requestHash !== mutation.requestHash) {
+      await done;
+      return undefined;
+    }
+    const next = {
+      ...current,
+      [mutation.field]: current[mutation.field] ?? mutation.at,
+      updatedAt: mutation.at,
+    };
+    store.put(next);
+    await done;
+    return structuredClone(next);
+  }
+
+  async deleteImportDraftIfMatches(expected: ImportDraftDeleteMatch): Promise<boolean> {
+    const db = await this.open();
+    if (!db) return this.fallback.deleteImportDraftIfMatches(expected);
+    const tx = db.transaction("importDrafts", "readwrite");
+    const done = txDone(tx);
+    const store = tx.objectStore("importDrafts");
+    const current = (await requestToPromise(store.get(expected.id))) as Record<string, unknown> | undefined;
+    if (
+      !current ||
+      current.ownerId !== expected.ownerId ||
+      current.budgetId !== expected.budgetId ||
+      (expected.accountId !== undefined && current.accountId !== expected.accountId) ||
+      (expected.locale !== undefined && current.locale !== expected.locale) ||
+      (expected.requireCancelRequestedAtNull === true && current.cancelRequestedAt != null) ||
+      current.requestHash !== expected.requestHash
+    ) {
+      await done;
+      return false;
+    }
+    store.delete(expected.id);
+    await done;
+    return true;
+  }
+
+  async deleteImportJobIfScope(id: IDBValidKey, scope: ImportRecordScope): Promise<boolean> {
+    const db = await this.open();
+    if (!db) return this.fallback.deleteImportJobIfScope(id, scope);
+    const tx = db.transaction("importJobs", "readwrite");
+    const done = txDone(tx);
+    const store = tx.objectStore("importJobs");
+    const current = (await requestToPromise(store.get(id))) as Record<string, unknown> | undefined;
+    if (!current || current.ownerId !== scope.ownerId || current.budgetId !== scope.budgetId) {
+      await done;
+      return false;
+    }
+    store.delete(id);
+    await done;
+    return true;
+  }
+
+  async deleteImportJobWithMetaIfScope(id: IDBValidKey, scope: ImportRecordScope, metaKeys: IDBValidKey[], permitted: () => boolean): Promise<boolean> {
+    const db = await this.open();
+    if (!db) return this.fallback.deleteImportJobWithMetaIfScope(id, scope, metaKeys, permitted);
+    const tx = db.transaction(["importJobs", "meta"], "readwrite");
+    const done = txDone(tx);
+    const jobs = tx.objectStore("importJobs");
+    const current = (await requestToPromise(jobs.get(id))) as Record<string, unknown> | undefined;
+    if (!permitted() || !current || current.ownerId !== scope.ownerId || current.budgetId !== scope.budgetId) {
+      await done;
+      return false;
+    }
+    jobs.delete(id);
+    const meta = tx.objectStore("meta");
+    for (const key of metaKeys) meta.delete(key);
+    await done;
+    return true;
+  }
+
+  async deleteExpiredImportDrafts(scope: ImportRecordScope, expiresAt: number): Promise<number> {
+    const db = await this.open();
+    if (!db) return this.fallback.deleteExpiredImportDrafts(scope, expiresAt);
+    const tx = db.transaction("importDrafts", "readwrite");
+    const done = txDone(tx);
+    const store = tx.objectStore("importDrafts");
+    const drafts = (await requestToPromise(store.getAll())) as Array<Record<string, unknown>>;
+    const expired = drafts.filter(
+      (draft) =>
+        draft.ownerId === scope.ownerId &&
+        draft.budgetId === scope.budgetId &&
+        draft.cancelRequestedAt == null &&
+        typeof draft.expiresAt === "string" &&
+        Date.parse(draft.expiresAt) <= expiresAt,
+    );
+    for (const draft of expired) store.delete(draft.id as IDBValidKey);
+    await done;
+    return expired.length;
   }
 
   async add(store: StoreName, value: unknown): Promise<IDBValidKey> {
@@ -206,10 +406,12 @@ class IdbBackend implements StorageBackend {
   async clearAll(): Promise<void> {
     const db = await this.open();
     if (!db) return this.fallback.clearAll();
-    const tx = db.transaction(["meta", "outbox", "deadletter"], "readwrite");
+    const tx = db.transaction(["meta", "outbox", "deadletter", "importJobs", "importDrafts"], "readwrite");
     tx.objectStore("meta").clear();
     tx.objectStore("outbox").clear();
     tx.objectStore("deadletter").clear();
+    tx.objectStore("importJobs").clear();
+    tx.objectStore("importDrafts").clear();
     await txDone(tx);
   }
 }
@@ -268,6 +470,15 @@ export async function idbGetAll<T>(store: StoreName): Promise<T[]> {
   return (await activeBackend().getAll(store)) as T[];
 }
 
+/** Atomic read-modify-write for one metadata value, including across browser tabs. */
+export async function idbMutateMeta<T>(key: IDBValidKey, update: (current: unknown) => T): Promise<T> {
+  return (await activeBackend().mutateMeta(key, update)) as T;
+}
+
+export function idbImportTransactionProof(scope: ImportRecordScope, transactionId: string): Promise<"durable" | "rejected" | "absent"> {
+  return activeBackend().importTransactionProof(scope, transactionId);
+}
+
 /** put — `key` required for "meta" (out-of-line keys), omitted for keyPath stores. */
 export function idbPut(store: StoreName, value: unknown, key?: IDBValidKey): Promise<void> {
   return activeBackend().put(store, value, key);
@@ -276,6 +487,48 @@ export function idbPut(store: StoreName, value: unknown, key?: IDBValidKey): Pro
 /** Multiple puts in ONE transaction (atomic: all or nothing). */
 export function idbPutMany(store: StoreName, entries: Array<{ value: unknown; key?: IDBValidKey }>): Promise<void> {
   return activeBackend().putMany(store, entries);
+}
+
+/** Atomic stale-writer fence for the device-local E2EE import runner. */
+export function idbPutImportJobIfRevision(value: unknown, expectedRevision: number): Promise<boolean> {
+  return activeBackend().putImportJobIfRevision(value, expectedRevision);
+}
+
+/** Scope-preserving create/replace for device-local E2EE import jobs. */
+export function idbPutImportJobForScope(value: unknown, scope: ImportRecordScope): Promise<boolean> {
+  return activeBackend().putImportJobForScope(value, scope);
+}
+
+/** Atomic draft create/idempotency boundary across tabs. */
+export function idbPutImportDraftIfAbsentOrSame(value: unknown): Promise<ImportDraftPutResult> {
+  return activeBackend().putImportDraftIfAbsentOrSame(value);
+}
+
+/** Atomic exact-request upload/cancellation state mutation. */
+export function idbMutateImportDraftState(mutation: ImportDraftStateMutation): Promise<unknown | undefined> {
+  return activeBackend().mutateImportDraftState(mutation);
+}
+
+/** Atomic compare-delete for request completion/cancellation. */
+export function idbDeleteImportDraftIfMatches(expected: ImportDraftDeleteMatch): Promise<boolean> {
+  return activeBackend().deleteImportDraftIfMatches(expected);
+}
+
+export function idbDeleteImportJobIfScope(id: IDBValidKey, scope: ImportRecordScope): Promise<boolean> {
+  return activeBackend().deleteImportJobIfScope(id, scope);
+}
+
+export function idbDeleteImportJobWithMetaIfScope(
+  id: IDBValidKey,
+  scope: ImportRecordScope,
+  metaKeys: IDBValidKey[],
+  permitted: () => boolean,
+): Promise<boolean> {
+  return activeBackend().deleteImportJobWithMetaIfScope(id, scope, metaKeys, permitted);
+}
+
+export function idbDeleteExpiredImportDrafts(scope: ImportRecordScope, expiresAt: number): Promise<number> {
+  return activeBackend().deleteExpiredImportDrafts(scope, expiresAt);
 }
 
 /** add — for the outbox (autoIncrement); returns the assigned key (localSeq). */

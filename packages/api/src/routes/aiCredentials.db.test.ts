@@ -40,6 +40,18 @@ describe.skipIf(!TEST_URL)("plain BYOK credential routes", () => {
     });
   });
 
+  test("serves the old and recognition vaulted-BYOK wires concurrently", () => {
+    expect(output.importCompatibility).toEqual({
+      legacyStatus: 200,
+      legacyItems: 0,
+      legacyHasRecognitionFields: false,
+      recognitionStatus: 200,
+      recognitionRows: 0,
+      recognitionProposals: 0,
+      recognitionHasLegacyItems: false,
+    });
+  });
+
   test("E2EE ciphertext can be created, read, replaced and deleted without exposing vault material", () => {
     expect(output.e2eeLifecycle).toEqual({
       saveStatus: 200,

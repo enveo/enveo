@@ -19,9 +19,9 @@ import {
   normalizeBudgetSuggestion,
   parseAgentSuggestResponse,
   parseSuggestResponse,
+  type ReconciledImportRecognitionResult,
 } from "@enveo/shared";
 import type { AiProvider } from "./aiProvider/contracts";
-import type { ImportItem } from "./api";
 
 /* The UI language goes to the prompt builders AS IS (a `Lang` is a BCP-47 tag and AiLocale takes
    any of them since 2.2.0): the model names, notes and rationales come back in the user's
@@ -168,9 +168,15 @@ export async function runSuggest(args: {
 
 /* ── Screenshot import ───────────────────────────────────────────────── */
 
-export async function runImportExtract(args: { images: string[]; locale: AiLocale; ledger: ClientLedger; provider: AiProvider }): Promise<ImportItem[]> {
-  const { images, locale, ledger, provider } = args;
+export async function runImportExtract(args: {
+  images: string[];
+  locale: AiLocale;
+  ledger: ClientLedger;
+  accountId: string;
+  provider: AiProvider;
+}): Promise<ReconciledImportRecognitionResult> {
+  const { images, locale, ledger, accountId, provider } = args;
   const status = await provider.status();
   if (!status.capabilities.has("screenshot-import")) throw new AiConsentRequired();
-  return (await provider.extractImport({ images, locale, ledger })).items;
+  return provider.extractImport({ images, locale, ledger, accountId });
 }

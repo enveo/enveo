@@ -1,4 +1,11 @@
-import { AI_VISION_TIMEOUT_MS, buildImportExtractPrompt, type ChatRequest, type OpenAiModel, parseImportExtractResponse } from "@enveo/shared";
+import {
+  type ChatRequest,
+  type ImportHistoryRecord,
+  type ImportRecognitionPipelineInput,
+  type ImportRecognitionResult,
+  type OpenAiModel,
+  runImportRecognitionPipeline,
+} from "@enveo/shared";
 import { api, apiErrorBody, type E2eeCredentialResponse } from "../api";
 import { budgetSecretAadContext, decryptPayload, encryptPayload } from "../crypto";
 import * as e2ee from "../e2ee";
@@ -18,6 +25,11 @@ export interface E2eeByokDependencies {
   remove: (budgetId: string, expectedEpoch: number) => Promise<void>;
   directChat: (key: string, model: OpenAiModel, request: ChatRequest, timeoutMs?: number) => Promise<string>;
   onTierMismatch: (meta: { tier: "plain" | "e2ee"; epoch: number; cipherVersion?: number }) => void;
+}
+
+export interface E2eeDurableImportInput extends ImportExtractInput {
+  checkpoint?: ImportRecognitionResult;
+  lifecycle: NonNullable<ImportRecognitionPipelineInput["lifecycle"]>;
 }
 
 export class E2eeByokProvider implements AiProvider {
@@ -105,27 +117,56 @@ export class E2eeByokProvider implements AiProvider {
     return this.withCredential((key) => this.deps.directChat(key, this.deps.model, request));
   }
 
-  extractImport(input: ImportExtractInput): Promise<ImportExtractResult> {
-    return this.withCredential(async (key) => {
-      const today = new Date().toISOString().slice(0, 10);
-      const currency = input.ledger.budgets[0]?.currency ?? "EUR";
-      const raw = await this.deps.directChat(
-        key,
-        this.deps.model,
-        buildImportExtractPrompt(input.images, { envelopes: [], categories: [] }, today, input.locale, currency),
-        AI_VISION_TIMEOUT_MS,
-      );
-      const items = parseImportExtractResponse(raw).map((item) => ({
-        ...item,
-        name: item.rawPlace,
-        envelopeId: null,
-        envelopeName: null,
-        categoryId: null,
-        categoryName: null,
-        placeName: null,
-      }));
-      return { items };
+  private runImport(key: string, input: ImportExtractInput, durable?: Pick<E2eeDurableImportInput, "checkpoint" | "lifecycle">): Promise<ImportExtractResult> {
+    const today = new Date().toISOString().slice(0, 10);
+    const currency = input.ledger.budgets.find((budget) => budget.id === this.deps.budgetId)?.currency ?? "EUR";
+    const envelopeNames = new Map(input.ledger.envelopes.map((envelope) => [envelope.id, envelope.name]));
+    const categoryNames = new Map(input.ledger.categories.map((category) => [category.id, category.name]));
+    const placeNames = new Map(input.ledger.places.map((place) => [place.id, place.name]));
+    const historyRecords: ImportHistoryRecord[] = input.ledger.transactions.map((transaction) => ({
+      accountId: transaction.accountId,
+      currency,
+      sourceRef: transaction.sourceRef,
+      tag: transaction.tag,
+      place: transaction.placeId ? (placeNames.get(transaction.placeId) ?? null) : null,
+      name: transaction.name,
+      envelope: transaction.envelopeId ? (envelopeNames.get(transaction.envelopeId) ?? null) : null,
+      category: transaction.categoryId ? (categoryNames.get(transaction.categoryId) ?? null) : null,
+      type: transaction.type,
+      isRefund: transaction.type === "expense" && transaction.isRefund,
+      toAccountId: transaction.type === "transfer" ? transaction.toAccountId : null,
+    }));
+    return runImportRecognitionPipeline({
+      images: input.images,
+      locale: input.locale,
+      today,
+      budgetCurrency: currency,
+      accountId: input.accountId,
+      accounts: input.ledger.accounts,
+      envelopes: input.ledger.envelopes,
+      categories: input.ledger.categories,
+      transactions: input.ledger.transactions,
+      historyRecords,
+      chat: (request, timeoutMs) => this.deps.directChat(key, this.deps.model, request, timeoutMs),
+      ...(durable
+        ? {
+            checkpoint: durable.checkpoint,
+            pipelineMode: "durable" as const,
+            cycleTwoFailureMode: "strict" as const,
+            lifecycle: durable.lifecycle,
+          }
+        : {}),
     });
+  }
+
+  extractImport(input: ImportExtractInput): Promise<ImportExtractResult> {
+    return this.withCredential((key) => this.runImport(key, input));
+  }
+
+  /** Device-local durable execution uses the same checkpoint-safe, strict Stage A mode as
+   * the database worker while the decrypted Own OpenAI key remains request-scoped here. */
+  runDurableImport(input: E2eeDurableImportInput): Promise<ImportExtractResult> {
+    return this.withCredential((key) => this.runImport(key, input, input));
   }
 }
 

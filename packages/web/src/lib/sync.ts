@@ -46,10 +46,8 @@
 import { accountPreferences } from "./accountPreferences";
 import { devicePreferences } from "./devicePreferences";
 import * as e2ee from "./e2ee";
+import { ensureE2eeProviderPreference } from "./e2eeProviderInvariant";
 import { clearLocalData, storageMode } from "./idb";
-// NOTE: no static `import { local } from "./mutate"` here — mutate.ts imports `poke` from this
-// facade, so a static edge in the other direction would be a cycle. The one place the engine
-// needs `local` (sweepLegacyPlanned in sync/boot.ts) does a lazy `await import("../mutate")`.
 import * as outbox from "./outbox";
 import * as persist from "./persist";
 import { store } from "./store";
@@ -157,6 +155,7 @@ configureCycle({
   notePeersMayNeedUpdate,
   broadcastUpdatedIfPending,
   postPokeToPeers: () => postMsg("poke"),
+  ensureE2eeProviderPreference,
 });
 
 // The identity layer's cloud path (silent discard of a foreign replica) needs the full

@@ -1,38 +1,38 @@
 import {
-  AI_VISION_TIMEOUT_MS,
+  type Account,
   aiLocaleSchema,
-  buildImportExtractPrompt,
+  type Category,
   type ChatRequest,
-  type ImportExtractItem,
-  languageDirectives,
-  languageName,
-  parseImportExtractResponse,
+  type Envelope,
+  type ImportHistoryRecord,
+  type ImportRecognitionResult,
+  runImportRecognitionPipeline,
+  type Transaction,
 } from "@enveo/shared";
 import { and, eq, inArray } from "drizzle-orm";
-import { Hono } from "hono";
+import { type Context, Hono } from "hono";
 import { z } from "zod";
 import { aiBudgetExhaustedBody, meteredOperatorChat, operatorChatPayload, SpendDenied } from "../aiSpend/transport";
 import { requireTier, sessionUserId } from "../context";
-import { db } from "../db/client";
+import { type DB, db } from "../db/client";
 import * as s from "../db/schema";
 import { env } from "../env";
 import { transportFailureJson, UpstreamHttpError } from "../openaiHttp";
 import { assertBudgetFks } from "../sync/apply";
 import { buildDupIndex, classifyDup } from "./import-dedupe";
-import { confidentSourceRef, decideAssignment, type HistGroup, type HistPattern, rankPatterns } from "./import-match";
 import { budgetAssertionFails } from "./sync";
 
 /**
  * Expense import from screenshots (Apple Wallet / bank history).
  *
- * Two steps:
- *  1. POST /import/extract — screenshots → OpenAI (structured output) → items for review.
+ * Two steps (with /import/extract retained as the compatibility wire):
+ *  1. POST /import/recognize — screenshots → OpenAI (structured output) → evidence and proposals for review.
  *  2. POST /import/apply — dry-run duplicate classification for client review.
  *     Writes were retired: current clients create through their local replica.
  */
 export const importRoutes = new Hono();
 
-const extractInput = z.object({
+const importImagesInput = z.object({
   images: z
     .array(z.string().regex(/^data:image\//, "expected an image data-URL"))
     .min(1)
@@ -41,62 +41,17 @@ const extractInput = z.object({
      the app itself is written in; every current client sends its UI language explicitly. */
   locale: aiLocaleSchema.optional(),
 });
+export const legacyExtractInput = importImagesInput;
+export const recognizeInput = importImagesInput.extend({ accountId: z.string().uuid() });
 
 /* ── Cycle 1: vision — only facts from the screenshot; prompt+schema+parsing in shared/aiPrompts ── */
 
-/* ── Cycle 2: enrichment based on the user's historical categorizations ── */
-const enrichedTxn = z.object({
-  index: z.number().int().nonnegative(),
-  name: z.string(),
-  envelope: z.string().nullable(),
-  category: z.string().nullable(),
-  place: z.string().nullable(),
-});
-const enrichedOutput = z.object({ transactions: z.array(enrichedTxn) });
-
-const ENRICH_JSON_SCHEMA = {
-  name: "enriched_transactions",
-  strict: true,
-  schema: {
-    type: "object",
-    additionalProperties: false,
-    properties: {
-      transactions: {
-        type: "array",
-        items: {
-          type: "object",
-          additionalProperties: false,
-          properties: {
-            index: { type: "integer", description: "Index of the transaction from the input" },
-            name: { type: "string", description: "Short name in the user's language of WHAT it was (e.g. Groceries, Fuel, Cloud fee) — NOT the store name" },
-            envelope: { type: ["string", "null"], description: "Envelope name from the list or null" },
-            category: { type: ["string", "null"], description: "Category name from the list or null" },
-            place: { type: ["string", "null"], description: "Readable place name (e.g. Lidl) — an existing one if it matches" },
-          },
-          required: ["index", "name", "envelope", "category", "place"],
-        },
-      },
-    },
-    required: ["transactions"],
-  },
-} as const;
-
-/** Match result for one raw description: patterns (top 5, as AI hints)
- *  plus `confident` — a SURE source_ref hit that allows a deterministic
- *  assignment and skips the AI (null when uncertain). */
-export interface HistMatch {
-  patterns: HistPattern[];
-  confident: HistPattern | null;
-}
-
-/** Historical patterns matched against raw place descriptions.
- *  Match key: source_ref (raw bank description) → place → tag → name;
- *  source_ref is immutable on correction, so it learns from fixes (see
- *  import-match.ts). */
-export async function matchHistory(budgetId: string, rawPlaces: string[]): Promise<Record<string, HistMatch>> {
+/** Loads normalized ledger history without making an assignment decision. */
+export async function loadImportHistory(budgetId: string, currency: string, database: DB = db): Promise<ImportHistoryRecord[]> {
   const [txns, envs, cats, plcs] = await Promise.all([
-    db
+    database
       .select({
+        accountId: s.transactions.accountId,
         name: s.transactions.name,
         envelopeId: s.transactions.envelopeId,
         categoryId: s.transactions.categoryId,
@@ -109,50 +64,27 @@ export async function matchHistory(budgetId: string, rawPlaces: string[]): Promi
       })
       .from(s.transactions)
       .where(eq(s.transactions.budgetId, budgetId)),
-    db.select().from(s.envelopes).where(eq(s.envelopes.budgetId, budgetId)),
-    db.select().from(s.categories).where(eq(s.categories.budgetId, budgetId)),
-    db.select().from(s.places).where(eq(s.places.budgetId, budgetId)),
+    database.select().from(s.envelopes).where(eq(s.envelopes.budgetId, budgetId)),
+    database.select().from(s.categories).where(eq(s.categories.budgetId, budgetId)),
+    database.select().from(s.places).where(eq(s.places.budgetId, budgetId)),
   ]);
   const envName = new Map(envs.map((e) => [e.id, e.name]));
   const catName = new Map(cats.map((x) => [x.id, x.name]));
   const plcName = new Map(plcs.map((x) => [x.id, x.name]));
 
-  // group history by (similarity key, assignment pattern); source_ref as the key
-  // when present — the strongest signal, stable across corrections
-  const groups = new Map<string, HistGroup>();
-  for (const t of txns) {
-    /* Transfers are NO LONGER skipped (2026-07-12): history also teaches the TYPE —
-       a "refund→transfer" correction in import editing should train future
-       proposals (deterministically on a confident source_ref). */
-    const sref = t.sourceRef?.trim() || null;
-    const key = sref ?? (t.placeId ? plcName.get(t.placeId) : null) ?? t.tag ?? t.name;
-    if (!key) continue;
-    const pat = `${sref ? "src:" : ""}${key}|${t.name ?? ""}|${t.envelopeId ?? ""}|${t.categoryId ?? ""}|${t.type}|${t.isRefund ? 1 : 0}|${t.toAccountId ?? ""}`;
-    const cur = groups.get(pat);
-    if (cur) cur.count++;
-    else
-      groups.set(pat, {
-        key,
-        fromSourceRef: !!sref,
-        place: t.placeId ? (plcName.get(t.placeId) ?? null) : null,
-        name: t.name,
-        envelope: t.envelopeId ? (envName.get(t.envelopeId) ?? null) : null,
-        category: t.categoryId ? (catName.get(t.categoryId) ?? null) : null,
-        count: 1,
-        type: t.type as "expense" | "income" | "transfer",
-        isRefund: t.type === "expense" && !!t.isRefund,
-        toAccountId: t.type === "transfer" ? (t.toAccountId ?? null) : null,
-      });
-  }
-  const all = [...groups.values()];
-
-  const out: Record<string, HistMatch> = {};
-  for (const raw of [...new Set(rawPlaces)]) {
-    const patterns = rankPatterns(raw, all);
-    const confident = confidentSourceRef(raw, all);
-    if (patterns.length > 0 || confident) out[raw] = { patterns, confident };
-  }
-  return out;
+  return txns.map((transaction) => ({
+    accountId: transaction.accountId,
+    currency,
+    sourceRef: transaction.sourceRef,
+    tag: transaction.tag,
+    place: transaction.placeId ? (plcName.get(transaction.placeId) ?? null) : null,
+    name: transaction.name,
+    envelope: transaction.envelopeId ? (envName.get(transaction.envelopeId) ?? null) : null,
+    category: transaction.categoryId ? (catName.get(transaction.categoryId) ?? null) : null,
+    type: transaction.type as ImportHistoryRecord["type"],
+    isRefund: transaction.type === "expense" && transaction.isRefund,
+    toAccountId: transaction.type === "transfer" ? transaction.toAccountId : null,
+  }));
 }
 
 /** `timeoutMs` per cycle: vision (cycle 1) gets AI_VISION_TIMEOUT_MS — multi-screenshot
@@ -179,162 +111,215 @@ export class ImportCycleOneFailure extends Error {
   }
 }
 
+export interface ServerImportRecognitionAdapterInput {
+  images: string[];
+  locale: string;
+  today: string;
+  budgetCurrency: string;
+  accountId: string;
+  accountRows: Array<Omit<Account, "type"> & { type: string }>;
+  envelopeRows: Envelope[];
+  categoryRows: Category[];
+  transactionRows: Array<Omit<Transaction, "type" | "items"> & { type: string }>;
+  historyRecords: ImportHistoryRecord[];
+  chat: ImportModelChat;
+  checkpoint?: ImportRecognitionResult;
+  pipelineMode?: "default" | "durable";
+  cycleTwoFailureMode?: "fallback" | "strict";
+  lifecycle?: {
+    beforeUpstream?: () => Promise<void>;
+    afterUpstream?: () => Promise<void>;
+    saveExtraction?: (result: ImportRecognitionResult) => Promise<void>;
+    advancePhase?: (phase: "enriching" | "reconciling") => Promise<void>;
+    saveResult?: (result: ImportRecognitionResult) => Promise<void>;
+  };
+}
+
+/** Production server boundary: normalize database row types, then enter the
+ * provider-neutral recognition pipeline used by unlocked E2EE clients too. */
+export function runServerImportRecognitionAdapter(input: ServerImportRecognitionAdapterInput) {
+  const accounts: Account[] = input.accountRows.map((account) => ({ ...account, type: account.type as Account["type"] }));
+  const transactions: Transaction[] = input.transactionRows.map((transaction) => ({
+    ...transaction,
+    type: transaction.type as Transaction["type"],
+    items: [],
+  }));
+  return runImportRecognitionPipeline({
+    images: input.images,
+    locale: input.locale,
+    today: input.today,
+    budgetCurrency: input.budgetCurrency,
+    accountId: input.accountId,
+    accounts,
+    envelopes: input.envelopeRows,
+    categories: input.categoryRows,
+    transactions,
+    historyRecords: input.historyRecords,
+    chat: input.chat,
+    checkpoint: input.checkpoint,
+    pipelineMode: input.pipelineMode,
+    cycleTwoFailureMode: input.cycleTwoFailureMode,
+    lifecycle: input.lifecycle,
+  });
+}
+
 /** Shared operator/BYOK import pipeline. Prompt construction and both parsing cycles stay in
  * one place; only the request-scoped model transport differs. */
-export async function extractImportForBudget(input: { budgetId: string; images: string[]; locale: string; chat: ImportModelChat }) {
-  const { budgetId, images, locale, chat } = input;
-  const language = languageName(locale);
+export async function extractImportForBudget(input: { budgetId: string; accountId: string; images: string[]; locale: string; chat: ImportModelChat }) {
+  const { budgetId, accountId, images, locale, chat } = input;
   const today = new Date().toISOString().slice(0, 10);
-  const [budgetRow] = await db.select({ currency: s.budgets.currency }).from(s.budgets).where(eq(s.budgets.id, budgetId));
+  const [[budgetRow], accountRows, envelopeRows, categoryRows, transactionRows] = await Promise.all([
+    db.select({ currency: s.budgets.currency }).from(s.budgets).where(eq(s.budgets.id, budgetId)),
+    db.select().from(s.accounts).where(eq(s.accounts.budgetId, budgetId)),
+    db.select().from(s.envelopes).where(eq(s.envelopes.budgetId, budgetId)),
+    db.select().from(s.categories).where(eq(s.categories.budgetId, budgetId)),
+    db.select().from(s.transactions).where(eq(s.transactions.budgetId, budgetId)),
+  ]);
   const currency = budgetRow?.currency ?? "EUR";
-
-  /* ── cycle 1: facts from the screenshot (prompt+parsing from shared — parity with byok) ── */
-  let found: ImportExtractItem[];
+  const historyRecords = await loadImportHistory(budgetId, currency);
   try {
-    const raw = await chat(buildImportExtractPrompt(images, { envelopes: [], categories: [] }, today, locale, currency), AI_VISION_TIMEOUT_MS);
-    found = parseImportExtractResponse(raw);
+    return await runServerImportRecognitionAdapter({
+      images,
+      locale,
+      today,
+      budgetCurrency: currency,
+      accountId,
+      accountRows,
+      envelopeRows,
+      categoryRows,
+      transactionRows,
+      historyRecords,
+      chat,
+    });
   } catch (reason) {
     throw new ImportCycleOneFailure(reason);
   }
-  if (found.length === 0) return [];
-
-  /* ── cycle 2: similarity with history + assignments the way the user made them ── */
-  const [envelopes, categories] = await Promise.all([
-    db
-      .select({ id: s.envelopes.id, name: s.envelopes.name })
-      .from(s.envelopes)
-      .where(and(eq(s.envelopes.budgetId, budgetId), eq(s.envelopes.archived, false))),
-    db.select({ id: s.categories.id, name: s.categories.name }).from(s.categories).where(eq(s.categories.budgetId, budgetId)),
-  ]);
-  const history = await matchHistory(
-    budgetId,
-    found.map((t) => t.rawPlace),
-  );
-
-  const sysEnrich =
-    "You assign bank-statement transactions EXACTLY in the style the user has assigned them historically. " +
-    "Each transaction has a `patterns` field — how the user booked this place in the past ({place, name, envelope, category, count, fromSourceRef}). " +
-    "OVERRIDING RULE: when a pattern has fromSourceRef=true, use IT (it is a learned correction matched to the raw bank description — " +
-    "the strongest signal, INDEPENDENT of count) and ignore more numerous patterns. Only when none has fromSourceRef=true, pick " +
-    "the most numerous one (highest count) that matches the transaction type. From the chosen pattern COPY VERBATIM all four fields: " +
-    "name, envelope, category, place — even when name looks like an abbreviation (e.g. Vps) and category/place are null. " +
-    `Only when \`patterns\` is empty, propose yourself: name — a short name in ${language} of WHAT it was (e.g. Groceries, Fuel, Cloud fee), never the raw company name with an address; ` +
-    `envelope — one of the envelopes: ${envelopes.map((e) => e.name).join(", ")} — or null; ` +
-    `category — one of the categories: ${categories.map((x) => x.name).join(", ")} — or null; ` +
-    "place — a readable, short place name (e.g. Lidl, Netflix). Do not change amounts or dates. " +
-    /* Cycle 2 is shared by operator and vaulted-BYOK transport, and carries the SAME language
-       contract as every shared prompt — the names it invents land in the user's ledger. */
-    languageDirectives(locale) +
-    "Return JSON.";
-  // Items with a SURE source_ref hit are assigned DETERMINISTICALLY — we do NOT ask the AI
-  // (a learned correction matched exactly to the raw bank description). The rest → cycle 2 (model).
-  const uncertain = found.map((t, index) => ({ t, index })).filter(({ t }) => !history[t.rawPlace]?.confident);
-  console.log(`import/extract: ${found.length - uncertain.length}/${found.length} confident by source_ref (no AI); ${uncertain.length} to the model`);
-
-  let enriched = new Map<number, z.infer<typeof enrichedTxn>>();
-  if (uncertain.length > 0) {
-    const enrichPayload = {
-      transactions: uncertain.map(({ t, index }) => ({
-        index,
-        date: t.date,
-        amount: t.amount,
-        type: t.type,
-        rawPlace: t.rawPlace,
-        tag: t.tag,
-        patterns: history[t.rawPlace]?.patterns ?? [],
-      })),
-    };
-    try {
-      const raw = await chat({
-        messages: [
-          { role: "system", content: sysEnrich },
-          { role: "user", content: JSON.stringify(enrichPayload) },
-        ],
-        responseFormat: { type: "json_schema", json_schema: ENRICH_JSON_SCHEMA },
-        /* Matching against history patterns = simple comparisons — full default-effort
-             reasoning only slowed the import down (cycle 1/vision STAYS on the default:
-             OCR precision matters there). */
-        reasoningEffort: "low",
-      });
-      // size only — the answer carries the user's transactions; it NEVER goes to the server log
-      console.log(`import/extract cycle 2: ${raw.length} B answer`);
-      enriched = new Map(enrichedOutput.parse(JSON.parse(raw)).transactions.map((t) => [t.index, t]));
-    } catch (e) {
-      // SpendDenied lands here too: cycle 1 exhausted the allowance → skip AI enrichment and
-      // return the already-extracted raw items through this existing graceful fallback.
-      console.warn("import/extract cycle 2 (enrichment) failed — returning raw data:", (e as Error).message);
-    }
-  }
-
-  const envByName = new Map(envelopes.map((e) => [e.name.toLowerCase(), e]));
-  const catByName = new Map(categories.map((x) => [x.name.toLowerCase(), x]));
-  const items = found.map((t, index) => {
-    const h = history[t.rawPlace];
-    // sure source_ref hit → deterministic (no AI); otherwise the model decides,
-    // and the best pattern fills gaps (hardOverride=false — source_ref is not forced).
-    const pick = h?.confident
-      ? decideAssignment(t.rawPlace, h.confident, undefined)
-      : decideAssignment(t.rawPlace, h?.patterns?.[0], enriched.get(index), false);
-    const envMatch = pick.envelope ? envByName.get(pick.envelope.toLowerCase()) : undefined;
-    const catMatch = pick.category ? catByName.get(pick.category.toLowerCase()) : undefined;
-    /* TYPE learning: only from CONFIDENT history (source_ref) — the model never
-       decides the type. A transfer is proposed only with a remembered target
-       account; a collision with the source account is caught by apply validation. */
-    const conf = h?.confident;
-    const learnedType = conf && (conf.type !== t.type || conf.isRefund) ? conf.type : null;
-    const proposedType = learnedType && (learnedType !== "transfer" || conf!.toAccountId) ? learnedType : t.type;
-    return {
-      date: t.date,
-      amount: t.amount,
-      type: proposedType,
-      // isRefund: a live positive-amount refund read (t.isRefund) is never suppressed by
-      // history — a genuine refund from an ordinarily-non-refund merchant must not be
-      // reclassified as a normal expense. Only when the live read is false does confident
-      // learned history (source_ref) get to override it (the previous ?? let a
-      // isRefund:false history entry beat a true live read — the bug fixed here).
-      isRefund: proposedType === "expense" ? t.isRefund || (conf?.isRefund ?? false) : false,
-      toAccountId: proposedType === "transfer" ? (conf?.toAccountId ?? null) : null,
-      name: pick.name,
-      tag: t.tag,
-      // raw bank description — stored as metadata (source_ref), invisible
-      // in the UI; used to match future imports and learn from corrections
-      rawPlace: t.rawPlace,
-      envelopeId: envMatch?.id ?? null,
-      envelopeName: envMatch?.name ?? null,
-      categoryId: catMatch?.id ?? null,
-      categoryName: catMatch?.name ?? null,
-      placeName: pick.place,
-      // presentation-only (not stored): lets the UI warn on a foreign-currency row
-      currency: t.currency,
-      fxOriginal: t.fxOriginal,
-    };
-  });
-  return items;
 }
+
+/** Compatibility-window adapter: no account was present on the old wire, so no
+ * ledger/history context is consulted. Only universally safe selected rows are
+ * projected back into the old `{items}` response. This preserves the wire, not
+ * the former assignment quality: a clear row that needs no cycle two may have a
+ * blank generated name, so old clients must retain their raw-place fallback. */
+export async function extractLegacyImportForBudget(input: { budgetId: string; images: string[]; locale: string; chat: ImportModelChat }) {
+  const [budgetRow] = await db.select({ currency: s.budgets.currency }).from(s.budgets).where(eq(s.budgets.id, input.budgetId));
+  const legacyAccount: Account = {
+    id: "legacy-no-history",
+    name: "Legacy import",
+    color: "#000000",
+    icon: "wallet",
+    type: "checking",
+    onBudget: true,
+    initialBalance: 0,
+    archived: false,
+    sort: 0,
+    automaticEnvelopeId: null,
+  };
+  try {
+    return await runImportRecognitionPipeline({
+      images: input.images,
+      locale: input.locale,
+      today: new Date().toISOString().slice(0, 10),
+      budgetCurrency: budgetRow?.currency ?? "EUR",
+      accountId: legacyAccount.id,
+      accounts: [legacyAccount],
+      envelopes: [],
+      categories: [],
+      transactions: [],
+      historyRecords: [],
+      chat: input.chat,
+    });
+  } catch (reason) {
+    throw new ImportCycleOneFailure(reason);
+  }
+}
+
+export function legacyItemsFromRecognition(result: ImportRecognitionResult) {
+  const rowsById = new Map(result.rows.map((row) => [row.rowId, row]));
+  return result.proposals.flatMap((proposal) => {
+    if (
+      !proposal.selected ||
+      proposal.reviewReasons.length > 0 ||
+      proposal.disposition !== "candidate" ||
+      proposal.date === null ||
+      proposal.amount === null ||
+      proposal.type === null
+    ) {
+      return [];
+    }
+    const sourceRef = proposal.sourceRows
+      .flatMap((rowId) => rowsById.get(rowId)?.rawTextLines ?? [])
+      .join("\n")
+      .trim();
+    return [
+      {
+        date: proposal.date,
+        amount: proposal.amount,
+        type: proposal.type,
+        isRefund: proposal.isRefund,
+        toAccountId: proposal.toAccountId,
+        name: proposal.name,
+        tag: proposal.tag,
+        rawPlace: sourceRef,
+        envelopeId: proposal.envelopeId,
+        envelopeName: null,
+        categoryId: proposal.categoryId,
+        categoryName: null,
+        placeName: proposal.placeName,
+        currency: proposal.currency ?? undefined,
+        fxOriginal: "",
+      },
+    ];
+  });
+}
+
+const importFailureResponse = (c: Context, error: unknown) => {
+  if (!(error instanceof ImportCycleOneFailure)) throw error;
+  const reason = error.reason;
+  if (reason instanceof SpendDenied) return c.json(aiBudgetExhaustedBody(reason.retryAfterSeconds), 429, { "Retry-After": String(reason.retryAfterSeconds) });
+  console.error("import recognition cycle 1 failed:", (reason as Error).message);
+  const failure = transportFailureJson(reason);
+  if (failure) return c.json(failure.body, failure.status);
+  return c.json({ error: "ai_upstream_error", ...(reason instanceof UpstreamHttpError ? { status: reason.status } : {}) }, 502);
+};
 
 /* The API answers with stable machine CODES (never prose): the client owns the wording
    in every locale (web/lib/api.ts → i18n). Structured detail travels in its own field. */
 importRoutes.post("/import/extract", async (c) => {
   if (!env.OPENAI_API_KEY) return c.json({ error: "ai_unavailable" }, 503);
   const budgetId = (await requireTier(c, "plain")).id;
-  const { images, locale: rawLocale } = extractInput.parse(await c.req.json());
+  const { images, locale: rawLocale } = legacyExtractInput.parse(await c.req.json());
   const userId = sessionUserId(c);
   try {
-    const items = await extractImportForBudget({
+    const result = await extractLegacyImportForBudget({
       budgetId,
       images,
       locale: rawLocale ?? "en",
       chat: (request, timeoutMs) => openaiJson(request, userId, timeoutMs),
     });
-    return c.json({ items });
+    return c.json({ items: legacyItemsFromRecognition(result) });
   } catch (error) {
-    if (!(error instanceof ImportCycleOneFailure)) throw error;
-    const reason = error.reason;
-    if (reason instanceof SpendDenied) return c.json(aiBudgetExhaustedBody(reason.retryAfterSeconds), 429, { "Retry-After": String(reason.retryAfterSeconds) });
-    console.error("import/extract cycle 1 failed:", (reason as Error).message);
-    const failure = transportFailureJson(reason);
-    if (failure) return c.json(failure.body, failure.status);
-    return c.json({ error: "ai_upstream_error", ...(reason instanceof UpstreamHttpError ? { status: reason.status } : {}) }, 502);
+    return importFailureResponse(c, error);
+  }
+});
+
+importRoutes.post("/import/recognize", async (c) => {
+  if (!env.OPENAI_API_KEY) return c.json({ error: "ai_unavailable" }, 503);
+  const budgetId = (await requireTier(c, "plain")).id;
+  const { accountId, images, locale: rawLocale } = recognizeInput.parse(await c.req.json());
+  const userId = sessionUserId(c);
+  try {
+    return c.json(
+      await extractImportForBudget({
+        budgetId,
+        accountId,
+        images,
+        locale: rawLocale ?? "en",
+        chat: (request, timeoutMs) => openaiJson(request, userId, timeoutMs),
+      }),
+    );
+  } catch (error) {
+    return importFailureResponse(c, error);
   }
 });
 
@@ -368,7 +353,7 @@ export const applyInput = z.object({
            "already exists" item in review) — skips classifyDup for this item. */
         force: z.boolean().optional(),
         /* PRESENTATION-ONLY (fx/refund review, ImportSheet): accepted so the round-trip of an
-           item echoed back from /import/extract validates, but never stored — there is no
+           item echoed back from screenshot recognition validates, but never stored — there is no
            `currency`/`fx_original` column on `transactions` (money is always the budget's
            currency; source_ref already carries what we persist about the raw row). */
         currency: z.string().optional(),
@@ -380,6 +365,46 @@ export const applyInput = z.object({
 });
 
 export type ApplyItem = z.infer<typeof applyInput>["items"][number];
+
+export interface ExistingImportEvidence {
+  accountId: string;
+  date: string;
+  amount: number;
+  sourceRef: string | null;
+}
+
+/** Pure account-scoped dry-run classifier shared by the route tests and handler. */
+export function planImportDryRun(input: { globalAccountId: string; items: ApplyItem[]; existing: ExistingImportEvidence[] }) {
+  const duplicateIndexes = new Map<string, ReturnType<typeof buildDupIndex>>();
+  const duplicateIndexFor = (accountId: string) => {
+    let index = duplicateIndexes.get(accountId);
+    if (!index) {
+      index = buildDupIndex(input.existing.filter((row) => row.accountId === accountId).map(({ date, amount, sourceRef }) => ({ date, amount, sourceRef })));
+      duplicateIndexes.set(accountId, index);
+    }
+    return index;
+  };
+  let added = 0;
+  let skipped = 0;
+  const results: Array<ApplyItem & { status: "added" | "exists" | "probable" }> = [];
+  for (const item of input.items) {
+    const duplicateIndex = duplicateIndexFor(item.accountId ?? input.globalAccountId);
+    const status = item.force ? "new" : classifyDup({ date: item.date, amount: item.amount, rawPlace: item.rawPlace }, duplicateIndex);
+    if (status === "exists") {
+      skipped++;
+      results.push({ ...item, status });
+      continue;
+    }
+    if (status === "probable") {
+      results.push({ ...item, status });
+      continue;
+    }
+    duplicateIndex.markSeen({ date: item.date, amount: item.amount, rawPlace: item.rawPlace });
+    added++;
+    results.push({ ...item, status: "added" });
+  }
+  return { added, skipped, dryRun: true as const, results };
+}
 
 /** Transfer validation error in a batch: a transfer without a target account
  *  or with a target account equal to the item's account. Null when all valid. */
@@ -418,31 +443,8 @@ importRoutes.post("/import/apply", async (c) => {
 
   const dates = [...new Set(body.items.map((i) => i.date))];
   const existing = await db
-    .select({ date: s.transactions.date, amount: s.transactions.amount, sourceRef: s.transactions.sourceRef })
+    .select({ accountId: s.transactions.accountId, date: s.transactions.date, amount: s.transactions.amount, sourceRef: s.transactions.sourceRef })
     .from(s.transactions)
     .where(and(eq(s.transactions.budgetId, budgetId), inArray(s.transactions.date, dates)));
-  // duplicate key WITHOUT nondeterministic fields (LLM tag/envelope) — see import-dedupe.ts
-  const dupIdx = buildDupIndex(existing);
-
-  let added = 0;
-  let skipped = 0;
-  const results: Array<(typeof body.items)[number] & { status: "added" | "exists" | "probable" }> = [];
-  for (const it of body.items) {
-    const status = it.force ? "new" : classifyDup({ date: it.date, amount: it.amount, rawPlace: it.rawPlace }, dupIdx);
-    if (status === "exists") {
-      skipped++;
-      results.push({ ...it, status: "exists" });
-      continue;
-    }
-    if (status === "probable") {
-      // only date+amount match (e.g. a manual entry without source_ref) — the
-      // decision belongs to the user: unchecked by default, but selectable
-      results.push({ ...it, status: "probable" });
-      continue;
-    }
-    dupIdx.markSeen({ date: it.date, amount: it.amount, rawPlace: it.rawPlace }); // dedup within the batch (strong key)
-    added++;
-    results.push({ ...it, status: "added" });
-  }
-  return c.json({ added, skipped, dryRun: true, results });
+  return c.json(planImportDryRun({ globalAccountId: body.accountId, items: body.items, existing }));
 });

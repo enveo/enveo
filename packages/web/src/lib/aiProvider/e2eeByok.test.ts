@@ -1,12 +1,36 @@
 import { describe, expect, it } from "bun:test";
-import type { ChatRequest, ClientLedger } from "@enveo/shared";
+import { type ChatRequest, type ClientLedger, createDefaultBudgetPreferences, type ImportHistoryRecord, type ImportRecognitionResult } from "@enveo/shared";
+import { runServerImportRecognitionAdapter } from "../../../../api/src/routes/import";
 import { budgetSecretAadContext, encryptPayload, generateDek, snapshotAadContext } from "../crypto";
 import { E2eeByokProvider } from "./e2eeByok";
 
 const BUDGET = "11111111-1111-1111-1111-111111111111";
 const OTHER_BUDGET = "22222222-2222-2222-2222-222222222222";
 const request: ChatRequest = { messages: [{ role: "user", content: "hello" }] };
-const ledger: ClientLedger = { budgets: [], accounts: [], groups: [], envelopes: [], categories: [], places: [], transactions: [], allocations: [] };
+const ACCOUNT = "33333333-3333-3333-3333-333333333333";
+const ledger: ClientLedger = {
+  budgets: [{ id: BUDGET, name: "Budget", currency: "EUR", preferences: createDefaultBudgetPreferences() }],
+  accounts: [
+    {
+      id: ACCOUNT,
+      name: "Checking",
+      color: "#000",
+      icon: "wallet",
+      type: "checking",
+      onBudget: true,
+      initialBalance: 0,
+      archived: false,
+      sort: 0,
+      automaticEnvelopeId: null,
+    },
+  ],
+  groups: [],
+  envelopes: [],
+  categories: [],
+  places: [],
+  transactions: [],
+  allocations: [],
+};
 
 function fixture(
   options: {
@@ -16,6 +40,7 @@ function fixture(
     responseBudgetId?: string;
     responseEpoch?: number;
     staleOn?: "get" | "save" | "remove";
+    respond?: (request: ChatRequest) => string;
   } = {},
 ) {
   const dek = generateDek();
@@ -61,9 +86,14 @@ function fixture(
     directChat: async (key, model, req, timeoutMs) => {
       calls.direct.push({ key, model, request: req, timeoutMs });
       if (options.directError) throw new Error(options.directError);
-      return req.messages[1] && Array.isArray(req.messages[1].content)
-        ? '{"transactions":[{"date":"2026-08-01","amount":1234,"type":"expense","rawPlace":"SHOP 1","tag":"SHOP","currency":"EUR","fxOriginal":""}]}'
-        : "direct-answer";
+      if (options.respond) return options.respond(req);
+      if (req.messages[1] && Array.isArray(req.messages[1].content)) {
+        return '{"rows":[{"rowId":"r1","imageIndex":0,"visualOrder":0,"rawTextLines":["SHOP 1"],"date":"2026-08-01","amount":1234,"currency":"EUR","direction":"unknown","postingStatus":"posted","rowRole":"financial_event","semanticKind":"unknown","relation":null,"confidence":"medium","reviewReasons":[]}]}';
+      }
+      if (String(req.messages[0]?.content).includes("conservatively enrich")) {
+        return '{"rows":[{"rowId":"r1","name":"Zakupy","place":"Shop","envelopeId":null,"categoryId":null,"semanticKind":"card_purchase","relation":null,"reviewReasons":[]}]}';
+      }
+      return "direct-answer";
     },
     onTierMismatch: (meta) => calls.mismatch.push(meta),
   });
@@ -107,15 +137,238 @@ describe("E2EE Own OpenAI provider", () => {
     expect(f.calls.remove).toEqual([{ budgetId: BUDGET, epoch: 3 }]);
   });
 
-  it("extracts screenshots directly and returns normalized facts without sending them to Enveo", async () => {
+  it("runs both import cycles directly and returns the full recognition result without sending plaintext to Enveo", async () => {
     const f = fixture();
     await f.provider.saveCredential("sk-vision");
-    const result = await f.provider.extractImport({ images: ["data:image/png;base64,AA=="], locale: "pl", ledger });
-    expect(result.items).toEqual([
-      expect.objectContaining({ date: "2026-08-01", amount: 1234, type: "expense", rawPlace: "SHOP 1", tag: "SHOP", currency: "EUR" }),
-    ]);
-    expect(f.calls.get).toEqual([BUDGET]);
+    const originalFetch = globalThis.fetch;
+    const serverImportUrls: string[] = [];
+    globalThis.fetch = ((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("/api/import/")) serverImportUrls.push(url);
+      throw new Error("unexpected_fetch");
+    }) as unknown as typeof fetch;
+    try {
+      const result = await f.provider.extractImport({ images: ["data:image/png;base64,AA=="], locale: "pl", ledger, accountId: ACCOUNT });
+      expect(result.rows).toHaveLength(1);
+      expect(result.proposals).toEqual([expect.objectContaining({ rowId: "r1", date: "2026-08-01", amount: 1234, rawPlace: "SHOP 1", name: "Zakupy" })]);
+      expect(f.calls.get).toEqual([BUDGET]);
+      expect(f.calls.direct).toHaveLength(2);
+      expect(serverImportUrls).toEqual([]);
+      expect(JSON.stringify(f.calls.save)).not.toContain("SHOP 1");
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it("runs the durable strict pipeline from a saved extraction without repeating cycle one", async () => {
+    const f = fixture();
+    await f.provider.saveCredential("sk-resume");
+    const phases: string[] = [];
+    const saved: ImportRecognitionResult[] = [];
+
+    await f.provider.runDurableImport({
+      images: [],
+      locale: "pl",
+      ledger,
+      accountId: ACCOUNT,
+      checkpoint: {
+        rows: [
+          {
+            rowId: "r1",
+            imageIndex: 0,
+            visualOrder: 0,
+            rawTextLines: ["SHOP 1"],
+            date: "2026-08-01",
+            amount: 1234,
+            currency: "EUR",
+            direction: "unknown",
+            postingStatus: "posted",
+            rowRole: "financial_event",
+            semanticKind: "unknown",
+            relation: null,
+            confidence: "medium",
+            reviewReasons: [],
+          },
+        ],
+        proposals: [],
+      },
+      lifecycle: {
+        advancePhase: async (phase) => void phases.push(phase),
+        saveResult: async (result) => void saved.push(result),
+      },
+    });
+
     expect(f.calls.direct).toHaveLength(1);
+    expect(f.calls.direct[0]?.request.messages[1]?.content).not.toBeArray();
+    expect(phases).toEqual(["enriching", "reconciling"]);
+    expect(saved).toHaveLength(1);
+  });
+
+  it("keeps exact-duplicate cycle-two requests byte-identical to the default server pipeline", async () => {
+    const duplicate = {
+      id: "44444444-4444-4444-8444-444444444444",
+      type: "expense" as const,
+      accountId: ACCOUNT,
+      toAccountId: null,
+      amount: 1234,
+      date: "2026-08-01",
+      isRefund: false,
+      envelopeId: null,
+      placeId: null,
+      categoryId: null,
+      name: "Existing shop",
+      note: null,
+      tag: null,
+      sourceRef: "SHOP 1",
+      allocationFromEnvelopeId: null,
+      allocationToEnvelopeId: null,
+      items: [],
+      createdAt: "2026-08-01T00:00:00.000Z",
+    };
+    const duplicateLedger: ClientLedger = { ...ledger, transactions: [duplicate] };
+    const historyRecords: ImportHistoryRecord[] = [
+      {
+        accountId: ACCOUNT,
+        currency: "EUR",
+        sourceRef: "SHOP 1",
+        tag: null,
+        place: null,
+        name: "Existing shop",
+        envelope: null,
+        category: null,
+        type: "expense",
+        isRefund: false,
+        toAccountId: null,
+      },
+    ];
+    const respond = (modelRequest: ChatRequest): string =>
+      Array.isArray(modelRequest.messages[1]?.content)
+        ? '{"rows":[{"rowId":"r1","imageIndex":0,"visualOrder":0,"rawTextLines":["SHOP 1"],"date":"2026-08-01","amount":1234,"currency":"EUR","direction":"debit","postingStatus":"posted","rowRole":"financial_event","semanticKind":"card_purchase","relation":null,"confidence":"high","reviewReasons":[]}]}'
+        : '{"rows":[{"rowId":"r1","name":"Duplicate shop","place":"Shop","envelopeId":null,"categoryId":null,"semanticKind":"card_purchase","relation":null,"reviewReasons":[]}]}';
+    const serverRequests: Array<{ request: ChatRequest; timeoutMs: number | undefined }> = [];
+    const expected = await runServerImportRecognitionAdapter({
+      images: ["data:image/png;base64,AA=="],
+      locale: "pl",
+      today: new Date().toISOString().slice(0, 10),
+      budgetCurrency: "EUR",
+      accountId: ACCOUNT,
+      accountRows: duplicateLedger.accounts,
+      envelopeRows: duplicateLedger.envelopes,
+      categoryRows: duplicateLedger.categories,
+      transactionRows: duplicateLedger.transactions,
+      historyRecords,
+      chat: async (modelRequest, timeoutMs) => {
+        serverRequests.push({ request: modelRequest, timeoutMs });
+        return respond(modelRequest);
+      },
+    });
+    const f = fixture({ respond });
+    await f.provider.saveCredential("sk-duplicate-parity");
+
+    const actual = await f.provider.extractImport({ images: ["data:image/png;base64,AA=="], locale: "pl", ledger: duplicateLedger, accountId: ACCOUNT });
+
+    expect(serverRequests).toHaveLength(2);
+    expect(f.calls.direct).toHaveLength(2);
+    expect(f.calls.direct.map(({ request, timeoutMs }) => ({ request, timeoutMs }))).toEqual(serverRequests);
+    expect(actual).toEqual(expected);
+    expect(actual.proposals[0]).toMatchObject({ duplicateStatus: "exists", disposition: "declined", selected: false, name: "Duplicate shop" });
+  });
+
+  it("matches the production server adapter for permuted versions of the same logical ledger", async () => {
+    const otherBudget = {
+      id: OTHER_BUDGET,
+      name: "Other",
+      currency: "USD",
+      preferences: createDefaultBudgetPreferences(),
+    };
+    const secondAccount = { ...ledger.accounts[0]!, id: "44444444-4444-4444-8444-444444444444", name: "Savings", type: "savings" as const, sort: 1 };
+    const envelope = {
+      id: "55555555-5555-4555-8555-555555555555",
+      groupId: "66666666-6666-4666-8666-666666666666",
+      name: "Food",
+      color: "#000",
+      icon: "tag",
+      note: null,
+      monthlyTarget: null,
+      isSavings: false,
+      sort: 0,
+      archived: false,
+    };
+    const secondEnvelope = { ...envelope, id: "77777777-7777-4777-8777-777777777777", name: "Travel", sort: 1 };
+    const category = { id: "88888888-8888-4888-8888-888888888888", name: "Groceries", archived: false };
+    const secondCategory = { id: "99999999-9999-4999-8999-999999999999", name: "Restaurants", archived: false };
+    const place = { id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", name: "Shop", archived: false };
+    const historicalTransaction = {
+      id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+      type: "expense" as const,
+      accountId: ACCOUNT,
+      toAccountId: null,
+      amount: 999,
+      date: "2026-07-01",
+      isRefund: false,
+      envelopeId: envelope.id,
+      placeId: place.id,
+      categoryId: category.id,
+      name: "Past groceries",
+      note: null,
+      tag: "SHOP",
+      sourceRef: "SHOP 1",
+      allocationFromEnvelopeId: null,
+      allocationToEnvelopeId: null,
+      items: [],
+      createdAt: "2026-07-01T00:00:00.000Z",
+    };
+    const reorderedLedger: ClientLedger = {
+      ...ledger,
+      budgets: [otherBudget, ...ledger.budgets],
+      accounts: [secondAccount, ...ledger.accounts],
+      envelopes: [secondEnvelope, envelope],
+      categories: [secondCategory, category],
+      places: [place],
+      transactions: [historicalTransaction],
+    };
+    const historyRecords: ImportHistoryRecord[] = [
+      {
+        accountId: ACCOUNT,
+        currency: "EUR",
+        sourceRef: "SHOP 1",
+        tag: "SHOP",
+        place: "Shop",
+        name: "Past groceries",
+        envelope: "Food",
+        category: "Groceries",
+        type: "expense",
+        isRefund: false,
+        toAccountId: null,
+      },
+    ];
+    const respond = (request: ChatRequest): string =>
+      Array.isArray(request.messages[1]?.content)
+        ? '{"rows":[{"rowId":"r1","imageIndex":0,"visualOrder":0,"rawTextLines":["SHOP 1"],"date":"2026-08-01","amount":1234,"currency":"EUR","direction":"debit","postingStatus":"posted","rowRole":"financial_event","semanticKind":"card_purchase","relation":null,"confidence":"medium","reviewReasons":["possible_ocr_error"]}]}'
+        : `{"rows":[{"rowId":"r1","name":"Zakupy","place":"Shop","envelopeId":"${envelope.id}","categoryId":"${category.id}","semanticKind":"card_purchase","relation":null,"reviewReasons":[]}]}`;
+    const serverRequests: Array<{ request: ChatRequest; timeoutMs: number | undefined }> = [];
+    const expected = await runServerImportRecognitionAdapter({
+      images: ["data:image/png;base64,AA=="],
+      locale: "pl",
+      today: new Date().toISOString().slice(0, 10),
+      budgetCurrency: "EUR",
+      accountId: ACCOUNT,
+      accountRows: [...reorderedLedger.accounts].reverse(),
+      envelopeRows: [...reorderedLedger.envelopes].reverse(),
+      categoryRows: [...reorderedLedger.categories].reverse(),
+      transactionRows: [...reorderedLedger.transactions].reverse(),
+      historyRecords: [...historyRecords].reverse(),
+      chat: async (request, timeoutMs) => {
+        serverRequests.push({ request, timeoutMs });
+        return respond(request);
+      },
+    });
+    const f = fixture({ respond });
+    await f.provider.saveCredential("sk-parity");
+    const actual = await f.provider.extractImport({ images: ["data:image/png;base64,AA=="], locale: "pl", ledger: reorderedLedger, accountId: ACCOUNT });
+
+    expect(actual).toEqual(expected);
+    expect(f.calls.direct.map(({ request, timeoutMs }) => ({ request, timeoutMs }))).toEqual(serverRequests);
   });
 
   it("fails closed on malformed, legacy, cross-budget and stale-epoch records", async () => {

@@ -48,12 +48,24 @@ export type SpendRoutesChildOutput = {
   importDeniedBeforeCycle1: { status: number; error: string | undefined; hasRetryAfterHeader: boolean; upstreamNotCalled: boolean };
   importCycle2Denied: {
     status: number;
-    /** Raw extracted items came back through the graceful fallback. */
+    /** Validated raw proposals came back through the graceful fallback. */
     itemCount: number;
-    firstItemTag: string | undefined;
+    firstRawPlace: string | undefined;
     /** Exactly one upstream call (cycle 1); the denied cycle 2 never fetched. */
     upstreamCalls: number;
     /** Two independent checks, one record (cycle 1 charged, cycle 2 denied). */
+    checks: number;
+    records: number;
+  };
+  importCompatibility: {
+    legacyStatus: number;
+    legacyItemCount: number;
+    legacyHasRecognitionFields: boolean;
+    recognitionStatus: number;
+    recognitionRowCount: number;
+    recognitionProposalCount: number;
+    recognitionHasLegacyItems: boolean;
+    upstreamCalls: number;
     checks: number;
     records: number;
   };
@@ -123,7 +135,8 @@ async function main() {
       .values({ email: `spend-routes-${tag}-${crypto.randomUUID()}@test.local` })
       .returning({ id: s.users.id });
     const [b] = await db.insert(s.budgets).values({ userId: u!.id, name: "B" }).returning({ id: s.budgets.id });
-    return { userId: u!.id, budgetId: b!.id };
+    const [a] = await db.insert(s.accounts).values({ budgetId: b!.id, name: "Checking" }).returning({ id: s.accounts.id });
+    return { userId: u!.id, budgetId: b!.id, accountId: a!.id };
   };
   const spentOf = async (userId: string): Promise<bigint> => {
     const rows = await pooled<{ spent: string }[]>`
@@ -246,25 +259,100 @@ async function main() {
   await pooled`update ai_user_monthly_spend set spent_nano_usd = ${(THRESHOLD - 1n).toString()}::bigint
     where user_id = ${u6.userId} and period_key = ${check6.periodKey}`;
   const visionItems = {
-    transactions: [
-      { date: "2026-08-01", amount: 1234, type: "expense", rawPlace: "LIDL SP. Z O.O.", tag: "LIDL", currency: "EUR", fxOriginal: "" },
-      { date: "2026-08-02", amount: 999, type: "income", rawPlace: "EMPLOYER GMBH", tag: "EMPLOYER", currency: "EUR", fxOriginal: "" },
+    rows: [
+      {
+        rowId: "r1",
+        imageIndex: 0,
+        visualOrder: 0,
+        rawTextLines: ["LIDL SP. Z O.O."],
+        date: "2026-08-01",
+        amount: 1234,
+        currency: "EUR",
+        direction: "unknown",
+        postingStatus: "posted",
+        rowRole: "financial_event",
+        semanticKind: "unknown",
+        relation: null,
+        confidence: "medium",
+        reviewReasons: [],
+      },
+      {
+        rowId: "r2",
+        imageIndex: 0,
+        visualOrder: 1,
+        rawTextLines: ["EMPLOYER GMBH"],
+        date: "2026-08-02",
+        amount: 999,
+        currency: "EUR",
+        direction: "credit",
+        postingStatus: "posted",
+        rowRole: "financial_event",
+        semanticKind: "salary",
+        relation: null,
+        confidence: "high",
+        reviewReasons: [],
+      },
     ],
   };
   script = [chatBody(JSON.stringify(visionItems))];
   const before6 = { calls: upstreamCalls, checks: counters.checks, records: counters.records };
-  const res7 = await post(app6, "/import/extract", { images: ["data:image/png;base64,AAAA"], locale: "en" });
-  const body7 = (await res7.json()) as { items?: Array<{ tag?: string }> };
+  const res7 = await post(app6, "/import/recognize", { accountId: u6.accountId, images: ["data:image/png;base64,AAAA"], locale: "en" });
+  const body7 = (await res7.json()) as { proposals?: Array<{ rawPlace?: string }> };
   const importCycle2Denied = {
     status: res7.status,
-    itemCount: body7.items?.length ?? -1,
-    firstItemTag: body7.items?.[0]?.tag,
+    itemCount: body7.proposals?.length ?? -1,
+    firstRawPlace: body7.proposals?.[0]?.rawPlace,
     upstreamCalls: upstreamCalls - before6.calls,
     checks: counters.checks - before6.checks,
     records: counters.records - before6.records,
   };
 
-  /* ── 7. a STALLED counter (decision 7): the REAL check blocks on a held table lock; the
+  /* ── 7. old and new operator clients coexist: the legacy route keeps its old
+     request/response envelope while recognition exposes the final structured result. ── */
+  const uCompat = await newUser("import-compat");
+  const appCompat = appFor(uCompat.userId);
+  const compatibleVision = {
+    rows: [
+      {
+        rowId: "compat-row",
+        imageIndex: 0,
+        visualOrder: 0,
+        rawTextLines: ["CAFE COMPAT"],
+        date: "2026-08-03",
+        amount: 555,
+        currency: "EUR",
+        direction: "debit",
+        postingStatus: "posted",
+        rowRole: "financial_event",
+        semanticKind: "card_purchase",
+        relation: null,
+        confidence: "high",
+        reviewReasons: [],
+      },
+    ],
+  };
+  script = [chatBody(JSON.stringify(compatibleVision)), chatBody(JSON.stringify(compatibleVision))];
+  const beforeCompat = { calls: upstreamCalls, checks: counters.checks, records: counters.records };
+  const [legacyCompatResponse, recognitionCompatResponse] = await Promise.all([
+    post(appCompat, "/import/extract", { images: ["data:image/png;base64,AAAA"], locale: "en" }),
+    post(appCompat, "/import/recognize", { accountId: uCompat.accountId, images: ["data:image/png;base64,AAAA"], locale: "en" }),
+  ]);
+  const legacyCompatBody = (await legacyCompatResponse.json()) as { items?: unknown[]; rows?: unknown[]; proposals?: unknown[] };
+  const recognitionCompatBody = (await recognitionCompatResponse.json()) as { items?: unknown[]; rows?: unknown[]; proposals?: unknown[] };
+  const importCompatibility: SpendRoutesChildOutput["importCompatibility"] = {
+    legacyStatus: legacyCompatResponse.status,
+    legacyItemCount: legacyCompatBody.items?.length ?? -1,
+    legacyHasRecognitionFields: legacyCompatBody.rows !== undefined || legacyCompatBody.proposals !== undefined,
+    recognitionStatus: recognitionCompatResponse.status,
+    recognitionRowCount: recognitionCompatBody.rows?.length ?? -1,
+    recognitionProposalCount: recognitionCompatBody.proposals?.length ?? -1,
+    recognitionHasLegacyItems: recognitionCompatBody.items !== undefined,
+    upstreamCalls: upstreamCalls - beforeCompat.calls,
+    checks: counters.checks - beforeCompat.checks,
+    records: counters.records - beforeCompat.records,
+  };
+
+  /* ── 8. a STALLED counter (decision 7): the REAL check blocks on a held table lock; the
      bounded deadlines fire, the attempt fails OPEN and the answer arrives anyway ── */
   const u7 = await newUser("stalled");
   const app7 = appFor(u7.userId);
@@ -307,6 +395,7 @@ async function main() {
     suggestDenied,
     importDeniedBeforeCycle1,
     importCycle2Denied,
+    importCompatibility,
     stalledCounter,
   };
   await emitChildResult(SENTINEL, out);

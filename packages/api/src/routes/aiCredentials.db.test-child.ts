@@ -7,6 +7,15 @@ export interface AiCredentialsRoutesOutput {
   unavailable: { statusAvailable: boolean; statusReason: string | null; saveStatus: number; deleteStatus: number };
   tierStatus: number;
   workloads: { chatStatus: number; chatContent: string | null; importStatus: number; importItems: number; sentVaultKey: boolean; sentChosenModel: boolean };
+  importCompatibility: {
+    legacyStatus: number;
+    legacyItems: number;
+    legacyHasRecognitionFields: boolean;
+    recognitionStatus: number;
+    recognitionRows: number;
+    recognitionProposals: number;
+    recognitionHasLegacyItems: boolean;
+  };
   e2eeLifecycle: {
     saveStatus: number;
     getStatus: number;
@@ -58,6 +67,7 @@ async function main() {
   const userB = users[1]!.id;
   const [budgetA] = await db.insert(s.budgets).values({ userId: userA, name: "A" }).returning({ id: s.budgets.id });
   const [budgetB] = await db.insert(s.budgets).values({ userId: userB, name: "B" }).returning({ id: s.budgets.id });
+  const [accountA] = await db.insert(s.accounts).values({ budgetId: budgetA!.id, name: "Checking" }).returning({ id: s.accounts.id });
   const marker = "sk-SENTINEL_ROUTE_SECRET";
   let sessionUser = userA;
   let probeCalls = 0;
@@ -117,7 +127,7 @@ async function main() {
       sentChosenModel ||= (payload as { model?: string }).model === "gpt-5.6-luna";
       const messages = (payload as { messages?: Array<{ content?: unknown }> }).messages;
       const vision = Array.isArray(messages?.[1]?.content);
-      return Response.json({ choices: [{ message: { content: vision ? '{"transactions":[]}' : "byok-answer" } }], model: "gpt-5.6-luna" });
+      return Response.json({ choices: [{ message: { content: vision ? '{"rows":[]}' : "byok-answer" } }], model: "gpt-5.6-luna" });
     };
     const chatResponse = await app.request("/api/ai/byok/chat", {
       method: "POST",
@@ -125,12 +135,20 @@ async function main() {
       body: JSON.stringify({ budgetId: budgetA!.id, model: "gpt-5.6-luna", messages: [{ role: "user", content: "hello" }] }),
     });
     const chatBody = (await chatResponse.json()) as { content?: string };
-    const importResponse = await app.request("/api/ai/byok/import/extract", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ budgetId: budgetA!.id, model: "gpt-5.6-luna", images: ["data:image/png;base64,AA=="], locale: "pl" }),
-    });
-    const importBody = (await importResponse.json()) as { items?: unknown[] };
+    const [legacyImportResponse, recognitionImportResponse] = await Promise.all([
+      app.request("/api/ai/byok/import/extract", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ budgetId: budgetA!.id, model: "gpt-5.6-luna", images: ["data:image/png;base64,AA=="], locale: "pl" }),
+      }),
+      app.request("/api/ai/byok/import/recognize", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ budgetId: budgetA!.id, accountId: accountA!.id, model: "gpt-5.6-luna", images: ["data:image/png;base64,AA=="], locale: "pl" }),
+      }),
+    ]);
+    const legacyImportBody = (await legacyImportResponse.json()) as { items?: unknown[]; rows?: unknown[]; proposals?: unknown[] };
+    const recognitionImportBody = (await recognitionImportResponse.json()) as { items?: unknown[]; rows?: unknown[]; proposals?: unknown[] };
 
     const beforeMismatch = JSON.stringify(stored);
     const probeBeforeMismatch = probeCalls;
@@ -287,10 +305,19 @@ async function main() {
       workloads: {
         chatStatus: chatResponse.status,
         chatContent: chatBody.content ?? null,
-        importStatus: importResponse.status,
-        importItems: importBody.items?.length ?? -1,
+        importStatus: recognitionImportResponse.status,
+        importItems: recognitionImportBody.proposals?.length ?? -1,
         sentVaultKey,
         sentChosenModel,
+      },
+      importCompatibility: {
+        legacyStatus: legacyImportResponse.status,
+        legacyItems: legacyImportBody.items?.length ?? -1,
+        legacyHasRecognitionFields: legacyImportBody.rows !== undefined || legacyImportBody.proposals !== undefined,
+        recognitionStatus: recognitionImportResponse.status,
+        recognitionRows: recognitionImportBody.rows?.length ?? -1,
+        recognitionProposals: recognitionImportBody.proposals?.length ?? -1,
+        recognitionHasLegacyItems: recognitionImportBody.items !== undefined,
       },
       e2eeLifecycle: {
         saveStatus: e2eeSave.status,

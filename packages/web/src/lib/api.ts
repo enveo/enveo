@@ -16,19 +16,21 @@ import {
   type ChatRequest,
   type ClientLedger,
   type OpenAiModel,
+  type ReconciledImportRecognitionResult,
 } from "@enveo/shared";
 import { getAccountPreferencesRemote, patchAccountPreferencesRemote } from "./accountPreferencesRemote";
-import type { ImportExtractResult } from "./aiProvider/contracts";
 import { timeoutSignal } from "./timeoutSignal";
 
 export type { BudgetSuggestProfile, BudgetSuggestResponse } from "@enveo/shared";
 
-/* Screenshot import (OpenAI, 2 cycles: facts → assignments from history) */
+/* Complete ledger-candidate shape used only for duplicate dry-run/apply planning.
+ * Recognition itself returns the reconciled result so evidence-only rows and explicit
+ * duplicate/source-account metadata are not erased. */
 export interface ImportItem {
   date: string;
   amount: number;
-  /** transfer/isRefund/toAccountId: proposals LEARNED from confident history
-   *  (source_ref) — the server proposes the type deterministically (2026-07-12). */
+  /** transfer/isRefund/toAccountId are reviewed recognition candidates. History is
+   *  account-scoped evidence only; it never hard-overrides the visible facts. */
   type: "expense" | "income" | "transfer";
   isRefund?: boolean;
   toAccountId?: string | null;
@@ -68,6 +70,8 @@ export interface EditedImportItem {
 export type ImportApplyItem = Omit<ImportItem, "type"> &
   Partial<EditedImportItem> & {
     type: "expense" | "income" | "transfer";
+    /** Stable Stage-A proposal identity used only by recoverable local job apply. */
+    importRowId?: string;
     force?: boolean;
     /** False distinguishes an explicitly cleared expense envelope from missing/automatic input. */
     automaticEnvelopeDefault?: boolean;
@@ -93,7 +97,7 @@ export interface E2eeCredentialResponse {
  * through to the raw text, so the user always sees something rather than an empty error.
  */
 const ERROR_KEYS: Record<string, Message> = {
-  ai_unavailable: msg("The server has no OpenAI key configured — server mode is unavailable. Use an existing own key or keep AI on rules."), // /import/extract, /budget/suggest, the /api/ai mirror — no operator key
+  ai_unavailable: msg("The server has no OpenAI key configured — server mode is unavailable. Use an existing own key or keep AI on rules."), // screenshot recognition, /budget/suggest, the /api/ai mirror — no operator key
   ai_upstream_error: msg("OpenAI rejected the request — check the key and the model, then try again."), // OpenAI rejected the call or answered unparsably
   upstream: msg("OpenAI rejected the request — check the key and the model, then try again."), // /budget/suggest names the same failure this way
   /* Transport failures get their OWN honest wording (since the AI-transport package): a timeout
@@ -189,11 +193,11 @@ export function apiErrorBody(e: unknown): { error?: string; tier?: "plain" | "e2
 }
 
 /* ── Client ─────────────────────────────────────────────────────────── */
-/** `timeoutMs` — only the slow AI route (/import/extract) sets it: an explicit cap that
+/** `timeoutMs` — only the slow AI recognition route sets it: an explicit cap that
  *  outwaits the server's own budget (see @enveo/shared/aiTransport), with the failure
  *  classified onto the same codes the AI transports use (ai_timeout / ai_offline /
  *  ai_unreachable). Without it the behavior is byte-identical to the old http(). */
-async function http<T>(method: string, path: string, body?: unknown, timeoutMs?: number): Promise<T> {
+export async function http<T>(method: string, path: string, body?: unknown, timeoutMs?: number): Promise<T> {
   const t = timeoutMs === undefined ? undefined : timeoutSignal(timeoutMs);
   let res: Response;
   try {
@@ -251,12 +255,13 @@ export const api = {
       { budgetId, model, messages: request.messages, responseFormat: request.responseFormat, reasoningEffort: request.reasoningEffort },
       AI_PROXY_CHAT_TIMEOUT_MS,
     ),
-  byokImportExtract: (budgetId: string, model: OpenAiModel, images: string[], locale: AiLocale) =>
-    http<ImportExtractResult>("POST", "/ai/byok/import/extract", { budgetId, model, images, locale }, AI_IMPORT_EXTRACT_TIMEOUT_MS),
+  byokImportExtract: (budgetId: string, model: OpenAiModel, accountId: string, images: string[], locale: AiLocale) =>
+    http<ReconciledImportRecognitionResult>("POST", "/ai/byok/import/recognize", { budgetId, model, accountId, images, locale }, AI_IMPORT_EXTRACT_TIMEOUT_MS),
 
   /* `locale` = the UI language (any BCP-47 tag): the model writes its names, notes and
      rationales in it. Not to be confused with demoSeed's pl|en, which picks a SEED DATASET. */
-  importExtract: (images: string[], locale: AiLocale) => http<ImportExtractResult>("POST", "/import/extract", { images, locale }, AI_IMPORT_EXTRACT_TIMEOUT_MS),
+  importExtract: (accountId: string, images: string[], locale: AiLocale) =>
+    http<ReconciledImportRecognitionResult>("POST", "/import/recognize", { accountId, images, locale }, AI_IMPORT_EXTRACT_TIMEOUT_MS),
   /* `budgetId` = the same PER-REQUEST tenant assertion as the sync push: the batch creates
      FRESH transactions in whatever budget the session cookie resolves to, and the cookie can
      be swapped in another tab while the import sheet is open. The caller passes the replica's
@@ -264,6 +269,17 @@ export const api = {
      nothing written). */
   importApply: (b: { accountId: string; budgetId?: string; items: ImportApplyItem[]; dryRun?: boolean }) =>
     http<ImportApplyResponse>("POST", "/import/apply", b),
+
+  importJobs: {
+    create: (input: { id: string; budgetId: string; accountId: string; locale: AiLocale; images: string[] }) =>
+      import("./importJobs/api").then(({ importJobsApi }) => importJobsApi.create(input)),
+    list: () => import("./importJobs/api").then(({ importJobsApi }) => importJobsApi.list()),
+    get: (id: string) => import("./importJobs/api").then(({ importJobsApi }) => importJobsApi.get(id)),
+    cancel: (id: string, budgetId: string) => import("./importJobs/api").then(({ importJobsApi }) => importJobsApi.cancel(id, budgetId)),
+    retry: (id: string, budgetId: string) => import("./importJobs/api").then(({ importJobsApi }) => importJobsApi.retry(id, budgetId)),
+    complete: (id: string, input: { budgetId: string; appliedCount: number; skippedCount: number }) =>
+      import("./importJobs/api").then(({ importJobsApi }) => importJobsApi.complete(id, input)),
+  },
 
   budgetSuggest: (b: { month: string; profile: BudgetSuggestProfile; customPrompt?: string; ledger?: ClientLedger; locale: AiLocale; useAi?: boolean }) =>
     http<BudgetSuggestResponse>("POST", "/budget/suggest", b),

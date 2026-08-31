@@ -6,7 +6,8 @@
  * Ciphertext format v2: "v2." + b64(nonce ∥ ct ∥ GCM tag), with MANDATORY AES-GCM
  * `additionalData` — the UTF-8 bytes of the exact JSON.stringify of one fixed-position
  * tuple (E2eeAadContext below). The AAD binds each ciphertext to its authenticated
- * context (operation identity / checkpoint position / key-envelope generation), so a
+ * context (operation identity / checkpoint position / key-envelope generation / import
+ * job artifact), so a
  * malicious or compromised storage server cannot pair a valid ciphertext with another
  * op's clear opId, another budget/epoch, or a false checkpoint uptoSeq — decryption
  * fails instead of silently applying the wrong data.
@@ -59,7 +60,7 @@ export async function deriveKek(passphrase: string, salt: Uint8Array, p: Omit<Kd
 /* ── v2 authenticated context (AAD) ──────────────────────────────────── */
 
 /**
- * The four fixed-position AAD tuples of ciphertext format v2. Position, not property
+ * The fixed-position AAD tuples of ciphertext format v2. Position, not property
  * names, carries meaning — the encoded AAD is the exact JSON.stringify of one of these,
  * never object-property iteration, string concatenation or locale-dependent formatting.
  */
@@ -67,7 +68,18 @@ export type E2eeAadContext =
   | readonly ["enveo-e2ee", 2, "op", string /* budgetId */, number /* epoch */, string /* opId */]
   | readonly ["enveo-e2ee", 2, "snapshot", string /* budgetId */, number /* epoch */, number /* uptoSeq */]
   | readonly ["enveo-e2ee", 2, "dek-wrap", string /* budgetId */, number /* epoch */]
-  | readonly ["enveo-e2ee", 2, "budget-secret", string /* budgetId */, number /* epoch */, "openai"];
+  | readonly ["enveo-e2ee", 2, "budget-secret", string /* budgetId */, number /* epoch */, "openai"]
+  | readonly ["enveo-e2ee", 2, "import-job", string /* budgetId */, number /* epoch */, string /* jobId */, "input" | "checkpoint" | "result"];
+
+type ImportApplyRowContext = readonly [
+  "enveo-e2ee",
+  2,
+  "import-apply-row",
+  string /* budgetId */,
+  number /* epoch */,
+  string /* jobId */,
+  string /* model row id */,
+];
 
 /** Canonical lowercase textual UUID — validated, never normalized silently. */
 const CANONICAL_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
@@ -107,11 +119,37 @@ export function budgetSecretAadContext(budgetId: string, epoch: number, kind: "o
   return ["enveo-e2ee", 2, "budget-secret", requireUuid(budgetId), requireCounter(epoch), kind] as const;
 }
 
+/** Import-job AAD: every durable local artifact is domain-separated and bound to the
+ *  budget key generation and client-generated job identity. */
+export function importJobAadContext(budgetId: string, epoch: number, jobId: string, part: "input" | "checkpoint" | "result"): E2eeAadContext {
+  if (part !== "input" && part !== "checkpoint" && part !== "result") throw new Error("bad_aad_context");
+  return ["enveo-e2ee", 2, "import-job", requireUuid(budgetId), requireCounter(epoch), requireUuid(jobId), part] as const;
+}
+
 const enc = new TextEncoder();
 const dec = new TextDecoder();
 
 /** The ONE encoder: AAD bytes = UTF-8 of the exact JSON.stringify of the tuple. */
 const aadBytes = (ctx: E2eeAadContext): Uint8Array => enc.encode(JSON.stringify(ctx));
+
+/** Opaque, job-scoped identity for E2EE apply recovery. The raw model row id never
+ * crosses the crypto boundary into durable progress metadata. */
+export async function importApplyRowToken(dek: Uint8Array, budgetId: string, epoch: number, jobId: string, rowId: string): Promise<string> {
+  if (!rowId || rowId.length > 4096) throw new Error("bad_import_row_context");
+  const context: ImportApplyRowContext = ["enveo-e2ee", 2, "import-apply-row", requireUuid(budgetId), requireCounter(epoch), requireUuid(jobId), rowId];
+  const key = await crypto.subtle.importKey("raw", dek as BufferSource, { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+  const signature = new Uint8Array(await crypto.subtle.sign("HMAC", key, enc.encode(JSON.stringify(context)) as BufferSource));
+  return `h1.${b64(signature)}`;
+}
+
+/** Plain-tier equivalent: the random client job id salts a domain-separated digest so
+ * durable progress never contains provider-authored row text. */
+export async function plainImportApplyRowToken(budgetId: string, jobId: string, rowId: string): Promise<string> {
+  if (!rowId || rowId.length > 4096) throw new Error("bad_import_row_context");
+  const context = ["enveo-import-apply-row", 1, requireUuid(budgetId), requireUuid(jobId), rowId] as const;
+  const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", enc.encode(JSON.stringify(context)) as BufferSource));
+  return `d1.${b64(digest)}`;
+}
 
 /* ── AES-256-GCM framing ─────────────────────────────────────────────── */
 

@@ -24,6 +24,7 @@
     "build": "bun run build:web && bun run bundle:budget",
     "bundle:budget": "bun scripts/check-web-bundle.ts",
     "security:audit": "bun scripts/audit.ts",
+    "eval:import": "bun scripts/evaluate-import-recognition.ts",
     "policy:sources": "bun scripts/check-sources.ts",
     "image:scan": "bun scripts/scan-image.ts",
     "image:inventory": "bun scripts/image-inventory.ts",

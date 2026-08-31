@@ -8,6 +8,7 @@
 import { accountPreferences } from "../accountPreferences";
 import { devicePreferences } from "../devicePreferences";
 import * as e2ee from "../e2ee";
+import { replayPendingWithE2eeProviderPreference } from "../e2eeProviderInvariant";
 import { idbGet } from "../idb";
 import { purgeLegacyPlannedIds } from "../legacyPlanned";
 import { migrateLegacySettings } from "../legacySettingsMigrationRuntime";
@@ -20,7 +21,6 @@ import { type BootSource, UnauthorizedError } from "./contracts";
 import { syncNow } from "./cycle";
 import { bootOwnerOk, enterUnauthed } from "./identity";
 import { hydrateObligations } from "./obligations";
-import { replayOutbox } from "./replica";
 import { bumpStatus, getLastSyncAt, setLastSyncAt } from "./status";
 import { bootstrapReplica, getClientId } from "./transport";
 
@@ -114,7 +114,7 @@ async function boot(): Promise<void> {
     // REPLAY the outbox onto the mirror — heals a crash between addOutbox of an op and persist
     // (reducers are idempotent: create guards the id, update = full replacement);
     // the mirror was a PREFIX of the outbox, so the replay catches it up (never rolls back)
-    replayOutbox();
+    replayPendingWithE2eeProviderPreference();
     await sweepLegacyPlanned();
     if (outbox.size() > 0) void persist.persistLedger(store.snapshotForPersist());
     store.setBootStatus("ready");
@@ -132,7 +132,7 @@ async function boot(): Promise<void> {
       lastBootSource = "replica";
       // Read the meta flags HERE too: the resync obligation from IDB must not be lost.
       await loadSyncMeta();
-      replayOutbox();
+      replayPendingWithE2eeProviderPreference();
       await sweepLegacyPlanned();
       store.setBootStatus("ready");
       bumpStatus();

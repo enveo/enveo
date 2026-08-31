@@ -5,6 +5,7 @@
  * `bun run image:inventory <ref>`, which CI runs after `docker build`.
  */
 import { describe, expect, it } from "bun:test";
+import { scanModuleSpecifiers } from "../image-inventory";
 import { checkImage, type Expectations, type ImageFacts, packageNameOfStoreEntry } from "./imageInventory";
 
 const MIGRATIONS = ["0000_rainy_wraith.sql", "0001_add_txn_tag.sql"] as const;
@@ -192,6 +193,36 @@ describe("checkImage — every shipped module can load", () => {
     const broken = facts({ unresolvableImports: ["packages/api/src/x.ts -> drizzle-kit"] });
 
     expect(checkImage(broken, expectations()).join(" ")).toContain("packages/api/src/x.ts -> drizzle-kit");
+  });
+});
+
+describe("scanModuleSpecifiers", () => {
+  it("ignores import-like prose and object properties inside literals", () => {
+    const source = `
+      const prompt = "import transactions from ',' and retain color:";
+      const schema = { color: "#000000", description: "export rows from source" };
+      const template = \`The user may import data from "color:".\`;
+    `;
+
+    expect(scanModuleSpecifiers(source, "ts")).toEqual([]);
+  });
+
+  it("finds static, side-effect, dynamic, require, and re-export imports", () => {
+    const source = `
+      import value from "static-package";
+      import "side-effect-package";
+      export { thing } from "re-export-package";
+      const lazy = import("dynamic-package");
+      const legacy = require("required-package");
+    `;
+
+    expect(scanModuleSpecifiers(source, "ts").sort()).toEqual([
+      "dynamic-package",
+      "re-export-package",
+      "required-package",
+      "side-effect-package",
+      "static-package",
+    ]);
   });
 });
 

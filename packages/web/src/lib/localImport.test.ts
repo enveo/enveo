@@ -1,7 +1,24 @@
 import { describe, expect, it } from "bun:test";
-import { type ClientLedger, createDefaultBudgetPreferences } from "@enveo/shared";
+import {
+  type ClientLedger,
+  createDefaultBudgetPreferences,
+  type ImportExtractRow,
+  type ImportProposal,
+  type ImportRecognitionResult,
+  type ReconciledImportRecognitionResult,
+} from "@enveo/shared";
 import type { EditedImportItem, ImportApplyItem } from "./api";
-import { applyLocalImport, importReviewItem, type LocalImportMutationPort, planLocalImport, reviewedImportItemsForApply } from "./localImport";
+import {
+  applyLocalImport,
+  applyLocalImportRecoverably,
+  importReviewItem,
+  type LocalImportMutationPort,
+  PartialImportApplyError,
+  planLocalImport,
+  recognitionCandidatesForDryRun,
+  reconcileImportJobResult,
+  reviewedImportItemsForApply,
+} from "./localImport";
 
 const U = (n: number): string => `00000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
 const ledger = (): ClientLedger => ({
@@ -92,6 +109,52 @@ const editedItem = (over: Partial<EditedImportItem> = {}): EditedImportItem => (
   ...over,
 });
 
+const recognitionRow = (rowId: string, over: Partial<ImportExtractRow> = {}): ImportExtractRow => ({
+  rowId,
+  imageIndex: 0,
+  visualOrder: 0,
+  rawTextLines: [`RAW ${rowId}`],
+  date: "2026-08-02",
+  amount: 2500,
+  currency: "EUR",
+  direction: "debit",
+  postingStatus: "posted",
+  rowRole: "financial_event",
+  semanticKind: "card_purchase",
+  relation: null,
+  confidence: "high",
+  reviewReasons: [],
+  ...over,
+});
+
+const recognitionProposal = (rowId: string, over: Partial<ImportProposal> = {}): ImportProposal => ({
+  rowId,
+  sourceRows: [rowId],
+  disposition: "candidate",
+  date: "2026-08-02",
+  amount: 2500,
+  currency: "EUR",
+  type: "expense",
+  isRefund: false,
+  toAccountId: null,
+  semanticKind: "card_purchase",
+  relation: null,
+  name: rowId,
+  tag: "",
+  rawPlace: `RAW ${rowId}`,
+  envelopeId: U(5),
+  categoryId: U(6),
+  placeName: null,
+  reviewReasons: [],
+  selected: true,
+  ...over,
+});
+
+const recognitionResult = (...proposals: ImportProposal[]): ImportRecognitionResult => ({
+  rows: proposals.map((proposal) => recognitionRow(proposal.rowId, { date: proposal.date, amount: proposal.amount, rawTextLines: [proposal.rawPlace] })),
+  proposals,
+});
+
 function mutationSpy() {
   const created = { categories: [] as string[], places: [] as string[], transactions: [] as unknown[] };
   const mutations: LocalImportMutationPort = {
@@ -112,6 +175,186 @@ function mutationSpy() {
 }
 
 describe("local E2EE import planning", () => {
+  it("reconciles a ready job against current duplicates, accounts, and active assignments idempotently", () => {
+    // given: recognition was ready before the ledger gained duplicate evidence and lost assignments
+    const current = ledger();
+    current.transactions.push(
+      { ...current.transactions[0]!, id: U(30), date: "2026-08-02", amount: 2500, sourceRef: "RAW exact" },
+      { ...current.transactions[0]!, id: U(31), date: "2026-08-03", amount: 2600, sourceRef: null },
+    );
+    current.envelopes[0]!.archived = true;
+    current.categories[0]!.archived = true;
+    const ready = recognitionResult(
+      recognitionProposal("exact"),
+      recognitionProposal("probable", { date: "2026-08-03", amount: 2600, rawPlace: "RAW probable" }),
+      recognitionProposal("assignment", { date: "2026-08-04", amount: 2700, rawPlace: "RAW assignment" }),
+    );
+
+    // when: the ready result is opened against the current ledger, then reconciled again
+    const once = reconcileImportJobResult({ result: ready, ledger: current, accountId: U(2) });
+    const twice = reconcileImportJobResult({ result: once, ledger: current, accountId: U(2) });
+
+    // then: current evidence wins, unsafe assignments are explicit, and replay is stable
+    expect(once.proposals[0]).toMatchObject({ duplicateStatus: "exists", disposition: "declined", selected: false });
+    expect(once.proposals[1]).toMatchObject({
+      duplicateStatus: "probable",
+      selected: true,
+      reviewReasons: ["multiple_history_candidates"],
+    });
+    expect(once.proposals[2]).toMatchObject({
+      envelopeId: null,
+      categoryId: null,
+      assignmentUnavailable: true,
+      selected: true,
+    });
+    expect(twice).toEqual(once);
+
+    // and: deleting or archiving the selected source account blocks every proposal
+    const deletedAccount = reconcileImportJobResult({ result: ready, ledger: { ...current, accounts: [] }, accountId: U(2) });
+    expect(deletedAccount.proposals.every((proposal) => proposal.sourceAccountInvalid && !proposal.selected)).toBe(true);
+  });
+
+  it("records each successful row before attempting the next mutation", async () => {
+    // given: two selected rows are planned, while the mutation port fails on the second write
+    const firstItem = item({ importRowId: "row-one", rawPlace: "ROW ONE" });
+    const secondItem = item({ importRowId: "row-two", date: "2026-08-03", amount: 2600, rawPlace: "ROW TWO" });
+    const firstPlan = planLocalImport({ ledger: ledger(), globalAccountId: U(2), items: [firstItem, secondItem], dryRun: false });
+    let writes = 0;
+    const created: Array<{ id: string; payload: Parameters<LocalImportMutationPort["createTxn"]>[0] }> = [];
+    const mutations: LocalImportMutationPort = {
+      createCategory: () => ({ id: U(20) }),
+      createPlace: () => ({ id: U(21) }),
+      createTxn: (payload) => {
+        writes++;
+        if (writes === 2) throw new Error("disk_full");
+        created.push({ id: U(30), payload });
+        return U(30);
+      },
+    };
+
+    const durableRows: string[] = [];
+
+    // when: applying stops after the first durable local mutation
+    let partial: PartialImportApplyError | null = null;
+    try {
+      await applyLocalImportRecoverably(firstPlan, mutations, {
+        apply: async (rowId, mutation) => {
+          mutation(undefined);
+          durableRows.push(rowId);
+        },
+      });
+    } catch (error) {
+      if (error instanceof PartialImportApplyError) partial = error;
+      else throw error;
+    }
+
+    // then: the ready job can report exactly what crossed the mutation boundary
+    expect(partial?.progress).toEqual({ appliedRowIds: ["row-one"], appliedCount: 1, skippedCount: 0 });
+    expect(durableRows).toEqual(["row-one"]);
+    expect(created).toHaveLength(1);
+
+    // and: current-ledger retry sees that write as exact and writes only the remaining row
+    const live = ledger();
+    live.transactions.push({
+      ...live.transactions[0]!,
+      id: created[0]!.id,
+      date: created[0]!.payload.date,
+      amount: created[0]!.payload.amount,
+      sourceRef: created[0]!.payload.sourceRef ?? null,
+    });
+    const retry = planLocalImport({ ledger: live, globalAccountId: U(2), items: [firstItem, secondItem], dryRun: false });
+    const retrySpy = mutationSpy();
+    const completed = await applyLocalImportRecoverably(retry, retrySpy.mutations);
+
+    expect(retry.results.map((result) => result.status)).toEqual(["exists", "added"]);
+    expect(retrySpy.created.transactions).toHaveLength(1);
+    expect(completed).toEqual({ appliedRowIds: ["row-two"], appliedCount: 1, skippedCount: 1 });
+  });
+
+  it("stops before the next transaction when durable row progress is interrupted", async () => {
+    // given: two blank-source rows cannot be recovered through source_ref duplicate matching
+    const plan = planLocalImport({
+      ledger: ledger(),
+      globalAccountId: U(2),
+      items: [item({ importRowId: "blank-one", rawPlace: null }), item({ importRowId: "blank-two", rawPlace: null, date: "2026-08-03", amount: 2600 })],
+      dryRun: false,
+    });
+    const spy = mutationSpy();
+
+    // when: persisting the identity after the first local write is interrupted
+    let partial: PartialImportApplyError | null = null;
+    try {
+      await applyLocalImportRecoverably(plan, spy.mutations, {
+        apply: async (_rowId, mutation) => {
+          mutation(undefined);
+          throw new Error("progress_write_interrupted");
+        },
+      });
+    } catch (error) {
+      if (error instanceof PartialImportApplyError) partial = error;
+      else throw error;
+    }
+
+    // then: the successful identity is exposed and no second transaction can cross the boundary
+    expect(partial?.progress.appliedRowIds).toEqual(["blank-one"]);
+    expect(spy.created.transactions).toHaveLength(1);
+  });
+
+  it("does not project an unsafe unselected recognition proposal into the legacy review", () => {
+    const recognition: ReconciledImportRecognitionResult = {
+      rows: [
+        {
+          rowId: "unsafe-row",
+          imageIndex: 0,
+          visualOrder: 0,
+          rawTextLines: ["CARD PURCHASE", "25.00 EUR"],
+          date: "2026-08-02",
+          amount: 2500,
+          currency: "EUR",
+          direction: "debit",
+          postingStatus: "posted",
+          rowRole: "financial_event",
+          semanticKind: "card_purchase",
+          relation: { kind: "counterpart_of", rowId: "other-row" },
+          confidence: "medium",
+          reviewReasons: ["relation_changes_ledger_shape"],
+        },
+      ],
+      proposals: [
+        {
+          rowId: "unsafe-row",
+          sourceRows: ["unsafe-row"],
+          disposition: "candidate",
+          date: "2026-08-02",
+          amount: 2500,
+          currency: "EUR",
+          type: "expense",
+          isRefund: false,
+          toAccountId: null,
+          semanticKind: "card_purchase",
+          relation: { kind: "counterpart_of", rowId: "other-row" },
+          name: "Card purchase",
+          tag: "",
+          rawPlace: "CARD PURCHASE\n25.00 EUR",
+          envelopeId: U(5),
+          categoryId: U(6),
+          placeName: null,
+          reviewReasons: ["relation_changes_ledger_shape"],
+          selected: false,
+          duplicateStatus: "new",
+          sourceAccountInvalid: false,
+        },
+      ],
+    };
+
+    const adapted = recognitionCandidatesForDryRun(recognition, ledger());
+    const dry = planLocalImport({ ledger: ledger(), globalAccountId: U(2), items: adapted, dryRun: true });
+    const review = dry.results.map((result) => importReviewItem(result, U(5)));
+
+    expect(adapted).toEqual([]);
+    expect(review).toEqual([]);
+  });
+
   it("matches sure/probable/new and strong-deduplicates within a batch", () => {
     const plan = planLocalImport({
       ledger: ledger(),
@@ -121,6 +364,60 @@ describe("local E2EE import planning", () => {
     });
     expect(plan.results.map((row) => row.status)).toEqual(["exists", "probable", "added", "exists"]);
     expect(plan).toMatchObject({ added: 1, skipped: 2, transactions: [] });
+  });
+
+  it("scopes exact and probable duplicate evidence to each item's effective source account", () => {
+    const current = ledger();
+    current.transactions.push({ ...current.transactions[0]!, id: U(31), sourceRef: null });
+
+    const plan = planLocalImport({
+      ledger: current,
+      globalAccountId: U(2),
+      dryRun: true,
+      items: [
+        item({ date: "2026-08-01", amount: 1000, rawPlace: "LIDL RAW" }),
+        item({ accountId: U(3), date: "2026-08-01", amount: 1000, rawPlace: "LIDL RAW" }),
+        item({ date: "2026-08-01", amount: 1000, rawPlace: "OTHER" }),
+        item({ accountId: U(3), date: "2026-08-01", amount: 1000, rawPlace: "OTHER" }),
+      ],
+    });
+
+    expect(plan.results.map((result) => result.status)).toEqual(["exists", "added", "probable", "added"]);
+  });
+
+  it("deduplicates within a batch only when effective source accounts match", () => {
+    const plan = planLocalImport({
+      ledger: ledger(),
+      globalAccountId: U(2),
+      dryRun: true,
+      items: [
+        item({ date: "2026-08-03", rawPlace: "BATCH RAW" }),
+        item({ accountId: U(3), date: "2026-08-03", rawPlace: "BATCH RAW" }),
+        item({ date: "2026-08-03", rawPlace: "BATCH RAW" }),
+        item({ accountId: U(3), date: "2026-08-03", rawPlace: "BATCH RAW" }),
+      ],
+    });
+
+    expect(plan.results.map((result) => result.status)).toEqual(["added", "added", "exists", "exists"]);
+  });
+
+  it("rechecks duplicates in review and again against the live ledger immediately before mutation", () => {
+    // given: extraction saw a new row and the first dry run exposes it for review
+    const first = planLocalImport({ ledger: ledger(), globalAccountId: U(2), dryRun: true, items: [item({ rawPlace: "LATE RAW" })] });
+    expect(first.results[0]!.status).toBe("added");
+
+    // and: another write lands while the review sheet remains open
+    const live = ledger();
+    live.transactions.push({ ...live.transactions[0]!, id: U(30), date: "2026-08-02", amount: 2500, sourceRef: "LATE RAW" });
+
+    // when: apply planning is recomputed from the live ledger
+    const final = planLocalImport({ ledger: live, globalAccountId: U(2), dryRun: false, items: [item({ rawPlace: "LATE RAW" })] });
+    const spy = mutationSpy();
+    applyLocalImport(final, spy.mutations);
+
+    // then: the stale review selection cannot create the newly duplicated transaction
+    expect(final).toMatchObject({ added: 0, skipped: 1 });
+    expect(spy.created.transactions).toEqual([]);
   });
 
   it("a forced edited duplicate is planned as a new transaction", () => {

@@ -48,6 +48,7 @@ export type Sync2DbOutput = {
   enableSnapshotUptoSeq: number | null;
   enablePlaintextWiped: boolean;
   enablePreferencesCleared: boolean;
+  enableImportRevocation: { cancelled: number; detailsCleared: number; leasesCleared: number; errorsCleared: number; imagesDeleted: number };
   rekeyCredentialPreserved: boolean;
   rekeyEpochUnchanged: boolean;
   /* 2 — normal v2 push/pull */
@@ -230,7 +231,43 @@ async function main(): Promise<void> {
     .values({ userId: userA, name: "A", preferences: { schemaVersion: 1, aiProvider: "openai" } })
     .returning({ id: s.budgets.id });
   const budgetA = bA!.id;
-  await db.insert(s.accounts).values({ budgetId: budgetA, name: "plain acc" }); // plaintext to wipe
+  const [plainAccount] = await db.insert(s.accounts).values({ budgetId: budgetA, name: "plain acc" }).returning({ id: s.accounts.id }); // plaintext to wipe
+  const { createImportJobRepository } = await import("../importJobs/repository");
+  const importRepository = createImportJobRepository(db);
+  const importIds = Array.from({ length: 4 }, () => uuid());
+  for (const id of importIds) {
+    await importRepository.create({
+      id,
+      userId: userA,
+      budgetId: budgetA,
+      accountId: plainAccount!.id,
+      provider: { provider: "enveo", model: "gpt-test" },
+      locale: "en",
+      tier: "plain",
+      epoch: 0,
+      images: [{ mimeType: "image/png", content: new Uint8Array([1, 2, 3]) }],
+    });
+  }
+  await db
+    .update(s.importJobs)
+    .set({ status: "failed", phase: "retry_scheduled", errorCode: "network", retryAt: new Date("2026-08-24T12:00:00.000Z") })
+    .where(eq(s.importJobs.id, importIds[1]!));
+  await db
+    .update(s.importJobs)
+    .set({
+      status: "running",
+      phase: "validating",
+      extraction: { rows: [], proposals: [] },
+      leaseOwner: "worker-before-enable",
+      leaseToken: uuid(),
+      leaseExpiresAt: new Date("2026-08-24T12:05:00.000Z"),
+    })
+    .where(eq(s.importJobs.id, importIds[2]!));
+  await db.delete(s.importJobImages).where(eq(s.importJobImages.jobId, importIds[3]!));
+  await db
+    .update(s.importJobs)
+    .set({ status: "ready", phase: "ready", extraction: { rows: [], proposals: [] }, result: { rows: [], proposals: [] }, proposalCount: 2 })
+    .where(eq(s.importJobs.id, importIds[3]!));
 
   // a STALE epoch expectation must not install ciphertext bound to the wrong generation
   const enableStale = await call("POST", "/budget/e2ee/enable", {
@@ -252,6 +289,22 @@ async function main(): Promise<void> {
     credentialAction: { kind: "none" },
   });
   const enabledRow = await budgetRow(budgetA);
+  const [revokedImports] = await raw<
+    {
+      cancelled: number;
+      detailsCleared: number;
+      leasesCleared: number;
+      errorsCleared: number;
+      imagesDeleted: number;
+    }[]
+  >`
+    select
+      count(*) filter (where status = 'cancelled')::int as cancelled,
+      count(*) filter (where extraction is null and result is null and proposal_count = 0)::int as "detailsCleared",
+      count(*) filter (where lease_owner is null and lease_token is null and lease_expires_at is null)::int as "leasesCleared",
+      count(*) filter (where error_code is null and retry_at is null)::int as "errorsCleared",
+      (select count(*)::int from import_job_images where job_id = any(${importIds})) as "imagesDeleted"
+    from import_jobs where id = any(${importIds})`;
   const [enSnap] = await db.select({ uptoSeq: s.e2eeSnapshots.uptoSeq }).from(s.e2eeSnapshots).where(eq(s.e2eeSnapshots.budgetId, budgetA));
   const plainAfter = await db.select({ id: s.accounts.id }).from(s.accounts).where(eq(s.accounts.budgetId, budgetA));
   await db.insert(s.budgetAiCredentials).values({
@@ -637,6 +690,13 @@ async function main(): Promise<void> {
     enableSnapshotUptoSeq: enSnap?.uptoSeq ?? null,
     enablePlaintextWiped: plainAfter.length === 0,
     enablePreferencesCleared: enabledRow?.preferences === null,
+    enableImportRevocation: revokedImports ?? {
+      cancelled: -1,
+      detailsCleared: -1,
+      leasesCleared: -1,
+      errorsCleared: -1,
+      imagesDeleted: -1,
+    },
     rekeyCredentialPreserved:
       rekeyRes.status === 200 &&
       rekeyCredential?.storageKind === "e2ee_ciphertext" &&

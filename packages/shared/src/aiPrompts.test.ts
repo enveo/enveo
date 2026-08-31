@@ -4,6 +4,7 @@ import {
   aiLocaleSchema,
   buildAgentSuggestContext,
   buildAgentSuggestPrompt,
+  buildImportEnrichPrompt,
   buildImportExtractPrompt,
   buildSuggestPrompt,
   type ChatMessage,
@@ -11,11 +12,15 @@ import {
   languageDirectives,
   languageName,
   parseAgentSuggestResponse,
+  parseImportEnrichResponse,
   parseImportExtractResponse,
   parseSuggestResponse,
+  runImportRecognitionPipeline,
   supportsReasoningEffort,
 } from "./aiPrompts";
-import type { ClientLedger } from "./types";
+import type { ImportHistoryRecord } from "./importHistory";
+import type { ImportRecognitionResult } from "./importRecognition";
+import type { ClientLedger, Transaction } from "./types";
 
 function fixture(): ClientLedger {
   return {
@@ -217,7 +222,7 @@ describe("buildImportExtractPrompt / parseImportExtractResponse", () => {
   it("builds vision messages with data-URL image parts and a json_schema format", () => {
     const req = buildImportExtractPrompt(["data:image/png;base64,AAA"], refs, "2026-07-07", "pl", "PLN");
     const sys = sysOf(req.messages);
-    expect(sys).toContain("You extract transactions from screenshots");
+    expect(sys).toContain("You extract facts from screenshots");
     expect(sys).toContain("Today is 2026-07-07");
     expect(sys).toContain("Write all text you GENERATE (names, notes, rationales) in Polish.");
     expect(sys).toContain("do not translate data values");
@@ -228,79 +233,966 @@ describe("buildImportExtractPrompt / parseImportExtractResponse", () => {
     expect((req.responseFormat as { type: string; json_schema: { name: string } }).json_schema.name).toBe("extracted_transactions");
   });
 
-  /* Refunds: a Zen-style screenshot shows a refund as a POSITIVE amount — without a
-     dedicated type the extractor could only say "income", which lands the money in
-     "ready to assign" instead of back into the envelope (domain truth: expense + isRefund). */
-  it("system prompt tells the model to use 'refund' for a positive reversal, not 'income'", () => {
-    const sys = sysOf(buildImportExtractPrompt([], refs, "2026-07-07", "pl", "PLN").messages);
-    expect(sys).toContain("has type 'refund'");
-    expect(sys).toContain("NOT salary, NOT an incoming transfer");
-    expect(sys).toContain("a genuine inflow stays 'income'");
+  it("binds the structured-output image index to the supplied screenshot count", () => {
+    const req = buildImportExtractPrompt(["data:image/png;base64,AAA", "data:image/png;base64,BBB"], refs, "2026-07-07", "pl", "PLN");
+    const imageIndex = (req.responseFormat as any).json_schema.schema.properties.rows.items.properties.imageIndex;
+
+    expect(imageIndex).toEqual({ type: "integer", minimum: 0, maximum: 1 });
   });
 
-  /* FX / re-conversion: a foreign-currency charge often appears twice on a screenshot (the
-     original charge + the settlement row) — without guidance the extractor would return BOTH,
-     double-counting. The budget's currency is threaded through so the prompt can name it. */
-  it("system prompt names the budget currency and gives the fx merge + never-convert rules", () => {
+  it("groups one coherent list entry without splitting its secondary text into invented transactions", () => {
     const sys = sysOf(buildImportExtractPrompt([], refs, "2026-07-07", "pl", "PLN").messages);
-    expect(sys).toContain("account currency (PLN)");
-    expect(sys).toContain("return ONE transaction");
-    expect(sys).toContain("rawPlace of the MERCHANT (not the exchange row)");
-    expect(sys).toContain("do not return the conversion row separately");
+    expect(sys).toContain("One output row means one coherent transaction-list entry");
+    expect(sys).toContain("Group its amount, merchant/payee, card suffix, and secondary text");
+    expect(sys).toContain("Do not create separate rows for icons, loyalty/reward points");
+    expect(sys).toContain("imageIndex plus visualOrder");
+    expect(sys).toContain("rawTextLines");
+    expect(sys).toContain("ui_metadata");
+    expect(sys).toContain("relationships by rowId");
+    expect(sys).toContain("facts from screenshots");
+  });
+
+  it("keeps FX evidence as a linked row instead of silently merging it", () => {
+    const sys = sysOf(buildImportExtractPrompt([], refs, "2026-07-07", "pl", "PLN").messages);
+    expect(sys).toContain("account currency is PLN");
+    expect(sys).toContain("supporting_detail");
+    expect(sys).toContain("fx_for");
+    expect(sys).toContain("primary ledger amount");
+    expect(sys).toContain("never use a balance, loyalty/reward points, card suffix, or exchange rate as amount");
     expect(sys).toContain("NEVER convert or guess an exchange rate");
-
-    const eur = sysOf(buildImportExtractPrompt([], refs, "2026-07-07", "pl", "EUR").messages);
-    expect(eur).toContain("account currency (EUR)");
   });
 
-  it("strict json_schema: type enum gains 'refund'; currency + fxOriginal are required fields", () => {
-    const schema = IMPORT_EXTRACT_JSON_SCHEMA.schema.properties.transactions.items as {
+  it("anchors direction and inherited dates in visible evidence instead of semantic guesses", () => {
+    const sys = sysOf(buildImportExtractPrompt([], refs, "2026-07-07", "pl", "PLN").messages);
+    expect(sys).toContain("An explicit + or incoming label means credit; an explicit − or outgoing label means debit");
+    expect(sys).toContain("Do not infer direction from semanticKind");
+    expect(sys).toContain("A visible date divider applies to the transaction entries below it");
+  });
+
+  it("distinguishes one ledger movement from secondary numbers inside the same entry", () => {
+    const sys = sysOf(buildImportExtractPrompt([], refs, "2026-07-07", "pl", "PLN").messages);
+
+    expect(sys).toContain("exactly one financial_event for each coherent entry with a primary ledger amount");
+    expect(sys).toContain("amount is the positive magnitude without its visible sign");
+    expect(sys).toContain("Store the visible sign only in direction");
+    expect(sys).not.toContain("signed ledger amount");
+    expect(sys).toContain("A reward, refund, top-up, deposit, or transfer entry is still a financial_event");
+    expect(sys).toContain("Repeated entries remain separate even when their text and amount are identical");
+    expect(sys).toContain("Count the visible primary ledger amounts before answering");
+    expect(sys).toContain("An adjacent FX conversion or rate block stays a separate supporting_detail row");
+    expect(sys).toContain("Classify semanticKind from the visible event wording even when another fact is missing or unsupported");
+    expect(sys).toContain("A word in a merchant name or your own uncertainty is not a pending or declined marker");
+    expect(sys).toContain("Use duplicate_of only when the same entry is visibly repeated across overlapping screenshots");
+    expect(sys).toContain("Compare all supplied screenshots for overlap before answering");
+    expect(sys).toContain("Use posted for an ordinary completed history entry with no pending or declined marker");
+    expect(sys).toContain("Use unknown only when the status itself is unreadable or ambiguous");
+    expect(sys).toContain("A clock, hourglass, spinner, or explicit pending word attached to an entry is a pending marker");
+    expect(sys).toContain("When any digit of the primary amount is obscured, clipped, or unreadable, use amount null");
+    expect(sys).toContain("Set relation to null unless the screenshot visibly establishes the link");
+  });
+
+  it("strict json_schema requires every extraction fact", () => {
+    const schema = IMPORT_EXTRACT_JSON_SCHEMA.schema.properties.rows.items as {
       properties: Record<string, { enum?: string[] }>;
       required: string[];
     };
-    expect(schema.properties.type!.enum).toEqual(["expense", "income", "refund"]);
+    expect(schema.properties.direction!.enum).toEqual(["debit", "credit", "unknown"]);
+    expect(schema.properties.postingStatus!.enum).toEqual(["posted", "pending", "declined", "unknown"]);
+    expect(schema.properties.rowRole!.enum).toEqual(["financial_event", "supporting_detail", "ui_metadata"]);
     expect(schema.properties.currency).toBeDefined();
-    expect(schema.properties.fxOriginal).toBeDefined();
+    expect(schema.properties.relation).toBeDefined();
+    expect(schema.properties.reviewReasons).toBeDefined();
+    expect(schema.properties.imageIndex).toMatchObject({ type: "integer", minimum: 0 });
+    expect(schema.properties.visualOrder).toMatchObject({ type: "integer", minimum: 0 });
+    expect(schema.properties.amount).toMatchObject({ type: ["integer", "null"], exclusiveMinimum: 0 });
     expect(schema.required).toContain("currency");
-    expect(schema.required).toContain("fxOriginal");
-  });
-
-  it("parses transactions, normalizes the tag to UPPERCASE, and carries currency/fxOriginal", () => {
-    const out = parseImportExtractResponse(
-      '{"transactions":[{"date":"2026-07-01","amount":1299,"type":"expense","rawPlace":"LIDL SP Z OO WARSZAWA","tag":" lidl ","currency":"pln","fxOriginal":""}]}',
-    );
-    expect(out).toEqual([
-      { date: "2026-07-01", amount: 1299, type: "expense", isRefund: false, rawPlace: "LIDL SP Z OO WARSZAWA", tag: "LIDL", currency: "PLN", fxOriginal: "" },
-    ]);
-  });
-
-  it("maps type 'refund' to {type: expense, isRefund: true} — domain truth for a returned purchase", () => {
-    const out = parseImportExtractResponse(
-      '{"transactions":[{"date":"2026-07-02","amount":4999,"type":"refund","rawPlace":"ZALANDO REFUND","tag":"ZALANDO","currency":"PLN","fxOriginal":""}]}',
-    );
-    expect(out).toEqual([
-      { date: "2026-07-02", amount: 4999, type: "expense", isRefund: true, rawPlace: "ZALANDO REFUND", tag: "ZALANDO", currency: "PLN", fxOriginal: "" },
-    ]);
-  });
-
-  it("normalizes currency to UPPERCASE and trims fxOriginal", () => {
-    const out = parseImportExtractResponse(
-      '{"transactions":[{"date":"2026-07-03","amount":2000,"type":"expense","rawPlace":"NETFLIX","tag":"NETFLIX","currency":" usd ","fxOriginal":" 5.00 USD "}]}',
-    );
-    expect(out[0]!.currency).toBe("USD");
-    expect(out[0]!.fxOriginal).toBe("5.00 USD");
+    expect(schema.required).toContain("relation");
+    expect(schema.required).toContain("reviewReasons");
   });
 
   it("throws on a malformed payload (route maps this to 502)", () => {
     expect(() =>
       parseImportExtractResponse(
-        '{"transactions":[{"date":"1 lipca","amount":-5,"type":"expense","rawPlace":"x","tag":"X","currency":"PLN","fxOriginal":""}]}',
+        '{"rows":[{"rowId":"r1","imageIndex":0,"visualOrder":0,"rawTextLines":[],"date":"1 lipca","amount":-5,"currency":"PLN","direction":"debit","postingStatus":"posted","rowRole":"financial_event","semanticKind":"card_purchase","relation":null,"confidence":"high","reviewReasons":[]}]}',
+        1,
       ),
     ).toThrow();
   });
 
-  it("throws when currency/fxOriginal are missing (strict output guarantees them)", () => {
-    expect(() => parseImportExtractResponse('{"transactions":[{"date":"2026-07-01","amount":1299,"type":"expense","rawPlace":"x","tag":"X"}]}')).toThrow();
+  it("throws when a strict extraction fact is missing", () => {
+    expect(() => parseImportExtractResponse('{"rows":[{"rowId":"r1"}]}', 1)).toThrow();
+  });
+
+  it("canonicalizes duplicate visual positions using the model row order as a stable tie-breaker", () => {
+    const row = (rowId: string, imageIndex: number, visualOrder: number) => ({
+      rowId,
+      imageIndex,
+      visualOrder,
+      rawTextLines: [rowId],
+      date: "2026-08-07",
+      amount: 1234,
+      currency: "PLN",
+      direction: "debit",
+      postingStatus: "posted",
+      rowRole: "financial_event",
+      semanticKind: "card_purchase",
+      relation: null,
+      confidence: "high",
+      reviewReasons: [],
+    });
+
+    const parsed = parseImportExtractResponse(
+      JSON.stringify({ rows: [row("second", 0, 5), row("first", 0, 0), row("third", 0, 5), row("next-image", 1, 8)] }),
+      2,
+    );
+
+    expect(parsed.rows.map(({ rowId, imageIndex, visualOrder }) => [rowId, imageIndex, visualOrder])).toEqual([
+      ["first", 0, 0],
+      ["second", 0, 1],
+      ["third", 0, 2],
+      ["next-image", 1, 0],
+    ]);
+  });
+
+  it("normalizes a zero model amount to an unknown fact instead of rejecting the whole screenshot", () => {
+    const parsed = parseImportExtractResponse(
+      JSON.stringify({
+        rows: [
+          {
+            rowId: "supporting-rate",
+            imageIndex: 0,
+            visualOrder: 0,
+            rawTextLines: ["1.00 PLN = 0.231677 EUR"],
+            date: "2026-08-07",
+            amount: 0,
+            currency: "PLN",
+            direction: "unknown",
+            postingStatus: "posted",
+            rowRole: "supporting_detail",
+            semanticKind: "fx_conversion",
+            relation: null,
+            confidence: "medium",
+            reviewReasons: [],
+          },
+        ],
+      }),
+      1,
+    );
+
+    expect(parsed.rows[0]!.amount).toBeNull();
+  });
+});
+
+describe("buildImportEnrichPrompt / parseImportEnrichResponse", () => {
+  const recognition = {
+    rows: [
+      {
+        rowId: "r1",
+        imageIndex: 0,
+        visualOrder: 0,
+        rawTextLines: ["LIDL 123"],
+        date: "2026-08-07",
+        amount: 1234,
+        currency: "PLN",
+        direction: "debit" as const,
+        postingStatus: "posted" as const,
+        rowRole: "financial_event" as const,
+        semanticKind: "card_purchase" as const,
+        relation: null,
+        confidence: "medium" as const,
+        reviewReasons: ["history_conflict" as const],
+      },
+    ],
+    proposals: [
+      {
+        rowId: "r1",
+        sourceRows: ["r1"],
+        disposition: "candidate" as const,
+        date: "2026-08-07",
+        amount: 1234,
+        currency: "PLN",
+        type: "expense" as const,
+        isRefund: false,
+        toAccountId: null,
+        semanticKind: "card_purchase" as const,
+        relation: null,
+        name: "",
+        tag: "",
+        rawPlace: "LIDL 123",
+        envelopeId: null,
+        categoryId: null,
+        placeName: null,
+        reviewReasons: ["history_conflict" as const],
+        selected: false,
+      },
+    ],
+  };
+
+  it("sends validated facts, bounded history evidence, and only current entity ids", () => {
+    const req = buildImportEnrichPrompt(
+      {
+        result: recognition,
+        history: [
+          {
+            rowId: "r1",
+            selection: {
+              conflict: true,
+              candidates: [
+                {
+                  sourceRef: "LIDL 123",
+                  tag: "LIDL",
+                  place: "Lidl",
+                  name: "Groceries",
+                  envelope: "Food",
+                  category: "Daily",
+                  type: "expense",
+                  isRefund: false,
+                  toAccountId: null,
+                  count: 2,
+                  match: "exact_source_ref",
+                },
+              ],
+            },
+          },
+        ],
+        envelopes: [{ id: "envelope-1", name: "Food" }],
+        categories: [{ id: "category-1", name: "Daily" }],
+        accounts: [{ id: "account-1", name: "Checking" }],
+      },
+      "pl",
+    );
+    const user = JSON.parse(req.messages[1]!.content as string) as Record<string, unknown>;
+    expect(user).toMatchObject({
+      entities: {
+        envelopes: [{ id: "envelope-1", name: "Food" }],
+        categories: [{ id: "category-1", name: "Daily" }],
+        accounts: [{ id: "account-1", name: "Checking" }],
+      },
+    });
+    expect(JSON.stringify(user)).toContain("LIDL 123");
+    expect(req.reasoningEffort).toBe("low");
+    expect(sysOf(req.messages)).toContain("existing id or null");
+    expect(sysOf(req.messages)).toContain("Return each supplied reviewReasons list unchanged");
+  });
+
+  it("exposes only semantic annotation fields in the strict response schema", () => {
+    const req = buildImportEnrichPrompt({ result: recognition, history: [], envelopes: [], categories: [], accounts: [] }, "en");
+    const schema = (req.responseFormat as any).json_schema.schema.properties.rows.items;
+    expect(Object.keys(schema.properties).sort()).toEqual(
+      ["categoryId", "envelopeId", "name", "place", "relation", "reviewReasons", "rowId", "semanticKind"].sort(),
+    );
+    expect(schema.additionalProperties).toBe(false);
+    expect(schema.properties).not.toHaveProperty("amount");
+    expect(schema.properties).not.toHaveProperty("date");
+    expect(schema.properties).not.toHaveProperty("currency");
+    expect(schema.properties).not.toHaveProperty("direction");
+  });
+
+  it("parses semantic fields while retaining a private marker for attempted fact corrections", () => {
+    const parsed = parseImportEnrichResponse(
+      JSON.stringify({
+        rows: [
+          {
+            rowId: "r1",
+            name: "Groceries",
+            place: "Lidl",
+            envelopeId: "envelope-1",
+            categoryId: null,
+            semanticKind: "card_purchase",
+            relation: null,
+            reviewReasons: [],
+            amount: 1,
+          },
+        ],
+      }),
+      { envelopeIds: ["envelope-1"], categoryIds: [], accountIds: ["account-1"] },
+    );
+    expect(parsed.rows[0]).toMatchObject({ rowId: "r1", name: "Groceries", envelopeId: "envelope-1", factCorrectionAttempt: true });
+    expect(parsed.allowedEnvelopeIds).toEqual(["envelope-1"]);
+  });
+});
+
+describe("runImportRecognitionPipeline", () => {
+  const extracted = (
+    semanticKind: "card_purchase" | "unknown" | "incoming_transfer" | "account_topup" = "card_purchase",
+    postingStatus: "posted" | "unknown" = "posted",
+  ) =>
+    JSON.stringify({
+      rows: [
+        {
+          rowId: "r1",
+          imageIndex: 0,
+          visualOrder: 0,
+          rawTextLines: ["LIDL 123"],
+          date: "2026-08-07",
+          amount: 1234,
+          currency: "PLN",
+          direction: semanticKind === "unknown" ? "unknown" : semanticKind === "incoming_transfer" || semanticKind === "account_topup" ? "credit" : "debit",
+          postingStatus,
+          rowRole: "financial_event",
+          semanticKind,
+          relation: null,
+          confidence: "medium",
+          reviewReasons: [],
+        },
+      ],
+    });
+  const history = (accountId: string, envelope: string): ImportHistoryRecord => ({
+    accountId,
+    currency: "PLN",
+    sourceRef: "LIDL 123",
+    tag: "LIDL",
+    place: "Lidl",
+    name: "Groceries",
+    envelope,
+    category: null,
+    type: "expense",
+    isRefund: false,
+    toAccountId: null,
+  });
+  const base = {
+    images: ["data:image/png;base64,AA=="],
+    locale: "pl",
+    today: "2026-08-16",
+    budgetCurrency: "PLN",
+    accountId: "account-1",
+    accounts: [
+      {
+        id: "account-1",
+        name: "Checking",
+        color: "#000",
+        icon: "wallet",
+        type: "checking" as const,
+        onBudget: true,
+        initialBalance: 0,
+        archived: false,
+        sort: 0,
+        automaticEnvelopeId: null,
+      },
+      {
+        id: "account-2",
+        name: "Savings",
+        color: "#000",
+        icon: "wallet",
+        type: "savings" as const,
+        onBudget: true,
+        initialBalance: 0,
+        archived: false,
+        sort: 1,
+        automaticEnvelopeId: null,
+      },
+    ],
+    envelopes: [
+      {
+        id: "envelope-1",
+        groupId: "group-1",
+        name: "Food",
+        color: "#000",
+        icon: "tag",
+        note: null,
+        monthlyTarget: null,
+        isSavings: false,
+        sort: 0,
+        archived: false,
+      },
+    ],
+    categories: [],
+    transactions: [],
+    historyRecords: [] as ImportHistoryRecord[],
+  };
+
+  it("skips cycle two for a straightforward posted purchase", async () => {
+    const requests: ChatRequest[] = [];
+    const result = await runImportRecognitionPipeline({
+      ...base,
+      chat: async (request) => {
+        requests.push(request);
+        return extracted();
+      },
+    });
+    expect(requests).toHaveLength(1);
+    expect(result.proposals[0]).toMatchObject({ rowId: "r1", semanticKind: "card_purchase", name: "", selected: true });
+  });
+
+  it("preserves default reconcile-before-enrichment ordering for an otherwise straightforward exact duplicate", async () => {
+    const requests: ChatRequest[] = [];
+    const duplicate: Transaction = {
+      id: "default-duplicate",
+      type: "expense",
+      accountId: "account-1",
+      toAccountId: null,
+      amount: 1234,
+      date: "2026-08-07",
+      isRefund: false,
+      envelopeId: null,
+      placeId: null,
+      categoryId: null,
+      name: "Existing",
+      note: null,
+      tag: null,
+      sourceRef: "LIDL 123",
+      allocationFromEnvelopeId: null,
+      allocationToEnvelopeId: null,
+      items: [],
+      createdAt: "2026-08-07T00:00:00.000Z",
+    };
+    const result = await runImportRecognitionPipeline({
+      ...base,
+      transactions: [duplicate],
+      chat: async (request) => {
+        requests.push(request);
+        if (requests.length === 1) return extracted();
+        return JSON.stringify({
+          rows: [
+            {
+              rowId: "r1",
+              name: "Duplicate enrichment",
+              place: "Lidl",
+              envelopeId: null,
+              categoryId: null,
+              semanticKind: "card_purchase",
+              relation: null,
+              reviewReasons: [],
+            },
+          ],
+        });
+      },
+    });
+
+    expect(requests).toHaveLength(2);
+    const enrichmentInput = JSON.parse(requests[1]!.messages[1]!.content as string) as {
+      rows: Array<{ proposal: Record<string, unknown> }>;
+    };
+    expect(enrichmentInput.rows[0]?.proposal).toMatchObject({
+      duplicateStatus: "exists",
+      disposition: "declined",
+      selected: false,
+      reviewReasons: ["history_conflict"],
+    });
+    expect(result.proposals[0]).toMatchObject({
+      name: "Duplicate enrichment",
+      duplicateStatus: "exists",
+      disposition: "declined",
+      selected: false,
+      reviewReasons: ["history_conflict"],
+    });
+  });
+
+  it("checkpoints cycle one and resumes without screenshots or another extraction request", async () => {
+    const phases: string[] = [];
+    let checkpoint: ImportRecognitionResult | undefined;
+    await runImportRecognitionPipeline({
+      ...base,
+      pipelineMode: "durable",
+      chat: async () => extracted(),
+      lifecycle: {
+        afterUpstream: async () => phases.push("upstream"),
+        saveExtraction: async (result) => {
+          checkpoint = result;
+          phases.push("checkpoint");
+        },
+        advancePhase: async (phase) => phases.push(phase),
+      },
+    });
+    expect(phases).toEqual(["upstream", "checkpoint", "reconciling"]);
+    if (!checkpoint) throw new Error("expected durable extraction checkpoint");
+
+    const resumedPhases: string[] = [];
+    const resumed = await runImportRecognitionPipeline({
+      ...base,
+      images: [],
+      checkpoint,
+      pipelineMode: "durable",
+      chat: async () => {
+        throw new Error("resume_must_not_extract_again");
+      },
+      lifecycle: { advancePhase: async (phase) => resumedPhases.push(phase) },
+    });
+
+    expect(resumedPhases).toEqual(["reconciling"]);
+    expect(resumed.proposals[0]).toMatchObject({ rowId: "r1", selected: true });
+  });
+
+  it("stores validated extraction before history and stores enriched Stage A before live-ledger reconciliation", async () => {
+    const saved: { extraction?: ImportRecognitionResult; result?: ImportRecognitionResult } = {};
+    let calls = 0;
+    const duplicate: Transaction = {
+      id: "transaction-1",
+      type: "expense",
+      accountId: "account-1",
+      toAccountId: null,
+      amount: 1234,
+      date: "2026-08-07",
+      isRefund: false,
+      envelopeId: null,
+      placeId: null,
+      categoryId: null,
+      name: "Existing",
+      note: null,
+      tag: null,
+      sourceRef: "LIDL 123",
+      allocationFromEnvelopeId: null,
+      allocationToEnvelopeId: null,
+      items: [],
+      createdAt: "2026-08-07T00:00:00.000Z",
+    };
+
+    const returned = await runImportRecognitionPipeline({
+      ...base,
+      pipelineMode: "durable",
+      transactions: [duplicate],
+      historyRecords: [history("account-1", "Food"), history("account-1", "Travel")],
+      chat: async () => {
+        calls++;
+        if (calls === 1) return extracted("unknown");
+        return JSON.stringify({
+          rows: [
+            {
+              rowId: "r1",
+              name: "Fresh enrichment",
+              place: "Lidl",
+              envelopeId: "envelope-1",
+              categoryId: null,
+              semanticKind: "card_purchase",
+              relation: null,
+              reviewReasons: [],
+            },
+          ],
+        });
+      },
+      lifecycle: {
+        saveExtraction: async (value) => {
+          saved.extraction = value;
+        },
+        saveResult: async (value) => {
+          saved.result = value;
+        },
+      },
+    });
+
+    expect(saved.extraction?.proposals[0]).toMatchObject({
+      name: "",
+      envelopeId: null,
+      disposition: "unresolved",
+      selected: true,
+      reviewReasons: ["unknown_kind"],
+    });
+    expect(saved.extraction?.proposals[0]?.reviewReasons).not.toContain("history_conflict");
+    expect(saved.result?.proposals[0]).toMatchObject({
+      name: "Fresh enrichment",
+      envelopeId: "envelope-1",
+      disposition: "candidate",
+      selected: true,
+    });
+    expect(Object.hasOwn(saved.result?.proposals[0] ?? {}, "duplicateStatus")).toBe(false);
+    expect(returned.proposals[0]).toMatchObject({ duplicateStatus: "exists", disposition: "declined", selected: false });
+  });
+
+  it("keeps a durable exact duplicate as pre-reconcile Stage A while returning current reconciliation", async () => {
+    const duplicate: Transaction = {
+      id: "durable-duplicate",
+      type: "expense",
+      accountId: "account-1",
+      toAccountId: null,
+      amount: 1234,
+      date: "2026-08-07",
+      isRefund: false,
+      envelopeId: null,
+      placeId: null,
+      categoryId: null,
+      name: "Existing",
+      note: null,
+      tag: null,
+      sourceRef: "LIDL 123",
+      allocationFromEnvelopeId: null,
+      allocationToEnvelopeId: null,
+      items: [],
+      createdAt: "2026-08-07T00:00:00.000Z",
+    };
+    let calls = 0;
+    let durableResult: ImportRecognitionResult | undefined;
+    const returned = await runImportRecognitionPipeline({
+      ...base,
+      pipelineMode: "durable",
+      cycleTwoFailureMode: "strict",
+      transactions: [duplicate],
+      chat: async () => {
+        calls++;
+        if (calls > 1) throw new Error("durable duplicate should not enrich from live reconciliation");
+        return extracted();
+      },
+      lifecycle: { saveResult: async (value) => (durableResult = value) },
+    });
+
+    expect(calls).toBe(1);
+    expect(durableResult?.proposals[0]).toMatchObject({ disposition: "candidate", selected: true, reviewReasons: [] });
+    expect(Object.hasOwn(durableResult?.proposals[0] ?? {}, "duplicateStatus")).toBe(false);
+    expect(returned.proposals[0]).toMatchObject({ duplicateStatus: "exists", disposition: "declined", selected: false });
+  });
+
+  it("reconciles a resumed raw checkpoint against the changed ledger instead of creation-time proposal state", async () => {
+    let rawCheckpoint: ImportRecognitionResult | undefined;
+    await runImportRecognitionPipeline({
+      ...base,
+      pipelineMode: "durable",
+      chat: async () => extracted(),
+      lifecycle: { saveExtraction: async (value) => (rawCheckpoint = value) },
+    });
+    if (!rawCheckpoint) throw new Error("expected raw checkpoint");
+    const contaminatedCheckpoint: ImportRecognitionResult = {
+      ...rawCheckpoint,
+      proposals: rawCheckpoint.proposals.map((proposal) => ({
+        ...proposal,
+        disposition: "declined",
+        selected: false,
+        envelopeId: "creation-time-envelope",
+        reviewReasons: [...proposal.reviewReasons, "history_conflict"],
+      })),
+    };
+    const resumed = await runImportRecognitionPipeline({
+      ...base,
+      images: [],
+      checkpoint: contaminatedCheckpoint,
+      pipelineMode: "durable",
+      transactions: [],
+      chat: async () => {
+        throw new Error("resume_must_not_extract_or_enrich");
+      },
+    });
+
+    expect(resumed.proposals[0]).toMatchObject({
+      envelopeId: null,
+      duplicateStatus: "new",
+      disposition: "candidate",
+      selected: true,
+    });
+    expect(resumed.proposals[0]?.reviewReasons).not.toContain("history_conflict");
+  });
+
+  it("recomputes history and enrichment from current records when a raw checkpoint resumes", async () => {
+    let rawCheckpoint: ImportRecognitionResult | undefined;
+    await runImportRecognitionPipeline({
+      ...base,
+      pipelineMode: "durable",
+      chat: async () => extracted("card_purchase", "unknown"),
+      lifecycle: { saveExtraction: async (value) => (rawCheckpoint = value) },
+    });
+    if (!rawCheckpoint) throw new Error("expected raw checkpoint");
+
+    let enrichmentPrompt = "";
+    const resumed = await runImportRecognitionPipeline({
+      ...base,
+      images: [],
+      checkpoint: rawCheckpoint,
+      pipelineMode: "durable",
+      historyRecords: [history("account-1", "Food"), history("account-1", "Travel")],
+      chat: async (request) => {
+        enrichmentPrompt = request.messages[1]!.content as string;
+        return JSON.stringify({
+          rows: [
+            {
+              rowId: "r1",
+              name: "From current history",
+              place: "Lidl",
+              envelopeId: null,
+              categoryId: null,
+              semanticKind: "card_purchase",
+              relation: null,
+              reviewReasons: [],
+            },
+          ],
+        });
+      },
+    });
+
+    expect(enrichmentPrompt).toContain("Food");
+    expect(enrichmentPrompt).toContain("Travel");
+    expect(resumed.proposals[0]?.name).toBe("From current history");
+    expect(resumed.proposals[0]?.reviewReasons).toEqual(expect.arrayContaining(["history_conflict", "multiple_history_candidates"]));
+  });
+
+  it.each([
+    ["upstream", new Error("cycle-two-network")],
+    ["malformed", null],
+  ] as const)("propagates %s cycle-two failures in durable strict mode", async (_kind, upstreamError) => {
+    let calls = 0;
+    const run = runImportRecognitionPipeline({
+      ...base,
+      pipelineMode: "durable",
+      cycleTwoFailureMode: "strict",
+      chat: async () => {
+        calls++;
+        if (calls === 1) return extracted("unknown");
+        if (upstreamError) throw upstreamError;
+        return '{"rows":null}';
+      },
+    });
+
+    if (upstreamError) {
+      await expect(run).rejects.toThrow("cycle-two-network");
+    } else {
+      await expect(run).rejects.toMatchObject({ name: "ImportEnrichmentMalformedError" });
+    }
+  });
+
+  it("uses only the selected account's compatible history and constrains cycle-two ids", async () => {
+    const requests: ChatRequest[] = [];
+    const result = await runImportRecognitionPipeline({
+      ...base,
+      historyRecords: [history("account-1", "Food"), history("account-1", "Travel"), history("account-2", "Secret")],
+      chat: async (request) => {
+        requests.push(request);
+        if (requests.length === 1) return extracted();
+        const user = request.messages[1]!.content as string;
+        expect(user).toContain("Food");
+        expect(user).toContain("Travel");
+        expect(user).not.toContain("Secret");
+        return JSON.stringify({
+          rows: [
+            {
+              rowId: "r1",
+              name: "Zakupy",
+              place: "Lidl",
+              envelopeId: "envelope-1",
+              categoryId: null,
+              semanticKind: "card_purchase",
+              relation: null,
+              reviewReasons: [],
+            },
+          ],
+        });
+      },
+    });
+    expect(requests).toHaveLength(2);
+    expect(result.proposals[0]).toMatchObject({ name: "Zakupy", envelopeId: "envelope-1", selected: true });
+    expect(result.proposals[0]!.reviewReasons).toEqual(expect.arrayContaining(["history_conflict", "multiple_history_candidates"]));
+  });
+
+  it("keeps cycle-two fact corrections selected and visible after final validation and reconciliation", async () => {
+    let calls = 0;
+    const result = await runImportRecognitionPipeline({
+      ...base,
+      chat: async () => {
+        calls++;
+        if (calls === 1) {
+          const value = JSON.parse(extracted()) as { rows: Array<Record<string, unknown>> };
+          value.rows[0]!.semanticKind = "unknown";
+          return JSON.stringify(value);
+        }
+        return JSON.stringify({
+          rows: [
+            {
+              rowId: "r1",
+              name: "Groceries",
+              place: null,
+              envelopeId: null,
+              categoryId: null,
+              semanticKind: "card_purchase",
+              relation: null,
+              reviewReasons: [],
+              amount: 1,
+            },
+          ],
+        });
+      },
+    });
+
+    expect(calls).toBe(2);
+    expect(result.proposals[0]).toMatchObject({ type: "expense", selected: true });
+    expect(result.proposals[0]!.reviewReasons).toEqual(expect.arrayContaining(["unknown_kind", "fact_correction"]));
+  });
+
+  it("keeps action warnings on the selected financial row instead of its unselected supporting evidence", async () => {
+    let calls = 0;
+    const result = await runImportRecognitionPipeline({
+      ...base,
+      chat: async () => {
+        calls++;
+        if (calls === 1) {
+          return JSON.stringify({
+            rows: [
+              {
+                rowId: "fx",
+                imageIndex: 0,
+                visualOrder: 0,
+                rawTextLines: ["100 EUR", "430 PLN"],
+                date: "2026-08-07",
+                amount: 43000,
+                currency: "PLN",
+                direction: "debit",
+                postingStatus: "posted",
+                rowRole: "supporting_detail",
+                semanticKind: "fx_conversion",
+                relation: null,
+                confidence: "medium",
+                reviewReasons: [],
+              },
+              {
+                rowId: "purchase",
+                imageIndex: 0,
+                visualOrder: 1,
+                rawTextLines: ["100 EUR", "MERCHANT"],
+                date: "2026-08-07",
+                amount: 10000,
+                currency: "EUR",
+                direction: "debit",
+                postingStatus: "posted",
+                rowRole: "financial_event",
+                semanticKind: "unknown",
+                relation: null,
+                confidence: "medium",
+                reviewReasons: [],
+              },
+            ],
+          });
+        }
+        return JSON.stringify({
+          rows: [
+            {
+              rowId: "fx",
+              name: "",
+              place: null,
+              envelopeId: null,
+              categoryId: null,
+              semanticKind: "fx_conversion",
+              relation: { kind: "fx_for", rowId: "purchase" },
+              reviewReasons: ["relation_changes_ledger_shape"],
+            },
+            {
+              rowId: "purchase",
+              name: "Purchase",
+              place: null,
+              envelopeId: null,
+              categoryId: null,
+              semanticKind: "card_purchase",
+              relation: null,
+              reviewReasons: ["relation_changes_ledger_shape"],
+            },
+          ],
+        });
+      },
+    });
+
+    expect(calls).toBe(2);
+    expect(result.proposals.find((proposal) => proposal.rowId === "fx")).toMatchObject({ selected: false, reviewReasons: [] });
+    expect(result.proposals.find((proposal) => proposal.rowId === "purchase")?.reviewReasons).toContain("relation_changes_ledger_shape");
+  });
+
+  it("builds byte-identical cycle-two prompts for permutations of set-like ledger context", async () => {
+    const envelope2 = { ...base.envelopes[0]!, id: "envelope-2", name: "Travel", sort: 1 };
+    const categories = [
+      { id: "category-1", name: "Groceries" },
+      { id: "category-2", name: "Restaurants" },
+    ];
+    const histories = [history("account-1", "Food"), history("account-1", "Travel")];
+    const cycleTwoContent = async (reverse: boolean): Promise<string> => {
+      const requests: ChatRequest[] = [];
+      await runImportRecognitionPipeline({
+        ...base,
+        accounts: reverse ? [...base.accounts].reverse() : [...base.accounts],
+        envelopes: reverse ? [envelope2, ...base.envelopes] : [...base.envelopes, envelope2],
+        categories: reverse ? [...categories].reverse() : categories,
+        historyRecords: reverse ? [...histories].reverse() : histories,
+        chat: async (request) => {
+          requests.push(request);
+          if (requests.length === 1) return extracted();
+          return JSON.stringify({
+            rows: [
+              {
+                rowId: "r1",
+                name: "Groceries",
+                place: "Lidl",
+                envelopeId: "envelope-1",
+                categoryId: "category-1",
+                semanticKind: "card_purchase",
+                relation: null,
+                reviewReasons: [],
+              },
+            ],
+          });
+        },
+      });
+      expect(requests).toHaveLength(2);
+      return requests[1]!.messages[1]!.content as string;
+    };
+
+    expect(await cycleTwoContent(false)).toBe(await cycleTwoContent(true));
+  });
+
+  it("returns validated raw proposals when cycle two fails", async () => {
+    let calls = 0;
+    const result = await runImportRecognitionPipeline({
+      ...base,
+      chat: async () => {
+        calls++;
+        if (calls === 1) return extracted("unknown");
+        throw new Error("cycle-two-down");
+      },
+    });
+    expect(calls).toBe(2);
+    expect(result.proposals[0]).toMatchObject({ name: "", envelopeId: null, disposition: "unresolved", selected: true });
+    expect(result.proposals[0]!.reviewReasons).toContain("unknown_kind");
+  });
+
+  it("keeps an incoming-transfer fallback mapped to selected income when cycle two fails", async () => {
+    let calls = 0;
+    const result = await runImportRecognitionPipeline({
+      ...base,
+      chat: async () => {
+        calls++;
+        if (calls === 1) return extracted("incoming_transfer");
+        throw new Error("cycle-two-down");
+      },
+    });
+
+    expect(calls).toBe(2);
+    expect(result.proposals[0]).toMatchObject({ type: "income", disposition: "candidate", selected: true });
+    expect(result.proposals[0]!.reviewReasons).toContain("possible_transfer");
+  });
+
+  it("keeps an account-top-up fallback mapped to selected income when cycle two fails", async () => {
+    let calls = 0;
+    const result = await runImportRecognitionPipeline({
+      ...base,
+      chat: async () => {
+        calls++;
+        if (calls === 1) return extracted("account_topup");
+        throw new Error("cycle-two-down");
+      },
+    });
+
+    expect(calls).toBe(2);
+    expect(result.proposals[0]).toMatchObject({ type: "income", disposition: "candidate", selected: true });
+    expect(result.proposals[0]!.reviewReasons).toContain("possible_transfer");
+  });
+
+  it("keeps an unknown posting status selected for review after the full pipeline", async () => {
+    let calls = 0;
+    const result = await runImportRecognitionPipeline({
+      ...base,
+      chat: async () => {
+        calls++;
+        if (calls === 1) return extracted("card_purchase", "unknown");
+        return JSON.stringify({
+          rows: [
+            {
+              rowId: "r1",
+              name: "Groceries",
+              place: "Lidl",
+              envelopeId: "envelope-1",
+              categoryId: null,
+              semanticKind: "card_purchase",
+              relation: null,
+              reviewReasons: [],
+            },
+          ],
+        });
+      },
+    });
+
+    expect(calls).toBe(2);
+    expect(result.proposals[0]).toMatchObject({ disposition: "candidate", selected: true });
+    expect(result.proposals[0]!.reviewReasons).toContain("unknown_posting_status");
   });
 });
 
