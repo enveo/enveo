@@ -33,6 +33,7 @@ import { type CSSProperties, type ReactNode, useMemo } from "react";
 import { useLedgerVersion } from "../lib/api";
 import { useMask, useTheme } from "../lib/contexts";
 import { currentMonth, shortDate, todayISO } from "../lib/dates";
+import { canFillGoals } from "../lib/goals";
 import { haptic } from "../lib/haptics";
 import { type AttentionRow, attentionRows } from "../lib/homeAttention";
 import { useT } from "../lib/i18n";
@@ -507,9 +508,9 @@ export function GoalsWidget({ state, month, onOpenReport, onFillGoals, chromeles
 
   const missSum = rows.reduce((s, { gp }) => s + gp.missing, 0);
   const allFunded = rows.length > 0 && missSum === 0;
-  // Same entry-visibility predicate as GoalsReport.tsx/Budget's "Fill by goals" button: a pool to
-  // place AND at least one goal still short.
-  const canFillGoals = state.readyToAssign > 0 && missSum > 0;
+  // The SHARED entry-visibility predicate (lib/goals.ts) every "Fill by goals" affordance calls.
+  // `missSum > 0` over these same rows was the identical rule spelled out a third time.
+  const fillPossible = canFillGoals(state);
 
   return (
     <WidgetShell title={t("Goals")} chromeless={chromeless}>
@@ -594,7 +595,7 @@ export function GoalsWidget({ state, month, onOpenReport, onFillGoals, chromeles
           })}
           <span style={{ fontSize: 11, color: C.soft }}>
             {allFunded ? t("All goals funded ✓") : t("{amount} to go", { amount: M(missSum) })}
-            {canFillGoals && onFillGoals && (
+            {fillPossible && onFillGoals && (
               <>
                 {" · "}
                 <button

@@ -4,16 +4,16 @@ import { Header, Surface } from "../components/chrome";
 import { DockedNumpad } from "../components/DockedNumpad";
 import { IconColorPicker } from "../components/IconColorPicker";
 import { CardBox, GoalRing, useBand } from "../components/kit";
-import { LazyChunk, useOpenedOnce } from "../components/lazy";
+import { LazyChunk } from "../components/lazy";
 import { fmtSignedTrim, type PadState, padPreview, padPreviewLive } from "../lib/amount";
 import type { EnvelopeView, StateResponse } from "../lib/api";
 import { linkedAccountNames } from "../lib/automaticEnvelopeAccountUi";
-import type { BudgetSheetEvent, BudgetSheetState } from "../lib/budgetSheet";
+import { type BudgetSheetEvent, type BudgetSheetState, useBudgetSheets } from "../lib/budgetSheet";
 import { useCurrency, useMask, useSettings, useTheme } from "../lib/contexts";
 import { useDragReorder } from "../lib/dnd";
 import { activeAllocationDecoration } from "../lib/focusPresentation";
 import { currencySymbol, evalExpression, evalExpressionLive, fmtTrim, isLight, localizePadExpression, parseAmount } from "../lib/format";
-import { goalProgress } from "../lib/goals";
+import { canFillGoals, goalProgress } from "../lib/goals";
 import { useT } from "../lib/i18n";
 import { Glyph, Ico } from "../lib/icons";
 import { local } from "../lib/mutate";
@@ -76,21 +76,18 @@ export function BudgetScreen({
   // cell; DockedNumpad stays for fold/phone. `mode` is read fresh on every render (no memoization
   // needed — a resize crossing fold↔desktop mid-edit just changes which branch the NEXT render takes).
   const desktopInput = wideHost?.mode === "desktop";
-  // Derived, not mirrored: App holds the open sheet, so a pill pressed while this screen is
-  // already mounted lands as a prop change and opens the sheet on the very next render. Nothing
-  // here has to notice a "new" intent, which is precisely what the mount-consumed flags could not
-  // do (owner round 8 item 32).
-  const suggest = sheet === "suggest";
-  const fillGoals = sheet === "fillGoals";
-  // Latched — see Add.tsx: mount on first open, stay mounted, so state survives close→reopen.
-  const suggestOpened = useOpenedOnce(suggest);
-  const fillGoalsOpened = useOpenedOnce(fillGoals);
+  // READ from the prop on every render, never latched into local state — lib/budgetSheet.ts owns
+  // the whole rule and budgetSheet.test.ts pins it, because a `useState` seeded from `sheet` here
+  // behaves identically on first render and dead-ends every entry point pressed afterwards
+  // (owner round 8 item 32). `…Opened` are the lazy-chunk latches: mount on first open, stay
+  // mounted, so a sheet's state survives close→reopen (same idiom as Add.tsx).
+  const { suggest, fillGoals, suggestOpened, fillGoalsOpened } = useBudgetSheets(sheet);
   const closeSheet = () => onSheet({ kind: "close" });
-  // Entry visibility: money to place AND at least one active envelope still short of its goal.
-  // Same predicate as the Goals report's "Fill ›" entry point (Reports.tsx, `canFillGoals`) —
-  // kept in sync by inspection, not by shared code (the report's version folds in `missSum`
-  // it already computed for its own display).
-  const canFillGoals = state.readyToAssign > 0 && state.envelopes.some((e) => !e.archived && (goalProgress(e)?.missing ?? 0) > 0);
+  // Entry visibility: money to place AND at least one active envelope still short of its goal —
+  // the SHARED predicate (lib/goals.ts), the same one the wide rail's and fold strip's pills now
+  // call. It used to be spelled out here and re-spelled at every other entry point, which is how
+  // the two newest ones shipped with no gate at all (owner round 8b item B).
+  const fillGoalsPossible = canFillGoals(state);
   // IN-PLACE allocation editing (docked-numpad spec): one active cell per screen;
   // `err` = ✓ on an uncomputable/negative result, cleared on the next keypress. `input`, set only
   // on desktop (Task 3b), carries the real <input>'s raw typed text; `pad` stays populated in every
@@ -223,7 +220,7 @@ export function BudgetScreen({
                 {M(tbbLive)}
               </div>
             )}
-            {canFillGoals && (
+            {fillGoalsPossible && (
               <button
                 onClick={() => onSheet({ kind: "open", sheet: "fillGoals" })}
                 style={{
@@ -264,7 +261,20 @@ export function BudgetScreen({
         </CardBox>
       )}
 
-      <div style={{ display: "grid", gridTemplateColumns: COLS, padding: `0 ${P}px 6px`, gap: 8, alignItems: "start" }}>
+      {/* Owner round 8 item 33: the header's columns must be the ROWS' columns. Both grids share
+          `COLS` and `gap`, so alignment is entirely a question of where each grid's content box
+          starts — and this one used to start at `P` (14) while every data row starts 12px further
+          in: `CardBox` is `margin: 0 14px` + `padding: 0 12px`, and the row's own
+          `padding/margin: ±12px` cancel out (wide) or are absent (phone), leaving the row content
+          box at 26px on BOTH sides in BOTH modes. The header therefore sat 12px right of its own
+          columns — the labels the owner cropped, floating left of the amounts they name. `P + 12`
+          is also literally the design's own header padding (v3:256 `padding: 12px 26px 4px`
+          against rows at 14+1+10 = 25px). The vertical padding stays as it was: the design's 12px
+          top belongs to a header sitting directly under the pane's TBB row, while here the
+          spacing above is already owned by whatever card precedes it. Phone shares this header
+          and shared the defect, so it is fixed there too — the only cost is 24px off the name
+          column's `1fr`, which at 390px still leaves ~120px for "ENVELOPE". */}
+      <div style={{ display: "grid", gridTemplateColumns: COLS, padding: `0 ${P + 12}px 6px`, gap: 8, alignItems: "start" }}>
         <span style={{ fontSize: 10.5, color: C.mute, fontWeight: 600, letterSpacing: 1, textTransform: "uppercase" }}>{t("Envelope")}</span>
         <div style={{ textAlign: "right" }}>
           <div style={{ fontSize: 10.5, color: C.mute, fontWeight: 600, letterSpacing: 1, textTransform: "uppercase" }}>{t("Allocated")}</div>

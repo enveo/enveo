@@ -28,6 +28,10 @@
  * entry point works from any screen, in any order, any number of times.
  */
 
+// The lazy-chunk latch every deliberate-tap sheet in the app already uses — imported rather than
+// re-implemented so there is exactly ONE "has this ever been open" rule (see `useBudgetSheets`).
+import { useOpenedOnce } from "../components/lazy";
+
 /** The Budget screen's two allocation sheets. */
 export type BudgetSheet = "suggest" | "fillGoals";
 
@@ -65,4 +69,39 @@ export function budgetSheetAfter(_prev: BudgetSheetState, event: BudgetSheetEven
     case "leave":
       return null;
   }
+}
+
+/** What `BudgetScreen` renders for a given open sheet. */
+export type BudgetSheetView = {
+  /** Is the suggest sheet SHOWING (its `show` prop)? */
+  suggest: boolean;
+  /** Is the fill-by-goals sheet SHOWING? */
+  fillGoals: boolean;
+  /** Has the suggest sheet ever been shown? Its lazy chunk stays mounted from then on. */
+  suggestOpened: boolean;
+  /** Has the fill-by-goals sheet ever been shown? */
+  fillGoalsOpened: boolean;
+};
+/**
+ * The Budget screen's sheet WIRING, in one place: the App-owned `sheet` value → what the screen
+ * renders, on EVERY render.
+ *
+ * This is a hook and not two inline expressions because the defect it fixes was invisible in
+ * inline form. The screen used to hold `useState(!!initialSuggest)` — a value seeded from a prop
+ * at MOUNT and never again — so an entry point pressed while the screen was already mounted moved
+ * a prop that nothing read. Read vs. latched are one character apart at the call site and behave
+ * identically on first render, which is exactly why no test caught the regression: distinguishing
+ * them needs a SECOND render of the SAME component instance with a different prop, and the only
+ * place that can be arranged headlessly (no DOM in this toolchain) is around a hook —
+ * budgetSheet.test.ts drives this one through prop sequences and asserts the reads track them.
+ *
+ * `useOpenedOnce` is part of the wiring, not decoration: `suggestOpened`/`fillGoalsOpened` latch
+ * true on first show and stay true, which is what keeps a sheet's lazy chunk (and the state
+ * inside it) alive across close→reopen. It also makes the mount-vs-update distinction visible in
+ * the return value — after a swap the previous sheet is `false` but still `…Opened`.
+ */
+export function useBudgetSheets(sheet: BudgetSheetState): BudgetSheetView {
+  const suggest = sheet === "suggest";
+  const fillGoals = sheet === "fillGoals";
+  return { suggest, fillGoals, suggestOpened: useOpenedOnce(suggest), fillGoalsOpened: useOpenedOnce(fillGoals) };
 }
