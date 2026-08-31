@@ -1,4 +1,5 @@
 import { execSync } from "node:child_process";
+import { readFileSync } from "node:fs";
 import react from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
 import { VitePWA } from "vite-plugin-pwa";
@@ -40,6 +41,20 @@ export default defineConfig({
   },
   plugins: [
     react(),
+    
+
+
+
+
+    {
+      name: "enveo-emit-version-json",
+      generateBundle() {
+        const src = readFileSync("src/lib/version.ts", "utf8");
+        const m = /APP_VERSION = "([^"]+)"/.exec(src);
+        if (!m) throw new Error("APP_VERSION not found in src/lib/version.ts");
+        this.emitFile({ type: "asset", fileName: "version.json", source: JSON.stringify({ version: m[1] }) });
+      },
+    },
     VitePWA({
       registerType: "prompt",
       injectRegister: null,
@@ -52,7 +67,13 @@ export default defineConfig({
         theme_color: "#1d2a47",
         background_color: "#1d2a47",
         display: "standalone",
-        orientation: "portrait",
+        // "any" (was "portrait"): the wide fold/desktop layout (spec §5-§10) is reachable on an
+        // installed PWA only once this flips — a portrait-locked manifest would force a phone
+        // layout on an unfolded foldable regardless of its actual aspect ratio. Landscape
+        // handsets still fall back to the phone layout on their own merits (`useViewMode`'s
+        // `MIN_WIDE_HEIGHT` clause, viewMode.test.ts), so this is not "landscape phones now get
+        // the rail" — width AND height both have to clear the wide thresholds.
+        orientation: "any",
         start_url: "/",
         scope: "/",
         icons: [
@@ -62,6 +83,8 @@ export default defineConfig({
         ],
       },
       workbox: {
+        // version.json must ALWAYS come from the network (see the emit plugin above).
+        globIgnores: ["**/version.json"],
         
 
 

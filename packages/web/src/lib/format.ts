@@ -29,6 +29,31 @@ export function formatMoney(minor: number, currency: string, lang: Lang, opts?: 
   }).format(minor / 100);
 }
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+export function compactMoney(minor: number, currency: string, lang: Lang): string {
+  return new Intl.NumberFormat(LOCALE_OF[lang], {
+    style: "currency",
+    currency,
+    notation: "compact",
+    maximumSignificantDigits: 2,
+  }).format(minor / 100);
+}
+
  
 export function currencySymbol(currency: string, lang: Lang): string {
   const parts = new Intl.NumberFormat(LOCALE_OF[lang], { style: "currency", currency }).formatToParts(0);
@@ -131,6 +156,19 @@ export function evalExpression(raw: string): number | null {
   const v = evalArith(norm);
   if (v === null || !Number.isFinite(v)) return null;
   return Math.round(v * 100);
+}
+
+/**
+ * "Live" result of free-typed expression text (the desktop Allocated `<input>`, owner round 5
+ * item 27): a hanging operator ("500+", "10*") previews the computable part (500, 10) instead of
+ * blanking the preview mid-entry — the same rule `padPreviewLive` applies to the pad's canonical
+ * expression, extended to the ASCII operators a keyboard types. COMMIT never uses this: an
+ * unfinished expression must stay uncommittable (`evalExpression` alone → null → keep editing).
+ */
+export function evalExpressionLive(raw: string): number | null {
+  const t = raw.replace(/[+\-*/×÷−]\s*$/, "");
+  if (!t.trim()) return null;
+  return evalExpression(t);
 }
 
  

@@ -15,7 +15,7 @@
 import { describe, expect, it } from "bun:test";
 import { E2EE_DISABLE_CONFIRM } from "@enveo/shared";
 import { ambiguous, extract, extractSites, matchMessages } from "../../../scripts/i18n-extract-lib";
-import { type Dict, type Lang, loadLocale, translate, translatePlural } from "./index";
+import { type Dict, type Lang, loadLocale, shouldReloadLocale, translate, translatePlural } from "./index";
 import { pl } from "./locales/pl";
 import { MESSAGES, type Message } from "./messages.generated";
 import { LOCALES } from "./registry";
@@ -69,6 +69,17 @@ describe("i18n runtime", () => {
       await loadLocale(l.code);
       expect({ locale: l.code, out: translate(l.code, "Settings") }).toEqual({ locale: l.code, out: dict.Settings as string });
     }
+  });
+
+  it("shouldReloadLocale: english never reloads, an unloaded non-english lang does, a loaded one doesn't", () => {
+    // English is the source — translate()/translatePlural() never consult the cache for it, so
+    // reloading would be pure waste, regardless of the (irrelevant) isLoaded flag.
+    expect(shouldReloadLocale("en", false)).toBe(false);
+    expect(shouldReloadLocale("en", true)).toBe(false);
+    // A non-english lang whose dict is not yet in the cache needs a load...
+    expect(shouldReloadLocale("pl", false)).toBe(true);
+    // ...but not once it is (this is what stops useT()'s effect from looping on every render).
+    expect(shouldReloadLocale("pl", true)).toBe(false);
   });
 
   it("a locale chunk that FAILS to load degrades to English instead of rejecting (no blank boot)", async () => {

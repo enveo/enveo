@@ -16,6 +16,7 @@ import { applyLocalImport, importReviewItem, type LocalImportReviewItem, planLoc
 import { store } from "../lib/store";
 import { assertOwnReplica } from "../lib/sync";
 import { CORAL, font, TEAL, TRANSFER, tint } from "../lib/theme";
+import { PHONE_COL } from "../lib/viewMode";
 import { AddScreen } from "../screens/Add";
 import { AutomaticEnvelopeEffect } from "../screens/add/AutomaticEnvelopeEffect";
 import { AiConsentSheet } from "./AiConsentSheet";
@@ -582,7 +583,7 @@ export function ImportSheet({ show, onClose, state, onApplied }: { show: boolean
               inset: 0,
               zIndex: 200,
               background: C.bg,
-              maxWidth: 420,
+              maxWidth: PHONE_COL,
               margin: "0 auto",
               display: "flex",
               flexDirection: "column",

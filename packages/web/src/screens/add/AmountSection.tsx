@@ -18,6 +18,7 @@ export function AmountSection({
   amtRef,
   onOpenPad,
   onToggleRefund,
+  onConfirm,
 }: {
   tab: Tab;
   isRefund: boolean;
@@ -28,6 +29,12 @@ export function AmountSection({
   amtRef: MutableRefObject<HTMLDivElement | null>;
   onOpenPad: () => void;
   onToggleRefund: () => void;
+  
+
+
+
+
+  onConfirm?: () => void;
 }) {
   const C = useTheme();
   const { t, lang } = useT();
@@ -36,9 +43,15 @@ export function AmountSection({
     <div
       role="button"
       tabIndex={0}
+      data-amount-surface="1"
       onClick={onOpenPad}
       onKeyDown={(e) => {
         if (e.target !== e.currentTarget) return;
+        if (e.key === "Enter" && onConfirm) {
+          e.preventDefault();
+          onConfirm();
+          return;
+        }
         if (e.key === "Enter" || e.key === " ") {
           e.preventDefault();
           onOpenPad();

@@ -1,13 +1,18 @@
 import {
   computeCashflowSeries,
   computeDailySpending,
+  computeDaySpending,
   computeEnvelopeTrends,
   computeNetWorthSeries,
   computeSpendingByDimension,
+  computeSpendingDetail,
+  type DaySpending,
   largestExpenses,
   prevMonth,
+  type SpendingDetail,
   type SpendingDimension,
   spendingBaseline,
+  type Transaction,
   topPlaces,
 } from "@enveo/shared";
 import { useMemo, useState } from "react";
@@ -22,7 +27,7 @@ import { MonthReport } from "./reports/MonthReport";
 import { ReportsHub } from "./reports/ReportsHub";
 import { SpendingReport } from "./reports/SpendingReport";
 import { TrendsReport } from "./reports/TrendsReport";
-import type { ReportView } from "./reports/types";
+import type { ReportTab, ReportView } from "./reports/types";
 
 export type { ReportTab, ReportView } from "./reports/types";
 
@@ -31,21 +36,37 @@ export function ReportsScreen({
   month,
   view,
   onView,
+  monthDay,
+  onSelectDay,
   onOpenEnvelope,
   onFillGoals,
+  onEditTxn,
   onMenu,
   onPrev,
   onNext,
+  onOpenTxns,
+  selected,
 }: {
   state: StateResponse;
   month: string;
   view: ReportView;
   onView: (v: ReportView) => void;
+  monthDay: string | null;
+  onSelectDay: (date: string | null) => void;
   onOpenEnvelope: (envId: string, month: string) => void;
   onFillGoals: () => void;
+  onEditTxn: (t: Transaction) => void;
   onMenu: () => void;
   onPrev: () => void;
   onNext: () => void;
+  onOpenTxns: (f: { envId?: string; envIds?: ReadonlySet<string>; catId?: string; placeId?: string }) => void;
+  
+
+
+
+
+
+  selected?: ReportTab;
 }) {
   const M = useMask();
   const version = useLedgerVersion();
@@ -88,6 +109,16 @@ export function ReportsScreen({
     return l ? spendingBaseline(l, month, dim, 3) : new Map<string | null, number>();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [version, month, dim, view]);
+  
+
+  const spendDetailFor = useMemo(() => {
+    return (key: string | null): SpendingDetail | null => {
+      if (view !== "spending" || key === null) return null;
+      const l = store.getLedger();
+      return l ? computeSpendingDetail(l, fromMonth, month, dim, key) : null;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [version, fromMonth, month, dim, view]);
    
   const hubSpending = useMemo(() => {
     if (view !== "overview") return [];
@@ -124,6 +155,15 @@ export function ReportsScreen({
     return l ? largestExpenses(l, month, 5) : [];
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [version, month, view]);
+  
+
+
+  const dayDetail = useMemo((): DaySpending | null => {
+    if (view !== "month" || !monthDay) return null;
+    const l = store.getLedger();
+    return l ? computeDaySpending(l, monthDay) : null;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [version, monthDay, view]);
 
    
   if (view === "overview") {
@@ -140,6 +180,7 @@ export function ReportsScreen({
         onMenu={onMenu}
         onPrev={onPrev}
         onNext={onNext}
+        selected={selected}
       />
     );
   }
@@ -159,6 +200,7 @@ export function ReportsScreen({
           spending={spending}
           cashflow={cashflow}
           spBaseline={spBaseline}
+          spendDetailFor={spendDetailFor}
           state={state}
           dim={dim}
           setDim={setDim}
@@ -169,6 +211,7 @@ export function ReportsScreen({
           onPrev={onPrev}
           onNext={onNext}
           onBack={back}
+          onOpenTxns={onOpenTxns}
         />
       )}
       {view === "budgets" && <BudgetsReport state={state} M={M} onOpenEnvelope={onOpenEnvelope} onPrev={onPrev} onNext={onNext} onBack={back} />}
@@ -177,10 +220,16 @@ export function ReportsScreen({
       )}
       {view === "month" && (
         <MonthReport
+          state={state}
           cashflow={cashflow}
           days={dailySpending}
           places={monthPlaces}
           largest={monthLargest}
+          monthDay={monthDay}
+          onSelectDay={onSelectDay}
+          dayDetail={dayDetail}
+          onEditTxn={onEditTxn}
+          onOpenTxns={onOpenTxns}
           M={M}
           month={month}
           onPrev={onPrev}

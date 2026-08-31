@@ -2,7 +2,7 @@ import { describe, expect, it } from "bun:test";
 import { applyOp } from "./applyOp";
 import { asClientLedger, grp } from "./ledger.test-support";
 import { clientLedgerSchema, REPLICATED_TABLES, type SyncOp } from "./ops";
-import { createDefaultBudgetPreferences } from "./preferences";
+import { createDefaultBudgetPreferences, createDefaultWideWidgets } from "./preferences";
 
 describe("budget entity", () => {
   const base = () => ({
@@ -67,5 +67,23 @@ describe("budget entity", () => {
 
   it("budgets is a replicated table", () => {
     expect(REPLICATED_TABLES).toContain("budgets");
+  });
+
+  it("a budget entity carrying a verbatim v1 preferences object parses through the backup transform into v2 (backup-import path)", () => {
+    const v1Preferences = {
+      schemaVersion: 1,
+      aiProvider: "openai",
+      openaiModel: "gpt-5.5",
+      customProfiles: [],
+      startWidgets: [{ id: "envelopes", enabled: true, opts: { mode: "all" } }],
+    };
+    const ledger = { ...base(), budgets: [{ id: "11111111-1111-1111-1111-111111111111", name: "Budżet", currency: "PLN", preferences: v1Preferences }] };
+
+    const parsed = clientLedgerSchema.parse(ledger);
+
+    expect(parsed.budgets?.[0]?.preferences.schemaVersion).toBe(2);
+    expect(parsed.budgets?.[0]?.preferences.aiProvider).toBe("openai");
+    expect(parsed.budgets?.[0]?.preferences.startWidgets[0]).toEqual({ id: "envelopes", enabled: true, opts: { mode: "all" } });
+    expect(parsed.budgets?.[0]?.preferences.wideWidgets).toEqual(createDefaultWideWidgets());
   });
 });
