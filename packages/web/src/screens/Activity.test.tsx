@@ -164,4 +164,29 @@ describe("durable import foreground and Activity view models", () => {
     expect(source).not.toContain("background: TEAL");
     expect(source).toContain("background: C.text, color: C.card");
   });
+
+  it("uses the wide shell header and a responsive activity grid on fold and desktop", () => {
+    const source = readFileSync(join(import.meta.dir, "Activity.tsx"), "utf8");
+
+    expect(source).toContain('import { useWideHost } from "../lib/shellContext"');
+    expect(source).toContain("const wideHost = useWideHost()");
+    expect(source).toContain("{!wideHost && (");
+    expect(source).toContain("data-activity-content");
+    expect(source).toContain('boxSizing: "border-box"');
+    expect(source).toContain('gridTemplateColumns: wideHost ? "repeat(auto-fit, minmax(min(100%, 300px), 1fr))" : "1fr"');
+  });
+
+  it("opens screenshot review as a wide dialog and expands its editor outside phone mode", () => {
+    const source = readFileSync(join(import.meta.dir, "..", "components", "ImportSheet.tsx"), "utf8");
+    const chrome = readFileSync(join(import.meta.dir, "..", "components", "chrome.tsx"), "utf8");
+
+    expect(source).toContain("const wideHost = useWideHost()");
+    expect(source).toContain("<Sheet show={show} onClose={close} wideDialog>");
+    expect(source).toContain("maxWidth: wideHost ? 720 : PHONE_COL");
+    expect(source).toContain('data-import-editor-mode={wideHost?.mode ?? "phone"}');
+    expect(chrome).toContain("wideDialog?: boolean");
+    expect(chrome).toContain("const dialog = wideDialog && wideHost !== null");
+    expect(chrome).toContain('data-sheet-layout={dialog ? "dialog" : "bottom"}');
+    expect(chrome).toContain('boxSizing: "border-box"');
+  });
 });
