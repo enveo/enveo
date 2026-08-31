@@ -274,7 +274,8 @@ export function createDefaultStartWidgets(): WidgetConfig[] {
   ];
 }
 
-/** Default wide Home board — ported verbatim from the approved design mock's array (app widget ids). */
+/** Default wide Home board — the approved design mock's array (app widget ids), with ONE deliberate
+ *  departure noted on `trends` below. */
 export function createDefaultWideWidgets(): WideWidgetConfig[] {
   return [
     // 1x1, matching the mock's `startWidgets[0]` (netWorth, w:1,h:1) exactly — it sits beside
@@ -285,7 +286,18 @@ export function createDefaultWideWidgets(): WideWidgetConfig[] {
     { id: "envelopes", enabled: true, w: 2, h: 2, opts: { mode: "all" } },
     { id: "recent", enabled: true, w: 2, h: 4 },
     { id: "spending", enabled: true, w: 2, h: 2 },
-    { id: "trends", enabled: true, w: 2, h: 2 },
+    // h:3, not the mock's h:2 — the ONE tile whose size the mock's array can no longer describe.
+    // Owner round 7 item 29 replaced this widget's compact row (a 44x20 spark + a bare amount,
+    // ~30px) with the Trends REPORT's row: name over a "{now} · median {median}" sub-line beside
+    // the spark, ~49px, and ~61px wherever that sub-line takes a second line (measured at 1440 with
+    // the panel open: the sub-line's column is 127px there, and a four-figure amount already wraps
+    // it in English). Three of those plus the "{n} rising · {m} falling" caption is ~200px, and a
+    // 2-high tile has 150px of body — the mock's height was chosen for a row that no longer exists,
+    // so keeping it would ship a default tile that opens scrolled past its own content. A 3-high
+    // tile is 254px: the three rows the design lists (v3.dc.html:548) fit with room to spare in
+    // every language. Boards already saved keep whatever height their owner has; this is the
+    // starting layout and what "Reset layout" restores.
+    { id: "trends", enabled: true, w: 2, h: 3 },
     { id: "attention", enabled: true, w: 2, h: 2 },
     { id: "goals", enabled: true, w: 2, h: 2 },
     { id: "heatmap", enabled: true, w: 2, h: 2 },
