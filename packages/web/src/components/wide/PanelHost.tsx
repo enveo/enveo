@@ -165,6 +165,14 @@ function WidgetSettingsPanel({ widgetId, state, onClose }: { widgetId: WideWidge
  * come from `WIDGET_CATALOG` + the shared `wide` allowlist it derives from; there is no second
  * catalogue here.
  *
+ * The card's VALUES are the design's, not invented: the row copy is its add-option literal
+ * "＋ {name}" (v3.dc.html:613), and the two-line card it is drawn as is the design's own
+ * title+description option card — its unselected state (Suggest's strategy list, v3.dc.html:1743-1745
+ * computed at :2956-2962): radius 11, padding 10px 12px, 1px `line` border over a TRANSPARENT fill,
+ * title 13px/650 in `text`, description 11px/1.45 in `mute`. `mute` (not `soft`) is a real value
+ * here — they are distinct tokens in every theme, and the design uses the quieter one for the
+ * description under a title.
+ *
  * Placement writes through the SAME path every other edit-mode gesture uses — one
  * `update({ wideWidgets })` op flipping `enabled` (`toggleEnabled`, lib/wideBoard.ts) — which is
  * also why the tile arrives at the catalogue's default size: a disabled row keeps its `w`/`h`
@@ -206,16 +214,21 @@ function WidgetPickerPanel({ onClose }: { onClose: () => void }) {
               padding: "10px 12px",
               borderRadius: 11,
               border: `1px solid ${C.line}`,
-              background: C.bg,
+              background: "transparent",
               cursor: "pointer",
               textAlign: "left",
               fontFamily: font,
             }}
           >
-            <span style={{ fontSize: 12.5, fontWeight: 700, color: C.text }}>{t(WIDGET_CATALOG[w.id].title)}</span>
+            <span style={{ fontSize: 13, fontWeight: 650, color: C.text }}>
+              {/* The plus is the design's own add-option copy ("＋ {name}", v3.dc.html:613); hidden
+                  from assistive tech so the row announces the widget's name, not "plus". */}
+              <span aria-hidden>{"＋ "}</span>
+              {t(WIDGET_CATALOG[w.id].title)}
+            </span>
             {/* Always present for a wide id — pinned by widgetCatalog.test.ts, so this is a type
                 narrowing, not a real fallback. */}
-            {WIDGET_CATALOG[w.id].description && <span style={{ fontSize: 11, color: C.soft, lineHeight: 1.45 }}>{t(WIDGET_CATALOG[w.id].description!)}</span>}
+            {WIDGET_CATALOG[w.id].description && <span style={{ fontSize: 11, color: C.mute, lineHeight: 1.45 }}>{t(WIDGET_CATALOG[w.id].description!)}</span>}
           </button>
         ))
       )}

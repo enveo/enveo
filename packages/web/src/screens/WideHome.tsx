@@ -168,14 +168,12 @@ function AddTile({ candidates, onOpenPicker }: { candidates: number; onOpenPicke
       aria-label={t("Add widget")}
       style={{ ...shared, background: "none", cursor: "pointer" }}
     >
-      {
-
-
-}
-      <span aria-hidden style={{ fontSize: 26, lineHeight: 1, fontWeight: 400 }}>
-        ＋
-      </span>
-      <span style={{ fontSize: 13, fontWeight: 650 }}>{t("Add widget")}</span>
+      {/* ONE inline run at 13px/650, exactly like the design (v3.dc.html:610 renders the single
+          `addTile.label` string defined at :3671 — glyph and words on the same line at the same
+          size). The glyph stays outside `t()`: it is decoration, not a phrase, so every locale
+          keeps its own "Add widget" wording — and the button's `aria-label` is that phrase alone,
+          so a screen reader never announces the fullwidth plus. */}
+      <span style={{ fontSize: 13, fontWeight: 650 }}>＋ {t("Add widget")}</span>
     </button>
   );
 }
