@@ -38,4 +38,12 @@ describe("startup splash", () => {
       expect([index, reactMarkup].every((source) => source.includes(marker))).toBe(true);
     expect(index).toContain("@media (prefers-reduced-motion: reduce)");
   });
+
+  it("allows browser zoom while preserving the edge-to-edge safe-area viewport", () => {
+    const index = readFileSync(join(import.meta.dir, "..", "..", "index.html"), "utf8");
+
+    expect(index).toContain('<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"');
+    expect(index).not.toContain("maximum-scale=");
+    expect(index).not.toContain("user-scalable=");
+  });
 });

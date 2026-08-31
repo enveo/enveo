@@ -15,7 +15,7 @@ import { ByokInvalidBodyError, ByokUpstreamError, byokChatContent } from "../aiC
 import { requireTier, sessionUserId } from "../context";
 import { type DbTransaction, db } from "../db/client";
 import { openAiModelFetch, transportFailureJson } from "../openaiHttp";
-import { extractImportForBudget, ImportCycleOneFailure } from "./import";
+import { extractImportForBudget, extractLegacyImportForBudget, ImportCycleOneFailure, legacyItemsFromRecognition } from "./import";
 
 const budgetId = z.string().uuid();
 export const credentialBudgetInput = z.object({ budgetId }).strict();
@@ -43,7 +43,7 @@ export const byokChatInput = z
     reasoningEffort: z.enum(["low", "medium", "high"]).optional(),
   })
   .strict();
-export const byokImportInput = z
+export const legacyByokImportInput = z
   .object({
     budgetId,
     model: z.enum(OPENAI_MODELS),
@@ -54,6 +54,7 @@ export const byokImportInput = z
     locale: aiLocaleSchema.optional(),
   })
   .strict();
+export const byokImportInput = legacyByokImportInput.extend({ accountId: z.string().uuid() });
 
 export type CredentialUnavailableReason = "vault_unavailable";
 
@@ -211,11 +212,11 @@ export function createAiCredentialRoutes(options: { masterKeys: VaultMasterKeyPr
   });
 
   routes.post("/ai/byok/import/extract", async (c) => {
-    const input = byokImportInput.parse(await c.req.json());
+    const input = legacyByokImportInput.parse(await c.req.json());
     try {
-      const items = await withClaimedPlainBudget(c, input.budgetId, (tx, owner) =>
+      const result = await withClaimedPlainBudget(c, input.budgetId, (tx, owner) =>
         repository.withServerCredential(tx, owner, input.budgetId, (credential) =>
-          extractImportForBudget({
+          extractLegacyImportForBudget({
             budgetId: input.budgetId,
             images: input.images,
             locale: input.locale ?? "en",
@@ -223,7 +224,27 @@ export function createAiCredentialRoutes(options: { masterKeys: VaultMasterKeyPr
           }),
         ),
       );
-      return c.json({ items });
+      return c.json({ items: legacyItemsFromRecognition(result) });
+    } catch (error) {
+      return byokFailure(c, error instanceof ImportCycleOneFailure ? error.reason : error);
+    }
+  });
+
+  routes.post("/ai/byok/import/recognize", async (c) => {
+    const input = byokImportInput.parse(await c.req.json());
+    try {
+      const result = await withClaimedPlainBudget(c, input.budgetId, (tx, owner) =>
+        repository.withServerCredential(tx, owner, input.budgetId, (credential) =>
+          extractImportForBudget({
+            budgetId: input.budgetId,
+            accountId: input.accountId,
+            images: input.images,
+            locale: input.locale ?? "en",
+            chat: (request, timeoutMs) => byokChatContent({ apiKey: credential, model: input.model, request, timeoutMs }),
+          }),
+        ),
+      );
+      return c.json(result);
     } catch (error) {
       return byokFailure(c, error instanceof ImportCycleOneFailure ? error.reason : error);
     }

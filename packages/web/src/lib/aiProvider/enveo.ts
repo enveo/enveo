@@ -56,6 +56,6 @@ export function createEnveoAiProvider(tier: "plain" | "e2ee"): EnveoAiProvider {
     tier,
     info: api.aiInfo,
     complete: (request) => chatJson(request, { kind: "server" }),
-    extract: ({ images, locale }) => api.importExtract(images, locale),
+    extract: ({ accountId, images, locale }) => api.importExtract(accountId, images, locale),
   });
 }

@@ -8,13 +8,17 @@ import { createRoot } from "react-dom/client";
 import App from "./App";
 import { AppProviders } from "./lib/contexts";
 import { loadLocale, uiLang } from "./lib/i18n";
+import { startImportJobManager } from "./lib/importJobs/bootstrap";
 import { initInstallPrompt } from "./lib/installPrompt";
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { staleTime: 5_000, refetchOnWindowFocus: false } },
 });
 
-initInstallPrompt();  
+initInstallPrompt(); 
+
+
+void startImportJobManager();
 
 const render = () =>
   createRoot(document.getElementById("root")!).render(

@@ -1,4 +1,5 @@
 import { readdirSync, readFileSync } from "node:fs";
+import { eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/postgres-js";
 import type postgres from "postgres";
 import { assertThrowawayDb, emitChildResult } from "../api.test-support";
@@ -17,6 +18,7 @@ export interface CredentialRepositoryOutput {
   };
   concurrent: { finalIsOneWinner: boolean; recordVersion: number | null };
   rotation: { opened: boolean; masterKeyId: string | null; ciphertextUnchanged: boolean; recordVersionUnchanged: boolean };
+  workerCallback: { opened: boolean; budgetWriteCompletedInsideCallback: boolean };
   cascadeDeleted: boolean;
 }
 
@@ -98,6 +100,13 @@ async function main() {
     const [afterRotation] = await isolated<{ ciphertext: string; record_version: string; master_key_id: string }[]>`
       select ciphertext, record_version::text, master_key_id from budget_ai_credentials where budget_id = ${budgetId}`;
 
+    const workerCallback = await rotatedRepository.withServerCredentialForWorker(db, owner, budgetId, async (credential) => {
+      const budgetWrite = db.update(schema.budgets).set({ name: "Worker callback released" }).where(eq(schema.budgets.id, budgetId));
+      const budgetWriteCompletedInsideCallback = await Promise.race([budgetWrite.then(() => true), Bun.sleep(500).then(() => false)]);
+      if (!budgetWriteCompletedInsideCallback) await budgetWrite;
+      return { opened: credential === finalCredential, budgetWriteCompletedInsideCallback };
+    });
+
     await db.transaction((tx) => repository.deleteCredential(tx, owner, budgetId));
     const deletedConfigured = (await db.transaction((tx) => repository.credentialStatus(tx, owner, budgetId))).configured;
     await db.transaction((tx) => repository.replaceServerCredential(tx, owner, budgetId, "sk-cascade"));
@@ -116,6 +125,7 @@ async function main() {
         ciphertextUnchanged: beforeRotation?.ciphertext === afterRotation?.ciphertext,
         recordVersionUnchanged: beforeRotation?.record_version === afterRotation?.record_version,
       },
+      workerCallback,
       cascadeDeleted: afterCascade?.count === 0,
     } satisfies CredentialRepositoryOutput);
   } finally {

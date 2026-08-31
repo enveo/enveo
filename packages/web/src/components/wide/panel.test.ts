@@ -31,7 +31,7 @@ const FB: PanelFallbacks = { firstEnvelopeId: "env-fb", firstAccountId: "acc-fb"
 // The genuinely-empty-dataset table (every fallback id null) — `empty` must still survive here.
 const EMPTY_FB: PanelFallbacks = { firstEnvelopeId: null, firstAccountId: null, firstTxnId: null, month: "2026-08" };
 
-const SCREENS: readonly ScreenId[] = ["start", "budget", "transactions", "accounts", "reports", "addExpense", "settings"];
+const SCREENS: readonly ScreenId[] = ["start", "budget", "transactions", "accounts", "reports", "activity", "addExpense", "settings"];
 
 
 
@@ -140,10 +140,10 @@ describe("resolvePanel", () => {
         kinds.add(resolvePanel({ screen, reportsView, envView: null, widgetPicker: true }, FB).kind);
       }
     }
-    
-
-
-    expect([...kinds].sort()).toEqual(["account", "add", "envelope", "report", "txn", "widgetPicker", "widgets"]);
+    // With every fallback id populated (FB), Activity is the only screen that deliberately has no
+    // side-panel content and therefore reaches the existing "empty" kind. Accounts/Settings fall
+    // back to "account" and Transactions falls back to "txn".
+    expect([...kinds].sort()).toEqual(["account", "add", "empty", "envelope", "report", "txn", "widgetPicker", "widgets"]);
   });
 
   describe("PR5's `widgets` kind (the wide board's gear target)", () => {

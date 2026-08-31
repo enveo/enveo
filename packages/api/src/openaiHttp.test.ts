@@ -56,7 +56,7 @@ describe("timeoutSignal — AbortSignal.timeout built from AbortController + set
   });
 });
 
-describe("transportFailureJson — the ONE mapping both /ai proxies and /import/extract share", () => {
+describe("transportFailureJson — the ONE mapping /ai proxies and screenshot-recognition routes share", () => {
   it("timeout → 504 {error:'ai_timeout'}", () => {
     expect(transportFailureJson(new UpstreamTimeoutError(120_000))).toEqual({ body: { error: "ai_timeout" }, status: 504 });
   });

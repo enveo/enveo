@@ -46,10 +46,8 @@
 import { accountPreferences } from "./accountPreferences";
 import { devicePreferences } from "./devicePreferences";
 import * as e2ee from "./e2ee";
+import { ensureE2eeProviderPreference } from "./e2eeProviderInvariant";
 import { clearLocalData, storageMode } from "./idb";
-
-
-
 import * as outbox from "./outbox";
 import * as persist from "./persist";
 import { store } from "./store";
@@ -157,6 +155,7 @@ configureCycle({
   notePeersMayNeedUpdate,
   broadcastUpdatedIfPending,
   postPokeToPeers: () => postMsg("poke"),
+  ensureE2eeProviderPreference,
 });
 
 

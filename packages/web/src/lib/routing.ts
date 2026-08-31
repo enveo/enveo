@@ -12,7 +12,7 @@ export type Route = { screen: ScreenId; reportsView: ReportView; envelopeId: str
 
 
 
-const REGULAR: readonly ScreenId[] = ["budget", "transactions", "accounts", "reports", "settings"];
+const REGULAR: readonly ScreenId[] = ["budget", "transactions", "accounts", "reports", "activity", "settings"];
 const TABS: readonly ReportTab[] = ["assets", "cashflow", "spending", "budgets", "goals", "month", "trends"];
 
 export function routeToUrl(r: Route): string {

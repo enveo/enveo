@@ -36,6 +36,10 @@ describe.skipIf(!TEST_URL)("AI credential repository", () => {
     expect(output.rotation).toEqual({ opened: true, masterKeyId: "master-new", ciphertextUnchanged: true, recordVersionUnchanged: true });
   });
 
+  test("releases the budget row lock before a worker invokes slow credential use", () => {
+    expect(output.workerCallback).toEqual({ opened: true, budgetWriteCompletedInsideCallback: true });
+  });
+
   test("budget deletion cascades the credential", () => {
     expect(output.cascadeDeleted).toBe(true);
   });

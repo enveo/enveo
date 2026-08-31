@@ -1,4 +1,4 @@
-import { E2EE_DISABLE_CONFIRM } from "@enveo/shared";
+import { type ClientLedger, E2EE_DISABLE_CONFIRM } from "@enveo/shared";
 import qrcode from "qrcode-generator";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Sheet } from "../../components/chrome";
@@ -21,6 +21,7 @@ import { exportBackup, importBackup } from "../../lib/data";
 import * as e2ee from "../../lib/e2ee";
 import { prepareDisableCredentialAction, prepareEnableCredentialAction } from "../../lib/e2eeCredentialCeremonies";
 import { useT } from "../../lib/i18n";
+import { local } from "../../lib/mutate";
 import * as persist from "../../lib/persist";
 import { completeExplicitSignOut, ExplicitSignOutPendingError, type SignOutPreparation } from "../../lib/signOut";
 import { store } from "../../lib/store";
@@ -229,6 +230,18 @@ function DataBackup() {
 
 const fromB64 = (s: string): Uint8Array => Uint8Array.from(atob(s), (c) => c.charCodeAt(0));
 
+/** Enveo AI cannot operate after the server becomes blind. Put the fallback in
+ * the exact replica encrypted by the enable request, without mutating the live
+ * plain replica if the ceremony fails before the server accepts it. */
+export function prepareLedgerForE2eeEnable(ledger: ClientLedger): ClientLedger {
+  const active = ledger.budgets[0];
+  if (active?.preferences.aiProvider !== "enveo") return ledger;
+  return {
+    ...ledger,
+    budgets: ledger.budgets.map((budget, index) => (index === 0 ? { ...budget, preferences: { ...budget.preferences, aiProvider: "rules" } } : budget)),
+  };
+}
+
  
 function passStrength(p: string): 0 | 1 | 2 | 3 {
   if (p.length < 10) return 0;
@@ -319,8 +332,9 @@ function E2eeEnableWizard() {
     setBusy(true);
     setError(null);
     try {
-      const ledger = store.getLedger();
-      if (!ledger) throw new Error(t("There is nothing to export yet — wait for the app to finish loading."));
+      const currentLedger = store.getLedger();
+      if (!currentLedger) throw new Error(t("There is nothing to export yet — wait for the app to finish loading."));
+      const ledger = prepareLedgerForE2eeEnable(currentLedger);
       // MULTI-TENANT GUARD — /e2ee/enable uploads a snapshot of THIS replica and flips the
       // SESSION budget's tier under this device's wrappedDek: a full-budget overwrite, exactly
       // like /sync/replace. It is reachable from a tab whose cookie was swapped by a sign-in
@@ -375,14 +389,20 @@ function E2eeEnableWizard() {
           throw err;
         }
       }
-       
+      
+
+
+      store.replace(ledger, 0, store.getBudgetId() ?? "");
+      
+
+
+      if (currentLedger.budgets[0]?.preferences.aiProvider === "enveo") {
+        local.updateBudgetPreferences(budgetId, { aiProvider: "rules" });
+      }
       e2ee.setDek(dek, epoch); // validated for the epoch the ciphertexts were bound to
       e2ee.setTierMeta({ tier: "e2ee", epoch });
       e2ee.setCipherVersion(2);
       e2ee.resetOpsCounter();
-      
-
-      store.replace(ledger, 0, store.getBudgetId() ?? "");
       void persist.persistLedger(store.snapshotForPersist());
       void broadcastKeysChanged();  
       void syncNow("e2ee-enable");  
