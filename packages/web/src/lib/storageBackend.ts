@@ -122,17 +122,7 @@ export class MemoryBackend implements StorageBackend {
     return Promise.resolve(this.clone(next));
   }
   importTransactionProof(scope: ImportRecordScope, transactionId: string): Promise<"durable" | "rejected" | "absent"> {
-    return Promise.resolve(
-      evaluateImportTransactionProof(
-        scope,
-        transactionId,
-        this.mem("meta").get("userId"),
-        this.mem("meta").get("budgetId"),
-        this.mem("meta").get("ledger"),
-        [...this.mem("outbox").values()],
-        [...this.mem("deadletter").values()],
-      ),
-    );
+    return import("./memoryImportStorage").then((ops) => ops.transactionProof(this.mem.bind(this), scope, transactionId));
   }
   put(store: StoreName, value: unknown, key?: IDBValidKey): Promise<void> {
     const copy = this.clone(value);
@@ -145,94 +135,28 @@ export class MemoryBackend implements StorageBackend {
     return Promise.resolve();
   }
   putImportJobIfRevision(value: unknown, expectedRevision: number): Promise<boolean> {
-    const record = value as { id: IDBValidKey; ownerId: string; budgetId: string; checkpointRevision: number };
-    const current = this.mem("importJobs").get(record.id) as Record<string, unknown> | undefined;
-    if (current?.checkpointRevision !== expectedRevision || current.ownerId !== record.ownerId || current.budgetId !== record.budgetId) {
-      return Promise.resolve(false);
-    }
-    this.mem("importJobs").set(record.id, this.clone(value));
-    return Promise.resolve(true);
+    return import("./memoryImportStorage").then((ops) => ops.putJobIfRevision(this.mem.bind(this), value, expectedRevision));
   }
   putImportJobForScope(value: unknown, scope: ImportRecordScope): Promise<boolean> {
-    const record = value as { id: IDBValidKey; ownerId: string; budgetId: string };
-    if (record.ownerId !== scope.ownerId || record.budgetId !== scope.budgetId) return Promise.resolve(false);
-    const current = this.mem("importJobs").get(record.id) as Record<string, unknown> | undefined;
-    if (current && (current.ownerId !== scope.ownerId || current.budgetId !== scope.budgetId)) return Promise.resolve(false);
-    this.mem("importJobs").set(record.id, this.clone(value));
-    return Promise.resolve(true);
+    return import("./memoryImportStorage").then((ops) => ops.putJobForScope(this.mem.bind(this), value, scope));
   }
   putImportDraftIfAbsentOrSame(value: unknown): Promise<ImportDraftPutResult> {
-    const record = value as { id: IDBValidKey; ownerId: string; budgetId: string; requestHash: string };
-    const current = this.mem("importDrafts").get(record.id) as Record<string, unknown> | undefined;
-    if (current) {
-      return Promise.resolve(
-        current.requestHash === record.requestHash && current.ownerId === record.ownerId && current.budgetId === record.budgetId
-          ? { kind: "existing", value: this.clone(current) }
-          : { kind: "conflict" },
-      );
-    }
-    const stored = this.clone(value);
-    this.mem("importDrafts").set(record.id, stored);
-    return Promise.resolve({ kind: "created", value: this.clone(stored) });
+    return import("./memoryImportStorage").then((ops) => ops.putDraft(this.mem.bind(this), value));
   }
   mutateImportDraftState(mutation: ImportDraftStateMutation): Promise<unknown | undefined> {
-    const current = this.mem("importDrafts").get(mutation.id) as Record<string, unknown> | undefined;
-    if (!current || current.ownerId !== mutation.ownerId || current.budgetId !== mutation.budgetId || current.requestHash !== mutation.requestHash) {
-      return Promise.resolve(undefined);
-    }
-    const next = {
-      ...current,
-      [mutation.field]: current[mutation.field] ?? mutation.at,
-      updatedAt: mutation.at,
-    };
-    this.mem("importDrafts").set(mutation.id, this.clone(next));
-    return Promise.resolve(this.clone(next));
+    return import("./memoryImportStorage").then((ops) => ops.mutateDraft(this.mem.bind(this), mutation));
   }
   deleteImportDraftIfMatches(expected: ImportDraftDeleteMatch): Promise<boolean> {
-    const current = this.mem("importDrafts").get(expected.id) as Record<string, unknown> | undefined;
-    if (
-      !current ||
-      current.ownerId !== expected.ownerId ||
-      current.budgetId !== expected.budgetId ||
-      (expected.accountId !== undefined && current.accountId !== expected.accountId) ||
-      (expected.locale !== undefined && current.locale !== expected.locale) ||
-      (expected.requireCancelRequestedAtNull === true && current.cancelRequestedAt != null) ||
-      current.requestHash !== expected.requestHash
-    ) {
-      return Promise.resolve(false);
-    }
-    this.mem("importDrafts").delete(expected.id);
-    return Promise.resolve(true);
+    return import("./memoryImportStorage").then((ops) => ops.deleteDraft(this.mem.bind(this), expected));
   }
   deleteImportJobIfScope(id: IDBValidKey, scope: ImportRecordScope): Promise<boolean> {
-    const current = this.mem("importJobs").get(id) as Record<string, unknown> | undefined;
-    if (!current || current.ownerId !== scope.ownerId || current.budgetId !== scope.budgetId) return Promise.resolve(false);
-    this.mem("importJobs").delete(id);
-    return Promise.resolve(true);
+    return import("./memoryImportStorage").then((ops) => ops.deleteJob(this.mem.bind(this), id, scope));
   }
   deleteImportJobWithMetaIfScope(id: IDBValidKey, scope: ImportRecordScope, metaKeys: IDBValidKey[], permitted: () => boolean): Promise<boolean> {
-    const current = this.mem("importJobs").get(id) as Record<string, unknown> | undefined;
-    if (!permitted() || !current || current.ownerId !== scope.ownerId || current.budgetId !== scope.budgetId) return Promise.resolve(false);
-    this.mem("importJobs").delete(id);
-    for (const key of metaKeys) this.mem("meta").delete(key);
-    return Promise.resolve(true);
+    return import("./memoryImportStorage").then((ops) => ops.deleteJobWithMeta(this.mem.bind(this), id, scope, metaKeys, permitted));
   }
   deleteExpiredImportDrafts(scope: ImportRecordScope, expiresAt: number): Promise<number> {
-    let deleted = 0;
-    for (const [id, value] of this.mem("importDrafts")) {
-      const draft = value as Record<string, unknown>;
-      if (
-        draft.ownerId === scope.ownerId &&
-        draft.budgetId === scope.budgetId &&
-        draft.cancelRequestedAt == null &&
-        typeof draft.expiresAt === "string" &&
-        Date.parse(draft.expiresAt) <= expiresAt
-      ) {
-        this.mem("importDrafts").delete(id);
-        deleted++;
-      }
-    }
-    return Promise.resolve(deleted);
+    return import("./memoryImportStorage").then((ops) => ops.deleteExpiredDrafts(this.mem.bind(this), scope, expiresAt));
   }
   add(store: StoreName, value: unknown): Promise<IDBValidKey> {
     const copy = this.clone(value);

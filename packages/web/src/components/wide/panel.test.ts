@@ -140,10 +140,10 @@ describe("resolvePanel", () => {
         kinds.add(resolvePanel({ screen, reportsView, envView: null, widgetPicker: true }, FB).kind);
       }
     }
-    
-
-
-    expect([...kinds].sort()).toEqual(["account", "add", "envelope", "report", "txn", "widgetPicker", "widgets"]);
+    // With every fallback id populated (FB), Activity is the only screen that deliberately has no
+    // side-panel content and therefore reaches the existing "empty" kind. Accounts/Settings fall
+    // back to "account" and Transactions falls back to "txn".
+    expect([...kinds].sort()).toEqual(["account", "add", "empty", "envelope", "report", "txn", "widgetPicker", "widgets"]);
   });
 
   describe("PR5's `widgets` kind (the wide board's gear target)", () => {
