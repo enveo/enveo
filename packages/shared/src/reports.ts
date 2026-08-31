@@ -3,6 +3,7 @@
  * Reuse computeBudgetState (balances) and the spentOf rules (spending).
  */
 import { computeBudgetState, monthOf, prevMonth } from "./budget";
+import { goalProgress } from "./goals";
 import type { ClientLedger, Money, Transaction } from "./types";
 
 export interface NetWorthPoint {
@@ -69,12 +70,19 @@ export interface SpendingRow {
   pct: number;
 }
 
-// Polish product strings returned in rows (UI data — do not translate).
-const NULL_LABEL: Record<SpendingDimension, string> = {
-  category: "Bez kategorii",
-  envelope: "Bez koperty",
-  group: "Bez grupy",
-  place: "Bez miejsca",
+/**
+ * Neutral sentinels for "no X was assigned to this row" — NOT display text. `shared` stays
+ * language-neutral (zero I/O, no UI copy in any language), so these are stable markers a caller
+ * compares against, never strings rendered as-is. The web layer owns the actual translation
+ * (`dimNullLabel` in `components/reportKit.tsx`), which falls back to English via `t()` exactly
+ * like every other message in the app. Exported so both that translation layer and this file's
+ * own tests compare against the one real value instead of hardcoding it twice.
+ */
+export const NULL_LABEL: Record<SpendingDimension, string> = {
+  category: "__no_category__",
+  envelope: "__no_envelope__",
+  group: "__no_group__",
+  place: "__no_place__",
 };
 
 /** Expense transaction contribution to the per-dimension breakdown (parity with spentOf rules). */
@@ -111,11 +119,15 @@ export function computeSpendingByDimension(ledger: ClientLedger, fromMonth: stri
   const envGroup = new Map(ledger.envelopes.map((e) => [e.id, e.groupId]));
   const savings = new Set(ledger.envelopes.filter((e) => e.isSavings).map((e) => e.id));
   const nameOf = (key: string | null): string => {
+    // A dangling id (the referenced row is gone from this replica) falls back to the same
+    // language-neutral sentinel as a null key: the row effectively HAS no resolvable referent,
+    // and the web layer's dimNullLabel translates the sentinel. Shared code carries no
+    // human-language copy in any language (the old fallback here was a hardcoded "Inne").
     if (key === null) return NULL_LABEL[dim];
-    if (dim === "category") return ledger.categories.find((c) => c.id === key)?.name ?? "Inne";
-    if (dim === "place") return ledger.places.find((p) => p.id === key)?.name ?? "Inne";
-    if (dim === "group") return ledger.groups.find((g) => g.id === key)?.name ?? "Inne";
-    return ledger.envelopes.find((e) => e.id === key)?.name ?? "Inne";
+    if (dim === "category") return ledger.categories.find((c) => c.id === key)?.name ?? NULL_LABEL.category;
+    if (dim === "place") return ledger.places.find((p) => p.id === key)?.name ?? NULL_LABEL.place;
+    if (dim === "group") return ledger.groups.find((g) => g.id === key)?.name ?? NULL_LABEL.group;
+    return ledger.envelopes.find((e) => e.id === key)?.name ?? NULL_LABEL.envelope;
   };
   const sums = new Map<string | null, number>();
   for (const t of ledger.transactions) {
@@ -173,6 +185,65 @@ export function computeDailySpending(ledger: ClientLedger, month: string): Daily
     if (amt !== 0) byDate.set(t.date, byDate.get(t.date)! + amt);
   }
   return [...byDate.entries()].map(([date, total]) => ({ date, total }));
+}
+
+export interface DaySpendingEnvelope {
+  envelopeId: string | null;
+  name: string;
+  amount: Money;
+}
+
+export interface DaySpending {
+  date: string; // YYYY-MM-DD
+  total: Money;
+  count: number; // contributing expense transactions
+  txns: Transaction[]; // in ledger order
+  byEnvelope: DaySpendingEnvelope[]; // descending by amount
+}
+
+/**
+ * One calendar day, expanded — the Month report's day panel.
+ *
+ * The total is the same number `computeDailySpending` reports for this date, because both
+ * route every transaction through `expenseByDimension`: type "expense" only, refunds negative,
+ * portions assigned to a net-worth envelope excluded, transfers and income ignored. Keeping
+ * that single rule is the point — the calendar cell and the panel that opens under it must
+ * never disagree.
+ *
+ * A transaction counts once in `txns` however many envelopes its items touch; `byEnvelope`
+ * splits the money. An unassigned expense keeps the dimension label the spending report
+ * already uses, rather than inventing a second name for the same thing.
+ */
+export function computeDaySpending(ledger: ClientLedger, date: string): DaySpending {
+  const envGroup = new Map(ledger.envelopes.map((e) => [e.id, e.groupId]));
+  const savings = new Set(ledger.envelopes.filter((e) => e.isSavings).map((e) => e.id));
+  const byEnvelope = new Map<string | null, Money>();
+  const txns: Transaction[] = [];
+  let total = 0;
+
+  for (const t of ledger.transactions) {
+    if (t.date !== date) continue;
+    const parts = expenseByDimension(t, "envelope", envGroup, savings);
+    const amt = parts.reduce((s, [, a]) => s + a, 0);
+    if (parts.length === 0 || amt === 0) continue;
+    txns.push(t);
+    total += amt;
+    for (const [key, a] of parts) byEnvelope.set(key, (byEnvelope.get(key) ?? 0) + a);
+  }
+
+  const rows = [...byEnvelope.entries()]
+    .filter(([, amount]) => amount !== 0)
+    .map(([envelopeId, amount]) => {
+      const envelope = envelopeId === null ? undefined : ledger.envelopes.find((e) => e.id === envelopeId);
+      return {
+        envelopeId,
+        name: envelope?.name ?? NULL_LABEL.envelope,
+        amount,
+      };
+    })
+    .sort((a, b) => b.amount - a.amount);
+
+  return { date, total, count: txns.length, txns, byEnvelope: rows };
 }
 
 export interface PlaceStat {
@@ -233,7 +304,7 @@ export function topPlaces(ledger: ClientLedger, fromMonth: string, toMonth: stri
   return [...byPlace.entries()]
     .map(([key, b]) => ({
       key,
-      name: ledger.places.find((p) => p.id === key)?.name ?? "Inne",
+      name: ledger.places.find((p) => p.id === key)?.name ?? NULL_LABEL.place, // dangling id — web translates the sentinel
       count: b.count,
       total: b.total,
     }))
@@ -359,6 +430,115 @@ export function spendingBaseline(ledger: ClientLedger, month: string, dim: Spend
   return result;
 }
 
+export interface SpendingDetailRow {
+  key: string | null;
+  name: string;
+  amount: Money;
+}
+
+export interface SpendingDetail {
+  /** The OTHER natural dimension: "place" unless `dim` already is "place" (then "envelope"). */
+  subDim: SpendingDimension;
+  /** Total attributed to `key` under `dim` over [fromMonth, toMonth] — IDENTICAL to the matching
+   *  row's `amount` in `computeSpendingByDimension(ledger, fromMonth, toMonth, dim)` (asserted by
+   *  a parity test — same discipline `computeDaySpending` already keeps with
+   *  `computeDailySpending`). */
+  amount: Money;
+  /** Sub-breakdown, sorted desc by amount. ALL rows — the caller slices for "+N more". */
+  rows: SpendingDetailRow[];
+  /** Matching transactions (refund or not — the same set `amount` nets). */
+  txnCount: number;
+  /** Math.round(amount / txnCount). Can be negative in the rare case refunds outweigh spend in
+   *  the window — `amount` is already net, so this stays consistent with it rather than lying
+   *  in the opposite direction. */
+  avgAmount: Money;
+  /** Largest single NON-REFUND contribution magnitude (mirrors `largestExpenses`'s own refund
+   *  exclusion — a refund is not "the largest expense") — 0 when every match was a refund. */
+  largestAmount: Money;
+}
+
+/**
+ * Detail breakdown for ONE row of `computeSpendingByDimension(ledger, fromMonth, toMonth, dim)`:
+ * a secondary grouping by the OTHER natural dimension, plus transaction-level stats — the
+ * Spending report's detail card ("breakdown by place (by envelope when the dimension is already
+ * Place)", "n txns · avg · largest").
+ *
+ * Reuses `expenseByDimension`'s per-transaction contribution rule (refunds negative, savings-
+ * envelope portions excluded), so `amount` here can never drift from the matching row's own total
+ * in `computeSpendingByDimension`.
+ *
+ * Sub-grouping: `place` is transaction-level (one value for the whole transaction, split or not),
+ * so when `dim` is category/envelope/group the sub-breakdown just re-buckets each transaction's
+ * ALREADY-restricted (to `key`) contribution by `t.placeId` — no per-item work needed. `envelope`
+ * is NOT transaction-level for a split (each item can carry its own envelope), so when
+ * `dim === "place"` (subDim "envelope") every non-savings item of a matching transaction is
+ * walked individually.
+ *
+ * A sub-row's name falls back to `NULL_LABEL[subDim]` both for a null key (no place/envelope
+ * assigned) AND for a stale reference (the place/envelope was deleted after the transaction was
+ * recorded) — the same precedent `computeDaySpending` already sets (`envelope?.name ??
+ * NULL_LABEL.envelope`), rather than inventing a second hardcoded "unknown" string.
+ *
+ * Returns `null` when `key` has zero matching transactions in the window (an excluded/zero row,
+ * or a stale selection after a month/range change) — the caller closes the card on `null`.
+ */
+export function computeSpendingDetail(
+  ledger: ClientLedger,
+  fromMonth: string,
+  toMonth: string,
+  dim: SpendingDimension,
+  key: string | null,
+): SpendingDetail | null {
+  const envGroup = new Map(ledger.envelopes.map((e) => [e.id, e.groupId]));
+  const savings = new Set(ledger.envelopes.filter((e) => e.isSavings).map((e) => e.id));
+  const subDim: SpendingDimension = dim === "place" ? "envelope" : "place";
+  const subSums = new Map<string | null, Money>();
+  let amount = 0;
+  let txnCount = 0;
+  let largestAmount = 0;
+
+  for (const t of ledger.transactions) {
+    const m = monthOf(t.date);
+    if (m < fromMonth || m > toMonth) continue;
+    const contribution = expenseByDimension(t, dim, envGroup, savings)
+      .filter(([k]) => k === key)
+      .reduce((s, [, a]) => s + a, 0);
+    if (contribution === 0) continue;
+    amount += contribution;
+    txnCount += 1;
+    if (!t.isRefund) largestAmount = Math.max(largestAmount, Math.abs(contribution));
+
+    if (dim === "place") {
+      if (t.items.length > 0) {
+        const sign = t.isRefund ? -1 : 1;
+        for (const it of t.items) {
+          if (savings.has(it.envelopeId)) continue;
+          subSums.set(it.envelopeId, (subSums.get(it.envelopeId) ?? 0) + sign * it.amount);
+        }
+      } else {
+        subSums.set(t.envelopeId, (subSums.get(t.envelopeId) ?? 0) + contribution);
+      }
+    } else {
+      subSums.set(t.placeId, (subSums.get(t.placeId) ?? 0) + contribution);
+    }
+  }
+
+  if (txnCount === 0) return null;
+
+  const nameOf = (k: string | null): string => {
+    if (subDim === "place") {
+      return (k === null ? undefined : ledger.places.find((p) => p.id === k)?.name) ?? NULL_LABEL.place;
+    }
+    return (k === null ? undefined : ledger.envelopes.find((e) => e.id === k)?.name) ?? NULL_LABEL.envelope;
+  };
+  const rows = [...subSums.entries()]
+    .map(([k, amt]) => ({ key: k, name: nameOf(k), amount: amt }))
+    .filter((r) => r.amount !== 0)
+    .sort((a, b) => b.amount - a.amount);
+
+  return { subDim, amount, rows, txnCount, avgAmount: Math.round(amount / txnCount), largestAmount };
+}
+
 export interface EnvelopeTrend {
   id: string;
   name: string;
@@ -428,4 +608,50 @@ export function savingsRate(points: CashflowPoint[]): { current: number | null; 
     .filter((p) => p.income > 0)
     .map((p) => p.net / p.income);
   return { current, median: ratios.length > 0 ? median(ratios) : null };
+}
+
+export interface GoalHistoryPoint {
+  month: string; // YYYY-MM
+  allocated: Money; // manual + automatic allocation in that month
+  pct: number; // 0..100, clamped
+  met: boolean; // allocated >= target
+}
+
+export interface GoalHistory {
+  /** The target used for EVERY point. The ledger has no historical monthlyTarget, so past
+   *  months are measured against today's goal — returned as data, not left to a caption, so
+   *  the UI text cannot drift from the arithmetic. Changing a goal rewrites its history. */
+  basis: "current-target";
+  target: Money;
+  points: GoalHistoryPoint[]; // oldest → newest, length = `months`
+}
+
+/**
+ * Per-month funding history for one envelope's monthly goal.
+ *
+ * `allocated` comes from `computeBudgetState`, NOT from summing `ledger.allocations`: the
+ * budget state adds automatic allocations derived from transaction flow (accounts linked to an
+ * envelope, 3.8) to the manual ones, and an envelope funded that way has no `Allocation` rows
+ * at all. Summing the raw table would show a flat zero history beside a correct current month.
+ *
+ * Returns `null` when the envelope is unknown or has no positive target — the same condition
+ * under which `goalProgress` returns `null`, and `goalProgress` is what decides `pct`/`met`
+ * here, so the per-month verdict and the live one can never disagree.
+ */
+export function computeGoalHistory(ledger: ClientLedger, envelopeId: string, month: string, months = 6): GoalHistory | null {
+  const envelope = ledger.envelopes.find((e) => e.id === envelopeId);
+  const target = envelope?.monthlyTarget ?? null;
+  if (!envelope || target === null || target <= 0) return null;
+
+  const window: string[] = [month];
+  for (let i = 0; i < months - 1; i++) window.unshift(prevMonth(window[0]!));
+
+  const points = window.map((m) => {
+    const state = computeBudgetState(ledger, m).envelopes.find((s) => s.envelope.id === envelopeId);
+    const allocated = state?.allocated ?? 0;
+    const progress = goalProgress({ monthlyTarget: target, allocated });
+    return { month: m, allocated, pct: progress?.pct ?? 0, met: progress?.funded ?? false };
+  });
+
+  return { basis: "current-target", target, points };
 }

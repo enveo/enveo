@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { decimalSeparator, fmtTrimLocale, LOCALE_OF, localizePadExpression } from "./format";
+import { compactMoney, decimalSeparator, fmtTrimLocale, LOCALE_OF, localizePadExpression } from "./format";
 import { LOCALES } from "./i18n/registry";
 
 describe("fmtTrimLocale — locale-aware bare number for read-only captions", () => {
@@ -65,5 +65,45 @@ describe("localizePadExpression — display substitution, nothing else", () => {
   test("no grouping separator is ever introduced (editable state stays parseable)", () => {
     expect(localizePadExpression("1234567,89", "en")).toBe("1234567.89");
     expect(localizePadExpression("1234567,89", "pl")).toBe("1234567,89");
+  });
+});
+
+describe("compactMoney", () => {
+  test("thousands collapse, and the currency is the budget's, never a hardcoded symbol", () => {
+    const en = compactMoney(2_696_290, "USD", "en"); // $26,962.90
+    expect(en).toContain("27");
+    expect(en).toContain("$");
+    expect(en).not.toContain("26,962");
+  });
+
+  test("the locale decides grouping and symbol placement, not the code", () => {
+    const pl = compactMoney(2_696_290, "PLN", "pl");
+    expect(pl).toMatch(/27/);
+    expect(pl).not.toContain("$");
+    expect(pl).toContain("zł"); // currency must actually render
+  });
+
+  test("small amounts stay legible rather than collapsing to 0", () => {
+    const small = compactMoney(4200, "USD", "en");
+    expect(small).toContain("42");
+    expect(small).toContain("$"); // currency must render
+  });
+
+  test("zero and negatives format without throwing", () => {
+    const zero = compactMoney(0, "USD", "en");
+    expect(zero).toContain("0");
+    expect(zero).toContain("$"); // currency must render
+    const negative = compactMoney(-2_696_290, "USD", "en");
+    expect(negative).toContain("27");
+    expect(negative).toMatch(/^-|−/);
+    expect(negative).toContain("$"); // currency must render
+  });
+
+  test("locales without a short thousands form still round rather than showing spurious precision", () => {
+    // de and it have no CLDR compact form for thousands — compaction is a hint, not a guarantee.
+    const de = compactMoney(2_696_290, "EUR", "de");
+    expect(de).not.toMatch(/26[.,]962/); // must not render the exact amount
+    expect(de).toMatch(/27/);
+    expect(de).toContain("€"); // currency must render
   });
 });

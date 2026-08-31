@@ -11,7 +11,11 @@
  *   an allocation (allocated+carryIn>0) or spending in the month.
  * - `budgetsOverAmount` — the € total the hub's Budgets mini-card shows under the pills;
  *   Σ(-left) over rows `budgetUsage` puts in "over".
+ * - `trendBannerMover` — the Trends screen's biggest-mover banner target (2026-08-22 Trends
+ *   redesign); see its own docstring below.
  */
+
+import type { EnvelopeTrend } from "@enveo/shared";
 
 export interface BudgetsSummary {
   over: number; // overspent (left < 0)
@@ -99,4 +103,183 @@ export function budgetsOverAmount(envelopes: BudgetEnvelope[]): number {
     if (usage.status === "over") total += -usage.left;
   }
   return total;
+}
+
+/* ── Pace projection (spec 2026-08-21) ─────────────────────────────────────────────────
+ * The Budgets report stops being a passive triage and becomes a checklist of fixes. That
+ * needs one thing today's model cannot answer: "this envelope is fine RIGHT NOW, but will it
+ * still be fine on the last day of the month?" — a straight-line projection of the current
+ * spend rate to month end.
+ *
+ * `risk` is layered ON TOP of `budgetUsage`, never in place of it. `over` remains `left < 0`
+ * and nothing else: an envelope with a zero budget and any spending has a floored denominator
+ * (`pct` is null by construction) and must never be reported as "used up" or "on pace".
+ */
+
+/** Number of days in `month` (YYYY-MM), leap-year aware.
+ *  Shared by `monthProgress` below and `uiState.monthRuler` (the Start screen's hero ruler) —
+ *  the arithmetic is the only thing those two have in common. `monthProgress` clamps a VIEWED
+ *  month against today (1 when past, 0 when future) and `monthRuler` only ever describes the
+ *  CURRENT month for the hero ruler; keep those two jobs separate and never fold them into one
+ *  function in the name of finishing this merge. */
+export function daysInMonth(month: string): number {
+  return new Date(Date.UTC(+month.slice(0, 4), +month.slice(5, 7), 0)).getUTCDate();
+}
+
+/** How much of `month` has elapsed as of `today` (YYYY-MM-DD), in (0..1].
+ *  A past month is 1, a future month is 0, the current month is day-inclusive so that the
+ *  first day of the month already counts as elapsed time and never divides by zero. */
+export function monthProgress(month: string, today: string): number {
+  const currentMonth = today.slice(0, 7);
+  if (month < currentMonth) return 1;
+  if (month > currentMonth) return 0;
+  const day = +today.slice(8, 10);
+  return Math.min(1, day / daysInMonth(month));
+}
+
+export type BudgetPaceBucket = "over" | "risk" | "near" | "usedUp" | "ok";
+
+export interface BudgetPace {
+  /** Spending projected to the end of the month at the current rate, minor units. */
+  projected: number;
+  bucket: BudgetPaceBucket;
+}
+
+/** Classify an envelope for the Budgets checklist. `progress` comes from `monthProgress`. */
+export function budgetPace(envelope: BudgetEnvelope, progress: number): BudgetPace {
+  const usage = budgetUsage(envelope);
+  const spent = Math.max(0, usage.spent);
+  // progress <= 0 (a future month) means there is no elapsed time to extrapolate from, so the
+  // honest projection is what has actually been spent — which can never trigger `risk`.
+  const projected = progress > 0 ? Math.round(spent / Math.min(1, progress)) : spent;
+
+  if (usage.status === "over") return { projected, bucket: "over" };
+  if (usage.status === "near") return { projected, bucket: "near" };
+  // status === "ok" from here: either genuinely calm, or spent to exactly 100%.
+  if (usage.pct !== null && usage.pct >= 100) return { projected, bucket: "usedUp" };
+  if (usage.rawBudget > 0 && spent > 0 && projected > usage.rawBudget) return { projected, bucket: "risk" };
+  return { projected, bucket: "ok" };
+}
+
+export type BudgetStepKind = "over" | "risk" | "near";
+
+export type BudgetStepInput = BudgetEnvelope & { id: string; name: string };
+
+export interface BudgetStep {
+  envelopeId: string;
+  name: string;
+  kind: BudgetStepKind;
+  /** Money to move into the envelope to clear this step, minor units, always > 0. */
+  amount: number;
+  /** True when the human dismissed this step. Still returned — the report shows it, flagged. */
+  ignored: boolean;
+  /** `amount` capped at the pool, minor units. Equals `amount` when the pool covers it. */
+  fundable: number;
+}
+
+/** The cushion a near-limit envelope is topped back up to — 1/5 (20%) of its budget. Kept as a
+ *  rational (`NUM/DEN`), never a decimal constant, so `nearTopUp` stays in integer arithmetic. */
+const NEAR_CUSHION_NUM = 1;
+const NEAR_CUSHION_DEN = 5;
+
+const STEP_ORDER: Record<BudgetStepKind, number> = { over: 0, risk: 1, near: 2 };
+
+/**
+ * The near-limit top-up, solved for the cushion condition AFTER the top-up is applied.
+ *
+ * The button's amount `A` gets added to `allocated`, so `rawBudget` (`B`) grows by `A` too —
+ * the target the button is supposed to hit moves every time you hit it. Naively aiming at
+ * today's target (`round(B * NEAR_CUSHION) - left`) only closes 80% of the gap, so pressing
+ * the button repeatedly chases a shrinking residual instead of clearing the step. Solving
+ * `left + A >= c(B + A)` for `A` with `c = NUM/DEN` gives, entirely in integers,
+ * `A >= (NUM*B - DEN*left) / (DEN - NUM)` — for the 20% cushion, `(B - 5*left) / 4`.
+ *
+ * Integer arithmetic is deliberate, not style: the earlier float form
+ * (`ceil((0.2*B - left) / 0.8)`) overpaid by one cent whenever the exact quotient was an
+ * integer and `0.2*B` rounded up in doubles (0.2 is not representable; an exhaustive sweep
+ * found ~10% of near cases affected — never underfunded, but the doc claim "lands exactly on
+ * the cushion" was false by a cent). `Math.ceil` on the integer quotient (never `round` or a
+ * floor) is still required: rounding down leaves a one-cent shortfall post-press and
+ * reproduces the moving-target bug in miniature.
+ *
+ * Known, accepted consequence (bucket precedence, pre-existing): a hot-pace envelope
+ * classified `near` masks its `risk` bucket, and a full near top-up can drop that mask — the
+ * next derivation may then show a (often larger) risk step for the same envelope. That is
+ * honest information, and the chain terminates within two presses; it is noted here so nobody
+ * reads the follow-up step as the top-up "not working".
+ */
+function nearTopUp(rawBudget: number, left: number): number {
+  const num = NEAR_CUSHION_NUM * rawBudget - NEAR_CUSHION_DEN * left;
+  return Math.max(0, Math.ceil(num / (NEAR_CUSHION_DEN - NEAR_CUSHION_NUM)));
+}
+
+/**
+ * The Budgets report's checklist: what to fix, in the order worth fixing it.
+ *
+ * Overspends lead — that money is already gone. Pace risks follow, because they are cheapest
+ * to fix before the month ends. Near-limit top-ups come last. Within a kind the largest amount
+ * leads, so the list opens with the step that moves the most.
+ *
+ * A step is only emitted when it has something to do: `amount > 0`. An envelope already at its
+ * cushion produces no step rather than a no-op button. `options.ignored` never removes a step
+ * from the result — it flags one the human already dismissed so the report can still show it
+ * (marked, with a restore action) instead of making it vanish; filtering it here would cost every
+ * caller a second pass over the same data to recover what was hidden. Ordering ignores the flag
+ * too — the report groups ignored steps visually, this function does not.
+ *
+ * `options.readyToAssign` is the pool of unbudgeted money: `fundable` caps `amount` at that pool
+ * so a caller never puts a button on screen offering to move more money than exists (the report
+ * shows the amount on the button itself, with no confirmation dialog). Omitting the pool leaves
+ * `fundable` equal to `amount` — today's unlimited behaviour, so existing callers stay valid.
+ */
+export function budgetSteps(envelopes: BudgetStepInput[], progress: number, options?: { ignored?: ReadonlySet<string>; readyToAssign?: number }): BudgetStep[] {
+  const steps: BudgetStep[] = [];
+  for (const e of envelopes) {
+    if (e.archived) continue;
+    if (!(e.allocated + e.carryIn > 0 || e.spent > 0)) continue;
+
+    const usage = budgetUsage(e);
+    const { bucket, projected } = budgetPace(e, progress);
+    if (bucket !== "over" && bucket !== "risk" && bucket !== "near") continue;
+
+    const amount = bucket === "over" ? -usage.left : bucket === "risk" ? projected - usage.rawBudget : nearTopUp(usage.rawBudget, usage.left);
+    if (amount <= 0) continue;
+
+    const fundable = Math.max(0, Math.min(amount, options?.readyToAssign ?? amount));
+    steps.push({ envelopeId: e.id, name: e.name, kind: bucket, amount, ignored: options?.ignored?.has(e.id) ?? false, fundable });
+  }
+  return steps.sort((a, b) => STEP_ORDER[a.kind] - STEP_ORDER[b.kind] || b.amount - a.amount);
+}
+
+/* ── Trends biggest-mover banner (spec 2026-08-22) ──────────────────────────────────────
+ * The Trends report's redesign adds a one-line banner calling out the single biggest move of
+ * the month. `computeEnvelopeTrends` already sorts its result by |last − baseline| desc, so the
+ * banner is just "is trends[0] worth announcing" — no re-sorting, no runner-up fallback.
+ */
+
+/** Minimum |deltaPct| for the Trends screen's biggest-mover banner — deliberately looser than the
+ *  report's own rising/falling HERO threshold (±10%, unrelated and unchanged, still inline in
+ *  TrendsReport.tsx): the hero counts what's significant enough to tally, the banner calls out
+ *  anything worth a one-line mention. Two different jobs, two different numbers on purpose. */
+export const TREND_BANNER_MIN_PCT = 0.05;
+
+/**
+ * The Trends screen's biggest-mover banner target, or null when there is nothing honest to
+ * announce. `trends` is assumed sorted by `|last - baseline|` desc, exactly the contract
+ * `computeEnvelopeTrends` already documents — this reads only `trends[0]`, it does not re-sort
+ * and it never falls through to a runner-up: if the single biggest raw-dollar move has no
+ * baseline to compare against (`deltaPct === null` — a dormant envelope's first spend), the
+ * correct behaviour is silence, not crediting the SECOND-biggest move as if it were the biggest.
+ *
+ * The mockup this redesign is based on (`Wide App Demo v3.dc.html:3576`) gated its equivalent
+ * banner on `trendTop.rise > 5` — signed, not absolute — even though `trendTop` is chosen by
+ * absolute magnitude a few lines above. That silently hides the banner for exactly the case it
+ * exists to announce (the biggest move of the month, when that move is a decrease). This function
+ * gates on magnitude instead, which is the self-consistent reading: see the module docstring in
+ * TrendsReport.tsx for a worked example.
+ */
+export function trendBannerMover(trends: EnvelopeTrend[], minPct = TREND_BANNER_MIN_PCT): EnvelopeTrend | null {
+  const top = trends[0];
+  if (!top || top.deltaPct === null || Math.abs(top.deltaPct) < minPct) return null;
+  return top;
 }

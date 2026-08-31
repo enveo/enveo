@@ -6,13 +6,18 @@ import { monthLabel, shiftMonth } from "../lib/dates";
 import { isLight } from "../lib/format";
 import { msg, useT } from "../lib/i18n";
 import { Glyph, Ico } from "../lib/icons";
+import { useWideHost } from "../lib/shellContext";
 import { store } from "../lib/store";
 import { font, P, TEAL } from "../lib/theme";
 import { EnvEdit } from "./Budget";
 
-const PERIODS = [1, 3, 6, 12] as const;
-type Period = (typeof PERIODS)[number];
-const PERIOD_KEY = { 1: msg("1 mo"), 3: msg("3 mo"), 6: msg("6 mo"), 12: msg("1 yr") } as const;
+// Exported so the wide panel body (`components/wide/EnvelopePanel.tsx`, design parity wave C task
+// 2) reuses the SAME category-window constants and labels rather than a second, silently-drifting
+// copy — the brief's "extract the trio/breakdown data helpers" instruction, applied to the one
+// piece of this screen's UI (not domain math) another consumer needs verbatim.
+export const PERIODS = [1, 3, 6, 12] as const;
+export type Period = (typeof PERIODS)[number];
+export const PERIOD_KEY = { 1: msg("1 mo"), 3: msg("3 mo"), 6: msg("6 mo"), 12: msg("1 yr") } as const;
 
 /**
  * Full-screen envelope summary (replaces the old summary sheet).
@@ -35,6 +40,17 @@ export function EnvelopeScreen({
   const M = useMask();
   const { t, lang } = useT();
   const version = useLedgerVersion();
+  // Task 4: PanelHost's own slim header (context label + ✕, PR4 §4d) already closes this pane
+  // when it is hosted there, so this screen's own back-button row is redundant chrome for EVERY
+  // panel host (desktop 400px and fold 552px alike) — gated on `host`, not `mode`. `useWideHost()`
+  // is null for the phone full-screen host (App.tsx's own `EnvelopeScreen` mount), so the row stays
+  // there unchanged.
+  const wideHost = useWideHost();
+  const panelHosted = wideHost?.host === "panel";
+  // v3 `L.detailCols` fold polish: the pane is wide enough (552px, PANE_W.fold) to lay the monthly
+  // breakdown and the category breakdown side by side instead of stacked — a pure container swap
+  // (see below), gated on the fold pane specifically (desktop's 400px panel stays stacked).
+  const foldTwoCol = wideHost?.mode === "fold";
   // the screen's local month — starts from the source screen's month
   const [m, setM] = useState(initialMonth);
   const [period, setPeriod] = useState<Period>(1);
@@ -52,17 +68,18 @@ export function EnvelopeScreen({
   }, [version, m]);
   const env = stateM?.envelopes.find((e) => e.id === envelopeId);
 
-  const backBtn = (
+  const backBtn = panelHosted ? null : (
     <button onClick={onBack} aria-label={t("Back")} style={{ background: "none", border: "none", cursor: "pointer", padding: 4, display: "flex" }}>
       <Ico d="M15 19l-7-7 7-7" size={20} color={C.text} sw={2} />
     </button>
   );
 
-  // envelope vanished from the replica (e.g. deleted on another device) → back only
+  // envelope vanished from the replica (e.g. deleted on another device) → back only (or, when
+  // panel-hosted, nothing at all — the panel's own ✕ is the only way out, D1)
   if (!data || !stateM || !env) {
     return (
       <div className="gs" style={{ flex: 1, overflowY: "auto" }}>
-        <div style={{ display: "flex", alignItems: "center", padding: `12px ${P}px 6px` }}>{backBtn}</div>
+        {backBtn && <div style={{ display: "flex", alignItems: "center", padding: `12px ${P}px 6px` }}>{backBtn}</div>}
       </div>
     );
   }
@@ -142,74 +159,84 @@ export function EnvelopeScreen({
           </div>
         </div>
 
-        {/* monthly breakdown (6 bars) — before categories (2A) */}
-        <div style={{ fontSize: 13, fontWeight: 600, color: C.text, margin: `0 ${P}px 10px` }}>{t("Monthly breakdown")}</div>
-        {series.map((s) => (
-          <div key={s.month} style={{ display: "flex", alignItems: "center", gap: 10, margin: `0 ${P}px 8px` }}>
-            <span style={{ fontSize: 12, color: C.soft, width: 70, textAlign: "right" }}>{monthLabel(s.month, lang).split(" ")[0]}</span>
-            <div style={{ flex: 1, height: 8, background: C.inset, borderRadius: 4, overflow: "hidden" }}>
-              <div style={{ height: "100%", width: `${(Math.max(0, s.spent) / maxSpent) * 100}%`, background: env.color, borderRadius: 4 }} />
-            </div>
-            <span style={{ fontSize: 12, fontWeight: 600, color: C.text, width: 76, textAlign: "right", fontVariantNumeric: "tabular-nums" }}>
-              {M(Math.max(0, s.spent))}
-            </span>
+        {/* Fold polish (v3 L.detailCols, Task 4): a pure container swap — same two sections, same
+            markup, just wrapped so the fold's 552px pane lays them side by side instead of
+            stacked. `undefined` on every other host/mode leaves this a plain block div, so phone
+            and the desktop 400px panel render byte-for-byte the original stacked layout. */}
+        <div style={foldTwoCol ? { display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)" } : undefined}>
+          <div>
+            {/* monthly breakdown (6 bars) — before categories (2A) */}
+            <div style={{ fontSize: 13, fontWeight: 600, color: C.text, margin: `0 ${P}px 10px` }}>{t("Monthly breakdown")}</div>
+            {series.map((s) => (
+              <div key={s.month} style={{ display: "flex", alignItems: "center", gap: 10, margin: `0 ${P}px 8px` }}>
+                <span style={{ fontSize: 12, color: C.soft, width: 70, textAlign: "right" }}>{monthLabel(s.month, lang).split(" ")[0]}</span>
+                <div style={{ flex: 1, height: 8, background: C.inset, borderRadius: 4, overflow: "hidden" }}>
+                  <div style={{ height: "100%", width: `${(Math.max(0, s.spent) / maxSpent) * 100}%`, background: env.color, borderRadius: 4 }} />
+                </div>
+                <span style={{ fontSize: 12, fontWeight: 600, color: C.text, width: 76, textAlign: "right", fontVariantNumeric: "tabular-nums" }}>
+                  {M(Math.max(0, s.spent))}
+                </span>
+              </div>
+            ))}
           </div>
-        ))}
 
-        {/* breakdown by category + period switcher */}
-        <div style={{ fontSize: 13, fontWeight: 600, color: C.text, margin: `10px ${P}px 8px` }}>{t("Breakdown by category")}</div>
-        <div style={{ display: "flex", gap: 6, margin: `0 ${P}px 12px` }}>
-          {PERIODS.map((p) => (
-            <button
-              key={p}
-              onClick={() => setPeriod(p)}
+          <div>
+            {/* breakdown by category + period switcher */}
+            <div style={{ fontSize: 13, fontWeight: 600, color: C.text, margin: `10px ${P}px 8px` }}>{t("Breakdown by category")}</div>
+            <div style={{ display: "flex", gap: 6, margin: `0 ${P}px 12px` }}>
+              {PERIODS.map((p) => (
+                <button
+                  key={p}
+                  onClick={() => setPeriod(p)}
+                  style={{
+                    flex: 1,
+                    padding: "6px 0",
+                    borderRadius: 9,
+                    border: `1px solid ${period === p ? TEAL : C.line}`,
+                    background: period === p ? "var(--accent-1a)" : "transparent",
+                    color: period === p ? TEAL : C.soft,
+                    fontSize: 11.5,
+                    fontWeight: 600,
+                    cursor: "pointer",
+                    fontFamily: font,
+                  }}
+                >
+                  {t(PERIOD_KEY[p])}
+                </button>
+              ))}
+            </div>
+            {data.categories.map((c) => {
+              const share = total > 0 ? (c.amount / total) * 100 : 0;
+              return (
+                <div key={c.categoryId ?? "none"} style={{ margin: `0 ${P}px 10px` }}>
+                  <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
+                    <span style={{ flex: 1, minWidth: 0, fontSize: 13, color: C.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {c.name}
+                    </span>
+                    <span style={{ fontSize: 11.5, color: C.mute, fontVariantNumeric: "tabular-nums" }}>{share.toFixed(1)}%</span>
+                    <span style={{ fontSize: 13, fontWeight: 600, color: C.text, fontVariantNumeric: "tabular-nums" }}>{M(c.amount)}</span>
+                  </div>
+                  <div style={{ height: 4, background: C.inset, borderRadius: 2, overflow: "hidden", marginTop: 4 }}>
+                    <div style={{ height: "100%", width: `${Math.min(100, Math.max(0, share))}%`, background: env.color, borderRadius: 2 }} />
+                  </div>
+                </div>
+              );
+            })}
+            <div
               style={{
-                flex: 1,
-                padding: "6px 0",
-                borderRadius: 9,
-                border: `1px solid ${period === p ? TEAL : C.line}`,
-                background: period === p ? "var(--accent-1a)" : "transparent",
-                color: period === p ? TEAL : C.soft,
-                fontSize: 11.5,
-                fontWeight: 600,
-                cursor: "pointer",
-                fontFamily: font,
+                display: "flex",
+                justifyContent: "flex-end",
+                alignItems: "baseline",
+                gap: 8,
+                margin: `2px ${P}px 18px`,
+                paddingTop: 8,
+                borderTop: `1px solid ${C.line}`,
               }}
             >
-              {t(PERIOD_KEY[p])}
-            </button>
-          ))}
-        </div>
-        {data.categories.map((c) => {
-          const share = total > 0 ? (c.amount / total) * 100 : 0;
-          return (
-            <div key={c.categoryId ?? "none"} style={{ margin: `0 ${P}px 10px` }}>
-              <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
-                <span style={{ flex: 1, minWidth: 0, fontSize: 13, color: C.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                  {c.name}
-                </span>
-                <span style={{ fontSize: 11.5, color: C.mute, fontVariantNumeric: "tabular-nums" }}>{share.toFixed(1)}%</span>
-                <span style={{ fontSize: 13, fontWeight: 600, color: C.text, fontVariantNumeric: "tabular-nums" }}>{M(c.amount)}</span>
-              </div>
-              <div style={{ height: 4, background: C.inset, borderRadius: 2, overflow: "hidden", marginTop: 4 }}>
-                <div style={{ height: "100%", width: `${Math.min(100, Math.max(0, share))}%`, background: env.color, borderRadius: 2 }} />
-              </div>
+              <span style={{ fontSize: 12.5, color: C.soft }}>{t("Total")}</span>
+              <span style={{ fontSize: 13.5, fontWeight: 700, color: C.text, fontVariantNumeric: "tabular-nums" }}>{M(total)}</span>
             </div>
-          );
-        })}
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "flex-end",
-            alignItems: "baseline",
-            gap: 8,
-            margin: `2px ${P}px 18px`,
-            paddingTop: 8,
-            borderTop: `1px solid ${C.line}`,
-          }}
-        >
-          <span style={{ fontSize: 12.5, color: C.soft }}>{t("Total")}</span>
-          <span style={{ fontSize: 13.5, fontWeight: 700, color: C.text, fontVariantNumeric: "tabular-nums" }}>{M(total)}</span>
+          </div>
         </div>
       </div>
 

@@ -1,21 +1,23 @@
-import { lazy, useEffect, useState } from "react";
+import { lazy, useEffect, useRef, useState } from "react";
 import { AmountPadHost, type AmountPadTarget } from "../components/AmountPadSheet";
-import { Header, Sheet } from "../components/chrome";
+import { Header, Surface } from "../components/chrome";
 import { DockedNumpad } from "../components/DockedNumpad";
 import { IconColorPicker } from "../components/IconColorPicker";
 import { CardBox, GoalRing, useBand } from "../components/kit";
-import { LazyChunk, useOpenedOnce } from "../components/lazy";
+import { LazyChunk } from "../components/lazy";
 import { fmtSignedTrim, type PadState, padPreview, padPreviewLive } from "../lib/amount";
 import type { EnvelopeView, StateResponse } from "../lib/api";
 import { linkedAccountNames } from "../lib/automaticEnvelopeAccountUi";
+import { type BudgetSheetEvent, type BudgetSheetState, useBudgetSheets } from "../lib/budgetSheet";
 import { useCurrency, useMask, useSettings, useTheme } from "../lib/contexts";
 import { useDragReorder } from "../lib/dnd";
 import { activeAllocationDecoration } from "../lib/focusPresentation";
-import { currencySymbol, fmtTrim, isLight, localizePadExpression, parseAmount } from "../lib/format";
-import { goalProgress } from "../lib/goals";
+import { currencySymbol, evalExpression, evalExpressionLive, fmtTrim, isLight, localizePadExpression, parseAmount } from "../lib/format";
+import { canFillGoals, goalProgress } from "../lib/goals";
 import { useT } from "../lib/i18n";
 import { Glyph, Ico } from "../lib/icons";
 import { local } from "../lib/mutate";
+import { useWideHost } from "../lib/shellContext";
 import { CORAL, ENV_PALETTE, font, P, TEAL, tint } from "../lib/theme";
 
 // The budget assistant is the second AI surface (§3f). It is the only thing on this screen that
@@ -34,10 +36,11 @@ export function BudgetScreen({
   onPrev,
   onNext,
   onOpenEnvelope,
-  initialSuggest,
-  onSuggestConsumed,
-  initialFillGoals,
-  onFillGoalsConsumed,
+  sheet,
+  onSheet,
+  manageOpen,
+  onManageOpen,
+  selectedEnvelopeId,
 }: {
   state: StateResponse;
   month: string;
@@ -45,62 +48,107 @@ export function BudgetScreen({
   onPrev: () => void;
   onNext: () => void;
   onOpenEnvelope: (envId: string, month: string) => void;
-  /** Start "Suggest" quick action — opens the suggest sheet immediately (like Add's `initialImport`). */
-  initialSuggest?: boolean;
-  /** Consumption ack for `initialSuggest`, called once on mount (see the effect below) — App
-   *  clears its flag the instant this screen consumes it, so a LATER remount (this screen
-   *  unmounts/remounts on any `envView` toggle — e.g. envelope Summary → back — WITHOUT going
-   *  through `nav()`) never sees a stale `true` and reopens the sheet unprompted. */
-  onSuggestConsumed: () => void;
-  /** Goals-report "Fill ›" deep link — opens the fill-by-goals sheet immediately (same mechanics as `initialSuggest`). */
-  initialFillGoals?: boolean;
-  /** Consumption ack for `initialFillGoals` — same one-shot mechanism as `onSuggestConsumed`. */
-  onFillGoalsConsumed: () => void;
+  /** Which allocation sheet is open — App-owned (owner round 8 item 32), for the same reason
+   *  `manageOpen` below is: entry points OUTSIDE this screen (the wide rail's and fold strip's
+   *  "✨ Suggest"/"Fill by goals" pills, Start's quick actions, the Goals report's "Fill ›") have
+   *  to open them, and they stay pressable while this screen is already mounted. As local state
+   *  behind one-shot deep-link flags those presses reached nothing — see lib/budgetSheet.ts. */
+  sheet: BudgetSheetState;
+  /** Every open/close on this screen — its own two buttons included — goes through the shared
+   *  transition function so no path can reintroduce a second way to move this state. */
+  onSheet: (event: BudgetSheetEvent) => void;
+  /** "Manage envelopes" sheet open state — App-owned so the wide shell's band right-slot (PR4 §13) can trigger it too. */
+  manageOpen: boolean;
+  onManageOpen: (open: boolean) => void;
+  /** Design parity wave C1 (gap 5): the envelope App's `resolvePanel` is currently showing in the
+   *  wide panel (explicit selection or the never-empty fallback) — `null` on phone, and on wide
+   *  whenever the panel isn't actually showing one of THIS screen's rows (panel closed, or an Add
+   *  takeover has stolen it). Drives the table's selected-row treatment only; never a second
+   *  navigation source (owner rule 3) — App derives it from the same state `resolvePanel` reads. */
+  selectedEnvelopeId: string | null;
 }) {
   const C = useTheme();
   const M = useMask();
   const { t } = useT();
-  const [manage, setManage] = useState(false);
-  const [suggest, setSuggest] = useState(!!initialSuggest);
-  // Latched — see Add.tsx: mount on first open, stay mounted, so state survives close→reopen.
-  const suggestOpened = useOpenedOnce(suggest);
-  const [fillGoals, setFillGoals] = useState(!!initialFillGoals);
-  const fillGoalsOpened = useOpenedOnce(fillGoals);
-  // Consume the deep-link flags right at mount, not on close — this component can remount
-  // (envelope Summary → back) without ever going through App's `nav()`, which is the only other
-  // place these flags get cleared. Consuming here means only the FIRST mount after App sets a
-  // flag ever opens its sheet; any later remount sees the flag already `false`.
-  useEffect(() => {
-    if (initialSuggest) onSuggestConsumed();
-    if (initialFillGoals) onFillGoalsConsumed();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-  // Entry visibility: money to place AND at least one active envelope still short of its goal.
-  // Same predicate as the Goals report's "Fill ›" entry point (Reports.tsx, `canFillGoals`) —
-  // kept in sync by inspection, not by shared code (the report's version folds in `missSum`
-  // it already computed for its own display).
-  const canFillGoals = state.readyToAssign > 0 && state.envelopes.some((e) => !e.archived && (goalProgress(e)?.missing ?? 0) > 0);
+  const wideHost = useWideHost();
+  const inWide = wideHost !== null;
+  // Desktop allocation editing (Task 3b, spec decision D5): a real <input> replaces the pad-driven
+  // cell; DockedNumpad stays for fold/phone. `mode` is read fresh on every render (no memoization
+  // needed — a resize crossing fold↔desktop mid-edit just changes which branch the NEXT render takes).
+  const desktopInput = wideHost?.mode === "desktop";
+  // READ from the prop on every render, never latched into local state — lib/budgetSheet.ts owns
+  // the whole rule and budgetSheet.test.ts pins it, because a `useState` seeded from `sheet` here
+  // behaves identically on first render and dead-ends every entry point pressed afterwards
+  // (owner round 8 item 32). `…Opened` are the lazy-chunk latches: mount on first open, stay
+  // mounted, so a sheet's state survives close→reopen (same idiom as Add.tsx).
+  const { suggest, fillGoals, suggestOpened, fillGoalsOpened } = useBudgetSheets(sheet);
+  const closeSheet = () => onSheet({ kind: "close" });
+  // Entry visibility: money to place AND at least one active envelope still short of its goal —
+  // the SHARED predicate (lib/goals.ts), the same one the wide rail's and fold strip's pills now
+  // call. It used to be spelled out here and re-spelled at every other entry point, which is how
+  // the two newest ones shipped with no gate at all (owner round 8b item B).
+  const fillGoalsPossible = canFillGoals(state);
   // IN-PLACE allocation editing (docked-numpad spec): one active cell per screen;
-  // `err` = ✓ on an uncomputable/negative result, cleared on the next keypress.
-  const [editing, setEditing] = useState<{ envelopeId: string; pad: PadState; err?: boolean } | null>(null);
+  // `err` = ✓ on an uncomputable/negative result, cleared on the next keypress. `input`, set only
+  // on desktop (Task 3b), carries the real <input>'s raw typed text; `pad` stays populated in every
+  // mode (its `expr` is simply unused while `input !== undefined`) so the state shape is uniform.
+  const [editing, setEditing] = useState<{ envelopeId: string; pad: PadState; err?: boolean; input?: string } | null>(null);
 
   const groups = [...state.groups].sort((a, b) => a.sort - b.sort);
   const envs = state.envelopes.filter((e) => !e.archived);
-  const COLS = "1fr 94px 108px";
+  // 104px is the design's own Allocated track (v3:256). 94px predates it and clipped the Polish
+  // header label "PRZYDZIELONO" (103.4px of ink in a 94px box, measured).
+  const COLS = "1fr 104px 108px";
 
+  // The ONE write path both the docked numpad's ✓ and the desktop input's Enter/blur use.
+  const persistAllocation = (envelopeId: string, minor: number) => {
+    const env = envs.find((x) => x.id === envelopeId);
+    if (env && minor !== env.allocated) local.setDisplayedAllocation({ envelopeId, month, amount: minor });
+  };
   // Commit-or-cancel of the current edit (tap on another envelope): computable → save
   // (negative allowed — moving money back OUT of an envelope is a valid allocation), otherwise discard.
-  const commitEditing = (ed: { envelopeId: string; pad: PadState }) => {
-    const minor = padPreview(ed.pad.expr);
-    const env = envs.find((x) => x.id === ed.envelopeId);
-    if (minor !== null && env && minor !== env.allocated) {
-      local.setDisplayedAllocation({ envelopeId: ed.envelopeId, month, amount: minor });
+  const commitEditing = (ed: { envelopeId: string; pad: PadState; input?: string }) => {
+    const minor = ed.input !== undefined ? evalExpression(ed.input) : padPreview(ed.pad.expr);
+    if (minor !== null) persistAllocation(ed.envelopeId, minor);
+  };
+  // Desktop input's Enter/blur commit (Task 3b; owner round 5 item 27): same persistAllocation
+  // write as the pad's ✓, but the typed text is EVALUATED first — `evalExpression` (the CSP-safe
+  // `evalArith` behind the pad) makes the C1 hint's "+ − × ÷ work, ⏎ saves" literally true for
+  // "500+1"-style entry, and falls back to `parseAmount` itself for a plain number, so the
+  // fmtSignedTrim prefill round-trip is unchanged (comma decimal + space grouping — never Intl
+  // grouping). An uncomputable/unfinished value flags `err` and keeps the cell open instead of
+  // silently discarding — the same contract as DockedNumpad's `target.onInvalid`.
+  const commitDesktopInput = (envelopeId: string, raw: string) => {
+    const minor = evalExpression(raw);
+    if (minor === null) {
+      setEditing((ed) => (ed && ed.envelopeId === envelopeId ? { ...ed, err: true } : ed));
+      // ⏎ commits by BLURRING (the one commit path), so an invalid value has just dropped
+      // keyboard focus while the cell stays open in its err state — "keep editing" must include
+      // the keyboard: put focus back so the next keystroke can fix the expression and Esc still
+      // cancels (verified live: without this, Esc after an invalid ⏎ was dead until a re-click).
+      // rAF because refocusing synchronously inside the blur dispatch is unreliable; when the
+      // blur came from clicking ANOTHER cell, that cell's own autoFocus input has replaced this
+      // one by the next frame, so the selector finds the new input (already focused — no-op) or
+      // nothing. Never runs on plain Escape: that path clears `editing` before any commit.
+      requestAnimationFrame(() => document.querySelector<HTMLElement>("[data-alloc-input]")?.focus());
+      return;
     }
+    persistAllocation(envelopeId, minor);
+    setEditing(null);
   };
   const startEdit = (env: EnvelopeView, _cell: HTMLElement | null) => {
     if (editing?.envelopeId === env.id) return;
     if (editing) commitEditing(editing);
-    setEditing({ envelopeId: env.id, pad: { expr: fmtSignedTrim(env.allocated), fresh: true } });
+    setEditing({
+      envelopeId: env.id,
+      pad: { expr: fmtSignedTrim(env.allocated), fresh: true },
+      // fmtSignedTrim, NEVER fmtTrim: a bare fmtTrim discards the sign (fmt() does Math.abs
+      // internally), so a negative allocation would silently commit as its positive magnitude on
+      // an untouched blur/Enter. fmtSignedTrim is the same documented parseAmount round-trip pair
+      // (lib/format.ts) WITH the sign re-attached — the same helper used two lines above for
+      // pad.expr. NEVER fmtTrimLocale either, which parseAmount cannot re-read.
+      ...(desktopInput ? { input: fmtSignedTrim(env.allocated) } : {}),
+    });
   };
   // Scroll ONLY after render (double rAF): a synchronous scrollIntoView in the click
   // handler ran before paddingBottom and the pad appeared — bottom envelopes stayed
@@ -125,8 +173,10 @@ export function BudgetScreen({
   }, [editing?.pad.expr]);
   const activeEnv = editing ? envs.find((x) => x.id === editing.envelopeId) : undefined;
   // padPreviewLive: a trailing operator ("705+") evaluates like "705" — the chip/TBB
-  // don't blank out (or strike through) mid-entry; null only for an empty expression.
-  const activePreview = editing ? padPreviewLive(editing.pad.expr) : null;
+  // don't blank out (or strike through) mid-entry; null only for an empty expression. The desktop
+  // input carries the same expression grammar since item 27, so its "live" preview is
+  // evalExpressionLive — the free-text twin of padPreviewLive (same hanging-operator rule).
+  const activePreview = editing ? (editing.input !== undefined ? evalExpressionLive(editing.input) : padPreviewLive(editing.pad.expr)) : null;
   // Live "To be budgeted" header: with a computable preview, subtract the allocation delta.
   // Based on readyToAssign (month-independent headline), not the month-bounded toBeBudgeted,
   // so editing an allocation moves the same number the user sees on Start.
@@ -134,72 +184,99 @@ export function BudgetScreen({
   const { band, hc } = useBand();
 
   return (
-    <div className="gs" style={{ flex: 1, overflowY: "auto", paddingBottom: editing ? 300 : 6 }}>
+    // The 300px reserve is DockedNumpad's own footprint (bar + keypad) — desktop never renders
+    // it (Task 3b: allocation editing there is an inline <input>, no docked pad), so it must not
+    // reserve the space or the list would show a large empty gap while editing.
+    <div className="gs" style={{ flex: 1, overflowY: "auto", paddingBottom: editing && !desktopInput ? 300 : 6 }}>
       <div data-band={band || undefined} style={band ? { background: C.headerBg, paddingBottom: 2 } : undefined}>
-        <Header month={month} onMenu={onMenu} onPrev={onPrev} onNext={onNext} onRight={() => setManage(true)} rightIcon="pencil" onBand={band} />
+        {!inWide && (
+          <Header month={month} onMenu={onMenu} onPrev={onPrev} onNext={onNext} onRight={() => onManageOpen(true)} rightIcon="pencil" onBand={band} />
+        )}
       </div>
-      <CardBox style={{ margin: `8px ${P}px 10px`, padding: "10px 14px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
-        <div style={{ minWidth: 0 }}>
-          <div style={{ fontSize: 10.5, color: C.soft }}>{t("To be budgeted:")}</div>
-          {tbbLive === 0 ? (
-            <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 15, fontWeight: 750, color: C.pos, whiteSpace: "nowrap" }}>
-              <Ico d="M5 13l4 4L19 7" size={15} color={C.pos} sw={2.4} />
-              {t("All money assigned")}
-            </div>
-          ) : (
-            <div
-              style={{
-                fontSize: 20,
-                fontWeight: 800,
-                letterSpacing: "-0.015em",
-                fontVariantNumeric: "tabular-nums",
-                color: tbbLive < 0 ? C.neg : hc("var(--cta)", C.pos),
-              }}
-            >
-              {M(tbbLive)}
-            </div>
-          )}
-          {canFillGoals && (
-            <button
-              onClick={() => setFillGoals(true)}
-              style={{
-                marginTop: 2,
-                padding: 0,
-                background: "none",
-                border: "none",
-                color: hc("var(--cta)", TEAL),
-                fontSize: 11,
-                fontWeight: 600,
-                cursor: "pointer",
-                fontFamily: font,
-              }}
-            >
-              {t("Fill by goals")}
-            </button>
-          )}
-        </div>
-        <button
-          onClick={() => setSuggest(true)}
-          aria-label={t("Suggest a distribution")}
-          style={{
-            flexShrink: 0,
-            padding: "6px 13px",
-            borderRadius: 999,
-            border: `1.5px solid ${hc("var(--cta)", "var(--accent)")}`,
-            background: "transparent",
-            color: hc("var(--cta)", TEAL),
-            fontSize: 11.5,
-            fontWeight: 700,
-            cursor: "pointer",
-            fontFamily: font,
-          }}
-        >
-          {"✨ "}
-          {t("Suggest")}
-        </button>
-      </CardBox>
+      {/* Design parity wave C1 (gap 4): this card is the design's fold/phone-only `statsCardDisplay`
+          (v3:4143, `isFold && screen !== "settings"`) — on desktop the rail's own TBB card (Rail.tsx)
+          is the SINGLE source, so rendering this one too was a straight duplicate that pushed the
+          whole table down ~100px for the same number shown twice. `wideHost?.mode !== "desktop"` is
+          `true` on phone (no host) and fold, `false` on desktop — not rendered at all there (not just
+          hidden), so desktop's primary pane starts at the table header, no stray "To be budgeted:"
+          text left in the DOM for a probe to trip over. */}
+      {wideHost?.mode !== "desktop" && (
+        <CardBox style={{ margin: `8px ${P}px 10px`, padding: "10px 14px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+          <div style={{ minWidth: 0 }}>
+            <div style={{ fontSize: 10.5, color: C.soft }}>{t("To be budgeted:")}</div>
+            {tbbLive === 0 ? (
+              <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 15, fontWeight: 750, color: C.pos, whiteSpace: "nowrap" }}>
+                <Ico d="M5 13l4 4L19 7" size={15} color={C.pos} sw={2.4} />
+                {t("All money assigned")}
+              </div>
+            ) : (
+              <div
+                style={{
+                  fontSize: 20,
+                  fontWeight: 800,
+                  letterSpacing: "-0.015em",
+                  fontVariantNumeric: "tabular-nums",
+                  color: tbbLive < 0 ? C.neg : hc("var(--cta)", C.pos),
+                }}
+              >
+                {M(tbbLive)}
+              </div>
+            )}
+            {fillGoalsPossible && (
+              <button
+                onClick={() => onSheet({ kind: "open", sheet: "fillGoals" })}
+                style={{
+                  marginTop: 2,
+                  padding: 0,
+                  background: "none",
+                  border: "none",
+                  color: hc("var(--cta)", TEAL),
+                  fontSize: 11,
+                  fontWeight: 600,
+                  cursor: "pointer",
+                  fontFamily: font,
+                }}
+              >
+                {t("Fill by goals")}
+              </button>
+            )}
+          </div>
+          <button
+            onClick={() => onSheet({ kind: "open", sheet: "suggest" })}
+            aria-label={t("Suggest a distribution")}
+            style={{
+              flexShrink: 0,
+              padding: "6px 13px",
+              borderRadius: 999,
+              border: `1.5px solid ${hc("var(--cta)", "var(--accent)")}`,
+              background: "transparent",
+              color: hc("var(--cta)", TEAL),
+              fontSize: 11.5,
+              fontWeight: 700,
+              cursor: "pointer",
+              fontFamily: font,
+            }}
+          >
+            {"✨ "}
+            {t("Suggest")}
+          </button>
+        </CardBox>
+      )}
 
-      <div style={{ display: "grid", gridTemplateColumns: COLS, padding: `0 ${P}px 6px`, gap: 8, alignItems: "start" }}>
+      {/* Owner round 8 item 33: the header's columns must be the ROWS' columns. Both grids share
+          `COLS` and `gap`, so alignment is entirely a question of where each grid's content box
+          starts — and this one used to start at `P` (14) while every data row starts 12px further
+          in: `CardBox` is `margin: 0 14px` + `padding: 0 12px`, and the row's own
+          `padding/margin: ±12px` cancel out (wide) or are absent (phone), leaving the row content
+          box at 26px on BOTH sides in BOTH modes. The header therefore sat 12px right of its own
+          columns — the labels the owner cropped, floating left of the amounts they name. `P + 12`
+          is also literally the design's own header padding (v3:256 `padding: 12px 26px 4px`
+          against rows at 14+1+10 = 25px). The vertical padding stays as it was: the design's 12px
+          top belongs to a header sitting directly under the pane's TBB row, while here the
+          spacing above is already owned by whatever card precedes it. Phone shares this header
+          and shared the defect, so it is fixed there too — the only cost is 24px off the name
+          column's `1fr`, which at 390px still leaves ~120px for "ENVELOPE". */}
+      <div style={{ display: "grid", gridTemplateColumns: COLS, padding: `0 ${P + 12}px 6px`, gap: 8, alignItems: "start" }}>
         <span style={{ fontSize: 10.5, color: C.mute, fontWeight: 600, letterSpacing: 1, textTransform: "uppercase" }}>{t("Envelope")}</span>
         <div style={{ textAlign: "right" }}>
           <div style={{ fontSize: 10.5, color: C.mute, fontWeight: 600, letterSpacing: 1, textTransform: "uppercase" }}>{t("Allocated")}</div>
@@ -213,7 +290,7 @@ export function BudgetScreen({
       {envs.length === 0 && (
         <CardBox style={{ margin: `6px ${P}px 10px`, padding: "12px 14px" }}>
           <button
-            onClick={() => setManage(true)}
+            onClick={() => onManageOpen(true)}
             style={{
               width: "100%",
               padding: "10px 0",
@@ -239,13 +316,16 @@ export function BudgetScreen({
         const gV = items.reduce((s, e) => s + e.available, 0);
         return (
           <div key={g.id} className="fu" style={{ animationDelay: `${gi * 40}ms`, marginBottom: 2 }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", padding: "7px 18px 4px" }}>
+            {/* Design parity wave C1 (gap 9): design's group header padding is `5px 10px 3px`
+                (v3:264) at every wide width (fold and desktop share this row — it isn't gated on
+                `desktopInput`); phone keeps its own denser-but-larger padding unchanged. */}
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", padding: inWide ? "5px 10px 3px" : "7px 18px 4px" }}>
               <span style={{ fontSize: 12, fontWeight: 750, color: C.text }}>{g.name}</span>
               <span style={{ fontSize: 10, color: C.soft, fontVariantNumeric: "tabular-nums" }}>
                 {M(gA)} · {M(gV)}
               </span>
             </div>
-            <CardBox style={{ padding: "0 12px", marginBottom: 6 }}>
+            <CardBox style={{ padding: "0 12px", marginBottom: 6, overflow: "hidden" }}>
               {items.map((e, ei) => {
                 // Live edit context: the active envelope's Available text shows the value AFTER the change;
                 // strikethrough only when there is no value (empty expression after ⌫).
@@ -255,6 +335,14 @@ export function BudgetScreen({
                 const neg = avail < 0;
                 const zero = avail === 0;
                 const gp = goalProgress(e);
+                // Design parity wave C1 (gap 5): the row currently open in the panel — the SAME
+                // `selectedEnvelopeId` App derives for `resolvePanel` (owner rule 3), never a second
+                // "what's open" check. Four-part treatment below mirrors v3:2464-2470 exactly:
+                // bold+accent name, "▸" mark, edge-to-edge `selBg`, suppressed divider. The row itself
+                // stays square (v3:270 has no border-radius on the row) — an edge row's corners are
+                // rounded by the CardBox's own `overflow: hidden` clipping the card's 14px radius
+                // (v3:266), not by a radius on the row.
+                const selected = selectedEnvelopeId === e.id;
                 return (
                   <div
                     key={e.id}
@@ -263,13 +351,22 @@ export function BudgetScreen({
                     style={{
                       display: "grid",
                       gridTemplateColumns: COLS,
-                      padding: "6px 0",
+                      // Edge-to-edge selection bleed (v3:270), WIDE ONLY — gated like the group
+                      // header's padding fork above: row padding matches the CardBox's own 12px
+                      // horizontal padding, and the equal-and-opposite negative margin lets the
+                      // row's background reach the card's edges while leaving the CONTENT at the
+                      // same horizontal position as an unselected row (the padding/margin cancel
+                      // out) — applied to every wide row, not just the selected one, so nothing
+                      // shifts on select. Phone keeps its exact pre-wave `6px 0` geometry
+                      // (dividers inset by the card's own 12px padding).
+                      padding: inWide ? "6px 12px" : "6px 0",
+                      margin: inWide ? "0 -12px" : undefined,
                       gap: 8,
-                      width: "100%",
                       boxSizing: "border-box",
                       cursor: "pointer",
                       alignItems: "center",
-                      borderBottom: ei === items.length - 1 ? "none" : `1px solid ${C.line}`,
+                      background: selected ? C.selBg : "transparent",
+                      borderBottom: ei === items.length - 1 || selected ? "none" : `1px solid ${C.line}`,
                     }}
                   >
                     <div style={{ display: "flex", alignItems: "center", gap: 9, minWidth: 0 }}>
@@ -298,7 +395,11 @@ export function BudgetScreen({
                           style={{
                             display: "block",
                             fontSize: 14.5,
-                            color: C.text,
+                            fontWeight: selected ? 650 : 400,
+                            // `Theme` has no `accent` field (it's a CSS var, set per light/dark mode
+                            // from `ThemeDef.accent`/`accentDark` — see theme.ts); every other accent
+                            // reference in this file goes through the same `var(--accent)` string.
+                            color: selected ? "var(--accent)" : C.text,
                             overflow: "hidden",
                             textOverflow: "ellipsis",
                             whiteSpace: "nowrap",
@@ -335,9 +436,27 @@ export function BudgetScreen({
                           </span>
                         )}
                       </div>
+                      {/* Wide-only (v3:277 — the selected-row treatment is a wide-only design
+                          concept, C1 brief): gated on `inWide` like Transactions.tsx's identical
+                          mark, so a phone row never gains an empty flex item + 9px gap it never
+                          had pre-wave. On wide it stays always-rendered (`openMark` is "" when not
+                          selected) so the flex gap never shifts the row's content width on
+                          select/deselect. */}
+                      {inWide && (
+                        <span style={{ fontSize: 12, color: "var(--accent)", flexShrink: 0 }} aria-hidden="true">
+                          {selected ? "▸" : ""}
+                        </span>
+                      )}
                     </div>
                     <div style={{ position: "relative" }}>
-                      <AllocCell e={e} editing={active ? { expr: active.pad.expr, err: active.err } : null} onStart={(el) => startEdit(e, el)} />
+                      <AllocCell
+                        e={e}
+                        editing={active ? { expr: active.pad.expr, err: active.err, input: active.input } : null}
+                        onStart={(el) => startEdit(e, el)}
+                        onDesktopChange={(value) => setEditing((ed) => (ed && ed.envelopeId === e.id ? { ...ed, input: value, err: false } : ed))}
+                        onDesktopCommit={() => commitDesktopInput(e.id, active?.input ?? "")}
+                        onDesktopCancel={() => setEditing(null)}
+                      />
                     </div>
                     <div style={{ textAlign: "right" }}>
                       <span
@@ -362,27 +481,37 @@ export function BudgetScreen({
         );
       })}
 
-      <EnvManageSheet show={manage} state={state} onClose={() => setManage(false)} />
+      {/* Design parity wave C1 (gap 6): the design's persistent affordance hint under the envelope
+          list (v3:289) — documents the Allocated cell's arithmetic-entry behaviour for the whole
+          table. Wide-only (`inWide`, both fold and desktop — the design doesn't gate this on device
+          mode either): phone's docked numpad already surfaces its own ✓/✕ affordance inline. */}
+      {inWide && (
+        <div style={{ padding: `0 ${P}px 10px`, fontSize: 11, color: C.mute }}>{t("Type in an Allocated cell — + − × ÷ work, ⏎ saves, Esc cancels")}</div>
+      )}
+
+      <EnvManageSheet show={manageOpen} state={state} onClose={() => onManageOpen(false)} />
       {suggestOpened && (
-        <LazyChunk variant="overlay" onDismiss={() => setSuggest(false)}>
-          <BudgetSuggestSheet show={suggest} state={state} month={month} onClose={() => setSuggest(false)} />
+        <LazyChunk variant="overlay" onDismiss={closeSheet}>
+          <BudgetSuggestSheet show={suggest} state={state} month={month} onClose={closeSheet} />
         </LazyChunk>
       )}
       {fillGoalsOpened && (
-        <LazyChunk variant="overlay" onDismiss={() => setFillGoals(false)}>
-          <FillGoalsSheet show={fillGoals} state={state} month={month} onClose={() => setFillGoals(false)} />
+        <LazyChunk variant="overlay" onDismiss={closeSheet}>
+          <FillGoalsSheet show={fillGoals} state={state} month={month} onClose={closeSheet} />
         </LazyChunk>
       )}
-      {/* Docked numpad instead of a sheet (no backdrop — the list stays visible). */}
+      {/* Docked numpad instead of a sheet (no backdrop — the list stays visible). Desktop (Task 3b)
+          keeps `target` null: allocation editing there goes through AllocCell's real <input>
+          instead, never this pad. */}
       <DockedNumpad
         target={
-          editing && activeEnv
+          editing && activeEnv && !desktopInput
             ? {
                 label: activeEnv.name,
                 icon: activeEnv.icon,
                 color: activeEnv.color,
                 onCommit: (minor) => {
-                  if (minor !== activeEnv.allocated) local.setDisplayedAllocation({ envelopeId: activeEnv.id, month, amount: minor });
+                  persistAllocation(activeEnv.id, minor);
                   setEditing(null);
                 },
                 onCancel: () => setEditing(null),
@@ -398,15 +527,101 @@ export function BudgetScreen({
   );
 }
 
-/* ── Editable ALLOCATED column (tap = docked numpad, in-place editing) ── */
-function AllocCell({ e, editing, onStart }: { e: EnvelopeView; editing: { expr: string; err?: boolean } | null; onStart: (cell: HTMLElement | null) => void }) {
+/* ── Editable ALLOCATED column (tap = docked numpad on fold/phone, a real <input> on desktop —
+   Task 3b; `editing.input !== undefined` picks the branch) ── */
+function AllocCell({
+  e,
+  editing,
+  onStart,
+  onDesktopChange,
+  onDesktopCommit,
+  onDesktopCancel,
+}: {
+  e: EnvelopeView;
+  editing: { expr: string; err?: boolean; input?: string } | null;
+  onStart: (cell: HTMLElement | null) => void;
+  /** Desktop input only — every keystroke. */
+  onDesktopChange: (value: string) => void;
+  /** Desktop input only — Enter/blur; evaluates via `evalExpression` (item 27: "500+1" works),
+   *  flags `err` and stays open on failure. */
+  onDesktopCommit: () => void;
+  /** Desktop input only — Escape; discards the typed text, no write. */
+  onDesktopCancel: () => void;
+}) {
   const C = useTheme();
   const { settings } = useSettings();
   const { t, lang } = useT();
   const currency = useCurrency();
   const box = { background: C.chip, borderRadius: 7, padding: "4px 9px" } as const;
+  // Guards a same-tick `blur` a React-driven unmount can raise: Escape calls `onDesktopCancel`
+  // (→ setEditing(null)), and a focused element removed from the DOM fires blur/focusout as it
+  // detaches — which would otherwise reach `onDesktopCommit` and write the very value Escape
+  // just discarded. Set synchronously in the Escape handler, read once in onBlur, then cleared.
+  const cancelingRef = useRef(false);
+  // The latch is meant for that ONE same-tick window — but the unmount blur it waits for does
+  // not reliably fire (observed live, item 27 verification: Chrome 150 removed the focused
+  // input without any blur), so an Escape-canceled edit could leave `true` behind and silently
+  // swallow the NEXT edit's first blur-commit (⏎ looked dead: no write, no err, focus lost).
+  // Reset it whenever a desktop edit session STARTS, so a stale latch never outlives the
+  // session it guarded. Keyed on the session flag, not the keystroke-changing `editing.input`.
+  const desktopEditing = editing?.input !== undefined;
+  useEffect(() => {
+    if (desktopEditing) cancelingRef.current = false;
+  }, [desktopEditing]);
   if (settings.discreet) {
     return <div style={{ ...box, textAlign: "right" as const, fontSize: 13, color: C.text }}>•••• {currencySymbol(currency, lang)}</div>;
+  }
+  if (editing?.input !== undefined) {
+    // Desktop allocation editing (spec decision D5): a real <input inputMode="decimal">, prefilled
+    // by the caller with fmtSignedTrim (the documented parseAmount round-trip pair, sign included —
+    // NEVER a bare fmtTrim, which discards the sign, and NEVER fmtTrimLocale, which the commit
+    // evaluator cannot re-read; see lib/format.ts). The commit evaluates arithmetic too (item 27:
+    // evalExpression — "500+1" ⏎ writes 501,00). Enter blurs (one commit path, below); Escape
+    // discards. Invalid input keeps the red state exactly like the pad's `err`.
+    return (
+      <input
+        // biome-ignore lint/a11y/noAutofocus: reached only via an explicit user action (click, or Tab focus on the resting readOnly input below) — never a programmatic mount
+        autoFocus
+        inputMode="decimal"
+        data-alloc-input="1"
+        data-pad-cell="1"
+        value={editing.input}
+        aria-label={t("Allocated: {name}", { name: e.name })}
+        aria-invalid={editing.err || undefined}
+        onChange={(ev) => onDesktopChange(ev.target.value)}
+        // A click inside the already-focused input (repositioning the cursor, fixing a digit)
+        // must not bubble to the row's onClick={() => onOpenEnvelope(...)} — same guard the
+        // pad-active div (below) and the resting cell already carry for the same reason.
+        onClick={(ev) => ev.stopPropagation()}
+        onKeyDown={(ev) => {
+          if (ev.key === "Enter") ev.currentTarget.blur();
+          else if (ev.key === "Escape") {
+            cancelingRef.current = true;
+            onDesktopCancel();
+          }
+        }}
+        onBlur={() => {
+          if (cancelingRef.current) {
+            cancelingRef.current = false;
+            return;
+          }
+          onDesktopCommit();
+        }}
+        style={{
+          ...box,
+          width: "100%",
+          minWidth: 0,
+          boxSizing: "border-box",
+          textAlign: "right" as const,
+          fontSize: 13,
+          fontFamily: font,
+          color: editing.err ? "var(--danger)" : C.text,
+          fontVariantNumeric: "tabular-nums",
+          border: `1px solid ${editing.err ? "var(--danger)" : "var(--input-underline)"}`,
+          outline: "none",
+        }}
+      />
+    );
   }
   if (editing) {
     // Active cell: the padKey expression in place of the input; err = ✓ on a bad result.
@@ -491,7 +706,7 @@ function EnvManageSheet({ show, state, onClose }: { show: boolean; state: StateR
   const archived = state.envelopes.filter((e) => e.archived).sort((a, b) => a.sort - b.sort);
 
   return (
-    <Sheet show={show} onClose={onClose}>
+    <Surface show={show} onClose={onClose}>
       {(C) => (
         <>
           <div style={{ fontSize: 17, fontWeight: 700, color: C.text, marginBottom: 4, textAlign: "center" }}>{t("Manage envelopes")}</div>
@@ -527,9 +742,12 @@ function EnvManageSheet({ show, state, onClose }: { show: boolean; state: StateR
                   </span>
                   <button
                     onClick={() => local.updateEnvelope(e.id, { archived: false })}
+                    // minHeight 30: the same touch-target floor as the buttons above — the sweep
+                    // never measured this one only because its dataset had no archived envelopes.
                     style={{
                       flexShrink: 0,
                       padding: "6px 12px",
+                      minHeight: 30,
                       borderRadius: 8,
                       border: `1px solid var(--accent-55)`,
                       background: "var(--accent-1a)",
@@ -591,7 +809,7 @@ function EnvManageSheet({ show, state, onClose }: { show: boolean; state: StateR
           </div>
         </>
       )}
-    </Sheet>
+    </Surface>
   );
 }
 
@@ -653,7 +871,21 @@ function ManageGroup({ g, list, flat }: { g: StateResponse["groups"][number]; li
               if (window.confirm(t("Delete the empty group “{name}”?", { name: g.name }))) local.deleteGroup(g.id);
             }}
             aria-label={t("Delete group")}
-            style={{ background: "none", border: "none", cursor: "pointer", padding: 4, display: "flex" }}
+            // Same explicit 30×30 box as the per-envelope delete below (was 23×23 — the sweep
+            // just never saw it: it renders only for an EMPTY group).
+            style={{
+              background: "none",
+              border: "none",
+              cursor: "pointer",
+              padding: 0,
+              width: 30,
+              height: 30,
+              minWidth: 30,
+              minHeight: 30,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+            }}
           >
             <Ico d="M3 6h18M8 6V4h8v2m-9 0v14a1 1 0 001 1h8a1 1 0 001-1V6" size={15} color={CORAL} />
           </button>
@@ -709,7 +941,21 @@ function ManageGroup({ g, list, flat }: { g: StateResponse["groups"][number]; li
                   local.deleteEnvelope(e.id);
               }}
               aria-label={t("Delete {name}", { name: e.name })}
-              style={{ background: "none", border: "none", cursor: "pointer", padding: 6, display: "flex" }}
+              // Explicit 30×30 box (the wide-chrome touch-target floor — PanelHost's ✕ pattern):
+              // padding alone left this at 27×27 in the pane-surface sweep.
+              style={{
+                background: "none",
+                border: "none",
+                cursor: "pointer",
+                padding: 0,
+                width: 30,
+                height: 30,
+                minWidth: 30,
+                minHeight: 30,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+              }}
             >
               <Ico d="M3 6h18M8 6V4h8v2m-9 0v14a1 1 0 001 1h8a1 1 0 001-1V6" size={15} color={CORAL} />
             </button>
@@ -739,7 +985,18 @@ function ManageGroup({ g, list, flat }: { g: StateResponse["groups"][number]; li
           />
           <button
             onClick={addEnvelope}
-            style={{ padding: "7px 12px", borderRadius: 8, border: "none", background: TEAL, color: "#fff", fontSize: 12, fontWeight: 600, cursor: "pointer" }}
+            // minHeight 30: same floor as "+ Add envelope" (this confirm renders in its place).
+            style={{
+              padding: "7px 12px",
+              minHeight: 30,
+              borderRadius: 8,
+              border: "none",
+              background: TEAL,
+              color: "#fff",
+              fontSize: 12,
+              fontWeight: 600,
+              cursor: "pointer",
+            }}
           >
             {t("Add")}
           </button>
@@ -750,7 +1007,18 @@ function ManageGroup({ g, list, flat }: { g: StateResponse["groups"][number]; li
             setAdding(true);
             setAddName("");
           }}
-          style={{ marginTop: 8, padding: "6px 0", background: "none", border: "none", color: TEAL, fontSize: 11, fontWeight: 600, cursor: "pointer" }}
+          // minHeight 30 = the touch-target floor (the text link measured 25 tall in the sweep).
+          style={{
+            marginTop: 8,
+            padding: "6px 0",
+            minHeight: 30,
+            background: "none",
+            border: "none",
+            color: TEAL,
+            fontSize: 11,
+            fontWeight: 600,
+            cursor: "pointer",
+          }}
         >
           {t("+ Add envelope")}
         </button>
@@ -804,7 +1072,7 @@ export function EnvEdit({
     });
   return (
     <>
-      <Sheet show={!!env} onClose={onClose}>
+      <Surface show={!!env} onClose={onClose}>
         {(C) => (
           <>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 18 }}>
@@ -981,8 +1249,9 @@ export function EnvEdit({
             )}
           </>
         )}
-      </Sheet>
-      {/* Sibling of the Sheet (not a child) — the panel's transform would break the pad's position:fixed. */}
+      </Surface>
+      {/* Sibling of the Surface (not a child) — on phone this is a Sheet, and the panel's transform
+          would break the pad's position:fixed on wide either way. */}
       <AmountPadHost target={pad} onClose={() => setPad(null)} />
     </>
   );

@@ -1,38 +1,31 @@
 import { computeNetWorthSeries, computeStateResponse } from "@enveo/shared";
-import { type CSSProperties, type ReactNode, useEffect, useMemo, useRef, useState } from "react";
-import { fmtSignedTrim } from "../lib/amount";
+import { type LazyExoticComponent, lazy, type ReactNode, Suspense, useMemo, useState } from "react";
 import { type AccountView, type EnvelopeView, type StateResponse, useLedgerVersion } from "../lib/api";
-import {
-  automaticEnvelopePreview,
-  currentReconciliationAccount,
-  formatAutomaticEnvelopeEffect,
-  type ReconciliationEnvelopeSelection,
-  reconciliationActualValueAfterAccountRefresh,
-  reconciliationEnvelopeAfterAccountRefresh,
-  reconciliationTxnPayload,
-} from "../lib/automaticEnvelopeUi";
+import { currentReconciliationAccount } from "../lib/automaticEnvelopeUi";
 import type { WidgetConfig, WidgetId, WidgetOpts } from "../lib/contexts";
-import { useCurrency, useMask, useSettings, useTheme } from "../lib/contexts";
+import { useMask, useSettings, useTheme } from "../lib/contexts";
 import { currentMonth } from "../lib/dates";
-import { useDragReorder } from "../lib/dnd";
-import { currencySymbol, localizePadExpression, parseAmount } from "../lib/format";
 import { type Message, msg, useT } from "../lib/i18n";
 import { Glyph, Ico } from "../lib/icons";
-import { local } from "../lib/mutate";
-import { matchesSearch, SEARCH_THRESHOLD } from "../lib/search";
 import { store } from "../lib/store";
-import { font, TEAL, type Theme, tint } from "../lib/theme";
+import { font } from "../lib/theme";
 import { sumBalances } from "../lib/uiState";
-import { AutomaticEnvelopeEffect } from "../screens/add/AutomaticEnvelopeEffect";
-import { EnvelopePickerSheet } from "../screens/add/EnvelopePickerSheet";
-import { collapsedRowStyle } from "../screens/add/styles";
-import { AmountPadHost, type AmountPadTarget } from "./AmountPadSheet";
+import { WIDGET_CATALOG } from "../lib/widgetCatalog";
+import type { ReportTab } from "../screens/reports/types";
 import { type ScreenId, Sheet } from "./chrome";
-import { CardBox, HighlightedText, PickerSearch, SectionEyebrow, useBand } from "./kit";
-import { Sparkline } from "./reportKit";
+import { CardBox, SectionEyebrow, useBand } from "./kit";
+import { LazyChunk, useOpenedOnce } from "./lazy";
+import { Sparkline } from "./sparkline";
 import { AccCell, accountIconColor, EnvRow } from "./tiles";
 
-/** Props every Start-screen widget receives — a component picks the subset it needs. */
+// Lazy — PR6b Task 6: the whole reconcile body (~180 dense lines, ReconcileSheet.tsx) leaves the
+// eager closure this way; `AccountsWidget` mounts it behind `useOpenedOnce`, the exact
+// `EnvActionsSheet` idiom (App.tsx). `AccountPanel` (wide) imports the same module statically —
+// Rollup shares one chunk between the two entry points, same as `AccountEditSheet`'s split.
+const ReconcileSheet = lazy(() => import("./ReconcileSheet").then((m) => ({ default: m.ReconcileSheet })));
+
+/** Props every Start-screen widget receives — a component picks the subset it needs. All six
+ *  original (eager) widgets ignore the three PR5 additions below, so they stay untouched. */
 export interface WidgetProps {
   state: StateResponse;
   month: string;
@@ -40,6 +33,23 @@ export interface WidgetProps {
   onOpenEnvelope: (envId: string, month: string) => void;
   onOpenTxns: (f?: { envId?: string; accId?: string }) => void;
   onQuickAdd: (kind: "transfer" | "import" | "suggest") => void;
+  /** Deep link into a specific report subscreen (App.openReports). */
+  onOpenReport?: (tab: ReportTab) => void;
+  /** Heatmap day → Month report with that day's panel open (App.setMonthDay + openReports("month")). */
+  onOpenMonthDay?: (date: string) => void;
+  /** Opens the multi-envelope "Fill by goals" sheet (App.openBudgetFillGoals) — the Goals widget's
+   *  footer "Fill all ›" link, wide-only (waveB-t4-brief.md, B4); undefined on phone, where the
+   *  Goals widget body never renders that control at all. */
+  onFillGoals?: () => void;
+  /** True when a wide board tile hosts the widget: the tile owns title+card chrome, so the body
+   *  skips its own SectionEyebrow/CardBox. Default false — phone rendering is pixel-identical. */
+  chromeless?: boolean;
+  /** The wide board tile's own (already-clamped) span — `WideHome` only; undefined on phone, so a
+   *  body that doesn't read it renders exactly as before. Lets a body pick a compact rendering when
+   *  sized down (e.g. `NetWorthWidget`'s 1×1 stat-tile variant, matching the design's `scroll:false`
+   *  tiles: at h=1 the design itself clips the sparkline via `overflow-y:hidden` rather than
+   *  shrinking it, so the compact body renders no chart at all instead of a clipped one). */
+  tile?: { w: number; h: number };
   opts?: WidgetOpts;
 }
 
@@ -58,7 +68,7 @@ export const QUICK_ACTION_ORDER: QuickActionKey[] = ["expense", "transfer", "imp
  *  this feature), same fallback idiom as AccountsWidget's `opts?.count ?? 4`. */
 export const DEFAULT_QUICK_ACTIONS: QuickActionKey[] = ["expense", "transfer", "import", "suggest"];
 
-const QUICK_ACTION_DEFS: Record<QuickActionKey, { label: Message; glyph?: string; d?: string }> = {
+export const QUICK_ACTION_DEFS: Record<QuickActionKey, { label: Message; glyph?: string; d?: string }> = {
   expense: { label: msg("Expense"), d: "M12 5v14M5 12h14" },
   transfer: { label: msg("Transfer"), d: "M8 7h12m0 0l-4-4m4 4l-4 4M16 17H4m0 0l4 4m-4-4l4-4" },
   import: { label: msg("From screenshot"), glyph: "camera" },
@@ -153,6 +163,9 @@ export function AccountsWidget({ state, onNav, onOpenTxns, opts }: WidgetProps) 
   const [selAcc, setSelAcc] = useState<AccountView | null>(null);
   const [reconcileAccountId, setReconcileAccountId] = useState<string | null>(null);
   const reconcileAccount = currentReconciliationAccount(accountsNow, reconcileAccountId);
+  // PR6b Task 6: the chunk is fetched only on the first Reconcile tap, then stays mounted (so a
+  // close→reopen keeps its own local state) — the exact `envActionsMounted` idiom (App.tsx).
+  const reconcileMounted = useOpenedOnce(reconcileAccountId !== null);
   const activeEnvelopes = state.envelopes.filter((envelope) => !envelope.archived);
   const activeGroupIds = new Set(activeEnvelopes.map((envelope) => envelope.groupId));
   const activeGroups = state.groups.filter((group) => activeGroupIds.has(group.id));
@@ -290,192 +303,12 @@ export function AccountsWidget({ state, onNav, onOpenTxns, opts }: WidgetProps) 
         }
       </Sheet>
 
-      <ReconcileSheet account={reconcileAccount} envelopes={activeEnvelopes} groups={activeGroups} onClose={() => setReconcileAccountId(null)} />
+      {reconcileMounted && (
+        <LazyChunk variant="overlay" onDismiss={() => setReconcileAccountId(null)}>
+          <ReconcileSheet account={reconcileAccount} envelopes={activeEnvelopes} groups={activeGroups} onClose={() => setReconcileAccountId(null)} />
+        </LazyChunk>
+      )}
     </div>
-  );
-}
-
-/** Account balance reconciliation owned by AccountsWidget. */
-function ReconcileSheet({
-  account,
-  envelopes,
-  groups,
-  onClose,
-}: {
-  account: AccountView | null;
-  envelopes: StateResponse["envelopes"];
-  groups: StateResponse["groups"];
-  onClose: () => void;
-}) {
-  const M = useMask();
-  const { t, lang } = useT();
-  const currency = useCurrency();
-  const [val, setVal] = useState("");
-  const [pad, setPad] = useState<AmountPadTarget | null>(null);
-  const [envelopeSelection, setEnvelopeSelection] = useState<ReconciliationEnvelopeSelection | null>(null);
-  const [showEnvelopePicker, setShowEnvelopePicker] = useState(false);
-  const actualBalanceSource = useRef<{ id: string; balance: number } | null>(null);
-  const automaticEnvelopeId = account && envelopes.some((envelope) => envelope.id === account.automaticEnvelopeId) ? account.automaticEnvelopeId : null;
-  useEffect(() => {
-    if (!account) {
-      actualBalanceSource.current = null;
-      setEnvelopeSelection(null);
-      return;
-    }
-    const previousBalanceSource = actualBalanceSource.current;
-    actualBalanceSource.current = { id: account.id, balance: account.balance };
-    setVal((current) => reconciliationActualValueAfterAccountRefresh(current, previousBalanceSource, account));
-    setEnvelopeSelection((current) => reconciliationEnvelopeAfterAccountRefresh(current, account.id, automaticEnvelopeId));
-    setShowEnvelopePicker(false);
-  }, [account?.id, account?.balance, automaticEnvelopeId]);
-  if (!account) return null;
-  const currentEnvelopeSelection = reconciliationEnvelopeAfterAccountRefresh(envelopeSelection, account.id, automaticEnvelopeId);
-  const envelopeId = currentEnvelopeSelection.envelopeId;
-  const openPad = () =>
-    setPad({
-      label: t("Actual balance (from your bank)"),
-      initial: parseAmount(val) ?? 0,
-      allowNegative: true, // the real account balance may be negative (e.g. a credit card)
-      onCommit: (minor) => setVal(fmtSignedTrim(minor)),
-    });
-  const real = parseAmount(val);
-  const diff = real === null ? 0 : real - account.balance;
-  const submit = () => {
-    if (real === null || diff === 0) {
-      onClose();
-      return;
-    }
-    local.createTxn(
-      reconciliationTxnPayload({
-        accountId: account.id,
-        difference: diff,
-        date: new Date().toISOString().slice(0, 10),
-        envelopeId,
-        // the note is transaction DATA — saved in the language active at creation time
-        note: t("Balance adjustment"),
-      }),
-    );
-    onClose();
-  };
-  const selectedEnvelope = envelopes.find((envelope) => envelope.id === envelopeId);
-  const positivePreview = diff > 0 ? automaticEnvelopePreview({ accounts: [account], envelopes }, { type: "income", accountId: account.id }, diff) : null;
-  const positiveEffect =
-    positivePreview && positivePreview.rows.length > 0
-      ? formatAutomaticEnvelopeEffect(positivePreview, M, {
-          heading: t("Automatic envelope effect"),
-          readyToAssign: t("Ready to assign"),
-          noEnvelopeChange: t("No envelope change"),
-          noChange: t("No change"),
-        })
-      : null;
-  return (
-    <>
-      <Sheet show={!!account} onClose={onClose}>
-        {(C) => (
-          <>
-            <div style={{ fontSize: 17, fontWeight: 700, color: C.text }}>{t("Reconcile account")}</div>
-            <div style={{ fontSize: 12.5, color: C.soft, marginBottom: 16 }}>{account.name}</div>
-            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 12 }}>
-              <span style={{ fontSize: 13, color: C.soft }}>{t("Balance in the app")}</span>
-              <span style={{ fontSize: 13, fontWeight: 600, color: C.text, fontVariantNumeric: "tabular-nums" }}>{M(account.balance)}</span>
-            </div>
-            <div style={{ fontSize: 10.5, color: C.mute, fontWeight: 600, textTransform: "uppercase", letterSpacing: 0.6, marginBottom: 6 }}>
-              {t("Actual balance (from your bank)")}
-            </div>
-            <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 12 }}>
-              <input
-                // `val` stays CANONICAL (pad output in, parseAmount out) — display only is localized.
-                value={localizePadExpression(val, lang)}
-                readOnly
-                onClick={openPad}
-                onFocus={openPad}
-                style={{
-                  flex: 1,
-                  padding: "9px 11px",
-                  borderRadius: 9,
-                  border: `1px solid ${C.line}`,
-                  background: C.surface,
-                  color: C.text,
-                  fontSize: 16,
-                  fontWeight: 600,
-                  fontFamily: font,
-                  fontVariantNumeric: "tabular-nums",
-                  cursor: "pointer",
-                }}
-              />
-              <span style={{ color: C.mute, fontSize: 13 }}>{currencySymbol(currency, lang)}</span>
-            </div>
-            {real !== null && diff !== 0 && (
-              <div style={{ fontSize: 12.5, marginBottom: 12, color: diff > 0 ? C.pos : C.neg }}>
-                {t("Difference: {sign}{amount} → this will create a correcting {kind}", {
-                  sign: diff > 0 ? "+" : "−",
-                  amount: M(Math.abs(diff)),
-                  kind: t(diff > 0 ? msg("income") : msg("expense")),
-                })}
-              </div>
-            )}
-            {diff > 0 && positiveEffect && <AutomaticEnvelopeEffect data={positiveEffect} />}
-            {diff < 0 && (
-              <>
-                <div style={{ fontSize: 10.5, color: C.mute, fontWeight: 600, textTransform: "uppercase", letterSpacing: 0.6, marginBottom: 6 }}>
-                  {t("Envelope for the adjustment")}
-                </div>
-                <button onClick={() => setShowEnvelopePicker(true)} style={{ ...collapsedRowStyle(C, !!selectedEnvelope), margin: "0 0 4px" }}>
-                  {selectedEnvelope && <Glyph name={selectedEnvelope.icon} size={17} color={selectedEnvelope.color} sw={1.8} />}
-                  <span
-                    style={{
-                      flex: 1,
-                      minWidth: 0,
-                      fontSize: 12.5,
-                      fontWeight: selectedEnvelope ? 650 : 500,
-                      color: selectedEnvelope ? C.text : C.mute,
-                      overflow: "hidden",
-                      textOverflow: "ellipsis",
-                      whiteSpace: "nowrap",
-                    }}
-                  >
-                    {selectedEnvelope?.name ?? t("Choose an envelope")}
-                  </span>
-                </button>
-                {currentEnvelopeSelection.provenance === "automatic" && envelopeId !== null && (
-                  <div style={{ color: C.mute, fontSize: 10.5, marginBottom: 12 }}>{t("Selected automatically from this account")}</div>
-                )}
-              </>
-            )}
-            <button
-              onClick={submit}
-              disabled={real === null || diff === 0}
-              style={{
-                width: "100%",
-                padding: "12px 0",
-                borderRadius: 12,
-                border: "none",
-                background: TEAL,
-                color: "#fff",
-                fontSize: 13.5,
-                fontWeight: 600,
-                cursor: "pointer",
-                opacity: real === null || diff === 0 ? 0.5 : 1,
-              }}
-            >
-              {real !== null && diff === 0 ? t("Balance matches") : t("Reconcile")}
-            </button>
-          </>
-        )}
-      </Sheet>
-      <EnvelopePickerSheet
-        show={showEnvelopePicker}
-        onClose={() => setShowEnvelopePicker(false)}
-        envelopes={envelopes}
-        groups={groups}
-        onSelect={(id) => {
-          setEnvelopeSelection({ ...currentEnvelopeSelection, envelopeId: id, provenance: "explicit" });
-          setShowEnvelopePicker(false);
-        }}
-      />
-      {/* Sibling of the Sheet (not a child) — the panel's transform would break the pad's position:fixed. */}
-      <AmountPadHost target={pad} onClose={() => setPad(null)} />
-    </>
   );
 }
 
@@ -504,25 +337,25 @@ function envelopeSections(
 }
 
 /* ── Envelopes: grouped EnvRow lists, scoped by opts.mode ── */
-export function EnvelopesWidget({ state, month, onOpenEnvelope, opts }: WidgetProps) {
+export function EnvelopesWidget({ state, month, onOpenEnvelope, opts, chromeless }: WidgetProps) {
   const M = useMask();
   const { t } = useT();
   const sections = envelopeSections(state, opts?.mode ?? "all", t);
   const MW = (n: number) => maskWhole(M, n);
   return (
     <>
-      {sections.map(({ label, list }) =>
-        list.length === 0 ? null : (
+      {sections.map(({ label, list }) => {
+        if (list.length === 0) return null;
+        const rows = list.map((e, idx) => <EnvRow key={e.id} e={e} onClick={() => onOpenEnvelope(e.id, month)} last={idx === list.length - 1} />);
+        // On a wide-board tile the tile supplies the card chrome; the per-SECTION eyebrow stays
+        // (it is content — a group label with its total — not duplicated widget chrome).
+        return (
           <div key={label}>
             <SectionEyebrow label={label} right={t("total {amount}", { amount: MW(list.reduce((s, e) => s + e.available, 0)) })} />
-            <CardBox>
-              {list.map((e, idx) => (
-                <EnvRow key={e.id} e={e} onClick={() => onOpenEnvelope(e.id, month)} last={idx === list.length - 1} />
-              ))}
-            </CardBox>
+            {chromeless ? rows : <CardBox>{rows}</CardBox>}
           </div>
-        ),
-      )}
+        );
+      })}
     </>
   );
 }
@@ -534,11 +367,30 @@ function EnvelopesSavingsWidget(props: WidgetProps) {
 }
 
 /* ── Report widgets: current-month cashflow numbers, and a 12mo net-worth sparkline ── */
-export function CashflowWidget({ state, onNav }: WidgetProps) {
+export function CashflowWidget({ state, onNav, chromeless }: WidgetProps) {
   const C = useTheme();
   const M = useMask();
   const { t } = useT();
   const net = state.monthIncome - state.monthExpense;
+  const trio = (
+    <div style={{ display: "flex", gap: 8, padding: chromeless ? 0 : "10px 0" }}>
+      {(
+        [
+          [t("Income"), state.monthIncome, C.pos],
+          [t("Expense"), state.monthExpense, C.neg],
+          [t("Net"), net, net >= 0 ? C.pos : C.neg],
+        ] as const
+      ).map(([label, val, col]) => (
+        <div key={label} style={{ flex: 1 }}>
+          <div style={{ fontSize: 10.5, color: C.soft }}>{label}</div>
+          <div style={{ fontSize: 13.5, fontWeight: 700, color: col, fontVariantNumeric: "tabular-nums" }}>{M(val)}</div>
+        </div>
+      ))}
+    </div>
+  );
+  // Wide-board tiles supply their own eyebrow+card chrome; doubling it overflowed the default
+  // w:3,h:1 tile (measured: clientHeight 53 vs scrollHeight 80 on first load).
+  if (chromeless) return trio;
   return (
     <div>
       <SectionEyebrow
@@ -561,27 +413,12 @@ export function CashflowWidget({ state, onNav }: WidgetProps) {
           </button>
         }
       />
-      <CardBox>
-        <div style={{ display: "flex", gap: 8, padding: "10px 0" }}>
-          {(
-            [
-              [t("Income"), state.monthIncome, C.pos],
-              [t("Expense"), state.monthExpense, C.neg],
-              [t("Net"), net, net >= 0 ? C.pos : C.neg],
-            ] as const
-          ).map(([label, val, col]) => (
-            <div key={label} style={{ flex: 1 }}>
-              <div style={{ fontSize: 10.5, color: C.soft }}>{label}</div>
-              <div style={{ fontSize: 13.5, fontWeight: 700, color: col, fontVariantNumeric: "tabular-nums" }}>{M(val)}</div>
-            </div>
-          ))}
-        </div>
-      </CardBox>
+      <CardBox>{trio}</CardBox>
     </div>
   );
 }
 
-export function NetWorthWidget({ month, onNav }: WidgetProps) {
+export function NetWorthWidget({ month, onNav, chromeless, tile }: WidgetProps) {
   const C = useTheme();
   const M = useMask();
   const { t } = useT();
@@ -593,6 +430,36 @@ export function NetWorthWidget({ month, onNav }: WidgetProps) {
   }, [version, month]);
   const nwLast = netWorth.at(-1)?.total ?? 0;
   const nwDelta = nwLast - (netWorth.at(-2)?.total ?? nwLast);
+  // Design's 1x1 stat tile (v3:531-533, `startWidgets`' `{w:1,h:1,scroll:false}`): value + one
+  // delta caption, no sparkline — the design doesn't gate the chart on size at all, it relies on
+  // `scroll:false` → `overflow-y:hidden` to clip it at a row height too short to show it, so a
+  // real 1x1 tile never actually displays a chart. Render that outcome directly instead of
+  // mounting a chart just to clip it. `h>=2` is unaffected (today's value+delta+sparkline body).
+  const compact = tile?.h === 1;
+  const body = compact ? (
+    <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+      <span style={{ fontSize: 17, fontWeight: 750, color: C.text, fontVariantNumeric: "tabular-nums" }}>{M(nwLast)}</span>
+      <span style={{ fontSize: 10.5, fontWeight: 650, color: nwDelta >= 0 ? C.pos : C.neg, fontVariantNumeric: "tabular-nums" }}>
+        {nwDelta >= 0 ? "▲ +" : "▼ "}
+        {M(Math.abs(nwDelta))} {t("m/m")}
+      </span>
+    </div>
+  ) : (
+    <>
+      <div style={{ display: "flex", alignItems: "baseline", gap: 10 }}>
+        <span style={{ fontSize: 18, fontWeight: 700, color: C.text, fontVariantNumeric: "tabular-nums" }}>{M(nwLast)}</span>
+        {nwDelta !== 0 && (
+          <span style={{ fontSize: 11.5, fontWeight: 600, color: nwDelta > 0 ? C.pos : C.neg, fontVariantNumeric: "tabular-nums" }}>
+            {nwDelta > 0 ? "▲ +" : "▼ "}
+            {M(Math.abs(nwDelta))}
+          </span>
+        )}
+      </div>
+      <Sparkline points={netWorth} />
+    </>
+  );
+  // Same rule as CashflowWidget above: the wide tile brings its own chrome.
+  if (chromeless) return body;
   return (
     <div>
       <SectionEyebrow
@@ -615,28 +482,19 @@ export function NetWorthWidget({ month, onNav }: WidgetProps) {
           </button>
         }
       />
-      <CardBox style={{ padding: "10px 14px" }}>
-        <div style={{ display: "flex", alignItems: "baseline", gap: 10 }}>
-          <span style={{ fontSize: 18, fontWeight: 700, color: C.text, fontVariantNumeric: "tabular-nums" }}>{M(nwLast)}</span>
-          {nwDelta !== 0 && (
-            <span style={{ fontSize: 11.5, fontWeight: 600, color: nwDelta > 0 ? C.pos : C.neg, fontVariantNumeric: "tabular-nums" }}>
-              {nwDelta > 0 ? "▲ +" : "▼ "}
-              {M(Math.abs(nwDelta))}
-            </span>
-          )}
-        </div>
-        <Sparkline points={netWorth} />
-      </CardBox>
+      <CardBox style={{ padding: "10px 14px" }}>{body}</CardBox>
     </div>
   );
 }
 
-/** Registry: widget id → component, in Start.tsx's render loop (`settings.startWidgets.filter(enabled)`).
- *  The `w.id in START_WIDGETS` guards below and in Start.tsx stay as defense against a corrupted/
- *  future persisted id (settings are untyped JSON at rest) even though this is now a full
- *  `Record<WidgetId, …>` — loadSettings() already drops any id unknown to the CURRENT WidgetId
- *  union on load (see contexts.tsx). */
-export const START_WIDGETS: Record<WidgetId, (p: WidgetProps) => ReactNode> = {
+/** Registry: widget id → component, for the six ORIGINAL widgets whose bodies are cheap enough to
+ *  stay eager (Start renders them at boot). PR5's six report-backed widgets (attention/recent/
+ *  spending/goals/trends/heatmap) live in `./widgetsBoard` instead, behind `LAZY_WIDGETS` below —
+ *  `renderWidget` is the ONE place that picks eager vs. lazy, so no caller needs to know which is
+ *  which. `Partial` (rather than the full `Record<WidgetId, …>`) is what keeps this file eager-safe:
+ *  a `Record` over all twelve ids would force importing the six lazy bodies at the top of this
+ *  module, defeating the whole split. */
+export const START_WIDGETS: Partial<Record<WidgetId, (p: WidgetProps) => ReactNode>> = {
   quickActions: QuickActions,
   accounts: AccountsWidget,
   envelopes: EnvelopesWidget,
@@ -645,524 +503,60 @@ export const START_WIDGETS: Record<WidgetId, (p: WidgetProps) => ReactNode> = {
   reportNetWorth: NetWorthWidget,
 };
 
-/* ── "Edit widgets" sheet: reorder (drag handle), enable toggles, per-widget options ── */
-const WIDGET_TITLE: Record<WidgetId, Message> = {
-  quickActions: msg("Quick actions"),
-  accounts: msg("Accounts"),
-  envelopes: msg("Envelopes"),
-  envelopesSavings: msg("Envelopes · Savings"),
-  reportCashflow: msg("Report · Cash flow"),
-  reportNetWorth: msg("Report · Net worth"),
+/** The lazy half of the registry — one `import()` of `./widgetsBoard` per widget id, so Rollup
+ *  emits ONE chunk shared by all six (plus whatever `reportKit`/`reports/charts` code the Reports
+ *  screen's own chunk already carries — see that module's header comment). */
+const AttentionWidget = lazy(() => import("./widgetsBoard").then((m) => ({ default: m.AttentionWidget })));
+const RecentWidget = lazy(() => import("./widgetsBoard").then((m) => ({ default: m.RecentWidget })));
+const SpendingWidget = lazy(() => import("./widgetsBoard").then((m) => ({ default: m.SpendingWidget })));
+const GoalsWidget = lazy(() => import("./widgetsBoard").then((m) => ({ default: m.GoalsWidget })));
+const TrendsWidget = lazy(() => import("./widgetsBoard").then((m) => ({ default: m.TrendsWidget })));
+const HeatmapWidget = lazy(() => import("./widgetsBoard").then((m) => ({ default: m.HeatmapWidget })));
+
+type LazyWidgetId = "attention" | "recent" | "spending" | "goals" | "trends" | "heatmap";
+
+export const LAZY_WIDGETS: Record<LazyWidgetId, LazyExoticComponent<(p: WidgetProps) => ReactNode>> = {
+  attention: AttentionWidget,
+  recent: RecentWidget,
+  spending: SpendingWidget,
+  goals: GoalsWidget,
+  trends: TrendsWidget,
+  heatmap: HeatmapWidget,
 };
 
-function envModeLabel(mode: string, groups: StateResponse["groups"], t: (m: Message, p?: Record<string, string | number>) => string): string {
-  if (mode === "savings") return t("Savings only");
-  if (mode.startsWith("group:")) {
-    const g = groups.find((gr) => gr.id === mode.slice("group:".length));
-    return t("Group: {name}", { name: g?.name ?? "?" });
-  }
-  if (mode.startsWith("picked:")) {
-    const n = mode.slice("picked:".length).split(",").filter(Boolean).length;
-    return t("Selected ({n})", { n: String(n) });
-  }
-  return t("All (Everyday + Savings)");
-}
-
-function widgetSubtitle(w: WidgetConfig, state: StateResponse, t: (m: Message, p?: Record<string, string | number>) => string): string {
-  switch (w.id) {
-    // reuses the same "Selected (n)" key envModeLabel uses for envelopes' picked mode. RAW count
-    // (not resolveActions' default-on-empty) — an intentional "all unchecked" must read as 0.
-    case "quickActions":
-      return t("Selected ({n})", { n: String((w.opts?.actions ?? []).length) });
-    case "accounts": {
-      const collapsed = w.opts?.collapsed ?? true;
-      return collapsed ? t("collapsed · {n} shown ›", { n: String(w.opts?.count ?? 4) }) : t("all shown ›");
-    }
-    case "envelopes":
-      return envModeLabel(w.opts?.mode ?? "all", state.groups, t);
-    case "envelopesSavings":
-      return t("Savings only");
-    case "reportCashflow":
-      return t("current month");
-    case "reportNetWorth":
-      return t("12-month sparkline");
-  }
-}
-
-function Toggle({ on, onClick, label }: { on: boolean; onClick: () => void; label: string }) {
-  const C = useTheme();
+/** Same silhouette as a rendered widget (eyebrow + an empty card) so the Start stack doesn't jump
+ *  while the chunk fetches — 64px mirrors a typical single-row widget's height. */
+function WidgetPending({ title }: { title: string }) {
   return (
-    <button
-      onClick={onClick}
-      aria-label={label}
-      aria-pressed={on}
-      style={{
-        width: 40,
-        height: 22,
-        borderRadius: 12,
-        background: on ? "var(--accent)" : C.line,
-        position: "relative",
-        border: "none",
-        cursor: "pointer",
-        flexShrink: 0,
-        padding: 0,
-      }}
-    >
-      <span
-        style={{
-          position: "absolute",
-          top: 2,
-          left: on ? 20 : 2,
-          width: 18,
-          height: 18,
-          borderRadius: "50%",
-          background: "#fff",
-          transition: "left .2s",
-          boxShadow: "0 1px 2px rgba(0,0,0,0.2)",
-        }}
-      />
-    </button>
-  );
-}
-
-/** Shared chip/tab look for the mode switchers below (Accounts' All/Selected, Envelopes' All/Savings/Group/Selected). */
-function chipStyle(C: Theme, active: boolean): CSSProperties {
-  return {
-    padding: "5px 10px",
-    borderRadius: 999,
-    fontSize: 11,
-    fontWeight: 600,
-    cursor: "pointer",
-    background: active ? "var(--accent-1a)" : C.chip,
-    color: active ? "var(--accent)" : C.text,
-    border: `1px solid ${active ? "var(--accent)" : C.line}`,
-  };
-}
-
-/** Small checkbox-style indicator — same checkmark path used elsewhere for a satisfied state (see
- *  the "All money assigned" tick on Start). */
-function CheckBox({ checked }: { checked: boolean }) {
-  const C = useTheme();
-  return (
-    <span
-      aria-hidden
-      style={{
-        width: 18,
-        height: 18,
-        borderRadius: 5,
-        border: `1.5px solid ${checked ? "var(--accent)" : C.line}`,
-        background: checked ? "var(--accent)" : "transparent",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        flexShrink: 0,
-      }}
-    >
-      {checked && <Ico d="M5 13l4 4L19 7" size={12} color="#fff" sw={3} />}
-    </span>
-  );
-}
-
-/** A tinted-icon + name + checkbox row — the "picked" checklist idiom shared by AccountsOptions and
- *  EnvelopesOptions (accounts/envelopes both carry their own {color, icon}). `query` (when the list
- *  is under search) highlights the matched span instead of just rendering the plain name. */
-function PickRow({
-  icon,
-  color,
-  name,
-  checked,
-  onToggle,
-  query = "",
-}: {
-  icon: string;
-  color: string;
-  name: string;
-  checked: boolean;
-  onToggle: () => void;
-  query?: string;
-}) {
-  const C = useTheme();
-  return (
-    <button
-      onClick={onToggle}
-      style={{
-        display: "flex",
-        alignItems: "center",
-        gap: 8,
-        width: "100%",
-        padding: "6px 0",
-        background: "none",
-        border: "none",
-        cursor: "pointer",
-        textAlign: "left",
-        fontFamily: font,
-      }}
-    >
-      <span
-        style={{
-          width: 22,
-          height: 22,
-          borderRadius: 7,
-          background: tint(color, 0.15),
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          flexShrink: 0,
-        }}
-      >
-        <Glyph name={icon} size={12} color={color} sw={1.8} />
-      </span>
-      <span style={{ flex: 1, fontSize: 12, color: C.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-        <HighlightedText text={name} query={query} />
-      </span>
-      <CheckBox checked={checked} />
-    </button>
-  );
-}
-
-function AccountsOptions({ w, state, onChange }: { w: WidgetConfig; state: StateResponse; onChange: (o: WidgetOpts) => void }) {
-  const C = useTheme();
-  const { t } = useT();
-  const collapsed = w.opts?.collapsed ?? true;
-  const count = w.opts?.count ?? 4;
-  const picked = w.opts?.picked; // defined (even empty) → "Selected" tab active — see AccountsWidget
-  const accounts = state.accounts.filter((a) => !a.archived);
-  const [q, setQ] = useState("");
-  // reset only on the "all"→"picked" transition (undefined→array) — NOT on every checkbox toggle,
-  // which also produces a new `picked` array reference and would otherwise clear what was typed.
-  useEffect(() => {
-    if (picked !== undefined) setQ("");
-  }, [picked !== undefined]);
-  const filteredAccounts = accounts.filter((a) => matchesSearch(a.name, q));
-  const stepBtn = {
-    width: 26,
-    height: 26,
-    borderRadius: 8,
-    border: `1px solid ${C.line}`,
-    background: C.chip,
-    color: C.text,
-    fontSize: 14,
-    fontWeight: 700,
-    cursor: "pointer",
-    lineHeight: 1,
-  } as const;
-  const tabs: Array<{ key: "all" | "picked"; label: Message; onClick: () => void }> = [
-    { key: "all", label: msg("All"), onClick: () => onChange({ picked: undefined }) },
-    { key: "picked", label: msg("Selected"), onClick: () => onChange({ picked: picked ?? [] }) },
-  ];
-  return (
-    <div style={{ padding: "0 0 10px 26px", display: "flex", flexDirection: "column", gap: 10 }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
-        <span style={{ fontSize: 12, color: C.text }}>{t("Collapsed by default")}</span>
-        <Toggle on={collapsed} onClick={() => onChange({ collapsed: !collapsed })} label={t("Collapsed by default")} />
-      </div>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
-        <span style={{ fontSize: 12, color: C.text }}>{t("Accounts shown when collapsed")}</span>
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <button onClick={() => onChange({ count: Math.max(2, count - 1) })} style={stepBtn}>
-            −
-          </button>
-          <span style={{ fontSize: 13, fontWeight: 700, color: C.text, width: 16, textAlign: "center", fontVariantNumeric: "tabular-nums" }}>{count}</span>
-          <button onClick={() => onChange({ count: Math.min(8, count + 1) })} style={stepBtn}>
-            +
-          </button>
-        </div>
-      </div>
-      <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-        {tabs.map((tb) => (
-          <button key={tb.key} onClick={tb.onClick} style={chipStyle(C, picked !== undefined ? tb.key === "picked" : tb.key === "all")}>
-            {t(tb.label)}
-          </button>
-        ))}
-      </div>
-      {picked !== undefined && (
-        <>
-          {accounts.length > SEARCH_THRESHOLD && <PickerSearch value={q} onChange={setQ} />}
-          {/* fixed (not max-) height once the search box is showing — filtering down to 1-2 rows must
-              not shrink the checklist and reflow the whole widget-editor sheet under it (same shrink-
-              behind-keyboard bug as the picker sheets in chrome.tsx, contained here since this list
-              isn't the whole sheet). */}
-          <div
-            className="gs"
-            style={{
-              display: "flex",
-              flexDirection: "column",
-              gap: 2,
-              ...(accounts.length > SEARCH_THRESHOLD ? { height: 200 } : { maxHeight: 200 }),
-              overflowY: "auto",
-            }}
-          >
-            {filteredAccounts.length === 0 ? (
-              <div style={{ textAlign: "center", color: C.mute, fontSize: 12, padding: "10px 0" }}>{t("No matches")}</div>
-            ) : (
-              filteredAccounts.map((a) => {
-                const ids = new Set(picked);
-                const checked = ids.has(a.id);
-                return (
-                  <PickRow
-                    key={a.id}
-                    icon={a.icon}
-                    color={a.color}
-                    name={a.name}
-                    query={q}
-                    checked={checked}
-                    onToggle={() => {
-                      const next = new Set(ids);
-                      if (checked) next.delete(a.id);
-                      else next.add(a.id);
-                      onChange({ picked: [...next] });
-                    }}
-                  />
-                );
-              })
-            )}
-          </div>
-        </>
-      )}
+    <div>
+      <SectionEyebrow label={title} />
+      <CardBox style={{ minHeight: 64 }}>{null}</CardBox>
     </div>
   );
 }
 
-function EnvelopesOptions({ w, state, onChange }: { w: WidgetConfig; state: StateResponse; onChange: (o: WidgetOpts) => void }) {
-  const C = useTheme();
-  const { t } = useT();
-  const mode = w.opts?.mode ?? "all";
-  const base = mode.split(":")[0]!; // "all" | "savings" | "group" | "picked"
-  const groups = state.groups;
-  const envelopes = state.envelopes.filter((e) => !e.archived);
-  const [q, setQ] = useState("");
-  // reset only on the transition INTO "picked" — not on every checkbox toggle, which also changes
-  // `mode` (the picked-ids suffix) and would otherwise clear what was typed.
-  useEffect(() => {
-    if (base === "picked") setQ("");
-  }, [base === "picked"]);
-  const filteredEnvelopes = envelopes.filter((e) => matchesSearch(e.name, q));
-  const tabs: Array<{ key: string; label: Message; onClick: () => void }> = [
-    { key: "all", label: msg("All"), onClick: () => onChange({ mode: "all" }) },
-    { key: "savings", label: msg("Savings only"), onClick: () => onChange({ mode: "savings" }) },
-    { key: "group", label: msg("Group…"), onClick: () => onChange({ mode: `group:${groups[0]?.id ?? ""}` }) },
-    { key: "picked", label: msg("Selected"), onClick: () => onChange({ mode: "picked:" }) },
-  ];
+/** The ONE place Start.tsx (and, later, the wide board) renders a widget by config: eager ids go
+ *  straight through `START_WIDGETS`, everything else through `LAZY_WIDGETS` behind a `LazyChunk`
+ *  (its error boundary keeps a failed fetch from blanking the rest of Start — variant "silent"
+ *  because the inner `Suspense` below already supplies a themed pending state, so the boundary's
+ *  OWN default fallback is never shown; only its failure path matters here). A corrupted/future
+ *  persisted id (settings are untyped JSON at rest) falls through to `null` — never crash Start.
+ *  `t` is passed in rather than called here: `renderWidget` is a plain function invoked during a
+ *  component's render, not a component/hook itself, so the `useT()` call stays at the real call
+ *  site (Start.tsx). */
+export function renderWidget(cfg: WidgetConfig, props: WidgetProps, t: (m: Message, p?: Record<string, string | number>) => string): ReactNode {
+  if (cfg.id in START_WIDGETS) {
+    const W = START_WIDGETS[cfg.id]!;
+    return <W {...props} opts={cfg.opts} />;
+  }
+  const L = LAZY_WIDGETS[cfg.id as LazyWidgetId];
+  if (!L) return null;
+  const title = t(WIDGET_CATALOG[cfg.id].title);
   return (
-    <div style={{ padding: "0 0 10px 26px" }}>
-      <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 8 }}>
-        {tabs.map((tb) => (
-          <button key={tb.key} onClick={tb.onClick} style={chipStyle(C, base === tb.key)}>
-            {t(tb.label)}
-          </button>
-        ))}
-      </div>
-      {base === "group" && (
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-          {groups.map((g) => (
-            <button key={g.id} onClick={() => onChange({ mode: `group:${g.id}` })} style={chipStyle(C, mode === `group:${g.id}`)}>
-              {g.name}
-            </button>
-          ))}
-        </div>
-      )}
-      {base === "picked" && (
-        <>
-          {envelopes.length > SEARCH_THRESHOLD && <PickerSearch value={q} onChange={setQ} />}
-          {/* fixed (not max-) height once the search box is showing — see AccountsOptions' comment. */}
-          <div
-            className="gs"
-            style={{
-              display: "flex",
-              flexDirection: "column",
-              gap: 2,
-              ...(envelopes.length > SEARCH_THRESHOLD ? { height: 200 } : { maxHeight: 200 }),
-              overflowY: "auto",
-            }}
-          >
-            {filteredEnvelopes.length === 0 ? (
-              <div style={{ textAlign: "center", color: C.mute, fontSize: 12, padding: "10px 0" }}>{t("No matches")}</div>
-            ) : (
-              filteredEnvelopes.map((e) => {
-                const ids = new Set(mode.slice("picked:".length).split(",").filter(Boolean));
-                const checked = ids.has(e.id);
-                return (
-                  <PickRow
-                    key={e.id}
-                    icon={e.icon}
-                    color={e.color}
-                    name={e.name}
-                    query={q}
-                    checked={checked}
-                    onToggle={() => {
-                      const next = new Set(ids);
-                      if (checked) next.delete(e.id);
-                      else next.add(e.id);
-                      onChange({ mode: `picked:${[...next].join(",")}` });
-                    }}
-                  />
-                );
-              })
-            )}
-          </div>
-        </>
-      )}
-    </div>
-  );
-}
-
-function QuickActionsOptions({ w, onChange }: { w: WidgetConfig; onChange: (o: WidgetOpts) => void }) {
-  const C = useTheme();
-  const { t } = useT();
-  // RAW opts (like AccountsOptions' `picked`) — resolveActions falls back to the default set on
-  // empty, which would make "uncheck everything" snap right back to the defaults in this checklist.
-  const selected = w.opts?.actions ?? [];
-  return (
-    <div style={{ padding: "0 0 10px 26px", display: "flex", flexDirection: "column", gap: 2 }}>
-      {QUICK_ACTION_ORDER.map((key) => {
-        const def = QUICK_ACTION_DEFS[key];
-        const checked = selected.includes(key);
-        return (
-          <button
-            key={key}
-            onClick={() => {
-              const set = new Set(selected);
-              if (checked) set.delete(key);
-              else set.add(key);
-              // canonical order regardless of tap order — keeps QuickActions' row stable
-              onChange({ actions: QUICK_ACTION_ORDER.filter((k) => set.has(k)) });
-            }}
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 8,
-              width: "100%",
-              padding: "6px 0",
-              background: "none",
-              border: "none",
-              cursor: "pointer",
-              textAlign: "left",
-              fontFamily: font,
-            }}
-          >
-            <span
-              style={{
-                width: 22,
-                height: 22,
-                borderRadius: 7,
-                background: C.chip,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                flexShrink: 0,
-              }}
-            >
-              {def.glyph ? <Glyph name={def.glyph} size={12} color={C.soft} sw={1.8} /> : <Ico d={def.d!} size={12} color={C.soft} sw={1.8} />}
-            </span>
-            <span style={{ flex: 1, fontSize: 12, color: C.text }}>{t(def.label)}</span>
-            <CheckBox checked={checked} />
-          </button>
-        );
-      })}
-    </div>
-  );
-}
-
-export function EditWidgetsSheet({ show, state, onClose }: { show: boolean; state: StateResponse; onClose: () => void }) {
-  const { t } = useT();
-  const { settings, setSettings } = useSettings();
-  const [openOptions, setOpenOptions] = useState<WidgetId | null>(null);
-  const list = settings.startWidgets;
-
-  const commitMove = (from: number, to: number) => {
-    const order = [...list];
-    const [m] = order.splice(from, 1);
-    order.splice(to, 0, m!);
-    setSettings({ ...settings, startWidgets: order });
-  };
-  const dnd = useDragReorder(commitMove);
-
-  const toggle = (id: WidgetId) => setSettings({ ...settings, startWidgets: list.map((w) => (w.id === id ? { ...w, enabled: !w.enabled } : w)) });
-  const setOpts = (id: WidgetId, opts: WidgetOpts) =>
-    setSettings({ ...settings, startWidgets: list.map((w) => (w.id === id ? { ...w, opts: { ...w.opts, ...opts } } : w)) });
-  const configurable = (id: WidgetId) => id === "accounts" || id === "envelopes" || id === "quickActions";
-
-  return (
-    <Sheet show={show} onClose={onClose}>
-      {(C) => (
-        <>
-          <div style={{ fontSize: 16, fontWeight: 750, color: C.text, textAlign: "center", marginBottom: 2 }}>{t("Edit widgets")}</div>
-          <div style={{ fontSize: 11, color: C.mute, textAlign: "center", marginBottom: 12 }}>{t("Drag to reorder")}</div>
-          {list.map((w, idx) => {
-            if (!(w.id in START_WIDGETS)) return null; // corrupted/future persisted id — never crash the sheet
-            const b = dnd.bind(idx);
-            const title = t(WIDGET_TITLE[w.id]);
-            return (
-              <div
-                key={w.id}
-                ref={dnd.itemRef(idx)}
-                style={{
-                  borderBottom: `1px solid ${C.line}`,
-                  background: dnd.dragging === idx ? C.bg : "transparent",
-                  outline: dnd.over === idx && dnd.dragging !== idx ? `2px dashed ${TEAL}` : "none",
-                  outlineOffset: -2,
-                  borderRadius: 8,
-                }}
-              >
-                <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 0" }}>
-                  <span
-                    {...b}
-                    aria-label={t("Drag {name}", { name: title })}
-                    style={{ ...b.style, color: C.mute, fontSize: 15, padding: "4px 2px", display: "flex" }}
-                  >
-                    ≡
-                  </span>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 13.5, fontWeight: 600, color: C.text }}>{title}</div>
-                    {configurable(w.id) ? (
-                      <button
-                        onClick={() => setOpenOptions(openOptions === w.id ? null : w.id)}
-                        style={{
-                          background: "none",
-                          border: "none",
-                          padding: 0,
-                          fontSize: 11,
-                          color: C.mute,
-                          cursor: "pointer",
-                          textAlign: "left",
-                          fontFamily: font,
-                        }}
-                      >
-                        {widgetSubtitle(w, state, t)}
-                      </button>
-                    ) : (
-                      <div style={{ fontSize: 11, color: C.mute, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                        {widgetSubtitle(w, state, t)}
-                      </div>
-                    )}
-                  </div>
-                  <Toggle on={w.enabled} onClick={() => toggle(w.id)} label={title} />
-                </div>
-                {openOptions === w.id && w.id === "accounts" && <AccountsOptions w={w} state={state} onChange={(o) => setOpts("accounts", o)} />}
-                {openOptions === w.id && w.id === "envelopes" && <EnvelopesOptions w={w} state={state} onChange={(o) => setOpts("envelopes", o)} />}
-                {openOptions === w.id && w.id === "quickActions" && <QuickActionsOptions w={w} onChange={(o) => setOpts("quickActions", o)} />}
-              </div>
-            );
-          })}
-          <button
-            onClick={onClose}
-            style={{
-              width: "100%",
-              marginTop: 14,
-              padding: "12px 0",
-              borderRadius: 12,
-              border: "none",
-              background: TEAL,
-              color: "#fff",
-              fontSize: 13.5,
-              fontWeight: 600,
-              cursor: "pointer",
-            }}
-          >
-            {t("Done")}
-          </button>
-        </>
-      )}
-    </Sheet>
+    <LazyChunk variant="silent">
+      <Suspense fallback={<WidgetPending title={title} />}>
+        <L {...props} opts={cfg.opts} />
+      </Suspense>
+    </LazyChunk>
   );
 }

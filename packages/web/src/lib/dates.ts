@@ -11,6 +11,23 @@ export function monthLabel(month: string, lang: Lang): string {
   return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
+/** Short month name per locale, e.g. "Jul" / "Lip" — no year, for chart axes where a full
+ *  `monthLabel` ("Lipiec 2026"/"July 2026") does not fit (a phone-width row of twelve months).
+ *  Uses `Intl`'s own CLDR abbreviation, not a substring of the long form: CLDR's short-month
+ *  rule is not "first N characters" in every locale, so slicing would be correct by accident
+ *  in some languages and wrong in others — the same reasoning `CURRENCY_DIGITS` and every other
+ *  locale-derived table in this codebase already follows (pin CLDR behavior, never hand-roll it).
+ *  `withYear` adds the year (e.g. "Aug 2025") — the net-worth range caption's endpoints (design
+ *  parity wave D task 2, `v3:3195`'s `nwChart.range`) need it; the chart axis row below the plot
+ *  never does (same convention as `shortDate`'s own `withYear` flag). */
+export function monthShortLabel(month: string, lang: Lang, withYear = false): string {
+  const [y, m] = month.split("-").map(Number) as [number, number];
+  const s = new Intl.DateTimeFormat(LOCALE_OF[lang], { month: "short", ...(withYear ? { year: "numeric" } : {}), timeZone: "UTC" }).format(
+    new Date(Date.UTC(y, m - 1, 1)),
+  );
+  return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
 /** Month names per locale (for date pickers). */
 export function monthNames(lang: Lang): string[] {
   const f = new Intl.DateTimeFormat(LOCALE_OF[lang], { month: "long", timeZone: "UTC" });
@@ -47,6 +64,13 @@ export function shortDate(iso: string, lang: Lang, withYear = false): string {
  *  onto a number would not. */
 export function dayMonth(iso: string, lang: Lang): string {
   return new Intl.DateTimeFormat(LOCALE_OF[lang], { day: "numeric", month: "long", timeZone: "UTC" }).format(new Date(`${iso}T00:00:00Z`));
+}
+
+/** Weekday + day + short month, e.g. "Wed, Jul 9" / "śr., 9 lip" — the Month report's day-panel
+ *  header. Shorter than `formatDateLong`'s full form ("Monday, July 7, 2026"); unlike `shortDate`
+ *  (day+month only), this includes the weekday. */
+export function weekdayShortDate(iso: string, lang: Lang): string {
+  return new Intl.DateTimeFormat(LOCALE_OF[lang], { weekday: "short", day: "numeric", month: "short", timeZone: "UTC" }).format(new Date(`${iso}T00:00:00Z`));
 }
 
 /** Full date per locale, e.g. "poniedziałek, 7 lipca 2026" / "Monday, July 7, 2026". */

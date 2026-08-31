@@ -4,8 +4,24 @@
  * `budgetUsage` owns the denominator and threshold rules for both report surfaces.
  * Non-positive budgets deliberately have `pct: null`; overspending remains `left < 0`.
  */
+
 import { describe, expect, test } from "bun:test";
-import { type BudgetUsage, budgetRowPresentation, budgetsOverAmount, budgetsSummary, budgetUsage, compareBudgetUsageRows } from "./reportSummary";
+import type { EnvelopeTrend } from "@enveo/shared";
+import {
+  type BudgetPace,
+  type BudgetStep,
+  type BudgetUsage,
+  budgetPace,
+  budgetRowPresentation,
+  budgetSteps,
+  budgetsOverAmount,
+  budgetsSummary,
+  budgetUsage,
+  compareBudgetUsageRows,
+  daysInMonth,
+  monthProgress,
+  trendBannerMover,
+} from "./reportSummary";
 
 const envRow = (over: Partial<{ archived: boolean; allocated: number; carryIn: number; spent: number }> = {}) => ({
   archived: false,
@@ -157,5 +173,291 @@ describe("budgetsOverAmount", () => {
         envRow({ allocated: 1000, spent: 500 }), // ok, not counted
       ]),
     ).toBe(600);
+  });
+});
+
+describe("monthProgress", () => {
+  test("a past month is complete, a future month has not started", () => {
+    expect(monthProgress("2026-06", "2026-07-14")).toBe(1);
+    expect(monthProgress("2026-08", "2026-07-14")).toBe(0);
+  });
+
+  test("the current month is the elapsed fraction, day-inclusive", () => {
+    expect(monthProgress("2026-07", "2026-07-14")).toBeCloseTo(14 / 31, 6);
+    expect(monthProgress("2026-07", "2026-07-01")).toBeCloseTo(1 / 31, 6);
+    expect(monthProgress("2026-07", "2026-07-31")).toBe(1);
+  });
+
+  test("short and leap months use their own length", () => {
+    expect(monthProgress("2026-02", "2026-02-14")).toBeCloseTo(14 / 28, 6);
+    expect(monthProgress("2024-02", "2024-02-14")).toBeCloseTo(14 / 29, 6);
+  });
+});
+
+describe("daysInMonth", () => {
+  test("gets February right in a leap year and a century non-leap year", () => {
+    expect(daysInMonth("2024-02")).toBe(29); // ordinary leap year (divisible by 4)
+    expect(daysInMonth("1900-02")).toBe(28); // divisible by 100 but not 400 → not a leap year
+    expect(daysInMonth("2000-02")).toBe(29); // divisible by 400 → a leap year after all
+  });
+});
+
+describe("budgetPace", () => {
+  const row = (over: Partial<{ archived: boolean; allocated: number; carryIn: number; spent: number }> = {}) => ({
+    archived: false,
+    allocated: 0,
+    carryIn: 0,
+    spent: 0,
+    ...over,
+  });
+
+  test("overspent stays over even when the pace looks calm", () => {
+    const p: BudgetPace = budgetPace(row({ allocated: 100_00, spent: 130_00 }), 0.5);
+    expect(p.bucket).toBe("over");
+  });
+
+  test("a zero budget with spending is over, never usedUp — the floored-denominator trap", () => {
+    expect(budgetPace(row({ allocated: 0, spent: 1 }), 0.5).bucket).toBe("over");
+  });
+
+  test("near the limit is preserved from budgetUsage", () => {
+    // 90% spent, money still left → near
+    expect(budgetPace(row({ allocated: 100_00, spent: 90_00 }), 0.5).bucket).toBe("near");
+  });
+
+  test("spent exactly to the limit is usedUp, not near and not over", () => {
+    expect(budgetPace(row({ allocated: 100_00, spent: 100_00 }), 0.5).bucket).toBe("usedUp");
+  });
+
+  test("a calm envelope whose pace overshoots the budget is risk", () => {
+    // 60.00 of a 100.00 budget spent with 40% of the month gone → projected 150.00
+    const p = budgetPace(row({ allocated: 100_00, spent: 60_00 }), 0.4);
+    expect(p.projected).toBe(150_00);
+    expect(p.bucket).toBe("risk");
+  });
+
+  test("a calm envelope whose pace lands inside the budget is ok", () => {
+    const p = budgetPace(row({ allocated: 100_00, spent: 30_00 }), 0.5);
+    expect(p.projected).toBe(60_00);
+    expect(p.bucket).toBe("ok");
+  });
+
+  test("risk cannot fire once the month is over — projection equals reality", () => {
+    const p = budgetPace(row({ allocated: 100_00, spent: 60_00 }), 1);
+    expect(p.projected).toBe(60_00);
+    expect(p.bucket).toBe("ok");
+  });
+
+  test("no spending never projects a risk, and progress 0 does not divide by zero", () => {
+    const p = budgetPace(row({ allocated: 100_00, spent: 0 }), 0);
+    expect(p.projected).toBe(0);
+    expect(p.bucket).toBe("ok");
+  });
+
+  test("an envelope with no budget at all and no spending is ok", () => {
+    expect(budgetPace(row({}), 0.5).bucket).toBe("ok");
+  });
+
+  test("carryIn counts toward the budget", () => {
+    // 40.00 carried in + 60.00 allocated = 100.00 budget; 30.00 spent at half the month
+    expect(budgetPace(row({ allocated: 60_00, carryIn: 40_00, spent: 30_00 }), 0.5).bucket).toBe("ok");
+  });
+});
+
+describe("budgetSteps", () => {
+  const stepRow = (id: string, over: Partial<{ archived: boolean; allocated: number; carryIn: number; spent: number }>) => ({
+    id,
+    name: id,
+    archived: false,
+    allocated: 0,
+    carryIn: 0,
+    spent: 0,
+    ...over,
+  });
+
+  test("overspends come first, then risks, then near-limit", () => {
+    const steps = budgetSteps(
+      [
+        stepRow("near", { allocated: 100_00, spent: 90_00 }), // near
+        stepRow("risk", { allocated: 100_00, spent: 60_00 }), // projected 150.00 at 40%
+        stepRow("over", { allocated: 100_00, spent: 120_00 }), // over by 20.00
+      ],
+      0.4,
+    );
+    expect(steps.map((s) => s.envelopeId)).toEqual(["over", "risk", "near"]);
+    expect(steps.map((s) => s.kind)).toEqual(["over", "risk", "near"]);
+  });
+
+  test("the cover amount is exactly the overspend", () => {
+    const steps = budgetSteps([stepRow("e", { allocated: 100_00, spent: 130_00 })], 0.5);
+    expect(steps).toHaveLength(1);
+    expect(steps[0]!.amount).toBe(30_00);
+  });
+
+  test("the risk amount closes the projected gap", () => {
+    // projected 150.00 against a 100.00 budget → 50.00
+    const steps = budgetSteps([stepRow("e", { allocated: 100_00, spent: 60_00 })], 0.4);
+    expect(steps[0]!.kind).toBe("risk");
+    expect(steps[0]!.amount).toBe(50_00);
+  });
+
+  test("the near amount tops the envelope back up to a 20% cushion, post-application", () => {
+    // budget 100.00, spent 90.00 → left 10.00. Naive round(100*0.2) - 10 = 10.00 falls short:
+    // adding 10.00 grows the budget to 110.00, whose 20% cushion is 22.00 against a new left of
+    // 20.00 — still short. The solved amount is 12.50: budget becomes 112.50, left becomes
+    // 22.50, which is exactly 20% of 112.50.
+    const steps = budgetSteps([stepRow("e", { allocated: 100_00, spent: 90_00 })], 0.5);
+    expect(steps[0]!.kind).toBe("near");
+    expect(steps[0]!.amount).toBe(12_50);
+  });
+
+  test("the near amount is strictly larger than the naive (pre-application) target", () => {
+    // Same case as above: naive round(rawBudget * 0.2) - left = round(2000) - 1000 = 10.00,
+    // but the actual step (12.50) must exceed it — the naive amount never reaches the cushion.
+    const steps = budgetSteps([stepRow("e", { allocated: 100_00, spent: 90_00 })], 0.5);
+    const naive = Math.round(100_00 * 0.2) - 10_00;
+    expect(naive).toBe(10_00);
+    expect(steps[0]!.amount).toBeGreaterThan(naive);
+  });
+
+  test("an envelope already at the cushion produces no near step", () => {
+    // Within the "near" bucket (pct>=80, left>0), left = rawBudget - spent can never exceed
+    // the cushion (NEAR_CUSHION * rawBudget): pct>=80 means spent>=0.8*rawBudget, so
+    // left<=0.2*rawBudget always. The only way to be "at or above" the cushion while still
+    // classified near is this exact boundary — budget 250.00, spent 200.00 (pct=80%) → left
+    // 50.00, cushion 50.00.
+    expect(budgetSteps([stepRow("e", { allocated: 250_00, spent: 200_00 })], 0.5)).toEqual([]);
+  });
+
+  test("near top-up is idempotent: applying the step once clears the checklist", () => {
+    // This is the regression test for the bug itself: the old formula (round(B*0.2) - left)
+    // only closed 80% of the gap each press, so re-deriving the step after "applying" it kept
+    // producing a smaller, non-zero residual step forever. Simulate the UI's press (the amount
+    // is added to `allocated`) and assert the envelope no longer produces a near step.
+    const before = stepRow("e", { allocated: 100_00, spent: 90_00 });
+    const steps = budgetSteps([before], 0.5);
+    expect(steps).toHaveLength(1);
+    const applied = { ...before, allocated: before.allocated + steps[0]!.amount };
+    expect(budgetSteps([applied], 0.5)).toEqual([]);
+  });
+
+  test("within a kind the largest amount leads", () => {
+    const steps = budgetSteps(
+      [
+        stepRow("small", { allocated: 100_00, spent: 110_00 }), // over by 10.00
+        stepRow("big", { allocated: 100_00, spent: 150_00 }), // over by 50.00
+      ],
+      0.5,
+    );
+    expect(steps.map((s) => s.envelopeId)).toEqual(["big", "small"]);
+  });
+
+  test("calm, used-up and archived envelopes produce no step", () => {
+    const steps = budgetSteps(
+      [
+        stepRow("calm", { allocated: 100_00, spent: 10_00 }),
+        stepRow("usedUp", { allocated: 100_00, spent: 100_00 }),
+        stepRow("archived", { archived: true, allocated: 100_00, spent: 200_00 }),
+      ],
+      0.5,
+    );
+    expect(steps).toEqual([]);
+  });
+
+  test("an envelope with neither budget nor spending is not a step", () => {
+    expect(budgetSteps([stepRow("untouched", {})], 0.5)).toEqual([]);
+  });
+
+  test("keeps an ignored step, flagged rather than dropped", () => {
+    const rows = [stepRow("over", { allocated: 100_00, spent: 120_00 }), stepRow("near", { allocated: 100_00, spent: 90_00 })];
+    const steps: BudgetStep[] = budgetSteps(rows, 0.5, { ignored: new Set(["over"]) });
+    // still both steps, in the usual order — ignored withholds nothing, it only flags
+    expect(steps.map((s) => s.envelopeId)).toEqual(["over", "near"]);
+    expect(steps.map((s) => s.ignored)).toEqual([true, false]);
+  });
+
+  test("caps fundable at the pool without changing amount", () => {
+    // over by 30.00, but only 10.00 is ready to assign
+    const steps = budgetSteps([stepRow("e", { allocated: 100_00, spent: 130_00 })], 0.5, { readyToAssign: 10_00 });
+    expect(steps[0]!.amount).toBe(30_00);
+    expect(steps[0]!.fundable).toBe(10_00);
+  });
+
+  test("treats an absent pool as unlimited", () => {
+    const steps = budgetSteps([stepRow("e", { allocated: 100_00, spent: 130_00 })], 0.5);
+    expect(steps[0]!.fundable).toBe(steps[0]!.amount);
+  });
+
+  test("fundable equals amount when the pool exactly covers it", () => {
+    // over by 30.00, and exactly 30.00 is ready to assign — no shortfall
+    const steps = budgetSteps([stepRow("e", { allocated: 100_00, spent: 130_00 })], 0.5, { readyToAssign: 30_00 });
+    expect(steps[0]!.fundable).toBe(steps[0]!.amount);
+  });
+
+  test("fundable equals amount when the pool exceeds it", () => {
+    // over by 30.00, but 100.00 is ready to assign — the cap never bites
+    const steps = budgetSteps([stepRow("e", { allocated: 100_00, spent: 130_00 })], 0.5, { readyToAssign: 100_00 });
+    expect(steps[0]!.fundable).toBe(steps[0]!.amount);
+  });
+
+  test("never returns a negative fundable when the pool is negative", () => {
+    const steps = budgetSteps([stepRow("e", { allocated: 100_00, spent: 130_00 })], 0.5, { readyToAssign: -500 });
+    expect(steps[0]!.fundable).toBe(0);
+  });
+
+  test("produces no step for a negative carry-in with no activity this month", () => {
+    // allocated 0, carryIn -5000, spent 0 → the filter `allocated + carryIn > 0 || spent > 0`
+    // excludes it. Assert both halves so this fails if the guard is ever deleted: an inactive
+    // envelope with a negative carry-in stays silent, while the SAME envelope with spend this
+    // month is not silent — it clears the guard and produces an "over" step.
+    const inactive = stepRow("e", { allocated: 0, carryIn: -5000, spent: 0 });
+    expect(budgetSteps([inactive], 0.5)).toEqual([]);
+
+    const active = stepRow("e", { allocated: 0, carryIn: -5000, spent: 100 });
+    const steps = budgetSteps([active], 0.5);
+    expect(steps).toHaveLength(1);
+    expect(steps[0]!.kind).toBe("over");
+  });
+
+  test("a zero-amount top-up is dropped rather than shown as a no-op step", () => {
+    // budget 100.00, spent 80.00 → pct exactly 80 → near; left 20.00 already equals the cushion
+    const steps = budgetSteps([stepRow("e", { allocated: 100_00, spent: 80_00 })], 0.5);
+    expect(steps).toEqual([]);
+  });
+});
+
+const mk = (over: Partial<EnvelopeTrend> = {}): EnvelopeTrend => ({
+  id: "e",
+  name: "Envelope",
+  color: "#46c4ba",
+  series: [0, 0, 0, 0, 0, 0],
+  last: 0,
+  baseline: 0,
+  deltaPct: null,
+  ...over,
+});
+
+describe("trendBannerMover", () => {
+  test("empty list -> null", () => {
+    expect(trendBannerMover([])).toBeNull();
+  });
+
+  test("returns trends[0] when its move clears the threshold", () => {
+    const trends = [mk({ deltaPct: 0.5 }), mk({ deltaPct: 0.06 })];
+    expect(trendBannerMover(trends)).toBe(trends[0]!);
+  });
+
+  test("a negative move past the threshold still fires — the mockup's own sign-only gate missed this", () => {
+    const trends = [mk({ deltaPct: -0.4 })];
+    expect(trendBannerMover(trends)).toBe(trends[0]!);
+  });
+
+  test("null deltaPct on trends[0] suppresses the banner and does NOT fall through to trends[1]", () => {
+    const trends = [mk({ deltaPct: null }), mk({ deltaPct: 0.9 })];
+    expect(trendBannerMover(trends)).toBeNull();
+  });
+
+  test("below-threshold trends[0] -> null", () => {
+    expect(trendBannerMover([mk({ deltaPct: 0.02 })])).toBeNull();
   });
 });

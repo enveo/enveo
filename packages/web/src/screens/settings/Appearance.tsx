@@ -1,14 +1,16 @@
-import { useState } from "react";
-import { EditWidgetsSheet } from "../../components/widgets";
+import type { ThemeMode } from "@enveo/shared";
+import { type ReactNode, useState } from "react";
+import { EditWidgetsSheet } from "../../components/EditWidgetsSheet";
 import { useStateQuery } from "../../lib/api";
-import { useCurrency, useSettings, useTheme } from "../../lib/contexts";
+import { useAccountPreferences, useCurrency, useDevicePreferences, useSettings, useTheme } from "../../lib/contexts";
 import { SUPPORTED_CURRENCIES } from "../../lib/currency";
 import { todayISO } from "../../lib/dates";
 import { type Lang, LOCALES, loadLocale, type Message, msg, useT } from "../../lib/i18n";
 import { local } from "../../lib/mutate";
+import { useWideHost } from "../../lib/shellContext";
 import { store } from "../../lib/store";
 import { font, TEAL, themeTokens } from "../../lib/theme";
-import { ActionGroup, ActionRow, Eyebrow, Helper, Row, Seg } from "./ui";
+import { ActionGroup, ActionRow, Helper, Row, Seg } from "./ui";
 
 /** Where a translator reports a bad string. Community locales are labelled, not hidden — honest, and
  *  it is the only route a reader of a wrong sentence has back to us. */
@@ -27,7 +29,12 @@ const THEME_LABEL: Record<"teal" | "duet", Message> = {
   duet: msg("Duet"),
 };
 
-/** Color theme picker tiles: a mini surface preview (bg + accent dot, duet's dot is its CTA coral), name, accent border on the selected one. */
+/**
+ * Color theme picker tiles (v3:697-706 `skinTiles`): the CARD is white/`C.card` on both swatches —
+ * the theme only shows through the small preview strip (bg + accent dot, duet's dot is its CTA
+ * coral) and the label underneath, never as a tint on the whole card. Selection is an accent
+ * border plus a matching 1px ring, not a filled background (owner ruling round 1, item 11).
+ */
 function ThemeTiles() {
   const C = useTheme();
   const { settings, setSettings } = useSettings();
@@ -35,7 +42,7 @@ function ThemeTiles() {
   const isDark =
     settings.themeMode === "auto" ? typeof window !== "undefined" && window.matchMedia("(prefers-color-scheme: dark)").matches : settings.themeMode === "dark";
   return (
-    <div style={{ display: "flex", gap: 8, padding: "14px 0", borderBottom: `1px solid ${C.line}` }}>
+    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, padding: "14px 0", borderBottom: `1px solid ${C.line}` }}>
       {THEME_IDS.map((id) => {
         const tk = themeTokens(id, isDark);
         const accent = tk.vars["--accent"];
@@ -50,22 +57,32 @@ function ThemeTiles() {
             onClick={() => setSettings({ ...settings, accentTheme: id })}
             aria-pressed={active}
             style={{
-              flex: 1,
               display: "flex",
               flexDirection: "column",
-              alignItems: "center",
-              gap: 6,
-              padding: "10px 4px",
-              borderRadius: 10,
+              gap: 8,
+              padding: 10,
+              borderRadius: 12,
               cursor: "pointer",
-              background: C.bg,
-              border: `2px solid ${active ? accent : C.line}`,
+              background: C.card,
+              border: `1.5px solid ${active ? accent : C.line}`,
+              boxShadow: active ? `0 0 0 1px ${accent}` : "none",
             }}
           >
-            <div style={{ position: "relative", width: "100%", height: 26, borderRadius: 7, background: previewBg, border: `1px solid ${C.line}` }}>
-              <div style={{ position: "absolute", right: 4, bottom: 4, width: 8, height: 8, borderRadius: "50%", background: dot }} />
+            <div
+              style={{
+                height: 44,
+                borderRadius: 8,
+                background: previewBg,
+                border: `1px solid ${C.line}`,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "flex-end",
+                padding: "0 9px",
+              }}
+            >
+              <div style={{ width: 9, height: 9, borderRadius: "50%", background: dot }} />
             </div>
-            <span style={{ fontSize: 11, fontWeight: 600, color: active ? C.text : C.soft }}>{t(THEME_LABEL[id])}</span>
+            <span style={{ textAlign: "center", fontSize: 12, fontWeight: 650, color: C.text }}>{t(THEME_LABEL[id])}</span>
           </button>
         );
       })}
@@ -73,8 +90,153 @@ function ThemeTiles() {
   );
 }
 
+/**
+ * Scope control for the theme swatches + Light/Dark/Auto segment above and below it: "All devices"
+ * writes straight to the account preference; "This device" freezes the CURRENT effective values
+ * into a per-device override so this device can diverge without touching what every other device
+ * sees (per-device theme override, 2026-08-27). There is no design mockup for this control — it
+ * follows the section's own pill idiom (`Seg`, the same treatment as the Theme mode segment below)
+ * per the owner's direction, kept inline with the theme controls it governs rather than moved under
+ * "This device" below: the two color/mode pickers and their scope stay in one visual group instead
+ * of the reader having to correlate two separate sections to find out where a click will land.
+ *
+ * The pill's own selected value is fully DERIVED from whether an override is currently set (never a
+ * separate "chosen but not applied" state) — so it can never show "This device" while actually
+ * following the account, or vice versa ("default state reflects reality", owner round 1 item 7's
+ * sibling rule for this control). Once an override exists, clicking a swatch or the mode segment
+ * below keeps updating it — `contexts.tsx`'s `splitSettingsPatch` routes there automatically, so
+ * those controls need no override-awareness of their own; this component only owns the freeze
+ * (all devices → this device) and clear (this device → all devices) transitions.
+ *
+ * Phone (owner round 4, item 25): the pill `fill`s its container — outside a `Row` the `Seg`
+ * stretches to the content column while its buttons stay content-sized, which at 390px left a
+ * ~55px dead pill track after "To urządzenie". Evenly split halves read as a deliberate
+ * full-width scope switcher and keep both Polish labels inside their half. Wide keeps the
+ * design-matched content-sized pills (the owner's phone-only ruling; item 12's override logic
+ * is untouched either way).
+ */
+function ThemeScope() {
+  const { t } = useT();
+  const { settings } = useSettings();
+  const { preferences: account } = useAccountPreferences();
+  const { preferences: device, update: updateDevice } = useDevicePreferences();
+  const phone = useWideHost() === null;
+  const overridden = device.themeModeOverride !== null || device.accentThemeOverride !== null;
+  const modeLabel = (mode: ThemeMode) => (mode === "light" ? t("Light") : mode === "dark" ? t("Dark") : t("Auto"));
+
+  return (
+    <div style={{ marginBottom: 12 }}>
+      <Seg<"account" | "device">
+        fill={phone}
+        value={overridden ? "device" : "account"}
+        onChange={(scope) => {
+          if (scope === "device") {
+            // Freeze the current effective values so the pill's derived state flips immediately —
+            // an empty override would still read as "All devices" and contradict the pill just clicked.
+            if (!overridden) void updateDevice({ themeModeOverride: settings.themeMode, accentThemeOverride: settings.accentTheme });
+          } else {
+            void updateDevice({ themeModeOverride: null, accentThemeOverride: null });
+          }
+        }}
+        options={[
+          { id: "account", label: t("All devices") },
+          { id: "device", label: t("This device") },
+        ]}
+      />
+      {overridden && <Helper>{t("Account default: {value}", { value: `${t(THEME_LABEL[account.accentTheme])} · ${modeLabel(account.themeMode)}` })}</Helper>}
+    </div>
+  );
+}
+
+/** Section-level description under an Appearance eyebrow (v3:696/814/830: 12px, `T.soft`,
+ *  line-height 1.5) — distinct from `Helper`'s smaller 11px/`mute` field-caption role, which the
+ *  design uses for captions nested under a single row (e.g. the discreet-mode sub-line below). */
+function SectionDesc({ children }: { children: ReactNode }) {
+  const C = useTheme();
+  return <div style={{ fontSize: 12, color: C.soft, lineHeight: 1.5, marginTop: 8 }}>{children}</div>;
+}
+
+/** Appearance-pane section eyebrow (v3:695/720/733: 9.5px/750/0.16em) — a LOCAL override, not a
+ *  restyle of the shared `Eyebrow`. `Eyebrow` is used by every other Settings section (Ai/DataTools/
+ *  DataSection/SyncSection) on both phone and wide; this pane's owner-mandated redesign (round 1,
+ *  item 11) covers only Appearance, so it must not silently reskin those other sections' headers,
+ *  which have no such ruling yet. Same pattern as `SectionDesc` above vs. `Helper`. */
+function AppearanceEyebrow({ children }: { children: ReactNode }) {
+  const C = useTheme();
+  return <div style={{ fontSize: 9.5, fontWeight: 750, color: C.mute, textTransform: "uppercase", letterSpacing: "0.16em", marginBottom: 8 }}>{children}</div>;
+}
+
+/** Appearance-pane card row (v3:726-733: card bg, 1px `T.line` border, radius 12, padding
+ *  11px 13px, no shadow; label 13px/650 `T.accent`, sub 11px `T.mute`, `›` chevron 12px `T.mute`)
+ *  — a LOCAL variant, not a restyle of the shared `ActionGroup`/`ActionRow`, which every other
+ *  Settings section (DataTools/DataSection/SyncSection/E2eeUpgradePanel) still renders with the
+ *  hub's radius-14 shadow card and 14px/700 `--cta` labels. Owner round 1 item 11 scopes the
+ *  value-for-value design match to Appearance only, so those sections must not be reskinned from
+ *  here. Same pattern as `AppearanceEyebrow` above vs. the shared `Eyebrow` (5351e8b).
+ *
+ *  WIDE-ONLY since owner round 4, item 24: the design-matched values that item 11 mandated for
+ *  the wide pane read wrong inside the 390px phone drill-in (a lone bordered card with an
+ *  accent-colored 13px label, unlike every other phone Settings row) — the phone branch of
+ *  `AppearanceSection` renders the shared `ActionGroup`/`ActionRow` idiom instead, exactly the
+ *  pre-d0a6b9e phone rendering. The two rulings fork on host, not on a restyle of either. */
+function AppearanceCardRow({ label, desc, onClick, disabled }: { label: string; desc: string; onClick: () => void; disabled?: boolean }) {
+  const C = useTheme();
+  return (
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      style={{
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "space-between",
+        gap: 12,
+        width: "100%",
+        background: C.card,
+        border: `1px solid ${C.line}`,
+        borderRadius: 12,
+        padding: "11px 13px",
+        textAlign: "left",
+        fontFamily: font,
+        cursor: disabled ? "default" : "pointer",
+        opacity: disabled ? 0.5 : 1,
+      }}
+    >
+      <span style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 0 }}>
+        <span style={{ fontSize: 13, fontWeight: 650, color: TEAL }}>{label}</span>
+        <span style={{ fontSize: 11, color: C.mute }}>{desc}</span>
+      </span>
+      <span aria-hidden style={{ fontSize: 12, color: C.mute, flexShrink: 0 }}>
+        ›
+      </span>
+    </button>
+  );
+}
+
 /** Selectable currencies (ISO 4217) — display only, no amount conversion. Shared with onboarding. */
 const CURRENCIES = SUPPORTED_CURRENCIES;
+
+/**
+ * A native `<select>` styled as the design's pill — "{value} ⌄" (v3:716-723) — on BOTH phone and
+ * wide (`WideSettings` renders this SAME component; design parity wave E task 3's own direction:
+ * "keep the native `<select>` semantics but style it as the design pill"). `appearance: none`
+ * (+ vendor prefixes for older WebKit) hides the OS chrome; the ⌄ is a decorative overlay
+ * (`pointerEvents: none`) so every click still lands on the real `<select>` underneath it —
+ * keyboard nav, screen readers and `onChange` are all untouched.
+ */
+function PillSelect({ children }: { children: ReactNode }) {
+  const C = useTheme();
+  return (
+    <span style={{ position: "relative", display: "inline-flex" }}>
+      {children}
+      <span
+        aria-hidden
+        style={{ position: "absolute", right: 12, top: "50%", transform: "translateY(-50%)", pointerEvents: "none", fontSize: 10, color: C.text }}
+      >
+        ⌄
+      </span>
+    </span>
+  );
+}
 
 /** Appearance: color themes, light/dark mode, language, currency, discreet mode. */
 export function AppearanceSection() {
@@ -82,26 +244,41 @@ export function AppearanceSection() {
   const { settings, setSettings } = useSettings();
   const { t } = useT();
   const currency = useCurrency();
+  // Owner round 4, item 24: the widgets entry keeps the design-matched `AppearanceCardRow` on
+  // wide (owner round 1 item 11) but renders the phone Settings idiom — the shared
+  // radius-14/`--cta` `ActionGroup`/`ActionRow` card — inside the 390px drill-in, where the
+  // bordered accent-label variant read as foreign next to every other phone Settings row.
+  const wide = useWideHost() !== null;
   const [widgetsOpen, setWidgetsOpen] = useState(false);
   const { data: currentState } = useStateQuery(todayISO().slice(0, 7));
   // guard: without a booted replica / a budgets entity there is nothing to update
   const budgetId = store.getLedger()?.budgets?.[0]?.id;
+  // Design parity wave E task 3 (v3:716-723): radius 9 and the border/background/font-size were
+  // already correct — padding grows to 7px 30px (room for the `PillSelect` ⌄ overlay) 7px 14px,
+  // weight to 650, and the native chrome is hidden (`appearance: none` + prefixes) since the
+  // control now draws its own ⌄.
   const selectStyle = {
-    padding: "7px 10px",
+    appearance: "none",
+    WebkitAppearance: "none",
+    MozAppearance: "none",
+    padding: "7px 30px 7px 14px",
+    minHeight: 30,
     borderRadius: 9,
     border: `1px solid ${C.line}`,
     background: C.bg,
     color: C.text,
     fontSize: 12.5,
-    fontWeight: 600,
+    fontWeight: 650,
     fontFamily: font,
+    cursor: "pointer",
   } as const;
   const community = LOCALES.find((l) => l.code === settings.lang)?.community;
 
   return (
     <div style={{ marginTop: 4 }}>
-      <Eyebrow>{t("Account preferences")}</Eyebrow>
-      <Helper>{t("Theme and language follow your account on every device.")}</Helper>
+      <AppearanceEyebrow>{t("Account preferences")}</AppearanceEyebrow>
+      <SectionDesc>{t("Language always follows your account. Theme follows your account too, unless you override it for this device below.")}</SectionDesc>
+      <ThemeScope />
       <ThemeTiles />
       <Row label={t("Theme")}>
         <Seg
@@ -115,22 +292,24 @@ export function AppearanceSection() {
         />
       </Row>
       <Row label={t("Language")}>
-        {/* Rendered FROM the registry: adding a locale must never mean remembering to edit a picker. */}
-        <select
-          value={settings.lang}
-          /* the locale chunk is fetched BEFORE the switch — otherwise the UI flashes English */
-          onChange={(e) => {
-            const id = e.target.value as Lang;
-            void loadLocale(id).then(() => setSettings({ ...settings, lang: id }));
-          }}
-          style={selectStyle}
-        >
-          {LOCALES.map((l) => (
-            <option key={l.code} value={l.code}>
-              {l.endonym}
-            </option>
-          ))}
-        </select>
+        <PillSelect>
+          {/* Rendered FROM the registry: adding a locale must never mean remembering to edit a picker. */}
+          <select
+            value={settings.lang}
+            /* the locale chunk is fetched BEFORE the switch — otherwise the UI flashes English */
+            onChange={(e) => {
+              const id = e.target.value as Lang;
+              void loadLocale(id).then(() => setSettings({ ...settings, lang: id }));
+            }}
+            style={selectStyle}
+          >
+            {LOCALES.map((l) => (
+              <option key={l.code} value={l.code}>
+                {l.endonym}
+              </option>
+            ))}
+          </select>
+        </PillSelect>
       </Row>
       {community && (
         <Helper>
@@ -141,39 +320,61 @@ export function AppearanceSection() {
         </Helper>
       )}
       <div style={{ marginTop: 18 }}>
-        <Eyebrow>{t("Budget preferences")}</Eyebrow>
-        <Helper>{t("Currency and dashboard widgets follow this budget on every device.")}</Helper>
+        <AppearanceEyebrow>{t("Budget preferences")}</AppearanceEyebrow>
+        <SectionDesc>{t("Currency and dashboard widgets follow this budget on every device.")}</SectionDesc>
       </div>
       <Row label={t("Currency")}>
-        <select
-          value={currency}
-          disabled={!budgetId}
-          onChange={(e) => {
-            if (budgetId) local.updateBudget(budgetId, e.target.value);
-          }}
-          style={selectStyle}
-        >
-          {CURRENCIES.map((c) => (
-            <option key={c} value={c}>
-              {c}
-            </option>
-          ))}
-        </select>
+        <PillSelect>
+          <select
+            value={currency}
+            disabled={!budgetId}
+            onChange={(e) => {
+              if (budgetId) local.updateBudget(budgetId, e.target.value);
+            }}
+            // `selectStyle`'s own `cursor: "pointer"` is an inline style — it would otherwise beat
+            // the UA stylesheet's `:disabled` cursor, showing a clickable pointer over a control
+            // that (absent a budget) cannot actually be changed.
+            style={{ ...selectStyle, cursor: budgetId ? "pointer" : "default" }}
+          >
+            {CURRENCIES.map((c) => (
+              <option key={c} value={c}>
+                {c}
+              </option>
+            ))}
+          </select>
+        </PillSelect>
       </Row>
-      <ActionGroup>
-        <ActionRow
+      {wide ? (
+        <AppearanceCardRow
           label={t("Edit dashboard widgets")}
           desc={t("Choose their order, visibility, and options.")}
           onClick={() => setWidgetsOpen(true)}
           disabled={!currentState}
-          chevron
         />
-      </ActionGroup>
+      ) : (
+        <ActionGroup>
+          <ActionRow
+            label={t("Edit dashboard widgets")}
+            desc={t("Choose their order, visibility, and options.")}
+            onClick={() => setWidgetsOpen(true)}
+            disabled={!currentState}
+            chevron
+          />
+        </ActionGroup>
+      )}
       <div style={{ marginTop: 18 }}>
-        <Eyebrow>{t("This device")}</Eyebrow>
-        <Helper>{t("Discreet mode stays only on this device.")}</Helper>
+        <AppearanceEyebrow>{t("This device")}</AppearanceEyebrow>
       </div>
-      <Row label={t("Discreet mode")}>
+      {/* The design nests this row's caption under its own label (v3:735-738) rather than as a
+       *  separate section-level line above it — the only Appearance row with a per-row sub-caption. */}
+      <Row
+        label={
+          <span style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+            <span>{t("Discreet mode")}</span>
+            <span style={{ fontSize: 11, fontWeight: 400, color: C.mute }}>{t("Hides amounts; stays on this device only.")}</span>
+          </span>
+        }
+      >
         <button
           onClick={() => setSettings({ ...settings, discreet: !settings.discreet })}
           style={{

@@ -1,17 +1,19 @@
-import { useBand } from "../../components/kit";
-import { Bar, ReportShell } from "../../components/reportKit";
+import { Bar, NetWorthChart, netWorthRangeLabel, ReportShell, useReportBand } from "../../components/reportKit";
 import type { StateResponse } from "../../lib/api";
 import { useTheme } from "../../lib/contexts";
-import { monthLabel } from "../../lib/dates";
 import { useT } from "../../lib/i18n";
+import { useWideHost } from "../../lib/shellContext";
 import { TEAL } from "../../lib/theme";
 import { type Mask, TITLES } from "./types";
 
 /**
  * "Assets" tab (Gabinet grammar, no dedicated mockup frame — follows A2/A3): band hero = net
- * worth + ▲/▼ m/m delta, `NetWorthChart` itself painted IN the band (`onBand`) so on Duet it
- * reads as a cream line on navy rather than the invisible navy-on-navy TEAL would give. Body:
- * the "Wealth" section (envelopes flagged `isSavings`) unchanged in content, bars via `Bar`.
+ * worth + ▲/▼ m/m delta, the shared `NetWorthChart` (`components/reportKit.tsx`) itself painted
+ * IN the band (`onBand`) so on Duet it reads as a cream line on navy rather than the invisible
+ * navy-on-navy TEAL would give. Body: the range caption (moved out of the chart itself, which no
+ * longer renders it — see below; WIDE only gets its "last N months · start–end" half, design
+ * parity wave D task 2), then the "Wealth" section (envelopes flagged `isSavings`) unchanged in
+ * content, bars via `Bar`.
  */
 export function AssetsReport({
   netWorth,
@@ -31,14 +33,16 @@ export function AssetsReport({
   onBack: () => void;
 }) {
   const C = useTheme();
-  const { t } = useT();
-  const { band } = useBand();
+  const { t, tp, lang } = useT();
+  const { band } = useReportBand();
+  const inWide = useWideHost() !== null;
   const nwLast = netWorth.at(-1)?.total ?? 0;
   const nwDelta = nwLast - (netWorth.at(-2)?.total ?? nwLast);
   const savings = state.envelopes.filter((e) => !e.archived && e.isSavings);
   const total = savings.reduce((s, e) => s + e.available, 0);
   const pct = nwLast !== 0 ? Math.round((total / nwLast) * 100) : 0;
   const max = Math.max(...savings.map((e) => Math.abs(e.available)), 1);
+  const nwTotals = netWorth.map((p) => p.total);
   return (
     <ReportShell
       title={t(TITLES.assets)}
@@ -56,8 +60,21 @@ export function AssetsReport({
           </>
         ) : undefined
       }
-      bandChart={netWorth.length > 0 ? <NetWorthChart points={netWorth} mask={M} onBand={band} /> : undefined}
+      bandChart={netWorth.length > 1 ? <NetWorthChart points={netWorth} height={118} onBand={band} /> : undefined}
     >
+      {netWorth.length > 1 && (
+        <div style={{ fontSize: 10.5, color: C.mute, textAlign: "center", marginBottom: 12, fontVariantNumeric: "tabular-nums" }}>
+          {/* Design v3:1450 glues its OWN "last N months · start–end" half in front of this
+             €min–max half with a decorative middle dot — both are already-translated whole
+             sentences (same idiom as ReportShell's own "{title} · {monthLabel}" panel eyebrow),
+             previously dropped entirely here (gaps-reports.md #1: "the whole nwChart.range half
+             is dropped"). WIDE only, same as the hub hero's own delta/pct/range fix (ReportsHub.tsx):
+             new content stays gated behind `inWide` so PHONE's caption — shown here too, this
+             component serves both — stays byte-identical to before this task. */}
+          {inWide && <>{netWorthRangeLabel(netWorth, lang, tp)} · </>}
+          {t("range {min}–{max}", { min: M(Math.min(...nwTotals)), max: M(Math.max(...nwTotals)) })}
+        </div>
+      )}
       <div style={{ fontSize: 15, fontWeight: 700, color: C.text, margin: "20px 0 4px" }}>{t("Wealth")}</div>
       {savings.length === 0 ? (
         <div style={{ fontSize: 12.5, color: C.mute, padding: "4px 0", lineHeight: 1.6 }}>
@@ -85,60 +102,5 @@ export function AssetsReport({
         </>
       )}
     </ReportShell>
-  );
-}
-
-/** Net-worth line chart with the axis clipped to the min–max range. `onBand` (Assets' hero chart,
- *  painted directly on the Duet navy band) swaps the accent stroke/points for `C.headerInk` (TEAL
- *  — i.e. `var(--accent)` — IS the band color there, so it would be invisible navy-on-navy) and the
- *  caption color for `C.headerMute`; plain themes (onBand omitted/false) keep today's accent look. */
-function NetWorthChart({ points, mask, onBand }: { points: { month: string; total: number }[]; mask: Mask; onBand?: boolean }) {
-  const C = useTheme();
-  const { t, lang } = useT();
-  const n = points.length;
-  if (n === 0) return null;
-  const totals = points.map((p) => p.total);
-  const min = Math.min(...totals);
-  const max = Math.max(...totals);
-  const range = max - min || 1;
-  const flat = max === min;
-  const W = 340,
-    H = 118,
-    padX = 6,
-    padY = 12;
-  const innerW = W - 2 * padX,
-    innerH = H - 2 * padY;
-  const x = (i: number) => padX + (n <= 1 ? innerW / 2 : (i / (n - 1)) * innerW);
-  const y = (v: number) => (flat ? padY + innerH / 2 : padY + (1 - (v - min) / range) * innerH);
-  const pts = points.map((p, i) => [x(i), y(p.total)] as const);
-  const line = pts.map(([px, py], i) => `${i === 0 ? "M" : "L"}${px.toFixed(1)} ${py.toFixed(1)}`).join(" ");
-  const area = `${line} L${x(n - 1).toFixed(1)} ${(H - padY).toFixed(1)} L${x(0).toFixed(1)} ${(H - padY).toFixed(1)} Z`;
-  const stroke = onBand ? C.headerInk : TEAL;
-  const hole = onBand ? C.headerBg : C.bg;
-  const caption = onBand ? C.headerMute : C.mute;
-  return (
-    <div style={{ marginBottom: 6 }}>
-      <svg viewBox={`0 0 ${W} ${H}`} width="100%" style={{ display: "block", height: "auto" }} role="img" aria-label={t("Net worth over time")}>
-        {/* fill/stroke via style — var(--accent) does not work in SVG presentation attributes */}
-        <path d={area} style={{ fill: stroke }} opacity={0.12} />
-        <path d={line} fill="none" style={{ stroke }} strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" vectorEffect="non-scaling-stroke" />
-        {pts.map(([px, py], i) => (
-          <circle
-            key={i}
-            cx={px}
-            cy={py}
-            r={i === n - 1 ? 4 : 2.4}
-            style={{ fill: i === n - 1 ? stroke : hole, stroke }}
-            strokeWidth={1.6}
-            vectorEffect="non-scaling-stroke"
-          />
-        ))}
-      </svg>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginTop: 4, fontSize: 10.5, color: caption }}>
-        <span>{monthLabel(points[0]!.month, lang).split(" ")[0]}</span>
-        <span style={{ fontVariantNumeric: "tabular-nums" }}>{t("range {min}–{max}", { min: mask(min), max: mask(max) })}</span>
-        <span>{monthLabel(points[n - 1]!.month, lang).split(" ")[0]}</span>
-      </div>
-    </div>
   );
 }

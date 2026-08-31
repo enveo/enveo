@@ -21,7 +21,7 @@ import { store } from "../lib/store";
 import { CORAL, CTA, font, TEAL, type Theme, tint } from "../lib/theme";
 import { AiConsentSheet } from "./AiConsentSheet";
 import { AmountPadHost, type AmountPadTarget } from "./AmountPadSheet";
-import { Sheet } from "./chrome";
+import { Sheet, Surface } from "./chrome";
 
 /** Predefined rules-engine strategies (no "custom" — user-defined ones are always named). */
 const PROFILES: Array<{ id: BudgetSuggestProfile; labelKey: Message; descKey: Message }> = [
@@ -267,7 +267,7 @@ export function BudgetSuggestSheet({ show, state, month, onClose }: { show: bool
 
   return (
     <>
-      <Sheet show={show} onClose={close}>
+      <Surface show={show} onClose={close}>
         {(C) => (
           <>
             <div style={{ fontSize: 17, fontWeight: 700, color: C.text, marginBottom: 4 }}>{t("Suggest a distribution")}</div>
@@ -616,8 +616,8 @@ export function BudgetSuggestSheet({ show, state, month, onClose }: { show: bool
             )}
           </>
         )}
-      </Sheet>
-      {/* Sibling of the Sheet (not a child) — the panel's transform would break position:fixed. */}
+      </Surface>
+      {/* Sibling of the Surface (not a child) — the panel's transform would break position:fixed. */}
       <ProfileManageSheet show={showManage} onClose={() => setShowManage(false)} />
       <AmountPadHost target={pad} onClose={() => setPad(null)} />
       <AiConsentSheet

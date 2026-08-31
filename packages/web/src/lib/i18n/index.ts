@@ -8,6 +8,7 @@
  * orphaning every translation of it. `bun run i18n:extract` + i18n.test.ts report orphans;
  * read them before shipping a copy change.
  */
+import { useEffect, useState } from "react";
 import { useSettings } from "../contexts";
 import type { Message } from "./messages.generated";
 import { detectLang, type Lang, LOCALES, uiLang } from "./registry";
@@ -49,6 +50,17 @@ export async function loadLocale(lang: Lang): Promise<void> {
   }
 }
 
+/**
+ * Pure predicate behind the reactive load in `useT()` below: true when `lang` needs its
+ * dictionary fetched before it can render correctly. English is always "loaded" (it is the
+ * source, `translate`/`translatePlural` never consult the cache for it), and a lang the cache
+ * already has needs nothing further — this is the same guard `loadLocale` makes internally,
+ * pulled out so the decision is one line a plain unit test can cover with no React/async involved.
+ */
+export function shouldReloadLocale(lang: Lang, isLoaded: boolean): boolean {
+  return lang !== "en" && !isLoaded;
+}
+
 function fill(s: string, params?: Record<string, string | number>): string {
   if (!params) return s;
   return s.replace(/\{(\w+)\}/g, (m, k: string) => (k in params ? String(params[k]) : m));
@@ -80,6 +92,26 @@ export function translatePlural(lang: Lang, message: Message, n: number, params?
 export function useT() {
   const { settings } = useSettings();
   const lang = settings.lang;
+  // Reactive counterpart to main.tsx's boot-time guess and the explicit pickers (Appearance.tsx,
+  // Onboarding.tsx): neither of those runs when accountPreferences hydrates the REAL account
+  // language post-boot (sync/boot.ts hydrateForUser → contexts.tsx's settings.lang). A fresh load
+  // on a device whose browser language differs from the account's therefore rendered English
+  // forever, even though `documentElement.lang` (contexts.tsx, driven by the same settings.lang)
+  // already said the right thing. Deliberately does NOT write settings/account preferences back —
+  // `lang` is already correct, only its dictionary is missing; `tick` exists purely to force a
+  // re-render once the async load resolves (translate/translatePlural read the module-level
+  // `loaded` cache directly, so any re-render after that point already shows the right text).
+  const [, setTick] = useState(0);
+  useEffect(() => {
+    if (!shouldReloadLocale(lang, loaded.has(lang))) return;
+    let cancelled = false;
+    void loadLocale(lang).then(() => {
+      if (!cancelled) setTick((t) => t + 1);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [lang]);
   return {
     lang,
     t: (message: Message, params?: Record<string, string | number>) => translate(lang, message, params),

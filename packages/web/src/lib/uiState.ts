@@ -3,6 +3,7 @@
  * No I/O, no React: the line under an envelope ALWAYS means "spent of assigned",
  * the goal ring is computed separately via shared goalProgress.
  */
+import { daysInMonth } from "./reportSummary";
 
 export type SpendMeter = { fill: number; state: "ok" | "warn" | "over"; total: number };
 
@@ -16,12 +17,13 @@ export function spendMeter(e: { spent: number; available: number }): SpendMeter 
   return { fill, state: fill >= 0.8 ? "warn" : "ok", total };
 }
 
-/** Month progress for the hero ruler. `pct` is rounded to whole percent. */
+/** Month progress for the hero ruler. `pct` is rounded to whole percent.
+ *  Only ever describes the CURRENT month (`todayISO` doubles as "which month"); the day-in-month
+ *  arithmetic is shared with `reportSummary.monthProgress` via `daysInMonth`, but the two
+ *  functions answer different questions — this one never clamps a viewed month against today. */
 export function monthRuler(todayISO: string): { day: number; days: number; pct: number } {
   const day = Number(todayISO.slice(8, 10));
-  const y = Number(todayISO.slice(0, 4));
-  const m = Number(todayISO.slice(5, 7));
-  const days = new Date(Date.UTC(y, m, 0)).getUTCDate();
+  const days = daysInMonth(todayISO.slice(0, 7));
   return { day, days, pct: Math.round((day / days) * 100) };
 }
 

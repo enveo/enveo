@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { type AccentTheme, CORAL, CTA, dark, light, TEAL, themeTokens, tint } from "./theme";
+import { type AccentTheme, CORAL, CTA, dark, light, TEAL, THEMES, themeTokens, tint } from "./theme";
 
 /** Alpha suffixes from the concatenation audit — forms `X+"xx"` (14/18/1a/22) and `${X}xx` (40/44/55/66). */
 const ALPHA_SUFFIXES = ["14", "18", "1a", "22", "40", "44", "55", "66"] as const;
@@ -74,9 +74,27 @@ describe("koral (the app default)", () => {
     expect(vars["--danger"]).toBe("#ef4b58");
     expect(vars["--cta"]).toBe("#ff8d7d");
   });
-  test("palette without overrides = standard light/dark", () => {
-    expect(themeTokens("koral", false).palette).toEqual(light);
-    expect(themeTokens("koral", true).palette).toEqual(dark);
+  // koral has no `overrides`/`overridesDark`, but its rail alphas — and now `logo` (design parity
+  // wave A close, item 2) — still diverge from the base `light`/`dark` objects (task A2:
+  // railActive/accentSoft/selBg/logo track koral's OWN accent, not teal's default) — everything
+  // else stays exactly the base palette.
+  test("palette without overrides = standard light/dark except accent-tracked rail alphas (+ logo)", () => {
+    const { vars: lv, palette: lp } = themeTokens("koral", false);
+    expect(lp).toEqual({
+      ...light,
+      railActive: tint(lv["--accent"]!, 0.18),
+      accentSoft: tint(lv["--accent"]!, 0.12),
+      selBg: tint(lv["--accent"]!, 0.1),
+      logo: lv["--accent"]!,
+    });
+    const { vars: dv, palette: dp } = themeTokens("koral", true);
+    expect(dp).toEqual({
+      ...dark,
+      railActive: tint(dv["--accent"]!, 0.18),
+      accentSoft: tint(dv["--accent"]!, 0.12),
+      selBg: tint(dv["--accent"]!, 0.1),
+      logo: dv["--accent"]!,
+    });
   });
 });
 
@@ -256,6 +274,130 @@ describe("theme screen tokens", () => {
       expect(themeTokens(th, false).vars["--cta"]).toMatch(/^#(f0685c|ff8d7d)$/i);
       expect(themeTokens(th, true).vars["--cta"]).toMatch(/^#(f0685c|ff8d7d)$/i);
     }
+  });
+});
+
+/**
+ * Wide-layout rail chrome tokens (design parity wave A, task A2 — `Wide App Demo v3.dc.html`
+ * §CISZA/DUET). railBg/railCard are static per mode; railActive/accentSoft/selBg track the
+ * ACTIVE accent for the Cisza family (teal/koral/atrament) and are Duet's own literal numbers.
+ */
+describe("rail chrome tokens (design parity wave A, task A2)", () => {
+  test("Cisza family: railBg/railCard are the design's neutral pair in both modes", () => {
+    for (const th of ["teal", "koral", "atrament"] as const) {
+      expect(themeTokens(th, false).palette.railBg).toBe("#efeee9");
+      expect(themeTokens(th, false).palette.railCard).toBe("#ffffff");
+      expect(themeTokens(th, true).palette.railBg).toBe("#343a44");
+      expect(themeTokens(th, true).palette.railCard).toBe("#404650");
+    }
+  });
+
+  test("Cisza family: railActive/accentSoft/selBg are tinted off the theme's OWN accent, not teal's", () => {
+    for (const th of ["teal", "koral", "atrament"] as const) {
+      for (const isDark of [false, true]) {
+        const { vars, palette } = themeTokens(th, isDark);
+        const accent = vars["--accent"]!;
+        expect(palette.railActive).toBe(tint(accent, 0.18));
+        expect(palette.accentSoft).toBe(tint(accent, 0.12));
+        expect(palette.selBg).toBe(tint(accent, 0.1));
+      }
+    }
+  });
+
+  test("koral/atrament diverge from teal's rail alphas (proof the accent, not a fixed default, drives them)", () => {
+    const teal = themeTokens("teal", false).palette;
+    const koral = themeTokens("koral", false).palette;
+    const atrament = themeTokens("atrament", false).palette;
+    expect(koral.railActive).not.toBe(teal.railActive);
+    expect(atrament.railActive).not.toBe(teal.railActive);
+  });
+
+  test("Duet: navy rail with a translucent card overlay, coral highlight — identical light/dark (own chrome, not accent-derived)", () => {
+    for (const isDark of [false, true]) {
+      const { palette } = themeTokens("duet", isDark);
+      expect(palette.railBg).toBe("#1d2a47");
+      expect(palette.railCard).toBe("rgba(255,255,255,0.07)");
+      expect(palette.railActive).toBe("rgba(255,141,125,0.22)");
+      expect(palette.accentSoft).toBe("rgba(29,42,71,0.1)");
+      expect(palette.selBg).toBe("rgba(29,42,71,0.07)");
+      expect(palette.bandMute).toBe("#8fa2cc");
+    }
+  });
+
+  test("railOn/railMute: Cisza equals soft/mute; Duet gets its OWN lighter blue-greys (both light and dark duet)", () => {
+    for (const th of ["teal", "koral", "atrament"] as const) {
+      for (const isDark of [false, true]) {
+        const { palette } = themeTokens(th, isDark);
+        expect(palette.railOn).toBe(palette.soft);
+        expect(palette.railMute).toBe(palette.mute);
+      }
+    }
+    for (const isDark of [false, true]) {
+      const { palette } = themeTokens("duet", isDark);
+      expect(palette.railOn).toBe("#c9d2e4");
+      expect(palette.railMute).toBe("#8fa2cc");
+      // NOT the same as `soft`/`mute`, which stay Cisza-calibrated (dark ink) and would be
+      // illegible on Duet's navy rail — the bug this pair exists to fix.
+      expect(palette.railOn).not.toBe(palette.soft);
+      expect(palette.railMute).not.toBe(palette.mute);
+    }
+  });
+
+  test("railRuler/railBorder: Cisza gets the design's literal numbers (both modes); Duet gets its own near-invisible navy-rail numbers (fix-review)", () => {
+    for (const th of ["teal", "koral", "atrament"] as const) {
+      expect(themeTokens(th, false).palette.railRuler).toBe("#e2e0d8");
+      expect(themeTokens(th, false).palette.railBorder).toBe("#ece9e2");
+      expect(themeTokens(th, true).palette.railRuler).toBe("#4b515b");
+      expect(themeTokens(th, true).palette.railBorder).toBe("#4b515b");
+    }
+    for (const isDark of [false, true]) {
+      const { palette } = themeTokens("duet", isDark);
+      expect(palette.railRuler).toBe("rgba(255,255,255,0.16)");
+      expect(palette.railBorder).toBe("transparent");
+      // NOT `line` — `line`'s opaque Duet cream (#e8e0cc) is calibrated for Duet's cream content
+      // surfaces and rendered a visible tan track/dividers on the near-navy rail card (the bug
+      // this pair exists to fix).
+      expect(palette.railRuler).not.toBe(palette.line);
+      expect(palette.railBorder).not.toBe(palette.line);
+    }
+  });
+
+  test("bandMute mirrors headerMute (same on-header muted tone) for every theme × mode", () => {
+    for (const th of ["teal", "koral", "atrament", "duet"] as const) {
+      for (const isDark of [false, true]) {
+        const { palette } = themeTokens(th, isDark);
+        expect(palette.bandMute).toBe(palette.headerMute);
+      }
+    }
+  });
+
+  test("logo: tracks the active accent for the Cisza family, a static coral for Duet (design parity wave A close, item 2)", () => {
+    for (const th of ["teal", "koral", "atrament"] as const) {
+      expect(themeTokens(th, false).palette.logo).toBe(THEMES[th].accent);
+      expect(themeTokens(th, true).palette.logo).toBe(THEMES[th].accentDark);
+    }
+    for (const isDark of [false, true]) {
+      expect(themeTokens("duet", isDark).palette.logo).toBe("#ff8d7d");
+    }
+  });
+
+  test("bandLine2: the design's literal panel-toggle-closed hairline, per theme × mode (design parity wave A close, item 7)", () => {
+    for (const th of ["teal", "koral", "atrament"] as const) {
+      expect(themeTokens(th, false).palette.bandLine2).toBe("#d8d5cc");
+      expect(themeTokens(th, true).palette.bandLine2).toBe("#4b515b");
+    }
+    for (const isDark of [false, true]) {
+      expect(themeTokens("duet", isDark).palette.bandLine2).toBe("rgba(237,239,245,0.28)");
+    }
+  });
+
+  test("negBandInk: Duet's own lighter red ink, distinct from headerNeg (design parity wave A close, item 4)", () => {
+    for (const isDark of [false, true]) {
+      const { palette } = themeTokens("duet", isDark);
+      expect(palette.negBandInk).toBe("#ffc7bf");
+      expect(palette.negBandInk).not.toBe(palette.headerNeg);
+    }
+    expect(themeTokens("teal", false).palette.negBandInk).toBe("#d14b3e");
   });
 });
 

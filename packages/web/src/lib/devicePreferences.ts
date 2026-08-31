@@ -1,3 +1,4 @@
+import { ACCENT_THEMES, type AccentTheme, THEME_MODES, type ThemeMode } from "@enveo/shared";
 import { idbDelete, idbGet, idbPut } from "./idb";
 
 const DEVICE_PREFERENCES_KEY = "devicePreferences";
@@ -5,11 +6,22 @@ const DEVICE_PREFERENCES_KEY = "devicePreferences";
 export interface DevicePreferences {
   schemaVersion: 1;
   discreet: boolean;
+  /** Per-device theme overrides (§ per-device theme, 2026-08-27): `null` means "no override —
+   *  follow the account preference", same absent-vs-set convention `discreet` already used before
+   *  this field existed. Set together by the Appearance scope control (contexts.tsx composes the
+   *  EFFECTIVE value as `override ?? account`, the one place that resolution happens). */
+  themeModeOverride: ThemeMode | null;
+  accentThemeOverride: AccentTheme | null;
 }
 
 export type DevicePreferencesPatch = Partial<Omit<DevicePreferences, "schemaVersion">>;
 
-export const DEFAULT_DEVICE_PREFERENCES: DevicePreferences = { schemaVersion: 1, discreet: false };
+export const DEFAULT_DEVICE_PREFERENCES: DevicePreferences = {
+  schemaVersion: 1,
+  discreet: false,
+  themeModeOverride: null,
+  accentThemeOverride: null,
+};
 
 export interface DevicePreferencesStoreDeps {
   load(): Promise<unknown>;
@@ -17,11 +29,27 @@ export interface DevicePreferencesStoreDeps {
   remove(): Promise<void>;
 }
 
+function isThemeModeOrNull(value: unknown): value is ThemeMode | null {
+  return value === null || (typeof value === "string" && (THEME_MODES as readonly string[]).includes(value));
+}
+
+function isAccentThemeOrNull(value: unknown): value is AccentTheme | null {
+  return value === null || (typeof value === "string" && (ACCENT_THEMES as readonly string[]).includes(value));
+}
+
+/** A record written before this field existed (or a same-version record from a device that never
+ *  set an override) carries no key at all — `undefined`, not `null` — so it is normalised here
+ *  exactly like the rest of the domain normalises a missing field: at this one parse boundary,
+ *  never at each call site (see AGENTS.md "a field added in version N does not exist in every
+ *  replica row"). */
 function parseDevicePreferences(raw: unknown): DevicePreferences | null {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
   const source = raw as Record<string, unknown>;
   if (source.schemaVersion !== 1 || typeof source.discreet !== "boolean") return null;
-  return { schemaVersion: 1, discreet: source.discreet };
+  const themeModeOverride = source.themeModeOverride === undefined ? null : source.themeModeOverride;
+  const accentThemeOverride = source.accentThemeOverride === undefined ? null : source.accentThemeOverride;
+  if (!isThemeModeOrNull(themeModeOverride) || !isAccentThemeOrNull(accentThemeOverride)) return null;
+  return { schemaVersion: 1, discreet: source.discreet, themeModeOverride, accentThemeOverride };
 }
 
 export function createDevicePreferencesStore(deps: DevicePreferencesStoreDeps) {
@@ -57,7 +85,8 @@ export function createDevicePreferencesStore(deps: DevicePreferencesStoreDeps) {
 
   async function update(patch: DevicePreferencesPatch): Promise<void> {
     const next = { ...snapshot, ...patch };
-    if (typeof next.discreet !== "boolean") throw new Error("invalid_device_preferences");
+    if (typeof next.discreet !== "boolean" || !isThemeModeOrNull(next.themeModeOverride) || !isAccentThemeOrNull(next.accentThemeOverride))
+      throw new Error("invalid_device_preferences");
     editGeneration++;
     canonicalPresent = true;
     publish(next);

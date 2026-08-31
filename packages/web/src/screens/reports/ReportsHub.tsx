@@ -1,18 +1,36 @@
 import { type EnvelopeTrend, median, savingsRate } from "@enveo/shared";
 import type { ReactNode } from "react";
-import { Header } from "../../components/chrome";
 import { GoalRing, useBand } from "../../components/kit";
-import { DeltaTag, heatColor, SegBar, Sparkline, TrendSpark } from "../../components/reportKit";
+import { DeltaTag, heatColor, NetWorthChart, netWorthRangeLabel, ReportShell, SegBar, TrendSpark } from "../../components/reportKit";
 import type { StateResponse } from "../../lib/api";
 import { useMask, useTheme } from "../../lib/contexts";
 import { goalProgress } from "../../lib/goals";
 import { useT } from "../../lib/i18n";
 import { budgetsOverAmount, budgetsSummary } from "../../lib/reportSummary";
-import { P } from "../../lib/theme";
+import { useWideHost } from "../../lib/shellContext";
+import { useElementWidth } from "../../lib/useElementWidth";
+import { splitAround } from "../settings/ui";
 import { trendColor } from "./charts";
-import type { Mask, ReportView } from "./types";
+import type { Mask, ReportTab, ReportView } from "./types";
 
 const SPENDING_FALLBACK_COLORS = ["#8f84a8", "#aed6ea", "#ccd9b6", "#f0c84f"];
+
+/** Stands in for the delta text while splitting the translated m/m sentence — see `splitAround`'s
+ *  own doc comment (screens/settings/ui.tsx) for why every consumer keeps its own local mark
+ *  rather than sharing one constant. */
+const DELTA_MARK = "\u0000";
+
+/** m/m percentage for the hub hero's delta line (design `v3:3195`'s `nwChart.pct`, e.g. "+9.7%")
+ *  — signed, one decimal, against the PRIOR point (division-by-zero guarded to 1, matching the
+ *  design's own `|| 1` fallback). `null` when there are fewer than two points to compare (the
+ *  same guard `nwDelta` above already relies on to read as 0 in that case). */
+export function netWorthDeltaPct(netWorth: { month: string; total: number }[]): string | null {
+  if (netWorth.length < 2) return null;
+  const last = netWorth.at(-1)!.total;
+  const prev = netWorth.at(-2)!.total;
+  const pct = ((last - prev) / (prev || 1)) * 100;
+  return `${pct >= 0 ? "+" : ""}${pct.toFixed(1)}%`;
+}
 
 /**
  * Reports hub (frame A1, "Gabinet" direction): the global Header, then a tappable net-worth
@@ -20,6 +38,12 @@ const SPENDING_FALLBACK_COLORS = ["#8f84a8", "#aed6ea", "#ccd9b6", "#f0c84f"];
  * when the theme paints a Duet band, plain otherwise, exactly like every other screen's header),
  * then a 2-column grid of six mini-cards, one per subscreen, each showing just its essence.
  * Every card is a `<button>` → `onView(id)`.
+ *
+ * WIDE only (design parity wave D task 2, v3:624-655): the delta line also carries the m/m
+ * PERCENTAGE ("▲ +€X · +9.7% m/m", previously silently dropped), plus a "last N months · start–
+ * end" range caption and a "wealth details ›" accent CTA — both new lines `ReportShell` didn't
+ * have room for before. `ReportShell` itself puts the whole hero in a `flex-direction:row` with
+ * a fixed 216px info column at the `desktop` bucket (fold stays column, same as phone below).
  */
 export function ReportsHub({
   state,
@@ -33,6 +57,7 @@ export function ReportsHub({
   onMenu,
   onPrev,
   onNext,
+  selected,
 }: {
   state: StateResponse;
   month: string;
@@ -45,14 +70,39 @@ export function ReportsHub({
   onMenu: () => void;
   onPrev: () => void;
   onNext: () => void;
+  /** Wide only: the report tab currently open in the side panel, so its card can be picked out
+   *  from the grid — the hub itself always stays on screen there (Reports.tsx forces `view`
+   *  to "overview" in the primary pane regardless of what is open beside it), so without this the
+   *  open report would have no visible trace in the hub at all. `undefined` on phone (no panel to
+   *  reflect) and on wide with nothing open yet. */
+  selected?: ReportTab;
 }) {
   const C = useTheme();
   const M = useMask();
-  const { t } = useT();
+  const { t, tp, lang } = useT();
   const { band, hc } = useBand();
+  const inWide = useWideHost() !== null;
 
   const nwLast = netWorth.at(-1)?.total ?? 0;
   const nwDelta = nwLast - (netWorth.at(-2)?.total ?? nwLast);
+  const deltaColor = nwDelta > 0 ? hc(C.headerPos, C.pos) : hc(C.headerNeg, C.neg);
+  // Design parity wave D task 2 (v3:624-655): the delta/pct/m/m line is composed as ONE whole
+  // i18n message ("{delta} · {pct} m/m") rather than the phone-era fragments this used to glue
+  // together outside any t() call — that older code silently DROPPED the percentage entirely
+  // (nothing ever computed it) and left the "·" between "m/m" and "details" instead of between
+  // the delta and the pct (gaps-reports.md #1). Gated to WIDE only: PHONE keeps rendering the
+  // exact pre-existing (bugged) composition below unchanged, so its screenshots stay byte-
+  // identical — a future ticket can decide whether phone should adopt this fix too. The bold,
+  // sign-colored delta substring is pulled back out of the translated sentence via the same
+  // NUL-sentinel `splitAround` idiom `ConfirmWordHint`/`InstallBody` already use, so a locale is
+  // free to reorder "pct m/m" around the delta without breaking the styling.
+  const pctText = inWide ? netWorthDeltaPct(netWorth) : null;
+  const [deltaBefore, deltaAfter] =
+    inWide && nwDelta !== 0 && pctText !== null ? splitAround(t("{delta} · {pct} m/m", { delta: DELTA_MARK, pct: pctText }), DELTA_MARK) : ["", ""];
+  const deltaText = (nwDelta > 0 ? "▲ +" : "▼ ") + M(Math.abs(nwDelta));
+  // "last {n} months · Aug 2025 – Jul 2026" (design `nwChart.range`) — new content, so it stays
+  // wide-only for the same phone-parity reason as the delta/pct fix above.
+  const rangeLabel = inWide ? netWorthRangeLabel(netWorth, lang, tp) : null;
   const envColor = new Map(state.envelopes.map((e) => [e.id, e.color]));
 
   // goals: same math as GoalsReport (card hidden entirely when zero envelopes have a goal)
@@ -69,45 +119,68 @@ export function ReportsHub({
 
   return (
     <div className="gs" style={{ flex: 1, overflowY: "auto", paddingBottom: 6 }}>
-      <div data-band={band || undefined} style={band ? { background: C.headerBg, paddingBottom: 14 } : { paddingBottom: 14 }}>
-        <Header month={month} onMenu={onMenu} onPrev={onPrev} onNext={onNext} onBand={band} />
-        <button
-          onClick={() => onView("assets")}
-          style={{
-            display: "block",
-            width: "100%",
-            background: "none",
-            border: "none",
-            padding: `10px ${P}px 0`,
-            textAlign: "left",
-            cursor: "pointer",
-            fontFamily: "inherit",
-          }}
-        >
-          <div style={{ fontSize: 10.5, fontWeight: 750, letterSpacing: "0.17em", textTransform: "uppercase", color: hc(C.headerMute, C.mute) }}>
-            {t("Net worth")}
-          </div>
-          <div style={{ fontSize: 30, fontWeight: 750, color: hc(C.headerInk, C.text), fontVariantNumeric: "tabular-nums" }}>{M(nwLast)}</div>
-          <div style={{ fontSize: 12, color: hc(C.headerMute, C.soft) }}>
-            {nwDelta !== 0 && (
-              <span style={{ color: nwDelta > 0 ? hc(C.headerPos, C.pos) : hc(C.headerNeg, C.neg), fontWeight: 650 }}>
-                {nwDelta > 0 ? "▲ +" : "▼ "}
-                {M(Math.abs(nwDelta))}
+      <ReportShell
+        variant="hub"
+        month={month}
+        onPrev={onPrev}
+        onNext={onNext}
+        onMenu={onMenu}
+        onHeroClick={() => onView("assets")}
+        eyebrow={t("Net worth")}
+        hero={M(nwLast)}
+        sub={
+          inWide ? (
+            <>
+              {nwDelta !== 0 && pctText !== null && (
+                <div style={{ fontVariantNumeric: "tabular-nums" }}>
+                  {deltaBefore}
+                  <b style={{ color: deltaColor, fontWeight: 700 }}>{deltaText}</b>
+                  {deltaAfter}
+                </div>
+              )}
+              {rangeLabel != null && <div style={{ fontSize: 10.5, color: hc(C.headerMute, C.mute) }}>{rangeLabel}</div>}
+              {/* "wealth details ›" — its OWN accent CTA line (design line 630: 11.5px/650,
+                 `margin-top:4px`), not the old bare "· details ›" glued onto the delta line.
+                 `display:"block"` on the `<span>` gives the design's `margin-top` real effect
+                 (a plain inline element ignores vertical margin) while keeping the tag itself a
+                 `<span>` as the design markup has it. Accent swaps to `headerInk` on a Duet band
+                 the same way `Sparkline`'s own doc comment prescribes — Duet's light-mode accent
+                 IS its band color, so a bare `var(--accent)` here would be invisible ink-on-ink. */}
+              <span style={{ display: "block", marginTop: 4, fontSize: 11.5, fontWeight: 650, color: hc(C.headerInk, "var(--accent)") }}>
+                {t("wealth details ›")}
               </span>
-            )}{" "}
-            {t("m/m")} · {t("details")} ›
-          </div>
-          <Sparkline points={netWorth} stroke={hc(C.headerInk, "var(--accent)")} dotColor={hc(C.headerPos, C.pos)} />
-        </button>
-      </div>
-      <div style={{ padding: `10px ${P}px 0`, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-        <CashflowMini cashflow={cashflow} onView={onView} M={M} />
-        <SpendingMini rows={hubSpending} envColor={envColor} cashflow={cashflow} onView={onView} M={M} />
-        <BudgetsMini envelopes={state.envelopes} onView={onView} M={M} />
-        {goalRows.length > 0 && <GoalsMini pctTotal={pctTotal} missSum={missSum} onView={onView} M={M} />}
-        <MonthMini days={dailySpending} onView={onView} M={M} />
-        <TrendsMini trends={envelopeTrends} onView={onView} />
-      </div>
+            </>
+          ) : (
+            <>
+              {nwDelta !== 0 && (
+                <span style={{ color: deltaColor, fontWeight: 650 }}>
+                  {nwDelta > 0 ? "▲ +" : "▼ "}
+                  {M(Math.abs(nwDelta))}
+                </span>
+              )}{" "}
+              {t("m/m")} · {t("details")} ›
+            </>
+          )
+        }
+        bandChart={<NetWorthChart points={netWorth} height={130} onBand={band} />}
+      >
+        {/* Fixed 2-up at every width (mockup inconsistency 4, pr4-context.md §0b/§12 — CLOSED,
+            do not relitigate): the mock's fold column drops to a single simplified card per row,
+            but that is a property of ITS stripped-down cards, not of this layout — these minis
+            are fluid (`useElementWidth` throughout) and already read fine well under a phone's
+            own width. At the wide breakpoints this shell actually ships (task 4's `geometry.ts`),
+            the 804px desktop primary gives each card ≈385px and the 484px fold primary ≈229px —
+            both comfortably above the ~190px this grid already renders at on a phone, so nothing
+            here needs the fold's 1-column fallback the mock draws. */}
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+          <CashflowMini cashflow={cashflow} onView={onView} M={M} selected={selected === "cashflow"} />
+          <SpendingMini rows={hubSpending} envColor={envColor} cashflow={cashflow} onView={onView} M={M} selected={selected === "spending"} />
+          <BudgetsMini envelopes={state.envelopes} onView={onView} M={M} selected={selected === "budgets"} />
+          {goalRows.length > 0 && <GoalsMini pctTotal={pctTotal} missSum={missSum} onView={onView} M={M} selected={selected === "goals"} />}
+          <MonthMini days={dailySpending} onView={onView} M={M} selected={selected === "month"} />
+          <TrendsMini trends={envelopeTrends} onView={onView} selected={selected === "trends"} />
+        </div>
+      </ReportShell>
     </div>
   );
 }
@@ -121,9 +194,16 @@ export function ReportsHub({
  * browser's own form-control rendering still applies — so short cards centered their title while
  * taller cards (whose content already filled the row) looked top-aligned by coincidence. Giving
  * the button its own top-aligned flex layout (column, default main-axis `flex-start`) overrides
- * that native centering so every card top-aligns its content, tall or short. */
-function MiniCard({ title, onClick, children }: { title: string; onClick: () => void; children: ReactNode }) {
+ * that native centering so every card top-aligns its content, tall or short.
+ *
+ * Border/shadow (design parity wave D task 1): the design gives every card a 1px border (`T.line`
+ * quiet, `T.accent` for the open report) and elevates its shadow on selection (measured off the
+ * source of truth, `reportCards`'s own `border`/`shadow` derivation) — gated to WIDE only so
+ * phone's cards stay pixel-identical to before this prop existed (`selected` is always `undefined`
+ * there, same as always). */
+function MiniCard({ title, onClick, selected, children }: { title: string; onClick: () => void; selected?: boolean; children: ReactNode }) {
   const C = useTheme();
+  const inWide = useWideHost() !== null;
   return (
     <button
       onClick={onClick}
@@ -134,8 +214,11 @@ function MiniCard({ title, onClick, children }: { title: string; onClick: () => 
         justifyContent: "flex-start",
         width: "100%",
         background: C.card,
-        border: "none",
-        boxShadow: "0 1px 3px rgba(20,20,28,0.06)",
+        // `var(--accent)` does not resolve in an SVG presentation attribute, but this IS a plain
+        // HTML `style` object (not an attribute) — the CSS var resolves here same as any other
+        // inline style.
+        border: inWide ? `1px solid ${selected ? "var(--accent)" : C.line}` : selected ? "1.5px solid var(--accent)" : "none",
+        boxShadow: inWide && selected ? "0 2px 8px rgba(20,20,28,0.10)" : "0 1px 3px rgba(20,20,28,0.06)",
         borderRadius: 14,
         padding: "12px 13px",
         cursor: "pointer",
@@ -158,34 +241,47 @@ function CashflowMini({
   cashflow,
   onView,
   M,
+  selected,
 }: {
   cashflow: { month: string; income: number; expense: number; net: number }[];
   onView: (v: ReportView) => void;
   M: Mask;
+  selected?: boolean;
 }) {
   const C = useTheme();
   const { t } = useT();
-  const barW = 7,
-    gap = 2,
+  const gap = 2,
     H = 34,
     base = H / 2,
     maxH = 15;
-  const W = cashflow.length * barW + Math.max(0, cashflow.length - 1) * gap;
+  // Fallback is the card's REAL width, not the old hardcoded viewBox: this mini sits in a
+  // two-column hub grid on a ~390px viewport ((362 − 10) / 2 ≈ 176) less MiniCard's 13px side
+  // padding, so ~150. It is only ever shown for the frame(s) before the ResizeObserver reports,
+  // but a fallback that undershoots by a third reintroduces a milder version of the pillarboxing
+  // this component was just fixed for.
+  const [boxRef, W] = useElementWidth<HTMLDivElement>(150);
+  const n = cashflow.length;
+  // Guards `barW`'s division by `n`: an empty series would otherwise draw Infinity/NaN geometry.
+  // Pre-existing (not introduced by this PR) — the same guard as `CashflowBandChart`.
+  if (n === 0) return null;
+  const barW = (W - Math.max(0, n - 1) * gap) / n;
   const maxAbs = Math.max(...cashflow.map((p) => Math.abs(p.net)), 1);
   const net = cashflow.at(-1)?.net ?? 0;
   const sr = savingsRate(cashflow);
   const pct = sr.current !== null ? Math.round(sr.current * 100) : "–";
   return (
-    <MiniCard title={t("Cash flow")} onClick={() => onView("cashflow")}>
-      <svg viewBox={`0 0 ${W} ${H}`} width="100%" height={H} aria-hidden="true" style={{ display: "block" }}>
-        <line x1={0} y1={base} x2={W} y2={base} style={{ stroke: C.line }} strokeWidth={1} />
-        {cashflow.map((p, i) => {
-          const h = Math.max(1, Math.round((Math.abs(p.net) / maxAbs) * maxH));
-          const x = i * (barW + gap);
-          const y = p.net >= 0 ? base - h : base;
-          return <rect key={p.month} x={x} y={y} width={barW} height={h} rx={2} style={{ fill: p.net >= 0 ? C.pos : C.neg }} />;
-        })}
-      </svg>
+    <MiniCard title={t("Cash flow")} onClick={() => onView("cashflow")} selected={selected}>
+      <div ref={boxRef}>
+        <svg viewBox={`0 0 ${W} ${H}`} width="100%" height={H} aria-hidden="true" style={{ display: "block" }}>
+          <line x1={0} y1={base} x2={W} y2={base} style={{ stroke: C.line }} strokeWidth={1} />
+          {cashflow.map((p, i) => {
+            const h = Math.max(1, Math.round((Math.abs(p.net) / maxAbs) * maxH));
+            const x = i * (barW + gap);
+            const y = p.net >= 0 ? base - h : base;
+            return <rect key={p.month} x={x} y={y} width={barW} height={h} rx={2} style={{ fill: p.net >= 0 ? C.pos : C.neg }} />;
+          })}
+        </svg>
+      </div>
       <div style={{ fontSize: 17, fontWeight: 750, color: net >= 0 ? C.pos : C.neg, marginTop: 6, fontVariantNumeric: "tabular-nums" }}>
         {net >= 0 ? "+" : "−"}
         {M(Math.abs(net))}
@@ -203,12 +299,14 @@ function SpendingMini({
   cashflow,
   onView,
   M,
+  selected,
 }: {
   rows: { key: string | null; name: string; amount: number; pct: number }[];
   envColor: Map<string, string>;
   cashflow: { month: string; income: number; expense: number; net: number }[];
   onView: (v: ReportView) => void;
   M: Mask;
+  selected?: boolean;
 }) {
   const C = useTheme();
   const { t } = useT();
@@ -224,7 +322,7 @@ function SpendingMini({
   const baseline = median(cashflow.slice(-4, -1).map((p) => p.expense));
   const deltaPct = baseline > 0 ? (total - baseline) / baseline : null;
   return (
-    <MiniCard title={t("Spending")} onClick={() => onView("spending")}>
+    <MiniCard title={t("Spending")} onClick={() => onView("spending")} selected={selected}>
       <SegBar segments={segments} />
       <div style={{ fontSize: 17, fontWeight: 750, color: C.text, marginTop: 8, fontVariantNumeric: "tabular-nums" }}>{M(total)}</div>
       <div style={{ fontSize: 11, color: C.mute }}>
@@ -234,32 +332,33 @@ function SpendingMini({
   );
 }
 
-/** Budgets mini-card: over/near/OK count pills (triage colors on quiet chip backgrounds), plus
- *  the total overspend amount when any envelope is over. Threshold parity with BudgetsReport via
- *  budgetsSummary (Task 9 refines the rule; this card just consumes it). */
-function BudgetsMini({ envelopes, onView, M }: { envelopes: StateResponse["envelopes"]; onView: (v: ReportView) => void; M: Mask }) {
+/** Budgets mini-card: one plain value line — "{n} over · {n} near" — matching every other hub
+ *  card's 17px/750 treatment (design v3:3842 drops the app's former three triage pills, including
+ *  the third "OK" segment entirely). Threshold parity with BudgetsReport via budgetsSummary (Task 9
+ *  refines the rule; this card just consumes it). */
+function BudgetsMini({
+  envelopes,
+  onView,
+  M,
+  selected,
+}: {
+  envelopes: StateResponse["envelopes"];
+  onView: (v: ReportView) => void;
+  M: Mask;
+  selected?: boolean;
+}) {
   const C = useTheme();
   const { t, tp } = useT();
   const bs = budgetsSummary(envelopes);
   // Same classifier as budgetsSummary (classifyBudget: over = left < 0, on the RAW unfloored
   // budget) — NOT an inline `pct > 100` check, which misses the zero-budget boundary (raw
   // budget <= 0 + any spend → pct lands at exactly 100, left already negative; adb4c43 fixed
-  // this for the pill counters, budgetsOverAmount mirrors the same rule for the € amount).
+  // this for the counters, budgetsOverAmount mirrors the same rule for the € amount).
   const overAmt = budgetsOverAmount(envelopes);
-  const pill = (label: string, bg: string, color: string, key: string) => (
-    <span
-      key={key}
-      style={{ display: "inline-flex", alignItems: "center", fontSize: 11.5, fontWeight: 650, borderRadius: 9, padding: "4px 9px", background: bg, color }}
-    >
-      {label}
-    </span>
-  );
   return (
-    <MiniCard title={t("Budgets")} onClick={() => onView("budgets")}>
-      <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
-        {pill(tp("{n} over | {n} over", bs.over), "var(--danger-14)", C.neg, "over")}
-        {pill(t("{n} near limit", { n: bs.near }), C.chip, C.warn, "near")}
-        {pill(t("{n} OK", { n: bs.ok }), C.chip, C.pos, "ok")}
+    <MiniCard title={t("Budgets")} onClick={() => onView("budgets")} selected={selected}>
+      <div style={{ fontSize: 17, fontWeight: 750, color: C.text, fontVariantNumeric: "tabular-nums" }}>
+        {tp("{n} over · {near} near | {n} over · {near} near", bs.over, { near: bs.near })}
       </div>
       {overAmt > 0 && (
         <div style={{ fontSize: 11, color: C.neg, marginTop: 8, fontVariantNumeric: "tabular-nums" }}>{t("{amount} over budget", { amount: M(overAmt) })}</div>
@@ -270,12 +369,24 @@ function BudgetsMini({ envelopes, onView, M }: { envelopes: StateResponse["envel
 
 /** Goals mini-card: GoalRing + aggregate funded % + funded/missing line — hidden by the caller
  *  when no envelope has a goal (today's overview behavior, unchanged). */
-function GoalsMini({ pctTotal, missSum, onView, M }: { pctTotal: number; missSum: number; onView: (v: ReportView) => void; M: Mask }) {
+function GoalsMini({
+  pctTotal,
+  missSum,
+  onView,
+  M,
+  selected,
+}: {
+  pctTotal: number;
+  missSum: number;
+  onView: (v: ReportView) => void;
+  M: Mask;
+  selected?: boolean;
+}) {
   const C = useTheme();
   const { t } = useT();
   const funded = missSum === 0;
   return (
-    <MiniCard title={t("Goals")} onClick={() => onView("goals")}>
+    <MiniCard title={t("Goals")} onClick={() => onView("goals")} selected={selected}>
       <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
         <GoalRing pct={pctTotal} size={30} />
         <div>
@@ -290,14 +401,14 @@ function GoalsMini({ pctTotal, missSum, onView, M }: { pctTotal: number; missSum
 /** Month mini-card: a 10-cell intensity strip for the first 10 days of the month (shared
  *  `heatColor` ramp with CalendarHeatmap, scaled against the WHOLE month's max so it reads
  *  consistently with the Task 11 subscreen), plus the month's average daily spend. */
-function MonthMini({ days, onView, M }: { days: { date: string; total: number }[]; onView: (v: ReportView) => void; M: Mask }) {
+function MonthMini({ days, onView, M, selected }: { days: { date: string; total: number }[]; onView: (v: ReportView) => void; M: Mask; selected?: boolean }) {
   const C = useTheme();
   const { t } = useT();
   const first10 = days.slice(0, 10);
   const max = Math.max(...days.map((d) => d.total), 1);
   const avg = days.length > 0 ? Math.round(days.reduce((s, d) => s + d.total, 0) / days.length) : 0;
   return (
-    <MiniCard title={t("Month in a nutshell")} onClick={() => onView("month")}>
+    <MiniCard title={t("Month in a nutshell")} onClick={() => onView("month")} selected={selected}>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(10, 1fr)", gap: 2.5 }}>
         {first10.map((d) => (
           <span key={d.date} style={{ aspectRatio: "1", borderRadius: 3, background: heatColor(d.total, max, C) }} />
@@ -309,28 +420,45 @@ function MonthMini({ days, onView, M }: { days: { date: string; total: number }[
 }
 
 /** Trends mini-card: the top-2 biggest-moving envelopes (already sorted by computeEnvelopeTrends),
- *  a mini TrendSpark (red rising / green falling / muted flat) and an arrow per row. */
-function TrendsMini({ trends, onView }: { trends: EnvelopeTrend[]; onView: (v: ReportView) => void }) {
+ *  a mini TrendSpark (red rising / green falling / muted flat) and an arrow per row.
+ *
+ *  TrendSpark waiver (pr4-context.md §6, recorded): `TrendSpark`'s `w` is normally caller-fixed —
+ *  it draws inside a row shared with text, where measuring the row itself would be wrong (see its
+ *  own doc comment in reportKit.tsx). On a wide pane this card is much wider than a phone's ~150,
+ *  so instead of leaving the spark phone-width-fixed forever, the ref measures an inner row div
+ *  passed as `MiniCard`'s `children` — a normal flex child of the button's `alignItems: "stretch"`
+ *  column, so it already fills the button's own padded content box with no padding math needed
+ *  (`useElementWidth`'s usual "no padding between the ref and the chart" invariant holds as-is).
+ *  The ref must stay on a div INSIDE the button, not one wrapping `MiniCard` itself: a wrapping
+ *  div would become the grid's direct child instead of the button, and a plain block div does not
+ *  propagate the grid's `align-items: stretch` to a child, leaving the visible card short of the
+ *  row height whenever a sibling in the same row is taller. `Math.max(120, …)` keeps a
+ *  collapsed/unmeasured frame from ever drawing narrower than the phone's own historical 150. */
+function TrendsMini({ trends, onView, selected }: { trends: EnvelopeTrend[]; onView: (v: ReportView) => void; selected?: boolean }) {
   const C = useTheme();
   const { t } = useT();
   const top = trends.slice(0, 2);
+  const [rowRef, rowW] = useElementWidth<HTMLDivElement>(150);
+  const sparkW = Math.max(120, rowW);
   return (
-    <MiniCard title={t("Envelope trends")} onClick={() => onView("trends")}>
-      {top.length === 0 && <div style={{ fontSize: 11.5, color: C.mute }}>{t("Not enough data yet.")}</div>}
-      {top.map((tr) => {
-        const color = trendColor(tr, C);
-        const rising = color === C.neg;
-        const falling = color === C.pos;
-        return (
-          <div key={tr.id} style={{ marginBottom: 4 }}>
-            <TrendSpark series={tr.series} color={color} w={150} h={16} />
-            <div style={{ fontSize: 11, color: C.soft, marginTop: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-              {tr.name} {rising && <span style={{ color: C.neg, fontWeight: 650 }}>↑</span>}
-              {falling && <span style={{ color: C.pos, fontWeight: 650 }}>↓</span>}
+    <MiniCard title={t("Envelope trends")} onClick={() => onView("trends")} selected={selected}>
+      <div ref={rowRef}>
+        {top.length === 0 && <div style={{ fontSize: 11.5, color: C.mute }}>{t("Not enough data yet.")}</div>}
+        {top.map((tr) => {
+          const color = trendColor(tr, C);
+          const rising = color === C.neg;
+          const falling = color === C.pos;
+          return (
+            <div key={tr.id} style={{ marginBottom: 4 }}>
+              <TrendSpark series={tr.series} color={color} w={sparkW} h={16} />
+              <div style={{ fontSize: 11, color: C.soft, marginTop: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                {tr.name} {rising && <span style={{ color: C.neg, fontWeight: 650 }}>↑</span>}
+                {falling && <span style={{ color: C.pos, fontWeight: 650 }}>↓</span>}
+              </div>
             </div>
-          </div>
-        );
-      })}
+          );
+        })}
+      </div>
     </MiniCard>
   );
 }

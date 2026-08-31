@@ -7,6 +7,7 @@ import { getCachedDeployment } from "../lib/deviceStoragePolicy";
 import { useT } from "../lib/i18n";
 import { discardLocalReplica, enterLoginPreservingReplica } from "../lib/sync";
 import { CORAL, font, TEAL } from "../lib/theme";
+import { useViewMode } from "../lib/viewMode";
 
 /**
  * BootStatus "foreign" — the replica on this device carries an owner stamp naming a DIFFERENT
@@ -33,6 +34,9 @@ import { CORAL, font, TEAL } from "../lib/theme";
 export function ForeignReplicaScreen() {
   const C = useTheme();
   const { t } = useT();
+  // Layout only — same reasoning as LoginScreen (D1, pr7-context.md): the brand column already
+  // carries the logo/title on fold/desktop, and this screen fills the shell's 440px form column.
+  const wide = useViewMode() !== "phone";
   const [busy, setBusy] = useState(false);
   const [confirm, setConfirm] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -95,13 +99,24 @@ export function ForeignReplicaScreen() {
 
   return (
     <div
-      style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 14, padding: 32, textAlign: "center" }}
+      style={{
+        flex: 1,
+        display: "flex",
+        flexDirection: "column",
+        alignItems: wide ? "stretch" : "center",
+        justifyContent: "center",
+        gap: 14,
+        padding: 32,
+        textAlign: wide ? "left" : "center",
+      }}
     >
-      <div style={{ marginBottom: 4 }}>
-        <LogoMark size={64} />
-      </div>
-      <div style={{ fontSize: 18, fontWeight: 700, color: C.text }}>{t("Another account's data")}</div>
-      <div style={{ display: "flex", flexDirection: "column", gap: 12, width: "100%", maxWidth: 300 }}>
+      {!wide && (
+        <div style={{ marginBottom: 4 }}>
+          <LogoMark size={64} />
+        </div>
+      )}
+      <div style={{ fontSize: wide ? 22 : 18, fontWeight: 700, color: C.text }}>{t("Another account's data")}</div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 12, width: "100%", maxWidth: wide ? "100%" : 300 }}>
         <div style={{ fontSize: 13, color: C.soft, lineHeight: 1.6 }}>
           {t(
             "The local copy of the budget on this device belongs to a different account than the one you are signed in with. Nothing has been sent to the server and nothing has been deleted.",
@@ -149,7 +164,7 @@ export function ForeignReplicaScreen() {
           )}
         </div>
       </div>
-      {error && <div style={{ fontSize: 12, color: CORAL, lineHeight: 1.5, maxWidth: 280 }}>{error}</div>}
+      {error && <div style={{ fontSize: 12, color: CORAL, lineHeight: 1.5, maxWidth: wide ? "100%" : 280 }}>{error}</div>}
     </div>
   );
 }

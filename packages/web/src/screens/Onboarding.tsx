@@ -10,11 +10,12 @@
  * All writes go through the existing local-first path (mirror + outbox).
  * On completion we call onDone — App removes the wizard and shows Start.
  */
-import { type ReactNode, useEffect, useState } from "react";
+import { lazy, type ReactNode, useEffect, useState } from "react";
 import { AmountPadHost, type AmountPadTarget } from "../components/AmountPadSheet";
 import { LogoMark } from "../components/chrome";
 import { markInstallOffered } from "../components/InstallBanner";
 import { InstallBody } from "../components/InstallBody";
+import { LazyChunk } from "../components/lazy";
 import { fmtSignedTrim } from "../lib/amount";
 import { api, apiErrorMessage } from "../lib/api";
 import { useSettings, useTheme } from "../lib/contexts";
@@ -27,6 +28,18 @@ import { customEnvelopeStyle, TEMPLATE } from "../lib/onboardingTemplate";
 import { store } from "../lib/store";
 import { assertOwnReplica, fullResync } from "../lib/sync";
 import { ACCOUNT_COLORS, CORAL, font, P, TEAL } from "../lib/theme";
+import { useViewMode } from "../lib/viewMode";
+
+// Lazy, not a static default import: this module is ALREADY reached only through App's own
+// `lazy(() => import("./screens/Onboarding"))`, but a STATIC import from inside a dynamic entry
+// is still fetched as part of THAT SAME chunk group — the dynamic-import boundary is what defers
+// bytes, not "being inside a lazily-loaded module". A static `BootShellWide` here shipped its
+// chunk (~2KB gzip) to every phone onboarding too, even though `wide` (below) gates it out of
+// ever rendering there. Wrapping in `lazy()` again, exactly like App.tsx's own `BootShellWide`
+// (used for Login/Unlock/ForeignReplica), makes its chunk load only when the `wide` branch below
+// actually mounts it. Verified against the build manifest: Onboarding's own chunk no longer
+// lists BootShellWide.tsx as a static import.
+const BootShellWide = lazy(() => import("../components/BootShellWide"));
 
 /** Checklist row: a template item (name=Message, color/icon from TEMPLATE) or a custom envelope (custom, styled via customEnvelopeStyle). */
 type TplRow = { name?: Message; custom?: string; isSavings?: boolean; checked: boolean; color: string; icon: string };
@@ -90,13 +103,58 @@ const inputStyle = (line: string, bg: string, text: string): React.CSSProperties
   fontFamily: font,
 });
 
+/**
+ * Mid-flow wizard input, held OUTSIDE React state on purpose. Crossing the phone/wide viewport
+ * boundary while the wizard is open (FOLD_MIN, App.tsx's live resize listener) remounts this whole
+ * component — App renders it at two structurally different JSX positions (an early return for
+ * wide, nested lower down for phone; see App.tsx's own comment on the wide branch), so React
+ * discards the subtree and every plain `useState` here would reset. A module-level singleton is an
+ * acceptable place to park that state PRECISELY because onboarding is a once-per-account flow: the
+ * worst case of a leak would be one abandoned wizard's fields bleeding into the next one in the
+ * same tab, which `clearOnboardingDraft` below prevents by wiping it the moment the wizard actually
+ * finishes. Lifting this into App (as a second option) was rejected as a bigger surface for the
+ * same guarantee — it would spread wizard-shaped plumbing into a component that otherwise knows
+ * nothing about onboarding's internals, to survive a remount App itself causes.
+ *
+ * `currency`/`rows`/`drafts` start `null` (not yet computed) so the component's own lazy
+ * initializers can fall back to their real defaults (browser-locale currency, the full template)
+ * on the very first mount of a fresh wizard.
+ */
+type OnboardingDraft = {
+  step: 0 | 1 | 2;
+  accName: string;
+  accBal: string;
+  currency: string | null;
+  rows: TplRow[][] | null;
+  drafts: string[] | null;
+};
+export const onboardingDraft: OnboardingDraft = { step: 0, accName: "", accBal: "", currency: null, rows: null, drafts: null };
+
+/** Reset for the NEXT onboarding run (a fresh account) — call only once the current wizard has
+ * genuinely finished (completion or the install step's skip/done), never on a mode-flip remount. */
+export function clearOnboardingDraft() {
+  onboardingDraft.step = 0;
+  onboardingDraft.accName = "";
+  onboardingDraft.accBal = "";
+  onboardingDraft.currency = null;
+  onboardingDraft.rows = null;
+  onboardingDraft.drafts = null;
+}
+
 export function OnboardingScreen({ onDone }: { onDone: () => void }) {
   const C = useTheme();
   const { settings, setSettings } = useSettings();
-  const { t, lang } = useT();
-  const [step, setStep] = useState<0 | 1 | 2>(0);
+  const { t, tp, lang } = useT();
+  const [step, setStep] = useState<0 | 1 | 2>(onboardingDraft.step);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // The wizard is genuinely finished here (not a mode-flip remount) — the module-level draft is
+  // cleared so the NEXT onboarding run (a fresh account) starts clean instead of resuming this one.
+  const completeWizard = () => {
+    clearOnboardingDraft();
+    onDone();
+  };
 
   // Once the budget exists, offer the install step only where it is actually possible;
   // otherwise leave straight away — the card must never block completion.
@@ -106,14 +164,14 @@ export function OnboardingScreen({ onDone }: { onDone: () => void }) {
   // on Start seconds later, asking the same thing again.
   const doneWithInstall = () => {
     markInstallOffered();
-    onDone();
+    completeWizard();
   };
   const finish = () => {
     // tryDemo is async (awaits demoSeed + fullResync) — a beforeinstallprompt/appinstalled
     // event can land mid-flight, so read the LIVE store state (non-hook getter), not the
     // value the hook closed over at click time.
     if (isInstallable(getInstallState())) setShowInstall(true);
-    else onDone();
+    else completeWizard();
   };
   // M5: `appinstalled` while the card is open (e.g. Chrome's omnibox install) — the offer
   // succeeded; InstallBody would render null under the heading. Finish exactly like the
@@ -126,7 +184,9 @@ export function OnboardingScreen({ onDone }: { onDone: () => void }) {
   // step 0 — currency. PRESELECTED from the browser locale (the budget row still carries the bare
   // server default at this point); the pick lives in local state and is written to the ledger when
   // the user leaves step 0, so the amounts in steps 1-2 already format in the chosen currency.
-  const [currency, setCurrency] = useState<string>(() => wizardCurrency(store.getLedger()?.budgets?.[0]?.currency, browserLocales()));
+  const [currency, setCurrency] = useState<string>(
+    () => onboardingDraft.currency ?? wizardCurrency(store.getLedger()?.budgets?.[0]?.currency, browserLocales()),
+  );
 
   /** The wizard ALWAYS sets the currency — commit the pick (a no-op when it already matches). */
   const commitCurrency = () => {
@@ -135,8 +195,8 @@ export function OnboardingScreen({ onDone }: { onDone: () => void }) {
   };
 
   // step 1 — first account
-  const [accName, setAccName] = useState("");
-  const [accBal, setAccBal] = useState("");
+  const [accName, setAccName] = useState(onboardingDraft.accName);
+  const [accBal, setAccBal] = useState(onboardingDraft.accBal);
   const [pad, setPad] = useState<AmountPadTarget | null>(null);
 
   const openBalancePad = () =>
@@ -148,10 +208,23 @@ export function OnboardingScreen({ onDone }: { onDone: () => void }) {
     });
 
   // step 2 — template checklist (everything checked by default) + custom entries per group
-  const [rows, setRows] = useState<TplRow[][]>(() =>
-    TEMPLATE.map((g) => g.envelopes.map((e) => ({ name: e.name, color: e.color, icon: e.icon, ...(e.isSavings ? { isSavings: true } : {}), checked: true }))),
+  const [rows, setRows] = useState<TplRow[][]>(
+    () =>
+      onboardingDraft.rows ??
+      TEMPLATE.map((g) => g.envelopes.map((e) => ({ name: e.name, color: e.color, icon: e.icon, ...(e.isSavings ? { isSavings: true } : {}), checked: true }))),
   );
-  const [drafts, setDrafts] = useState<string[]>(() => TEMPLATE.map(() => ""));
+  const [drafts, setDrafts] = useState<string[]>(() => onboardingDraft.drafts ?? TEMPLATE.map(() => ""));
+
+  // Mirror into the module-level draft (see its own comment) on every change, so a mode-flip
+  // remount resumes exactly where the user left off instead of restarting the wizard.
+  useEffect(() => {
+    onboardingDraft.step = step;
+    onboardingDraft.accName = accName;
+    onboardingDraft.accBal = accBal;
+    onboardingDraft.currency = currency;
+    onboardingDraft.rows = rows;
+    onboardingDraft.drafts = drafts;
+  }, [step, accName, accBal, currency, rows, drafts]);
 
   const tryDemo = async () => {
     setBusy(true);
@@ -193,6 +266,8 @@ export function OnboardingScreen({ onDone }: { onDone: () => void }) {
   };
 
   const anyChecked = rows.some((g) => g.some((r) => r.checked));
+  // Wide-only sticky-row status text (Task 4) — total checked count across every group.
+  const picked = rows.reduce((n, g) => n + g.filter((r) => r.checked).length, 0);
 
   const createEnvelopes = () => {
     TEMPLATE.forEach((tpl, gi) => {
@@ -213,22 +288,178 @@ export function OnboardingScreen({ onDone }: { onDone: () => void }) {
     finish(); // empty-budget condition cleared → App renders Start (or the install card first)
   };
 
-  return (
-    <div className="gs" style={{ flex: 1, overflowY: "auto", padding: `24px ${P + 4}px 32px`, display: "flex", flexDirection: "column" }}>
-      {showInstall ? (
-        <div style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "center", gap: 18 }}>
-          <div style={{ textAlign: "center" }}>
-            <div style={{ fontSize: 20, fontWeight: 800, color: C.text, marginBottom: 6 }}>{t("Add Enveo to your phone")}</div>
-            <div style={{ fontSize: 13.5, color: C.soft, lineHeight: 1.5 }}>
-              {t("One tap and Enveo lives on your home screen — offline, full screen, no browser bar.")}
+  // Wide (fold/desktop): the wizard hosts itself inside the boot shell (PR7 Task 3) — it is a
+  // boot state, not an app screen, so it leaves App's rail/BottomNav/SyncBadge/InstallBanner
+  // entirely behind (App.tsx renders this component unwrapped, before any of those mount — see
+  // App.tsx's own comment at that branch). `BootShellWide` above is its own `lazy()` (not a
+  // static import): being inside a lazily-loaded module does NOT stop a plain static import from
+  // shipping in the SAME chunk group, only a nested dynamic import does that — see its own
+  // comment.
+  const mode = useViewMode();
+  const wide = mode !== "phone";
+  // ONE step/install tree for both hosts (do not fork it per mode): the step wrappers' own
+  // `flex: 1; justifyContent: "center"` are no-ops inside BootShellWide's auto-height content
+  // column (flex-grow against an auto-sized parent does nothing there), and the shell centres
+  // its column with `margin: auto` instead — so the exact same JSX reads correctly in the
+  // phone's own flex-1/overflow scroller below and in the shell's content region.
+  const body = showInstall ? (
+    <div style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "center", gap: 18 }}>
+      <div style={{ textAlign: "center" }}>
+        <div style={{ fontSize: 20, fontWeight: 800, color: C.text, marginBottom: 6 }}>
+          {wide ? t("Add Enveo to this device") : t("Add Enveo to your phone")}
+        </div>
+        <div style={{ fontSize: 13.5, color: C.soft, lineHeight: 1.5 }}>
+          {wide
+            ? t("One click and Enveo runs in its own window — offline, full screen, no browser bar.")
+            : t("One tap and Enveo lives on your home screen — offline, full screen, no browser bar.")}
+        </div>
+      </div>
+      <InstallBody onDone={doneWithInstall} />
+      <button
+        onClick={doneWithInstall}
+        style={{
+          width: "100%",
+          marginTop: 4,
+          padding: "11px 0",
+          borderRadius: 11,
+          border: "none",
+          background: "transparent",
+          color: C.soft,
+          fontSize: 13,
+          fontWeight: 600,
+          cursor: "pointer",
+          fontFamily: font,
+        }}
+      >
+        {t("Skip for now")}
+      </button>
+    </div>
+  ) : (
+    <>
+      {/* ── Step 0: welcome + language/currency + path choice ── */}
+      {step === 0 && (
+        <div style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "center" }}>
+          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", textAlign: "center", marginBottom: 26 }}>
+            <div style={{ marginBottom: 16 }}>
+              <LogoMark size={74} />
+            </div>
+            <div style={{ fontSize: 21, fontWeight: 700, color: C.text, marginBottom: 8 }}>{t("Welcome to Enveo")}</div>
+            <div style={{ fontSize: 13, color: C.soft, lineHeight: 1.6, maxWidth: 300 }}>
+              {t("Envelope budgeting: assign your income to envelopes and always know how much you can still spend.")}
             </div>
           </div>
-          <InstallBody onDone={doneWithInstall} />
+
+          <Row label={t("Language")}>
+            {/* From the registry, like Settings: detectLang() can preselect ANY locale, so a two-option
+                    control would open the wizard with nothing selected for a German or Czech browser. */}
+            <select
+              value={settings.lang}
+              /* the locale chunk is fetched BEFORE the switch — otherwise the wizard stays English until a reload */
+              onChange={(e) => {
+                const id = e.target.value as Lang;
+                void loadLocale(id).then(() => setSettings({ ...settings, lang: id }));
+              }}
+              style={{
+                padding: "7px 10px",
+                borderRadius: 9,
+                border: `1px solid ${C.line}`,
+                background: C.bg,
+                color: C.text,
+                fontSize: 12.5,
+                fontWeight: 600,
+                fontFamily: font,
+              }}
+            >
+              {LOCALES.map((l) => (
+                <option key={l.code} value={l.code}>
+                  {l.endonym}
+                </option>
+              ))}
+            </select>
+          </Row>
+          <Row label={t("Currency")}>
+            <select
+              value={currency}
+              onChange={(e) => setCurrency(e.target.value)}
+              style={{
+                padding: "7px 10px",
+                borderRadius: 9,
+                border: `1px solid ${C.line}`,
+                background: C.bg,
+                color: C.text,
+                fontSize: 12.5,
+                fontWeight: 600,
+                fontFamily: font,
+              }}
+            >
+              {SUPPORTED_CURRENCIES.map((c) => (
+                <option key={c} value={c}>
+                  {c}
+                </option>
+              ))}
+            </select>
+          </Row>
+
+          <div style={{ height: 26 }} />
+          <BigButton
+            label={t("Start with an empty budget")}
+            onClick={() => {
+              commitCurrency();
+              setStep(1);
+            }}
+            disabled={busy}
+            variant="teal"
+          />
+          <div style={{ height: 10 }} />
+          <BigButton label={busy ? t("Loading sample data…") : t("Try it with sample data")} onClick={() => void tryDemo()} disabled={busy} variant="outline" />
+          {error && <div style={{ fontSize: 12, color: CORAL, marginTop: 10, lineHeight: 1.5 }}>{error}</div>}
+        </div>
+      )}
+
+      {/* ── Step 1: first account ── */}
+      {step === 1 && (
+        <div style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "center" }}>
+          <div style={{ fontSize: 19, fontWeight: 700, color: C.text, marginBottom: 8 }}>{t("Your first account")}</div>
+          <div style={{ fontSize: 12.5, color: C.soft, lineHeight: 1.6, marginBottom: 22 }}>
+            {t("Add the account you spend from. The balance can be approximate — it is easy to adjust later.")}
+          </div>
+
+          <div style={{ fontSize: 11, color: C.mute, fontWeight: 600, marginBottom: 6 }}>{t("Account name")}</div>
+          <input
+            value={accName}
+            onChange={(e) => setAccName(e.target.value)}
+            placeholder={t("e.g. Checking")}
+            style={{ ...inputStyle(C.line, C.bg, C.text), marginBottom: 14 }}
+          />
+
+          <div style={{ fontSize: 11, color: C.mute, fontWeight: 600, marginBottom: 6 }}>{`${t("Starting balance")} (${currency})`}</div>
+          <input
+            // `accBal` stays CANONICAL (fmtSignedTrim in, parseAmount out) — display only is
+            // localized, placeholder included ("0.00" in en, "0,00" in pl).
+            value={localizePadExpression(accBal, lang)}
+            readOnly
+            onClick={openBalancePad}
+            onFocus={openBalancePad}
+            placeholder={localizePadExpression("0,00", lang)}
+            style={{ ...inputStyle(C.line, C.bg, C.text), marginBottom: 22, cursor: "pointer" }}
+          />
+          {/* Wide-only (M13 sibling ruling): the mock draws this caption in both modes, but a
+                  wizard step this short never needed reassurance on a 420px phone screen — phone
+                  pixels stay untouched (spec §Goal: phone identity wins on an unflagged mock
+                  addition). negative marginTop folds the caption up against the input's own
+                  marginBottom:22 instead of stacking a second gap under it. */}
+          {wide && (
+            <div style={{ fontSize: 11.5, color: C.mute, lineHeight: 1.5, marginTop: -14, marginBottom: 22 }}>
+              {t("A negative balance is fine — that is how a credit card starts.")}
+            </div>
+          )}
+
+          <BigButton label={t("Add account")} onClick={createAccount} disabled={!accName.trim()} variant="teal" />
           <button
-            onClick={doneWithInstall}
+            onClick={() => setStep(0)}
             style={{
               width: "100%",
-              marginTop: 4,
+              marginTop: 12,
               padding: "11px 0",
               borderRadius: 11,
               border: "none",
@@ -240,258 +471,198 @@ export function OnboardingScreen({ onDone }: { onDone: () => void }) {
               fontFamily: font,
             }}
           >
-            {t("Skip for now")}
+            {t("Back")}
           </button>
         </div>
-      ) : (
-        <>
-          {/* ── Step 0: welcome + language/currency + path choice ── */}
-          {step === 0 && (
-            <div style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "center" }}>
-              <div style={{ display: "flex", flexDirection: "column", alignItems: "center", textAlign: "center", marginBottom: 26 }}>
-                <div style={{ marginBottom: 16 }}>
-                  <LogoMark size={74} />
-                </div>
-                <div style={{ fontSize: 21, fontWeight: 700, color: C.text, marginBottom: 8 }}>{t("Welcome to Enveo")}</div>
-                <div style={{ fontSize: 13, color: C.soft, lineHeight: 1.6, maxWidth: 300 }}>
-                  {t("Envelope budgeting: assign your income to envelopes and always know how much you can still spend.")}
-                </div>
-              </div>
-
-              <Row label={t("Language")}>
-                {/* From the registry, like Settings: detectLang() can preselect ANY locale, so a two-option
-                    control would open the wizard with nothing selected for a German or Czech browser. */}
-                <select
-                  value={settings.lang}
-                  /* the locale chunk is fetched BEFORE the switch — otherwise the wizard stays English until a reload */
-                  onChange={(e) => {
-                    const id = e.target.value as Lang;
-                    void loadLocale(id).then(() => setSettings({ ...settings, lang: id }));
-                  }}
-                  style={{
-                    padding: "7px 10px",
-                    borderRadius: 9,
-                    border: `1px solid ${C.line}`,
-                    background: C.bg,
-                    color: C.text,
-                    fontSize: 12.5,
-                    fontWeight: 600,
-                    fontFamily: font,
-                  }}
-                >
-                  {LOCALES.map((l) => (
-                    <option key={l.code} value={l.code}>
-                      {l.endonym}
-                    </option>
-                  ))}
-                </select>
-              </Row>
-              <Row label={t("Currency")}>
-                <select
-                  value={currency}
-                  onChange={(e) => setCurrency(e.target.value)}
-                  style={{
-                    padding: "7px 10px",
-                    borderRadius: 9,
-                    border: `1px solid ${C.line}`,
-                    background: C.bg,
-                    color: C.text,
-                    fontSize: 12.5,
-                    fontWeight: 600,
-                    fontFamily: font,
-                  }}
-                >
-                  {SUPPORTED_CURRENCIES.map((c) => (
-                    <option key={c} value={c}>
-                      {c}
-                    </option>
-                  ))}
-                </select>
-              </Row>
-
-              <div style={{ height: 26 }} />
-              <BigButton
-                label={t("Start with an empty budget")}
-                onClick={() => {
-                  commitCurrency();
-                  setStep(1);
-                }}
-                disabled={busy}
-                variant="teal"
-              />
-              <div style={{ height: 10 }} />
-              <BigButton
-                label={busy ? t("Loading sample data…") : t("Try it with sample data")}
-                onClick={() => void tryDemo()}
-                disabled={busy}
-                variant="outline"
-              />
-              {error && <div style={{ fontSize: 12, color: CORAL, marginTop: 10, lineHeight: 1.5 }}>{error}</div>}
-            </div>
-          )}
-
-          {/* ── Step 1: first account ── */}
-          {step === 1 && (
-            <div style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "center" }}>
-              <div style={{ fontSize: 19, fontWeight: 700, color: C.text, marginBottom: 8 }}>{t("Your first account")}</div>
-              <div style={{ fontSize: 12.5, color: C.soft, lineHeight: 1.6, marginBottom: 22 }}>
-                {t("Add the account you spend from. The balance can be approximate — it is easy to adjust later.")}
-              </div>
-
-              <div style={{ fontSize: 11, color: C.mute, fontWeight: 600, marginBottom: 6 }}>{t("Account name")}</div>
-              <input
-                value={accName}
-                onChange={(e) => setAccName(e.target.value)}
-                placeholder={t("e.g. Checking")}
-                style={{ ...inputStyle(C.line, C.bg, C.text), marginBottom: 14 }}
-              />
-
-              <div style={{ fontSize: 11, color: C.mute, fontWeight: 600, marginBottom: 6 }}>{`${t("Starting balance")} (${currency})`}</div>
-              <input
-                // `accBal` stays CANONICAL (fmtSignedTrim in, parseAmount out) — display only is
-                // localized, placeholder included ("0.00" in en, "0,00" in pl).
-                value={localizePadExpression(accBal, lang)}
-                readOnly
-                onClick={openBalancePad}
-                onFocus={openBalancePad}
-                placeholder={localizePadExpression("0,00", lang)}
-                style={{ ...inputStyle(C.line, C.bg, C.text), marginBottom: 22, cursor: "pointer" }}
-              />
-
-              <BigButton label={t("Add account")} onClick={createAccount} disabled={!accName.trim()} variant="teal" />
-              <button
-                onClick={() => setStep(0)}
-                style={{
-                  width: "100%",
-                  marginTop: 12,
-                  padding: "11px 0",
-                  borderRadius: 11,
-                  border: "none",
-                  background: "transparent",
-                  color: C.soft,
-                  fontSize: 13,
-                  fontWeight: 600,
-                  cursor: "pointer",
-                  fontFamily: font,
-                }}
-              >
-                {t("Back")}
-              </button>
-            </div>
-          )}
-
-          {/* ── Step 2: envelope template (checklist + custom per group) ── */}
-          {step === 2 && (
-            <div>
-              <div style={{ fontSize: 19, fontWeight: 700, color: C.text, marginBottom: 8, marginTop: 6 }}>{t("Your envelopes")}</div>
-              <div style={{ fontSize: 12.5, color: C.soft, lineHeight: 1.6, marginBottom: 18 }}>
-                {t("Pick the envelopes you want to start with — you can change them or add new ones anytime.")}
-              </div>
-
-              {TEMPLATE.map((tpl, gi) => (
-                <div key={tpl.group} style={{ marginBottom: 18 }}>
-                  <div style={{ fontSize: 10.5, fontWeight: 600, color: C.mute, textTransform: "uppercase", letterSpacing: 0.6, marginBottom: 6 }}>
-                    {t(tpl.group)}
-                  </div>
-                  <div style={{ background: C.bg, borderRadius: 11, border: `1px solid ${C.line}`, padding: "2px 12px" }}>
-                    {rows[gi]!.map((r, ri) => (
-                      <button
-                        key={r.custom ?? r.name}
-                        onClick={() => toggleRow(gi, ri)}
-                        style={{
-                          display: "flex",
-                          alignItems: "center",
-                          gap: 10,
-                          width: "100%",
-                          padding: "11px 0",
-                          background: "none",
-                          border: "none",
-                          borderBottom: `1px solid ${C.line}`,
-                          cursor: "pointer",
-                          textAlign: "left",
-                        }}
-                      >
-                        <span
-                          aria-hidden="true"
-                          style={{
-                            width: 20,
-                            height: 20,
-                            borderRadius: 6,
-                            flexShrink: 0,
-                            display: "flex",
-                            alignItems: "center",
-                            justifyContent: "center",
-                            background: r.checked ? TEAL : "transparent",
-                            border: r.checked ? "none" : `1.5px solid ${C.line}`,
-                          }}
-                        >
-                          {r.checked && (
-                            <svg
-                              width="12"
-                              height="12"
-                              viewBox="0 0 24 24"
-                              fill="none"
-                              stroke="#fff"
-                              strokeWidth="3.2"
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                            >
-                              <path d="M4.5 12.5l5 5 10-11" />
-                            </svg>
-                          )}
-                        </span>
-                        <span style={{ fontSize: 13.5, color: C.text, fontWeight: 500 }}>{r.custom ?? t(r.name!)}</span>
-                      </button>
-                    ))}
-                    <div style={{ display: "flex", gap: 8, padding: "9px 0" }}>
-                      <input
-                        value={drafts[gi]}
-                        onChange={(e) => setDrafts((prev) => prev.map((d, i) => (i === gi ? e.target.value : d)))}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter") addCustom(gi);
-                        }}
-                        placeholder={t("Custom envelope…")}
-                        style={{ ...inputStyle(C.line, C.bg, C.text), padding: "8px 10px", fontSize: 13 }}
-                      />
-                      <button
-                        onClick={() => addCustom(gi)}
-                        disabled={!drafts[gi]?.trim()}
-                        aria-label={t("Add a custom envelope")}
-                        style={{
-                          flexShrink: 0,
-                          width: 38,
-                          borderRadius: 10,
-                          border: `1px solid ${C.line}`,
-                          background: C.bg,
-                          color: C.text,
-                          fontSize: 18,
-                          fontWeight: 600,
-                          cursor: "pointer",
-                          opacity: drafts[gi]?.trim() ? 1 : 0.5,
-                          fontFamily: font,
-                        }}
-                      >
-                        +
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              ))}
-
-              {/* sticky (not fixed): stays pinned to the .gs scrollport's bottom edge while the
-                  checklist scrolls, so the CTA is reachable without scrolling all the way down —
-                  desktop viewports (1280x800) can otherwise clip it below the fold (B3). bottom:-32
-                  compensates the .gs container's 32px bottom padding; the background hides list rows
-                  scrolling underneath. */}
-              <div style={{ position: "sticky", bottom: -32, padding: "10px 0 4px", background: C.bg }}>
-                <BigButton label={t("Create envelopes")} onClick={createEnvelopes} disabled={!anyChecked} variant="teal" />
-              </div>
-            </div>
-          )}
-        </>
       )}
 
-      <AmountPadHost target={pad} onClose={() => setPad(null)} />
-    </div>
+      {/* ── Step 2: envelope template (checklist + custom per group) ── */}
+      {step === 2 && (
+        <div>
+          <div style={{ fontSize: 19, fontWeight: 700, color: C.text, marginBottom: 8, marginTop: 6 }}>{t("Your envelopes")}</div>
+          <div style={{ fontSize: 12.5, color: C.soft, lineHeight: 1.6, marginBottom: 18 }}>
+            {t("Pick the envelopes you want to start with — you can change them or add new ones anytime.")}
+          </div>
+
+          {/* Wide (fold/desktop): the groups tile into a 2/3-column grid instead of stacking —
+                  minmax(0, 1fr) is load-bearing (a track with an implicit auto minimum would grow
+                  to fit a long custom-envelope name instead of letting it ellipsize inside the
+                  cell). Phone keeps single-column stacking. Group blocks themselves are byte-
+                  identical between modes (M13) — only this outer wrapper forks. */}
+          <div
+            style={
+              wide ? { display: "grid", gridTemplateColumns: `repeat(${mode === "desktop" ? 3 : 2}, minmax(0, 1fr))`, gap: 12, alignItems: "start" } : undefined
+            }
+          >
+            {TEMPLATE.map((tpl, gi) => (
+              <div key={tpl.group} style={{ marginBottom: 18 }}>
+                <div style={{ fontSize: 10.5, fontWeight: 600, color: C.mute, textTransform: "uppercase", letterSpacing: 0.6, marginBottom: 6 }}>
+                  {t(tpl.group)}
+                </div>
+                <div style={{ background: C.bg, borderRadius: 11, border: `1px solid ${C.line}`, padding: "2px 12px" }}>
+                  {rows[gi]!.map((r, ri) => (
+                    <button
+                      key={r.custom ?? r.name}
+                      onClick={() => toggleRow(gi, ri)}
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 10,
+                        width: "100%",
+                        padding: "11px 0",
+                        background: "none",
+                        border: "none",
+                        borderBottom: `1px solid ${C.line}`,
+                        cursor: "pointer",
+                        textAlign: "left",
+                      }}
+                    >
+                      <span
+                        aria-hidden="true"
+                        style={{
+                          width: 20,
+                          height: 20,
+                          borderRadius: 6,
+                          flexShrink: 0,
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          background: r.checked ? TEAL : "transparent",
+                          border: r.checked ? "none" : `1.5px solid ${C.line}`,
+                        }}
+                      >
+                        {r.checked && (
+                          <svg
+                            width="12"
+                            height="12"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="#fff"
+                            strokeWidth="3.2"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                          >
+                            <path d="M4.5 12.5l5 5 10-11" />
+                          </svg>
+                        )}
+                      </span>
+                      {/* flex:1/minWidth:0 + nowrap/ellipsis: a narrowed grid column (or a very
+                              long custom name on phone) truncates the name instead of overflowing
+                              the card — the wealth chip after it never gets pushed off. */}
+                      <span
+                        style={{
+                          flex: 1,
+                          minWidth: 0,
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                          whiteSpace: "nowrap",
+                          fontSize: 13.5,
+                          color: C.text,
+                          fontWeight: 500,
+                        }}
+                      >
+                        {r.custom ?? t(r.name!)}
+                      </span>
+                      {wide && r.isSavings && (
+                        <span
+                          style={{
+                            fontSize: 9.5,
+                            fontWeight: 750,
+                            letterSpacing: "0.1em",
+                            textTransform: "uppercase",
+                            color: TEAL,
+                            flexShrink: 0,
+                          }}
+                        >
+                          {t("Wealth")}
+                        </span>
+                      )}
+                    </button>
+                  ))}
+                  <div style={{ display: "flex", gap: 8, padding: "9px 0" }}>
+                    <input
+                      value={drafts[gi]}
+                      onChange={(e) => setDrafts((prev) => prev.map((d, i) => (i === gi ? e.target.value : d)))}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") addCustom(gi);
+                      }}
+                      placeholder={t("Custom envelope…")}
+                      style={{ ...inputStyle(C.line, C.bg, C.text), padding: "8px 10px", fontSize: 13 }}
+                    />
+                    <button
+                      onClick={() => addCustom(gi)}
+                      disabled={!drafts[gi]?.trim()}
+                      aria-label={t("Add a custom envelope")}
+                      style={{
+                        flexShrink: 0,
+                        width: 38,
+                        borderRadius: 10,
+                        border: `1px solid ${C.line}`,
+                        background: C.bg,
+                        color: C.text,
+                        fontSize: 18,
+                        fontWeight: 600,
+                        cursor: "pointer",
+                        opacity: drafts[gi]?.trim() ? 1 : 0.5,
+                        fontFamily: font,
+                      }}
+                    >
+                      +
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* sticky (not fixed): stays pinned to the .gs scrollport's bottom edge while the
+                  checklist scrolls, so the CTA is reachable without scrolling all the way down —
+                  desktop viewports (1280x800) can otherwise clip it below the fold (B3). On phone
+                  bottom:-32 compensates the .gs container's own 32px bottom padding; on wide the
+                  scrollport is the shell's content region (no such padding baked into .gs there),
+                  so the offset is 0. The background hides list rows scrolling underneath. */}
+          <div style={{ position: "sticky", bottom: wide ? 0 : -32, padding: "10px 0 4px", background: C.bg, display: "flex", alignItems: "center", gap: 12 }}>
+            {wide && (
+              <span style={{ flex: 1, fontSize: 12, color: C.soft }}>
+                {picked === 0 ? (
+                  t("Pick at least one envelope.")
+                ) : (
+                  <>
+                    {tp("{n} envelope selected | {n} envelopes selected", picked)}
+                    {" · "}
+                    {currency}
+                  </>
+                )}
+              </span>
+            )}
+            <div style={{ flex: wide ? "none" : 1, minWidth: wide ? 220 : undefined, width: wide ? undefined : "100%" }}>
+              <BigButton label={t("Create envelopes")} onClick={createEnvelopes} disabled={!anyChecked} variant="teal" />
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  );
+
+  if (!wide)
+    return (
+      <div className="gs" style={{ flex: 1, overflowY: "auto", padding: `24px ${P + 4}px 32px`, display: "flex", flexDirection: "column" }}>
+        {body}
+        <AmountPadHost target={pad} onClose={() => setPad(null)} />
+      </div>
+    );
+
+  return (
+    <LazyChunk>
+      <BootShellWide
+        mode={mode}
+        view={showInstall ? "install" : "wizard"}
+        wizardStep={step}
+        formMax={step === 2 && !showInstall ? (mode === "desktop" ? 820 : 1000) : undefined}
+      >
+        <div className="gs">{body}</div>
+        <AmountPadHost target={pad} onClose={() => setPad(null)} />
+      </BootShellWide>
+    </LazyChunk>
   );
 }

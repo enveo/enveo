@@ -1,16 +1,51 @@
 import { computeStateResponse } from "@enveo/shared";
-import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
+import { lazy, type ReactNode, Suspense, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { useLedgerVersion } from "../lib/api";
 import { useSettings, useTheme } from "../lib/contexts";
 import { currentMonth, monthLabel } from "../lib/dates";
-import { INPUT_FOCUS_CSS, NAME_UNDERLINE_FOCUS_CSS } from "../lib/focusPresentation";
+import { CHECKBOX_CSS, INPUT_FOCUS_CSS, NAME_UNDERLINE_FOCUS_CSS } from "../lib/focusPresentation";
 import { LOCALE_OF } from "../lib/format";
 import { useT } from "../lib/i18n";
 import { D_INSTALL, Ico } from "../lib/icons";
 import { isInstallable, useInstall } from "../lib/installPrompt";
+import { useWideHost } from "../lib/shellContext";
 import { store } from "../lib/store";
 import { CORAL, CTA, font, P, type Theme } from "../lib/theme";
 import { APP_VERSION, buildLabel } from "../lib/version";
+import { PHONE_COL } from "../lib/viewMode";
+
+// Lazy — the pane-surface presentation lives in the wide chunk; phone (and any un-hosted mount)
+// never requests it, since `Surface` below only reaches this branch when `useWideHost()?.surfaces`
+// is set (WideShell-only).
+const PaneSurface = lazy(() => import("./wide/PaneSurface").then((m) => ({ default: m.PaneSurface })));
+
+/**
+ * Hover-reveal scrollbars for WIDE scroll surfaces (owner ruling, parity owner round 1 item 2;
+ * design v3.dc.html:21-28): no visible scrollbar at rest, a slim hairline thumb while the pointer
+ * hovers the scroll container. One shared mechanism, two entry points:
+ * - `.gsh` — the opt-in class for wide-only containers (rail accounts, board tile bodies, the
+ *   envelope pill grid, panel bodies, WideSettings' two panes);
+ * - the `[data-wide-primary] .gs` / `[data-wide-panel] .gs` scopes — they sweep up every `.gs`
+ *   list a PHONE screen brings along when it is hosted in a wide pane (Transactions, Budget,
+ *   report subscreens…), so phone markup stays untouched and phone behavior (`.gs` = scrollbar
+ *   fully hidden) is byte-identical: those data attributes exist only under `WideShell`.
+ * Chrome/Firefox take the standard `scrollbar-width`/`scrollbar-color` path (per spec, a non-auto
+ * value there disables `::-webkit-scrollbar` styling); Safari takes the webkit rules. Content is
+ * never `display:none` — scrolling (wheel/drag/touch) keeps working, only the indicator hides.
+ * The thumb is a fixed neutral gray readable on every theme surface (the design's own literal,
+ * rgba(43,42,39,…), is light-Cisza ink and would vanish on the dark themes).
+ */
+const GSH = (suffix: string) => [".gsh", "[data-wide-primary] .gs", "[data-wide-panel] .gs"].map((s) => s + suffix).join(",");
+const HOVER_SCROLLBAR_CSS =
+  `${GSH("")}{scrollbar-width:thin;scrollbar-color:transparent transparent}` +
+  `${GSH(":hover")}{scrollbar-color:rgba(128,127,122,.45) transparent}` +
+  `${GSH("::-webkit-scrollbar")}{width:4px;height:4px}` +
+  `${GSH("::-webkit-scrollbar-track")}{background:transparent}` +
+  `${GSH("::-webkit-scrollbar-thumb")}{background:transparent;border-radius:999px}` +
+  `${GSH(":hover::-webkit-scrollbar-thumb")}{background:rgba(128,127,122,.45)}` +
+  `${GSH("::-webkit-scrollbar-thumb:hover")}{background:rgba(128,127,122,.7)}` +
+  `${GSH("::-webkit-scrollbar-corner")}{background:transparent}`;
 
 /** Injects animation keyframes (system font — no webfonts). */
 export function StyleInjector() {
@@ -34,7 +69,24 @@ export function StyleInjector() {
     // shell's own paddingTop is the ONE source of that gap everywhere. `!important` is required:
     // an author stylesheet !important rule is the only thing that outranks an inline `style`
     // (itself normal-priority, cascade-wise, despite the specificity myth) — see MDN cascade order.
-    s.textContent = `*{-webkit-tap-highlight-color:transparent}@keyframes fu{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}@keyframes su{from{transform:translateY(100%)}to{transform:translateY(0)}}@keyframes sl{from{transform:translateX(-100%)}to{transform:translateX(0)}}@keyframes fi{from{opacity:0}to{opacity:1}}@keyframes sp{to{transform:rotate(360deg)}}@keyframes wg{from{transform:rotate(-.5deg)}to{transform:rotate(.5deg)}}@keyframes sk{0%,100%{opacity:.5}50%{opacity:.9}}.fu{animation:fu .4s ease-out both}.fi{animation:fi .25s ease-out both}.sk{animation:sk 1.2s ease-in-out infinite}.gs::-webkit-scrollbar{width:0;height:0}body{margin:0}@media(hover:hover){button:not(:disabled):hover{filter:brightness(.96)}}:focus-visible{outline:2px solid var(--focus-ring);outline-offset:2px}${INPUT_FOCUS_CSS}${NAME_UNDERLINE_FOCUS_CSS}.rpt-body>:first-child{margin-top:0 !important}`;
+    // `.fi` deliberately has NO `both`/`forwards` fill mode (unlike `.fu`, whose ancestors never
+    // host a Sheet): a CSS *animation* keeps affecting its target property — and per the CSS
+    // Animations spec, generating a stacking context for it — for as long as the animation stays
+    // associated with the element, which `forwards`/`both` extends forever (the animation-name is
+    // never removed). Settings.tsx wraps its active sub-screen in `.fi` (its own comment: "fi, not
+    // fu — transform on an ancestor breaks position:fixed sheets"), which correctly avoided the
+    // TRANSFORM/containing-block pitfall but missed this one: with `both`, that wrapper stayed a
+    // stacking context forever after mounting, trapping the E2EE-enable Sheet's z-index inside it
+    // — so the wide side panel's OWN always-on `transform` (`WideShell`'s `data-wide-panel`, a
+    // stacking context by construction) painted OVER it regardless of the Sheet's own z-index,
+    // and `elementFromPoint` inside the overlap resolved to the panel, not the Sheet (unclickable
+    // at 1104/1440; verified live, and verified fixed by dropping `both` here). With the default
+    // fill mode (`none`), the animation stops affecting opacity the moment it completes, so the
+    // element stops being a stacking context — every current use (`.fi`'s own callers) already
+    // rests at opacity:1 by then (Sheet's backdrop keeps its own dynamic drag-fade `style.opacity`
+    // authored value, which is what takes over once the animation lets go), so this changes no
+    // visible frame, only what happens after the fade finishes.
+    s.textContent = `*{-webkit-tap-highlight-color:transparent}@keyframes fu{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}@keyframes su{from{transform:translateY(100%)}to{transform:translateY(0)}}@keyframes sl{from{transform:translateX(-100%)}to{transform:translateX(0)}}@keyframes fi{from{opacity:0}to{opacity:1}}@keyframes sp{to{transform:rotate(360deg)}}@keyframes wg{from{transform:rotate(-.5deg)}to{transform:rotate(.5deg)}}@keyframes sk{0%,100%{opacity:.5}50%{opacity:.9}}.fu{animation:fu .4s ease-out both}.fi{animation:fi .25s ease-out}.sk{animation:sk 1.2s ease-in-out infinite}.gs::-webkit-scrollbar{width:0;height:0}${HOVER_SCROLLBAR_CSS}body{margin:0}@media(hover:hover){button:not(:disabled):hover{filter:brightness(.96)}}:focus-visible{outline:2px solid var(--focus-ring);outline-offset:2px}${INPUT_FOCUS_CSS}${NAME_UNDERLINE_FOCUS_CSS}${CHECKBOX_CSS}.rpt-body>:first-child{margin-top:0 !important}`;
     document.head.appendChild(s);
   }, []);
   return null;
@@ -98,28 +150,40 @@ export function Header({
   );
 }
 
-/** Bottom sheet — follows the theme (dark in dark mode). Content may be a render prop `(C) => …`.
- *  `tall`: opt-in FIXED height (instead of content-driven) for sheets whose content can shrink
- *  drastically (a filtered search list) — without it, a filtered-down list collapses the sheet's
- *  height and, anchored at `bottom:0`, the whole thing can sink behind an open mobile keyboard. */
-export function Sheet({
-  show,
-  onClose,
-  lockSwipe = false,
-  tall = false,
-  children,
-}: {
+/** `Sheet`'s (and `Surface`'s — below) exact contract, extracted so both share one type instead
+ *  of two copies that could drift. No behaviour change. */
+export type SheetProps = {
   show: boolean;
   onClose: () => void;
   lockSwipe?: boolean;
   tall?: boolean;
   children: ReactNode | ((C: Theme) => ReactNode);
-}) {
+};
+
+/** Bottom sheet — follows the theme (dark in dark mode). Content may be a render prop `(C) => …`.
+ *  `tall`: opt-in FIXED height (instead of content-driven) for sheets whose content can shrink
+ *  drastically (a filtered search list) — without it, a filtered-down list collapses the sheet's
+ *  height and, anchored at `bottom:0`, the whole thing can sink behind an open mobile keyboard. */
+export function Sheet({ show, onClose, lockSwipe = false, tall = false, children }: SheetProps) {
   const C = useTheme();
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const drag = useRef<{ y0: number; scroll0: number; dy: number; active: boolean } | null>(null);
   const [dragY, setDragY] = useState(0);
   const [dragging, setDragging] = useState(false);
+
+  // PR6 Task 5 fix: a Sheet rendered from panel-hosted content (Add's date/account/envelope
+  // pickers, ImportSheet's own Sheet, its AiConsentSheet — the only PanelHost kind with Sheet
+  // descendants) sits inside WideShell's panel `<div>`, which carries an always-on CSS
+  // `transform` (open/closed slide, `chrome.tsx`'s sibling `WideShell.tsx`) — a non-`none`
+  // transform is a containing block for `position:fixed` (house pitfall, CLAUDE.md), so without
+  // this the backdrop+sheet below would be clipped to the panel's own ~400-550px column instead
+  // of the real viewport. Portal to `document.body`, the SAME mechanism already used for the
+  // ImportSheet full-screen editor and IconColorPicker for the identical reason. Scoped to the
+  // panel host only — primary-pane and phone Sheets have no transformed ancestor and must keep
+  // rendering in place: WideShell's Escape/focus-restore containment checks recognize a portaled
+  // sheet via `data-wide-panel-portal` (see `panelContains` there), which only ever marks this
+  // branch's output.
+  const hostedInPanel = useWideHost()?.host === "panel";
 
   // Reset drag state on every sheet open.
   useEffect(() => {
@@ -128,6 +192,25 @@ export function Sheet({
       setDragging(false);
     }
   }, [show]);
+
+  // WebKit hit-test kick (same flaw and same fix as ImportSheet.tsx's full-screen editor over
+  // its own Sheet, and WideShell.tsx's own mount-time kick): portaling this sheet ABOVE the
+  // panel's transformed (composited) layer means closing it can leave WebKit's hit-test region
+  // stale on that layer until a repaint. Only the panel-hosted, portaled case introduces this —
+  // primary/phone Sheets never sit above a transformed ancestor.
+  const wasShown = useRef(show);
+  useEffect(() => {
+    const justClosed = hostedInPanel && wasShown.current && !show;
+    wasShown.current = show;
+    if (!justClosed) return;
+    const root = document.getElementById("root");
+    if (!root) return;
+    root.style.opacity = "0.9999";
+    const raf = requestAnimationFrame(() => {
+      root.style.opacity = "";
+    });
+    return () => cancelAnimationFrame(raf);
+  }, [show, hostedInPanel]);
 
   if (!show) return null;
 
@@ -167,7 +250,7 @@ export function Sheet({
     else setDragY(0);
   };
 
-  return (
+  const body = (
     <>
       <div
         className="fi"
@@ -194,7 +277,7 @@ export function Sheet({
           bottom: 0,
           left: 0,
           right: 0,
-          maxWidth: 420,
+          maxWidth: PHONE_COL,
           margin: "0 auto",
           zIndex: 100,
           background: C.sheet,
@@ -215,6 +298,41 @@ export function Sheet({
         {typeof children === "function" ? children(C) : children}
       </div>
     </>
+  );
+
+  // `display:contents` keeps this wrapper out of layout entirely (both children are already
+  // `position:fixed`) — it exists ONLY to carry `data-wide-panel-portal`, the marker WideShell's
+  // containment checks look for.
+  return hostedInPanel
+    ? createPortal(
+        <div data-wide-panel-portal style={{ display: "contents" }}>
+          {body}
+        </div>,
+        document.body,
+      )
+    : body;
+}
+
+/** `Sheet`'s exact contract (`SheetProps`, above), pane-hosted on wide (spec §2's `<Surface>`,
+ *  landed against PR6's pane model — PR6b): no surface host in context → this IS `Sheet`, byte-
+ *  identical, so phone (and any un-hosted mount) pays nothing new. With a host present (inside the
+ *  wide shell), the same children render as an overlay stacked over the right panel's derived
+ *  content instead — lazy, so the presentation code lives in the wide chunk.
+ *
+ *  `tall`/`lockSwipe` are phone-`Sheet`-only concerns (content-driven vs. fixed height, swipe-to-
+ *  dismiss) — a pane surface is a fixed column with its own scrollbar and no swipe gesture, so
+ *  they are accepted (callers keep one prop shape for both branches) and silently ignored on the
+ *  pane branch rather than threaded through as dead props. */
+export function Surface(props: SheetProps) {
+  const surfaces = useWideHost()?.surfaces ?? null;
+  if (!surfaces) return <Sheet {...props} />;
+  if (!props.show) return null;
+  return (
+    <Suspense fallback={null}>
+      <PaneSurface host={surfaces} onClose={props.onClose}>
+        {props.children}
+      </PaneSurface>
+    </Suspense>
   );
 }
 
@@ -239,19 +357,11 @@ export function BottomNav({ active, onNav }: { active: ScreenId; onNav: (s: Scre
   const C = useTheme();
   const { t } = useT();
   const tabs: Array<{ id: ScreenId | "add"; label?: string; d?: string }> = [
-    { id: "start", label: t("Home"), d: "M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-4 0h4" },
-    {
-      id: "budget",
-      label: t("Budget"),
-      d: "M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z",
-    },
+    { id: "start", label: t("Home"), d: NAV_ICONS.start },
+    { id: "budget", label: t("Budget"), d: NAV_ICONS.budget },
     { id: "add" },
-    {
-      id: "transactions",
-      label: t("Transactions"),
-      d: "M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2",
-    },
-    { id: "reports", label: t("Reports"), d: "M4 19h16M7 16v-5M12 16V8M17 16v-9" },
+    { id: "transactions", label: t("Transactions"), d: NAV_ICONS.transactions },
+    { id: "reports", label: t("Reports"), d: NAV_ICONS.reports },
   ];
   // data-band: the nav always paints "var(--nav-bg)" as its own background (on Duet that's the
   // navy band, `--accent` itself).
@@ -337,11 +447,26 @@ export function BottomNav({ active, onNav }: { active: ScreenId; onNav: (s: Scre
 /* Drawer glyphs (patterns from the menu-settings-hifi mock) — 1.7 stroke, zero emoji. */
 const D_BANK = "M3 21h18M4 18h16M6 18V9m4 9V9m4 9V9m4 9V9M2 9l10-5 10 5z";
 const D_BARS = "M4 20V10m6 10V4m6 16v-7M2 20h20";
-const D_EYE = "M2.5 12S6 5.6 12 5.6 21.5 12 21.5 12 18 18.4 12 18.4 2.5 12 2.5 12zM12 9.4a2.6 2.6 0 100 5.2 2.6 2.6 0 000-5.2z";
-const D_MOON = "M21 12.8A9 9 0 1111.2 3a7 7 0 009.8 9.8z";
-const D_GEAR =
+export const D_EYE = "M2.5 12S6 5.6 12 5.6 21.5 12 21.5 12 18 18.4 12 18.4 2.5 12 2.5 12zM12 9.4a2.6 2.6 0 100 5.2 2.6 2.6 0 000-5.2z";
+export const D_MOON = "M21 12.8A9 9 0 1111.2 3a7 7 0 009.8 9.8z";
+export const D_GEAR =
   "M12 9a3 3 0 100 6 3 3 0 000-6zM19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 11-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 11-4 0v-.09a1.65 1.65 0 00-1-1.51 1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 11-2.83-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 110-4h.09a1.65 1.65 0 001.51-1 1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 112.83-2.83l.06.06a1.65 1.65 0 001.82.33 1.65 1.65 0 001-1.51V3a2 2 0 114 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 112.83 2.83l-.06.06a1.65 1.65 0 00-.33 1.82 1.65 1.65 0 001.51 1H21a2 2 0 110 4h-.09a1.65 1.65 0 00-1.51 1z";
 const D_CHEV = "M9 5l7 7-7 7";
+
+/** Screen-nav icon paths — ONE copy shared by `BottomNav` above (phone) and the wide shell's
+ *  `Rail` (`components/wide/Rail.tsx`), so the two icon languages can never drift apart (PR4
+ *  task 5). A lookup rather than the plan's literal "array": every caller already knows which
+ *  screen it wants and indexes by id, so a `Record` skips a `.find()` at every call site for
+ *  free. chrome.tsx is already eager (BottomNav needs it on the very first paint), so Rail.tsx
+ *  importing this from the lazy wide chunk adds no bytes to the phone bundle — only the wide
+ *  chunk gains a reference to a string that already shipped. */
+export const NAV_ICONS: Readonly<Record<"start" | "budget" | "transactions" | "reports" | "accounts", string>> = {
+  start: "M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-4 0h4",
+  budget: "M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z",
+  transactions: "M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2",
+  reports: "M4 19h16M7 16v-5M12 16V8M17 16v-9",
+  accounts: D_BANK,
+};
 
 /** Stroked drawer SVG icon — stroke via style (var(--cta) etc. work). */
 function DrawIco({ d, size = 18, color, w = 1.7 }: { d: string; size?: number; color: string; w?: number }) {

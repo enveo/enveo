@@ -18,6 +18,7 @@ export function AmountSection({
   amtRef,
   onOpenPad,
   onToggleRefund,
+  onConfirm,
 }: {
   tab: Tab;
   isRefund: boolean;
@@ -28,6 +29,12 @@ export function AmountSection({
   amtRef: MutableRefObject<HTMLDivElement | null>;
   onOpenPad: () => void;
   onToggleRefund: () => void;
+  /** Owner round 5 item 26 (wide keyboard entry): when set, ⏎ on the focused amount surface runs
+   *  the pad's confirm (reduce an open A⊕B, else the guarded save) instead of just opening the
+   *  pad — the controller passes the SAME function its document-level keydown handler uses, and
+   *  the `preventDefault` below marks the event handled so that handler skips it. Space keeps
+   *  opening the pad. Absent on phone and in draft mode: behavior byte-identical there. */
+  onConfirm?: () => void;
 }) {
   const C = useTheme();
   const { t, lang } = useT();
@@ -36,9 +43,15 @@ export function AmountSection({
     <div
       role="button"
       tabIndex={0}
+      data-amount-surface="1"
       onClick={onOpenPad}
       onKeyDown={(e) => {
         if (e.target !== e.currentTarget) return;
+        if (e.key === "Enter" && onConfirm) {
+          e.preventDefault();
+          onConfirm();
+          return;
+        }
         if (e.key === "Enter" || e.key === " ") {
           e.preventDefault();
           onOpenPad();

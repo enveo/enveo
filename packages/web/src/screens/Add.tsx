@@ -3,7 +3,7 @@ import { lazy, useEffect, useMemo, useRef, useState } from "react";
 import { useBand } from "../components/kit";
 import { LazyChunk, useOpenedOnce } from "../components/lazy";
 import { Numpad } from "../components/pickers";
-import { hasOpenOp, type PadState, padKey } from "../lib/amount";
+import { hasOpenOp, keyboardPadKey, type PadState, padKey } from "../lib/amount";
 import { type StateResponse, useLedgerVersion } from "../lib/api";
 import {
   automaticEnvelopePreview,
@@ -21,7 +21,8 @@ import { evalExpression } from "../lib/format";
 import { haptic } from "../lib/haptics";
 import { type Message, msg, useT } from "../lib/i18n";
 import { preferredAccountId, setLastAccountId } from "../lib/lastAccount";
-import { local, type TxnFlowOptions } from "../lib/mutate";
+import { local, type TxnFlowOptions, txnToDuplicatePayload } from "../lib/mutate";
+import { useWideHost } from "../lib/shellContext";
 import { store } from "../lib/store";
 import { rankPlaces, withSelectedFirst } from "../lib/suggest";
 import { P, tint } from "../lib/theme";
@@ -67,6 +68,7 @@ export function AddScreen({
   draft,
   initialTab,
   initialImport,
+  duplicateFrom,
 }: {
   state: StateResponse;
   onDone: () => void;
@@ -77,11 +79,18 @@ export function AddScreen({
   initialTab?: Tab;
   /** Quick-action preset: opens the screenshot-import sheet immediately on mount. */
   initialImport?: boolean;
+  /** Design parity wave C task 3, owner rule 2 (the wide txn panel's Duplicate pill): seeds the
+   *  form as a NEW transaction — `editTxn` stays null, so this is a create, never an update — from
+   *  an existing one, via the SAME transform `local.duplicateTxn`'s phone-only instant copy uses
+   *  (`txnToDuplicatePayload`: today's date, no tag/sourceRef, allocation ids cleared, orphaned-
+   *  split handling) instead of writing to the ledger directly. */
+  duplicateFrom?: Transaction | null;
 }) {
   const C = useTheme();
   const M = useMask();
   const { band } = useBand();
   const { t, lang } = useT();
+  const wideHost = useWideHost();
   const ledgerVersion = useLedgerVersion();
   // Accounts are CURRENT-balance always — never scoped to the viewed month (unlike envelopes).
   // Recomputed from the replica at `currentMonth()` regardless of which month `state` was built
@@ -180,6 +189,27 @@ export function AddScreen({
     );
     setAllocationTouched(false);
   }, [editTxn]);
+
+  // Duplicate prefill (design parity wave C task 3, owner rule 2): `editTxn` stays null throughout
+  // (App.tsx's `duplicateTxnFromPanel`), so submit()'s existing `editTxn ? update : create` branch
+  // already does the right thing on an explicit Save — this effect only ever seeds the FORM.
+  useEffect(() => {
+    if (!duplicateFrom) return;
+    const p = txnToDuplicatePayload(duplicateFrom, todayISO());
+    setTab(p.type);
+    setAmount(padExpr(p.amount));
+    setAccountId(p.accountId);
+    if (p.toAccountId) setToAccountId(p.toAccountId);
+    setIsRefund(p.isRefund ?? false);
+    setExpenseEnvelope(explicitExpenseEnvelopeSelection(p.envelopeId ?? null));
+    setItems((p.items ?? []).map((i) => ({ envelopeId: i.envelopeId, amount: i.amount })));
+    setSplitMode(!!p.items?.length);
+    setCategoryId(p.categoryId ?? null);
+    setPlaceId(p.placeId ?? null);
+    setName(p.name ?? "");
+    setNote(p.note ?? "");
+    setDate(p.date);
+  }, [duplicateFrom]);
 
   // Draft-mode prefill: from corrections (initial — returning to the edit) or from a
   // recognized import item. ONLY on mount — the draft object is often created inline
@@ -290,6 +320,84 @@ export function AddScreen({
     const el = amtRef.current;
     if (el) el.scrollLeft = el.scrollWidth;
   }, [amount]);
+
+  /* ── Physical-keyboard amount entry, WIDE ONLY (owner round 5 item 26) ─────────────────────
+     `wideHost` is null on phone, so NO listener is ever attached there — touch behavior is
+     byte-identical. Every accepted key routes through the SAME `press` → `padKey` machine the
+     on-screen pad drives (`keyboardPadKey` is a pure key map, never a second parser), so the
+     hero amount and a focused split row behave exactly as if their pad cells were tapped. */
+  const rootRef = useRef<HTMLDivElement | null>(null);
+  /** The keyboard's ⏎ = the pad's contextual OK with "save" in place of "close": an open A⊕B
+   *  reduces first (`=`), otherwise the CTA's own guarded save runs (`submit` checks `canSubmit`
+   *  itself — the same guard as the button). Shared by the document listener below and the
+   *  amount surface's own Enter (AmountSection `onConfirm`) so the two can never disagree. */
+  const confirmFromKeyboard = () => {
+    if (hasOpenOp(padExprInFocus)) press("=");
+    else submit();
+  };
+  // Opening the Add pane IS the explicit user action (the autofocus rule), so the pane instance
+  // moves focus to the amount surface on mount: the first keystroke lands in the pad machine and
+  // ⏎ cannot re-activate whichever button opened the pane (focus would otherwise still sit on
+  // it, and a button's native Enter activation is deliberately left alone below). Phone (no
+  // host) and the ImportSheet draft editor keep their own focus order.
+  useEffect(() => {
+    if (!wideHost || draft) return;
+    rootRef.current?.querySelector<HTMLElement>("[data-amount-surface]")?.focus();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  // Attached on `document` and re-attached every render (WideShell's Escape listener pattern —
+  // one cheap listener, always-fresh closures). Guards, in order:
+  //  - modifier chords (Ctrl/Meta/Alt) stay the browser's; `defaultPrevented` = an inner handler
+  //    (the amount surface's own Enter) already took the event;
+  //  - any of this screen's sheets/menus open → the amount is not the frontmost surface, keys
+  //    must not edit it invisibly;
+  //  - an editable element (input/textarea/select/contenteditable) keeps its keystrokes — the
+  //    "do not steal keys" rule; Enter additionally leaves interactive elements (buttons, links)
+  //    to their native activation.
+  // Escape defers to WideShell's own document-level handler whenever focus sits inside the panel
+  // (its `panelContains` gate) — both would otherwise run `doneEdit`, whose `history.back()` is
+  // not idempotent; with focus OUTSIDE the panel that handler never fires, so this one covers
+  // exactly the gap it leaves.
+  useEffect(() => {
+    if (!wideHost || draft) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.ctrlKey || e.metaKey || e.altKey || e.defaultPrevented) return;
+      if (showAcc || showTo || showDate || showEnv !== null || showImport || showTxnMenu) return;
+      const el = e.target instanceof Element ? e.target : null;
+      const editable =
+        el instanceof HTMLInputElement ||
+        el instanceof HTMLTextAreaElement ||
+        el instanceof HTMLSelectElement ||
+        (el instanceof HTMLElement && el.isContentEditable);
+      if (editable) return;
+      if (e.key === "Escape") {
+        if (el?.closest("[data-wide-panel], [data-wide-panel-portal]")) return; // WideShell's Escape closes the pane (same doneEdit)
+        e.preventDefault();
+        onDone();
+        return;
+      }
+      if (e.key === "Enter") {
+        if (el?.closest("button, a[href], summary, [role='button']")) return; // native activation wins (the amount surface handles its own Enter)
+        e.preventDefault();
+        confirmFromKeyboard();
+        return;
+      }
+      if (e.key === "=") {
+        // "=" mirrors the pad's OK only in its reduce half — it never saves (that is ⏎'s job).
+        if (hasOpenOp(padExprInFocus)) {
+          e.preventDefault();
+          press("=");
+        }
+        return;
+      }
+      const k = keyboardPadKey(e.key);
+      if (k === null) return;
+      e.preventDefault();
+      press(k);
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  });
 
   const reset = (nextTab: Tab) => {
     const automaticEnvelopeId = accounts.find((account) => account.id === accountId)?.automaticEnvelopeId;
@@ -571,7 +679,7 @@ export function AddScreen({
             : t("e.g. weekly groceries");
 
   return (
-    <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
+    <div ref={rootRef} style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
       <AddHeader
         tab={tab}
         isEdit={!!editTxn}
@@ -609,6 +717,9 @@ export function AddScreen({
         amtRef={amtRef}
         onOpenPad={openHeroPad}
         onToggleRefund={() => setIsRefund((v) => !v)}
+        // Item 26, wide pane only: ⏎ on the focused amount surface confirms (reduce/save) instead
+        // of merely re-opening the pad — the SAME function the document keydown handler runs.
+        onConfirm={wideHost && !draft ? confirmFromKeyboard : undefined}
       />
 
       {/* EVERYTHING between the amount and the pad scrolls, the FlowCard included. A split with
