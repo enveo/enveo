@@ -1104,6 +1104,19 @@ export const pl: Dict = {
   "Size on the grid": "Rozmiar na siatce",
   "Size: {w} × {h} — drag the ◢ corner on the tile to resize": "Rozmiar: {w} × {h} — przeciągnij róg ◢ kafelka, aby zmienić rozmiar",
   "Widget settings": "Ustawienia widgetu",
+  // Add-widget picker (owner round 6 item 28): the panel the board's "+" tile opens — the eyebrow
+  // above the list of widgets not on the board, plus one line per widget saying what it shows.
+  "Not on the board": "Poza siatką",
+  "Every envelope with what is left this month.": "Wszystkie koperty z tym, co zostało w tym miesiącu.",
+  "Only the envelopes you marked as savings.": "Tylko koperty oznaczone jako oszczędności.",
+  "Money in and out over the last twelve months.": "Wpływy i wydatki z ostatnich dwunastu miesięcy.",
+  "What you own minus what you owe, month by month.": "To, co masz, minus to, co jesteś winien — miesiąc po miesiącu.",
+  "Overspent envelopes and everything else that needs a decision.": "Przekroczone koperty i wszystko inne, co wymaga decyzji.",
+  "The latest transactions across all accounts.": "Najnowsze transakcje ze wszystkich kont.",
+  "Where this month's money went, envelope by envelope.": "Na co poszły pieniądze w tym miesiącu, koperta po kopercie.",
+  "A progress ring for every envelope with a goal.": "Pierścień postępu dla każdej koperty z celem.",
+  "A sparkline per envelope with its change this month.": "Wykres przebiegu dla każdej koperty ze zmianą w tym miesiącu.",
+  "Which days you spend on, and the places you visit most.": "W które dni wydajesz i w jakich miejscach bywasz najczęściej.",
 
   // --- wide-onboarding epic (PR7 task 5, consolidated pass) ---
   "A local copy means the app opens instantly and keeps working on a plane.":

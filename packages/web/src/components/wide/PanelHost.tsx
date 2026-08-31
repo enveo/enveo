@@ -4,7 +4,7 @@ import type { StateResponse } from "../../lib/api";
 import { useBudgetPreferences, useTheme } from "../../lib/contexts";
 import { type Message, msg, useT } from "../../lib/i18n";
 import { font, TEAL, tint } from "../../lib/theme";
-import { resolveWidgetScroll } from "../../lib/wideBoard";
+import { resolveWidgetScroll, toggleEnabled } from "../../lib/wideBoard";
 import { WIDGET_CATALOG } from "../../lib/widgetCatalog";
 import { AddScreen, type Tab as AddTab } from "../../screens/Add";
 import type { ReportView } from "../../screens/reports/types";
@@ -158,6 +158,71 @@ function WidgetSettingsPanel({ widgetId, state, onClose }: { widgetId: WideWidge
   );
 }
 
+/**
+ * The `widgetPicker` panel body (owner round 6 item 28): the widgets NOT yet on the wide board,
+ * one card each — catalogue title plus the catalogue's one-line description, so a widget the user
+ * has never placed is a real choice rather than a name. Titles, descriptions and membership all
+ * come from `WIDGET_CATALOG` + the shared `wide` allowlist it derives from; there is no second
+ * catalogue here.
+ *
+ * Placement writes through the SAME path every other edit-mode gesture uses — one
+ * `update({ wideWidgets })` op flipping `enabled` (`toggleEnabled`, lib/wideBoard.ts) — which is
+ * also why the tile arrives at the catalogue's default size: a disabled row keeps its `w`/`h`
+ * (`toggleEnabled`'s own contract), and `reconcileBudgetPreferences` seeds every id it has never
+ * seen from `createDefaultWideWidgets()`. Nothing here invents a size.
+ *
+ * `onClose` after a pick is the panel's own close semantics (WideShell's `closePanel`), not a
+ * second "clear the picker" channel — the same discipline `WidgetSettingsPanel`'s Remove uses.
+ */
+function WidgetPickerPanel({ onClose }: { onClose: () => void }) {
+  const C = useTheme();
+  const { t } = useT();
+  const { preferences, update } = useBudgetPreferences();
+  const candidates = preferences.wideWidgets.filter((w) => !w.enabled);
+  const place = (id: WideWidgetId) => {
+    update({ wideWidgets: toggleEnabled(preferences.wideWidgets, id, true) });
+    onClose();
+  };
+  return (
+    <div className="gsh" style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: 14, display: "flex", flexDirection: "column", gap: 10 }}>
+      <span style={{ ...EYEBROW_STYLE, color: C.mute }}>{t("Not on the board")}</span>
+      {candidates.length === 0 ? (
+        // Defensive twin of the board's own exhausted tile (WideHome's `AddTile`): that tile stops
+        // opening this panel once nothing is left, so this only shows if the last candidate was
+        // placed from another device while the picker sat open.
+        <span style={{ fontSize: 12, color: C.mute, lineHeight: 1.5 }}>{t("Every widget is already on the grid.")}</span>
+      ) : (
+        candidates.map((w) => (
+          <button
+            key={w.id}
+            type="button"
+            onClick={() => place(w.id)}
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "flex-start",
+              gap: 3,
+              minHeight: 30,
+              padding: "10px 12px",
+              borderRadius: 11,
+              border: `1px solid ${C.line}`,
+              background: C.bg,
+              cursor: "pointer",
+              textAlign: "left",
+              fontFamily: font,
+            }}
+          >
+            <span style={{ fontSize: 12.5, fontWeight: 700, color: C.text }}>{t(WIDGET_CATALOG[w.id].title)}</span>
+            {/* Always present for a wide id — pinned by widgetCatalog.test.ts, so this is a type
+                narrowing, not a real fallback. */}
+            {WIDGET_CATALOG[w.id].description && <span style={{ fontSize: 11, color: C.soft, lineHeight: 1.45 }}>{t(WIDGET_CATALOG[w.id].description!)}</span>}
+          </button>
+        ))
+      )}
+    </div>
+  );
+}
+
 /** This panel instance of `ReportsScreen` never renders the hub variant — its `view` is always a
  *  specific tab, never "overview" (see the `ReportsScreen` import comment above) — so `onMenu`
  *  (wired only to the phone-only hamburger inside `ReportShell`'s hub variant) is provably
@@ -256,28 +321,32 @@ export function PanelHost({
           // settings" stays alive as the gear button's aria-label (WideHome.tsx) — a DIFFERENT
           // surface, so that key is not orphaned by this change.
           t(WIDGET_CATALOG[view.widgetId].title)
-        : view.kind === "account"
-          ? // Name only — this reads the VIEWED-month `state.accounts`, which is fine for a
-            // field that never varies by month; the balance itself (AccountPanel's own concern)
-            // must never come from here (the 3.6.2 rule).
-            (state.accounts.find((a) => a.id === view.accountId)?.name ?? "")
-          : view.kind === "envelope"
-            ? (state.envelopes.find((e) => e.id === view.envelopeId)?.name ?? "")
-            : view.kind === "txn"
-              ? // The SAME fallback chain `TxnPanel`'s own `descOf` uses for its "payee" line
-                // (name → note → envelope name → split/plain fallback) — a nameless, noteless
-                // manual entry (common in real data) should still show something better than a
-                // blank/generic header. Verified live: measured `headerLabel` read the unhelpful
-                // generic "Transaction" here before this matched the body's own richer chain. A
-                // vanished transaction (deleted elsewhere between panel-open and this render)
-                // degrades to an empty label, same as every other branch above.
-                (() => {
-                  const tx = state.transactions.find((x) => x.id === view.txnId);
-                  if (!tx) return "";
-                  const txEnv = tx.envelopeId ? state.envelopes.find((e) => e.id === tx.envelopeId) : null;
-                  return tx.name || tx.note || txEnv?.name || (tx.items.length ? t("Split transaction") : t("Transaction"));
-                })()
-              : "";
+        : view.kind === "widgetPicker"
+          ? // Owner round 6 item 28 — the same string the board's "+" tile carries (the design's
+            // own "＋ Add widget" copy), so the tile and the panel it opens read as one action.
+            t("Add widget")
+          : view.kind === "account"
+            ? // Name only — this reads the VIEWED-month `state.accounts`, which is fine for a
+              // field that never varies by month; the balance itself (AccountPanel's own concern)
+              // must never come from here (the 3.6.2 rule).
+              (state.accounts.find((a) => a.id === view.accountId)?.name ?? "")
+            : view.kind === "envelope"
+              ? (state.envelopes.find((e) => e.id === view.envelopeId)?.name ?? "")
+              : view.kind === "txn"
+                ? // The SAME fallback chain `TxnPanel`'s own `descOf` uses for its "payee" line
+                  // (name → note → envelope name → split/plain fallback) — a nameless, noteless
+                  // manual entry (common in real data) should still show something better than a
+                  // blank/generic header. Verified live: measured `headerLabel` read the unhelpful
+                  // generic "Transaction" here before this matched the body's own richer chain. A
+                  // vanished transaction (deleted elsewhere between panel-open and this render)
+                  // degrades to an empty label, same as every other branch above.
+                  (() => {
+                    const tx = state.transactions.find((x) => x.id === view.txnId);
+                    if (!tx) return "";
+                    const txEnv = tx.envelopeId ? state.envelopes.find((e) => e.id === tx.envelopeId) : null;
+                    return tx.name || tx.note || txEnv?.name || (tx.items.length ? t("Split transaction") : t("Transaction"));
+                  })()
+                : "";
 
   const body = (() => {
     switch (view.kind) {
@@ -330,6 +399,11 @@ export function PanelHost({
         );
       case "widgets":
         return <WidgetSettingsPanel widgetId={view.widgetId} state={state} onClose={onClose} />;
+      case "widgetPicker":
+        // Owner round 6 item 28: the board's "+" tile target. Takes no props but `onClose` — the
+        // candidate list is derived from the replica inside the body (see its own comment), the
+        // same way `WidgetSettingsPanel` above reads the tile it edits.
+        return <WidgetPickerPanel onClose={onClose} />;
       case "account":
         // PR6b Task 4: the real `acct` pane body — balance card, actions, recent activity
         // (AccountPanel.tsx). `HINT_COPY.account` above stays the NO-selection copy; AccountPanel

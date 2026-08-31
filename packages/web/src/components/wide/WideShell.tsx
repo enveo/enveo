@@ -544,12 +544,27 @@ export function WideShell({ bag, rightSlot = null, children }: { bag: WideShellB
   // selection can never resurface the settings panel on an unrelated later visit to Home —
   // `resolvePanel` is also defensive about this (panel.ts), but this is the actual discipline.
   const [widgetSettings, setWidgetSettings] = useState<WideWidgetId | null>(null);
+  // Owner round 6 item 28: the board's add-widget picker — WideShell-local for exactly the reasons
+  // `widgetSettings` above is (nothing outside the wide shell needs it), and reset by the same
+  // effect below. Boolean, not a selection: the candidates are derived from the replica by the
+  // panel body that renders them, so there is nothing here that could go stale against the board.
+  const [widgetPicker, setWidgetPicker] = useState(false);
   useEffect(() => {
     // `primaryScreen`, not raw `screen` (PR6 Task 5): opening Add over Start with the widgets
     // panel selected must NOT clear that selection — `primaryScreen` stays "start" throughout
     // (Add lives in the OTHER pane), so this effect never fires just because Add opened/closed.
-    if (primaryScreen !== "start") setWidgetSettings(null);
+    if (primaryScreen !== "start") {
+      setWidgetSettings(null);
+      setWidgetPicker(false);
+    }
   }, [primaryScreen]);
+  // Leaving edit mode closes the picker with the tile that opened it — the board's own chrome
+  // vanishes at that moment (WideHome renders the "+" tile only while `boardEdit`), and a picker
+  // that outlived its affordance would keep placing widgets from a board the user is done editing.
+  // The design ties the two together the same way (v3:3113 clears `homeAddOpen` with `homeEdit`).
+  useEffect(() => {
+    if (!boardEdit) setWidgetPicker(false);
+  }, [boardEdit]);
   // Design parity wave C task 3: the txn kind's OWN fallback table — `panelFallbacks` (the bag
   // field, computed eagerly by App from the UNFILTERED ledger) stays correct for its other two
   // fields, but `firstTxnId` needs "the same filtered ordering the list renders" (the brief's own
@@ -559,7 +574,7 @@ export function WideShell({ bag, rightSlot = null, children }: { bag: WideShellB
     () => computePanelFallbacks({ envelopes: state.envelopes, groups: state.groups, accounts: state.accounts }, month, filteredTransactions),
     [state.envelopes, state.groups, state.accounts, month, filteredTransactions],
   );
-  const view = resolvePanel({ screen, reportsView, envView, widgetSettings, acctView, txnView }, fallbacksForPanel);
+  const view = resolvePanel({ screen, reportsView, envView, widgetSettings, widgetPicker, acctView, txnView }, fallbacksForPanel);
   const primaryRef = useRef<HTMLDivElement | null>(null);
   const panelRef = useRef<HTMLDivElement | null>(null);
 
@@ -665,6 +680,7 @@ export function WideShell({ bag, rightSlot = null, children }: { bag: WideShellB
       if (view.source === "selection") setReportsView("overview");
       else setPanelClosed(true);
     } else if (view.kind === "widgets") setWidgetSettings(null);
+    else if (view.kind === "widgetPicker") setWidgetPicker(false);
     else if (view.kind === "account") {
       if (view.source === "selection") setAcctView(null);
       else setPanelClosed(true);
@@ -721,13 +737,18 @@ export function WideShell({ bag, rightSlot = null, children }: { bag: WideShellB
           ? envView
           : view.kind === "widgets"
             ? view.widgetId
-            : view.kind === "account"
-              ? acctView
-              : view.kind === "txn"
-                ? txnView
-                : view.source === "selection"
-                  ? view.view
-                  : null;
+            : // Owner round 6 item 28: a constant is enough to reopen a manually-collapsed panel —
+              // the picker is a boolean, so "it just opened" is exactly "this differs from whatever
+              // was resolved a render ago". Mounting it invisibly is the `add` kind's own lesson.
+              view.kind === "widgetPicker"
+              ? "widgetPicker"
+              : view.kind === "account"
+                ? acctView
+                : view.kind === "txn"
+                  ? txnView
+                  : view.source === "selection"
+                    ? view.view
+                    : null;
   const prevSelection = useRef(selection);
   useEffect(() => {
     if (selection !== null && selection !== prevSelection.current && panelClosed) setPanelClosed(false);
@@ -775,7 +796,12 @@ export function WideShell({ bag, rightSlot = null, children }: { bag: WideShellB
   // inside it).
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape" && panelContains(document.activeElement)) closePanel();
+      // The `widgetPicker` kind (owner round 6 item 28) is the one panel view whose opener lives in
+      // the OTHER pane: the board's "+" tile keeps focus in the primary pane, so `panelContains`
+      // is false for it and Escape would otherwise be dead until the user clicked into the panel.
+      // Gated on the RESOLVED kind, not on the raw flag, so this can never close something else
+      // that happens to outrank a stale picker flag.
+      if (e.key === "Escape" && (view.kind === "widgetPicker" || panelContains(document.activeElement))) closePanel();
     };
     document.addEventListener("keydown", onKeyDown);
     return () => document.removeEventListener("keydown", onKeyDown);
@@ -903,6 +929,17 @@ export function WideShell({ bag, rightSlot = null, children }: { bag: WideShellB
                 // Home would otherwise outrank it and the panel would stay stuck on the account.
                 onWidgetSettings={(id) => {
                   setWidgetSettings(id);
+                  setWidgetPicker(false);
+                  setAcctView(null);
+                }}
+                // Owner round 6 item 28: the "+" tile is as explicit a pick as the gear above, so
+                // it clears the selections that outrank the board's own panel rungs — including
+                // `envView` (an envelope opened from the board's own Envelopes tile would otherwise
+                // keep the panel on that envelope and the "+" would look broken).
+                onAddWidget={() => {
+                  setWidgetPicker(true);
+                  setWidgetSettings(null);
+                  setEnvView(null);
                   setAcctView(null);
                 }}
                 onFillGoals={onFillGoals}
