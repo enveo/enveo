@@ -6,6 +6,7 @@ import { authClient } from "../../lib/auth";
 import { useMask, useSettings, useTheme } from "../../lib/contexts";
 import { currentMonth, relSync, todayISO } from "../../lib/dates";
 import { LOCALE_OF } from "../../lib/format";
+import { canFillGoals } from "../../lib/goals";
 import { useT } from "../../lib/i18n";
 import { Ico } from "../../lib/icons";
 import { isInstallable, useInstall } from "../../lib/installPrompt";
@@ -208,7 +209,17 @@ function TbbCard({
   // Fill-by-goals stays the plain outline it already was — its border is `railRuler` (design's
   // `T.railRuler`, demo 111), not the content-surface `line` (fix-review: `line`'s opaque Duet
   // cream rendered a visible tan outline on the near-navy rail card).
-  const pill = (primary: boolean): React.CSSProperties => ({
+  // Owner round 8b item B: "Fill by goals" is DISABLED, not hidden, when there is nothing to fill
+  // — the shared `canFillGoals` (lib/goals.ts), the same gate the Budget screen's own entry has
+  // always had and this pill never did, so from here it could open a sheet whose only button is
+  // dead. Disabled rather than hidden because these two pills are `flex: 1` siblings: hiding one
+  // would let "✨ Suggest" jump to full width whenever `readyToAssign` crosses zero or the last
+  // goal gets funded. Greying is also the honest answer to "why did nothing happen" — the
+  // affordance stays where the user learned it, and says it cannot act right now. Styling is this
+  // file's OWN disabled idiom (`MenuRow` below): the `disabled` attribute, `cursor: default`,
+  // `opacity: 0.6`.
+  const fillPossible = canFillGoals(state);
+  const pill = (primary: boolean, disabled = false): React.CSSProperties => ({
     flex: 1,
     minHeight: 30,
     // Owner item 22: a native button only centers its label vertically while its height is
@@ -223,7 +234,8 @@ function TbbCard({
     color: primary ? C.railBg : C.railOn,
     fontSize: 11.5,
     fontWeight: primary ? 700 : 650,
-    cursor: "pointer",
+    cursor: disabled ? "default" : "pointer",
+    opacity: disabled ? 0.6 : 1,
     fontFamily: font,
   });
 
@@ -272,7 +284,7 @@ function TbbCard({
           {"✨ "}
           {t("Suggest")}
         </button>
-        <button onClick={onFillGoals} style={pill(false)}>
+        <button onClick={onFillGoals} disabled={!fillPossible} style={pill(false, !fillPossible)}>
           {t("Fill by goals")}
         </button>
       </div>
@@ -946,8 +958,16 @@ function UserBlock({ mode, screen, onNav, onInstall }: { mode: WideMode; screen:
               </span>
               {email && <span style={{ fontSize: 10.5, color: C.railMute, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{email}</span>}
             </span>
-            <span aria-hidden style={{ fontSize: 12, color: C.railMute, flexShrink: 0 }}>
-              ⚙
+            {/* Owner round 8 item 31: the SAME gear the popover's own "settings" tile draws
+                (`D_GEAR` through `Ico`, in the `quicks` row above), not a second rendering of it.
+                This slot used to hold a bare "⚙" text glyph — the design's own markup for it
+                (v3:175), but the app resolves every drawer/menu glyph to a 1.7-stroke path
+                instead (chrome.tsx: "zero emoji"), so the two gears the user sees one click apart
+                were a font-rendered character and a stroked icon. One source now; only the size
+                differs (13 here against the tile's 15, matching the 12px text slot it replaced).
+                The wrapper keeps `aria-hidden` + `flexShrink` off the shared icon component. */}
+            <span aria-hidden style={{ display: "flex", flexShrink: 0 }}>
+              <Ico d={D_GEAR} size={13} color={C.railMute} sw={1.7} />
             </span>
           </>
         )}

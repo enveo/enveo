@@ -347,7 +347,10 @@ export const pl: Dict = {
   "Export backup and sign out": "Eksportuj kopię i wyloguj się",
   "Failed to load the image.": "Nie udało się wczytać obrazka.",
   "Fill all goals ›": "Wypełnij wszystkie cele ›",
-  "Fill by goals": "Wypełnij wg celów",
+  // Short form: the rail pill fits 78.5px of text and "Wypełnij wg celów" (100px) wrapped to two
+  // lines beside the single-line "Zasugeruj"; "Zasil cele" measures 61px. Verb-first like its
+  // sibling pill, and the same action the goals sheet describes in full.
+  "Fill by goals": "Zasil cele",
   Filter: "Filtruj",
   "Filter:": "Filtr:",
   Filters: "Filtry",

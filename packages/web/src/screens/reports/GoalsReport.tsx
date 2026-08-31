@@ -5,7 +5,7 @@ import { Bar, ReportShell, UndoBar, useReportBand } from "../../components/repor
 import type { StateResponse } from "../../lib/api";
 import { useTheme } from "../../lib/contexts";
 import { currentMonth, monthLabel, monthShortLabel } from "../../lib/dates";
-import { goalProgress } from "../../lib/goals";
+import { canFillGoals, goalProgress } from "../../lib/goals";
 import { haptic } from "../../lib/haptics";
 import { useT } from "../../lib/i18n";
 import { local } from "../../lib/mutate";
@@ -94,7 +94,7 @@ const GOAL_UNDO_TIMEOUT_MS = 6000;
  * `BudgetsReport.coverStep`/`undoStep` exactly — immediate write + local undo toast, no
  * confirmation sheet (the controller ruling rejected a pre-scoped `FillGoalsSheet` for this).
  * - The amount shown ON the button is capped at the render-scope pool (`state.readyToAssign`,
- *   same as this file's existing `canFillGoals` gate) so the label never promises more than the
+ *   same as this file's existing `fillPossible` gate) so the label never promises more than the
  *   pool can currently cover, and the button doesn't render at all once `fillable <= 0` — same
  *   "hidden, not merely disabled" rule as the aggregate action.
  * - The WRITE itself re-reads both `allocated` and `readyToAssign` fresh off the live ledger at
@@ -164,9 +164,10 @@ export function GoalsReport({
   const pctTotal = targetSum > 0 ? Math.round((fundedSum / targetSum) * 100) : 0;
   const missSum = rows.reduce((s, { gp }) => s + gp.missing, 0);
   const allFunded = rows.length > 0 && missSum === 0;
-  // Same entry-visibility predicate as Budget's "Fill by goals" button — a pool to place
-  // AND at least one goal still short (missSum > 0 already implies the latter).
-  const canFillGoals = state.readyToAssign > 0 && missSum > 0;
+  // The SHARED entry-visibility predicate (lib/goals.ts) every "Fill by goals" affordance calls
+  // — a pool to place AND at least one goal still short. `missSum > 0` over this screen's own
+  // rows was the identical rule spelled out a second time.
+  const fillPossible = canFillGoals(state);
   // The one guard every per-card computation below depends on (see doc comment). When it trips,
   // the screen shows exactly the same copy as "no goals at all" rather than a half-built list.
   const canRenderCards = ledger !== null && rows.length > 0;
@@ -257,7 +258,7 @@ export function GoalsReport({
                 const barColor = e.color;
                 // Pool-capped display amount only — the WRITE re-reads both sides of this `Math.min`
                 // fresh at press time (see `fillOne`'s own comment). Hidden entirely (not disabled)
-                // once the pool can't cover anything, same as the aggregate `canFillGoals` button.
+                // once the pool can't cover anything, same as the aggregate `fillPossible` button.
                 const fillable = Math.max(0, Math.min(gp.missing, state.readyToAssign));
                 return (
                   <div
@@ -384,7 +385,7 @@ export function GoalsReport({
                 );
               })}
             </div>
-            {canFillGoals && (
+            {fillPossible && (
               <button
                 onClick={onFillGoals}
                 style={{

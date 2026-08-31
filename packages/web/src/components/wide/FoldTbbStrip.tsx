@@ -4,6 +4,7 @@ import type { StateResponse } from "../../lib/api";
 import { useLedgerVersion } from "../../lib/api";
 import { useMask, useTheme } from "../../lib/contexts";
 import { currentMonth } from "../../lib/dates";
+import { canFillGoals } from "../../lib/goals";
 import { type Message, msg, useT } from "../../lib/i18n";
 import { store } from "../../lib/store";
 import { font } from "../../lib/theme";
@@ -66,7 +67,12 @@ export function FoldTbbStrip({
   // plain `line`-outline it already was — this strip sits on the ordinary content surface
   // (`T.card`), not the rail, so unlike Rail.tsx's TbbCard it never needs the rail-specific
   // `railRuler`/`railBorder` tokens.
-  const pill = (primary: boolean): React.CSSProperties => ({
+  // Owner round 8b item B — the fold copy of Rail.tsx's gate, same shared `canFillGoals` and the
+  // same disabled-not-hidden call (see that file for the reasoning): these two pills are one
+  // fixed-width group at the strip's right edge, so removing one would slide "✨ Suggest" sideways
+  // every time the pool empties or the last goal is funded.
+  const fillPossible = canFillGoals(state);
+  const pill = (primary: boolean, disabled = false): React.CSSProperties => ({
     minHeight: 30,
     padding: "0 13px",
     textAlign: "center",
@@ -76,7 +82,8 @@ export function FoldTbbStrip({
     color: primary ? C.card : C.soft,
     fontSize: 11.5,
     fontWeight: primary ? 700 : 650,
-    cursor: "pointer",
+    cursor: disabled ? "default" : "pointer",
+    opacity: disabled ? 0.6 : 1,
     whiteSpace: "nowrap",
     fontFamily: font,
   });
@@ -116,7 +123,7 @@ export function FoldTbbStrip({
           )}
         </span>
         <span style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
-          <button onClick={onFillGoals} style={pill(false)}>
+          <button onClick={onFillGoals} disabled={!fillPossible} style={pill(false, !fillPossible)}>
             {t("Fill by goals")}
           </button>
           <button onClick={() => onQuickAdd("suggest")} aria-label={t("Suggest a distribution")} style={pill(true)}>
