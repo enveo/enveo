@@ -44,7 +44,7 @@ import { font, TEAL, type Theme, TRANSFER } from "../lib/theme";
 import { useElementWidth } from "../lib/useElementWidth";
 import { trendColor } from "../screens/reports/charts";
 import { CardBox, GoalRing, SectionEyebrow } from "./kit";
-import { Bar, CalendarHeatmap, dimNullLabel, heatColor, heatWeeks, SegBar, TrendSpark } from "./reportKit";
+import { Bar, CalendarHeatmap, dimNullLabel, heatColor, heatWeeks, SegBar, TrendRow, TrendSpark } from "./reportKit";
 import type { WidgetProps } from "./widgets";
 
 /** Wraps a widget body's rows in the phone SectionEyebrow+CardBox chrome, unless a wide board tile
@@ -637,12 +637,16 @@ export function GoalsWidget({ state, month, onOpenReport, onFillGoals, chromeles
  * report. TrendSpark's width is MEASURED (the caller-supplied-width waiver — never the fixed 64/72
  * probe the report row uses), so a wide tile draws a proportionally wider chart.
  *
- * Owner round 3 item 17: the WIDE board tile (`chromeless`) forks to its own row grammar, matching
- * the design's home-board trends widget (v3.dc.html:546-560) rather than the phone/report grammar
- * above — a small FIXED-size sparkline (44×20, not measured) stroked in the ENVELOPE's own color
- * (`tr.color`) with a sign-verdict-colored dot (`trendColor`) and a right-aligned signed amount in
- * that same verdict color, no per-row divider. The phone body (chromeless falsy) is untouched:
- * measured-width spark, single `trendColor()` for line+dot+amount, bordered rows.
+ * Owner round 7 item 29 (his side-by-side of this tile against the Trends report preview) makes
+ * the WIDE board tile (`chromeless`) render the REPORT's own row, `TrendRow` from reportKit: colour
+ * dot + name over a "{now} · median {median}" sub-line, the spark in the middle, the signed delta
+ * over "{arrow} {pct}% vs median" on the right. It is the same component the Trends subscreen
+ * renders, not a lookalike, so the two cannot drift — and every figure in it (avg/median/pct, the
+ * arrow glyph and its colour rule) stays where it already was, in `computeEnvelopeTrends`/
+ * `trendColor`/`DeltaTag`. That supersedes round 3 item 17's compact design-html grammar (a 44×20
+ * spark in the envelope's colour + a bare signed amount), which this branch rendered before.
+ * The phone body (chromeless falsy) is untouched: measured-width spark, name+amount on one line,
+ * chart underneath.
  *
  * v3.dc.html:558-559's trailing `home.trendsHero` caption ("{n} rising · {m} falling") is counted
  * over the FULL trend list (`trendRows`, before its `.slice(0,3..8)` for display) — never just the
@@ -672,34 +676,9 @@ export function TrendsWidget({ month, onOpenReport, chromeless }: WidgetProps) {
         <div style={{ padding: "10px 2px", fontSize: 12, color: C.mute }}>{t("Not enough history yet — trends appear after two months of spending.")}</div>
       ) : chromeless ? (
         <div style={{ display: "flex", flexDirection: "column" }}>
-          {trends.map((tr) => {
-            const signColor = trendColor(tr, C);
-            const delta = tr.last - tr.baseline;
-            return (
-              <button key={tr.id} onClick={() => onOpenReport?.("trends")} style={{ ...rowBtnStyle(C, true), padding: "5px 0" }}>
-                <TrendSpark
-                  series={tr.series}
-                  color={tr.color}
-                  dotColor={signColor}
-                  median={tr.baseline}
-                  medianColor={C.line}
-                  dot
-                  w={44}
-                  h={20}
-                  strokeWidth={2.5}
-                  medianStrokeWidth={1.5}
-                  dotRadius={3}
-                />
-                <span style={{ flex: 1, minWidth: 0, fontSize: 12, color: C.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                  {tr.name}
-                </span>
-                <span style={{ flexShrink: 0, fontSize: 11, fontWeight: 750, color: signColor, fontVariantNumeric: "tabular-nums" }}>
-                  {delta >= 0 ? "+" : "−"}
-                  {M(Math.abs(delta))}
-                </span>
-              </button>
-            );
-          })}
+          {trends.map((tr, i) => (
+            <TrendRow key={tr.id} tr={tr} M={M} last={i === trends.length - 1} onClick={() => onOpenReport?.("trends")} />
+          ))}
           {/* v3.dc.html:559 — plain, non-interactive, always shown once there's any trend data. */}
           <span style={{ fontSize: 10.5, color: C.mute, paddingTop: 4 }}>{t("{n} rising · {m} falling", { n: rising, m: falling })}</span>
         </div>

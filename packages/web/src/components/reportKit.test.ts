@@ -11,7 +11,7 @@ import type { DailySpendingPoint } from "@enveo/shared";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { type Lang, loadLocale, type Message, translatePlural } from "../lib/i18n";
-import { gridTicks, heatWeeks, netWorthRangeLabel, TrendSpark } from "./reportKit";
+import { gridTicks, heatWeeks, netWorthRangeLabel, TrendRow, TrendSpark } from "./reportKit";
 
 /** Builds `count` consecutive `DailySpendingPoint`s starting at `${month}-01` — real calendar
  *  months, so `heatWeeks`'s offsets below are checkable by hand rather than fixture noise. */
@@ -227,5 +227,74 @@ describe("NetWorthChart stays under the discreet-mode mask", () => {
     if (bypassing.size > 0) {
       throw new Error(`reportKit.tsx imports ${[...bypassing].join(", ")} directly from "../lib/format". ${BYPASS_MSG}`);
     }
+  });
+});
+
+/**
+ * Owner round 7 item 29 put the Trends REPORT's row grammar on the wide home board's trends tile.
+ * The point of the requirement was that the two must READ IDENTICALLY — his side-by-side showed a
+ * tile that had drifted into its own grammar — so the fix was to give both hosts ONE component,
+ * `TrendRow`. Nothing about the types stops a future edit from re-inlining a lookalike row in
+ * either place (that is exactly how the drift happened the first time: the tile grew its own
+ * `<TrendSpark>` + name + amount block beside the report's), and no rendering test would fail —
+ * both would still render "a trends row", just different ones.
+ *
+ * So this scans both hosts' own source for the shared row: each must IMPORT `TrendRow` and RENDER
+ * it, and neither may reach for the row's own ingredients (`TrendSpark`/`DeltaTag`) inside a
+ * hand-built trends row again. `widgetsBoard.tsx` legitimately still uses `TrendSpark` for the
+ * PHONE trends body (a different, deliberately compact grammar owner round 7 did not touch) and
+ * `ReportsHub`'s mini uses it too, so the check is not "never mentions TrendSpark" — it is
+ * "renders <TrendRow>", the one fact that makes the two grammars the same object.
+ */
+describe("the Trends report and the wide trends tile render ONE shared row", () => {
+  const HOSTS = [
+    { file: "../screens/reports/TrendsReport.tsx", what: "the Trends report subscreen" },
+    { file: "./widgetsBoard.tsx", what: "the wide home board's trends tile" },
+  ];
+
+  for (const { file, what } of HOSTS) {
+    test(`${what} renders reportKit's <TrendRow>`, () => {
+      const src = readFileSync(join(import.meta.dir, file), "utf8");
+      const imports = src.match(/import\s*{([^}]*)}\s*from\s*["'][^"']*reportKit["']/);
+      const named = (imports?.[1] ?? "").split(",").map((s) => s.trim().split(/\s+as\s+/)[0]);
+      expect(named).toContain("TrendRow");
+      // `[\s/>]` matters: a bare `toContain("<TrendRow")` also passes for `<TrendRowSomethingElse`,
+      // so an ablation that renames the element sails straight through it (it did, once).
+      expect(src).toMatch(/<TrendRow[\s/>]/);
+    });
+  }
+});
+
+/**
+ * `TrendRow`'s two opposite overflow rules, pinned because they look like an inconsistency and a
+ * future tidy-up would "fix" them into one: the NAME ellipsizes (unbounded label, identity already
+ * carried by the colour dot), the SUB-LINE wraps (two amounts — truncating it eats the median digit
+ * by digit, which is exactly what the wide 2×2 trends tile did in Polish before owner round 7).
+ * Also pins that BOTH sub-line figures go through the caller's mask: formatting either one directly
+ * would print a real amount to someone who turned discreet mode on, and the row's own types would
+ * not notice.
+ *
+ * Rendered with `renderToStaticMarkup` and no providers on purpose — `useTheme`/`useSettings` both
+ * have real defaults (light theme, English), so the row is renderable in isolation, and asserting
+ * the emitted `style` attribute is stronger than asserting the source text of a style object.
+ */
+describe("TrendRow overflow rules", () => {
+  const TR = { id: "e1", name: "Groceries", color: "#abcdef", series: [10, 20, 30], last: 120, baseline: 100, deltaPct: 0.2 };
+  const html = renderToStaticMarkup(createElement(TrendRow, { tr: TR, M: (n: number) => `«${n}»`, onClick: () => {} }));
+
+  test("the envelope name ellipsizes on one line", () => {
+    expect(html).toMatch(/text-overflow:ellipsis;white-space:nowrap">Groceries<\/span>/);
+  });
+
+  test("the sub-line wraps instead — no nowrap anywhere else in the row", () => {
+    expect(html.match(/white-space:nowrap/g)).toHaveLength(1);
+    expect(html).toMatch(/text-wrap:balance">«120» · median «100»<\/span>/);
+  });
+
+  test("every amount in the row goes through the caller's mask", () => {
+    // sub-line: this month + median; right column: the signed delta (120 − 100).
+    expect(html).toContain("«120» · median «100»");
+    expect(html).toContain("+«20»");
+    expect(html).not.toContain("120.00");
   });
 });

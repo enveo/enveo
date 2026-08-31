@@ -1,5 +1,5 @@
 import type { EnvelopeTrend } from "@enveo/shared";
-import { DeltaTag, ReportShell, TrendSpark } from "../../components/reportKit";
+import { ReportShell, signedDelta, TrendRow } from "../../components/reportKit";
 import { useTheme } from "../../lib/contexts";
 import { useT } from "../../lib/i18n";
 import { trendBannerMover } from "../../lib/reportSummary";
@@ -24,14 +24,12 @@ import { type Mask, TITLES } from "./types";
  * every row already uses), neutral `C.chip`/`C.line` otherwise — painting a decrease (good news)
  * in the danger tint would be wrong just because it happens to be the biggest number.
  *
- * Each row is two lines per side: the left column pairs the envelope name with a
- * `"{now} · median {median}"` sub-line (this month's spend against the same baseline the delta
- * is computed from); the right column makes the signed **delta** (`last − baseline`) the primary
- * figure, with the existing `DeltaTag` + "vs median" as its secondary line. `tr.last`/`tr.baseline`
- * are never null, so both lines of every row always render, including a dormant envelope whose
- * median is 0 ("… · median $0.00" is honest information, not an error case). When `deltaPct` is
- * null there is nothing to compare the delta against, so only that second line (DeltaTag + "vs
- * median") is omitted — never the whole row.
+ * Each row is `TrendRow` (reportKit) — two lines per side: the left column pairs the envelope name
+ * with a `"{now} · median {median}"` sub-line (this month's spend against the same baseline the
+ * delta is computed from); the right column makes the signed **delta** (`last − baseline`) the
+ * primary figure, with `DeltaTag` + "vs median" as its secondary line. That row used to be inline
+ * here; owner round 7 item 29 put the SAME grammar on the wide home board's trends tile, so it
+ * moved to reportKit and both hosts now render one component instead of two copies that drift.
  */
 export function TrendsReport({
   trends,
@@ -57,7 +55,6 @@ export function TrendsReport({
   const banner = trendBannerMover(trends);
   const bannerColor = banner ? trendColor(banner, C) : C.text;
   const bannerBad = banner ? bannerColor === C.neg : false;
-  const signed = (delta: number) => `${delta >= 0 ? "+" : "−"}${M(Math.abs(delta))}`;
 
   return (
     <ReportShell
@@ -87,63 +84,14 @@ export function TrendsReport({
           <span style={{ fontSize: 11.5, color: C.text }}>
             {t("{name} moved the most this month — {amount} vs median", {
               name: banner.name,
-              amount: signed(banner.last - banner.baseline),
+              amount: signedDelta(M, banner.last - banner.baseline),
             })}
           </span>
         </div>
       )}
-      {trends.map((tr, i) => {
-        const color = trendColor(tr, C);
-        return (
-          <button
-            key={tr.id}
-            onClick={() => onOpenEnvelope(tr.id, month)}
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 10,
-              width: "100%",
-              padding: "10px 0",
-              background: "none",
-              border: "none",
-              borderBottom: i === trends.length - 1 ? "none" : `1px solid ${C.line}`,
-              cursor: "pointer",
-              textAlign: "left",
-              fontFamily: "inherit",
-            }}
-          >
-            <span aria-hidden style={{ width: 8, height: 8, borderRadius: 3, background: tr.color, flexShrink: 0 }} />
-            <span style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 1 }}>
-              <span style={{ fontSize: 13, color: C.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{tr.name}</span>
-              <span
-                style={{
-                  fontSize: 10.5,
-                  color: C.mute,
-                  fontVariantNumeric: "tabular-nums",
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
-                  whiteSpace: "nowrap",
-                }}
-              >
-                {t("{now} · median {median}", { now: M(tr.last), median: M(tr.baseline) })}
-              </span>
-            </span>
-            <span style={{ flexShrink: 0 }}>
-              <TrendSpark series={tr.series} color={color} median={tr.baseline} medianColor={C.line} dot w={72} h={26} />
-            </span>
-            <span style={{ textAlign: "right", flexShrink: 0 }}>
-              <span style={{ display: "block", fontSize: 13, fontWeight: 700, color, fontVariantNumeric: "tabular-nums" }}>
-                {signed(tr.last - tr.baseline)}
-              </span>
-              {tr.deltaPct !== null && (
-                <span style={{ display: "block", fontSize: 10.5, color: C.soft }}>
-                  <DeltaTag pct={tr.deltaPct} /> {t("vs median")}
-                </span>
-              )}
-            </span>
-          </button>
-        );
-      })}
+      {trends.map((tr, i) => (
+        <TrendRow key={tr.id} tr={tr} M={M} last={i === trends.length - 1} onClick={() => onOpenEnvelope(tr.id, month)} />
+      ))}
       {trends.length > 0 && <div style={{ fontSize: 10, color: C.mute, paddingTop: 4 }}>{t("The flat line in each spark marks that envelope's median.")}</div>}
     </ReportShell>
   );
