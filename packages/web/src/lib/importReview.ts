@@ -34,6 +34,14 @@ export interface ImportReviewRow {
   item: LocalImportReviewItem | null;
 }
 
+export function visibleImportReviewRows<T extends Pick<ImportReviewRow, "disposition">>(rows: readonly T[]): { row: T; index: number; position: number }[] {
+  const visible: { row: T; index: number; position: number }[] = [];
+  rows.forEach((row, index) => {
+    if (row.disposition !== "supporting") visible.push({ row, index, position: visible.length });
+  });
+  return visible;
+}
+
 export type ImportBlockingIssue = ImportReviewReason | "currency_mismatch" | "assignment_unavailable";
 
 /** Every selected review row needs an explicit edit acknowledgement. Rows with

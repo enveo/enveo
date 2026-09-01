@@ -91,8 +91,6 @@ export const pl: Dict = {
   "Date unknown": "Nieznana data",
   "Declined — not added": "Odrzucona — nie zostanie dodana",
   "Direction needs review": "Kierunek wymaga sprawdzenia",
-  "Every recognized row stays visible. Only checked transaction candidates will be added.":
-    "Każdy rozpoznany wiersz pozostaje widoczny. Dodane zostaną tylko zaznaczone transakcje.",
   "FX amounts do not match": "Kwoty wymiany walut nie pasują do siebie",
   "FX relation": "Powiązana wymiana walut",
   "Missing date or amount": "Brak daty lub kwoty",
@@ -1141,6 +1139,7 @@ export const pl: Dict = {
   // above the list of widgets not on the board, plus one line per widget saying what it shows.
   "Not on the board": "Poza siatką",
   "Every envelope with what is left this month.": "Wszystkie koperty z tym, co zostało w tym miesiącu.",
+  "Only checked transactions will be added.": "Dodane zostaną tylko zaznaczone transakcje.",
   "Only the envelopes you marked as savings.": "Tylko koperty oznaczone jako oszczędności.",
   "Money in and out over the last twelve months.": "Wpływy i wydatki z ostatnich dwunastu miesięcy.",
   "What you own minus what you owe, month by month.": "To, co masz, minus to, co jesteś winien — miesiąc po miesiącu.",
