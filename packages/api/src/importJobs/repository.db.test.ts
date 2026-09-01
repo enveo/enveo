@@ -70,7 +70,8 @@ describe.skipIf(!TEST_URL)("import job repository", () => {
     expect(output.transitions).toEqual({
       retryScheduled: true,
       retryQueued: true,
-      permanentFailureDeletedImages: true,
+      manualRetryResetsAttempts: true,
+      permanentFailureRetainsInput: true,
       completedCountsSaved: true,
       crossBudgetMutationsRejected: true,
     });
@@ -79,6 +80,9 @@ describe.skipIf(!TEST_URL)("import job repository", () => {
   test("applies bounded retention without exposing or logging payloads", () => {
     expect(output.cleanup).toEqual({
       retryImagesDeleted: true,
+      scheduledFailureExpiredValid: true,
+      freshFailedInputRetained: true,
+      staleFailedInputExpired: true,
       terminalDetailsCleared: true,
       expiredJobsDeleted: true,
       reportedCounts: true,

@@ -199,6 +199,16 @@ describe("plain import job processor", () => {
     expect(fixture.events).toContain("failed:expired");
   });
 
+  test("reports a safe failure class without provider payloads", async () => {
+    const diagnostics: unknown[] = [];
+    const fixture = processorFixture({ recognitionError: new UpstreamNetworkError(new Error("private network detail")) });
+
+    await processClaimedImportJob(claimedJob(), { ...fixture, now: () => NOW, logFailure: (metadata) => diagnostics.push(metadata) });
+
+    expect(diagnostics).toEqual([{ jobId: claimedJob().id, attempt: 1, errorType: "UpstreamNetworkError" }]);
+    expect(JSON.stringify(diagnostics)).not.toContain("private network detail");
+  });
+
   test("renews the lease before and during a slow upstream call so another worker cannot duplicate the provider request", async () => {
     let current = new Date("2026-08-24T12:00:00.000Z");
     let leaseExpiresAt = new Date("2026-08-24T12:05:00.000Z");
@@ -306,6 +316,20 @@ describe("plain import provider dispatch", () => {
         payload: expect.objectContaining({ model: "gpt-test" }),
       }),
     ]);
+  });
+
+  test("logs only safe upstream metadata when Enveo AI rejects an import", async () => {
+    const diagnostics: unknown[] = [];
+    const chat = createImportJobChat(claimedJob(), {
+      database: {} as never,
+      credentials: { withServerCredentialForWorker: async (_database, _owner, _budgetId, use) => use("unused") },
+      operatorChat: async () => ({ kind: "upstream_error", status: 400, detail: "private upstream response", requestId: "req-safe" }),
+      logUpstreamFailure: (metadata) => diagnostics.push(metadata),
+    });
+
+    await expect(chat({ messages: [{ role: "user", content: "private prompt" }] })).rejects.toThrow("openai 400");
+    expect(diagnostics).toEqual([{ status: 400, requestId: "req-safe" }]);
+    expect(JSON.stringify(diagnostics)).not.toContain("private");
   });
 
   test("opens Own OpenAI only through the worker vault callback and invokes BYOK outside its transaction", async () => {

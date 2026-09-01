@@ -151,6 +151,7 @@ export interface ImportJobProcessorDeps {
   recognize: (input: ImportRecognitionRunInput) => Promise<ImportRecognitionResult>;
   now?: () => Date;
   heartbeatIntervalMs?: number;
+  logFailure?: (metadata: { jobId: string; attempt: number; errorType: string }) => void;
 }
 
 function startLeaseRenewal(job: ClaimedImportJob, deps: ImportJobProcessorDeps, now: () => Date) {
@@ -238,6 +239,12 @@ export async function processClaimedImportJob(job: ClaimedImportJob, deps: Impor
     return { kind: "ready" };
   } catch (error) {
     if (error instanceof ImportJobCancelled) return { kind: "cancelled" };
+    const reason = unwrapFailure(error);
+    deps.logFailure?.({
+      jobId: job.id,
+      attempt: job.attempt,
+      errorType: reason instanceof Error ? reason.constructor.name : typeof reason,
+    });
     if (error instanceof ImportJobAccountUnavailable) {
       const saved = await deps.repository.failPermanently(job.id, job.leaseToken, "account_unavailable", now());
       return saved ? { kind: "failed", errorCode: "account_unavailable" } : { kind: "lease_expired", errorCode: "expired" };
@@ -266,6 +273,7 @@ type ProviderChatDeps = {
   credentials: Pick<CredentialRepository, "withServerCredentialForWorker">;
   operatorChat?: typeof meteredOperatorChat;
   byokChat?: typeof byokChatContent;
+  logUpstreamFailure?: (metadata: { status: number; requestId: string | null }) => void;
 };
 
 export function createImportJobChat(job: ClaimedImportJob, deps: ProviderChatDeps) {
@@ -277,7 +285,12 @@ export function createImportJobChat(job: ClaimedImportJob, deps: ProviderChatDep
         timeoutMs,
       });
       if (outcome.kind === "denied") throw new SpendDenied(outcome.retryAfterSeconds);
-      if (outcome.kind === "upstream_error") throw new UpstreamHttpError(outcome.status);
+      if (outcome.kind === "upstream_error") {
+        const metadata = { status: outcome.status, requestId: outcome.requestId };
+        if (deps.logUpstreamFailure) deps.logUpstreamFailure(metadata);
+        else console.warn("import-job: OpenAI rejected request", metadata);
+        throw new UpstreamHttpError(outcome.status);
+      }
       if (outcome.kind === "invalid_body") throw new ImportJobMalformedResponse();
       return outcome.content || "{}";
     };

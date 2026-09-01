@@ -30,22 +30,22 @@ describe.skipIf(!TEST_URL)("database-backed import worker", () => {
     expect(output.images).toEqual({ concurrentJobImages: 0, restartedJobImages: 0 });
   });
 
-  test("three crashed leases terminally expire without a fourth provider call", () => {
-    expect(output.exhausted).toEqual({ providerCalls: 3, fourthClaimRejected: true, attempts: 3, status: "failed", errorCode: "expired" });
+  test("three crashed leases fail retryably without a fourth provider call", () => {
+    expect(output.exhausted).toEqual({ providerCalls: 3, fourthClaimRejected: true, attempts: 3, status: "failed", errorCode: "network" });
   });
 
-  test("retention-cleaned retry input terminally expires before provider dispatch", () => {
+  test("missing retry input terminally expires before provider dispatch", () => {
     expect(output.missingInput).toEqual({ providerCalls: 0, status: "failed", errorCode: "expired", retryAt: null });
   });
 
-  test("account archival during an upstream boundary fails permanently without reclaim or another call", () => {
+  test("account archival during an upstream boundary retains retry input without reclaim or another call", () => {
     expect(output.accountInvalidation).toEqual({
       providerCalls: 1,
       outcome: "failed",
       status: "failed",
       errorCode: "account_unavailable",
-      images: 0,
-      detailsCleared: true,
+      images: 1,
+      detailsCleared: false,
       reclaimed: false,
     });
   });

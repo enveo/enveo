@@ -60,6 +60,7 @@ if (import.meta.main) {
       processClaimedImportJob(job, {
         repository: importJobRepository,
         recognize: createDatabaseImportRecognition(job, { database: db, credentials }),
+        logFailure: (metadata) => console.warn("import-job: processing failed", metadata),
       }),
   });
   let shuttingDown = false;

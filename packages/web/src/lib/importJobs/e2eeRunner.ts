@@ -186,14 +186,7 @@ export class E2eeImportJobRunner {
     }
     for (const job of await importJobStorage.listJobs(this.options.scope)) {
       const updatedAt = Date.parse(job.updatedAt);
-      if (
-        job.status !== "failed" ||
-        job.retryAt === null ||
-        job.inputCiphertext === null ||
-        !Number.isFinite(updatedAt) ||
-        updatedAt + RETRY_INPUT_RETENTION_MS > this.now().getTime()
-      )
-        continue;
+      if (job.status !== "failed" || !Number.isFinite(updatedAt) || updatedAt + RETRY_INPUT_RETENTION_MS > this.now().getTime()) continue;
       await this.write(job, {
         phase: "extracting",
         errorCode: "expired",
@@ -252,11 +245,7 @@ export class E2eeImportJobRunner {
 
   private async fail(current: StoredE2eeImportJob, errorCode: ImportJobErrorCode): Promise<void> {
     if (current.status !== "queued" && current.status !== "running") return;
-    await this.transition(
-      current,
-      { type: "failed", errorCode, retryAt: null, at: this.timestamp() },
-      { inputCiphertext: null, checkpointCiphertext: null, resultCiphertext: null },
-    );
+    await this.transition(current, { type: "failed", errorCode, retryAt: null, at: this.timestamp() });
   }
 
   private async recordFailure(current: StoredE2eeImportJob, error: unknown): Promise<void> {
@@ -566,7 +555,7 @@ export class E2eeImportJobRunner {
     if (!this.isCurrent()) return;
     if (job?.status !== "failed") return;
     try {
-      await this.transition(job, { type: "retry", at: this.timestamp() });
+      await this.transition(job, { type: "retry", at: this.timestamp() }, { attempt: 0 });
       await this.resume();
     } catch (error) {
       if (!(error instanceof StaleImportJobRunner)) throw error;

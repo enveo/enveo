@@ -2,6 +2,7 @@ import type { StateResponse } from "@enveo/shared";
 import { useCallback, useEffect, useState } from "react";
 import { ImportProgress, importProgressPresentation } from "../components/ImportProgress";
 import { ImportSheet } from "../components/ImportSheet";
+import { apiErrorMessage } from "../lib/api";
 import { useTheme } from "../lib/contexts";
 import { type Message, msg, useT } from "../lib/i18n";
 import { Ico } from "../lib/icons";
@@ -46,6 +47,26 @@ export function activityDismissMessage(item: ImportActivityItem): Message {
   return item.source === "e2ee" ? msg("Remove from this device") : msg("Hide for this session");
 }
 
+export function canRetryActivityImport(item: ImportActivityItem): boolean {
+  return item.status === "failed" && item.errorCode !== "expired";
+}
+
+export async function retryActivityImport(id: string, retry: (id: string) => Promise<void>, refresh: () => Promise<void>): Promise<string | null> {
+  try {
+    await retry(id);
+    await refresh();
+    return null;
+  } catch (cause) {
+    const message = apiErrorMessage(cause);
+    try {
+      await refresh();
+    } catch {
+      // Keep the mutation error: it is the actionable failure the user just triggered.
+    }
+    return message;
+  }
+}
+
 export function ActivityScreen({ state, onMenu }: { state: StateResponse; onMenu: () => void }) {
   const C = useTheme();
   const { t, lang } = useT();
@@ -58,7 +79,7 @@ export function ActivityScreen({ state, onMenu }: { state: StateResponse; onMenu
       setItems(await importJobManager.list());
       setError(null);
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "import_activity_unavailable");
+      setError(apiErrorMessage(cause));
     }
   }, []);
 
@@ -116,13 +137,15 @@ export function ActivityScreen({ state, onMenu }: { state: StateResponse; onMenu
                     <div role="alert" style={{ color: CORAL, fontSize: 12, lineHeight: 1.4, marginTop: 8 }}>
                       {t(importProgressPresentation(job).message)}
                     </div>
-                    <button
-                      type="button"
-                      onClick={() => void importJobManager.retry(job.id).then(refresh)}
-                      style={{ ...primaryButton, background: C.bg, color: C.text, border: `1px solid ${C.line}` }}
-                    >
-                      {t("Retry import")}
-                    </button>
+                    {canRetryActivityImport(job) && (
+                      <button
+                        type="button"
+                        onClick={() => void retryActivityImport(job.id, (id) => importJobManager.retry(id), refresh).then(setError)}
+                        style={{ ...primaryButton, background: C.bg, color: C.text, border: `1px solid ${C.line}` }}
+                      >
+                        {t("Retry import")}
+                      </button>
+                    )}
                   </>
                 )}
                 {(job.status === "completed" || (job.status === "failed" && !scheduledRetry)) && (
@@ -165,7 +188,7 @@ export function ActivityScreen({ state, onMenu }: { state: StateResponse; onMenu
         </p>
         {error && (
           <div role="alert" style={{ color: CORAL, fontSize: 12.5, marginTop: 14 }}>
-            {t("Activity could not be refreshed. Try again.")}
+            {error}
           </div>
         )}
         {empty && !error && <div style={{ color: C.soft, fontSize: 13, textAlign: "center", padding: "52px 12px" }}>{t("No import activity yet.")}</div>}

@@ -116,6 +116,7 @@ const ERROR_KEYS: Record<string, Message> = {
   budget_not_empty: msg("The budget is not empty — demo data can only be loaded into an empty budget."), // /demo/seed only ever fills an empty budget
   too_large: msg("The upload is too large — try fewer (or smaller) screenshots."), // bodyLimit (e.g. too many/too heavy screenshots)
   internal: msg("The server hit an unexpected error. Nothing was changed — try again."),
+  invalid_import_job_state: msg("This import expired. Start a new import from the screenshots."),
 
   /* Client-side codes — the same contract: lib/* throws a CODE (never a sentence, never a locale),
      the wording lives here. They reach a user through the very same setError(apiErrorMessage(e)). */
