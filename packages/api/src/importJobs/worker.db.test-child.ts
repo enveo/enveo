@@ -188,17 +188,17 @@ async function main() {
       select status, attempt, error_code as "errorCode" from import_jobs where id = ${exhaustedId}`;
 
     const missingInputId = crypto.randomUUID();
-    await repository.create(createInput(missingInputId), new Date("2026-08-20T15:00:00.000Z"));
-    const retainedClaim = await repository.claimNext("worker-retryable", new Date("2026-08-20T15:01:00.000Z"));
+    await repository.create(createInput(missingInputId), new Date("2026-08-24T14:50:00.000Z"));
+    const retainedClaim = await repository.claimNext("worker-retryable", new Date("2026-08-24T14:51:00.000Z"));
     if (!retainedClaim || retainedClaim.id !== missingInputId) throw new Error("expected retained input claim");
     await repository.scheduleRetry(
       missingInputId,
       retainedClaim.leaseToken,
       "ai_budget_exhausted",
       new Date("2026-08-24T15:00:00.000Z"),
-      new Date("2026-08-20T15:02:00.000Z"),
+      new Date("2026-08-24T14:52:00.000Z"),
     );
-    await repository.cleanupExpired(new Date("2026-08-24T14:59:00.000Z"));
+    await isolated`delete from import_job_images where job_id = ${missingInputId}`;
     const missingInputClaim = await repository.claimNext("worker-after-retention", new Date("2026-08-24T15:00:00.000Z"));
     if (!missingInputClaim || missingInputClaim.id !== missingInputId) throw new Error("expected missing-input claim");
     let missingInputProviderCalls = 0;
