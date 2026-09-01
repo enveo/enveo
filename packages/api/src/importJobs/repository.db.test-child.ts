@@ -47,12 +47,16 @@ export interface ImportJobRepositoryOutput {
   transitions: {
     retryScheduled: boolean;
     retryQueued: boolean;
-    permanentFailureDeletedImages: boolean;
+    manualRetryResetsAttempts: boolean;
+    permanentFailureRetainsInput: boolean;
     completedCountsSaved: boolean;
     crossBudgetMutationsRejected: boolean;
   };
   cleanup: {
     retryImagesDeleted: boolean;
+    scheduledFailureExpiredValid: boolean;
+    freshFailedInputRetained: boolean;
+    staleFailedInputExpired: boolean;
     terminalDetailsCleared: boolean;
     expiredJobsDeleted: boolean;
     reportedCounts: boolean;
@@ -192,8 +196,8 @@ async function main() {
       exhaustedAttempt3?.attempt === 3 &&
       exhaustedRow?.status === "failed" &&
       exhaustedRow.attempt === 3 &&
-      exhaustedRow.errorCode === "expired" &&
-      exhaustedRow.imageCount === 0;
+      exhaustedRow.errorCode === "network" &&
+      exhaustedRow.imageCount === 2;
     const fourthClaimRejected = exhaustedAttempt4 === null;
 
     const checkpointId = crypto.randomUUID();
@@ -276,8 +280,14 @@ async function main() {
     await repository.create(createInput(permanentId), at("2026-08-24T16:00:00.000Z"));
     const permanentLease = await repository.claimNext("worker-fail", at("2026-08-24T16:01:00.000Z"));
     if (!permanentLease || permanentLease.id !== permanentId) throw new Error("expected permanent failure job claim");
+    await isolated.unsafe("update import_jobs set attempt = 3, extraction = $1::jsonb where id = $2", [JSON.stringify(emptyResult), permanentId]);
     await repository.failPermanently(permanentId, permanentLease.leaseToken, "malformed_model_response", at("2026-08-24T16:02:00.000Z"));
-    const [permanentImages] = await isolated<{ count: number }[]>`select count(*)::int as count from import_job_images where job_id = ${permanentId}`;
+    const [permanentInput] = await isolated<{ imageCount: number; hasExtraction: boolean }[]>`
+      select (select count(*)::int from import_job_images where job_id = ${permanentId}) as "imageCount",
+             extraction is not null as "hasExtraction"
+        from import_jobs where id = ${permanentId}`;
+    const manualRetry = await repository.retry(userId, budgetId, permanentId, at("2026-08-24T16:03:00.000Z"));
+    await repository.requestCancel(userId, budgetId, permanentId, at("2026-08-24T16:04:00.000Z"));
 
     const completedId = crypto.randomUUID();
     await repository.create(createInput(completedId), at("2026-08-24T17:00:00.000Z"));
@@ -299,14 +309,38 @@ async function main() {
     const cleanupRetryLease = await repository.claimNext("worker-cleanup", at("2026-08-20T10:01:00.000Z"));
     if (!cleanupRetryLease || cleanupRetryLease.id !== cleanupRetryId) throw new Error("expected cleanup retry job claim");
     await repository.scheduleRetry(cleanupRetryId, cleanupRetryLease.leaseToken, "network", at("2026-08-30T10:00:00.000Z"), at("2026-08-20T10:02:00.000Z"));
+    const retainedFailureId = crypto.randomUUID();
+    await repository.create(createInput(retainedFailureId), at("2026-08-24T17:10:00.000Z"));
+    const retainedFailureLease = await repository.claimNext("worker-retained-failure", at("2026-08-24T17:11:00.000Z"));
+    if (!retainedFailureLease || retainedFailureLease.id !== retainedFailureId) throw new Error("expected retained failure claim");
+    await repository.failPermanently(retainedFailureId, retainedFailureLease.leaseToken, "network", at("2026-08-24T17:12:00.000Z"));
     const expiredId = crypto.randomUUID();
     await repository.create(createInput(expiredId), at("2026-08-10T10:00:00.000Z"));
     const cleanup = await repository.cleanupExpired(at("2026-08-24T18:00:00.000Z"));
-    const [afterCleanup] = await isolated<{ retryImages: number; terminalDetails: number; expiredJobs: number }[]>`
+    const [afterCleanup] = await isolated<
+      {
+        retryImages: number;
+        retryPhase: string;
+        retryError: string;
+        retryAt: Date | null;
+        freshFailedImages: number;
+        terminalDetails: number;
+        expiredJobs: number;
+      }[]
+    >`
       select
         (select count(*)::int from import_job_images where job_id = ${cleanupRetryId}) as "retryImages",
+        (select phase from import_jobs where id = ${cleanupRetryId}) as "retryPhase",
+        (select error_code from import_jobs where id = ${cleanupRetryId}) as "retryError",
+        (select retry_at from import_jobs where id = ${cleanupRetryId}) as "retryAt",
+        (select count(*)::int from import_job_images where job_id = ${retainedFailureId}) as "freshFailedImages",
         (select count(*)::int from import_jobs where id = ${completedId} and extraction is null and result is null) as "terminalDetails",
         (select count(*)::int from import_jobs where id = ${expiredId}) as "expiredJobs"`;
+    await repository.cleanupExpired(at("2026-08-25T18:00:00.000Z"));
+    const [staleFailure] = await isolated<{ imageCount: number; errorCode: string; phase: string; hasExtraction: boolean }[]>`
+      select (select count(*)::int from import_job_images where job_id = ${retainedFailureId}) as "imageCount",
+             error_code as "errorCode", phase, extraction is not null as "hasExtraction"
+        from import_jobs where id = ${retainedFailureId}`;
 
     await emitChildResult(SENTINEL, {
       creation: {
@@ -353,12 +387,17 @@ async function main() {
       transitions: {
         retryScheduled,
         retryQueued: retried?.status === "queued",
-        permanentFailureDeletedImages: permanentImages?.count === 0,
+        manualRetryResetsAttempts: manualRetry?.status === "queued" && manualRetry.attempt === 0,
+        permanentFailureRetainsInput: permanentInput?.imageCount === 2 && permanentInput.hasExtraction,
         completedCountsSaved: completed?.status === "completed" && completed.appliedCount === 3 && completed.skippedCount === 1,
         crossBudgetMutationsRejected: wrongCancel === null && wrongRetry === null && wrongComplete === null,
       },
       cleanup: {
         retryImagesDeleted: afterCleanup?.retryImages === 0,
+        scheduledFailureExpiredValid: afterCleanup?.retryPhase === "extracting" && afterCleanup.retryError === "expired" && afterCleanup.retryAt === null,
+        freshFailedInputRetained: afterCleanup?.freshFailedImages === 2,
+        staleFailedInputExpired:
+          staleFailure?.imageCount === 0 && staleFailure.errorCode === "expired" && staleFailure.phase === "extracting" && !staleFailure.hasExtraction,
         terminalDetailsCleared: afterCleanup?.terminalDetails === 1,
         expiredJobsDeleted: afterCleanup?.expiredJobs === 0,
         reportedCounts: cleanup.imagesDeleted >= 2 && cleanup.detailsCleared >= 1 && cleanup.jobsDeleted >= 1,

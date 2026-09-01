@@ -735,7 +735,6 @@ export const MESSAGES = [
   "The flat line in each spark marks that envelope's median.",
   "The import could not reach the AI service. Try again when the connection is stable.",
   "The import failed. You can retry it from Activity.",
-  "The import needs attention. Retry it here or continue from Activity.",
   "The latest transactions across all accounts.",
   "The link works from now on. The current account balance and envelope amount will not change.",
   "The local copy of the budget has not loaded yet — nothing was sent. Reload the app and try again.",

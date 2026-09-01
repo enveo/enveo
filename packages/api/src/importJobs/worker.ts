@@ -56,7 +56,9 @@ export function startImportJobWorker(deps: ImportJobWorkerDeps): { wake(): void;
         try {
           await deps.processJob(job);
         } catch (error) {
-          console.error("import-job worker: unhandled processor failure", (error as Error).message);
+          console.error("import-job worker: unhandled processor failure", {
+            errorType: error instanceof Error ? error.constructor.name : typeof error,
+          });
         }
         if (stopping) break;
         continue;
