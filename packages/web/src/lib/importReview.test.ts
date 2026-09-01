@@ -18,6 +18,7 @@ import {
   reviewBadges,
   reviewedImportRowsForApply,
   reviewRowControlLabels,
+  visibleImportReviewRows,
 } from "./importReview";
 import { recognitionCandidatesForDryRun } from "./localImport";
 
@@ -260,6 +261,24 @@ describe("screenshot import review view model", () => {
       edit: { message: "Edit item {n}", values: { n: 1 } },
     });
     expect(reviewRowControlLabels(review[2]!, 2)).toEqual({ select: null, edit: null });
+  });
+
+  it("hides supporting evidence from review while preserving original row indexes", () => {
+    // given: recognition contains helper text between two rows the user can act on
+    const rows = [
+      { rowId: "first", disposition: "candidate" },
+      { rowId: "heading", disposition: "supporting" },
+      { rowId: "second", disposition: "unresolved" },
+    ] as Pick<ReturnType<typeof buildImportReviewRows>[number], "rowId" | "disposition">[];
+
+    // when: the review list prepares its visible entries
+    const visible = visibleImportReviewRows(rows);
+
+    // then: helper evidence disappears, while edit/include state still addresses source rows
+    expect(visible).toEqual([
+      { row: rows[0]!, index: 0, position: 0 },
+      { row: rows[2]!, index: 2, position: 1 },
+    ]);
   });
 
   it("defaults every non-exact candidate to included even when an old proposal selection was false", () => {

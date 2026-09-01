@@ -22,6 +22,7 @@ import {
   reviewBadges,
   reviewedImportRowsForApply,
   reviewRowControlLabels,
+  visibleImportReviewRows,
 } from "../lib/importReview";
 import { preferredAccountId, setLastAccountId } from "../lib/lastAccount";
 import {
@@ -578,11 +579,9 @@ export function ImportSheet({
         {phase === "review" && (
           <>
             <div style={{ fontSize: 17, fontWeight: 700, color: C.text, textAlign: "center", marginBottom: 4 }}>{t("Review recognized rows")}</div>
-            <div style={{ fontSize: 12, color: C.mute, textAlign: "center", marginBottom: 12 }}>
-              {t("Every recognized row stays visible. Only checked transaction candidates will be added.")}
-            </div>
+            <div style={{ fontSize: 12, color: C.mute, textAlign: "center", marginBottom: 12 }}>{t("Only checked transactions will be added.")}</div>
 
-            {items.map((row, idx) => {
+            {visibleImportReviewRows(items).map(({ row, index: idx, position }) => {
               const it = row.item;
               // Candidate rows show post-edit values; evidence-only rows stay faithful to extraction.
               const e = it ? (edited[idx] as EditedImportItem | undefined) : undefined;
@@ -615,7 +614,7 @@ export function ImportSheet({
                   : null;
               const fxMismatch = !!row.currency && row.currency !== currency;
               const badges = reviewBadges(row);
-              const controlLabels = reviewRowControlLabels(row, idx);
+              const controlLabels = reviewRowControlLabels(row, position);
               const ContentTag: "button" | "div" = it ? "button" : "div";
               const contentControlProps = it
                 ? { type: "button" as const, onClick: () => setEditorIdx(idx), "aria-label": t(controlLabels.edit!.message, controlLabels.edit!.values) }
