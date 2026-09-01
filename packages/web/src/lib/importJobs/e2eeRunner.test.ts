@@ -177,7 +177,7 @@ describe("device-local E2EE import runner", () => {
     });
   });
 
-  it("deletes every encrypted payload immediately after a permanent provider failure", async () => {
+  it("retains encrypted input for manual retry after a permanent provider failure", async () => {
     const fixture = setup({
       provider: () =>
         provider(async () => {
@@ -192,13 +192,13 @@ describe("device-local E2EE import runner", () => {
       status: "failed",
       errorCode: "ai_key_invalid",
       retryAt: null,
-      inputCiphertext: null,
+      inputCiphertext: expect.stringMatching(/^v2\./),
       checkpointCiphertext: null,
       resultCiphertext: null,
     });
   });
 
-  it("treats an explicit budget mismatch as permanent and deletes ciphertext", async () => {
+  it("retains an explicit budget mismatch input for a corrected manual retry", async () => {
     const fixture = setup({
       provider: () =>
         provider(async () => {
@@ -213,7 +213,7 @@ describe("device-local E2EE import runner", () => {
       status: "failed",
       errorCode: "budget_mismatch",
       retryAt: null,
-      inputCiphertext: null,
+      inputCiphertext: expect.stringMatching(/^v2\./),
       checkpointCiphertext: null,
       resultCiphertext: null,
     });
@@ -330,8 +330,18 @@ describe("device-local E2EE import runner", () => {
 
     currentTime = new Date("2026-08-24T10:02:30.000Z");
     await fixture.runner.resume();
-    expect(await importJobStorage.getJob(SCOPE, ID)).toMatchObject({ status: "failed", attempt: 3, errorCode: "ai_timeout", retryAt: null });
+    expect(await importJobStorage.getJob(SCOPE, ID)).toMatchObject({
+      status: "failed",
+      attempt: 3,
+      errorCode: "ai_timeout",
+      retryAt: null,
+      inputCiphertext: expect.stringMatching(/^v2\./),
+    });
     expect(providerRuns).toBe(3);
+
+    await fixture.runner.retry(ID);
+    expect(await importJobStorage.getJob(SCOPE, ID)).toMatchObject({ status: "failed", attempt: 1, errorCode: "ai_timeout" });
+    expect(providerRuns).toBe(4);
   });
 
   it("retains retryable encrypted input before 24 hours and expires it at the exact boundary", async () => {
@@ -366,7 +376,7 @@ describe("device-local E2EE import runner", () => {
     expect(providerRuns).toBe(1);
   });
 
-  it("keeps a retryable extraction checkpoint after 24 hours because screenshots were already deleted", async () => {
+  it("expires a retryable extraction checkpoint after 24 hours even though screenshots were already deleted", async () => {
     const startedAt = Date.parse("2026-08-24T10:00:00.000Z");
     let currentTime = new Date(startedAt);
     const fixture = setup({
@@ -385,10 +395,10 @@ describe("device-local E2EE import runner", () => {
 
     expect(await importJobStorage.getJob(SCOPE, ID)).toMatchObject({
       status: "failed",
-      errorCode: "ai_timeout",
-      retryAt: "2026-08-24T10:00:30.000Z",
+      errorCode: "expired",
+      retryAt: null,
       inputCiphertext: null,
-      checkpointCiphertext: expect.stringMatching(/^v2\./),
+      checkpointCiphertext: null,
     });
   });
 
