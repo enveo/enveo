@@ -42,7 +42,7 @@ import { AddScreen } from "../screens/Add";
 import { AutomaticEnvelopeEffect } from "../screens/add/AutomaticEnvelopeEffect";
 import { AiConsentSheet } from "./AiConsentSheet";
 import { Sheet } from "./chrome";
-import { ImportProgress, runImportProgressAction, sharedDeviceImportWarning } from "./ImportProgress";
+import { ImportProgress, importProgressPresentation, runImportProgressAction, sharedDeviceImportWarning } from "./ImportProgress";
 
 /**
  * Expense import from screenshots (Apple Wallet / bank history).
@@ -550,15 +550,32 @@ export function ImportSheet({
             job.status === "failed" && job.phase !== "retry_scheduled" ? (
               <div style={{ textAlign: "center", padding: "12px 0" }}>
                 <div role="alert" style={{ color: CORAL, fontSize: 13, lineHeight: 1.45 }}>
-                  {t("The import needs attention. Retry it here or continue from Activity.")}
+                  {t(importProgressPresentation(job).message)}
                 </div>
-                <button
-                  type="button"
-                  onClick={() => void importJobManager.retry(job.id)}
-                  style={{ width: "100%", marginTop: 14, padding: "12px", borderRadius: 12, border: "none", background: TEAL, color: "#fff", fontWeight: 700 }}
-                >
-                  {t("Retry import")}
-                </button>
+                {error && <div style={{ fontSize: 12.5, color: CORAL, marginTop: 10 }}>{error}</div>}
+                {job.errorCode !== "expired" && (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      void importJobManager.retry(job.id).catch(async (cause) => {
+                        setError(apiErrorMessage(cause));
+                        await importJobManager.list().catch(() => []);
+                      })
+                    }
+                    style={{
+                      width: "100%",
+                      marginTop: 14,
+                      padding: "12px",
+                      borderRadius: 12,
+                      border: "none",
+                      background: TEAL,
+                      color: "#fff",
+                      fontWeight: 700,
+                    }}
+                  >
+                    {t("Retry import")}
+                  </button>
+                )}
                 <button type="button" onClick={close} style={{ width: "100%", marginTop: 8, padding: 8, border: "none", background: "none", color: C.mute }}>
                   {t("Continue in Activity")}
                 </button>

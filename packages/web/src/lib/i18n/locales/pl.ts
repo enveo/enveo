@@ -1320,7 +1320,6 @@ export const pl: Dict = {
   "The import could not reach the AI service. Try again when the connection is stable.":
     "Import nie mógł połączyć się z usługą AI. Spróbuj ponownie, gdy połączenie będzie stabilne.",
   "The import failed. You can retry it from Activity.": "Import się nie udał. Możesz ponowić go w Aktywności.",
-  "The import needs attention. Retry it here or continue from Activity.": "Import wymaga uwagi. Ponów go tutaj albo kontynuuj w Aktywności.",
   "The monthly Enveo AI allowance is used up. Try again next month or choose Own OpenAI.":
     "Miesięczny limit Enveo AI został wykorzystany. Spróbuj w przyszłym miesiącu albo wybierz Własne OpenAI.",
   "The saved OpenAI key was rejected. Update the key before retrying.": "Zapisany klucz OpenAI został odrzucony. Zaktualizuj go przed ponowieniem.",

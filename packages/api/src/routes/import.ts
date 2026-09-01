@@ -96,7 +96,7 @@ async function openaiJson(req: ChatRequest, userId: string | undefined, timeoutM
   const out = await meteredOperatorChat({ userId, payload: operatorChatPayload(req), timeoutMs });
   if (out.kind === "denied") throw new SpendDenied(out.retryAfterSeconds);
   if (out.kind === "upstream_error") {
-    console.error("openai:", out.status, out.detail.slice(0, 500));
+    console.error("openai: upstream rejected request", { status: out.status, requestId: out.requestId });
     throw new UpstreamHttpError(out.status);
   }
   if (out.kind === "invalid_body") throw new Error("openai: unreadable 2xx body");
@@ -277,7 +277,10 @@ const importFailureResponse = (c: Context, error: unknown) => {
   if (!(error instanceof ImportCycleOneFailure)) throw error;
   const reason = error.reason;
   if (reason instanceof SpendDenied) return c.json(aiBudgetExhaustedBody(reason.retryAfterSeconds), 429, { "Retry-After": String(reason.retryAfterSeconds) });
-  console.error("import recognition cycle 1 failed:", (reason as Error).message);
+  console.error("import recognition cycle 1 failed", {
+    errorType: reason instanceof Error ? reason.constructor.name : typeof reason,
+    ...(reason instanceof UpstreamHttpError ? { status: reason.status } : {}),
+  });
   const failure = transportFailureJson(reason);
   if (failure) return c.json(failure.body, failure.status);
   return c.json({ error: "ai_upstream_error", ...(reason instanceof UpstreamHttpError ? { status: reason.status } : {}) }, 502);

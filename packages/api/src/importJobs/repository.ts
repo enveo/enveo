@@ -12,7 +12,7 @@ import {
   importJobResultSchema,
   importJobStatusSchema,
 } from "@enveo/shared";
-import { and, asc, desc, eq, gt, gte, inArray, isNotNull, isNull, lt, lte, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gt, gte, inArray, isNotNull, lt, lte, or, sql } from "drizzle-orm";
 import type { DB } from "../db/client";
 import { accounts, budgets, importJobImages, importJobs } from "../db/schema";
 
@@ -268,6 +268,7 @@ export function createImportJobRepository(database: DB) {
           cancelRequested: false,
           errorCode: null,
           retryAt: null,
+          attempt: 0,
           leaseOwner: null,
           leaseToken: null,
           leaseExpiresAt: null,
@@ -279,7 +280,6 @@ export function createImportJobRepository(database: DB) {
             eq(importJobs.budgetId, budgetId),
             eq(importJobs.id, id),
             eq(importJobs.status, "failed"),
-            lt(importJobs.attempt, 3),
             or(isNotNull(importJobs.extraction), sql`exists (select 1 from ${importJobImages} where ${importJobImages.jobId} = ${importJobs.id})`),
           ),
         )
@@ -305,21 +305,20 @@ export function createImportJobRepository(database: DB) {
           })
           .where(and(eq(importJobs.status, "running"), eq(importJobs.cancelRequested, true), lte(importJobs.leaseExpiresAt, now)))
           .returning({ id: importJobs.id });
-        const exhausted = await tx
+        await tx
           .update(importJobs)
           .set({
             status: "failed",
             resumePhase: null,
-            errorCode: "expired",
+            errorCode: "network",
             retryAt: null,
             leaseOwner: null,
             leaseToken: null,
             leaseExpiresAt: null,
             updatedAt: now,
           })
-          .where(and(eq(importJobs.status, "running"), eq(importJobs.cancelRequested, false), gte(importJobs.attempt, 3), lte(importJobs.leaseExpiresAt, now)))
-          .returning({ id: importJobs.id });
-        const terminalIds = [...cancelled, ...exhausted].map((row) => row.id);
+          .where(and(eq(importJobs.status, "running"), eq(importJobs.cancelRequested, false), gte(importJobs.attempt, 3), lte(importJobs.leaseExpiresAt, now)));
+        const terminalIds = cancelled.map((row) => row.id);
         if (terminalIds.length > 0) await tx.delete(importJobImages).where(inArray(importJobImages.jobId, terminalIds));
 
         const [candidate] = await tx
@@ -531,7 +530,6 @@ export function createImportJobRepository(database: DB) {
             resumePhase: null,
             errorCode: importJobErrorCodeSchema.parse(errorCode),
             retryAt: null,
-            extraction: null,
             result: null,
             proposalCount: 0,
             leaseOwner: null,
@@ -542,7 +540,6 @@ export function createImportJobRepository(database: DB) {
           .where(and(activeLease(id, leaseToken, now), eq(importJobs.cancelRequested, false)))
           .returning({ id: importJobs.id });
         if (updated.length !== 1) return false;
-        await tx.delete(importJobImages).where(eq(importJobImages.jobId, id));
         return true;
       });
     },
@@ -610,13 +607,8 @@ export function createImportJobRepository(database: DB) {
         const imageJobs = await tx
           .select({ id: importJobs.id })
           .from(importJobs)
-          .where(
-            or(
-              eq(importJobs.status, "cancelled"),
-              and(eq(importJobs.status, "failed"), isNull(importJobs.retryAt)),
-              and(eq(importJobs.status, "failed"), isNotNull(importJobs.retryAt), lte(importJobs.updatedAt, retryCutoff)),
-            ),
-          );
+          .where(or(eq(importJobs.status, "cancelled"), and(eq(importJobs.status, "failed"), lte(importJobs.updatedAt, retryCutoff))))
+          .for("update");
         const deletedImages =
           imageJobs.length === 0
             ? []
@@ -629,6 +621,20 @@ export function createImportJobRepository(database: DB) {
                   ),
                 )
                 .returning({ jobId: importJobImages.jobId });
+        if (imageJobs.length > 0) {
+          await tx
+            .update(importJobs)
+            .set({ phase: "extracting", resumePhase: null, errorCode: "expired", retryAt: null, extraction: null, result: null })
+            .where(
+              and(
+                eq(importJobs.status, "failed"),
+                inArray(
+                  importJobs.id,
+                  imageJobs.map((job) => job.id),
+                ),
+              ),
+            );
+        }
         const clearedDetails = await tx
           .update(importJobs)
           .set({ extraction: null, result: null })

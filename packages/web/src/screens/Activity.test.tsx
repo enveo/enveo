@@ -5,7 +5,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { importProgressPresentation, runImportProgressAction, sharedDeviceImportWarning } from "../components/ImportProgress";
 import type { ImportActivityItem } from "../lib/importJobs/store";
-import { activityAttentionCount, activityDismissMessage, activitySections } from "./Activity";
+import { activityAttentionCount, activityDismissMessage, activitySections, canRetryActivityImport, retryActivityImport } from "./Activity";
 
 const item = (status: ImportActivityItem["status"], overrides: Partial<ImportActivityItem> = {}): ImportActivityItem => ({
   id: `job-${status}`,
@@ -111,6 +111,27 @@ describe("durable import foreground and Activity view models", () => {
     expect(importProgressPresentation(retrying)).toMatchObject({ kind: "progress", message: "A retry is scheduled…", canCancel: true });
   });
 
+  it("offers manual retry only while the failed import still has retained input", () => {
+    expect(canRetryActivityImport(item("failed", { errorCode: "network" }))).toBe(true);
+    expect(canRetryActivityImport(item("failed", { errorCode: "expired" }))).toBe(false);
+  });
+
+  it("surfaces a rejected manual retry instead of swallowing the promise", async () => {
+    let refreshed = false;
+    const message = await retryActivityImport(
+      "job-failed",
+      async () => {
+        throw new Error('409 {"error":"invalid_import_job_state"}');
+      },
+      async () => {
+        refreshed = true;
+      },
+    );
+
+    expect(message).toBe("This import expired. Start a new import from the screenshots.");
+    expect(refreshed).toBe(true);
+  });
+
   it("keeps the global badge in its own lazy entry without importing the Activity screen", () => {
     const app = readFileSync(join(import.meta.dir, "..", "App.tsx"), "utf8");
     const badge = readFileSync(join(import.meta.dir, "..", "components", "ImportActivityBadge.tsx"), "utf8");
@@ -184,6 +205,7 @@ describe("durable import foreground and Activity view models", () => {
     expect(source).toContain("<Sheet show={show} onClose={close} wideDialog>");
     expect(source).toContain("maxWidth: wideHost ? 720 : PHONE_COL");
     expect(source).toContain('data-import-editor-mode={wideHost?.mode ?? "phone"}');
+    expect(source).toContain("importJobManager.list().catch");
     expect(chrome).toContain("wideDialog?: boolean");
     expect(chrome).toContain("const dialog = wideDialog && wideHost !== null");
     expect(chrome).toContain('data-sheet-layout={dialog ? "dialog" : "bottom"}');
