@@ -29,7 +29,17 @@ import { ensureIdentity, enterUnauthed, invalidateIdentityVerdict, isIdentityBlo
 import { clearResyncPending, isReplacePending, isResyncPending, markResyncPending } from "./obligations";
 import { e2eeReplicaBudgetId, replayOutbox } from "./replica";
 import { bumpStatus, setLastSyncAt, setState } from "./status";
-import { bootstrapReplica, doPull, doPullE2ee, pushE2eeBatch, pushLocalToServer, pushPlainBatch, resetServerE2ee } from "./transport";
+import {
+  bootstrapReplica,
+  doPull,
+  doPullE2ee,
+  pushE2eeBatch,
+  pushLocalToServer,
+  pushLocalToServerForSignOut,
+  pushPlainBatch,
+  resetServerE2ee,
+  resetServerE2eeForSignOut,
+} from "./transport";
 
 let deps: CycleDeps | null = null;
 
@@ -143,9 +153,9 @@ export function fullResync(): Promise<void> {
  * so queued ops must first get an ordinary cycle through the usual mutex. The remaining count
  * determines whether the human must retry, export a backup, or explicitly discard.
  */
-export async function flushOutboxForSignOut(permit: SignOutPermit): Promise<number> {
+export async function flushOutboxWithPermit(permit: SignOutPermit): Promise<number> {
   if (!isSignOutPermitActive(permit)) throw new Error("sign_out_coordination_failed");
-  await syncNow("sign-out", permit);
+  await syncNowForSignOut("sign-out", permit);
   if (!isSignOutPermitActive(permit)) throw new Error("sign_out_coordination_failed");
   return outbox.size();
 }
@@ -230,9 +240,9 @@ async function doCycle(permit?: SignOutPermit): Promise<boolean> {
           enterLocked(); // without a DEK we can't encrypt the checkpoint — waiting for Unlock (flag stays up)
           return true;
         }
-        await resetServerE2ee(dek, permit); // server := ciphertext of the local mirror; clears replacePending
+        await (permit ? resetServerE2eeForSignOut(dek, permit) : resetServerE2ee(dek)); // server := ciphertext of the local mirror; clears replacePending
       } else {
-        await pushLocalToServer(permit); // server := local; clears replacePending
+        await (permit ? pushLocalToServerForSignOut(permit) : pushLocalToServer()); // server := local; clears replacePending
       }
       if (!cycleMayContinue(permit)) return true;
       clearResyncPending();
@@ -526,7 +536,7 @@ export async function runWithSyncMutex<T>(task: () => Promise<T>): Promise<T> {
   return result;
 }
 
-export function syncNow(reason: string, permit?: SignOutPermit): Promise<void> {
+function runSyncNow(reason: string, permit?: SignOutPermit): Promise<void> {
   if (!cycleMayContinue(permit)) return Promise.resolve();
   void reason; // diagnostics (dev: window.__sync.lastReason)
   if (import.meta.env.DEV) lastReason = reason;
@@ -547,6 +557,15 @@ export function syncNow(reason: string, permit?: SignOutPermit): Promise<void> {
     running = null;
   });
   return running;
+}
+
+export function syncNow(reason: string): Promise<void> {
+  return runSyncNow(reason);
+}
+
+/** Privileged cycle entry consumed only by the coordinated final-flush adapter. */
+export function syncNowForSignOut(reason: string, permit: SignOutPermit): Promise<void> {
+  return runSyncNow(reason, permit);
 }
 
 /**

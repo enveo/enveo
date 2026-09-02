@@ -312,10 +312,15 @@ export function discardDeadLetter(opId: string): void {
  * (server idempotency would catch some, but the canonical state is the fresh replace).
  */
 export function clearAll(): void {
+  clearMemory();
+  void persist.clearOutbox();
+}
+
+/** Memory-only half used after coordinated sign-out has quiesced persistence. */
+export function clearMemory(): void {
   entries = [];
   deadLetters = [];
   inFlight.clear();
-  void persist.clearOutbox();
   notify();
 }
 

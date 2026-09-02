@@ -4,6 +4,8 @@
  * needs a session, so a boot without one lands on LoginScreen.
  */
 import { createAuthClient } from "better-auth/client";
+import { runServerWriteOperation } from "./serverWriteOperations";
+import { type CoordinatedSignOutLease, runCoordinatedSessionEnd } from "./sync/multitab";
 
 export const authClient = createAuthClient();
 
@@ -46,8 +48,10 @@ const AUTH_CODES = new Set([
 
 /** Email+password sign-in; persistent=false means a browser-session cookie. */
 export async function signInEmail(email: string, password: string, persistent: boolean): Promise<void> {
-  const { error } = await authClient.signIn.email({ email, password, rememberMe: persistent });
-  if (error) throw new Error(authErrorCode(error, "sign_in_failed"));
+  return runServerWriteOperation("auth-session", async () => {
+    const { error } = await authClient.signIn.email({ email, password, rememberMe: persistent });
+    if (error) throw new Error(authErrorCode(error, "sign_in_failed"));
+  });
 }
 
 /** Registration — the server gate (signupsOpen) decides; a closed gate answers 403 signups_closed. */
@@ -58,12 +62,14 @@ export async function signUpEmail(email: string, password: string, persistent: b
   // properties it's given. Binding to a variable first avoids the excess-property check on
   // the object literal without widening anything else — a TS quirk, not a behavior change.
   const body = { email, password, name: email.split("@")[0] ?? email, rememberMe: persistent };
-  const { error } = await authClient.signUp.email(body);
-  if (error) throw new Error(authErrorCode(error, "sign_up_failed"));
+  return runServerWriteOperation("auth-session", async () => {
+    const { error } = await authClient.signUp.email(body);
+    if (error) throw new Error(authErrorCode(error, "sign_up_failed"));
+  });
 }
 
 /** Google sign-in — an OAuth redirect; returning to the origin → a normal boot. */
-export const signInGoogle = () => authClient.signIn.social({ provider: "google" });
+export const signInGoogle = () => runServerWriteOperation("auth-session", () => authClient.signIn.social({ provider: "google" }));
 
 /**
  * Identity of the CURRENT session, straight from the server: the signed-in user's id,
@@ -86,8 +92,18 @@ export async function fetchSessionUserId(): Promise<string | null> {
 
 /** End only the server session. Explicit local cleanup is orchestrated by signOut.ts. */
 export async function endSession(): Promise<void> {
-  const { error } = await authClient.signOut();
-  if (error) throw new Error("sign_out_failed");
+  return runServerWriteOperation("auth-session", async () => {
+    const { error } = await authClient.signOut();
+    if (error) throw new Error("sign_out_failed");
+  });
+}
+
+/** Explicit sign-out's own authorized server transition under its opaque coordination lease. */
+export function endSessionForSignOut(lease: CoordinatedSignOutLease): Promise<void> {
+  return runCoordinatedSessionEnd(lease, async () => {
+    const { error } = await authClient.signOut();
+    if (error) throw new Error("sign_out_failed");
+  });
 }
 
 /** Does the backend have a session at all? */

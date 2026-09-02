@@ -47,7 +47,7 @@ import { accountPreferences } from "./accountPreferences";
 import { devicePreferences } from "./devicePreferences";
 import * as e2ee from "./e2ee";
 import { ensureE2eeProviderPreference } from "./e2eeProviderInvariant";
-import { clearLocalData, storageMode } from "./idb";
+import { clearLocalData, clearLocalDataForSignOut, storageMode } from "./idb";
 import * as outbox from "./outbox";
 import * as persist from "./persist";
 import { store } from "./store";
@@ -112,9 +112,16 @@ export async function clearLocalAccountDataForSignOut(
   lease: import("./sync/multitab").CoordinatedSignOutLease,
   clearAdditionalAccountState: () => void = () => {},
 ): Promise<void> {
-  await runCoordinatedLocalClear(lease, async () => {
+  await runCoordinatedLocalClear(lease, async (permit) => {
     clearAdditionalAccountState();
-    await clearLocalAccountData();
+    // Persistence and other account writers were drained before the lease was issued. Reset
+    // module memory without enqueueing fresh writes, then perform one permit-authorized clear.
+    outbox.clearMemory();
+    e2ee.clearDekMemory();
+    store.clearMemory();
+    accountPreferences.dehydrate();
+    devicePreferences.dehydrate();
+    await clearLocalDataForSignOut(permit);
   });
 }
 

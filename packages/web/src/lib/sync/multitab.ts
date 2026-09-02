@@ -40,12 +40,17 @@
  */
 
 import { accountPreferences, configureAccountPreferencesBroadcast } from "../accountPreferences";
+import {
+  awaitAccountStorageWritesQuiescent,
+  configureAccountStorageGenerationFence,
+  configurePersistenceAccountStorageDrain,
+} from "../accountStorageOperations";
 import { devicePreferences } from "../devicePreferences";
 import * as e2ee from "../e2ee";
 import { ensureE2eeProviderPreference } from "../e2eeProviderInvariant";
 import { clearLocalData } from "../idb";
 import * as persist from "../persist";
-import { awaitServerWriteOperationsQuiescent } from "../serverWriteOperations";
+import { awaitServerWriteOperationsQuiescent, runServerWriteOperation } from "../serverWriteOperations";
 import {
   __resetSignOutBarrierForTests,
   activateSignOutAttempt,
@@ -70,7 +75,7 @@ import {
 } from "../signOutCoordination";
 import { store } from "../store";
 import { retryBoot } from "./boot";
-import { flushOutboxForSignOut as flushCoordinatedOutbox, quiesceSyncForSignOut, syncNow } from "./cycle";
+import { flushOutboxWithPermit as flushCoordinatedOutbox, quiesceSyncForSignOut, syncNow } from "./cycle";
 import { replayOutbox } from "./replica";
 import { bumpStatus } from "./status";
 
@@ -81,8 +86,14 @@ let applyingPeerUpdate = false;
 let signOutRegistry: SignOutRegistry | null = null;
 let signOutCoordinator: SignOutCoordinator<SignOutPermit> | null = null;
 let signOutMaintenanceTimer: ReturnType<typeof setInterval> | undefined;
+let signOutCoordinationFailedClosed = false;
 
-export type CoordinatedSignOutLease = SignOutCoordinationLease<SignOutPermit>;
+/** Public capability: identity is held only in a private WeakMap; no permit escapes this module. */
+export interface CoordinatedSignOutLease {
+  readonly __coordinatedSignOutLease: unique symbol;
+}
+
+const internalSignOutLeases = new WeakMap<CoordinatedSignOutLease, SignOutCoordinationLease<SignOutPermit>>();
 
 /** Is THIS tab the background-polling leader? (No Web Locks ⇒ every tab answers true.) */
 export function isLeaderTab(): boolean {
@@ -118,7 +129,7 @@ export async function broadcastKeysChanged(): Promise<void> {
   postMsg("keys");
 }
 
-export type MultiTabMessageType = "updated" | "poke" | "wipe" | "keys" | "preferences";
+export type MultiTabMessageType = "updated" | "poke" | "wipe" | "keys" | "preferences" | "sign-out-complete";
 
 export function postMsg(type: MultiTabMessageType): void {
   try {
@@ -180,8 +191,11 @@ export function __resetMultiTabForTests(): void {
   }
   signOutRegistry = null;
   signOutCoordinator = null;
+  signOutCoordinationFailedClosed = false;
   configureSignOutSharedBlocker(null);
   configureSignOutPermitValidator(null);
+  configureAccountStorageGenerationFence(null);
+  configurePersistenceAccountStorageDrain(null);
   persist.configurePersistWriteGate(null);
   __resetSignOutBarrierForTests();
 }
@@ -194,15 +208,34 @@ function postCoordinationMessage(message: SignOutCoordinationMessage): void {
   }
 }
 
-function installSignOutCoordinator(): void {
-  const storage = browserSignOutStorage();
-  if (!storage) return;
+function failSignOutCoordinationClosed(): void {
+  signOutCoordinationFailedClosed = true;
+  signOutRegistry = null;
+  signOutCoordinator = null;
+  configureSignOutSharedBlocker(() => true);
+  configureSignOutPermitValidator(() => false);
+  configureAccountStorageGenerationFence({ isCurrent: () => false });
+  configurePersistenceAccountStorageDrain(() => false);
+  persist.configurePersistWriteGate({ beforeWrite: async () => "skip" });
+}
+
+function installSignOutCoordinator(storageOverride?: import("../signOutCoordination").StorageLike): void {
+  if (signOutCoordinationFailedClosed) return;
+  const storage = storageOverride ?? browserSignOutStorage();
+  if (!storage) {
+    // Bun/unit environments have no page or shared storage. A browser page whose localStorage
+    // is unavailable cannot prove cross-tab exclusion and must fail closed.
+    if (typeof window !== "undefined") failSignOutCoordinationClosed();
+    return;
+  }
   try {
     signOutRegistry = createSignOutRegistry({ storage });
     configureSignOutSharedBlocker(
       () => signOutRegistry !== null && (!signOutRegistry.isPageGenerationCurrent() || signOutRegistry.activeAttempts().length > 0),
     );
     configureSignOutPermitValidator((attemptId) => signOutRegistry?.isSoleActiveAttempt(attemptId, signOutRegistry.sourceId) ?? false);
+    configureAccountStorageGenerationFence({ isCurrent: () => signOutRegistry?.isPageGenerationCurrent() ?? false });
+    configurePersistenceAccountStorageDrain(() => signOutRegistry?.persistDecision() === "run");
     const gate = createRegistryWriteGate(signOutRegistry);
     persist.configurePersistWriteGate(gate);
     signOutCoordinator = createSignOutCoordinator({
@@ -217,6 +250,7 @@ function installSignOutCoordinator(): void {
       send: postCoordinationMessage,
       quiesceCycle: quiesceSyncForSignOut,
       quiesceServerWrites: awaitServerWriteOperationsQuiescent,
+      quiesceAccountWrites: awaitAccountStorageWritesQuiescent,
       drainPersistence: async () => {
         await Promise.all([persist.flushed(), accountPreferences.flushed(), devicePreferences.flushed()]);
       },
@@ -230,12 +264,41 @@ function installSignOutCoordinator(): void {
       }
     }, 10_000);
   } catch {
-    signOutRegistry = null;
-    signOutCoordinator = null;
-    configureSignOutSharedBlocker(null);
-    configureSignOutPermitValidator(null);
-    persist.configurePersistWriteGate(null);
+    failSignOutCoordinationClosed();
   }
+}
+
+/** Deterministic composition hook for shared-storage failure/lifecycle tests. */
+export function __installSignOutCoordinatorForTests(storage: import("../signOutCoordination").StorageLike): void {
+  installSignOutCoordinator(storage);
+}
+
+interface PageLifecycleTarget {
+  addEventListener(type: "pagehide" | "pageshow", listener: () => void): void;
+}
+
+/** BFCache pages leave and return without module reinitialization; presence must follow them. */
+export function installSignOutPageLifecycle(target: PageLifecycleTarget): void {
+  target.addEventListener("pagehide", () => {
+    try {
+      signOutRegistry?.removePresence();
+    } catch {
+      failSignOutCoordinationClosed();
+    }
+  });
+  target.addEventListener("pageshow", () => {
+    try {
+      if (!signOutCoordinator) {
+        installSignOutCoordinator();
+        return;
+      }
+      // install scans and activates shared markers before refreshing this page's presence.
+      signOutCoordinator.install();
+      signOutCoordinator.maintain();
+    } catch {
+      failSignOutCoordinationClosed();
+    }
+  });
 }
 
 function requireSignOutCoordinator(): SignOutCoordinator<SignOutPermit> {
@@ -245,32 +308,57 @@ function requireSignOutCoordinator(): SignOutCoordinator<SignOutPermit> {
 
 /** Task 5 may continue only after this promise returns a live, opaque lease. */
 export function beginSignOutCoordination(): Promise<CoordinatedSignOutLease> {
-  return requireSignOutCoordinator().begin();
+  return requireSignOutCoordinator()
+    .begin()
+    .then((internalLease) => {
+      const lease = Object.freeze({}) as CoordinatedSignOutLease;
+      internalSignOutLeases.set(lease, internalLease);
+      return lease;
+    });
+}
+
+function requireInternalLease(lease: CoordinatedSignOutLease): SignOutCoordinationLease<SignOutPermit> {
+  const internalLease = internalSignOutLeases.get(lease);
+  if (!internalLease) throw new Error(SIGN_OUT_COORDINATION_ERROR);
+  return internalLease;
 }
 
 export function cancelSignOutCoordination(lease: CoordinatedSignOutLease): void {
-  requireSignOutCoordinator().cancel(lease);
+  requireSignOutCoordinator().cancel(requireInternalLease(lease));
+  internalSignOutLeases.delete(lease);
 }
 
 export function assertSignOutLease(lease: CoordinatedSignOutLease): void {
-  requireSignOutCoordinator().assertLease(lease);
+  requireSignOutCoordinator().assertLease(requireInternalLease(lease));
 }
 
 export function markSignOutServerSucceeded(lease: CoordinatedSignOutLease): void {
-  requireSignOutCoordinator().markServerSucceeded(lease);
+  requireSignOutCoordinator().markServerSucceeded(requireInternalLease(lease));
 }
 
-export function runCoordinatedLocalClear(lease: CoordinatedSignOutLease, clear: () => Promise<void>): Promise<void> {
-  return requireSignOutCoordinator().runLocalClear(lease, clear);
+/** The sole server write authorized between final flush and local destructive clear. */
+export function runCoordinatedSessionEnd<T>(lease: CoordinatedSignOutLease, endSession: () => Promise<T>): Promise<T> {
+  const coordinator = requireSignOutCoordinator();
+  const internalLease = requireInternalLease(lease);
+  coordinator.assertLease(internalLease);
+  return runServerWriteOperation("auth-sign-out", endSession, internalLease.permit);
+}
+
+export function runCoordinatedLocalClear(lease: CoordinatedSignOutLease, clear: (permit: SignOutPermit) => Promise<void>): Promise<void> {
+  const internalLease = requireInternalLease(lease);
+  return requireSignOutCoordinator().runLocalClear(internalLease, () => clear(internalLease.permit));
 }
 
 export function finishSignOutCoordination(lease: CoordinatedSignOutLease): void {
-  requireSignOutCoordinator().finish(lease);
+  requireSignOutCoordinator().finish(requireInternalLease(lease));
+  internalSignOutLeases.delete(lease);
+  postMsg("sign-out-complete");
 }
 
 export function flushOutboxForSignOut(lease: CoordinatedSignOutLease): Promise<number> {
   const coordinator = requireSignOutCoordinator();
-  return coordinator.runFinalFlush(lease, () => flushCoordinatedOutbox(lease.permit));
+  const internalLease = requireInternalLease(lease);
+  return coordinator.runFinalFlush(internalLease, () => flushCoordinatedOutbox(internalLease.permit));
 }
 
 interface LockManagerLike {
@@ -284,11 +372,15 @@ export function installMultiTab(): void {
     channel.onmessage = (e: MessageEvent) => {
       const msg = e.data as { type?: string } | null;
       if (!msg) return;
-      if (msg.type === "sign-out-start" || msg.type === "sign-out-ack" || msg.type === "sign-out-cancel") {
+      if (msg.type === "sign-out-start" || msg.type === "sign-out-clear-committed" || msg.type === "sign-out-ack" || msg.type === "sign-out-cancel") {
         signOutCoordinator?.handleMessage(e.data);
         return;
       }
       if (msg.type === "wipe" && typeof location !== "undefined") {
+        location.reload();
+        return;
+      }
+      if (msg.type === "sign-out-complete" && typeof location !== "undefined") {
         location.reload();
         return;
       }
@@ -311,18 +403,7 @@ export function installMultiTab(): void {
   // Shared markers are scanned synchronously before leader election can launch a cycle.
   installSignOutCoordinator();
   if (typeof window !== "undefined") {
-    window.addEventListener(
-      "pagehide",
-      () => {
-        try {
-          signOutRegistry?.removePresence();
-        } catch {
-          // A cleanup failure must not make a live coordination lease appear valid.
-          configureSignOutPermitValidator(() => false);
-        }
-      },
-      { once: true },
-    );
+    installSignOutPageLifecycle(window);
   }
   const locks = (navigator as Navigator & { locks?: LockManagerLike }).locks;
   if (locks && typeof locks.request === "function") {

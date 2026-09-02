@@ -83,6 +83,15 @@ const _finishSignOutCoordination: (lease: CoordinatedSignOutLease) => void = fin
 function _finalFlushRequiresLeaseAtCompileTime(): void {
   // @ts-expect-error The final flush is privileged and cannot be called without coordination.
   void flushOutboxForSignOut();
+  const lease = null as unknown as CoordinatedSignOutLease;
+  // @ts-expect-error The public lease is opaque; privileged permits stay module-private.
+  void lease.permit;
+  // @ts-expect-error Public cycles cannot receive a privileged sign-out capability.
+  void syncNow("forged", lease);
+  // @ts-expect-error Public full-replica replacement cannot receive a privileged capability.
+  void pushLocalToServer(lease);
+  // @ts-expect-error Public E2EE reset cannot receive a privileged capability.
+  void resetServerE2ee(undefined, lease);
 }
 const _recheckReplicaOwner: () => Promise<void> = recheckReplicaOwner;
 const _assertOwnReplica: () => Promise<string> = assertOwnReplica;

@@ -1,5 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { api } from "./api";
+import { endSession, signInEmail, signInGoogle, signUpEmail } from "./auth";
+import { directChatJson } from "./openai";
 import { __resetServerWriteOperationsForTests, awaitServerWriteOperationsQuiescent, runServerWriteOperation } from "./serverWriteOperations";
 import { __resetSignOutBarrierForTests, activateSignOutAttempt, createSignOutPermit } from "./signOutBarrier";
 import { pushLocalToServer, resetServerE2ee } from "./sync/transport";
@@ -101,5 +103,35 @@ describe("server-write operation barrier", () => {
     } finally {
       globalThis.fetch = realFetch;
     }
+  });
+
+  it("blocks session-changing auth and OpenAI POST operations before transport starts", async () => {
+    activateSignOutAttempt("attempt", "source", "remote");
+
+    await expect(signInEmail("a@example.com", "password", false)).rejects.toThrow("sign_out_in_progress");
+    await expect(signUpEmail("a@example.com", "password", false)).rejects.toThrow("sign_out_in_progress");
+    await expect(signInGoogle()).rejects.toThrow("sign_out_in_progress");
+    await expect(endSession()).rejects.toThrow("sign_out_in_progress");
+    await expect(directChatJson({ messages: [{ role: "user", content: "hello" }] }, "secret", "gpt-5.6-luna")).rejects.toThrow("sign_out_in_progress");
+  });
+
+  it("keeps every direct server-write module enrolled in the shared operation registry", async () => {
+    const root = new URL(".", import.meta.url).pathname;
+    const files: string[] = [];
+    for await (const file of new Bun.Glob("**/*.ts").scan({ cwd: root, onlyFiles: true })) {
+      if (file.endsWith(".test.ts")) continue;
+      const source = await Bun.file(`${root}/${file}`).text();
+      const directWrite =
+        (source.includes("fetch(") && /["'](?:POST|PUT|PATCH|DELETE)["']/.test(source)) || /authClient\.(?:signIn|signUp|signOut)/.test(source);
+      if (directWrite) files.push(file);
+    }
+    files.sort();
+    expect(files).toEqual(["accountPreferencesRemote.ts", "api.ts", "auth.ts", "e2ee.ts", "openai.ts", "sync/transport.ts", "sync/upgrade.ts"]);
+    const missing: string[] = [];
+    for (const file of files) {
+      const source = await Bun.file(new URL(file, import.meta.url)).text();
+      if (!source.includes("runServerWriteOperation")) missing.push(file);
+    }
+    expect(missing).toEqual([]);
   });
 });

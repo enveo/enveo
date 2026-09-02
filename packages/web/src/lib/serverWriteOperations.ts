@@ -11,6 +11,9 @@ export type ServerWriteOperationKind =
   | "sync-push"
   | "direct-api-write"
   | "account-preferences"
+  | "auth-session"
+  | "auth-sign-out"
+  | "openai-post"
   | "sync-final-flush";
 
 let nextId = 0;

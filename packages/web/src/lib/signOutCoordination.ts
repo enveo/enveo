@@ -21,6 +21,7 @@ export interface SignOutAttemptMarker {
   readonly startedAt: number;
   readonly expiresAt: number;
   readonly requiredSourceIds: readonly string[];
+  readonly clearCommittedAt?: number;
 }
 
 interface PresenceRecord {
@@ -42,12 +43,14 @@ export interface SignOutRegistry {
   activeAttempts(): readonly SignOutAttemptMarker[];
   removeAttempt(attemptId: string): void;
   renewAttempt(attemptId: string): void;
+  holdAttemptForClear(attemptId: string): void;
   allowDrain(attemptId: string): void;
   closeDrain(attemptId: string): void;
   persistDecision(): PersistDecision;
   rotateGeneration(attemptId: string): void;
   isPageGenerationCurrent(): boolean;
   isSoleActiveAttempt(attemptId: string, sourceId: string): boolean;
+  holdRemainsActive(expiresAt: number): boolean;
 }
 
 interface RegistryOptions {
@@ -55,6 +58,7 @@ interface RegistryOptions {
   readonly now?: () => number;
   readonly randomId?: () => string;
   readonly ttlMs?: number;
+  readonly clearHoldMs?: number;
 }
 
 function fail(): never {
@@ -63,6 +67,25 @@ function fail(): never {
 
 function isOpaqueId(value: unknown): value is string {
   return typeof value === "string" && value.length > 0 && value.length <= 128;
+}
+
+interface GenerationRecord {
+  readonly v: 1;
+  readonly epoch: number;
+  readonly token: string;
+}
+
+function parseGeneration(value: string | null): GenerationRecord | null {
+  if (!value) return null;
+  try {
+    const record = JSON.parse(value) as Partial<GenerationRecord>;
+    if (record.v === 1 && Number.isSafeInteger(record.epoch) && (record.epoch ?? -1) >= 0 && isOpaqueId(record.token)) {
+      return record as GenerationRecord;
+    }
+  } catch {
+    // Pre-protocol and racing first-load values were plain opaque tokens.
+  }
+  return isOpaqueId(value) ? { v: 1, epoch: 0, token: value } : null;
 }
 
 function parsePresence(value: string | null): PresenceRecord | null {
@@ -96,6 +119,7 @@ function parseAttempt(value: string | null): SignOutAttemptMarker | null {
       typeof record.startedAt !== "number" ||
       typeof record.expiresAt !== "number" ||
       record.expiresAt < record.startedAt ||
+      (record.clearCommittedAt !== undefined && (typeof record.clearCommittedAt !== "number" || record.clearCommittedAt < record.startedAt)) ||
       !Array.isArray(record.requiredSourceIds) ||
       !record.requiredSourceIds.every(isOpaqueId)
     ) {
@@ -111,9 +135,10 @@ export function createSignOutRegistry(options: RegistryOptions): SignOutRegistry
   const now = options.now ?? Date.now;
   const randomId = options.randomId ?? (() => crypto.randomUUID());
   const ttlMs = options.ttlMs ?? 60_000;
+  const clearHoldMs = options.clearHoldMs ?? 5 * 60_000;
   const storage = options.storage;
   const sourceId = randomId();
-  if (!isOpaqueId(sourceId) || !Number.isFinite(ttlMs) || ttlMs <= 0) fail();
+  if (!isOpaqueId(sourceId) || !Number.isFinite(ttlMs) || ttlMs <= 0 || !Number.isFinite(clearHoldMs) || clearHoldMs < ttlMs) fail();
   const draining = new Set<string>();
 
   const get = (key: string): string | null => {
@@ -145,12 +170,23 @@ export function createSignOutRegistry(options: RegistryOptions): SignOutRegistry
     }
   };
 
-  let pageGeneration = get(GENERATION_KEY);
-  if (!isOpaqueId(pageGeneration)) {
-    pageGeneration = randomId();
-    if (!isOpaqueId(pageGeneration)) fail();
-    set(GENERATION_KEY, pageGeneration);
+  let pageGenerationRecord = parseGeneration(get(GENERATION_KEY));
+  if (!pageGenerationRecord) {
+    const token = randomId();
+    if (!isOpaqueId(token)) fail();
+    set(GENERATION_KEY, JSON.stringify({ v: 1, epoch: 0, token } satisfies GenerationRecord));
+    pageGenerationRecord = parseGeneration(get(GENERATION_KEY));
+    if (!pageGenerationRecord) fail();
   }
+
+  const generationCurrent = (): boolean => {
+    const stored = parseGeneration(get(GENERATION_KEY));
+    if (!stored) return false;
+    // Two first-load tabs can both observe absence and publish epoch zero. LocalStorage offers
+    // no compare-and-set, so all epoch-zero pages converge on whichever token remains stored.
+    if (stored.epoch === pageGenerationRecord!.epoch && stored.token !== pageGenerationRecord!.token) pageGenerationRecord = stored;
+    return stored.epoch === pageGenerationRecord!.epoch && stored.token === pageGenerationRecord!.token;
+  };
 
   const activePresences = (): PresenceRecord[] => {
     const at = now();
@@ -169,7 +205,10 @@ export function createSignOutRegistry(options: RegistryOptions): SignOutRegistry
 
   const registry: SignOutRegistry = {
     sourceId,
-    pageGeneration,
+    get pageGeneration() {
+      generationCurrent();
+      return pageGenerationRecord!.token;
+    },
     refreshPresence() {
       const at = now();
       const record: PresenceRecord = { v: 1, sourceId, createdAt: at, expiresAt: at + ttlMs };
@@ -211,7 +250,8 @@ export function createSignOutRegistry(options: RegistryOptions): SignOutRegistry
       const key = `${ATTEMPT_PREFIX}${attemptId}`;
       const marker = parseAttempt(get(key));
       const at = now();
-      if (!marker || marker.attemptId !== attemptId || marker.expiresAt <= at || marker.expiresAt > at + ttlMs) {
+      const maxLifetime = marker?.clearCommittedAt === undefined ? ttlMs : clearHoldMs;
+      if (!marker || marker.attemptId !== attemptId || marker.expiresAt <= at || marker.expiresAt > at + maxLifetime) {
         if (get(key) !== null) remove(key);
         return null;
       }
@@ -235,7 +275,14 @@ export function createSignOutRegistry(options: RegistryOptions): SignOutRegistry
     renewAttempt(attemptId) {
       const marker = registry.readAttempt(attemptId);
       if (!marker || marker.sourceId !== sourceId) fail();
-      set(`${ATTEMPT_PREFIX}${attemptId}`, JSON.stringify({ ...marker, expiresAt: now() + ttlMs }));
+      set(`${ATTEMPT_PREFIX}${attemptId}`, JSON.stringify({ ...marker, expiresAt: now() + (marker.clearCommittedAt === undefined ? ttlMs : clearHoldMs) }));
+    },
+    holdAttemptForClear(attemptId) {
+      if (!registry.isSoleActiveAttempt(attemptId, sourceId)) fail();
+      const marker = registry.readAttempt(attemptId);
+      if (!marker || marker.sourceId !== sourceId) fail();
+      const at = now();
+      set(`${ATTEMPT_PREFIX}${attemptId}`, JSON.stringify({ ...marker, clearCommittedAt: at, expiresAt: at + clearHoldMs }));
     },
     allowDrain(attemptId) {
       draining.add(attemptId);
@@ -256,16 +303,20 @@ export function createSignOutRegistry(options: RegistryOptions): SignOutRegistry
       const marker = registry.readAttempt(attemptId);
       if (!marker || marker.sourceId !== sourceId) fail();
       const nextGeneration = randomId();
-      if (!isOpaqueId(nextGeneration) || nextGeneration === pageGeneration) fail();
-      set(GENERATION_KEY, nextGeneration);
+      if (!isOpaqueId(nextGeneration) || nextGeneration === pageGenerationRecord!.token) fail();
+      set(GENERATION_KEY, JSON.stringify({ v: 1, epoch: pageGenerationRecord!.epoch + 1, token: nextGeneration } satisfies GenerationRecord));
     },
     isPageGenerationCurrent() {
-      return get(GENERATION_KEY) === pageGeneration;
+      return generationCurrent();
     },
     isSoleActiveAttempt(attemptId, expectedSourceId) {
       if (!registry.isPageGenerationCurrent()) return false;
       const markers = registry.activeAttempts();
       return markers.length === 1 && markers[0]?.ready === true && markers[0].attemptId === attemptId && markers[0].sourceId === expectedSourceId;
+    },
+    holdRemainsActive(expiresAt) {
+      const at = now();
+      return Number.isFinite(expiresAt) && expiresAt > at && expiresAt <= at + clearHoldMs;
     },
   };
 
@@ -316,6 +367,7 @@ export function createRegistryWriteGate(registry: SignOutRegistry, pollMs = 25):
 
 export type SignOutCoordinationMessage =
   | { readonly type: "sign-out-start"; readonly attemptId: string; readonly sourceId: string }
+  | { readonly type: "sign-out-clear-committed"; readonly attemptId: string; readonly sourceId: string }
   | {
       readonly type: "sign-out-ack";
       readonly attemptId: string;
@@ -347,6 +399,7 @@ interface CoordinatorOptions<Permit> {
   readonly send: (message: SignOutCoordinationMessage) => void;
   readonly quiesceCycle: () => Promise<void>;
   readonly quiesceServerWrites: () => Promise<void>;
+  readonly quiesceAccountWrites: () => Promise<void>;
   readonly drainPersistence: () => Promise<void>;
   readonly waitForTimeout?: (ms: number) => Promise<void>;
   readonly handshakeTimeoutMs?: number;
@@ -369,14 +422,14 @@ function isMessage(value: unknown): value is SignOutCoordinationMessage {
   if (!value || typeof value !== "object") return false;
   const message = value as Record<string, unknown>;
   if (!isOpaqueId(message.attemptId) || !isOpaqueId(message.sourceId)) return false;
-  if (message.type === "sign-out-start" || message.type === "sign-out-cancel") return true;
+  if (message.type === "sign-out-start" || message.type === "sign-out-clear-committed" || message.type === "sign-out-cancel") return true;
   return message.type === "sign-out-ack" && isOpaqueId(message.targetSourceId) && typeof message.ok === "boolean";
 }
 
 export function createSignOutCoordinator<Permit>(options: CoordinatorOptions<Permit>): SignOutCoordinator<Permit> {
   const waitForTimeout = options.waitForTimeout ?? ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)));
   const timeoutMs = options.handshakeTimeoutMs ?? 5_000;
-  const remoteSources = new Map<string, string>();
+  const remoteSources = new Map<string, { sourceId: string; holdUntil: number | null }>();
   const pending = new Map<string, { readonly required: Set<string>; readonly resolve: () => void; readonly reject: () => void; failed: boolean }>();
   const liveLeases = new Map<string, SignOutCoordinationLease<Permit>>();
   const leaseStages = new Map<string, "blocking" | "server-succeeded" | "clearing" | "cleared">();
@@ -402,7 +455,7 @@ export function createSignOutCoordinator<Permit>(options: CoordinatorOptions<Per
   const processRemoteStart = async (marker: SignOutAttemptMarker): Promise<void> => {
     const required = marker.requiredSourceIds.includes(options.registry.sourceId);
     options.barrier.activate(marker.attemptId, marker.sourceId, "remote");
-    remoteSources.set(marker.attemptId, marker.sourceId);
+    remoteSources.set(marker.attemptId, { sourceId: marker.sourceId, holdUntil: marker.clearCommittedAt === undefined ? null : marker.expiresAt });
     if (required) options.registry.allowDrain(marker.attemptId);
     options.gate.notify();
     let ok = true;
@@ -410,6 +463,7 @@ export function createSignOutCoordinator<Permit>(options: CoordinatorOptions<Per
       await options.quiesceCycle();
       await options.quiesceServerWrites();
       if (required) await options.drainPersistence();
+      await options.quiesceAccountWrites();
     } catch {
       ok = false;
     } finally {
@@ -430,7 +484,7 @@ export function createSignOutCoordinator<Permit>(options: CoordinatorOptions<Per
   const activateMarker = (marker: SignOutAttemptMarker): void => {
     if (!marker.ready) return;
     if (marker.sourceId === options.registry.sourceId) return;
-    if (remoteSources.get(marker.attemptId) === marker.sourceId) return;
+    if (remoteSources.get(marker.attemptId)?.sourceId === marker.sourceId) return;
     void processRemoteStart(marker).catch(() => {
       // processRemoteStart converts operational failures into a negative acknowledgement.
     });
@@ -450,6 +504,8 @@ export function createSignOutCoordinator<Permit>(options: CoordinatorOptions<Per
       for (const marker of markers) activateMarker(marker);
       for (const attemptId of remoteSources.keys()) {
         if (activeIds.has(attemptId)) continue;
+        const remote = remoteSources.get(attemptId);
+        if (remote?.holdUntil !== null && remote?.holdUntil !== undefined && options.registry.holdRemainsActive(remote.holdUntil)) continue;
         remoteSources.delete(attemptId);
         options.registry.closeDrain(attemptId);
         options.barrier.release(attemptId);
@@ -484,6 +540,7 @@ export function createSignOutCoordinator<Permit>(options: CoordinatorOptions<Per
           await options.quiesceCycle();
           await options.quiesceServerWrites();
           await options.drainPersistence();
+          await options.quiesceAccountWrites();
           options.registry.closeDrain(marker!.attemptId);
           options.gate.notify();
         })();
@@ -511,6 +568,14 @@ export function createSignOutCoordinator<Permit>(options: CoordinatorOptions<Per
         activateMarker(marker);
         return;
       }
+      if (value.type === "sign-out-clear-committed") {
+        const marker = options.registry.readAttempt(value.attemptId);
+        if (!marker?.ready || marker.sourceId !== value.sourceId || marker.clearCommittedAt === undefined) return;
+        options.barrier.activate(marker.attemptId, marker.sourceId, "remote");
+        remoteSources.set(marker.attemptId, { sourceId: marker.sourceId, holdUntil: marker.expiresAt });
+        options.gate.notify();
+        return;
+      }
       if (value.type === "sign-out-ack") {
         if (value.targetSourceId !== options.registry.sourceId) return;
         const marker = options.registry.readAttempt(value.attemptId);
@@ -524,7 +589,7 @@ export function createSignOutCoordinator<Permit>(options: CoordinatorOptions<Per
         if (state.required.size === 0) state.resolve();
         return;
       }
-      if (remoteSources.get(value.attemptId) !== value.sourceId) return;
+      if (remoteSources.get(value.attemptId)?.sourceId !== value.sourceId) return;
       remoteSources.delete(value.attemptId);
       options.registry.closeDrain(value.attemptId);
       options.barrier.release(value.attemptId);
@@ -565,10 +630,12 @@ export function createSignOutCoordinator<Permit>(options: CoordinatorOptions<Per
     async runLocalClear(lease, clear) {
       assertLease(lease, ["server-succeeded"]);
       leaseStages.set(lease.attemptId, "clearing");
-      options.registry.allowDrain(lease.attemptId);
       options.gate.notify();
       try {
-        // The marker/generation check is immediately adjacent to the destructive callback.
+        // Commit a bounded long-lived hold immediately before the destructive callback. Peers
+        // keep blocking even when normal page timers are throttled for the duration of clear.
+        options.registry.holdAttemptForClear(lease.attemptId);
+        options.send({ type: "sign-out-clear-committed", attemptId: lease.attemptId, sourceId: lease.sourceId });
         assertLease(lease, ["clearing"]);
         await clear();
         assertLease(lease, ["clearing"]);
@@ -579,7 +646,6 @@ export function createSignOutCoordinator<Permit>(options: CoordinatorOptions<Per
         if (leaseStages.get(lease.attemptId) === "clearing") leaseStages.set(lease.attemptId, "server-succeeded");
         throw error;
       } finally {
-        options.registry.closeDrain(lease.attemptId);
         options.gate.notify();
       }
     },

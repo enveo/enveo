@@ -145,6 +145,15 @@ describe("sync/multitab", () => {
     expect(reloads).toBe(0);
   });
 
+  it("accepts only the terminal sign-out completion as a reload while blocked", async () => {
+    beginSignOut();
+
+    receiver?.postMessage({ type: "sign-out-complete" });
+    await flush();
+
+    expect(reloads).toBe(1);
+  });
+
   it("wipeLocalData clears the stores, THEN broadcasts 'wipe', THEN reloads", async () => {
     await idbPut("meta", "value", "wipe-probe");
     await wipeLocalData();

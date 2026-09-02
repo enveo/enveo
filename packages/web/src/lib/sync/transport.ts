@@ -483,7 +483,12 @@ async function replaceServer(ledger: ClientLedger): Promise<{ budgetId: string; 
  * (consistent epoch — the next pull won't force a needless fullResync). Also fulfills the durable
  * replace obligation (backup import). Throws on failure (server untouched, the flag stays up).
  */
-export function pushLocalToServer(permit?: SignOutPermit): Promise<void> {
+export function pushLocalToServer(): Promise<void> {
+  return runServerWriteOperation("backup-replace", () => pushLocalToServerImpl());
+}
+
+/** Privileged replacement used only inside the required-lease final flush. */
+export function pushLocalToServerForSignOut(permit: SignOutPermit): Promise<void> {
   return runServerWriteOperation("backup-replace", () => pushLocalToServerImpl(), permit);
 }
 
@@ -513,7 +518,12 @@ async function pushLocalToServerImpl(): Promise<void> {
  * (outbox.clearAll) and the replace obligation fulfilled. Throws on failure (server
  * untouched — the replacePending flag stays up, doCycle retries).
  */
-export function resetServerE2ee(dek?: Uint8Array, permit?: SignOutPermit): Promise<void> {
+export function resetServerE2ee(dek?: Uint8Array): Promise<void> {
+  return runServerWriteOperation("e2ee-reset", () => resetServerE2eeImpl(dek));
+}
+
+/** Privileged encrypted reset used only inside the required-lease final flush. */
+export function resetServerE2eeForSignOut(dek: Uint8Array, permit: SignOutPermit): Promise<void> {
   return runServerWriteOperation("e2ee-reset", () => resetServerE2eeImpl(dek), permit);
 }
 

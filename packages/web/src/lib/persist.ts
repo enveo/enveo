@@ -20,6 +20,7 @@
  * Imports ONLY idb.ts (pure data in/out) — no dependency on
  * store/outbox/sync, so no import cycle arises.
  */
+import { runPersistenceAccountStorageWrite } from "./accountStorageOperations";
 import { idbAdd, idbClear, idbDelete, idbMoveToDeadLetter, idbPut, idbPutMany } from "./idb";
 
 /** Mirror snapshot for durability (immutable references from store.snapshotForPersist). */
@@ -96,17 +97,19 @@ export function flushed(): Promise<void> {
  */
 export function persistLedger(snap: LedgerSnap): Promise<void> {
   return enqueue(() =>
-    idbPutMany("meta", [
-      { value: snap.ledger, key: "ledger" },
-      { value: snap.cursor, key: "cursor" },
-      { value: snap.budgetId, key: "budgetId" },
-    ]),
+    runPersistenceAccountStorageWrite(() =>
+      idbPutMany("meta", [
+        { value: snap.ledger, key: "ledger" },
+        { value: snap.cursor, key: "cursor" },
+        { value: snap.budgetId, key: "budgetId" },
+      ]),
+    ),
   ).then(() => {});
 }
 
 /** Add an op to the outbox; returns the assigned localSeq (undefined when durability is broken). */
 export function addOutbox(op: unknown): Promise<number | undefined> {
-  return enqueue(() => idbAdd("outbox", { op }) as Promise<number>);
+  return enqueue(() => runPersistenceAccountStorageWrite(() => idbAdd("outbox", { op }) as Promise<number>));
 }
 
 /**
@@ -117,7 +120,7 @@ export function addOutbox(op: unknown): Promise<number | undefined> {
 export function putOutbox(getSeq: () => number | null, op: unknown): Promise<void> {
   return enqueue(async () => {
     const seq = getSeq();
-    if (seq !== null) await idbPut("outbox", { localSeq: seq, op });
+    if (seq !== null) await runPersistenceAccountStorageWrite(() => idbPut("outbox", { localSeq: seq, op }));
   }).then(() => {});
 }
 
@@ -126,7 +129,7 @@ export function deleteOutbox(getSeqs: ReadonlyArray<() => number | null>): Promi
   return enqueue(async () => {
     for (const get of getSeqs) {
       const seq = get();
-      if (seq !== null) await idbDelete("outbox", seq);
+      if (seq !== null) await runPersistenceAccountStorageWrite(() => idbDelete("outbox", seq));
     }
   }).then(() => {});
 }
@@ -138,12 +141,12 @@ export function deleteOutbox(getSeqs: ReadonlyArray<() => number | null>): Promi
  * is read at execution time (this entry's addOutbox is earlier on the chain).
  */
 export function putDeadLetter(dl: object, getSeq: () => number | null): Promise<void> {
-  return enqueue(() => idbMoveToDeadLetter(getSeq(), dl)).then(() => {});
+  return enqueue(() => runPersistenceAccountStorageWrite(() => idbMoveToDeadLetter(getSeq(), dl))).then(() => {});
 }
 
 /** Delete a dead-letter by opId (the "Discard" action in Settings) — on the same chain. */
 export function deleteDeadLetter(opId: string): Promise<void> {
-  return enqueue(() => idbDelete("deadletter", opId)).then(() => {});
+  return enqueue(() => runPersistenceAccountStorageWrite(() => idbDelete("deadletter", opId))).then(() => {});
 }
 
 /**
@@ -154,12 +157,12 @@ export function deleteDeadLetter(opId: string): Promise<void> {
  */
 export function clearOutbox(): Promise<void> {
   return enqueue(async () => {
-    await idbClear("outbox");
-    await idbClear("deadletter");
+    await runPersistenceAccountStorageWrite(() => idbClear("outbox"));
+    await runPersistenceAccountStorageWrite(() => idbClear("deadletter"));
   }).then(() => {});
 }
 
 /** A single meta key (lastSyncAt, resyncPending) — on the same chain. */
 export function putMeta(key: string, value: unknown): Promise<void> {
-  return enqueue(() => idbPut("meta", value, key)).then(() => {});
+  return enqueue(() => runPersistenceAccountStorageWrite(() => idbPut("meta", value, key))).then(() => {});
 }

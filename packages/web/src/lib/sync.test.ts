@@ -28,6 +28,7 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { type ClientLedger, createDefaultAccountPreferences, createDefaultBudgetPreferences, type SyncOp } from "@enveo/shared";
 import { accountPreferences } from "./accountPreferences";
+import { configurePersistenceAccountStorageDrain } from "./accountStorageOperations";
 import { budgetSecretAadContext, decryptPayload, encryptPayload, generateDek, opAadContext } from "./crypto";
 import { cacheDeployment } from "./deviceStoragePolicy";
 import * as e2ee from "./e2ee";
@@ -55,7 +56,7 @@ import {
   syncNow,
   upgradeServerE2eeV2,
 } from "./sync";
-import { flushOutboxForSignOut as flushWithPermit } from "./sync/cycle";
+import { flushOutboxWithPermit as flushWithPermit } from "./sync/cycle";
 
 const BUDGET_A = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa";
 const BUDGET_B = "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb";
@@ -1681,7 +1682,13 @@ describe("flushOutboxForSignOut (explicit sign-out clears the replica afterwards
     outbox.add(catOp());
 
     activateSignOutAttempt("flush-attempt", "source", "local");
-    expect(await flushWithPermit(createSignOutPermit("flush-attempt"))).toBe(0);
+    configurePersistenceAccountStorageDrain(() => true);
+    try {
+      expect(await flushWithPermit(createSignOutPermit("flush-attempt"))).toBe(0);
+      await persist.flushed();
+    } finally {
+      configurePersistenceAccountStorageDrain(null);
+    }
     expect(wrote(BUDGET_A).length).toBe(1); // the op reached the server first
   });
 
@@ -1692,7 +1699,13 @@ describe("flushOutboxForSignOut (explicit sign-out clears the replica afterwards
     offline = true;
 
     activateSignOutAttempt("flush-attempt", "source", "local");
-    expect(await flushWithPermit(createSignOutPermit("flush-attempt"))).toBe(1);
+    configurePersistenceAccountStorageDrain(() => true);
+    try {
+      expect(await flushWithPermit(createSignOutPermit("flush-attempt"))).toBe(1);
+      await persist.flushed();
+    } finally {
+      configurePersistenceAccountStorageDrain(null);
+    }
     expect(outbox.size()).toBe(1); // still queued — the CALLER asks the human before any discard
   });
 });

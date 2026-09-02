@@ -22,6 +22,7 @@
  * WebKit < 16 (iOS 15 Safari) — timeoutSignal builds it from parts.
  */
 import { AI_CHAT_TIMEOUT_MS, AI_PROXY_CHAT_TIMEOUT_MS, type ChatRequest, type OpenAiModel } from "@enveo/shared";
+import { runServerWriteOperation } from "./serverWriteOperations";
 import { timeoutSignal } from "./timeoutSignal";
 
 export type ChatTarget = { kind: "server" } | { kind: "direct"; apiKey: string; model: OpenAiModel };
@@ -58,7 +59,7 @@ async function responseError(res: Response, target: ChatTarget): Promise<Error> 
 /** The one transport step (fetch → non-2xx → body): the single place a failure becomes a code.
  *  A hung upstream must become a normal transport error (code + retry), not a spinner that
  *  never resolves — the cap is the caller's (chat vs vision vs proxied, see the module comment). */
-async function postChat(body: unknown, timeoutMs: number, target: ChatTarget): Promise<unknown> {
+async function postChatImpl(body: unknown, timeoutMs: number, target: ChatTarget): Promise<unknown> {
   const t = timeoutSignal(timeoutMs);
   let res: Response;
   try {
@@ -79,6 +80,10 @@ async function postChat(body: unknown, timeoutMs: number, target: ChatTarget): P
   } catch {
     throw new Error("ai_upstream_error"); // 2xx whose body is not JSON (a captive portal, a broken proxy)
   }
+}
+
+function postChat(body: unknown, timeoutMs: number, target: ChatTarget): Promise<unknown> {
+  return runServerWriteOperation("openai-post", () => postChatImpl(body, timeoutMs, target));
 }
 
 /** `timeoutMs` lets a proxied operation choose its cap; the default is the operator-chat

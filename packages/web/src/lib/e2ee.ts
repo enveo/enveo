@@ -206,10 +206,7 @@ export function markDekValidated(epoch: number): void {
 
 /** Remove the DEK (disabling E2EE / "forget the key"). */
 export function clearDek(): void {
-  dek = null;
-  dekOrigin = null;
-  dekEpoch = null;
-  dekTouched = true;
+  clearDekMemory();
   void persist.putMeta("e2eeDek", null);
   void persist.putMeta("e2eeDekOrigin", null);
   void persist.putMeta("e2eeDekEpoch", null);
@@ -217,6 +214,14 @@ export function clearDek(): void {
   // generation. "Forget the key" — disable, a rotation-detected drop, any clearDek — must not
   // leave that raw key readable in IndexedDB behind the user's back.
   void persist.putMeta("e2eePendingUpgrade", null);
+}
+
+/** Memory-only half used after coordinated sign-out has quiesced persistence. */
+export function clearDekMemory(): void {
+  dek = null;
+  dekOrigin = null;
+  dekEpoch = null;
+  dekTouched = true;
 }
 
 /**
