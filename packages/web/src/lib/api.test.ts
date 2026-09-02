@@ -192,6 +192,11 @@ describe("apiErrorMessage", () => {
     );
   });
 
+  it("does not expose sign-out control codes as UI copy", () => {
+    expect(apiErrorMessage(new Error("server_sign_out_failed"))).toBe("The server session could not be ended. You are still signed in — try again.");
+    expect(apiErrorMessage(new Error("sign_out_in_progress"))).toBe("Sign-out is already in progress.");
+  });
+
   it("degrades gracefully: an unknown code (older/newer server) stays readable", () => {
     expect(apiErrorMessage(httpError(418, { error: "brand_new_code" }))).toBe("brand_new_code");
     expect(apiErrorMessage(new Error("Failed to fetch"))).toBe("Failed to fetch");

@@ -90,19 +90,40 @@ export async function fetchSessionUserId(): Promise<string | null> {
   return body?.user?.id ?? null;  
 }
 
+export function serverSignOutOptions(clearSiteData: boolean): { fetchOptions: { headers: Record<string, string> | undefined } } {
+  const headers = clearSiteData ? { "x-enveo-clear-site-data": "persistent-current-owner" } : undefined;
+  return { fetchOptions: { headers } };
+}
+
+export function assertServerSignOutSucceeded(error: { message?: string } | null): void {
+  if (error) throw new Error("server_sign_out_failed");
+}
+
+export function normalizeServerSignOutFailure(_error: unknown): never {
+  throw new Error("server_sign_out_failed");
+}
+
  
-export async function endSession(): Promise<void> {
+export async function endSession(clearSiteData = false): Promise<void> {
   return runServerWriteOperation("auth-session", async () => {
-    const { error } = await authClient.signOut();
-    if (error) throw new Error("sign_out_failed");
+    try {
+      const { error } = await authClient.signOut(serverSignOutOptions(clearSiteData));
+      assertServerSignOutSucceeded(error);
+    } catch (error) {
+      normalizeServerSignOutFailure(error);
+    }
   });
 }
 
  
-export function endSessionForSignOut(lease: CoordinatedSignOutLease): Promise<void> {
+export function endSessionForSignOut(lease: CoordinatedSignOutLease, clearSiteData = false): Promise<void> {
   return runCoordinatedSessionEnd(lease, async () => {
-    const { error } = await authClient.signOut();
-    if (error) throw new Error("sign_out_failed");
+    try {
+      const { error } = await authClient.signOut(serverSignOutOptions(clearSiteData));
+      assertServerSignOutSucceeded(error);
+    } catch (error) {
+      normalizeServerSignOutFailure(error);
+    }
   });
 }
 

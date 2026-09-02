@@ -2,6 +2,7 @@ import { computeStateResponse, type Transaction } from "@enveo/shared";
 import { lazy, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { BottomNav, Drawer, type ScreenId, StyleInjector } from "./components/chrome";
 import { LazyChunk, useOpenedOnce } from "./components/lazy";
+import { SignOutShield } from "./components/SignOutShield";
 import { StartupSplash } from "./components/StartupSplash";
 import { SyncBadge } from "./components/SyncBadge";
 // Type-only imports elsewhere in this file already keep the REST of `panel.ts` free of runtime
@@ -118,7 +119,7 @@ export function backFallback(s: {
   return null;
 }
 
-export default function App() {
+function AppContent() {
   const C = useTheme();
   const { t } = useT();
   // Task A5's Accounts band caption ("Balance {amount}") — discreet mode must mask it exactly
@@ -1156,6 +1157,15 @@ export default function App() {
         </LazyChunk>
       </div>
     </div>
+  );
+}
+
+export default function App() {
+  return (
+    <>
+      <AppContent />
+      <SignOutShield />
+    </>
   );
 }
 

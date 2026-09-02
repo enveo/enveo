@@ -25,8 +25,12 @@ function fixture(overrides: Partial<SignOutDeps> = {}) {
     },
     canExport: () => true,
     exportBackup: () => calls.push("export"),
-    endSession: async () => {
-      calls.push("endSession");
+    canRequestClearSiteData: async () => {
+      calls.push("canRequestClearSiteData");
+      return true;
+    },
+    endSession: async (_lease, clearSiteData) => {
+      calls.push(`endSession(clearSiteData=${clearSiteData})`);
     },
     markServerSucceeded: () => calls.push("serverSucceeded"),
     clearLocalAccountData: async () => {
@@ -50,7 +54,8 @@ describe("explicit sign-out", () => {
     expect(f.calls).toEqual([
       "begin",
       "flush",
-      "endSession",
+      "canRequestClearSiteData",
+      "endSession(clearSiteData=true)",
       "serverSucceeded",
       "clearCredentialMaterial",
       "clearLastAccount",
@@ -92,7 +97,8 @@ describe("explicit sign-out", () => {
       "cancel",
       "begin",
       "flush",
-      "endSession",
+      "canRequestClearSiteData",
+      "endSession(clearSiteData=true)",
       "serverSucceeded",
       "clearCredentialMaterial",
       "clearLastAccount",
@@ -134,16 +140,29 @@ describe("explicit sign-out", () => {
     expect(f.calls).toContain("clearLocalAccountData(caches,replica,outbox,owner,dek)");
   });
 
+  it("does not request browser-wide cleanup for a memory session or an unverified owner", async () => {
+    const f = fixture({
+      canRequestClearSiteData: async () => {
+        f.calls.push("canRequestClearSiteData:false");
+        return false;
+      },
+    });
+
+    await completeExplicitSignOut("discard", f.deps);
+
+    expect(f.calls).toContain("endSession(clearSiteData=false)");
+  });
+
   it("does not clear anything when ending the server session fails", async () => {
     const f = fixture({
       endSession: async () => {
         f.calls.push("endSession:failed");
-        throw new Error("sign_out_failed");
+        throw new Error("server_sign_out_failed");
       },
     });
 
-    await expect(completeExplicitSignOut("discard", f.deps)).rejects.toThrow("sign_out_failed");
-    expect(f.calls).toEqual(["begin", "flush", "endSession:failed", "cancel"]);
+    await expect(completeExplicitSignOut("discard", f.deps)).rejects.toThrow("server_sign_out_failed");
+    expect(f.calls).toEqual(["begin", "flush", "canRequestClearSiteData", "endSession:failed", "cancel"]);
   });
 
   it("does not reload when clearing local account data fails", async () => {
@@ -154,7 +173,7 @@ describe("explicit sign-out", () => {
       },
     });
 
-    await expect(completeExplicitSignOut("discard", f.deps)).rejects.toThrow("clear_failed");
+    await expect(completeExplicitSignOut("discard", f.deps)).rejects.toThrow("local_sign_out_cleanup_failed");
     expect(f.calls).not.toContain("reloadOrLogin");
   });
 
