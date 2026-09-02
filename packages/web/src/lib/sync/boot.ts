@@ -28,6 +28,11 @@ import { bootstrapReplica, getClientId } from "./transport";
  
 
 let lastBootSource: BootSource = null;
+let awaitSecurityBoundary: () => Promise<void> = () => Promise.resolve();
+
+export function configureBootSecurityBoundary(waitUntilInstalled: () => Promise<void>): void {
+  awaitSecurityBoundary = waitUntilInstalled;
+}
 export function getLastBootSource(): BootSource {
   return lastBootSource;
 }
@@ -84,9 +89,13 @@ async function sweepLegacyPlanned(): Promise<void> {
 async function boot(): Promise<void> {
   if (isSignOutBlocking()) return;
   store.setBootStatus("booting");
-  void getClientId();  
-  void requestPersistentStorage();  
   try {
+    // The dynamically loaded cross-tab coordinator must install its fail-closed gates before
+    // account storage is opened or any authenticated data can reach the UI.
+    await awaitSecurityBoundary();
+    if (isSignOutBlocking()) return;
+    void getClientId();  
+    void requestPersistentStorage();  
     const [hydrated] = await Promise.all([store.hydrate(), outbox.hydrate()]);
     if (isSignOutBlocking()) return;
     await loadSyncMeta();

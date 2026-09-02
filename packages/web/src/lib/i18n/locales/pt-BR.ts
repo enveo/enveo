@@ -261,8 +261,6 @@ export const ptBR: Dict = {
   "Invalid pairing code.": "Código de pareamento inválido.",
   Investor: "Investidor",
   "Item total: {sum} / {total}": "Total dos itens: {sum} / {total}",
-  "Keep me signed in and save a local copy so Enveo works without internet.":
-    "Mantenha-me conectado e salve uma cópia local para o Enveo funcionar sem internet.",
   Language: "Idioma",
   "Last launch": "Último início",
   "Last sync: {rel}.": "Última sincronização: {rel}.",
@@ -312,8 +310,6 @@ export const ptBR: Dict = {
   "No envelopes with a budget or spending this month.": "Nenhum envelope com orçamento ou gasto neste mês.",
   "No envelopes with a goal. Set a monthly target when editing an envelope.": "Nenhum envelope com meta. Defina uma meta mensal ao editar um envelope.",
   "No funds to distribute": "Não há recursos para distribuir",
-  "No local copy will be saved. This browser session ends when you close the app.":
-    "Nenhuma cópia local será salva. Esta sessão do navegador termina quando você fecha o aplicativo.",
   "No spending in this period.": "Nenhum gasto neste período.",
   "No transactions.": "Nenhuma transação.",
   "Not available with your OpenAI key.": "Indisponível com a sua chave da OpenAI.",
@@ -401,7 +397,6 @@ export const ptBR: Dict = {
   "Sign in with Google": "Entrar com o Google",
   "Sign out": "Sair",
   "Sign out and use another account": "Sair e usar outra conta",
-  "Signing out…": "Saindo…",
   "Skip for now": "Pular por enquanto",
   "Some funds stayed in To be budgeted — envelopes are at their target caps.": "Parte dos recursos ficou em “A orçar” — os envelopes chegaram ao teto da meta.",
   Sort: "Ordenar",

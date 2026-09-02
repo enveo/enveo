@@ -315,7 +315,7 @@ function LogoutCard() {
             fontFamily: font,
           }}
         >
-          {busy ? t("Signing out…") : t("Sign out")}
+          {busy ? t("Signing out and removing local data…") : t("Sign out")}
         </button>
       </div>
       {pending && (

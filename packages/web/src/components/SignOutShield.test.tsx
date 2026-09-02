@@ -4,6 +4,12 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { accountContentAccessibility, SignOutShieldContent } from "./SignOutShield";
 
 describe("SignOutShield", () => {
+  it("keeps retry-only logout orchestration outside the initial application chunk", async () => {
+    const source = await Bun.file(`${import.meta.dir}/SignOutShield.tsx`).text();
+    expect(source).not.toContain('from "../lib/signOut"');
+    expect(source).toContain('import("../lib/signOut")');
+  });
+
   it("renders no surface while sign-out is idle", () => {
     expect(renderToStaticMarkup(createElement(SignOutShieldContent, { phase: "idle" }))).toBe("");
   });
@@ -12,7 +18,7 @@ describe("SignOutShield", () => {
     const html = renderToStaticMarkup(createElement(SignOutShieldContent, { phase: "blocking" }));
 
     expect(html).toContain('role="status"');
-    expect(html).toContain("Signing out…");
+    expect(html).toContain("Signing out and removing local data…");
     expect(html).not.toContain("<button");
   });
 

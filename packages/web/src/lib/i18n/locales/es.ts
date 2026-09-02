@@ -260,8 +260,6 @@ export const es: Dict = {
   "Invalid pairing code.": "Código de vinculación no válido.",
   Investor: "Inversor",
   "Item total: {sum} / {total}": "Total de las líneas: {sum} / {total}",
-  "Keep me signed in and save a local copy so Enveo works without internet.":
-    "Mantén la sesión iniciada y guarda una copia local para que Enveo funcione sin conexión.",
   Language: "Idioma",
   "Last launch": "Último inicio",
   "Last sync: {rel}.": "Última sincronización: {rel}.",
@@ -310,8 +308,6 @@ export const es: Dict = {
   "No envelopes with a budget or spending this month.": "No hay sobres con presupuesto o gasto este mes.",
   "No envelopes with a goal. Set a monthly target when editing an envelope.": "No hay sobres con objetivo. Fija un objetivo mensual al editar un sobre.",
   "No funds to distribute": "No hay fondos que repartir",
-  "No local copy will be saved. This browser session ends when you close the app.":
-    "No se guardará ninguna copia local. Esta sesión del navegador termina cuando cierras la aplicación.",
   "No spending in this period.": "No hay gastos en este periodo.",
   "No transactions.": "No hay transacciones.",
   "Not available with your OpenAI key.": "No disponible con tu clave de OpenAI.",
@@ -399,7 +395,6 @@ export const es: Dict = {
   "Sign in with Google": "Iniciar sesión con Google",
   "Sign out": "Cerrar sesión",
   "Sign out and use another account": "Cerrar sesión y usar otra cuenta",
-  "Signing out…": "Cerrando sesión…",
   "Skip for now": "Omitir por ahora",
   "Some funds stayed in To be budgeted — envelopes are at their target caps.":
     "Parte de los fondos se ha quedado en «Por presupuestar»: los sobres han alcanzado el tope de su objetivo.",

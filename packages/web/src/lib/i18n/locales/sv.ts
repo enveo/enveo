@@ -259,7 +259,6 @@ export const sv: Dict = {
   "Invalid pairing code.": "Ogiltig parkopplingskod.",
   Investor: "Investerare",
   "Item total: {sum} / {total}": "Summa rader: {sum} / {total}",
-  "Keep me signed in and save a local copy so Enveo works without internet.": "Håll mig inloggad och spara en lokal kopia så att Enveo fungerar utan internet.",
   Language: "Språk",
   "Last launch": "Senaste start",
   "Last sync: {rel}.": "Senaste synkronisering: {rel}.",
@@ -308,8 +307,6 @@ export const sv: Dict = {
   "No envelopes with a budget or spending this month.": "Inga kuvert med budget eller utgifter den här månaden.",
   "No envelopes with a goal. Set a monthly target when editing an envelope.": "Inga kuvert med mål. Sätt ett månadsmål när du redigerar ett kuvert.",
   "No funds to distribute": "Inga medel att fördela",
-  "No local copy will be saved. This browser session ends when you close the app.":
-    "Ingen lokal kopia sparas. Den här webbläsarsessionen avslutas när du stänger appen.",
   "No spending in this period.": "Inga utgifter under den här perioden.",
   "No transactions.": "Inga transaktioner.",
   "Not available with your OpenAI key.": "Inte tillgänglig med din OpenAI-nyckel.",
@@ -395,7 +392,6 @@ export const sv: Dict = {
   "Sign in with Google": "Logga in med Google",
   "Sign out": "Logga ut",
   "Sign out and use another account": "Logga ut och använd ett annat konto",
-  "Signing out…": "Loggar ut…",
   "Skip for now": "Hoppa över just nu",
   "Some funds stayed in To be budgeted — envelopes are at their target caps.":
     "En del av medlen blev kvar i ”Att budgetera” — kuverten har nått taket för sina mål.",

@@ -28,10 +28,10 @@ let reloads = 0;
 
 const flush = () => new Promise((r) => setTimeout(r, 20));  
 
-beforeAll(() => {
+beforeAll(async () => {
   
 
-  installMultiTab();
+  await installMultiTab();
 });
 
 beforeEach(() => {

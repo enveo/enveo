@@ -136,7 +136,7 @@ function LogoutRow() {
           tone="danger"
           onClick={() => void doLogout()}
           disabled={busy}
-          busyLabel={busy ? t("Signing out…") : undefined}
+          busyLabel={busy ? t("Signing out and removing local data…") : undefined}
         />
       </ActionGroup>
       {pending && (
