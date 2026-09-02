@@ -1,8 +1,10 @@
 import { endSessionForSignOut } from "./auth";
 import { exportBackup, hasExportableBackup } from "./data";
+import { storageMode } from "./idb";
 import { clearLastAccountId } from "./lastAccount";
 import { clearPersistedSettings } from "./settingsPersist";
 import {
+  assertOwnReplica,
   beginSignOutCoordination,
   type CoordinatedSignOutLease,
   cancelSignOutCoordination,
@@ -22,7 +24,8 @@ export interface SignOutDeps {
   flushPending(lease: CoordinatedSignOutLease): Promise<number>;
   canExport(): boolean;
   exportBackup(): void;
-  endSession(lease: CoordinatedSignOutLease): Promise<void>;
+  canRequestClearSiteData(): Promise<boolean>;
+  endSession(lease: CoordinatedSignOutLease, clearSiteData: boolean): Promise<void>;
   markServerSucceeded(lease: CoordinatedSignOutLease): void;
   clearLocalAccountData(lease: CoordinatedSignOutLease): Promise<void>;
   finishCoordination(lease: CoordinatedSignOutLease): void;
@@ -35,6 +38,7 @@ const realDeps: SignOutDeps = {
   flushPending: flushOutboxForSignOut,
   canExport: hasExportableBackup,
   exportBackup,
+  canRequestClearSiteData,
   endSession: endSessionForSignOut,
   markServerSucceeded: markSignOutServerSucceeded,
   clearLocalAccountData: (lease) =>
@@ -47,6 +51,21 @@ const realDeps: SignOutDeps = {
     if (typeof location !== "undefined") location.reload();
   },
 };
+
+/**
+ * Clear-Site-Data is deliberately opt-in: only a persistent replica freshly proved to belong to
+ * the current session may authorize origin-wide browser cleanup. A shared-device session never
+ * opens that replica, and an unavailable/mismatched identity simply falls back to local cleanup.
+ */
+export async function canRequestClearSiteData(): Promise<boolean> {
+  if (storageMode() !== "idb") return false;
+  try {
+    await assertOwnReplica();
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 export class ExplicitSignOutPendingError extends Error {
   constructor(readonly preparation: Exclude<SignOutPreparation, { kind: "ready" }>) {
@@ -83,10 +102,15 @@ export async function completeExplicitSignOut(decision: SignOutDecision, deps: S
         throw new ExplicitSignOutPendingError(preparation);
       }
     }
-    await deps.endSession(lease);
+    const clearSiteData = await deps.canRequestClearSiteData();
+    await deps.endSession(lease, clearSiteData);
     deps.markServerSucceeded(lease);
     serverSucceeded = true;
-    await deps.clearLocalAccountData(lease);
+    try {
+      await deps.clearLocalAccountData(lease);
+    } catch {
+      throw new Error("local_sign_out_cleanup_failed");
+    }
     deps.finishCoordination(lease);
     deps.reloadOrLogin();
   } catch (error) {
