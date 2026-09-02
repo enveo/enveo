@@ -20,9 +20,14 @@ const permits = new Map<string, SignOutPermit>();
 const permitAttempts = new WeakMap<object, string>();
 const listeners = new Set<() => void>();
 let sharedBlocker: (() => boolean) | null = null;
+let sharedPermitValidator: ((attemptId: string) => boolean) | null = null;
 
 export function configureSignOutSharedBlocker(blocker: (() => boolean) | null): void {
   sharedBlocker = blocker;
+}
+
+export function configureSignOutPermitValidator(validator: ((attemptId: string) => boolean) | null): void {
+  sharedPermitValidator = validator;
 }
 
 function isSharedBlocking(): boolean {
@@ -104,7 +109,12 @@ export function createSignOutPermit(attemptId: string): SignOutPermit {
 export function isSignOutPermitActive(permit: SignOutPermit | undefined): boolean {
   if (!permit) return false;
   const attemptId = permitAttempts.get(permit);
-  return attemptId !== undefined && permits.get(attemptId) === permit && attempts.has(attemptId);
+  if (attemptId === undefined || permits.get(attemptId) !== permit || attempts.size !== 1 || !attempts.has(attemptId)) return false;
+  try {
+    return sharedPermitValidator?.(attemptId) ?? true;
+  } catch {
+    return false;
+  }
 }
 
 /** Compatibility entry point consumed by the Task 5 UI orchestration. */
@@ -154,4 +164,5 @@ export function __resetSignOutBarrierForTests(): void {
   permits.clear();
   listeners.clear();
   sharedBlocker = null;
+  sharedPermitValidator = null;
 }

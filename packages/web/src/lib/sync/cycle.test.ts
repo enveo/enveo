@@ -160,8 +160,8 @@ describe("sync/cycle: gates that stop a cycle before any request", () => {
     activateSignOutAttempt("attempt", "source", "local");
     const permit = createSignOutPermit("attempt");
 
-    await flushOutboxForSignOut({ permit });
-    await expect(flushOutboxForSignOut({ permit: {} as SignOutPermit })).rejects.toThrow("sign_out_coordination_failed");
+    await flushOutboxForSignOut(permit);
+    await expect(flushOutboxForSignOut({} as SignOutPermit)).rejects.toThrow("sign_out_coordination_failed");
   });
 
   it("foreign replica: syncNow resolves without a cycle (nothing may reach the network)", async () => {

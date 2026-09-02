@@ -37,6 +37,7 @@ beforeAll(() => {
 beforeEach(() => {
   __resetSignOutBarrierForTests();
   received = [];
+  broadcastUpdatedIfPending();  
   reloads = 0;
   savedLocation = (globalThis as { location?: unknown }).location;
   (globalThis as { location?: { reload: () => void } }).location = {

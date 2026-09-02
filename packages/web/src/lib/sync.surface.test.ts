@@ -21,6 +21,7 @@ import {
   type CoordinatedSignOutLease,
   cancelSignOutCoordination,
   clearLocalAccountData,
+  clearLocalAccountDataForSignOut,
   decideIdentity,
   discardLocalReplica,
   discardPendingE2eeUpgrade,
@@ -36,9 +37,8 @@ import {
   getSyncStatus,
   hasPendingE2eeUpgrade,
   type IdentityVerdict,
-  markCoordinatedServerFailed,
   markReplacePending,
-  markSignOutStorageCleared,
+  markSignOutServerSucceeded,
   type PendingE2eeUpgrade,
   poke,
   pullNow,
@@ -72,12 +72,18 @@ const _resetBackoff: () => void = __resetBackoff;
 const _discardLocalReplica: () => Promise<void> = discardLocalReplica;
 const _clearLocalAccountData: () => Promise<void> = clearLocalAccountData;
 const _enterLoginPreservingReplica: () => void = enterLoginPreservingReplica;
-const _flushOutboxForSignOut: () => Promise<number> = flushOutboxForSignOut;
+const _flushOutboxForSignOut: (lease: CoordinatedSignOutLease) => Promise<number> = flushOutboxForSignOut;
 const _beginSignOutCoordination: () => Promise<CoordinatedSignOutLease> = beginSignOutCoordination;
 const _cancelSignOutCoordination: (lease: CoordinatedSignOutLease) => void = cancelSignOutCoordination;
-const _markSignOutStorageCleared: (lease: CoordinatedSignOutLease) => void = markSignOutStorageCleared;
-const _markCoordinatedServerFailed: (lease: CoordinatedSignOutLease) => void = markCoordinatedServerFailed;
+const _markSignOutServerSucceeded: (lease: CoordinatedSignOutLease) => void = markSignOutServerSucceeded;
+const _clearLocalAccountDataForSignOut: (lease: CoordinatedSignOutLease, clearAdditionalAccountState?: () => void) => Promise<void> =
+  clearLocalAccountDataForSignOut;
 const _finishSignOutCoordination: (lease: CoordinatedSignOutLease) => void = finishSignOutCoordination;
+
+function _finalFlushRequiresLeaseAtCompileTime(): void {
+  // @ts-expect-error The final flush is privileged and cannot be called without coordination.
+  void flushOutboxForSignOut();
+}
 const _recheckReplicaOwner: () => Promise<void> = recheckReplicaOwner;
 const _assertOwnReplica: () => Promise<string> = assertOwnReplica;
 const _syncNow: (reason: string) => Promise<void> = syncNow;
@@ -146,8 +152,8 @@ const surface = [
   _flushOutboxForSignOut,
   _beginSignOutCoordination,
   _cancelSignOutCoordination,
-  _markSignOutStorageCleared,
-  _markCoordinatedServerFailed,
+  _markSignOutServerSucceeded,
+  _clearLocalAccountDataForSignOut,
   _finishSignOutCoordination,
   _recheckReplicaOwner,
   _assertOwnReplica,
