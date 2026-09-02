@@ -2,6 +2,7 @@ const PREFIX = "enveo.signOut.v1.";
 const GENERATION_KEY = `${PREFIX}generation`;
 const PRESENCE_PREFIX = `${PREFIX}presence.`;
 const ATTEMPT_PREFIX = `${PREFIX}attempt.`;
+const TAB_SOURCE_PREFIX = "enveo-sign-out-tab:";
 
 export const SIGN_OUT_COORDINATION_ERROR = "sign_out_coordination_failed";
 
@@ -62,6 +63,7 @@ export interface SignOutRegistry {
 
 interface RegistryOptions {
   readonly storage: StorageLike;
+  readonly sourceId?: string;
   readonly now?: () => number;
   readonly randomId?: () => string;
   readonly ttlMs?: number;
@@ -152,7 +154,7 @@ export function createSignOutRegistry(options: RegistryOptions): SignOutRegistry
   const randomId = options.randomId ?? (() => crypto.randomUUID());
   const ttlMs = options.ttlMs ?? 60_000;
   const storage = options.storage;
-  const sourceId = randomId();
+  const sourceId = options.sourceId ?? randomId();
   if (!isOpaqueId(sourceId) || !Number.isFinite(ttlMs) || ttlMs <= 0) fail();
   const draining = new Set<string>();
 
@@ -363,6 +365,27 @@ export function createSignOutRegistry(options: RegistryOptions): SignOutRegistry
 export function browserSignOutStorage(): StorageLike | null {
   try {
     return typeof localStorage === "undefined" ? null : localStorage;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * `window.name` belongs to a browsing context: it survives a reload but a genuinely new tab gets
+ * a new value. Reusing that opaque id lets the successor overwrite its own bounded presence
+ * record instead of waiting for an impossible acknowledgement from the document it replaced.
+ */
+export function browserSignOutSourceId(): string | null {
+  try {
+    if (typeof window === "undefined") return null;
+    if (window.name.startsWith(TAB_SOURCE_PREFIX)) {
+      const existing = window.name.slice(TAB_SOURCE_PREFIX.length);
+      if (isOpaqueId(existing)) return existing;
+    }
+    const sourceId = crypto.randomUUID();
+    if (!isOpaqueId(sourceId)) return null;
+    window.name = `${TAB_SOURCE_PREFIX}${sourceId}`;
+    return sourceId;
   } catch {
     return null;
   }

@@ -56,6 +56,18 @@ function deferred() {
 }
 
 describe("shared sign-out coordination registry", () => {
+  it("lets a reload replace the prior presence for the same browser tab", () => {
+    const storage = new MemoryStorage();
+    const ids = ["generation-a", "attempt-a"];
+    const oldPage = createSignOutRegistry({ storage, sourceId: "stable-tab", now: () => 1_000, randomId: () => ids.shift()!, ttlMs: 100 });
+    oldPage.refreshPresence();
+
+    const reloadedPage = createSignOutRegistry({ storage, sourceId: "stable-tab", now: () => 1_001, randomId: () => ids.shift()!, ttlMs: 100 });
+    reloadedPage.refreshPresence();
+
+    expect(reloadedPage.createAttempt().requiredSourceIds).toEqual([]);
+  });
+
   it("snapshots only unexpired pre-existing sources and stores protocol identifiers only", () => {
     const storage = new MemoryStorage();
     let now = 1_000;

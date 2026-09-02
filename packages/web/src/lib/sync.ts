@@ -44,7 +44,7 @@
  */
 
 import { accountPreferences } from "./accountPreferences";
-import { devicePreferences } from "./devicePreferences";
+import { configureDevicePreferencesSecurityBoundary, devicePreferences } from "./devicePreferences";
 import * as e2ee from "./e2ee";
 import { ensureE2eeProviderPreference } from "./e2eeProviderInvariant";
 import { clearLocalData, clearLocalDataForSignOut, storageMode } from "./idb";
@@ -197,6 +197,7 @@ configureIdentity({ discardForeignReplica: discardLocalReplica });
 
 const securityBoundaryReady = installTriggers();
 configureBootSecurityBoundary(() => securityBoundaryReady);
+configureDevicePreferencesSecurityBoundary(() => securityBoundaryReady);
 
 /* ── Debug (dev only — also used by e2e verification) ───────────── */
 

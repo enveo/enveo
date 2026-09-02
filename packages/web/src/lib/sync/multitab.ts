@@ -244,7 +244,12 @@ async function installSignOutCoordinator(storageOverride?: StorageLike): Promise
       return;
     }
     try {
-      signOutRegistry = coordination.createSignOutRegistry({ storage });
+      const sourceId = storageOverride ? undefined : coordination.browserSignOutSourceId();
+      if (!storageOverride && !sourceId) {
+        failSignOutCoordinationClosed();
+        return;
+      }
+      signOutRegistry = coordination.createSignOutRegistry({ storage, sourceId: sourceId ?? undefined });
       configureSignOutSharedBlocker(
         () => signOutRegistry !== null && (!signOutRegistry.isPageGenerationCurrent() || signOutRegistry.activeAttempts().length > 0),
       );
