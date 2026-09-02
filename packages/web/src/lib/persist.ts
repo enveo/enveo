@@ -34,12 +34,24 @@ export interface LedgerSnap {
 let chain: Promise<void> = Promise.resolve();
 let durableBroken = false;
 
+export interface PersistWriteGate {
+  beforeWrite(): Promise<"run" | "skip">;
+}
+
+let writeGate: PersistWriteGate | null = null;
+
+/** Installed by the multi-tab composition root; kept injectable for deterministic race tests. */
+export function configurePersistWriteGate(gate: PersistWriteGate | null): void {
+  writeGate = gate;
+}
+
 export const isDurableBroken = (): boolean => durableBroken;
 
 /** Unit-test isolation after deliberately exercising the fail-closed persistence path. */
 export function __resetPersistForTests(): void {
   chain = Promise.resolve();
   durableBroken = false;
+  writeGate = null;
 }
 
 function markBroken(e: unknown): void {
@@ -56,7 +68,13 @@ function markBroken(e: unknown): void {
  */
 export function enqueue<T>(task: () => Promise<T>): Promise<T | undefined> {
   if (durableBroken) return Promise.resolve(undefined);
-  const run = chain.then(() => (durableBroken ? undefined : task()));
+  const run = chain.then(async () => {
+    if (durableBroken) return undefined;
+    // The decision is taken at EXECUTION time, after earlier writes. During coordinated
+    // sign-out it waits without touching IDB; cancellation resumes, generation rotation skips.
+    if (writeGate && (await writeGate.beforeWrite().catch(() => "skip" as const)) === "skip") return undefined;
+    return task();
+  });
   // the chain never throws (markBroken catches the failure) — subsequent tasks keep going
   chain = run.then(
     () => {},

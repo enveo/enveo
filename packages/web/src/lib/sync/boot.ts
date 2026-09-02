@@ -15,6 +15,7 @@ import { migrateLegacySettings } from "../legacySettingsMigrationRuntime";
 import { local } from "../mutate";
 import * as outbox from "../outbox";
 import * as persist from "../persist";
+import { isSignOutBlocking } from "../signOutBarrier";
 import { requestPersistentStorage } from "../storage";
 import { store } from "../store";
 import { type BootSource, UnauthorizedError } from "./contracts";
@@ -81,17 +82,22 @@ async function sweepLegacyPlanned(): Promise<void> {
 }
 
 async function boot(): Promise<void> {
+  if (isSignOutBlocking()) return;
   store.setBootStatus("booting");
   void getClientId();  
   void requestPersistentStorage();  
   try {
     const [hydrated] = await Promise.all([store.hydrate(), outbox.hydrate()]);
+    if (isSignOutBlocking()) return;
     await loadSyncMeta();
+    if (isSignOutBlocking()) return;
      
     const ownership = await bootOwnerOk();
+    if (isSignOutBlocking()) return;
     if (!ownership.ok) return;
     if (ownership.preferenceUserId) {
       await accountPreferences.hydrateForUser(ownership.preferenceUserId);
+      if (isSignOutBlocking()) return;
       try {
         await accountPreferences.sync(ownership.preferenceUserId);
         await devicePreferences.hydrate();
@@ -99,6 +105,7 @@ async function boot(): Promise<void> {
       } catch (error) {
         console.warn("legacy preference migration deferred", error);
       }
+      if (isSignOutBlocking()) return;
     }
     if (hydrated === "empty") {
       lastBootSource = "snapshot"; 
@@ -108,6 +115,7 @@ async function boot(): Promise<void> {
         store.setBootStatus("locked");
         return;
       }
+      if (isSignOutBlocking()) return;
     } else {
       lastBootSource = "replica";  
     }
@@ -121,6 +129,7 @@ async function boot(): Promise<void> {
     bumpStatus();
     void syncNow("boot");
   } catch (e) {
+    if (isSignOutBlocking()) return;
     if (e instanceof UnauthorizedError) {
       
 
@@ -132,6 +141,7 @@ async function boot(): Promise<void> {
       lastBootSource = "replica";
       // Read the meta flags HERE too: the resync obligation from IDB must not be lost.
       await loadSyncMeta();
+      if (isSignOutBlocking()) return;
       replayPendingWithE2eeProviderPreference();
       await sweepLegacyPlanned();
       store.setBootStatus("ready");
@@ -148,12 +158,14 @@ let bootPromise: Promise<void> | null = null;
 
  
 export function bootOnce(): Promise<void> {
+  if (isSignOutBlocking()) return Promise.resolve();
   if (!bootPromise) bootPromise = boot();
   return bootPromise;
 }
 
  
 export function retryBoot(): Promise<void> {
+  if (isSignOutBlocking()) return bootPromise ?? Promise.resolve();
   bootPromise = boot();
   return bootPromise;
 }
