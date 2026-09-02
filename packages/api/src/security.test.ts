@@ -9,6 +9,7 @@
  */
 import { describe, expect, it } from "bun:test";
 import app from "./index";
+import { shouldClearSiteData } from "./securityHeaders";
 
 const EVIL = "https://evil.example";
 const ALLOWED = "http://localhost:5173";
@@ -24,6 +25,24 @@ function get(path: string, origin?: string) {
   if (origin) headers.origin = origin;
   return app.fetch(new Request(`http://localhost${path}`, { method: "GET", headers }));
 }
+
+describe("API response cache and cleanup headers", () => {
+  it("marks every API response no-store", async () => {
+    for (const response of [await get("/api/health"), await get("/api/auth/meta"), await get("/api/state"), await get("/api/missing")]) {
+      expect(response.headers.get("cache-control")).toBe("no-store");
+    }
+  });
+
+  it("adds Clear-Site-Data only to a successful opted-in sign-out", () => {
+    const request = new Request("http://localhost/api/auth/sign-out", {
+      method: "POST",
+      headers: { "x-enveo-clear-site-data": "persistent-current-owner" },
+    });
+    expect(shouldClearSiteData(request, 200)).toBe(true);
+    expect(shouldClearSiteData(request, 500)).toBe(false);
+    expect(shouldClearSiteData(new Request(request.url, { method: "POST" }), 200)).toBe(false);
+  });
+});
 
 describe("origin-guard (CSRF)", () => {
   it("POST with a foreign Origin → 403 bad_origin (before the handler, no DB)", async () => {
