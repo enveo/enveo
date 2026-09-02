@@ -11,6 +11,7 @@ import { assertAiSpendEnv } from "./aiSpend/transport";
 import { auth, hasCredentialedUser } from "./auth";
 import { authMetaBody } from "./authPolicy";
 import { TierMismatch } from "./context";
+import { CSP_REPORT_MAX_BYTES, CSP_REPORT_PATH, parseCspReports } from "./cspReports";
 import { db } from "./db/client";
 import { assertAuthEnv, assertDbEnv, env } from "./env";
 import { IMPORT_JOB_REQUEST_BODY_LIMIT_BYTES } from "./importJobs/images";
@@ -122,13 +123,20 @@ app.use(
       objectSrc: ["'none'"],
       baseUri: ["'self'"],
       frameAncestors: ["'none'"],
+      reportTo: "csp",
+      reportUri: CSP_REPORT_PATH,
     },
+    reportingEndpoints: [{ name: "csp", url: CSP_REPORT_PATH }],
   }),
 );
 
 const generalBodyLimit = bodyLimit({ maxSize: 16 * 1024 * 1024, onError: (c) => c.json({ error: "too_large" }, 413) });
 const importJobBodyLimit = bodyLimit({ maxSize: IMPORT_JOB_REQUEST_BODY_LIMIT_BYTES, onError: (c) => c.json({ error: "too_large" }, 413) });
-app.use("/api/*", (c, next) => (c.req.method === "POST" && c.req.path === "/api/import/jobs" ? importJobBodyLimit : generalBodyLimit)(c, next));
+const cspReportBodyLimit = bodyLimit({ maxSize: CSP_REPORT_MAX_BYTES, onError: (c) => c.body(null, 413) });
+app.use("/api/*", (c, next) => {
+  if (c.req.method === "POST" && c.req.path === CSP_REPORT_PATH) return cspReportBodyLimit(c, next);
+  return (c.req.method === "POST" && c.req.path === "/api/import/jobs" ? importJobBodyLimit : generalBodyLimit)(c, next);
+});
 
 // Origin-guard (CSRF): rejects mutations from a FOREIGN Origin. Same-origin is
 // always safe — the app is served and queried from the same host (whatever the
@@ -139,7 +147,7 @@ app.use("/api/*", (c, next) => (c.req.method === "POST" && c.req.path === "/api/
 app.use("/api/*", async (c, next) => {
   const m = c.req.method;
   if (m === "GET" || m === "HEAD" || m === "OPTIONS") return next();
-  if (c.req.path.startsWith("/api/auth/") || c.req.path === "/api/health") return next();
+  if (c.req.path.startsWith("/api/auth/") || c.req.path === "/api/health" || c.req.path === CSP_REPORT_PATH) return next();
   const origin = c.req.header("origin");
   if (!origin) return next();
   if (!isSameHostOrigin(origin, c.req.header("host")) && !allowedOrigins.has(origin)) {
@@ -163,11 +171,28 @@ app.get("/api/auth/meta", async (c) => {
     ),
   );
 });
+app.post(CSP_REPORT_PATH, async (c) => {
+  const contentType = c.req.header("content-type");
+  const mediaType = contentType?.split(";", 1)[0]?.trim().toLowerCase();
+  if (mediaType !== "application/csp-report" && mediaType !== "application/reports+json") return c.body(null, 415);
+  const raw = await c.req.text();
+  if (new TextEncoder().encode(raw).byteLength > CSP_REPORT_MAX_BYTES) return c.body(null, 413);
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return c.body(null, 400);
+  }
+  const events = parseCspReports(contentType ?? null, raw, c.req.header("user-agent") ?? null);
+  if (events.length === 0 && !(Array.isArray(parsed) && parsed.length === 0)) return c.body(null, 400);
+  for (const event of events) console.warn("security:csp", JSON.stringify(event));
+  return c.body(null, 204);
+});
 app.on(["POST", "GET"], "/api/auth/*", (c) => auth.handler(c.req.raw));
 // Session middleware: protects ALL /api/* (including the AI proxy) except
 // the auth endpoints themselves and the health check.
 app.use("/api/*", async (c, next) => {
-  if (c.req.path.startsWith("/api/auth/") || c.req.path === "/api/health") return next();
+  if (c.req.path.startsWith("/api/auth/") || c.req.path === "/api/health" || c.req.path === CSP_REPORT_PATH) return next();
   const session = await auth.api.getSession({ headers: c.req.raw.headers });
   if (!session) return c.json({ error: "unauthorized" }, 401);
   c.set("userId", session.user.id);
