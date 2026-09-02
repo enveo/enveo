@@ -195,7 +195,10 @@ function constructedRequest(call: ts.CallExpression): ts.NewExpression | null {
 function fetchMethod(call: ts.CallExpression): string {
   if (call.arguments[1]) return optionsMethod(call.arguments[1]);
   const request = constructedRequest(call);
-  if (!request) return "GET";
+  if (!request) {
+    const input = call.arguments[0];
+    return input && (ts.isStringLiteralLike(input) || ts.isTemplateExpression(input)) ? "GET" : "DYNAMIC";
+  }
   if (request.arguments?.[1]) return optionsMethod(request.arguments[1]);
   const input = request.arguments?.[0];
   return input && (ts.isStringLiteralLike(input) || ts.isTemplateExpression(input)) ? "GET" : "DYNAMIC";
@@ -288,6 +291,16 @@ function auditSource(file: string, source: string): Finding[] {
         aliases.set(node.name.text, path);
       }
     }
+    if (ts.isVariableDeclaration(node) && ts.isObjectBindingPattern(node.name) && node.initializer) {
+      const receiver = expressionPath(node.initializer, aliases);
+      if (receiver === "IDBObjectStore") {
+        for (const element of node.name.elements) {
+          if (!ts.isIdentifier(element.name)) continue;
+          const member = element.propertyName ? propertyName(element.propertyName) : element.name.text;
+          if (member && IDB_OBJECT_STORE_MUTATORS.has(member)) aliases.set(element.name.text, `IDBObjectStore.${member}`);
+        }
+      }
+    }
     if (ts.isCallExpression(node)) {
       const path = expressionPath(node.expression, aliases);
       const method = path.split(".").at(-1) ?? path;
@@ -298,7 +311,8 @@ function auditSource(file: string, source: string): Finding[] {
         record(node, "server-write", path, "AUTH", "session", isInsideWrapper(node, aliases, SERVER_WRAPPERS));
       }
 
-      const backendMethod = method.replace(/\(\)$/, "");
+      const calledIdbMutator = path.match(/^IDBObjectStore\.(add|clear|delete|put)\.(?:call|apply)$/)?.[1];
+      const backendMethod = calledIdbMutator ?? method.replace(/\(\)$/, "");
       const rawBackend =
         BACKEND_MUTATORS.has(backendMethod) &&
         (path.startsWith("activeBackend().") ||
@@ -412,11 +426,16 @@ describe("write-boundary AST audit", () => {
         fetch(new Request("/write", { method: "POST" }));
         fetch(new Request(existingRequest));
         fetch(new Request("/read"));
+        fetch(requestVariable);
+        const inheritedRequest = new Request(existingRequest);
+        fetch(inheritedRequest);
       `,
     );
 
     expect(findings.map((finding) => [finding.boundary, finding.method, finding.target, finding.wrapped])).toEqual([
       ["server-write", "POST", "/write", false],
+      ["server-write", "DYNAMIC", "<dynamic>", false],
+      ["server-write", "DYNAMIC", "<dynamic>", false],
       ["server-write", "DYNAMIC", "<dynamic>", false],
     ]);
   });
@@ -470,6 +489,26 @@ describe("write-boundary AST audit", () => {
       ["account-storage", "add", false],
       ["account-storage", "delete", false],
       ["account-storage", "clear", false],
+    ]);
+  });
+
+  it("flags destructured and re-aliased IDBObjectStore mutators invoked with call", () => {
+    const findings = auditSource(
+      "destructured-store.ts",
+      `
+        function write(store: IDBObjectStore) {
+          const { put } = store;
+          put.call(store, value, "key");
+          const { delete: remove } = store;
+          const removeAlias = remove;
+          removeAlias.call(store, "key");
+        }
+      `,
+    );
+
+    expect(findings.map((finding) => [finding.boundary, finding.method, finding.wrapped])).toEqual([
+      ["account-storage", "put", false],
+      ["account-storage", "delete", false],
     ]);
   });
 
