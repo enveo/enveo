@@ -14,6 +14,7 @@ import type { ClientLedger } from "@enveo/shared";
 import * as e2ee from "../e2ee";
 import { clearLocalData } from "../idb";
 import * as outbox from "../outbox";
+import { __resetSignOutBarrierForTests, beginSignOut } from "../signOutBarrier";
 import { store } from "../store";
 import { bootOnce, retryBoot } from "./boot";
 import { __resetBackoff } from "./cycle";
@@ -40,6 +41,7 @@ beforeEach(async () => {
   __resetIdentity();
   __resetObligations();
   __resetBackoff();
+  __resetSignOutBarrierForTests();
   outbox.clearAll();
   e2ee.__resetDekForTests();
   e2ee.clearDek();
@@ -72,5 +74,18 @@ describe("sync/boot: the install-once boot promise", () => {
     expect(retried).not.toBe(first);
     await retried;
     expect(bootOnce()).toBe(retried); // and bootOnce now hands out the retried promise
+  });
+
+  it("retryBoot does not start boot work while sign-out is coordinated", async () => {
+    store.setBootStatus("ready");
+    const existing = bootOnce();
+    await existing;
+    beginSignOut();
+
+    const blockedRetry = retryBoot();
+    await blockedRetry;
+
+    expect(store.getBootStatus()).toBe("ready");
+    expect(blockedRetry).toBe(existing);
   });
 });

@@ -34,6 +34,7 @@ import * as e2ee from "./e2ee";
 import { clearLocalData, idbGet, idbPut } from "./idb";
 import * as outbox from "./outbox";
 import * as persist from "./persist";
+import { __resetSignOutBarrierForTests, beginSignOut, isSignOutBlocking } from "./signOutBarrier";
 import { store } from "./store";
 import {
   __resetBackoff,
@@ -316,6 +317,7 @@ beforeEach(async () => {
   __resetIdentity();
   __resetObligations();
   __resetBackoff();
+  __resetSignOutBarrierForTests();
   outbox.clearAll();
   e2ee.__resetDekForTests();
   e2ee.clearDek();
@@ -332,6 +334,7 @@ beforeEach(async () => {
 
 afterEach(() => {
   __resetBackoff(); // a scheduled retry would fire into the NEXT test's stub (and its `calls`)
+  __resetSignOutBarrierForTests();
   globalThis.fetch = realFetch;
   delete (globalThis as { location?: unknown }).location;
   delete (globalThis as { localStorage?: unknown }).localStorage;
@@ -1648,6 +1651,20 @@ describe("sync: full-budget overwrites carry the verified owner", () => {
 /* ── Explicit sign-out: pre-wipe outbox flush ──────────────────────────── */
 
 describe("flushOutboxForSignOut (explicit sign-out clears the replica afterwards)", () => {
+  it("quiesces an in-flight push before another batch and preserves its unacknowledged local queue", async () => {
+    await idbPut("meta", "user-A", "userId");
+    session = { user: { id: "user-A" } };
+    for (let index = 0; index < 101; index++) outbox.add(catOp());
+    onPush = () => {
+      if (!isSignOutBlocking()) beginSignOut();
+    };
+
+    await syncNow("in-flight-sign-out");
+
+    expect(wrote(BUDGET_A)).toHaveLength(100);
+    expect(outbox.size()).toBe(101);
+  });
+
   it("the explicit local-account wipe clears the in-memory DEK with the replica", async () => {
     e2ee.setTierMeta({ tier: "e2ee", epoch: 3 });
     e2ee.setDek(generateDek(), 3);

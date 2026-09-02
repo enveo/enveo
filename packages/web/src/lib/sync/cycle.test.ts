@@ -7,9 +7,9 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { type ClientLedger, createDefaultBudgetPreferences } from "@enveo/shared";
 import * as e2ee from "../e2ee";
-import { __resetSignOutBarrierForTests, beginSignOut } from "../signOutBarrier";
+import { __resetSignOutBarrierForTests, activateSignOutAttempt, beginSignOut, createSignOutPermit, type SignOutPermit } from "../signOutBarrier";
 import { store } from "../store";
-import { __resetBackoff, awaitInFlightCycle, configureCycle, poke, runWithSyncMutex, syncNow } from "./cycle";
+import { __resetBackoff, awaitInFlightCycle, configureCycle, flushOutboxForSignOut, poke, quiesceSyncForSignOut, runWithSyncMutex, syncNow } from "./cycle";
 import { __resetIdentity, enterForeignReplica } from "./identity";
 
 const emptyLedger = (): ClientLedger => ({
@@ -131,6 +131,37 @@ describe("sync/cycle: gates that stop a cycle before any request", () => {
 
     expect(peerPokes).toBe(0);
     expect(scheduledTimers).toBe(0);
+  });
+
+  it("quiesces an in-flight mutex task and discards a coalesced ordinary cycle", async () => {
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const task = runWithSyncMutex(() => gate);
+    await Promise.resolve();
+    const coalesced = syncNow("before-sign-out");
+    beginSignOut();
+
+    const quiesced = quiesceSyncForSignOut();
+    let settled = false;
+    void quiesced.then(() => {
+      settled = true;
+    });
+    await Promise.resolve();
+    expect(settled).toBe(false);
+    release();
+
+    await Promise.all([task, coalesced, quiesced]);
+    expect(fetches).toEqual([]);
+  });
+
+  it("allows only the live attempt permit to run the final sign-out flush", async () => {
+    activateSignOutAttempt("attempt", "source", "local");
+    const permit = createSignOutPermit("attempt");
+
+    await flushOutboxForSignOut({ permit });
+    await expect(flushOutboxForSignOut({ permit: {} as SignOutPermit })).rejects.toThrow("sign_out_coordination_failed");
   });
 
   it("foreign replica: syncNow resolves without a cycle (nothing may reach the network)", async () => {

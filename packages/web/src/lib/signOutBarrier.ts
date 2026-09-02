@@ -1,16 +1,61 @@
 export type SignOutPhase = "idle" | "blocking" | "local-cleared" | "server-failed";
+export type SignOutAttemptKind = "local" | "remote";
 
-let phase: SignOutPhase = "idle";
+const LEGACY_ATTEMPT_ID = "legacy-sign-out";
+const LEGACY_SOURCE_ID = "legacy-source";
+
+interface ActiveAttempt {
+  readonly sourceId: string;
+  readonly kind: SignOutAttemptKind;
+  phase: Exclude<SignOutPhase, "idle">;
+}
+
+/** An unforgeable capability held only by the coordinator for its live local attempt. */
+export interface SignOutPermit {
+  readonly __signOutPermit: unique symbol;
+}
+
+const attempts = new Map<string, ActiveAttempt>();
+const permits = new Map<string, SignOutPermit>();
+const permitAttempts = new WeakMap<object, string>();
 const listeners = new Set<() => void>();
+let sharedBlocker: (() => boolean) | null = null;
 
-function transition(next: SignOutPhase, allowedFrom: readonly SignOutPhase[]): void {
-  if (!allowedFrom.includes(phase)) throw new Error(`sign_out_barrier_invalid_transition:${phase}->${next}`);
-  phase = next;
+export function configureSignOutSharedBlocker(blocker: (() => boolean) | null): void {
+  sharedBlocker = blocker;
+}
+
+function isSharedBlocking(): boolean {
+  try {
+    return sharedBlocker?.() ?? false;
+  } catch {
+    return true;
+  }
+}
+
+function visiblePhase(): SignOutPhase {
+  let phase: SignOutPhase = attempts.size === 0 && !isSharedBlocking() ? "idle" : "blocking";
+  for (const attempt of attempts.values()) {
+    if (attempt.kind !== "local") continue;
+    if (attempt.phase === "server-failed") return "server-failed";
+    if (attempt.phase === "local-cleared") phase = "local-cleared";
+  }
+  return phase;
+}
+
+function notifyIfChanged(before: SignOutPhase): void {
+  if (visiblePhase() === before) return;
   for (const listener of listeners) listener();
 }
 
+function requireLocalAttempt(attemptId: string): ActiveAttempt {
+  const attempt = attempts.get(attemptId);
+  if (attempt?.kind !== "local") throw new Error("sign_out_barrier_wrong_attempt");
+  return attempt;
+}
+
 export function getSignOutPhase(): SignOutPhase {
-  return phase;
+  return visiblePhase();
 }
 
 export function subscribeSignOutPhase(listener: () => void): () => void {
@@ -18,27 +63,95 @@ export function subscribeSignOutPhase(listener: () => void): () => void {
   return () => listeners.delete(listener);
 }
 
+/** Activate one independently cancellable local or remote coordination attempt. */
+export function activateSignOutAttempt(attemptId: string, sourceId: string, kind: SignOutAttemptKind): void {
+  const existing = attempts.get(attemptId);
+  if (existing) {
+    if (existing.sourceId !== sourceId || existing.kind !== kind) throw new Error("sign_out_barrier_attempt_collision");
+    return;
+  }
+  const before = visiblePhase();
+  attempts.set(attemptId, { sourceId, kind, phase: "blocking" });
+  if (visiblePhase() === before) {
+    for (const listener of listeners) listener();
+  } else {
+    notifyIfChanged(before);
+  }
+}
+
+/** Release exactly one attempt; another active attempt continues to block the page. */
+export function releaseSignOutAttempt(attemptId: string): void {
+  const before = visiblePhase();
+  attempts.delete(attemptId);
+  permits.delete(attemptId);
+  notifyIfChanged(before);
+}
+
+export function hasSignOutAttempt(attemptId: string): boolean {
+  return attempts.has(attemptId);
+}
+
+export function createSignOutPermit(attemptId: string): SignOutPermit {
+  requireLocalAttempt(attemptId);
+  const existing = permits.get(attemptId);
+  if (existing) return existing;
+  const permit = Object.freeze({}) as SignOutPermit;
+  permits.set(attemptId, permit);
+  permitAttempts.set(permit, attemptId);
+  return permit;
+}
+
+export function isSignOutPermitActive(permit: SignOutPermit | undefined): boolean {
+  if (!permit) return false;
+  const attemptId = permitAttempts.get(permit);
+  return attemptId !== undefined && permits.get(attemptId) === permit && attempts.has(attemptId);
+}
+
+/** Compatibility entry point consumed by the Task 5 UI orchestration. */
 export function beginSignOut(): void {
-  transition("blocking", ["idle"]);
+  const phase = visiblePhase();
+  if (phase !== "idle") throw new Error(`sign_out_barrier_invalid_transition:${phase}->blocking`);
+  activateSignOutAttempt(LEGACY_ATTEMPT_ID, LEGACY_SOURCE_ID, "local");
 }
 
-export function markLocalCleared(): void {
-  transition("local-cleared", ["blocking"]);
+export function markLocalCleared(attemptId = LEGACY_ATTEMPT_ID): void {
+  const before = visiblePhase();
+  if (attemptId === LEGACY_ATTEMPT_ID && !attempts.has(attemptId)) {
+    throw new Error(`sign_out_barrier_invalid_transition:${before}->local-cleared`);
+  }
+  const attempt = requireLocalAttempt(attemptId);
+  if (attempt.phase !== "blocking") throw new Error(`sign_out_barrier_invalid_transition:${attempt.phase}->local-cleared`);
+  attempt.phase = "local-cleared";
+  notifyIfChanged(before);
 }
 
-export function markServerFailed(): void {
-  transition("server-failed", ["local-cleared"]);
+export function markServerFailed(attemptId = LEGACY_ATTEMPT_ID): void {
+  const before = visiblePhase();
+  if (attemptId === LEGACY_ATTEMPT_ID && !attempts.has(attemptId)) {
+    throw new Error(`sign_out_barrier_invalid_transition:${before}->server-failed`);
+  }
+  const attempt = requireLocalAttempt(attemptId);
+  if (attempt.phase !== "local-cleared") throw new Error(`sign_out_barrier_invalid_transition:${attempt.phase}->server-failed`);
+  attempt.phase = "server-failed";
+  notifyIfChanged(before);
 }
 
 export function cancelSignOut(): void {
-  transition("idle", ["blocking", "server-failed"]);
+  const phase = visiblePhase();
+  const attempt = attempts.get(LEGACY_ATTEMPT_ID);
+  if (!attempt || (attempt.phase !== "blocking" && attempt.phase !== "server-failed")) {
+    throw new Error(`sign_out_barrier_invalid_transition:${phase}->idle`);
+  }
+  releaseSignOutAttempt(LEGACY_ATTEMPT_ID);
 }
 
 export function isSignOutBlocking(): boolean {
-  return phase !== "idle";
+  return attempts.size > 0 || isSharedBlocking();
 }
 
 export function __resetSignOutBarrierForTests(): void {
-  phase = "idle";
+  attempts.clear();
+  permits.clear();
   listeners.clear();
+  sharedBlocker = null;
 }

@@ -65,7 +65,16 @@ export type { BootSource, IdentityVerdict, PendingE2eeUpgrade, SyncState, SyncSt
 export { E2eeUpgradeRequiredError, EMPTY_LEDGER, TierMismatchError } from "./sync/contracts";
 export { __resetBackoff, flushOutboxForSignOut, fullResync, poke, pullNow, recheckReplicaOwner, syncNow } from "./sync/cycle";
 export { __resetIdentity, assertOwnReplica, decideIdentity, enterLoginPreservingReplica } from "./sync/identity";
-export { broadcastKeysChanged, wipeLocalData } from "./sync/multitab";
+export type { CoordinatedSignOutLease } from "./sync/multitab";
+export {
+  beginSignOutCoordination,
+  broadcastKeysChanged,
+  cancelSignOutCoordination,
+  finishSignOutCoordination,
+  markCoordinatedServerFailed,
+  markSignOutStorageCleared,
+  wipeLocalData,
+} from "./sync/multitab";
 export { __resetObligations, markReplacePending } from "./sync/obligations";
 export { getSyncStatus, subscribeSyncStatus } from "./sync/status";
 export { fetchSnapshot, getClientId, pushLocalToServer, resetServerE2ee } from "./sync/transport";

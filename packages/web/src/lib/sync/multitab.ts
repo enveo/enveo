@@ -26,9 +26,10 @@
  *  - "poke" (after a local enqueue): the leader syncs right away (doesn't wait for
  *    the interval). Both sides feature-detect; no channel ⇒ tabs converge
  *    via their own pulls (focus/interval).
- *  - "sign-out-start" / "sign-out-cancel": peers converge on the in-memory write
- *    barrier without touching shared IndexedDB. Only the terminal "wipe" reloads tabs,
- *    after the initiating tab has durably cleared the account data.
+ *  - attempt-scoped sign-out start/ack/cancel messages: peers verify a bounded shared
+ *    coordination marker, quiesce cycles, drain pre-barrier persistence and acknowledge.
+ *    The marker contains only opaque protocol ids/timestamps; account data stays out of it.
+ *    Only terminal "wipe" reloads tabs after the initiator has durably cleared account data.
  * Loop protection: applyPeerUpdate itself does not broadcast. Re-establishing the E2EE
  * provider invariant may enqueue and persist one terminal preference op; that mutation is
  * idempotent and follows the normal sync path.
@@ -44,10 +45,31 @@ import * as e2ee from "../e2ee";
 import { ensureE2eeProviderPreference } from "../e2eeProviderInvariant";
 import { clearLocalData } from "../idb";
 import * as persist from "../persist";
-import { __resetSignOutBarrierForTests, beginSignOut, cancelSignOut } from "../signOutBarrier";
+import {
+  __resetSignOutBarrierForTests,
+  activateSignOutAttempt,
+  configureSignOutSharedBlocker,
+  createSignOutPermit,
+  isSignOutBlocking,
+  markLocalCleared,
+  markServerFailed,
+  releaseSignOutAttempt,
+  type SignOutPermit,
+} from "../signOutBarrier";
+import {
+  browserSignOutStorage,
+  createRegistryWriteGate,
+  createSignOutCoordinator,
+  createSignOutRegistry,
+  SIGN_OUT_COORDINATION_ERROR,
+  type SignOutCoordinationLease,
+  type SignOutCoordinationMessage,
+  type SignOutCoordinator,
+  type SignOutRegistry,
+} from "../signOutCoordination";
 import { store } from "../store";
 import { retryBoot } from "./boot";
-import { syncNow } from "./cycle";
+import { flushOutboxForSignOut as flushCoordinatedOutbox, quiesceSyncForSignOut, syncNow } from "./cycle";
 import { replayOutbox } from "./replica";
 import { bumpStatus } from "./status";
 
@@ -55,6 +77,11 @@ let isLeader = false;
 let channel: BroadcastChannel | null = null;
 let broadcastPending = false; // this cycle changed data → broadcast "updated" at the end
 let applyingPeerUpdate = false;
+let signOutRegistry: SignOutRegistry | null = null;
+let signOutCoordinator: SignOutCoordinator<SignOutPermit> | null = null;
+let signOutMaintenanceTimer: ReturnType<typeof setInterval> | undefined;
+
+export type CoordinatedSignOutLease = SignOutCoordinationLease<SignOutPermit>;
 
 /** Is THIS tab the background-polling leader? (No Web Locks ⇒ every tab answers true.) */
 export function isLeaderTab(): boolean {
@@ -68,6 +95,7 @@ export function notePeersMayNeedUpdate(): void {
 
 /** finishSuccess: if this cycle changed data, post "updated" so peer tabs rehydrate (consume). */
 export function broadcastUpdatedIfPending(): void {
+  if (isSignOutBlocking()) return;
   if (broadcastPending) {
     broadcastPending = false;
     postMsg("updated"); // this cycle changed data → other tabs rehydrate from IDB
@@ -83,11 +111,13 @@ export function broadcastUpdatedIfPending(): void {
  * and the old epoch in memory and push poison under the new generation.
  */
 export async function broadcastKeysChanged(): Promise<void> {
+  if (isSignOutBlocking()) return;
   await persist.flushed();
+  if (isSignOutBlocking()) return;
   postMsg("keys");
 }
 
-export type MultiTabMessageType = "updated" | "poke" | "wipe" | "keys" | "preferences" | "sign-out-start" | "sign-out-cancel";
+export type MultiTabMessageType = "updated" | "poke" | "wipe" | "keys" | "preferences";
 
 export function postMsg(type: MultiTabMessageType): void {
   try {
@@ -118,11 +148,13 @@ export async function wipeLocalData(): Promise<void> {
  * normal local mutation path to enqueue and persist one idempotent terminal preference op.
  */
 async function applyPeerUpdate(): Promise<void> {
+  if (isSignOutBlocking()) return;
   if (applyingPeerUpdate) return; // coalescing — rehydrate reads the freshest blob anyway
   if (store.getBootStatus() !== "ready") return; // before boot our own hydrate handles it
   applyingPeerUpdate = true;
   try {
     await store.rehydrateFromIdb();
+    if (isSignOutBlocking()) return;
     replayOutbox();
     ensureE2eeProviderPreference();
     bumpStatus();
@@ -138,7 +170,98 @@ export function __resetMultiTabForTests(): void {
   isLeader = false;
   broadcastPending = false;
   applyingPeerUpdate = false;
+  clearInterval(signOutMaintenanceTimer);
+  signOutMaintenanceTimer = undefined;
+  try {
+    signOutRegistry?.removePresence();
+  } catch {
+    // test teardown must remain best-effort
+  }
+  signOutRegistry = null;
+  signOutCoordinator = null;
+  configureSignOutSharedBlocker(null);
+  persist.configurePersistWriteGate(null);
   __resetSignOutBarrierForTests();
+}
+
+function postCoordinationMessage(message: SignOutCoordinationMessage): void {
+  try {
+    channel?.postMessage(message);
+  } catch {
+    // A closed channel makes the initiator time out and fail closed.
+  }
+}
+
+function installSignOutCoordinator(): void {
+  const storage = browserSignOutStorage();
+  if (!storage) return;
+  try {
+    signOutRegistry = createSignOutRegistry({ storage });
+    configureSignOutSharedBlocker(
+      () => signOutRegistry !== null && (!signOutRegistry.isPageGenerationCurrent() || signOutRegistry.activeAttempts().length > 0),
+    );
+    const gate = createRegistryWriteGate(signOutRegistry);
+    persist.configurePersistWriteGate(gate);
+    signOutCoordinator = createSignOutCoordinator({
+      registry: signOutRegistry,
+      gate,
+      barrier: {
+        activate: activateSignOutAttempt,
+        release: releaseSignOutAttempt,
+        createPermit: createSignOutPermit,
+        markLocalCleared,
+        markServerFailed,
+      },
+      send: postCoordinationMessage,
+      quiesceCycle: quiesceSyncForSignOut,
+      drainPersistence: async () => {
+        await Promise.all([persist.flushed(), accountPreferences.flushed(), devicePreferences.flushed()]);
+      },
+    });
+    signOutCoordinator.install();
+    signOutMaintenanceTimer = setInterval(() => {
+      try {
+        signOutCoordinator?.maintain();
+      } catch {
+        // Loss of shared coordination never releases an existing local barrier.
+      }
+    }, 10_000);
+  } catch {
+    signOutRegistry = null;
+    signOutCoordinator = null;
+    configureSignOutSharedBlocker(null);
+    persist.configurePersistWriteGate(null);
+  }
+}
+
+function requireSignOutCoordinator(): SignOutCoordinator<SignOutPermit> {
+  if (!signOutCoordinator) throw new Error(SIGN_OUT_COORDINATION_ERROR);
+  return signOutCoordinator;
+}
+
+/** Task 5 may continue only after this promise returns a live, opaque lease. */
+export function beginSignOutCoordination(): Promise<CoordinatedSignOutLease> {
+  return requireSignOutCoordinator().begin();
+}
+
+export function cancelSignOutCoordination(lease: CoordinatedSignOutLease): void {
+  requireSignOutCoordinator().cancel(lease);
+}
+
+export function markSignOutStorageCleared(lease: CoordinatedSignOutLease): void {
+  requireSignOutCoordinator().markStorageCleared(lease);
+}
+
+export function markCoordinatedServerFailed(lease: CoordinatedSignOutLease): void {
+  requireSignOutCoordinator().markServerFailed(lease);
+}
+
+export function finishSignOutCoordination(lease: CoordinatedSignOutLease): void {
+  requireSignOutCoordinator().finish(lease);
+}
+
+export function flushOutboxForSignOut(lease: CoordinatedSignOutLease): Promise<number> {
+  return flushCoordinatedOutbox(lease);
 }
 
 interface LockManagerLike {
@@ -147,6 +270,37 @@ interface LockManagerLike {
 
 export function installMultiTab(): void {
   configureAccountPreferencesBroadcast(() => postMsg("preferences"));
+  if (typeof BroadcastChannel !== "undefined") {
+    channel = new BroadcastChannel("enveo-sync");
+    channel.onmessage = (e: MessageEvent) => {
+      const msg = e.data as { type?: string } | null;
+      if (!msg) return;
+      if (msg.type === "sign-out-start" || msg.type === "sign-out-ack" || msg.type === "sign-out-cancel") {
+        signOutCoordinator?.handleMessage(e.data);
+        return;
+      }
+      if (msg.type === "wipe" && typeof location !== "undefined") {
+        location.reload();
+        return;
+      }
+      if (isSignOutBlocking()) return;
+      if (msg.type === "updated") {
+        void applyPeerUpdate().catch((error) => console.warn("peer update failed", error));
+      } else if (msg.type === "preferences") {
+        void accountPreferences.rehydrateCurrent().catch((error) => console.warn("peer preference rehydrate failed", error));
+      } else if (msg.type === "keys") {
+        void e2ee
+          .rehydrateKeysFromPeer()
+          .then(() => {
+            if (!isSignOutBlocking() && (store.getBootStatus() === "locked" || store.getBootStatus() === "ready")) void retryBoot();
+          })
+          .catch((error) => console.warn("peer key rehydrate failed", error));
+      } else if (msg.type === "poke" && isLeader) void syncNow("peer-poke");
+    };
+  }
+
+  // Shared markers are scanned synchronously before leader election can launch a cycle.
+  installSignOutCoordinator();
   const locks = (navigator as Navigator & { locks?: LockManagerLike }).locks;
   if (locks && typeof locks.request === "function") {
     locks
@@ -163,27 +317,5 @@ export function installMultiTab(): void {
       });
   } else {
     isLeader = true; // no Web Locks → every tab is a leader
-  }
-
-  if (typeof BroadcastChannel !== "undefined") {
-    channel = new BroadcastChannel("enveo-sync");
-    channel.onmessage = (e: MessageEvent) => {
-      const msg = e.data as { type?: string } | null;
-      if (!msg) return;
-      if (msg.type === "sign-out-start") beginSignOut();
-      else if (msg.type === "sign-out-cancel") cancelSignOut();
-      else if (msg.type === "updated") void applyPeerUpdate();
-      else if (msg.type === "preferences") void accountPreferences.rehydrateCurrent();
-      else if (msg.type === "keys") {
-        // a peer tab rotated/validated/dropped the key state — re-read it, then let the
-        // normal machinery converge (a locked tab may now be unlockable and vice versa)
-        void e2ee.rehydrateKeysFromPeer().then(() => {
-          if (store.getBootStatus() === "locked" || store.getBootStatus() === "ready") void retryBoot();
-        });
-      } else if (msg.type === "poke" && isLeader) void syncNow("peer-poke");
-      // another tab cleared the local data → reload and boot from empty
-      // stores (fresh snapshot); we persist NOTHING along the way (no race)
-      else if (msg.type === "wipe" && typeof location !== "undefined") location.reload();
-    };
   }
 }

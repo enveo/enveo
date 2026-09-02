@@ -1,5 +1,6 @@
 import { ACCENT_THEMES, type AccentTheme, THEME_MODES, type ThemeMode } from "@enveo/shared";
 import { idbDelete, idbGet, idbPut } from "./idb";
+import { isSignOutBlocking } from "./signOutBarrier";
 
 const DEVICE_PREFERENCES_KEY = "devicePreferences";
 
@@ -84,6 +85,7 @@ export function createDevicePreferencesStore(deps: DevicePreferencesStoreDeps) {
   }
 
   async function update(patch: DevicePreferencesPatch): Promise<void> {
+    if (isSignOutBlocking()) throw new Error("sign_out_in_progress");
     const next = { ...snapshot, ...patch };
     if (typeof next.discreet !== "boolean" || !isThemeModeOrNull(next.themeModeOverride) || !isAccentThemeOrNull(next.accentThemeOverride))
       throw new Error("invalid_device_preferences");
@@ -106,6 +108,7 @@ export function createDevicePreferencesStore(deps: DevicePreferencesStoreDeps) {
   return {
     hydrate,
     update,
+    flushed: () => persistChain.catch(() => {}),
     clear,
     getSnapshot: () => snapshot,
     migrationState: () => ({ value: snapshot, present: canonicalPresent }),

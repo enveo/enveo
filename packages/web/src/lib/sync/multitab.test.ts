@@ -9,9 +9,17 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from
 import { createDefaultBudgetPreferences } from "@enveo/shared";
 import { accountPreferences } from "../accountPreferences";
 import { idbGet, idbPut } from "../idb";
-import { __resetSignOutBarrierForTests, getSignOutPhase, isSignOutBlocking } from "../signOutBarrier";
+import { __resetSignOutBarrierForTests, beginSignOut, getSignOutPhase, isSignOutBlocking } from "../signOutBarrier";
 import { store } from "../store";
-import { __resetMultiTabForTests, broadcastUpdatedIfPending, installMultiTab, isLeaderTab, notePeersMayNeedUpdate, wipeLocalData } from "./multitab";
+import {
+  __resetMultiTabForTests,
+  broadcastKeysChanged,
+  broadcastUpdatedIfPending,
+  installMultiTab,
+  isLeaderTab,
+  notePeersMayNeedUpdate,
+  wipeLocalData,
+} from "./multitab";
 
 let received: string[] = [];
 let receiver: BroadcastChannel | null = null;
@@ -85,7 +93,7 @@ describe("sync/multitab", () => {
     expect(received).toEqual([]); // the receive-side rehydrate never broadcasts
   });
 
-  it("a peer sign-out start blocks later cycles without clearing shared IndexedDB", async () => {
+  it("ignores a forged sign-out start without an attempt-scoped shared marker", async () => {
     const budgetId = crypto.randomUUID();
     store.replace(
       {
@@ -109,12 +117,11 @@ describe("sync/multitab", () => {
       throw new TypeError("no network in this suite");
     }) as typeof fetch;
     try {
-      receiver?.postMessage({ type: "sign-out-start" });
-      receiver?.postMessage({ type: "poke" });
+      receiver?.postMessage({ type: "sign-out-start", attemptId: "missing", sourceId: "peer" });
       await flush();
 
-      expect(getSignOutPhase()).toBe("blocking");
-      expect(isSignOutBlocking()).toBe(true);
+      expect(getSignOutPhase()).toBe("idle");
+      expect(isSignOutBlocking()).toBe(false);
       expect(fetches).toEqual([]);
       expect(await idbGet<string>("meta", "sign-out-peer-probe")).toBe("preserve");
       expect(reloads).toBe(0);
@@ -123,18 +130,17 @@ describe("sync/multitab", () => {
     }
   });
 
-  it("a peer sign-out cancel releases a start barrier without clearing data", async () => {
-    await idbPut("meta", "preserve", "sign-out-cancel-probe");
+  it("drops updated and keys work before and after awaits while blocked", async () => {
+    const before = store.getLedger();
+    beginSignOut();
 
-    receiver?.postMessage({ type: "sign-out-start" });
-    await flush();
-    expect(getSignOutPhase()).toBe("blocking");
-    receiver?.postMessage({ type: "sign-out-cancel" });
+    receiver?.postMessage({ type: "updated" });
+    receiver?.postMessage({ type: "keys" });
+    await broadcastKeysChanged();
     await flush();
 
-    expect(getSignOutPhase()).toBe("idle");
-    expect(isSignOutBlocking()).toBe(false);
-    expect(await idbGet<string>("meta", "sign-out-cancel-probe")).toBe("preserve");
+    expect(store.getLedger()).toBe(before);
+    expect(received).toEqual([]);
     expect(reloads).toBe(0);
   });
 

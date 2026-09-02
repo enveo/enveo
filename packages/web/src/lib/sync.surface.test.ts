@@ -15,8 +15,11 @@ import {
   __resetObligations,
   assertOwnReplica,
   type BootSource,
+  beginSignOutCoordination,
   bootOnce,
   broadcastKeysChanged,
+  type CoordinatedSignOutLease,
+  cancelSignOutCoordination,
   clearLocalAccountData,
   decideIdentity,
   discardLocalReplica,
@@ -25,6 +28,7 @@ import {
   EMPTY_LEDGER,
   enterLoginPreservingReplica,
   fetchSnapshot,
+  finishSignOutCoordination,
   flushOutboxForSignOut,
   fullResync,
   getClientId,
@@ -32,7 +36,9 @@ import {
   getSyncStatus,
   hasPendingE2eeUpgrade,
   type IdentityVerdict,
+  markCoordinatedServerFailed,
   markReplacePending,
+  markSignOutStorageCleared,
   type PendingE2eeUpgrade,
   poke,
   pullNow,
@@ -67,6 +73,11 @@ const _discardLocalReplica: () => Promise<void> = discardLocalReplica;
 const _clearLocalAccountData: () => Promise<void> = clearLocalAccountData;
 const _enterLoginPreservingReplica: () => void = enterLoginPreservingReplica;
 const _flushOutboxForSignOut: () => Promise<number> = flushOutboxForSignOut;
+const _beginSignOutCoordination: () => Promise<CoordinatedSignOutLease> = beginSignOutCoordination;
+const _cancelSignOutCoordination: (lease: CoordinatedSignOutLease) => void = cancelSignOutCoordination;
+const _markSignOutStorageCleared: (lease: CoordinatedSignOutLease) => void = markSignOutStorageCleared;
+const _markCoordinatedServerFailed: (lease: CoordinatedSignOutLease) => void = markCoordinatedServerFailed;
+const _finishSignOutCoordination: (lease: CoordinatedSignOutLease) => void = finishSignOutCoordination;
 const _recheckReplicaOwner: () => Promise<void> = recheckReplicaOwner;
 const _assertOwnReplica: () => Promise<string> = assertOwnReplica;
 const _syncNow: (reason: string) => Promise<void> = syncNow;
@@ -133,6 +144,11 @@ const surface = [
   _clearLocalAccountData,
   _enterLoginPreservingReplica,
   _flushOutboxForSignOut,
+  _beginSignOutCoordination,
+  _cancelSignOutCoordination,
+  _markSignOutStorageCleared,
+  _markCoordinatedServerFailed,
+  _finishSignOutCoordination,
   _recheckReplicaOwner,
   _assertOwnReplica,
   _syncNow,
@@ -162,7 +178,7 @@ const surface = [
 
 describe("sync public surface (compile-time fixture)", () => {
   it("every export is present and callable-shaped", () => {
-    expect(surface.length).toBe(41);
+    expect(surface.length).toBe(46);
     expect(_tierMismatch.name).toBe("TierMismatchError");
     expect(_upgradeRequired.name).toBe("E2eeUpgradeRequiredError");
   });

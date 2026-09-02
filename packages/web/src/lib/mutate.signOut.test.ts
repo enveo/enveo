@@ -1,5 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { type ClientLedger, createDefaultBudgetPreferences } from "@enveo/shared";
+import { accountPreferences } from "./accountPreferences";
+import { devicePreferences } from "./devicePreferences";
 import { __resetStorageForTests, idbGetAll } from "./idb";
 import { local } from "./mutate";
 import * as outbox from "./outbox";
@@ -84,5 +86,12 @@ describe("local mutations during sign-out", () => {
 
     expect(() => local.setDisplayedAllocation({ envelopeId: crypto.randomUUID(), month: "2026-09", amount: 100 })).toThrow("sign_out_in_progress");
     expect(outbox.snapshot()).toEqual([]);
+  });
+
+  it("blocks account and device preference persistence across the same barrier", async () => {
+    beginSignOut();
+
+    await expect(accountPreferences.update({ lang: "pl" })).rejects.toThrow("sign_out_in_progress");
+    await expect(devicePreferences.update({ discreet: true })).rejects.toThrow("sign_out_in_progress");
   });
 });
