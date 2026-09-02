@@ -28,10 +28,10 @@ let reloads = 0;
 
 const flush = () => new Promise((r) => setTimeout(r, 20)); // BroadcastChannel delivery is async
 
-beforeAll(() => {
+beforeAll(async () => {
   // ONCE — exactly like production, where installTriggers() guards the single call: a second
   // install would open a second channel that also answers "wipe" with its own location.reload().
-  installMultiTab();
+  await installMultiTab();
 });
 
 beforeEach(() => {

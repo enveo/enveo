@@ -51,6 +51,7 @@ import { clearLocalData, clearLocalDataForSignOut, storageMode } from "./idb";
 import * as outbox from "./outbox";
 import * as persist from "./persist";
 import { store } from "./store";
+import { configureBootSecurityBoundary } from "./sync/boot";
 import { INTERVAL_MS } from "./sync/contracts";
 import { configureCycle, getLastSyncReason, resetBackoff, syncNow } from "./sync/cycle";
 import { assertOwnReplica, configureIdentity, enterUnauthed } from "./sync/identity";
@@ -129,42 +130,46 @@ export async function clearLocalAccountDataForSignOut(
 /* ── Triggers (idempotent installation — StrictMode-safe) ──────────── */
 
 let triggersInstalled = false;
+let triggerInstallPromise: Promise<void> | null = null;
 
-function installTriggers(): void {
-  if (triggersInstalled || typeof window === "undefined") return;
+function installTriggers(): Promise<void> {
+  if (triggerInstallPromise) return triggerInstallPromise;
+  if (triggersInstalled || typeof window === "undefined") return Promise.resolve();
   triggersInstalled = true;
-  installMultiTab();
-  window.addEventListener("focus", () => void syncNow("focus"));
-  window.addEventListener("online", () => {
-    resetBackoff();
-    void syncNow("online");
+  triggerInstallPromise = installMultiTab().then(() => {
+    window.addEventListener("focus", () => void syncNow("focus"));
+    window.addEventListener("online", () => {
+      resetBackoff();
+      void syncNow("online");
+    });
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "visible") void syncNow("visible");
+      else if (outbox.size() > 0) postMsg("poke"); // hidden with unsent ops → poke a live leader
+    });
+    // Closing / bfcaching a tab with unsent ops: poke (BroadcastChannel
+    // "poke") a possibly-live leader so it absorbs+pushes right away. Correctness
+    // does NOT depend on this — the real safeguard is reconcileFromIdb at the start of
+    // a cycle (plus leadership takeover when the Web Lock is released) — this cuts latency.
+    window.addEventListener("pagehide", () => {
+      if (outbox.size() > 0) postMsg("poke");
+    });
+    // Session policy (memory-session): the replica AND the outbox live only in this tab's
+    // memory — closing the tab with unsent ops loses them for good. Best-effort warning
+    // (the browser shows its own generic prompt). Persistent replicas need none: the outbox is
+    // durable and any live tab (or the next boot) drains it.
+    window.addEventListener("beforeunload", (e) => {
+      if (storageMode() === "memory-session" && outbox.size() > 0) {
+        e.preventDefault();
+        e.returnValue = ""; // legacy engines only show the dialog when returnValue is set
+      }
+    });
+    setInterval(() => {
+      // only the leader polls in the background (Web Locks) — the other tabs sync on
+      // interaction/enqueue; no Web Locks ⇒ isLeader=true (every tab, as before)
+      if (isLeaderTab() && document.visibilityState === "visible") void syncNow("interval");
+    }, INTERVAL_MS);
   });
-  document.addEventListener("visibilitychange", () => {
-    if (document.visibilityState === "visible") void syncNow("visible");
-    else if (outbox.size() > 0) postMsg("poke"); // hidden with unsent ops → poke a live leader
-  });
-  // Closing / bfcaching a tab with unsent ops: poke (BroadcastChannel
-  // "poke") a possibly-live leader so it absorbs+pushes right away. Correctness
-  // does NOT depend on this — the real safeguard is reconcileFromIdb at the start of
-  // a cycle (plus leadership takeover when the Web Lock is released) — this cuts latency.
-  window.addEventListener("pagehide", () => {
-    if (outbox.size() > 0) postMsg("poke");
-  });
-  // Session policy (memory-session): the replica AND the outbox live only in this tab's
-  // memory — closing the tab with unsent ops loses them for good. Best-effort warning
-  // (the browser shows its own generic prompt). Persistent replicas need none: the outbox is
-  // durable and any live tab (or the next boot) drains it.
-  window.addEventListener("beforeunload", (e) => {
-    if (storageMode() === "memory-session" && outbox.size() > 0) {
-      e.preventDefault();
-      e.returnValue = ""; // legacy engines only show the dialog when returnValue is set
-    }
-  });
-  setInterval(() => {
-    // only the leader polls in the background (Web Locks) — the other tabs sync on
-    // interaction/enqueue; no Web Locks ⇒ isLeader=true (every tab, as before)
-    if (isLeaderTab() && document.visibilityState === "visible") void syncNow("interval");
-  }, INTERVAL_MS);
+  return triggerInstallPromise;
 }
 
 /* ── Composition (the facade is the ONLY module that wires the subsystems) ── */
@@ -190,7 +195,8 @@ configureCycle({
 // local-data wipe, which is composed HERE — identity sits below the facade in the module graph.
 configureIdentity({ discardForeignReplica: discardLocalReplica });
 
-installTriggers();
+const securityBoundaryReady = installTriggers();
+configureBootSecurityBoundary(() => securityBoundaryReady);
 
 /* ── Debug (dev only — also used by e2e verification) ───────────── */
 

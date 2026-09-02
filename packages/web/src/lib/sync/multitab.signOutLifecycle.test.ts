@@ -81,8 +81,8 @@ describe("sign-out coordinator page lifecycle", () => {
       throw new Error("quota");
     };
 
-    __installSignOutCoordinatorForTests(storage);
-    __installSignOutCoordinatorForTests(new MemoryStorage());
+    await __installSignOutCoordinatorForTests(storage);
+    await __installSignOutCoordinatorForTests(new MemoryStorage());
 
     expect(isSignOutBlocking()).toBe(true);
     await expect(idbPut("meta", "must-not-write", "key")).rejects.toThrow();
@@ -90,7 +90,7 @@ describe("sign-out coordinator page lifecycle", () => {
 
   it("keeps persisted-page presence so a frozen required participant makes sign-out abort", async () => {
     const storage = new MemoryStorage();
-    __installSignOutCoordinatorForTests(storage);
+    await __installSignOutCoordinatorForTests(storage);
     const lifecycle = new FakePageLifecycle();
     installSignOutPageLifecycle(lifecycle);
     lifecycle.dispatch("pagehide", true);
@@ -119,7 +119,7 @@ describe("sign-out coordinator page lifecycle", () => {
 
   it("keeps non-persisted unload presence until admitted work can no longer be overtaken", async () => {
     const storage = new MemoryStorage();
-    __installSignOutCoordinatorForTests(storage);
+    await __installSignOutCoordinatorForTests(storage);
     const lifecycle = new FakePageLifecycle();
     installSignOutPageLifecycle(lifecycle);
     let finish!: () => void;
@@ -141,7 +141,7 @@ describe("sign-out coordinator page lifecycle", () => {
 
   it("clears secrets and forces terminal reload when a frozen page missed rotation and broadcasts", async () => {
     const storage = new MemoryStorage();
-    __installSignOutCoordinatorForTests(storage);
+    await __installSignOutCoordinatorForTests(storage);
     const lifecycle = new FakePageLifecycle();
     let resumeWork!: () => void;
     const inFlight = runAccountStorageWrite(async () => {
@@ -173,7 +173,7 @@ describe("sign-out coordinator page lifecycle", () => {
 
   it("admits only the coordinated attempt's own server-session termination while blocked", async () => {
     const storage = new MemoryStorage();
-    __installSignOutCoordinatorForTests(storage);
+    await __installSignOutCoordinatorForTests(storage);
     const lease = await beginSignOutCoordination();
 
     await expect(runCoordinatedSessionEnd(lease, async () => "ended")).resolves.toBe("ended");
@@ -181,8 +181,8 @@ describe("sign-out coordinator page lifecycle", () => {
 
   it("emits the terminal peer reload only after coordinated clear rotates and finishes", async () => {
     const storage = new MemoryStorage();
-    __installSignOutCoordinatorForTests(storage);
-    installMultiTab();
+    await __installSignOutCoordinatorForTests(storage);
+    await installMultiTab();
     const received: string[] = [];
     const receiver = new BroadcastChannel("enveo-sync");
     receiver.onmessage = (event) => received.push((event.data as { type: string }).type);

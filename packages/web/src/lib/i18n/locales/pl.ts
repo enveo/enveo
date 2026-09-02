@@ -426,7 +426,8 @@ export const pl: Dict = {
   "Invalid pairing code.": "Nieprawidłowy kod parowania.",
   Investor: "Inwestorski",
   "Item total: {sum} / {total}": "Suma pozycji: {sum} / {total}",
-  "Keep me signed in and save a local copy so Enveo works without internet.": "Zapamiętaj mnie i zapisz lokalną kopię, żeby Enveo działało offline.",
+  "Keep me signed in and save a local copy so Enveo works without internet. Anyone who can access this browser profile may be able to read that copy.":
+    "Nie wylogowuj mnie i zapisz lokalną kopię, aby Enveo działało bez internetu. Każda osoba mająca dostęp do tego profilu przeglądarki może ją odczytać.",
   Language: "Język",
   "Largest expenses": "Największe wydatki",
   "Last 12 months": "Ostatnie 12 miesięcy",
@@ -443,6 +444,7 @@ export const pl: Dict = {
   "Loading sample data…": "Wczytywanie danych przykładowych…",
   "Loading…": "Wczytuję…",
   "Local changes stay safe until you sign in again.": "Lokalne zmiany są bezpieczne do czasu ponownego zalogowania.",
+  "Local cleanup could not be completed": "Nie udało się usunąć danych lokalnych",
   "Losing the password means losing your data — the server cannot reset it or decrypt your budget.":
     "Utrata hasła oznacza utratę danych — serwer nie może go zresetować ani odszyfrować Twojego budżetu.",
   "Lowest cost — a typical screenshot import costs a fraction of a cent.": "Najniższy koszt — typowy import zrzutu ekranu kosztuje ułamek centa.",
@@ -489,8 +491,8 @@ export const pl: Dict = {
   "No envelopes with a budget or spending this month.": "Brak kopert z budżetem lub wydatkami w tym miesiącu.",
   "No envelopes with a goal. Set a monthly target when editing an envelope.": "Brak kopert z celem. Ustaw cel miesięczny w edycji koperty.",
   "No funds to distribute": "Brak środków do rozdzielenia",
-  "No local copy will be saved. This browser session ends when you close the app.":
-    "Lokalna kopia nie zostanie zapisana. Sesja w przeglądarce kończy się wraz z zamknięciem aplikacji.",
+  "No new local copy will be saved. This browser session ends when you close the app.":
+    "Nowa lokalna kopia nie zostanie zapisana. Ta sesja przeglądarki zakończy się po zamknięciu aplikacji.",
   "No connection — changes are queued and will send automatically.": "Brak połączenia — zmiany czekają w kolejce i wyślą się automatycznie.",
   "No matches": "Brak wyników",
   "No note": "Brak notatki",
@@ -624,7 +626,8 @@ export const pl: Dict = {
   "Signs you out and removes this account's local copy, encryption keys, and credentials from the device.":
     "Wylogowuje i usuwa z urządzenia lokalną kopię tego konta, klucze szyfrowania oraz dane uwierzytelniające.",
   "Signed in as {email}": "Zalogowano jako {email}",
-  "Signing out…": "Wylogowywanie…",
+  "Sign-out is already in progress.": "Wylogowywanie już trwa.",
+  "Signing out and removing local data…": "Wylogowywanie i usuwanie danych lokalnych…",
   "Skip for now": "Pomiń na razie",
   "Some funds stayed in To be budgeted — envelopes are at their target caps.": "Część środków została w Do rozdysponowania — koperty na pułapie celów.",
   "Source: {src}": "Źródło: {src}",
@@ -1009,6 +1012,10 @@ export const pl: Dict = {
   "Connection successful.": "Połączenie działa.",
   "Custom suggestion profiles configured for this budget: {n}.": "Własne profile podpowiedzi skonfigurowane dla tego budżetu: {n}.",
   "Enveo AI": "AI Enveo",
+  "Enveo could not remove the local copy. The server session has ended; retry the local cleanup before reloading the app.":
+    "Enveo nie mogło usunąć lokalnej kopii. Sesja na serwerze została zakończona — ponów usuwanie danych lokalnych przed odświeżeniem aplikacji.",
+  "Enveo is safely finishing pending work and removing this account's local data.":
+    "Enveo bezpiecznie kończy oczekujące operacje i usuwa lokalne dane tego konta.",
   "Enveo sends the required prompt or screenshots to OpenAI using the server operator's key.":
     "Enveo wysyła wymagany prompt lub zrzuty ekranu do OpenAI, używając klucza operatora serwera.",
   "New key (replaces current)": "Nowy klucz (zastąpi obecny)",
@@ -1298,6 +1305,11 @@ export const pl: Dict = {
     "Importy działają niezależnie od tego ekranu. Zaszyfrowane importy są wykonywane tylko na tym urządzeniu.",
   "In progress": "W toku",
   "Local encrypted import": "Lokalny zaszyfrowany import",
+  "Retry local cleanup": "Ponów usuwanie danych lokalnych",
+  "The server session could not be ended. You are still signed in — try again.":
+    "Nie udało się zakończyć sesji na serwerze. Nadal jesteś zalogowany — spróbuj ponownie.",
+  "The server session has ended, but Enveo could not finish removing local data. Retry the local cleanup.":
+    "Sesja na serwerze została zakończona, ale Enveo nie mogło dokończyć usuwania danych lokalnych. Ponów usuwanie.",
   "Matching your budget…": "Dopasowywanie do budżetu…",
   "No import activity yet.": "Nie ma jeszcze aktywności importu.",
   "Preparing screenshots…": "Przygotowywanie zrzutów ekranu…",

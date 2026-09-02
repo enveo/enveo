@@ -64,17 +64,7 @@ import {
   releaseSignOutAttempt,
   type SignOutPermit,
 } from "../signOutBarrier";
-import {
-  browserSignOutStorage,
-  createRegistryWriteGate,
-  createSignOutCoordinator,
-  createSignOutRegistry,
-  SIGN_OUT_COORDINATION_ERROR,
-  type SignOutCoordinationLease,
-  type SignOutCoordinationMessage,
-  type SignOutCoordinator,
-  type SignOutRegistry,
-} from "../signOutCoordination";
+import type { SignOutCoordinationLease, SignOutCoordinationMessage, SignOutCoordinator, SignOutRegistry, StorageLike } from "../signOutCoordination";
 import { store } from "../store";
 import { retryBoot } from "./boot";
 import { flushOutboxWithPermit as flushCoordinatedOutbox, quiesceSyncForSignOut, syncNow } from "./cycle";
@@ -89,6 +79,8 @@ let signOutRegistry: SignOutRegistry | null = null;
 let signOutCoordinator: SignOutCoordinator<SignOutPermit> | null = null;
 let signOutMaintenanceTimer: ReturnType<typeof setInterval> | undefined;
 let signOutCoordinationFailedClosed = false;
+let signOutCoordinatorInstallPromise: Promise<void> | null = null;
+const SIGN_OUT_COORDINATION_ERROR = "sign_out_coordination_failed";
 
 /** Public capability: identity is held only in a private WeakMap; no permit escapes this module. */
 export interface CoordinatedSignOutLease {
@@ -194,6 +186,7 @@ export function __resetMultiTabForTests(): void {
   signOutRegistry = null;
   signOutCoordinator = null;
   signOutCoordinationFailedClosed = false;
+  signOutCoordinatorInstallPromise = null;
   configureSignOutSharedBlocker(null);
   configureSignOutPermitValidator(null);
   configureAccountStorageGenerationFence(null);
@@ -221,59 +214,78 @@ function failSignOutCoordinationClosed(): void {
   persist.configurePersistWriteGate({ beforeWrite: async () => "skip" });
 }
 
-function installSignOutCoordinator(storageOverride?: import("../signOutCoordination").StorageLike): void {
+async function installSignOutCoordinator(storageOverride?: StorageLike): Promise<void> {
   if (signOutCoordinationFailedClosed) return;
-  const storage = storageOverride ?? browserSignOutStorage();
-  if (!storage) {
-    // Bun/unit environments have no page or shared storage. A browser page whose localStorage
-    // is unavailable cannot prove cross-tab exclusion and must fail closed.
-    if (typeof window !== "undefined") failSignOutCoordinationClosed();
-    return;
-  }
-  try {
-    signOutRegistry = createSignOutRegistry({ storage });
-    configureSignOutSharedBlocker(
-      () => signOutRegistry !== null && (!signOutRegistry.isPageGenerationCurrent() || signOutRegistry.activeAttempts().length > 0),
-    );
-    configureSignOutPermitValidator((attemptId) => signOutRegistry?.isSoleActiveAttempt(attemptId, signOutRegistry.sourceId) ?? false);
-    configureAccountStorageGenerationFence({ isCurrent: () => signOutRegistry?.isPageGenerationCurrent() ?? false });
-    configurePersistenceAccountStorageDrain(() => signOutRegistry?.persistDecision() === "run");
-    const gate = createRegistryWriteGate(signOutRegistry);
-    persist.configurePersistWriteGate(gate);
-    signOutCoordinator = createSignOutCoordinator({
-      registry: signOutRegistry,
-      gate,
-      barrier: {
-        activate: activateSignOutAttempt,
-        release: releaseSignOutAttempt,
-        createPermit: createSignOutPermit,
-        markLocalCleared,
-      },
-      send: postCoordinationMessage,
-      quiesceCycle: quiesceSyncForSignOut,
-      quiesceServerWrites: awaitServerWriteOperationsQuiescent,
-      quiesceAccountWrites: awaitAccountStorageWritesQuiescent,
-      drainPersistence: async () => {
-        await Promise.all([persist.flushed(), accountPreferences.flushed(), devicePreferences.flushed()]);
-      },
-    });
-    signOutCoordinator.install();
-    signOutMaintenanceTimer = setInterval(() => {
-      try {
-        signOutCoordinator?.maintain();
-        recoverRotatedPage(reloadPageOnly);
-      } catch {
-        // Loss of shared coordination never releases an existing local barrier.
-      }
-    }, 10_000);
-  } catch {
-    failSignOutCoordinationClosed();
-  }
+  if (signOutCoordinatorInstallPromise && !storageOverride) return signOutCoordinatorInstallPromise;
+  const install = async () => {
+    // While the protocol chunk is in flight, every account/server write stays closed. Boot also
+    // awaits this promise, so authenticated data cannot render first and be fenced later.
+    configureSignOutSharedBlocker(() => true);
+    configureSignOutPermitValidator(() => false);
+    configureAccountStorageGenerationFence({ isCurrent: () => false });
+    configurePersistenceAccountStorageDrain(() => false);
+    persist.configurePersistWriteGate({ beforeWrite: async () => "skip" });
+    const coordination = await import("../signOutCoordination");
+    const storage = storageOverride ?? coordination.browserSignOutStorage();
+    if (!storage) {
+      // Bun/unit environments have no page or shared storage. A browser page whose localStorage
+      // is unavailable cannot prove cross-tab exclusion and must fail closed.
+      if (typeof window !== "undefined") failSignOutCoordinationClosed();
+      configureSignOutSharedBlocker(null);
+      configureSignOutPermitValidator(null);
+      configureAccountStorageGenerationFence(null);
+      configurePersistenceAccountStorageDrain(null);
+      persist.configurePersistWriteGate(null);
+      return;
+    }
+    try {
+      signOutRegistry = coordination.createSignOutRegistry({ storage });
+      configureSignOutSharedBlocker(
+        () => signOutRegistry !== null && (!signOutRegistry.isPageGenerationCurrent() || signOutRegistry.activeAttempts().length > 0),
+      );
+      configureSignOutPermitValidator((attemptId) => signOutRegistry?.isSoleActiveAttempt(attemptId, signOutRegistry.sourceId) ?? false);
+      configureAccountStorageGenerationFence({ isCurrent: () => signOutRegistry?.isPageGenerationCurrent() ?? false });
+      configurePersistenceAccountStorageDrain(() => signOutRegistry?.persistDecision() === "run");
+      const gate = coordination.createRegistryWriteGate(signOutRegistry);
+      persist.configurePersistWriteGate(gate);
+      signOutCoordinator = coordination.createSignOutCoordinator({
+        registry: signOutRegistry,
+        gate,
+        barrier: {
+          activate: activateSignOutAttempt,
+          release: releaseSignOutAttempt,
+          createPermit: createSignOutPermit,
+          markLocalCleared,
+        },
+        send: postCoordinationMessage,
+        quiesceCycle: quiesceSyncForSignOut,
+        quiesceServerWrites: awaitServerWriteOperationsQuiescent,
+        quiesceAccountWrites: awaitAccountStorageWritesQuiescent,
+        drainPersistence: async () => {
+          await Promise.all([persist.flushed(), accountPreferences.flushed(), devicePreferences.flushed()]);
+        },
+      });
+      signOutCoordinator.install();
+      signOutMaintenanceTimer = setInterval(() => {
+        try {
+          signOutCoordinator?.maintain();
+          recoverRotatedPage(reloadPageOnly);
+        } catch {
+          // Loss of shared coordination never releases an existing local barrier.
+        }
+      }, 10_000);
+    } catch {
+      failSignOutCoordinationClosed();
+    }
+  };
+  const pending = install().catch(() => failSignOutCoordinationClosed());
+  if (!storageOverride) signOutCoordinatorInstallPromise = pending;
+  return pending;
 }
 
 /** Deterministic composition hook for shared-storage failure/lifecycle tests. */
-export function __installSignOutCoordinatorForTests(storage: import("../signOutCoordination").StorageLike): void {
-  installSignOutCoordinator(storage);
+export function __installSignOutCoordinatorForTests(storage: StorageLike): Promise<void> {
+  return installSignOutCoordinator(storage);
 }
 
 interface PageLifecycleTarget {
@@ -405,7 +417,7 @@ interface LockManagerLike {
   request(name: string, options: { mode: "exclusive" | "shared" }, cb: () => Promise<void>): Promise<void>;
 }
 
-export function installMultiTab(): void {
+export async function installMultiTab(): Promise<void> {
   configureAccountPreferencesBroadcast(() => postMsg("preferences"));
   if (typeof BroadcastChannel !== "undefined") {
     channel = new BroadcastChannel("enveo-sync");
@@ -441,7 +453,7 @@ export function installMultiTab(): void {
   }
 
   // Shared markers are scanned synchronously before leader election can launch a cycle.
-  installSignOutCoordinator();
+  await installSignOutCoordinator();
   if (typeof window !== "undefined") {
     installSignOutPageLifecycle(window);
   }

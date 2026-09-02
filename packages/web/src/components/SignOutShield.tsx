@@ -1,7 +1,6 @@
 import { type ReactNode, useEffect, useRef, useSyncExternalStore } from "react";
 import { useTheme } from "../lib/contexts";
 import { useT } from "../lib/i18n";
-import { retryLocalSignOutCleanup } from "../lib/signOut";
 import { getSignOutPhase, type SignOutPhase, subscribeSignOutPhase } from "../lib/signOutBarrier";
 import { font, TEAL } from "../lib/theme";
 
@@ -36,7 +35,7 @@ export function SignOutShieldContent({ phase, onRetry }: { phase: SignOutPhase; 
       }}
     >
       <div style={{ width: "min(100%, 420px)", textAlign: "center", display: "flex", flexDirection: "column", alignItems: "center", gap: 14 }}>
-        <strong style={{ fontSize: 18 }}>{failed ? t("Local cleanup could not be completed") : t("Signing out…")}</strong>
+        <strong style={{ fontSize: 18 }}>{failed ? t("Local cleanup could not be completed") : t("Signing out and removing local data…")}</strong>
         <span style={{ color: C.mute, fontSize: 13, lineHeight: 1.6 }}>
           {failed
             ? t("The server session has ended, but Enveo could not finish removing local data. Retry the local cleanup.")
@@ -66,7 +65,12 @@ export function SignOutBoundary({ children }: { children: ReactNode }) {
   return (
     <>
       <div {...accountContentAccessibility(phase)}>{children}</div>
-      <SignOutShieldContent phase={phase} onRetry={() => void retryLocalSignOutCleanup()} />
+      <SignOutShieldContent
+        phase={phase}
+        onRetry={() => {
+          void import("../lib/signOut").then(({ retryLocalSignOutCleanup }) => retryLocalSignOutCleanup());
+        }}
+      />
     </>
   );
 }

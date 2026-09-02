@@ -260,7 +260,6 @@ export const nl: Dict = {
   "Invalid pairing code.": "Ongeldige koppelcode.",
   Investor: "Belegger",
   "Item total: {sum} / {total}": "Totaal van de regels: {sum} / {total}",
-  "Keep me signed in and save a local copy so Enveo works without internet.": "Blijf aangemeld en sla een lokale kopie op, zodat Enveo ook offline werkt.",
   Language: "Taal",
   "Last launch": "Laatste start",
   "Last sync: {rel}.": "Laatste synchronisatie: {rel}.",
@@ -311,8 +310,6 @@ export const nl: Dict = {
   "No envelopes with a goal. Set a monthly target when editing an envelope.":
     "Geen enveloppen met een doel. Stel een maanddoel in bij het bewerken van een envelop.",
   "No funds to distribute": "Geen middelen om te verdelen",
-  "No local copy will be saved. This browser session ends when you close the app.":
-    "Er wordt geen lokale kopie opgeslagen. Deze browsersessie eindigt zodra je de app sluit.",
   "No spending in this period.": "Geen uitgaven in deze periode.",
   "No transactions.": "Geen transacties.",
   "Not available with your OpenAI key.": "Niet beschikbaar met je OpenAI-sleutel.",
@@ -400,7 +397,6 @@ export const nl: Dict = {
   "Sign in with Google": "Aanmelden met Google",
   "Sign out": "Afmelden",
   "Sign out and use another account": "Afmelden en een ander account gebruiken",
-  "Signing out…": "Bezig met afmelden…",
   "Skip for now": "Nu overslaan",
   "Some funds stayed in To be budgeted — envelopes are at their target caps.":
     "Een deel van het geld bleef in ‘Te budgetteren’ staan — de enveloppen zitten aan het plafond van hun doel.",

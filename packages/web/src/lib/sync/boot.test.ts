@@ -14,9 +14,9 @@ import type { ClientLedger } from "@enveo/shared";
 import * as e2ee from "../e2ee";
 import { clearLocalData } from "../idb";
 import * as outbox from "../outbox";
-import { __resetSignOutBarrierForTests, beginSignOut } from "../signOutBarrier";
+import { __resetSignOutBarrierForTests, beginSignOut, isSignOutBlocking } from "../signOutBarrier";
 import { store } from "../store";
-import { bootOnce, retryBoot } from "./boot";
+import { bootOnce, configureBootSecurityBoundary, retryBoot } from "./boot";
 import { __resetBackoff } from "./cycle";
 import { __resetIdentity } from "./identity";
 import { __resetObligations } from "./obligations";
@@ -35,6 +35,7 @@ const emptyLedger = (): ClientLedger => ({
 const realFetch = globalThis.fetch;
 
 beforeEach(async () => {
+  configureBootSecurityBoundary(() => Promise.resolve());
   globalThis.fetch = (async (input: RequestInfo | URL): Promise<Response> => {
     throw new Error(`unexpected fetch: ${String(input)}`);
   }) as typeof fetch;
@@ -63,7 +64,7 @@ describe("sync/boot: the install-once boot promise", () => {
   it("bootOnce reuses ONE promise per module lifetime (StrictMode double-mount safe)", async () => {
     const first = bootOnce();
     const second = bootOnce();
-    expect(second).toBe(first); // the second mount must not start a second boot
+    expect(second).toBe(first);
     await first;
   });
 
@@ -73,7 +74,32 @@ describe("sync/boot: the install-once boot promise", () => {
     const retried = retryBoot();
     expect(retried).not.toBe(first);
     await retried;
-    expect(bootOnce()).toBe(retried); // and bootOnce now hands out the retried promise
+    expect(bootOnce()).toBe(retried);
+  });
+
+  it("does not release authenticated boot before the security coordinator is installed", async () => {
+    let release!: () => void;
+    configureBootSecurityBoundary(() => new Promise<void>((resolve) => (release = resolve)));
+
+    const pending = retryBoot();
+    await Promise.resolve();
+    expect(store.getBootStatus()).toBe("booting");
+
+    release();
+    await pending;
+    expect(store.getBootStatus()).toBe("ready");
+  });
+
+  it("stays fail closed when the security coordinator chunk cannot load", async () => {
+    configureBootSecurityBoundary(async () => {
+      beginSignOut();
+      throw new Error("chunk unavailable");
+    });
+
+    await retryBoot();
+
+    expect(store.getBootStatus()).toBe("booting");
+    expect(isSignOutBlocking()).toBe(true);
   });
 
   it("retryBoot does not start boot work while sign-out is coordinated", async () => {

@@ -35,23 +35,21 @@ import type { TransactionFilters } from "./lib/transactionSearch";
 import { APP_VERSION, buildLabel } from "./lib/version";
 import { PHONE_COL, useViewMode } from "./lib/viewMode";
 import { AddScreen, type Tab as AddTab } from "./screens/Add";
-import { LoginScreen } from "./screens/Login";
 import type { ReportTab, ReportView } from "./screens/reports/types";
 import { StartScreen } from "./screens/Start";
 
 // Code-split routes (§3f).
 //
 // EAGER, deliberately: everything the app needs to BOOT and to record a transaction. The local
-// replica boot and sync engine (`bootOnce`/`store`/`useStateQuery`), the auth guard
-// (`LoginScreen` — the screen an unauthenticated boot lands on), the app chrome, `StartScreen`,
-// and `AddScreen` with the whole transaction-entry subtree. Those are the first paint and the
+// replica boot and sync engine (`bootOnce`/`store`/`useStateQuery`), the app chrome, `StartScreen`,
+// and `AddScreen` with the whole transaction-entry subtree. Those are the authenticated first paint and the
 // app's most-repeated action; a chunk fetch in front of either would trade real latency for
 // bytes we do not need to save.
 //
 // LAZY: one chunk per screen the user is never on at boot. Reports (the whole suite with its
 // charts), Settings (backup/restore, E2EE, pairing QR, the AI panel), the once-per-account
 // onboarding wizard, the transaction list, Accounts, the full-screen envelope summary, and the
-// two boot-decision screens — Unlock (E2EE passphrase; a plain-tier budget never renders it)
+// three boot-decision screens — Login, Unlock (E2EE passphrase; a plain-tier budget never renders it)
 // and ForeignReplica (a replica belonging to another account). Budget and its editor are also
 // lazy: the automatic-envelope shared path exceeded the fixed initial-JS ceiling. Every hashed
 // chunk is precached by the service worker, so an installed PWA loads all of them offline.
@@ -69,6 +67,7 @@ const OptionalStatusChrome = lazy(() => import("./components/OptionalStatusChrom
 const EnvelopeScreen = lazy(() => import("./screens/Envelope").then((m) => ({ default: m.EnvelopeScreen })));
 const UnlockScreen = lazy(() => import("./screens/Unlock").then((m) => ({ default: m.UnlockScreen })));
 const ForeignReplicaScreen = lazy(() => import("./screens/ForeignReplica").then((m) => ({ default: m.ForeignReplicaScreen })));
+const LoginScreen = lazy(() => import("./screens/Login").then((m) => ({ default: m.LoginScreen })));
 const InstallSheet = lazy(() => import("./components/InstallSheet").then((m) => ({ default: m.InstallSheet })));
 const EnvActionsSheet = lazy(() => import("./components/EnvActionsSheet").then((m) => ({ default: m.EnvActionsSheet })));
 const InstallBanner = lazy(() => import("./components/InstallBanner").then((m) => ({ default: m.InstallBanner })));
