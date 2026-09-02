@@ -48,11 +48,26 @@ const isDocument = (expression: ts.Expression): boolean => {
   return reference?.name === "document" && (isIdentifier(reference.object, "window") || isIdentifier(reference.object, "globalThis"));
 };
 
-const objectPropertyName = (property: ts.ObjectLiteralElementLike): string | null => {
-  if (ts.isPropertyAssignment(property) || ts.isShorthandPropertyAssignment(property) || ts.isMethodDeclaration(property)) {
-    return ts.isIdentifier(property.name) || ts.isStringLiteral(property.name) ? property.name.text : null;
+const literalPropertyName = (name: ts.PropertyName): string | null => {
+  if (ts.isIdentifier(name) || ts.isStringLiteral(name)) return name.text;
+  if (ts.isComputedPropertyName(name)) {
+    const expression = unwrap(name.expression);
+    return ts.isStringLiteral(expression) ? expression.text : null;
   }
   return null;
+};
+
+const objectPropertyName = (property: ts.ObjectLiteralElementLike): string | null => {
+  if (ts.isPropertyAssignment(property) || ts.isShorthandPropertyAssignment(property) || ts.isMethodDeclaration(property)) {
+    return literalPropertyName(property.name);
+  }
+  return null;
+};
+
+const isFunctionConstructor = (expression: ts.Expression): boolean => {
+  if (isIdentifier(expression, "Function")) return true;
+  const reference = member(expression);
+  return reference?.name === "Function" && (isIdentifier(reference.object, "globalThis") || isIdentifier(reference.object, "window"));
 };
 
 export function checkWebSecuritySource(file: string, source: string): WebSecurityViolation[] {
@@ -92,10 +107,13 @@ export function checkWebSecuritySource(file: string, source: string): WebSecurit
         if (target.name === "eval" && (isIdentifier(target.object, "globalThis") || isIdentifier(target.object, "window"))) {
           report(node.expression, "eval", "global eval() executes source text");
         }
+        if (target.name === "Function" && (isIdentifier(target.object, "globalThis") || isIdentifier(target.object, "window"))) {
+          report(node.expression, "function-constructor", "global Function() executes source text");
+        }
       }
     }
 
-    if (ts.isNewExpression(node) && isIdentifier(node.expression, "Function")) {
+    if (ts.isNewExpression(node) && isFunctionConstructor(node.expression)) {
       report(node.expression, "function-constructor", "new Function() executes source text");
     }
 
