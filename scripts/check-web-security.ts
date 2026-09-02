@@ -25,9 +25,21 @@ function productionWebSources(directory = join(ROOT, WEB_SOURCE)): string[] {
 const formatViolations = (violations: readonly WebSecurityViolation[]): string =>
   violations.map((violation) => `  ${violation.file}:${violation.line}  [${violation.rule}] ${violation.detail}`).join("\n");
 
-export function runWebSecurityPolicy(log: (line: string) => void = console.log, files: readonly string[] = productionWebSources()): number {
+export function runWebSecurityPolicy(
+  log: (line: string) => void = console.log,
+  files?: readonly string[],
+  /** Test seam for the fail-closed discovery boundary. */
+  discover: () => readonly string[] = productionWebSources,
+): number {
+  let targets: readonly string[];
+  try {
+    targets = files ?? discover();
+  } catch (error) {
+    log(`policy:web-security: cannot discover production web sources — ${(error as Error).message}`);
+    return EXIT_FAILED_CLOSED;
+  }
   const violations: WebSecurityViolation[] = [];
-  for (const file of files) {
+  for (const file of targets) {
     let source: string;
     try {
       source = readFileSync(join(ROOT, file), "utf8");
@@ -41,7 +53,7 @@ export function runWebSecurityPolicy(log: (line: string) => void = console.log, 
     log(`policy:web-security: ${violations.length} violation(s)\n${formatViolations(violations)}`);
     return EXIT_POLICY_VIOLATION;
   }
-  log(`policy:web-security: OK — ${files.length} production web source files, no unsafe execution sinks`);
+  log(`policy:web-security: OK — ${targets.length} production web source files, no unsafe execution sinks`);
   return EXIT_OK;
 }
 

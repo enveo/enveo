@@ -7,6 +7,54 @@ export type WebSecurityViolation = {
   detail: string;
 };
 
+const unwrap = (expression: ts.Expression): ts.Expression => (ts.isParenthesizedExpression(expression) ? unwrap(expression.expression) : expression);
+
+const member = (expression: ts.Expression): { object: ts.Expression; name: string } | null => {
+  const unwrapped = unwrap(expression);
+  if (ts.isPropertyAccessExpression(unwrapped)) return { object: unwrap(unwrapped.expression), name: unwrapped.name.text };
+  if (ts.isElementAccessExpression(unwrapped) && unwrapped.argumentExpression && ts.isStringLiteral(unwrapped.argumentExpression)) {
+    return { object: unwrap(unwrapped.expression), name: unwrapped.argumentExpression.text };
+  }
+  return null;
+};
+
+const isIdentifier = (expression: ts.Expression, name: string): boolean => {
+  const unwrapped = unwrap(expression);
+  return ts.isIdentifier(unwrapped) && unwrapped.text === name;
+};
+
+const ASSIGNMENT_OPERATORS = new Set<ts.SyntaxKind>([
+  ts.SyntaxKind.EqualsToken,
+  ts.SyntaxKind.PlusEqualsToken,
+  ts.SyntaxKind.MinusEqualsToken,
+  ts.SyntaxKind.AsteriskEqualsToken,
+  ts.SyntaxKind.AsteriskAsteriskEqualsToken,
+  ts.SyntaxKind.SlashEqualsToken,
+  ts.SyntaxKind.PercentEqualsToken,
+  ts.SyntaxKind.LessThanLessThanEqualsToken,
+  ts.SyntaxKind.GreaterThanGreaterThanEqualsToken,
+  ts.SyntaxKind.GreaterThanGreaterThanGreaterThanEqualsToken,
+  ts.SyntaxKind.AmpersandEqualsToken,
+  ts.SyntaxKind.BarEqualsToken,
+  ts.SyntaxKind.CaretEqualsToken,
+  ts.SyntaxKind.AmpersandAmpersandEqualsToken,
+  ts.SyntaxKind.BarBarEqualsToken,
+  ts.SyntaxKind.QuestionQuestionEqualsToken,
+]);
+
+const isDocument = (expression: ts.Expression): boolean => {
+  if (isIdentifier(expression, "document")) return true;
+  const reference = member(expression);
+  return reference?.name === "document" && (isIdentifier(reference.object, "window") || isIdentifier(reference.object, "globalThis"));
+};
+
+const objectPropertyName = (property: ts.ObjectLiteralElementLike): string | null => {
+  if (ts.isPropertyAssignment(property) || ts.isShorthandPropertyAssignment(property) || ts.isMethodDeclaration(property)) {
+    return ts.isIdentifier(property.name) || ts.isStringLiteral(property.name) ? property.name.text : null;
+  }
+  return null;
+};
+
 export function checkWebSecuritySource(file: string, source: string): WebSecurityViolation[] {
   const scriptKind = file.endsWith(".tsx") ? ts.ScriptKind.TSX : ts.ScriptKind.TS;
   const tree = ts.createSourceFile(file, source, ts.ScriptTarget.Latest, true, scriptKind);
@@ -19,24 +67,35 @@ export function checkWebSecuritySource(file: string, source: string): WebSecurit
     if (ts.isJsxAttribute(node) && ts.isIdentifier(node.name) && node.name.text === "dangerouslySetInnerHTML") {
       report(node, "react-html", "React dangerouslySetInnerHTML injects HTML into the DOM");
     }
+    if (ts.isJsxSpreadAttribute(node)) {
+      const spread = unwrap(node.expression);
+      if (ts.isObjectLiteralExpression(spread) && spread.properties.some((property) => objectPropertyName(property) === "dangerouslySetInnerHTML")) {
+        report(node, "react-html", "JSX spread passes dangerouslySetInnerHTML into the DOM");
+      }
+    }
 
-    if (ts.isBinaryExpression(node) && node.operatorToken.kind === ts.SyntaxKind.EqualsToken && ts.isPropertyAccessExpression(node.left)) {
-      const name = node.left.name.text;
-      if (name === "innerHTML" || name === "outerHTML") report(node.left, "dom-html", `assignment to .${name} injects HTML into the DOM`);
+    if (ts.isBinaryExpression(node) && ASSIGNMENT_OPERATORS.has(node.operatorToken.kind)) {
+      const target = member(node.left);
+      if (target && (target.name === "innerHTML" || target.name === "outerHTML")) {
+        report(node.left, "dom-html", `assignment to .${target.name} injects HTML into the DOM`);
+      }
     }
 
     if (ts.isCallExpression(node)) {
-      if (ts.isIdentifier(node.expression) && node.expression.text === "eval") report(node.expression, "eval", "direct eval() executes source text");
-      if (ts.isPropertyAccessExpression(node.expression)) {
-        const { expression, name } = node.expression;
-        if (name.text === "insertAdjacentHTML") report(name, "dom-html", "insertAdjacentHTML() injects HTML into the DOM");
-        if (ts.isIdentifier(expression) && expression.text === "document" && (name.text === "write" || name.text === "writeln")) {
-          report(name, "document-write", `document.${name.text}() writes HTML into the document`);
+      if (isIdentifier(node.expression, "eval")) report(node.expression, "eval", "direct eval() executes source text");
+      const target = member(node.expression);
+      if (target) {
+        if (target.name === "insertAdjacentHTML") report(node.expression, "dom-html", "insertAdjacentHTML() injects HTML into the DOM");
+        if (isDocument(target.object) && (target.name === "write" || target.name === "writeln")) {
+          report(node.expression, "document-write", `document.${target.name}() writes HTML into the document`);
+        }
+        if (target.name === "eval" && (isIdentifier(target.object, "globalThis") || isIdentifier(target.object, "window"))) {
+          report(node.expression, "eval", "global eval() executes source text");
         }
       }
     }
 
-    if (ts.isNewExpression(node) && ts.isIdentifier(node.expression) && node.expression.text === "Function") {
+    if (ts.isNewExpression(node) && isIdentifier(node.expression, "Function")) {
       report(node.expression, "function-constructor", "new Function() executes source text");
     }
 
