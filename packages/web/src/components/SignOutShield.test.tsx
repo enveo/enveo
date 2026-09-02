@@ -32,8 +32,8 @@ describe("SignOutShield", () => {
   });
 
   it("makes the authenticated subtree hidden and inert for every active phase", () => {
-    expect(accountContentAccessibility("idle")).toEqual({ "aria-hidden": undefined, inert: false });
-    expect(accountContentAccessibility("blocking")).toEqual({ "aria-hidden": true, inert: true });
-    expect(accountContentAccessibility("cleanup-failed")).toEqual({ "aria-hidden": true, inert: true });
+    expect(accountContentAccessibility("idle")).toEqual({ "aria-hidden": undefined, inert: undefined });
+    expect(accountContentAccessibility("blocking")).toEqual({ "aria-hidden": true, inert: "" });
+    expect(accountContentAccessibility("cleanup-failed")).toEqual({ "aria-hidden": true, inert: "" });
   });
 });

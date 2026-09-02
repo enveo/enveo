@@ -55,9 +55,9 @@ export function SignOutShieldContent({ phase, onRetry }: { phase: SignOutPhase; 
   );
 }
 
-export function accountContentAccessibility(phase: SignOutPhase): { "aria-hidden": true | undefined; inert: boolean } {
+export function accountContentAccessibility(phase: SignOutPhase): { "aria-hidden": true | undefined; inert: "" | undefined } {
   const blocked = phase !== "idle";
-  return { "aria-hidden": blocked ? true : undefined, inert: blocked };
+  return { "aria-hidden": blocked ? true : undefined, inert: blocked ? "" : undefined };
 }
 
 export function SignOutBoundary({ children }: { children: ReactNode }) {

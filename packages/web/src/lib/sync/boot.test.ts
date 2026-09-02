@@ -11,12 +11,13 @@
  */
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import type { ClientLedger } from "@enveo/shared";
+import { __resetAccountStorageOperationsForTests, configureAccountStorageGenerationFence } from "../accountStorageOperations";
 import * as e2ee from "../e2ee";
 import { clearLocalData } from "../idb";
 import * as outbox from "../outbox";
-import { __resetSignOutBarrierForTests, beginSignOut, isSignOutBlocking } from "../signOutBarrier";
+import { __resetSignOutBarrierForTests, beginSignOut, configureSignOutSharedBlocker, isSignOutBlocking } from "../signOutBarrier";
 import { store } from "../store";
-import { bootOnce, configureBootSecurityBoundary, retryBoot } from "./boot";
+import { __resetBootForTests, bootOnce, configureBootSecurityBoundary, retryBoot } from "./boot";
 import { __resetBackoff } from "./cycle";
 import { __resetIdentity } from "./identity";
 import { __resetObligations } from "./obligations";
@@ -35,6 +36,8 @@ const emptyLedger = (): ClientLedger => ({
 const realFetch = globalThis.fetch;
 
 beforeEach(async () => {
+  __resetAccountStorageOperationsForTests();
+  __resetBootForTests();
   configureBootSecurityBoundary(() => Promise.resolve());
   globalThis.fetch = (async (input: RequestInfo | URL): Promise<Response> => {
     throw new Error(`unexpected fetch: ${String(input)}`);
@@ -54,6 +57,7 @@ beforeEach(async () => {
 });
 
 afterEach(() => {
+  __resetAccountStorageOperationsForTests();
   __resetBackoff();
   __resetIdentity();
   globalThis.fetch = realFetch;
@@ -61,6 +65,19 @@ afterEach(() => {
 });
 
 describe("sync/boot: the install-once boot promise", () => {
+  it("lets first boot await installation before evaluating the eager fail-closed blocker", async () => {
+    configureSignOutSharedBlocker(() => true);
+    configureAccountStorageGenerationFence({ isCurrent: () => false });
+    configureBootSecurityBoundary(async () => {
+      configureAccountStorageGenerationFence(null);
+      configureSignOutSharedBlocker(() => false);
+    });
+
+    await bootOnce();
+
+    expect(store.getBootStatus()).toBe("ready");
+  });
+
   it("bootOnce reuses ONE promise per module lifetime (StrictMode double-mount safe)", async () => {
     const first = bootOnce();
     const second = bootOnce();

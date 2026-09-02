@@ -87,7 +87,6 @@ async function sweepLegacyPlanned(): Promise<void> {
 }
 
 async function boot(): Promise<void> {
-  if (isSignOutBlocking()) return;
   store.setBootStatus("booting");
   try {
     // The dynamically loaded cross-tab coordinator must install its fail-closed gates before
@@ -165,9 +164,12 @@ async function boot(): Promise<void> {
 
 let bootPromise: Promise<void> | null = null;
 
+export function __resetBootForTests(): void {
+  bootPromise = null;
+}
+
  
 export function bootOnce(): Promise<void> {
-  if (isSignOutBlocking()) return Promise.resolve();
   if (!bootPromise) bootPromise = boot();
   return bootPromise;
 }

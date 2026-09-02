@@ -118,4 +118,16 @@ describe("sign-out barrier", () => {
     expect(isSignOutBlocking()).toBe(true);
     expect(getSignOutPhase()).toBe("blocking");
   });
+
+  it("notifies the UI when coordinator installation replaces the eager blocker", () => {
+    configureSignOutSharedBlocker(() => true);
+    const phases: string[] = [];
+    const unsubscribe = subscribeSignOutPhase(() => phases.push(getSignOutPhase()));
+
+    configureSignOutSharedBlocker(() => false);
+
+    expect(getSignOutPhase()).toBe("idle");
+    expect(phases).toEqual(["idle"]);
+    unsubscribe();
+  });
 });

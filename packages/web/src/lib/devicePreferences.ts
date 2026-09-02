@@ -25,6 +25,7 @@ export const DEFAULT_DEVICE_PREFERENCES: DevicePreferences = {
 };
 
 export interface DevicePreferencesStoreDeps {
+  ready?(): Promise<void>;
   load(): Promise<unknown>;
   save(value: DevicePreferences): Promise<void>;
   remove(): Promise<void>;
@@ -69,8 +70,9 @@ export function createDevicePreferencesStore(deps: DevicePreferencesStoreDeps) {
   function hydrate(): Promise<void> {
     if (!hydratePromise) {
       const generation = editGeneration;
-      hydratePromise = deps
-        .load()
+      hydratePromise = Promise.resolve()
+        .then(() => deps.ready?.())
+        .then(() => deps.load())
         .then((raw) => {
           if (editGeneration !== generation) return;
           const parsed = parseDevicePreferences(raw);
@@ -127,7 +129,14 @@ export function createDevicePreferencesStore(deps: DevicePreferencesStoreDeps) {
   };
 }
 
+let devicePreferencesSecurityBoundary = (): Promise<void> => Promise.resolve();
+
+export function configureDevicePreferencesSecurityBoundary(boundary: () => Promise<void>): void {
+  devicePreferencesSecurityBoundary = boundary;
+}
+
 export const devicePreferences = createDevicePreferencesStore({
+  ready: () => devicePreferencesSecurityBoundary(),
   load: () => idbGet("meta", DEVICE_PREFERENCES_KEY),
   save: (value) => idbPut("meta", value, DEVICE_PREFERENCES_KEY),
   remove: () => idbDelete("meta", DEVICE_PREFERENCES_KEY),

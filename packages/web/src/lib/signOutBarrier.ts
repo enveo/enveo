@@ -23,7 +23,9 @@ let sharedBlocker: (() => boolean) | null = null;
 let sharedPermitValidator: ((attemptId: string) => boolean) | null = null;
 
 export function configureSignOutSharedBlocker(blocker: (() => boolean) | null): void {
+  const before = visiblePhase();
   sharedBlocker = blocker;
+  notifyIfChanged(before);
 }
 
 export function configureSignOutPermitValidator(validator: ((attemptId: string) => boolean) | null): void {
