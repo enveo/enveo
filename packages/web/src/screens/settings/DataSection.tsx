@@ -136,7 +136,7 @@ function LogoutRow() {
           tone="danger"
           onClick={() => void doLogout()}
           disabled={busy}
-          busyLabel={busy ? t("Signing out…") : undefined}
+          busyLabel={busy ? t("Signing out and removing local data…") : undefined}
         />
       </ActionGroup>
       {pending && (
@@ -814,13 +814,24 @@ function E2eePairCode() {
     setSheet(true);
   };
 
-  const svg = useMemo(() => {
+  const qrSvg = useMemo(() => {
     if (!code) return null;
     const qr = qrcode(0, "M");
     qr.addData(code);
     qr.make();
-    return qr.createSvgTag({ cellSize: 4, margin: 0, scalable: true });
-  }, [code]);
+    const size = qr.getModuleCount();
+    const dark = [];
+    for (let row = 0; row < size; row++) {
+      for (let col = 0; col < size; col++) {
+        if (qr.isDark(row, col)) dark.push(<rect key={`${row}:${col}`} x={col} y={row} width={1} height={1} />);
+      }
+    }
+    return (
+      <svg viewBox={`0 0 ${size} ${size}`} role="img" aria-label={t("Pairing code")} style={{ display: "block", width: "100%", height: "auto" }}>
+        {dark}
+      </svg>
+    );
+  }, [code, t]);
 
   const copy = async () => {
     if (!code) return;
@@ -847,14 +858,10 @@ function E2eePairCode() {
             <div style={{ fontSize: 12.5, color: CORAL, lineHeight: 1.6, marginBottom: 14 }}>
               {t("This code contains your encryption key in plain form. Show it only on your own private device — anyone with the code can read the budget.")}
             </div>
-            {code && svg ? (
+            {code && qrSvg ? (
               <>
                 {/* white background under the QR — readable in dark mode too */}
-                <div
-                  style={{ background: "#fff", padding: 12, borderRadius: 12, maxWidth: 220, margin: "0 auto 14px" }}
-                  // biome-ignore lint/security/noDangerouslySetInnerHtml: the SVG comes from the local qrcode generator over data this device just produced — no untrusted input reaches it
-                  dangerouslySetInnerHTML={{ __html: svg }}
-                />
+                <div style={{ background: "#fff", padding: 12, borderRadius: 12, maxWidth: 220, margin: "0 auto 14px" }}>{qrSvg}</div>
                 <div
                   style={{
                     fontSize: 10.5,

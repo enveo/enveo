@@ -22,6 +22,8 @@ import type { ClientLedger, SyncOp } from "@enveo/shared";
 import { decryptPayload, encryptPayload, opAadContext, snapshotAadContext } from "./crypto";
 import { idbGet } from "./idb";
 import * as persist from "./persist";
+import { runServerWriteOperation } from "./serverWriteOperations";
+import type { SignOutPermit } from "./signOutBarrier";
 
 export type Tier = "plain" | "e2ee";
 
@@ -204,10 +206,7 @@ export function markDekValidated(epoch: number): void {
 
 /** Remove the DEK (disabling E2EE / "forget the key"). */
 export function clearDek(): void {
-  dek = null;
-  dekOrigin = null;
-  dekEpoch = null;
-  dekTouched = true;
+  clearDekMemory();
   void persist.putMeta("e2eeDek", null);
   void persist.putMeta("e2eeDekOrigin", null);
   void persist.putMeta("e2eeDekEpoch", null);
@@ -215,6 +214,14 @@ export function clearDek(): void {
   // generation. "Forget the key" — disable, a rotation-detected drop, any clearDek — must not
   // leave that raw key readable in IndexedDB behind the user's back.
   void persist.putMeta("e2eePendingUpgrade", null);
+}
+
+/** Memory-only half used after coordinated sign-out has quiesced persistence. */
+export function clearDekMemory(): void {
+  dek = null;
+  dekOrigin = null;
+  dekEpoch = null;
+  dekTouched = true;
 }
 
 /**
@@ -337,16 +344,27 @@ export function resetOpsCounter(): void {
  * `budgetId` = the budget this replica is bound to (the snapshot AAD needs it, and a replica
  * that cannot name its budget must not write — fail-closed, not optional legacy compatibility).
  */
-export async function maybeUploadSnapshot(ledger: ClientLedger | null, cursor: number, userId: string, budgetId: string): Promise<void> {
+export async function maybeUploadSnapshot(
+  ledger: ClientLedger | null,
+  cursor: number,
+  userId: string,
+  budgetId: string,
+  permit?: SignOutPermit,
+): Promise<void> {
   if (opsSinceSnap < SNAPSHOT_EVERY_OPS) return;
   if (!dek || !ledger || tierMeta.tier !== "e2ee" || !budgetId) return;
   if (dekEpoch !== tierMeta.epoch) return; // never encrypt with a key not validated for this epoch
   const blob = await encryptSnapshot(ledger, dek, { budgetId, epoch: tierMeta.epoch, uptoSeq: cursor });
-  const res = await fetch("/api/sync2/snapshot", {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ epoch: tierMeta.epoch, uptoSeq: cursor, blob, userId }),
-  });
+  const res = await runServerWriteOperation(
+    "e2ee-checkpoint",
+    () =>
+      fetch("/api/sync2/snapshot", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ epoch: tierMeta.epoch, uptoSeq: cursor, blob, userId }),
+      }),
+    permit,
+  );
   if (!res.ok) return; // best-effort — we'll try at the next threshold
   resetOpsCounter();
 }

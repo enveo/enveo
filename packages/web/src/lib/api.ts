@@ -19,6 +19,7 @@ import {
   type ReconciledImportRecognitionResult,
 } from "@enveo/shared";
 import { getAccountPreferencesRemote, patchAccountPreferencesRemote } from "./accountPreferencesRemote";
+import { runServerWriteOperation } from "./serverWriteOperations";
 import { timeoutSignal } from "./timeoutSignal";
 
 export type { BudgetSuggestProfile, BudgetSuggestResponse } from "@enveo/shared";
@@ -159,6 +160,9 @@ const ERROR_KEYS: Record<string, Message> = {
   sign_up_failed: msg("Could not create the account — please try again."),
   auth_meta_failed: msg("Could not sign in — please try again."), // /api/auth/meta unreachable → same user-facing advice
   device_storage_unavailable: msg("This browser blocked access to storage. Allow site storage before signing in."),
+  local_sign_out_cleanup_failed: msg("Enveo could not remove the local copy. The server session has ended; retry the local cleanup before reloading the app."),
+  server_sign_out_failed: msg("The server session could not be ended. You are still signed in — try again."),
+  sign_out_in_progress: msg("Sign-out is already in progress."),
 };
 
 /** Turns a server error code into a sentence in the UI language; unknown codes stay as-is. */
@@ -198,7 +202,12 @@ export function apiErrorBody(e: unknown): { error?: string; tier?: "plain" | "e2
  *  outwaits the server's own budget (see @enveo/shared/aiTransport), with the failure
  *  classified onto the same codes the AI transports use (ai_timeout / ai_offline /
  *  ai_unreachable). Without it the behavior is byte-identical to the old http(). */
-export async function http<T>(method: string, path: string, body?: unknown, timeoutMs?: number): Promise<T> {
+export function http<T>(method: string, path: string, body?: unknown, timeoutMs?: number): Promise<T> {
+  const request = () => httpImpl<T>(method, path, body, timeoutMs);
+  return method === "GET" ? request() : runServerWriteOperation("direct-api-write", request);
+}
+
+async function httpImpl<T>(method: string, path: string, body?: unknown, timeoutMs?: number): Promise<T> {
   const t = timeoutMs === undefined ? undefined : timeoutSignal(timeoutMs);
   let res: Response;
   try {
@@ -307,7 +316,7 @@ export const api = {
     budgetId: string;
     nextEpoch: number;
     credentialAction: { kind: "none" } | { kind: "server-vault-to-e2ee"; ciphertext: string };
-  }) => http<{ epoch: number }>("POST", "/budget/e2ee/enable", b),
+  }) => runServerWriteOperation("e2ee-enable", () => http<{ epoch: number }>("POST", "/budget/e2ee/enable", b)),
   e2eeDisable: (b: {
     confirm: string;
     ledger: ClientLedger;
@@ -315,11 +324,12 @@ export const api = {
     budgetId: string;
     expectedEpoch: number;
     credentialAction: { kind: "none" } | { kind: "e2ee-to-server-vault"; key: string };
-  }) => http<{ epoch: number }>("POST", "/budget/e2ee/disable", b),
+  }) => runServerWriteOperation("e2ee-disable", () => http<{ epoch: number }>("POST", "/budget/e2ee/disable", b)),
   /* `expectedEpoch` = the epoch the new envelope's AAD was built for: a rekey landing on any
      OTHER generation would permanently brick every unlock (the v2 wrap hard-fails under a
      different epoch), so the server refuses a stale expectation before writing. */
-  e2eeRekey: (b: { wrappedDek: string; kdfParams: string; userId: string; expectedEpoch: number }) => http<{ epoch: number }>("POST", "/sync2/rekey", b),
+  e2eeRekey: (b: { wrappedDek: string; kdfParams: string; userId: string; expectedEpoch: number }) =>
+    runServerWriteOperation("e2ee-rekey", () => http<{ epoch: number }>("POST", "/sync2/rekey", b)),
   /** GET /sync2/snapshot — the session's budgetId + key envelope (password verification on change) + checkpoint. */
   e2eeSnapshot: () =>
     http<{

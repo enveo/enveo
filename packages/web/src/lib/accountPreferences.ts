@@ -7,6 +7,7 @@ import {
 } from "@enveo/shared";
 import { getAccountPreferencesRemote, patchAccountPreferencesRemote } from "./accountPreferencesRemote";
 import { idbDelete, idbGet, idbPut } from "./idb";
+import { isSignOutBlocking } from "./signOutBarrier";
 
 const CACHE_KEY = "accountPreferences";
 const FIELDS = ["lang", "themeMode", "accentTheme"] as const satisfies readonly AccountPreferenceField[];
@@ -118,6 +119,7 @@ export function createAccountPreferencesStore(deps: AccountPreferencesStoreDeps)
   }
 
   async function update(patch: AccountPreferencesPatch): Promise<void> {
+    if (isSignOutBlocking()) throw new Error("sign_out_in_progress");
     if (!cache || !hydratedFor) throw new Error("account_preferences_not_hydrated");
     const parsed = accountPreferencesSchema.parse({ ...cache.value, ...patch });
     for (const field of FIELDS) {
@@ -201,6 +203,7 @@ export function createAccountPreferencesStore(deps: AccountPreferencesStoreDeps)
     },
     update,
     sync,
+    flushed: () => persistChain.catch(() => {}),
     clear,
     dehydrate,
   };

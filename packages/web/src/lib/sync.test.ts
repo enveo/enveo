@@ -28,12 +28,14 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { type ClientLedger, createDefaultAccountPreferences, createDefaultBudgetPreferences, type SyncOp } from "@enveo/shared";
 import { accountPreferences } from "./accountPreferences";
+import { configurePersistenceAccountStorageDrain } from "./accountStorageOperations";
 import { budgetSecretAadContext, decryptPayload, encryptPayload, generateDek, opAadContext } from "./crypto";
 import { cacheDeployment } from "./deviceStoragePolicy";
 import * as e2ee from "./e2ee";
 import { clearLocalData, idbGet, idbPut } from "./idb";
 import * as outbox from "./outbox";
 import * as persist from "./persist";
+import { __resetSignOutBarrierForTests, activateSignOutAttempt, beginSignOut, createSignOutPermit, isSignOutBlocking } from "./signOutBarrier";
 import { store } from "./store";
 import {
   __resetBackoff,
@@ -43,7 +45,6 @@ import {
   clearLocalAccountData,
   discardLocalReplica,
   enterLoginPreservingReplica,
-  flushOutboxForSignOut,
   getSyncStatus,
   hasPendingE2eeUpgrade,
   markReplacePending,
@@ -55,6 +56,7 @@ import {
   syncNow,
   upgradeServerE2eeV2,
 } from "./sync";
+import { flushOutboxWithPermit as flushWithPermit } from "./sync/cycle";
 
 const BUDGET_A = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa";
 const BUDGET_B = "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb";
@@ -316,6 +318,7 @@ beforeEach(async () => {
   __resetIdentity();
   __resetObligations();
   __resetBackoff();
+  __resetSignOutBarrierForTests();
   outbox.clearAll();
   e2ee.__resetDekForTests();
   e2ee.clearDek();
@@ -332,6 +335,7 @@ beforeEach(async () => {
 
 afterEach(() => {
   __resetBackoff(); // a scheduled retry would fire into the NEXT test's stub (and its `calls`)
+  __resetSignOutBarrierForTests();
   globalThis.fetch = realFetch;
   delete (globalThis as { location?: unknown }).location;
   delete (globalThis as { localStorage?: unknown }).localStorage;
@@ -1648,6 +1652,20 @@ describe("sync: full-budget overwrites carry the verified owner", () => {
 /* ── Explicit sign-out: pre-wipe outbox flush ──────────────────────────── */
 
 describe("flushOutboxForSignOut (explicit sign-out clears the replica afterwards)", () => {
+  it("quiesces an in-flight push before another batch and preserves its unacknowledged local queue", async () => {
+    await idbPut("meta", "user-A", "userId");
+    session = { user: { id: "user-A" } };
+    for (let index = 0; index < 101; index++) outbox.add(catOp());
+    onPush = () => {
+      if (!isSignOutBlocking()) beginSignOut();
+    };
+
+    await syncNow("in-flight-sign-out");
+
+    expect(wrote(BUDGET_A)).toHaveLength(100);
+    expect(outbox.size()).toBe(101);
+  });
+
   it("the explicit local-account wipe clears the in-memory DEK with the replica", async () => {
     e2ee.setTierMeta({ tier: "e2ee", epoch: 3 });
     e2ee.setDek(generateDek(), 3);
@@ -1663,7 +1681,14 @@ describe("flushOutboxForSignOut (explicit sign-out clears the replica afterwards
     session = { user: { id: "user-A" } };
     outbox.add(catOp());
 
-    expect(await flushOutboxForSignOut()).toBe(0);
+    activateSignOutAttempt("flush-attempt", "source", "local");
+    configurePersistenceAccountStorageDrain(() => true);
+    try {
+      expect(await flushWithPermit(createSignOutPermit("flush-attempt"))).toBe(0);
+      await persist.flushed();
+    } finally {
+      configurePersistenceAccountStorageDrain(null);
+    }
     expect(wrote(BUDGET_A).length).toBe(1); // the op reached the server first
   });
 
@@ -1673,7 +1698,14 @@ describe("flushOutboxForSignOut (explicit sign-out clears the replica afterwards
     outbox.add(catOp());
     offline = true;
 
-    expect(await flushOutboxForSignOut()).toBe(1);
+    activateSignOutAttempt("flush-attempt", "source", "local");
+    configurePersistenceAccountStorageDrain(() => true);
+    try {
+      expect(await flushWithPermit(createSignOutPermit("flush-attempt"))).toBe(1);
+      await persist.flushed();
+    } finally {
+      configurePersistenceAccountStorageDrain(null);
+    }
     expect(outbox.size()).toBe(1); // still queued — the CALLER asks the human before any discard
   });
 });

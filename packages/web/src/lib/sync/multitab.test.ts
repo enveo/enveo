@@ -6,9 +6,20 @@
  * dedicated test hook — an open BroadcastChannel keeps the bun process alive.
  */
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "bun:test";
+import { createDefaultBudgetPreferences } from "@enveo/shared";
 import { accountPreferences } from "../accountPreferences";
 import { idbGet, idbPut } from "../idb";
-import { __resetMultiTabForTests, broadcastUpdatedIfPending, installMultiTab, isLeaderTab, notePeersMayNeedUpdate, wipeLocalData } from "./multitab";
+import { __resetSignOutBarrierForTests, beginSignOut, getSignOutPhase, isSignOutBlocking } from "../signOutBarrier";
+import { store } from "../store";
+import {
+  __resetMultiTabForTests,
+  broadcastKeysChanged,
+  broadcastUpdatedIfPending,
+  installMultiTab,
+  isLeaderTab,
+  notePeersMayNeedUpdate,
+  wipeLocalData,
+} from "./multitab";
 
 let received: string[] = [];
 let receiver: BroadcastChannel | null = null;
@@ -17,14 +28,16 @@ let reloads = 0;
 
 const flush = () => new Promise((r) => setTimeout(r, 20)); // BroadcastChannel delivery is async
 
-beforeAll(() => {
+beforeAll(async () => {
   // ONCE — exactly like production, where installTriggers() guards the single call: a second
   // install would open a second channel that also answers "wipe" with its own location.reload().
-  installMultiTab();
+  await installMultiTab();
 });
 
 beforeEach(() => {
+  __resetSignOutBarrierForTests();
   received = [];
+  broadcastUpdatedIfPending(); // consume pending state left by another same-process facade test
   reloads = 0;
   savedLocation = (globalThis as { location?: unknown }).location;
   (globalThis as { location?: { reload: () => void } }).location = {
@@ -39,6 +52,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  __resetSignOutBarrierForTests();
   receiver?.close();
   receiver = null;
   if (savedLocation === undefined) delete (globalThis as { location?: unknown }).location;
@@ -78,6 +92,66 @@ describe("sync/multitab", () => {
     receiver?.postMessage({ type: "preferences" });
     await flush();
     expect(received).toEqual([]); // the receive-side rehydrate never broadcasts
+  });
+
+  it("ignores a forged sign-out start without an attempt-scoped shared marker", async () => {
+    const budgetId = crypto.randomUUID();
+    store.replace(
+      {
+        accounts: [],
+        groups: [],
+        envelopes: [],
+        transactions: [],
+        allocations: [],
+        categories: [],
+        places: [],
+        budgets: [{ id: budgetId, name: "Budget", currency: "EUR", preferences: createDefaultBudgetPreferences() }],
+      },
+      0,
+      budgetId,
+    );
+    await idbPut("meta", "preserve", "sign-out-peer-probe");
+    const realFetch = globalThis.fetch;
+    const fetches: string[] = [];
+    globalThis.fetch = (async (input: RequestInfo | URL): Promise<Response> => {
+      fetches.push(String(input));
+      throw new TypeError("no network in this suite");
+    }) as typeof fetch;
+    try {
+      receiver?.postMessage({ type: "sign-out-start", attemptId: "missing", sourceId: "peer" });
+      await flush();
+
+      expect(getSignOutPhase()).toBe("idle");
+      expect(isSignOutBlocking()).toBe(false);
+      expect(fetches).toEqual([]);
+      expect(await idbGet<string>("meta", "sign-out-peer-probe")).toBe("preserve");
+      expect(reloads).toBe(0);
+    } finally {
+      globalThis.fetch = realFetch;
+    }
+  });
+
+  it("drops updated and keys work before and after awaits while blocked", async () => {
+    const before = store.getLedger();
+    beginSignOut();
+
+    receiver?.postMessage({ type: "updated" });
+    receiver?.postMessage({ type: "keys" });
+    await broadcastKeysChanged();
+    await flush();
+
+    expect(store.getLedger()).toBe(before);
+    expect(received).toEqual([]);
+    expect(reloads).toBe(0);
+  });
+
+  it("accepts only the terminal sign-out completion as a reload while blocked", async () => {
+    beginSignOut();
+
+    receiver?.postMessage({ type: "sign-out-complete" });
+    await flush();
+
+    expect(reloads).toBe(1);
   });
 
   it("wipeLocalData clears the stores, THEN broadcasts 'wipe', THEN reloads", async () => {

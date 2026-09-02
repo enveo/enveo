@@ -4,9 +4,14 @@ import { apiErrorMessage } from "../lib/api";
 import { type AuthMeta, fetchAuthMeta, signInEmail, signInGoogle, signUpEmail } from "../lib/auth";
 import { useTheme } from "../lib/contexts";
 import { cacheDeployment, setDeviceStoragePolicy } from "../lib/deviceStoragePolicy";
-import { useT } from "../lib/i18n";
+import { msg, useT } from "../lib/i18n";
 import { CORAL, font, TEAL } from "../lib/theme";
 import { useViewMode } from "../lib/viewMode";
+
+export const PRIVATE_DEVICE_DISCLOSURE = msg(
+  "Keep me signed in and save a local copy so Enveo works without internet. Anyone who can access this browser profile may be able to read that copy.",
+);
+export const SHARED_DEVICE_DISCLOSURE = msg("No new local copy will be saved. This browser session ends when you close the app.");
 
 /**
  * Login screen — shown when the backend responded 401 (BootStatus "unauthed").
@@ -174,14 +179,10 @@ export function LoginScreen() {
           <input type="checkbox" checked={persistent} onChange={(e) => setPersistent(e.target.checked)} style={{ marginTop: 2 }} />
           <span>
             <strong style={{ display: "block", color: C.text }}>{t("This is my private device")}</strong>
-            {t("Keep me signed in and save a local copy so Enveo works without internet.")}
+            {t(PRIVATE_DEVICE_DISCLOSURE)}
           </span>
         </label>
-        {!persistent && (
-          <div style={{ fontSize: 11.5, color: C.soft, lineHeight: 1.5 }}>
-            {t("No local copy will be saved. This browser session ends when you close the app.")}
-          </div>
-        )}
+        {!persistent && <div style={{ fontSize: 11.5, color: C.soft, lineHeight: 1.5 }}>{t(SHARED_DEVICE_DISCLOSURE)}</div>}
         <button
           type="submit"
           disabled={!canSubmit}

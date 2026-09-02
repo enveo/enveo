@@ -15,6 +15,7 @@ import { migrateLegacySettings } from "../legacySettingsMigrationRuntime";
 import { local } from "../mutate";
 import * as outbox from "../outbox";
 import * as persist from "../persist";
+import { isSignOutBlocking } from "../signOutBarrier";
 import { requestPersistentStorage } from "../storage";
 import { store } from "../store";
 import { type BootSource, UnauthorizedError } from "./contracts";
@@ -27,6 +28,11 @@ import { bootstrapReplica, getClientId } from "./transport";
 /* ── Boot diagnostics (BootSource type in sync/contracts.ts) ────────────── */
 
 let lastBootSource: BootSource = null;
+let awaitSecurityBoundary: () => Promise<void> = () => Promise.resolve();
+
+export function configureBootSecurityBoundary(waitUntilInstalled: () => Promise<void>): void {
+  awaitSecurityBoundary = waitUntilInstalled;
+}
 export function getLastBootSource(): BootSource {
   return lastBootSource;
 }
@@ -82,16 +88,24 @@ async function sweepLegacyPlanned(): Promise<void> {
 
 async function boot(): Promise<void> {
   store.setBootStatus("booting");
-  void getClientId(); // persist the installation identifier as early as possible
-  void requestPersistentStorage(); // harden durability AS EARLY AS POSSIBLE (anti-eviction iOS)
   try {
+    // The dynamically loaded cross-tab coordinator must install its fail-closed gates before
+    // account storage is opened or any authenticated data can reach the UI.
+    await awaitSecurityBoundary();
+    if (isSignOutBlocking()) return;
+    void getClientId(); // persist the installation identifier as early as possible
+    void requestPersistentStorage(); // harden durability AS EARLY AS POSSIBLE (anti-eviction iOS)
     const [hydrated] = await Promise.all([store.hydrate(), outbox.hydrate()]);
+    if (isSignOutBlocking()) return;
     await loadSyncMeta();
+    if (isSignOutBlocking()) return;
     // Whose replica is this? BEFORE it reaches the UI (and before any bootstrap) — see bootOwnerOk
     const ownership = await bootOwnerOk();
+    if (isSignOutBlocking()) return;
     if (!ownership.ok) return;
     if (ownership.preferenceUserId) {
       await accountPreferences.hydrateForUser(ownership.preferenceUserId);
+      if (isSignOutBlocking()) return;
       try {
         await accountPreferences.sync(ownership.preferenceUserId);
         await devicePreferences.hydrate();
@@ -99,6 +113,7 @@ async function boot(): Promise<void> {
       } catch (error) {
         console.warn("legacy preference migration deferred", error);
       }
+      if (isSignOutBlocking()) return;
     }
     if (hydrated === "empty") {
       lastBootSource = "snapshot"; // empty replica ⇒ full snapshot (slow; also after eviction)
@@ -108,6 +123,7 @@ async function boot(): Promise<void> {
         store.setBootStatus("locked");
         return;
       }
+      if (isSignOutBlocking()) return;
     } else {
       lastBootSource = "replica"; // local-first: we started from the local replica
     }
@@ -121,6 +137,7 @@ async function boot(): Promise<void> {
     bumpStatus();
     void syncNow("boot");
   } catch (e) {
+    if (isSignOutBlocking()) return;
     if (e instanceof UnauthorizedError) {
       // the backend requires login — login screen instead of a first-start
       // error; after OAuth the page returns to the origin → new boot
@@ -132,6 +149,7 @@ async function boot(): Promise<void> {
       lastBootSource = "replica";
       // Read the meta flags HERE too: the resync obligation from IDB must not be lost.
       await loadSyncMeta();
+      if (isSignOutBlocking()) return;
       replayPendingWithE2eeProviderPreference();
       await sweepLegacyPlanned();
       store.setBootStatus("ready");
@@ -146,6 +164,10 @@ async function boot(): Promise<void> {
 
 let bootPromise: Promise<void> | null = null;
 
+export function __resetBootForTests(): void {
+  bootPromise = null;
+}
+
 /** Boot once per module lifetime (StrictMode mounts effects 2×). */
 export function bootOnce(): Promise<void> {
   if (!bootPromise) bootPromise = boot();
@@ -154,6 +176,7 @@ export function bootOnce(): Promise<void> {
 
 /** Retry the first start (the "Try again" button). */
 export function retryBoot(): Promise<void> {
+  if (isSignOutBlocking()) return bootPromise ?? Promise.resolve();
   bootPromise = boot();
   return bootPromise;
 }

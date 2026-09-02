@@ -10,7 +10,6 @@ import { canFillGoals } from "../../lib/goals";
 import { useT } from "../../lib/i18n";
 import { Ico } from "../../lib/icons";
 import { isInstallable, useInstall } from "../../lib/installPrompt";
-import { completeExplicitSignOut, ExplicitSignOutPendingError } from "../../lib/signOut";
 import { store } from "../../lib/store";
 import type { SyncStatus } from "../../lib/sync";
 import { syncNow } from "../../lib/sync";
@@ -674,15 +673,22 @@ function LogoutMenuRow({ onNav, onClose }: { onNav: (s: ScreenId) => void; onClo
     if (!window.confirm(t("Sign out and remove this account's local data from this device? Your data already on the server will stay there."))) return;
     setBusy(true);
     setError(null);
-    void completeExplicitSignOut("retry").catch((e: unknown) => {
-      if (e instanceof ExplicitSignOutPendingError) {
-        onClose();
-        onNav("settings");
-        return;
-      }
-      setError(apiErrorMessage(e));
-      setBusy(false);
-    });
+    void import("../../lib/signOut")
+      .then(({ completeExplicitSignOut, ExplicitSignOutPendingError }) =>
+        completeExplicitSignOut("retry").catch((e: unknown) => {
+          if (e instanceof ExplicitSignOutPendingError) {
+            onClose();
+            onNav("settings");
+            return;
+          }
+          setError(apiErrorMessage(e));
+          setBusy(false);
+        }),
+      )
+      .catch((e: unknown) => {
+        setError(apiErrorMessage(e));
+        setBusy(false);
+      });
     // On success `completeExplicitSignOut` reloads the page itself — nothing to do here.
   };
 

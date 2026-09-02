@@ -20,7 +20,9 @@
  * All writes resolve AFTER the IDB transaction completes (tx.oncomplete), not
  * merely after request.onsuccess.
  */
+import { runAccountStorageWrite } from "./accountStorageOperations";
 import { getDeviceStoragePolicy } from "./deviceStoragePolicy";
+import type { SignOutPermit } from "./signOutBarrier";
 import {
   evaluateImportTransactionProof,
   type ImportDraftDeleteMatch,
@@ -114,7 +116,7 @@ class IdbBackend implements StorageBackend {
   /** Opens the DB once; null = unrecoverable → the ops below use the memory fallback. */
   private open(): Promise<IDBDatabase | null> {
     if (!this.dbPromise) {
-      this.dbPromise = (async () => {
+      this.dbPromise = runAccountStorageWrite(async () => {
         if (typeof indexedDB === "undefined") {
           this.fellBack = true;
           console.warn("IndexedDB unavailable — local data memory-only (won't survive a refresh)");
@@ -135,7 +137,7 @@ class IdbBackend implements StorageBackend {
             return null;
           }
         }
-      })();
+      });
     }
     return this.dbPromise;
   }
@@ -472,7 +474,7 @@ export async function idbGetAll<T>(store: StoreName): Promise<T[]> {
 
 /** Atomic read-modify-write for one metadata value, including across browser tabs. */
 export async function idbMutateMeta<T>(key: IDBValidKey, update: (current: unknown) => T): Promise<T> {
-  return (await activeBackend().mutateMeta(key, update)) as T;
+  return (await runAccountStorageWrite(() => activeBackend().mutateMeta(key, update))) as T;
 }
 
 export function idbImportTransactionProof(scope: ImportRecordScope, transactionId: string): Promise<"durable" | "rejected" | "absent"> {
@@ -481,41 +483,41 @@ export function idbImportTransactionProof(scope: ImportRecordScope, transactionI
 
 /** put — `key` required for "meta" (out-of-line keys), omitted for keyPath stores. */
 export function idbPut(store: StoreName, value: unknown, key?: IDBValidKey): Promise<void> {
-  return activeBackend().put(store, value, key);
+  return runAccountStorageWrite(() => activeBackend().put(store, value, key));
 }
 
 /** Multiple puts in ONE transaction (atomic: all or nothing). */
 export function idbPutMany(store: StoreName, entries: Array<{ value: unknown; key?: IDBValidKey }>): Promise<void> {
-  return activeBackend().putMany(store, entries);
+  return runAccountStorageWrite(() => activeBackend().putMany(store, entries));
 }
 
 /** Atomic stale-writer fence for the device-local E2EE import runner. */
 export function idbPutImportJobIfRevision(value: unknown, expectedRevision: number): Promise<boolean> {
-  return activeBackend().putImportJobIfRevision(value, expectedRevision);
+  return runAccountStorageWrite(() => activeBackend().putImportJobIfRevision(value, expectedRevision));
 }
 
 /** Scope-preserving create/replace for device-local E2EE import jobs. */
 export function idbPutImportJobForScope(value: unknown, scope: ImportRecordScope): Promise<boolean> {
-  return activeBackend().putImportJobForScope(value, scope);
+  return runAccountStorageWrite(() => activeBackend().putImportJobForScope(value, scope));
 }
 
 /** Atomic draft create/idempotency boundary across tabs. */
 export function idbPutImportDraftIfAbsentOrSame(value: unknown): Promise<ImportDraftPutResult> {
-  return activeBackend().putImportDraftIfAbsentOrSame(value);
+  return runAccountStorageWrite(() => activeBackend().putImportDraftIfAbsentOrSame(value));
 }
 
 /** Atomic exact-request upload/cancellation state mutation. */
 export function idbMutateImportDraftState(mutation: ImportDraftStateMutation): Promise<unknown | undefined> {
-  return activeBackend().mutateImportDraftState(mutation);
+  return runAccountStorageWrite(() => activeBackend().mutateImportDraftState(mutation));
 }
 
 /** Atomic compare-delete for request completion/cancellation. */
 export function idbDeleteImportDraftIfMatches(expected: ImportDraftDeleteMatch): Promise<boolean> {
-  return activeBackend().deleteImportDraftIfMatches(expected);
+  return runAccountStorageWrite(() => activeBackend().deleteImportDraftIfMatches(expected));
 }
 
 export function idbDeleteImportJobIfScope(id: IDBValidKey, scope: ImportRecordScope): Promise<boolean> {
-  return activeBackend().deleteImportJobIfScope(id, scope);
+  return runAccountStorageWrite(() => activeBackend().deleteImportJobIfScope(id, scope));
 }
 
 export function idbDeleteImportJobWithMetaIfScope(
@@ -524,32 +526,37 @@ export function idbDeleteImportJobWithMetaIfScope(
   metaKeys: IDBValidKey[],
   permitted: () => boolean,
 ): Promise<boolean> {
-  return activeBackend().deleteImportJobWithMetaIfScope(id, scope, metaKeys, permitted);
+  return runAccountStorageWrite(() => activeBackend().deleteImportJobWithMetaIfScope(id, scope, metaKeys, permitted));
 }
 
 export function idbDeleteExpiredImportDrafts(scope: ImportRecordScope, expiresAt: number): Promise<number> {
-  return activeBackend().deleteExpiredImportDrafts(scope, expiresAt);
+  return runAccountStorageWrite(() => activeBackend().deleteExpiredImportDrafts(scope, expiresAt));
 }
 
 /** add — for the outbox (autoIncrement); returns the assigned key (localSeq). */
 export function idbAdd(store: StoreName, value: unknown): Promise<IDBValidKey> {
-  return activeBackend().add(store, value);
+  return runAccountStorageWrite(() => activeBackend().add(store, value));
 }
 
 /** Atomic outbox→deadletter move — see StorageBackend.moveToDeadLetter. */
 export function idbMoveToDeadLetter(seq: number | null, deadLetter: unknown): Promise<void> {
-  return activeBackend().moveToDeadLetter(seq, deadLetter);
+  return runAccountStorageWrite(() => activeBackend().moveToDeadLetter(seq, deadLetter));
 }
 
 export function idbDelete(store: StoreName, key: IDBValidKey): Promise<void> {
-  return activeBackend().delete(store, key);
+  return runAccountStorageWrite(() => activeBackend().delete(store, key));
 }
 
 export function idbClear(store: StoreName): Promise<void> {
-  return activeBackend().clear(store);
+  return runAccountStorageWrite(() => activeBackend().clear(store));
 }
 
 /** "Clear local data" (Settings) — the rescue hatch when the replica diverges. */
 export function clearLocalData(): Promise<void> {
-  return activeBackend().clearAll();
+  return runAccountStorageWrite(() => activeBackend().clearAll());
+}
+
+/** Privileged coordinated-sign-out clear; never exported by the public sync facade. */
+export function clearLocalDataForSignOut(permit: SignOutPermit): Promise<void> {
+  return runAccountStorageWrite(() => activeBackend().clearAll(), permit);
 }

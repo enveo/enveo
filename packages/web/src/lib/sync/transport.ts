@@ -14,6 +14,8 @@ import * as e2ee from "../e2ee";
 import { idbGet, idbPut } from "../idb";
 import * as outbox from "../outbox";
 import * as persist from "../persist";
+import { runServerWriteOperation } from "../serverWriteOperations";
+import type { SignOutPermit } from "../signOutBarrier";
 import { requestPersistentStorage } from "../storage";
 import { store } from "../store";
 import {
@@ -277,7 +279,7 @@ export async function doPull(): Promise<void> {
  * and after applying we REPLAY the outbox — this tab's optimistic state doesn't roll
  * back even when the journal carried an older version of the same entity.
  */
-export async function doPullE2ee(dek: Uint8Array, userId: string): Promise<void> {
+export async function doPullE2ee(dek: Uint8Array, userId: string, permit?: SignOutPermit): Promise<void> {
   if (!store.getLedger()) return; // before bootstrap
   // Decryption context = CALLER-EXPECTED values: the budget this replica is locally bound to
   // and the epoch WE requested — never the response's own metadata, which would let a malicious
@@ -312,7 +314,7 @@ export async function doPullE2ee(dek: Uint8Array, userId: string): Promise<void>
     // WRITE (it overwrites the session budget's whole checkpoint), so it carries the tenant this
     // cycle verified: fired in the background, it is the LAST thing to reach the server in a
     // cycle and the widest open window for a cookie swapped in another tab.
-    void e2ee.maybeUploadSnapshot(store.getLedger(), store.getCursor(), userId, budgetId).catch(() => {});
+    void e2ee.maybeUploadSnapshot(store.getLedger(), store.getCursor(), userId, budgetId, permit).catch(() => {});
     if (body.ops.length === 0 || nextCursor >= body.cursor) return; // journal caught up
   }
 }
@@ -328,7 +330,11 @@ export async function doPullE2ee(dek: Uint8Array, userId: string): Promise<void>
  * pass every FK guard). The server refuses a mismatch with 409 budget_mismatch and writes
  * nothing.
  */
-export async function pushPlainBatch(ops: SyncOp[]): Promise<PushResponse> {
+export function pushPlainBatch(ops: SyncOp[], permit?: SignOutPermit): Promise<PushResponse> {
+  return runServerWriteOperation("sync-push", () => pushPlainBatchImpl(ops), permit);
+}
+
+async function pushPlainBatchImpl(ops: SyncOp[]): Promise<PushResponse> {
   const res = await fetch("/api/sync/push", {
     method: "POST",
     headers: { "content-type": "application/json" },
@@ -356,7 +362,11 @@ export async function pushPlainBatch(ops: SyncOp[]): Promise<PushResponse> {
  * tenant assertion (see pushPlainBatch) — in v2 it is also the authenticated op context, so it
  * is REQUIRED, never optional. HTTP success = whole batch accepted (applied/duplicate).
  */
-export async function pushE2eeBatch(epoch: number, budgetId: string, ops: e2ee.CipherOp[]): Promise<void> {
+export function pushE2eeBatch(epoch: number, budgetId: string, ops: e2ee.CipherOp[], permit?: SignOutPermit): Promise<void> {
+  return runServerWriteOperation("sync-push", () => pushE2eeBatchImpl(epoch, budgetId, ops), permit);
+}
+
+async function pushE2eeBatchImpl(epoch: number, budgetId: string, ops: e2ee.CipherOp[]): Promise<void> {
   const res = await fetch("/api/sync2/push", {
     method: "POST",
     headers: { "content-type": "application/json" },
@@ -473,7 +483,16 @@ async function replaceServer(ledger: ClientLedger): Promise<{ budgetId: string; 
  * (consistent epoch — the next pull won't force a needless fullResync). Also fulfills the durable
  * replace obligation (backup import). Throws on failure (server untouched, the flag stays up).
  */
-export async function pushLocalToServer(): Promise<void> {
+export function pushLocalToServer(): Promise<void> {
+  return runServerWriteOperation("backup-replace", () => pushLocalToServerImpl());
+}
+
+/** Privileged replacement used only inside the required-lease final flush. */
+export function pushLocalToServerForSignOut(permit: SignOutPermit): Promise<void> {
+  return runServerWriteOperation("backup-replace", () => pushLocalToServerImpl(), permit);
+}
+
+async function pushLocalToServerImpl(): Promise<void> {
   const ledger = store.getLedger();
   // Error CODES, never prose: this is reachable from the UI (backup import)
   // and lib/api.ts owns the wording in every locale (ERROR_KEYS → apiErrorMessage).
@@ -499,7 +518,16 @@ export async function pushLocalToServer(): Promise<void> {
  * (outbox.clearAll) and the replace obligation fulfilled. Throws on failure (server
  * untouched — the replacePending flag stays up, doCycle retries).
  */
-export async function resetServerE2ee(dek?: Uint8Array): Promise<void> {
+export function resetServerE2ee(dek?: Uint8Array): Promise<void> {
+  return runServerWriteOperation("e2ee-reset", () => resetServerE2eeImpl(dek));
+}
+
+/** Privileged encrypted reset used only inside the required-lease final flush. */
+export function resetServerE2eeForSignOut(dek: Uint8Array, permit: SignOutPermit): Promise<void> {
+  return runServerWriteOperation("e2ee-reset", () => resetServerE2eeImpl(dek), permit);
+}
+
+async function resetServerE2eeImpl(dek?: Uint8Array): Promise<void> {
   // MULTI-TENANT GUARD — as in replaceServer: /sync2/reset DELETES the session user's whole
   // journal and swaps their checkpoint, and it is reachable outside a cycle (disable local
   // mode, JSON import). Two independently-e2ee budgets both sit at epoch 1, so the server's
