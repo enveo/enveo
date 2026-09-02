@@ -1,9 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import { __resetAccountStorageOperationsForTests } from "../accountStorageOperations";
+import { __resetAccountStorageOperationsForTests, runAccountStorageWrite } from "../accountStorageOperations";
+import * as e2ee from "../e2ee";
 import { __resetStorageForTests, idbPut } from "../idb";
-import { __resetPersistForTests } from "../persist";
+import * as persist from "../persist";
 import { __resetSignOutBarrierForTests, isSignOutBlocking } from "../signOutBarrier";
-import { createSignOutRegistry, type StorageLike } from "../signOutCoordination";
+import { createRegistryWriteGate, createSignOutCoordinator, createSignOutRegistry, type SignOutBarrierPort, type StorageLike } from "../signOutCoordination";
+import { store } from "../store";
 import { clearLocalAccountDataForSignOut } from "../sync";
 import {
   __installSignOutCoordinatorForTests,
@@ -36,19 +38,30 @@ class MemoryStorage implements StorageLike {
 }
 
 class FakePageLifecycle {
-  readonly listeners = new Map<string, () => void>();
-  addEventListener(type: string, listener: () => void): void {
+  readonly listeners = new Map<string, (event: { persisted: boolean }) => void>();
+  addEventListener(type: string, listener: (event: { persisted: boolean }) => void): void {
     this.listeners.set(type, listener);
   }
-  dispatch(type: "pagehide" | "pageshow"): void {
-    this.listeners.get(type)?.();
+  dispatch(type: "pagehide" | "pageshow", persisted = false): void {
+    this.listeners.get(type)?.({ persisted });
   }
 }
+
+class FakeBarrier implements SignOutBarrierPort<object> {
+  activate(): void {}
+  release(): void {}
+  createPermit(): object {
+    return {};
+  }
+  markLocalCleared(): void {}
+}
+
+const EMPTY_LEDGER = { accounts: [], groups: [], envelopes: [], transactions: [], allocations: [], categories: [], places: [], budgets: [] };
 
 beforeEach(() => {
   __resetMultiTabForTests();
   __resetSignOutBarrierForTests();
-  __resetPersistForTests();
+  persist.__resetPersistForTests();
   __resetAccountStorageOperationsForTests();
   __resetStorageForTests();
 });
@@ -56,7 +69,7 @@ beforeEach(() => {
 afterEach(() => {
   __resetMultiTabForTests();
   __resetSignOutBarrierForTests();
-  __resetPersistForTests();
+  persist.__resetPersistForTests();
   __resetAccountStorageOperationsForTests();
   __resetStorageForTests();
 });
@@ -75,21 +88,87 @@ describe("sign-out coordinator page lifecycle", () => {
     await expect(idbPut("meta", "must-not-write", "key")).rejects.toThrow();
   });
 
-  it("re-registers and rescans synchronously on pageshow after reusable pagehide cleanup", () => {
+  it("keeps persisted-page presence so a frozen required participant makes sign-out abort", async () => {
     const storage = new MemoryStorage();
     __installSignOutCoordinatorForTests(storage);
     const lifecycle = new FakePageLifecycle();
     installSignOutPageLifecycle(lifecycle);
-    lifecycle.dispatch("pagehide");
+    lifecycle.dispatch("pagehide", true);
+    const peerRegistry = createSignOutRegistry({ storage });
+    let expire!: () => void;
+    const peer = createSignOutCoordinator({
+      registry: peerRegistry,
+      barrier: new FakeBarrier(),
+      gate: createRegistryWriteGate(peerRegistry),
+      send: () => {},
+      quiesceCycle: async () => {},
+      quiesceServerWrites: async () => {},
+      quiesceAccountWrites: async () => {},
+      drainPersistence: async () => {},
+      waitForTimeout: () =>
+        new Promise<void>((resolve) => {
+          expire = resolve;
+        }),
+    });
+
+    const pending = peer.begin();
+    await Promise.resolve();
+    expire();
+    await expect(pending).rejects.toThrow("sign_out_coordination_failed");
+  });
+
+  it("keeps non-persisted unload presence until admitted work can no longer be overtaken", async () => {
+    const storage = new MemoryStorage();
+    __installSignOutCoordinatorForTests(storage);
+    const lifecycle = new FakePageLifecycle();
+    installSignOutPageLifecycle(lifecycle);
+    let finish!: () => void;
+    const inFlight = runAccountStorageWrite(
+      () =>
+        new Promise<void>((resolve) => {
+          finish = resolve;
+        }),
+    );
+
+    lifecycle.dispatch("pagehide", false);
     const peer = createSignOutRegistry({ storage });
-    peer.createAttempt();
+    const marker = peer.createAttempt();
 
-    lifecycle.dispatch("pageshow");
-    expect(isSignOutBlocking()).toBe(true);
+    expect(marker.requiredSourceIds).toHaveLength(1);
+    finish();
+    await inFlight;
+  });
 
-    lifecycle.dispatch("pagehide");
-    lifecycle.dispatch("pageshow");
-    expect(isSignOutBlocking()).toBe(true);
+  it("clears secrets and forces terminal reload when a frozen page missed rotation and broadcasts", async () => {
+    const storage = new MemoryStorage();
+    __installSignOutCoordinatorForTests(storage);
+    const lifecycle = new FakePageLifecycle();
+    let resumeWork!: () => void;
+    const inFlight = runAccountStorageWrite(async () => {
+      await new Promise<void>((resolve) => {
+        resumeWork = resolve;
+      });
+      await idbPut("meta", "must-not-return", "frozen-continuation");
+    });
+    let reloads = 0;
+    installSignOutPageLifecycle(lifecycle, () => {
+      reloads++;
+    });
+    store.replace(EMPTY_LEDGER, 0, "budget");
+    e2ee.setDek(new Uint8Array(32), 1);
+    await persist.flushed();
+    const peer = createSignOutRegistry({ storage });
+    const marker = peer.createAttempt();
+    peer.rotateGeneration(marker.attemptId);
+    peer.removeAttempt(marker.attemptId);
+
+    lifecycle.dispatch("pageshow", true);
+
+    expect(reloads).toBe(1);
+    expect(e2ee.getDek()).toBeNull();
+    expect(store.getLedger()).toBeNull();
+    resumeWork();
+    await expect(inFlight).rejects.toThrow("stale_account_storage_generation");
   });
 
   it("admits only the coordinated attempt's own server-session termination while blocked", async () => {

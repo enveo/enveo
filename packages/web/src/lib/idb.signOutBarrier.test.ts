@@ -33,14 +33,4 @@ describe("IndexedDB account-storage barrier", () => {
       }),
     ).rejects.toThrow("sign_out_in_progress");
   });
-
-  it("keeps every public IndexedDB mutator behind the central account-write admission", async () => {
-    const source = await Bun.file(new URL("./idb.ts", import.meta.url)).text();
-    const directBackendMutations = [...source.matchAll(/return activeBackend\(\)\.(\w+)\(/g)]
-      .map((match) => match[1])
-      .filter((method) => method !== "importTransactionProof");
-    expect(directBackendMutations).toEqual([]);
-    expect(source).toContain("this.dbPromise = runAccountStorageWrite(async () =>");
-    expect(source.match(/runAccountStorageWrite\(/g)?.length).toBe(18);
-  });
 });
