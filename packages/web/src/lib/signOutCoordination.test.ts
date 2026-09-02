@@ -74,7 +74,7 @@ describe("shared sign-out coordination registry", () => {
     expect(serialized).not.toContain("user");
     expect(serialized).not.toContain("budget");
     expect(serialized).not.toContain("ledger");
-    expect(Object.keys(marker).sort()).toEqual(["attemptId", "expiresAt", "ready", "requiredSourceIds", "sourceId", "startedAt", "v"]);
+    expect(Object.keys(marker).sort()).toEqual(["attemptId", "expiresAt", "generation", "ready", "requiredSourceIds", "sourceId", "startedAt", "v"]);
   });
 
   it("lets a newly opened page discover and block on an active marker", () => {
@@ -209,6 +209,53 @@ describe("shared sign-out coordination registry", () => {
 
     expect(peer.activeAttempts().map((attempt) => attempt.attemptId)).toEqual([marker.attemptId]);
     expect(peer.persistDecision()).toBe("wait");
+  });
+
+  it("keeps committed state fail closed when the wall clock moves backward", () => {
+    const storage = new MemoryStorage();
+    let now = 1_000;
+    const ids = ["generation", "source-a", "attempt-a", "source-b"];
+    const options = { storage, now: () => now, randomId: () => ids.shift()!, ttlMs: 100 };
+    const initiator = createSignOutRegistry(options);
+    const marker = initiator.createAttempt();
+    initiator.holdAttemptForClear(marker.attemptId);
+    const peer = createSignOutRegistry(options);
+
+    now = 500;
+
+    expect(peer.activeAttempts().map((attempt) => attempt.attemptId)).toEqual([marker.attemptId]);
+    expect(peer.persistDecision()).toBe("wait");
+  });
+
+  it("lets only a terminal-generation page ignore a committed tombstone left by removal failure", () => {
+    const storage = new MemoryStorage();
+    const ids = ["generation-a", "source-a", "attempt-a", "generation-b", "source-b"];
+    const options = { storage, now: () => 1_000, randomId: () => ids.shift()!, ttlMs: 100 };
+    const oldPage = createSignOutRegistry(options);
+    const marker = oldPage.createAttempt();
+    oldPage.holdAttemptForClear(marker.attemptId);
+    oldPage.rotateGeneration(marker.attemptId);
+    const attemptKey = [...storage.values.keys()].find((key) => key.includes("attempt."))!;
+    const tombstone = JSON.parse(storage.values.get(attemptKey)!) as { terminalGeneration?: { epoch: number; token: string; v: 1 } };
+    expect(tombstone.terminalGeneration).toEqual({ epoch: 1, token: "generation-b", v: 1 });
+    const realRemove = storage.removeItem.bind(storage);
+    let removalFailed = false;
+    storage.removeItem = (key) => {
+      if (key === attemptKey && !removalFailed) {
+        removalFailed = true;
+        throw new Error("remove failed");
+      }
+      realRemove(key);
+    };
+
+    expect(() => oldPage.removeAttempt(marker.attemptId)).toThrow("sign_out_coordination_failed");
+    const terminalPage = createSignOutRegistry(options);
+
+    expect(oldPage.isPageGenerationCurrent()).toBe(false);
+    expect(oldPage.persistDecision()).toBe("skip");
+    expect(terminalPage.isPageGenerationCurrent()).toBe(true);
+    expect(terminalPage.activeAttempts()).toEqual([]);
+    expect(terminalPage.persistDecision()).toBe("run");
   });
 });
 

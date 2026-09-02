@@ -121,12 +121,29 @@ function propertyName(name: ts.PropertyName): string | null {
   return null;
 }
 
+function directTypeName(type: ts.TypeNode): string | null {
+  if (ts.isParenthesizedTypeNode(type)) return directTypeName(type.type);
+  if (!ts.isTypeReferenceNode(type)) return null;
+  if (ts.isIdentifier(type.typeName)) return type.typeName.text;
+  return type.typeName.right.text;
+}
+
 function expressionPath(expression: ts.Expression, aliases: ReadonlyMap<string, string>): string {
   if (ts.isIdentifier(expression)) return aliases.get(expression.text) ?? expression.text;
   if (expression.kind === ts.SyntaxKind.ThisKeyword) return "this";
-  if (ts.isPropertyAccessExpression(expression)) return `${expressionPath(expression.expression, aliases)}.${expression.name.text}`;
+  if ((ts.isAsExpression(expression) || ts.isSatisfiesExpression(expression)) && directTypeName(expression.type) === "IDBObjectStore") {
+    return "IDBObjectStore";
+  }
+  if (ts.isParenthesizedExpression(expression) || ts.isAsExpression(expression) || ts.isSatisfiesExpression(expression) || ts.isNonNullExpression(expression)) {
+    return expressionPath(expression.expression, aliases);
+  }
+  if (ts.isPropertyAccessExpression(expression)) {
+    const path = `${expressionPath(expression.expression, aliases)}.${expression.name.text}`;
+    return aliases.get(path) ?? path;
+  }
   if (ts.isElementAccessExpression(expression) && expression.argumentExpression && ts.isStringLiteralLike(expression.argumentExpression)) {
-    return `${expressionPath(expression.expression, aliases)}.${expression.argumentExpression.text}`;
+    const path = `${expressionPath(expression.expression, aliases)}.${expression.argumentExpression.text}`;
+    return aliases.get(path) ?? path;
   }
   if (ts.isCallExpression(expression)) return `${expressionPath(expression.expression, aliases)}()`;
   return "<dynamic>";
@@ -144,18 +161,20 @@ function containingFunction(node: ts.Node): string {
 }
 
 function isInsideWrapper(node: ts.Node, aliases: ReadonlyMap<string, string>, wrappers: ReadonlySet<string>): boolean {
+  let functionDepth = 0;
   for (let current = node.parent; current; current = current.parent) {
+    if (ts.isFunctionDeclaration(current) || ts.isMethodDeclaration(current) || ts.isFunctionExpression(current) || ts.isArrowFunction(current))
+      functionDepth++;
     if (!ts.isCallExpression(current)) continue;
     const path = expressionPath(current.expression, aliases);
     const name = path.split(".").at(-1) ?? path;
     if (!wrappers.has(name)) continue;
-    if (current.arguments.some((argument) => node.getStart() >= argument.getStart() && node.end <= argument.end)) return true;
+    if (current.arguments.some((argument) => node.getStart() >= argument.getStart() && node.end <= argument.end)) return functionDepth <= 1;
   }
   return false;
 }
 
-function fetchMethod(call: ts.CallExpression): string {
-  const options = call.arguments[1];
+function optionsMethod(options: ts.Expression | undefined): string {
   if (!options) return "GET";
   if (!ts.isObjectLiteralExpression(options)) return "DYNAMIC";
   for (const property of options.properties) {
@@ -166,8 +185,24 @@ function fetchMethod(call: ts.CallExpression): string {
   return options.properties.some(ts.isSpreadAssignment) ? "DYNAMIC" : "GET";
 }
 
-function callTarget(call: ts.CallExpression): string {
+function constructedRequest(call: ts.CallExpression): ts.NewExpression | null {
   const target = call.arguments[0];
+  if (!target || !ts.isNewExpression(target)) return null;
+  const path = expressionPath(target.expression, new Map());
+  return path === "Request" || path.endsWith(".Request") ? target : null;
+}
+
+function fetchMethod(call: ts.CallExpression): string {
+  if (call.arguments[1]) return optionsMethod(call.arguments[1]);
+  const request = constructedRequest(call);
+  if (!request) return "GET";
+  if (request.arguments?.[1]) return optionsMethod(request.arguments[1]);
+  const input = request.arguments?.[0];
+  return input && (ts.isStringLiteralLike(input) || ts.isTemplateExpression(input)) ? "GET" : "DYNAMIC";
+}
+
+function callTarget(call: ts.CallExpression): string {
+  const target = constructedRequest(call)?.arguments?.[0] ?? call.arguments[0];
   if (!target) return "<missing>";
   if (ts.isStringLiteralLike(target) || ts.isNoSubstitutionTemplateLiteral(target)) return target.text;
   if (ts.isTemplateExpression(target)) return target.head.text || "<template>";
@@ -178,13 +213,43 @@ function isAuthWrite(path: string): boolean {
   return path === "authClient.signOut" || path.startsWith("authClient.signIn.") || path.startsWith("authClient.signUp.");
 }
 
+function isIdbObjectStoreType(type: ts.TypeNode | undefined, typeAliases: ReadonlySet<string> = new Set()): boolean {
+  if (!type) return false;
+  if (ts.isParenthesizedTypeNode(type)) return isIdbObjectStoreType(type.type, typeAliases);
+  if (ts.isUnionTypeNode(type) || ts.isIntersectionTypeNode(type)) return type.types.some((member) => isIdbObjectStoreType(member, typeAliases));
+  const name = directTypeName(type);
+  return name === "IDBObjectStore" || (name !== null && typeAliases.has(name));
+}
+
+function assertedIdbObjectStore(expression: ts.Expression | undefined, typeAliases: ReadonlySet<string>): boolean {
+  if (!expression) return false;
+  if (ts.isParenthesizedExpression(expression)) return assertedIdbObjectStore(expression.expression, typeAliases);
+  return (ts.isAsExpression(expression) || ts.isSatisfiesExpression(expression)) && isIdbObjectStoreType(expression.type, typeAliases);
+}
+
 function auditSource(file: string, source: string): Finding[] {
   const kind = file.endsWith(".tsx") ? ts.ScriptKind.TSX : ts.ScriptKind.TS;
   const parsed = ts.createSourceFile(file, source, ts.ScriptTarget.Latest, true, kind);
   const diagnostics = (parsed as ts.SourceFile & { parseDiagnostics?: readonly ts.Diagnostic[] }).parseDiagnostics ?? [];
   if (diagnostics.length > 0) throw new Error(`write_boundary_parse_failed:${file}`);
   const aliases = new Map<string, string>();
+  const idbTypeAliases = new Set<string>();
   const findings: Finding[] = [];
+
+  const typeAliasDeclarations: ts.TypeAliasDeclaration[] = [];
+  const collectTypeAliases = (node: ts.Node): void => {
+    if (ts.isTypeAliasDeclaration(node)) typeAliasDeclarations.push(node);
+    ts.forEachChild(node, collectTypeAliases);
+  };
+  collectTypeAliases(parsed);
+  for (let changed = true; changed; ) {
+    changed = false;
+    for (const declaration of typeAliasDeclarations) {
+      if (idbTypeAliases.has(declaration.name.text) || !isIdbObjectStoreType(declaration.type, idbTypeAliases)) continue;
+      idbTypeAliases.add(declaration.name.text);
+      changed = true;
+    }
+  }
 
   const record = (node: ts.CallExpression, boundary: Boundary, callee: string, method: string, target: string, wrapped: boolean) => {
     const position = parsed.getLineAndCharacterOfPosition(node.getStart(parsed));
@@ -192,17 +257,33 @@ function auditSource(file: string, source: string): Finding[] {
   };
 
   const visit = (node: ts.Node): void => {
-    if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) && node.initializer) {
-      const path = expressionPath(node.initializer, aliases);
-      if (
-        path === "fetch" ||
-        path.endsWith(".fetch") ||
-        path === "indexedDB" ||
-        path.endsWith(".indexedDB") ||
-        path === "activeBackend()" ||
-        path.endsWith(".objectStore()") ||
-        path === "authClient" ||
-        path.startsWith("authClient.")
+    if (ts.isParameter(node) && ts.isIdentifier(node.name) && isIdbObjectStoreType(node.type, idbTypeAliases)) {
+      aliases.set(node.name.text, "IDBObjectStore");
+      if (ts.isConstructorDeclaration(node.parent) && node.modifiers?.length) aliases.set(`this.${node.name.text}`, "IDBObjectStore");
+    }
+    if (ts.isPropertyDeclaration(node) && isIdbObjectStoreType(node.type, idbTypeAliases)) {
+      const name = propertyName(node.name);
+      if (name) aliases.set(`this.${name}`, "IDBObjectStore");
+    }
+    if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name)) {
+      const path = node.initializer ? expressionPath(node.initializer, aliases) : "<missing>";
+      const boundMutator = path.match(/^IDBObjectStore\.(add|clear|delete|put)\.bind\(\)$/)?.[1];
+      if (isIdbObjectStoreType(node.type, idbTypeAliases) || assertedIdbObjectStore(node.initializer, idbTypeAliases)) {
+        aliases.set(node.name.text, "IDBObjectStore");
+      } else if (boundMutator) {
+        aliases.set(node.name.text, `IDBObjectStore.${boundMutator}`);
+      } else if (
+        node.initializer &&
+        (path === "fetch" ||
+          path.endsWith(".fetch") ||
+          path === "indexedDB" ||
+          path.endsWith(".indexedDB") ||
+          path === "activeBackend()" ||
+          path === "IDBObjectStore" ||
+          /^IDBObjectStore\.(add|clear|delete|put)$/.test(path) ||
+          path.endsWith(".objectStore()") ||
+          path === "authClient" ||
+          path.startsWith("authClient."))
       ) {
         aliases.set(node.name.text, path);
       }
@@ -225,7 +306,7 @@ function auditSource(file: string, source: string): Finding[] {
           [...aliases.values()].some((alias) => path.startsWith(`${alias}.`) && alias === "activeBackend()"));
       const rawFactory =
         path === "indexedDB.open" || path === "indexedDB.deleteDatabase" || path.endsWith(".indexedDB.open") || path.endsWith(".indexedDB.deleteDatabase");
-      const rawObjectStore = IDB_OBJECT_STORE_MUTATORS.has(backendMethod) && path.includes(".objectStore().");
+      const rawObjectStore = IDB_OBJECT_STORE_MUTATORS.has(backendMethod) && (path.includes(".objectStore().") || path.startsWith("IDBObjectStore."));
       const rawSchemaMutation = IDB_SCHEMA_MUTATORS.has(backendMethod);
       const transactionMode = backendMethod === "transaction" ? node.arguments[1] : undefined;
       const rawWriteTransaction =
@@ -322,6 +403,91 @@ describe("write-boundary AST audit", () => {
     );
 
     expect(findings.map((finding) => finding.wrapped)).toEqual([true, true]);
+  });
+
+  it("flags a write carried by a constructed Request", () => {
+    const findings = auditSource(
+      "request.ts",
+      `
+        fetch(new Request("/write", { method: "POST" }));
+        fetch(new Request(existingRequest));
+        fetch(new Request("/read"));
+      `,
+    );
+
+    expect(findings.map((finding) => [finding.boundary, finding.method, finding.target, finding.wrapped])).toEqual([
+      ["server-write", "POST", "/write", false],
+      ["server-write", "DYNAMIC", "<dynamic>", false],
+    ]);
+  });
+
+  it("flags mutations through declared IDBObjectStore receivers and aliases", () => {
+    const findings = auditSource(
+      "typed-store.ts",
+      `
+        function write(store: IDBObjectStore) {
+          const alias = store;
+          alias["put"](value, "key");
+        }
+        const asserted = unknownStore as IDBObjectStore;
+        asserted.delete("key");
+        declare const declared: IDBObjectStore;
+        declared.add(value);
+      `,
+    );
+
+    expect(findings.map((finding) => [finding.boundary, finding.method, finding.wrapped])).toEqual([
+      ["account-storage", "put", false],
+      ["account-storage", "delete", false],
+      ["account-storage", "add", false],
+    ]);
+  });
+
+  it("follows IDBObjectStore type aliases, receiver fields, and extracted mutator aliases", () => {
+    const findings = auditSource(
+      "aliased-store.ts",
+      `
+        function write(store: Store) {
+          const receiver = store;
+          receiver.put(value);
+          const add = receiver.add;
+          add(value);
+          const remove = receiver.delete.bind(receiver);
+          remove("key");
+        }
+        class Writer {
+          constructor(private readonly store: Store) {}
+          clear() {
+            this.store.clear();
+          }
+        }
+        type Store = IDBObjectStore;
+      `,
+    );
+
+    expect(findings.map((finding) => [finding.boundary, finding.method, finding.wrapped])).toEqual([
+      ["account-storage", "put", false],
+      ["account-storage", "add", false],
+      ["account-storage", "delete", false],
+      ["account-storage", "clear", false],
+    ]);
+  });
+
+  it("does not treat writes escaping through deferred nested callbacks as enrolled", () => {
+    const findings = auditSource(
+      "deferred.ts",
+      `
+        runServerWriteOperation("deferred", async () => {
+          setTimeout(() => fetch("/late", { method: "POST" }), 0);
+        });
+        runAccountStorageWrite(async () => {
+          queueMicrotask(() => activeBackend().put("meta", value));
+          Promise.resolve().then(() => (typedStore as IDBObjectStore).clear());
+        });
+      `,
+    );
+
+    expect(findings.map((finding) => finding.wrapped)).toEqual([false, false, false]);
   });
 
   it("fails closed on syntax it cannot parse", () => {

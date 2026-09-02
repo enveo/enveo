@@ -13,6 +13,12 @@ export interface StorageLike {
   removeItem(key: string): void;
 }
 
+export interface SignOutGenerationIdentity {
+  readonly v: 1;
+  readonly epoch: number;
+  readonly token: string;
+}
+
 export interface SignOutAttemptMarker {
   readonly v: 1;
   readonly ready: boolean;
@@ -21,7 +27,9 @@ export interface SignOutAttemptMarker {
   readonly startedAt: number;
   readonly expiresAt: number;
   readonly requiredSourceIds: readonly string[];
+  readonly generation: SignOutGenerationIdentity;
   readonly clearCommittedAt?: number;
+  readonly terminalGeneration?: SignOutGenerationIdentity;
 }
 
 interface PresenceRecord {
@@ -67,19 +75,23 @@ function isOpaqueId(value: unknown): value is string {
   return typeof value === "string" && value.length > 0 && value.length <= 128;
 }
 
-interface GenerationRecord {
-  readonly v: 1;
-  readonly epoch: number;
-  readonly token: string;
+type GenerationRecord = SignOutGenerationIdentity;
+
+function isGenerationRecord(value: unknown): value is GenerationRecord {
+  if (!value || typeof value !== "object") return false;
+  const record = value as Partial<GenerationRecord>;
+  return record.v === 1 && Number.isSafeInteger(record.epoch) && (record.epoch ?? -1) >= 0 && isOpaqueId(record.token);
+}
+
+function sameGeneration(a: GenerationRecord, b: GenerationRecord): boolean {
+  return a.epoch === b.epoch && a.token === b.token;
 }
 
 function parseGeneration(value: string | null): GenerationRecord | null {
   if (!value) return null;
   try {
-    const record = JSON.parse(value) as Partial<GenerationRecord>;
-    if (record.v === 1 && Number.isSafeInteger(record.epoch) && (record.epoch ?? -1) >= 0 && isOpaqueId(record.token)) {
-      return record as GenerationRecord;
-    }
+    const record = JSON.parse(value) as unknown;
+    if (isGenerationRecord(record)) return record;
   } catch {
     // Pre-protocol and racing first-load values were plain opaque tokens.
   }
@@ -118,6 +130,12 @@ function parseAttempt(value: string | null): SignOutAttemptMarker | null {
       typeof record.expiresAt !== "number" ||
       record.expiresAt < record.startedAt ||
       (record.clearCommittedAt !== undefined && (typeof record.clearCommittedAt !== "number" || record.clearCommittedAt < record.startedAt)) ||
+      !isGenerationRecord(record.generation) ||
+      (record.terminalGeneration !== undefined &&
+        (!isGenerationRecord(record.terminalGeneration) ||
+          record.clearCommittedAt === undefined ||
+          record.terminalGeneration.epoch !== record.generation.epoch + 1 ||
+          record.terminalGeneration.token === record.generation.token)) ||
       !Array.isArray(record.requiredSourceIds) ||
       !record.requiredSourceIds.every(isOpaqueId)
     ) {
@@ -216,6 +234,7 @@ export function createSignOutRegistry(options: RegistryOptions): SignOutRegistry
     },
     createAttempt() {
       registry.refreshPresence();
+      if (!generationCurrent()) fail();
       const startedAt = now();
       const attemptId = randomId();
       if (!isOpaqueId(attemptId)) fail();
@@ -227,6 +246,7 @@ export function createSignOutRegistry(options: RegistryOptions): SignOutRegistry
         startedAt,
         expiresAt: startedAt + ttlMs,
         requiredSourceIds: [],
+        generation: { ...pageGenerationRecord! },
       };
       // Publish the blocker BEFORE taking the presence snapshot. A page that registers after
       // the snapshot must already be able to observe this marker before it starts boot/sync.
@@ -248,9 +268,24 @@ export function createSignOutRegistry(options: RegistryOptions): SignOutRegistry
       const marker = parseAttempt(get(key));
       const at = now();
       const ordinaryMarkerInvalid = marker?.clearCommittedAt === undefined && (marker === null || marker.expiresAt <= at || marker.expiresAt > at + ttlMs);
-      const committedMarkerInvalid = marker?.clearCommittedAt !== undefined && marker.clearCommittedAt > at;
-      if (!marker || marker.attemptId !== attemptId || ordinaryMarkerInvalid || committedMarkerInvalid) {
+      if (!marker || marker.attemptId !== attemptId || ordinaryMarkerInvalid) {
         if (get(key) !== null) remove(key);
+        return null;
+      }
+      const storedGeneration = parseGeneration(get(GENERATION_KEY));
+      if (
+        marker.terminalGeneration &&
+        storedGeneration &&
+        sameGeneration(marker.terminalGeneration, storedGeneration) &&
+        sameGeneration(pageGenerationRecord!, storedGeneration)
+      ) {
+        // The terminal generation proves this committed tombstone belongs to a completed clear.
+        // Cleanup is opportunistic: a prior remove failure must not brick a fresh generation.
+        try {
+          storage.removeItem(key);
+        } catch {
+          // Safe to ignore only for this exact terminal-generation tombstone.
+        }
         return null;
       }
       return marker;
@@ -282,7 +317,7 @@ export function createSignOutRegistry(options: RegistryOptions): SignOutRegistry
     holdAttemptForClear(attemptId) {
       if (!registry.isSoleActiveAttempt(attemptId, sourceId)) fail();
       const marker = registry.readAttempt(attemptId);
-      if (!marker || marker.sourceId !== sourceId) fail();
+      if (!marker || marker.sourceId !== sourceId || !sameGeneration(marker.generation, pageGenerationRecord!)) fail();
       const at = now();
       set(`${ATTEMPT_PREFIX}${attemptId}`, JSON.stringify({ ...marker, clearCommittedAt: at }));
     },
@@ -303,10 +338,14 @@ export function createSignOutRegistry(options: RegistryOptions): SignOutRegistry
     rotateGeneration(attemptId) {
       if (!registry.isSoleActiveAttempt(attemptId, sourceId)) fail();
       const marker = registry.readAttempt(attemptId);
-      if (!marker || marker.sourceId !== sourceId) fail();
+      if (!marker || marker.sourceId !== sourceId || !sameGeneration(marker.generation, pageGenerationRecord!)) fail();
       const nextGeneration = randomId();
       if (!isOpaqueId(nextGeneration) || nextGeneration === pageGenerationRecord!.token) fail();
-      set(GENERATION_KEY, JSON.stringify({ v: 1, epoch: pageGenerationRecord!.epoch + 1, token: nextGeneration } satisfies GenerationRecord));
+      const terminalGeneration = { v: 1, epoch: pageGenerationRecord!.epoch + 1, token: nextGeneration } satisfies GenerationRecord;
+      // Publish recovery identity before rotation. If rotation fails, the committed marker still
+      // blocks. If later removal fails, only a page born into this exact generation may ignore it.
+      set(`${ATTEMPT_PREFIX}${attemptId}`, JSON.stringify({ ...marker, terminalGeneration } satisfies SignOutAttemptMarker));
+      set(GENERATION_KEY, JSON.stringify(terminalGeneration));
     },
     isPageGenerationCurrent() {
       return generationCurrent();
