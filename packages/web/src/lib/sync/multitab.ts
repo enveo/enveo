@@ -230,7 +230,12 @@ async function installSignOutCoordinator(storageOverride?: StorageLike): Promise
     if (!storage) {
       // Bun/unit environments have no page or shared storage. A browser page whose localStorage
       // is unavailable cannot prove cross-tab exclusion and must fail closed.
-      if (typeof window !== "undefined") failSignOutCoordinationClosed();
+      if (typeof window !== "undefined") {
+        failSignOutCoordinationClosed();
+        return;
+      }
+      
+
       configureSignOutSharedBlocker(null);
       configureSignOutPermitValidator(null);
       configureAccountStorageGenerationFence(null);
@@ -286,6 +291,11 @@ async function installSignOutCoordinator(storageOverride?: StorageLike): Promise
  
 export function __installSignOutCoordinatorForTests(storage: StorageLike): Promise<void> {
   return installSignOutCoordinator(storage);
+}
+
+ 
+export function __installUnavailableBrowserSignOutCoordinatorForTests(): Promise<void> {
+  return installSignOutCoordinator();
 }
 
 interface PageLifecycleTarget {

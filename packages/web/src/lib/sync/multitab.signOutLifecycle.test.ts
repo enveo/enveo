@@ -3,12 +3,15 @@ import { __resetAccountStorageOperationsForTests, runAccountStorageWrite } from 
 import * as e2ee from "../e2ee";
 import { __resetStorageForTests, idbPut } from "../idb";
 import * as persist from "../persist";
+import { runServerWriteOperation } from "../serverWriteOperations";
 import { __resetSignOutBarrierForTests, isSignOutBlocking } from "../signOutBarrier";
 import { createRegistryWriteGate, createSignOutCoordinator, createSignOutRegistry, type SignOutBarrierPort, type StorageLike } from "../signOutCoordination";
 import { store } from "../store";
 import { clearLocalAccountDataForSignOut } from "../sync";
+import { retryBoot } from "./boot";
 import {
   __installSignOutCoordinatorForTests,
+  __installUnavailableBrowserSignOutCoordinatorForTests,
   __resetMultiTabForTests,
   beginSignOutCoordination,
   finishSignOutCoordination,
@@ -75,6 +78,24 @@ afterEach(() => {
 });
 
 describe("sign-out coordinator page lifecycle", () => {
+  it("keeps browser boot, account storage, and server writes fail closed without shared storage", async () => {
+    const savedWindow = (globalThis as { window?: unknown }).window;
+    (globalThis as { window?: unknown }).window = {};
+    try {
+      await __installUnavailableBrowserSignOutCoordinatorForTests();
+
+      expect(isSignOutBlocking()).toBe(true);
+      store.setBootStatus("booting");
+      await retryBoot();
+      expect(store.getBootStatus()).toBe("booting");
+      await expect(idbPut("meta", "must-not-write", "key")).rejects.toThrow();
+      await expect(runServerWriteOperation("direct-api-write", async () => "sent")).rejects.toThrow("sign_out_in_progress");
+    } finally {
+      if (savedWindow === undefined) delete (globalThis as { window?: unknown }).window;
+      else (globalThis as { window?: unknown }).window = savedWindow;
+    }
+  });
+
   it("keeps the page and account storage fail closed when coordinator installation cannot write shared storage", async () => {
     const storage = new MemoryStorage();
     storage.setItem = () => {
