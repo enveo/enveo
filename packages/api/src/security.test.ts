@@ -8,6 +8,7 @@
  * The default test env has an empty WEB_DIST → the allowlist contains http://localhost:5173.
  */
 import { describe, expect, it } from "bun:test";
+import { CSP_REPORT_PATH } from "./cspReports";
 import app from "./index";
 
 const EVIL = "https://evil.example";
@@ -24,6 +25,73 @@ function get(path: string, origin?: string) {
   if (origin) headers.origin = origin;
   return app.fetch(new Request(`http://localhost${path}`, { method: "GET", headers }));
 }
+
+describe("API response cache and cleanup headers", () => {
+  it("marks every API response no-store", async () => {
+    for (const response of [await get("/api/health"), await get("/api/auth/meta"), await get("/api/state"), await get("/api/missing")]) {
+      expect(response.headers.get("cache-control")).toBe("no-store");
+    }
+  });
+
+  it("never emits Clear-Site-Data because sign-out finalization uses coordinated browser storage", async () => {
+    const response = await get("/api/health");
+    expect(response.headers.get("clear-site-data")).toBeNull();
+  });
+
+  it("accepts a CSP report publicly and emits only sanitized telemetry", async () => {
+    const warnings: string[] = [];
+    const originalWarn = console.warn;
+    console.warn = (...args: unknown[]) => warnings.push(args.map(String).join(" "));
+    try {
+      const response = await app.fetch(
+        new Request(`http://localhost${CSP_REPORT_PATH}`, {
+          method: "POST",
+          headers: { "content-type": "application/csp-report", "user-agent": "Chrome/128" },
+          body: JSON.stringify({
+            "csp-report": {
+              "document-uri": "https://app.example/transactions?account=secret#row",
+              "blocked-uri": "https://evil.example/steal?budget=secret",
+              "effective-directive": "script-src-elem",
+              disposition: "enforce",
+              "script-sample": "secret ledger text",
+              "source-file": "https://app.example/assets/index.js?token=secret",
+            },
+          }),
+        }),
+      );
+      expect(response.status).toBe(204);
+      expect(response.headers.get("cache-control")).toBe("no-store");
+      expect(warnings.join(" ")).toContain('"blockedKind":"cross-origin"');
+      expect(warnings.join(" ")).not.toContain("secret");
+    } finally {
+      console.warn = originalWarn;
+    }
+  });
+
+  it("rejects malformed, unsupported, and oversized CSP reports", async () => {
+    const malformed = await app.fetch(
+      new Request(`http://localhost${CSP_REPORT_PATH}`, { method: "POST", headers: { "content-type": "application/csp-report" }, body: "{" }),
+    );
+    expect(malformed.status).toBe(400);
+    const unsupported = await app.fetch(
+      new Request(`http://localhost${CSP_REPORT_PATH}`, { method: "POST", headers: { "content-type": "text/plain" }, body: "{}" }),
+    );
+    expect(unsupported.status).toBe(415);
+    const oversized = await app.fetch(
+      new Request(`http://localhost${CSP_REPORT_PATH}`, { method: "POST", headers: { "content-type": "application/csp-report" }, body: "x".repeat(16_385) }),
+    );
+    expect(oversized.status).toBe(413);
+  });
+
+  it("advertises the CSP reporting endpoint without weakening enforced sources", async () => {
+    const page = await get("/api/health");
+    expect(page.headers.get("reporting-endpoints")).toContain(`${CSP_REPORT_PATH}`);
+    const csp = page.headers.get("content-security-policy") ?? "";
+    expect(csp).toContain("report-to csp");
+    expect(csp).toContain(`report-uri ${CSP_REPORT_PATH}`);
+    expect(csp).toContain("script-src 'self' 'wasm-unsafe-eval'");
+  });
+});
 
 describe("origin-guard (CSRF)", () => {
   it("POST with a foreign Origin → 403 bad_origin (before the handler, no DB)", async () => {

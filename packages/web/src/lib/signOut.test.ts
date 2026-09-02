@@ -1,7 +1,10 @@
 import { afterEach, describe, expect, it } from "bun:test";
 import { IDBFactory } from "fake-indexeddb";
 import { __resetStorageForTests, clearLocalData, idbGetAll, idbPut } from "./idb";
-import { completeExplicitSignOut, ExplicitSignOutPendingError, prepareExplicitSignOut, type SignOutDeps } from "./signOut";
+import { completeExplicitSignOut, ExplicitSignOutPendingError, prepareExplicitSignOut, retryLocalSignOutCleanup, type SignOutDeps } from "./signOut";
+import type { CoordinatedSignOutLease } from "./sync";
+
+const lease = Object.freeze({}) as CoordinatedSignOutLease;
 
 afterEach(() => {
   delete (globalThis as Record<string, unknown>).indexedDB;
@@ -11,6 +14,11 @@ afterEach(() => {
 function fixture(overrides: Partial<SignOutDeps> = {}) {
   const calls: string[] = [];
   const deps: SignOutDeps = {
+    beginCoordination: async () => {
+      calls.push("begin");
+      return lease;
+    },
+    cancelCoordination: () => calls.push("cancel"),
     flushPending: async () => {
       calls.push("flush");
       return 0;
@@ -18,13 +26,16 @@ function fixture(overrides: Partial<SignOutDeps> = {}) {
     canExport: () => true,
     exportBackup: () => calls.push("export"),
     endSession: async () => {
-      calls.push("endSession");
+      calls.push("endSession(no-clear-site-data)");
     },
-    clearCredentialMaterial: () => calls.push("clearCredentialMaterial"),
-    clearLastAccount: () => calls.push("clearLastAccount"),
+    markServerSucceeded: () => calls.push("serverSucceeded"),
+    markCleanupFailed: () => calls.push("cleanupFailed"),
     clearLocalAccountData: async () => {
+      calls.push("clearCredentialMaterial");
+      calls.push("clearLastAccount");
       calls.push("clearLocalAccountData(caches,replica,outbox,owner,dek)");
     },
+    finishCoordination: () => calls.push("finish"),
     reloadOrLogin: () => calls.push("reloadOrLogin"),
     ...overrides,
   };
@@ -38,11 +49,14 @@ describe("explicit sign-out", () => {
     await completeExplicitSignOut("retry", f.deps);
 
     expect(f.calls).toEqual([
+      "begin",
       "flush",
-      "endSession",
+      "endSession(no-clear-site-data)",
+      "serverSucceeded",
       "clearCredentialMaterial",
       "clearLastAccount",
       "clearLocalAccountData(caches,replica,outbox,owner,dek)",
+      "finish",
       "reloadOrLogin",
     ]);
   });
@@ -51,7 +65,7 @@ describe("explicit sign-out", () => {
     const f = fixture({ flushPending: async () => 3 });
 
     await expect(completeExplicitSignOut("retry", f.deps)).rejects.toEqual(new ExplicitSignOutPendingError({ kind: "pending", count: 3 }));
-    expect(f.calls).toEqual([]);
+    expect(f.calls).toEqual(["begin", "cancel"]);
   });
 
   it("reports when pending changes cannot be exported", async () => {
@@ -74,12 +88,17 @@ describe("explicit sign-out", () => {
     await completeExplicitSignOut("retry", f.deps);
 
     expect(f.calls).toEqual([
+      "begin",
       "flush",
+      "cancel",
+      "begin",
       "flush",
-      "endSession",
+      "endSession(no-clear-site-data)",
+      "serverSucceeded",
       "clearCredentialMaterial",
       "clearLastAccount",
       "clearLocalAccountData(caches,replica,outbox,owner,dek)",
+      "finish",
       "reloadOrLogin",
     ]);
   });
@@ -90,7 +109,7 @@ describe("explicit sign-out", () => {
     await completeExplicitSignOut("export", f.deps);
 
     expect(f.calls[0]).toBe("export");
-    expect(f.calls[1]).toBe("endSession");
+    expect(f.calls[1]).toBe("begin");
     expect(f.calls.at(-1)).toBe("reloadOrLogin");
   });
 
@@ -111,21 +130,35 @@ describe("explicit sign-out", () => {
 
     await completeExplicitSignOut("discard", f.deps);
 
-    expect(f.calls).not.toContain("flush");
+    expect(f.calls).toContain("flush");
     expect(f.calls).not.toContain("export");
     expect(f.calls).toContain("clearLocalAccountData(caches,replica,outbox,owner,dek)");
+  });
+
+  it("never requests storage Clear-Site-Data because the response could erase its live coordination lease", async () => {
+    const marker = "live";
+    const f = fixture({
+      endSession: async () => {
+        f.calls.push("endSession(no-clear-site-data)");
+      },
+    });
+
+    await completeExplicitSignOut("discard", f.deps);
+
+    expect(f.calls).toContain("endSession(no-clear-site-data)");
+    expect(marker).toBe("live");
   });
 
   it("does not clear anything when ending the server session fails", async () => {
     const f = fixture({
       endSession: async () => {
         f.calls.push("endSession:failed");
-        throw new Error("sign_out_failed");
+        throw new Error("server_sign_out_failed");
       },
     });
 
-    await expect(completeExplicitSignOut("discard", f.deps)).rejects.toThrow("sign_out_failed");
-    expect(f.calls).toEqual(["endSession:failed"]);
+    await expect(completeExplicitSignOut("discard", f.deps)).rejects.toThrow("server_sign_out_failed");
+    expect(f.calls).toEqual(["begin", "flush", "endSession:failed", "cancel"]);
   });
 
   it("does not reload when clearing local account data fails", async () => {
@@ -136,8 +169,27 @@ describe("explicit sign-out", () => {
       },
     });
 
-    await expect(completeExplicitSignOut("discard", f.deps)).rejects.toThrow("clear_failed");
+    await expect(completeExplicitSignOut("discard", f.deps)).rejects.toThrow("local_sign_out_cleanup_failed");
     expect(f.calls).not.toContain("reloadOrLogin");
+    expect(f.calls).toContain("cleanupFailed");
+  });
+
+  it("retries only local cleanup after the server session has already ended", async () => {
+    let clears = 0;
+    const f = fixture({
+      clearLocalAccountData: async () => {
+        f.calls.push("clearLocalAccountData");
+        clears++;
+        if (clears === 1) throw new Error("idb_failed");
+      },
+    });
+
+    await expect(completeExplicitSignOut("discard", f.deps)).rejects.toThrow("local_sign_out_cleanup_failed");
+    await retryLocalSignOutCleanup();
+
+    expect(f.calls.filter((call) => call === "endSession(no-clear-site-data)")).toHaveLength(1);
+    expect(f.calls.filter((call) => call === "clearLocalAccountData")).toHaveLength(2);
+    expect(f.calls.slice(-2)).toEqual(["finish", "reloadOrLogin"]);
   });
 
   it("removes durable import jobs and unacknowledged drafts with the signed-out account", async () => {

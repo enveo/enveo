@@ -16,6 +16,31 @@ function fixture(initial?: unknown) {
 }
 
 describe("device preference store", () => {
+  it("waits for the account-storage security boundary before reading IndexedDB", async () => {
+    let release!: () => void;
+    let loadCalled = false;
+    const ready = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const store = createDevicePreferencesStore({
+      ready: () => ready,
+      load: async () => {
+        loadCalled = true;
+        return undefined;
+      },
+      save: async () => {},
+      remove: async () => {},
+    });
+
+    const hydration = store.hydrate();
+    await Promise.resolve();
+    expect(loadCalled).toBe(false);
+
+    release();
+    await hydration;
+    expect(loadCalled).toBe(true);
+  });
+
   it("uses defaults for absent or malformed device state", async () => {
     const f = fixture({ schemaVersion: 1, discreet: "yes" });
     await f.store.hydrate();

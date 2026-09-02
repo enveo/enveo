@@ -15,9 +15,13 @@ import {
   __resetObligations,
   assertOwnReplica,
   type BootSource,
+  beginSignOutCoordination,
   bootOnce,
   broadcastKeysChanged,
+  type CoordinatedSignOutLease,
+  cancelSignOutCoordination,
   clearLocalAccountData,
+  clearLocalAccountDataForSignOut,
   decideIdentity,
   discardLocalReplica,
   discardPendingE2eeUpgrade,
@@ -25,6 +29,7 @@ import {
   EMPTY_LEDGER,
   enterLoginPreservingReplica,
   fetchSnapshot,
+  finishSignOutCoordination,
   flushOutboxForSignOut,
   fullResync,
   getClientId,
@@ -33,6 +38,7 @@ import {
   hasPendingE2eeUpgrade,
   type IdentityVerdict,
   markReplacePending,
+  markSignOutServerSucceeded,
   type PendingE2eeUpgrade,
   poke,
   pullNow,
@@ -66,7 +72,27 @@ const _resetBackoff: () => void = __resetBackoff;
 const _discardLocalReplica: () => Promise<void> = discardLocalReplica;
 const _clearLocalAccountData: () => Promise<void> = clearLocalAccountData;
 const _enterLoginPreservingReplica: () => void = enterLoginPreservingReplica;
-const _flushOutboxForSignOut: () => Promise<number> = flushOutboxForSignOut;
+const _flushOutboxForSignOut: (lease: CoordinatedSignOutLease) => Promise<number> = flushOutboxForSignOut;
+const _beginSignOutCoordination: () => Promise<CoordinatedSignOutLease> = beginSignOutCoordination;
+const _cancelSignOutCoordination: (lease: CoordinatedSignOutLease) => void = cancelSignOutCoordination;
+const _markSignOutServerSucceeded: (lease: CoordinatedSignOutLease) => void = markSignOutServerSucceeded;
+const _clearLocalAccountDataForSignOut: (lease: CoordinatedSignOutLease, clearAdditionalAccountState?: () => void) => Promise<void> =
+  clearLocalAccountDataForSignOut;
+const _finishSignOutCoordination: (lease: CoordinatedSignOutLease) => void = finishSignOutCoordination;
+
+function _finalFlushRequiresLeaseAtCompileTime(): void {
+  // @ts-expect-error The final flush is privileged and cannot be called without coordination.
+  void flushOutboxForSignOut();
+  const lease = null as unknown as CoordinatedSignOutLease;
+  // @ts-expect-error The public lease is opaque; privileged permits stay module-private.
+  void lease.permit;
+  // @ts-expect-error Public cycles cannot receive a privileged sign-out capability.
+  void syncNow("forged", lease);
+  // @ts-expect-error Public full-replica replacement cannot receive a privileged capability.
+  void pushLocalToServer(lease);
+  // @ts-expect-error Public E2EE reset cannot receive a privileged capability.
+  void resetServerE2ee(undefined, lease);
+}
 const _recheckReplicaOwner: () => Promise<void> = recheckReplicaOwner;
 const _assertOwnReplica: () => Promise<string> = assertOwnReplica;
 const _syncNow: (reason: string) => Promise<void> = syncNow;
@@ -133,6 +159,11 @@ const surface = [
   _clearLocalAccountData,
   _enterLoginPreservingReplica,
   _flushOutboxForSignOut,
+  _beginSignOutCoordination,
+  _cancelSignOutCoordination,
+  _markSignOutServerSucceeded,
+  _clearLocalAccountDataForSignOut,
+  _finishSignOutCoordination,
   _recheckReplicaOwner,
   _assertOwnReplica,
   _syncNow,
@@ -162,7 +193,7 @@ const surface = [
 
 describe("sync public surface (compile-time fixture)", () => {
   it("every export is present and callable-shaped", () => {
-    expect(surface.length).toBe(41);
+    expect(surface.length).toBe(46);
     expect(_tierMismatch.name).toBe("TierMismatchError");
     expect(_upgradeRequired.name).toBe("E2eeUpgradeRequiredError");
   });

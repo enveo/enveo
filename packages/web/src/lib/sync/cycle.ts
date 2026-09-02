@@ -13,6 +13,7 @@ import * as e2ee from "../e2ee";
 import { migrateLegacySettings } from "../legacySettingsMigrationRuntime";
 import * as outbox from "../outbox";
 import * as persist from "../persist";
+import { isSignOutBlocking, isSignOutPermitActive, type SignOutPermit } from "../signOutBarrier";
 import { store } from "../store";
 import {
   BACKOFF_MAX_MS,
@@ -28,7 +29,17 @@ import { ensureIdentity, enterUnauthed, invalidateIdentityVerdict, isIdentityBlo
 import { clearResyncPending, isReplacePending, isResyncPending, markResyncPending } from "./obligations";
 import { e2eeReplicaBudgetId, replayOutbox } from "./replica";
 import { bumpStatus, setLastSyncAt, setState } from "./status";
-import { bootstrapReplica, doPull, doPullE2ee, pushE2eeBatch, pushLocalToServer, pushPlainBatch, resetServerE2ee } from "./transport";
+import {
+  bootstrapReplica,
+  doPull,
+  doPullE2ee,
+  pushE2eeBatch,
+  pushLocalToServer,
+  pushLocalToServerForSignOut,
+  pushPlainBatch,
+  resetServerE2ee,
+  resetServerE2eeForSignOut,
+} from "./transport";
 
 let deps: CycleDeps | null = null;
 
@@ -48,6 +59,7 @@ let backoffMs = 0;
 let retryTimer: ReturnType<typeof setTimeout> | undefined;
 
 function scheduleRetry(): void {
+  if (isSignOutBlocking()) return;
   backoffMs = backoffMs === 0 ? 1000 : Math.min(backoffMs * 2, BACKOFF_MAX_MS);
   const jitter = backoffMs * (0.7 + Math.random() * 0.6);  
   clearTimeout(retryTimer);
@@ -141,8 +153,10 @@ export function fullResync(): Promise<void> {
  * so queued ops must first get an ordinary cycle through the usual mutex. The remaining count
  * determines whether the human must retry, export a backup, or explicitly discard.
  */
-export async function flushOutboxForSignOut(): Promise<number> {
-  await syncNow("sign-out");
+export async function flushOutboxWithPermit(permit: SignOutPermit): Promise<number> {
+  if (!isSignOutPermitActive(permit)) throw new Error("sign_out_coordination_failed");
+  await syncNowForSignOut("sign-out", permit);
+  if (!isSignOutPermitActive(permit)) throw new Error("sign_out_coordination_failed");
   return outbox.size();
 }
 
@@ -161,7 +175,11 @@ export function recheckReplicaOwner(): Promise<void> {
  
 
  
-async function doCycle(): Promise<boolean> {
+function cycleMayContinue(permit?: SignOutPermit): boolean {
+  return !isSignOutBlocking() || isSignOutPermitActive(permit);
+}
+
+async function doCycle(permit?: SignOutPermit): Promise<boolean> {
   
 
   if (store.getBootStatus() === "locked") return true;
@@ -177,16 +195,21 @@ async function doCycle(): Promise<boolean> {
     // establish) → no write at all (null). The verified id travels with every full-budget
     // overwrite this cycle makes (per-REQUEST assertion — the cookie can still be swapped later).
     const userId = await ensureIdentity();
+    if (!cycleMayContinue(permit)) return true;
     if (!userId) return true;
     await accountPreferences.hydrateForUser(userId);
+    if (!cycleMayContinue(permit)) return true;
     // Preferences are an auxiliary channel: a temporary failure must not stall ledger sync.
-    try {
-      await accountPreferences.sync(userId);
-      await devicePreferences.hydrate();
-      await migrateLegacySettings();
-    } catch (error) {
-      console.warn("account preference sync or legacy migration failed", error);
+    if (!permit) {
+      try {
+        await accountPreferences.sync(userId);
+        await devicePreferences.hydrate();
+        await migrateLegacySettings();
+      } catch (error) {
+        console.warn("account preference sync or legacy migration failed", error);
+      }
     }
+    if (!cycleMayContinue(permit)) return true;
     
 
     isE2ee = e2ee.getTierMeta().tier === "e2ee";
@@ -217,10 +240,11 @@ async function doCycle(): Promise<boolean> {
           enterLocked();  
           return true;
         }
-        await resetServerE2ee(dek); // server := ciphertext of the local mirror; clears replacePending
+        await (permit ? resetServerE2eeForSignOut(dek, permit) : resetServerE2ee(dek)); // server := ciphertext of the local mirror; clears replacePending
       } else {
-        await pushLocalToServer();  
+        await (permit ? pushLocalToServerForSignOut(permit) : pushLocalToServer());  
       }
+      if (!cycleMayContinue(permit)) return true;
       clearResyncPending();
       requireDeps().notePeersMayNeedUpdate();  
       finishSuccess();
@@ -233,6 +257,7 @@ async function doCycle(): Promise<boolean> {
     // tab re-reads the outbox). Apply them onto the mirror (pending-guard + UI)
     // and persist; the rest of the cycle pushes them (server idempotency dedupes a possible duplicate).
     const { absorbed, peerDeadLettered } = await outbox.reconcileFromIdb();
+    if (!cycleMayContinue(permit)) return true;
     
 
 
@@ -280,9 +305,11 @@ async function doCycle(): Promise<boolean> {
         try {
           const epoch = e2ee.getTierMeta().epoch;
           const ops = await Promise.all(batch.map((en) => e2ee.encryptOp(en.op, dek, { budgetId: pushBudgetId, epoch })));
+          if (!cycleMayContinue(permit)) return true;
           // budgetId = the PER-REQUEST tenant assertion (see the v1 push below) — in v2 it is
           // also the authenticated op context, so it is REQUIRED, never optional
-          await pushE2eeBatch(epoch, pushBudgetId, ops);
+          await pushE2eeBatch(epoch, pushBudgetId, ops, permit);
+          if (!cycleMayContinue(permit)) return true;
           outbox.removeAcked(batch.map((en) => en.op.opId));
           requireDeps().notePeersMayNeedUpdate();  
         } finally {
@@ -291,7 +318,8 @@ async function doCycle(): Promise<boolean> {
       }
 
       // PULL v2 — ciphertext delta (own pending ops skipped + outbox replay)
-      await doPullE2ee(dek, userId);
+      await doPullE2ee(dek, userId, permit);
+      if (!cycleMayContinue(permit)) return true;
       
 
       requireDeps().ensureE2eeProviderPreference();
@@ -313,7 +341,11 @@ async function doCycle(): Promise<boolean> {
     while (outbox.size() > 0) {
       const batch = outbox.takeBatch(PUSH_BATCH);
       try {
-        const body = await pushPlainBatch(batch.map((e) => e.op));
+        const body = await pushPlainBatch(
+          batch.map((e) => e.op),
+          permit,
+        );
+        if (!cycleMayContinue(permit)) return true;
         if (body.budgetId !== store.getBudgetId()) {
           // The server applied the batch to a budget this replica does not name. It can only
           // happen when the replica named NONE (an unbound replica sends no budgetId, so the
@@ -357,6 +389,7 @@ async function doCycle(): Promise<boolean> {
 
      
     await doPull();
+    if (!cycleMayContinue(permit)) return true;
 
     // CONSUMER of the durable resync obligation (rejected / new epoch from pull / full-import).
     // Always AFTER push+pull; on success clears the flag, on failure leaves it (retry). It goes
@@ -367,6 +400,7 @@ async function doCycle(): Promise<boolean> {
     finishSuccess();
     return true;
   } catch (e) {
+    if (!cycleMayContinue(permit)) return true;
     if (e instanceof UnauthorizedError) {
       
 
@@ -489,6 +523,7 @@ export async function runWithSyncMutex<T>(task: () => Promise<T>): Promise<T> {
     }
     while (dirty) {
       dirty = false;
+      if (isSignOutBlocking()) break;
       const ok = await doCycle();
       if (!ok) break;
     }
@@ -501,7 +536,8 @@ export async function runWithSyncMutex<T>(task: () => Promise<T>): Promise<T> {
   return result;
 }
 
-export function syncNow(reason: string): Promise<void> {
+function runSyncNow(reason: string, permit?: SignOutPermit): Promise<void> {
+  if (!cycleMayContinue(permit)) return Promise.resolve();
   void reason;  
   if (import.meta.env.DEV) lastReason = reason;
   
@@ -514,13 +550,22 @@ export function syncNow(reason: string): Promise<void> {
   running = (async () => {
     do {
       dirty = false;
-      const ok = await doCycle();
+      const ok = await doCycle(permit);
       if (!ok) break;  
     } while (dirty);
   })().finally(() => {
     running = null;
   });
   return running;
+}
+
+export function syncNow(reason: string): Promise<void> {
+  return runSyncNow(reason);
+}
+
+ 
+export function syncNowForSignOut(reason: string, permit: SignOutPermit): Promise<void> {
+  return runSyncNow(reason, permit);
 }
 
 /**
@@ -537,10 +582,21 @@ export async function awaitInFlightCycle(): Promise<void> {
 }
 
  
+export async function quiesceSyncForSignOut(): Promise<void> {
+  dirty = false;
+  resetBackoff();
+  clearTimeout(pokeTimer);
+  pokeTimer = undefined;
+  await awaitInFlightCycle();
+  dirty = false;
+}
+
+ 
 
 let pokeTimer: ReturnType<typeof setTimeout> | undefined;
 
 export function poke(): void {
+  if (isSignOutBlocking()) return;
   resetBackoff();  
   bumpStatus();  
   requireDeps().postPokeToPeers();  

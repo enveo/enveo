@@ -4,6 +4,8 @@
 
 
 import { createAuthClient } from "better-auth/client";
+import { runServerWriteOperation } from "./serverWriteOperations";
+import { type CoordinatedSignOutLease, runCoordinatedSessionEnd } from "./sync/multitab";
 
 export const authClient = createAuthClient();
 
@@ -46,8 +48,10 @@ const AUTH_CODES = new Set([
 
  
 export async function signInEmail(email: string, password: string, persistent: boolean): Promise<void> {
-  const { error } = await authClient.signIn.email({ email, password, rememberMe: persistent });
-  if (error) throw new Error(authErrorCode(error, "sign_in_failed"));
+  return runServerWriteOperation("auth-session", async () => {
+    const { error } = await authClient.signIn.email({ email, password, rememberMe: persistent });
+    if (error) throw new Error(authErrorCode(error, "sign_in_failed"));
+  });
 }
 
  
@@ -58,12 +62,14 @@ export async function signUpEmail(email: string, password: string, persistent: b
   // properties it's given. Binding to a variable first avoids the excess-property check on
   // the object literal without widening anything else — a TS quirk, not a behavior change.
   const body = { email, password, name: email.split("@")[0] ?? email, rememberMe: persistent };
-  const { error } = await authClient.signUp.email(body);
-  if (error) throw new Error(authErrorCode(error, "sign_up_failed"));
+  return runServerWriteOperation("auth-session", async () => {
+    const { error } = await authClient.signUp.email(body);
+    if (error) throw new Error(authErrorCode(error, "sign_up_failed"));
+  });
 }
 
  
-export const signInGoogle = () => authClient.signIn.social({ provider: "google" });
+export const signInGoogle = () => runServerWriteOperation("auth-session", () => authClient.signIn.social({ provider: "google" }));
 
 /**
  * Identity of the CURRENT session, straight from the server: the signed-in user's id,
@@ -84,9 +90,40 @@ export async function fetchSessionUserId(): Promise<string | null> {
   return body?.user?.id ?? null;  
 }
 
+export function serverSignOutOptions(): { fetchOptions: { headers: undefined } } {
+  return { fetchOptions: { headers: undefined } };
+}
+
+export function assertServerSignOutSucceeded(error: { message?: string } | null): void {
+  if (error) throw new Error("server_sign_out_failed");
+}
+
+export function normalizeServerSignOutFailure(_error: unknown): never {
+  throw new Error("server_sign_out_failed");
+}
+
  
 export async function endSession(): Promise<void> {
-  await authClient.signOut();
+  return runServerWriteOperation("auth-session", async () => {
+    try {
+      const { error } = await authClient.signOut(serverSignOutOptions());
+      assertServerSignOutSucceeded(error);
+    } catch (error) {
+      normalizeServerSignOutFailure(error);
+    }
+  });
+}
+
+ 
+export function endSessionForSignOut(lease: CoordinatedSignOutLease): Promise<void> {
+  return runCoordinatedSessionEnd(lease, async () => {
+    try {
+      const { error } = await authClient.signOut(serverSignOutOptions());
+      assertServerSignOutSucceeded(error);
+    } catch (error) {
+      normalizeServerSignOutFailure(error);
+    }
+  });
 }
 
  
