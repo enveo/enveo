@@ -31,7 +31,7 @@ import { stateRoutes } from "./routes/state";
 import { syncRoutes } from "./routes/sync";
 import { createSync2Routes } from "./routes/sync2";
 import { txnRoutes } from "./routes/transactions";
-import { API_CACHE_CONTROL, shouldClearSiteData } from "./securityHeaders";
+import { API_CACHE_CONTROL } from "./securityHeaders";
 import { AutomaticEnvelopeViolation, ScopeViolation, TransactionSemanticViolation } from "./sync/apply";
 
 /** Loaded exactly once. `null` disables user BYOK only; ordinary budgeting still boots. */
@@ -82,9 +82,6 @@ const app = new Hono<{ Variables: { userId?: string } }>();
 app.use("/api/*", async (c, next) => {
   await next();
   c.header("Cache-Control", API_CACHE_CONTROL);
-  if (shouldClearSiteData(c.req.raw, c.res.status)) {
-    c.header("Clear-Site-Data", '"storage", "cache"');
-  }
 });
 
 // gzip/deflate ALL responses (JSON API + web static assets). Critical for the

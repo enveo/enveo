@@ -90,9 +90,8 @@ export async function fetchSessionUserId(): Promise<string | null> {
   return body?.user?.id ?? null; // better-auth answers 200 + `null` when there is no session
 }
 
-export function serverSignOutOptions(clearSiteData: boolean): { fetchOptions: { headers: Record<string, string> | undefined } } {
-  const headers = clearSiteData ? { "x-enveo-clear-site-data": "persistent-current-owner" } : undefined;
-  return { fetchOptions: { headers } };
+export function serverSignOutOptions(): { fetchOptions: { headers: undefined } } {
+  return { fetchOptions: { headers: undefined } };
 }
 
 export function assertServerSignOutSucceeded(error: { message?: string } | null): void {
@@ -104,10 +103,10 @@ export function normalizeServerSignOutFailure(_error: unknown): never {
 }
 
 /** End only the server session. Explicit local cleanup is orchestrated by signOut.ts. */
-export async function endSession(clearSiteData = false): Promise<void> {
+export async function endSession(): Promise<void> {
   return runServerWriteOperation("auth-session", async () => {
     try {
-      const { error } = await authClient.signOut(serverSignOutOptions(clearSiteData));
+      const { error } = await authClient.signOut(serverSignOutOptions());
       assertServerSignOutSucceeded(error);
     } catch (error) {
       normalizeServerSignOutFailure(error);
@@ -116,10 +115,10 @@ export async function endSession(clearSiteData = false): Promise<void> {
 }
 
 /** Explicit sign-out's own authorized server transition under its opaque coordination lease. */
-export function endSessionForSignOut(lease: CoordinatedSignOutLease, clearSiteData = false): Promise<void> {
+export function endSessionForSignOut(lease: CoordinatedSignOutLease): Promise<void> {
   return runCoordinatedSessionEnd(lease, async () => {
     try {
-      const { error } = await authClient.signOut(serverSignOutOptions(clearSiteData));
+      const { error } = await authClient.signOut(serverSignOutOptions());
       assertServerSignOutSucceeded(error);
     } catch (error) {
       normalizeServerSignOutFailure(error);

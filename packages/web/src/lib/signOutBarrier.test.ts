@@ -9,8 +9,8 @@ import {
   getSignOutPhase,
   isSignOutBlocking,
   isSignOutPermitActive,
+  markCleanupFailed,
   markLocalCleared,
-  markServerFailed,
   releaseSignOutAttempt,
   subscribeSignOutPhase,
 } from "./signOutBarrier";
@@ -35,18 +35,18 @@ describe("sign-out barrier", () => {
     expect(getSignOutPhase()).toBe("blocking");
     expect(isSignOutBlocking()).toBe(true);
 
+    markCleanupFailed();
+    expect(getSignOutPhase()).toBe("cleanup-failed");
+    expect(isSignOutBlocking()).toBe(true);
+
     markLocalCleared();
     expect(getSignOutPhase()).toBe("local-cleared");
     expect(isSignOutBlocking()).toBe(true);
 
-    markServerFailed();
-    expect(getSignOutPhase()).toBe("server-failed");
-    expect(isSignOutBlocking()).toBe(true);
-
-    cancelSignOut();
+    releaseSignOutAttempt("legacy-sign-out");
     expect(getSignOutPhase()).toBe("idle");
     expect(isSignOutBlocking()).toBe(false);
-    expect(phases).toEqual(["blocking", "local-cleared", "server-failed", "idle"]);
+    expect(phases).toEqual(["blocking", "cleanup-failed", "local-cleared", "idle"]);
 
     unsubscribe();
     beginSignOut();
@@ -63,12 +63,13 @@ describe("sign-out barrier", () => {
 
   it("throws composition errors instead of accepting out-of-order transitions", () => {
     expect(() => markLocalCleared()).toThrow("sign_out_barrier_invalid_transition:idle->local-cleared");
-    expect(() => markServerFailed()).toThrow("sign_out_barrier_invalid_transition:idle->server-failed");
+    expect(() => markCleanupFailed()).toThrow("sign_out_barrier_invalid_transition:idle->cleanup-failed");
     expect(() => cancelSignOut()).toThrow("sign_out_barrier_invalid_transition:idle->idle");
 
     beginSignOut();
     expect(() => beginSignOut()).toThrow("sign_out_barrier_invalid_transition:blocking->blocking");
-    expect(() => markServerFailed()).toThrow("sign_out_barrier_invalid_transition:blocking->server-failed");
+    markCleanupFailed();
+    expect(() => markCleanupFailed()).toThrow("sign_out_barrier_invalid_transition:cleanup-failed->cleanup-failed");
 
     markLocalCleared();
     expect(() => cancelSignOut()).toThrow("sign_out_barrier_invalid_transition:local-cleared->idle");
@@ -104,11 +105,11 @@ describe("sign-out barrier", () => {
   it("does not let a remote cancel release the local phase owner", () => {
     activateSignOutAttempt("local-attempt", "source-a", "local");
     activateSignOutAttempt("remote-attempt", "source-b", "remote");
-    markLocalCleared("local-attempt");
+    markCleanupFailed("local-attempt");
 
     releaseSignOutAttempt("remote-attempt");
-    expect(getSignOutPhase()).toBe("local-cleared");
-    expect(() => markServerFailed("remote-attempt")).toThrow("sign_out_barrier_wrong_attempt");
+    expect(getSignOutPhase()).toBe("cleanup-failed");
+    expect(() => markCleanupFailed("remote-attempt")).toThrow("sign_out_barrier_wrong_attempt");
   });
 
   it("fails closed on a shared marker even before a channel message arrives", () => {

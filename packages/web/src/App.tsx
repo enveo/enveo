@@ -2,7 +2,7 @@ import { computeStateResponse, type Transaction } from "@enveo/shared";
 import { lazy, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { BottomNav, Drawer, type ScreenId, StyleInjector } from "./components/chrome";
 import { LazyChunk, useOpenedOnce } from "./components/lazy";
-import { SignOutShield } from "./components/SignOutShield";
+import { SignOutBoundary } from "./components/SignOutShield";
 import { StartupSplash } from "./components/StartupSplash";
 import { SyncBadge } from "./components/SyncBadge";
 // Type-only imports elsewhere in this file already keep the REST of `panel.ts` free of runtime
@@ -1162,10 +1162,9 @@ function AppContent() {
 
 export default function App() {
   return (
-    <>
+    <SignOutBoundary>
       <AppContent />
-      <SignOutShield />
-    </>
+    </SignOutBoundary>
   );
 }
 

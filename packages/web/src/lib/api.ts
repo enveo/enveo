@@ -160,9 +160,7 @@ const ERROR_KEYS: Record<string, Message> = {
   sign_up_failed: msg("Could not create the account — please try again."),
   auth_meta_failed: msg("Could not sign in — please try again."), // /api/auth/meta unreachable → same user-facing advice
   device_storage_unavailable: msg("This browser blocked access to storage. Allow site storage before signing in."),
-  local_sign_out_cleanup_failed: msg(
-    "Enveo could not remove the local copy. The server session has ended; close this app and remove its site data in your browser settings.",
-  ),
+  local_sign_out_cleanup_failed: msg("Enveo could not remove the local copy. The server session has ended; retry the local cleanup before reloading the app."),
   server_sign_out_failed: msg("The server session could not be ended. You are still signed in — try again."),
   sign_out_in_progress: msg("Sign-out is already in progress."),
 };

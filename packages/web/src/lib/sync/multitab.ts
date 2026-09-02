@@ -59,6 +59,7 @@ import {
   configureSignOutSharedBlocker,
   createSignOutPermit,
   isSignOutBlocking,
+  markCleanupFailed,
   markLocalCleared,
   releaseSignOutAttempt,
   type SignOutPermit,
@@ -369,6 +370,10 @@ export function assertSignOutLease(lease: CoordinatedSignOutLease): void {
 
 export function markSignOutServerSucceeded(lease: CoordinatedSignOutLease): void {
   requireSignOutCoordinator().markServerSucceeded(requireInternalLease(lease));
+}
+
+export function markSignOutLocalCleanupFailed(lease: CoordinatedSignOutLease): void {
+  markCleanupFailed(requireInternalLease(lease).attemptId);
 }
 
 /** The sole server write authorized between final flush and local destructive clear. */

@@ -1,16 +1,15 @@
 import { endSessionForSignOut } from "./auth";
 import { exportBackup, hasExportableBackup } from "./data";
-import { storageMode } from "./idb";
 import { clearLastAccountId } from "./lastAccount";
 import { clearPersistedSettings } from "./settingsPersist";
 import {
-  assertOwnReplica,
   beginSignOutCoordination,
   type CoordinatedSignOutLease,
   cancelSignOutCoordination,
   clearLocalAccountDataForSignOut,
   finishSignOutCoordination,
   flushOutboxForSignOut,
+  markSignOutLocalCleanupFailed,
   markSignOutServerSucceeded,
 } from "./sync";
 
@@ -24,9 +23,9 @@ export interface SignOutDeps {
   flushPending(lease: CoordinatedSignOutLease): Promise<number>;
   canExport(): boolean;
   exportBackup(): void;
-  canRequestClearSiteData(): Promise<boolean>;
-  endSession(lease: CoordinatedSignOutLease, clearSiteData: boolean): Promise<void>;
+  endSession(lease: CoordinatedSignOutLease): Promise<void>;
   markServerSucceeded(lease: CoordinatedSignOutLease): void;
+  markCleanupFailed(lease: CoordinatedSignOutLease): void;
   clearLocalAccountData(lease: CoordinatedSignOutLease): Promise<void>;
   finishCoordination(lease: CoordinatedSignOutLease): void;
   reloadOrLogin(): void;
@@ -38,9 +37,9 @@ const realDeps: SignOutDeps = {
   flushPending: flushOutboxForSignOut,
   canExport: hasExportableBackup,
   exportBackup,
-  canRequestClearSiteData,
   endSession: endSessionForSignOut,
   markServerSucceeded: markSignOutServerSucceeded,
+  markCleanupFailed: markSignOutLocalCleanupFailed,
   clearLocalAccountData: (lease) =>
     clearLocalAccountDataForSignOut(lease, () => {
       clearPersistedSettings();
@@ -52,20 +51,7 @@ const realDeps: SignOutDeps = {
   },
 };
 
-/**
- * Clear-Site-Data is deliberately opt-in: only a persistent replica freshly proved to belong to
- * the current session may authorize origin-wide browser cleanup. A shared-device session never
- * opens that replica, and an unavailable/mismatched identity simply falls back to local cleanup.
- */
-export async function canRequestClearSiteData(): Promise<boolean> {
-  if (storageMode() !== "idb") return false;
-  try {
-    await assertOwnReplica();
-    return true;
-  } catch {
-    return false;
-  }
-}
+let pendingLocalCleanup: { lease: CoordinatedSignOutLease; deps: SignOutDeps } | null = null;
 
 export class ExplicitSignOutPendingError extends Error {
   constructor(readonly preparation: Exclude<SignOutPreparation, { kind: "ready" }>) {
@@ -102,13 +88,16 @@ export async function completeExplicitSignOut(decision: SignOutDecision, deps: S
         throw new ExplicitSignOutPendingError(preparation);
       }
     }
-    const clearSiteData = await deps.canRequestClearSiteData();
-    await deps.endSession(lease, clearSiteData);
+    // Never request Clear-Site-Data: "storage" here. Browsers may erase the localStorage
+    // coordination marker before this promise resolves, invalidating the still-live lease.
+    await deps.endSession(lease);
     deps.markServerSucceeded(lease);
     serverSucceeded = true;
     try {
       await deps.clearLocalAccountData(lease);
     } catch {
+      pendingLocalCleanup = { lease, deps };
+      deps.markCleanupFailed(lease);
       throw new Error("local_sign_out_cleanup_failed");
     }
     deps.finishCoordination(lease);
@@ -117,4 +106,18 @@ export async function completeExplicitSignOut(decision: SignOutDecision, deps: S
     if (!serverSucceeded) deps.cancelCoordination(lease);
     throw error;
   }
+}
+
+/** Retry only the local destructive step after the server session has already ended. */
+export async function retryLocalSignOutCleanup(): Promise<void> {
+  const pending = pendingLocalCleanup;
+  if (!pending) throw new Error("local_sign_out_cleanup_not_pending");
+  try {
+    await pending.deps.clearLocalAccountData(pending.lease);
+  } catch {
+    throw new Error("local_sign_out_cleanup_failed");
+  }
+  pendingLocalCleanup = null;
+  pending.deps.finishCoordination(pending.lease);
+  pending.deps.reloadOrLogin();
 }

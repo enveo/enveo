@@ -10,7 +10,6 @@
 import { describe, expect, it } from "bun:test";
 import { CSP_REPORT_PATH } from "./cspReports";
 import app from "./index";
-import { shouldClearSiteData } from "./securityHeaders";
 
 const EVIL = "https://evil.example";
 const ALLOWED = "http://localhost:5173";
@@ -34,14 +33,9 @@ describe("API response cache and cleanup headers", () => {
     }
   });
 
-  it("adds Clear-Site-Data only to a successful opted-in sign-out", () => {
-    const request = new Request("http://localhost/api/auth/sign-out", {
-      method: "POST",
-      headers: { "x-enveo-clear-site-data": "persistent-current-owner" },
-    });
-    expect(shouldClearSiteData(request, 200)).toBe(true);
-    expect(shouldClearSiteData(request, 500)).toBe(false);
-    expect(shouldClearSiteData(new Request(request.url, { method: "POST" }), 200)).toBe(false);
+  it("never emits Clear-Site-Data because sign-out finalization uses coordinated browser storage", async () => {
+    const response = await get("/api/health");
+    expect(response.headers.get("clear-site-data")).toBeNull();
   });
 
   it("accepts a CSP report publicly and emits only sanitized telemetry", async () => {
