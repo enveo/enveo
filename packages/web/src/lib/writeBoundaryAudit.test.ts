@@ -174,15 +174,15 @@ function isInsideWrapper(node: ts.Node, aliases: ReadonlyMap<string, string>, wr
   return false;
 }
 
-function optionsMethod(options: ts.Expression | undefined): string {
-  if (!options) return "GET";
+function optionsMethod(options: ts.Expression | undefined, fallback = "GET"): string {
+  if (!options) return fallback;
   if (!ts.isObjectLiteralExpression(options)) return "DYNAMIC";
   for (const property of options.properties) {
     if (ts.isShorthandPropertyAssignment(property) && property.name.text === "method") return "DYNAMIC";
     if (!ts.isPropertyAssignment(property) || propertyName(property.name) !== "method") continue;
     return ts.isStringLiteralLike(property.initializer) ? property.initializer.text.toUpperCase() : "DYNAMIC";
   }
-  return options.properties.some(ts.isSpreadAssignment) ? "DYNAMIC" : "GET";
+  return options.properties.some(ts.isSpreadAssignment) ? "DYNAMIC" : fallback;
 }
 
 function constructedRequest(call: ts.CallExpression): ts.NewExpression | null {
@@ -193,15 +193,11 @@ function constructedRequest(call: ts.CallExpression): ts.NewExpression | null {
 }
 
 function fetchMethod(call: ts.CallExpression): string {
-  if (call.arguments[1]) return optionsMethod(call.arguments[1]);
   const request = constructedRequest(call);
-  if (!request) {
-    const input = call.arguments[0];
-    return input && (ts.isStringLiteralLike(input) || ts.isTemplateExpression(input)) ? "GET" : "DYNAMIC";
-  }
-  if (request.arguments?.[1]) return optionsMethod(request.arguments[1]);
-  const input = request.arguments?.[0];
-  return input && (ts.isStringLiteralLike(input) || ts.isTemplateExpression(input)) ? "GET" : "DYNAMIC";
+  const input = request?.arguments?.[0] ?? call.arguments[0];
+  const inherited = input && (ts.isStringLiteralLike(input) || ts.isTemplateExpression(input)) ? "GET" : "DYNAMIC";
+  const requestMethod = request ? optionsMethod(request.arguments?.[1], inherited) : inherited;
+  return optionsMethod(call.arguments[1], requestMethod);
 }
 
 function callTarget(call: ts.CallExpression): string {
@@ -429,11 +425,17 @@ describe("write-boundary AST audit", () => {
         fetch(requestVariable);
         const inheritedRequest = new Request(existingRequest);
         fetch(inheritedRequest);
+        fetch(requestVariable, { credentials: "include" });
+        fetch(new Request(existingRequest), { headers: { accept: "application/json" } });
+        fetch(requestVariable, { method: "GET", credentials: "include" });
+        fetch(new Request(existingRequest), { method: "HEAD" });
       `,
     );
 
     expect(findings.map((finding) => [finding.boundary, finding.method, finding.target, finding.wrapped])).toEqual([
       ["server-write", "POST", "/write", false],
+      ["server-write", "DYNAMIC", "<dynamic>", false],
+      ["server-write", "DYNAMIC", "<dynamic>", false],
       ["server-write", "DYNAMIC", "<dynamic>", false],
       ["server-write", "DYNAMIC", "<dynamic>", false],
       ["server-write", "DYNAMIC", "<dynamic>", false],
