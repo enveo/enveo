@@ -35,6 +35,7 @@ import {
   type TxnPayload,
 } from "@enveo/shared";
 import * as outbox from "./outbox";
+import { isSignOutBlocking } from "./signOutBarrier";
 import { store } from "./store";
 // `poke` is imported from its OWN module rather than through the `./sync` facade. The facade
 // re-exports the whole engine (boot included), so going through it made mutate.ts → sync →
@@ -44,7 +45,12 @@ import { store } from "./store";
 // path per dependency: cycle-free, no warning, same runtime behaviour.
 import { poke } from "./sync/cycle";
 
+function assertWritesAllowed(): void {
+  if (isSignOutBlocking()) throw new Error("sign_out_in_progress");
+}
+
 function enqueue<K extends OpKind>(kind: K, payload: OpPayload<K>): void {
+  assertWritesAllowed();
   // safeParse: validation is a safety net (a call-site bug). Loud fail
   // in the console, but we do NOT throw — an error from an onClick handler isn't caught
   // by an error boundary and would jam the UI (e.g. the "Duplicate" sheet). We apply nothing on
@@ -62,10 +68,14 @@ function enqueue<K extends OpKind>(kind: K, payload: OpPayload<K>): void {
   poke();
 }
 
-const newId = (): string => crypto.randomUUID();
+const newId = (): string => {
+  assertWritesAllowed();
+  return crypto.randomUUID();
+};
 
 /** The mirror must exist (mutations are possible only after the replica boots). */
 function ledger() {
+  assertWritesAllowed();
   const l = store.getLedger();
   if (!l) throw new Error("local.*: replica not booted yet");
   return l;
@@ -321,6 +331,7 @@ function updateBudget(id: string, currency: string): void {
 }
 
 function updateBudgetPreferences(id: string, patch: BudgetPreferencesPatch): void {
+  assertWritesAllowed();
   enqueue("budget.preferences.update", { id, patch: budgetPreferencesPatchSchema.parse(patch) });
 }
 
