@@ -37,6 +37,19 @@ describe("checkWebSecuritySource", () => {
     }
   });
 
+  it("reports global and computed forms of the Function constructor and JSX HTML spread", () => {
+    const fixtures = [
+      ["GlobalFunction.ts", 'globalThis.Function("return value")', "function-constructor"],
+      ["NewGlobalFunction.ts", 'new globalThis.Function("return value")', "function-constructor"],
+      ["NewComputedGlobalFunction.ts", 'new globalThis["Function"]("return value")', "function-constructor"],
+      ["ComputedSpread.tsx", '<div {...{ ["dangerouslySetInnerHTML"]: { __html: value } }} />', "react-html"],
+    ] as const;
+
+    for (const [file, source, rule] of fixtures) {
+      expect(checkWebSecuritySource(file, source)).toEqual([expect.objectContaining({ file, line: 1, rule })]);
+    }
+  });
+
   it("ignores comments, ordinary strings, text content, React children, and JSON html fields", () => {
     expect(checkWebSecuritySource("Comment.ts", "// never use dangerouslySetInnerHTML here")).toEqual([]);
     expect(checkWebSecuritySource("String.ts", 'const note = "document.write and eval are forbidden"')).toEqual([]);
