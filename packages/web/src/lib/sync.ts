@@ -72,6 +72,7 @@ export {
   cancelSignOutCoordination,
   finishSignOutCoordination,
   flushOutboxForSignOut,
+  markSignOutLocalCleanupFailed,
   markSignOutServerSucceeded,
   wipeLocalData,
 } from "./sync/multitab";

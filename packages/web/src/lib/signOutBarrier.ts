@@ -1,4 +1,4 @@
-export type SignOutPhase = "idle" | "blocking" | "local-cleared" | "server-failed";
+export type SignOutPhase = "idle" | "blocking" | "local-cleared" | "cleanup-failed";
 export type SignOutAttemptKind = "local" | "remote";
 
 const LEGACY_ATTEMPT_ID = "legacy-sign-out";
@@ -42,7 +42,7 @@ function visiblePhase(): SignOutPhase {
   let phase: SignOutPhase = attempts.size === 0 && !isSharedBlocking() ? "idle" : "blocking";
   for (const attempt of attempts.values()) {
     if (attempt.kind !== "local") continue;
-    if (attempt.phase === "server-failed") return "server-failed";
+    if (attempt.phase === "cleanup-failed") return "cleanup-failed";
     if (attempt.phase === "local-cleared") phase = "local-cleared";
   }
   return phase;
@@ -130,26 +130,28 @@ export function markLocalCleared(attemptId = LEGACY_ATTEMPT_ID): void {
     throw new Error(`sign_out_barrier_invalid_transition:${before}->local-cleared`);
   }
   const attempt = requireLocalAttempt(attemptId);
-  if (attempt.phase !== "blocking") throw new Error(`sign_out_barrier_invalid_transition:${attempt.phase}->local-cleared`);
+  if (attempt.phase !== "blocking" && attempt.phase !== "cleanup-failed") {
+    throw new Error(`sign_out_barrier_invalid_transition:${attempt.phase}->local-cleared`);
+  }
   attempt.phase = "local-cleared";
   notifyIfChanged(before);
 }
 
-export function markServerFailed(attemptId = LEGACY_ATTEMPT_ID): void {
+export function markCleanupFailed(attemptId = LEGACY_ATTEMPT_ID): void {
   const before = visiblePhase();
   if (attemptId === LEGACY_ATTEMPT_ID && !attempts.has(attemptId)) {
-    throw new Error(`sign_out_barrier_invalid_transition:${before}->server-failed`);
+    throw new Error(`sign_out_barrier_invalid_transition:${before}->cleanup-failed`);
   }
   const attempt = requireLocalAttempt(attemptId);
-  if (attempt.phase !== "local-cleared") throw new Error(`sign_out_barrier_invalid_transition:${attempt.phase}->server-failed`);
-  attempt.phase = "server-failed";
+  if (attempt.phase !== "blocking") throw new Error(`sign_out_barrier_invalid_transition:${attempt.phase}->cleanup-failed`);
+  attempt.phase = "cleanup-failed";
   notifyIfChanged(before);
 }
 
 export function cancelSignOut(): void {
   const phase = visiblePhase();
   const attempt = attempts.get(LEGACY_ATTEMPT_ID);
-  if (!attempt || (attempt.phase !== "blocking" && attempt.phase !== "server-failed")) {
+  if (attempt?.phase !== "blocking") {
     throw new Error(`sign_out_barrier_invalid_transition:${phase}->idle`);
   }
   releaseSignOutAttempt(LEGACY_ATTEMPT_ID);
