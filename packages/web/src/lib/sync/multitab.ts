@@ -26,6 +26,9 @@
  *  - "poke" (after a local enqueue): the leader syncs right away (doesn't wait for
  *    the interval). Both sides feature-detect; no channel ⇒ tabs converge
  *    via their own pulls (focus/interval).
+ *  - "sign-out-start" / "sign-out-cancel": peers converge on the in-memory write
+ *    barrier without touching shared IndexedDB. Only the terminal "wipe" reloads tabs,
+ *    after the initiating tab has durably cleared the account data.
  * Loop protection: applyPeerUpdate itself does not broadcast. Re-establishing the E2EE
  * provider invariant may enqueue and persist one terminal preference op; that mutation is
  * idempotent and follows the normal sync path.
@@ -41,6 +44,7 @@ import * as e2ee from "../e2ee";
 import { ensureE2eeProviderPreference } from "../e2eeProviderInvariant";
 import { clearLocalData } from "../idb";
 import * as persist from "../persist";
+import { __resetSignOutBarrierForTests, beginSignOut, cancelSignOut } from "../signOutBarrier";
 import { store } from "../store";
 import { retryBoot } from "./boot";
 import { syncNow } from "./cycle";
@@ -83,7 +87,9 @@ export async function broadcastKeysChanged(): Promise<void> {
   postMsg("keys");
 }
 
-export function postMsg(type: "updated" | "poke" | "wipe" | "keys" | "preferences"): void {
+export type MultiTabMessageType = "updated" | "poke" | "wipe" | "keys" | "preferences" | "sign-out-start" | "sign-out-cancel";
+
+export function postMsg(type: MultiTabMessageType): void {
   try {
     channel?.postMessage({ type });
   } catch {
@@ -132,6 +138,7 @@ export function __resetMultiTabForTests(): void {
   isLeader = false;
   broadcastPending = false;
   applyingPeerUpdate = false;
+  __resetSignOutBarrierForTests();
 }
 
 interface LockManagerLike {
@@ -163,7 +170,9 @@ export function installMultiTab(): void {
     channel.onmessage = (e: MessageEvent) => {
       const msg = e.data as { type?: string } | null;
       if (!msg) return;
-      if (msg.type === "updated") void applyPeerUpdate();
+      if (msg.type === "sign-out-start") beginSignOut();
+      else if (msg.type === "sign-out-cancel") cancelSignOut();
+      else if (msg.type === "updated") void applyPeerUpdate();
       else if (msg.type === "preferences") void accountPreferences.rehydrateCurrent();
       else if (msg.type === "keys") {
         // a peer tab rotated/validated/dropped the key state — re-read it, then let the

@@ -13,6 +13,7 @@ import * as e2ee from "../e2ee";
 import { migrateLegacySettings } from "../legacySettingsMigrationRuntime";
 import * as outbox from "../outbox";
 import * as persist from "../persist";
+import { isSignOutBlocking } from "../signOutBarrier";
 import { store } from "../store";
 import {
   BACKOFF_MAX_MS,
@@ -502,6 +503,7 @@ export async function runWithSyncMutex<T>(task: () => Promise<T>): Promise<T> {
 }
 
 export function syncNow(reason: string): Promise<void> {
+  if (isSignOutBlocking()) return Promise.resolve();
   void reason; // diagnostics (dev: window.__sync.lastReason)
   if (import.meta.env.DEV) lastReason = reason;
   // Foreign replica (another account signed in on this device): the app is on
@@ -541,6 +543,7 @@ export async function awaitInFlightCycle(): Promise<void> {
 let pokeTimer: ReturnType<typeof setTimeout> | undefined;
 
 export function poke(): void {
+  if (isSignOutBlocking()) return;
   resetBackoff(); // new op = new chance, try right after the debounce
   bumpStatus(); // pending count changed
   requireDeps().postPokeToPeers(); // notify the leader to sync right away (multi-tab)
