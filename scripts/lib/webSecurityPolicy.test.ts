@@ -20,6 +20,23 @@ describe("checkWebSecuritySource", () => {
     }
   });
 
+  it("reports computed, compound, parenthesized, global, and JSX-spread sink forms", () => {
+    const fixtures = [
+      ["ComputedAssignment.ts", 'node["innerHTML"] = value', "dom-html"],
+      ["CompoundAssignment.ts", "node.innerHTML += value", "dom-html"],
+      ["ComputedCall.ts", 'node["insertAdjacentHTML"]("beforeend", value)', "dom-html"],
+      ["ComputedDocument.ts", 'document["write"](value)', "document-write"],
+      ["WindowDocument.ts", "window.document.write(value)", "document-write"],
+      ["GlobalEval.ts", "globalThis.eval(value)", "eval"],
+      ["ParenthesizedFunction.ts", 'new (Function)("return value")', "function-constructor"],
+      ["Spread.tsx", "<div {...{ dangerouslySetInnerHTML: { __html: value } }} />", "react-html"],
+    ] as const;
+
+    for (const [file, source, rule] of fixtures) {
+      expect(checkWebSecuritySource(file, source)).toEqual([expect.objectContaining({ file, line: 1, rule })]);
+    }
+  });
+
   it("ignores comments, ordinary strings, text content, React children, and JSON html fields", () => {
     expect(checkWebSecuritySource("Comment.ts", "// never use dangerouslySetInnerHTML here")).toEqual([]);
     expect(checkWebSecuritySource("String.ts", 'const note = "document.write and eval are forbidden"')).toEqual([]);
