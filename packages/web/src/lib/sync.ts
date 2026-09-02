@@ -54,7 +54,7 @@ import { store } from "./store";
 import { INTERVAL_MS } from "./sync/contracts";
 import { configureCycle, getLastSyncReason, resetBackoff, syncNow } from "./sync/cycle";
 import { assertOwnReplica, configureIdentity, enterUnauthed } from "./sync/identity";
-import { broadcastUpdatedIfPending, installMultiTab, isLeaderTab, notePeersMayNeedUpdate, postMsg } from "./sync/multitab";
+import { broadcastUpdatedIfPending, installMultiTab, isLeaderTab, notePeersMayNeedUpdate, postMsg, runCoordinatedLocalClear } from "./sync/multitab";
 import { isReplacePending, isResyncPending } from "./sync/obligations";
 import { getSyncStatus, installOutboxStatusListener } from "./sync/status";
 import { configureTransport } from "./sync/transport";
@@ -63,7 +63,7 @@ import { configureTransport } from "./sync/transport";
 export { bootOnce, getLastBootSource, retryBoot } from "./sync/boot";
 export type { BootSource, IdentityVerdict, PendingE2eeUpgrade, SyncState, SyncStatus } from "./sync/contracts";
 export { E2eeUpgradeRequiredError, EMPTY_LEDGER, TierMismatchError } from "./sync/contracts";
-export { __resetBackoff, flushOutboxForSignOut, fullResync, poke, pullNow, recheckReplicaOwner, syncNow } from "./sync/cycle";
+export { __resetBackoff, fullResync, poke, pullNow, recheckReplicaOwner, syncNow } from "./sync/cycle";
 export { __resetIdentity, assertOwnReplica, decideIdentity, enterLoginPreservingReplica } from "./sync/identity";
 export type { CoordinatedSignOutLease } from "./sync/multitab";
 export {
@@ -71,8 +71,8 @@ export {
   broadcastKeysChanged,
   cancelSignOutCoordination,
   finishSignOutCoordination,
-  markCoordinatedServerFailed,
-  markSignOutStorageCleared,
+  flushOutboxForSignOut,
+  markSignOutServerSucceeded,
   wipeLocalData,
 } from "./sync/multitab";
 export { __resetObligations, markReplacePending } from "./sync/obligations";
@@ -105,6 +105,17 @@ export async function clearLocalAccountData(): Promise<void> {
   await Promise.all([accountPreferences.clear(), devicePreferences.clear()]);
   await clearLocalData(); // replica, outbox, owner stamp, DEK and sync metadata
   postMsg("wipe");
+}
+
+/** The only sign-out path that may destructively clear while the cross-tab barrier is active. */
+export async function clearLocalAccountDataForSignOut(
+  lease: import("./sync/multitab").CoordinatedSignOutLease,
+  clearAdditionalAccountState: () => void = () => {},
+): Promise<void> {
+  await runCoordinatedLocalClear(lease, async () => {
+    clearAdditionalAccountState();
+    await clearLocalAccountData();
+  });
 }
 
 /* ── Triggers (idempotent installation — StrictMode-safe) ──────────── */

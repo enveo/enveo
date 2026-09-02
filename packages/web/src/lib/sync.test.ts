@@ -34,7 +34,7 @@ import * as e2ee from "./e2ee";
 import { clearLocalData, idbGet, idbPut } from "./idb";
 import * as outbox from "./outbox";
 import * as persist from "./persist";
-import { __resetSignOutBarrierForTests, beginSignOut, isSignOutBlocking } from "./signOutBarrier";
+import { __resetSignOutBarrierForTests, activateSignOutAttempt, beginSignOut, createSignOutPermit, isSignOutBlocking } from "./signOutBarrier";
 import { store } from "./store";
 import {
   __resetBackoff,
@@ -44,7 +44,6 @@ import {
   clearLocalAccountData,
   discardLocalReplica,
   enterLoginPreservingReplica,
-  flushOutboxForSignOut,
   getSyncStatus,
   hasPendingE2eeUpgrade,
   markReplacePending,
@@ -56,6 +55,7 @@ import {
   syncNow,
   upgradeServerE2eeV2,
 } from "./sync";
+import { flushOutboxForSignOut as flushWithPermit } from "./sync/cycle";
 
 const BUDGET_A = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa";
 const BUDGET_B = "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb";
@@ -1680,7 +1680,8 @@ describe("flushOutboxForSignOut (explicit sign-out clears the replica afterwards
     session = { user: { id: "user-A" } };
     outbox.add(catOp());
 
-    expect(await flushOutboxForSignOut()).toBe(0);
+    activateSignOutAttempt("flush-attempt", "source", "local");
+    expect(await flushWithPermit(createSignOutPermit("flush-attempt"))).toBe(0);
     expect(wrote(BUDGET_A).length).toBe(1); // the op reached the server first
   });
 
@@ -1690,7 +1691,8 @@ describe("flushOutboxForSignOut (explicit sign-out clears the replica afterwards
     outbox.add(catOp());
     offline = true;
 
-    expect(await flushOutboxForSignOut()).toBe(1);
+    activateSignOutAttempt("flush-attempt", "source", "local");
+    expect(await flushWithPermit(createSignOutPermit("flush-attempt"))).toBe(1);
     expect(outbox.size()).toBe(1); // still queued — the CALLER asks the human before any discard
   });
 });

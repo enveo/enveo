@@ -86,7 +86,8 @@ export async function fetchSessionUserId(): Promise<string | null> {
 
 /** End only the server session. Explicit local cleanup is orchestrated by signOut.ts. */
 export async function endSession(): Promise<void> {
-  await authClient.signOut();
+  const { error } = await authClient.signOut();
+  if (error) throw new Error("sign_out_failed");
 }
 
 /** Does the backend have a session at all? */

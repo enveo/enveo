@@ -47,6 +47,7 @@ export interface SignOutRegistry {
   persistDecision(): PersistDecision;
   rotateGeneration(attemptId: string): void;
   isPageGenerationCurrent(): boolean;
+  isSoleActiveAttempt(attemptId: string, sourceId: string): boolean;
 }
 
 interface RegistryOptions {
@@ -157,7 +158,10 @@ export function createSignOutRegistry(options: RegistryOptions): SignOutRegistry
     for (const key of keys()) {
       if (!key.startsWith(PRESENCE_PREFIX)) continue;
       const record = parsePresence(get(key));
-      if (!record || record.expiresAt <= at || record.expiresAt > at + ttlMs) continue;
+      if (!record || record.expiresAt <= at || record.expiresAt > at + ttlMs) {
+        remove(key);
+        continue;
+      }
       result.push(record);
     }
     return result;
@@ -214,6 +218,7 @@ export function createSignOutRegistry(options: RegistryOptions): SignOutRegistry
       return marker;
     },
     activeAttempts() {
+      activePresences(); // bounded registry: reap invalid/expired page records on every scan
       const result: SignOutAttemptMarker[] = [];
       for (const key of keys()) {
         if (!key.startsWith(ATTEMPT_PREFIX)) continue;
@@ -247,6 +252,7 @@ export function createSignOutRegistry(options: RegistryOptions): SignOutRegistry
       return "run";
     },
     rotateGeneration(attemptId) {
+      if (!registry.isSoleActiveAttempt(attemptId, sourceId)) fail();
       const marker = registry.readAttempt(attemptId);
       if (!marker || marker.sourceId !== sourceId) fail();
       const nextGeneration = randomId();
@@ -255,6 +261,11 @@ export function createSignOutRegistry(options: RegistryOptions): SignOutRegistry
     },
     isPageGenerationCurrent() {
       return get(GENERATION_KEY) === pageGeneration;
+    },
+    isSoleActiveAttempt(attemptId, expectedSourceId) {
+      if (!registry.isPageGenerationCurrent()) return false;
+      const markers = registry.activeAttempts();
+      return markers.length === 1 && markers[0]?.ready === true && markers[0].attemptId === attemptId && markers[0].sourceId === expectedSourceId;
     },
   };
 
@@ -327,7 +338,6 @@ export interface SignOutBarrierPort<Permit> {
   release(attemptId: string): void;
   createPermit(attemptId: string): Permit;
   markLocalCleared(attemptId: string): void;
-  markServerFailed(attemptId: string): void;
 }
 
 interface CoordinatorOptions<Permit> {
@@ -336,6 +346,7 @@ interface CoordinatorOptions<Permit> {
   readonly gate: RegistryWriteGate;
   readonly send: (message: SignOutCoordinationMessage) => void;
   readonly quiesceCycle: () => Promise<void>;
+  readonly quiesceServerWrites: () => Promise<void>;
   readonly drainPersistence: () => Promise<void>;
   readonly waitForTimeout?: (ms: number) => Promise<void>;
   readonly handshakeTimeoutMs?: number;
@@ -347,8 +358,10 @@ export interface SignOutCoordinator<Permit> {
   begin(): Promise<SignOutCoordinationLease<Permit>>;
   handleMessage(message: unknown): void;
   cancel(lease: SignOutCoordinationLease<Permit>): void;
-  markStorageCleared(lease: SignOutCoordinationLease<Permit>): void;
-  markServerFailed(lease: SignOutCoordinationLease<Permit>): void;
+  assertLease(lease: SignOutCoordinationLease<Permit>): void;
+  runFinalFlush<T>(lease: SignOutCoordinationLease<Permit>, flush: () => Promise<T>): Promise<T>;
+  markServerSucceeded(lease: SignOutCoordinationLease<Permit>): void;
+  runLocalClear(lease: SignOutCoordinationLease<Permit>, clear: () => Promise<void>): Promise<void>;
   finish(lease: SignOutCoordinationLease<Permit>): void;
 }
 
@@ -366,7 +379,18 @@ export function createSignOutCoordinator<Permit>(options: CoordinatorOptions<Per
   const remoteSources = new Map<string, string>();
   const pending = new Map<string, { readonly required: Set<string>; readonly resolve: () => void; readonly reject: () => void; failed: boolean }>();
   const liveLeases = new Map<string, SignOutCoordinationLease<Permit>>();
-  const leaseStages = new Map<string, "blocking" | "cleared" | "server-failed">();
+  const leaseStages = new Map<string, "blocking" | "server-succeeded" | "clearing" | "cleared">();
+
+  const assertLease = (lease: SignOutCoordinationLease<Permit>, expected?: readonly string[]): void => {
+    const stage = leaseStages.get(lease.attemptId);
+    if (
+      liveLeases.get(lease.attemptId) !== lease ||
+      (expected && !expected.includes(stage ?? "")) ||
+      !options.registry.isSoleActiveAttempt(lease.attemptId, lease.sourceId)
+    ) {
+      fail();
+    }
+  };
 
   const failPending = (attemptId: string): void => {
     const state = pending.get(attemptId);
@@ -384,6 +408,7 @@ export function createSignOutCoordinator<Permit>(options: CoordinatorOptions<Per
     let ok = true;
     try {
       await options.quiesceCycle();
+      await options.quiesceServerWrites();
       if (required) await options.drainPersistence();
     } catch {
       ok = false;
@@ -457,6 +482,7 @@ export function createSignOutCoordinator<Permit>(options: CoordinatorOptions<Per
 
         const localQuiescence = (async () => {
           await options.quiesceCycle();
+          await options.quiesceServerWrites();
           await options.drainPersistence();
           options.registry.closeDrain(marker!.attemptId);
           options.gate.notify();
@@ -514,21 +540,52 @@ export function createSignOutCoordinator<Permit>(options: CoordinatorOptions<Per
       options.gate.notify();
       options.send({ type: "sign-out-cancel", attemptId: lease.attemptId, sourceId: lease.sourceId });
     },
-    markStorageCleared(lease) {
-      if (liveLeases.get(lease.attemptId) !== lease || leaseStages.get(lease.attemptId) !== "blocking") fail();
-      options.registry.rotateGeneration(lease.attemptId);
-      options.barrier.markLocalCleared(lease.attemptId);
-      leaseStages.set(lease.attemptId, "cleared");
-      options.gate.notify();
+    assertLease(lease) {
+      assertLease(lease);
     },
-    markServerFailed(lease) {
-      if (liveLeases.get(lease.attemptId) !== lease || leaseStages.get(lease.attemptId) !== "cleared") fail();
-      options.barrier.markServerFailed(lease.attemptId);
-      leaseStages.set(lease.attemptId, "server-failed");
+    async runFinalFlush(lease, flush) {
+      assertLease(lease, ["blocking"]);
+      options.registry.allowDrain(lease.attemptId);
+      options.gate.notify();
+      try {
+        assertLease(lease, ["blocking"]);
+        const result = await flush();
+        await options.drainPersistence();
+        assertLease(lease, ["blocking"]);
+        return result;
+      } finally {
+        options.registry.closeDrain(lease.attemptId);
+        options.gate.notify();
+      }
+    },
+    markServerSucceeded(lease) {
+      assertLease(lease, ["blocking"]);
+      leaseStages.set(lease.attemptId, "server-succeeded");
+    },
+    async runLocalClear(lease, clear) {
+      assertLease(lease, ["server-succeeded"]);
+      leaseStages.set(lease.attemptId, "clearing");
+      options.registry.allowDrain(lease.attemptId);
+      options.gate.notify();
+      try {
+        // The marker/generation check is immediately adjacent to the destructive callback.
+        assertLease(lease, ["clearing"]);
+        await clear();
+        assertLease(lease, ["clearing"]);
+        options.registry.rotateGeneration(lease.attemptId);
+        options.barrier.markLocalCleared(lease.attemptId);
+        leaseStages.set(lease.attemptId, "cleared");
+      } catch (error) {
+        if (leaseStages.get(lease.attemptId) === "clearing") leaseStages.set(lease.attemptId, "server-succeeded");
+        throw error;
+      } finally {
+        options.registry.closeDrain(lease.attemptId);
+        options.gate.notify();
+      }
     },
     finish(lease) {
       const stage = leaseStages.get(lease.attemptId);
-      if (liveLeases.get(lease.attemptId) !== lease || (stage !== "cleared" && stage !== "server-failed")) fail();
+      if (liveLeases.get(lease.attemptId) !== lease || stage !== "cleared") fail();
       liveLeases.delete(lease.attemptId);
       leaseStages.delete(lease.attemptId);
       pending.delete(lease.attemptId);

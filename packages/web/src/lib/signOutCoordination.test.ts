@@ -45,9 +45,6 @@ class FakeBarrier implements SignOutBarrierPort<object> {
   markLocalCleared(attemptId: string): void {
     this.phases.set(attemptId, "local-cleared");
   }
-  markServerFailed(attemptId: string): void {
-    this.phases.set(attemptId, "server-failed");
-  }
 }
 
 function deferred() {
@@ -143,6 +140,7 @@ describe("shared sign-out coordination registry", () => {
     expect(late.activeAttempts()).toEqual([]);
     expect(late.persistDecision()).toBe("run");
     expect(late.isPageGenerationCurrent()).toBe(true);
+    expect([...storage.values.keys()].some((key) => key.includes("presence."))).toBe(false);
   });
 
   it("rotates only for the exact active attempt and permanently fences the old page", () => {
@@ -178,6 +176,7 @@ describe("sign-out acknowledgement handshake", () => {
     aRegistry.refreshPresence();
     bRegistry.refreshPresence();
     const peerCycle = deferred();
+    const peerServerWrite = deferred();
     const peerPersistence = deferred();
     const neverTimeout = () => new Promise<void>(() => {});
     let a!: ReturnType<typeof createSignOutCoordinator<object>>;
@@ -191,6 +190,7 @@ describe("sign-out acknowledgement handshake", () => {
       gate: createRegistryWriteGate(aRegistry),
       send: (message) => deliver("b", message),
       quiesceCycle: async () => {},
+      quiesceServerWrites: () => peerServerWrite.promise,
       drainPersistence: async () => {},
       waitForTimeout: neverTimeout,
     });
@@ -200,6 +200,7 @@ describe("sign-out acknowledgement handshake", () => {
       gate: createRegistryWriteGate(bRegistry),
       send: (message) => deliver("a", message),
       quiesceCycle: () => peerCycle.promise,
+      quiesceServerWrites: async () => {},
       drainPersistence: () => peerPersistence.promise,
       waitForTimeout: neverTimeout,
     });
@@ -212,6 +213,9 @@ describe("sign-out acknowledgement handshake", () => {
     await Promise.resolve();
     expect(outcome).toEqual([]);
     peerCycle.resolve();
+    await Promise.resolve();
+    expect(outcome).toEqual([]);
+    peerServerWrite.resolve();
     await Promise.resolve();
     expect(outcome).toEqual([]);
     peerPersistence.resolve();
@@ -237,6 +241,7 @@ describe("sign-out acknowledgement handshake", () => {
       gate: createRegistryWriteGate(aRegistry),
       send: (message) => b.handleMessage(message),
       quiesceCycle: async () => {},
+      quiesceServerWrites: async () => {},
       drainPersistence: async () => {},
       waitForTimeout: async () => {},
     });
@@ -246,6 +251,7 @@ describe("sign-out acknowledgement handshake", () => {
       gate: createRegistryWriteGate(bRegistry),
       send: () => {},
       quiesceCycle: () => new Promise<void>(() => {}),
+      quiesceServerWrites: async () => {},
       drainPersistence: async () => {},
       waitForTimeout: () => new Promise<void>(() => {}),
     });
@@ -270,6 +276,7 @@ describe("sign-out acknowledgement handshake", () => {
       gate: createRegistryWriteGate(late),
       send: () => {},
       quiesceCycle: async () => {},
+      quiesceServerWrites: async () => {},
       drainPersistence: async () => {},
     });
 
@@ -294,6 +301,7 @@ describe("sign-out acknowledgement handshake", () => {
       gate: createRegistryWriteGate(aRegistry),
       send: (message) => sent.push(message),
       quiesceCycle: async () => {},
+      quiesceServerWrites: async () => {},
       drainPersistence: async () => {},
       waitForTimeout: () => new Promise<void>(() => {}),
     });
@@ -330,6 +338,7 @@ describe("sign-out acknowledgement handshake", () => {
       gate: createRegistryWriteGate(target),
       send: () => {},
       quiesceCycle: async () => {},
+      quiesceServerWrites: async () => {},
       drainPersistence: async () => {},
     });
     coordinator.install();
@@ -358,6 +367,7 @@ describe("sign-out acknowledgement handshake", () => {
       gate: createRegistryWriteGate(aRegistry),
       send: (message) => b.handleMessage(message),
       quiesceCycle: async () => {},
+      quiesceServerWrites: async () => {},
       drainPersistence: async () => {},
       waitForTimeout: neverTimeout,
     });
@@ -367,18 +377,98 @@ describe("sign-out acknowledgement handshake", () => {
       gate: createRegistryWriteGate(bRegistry),
       send: (message) => a.handleMessage(message),
       quiesceCycle: async () => {},
+      quiesceServerWrites: async () => {},
       drainPersistence: async () => {},
       waitForTimeout: neverTimeout,
     });
     const lease = await a.begin();
 
     expect(() => a.finish(lease)).toThrow("sign_out_coordination_failed");
-    a.markStorageCleared(lease);
+    a.markServerSucceeded(lease);
+    await a.runLocalClear(lease, async () => {});
     a.finish(lease);
     b.maintain();
 
     expect(aRegistry.activeAttempts()).toEqual([]);
     expect(bRegistry.persistDecision()).toBe("skip");
     expect(() => a.cancel(lease)).toThrow("sign_out_coordination_failed");
+  });
+
+  it("invalidates a lease and preserves storage when its marker is lost before clear", async () => {
+    const storage = new MemoryStorage();
+    const ids = ["generation", "source-a", "attempt-a"];
+    const registry = createSignOutRegistry({ storage, now: () => 1_000, randomId: () => ids.shift()!, ttlMs: 100 });
+    const coordinator = createSignOutCoordinator({
+      registry,
+      barrier: new FakeBarrier(),
+      gate: createRegistryWriteGate(registry),
+      send: () => {},
+      quiesceCycle: async () => {},
+      quiesceServerWrites: async () => {},
+      drainPersistence: async () => {},
+      waitForTimeout: () => new Promise<void>(() => {}),
+    });
+    const lease = await coordinator.begin();
+    coordinator.markServerSucceeded(lease);
+    registry.removeAttempt(lease.attemptId);
+    let cleared = false;
+
+    await expect(
+      coordinator.runLocalClear(lease, async () => {
+        cleared = true;
+      }),
+    ).rejects.toThrow("sign_out_coordination_failed");
+    expect(cleared).toBe(false);
+    expect(registry.isPageGenerationCurrent()).toBe(true);
+  });
+
+  it("keeps the privileged final flush drain open through durable persistence and revalidates afterwards", async () => {
+    const storage = new MemoryStorage();
+    const ids = ["generation", "source-a", "attempt-a"];
+    const registry = createSignOutRegistry({ storage, now: () => 1_000, randomId: () => ids.shift()!, ttlMs: 100 });
+    const durable = deferred();
+    let drains = 0;
+    const coordinator = createSignOutCoordinator({
+      registry,
+      barrier: new FakeBarrier(),
+      gate: createRegistryWriteGate(registry),
+      send: () => {},
+      quiesceCycle: async () => {},
+      quiesceServerWrites: async () => {},
+      drainPersistence: () => (++drains === 1 ? Promise.resolve() : durable.promise),
+      waitForTimeout: () => new Promise<void>(() => {}),
+    });
+    const lease = await coordinator.begin();
+    const flushing = coordinator.runFinalFlush(lease, async () => 7);
+    let settled = false;
+    void flushing.then(() => {
+      settled = true;
+    });
+    await Promise.resolve();
+    expect(settled).toBe(false);
+    durable.resolve();
+    await expect(flushing).resolves.toBe(7);
+  });
+
+  it("does not validate either lease while another shared attempt is active", async () => {
+    const storage = new MemoryStorage();
+    const ids = ["generation", "source-a", "attempt-a", "source-b", "attempt-b"];
+    const options = { storage, now: () => 1_000, randomId: () => ids.shift()!, ttlMs: 100 };
+    const registry = createSignOutRegistry(options);
+    const coordinator = createSignOutCoordinator({
+      registry,
+      barrier: new FakeBarrier(),
+      gate: createRegistryWriteGate(registry),
+      send: () => {},
+      quiesceCycle: async () => {},
+      quiesceServerWrites: async () => {},
+      drainPersistence: async () => {},
+      waitForTimeout: () => new Promise<void>(() => {}),
+    });
+    const lease = await coordinator.begin();
+    const peer = createSignOutRegistry(options);
+    peer.createAttempt();
+
+    expect(() => coordinator.assertLease(lease)).toThrow("sign_out_coordination_failed");
   });
 });

@@ -1,4 +1,5 @@
 import type { AccountPreferences, AccountPreferencesPatch } from "@enveo/shared";
+import { runServerWriteOperation } from "./serverWriteOperations";
 
 export type AccountPreferencesResponse = AccountPreferences & { revision: number };
 
@@ -15,4 +16,4 @@ async function request(method: "GET" | "PATCH", body?: unknown): Promise<Account
 export const getAccountPreferencesRemote = (): Promise<AccountPreferencesResponse> => request("GET");
 
 export const patchAccountPreferencesRemote = (userId: string, patch: AccountPreferencesPatch): Promise<AccountPreferencesResponse> =>
-  request("PATCH", { userId, patch });
+  runServerWriteOperation("account-preferences", () => request("PATCH", { userId, patch }));

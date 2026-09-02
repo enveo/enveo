@@ -45,14 +45,15 @@ import * as e2ee from "../e2ee";
 import { ensureE2eeProviderPreference } from "../e2eeProviderInvariant";
 import { clearLocalData } from "../idb";
 import * as persist from "../persist";
+import { awaitServerWriteOperationsQuiescent } from "../serverWriteOperations";
 import {
   __resetSignOutBarrierForTests,
   activateSignOutAttempt,
+  configureSignOutPermitValidator,
   configureSignOutSharedBlocker,
   createSignOutPermit,
   isSignOutBlocking,
   markLocalCleared,
-  markServerFailed,
   releaseSignOutAttempt,
   type SignOutPermit,
 } from "../signOutBarrier";
@@ -180,6 +181,7 @@ export function __resetMultiTabForTests(): void {
   signOutRegistry = null;
   signOutCoordinator = null;
   configureSignOutSharedBlocker(null);
+  configureSignOutPermitValidator(null);
   persist.configurePersistWriteGate(null);
   __resetSignOutBarrierForTests();
 }
@@ -200,6 +202,7 @@ function installSignOutCoordinator(): void {
     configureSignOutSharedBlocker(
       () => signOutRegistry !== null && (!signOutRegistry.isPageGenerationCurrent() || signOutRegistry.activeAttempts().length > 0),
     );
+    configureSignOutPermitValidator((attemptId) => signOutRegistry?.isSoleActiveAttempt(attemptId, signOutRegistry.sourceId) ?? false);
     const gate = createRegistryWriteGate(signOutRegistry);
     persist.configurePersistWriteGate(gate);
     signOutCoordinator = createSignOutCoordinator({
@@ -210,10 +213,10 @@ function installSignOutCoordinator(): void {
         release: releaseSignOutAttempt,
         createPermit: createSignOutPermit,
         markLocalCleared,
-        markServerFailed,
       },
       send: postCoordinationMessage,
       quiesceCycle: quiesceSyncForSignOut,
+      quiesceServerWrites: awaitServerWriteOperationsQuiescent,
       drainPersistence: async () => {
         await Promise.all([persist.flushed(), accountPreferences.flushed(), devicePreferences.flushed()]);
       },
@@ -230,6 +233,7 @@ function installSignOutCoordinator(): void {
     signOutRegistry = null;
     signOutCoordinator = null;
     configureSignOutSharedBlocker(null);
+    configureSignOutPermitValidator(null);
     persist.configurePersistWriteGate(null);
   }
 }
@@ -248,12 +252,16 @@ export function cancelSignOutCoordination(lease: CoordinatedSignOutLease): void 
   requireSignOutCoordinator().cancel(lease);
 }
 
-export function markSignOutStorageCleared(lease: CoordinatedSignOutLease): void {
-  requireSignOutCoordinator().markStorageCleared(lease);
+export function assertSignOutLease(lease: CoordinatedSignOutLease): void {
+  requireSignOutCoordinator().assertLease(lease);
 }
 
-export function markCoordinatedServerFailed(lease: CoordinatedSignOutLease): void {
-  requireSignOutCoordinator().markServerFailed(lease);
+export function markSignOutServerSucceeded(lease: CoordinatedSignOutLease): void {
+  requireSignOutCoordinator().markServerSucceeded(lease);
+}
+
+export function runCoordinatedLocalClear(lease: CoordinatedSignOutLease, clear: () => Promise<void>): Promise<void> {
+  return requireSignOutCoordinator().runLocalClear(lease, clear);
 }
 
 export function finishSignOutCoordination(lease: CoordinatedSignOutLease): void {
@@ -261,7 +269,8 @@ export function finishSignOutCoordination(lease: CoordinatedSignOutLease): void 
 }
 
 export function flushOutboxForSignOut(lease: CoordinatedSignOutLease): Promise<number> {
-  return flushCoordinatedOutbox(lease);
+  const coordinator = requireSignOutCoordinator();
+  return coordinator.runFinalFlush(lease, () => flushCoordinatedOutbox(lease.permit));
 }
 
 interface LockManagerLike {
@@ -301,6 +310,20 @@ export function installMultiTab(): void {
 
   // Shared markers are scanned synchronously before leader election can launch a cycle.
   installSignOutCoordinator();
+  if (typeof window !== "undefined") {
+    window.addEventListener(
+      "pagehide",
+      () => {
+        try {
+          signOutRegistry?.removePresence();
+        } catch {
+          // A cleanup failure must not make a live coordination lease appear valid.
+          configureSignOutPermitValidator(() => false);
+        }
+      },
+      { once: true },
+    );
+  }
   const locks = (navigator as Navigator & { locks?: LockManagerLike }).locks;
   if (locks && typeof locks.request === "function") {
     locks

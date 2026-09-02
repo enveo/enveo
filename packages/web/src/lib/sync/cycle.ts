@@ -143,9 +143,10 @@ export function fullResync(): Promise<void> {
  * so queued ops must first get an ordinary cycle through the usual mutex. The remaining count
  * determines whether the human must retry, export a backup, or explicitly discard.
  */
-export async function flushOutboxForSignOut(lease?: { readonly permit: SignOutPermit }): Promise<number> {
-  if (lease && !isSignOutPermitActive(lease.permit)) throw new Error("sign_out_coordination_failed");
-  await syncNow("sign-out", lease?.permit);
+export async function flushOutboxForSignOut(permit: SignOutPermit): Promise<number> {
+  if (!isSignOutPermitActive(permit)) throw new Error("sign_out_coordination_failed");
+  await syncNow("sign-out", permit);
+  if (!isSignOutPermitActive(permit)) throw new Error("sign_out_coordination_failed");
   return outbox.size();
 }
 
@@ -189,12 +190,14 @@ async function doCycle(permit?: SignOutPermit): Promise<boolean> {
     await accountPreferences.hydrateForUser(userId);
     if (!cycleMayContinue(permit)) return true;
     // Preferences are an auxiliary channel: a temporary failure must not stall ledger sync.
-    try {
-      await accountPreferences.sync(userId);
-      await devicePreferences.hydrate();
-      await migrateLegacySettings();
-    } catch (error) {
-      console.warn("account preference sync or legacy migration failed", error);
+    if (!permit) {
+      try {
+        await accountPreferences.sync(userId);
+        await devicePreferences.hydrate();
+        await migrateLegacySettings();
+      } catch (error) {
+        console.warn("account preference sync or legacy migration failed", error);
+      }
     }
     if (!cycleMayContinue(permit)) return true;
     // The ownership proof may have learned that the session's budget sits in the OTHER tier
@@ -227,9 +230,9 @@ async function doCycle(permit?: SignOutPermit): Promise<boolean> {
           enterLocked(); // without a DEK we can't encrypt the checkpoint — waiting for Unlock (flag stays up)
           return true;
         }
-        await resetServerE2ee(dek); // server := ciphertext of the local mirror; clears replacePending
+        await resetServerE2ee(dek, permit); // server := ciphertext of the local mirror; clears replacePending
       } else {
-        await pushLocalToServer(); // server := local; clears replacePending
+        await pushLocalToServer(permit); // server := local; clears replacePending
       }
       if (!cycleMayContinue(permit)) return true;
       clearResyncPending();
@@ -295,7 +298,7 @@ async function doCycle(permit?: SignOutPermit): Promise<boolean> {
           if (!cycleMayContinue(permit)) return true;
           // budgetId = the PER-REQUEST tenant assertion (see the v1 push below) — in v2 it is
           // also the authenticated op context, so it is REQUIRED, never optional
-          await pushE2eeBatch(epoch, pushBudgetId, ops);
+          await pushE2eeBatch(epoch, pushBudgetId, ops, permit);
           if (!cycleMayContinue(permit)) return true;
           outbox.removeAcked(batch.map((en) => en.op.opId));
           requireDeps().notePeersMayNeedUpdate(); // canon after push → rehydrate other tabs
@@ -305,7 +308,7 @@ async function doCycle(permit?: SignOutPermit): Promise<boolean> {
       }
 
       // PULL v2 — ciphertext delta (own pending ops skipped + outbox replay)
-      await doPullE2ee(dek, userId);
+      await doPullE2ee(dek, userId, permit);
       if (!cycleMayContinue(permit)) return true;
       // A stale peer can also have reached the encrypted journal after our earlier rules op.
       // Normalize after pull; poke coalescing schedules the new terminal op immediately.
@@ -328,7 +331,10 @@ async function doCycle(permit?: SignOutPermit): Promise<boolean> {
     while (outbox.size() > 0) {
       const batch = outbox.takeBatch(PUSH_BATCH);
       try {
-        const body = await pushPlainBatch(batch.map((e) => e.op));
+        const body = await pushPlainBatch(
+          batch.map((e) => e.op),
+          permit,
+        );
         if (!cycleMayContinue(permit)) return true;
         if (body.budgetId !== store.getBudgetId()) {
           // The server applied the batch to a budget this replica does not name. It can only

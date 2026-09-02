@@ -37,6 +37,7 @@ import { reencryptBudgetSecret } from "../e2eeCredentialCeremonies";
 import { idbDelete, idbGet } from "../idb";
 import * as outbox from "../outbox";
 import * as persist from "../persist";
+import { runServerWriteOperation } from "../serverWriteOperations";
 import { readLegacySettings, removeLegacySettingsIfUnchanged } from "../settingsPersist";
 import { store } from "../store";
 import { type PendingE2eeUpgrade, TierMismatchError } from "./contracts";
@@ -105,6 +106,10 @@ export async function discardPendingE2eeUpgrade(): Promise<void> {
  * and the caller re-syncs.
  */
 export async function upgradeServerE2eeV2(password: string | null): Promise<void> {
+  return runServerWriteOperation("e2ee-upgrade", () => upgradeServerE2eeV2Impl(password));
+}
+
+async function upgradeServerE2eeV2Impl(password: string | null): Promise<void> {
   const userId = await assertOwnReplica(); // foreign/unverified — no write
   const budgetId = e2eeReplicaBudgetId();
   if (!budgetId) throw new Error("foreign_replica");

@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from "bun:test";
+import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import {
   __resetSignOutBarrierForTests,
   activateSignOutAttempt,
@@ -16,6 +16,10 @@ import {
 } from "./signOutBarrier";
 
 beforeEach(() => {
+  __resetSignOutBarrierForTests();
+});
+
+afterEach(() => {
   __resetSignOutBarrierForTests();
 });
 
@@ -82,13 +86,16 @@ describe("sign-out barrier", () => {
     expect(isSignOutBlocking()).toBe(false);
   });
 
-  it("accepts only the opaque permit belonging to a live local attempt", () => {
+  it("accepts a permit only while it is the sole live attempt", () => {
     activateSignOutAttempt("attempt-a", "source-a", "local");
     const permit = createSignOutPermit("attempt-a");
+    expect(isSignOutPermitActive(permit)).toBe(true);
+
     activateSignOutAttempt("attempt-b", "source-b", "local");
     const otherPermit = createSignOutPermit("attempt-b");
+    expect(isSignOutPermitActive(permit)).toBe(false);
+    expect(isSignOutPermitActive(otherPermit)).toBe(false);
 
-    expect(isSignOutPermitActive(permit)).toBe(true);
     releaseSignOutAttempt("attempt-a");
     expect(isSignOutPermitActive(permit)).toBe(false);
     expect(isSignOutPermitActive(otherPermit)).toBe(true);

@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from "bun:test";
+import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { __resetPersistForTests, configurePersistWriteGate, enqueue, flushed } from "./persist";
 import { createRegistryWriteGate, createSignOutRegistry, type StorageLike } from "./signOutCoordination";
 
@@ -30,6 +30,10 @@ function deferred<T>() {
 }
 
 beforeEach(() => {
+  __resetPersistForTests();
+});
+
+afterEach(() => {
   __resetPersistForTests();
 });
 
