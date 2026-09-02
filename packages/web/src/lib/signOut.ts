@@ -1,4 +1,4 @@
-import { endSession } from "./auth";
+import { endSessionForSignOut } from "./auth";
 import { exportBackup, hasExportableBackup } from "./data";
 import { clearLastAccountId } from "./lastAccount";
 import { clearPersistedSettings } from "./settingsPersist";
@@ -22,7 +22,7 @@ export interface SignOutDeps {
   flushPending(lease: CoordinatedSignOutLease): Promise<number>;
   canExport(): boolean;
   exportBackup(): void;
-  endSession(): Promise<void>;
+  endSession(lease: CoordinatedSignOutLease): Promise<void>;
   markServerSucceeded(lease: CoordinatedSignOutLease): void;
   clearLocalAccountData(lease: CoordinatedSignOutLease): Promise<void>;
   finishCoordination(lease: CoordinatedSignOutLease): void;
@@ -35,7 +35,7 @@ const realDeps: SignOutDeps = {
   flushPending: flushOutboxForSignOut,
   canExport: hasExportableBackup,
   exportBackup,
-  endSession,
+  endSession: endSessionForSignOut,
   markServerSucceeded: markSignOutServerSucceeded,
   clearLocalAccountData: (lease) =>
     clearLocalAccountDataForSignOut(lease, () => {
@@ -83,7 +83,7 @@ export async function completeExplicitSignOut(decision: SignOutDecision, deps: S
         throw new ExplicitSignOutPendingError(preparation);
       }
     }
-    await deps.endSession();
+    await deps.endSession(lease);
     deps.markServerSucceeded(lease);
     serverSucceeded = true;
     await deps.clearLocalAccountData(lease);

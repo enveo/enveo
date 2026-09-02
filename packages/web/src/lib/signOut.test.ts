@@ -4,7 +4,7 @@ import { __resetStorageForTests, clearLocalData, idbGetAll, idbPut } from "./idb
 import { completeExplicitSignOut, ExplicitSignOutPendingError, prepareExplicitSignOut, type SignOutDeps } from "./signOut";
 import type { CoordinatedSignOutLease } from "./sync";
 
-const lease = { attemptId: "attempt", sourceId: "source", permit: {} } as CoordinatedSignOutLease;
+const lease = Object.freeze({}) as CoordinatedSignOutLease;
 
 afterEach(() => {
   delete (globalThis as Record<string, unknown>).indexedDB;

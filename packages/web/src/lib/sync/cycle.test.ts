@@ -9,7 +9,7 @@ import { type ClientLedger, createDefaultBudgetPreferences } from "@enveo/shared
 import * as e2ee from "../e2ee";
 import { __resetSignOutBarrierForTests, activateSignOutAttempt, beginSignOut, createSignOutPermit, type SignOutPermit } from "../signOutBarrier";
 import { store } from "../store";
-import { __resetBackoff, awaitInFlightCycle, configureCycle, flushOutboxForSignOut, poke, quiesceSyncForSignOut, runWithSyncMutex, syncNow } from "./cycle";
+import { __resetBackoff, awaitInFlightCycle, configureCycle, flushOutboxWithPermit, poke, quiesceSyncForSignOut, runWithSyncMutex, syncNow } from "./cycle";
 import { __resetIdentity, enterForeignReplica } from "./identity";
 
 const emptyLedger = (): ClientLedger => ({
@@ -160,8 +160,8 @@ describe("sync/cycle: gates that stop a cycle before any request", () => {
     activateSignOutAttempt("attempt", "source", "local");
     const permit = createSignOutPermit("attempt");
 
-    await flushOutboxForSignOut(permit);
-    await expect(flushOutboxForSignOut({} as SignOutPermit)).rejects.toThrow("sign_out_coordination_failed");
+    await flushOutboxWithPermit(permit);
+    await expect(flushOutboxWithPermit({} as SignOutPermit)).rejects.toThrow("sign_out_coordination_failed");
   });
 
   it("foreign replica: syncNow resolves without a cycle (nothing may reach the network)", async () => {

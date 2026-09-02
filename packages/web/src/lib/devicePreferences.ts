@@ -105,11 +105,19 @@ export function createDevicePreferencesStore(deps: DevicePreferencesStoreDeps) {
     await deps.remove();
   }
 
+  function dehydrate(): void {
+    editGeneration++;
+    canonicalPresent = false;
+    hydratePromise = null;
+    publish(DEFAULT_DEVICE_PREFERENCES);
+  }
+
   return {
     hydrate,
     update,
     flushed: () => persistChain.catch(() => {}),
     clear,
+    dehydrate,
     getSnapshot: () => snapshot,
     migrationState: () => ({ value: snapshot, present: canonicalPresent }),
     subscribe(listener: () => void) {

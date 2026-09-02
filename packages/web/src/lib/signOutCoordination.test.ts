@@ -164,6 +164,20 @@ describe("shared sign-out coordination registry", () => {
 
     expect(() => createSignOutRegistry({ storage, now: () => 1_000, randomId: () => "opaque", ttlMs: 100 })).toThrow("sign_out_coordination_failed");
   });
+
+  it("converges on the winning initial generation when two first-load pages race", () => {
+    const storage = new MemoryStorage();
+    storage.onSet = (key) => {
+      if (!key.endsWith("generation")) return;
+      storage.onSet = null;
+      storage.values.set(key, "competing-first-load-generation");
+    };
+
+    const registry = createSignOutRegistry({ storage, now: () => 1_000, randomId: () => "local-candidate", ttlMs: 100 });
+
+    expect(registry.isPageGenerationCurrent()).toBe(true);
+    expect(registry.pageGeneration).toBe("competing-first-load-generation");
+  });
 });
 
 describe("sign-out acknowledgement handshake", () => {
@@ -177,6 +191,7 @@ describe("sign-out acknowledgement handshake", () => {
     bRegistry.refreshPresence();
     const peerCycle = deferred();
     const peerServerWrite = deferred();
+    const peerAccountWrite = deferred();
     const peerPersistence = deferred();
     const neverTimeout = () => new Promise<void>(() => {});
     let a!: ReturnType<typeof createSignOutCoordinator<object>>;
@@ -191,6 +206,7 @@ describe("sign-out acknowledgement handshake", () => {
       send: (message) => deliver("b", message),
       quiesceCycle: async () => {},
       quiesceServerWrites: () => peerServerWrite.promise,
+      quiesceAccountWrites: async () => {},
       drainPersistence: async () => {},
       waitForTimeout: neverTimeout,
     });
@@ -201,6 +217,7 @@ describe("sign-out acknowledgement handshake", () => {
       send: (message) => deliver("a", message),
       quiesceCycle: () => peerCycle.promise,
       quiesceServerWrites: async () => {},
+      quiesceAccountWrites: () => peerAccountWrite.promise,
       drainPersistence: () => peerPersistence.promise,
       waitForTimeout: neverTimeout,
     });
@@ -219,6 +236,9 @@ describe("sign-out acknowledgement handshake", () => {
     await Promise.resolve();
     expect(outcome).toEqual([]);
     peerPersistence.resolve();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(outcome).toEqual([]);
+    peerAccountWrite.resolve();
 
     await pendingLease;
     expect(outcome).toEqual(["lease"]);
@@ -242,6 +262,7 @@ describe("sign-out acknowledgement handshake", () => {
       send: (message) => b.handleMessage(message),
       quiesceCycle: async () => {},
       quiesceServerWrites: async () => {},
+      quiesceAccountWrites: async () => {},
       drainPersistence: async () => {},
       waitForTimeout: async () => {},
     });
@@ -252,6 +273,7 @@ describe("sign-out acknowledgement handshake", () => {
       send: () => {},
       quiesceCycle: () => new Promise<void>(() => {}),
       quiesceServerWrites: async () => {},
+      quiesceAccountWrites: async () => {},
       drainPersistence: async () => {},
       waitForTimeout: () => new Promise<void>(() => {}),
     });
@@ -277,6 +299,7 @@ describe("sign-out acknowledgement handshake", () => {
       send: () => {},
       quiesceCycle: async () => {},
       quiesceServerWrites: async () => {},
+      quiesceAccountWrites: async () => {},
       drainPersistence: async () => {},
     });
 
@@ -302,6 +325,7 @@ describe("sign-out acknowledgement handshake", () => {
       send: (message) => sent.push(message),
       quiesceCycle: async () => {},
       quiesceServerWrites: async () => {},
+      quiesceAccountWrites: async () => {},
       drainPersistence: async () => {},
       waitForTimeout: () => new Promise<void>(() => {}),
     });
@@ -339,6 +363,7 @@ describe("sign-out acknowledgement handshake", () => {
       send: () => {},
       quiesceCycle: async () => {},
       quiesceServerWrites: async () => {},
+      quiesceAccountWrites: async () => {},
       drainPersistence: async () => {},
     });
     coordinator.install();
@@ -368,6 +393,7 @@ describe("sign-out acknowledgement handshake", () => {
       send: (message) => b.handleMessage(message),
       quiesceCycle: async () => {},
       quiesceServerWrites: async () => {},
+      quiesceAccountWrites: async () => {},
       drainPersistence: async () => {},
       waitForTimeout: neverTimeout,
     });
@@ -378,6 +404,7 @@ describe("sign-out acknowledgement handshake", () => {
       send: (message) => a.handleMessage(message),
       quiesceCycle: async () => {},
       quiesceServerWrites: async () => {},
+      quiesceAccountWrites: async () => {},
       drainPersistence: async () => {},
       waitForTimeout: neverTimeout,
     });
@@ -405,6 +432,7 @@ describe("sign-out acknowledgement handshake", () => {
       send: () => {},
       quiesceCycle: async () => {},
       quiesceServerWrites: async () => {},
+      quiesceAccountWrites: async () => {},
       drainPersistence: async () => {},
       waitForTimeout: () => new Promise<void>(() => {}),
     });
@@ -435,6 +463,7 @@ describe("sign-out acknowledgement handshake", () => {
       send: () => {},
       quiesceCycle: async () => {},
       quiesceServerWrites: async () => {},
+      quiesceAccountWrites: async () => {},
       drainPersistence: () => (++drains === 1 ? Promise.resolve() : durable.promise),
       waitForTimeout: () => new Promise<void>(() => {}),
     });
@@ -462,6 +491,7 @@ describe("sign-out acknowledgement handshake", () => {
       send: () => {},
       quiesceCycle: async () => {},
       quiesceServerWrites: async () => {},
+      quiesceAccountWrites: async () => {},
       drainPersistence: async () => {},
       waitForTimeout: () => new Promise<void>(() => {}),
     });
@@ -470,5 +500,55 @@ describe("sign-out acknowledgement handshake", () => {
     peer.createAttempt();
 
     expect(() => coordinator.assertLease(lease)).toThrow("sign_out_coordination_failed");
+  });
+
+  it("holds a committed clear across normal-TTL throttling and marker loss so the peer stays blocked", async () => {
+    const storage = new MemoryStorage();
+    let now = 1_000;
+    const ids = ["generation", "source-a", "source-b", "attempt-a", "generation-b"];
+    const options = { storage, now: () => now, randomId: () => ids.shift()!, ttlMs: 100, clearHoldMs: 1_000 };
+    const aRegistry = createSignOutRegistry(options);
+    const bRegistry = createSignOutRegistry(options);
+    aRegistry.refreshPresence();
+    bRegistry.refreshPresence();
+    const bBarrier = new FakeBarrier();
+    const clear = deferred();
+    let a!: ReturnType<typeof createSignOutCoordinator<object>>;
+    let b!: ReturnType<typeof createSignOutCoordinator<object>>;
+    const neverTimeout = () => new Promise<void>(() => {});
+    a = createSignOutCoordinator({
+      registry: aRegistry,
+      barrier: new FakeBarrier(),
+      gate: createRegistryWriteGate(aRegistry),
+      send: (message) => b.handleMessage(message),
+      quiesceCycle: async () => {},
+      quiesceServerWrites: async () => {},
+      quiesceAccountWrites: async () => {},
+      drainPersistence: async () => {},
+      waitForTimeout: neverTimeout,
+    });
+    b = createSignOutCoordinator({
+      registry: bRegistry,
+      barrier: bBarrier,
+      gate: createRegistryWriteGate(bRegistry),
+      send: (message) => a.handleMessage(message),
+      quiesceCycle: async () => {},
+      quiesceServerWrites: async () => {},
+      quiesceAccountWrites: async () => {},
+      drainPersistence: async () => {},
+      waitForTimeout: neverTimeout,
+    });
+    const lease = await a.begin();
+    a.markServerSucceeded(lease);
+    const clearing = a.runLocalClear(lease, () => clear.promise);
+    await Promise.resolve();
+
+    now += 101;
+    aRegistry.removeAttempt(lease.attemptId);
+    b.maintain();
+    expect(bBarrier.active.has(lease.attemptId)).toBe(true);
+
+    clear.resolve();
+    await expect(clearing).rejects.toThrow("sign_out_coordination_failed");
   });
 });
