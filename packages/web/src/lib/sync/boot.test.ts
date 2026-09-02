@@ -58,6 +58,7 @@ beforeEach(async () => {
 
 afterEach(() => {
   __resetAccountStorageOperationsForTests();
+  __resetSignOutBarrierForTests();
   __resetBackoff();
   __resetIdentity();
   globalThis.fetch = realFetch;
