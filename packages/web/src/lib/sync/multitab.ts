@@ -49,6 +49,7 @@ import { devicePreferences } from "../devicePreferences";
 import * as e2ee from "../e2ee";
 import { ensureE2eeProviderPreference } from "../e2eeProviderInvariant";
 import { clearLocalData } from "../idb";
+import * as outbox from "../outbox";
 import * as persist from "../persist";
 import { awaitServerWriteOperationsQuiescent, runServerWriteOperation } from "../serverWriteOperations";
 import {
@@ -259,6 +260,7 @@ function installSignOutCoordinator(storageOverride?: import("../signOutCoordinat
     signOutMaintenanceTimer = setInterval(() => {
       try {
         signOutCoordinator?.maintain();
+        recoverRotatedPage(reloadPageOnly);
       } catch {
         // Loss of shared coordination never releases an existing local barrier.
       }
@@ -274,27 +276,60 @@ export function __installSignOutCoordinatorForTests(storage: import("../signOutC
 }
 
 interface PageLifecycleTarget {
-  addEventListener(type: "pagehide" | "pageshow", listener: () => void): void;
+  addEventListener(type: "pagehide" | "pageshow", listener: (event: { readonly persisted?: boolean }) => void): void;
 }
 
-/** BFCache pages leave and return without module reinitialization; presence must follow them. */
-export function installSignOutPageLifecycle(target: PageLifecycleTarget): void {
+function clearAccountMemoryForTerminalReload(): void {
+  outbox.clearMemory();
+  e2ee.clearDekMemory();
+  store.clearMemory();
+  accountPreferences.dehydrate();
+  devicePreferences.dehydrate();
+}
+
+function reloadPageOnly(): void {
+  if (typeof location !== "undefined") location.reload();
+}
+
+function reloadAfterTerminalGeneration(): void {
+  clearAccountMemoryForTerminalReload();
+  reloadPageOnly();
+}
+
+function recoverRotatedPage(reload: () => void): boolean {
+  if (!signOutRegistry || signOutRegistry.isPageGenerationCurrent()) return false;
+  clearAccountMemoryForTerminalReload();
+  reload();
+  return true;
+}
+
+/**
+ * A BFCache page is frozen without quiescence, and a normal unload can still own admitted work.
+ * Keep the bounded presence record in either case so another tab must obtain an acknowledgement
+ * or abort on timeout. A completed generation rotation is recovered synchronously on pageshow.
+ */
+export function installSignOutPageLifecycle(target: PageLifecycleTarget, reload: () => void = reloadPageOnly): void {
   target.addEventListener("pagehide", () => {
     try {
-      signOutRegistry?.removePresence();
+      // Never remove here. Refreshing gives a frozen page or admitted unload work the full
+      // bounded presence lease; another tab must wait for its acknowledgement or time out.
+      signOutRegistry?.refreshPresence();
     } catch {
       failSignOutCoordinationClosed();
     }
   });
   target.addEventListener("pageshow", () => {
     try {
+      if (recoverRotatedPage(reload)) return;
       if (!signOutCoordinator) {
         installSignOutCoordinator();
+        recoverRotatedPage(reload);
         return;
       }
       // install scans and activates shared markers before refreshing this page's presence.
       signOutCoordinator.install();
       signOutCoordinator.maintain();
+      recoverRotatedPage(reload);
     } catch {
       failSignOutCoordinationClosed();
     }
@@ -381,7 +416,7 @@ export function installMultiTab(): void {
         return;
       }
       if (msg.type === "sign-out-complete" && typeof location !== "undefined") {
-        location.reload();
+        reloadAfterTerminalGeneration();
         return;
       }
       if (isSignOutBlocking()) return;

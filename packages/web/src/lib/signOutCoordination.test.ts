@@ -178,6 +178,38 @@ describe("shared sign-out coordination registry", () => {
     expect(registry.isPageGenerationCurrent()).toBe(true);
     expect(registry.pageGeneration).toBe("competing-first-load-generation");
   });
+
+  it("never adopts a replacement token from the same post-initialization epoch", () => {
+    const storage = new MemoryStorage();
+    const ids = ["generation-a", "source-a", "attempt-a", "generation-b", "source-b"];
+    const options = { storage, now: () => 1_000, randomId: () => ids.shift()!, ttlMs: 100 };
+    const first = createSignOutRegistry(options);
+    const marker = first.createAttempt();
+    first.rotateGeneration(marker.attemptId);
+    first.removeAttempt(marker.attemptId);
+    const current = createSignOutRegistry(options);
+    const generationKey = [...storage.values.keys()].find((key) => key.endsWith("generation"))!;
+    storage.values.set(generationKey, JSON.stringify({ v: 1, epoch: 1, token: "replacement-at-same-epoch" }));
+
+    expect(current.isPageGenerationCurrent()).toBe(false);
+    expect(current.pageGeneration).toBe("generation-b");
+  });
+
+  it("treats a committed clear marker as non-expiring fail-closed state", () => {
+    const storage = new MemoryStorage();
+    let now = 1_000;
+    const ids = ["generation", "source-a", "attempt-a", "source-b"];
+    const options = { storage, now: () => now, randomId: () => ids.shift()!, ttlMs: 100 };
+    const initiator = createSignOutRegistry(options);
+    const marker = initiator.createAttempt();
+    initiator.holdAttemptForClear(marker.attemptId);
+    const peer = createSignOutRegistry(options);
+
+    now += 1_000_000;
+
+    expect(peer.activeAttempts().map((attempt) => attempt.attemptId)).toEqual([marker.attemptId]);
+    expect(peer.persistDecision()).toBe("wait");
+  });
 });
 
 describe("sign-out acknowledgement handshake", () => {
@@ -506,7 +538,7 @@ describe("sign-out acknowledgement handshake", () => {
     const storage = new MemoryStorage();
     let now = 1_000;
     const ids = ["generation", "source-a", "source-b", "attempt-a", "generation-b"];
-    const options = { storage, now: () => now, randomId: () => ids.shift()!, ttlMs: 100, clearHoldMs: 1_000 };
+    const options = { storage, now: () => now, randomId: () => ids.shift()!, ttlMs: 100 };
     const aRegistry = createSignOutRegistry(options);
     const bRegistry = createSignOutRegistry(options);
     aRegistry.refreshPresence();
@@ -550,5 +582,35 @@ describe("sign-out acknowledgement handshake", () => {
 
     clear.resolve();
     await expect(clearing).rejects.toThrow("sign_out_coordination_failed");
+  });
+
+  it("upgrades an already-cached attempt from a committed marker scan when the broadcast was missed", () => {
+    const storage = new MemoryStorage();
+    let now = 1_000;
+    const ids = ["generation", "source-a", "attempt-a", "source-b"];
+    const options = { storage, now: () => now, randomId: () => ids.shift()!, ttlMs: 100 };
+    const initiator = createSignOutRegistry(options);
+    const marker = initiator.createAttempt();
+    const peerRegistry = createSignOutRegistry(options);
+    const barrier = new FakeBarrier();
+    const peer = createSignOutCoordinator({
+      registry: peerRegistry,
+      barrier,
+      gate: createRegistryWriteGate(peerRegistry),
+      send: () => {},
+      quiesceCycle: async () => {},
+      quiesceServerWrites: async () => {},
+      quiesceAccountWrites: async () => {},
+      drainPersistence: async () => {},
+    });
+    peer.install();
+    initiator.holdAttemptForClear(marker.attemptId);
+
+    peer.maintain();
+    initiator.removeAttempt(marker.attemptId);
+    now += 1_000_000;
+    peer.maintain();
+
+    expect(barrier.active.has(marker.attemptId)).toBe(true);
   });
 });
