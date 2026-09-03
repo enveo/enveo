@@ -23,10 +23,6 @@ export function ImportActivityBadge({ onOpen }: { onOpen: () => void }) {
       onClick={onOpen}
       aria-label={label}
       style={{
-        position: "absolute",
-        top: "calc(env(safe-area-inset-top) + 13px)",
-        right: 48,
-        zIndex: 61,
         minWidth: 20,
         height: 20,
         padding: "0 5px",

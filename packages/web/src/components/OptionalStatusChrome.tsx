@@ -6,8 +6,24 @@ import { UpdatePrompt } from "./UpdatePrompt";
 export function OptionalStatusChrome({ showBadges, onOpenActivity }: { showBadges: boolean; onOpenActivity: () => void }) {
   return (
     <>
-      {showBadges && <SyncActivityBadge />}
-      {showBadges && <ImportActivityBadge onOpen={onOpenActivity} />}
+      {showBadges && (
+        <div
+          data-header-status-group="true"
+          style={{
+            position: "absolute",
+            top: "calc(env(safe-area-inset-top) + 12px)",
+            right: 48,
+            zIndex: 61,
+            height: 29,
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+          }}
+        >
+          <SyncActivityBadge />
+          <ImportActivityBadge onOpen={onOpenActivity} />
+        </div>
+      )}
       <UpdatePrompt />
     </>
   );
