@@ -839,7 +839,6 @@ export const cs: Dict = {
   "No envelope has money left this month.": "Žádná obálka nemá tento měsíc volné peníze.",
   "Only {available} available": "K dispozici jen {available}",
   "Top up {name}": "Dorovnat {name}",
-  savings: "úspory",
   "{amount} to cover · {pool} in To be budgeted": "K pokrytí {amount} · v K rozdělení {pool}",
   "{available} available": "K dispozici {available}",
   "{available} available → {after} left": "K dispozici {available} → zůstane {after}",

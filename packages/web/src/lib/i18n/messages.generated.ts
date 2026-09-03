@@ -970,7 +970,6 @@ export const MESSAGES = [
   "re-runs the check against the server; nothing is sent",
   "removes the local copy and downloads your account's data",
   "rules",
-  "savings",
   "savings rate {pct}%",
   "savings rate {pct}% · monthly median {norm}%",
   "sends pending changes and fetches new ones from the server",

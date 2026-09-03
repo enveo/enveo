@@ -802,7 +802,6 @@ export const sv: Dict = {
   "No envelope has money left this month.": "Inget kuvert har några pengar kvar den här månaden.",
   "Only {available} available": "Bara {available} tillgängligt",
   "Top up {name}": "Fyll på {name}",
-  savings: "sparande",
   "{amount} to cover · {pool} in To be budgeted": "{amount} att täcka · {pool} i Att budgetera",
   "{available} available": "{available} tillgängligt",
   "{available} available → {after} left": "{available} tillgängligt → {after} kvar",

@@ -1,20 +1,24 @@
-import { type ReactNode, useEffect, useRef, useState } from "react";
-import { type CoverRestore, CoverStepSheet } from "../../components/CoverStepSheet";
+import { computeStateResponse } from "@enveo/shared";
+import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
+import { type CoverDelta, CoverStepSheet } from "../../components/CoverStepSheet";
 import { Bar, ReportShell, UndoBar, useReportBand } from "../../components/reportKit";
 import type { StateResponse } from "../../lib/api";
 import { useTheme } from "../../lib/contexts";
-import { todayISO } from "../../lib/dates";
+import { coverDonors, donorSlack } from "../../lib/coverSources";
+import { currentMonth, todayISO } from "../../lib/dates";
 import { haptic } from "../../lib/haptics";
 import { useT } from "../../lib/i18n";
 import { local } from "../../lib/mutate";
 import { type BudgetStep, budgetPace, budgetRowPresentation, budgetSteps, budgetUsage, compareBudgetUsageRows, monthProgress } from "../../lib/reportSummary";
 import { useWideHost } from "../../lib/shellContext";
+import { store } from "../../lib/store";
 import { TEAL, tint } from "../../lib/theme";
 import { type Mask, TITLES } from "./types";
 
 /** One in-flight "Cover"/"Top up" the checklist can still undo. Captured entirely at press time —
- *  each `restores` entry is the fresh `allocated` read right before the write, so undo is just
- *  writing that same number back through the same absolute-amount API (no inverse op needed).
+ *  each `deltas` entry is the signed change the cover made, so undo subtracts it from a FRESH read
+ *  through the same absolute-amount API (no inverse op needed) and composes with a later cover
+ *  that borrowed from the same donor.
  *  `kind`/`amount`/`name` are the raw pieces this screen's own toast copy ("Covered …" vs.
  *  "Topped up …") is built from — composed into `message` AT RENDER (below), never frozen at push
  *  time: the wide shell's rail user menu makes the discreet toggle reachable beside an open report
@@ -30,7 +34,7 @@ interface PendingUndo {
   /** The month the write targeted — always the VIEWED month at press time, never re-derived later. */
   month: string;
    
-  restores: CoverRestore[];
+  deltas: CoverDelta[];
 }
 
 const UNDO_TIMEOUT_MS = 6000;
@@ -151,10 +155,8 @@ export function BudgetsReport({
   const [ignored, setIgnored] = useState<Set<string>>(new Set());
   const [expanded, setExpanded] = useState(false);
   const [pendingUndos, setPendingUndos] = useState<PendingUndo[]>([]);
-  
-
+   
   const [coverStep, setCoverStep] = useState<BudgetStep | null>(null);
-  const [coverOpen, setCoverOpen] = useState(false);
   const undoTimers = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
 
   const dismissUndo = (id: string) => {
@@ -171,11 +173,14 @@ export function BudgetsReport({
 
 
 
+
+
   useEffect(() => {
     return () => {
       for (const timer of undoTimers.current.values()) clearTimeout(timer);
       undoTimers.current.clear();
       setPendingUndos([]);
+      setCoverStep(null);
     };
   }, [state.month]);
 
@@ -183,23 +188,26 @@ export function BudgetsReport({
 
 
 
-  const openCover = (step: BudgetStep) => {
-    setCoverStep(step);
-    setCoverOpen(true);
-  };
-
-  const onCovered = (step: BudgetStep, result: { moved: number; restores: CoverRestore[] }) => {
+  const onCovered = (step: BudgetStep, result: { moved: number; deltas: CoverDelta[] }) => {
     const id = crypto.randomUUID();
     const timer = setTimeout(() => dismissUndo(id), UNDO_TIMEOUT_MS);
     undoTimers.current.set(id, timer);
-    setPendingUndos((prev) => [...prev, { id, kind: step.kind, amount: result.moved, name: step.name, month: state.month, restores: result.restores }]);
+    setPendingUndos((prev) => [...prev, { id, kind: step.kind, amount: result.moved, name: step.name, month: state.month, deltas: result.deltas }]);
   };
 
   const undoStep = (u: PendingUndo) => {
-    // Absolute writes, not deltas: restore the exact `allocated` captured right before covering, on
-    // every envelope the cover touched (donors and target). If something else changed one of them
-    // in the meantime, this still wins — last-write-wins, same as every other manual allocation edit.
-    for (const r of u.restores) local.setDisplayedAllocation({ envelopeId: r.envelopeId, month: u.month, amount: r.previousAllocated });
+    
+
+
+    const ledger = store.getLedger();
+    const live = ledger ? computeStateResponse(ledger, u.month) : null;
+    if (live) {
+      for (const d of u.deltas) {
+        const fresh = live.envelopes.find((e) => e.id === d.envelopeId);
+        if (!fresh || fresh.archived) continue;
+        local.setDisplayedAllocation({ envelopeId: d.envelopeId, month: u.month, amount: fresh.allocated - d.delta });
+      }
+    }
     haptic(8);
     dismissUndo(u.id);
   };
@@ -221,9 +229,20 @@ export function BudgetsReport({
 
   const progress = monthProgress(state.month, todayISO());
   const budgetedCount = rows.length;
-  
-
   const steps = budgetSteps(state.envelopes, progress, { ignored });
+  // What each envelope may give for THIS month (`donorSlack` — bounded by later months when the
+  // viewed month is in the past). Feeds the button's inert state and the cover sheet; recomputed
+  // only when the ledger or the month moves (`state` is memoised per ledger version + month).
+  const thisMonth = currentMonth();
+  const slack = useMemo(() => {
+    const ledger = store.getLedger();
+    return ledger ? donorSlack(ledger, state.month, thisMonth) : new Map<string, number>();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state, thisMonth]);
+  const slackEnvelopes = useMemo(() => state.envelopes.map((e) => ({ ...e, available: slack.get(e.id) ?? e.available })), [state.envelopes, slack]);
+  // A step with NO source at all (empty pool, no envelope with slack) must read as visibly inert,
+  // not open a sheet that can only say so.
+  const coverable = (step: BudgetStep) => state.readyToAssign > 0 || coverDonors(slackEnvelopes, step.envelopeId).length > 0;
   const openSteps = steps.filter((s) => !s.ignored);
   const openIds = new Set(openSteps.map((s) => s.envelopeId));
   const ignoredIds = new Set(steps.filter((s) => s.ignored).map((s) => s.envelopeId));
@@ -397,9 +416,10 @@ export function BudgetsReport({
 
 }
                             <button
-                              onClick={() => openCover(step)}
+                              onClick={() => setCoverStep(step)}
+                              disabled={!coverable(step)}
                               style={{
-                                cursor: "pointer",
+                                cursor: coverable(step) ? "pointer" : "default",
                                 fontSize: 11,
                                 fontWeight: 700,
                                 color: step.kind === "over" ? "#fff" : TEAL,
@@ -407,6 +427,7 @@ export function BudgetsReport({
                                 border: `1px solid ${step.kind === "over" ? C.neg : TEAL}`,
                                 borderRadius: 8,
                                 padding: "5px 11px",
+                                opacity: coverable(step) ? 1 : 0.45,
                                 fontFamily: "inherit",
                               }}
                             >
@@ -523,15 +544,17 @@ export function BudgetsReport({
         onUndo={undoStep}
         onDismiss={dismissUndo}
       />
-      <CoverStepSheet
-        show={coverOpen}
-        state={state}
-        step={coverStep}
-        onClose={() => setCoverOpen(false)}
-        onApplied={(result) => {
-          if (coverStep) onCovered(coverStep, result);
-        }}
-      />
+      {coverStep && (
+        <CoverStepSheet
+          key={coverStep.envelopeId}
+          state={state}
+          step={coverStep}
+          slack={slack}
+          currentMonth={thisMonth}
+          onClose={() => setCoverStep(null)}
+          onApplied={onCovered}
+        />
+      )}
     </>
   );
 }
