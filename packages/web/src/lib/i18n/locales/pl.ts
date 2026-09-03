@@ -1291,8 +1291,8 @@ export const pl: Dict = {
   "A newer build is ready — refresh to update": "Dostępna jest nowsza wersja — odśwież, aby zaktualizować",
   "Enveo v{version} — a newer build is ready, refresh to update": "Enveo v{version} — dostępna jest nowsza wersja, odśwież, aby zaktualizować",
   "A retry is scheduled…": "Zaplanowano ponowną próbę…",
-  Activity: "Aktywność",
-  "Activity could not be refreshed. Try again.": "Nie udało się odświeżyć aktywności. Spróbuj ponownie.",
+  Imports: "Importy",
+  "Imports could not be refreshed. Try again.": "Nie udało się odświeżyć importów. Spróbuj ponownie.",
   "Added: {added} · Skipped: {skipped}": "Dodano: {added} · Pominięto: {skipped}",
   "Adding was interrupted. Review the remaining rows and try again.": "Dodawanie zostało przerwane. Sprawdź pozostałe wiersze i spróbuj ponownie.",
   "This browser cannot safely coordinate import changes across tabs. Keep this review open and try again in a supported browser.":
@@ -1302,14 +1302,12 @@ export const pl: Dict = {
   "Checking recognized data…": "Sprawdzanie rozpoznanych danych…",
   "Checking the current ledger…": "Sprawdzanie bieżącej księgi…",
   "Complete without adding": "Zakończ bez dodawania",
-  "Continue in Activity": "Kontynuuj w Aktywności",
+  "Continue in Imports": "Kontynuuj w Importach",
   "Continue in background": "Kontynuuj w tle",
   "Creating import…": "Tworzenie importu…",
   "Expires {date}": "Wygasa {date}",
   "Hide for this session": "Ukryj w tej sesji",
   "Import completed": "Import zakończony",
-  "Imports continue independently of this screen. Encrypted imports run only on this device.":
-    "Importy działają niezależnie od tego ekranu. Zaszyfrowane importy są wykonywane tylko na tym urządzeniu.",
   "In progress": "W toku",
   "Local encrypted import": "Lokalny zaszyfrowany import",
   "Retry local cleanup": "Ponów usuwanie danych lokalnych",
@@ -1318,7 +1316,8 @@ export const pl: Dict = {
   "The server session has ended, but Enveo could not finish removing local data. Retry the local cleanup.":
     "Sesja na serwerze została zakończona, ale Enveo nie mogło dokończyć usuwania danych lokalnych. Ponów usuwanie.",
   "Matching your budget…": "Dopasowywanie do budżetu…",
-  "No import activity yet.": "Nie ma jeszcze aktywności importu.",
+  "No imports": "Brak importów",
+  "Add screenshots with the + button.": "Dodaj zrzuty ekranu przyciskiem +.",
   "Preparing screenshots…": "Przygotowywanie zrzutów ekranu…",
   "Reading transactions…": "Odczytywanie transakcji…",
   Ready: "Gotowe",
@@ -1338,7 +1337,7 @@ export const pl: Dict = {
   "The budget encryption mode changed. Start a new import.": "Tryb szyfrowania budżetu się zmienił. Rozpocznij nowy import.",
   "The import could not reach the AI service. Try again when the connection is stable.":
     "Import nie mógł połączyć się z usługą AI. Spróbuj ponownie, gdy połączenie będzie stabilne.",
-  "The import failed. You can retry it from Activity.": "Import się nie udał. Możesz ponowić go w Aktywności.",
+  "The import failed. You can retry it from Imports.": "Import się nie udał. Możesz ponowić go w Importach.",
   "The monthly Enveo AI allowance is used up. Try again next month or choose Own OpenAI.":
     "Miesięczny limit Enveo AI został wykorzystany. Spróbuj w przyszłym miesiącu albo wybierz Własne OpenAI.",
   "The saved OpenAI key was rejected. Update the key before retrying.": "Zapisany klucz OpenAI został odrzucony. Zaktualizuj go przed ponowieniem.",
@@ -1356,11 +1355,11 @@ export const pl: Dict = {
   "Waiting for this budget to be unlocked…": "Oczekiwanie na odblokowanie tego budżetu…",
   "Waiting for this device…": "Oczekiwanie na to urządzenie…",
   "Waiting to start…": "Oczekiwanie na rozpoczęcie…",
-  "You can leave this view. The import will stay in Activity.": "Możesz opuścić ten widok. Import pozostanie w Aktywności.",
-  "{n} import needs attention — open Activity | {n} imports need attention — open Activity": {
-    one: "{n} import wymaga uwagi — otwórz Aktywność",
-    few: "{n} importy wymagają uwagi — otwórz Aktywność",
-    many: "{n} importów wymaga uwagi — otwórz Aktywność",
-    other: "{n} importu wymaga uwagi — otwórz Aktywność",
+  "You can leave this view. The import will stay in Imports.": "Możesz opuścić ten widok. Import pozostanie w Importach.",
+  "{n} import needs attention — open Imports | {n} imports need attention — open Imports": {
+    one: "{n} import wymaga uwagi — otwórz Importy",
+    few: "{n} importy wymagają uwagi — otwórz Importy",
+    many: "{n} importów wymaga uwagi — otwórz Importy",
+    other: "{n} importu wymaga uwagi — otwórz Importy",
   },
 };

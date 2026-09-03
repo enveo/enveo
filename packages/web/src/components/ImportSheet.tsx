@@ -577,7 +577,7 @@ export function ImportSheet({
                   </button>
                 )}
                 <button type="button" onClick={close} style={{ width: "100%", marginTop: 8, padding: 8, border: "none", background: "none", color: C.mute }}>
-                  {t("Continue in Activity")}
+                  {t("Continue in Imports")}
                 </button>
               </div>
             ) : (

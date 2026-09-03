@@ -16,7 +16,7 @@ export function ImportActivityBadge({ onOpen }: { onOpen: () => void }) {
   };
   const count = counts.ready + counts.failed;
   if (count === 0) return null;
-  const label = tp("{n} import needs attention — open Activity | {n} imports need attention — open Activity", count);
+  const label = tp("{n} import needs attention — open Imports | {n} imports need attention — open Imports", count);
   return (
     <button
       type="button"
