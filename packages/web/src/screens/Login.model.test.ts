@@ -8,6 +8,14 @@ describe("login device storage disclosure", () => {
     expect(app).toContain('lazy(() => import("./screens/Login")');
   });
 
+  it("renders the lazy login screen inside a Suspense boundary on the phone branch", async () => {
+    
+
+    const app = await Bun.file(`${import.meta.dir}/../App.tsx`).text();
+    expect(app).toContain("<LazyChunk>{unauthed ? <LoginScreen /> :");
+    expect(app).not.toContain("unauthed ? <LoginScreen /> : <LazyChunk>");
+  });
+
   it("warns that a persistent local copy is readable through the browser profile", () => {
     expect(PRIVATE_DEVICE_DISCLOSURE).toBe(
       "Keep me signed in and save a local copy so Enveo works without internet. Anyone who can access this browser profile may be able to read that copy.",
