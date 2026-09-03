@@ -240,7 +240,7 @@ export class PlainImportJobAdapter {
       for (const summary of jobs) {
         if (!this.isCurrent()) return;
         if (this.dismissed.has(summary.id)) continue;
-        if (summary.status === "ready") {
+        if (summary.status === "ready" || summary.status === "completed") {
           const detail = await this.remote.get(summary.id);
           if (!this.isCurrent()) return;
           this.publish(importActivityFromServer(detail));
