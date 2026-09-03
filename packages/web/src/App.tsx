@@ -836,7 +836,14 @@ function AppContent() {
 
   if (unauthed || locked || foreign) {
     const bootView = unauthed ? "login" : foreign ? "foreign" : "unlock";
-    const bootInner = unauthed ? <LoginScreen /> : <LazyChunk>{foreign ? <ForeignReplicaScreen /> : <UnlockScreen />}</LazyChunk>;
+    // Every boot screen is a lazy chunk, and the boot status flips through a SYNC lane (the
+    // session store's external-store subscription), so a chunk that suspends with no Suspense
+    // boundary above it is a fatal React #426 ("suspended while responding to synchronous
+    // input"), not a pending state: on phone the whole tree unmounted and Login never appeared
+    // (4.1.4–4.1.7 regression — `LoginScreen` went lazy without joining this boundary). The wide
+    // branch below adds its own outer LazyChunk around BootShellWide; this inner one is what
+    // makes the PHONE branch safe, so keep every boot screen inside it.
+    const bootInner = <LazyChunk>{unauthed ? <LoginScreen /> : foreign ? <ForeignReplicaScreen /> : <UnlockScreen />}</LazyChunk>;
     // Wide (fold/desktop): the boot shell replaces the phone card entirely — brand column +
     // content region, both inside their OWN lazy chunk (PR7 Task 1). The phone branch below is
     // untouched byte-for-byte, so a phone boot never fetches BootShellWide's chunk.
