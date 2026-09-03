@@ -200,10 +200,26 @@ describe("durable import foreground and Activity view models", () => {
     const source = readFileSync(join(import.meta.dir, "Activity.tsx"), "utf8");
 
     expect(source).not.toContain("color: C.mute");
-    expect((source.match(/color: C\.soft/g) ?? []).length).toBeGreaterThanOrEqual(7);
+    expect((source.match(/color: C\.soft/g) ?? []).length).toBeGreaterThanOrEqual(5);
     expect(source).not.toContain("color: TEAL");
     expect(source).not.toContain("background: TEAL");
     expect(source).toContain("background: C.text, color: C.card");
+  });
+
+  it("keeps card selection available without a layout-shifting selection mode", () => {
+    const source = readFileSync(join(import.meta.dir, "Activity.tsx"), "utf8");
+
+    expect(source).not.toContain("const [selecting");
+    expect(source).not.toContain('\n                    {t("Select import")}');
+    expect(source).not.toContain('{t("Cancel selection")}');
+    expect(source).toContain("data-import-select");
+    expect(source).toContain("data-section-heading-actions");
+    expect(source).toContain('{t(allSelected ? msg("Deselect all") : msg("Select all"))}');
+    expect(source).toContain('aria-label={t("Delete selected ({count})", { count: selected.size })}');
+    expect(source).toContain("const selectionAnchorId = selected.values().next().value");
+    expect(source).toContain("new Set([...selected, ...removable.map((job) => job.id)])");
+    expect(source).toContain('aria-label={t("Select import from {date}", { date: date(job.updatedAt) })}');
+    expect(source).toContain("marginRight: canRemoveActivityImport(job) ? 34 : 0");
   });
 
   it("uses the Duet band header on phones and a responsive import grid on fold and desktop", () => {
