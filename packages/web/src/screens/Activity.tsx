@@ -79,8 +79,7 @@ export function ActivityScreen({ state, onMenu }: { state: StateResponse; onMenu
   const { band, hc } = useBand();
   const [items, setItems] = useState<ImportActivityItem[]>([]);
   const [selectedJobId, setSelectedJobId] = useState<string | null>(null);
-  const [selecting, setSelecting] = useState(false);
-  const [selected, setSelected] = useState<Set<string>>(() => new Set());
+  const [selectedState, setSelected] = useState<Set<string>>(() => new Set());
   const [error, setError] = useState<string | null>(null);
   const refresh = useCallback(async () => {
     try {
@@ -101,6 +100,8 @@ export function ActivityScreen({ state, onMenu }: { state: StateResponse; onMenu
   const empty = Object.values(sections).every((section) => section.length === 0);
   const date = (value: string) => new Intl.DateTimeFormat(lang, { dateStyle: "medium", timeStyle: "short" }).format(new Date(value));
   const removable = Object.values(sections).flat().filter(canRemoveActivityImport);
+  const removableIds = new Set(removable.map((job) => job.id));
+  const selected = new Set([...selectedState].filter((id) => removableIds.has(id)));
   const remove = async (jobs: ImportActivityItem[]) => {
     if (
       jobs.some((job) => job.status === "ready" || job.status === "failed") &&
@@ -110,110 +111,153 @@ export function ActivityScreen({ state, onMenu }: { state: StateResponse; onMenu
     try {
       await importJobManager.removeMany(jobs.map((job) => job.id));
       setSelected(new Set());
-      setSelecting(false);
       await refresh();
     } catch (cause) {
       setError(apiErrorMessage(cause));
     }
   };
 
-  const list = (title: Message, jobs: ImportActivityItem[]) =>
-    jobs.length > 0 && (
-      <section style={{ marginTop: 18 }}>
-        <h2 style={{ margin: "0 0 8px", fontSize: 12, textTransform: "uppercase", letterSpacing: 0.7, color: C.soft }}>{t(title)}</h2>
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: wideHost ? "repeat(auto-fit, minmax(min(100%, 300px), 1fr))" : "1fr",
-            gap: 9,
-          }}
-        >
-          {jobs.map((job) => {
-            const scheduledRetry = isScheduledImportRetry(job);
-            return (
-              <article
-                key={job.id}
-                style={{
-                  position: "relative",
-                  background: C.card,
-                  border: `1px solid ${selected.has(job.id) ? "var(--cta)" : C.line}`,
-                  borderRadius: 14,
-                  padding: "12px 13px",
-                }}
-              >
-                {selecting && canRemoveActivityImport(job) && (
-                  <label style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 9, color: C.text, fontSize: 12, cursor: "pointer" }}>
-                    <input
-                      type="checkbox"
-                      checked={selected.has(job.id)}
-                      onChange={() =>
-                        setSelected((current) => {
-                          const next = new Set(current);
-                          if (next.has(job.id)) next.delete(job.id);
-                          else next.add(job.id);
-                          return next;
-                        })
-                      }
-                    />
-                    {t("Select import")}
-                  </label>
-                )}
-                <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "flex-start" }}>
-                  <div>
-                    <div style={{ color: C.text, fontSize: 14, fontWeight: 700 }}>
-                      {t(job.tier === "e2ee" ? msg("Local encrypted import") : msg("Screenshot import"))}
-                    </div>
-                    <div style={{ color: C.soft, fontSize: 10.5, marginTop: 2 }}>{date(job.updatedAt)}</div>
-                  </div>
-                  {job.status === "ready" && <span style={{ color: C.pos, fontSize: 11, fontWeight: 700 }}>{t("Ready to review")}</span>}
-                  {job.status === "failed" && !scheduledRetry && <span style={{ color: CORAL, fontSize: 11, fontWeight: 700 }}>{t("Needs attention")}</span>}
+  const allSelected = removable.length > 0 && selected.size === removable.length;
+  const selectionAnchorId = selected.values().next().value;
+  const selectionHeadingOwner: ImportActivityItem[] | undefined = selectionAnchorId
+    ? Object.values(sections).find((section: ImportActivityItem[]) => section.some((job) => job.id === selectionAnchorId))
+    : undefined;
+  const list = (title: Message, jobs: ImportActivityItem[]) => {
+    const showSelectionActions = jobs === selectionHeadingOwner;
+    return (
+      jobs.length > 0 && (
+        <section style={{ marginTop: 18 }}>
+          <div
+            data-section-heading-actions={showSelectionActions || undefined}
+            style={{ height: 34, marginBottom: 8, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}
+          >
+            {showSelectionActions ? (
+              <>
+                <strong style={{ color: C.text, fontSize: 11.5, whiteSpace: "nowrap" }}>{t("Selected: {count}", { count: selected.size })}</strong>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 4 }}>
+                  <button
+                    type="button"
+                    onClick={() => setSelected(allSelected ? new Set() : new Set([...selected, ...removable.map((job) => job.id)]))}
+                    style={{ ...linkButton, width: "auto", marginTop: 0, color: C.text, whiteSpace: "nowrap" }}
+                  >
+                    {t(allSelected ? msg("Deselect all") : msg("Select all"))}
+                  </button>
+                  <button
+                    type="button"
+                    aria-label={t("Delete selected ({count})", { count: selected.size })}
+                    onClick={() => void remove(removable.filter((job) => selected.has(job.id)))}
+                    style={{ ...deleteIconButton, background: "var(--danger)", color: "#fff" }}
+                  >
+                    <Ico d="M4 7h16M9 7V4h6v3M7 7l1 13h8l1-13M10 11v5M14 11v5" size={18} color="currentColor" sw={1.8} />
+                  </button>
                 </div>
-                {job.status === "completed" && (
-                  <div style={{ color: C.soft, fontSize: 12, marginTop: 7 }}>
-                    {t("Added: {added} · Skipped: {skipped}", { added: job.appliedCount, skipped: job.skippedCount })}
-                  </div>
-                )}
-                {!selecting && job.status === "ready" && (
-                  <button type="button" onClick={() => setSelectedJobId(job.id)} style={{ ...primaryButton, background: C.text, color: C.card }}>
-                    {t("Review import")}
-                  </button>
-                )}
-                {!selecting && job.status === "failed" && !scheduledRetry && (
-                  <>
-                    <div role="alert" style={{ color: CORAL, fontSize: 12, lineHeight: 1.4, marginTop: 8 }}>
-                      {t(importProgressPresentation(job).message)}
+              </>
+            ) : (
+              <h2 style={{ margin: 0, fontSize: 12, textTransform: "uppercase", letterSpacing: 0.7, color: C.soft }}>{t(title)}</h2>
+            )}
+          </div>
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: wideHost ? "repeat(auto-fit, minmax(min(100%, 300px), 1fr))" : "1fr",
+              gap: 9,
+            }}
+          >
+            {jobs.map((job) => {
+              const scheduledRetry = isScheduledImportRetry(job);
+              return (
+                <article
+                  key={job.id}
+                  style={{
+                    position: "relative",
+                    background: C.card,
+                    border: `1px solid ${selected.has(job.id) ? "var(--cta)" : C.line}`,
+                    borderRadius: 14,
+                    padding: "12px 13px",
+                  }}
+                >
+                  {canRemoveActivityImport(job) && (
+                    <label
+                      data-import-select
+                      style={{ position: "absolute", top: 11, right: 11, width: 28, height: 28, display: "grid", placeItems: "center", cursor: "pointer" }}
+                    >
+                      <input
+                        type="checkbox"
+                        aria-label={t("Select import from {date}", { date: date(job.updatedAt) })}
+                        checked={selected.has(job.id)}
+                        style={{ width: 18, height: 18, margin: 0, accentColor: "var(--cta)", cursor: "pointer" }}
+                        onChange={() =>
+                          setSelected((current) => {
+                            const next = new Set([...current].filter((id) => removableIds.has(id)));
+                            if (next.has(job.id)) next.delete(job.id);
+                            else next.add(job.id);
+                            return next;
+                          })
+                        }
+                      />
+                    </label>
+                  )}
+                  <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "flex-start" }}>
+                    <div style={{ minWidth: 0, paddingRight: canRemoveActivityImport(job) ? 34 : 0 }}>
+                      <div style={{ color: C.text, fontSize: 14, fontWeight: 700 }}>
+                        {t(job.tier === "e2ee" ? msg("Local encrypted import") : msg("Screenshot import"))}
+                      </div>
+                      <div style={{ color: C.soft, fontSize: 10.5, marginTop: 2 }}>{date(job.updatedAt)}</div>
                     </div>
-                    {canRetryActivityImport(job) && (
-                      <button
-                        type="button"
-                        onClick={() => void retryActivityImport(job.id, (id) => importJobManager.retry(id), refresh).then(setError)}
-                        style={{ ...primaryButton, background: C.bg, color: C.text, border: `1px solid ${C.line}` }}
-                      >
-                        {t("Retry import")}
-                      </button>
+                    {job.status === "ready" && (
+                      <span style={{ color: C.pos, fontSize: 11, fontWeight: 700, marginRight: canRemoveActivityImport(job) ? 34 : 0 }}>
+                        {t("Ready to review")}
+                      </span>
                     )}
-                  </>
-                )}
-                {!selecting && canRemoveActivityImport(job) && (
-                  <button type="button" onClick={() => void remove([job])} style={{ ...linkButton, color: C.soft }}>
-                    {t("Delete")}
-                  </button>
-                )}
-                {(job.status === "queued" || job.status === "running" || scheduledRetry) && (
-                  <ImportProgress
-                    item={job}
-                    showBackground={false}
-                    onBackground={() => {}}
-                    onCancel={() => void importJobManager.cancel(job.id).then(refresh)}
-                  />
-                )}
-                <div style={{ color: C.soft, fontSize: 10.5, marginTop: 7 }}>{t("Expires {date}", { date: date(job.expiresAt) })}</div>
-              </article>
-            );
-          })}
-        </div>
-      </section>
+                    {job.status === "failed" && !scheduledRetry && (
+                      <span style={{ color: CORAL, fontSize: 11, fontWeight: 700, marginRight: canRemoveActivityImport(job) ? 34 : 0 }}>
+                        {t("Needs attention")}
+                      </span>
+                    )}
+                  </div>
+                  {job.status === "completed" && (
+                    <div style={{ color: C.soft, fontSize: 12, marginTop: 7 }}>
+                      {t("Added: {added} · Skipped: {skipped}", { added: job.appliedCount, skipped: job.skippedCount })}
+                    </div>
+                  )}
+                  {job.status === "ready" && (
+                    <button type="button" onClick={() => setSelectedJobId(job.id)} style={{ ...primaryButton, background: C.text, color: C.card }}>
+                      {t("Review import")}
+                    </button>
+                  )}
+                  {job.status === "failed" && !scheduledRetry && (
+                    <>
+                      <div role="alert" style={{ color: CORAL, fontSize: 12, lineHeight: 1.4, marginTop: 8 }}>
+                        {t(importProgressPresentation(job).message)}
+                      </div>
+                      {canRetryActivityImport(job) && (
+                        <button
+                          type="button"
+                          onClick={() => void retryActivityImport(job.id, (id) => importJobManager.retry(id), refresh).then(setError)}
+                          style={{ ...primaryButton, background: C.bg, color: C.text, border: `1px solid ${C.line}` }}
+                        >
+                          {t("Retry import")}
+                        </button>
+                      )}
+                    </>
+                  )}
+                  {(job.status === "queued" || job.status === "running" || scheduledRetry) && (
+                    <ImportProgress
+                      item={job}
+                      showBackground={false}
+                      onBackground={() => {}}
+                      onCancel={() => void importJobManager.cancel(job.id).then(refresh)}
+                    />
+                  )}
+                  <div style={{ color: C.soft, fontSize: 10.5, marginTop: 7 }}>{t("Expires {date}", { date: date(job.expiresAt) })}</div>
+                </article>
+              );
+            })}
+          </div>
+        </section>
+      )
     );
+  };
 
   return (
     <div className="gs" style={{ flex: 1, overflowY: "auto", paddingBottom: 14 }}>
@@ -240,47 +284,6 @@ export function ActivityScreen({ state, onMenu }: { state: StateResponse; onMenu
         data-activity-content
         style={{ width: "100%", boxSizing: "border-box", maxWidth: wideHost ? 920 : undefined, margin: "0 auto", padding: `${wideHost ? 18 : 0}px ${P}px` }}
       >
-        {removable.length > 0 && (
-          <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 8, marginTop: 14 }}>
-            {!selecting ? (
-              <button
-                type="button"
-                onClick={() => setSelecting(true)}
-                style={{ ...primaryButton, width: "auto", marginTop: 0, background: C.card, color: C.text, border: `1px solid ${C.line}` }}
-              >
-                {t("Select")}
-              </button>
-            ) : (
-              <>
-                <button
-                  type="button"
-                  onClick={() => setSelected(new Set(removable.map((job) => job.id)))}
-                  style={{ ...linkButton, width: "auto", marginTop: 0, color: C.text }}
-                >
-                  {t("Select all")}
-                </button>
-                <button
-                  type="button"
-                  disabled={selected.size === 0}
-                  onClick={() => void remove(removable.filter((job) => selected.has(job.id)))}
-                  style={{ ...primaryButton, width: "auto", marginTop: 0, background: selected.size ? "var(--danger)" : C.line, color: "#fff" }}
-                >
-                  {t("Delete selected ({count})", { count: selected.size })}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setSelecting(false);
-                    setSelected(new Set());
-                  }}
-                  style={{ ...linkButton, width: "auto", marginTop: 0, color: C.soft }}
-                >
-                  {t("Cancel selection")}
-                </button>
-              </>
-            )}
-          </div>
-        )}
         {error && (
           <div role="alert" style={{ color: CORAL, fontSize: 12.5, marginTop: 14 }}>
             {error}
@@ -330,3 +333,13 @@ const primaryButton = {
   cursor: "pointer",
 } as const;
 const linkButton = { width: "100%", marginTop: 8, padding: "5px", border: "none", background: "none", cursor: "pointer", fontSize: 11.5 } as const;
+const deleteIconButton = {
+  width: 34,
+  height: 34,
+  padding: 0,
+  border: "none",
+  borderRadius: 10,
+  display: "grid",
+  placeItems: "center",
+  cursor: "pointer",
+} as const;

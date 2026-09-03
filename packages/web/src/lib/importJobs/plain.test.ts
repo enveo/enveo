@@ -82,6 +82,29 @@ afterEach(() => {
 });
 
 describe("plain durable import adapter", () => {
+  it("hydrates completed counters from detail without changing the list wire contract", async () => {
+    const completed = detail({ status: "completed", phase: "completed", proposalCount: 9, appliedCount: 7, skippedCount: 2 });
+    const { locale: _locale, epoch: _epoch, result: _result, appliedCount: _appliedCount, skippedCount: _skippedCount, ...summary } = completed;
+    let getCalls = 0;
+    const activity = createImportActivityStore();
+    const adapter = new PlainImportJobAdapter({
+      scope: SCOPE,
+      activity,
+      remote: remote({
+        list: async () => [summary],
+        get: async () => {
+          getCalls++;
+          return completed;
+        },
+      }),
+    });
+
+    await adapter.refresh();
+
+    expect(getCalls).toBe(1);
+    expect(activity.get(ID)).toMatchObject({ status: "completed", appliedCount: 7, skippedCount: 2 });
+  });
+
   it("removes large selections through bounded tenant-asserted requests", async () => {
     const calls: Array<{ ids: string[]; budgetId: string }> = [];
     const api = remote({
@@ -249,6 +272,8 @@ describe("plain durable import adapter", () => {
   it("hydrates server activity once on start without polling again while idle", async () => {
     let listCalls = 0;
     let tick: (() => void) | undefined;
+    const completed = detail({ status: "completed", phase: "completed" });
+    const { locale: _locale, epoch: _epoch, result: _result, appliedCount: _appliedCount, skippedCount: _skippedCount, ...summary } = completed;
     const activity = createImportActivityStore();
     const adapter = new PlainImportJobAdapter({
       scope: SCOPE,
@@ -256,8 +281,9 @@ describe("plain durable import adapter", () => {
       remote: remote({
         list: async () => {
           listCalls++;
-          return [detail({ status: "completed", phase: "completed" })];
+          return [summary];
         },
+        get: async () => completed,
       }),
       visible: () => true,
       scheduleInterval: (callback) => {
