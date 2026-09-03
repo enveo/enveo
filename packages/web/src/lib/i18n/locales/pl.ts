@@ -106,12 +106,6 @@ export const pl: Dict = {
   "Probable duplicate": "Prawdopodobny duplikat",
   "Related row is invalid": "Powiązany wiersz jest nieprawidłowy",
   "Related rows could change the ledger": "Powiązane wiersze mogłyby zmienić zapis w budżecie",
-  "Review or uncheck {n} transaction before adding. | Review or uncheck {n} transactions before adding.": {
-    one: "Sprawdź lub odznacz {n} transakcję przed dodaniem.",
-    few: "Sprawdź lub odznacz {n} transakcje przed dodaniem.",
-    many: "Sprawdź lub odznacz {n} transakcji przed dodaniem.",
-    other: "Sprawdź lub odznacz {n} transakcji przed dodaniem.",
-  },
   "Review recognized rows": "Sprawdź rozpoznane wiersze",
   "Several history matches": "Kilka pasujących wpisów w historii",
   "Select recognized row {n}": "Wybierz rozpoznany wiersz {n}",

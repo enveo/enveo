@@ -18,7 +18,6 @@ import type { ImportActivityItem } from "../lib/importJobs/store";
 import {
   buildImportReviewRows,
   type ImportReviewRow,
-  importReviewBlockingCount,
   reviewBadges,
   reviewedImportRowsForApply,
   reviewRowControlLabels,
@@ -339,7 +338,7 @@ export function ImportSheet({
       if (invalidatedEdit) setEdited(currentEdited);
       setItems(currentRows);
       setSourceAccountUnavailable(accountInvalid);
-      if (accountInvalid || importReviewBlockingCount(currentRows, currentEdited) > 0) return;
+      if (accountInvalid) return;
       const chosen: ImportApplyItem[] = reviewedImportRowsForApply({ rows: currentRows, edited: currentEdited, editedAutomaticDefaults });
       const chosenRowIds = new Set(chosen.flatMap((item) => (item.importRowId ? [item.importRowId] : [])));
       await importJobManager.recordSkipped(
@@ -418,7 +417,6 @@ export function ImportSheet({
     setItems((prev) => prev.map((row, i) => (i === idx && row.duplicateStatus !== "exists" ? { ...row, include: !row.include } : row)));
 
   const selectedCount = items.filter((row, i) => row.item && row.include && (row.item.status !== "exists" || !!edited[i])).length;
-  const blockingCount = importReviewBlockingCount(items, edited);
   const deviceWarning = sharedDeviceImportWarning(e2ee.getTierMeta().tier, storageMode());
   const label = { fontSize: 10.5, color: C.mute, fontWeight: 600, textTransform: "uppercase" as const, letterSpacing: 0.6, marginBottom: 6 };
 
@@ -791,12 +789,6 @@ export function ImportSheet({
               </div>
             )}
 
-            {blockingCount > 0 && (
-              <div role="alert" style={{ fontSize: 12.5, color: C.warn, margin: "10px 0" }}>
-                {tp("Review or uncheck {n} transaction before adding. | Review or uncheck {n} transactions before adding.", blockingCount)}
-              </div>
-            )}
-
             <div style={{ display: "flex", gap: 8, marginTop: 14 }}>
               <button
                 onClick={close}
@@ -816,7 +808,7 @@ export function ImportSheet({
               </button>
               <button
                 onClick={apply}
-                disabled={busy || blockingCount > 0 || sourceAccountUnavailable}
+                disabled={busy || sourceAccountUnavailable}
                 style={{
                   flex: 2,
                   padding: "12px 0",
@@ -827,7 +819,7 @@ export function ImportSheet({
                   fontSize: 13.5,
                   fontWeight: 600,
                   cursor: "pointer",
-                  opacity: busy || blockingCount > 0 || sourceAccountUnavailable ? 0.5 : 1,
+                  opacity: busy || sourceAccountUnavailable ? 0.5 : 1,
                 }}
               >
                 {busy ? t("Adding…") : selectedCount === 0 ? t("Complete without adding") : tp("Add {n} transaction | Add {n} transactions", selectedCount)}

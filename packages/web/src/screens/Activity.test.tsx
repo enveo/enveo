@@ -155,6 +155,17 @@ describe("durable import foreground and Activity view models", () => {
     expect(badge).not.toContain("setInterval(");
   });
 
+  it("aligns import and sync indicators in one header status group", () => {
+    const optionalChrome = readFileSync(join(import.meta.dir, "..", "components", "OptionalStatusChrome.tsx"), "utf8");
+    const importBadge = readFileSync(join(import.meta.dir, "..", "components", "ImportActivityBadge.tsx"), "utf8");
+    const syncBadge = readFileSync(join(import.meta.dir, "..", "components", "SyncActivityBadge.tsx"), "utf8");
+
+    expect(optionalChrome).toContain('data-header-status-group="true"');
+    expect(optionalChrome).toContain('alignItems: "center"');
+    expect(importBadge).not.toContain('position: "absolute"');
+    expect(syncBadge).not.toContain('position: "absolute"');
+  });
+
   it("keeps rejected sync writes eager and makes import-manager bootstrap failure retryable", () => {
     const app = readFileSync(join(import.meta.dir, "..", "App.tsx"), "utf8");
     const main = readFileSync(join(import.meta.dir, "..", "main.tsx"), "utf8");

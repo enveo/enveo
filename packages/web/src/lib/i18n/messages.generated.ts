@@ -626,7 +626,6 @@ export const MESSAGES = [
   "Retry sending changes",
   "Review import",
   "Review later",
-  "Review or uncheck {n} transaction before adding. | Review or uncheck {n} transactions before adding.",
   "Review recognized rows",
   "Reward / income",
   "SPENT",
