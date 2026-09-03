@@ -171,7 +171,7 @@ describe("durable import foreground and Activity view models", () => {
     expect(syncBadge).not.toContain("lazy(");
     expect(optionalChrome).toContain('from "./UpdatePrompt"');
     expect(app).toContain("importManagerBootstrap.getSnapshot");
-    expect(app).toContain('aria-label={t("Activity could not be refreshed. Try again.")}');
+    expect(app).toContain('aria-label={t("Imports could not be refreshed. Try again.")}');
     expect(main).toContain("startImportJobManager()");
     expect(main).not.toContain('import("./lib/importJobs/manager").then');
   });
@@ -195,12 +195,20 @@ describe("durable import foreground and Activity view models", () => {
     expect(source).toContain("background: C.text, color: C.card");
   });
 
-  it("uses the wide shell header and a responsive activity grid on fold and desktop", () => {
+  it("uses the Duet band header on phones and a responsive import grid on fold and desktop", () => {
     const source = readFileSync(join(import.meta.dir, "Activity.tsx"), "utf8");
 
     expect(source).toContain('import { useWideHost } from "../lib/shellContext"');
     expect(source).toContain("const wideHost = useWideHost()");
+    expect(source).toContain("const { band, hc } = useBand()");
     expect(source).toContain("{!wideHost && (");
+    expect(source).toContain("data-imports-header");
+    expect(source).toContain("data-band={band || undefined}");
+    expect(source).toContain("background: band ? C.headerBg : undefined");
+    expect(source).toContain('{t("Imports")}');
+    expect(source).not.toContain("Imports continue independently of this screen.");
+    expect(source).toContain('{t("No imports")}');
+    expect(source).toContain('{t("Add screenshots with the + button.")}');
     expect(source).toContain("data-activity-content");
     expect(source).toContain('boxSizing: "border-box"');
     expect(source).toContain('gridTemplateColumns: wideHost ? "repeat(auto-fit, minmax(min(100%, 300px), 1fr))" : "1fr"');

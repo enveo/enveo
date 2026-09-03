@@ -2,6 +2,7 @@ import type { StateResponse } from "@enveo/shared";
 import { useCallback, useEffect, useState } from "react";
 import { ImportProgress, importProgressPresentation } from "../components/ImportProgress";
 import { ImportSheet } from "../components/ImportSheet";
+import { useBand } from "../components/kit";
 import { apiErrorMessage } from "../lib/api";
 import { useTheme } from "../lib/contexts";
 import { type Message, msg, useT } from "../lib/i18n";
@@ -75,6 +76,7 @@ export function ActivityScreen({ state, onMenu }: { state: StateResponse; onMenu
   const C = useTheme();
   const { t, lang } = useT();
   const wideHost = useWideHost();
+  const { band, hc } = useBand();
   const [items, setItems] = useState<ImportActivityItem[]>([]);
   const [selectedJobId, setSelectedJobId] = useState<string | null>(null);
   const [selecting, setSelecting] = useState(false);
@@ -216,20 +218,28 @@ export function ActivityScreen({ state, onMenu }: { state: StateResponse; onMenu
   return (
     <div className="gs" style={{ flex: 1, overflowY: "auto", paddingBottom: 14 }}>
       {!wideHost && (
-        <header style={{ display: "flex", alignItems: "center", gap: 10, padding: `12px ${P}px` }}>
+        <header
+          data-imports-header
+          data-band={band || undefined}
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 10,
+            padding: `12px ${P}px ${band ? 24 : 12}px`,
+            background: band ? C.headerBg : undefined,
+            clipPath: band ? "polygon(0 0, 100% 0, 100% calc(100% - 12px), 50% 100%, 0 calc(100% - 12px))" : undefined,
+          }}
+        >
           <button type="button" onClick={onMenu} aria-label={t("Menu")} style={iconButton}>
-            <Ico d="M4 6h16M4 12h16M4 18h16" size={21} color={C.text} sw={2} />
+            <Ico d="M4 6h16M4 12h16M4 18h16" size={21} color={hc(C.headerInk, C.text)} sw={2} />
           </button>
-          <h1 style={{ margin: 0, color: C.text, fontSize: 18, fontWeight: 750 }}>{t("Activity")}</h1>
+          <h1 style={{ margin: 0, color: hc(C.headerInk, C.text), fontSize: 18, fontWeight: 750 }}>{t("Imports")}</h1>
         </header>
       )}
       <main
         data-activity-content
         style={{ width: "100%", boxSizing: "border-box", maxWidth: wideHost ? 920 : undefined, margin: "0 auto", padding: `${wideHost ? 18 : 0}px ${P}px` }}
       >
-        <p style={{ margin: "2px 0 0", color: C.soft, fontSize: 12.5, lineHeight: 1.45 }}>
-          {t("Imports continue independently of this screen. Encrypted imports run only on this device.")}
-        </p>
         {removable.length > 0 && (
           <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 8, marginTop: 14 }}>
             {!selecting ? (
@@ -276,7 +286,18 @@ export function ActivityScreen({ state, onMenu }: { state: StateResponse; onMenu
             {error}
           </div>
         )}
-        {empty && !error && <div style={{ color: C.soft, fontSize: 13, textAlign: "center", padding: "52px 12px" }}>{t("No import activity yet.")}</div>}
+        {empty && !error && (
+          <div style={{ color: C.soft, textAlign: "center", padding: "64px 12px" }}>
+            <div
+              aria-hidden
+              style={{ width: 58, height: 58, borderRadius: 18, margin: "0 auto 16px", display: "grid", placeItems: "center", background: C.card }}
+            >
+              <Ico d="M4 7h16v12H4zM7 4h10M8 11l2.5 2.5L14.5 9l3.5 5" size={28} color={C.soft} sw={1.7} />
+            </div>
+            <div style={{ color: C.text, fontSize: 16, fontWeight: 700 }}>{t("No imports")}</div>
+            <div style={{ marginTop: 6, fontSize: 12.5 }}>{t("Add screenshots with the + button.")}</div>
+          </div>
+        )}
         {list(msg("Ready"), sections.ready)}
         {list(msg("In progress"), sections.active)}
         {list(msg("Needs attention"), sections.failed)}

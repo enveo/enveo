@@ -1092,7 +1092,7 @@ function AppContent() {
             <button
               type="button"
               onClick={() => void importManagerBootstrap.start()}
-              aria-label={t("Activity could not be refreshed. Try again.")}
+              aria-label={t("Imports could not be refreshed. Try again.")}
               style={{
                 width: 20,
                 height: 20,

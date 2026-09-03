@@ -48,7 +48,7 @@ export function importProgressPresentation(item: ImportActivityItem): ImportProg
   if (item.status === "failed" && !isScheduledImportRetry(item)) {
     return {
       kind: "failed",
-      message: item.errorCode ? ERROR_MESSAGES[item.errorCode] : msg("The import failed. You can retry it from Activity."),
+      message: item.errorCode ? ERROR_MESSAGES[item.errorCode] : msg("The import failed. You can retry it from Imports."),
       canContinueInBackground: false,
       canCancel: false,
     };
@@ -100,7 +100,7 @@ export function ImportProgress({
           }}
         />
         <div style={{ marginTop: 12, color: C.text, fontSize: 16, fontWeight: 700 }}>{t(presentation.message)}</div>
-        <div style={{ marginTop: 5, color: C.mute, fontSize: 12 }}>{t("You can leave this view. The import will stay in Activity.")}</div>
+        <div style={{ marginTop: 5, color: C.mute, fontSize: 12 }}>{t("You can leave this view. The import will stay in Imports.")}</div>
       </div>
       {(presentation.canCancel || (showBackground && presentation.canContinueInBackground)) && (
         <div style={{ display: "flex", gap: 8, marginTop: 18 }}>

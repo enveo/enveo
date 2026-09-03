@@ -667,7 +667,7 @@ export function Drawer({
           )}
           {shortcut(
             D_BARS,
-            t("Activity"),
+            t("Imports"),
             () => {
               onClose();
               onNav("activity");

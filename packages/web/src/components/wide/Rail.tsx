@@ -1143,7 +1143,7 @@ export function Rail({
     { id: "transactions", label: t("Transactions") },
     { id: "reports", label: t("Reports") },
     { id: "accounts", label: t("Accounts") },
-    { id: "activity", label: t("Activity") },
+    { id: "activity", label: t("Imports") },
   ];
   return (
     
