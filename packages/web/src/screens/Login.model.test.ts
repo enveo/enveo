@@ -8,6 +8,14 @@ describe("login device storage disclosure", () => {
     expect(app).toContain('lazy(() => import("./screens/Login")');
   });
 
+  it("renders the lazy login screen inside a Suspense boundary on the phone branch", async () => {
+    // The boot status flips through a sync lane; a lazy chunk suspending with no boundary above it
+    // is a fatal React #426 (blank app), which is exactly how 4.1.4–4.1.7 lost the Login screen.
+    const app = await Bun.file(`${import.meta.dir}/../App.tsx`).text();
+    expect(app).toContain("<LazyChunk>{unauthed ? <LoginScreen /> :");
+    expect(app).not.toContain("unauthed ? <LoginScreen /> : <LazyChunk>");
+  });
+
   it("warns that a persistent local copy is readable through the browser profile", () => {
     expect(PRIVATE_DEVICE_DISCLOSURE).toBe(
       "Keep me signed in and save a local copy so Enveo works without internet. Anyone who can access this browser profile may be able to read that copy.",
