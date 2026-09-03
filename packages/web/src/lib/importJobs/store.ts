@@ -33,6 +33,10 @@ export function importActivityAttention(item: ImportActivityItem): "ready" | "fa
   return null;
 }
 
+export function canRemoveImportActivity(item: ImportActivityItem): boolean {
+  return item.status === "ready" || item.status === "failed" || item.status === "completed" || item.status === "cancelled";
+}
+
 /** Revocable authority for one authenticated owner/budget/tier activation. */
 export interface ImportJobScopeCapability {
   isCurrent(): boolean;

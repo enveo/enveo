@@ -29,6 +29,7 @@ export interface ImportJobManagerPlainPort {
   refresh(force?: boolean): Promise<void>;
   cancel(id: string): Promise<void>;
   retry(id: string): Promise<void>;
+  removeMany(ids: string[]): Promise<void>;
   complete(id: string, counts: { appliedCount: number; skippedCount: number }): Promise<void>;
   dismiss(id: string): void;
 }
@@ -40,6 +41,7 @@ export interface ImportJobManagerE2eePort {
   list(): Promise<ImportActivityItem[]>;
   cancel(id: string): Promise<void>;
   retry(id: string): Promise<void>;
+  removeMany(ids: string[]): Promise<void>;
   complete(id: string, counts: { appliedCount: number; skippedCount: number }): Promise<void>;
   dismiss(id: string): Promise<void>;
 }
@@ -551,6 +553,25 @@ export class ImportJobManager {
     if (!target) return;
     if (target.item.source === "e2ee") await this.local?.retry(id);
     else await this.plain?.retry(id);
+  }
+
+  async removeMany(ids: string[]): Promise<void> {
+    if (!(await this.activate()) || !this.scope) return;
+    const generation = this.generation;
+    const scope = this.scope;
+    const snapshot = this.snapshot();
+    if (!snapshot || snapshot.budgetId !== scope.budgetId) return;
+    const unique = [...new Set(ids)];
+    const items = (await Promise.all(unique.map((id) => this.item(id)))).filter((item): item is ImportActivityItem =>
+      Boolean(item && item.budgetId === scope.budgetId && item.source !== "plain-draft" && ["ready", "failed", "completed", "cancelled"].includes(item.status)),
+    );
+    if (!this.isActivationCurrent(generation, snapshot) || this.scope !== scope) return;
+    const e2eeIds = items.filter((item) => item.source === "e2ee").map((item) => item.id);
+    const plainIds = items.filter((item) => item.source === "plain").map((item) => item.id);
+    if (plainIds.length > 0) await this.plain?.removeMany(plainIds);
+    if (e2eeIds.length > 0) await this.local?.removeMany(e2eeIds);
+    if (generation !== this.generation || scope !== this.scope) return;
+    for (const id of [...plainIds, ...e2eeIds]) await this.clearApplied(id, scope);
   }
 
   async complete(id: string, counts: { appliedCount: number; skippedCount: number }): Promise<void> {

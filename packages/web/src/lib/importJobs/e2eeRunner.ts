@@ -592,4 +592,8 @@ export class E2eeImportJobRunner {
       if (this.isCurrent()) this.options.activity.remove(id);
     }
   }
+
+  async removeMany(ids: string[]): Promise<void> {
+    for (const id of ids) await this.dismiss(id);
+  }
 }

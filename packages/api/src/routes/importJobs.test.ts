@@ -99,6 +99,7 @@ function harness(
       calls.mutationBudgets.push(budgetId);
       return job();
     },
+    deleteMany: async () => 0,
     requestCancel: async (userId, budgetId) => {
       calls.users.push(userId);
       calls.mutationBudgets.push(budgetId);
@@ -224,6 +225,24 @@ describe("plain durable import job routes", () => {
     expect(responses.map((response) => response.status)).toEqual([200, 200, 200, 200]);
     expect(calls.users).toEqual([USER_B, USER_B, USER_B, USER_B]);
     expect(calls.mutationBudgets).toEqual([BUDGET_A, BUDGET_A]);
+  });
+
+  it("bulk deletes only terminal owned imports under the current budget assertion", async () => {
+    const deleted: string[][] = [];
+    const { app } = harness({
+      repository: {
+        deleteMany: async (_userId: string, _budgetId: string, ids: string[]) => {
+          deleted.push(ids);
+          return ids.length;
+        },
+      } as Partial<ImportJobRouteRepository>,
+    });
+
+    const response = await post(app, "/api/import/jobs/delete", mutationBody({ ids: [JOB_ID] }));
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ deleted: 1 });
+    expect(deleted).toEqual([[JOB_ID]]);
   });
 
   it("completes only a ready owned job under the current budget assertion", async () => {

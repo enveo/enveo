@@ -110,6 +110,7 @@ function ports(calls: string[]) {
     refresh: async () => void calls.push("plain.refresh"),
     cancel: async () => void calls.push("plain.cancel"),
     retry: async () => void calls.push("plain.retry"),
+    removeMany: async (ids) => void calls.push(`plain.removeMany:${ids.join(",")}`),
     complete: async () => void calls.push("plain.complete"),
     dismiss: () => calls.push("plain.dismiss"),
   });
@@ -125,6 +126,7 @@ function ports(calls: string[]) {
     list: async () => [],
     cancel: async () => void calls.push("e2ee.cancel"),
     retry: async () => void calls.push("e2ee.retry"),
+    removeMany: async (ids) => void calls.push(`e2ee.removeMany:${ids.join(",")}`),
     complete: async () => void calls.push("e2ee.complete"),
     dismiss: async () => void calls.push("e2ee.dismiss"),
   });
@@ -291,6 +293,65 @@ describe("import job manager", () => {
     await cancellation;
 
     expect(calls).not.toContain("e2ee.cancel");
+    manager.stop();
+  });
+
+  it("bulk removal partitions plain and encrypted imports without touching active work", async () => {
+    const state = new FakeState();
+    state.status = "ready";
+    const calls: string[] = [];
+    const adapters = ports(calls);
+    const manager = new ImportJobManager({
+      state,
+      ownerId: async () => "user-a",
+      tierMeta: () => ({ tier: "plain", epoch: 0 }),
+      createPlain: adapters.plain,
+      createE2ee: adapters.e2ee,
+      visible: () => true,
+    });
+    manager.start();
+    await manager.resume();
+
+    const created = await manager.create({ accountId: ACCOUNT, locale: "en-US", images: [IMAGE] });
+    created.status = "completed";
+    created.phase = "completed";
+
+    await (manager as unknown as { removeMany: (ids: string[]) => Promise<void> }).removeMany([ID]);
+
+    expect(calls).toContain("plain.removeMany:11111111-1111-1111-1111-111111111111");
+    manager.stop();
+  });
+
+  it("does not bulk-remove jobs after its awaited lookup loses scope authority", async () => {
+    const state = new FakeState();
+    state.status = "ready";
+    const lookup = deferred<void>();
+    const calls: string[] = [];
+    const manager = new ImportJobManager({
+      state,
+      ownerId: async () => "user-a",
+      tierMeta: () => ({ tier: "e2ee", epoch: 3 }),
+      createPlain: ports(calls).plain,
+      createE2ee: (_scope, activity) => ({
+        ...ports(calls).e2ee(_scope, activity),
+        list: async () => {
+          await lookup.promise;
+          activity.upsert({ ...item("e2ee"), status: "completed", phase: "completed" });
+          return activity.list();
+        },
+      }),
+      visible: () => true,
+    });
+    manager.start();
+    await manager.resume();
+    const removal = manager.removeMany([ID]);
+    state.budgetId = OTHER_BUDGET;
+    state.currentLedger = ledger("openai", "gpt-5.6-luna", OTHER_BUDGET);
+    lookup.resolve();
+
+    await removal;
+
+    expect(calls).not.toContain(`e2ee.removeMany:${ID}`);
     manager.stop();
   });
 
@@ -880,6 +941,7 @@ describe("import job manager", () => {
           refresh: async () => {},
           cancel: async () => {},
           retry: async () => {},
+          removeMany: async () => {},
           complete: async () => {},
           dismiss: () => {},
         };
@@ -963,6 +1025,7 @@ describe("import job manager", () => {
           refresh: async () => {},
           cancel: async () => {},
           retry: async () => {},
+          removeMany: async () => {},
           complete: async () => {},
           dismiss: () => {},
         };

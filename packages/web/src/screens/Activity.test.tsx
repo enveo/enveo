@@ -5,6 +5,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { importProgressPresentation, runImportProgressAction, sharedDeviceImportWarning } from "../components/ImportProgress";
 import type { ImportActivityItem } from "../lib/importJobs/store";
+import * as activityModule from "./Activity";
 import { activityAttentionCount, activityDismissMessage, activitySections, canRetryActivityImport, retryActivityImport } from "./Activity";
 
 const item = (status: ImportActivityItem["status"], overrides: Partial<ImportActivityItem> = {}): ImportActivityItem => ({
@@ -35,6 +36,12 @@ const item = (status: ImportActivityItem["status"], overrides: Partial<ImportAct
 });
 
 describe("durable import foreground and Activity view models", () => {
+  it("allows selection only for imports that are safe to remove", () => {
+    const canRemove = (activityModule as unknown as { canRemoveActivityImport: (value: ImportActivityItem) => boolean }).canRemoveActivityImport;
+
+    expect([item("completed"), item("failed"), item("ready")].map(canRemove)).toEqual([true, true, true]);
+    expect([item("queued"), item("running")].map(canRemove)).toEqual([false, false]);
+  });
   it("presents persisted phases in order and sends a waiting observer directly to review", () => {
     // given: one foreground observer receives the durable lifecycle in sequence
     const phases: ImportActivityItem["phase"][] = ["uploading", "queued", "extracting", "validating", "enriching", "reconciling"];
@@ -82,16 +89,18 @@ describe("durable import foreground and Activity view models", () => {
     const ready = item("ready", { id: "ready" });
     const failed = item("failed", { id: "failed" });
     const completed = item("completed", { id: "completed" });
+    const cancelled = item("cancelled", { id: "cancelled" });
     const expired = item("completed", { id: "expired", expiresAt: "2026-08-23T00:00:00.000Z" });
 
     // when: Activity builds its one shared view model
-    const sections = activitySections([duplicateDraft, accepted, ready, failed, completed, expired], new Date("2026-08-24T12:00:00.000Z"));
+    const sections = activitySections([duplicateDraft, accepted, ready, failed, completed, cancelled, expired], new Date("2026-08-24T12:00:00.000Z"));
 
     // then: accepted wins by id, expired history disappears, and ready+failed drive the badge
     expect(sections.active.map(({ id, source }) => ({ id, source }))).toEqual([{ id: "same", source: "plain" }]);
     expect(sections.ready.map((job) => job.id)).toEqual(["ready"]);
     expect(sections.failed.map((job) => job.id)).toEqual(["failed"]);
     expect(sections.completed.map((job) => job.id)).toEqual(["completed"]);
+    expect(sections.cancelled.map((job) => job.id)).toEqual(["cancelled"]);
     expect(activityAttentionCount(sections)).toBe(2);
   });
 

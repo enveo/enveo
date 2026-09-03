@@ -1,5 +1,5 @@
 import { computeStateResponse } from "@enveo/shared";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import type { StateResponse } from "../../lib/api";
 import { apiErrorMessage, useLedgerVersion, useSyncStatus } from "../../lib/api";
 import { authClient } from "../../lib/auth";
@@ -9,6 +9,8 @@ import { LOCALE_OF } from "../../lib/format";
 import { canFillGoals } from "../../lib/goals";
 import { useT } from "../../lib/i18n";
 import { Ico } from "../../lib/icons";
+import { importJobManager } from "../../lib/importJobs/manager";
+import { importActivityAttention } from "../../lib/importJobs/store";
 import { isInstallable, useInstall } from "../../lib/installPrompt";
 import { store } from "../../lib/store";
 import type { SyncStatus } from "../../lib/sync";
@@ -26,7 +28,7 @@ type WideMode = Exclude<ViewMode, "phone">;
 /** The five screens the rail navigates between — a strict subset of `ScreenId` (no
  *  `addExpense`/`settings`: Add lives in the band's `+ Add` button, Settings behind the user
  *  menu's gear tile — pr4-context.md §0b items 6 and 12). */
-type NavScreen = "start" | "budget" | "transactions" | "reports" | "accounts";
+type NavScreen = "start" | "budget" | "transactions" | "reports" | "accounts" | "activity";
 
 /**
  * The signed-in user's name + email — read once from `lib/auth.ts`, the ONE session source of
@@ -63,7 +65,7 @@ export function useSessionUser(): { name: string | null; email: string | null } 
 
 /** Fold: 44×44 icon-only square (existing task-4 shape). Active background is the theme's CTA
  *  alpha token — never a hardcoded hex — same idiom as Drawer's quick tiles. */
-function RailButton({ active, d, label, onClick }: { active: boolean; d: string; label: string; onClick: () => void }) {
+function RailButton({ active, d, label, badge, onClick }: { active: boolean; d: string; label: string; badge?: number; onClick: () => void }) {
   const C = useTheme();
   return (
     <button
@@ -72,6 +74,7 @@ function RailButton({ active, d, label, onClick }: { active: boolean; d: string;
       title={label}
       aria-current={active ? "page" : undefined}
       style={{
+        position: "relative",
         width: 44,
         height: 44,
         minWidth: 30,
@@ -87,6 +90,26 @@ function RailButton({ active, d, label, onClick }: { active: boolean; d: string;
       }}
     >
       <Ico d={d} size={20} color={active ? TEAL : C.soft} sw={1.8} />
+      {!!badge && (
+        <span
+          style={{
+            position: "absolute",
+            top: 3,
+            right: 3,
+            minWidth: 16,
+            height: 16,
+            padding: "0 4px",
+            borderRadius: 999,
+            background: "var(--danger)",
+            color: "#fff",
+            fontSize: 9,
+            fontWeight: 800,
+            lineHeight: "16px",
+          }}
+        >
+          {badge}
+        </span>
+      )}
     </button>
   );
 }
@@ -104,7 +127,7 @@ function RailButton({ active, d, label, onClick }: { active: boolean; d: string;
  * only token that also reads correctly on Duet's navy rail) — NOT an accent-tinted background
  * with accent-colored text.
  */
-function NavRow({ active, label, onClick }: { active: boolean; label: string; onClick: () => void }) {
+function NavRow({ active, label, badge, onClick }: { active: boolean; label: string; badge?: number; onClick: () => void }) {
   const C = useTheme();
   // demo 2439-2440: `fg: active ? T.railTitle : T.railOn`. `headerInk` equals `C.text` on every
   // Cisza theme but is the only token that ALSO reads correctly on Duet's navy rail; `railOn` is
@@ -142,6 +165,25 @@ function NavRow({ active, label, onClick }: { active: boolean; label: string; on
       >
         {label}
       </span>
+      {!!badge && (
+        <span
+          style={{
+            marginLeft: "auto",
+            minWidth: 18,
+            height: 18,
+            padding: "0 5px",
+            borderRadius: 999,
+            background: "var(--danger)",
+            color: "#fff",
+            fontSize: 10,
+            fontWeight: 800,
+            lineHeight: "18px",
+            textAlign: "center",
+          }}
+        >
+          {badge}
+        </span>
+      )}
     </button>
   );
 }
@@ -1088,6 +1130,8 @@ export function Rail({
 }) {
   const C = useTheme();
   const { t } = useT();
+  useSyncExternalStore(importJobManager.subscribe, importJobManager.activityVersion);
+  const activityCount = importJobManager.activityItems().filter((item) => importActivityAttention(item) !== null).length;
   // Design-parity wave A, task A4: the ONE shared update-state consumer (`UpdatePrompt.tsx`) —
   // called unconditionally (rules of hooks; `mode` can change under this same component across
   // a fold↔desktop resize) but only rendered below when `mode === "desktop"`; fold keeps its
@@ -1099,6 +1143,7 @@ export function Rail({
     { id: "transactions", label: t("Transactions") },
     { id: "reports", label: t("Reports") },
     { id: "accounts", label: t("Accounts") },
+    { id: "activity", label: t("Activity") },
   ];
   return (
     // data-wide-rail: stable test hook — the verification playbook's geometry read and
@@ -1167,9 +1212,16 @@ export function Rail({
       >
         {items.map((it) =>
           mode === "desktop" ? (
-            <NavRow key={it.id} active={screen === it.id} label={it.label} onClick={() => onNav(it.id)} />
+            <NavRow key={it.id} active={screen === it.id} label={it.label} badge={it.id === "activity" ? activityCount : 0} onClick={() => onNav(it.id)} />
           ) : (
-            <RailButton key={it.id} active={screen === it.id} d={NAV_ICONS[it.id]} label={it.label} onClick={() => onNav(it.id)} />
+            <RailButton
+              key={it.id}
+              active={screen === it.id}
+              d={NAV_ICONS[it.id]}
+              label={it.label}
+              badge={it.id === "activity" ? activityCount : 0}
+              onClick={() => onNav(it.id)}
+            />
           ),
         )}
       </div>

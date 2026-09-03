@@ -479,12 +479,13 @@ const D_CHEV = "M9 5l7 7-7 7";
  *  free. chrome.tsx is already eager (BottomNav needs it on the very first paint), so Rail.tsx
  *  importing this from the lazy wide chunk adds no bytes to the phone bundle — only the wide
  *  chunk gains a reference to a string that already shipped. */
-export const NAV_ICONS: Readonly<Record<"start" | "budget" | "transactions" | "reports" | "accounts", string>> = {
+export const NAV_ICONS: Readonly<Record<"start" | "budget" | "transactions" | "reports" | "accounts" | "activity", string>> = {
   start: "M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-4 0h4",
   budget: "M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z",
   transactions: "M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2",
   reports: "M4 19h16M7 16v-5M12 16V8M17 16v-9",
   accounts: D_BANK,
+  activity: "M4 6h16M4 12h16M4 18h10",
 };
 
 /** Stroked drawer SVG icon — stroke via style (var(--cta) etc. work). */

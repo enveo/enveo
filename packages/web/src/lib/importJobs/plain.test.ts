@@ -58,6 +58,7 @@ function remote(overrides: Partial<PlainImportJobRemote> = {}): PlainImportJobRe
       return detail({ status: "cancelled", cancelRequested: true });
     },
     retry: async () => detail(),
+    removeMany: async (ids) => ({ deleted: ids.length }),
     complete: async (_id, input) => detail({ status: "completed", phase: "completed", appliedCount: input.appliedCount, skippedCount: input.skippedCount }),
     ...overrides,
     cancellations,
@@ -81,6 +82,26 @@ afterEach(() => {
 });
 
 describe("plain durable import adapter", () => {
+  it("removes large selections through bounded tenant-asserted requests", async () => {
+    const calls: Array<{ ids: string[]; budgetId: string }> = [];
+    const api = remote({
+      removeMany: async (ids, budgetId) => {
+        calls.push({ ids, budgetId });
+        return { deleted: ids.length };
+      },
+    });
+    const activity = createImportActivityStore();
+    const ids = Array.from({ length: 205 }, (_, index) => `job-${index}`);
+    for (const id of ids) activity.upsert({ ...importActivityFromServer(detail({ id, status: "completed", phase: "completed" })) });
+    const adapter = new PlainImportJobAdapter({ scope: SCOPE, activity, remote: api });
+
+    await adapter.removeMany(ids);
+
+    expect(calls.map((call) => call.ids.length)).toEqual([100, 100, 5]);
+    expect(calls.every((call) => call.budgetId === BUDGET)).toBe(true);
+    expect(activity.list()).toEqual([]);
+  });
+
   it("completes only through the tenant-asserted remote boundary and publishes the minimal summary", async () => {
     // given: a ready plain job and a remote completion boundary
     const calls: Array<{ id: string; budgetId: string; appliedCount: number; skippedCount: number }> = [];
@@ -315,7 +336,7 @@ describe("plain durable import adapter", () => {
     expect(activity.list()).toEqual([]);
   });
 
-  it("persists cancellation across a delayed 202, cancels the accepted job, and never republishes it", async () => {
+  it("persists cancellation across a delayed 202 and publishes the removable cancelled job", async () => {
     const response = deferred<ImportJobDetail>();
     const api = remote({
       create: () => response.promise,
@@ -333,7 +354,7 @@ describe("plain durable import adapter", () => {
 
     expect(api.cancellations).toEqual([ID]);
     expect(await importJobStorage.getDraft(SCOPE, ID)).toBeUndefined();
-    expect(activity.get(ID)).toBeUndefined();
+    expect(activity.get(ID)).toMatchObject({ status: "cancelled", source: "plain" });
   });
 
   it("cancels the accepted server job when acknowledgement wins the cancellation-marker race", async () => {
@@ -367,7 +388,7 @@ describe("plain durable import adapter", () => {
     expect(activity.get(ID)).toBeUndefined();
   });
 
-  it("cancels by deterministic id when another adapter acknowledges between get and the cancel marker", async () => {
+  it("cancels by deterministic id when another adapter acknowledges between get and the cancel marker and keeps removable history", async () => {
     const response = deferred<ImportJobDetail>();
     const cancellationStarted = deferred<void>();
     const releaseCancellation = deferred<void>();
@@ -401,7 +422,7 @@ describe("plain durable import adapter", () => {
     }
 
     expect(api.cancellations).toEqual([ID]);
-    expect(activity.get(ID)).toBeUndefined();
+    expect(activity.get(ID)).toMatchObject({ status: "cancelled", source: "plain" });
   });
 
   it("treats a definitive 404 as safely cancelled after another adapter deletes the draft", async () => {

@@ -16,7 +16,7 @@ type RouteContext = Context<{ Variables: Variables }>;
 
 export type ImportJobRouteRepository = Pick<
   ImportJobRepository,
-  "create" | "listForUser" | "getForUser" | "getForBudget" | "requestCancel" | "retry" | "markCompleted"
+  "create" | "listForUser" | "getForUser" | "getForBudget" | "deleteMany" | "requestCancel" | "retry" | "markCompleted"
 >;
 
 export interface ImportJobRouteOptions {
@@ -39,6 +39,7 @@ export const createImportJobInput = z
   })
   .strict();
 export const importJobMutationInput = z.object({ budgetId: z.string().uuid() }).strict();
+export const deleteImportJobsInput = importJobMutationInput.extend({ ids: z.array(z.string().uuid()).min(1).max(100) }).strict();
 export const completeImportJobInput = importJobMutationInput.extend({
   appliedCount: z.number().int().nonnegative(),
   skippedCount: z.number().int().nonnegative(),
@@ -156,6 +157,14 @@ export function createImportJobRoutes(options: ImportJobRouteOptions = {}) {
     if (!owner) return c.json({ error: "unauthorized" }, 401);
     const result = await repository.getForUser(owner, idParam(c));
     return result ? c.json(publicDetail(result)) : c.json({ error: "not_found" }, 404);
+  });
+
+  routes.post("/import/jobs/delete", async (c) => {
+    const body = deleteImportJobsInput.parse(await c.req.json());
+    const authorization = await authorizeMutation(c, body.budgetId);
+    if ("response" in authorization) return authorization.response;
+    const deleted = await repository.deleteMany(authorization.owner, body.budgetId, [...new Set(body.ids)]);
+    return c.json({ deleted });
   });
 
   routes.post("/import/jobs/:id/cancel", async (c) => {

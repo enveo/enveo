@@ -16,6 +16,7 @@ export interface PlainImportJobRemote {
   get(id: string): Promise<ImportJobDetail>;
   cancel(id: string, budgetId: string): Promise<ImportJobDetail>;
   retry(id: string, budgetId: string): Promise<ImportJobDetail>;
+  removeMany(ids: string[], budgetId: string): Promise<{ deleted: number }>;
   complete(id: string, input: { budgetId: string; appliedCount: number; skippedCount: number }): Promise<ImportJobDetail>;
 }
 
@@ -83,6 +84,20 @@ export class PlainImportJobAdapter {
 
   private isCurrent(): boolean {
     return !this.stopped && (this.options.capability?.isCurrent() ?? true);
+  }
+
+  async removeMany(ids: string[]): Promise<void> {
+    if (!this.isCurrent() || ids.length === 0) return;
+    for (let offset = 0; offset < ids.length; offset += 100) {
+      const batch = ids.slice(offset, offset + 100);
+      await this.remote.removeMany(batch, this.options.scope.budgetId);
+      if (!this.isCurrent()) return;
+      for (const id of batch) {
+        this.dismissed.delete(id);
+        this.options.activity.remove(id);
+        await importJobStorage.deleteApplyProgress(this.options.scope, id);
+      }
+    }
   }
 
   private publish(item: ImportActivityItem): void {
@@ -225,10 +240,6 @@ export class PlainImportJobAdapter {
       for (const summary of jobs) {
         if (!this.isCurrent()) return;
         if (this.dismissed.has(summary.id)) continue;
-        if (summary.status === "cancelled") {
-          this.options.activity.remove(summary.id);
-          continue;
-        }
         if (summary.status === "ready") {
           const detail = await this.remote.get(summary.id);
           if (!this.isCurrent()) return;

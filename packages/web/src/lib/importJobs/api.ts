@@ -11,6 +11,7 @@ export const importJobsApi = {
   get: (id: string) => detail("GET", `/import/jobs/${encodeURIComponent(id)}`),
   cancel: (id: string, budgetId: string) => detail("POST", `/import/jobs/${encodeURIComponent(id)}/cancel`, { budgetId }),
   retry: (id: string, budgetId: string) => detail("POST", `/import/jobs/${encodeURIComponent(id)}/retry`, { budgetId }),
+  removeMany: (ids: string[], budgetId: string) => http<{ deleted: number }>("POST", "/import/jobs/delete", { budgetId, ids }),
   complete: (id: string, input: { budgetId: string; appliedCount: number; skippedCount: number }) =>
     detail("POST", `/import/jobs/${encodeURIComponent(id)}/complete`, input),
 };
