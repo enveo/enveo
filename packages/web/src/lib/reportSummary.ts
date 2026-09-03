@@ -173,8 +173,6 @@ export interface BudgetStep {
   amount: number;
   /** True when the human dismissed this step. Still returned — the report shows it, flagged. */
   ignored: boolean;
-  /** `amount` capped at the pool, minor units. Equals `amount` when the pool covers it. */
-  fundable: number;
 }
 
 /** The cushion a near-limit envelope is topped back up to — 1/5 (20%) of its budget. Kept as a
@@ -227,12 +225,10 @@ function nearTopUp(rawBudget: number, left: number): number {
  * caller a second pass over the same data to recover what was hidden. Ordering ignores the flag
  * too — the report groups ignored steps visually, this function does not.
  *
- * `options.readyToAssign` is the pool of unbudgeted money: `fundable` caps `amount` at that pool
- * so a caller never puts a button on screen offering to move more money than exists (the report
- * shows the amount on the button itself, with no confirmation dialog). Omitting the pool leaves
- * `fundable` equal to `amount` — today's unlimited behaviour, so existing callers stay valid.
+ * `amount` is the NEED, never capped by what is available: where the money comes from (the pool,
+ * other envelopes) is the cover sheet's concern (`coverSources.ts`), not this function's.
  */
-export function budgetSteps(envelopes: BudgetStepInput[], progress: number, options?: { ignored?: ReadonlySet<string>; readyToAssign?: number }): BudgetStep[] {
+export function budgetSteps(envelopes: BudgetStepInput[], progress: number, options?: { ignored?: ReadonlySet<string> }): BudgetStep[] {
   const steps: BudgetStep[] = [];
   for (const e of envelopes) {
     if (e.archived) continue;
@@ -245,8 +241,7 @@ export function budgetSteps(envelopes: BudgetStepInput[], progress: number, opti
     const amount = bucket === "over" ? -usage.left : bucket === "risk" ? projected - usage.rawBudget : nearTopUp(usage.rawBudget, usage.left);
     if (amount <= 0) continue;
 
-    const fundable = Math.max(0, Math.min(amount, options?.readyToAssign ?? amount));
-    steps.push({ envelopeId: e.id, name: e.name, kind: bucket, amount, ignored: options?.ignored?.has(e.id) ?? false, fundable });
+    steps.push({ envelopeId: e.id, name: e.name, kind: bucket, amount, ignored: options?.ignored?.has(e.id) ?? false });
   }
   return steps.sort((a, b) => STEP_ORDER[a.kind] - STEP_ORDER[b.kind] || b.amount - a.amount);
 }

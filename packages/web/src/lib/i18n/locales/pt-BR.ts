@@ -824,7 +824,6 @@ export const ptBR: Dict = {
   "No envelope has money left this month.": "Nenhum envelope tem dinheiro sobrando neste mês.",
   "Only {available} available": "Só {available} disponível",
   "Top up {name}": "Reforçar {name}",
-  savings: "poupança",
   "{amount} to cover · {pool} in To be budgeted": "{amount} a cobrir · {pool} em A orçar",
   "{available} available": "{available} disponível",
   "{available} available → {after} left": "{available} disponível → sobrarão {after}",

@@ -809,7 +809,6 @@ export const nl: Dict = {
   "No envelope has money left this month.": "Geen enkele envelop heeft deze maand nog geld over.",
   "Only {available} available": "Maar {available} beschikbaar",
   "Top up {name}": "{name} aanvullen",
-  savings: "sparen",
   "{amount} to cover · {pool} in To be budgeted": "{amount} te dekken · {pool} in Te budgetteren",
   "{available} available": "{available} beschikbaar",
   "{available} available → {after} left": "{available} beschikbaar → {after} blijft over",

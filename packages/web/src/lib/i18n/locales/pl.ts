@@ -1362,7 +1362,6 @@ export const pl: Dict = {
   "No envelope has money left this month.": "Żadna koperta nie ma w tym miesiącu wolnych środków.",
   "Only {available} available": "Dostępne tylko {available}",
   "Top up {name}": "Uzupełnij {name}",
-  savings: "oszczędności",
   "{amount} to cover · {pool} in To be budgeted": "Do pokrycia {amount} · w Do rozdysponowania {pool}",
   "{available} available": "Dostępne {available}",
   "{available} available → {after} left": "Dostępne {available} → zostanie {after}",

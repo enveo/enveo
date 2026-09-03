@@ -822,7 +822,6 @@ export const it: Dict = {
   "No envelope has money left this month.": "Nessuna busta ha soldi disponibili questo mese.",
   "Only {available} available": "Solo {available} disponibili",
   "Top up {name}": "Ricarica {name}",
-  savings: "risparmi",
   "{amount} to cover · {pool} in To be budgeted": "{amount} da coprire · {pool} in Da assegnare",
   "{available} available": "{available} disponibili",
   "{available} available → {after} left": "{available} disponibili → ne resteranno {after}",
