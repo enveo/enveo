@@ -15,10 +15,6 @@ export function SyncActivityBadge() {
   const { state, pending, deadLetters, ownerUnproven } = useSyncStatus();
   if (deadLetters > 0 || state === "unauthed" || ownerUnproven) return null;
   const anchor: React.CSSProperties = {
-    position: "absolute",
-    top: "calc(env(safe-area-inset-top) + 13px)",
-    right: 76,
-    zIndex: 60,
     display: "flex",
     alignItems: "center",
     justifyContent: "center",

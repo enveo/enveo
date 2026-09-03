@@ -44,15 +44,6 @@ export function visibleImportReviewRows<T extends Pick<ImportReviewRow, "disposi
 
 export type ImportBlockingIssue = ImportReviewReason | "currency_mismatch" | "assignment_unavailable";
 
-/** Every selected review row needs an explicit edit acknowledgement. Rows with
- * incomplete ledger facts remain blocked after editing and must be unchecked. */
-export function importReviewBlockingCount(rows: readonly ImportReviewRow[], edited: Readonly<Record<number, EditedImportItem>>): number {
-  return rows.filter((row, index) => {
-    const hasUnresolvableIssue = row.blockingIssues.some((issue) => issue !== "assignment_unavailable");
-    return row.include && (hasUnresolvableIssue || (row.requiresReview && !edited[index]));
-  }).length;
-}
-
 const REASON_MESSAGES: Record<ImportReviewReason, Message> = {
   missing_fact: msg("Missing date or amount"),
   unsupported_currency: msg("Unsupported currency"),
@@ -273,7 +264,6 @@ export function reviewedImportRowsForApply(args: {
   edited: Record<number, EditedImportItem>;
   editedAutomaticDefaults: Record<number, boolean>;
 }): ImportApplyItem[] {
-  if (importReviewBlockingCount(args.rows, args.edited) > 0) throw new Error("import_review_blocked");
   const candidates = args.rows.flatMap((row) => {
     if (row.disposition !== "candidate" || !row.item) return [];
     return [{ ...row.item, importRowId: row.rowId, include: row.include }];

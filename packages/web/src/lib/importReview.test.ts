@@ -12,7 +12,6 @@ import {
 import type { EditedImportItem, ImportApplyResponse } from "./api";
 import {
   buildImportReviewRows,
-  importReviewBlockingCount,
   importReviewDoneStats,
   importReviewReasonMessage,
   reviewBadges,
@@ -121,7 +120,24 @@ const editedItem = (over: Partial<EditedImportItem> = {}): EditedImportItem => (
 });
 
 describe("screenshot import review view model", () => {
-  it("separates inclusion from review and blocks an incomplete selected financial row", () => {
+  it("lets the user apply a complete warned transaction without opening the editor", () => {
+    // The warning is guidance. The user's checked selection remains authoritative.
+    const review = buildImportReviewRows({
+      recognition: recognition(
+        [row("warning", { reviewReasons: ["possible_ocr_error"] })],
+        [proposal("warning", { selected: true, reviewReasons: ["possible_ocr_error"] })],
+      ),
+      ledger: ledger(),
+      dryRunResults: [dryResult()],
+      automaticEnvelopeId: null,
+      budgetCurrency: "EUR",
+    });
+
+    expect(review[0]).toMatchObject({ include: true, requiresReview: true });
+    expect(reviewedImportRowsForApply({ rows: review, edited: {}, editedAutomaticDefaults: {} })).toHaveLength(1);
+  });
+
+  it("separates inclusion from guidance and ignores an incomplete selected financial row when adding", () => {
     const result = recognition(
       [row("review", { reviewReasons: ["possible_ocr_error"] }), row("missing", { amount: null })],
       [
@@ -139,10 +155,7 @@ describe("screenshot import review view model", () => {
     expect(review[0]).toMatchObject({ include: true, requiresReview: true, blockingIssues: [] });
     expect(review[1]).toMatchObject({ include: true, requiresReview: true, blockingIssues: ["missing_fact"] });
     expect(reviewRowControlLabels(review[1]!, 1).select).toEqual({ message: "Select recognized row {n}", values: { n: 2 } });
-    expect(importReviewBlockingCount(review, {})).toBe(2);
-    expect(importReviewBlockingCount(review, { 0: editedItem() })).toBe(1);
-    review[1]!.include = false;
-    expect(importReviewBlockingCount(review, { 0: editedItem() })).toBe(0);
+    expect(reviewedImportRowsForApply({ rows: review, edited: {}, editedAutomaticDefaults: {} })).toHaveLength(1);
   });
 
   it("keeps validator-mapped internal transfers checked while flagging the unknown endpoint", () => {
@@ -181,7 +194,7 @@ describe("screenshot import review view model", () => {
     expect(review[0]).toMatchObject({ include: true, requiresReview: true, blockingIssues: [], editable: true });
   });
 
-  it("shows a selected financial FX row as blocking and lets the user uncheck it", () => {
+  it("shows a selected financial FX row as guidance without blocking other rows", () => {
     const validated = validateImportExtraction({
       batch: { rows: [row("financial-fx", { semanticKind: "fx_conversion", rowRole: "financial_event" })] },
       budgetCurrency: "EUR",
@@ -206,7 +219,7 @@ describe("screenshot import review view model", () => {
 
     expect(review[0]).toMatchObject({ include: true, item: null, blockingIssues: ["unknown_kind"] });
     expect(reviewRowControlLabels(review[0]!, 0).select).not.toBeNull();
-    expect(importReviewBlockingCount(review, {})).toBe(1);
+    expect(reviewedImportRowsForApply({ rows: review, edited: {}, editedAutomaticDefaults: {} })).toEqual([]);
   });
 
   it("keeps every extracted row visible while all new financial events start selected", () => {
@@ -298,7 +311,7 @@ describe("screenshot import review view model", () => {
     expect(review[0]).toMatchObject({ duplicateStatus: "new", include: true, editable: true });
   });
 
-  it("requires action for an unavailable saved assignment and accepts edit confirmation or uncheck", () => {
+  it("warns about an unavailable saved assignment without requiring edit confirmation", () => {
     // given: the current ledger cleared an assignment that existed when recognition finished
     const result = recognition(
       [row("assignment")],
@@ -317,13 +330,10 @@ describe("screenshot import review view model", () => {
       budgetCurrency: "EUR",
     });
 
-    // then: selection is independent of correctness, and one explicit action clears the gate
+    // then: selection stays authoritative while the warning remains visible
     expect(review[0]).toMatchObject({ include: true, requiresReview: true, blockingIssues: ["assignment_unavailable"] });
     expect(reviewBadges(review[0]!).map(({ label }) => label)).toContain("Saved assignment is unavailable");
-    expect(importReviewBlockingCount(review, {})).toBe(1);
-    expect(importReviewBlockingCount(review, { 0: editedItem() })).toBe(0);
-    review[0]!.include = false;
-    expect(importReviewBlockingCount(review, {})).toBe(0);
+    expect(reviewedImportRowsForApply({ rows: review, edited: {}, editedAutomaticDefaults: {} })).toHaveLength(1);
   });
 
   it("keeps a reconciled exact duplicate truthful while leaving it unselectable and noneditable", () => {
@@ -531,7 +541,7 @@ describe("screenshot import review view model", () => {
     expect(selected[0]).toMatchObject({ name: "candidate", rawPlace: "raw candidate\n25.00 EUR" });
   });
 
-  it("fails closed if a selected blocking row reaches the final apply boundary", () => {
+  it("keeps a currency warning advisory at the final apply boundary", () => {
     const review = buildImportReviewRows({
       recognition: recognition([row("currency", { currency: "USD" })], [proposal("currency", { currency: "USD" })]),
       ledger: ledger(),
@@ -541,12 +551,10 @@ describe("screenshot import review view model", () => {
     });
 
     expect(review[0]).toMatchObject({ include: true, blockingIssues: ["currency_mismatch"] });
-    expect(() => reviewedImportRowsForApply({ rows: review, edited: {}, editedAutomaticDefaults: {} })).toThrow("import_review_blocked");
+    expect(reviewedImportRowsForApply({ rows: review, edited: {}, editedAutomaticDefaults: {} })).toHaveLength(1);
   });
 
-  it("requires an explicit edit before applying a selected row marked for review", () => {
-    // Break caught: a checked warning row could be applied without the user ever
-    // opening and confirming its transaction details.
+  it("keeps edit and uncheck optional for a selected row marked for review", () => {
     const review = buildImportReviewRows({
       recognition: recognition([row("warning", { reviewReasons: ["possible_ocr_error"] })], [proposal("warning", { reviewReasons: ["possible_ocr_error"] })]),
       ledger: ledger(),
@@ -556,14 +564,10 @@ describe("screenshot import review view model", () => {
     });
     const edit = editedItem({ name: "confirmed warning" });
 
-    expect(importReviewBlockingCount(review, {})).toBe(1);
-    expect(() => reviewedImportRowsForApply({ rows: review, edited: {}, editedAutomaticDefaults: {} })).toThrow("import_review_blocked");
-
-    expect(importReviewBlockingCount(review, { 0: edit })).toBe(0);
+    expect(reviewedImportRowsForApply({ rows: review, edited: {}, editedAutomaticDefaults: {} })).toHaveLength(1);
     expect(reviewedImportRowsForApply({ rows: review, edited: { 0: edit }, editedAutomaticDefaults: {} })).toHaveLength(1);
 
     review[0]!.include = false;
-    expect(importReviewBlockingCount(review, {})).toBe(0);
     expect(reviewedImportRowsForApply({ rows: review, edited: {}, editedAutomaticDefaults: {} })).toEqual([]);
   });
 
