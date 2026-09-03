@@ -222,6 +222,22 @@ export function createImportJobRepository(database: DB) {
       return row ? detailFromRow(row) : null;
     },
 
+    async deleteMany(userId: string, budgetId: string, ids: string[]): Promise<number> {
+      if (ids.length === 0) return 0;
+      const deleted = await database
+        .delete(importJobs)
+        .where(
+          and(
+            eq(importJobs.userId, userId),
+            eq(importJobs.budgetId, budgetId),
+            inArray(importJobs.id, ids),
+            inArray(importJobs.status, ["ready", "failed", "completed", "cancelled"]),
+          ),
+        )
+        .returning({ id: importJobs.id });
+      return deleted.length;
+    },
+
     async requestCancel(userId: string, budgetId: string, id: string, now = new Date()): Promise<ImportJobDetail | null> {
       return database.transaction(async (tx) => {
         const [current] = await tx

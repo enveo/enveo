@@ -287,6 +287,7 @@ export const api = {
     get: (id: string) => import("./importJobs/api").then(({ importJobsApi }) => importJobsApi.get(id)),
     cancel: (id: string, budgetId: string) => import("./importJobs/api").then(({ importJobsApi }) => importJobsApi.cancel(id, budgetId)),
     retry: (id: string, budgetId: string) => import("./importJobs/api").then(({ importJobsApi }) => importJobsApi.retry(id, budgetId)),
+    removeMany: (ids: string[], budgetId: string) => import("./importJobs/api").then(({ importJobsApi }) => importJobsApi.removeMany(ids, budgetId)),
     complete: (id: string, input: { budgetId: string; appliedCount: number; skippedCount: number }) =>
       import("./importJobs/api").then(({ importJobsApi }) => importJobsApi.complete(id, input)),
   },

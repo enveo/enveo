@@ -7,7 +7,7 @@ import { useTheme } from "../lib/contexts";
 import { type Message, msg, useT } from "../lib/i18n";
 import { Ico } from "../lib/icons";
 import { importJobManager } from "../lib/importJobs/manager";
-import { type ImportActivityItem, importActivityAttention, isScheduledImportRetry } from "../lib/importJobs/store";
+import { canRemoveImportActivity, type ImportActivityItem, importActivityAttention, isScheduledImportRetry } from "../lib/importJobs/store";
 import { useWideHost } from "../lib/shellContext";
 import { CORAL, P } from "../lib/theme";
 
@@ -16,6 +16,7 @@ export interface ImportActivitySections {
   ready: ImportActivityItem[];
   failed: ImportActivityItem[];
   completed: ImportActivityItem[];
+  cancelled: ImportActivityItem[];
 }
 
 export function activitySections(items: readonly ImportActivityItem[], now = new Date()): ImportActivitySections {
@@ -36,6 +37,7 @@ export function activitySections(items: readonly ImportActivityItem[], now = new
     ready: visible.filter((item) => item.status === "ready"),
     failed: visible.filter((item) => importActivityAttention(item) === "failed"),
     completed: visible.filter((item) => item.status === "completed" && Date.parse(item.expiresAt) > now.getTime()),
+    cancelled: visible.filter((item) => item.status === "cancelled" && Date.parse(item.expiresAt) > now.getTime()),
   };
 }
 
@@ -50,6 +52,8 @@ export function activityDismissMessage(item: ImportActivityItem): Message {
 export function canRetryActivityImport(item: ImportActivityItem): boolean {
   return item.status === "failed" && item.errorCode !== "expired";
 }
+
+export const canRemoveActivityImport = canRemoveImportActivity;
 
 export async function retryActivityImport(id: string, retry: (id: string) => Promise<void>, refresh: () => Promise<void>): Promise<string | null> {
   try {
@@ -73,6 +77,8 @@ export function ActivityScreen({ state, onMenu }: { state: StateResponse; onMenu
   const wideHost = useWideHost();
   const [items, setItems] = useState<ImportActivityItem[]>([]);
   const [selectedJobId, setSelectedJobId] = useState<string | null>(null);
+  const [selecting, setSelecting] = useState(false);
+  const [selected, setSelected] = useState<Set<string>>(() => new Set());
   const [error, setError] = useState<string | null>(null);
   const refresh = useCallback(async () => {
     try {
@@ -92,9 +98,21 @@ export function ActivityScreen({ state, onMenu }: { state: StateResponse; onMenu
   const sections = activitySections(items);
   const empty = Object.values(sections).every((section) => section.length === 0);
   const date = (value: string) => new Intl.DateTimeFormat(lang, { dateStyle: "medium", timeStyle: "short" }).format(new Date(value));
-  const dismiss = async (job: ImportActivityItem) => {
-    await importJobManager.dismiss(job.id);
-    await refresh();
+  const removable = Object.values(sections).flat().filter(canRemoveActivityImport);
+  const remove = async (jobs: ImportActivityItem[]) => {
+    if (
+      jobs.some((job) => job.status === "ready" || job.status === "failed") &&
+      !window.confirm(t("Delete selected imports? Screenshots and retry data will be removed. Transactions already added to the budget will stay."))
+    )
+      return;
+    try {
+      await importJobManager.removeMany(jobs.map((job) => job.id));
+      setSelected(new Set());
+      setSelecting(false);
+      await refresh();
+    } catch (cause) {
+      setError(apiErrorMessage(cause));
+    }
   };
 
   const list = (title: Message, jobs: ImportActivityItem[]) =>
@@ -111,7 +129,33 @@ export function ActivityScreen({ state, onMenu }: { state: StateResponse; onMenu
           {jobs.map((job) => {
             const scheduledRetry = isScheduledImportRetry(job);
             return (
-              <article key={job.id} style={{ background: C.card, border: `1px solid ${C.line}`, borderRadius: 14, padding: "12px 13px" }}>
+              <article
+                key={job.id}
+                style={{
+                  position: "relative",
+                  background: C.card,
+                  border: `1px solid ${selected.has(job.id) ? "var(--cta)" : C.line}`,
+                  borderRadius: 14,
+                  padding: "12px 13px",
+                }}
+              >
+                {selecting && canRemoveActivityImport(job) && (
+                  <label style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 9, color: C.text, fontSize: 12, cursor: "pointer" }}>
+                    <input
+                      type="checkbox"
+                      checked={selected.has(job.id)}
+                      onChange={() =>
+                        setSelected((current) => {
+                          const next = new Set(current);
+                          if (next.has(job.id)) next.delete(job.id);
+                          else next.add(job.id);
+                          return next;
+                        })
+                      }
+                    />
+                    {t("Select import")}
+                  </label>
+                )}
                 <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "flex-start" }}>
                   <div>
                     <div style={{ color: C.text, fontSize: 14, fontWeight: 700 }}>
@@ -127,12 +171,12 @@ export function ActivityScreen({ state, onMenu }: { state: StateResponse; onMenu
                     {t("Added: {added} · Skipped: {skipped}", { added: job.appliedCount, skipped: job.skippedCount })}
                   </div>
                 )}
-                {job.status === "ready" && (
+                {!selecting && job.status === "ready" && (
                   <button type="button" onClick={() => setSelectedJobId(job.id)} style={{ ...primaryButton, background: C.text, color: C.card }}>
                     {t("Review import")}
                   </button>
                 )}
-                {job.status === "failed" && !scheduledRetry && (
+                {!selecting && job.status === "failed" && !scheduledRetry && (
                   <>
                     <div role="alert" style={{ color: CORAL, fontSize: 12, lineHeight: 1.4, marginTop: 8 }}>
                       {t(importProgressPresentation(job).message)}
@@ -148,9 +192,9 @@ export function ActivityScreen({ state, onMenu }: { state: StateResponse; onMenu
                     )}
                   </>
                 )}
-                {(job.status === "completed" || (job.status === "failed" && !scheduledRetry)) && (
-                  <button type="button" onClick={() => void dismiss(job)} style={{ ...linkButton, color: C.soft }}>
-                    {t(activityDismissMessage(job))}
+                {!selecting && canRemoveActivityImport(job) && (
+                  <button type="button" onClick={() => void remove([job])} style={{ ...linkButton, color: C.soft }}>
+                    {t("Delete")}
                   </button>
                 )}
                 {(job.status === "queued" || job.status === "running" || scheduledRetry) && (
@@ -186,6 +230,47 @@ export function ActivityScreen({ state, onMenu }: { state: StateResponse; onMenu
         <p style={{ margin: "2px 0 0", color: C.soft, fontSize: 12.5, lineHeight: 1.45 }}>
           {t("Imports continue independently of this screen. Encrypted imports run only on this device.")}
         </p>
+        {removable.length > 0 && (
+          <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 8, marginTop: 14 }}>
+            {!selecting ? (
+              <button
+                type="button"
+                onClick={() => setSelecting(true)}
+                style={{ ...primaryButton, width: "auto", marginTop: 0, background: C.card, color: C.text, border: `1px solid ${C.line}` }}
+              >
+                {t("Select")}
+              </button>
+            ) : (
+              <>
+                <button
+                  type="button"
+                  onClick={() => setSelected(new Set(removable.map((job) => job.id)))}
+                  style={{ ...linkButton, width: "auto", marginTop: 0, color: C.text }}
+                >
+                  {t("Select all")}
+                </button>
+                <button
+                  type="button"
+                  disabled={selected.size === 0}
+                  onClick={() => void remove(removable.filter((job) => selected.has(job.id)))}
+                  style={{ ...primaryButton, width: "auto", marginTop: 0, background: selected.size ? "var(--danger)" : C.line, color: "#fff" }}
+                >
+                  {t("Delete selected ({count})", { count: selected.size })}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSelecting(false);
+                    setSelected(new Set());
+                  }}
+                  style={{ ...linkButton, width: "auto", marginTop: 0, color: C.soft }}
+                >
+                  {t("Cancel selection")}
+                </button>
+              </>
+            )}
+          </div>
+        )}
         {error && (
           <div role="alert" style={{ color: CORAL, fontSize: 12.5, marginTop: 14 }}>
             {error}
@@ -196,6 +281,7 @@ export function ActivityScreen({ state, onMenu }: { state: StateResponse; onMenu
         {list(msg("In progress"), sections.active)}
         {list(msg("Needs attention"), sections.failed)}
         {list(msg("Recently completed"), sections.completed)}
+        {list(msg("Cancelled"), sections.cancelled)}
       </main>
       {selectedJobId && (
         <ImportSheet
