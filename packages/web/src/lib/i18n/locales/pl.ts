@@ -1201,7 +1201,6 @@ export const pl: Dict = {
   "Nothing to fix right now ✓": "Teraz nie ma nic do naprawienia ✓",
   "One click and Enveo runs in its own window — offline, full screen, no browser bar.":
     "Jedno kliknięcie i Enveo działa we własnym oknie — offline, na pełnym ekranie, bez paska przeglądarki.",
-  "Only {fundable} of {amount} available in To be budgeted": "W Do rozdysponowania dostępne jest tylko {fundable} z {amount}",
   Out: "Wydatek",
   "Past months are judged against today's target — changing a goal rewrites its history.":
     "Minione miesiące są oceniane względem dzisiejszego celu — zmiana celu przepisuje jego historię.",
@@ -1230,7 +1229,6 @@ export const pl: Dict = {
   "at this pace ≈ {projected} against a {budget} budget": "tym tempem ≈ {projected} wobec budżetu {budget}",
   "ignored ↩": "pominięto ↩",
   "net per month · scale ±{max}": "netto na miesiąc · skala ±{max}",
-  "{amount} from To be budgeted ({pool} available)": "{amount} z Do rozdysponowania ({pool} dostępne)",
   "{funded} of {target}": "{funded} z {target}",
   "{left} left · {pct}% of the budget spent": "zostaje {left} · wydano {pct}% budżetu",
   "{mode} · total {amount}": "{mode} · razem {amount}",
@@ -1356,4 +1354,15 @@ export const pl: Dict = {
     many: "{n} importów wymaga uwagi — otwórz Importy",
     other: "{n} importu wymaga uwagi — otwórz Importy",
   },
+  "A source is asked for more than it has": "Jedno ze źródeł ma oddać więcej, niż ma",
+  "Amount from {name}": "Kwota z {name}",
+  "Move {sum}": "Przenieś {sum}",
+  "Moving {sum} of {amount}": "Przenosisz {sum} z {amount}",
+  "Needs {amount} · pick where it comes from": "Brakuje {amount} · wybierz, skąd wziąć",
+  "No envelope has money left this month.": "Żadna koperta nie ma w tym miesiącu wolnych środków.",
+  "Only {available} available": "Dostępne tylko {available}",
+  "Top up {name}": "Uzupełnij {name}",
+  "{amount} to cover · {pool} in To be budgeted": "Do pokrycia {amount} · w Do rozdysponowania {pool}",
+  "{available} available": "Dostępne {available}",
+  "{available} available → {after} left": "Dostępne {available} → zostanie {after}",
 };

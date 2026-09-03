@@ -1,9 +1,11 @@
 import { computeStateResponse } from "@enveo/shared";
-import { type ReactNode, useEffect, useRef, useState } from "react";
+import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
+import { type CoverDelta, CoverStepSheet } from "../../components/CoverStepSheet";
 import { Bar, ReportShell, UndoBar, useReportBand } from "../../components/reportKit";
 import type { StateResponse } from "../../lib/api";
 import { useTheme } from "../../lib/contexts";
-import { todayISO } from "../../lib/dates";
+import { coverDonors, donorSlack } from "../../lib/coverSources";
+import { currentMonth, todayISO } from "../../lib/dates";
 import { haptic } from "../../lib/haptics";
 import { useT } from "../../lib/i18n";
 import { local } from "../../lib/mutate";
@@ -14,8 +16,9 @@ import { TEAL, tint } from "../../lib/theme";
 import { type Mask, TITLES } from "./types";
 
 /** One in-flight "Cover"/"Top up" the checklist can still undo. Captured entirely at press time —
- *  `previousAllocated` is the fresh `allocated` read right before the write, so undo is just
- *  writing that same number back through the same absolute-amount API (no inverse op needed).
+ *  each `deltas` entry is the signed change the cover made, so undo subtracts it from a FRESH read
+ *  through the same absolute-amount API (no inverse op needed) and composes with a later cover
+ *  that borrowed from the same donor.
  *  `kind`/`amount`/`name` are the raw pieces this screen's own toast copy ("Covered …" vs.
  *  "Topped up …") is built from — composed into `message` AT RENDER (below), never frozen at push
  *  time: the wide shell's rail user menu makes the discreet toggle reachable beside an open report
@@ -28,10 +31,10 @@ interface PendingUndo {
   kind: BudgetStep["kind"];
   amount: number;
   name: string;
-  envelopeId: string;
   /** The month the write targeted — always the VIEWED month at press time, never re-derived later. */
   month: string;
-  previousAllocated: number;
+  /** Every envelope the cover wrote (donors first, the target last) with the signed change applied. */
+  deltas: CoverDelta[];
 }
 
 const UNDO_TIMEOUT_MS = 6000;
@@ -152,6 +155,8 @@ export function BudgetsReport({
   const [ignored, setIgnored] = useState<Set<string>>(new Set());
   const [expanded, setExpanded] = useState(false);
   const [pendingUndos, setPendingUndos] = useState<PendingUndo[]>([]);
+  // The step whose "Cover from…" sheet is open; the sheet is mounted only while this is set.
+  const [coverStep, setCoverStep] = useState<BudgetStep | null>(null);
   const undoTimers = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
 
   const dismissUndo = (id: string) => {
@@ -168,42 +173,41 @@ export function BudgetsReport({
   // cleanup) — drops every pending undo: undoing it there would move money in a month the user
   // isn't looking at (the same "account balances are global, envelopes are monthly" rule, applied
   // to a pending write instead of a read).
+  // The open cover sheet goes the same way: its step was computed for the month that was viewed
+  // when the button was pressed (on wide the hub's month arrows stay reachable behind the panel).
   useEffect(() => {
     return () => {
       for (const timer of undoTimers.current.values()) clearTimeout(timer);
       undoTimers.current.clear();
       setPendingUndos([]);
+      setCoverStep(null);
     };
   }, [state.month]);
 
-  // Re-reads `allocated` FRESH from the live replica at press time (FillGoalsSheet's pattern,
-  // exactly) — the `state` prop may already be a render behind the outbox. `previousAllocated`
-  // is captured BEFORE the write so undo can restore it verbatim through the same absolute-amount
-  // API — no inverse op, nothing new in the outbox to reason about.
-  const coverStep = (step: BudgetStep) => {
-    if (step.fundable <= 0) return; // defensive — the button is already disabled in this case
-    const ledger = store.getLedger();
-    const live = ledger ? computeStateResponse(ledger, state.month) : null;
-    const envFresh = live?.envelopes.find((e) => e.id === step.envelopeId);
-    if (!envFresh || envFresh.archived) return; // vanished/archived since the checklist rendered
-    const previousAllocated = envFresh.allocated;
-    local.setDisplayedAllocation({ envelopeId: step.envelopeId, month: state.month, amount: previousAllocated + step.fundable });
-    haptic([10, 30, 14]);
-
+  // The button no longer writes anything itself — it opens `CoverStepSheet`, which lets the human
+  // pick WHERE the money comes from (the pool, other envelopes, or a mix, amounts editable) and
+  // does the fresh-replica writes. What comes back is the total moved plus the per-envelope
+  // deltas the undo below reverses.
+  const onCovered = (step: BudgetStep, result: { moved: number; deltas: CoverDelta[] }) => {
     const id = crypto.randomUUID();
     const timer = setTimeout(() => dismissUndo(id), UNDO_TIMEOUT_MS);
     undoTimers.current.set(id, timer);
-    setPendingUndos((prev) => [
-      ...prev,
-      { id, kind: step.kind, amount: step.fundable, name: step.name, envelopeId: step.envelopeId, month: state.month, previousAllocated },
-    ]);
+    setPendingUndos((prev) => [...prev, { id, kind: step.kind, amount: result.moved, name: step.name, month: state.month, deltas: result.deltas }]);
   };
 
   const undoStep = (u: PendingUndo) => {
-    // Absolute write, not a delta: restores the exact `allocated` captured right before covering.
-    // If something else changed this envelope's allocation in the meantime, this still wins —
-    // last-write-wins, same as every other manual allocation edit.
-    local.setDisplayedAllocation({ envelopeId: u.envelopeId, month: u.month, amount: u.previousAllocated });
+    // Reverse each delta against a FRESH read of the envelope (the same absolute-amount API as
+    // every manual edit): two toasts that borrowed from the same donor then undo independently,
+    // whichever is pressed first. An envelope archived since is left alone.
+    const ledger = store.getLedger();
+    const live = ledger ? computeStateResponse(ledger, u.month) : null;
+    if (live) {
+      for (const d of u.deltas) {
+        const fresh = live.envelopes.find((e) => e.id === d.envelopeId);
+        if (!fresh || fresh.archived) continue;
+        local.setDisplayedAllocation({ envelopeId: d.envelopeId, month: u.month, amount: fresh.allocated - d.delta });
+      }
+    }
     haptic(8);
     dismissUndo(u.id);
   };
@@ -225,7 +229,20 @@ export function BudgetsReport({
 
   const progress = monthProgress(state.month, todayISO());
   const budgetedCount = rows.length;
-  const steps = budgetSteps(state.envelopes, progress, { ignored, readyToAssign: state.readyToAssign });
+  const steps = budgetSteps(state.envelopes, progress, { ignored });
+  // What each envelope may give for THIS month (`donorSlack` — bounded by later months when the
+  // viewed month is in the past). Feeds the button's inert state and the cover sheet; recomputed
+  // only when the ledger or the month moves (`state` is memoised per ledger version + month).
+  const thisMonth = currentMonth();
+  const slack = useMemo(() => {
+    const ledger = store.getLedger();
+    return ledger ? donorSlack(ledger, state.month, thisMonth) : new Map<string, number>();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state, thisMonth]);
+  const slackEnvelopes = useMemo(() => state.envelopes.map((e) => ({ ...e, available: slack.get(e.id) ?? e.available })), [state.envelopes, slack]);
+  // A step with NO source at all (empty pool, no envelope with slack) must read as visibly inert,
+  // not open a sheet that can only say so.
+  const coverable = (step: BudgetStep) => state.readyToAssign > 0 || coverDonors(slackEnvelopes, step.envelopeId).length > 0;
   const openSteps = steps.filter((s) => !s.ignored);
   const openIds = new Set(openSteps.map((s) => s.envelopeId));
   const ignoredIds = new Set(steps.filter((s) => s.ignored).map((s) => s.envelopeId));
@@ -365,13 +382,11 @@ export function BudgetsReport({
                         : t("Top up {name} — almost at the limit", { name: step.name });
                   const sub =
                     step.kind === "over"
-                      ? t("{amount} from To be budgeted ({pool} available)", { amount: M(step.amount), pool: M(state.readyToAssign) })
+                      ? t("{amount} to cover · {pool} in To be budgeted", { amount: M(step.amount), pool: M(state.readyToAssign) })
                       : step.kind === "risk"
                         ? t("at this pace ≈ {projected} against a {budget} budget", { projected: M(pace.projected), budget: M(row.rawBudget) })
                         : t("{left} left · {pct}% of the budget spent", { left: M(row.left), pct: Math.round(row.pct ?? 0) });
-                  const buttonLabel =
-                    step.kind === "over" ? t("Cover {amount}", { amount: M(step.fundable) }) : t("Top up {amount}", { amount: M(step.fundable) });
-                  const shortfall = step.fundable < step.amount;
+                  const buttonLabel = step.kind === "over" ? t("Cover {amount}", { amount: M(step.amount) }) : t("Top up {amount}", { amount: M(step.amount) });
                   const isLast = i === openSteps.length - 1;
                   return (
                     <div key={step.envelopeId} style={{ display: "flex", flexDirection: "column" }}>
@@ -396,20 +411,15 @@ export function BudgetsReport({
                         <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 5 }}>
                           <span style={{ fontSize: 12.5, color: C.text }}>{title}</span>
                           <span style={{ fontSize: 10.5, color: C.mute, fontVariantNumeric: "tabular-nums" }}>{sub}</span>
-                          {shortfall && (
-                            <span style={{ fontSize: 10.5, color: C.warn, fontVariantNumeric: "tabular-nums" }}>
-                              {t("Only {fundable} of {amount} available in To be budgeted", { fundable: M(step.fundable), amount: M(step.amount) })}
-                            </span>
-                          )}
                           <span style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                            {/* Real allocation, no confirmation (§4c) — the amount is already on the button, and an
-                              allocation is reversible via the undo toast below. Only an empty pool (fundable===0)
-                              disables it, and that case must read as visibly inert, not merely inactive on press. */}
+                            {/* Opens the "Cover from…" sheet (CoverStepSheet): the amount on the button is the
+                              proposal, the sheet decides the sources — so an empty pool alone no longer makes
+                              the step inert; only NO source at all does. Reversible via the undo toast below. */}
                             <button
-                              onClick={() => coverStep(step)}
-                              disabled={step.fundable === 0}
+                              onClick={() => setCoverStep(step)}
+                              disabled={!coverable(step)}
                               style={{
-                                cursor: step.fundable === 0 ? "default" : "pointer",
+                                cursor: coverable(step) ? "pointer" : "default",
                                 fontSize: 11,
                                 fontWeight: 700,
                                 color: step.kind === "over" ? "#fff" : TEAL,
@@ -417,7 +427,7 @@ export function BudgetsReport({
                                 border: `1px solid ${step.kind === "over" ? C.neg : TEAL}`,
                                 borderRadius: 8,
                                 padding: "5px 11px",
-                                opacity: step.fundable === 0 ? 0.45 : 1,
+                                opacity: coverable(step) ? 1 : 0.45,
                                 fontFamily: "inherit",
                               }}
                             >
@@ -534,6 +544,17 @@ export function BudgetsReport({
         onUndo={undoStep}
         onDismiss={dismissUndo}
       />
+      {coverStep && (
+        <CoverStepSheet
+          key={coverStep.envelopeId}
+          state={state}
+          step={coverStep}
+          slack={slack}
+          currentMonth={thisMonth}
+          onClose={() => setCoverStep(null)}
+          onApplied={onCovered}
+        />
+      )}
     </>
   );
 }

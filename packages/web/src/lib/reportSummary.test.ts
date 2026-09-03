@@ -376,35 +376,6 @@ describe("budgetSteps", () => {
     expect(steps.map((s) => s.ignored)).toEqual([true, false]);
   });
 
-  test("caps fundable at the pool without changing amount", () => {
-    // over by 30.00, but only 10.00 is ready to assign
-    const steps = budgetSteps([stepRow("e", { allocated: 100_00, spent: 130_00 })], 0.5, { readyToAssign: 10_00 });
-    expect(steps[0]!.amount).toBe(30_00);
-    expect(steps[0]!.fundable).toBe(10_00);
-  });
-
-  test("treats an absent pool as unlimited", () => {
-    const steps = budgetSteps([stepRow("e", { allocated: 100_00, spent: 130_00 })], 0.5);
-    expect(steps[0]!.fundable).toBe(steps[0]!.amount);
-  });
-
-  test("fundable equals amount when the pool exactly covers it", () => {
-    // over by 30.00, and exactly 30.00 is ready to assign — no shortfall
-    const steps = budgetSteps([stepRow("e", { allocated: 100_00, spent: 130_00 })], 0.5, { readyToAssign: 30_00 });
-    expect(steps[0]!.fundable).toBe(steps[0]!.amount);
-  });
-
-  test("fundable equals amount when the pool exceeds it", () => {
-    // over by 30.00, but 100.00 is ready to assign — the cap never bites
-    const steps = budgetSteps([stepRow("e", { allocated: 100_00, spent: 130_00 })], 0.5, { readyToAssign: 100_00 });
-    expect(steps[0]!.fundable).toBe(steps[0]!.amount);
-  });
-
-  test("never returns a negative fundable when the pool is negative", () => {
-    const steps = budgetSteps([stepRow("e", { allocated: 100_00, spent: 130_00 })], 0.5, { readyToAssign: -500 });
-    expect(steps[0]!.fundable).toBe(0);
-  });
-
   test("produces no step for a negative carry-in with no activity this month", () => {
     // allocated 0, carryIn -5000, spent 0 → the filter `allocated + carryIn > 0 || spent > 0`
     // excludes it. Assert both halves so this fails if the guard is ever deleted: an inactive
