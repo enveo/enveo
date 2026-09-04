@@ -1,6 +1,5 @@
 import {
   type Account,
-  aiLocaleSchema,
   type Category,
   type ChatRequest,
   type Envelope,
@@ -13,39 +12,26 @@ import {
   type Transaction,
 } from "@enveo/shared";
 import { and, eq, inArray } from "drizzle-orm";
-import { type Context, Hono } from "hono";
+import { Hono } from "hono";
 import { z } from "zod";
-import { aiBudgetExhaustedBody, meteredOperatorChat, operatorChatPayload, SpendDenied } from "../aiSpend/transport";
-import { requireTier, sessionUserId } from "../context";
+import { requireTier } from "../context";
 import { type DB, db } from "../db/client";
 import * as s from "../db/schema";
-import { env } from "../env";
-import { transportFailureJson, UpstreamHttpError } from "../openaiHttp";
 import { assertBudgetFks } from "../sync/apply";
 import { buildDupIndex, classifyDup } from "./import-dedupe";
 import { budgetAssertionFails } from "./sync";
 
-/**
- * Expense import from screenshots (Apple Wallet / bank history).
- *
- * Two steps (with /import/extract retained as the compatibility wire):
- *  1. POST /import/recognize — screenshots → OpenAI (structured output) → evidence and proposals for review.
- *  2. POST /import/apply — dry-run duplicate classification for client review.
- *     Writes were retired: current clients create through their local replica.
- */
+
+
+
+
+
+
+
+
+
+
 export const importRoutes = new Hono();
-
-const importImagesInput = z.object({
-  images: z
-    .array(z.string().regex(/^data:image\//, "expected an image data-URL"))
-    .min(1)
-    .max(6),
-  
-
-  locale: aiLocaleSchema.optional(),
-});
-export const legacyExtractInput = importImagesInput;
-export const recognizeInput = importImagesInput.extend({ accountId: z.string().uuid() });
 
  
 
@@ -88,22 +74,6 @@ export async function loadImportHistory(budgetId: string, currency: string, data
     isRefund: transaction.type === "expense" && transaction.isRefund,
     toAccountId: transaction.type === "transfer" ? transaction.toAccountId : null,
   }));
-}
-
-
-
-
-
-
-async function openaiJson(req: ChatRequest, userId: string | undefined, timeoutMs?: number): Promise<string> {
-  const out = await meteredOperatorChat({ userId, payload: operatorChatPayload(req), timeoutMs });
-  if (out.kind === "denied") throw new SpendDenied(out.retryAfterSeconds);
-  if (out.kind === "upstream_error") {
-    console.error("openai: upstream rejected request", { status: out.status, requestId: out.requestId });
-    throw new UpstreamHttpError(out.status);
-  }
-  if (out.kind === "invalid_body") throw new Error("openai: unreadable 2xx body");
-  return out.content || "{}";
 }
 
 export type ImportModelChat = (request: ChatRequest, timeoutMs?: number, meta?: ImportRecognitionChatMeta) => Promise<string>;
@@ -272,59 +242,6 @@ export function legacyItemsFromRecognition(result: ImportRecognitionResult) {
     ];
   });
 }
-
-const importFailureResponse = (c: Context, error: unknown) => {
-  if (!(error instanceof ImportCycleOneFailure)) throw error;
-  const reason = error.reason;
-  if (reason instanceof SpendDenied) return c.json(aiBudgetExhaustedBody(reason.retryAfterSeconds), 429, { "Retry-After": String(reason.retryAfterSeconds) });
-  console.error("import recognition cycle 1 failed", {
-    errorType: reason instanceof Error ? reason.constructor.name : typeof reason,
-    ...(reason instanceof UpstreamHttpError ? { status: reason.status } : {}),
-  });
-  const failure = transportFailureJson(reason);
-  if (failure) return c.json(failure.body, failure.status);
-  return c.json({ error: "ai_upstream_error", ...(reason instanceof UpstreamHttpError ? { status: reason.status } : {}) }, 502);
-};
-
-/* The API answers with stable machine CODES (never prose): the client owns the wording
-   in every locale (web/lib/api.ts → i18n). Structured detail travels in its own field. */
-importRoutes.post("/import/extract", async (c) => {
-  if (!env.OPENAI_API_KEY) return c.json({ error: "ai_unavailable" }, 503);
-  const budgetId = (await requireTier(c, "plain")).id;
-  const { images, locale: rawLocale } = legacyExtractInput.parse(await c.req.json());
-  const userId = sessionUserId(c);
-  try {
-    const result = await extractLegacyImportForBudget({
-      budgetId,
-      images,
-      locale: rawLocale ?? "en",
-      chat: (request, timeoutMs) => openaiJson(request, userId, timeoutMs),
-    });
-    return c.json({ items: legacyItemsFromRecognition(result) });
-  } catch (error) {
-    return importFailureResponse(c, error);
-  }
-});
-
-importRoutes.post("/import/recognize", async (c) => {
-  if (!env.OPENAI_API_KEY) return c.json({ error: "ai_unavailable" }, 503);
-  const budgetId = (await requireTier(c, "plain")).id;
-  const { accountId, images, locale: rawLocale } = recognizeInput.parse(await c.req.json());
-  const userId = sessionUserId(c);
-  try {
-    return c.json(
-      await extractImportForBudget({
-        budgetId,
-        accountId,
-        images,
-        locale: rawLocale ?? "en",
-        chat: (request, timeoutMs) => openaiJson(request, userId, timeoutMs),
-      }),
-    );
-  } catch (error) {
-    return importFailureResponse(c, error);
-  }
-});
 
 export const applyInput = z.object({
   accountId: z.string().uuid(),
