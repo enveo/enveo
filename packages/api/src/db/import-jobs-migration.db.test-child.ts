@@ -22,6 +22,11 @@ export interface ImportJobsMigrationOutput {
   };
   readyWithImagesRejected: boolean;
   changeTriggerCount: number;
+  chunkBackfill: {
+    legacyWindowsCreated: boolean;
+    screenshotTotalsFilled: boolean;
+    checkpointedJobUntouched: boolean;
+  };
 }
 
 const rejected = async (run: () => Promise<unknown>): Promise<boolean> => {
@@ -147,6 +152,35 @@ async function main() {
         join pg_proc p on p.oid = t.tgfoid
        where c.relname in ('import_jobs', 'import_job_images') and p.proname = 'log_change'`;
 
+    // A job created before chunking, still waiting for cycle one with seven retained
+    // screenshots, must resume on the chunked worker after 0027 without a re-upload.
+    const legacyJobId = crypto.randomUUID();
+    const checkpointedJobId = crypto.randomUUID();
+    for (const [id, client] of [
+      [legacyJobId, "client-legacy"],
+      [checkpointedJobId, "client-checkpointed"],
+    ] as const) {
+      await isolated`insert into import_jobs
+        (id, client_id, user_id, budget_id, provider, model, locale, tier, epoch, request_hash, status, phase, expires_at)
+        values (${id}, ${client}, ${constraintUserId}, ${constraintBudgetId}, 'enveo', 'gpt-test', 'en', 'plain', 0, ${"7".repeat(64)}, 'failed', 'retry_scheduled', now() + interval '7 days')`;
+    }
+    await isolated`update import_jobs set error_code = 'network', retry_at = now() where id in (${legacyJobId}, ${checkpointedJobId})`;
+    for (let position = 0; position < 7; position += 1) {
+      await isolated`insert into import_job_images (job_id, position, mime_type, sha256, byte_length, content)
+        values (${legacyJobId}, ${position}, 'image/png', ${"8".repeat(64)}, 1, ${new Uint8Array([position])})`;
+    }
+    await isolated.unsafe("update import_jobs set extraction = $1::jsonb where id = $2", [JSON.stringify({ rows: [], proposals: [] }), checkpointedJobId]);
+    await applyMigration(isolated, `${migrationsDir}/0027_import_job_chunks.sql`);
+    const [backfill] = await isolated<
+      { legacyChunks: string; legacyTotal: number; constrainedChunks: number; checkpointedChunks: number; checkpointedTotal: number }[]
+    >`
+      select (select string_agg(chunk_index || ':' || image_start || '-' || image_end || ':' || status, '|' order by chunk_index)
+                from import_job_chunks where job_id = ${legacyJobId}) as "legacyChunks",
+             (select screenshot_total from import_jobs where id = ${legacyJobId}) as "legacyTotal",
+             (select count(*)::int from import_job_chunks where job_id = ${constrainedJobId}) as "constrainedChunks",
+             (select count(*)::int from import_job_chunks where job_id = ${checkpointedJobId}) as "checkpointedChunks",
+             (select screenshot_total from import_jobs where id = ${checkpointedJobId}) as "checkpointedTotal"`;
+
     await emitChildResult(SENTINEL, {
       foreignKeys: {
         accountDeleteClearedSelection: afterAccountDelete?.accountId === null,
@@ -165,6 +199,11 @@ async function main() {
       },
       readyWithImagesRejected,
       changeTriggerCount: triggerCount?.count ?? -1,
+      chunkBackfill: {
+        legacyWindowsCreated: backfill?.legacyChunks === "0:0-6:pending|1:6-7:pending",
+        screenshotTotalsFilled: backfill?.legacyTotal === 7 && backfill.constrainedChunks === 1,
+        checkpointedJobUntouched: backfill?.checkpointedChunks === 0 && backfill.checkpointedTotal === 0,
+      },
     } satisfies ImportJobsMigrationOutput);
   } finally {
     if (isolated) await isolated.end({ timeout: 5 });

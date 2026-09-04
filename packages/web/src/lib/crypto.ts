@@ -69,7 +69,10 @@ export type E2eeAadContext =
   | readonly ["enveo-e2ee", 2, "snapshot", string  , number /* epoch */, number  ]
   | readonly ["enveo-e2ee", 2, "dek-wrap", string  , number /* epoch */]
   | readonly ["enveo-e2ee", 2, "budget-secret", string  , number /* epoch */, "openai"]
-  | readonly ["enveo-e2ee", 2, "import-job", string  , number /* epoch */, string  , "input" | "checkpoint" | "result"];
+  | readonly ["enveo-e2ee", 2, "import-job", string  , number /* epoch */, string  , ImportJobAadPart];
+
+ 
+export type ImportJobAadPart = "input" | "checkpoint" | "result" | "chunks";
 
 type ImportApplyRowContext = readonly [
   "enveo-e2ee",
@@ -121,8 +124,8 @@ export function budgetSecretAadContext(budgetId: string, epoch: number, kind: "o
 
 /** Import-job AAD: every durable local artifact is domain-separated and bound to the
  *  budget key generation and client-generated job identity. */
-export function importJobAadContext(budgetId: string, epoch: number, jobId: string, part: "input" | "checkpoint" | "result"): E2eeAadContext {
-  if (part !== "input" && part !== "checkpoint" && part !== "result") throw new Error("bad_aad_context");
+export function importJobAadContext(budgetId: string, epoch: number, jobId: string, part: ImportJobAadPart): E2eeAadContext {
+  if (part !== "input" && part !== "checkpoint" && part !== "result" && part !== "chunks") throw new Error("bad_aad_context");
   return ["enveo-e2ee", 2, "import-job", requireUuid(budgetId), requireCounter(epoch), requireUuid(jobId), part] as const;
 }
 

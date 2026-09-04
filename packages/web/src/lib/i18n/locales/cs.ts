@@ -385,7 +385,7 @@ export const cs: Dict = {
   Savings: "Spoření",
   "Savings envelopes first — the free remainder goes to them.": "Nejdřív spořicí obálky — volný zbytek půjde do nich.",
   "Screenshot {n}": "Snímek obrazovky {n}",
-  "Screenshots ({n}/6)": "Snímky obrazovky ({n}/6)",
+  "Screenshots ({n}/{max})": "Snímky obrazovky ({n}/{max})",
   "Search...": "Hledat...",
   Server: "Server",
   "Server sync": "Synchronizace se serverem",

@@ -33,6 +33,8 @@ const IMPORT_JOB = {
   updatedAt: "2026-08-24T12:00:00.000Z",
   expiresAt: "2026-08-31T12:00:00.000Z",
   proposalCount: 0,
+  screenshots: { total: 1, read: 0, failed: 0 },
+  partialFailure: null,
   locale: "pl-PL",
   epoch: 0,
   result: null,
@@ -57,6 +59,8 @@ const IMPORT_JOB_SUMMARY = {
   updatedAt: IMPORT_JOB.updatedAt,
   expiresAt: IMPORT_JOB.expiresAt,
   proposalCount: IMPORT_JOB.proposalCount,
+  screenshots: IMPORT_JOB.screenshots,
+  partialFailure: IMPORT_JOB.partialFailure,
 } as const;
 
 describe("account preferences API client", () => {

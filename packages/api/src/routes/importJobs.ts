@@ -1,4 +1,11 @@
-import { aiLocaleSchema, type BudgetPreferences, importJobDetailSchema, importJobSummarySchema, reconcileBudgetPreferences } from "@enveo/shared";
+import {
+  aiLocaleSchema,
+  type BudgetPreferences,
+  IMPORT_JOB_MAX_IMAGES,
+  importJobDetailSchema,
+  importJobSummarySchema,
+  reconcileBudgetPreferences,
+} from "@enveo/shared";
 import { and, eq } from "drizzle-orm";
 import type { Context } from "hono";
 import { Hono } from "hono";
@@ -35,7 +42,7 @@ export const createImportJobInput = z
     budgetId: z.string().uuid(),
     accountId: z.string().uuid(),
     locale: aiLocaleSchema,
-    images: z.array(z.string()).min(1).max(6),
+    images: z.array(z.string()).min(1).max(IMPORT_JOB_MAX_IMAGES),
   })
   .strict();
 export const importJobMutationInput = z.object({ budgetId: z.string().uuid() }).strict();

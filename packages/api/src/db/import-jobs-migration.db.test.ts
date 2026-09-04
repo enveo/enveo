@@ -46,4 +46,8 @@ describe.skipIf(!TEST_URL)("import jobs migration", () => {
   test("does not attach ledger change-log triggers to operational job tables", () => {
     expect(output.changeTriggerCount).toBe(0);
   });
+
+  test("backfills one pending window per six retained screenshots for jobs created before chunking", () => {
+    expect(output.chunkBackfill).toEqual({ legacyWindowsCreated: true, screenshotTotalsFilled: true, checkpointedJobUntouched: true });
+  });
 });
