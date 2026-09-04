@@ -384,7 +384,7 @@ export const de: Dict = {
   Savings: "Ersparnisse",
   "Savings envelopes first — the free remainder goes to them.": "Spar-Umschläge zuerst — der freie Rest geht an sie.",
   "Screenshot {n}": "Screenshot {n}",
-  "Screenshots ({n}/6)": "Screenshots ({n}/6)",
+  "Screenshots ({n}/{max})": "Screenshots ({n}/{max})",
   "Search...": "Suchen…",
   Server: "Server",
   "Server sync": "Server-Synchronisierung",

@@ -27,6 +27,8 @@ const item = (status: ImportActivityItem["status"], overrides: Partial<ImportAct
   retryAt: null,
   result: status === "ready" ? { rows: [], proposals: [] } : null,
   proposalCount: status === "ready" ? 2 : 0,
+  screenshots: { total: 1, read: status === "queued" ? 0 : 1, failed: 0 },
+  partialFailure: null,
   appliedCount: status === "completed" ? 1 : 0,
   skippedCount: status === "completed" ? 1 : 0,
   createdAt: "2026-08-24T10:00:00.000Z",

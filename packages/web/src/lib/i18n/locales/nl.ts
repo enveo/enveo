@@ -383,7 +383,7 @@ export const nl: Dict = {
   Savings: "Sparen",
   "Savings envelopes first — the free remainder goes to them.": "Eerst de spaarenveloppen — het vrije restant gaat daarheen.",
   "Screenshot {n}": "Schermafbeelding {n}",
-  "Screenshots ({n}/6)": "Schermafbeeldingen ({n}/6)",
+  "Screenshots ({n}/{max})": "Schermafbeeldingen ({n}/{max})",
   "Search...": "Zoeken...",
   Server: "Server",
   "Server sync": "Synchronisatie met de server",

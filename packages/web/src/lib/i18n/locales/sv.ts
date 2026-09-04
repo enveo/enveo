@@ -378,7 +378,7 @@ export const sv: Dict = {
   Savings: "Sparande",
   "Savings envelopes first — the free remainder goes to them.": "Sparkuverten först — det fria överskottet går till dem.",
   "Screenshot {n}": "Skärmbild {n}",
-  "Screenshots ({n}/6)": "Skärmbilder ({n}/6)",
+  "Screenshots ({n}/{max})": "Skärmbilder ({n}/{max})",
   "Search...": "Sök...",
   Server: "Server",
   "Server sync": "Synkronisering med servern",

@@ -1,11 +1,13 @@
+import { IMPORT_JOB_MAX_IMAGES } from "@enveo/shared";
 import type { ImportJobImageInput } from "./repository";
 
-export const IMPORT_JOB_MAX_IMAGES = 6;
-export const IMPORT_JOB_MAX_IMAGE_BYTES = 4 * 1024 * 1024;
-export const IMPORT_JOB_MAX_TOTAL_IMAGE_BYTES = 12 * 1024 * 1024;
+export { IMPORT_JOB_MAX_IMAGES };
+ 
+export const IMPORT_JOB_MAX_IMAGE_BYTES = 2 * 1024 * 1024;
+export const IMPORT_JOB_MAX_TOTAL_IMAGE_BYTES = 24 * 1024 * 1024;
 
 
-export const IMPORT_JOB_REQUEST_BODY_LIMIT_BYTES = 16 * 1024 * 1024 + 4096;
+export const IMPORT_JOB_REQUEST_BODY_LIMIT_BYTES = 32 * 1024 * 1024 + 4096;
 
 type ImportJobImageErrorCode = "invalid_image" | "too_large";
 
