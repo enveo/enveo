@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { decodeImportJobImages, IMPORT_JOB_REQUEST_BODY_LIMIT_BYTES, ImportJobImageError } from "./images";
+import { decodeImportJobImages, IMPORT_JOB_MAX_IMAGES, IMPORT_JOB_REQUEST_BODY_LIMIT_BYTES, ImportJobImageError } from "./images";
 
 const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 const JPEG = new Uint8Array([0xff, 0xd8, 0xff, 0xdb]);
@@ -43,24 +43,24 @@ describe("durable import image decoding", () => {
     expect(errorCode(() => decodeImportJobImages(["data:image/png;base64,iVBORw0KGgp="]))).toBe("invalid_image");
   });
 
-  it("allows six images and rejects a seventh", () => {
-    expect(decodeImportJobImages(Array.from({ length: 6 }, () => imageUrl("image/png", PNG)))).toHaveLength(6);
-    expect(errorCode(() => decodeImportJobImages(Array.from({ length: 7 }, () => imageUrl("image/png", PNG))))).toBe("too_large");
+  it("allows thirty images and rejects a thirty-first", () => {
+    expect(decodeImportJobImages(Array.from({ length: IMPORT_JOB_MAX_IMAGES }, () => imageUrl("image/png", PNG)))).toHaveLength(30);
+    expect(errorCode(() => decodeImportJobImages(Array.from({ length: IMPORT_JOB_MAX_IMAGES + 1 }, () => imageUrl("image/png", PNG))))).toBe("too_large");
   });
 
-  it("accepts exactly 4 MiB per image and exactly 12 MiB total", () => {
-    const encodedImages = [sizedPng(4 * 1024 * 1024), sizedPng(4 * 1024 * 1024), sizedPng(4 * 1024 * 1024)];
+  it("accepts exactly 2 MiB per image and exactly 24 MiB total inside the request body limit", () => {
+    const encodedImages = Array.from({ length: 12 }, () => sizedPng(2 * 1024 * 1024));
     const images = decodeImportJobImages(encodedImages);
 
-    expect(images.reduce((total, image) => total + image.content.byteLength, 0)).toBe(12 * 1024 * 1024);
+    expect(images.reduce((total, image) => total + image.content.byteLength, 0)).toBe(24 * 1024 * 1024);
     expect(Buffer.byteLength(JSON.stringify(createRequest(encodedImages)))).toBeLessThanOrEqual(IMPORT_JOB_REQUEST_BODY_LIMIT_BYTES);
   });
 
   it("rejects either a per-image or aggregate decoded-byte overflow", () => {
-    expect(errorCode(() => decodeImportJobImages([sizedPng(4 * 1024 * 1024 + 1)]))).toBe("too_large");
-    expect(
-      errorCode(() => decodeImportJobImages([sizedPng(4 * 1024 * 1024), sizedPng(4 * 1024 * 1024), sizedPng(4 * 1024 * 1024), imageUrl("image/png", PNG)])),
-    ).toBe("too_large");
+    expect(errorCode(() => decodeImportJobImages([sizedPng(2 * 1024 * 1024 + 1)]))).toBe("too_large");
+    expect(errorCode(() => decodeImportJobImages([...Array.from({ length: 12 }, () => sizedPng(2 * 1024 * 1024)), imageUrl("image/png", PNG)]))).toBe(
+      "too_large",
+    );
   });
 });
 

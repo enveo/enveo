@@ -52,6 +52,19 @@ export interface ImportJobRepositoryOutput {
     completedCountsSaved: boolean;
     crossBudgetMutationsRejected: boolean;
   };
+  chunks: {
+    windowsCreated: boolean;
+    claimCarriesWindows: boolean;
+    windowCheckpointReleasedItsImages: boolean;
+    retryableWindowStaysPending: boolean;
+    exhaustedWindowMarkedFailed: boolean;
+    extractionKeptUnreadImages: boolean;
+    stageAttemptRestarted: boolean;
+    parentReadyWithoutImages: boolean;
+    childCarriesUnreadImages: boolean;
+    childRetryReadsOneWindow: boolean;
+    manualRetryResetsWindows: boolean;
+  };
   cleanup: {
     retryImagesDeleted: boolean;
     scheduledFailureExpiredValid: boolean;
@@ -342,6 +355,81 @@ async function main() {
              error_code as "errorCode", phase, extraction is not null as "hasExtraction"
         from import_jobs where id = ${retainedFailureId}`;
 
+    const chunkedId = crypto.randomUUID();
+    const sevenImages = Array.from({ length: 7 }, (_, index) => ({ mimeType: "image/png", content: new Uint8Array([10 + index]) }));
+    await repository.create({ ...createInput(chunkedId), images: sevenImages }, at("2026-08-24T19:00:00.000Z"));
+    const [chunkRows] = await isolated<{ count: number; total: number }[]>`
+      select (select count(*)::int from import_job_chunks where job_id = ${chunkedId}) as count,
+             (select screenshot_total from import_jobs where id = ${chunkedId}) as total`;
+    const chunkLease = await repository.claimNext("worker-chunks", at("2026-08-24T19:01:00.000Z"));
+    if (!chunkLease || chunkLease.id !== chunkedId) throw new Error("expected chunked job claim");
+    const claimCarriesWindows =
+      chunkLease.screenshotTotal === 7 &&
+      chunkLease.chunks.map((chunk) => [chunk.index, chunk.start, chunk.end, chunk.status]).join("|") === "0,0,6,pending|1,6,7,pending" &&
+      chunkLease.images.length === 7;
+    const windowRows = { rows: [] };
+    const windowSaved = await repository.saveChunkExtraction(chunkedId, chunkLease.leaseToken, 0, windowRows, at("2026-08-24T19:02:00.000Z"));
+    const [afterWindow] = await isolated<{ images: number; read: number; status: string }[]>`
+      select (select count(*)::int from import_job_images where job_id = ${chunkedId}) as images,
+             (select screenshots_read from import_jobs where id = ${chunkedId}) as read,
+             (select status from import_job_chunks where job_id = ${chunkedId} and chunk_index = 0) as status`;
+    const retryRecorded = await repository.failChunk(
+      chunkedId,
+      chunkLease.leaseToken,
+      1,
+      { errorCode: "ai_timeout", retryAt: at("2026-08-24T19:03:00.000Z") },
+      at("2026-08-24T19:02:30.000Z"),
+    );
+    const [afterRetry] = await isolated<{ status: string; attempt: number; errorCode: string; failed: number }[]>`
+      select status, attempt, error_code as "errorCode", (select screenshots_failed from import_jobs where id = ${chunkedId}) as failed
+        from import_job_chunks where job_id = ${chunkedId} and chunk_index = 1`;
+    const permanentRecorded = await repository.failChunk(
+      chunkedId,
+      chunkLease.leaseToken,
+      1,
+      { errorCode: "ai_timeout", retryAt: null },
+      at("2026-08-24T19:04:00.000Z"),
+    );
+    const [afterPermanent] = await isolated<{ status: string; attempt: number; failed: number }[]>`
+      select status, attempt, (select screenshots_failed from import_jobs where id = ${chunkedId}) as failed
+        from import_job_chunks where job_id = ${chunkedId} and chunk_index = 1`;
+    await repository.saveExtractionAndDeleteImages(chunkedId, chunkLease.leaseToken, emptyResult, at("2026-08-24T19:05:00.000Z"));
+    const [afterExtraction] = await isolated<{ images: number; attempt: number; position: number | null }[]>`
+      select (select count(*)::int from import_job_images where job_id = ${chunkedId}) as images,
+             (select attempt from import_jobs where id = ${chunkedId}) as attempt,
+             (select min(position) from import_job_images where job_id = ${chunkedId}) as position`;
+    await repository.advancePhase(chunkedId, chunkLease.leaseToken, "reconciling", at("2026-08-24T19:05:30.000Z"));
+    const partialReady = await repository.saveReadyResult(chunkedId, chunkLease.leaseToken, emptyResult, at("2026-08-24T19:06:00.000Z"));
+    const parent = await repository.getForUser(userId, chunkedId);
+    const childId = parent?.partialFailure?.retryJobId ?? null;
+    const [parentRow] = await isolated<{ images: number }[]>`select count(*)::int as images from import_job_images where job_id = ${chunkedId}`;
+    const child = childId ? await repository.getForUser(userId, childId) : null;
+    const [childRow] = childId
+      ? await isolated<{ images: number; position: number | null; content: Uint8Array | null; chunks: number }[]>`
+          select (select count(*)::int from import_job_images where job_id = ${childId}) as images,
+                 (select min(position) from import_job_images where job_id = ${childId}) as position,
+                 (select content from import_job_images where job_id = ${childId} limit 1) as content,
+                 (select count(*)::int from import_job_chunks where job_id = ${childId}) as chunks`
+      : [null];
+    const childRetried = childId ? await repository.retry(userId, budgetId, childId, at("2026-08-24T19:07:00.000Z")) : null;
+    const childLease = childId ? await repository.claimNext("worker-child", at("2026-08-24T19:08:00.000Z")) : null;
+    const childRetryReadsOneWindow =
+      childLease?.id === childId && childLease.chunks.length === 1 && childLease.chunks[0]?.status === "pending" && childLease.images.length === 1;
+    if (childLease) await repository.requestCancel(userId, budgetId, childLease.id, at("2026-08-24T19:09:00.000Z"));
+
+    const manualId = crypto.randomUUID();
+    await repository.create({ ...createInput(manualId), images: sevenImages }, at("2026-08-24T19:10:00.000Z"));
+    const manualLease = await repository.claimNext("worker-manual", at("2026-08-24T19:11:00.000Z"));
+    if (!manualLease || manualLease.id !== manualId) throw new Error("expected manual retry job claim");
+    await repository.failChunk(manualId, manualLease.leaseToken, 1, { errorCode: "network", retryAt: null }, at("2026-08-24T19:12:00.000Z"));
+    await repository.failPermanently(manualId, manualLease.leaseToken, "network", at("2026-08-24T19:12:30.000Z"));
+    const manualRetried = await repository.retry(userId, budgetId, manualId, at("2026-08-24T19:13:00.000Z"));
+    const [manualChunks] = await isolated<{ pending: number; attempts: number; failed: number }[]>`
+      select (select count(*)::int from import_job_chunks where job_id = ${manualId} and status = 'pending') as pending,
+             (select coalesce(sum(attempt), 0)::int from import_job_chunks where job_id = ${manualId}) as attempts,
+             (select screenshots_failed from import_jobs where id = ${manualId}) as failed`;
+    await repository.requestCancel(userId, budgetId, manualId, at("2026-08-24T19:14:00.000Z"));
+
     await emitChildResult(SENTINEL, {
       creation: {
         firstCreated: first.created,
@@ -391,6 +479,29 @@ async function main() {
         permanentFailureRetainsInput: permanentInput?.imageCount === 2 && permanentInput.hasExtraction,
         completedCountsSaved: completed?.status === "completed" && completed.appliedCount === 3 && completed.skippedCount === 1,
         crossBudgetMutationsRejected: wrongCancel === null && wrongRetry === null && wrongComplete === null,
+      },
+      chunks: {
+        windowsCreated: chunkRows?.count === 2 && chunkRows.total === 7,
+        claimCarriesWindows,
+        windowCheckpointReleasedItsImages: windowSaved && afterWindow?.images === 1 && afterWindow.read === 6 && afterWindow.status === "extracted",
+        retryableWindowStaysPending:
+          retryRecorded && afterRetry?.status === "pending" && afterRetry.attempt === 1 && afterRetry.errorCode === "ai_timeout" && afterRetry.failed === 0,
+        exhaustedWindowMarkedFailed: permanentRecorded && afterPermanent?.status === "failed" && afterPermanent.attempt === 2 && afterPermanent.failed === 1,
+        extractionKeptUnreadImages: afterExtraction?.images === 1 && afterExtraction.position === 6,
+        stageAttemptRestarted: afterExtraction?.attempt === 1,
+        parentReadyWithoutImages:
+          partialReady && parent?.status === "ready" && parent.partialFailure?.imageCount === 1 && parent.screenshots.read === 6 && parentRow?.images === 0,
+        childCarriesUnreadImages:
+          child?.status === "failed" &&
+          child.phase === "extracting" &&
+          child.errorCode === "ai_timeout" &&
+          child.screenshots.total === 1 &&
+          childRow?.images === 1 &&
+          childRow.position === 0 &&
+          childRow.content?.[0] === 16 &&
+          childRow.chunks === 1,
+        childRetryReadsOneWindow: childRetried?.status === "queued" && childRetryReadsOneWindow,
+        manualRetryResetsWindows: manualRetried?.status === "queued" && manualChunks?.pending === 2 && manualChunks.attempts === 0 && manualChunks.failed === 0,
       },
       cleanup: {
         retryImagesDeleted: afterCleanup?.retryImages === 0,

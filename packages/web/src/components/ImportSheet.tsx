@@ -1,3 +1,4 @@
+import { IMPORT_JOB_MAX_IMAGES } from "@enveo/shared";
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
@@ -99,6 +100,8 @@ export function ImportSheet({
   const [items, setItems] = useState<ImportReviewRow[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [partialRetryStarted, setPartialRetryStarted] = useState(false);
   const [doneStats, setDoneStats] = useState({ added: 0, dup: 0 });
   const [partialStats, setPartialStats] = useState<ImportApplyProgress | null>(null);
   const [sourceAccountUnavailable, setSourceAccountUnavailable] = useState(false);
@@ -202,6 +205,8 @@ export function ImportSheet({
     setJob(undefined);
     setItems([]);
     setError(null);
+    setNotice(null);
+    setPartialRetryStarted(false);
     setBusy(false);
     setShowConsent(false);
     setEdited({});
@@ -222,8 +227,13 @@ export function ImportSheet({
   const addFiles = async (files: FileList | null) => {
     if (!files || files.length === 0) return;
     setError(null);
+    setNotice(null);
     try {
-      const list = [...files].slice(0, Math.max(0, 6 - images.length));
+      const list = [...files].slice(0, Math.max(0, IMPORT_JOB_MAX_IMAGES - images.length));
+      const leftOut = files.length - list.length;
+      if (leftOut > 0) {
+        setNotice(tp("{n} screenshot was left out — add it in another import. | {n} screenshots were left out — add them in another import.", leftOut));
+      }
       const urls = await Promise.all(list.map((f) => downscale(f)));
       setImages((prev) => [...prev, ...urls]);
     } catch {
@@ -453,7 +463,7 @@ export function ImportSheet({
               ))}
             </select>
 
-            <div style={label}>{t("Screenshots ({n}/6)", { n: images.length })}</div>
+            <div style={label}>{t("Screenshots ({n}/{max})", { n: images.length, max: IMPORT_JOB_MAX_IMAGES })}</div>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, marginBottom: 14 }}>
               {images.map((url, i) => (
                 <div key={i} style={{ position: "relative" }}>
@@ -486,7 +496,7 @@ export function ImportSheet({
                   </button>
                 </div>
               ))}
-              {images.length < 6 && (
+              {images.length < IMPORT_JOB_MAX_IMAGES && (
                 <button
                   onClick={() => fileRef.current?.click()}
                   style={{
@@ -516,6 +526,11 @@ export function ImportSheet({
             <input ref={fileRef} type="file" accept="image/*" multiple onChange={(e) => addFiles(e.target.files)} style={{ display: "none" }} />
 
             {error && <div style={{ fontSize: 12.5, color: CORAL, marginBottom: 10 }}>{error}</div>}
+            {notice && (
+              <div role="note" data-testid="import-left-out" style={{ fontSize: 12.5, lineHeight: 1.4, color: C.warn, marginBottom: 10 }}>
+                {notice}
+              </div>
+            )}
             {deviceWarning && (
               <div role="note" style={{ fontSize: 12, lineHeight: 1.4, color: C.warn, marginBottom: 10 }}>
                 {t(deviceWarning)}
@@ -595,6 +610,52 @@ export function ImportSheet({
           <>
             <div style={{ fontSize: 17, fontWeight: 700, color: C.text, textAlign: "center", marginBottom: 4 }}>{t("Review recognized rows")}</div>
             <div style={{ fontSize: 12, color: C.mute, textAlign: "center", marginBottom: 12 }}>{t("Only checked transactions will be added.")}</div>
+            {job?.partialFailure && (
+              <div
+                role="note"
+                data-testid="import-partial-failure"
+                style={{
+                  fontSize: 12.5,
+                  lineHeight: 1.45,
+                  color: C.text,
+                  background: tint(C.warn, 0.12),
+                  borderRadius: 12,
+                  padding: "10px 12px",
+                  marginBottom: 12,
+                }}
+              >
+                <div>
+                  {tp(
+                    "{n} screenshot could not be read. It waits in Imports as a separate import you can retry. | {n} screenshots could not be read. They wait in Imports as a separate import you can retry.",
+                    job.partialFailure.imageCount,
+                  )}
+                </div>
+                {partialRetryStarted ? (
+                  <div style={{ marginTop: 6, color: C.mute }}>{t("Retry started. Follow it in Imports.")}</div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const retryJobId = job.partialFailure!.retryJobId;
+                      setPartialRetryStarted(true);
+                      void importJobManager.retry(retryJobId).catch(() => setPartialRetryStarted(false));
+                    }}
+                    style={{
+                      marginTop: 8,
+                      padding: "8px 12px",
+                      borderRadius: 10,
+                      border: "none",
+                      background: TEAL,
+                      color: "#fff",
+                      fontWeight: 650,
+                      cursor: "pointer",
+                    }}
+                  >
+                    {t("Retry those screenshots now")}
+                  </button>
+                )}
+              </div>
+            )}
 
             {visibleImportReviewRows(items).map(({ row, index: idx, position }) => {
               const it = row.item;

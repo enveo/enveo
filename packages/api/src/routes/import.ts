@@ -4,7 +4,10 @@ import {
   type Category,
   type ChatRequest,
   type Envelope,
+  type ImportChunkState,
   type ImportHistoryRecord,
+  type ImportRecognitionChatMeta,
+  type ImportRecognitionPipelineInput,
   type ImportRecognitionResult,
   runImportRecognitionPipeline,
   type Transaction,
@@ -103,7 +106,7 @@ async function openaiJson(req: ChatRequest, userId: string | undefined, timeoutM
   return out.content || "{}";
 }
 
-export type ImportModelChat = (request: ChatRequest, timeoutMs?: number) => Promise<string>;
+export type ImportModelChat = (request: ChatRequest, timeoutMs?: number, meta?: ImportRecognitionChatMeta) => Promise<string>;
 
 export class ImportCycleOneFailure extends Error {
   constructor(readonly reason: unknown) {
@@ -112,7 +115,9 @@ export class ImportCycleOneFailure extends Error {
 }
 
 export interface ServerImportRecognitionAdapterInput {
-  images: string[];
+  /** Absolute screenshot positions; a resumed durable job leaves already-read positions null. */
+  images: ReadonlyArray<string | null>;
+  chunks?: ImportChunkState[];
   locale: string;
   today: string;
   budgetCurrency: string;
@@ -126,13 +131,7 @@ export interface ServerImportRecognitionAdapterInput {
   checkpoint?: ImportRecognitionResult;
   pipelineMode?: "default" | "durable";
   cycleTwoFailureMode?: "fallback" | "strict";
-  lifecycle?: {
-    beforeUpstream?: () => Promise<void>;
-    afterUpstream?: () => Promise<void>;
-    saveExtraction?: (result: ImportRecognitionResult) => Promise<void>;
-    advancePhase?: (phase: "enriching" | "reconciling") => Promise<void>;
-    saveResult?: (result: ImportRecognitionResult) => Promise<void>;
-  };
+  lifecycle?: ImportRecognitionPipelineInput["lifecycle"];
 }
 
 /** Production server boundary: normalize database row types, then enter the
@@ -146,6 +145,7 @@ export function runServerImportRecognitionAdapter(input: ServerImportRecognition
   }));
   return runImportRecognitionPipeline({
     images: input.images,
+    chunks: input.chunks,
     locale: input.locale,
     today: input.today,
     budgetCurrency: input.budgetCurrency,

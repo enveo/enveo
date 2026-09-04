@@ -3,7 +3,10 @@ import { chmod, lstat, mkdtemp, readdir, readFile, readlink, realpath, rm, stat 
 import { tmpdir } from "node:os";
 import { dirname, extname, isAbsolute, relative, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
+import type { ImportRecognitionChatMeta } from "../packages/shared/src/aiPrompts";
+import { AI_VISION_TIMEOUT_MS } from "../packages/shared/src/aiTransport";
 import { SUPPORTED_CURRENCIES } from "../packages/shared/src/currency";
+import { IMPORT_JOB_MAX_IMAGES } from "../packages/shared/src/importChunks";
 import { IMPORT_REVIEW_REASONS } from "../packages/shared/src/importRecognition";
 import {
   type ActualImportRecognitionProposal,
@@ -969,7 +972,9 @@ export function parseRecognitionManifest(value: unknown, requireCoverage = true)
     const id = requireString(fixture.id, `${field}.id`);
     if (fixtureIds.has(id)) throw new Error(`manifest has duplicate fixture id at ${field}`);
     fixtureIds.add(id);
-    if (fixture.images.length === 0 || fixture.images.length > 6) throw new Error(`manifest ${field}.images must contain 1-6 paths`);
+    if (fixture.images.length === 0 || fixture.images.length > IMPORT_JOB_MAX_IMAGES) {
+      throw new Error(`manifest ${field}.images must contain 1-${IMPORT_JOB_MAX_IMAGES} paths`);
+    }
     const imageEntries = fixture.images;
     if (fixture.rows.length === 0) throw new Error(`manifest ${field}.rows must not be empty`);
     const rows = fixture.rows.map((row, rowIndex) => parseManifestRow(row, `${field}.rows[${rowIndex}]`));
@@ -1038,9 +1043,50 @@ interface ChatTransportInput {
   request: ChatRequest;
   apiKey: string;
   model: string;
+  /** Which pipeline call this is (extract window, seam, enrichment batch); absent for a baseline adapter. */
+  meta?: ImportRecognitionChatMeta;
 }
 
 type ChatTransport = (input: ChatTransportInput) => Promise<string>;
+
+/** One model round-trip as observed by the OpenAI transport: timing and token counts only —
+ * never the prompt, the screenshots or the answer. This is the only place the harness learns how
+ * long a window takes, which is what sizes IMPORT_JOB_CHUNK_SIZE. */
+interface TransportCallTelemetry {
+  side: "baseline" | "candidate";
+  fixtureId: string;
+  stage: ImportRecognitionChatMeta["stage"] | "unknown";
+  chunk: number | null;
+  batch: number | null;
+  durationMs: number;
+  promptTokens: number | null;
+  completionTokens: number | null;
+  outcome: "ok" | "error";
+}
+
+const transportTelemetry: TransportCallTelemetry[] = [];
+
+function telemetrySummary(): {
+  calls: TransportCallTelemetry[];
+  totals: { calls: number; durationMs: number; promptTokens: number; completionTokens: number };
+} {
+  const calls = [...transportTelemetry];
+  return {
+    calls,
+    totals: {
+      calls: calls.length,
+      durationMs: calls.reduce((total, call) => total + call.durationMs, 0),
+      promptTokens: calls.reduce((total, call) => total + (call.promptTokens ?? 0), 0),
+      completionTokens: calls.reduce((total, call) => total + (call.completionTokens ?? 0), 0),
+    },
+  };
+}
+
+const usageCount = (body: unknown, key: "prompt_tokens" | "completion_tokens"): number | null => {
+  const usage = ownObject(body) ? body.usage : undefined;
+  const value = ownObject(usage) ? usage[key] : undefined;
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+};
 type TransportKind = "openai" | "injected-test";
 
 export function comparisonReleaseStatus(
@@ -1372,9 +1418,22 @@ async function loadCorpus(manifestPath: string, manifestText: string, manifest: 
   return { digest: sha256(digestParts), images };
 }
 
-async function modelChat({ request, fixtureId, apiKey, model }: ChatTransportInput): Promise<string> {
+async function modelChat({ request, fixtureId, apiKey, model, side, meta }: ChatTransportInput): Promise<string> {
+  const startedAt = performance.now();
+  const record = (outcome: "ok" | "error", body?: unknown) =>
+    transportTelemetry.push({
+      side,
+      fixtureId,
+      stage: meta?.stage ?? "unknown",
+      chunk: meta?.stage === "extract" ? meta.chunk : null,
+      batch: meta?.stage === "enrich" ? meta.batch : null,
+      durationMs: Math.round(performance.now() - startedAt),
+      promptTokens: usageCount(body, "prompt_tokens"),
+      completionTokens: usageCount(body, "completion_tokens"),
+      outcome,
+    });
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 120_000);
+  const timer = setTimeout(() => controller.abort(), meta?.stage === "extract" ? AI_VISION_TIMEOUT_MS : 120_000);
   let response: Response;
   try {
     response = await fetch("https://api.openai.com/v1/chat/completions", {
@@ -1389,20 +1448,29 @@ async function modelChat({ request, fixtureId, apiKey, model }: ChatTransportInp
       signal: controller.signal,
     });
   } catch {
+    record("error");
     throw new Error(`fixture ${fixtureId}: OpenAI request failed before a response`);
   } finally {
     clearTimeout(timer);
   }
-  if (!response.ok) throw new Error(`fixture ${fixtureId}: OpenAI returned status ${response.status}`);
+  if (!response.ok) {
+    record("error");
+    throw new Error(`fixture ${fixtureId}: OpenAI returned status ${response.status}`);
+  }
   let body: unknown;
   try {
     body = await response.json();
   } catch {
+    record("error");
     throw new Error(`fixture ${fixtureId}: OpenAI returned an unreadable response`);
   }
   const content =
     ownObject(body) && Array.isArray(body.choices) && ownObject(body.choices[0]) && ownObject(body.choices[0].message) ? body.choices[0].message.content : null;
-  if (typeof content !== "string") throw new Error(`fixture ${fixtureId}: OpenAI response had no text result`);
+  if (typeof content !== "string") {
+    record("error", body);
+    throw new Error(`fixture ${fixtureId}: OpenAI response had no text result`);
+  }
+  record("ok", body);
   return content;
 }
 
@@ -1878,9 +1946,9 @@ async function runSide(
   for (const fixture of manifest.fixtures) {
     const images = corpus.images.get(fixture.id);
     if (!images) throw new Error(`fixture ${fixture.id}: loaded images are missing`);
-    const chat = async (request: ChatRequest): Promise<string> => {
+    const chat = async (request: ChatRequest, _timeoutMs?: number, meta?: ImportRecognitionChatMeta): Promise<string> => {
       try {
-        return await transport({ side: mode, fixtureId: fixture.id, request, apiKey, model });
+        return await transport({ side: mode, fixtureId: fixture.id, request, apiKey, model, meta });
       } catch (error) {
         throw new EvaluationTransportFailure(error);
       }
@@ -2092,6 +2160,7 @@ async function runEvaluation(args: EvaluationArgs): Promise<void> {
         },
         metrics: { baseline: decision.baseline, candidate: decision.candidate },
         decision: { passed: release.passed, criteriaPassed: decision.passed, reasons: release.reasons, transitions: decision.transitions },
+        telemetry: telemetrySummary(),
       };
       process.stdout.write(`${JSON.stringify(output, null, 2)}\n`);
       if (release.exitCode !== 0) process.exitCode = release.exitCode;
@@ -2137,6 +2206,7 @@ async function runEvaluation(args: EvaluationArgs): Promise<void> {
           metrics: scoreImportRecognition(expected, run.actual),
           diagnosticOnly: true,
           decision: { passed: false, reasons: ["diagnostic_only"] },
+          telemetry: telemetrySummary(),
         },
         null,
         2,

@@ -77,6 +77,22 @@ describe.skipIf(!TEST_URL)("import job repository", () => {
     });
   });
 
+  test("reads screenshots in windows, keeps unread ones for a retry child and restarts the stage attempt", () => {
+    expect(output.chunks).toEqual({
+      windowsCreated: true,
+      claimCarriesWindows: true,
+      windowCheckpointReleasedItsImages: true,
+      retryableWindowStaysPending: true,
+      exhaustedWindowMarkedFailed: true,
+      extractionKeptUnreadImages: true,
+      stageAttemptRestarted: true,
+      parentReadyWithoutImages: true,
+      childCarriesUnreadImages: true,
+      childRetryReadsOneWindow: true,
+      manualRetryResetsWindows: true,
+    });
+  });
+
   test("applies bounded retention without exposing or logging payloads", () => {
     expect(output.cleanup).toEqual({
       retryImagesDeleted: true,

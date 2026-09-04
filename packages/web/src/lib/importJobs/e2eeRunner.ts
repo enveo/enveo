@@ -1,10 +1,16 @@
 import {
   advanceImportJob,
   type ClientLedger,
+  IMPORT_JOB_MAX_IMAGES,
+  ImportChunksPendingError,
+  type ImportExtractBatch,
+  ImportExtractionFailedError,
   type ImportJobErrorCode,
   type ImportJobProviderSnapshot,
   type ImportRecognitionPipelineInput,
   type ImportRecognitionResult,
+  importExtractBatchSchema,
+  importImageChunks,
   importJobResultSchema,
   OPENAI_MODELS,
   type OpenAiModel,
@@ -96,13 +102,76 @@ function activePhase(job: StoredE2eeImportJob): "extracting" | "validating" | "e
   return job.resumePhase ?? "extracting";
 }
 
-function parseInput(value: string): { images: string[] } {
+/** Screenshots by absolute position; a window already read leaves null behind. */
+function parseInput(value: string): { images: Array<string | null> } {
   const parsed = JSON.parse(value) as { images?: unknown };
-  if (!Array.isArray(parsed.images) || parsed.images.length < 1 || parsed.images.length > 6 || parsed.images.some((image) => typeof image !== "string")) {
+  if (
+    !Array.isArray(parsed.images) ||
+    parsed.images.length < 1 ||
+    parsed.images.length > IMPORT_JOB_MAX_IMAGES ||
+    parsed.images.some((image) => image !== null && typeof image !== "string")
+  ) {
     throw new Error("invalid_import_input");
   }
-  return { images: [...parsed.images] } as { images: string[] };
+  return { images: [...(parsed.images as Array<string | null>)] };
 }
+
+/** Per-window cycle-one state, the device-local twin of the server's import_job_chunks rows. */
+interface StoredChunk {
+  index: number;
+  start: number;
+  end: number;
+  attempt: number;
+  status: "pending" | "extracted" | "failed";
+  errorCode: ImportJobErrorCode | null;
+  retryAt: string | null;
+  extraction: ImportExtractBatch | null;
+}
+
+function parseChunks(value: string): StoredChunk[] {
+  const parsed = JSON.parse(value) as { chunks?: unknown };
+  if (!Array.isArray(parsed.chunks)) throw new Error("invalid_import_chunks");
+  return parsed.chunks.map((entry) => {
+    const chunk = entry as Partial<StoredChunk>;
+    if (
+      typeof chunk.index !== "number" ||
+      typeof chunk.start !== "number" ||
+      typeof chunk.end !== "number" ||
+      typeof chunk.attempt !== "number" ||
+      !["pending", "extracted", "failed"].includes(chunk.status ?? "")
+    ) {
+      throw new Error("invalid_import_chunks");
+    }
+    return {
+      index: chunk.index,
+      start: chunk.start,
+      end: chunk.end,
+      attempt: chunk.attempt,
+      status: chunk.status as StoredChunk["status"],
+      errorCode: chunk.errorCode ?? null,
+      retryAt: chunk.retryAt ?? null,
+      extraction: chunk.extraction ? importExtractBatchSchema.parse(chunk.extraction) : null,
+    };
+  });
+}
+
+const freshChunks = (imageCount: number): StoredChunk[] =>
+  importImageChunks(imageCount).map((chunk) => ({
+    index: chunk.index,
+    start: chunk.start,
+    end: chunk.end,
+    attempt: 0,
+    status: "pending",
+    errorCode: null,
+    retryAt: null,
+    extraction: null,
+  }));
+
+const screenshotsOf = (chunks: readonly StoredChunk[]) => ({
+  total: chunks.reduce((total, chunk) => Math.max(total, chunk.end), 0),
+  read: chunks.filter((chunk) => chunk.status === "extracted").reduce((read, chunk) => read + chunk.end - chunk.start, 0),
+  failed: chunks.filter((chunk) => chunk.status === "failed").reduce((failed, chunk) => failed + chunk.end - chunk.start, 0),
+});
 
 export class E2eeImportJobRunner {
   private readonly ledger: () => ClientLedger | null;
@@ -192,6 +261,7 @@ export class E2eeImportJobRunner {
         errorCode: "expired",
         retryAt: null,
         inputCiphertext: null,
+        chunkCiphertext: null,
         checkpointCiphertext: null,
         resultCiphertext: null,
       });
@@ -269,6 +339,7 @@ export class E2eeImportJobRunner {
     const account = currentLedger?.accounts.find((candidate) => candidate.id === input.accountId && !candidate.archived);
     if (!budget || !account) throw new Error("account_unavailable");
 
+    if (input.images.length < 1 || input.images.length > IMPORT_JOB_MAX_IMAGES) throw new Error("invalid_import_input");
     const key = this.requireDek(meta.epoch);
     let inputCiphertext: string;
     try {
@@ -300,10 +371,13 @@ export class E2eeImportJobRunner {
       errorCode: null,
       retryAt: null,
       inputCiphertext,
+      chunkCiphertext: null,
       checkpointCiphertext: null,
       resultCiphertext: null,
       checkpointRevision: 0,
       proposalCount: 0,
+      screenshots: { total: input.images.length, read: 0, failed: 0 },
+      partialFailure: null,
       appliedCount: 0,
       skippedCount: 0,
       createdAt: timestamp,
@@ -353,6 +427,7 @@ export class E2eeImportJobRunner {
       await this.expire(job);
       return;
     }
+    const manualStart = job.status === "queued" && job.attempt === 0;
     if (job.status === "queued") {
       try {
         job = await this.transition(job, { type: "claimed", at: this.timestamp() });
@@ -393,27 +468,77 @@ export class E2eeImportJobRunner {
         if (!currentLedger.accounts.some((candidate) => candidate.id === job.accountId && !candidate.archived)) throw new Error("account_unavailable");
         if (!isOpenAiModel(job.provider.model)) throw new Error("ai_model_unavailable");
 
+        const aad = (part: "input" | "checkpoint" | "result" | "chunks") => importJobAadContext(job.budgetId, job.epoch, job.id, part);
         let checkpoint: ImportRecognitionResult | undefined;
-        let images: string[] = [];
+        let images: Array<string | null> = [];
+        let chunks: StoredChunk[] = [];
         if (job.checkpointCiphertext) {
-          checkpoint = importJobResultSchema.parse(
-            JSON.parse(await this.decrypt(job.checkpointCiphertext, key, importJobAadContext(job.budgetId, job.epoch, job.id, "checkpoint"))),
-          );
+          checkpoint = importJobResultSchema.parse(JSON.parse(await this.decrypt(job.checkpointCiphertext, key, aad("checkpoint"))));
           this.assertCurrent();
         } else {
           if (!job.inputCiphertext) throw new Error("invalid_import_input");
-          images = parseInput(await this.decrypt(job.inputCiphertext, key, importJobAadContext(job.budgetId, job.epoch, job.id, "input"))).images;
+          images = parseInput(await this.decrypt(job.inputCiphertext, key, aad("input"))).images;
           this.assertCurrent();
+          chunks = job.chunkCiphertext ? parseChunks(await this.decrypt(job.chunkCiphertext, key, aad("chunks"))) : freshChunks(images.length);
+          this.assertCurrent();
+          // A queued job with attempt 0 is new or manually retried: every unread window starts over.
+          if (manualStart) {
+            chunks = chunks.map((chunk) => (chunk.status === "failed" ? { ...chunk, status: "pending", attempt: 0, errorCode: null, retryAt: null } : chunk));
+          }
         }
+        // Cycle one keeps a retry budget per window; the post-extraction stage restarts at 1.
+        let extractionCompletedThisRun = false;
+        const persistChunks = async (change: Partial<StoredE2eeImportJob> = {}) => {
+          const chunkCiphertext = await this.encrypt(JSON.stringify({ chunks }), key, aad("chunks"));
+          const inputCiphertext = await this.encrypt(JSON.stringify({ images }), key, aad("input"));
+          this.assertCurrent();
+          job = await this.write(job, { ...change, chunkCiphertext, inputCiphertext, screenshots: screenshotsOf(chunks) });
+        };
 
         const lifecycle: DurableLifecycle = {
           beforeUpstream: () => this.fence(job),
           afterUpstream: () => this.fence(job),
+          saveChunkExtraction: async (chunkIndex, batch) => {
+            await this.fence(job);
+            const chunk = chunks.find((candidate) => candidate.index === chunkIndex);
+            if (!chunk) throw new Error("invalid_import_chunks");
+            chunk.status = "extracted";
+            chunk.extraction = batch;
+            chunk.errorCode = null;
+            chunk.retryAt = null;
+            for (let position = chunk.start; position < chunk.end; position += 1) images[position] = null;
+            await persistChunks();
+          },
+          failChunk: async (chunkIndex, error) => {
+            // Device-wide conditions abort the whole attempt so the job waits, as before chunking.
+            if (isOfflineFailure(error) || (error instanceof Error && error.message === "locked") || error instanceof ImportJobGenerationChanged) throw error;
+            await this.fence(job);
+            const chunk = chunks.find((candidate) => candidate.index === chunkIndex);
+            if (!chunk) throw new Error("invalid_import_chunks");
+            chunk.attempt += 1;
+            chunk.errorCode = failureCode(error);
+            const permanent = isPermanentFailure(error) || chunk.attempt >= 3;
+            chunk.status = permanent ? "failed" : "pending";
+            chunk.retryAt = permanent ? null : new Date(this.now().getTime() + (RETRY_BACKOFF_MS[chunk.attempt - 1] ?? RETRY_BACKOFF_MS.at(-1)!)).toISOString();
+            await persistChunks();
+            return permanent ? "permanent" : "retry";
+          },
           saveExtraction: async (result) => {
             await this.fence(job);
-            const checkpointCiphertext = await this.encrypt(JSON.stringify(result), key, importJobAadContext(job.budgetId, job.epoch, job.id, "checkpoint"));
+            const checkpointCiphertext = await this.encrypt(JSON.stringify(result), key, aad("checkpoint"));
+            // Only the screenshots of permanently failed windows stay, for the partial-retry child.
+            const failedWindows = chunks.filter((chunk) => chunk.status === "failed");
+            const retained = images.map((image, position) => (failedWindows.some((chunk) => position >= chunk.start && position < chunk.end) ? image : null));
+            const inputCiphertext = retained.some((image) => image !== null)
+              ? await this.encrypt(JSON.stringify({ images: retained }), key, aad("input"))
+              : null;
             this.assertCurrent();
-            job = await this.transition(job, { type: "phase", phase: "validating", at: this.timestamp() }, { inputCiphertext: null, checkpointCiphertext });
+            extractionCompletedThisRun = true;
+            job = await this.transition(
+              job,
+              { type: "phase", phase: "validating", at: this.timestamp() },
+              { inputCiphertext, checkpointCiphertext, attempt: 1, screenshots: screenshotsOf(chunks) },
+            );
           },
           advancePhase: async (phase) => {
             await this.fence(job);
@@ -421,13 +546,18 @@ export class E2eeImportJobRunner {
           },
           saveResult: async (result) => {
             await this.fence(job);
-            const resultCiphertext = await this.encrypt(JSON.stringify(result), key, importJobAadContext(job.budgetId, job.epoch, job.id, "result"));
+            const resultCiphertext = await this.encrypt(JSON.stringify(result), key, aad("result"));
+            this.assertCurrent();
+            const partialFailure = await this.spawnPartialRetry(job, key);
             this.assertCurrent();
             job = await this.transition(
               job,
               { type: "result_ready", at: this.timestamp() },
               {
                 resultCiphertext,
+                inputCiphertext: null,
+                chunkCiphertext: null,
+                partialFailure,
                 proposalCount: result.proposals.length,
                 expiresAt: new Date(this.now().getTime() + IMPORT_JOB_RETENTION_MS).toISOString(),
               },
@@ -438,14 +568,49 @@ export class E2eeImportJobRunner {
         this.assertCurrent();
         const executionProvider = this.provider(job.provider);
         this.assertCurrent();
-        await executionProvider.runDurableImport({
-          images,
-          locale: job.locale,
-          ledger: currentLedger,
-          accountId: job.accountId,
-          checkpoint,
-          lifecycle,
-        });
+        try {
+          await executionProvider.runDurableImport({
+            images,
+            chunks: checkpoint
+              ? undefined
+              : chunks.map((chunk) => ({ index: chunk.index, extraction: chunk.extraction, permanentlyFailed: chunk.status === "failed" })),
+            locale: job.locale,
+            ledger: currentLedger,
+            accountId: job.accountId,
+            checkpoint,
+            lifecycle,
+          });
+        } catch (error) {
+          if (error instanceof ImportChunksPendingError) {
+            // Windows judged individually: the job follows the earliest window retry.
+            const pending = chunks.filter((chunk) => error.pendingChunks.includes(chunk.index) && chunk.retryAt !== null);
+            const earliest = pending.reduce<StoredChunk | null>((best, chunk) => (best === null || chunk.retryAt! < best.retryAt! ? chunk : best), null);
+            await this.fence(job);
+            await this.transition(job, {
+              type: "failed",
+              errorCode: earliest?.errorCode ?? "network",
+              retryAt: earliest?.retryAt ?? new Date(this.now().getTime() + RETRY_BACKOFF_MS[0]).toISOString(),
+              at: this.timestamp(),
+            });
+            return;
+          }
+          if (error instanceof ImportExtractionFailedError) {
+            await this.fence(job);
+            await this.fail(job, chunks.find((chunk) => chunk.status === "failed")?.errorCode ?? "network");
+            return;
+          }
+          if (extractionCompletedThisRun && !(error instanceof StaleImportJobRunner)) {
+            const current = await importJobStorage.getJob(this.options.scope, job.id);
+            if (this.isCurrent() && current?.status === "running") {
+              // The stored attempt already restarted at 1 for the post-extraction stage.
+              await this.recordFailure(current, error).catch((writeError) => {
+                if (!(writeError instanceof StaleImportJobRunner)) throw writeError;
+              });
+              return;
+            }
+          }
+          throw error;
+        }
         this.assertCurrent();
       } finally {
         key.fill(0);
@@ -465,6 +630,59 @@ export class E2eeImportJobRunner {
         if (!(writeError instanceof StaleImportJobRunner)) throw writeError;
       }
     }
+  }
+
+  /** Screenshots the finished job could not read become a separate failed job that the ordinary
+   * retry path re-reads — the device-local twin of the server's partial-retry child. */
+  private async spawnPartialRetry(parent: StoredE2eeImportJob, key: Uint8Array): Promise<StoredE2eeImportJob["partialFailure"]> {
+    if (!parent.inputCiphertext) return null;
+    const unread = parseInput(
+      await this.decrypt(parent.inputCiphertext, key, importJobAadContext(parent.budgetId, parent.epoch, parent.id, "input")),
+    ).images.filter((image): image is string => image !== null);
+    if (unread.length === 0) return null;
+    const failedWindow = parent.chunkCiphertext
+      ? parseChunks(await this.decrypt(parent.chunkCiphertext, key, importJobAadContext(parent.budgetId, parent.epoch, parent.id, "chunks"))).find(
+          (chunk) => chunk.status === "failed",
+        )
+      : undefined;
+    const childId = crypto.randomUUID();
+    const inputCiphertext = await this.encrypt(JSON.stringify({ images: unread }), key, importJobAadContext(parent.budgetId, parent.epoch, childId, "input"));
+    this.assertCurrent();
+    const now = this.now();
+    const child = {
+      id: childId,
+      ownerId: parent.ownerId,
+      budgetId: parent.budgetId,
+      accountId: parent.accountId,
+      provider: { ...parent.provider },
+      locale: parent.locale,
+      tier: "e2ee" as const,
+      epoch: parent.epoch,
+      status: "failed" as const,
+      phase: "extracting" as const,
+      resumePhase: null,
+      cancelRequested: false,
+      attempt: 0,
+      errorCode: failedWindow?.errorCode ?? "network",
+      retryAt: null,
+      inputCiphertext,
+      chunkCiphertext: null,
+      checkpointCiphertext: null,
+      resultCiphertext: null,
+      checkpointRevision: 0,
+      proposalCount: 0,
+      screenshots: { total: unread.length, read: 0, failed: 0 },
+      partialFailure: null,
+      appliedCount: 0,
+      skippedCount: 0,
+      createdAt: now.toISOString(),
+      updatedAt: now.toISOString(),
+      expiresAt: new Date(now.getTime() + IMPORT_JOB_RETENTION_MS).toISOString(),
+    } satisfies StoredE2eeImportJob;
+    await importJobStorage.putJob(this.options.scope, child);
+    this.assertCurrent();
+    this.options.activity.upsert(importActivityFromE2ee(child));
+    return { retryJobId: childId, imageCount: unread.length };
   }
 
   resume(): Promise<void> {
@@ -541,7 +759,7 @@ export class E2eeImportJobRunner {
     if (!this.isCurrent()) return;
     if (!job || job.status === "cancelled" || job.status === "completed") return;
     try {
-      const cleared = { inputCiphertext: null, checkpointCiphertext: null, resultCiphertext: null };
+      const cleared = { inputCiphertext: null, chunkCiphertext: null, checkpointCiphertext: null, resultCiphertext: null };
       job = await this.transition(job, { type: "cancel", at: this.timestamp() }, cleared);
       if (job.status === "running") await this.transition(job, { type: "cancelled", at: this.timestamp() }, cleared);
     } catch (error) {
@@ -555,7 +773,7 @@ export class E2eeImportJobRunner {
     if (!this.isCurrent()) return;
     if (job?.status !== "failed") return;
     try {
-      await this.transition(job, { type: "retry", at: this.timestamp() }, { attempt: 0 });
+      await this.transition(job, { type: "retry", at: this.timestamp() }, { attempt: 0, screenshots: { ...job.screenshots, failed: 0 } });
       await this.resume();
     } catch (error) {
       if (!(error instanceof StaleImportJobRunner)) throw error;
@@ -574,6 +792,7 @@ export class E2eeImportJobRunner {
         { type: "completed", at: this.timestamp() },
         {
           inputCiphertext: null,
+          chunkCiphertext: null,
           checkpointCiphertext: null,
           resultCiphertext: null,
           appliedCount: counts.appliedCount,

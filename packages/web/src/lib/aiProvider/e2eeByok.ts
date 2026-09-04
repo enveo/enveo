@@ -1,5 +1,6 @@
 import {
   type ChatRequest,
+  type ImportChunkState,
   type ImportHistoryRecord,
   type ImportRecognitionPipelineInput,
   type ImportRecognitionResult,
@@ -27,8 +28,11 @@ export interface E2eeByokDependencies {
   onTierMismatch: (meta: { tier: "plain" | "e2ee"; epoch: number; cipherVersion?: number }) => void;
 }
 
-export interface E2eeDurableImportInput extends ImportExtractInput {
+export interface E2eeDurableImportInput extends Omit<ImportExtractInput, "images"> {
+  /** Absolute screenshot positions; windows already read leave null behind. */
+  images: ReadonlyArray<string | null>;
   checkpoint?: ImportRecognitionResult;
+  chunks?: ImportChunkState[];
   lifecycle: NonNullable<ImportRecognitionPipelineInput["lifecycle"]>;
 }
 
@@ -117,7 +121,11 @@ export class E2eeByokProvider implements AiProvider {
     return this.withCredential((key) => this.deps.directChat(key, this.deps.model, request));
   }
 
-  private runImport(key: string, input: ImportExtractInput, durable?: Pick<E2eeDurableImportInput, "checkpoint" | "lifecycle">): Promise<ImportExtractResult> {
+  private runImport(
+    key: string,
+    input: ImportExtractInput | E2eeDurableImportInput,
+    durable?: Pick<E2eeDurableImportInput, "checkpoint" | "chunks" | "lifecycle">,
+  ): Promise<ImportExtractResult> {
     const today = new Date().toISOString().slice(0, 10);
     const currency = input.ledger.budgets.find((budget) => budget.id === this.deps.budgetId)?.currency ?? "EUR";
     const envelopeNames = new Map(input.ledger.envelopes.map((envelope) => [envelope.id, envelope.name]));
@@ -151,6 +159,7 @@ export class E2eeByokProvider implements AiProvider {
       ...(durable
         ? {
             checkpoint: durable.checkpoint,
+            chunks: durable.chunks,
             pipelineMode: "durable" as const,
             cycleTwoFailureMode: "strict" as const,
             lifecycle: durable.lifecycle,

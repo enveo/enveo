@@ -36,6 +36,7 @@ export const IMPORT_REVIEW_REASONS = [
   "pending_or_declined",
   "unknown_posting_status",
   "unknown_kind",
+  "possible_duplicate",
 ] as const;
 
 export type ImportSemanticKind = (typeof IMPORT_SEMANTIC_KINDS)[number];
@@ -93,9 +94,16 @@ export interface ImportProposal {
   selected: boolean;
 }
 
+/** Cross-chunk pairs the seam pass could not settle (model call failed or the pair was beyond
+ *  the judged window). Carried in the checkpoint so re-validation keeps flagging them. */
+export interface ImportSeamOutcome {
+  unresolved: Array<{ earlierRowId: string; laterRowId: string }>;
+}
+
 export interface ImportRecognitionResult {
   rows: ImportExtractRow[];
   proposals: ImportProposal[];
+  seam?: ImportSeamOutcome;
 }
 
 export interface ImportEnrichmentRow {
@@ -146,6 +154,22 @@ const addReasons = (current: ImportReviewReason[], ...added: ImportReviewReason[
 /** Cycle two is reserved for rows carrying deterministic uncertainty or review risk. */
 export function needsImportEnrichment(result: ImportRecognitionResult): boolean {
   return result.proposals.some((proposal) => proposal.reviewReasons.length > 0 || proposal.disposition === "unresolved");
+}
+
+/** Surfaces unsettled seam pairs as review evidence on the later occurrence. Pure and
+ *  idempotent, so every re-validation from a checkpoint reaches the same proposals. */
+export function applyImportSeamReviewReasons(result: ImportRecognitionResult): ImportRecognitionResult {
+  const unresolved = result.seam?.unresolved ?? [];
+  if (unresolved.length === 0) return result;
+  const rowIds = new Set(result.rows.map((row) => row.rowId));
+  const flagged = new Set(unresolved.filter((pair) => rowIds.has(pair.earlierRowId) && rowIds.has(pair.laterRowId)).map((pair) => pair.laterRowId));
+  if (flagged.size === 0) return result;
+  return {
+    ...result,
+    proposals: result.proposals.map((proposal) =>
+      flagged.has(proposal.rowId) ? { ...proposal, reviewReasons: addReasons(proposal.reviewReasons, "possible_duplicate") } : proposal,
+    ),
+  };
 }
 
 const ENRICHMENT_ROW_KEYS = new Set([

@@ -2,7 +2,7 @@ import type { ImportJobErrorCode, ImportJobPhase } from "@enveo/shared";
 import { useTheme } from "../lib/contexts";
 import { type Message, msg, useT } from "../lib/i18n";
 import type { StorageMode } from "../lib/idb";
-import { type ImportActivityItem, isScheduledImportRetry } from "../lib/importJobs/store";
+import { type ImportActivityItem, importScreenshotProgress, isScheduledImportRetry } from "../lib/importJobs/store";
 import { CORAL, TEAL } from "../lib/theme";
 
 const PHASE_MESSAGES: Record<ImportJobPhase, Message> = {
@@ -84,6 +84,7 @@ export function ImportProgress({
   const C = useTheme();
   const { t } = useT();
   const presentation = importProgressPresentation(item);
+  const screenshots = importScreenshotProgress(item);
   return (
     <div style={{ textAlign: "center", padding: "16px 0 4px" }}>
       <div role="status" aria-live="polite">
@@ -100,6 +101,11 @@ export function ImportProgress({
           }}
         />
         <div style={{ marginTop: 12, color: C.text, fontSize: 16, fontWeight: 700 }}>{t(presentation.message)}</div>
+        {screenshots && (
+          <div data-testid="import-screenshot-progress" style={{ marginTop: 4, color: C.soft, fontSize: 13, fontVariantNumeric: "tabular-nums" }}>
+            {t("Read {read} of {total} screenshots", { read: screenshots.read, total: screenshots.total })}
+          </div>
+        )}
         <div style={{ marginTop: 5, color: C.mute, fontSize: 12 }}>{t("You can leave this view. The import will stay in Imports.")}</div>
       </div>
       {(presentation.canCancel || (showBackground && presentation.canContinueInBackground)) && (

@@ -1,4 +1,13 @@
-import type { ImportJobDetail, ImportJobProgress, ImportJobProviderSnapshot, ImportJobSummary, ImportRecognitionResult } from "@enveo/shared";
+import {
+  IMPORT_JOB_CHUNK_SIZE,
+  type ImportJobDetail,
+  type ImportJobPartialFailure,
+  type ImportJobProgress,
+  type ImportJobProviderSnapshot,
+  type ImportJobScreenshotProgress,
+  type ImportJobSummary,
+  type ImportRecognitionResult,
+} from "@enveo/shared";
 import type { PlainImportUploadDraft, StoredE2eeImportJob } from "../importJobStorage";
 
 export type ImportActivitySource = "plain-draft" | "plain" | "e2ee";
@@ -15,10 +24,20 @@ export interface ImportActivityItem extends ImportJobProgress {
   source: ImportActivitySource;
   result: ImportRecognitionResult | null;
   proposalCount: number;
+  screenshots: ImportJobScreenshotProgress;
+  partialFailure: ImportJobPartialFailure | null;
   appliedCount: number;
   skippedCount: number;
   createdAt: string;
   expiresAt: string;
+}
+
+/** Cycle-one progress worth showing: a job read in more than one window, still reading. */
+export function importScreenshotProgress(
+  item: Pick<ImportActivityItem, "status" | "phase" | "resumePhase" | "screenshots">,
+): ImportJobScreenshotProgress | null {
+  const reading = item.status === "running" && (item.phase === "extracting" || item.resumePhase === "extracting");
+  return reading && item.screenshots.total > IMPORT_JOB_CHUNK_SIZE ? item.screenshots : null;
 }
 
 export type ImportActivityListener = (item: ImportActivityItem | undefined) => void;
@@ -61,6 +80,8 @@ export function importActivityFromDraft(draft: PlainImportUploadDraft): ImportAc
     retryAt: null,
     result: null,
     proposalCount: 0,
+    screenshots: { total: draft.images.length, read: 0, failed: 0 },
+    partialFailure: null,
     appliedCount: 0,
     skippedCount: 0,
     createdAt: draft.createdAt,
@@ -77,6 +98,8 @@ export function importActivityFromServer(job: ImportJobSummary | ImportJobDetail
     locale: typeof detail.locale === "string" ? detail.locale : "en",
     epoch: typeof detail.epoch === "number" ? detail.epoch : 0,
     result: detail.result ?? null,
+    screenshots: job.screenshots ?? { total: 0, read: 0, failed: 0 },
+    partialFailure: job.partialFailure ?? null,
     appliedCount: detail.appliedCount ?? 0,
     skippedCount: detail.skippedCount ?? 0,
   };
@@ -101,6 +124,8 @@ export function importActivityFromE2ee(job: StoredE2eeImportJob, result: ImportR
     retryAt: job.retryAt,
     result,
     proposalCount: job.proposalCount,
+    screenshots: job.screenshots ?? { total: 0, read: 0, failed: 0 },
+    partialFailure: job.partialFailure ?? null,
     appliedCount: job.appliedCount,
     skippedCount: job.skippedCount,
     createdAt: job.createdAt,

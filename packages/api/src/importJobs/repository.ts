@@ -1,4 +1,6 @@
 import {
+  IMPORT_JOB_CHUNK_SIZE,
+  type ImportExtractBatch,
   type ImportJobDetail,
   type ImportJobErrorCode,
   type ImportJobPhase,
@@ -6,6 +8,8 @@ import {
   type ImportJobStatus,
   type ImportJobSummary,
   type ImportRecognitionResult,
+  importExtractBatchSchema,
+  importImageChunks,
   importJobErrorCodeSchema,
   importJobPhaseSchema,
   importJobProviderSnapshotSchema,
@@ -14,7 +18,7 @@ import {
 } from "@enveo/shared";
 import { and, asc, desc, eq, gt, gte, inArray, isNotNull, lt, lte, or, sql } from "drizzle-orm";
 import type { DB } from "../db/client";
-import { accounts, budgets, importJobImages, importJobs } from "../db/schema";
+import { accounts, budgets, importJobChunks, importJobImages, importJobs } from "../db/schema";
 
 export const IMPORT_JOB_LEASE_MS = 5 * 60 * 1000;
 export const IMPORT_JOB_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
@@ -45,6 +49,23 @@ interface StoredImage {
   content: Uint8Array;
 }
 
+export interface ClaimedImportChunk {
+  index: number;
+  start: number;
+  end: number;
+  attempt: number;
+  status: "pending" | "extracted" | "failed";
+  errorCode: ImportJobErrorCode | null;
+  retryAt: Date | null;
+  extraction: ImportExtractBatch | null;
+}
+
+export interface ImportChunkFailure {
+  errorCode: ImportJobErrorCode;
+  /** null ⇒ the chunk exhausted its attempts and is skipped by the finished job. */
+  retryAt: Date | null;
+}
+
 export interface ClaimedImportJob {
   id: string;
   userId: string;
@@ -61,7 +82,11 @@ export interface ClaimedImportJob {
   leaseToken: string;
   leaseExpiresAt: Date;
   extraction: ImportRecognitionResult | null;
+  /** Screenshots still retained (positions of chunks not yet extracted). */
   images: StoredImage[];
+  screenshotTotal: number;
+  /** Empty for a job created before chunking (its retained images are read as one window). */
+  chunks: ClaimedImportChunk[];
 }
 
 export interface ImportJobCleanupCounts {
@@ -82,6 +107,32 @@ export class ImportJobConflict extends Error {
 }
 
 type ImportJobRow = typeof importJobs.$inferSelect;
+type ImportJobChunkRow = typeof importJobChunks.$inferSelect;
+
+const chunkRowsFor = (jobId: string, imageCount: number, now: Date) =>
+  importImageChunks(imageCount, IMPORT_JOB_CHUNK_SIZE).map((chunk) => ({
+    jobId,
+    chunkIndex: chunk.index,
+    imageStart: chunk.start,
+    imageEnd: chunk.end,
+    status: "pending" as const,
+    attempt: 0,
+    errorCode: null,
+    retryAt: null,
+    extraction: null,
+    updatedAt: now,
+  }));
+
+const claimedChunk = (row: ImportJobChunkRow): ClaimedImportChunk => ({
+  index: row.chunkIndex,
+  start: row.imageStart,
+  end: row.imageEnd,
+  attempt: row.attempt,
+  status: row.status === "extracted" ? "extracted" : row.status === "failed" ? "failed" : "pending",
+  errorCode: row.errorCode === null ? null : importJobErrorCodeSchema.parse(row.errorCode),
+  retryAt: row.retryAt,
+  extraction: row.extraction === null ? null : importExtractBatchSchema.parse(row.extraction),
+});
 
 const sha256 = (value: string | Uint8Array): string => new Bun.CryptoHasher("sha256").update(value).digest("hex");
 
@@ -147,6 +198,8 @@ const summaryFromRow = (row: ImportJobRow): ImportJobSummary => ({
   updatedAt: row.updatedAt.toISOString(),
   expiresAt: row.expiresAt.toISOString(),
   proposalCount: row.proposalCount,
+  screenshots: { total: row.screenshotTotal, read: row.screenshotsRead, failed: row.screenshotsFailed },
+  partialFailure: row.partialRetryJobId === null ? null : { retryJobId: row.partialRetryJobId, imageCount: row.partialImageCount },
 });
 
 const detailFromRow = (row: ImportJobRow): ImportJobDetail => ({
@@ -181,6 +234,7 @@ export function createImportJobRepository(database: DB) {
             tier: input.tier,
             epoch: input.epoch,
             requestHash,
+            screenshotTotal: images.length,
             createdAt: now,
             updatedAt: now,
             expiresAt: new Date(now.getTime() + IMPORT_JOB_RETENTION_MS),
@@ -196,6 +250,7 @@ export function createImportJobRepository(database: DB) {
 
         if (images.length > 0) {
           await tx.insert(importJobImages).values(images.map((image) => ({ jobId: input.id, ...image })));
+          await tx.insert(importJobChunks).values(chunkRowsFor(input.id, images.length, now));
         }
         return { created: true, job: detailFromRow(inserted) };
       });
@@ -269,38 +324,50 @@ export function createImportJobRepository(database: DB) {
           )
           .where(and(eq(importJobs.userId, userId), eq(importJobs.budgetId, budgetId), eq(importJobs.id, id)))
           .returning();
-        if (!running) await tx.delete(importJobImages).where(eq(importJobImages.jobId, id));
+        if (!running) {
+          await tx.delete(importJobImages).where(eq(importJobImages.jobId, id));
+          await tx.delete(importJobChunks).where(eq(importJobChunks.jobId, id));
+        }
         return updated ? detailFromRow(updated) : null;
       });
     },
 
     async retry(userId: string, budgetId: string, id: string, now = new Date()): Promise<ImportJobDetail | null> {
-      const [updated] = await database
-        .update(importJobs)
-        .set({
-          status: "queued",
-          phase: "queued",
-          resumePhase: null,
-          cancelRequested: false,
-          errorCode: null,
-          retryAt: null,
-          attempt: 0,
-          leaseOwner: null,
-          leaseToken: null,
-          leaseExpiresAt: null,
-          updatedAt: now,
-        })
-        .where(
-          and(
-            eq(importJobs.userId, userId),
-            eq(importJobs.budgetId, budgetId),
-            eq(importJobs.id, id),
-            eq(importJobs.status, "failed"),
-            or(isNotNull(importJobs.extraction), sql`exists (select 1 from ${importJobImages} where ${importJobImages.jobId} = ${importJobs.id})`),
-          ),
-        )
-        .returning();
-      return updated ? detailFromRow(updated) : null;
+      return database.transaction(async (tx) => {
+        const [updated] = await tx
+          .update(importJobs)
+          .set({
+            status: "queued",
+            phase: "queued",
+            resumePhase: null,
+            cancelRequested: false,
+            errorCode: null,
+            retryAt: null,
+            attempt: 0,
+            screenshotsFailed: 0,
+            leaseOwner: null,
+            leaseToken: null,
+            leaseExpiresAt: null,
+            updatedAt: now,
+          })
+          .where(
+            and(
+              eq(importJobs.userId, userId),
+              eq(importJobs.budgetId, budgetId),
+              eq(importJobs.id, id),
+              eq(importJobs.status, "failed"),
+              or(isNotNull(importJobs.extraction), sql`exists (select 1 from ${importJobImages} where ${importJobImages.jobId} = ${importJobs.id})`),
+            ),
+          )
+          .returning();
+        if (!updated) return null;
+        // A manual retry gives every unread window a fresh set of attempts; extracted windows stay.
+        await tx
+          .update(importJobChunks)
+          .set({ status: "pending", attempt: 0, errorCode: null, retryAt: null, updatedAt: now })
+          .where(and(eq(importJobChunks.jobId, id), inArray(importJobChunks.status, ["pending", "failed"])));
+        return detailFromRow(updated);
+      });
     },
 
     async claimNext(workerId: string, now = new Date()): Promise<ClaimedImportJob | null> {
@@ -335,7 +402,10 @@ export function createImportJobRepository(database: DB) {
           })
           .where(and(eq(importJobs.status, "running"), eq(importJobs.cancelRequested, false), gte(importJobs.attempt, 3), lte(importJobs.leaseExpiresAt, now)));
         const terminalIds = cancelled.map((row) => row.id);
-        if (terminalIds.length > 0) await tx.delete(importJobImages).where(inArray(importJobImages.jobId, terminalIds));
+        if (terminalIds.length > 0) {
+          await tx.delete(importJobImages).where(inArray(importJobImages.jobId, terminalIds));
+          await tx.delete(importJobChunks).where(inArray(importJobChunks.jobId, terminalIds));
+        }
 
         const [candidate] = await tx
           .select()
@@ -379,6 +449,7 @@ export function createImportJobRepository(database: DB) {
           .returning();
         if (!claimed) return null;
         const images = await tx.select().from(importJobImages).where(eq(importJobImages.jobId, candidate.id)).orderBy(importJobImages.position);
+        const chunkRows = await tx.select().from(importJobChunks).where(eq(importJobChunks.jobId, candidate.id)).orderBy(importJobChunks.chunkIndex);
         return {
           id: claimed.id,
           userId: claimed.userId,
@@ -396,6 +467,8 @@ export function createImportJobRepository(database: DB) {
           leaseExpiresAt,
           extraction: claimed.extraction === null ? null : importJobResultSchema.parse(claimed.extraction),
           images,
+          screenshotTotal: claimed.screenshotTotal,
+          chunks: chunkRows.map(claimedChunk),
         };
       });
     },
@@ -474,6 +547,74 @@ export function createImportJobRepository(database: DB) {
       return updated.length === 1;
     },
 
+    /** One window of cycle one is durable: its extraction is kept and its screenshots released. */
+    async saveChunkExtraction(id: string, leaseToken: string, chunkIndex: number, batch: ImportExtractBatch, now = new Date()): Promise<boolean> {
+      const normalized = importExtractBatchSchema.parse(batch);
+      return database.transaction(async (tx) => {
+        const [job] = await tx
+          .select({ id: importJobs.id })
+          .from(importJobs)
+          .where(and(activeLease(id, leaseToken, now), eq(importJobs.cancelRequested, false), eq(importJobs.phase, "extracting")))
+          .for("update");
+        if (!job) return false;
+        const [chunk] = await tx
+          .update(importJobChunks)
+          .set({ status: "extracted", extraction: normalized, errorCode: null, retryAt: null, updatedAt: now })
+          .where(and(eq(importJobChunks.jobId, id), eq(importJobChunks.chunkIndex, chunkIndex), inArray(importJobChunks.status, ["pending", "failed"])))
+          .returning({ start: importJobChunks.imageStart, end: importJobChunks.imageEnd });
+        if (!chunk) return false;
+        await tx
+          .delete(importJobImages)
+          .where(and(eq(importJobImages.jobId, id), gte(importJobImages.position, chunk.start), lt(importJobImages.position, chunk.end)));
+        await tx
+          .update(importJobs)
+          .set({
+            screenshotsRead: sql`${importJobs.screenshotsRead} + ${chunk.end - chunk.start}`,
+            leaseExpiresAt: new Date(now.getTime() + IMPORT_JOB_LEASE_MS),
+            updatedAt: now,
+          })
+          .where(eq(importJobs.id, id));
+        return true;
+      });
+    },
+
+    /** Records one window's failed attempt; a null retryAt makes the window permanently unread. */
+    async failChunk(id: string, leaseToken: string, chunkIndex: number, failure: ImportChunkFailure, now = new Date()): Promise<boolean> {
+      const errorCode = importJobErrorCodeSchema.parse(failure.errorCode);
+      return database.transaction(async (tx) => {
+        const [job] = await tx
+          .select({ id: importJobs.id })
+          .from(importJobs)
+          .where(and(activeLease(id, leaseToken, now), eq(importJobs.cancelRequested, false), eq(importJobs.phase, "extracting")))
+          .for("update");
+        if (!job) return false;
+        const [chunk] = await tx
+          .update(importJobChunks)
+          .set({
+            status: failure.retryAt === null ? "failed" : "pending",
+            attempt: sql`${importJobChunks.attempt} + 1`,
+            errorCode,
+            retryAt: failure.retryAt,
+            updatedAt: now,
+          })
+          .where(and(eq(importJobChunks.jobId, id), eq(importJobChunks.chunkIndex, chunkIndex), eq(importJobChunks.status, "pending")))
+          .returning({ start: importJobChunks.imageStart, end: importJobChunks.imageEnd });
+        if (!chunk) return false;
+        await tx
+          .update(importJobs)
+          .set({
+            ...(failure.retryAt === null ? { screenshotsFailed: sql`${importJobs.screenshotsFailed} + ${chunk.end - chunk.start}` } : {}),
+            leaseExpiresAt: new Date(now.getTime() + IMPORT_JOB_LEASE_MS),
+            updatedAt: now,
+          })
+          .where(eq(importJobs.id, id));
+        return true;
+      });
+    },
+
+    /** The merged Stage A checkpoint. Screenshots of unread windows are kept for the partial-retry
+     * child job created with the ready result; `attempt` restarts because the post-extraction
+     * stage (seam, enrichment, reconciliation) gets its own retry budget. */
     async saveExtractionAndDeleteImages(id: string, leaseToken: string, extraction: ImportRecognitionResult, now = new Date()): Promise<boolean> {
       const normalized = importJobResultSchema.parse(extraction);
       return database.transaction(async (tx) => {
@@ -483,38 +624,112 @@ export function createImportJobRepository(database: DB) {
             extraction: normalized,
             phase: "validating",
             resumePhase: null,
+            attempt: 1,
             leaseExpiresAt: new Date(now.getTime() + IMPORT_JOB_LEASE_MS),
             updatedAt: now,
           })
           .where(and(activeLease(id, leaseToken, now), eq(importJobs.cancelRequested, false), eq(importJobs.phase, "extracting")))
           .returning({ id: importJobs.id });
         if (updated.length !== 1) return false;
-        await tx.delete(importJobImages).where(eq(importJobImages.jobId, id));
+        await tx
+          .delete(importJobImages)
+          .where(
+            and(
+              eq(importJobImages.jobId, id),
+              sql`not exists (select 1 from ${importJobChunks} c where c.job_id = ${importJobImages.jobId} and c.status = 'failed' and ${importJobImages.position} >= c.image_start and ${importJobImages.position} < c.image_end)`,
+            ),
+          );
         return true;
       });
     },
 
+    /** Publishes the reviewable result. Screenshots the job could not read move, in the same
+     * transaction, into a new failed child job so the ordinary retry path re-reads them without a
+     * new upload — the parent ends with no images, as a ready job must. */
     async saveReadyResult(id: string, leaseToken: string, result: ImportRecognitionResult, now = new Date()): Promise<boolean> {
       const normalized = importJobResultSchema.parse(result);
-      const updated = await database
-        .update(importJobs)
-        .set({
-          status: "ready",
-          phase: "ready",
-          resumePhase: null,
-          result: normalized,
-          proposalCount: normalized.proposals.length,
-          errorCode: null,
-          retryAt: null,
-          leaseOwner: null,
-          leaseToken: null,
-          leaseExpiresAt: null,
-          updatedAt: now,
-          expiresAt: new Date(now.getTime() + IMPORT_JOB_RETENTION_MS),
-        })
-        .where(and(activeLease(id, leaseToken, now), eq(importJobs.cancelRequested, false), eq(importJobs.phase, "reconciling")))
-        .returning({ id: importJobs.id });
-      return updated.length === 1;
+      return database.transaction(async (tx) => {
+        const [current] = await tx
+          .select()
+          .from(importJobs)
+          .where(and(activeLease(id, leaseToken, now), eq(importJobs.cancelRequested, false), eq(importJobs.phase, "reconciling")))
+          .for("update");
+        if (!current) return false;
+
+        const failedChunks = await tx
+          .select()
+          .from(importJobChunks)
+          .where(and(eq(importJobChunks.jobId, id), eq(importJobChunks.status, "failed")))
+          .orderBy(importJobChunks.chunkIndex);
+        const unread = await tx.select().from(importJobImages).where(eq(importJobImages.jobId, id)).orderBy(importJobImages.position);
+        let partial: { retryJobId: string; imageCount: number } | null = null;
+        if (unread.length > 0 && failedChunks.length > 0) {
+          const childId = crypto.randomUUID();
+          const childInput: CreateImportJobInput = {
+            id: childId,
+            userId: current.userId,
+            budgetId: current.budgetId,
+            accountId: current.accountId,
+            provider: rowProvider(current),
+            locale: current.locale,
+            tier: current.tier === "e2ee" ? "e2ee" : "plain",
+            epoch: current.epoch,
+            images: unread.map((image) => ({ mimeType: image.mimeType, content: image.content })),
+          };
+          await tx.insert(importJobs).values({
+            id: childId,
+            clientId: childId,
+            userId: current.userId,
+            budgetId: current.budgetId,
+            accountId: current.accountId,
+            provider: current.provider,
+            model: current.model,
+            locale: current.locale,
+            tier: current.tier,
+            epoch: current.epoch,
+            requestHash: computeImportJobRequestHash(childInput),
+            status: "failed",
+            phase: "extracting",
+            errorCode: failedChunks[0]!.errorCode ?? "network",
+            screenshotTotal: unread.length,
+            createdAt: now,
+            updatedAt: now,
+            expiresAt: new Date(now.getTime() + IMPORT_JOB_RETENTION_MS),
+          });
+          await tx.insert(importJobChunks).values(chunkRowsFor(childId, unread.length, now));
+          for (const [position, image] of unread.entries()) {
+            await tx
+              .update(importJobImages)
+              .set({ jobId: childId, position })
+              .where(and(eq(importJobImages.jobId, id), eq(importJobImages.position, image.position)));
+          }
+          partial = { retryJobId: childId, imageCount: unread.length };
+        } else if (unread.length > 0) {
+          await tx.delete(importJobImages).where(eq(importJobImages.jobId, id));
+        }
+
+        const updated = await tx
+          .update(importJobs)
+          .set({
+            status: "ready",
+            phase: "ready",
+            resumePhase: null,
+            result: normalized,
+            proposalCount: normalized.proposals.length,
+            errorCode: null,
+            retryAt: null,
+            leaseOwner: null,
+            leaseToken: null,
+            leaseExpiresAt: null,
+            partialRetryJobId: partial?.retryJobId ?? null,
+            partialImageCount: partial?.imageCount ?? 0,
+            updatedAt: now,
+            expiresAt: new Date(now.getTime() + IMPORT_JOB_RETENTION_MS),
+          })
+          .where(eq(importJobs.id, id))
+          .returning({ id: importJobs.id });
+        return updated.length === 1;
+      });
     },
 
     async scheduleRetry(id: string, leaseToken: string, errorCode: ImportJobErrorCode, retryAt: Date, now = new Date()): Promise<boolean> {
@@ -580,6 +795,7 @@ export function createImportJobRepository(database: DB) {
           .returning({ id: importJobs.id });
         if (updated.length !== 1) return false;
         await tx.delete(importJobImages).where(eq(importJobImages.jobId, id));
+        await tx.delete(importJobChunks).where(eq(importJobChunks.jobId, id));
         return true;
       });
     },
@@ -614,6 +830,7 @@ export function createImportJobRepository(database: DB) {
           ),
         )
         .returning();
+      if (updated) await database.delete(importJobChunks).where(eq(importJobChunks.jobId, id));
       return updated ? detailFromRow(updated) : null;
     },
 
@@ -640,7 +857,16 @@ export function createImportJobRepository(database: DB) {
         if (imageJobs.length > 0) {
           await tx
             .update(importJobs)
-            .set({ phase: "extracting", resumePhase: null, errorCode: "expired", retryAt: null, extraction: null, result: null })
+            .set({
+              phase: "extracting",
+              resumePhase: null,
+              errorCode: "expired",
+              retryAt: null,
+              extraction: null,
+              result: null,
+              screenshotsRead: 0,
+              screenshotsFailed: 0,
+            })
             .where(
               and(
                 eq(importJobs.status, "failed"),
@@ -650,12 +876,21 @@ export function createImportJobRepository(database: DB) {
                 ),
               ),
             );
+          await tx.delete(importJobChunks).where(
+            inArray(
+              importJobChunks.jobId,
+              imageJobs.map((job) => job.id),
+            ),
+          );
         }
         const clearedDetails = await tx
           .update(importJobs)
           .set({ extraction: null, result: null })
           .where(and(inArray(importJobs.status, ["completed", "cancelled"]), or(isNotNull(importJobs.extraction), isNotNull(importJobs.result))))
           .returning({ id: importJobs.id });
+        await tx
+          .delete(importJobChunks)
+          .where(sql`${importJobChunks.jobId} in (select ${importJobs.id} from ${importJobs} where ${importJobs.status} in ('completed', 'cancelled'))`);
         const deletedJobs = await tx.delete(importJobs).where(lte(importJobs.expiresAt, now)).returning({ id: importJobs.id });
         return { imagesDeleted: deletedImages.length, detailsCleared: clearedDetails.length, jobsDeleted: deletedJobs.length };
       });

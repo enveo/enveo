@@ -1,7 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import { type ClientLedger, createDefaultBudgetPreferences, type ImportRecognitionResult } from "@enveo/shared";
+import {
+  type ClientLedger,
+  createDefaultBudgetPreferences,
+  ImportChunksPendingError,
+  ImportExtractionFailedError,
+  type ImportRecognitionResult,
+} from "@enveo/shared";
 import { IDBFactory } from "fake-indexeddb";
-import { generateDek } from "../crypto";
+import { decryptPayload, generateDek, importJobAadContext } from "../crypto";
 import { __resetStorageForTests, storageMode } from "../idb";
 import { type ImportJobStorageScope, importJobStorage } from "../importJobStorage";
 import { type E2eeImportJobExecutionProvider, E2eeImportJobRunner, type E2eeImportJobRunnerOptions } from "./e2eeRunner";
@@ -612,5 +618,147 @@ describe("device-local E2EE import runner", () => {
 
     expect(fixture.activity.list()).toEqual([]);
     expect(await importJobStorage.getJob(SCOPE, ID)).toMatchObject({ status: "running", phase: "extracting" });
+  });
+});
+
+describe("device-local E2EE import runner — screenshot windows", () => {
+  const sevenImages = Array.from({ length: 7 }, (_, index) => `data:image/png;base64,c2NyZWVuc2hvdC0${index}`);
+  const windowsInput = () => ({ ...createInput(), images: sevenImages });
+  const decryptField = async (key: Uint8Array, id: string, part: "input" | "chunks", ciphertext: string) =>
+    JSON.parse(await decryptPayload(ciphertext, key, importJobAadContext(BUDGET, 3, id, part)));
+
+  it("hands both windows to recognition and releases each window's screenshots as it is checkpointed", async () => {
+    // given: a seven-screenshot job whose provider checkpoints window 0 first
+    let seen: DurableInput | null = null;
+    const fixture = setup({
+      provider: () =>
+        provider(async (input) => {
+          // The runner nulls read positions in place; keep the shape recognition saw at the start.
+          seen = { ...input, images: [...input.images] };
+          await input.lifecycle.saveChunkExtraction?.(0, { rows: [] });
+          const stored = (await importJobStorage.getJob(SCOPE, ID))!;
+          expect(stored.screenshots).toEqual({ total: 7, read: 6, failed: 0 });
+          expect((await decryptField(fixture.key, ID, "input", stored.inputCiphertext!)).images).toEqual([null, null, null, null, null, null, sevenImages[6]]);
+          await input.lifecycle.saveChunkExtraction?.(1, { rows: [] });
+          await input.lifecycle.saveExtraction?.(EXTRACTION, []);
+          await input.lifecycle.advancePhase?.("reconciling");
+          await input.lifecycle.saveResult?.(EXTRACTION);
+        }),
+    });
+    await fixture.runner.create(windowsInput());
+
+    // when: the runner processes it
+    await fixture.runner.resume();
+
+    // then: recognition saw two pending windows and the finished job keeps no screenshots or window state
+    expect(seen!.images).toEqual(sevenImages);
+    expect(seen!.chunks).toEqual([
+      { index: 0, extraction: null, permanentlyFailed: false },
+      { index: 1, extraction: null, permanentlyFailed: false },
+    ]);
+    expect(await importJobStorage.getJob(SCOPE, ID)).toMatchObject({
+      status: "ready",
+      inputCiphertext: null,
+      chunkCiphertext: null,
+      partialFailure: null,
+      screenshots: { total: 7, read: 7, failed: 0 },
+    });
+  });
+
+  it("schedules the job on the earliest window retry and resumes only the unread window", async () => {
+    let currentTime = new Date("2026-08-24T10:00:00.000Z");
+    const runs: Array<DurableInput["chunks"]> = [];
+    const fixture = setup({
+      now: () => currentTime,
+      provider: () =>
+        provider(async (input) => {
+          runs.push(input.chunks);
+          if (runs.length === 1) {
+            await input.lifecycle.saveChunkExtraction?.(0, { rows: [] });
+            expect(await input.lifecycle.failChunk?.(1, new Error("ai_timeout"))).toBe("retry");
+            throw new ImportChunksPendingError([1]);
+          }
+          await input.lifecycle.saveChunkExtraction?.(1, { rows: [] });
+          await input.lifecycle.saveExtraction?.(EXTRACTION, []);
+          await input.lifecycle.advancePhase?.("reconciling");
+          await input.lifecycle.saveResult?.(EXTRACTION);
+        }),
+    });
+    await fixture.runner.create(windowsInput());
+
+    await fixture.runner.resume();
+    const scheduled = (await importJobStorage.getJob(SCOPE, ID))!;
+    expect(scheduled).toMatchObject({ status: "failed", phase: "retry_scheduled", errorCode: "ai_timeout", retryAt: "2026-08-24T10:00:30.000Z", attempt: 1 });
+    expect(
+      (await decryptField(fixture.key, ID, "chunks", scheduled.chunkCiphertext!)).chunks.map((chunk: { status: string; attempt: number }) => [
+        chunk.status,
+        chunk.attempt,
+      ]),
+    ).toEqual([
+      ["extracted", 0],
+      ["pending", 1],
+    ]);
+
+    currentTime = new Date("2026-08-24T10:01:00.000Z");
+    await fixture.runner.resume();
+
+    expect(runs[1]).toEqual([
+      { index: 0, extraction: { rows: [] }, permanentlyFailed: false },
+      { index: 1, extraction: null, permanentlyFailed: false },
+    ]);
+    expect(await importJobStorage.getJob(SCOPE, ID)).toMatchObject({ status: "ready", attempt: 1 });
+  });
+
+  it("finishes with the readable windows and parks the unread screenshots in a failed child job", async () => {
+    const fixture = setup({
+      provider: () =>
+        provider(async (input) => {
+          await input.lifecycle.saveChunkExtraction?.(0, { rows: [] });
+          expect(await input.lifecycle.failChunk?.(1, new Error("ai_model_unavailable"))).toBe("permanent");
+          await input.lifecycle.saveExtraction?.(EXTRACTION, [1]);
+          await input.lifecycle.advancePhase?.("reconciling");
+          await input.lifecycle.saveResult?.(EXTRACTION);
+        }),
+    });
+    await fixture.runner.create(windowsInput());
+
+    await fixture.runner.resume();
+
+    const parent = (await importJobStorage.getJob(SCOPE, ID))!;
+    expect(parent).toMatchObject({ status: "ready", inputCiphertext: null, screenshots: { total: 7, read: 6, failed: 1 } });
+    expect(parent.partialFailure).toEqual({ retryJobId: expect.any(String), imageCount: 1 });
+    const child = (await importJobStorage.getJob(SCOPE, parent.partialFailure!.retryJobId))!;
+    expect(child).toMatchObject({ status: "failed", phase: "extracting", errorCode: "ai_model_unavailable", screenshots: { total: 1, read: 0, failed: 0 } });
+    expect((await decryptField(fixture.key, child.id, "input", child.inputCiphertext!)).images).toEqual([sevenImages[6]]);
+    expect(fixture.activity.get(child.id)).toMatchObject({ status: "failed", source: "e2ee" });
+  });
+
+  it("gives every unread window fresh attempts on a manual retry", async () => {
+    const attempts: number[] = [];
+    let run = 0;
+    const fixture = setup({
+      provider: () =>
+        provider(async (input) => {
+          run += 1;
+          if (run === 1) {
+            await input.lifecycle.saveChunkExtraction?.(0, { rows: [] });
+            await input.lifecycle.failChunk?.(1, new Error("ai_key_invalid"));
+            throw new ImportExtractionFailedError([new Error("ai_key_invalid")]);
+          }
+          attempts.push(...(input.chunks ?? []).map((chunk) => (chunk.permanentlyFailed ? 1 : 0)));
+          await input.lifecycle.saveChunkExtraction?.(1, { rows: [] });
+          await input.lifecycle.saveExtraction?.(EXTRACTION, []);
+          await input.lifecycle.advancePhase?.("reconciling");
+          await input.lifecycle.saveResult?.(EXTRACTION);
+        }),
+    });
+    await fixture.runner.create(windowsInput());
+    await fixture.runner.resume();
+    expect(await importJobStorage.getJob(SCOPE, ID)).toMatchObject({ status: "failed", errorCode: "ai_key_invalid", screenshots: { read: 6, failed: 1 } });
+
+    await fixture.runner.retry(ID);
+
+    expect(attempts).toEqual([0, 0]);
+    expect(await importJobStorage.getJob(SCOPE, ID)).toMatchObject({ status: "ready", screenshots: { total: 7, read: 7, failed: 0 } });
   });
 });
