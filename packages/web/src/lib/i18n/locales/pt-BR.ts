@@ -382,7 +382,7 @@ export const ptBR: Dict = {
   Savings: "Poupança",
   "Savings envelopes first — the free remainder goes to them.": "Primeiro os envelopes de poupança — a sobra livre vai para eles.",
   "Screenshot {n}": "Captura de tela {n}",
-  "Screenshots ({n}/6)": "Capturas de tela ({n}/6)",
+  "Screenshots ({n}/{max})": "Capturas de tela ({n}/{max})",
   "Search...": "Buscar...",
   Server: "Servidor",
   "Server sync": "Sincronização com o servidor",

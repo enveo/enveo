@@ -1,15 +1,26 @@
-import { type ChatRequest, ImportEnrichmentMalformedError, type ImportJobErrorCode, type ImportRecognitionResult } from "@enveo/shared";
+import {
+  type ChatRequest,
+  type ImportChunkFailureDisposition,
+  type ImportChunkState,
+  ImportChunksPendingError,
+  ImportEnrichmentMalformedError,
+  type ImportExtractBatch,
+  ImportExtractionFailedError,
+  type ImportJobErrorCode,
+  type ImportRecognitionChatMeta,
+  type ImportRecognitionResult,
+} from "@enveo/shared";
 import { eq } from "drizzle-orm";
 import { ZodError } from "zod";
 import { CredentialBudgetMismatch, CredentialNotConfigured, type CredentialRepository, CredentialVaultUnavailable } from "../aiCredentials/repository";
-import { ByokInvalidBodyError, ByokUpstreamError, byokChatContent } from "../aiCredentials/transport";
+import { ByokInvalidBodyError, ByokUpstreamError, byokChat } from "../aiCredentials/transport";
 import { meteredOperatorChat, operatorChatPayload, SpendDenied } from "../aiSpend/transport";
 import { TierMismatch } from "../context";
 import type { DB } from "../db/client";
 import * as schema from "../db/schema";
 import { UpstreamHttpError, UpstreamNetworkError, UpstreamTimeoutError } from "../openaiHttp";
 import { loadImportHistory, runServerImportRecognitionAdapter } from "../routes/import";
-import { type ClaimedImportJob, IMPORT_JOB_LEASE_MS, type ImportJobRepository } from "./repository";
+import { type ClaimedImportJob, IMPORT_JOB_LEASE_MS, type ImportChunkFailure, type ImportJobRepository } from "./repository";
 
 const RETRY_BACKOFF_MS = [30_000, 120_000] as const;
 
@@ -129,6 +140,8 @@ type ProcessorRepository = {
   heartbeat: ImportJobRepository["heartbeat"];
   validateClaimContext: ImportJobRepository["validateClaimContext"];
   getForUser: (userId: string, id: string) => Promise<{ status?: string; cancelRequested: boolean } | null>;
+  saveChunkExtraction: ImportJobRepository["saveChunkExtraction"];
+  failChunk: ImportJobRepository["failChunk"];
   saveExtractionAndDeleteImages: ImportJobRepository["saveExtractionAndDeleteImages"];
   advancePhase: ImportJobRepository["advancePhase"];
   saveReadyResult: ImportJobRepository["saveReadyResult"];
@@ -139,8 +152,12 @@ type ProcessorRepository = {
 
 export interface ImportRecognitionRunInput {
   checkpoint: ImportRecognitionResult | null;
+  /** Per-chunk resume state for cycle one (undefined for a job created before chunking). */
+  chunks: ImportChunkState[] | undefined;
   beforeUpstream: () => Promise<void>;
   afterUpstream: () => Promise<void>;
+  saveChunkExtraction: (chunkIndex: number, batch: ImportExtractBatch) => Promise<void>;
+  failChunk: (chunkIndex: number, error: unknown) => Promise<ImportChunkFailureDisposition>;
   saveExtraction: (result: ImportRecognitionResult) => Promise<void>;
   advancePhase: (phase: "enriching" | "reconciling") => Promise<void>;
   saveResult: (result: ImportRecognitionResult) => Promise<void>;
@@ -151,7 +168,7 @@ export interface ImportJobProcessorDeps {
   recognize: (input: ImportRecognitionRunInput) => Promise<ImportRecognitionResult>;
   now?: () => Date;
   heartbeatIntervalMs?: number;
-  logFailure?: (metadata: { jobId: string; attempt: number; errorType: string }) => void;
+  logFailure?: (metadata: { jobId: string; attempt: number; errorType: string; chunk?: number }) => void;
 }
 
 function startLeaseRenewal(job: ClaimedImportJob, deps: ImportJobProcessorDeps, now: () => Date) {
@@ -220,19 +237,51 @@ export async function processClaimedImportJob(job: ClaimedImportJob, deps: Impor
     }
   };
 
+  // Cycle one keeps a retry budget PER CHUNK; the post-extraction stage (seam, enrichment,
+  // reconciliation) gets its own. When extraction completes inside this claim the stored
+  // attempt restarts at 1, so a failure later in the same claim is judged as a first attempt.
+  const chunkFailures = new Map<number, ImportChunkFailure>();
+  let extractionCompletedThisClaim = false;
+  const stageAttempt = () => (extractionCompletedThisClaim ? 1 : job.attempt);
+
   try {
     if (job.cancelRequested) await persistCancellation(job, deps.repository);
     if (job.tier !== "plain") throw new ImportJobTierMismatch();
     if (!job.accountId) throw new ImportJobAccountUnavailable();
-    if (!job.extraction && job.images.length === 0) throw new ImportJobInputExpired();
+    const hasChunkCheckpoint = job.chunks.some((chunk) => chunk.extraction !== null);
+    if (!job.extraction && job.images.length === 0 && !hasChunkCheckpoint) throw new ImportJobInputExpired();
 
     leaseRenewal = startLeaseRenewal(job, deps, now);
 
     await deps.recognize({
       checkpoint: job.extraction,
+      chunks:
+        job.chunks.length === 0
+          ? undefined
+          : job.chunks.map((chunk) => ({ index: chunk.index, extraction: chunk.extraction, permanentlyFailed: chunk.status === "failed" })),
       beforeUpstream: fence,
       afterUpstream: fence,
-      saveExtraction: (extraction) => checkpoint(() => deps.repository.saveExtractionAndDeleteImages(job.id, job.leaseToken, extraction, now())),
+      saveChunkExtraction: (chunkIndex, batch) => checkpoint(() => deps.repository.saveChunkExtraction(job.id, job.leaseToken, chunkIndex, batch, now())),
+      failChunk: async (chunkIndex, error) => {
+        const previousAttempts = job.chunks.find((chunk) => chunk.index === chunkIndex)?.attempt ?? 0;
+        const reason = unwrapFailure(error);
+        deps.logFailure?.({
+          jobId: job.id,
+          attempt: previousAttempts + 1,
+          chunk: chunkIndex,
+          errorType: reason instanceof Error ? reason.constructor.name : typeof reason,
+        });
+        const disposition = classifyImportJobFailure(error, previousAttempts + 1, now());
+        if (disposition.kind === "lease_expired") throw new ImportJobLeaseExpired();
+        const failure: ImportChunkFailure = { errorCode: disposition.errorCode, retryAt: disposition.kind === "retry" ? disposition.retryAt : null };
+        chunkFailures.set(chunkIndex, failure);
+        await checkpoint(() => deps.repository.failChunk(job.id, job.leaseToken, chunkIndex, failure, now()));
+        return disposition.kind === "retry" ? "retry" : "permanent";
+      },
+      saveExtraction: async (extraction) => {
+        await checkpoint(() => deps.repository.saveExtractionAndDeleteImages(job.id, job.leaseToken, extraction, now()));
+        extractionCompletedThisClaim = true;
+      },
       advancePhase: (phase) => checkpoint(() => deps.repository.advancePhase(job.id, job.leaseToken, phase, now())),
       saveResult: (result) => checkpoint(() => deps.repository.saveReadyResult(job.id, job.leaseToken, result, now())),
     });
@@ -240,16 +289,18 @@ export async function processClaimedImportJob(job: ClaimedImportJob, deps: Impor
   } catch (error) {
     if (error instanceof ImportJobCancelled) return { kind: "cancelled" };
     const reason = unwrapFailure(error);
-    deps.logFailure?.({
-      jobId: job.id,
-      attempt: job.attempt,
-      errorType: reason instanceof Error ? reason.constructor.name : typeof reason,
-    });
+    if (!(error instanceof ImportChunksPendingError) && !(error instanceof ImportExtractionFailedError)) {
+      deps.logFailure?.({
+        jobId: job.id,
+        attempt: stageAttempt(),
+        errorType: reason instanceof Error ? reason.constructor.name : typeof reason,
+      });
+    }
     if (error instanceof ImportJobAccountUnavailable) {
       const saved = await deps.repository.failPermanently(job.id, job.leaseToken, "account_unavailable", now());
       return saved ? { kind: "failed", errorCode: "account_unavailable" } : { kind: "lease_expired", errorCode: "expired" };
     }
-    const disposition = classifyImportJobFailure(error, job.attempt, now());
+    const disposition = chunkStageDisposition(error, chunkFailures, job) ?? classifyImportJobFailure(error, stageAttempt(), now());
     if (disposition.kind === "lease_expired") return disposition;
     try {
       await fence();
@@ -268,36 +319,104 @@ export async function processClaimedImportJob(job: ClaimedImportJob, deps: Impor
   }
 }
 
+/** Cycle-one outcomes already judged per chunk: the job follows the earliest chunk retry, or
+ *  fails with the first permanently failed chunk's code when nothing could be read. */
+function chunkStageDisposition(error: unknown, failures: Map<number, ImportChunkFailure>, job: ClaimedImportJob): ImportJobFailureDisposition | null {
+  if (error instanceof ImportChunksPendingError) {
+    const retries = error.pendingChunks.map((index) => failures.get(index)).filter((failure): failure is ImportChunkFailure => failure?.retryAt != null);
+    const earliest = retries.reduce<ImportChunkFailure | null>((best, failure) => (best === null || failure.retryAt! < best.retryAt! ? failure : best), null);
+    if (!earliest) return { kind: "retry", errorCode: "network", retryAt: new Date(Date.now() + RETRY_BACKOFF_MS[0]) };
+    return { kind: "retry", errorCode: earliest.errorCode, retryAt: earliest.retryAt! };
+  }
+  if (error instanceof ImportExtractionFailedError) {
+    const failed = [...failures.values()].find((failure) => failure.retryAt === null) ?? job.chunks.find((chunk) => chunk.status === "failed");
+    return { kind: "permanent", errorCode: failed?.errorCode ?? "network" };
+  }
+  return null;
+}
+
+/** Safe per-call diagnostics: duration and token counts only — never prompts, images or answers. */
+export interface ImportUpstreamCallLog {
+  jobId: string;
+  stage: ImportRecognitionChatMeta["stage"] | "unknown";
+  chunk: number | null;
+  batch: number | null;
+  durationMs: number;
+  promptTokens: number | null;
+  completionTokens: number | null;
+  outcome: "ok" | "error";
+}
+
 type ProviderChatDeps = {
   database: DB;
   credentials: Pick<CredentialRepository, "withServerCredentialForWorker">;
   operatorChat?: typeof meteredOperatorChat;
-  byokChat?: typeof byokChatContent;
+  byokChat?: typeof byokChat;
   logUpstreamFailure?: (metadata: { status: number; requestId: string | null }) => void;
+  logUpstreamCall?: (entry: ImportUpstreamCallLog) => void;
+  now?: () => number;
+};
+
+const usageTokens = (json: Record<string, unknown> | undefined, key: "prompt_tokens" | "completion_tokens"): number | null => {
+  const usage = json?.usage;
+  const value = usage && typeof usage === "object" ? (usage as Record<string, unknown>)[key] : undefined;
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
 };
 
 export function createImportJobChat(job: ClaimedImportJob, deps: ProviderChatDeps) {
-  if (job.provider.provider === "enveo") {
-    return async (request: ChatRequest, timeoutMs?: number) => {
-      const outcome = await (deps.operatorChat ?? meteredOperatorChat)({
-        userId: job.userId,
-        payload: { ...operatorChatPayload(request), model: job.provider.model },
-        timeoutMs,
-      });
-      if (outcome.kind === "denied") throw new SpendDenied(outcome.retryAfterSeconds);
-      if (outcome.kind === "upstream_error") {
-        const metadata = { status: outcome.status, requestId: outcome.requestId };
-        if (deps.logUpstreamFailure) deps.logUpstreamFailure(metadata);
-        else console.warn("import-job: OpenAI rejected request", metadata);
-        throw new UpstreamHttpError(outcome.status);
-      }
-      if (outcome.kind === "invalid_body") throw new ImportJobMalformedResponse();
-      return outcome.content || "{}";
+  const clock = deps.now ?? (() => Date.now());
+  const log = deps.logUpstreamCall ?? ((entry: ImportUpstreamCallLog) => console.info("import-job: upstream call", entry));
+  const timed = async (meta: ImportRecognitionChatMeta | undefined, call: () => Promise<{ content: string; json?: Record<string, unknown> }>) => {
+    const startedAt = clock();
+    const base = {
+      jobId: job.id,
+      stage: meta?.stage ?? ("unknown" as const),
+      chunk: meta?.stage === "extract" ? meta.chunk : null,
+      batch: meta?.stage === "enrich" ? meta.batch : null,
     };
+    try {
+      const answer = await call();
+      log({
+        ...base,
+        durationMs: clock() - startedAt,
+        promptTokens: usageTokens(answer.json, "prompt_tokens"),
+        completionTokens: usageTokens(answer.json, "completion_tokens"),
+        outcome: "ok",
+      });
+      return answer.content;
+    } catch (error) {
+      log({ ...base, durationMs: clock() - startedAt, promptTokens: null, completionTokens: null, outcome: "error" });
+      throw error;
+    }
+  };
+
+  if (job.provider.provider === "enveo") {
+    return (request: ChatRequest, timeoutMs?: number, meta?: ImportRecognitionChatMeta) =>
+      timed(meta, async () => {
+        const outcome = await (deps.operatorChat ?? meteredOperatorChat)({
+          userId: job.userId,
+          payload: { ...operatorChatPayload(request), model: job.provider.model },
+          timeoutMs,
+        });
+        if (outcome.kind === "denied") throw new SpendDenied(outcome.retryAfterSeconds);
+        if (outcome.kind === "upstream_error") {
+          const metadata = { status: outcome.status, requestId: outcome.requestId };
+          if (deps.logUpstreamFailure) deps.logUpstreamFailure(metadata);
+          else console.warn("import-job: OpenAI rejected request", metadata);
+          throw new UpstreamHttpError(outcome.status);
+        }
+        if (outcome.kind === "invalid_body") throw new ImportJobMalformedResponse();
+        return { content: outcome.content || "{}", json: outcome.json };
+      });
   }
-  return (request: ChatRequest, timeoutMs?: number) =>
-    deps.credentials.withServerCredentialForWorker(deps.database, { userId: job.userId }, job.budgetId, (apiKey) =>
-      (deps.byokChat ?? byokChatContent)({ apiKey, model: job.provider.model, request, timeoutMs }),
+  return (request: ChatRequest, timeoutMs?: number, meta?: ImportRecognitionChatMeta) =>
+    timed(meta, () =>
+      deps.credentials.withServerCredentialForWorker(deps.database, { userId: job.userId }, job.budgetId, async (apiKey) => {
+        const outcome = await (deps.byokChat ?? byokChat)({ apiKey, model: job.provider.model, request, timeoutMs });
+        if (outcome.kind === "upstream_error") throw new ByokUpstreamError(outcome.status);
+        if (outcome.kind === "invalid_body") throw new ByokInvalidBodyError();
+        return { content: outcome.content, json: outcome.json };
+      }),
     );
 }
 
@@ -318,9 +437,16 @@ export function createDatabaseImportRecognition(job: ClaimedImportJob, deps: Pro
     const account = accountRows.find((candidate) => candidate.id === job.accountId && !candidate.archived);
     if (!account) throw new ImportJobAccountUnavailable();
     const historyRecords = await loadImportHistory(job.budgetId, budget.currency, deps.database);
-    const images = job.images.map((image) => `data:${image.mimeType};base64,${Buffer.from(image.content).toString("base64")}`);
+    // Absolute positions: a resumed job keeps only the screenshots of chunks not yet read.
+    const total = job.screenshotTotal > 0 ? job.screenshotTotal : job.images.length;
+    const images: Array<string | null> = Array.from({ length: total }, () => null);
+    job.images.forEach((image, fallbackPosition) => {
+      const position = job.screenshotTotal > 0 ? image.position : fallbackPosition;
+      if (position < total) images[position] = `data:${image.mimeType};base64,${Buffer.from(image.content).toString("base64")}`;
+    });
     const result = await runServerImportRecognitionAdapter({
       images,
+      chunks: run.chunks,
       locale: job.locale,
       today: new Date().toISOString().slice(0, 10),
       budgetCurrency: budget.currency,
@@ -337,6 +463,8 @@ export function createDatabaseImportRecognition(job: ClaimedImportJob, deps: Pro
       lifecycle: {
         beforeUpstream: run.beforeUpstream,
         afterUpstream: run.afterUpstream,
+        saveChunkExtraction: run.saveChunkExtraction,
+        failChunk: run.failChunk,
         saveExtraction: run.saveExtraction,
         advancePhase: run.advancePhase,
         saveResult: run.saveResult,

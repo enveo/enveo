@@ -60,6 +60,7 @@ const REASON_MESSAGES: Record<ImportReviewReason, Message> = {
   pending_or_declined: msg("Pending or declined"),
   unknown_posting_status: msg("Posting status is unknown"),
   unknown_kind: msg("Unknown transaction type"),
+  possible_duplicate: msg("May repeat a row from another screenshot"),
 };
 
 export function importReviewReasonMessage(reason: string): Message {

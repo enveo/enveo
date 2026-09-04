@@ -1,4 +1,4 @@
-import type { ImportRecognitionResult } from "@enveo/shared";
+import type { ImportExtractBatch, ImportRecognitionResult } from "@enveo/shared";
 import { sql } from "drizzle-orm";
 import {
   type AnyPgColumn,
@@ -228,12 +228,23 @@ export const importJobs = pgTable(
     retryAt: timestamp("retry_at", { withTimezone: true, mode: "date" }),
     appliedCount: integer("applied_count").notNull().default(0),
     skippedCount: integer("skipped_count").notNull().default(0),
+    /** Cycle-one progress in screenshots (denormalized from import_job_chunks; 0 = pre-chunking job). */
+    screenshotTotal: integer("screenshot_total").notNull().default(0),
+    screenshotsRead: integer("screenshots_read").notNull().default(0),
+    screenshotsFailed: integer("screenshots_failed").notNull().default(0),
+    /** A ready job's unread screenshots live on in this failed child job for the ordinary retry path. */
+    partialRetryJobId: uuid("partial_retry_job_id").references((): AnyPgColumn => importJobs.id, { onDelete: "set null" }),
+    partialImageCount: integer("partial_image_count").notNull().default(0),
     createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" }).notNull().defaultNow(),
     expiresAt: timestamp("expires_at", { withTimezone: true, mode: "date" }).notNull(),
   },
   (t) => ({
     byUserUpdated: index("import_jobs_user_updated_idx").on(t.userId, t.updatedAt.desc()),
+    screenshotCountersValid: check(
+      "import_jobs_screenshot_counters_valid",
+      sql`${t.screenshotTotal} >= 0 AND ${t.screenshotsRead} >= 0 AND ${t.screenshotsFailed} >= 0 AND ${t.screenshotsRead} + ${t.screenshotsFailed} <= ${t.screenshotTotal} AND ${t.partialImageCount} >= 0`,
+    ),
     byClaim: index("import_jobs_claim_idx").on(t.status, t.retryAt, t.leaseExpiresAt),
     clientNonempty: check("import_jobs_client_nonempty", sql`char_length(${t.clientId}) > 0`),
     modelNonempty: check("import_jobs_model_nonempty", sql`char_length(${t.model}) > 0`),
@@ -285,6 +296,38 @@ export const importJobImages = pgTable(
     positionNonnegative: check("import_job_images_position_nonnegative", sql`${t.position} >= 0`),
     sha256Valid: check("import_job_images_sha256_valid", sql`${t.sha256} ~ '^[0-9a-f]{64}$'`),
     byteLengthValid: check("import_job_images_byte_length_valid", sql`${t.byteLength} > 0 AND octet_length(${t.content}) = ${t.byteLength}`),
+  }),
+);
+
+/** One cycle-one window of a job (IMPORT_JOB_CHUNK_SIZE screenshots). Chunks are read in
+ * parallel and each keeps its own attempt counter, so one slow window cannot spend the others'
+ * retries; an extracted chunk's screenshots are deleted with its checkpoint. */
+export const importJobChunks = pgTable(
+  "import_job_chunks",
+  {
+    jobId: uuid("job_id")
+      .notNull()
+      .references(() => importJobs.id, { onDelete: "cascade" }),
+    chunkIndex: integer("chunk_index").notNull(),
+    imageStart: integer("image_start").notNull(),
+    imageEnd: integer("image_end").notNull(),
+    status: text("status").notNull().default("pending"),
+    attempt: integer("attempt").notNull().default(0),
+    errorCode: text("error_code"),
+    retryAt: timestamp("retry_at", { withTimezone: true, mode: "date" }),
+    extraction: jsonb("extraction").$type<ImportExtractBatch>(),
+    updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" }).notNull().defaultNow(),
+  },
+  (t) => ({
+    pk: primaryKey({ columns: [t.jobId, t.chunkIndex] }),
+    rangeValid: check("import_job_chunks_range_valid", sql`${t.chunkIndex} >= 0 AND ${t.imageStart} >= 0 AND ${t.imageEnd} > ${t.imageStart}`),
+    statusValid: check("import_job_chunks_status_valid", sql`${t.status} IN ('pending', 'extracted', 'failed')`),
+    attemptNonnegative: check("import_job_chunks_attempt_nonnegative", sql`${t.attempt} >= 0`),
+    errorCodeValid: check(
+      "import_job_chunks_error_code_valid",
+      sql`${t.errorCode} IS NULL OR ${t.errorCode} IN ('network', 'ai_timeout', 'ai_budget_exhausted', 'ai_key_invalid', 'ai_model_unavailable', 'malformed_model_response', 'budget_mismatch', 'tier_mismatch', 'account_unavailable', 'expired')`,
+    ),
+    extractionShape: check("import_job_chunks_extraction_shape", sql`(${t.status} = 'extracted') = (${t.extraction} IS NOT NULL)`),
   }),
 );
 

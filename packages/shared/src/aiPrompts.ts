@@ -11,16 +11,31 @@ import { z } from "zod";
 import type { BudgetSuggestionBasis, ProposedEnvelopeDelta } from "./aiBudget";
 import { AI_VISION_TIMEOUT_MS } from "./aiTransport";
 import { computeBudgetState, prevMonth } from "./budget";
+import {
+  applyImportSeamVerdicts,
+  findImportSeamDatelessRepeats,
+  findImportSeamPairs,
+  IMPORT_JOB_CHUNK_SIZE,
+  type ImportImageChunk,
+  importEnrichmentBatches,
+  importImageChunks,
+  mergeChunkBatches,
+  partitionImportSeamPairs,
+  rebaseChunkBatch,
+} from "./importChunks";
 import { type ImportHistoryRecord, type ImportHistorySelection, selectImportHistoryCandidates } from "./importHistory";
 import {
   applyImportEnrichment,
+  applyImportSeamReviewReasons,
   IMPORT_RELATION_KINDS,
   IMPORT_REVIEW_REASONS,
   IMPORT_SEMANTIC_KINDS,
   type ImportEnrichmentAnswer,
   type ImportEnrichmentRow,
   type ImportExtractBatch,
+  type ImportExtractRow,
   type ImportRecognitionResult,
+  type ImportSeamOutcome,
   needsImportEnrichment,
   type ReconciledImportRecognitionResult,
   reconcileImportProposals,
@@ -642,7 +657,9 @@ export function parseImportEnrichResponse(
   };
 }
 
-export type ImportRecognitionChat = (request: ChatRequest, timeoutMs?: number) => Promise<string>;
+export type ImportRecognitionChatMeta = { stage: "extract"; chunk: number } | { stage: "seam" } | { stage: "enrich"; batch: number };
+/** One model round-trip. `meta` names the call for duration/usage diagnostics; transports may ignore it. */
+export type ImportRecognitionChat = (request: ChatRequest, timeoutMs?: number, meta?: ImportRecognitionChatMeta) => Promise<string>;
 
 export class ImportEnrichmentMalformedError extends Error {
   constructor(readonly reason: unknown) {
@@ -651,8 +668,35 @@ export class ImportEnrichmentMalformedError extends Error {
   }
 }
 
+/** Durable cycle one ended with at least one chunk scheduled for a later attempt. */
+export class ImportChunksPendingError extends Error {
+  constructor(readonly pendingChunks: number[]) {
+    super("import chunks pending");
+    this.name = "ImportChunksPendingError";
+  }
+}
+
+/** Every chunk failed permanently; `reasons` are the per-chunk failures in chunk order. */
+export class ImportExtractionFailedError extends Error {
+  constructor(readonly reasons: unknown[]) {
+    super("import extraction failed");
+    this.name = "ImportExtractionFailedError";
+  }
+}
+
+/** Durable per-chunk state supplied by a resuming runner; `extraction` rows are already rebased. */
+export interface ImportChunkState {
+  index: number;
+  extraction: ImportExtractBatch | null;
+  /** A chunk that already exhausted its attempts is skipped, not re-read. */
+  permanentlyFailed: boolean;
+}
+
+export type ImportChunkFailureDisposition = "retry" | "permanent";
+
 export interface ImportRecognitionPipelineInput {
-  images: string[];
+  /** Absolute screenshot positions. A durable resume may leave already-read positions empty. */
+  images: ReadonlyArray<string | null>;
   locale: AiLocale;
   today: string;
   budgetCurrency: string;
@@ -665,6 +709,9 @@ export interface ImportRecognitionPipelineInput {
   chat: ImportRecognitionChat;
   /** Durable runners may resume after cycle one without retaining screenshots. */
   checkpoint?: ImportRecognitionResult;
+  /** Durable per-chunk resume state (indexed like `importImageChunks(images.length)`). */
+  chunks?: ReadonlyArray<ImportChunkState>;
+  chunkSize?: number;
   /** Default preserves the established reconcile-before-enrichment Stage A behavior.
    * Durable jobs opt into checkpoint-safe pre-reconciliation persistence. */
   pipelineMode?: "default" | "durable";
@@ -674,7 +721,11 @@ export interface ImportRecognitionPipelineInput {
   lifecycle?: {
     beforeUpstream?: () => Promise<void>;
     afterUpstream?: () => Promise<void>;
-    saveExtraction?: (result: ImportRecognitionResult) => Promise<void>;
+    /** One chunk of cycle one is durable; its screenshots may be released. */
+    saveChunkExtraction?: (chunkIndex: number, batch: ImportExtractBatch) => Promise<void>;
+    /** One chunk failed this attempt; the runner records it and decides whether it may retry. */
+    failChunk?: (chunkIndex: number, error: unknown) => Promise<ImportChunkFailureDisposition>;
+    saveExtraction?: (result: ImportRecognitionResult, failedChunks?: number[]) => Promise<void>;
     advancePhase?: (phase: "enriching" | "reconciling") => Promise<void>;
     /** Durable Stage A output, before current-ledger duplicate/account reconciliation. */
     saveResult?: (result: ImportRecognitionResult) => Promise<void>;
@@ -684,6 +735,110 @@ export interface ImportRecognitionPipelineInput {
 const mergeReviewReasons = (...groups: ReadonlyArray<readonly (typeof IMPORT_REVIEW_REASONS)[number][]>): (typeof IMPORT_REVIEW_REASONS)[number][] => [
   ...new Set(groups.flat()),
 ];
+
+type ChunkRun = { index: number; batch: ImportExtractBatch } | { index: number; disposition: ImportChunkFailureDisposition; error: unknown };
+
+/** Cycle one over one chunk: fence → vision call → fence → parse → rebase → durable save. */
+async function extractChunk(input: ImportRecognitionPipelineInput, chunk: ImportImageChunk, chunkCount: number, durable: boolean): Promise<ChunkRun> {
+  const images = input.images.slice(chunk.start, chunk.end);
+  try {
+    if (images.some((image) => typeof image !== "string" || image.length === 0)) throw new Error("import chunk images are missing");
+    await input.lifecycle?.beforeUpstream?.();
+    const raw = await input.chat(
+      buildImportExtractPrompt(images as string[], { envelopes: [], categories: [] }, input.today, input.locale, input.budgetCurrency),
+      AI_VISION_TIMEOUT_MS,
+      { stage: "extract", chunk: chunk.index },
+    );
+    await input.lifecycle?.afterUpstream?.();
+    const batch = rebaseChunkBatch(parseImportExtractResponse(raw, images.length), chunk, chunkCount);
+    if (durable) await input.lifecycle?.saveChunkExtraction?.(chunk.index, batch);
+    return { index: chunk.index, batch };
+  } catch (error) {
+    if (!durable || !input.lifecycle?.failChunk) throw error;
+    // The runner's own fence failures (lease lost, cancelled) propagate out of failChunk and
+    // abort the whole attempt; only genuine chunk failures come back as a disposition.
+    return { index: chunk.index, disposition: await input.lifecycle.failChunk(chunk.index, error), error };
+  }
+}
+
+/** Cycle one across every chunk that still needs reading, in parallel. */
+async function extractAllChunks(input: ImportRecognitionPipelineInput, durable: boolean): Promise<{ batch: ImportExtractBatch; failedChunks: number[] }> {
+  const chunkSize = input.chunkSize ?? IMPORT_JOB_CHUNK_SIZE;
+  const chunks = importImageChunks(input.images.length, chunkSize);
+  if (chunks.length === 0) throw new Error("import requires at least one image");
+  const state = new Map((input.chunks ?? []).map((chunk) => [chunk.index, chunk]));
+  const done = new Map<number, ImportExtractBatch>();
+  const failedChunks: number[] = [];
+  const pending: ImportImageChunk[] = [];
+  for (const chunk of chunks) {
+    const known = state.get(chunk.index);
+    if (known?.extraction) done.set(chunk.index, known.extraction);
+    else if (known?.permanentlyFailed) failedChunks.push(chunk.index);
+    else pending.push(chunk);
+  }
+
+  const settled = await Promise.allSettled(pending.map((chunk) => extractChunk(input, chunk, chunks.length, durable)));
+  const aborted = settled.find((outcome): outcome is PromiseRejectedResult => outcome.status === "rejected");
+  if (aborted) throw aborted.reason;
+  const retrying: number[] = [];
+  const reasons: unknown[] = [];
+  for (const outcome of settled) {
+    if (outcome.status !== "fulfilled") continue;
+    const run = outcome.value;
+    if ("batch" in run) done.set(run.index, run.batch);
+    else if (run.disposition === "retry") retrying.push(run.index);
+    else {
+      failedChunks.push(run.index);
+      reasons.push(run.error);
+    }
+  }
+  if (retrying.length > 0) throw new ImportChunksPendingError(retrying.sort((left, right) => left - right));
+  if (done.size === 0) throw new ImportExtractionFailedError(reasons);
+  return {
+    batch: mergeChunkBatches(chunks.filter((chunk) => done.has(chunk.index)).map((chunk) => done.get(chunk.index)!)),
+    failedChunks: failedChunks.sort((left, right) => left - right),
+  };
+}
+
+/** Text-only seam pass over cross-chunk pairs. Its failure is evidence, never a job failure. */
+async function judgeImportSeam(
+  input: ImportRecognitionPipelineInput,
+  batch: ImportExtractBatch,
+): Promise<{ batch: ImportExtractBatch; seam: ImportSeamOutcome }> {
+  const chunkSize = input.chunkSize ?? IMPORT_JOB_CHUNK_SIZE;
+  const pairs = findImportSeamPairs(batch.rows, chunkSize);
+  const { judged, overflow } = partitionImportSeamPairs(pairs);
+  const unresolved = [...findImportSeamDatelessRepeats(batch.rows, chunkSize), ...overflow].map(({ earlierRowId, laterRowId }) => ({
+    earlierRowId,
+    laterRowId,
+  }));
+  if (judged.length === 0) return { batch, seam: { unresolved } };
+
+  const rowsById = new Map(batch.rows.map((row) => [row.rowId, row]));
+  await input.lifecycle?.beforeUpstream?.();
+  let verdicts: Map<string, boolean> | null = null;
+  try {
+    const raw = await input.chat(
+      buildImportSeamPrompt(
+        judged.map((pair) => ({ pairId: pair.pairId, earlier: rowsById.get(pair.earlierRowId)!, later: rowsById.get(pair.laterRowId)! })),
+        input.locale,
+      ),
+      undefined,
+      { stage: "seam" },
+    );
+    verdicts = parseImportSeamResponse(
+      raw,
+      judged.map((pair) => pair.pairId),
+    );
+  } catch {
+    verdicts = null;
+  }
+  await input.lifecycle?.afterUpstream?.();
+  if (verdicts === null) {
+    return { batch, seam: { unresolved: [...judged.map(({ earlierRowId, laterRowId }) => ({ earlierRowId, laterRowId })), ...unresolved] } };
+  }
+  return { batch: applyImportSeamVerdicts(batch, judged, verdicts), seam: { unresolved } };
+}
 
 /** Shared extraction → validation → history → optional enrichment pipeline. */
 export async function runImportRecognitionPipeline(input: ImportRecognitionPipelineInput): Promise<ReconciledImportRecognitionResult> {
@@ -704,22 +859,18 @@ export async function runImportRecognitionPipeline(input: ImportRecognitionPipel
   if (input.checkpoint) {
     // Rows are the durable source of truth. Re-validation deliberately discards proposal
     // mutations produced by creation-time history or ledger reconciliation.
-    result = validateImportExtraction({ batch: { rows: input.checkpoint.rows }, budgetCurrency: input.budgetCurrency });
+    result = { ...validateImportExtraction({ batch: { rows: input.checkpoint.rows }, budgetCurrency: input.budgetCurrency }), seam: input.checkpoint.seam };
   } else {
-    await input.lifecycle?.beforeUpstream?.();
-    const extractionRaw = await input.chat(
-      buildImportExtractPrompt(input.images, { envelopes: [], categories: [] }, input.today, input.locale, input.budgetCurrency),
-      AI_VISION_TIMEOUT_MS,
-    );
-    await input.lifecycle?.afterUpstream?.();
-    const batch = parseImportExtractResponse(extractionRaw, input.images.length);
-    result = validateImportExtraction({ batch, budgetCurrency: input.budgetCurrency });
-    if (durable) await input.lifecycle?.saveExtraction?.(result);
+    const extracted = await extractAllChunks(input, durable);
+    const seamed = await judgeImportSeam(input, extracted.batch);
+    result = { ...validateImportExtraction({ batch: seamed.batch, budgetCurrency: input.budgetCurrency }), seam: seamed.seam };
+    if (durable) await input.lifecycle?.saveExtraction?.(result, extracted.failedChunks);
   }
+  result = applyImportSeamReviewReasons(result);
 
   // This is the pre-Task-4 ordering for every existing caller. Reconciliation annotations
   // intentionally participate in history selection, needsImportEnrichment, and cycle two.
-  if (!durable) result = reconcile(result);
+  if (!durable) result = { ...reconcile(result), seam: result.seam };
 
   const ownedAccountIds = input.accounts.filter((account) => !account.archived).map((account) => account.id);
   const history = result.proposals.map((proposal) => ({
@@ -727,7 +878,7 @@ export async function runImportRecognitionPipeline(input: ImportRecognitionPipel
     selection: selectImportHistoryCandidates({ accountId: input.accountId, ownedAccountIds, proposal }, input.historyRecords),
   }));
   result = {
-    rows: result.rows,
+    ...result,
     proposals: result.proposals.map((proposal) => {
       const selection = history.find((entry) => entry.rowId === proposal.rowId)!.selection;
       const historyReasons = [
@@ -748,24 +899,46 @@ export async function runImportRecognitionPipeline(input: ImportRecognitionPipel
 
   const activeEnvelopes = input.envelopes.filter((envelope) => !envelope.archived);
   const currentAccounts = input.accounts.filter((account) => !account.archived);
+  const constraints = {
+    envelopeIds: activeEnvelopes.map((envelope) => envelope.id),
+    categoryIds: input.categories.map((category) => category.id),
+    accountIds: currentAccounts.map((account) => account.id),
+  };
+  const entities = {
+    envelopes: activeEnvelopes.map(({ id, name }) => ({ id, name })),
+    categories: input.categories.map(({ id, name }) => ({ id, name })),
+    accounts: currentAccounts.map(({ id, name }) => ({ id, name })),
+  };
   await input.lifecycle?.advancePhase?.("enriching");
-  let raw: string;
-  await input.lifecycle?.beforeUpstream?.();
-  try {
-    raw = await input.chat(
-      buildImportEnrichPrompt(
-        {
-          result,
-          history,
-          envelopes: activeEnvelopes.map(({ id, name }) => ({ id, name })),
-          categories: input.categories.map(({ id, name }) => ({ id, name })),
-          accounts: currentAccounts.map(({ id, name }) => ({ id, name })),
-        },
-        input.locale,
-      ),
-    );
-  } catch (error) {
-    if (input.cycleTwoFailureMode === "strict") throw error;
+  const answerRows: ImportEnrichmentRow[] = [];
+  let enrichmentFailed = false;
+  const batches = importEnrichmentBatches(result.rows);
+  for (const [batchIndex, rows] of batches.entries()) {
+    const rowIds = new Set(rows.map((row) => row.rowId));
+    const slice: ImportRecognitionResult = { rows, proposals: result.proposals.filter((proposal) => rowIds.has(proposal.rowId)) };
+    let raw: string;
+    await input.lifecycle?.beforeUpstream?.();
+    try {
+      raw = await input.chat(
+        buildImportEnrichPrompt({ result: slice, history: history.filter((entry) => rowIds.has(entry.rowId)), ...entities }, input.locale),
+        undefined,
+        { stage: "enrich", batch: batchIndex },
+      );
+    } catch (error) {
+      if (input.cycleTwoFailureMode === "strict") throw error;
+      enrichmentFailed = true;
+      break;
+    }
+    await input.lifecycle?.afterUpstream?.();
+    try {
+      answerRows.push(...parseImportEnrichResponse(raw, constraints).rows);
+    } catch (error) {
+      if (input.cycleTwoFailureMode === "strict") throw new ImportEnrichmentMalformedError(error);
+      enrichmentFailed = true;
+      break;
+    }
+  }
+  if (enrichmentFailed) {
     await input.lifecycle?.advancePhase?.("reconciling");
     if (durable) {
       await input.lifecycle?.saveResult?.(result);
@@ -773,15 +946,15 @@ export async function runImportRecognitionPipeline(input: ImportRecognitionPipel
     }
     return result as ReconciledImportRecognitionResult;
   }
-  await input.lifecycle?.afterUpstream?.();
+
   let finalResult = result;
   try {
-    const answer = parseImportEnrichResponse(raw, {
-      envelopeIds: activeEnvelopes.map((envelope) => envelope.id),
-      categoryIds: input.categories.map((category) => category.id),
-      accountIds: currentAccounts.map((account) => account.id),
+    const merged = applyImportEnrichment(result, {
+      rows: answerRows,
+      allowedEnvelopeIds: constraints.envelopeIds,
+      allowedCategoryIds: constraints.categoryIds,
+      allowedAccountIds: constraints.accountIds,
     });
-    const merged = applyImportEnrichment(result, answer);
     const annotations = new Map(merged.proposals.map((proposal) => [proposal.rowId, proposal]));
     const finalRows = result.rows.map((row) => {
       const annotation = annotations.get(row.rowId)!;
@@ -812,6 +985,7 @@ export async function runImportRecognitionPipeline(input: ImportRecognitionPipel
     finalResult = {
       rows: result.rows,
       proposals: enriched,
+      ...(result.seam ? { seam: result.seam } : {}),
     };
   } catch (error) {
     if (input.cycleTwoFailureMode === "strict") throw new ImportEnrichmentMalformedError(error);
@@ -822,9 +996,85 @@ export async function runImportRecognitionPipeline(input: ImportRecognitionPipel
   return reconcile(finalResult);
 }
 
+/* ── Import from screenshots (seam: cross-chunk overlap, text only) ───── */
+
+export const IMPORT_SEAM_JSON_SCHEMA = {
+  name: "seam_duplicates",
+  strict: true,
+  schema: {
+    type: "object",
+    additionalProperties: false,
+    properties: {
+      pairs: {
+        type: "array",
+        items: {
+          type: "object",
+          additionalProperties: false,
+          properties: { pairId: { type: "string" }, sameEntry: { type: "boolean" } },
+          required: ["pairId", "sameEntry"],
+        },
+      },
+    },
+    required: ["pairs"],
+  },
+} as const;
+
+export interface ImportSeamPromptPair {
+  pairId: string;
+  earlier: ImportExtractRow;
+  later: ImportExtractRow;
+}
+
+const seamRowView = (row: ImportExtractRow) => ({
+  imageIndex: row.imageIndex,
+  visualOrder: row.visualOrder,
+  rawTextLines: row.rawTextLines,
+  date: row.date,
+  amount: row.amount,
+  currency: row.currency,
+  direction: row.direction,
+  postingStatus: row.postingStatus,
+  semanticKind: row.semanticKind,
+});
+
+/** Cycle one saw each chunk alone; this call sees only the rows on both sides of a seam. */
+export function buildImportSeamPrompt(pairs: ReadonlyArray<ImportSeamPromptPair>, locale: AiLocale): ChatRequest {
+  const system =
+    "You judge whether two rows extracted from DIFFERENT screenshots of the same account history are the same visible entry captured twice (overlapping screenshots), not two separate transactions. " +
+    "Each pair already has the same date, amount, currency and direction; only the visible text differs. " +
+    "Answer sameEntry true only when the texts plausibly describe one entry (abbreviation, truncation, wrapped lines, a status word, a different secondary line). " +
+    "Answer false when the texts name different merchants, references, cards or counterparties, or when nothing beyond the shared facts links them. " +
+    "Return one verdict per supplied pairId and nothing else. " +
+    languageDirectives(locale) +
+    "Return JSON.";
+  return {
+    messages: [
+      { role: "system", content: system },
+      {
+        role: "user",
+        content: JSON.stringify({ pairs: pairs.map((pair) => ({ pairId: pair.pairId, earlier: seamRowView(pair.earlier), later: seamRowView(pair.later) })) }),
+      },
+    ],
+    responseFormat: { type: "json_schema", json_schema: IMPORT_SEAM_JSON_SCHEMA },
+    reasoningEffort: "low",
+  };
+}
+
+/** Throws unless every supplied pair received exactly one boolean verdict. */
+export function parseImportSeamResponse(raw: string, pairIds: readonly string[]): Map<string, boolean> {
+  const parsed = z.object({ pairs: z.array(z.object({ pairId: z.string().min(1), sameEntry: z.boolean() })) }).parse(JSON.parse(raw));
+  const verdicts = new Map<string, boolean>();
+  for (const pair of parsed.pairs) {
+    if (verdicts.has(pair.pairId)) throw new Error("duplicate seam pairId");
+    verdicts.set(pair.pairId, pair.sameEntry);
+  }
+  for (const pairId of pairIds) if (!verdicts.has(pairId)) throw new Error("missing seam verdict");
+  return verdicts;
+}
+
 /** Throws on an invalid shape (like `rawOutput.parse` in the route). */
 export function parseImportExtractResponse(raw: string, imageCount: number): ImportExtractBatch {
-  if (!Number.isInteger(imageCount) || imageCount < 1 || imageCount > 6) throw new Error("invalid import image count");
+  if (!Number.isInteger(imageCount) || imageCount < 1 || imageCount > IMPORT_JOB_CHUNK_SIZE) throw new Error("invalid import image count");
   const input: unknown = JSON.parse(raw);
   const parsed = importRawOutput.parse(input);
   const rows = parsed.rows.map((row) => ({

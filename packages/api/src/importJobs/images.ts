@@ -1,11 +1,13 @@
+import { IMPORT_JOB_MAX_IMAGES } from "@enveo/shared";
 import type { ImportJobImageInput } from "./repository";
 
-export const IMPORT_JOB_MAX_IMAGES = 6;
-export const IMPORT_JOB_MAX_IMAGE_BYTES = 4 * 1024 * 1024;
-export const IMPORT_JOB_MAX_TOTAL_IMAGE_BYTES = 12 * 1024 * 1024;
-/** Twelve decoded MiB expands to exactly sixteen MiB of base64; reserve a small,
+export { IMPORT_JOB_MAX_IMAGES };
+/** The client downscales to 1600 px JPEG (~150–300 KB); 2 MiB leaves room for a dense desktop capture. */
+export const IMPORT_JOB_MAX_IMAGE_BYTES = 2 * 1024 * 1024;
+export const IMPORT_JOB_MAX_TOTAL_IMAGE_BYTES = 24 * 1024 * 1024;
+/** Twenty-four decoded MiB expands to exactly thirty-two MiB of base64; reserve a small,
  * deterministic allowance for the JSON envelope, data-URL headers, ids, and locale. */
-export const IMPORT_JOB_REQUEST_BODY_LIMIT_BYTES = 16 * 1024 * 1024 + 4096;
+export const IMPORT_JOB_REQUEST_BODY_LIMIT_BYTES = 32 * 1024 * 1024 + 4096;
 
 type ImportJobImageErrorCode = "invalid_image" | "too_large";
 

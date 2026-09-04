@@ -38,6 +38,8 @@ function detail(overrides: Partial<ImportJobDetail> = {}): ImportJobDetail {
     retryAt: null,
     result: null,
     proposalCount: 0,
+    screenshots: { total: 1, read: 0, failed: 0 },
+    partialFailure: null,
     appliedCount: 0,
     skippedCount: 0,
     createdAt: "2026-08-24T10:00:00.000Z",

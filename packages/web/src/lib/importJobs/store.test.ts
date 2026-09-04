@@ -23,6 +23,8 @@ const serverJob = (status: ImportJobDetail["status"] = "queued"): ImportJobDetai
   retryAt: null,
   result: status === "ready" ? { rows: [], proposals: [] } : null,
   proposalCount: 0,
+  screenshots: { total: 1, read: 0, failed: 0 },
+  partialFailure: null,
   appliedCount: 0,
   skippedCount: 0,
   createdAt: "2026-08-24T10:00:00.000Z",

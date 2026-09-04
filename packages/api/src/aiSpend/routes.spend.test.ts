@@ -56,38 +56,10 @@ describe.skipIf(!TEST_URL)("spend budget route contracts (DB-backed, child proce
     expect(out.suggestDenied).toEqual({ status: 200, source: "rules", warnsAiUnavailable: true, upstreamNotCalled: true });
   });
 
-  it("import denied before cycle 1: the AI-only route answers the stable 429 contract without egress", () => {
-    expect(out.importDeniedBeforeCycle1).toEqual({ status: 429, error: "ai_budget_exhausted", hasRetryAfterHeader: true, upstreamNotCalled: true });
-  });
-
   it("a STALLED counter fails OPEN: with the spend table exclusively locked, the answer still arrives inside the bounded deadlines", () => {
     expect(out.stalledCounter.status).toBe(200);
     expect(out.stalledCounter.contentOk).toBe(true);
     expect(out.stalledCounter.upstreamCalled).toBe(true);
     expect(out.stalledCounter.withinDeadlines).toBe(true);
-  });
-
-  it("cycle-1 charge exhausts the allowance: cycle 2 is independently checked, denied, and the RAW items return", () => {
-    expect(out.importCycle2Denied.status).toBe(200);
-    expect(out.importCycle2Denied.itemCount).toBe(2);
-    expect(out.importCycle2Denied.firstRawPlace).toBe("LIDL SP. Z O.O.");
-    expect(out.importCycle2Denied.upstreamCalls).toBe(1); // cycle 1 only
-    expect(out.importCycle2Denied.checks).toBe(2); // two independent per-attempt checks
-    expect(out.importCycle2Denied.records).toBe(1); // only the successful cycle-1 attempt charged
-  });
-
-  it("serves legacy and recognition import wires concurrently with the same metering semantics", () => {
-    expect(out.importCompatibility).toEqual({
-      legacyStatus: 200,
-      legacyItemCount: 1,
-      legacyHasRecognitionFields: false,
-      recognitionStatus: 200,
-      recognitionRowCount: 1,
-      recognitionProposalCount: 1,
-      recognitionHasLegacyItems: false,
-      upstreamCalls: 2,
-      checks: 2,
-      records: 2,
-    });
   });
 });

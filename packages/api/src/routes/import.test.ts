@@ -4,9 +4,8 @@
  * dedupe classification (import-dedupe). Transaction writes live on the client.
  */
 import { describe, expect, it } from "bun:test";
-import { readFileSync } from "node:fs";
 import type { ImportProposal } from "@enveo/shared";
-import { type ApplyItem, applyInput, findTransferError, legacyExtractInput, legacyItemsFromRecognition, planImportDryRun, recognizeInput } from "./import";
+import { type ApplyItem, applyInput, findTransferError, legacyItemsFromRecognition, planImportDryRun } from "./import";
 import { buildDupIndex, classifyDup } from "./import-dedupe";
 import { budgetAssertionFails } from "./sync";
 
@@ -15,18 +14,6 @@ const ACC_B = "22222222-2222-2222-2222-222222222222";
 const ENV = "33333333-3333-3333-3333-333333333333";
 
 describe("screenshot import wire inputs", () => {
-  it("logs only safe upstream metadata", () => {
-    const source = readFileSync(new URL("./import.ts", import.meta.url), "utf8");
-    expect(source).not.toContain("out.detail");
-    expect(source).toContain("requestId: out.requestId");
-  });
-  it("keeps the legacy images/locale request while the versioned recognition input requires an account", () => {
-    const body = { images: ["data:image/png;base64,AA=="], locale: "pl" };
-    expect(legacyExtractInput.parse(body)).toEqual(body);
-    expect(recognizeInput.safeParse(body).success).toBe(false);
-    expect(recognizeInput.parse({ ...body, accountId: ACC_A }).accountId).toBe(ACC_A);
-  });
-
   it("projects only complete safely selected candidates into the legacy items envelope", () => {
     const rows = [
       { rowId: "safe", rawTextLines: ["SAFE RAW"] },

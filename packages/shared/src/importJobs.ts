@@ -1,5 +1,11 @@
 import { z } from "zod";
-import { IMPORT_RELATION_KINDS, IMPORT_REVIEW_REASONS, IMPORT_SEMANTIC_KINDS, type ImportRecognitionResult } from "./importRecognition";
+import {
+  IMPORT_RELATION_KINDS,
+  IMPORT_REVIEW_REASONS,
+  IMPORT_SEMANTIC_KINDS,
+  type ImportExtractBatch,
+  type ImportRecognitionResult,
+} from "./importRecognition";
 
 export const IMPORT_JOB_STATUSES = ["queued", "running", "ready", "completed", "failed", "cancelled"] as const;
 export const IMPORT_JOB_PHASES = [
@@ -92,12 +98,41 @@ const importProposalSchema = z
   })
   .strict();
 
+/** One chunk's cycle-one checkpoint (rows only, already rebased onto the job). */
+export const importExtractBatchSchema: z.ZodType<ImportExtractBatch> = z.object({ rows: z.array(importExtractRowSchema) }).strict();
+
 /** The durable job captures Stage A recognition before ledger reconciliation. */
+const importSeamOutcomeSchema = z
+  .object({ unresolved: z.array(z.object({ earlierRowId: z.string().min(1), laterRowId: z.string().min(1) }).strict()) })
+  .strict();
+
 export const importJobResultSchema: z.ZodType<ImportRecognitionResult> = z
   .object({
     rows: z.array(importExtractRowSchema),
     proposals: z.array(importProposalSchema),
+    seam: importSeamOutcomeSchema.optional(),
   })
+  .strict();
+
+/** Screenshot-level progress of cycle one; `total` is 0 for jobs created before chunking. */
+export interface ImportJobScreenshotProgress {
+  total: number;
+  read: number;
+  failed: number;
+}
+
+/** Screenshots a finished job could not read were moved into a separate failed job that
+ *  the ordinary retry path re-reads without a new upload. */
+export interface ImportJobPartialFailure {
+  retryJobId: string;
+  imageCount: number;
+}
+
+export const importJobScreenshotProgressSchema: z.ZodType<ImportJobScreenshotProgress> = z
+  .object({ total: z.number().int().nonnegative(), read: z.number().int().nonnegative(), failed: z.number().int().nonnegative() })
+  .strict();
+export const importJobPartialFailureSchema: z.ZodType<ImportJobPartialFailure> = z
+  .object({ retryJobId: z.string().uuid(), imageCount: z.number().int().positive() })
   .strict();
 
 export interface ImportJobProgress {
@@ -134,6 +169,8 @@ export interface ImportJobSummary extends ImportJobProgress {
   createdAt: string;
   expiresAt: string;
   proposalCount: number;
+  screenshots: ImportJobScreenshotProgress;
+  partialFailure: ImportJobPartialFailure | null;
 }
 
 export interface ImportJobDetail extends ImportJobSummary {
@@ -154,6 +191,8 @@ const importJobSummaryShape = {
   createdAt: isoTimestampSchema,
   expiresAt: isoTimestampSchema,
   proposalCount: z.number().int().nonnegative(),
+  screenshots: importJobScreenshotProgressSchema,
+  partialFailure: importJobPartialFailureSchema.nullable(),
 } as const;
 
 export const importJobSummarySchema: z.ZodType<ImportJobSummary> = z.object(importJobSummaryShape).strict();

@@ -41,10 +41,12 @@ describe("AI transport timeout parity (api ↔ web via @enveo/shared)", () => {
   });
 
   it("operator and vaulted-BYOK import share the server vision pipeline and the browser outwaits both cycles", () => {
-    const importRoute = read("packages/api/src/routes/import.ts");
+    // The vision cap is applied inside the shared pipeline (one place for the worker, the
+    // BYOK routes and the browser); the interactive operator routes no longer exist.
+    const sharedPipeline = read("packages/shared/src/aiPrompts.ts");
     const credentialRoute = read("packages/api/src/routes/aiCredentials.ts");
     const webApi = read("packages/web/src/lib/api.ts");
-    expect(importRoute).toContain("AI_VISION_TIMEOUT_MS");
+    expect(sharedPipeline).toContain("AI_VISION_TIMEOUT_MS");
     expect(credentialRoute).toContain("extractImportForBudget");
     expect(credentialRoute).toContain("timeoutMs");
     expect(webApi.match(/AI_IMPORT_EXTRACT_TIMEOUT_MS/g)?.length).toBeGreaterThanOrEqual(3); // one import + both endpoint uses

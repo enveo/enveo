@@ -30,6 +30,8 @@ function job(overrides: Partial<ImportJobDetail> = {}): ImportJobDetail {
     updatedAt: "2026-08-24T12:00:00.000Z",
     expiresAt: "2026-08-31T12:00:00.000Z",
     proposalCount: 0,
+    screenshots: { total: 1, read: 0, failed: 0 },
+    partialFailure: null,
     locale: "pl-PL",
     epoch: 0,
     result: null,
@@ -58,6 +60,8 @@ function summary(overrides: Partial<ImportJobSummary> = {}): ImportJobSummary {
     updatedAt: detail.updatedAt,
     expiresAt: detail.expiresAt,
     proposalCount: detail.proposalCount,
+    screenshots: detail.screenshots,
+    partialFailure: detail.partialFailure,
     ...overrides,
   };
 }

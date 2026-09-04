@@ -1,6 +1,13 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
-import { ImportEnrichmentMalformedError, type ImportJobErrorCode, type ImportRecognitionResult } from "@enveo/shared";
+import {
+  ImportChunksPendingError,
+  ImportEnrichmentMalformedError,
+  type ImportExtractBatch,
+  ImportExtractionFailedError,
+  type ImportJobErrorCode,
+  type ImportRecognitionResult,
+} from "@enveo/shared";
 import { ByokInvalidBodyError, ByokUpstreamError } from "../aiCredentials/transport";
 import { SpendDenied } from "../aiSpend/transport";
 import { UpstreamNetworkError, UpstreamTimeoutError } from "../openaiHttp";
@@ -13,9 +20,10 @@ import {
   ImportJobMalformedResponse,
   ImportJobModelUnavailable,
   ImportJobTierMismatch,
+  type ImportRecognitionRunInput,
   processClaimedImportJob,
 } from "./processor";
-import type { ClaimedImportJob, ImportJobClaimContext } from "./repository";
+import type { ClaimedImportJob, ImportChunkFailure, ImportJobClaimContext } from "./repository";
 
 const NOW = new Date("2026-08-24T12:00:00.000Z");
 const EMPTY_RESULT: ImportRecognitionResult = { rows: [], proposals: [] };
@@ -37,6 +45,8 @@ const claimedJob = (over: Partial<ClaimedImportJob> = {}): ClaimedImportJob => (
   leaseExpiresAt: new Date("2026-08-24T12:05:00.000Z"),
   extraction: null,
   images: [{ position: 0, mimeType: "image/png", sha256: "a".repeat(64), byteLength: 2, content: new Uint8Array([1, 2]) }],
+  screenshotTotal: 1,
+  chunks: [{ index: 0, start: 0, end: 1, attempt: 0, status: "pending", errorCode: null, retryAt: null, extraction: null }],
   ...over,
 });
 
@@ -50,6 +60,14 @@ function processorFixture(options: { cancelledAfterUpstream?: boolean; enrichmen
       return true;
     },
     getForUser: async () => ({ cancelRequested }),
+    saveChunkExtraction: async (_id: string, _lease: string, chunkIndex: number, _batch: ImportExtractBatch) => {
+      events.push(`chunk-stored:${chunkIndex}`);
+      return true;
+    },
+    failChunk: async (_id: string, _lease: string, chunkIndex: number, failure: ImportChunkFailure) => {
+      events.push(`chunk-failed:${chunkIndex}:${failure.errorCode}:${failure.retryAt ? "retry" : "permanent"}`);
+      return true;
+    },
     saveExtractionAndDeleteImages: async (_id: string, _lease: string, result: ImportRecognitionResult) => {
       expect(result).toEqual(EMPTY_RESULT);
       events.push("extraction-stored");
@@ -77,14 +95,7 @@ function processorFixture(options: { cancelledAfterUpstream?: boolean; enrichmen
       return true;
     },
   };
-  const recognize = async (input: {
-    checkpoint: ImportRecognitionResult | null;
-    beforeUpstream: () => Promise<void>;
-    afterUpstream: () => Promise<void>;
-    saveExtraction: (result: ImportRecognitionResult) => Promise<void>;
-    advancePhase: (phase: "enriching" | "reconciling") => Promise<void>;
-    saveResult: (result: ImportRecognitionResult) => Promise<void>;
-  }) => {
+  const recognize = async (input: ImportRecognitionRunInput) => {
     if (options.recognitionError) throw options.recognitionError;
     expect(input.checkpoint).toBeNull();
     await input.beforeUpstream();
@@ -305,6 +316,7 @@ describe("plain import provider dispatch", () => {
         calls.push(input);
         return { kind: "ok", json: {}, content: "answer", requestId: null };
       },
+      logUpstreamCall: () => {},
     });
 
     const answer = await chat({ messages: [{ role: "user", content: "recognize" }] });
@@ -325,6 +337,7 @@ describe("plain import provider dispatch", () => {
       credentials: { withServerCredentialForWorker: async (_database, _owner, _budgetId, use) => use("unused") },
       operatorChat: async () => ({ kind: "upstream_error", status: 400, detail: "private upstream response", requestId: "req-safe" }),
       logUpstreamFailure: (metadata) => diagnostics.push(metadata),
+      logUpstreamCall: () => {},
     });
 
     await expect(chat({ messages: [{ role: "user", content: "private prompt" }] })).rejects.toThrow("openai 400");
@@ -345,8 +358,9 @@ describe("plain import provider dispatch", () => {
       },
       byokChat: async ({ apiKey, model }) => {
         calls.push(`byok:${apiKey}:${model}`);
-        return "owned-answer";
+        return { kind: "ok", json: {}, content: "owned-answer" };
       },
+      logUpstreamCall: () => {},
     });
 
     const answer = await chat({ messages: [] });
@@ -399,5 +413,183 @@ describe("plain import retry classification", () => {
       kind: "permanent",
       errorCode: "malformed_model_response",
     });
+  });
+});
+
+describe("chunked cycle one in the worker", () => {
+  const twoWindowJob = () =>
+    claimedJob({
+      screenshotTotal: 7,
+      images: Array.from({ length: 7 }, (_, position) => ({
+        position,
+        mimeType: "image/png",
+        sha256: "a".repeat(64),
+        byteLength: 2,
+        content: new Uint8Array([1, 2]),
+      })),
+      chunks: [
+        { index: 0, start: 0, end: 6, attempt: 0, status: "pending", errorCode: null, retryAt: null, extraction: null },
+        { index: 1, start: 6, end: 7, attempt: 1, status: "pending", errorCode: "ai_timeout", retryAt: null, extraction: null },
+      ],
+    });
+
+  test("hands per-chunk state to recognition and judges each failed window on its own attempt counter", async () => {
+    // given: window 1 already failed once; this claim it fails again while window 0 succeeds
+    const fixture = processorFixture();
+    let seenChunks: unknown;
+    const recognize = async (input: ImportRecognitionRunInput) => {
+      seenChunks = input.chunks;
+      await input.beforeUpstream();
+      await input.afterUpstream();
+      await input.saveChunkExtraction(0, { rows: [] });
+      const disposition = await input.failChunk(1, new UpstreamTimeoutError(1_000));
+      expect(disposition).toBe("retry");
+      throw new ImportChunksPendingError([1]);
+    };
+
+    // when: the worker processes the claim
+    const outcome = await processClaimedImportJob(twoWindowJob(), { ...fixture, recognize, now: () => NOW });
+
+    // then: the job waits for the earliest chunk retry with that chunk's error, nothing is marked ready
+    expect(seenChunks).toEqual([
+      { index: 0, extraction: null, permanentlyFailed: false },
+      { index: 1, extraction: null, permanentlyFailed: false },
+    ]);
+    expect(outcome).toEqual({ kind: "retry", errorCode: "ai_timeout", retryAt: new Date(NOW.getTime() + 120_000) });
+    expect(fixture.events).toContain("chunk-stored:0");
+    expect(fixture.events).toContain("chunk-failed:1:ai_timeout:retry");
+    expect(fixture.events).toContain("retry:ai_timeout:2026-08-24T12:02:00.000Z");
+    expect(fixture.events).not.toContain("ready");
+  });
+
+  test("marks a window permanent after its third attempt and fails the job only when nothing was read", async () => {
+    const fixture = processorFixture();
+    const job = twoWindowJob();
+    job.chunks[1]!.attempt = 2;
+    const recognize = async (input: ImportRecognitionRunInput) => {
+      expect(await input.failChunk(1, new UpstreamNetworkError(new Error("down")))).toBe("permanent");
+      expect(await input.failChunk(0, new UpstreamNetworkError(new Error("down")))).toBe("retry");
+      throw new ImportChunksPendingError([0]);
+    };
+
+    const outcome = await processClaimedImportJob(job, { ...fixture, recognize, now: () => NOW });
+
+    expect(fixture.events).toContain("chunk-failed:1:network:permanent");
+    expect(fixture.events).toContain("chunk-failed:0:network:retry");
+    expect(outcome).toMatchObject({ kind: "retry", errorCode: "network" });
+
+    const exhausted = processorFixture();
+    const allFailed = async (input: ImportRecognitionRunInput) => {
+      await input.failChunk(0, new UpstreamTimeoutError(1_000));
+      await input.failChunk(1, new UpstreamTimeoutError(1_000));
+      throw new ImportExtractionFailedError([new UpstreamTimeoutError(1_000)]);
+    };
+    const failedJob = twoWindowJob();
+    failedJob.chunks[0]!.attempt = 2;
+    failedJob.chunks[1]!.attempt = 2;
+    expect(await processClaimedImportJob(failedJob, { ...exhausted, recognize: allFailed, now: () => NOW })).toEqual({
+      kind: "failed",
+      errorCode: "ai_timeout",
+    });
+    expect(exhausted.events).toContain("failed:ai_timeout");
+  });
+
+  test("judges a post-extraction failure as a first attempt when extraction completed in this claim", async () => {
+    // given: the third claim of a job whose windows only now finished reading
+    const fixture = processorFixture();
+    const recognize = async (input: ImportRecognitionRunInput) => {
+      await input.saveChunkExtraction(0, { rows: [] });
+      await input.saveExtraction(EMPTY_RESULT);
+      throw new ImportEnrichmentMalformedError(new Error("bad rows"));
+    };
+
+    const outcome = await processClaimedImportJob(claimedJob({ attempt: 3 }), { ...fixture, recognize, now: () => NOW });
+
+    // then: enrichment gets its own retry budget instead of inheriting the exhausted extraction attempts
+    expect(outcome).toEqual({ kind: "retry", errorCode: "malformed_model_response", retryAt: new Date(NOW.getTime() + 30_000) });
+  });
+
+  test("keeps a resumed post-extraction stage on the stored attempt counter", async () => {
+    const fixture = processorFixture();
+    const recognize = async () => {
+      throw new ImportEnrichmentMalformedError(new Error("bad rows"));
+    };
+
+    const outcome = await processClaimedImportJob(claimedJob({ attempt: 3, extraction: EMPTY_RESULT, images: [], phase: "validating" }), {
+      ...fixture,
+      recognize,
+      now: () => NOW,
+    });
+
+    expect(outcome).toEqual({ kind: "failed", errorCode: "malformed_model_response" });
+  });
+
+  test("propagates a lost lease discovered while recording a window failure", async () => {
+    const fixture = processorFixture();
+    fixture.repository.failChunk = async () => false;
+    const recognize = async (input: ImportRecognitionRunInput) => {
+      await input.failChunk(1, new UpstreamTimeoutError(1_000));
+      throw new Error("unreachable");
+    };
+
+    const outcome = await processClaimedImportJob(twoWindowJob(), { ...fixture, recognize, now: () => NOW });
+
+    expect(outcome).toEqual({ kind: "lease_expired", errorCode: "expired" });
+  });
+
+  test("resumes a job whose screenshots are gone but whose windows are checkpointed", async () => {
+    const fixture = processorFixture();
+    const recognize = async (input: ImportRecognitionRunInput) => {
+      expect(input.chunks?.[0]?.extraction).toEqual({ rows: [] });
+      await input.saveExtraction(EMPTY_RESULT);
+      await input.advancePhase("reconciling");
+      await input.saveResult(EMPTY_RESULT);
+      return EMPTY_RESULT;
+    };
+    const job = claimedJob({
+      images: [],
+      chunks: [{ index: 0, start: 0, end: 1, attempt: 1, status: "extracted", errorCode: null, retryAt: null, extraction: { rows: [] } }],
+    });
+
+    expect(await processClaimedImportJob(job, { ...fixture, recognize, now: () => NOW })).toEqual({ kind: "ready" });
+  });
+});
+
+describe("upstream call diagnostics", () => {
+  test("logs duration and token usage per model call without any prompt or answer content", async () => {
+    const entries: unknown[] = [];
+    let tick = 1_000;
+    const chat = createImportJobChat(claimedJob(), {
+      database: {} as never,
+      credentials: { withServerCredentialForWorker: async (_database, _owner, _budgetId, use) => use("unused") },
+      operatorChat: async () => ({
+        kind: "ok",
+        json: { usage: { prompt_tokens: 1440, completion_tokens: 2100 } },
+        content: '{"rows":[]}',
+        requestId: null,
+      }),
+      logUpstreamCall: (entry) => entries.push(entry),
+      now: () => (tick += 250),
+    });
+
+    await chat({ messages: [{ role: "user", content: "private prompt" }] }, undefined, { stage: "extract", chunk: 2 });
+
+    expect(entries).toEqual([
+      { jobId: claimedJob().id, stage: "extract", chunk: 2, batch: null, durationMs: 250, promptTokens: 1440, completionTokens: 2100, outcome: "ok" },
+    ]);
+    expect(JSON.stringify(entries)).not.toContain("private prompt");
+  });
+
+  test("logs a failed call with its stage and no token counts", async () => {
+    const entries: Array<{ outcome: string; stage: string; promptTokens: number | null }> = [];
+    const chat = createImportJobChat(claimedJob(), {
+      database: {} as never,
+      credentials: { withServerCredentialForWorker: async (_database, _owner, _budgetId, use) => use("unused") },
+      operatorChat: async () => ({ kind: "denied", retryAfterSeconds: 5 }),
+      logUpstreamCall: (entry) => entries.push(entry),
+    });
+
+    await expect(chat({ messages: [] }, undefined, { stage: "seam" })).rejects.toBeInstanceOf(SpendDenied);
+    expect(entries).toEqual([expect.objectContaining({ outcome: "error", stage: "seam", promptTokens: null })]);
   });
 });

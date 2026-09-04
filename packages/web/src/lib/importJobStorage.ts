@@ -1,4 +1,11 @@
-import type { AiLocale, ImportJobDetail, ImportJobProgress, ImportJobProviderSnapshot } from "@enveo/shared";
+import type {
+  AiLocale,
+  ImportJobDetail,
+  ImportJobPartialFailure,
+  ImportJobProgress,
+  ImportJobProviderSnapshot,
+  ImportJobScreenshotProgress,
+} from "@enveo/shared";
 import {
   idbDelete,
   idbDeleteExpiredImportDrafts,
@@ -48,12 +55,17 @@ export interface StoredE2eeImportJob extends ImportJobProgress {
   locale: AiLocale;
   tier: "e2ee";
   epoch: number;
+  /** `{ images: (string | null)[] }` — a read window's screenshots are nulled in place. */
   inputCiphertext: string | null;
+  /** Per-window cycle-one state (`{ chunks: [...] }`), present only while windows are being read. */
+  chunkCiphertext: string | null;
   checkpointCiphertext: string | null;
   resultCiphertext: string | null;
   /** Optimistic phase-write fence for duplicate browser runners. */
   checkpointRevision: number;
   proposalCount: number;
+  screenshots: ImportJobScreenshotProgress;
+  partialFailure: ImportJobPartialFailure | null;
   appliedCount: number;
   skippedCount: number;
   createdAt: string;
@@ -243,15 +255,42 @@ function persistedJob(job: StoredE2eeImportJob): StoredE2eeImportJob {
     errorCode: job.errorCode,
     retryAt: job.retryAt,
     inputCiphertext: ciphertext(job.inputCiphertext),
+    chunkCiphertext: ciphertext(job.chunkCiphertext ?? null),
     checkpointCiphertext: ciphertext(job.checkpointCiphertext),
     resultCiphertext: ciphertext(job.resultCiphertext),
     checkpointRevision: job.checkpointRevision,
     proposalCount: job.proposalCount,
+    screenshots: normalizedScreenshots(job.screenshots),
+    partialFailure: normalizedPartialFailure(job.partialFailure),
     appliedCount: job.appliedCount,
     skippedCount: job.skippedCount,
     createdAt: job.createdAt,
     updatedAt: job.updatedAt,
     expiresAt: job.expiresAt,
+  };
+}
+
+const nonnegativeInt = (value: unknown): number => (typeof value === "number" && Number.isInteger(value) && value >= 0 ? value : 0);
+
+function normalizedScreenshots(value: unknown): ImportJobScreenshotProgress {
+  const record = value && typeof value === "object" ? (value as Record<string, unknown>) : {};
+  return { total: nonnegativeInt(record.total), read: nonnegativeInt(record.read), failed: nonnegativeInt(record.failed) };
+}
+
+function normalizedPartialFailure(value: unknown): ImportJobPartialFailure | null {
+  const record = value && typeof value === "object" ? (value as Record<string, unknown>) : null;
+  return record && typeof record.retryJobId === "string" && record.retryJobId.length > 0 && nonnegativeInt(record.imageCount) > 0
+    ? { retryJobId: record.retryJobId, imageCount: nonnegativeInt(record.imageCount) }
+    : null;
+}
+
+/** Records written before 4.3 lack the window fields; assume the oldest client shape. */
+function normalizedJob(job: StoredE2eeImportJob): StoredE2eeImportJob {
+  return {
+    ...job,
+    chunkCiphertext: job.chunkCiphertext ?? null,
+    screenshots: normalizedScreenshots(job.screenshots),
+    partialFailure: normalizedPartialFailure(job.partialFailure),
   };
 }
 
@@ -464,12 +503,12 @@ export const importJobStorage = {
   async getJob(scope: ImportJobStorageScope, id: string): Promise<StoredE2eeImportJob | undefined> {
     assertValidScope(scope);
     const job = await idbGet<StoredE2eeImportJob>("importJobs", id);
-    return job && inScope(job, scope) ? job : undefined;
+    return job && inScope(job, scope) ? normalizedJob(job) : undefined;
   },
 
   async listJobs(scope: ImportJobStorageScope): Promise<StoredE2eeImportJob[]> {
     assertValidScope(scope);
-    return newestFirst((await idbGetAll<StoredE2eeImportJob>("importJobs")).filter((job) => inScope(job, scope)));
+    return newestFirst((await idbGetAll<StoredE2eeImportJob>("importJobs")).filter((job) => inScope(job, scope)).map(normalizedJob));
   },
 
   async putJob(scope: ImportJobStorageScope, job: StoredE2eeImportJob): Promise<void> {
