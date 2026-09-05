@@ -1,8 +1,10 @@
 import {
   type BalanceMatchCandidate,
   type BalanceMatchChange,
+  balanceMatchOptions,
   type ClientLedger,
   type ImportDupStatus,
+  type ImportExtractRow,
   type ImportProposal,
   type ImportReviewReason,
   type ImportSemanticKind,
@@ -63,6 +65,8 @@ const REASON_MESSAGES: Record<ImportReviewReason, Message> = {
   unknown_posting_status: msg("Posting status is unknown"),
   unknown_kind: msg("Unknown transaction type"),
   possible_duplicate: msg("May repeat a row from another screenshot"),
+  inferred_date: msg("Date taken from the neighbouring screenshot"),
+  suspicious_text: msg("Text looks like an attempt to manipulate the import"),
 };
 
 export function importReviewReasonMessage(reason: string): Message {
@@ -447,4 +451,124 @@ export function bankBalanceHint(rows: ReadonlyArray<{ rowRole: string; rawTextLi
     }
   }
   return null;
+}
+
+/* ── Pending holds and the no-match diagnosis ── */
+
+export interface ImportPendingHolds {
+  /** Signed effect of every distinct pending entry on the account (holds are negative). */
+  total: number;
+  /** Distinct pending entries counted. */
+  count: number;
+  /** Foreign-currency holds whose account-currency figure could not be read. */
+  unconverted: number;
+}
+
+const holdText = (row: ImportExtractRow): string => row.rawTextLines.join("\n").trim().toLowerCase();
+
+/**
+ * What the bank still holds against its AVAILABLE balance: the pending entries the screenshots
+ * show. The import never adds them, so a typed available balance must be compared with the
+ * balance after import MINUS these. A pending entry repeated in different screenshots (the
+ * overlap, or the same hold shown under two dates) is one hold; repeats inside one screenshot
+ * are separate holds. A foreign-currency hold uses the account-currency figure of its linked
+ * FX row when that is readable, and is otherwise reported as unconverted.
+ */
+export function importPendingHolds(rows: ReadonlyArray<ImportExtractRow>, currency: string): ImportPendingHolds {
+  const fxFor = new Map<string, ImportExtractRow>();
+  for (const row of rows) {
+    if (row.rowRole === "supporting_detail" && row.relation?.kind === "fx_for") fxFor.set(row.relation.rowId, row);
+  }
+  const byId = new Map(rows.map((row) => [row.rowId, row]));
+  const perImage = new Map<string, Map<number, { effect: number | null; count: number }>>();
+  for (const row of rows) {
+    if (row.rowRole !== "financial_event" || row.postingStatus !== "pending" || row.amount === null || row.amount <= 0) continue;
+    let effect: number | null = null;
+    if (row.currency === currency) effect = row.amount;
+    else {
+      const fx = fxFor.get(row.rowId) ?? (row.relation?.kind === "fx_for" ? byId.get(row.relation.rowId) : undefined);
+      effect = fx ? accountCurrencyFigure(fx.rawTextLines, currency) : null;
+    }
+    if (effect !== null) effect = row.direction === "credit" ? effect : -effect;
+    const key = `${holdText(row)}|${row.amount}|${row.currency}`;
+    const images = perImage.get(key) ?? new Map<number, { effect: number | null; count: number }>();
+    const entry = images.get(row.imageIndex) ?? { effect, count: 0 };
+    images.set(row.imageIndex, { effect: entry.effect ?? effect, count: entry.count + 1 });
+    perImage.set(key, images);
+  }
+  let total = 0;
+  let count = 0;
+  let unconverted = 0;
+  for (const images of perImage.values()) {
+    // one hold per distinct entry, or as many as ONE screenshot shows at once
+    const widest = [...images.values()].reduce((best, entry) => (entry.count > best.count ? entry : best));
+    const effect = widest.effect ?? [...images.values()].find((entry) => entry.effect !== null)?.effect ?? null;
+    count += widest.count;
+    if (effect === null) unconverted += widest.count;
+    else total += effect * widest.count;
+  }
+  return { total, count, unconverted };
+}
+
+/** "18.21 EUR < 79.26 PLN" → 7926 when the account currency is PLN. */
+function accountCurrencyFigure(lines: readonly string[], currency: string): number | null {
+  const pattern = new RegExp(`(-?\\d[\\d\\s\\u00a0.,]*\\d|\\d)\\s*${currency}(?![A-Z])`, "i");
+  for (const line of lines) {
+    const match = pattern.exec(line);
+    if (!match) continue;
+    const parsed = parseDisplayAmount(match[1]!);
+    if (parsed !== null) return Math.abs(parsed);
+  }
+  return null;
+}
+
+export interface ImportBalanceDiagnosis {
+  /** The largest difference the uncertain rows could explain if every change went the same way. */
+  reach: number;
+  /** Ledger rows on the account entered by hand (no import trace) since the import's first date. */
+  manualEntries: Array<{ id: string; date: string; effect: number; name: string | null; transfer: boolean }>;
+}
+
+/**
+ * When no change set fits, say why in terms the human can act on: how much the doubtful rows
+ * could account for at most, and which entries on this account carry no import trace in the
+ * period — the usual home of a balance drift that predates the screenshots.
+ */
+export function importBalanceDiagnosis(args: {
+  candidates: ReadonlyArray<BalanceMatchCandidate>;
+  transactions: ClientLedger["transactions"];
+  accountId: string;
+  since: string | null;
+  limit?: number;
+}): ImportBalanceDiagnosis {
+  const reach = args.candidates.reduce((sum, candidate) => sum + Math.max(0, ...balanceMatchOptions(candidate).map((option) => Math.abs(option.delta))), 0);
+  const manualEntries = args.transactions
+    .filter((transaction) => transaction.sourceRef === null && (args.since === null || transaction.date >= args.since))
+    .filter((transaction) => transaction.accountId === args.accountId || (transaction.type === "transfer" && transaction.toAccountId === args.accountId))
+    .sort((left, right) => (left.date < right.date ? 1 : left.date > right.date ? -1 : 0))
+    .slice(0, args.limit ?? 5)
+    .map((transaction) => ({
+      id: transaction.id,
+      date: transaction.date,
+      effect:
+        transaction.type === "income"
+          ? transaction.amount
+          : transaction.type === "expense"
+            ? transaction.isRefund
+              ? transaction.amount
+              : -transaction.amount
+            : transaction.accountId === args.accountId
+              ? -transaction.amount
+              : transaction.amount,
+      name: transaction.name ?? transaction.note ?? null,
+      transfer: transaction.type === "transfer",
+    }));
+  return { reach, manualEntries };
+}
+
+/** The earliest date the screenshots show, the natural start of "this period". */
+export function importPeriodStart(rows: ReadonlyArray<{ date: string | null }>): string | null {
+  let earliest: string | null = null;
+  for (const row of rows) if (row.date && (earliest === null || row.date < earliest)) earliest = row.date;
+  return earliest;
 }

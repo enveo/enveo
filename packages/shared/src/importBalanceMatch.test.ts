@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { balanceMatchOptions, findBalanceMatches } from "./importBalanceMatch";
+import { balanceMatchOptions, findBalanceMatches, findNearestBalanceMatch } from "./importBalanceMatch";
 
 const candidate = (id: string, effect: number, included: boolean, flippable = false) => ({ id, effect, included, flippable });
 
@@ -58,5 +58,28 @@ describe("finding a selection that matches the bank balance", () => {
     expect(findBalanceMatches(many, -300, { maxSolutions: 3 })).toHaveLength(3);
     expect(findBalanceMatches(many, -600)).toEqual([]);
     expect(findBalanceMatches(many, -300, { maxCandidates: 2 })).toEqual([]);
+  });
+});
+
+describe("the closest fit when nothing is exact", () => {
+  const candidate = (id: string, effect: number, included = true, flippable = false): BalanceMatchCandidate => ({ id, effect, included, flippable });
+
+  it("returns the change set with the smallest residual, then the fewest changes", () => {
+    // given: a 1000 credit read twice, a cancelled 1339.07 top-up, and a 4.99 row missing from the screenshots
+    const nearest = findNearestBalanceMatch([candidate("dup-1000", 100000), candidate("cancelled", 133907), candidate("pending", -48342, false)], -234406);
+
+    expect(nearest).toEqual({
+      changes: [
+        { id: "dup-1000", action: "exclude", delta: -100000 },
+        { id: "cancelled", action: "exclude", delta: -133907 },
+      ],
+      residual: -499,
+    });
+  });
+
+  it("offers nothing when no change brings the difference closer, or when it is already zero", () => {
+    expect(findNearestBalanceMatch([candidate("a", -500)], -700)).toBeNull(); // excluding a spend moves the wrong way
+    expect(findNearestBalanceMatch([candidate("a", -500)], 0)).toBeNull();
+    expect(findNearestBalanceMatch([], -700)).toBeNull();
   });
 });

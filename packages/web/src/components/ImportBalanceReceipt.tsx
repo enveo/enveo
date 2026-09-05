@@ -1,8 +1,8 @@
-import type { BalanceMatchChange } from "@enveo/shared";
+import type { BalanceMatchChange, BalanceMatchNearest } from "@enveo/shared";
 import type { ReactNode } from "react";
 import { useTheme } from "../lib/contexts";
 import { useT } from "../lib/i18n";
-import type { ImportBalanceEffect } from "../lib/importReview";
+import type { ImportBalanceDiagnosis, ImportBalanceEffect, ImportPendingHolds } from "../lib/importReview";
 import { CORAL, TEAL } from "../lib/theme";
 import { AmountField } from "./AmountField";
 import type { AmountPadTarget } from "./AmountPadSheet";
@@ -19,8 +19,11 @@ export type ImportBalanceMatchState =
   | { kind: "idle" }
   | { kind: "searching" }
   | { kind: "proposal"; changes: BalanceMatchChange[]; rationale: string | null; alternatives: number }
-  | { kind: "none" }
+  | { kind: "none"; nearest: BalanceMatchNearest | null }
   | { kind: "declined"; rationale: string };
+
+/** Which figure the bank screen shows: available (holds already taken off) or booked. */
+export type ImportBankBalanceKind = "available" | "booked";
 
 export function ImportBalanceReceipt({
   source,
@@ -29,7 +32,11 @@ export function ImportBalanceReceipt({
   bankValue,
   onBankValue,
   pad,
+  holds,
+  balanceKind,
+  onBalanceKind,
   difference,
+  diagnosis,
   match,
   proposalFits,
   rowLabel,
@@ -37,6 +44,7 @@ export function ImportBalanceReceipt({
   onReconcileAfter,
   onMatch,
   onApply,
+  onApplyNearest,
   onDismiss,
 }: {
   /** The import's source account: current balance, selected rows' effect, balance after. */
@@ -47,8 +55,14 @@ export function ImportBalanceReceipt({
   bankValue: string;
   onBankValue: (value: string) => void;
   pad: readonly [AmountPadTarget | null, (target: AmountPadTarget | null) => void];
-  /** Bank balance minus balance after import; null until a bank figure is typed. */
+  /** Pending entries on the screenshots: what separates the booked balance from the available one. */
+  holds: ImportPendingHolds;
+  balanceKind: ImportBankBalanceKind;
+  onBalanceKind: (kind: ImportBankBalanceKind) => void;
+  /** Bank balance minus the comparable balance after import; null until a bank figure is typed. */
   difference: number | null;
+  /** Why nothing fits, computed only when the search came back empty. */
+  diagnosis: ImportBalanceDiagnosis | null;
   match: ImportBalanceMatchState;
   proposalFits: boolean;
   rowLabel: (rowId: string) => string;
@@ -56,6 +70,8 @@ export function ImportBalanceReceipt({
   onReconcileAfter: (value: boolean) => void;
   onMatch: () => void;
   onApply: () => void;
+  /** Applies the closest fit; the residual stays on the receipt for Reconcile. */
+  onApplyNearest: () => void;
   onDismiss: () => void;
 }) {
   const C = useTheme();
@@ -93,6 +109,15 @@ export function ImportBalanceReceipt({
     </div>
   );
   const signed = (value: number) => `${value < 0 ? "−" : "+"}${money(Math.abs(value))}`;
+  const changeLine = (change: BalanceMatchChange) =>
+    line(
+      change.action === "exclude"
+        ? t("Uncheck {row}", { row: rowLabel(change.id) })
+        : change.action === "include"
+          ? t("Check {row}", { row: rowLabel(change.id) })
+          : t("Reverse {row}", { row: rowLabel(change.id) }),
+      <span style={{ fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap", color: C.soft }}>{signed(change.delta)}</span>,
+    );
 
   return (
     <section
@@ -105,6 +130,18 @@ export function ImportBalanceReceipt({
       {line(t("Selected rows"), figure(source.delta, "soft"))}
       {line(t("After import"), figure(source.after), { strong: true, rule: true, testId: "import-balance-after" })}
       {others.map((effect) => line(t("{account} after import", { account: effect.name }), figure(effect.after)))}
+      {holds.count > 0 && (
+        <>
+          {line(
+            holds.unconverted > 0
+              ? t("Pending on the screenshots ({n} in another currency not counted)", { n: holds.unconverted })
+              : t("Pending on the screenshots"),
+            figure(holds.total, "soft"),
+            { testId: "import-pending-holds" },
+          )}
+          {line(t("Available after import"), figure(source.after + holds.total), { testId: "import-available-after" })}
+        </>
+      )}
 
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 12, padding: "3px 0", fontSize: 13 }}>
         <span style={{ color: C.soft }}>{t("Bank shows")}</span>
@@ -118,6 +155,16 @@ export function ImportBalanceReceipt({
           externalPad={pad}
         />
       </div>
+      {holds.count > 0 && (
+        <div role="radiogroup" aria-label={t("Which balance the bank shows")} style={{ display: "flex", gap: 14, padding: "0 0 4px", fontSize: 12.5 }}>
+          {(["available", "booked"] as const).map((kind) => (
+            <label key={kind} style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer", color: balanceKind === kind ? C.text : C.soft }}>
+              <input type="radio" name="import-bank-balance-kind" value={kind} checked={balanceKind === kind} onChange={() => onBalanceKind(kind)} />
+              <span>{kind === "available" ? t("available balance") : t("booked balance")}</span>
+            </label>
+          ))}
+        </div>
+      )}
 
       {difference !== null &&
         line(
@@ -152,16 +199,7 @@ export function ImportBalanceReceipt({
       {match.kind === "proposal" && (
         <div data-testid="import-bank-proposal" style={{ marginTop: 10, paddingLeft: 12, borderLeft: `2px solid ${C.line}` }}>
           <div style={{ fontSize: 13, fontWeight: 650, color: C.text, marginBottom: 2 }}>{t("Suggested changes")}</div>
-          {match.changes.map((change) =>
-            line(
-              change.action === "exclude"
-                ? t("Uncheck {row}", { row: rowLabel(change.id) })
-                : change.action === "include"
-                  ? t("Check {row}", { row: rowLabel(change.id) })
-                  : t("Reverse {row}", { row: rowLabel(change.id) }),
-              <span style={{ fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap", color: C.soft }}>{signed(change.delta)}</span>,
-            ),
-          )}
+          {match.changes.map(changeLine)}
           {proposalFits && difference !== null && source && line(t("After changes"), figure(source.after + difference), { strong: true, rule: true })}
           {match.rationale && <div style={{ marginTop: 6, fontSize: 12.5, lineHeight: 1.45, color: C.soft }}>{match.rationale}</div>}
           {match.alternatives > 0 && (
@@ -214,9 +252,54 @@ export function ImportBalanceReceipt({
       {(match.kind === "none" || match.kind === "declined") && difference !== null && difference !== 0 && (
         <div data-testid="import-bank-no-match" style={{ marginTop: 8, fontSize: 12.5, lineHeight: 1.45, color: C.text }}>
           <div>
-            {match.kind === "none" ? t("No combination of uncertain rows explains the difference.") : t("The assistant found no convincing combination.")}
+            {match.kind === "declined"
+              ? t("The assistant found no convincing combination.")
+              : diagnosis && Math.abs(difference) > diagnosis.reach
+                ? t(
+                    "The uncertain rows could explain at most {amount}. A transaction is probably missing from the screenshots, or the app already differed from the bank before this import.",
+                    {
+                      amount: money(diagnosis.reach),
+                    },
+                  )
+                : t("No combination of uncertain rows explains the difference.")}
           </div>
           {match.kind === "declined" && match.rationale && <div style={{ marginTop: 4, color: C.soft }}>{match.rationale}</div>}
+          {match.kind === "none" && match.nearest && (
+            <div data-testid="import-bank-nearest" style={{ marginTop: 10, paddingLeft: 12, borderLeft: `2px solid ${C.line}` }}>
+              <div style={{ fontSize: 13, fontWeight: 650, color: C.text, marginBottom: 2 }}>{t("Closest fit")}</div>
+              {match.nearest.changes.map(changeLine)}
+              {line(t("Still unexplained"), figure(match.nearest.residual, match.nearest.residual > 0 ? "pos" : "neg"), { strong: true, rule: true })}
+              <button
+                type="button"
+                onClick={onApplyNearest}
+                style={{
+                  marginTop: 8,
+                  width: "100%",
+                  padding: "10px 8px",
+                  borderRadius: 10,
+                  border: `1px solid ${C.line}`,
+                  background: C.bg,
+                  color: C.text,
+                  fontWeight: 650,
+                  fontSize: 13,
+                  cursor: "pointer",
+                }}
+              >
+                {t("Apply the closest fit")}
+              </button>
+            </div>
+          )}
+          {diagnosis && diagnosis.manualEntries.length > 0 && (
+            <div data-testid="import-manual-entries" style={{ marginTop: 8 }}>
+              <div style={{ color: C.soft }}>{t("Entered by hand in this period, worth a second look:")}</div>
+              {diagnosis.manualEntries.map((entry) =>
+                line(
+                  `${entry.date} · ${entry.name ?? (entry.transfer ? t("Transfer") : t("No name"))}`,
+                  <span style={{ fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap", color: C.soft }}>{signed(entry.effect)}</span>,
+                ),
+              )}
+            </div>
+          )}
           <label style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 8, cursor: "pointer" }}>
             <input type="checkbox" checked={reconcileAfter} onChange={(event) => onReconcileAfter(event.target.checked)} />
             <span>{t("Reconcile to the bank balance after adding")}</span>

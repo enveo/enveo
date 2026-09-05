@@ -72,6 +72,8 @@ const importExtractRowSchema = z
     relation: importRelationSchema.nullable(),
     confidence: z.enum(["low", "medium", "high"]),
     reviewReasons: z.array(z.enum(IMPORT_REVIEW_REASONS)),
+    suspiciousText: z.boolean().optional(),
+    dateInferred: z.boolean().optional(),
   })
   .strict();
 const importProposalSchema = z

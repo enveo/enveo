@@ -18,7 +18,7 @@ import { requireTier } from "../context";
 import { type DB, db } from "../db/client";
 import * as s from "../db/schema";
 import { assertBudgetFks } from "../sync/apply";
-import { buildDupIndex, classifyDup } from "./import-dedupe";
+import { buildDupIndex, classifyDup, existingImportRowsForAccount, importCandidateDirection } from "./import-dedupe";
 import { budgetAssertionFails } from "./sync";
 
 /**
@@ -288,6 +288,9 @@ export type ApplyItem = z.infer<typeof applyInput>["items"][number];
 
 export interface ExistingImportEvidence {
   accountId: string;
+  /** Transfers into `accountId` sit on the sending account; they are evidence for the receiving side too. */
+  toAccountId: string | null;
+  type: "expense" | "income" | "transfer";
   date: string;
   amount: number;
   sourceRef: string | null;
@@ -299,7 +302,7 @@ export function planImportDryRun(input: { globalAccountId: string; items: ApplyI
   const duplicateIndexFor = (accountId: string) => {
     let index = duplicateIndexes.get(accountId);
     if (!index) {
-      index = buildDupIndex(input.existing.filter((row) => row.accountId === accountId).map(({ date, amount, sourceRef }) => ({ date, amount, sourceRef })));
+      index = buildDupIndex(existingImportRowsForAccount(input.existing, accountId));
       duplicateIndexes.set(accountId, index);
     }
     return index;
@@ -309,7 +312,13 @@ export function planImportDryRun(input: { globalAccountId: string; items: ApplyI
   const results: Array<ApplyItem & { status: "added" | "exists" | "probable" }> = [];
   for (const item of input.items) {
     const duplicateIndex = duplicateIndexFor(item.accountId ?? input.globalAccountId);
-    const status = item.force ? "new" : classifyDup({ date: item.date, amount: item.amount, rawPlace: item.rawPlace }, duplicateIndex);
+    const accountId = item.accountId ?? input.globalAccountId;
+    const status = item.force
+      ? "new"
+      : classifyDup(
+          { date: item.date, amount: item.amount, rawPlace: item.rawPlace, direction: importCandidateDirection({ ...item, accountId }, accountId) },
+          duplicateIndex,
+        );
     if (status === "exists") {
       skipped++;
       results.push({ ...item, status });
@@ -363,7 +372,14 @@ importRoutes.post("/import/apply", async (c) => {
 
   const dates = [...new Set(body.items.map((i) => i.date))];
   const existing = await db
-    .select({ accountId: s.transactions.accountId, date: s.transactions.date, amount: s.transactions.amount, sourceRef: s.transactions.sourceRef })
+    .select({
+      accountId: s.transactions.accountId,
+      toAccountId: s.transactions.toAccountId,
+      type: s.transactions.type,
+      date: s.transactions.date,
+      amount: s.transactions.amount,
+      sourceRef: s.transactions.sourceRef,
+    })
     .from(s.transactions)
     .where(and(eq(s.transactions.budgetId, budgetId), inArray(s.transactions.date, dates)));
   return c.json(planImportDryRun({ globalAccountId: body.accountId, items: body.items, existing }));
