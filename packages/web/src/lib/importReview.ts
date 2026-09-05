@@ -4,11 +4,11 @@ import {
   balanceMatchOptions,
   type ClientLedger,
   type ImportDupStatus,
-  type ImportExtractRow,
   type ImportProposal,
   type ImportReviewReason,
   type ImportSemanticKind,
   importProposalBlockingReasons,
+  parseDisplayAmount,
   type ReconciledImportProposal,
   type ReconciledImportRecognitionResult,
 } from "@enveo/shared";
@@ -61,12 +61,13 @@ const REASON_MESSAGES: Record<ImportReviewReason, Message> = {
   impossible_fx: msg("FX amounts do not match"),
   relation_changes_ledger_shape: msg("Related rows could change the ledger"),
   fact_correction: msg("AI suggested changing an extracted fact"),
-  pending_or_declined: msg("Pending or declined"),
+  pending_or_declined: msg("Declined by the bank"),
   unknown_posting_status: msg("Posting status is unknown"),
   unknown_kind: msg("Unknown transaction type"),
   possible_duplicate: msg("May repeat a row from another screenshot"),
   inferred_date: msg("Date taken from the neighbouring screenshot"),
   suspicious_text: msg("Text looks like an attempt to manipulate the import"),
+  fx_converted: msg("Amount taken from the exchange line"),
 };
 
 export function importReviewReasonMessage(reason: string): Message {
@@ -427,17 +428,6 @@ export function applyBalanceMatchToReview(args: {
 const BALANCE_LABEL = /saldo|balance|dost[eę]pn|available|stan konta|kontostand|solde|saldo disponible/i;
 const NUMBER_TOKEN = /-?\d[\d\s\u00a0.,]*\d|-?\d/g;
 
-
-
-function parseDisplayAmount(token: string): number | null {
-  const compact = token.replace(/[\s\u00a0]/g, "");
-  const decimal = /[.,](\d{2})$/.exec(compact);
-  const integerPart = (decimal ? compact.slice(0, -3) : compact).replace(/[.,]/g, "");
-  if (!/^-?\d+$/.test(integerPart)) return null;
-  const minor = Number.parseInt(integerPart, 10) * 100 + (decimal ? Number.parseInt(decimal[1]!, 10) * (integerPart.startsWith("-") ? -1 : 1) : 0);
-  return Number.isSafeInteger(minor) ? minor : null;
-}
-
  
 export function bankBalanceHint(rows: ReadonlyArray<{ rowRole: string; rawTextLines: string[] }>): number | null {
   for (const row of rows) {
@@ -454,73 +444,6 @@ export function bankBalanceHint(rows: ReadonlyArray<{ rowRole: string; rawTextLi
 }
 
  
-
-export interface ImportPendingHolds {
-   
-  total: number;
-   
-  count: number;
-  /** Foreign-currency holds whose account-currency figure could not be read. */
-  unconverted: number;
-}
-
-const holdText = (row: ImportExtractRow): string => row.rawTextLines.join("\n").trim().toLowerCase();
-
-/**
- * What the bank still holds against its AVAILABLE balance: the pending entries the screenshots
- * show. The import never adds them, so a typed available balance must be compared with the
- * balance after import MINUS these. A pending entry repeated in different screenshots (the
- * overlap, or the same hold shown under two dates) is one hold; repeats inside one screenshot
- * are separate holds. A foreign-currency hold uses the account-currency figure of its linked
- * FX row when that is readable, and is otherwise reported as unconverted.
- */
-export function importPendingHolds(rows: ReadonlyArray<ImportExtractRow>, currency: string): ImportPendingHolds {
-  const fxFor = new Map<string, ImportExtractRow>();
-  for (const row of rows) {
-    if (row.rowRole === "supporting_detail" && row.relation?.kind === "fx_for") fxFor.set(row.relation.rowId, row);
-  }
-  const byId = new Map(rows.map((row) => [row.rowId, row]));
-  const perImage = new Map<string, Map<number, { effect: number | null; count: number }>>();
-  for (const row of rows) {
-    if (row.rowRole !== "financial_event" || row.postingStatus !== "pending" || row.amount === null || row.amount <= 0) continue;
-    let effect: number | null = null;
-    if (row.currency === currency) effect = row.amount;
-    else {
-      const fx = fxFor.get(row.rowId) ?? (row.relation?.kind === "fx_for" ? byId.get(row.relation.rowId) : undefined);
-      effect = fx ? accountCurrencyFigure(fx.rawTextLines, currency) : null;
-    }
-    if (effect !== null) effect = row.direction === "credit" ? effect : -effect;
-    const key = `${holdText(row)}|${row.amount}|${row.currency}`;
-    const images = perImage.get(key) ?? new Map<number, { effect: number | null; count: number }>();
-    const entry = images.get(row.imageIndex) ?? { effect, count: 0 };
-    images.set(row.imageIndex, { effect: entry.effect ?? effect, count: entry.count + 1 });
-    perImage.set(key, images);
-  }
-  let total = 0;
-  let count = 0;
-  let unconverted = 0;
-  for (const images of perImage.values()) {
-     
-    const widest = [...images.values()].reduce((best, entry) => (entry.count > best.count ? entry : best));
-    const effect = widest.effect ?? [...images.values()].find((entry) => entry.effect !== null)?.effect ?? null;
-    count += widest.count;
-    if (effect === null) unconverted += widest.count;
-    else total += effect * widest.count;
-  }
-  return { total, count, unconverted };
-}
-
-/** Reads the figure printed next to the requested currency code; never computes an exchange rate. */
-function accountCurrencyFigure(lines: readonly string[], currency: string): number | null {
-  const pattern = new RegExp(`(-?\\d[\\d\\s\\u00a0.,]*\\d|\\d)\\s*${currency}(?![A-Z])`, "i");
-  for (const line of lines) {
-    const match = pattern.exec(line);
-    if (!match) continue;
-    const parsed = parseDisplayAmount(match[1]!);
-    if (parsed !== null) return Math.abs(parsed);
-  }
-  return null;
-}
 
 export interface ImportBalanceDiagnosis {
    

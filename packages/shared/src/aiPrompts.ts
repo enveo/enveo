@@ -913,10 +913,17 @@ export async function runImportRecognitionPipeline(input: ImportRecognitionPipel
 
 
     const repaired = repairImportRelations(extracted.batch);
-    const seamed = await judgeImportSeam(input, inferImportDates(repaired.batch), extracted.chunks);
+    const dated = inferImportDates(repaired.batch);
+    const seamed = await judgeImportSeam(input, dated, extracted.chunks);
+     
+    const linked = new Set(
+      seamed.batch.rows.flatMap((row) =>
+        row.relation?.kind === "duplicate_of" ? [`${row.rowId}|${row.relation.rowId}`, `${row.relation.rowId}|${row.rowId}`] : [],
+      ),
+    );
     result = {
       ...validateImportExtraction({ batch: seamed.batch, budgetCurrency: input.budgetCurrency }),
-      seam: { unresolved: [...repaired.unresolved, ...seamed.seam.unresolved] },
+      seam: { unresolved: [...repaired.unresolved, ...seamed.seam.unresolved].filter((pair) => !linked.has(`${pair.earlierRowId}|${pair.laterRowId}`)) },
     };
     if (durable) await input.lifecycle?.saveExtraction?.(result, extracted.failedChunks);
   }
