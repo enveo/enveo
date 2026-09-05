@@ -10,11 +10,13 @@ import { AppProviders } from "./lib/contexts";
 import { loadLocale, uiLang } from "./lib/i18n";
 import { startImportJobManager } from "./lib/importJobs/bootstrap";
 import { initInstallPrompt } from "./lib/installPrompt";
+import { preventIosFocusZoom } from "./lib/iosFocusZoom";
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { staleTime: 5_000, refetchOnWindowFocus: false } },
 });
 
+preventIosFocusZoom();  
 initInstallPrompt(); 
 
 
