@@ -18,7 +18,9 @@ export class ImportJobImageError extends Error {
   }
 }
 
-const DATA_URL = /^data:(image\/(?:jpeg|png|webp));base64,([A-Za-z0-9+/]*={0,2})$/;
+const DATA_URL = /^data:(image\/(?:jpeg|png|webp)|text\/plain);base64,([A-Za-z0-9+/]*={0,2})$/;
+/** A statement page's extracted text; a dense page is a few KB, so this is generous. */
+export const IMPORT_JOB_MAX_TEXT_PAGE_BYTES = 256 * 1024;
 function isStrictBase64(value: string): boolean {
   if (value.length === 0 || value.length % 4 !== 0) return false;
   const padding = value.endsWith("==") ? 2 : value.endsWith("=") ? 1 : 0;
@@ -59,6 +61,11 @@ function decodeOne(value: string): ImportJobImageInput {
 
   const content = new Uint8Array(Buffer.from(encoded, "base64"));
   if (Buffer.from(content).toString("base64") !== encoded) throw new ImportJobImageError("invalid_image");
+  if (mimeType === "text/plain") {
+    // A statement page (see shared/importStatement.ts): UTF-8 text, no magic to check.
+    if (content.byteLength === 0 || content.byteLength > IMPORT_JOB_MAX_TEXT_PAGE_BYTES) throw new ImportJobImageError("too_large");
+    return { mimeType, content };
+  }
   if (content.byteLength > IMPORT_JOB_MAX_IMAGE_BYTES) throw new ImportJobImageError("too_large");
   if (!hasMagic(mimeType, content)) throw new ImportJobImageError("invalid_image");
   return { mimeType, content };

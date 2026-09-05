@@ -292,18 +292,23 @@ describe("screenshot import proposal validation", () => {
     expect(result.proposals[0]!.reviewReasons).toContain("unknown_posting_status");
   });
 
-  it("keeps a financial FX row selected but blocks it until the user reviews it", () => {
+  it("treats a financial exchange entry as the money movement its sign shows", () => {
+    // A statement's "Exchange money PLN -79.26" settles a foreign purchase that never appears
+    // on its own: an expense; a credit would be income.
     const result = validateImportExtraction({
-      batch: { rows: [extractRow({ semanticKind: "fx_conversion", rowRole: "financial_event" })] },
+      batch: {
+        rows: [
+          extractRow({ rowId: "out", semanticKind: "fx_conversion", rowRole: "financial_event" }),
+          extractRow({ rowId: "in", semanticKind: "fx_conversion", rowRole: "financial_event", direction: "credit" }),
+          extractRow({ rowId: "unsigned", semanticKind: "fx_conversion", rowRole: "financial_event", direction: "unknown" }),
+        ],
+      },
       budgetCurrency: "PLN",
     });
 
-    expect(result.proposals[0]).toMatchObject({
-      type: null,
-      disposition: "unresolved",
-      selected: true,
-      reviewReasons: ["unknown_kind"],
-    });
+    expect(result.proposals[0]).toMatchObject({ type: "expense", disposition: "candidate", selected: true, reviewReasons: [] });
+    expect(result.proposals[1]).toMatchObject({ type: "income", disposition: "candidate", selected: true });
+    expect(result.proposals[2]).toMatchObject({ type: null, disposition: "unresolved", reviewReasons: ["unknown_kind"] });
   });
 
   it("selects incomplete financial facts and pending entries while leaving supporting and declined rows unselected", () => {
