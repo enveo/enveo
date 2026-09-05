@@ -26,27 +26,57 @@ export const IMPORT_SEAM_MAX_MODEL_PAIRS = 40;
  
 export const IMPORT_ENRICH_BATCH_SIZE = 80;
 
+
+
+
+
+
+
+
+export const IMPORT_JOB_CHUNK_OVERLAP = 1;
+
 export interface ImportImageChunk {
   index: number;
    
   start: number;
    
   end: number;
+   
+  leadOverlap: number;
 }
 
-export function importImageChunks(imageCount: number, chunkSize = IMPORT_JOB_CHUNK_SIZE): ImportImageChunk[] {
+export function importImageChunks(imageCount: number, chunkSize = IMPORT_JOB_CHUNK_SIZE, overlap = IMPORT_JOB_CHUNK_OVERLAP): ImportImageChunk[] {
   if (!Number.isInteger(imageCount) || imageCount < 0) throw new Error("invalid import image count");
   if (!Number.isInteger(chunkSize) || chunkSize < 1) throw new Error("invalid import chunk size");
+  if (!Number.isInteger(overlap) || overlap < 0 || overlap >= chunkSize) throw new Error("invalid import chunk overlap");
+  if (imageCount <= chunkSize) return imageCount === 0 ? [] : [{ index: 0, start: 0, end: imageCount, leadOverlap: 0 }];
+  const stride = chunkSize - overlap;
   const chunks: ImportImageChunk[] = [];
-  for (let start = 0; start < imageCount; start += chunkSize) {
-    chunks.push({ index: chunks.length, start, end: Math.min(imageCount, start + chunkSize) });
+  for (let start = 0; start === 0 || start + overlap < imageCount; start += stride) {
+    chunks.push({ index: chunks.length, start, end: Math.min(imageCount, start + chunkSize), leadOverlap: start === 0 ? 0 : overlap });
   }
   return chunks;
 }
 
+/** Window ranges recorded by a durable runner become the layout again (legacy jobs kept
+ *  non-overlapping windows; nothing here assumes the current stride). */
+export function importChunkLayout(ranges: ReadonlyArray<{ index: number; start: number; end: number }>): ImportImageChunk[] {
+  const ordered = [...ranges].sort((left, right) => left.index - right.index);
+  return ordered.map((range, position) => {
+    const previous = ordered[position - 1];
+    return {
+      index: range.index,
+      start: range.start,
+      end: range.end,
+      leadOverlap: previous ? Math.max(0, Math.min(previous.end - range.start, range.end - range.start - 1)) : 0,
+    };
+  });
+}
+
  
-export function importChunkIndexOf(imageIndex: number, chunkSize = IMPORT_JOB_CHUNK_SIZE): number {
-  return Math.floor(imageIndex / chunkSize);
+export function importChunkIndexOf(imageIndex: number, chunks: ReadonlyArray<ImportImageChunk>): number {
+  const owner = chunks.find((chunk) => imageIndex >= chunk.start + chunk.leadOverlap && imageIndex < chunk.end);
+  return owner?.index ?? chunks.find((chunk) => imageIndex >= chunk.start && imageIndex < chunk.end)?.index ?? 0;
 }
 
 const CHUNK_ROW_PREFIX = /^c(\d+):/;
@@ -63,14 +93,17 @@ export function importChunkRowId(chunkIndex: number, rowId: string): string {
 
 export function rebaseChunkBatch(batch: ImportExtractBatch, chunk: ImportImageChunk, chunkCount: number): ImportExtractBatch {
   if (chunkCount <= 1 && chunk.start === 0) return batch;
-  const rowIds = new Set(batch.rows.map((row) => row.rowId));
+  
+
+
+  const kept = batch.rows.filter((row) => row.imageIndex >= chunk.leadOverlap);
+  const rowIds = new Set(kept.map((row) => row.rowId));
   return {
-    rows: batch.rows.map((row) => ({
+    rows: kept.map((row) => ({
       ...row,
       rowId: importChunkRowId(chunk.index, row.rowId),
       imageIndex: row.imageIndex + chunk.start,
-      relation:
-        row.relation && rowIds.has(row.relation.rowId) ? { kind: row.relation.kind, rowId: importChunkRowId(chunk.index, row.relation.rowId) } : row.relation,
+      relation: row.relation && rowIds.has(row.relation.rowId) ? { kind: row.relation.kind, rowId: importChunkRowId(chunk.index, row.relation.rowId) } : null,
     })),
   };
 }
@@ -127,7 +160,7 @@ const seamKey = (row: ImportExtractRow): string => `${row.date}|${row.amount}|${
  * Pairs are emitted in screenshot order, each later row paired with its nearest earlier
  * candidate only, so one repeated amount cannot explode into a quadratic pair list.
  */
-export function findImportSeamPairs(rows: ReadonlyArray<ImportExtractRow>, chunkSize = IMPORT_JOB_CHUNK_SIZE): ImportSeamPair[] {
+export function findImportSeamPairs(rows: ReadonlyArray<ImportExtractRow>, chunks: ReadonlyArray<ImportImageChunk>): ImportSeamPair[] {
   const ordered = rows
     .map((row, inputOrder) => ({ row, inputOrder }))
     .sort(byScreenshotOrder)
@@ -138,12 +171,12 @@ export function findImportSeamPairs(rows: ReadonlyArray<ImportExtractRow>, chunk
   for (const row of ordered) {
     const key = seamKey(row);
     const candidates = earlierByKey.get(key) ?? [];
-    const chunk = importChunkIndexOf(row.imageIndex, chunkSize);
+    const chunk = importChunkIndexOf(row.imageIndex, chunks);
     const text = seamText(row);
     const alreadyLinked = row.relation?.kind === "duplicate_of" ? row.relation.rowId : null;
     for (let index = candidates.length - 1; index >= 0; index -= 1) {
       const earlier = candidates[index]!;
-      if (importChunkIndexOf(earlier.imageIndex, chunkSize) === chunk) continue;
+      if (importChunkIndexOf(earlier.imageIndex, chunks) === chunk) continue;
       if (seamText(earlier) === text) break;
       if (alreadyLinked === earlier.rowId) break;
       pairs.push({ pairId: `${pairs.length + 1}`, earlierRowId: earlier.rowId, laterRowId: row.rowId });
@@ -162,7 +195,7 @@ export function findImportSeamPairs(rows: ReadonlyArray<ImportExtractRow>, chunk
  * fact may be invented for it: it is surfaced as an unresolved seam pair (review evidence) and
  * left to the human, never linked or dated.
  */
-export function findImportSeamDatelessRepeats(rows: ReadonlyArray<ImportExtractRow>, chunkSize = IMPORT_JOB_CHUNK_SIZE): ImportSeamPair[] {
+export function findImportSeamDatelessRepeats(rows: ReadonlyArray<ImportExtractRow>, chunks: ReadonlyArray<ImportImageChunk>): ImportSeamPair[] {
   const ordered = rows
     .map((row, inputOrder) => ({ row, inputOrder }))
     .sort(byScreenshotOrder)
@@ -177,8 +210,8 @@ export function findImportSeamDatelessRepeats(rows: ReadonlyArray<ImportExtractR
       continue;
     }
     if (row.date !== null) continue;
-    const chunk = importChunkIndexOf(row.imageIndex, chunkSize);
-    const earlier = (datedByText.get(key) ?? []).filter((candidate) => importChunkIndexOf(candidate.imageIndex, chunkSize) !== chunk).at(-1);
+    const chunk = importChunkIndexOf(row.imageIndex, chunks);
+    const earlier = (datedByText.get(key) ?? []).filter((candidate) => importChunkIndexOf(candidate.imageIndex, chunks) !== chunk).at(-1);
     if (earlier) repeats.push({ pairId: `d${repeats.length + 1}`, earlierRowId: earlier.rowId, laterRowId: row.rowId });
   }
   return repeats;

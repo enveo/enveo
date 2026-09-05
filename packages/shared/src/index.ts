@@ -6,6 +6,7 @@ export * from "./automaticEnvelope";
 export * from "./budget";
 export * from "./currency";
 export * from "./goals";
+export * from "./importBalanceMatch";
 export * from "./importChunks";
 export * from "./importDedupe";
 export * from "./importHistory";

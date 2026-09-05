@@ -58,15 +58,18 @@ export function ReconcileSheet({
   envelopes,
   groups,
   onClose,
+  initialValue = "",
 }: {
   account: AccountView | null;
   envelopes: StateResponse["envelopes"];
   groups: StateResponse["groups"];
   onClose: () => void;
+   
+  initialValue?: string;
 }) {
   const M = useMask();
   const { t } = useT();
-  const [val, setVal] = useState("");
+  const [val, setVal] = useState(initialValue);
   const [envelopeSelection, setEnvelopeSelection] = useState<ReconciliationEnvelopeSelection | null>(null);
   const [showEnvelopePicker, setShowEnvelopePicker] = useState(false);
   
@@ -82,7 +85,10 @@ export function ReconcileSheet({
     }
     const previousBalanceSource = actualBalanceSource.current;
     actualBalanceSource.current = { id: account.id, balance: account.balance };
-    setVal((current) => reconciliationActualValueAfterAccountRefresh(current, previousBalanceSource, account));
+     
+    setVal((current) =>
+      previousBalanceSource === null && initialValue ? initialValue : reconciliationActualValueAfterAccountRefresh(current, previousBalanceSource, account),
+    );
     setEnvelopeSelection((current) => reconciliationEnvelopeAfterAccountRefresh(current, account.id, automaticEnvelopeId));
     setShowEnvelopePicker(false);
   }, [account?.id, account?.balance, automaticEnvelopeId]);

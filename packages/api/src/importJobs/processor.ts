@@ -258,7 +258,13 @@ export async function processClaimedImportJob(job: ClaimedImportJob, deps: Impor
       chunks:
         job.chunks.length === 0
           ? undefined
-          : job.chunks.map((chunk) => ({ index: chunk.index, extraction: chunk.extraction, permanentlyFailed: chunk.status === "failed" })),
+          : job.chunks.map((chunk) => ({
+              index: chunk.index,
+              start: chunk.start,
+              end: chunk.end,
+              extraction: chunk.extraction,
+              permanentlyFailed: chunk.status === "failed",
+            })),
       beforeUpstream: fence,
       afterUpstream: fence,
       saveChunkExtraction: (chunkIndex, batch) => checkpoint(() => deps.repository.saveChunkExtraction(job.id, job.leaseToken, chunkIndex, batch, now())),

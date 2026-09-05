@@ -23,9 +23,13 @@ const CONTAINERS = ["Surface", "Sheet"] as const;
 /** Blank out comments (preserving offsets/newlines) so a `<Surface>` mention in prose never
  *  counts as a tag — the ReconcileSheet docblock alone would otherwise poison the depth count. */
 function stripComments(src: string): string {
-  return src
-    .replace(/\/\*[\s\S]*?\*\//g, (m) => m.replace(/[^\n]/g, " "))
-    .replace(/(^|[^:"'])\/\/[^\n]*/gm, (m, prefix: string) => prefix + " ".repeat(m.length - prefix.length));
+  return (
+    src
+      // `/*` directly before a quote is a glob inside a string (`accept="image/*"`), not a comment:
+      // treating it as one blanked everything up to the next real `*/`, closers included.
+      .replace(/\/\*(?!["'`])[\s\S]*?\*\//g, (m) => m.replace(/[^\n]/g, " "))
+      .replace(/(^|[^:"'])\/\/[^\n]*/gm, (m, prefix: string) => prefix + " ".repeat(m.length - prefix.length))
+  );
 }
 
 function tsxFiles(root: string): string[] {
