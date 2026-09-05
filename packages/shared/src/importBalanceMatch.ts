@@ -91,3 +91,57 @@ export function findBalanceMatches(
   }
   return [];
 }
+
+export interface BalanceMatchNearest {
+  changes: BalanceMatchChange[];
+  /** What the difference becomes after these changes (bank minus balance after); never zero here. */
+  residual: number;
+}
+
+/**
+ * When nothing explains the difference exactly, the change set that comes CLOSEST — smallest
+ * remaining difference, then fewest changes — is still useful: applied, it leaves a residual small
+ * enough to name (a single missing row, a fee) and to settle with a balance adjustment. Bounded
+ * like the exact search but one change shallower, since every combination must be visited.
+ */
+export function findNearestBalanceMatch(
+  candidates: ReadonlyArray<BalanceMatchCandidate>,
+  difference: number,
+  limits: { maxChanges?: number; maxCandidates?: number } = {},
+): BalanceMatchNearest | null {
+  const maxChanges = limits.maxChanges ?? BALANCE_MATCH_MAX_CHANGES - 1;
+  const maxCandidates = limits.maxCandidates ?? BALANCE_MATCH_MAX_CANDIDATES;
+  if (!Number.isInteger(difference) || difference === 0) return null;
+  const pool = candidates
+    .slice(0, maxCandidates)
+    .map(balanceMatchOptions)
+    .filter((options) => options.length > 0);
+  if (pool.length === 0) return null;
+
+  let best: BalanceMatchNearest | null = null;
+  const chosen: BalanceMatchChange[] = [];
+  const consider = (sum: number) => {
+    const residual = difference - sum;
+    if (
+      best === null ||
+      Math.abs(residual) < Math.abs(best.residual) ||
+      (Math.abs(residual) === Math.abs(best.residual) && chosen.length < best.changes.length)
+    ) {
+      best = { changes: [...chosen], residual };
+    }
+  };
+  const search = (from: number, sum: number): void => {
+    if (chosen.length > 0) consider(sum);
+    if (chosen.length >= maxChanges) return;
+    for (let index = from; index < pool.length; index += 1) {
+      for (const option of pool[index]!) {
+        chosen.push(option);
+        search(index + 1, sum + option.delta);
+        chosen.pop();
+      }
+    }
+  };
+  search(0, 0);
+  // An improvement over doing nothing is the only nearest fit worth showing.
+  return best !== null && Math.abs((best as BalanceMatchNearest).residual) < Math.abs(difference) ? best : null;
+}

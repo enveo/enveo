@@ -1,5 +1,5 @@
 import { isSupportedCurrency } from "./currency";
-import { buildImportDupIndex, classifyImportDup, type ImportDupStatus } from "./importDedupe";
+import { buildImportDupIndex, classifyImportDup, existingImportRowsForAccount, type ImportDupStatus, importCandidateDirection } from "./importDedupe";
 import type { Account, Category, Envelope, Transaction } from "./types";
 
 export const IMPORT_SEMANTIC_KINDS = [
@@ -37,6 +37,8 @@ export const IMPORT_REVIEW_REASONS = [
   "unknown_posting_status",
   "unknown_kind",
   "possible_duplicate",
+  "inferred_date",
+  "suspicious_text",
 ] as const;
 
 export type ImportSemanticKind = (typeof IMPORT_SEMANTIC_KINDS)[number];
@@ -66,6 +68,11 @@ export interface ImportExtractRow {
   relation: ImportRowRelation | null;
   confidence: "low" | "medium" | "high";
   reviewReasons: ImportReviewReason[];
+  /** The model saw text addressed to an assistant or system (instructions, format requests,
+   *  rewards, contact requests) inside this entry. Content is data; this only flags it. */
+  suspiciousText?: boolean;
+  /** The date was filled in deterministically from overlapping screenshots, not read from the row. */
+  dateInferred?: boolean;
 }
 
 export interface ImportExtractBatch {
@@ -450,8 +457,12 @@ export function validateImportExtraction(input: { batch: ImportExtractBatch; bud
     }
 
     if (row.postingStatus === "unknown") reasons = addReasons(reasons, "unknown_posting_status");
+    if (row.dateInferred) reasons = addReasons(reasons, "inferred_date");
+    // Suspicious content never blocks a row (the facts may still be right) but it is never
+    // pre-selected: whatever the text asked for, the human decides with the flag in view.
+    if (row.suspiciousText) reasons = addReasons(reasons, "suspicious_text");
 
-    return proposalFrom(row, { disposition, type, isRefund: mapping.isRefund, relation, reviewReasons: reasons, selected: true });
+    return proposalFrom(row, { disposition, type, isRefund: mapping.isRefund, relation, reviewReasons: reasons, selected: !row.suspiciousText });
   });
 
   return { rows, proposals };
@@ -470,11 +481,7 @@ export function reconcileImportProposals(input: {
   const sourceAccountInvalid = !sourceAccount || sourceAccount.archived;
   const envelopeIds = new Set(input.envelopes.filter((envelope) => !envelope.archived).map((envelope) => envelope.id));
   const categoryIds = new Set(input.categories.map((category) => category.id));
-  const duplicates = buildImportDupIndex(
-    input.transactions
-      .filter((transaction) => transaction.accountId === input.selectedAccountId)
-      .map(({ date, amount, sourceRef }) => ({ date, amount, sourceRef })),
-  );
+  const duplicates = buildImportDupIndex(existingImportRowsForAccount(input.transactions, input.selectedAccountId));
 
   return input.proposals.map((proposal) => {
     const envelopeId = proposal.envelopeId && envelopeIds.has(proposal.envelopeId) ? proposal.envelopeId : null;
@@ -485,7 +492,20 @@ export function reconcileImportProposals(input: {
     let duplicateStatus: ImportDupStatus = "new";
 
     if (isCalendarDate(proposal.date) && hasPositiveMinorAmount(proposal.amount)) {
-      duplicateStatus = classifyImportDup({ date: proposal.date, amount: proposal.amount, rawPlace: proposal.rawPlace }, duplicates);
+      duplicateStatus = classifyImportDup(
+        {
+          date: proposal.date,
+          amount: proposal.amount,
+          rawPlace: proposal.rawPlace,
+          direction: proposal.type
+            ? importCandidateDirection(
+                { type: proposal.type, isRefund: proposal.isRefund, accountId: input.selectedAccountId, toAccountId: proposal.toAccountId },
+                input.selectedAccountId,
+              )
+            : undefined,
+        },
+        duplicates,
+      );
       if (duplicateStatus === "exists") {
         if (proposal.disposition === "candidate") {
           disposition = "declined";

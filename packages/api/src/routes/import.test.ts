@@ -130,8 +130,8 @@ describe("import/apply — extended items", () => {
     const result = planImportDryRun({
       globalAccountId: ACC_A,
       existing: [
-        { accountId: ACC_A, date: "2026-07-10", amount: 8640, sourceRef: "ZEN*ABC" },
-        { accountId: ACC_A, date: "2026-07-11", amount: 1200, sourceRef: null },
+        { accountId: ACC_A, toAccountId: null, type: "expense", date: "2026-07-10", amount: 8640, sourceRef: "ZEN*ABC" },
+        { accountId: ACC_A, toAccountId: null, type: "expense", date: "2026-07-11", amount: 1200, sourceRef: null },
       ],
       items: [
         baseItem(),
@@ -142,6 +142,19 @@ describe("import/apply — extended items", () => {
     });
 
     expect(result.results.map((item) => item.status)).toEqual(["exists", "added", "probable", "added"]);
+  });
+
+  it("treats a top-up as the transfer already recorded from the sending account", () => {
+    const result = planImportDryRun({
+      globalAccountId: ACC_A,
+      existing: [{ accountId: ACC_B, toAccountId: ACC_A, type: "transfer", date: "2026-07-12", amount: 300000, sourceRef: "BLIK" }],
+      items: [
+        baseItem({ date: "2026-07-12", amount: 300000, type: "income", rawPlace: "ZEN account top-up" }),
+        baseItem({ date: "2026-07-12", amount: 300000, type: "expense", rawPlace: "CAR" }),
+      ],
+    });
+
+    expect(result.results.map((item) => item.status)).toEqual(["exists", "added"]);
   });
 
   it("uses separate within-batch evidence for mixed per-item account overrides", () => {
