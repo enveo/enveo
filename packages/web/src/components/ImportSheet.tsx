@@ -1,15 +1,23 @@
-import { computeStateResponse, IMPORT_JOB_MAX_IMAGES } from "@enveo/shared";
+import {
+  type BalanceMatchChange,
+  buildImportBalanceArbiterPrompt,
+  computeStateResponse,
+  findBalanceMatches,
+  IMPORT_JOB_MAX_IMAGES,
+  parseImportBalanceArbiterResponse,
+} from "@enveo/shared";
 import { useQuery } from "@tanstack/react-query";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { lazy, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { importFlow } from "../lib/aiProvider/capabilities";
 import { useAiProvider } from "../lib/aiProvider/useAiProvider";
+import { fmtSignedTrim } from "../lib/amount";
 import { apiErrorMessage, type EditedImportItem, type ImportApplyItem, type StateResponse, useLedgerVersion } from "../lib/api";
-import { automaticEnvelopePreview, formatAutomaticEnvelopeEffect } from "../lib/automaticEnvelopeUi";
+import { automaticEnvelopePreview, currentReconciliationAccount, formatAutomaticEnvelopeEffect } from "../lib/automaticEnvelopeUi";
 import { useCurrency, useTheme } from "../lib/contexts";
 import { currentMonth } from "../lib/dates";
 import * as e2ee from "../lib/e2ee";
-import { formatMoney, isLight } from "../lib/format";
+import { formatMoney, isLight, parseAmount } from "../lib/format";
 import { useT } from "../lib/i18n";
 import { Glyph, Ico } from "../lib/icons";
 import { storageMode } from "../lib/idb";
@@ -18,6 +26,9 @@ import { importApplyErrorMessage } from "../lib/importJobs/applyError";
 import { importJobManager } from "../lib/importJobs/manager";
 import type { ImportActivityItem } from "../lib/importJobs/store";
 import {
+  applyBalanceMatchToReview,
+  balanceMatchCandidatesForReview,
+  bankBalanceHint,
   buildImportReviewRows,
   type ImportReviewRow,
   importBalanceEffect,
@@ -43,7 +54,21 @@ import { PHONE_COL } from "../lib/viewMode";
 import { AddScreen } from "../screens/Add";
 import { AutomaticEnvelopeEffect } from "../screens/add/AutomaticEnvelopeEffect";
 import { AiConsentSheet } from "./AiConsentSheet";
+import { AmountField } from "./AmountField";
+import { AmountPadHost, type AmountPadTarget } from "./AmountPadSheet";
 import { Sheet } from "./chrome";
+import { LazyChunk, useOpenedOnce } from "./lazy";
+
+// Lazy like AccountsWidget: the reconcile body only loads when the import hands over a bank balance.
+const ReconcileSheet = lazy(() => import("./ReconcileSheet").then((m) => ({ default: m.ReconcileSheet })));
+
+type BalanceMatchState =
+  | { kind: "idle" }
+  | { kind: "searching" }
+  | { kind: "proposal"; changes: BalanceMatchChange[]; rationale: string | null; alternatives: number }
+  | { kind: "none" }
+  | { kind: "declined"; rationale: string };
+
 import { ImportProgress, importProgressPresentation, runImportProgressAction, sharedDeviceImportWarning } from "./ImportProgress";
 
 /**
@@ -104,6 +129,14 @@ export function ImportSheet({
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [partialRetryStarted, setPartialRetryStarted] = useState(false);
+  // Bank-balance reconciliation of the review: the typed balance, the matcher's state and the
+  // hand-over to the reconcile sheet after adding. The pad is hosted as a sibling of the Sheet.
+  const [bankValue, setBankValue] = useState("");
+  const [pad, setPad] = useState<AmountPadTarget | null>(null);
+  const [match, setMatch] = useState<BalanceMatchState>({ kind: "idle" });
+  const [reconcileAfter, setReconcileAfter] = useState(false);
+  const [reconcileOpen, setReconcileOpen] = useState(false);
+  const reconcileMounted = useOpenedOnce(reconcileOpen);
   const [doneStats, setDoneStats] = useState({ added: 0, dup: 0 });
   const [partialStats, setPartialStats] = useState<ImportApplyProgress | null>(null);
   const [sourceAccountUnavailable, setSourceAccountUnavailable] = useState(false);
@@ -168,6 +201,9 @@ export function ImportSheet({
       );
       setEdited({});
       setEditedAutomaticDefaults({});
+      setMatch({ kind: "idle" });
+      const hint = bankBalanceHint(job.result!.rows);
+      setBankValue((current) => (current === "" && hint !== null ? fmtSignedTrim(hint) : current));
       setPartialStats(recoveredProgress.appliedCount > 0 || recoveredProgress.skippedCount > 0 ? recoveredProgress : null);
       setSourceAccountUnavailable(accountInvalid);
       reviewE2eeEpoch.current = job.source === "e2ee" ? job.epoch : null;
@@ -209,6 +245,11 @@ export function ImportSheet({
     setError(null);
     setNotice(null);
     setPartialRetryStarted(false);
+    setBankValue("");
+    setPad(null);
+    setMatch({ kind: "idle" });
+    setReconcileAfter(false);
+    setReconcileOpen(false);
     setBusy(false);
     setShowConsent(false);
     setEdited({});
@@ -445,6 +486,81 @@ export function ImportSheet({
           accounts: accountsNow,
         })
       : [];
+  const bankBalance = parseAmount(bankValue);
+  const sourceAfter = balanceEffect.find((effect) => effect.accountId === accountId)?.after ?? accountsNow.find((account) => account.id === accountId)?.balance;
+  const difference = bankBalance !== null && sourceAfter !== undefined ? bankBalance - sourceAfter : null;
+  const proposalFits = match.kind === "proposal" && difference !== null && match.changes.reduce((sum, change) => sum + change.delta, 0) === difference;
+  const rowLabel = (rowId: string): string => {
+    const row = items.find((candidate) => candidate.rowId === rowId);
+    const edit = row ? edited[items.indexOf(row)] : undefined;
+    const name = edit?.name || row?.item?.name || row?.item?.tag || row?.rawTextLines[0] || rowId;
+    const amount = edit?.amount ?? row?.item?.amount ?? row?.amount;
+    return amount === null || amount === undefined ? name : `${name} · ${formatMoney(amount, currency, lang)}`;
+  };
+  const runBalanceMatch = async () => {
+    if (difference === null || difference === 0 || !job?.result) return;
+    const generation = viewGeneration.current;
+    const candidates = balanceMatchCandidatesForReview({ rows: items, edited, defaultAccountId: accountId });
+    const solutions = findBalanceMatches(candidates, difference);
+    if (solutions.length === 0) {
+      setMatch({ kind: "none" });
+      return;
+    }
+    if (solutions.length === 1) {
+      setMatch({ kind: "proposal", changes: solutions[0]!, rationale: null, alternatives: 0 });
+      return;
+    }
+    // Several minimal sets fit the arithmetic: the model ranks them by evidence, or declines.
+    setMatch({ kind: "searching" });
+    const rowsById = new Map(job.result.rows.map((row) => [row.rowId, row]));
+    const reviewById = new Map(items.map((row) => [row.rowId, row]));
+    try {
+      const request = buildImportBalanceArbiterPrompt(
+        {
+          difference,
+          currency,
+          solutions: solutions.map((changes, index) => ({
+            index,
+            changes: changes.map((change) => {
+              const row = rowsById.get(change.id);
+              const review = reviewById.get(change.id);
+              return {
+                action: change.action,
+                row: {
+                  rowId: change.id,
+                  rawTextLines: row?.rawTextLines ?? [],
+                  date: row?.date ?? null,
+                  amount: row?.amount ?? null,
+                  currency: row?.currency ?? null,
+                  direction: row?.direction ?? "unknown",
+                  postingStatus: row?.postingStatus ?? "unknown",
+                  semanticKind: row?.semanticKind ?? "unknown",
+                  reviewReasons: review?.reviewReasons ?? [],
+                  duplicateStatus: review?.duplicateStatus ?? "new",
+                },
+              };
+            }),
+          })),
+        },
+        lang,
+      );
+      const answer = parseImportBalanceArbiterResponse(await provider.complete(request), solutions.length);
+      if (generation !== viewGeneration.current) return;
+      if (answer.choice === null) setMatch({ kind: "declined", rationale: answer.rationale });
+      else setMatch({ kind: "proposal", changes: solutions[answer.choice]!, rationale: answer.rationale, alternatives: solutions.length - 1 });
+    } catch {
+      // No model (rules provider, offline, key problems): the first minimal set is still an exact fit.
+      if (generation === viewGeneration.current) setMatch({ kind: "proposal", changes: solutions[0]!, rationale: null, alternatives: solutions.length - 1 });
+    }
+  };
+  const applyBalanceMatch = () => {
+    if (match.kind !== "proposal") return;
+    const applied = applyBalanceMatchToReview({ rows: items, edited, changes: match.changes, defaultAccountId: accountId });
+    setItems(applied.rows);
+    setEdited(applied.edited);
+    setMatch({ kind: "idle" });
+  };
+  const reconcileAccount = currentReconciliationAccount(accountsNow, reconcileOpen ? accountId : null);
   const deviceWarning = sharedDeviceImportWarning(e2ee.getTierMeta().tier, storageMode());
   const label = { fontSize: 10.5, color: C.mute, fontWeight: 600, textTransform: "uppercase" as const, letterSpacing: 0.6, marginBottom: 6 };
 
@@ -892,6 +1008,120 @@ export function ImportSheet({
               </div>
             )}
 
+            {!sourceAccountUnavailable && (
+              <div data-testid="import-bank-balance" style={{ marginTop: 10, padding: "10px 12px", borderRadius: 12, border: `1px solid ${C.line}` }}>
+                <AmountField
+                  value={bankValue}
+                  onCommit={setBankValue}
+                  label={t("Balance in the bank")}
+                  placeholder={t("Balance in the bank")}
+                  allowNegative
+                  externalPad={[pad, setPad]}
+                />
+                {difference !== null && (
+                  <div
+                    data-testid="import-bank-difference"
+                    role="status"
+                    style={{ marginTop: 8, fontSize: 13, fontVariantNumeric: "tabular-nums", color: difference === 0 ? TEAL : C.text }}
+                  >
+                    {difference === 0 ? t("Balance matches the bank") : t("Difference: {amount}", { amount: formatMoney(difference, currency, lang) })}
+                  </div>
+                )}
+                {difference !== null && difference !== 0 && match.kind !== "proposal" && (
+                  <button
+                    type="button"
+                    onClick={() => void runBalanceMatch()}
+                    disabled={match.kind === "searching"}
+                    style={{
+                      marginTop: 8,
+                      padding: "9px 12px",
+                      borderRadius: 10,
+                      border: `1px solid ${C.line}`,
+                      background: C.bg,
+                      color: C.text,
+                      fontWeight: 650,
+                      fontSize: 13,
+                      cursor: "pointer",
+                      opacity: match.kind === "searching" ? 0.6 : 1,
+                    }}
+                  >
+                    {match.kind === "searching" ? t("Choosing the best match…") : t("Match the selection to the bank balance")}
+                  </button>
+                )}
+                {match.kind === "proposal" && (
+                  <div data-testid="import-bank-proposal" style={{ marginTop: 10, fontSize: 12.5, lineHeight: 1.45 }}>
+                    <div style={{ fontWeight: 650, marginBottom: 4 }}>{t("Suggested changes")}</div>
+                    {match.changes.map((change) => (
+                      <div key={`${change.id}:${change.action}`} style={{ color: C.text }}>
+                        {change.action === "exclude"
+                          ? t("Uncheck: {row}", { row: rowLabel(change.id) })
+                          : change.action === "include"
+                            ? t("Check: {row}", { row: rowLabel(change.id) })
+                            : t("Reverse direction: {row}", { row: rowLabel(change.id) })}
+                      </div>
+                    ))}
+                    {match.rationale && <div style={{ marginTop: 6, color: C.soft }}>{match.rationale}</div>}
+                    {match.alternatives > 0 && (
+                      <div style={{ marginTop: 4, color: C.mute }}>
+                        {tp("{n} other combination also fits the balance. | {n} other combinations also fit the balance.", match.alternatives)}
+                      </div>
+                    )}
+                    {!proposalFits && <div style={{ marginTop: 6, color: C.warn }}>{t("The selection changed since this suggestion. Match again.")}</div>}
+                    <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+                      <button
+                        type="button"
+                        onClick={applyBalanceMatch}
+                        disabled={!proposalFits}
+                        style={{
+                          flex: 1,
+                          padding: "9px 8px",
+                          borderRadius: 10,
+                          border: "none",
+                          background: TEAL,
+                          color: "#fff",
+                          fontWeight: 650,
+                          cursor: "pointer",
+                          opacity: proposalFits ? 1 : 0.5,
+                        }}
+                      >
+                        {t("Apply changes")}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setMatch({ kind: "idle" })}
+                        style={{
+                          flex: 1,
+                          padding: "9px 8px",
+                          borderRadius: 10,
+                          border: `1px solid ${C.line}`,
+                          background: C.bg,
+                          color: C.soft,
+                          fontWeight: 600,
+                          cursor: "pointer",
+                        }}
+                      >
+                        {t("Dismiss")}
+                      </button>
+                    </div>
+                  </div>
+                )}
+                {(match.kind === "none" || match.kind === "declined") && difference !== null && difference !== 0 && (
+                  <div data-testid="import-bank-no-match" style={{ marginTop: 10, fontSize: 12.5, lineHeight: 1.45, color: C.text }}>
+                    <div>
+                      {match.kind === "none"
+                        ? t("No combination of uncertain rows explains the difference.")
+                        : t("The assistant found no convincing combination.")}
+                    </div>
+                    {match.kind === "declined" && match.rationale && <div style={{ marginTop: 4, color: C.soft }}>{match.rationale}</div>}
+                    <label style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 8, cursor: "pointer" }}>
+                      <input type="checkbox" checked={reconcileAfter} onChange={(e) => setReconcileAfter(e.target.checked)} />
+                      <span>{t("Reconcile the account to the bank balance after adding")}</span>
+                    </label>
+                  </div>
+                )}
+              </div>
+            )}
+
             <div style={{ display: "flex", gap: 8, marginTop: 14 }}>
               <button
                 onClick={close}
@@ -951,6 +1181,27 @@ export function ImportSheet({
               {tp("Added {n} transaction | Added {n} transactions", doneStats.added)}
             </div>
             {doneStats.dup > 0 && <div style={{ fontSize: 12.5, color: C.soft, marginBottom: 4 }}>{t("Duplicates skipped: {n}", { n: doneStats.dup })}</div>}
+            {reconcileAfter && parseAmount(bankValue) !== null && (
+              <button
+                type="button"
+                data-testid="import-reconcile-now"
+                onClick={() => setReconcileOpen(true)}
+                style={{
+                  marginTop: 10,
+                  width: "100%",
+                  padding: "12px 0",
+                  borderRadius: 12,
+                  border: `1px solid ${C.line}`,
+                  background: C.bg,
+                  color: C.text,
+                  fontSize: 13.5,
+                  fontWeight: 600,
+                  cursor: "pointer",
+                }}
+              >
+                {t("Reconcile the account to {amount} now", { amount: formatMoney(parseAmount(bankValue)!, currency, lang) })}
+              </button>
+            )}
             <button
               onClick={close}
               style={{
@@ -971,6 +1222,19 @@ export function ImportSheet({
           </div>
         )}
       </Sheet>
+      {/* Sibling of the Sheet (not a child): the Sheet's transform would break the pad's position:fixed. */}
+      <AmountPadHost target={pad} onClose={() => setPad(null)} />
+      {show && reconcileMounted && (
+        <LazyChunk variant="overlay" onDismiss={() => setReconcileOpen(false)}>
+          <ReconcileSheet
+            account={reconcileAccount}
+            envelopes={state.envelopes.filter((envelope) => !envelope.archived)}
+            groups={state.groups}
+            onClose={() => setReconcileOpen(false)}
+            initialValue={bankValue}
+          />
+        </LazyChunk>
+      )}
       {/* Full-screen item editor = AddScreen in draft mode. Portal to body
         (IconColorPicker pattern) — the Sheet has a transform, position:fixed inside it breaks. */}
       {show &&

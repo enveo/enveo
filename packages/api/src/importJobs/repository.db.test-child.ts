@@ -365,7 +365,7 @@ async function main() {
     if (!chunkLease || chunkLease.id !== chunkedId) throw new Error("expected chunked job claim");
     const claimCarriesWindows =
       chunkLease.screenshotTotal === 7 &&
-      chunkLease.chunks.map((chunk) => [chunk.index, chunk.start, chunk.end, chunk.status]).join("|") === "0,0,6,pending|1,6,7,pending" &&
+      chunkLease.chunks.map((chunk) => [chunk.index, chunk.start, chunk.end, chunk.status]).join("|") === "0,0,6,pending|1,5,7,pending" &&
       chunkLease.images.length === 7;
     const windowRows = { rows: [] };
     const windowSaved = await repository.saveChunkExtraction(chunkedId, chunkLease.leaseToken, 0, windowRows, at("2026-08-24T19:02:00.000Z"));
@@ -483,7 +483,8 @@ async function main() {
       chunks: {
         windowsCreated: chunkRows?.count === 2 && chunkRows.total === 7,
         claimCarriesWindows,
-        windowCheckpointReleasedItsImages: windowSaved && afterWindow?.images === 1 && afterWindow.read === 6 && afterWindow.status === "extracted",
+        // Image 5 is shared with the still-pending window 1, so only 0–4 are released here.
+        windowCheckpointReleasedItsImages: windowSaved && afterWindow?.images === 2 && afterWindow.read === 6 && afterWindow.status === "extracted",
         retryableWindowStaysPending:
           retryRecorded && afterRetry?.status === "pending" && afterRetry.attempt === 1 && afterRetry.errorCode === "ai_timeout" && afterRetry.failed === 0,
         exhaustedWindowMarkedFailed: permanentRecorded && afterPermanent?.status === "failed" && afterPermanent.attempt === 2 && afterPermanent.failed === 1,

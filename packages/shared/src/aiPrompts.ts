@@ -17,6 +17,7 @@ import {
   findImportSeamPairs,
   IMPORT_JOB_CHUNK_SIZE,
   type ImportImageChunk,
+  importChunkLayout,
   importEnrichmentBatches,
   importImageChunks,
   mergeChunkBatches,
@@ -687,6 +688,9 @@ export class ImportExtractionFailedError extends Error {
 /** Durable per-chunk state supplied by a resuming runner; `extraction` rows are already rebased. */
 export interface ImportChunkState {
   index: number;
+  /** The recorded window range is authoritative (a job created under another stride keeps its own). */
+  start: number;
+  end: number;
   extraction: ImportExtractBatch | null;
   /** A chunk that already exhausted its attempts is skipped, not re-read. */
   permanentlyFailed: boolean;
@@ -762,9 +766,17 @@ async function extractChunk(input: ImportRecognitionPipelineInput, chunk: Import
 }
 
 /** Cycle one across every chunk that still needs reading, in parallel. */
-async function extractAllChunks(input: ImportRecognitionPipelineInput, durable: boolean): Promise<{ batch: ImportExtractBatch; failedChunks: number[] }> {
-  const chunkSize = input.chunkSize ?? IMPORT_JOB_CHUNK_SIZE;
-  const chunks = importImageChunks(input.images.length, chunkSize);
+/** The job's window layout: the runner's recorded ranges when resuming, otherwise the current stride. */
+function importPipelineChunks(input: ImportRecognitionPipelineInput): ImportImageChunk[] {
+  if (input.chunks && input.chunks.length > 0) return importChunkLayout(input.chunks);
+  return importImageChunks(input.images.length, input.chunkSize ?? IMPORT_JOB_CHUNK_SIZE);
+}
+
+async function extractAllChunks(
+  input: ImportRecognitionPipelineInput,
+  durable: boolean,
+): Promise<{ batch: ImportExtractBatch; failedChunks: number[]; chunks: ImportImageChunk[] }> {
+  const chunks = importPipelineChunks(input);
   if (chunks.length === 0) throw new Error("import requires at least one image");
   const state = new Map((input.chunks ?? []).map((chunk) => [chunk.index, chunk]));
   const done = new Map<number, ImportExtractBatch>();
@@ -797,6 +809,7 @@ async function extractAllChunks(input: ImportRecognitionPipelineInput, durable: 
   return {
     batch: mergeChunkBatches(chunks.filter((chunk) => done.has(chunk.index)).map((chunk) => done.get(chunk.index)!)),
     failedChunks: failedChunks.sort((left, right) => left - right),
+    chunks,
   };
 }
 
@@ -804,11 +817,11 @@ async function extractAllChunks(input: ImportRecognitionPipelineInput, durable: 
 async function judgeImportSeam(
   input: ImportRecognitionPipelineInput,
   batch: ImportExtractBatch,
+  chunks: ReadonlyArray<ImportImageChunk>,
 ): Promise<{ batch: ImportExtractBatch; seam: ImportSeamOutcome }> {
-  const chunkSize = input.chunkSize ?? IMPORT_JOB_CHUNK_SIZE;
-  const pairs = findImportSeamPairs(batch.rows, chunkSize);
+  const pairs = findImportSeamPairs(batch.rows, chunks);
   const { judged, overflow } = partitionImportSeamPairs(pairs);
-  const unresolved = [...findImportSeamDatelessRepeats(batch.rows, chunkSize), ...overflow].map(({ earlierRowId, laterRowId }) => ({
+  const unresolved = [...findImportSeamDatelessRepeats(batch.rows, chunks), ...overflow].map(({ earlierRowId, laterRowId }) => ({
     earlierRowId,
     laterRowId,
   }));
@@ -862,7 +875,7 @@ export async function runImportRecognitionPipeline(input: ImportRecognitionPipel
     result = { ...validateImportExtraction({ batch: { rows: input.checkpoint.rows }, budgetCurrency: input.budgetCurrency }), seam: input.checkpoint.seam };
   } else {
     const extracted = await extractAllChunks(input, durable);
-    const seamed = await judgeImportSeam(input, extracted.batch);
+    const seamed = await judgeImportSeam(input, extracted.batch, extracted.chunks);
     result = { ...validateImportExtraction({ batch: seamed.batch, budgetCurrency: input.budgetCurrency }), seam: seamed.seam };
     if (durable) await input.lifecycle?.saveExtraction?.(result, extracted.failedChunks);
   }
@@ -1097,4 +1110,69 @@ export function parseImportExtractResponse(raw: string, imageCount: number): Imp
       return { ...row, visualOrder: nextVisualOrder++ };
     }),
   };
+}
+
+/* ── Import balance arbiter (which found selection change set is most plausible) ── */
+
+export const IMPORT_BALANCE_ARBITER_JSON_SCHEMA = {
+  name: "balance_match_choice",
+  strict: true,
+  schema: {
+    type: "object",
+    additionalProperties: false,
+    properties: {
+      choice: { type: ["integer", "null"], minimum: 0 },
+      rationale: { type: "string" },
+    },
+    required: ["choice", "rationale"],
+  },
+} as const;
+
+export interface ImportBalanceArbiterRow {
+  rowId: string;
+  rawTextLines: string[];
+  date: string | null;
+  amount: number | null;
+  currency: string | null;
+  direction: ImportExtractRow["direction"];
+  postingStatus: ImportExtractRow["postingStatus"];
+  semanticKind: ImportExtractRow["semanticKind"];
+  reviewReasons: ImportExtractRow["reviewReasons"];
+  duplicateStatus: "new" | "exists" | "probable";
+}
+
+export interface ImportBalanceArbiterInput {
+  /** Bank balance minus balance after the current selection, minor units of `currency`. */
+  difference: number;
+  currency: string;
+  solutions: Array<{ index: number; changes: Array<{ action: "include" | "exclude" | "flip"; row: ImportBalanceArbiterRow }> }>;
+}
+
+/**
+ * The arithmetic already found every minimal change set that explains the difference; the model
+ * only ranks them by plausibility (a pending hold not yet posted, a probable duplicate, an
+ * uncertain direction) and may decline all of them. It never proposes changes of its own.
+ */
+export function buildImportBalanceArbiterPrompt(input: ImportBalanceArbiterInput, locale: AiLocale): ChatRequest {
+  const system =
+    "You help reconcile a screenshot import with the balance the bank shows. Every candidate solution is a set of selection changes that makes the arithmetic match exactly; you judge only which set most plausibly reflects what the bank did. " +
+    "Prefer changes on rows whose evidence supports them: exclude a row that is pending, declined, a probable duplicate or a repeat of another screenshot; include a left-out row that clearly posted; flip a direction only when the visible sign was uncertain. Prefer fewer and more natural changes. " +
+    "Answer with the 0-based index of the chosen solution, or null when none is plausible enough to apply without a human. Explain in one or two sentences. " +
+    languageDirectives(locale) +
+    "Return JSON.";
+  return {
+    messages: [
+      { role: "system", content: system },
+      { role: "user", content: JSON.stringify({ difference: input.difference, currency: input.currency, solutions: input.solutions }) },
+    ],
+    responseFormat: { type: "json_schema", json_schema: IMPORT_BALANCE_ARBITER_JSON_SCHEMA },
+    reasoningEffort: "low",
+  };
+}
+
+/** Throws on an invalid shape or an index outside the offered solutions. */
+export function parseImportBalanceArbiterResponse(raw: string, solutionCount: number): { choice: number | null; rationale: string } {
+  const parsed = z.object({ choice: z.number().int().nonnegative().nullable(), rationale: z.string() }).parse(JSON.parse(raw));
+  if (parsed.choice !== null && parsed.choice >= solutionCount) throw new Error("balance arbiter chose an unknown solution");
+  return { choice: parsed.choice, rationale: parsed.rationale.trim() };
 }

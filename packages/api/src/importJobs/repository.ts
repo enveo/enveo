@@ -109,6 +109,30 @@ export class ImportJobConflict extends Error {
 type ImportJobRow = typeof importJobs.$inferSelect;
 type ImportJobChunkRow = typeof importJobChunks.$inferSelect;
 
+/** One SQL condition: a position is still needed by some window that has not been extracted. */
+const positionStillNeeded = (jobId: string, position: typeof importJobImages.position) =>
+  sql`exists (select 1 from ${importJobChunks} c where c.job_id = ${jobId} and c.status <> 'extracted' and ${position} >= c.image_start and ${position} < c.image_end)`;
+
+/** Denormalized screenshot counters over DISTINCT positions — windows overlap by one screenshot,
+ *  so summing window sizes would exceed the total and violate the counter check. */
+async function recountScreenshots(tx: Pick<DB, "execute">, jobId: string, now: Date): Promise<void> {
+  await tx.execute(sql`
+    update ${importJobs} j set
+      screenshots_read = (
+        select count(*) from generate_series(0, greatest(j.screenshot_total, 1) - 1) p
+        where p < j.screenshot_total
+          and exists (select 1 from ${importJobChunks} c where c.job_id = j.id and c.status = 'extracted' and p >= c.image_start and p < c.image_end)
+      ),
+      screenshots_failed = (
+        select count(*) from generate_series(0, greatest(j.screenshot_total, 1) - 1) p
+        where p < j.screenshot_total
+          and exists (select 1 from ${importJobChunks} c where c.job_id = j.id and c.status = 'failed' and p >= c.image_start and p < c.image_end)
+          and not exists (select 1 from ${importJobChunks} c where c.job_id = j.id and c.status = 'extracted' and p >= c.image_start and p < c.image_end)
+      ),
+      updated_at = ${now.toISOString()}::timestamptz
+    where j.id = ${jobId}`);
+}
+
 const chunkRowsFor = (jobId: string, imageCount: number, now: Date) =>
   importImageChunks(imageCount, IMPORT_JOB_CHUNK_SIZE).map((chunk) => ({
     jobId,
@@ -366,7 +390,9 @@ export function createImportJobRepository(database: DB) {
           .update(importJobChunks)
           .set({ status: "pending", attempt: 0, errorCode: null, retryAt: null, updatedAt: now })
           .where(and(eq(importJobChunks.jobId, id), inArray(importJobChunks.status, ["pending", "failed"])));
-        return detailFromRow(updated);
+        await recountScreenshots(tx, id, now);
+        const [current] = await tx.select().from(importJobs).where(eq(importJobs.id, id));
+        return current ? detailFromRow(current) : detailFromRow(updated);
       });
     },
 
@@ -563,16 +589,21 @@ export function createImportJobRepository(database: DB) {
           .where(and(eq(importJobChunks.jobId, id), eq(importJobChunks.chunkIndex, chunkIndex), inArray(importJobChunks.status, ["pending", "failed"])))
           .returning({ start: importJobChunks.imageStart, end: importJobChunks.imageEnd });
         if (!chunk) return false;
+        // The screenshot shared with a neighbouring window stays until that window is done too.
         await tx
           .delete(importJobImages)
-          .where(and(eq(importJobImages.jobId, id), gte(importJobImages.position, chunk.start), lt(importJobImages.position, chunk.end)));
+          .where(
+            and(
+              eq(importJobImages.jobId, id),
+              gte(importJobImages.position, chunk.start),
+              lt(importJobImages.position, chunk.end),
+              sql`not ${positionStillNeeded(id, importJobImages.position)}`,
+            ),
+          );
+        await recountScreenshots(tx, id, now);
         await tx
           .update(importJobs)
-          .set({
-            screenshotsRead: sql`${importJobs.screenshotsRead} + ${chunk.end - chunk.start}`,
-            leaseExpiresAt: new Date(now.getTime() + IMPORT_JOB_LEASE_MS),
-            updatedAt: now,
-          })
+          .set({ leaseExpiresAt: new Date(now.getTime() + IMPORT_JOB_LEASE_MS), updatedAt: now })
           .where(eq(importJobs.id, id));
         return true;
       });
@@ -600,13 +631,10 @@ export function createImportJobRepository(database: DB) {
           .where(and(eq(importJobChunks.jobId, id), eq(importJobChunks.chunkIndex, chunkIndex), eq(importJobChunks.status, "pending")))
           .returning({ start: importJobChunks.imageStart, end: importJobChunks.imageEnd });
         if (!chunk) return false;
+        await recountScreenshots(tx, id, now);
         await tx
           .update(importJobs)
-          .set({
-            ...(failure.retryAt === null ? { screenshotsFailed: sql`${importJobs.screenshotsFailed} + ${chunk.end - chunk.start}` } : {}),
-            leaseExpiresAt: new Date(now.getTime() + IMPORT_JOB_LEASE_MS),
-            updatedAt: now,
-          })
+          .set({ leaseExpiresAt: new Date(now.getTime() + IMPORT_JOB_LEASE_MS), updatedAt: now })
           .where(eq(importJobs.id, id));
         return true;
       });
@@ -631,14 +659,13 @@ export function createImportJobRepository(database: DB) {
           .where(and(activeLease(id, leaseToken, now), eq(importJobs.cancelRequested, false), eq(importJobs.phase, "extracting")))
           .returning({ id: importJobs.id });
         if (updated.length !== 1) return false;
-        await tx
-          .delete(importJobImages)
-          .where(
-            and(
-              eq(importJobImages.jobId, id),
-              sql`not exists (select 1 from ${importJobChunks} c where c.job_id = ${importJobImages.jobId} and c.status = 'failed' and ${importJobImages.position} >= c.image_start and ${importJobImages.position} < c.image_end)`,
-            ),
-          );
+        await tx.delete(importJobImages).where(
+          and(
+            eq(importJobImages.jobId, id),
+            sql`(not exists (select 1 from ${importJobChunks} c where c.job_id = ${importJobImages.jobId} and c.status = 'failed' and ${importJobImages.position} >= c.image_start and ${importJobImages.position} < c.image_end)
+                or exists (select 1 from ${importJobChunks} c where c.job_id = ${importJobImages.jobId} and c.status = 'extracted' and ${importJobImages.position} >= c.image_start and ${importJobImages.position} < c.image_end))`,
+          ),
+        );
         return true;
       });
     },

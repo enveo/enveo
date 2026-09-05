@@ -1,4 +1,6 @@
 import {
+  type BalanceMatchCandidate,
+  type BalanceMatchChange,
   type ClientLedger,
   type ImportDupStatus,
   type ImportProposal,
@@ -326,4 +328,123 @@ export function importReviewDoneStats(rows: ImportReviewRow[], result: { added: 
     added: result.added,
     dup: rows.filter((row) => row.duplicateStatus === "exists").length + result.skipped,
   };
+}
+
+/** Signed effect of one row on the import's source account when it is included (minor units). */
+function sourceAccountEffect(item: ImportApplyItem, defaultAccountId: string): number {
+  const accountId = item.accountId ?? defaultAccountId;
+  if (item.type === "income") return accountId === defaultAccountId ? item.amount : 0;
+  if (item.type === "expense") return accountId === defaultAccountId ? (item.isRefund ? item.amount : -item.amount) : 0;
+  if (accountId === defaultAccountId) return -item.amount;
+  return item.toAccountId === defaultAccountId ? item.amount : 0;
+}
+
+const reviewApplyItem = (row: ImportReviewRow, edit: EditedImportItem | undefined): ImportApplyItem | null =>
+  row.item ? { ...row.item, ...(edit ?? {}), type: edit?.type ?? row.item.type } : null;
+
+export interface ReviewBalanceMatchCandidate extends BalanceMatchCandidate {
+  index: number;
+  /** Flagged by the review (as opposed to merely left out). */
+  doubtful: boolean;
+}
+
+/**
+ * Rows the balance matcher may toggle: the ones the review already doubts (flagged, probable
+ * duplicate) and the ones currently left out. Confident selected rows, rows without a complete
+ * transaction and rows the user edited by hand stay exactly as they are. Doubtful rows come first
+ * so the candidate cap keeps the most likely explanations.
+ */
+export function balanceMatchCandidatesForReview(args: {
+  rows: ImportReviewRow[];
+  edited: Record<number, EditedImportItem>;
+  defaultAccountId: string;
+}): ReviewBalanceMatchCandidate[] {
+  const candidates: ReviewBalanceMatchCandidate[] = [];
+  args.rows.forEach((row, index) => {
+    if (!row.item || row.duplicateStatus === "exists" || row.alreadyApplied) return;
+    const edit = args.edited[index];
+    if (edit && row.include) return;
+    const doubtful = row.requiresReview || row.duplicateStatus === "probable";
+    if (!doubtful && row.include) return;
+    const item = reviewApplyItem(row, edit);
+    if (!item) return;
+    const effect = sourceAccountEffect(item, args.defaultAccountId);
+    if (effect === 0) return;
+    candidates.push({
+      index,
+      id: row.rowId,
+      effect,
+      included: row.include,
+      flippable: item.type !== "transfer" && row.reviewReasons.includes("inconsistent_direction"),
+      doubtful,
+    });
+  });
+  return candidates.sort((left, right) => Number(right.doubtful) - Number(left.doubtful) || left.index - right.index);
+}
+
+/** Applies a found change set: inclusion flips are selection changes, a direction flip becomes an edit. */
+export function applyBalanceMatchToReview(args: {
+  rows: ImportReviewRow[];
+  edited: Record<number, EditedImportItem>;
+  changes: readonly BalanceMatchChange[];
+  defaultAccountId: string;
+}): { rows: ImportReviewRow[]; edited: Record<number, EditedImportItem> } {
+  const rows = args.rows.map((row) => ({ ...row }));
+  const edited = { ...args.edited };
+  for (const change of args.changes) {
+    const index = rows.findIndex((row) => row.rowId === change.id);
+    const row = rows[index];
+    if (!row?.item) continue;
+    if (change.action === "exclude") {
+      rows[index] = { ...row, include: false };
+      continue;
+    }
+    rows[index] = { ...row, include: true };
+    if (change.action === "flip") {
+      const current = reviewApplyItem(row, edited[index])!;
+      edited[index] = {
+        type: current.type === "income" ? "expense" : "income",
+        accountId: current.accountId ?? args.defaultAccountId,
+        toAccountId: null,
+        isRefund: false,
+        amount: current.amount,
+        date: current.date,
+        name: current.name,
+        envelopeId: current.envelopeId ?? null,
+        categoryId: current.categoryId ?? null,
+        placeName: current.placeName ?? null,
+        note: edited[index]?.note ?? "",
+      };
+    }
+  }
+  return { rows, edited };
+}
+
+const BALANCE_LABEL = /saldo|balance|dost[eę]pn|available|stan konta|kontostand|solde|saldo disponible/i;
+const NUMBER_TOKEN = /-?\d[\d\s\u00a0.,]*\d|-?\d/g;
+
+/** "4 812,37" / "1,234.50" / "1.234,56" / "12" → minor units; the LAST separator followed by
+ *  exactly two digits is the decimal mark, every other separator is grouping. */
+function parseDisplayAmount(token: string): number | null {
+  const compact = token.replace(/[\s\u00a0]/g, "");
+  const decimal = /[.,](\d{2})$/.exec(compact);
+  const integerPart = (decimal ? compact.slice(0, -3) : compact).replace(/[.,]/g, "");
+  if (!/^-?\d+$/.test(integerPart)) return null;
+  const minor = Number.parseInt(integerPart, 10) * 100 + (decimal ? Number.parseInt(decimal[1]!, 10) * (integerPart.startsWith("-") ? -1 : 1) : 0);
+  return Number.isSafeInteger(minor) ? minor : null;
+}
+
+/** The bank balance the screenshots themselves show, when a balance line was read as interface chrome. */
+export function bankBalanceHint(rows: ReadonlyArray<{ rowRole: string; rawTextLines: string[] }>): number | null {
+  for (const row of rows) {
+    if (row.rowRole !== "ui_metadata") continue;
+    const line = row.rawTextLines.find((text) => BALANCE_LABEL.test(text));
+    if (!line) continue;
+    const tokens = line.replace(BALANCE_LABEL, "").match(NUMBER_TOKEN) ?? [];
+    for (const token of tokens) {
+      const parsed = parseDisplayAmount(token);
+      if (parsed !== null) return parsed;
+    }
+  }
+  return null;
 }
