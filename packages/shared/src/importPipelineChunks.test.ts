@@ -1,12 +1,15 @@
 import { describe, expect, it } from "bun:test";
 import {
+  buildImportBalanceArbiterPrompt,
   buildImportSeamPrompt,
   type ChatRequest,
+  IMPORT_BALANCE_ARBITER_JSON_SCHEMA,
   IMPORT_SEAM_JSON_SCHEMA,
   ImportChunksPendingError,
   ImportExtractionFailedError,
   type ImportRecognitionChatMeta,
   type ImportRecognitionPipelineInput,
+  parseImportBalanceArbiterResponse,
   parseImportSeamResponse,
   runImportRecognitionPipeline,
 } from "./aiPrompts";
@@ -86,7 +89,8 @@ describe("chunked cycle one", () => {
       },
     });
 
-    // then: both windows ran concurrently, rowIds are namespaced and imageIndex is absolute
+    // then: both windows ran concurrently, rowIds are namespaced and imageIndex is absolute; window 1
+    // re-read image 5 for context only, so its rows for that image are not repeated
     expect(started.sort()).toEqual([0, 1]);
     expect(peak).toBe(2);
     expect(result.rows.map((row) => [row.rowId, row.imageIndex])).toEqual([
@@ -96,8 +100,8 @@ describe("chunked cycle one", () => {
       ["c0:r3", 3],
       ["c0:r4", 4],
       ["c0:r5", 5],
-      ["c1:r0", 6],
-      ["c1:r1", 7],
+      ["c1:r1", 6],
+      ["c1:r2", 7],
     ]);
     expect(result.proposals.every((proposal) => proposal.selected)).toBe(true);
   });
@@ -121,13 +125,15 @@ describe("chunked cycle one", () => {
 describe("seam between windows", () => {
   const overlapping = (request: ChatRequest, meta: ImportRecognitionChatMeta | undefined) =>
     extractAnswer(request, (imageIndex) => {
-      // The last row of window 0 and the first row of window 1 are the same entry, captured
-      // twice with different truncation; window 1 also repeats an identical-text row.
+      // The last row of window 0 (image 5) and the first row of window 1's own screenshot (image 6,
+      // window-relative 1 behind the shared context image) are the same entry captured twice with
+      // different truncation; window 1 also repeats an identical-text row.
       if (meta?.stage === "extract" && meta.chunk === 0 && imageIndex === 5) return [modelRow("last", 5, { rawTextLines: ["ŻABKA Z1234 K.1 WARSZ"] })];
-      if (meta?.stage === "extract" && meta.chunk === 1 && imageIndex === 0) {
+      if (meta?.stage === "extract" && meta.chunk === 1 && imageIndex === 0) return [modelRow("ctx", 0, { rawTextLines: ["ŻABKA Z1234 K.1 WARSZ"] })];
+      if (meta?.stage === "extract" && meta.chunk === 1 && imageIndex === 1) {
         return [
-          modelRow("first", 0, { rawTextLines: ["ŻABKA Z1234 K.1 WARSZAWA"] }),
-          modelRow("same", 0, { visualOrder: 1, rawTextLines: ["ŻABKA Z1234 K.1 WARSZ"] }),
+          modelRow("first", 1, { rawTextLines: ["ŻABKA Z1234 K.1 WARSZAWA"] }),
+          modelRow("same", 1, { visualOrder: 1, rawTextLines: ["ŻABKA Z1234 K.1 WARSZ"] }),
         ];
       }
       return [modelRow(`r${imageIndex}`, imageIndex, { amount: 500 + imageIndex + (meta?.stage === "extract" ? meta.chunk * 10 : 0) })];
@@ -227,13 +233,15 @@ describe("durable window resume and failure", () => {
     const chunkCalls: number[] = [];
     const stored: number[] = [];
     let failedChunks: number[] | null = null;
+    // Thirteen screenshots: windows [0,6), [5,11), [10,13). Window 0 is checkpointed, so only its
+    // shared screenshot (5) is still retained for window 1; window 2 exhausted its attempts.
     const result = await runImportRecognitionPipeline({
       ...base,
-      images: [null, null, null, null, null, null, ...images(6), ...images(1)],
+      images: [null, null, null, null, null, ...images(8)],
       chunks: [
-        { index: 0, extraction: { rows: [modelRow("c0:r0", 0, { amount: 77 })] }, permanentlyFailed: false },
-        { index: 1, extraction: null, permanentlyFailed: false },
-        { index: 2, extraction: null, permanentlyFailed: true },
+        { index: 0, start: 0, end: 6, extraction: { rows: [modelRow("c0:r0", 0, { amount: 77 })] }, permanentlyFailed: false },
+        { index: 1, start: 5, end: 11, extraction: null, permanentlyFailed: false },
+        { index: 2, start: 10, end: 13, extraction: null, permanentlyFailed: true },
       ],
       pipelineMode: "durable",
       lifecycle: {
@@ -254,7 +262,14 @@ describe("durable window resume and failure", () => {
     expect(chunkCalls).toEqual([1]);
     expect(stored).toEqual([1]);
     expect(failedChunks).toEqual([2]);
-    expect(result.rows.map((row) => row.rowId)).toEqual(["c0:r0", "c1:r0", "c1:r1", "c1:r2", "c1:r3", "c1:r4", "c1:r5"]);
+    expect(result.rows.map((row) => [row.rowId, row.imageIndex])).toEqual([
+      ["c0:r0", 0],
+      ["c1:r1", 6],
+      ["c1:r2", 7],
+      ["c1:r3", 8],
+      ["c1:r4", 9],
+      ["c1:r5", 10],
+    ]);
   });
 
   it("lets the runner judge each failed window and waits when any of them may retry", async () => {
@@ -398,5 +413,42 @@ describe("seam prompt contract", () => {
       "duplicate seam pairId",
     );
     expect(() => parseImportSeamResponse('{"pairs":[{"pairId":"1","sameEntry":"yes"}]}', ["1"])).toThrow();
+  });
+});
+
+describe("balance arbiter prompt contract", () => {
+  const row = {
+    rowId: "c1:first",
+    rawTextLines: ["NOTINO.PL BRNO"],
+    date: null,
+    amount: 30850,
+    currency: "PLN",
+    direction: "unknown" as const,
+    postingStatus: "pending" as const,
+    semanticKind: "card_purchase" as const,
+    reviewReasons: ["possible_duplicate" as const],
+    duplicateStatus: "probable" as const,
+  };
+
+  it("sends only the found solutions with row facts as a strict json_schema request", () => {
+    const request = buildImportBalanceArbiterPrompt(
+      { difference: 30850, currency: "PLN", solutions: [{ index: 0, changes: [{ action: "exclude", row }] }] },
+      "pl",
+    );
+
+    expect(request.responseFormat).toEqual({ type: "json_schema", json_schema: IMPORT_BALANCE_ARBITER_JSON_SCHEMA });
+    expect(request.reasoningEffort).toBe("low");
+    expect(JSON.parse(request.messages[1]!.content as string)).toEqual({
+      difference: 30850,
+      currency: "PLN",
+      solutions: [{ index: 0, changes: [{ action: "exclude", row }] }],
+    });
+  });
+
+  it("accepts an index inside the offered solutions or an explicit null, nothing else", () => {
+    expect(parseImportBalanceArbiterResponse('{"choice":1,"rationale":" second "}', 2)).toEqual({ choice: 1, rationale: "second" });
+    expect(parseImportBalanceArbiterResponse('{"choice":null,"rationale":"none"}', 2)).toEqual({ choice: null, rationale: "none" });
+    expect(() => parseImportBalanceArbiterResponse('{"choice":2,"rationale":"x"}', 2)).toThrow("unknown solution");
+    expect(() => parseImportBalanceArbiterResponse('{"choice":"0","rationale":"x"}', 2)).toThrow();
   });
 });

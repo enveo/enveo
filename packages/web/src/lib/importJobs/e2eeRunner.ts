@@ -167,11 +167,24 @@ const freshChunks = (imageCount: number): StoredChunk[] =>
     extraction: null,
   }));
 
-const screenshotsOf = (chunks: readonly StoredChunk[]) => ({
-  total: chunks.reduce((total, chunk) => Math.max(total, chunk.end), 0),
-  read: chunks.filter((chunk) => chunk.status === "extracted").reduce((read, chunk) => read + chunk.end - chunk.start, 0),
-  failed: chunks.filter((chunk) => chunk.status === "failed").reduce((failed, chunk) => failed + chunk.end - chunk.start, 0),
-});
+const coveredBy = (chunks: readonly StoredChunk[], status: StoredChunk["status"], position: number): boolean =>
+  chunks.some((chunk) => chunk.status === status && position >= chunk.start && position < chunk.end);
+
+/** Windows overlap by one screenshot, so every counter is over DISTINCT positions. */
+const screenshotsOf = (chunks: readonly StoredChunk[]) => {
+  const total = chunks.reduce((max, chunk) => Math.max(max, chunk.end), 0);
+  let read = 0;
+  let failed = 0;
+  for (let position = 0; position < total; position += 1) {
+    if (coveredBy(chunks, "extracted", position)) read += 1;
+    else if (coveredBy(chunks, "failed", position)) failed += 1;
+  }
+  return { total, read, failed };
+};
+
+/** A screenshot may be released once no window that still needs reading covers it. */
+const stillNeeded = (chunks: readonly StoredChunk[], position: number): boolean =>
+  chunks.some((chunk) => chunk.status !== "extracted" && position >= chunk.start && position < chunk.end);
 
 export class E2eeImportJobRunner {
   private readonly ledger: () => ClientLedger | null;
@@ -506,7 +519,9 @@ export class E2eeImportJobRunner {
             chunk.extraction = batch;
             chunk.errorCode = null;
             chunk.retryAt = null;
-            for (let position = chunk.start; position < chunk.end; position += 1) images[position] = null;
+            for (let position = chunk.start; position < chunk.end; position += 1) {
+              if (!stillNeeded(chunks, position)) images[position] = null;
+            }
             await persistChunks();
           },
           failChunk: async (chunkIndex, error) => {
@@ -527,8 +542,9 @@ export class E2eeImportJobRunner {
             await this.fence(job);
             const checkpointCiphertext = await this.encrypt(JSON.stringify(result), key, aad("checkpoint"));
             // Only the screenshots of permanently failed windows stay, for the partial-retry child.
-            const failedWindows = chunks.filter((chunk) => chunk.status === "failed");
-            const retained = images.map((image, position) => (failedWindows.some((chunk) => position >= chunk.start && position < chunk.end) ? image : null));
+            const retained = images.map((image, position) =>
+              coveredBy(chunks, "failed", position) && !coveredBy(chunks, "extracted", position) ? image : null,
+            );
             const inputCiphertext = retained.some((image) => image !== null)
               ? await this.encrypt(JSON.stringify({ images: retained }), key, aad("input"))
               : null;
@@ -573,7 +589,13 @@ export class E2eeImportJobRunner {
             images,
             chunks: checkpoint
               ? undefined
-              : chunks.map((chunk) => ({ index: chunk.index, extraction: chunk.extraction, permanentlyFailed: chunk.status === "failed" })),
+              : chunks.map((chunk) => ({
+                  index: chunk.index,
+                  start: chunk.start,
+                  end: chunk.end,
+                  extraction: chunk.extraction,
+                  permanentlyFailed: chunk.status === "failed",
+                })),
             locale: job.locale,
             ledger: currentLedger,
             accountId: job.accountId,

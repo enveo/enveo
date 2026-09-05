@@ -638,7 +638,16 @@ describe("device-local E2EE import runner — screenshot windows", () => {
           await input.lifecycle.saveChunkExtraction?.(0, { rows: [] });
           const stored = (await importJobStorage.getJob(SCOPE, ID))!;
           expect(stored.screenshots).toEqual({ total: 7, read: 6, failed: 0 });
-          expect((await decryptField(fixture.key, ID, "input", stored.inputCiphertext!)).images).toEqual([null, null, null, null, null, null, sevenImages[6]]);
+          // Image 5 is shared with the pending window 1 and stays until that window is done.
+          expect((await decryptField(fixture.key, ID, "input", stored.inputCiphertext!)).images).toEqual([
+            null,
+            null,
+            null,
+            null,
+            null,
+            sevenImages[5],
+            sevenImages[6],
+          ]);
           await input.lifecycle.saveChunkExtraction?.(1, { rows: [] });
           await input.lifecycle.saveExtraction?.(EXTRACTION, []);
           await input.lifecycle.advancePhase?.("reconciling");
@@ -653,8 +662,8 @@ describe("device-local E2EE import runner — screenshot windows", () => {
     // then: recognition saw two pending windows and the finished job keeps no screenshots or window state
     expect(seen!.images).toEqual(sevenImages);
     expect(seen!.chunks).toEqual([
-      { index: 0, extraction: null, permanentlyFailed: false },
-      { index: 1, extraction: null, permanentlyFailed: false },
+      { index: 0, start: 0, end: 6, extraction: null, permanentlyFailed: false },
+      { index: 1, start: 5, end: 7, extraction: null, permanentlyFailed: false },
     ]);
     expect(await importJobStorage.getJob(SCOPE, ID)).toMatchObject({
       status: "ready",
@@ -703,8 +712,8 @@ describe("device-local E2EE import runner — screenshot windows", () => {
     await fixture.runner.resume();
 
     expect(runs[1]).toEqual([
-      { index: 0, extraction: { rows: [] }, permanentlyFailed: false },
-      { index: 1, extraction: null, permanentlyFailed: false },
+      { index: 0, start: 0, end: 6, extraction: { rows: [] }, permanentlyFailed: false },
+      { index: 1, start: 5, end: 7, extraction: null, permanentlyFailed: false },
     ]);
     expect(await importJobStorage.getJob(SCOPE, ID)).toMatchObject({ status: "ready", attempt: 1 });
   });

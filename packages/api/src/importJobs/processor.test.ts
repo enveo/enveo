@@ -429,7 +429,7 @@ describe("chunked cycle one in the worker", () => {
       })),
       chunks: [
         { index: 0, start: 0, end: 6, attempt: 0, status: "pending", errorCode: null, retryAt: null, extraction: null },
-        { index: 1, start: 6, end: 7, attempt: 1, status: "pending", errorCode: "ai_timeout", retryAt: null, extraction: null },
+        { index: 1, start: 5, end: 7, attempt: 1, status: "pending", errorCode: "ai_timeout", retryAt: null, extraction: null },
       ],
     });
 
@@ -452,8 +452,8 @@ describe("chunked cycle one in the worker", () => {
 
     // then: the job waits for the earliest chunk retry with that chunk's error, nothing is marked ready
     expect(seenChunks).toEqual([
-      { index: 0, extraction: null, permanentlyFailed: false },
-      { index: 1, extraction: null, permanentlyFailed: false },
+      { index: 0, start: 0, end: 6, extraction: null, permanentlyFailed: false },
+      { index: 1, start: 5, end: 7, extraction: null, permanentlyFailed: false },
     ]);
     expect(outcome).toEqual({ kind: "retry", errorCode: "ai_timeout", retryAt: new Date(NOW.getTime() + 120_000) });
     expect(fixture.events).toContain("chunk-stored:0");

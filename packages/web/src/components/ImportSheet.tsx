@@ -1,15 +1,22 @@
-import { computeStateResponse, IMPORT_JOB_MAX_IMAGES } from "@enveo/shared";
+import {
+  buildImportBalanceArbiterPrompt,
+  computeStateResponse,
+  findBalanceMatches,
+  IMPORT_JOB_MAX_IMAGES,
+  parseImportBalanceArbiterResponse,
+} from "@enveo/shared";
 import { useQuery } from "@tanstack/react-query";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { lazy, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { importFlow } from "../lib/aiProvider/capabilities";
 import { useAiProvider } from "../lib/aiProvider/useAiProvider";
+import { fmtSignedTrim } from "../lib/amount";
 import { apiErrorMessage, type EditedImportItem, type ImportApplyItem, type StateResponse, useLedgerVersion } from "../lib/api";
-import { automaticEnvelopePreview, formatAutomaticEnvelopeEffect } from "../lib/automaticEnvelopeUi";
+import { automaticEnvelopePreview, currentReconciliationAccount, formatAutomaticEnvelopeEffect } from "../lib/automaticEnvelopeUi";
 import { useCurrency, useTheme } from "../lib/contexts";
 import { currentMonth } from "../lib/dates";
 import * as e2ee from "../lib/e2ee";
-import { formatMoney, isLight } from "../lib/format";
+import { formatMoney, isLight, parseAmount } from "../lib/format";
 import { useT } from "../lib/i18n";
 import { Glyph, Ico } from "../lib/icons";
 import { storageMode } from "../lib/idb";
@@ -18,6 +25,9 @@ import { importApplyErrorMessage } from "../lib/importJobs/applyError";
 import { importJobManager } from "../lib/importJobs/manager";
 import type { ImportActivityItem } from "../lib/importJobs/store";
 import {
+  applyBalanceMatchToReview,
+  balanceMatchCandidatesForReview,
+  bankBalanceHint,
   buildImportReviewRows,
   type ImportReviewRow,
   importBalanceEffect,
@@ -43,7 +53,14 @@ import { PHONE_COL } from "../lib/viewMode";
 import { AddScreen } from "../screens/Add";
 import { AutomaticEnvelopeEffect } from "../screens/add/AutomaticEnvelopeEffect";
 import { AiConsentSheet } from "./AiConsentSheet";
+import { AmountPadHost, type AmountPadTarget } from "./AmountPadSheet";
 import { Sheet } from "./chrome";
+import { type ImportBalanceMatchState, ImportBalanceReceipt } from "./ImportBalanceReceipt";
+import { LazyChunk, useOpenedOnce } from "./lazy";
+
+// Lazy like AccountsWidget: the reconcile body only loads when the import hands over a bank balance.
+const ReconcileSheet = lazy(() => import("./ReconcileSheet").then((m) => ({ default: m.ReconcileSheet })));
+
 import { ImportProgress, importProgressPresentation, runImportProgressAction, sharedDeviceImportWarning } from "./ImportProgress";
 
 /**
@@ -104,6 +121,14 @@ export function ImportSheet({
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [partialRetryStarted, setPartialRetryStarted] = useState(false);
+  // Bank-balance reconciliation of the review: the typed balance, the matcher's state and the
+  // hand-over to the reconcile sheet after adding. The pad is hosted as a sibling of the Sheet.
+  const [bankValue, setBankValue] = useState("");
+  const [pad, setPad] = useState<AmountPadTarget | null>(null);
+  const [match, setMatch] = useState<ImportBalanceMatchState>({ kind: "idle" });
+  const [reconcileAfter, setReconcileAfter] = useState(false);
+  const [reconcileOpen, setReconcileOpen] = useState(false);
+  const reconcileMounted = useOpenedOnce(reconcileOpen);
   const [doneStats, setDoneStats] = useState({ added: 0, dup: 0 });
   const [partialStats, setPartialStats] = useState<ImportApplyProgress | null>(null);
   const [sourceAccountUnavailable, setSourceAccountUnavailable] = useState(false);
@@ -168,6 +193,9 @@ export function ImportSheet({
       );
       setEdited({});
       setEditedAutomaticDefaults({});
+      setMatch({ kind: "idle" });
+      const hint = bankBalanceHint(job.result!.rows);
+      setBankValue((current) => (current === "" && hint !== null ? fmtSignedTrim(hint) : current));
       setPartialStats(recoveredProgress.appliedCount > 0 || recoveredProgress.skippedCount > 0 ? recoveredProgress : null);
       setSourceAccountUnavailable(accountInvalid);
       reviewE2eeEpoch.current = job.source === "e2ee" ? job.epoch : null;
@@ -209,6 +237,11 @@ export function ImportSheet({
     setError(null);
     setNotice(null);
     setPartialRetryStarted(false);
+    setBankValue("");
+    setPad(null);
+    setMatch({ kind: "idle" });
+    setReconcileAfter(false);
+    setReconcileOpen(false);
     setBusy(false);
     setShowConsent(false);
     setEdited({});
@@ -445,6 +478,86 @@ export function ImportSheet({
           accounts: accountsNow,
         })
       : [];
+  const receiptSource =
+    balanceEffect.find((effect) => effect.accountId === accountId) ??
+    (() => {
+      const account = accountsNow.find((candidate) => candidate.id === accountId);
+      return account ? { accountId: account.id, name: account.name, before: account.balance, after: account.balance, delta: 0 } : null;
+    })();
+  const bankBalance = parseAmount(bankValue);
+  const sourceAfter = balanceEffect.find((effect) => effect.accountId === accountId)?.after ?? accountsNow.find((account) => account.id === accountId)?.balance;
+  const difference = bankBalance !== null && sourceAfter !== undefined ? bankBalance - sourceAfter : null;
+  const proposalFits = match.kind === "proposal" && difference !== null && match.changes.reduce((sum, change) => sum + change.delta, 0) === difference;
+  const rowLabel = (rowId: string): string => {
+    const row = items.find((candidate) => candidate.rowId === rowId);
+    const edit = row ? edited[items.indexOf(row)] : undefined;
+    // The figure column already carries the amount; the label names the row only.
+    return edit?.name || row?.item?.name || row?.item?.tag || row?.rawTextLines[0] || rowId;
+  };
+  const runBalanceMatch = async () => {
+    if (difference === null || difference === 0 || !job?.result) return;
+    const generation = viewGeneration.current;
+    const candidates = balanceMatchCandidatesForReview({ rows: items, edited, defaultAccountId: accountId });
+    const solutions = findBalanceMatches(candidates, difference);
+    if (solutions.length === 0) {
+      setMatch({ kind: "none" });
+      return;
+    }
+    if (solutions.length === 1) {
+      setMatch({ kind: "proposal", changes: solutions[0]!, rationale: null, alternatives: 0 });
+      return;
+    }
+    // Several minimal sets fit the arithmetic: the model ranks them by evidence, or declines.
+    setMatch({ kind: "searching" });
+    const rowsById = new Map(job.result.rows.map((row) => [row.rowId, row]));
+    const reviewById = new Map(items.map((row) => [row.rowId, row]));
+    try {
+      const request = buildImportBalanceArbiterPrompt(
+        {
+          difference,
+          currency,
+          solutions: solutions.map((changes, index) => ({
+            index,
+            changes: changes.map((change) => {
+              const row = rowsById.get(change.id);
+              const review = reviewById.get(change.id);
+              return {
+                action: change.action,
+                row: {
+                  rowId: change.id,
+                  rawTextLines: row?.rawTextLines ?? [],
+                  date: row?.date ?? null,
+                  amount: row?.amount ?? null,
+                  currency: row?.currency ?? null,
+                  direction: row?.direction ?? "unknown",
+                  postingStatus: row?.postingStatus ?? "unknown",
+                  semanticKind: row?.semanticKind ?? "unknown",
+                  reviewReasons: review?.reviewReasons ?? [],
+                  duplicateStatus: review?.duplicateStatus ?? "new",
+                },
+              };
+            }),
+          })),
+        },
+        lang,
+      );
+      const answer = parseImportBalanceArbiterResponse(await provider.complete(request), solutions.length);
+      if (generation !== viewGeneration.current) return;
+      if (answer.choice === null) setMatch({ kind: "declined", rationale: answer.rationale });
+      else setMatch({ kind: "proposal", changes: solutions[answer.choice]!, rationale: answer.rationale, alternatives: solutions.length - 1 });
+    } catch {
+      // No model (rules provider, offline, key problems): the first minimal set is still an exact fit.
+      if (generation === viewGeneration.current) setMatch({ kind: "proposal", changes: solutions[0]!, rationale: null, alternatives: solutions.length - 1 });
+    }
+  };
+  const applyBalanceMatch = () => {
+    if (match.kind !== "proposal") return;
+    const applied = applyBalanceMatchToReview({ rows: items, edited, changes: match.changes, defaultAccountId: accountId });
+    setItems(applied.rows);
+    setEdited(applied.edited);
+    setMatch({ kind: "idle" });
+  };
+  const reconcileAccount = currentReconciliationAccount(accountsNow, reconcileOpen ? accountId : null);
   const deviceWarning = sharedDeviceImportWarning(e2ee.getTierMeta().tier, storageMode());
   const label = { fontSize: 10.5, color: C.mute, fontWeight: 600, textTransform: "uppercase" as const, letterSpacing: 0.6, marginBottom: 6 };
 
@@ -868,29 +981,23 @@ export function ImportSheet({
               </div>
             )}
 
-            {balanceEffect.length > 0 && (
-              <div data-testid="import-balance-effect" style={{ marginTop: 12, padding: "10px 12px", borderRadius: 12, background: tint(C.text, 0.05) }}>
-                <div style={label}>{t("Balance after import")}</div>
-                {balanceEffect.map((effect) => (
-                  <div
-                    key={effect.accountId}
-                    aria-label={t("{account}: {before} now, {after} after import", {
-                      account: effect.name,
-                      before: formatMoney(effect.before, currency, lang),
-                      after: formatMoney(effect.after, currency, lang),
-                    })}
-                    style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 10, fontSize: 13, lineHeight: 1.6 }}
-                  >
-                    <span style={{ color: C.soft, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{effect.name}</span>
-                    <span aria-hidden="true" style={{ whiteSpace: "nowrap", fontVariantNumeric: "tabular-nums" }}>
-                      <span style={{ color: C.mute }}>{formatMoney(effect.before, currency, lang)}</span>
-                      <span style={{ color: C.mute }}> → </span>
-                      <strong style={{ color: effect.delta < 0 ? CORAL : TEAL }}>{formatMoney(effect.after, currency, lang)}</strong>
-                    </span>
-                  </div>
-                ))}
-              </div>
-            )}
+            <ImportBalanceReceipt
+              source={receiptSource}
+              others={balanceEffect.filter((effect) => effect.accountId !== accountId)}
+              money={(minor) => formatMoney(minor, currency, lang)}
+              bankValue={bankValue}
+              onBankValue={setBankValue}
+              pad={[pad, setPad]}
+              difference={difference}
+              match={match}
+              proposalFits={proposalFits}
+              rowLabel={rowLabel}
+              reconcileAfter={reconcileAfter}
+              onReconcileAfter={setReconcileAfter}
+              onMatch={() => void runBalanceMatch()}
+              onApply={applyBalanceMatch}
+              onDismiss={() => setMatch({ kind: "idle" })}
+            />
 
             <div style={{ display: "flex", gap: 8, marginTop: 14 }}>
               <button
@@ -951,6 +1058,27 @@ export function ImportSheet({
               {tp("Added {n} transaction | Added {n} transactions", doneStats.added)}
             </div>
             {doneStats.dup > 0 && <div style={{ fontSize: 12.5, color: C.soft, marginBottom: 4 }}>{t("Duplicates skipped: {n}", { n: doneStats.dup })}</div>}
+            {reconcileAfter && parseAmount(bankValue) !== null && (
+              <button
+                type="button"
+                data-testid="import-reconcile-now"
+                onClick={() => setReconcileOpen(true)}
+                style={{
+                  marginTop: 10,
+                  width: "100%",
+                  padding: "12px 0",
+                  borderRadius: 12,
+                  border: `1px solid ${C.line}`,
+                  background: C.bg,
+                  color: C.text,
+                  fontSize: 13.5,
+                  fontWeight: 600,
+                  cursor: "pointer",
+                }}
+              >
+                {t("Reconcile the account to {amount} now", { amount: formatMoney(parseAmount(bankValue)!, currency, lang) })}
+              </button>
+            )}
             <button
               onClick={close}
               style={{
@@ -971,6 +1099,19 @@ export function ImportSheet({
           </div>
         )}
       </Sheet>
+      {/* Sibling of the Sheet (not a child): the Sheet's transform would break the pad's position:fixed. */}
+      <AmountPadHost target={pad} onClose={() => setPad(null)} />
+      {show && reconcileMounted && (
+        <LazyChunk variant="overlay" onDismiss={() => setReconcileOpen(false)}>
+          <ReconcileSheet
+            account={reconcileAccount}
+            envelopes={state.envelopes.filter((envelope) => !envelope.archived)}
+            groups={state.groups}
+            onClose={() => setReconcileOpen(false)}
+            initialValue={bankValue}
+          />
+        </LazyChunk>
+      )}
       {/* Full-screen item editor = AddScreen in draft mode. Portal to body
         (IconColorPicker pattern) — the Sheet has a transform, position:fixed inside it breaks. */}
       {show &&

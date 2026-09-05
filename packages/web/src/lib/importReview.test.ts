@@ -11,7 +11,11 @@ import {
 } from "@enveo/shared";
 import type { EditedImportItem, ImportApplyItem, ImportApplyResponse } from "./api";
 import {
+  applyBalanceMatchToReview,
+  balanceMatchCandidatesForReview,
+  bankBalanceHint,
   buildImportReviewRows,
+  type ImportReviewRow,
   importBalanceEffect,
   importReviewDoneStats,
   importReviewReasonMessage,
@@ -20,7 +24,7 @@ import {
   reviewRowControlLabels,
   visibleImportReviewRows,
 } from "./importReview";
-import { recognitionCandidatesForDryRun } from "./localImport";
+import { type LocalImportReviewItem, recognitionCandidatesForDryRun } from "./localImport";
 
 const U = (n: number): string => `00000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
 
@@ -621,3 +625,118 @@ describe("balance after import", () => {
     expect(importBalanceEffect({ items: [item({ amount: 500 }), item({ amount: 500, isRefund: true })], defaultAccountId: "acc-main", accounts })).toEqual([]);
   });
 });
+
+describe("matching the selection to the bank balance", () => {
+  const reviewRow = (rowId: string, over: Omit<Partial<ImportReviewRow>, "item"> & { item?: Partial<LocalImportReviewItem> | null }): ImportReviewRow => {
+    const { item, ...rest } = over;
+    return {
+      rowId,
+      disposition: "candidate",
+      semanticKind: "card_purchase",
+      relation: null,
+      reviewReasons: [],
+      requiresReview: false,
+      blockingIssues: [],
+      duplicateStatus: "new",
+      alreadyApplied: false,
+      sourceRef: rowId,
+      rawTextLines: [rowId],
+      date: "2026-08-02",
+      amount: 2_500,
+      currency: "EUR",
+      include: true,
+      editable: true,
+      item:
+        item === null
+          ? null
+          : {
+              date: "2026-08-02",
+              amount: 2_500,
+              type: "expense",
+              name: rowId,
+              tag: "",
+              envelopeId: null,
+              status: "added",
+              include: true,
+              automaticEnvelopeDefault: false,
+              ...item,
+            },
+      ...rest,
+    };
+  };
+
+  it("offers only doubtful or left-out rows, with the source-account effect and a flip where the direction was uncertain", () => {
+    const rows = [
+      reviewRow("sure", {}),
+      reviewRow("pending", { requiresReview: true, reviewReasons: ["pending_or_declined"] }),
+      reviewRow("left-out", { include: false, item: { amount: 999, type: "income" } }),
+      reviewRow("unsure-direction", { requiresReview: true, reviewReasons: ["inconsistent_direction"], item: { type: "income", amount: 700 } }),
+      reviewRow("exists", { duplicateStatus: "exists", include: false }),
+      reviewRow("no-item", { include: false, item: null }),
+      reviewRow("transfer-in", { include: false, item: { type: "transfer", amount: 300, toAccountId: "acc-main" } }),
+    ];
+
+    const candidates = balanceMatchCandidatesForReview({
+      rows,
+      edited: { 6: { ...editedFor(rows[6]!), accountId: "acc-other" } },
+      defaultAccountId: "acc-main",
+    });
+
+    expect(candidates.map(({ id, effect, included, flippable, doubtful }) => ({ id, effect, included, flippable, doubtful }))).toEqual([
+      { id: "pending", effect: -2_500, included: true, flippable: false, doubtful: true },
+      { id: "unsure-direction", effect: 700, included: true, flippable: true, doubtful: true },
+      { id: "left-out", effect: 999, included: false, flippable: false, doubtful: false },
+      { id: "transfer-in", effect: 300, included: false, flippable: false, doubtful: false },
+    ]);
+  });
+
+  it("applies a change set: selection flips stay selections, a direction flip becomes an edit", () => {
+    const rows = [
+      reviewRow("pending", { requiresReview: true }),
+      reviewRow("left-out", { include: false }),
+      reviewRow("flip", { item: { type: "income", amount: 700 } }),
+    ];
+
+    const applied = applyBalanceMatchToReview({
+      rows,
+      edited: {},
+      defaultAccountId: "acc-main",
+      changes: [
+        { id: "pending", action: "exclude", delta: 2_500 },
+        { id: "left-out", action: "include", delta: -2_500 },
+        { id: "flip", action: "flip", delta: -1_400 },
+      ],
+    });
+
+    expect(applied.rows.map((row) => row.include)).toEqual([false, true, true]);
+    expect(applied.edited[2]).toMatchObject({ type: "expense", amount: 700, accountId: "acc-main", isRefund: false, date: "2026-08-02" });
+    expect(rows[0]!.include).toBe(true); // input untouched
+  });
+
+  it("reads the bank balance out of a balance line the model kept as interface chrome", () => {
+    expect(
+      bankBalanceHint([
+        { rowRole: "financial_event", rawTextLines: ["Saldo shop 12,00"] },
+        { rowRole: "ui_metadata", rawTextLines: ["Historia · Konto osobiste", "Saldo 4 812,37 zł"] },
+      ]),
+    ).toBe(481_237);
+    expect(bankBalanceHint([{ rowRole: "ui_metadata", rawTextLines: ["Available balance: -1,234.50 EUR"] }])).toBe(-123_450);
+    expect(bankBalanceHint([{ rowRole: "ui_metadata", rawTextLines: ["28.08.2026"] }])).toBeNull();
+  });
+});
+
+function editedFor(row: ImportReviewRow): EditedImportItem {
+  return {
+    type: row.item!.type,
+    accountId: "acc-main",
+    toAccountId: row.item!.toAccountId ?? null,
+    isRefund: false,
+    amount: row.item!.amount,
+    date: row.item!.date,
+    name: row.item!.name,
+    envelopeId: null,
+    categoryId: null,
+    placeName: null,
+    note: "",
+  };
+}

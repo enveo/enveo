@@ -6,6 +6,8 @@ import {
   IMPORT_JOB_CHUNK_SIZE,
   IMPORT_JOB_MAX_IMAGES,
   IMPORT_SEAM_MAX_MODEL_PAIRS,
+  importChunkIndexOf,
+  importChunkLayout,
   importEnrichmentBatches,
   importImageChunks,
   isChunkRowId,
@@ -34,15 +36,46 @@ const row = (rowId: string, imageIndex: number, over: Partial<ImportExtractRow> 
 });
 
 describe("screenshot windows", () => {
-  it("cuts a job into fixed windows and keeps the last one short", () => {
+  it("cuts a job into windows that share one screenshot with the previous window", () => {
     expect(importImageChunks(0)).toEqual([]);
-    expect(importImageChunks(6)).toEqual([{ index: 0, start: 0, end: 6 }]);
-    expect(importImageChunks(13)).toEqual([
-      { index: 0, start: 0, end: 6 },
-      { index: 1, start: 6, end: 12 },
-      { index: 2, start: 12, end: 13 },
+    expect(importImageChunks(6)).toEqual([{ index: 0, start: 0, end: 6, leadOverlap: 0 }]);
+    expect(importImageChunks(7)).toEqual([
+      { index: 0, start: 0, end: 6, leadOverlap: 0 },
+      { index: 1, start: 5, end: 7, leadOverlap: 1 },
     ]);
-    expect(importImageChunks(IMPORT_JOB_MAX_IMAGES)).toHaveLength(IMPORT_JOB_MAX_IMAGES / IMPORT_JOB_CHUNK_SIZE);
+    expect(importImageChunks(13)).toEqual([
+      { index: 0, start: 0, end: 6, leadOverlap: 0 },
+      { index: 1, start: 5, end: 11, leadOverlap: 1 },
+      { index: 2, start: 10, end: 13, leadOverlap: 1 },
+    ]);
+    // A window that would only repeat the shared screenshot is never created.
+    expect(importImageChunks(11)).toHaveLength(2);
+    expect(importImageChunks(IMPORT_JOB_MAX_IMAGES)).toHaveLength(6);
+    expect(importImageChunks(13, IMPORT_JOB_CHUNK_SIZE, 0).map((chunk) => [chunk.start, chunk.end])).toEqual([
+      [0, 6],
+      [6, 12],
+      [12, 13],
+    ]);
+  });
+
+  it("rebuilds a layout from recorded ranges, legacy non-overlapping ones included", () => {
+    expect(
+      importChunkLayout([
+        { index: 1, start: 5, end: 11 },
+        { index: 0, start: 0, end: 6 },
+      ]),
+    ).toEqual([
+      { index: 0, start: 0, end: 6, leadOverlap: 0 },
+      { index: 1, start: 5, end: 11, leadOverlap: 1 },
+    ]);
+    expect(
+      importChunkLayout([
+        { index: 0, start: 0, end: 6 },
+        { index: 1, start: 6, end: 7 },
+      ])[1]!.leadOverlap,
+    ).toBe(0);
+    const chunks = importImageChunks(13);
+    expect([0, 5, 6, 10, 11, 12].map((image) => importChunkIndexOf(image, chunks))).toEqual([0, 0, 1, 1, 2, 2]);
   });
 
   it("keeps a single-window job byte-identical to the pre-chunking contract", () => {
@@ -50,21 +83,31 @@ describe("screenshot windows", () => {
     const batch = { rows: [row("r1", 0, { relation: { kind: "duplicate_of", rowId: "r0" } }), row("r0", 0)] };
 
     // when: rebased as the only chunk
-    const rebased = rebaseChunkBatch(batch, { index: 0, start: 0, end: 2 }, 1);
+    const rebased = rebaseChunkBatch(batch, { index: 0, start: 0, end: 2, leadOverlap: 0 }, 1);
 
     // then: nothing changes, so existing callers and the evaluation baseline see the same ids
     expect(rebased).toBe(batch);
     expect(isChunkRowId("r1")).toBe(false);
   });
 
-  it("namespaces rowIds, rewrites in-chunk relations and offsets imageIndex for a later window", () => {
-    const batch = { rows: [row("r1", 0, { relation: { kind: "fx_for", rowId: "r0" } }), row("r0", 1, { relation: { kind: "fee_for", rowId: "elsewhere" } })] };
+  it("namespaces rowIds, offsets imageIndex and drops the shared screenshot's rows for a later window", () => {
+    // given: window 2 re-read image 10 (shared with window 1) for context, then read 11 and 12
+    const batch = {
+      rows: [
+        row("ctx", 0),
+        row("r1", 1, { relation: { kind: "fx_for", rowId: "r0" } }),
+        row("r0", 2, { relation: { kind: "fee_for", rowId: "elsewhere" } }),
+        row("rep", 1, { visualOrder: 1, relation: { kind: "duplicate_of", rowId: "ctx" } }),
+      ],
+    };
 
-    const rebased = rebaseChunkBatch(batch, { index: 2, start: 12, end: 14 }, 3);
+    const rebased = rebaseChunkBatch(batch, { index: 2, start: 10, end: 13, leadOverlap: 1 }, 3);
 
+    // then: the context rows are gone and a relation into them is dropped, not dangling
     expect(rebased.rows.map((entry) => [entry.rowId, entry.imageIndex, entry.relation])).toEqual([
-      ["c2:r1", 12, { kind: "fx_for", rowId: "c2:r0" }],
-      ["c2:r0", 13, { kind: "fee_for", rowId: "elsewhere" }],
+      ["c2:r1", 11, { kind: "fx_for", rowId: "c2:r0" }],
+      ["c2:r0", 12, null],
+      ["c2:rep", 11, null],
     ]);
     expect(isChunkRowId("c2:r1")).toBe(true);
   });
@@ -85,12 +128,12 @@ describe("seam pairs between windows", () => {
       row("c1:c", 6, { rawTextLines: ["LIDL 123 WARSZAWA PL"] }), // different text → judged
       row("c1:d", 7, { rawTextLines: ["LIDL 123 WARSZAWA PL"] }), // identical to c1:c but same window
       row("c2:e", 12, { rawTextLines: ["LIDL 123 WARSZAWA PL"] }), // identical text to c1:d → reconcile handles it
-      row("c2:f", 13, { amount: 999 }), // different facts
+      row("c2:f", 12, { amount: 999 }), // different facts
     ];
 
     // c1:d repeats c1:c inside its own window (never deduplicated within a window), so it is
     // judged against the same earlier candidate; c2:e matches c1:d's text exactly and needs no model.
-    expect(findImportSeamPairs(rows)).toEqual([
+    expect(findImportSeamPairs(rows, importImageChunks(13))).toEqual([
       { pairId: "1", earlierRowId: "c0:b", laterRowId: "c1:c" },
       { pairId: "2", earlierRowId: "c0:b", laterRowId: "c1:d" },
     ]);
@@ -105,7 +148,7 @@ describe("seam pairs between windows", () => {
       row("c1:e", 9, { rawTextLines: ["unknown direction"], direction: "unknown" }),
     ];
 
-    expect(findImportSeamPairs(rows)).toEqual([]);
+    expect(findImportSeamPairs(rows, importImageChunks(13))).toEqual([]);
   });
 
   it("caps the judged window and applies confirmed verdicts as duplicate links", () => {
@@ -146,7 +189,7 @@ describe("dateless repeats at a window edge", () => {
       row("c0:e", 3, { rawTextLines: ["same window"] }),
     ];
 
-    expect(findImportSeamDatelessRepeats(rows)).toEqual([{ pairId: "d1", earlierRowId: "c0:a", laterRowId: "c1:b" }]);
+    expect(findImportSeamDatelessRepeats(rows, importImageChunks(7))).toEqual([{ pairId: "d1", earlierRowId: "c0:a", laterRowId: "c1:b" }]);
   });
 });
 
