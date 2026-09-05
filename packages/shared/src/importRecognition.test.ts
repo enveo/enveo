@@ -306,7 +306,7 @@ describe("screenshot import proposal validation", () => {
     });
   });
 
-  it("selects incomplete financial facts while leaving supporting, pending, and declined rows unselected", () => {
+  it("selects incomplete financial facts and pending entries while leaving supporting and declined rows unselected", () => {
     const result = validateImportExtraction({
       batch: {
         rows: [
@@ -324,10 +324,63 @@ describe("screenshot import proposal validation", () => {
     expect(result.proposals).toMatchObject([
       { rowId: "missing", disposition: "unresolved", selected: true, rawPlace: "unreadable amount", reviewReasons: ["missing_fact"] },
       { rowId: "support", disposition: "supporting", selected: false, reviewReasons: [] },
-      { rowId: "pending", disposition: "pending", selected: false, reviewReasons: ["pending_or_declined"] },
+      // a pending entry has already left the account: it is a transaction like any other
+      { rowId: "pending", disposition: "candidate", selected: true, reviewReasons: [] },
       { rowId: "declined", disposition: "declined", selected: false, reviewReasons: ["pending_or_declined"] },
-      { rowId: "pending-missing", disposition: "pending", selected: false, reviewReasons: ["pending_or_declined"] },
+      { rowId: "pending-missing", disposition: "unresolved", selected: true, reviewReasons: ["missing_fact"] },
     ]);
+  });
+
+  it("takes the account-currency figure printed on the linked exchange line for a foreign-currency payment", () => {
+    const result = validateImportExtraction({
+      batch: {
+        rows: [
+          extractRow({
+            rowId: "hetzner",
+            amount: 1821,
+            currency: "EUR",
+            postingStatus: "pending",
+            direction: "unknown",
+            relation: { kind: "fx_for", rowId: "fx" },
+          }),
+          extractRow({
+            rowId: "fx",
+            rowRole: "supporting_detail",
+            semanticKind: "fx_conversion",
+            amount: null,
+            currency: null,
+            direction: "unknown",
+            rawTextLines: ["18.21 EUR < 79.26 PLN", "Wymiana PLN na EUR"],
+          }),
+          extractRow({ rowId: "openai", amount: 1230, currency: "USD" }),
+          extractRow({
+            rowId: "fx-back",
+            rowRole: "supporting_detail",
+            semanticKind: "fx_conversion",
+            amount: null,
+            currency: null,
+            direction: "unknown",
+            rawTextLines: ["12.30 USD < 45.93 PLN"],
+            relation: { kind: "fx_for", rowId: "openai" },
+          }),
+          extractRow({ rowId: "lonely", amount: 500, currency: "GBP" }),
+        ],
+      },
+      budgetCurrency: "PLN",
+    });
+
+    expect(result.proposals[0]).toMatchObject({
+      rowId: "hetzner",
+      amount: 7926,
+      currency: "PLN",
+      type: "expense",
+      selected: true,
+      reviewReasons: ["fx_converted"],
+    });
+    expect(result.proposals[2]).toMatchObject({ rowId: "openai", amount: 4593, currency: "PLN", reviewReasons: ["fx_converted"] });
+    // the row keeps what was read; only the proposal is in the ledger's currency
+    expect(result.rows[0]).toMatchObject({ amount: 1821, currency: "EUR" });
+    expect(result.proposals[4]).toMatchObject({ rowId: "lonely", amount: 500, currency: "GBP", reviewReasons: [] });
   });
 
   it("rejects duplicate row identities and invalidates dangling or self relations", () => {

@@ -247,6 +247,28 @@ describe("repairing the model's duplicate relations", () => {
     expect(single.unresolved).toEqual([{ earlierRowId: "a", laterRowId: "d" }]);
   });
 
+  it("breaks a mutual duplicate claim so the earlier capture stays the original", () => {
+    const rows = [
+      row("a", 3, {
+        visualOrder: 0,
+        date: null,
+        amount: 100000,
+        direction: "credit",
+        rawTextLines: ["1 000.00 PLN +", "UAB ZEN.COM"],
+        relation: { kind: "duplicate_of", rowId: "b" },
+      }),
+      row("b", 4, {
+        visualOrder: 2,
+        date: "2026-08-30",
+        amount: 100000,
+        direction: "credit",
+        rawTextLines: ["1 000.00 PLN +", "UAB ZEN.COM"],
+        relation: { kind: "duplicate_of", rowId: "a" },
+      }),
+    ];
+    expect(repairImportRelations({ rows }).batch.rows.map((r) => r.relation)).toEqual([null, { kind: "duplicate_of", rowId: "a" }]);
+  });
+
   it("never links a repeat inside one screenshot: repeated entries on one screen are separate transactions", () => {
     const rows = [
       row("a", 0, { visualOrder: 0, rawTextLines: ["5.00 PLN", "COFFEE"] }),
@@ -323,5 +345,123 @@ describe("repairing the model's duplicate relations", () => {
       ];
       expect(inferImportDates({ rows }).rows[0]!.date).toBeNull();
     });
+  });
+});
+
+describe("correcting a leading block dated from the wrong neighbour", () => {
+  const divider = (rowId: string, imageIndex: number, visualOrder: number, date: string): ImportExtractRow =>
+    row(rowId, imageIndex, { visualOrder, date, rowRole: "ui_metadata", amount: null, currency: null, direction: "unknown", rawTextLines: [date] });
+
+  it("moves the block to the divider at the bottom of the screenshot above when it was dated like the one below", () => {
+    // given: oldest-first screenshots (7 above 6, 8 above 7); image 7's leading rows were dated
+    // "01 wrz" by the model — image 6's bottom divider — while the list continues from image 8's
+    // bottom divider "03 wrz"
+    const rows = [
+      divider("i6-m1", 6, 0, "2026-09-02"),
+      row("i6-t1", 6, { visualOrder: 1, date: "2026-09-02", amount: 15810, rawTextLines: ["158.10 PLN", "Ogród"] }),
+      divider("i6-m2", 6, 2, "2026-09-01"),
+      row("i7-t1", 7, { visualOrder: 0, date: "2026-09-01", amount: 800, rawTextLines: ["8.00 PLN", "Blask"] }),
+      row("i7-t2", 7, { visualOrder: 1, date: "2026-09-01", amount: 1821, currency: "EUR", rawTextLines: ["18.21 EUR", "Hetzner"] }),
+      divider("i7-m1", 7, 2, "2026-09-02"),
+      row("i7-t3", 7, { visualOrder: 3, date: "2026-09-02", amount: 15810, rawTextLines: ["158.10 PLN", "Ogród"] }),
+      row("i8-t1", 8, { visualOrder: 0, date: "2026-09-05", amount: 48342, rawTextLines: ["483.42 PLN", "LIDL"] }),
+      divider("i8-m1", 8, 1, "2026-09-03"),
+      row("i8-t2", 8, { visualOrder: 2, date: "2026-09-03", amount: 800, rawTextLines: ["8.00 PLN", "Blask"] }),
+    ];
+
+    const byId = new Map(inferImportDates({ rows }).rows.map((r) => [r.rowId, r]));
+
+    expect(byId.get("i7-t1")).toMatchObject({ date: "2026-09-03", dateInferred: true });
+    expect(byId.get("i7-t2")).toMatchObject({ date: "2026-09-03", dateInferred: true });
+    // rows under a divider of their own screenshot are never touched
+    expect(byId.get("i7-t3")!.dateInferred).toBeUndefined();
+    // a leading block whose date matches neither neighbour is the model's reading and stays
+    expect(byId.get("i8-t1")).toMatchObject({ date: "2026-09-05" });
+    expect(byId.get("i8-t1")!.dateInferred).toBeUndefined();
+  });
+});
+
+describe("the same entry captured in non-adjacent screenshots", () => {
+  const divider = (rowId: string, imageIndex: number, visualOrder: number, date: string): ImportExtractRow =>
+    row(rowId, imageIndex, { visualOrder, date, rowRole: "ui_metadata", amount: null, currency: null, direction: "unknown", rawTextLines: [date] });
+
+  it("links an unsigned leading-block row to its twin under a divider of its own screenshot and takes that date", () => {
+    const rows = [
+      row("i8-lidl", 8, {
+        visualOrder: 0,
+        date: "2026-09-02",
+        direction: "unknown",
+        postingStatus: "pending",
+        amount: 48342,
+        rawTextLines: ["◷ 483.42 PLN", "LIDL"],
+      }),
+      divider("i8-m1", 8, 1, "2026-09-03"),
+      divider("i10-m1", 10, 0, "2026-09-05"),
+      row("i10-lidl", 10, {
+        visualOrder: 1,
+        date: "2026-09-05",
+        direction: "unknown",
+        postingStatus: "pending",
+        amount: 48342,
+        rawTextLines: ["◷ 483.42 PLN", "LIDL"],
+      }),
+      row("i10-other", 10, { visualOrder: 2, date: "2026-09-05", amount: 1126, rawTextLines: ["11.26 PLN", "SKLEP"] }),
+    ];
+
+    const byId = new Map(inferImportDates({ rows }).rows.map((r) => [r.rowId, r]));
+
+    expect(byId.get("i8-lidl")).toMatchObject({ date: "2026-09-05", dateInferred: true, relation: { kind: "duplicate_of", rowId: "i10-lidl" } });
+    expect(byId.get("i10-lidl")!.relation).toBeNull();
+  });
+
+  it("keeps the capture that carries the exchange line and lets the anchor step back as the duplicate", () => {
+    const rows = [
+      row("i7-hetzner", 7, {
+        visualOrder: 0,
+        date: "2026-09-01",
+        direction: "unknown",
+        amount: 1821,
+        currency: "EUR",
+        rawTextLines: ["◷ 18.21 EUR", "Hetzner"],
+        relation: { kind: "fx_for", rowId: "i7-fx" },
+      }),
+      row("i7-fx", 7, {
+        visualOrder: 1,
+        date: "2026-09-01",
+        rowRole: "supporting_detail",
+        semanticKind: "fx_conversion",
+        amount: null,
+        currency: null,
+        direction: "unknown",
+        rawTextLines: ["18.21 EUR < 79.26 PLN"],
+      }),
+      divider("i7-m1", 7, 2, "2026-09-02"),
+      divider("i9-m1", 9, 0, "2026-09-04"),
+      row("i9-hetzner", 9, {
+        visualOrder: 1,
+        date: "2026-09-04",
+        direction: "unknown",
+        amount: 1821,
+        currency: "EUR",
+        rawTextLines: ["◷ 18.21 EUR", "Hetzner"],
+      }),
+    ];
+
+    const byId = new Map(inferImportDates({ rows }).rows.map((r) => [r.rowId, r]));
+
+    expect(byId.get("i7-hetzner")).toMatchObject({ date: "2026-09-04", dateInferred: true, relation: { kind: "fx_for", rowId: "i7-fx" } });
+    expect(byId.get("i9-hetzner")!.relation).toEqual({ kind: "duplicate_of", rowId: "i7-hetzner" });
+  });
+
+  it("leaves two rows that each sit under their own divider on different days as two transactions", () => {
+    const rows = [
+      divider("i0-m1", 0, 0, "2026-09-01"),
+      row("a", 0, { visualOrder: 1, date: "2026-09-01", amount: 800, rawTextLines: ["8.00 PLN", "BAKERY"] }),
+      divider("i2-m1", 2, 0, "2026-09-04"),
+      row("b", 2, { visualOrder: 1, date: "2026-09-04", amount: 800, rawTextLines: ["8.00 PLN", "BAKERY"] }),
+    ];
+    const out = inferImportDates({ rows }).rows;
+    expect(out.map((r) => r.relation)).toEqual([null, null, null, null]);
+    expect(out.map((r) => r.date)).toEqual(["2026-09-01", "2026-09-01", "2026-09-04", "2026-09-04"]);
   });
 });

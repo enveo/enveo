@@ -913,10 +913,17 @@ export async function runImportRecognitionPipeline(input: ImportRecognitionPipel
     // dates it left empty are settled from the merged screenshots, so the seam pass and every
     // later stage judge rows that already carry what the evidence proves.
     const repaired = repairImportRelations(extracted.batch);
-    const seamed = await judgeImportSeam(input, inferImportDates(repaired.batch), extracted.chunks);
+    const dated = inferImportDates(repaired.batch);
+    const seamed = await judgeImportSeam(input, dated, extracted.chunks);
+    // A pair the date pass settled into a duplicate link is no longer unresolved.
+    const linked = new Set(
+      seamed.batch.rows.flatMap((row) =>
+        row.relation?.kind === "duplicate_of" ? [`${row.rowId}|${row.relation.rowId}`, `${row.relation.rowId}|${row.rowId}`] : [],
+      ),
+    );
     result = {
       ...validateImportExtraction({ batch: seamed.batch, budgetCurrency: input.budgetCurrency }),
-      seam: { unresolved: [...repaired.unresolved, ...seamed.seam.unresolved] },
+      seam: { unresolved: [...repaired.unresolved, ...seamed.seam.unresolved].filter((pair) => !linked.has(`${pair.earlierRowId}|${pair.laterRowId}`)) },
     };
     if (durable) await input.lifecycle?.saveExtraction?.(result, extracted.failedChunks);
   }

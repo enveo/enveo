@@ -19,7 +19,6 @@ import {
   type ImportReviewRow,
   importBalanceDiagnosis,
   importBalanceEffect,
-  importPendingHolds,
   importPeriodStart,
   importReviewDoneStats,
   importReviewReasonMessage,
@@ -744,51 +743,6 @@ function editedFor(row: ImportReviewRow): EditedImportItem {
     note: "",
   };
 }
-
-describe("pending holds behind the available balance", () => {
-  const pending = (rowId: string, imageIndex: number, over: Partial<ImportExtractRow> = {}) =>
-    row(rowId, { imageIndex, postingStatus: "pending", direction: "unknown", currency: "PLN", ...over });
-
-  it("counts each distinct pending entry once across screenshots, converting foreign holds through their FX row", () => {
-    const rows = [
-      pending("lidl-8", 8, { amount: 48342, rawTextLines: ["◷ 483.42 PLN", "LIDL"] }),
-      pending("lidl-10", 10, { amount: 48342, rawTextLines: ["◷ 483.42 PLN", "LIDL"] }),
-      pending("kulfon", 10, { amount: 8379, rawTextLines: ["◷ 83.79 PLN", "SKLEP"] }),
-      pending("hetzner", 7, { amount: 1821, currency: "EUR", rawTextLines: ["◷ 18.21 EUR", "Hetzner"], relation: { kind: "fx_for", rowId: "hetzner-fx" } }),
-      row("hetzner-fx", {
-        imageIndex: 7,
-        rowRole: "supporting_detail",
-        amount: null,
-        currency: null,
-        direction: "unknown",
-        rawTextLines: ["18.21 EUR < 79.26 PLN", "Wymiana"],
-      }),
-      pending("openai", 9, { amount: 1230, currency: "USD", rawTextLines: ["◷ 12.30 USD", "OPENAI"] }),
-      row("openai-fx", {
-        imageIndex: 9,
-        rowRole: "supporting_detail",
-        amount: null,
-        currency: null,
-        direction: "unknown",
-        rawTextLines: ["12.30 USD < 45.93 PLN"],
-        relation: { kind: "fx_for", rowId: "openai" },
-      }),
-      pending("mystery", 9, { amount: 500, currency: "GBP", rawTextLines: ["◷ 5.00 GBP", "SHOP"] }),
-      row("posted", { imageIndex: 9, amount: 999, currency: "PLN" }),
-      pending("credit", 9, { amount: 1000, direction: "credit", rawTextLines: ["◷ 10.00 PLN +", "REFUND"] }),
-    ];
-
-    expect(importPendingHolds(rows, "PLN")).toEqual({ total: -48342 - 8379 - 7926 - 4593 + 1000, count: 6, unconverted: 1 });
-  });
-
-  it("keeps two identical pending entries on ONE screenshot as two holds", () => {
-    const rows = [
-      pending("a", 0, { amount: 800, rawTextLines: ["◷ 8.00 PLN", "BAKERY"] }),
-      pending("b", 0, { amount: 800, rawTextLines: ["◷ 8.00 PLN", "BAKERY"] }),
-    ];
-    expect(importPendingHolds(rows, "PLN")).toEqual({ total: -1600, count: 2, unconverted: 0 });
-  });
-});
 
 describe("why nothing matches", () => {
   const txn = (over: Partial<Transaction>): Transaction => ({
