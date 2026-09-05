@@ -2,7 +2,9 @@ import {
   buildImportDupIndex,
   type ClientLedger,
   classifyImportDup,
+  existingImportRowsForAccount,
   type ImportRecognitionResult,
+  importCandidateDirection,
   type ReconciledImportProposal,
   type ReconciledImportRecognitionResult,
   reconcileImportProposals,
@@ -226,9 +228,7 @@ export function planLocalImport(args: { ledger: ClientLedger; globalAccountId: s
   const duplicateIndexFor = (accountId: string) => {
     let index = duplicateIndexes.get(accountId);
     if (!index) {
-      index = buildImportDupIndex(
-        ledger.transactions.filter((row) => row.accountId === accountId).map((row) => ({ date: row.date, amount: row.amount, sourceRef: row.sourceRef })),
-      );
+      index = buildImportDupIndex(existingImportRowsForAccount(ledger.transactions, accountId));
       duplicateIndexes.set(accountId, index);
     }
     return index;
@@ -241,7 +241,15 @@ export function planLocalImport(args: { ledger: ClientLedger; globalAccountId: s
     const dupIndex = duplicateIndexFor(candidate.payload.accountId);
     const status = candidate.item.force
       ? "new"
-      : classifyImportDup({ date: candidate.item.date, amount: candidate.item.amount, rawPlace: candidate.item.rawPlace }, dupIndex);
+      : classifyImportDup(
+          {
+            date: candidate.item.date,
+            amount: candidate.item.amount,
+            rawPlace: candidate.item.rawPlace,
+            direction: importCandidateDirection(candidate.payload, candidate.payload.accountId),
+          },
+          dupIndex,
+        );
     if (status === "exists") {
       skipped++;
       results.push({ ...candidate.item, status: "exists" });

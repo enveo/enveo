@@ -3,7 +3,9 @@ export {
   buildImportDupIndex as buildDupIndex,
   classifyImportDup as classifyDup,
   type ExistingImportRow as ExistingRow,
+  existingImportRowsForAccount,
   type ImportCandidate as DupItem,
   type ImportDupIndex as DupIndex,
   type ImportDupStatus as DupStatus,
+  importCandidateDirection,
 } from "@enveo/shared";

@@ -251,3 +251,192 @@ export function importEnrichmentBatches<T>(rows: ReadonlyArray<T>, batchSize = I
   for (let start = 0; start < rows.length; start += batchSize) batches.push(rows.slice(start, start + batchSize));
   return batches;
 }
+
+/* ── Deterministic repair of what the model cannot be trusted with: relation targets and dates ── */
+
+const isFinancialTwinCandidate = (row: ImportExtractRow): boolean =>
+  row.rowRole === "financial_event" && row.amount !== null && row.amount > 0 && row.currency !== null && row.direction !== "unknown";
+
+/** Identity of a visibly repeated entry: its text plus the facts that never differ between two captures. */
+const twinKey = (row: ImportExtractRow): string => `${seamText(row)}|${row.amount}|${row.currency}|${row.direction}`;
+
+const ordered = (rows: ReadonlyArray<ImportExtractRow>): ImportExtractRow[] =>
+  rows
+    .map((row, inputOrder) => ({ row, inputOrder }))
+    .sort(byScreenshotOrder)
+    .map(({ row }) => row);
+
+const twinIndex = (rows: ReadonlyArray<ImportExtractRow>): Map<string, ImportExtractRow[]> => {
+  const index = new Map<string, ImportExtractRow[]>();
+  for (const row of rows) {
+    if (!isFinancialTwinCandidate(row)) continue;
+    const key = twinKey(row);
+    index.set(key, [...(index.get(key) ?? []), row]);
+  }
+  return index;
+};
+
+const seamPair = (left: ImportExtractRow, right: ImportExtractRow): { earlierRowId: string; laterRowId: string } => {
+  const leftFirst = left.imageIndex - right.imageIndex || left.visualOrder - right.visualOrder;
+  return leftFirst <= 0 ? { earlierRowId: left.rowId, laterRowId: right.rowId } : { earlierRowId: right.rowId, laterRowId: left.rowId };
+};
+
+export interface ImportRelationRepair {
+  batch: ImportExtractBatch;
+  /** Same visible entry with two different dates: review evidence, never a silent link or drop. */
+  unresolved: Array<{ earlierRowId: string; laterRowId: string }>;
+}
+
+/**
+ * The model's `duplicate_of` targets are unreliable when they point FORWARD to rows it has not
+ * emitted yet (observed: off by one or two, landing on an unrelated pending row and hiding a real
+ * top-up). A duplicate claim is only kept when its target has the same amount and currency and
+ * sits in another screenshot; otherwise the claim is re-pointed at the ONE row that repeats this
+ * row's text and facts in another screenshot, surfaced for review when that twin carries a
+ * different date, and dropped when no such twin exists. Other relation kinds are left to the
+ * fact checks in `validateImportExtraction`.
+ */
+export function repairImportRelations(batch: ImportExtractBatch): ImportRelationRepair {
+  const rowsById = new Map(batch.rows.map((row) => [row.rowId, row]));
+  const twins = twinIndex(batch.rows);
+  const unresolved: Array<{ earlierRowId: string; laterRowId: string }> = [];
+  const rows = batch.rows.map((row): ImportExtractRow => {
+    if (row.relation?.kind !== "duplicate_of") return row;
+    const target = rowsById.get(row.relation.rowId);
+    const plausible =
+      target !== undefined &&
+      target.rowId !== row.rowId &&
+      target.imageIndex !== row.imageIndex &&
+      target.amount === row.amount &&
+      target.currency === row.currency;
+    if (plausible) return row;
+    const candidates = isFinancialTwinCandidate(row)
+      ? (twins.get(twinKey(row)) ?? []).filter((twin) => twin.rowId !== row.rowId && twin.imageIndex !== row.imageIndex)
+      : [];
+    if (candidates.length !== 1) return { ...row, relation: null };
+    const twin = candidates[0]!;
+    if (row.date !== null && twin.date !== null && row.date !== twin.date) {
+      unresolved.push(seamPair(row, twin));
+      return { ...row, relation: null };
+    }
+    return { ...row, relation: { kind: "duplicate_of" as const, rowId: twin.rowId } };
+  });
+  return { batch: { rows }, unresolved };
+}
+
+const isDateDivider = (row: ImportExtractRow): boolean => row.rowRole === "ui_metadata" && isCalendarDate(row.date);
+
+ 
+interface ScreenshotLayout {
+  imageIndex: number;
+  rows: ImportExtractRow[];
+   
+  leading: ImportExtractRow[];
+   
+  trailing: ImportExtractRow[];
+  lastDividerDate: string | null;
+}
+
+const layoutScreenshots = (rows: ReadonlyArray<ImportExtractRow>): Map<number, ScreenshotLayout> => {
+  const byImage = new Map<number, ImportExtractRow[]>();
+  for (const row of ordered(rows)) byImage.set(row.imageIndex, [...(byImage.get(row.imageIndex) ?? []), row]);
+  const layouts = new Map<number, ScreenshotLayout>();
+  for (const [imageIndex, imageRows] of byImage) {
+    const firstDivider = imageRows.findIndex(isDateDivider);
+    const lastDivider = imageRows.map(isDateDivider).lastIndexOf(true);
+    layouts.set(imageIndex, {
+      imageIndex,
+      rows: imageRows,
+      leading: firstDivider === -1 ? imageRows : imageRows.slice(0, firstDivider),
+      trailing: lastDivider === -1 ? [] : imageRows.slice(lastDivider + 1),
+      lastDividerDate: lastDivider === -1 ? null : imageRows[lastDivider]!.date,
+    });
+  }
+  return layouts;
+};
+
+
+
+
+
+
+
+function screenshotAboveOffset(layouts: ReadonlyMap<number, ScreenshotLayout>, rows: ReadonlyArray<ImportExtractRow>): 1 | -1 | null {
+  const twins = twinIndex(rows);
+  let votes = 0;
+  for (const group of twins.values()) {
+    for (const left of group) {
+      for (const right of group) {
+        if (right.imageIndex !== left.imageIndex + 1) continue;
+        const lower = layouts.get(left.imageIndex)!;
+        const upper = layouts.get(right.imageIndex)!;
+        if (lower.leading.includes(left) && upper.trailing.includes(right)) votes += 1;
+        else if (lower.trailing.includes(left) && upper.leading.includes(right)) votes -= 1;
+      }
+    }
+  }
+  return votes > 0 ? 1 : votes < 0 ? -1 : null;
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+export function inferImportDates(batch: ImportExtractBatch): ImportExtractBatch {
+  const rows = batch.rows.map((row) => ({ ...row }));
+  const byId = new Map(rows.map((row) => [row.rowId, row]));
+  const set = (row: ImportExtractRow, date: string) => {
+    const target = byId.get(row.rowId)!;
+    target.date = date;
+    target.dateInferred = true;
+  };
+
+   
+  const twins = twinIndex(rows);
+  for (const group of twins.values()) {
+    for (const row of group) {
+      if (row.date !== null) continue;
+      const dated = group.filter((twin) => twin.date !== null && Math.abs(twin.imageIndex - row.imageIndex) === 1);
+      const dates = new Set(dated.map((twin) => twin.date));
+      if (dates.size !== 1) continue;
+      set(row, dated[0]!.date!);
+      const later = seamPair(row, dated[0]!).laterRowId;
+      const laterRow = byId.get(later)!;
+      const earlierRowId = later === row.rowId ? dated[0]!.rowId : row.rowId;
+      if (laterRow.relation === null) laterRow.relation = { kind: "duplicate_of", rowId: earlierRowId };
+    }
+  }
+
+   
+  const layouts = layoutScreenshots(rows);
+  const fillLeading = (layout: ScreenshotLayout, date: string) => {
+    for (const row of layout.leading) if (row.rowRole !== "ui_metadata" && row.date === null) set(row, date);
+  };
+  for (const layout of layouts.values()) {
+    const known = new Set(layout.leading.filter((row) => row.rowRole !== "ui_metadata" && row.date !== null).map((row) => row.date));
+    if (known.size === 1) fillLeading(layout, [...known][0]!);
+  }
+
+   
+  const above = screenshotAboveOffset(layouts, rows);
+  if (above !== null) {
+    for (const layout of layouts.values()) {
+      if (!layout.leading.some((row) => row.rowRole !== "ui_metadata" && row.date === null)) continue;
+      let neighbour = layouts.get(layout.imageIndex + above);
+      while (neighbour && neighbour.lastDividerDate === null && neighbour.rows.length > 0) neighbour = layouts.get(neighbour.imageIndex + above);
+      if (neighbour?.lastDividerDate) fillLeading(layout, neighbour.lastDividerDate);
+    }
+  }
+
+  return { rows };
+}
