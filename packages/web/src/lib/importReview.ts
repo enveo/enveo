@@ -281,6 +281,44 @@ export function reviewedImportRowsForApply(args: {
   return reviewedImportItemsForApply({ items: candidates, edited: edits, editedAutomaticDefaults: automatic });
 }
 
+export interface ImportBalanceEffect {
+  accountId: string;
+  name: string;
+  before: number;
+  after: number;
+  delta: number;
+}
+
+/**
+ * How applying the currently selected rows would move each touched account. Balances come from
+ * the caller at `currentMonth()` (account balances are global, never "as of the viewed month").
+ * Only accounts whose balance actually changes are listed; the import's source account first.
+ */
+export function importBalanceEffect(args: {
+  items: readonly ImportApplyItem[];
+  defaultAccountId: string;
+  accounts: ReadonlyArray<{ id: string; name: string; balance: number; archived?: boolean }>;
+}): ImportBalanceEffect[] {
+  const deltas = new Map<string, number>();
+  const add = (accountId: string, amount: number) => deltas.set(accountId, (deltas.get(accountId) ?? 0) + amount);
+  for (const item of args.items) {
+    const accountId = item.accountId ?? args.defaultAccountId;
+    if (item.type === "income") add(accountId, item.amount);
+    else if (item.type === "expense") add(accountId, item.isRefund ? item.amount : -item.amount);
+    else {
+      add(accountId, -item.amount);
+      if (item.toAccountId) add(item.toAccountId, item.amount);
+    }
+  }
+  return args.accounts
+    .filter((account) => (deltas.get(account.id) ?? 0) !== 0)
+    .sort((left, right) => Number(right.id === args.defaultAccountId) - Number(left.id === args.defaultAccountId))
+    .map((account) => {
+      const delta = deltas.get(account.id) ?? 0;
+      return { accountId: account.id, name: account.name, before: account.balance, after: account.balance + delta, delta };
+    });
+}
+
 /** Truthful completion totals: each extracted exact duplicate is one skipped row, while
  * apply-time skips cover rows that became duplicates while the review remained open. */
 export function importReviewDoneStats(rows: ImportReviewRow[], result: { added: number; skipped: number }): { added: number; dup: number } {
