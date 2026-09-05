@@ -9,9 +9,10 @@ import {
   reconcileImportProposals,
   validateImportExtraction,
 } from "@enveo/shared";
-import type { EditedImportItem, ImportApplyResponse } from "./api";
+import type { EditedImportItem, ImportApplyItem, ImportApplyResponse } from "./api";
 import {
   buildImportReviewRows,
+  importBalanceEffect,
   importReviewDoneStats,
   importReviewReasonMessage,
   reviewBadges,
@@ -575,5 +576,48 @@ describe("screenshot import review view model", () => {
     // Break caught: a newly added reason renders blank or crashes an older client.
     expect(IMPORT_REVIEW_REASONS.map(importReviewReasonMessage).every((message) => message.length > 0)).toBe(true);
     expect(importReviewReasonMessage("future_reason")).toBe("Needs review");
+  });
+});
+
+describe("balance after import", () => {
+  const accounts = [
+    { id: "acc-main", name: "Main", balance: 100_000 },
+    { id: "acc-savings", name: "Savings", balance: 500_000 },
+    { id: "acc-idle", name: "Idle", balance: 1 },
+  ];
+  const item = (over: Partial<ImportApplyItem>): ImportApplyItem => ({
+    date: "2026-08-02",
+    amount: 2_500,
+    type: "expense",
+    name: "x",
+    tag: "",
+    envelopeId: null,
+    ...over,
+  });
+
+  it("nets expenses, refunds, income and both legs of a transfer per touched account, source first", () => {
+    // given: selected rows on the import account plus an edited row moved to savings
+    const effect = importBalanceEffect({
+      items: [
+        item({ amount: 2_500 }),
+        item({ amount: 1_000, isRefund: true }),
+        item({ amount: 10_000, type: "income" }),
+        item({ amount: 20_000, type: "transfer", toAccountId: "acc-savings" }),
+        item({ amount: 300, accountId: "acc-savings" }),
+      ],
+      defaultAccountId: "acc-main",
+      accounts: [accounts[1]!, accounts[0]!, accounts[2]!],
+    });
+
+    // then: main = −2500 +1000 +10000 −20000, savings = +20000 −300; the untouched account is absent
+    expect(effect).toEqual([
+      { accountId: "acc-main", name: "Main", before: 100_000, after: 88_500, delta: -11_500 },
+      { accountId: "acc-savings", name: "Savings", before: 500_000, after: 519_700, delta: 19_700 },
+    ]);
+  });
+
+  it("lists nothing when the selection cancels out or is empty", () => {
+    expect(importBalanceEffect({ items: [], defaultAccountId: "acc-main", accounts })).toEqual([]);
+    expect(importBalanceEffect({ items: [item({ amount: 500 }), item({ amount: 500, isRefund: true })], defaultAccountId: "acc-main", accounts })).toEqual([]);
   });
 });
