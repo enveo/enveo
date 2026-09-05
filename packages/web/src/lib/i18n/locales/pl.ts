@@ -104,6 +104,8 @@ export const pl: Dict = {
   "Possible transfer": "Możliwy przelew",
   "Posting status is unknown": "Nieznany status księgowania",
   "Probable duplicate": "Prawdopodobny duplikat",
+  "Balance after import": "Saldo po imporcie",
+  "{account}: {before} now, {after} after import": "{account}: teraz {before}, po imporcie {after}",
   "May repeat a row from another screenshot": "Może powtarzać wiersz z innego zrzutu ekranu",
   "Read {read} of {total} screenshots": "Odczytano {read} z {total} zrzutów ekranu",
   "Retry those screenshots now": "Ponów odczyt tych zrzutów",
