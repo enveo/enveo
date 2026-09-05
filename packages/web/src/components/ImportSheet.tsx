@@ -1,12 +1,13 @@
-import { IMPORT_JOB_MAX_IMAGES } from "@enveo/shared";
+import { computeStateResponse, IMPORT_JOB_MAX_IMAGES } from "@enveo/shared";
 import { useQuery } from "@tanstack/react-query";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { importFlow } from "../lib/aiProvider/capabilities";
 import { useAiProvider } from "../lib/aiProvider/useAiProvider";
-import { apiErrorMessage, type EditedImportItem, type ImportApplyItem, type StateResponse } from "../lib/api";
+import { apiErrorMessage, type EditedImportItem, type ImportApplyItem, type StateResponse, useLedgerVersion } from "../lib/api";
 import { automaticEnvelopePreview, formatAutomaticEnvelopeEffect } from "../lib/automaticEnvelopeUi";
 import { useCurrency, useTheme } from "../lib/contexts";
+import { currentMonth } from "../lib/dates";
 import * as e2ee from "../lib/e2ee";
 import { formatMoney, isLight } from "../lib/format";
 import { useT } from "../lib/i18n";
@@ -19,6 +20,7 @@ import type { ImportActivityItem } from "../lib/importJobs/store";
 import {
   buildImportReviewRows,
   type ImportReviewRow,
+  importBalanceEffect,
   reviewBadges,
   reviewedImportRowsForApply,
   reviewRowControlLabels,
@@ -427,6 +429,22 @@ export function ImportSheet({
     setItems((prev) => prev.map((row, i) => (i === idx && row.duplicateStatus !== "exists" ? { ...row, include: !row.include } : row)));
 
   const selectedCount = items.filter((row, i) => row.item && row.include && (row.item.status !== "exists" || !!edited[i])).length;
+  // Account balances are global: recompute at currentMonth() from the replica, never from the
+  // month `state` was built for (same pattern as Add / the Drawer).
+  const ledgerVersion = useLedgerVersion();
+  const accountsNow = useMemo(() => {
+    const l = store.getLedger();
+    return l ? computeStateResponse(l, currentMonth()).accounts : [];
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ledgerVersion]);
+  const balanceEffect =
+    phase === "review"
+      ? importBalanceEffect({
+          items: reviewedImportRowsForApply({ rows: items, edited, editedAutomaticDefaults }),
+          defaultAccountId: accountId,
+          accounts: accountsNow,
+        })
+      : [];
   const deviceWarning = sharedDeviceImportWarning(e2ee.getTierMeta().tier, storageMode());
   const label = { fontSize: 10.5, color: C.mute, fontWeight: 600, textTransform: "uppercase" as const, letterSpacing: 0.6, marginBottom: 6 };
 
@@ -847,6 +865,30 @@ export function ImportSheet({
             {sourceAccountUnavailable && (
               <div role="alert" style={{ fontSize: 12.5, color: CORAL, margin: "10px 0" }}>
                 {t("The source account was deleted or archived. This import cannot be applied.")}
+              </div>
+            )}
+
+            {balanceEffect.length > 0 && (
+              <div data-testid="import-balance-effect" style={{ marginTop: 12, padding: "10px 12px", borderRadius: 12, background: tint(C.text, 0.05) }}>
+                <div style={label}>{t("Balance after import")}</div>
+                {balanceEffect.map((effect) => (
+                  <div
+                    key={effect.accountId}
+                    aria-label={t("{account}: {before} now, {after} after import", {
+                      account: effect.name,
+                      before: formatMoney(effect.before, currency, lang),
+                      after: formatMoney(effect.after, currency, lang),
+                    })}
+                    style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 10, fontSize: 13, lineHeight: 1.6 }}
+                  >
+                    <span style={{ color: C.soft, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{effect.name}</span>
+                    <span aria-hidden="true" style={{ whiteSpace: "nowrap", fontVariantNumeric: "tabular-nums" }}>
+                      <span style={{ color: C.mute }}>{formatMoney(effect.before, currency, lang)}</span>
+                      <span style={{ color: C.mute }}> → </span>
+                      <strong style={{ color: effect.delta < 0 ? CORAL : TEAL }}>{formatMoney(effect.after, currency, lang)}</strong>
+                    </span>
+                  </div>
+                ))}
               </div>
             )}
 
